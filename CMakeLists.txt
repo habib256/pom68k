@@ -36,6 +36,8 @@ add_library(pom68k_core STATIC
     src/MacMemory.cpp     # M2 — Mac Plus memory map + overlay
     src/Via6522.cpp       # M2/M4 — VIA (ports, timers)
     src/Rtc.cpp           # M4 — clock/PRAM serial chip
+    src/Iwm.cpp           # M5 — floppy controller
+    src/SonyDrive.cpp     # M5 — 800K GCR drive
 )
 target_include_directories(pom68k_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pom68k_core PUBLIC moira)
@@ -112,6 +114,25 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME rom_boot_etalon COMMAND rom_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # M5 gate: GCR encode/decode roundtrip (independent MAME-ported decoder).
+    add_executable(gcr_test tests/gcr_test.cpp)
+    target_link_libraries(gcr_test PRIVATE pom68k_core)
+    add_test(NAME gcr_test COMMAND gcr_test)
+
+    # M5 gate: real ROM boots a synthetic floppy through the full IWM/GCR
+    # chain and executes our boot-block code (soft-skips without a ROM).
+    add_executable(disk_boot_etalon tests/disk_boot_etalon.cpp)
+    target_link_libraries(disk_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME disk_boot_etalon COMMAND disk_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # M5 gate: boot a real System 6 floppy to the Finder (soft-skips
+    # without user-provided roms/macplus.rom + disks35/Disk605.dsk).
+    add_executable(system_boot_etalon tests/system_boot_etalon.cpp)
+    target_link_libraries(system_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME system_boot_etalon COMMAND system_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # M4.5 gate: SingleStepTests/680x0 68000 vectors against bare Moira.
     # Data is user-fetched (~1 GB): tests/fetch_sst_68000.sh <dir>.
     # Soft-skips when absent.
@@ -120,4 +141,10 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     set(POM68K_SST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68000"
         CACHE PATH "Directory of SingleStepTests/680x0 68000 .json vectors")
     add_test(NAME sst68000 COMMAND sst68000 "${POM68K_SST_DIR}")
+endif()
+
+# Dev tool (not a gate): instruction-level Sony-driver trace.
+if(POM68K_TESTS AND NOT EMSCRIPTEN)
+    add_executable(sony_trace tests/sony_trace.cpp)
+    target_link_libraries(sony_trace PRIVATE pom68k_core)
 endif()

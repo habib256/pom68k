@@ -20,6 +20,9 @@ void MacMemory::installRom(const uint8_t* data, size_t n) {
 void MacMemory::reset() {
     via_.reset();
     rtc_.reset();                    // shifter only; seconds/PRAM are battery-backed
+    iwm_.reset();
+    iwm_.attachDrive(&drive_, nullptr);
+    drive_.reset();
     viaPhase_ = 0;
     overlay_ = true;                 // hardware reset asserts the overlay
 }
@@ -33,6 +36,8 @@ void MacMemory::tick(int cpuCycles) {
     int t = viaPhase_ / 10;          // φ2 = 7.8336 MHz / 10 = 783.36 kHz
     viaPhase_ %= 10;
     if (t && via_.tick(t)) updateIrq();
+    iwm_.tick(cpuCycles);
+    drive_.tick(cpuCycles);
 }
 
 void MacMemory::tickOneSecond() {
@@ -66,8 +71,10 @@ uint8_t MacMemory::viaAccess(uint32_t addr, bool write, uint8_t v) {
         return r;
     }
     via_.write(reg, v);
-    if (reg == Via6522::ORA || reg == Via6522::ORA_NH || reg == Via6522::DDRA)
+    if (reg == Via6522::ORA || reg == Via6522::ORA_NH || reg == Via6522::DDRA) {
         overlay_ = (via_.portA() & 0x10) != 0;   // PA4 = ROM overlay
+        iwm_.setSel((via_.portA() & 0x20) != 0); // PA5 = drive SEL line
+    }
     if (reg == Via6522::ORB || reg == Via6522::DDRB) {
         uint8_t pb = via_.portB();               // drive the RTC serial lines
         rtc_.setLines(!(pb & 0x04), (pb & 0x02) != 0, (pb & 0x01) != 0);
@@ -91,8 +98,8 @@ uint8_t MacMemory::read8(uint32_t addr) {
             return 0x00;                                     // MAME mac128.cpp; odd read = SCC reset quirk
         case 0xA: case 0xB:                                  // SCC write side (stub — M7)
             return 0x00;
-        case 0xC: case 0xD:                                  // IWM, odd bytes (stub — M5)
-            return 0x1F;                                     // $1F needed to reach the blinking-? (BMOW Plus Too)
+        case 0xC: case 0xD:                                  // IWM, odd bytes, reg = A9-A12
+            return iwm_.read((addr >> 9) & 0xF);
         case 0xE: case 0xF:                                  // VIA
             if (addr >= 0xE80000) return viaAccess(addr, false, 0);
             return 0xFF;
@@ -108,6 +115,9 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
             return;
         case 0x6: case 0x7:
             ram_[addr & (kRamSize - 1)] = v;
+            return;
+        case 0xC: case 0xD:                                  // IWM
+            iwm_.write((addr >> 9) & 0xF, v);
             return;
         case 0xE: case 0xF:
             if (addr >= 0xE80000) viaAccess(addr, true, v);

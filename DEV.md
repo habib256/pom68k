@@ -102,6 +102,39 @@ emulators just mirror via a mask and let the ROM discover it.
 - PB6 H4 is derived from the true beam position (`clock % 352 < 256` →
   display portion), unlike MAME's constant.
 
+## IWM + Sony 800K (M5, research-pinned + trace-verified)
+
+Full spec tables live in the M5 research report (MAME iwm.cpp/floppy.cpp/
+flopimg.cpp/ap_dsk35.cpp, pce, Snow — cross-verified). Key facts our
+implementation depends on, several found the hard way with `sony_trace`:
+
+- **8 state lines** at `$DFE1FF + reg*$200`, reg = A9-A12: CA0-CA2/LSTRB,
+  ENABLE, SELECT, Q6, Q7; ANY access (read or write) toggles the line —
+  the ROM strobes EJECT with a `tst.b $DFEFFF` READ.
+- **(Q7,Q6) select** data/status/handshake/mode; the ROM reads data through
+  the q6L/q7L addresses (each read also clears that line). Mode = `$1F`.
+- **Data register**: nibble MSB-set when ready; clears **~14 IWM clocks
+  AFTER a read**, not immediately — the ROM does `tst.b` (poll) then
+  `move.b` (capture) and both must see the same nibble. Modeled with a
+  14-cycle countdown re-armed only on first read.
+- **TACH (sense 7) must be time-based** (spin_ counter × zone RPM
+  394/429/472/525/590, 120 edges/rev): the ROM measures spindle speed by
+  timing tach edges against VIA T2 *before* reading data; a
+  position-derived tach freezes when the IWM isn't streaming and the ROM
+  ejects the disk.
+- **Sense/command tables** per the MFD-51W (sense F "new interface" = 1,
+  SIDES = 1, READY = 0 immediately, STEP completes instantly — matches
+  MAME). Commands: CA2 = value, (CA1,CA0,SEL) = address, LSTRB rising edge.
+- **GCR**: byte-level nibble stream (no 10-bit sync framing needed), one
+  nibble per 128 CPU cycles; 2:1 interleave; the MAME `build_mac_track_gcr`
+  rolling checksum ported verbatim and cross-validated against pce's
+  independent formulation (200 random sectors, identical output).
+- **Boot blocks**: the ROM validates bbID 'LK' AND the bbVersion word at
+  +6 (`$4418`), then jumps to bbEntry at +2 (a BRA.W in real blocks).
+  Code placed directly at +2 gets rejected (version check) → eject.
+- Debug tooling: `sony_trace` (instruction-level driver trace with idle-
+  loop filtering), IWM per-reg/sense counters, consumed-nibble ring.
+
 ## CPU integration notes
 
 - Moira precise-timing: `sync()` before every bus access — contention and

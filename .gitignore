@@ -7,6 +7,9 @@ imgui/
 roms/
 *.rom
 *.ROM
+disks35/
+hdv/
+*.vhd
 docs/*.zip
 docs/*ROMs/
 *.dsk

@@ -13,6 +13,8 @@
 #pragma once
 #include "Via6522.h"
 #include "Rtc.h"
+#include "Iwm.h"
+#include "SonyDrive.h"
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -58,6 +60,9 @@ public:
     // Called once per emulated second: RTC seconds + CA2 interrupt.
     void tickOneSecond();
     Rtc& rtc() { return rtc_; }
+    Iwm& iwm() { return iwm_; }
+    SonyDrive& internalDrive() { return drive_; }
+    bool insertDisk(const std::string& path) { return drive_.insert(path); }
 
 private:
     uint8_t viaAccess(uint32_t addr, bool write, uint8_t v);
@@ -66,6 +71,8 @@ private:
     std::vector<uint8_t> ram_, rom_;
     Via6522 via_;
     Rtc rtc_;
+    Iwm iwm_;
+    SonyDrive drive_;                // internal drive; external = M5.1
     Cpu68k* cpu_ = nullptr;
     int viaPhase_ = 0;         // CPU-cycle remainder for the ÷10 VIA clock
     bool overlay_ = true;

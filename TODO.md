@@ -37,8 +37,16 @@
   (DIVS late-overflow timing, ASR over-shift C/X). Gate: `sst68000` (3.7 s,
   soft-skips without the 1 GB corpus — `tests/fetch_sst_68000.sh`).
   **This JSON format is the exchange format for the 68030 oracle phase.**
-- [ ] **M5 — IWM + Sony 3.5" GCR drive** (port POMIIGS `Iwm`), keyboard +
-  mouse (VIA shift register / SCC DCD lines).
+- [x] **M5 — IWM + Sony 3.5" GCR drive** (2026-07-14): **System 6.0.5
+  boots to the Finder** through the full chain — IWM register model,
+  800K drive (sense/commands, time-based TACH, instant steps), GCR
+  encoder (MAME-ported, pce-cross-validated), raw .dsk + DiskCopy 4.2.
+  Gates: `gcr_test` (roundtrip), `disk_boot_etalon` (self-contained
+  synthetic boot block), `system_boot_etalon` (real System 6 → Finder,
+  soft-skips). Read-only for now.
+- [ ] **M5.5 — Input**: keyboard (VIA shift register protocol) + mouse
+  (SCC DCD quadrature + VIA PB button) so the Finder can be driven.
+  Then: floppy write support, external drive, eject/insert UI.
 - [ ] **M6 — Sound** (PWM sample buffer at ramTop-$300, miniaudio host —
   POMIIGS `Audio` pattern).
 - [ ] **M7 — SCC 8530** (port POMIIGS) + **SCSI NCR 5380** + HD20/SCSI disk

@@ -78,6 +78,14 @@ int main(int argc, char** argv) {
     mem.setCpu(&cpu);
     cpu.hardReset();
 
+    // Floppy: argv[2], else first image in disks35/
+    std::string diskPath = (argc > 2) ? argv[2] : "";
+    if (diskPath.empty())
+        for (const char* p : { "disks35/Disk605.dsk", "../disks35/Disk605.dsk" })
+            if (std::ifstream(p, std::ios::binary)) { diskPath = p; break; }
+    if (!diskPath.empty() && mem.insertDisk(diskPath))
+        std::printf("Floppy: %s\n", diskPath.c_str());
+
     // ── Window / ImGui ───────────────────────────────────────────────────
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }

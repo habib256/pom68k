@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-07-14 — M5: System 6.0.5 boots to the Finder from floppy
+
+- IWM + Sony 800K drive from the cross-verified research spec (MAME, pce,
+  Snow). GCR checksum ported verbatim from MAME and cross-validated
+  against pce's independent formulation before use.
+- Three bugs found by tracing the ROM's Sony driver instruction by
+  instruction (`sony_trace`, new dev tool):
+  1. TACH must run on motor time, not data position — the ROM times
+     spindle speed against VIA T2 before ever reading data.
+  2. The IWM data register clears ~14 clocks AFTER a read, not
+     immediately — the ROM's `tst.b`/`move.b` pairs read it twice.
+  3. Boot blocks need the bbVersion word ($4418) at +6 and a BRA at
+     bbEntry (+2); 'LK' alone is not enough.
+- Verification chain, cheapest first: gcr_test (encoder roundtrip vs an
+  independently-ported decoder) → disk_boot_etalon (synthetic boot block
+  executes our 68000 code through the whole floppy path, no Apple bits
+  needed) → system_boot_etalon (real System 6.0.5 to the Finder desktop,
+  2.7 s headless).
+- GUI probes disks35/ for a floppy image; boot_trace grew --disk.
+
 ## 2026-07-14 — M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060
 
 - `sst68000` harness (POM2/POMIIGS JSON-scanner pattern) runs the full
