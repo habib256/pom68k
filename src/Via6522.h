@@ -43,6 +43,11 @@ public:
 
     void raiseCa1() { setIfr(CA1); }        // vblank, per video frame
     void raiseCa2() { setIfr(CA2); }        // RTC one-second tick
+    // Keyboard transaction hooks (M0110 over the shift register)
+    void loadSR(uint8_t v) { sr_ = v; setIfr(SHIFT); }
+    void raiseShift() { setIfr(SHIFT); }    // command byte finished shifting out
+    uint8_t acr() const { return acr_; }
+    uint8_t srValue() const { return sr_; }
     bool irqAsserted() const { return (ifr_ & ier_ & 0x7F) != 0; }
 
 private:

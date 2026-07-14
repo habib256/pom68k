@@ -22,10 +22,13 @@ void Cpu68k::runUntil(moira::i64 clockTarget) {
     if (getClock() < clockTarget) executeUntil(clockTarget);
 }
 
-// Mac Plus interrupts are wire-ORed onto the IPL lines, all autovectored:
-// VIA → level 1, SCC → level 2, both → level 3 (M4: SCC + prog switch).
+// Mac Plus IPL: VIA → 1, SCC → 2 — but the glue DISCONNECTS the VIA's
+// /IPL0 while the SCC interrupts, so level 3 never occurs (its ROM vector
+// is a bare RTE → livelock). Mini vMac: IPL = (VIA & ~SCC) | (SCC << 1).
 void Cpu68k::updateIpl() {
-    setIPL(mem_.via().irqAsserted() ? 1 : 0);
+    bool scc = mem_.sccIrq();
+    int ipl = ((mem_.via().irqAsserted() && !scc) ? 1 : 0) | (scc ? 2 : 0);
+    setIPL(moira::u8(ipl));
 }
 
 // Wait states for contended RAM accesses. Const because Moira's bus API is

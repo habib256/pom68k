@@ -38,6 +38,8 @@ add_library(pom68k_core STATIC
     src/Rtc.cpp           # M4 — clock/PRAM serial chip
     src/Iwm.cpp           # M5 — floppy controller
     src/SonyDrive.cpp     # M5 — 800K GCR drive
+    src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
+    src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
 )
 target_include_directories(pom68k_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pom68k_core PUBLIC moira)
@@ -131,6 +133,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(system_boot_etalon tests/system_boot_etalon.cpp)
     target_link_libraries(system_boot_etalon PRIVATE pom68k_core)
     add_test(NAME system_boot_etalon COMMAND system_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # M5.5 gate: keyboard/mouse against the System 6 drivers (soft-skips).
+    add_executable(input_etalon tests/input_etalon.cpp)
+    target_link_libraries(input_etalon PRIVATE pom68k_core)
+    add_test(NAME input_etalon COMMAND input_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # M4.5 gate: SingleStepTests/680x0 68000 vectors against bare Moira.

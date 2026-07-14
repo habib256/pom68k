@@ -15,6 +15,8 @@
 #include "Rtc.h"
 #include "Iwm.h"
 #include "SonyDrive.h"
+#include "Scc8530.h"
+#include "MacInput.h"
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -63,6 +65,10 @@ public:
     Iwm& iwm() { return iwm_; }
     SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
+    Scc8530& scc() { return scc_; }
+    MacMouse& mouse() { return mouse_; }
+    MacKeyboard& keyboard() { return kbd_; }
+    bool sccIrq() const { return scc_.irqAsserted(); }
 
 private:
     uint8_t viaAccess(uint32_t addr, bool write, uint8_t v);
@@ -73,6 +79,13 @@ private:
     Rtc rtc_;
     Iwm iwm_;
     SonyDrive drive_;                // internal drive; external = M5.1
+    Scc8530 scc_;
+    MacKeyboard kbd_;
+    MacMouse mouse_;
+    // M0110 transaction pacing: two SR interrupts ~3 ms apart (Snow model)
+    enum { KBD_IDLE, KBD_SHIFT_OUT, KBD_AWAIT_IN, KBD_SHIFT_IN } kbdPhase_ = KBD_IDLE;
+    uint8_t kbdCmd_ = 0, kbdResp_ = 0;
+    int kbdTimer_ = 0;
     Cpu68k* cpu_ = nullptr;
     int viaPhase_ = 0;         // CPU-cycle remainder for the ÷10 VIA clock
     bool overlay_ = true;

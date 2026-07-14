@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 2026-07-14 — M5.5: the Finder is drivable (keyboard + mouse)
+
+- Minimal SCC Z8530 (DCD ext/status interrupts, RR2B modified vector —
+  the ROM's actual dispatch mechanism; it never reads RR3), quadrature
+  mouse with the exact polarity table, M0110A keyboard with the
+  two-SR-interrupt transaction (~3 ms per phase).
+- The vicious one: with keyboard AND mouse alive, a naive IPL OR yields
+  level 3, whose ROM vector is a bare RTE → instant livelock. The real
+  glue disconnects the VIA /IPL0 while the SCC interrupts (GttMFH); the
+  suppression formula fixed it in one line. Diagnosed by single-stepping
+  at storm onset: the "handler" was just `rte` + the interrupted
+  instruction alternating.
+- Gate `input_etalon` verifies against System 6's own understanding:
+  RawMouse deltas (±2 for inherent quadrature reversal loss), MBState,
+  KeyMap bits. Bonus verification: headless click on the File menu —
+  it drops with all items rendered.
+- GUI: mouse captured over the Mac screen (2x scale compensated),
+  55-key M0110 map, Cmd = Super, Option = Alt.
+
 ## 2026-07-14 — M5: System 6.0.5 boots to the Finder from floppy
 
 - IWM + Sony 800K drive from the cross-verified research spec (MAME, pce,

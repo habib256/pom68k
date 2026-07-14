@@ -55,6 +55,12 @@ private:
 
     void applyContention(moira::u32 addr) const;
     void catchUp();                         // feed elapsed cycles to peripherals
+    void willInterrupt(moira::u8 level) override { irqServed[level & 7]++; }
+
+public:
+    long irqServed[8] = {};                 // debug: interrupts taken per level
+
+private:
 
     MacMemory& mem_;
     moira::i64 lastPeriphClock_ = 0;

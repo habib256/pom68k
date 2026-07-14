@@ -135,6 +135,32 @@ implementation depends on, several found the hard way with `sony_trace`:
 - Debug tooling: `sony_trace` (instruction-level driver trace with idle-
   loop filtering), IWM per-reg/sense counters, consumed-nibble ring.
 
+## Input: M0110 keyboard + mouse (M5.5, research-pinned + System-verified)
+
+- **IPL wiring (the bug that cost the session)**: the glue DISCONNECTS the
+  VIA's /IPL0 while the SCC interrupts — level 3 never occurs on a Plus.
+  Its ROM vector is a bare RTE, so a naive `via|scc<<1` OR livelocks the
+  machine the moment both are pending (keyboard SR + mouse DCD). Formula:
+  `IPL = (VIA & ~SCC) | (SCC << 1)` (Mini vMac / GttMFH Table 3-1).
+- **Mouse**: X1 → SCC DCD-A, Y1 → DCD-B; X2/Y2 → VIA PB4/PB5; button →
+  PB3 (0 = down). Per step: set the phase bit FIRST, then toggle DCD.
+  Direction: PB4 ≠ DCD-A → right; PB5 = DCD-B → down (X and Y sense are
+  opposite). Max ~1 step/axis per 350-450 µs (faster starves Y — B-ext has
+  lower priority than A-ext). Quadrature loses ±1 count at direction
+  changes (real hardware does too).
+- **SCC minimal model**: pointer reg (auto-reset), WR1.0/WR9.3/WR15.3
+  enables, WR0 cmd $10 (reset ext status), and crucially **RR2 on channel
+  B = the WR2 vector with bits 3:1 replaced by the highest pending source**
+  (A-ext = 101, B-ext = 001, idle = 011) — the ROM's level-2 handler
+  dispatches Lvl2DT on those bits; it never reads RR3.
+- **Keyboard (M0110A)**: commands Inquiry $10 / Instant $14 / Model $16
+  (→ $0B) / Test $36 (→ $7D); Null = $7B; transition = keycode*2+1,
+  bit 7 = release. Transaction = TWO VIA SR interrupts: one when the
+  command finishes shifting out (ACR mode 111), one ~3 ms later when the
+  response lands after the driver flips ACR to shift-in (mode 011).
+  Verified against System 6's own state: RawMouse ($82C), MBState ($172),
+  KeyMap ($174) — `input_etalon`.
+
 ## CPU integration notes
 
 - Moira precise-timing: `sync()` before every bus access — contention and

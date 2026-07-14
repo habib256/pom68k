@@ -44,9 +44,13 @@
   Gates: `gcr_test` (roundtrip), `disk_boot_etalon` (self-contained
   synthetic boot block), `system_boot_etalon` (real System 6 → Finder,
   soft-skips). Read-only for now.
-- [ ] **M5.5 — Input**: keyboard (VIA shift register protocol) + mouse
-  (SCC DCD quadrature + VIA PB button) so the Finder can be driven.
-  Then: floppy write support, external drive, eject/insert UI.
+- [x] **M5.5 — Input** (2026-07-14): M0110A keyboard (two-interrupt SR
+  transaction) + quadrature mouse (SCC DCD + RR2B modified vector) +
+  button; correct IPL suppression (level 3 never occurs). The Finder is
+  drivable: menus open, cursor tracks 1:1. Gate: `input_etalon` (verified
+  against System 6's RawMouse/MBState/KeyMap globals).
+- [ ] **M5.6 — leftovers**: floppy write support, external drive,
+  eject/insert UI, keypad/arrow two-byte codes ($79 prefix).
 - [ ] **M6 — Sound** (PWM sample buffer at ramTop-$300, miniaudio host —
   POMIIGS `Audio` pattern).
 - [ ] **M7 — SCC 8530** (port POMIIGS) + **SCSI NCR 5380** + HD20/SCSI disk

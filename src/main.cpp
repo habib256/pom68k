@@ -133,7 +133,43 @@ int main(int argc, char** argv) {
         ImGui::Begin("Macintosh Plus", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Image(ImTextureID(intptr_t(c.tex)),
                      ImVec2(float(c.video.width() * 2), float(c.video.height() * 2)));
+        // Mouse → quadrature while hovering the Mac screen (2x scaled)
+        ImGuiIO& io = ImGui::GetIO();
+        if (ImGui::IsItemHovered()) {
+            static float accX = 0, accY = 0;
+            accX += io.MouseDelta.x / 2.0f;
+            accY += io.MouseDelta.y / 2.0f;
+            int dx = int(accX), dy = int(accY);
+            if (dx || dy) { c.mem.mouse().move(dx, dy); accX -= dx; accY -= dy; }
+            c.mem.mouse().setButton(io.MouseDown[0]);
+        }
         ImGui::End();
+
+        // Keyboard → M0110 transition codes (DEV.md § Input key table)
+        if (!io.WantTextInput) {
+            static const struct { ImGuiKey k; uint8_t code; } kKeys[] = {
+                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
+                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
+                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
+                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
+                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
+                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
+                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
+                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
+                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
+                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
+                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
+                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
+                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
+                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
+                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+            };
+            for (auto& e : kKeys) {
+                if (ImGui::IsKeyPressed(e.k, false)) c.mem.keyboard().enqueue(e.code);
+                if (ImGui::IsKeyReleased(e.k)) c.mem.keyboard().enqueue(uint8_t(e.code | 0x80));
+            }
+        }
 
         ImGui::SetNextWindowPos(ImVec2(20, 740), ImGuiCond_FirstUseEver);
         ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
