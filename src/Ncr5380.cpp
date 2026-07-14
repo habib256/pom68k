@@ -9,7 +9,6 @@
 
 #include "Ncr5380.h"
 #include "ScsiDisk.h"
-#include <cstdio>
 
 namespace { constexpr int kTargetId = 0; }
 
@@ -44,8 +43,8 @@ uint8_t Ncr5380::phaseSignals() const {
 }
 
 bool Ncr5380::targetPhase() const {
-    return phase_ == COMMAND || phase_ == DATA_IN || phase_ == STATUS ||
-           phase_ == MSG_IN;
+    return phase_ == COMMAND || phase_ == DATA_IN || phase_ == DATA_OUT ||
+           phase_ == STATUS || phase_ == MSG_IN;
 }
 
 // ── Phase transitions ───────────────────────────────────────────────────
@@ -54,13 +53,35 @@ void Ncr5380::enterBusFree() { phase_ = BUS_FREE; req_ = false; }
 void Ncr5380::enterStatus()  { phase_ = STATUS;  dataPos_ = 0; req_ = true; }
 void Ncr5380::enterMsgIn()   { phase_ = MSG_IN;  req_ = true; }
 
+// Expected DATA OUT byte count for WRITE(6)/WRITE(10), else 0.
+int Ncr5380::writeByteCount(const std::vector<uint8_t>& cdb) {
+    if (cdb.empty()) return 0;
+    if (cdb[0] == 0x0A && cdb.size() >= 5)                     // WRITE(6)
+        return (cdb[4] ? cdb[4] : 256) * 512;
+    if (cdb[0] == 0x2A && cdb.size() >= 9)                     // WRITE(10)
+        return ((cdb[7] << 8) | cdb[8]) * 512;
+    return 0;
+}
+
 void Ncr5380::execute() {
-    dataIn_.clear(); dataPos_ = 0;
     commands++; lastCmd = cmd_.empty() ? 0 : cmd_[0];
+    int wbytes = writeByteCount(cmd_);
+    if (wbytes > 0) {                                          // WRITE: collect DATA OUT first
+        phase_ = DATA_OUT; dataOut_.clear(); dataOutExpected_ = size_t(wbytes);
+        req_ = true;
+        return;
+    }
+    dataIn_.clear(); dataPos_ = 0;
     std::vector<uint8_t> none;
     status_ = disk_ ? disk_->command(cmd_.data(), int(cmd_.size()), dataIn_, none) : 0x02;
     if (!dataIn_.empty()) { phase_ = DATA_IN; dataPos_ = 0; req_ = true; }
     else enterStatus();
+}
+
+void Ncr5380::finishWrite() {
+    std::vector<uint8_t> readback;
+    status_ = disk_ ? disk_->command(cmd_.data(), int(cmd_.size()), readback, dataOut_) : 0x02;
+    enterStatus();
 }
 
 // Selection: the initiator asserts SEL with the target's ID bit on the data
@@ -79,6 +100,8 @@ void Ncr5380::ackRising() {
     if (phase_ == COMMAND) {
         cmd_.push_back(odr_);
         if (cmd_.size() == 1) cmdLen_ = cdbLength(cmd_[0]);
+    } else if (phase_ == DATA_OUT) {
+        dataOut_.push_back(odr_);                  // write phase: byte from ODR
     } else {
         dataPos_++;                               // read phases: byte consumed
     }
@@ -93,6 +116,10 @@ void Ncr5380::ackFalling() {
             break;
         case DATA_IN:
             if (dataPos_ >= dataIn_.size()) enterStatus();
+            else req_ = true;
+            break;
+        case DATA_OUT:
+            if (dataOut_.size() >= dataOutExpected_) finishWrite();
             else req_ = true;
             break;
         case STATUS:  enterMsgIn(); break;
@@ -122,10 +149,6 @@ uint8_t Ncr5380::busAndStatus() const {
 
 uint8_t Ncr5380::read(int reg) {
     reads++;
-    if (trace && traceLog.size() < 200) {
-        char b[32]; std::snprintf(b, sizeof b, "R r%d ph=%d", reg, int(phase_));
-        traceLog.push_back(b);
-    }
     switch (reg) {
         case R_DATA:
             return (phase_ == DATA_IN && dataPos_ < dataIn_.size()) ? dataIn_[dataPos_]
@@ -144,10 +167,6 @@ uint8_t Ncr5380::read(int reg) {
 
 void Ncr5380::write(int reg, uint8_t v) {
     writes++;
-    if (trace && traceLog.size() < 200) {
-        char b[32]; std::snprintf(b, sizeof b, "W r%d=%02X ph=%d", reg, v, int(phase_));
-        traceLog.push_back(b);
-    }
     switch (reg) {
         case R_DATA: odr_ = v; break;
         case R_ICR: {
@@ -191,6 +210,9 @@ void Ncr5380::dmaWrite(uint8_t v) {
         cmd_.push_back(v);
         if (cmd_.size() == 1) cmdLen_ = cdbLength(cmd_[0]);
         if (int(cmd_.size()) >= cmdLen_) execute();
+    } else if (phase_ == DATA_OUT) {
+        dataOut_.push_back(v);
+        if (dataOut_.size() >= dataOutExpected_) finishWrite();
     }
 }
 

@@ -56,8 +56,16 @@
   (highest ROI per the user) — the ROM writes it to the sound buffer during
   the boot self-test; get that one sample stream audible first, then the
   rest of the Sound Manager.
-- [ ] **M7 — SCC 8530** (port POMIIGS) + **SCSI NCR 5380** + HD20/SCSI disk
-  → boot System from disk image.
+- [x] **M7 — SCSI NCR 5380 + hard disk** (2026-07-15): **System 6 boots
+  from HD20SC.vhd to the Finder** (the HD20SC volume icon appears on the
+  desktop). Controller (arbitration-free selection, all phases, pseudo-DMA)
+  + SCSI-1 target (read + in-memory write). The blocker was the ROM's
+  $420000/$440000 SCSI-presence probe defeated by full-window ROM
+  mirroring — fixed with address-dependent open bus above the 128 KB ROM.
+  Gates: `scsi_disk_test`, `ncr5380_test`, `scsi_boot_etalon`.
+- [ ] **M7.1 — SCSI polish**: persist writes to the backing file (opt-in),
+  multiple targets/LUNs, REQUEST SENSE after CHECK, the SCC serial ports
+  (port POMIIGS `Scc8530`) for real.
 - [ ] **M8 — Etalons**: pixel-perfect screenshot regression suite
   (NeoST `run_etalons.py` pattern); WASM build.
 

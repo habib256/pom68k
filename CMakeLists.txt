@@ -149,10 +149,11 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME ncr5380_test COMMAND ncr5380_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-    # M7 dev tool (not yet a gate): full ROM boot from SCSI. Passes once the
-    # SCSI startup scan is triggered (PRAM seeding — M7 part 3, in progress).
+    # M7 gate: full ROM boot from SCSI hard disk to the Finder (soft-skips).
     add_executable(scsi_boot_etalon tests/scsi_boot_etalon.cpp)
     target_link_libraries(scsi_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME scsi_boot_etalon COMMAND scsi_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # M5.5 gate: keyboard/mouse against the System 6 drivers (soft-skips).
     add_executable(input_etalon tests/input_etalon.cpp)

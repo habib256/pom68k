@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## 2026-07-15 — M7: System 6 boots from a SCSI hard disk
+
+- NCR 5380 controller + SCSI-1 target boot System 6 from HD20SC.vhd; the
+  HD20SC volume mounts on the Finder desktop.
+- The day-long blocker was NOT the controller (proven correct in isolation
+  by ncr5380_test from the start) but the ROM never running its SCSI scan.
+  Diagnosis chain: PRAM (ruled out — Plus ignores the default-boot-device,
+  that's a 256K-ROM feature) → floppy presence (ruled out) → drive queue
+  had only the floppy → SCSI Manager select/read primitives never executed
+  → the gate is `HWCfgFlags` ($0B22) bit 7, set by `E_SoftReset`'s
+  $420000-vs-$440000 ROM-mirror probe. We mirrored the ROM across the whole
+  window so the probe saw no difference and declared "no SCSI". Fixed by
+  returning address-dependent open bus above the true 128 KB ROM. (Nailed
+  via the bit-exact Plus v3 ROM disassembly, jonathanschilling/mac_rom.)
+- Second blocker: WRITE(6/10) is mandatory — the driver writes to the
+  volume during mount; a read-only target hung the boot in a VIA interrupt
+  storm right after the driver loaded. Added a DATA OUT phase to the
+  controller and in-memory writes to the target.
+- Also: GUI windows move only from the title bar (Finder drag-and-drop no
+  longer drags the host window); floppy/SCSI paths resolve relative to the
+  executable; SCSI disk auto-attaches from hdv/.
+
 ## 2026-07-14 — M5.5: the Finder is drivable (keyboard + mouse)
 
 - Minimal SCC Z8530 (DCD ext/status interrupts, RR2B modified vector —

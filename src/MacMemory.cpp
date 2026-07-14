@@ -142,7 +142,12 @@ uint8_t MacMemory::read8(uint32_t addr) {
                 if ((addr & 0x200) && scsi_.drqActive()) return scsi_.dmaRead();
                 return scsi_.read(reg);
             }
-            return rom_[addr & (kRomSize - 1)];              // ROM
+            if (addr < 0x400000 + kRomSize)                  // 128 KB ROM ($400000-$41FFFF)
+                return rom_[addr & (kRomSize - 1)];
+            // Above the ROM: open bus, address-dependent. The ROM probes
+            // $420000 vs $440000 to detect SCSI hardware (E_SoftReset): they
+            // must DIFFER or CheckSCSI ($407D40) skips the SCSI scan.
+            return uint8_t(addr >> 16);
         case 0x6: case 0x7:                                  // RAM while overlay on
             return ram_[addr & (kRamSize - 1)];
         case 0x8: case 0x9:                                  // SCC read, even bytes

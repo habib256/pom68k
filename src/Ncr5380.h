@@ -37,9 +37,7 @@ public:
     bool drqActive() const;          // A9 path routes to dma* only when set
 
     long reads = 0, writes = 0, selects = 0, commands = 0;   // debug counters
-    long dmaReads = 0; uint8_t lastCmd = 0;
-    bool trace = false;
-    std::vector<std::string> traceLog;
+    uint8_t lastCmd = 0;
 
     // ── 5380 register indices ──
     enum Reg {
@@ -86,8 +84,8 @@ private:
     bool req_ = false;               // target asserting REQ
 
     // Transfer buffers for the current command
-    std::vector<uint8_t> cmd_, dataIn_;
-    size_t dataPos_ = 0;
+    std::vector<uint8_t> cmd_, dataIn_, dataOut_;
+    size_t dataPos_ = 0, dataOutExpected_ = 0;
     int cmdLen_ = 0;
     uint8_t status_ = 0;
 
@@ -97,6 +95,8 @@ private:
     void enterMsgIn();
     void enterBusFree();
     void execute();
+    void finishWrite();
+    static int writeByteCount(const std::vector<uint8_t>& cdb);
     void ackRising();
     void ackFalling();
     bool targetPhase() const;

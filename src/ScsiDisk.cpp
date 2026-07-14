@@ -32,11 +32,23 @@ void ScsiDisk::read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out) {
     }
 }
 
+// Writes land in the in-memory image only (the backing file is never
+// modified — changes are lost on exit; enough for the driver to mount).
+void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& in) {
+    uint64_t off = uint64_t(lba) * kBlockSize;
+    uint64_t n = uint64_t(count) * kBlockSize;
+    if (off >= image_.size()) return;
+    uint64_t avail = image_.size() - off;
+    uint64_t w = n < avail ? n : avail;
+    if (w > in.size()) w = in.size();
+    std::memcpy(image_.data() + off, in.data(), size_t(w));
+}
+
 void ScsiDisk::setSense(uint8_t key, uint8_t asc) { senseKey_ = key; senseAsc_ = asc; }
 
 uint8_t ScsiDisk::command(const uint8_t* cdb, int /*cdbLen*/,
                           std::vector<uint8_t>& dataOut,
-                          const std::vector<uint8_t>& /*dataIn*/) {
+                          const std::vector<uint8_t>& dataIn) {
     dataOut.clear();
     switch (cdb[0]) {
         case 0x00:                                   // TEST UNIT READY
@@ -92,6 +104,20 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int /*cdbLen*/,
             uint8_t alloc = cdb[4] ? cdb[4] : 4;
             dataOut.assign(alloc, 0);
             if (dataOut.size() > 3) dataOut[3] = 8;  // block descriptor length
+            return kGood;
+        }
+
+        case 0x0A: {                                 // WRITE(6)
+            uint32_t lba = (uint32_t(cdb[1] & 0x1F) << 16) | (uint32_t(cdb[2]) << 8) | cdb[3];
+            uint32_t cnt = cdb[4] ? cdb[4] : 256;
+            write(lba, cnt, dataIn);
+            return kGood;
+        }
+        case 0x2A: {                                 // WRITE(10)
+            uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
+                         | (uint32_t(cdb[4]) << 8) | cdb[5];
+            uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
+            write(lba, cnt, dataIn);
             return kGood;
         }
 

@@ -37,7 +37,8 @@ public:
 
     static int sectorsInTrack(int track);
 
-    bool debug = false;                          // command/sense tracing
+    bool debug = false;
+                              // command/sense tracing
     long nibblesRead = 0;
 
 private:

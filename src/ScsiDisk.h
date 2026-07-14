@@ -30,6 +30,7 @@ public:
 
 private:
     void read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out);
+    void write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& in);
     void setSense(uint8_t key, uint8_t asc);
 
     std::vector<uint8_t> image_;     // raw sectors

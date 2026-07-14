@@ -161,6 +161,42 @@ implementation depends on, several found the hard way with `sony_trace`:
   Verified against System 6's own state: RawMouse ($82C), MBState ($172),
   KeyMap ($174) — `input_etalon`.
 
+## SCSI: NCR 5380 + hard disk (M7, research-pinned + ROM-verified)
+
+Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
+'ER' DDM at block 0, 'PM' partition map, Apple_Driver43 + Apple_HFS).
+
+- **Controller** (`Ncr5380`): register-write-driven phase engine at
+  `$580000`, reg = A4-A6, A0 = byte lane, A9 = pseudo-DMA/DACK. Polled — no
+  CPU interrupt. Selection **without arbitration** (the Plus way): triggers
+  on ICR SEL asserted + BSY released with the target-ID bit on ODR,
+  independent of the Mode ARBITRATE bit. Phases COMMAND→DATA(IN/OUT)→
+  STATUS→MSG IN with REQ/ACK per byte; pseudo-DMA auto-handshakes one byte
+  per A9 access. One target at SCSI ID 0. Bit layouts from MAME
+  `ncr5380.cpp`; sequence from pce `macplus/scsi.c` and the bit-exact ROM
+  disassembly (`SCSI_DO_SELECT`).
+- **Target** (`ScsiDisk`): SCSI-1 direct-access — TEST UNIT READY, REQUEST
+  SENSE, INQUIRY (byte 0 = 0x00 direct-access is all the ROM keys on),
+  READ CAPACITY, READ(6/10), **WRITE(6/10)** (in-memory only — the driver
+  writes during mount), MODE SENSE. Raw 512-byte-block image.
+- **THE GATE (why it took a day): the ROM's SCSI-presence probe.**
+  `E_SoftReset` does `MOVE.L ($420000),D0; CMP.L ($440000),D0; BEQ
+  no-scsi`. On real hardware the 128 KB ROM does NOT mirror across the
+  whole $400000-$4FFFFF window, so those two longwords differ → SCSI
+  present → `HWCfgFlags` ($0B22) bit 7 set → `CheckSCSI` ($407D40) runs the
+  6→0 scan, reads block 0, loads the Apple_Driver43, JSRs its init (which
+  registers the drive in `DrvQHdr` $0308), and the boot dispatcher boots it.
+  Our `MacMemory` originally mirrored the ROM everywhere → $420000 ==
+  $440000 → the ROM concluded "no SCSI" and never scanned. Fix: ROM answers
+  only at $400000-$41FFFF; above it returns address-dependent open bus
+  (`addr >> 16`) so the probe sees a difference. **The Plus does NOT consult
+  PRAM for the boot device** (that's a 256K-ROM/SE+ feature) — the scan is
+  automatic and unconditional once HWCfgFlags is set.
+- **WRITE support is mandatory**: the disk driver writes to the volume
+  during mount; a read-only target hangs the boot in a VIA interrupt storm
+  after the driver loads. Writes go to the in-memory image only (backing
+  file untouched — persistence is a later milestone).
+
 ## CPU integration notes
 
 - Moira precise-timing: `sync()` before every bus access — contention and
