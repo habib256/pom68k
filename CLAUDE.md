@@ -64,6 +64,7 @@ CPU **7.8336 MHz**, frame **60.15 Hz** (130 240 cycles/frame), video
 | **RTC 343-0042** (clock + PRAM serial) | `Rtc.h/.cpp` | M4 ✓ (no file persistence) | Mini vMac RTC.c |
 | **Video 512×342** | `MacVideo.h` | M3 ✓ (whole-frame decode) | GttMFH |
 | **Frame clock** (VBL phase, one-second) | `MacFrame.h` | M4 ✓ | GttMFH |
+| **Sound** (PWM buffer + chime) | `MacAudio.h`, `MacAudioHost.h` | M6 ✓ | GttMFH |
 | Built-in demo ROM | `DemoRom.h` | ✓ (gate vehicle) | — |
 | UI (ImGui/GLFW, turbo) | `main.cpp` | M3 shell ✓ | POMIIGS main.cpp |
 | **SST 68000 harness** (oracle-format prototype) | `tests/sst68000.cpp` | M4.5 | SingleStepTests/680x0 |

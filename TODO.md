@@ -51,11 +51,12 @@
   against System 6's RawMouse/MBState/KeyMap globals).
 - [ ] **M5.6 — leftovers**: floppy write support, external drive,
   eject/insert UI, keypad/arrow two-byte codes ($79 prefix).
-- [ ] **M6 — Sound** (PWM sample buffer at ramTop-$300, miniaudio host —
-  POMIIGS `Audio` pattern). **Priority target: the iconic startup chime**
-  (highest ROI per the user) — the ROM writes it to the sound buffer during
-  the boot self-test; get that one sample stream audible first, then the
-  rest of the Sound Manager.
+- [x] **M6 — Sound** (2026-07-15): PWM sample buffer → `MacAudio` extractor
+  → `MacAudioHost` (miniaudio, non-silent-frame push so turbo survives).
+  **The iconic startup chime plays** — a clean ~601 Hz tone captured to
+  `chime.wav`. Gate: `sound_test`. Remaining: sound-buffer cycle accuracy
+  (per-scanline fetch vs whole-frame), the disk-PWM byte, volume-curve
+  fidelity.
 - [x] **M7 — SCSI NCR 5380 + hard disk** (2026-07-15): **System 6 boots
   from HD20SC.vhd to the Finder** (the HD20SC volume icon appears on the
   desktop). Controller (arbitration-free selection, all phases, pseudo-DMA)

@@ -33,14 +33,22 @@ later auto-clear on first `$400000` access — Plus does **not**.
 - 512×342×1 bpp = 21 888 bytes, 64 bytes/row contiguous; **MSB = leftmost,
   1 = black**. VIA **PA6: 1 = main, 0 = alternate**.
 
-## Sound (M6)
+## Sound (M6 ✓)
 
 - Main **ramTop−$300**, alt **ramTop−$5F00**; 370 words/frame: even byte =
   8-bit sample, odd byte = disk-PWM (ignored by the Plus's 800K drives).
   One word fetched per scan line ⇒ **22 254.55 Hz** (15.6672 MHz / 704).
-  Output is 1-bit PWM into an integrator (MAME models this; linear PCM is an
-  approximation). VIA PA3 selects buffer (1=main); PB7 enable (0=enabled);
-  PA2-0 volume.
+  Output is 1-bit PWM into an integrator; we take the byte as unsigned
+  linear PCM `(byte-128)/128` (the standard approximation). VIA PA3 selects
+  buffer (1=main); PB7 enable (0=enabled); PA2-0 volume (0-7).
+- `MacAudio` extracts the 370 samples/frame; `MacAudioHost` (miniaudio,
+  GUI-only) plays them through a lock-free SPSC ring at 22254 Hz. Only
+  **non-silent frames** are pushed, so the ring stays drained while the
+  machine turbos through the silent RAM test — the startup chime and system
+  beeps still play at the right pitch, just slightly delayed.
+- The **startup chime** is a clean ~601 Hz (≈D5) tone for ~0.7 s at power-on
+  (before the RAM test), then PB7 mutes it. `sound_test` captures it to
+  `chime.wav` and checks it's an audible decaying tone in the beep band.
 
 ## VIA 6522
 

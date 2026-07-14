@@ -12,6 +12,8 @@
 #include "MacMemory.h"
 #include "MacVideo.h"
 #include "MacFrame.h"
+#include "MacAudio.h"
+#include "MacAudioHost.h"
 #include "DemoRom.h"
 
 #include <GLFW/glfw3.h>
@@ -72,6 +74,8 @@ int main(int argc, char** argv) {
     static MacMemory mem;
     static Cpu68k cpu(mem);
     static MacVideo video;
+    static MacAudio audio;
+    static MacAudioHost audioHost;
 
     std::string matched;
     std::vector<uint8_t> rom;
@@ -126,11 +130,14 @@ int main(int argc, char** argv) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
+
     struct Ctx {
         GLFWwindow* window; MacMemory& mem; Cpu68k& cpu; MacVideo& video;
+        MacAudio& audio; MacAudioHost& audioHost;
         GLuint tex; bool running; bool turbo; MacFrameClock clock;
     };
-    static Ctx ctx{window, mem, cpu, video, screenTex, true, !demoMode, {}};
+    static Ctx ctx{window, mem, cpu, video, audio, audioHost, screenTex, true, !demoMode, {}};
     ctx.clock.resync(cpu);
 
     auto frame = [](void* p) {
@@ -140,7 +147,13 @@ int main(int argc, char** argv) {
 
         if (c.running) {
             int n = c.turbo ? 8 : 1;            // turbo: 8 machine frames per host frame
-            for (int i = 0; i < n; i++) c.clock.runFrame(c.cpu, c.mem);
+            std::vector<float> samp;
+            for (int i = 0; i < n; i++) {
+                c.clock.runFrame(c.cpu, c.mem);
+                samp.clear();
+                c.audio.renderFrame(c.mem, samp);   // 370 PWM samples
+                c.audioHost.pushFrame(samp, 0);     // plays only non-silent frames
+            }
         }
 
         const uint32_t* fb = c.video.render(c.mem);
@@ -216,6 +229,7 @@ int main(int argc, char** argv) {
     emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
 #else
     while (!glfwWindowShouldClose(window)) frame(&ctx);
+    audioHost.stop();
     glDeleteTextures(1, &screenTex);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

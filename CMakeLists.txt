@@ -57,7 +57,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         ${IMGUI_DIR}/imgui_widgets.cpp
         ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
         ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
-    add_executable(${PROJECT_NAME} src/main.cpp ${IMGUI_SOURCES})
+    add_executable(${PROJECT_NAME} src/main.cpp src/miniaudio_impl.cpp ${IMGUI_SOURCES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
     target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core)
     if(EMSCRIPTEN)
@@ -141,6 +141,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(scsi_disk_test tests/scsi_disk_test.cpp)
     target_link_libraries(scsi_disk_test PRIVATE pom68k_core)
     add_test(NAME scsi_disk_test COMMAND scsi_disk_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # M6 gate: the startup chime is a real decaying tone (soft-skips).
+    add_executable(sound_test tests/sound_test.cpp)
+    target_link_libraries(sound_test PRIVATE pom68k_core)
+    add_test(NAME sound_test COMMAND sound_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # M7 gate: the NCR 5380 phase engine driven like the ROM's SCSI Manager.

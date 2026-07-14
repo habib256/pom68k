@@ -22,3 +22,6 @@ tests/data/
 compile_commands.json
 *.ppm
 *.png
+
+# Sound capture artifacts (sound_test)
+*.wav

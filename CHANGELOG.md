@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-15 — M6: the startup chime plays
+
+- Sound: `MacAudio` pulls the 370-sample/frame PWM buffer (ramTop−$300,
+  even byte = 8-bit sample, PA3 buffer-select, PB7 enable, PA2-0 volume);
+  `MacAudioHost` plays it through miniaudio on a lock-free ring at
+  22254 Hz. The turbo-vs-audio pitch problem is solved by pushing only
+  non-silent frames — the ring drains while the machine races through the
+  silent RAM test, so the chime and beeps keep the right pitch.
+- The Mac Plus power-on chime — a ~601 Hz (≈D5) tone held ~0.7 s then
+  muted — is audible. Verified headless by capturing it to a WAV and
+  checking the fundamental + decay (`sound_test`).
+
 ## 2026-07-15 — M7: System 6 boots from a SCSI hard disk
 
 - NCR 5380 controller + SCSI-1 target boot System 6 from HD20SC.vhd; the
