@@ -41,6 +41,7 @@ add_library(pom68k_core STATIC
     src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
+    src/Ncr5380.cpp       # M7 — SCSI controller (phase engine)
 )
 target_include_directories(pom68k_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pom68k_core PUBLIC moira)
@@ -141,6 +142,17 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(scsi_disk_test PRIVATE pom68k_core)
     add_test(NAME scsi_disk_test COMMAND scsi_disk_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # M7 gate: the NCR 5380 phase engine driven like the ROM's SCSI Manager.
+    add_executable(ncr5380_test tests/ncr5380_test.cpp)
+    target_link_libraries(ncr5380_test PRIVATE pom68k_core)
+    add_test(NAME ncr5380_test COMMAND ncr5380_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # M7 dev tool (not yet a gate): full ROM boot from SCSI. Passes once the
+    # SCSI startup scan is triggered (PRAM seeding — M7 part 3, in progress).
+    add_executable(scsi_boot_etalon tests/scsi_boot_etalon.cpp)
+    target_link_libraries(scsi_boot_etalon PRIVATE pom68k_core)
 
     # M5.5 gate: keyboard/mouse against the System 6 drivers (soft-skips).
     add_executable(input_etalon tests/input_etalon.cpp)

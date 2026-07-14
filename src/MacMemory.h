@@ -17,6 +17,8 @@
 #include "SonyDrive.h"
 #include "Scc8530.h"
 #include "MacInput.h"
+#include "Ncr5380.h"
+#include "ScsiDisk.h"
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -69,6 +71,13 @@ public:
     MacMouse& mouse() { return mouse_; }
     MacKeyboard& keyboard() { return kbd_; }
     bool sccIrq() const { return scc_.irqAsserted(); }
+    Ncr5380& scsi() { return scsi_; }
+    ScsiDisk& scsiDisk() { return scsiDisk_; }
+    bool attachScsi(const std::string& path) {
+        if (!scsiDisk_.open(path)) return false;
+        scsi_.attach(&scsiDisk_);
+        return true;
+    }
 
 private:
     uint8_t viaAccess(uint32_t addr, bool write, uint8_t v);
@@ -80,6 +89,8 @@ private:
     Iwm iwm_;
     SonyDrive drive_;                // internal drive; external = M5.1
     Scc8530 scc_;
+    Ncr5380 scsi_;
+    ScsiDisk scsiDisk_;
     MacKeyboard kbd_;
     MacMouse mouse_;
     // M0110 transaction pacing: two SR interrupts ~3 ms apart (Snow model)

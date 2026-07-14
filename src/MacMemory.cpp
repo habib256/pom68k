@@ -24,6 +24,8 @@ void MacMemory::reset() {
     iwm_.attachDrive(&drive_, nullptr);
     drive_.reset();
     scc_.reset();
+    scsi_.reset();
+    if (scsiDisk_.present()) scsi_.attach(&scsiDisk_);
     kbd_.reset();
     kbdPhase_ = KBD_IDLE;
     viaPhase_ = 0;
@@ -135,7 +137,11 @@ uint8_t MacMemory::read8(uint32_t addr) {
             if (overlay_) return rom_[addr & (kRomSize - 1)];
             return ram_[addr & (kRamSize - 1)];
         case 0x4: case 0x5:
-            if (addr >= 0x580000) return 0x00;               // SCSI 5380 (stub)
+            if (addr >= 0x580000) {                          // SCSI NCR 5380
+                int reg = (addr >> 4) & 7;
+                if ((addr & 0x200) && scsi_.drqActive()) return scsi_.dmaRead();
+                return scsi_.read(reg);
+            }
             return rom_[addr & (kRomSize - 1)];              // ROM
         case 0x6: case 0x7:                                  // RAM while overlay on
             return ram_[addr & (kRamSize - 1)];
@@ -159,6 +165,13 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
     switch (addr >> 20) {
         case 0x0: case 0x1: case 0x2: case 0x3:
             if (!overlay_) ram_[addr & (kRamSize - 1)] = v;  // ROM under overlay: ignored
+            return;
+        case 0x4: case 0x5:                                  // SCSI NCR 5380
+            if (addr >= 0x580000) {
+                int reg = (addr >> 4) & 7;
+                if ((addr & 0x200) && scsi_.drqActive()) scsi_.dmaWrite(v);
+                else scsi_.write(reg, v);
+            }
             return;
         case 0x6: case 0x7:
             ram_[addr & (kRamSize - 1)] = v;

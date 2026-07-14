@@ -93,9 +93,14 @@ int main(int argc, char** argv) {
     std::string diskPath = (argc > 2) ? argv[2] : findPath("disks35/Disk605.dsk");
     static bool diskOk = !diskPath.empty() && mem.insertDisk(diskPath);
     if (diskOk) std::printf("Floppy: %s\n", diskPath.c_str());
-    else if (!demoMode)
-        std::fprintf(stderr, "No floppy found — drop a .dsk in disks35/ (looked "
-                     "relative to CWD and the executable). Booting to the ?-disk.\n");
+
+    // SCSI hard disk: argv[3], else probe hdv/HD20SC.vhd (exec-relative).
+    std::string hddPath = (argc > 3) ? argv[3] : findPath("hdv/HD20SC.vhd");
+    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath);
+    if (hddOk) std::printf("SCSI HD: %s (%u blocks)\n", hddPath.c_str(), mem.scsiDisk().blocks());
+    if (!diskOk && !hddOk && !demoMode)
+        std::fprintf(stderr, "No boot media — drop a .dsk in disks35/ or a .vhd in "
+                     "hdv/ (looked relative to CWD and the executable).\n");
 
     // ── Window / ImGui ───────────────────────────────────────────────────
     glfwSetErrorCallback(glfwErrorCallback);
@@ -108,6 +113,9 @@ int main(int argc, char** argv) {
     glfwSwapInterval(1);
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    // Windows move only by their title bar — so dragging inside the Mac
+    // screen (Finder drag-and-drop) doesn't drag the host window.
+    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
