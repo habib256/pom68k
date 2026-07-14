@@ -52,7 +52,10 @@
 - [ ] **M5.6 — leftovers**: floppy write support, external drive,
   eject/insert UI, keypad/arrow two-byte codes ($79 prefix).
 - [ ] **M6 — Sound** (PWM sample buffer at ramTop-$300, miniaudio host —
-  POMIIGS `Audio` pattern).
+  POMIIGS `Audio` pattern). **Priority target: the iconic startup chime**
+  (highest ROI per the user) — the ROM writes it to the sound buffer during
+  the boot self-test; get that one sample stream audible first, then the
+  rest of the Sound Manager.
 - [ ] **M7 — SCC 8530** (port POMIIGS) + **SCSI NCR 5380** + HD20/SCSI disk
   → boot System from disk image.
 - [ ] **M8 — Etalons**: pixel-perfect screenshot regression suite
