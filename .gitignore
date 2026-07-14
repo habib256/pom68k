@@ -1,0 +1,21 @@
+# Build trees
+build/
+build_wasm/
+# Dear ImGui is fetched by setup_imgui.sh, not vendored
+imgui/
+# ROMs and disk images are user-provided (copyrighted) — never committed
+roms/
+*.rom
+*.ROM
+docs/*.zip
+docs/*ROMs/
+*.dsk
+*.img
+*.hdv
+# Large user-fetched test corpora (tests/fetch_sst_68000.sh)
+tests/data/
+# Editor/tooling
+.cache/
+compile_commands.json
+*.ppm
+*.png
