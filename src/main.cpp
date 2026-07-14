@@ -53,6 +53,16 @@ static std::vector<uint8_t> findResource(const std::string& rel, std::string& ma
     return {};
 }
 
+// Resolve a path (CWD / exec dir / parent) without reading the file.
+static std::string findPath(const std::string& rel) {
+    std::string ed = execDir();
+    for (const std::string& base : { std::string(), ed, ed + "../" }) {
+        std::ifstream f(base + rel, std::ios::binary);
+        if (f) return base + rel;
+    }
+    return {};
+}
+
 static void glfwErrorCallback(int e, const char* d) { std::fprintf(stderr, "GLFW error %d: %s\n", e, d); }
 
 int main(int argc, char** argv) {
@@ -78,13 +88,14 @@ int main(int argc, char** argv) {
     mem.setCpu(&cpu);
     cpu.hardReset();
 
-    // Floppy: argv[2], else first image in disks35/
-    std::string diskPath = (argc > 2) ? argv[2] : "";
-    if (diskPath.empty())
-        for (const char* p : { "disks35/Disk605.dsk", "../disks35/Disk605.dsk" })
-            if (std::ifstream(p, std::ios::binary)) { diskPath = p; break; }
-    if (!diskPath.empty() && mem.insertDisk(diskPath))
-        std::printf("Floppy: %s\n", diskPath.c_str());
+    // Floppy: argv[2], else probe disks35/ (CWD, exec dir, and its parent —
+    // same resolution as the ROM, so it works whatever the launch directory).
+    std::string diskPath = (argc > 2) ? argv[2] : findPath("disks35/Disk605.dsk");
+    static bool diskOk = !diskPath.empty() && mem.insertDisk(diskPath);
+    if (diskOk) std::printf("Floppy: %s\n", diskPath.c_str());
+    else if (!demoMode)
+        std::fprintf(stderr, "No floppy found — drop a .dsk in disks35/ (looked "
+                     "relative to CWD and the executable). Booting to the ?-disk.\n");
 
     // ── Window / ImGui ───────────────────────────────────────────────────
     glfwSetErrorCallback(glfwErrorCallback);
@@ -175,7 +186,8 @@ int main(int argc, char** argv) {
         ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Text("68000 @ 7.8336 MHz (Moira, cycle-exact)  PC=%06X  clock=%lld",
                     c.cpu.getPC(), (long long)c.cpu.getClock());
-        ImGui::Text("overlay=%d  demo=%d", c.mem.overlay() ? 1 : 0, demoMode ? 1 : 0);
+        ImGui::Text("overlay=%d  demo=%d  floppy=%s", c.mem.overlay() ? 1 : 0,
+                    demoMode ? 1 : 0, diskOk ? "inserted" : "none");
         if (ImGui::Button(c.running ? "Pause" : "Run")) c.running = !c.running;
         ImGui::SameLine();
         if (ImGui::Button("Reset")) { c.cpu.hardReset(); c.clock.resync(c.cpu); }
