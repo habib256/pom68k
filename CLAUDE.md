@@ -67,12 +67,11 @@ CPU **7.8336 MHz**, frame **60.15 Hz** (130 240 cycles/frame), video
 | **Sound** (PWM buffer + chime) | `MacAudio.h`, `MacAudioHost.h` | M6 ✓ | GttMFH |
 | Built-in demo ROM | `DemoRom.h` | ✓ (gate vehicle) | — |
 | UI (ImGui/GLFW, turbo) | `main.cpp` | M3 shell ✓ | POMIIGS main.cpp |
-| **SST 68000 harness** (oracle-format prototype) | `tests/sst68000.cpp` | M4.5 | SingleStepTests/680x0 |
-| IWM + Sony 3.5" GCR | — | M5 | POMIIGS `Iwm` reuse |
-| Keyboard/mouse (VIA + $C000-less!) | — | M5 | GttMFH |
-| Sound (PWM buffer) | — | M6 | GttMFH |
-| SCC 8530 | — | M7 | POMIIGS `Scc8530` reuse |
-| SCSI NCR 5380 | — | M7 | MAME `ncr5380.cpp` |
+| **SST 68000 harness** (oracle-format prototype) | `tests/sst68000.cpp` | M4.5 ✓ | SingleStepTests/680x0 |
+| **IWM + Sony 3.5" 800K GCR** | `Iwm.h/.cpp`, `SonyDrive.h/.cpp` | M5 ✓ | MAME `iwm.cpp`/`ap_dsk35.cpp` |
+| **Keyboard (M0110) + mouse** | `MacInput.h/.cpp`, `Scc8530.h/.cpp` | M5.5 ✓ | MAME/Mini vMac/Snow |
+| **SCSI NCR 5380 + hard disk** | `Ncr5380.h/.cpp`, `ScsiDisk.h/.cpp` | M7 ✓ | MAME `ncr5380.cpp`, pce |
+| SCC 8530 serial ports | `Scc8530.*` (mouse DCD only) | M7.1 | POMIIGS `Scc8530` reuse |
 | **68030 core + MMU (LC II)** | `extern/moira` extension | phase 2 | Motorola manual + 2 oracles |
 
 ## Memory map (Mac Plus, 24-bit)
@@ -94,8 +93,10 @@ Full pinned detail + timing/contention model in `DEV.md`.
 
 ## Status
 
-**M0–M4 done**: the real Mac Plus ROM boots to the blinking-? floppy icon
-with 4 MB correctly sized — VIA timers, RTC/PRAM, cycle-exact RAM/video
-contention (GttMFH 2.56 MB/s budget), VBL at line-342 phase. **M4.5** (the
-SingleStepTests 68000 harness, prototype of the 68030 oracle format) is
-running. Next: M5 IWM + Sony drive → boot a System. See `TODO.md`.
+**Mac Plus is a usable machine (M0–M7 done).** It boots System 6 from a
+floppy *and* from a SCSI hard disk to the Finder, the mouse/keyboard drive
+it, and the startup chime plays. Moira passes 1 000 058/1 000 058
+SingleStepTests 68000 vectors. 13 CTest gates. Remaining Plus polish in
+`TODO.md` (floppy write, serial, cycle-accurate sound, save states, WASM).
+**Next big phase: the Mac LC II — the 68030 + MMU execution core built by
+AI + differential fuzzing against two oracles** (see `TODO.md § Phase 2`).
