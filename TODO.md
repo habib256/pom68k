@@ -301,6 +301,15 @@ with an AI loop verified by differential testing:
     If a future guest word-accesses the SCC, mirror the VIA fast-path.
 
   **App-compat bugs found while playing (2026-07-16):**
+  - [x] **Lode Runner launch freeze** — RESOLVED 2026-07-17 (see CHANGELOG
+    + POM68K_VENDOR.md § Odd-SP interrupt frames): interrupts accepted
+    while SP was ODD (QuickDraw 3-byte/pixel stack temps) pushed a frame
+    shifted one byte low (68000-only `& ~1` masking left in Moira's
+    010/020 interrupt path) → RTE format error → ROM system error →
+    double-fault freeze at app launch. Also fixed the double ×4 of the
+    stacked vector offset. Repro: `scratchpad/lrtest4.cpp` (keyboard-nav
+    Finder launch, was halted=1), unit `scratchpad/oddframe.cpp`. LR now
+    reaches its title screen; 24/24 green; SC2K repro unregressed.
   - [x] **SimCity 2000 crash — "coprocesseur arithmétique absent"
     (Line-F)** — RESOLVED 2026-07-17: Egret mid-flight packet retraction
     → ghost 1-byte ADB session → driver length -3 → 64KB stack copy (see
@@ -461,9 +470,14 @@ with an AI loop verified by differential testing:
     re-samples it into IFR bit 4 every `recalcIrqs()` (like the slot lines).
     Now SC2K writes 3996 non-silent samples on city-load; 24/24 CTest green
     (CHANGELOG 2026-07-17).
-  - [ ] **Sound tempo wobble** (the "SC2K still crashes" half of this item
-    is RESOLVED 2026-07-17 — Egret retraction, see the ★ item; what
-    remains open here is only the audio pacing work below.)
+  - [x] **Sound tempo wobble** — RESOLVED 2026-07-17 (both halves): the
+    crash half was the Egret retraction (★ item), and the tempo half is
+    fixed by **audio-clocked pacing** (see CHANGELOG): when sound streams,
+    the GUI frame loop emulates just enough frames to hold the MacAudioHost
+    ring at ~100 ms — the host DAC paces the machine at real time (no
+    resampler; silence pushed too via pushRaw; starvation guard for a dead
+    device; turbo only while silent). (User to confirm tempo in GUI.)
+    Historical analysis kept below:
     (user report 2026-07-17, GUI): with the fix above, SC2K sound plays but
     (1) the tempo is too slow at first then speeds up / slows erratically,
     and (2) the "coproc absent" livelock crash STILL happens (music keeps

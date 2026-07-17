@@ -275,26 +275,73 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
 
         if (c.running) {
             // 512×384 frame = 640×407 dots at the CPU clock (60.15 Hz).
-            // Time-budgeted turbo: the 68030 core runs ~1.4× real time on
-            // a good host core, so a fixed ×8 would spend ~100 ms per GUI
-            // frame and drop the UI (and the mouse) to ~10 fps. Instead,
-            // always run one frame slice (real time at vsync 60 Hz), and
-            // let turbo keep emulating only while the 16.6 ms vsync
-            // budget has room.
-            const int kFrame = 640 * 407;
-            auto slice0 = std::chrono::steady_clock::now();
-            int n = 0;
-            do {
+            static constexpr int kFrame = 640 * 407;
+            auto runOne = [&c] {
                 if (c.mem.cpuHeld()) c.mem.tick(kFrame);   // Egret power-on hold
                 else c.cpu.runCycles(kFrame);
-            } while (c.turbo && ++n < 8 &&
-                     std::chrono::steady_clock::now() - slice0 <
-                         std::chrono::milliseconds(10));
-            // ASC samples produced during the slice (22 257 Hz mono)
-            c.samp.clear();
-            while (c.mem.asc().available() > 0)
-                c.samp.push_back(float(c.mem.asc().pop()) / 32768.0f);
-            if (!c.samp.empty()) c.audioHost.pushFrame(c.samp, 0);
+            };
+            // Drain the ASC samples produced by the last slice (22 257 Hz
+            // mono, continuous — an empty FIFO repeats its stale byte) and
+            // report whether they carry real sound (AC span, same gate as
+            // MacAudioHost::pushFrame).
+            auto drain = [&c] {
+                c.samp.clear();
+                while (c.mem.asc().available() > 0)
+                    c.samp.push_back(float(c.mem.asc().pop()) / 32768.0f);
+                float lo = 1.f, hi = -1.f;
+                for (float v : c.samp) { if (v < lo) lo = v; if (v > hi) hi = v; }
+                return !c.samp.empty() && hi - lo >= 0.02f;
+            };
+            // Audio-clocked pacing (TODO § sound tempo wobble): while the
+            // guest streams sound, the emulation speed IS the tempo, so it
+            // must track the host DAC, not the host CPU. When sound was
+            // heard recently (activeHold), each GUI tick emulates just
+            // enough frames to keep the host ring near ~100 ms — the DAC's
+            // 22 254 Hz consumption paces the machine at real time and
+            // absorbs the vsync-60.00 vs frame-60.15 drift with no
+            // resampler. Silence between notes is pushed too (pushRaw): it
+            // is part of the musical timeline. When no sound plays, the
+            // old time-budgeted turbo runs (fast boot/Finder, gated push
+            // keeps the ring free of silence).
+            static int activeHold = 0;   // GUI frames of sound-recent state
+            static int starve = 0;       // safety against a dead DAC
+            const size_t kTarget = 2225;                    // ~100 ms queued
+            if (activeHold > 0 && c.audioHost.started()) {
+                int n = 0;
+                while (c.audioHost.buffered() < kTarget && n < 8) {
+                    runOne();
+                    if (drain()) activeHold = 90; else activeHold--;
+                    c.audioHost.pushRaw(c.samp, 0);
+                    n++;
+                }
+                // Ring at target: real time says "no frame due yet" (a
+                // >60 fps GUI tick, or the 60.15/60.00 drift catching up).
+                // Skip emulation this tick — unless the DAC stopped
+                // consuming entirely (unplugged device): then force one
+                // frame every 10 ticks so the machine never freezes.
+                if (n == 0 && ++starve > 10) {
+                    runOne();
+                    if (drain()) activeHold = 90; else activeHold--;
+                    starve = 0;
+                } else if (n > 0) starve = 0;
+            } else {
+                // Time-budgeted turbo: the 68030 core runs ~1.4× real time
+                // on a good host core, so a fixed ×8 would spend ~100 ms
+                // per GUI frame and drop the UI (and the mouse) to ~10
+                // fps. Run one frame slice, then let turbo keep emulating
+                // only while the 16.6 ms vsync budget has room.
+                auto slice0 = std::chrono::steady_clock::now();
+                int n = 0;
+                do {
+                    runOne();
+                } while (c.turbo && ++n < 8 &&
+                         std::chrono::steady_clock::now() - slice0 <
+                             std::chrono::milliseconds(10));
+                if (drain()) {
+                    activeHold = 90;                        // sound starts:
+                    c.audioHost.pushFrame(c.samp, 0);       // switch to pacing
+                }
+            }
         }
 
         int hres, vres;

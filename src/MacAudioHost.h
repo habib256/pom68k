@@ -30,6 +30,29 @@ public:
         return started_;
     }
     void stop() { if (started_) ma_device_uninit(&device_); started_ = false; }
+    bool started() const { return started_; }
+
+    // Samples queued and not yet played — the LC II frame loop uses this
+    // as its clock when sound is streaming (audio-clocked pacing): it
+    // emulates just enough frames to keep this near its target, so the
+    // tempo is locked to the host DAC instead of the emulation speed.
+    size_t buffered() const {
+        return (write_.load(std::memory_order_acquire) + kRing
+              - read_.load(std::memory_order_acquire)) % kRing;
+    }
+
+    // Unconditional push (no silence gate): while music streams, silence
+    // BETWEEN notes is part of the timeline — dropping it would make the
+    // pacing loop run extra frames and speed the tempo up.
+    void pushRaw(const std::vector<float>& s, size_t begin) {
+        for (size_t i = begin; i < s.size(); i++) {
+            size_t w = write_.load(std::memory_order_relaxed);
+            size_t next = (w + 1) % kRing;
+            if (next == read_.load(std::memory_order_acquire)) break;   // full: drop rest
+            ring_[w] = s[i];
+            write_.store(next, std::memory_order_release);
+        }
+    }
 
     // Push a frame's samples — but only if it carries real sound, so the
     // ring doesn't fill with silence while the machine runs fast. The

@@ -665,6 +665,42 @@ mmuFetchWord). Not a new `Core::C68030`: the 020/030 share Moira's execution
 core by design, and the cache is a timing overlay, not a different instruction
 set. See `src/Cpu030.*`, CHANGELOG 2026-07-17.
 
+## Odd-SP interrupt frames: no A0 masking on 010/020, single vector
+## scaling (2026-07-17, Lode Runner launch freeze)
+
+`MoiraExceptions_cpp.h`, two related fixes on the interrupt-frame path:
+
+1. **`writeStackFrame0000`, C68010/C68020 branch: the four frame writes
+   dropped their `& ~1` address masks.** Masking A0 is 68000 bus
+   behaviour (and stays in the C68000 branch, validated by the 1M-vector
+   sst68000 corpus); the 010/020/030 write misaligned frames byte-exact
+   — the mode-5 `mmuWrite` already splits odd word/long accesses
+   correctly — and `execRte` reads the frame back at the TRUE addresses.
+   The asymmetry meant an interrupt accepted while SP was odd (legal on
+   the 020/030; QuickDraw's 3-byte-per-pixel stack temps make odd SPs
+   routine in the LC II blit engine) pushed the whole frame one byte
+   low; the later RTE then read a garbage format nibble and took a
+   spurious FORMAT ERROR → ROM system error → the Lode Runner
+   launch-time freeze (cascading bus errors until an odd SSP double-
+   faulted). Minimal repro: `scratchpad/oddframe.cpp` (bare Moira,
+   odd SSP, one autovector IRQ; frame bytes now `[SR][PC][$0064]`
+   byte-exact).
+
+2. **`execInterrupt<C68020>` passes the RAW vector to
+   `writeStackFrame0000/0001`** instead of `4 * queue.ird`: the frame
+   writers scale by 4 themselves (`4 * nr` / `nr << 2`), as every
+   `execException` call site relies on. The double scaling stacked
+   vector offset $190 instead of $64 for autovector 25 — format nibble
+   still 0, so RTE never objected, but any handler reading the stacked
+   offset saw a wrong vector. (The C68010 direct-write path already
+   scaled once; unchanged.)
+
+Gates: 24/24 CTest including sst68000 (C68000 untouched), sst68030
+3082 vectors (the fuzz corpus exercises `execException`, whose raw-
+vector contract is unchanged; frame bytes at even SPs are identical),
+and both boot etalons. Machine-level: Lode Runner launches to its
+title screen; the SC2K repro stays crashes=0.
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)

@@ -56,11 +56,21 @@ Moira::writeStackFrame0000(u16 sr, u32 pc, u16 nr)
 
             } else {
 
+                // POM68K (LC II, 2026-07-17): write the frame at the TRUE
+                // stack addresses — no `& ~1`. The A0 masking is 68000 bus
+                // behaviour; the 010/020/030 write misaligned frames
+                // byte-exact (the mode-5 mmuWrite splits odd accesses),
+                // and execRte reads back at the true addresses. With the
+                // masking, an interrupt taken while SP is odd (QuickDraw's
+                // 3-byte-per-pixel stack temps make odd SPs routine)
+                // stacked a frame shifted one byte low → RTE read garbage
+                // → spurious FORMAT ERROR → ROM system error at app
+                // launch (Lode Runner freeze; repro scratchpad/oddframe).
                 U32_DEC(reg.sp, 8);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 6) & ~1, 4 * nr);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4) & ~1, pc & 0xFFFF);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 0) & ~1, sr);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2) & ~1, pc >> 16);
+                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 6), 4 * nr);
+                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4), pc & 0xFFFF);
+                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 0), sr);
+                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2), pc >> 16);
             }
             break;
     }
@@ -786,11 +796,19 @@ Moira::execInterrupt(u8 level)
 
             queue.ird = getIrqVector(level);
 
-            writeStackFrame0000<C>(status, reg.pc, 4 * queue.ird);
+            // POM68K (2026-07-17): pass the RAW vector — the frame writers
+            // scale by 4 themselves (`4 * nr` / `nr << 2`, as every
+            // execException call site relies on). Passing 4*queue.ird
+            // double-scaled the stacked vector-offset word ($190 instead
+            // of $64 for autovector 25). The format nibble stayed 0, so
+            // RTE never noticed — but any handler reading the offset saw
+            // a wrong vector. Found with the Lode Runner odd-SP frame bug
+            // (scratchpad/oddframe.cpp shows both).
+            writeStackFrame0000<C>(status, reg.pc, queue.ird);
 
             if (reg.sr.m) {
 
-                writeStackFrame0001<C>(status, reg.pc, 4 * queue.ird);
+                writeStackFrame0001<C>(status, reg.pc, queue.ird);
             }
     }
 

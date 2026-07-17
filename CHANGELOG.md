@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## 2026-07-17 — Lode Runner launch freeze: odd-SP interrupt frames were
+## corrupt (vendored Moira fix) + sound tempo locked to the host DAC
+
+**Lode Runner froze the machine at launch** (hard halt, no bomb). Chain,
+established with a headless keyboard-nav repro (`scratchpad/lrtest*`):
+the game's launch drawing runs QuickDraw's conversion blit whose 3-byte-
+per-pixel stack temps leave **SP odd** (legal on the 68030); a level-1
+interrupt accepted there pushed its frame through
+`writeStackFrame0000`'s 010/020 branch, which still applied the 68000's
+`& ~1` A0 masking — the whole frame landed one byte low while RTE reads
+at true addresses → spurious FORMAT ERROR (vector 14) on the RTE → ROM
+system error path → its bomb renderer died on a second fault → bus-error
+cascade until the SSP went odd → double fault → frozen Mac. Fixed in the
+vendored Moira (frames written byte-exact at the true SP; also fixed a
+double ×4 of the stacked vector offset — $190 instead of $64 — passed by
+`execInterrupt<C68020>`); details in POM68K_VENDOR.md § Odd-SP interrupt
+frames, minimal repro `scratchpad/oddframe.cpp`. 24/24 CTest (sst68000
+and sst68030 corpora unaffected by construction — verified green), Lode
+Runner now reaches its title screen, SC2K repro still crashes=0.
+
+**Sound tempo wobble fixed by audio-clocked pacing** (GUI): while the
+guest streams sound, the emulation speed IS the musical tempo, so the
+frame loop now paces itself against the host DAC instead of the host
+CPU: when sound was heard recently, each GUI tick emulates only enough
+60.15 Hz frames to keep `MacAudioHost`'s ring near ~100 ms
+(`buffered()`), pushing silence too (`pushRaw` — inter-note gaps are
+part of the timeline); with no sound, the old time-budgeted turbo runs
+(fast boot/Finder). The DAC's fixed 22 254 Hz consumption locks the
+tempo to real time and absorbs the vsync-60.00 vs frame-60.15 Hz drift
+with no resampler; a starvation guard keeps the machine alive if the
+audio device disappears. `src/main.cpp` LC II frame lambda +
+`MacAudioHost::{buffered,pushRaw,started}`.
+
 ## 2026-07-17 — SC2K "coprocesseur absent" ROOT-CAUSED AND FIXED: Egret
 ## mid-flight packet retraction manufactured ghost ADB sessions
 
