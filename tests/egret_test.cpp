@@ -157,13 +157,25 @@ int main() {
               "later ticks = short [sync, TIMER(3), seconds]");
     }
 
-    // An ignored Egret-initiated packet is retracted (no XCVR wedge)
+    // An initiated packet is COMMITTED once its sync byte is on the wire
+    // (2026-07-17): the sync sits in the VIA SR with the host's level-1
+    // interrupt in flight, so retracting manufactures a "ghost" 1-byte
+    // session when the host services it late (SC2K's per-VBL redraw
+    // preempts the ROM byte loop 300K+ cycles; the driver computes the
+    // ADB record length as received-4 = -3 and dbra-copies 64KB over
+    // the stack — the "coprocesseur absent" bomb). The real Egret's
+    // handshake is synchronous and host-clocked: it WAITS. A slow host
+    // must still find XCVR asserted and the packet intact.
     {
         Host h;
         h.tick(15667200 + 200000);
         check(h.egret.xcvrSession() == 0, "unacked packet: XCVR asserted");
-        h.tick(200000);                      // host never acks
-        check(h.egret.xcvrSession() == 1, "unacked packet: Egret retracts XCVR");
+        h.tick(400000);                      // host preempted a long time
+        check(h.egret.xcvrSession() == 0,
+              "unacked packet stays committed (no mid-flight retraction)");
+        auto r = h.readReply();              // late host still gets it whole
+        check(r.size() == 10 && r[0] == 0x01 && r[1] == 0x03,
+              "late host reads the full packet");
     }
 
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");
