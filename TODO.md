@@ -294,10 +294,22 @@ with an AI loop verified by differential testing:
   BASILISK_ROM_NOTES.md §8),
   SWIM ISM/MFM (1.44 MB), DFAC/sound-out wiring, cycle counts vs a real
   machine, save states, the idle screen-dim after ~5e9 cycles.
+  - [ ] **SCC 16-bit access fast-path** (deferred, defensive): a word
+    read/write to SCC space (`V8Memory::read16/write16`) does two byte
+    accesses, double-advancing the read pointer. Harmless today — the Mac
+    SCC driver only uses `move.b` — so not applied (audit #2, 2026-07-17).
+    If a future guest word-accesses the SCC, mirror the VIA fast-path.
 
   **App-compat bugs found while playing (2026-07-16):**
-  - [x] **SimCity 2000 crash — "coprocesseur arithmétique absent"
-    (Line-F)** — FIXED 2026-07-16 via the 68030 i-cache throughput model
+  - [~] **SimCity 2000 crash — "coprocesseur arithmétique absent"
+    (Line-F)** — GREATLY IMPROVED, NOT resolved (2026-07-17). The 68030
+    i-cache throughput model (`Cpu030` kCacheBoost=2, CHANGELOG 2026-07-16)
+    plus the adaptive boost let SC2K boot to gameplay, load even the biggest
+    city, and play; but the user reports it **still crashes after ~2 min of
+    live play** with the same Line-F bomb. So the livelock is not eliminated,
+    only pushed back — sustained heavy activity (city sim + redraw + mouse)
+    eventually overruns the frame budget again. lcii_boot_etalon still green.
+    History: reproduces *in-game*, even with SoftwareFPU removed and a
     (`Cpu030` kCacheBoost=2; CHANGELOG 2026-07-16). SC2K boots to gameplay,
     advances jan 1900→1901, no crash; lcii_boot_etalon still green. History:
     reproduces *in-game*, even with SoftwareFPU removed and a
@@ -338,11 +350,132 @@ with an AI loop verified by differential testing:
     (audit per-instruction cycles on this path / pseudo-VIA VBL assert-ack
     cadence / IPL sampling so the blit makes forward progress between IRQs).
     A timing project. Harnesses: scratchpad/{cosim,irqdetail,irqtrace,
-    dumpstate,...}.cpp.
-  - [ ] **No sound in SimCity 2000** (only the boot chime plays): the
-    ASC-V8 base path works (chime), so SC2K likely drives the Sound
-    Manager a way we don't cover yet. Diagnose the Sound Manager /
-    ASC-V8 path (DFAC/sound-out wiring above is related).
+    dumpstate,...}.cpp. **PARTIALLY fixed 2026-07-17**: the adaptive cache-
+    throughput boost (`Cpu030`, base 2 → maxBoost 24 during heavy per-VBL
+    redraws, ~0.75 s hysteresis) clears the *load-time* overrun — the biggest
+    city ("black forest monstre") loads clean at 640×480 (repro
+    `scratchpad/loadcity640.cpp`, crashes=0) and gameplay starts. BUT the
+    user still hits the crash after ~2 min of live play (2026-07-17): the
+    livelock recurs under sustained sim+redraw+mouse load, so the adaptive
+    boost only defers it. **NEXT (deeper fix needed — a longer-play repro
+    first):** extend a headless harness to *play* for minutes (advance the
+    sim, keep the mouse moving) and catch the recurring crash, then attack
+    the structural cause rather than raising the boost again — candidates:
+    (a) the boost hysteresis drops back to base 2 mid-redraw and the next
+    heavy frame overruns before it re-triggers → make the IRQ-rate trigger
+    stickier / raise the base floor during known-heavy apps; (b) the real
+    root is the VBL cadence vs redraw progress (V8Memory::tick framePos_) —
+    consider gating the pseudo-VIA VBL assert so a still-running redraw task
+    isn't re-entered (match how a real LC II's slower blit still finishes
+    within its frame); (c) audit per-instruction cycle costs on the blit
+    path so functional timing tracks the real 030 more closely. Raising
+    maxBoost further is NOT the fix — it distorts sound/timer pitch.
+  - [ ] **★ Fix the VBL/redraw PHASE RACE** (the real remaining cause of the
+    SC2K "coproc absent" crash — diagnosed 2026-07-17, NOT throughput). Proven
+    by two facts: (1) the crash count is **non-monotonic** in the cache boost
+    (boost 4 crashes MORE than boost 2 — if it were throughput, more would
+    always help); (2) the i-cache overlay measured the redraw at **95% cache-
+    resident**, so a realistic cache (~2-4×) already gives it near-max
+    throughput — yet it still needs ~24× to survive, which no cache produces.
+    The race: a VBL interrupt is taken at **$A4B416**, in the one-instruction
+    window between SC2K lowering the IPL (`move.w (A7)+,SR` at $A4B414) and
+    restoring A5 (`movem` at $A4B418); the long redraw handler runs, and by RTE
+    the next VBL is already pending → re-entry with A5 = the blit working value
+    ($4FA8) → `jsr (A5+$14AA)` into garbage → Line-F, and Moira HARD-HALTS
+    (double fault). **Options to resolve (attack these, NOT more boost):**
+    - (a) **IRQ-sample timing on the MOVE-to-SR→movem window.** We already
+      model the M68000-PRM one-instruction delay (`irqDelay=2`, O6.12). Verify
+      it actually covers *this* window on the 68030 mode-5 path (does the delay
+      re-arm correctly across the `move.w (A7)+,SR`? is depth 2 reached before
+      $A4B418?). Instrument: log IRQ acceptance PC around $A4B414-$A4B418; if a
+      VBL is ever accepted at $A4B416 the delay isn't protecting it → fix the
+      delay so the instruction *after* the mask-lower always retires first.
+    - (b) **VBL cadence vs real redraw duration.** Check whether our VBL fires
+      too often relative to a real 030 doing this 95%-resident redraw
+      (`V8Memory::tick` framePos_ over 640×407). If our functional cycle costs
+      make the redraw span more frames than real hardware, the task re-enters
+      where a real LC II wouldn't. Consider gating the pseudo-VIA VBL assert
+      while a redraw VBL task is still running (non-reentrancy), matching how a
+      real machine's slower blit still finishes within budget.
+    - (c) **Is re-entry meant to be harmless?** On real HW the VBL handler may
+      re-establish A5 (SetupA5 / CurrentA5 $904 is correct) so a re-entrant
+      redraw is benign; if so, our bug is that the nested path inherits the
+      blit's working A5 without SetupA5 — trace whether the real System VBL
+      dispatcher does SetupA5 and whether our flow skips it.
+    - (d) **Reduce redraw work.** Confirm SC2K redraws the whole 640×480 every
+      VBL (vs incremental) and whether a real machine would too; if we over-draw
+      (e.g. because a dirty-region check reads wrong state), fixing that shrinks
+      the redraw below one frame regardless of timing.
+    Repro: `scratchpad/loadcity640.cpp` (crashes=N), `scratchpad/icachestat.cpp`
+    (hit rates), the co-sim/irqtrace harnesses. Start with (a) — it's the
+    cheapest and most likely (the window is exactly one instruction wide).
+  - [x] **App sound never reached the ASC** (FIXED 2026-07-17) — the
+    Sound Manager → ASC output path. TRACED with `AscV8::onWrite/onRead`
+    taps + line-A trap logging (`getIRD()` at vector 10) + `PseudoVia::reg()`
+    peek (`scratchpad/{ascprobe,sndtrace,sndtrace2,sndtrace3}.cpp`): SC2K
+    DOES call the Sound Manager (SndNewChannel/SndPlay/SndDoCommand +
+    281×SoundDispatch) and the Sound Manager DOES init the ASC (reads
+    version $E8, sets FIFO mode) and DOES enable the ASC interrupt (pseudo-
+    VIA IER bit 4) — but IFR bit 4 never latched → the level-2 handler never
+    serviced the ASC → 0 FIFO writes. Root cause: the ASC IRQ is
+    level-triggered but `PseudoVia` only updated IFR bit 4 on line
+    transitions; after the boot chime the empty FIFO leaves the line stuck
+    asserted-but-masked, so enabling the interrupt (line already high, no
+    edge) never re-latched it. Fix: `PseudoVia` stores `ascLine_` and
+    re-samples it into IFR bit 4 every `recalcIrqs()` (like the slot lines).
+    Now SC2K writes 3996 non-silent samples on city-load; 24/24 CTest green
+    (CHANGELOG 2026-07-17).
+  - [ ] **Sound tempo wobble + SC2K still crashes with sound on**
+    (user report 2026-07-17, GUI): with the fix above, SC2K sound plays but
+    (1) the tempo is too slow at first then speeds up / slows erratically,
+    and (2) the "coproc absent" livelock crash STILL happens (music keeps
+    stuttering as everything else bombs). Both trace back to the machine's
+    timing, i.e. the SAME open project as the SC2K crash above:
+    - The emulated sound *production* (ASC drained into `out_` by
+      `Cpu030::flushTicks`→`V8Memory::tick`→`Asc::tick`) is NOT locked to
+      the host audio playback clock (MacAudioHost pulls `out_` at real 22 kHz),
+      so whenever the emulator runs off real-time the `out_` ring over/under-
+      runs → wobble. The adaptive boost's varying CPU/peripheral ratio (2↔24)
+      made this worst.
+    - **DONE 2026-07-17:** retired the adaptive boost for a CONSTANT ratio
+      (`Cpu030 cacheBoost_`, default 2, POM68K_CACHE_BOOST 1-64), so the
+      CPU/peripheral ratio is fixed like real hardware → uniform tempo. 24/24
+      green. (User to confirm tempo in GUI.)
+    - **What the boost IS (verified):** Moira runs the 030 on its
+      `Core::C68020` core — 68020 cycle placeholders, NO i/d-cache. The real
+      030 has 256 B I + 256 B D caches (System enables via CACR); the boost is
+      the scalar for that gap.
+    - **Why a constant still can't cure the crash (headless sweep):** boost 2
+      (near real-time) still crashes black forest, boost 4 is WORSE (non-
+      monotonic — a VBL/redraw phase race, not pure throughput), clearing it
+      needs ~16-24 which runs ~10× slow. The blit is a *tight cached loop*
+      (~5×+ real-cache gain) while other code gains ~1-2× — no single scalar
+      fits both.
+    - **i-cache timing overlay DONE 2026-07-17** (CHANGELOG). Vendored Moira
+      hook `willFetchInstr` at `mmuFetchWord` (§ O6.13) feeds a 256 B i-cache
+      model in `Cpu030` (16×4 LW, logical, direct-mapped, CACR-clear-flushed);
+      core runs at ceiling `cacheBoost_`, a MISS charges `icacheMiss_` — so
+      resident code runs near the ceiling, cold code is throttled. Physical,
+      per-code-path, uniform tempo. Defaults 4/4; POM68K_CACHE_BOOST +
+      POM68K_ICACHE_MISS live. 24/24 green. MEASURED (`icachestat.cpp`): guest
+      CACR-I=1, boot 80% hit, **redraw 95% hit** — the overlay does boost the
+      right code. NOT a new `Core::C68030` (020/030 share Moira's exec core).
+    - **BUT black forest is NOT a throughput bug — it's a PHASE RACE**
+      (diagnosed 2026-07-17). The crash count is NON-MONOTONIC in the boost
+      (boost 4 crashes MORE than 2) → not throughput. It's the VBL taken at
+      $A4B416 (between SC2K's IPL-lower at $A4B414 and the A5-restore at
+      $A4B418). Brute-forcing it needs ~24× which no realistic cache (~2-4×)
+      gives, so the overlay cannot cure it. **NEXT = fix the race structurally,
+      NOT more boost:** options — (a) model the M68000-PRM one-instruction IRQ-
+      sample delay more precisely on this MOVE-to-SR→movem window (we have
+      irqDelay=2 already, O6.12; investigate why the redraw still re-enters),
+      (b) audit whether our VBL fires too often relative to real 030 work on
+      this path (V8Memory::tick framePos_ vs the 95%-resident redraw's real
+      duration), (c) check whether the redraw handler *should* re-run harmlessly
+      on real HW (A5 via SetupA5) and our re-entry mishandles A5. Repro:
+      `scratchpad/loadcity640.cpp` (crashes=N), `icachestat.cpp` (hit rates).
+    - **Also still open:** pace audio production to the host clock (resample
+      `out_`) so residual emulator-speed jitter can't wobble tempo.
 
   **Cold-restart orientation** (2026-07-15 handoff):
   - Dev tool: `tests/lcii_trace.cpp` (env `LCII_FPU=1`, `SCSI_REGS="<from> <to>"`,

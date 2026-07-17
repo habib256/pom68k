@@ -54,10 +54,17 @@ public:
 
 private:
     void setIfr(uint8_t bits) { ifr_ |= bits; }
+    // An ORA/ORB access clears CA1/CB1 always, but CA2/CB2 only when NOT in
+    // the "independent interrupt" PCR mode (001/011) — R6522 §3.2.3. The Mac
+    // ROM runs CA2 in independent mode (PCR=$22) so the RTC 1-second flag
+    // must survive a port access that races it.
+    void clearCaFlags() { ifr_ &= uint8_t(~CA1); if ((pcr_ & 0x0A) != 0x02) ifr_ &= uint8_t(~CA2); }
+    void clearCbFlags() { ifr_ &= uint8_t(~CB1); if ((pcr_ & 0xA0) != 0x20) ifr_ &= uint8_t(~CB2); }
     uint8_t ora_ = 0, orb_ = 0, ddra_ = 0, ddrb_ = 0;
     uint8_t inA_ = 0xFF, inB_ = 0xFF;
     uint8_t acr_ = 0, pcr_ = 0, sr_ = 0, ifr_ = 0, ier_ = 0;
     int32_t t1_ = 0, t2_ = 0;
     uint16_t t1latch_ = 0;
+    uint8_t t2ll_ = 0;                          // T2 low-latch (staged by T2CL)
     bool t1armed_ = false, t2armed_ = false;   // one-shot IFR arming
 };

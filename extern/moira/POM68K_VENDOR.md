@@ -642,6 +642,29 @@ unaffected: sst68030 (3082 vectors), lcii_boot_etalon, cpu_smoke, all
 green — SST vectors are single instructions with no IRQ, and the guard is
 68020+ so the cycle-exact 68000 path is byte-identical.
 
+## `willFetchInstr` delegate — 68030 i-cache overlay hook (2026-07-17, O6.13)
+
+`Moira.h` new `virtual void willFetchInstr(u32 addr, bool super) { }`, called
+in `MoiraExecMMU_cpp.h::mmuFetchWord` (the sole 68030 instruction-word fetch
+choke point — mode-5 has no prefetch queue, so opcode/lookahead/extension all
+fetch through here) with the LOGICAL address (pre-translation; the 030 caches
+are logical) and the supervisor flag.
+
+Why: Moira runs the 68030 on its `Core::C68020` cycle model — 68020 cycle
+placeholders, no i-cache, no d-cache — so it charges more cycles per
+instruction than the real cached 030, worst on tight loops. The wrapper
+(`Cpu030`) uses this hook to model the on-chip 256-byte instruction cache and
+charge a fetch-bus penalty only on a MISS: cache-resident code (SimCity's
+redraw measured 95% hit) runs near the throughput ceiling while miss-heavy
+cold code is throttled toward real speed — the per-code-path behaviour of the
+real cache instead of a flat global boost. Zero cost when not overridden
+(empty virtual). Gates unaffected: the hook only fires on the 68030 MMU fetch
+path; sst68030 (3082 vectors) is state-based (no timing compared) and stays
+green, as do lcii_boot_etalon and the 68000/68010 paths (never reach
+mmuFetchWord). Not a new `Core::C68030`: the 020/030 share Moira's execution
+core by design, and the cache is a timing overlay, not a different instruction
+set. See `src/Cpu030.*`, CHANGELOG 2026-07-17.
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)

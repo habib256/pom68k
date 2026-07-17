@@ -95,6 +95,7 @@ void Egret::reset() {
     firstTick_ = true;
     quiet_ = 0;
     pollAcc_ = 0;
+    secAcc_ = 0;                 // else a warm reset fires the 1-second heartbeat early
     // seconds_/pram_ survive (battery-backed, like the Plus RTC)
 }
 

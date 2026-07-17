@@ -79,7 +79,10 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int /*cdbLen*/,
             dataOut.assign(alloc, 0);
             dataOut[0] = 0x70;                       // current error, fixed format
             if (dataOut.size() > 2) dataOut[2] = senseKey_ & 0x0F;
-            if (dataOut.size() > 7) dataOut[7] = 10; // additional length
+            if (dataOut.size() > 7) {                // additional length =
+                size_t addl = dataOut.size() - 8;    // min(10, alloc-8) per SCSI-1
+                dataOut[7] = uint8_t(addl < 10 ? addl : 10);
+            }
             if (dataOut.size() > 12) dataOut[12] = senseAsc_;
             setSense(kNoSense, 0);
             return kGood;
@@ -123,7 +126,14 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int /*cdbLen*/,
         case 0x1A: {                                 // MODE SENSE(6)
             uint8_t alloc = cdb[4] ? cdb[4] : 4;
             dataOut.assign(alloc, 0);
+            if (dataOut.size() > 0)                   // mode data length = n-1
+                dataOut[0] = uint8_t(dataOut.size() - 1);
             if (dataOut.size() > 3) dataOut[3] = 8;  // block descriptor length
+            if (dataOut.size() > 11) {               // descriptor block length = 512
+                dataOut[9]  = uint8_t(kBlockSize >> 16);
+                dataOut[10] = uint8_t(kBlockSize >> 8);
+                dataOut[11] = uint8_t(kBlockSize);
+            }
             return kGood;
         }
 

@@ -36,6 +36,7 @@ public:
     void scsiIrq(bool state);                // IFR bit 3
     void scsiDrq(bool state);                // IFR bit 0
     bool irqAsserted() const { return irq_; }
+    uint8_t reg(int i) const { return regs_[i & 0x1F]; }  // diagnostic peek (IFR=3, IER=$13)
 
     // Machine hooks (V8Memory): port B write (bit 3 = HMMU enable on the
     // 68020 LC — unused on the LC II), RAM config reg 1, video config $10
@@ -51,4 +52,9 @@ private:
 
     uint8_t regs_[0x20] = {};
     bool irq_ = false;
+    bool ascLine_ = false;                   // live ASC IRQ line level (bit 4 is
+                                             // level-triggered — re-sampled each
+                                             // recalc so enabling the interrupt
+                                             // while the line is already high
+                                             // still latches it; see .cpp)
 };

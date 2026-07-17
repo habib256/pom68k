@@ -40,6 +40,13 @@ public:
     // POM68K_FPU_LOG.
     void enableFpuLog(const std::string& path, size_t ringSize = 4096);
 
+    // 68030 i-cache measurement (validation before the timing overlay is
+    // wired). Counts instruction-fetch hits/misses against the modeled cache.
+    struct ICacheStats { moira::i64 hits = 0, misses = 0, fetches = 0; };
+    ICacheStats icacheStats() const { return icStats_; }
+    void resetICacheStats() { icStats_ = {}; }
+    bool icacheEnabled() const { return (getCACR() & 0x1) != 0; }
+
 private:
     moira::u8  read8(moira::u32 addr) const override;
     moira::u16 read16(moira::u32 addr) const override;
@@ -47,41 +54,69 @@ private:
     void write16(moira::u32 addr, moira::u16 v) const override;
     void sync(int cycles) override;
     void willExecute(moira::M68kException exc, moira::u16 vector) override;
-    void willInterrupt(moira::u8 level) override;   // counts IRQs for adaptive boost
+    void willFetchInstr(moira::u32 addr, bool super) override;  // 68030 i-cache
+    void didChangeCACR(moira::u32 value) override;              // cache clear/enable
     void catchUp();
     void dumpFpuLog(moira::u16 vector);
 
     V8Memory& mem_;
     moira::i64 lastPeriphClock_ = 0;
 
-    // Instruction-cache throughput model. The real 68030 runs tight loops
-    // from its 256-byte on-chip i-cache at ~1 cycle/word, so it executes
-    // far more instructions per frame than Moira accounts for (Moira has no
-    // i-cache model; the WinUAE co-sim measured 6.5 vs 16.9 cyc/instr, both
-    // cacheless). Without this, SimCity 2000's per-VBL screen redraw
-    // overruns its frame and re-enters itself — a livelock that never
-    // restores A5 → the "coprocesseur absent" crash (TODO § O6). We run the
-    // core cacheBoost_× more instructions per unit of peripheral (machine)
-    // time; flushTicks() scales elapsed Moira cycles back down so the VBL /
-    // VIA timer / ASC cadences stay real. Default 2 (the cache gives ~2-3×
-    // on tight loops; 3 turned out to corrupt SC2K's display — too far from
-    // the real CPU/peripheral balance). Overridable with POM68K_CACHE_BOOST
-    // when a heavier redraw path still livelocks. Read once in the ctor.
-    int cacheBoost_ = 2;
-    moira::i64 periphAccum_ = 0;   // sub-boost remainder for exact scaling
+    // Instruction-throughput model. Moira emulates the 68030 on its
+    // Core::C68020 cycle model: 68020 per-instruction cycle counts (advisory
+    // placeholders — POM68K_VENDOR.md), NO i-cache, NO d-cache, less pipeline
+    // overlap than a real 030. The real LC II 68030 at 15.67 MHz has a
+    // 256-byte i-cache (enabled by the System via CACR) and runs tight loops
+    // from cache with no instruction-fetch bus cycles, so it executes far
+    // more instructions per unit of machine time than Moira charges — most on
+    // hot loops (SimCity's redraw measured 95% cache-resident), which is why a
+    // single global multiplier can't fit both (a heavy per-VBL redraw needs a
+    // big boost that would over-speed cold code, and under-boosting it lets
+    // the VBL task re-enter itself → the "coprocesseur absent" livelock).
+    //
+    // Model: run the core at cacheBoost_× (the resident-code CEILING ≈ the
+    // real 030's cached throughput), and charge icacheMiss_ boosted cycles per
+    // instruction-cache MISS in willFetchInstr() — the fetch bus access the
+    // real chip pays only on a miss. flushTicks() scales elapsed cycles back
+    // down by cacheBoost_ so the VBL / VIA / ASC cadence stays real. Net:
+    // cache-resident code runs near the ceiling (redraw finishes its frame,
+    // no livelock), miss-heavy cold code is throttled toward real speed — the
+    // per-code-path behaviour of the real cache, not a flat fudge. One fixed
+    // ceiling → uniform tempo. History: retired a flat constant boost (couldn't
+    // fit both), itself retired from an ADAPTIVE 2→24 spike (wobbled the sound
+    // tempo). Both knobs tunable live: POM68K_CACHE_BOOST (ceiling),
+    // POM68K_ICACHE_MISS (penalty). Long-term: a fuller Moira cache model.
+    int cacheBoost_ = 4;           // resident-code ceiling ratio
+    int icacheMiss_ = 4;           // boosted cycles charged per i-cache miss
+    moira::i64 periphAccum_ = 0;   // sub-ratio remainder for exact scaling
 
-    // Adaptive boost: a normal game frame takes only a handful of interrupts;
-    // a heavy per-VBL redraw (SimCity's biggest cities at 640×480) takes many
-    // dozens as the redraw handler re-enters. When last frame's IRQ count
-    // crosses the threshold, run this frame at maxBoost_ so the redraw
-    // finishes within its budget (no livelock/crash), then fall back to the
-    // base boost — so normal play stays fast and only heavy redraws slow
-    // down briefly. Ceiling raisable via POM68K_CACHE_BOOST (sets the base;
-    // max tracks it). Disabled while single-stepping (fpuLog).
-    static constexpr long kIrqBoostThreshold = 12;
-    int maxBoost_ = 16;
-    long irqThisFrame_ = 0, irqPrevFrame_ = 0;
-    int boostHold_ = 0;            // hysteresis: stay boosted a few frames
+    // 68030 on-chip instruction cache model (MC68030UM §6): 256 bytes = 16
+    // lines × 4 longwords, LOGICAL, direct-mapped. Line = logical A[7:4],
+    // longword = A[3:2], tag = A[31:8] + supervisor(FC2) bit. Each line has
+    // 4 per-longword valid bits; a miss whose tag differs evicts the line
+    // (direct-mapped). Non-burst fill (one longword per miss) — conservative
+    // vs the real burst line-fill, refined later if needed. Fed by
+    // willFetchInstr() (every instruction-word fetch), gated on CACR bit 0
+    // (enable i-cache). The real chip runs tight cache-resident loops with no
+    // instruction-fetch bus cycles — this model is what lets our timing
+    // reflect that per code path instead of a global boost fudge.
+    struct ICache {
+        static constexpr int kLines = 16;
+        moira::u32 tag_[kLines];
+        moira::u8  valid_[kLines];
+        void reset() { for (int i = 0; i < kLines; i++) { tag_[i] = 0xFFFFFFFF; valid_[i] = 0; } }
+        bool access(moira::u32 addr, bool super) {          // returns true on hit
+            moira::u32 t = (addr >> 8) | (super ? 0x80000000u : 0u);
+            int line = int((addr >> 4) & (kLines - 1));
+            int lw   = int((addr >> 2) & 3);
+            if (tag_[line] == t && (valid_[line] & (1u << lw))) return true;
+            if (tag_[line] != t) { tag_[line] = t; valid_[line] = 0; }   // evict
+            valid_[line] |= moira::u8(1u << lw);
+            return false;
+        }
+    };
+    ICache icache_;
+    ICacheStats icStats_;
 
     // Line-F logging state
     bool fpuLog_ = false;

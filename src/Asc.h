@@ -38,6 +38,13 @@ public:
     bool irqAsserted() const { return irq_; }
     std::function<void(bool)> onIrq;         // level → pseudo-VIA IFR bit 4
 
+    // Diagnostic write tap (null = off, zero cost). offset is masked to the
+    // $F14000 window (0..0xFFF): < 0x400 = FIFO A byte, 0x800+ = registers.
+    // Used to check whether an app actually feeds the ASC (SC2K silence,
+    // TODO § App-compat). Not part of the hardware model.
+    std::function<void(uint32_t, uint8_t)> onWrite;
+    std::function<void(uint32_t, uint8_t)> onRead;   // diagnostic read tap
+
     // Audio host pull (miniaudio callback side)
     int available() const { return int((outWr_ - outRd_) & (kOutSize - 1)); }
     int16_t pop() {
@@ -47,6 +54,7 @@ public:
     int fifoCap() const { return cap_; }
 
 private:
+    uint8_t readReg(uint32_t offset);        // read logic (onRead tap wraps it)
     enum { STAT_HALF_A = 0x01, STAT_EMPTY_OR_FULL_A = 0x02 };
     void setIrq(bool s) {
         if (s != irq_) { irq_ = s; if (onIrq) onIrq(s); }

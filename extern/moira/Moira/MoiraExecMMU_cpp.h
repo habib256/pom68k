@@ -418,6 +418,10 @@ Moira::mmuFetchWord(u32 addr)
 
     const u8 fc = u8((reg.sr.s ? 4 : 0) | 2);
 
+    // POM68K: 68030 i-cache overlay — every instruction-word fetch, LOGICAL
+    // address (the 030 caches are logical), before translation. See Cpu030.
+    willFetchInstr(addr, reg.sr.s);
+
     // POM68K O6: recorded here too — with TC.E off mmuTranslateAccess is
     // bypassed, but an unmapped fetch must still be extBusError()-able
     mmuAccAddr = addr; mmuAccSsw = 0x0020; mmuAccFc = fc; mmuAccWrite = false;

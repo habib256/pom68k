@@ -391,9 +391,18 @@ protected:
     
     // Called when the CACR register is modified
     virtual void didChangeCACR(u32 value) { }
-    
+
     // Called when the CAAR register is modified
     virtual void didChangeCAAR(u32 value) { }
+
+    // POM68K: 68030 instruction-cache overlay hook. Fires on every
+    // instruction-word fetch (opcode, one-slot lookahead, extension words)
+    // from mmuFetchWord, with the LOGICAL fetch address and the supervisor
+    // flag — so a wrapper (Cpu030) can model the on-chip 256-byte i-cache
+    // and make instruction-throughput timing reflect cache residency
+    // (tight cached loops run at the real 030's speed without a global
+    // fudge). Zero cost when not overridden.
+    virtual void willFetchInstr(u32 addr, bool super) { }
 
     
     //

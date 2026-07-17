@@ -1,5 +1,101 @@
 # CHANGELOG
 
+## 2026-07-17 — 68030 instruction-cache timing overlay (replaces the flat boost)
+
+Replaced the constant boost with a real (if small) model of the 68030
+instruction cache. New vendored Moira hook `willFetchInstr(addr, super)` fires
+on every instruction-word fetch (`mmuFetchWord`, the mode-5 030 fetch choke
+point); `Cpu030` models the on-chip 256-byte i-cache (16 lines × 4 longwords,
+logical, direct-mapped, flushed on the CACR clear strobes — needed because the
+blit is self-modifying) and charges a fetch-bus penalty (`icacheMiss_`) only on
+a MISS, while the core runs at a resident-code ceiling (`cacheBoost_`). Net:
+cache-resident code runs near the ceiling, miss-heavy cold code is throttled
+toward real speed — the per-code-path behaviour of the real cache instead of a
+flat fudge that can't tell them apart. Both knobs live-tunable
+(POM68K_CACHE_BOOST ceiling, POM68K_ICACHE_MISS penalty). 24/24 CTest green
+(incl. sst68030 3082 vectors — the hook is state-neutral, and lcii_boot_etalon).
+
+**Validated by measurement** (`scratchpad/icachestat.cpp`, `Cpu030::
+icacheStats`): the guest runs CACR-I=1 (i-cache enabled); boot is 80% hit; and
+the SimCity **redraw hot path is 95% cache-resident** over 453 M fetches —
+confirming the overlay boosts exactly the code that livelocks.
+
+**Honest limit — the overlay does NOT cure the black-forest crash, and that's
+now diagnosed.** A headless sweep shows the crash is *non-monotonic* in the
+boost (boost 4 crashes more than 2): if it were a throughput problem more boost
+would always help. It doesn't — so it's a **VBL/redraw phase race** (the VBL is
+taken at $A4B416, between SC2K lowering IPL at $A4B414 and restoring A5 at
+$A4B418; whether it lands there shifts with the boost). Clearing it by brute
+throughput needs ~24×, which no realistic cache (~2-4×) can produce. So the
+overlay is the correct throughput model and gives uniform tempo, but black
+forest needs a separate structural fix to the interrupt timing (TODO §
+App-compat). Workaround: raise POM68K_CACHE_BOOST.
+
+## 2026-07-17 — retire the adaptive cache boost for a constant ratio
+
+The adaptive cache boost (base 2, spiking to maxBoost 24 during heavy per-VBL
+redraws) gave a *varying* CPU/peripheral ratio. Once app sound worked
+(pseudo-VIA fix below) that varying ratio made the sound tempo wobble audibly
+(the emulated sound production isn't locked to the host audio clock, so the
+2↔24 flips over/under-ran the ASC out ring), and it still only *deferred* the
+SimCity livelock. Replaced it with a SINGLE CONSTANT ratio (`Cpu030
+cacheBoost_`, default 2, tunable live via POM68K_CACHE_BOOST, range widened to
+1-64), like real hardware which has one fixed CPU/peripheral ratio → uniform
+tempo. Removed `maxBoost_`, the IRQ-rate hysteresis, and the `willInterrupt`
+counter; `flushTicks` now scales by the constant. 24/24 CTest green.
+
+**What the boost physically is** (verified while doing this): Moira emulates
+the 68030 on its `Core::C68020` execution core (MoiraTypes.h:66) — 68020
+per-instruction cycle counts (advisory placeholders, POM68K_VENDOR.md), **no
+i-cache, no d-cache**, less pipeline overlap than a real 030. The real LC II
+68030 has a 256 B I-cache + 256 B D-cache (the System enables them via CACR),
+so tight loops run from cache with no fetch bus cycles and it executes far
+more instructions per unit machine-time than Moira charges. The boost is the
+scalar that compensates for that whole gap.
+
+**Why a constant can't fully win** (headless sweep on the biggest SimCity city
+"black forest monstre"): boost 2 (near real-time) still crashes it, boost 4 is
+worse (non-monotonic — it's a VBL/redraw *phase race*, not pure throughput),
+and clearing it needs ~16-24 which runs ~10× slow. Root reason: the blit is a
+*tight cached loop* that gains ~5×+ from the real cache while other code gains
+~1-2× — a single scalar can't say "tight loops fast, rest normal". Only a real
+68030 i-cache timing model captures that. Intended long-term fix: a cache
+overlay on Moira's prefetch path keyed on `cpuModel >= M68030` + CACR (NOT a
+new `Core::C68030` — the 020/030 share the execution core by design; the
+overlay is the right granularity). Tracked in TODO § App-compat.
+
+## 2026-07-17 — app sound reaches the ASC (pseudo-VIA ASC IRQ was edge-only)
+
+Apps on the LC II were silent — only the ROM boot chime ever played. Traced
+with new ASC/trap diagnostics (`AscV8::onWrite`/`onRead` taps,
+`PseudoVia::reg()` peek, `scratchpad/{ascprobe,sndtrace,sndtrace2,sndtrace3}
+.cpp`): SimCity 2000 *does* call the Sound Manager (`SndNewChannel`,
+`SndPlay`, `SndDoCommand`, 281×`SoundDispatch`) and the Sound Manager *does*
+init the ASC (reads version $E8, sets FIFO mode) and *does* enable the ASC
+interrupt (pseudo-VIA IER bit 4) — but **IFR bit 4 never latched**, so the
+level-2 handler never serviced the ASC and never refilled the FIFO → silence.
+
+Root cause: the ASC IRQ is **level-triggered**, but `PseudoVia` only updated
+IFR bit 4 on line *transitions* (the edge-driven `onIrq` callback), and
+`recalcIrqs()` erases any non-enabled pending bit. After the boot chime the
+FIFO empties and the ASC half-empty line asserts and **stays asserted**;
+while the ASC interrupt is disabled that pending bit is masked away. When the
+Sound Manager later enables the interrupt, the line is *already* high — no new
+transition — so IFR bit 4 was never re-latched. The slot IRQs already
+re-derive their level every `recalcIrqs()`; the ASC path uniquely relied on
+edges.
+
+Fix (`src/PseudoVia.*`): store the raw ASC line level (`ascLine_`) and
+re-sample it into IFR bit 4 on every `recalcIrqs()`, exactly like the slot
+lines — so the level survives an enable/disable and re-latches when the
+System enables the ASC interrupt with the line already high. Verified: SC2K
+now writes 3996 non-silent samples to the FIFO on city-load (was 0); 24/24
+CTest green (incl. pseudovia_test, asc_test, lcii_boot_etalon). Known
+follow-ups (TODO § App-compat): the emulated sound *production* isn't locked
+to the host audio clock and the adaptive cache boost's varying CPU/peripheral
+ratio makes the tempo wobble, and the SC2K livelock crash still recurs — both
+are the same open timing project.
+
 ## 2026-07-17 — adaptive cache boost (fixes big-city SimCity crash)
 
 The user's biggest SimCity 2000 city ("black forest monstre") still crashed
@@ -13,11 +109,61 @@ trips).
 
 Fix: `Cpu030` boost is now ADAPTIVE. A normal frame takes few interrupts; a
 heavy per-VBL redraw takes many dozen (the redraw handler re-enters). When
-last frame's IRQ count crosses a threshold, the CPU runs at maxBoost_ (16)
+last frame's IRQ count crosses a threshold, the CPU runs at maxBoost_ (24)
 with ~0.75 s hysteresis, then falls back to the base boost (2). So normal
 play stays fast and only heavy redraws briefly slow down — no crash.
 Verified: black forest monstre loads clean at 640×480; 24/24 CTest green.
 POM68K_CACHE_BOOST still sets the base floor.
+
+(maxBoost_ was raised 16→24 once flushTicks was corrected to scale by the
+*active* boost — see the second audit below. Before that fix flushTicks
+divided by the base boost while the CPU ran at 16×, so peripheral time ran
+8× fast and accidentally out-ran the livelock; scaling correctly restored
+real VBL cadence, which needed a higher ceiling to clear the redraw.)
+
+## 2026-07-17 — adversarial subsystem audit #2: 9 correctness fixes
+
+A second adversarial multi-agent audit (LC II subsystems vs MAME/Basilisk/
+Z8530 & 6522 & SCSI-1 manuals, findings attacked by skeptics) surfaced 17
+candidates; after maintainer verification 9 applied, the rest rejected as
+false positives or deferred as defensive fixes for access patterns the
+guest never performs. 24/24 CTest green.
+
+- **flushTicks scaled by the base boost, not the active one** (`Cpu030`):
+  during an adaptive-boosted redraw the CPU ran at maxBoost× but flushTicks
+  divided elapsed cycles by cacheBoost_, so VBL/VIA/ASC time ran up to 8×
+  fast. Added `activeBoost_` (the boost in force this frame) and scale by
+  it. This restored real peripheral cadence (correct sound/timer pitch);
+  maxBoost_ raised 16→24 to keep black forest crash-free at true speed.
+- **VIA CA2/CB2 flag over-clear** (`src/Via6522.cpp`): an ORA/ORB access
+  cleared CA2/CB2 unconditionally, but in the ROM's independent-interrupt
+  PCR mode ($22) the RTC 1-second flag must survive a racing port access
+  (R6522 §3.2.3). Added `clearCaFlags`/`clearCbFlags` that honour the PCR
+  mode.
+- **VIA T2 low-byte latch** (`src/Via6522.cpp`): T2CL wrote the counter
+  directly; on the 6522 it only stages a low latch that T2CH commits
+  (§5.6). Added `t2ll_` staging.
+- **ASC FIFO overrun wrote past FULL** (`src/Asc.cpp`): a push at cap=0x400
+  still stored and wrapped wr_, overwriting the oldest unread byte. Guarded
+  the store by `cap_ < 0x400` (MAME stalls on full).
+- **V8Video 16bpp fetch could read one byte past VRAM** (`src/V8Video.h`):
+  bounds-guarded the `vram[off+1]` high-byte read.
+- **RTC PRAM write underflow** (`src/Rtc.cpp`): addr 14/15 fell through to
+  `pram_[addr-16]` = `pram_[-2]/[-1]`. Added an `addr < 16` guard.
+- **Egret second-accumulator not reset** (`src/Egret.cpp`): `secAcc_`
+  survived reset; zeroed it.
+- **SCC RR2 vector priority Ext-over-Tx** (`src/Scc8530.cpp`): within a
+  channel the Z8530 ranks Tx above Ext/Status; the status-low code checked
+  extPending first. Swapped to Tx-first.
+- **SCSI MODE SENSE / REQUEST SENSE conformance** (`src/ScsiDisk.cpp`):
+  MODE SENSE(6) now fills the mode-data-length (byte 0 = n−1) and the
+  block-descriptor block length (512); REQUEST SENSE clamps the
+  additional-length to `min(10, alloc−8)` instead of a fixed 10.
+
+Deferred (not bugs in practice): a defensive SCC word-access fast-path —
+a 16-bit access to SCC space double-advances the read pointer, but the
+Mac SCC driver only ever uses `move.b`, so it never triggers. Noted in
+TODO rather than adding an unverifiable fast-path.
 
 ## 2026-07-17 — adversarial subsystem audit: 3 correctness fixes
 

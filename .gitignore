@@ -21,3 +21,9 @@ compile_commands.json
 
 # Sound capture artifacts (sound_test)
 *.wav
+
+# Build/debug/run artifacts (not source)
+gdb.out
+*.pid
+imgui.ini
+Testing/

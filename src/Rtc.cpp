@@ -26,6 +26,7 @@ void Rtc::writeReg(uint8_t cmd, uint8_t v) {
     if (addr < 4)       seconds_ = (seconds_ & ~(0xFFu << (8 * addr)))       | (uint32_t(v) << (8 * addr));
     else if (addr < 8)  seconds_ = (seconds_ & ~(0xFFu << (8 * (addr - 4)))) | (uint32_t(v) << (8 * (addr - 4)));
     else if (addr < 12) pram_[16 + (addr - 8)] = v;
+    else if (addr < 16) return;                // 14/15 reserved: drop (was pram_[-2/-1] UB)
     else                pram_[addr - 16] = v;
 }
 

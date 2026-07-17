@@ -11,15 +11,47 @@ Cpu030::Cpu030(V8Memory& mem, bool withFpu) : mem_(mem) {
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     if (const char* b = getenv("POM68K_CACHE_BOOST")) {
         int v = atoi(b);
-        if (v >= 1 && v <= 16) cacheBoost_ = v;
+        if (v >= 1 && v <= 64) cacheBoost_ = v;   // resident-code ceiling ratio
     }
-    if (maxBoost_ < cacheBoost_) maxBoost_ = cacheBoost_;   // base is a floor
+    if (const char* p = getenv("POM68K_ICACHE_MISS")) {
+        int v = atoi(p);
+        if (v >= 0 && v <= 64) icacheMiss_ = v;   // boosted cycles charged per miss
+    }
 }
 
 void Cpu030::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
+    icache_.reset();
     reset();                       // SSP/PC from $0 (ROM via overlay)
+}
+
+// 68030 instruction-cache timing overlay (see Cpu030.h). Fires on every
+// instruction-word fetch. The core runs at cacheBoost_× (the resident-code
+// ceiling, ~real-030-cached throughput); a cache MISS charges icacheMiss_
+// boosted cycles here, modelling the instruction-fetch bus access the real
+// chip pays only on a miss. So a tight cache-resident loop (SimCity's redraw,
+// 95% hit) runs near the ceiling and finishes its frame, while miss-heavy cold
+// code is throttled back toward real speed — one physical model instead of a
+// global fudge that can't tell the two apart. Measured hits/misses feed the
+// icacheStats() diagnostic. Gated on CACR bit 0 (System enables the i-cache).
+void Cpu030::willFetchInstr(moira::u32 addr, bool super) {
+    icStats_.fetches++;
+    if (!(getCACR() & 0x1)) return;             // i-cache off: no residency model
+    if (icache_.access(addr, super)) {
+        icStats_.hits++;
+    } else {
+        icStats_.misses++;
+        clock += icacheMiss_;                    // a miss pays the fetch bus cycles
+    }
+}
+
+// The System (and self-modifying code like SimCity's dynamic blit generator)
+// clears the i-cache via CACR: bit 3 = Clear Instruction cache, bit 2 = Clear
+// Entry (CAAR). These are write-only strobes (raw value, not the stored CACR).
+// Flush the whole model on either — conservative, never reports a stale hit.
+void Cpu030::didChangeCACR(moira::u32 value) {
+    if (value & 0x0C) icache_.reset();
 }
 
 void Cpu030::runCycles(moira::i64 n) {
@@ -42,22 +74,14 @@ void Cpu030::runCycles(moira::i64 n) {
             }
         }
     } else {
-        // n is a peripheral (machine) cycle budget; run `boost`× more Moira
-        // cycles so the core does a real 68030's worth of work per frame
-        // (i-cache model, see Cpu030.h). Adaptive: a heavy redraw (many IRQs
-        // last frame) runs at maxBoost_ so it finishes in budget; otherwise
-        // the base boost keeps normal play fast.
-        if (irqPrevFrame_ > kIrqBoostThreshold) boostHold_ = 45;  // ~0.75s hysteresis
-        int boost = boostHold_ > 0 ? maxBoost_ : cacheBoost_;
-        if (boostHold_ > 0) boostHold_--;
-        executeUntil(getClock() + n * boost);
-        irqPrevFrame_ = irqThisFrame_;
-        irqThisFrame_ = 0;
+        // n is a peripheral (machine) cycle budget; run cacheBoost_× more
+        // Moira cycles so the core does a real 68030's worth of work per
+        // frame (constant i-cache throughput ratio, see Cpu030.h). One fixed
+        // ratio → uniform sound/timer tempo.
+        executeUntil(getClock() + n * cacheBoost_);
     }
     flushTicks();                  // callers sample ASC/VBL state after a slice
 }
-
-void Cpu030::willInterrupt(moira::u8 /*level*/) { irqThisFrame_++; }
 
 void Cpu030::enableFpuLog(const std::string& path, size_t ringSize) {
     fpuLog_ = true;
@@ -173,8 +197,8 @@ void Cpu030::flushTicks() {
     // Scale elapsed Moira cycles down to machine cycles so peripherals keep
     // their real cadence while the core runs kCacheBoost× more instructions.
     periphAccum_ += d;
-    int m = int(periphAccum_ / cacheBoost_);
-    periphAccum_ -= moira::i64(m) * cacheBoost_;
+    int m = int(periphAccum_ / cacheBoost_);    // scale elapsed Moira cycles back
+    periphAccum_ -= moira::i64(m) * cacheBoost_; // to real machine cycles
     if (m) mem_.tick(m);           // VIA1 timers (φ2 = CPU/20) + 60.15 Hz
 }
 

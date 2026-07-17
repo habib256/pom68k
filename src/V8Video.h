@@ -72,10 +72,14 @@ public:
             break;
         case 4:                                    // 16 bpp x1r5g5b5, hres×2 pitch
         default:
+            // 16 bpp at 640×480 needs 614400 B > the 512 KB VRAM window —
+            // not a valid hardware combo, but reachable via setMonitorSense
+            // + a depth write, so bound the read (out-of-window = black).
             for (int y = 0; y < vres; y++)
                 for (int x = 0; x < hres; x++) {
-                    uint16_t px = uint16_t(vram[(y * hres + x) * 2] << 8
-                                         | vram[(y * hres + x) * 2 + 1]);
+                    size_t off = size_t(y * hres + x) * 2;
+                    uint16_t px = (off + 1 < V8Memory::kVramSize)
+                        ? uint16_t(vram[off] << 8 | vram[off + 1]) : 0;
                     *dst++ = uint32_t(((px >> 10) & 0x1F) << 19
                                     | ((px >> 5) & 0x1F) << 11
                                     | (px & 0x1F) << 3);

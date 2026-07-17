@@ -7,7 +7,7 @@ void Via6522::reset() {
     ora_ = orb_ = ddra_ = ddrb_ = 0;
     inA_ = inB_ = 0xFF;
     acr_ = pcr_ = sr_ = ifr_ = ier_ = 0;
-    t1_ = t2_ = 0; t1latch_ = 0;
+    t1_ = t2_ = 0; t1latch_ = 0; t2ll_ = 0;
     t1armed_ = t2armed_ = false;
 }
 
@@ -40,8 +40,8 @@ bool Via6522::tick(int n) {
 
 uint8_t Via6522::read(int reg) {
     switch (reg) {
-        case ORB:    ifr_ &= uint8_t(~(CB1 | CB2)); return portB();
-        case ORA:    ifr_ &= uint8_t(~(CA1 | CA2)); return portA();
+        case ORB:    clearCbFlags(); return portB();
+        case ORA:    clearCaFlags(); return portA();
         case ORA_NH: return portA();
         case DDRB:   return ddrb_;
         case DDRA:   return ddra_;
@@ -62,8 +62,8 @@ uint8_t Via6522::read(int reg) {
 
 void Via6522::write(int reg, uint8_t v) {
     switch (reg) {
-        case ORB:    orb_ = v; ifr_ &= uint8_t(~(CB1 | CB2)); break;
-        case ORA:    ora_ = v; ifr_ &= uint8_t(~(CA1 | CA2)); break;
+        case ORB:    orb_ = v; clearCbFlags(); break;
+        case ORA:    ora_ = v; clearCaFlags(); break;
         case ORA_NH: ora_ = v; break;
         case DDRB:   ddrb_ = v; break;
         case DDRA:   ddra_ = v; break;
@@ -72,8 +72,8 @@ void Via6522::write(int reg, uint8_t v) {
         case T1CH:   t1latch_ = uint16_t((t1latch_ & 0x00FF) | (v << 8));
                      t1_ = t1latch_; t1armed_ = true;
                      ifr_ &= uint8_t(~TIMER1); break;
-        case T2CL:   t2_ = int32_t((uint32_t(t2_) & 0xFF00) | v); break;
-        case T2CH:   t2_ = int32_t((uint32_t(t2_) & 0x00FF) | (uint32_t(v) << 8));
+        case T2CL:   t2ll_ = v; break;          // stage the low latch (R6522 §5.6)
+        case T2CH:   t2_ = int32_t((uint32_t(v) << 8) | t2ll_);   // latch → counter
                      t2armed_ = true;
                      ifr_ &= uint8_t(~TIMER2); break;
         case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); break;

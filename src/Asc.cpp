@@ -16,6 +16,12 @@ void AscV8::reset() {
 // asc_v8_device::read (asc.cpp:845-882)
 uint8_t AscV8::read(uint32_t offset) {
     offset &= 0xFFF;
+    uint8_t v = readReg(offset);
+    if (onRead) onRead(offset, v);           // diagnostic tap (off by default)
+    return v;
+}
+
+uint8_t AscV8::readReg(uint32_t offset) {
     if (offset < 0x800) return 0;            // FIFO space reads nothing useful
 
     switch (offset - 0x800) {
@@ -42,13 +48,16 @@ uint8_t AscV8::read(uint32_t offset) {
 // asc_v8_device::write (asc.cpp:884-903) + base FIFO A path (:369-431)
 void AscV8::write(uint32_t offset, uint8_t v) {
     offset &= 0xFFF;
+    if (onWrite) onWrite(offset, v);                 // diagnostic tap (off by default)
 
     if (offset >= 0x400 && offset < 0x800) return;   // FIFO B: mono, ignored
 
     if (offset < 0x400) {                    // FIFO A push
-        fifo_[wr_++] = v;
-        wr_ &= 0x3FF;
-        if (cap_ < 0x400) cap_++;
+        if (cap_ < 0x400) {                  // drop writes past FULL (don't
+            fifo_[wr_] = v;                  // overwrite the oldest unread byte
+            wr_ = (wr_ + 1) & 0x3FF;         // + stall wr_/cap_, like MAME)
+            cap_++;
+        }
         if (cap_ >= 0x200) {
             fifoStat_ &= uint8_t(~STAT_HALF_A);
             if (cap_ >= 0x3FF) fifoStat_ |= STAT_EMPTY_OR_FULL_A;

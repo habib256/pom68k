@@ -30,13 +30,15 @@ uint8_t Scc8530::readCtl(int channel) {
             // none = 011. The Mac Plus level-2 handler dispatches on this.
             uint8_t vec = ch_[1].wr[2];
             if (channel == 0) {
-                // Status-low V3..V1 code by highest-priority source
-                // (ChA > ChB; per channel Ext > Tx here): A Ext=101,
-                // A Tx=100, B Ext=001, B Tx=000, none=011.
-                int code = ch_[1].extPending ? 0b101
-                         : ch_[1].txIp       ? 0b100
-                         : ch_[0].extPending ? 0b001
-                         : ch_[0].txIp       ? 0b000 : 0b011;
+                // Status-low V3..V1 code by highest-priority source. The
+                // Z8530 ranks, highest first: ChA Rx, ChA Tx, ChA Ext,
+                // ChB Rx, ChB Tx, ChB Ext — so within a channel Tx
+                // outranks Ext. Codes: A Tx=100, A Ext=101, B Tx=000,
+                // B Ext=001, none=011.
+                int code = ch_[1].txIp       ? 0b100
+                         : ch_[1].extPending ? 0b101
+                         : ch_[0].txIp       ? 0b000
+                         : ch_[0].extPending ? 0b001 : 0b011;
                 vec = uint8_t((vec & ~0x0E) | (code << 1));
             }
             return vec;
