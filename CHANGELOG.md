@@ -1,5 +1,99 @@
 # CHANGELOG
 
+## 2026-07-18 — GISTPERSO (7.5) boot hang: heap corruption racing an
+## app launch at Finder startup — NOT the pending changes, NOT the disk
+
+User report after the host-machine crash: on the LC II, GISTPERSO-boot
+(System 7.5) draws the Finder menu bar + desktop pattern, the clock
+ticks, but the icons never come and "the menu is dead". Other volumes
+(7.1/7.6/8.1) fine. Differential investigation (full detail in TODO
+§ app-compat):
+
+- The CPU spins forever in the ROM Memory Manager heap-walk/coalesce
+  loop ($40A0E148) — a garbage block header, i.e. guest **heap
+  corruption during Finder startup**, while VBL keeps the clock alive.
+- **Exonerated: the uncommitted work.** HEAD and the working tree hang
+  byte-identically (same screenshot md5, same hot-PC histogram).
+  **Exonerated: PRAM** (known-good PRAM hangs the same) and **HFS
+  structure** (catalog walks; SC2K + city play fine launched by hand).
+- Startup-key probes (new `LCII_HOLD_KEYS` in lcii_trace, hex ADB codes
+  held through boot): Option or Shift → desktop with icons (and no
+  SC2K auto-launch); Cmd → same hang. A normal boot auto-launches
+  SimCity 2000 while the Finder is still building the desktop, and one
+  GUI boot survived exactly that → **timing-dependent race around the
+  boot-time app launch**, deterministic loss headless, occasional win
+  under GUI timing.
+
+Workaround: boot holding Shift/Option, remove SC2K from the startup
+launch; manual launch is unaffected. The deterministic headless repro
+is pinned in TODO for the differential hunt for the real corruption
+site. `hdv/GISTPERSO-boot.vhd.avant-reparation` backs up the image.
+
+## 2026-07-17 — LC II runs on a dedicated machine thread; boot &
+## secondary SCSI volumes selectable from a "Disques" menu
+
+Interrupted by the host crash, finished and verified 07-18 (24/24
+gates, long GUI sessions). Two changes from the perf/UX queue:
+
+- **Machine thread** (`LcMachine`, main.cpp): the emulation loop +
+  audio-clocked pacing move off the vsync'd ImGui thread, so a slow GPU
+  frame or compositor stall no longer steals emulation time. Contract:
+  input/reset cross as queued commands applied between frame slices
+  (ADB/CPU objects are touched only by the machine thread), the
+  framebuffer crosses as a decoded copy under a mutex (publish throttled
+  to ~60 Hz when idle), the status line is relaxed atomics, and the ASC
+  ring keeps its SPSC discipline (producer moved threads). Emscripten
+  keeps the single-thread path — same `stepTick()`, two drivers. The
+  destructor joins the thread so a stray `exit()` (Xlib's default error
+  handler) can't destroy a joinable thread → std::terminate.
+- **Multi-volume SCSI** (`Ncr5380` targets by ID 0-6, `V8Memory`
+  `attachScsi(path, wb, id)`, CLI `argv[3..]` → IDs 1-6): the System's
+  boot-time bus scan mounts the secondary volumes. The GUI "Disques"
+  menu picks the boot volume and toggles secondaries from the images
+  found next to the current one; any change relaunches the emulator
+  (the ROM only scans the SCSI bus at boot), same execv mechanism as
+  the machine switch. "Redémarrer" = one-click power cycle.
+
+## 2026-07-17 — i-cache overlay folded into Moira's fetch path (-15%)
+
+Second perf step from the 0.40×→1.91× pass's queue: the 68030 i-cache
+timing overlay fired a **virtual** `willFetchInstr` on every instruction
+word — an indirect call plus an out-of-line model per fetch, ~11% of the
+whole emulator. The MC68030UM §6 model (16×4-LW logical direct-mapped,
+CACR-gated, miss penalty) now lives inline in `mmuFetchWord` as
+`Moira::PomIcache` behind an `armed` flag (default off; `Cpu030` arms it
+and keeps the knobs/stats — POM68K_VENDOR.md § willFetchInstr). Same
+model, same numbers: lcii_boot_etalon metrics byte-identical
+(0.09/0.48/9583 SCSI commands), wall time **143 s → 122 s**, 24/24
+green. Next in the queue: the dedicated machine thread.
+
+## 2026-07-17 — Lode Runner "dead arrow keys": not a bug — the game
+## binds the numeric keypad by default
+
+User report: in Lode Runner (LC II) the arrows do nothing although the
+game is otherwise perfect. Two-sided verification concluded the input
+chain is correct and the behaviour matches real hardware:
+
+- **Emulator side** — a KeyMap probe against the booted System (boot
+  etalon + `AdbBus::keyEvent`, the exact entry point the GUI uses)
+  shows every injected ADB raw code sets the right virtual-key bit in
+  the System's KeyMap ($174): arrows $3B-$3E → virtual **$7B-$7E**,
+  keypad $52-$5C → virtual $52-$5C, letters identity. That raw→virtual
+  arrow remap is Apple's own KMAP doing its job — on ADB keyboards the
+  old M0110A arrow codes $3B-$3E were reassigned to modifiers, and
+  arrows moved to $7B-$7E.
+- **Game side** — extracted the app's CODE resources off the HFS image
+  (it is *Lode Runner: The Legend Returns*, Presage 1994) and
+  disassembled its input path: gameplay polls a `_GetKeys` snapshot
+  against a per-action **key-binding table stored in its `pref 200`
+  resource**. The defaults are `56 58 5B 57 59 5C 53 54 55` — keypad
+  4/6/8/5/7/9/1/2/3. No $7B-$7E (arrow) code appears in either the
+  factory or the user's saved bindings: **the game simply doesn't bind
+  the arrows**, on a real LC II either.
+
+Conclusion: play with the numeric keypad (4← 6→ 8↑ 5↓, 7/9 = dig) or
+rebind inside the game's options. No emulator change.
+
 ## 2026-07-17 — Performance pass: 0.40× → 1.91× realtime at the Finder
 ## (the sound stutter was the emulator falling behind real time)
 

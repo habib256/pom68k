@@ -27,3 +27,5 @@ gdb.out
 *.pid
 imgui.ini
 Testing/
+build-oracle-uae/
+scratchpad/__pycache__/

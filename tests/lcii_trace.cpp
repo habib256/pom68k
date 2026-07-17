@@ -358,6 +358,26 @@ int main(int argc, char** argv) {
         steps++;
         if (cpu.getClock() >= hotFrom) cpu.pcHits[pc]++;
 
+        // LCII_HOLD_KEYS="37 3A": hold ADB key codes (hex) through the boot
+        // — probe the System's startup-key paths headlessly (Cmd = VM off,
+        // Shift = extensions off, Cmd+Opt = desktop rebuild prompt). Down
+        // events injected once the ADB service is up; never released.
+        if (const char* hk = getenv("LCII_HOLD_KEYS")) {
+            static bool held = false;
+            if (!held && cpu.getClock() > 40'000'000) {
+                held = true;
+                for (const char* p = hk; *p;) {
+                    char* end;
+                    long code = strtol(p, &end, 16);
+                    if (end == p) break;
+                    mem.adb().keyEvent(uint8_t(code), true);
+                    std::printf("[%10lld] hold ADB key $%02lX\n",
+                                (long long)cpu.getClock(), code);
+                    p = end;
+                }
+            }
+        }
+
         // O6.11: log every _ReadXPRam/_WriteXPRam A-trap with its caller
         // PC + D0 (count<<16|offset) — the SysParam copy path (opt-in).
         if (getenv("WATCH_XPTRAP")) {

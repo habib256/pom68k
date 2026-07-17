@@ -290,16 +290,26 @@ with an AI loop verified by differential testing:
   ATC O(1) LRU + last-hit probe, V8 word fast paths, native/LTO build;
   see CHANGELOG). Remaining headroom, in order of bang-for-buck, if a
   heavier workload (in-game + GUI) still starves the DAC-paced audio:
-  - [ ] dedicated machine thread: run the emulation loop off the vsync'd
-    ImGui thread (input via a queue, framebuffer double-buffered, the
-    audio ring is already SPSC) — the 16-thread host runs everything on
-    one core today, and a slow GPU frame currently steals emulation time.
-  - [ ] trim the per-fetch i-cache overlay (~11%: willFetchInstr virtual
-    call + model per instruction word — could fold into mmuFetchWord
-    behind a flag, or sample every N fetches for the stats).
-  - [ ] 68k→host JIT (LAST resort: weeks of work, and it would bypass
-    the fuzzed interpreter's oracle-exactness — only if the interpreter
-    provably can't reach the target on supported hosts).
+  - [x] dedicated machine thread (2026-07-17, verified in play 07-18):
+    `LcMachine` in main.cpp runs the emulation + audio-clocked pacing on
+    its own thread; the GUI thread only latches the decoded framebuffer
+    (mutex copy), queues input/reset commands, and reads a relaxed-atomic
+    status line. Emscripten keeps the inline single-thread path (same
+    stepTick, two drivers). 24/24 green, boots + SC2K sessions exercised.
+  - [x] trim the per-fetch i-cache overlay (2026-07-17): the virtual
+    willFetchInstr hook is gone — the model is folded inline into
+    mmuFetchWord behind an `armed` flag (`Moira::PomIcache`,
+    POM68K_VENDOR.md § willFetchInstr). Boot etalon 143 s → 122 s
+    (-15%), metrics byte-identical, 24/24 green.
+  - [ ] 68k→host JIT — wanted (2026-07-17, user-confirmed), built **the
+    same way as the 68030 core**: WinUAE as the oracle right alongside.
+    WinUAE has a mature 68k JIT (`compemu*` in the UAE tree we already
+    vendor for the oracle) → it is both the **code reference** and the
+    **differential-test oracle**: every JIT'd block must match the
+    architectural state of our fuzzed interpreter (itself oracle-exact),
+    reusing the SST030 fuzz loop as the regression harness. Weeks of
+    work; now next in the perf queue — the machine thread and the
+    i-cache overlay trim are both done.
 
   **O6 remaining polish** (non-blocking, machine is usable): bare-LC II
   no-FPU path (System should install the SANE F-line handler — verify
@@ -316,6 +326,62 @@ with an AI loop verified by differential testing:
     If a future guest word-accesses the SCC, mirror the VIA fast-path.
 
   **App-compat bugs found while playing (2026-07-16):**
+  - [ ] **GISTPERSO (System 7.5): boot hangs before the desktop icons**
+    (2026-07-18, user report "le menu plante"). Menu bar + desktop
+    pattern draw, the menu-bar clock keeps ticking (VBL alive), icons
+    never appear; the CPU spins forever in the ROM Memory Manager's
+    heap-block walk/coalesce loop (`$40A0E148-$40A0E156`: `cmpa.l
+    (A6),A1 / move.l (A1),D1 / adda.l D1,A1`) — a block header in the
+    walked zone is garbage, so this is **guest heap corruption during
+    Finder startup**, not an infinite wait. Established facts (all on
+    2026-07-18, see CHANGELOG):
+    * NOT a regression from the machine-thread/i-cache/multi-SCSI work:
+      HEAD (f40e77f) and the working tree produce **byte-identical**
+      hangs (same screenshot md5, same hot-PC histogram) on the same
+      disk+PRAM. NOT the PRAM: booting with a known-good PRAM (or
+      zeroed suspect bytes) hangs identically.
+    * Deterministic headless repro: `LCII_FPU=1 lcii_trace --scsi
+      hdv/GISTPERSO-boot.vhd --cycles 5000000000 --hot-from 4500000000`
+      (with `hdv/GISTPERSO-boot.vhd.pram` copied to `lcii_trace.pram`).
+      Without LCII_FPU it bombs earlier ("coprocesseur absent" — the
+      known no-FPU SANE gap, different issue).
+    * Startup-key matrix via the new `LCII_HOLD_KEYS` probe (hex ADB
+      codes held through boot): **Option ($3A) boots to the desktop with
+      icons; Shift ($38) boots too; Cmd ($37) still hangs.** Both good
+      boots skip the auto-launch of SimCity 2000 that a normal boot
+      performs (SC2K + last city come up at the Finder) — so the hang
+      correlates with **an app launching while the Finder is still
+      bringing the desktop up**. One GUI boot DID survive the launch
+      (SC2K playable) → race-dependent, GUI timing occasionally wins;
+      headless timing always loses.
+    * The HFS volume itself is healthy at the level we can check: the
+      catalog walks (1858+ files), SC2K + the BLACK FOREST MONSTRE city
+      load and play fine when launched manually. `hdv/
+      GISTPERSO-boot.vhd.avant-reparation` is a backup taken 07-18.
+    User workaround until fixed: boot with **Shift (or Option) held**
+    → desktop OK, then remove SC2K from the startup mechanism in the
+    guest; SC2K launched by hand works. Next debugging step: repro is
+    deterministic, so ring-trace the heap writes between Finder start
+    and the first bad block header (find who writes the garbage size),
+    then WinUAE-differential that window.
+  - [x] **Lode Runner: arrow keys dead** — RESOLVED 2026-07-17: **not an
+    emulator bug — the game's default controls are the numeric keypad.**
+    Verified end-to-end: (1) a KeyMap probe against the booted System
+    (scratchpad `keymap_probe.cpp`) shows every GUI-injected ADB code
+    lands on the right virtual-key bit in KeyMap $174 — arrows raw
+    $3B-$3E → virtual $7B-$7E and keypad raw $52-$5C → virtual $52-$5C,
+    exactly like a real Apple Keyboard II KMAP (on ADB, old $3B-$3E
+    became modifier codes); (2) disassembling LR's CODE resources (this
+    is *Lode Runner: The Legend Returns*, Presage 1994) shows gameplay
+    polls a GetKeys snapshot against a **binding table in its `pref 200`
+    resource, defaults `56 58 5B 57 59 5C 53 54 55`** = keypad
+    4/6/8/5/7/9/1/2/3 — no $7B-$7E anywhere, so arrows are ignored *by
+    design*, on real hardware too. Play with the keypad (4←  6→  8↑  5↓,
+    7/9 dig) or rebind in the game's options. The GUI keypad entries in
+    `kKeys` were verified correct.
+  - **User verdict 2026-07-17: SimCity 2000 AND Lode Runner now play
+    perfectly** (sound + mouse) at exact 1.9× realtime vs a real LC II
+    — the two former crash/freeze bugs below stay RESOLVED.
   - [x] **Lode Runner launch freeze** — RESOLVED 2026-07-17 (see CHANGELOG
     + POM68K_VENDOR.md § Odd-SP interrupt frames): interrupts accepted
     while SP was ODD (QuickDraw 3-byte/pixel stack temps) pushed a frame
@@ -563,6 +629,59 @@ with an AI loop verified by differential testing:
   - Regression gates: 18 fast CTest green; 5380 IRQ-latch change didn't
     touch the Plus path. Basilisk II study in `docs/BASILISK_ROM_NOTES.md`
     (+ `~/src/macemu` clone) is the ROM-behaviour oracle for O6.9/SANE.
+
+## Phase 3 (Q) — Mac OS 8.1 on a 68040 machine (LC 475 / Quadra 605)
+
+Goal: boot `hdv/MacOS-8.1-boot.vhd` (wrapped + verified 2026-07-17; a
+68030 shows the official "will not work on this model" refusal) on an
+emulated **LC 475/Quadra 605** — chosen because its **68LC040 has no
+FPU** (Mac OS 8.1 officially supports it → the whole FPU/FPSP effort
+drops off the critical path) and its Cuda is a near-twin of our Egret
+HLE. Method = the O1-O5/O6 loop verbatim: WinUAE oracle + differential
+fuzzing (agent-per-slice, fresh-seed re-verify, disputes with manual
+arbitration — the oracle wins unless proven wrong by MC68040UM), every
+milestone gated by a CTest, MAME as the machine reference, the ROM as
+the protocol oracle.
+
+Assets already in-repo (Q0 done 2026-07-17): ROM `docs/1MB ROMs/
+1993-10 - FF7439EE - LC475,575,Quadra 605,...ROM` (checksum verified,
+$067C universal family — BASILISK_ROM_NOTES + the $6A boot-scan
+knowledge carry over); UAE 040 building blocks already vendored in
+`oracle/uae/upstream/` (`cpummu.c` = 040/060 MMU, `softfloat_fpsp.c`,
+gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
+
+- [x] **Q1 — oracle in 68040 mode** (2026-07-17): `oracle_set_model(68040,
+  0)` selects the 68LC040 pairing on the SAME liboracle_uae.so;
+  `OracleState` grew the 040 MMU regs (appended, 030 ABI stable);
+  `m68k_run_mmu040` got the four single-step patches (VENDOR.md § patch
+  8). Gate: **oracle_uae_smoke040 PASSED** (integer, TRAP, MOVE16,
+  3-level translated MOVE with U/M updates, PTESTR→MMUSR, invalid
+  descriptor → format $7 with FA/SSW) + 030 smoke unregressed.
+- [ ] **Q2 — 040 integer core in Moira** (loop): ISA deltas vs 030 —
+  MOVE16, CINV/CPUSH, the format $7 access-error frame (replaces
+  $A/$B), removed 030 instrs (PMOVE...), new trap behaviours. Fuzz via
+  `fuzz040.py` (SST040 = SST030 + 040 regs). Gate: `sst68040` pinned.
+- [ ] **Q3 — 040 MMU** (loop): fixed table format, URP/SRP 3-level walk
+  with U/M descriptor updates, 4K/8K pages, ITT/DTT transparent regs,
+  64-entry ATC, new PTEST/PFLUSH forms, faults via format $7. Reuse
+  `gen030.py` → `gen040.py` real fuzzed tables. Gate: MMU families in
+  sst68040.
+- [ ] **Q4 — no FPU** (68LC040): F-line → unimplemented vector; fuzz
+  that one family. (Full-040 FPU + FPSP = optional later phase.)
+- [ ] **Q5 — machine skeleton**: djMEMC (RAM banks) + IOSB (pseudo-VIA
+  successor) from MAME `macquadra605.cpp`/`djmemc.cpp`/`iosb.cpp`;
+  **Cuda HLE** = light fork of Egret.cpp (same 68HC05 wire protocol);
+  internal video + CLUT (V8Video/Ariel experience applies); SWIM2
+  stubbed (SCSI boot only, like early LC II). Gate: POST passes, gray
+  screen + cursor.
+- [ ] **Q6 — SCSI 53C96**: the one genuinely new peripheral (MAME
+  `ncr53c90.cpp` reference); `ScsiDisk` target reused as-is. Gate:
+  boot blocks read.
+- [ ] **Q7 — Mac OS 8.1 boots**: `q605_trace` (lcii_trace clone: rings,
+  probes, MMU walks). Gate: **`q605_boot_etalon`** (menu-bar/desktop
+  metrics + SCSI count, same shape as lcii_boot_etalon).
+- [ ] **Q8 — polish**: EASC sound, real SWIM2, perf (ATC fast-path
+  budget transposes), GUI machine profile entry.
 
 ## Backlog / known simplifications (each must move to a milestone or be
 documented in DEV.md when its subsystem lands)
