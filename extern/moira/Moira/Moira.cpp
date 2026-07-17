@@ -237,6 +237,8 @@ Moira::reset()
     // POM68K O4 slice 3: reset invalidates the ATC and the MMU restart
     // bookkeeping (MC68030UM § 9.5.2; TC.E is cleared via reg = { })
     for (auto &e : mmuAtcArr) { e.valid = false; e.mru = false; }
+    mmuAtcMruCount = 0;                 // POM68K perf: O(1) LRU counter
+    for (auto &r : mmuAtcLast) r[0] = r[1] = 0;
     mmuState[0] = mmuState[1] = mmuState[2] = 0;
     mmuIdx = mmuIdxDone = 0;
     for (auto &v : mmuAd) v = 0;

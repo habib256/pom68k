@@ -701,6 +701,30 @@ vector contract is unchanged; frame bytes at even SPs are identical),
 and both boot etalons. Machine-level: Lode Runner launches to its
 title screen; the SC2K repro stays crashes=0.
 
+## ATC performance: O(1) pseudo-LRU + last-hit probe (2026-07-17)
+
+`MoiraExecMMU_cpp.h` + `Moira.h`/`Moira.cpp`, motivated by a gprof
+profile showing 38% of LC II machine time inside the two 22-entry ATC
+scans executed on every translated access:
+
+- `mmuAtcTouch` keeps a counter (`mmuAtcMruCount`) equal to the number
+  of set history bits instead of re-scanning all 22 entries for a clear
+  bit; the "all used → clear all, keep current" reset is unchanged.
+  Every mru transition goes through touch or the reset paths, so the
+  counter cannot drift.
+- `mmuAtcLookup` probes `mmuAtcLast[fc][rw]` — the line that satisfied
+  the previous lookup for that function code and direction — before the
+  full scan. The probe performs the identical validity/fc/page checks,
+  the identical write-upgrade invalidation (`e.valid = false` on an
+  unmodified writable page probed for write), and the identical LRU
+  touch, so architectural behaviour (incl. PTEST level-0 searches and
+  replacement order) is preserved; a stale line simply falls through.
+
+Both are exactness-preserving optimizations, confirmed by the sst68030
+gate (3082 pinned WinUAE-differential vectors incl. the mmu/fault
+families) and the boot etalons. Speed: with the V8 bus word fast paths
+and -march=native/LTO, the LC II went from 0.40× to 1.91× realtime.
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)

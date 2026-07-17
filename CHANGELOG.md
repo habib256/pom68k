@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## 2026-07-17 — Performance pass: 0.40× → 1.91× realtime at the Finder
+## (the sound stutter was the emulator falling behind real time)
+
+The audio-clocked pacing needs ≥1× realtime to hold tempo; a gprof
+profile (i7-10700F, headless Finder workload at cache-boost 4) showed
+0.40× with **38% of all time inside two 22-entry ATC scans run on every
+memory access** (`mmuAtcLookup` 25% + `mmuAtcTouch`'s second scan), and
+every 16-bit bus access splitting into two full `read8` decode cascades
+(1.8G calls/10s). Four fixes, semantics strictly preserved:
+
+- **Moira ATC, O(1) pseudo-LRU** (`mmuAtcTouch`): a counter mirrors the
+  number of set history bits, replacing the per-access 22-entry "any
+  clear bit left?" walk. Byte-identical behaviour (every mru transition
+  goes through touch or the resets).
+- **Moira ATC, last-hit probe** (`mmuAtcLookup`): remembers the line
+  that satisfied the previous lookup per (fc, direction) and probes it
+  first — page-local streams check one entry instead of scanning 22.
+  Same checks, same write-upgrade invalidation, same LRU touch; a stale
+  remembered line just falls through to the full scan.
+- **V8Memory word fast paths**: `read16`/`write16` service RAM, ROM and
+  VRAM as single word accesses (side-effect-free regions only — I/O and
+  the overlay keep the sequenced two-byte path); `ramIndex` inlined into
+  the header.
+- **Build: `-march=native` + LTO** by default (`POM68K_NATIVE=ON`; the
+  emulator is built from source on the machine that runs it — pass
+  `-DPOM68K_NATIVE=OFF` for a portable binary).
+
+Result: **4.8× faster** (0.40× → 1.91× realtime, boost 4 included), so
+the DAC-paced sound now has ~2× headroom at the Finder. The full CTest
+suite drops from 316 s to 182 s; 24/24 green including sst68030's 3082
+vectors (the ATC changes are semantics-exact by construction and the
+MMU/PTEST corpus agrees); SC2K and Lode Runner repros unregressed.
+
+Not done (next steps if a heavier workload still starves, in order of
+bang-for-buck): a dedicated machine thread (decouple emulation from the
+vsync'd ImGui loop — the 16-core host runs everything on one core
+today), trimming the per-fetch i-cache overlay cost (~11%), and only
+then a 68k→x86 JIT (weeks of work, and it would obsolete the fuzzed
+Moira interpreter's exactness guarantees — last resort).
+
 ## 2026-07-17 — Lode Runner launch freeze: odd-SP interrupt frames were
 ## corrupt (vendored Moira fix) + sound tempo locked to the host DAC
 

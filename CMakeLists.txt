@@ -12,6 +12,21 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+# ─── Host-tuned optimization (perf pass 2026-07-17) ──────────────────────
+# The LC II at cache-boost 4 needs every cycle the host can give; -march=
+# native + LTO buy ~15-25% on the Moira hot loop. ON by default (POM68K is
+# built from source on the machine that runs it); disable for a portable
+# binary with -DPOM68K_NATIVE=OFF.
+option(POM68K_NATIVE "Optimize for the build host CPU (-march=native + LTO)" ON)
+if(POM68K_NATIVE AND NOT MSVC)
+    add_compile_options(-march=native)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT pom68k_ipo)
+    if(pom68k_ipo)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif()
+endif()
+
 # ─── Optional sanitizer build (POM2/POMIIGS convention) ───────────────────
 set(POM68K_SANITIZE "" CACHE STRING "Build with -fsanitize=<value>. Empty = off.")
 if(POM68K_SANITIZE AND NOT MSVC)

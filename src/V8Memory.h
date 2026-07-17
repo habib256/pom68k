@@ -122,7 +122,20 @@ public:
 
 private:
     void applyRamConfig(uint8_t config);
-    uint32_t ramIndex(uint32_t addr) const;  // 0xFFFFFFFF = unmapped
+    // Byte index into ram_ for a RAM-space address, or $FFFFFFFF when
+    // the address falls in a hole (open bus). Priority mirrors MAME's
+    // install order: $800000 alias, then motherboard window, then SIMM.
+    // Inline (POM68K perf 2026-07-17): 1.4G calls/10s at the Finder.
+    uint32_t ramIndex(uint32_t addr) const {
+        if (overlay_) return 0xFFFFFFFF;
+        if (addr >= 0x800000)                // fixed 2 MB alias (v8.cpp:33-35)
+            return addr & 0x1FFFFF;
+        if (mbMapped_ && addr >= mbLoc_ && addr < mbLoc_ + mbSize_)
+            return addr - mbLoc_;
+        if (simmMapped_ && addr < simmPhys_)
+            return simmOff_ + addr;
+        return 0xFFFFFFFF;
+    }
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     [[noreturn]] void busError() const;
     void viaSync();                          // E-clock stall (v8.cpp:462-483)

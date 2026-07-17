@@ -728,13 +728,17 @@ stopSearch:
 void
 Moira::mmuAtcTouch(int i)
 {
-    mmuAtcArr[i].mru = true;
-
-    int j;
-    for (j = 0; j < MMU_ATC_ENTRIES; j++) if (!mmuAtcArr[j].mru) break;
-    if (j == MMU_ATC_ENTRIES) {
-        for (j = 0; j < MMU_ATC_ENTRIES; j++) mmuAtcArr[j].mru = false;
-        mmuAtcArr[i].mru = true;
+    // POM68K perf: O(1) equivalent of the original two-pass scan.
+    // mmuAtcMruCount always equals the number of set history bits
+    // (transitions happen only here and in the resets), so "no clear
+    // bit left" is a counter test instead of a 22-entry walk.
+    auto &e = mmuAtcArr[i];
+    if (e.mru) return;
+    e.mru = true;
+    if (++mmuAtcMruCount >= MMU_ATC_ENTRIES) {
+        for (auto &x : mmuAtcArr) x.mru = false;
+        e.mru = true;
+        mmuAtcMruCount = 1;
     }
 }
 
@@ -747,6 +751,23 @@ Moira::mmuAtcLookup(u32 addr, u8 fc, bool write)
     const u32 imask = ~mmuPageMask();
     const u32 maddr = addr & imask;
 
+    // POM68K perf: probe the line that satisfied the previous lookup for
+    // this (fc, direction) first — page-local access streams (nearly all
+    // of them) then check one entry instead of scanning 22. The checks,
+    // the write-upgrade invalidation and the LRU touch are the same as
+    // the scan below, so behaviour is identical; a stale remembered line
+    // simply fails the compare and falls through to the full scan.
+    {
+        auto &e = mmuAtcArr[mmuAtcLast[fc & 7][write]];
+        if (e.valid && e.fc == fc && (e.logical & imask) == maddr) {
+            if (!write || e.modified || e.writeProtect || e.busError) {
+                mmuAtcTouch(mmuAtcLast[fc & 7][write]);
+                return mmuAtcLast[fc & 7][write];
+            }
+            e.valid = false;
+        }
+    }
+
     for (int i = 0; i < MMU_ATC_ENTRIES; i++) {
 
         auto &e = mmuAtcArr[i];
@@ -755,6 +776,7 @@ Moira::mmuAtcLookup(u32 addr, u8 fc, bool write)
         if (!write || e.modified || e.writeProtect || e.busError) {
 
             mmuAtcTouch(i);
+            mmuAtcLast[fc & 7][write] = i8(i);
             return i;
         }
         e.valid = false;

@@ -926,6 +926,16 @@ protected:
     };
     static constexpr int MMU_ATC_ENTRIES = 22;
     MmuAtcEntry mmuAtcArr[MMU_ATC_ENTRIES] {};
+    // POM68K perf (2026-07-17): O(1) pseudo-LRU + last-hit probe. The
+    // profile showed 38% of LC II time inside the two 22-entry scans run
+    // on EVERY memory access (mmuAtcLookup + mmuAtcTouch). mruCount
+    // mirrors the number of set history bits (every transition goes
+    // through mmuAtcTouch or the resets); mmuAtcLast[fc][rw] remembers
+    // the line of the previous hit so page-local access streams probe
+    // one entry instead of scanning — semantics and LRU updates are
+    // identical (the probe runs the same checks and the same touch).
+    int mmuAtcMruCount {0};
+    i8  mmuAtcLast[8][2] {};
 
     // Per-instruction restart/fault bookkeeping (WinUAE globals in
     // comments). Values land verbatim in the $A/$B frame internal words.

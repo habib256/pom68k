@@ -286,6 +286,21 @@ with an AI loop verified by differential testing:
   Note: 24-bit mode is implemented by the PMMU — the O4 MMU core is on
   the boot path (confirmed: the ROM's TC=$80F05750 tables run on it).
 
+  **Performance** (2026-07-17: 0.40× → 1.91× realtime at the Finder —
+  ATC O(1) LRU + last-hit probe, V8 word fast paths, native/LTO build;
+  see CHANGELOG). Remaining headroom, in order of bang-for-buck, if a
+  heavier workload (in-game + GUI) still starves the DAC-paced audio:
+  - [ ] dedicated machine thread: run the emulation loop off the vsync'd
+    ImGui thread (input via a queue, framebuffer double-buffered, the
+    audio ring is already SPSC) — the 16-thread host runs everything on
+    one core today, and a slow GPU frame currently steals emulation time.
+  - [ ] trim the per-fetch i-cache overlay (~11%: willFetchInstr virtual
+    call + model per instruction word — could fold into mmuFetchWord
+    behind a flag, or sample every N fetches for the stats).
+  - [ ] 68k→host JIT (LAST resort: weeks of work, and it would bypass
+    the fuzzed interpreter's oracle-exactness — only if the interpreter
+    provably can't reach the target on supported hosts).
+
   **O6 remaining polish** (non-blocking, machine is usable): bare-LC II
   no-FPU path (System should install the SANE F-line handler — verify
   why error 10 escapes it without a 68882; `tools/rominfo` proved the

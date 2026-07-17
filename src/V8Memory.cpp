@@ -100,19 +100,6 @@ void V8Memory::applyRamConfig(uint8_t config) {
     mbSize_ = (config & 0x20) ? 0x200000 : kMbRamSize;
 }
 
-// Byte index into ram_ for a RAM-space address, or $FFFFFFFF when the
-// address falls in a hole (open bus). Priority mirrors MAME's install
-// order: $800000 alias, then motherboard window, then SIMM.
-uint32_t V8Memory::ramIndex(uint32_t addr) const {
-    if (overlay_) return 0xFFFFFFFF;
-    if (addr >= 0x800000)                    // fixed 2 MB alias (v8.cpp:33-35)
-        return addr & 0x1FFFFF;
-    if (mbMapped_ && addr >= mbLoc_ && addr < mbLoc_ + mbSize_)
-        return addr - mbLoc_;
-    if (simmMapped_ && addr < simmPhys_)
-        return simmOff_ + addr;
-    return 0xFFFFFFFF;
-}
 
 void V8Memory::busError() const {
     // Machine-less access (unit tests poking the map): open bus would be
@@ -286,6 +273,23 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
 
 uint16_t V8Memory::read16(uint32_t addr) {
     addr &= 0x80FFFFFF;
+    // POM68K perf (2026-07-17): word fast paths for RAM / ROM / VRAM —
+    // the profile showed every 16-bit access splitting into two full
+    // read8 decode cascades (1.8G calls at the Finder). Side-effect-free
+    // regions only; the overlay case falls through to read8 (whose ROM
+    // read clears the overlay).
+    if (addr < 0xA00000) [[likely]] {                    // RAM space
+        if (!overlay_) {
+            uint32_t i0 = ramIndex(addr), i1 = ramIndex(addr + 1);
+            return uint16_t(((i0 != 0xFFFFFFFF ? ram_[i0] : 0xFF) << 8)
+                          |  (i1 != 0xFFFFFFFF ? ram_[i1] : 0xFF));
+        }
+    } else if (addr >= 0xF40000 && addr < 0xFBFFFF) {    // VRAM window
+        return uint16_t(vram_[addr - 0xF40000] << 8 | vram_[addr - 0xF3FFFF]);
+    } else if (addr >= 0xA00000 && addr < 0xB00000 && !overlay_) {
+        uint32_t o = addr & (kRomSize - 1);              // ROM, mirrored
+        return uint16_t(rom_[o] << 8 | rom_[(o + 1) & (kRomSize - 1)]);
+    }
     // VIA1 reads mirror the byte on both lanes (v8.cpp:434-447)
     if (addr >= 0xF00000 && addr < 0xF02000 && !(addr & 0x80000000)) {
         uint16_t d = viaAccess8(addr, false, 0);
@@ -301,6 +305,22 @@ uint16_t V8Memory::read16(uint32_t addr) {
 
 void V8Memory::write16(uint32_t addr, uint16_t v) {
     addr &= 0x80FFFFFF;
+    // POM68K perf (2026-07-17): word fast paths for RAM / VRAM (see
+    // read16) — side-effect-free regions only.
+    if (addr < 0xA00000) [[likely]] {                    // RAM space
+        if (!overlay_) {
+            uint32_t i0 = ramIndex(addr), i1 = ramIndex(addr + 1);
+            if (i0 != 0xFFFFFFFF) ram_[i0] = uint8_t(v >> 8);
+            if (i1 != 0xFFFFFFFF) ram_[i1] = uint8_t(v);
+            return;
+        }
+        return;                                          // overlay: unmapped
+    }
+    if (addr >= 0xF40000 && addr < 0xFBFFFF) {           // VRAM window
+        vram_[addr - 0xF40000] = uint8_t(v >> 8);
+        vram_[addr - 0xF3FFFF] = uint8_t(v);
+        return;
+    }
     // VIA1 word writes hit the register once per byte lane, low lane
     // first (v8.cpp:449-460 ACCESSING_BITS order)
     if (addr >= 0xF00000 && addr < 0xF02000 && !(addr & 0x80000000)) {
