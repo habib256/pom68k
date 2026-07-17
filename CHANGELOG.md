@@ -1,5 +1,786 @@
 # CHANGELOG
 
+## 2026-07-17 — adaptive cache boost (fixes big-city SimCity crash)
+
+The user's biggest SimCity 2000 city ("black forest monstre") still crashed
+on load at 640×480 — reproduced headless (`scratchpad/loadcity640.cpp`:
+navigates SC2K → Charger ville → SIM VILLES → the save, then wiggles the
+mouse during the redraw). At 512×384 it was fine; the 640×480 redraw is
+~1.6× heavier and overran the fixed boost=2. A fixed boost=6 fixed it but
+slowed the whole emulator (6× more instructions/frame); boost=4 was worse
+than 2 (crash count is non-monotonic — the boost shifts *when* the livelock
+trips).
+
+Fix: `Cpu030` boost is now ADAPTIVE. A normal frame takes few interrupts; a
+heavy per-VBL redraw takes many dozen (the redraw handler re-enters). When
+last frame's IRQ count crosses a threshold, the CPU runs at maxBoost_ (16)
+with ~0.75 s hysteresis, then falls back to the base boost (2). So normal
+play stays fast and only heavy redraws briefly slow down — no crash.
+Verified: black forest monstre loads clean at 640×480; 24/24 CTest green.
+POM68K_CACHE_BOOST still sets the base floor.
+
+## 2026-07-17 — adversarial subsystem audit: 3 correctness fixes
+
+An adversarial multi-agent audit (11 LC II subsystems vs MAME/Basilisk/
+manuals, each finding attacked by two skeptics) surfaced 6 candidates;
+after maintainer verification, 3 applied, 3 rejected. 24/24 CTest green.
+
+- **irqDelay not cleared on reset** (`extern/moira/Moira/Moira.cpp`): the
+  O6.12 SR-write IRQ-recognition delay survived /RESET (reset zeroes ipl/
+  fcl/mmu/fpu but not this new field). Added `irqDelay = 0;`. State
+  hygiene; post-reset IPL=7 masks any observable effect.
+- **SCC IRQ line was latch-high only** (`src/V8Memory.cpp` tick): was
+  `if (scc_.irqAsserted()) sccIrq_ = true;` — one-directional, so a
+  de-asserted SCC could leave a stuck IPL 4. Now `sccIrq_ =
+  scc_.irqAsserted();` (bidirectional; updateIrq() applies it just after).
+  Behaviour-preserving in every currently-reachable state, removes the
+  fragility.
+- **SCC Break/Abort ext-int latch was order-dependent** (`src/Scc8530.cpp`):
+  it latched only when WR15 bit 7 was written after WR1 bit 0, not the
+  reverse. Per the Z8530 UM the request must fire when the last required
+  enable bit is set, order-independent. Added the symmetric WR1-last block.
+
+Rejected: ADB Talk-reg-3 "missing length byte" (FALSE POSITIVE — Basilisk's
+`data[0]=2` is the ADBOp buffer format, not the ADB wire the Egret HLE
+speaks; reg 0 already works without it, so adding it would break ADB init);
+WRITE(10) length-0 → 65536 (FALSE POSITIVE — 16-bit CDB length 0 = 0 blocks
+per SBC, not 65536); MMU hardcoded page mask (harmless — re-masked
+downstream at :782 and oracle-matched, not worth risking the 3082-vector
+sst68030 gate).
+
+## 2026-07-17 — LC II GUI defaults to 640×480
+
+The GUI now boots the LC II at 640×480 (13"/14" RGB) instead of 512×384:
+it's the roomiest built-in mode and some software needs ≥640×400 (Lode
+Runner errors out at 512×384 with "requires a monitor of 640×400 or
+greater", Error #713). `POM68K_MONITOR=512` forces the old mode; the CPU
+window buttons still switch live. Tests keep V8Memory's own 512×384
+default (only the GUI path picks 640). Note: a freshly-selected monitor
+comes up B&W (depth is per-monitor); pick 256 colors in Tableaux de bord
+→ Moniteurs and restart once — the choice then persists via SCSI
+write-back.
+
+## 2026-07-16 — LC II keyboard: arrow keys + numeric keypad
+
+The LC II ADB key table (`main.cpp`) was missing the arrow keys and the
+numeric keypad, so games that steer with the arrows (Lode Runner) got no
+character movement. Added them with the correct ADB raw codes (arrows
+$3B-$3E, keypad $52-$5C; the table stores `code<<1` and sends `code>>1`).
+
+## 2026-07-16 — SimCity 2000 crash fixed: 68030 i-cache throughput model
+
+SC2K crashed in-game with "coprocesseur arithmétique absent" (Line-F).
+Full diagnosis (memory `pom68k-simcity-crash`, TODO § O6): NOT an FPU bug
+and NOT a Moira bug — a WinUAE co-simulation (`scratchpad/cosim.cpp` +
+`dumpstate.cpp` against `oracle_uae`) matched Moira instruction-for-
+instruction over 2M+ steps, and the interrupt exception frame was correct
+too. It's an interrupt-timing LIVELOCK: SC2K's per-VBL screen redraw is a
+QuickDraw blit that lowers IPL just before restoring A5 ($A4B416→$A4B418);
+an interrupt fires in that 1-instruction window, its redraw handler runs
+~a frame, and by the time it returns the next VBL is already pending →
+taken again before A5 is restored → the redraw re-enters with A5 still the
+blit working value ($4FA8) → `jsr (A5+$14AA)` into garbage. Measured: from
+that IRQ, 2M instrs never reach the A5 restore.
+
+Root cause: the real 68030 runs tight loops from its 256-byte on-chip
+instruction cache at ~1 cycle/word, executing far more instructions per
+frame than Moira (no i-cache model) accounts for, so its redraw finishes
+within the frame. We model that throughput: `Cpu030` runs the core `cacheBoost_`× more
+instructions per unit of peripheral time, and `flushTicks()` scales
+elapsed Moira cycles back down so the VBL / VIA timer / ASC cadences stay
+at their real rate (the sound/clock are unaffected — only the CPU does
+more work per frame). Default 2, overridable with **POM68K_CACHE_BOOST**.
+
+The real trigger was found (2026-07-16): the crash needs the MOUSE MOVING
+during the initial map redraw. Moving the mouse makes the System redraw
+the cursor every VBL, which tips the already-heavy redraw over its frame
+budget → the livelock returns (headless repro `scratchpad/navtest.cpp`
+with a mouse "wiggle": 12427 crashes). The throughput model alone wasn't
+enough. The real fix is **Moira's IRQ-recognition delay after a mask-
+lowering SR write** (POM68K_VENDOR.md § O6.12): the 68k doesn't sample
+interrupts until after the instruction following a mask change, which
+guarantees the blit reaches its A5 restore between IRQs. Delay depth 2 +
+cache boost 2 together take the wiggle repro to **0 crashes**; 24/24 CTest
+green (incl. sst68030's 3082 vectors, cpu_smoke, lcii_boot_etalon). Verified: SC2K boots to gameplay and advances jan 1900 → jan
+1901 with no crash (headless nav, `scratchpad/navtest.cpp`), and
+`lcii_boot_etalon` still passes.
+
+A stricter fix — Moira's one-instruction interrupt-recognition delay after
+a mask-lowering SR write (M68000 PRM, which guarantees forward progress) —
+was tried and REVERTED: it perturbed IRQ timing elsewhere and actually
+reintroduced the crash. The throughput model is the shipping fix.
+
+## 2026-07-16 — Selectable resolution (512×384 / 640×480) + per-monitor depth
+
+The LC II built-in V8 video drives two color modes; which one is picked
+by the *monitor sense code* (`montype_`), the ID resistors a real Mac
+reads off its video connector at reset. Exposed it two ways: env
+`POM68K_MONITOR=640` at launch, and live buttons in the CPU window
+(512×384 / 640×480). Switching does a Mac reset (the ROM reads the sense
+at boot only). Window grew to 1320×1040 so 640×480 at 2× fits.
+
+Only these two — 640×870 portrait needs a framebuffer wider than the V8
+provides (870×1024 > the 512 KB VRAM), and nothing larger existed on the
+LC II's built-in video. Larger modes would mean emulating a different
+machine (NuBus video card, later Mac).
+
+Per-monitor depth: a real Mac keeps each display's bit-depth separately,
+but our sPRAM models one shared video block ($58-$5A: depth + mode), so
+booting a second monitor rewrote the first's depth — alternating 512↔640
+turned the 512 back to B&W (found immediately). `setMonitorSense` now
+parks the outgoing monitor's $58-$5A and restores the incoming one's, so
+each resolution keeps its own color choice within a session. Known limit:
+the parked sets aren't persisted to the `.pram` (which holds one block),
+so quitting in 640 B&W means the next launch starts 512 in B&W until you
+re-pick 256 colors — recoverable, and 512 (the default) normally stays
+color across restarts.
+
+## 2026-07-16 — SCSI write-back (persist guest disk writes)
+
+`ScsiDisk::open(path, writeBack)`: with write-back on, every WRITE(6)/
+WRITE(10) is written through to the backing file immediately and flushed
+(no exit-time step to miss if the process is killed) in addition to the
+in-memory image. The GUI (`main.cpp`, both the Plus and LC II loops)
+attaches with write-back ON — the emulated Mac is a daily driver, saves
+made inside it must survive. Tests keep the default (`writeBack=false`,
+read-only) so the reference images (`hdv/boot.vhd`, `GISTPERSO-boot.vhd`,
+`HD20SC.vhd`) are never modified — verified: their mtimes are unchanged
+after a full 24/24 CTest run. If the file can't be opened read-write (or
+a write later fails, e.g. disk full) it warns on stderr and falls back to
+in-memory-only rather than aborting. Direct `image()` pokes (the etalon's
+$6A DDM fixup) still bypass the file, as before. Verified end to end: a
+writable copy's bytes change across a boot and it re-boots cleanly from
+its own modified state.
+
+## 2026-07-16 — LC II color (8 bpp by default) + peripheral-tick batching
+
+- **The Finder ran black & white**: the machine was fine — the ROM
+  video driver exposes 1/2/4/8/16 bpp through Monitors (verified by
+  scripting the ADB mouse through Tableaux de bord → Moniteurs headless)
+  — but the depth defaults to B&W until the user picks a mode, and the
+  choice is only committed to XPRAM at the next Mac restart. XPRAM $58
+  is the built-in-video sPRAM byte: $80 = ROM cold-boot flag (mode 0 =
+  1 bpp), low bits = mode index ($83 = 8 bpp). `Egret::factoryDefaults`
+  now seeds $83, so a fresh PRAM boots straight into 256 colors; an
+  existing `.pram` keeps whatever Monitors last committed.
+- **GUI felt slow**: three causes. (1) The fixed turbo ×8 asked for 8×
+  real time when the core sustains ~1.4× on a free host core — every
+  GUI frame blocked ~100 ms of emulation and the UI (and mouse) dropped
+  to ~10 fps. The LC II loop now time-budgets turbo: one frame slice
+  always (real time at vsync), more only while <10 ms of the frame
+  budget is spent. (2) `Cpu030::sync` ran the full `V8Memory::tick`
+  sweep (VIA + Egret + ASC + SWIM + SCC + IRQ resolve) on every bus
+  access; peripherals only need to be current at a device-space access,
+  so ticks now batch up to 128 cycles (8 µs) and `V8Memory` flushes
+  before any I/O register touch — +17 % core throughput (18.4 →
+  21.5 MHz emulated, CPU time). (3) Not the emulator: the host was
+  saturated by stale test processes from earlier sessions.
+- NB: SCSI writes remain in-memory only (`ScsiDisk`) — Finder/desktop
+  changes and the Monitors 'scrn' resource are lost when the emulator
+  exits; only XPRAM (the `.pram` file) persists. Write-back is backlog.
+
+## 2026-07-16 — LC II GUI showed a black screen (texture alpha)
+
+The V8 machine booted fine (etalon green, headless framebuffer decode
+normal) but the GUI stayed black: `V8Video::decode()` packs `00RRGGBB`
+(alpha byte 0), and ImGui renders textures with alpha blending enabled,
+so the whole screen texture drew fully transparent over the dark window
+background. The Plus path never hit this because `MacVideo` emits
+`FF000000`/`FFFFFFFF`. Fix in `main.cpp` only (the decode contract and
+its pinned tests keep `00RRGGBB`): force `A=$FF` on each pixel before
+the `GL_BGRA` upload.
+
+## 2026-07-16 — review fixes (8-angle bug hunt) + UI: mouse capture, drag fix, machine menu
+
+Confirmed findings from the multi-angle review of the pending O6 work,
+all fixed and re-gated (24/24 CTest):
+
+- **`read16` byte order was compiler-dependent** (`V8Memory.cpp`,
+  `MacMemory.cpp`): the two side-effecting `read8` calls were unsequenced
+  operands of `|` — a right-first compiler would byte-swap every 16-bit
+  SCSI pseudo-DMA blind transfer (silent disk corruption on e.g. the
+  planned WASM/clang target). Now two sequenced statements.
+- **VIA1 port-B input register**: `setInB` replaced the whole register
+  with only the XCVR bit, so every other input pin read 0 instead of the
+  6522 pull-up 1 (incl. the ROM's legacy RTC-probe lines PB0-PB2). Now
+  `$C7 | xcvr<<3`. NB pull-ups must NOT extend to PB4/PB5: those are
+  host-driven Egret handshake lines and the HLE is edge-triggered —
+  modeling them pulled-up while DDRB is still 0 at reset reads as a
+  phantom session rise and wedges the transport (found the hard way:
+  black-screen etalon).
+- **SCC TxIP was latch-on-enable**: a real 8530 sets Tx-Int-Pending when
+  the buffer BECOMES empty, not because Tx IE is enabled over a
+  never-filled buffer — the old model fired a spurious level-2 on the
+  Mac Plus for any app arming WR1 bit 1. Now edge-triggered via a
+  became-empty event, consumed by Reset Tx Int Pending.
+- **SCC Break/Abort re-latch was a free-running ~7.8 kHz timer**: any
+  LC II software arming WR15 bit 7 + MIE would have received a perpetual
+  interrupt storm. Now event-driven — each Reset Ext/Status the driver
+  issues re-arms a ~130 µs countdown (ties the abort stream to actual
+  servicing, which is all the LAP retry rundown needs); an
+  armed-but-unserviced channel latches exactly once. Both abort paths
+  now also require WR1 bit 0 (per-channel Ext Int Enable), like the DCD
+  path. `scc_ext_test` extended to pin all of this (18 checks).
+- **Audio silence gate was DC-blind** (`MacAudioHost.h`): an underrun
+  ASC FIFO repeats its stale byte (MAME-faithful — the core is correct),
+  a full-scale DC stream the old `peak < 0.01` gate happily pushed into
+  the ring from power-on. Gate is now on min/max span (AC amplitude).
+- **`localTalkWatchdog` fired silently**: it pokes guest RAM on a
+  fingerprint pinned to one AppleTalk version's globals — now logs to
+  stderr when it releases the mutex.
+- **`lcii_trace` "stopped" flag was `(SR & 0)`** — constant false; the
+  one diagnostic separating a STOP-parked CPU from a spin loop never
+  reported. Added `Moira::isStopped()` (vendored, POM68K_VENDOR.md).
+- CLAUDE.md gate count corrected (24, not 22).
+
+UI (user request): the **Delete key toggles hard mouse capture** (GLFW
+disabled cursor, raw deltas, ImGui mouse off); the emulated screen is
+now an InvisibleButton, so a **drag started on the Mac screen never
+moves the ImGui window** (title bar still does) and keeps feeding the
+Mac after the pointer leaves the item — Finder drag-and-drop works; a
+**main-menu-bar "Machine" menu switches between the Mac Plus and
+Mac LC II profiles** (relaunches the process on the other ROM, PRAM
+saved first; entries grey out when the ROM is absent). Shared
+`ScreenInput` helper + one key table remain a TODO cleanup.
+
+## 2026-07-16 — O6.11 RESOLVED: GISTPERSO boots to the Finder — Egret XPRAM protocol fix makes AppleTalk genuinely inactive
+
+The clean fix option (a) landed: AppleTalk is now **inactive at boot**, so
+`.MPP` never brings up LocalTalk and GISTPERSO's System 7.5 boots to the
+Finder desktop (menu bar + mounted volume, screenshot-verified; the
+downstream $8009372A wedge is gone with it — it was fallout of the
+watchdog's crude half-initialised give-up, which no longer triggers).
+
+**Root cause — an Egret HLE protocol divergence, not AppleTalk itself.**
+Where classic Mac OS keeps the flag (primary sources: Apple's leaked
+System 7.1 "supermario" tree; verified against this System's own `lmgr`
+disassembly):
+- "AppleTalk active" = classic-PRAM **SPConfig** byte, low nibble =
+  port B use: 1 = useATalk, 2 = useAsync (Patches Release Notes radar
+  #1032330; `BeforePatches.a` sets `emAppleTalkInactiveOnBoot` from it).
+  On Egret machines SysParam bytes 0-15 live at **XPRAM $10-$1F** (so
+  SPConfig = XPRAM $13, Basilisk's default $22 = inactive), bytes 16-19
+  at $08-$0B.
+- XPRAM `$E0-$E3` (`LAPMgrEqu.a: ATalkPRAM`) is only the **connection
+  selector** (low byte = 'atlk' resource id, 0 = built-in LocalTalk); a
+  bad id **falls back to built-in** (`NetBootlmgr.a InstallE`), so
+  Basilisk's `$00F1000A` never disabled anything — dropped, zeros now.
+- AppleTalk 57.x self-heals SPConfig 0/$F → 1 (= active!). That is what
+  fired here: `lmgr` found $1FB=$FF and wrote $F1 → PortBUse=1 → the LAP.
+
+Why $1FB was $FF: the ROM's SysParam restore never completed, because
+**three Egret XPRAM wire-protocol behaviours were wrong** (pinned from
+the ROM's own drivers: sender $40A0C5CC/$40A1557A, transaction engine
+$40A14912, 24-bit reader $A4A33C):
+- **ReadXPram $02 and GetPram $07 are byte STREAMS with no length on the
+  wire** — [1,2,1,addr] / [1,7,addrHi,addrLo]; the ROM's 'NuMc' check
+  reads 4 bytes, the SysParam restore reads 16 (at $10 → $1F8!) then 4
+  through ONE GetPram each, the boot-flag read takes a single byte, all
+  with identical commands. Egret now streams 32 bytes.
+- **The HOST terminates a stream** by dropping SYS_SESSION after its
+  count, then waits for XCVR_SESSION release ($40A149C4, $A4A3B4-BC).
+  `Egret::portBChanged` now aborts the reply and releases XCVR on a
+  session drop during RESP_SEND. (Old 1-byte replies only worked because
+  XCVR happened to drop with the single byte.)
+- **WriteXPram $08 existed only on the wire** ([1,8,1,addr,data…], length
+  = the data) — unhandled, it was ack-swallowed, so the ROM's 'NuMc'
+  signature write never stuck and **every boot re-ran the cold-PRAM
+  XPRAM re-init, twice** (~160M cycles: WarmStart now at 170M vs 330M).
+
+Chain after the fix: 'NuMc' validates → warm-PRAM path → SysParam block
+restored ($1F8 = A8 00 00 **22** CC 0A CC 0A …) → SPConfig port B nibble
+= 2 (async) → `lmgr` LInit sees AppleTalk inactive → `.MPP` never opens
+LocalTalk (0 SCC WR15 arming, 0 level-4 IRQs the whole boot). The
+Chooser can turn AppleTalk back on (writes SPConfig=1 to XPRAM $13,
+battery-persisted) — that path re-enters the O6.10/O6.11 SCC + watchdog
+machinery, which stays as the fallback.
+
+Correction to the 2026-07-16 entry below: GISTPERSO's System (F1-7.5,
+French System 7.5) **does** carry `ltlk` 0-7 + `atlk` 1/3 + `lmgr` 0 —
+the LAP code at $A5F4C-$A73A4 is `ltlk` 0 itself (resource-offset match
+on the `$63e` mutex spin at +$5F4). The earlier "no ltlk exists" claim
+came from runtime `GetResource` probes that ran before the System's
+resource map was current.
+
+Gates: `egret_test` extended (stream reads, host-terminated session,
+WriteXPram round-trip); full suite green incl. `lcii_boot_etalon`.
+Dev tooling: `lcii_trace` gained `TRAJ_AT` (retargetable jump-trajectory
+dump), `WATCH_SP` (SysParam/PortBUse write watch), `WATCH_XPTRAP`
+(_ReadXPRam/_WriteXPRam trap log).
+
+## 2026-07-16 — O6.11: LocalTalk LAP — SCC abort stream + HLE watchdog
+
+GISTPERSO's AppleTalk-active System runs the built-in `.MPP` LocalTalk LAP
+(no `ltlk` ADEV exists in it — verified by disk scan and by every runtime
+`GetResource('ltlk',0)` returning null; Basilisk's ltlk-resource patch is
+therefore inapplicable, and its XPRAM `$E0-$E3` disable had no effect
+because this System does not gate LocalTalk on those bytes). The LAP arms
+an SDLC transaction on the SCC and its caller busy-waits at RAM `$A6540`
+on a driver mutex (`$63e`) for a completion that never arrives. Two
+changes, the first a real hardware fix, the second an HLE aid:
+
+- **`Scc8530` streams the standing Break/Abort** (`Scc8530::tick`, wired
+  into `V8Memory::tick`). Traced state: WR9 MIE set, WR15(B) Break/Abort
+  IE armed, but a single latch — the driver services one abort, resets
+  ext/status (clearing it), and waits for the next. On an open LocalTalk
+  line the SDLC receiver keeps detecting aborts, so once IE+MIE are armed
+  the ext/status interrupt must RE-present; the tick re-latches it every
+  ~2000 cycles. This is correct 8530 behaviour and now delivers a stream
+  of level-4 SCC interrupts (verified: 20+ taken vs 4-then-silent
+  before); `scc_ext_test` green, Plus mouse path (`input_etalon`) green.
+- **`V8Memory::localTalkWatchdog`** (HLE, `POM68K_NO_LTALK_WD` disables).
+  The abort stream is necessary but not sufficient: the LAP completion is
+  woven through the SCC ISR (which only resets the channel, ROM $A6C8E)
+  and a Time-Manager timeout — three subsystems. Rather than emulate all
+  of it, the watchdog recognises the wedged transaction (the LAP mutex,
+  at the AppleTalk globals `*(*(ExpandMem)+$70)+$63e`, held ~0.5 s while
+  the abort stream runs) and releases the mutex byte the caller spins on,
+  so its retry loop runs down and `.MPP` moves on. This clears `$A6540`
+  (dominant hot PC 100M→ gone; the LAP now only retries ~19×).
+
+**Status: this advances GISTPERSO past the LocalTalk LAP but NOT to the
+Finder.** Boot proceeds into 32-bit-mode System code and wedges again at
+a new spot ($8009372A, a tight loop scanning unmapped memory — a
+different subsystem, A2 base $B11B8 vs the LAP's $96AC8). The crude LAP
+"give up" likely leaves AppleTalk half-initialised, so a downstream scan
+runs off the end of a structure. Reaching the Finder needs either a
+clean "AppleTalk inactive" (its System resists the XPRAM route) or real
+LocalTalk/Time-Manager completion — tracked in TODO § O6.11. The
+24 CTest gates stay green; boot.vhd (no AppleTalk) is unaffected (the
+watchdog never arms without Break/Abort IE).
+
+## 2026-07-15 — O6.9 resolved: GISTPERSO's vector-2 storm — RTE honors a cleared SSW.DF
+
+- **The 6.8M-deep vector-2 storm was NOT the pipe-stage words.** The
+  RAM routine at $1313E/$1315E is Mac OS's slot-probe recovery; its
+  reads at ($e,A7)/($a,A7) sit above a pushed D0, so they are the
+  **SSW** and the **format nibble**, not pipe stage B. Protocol
+  (decoded with the new `lcii_trace --dasm`): probe `move.b (A1),D0`
+  on $FCFFFFFF; on the $B bus-fault frame, RTE **with DF set** = retry
+  the data cycle (budget 64); then `bclr #0` on the stacked SSW high
+  byte (= clear DF) + RTE = "cycle done, complete the instruction with
+  the frame's data input buffer". Moira's $B RTE discarded the frame
+  and re-ran the instruction unconditionally → re-fault forever.
+- **Fix (vendored Moira, POM68K_VENDOR.md § RTE $B honors a
+  software-cleared SSW.DF)**: the RTE pops now capture SSW / fault
+  address / data input buffer; the bit-9 "frame carried DF" marker
+  (WinUAE encoding, already stacked by `mmuPageFault`) with bit 8
+  cleared arms a one-shot latch that `mmuRead`/`mmuWrite` consume when
+  the restarted instruction re-issues the exact faulted access: reads
+  return the data input buffer, writes are skipped. The mode-5 WinUAE
+  oracle zero-fills the pipe and retries *inside* its RTE step, so it
+  cannot testify byte-for-byte — pinned instead by `berr030_test` § 5
+  (the exact Mac probe pattern: retry once with DF set, then DF-cleared
+  continuation). Result: 520 bus errors (4 probes × 64 retries × 2
+  passes — the designed cost) instead of millions; boot proceeds to
+  the French System 7 « Bienvenue » screen.
+- **Storm gone, boot now reaches the graphical « Bienvenue » (Welcome)
+  splash with progress bar** (screenshot; ~170 s of Mac time, VBL and
+  Time Manager ticking, 856 SCSI selections). This is the O6.9 fix: the
+  reported bug — GISTPERSO dying in a vector-2 storm — is resolved.
+- **Beyond the storm: AppleTalk/LocalTalk (new, O6.11).** GISTPERSO's
+  System has AppleTalk active, so it opens `.MPP` and drives the SCC at
+  $50F04000. Two things were done here, and the exact state is worth
+  recording precisely:
+  - The V8 `Scc8530` replaces the earlier read-only SCC stub, and models
+    an **open (peer-less) LocalTalk line**: RR0 carries a standing
+    Break/Abort (bit 7), the correct hardware state. This is what moved
+    the hang forward from the carrier-sense wait ($A5B28) to the
+    transmit wait ($A6540) — the driver reads RR0 in *polled* mode and
+    branches on the new value.
+  - XPRAM $E0-$E3 = $00/$F1/$00/$0A ("network ≠ LocalTalk", Basilisk II
+    `emul_op.cpp:129-144`) in `Egret::factoryDefaults()`.
+  - SCC ext/status + Tx-Buffer-Empty interrupts were added and gated
+    (`scc_ext_test`) — correct 8530 behaviour — **but the LC II drives
+    the SCC purely polled: WR9 master-int-enable is never set, so no SCC
+    interrupt is delivered.** The remaining hang ($A6540) is a `.MPP`
+    transaction whose completion (`jmp ($634)` → clear the $63E mutex)
+    is never reached; it is a Time-Manager-timeout / LocalTalk SDLC
+    frame-completion path, not an interrupt. Fully modelling it needs
+    LocalTalk SDLC transmit emulation (or Basilisk-style `.MPP` HLE) —
+    there is no differential oracle for LocalTalk, so it is scoped as
+    O6.11 rather than guessed. See TODO § O6.11.
+
+## 2026-07-15 — Basilisk II knowledge applied: rominfo, XPRAM defaults
+
+- **`tools/rominfo`** (new dev tool, no emulator core): Mac ROM
+  introspection with the parsers pinned in the Basilisk II study —
+  header + verified checksum, resource map, the compressed A-trap →
+  ROM-offset table (`--trap A053` = breakpoint fodder for lcii_trace),
+  UniversalInfo records, and the ROM+$94A decoder→low-mem pair table.
+  Run on the real LC II ROM it settled two questions (pinned in
+  `docs/BASILISK_ROM_NOTES.md` §8): the ROM **does carry a no-FPU SANE**
+  (two `PACK 4` resources) — the O6 "error 10 without 68882" polish item
+  is a selection problem, not a missing SANE; and the DecoderInfo
+  hardware bases confirm the V8 map byte-for-byte (VIA $50F00000,
+  pseudo-VIA $50F26000 → $CEC with real-VIA2 decoder[11] empty, SCSI
+  triplet, ASC, SWIM).
+- **`Egret::factoryDefaults()`**: when no battery file carries the
+  system's `'NuMc'` XPRAM signature, seed Basilisk II's known-good
+  defaults (DynWait, standard PRAM block, OSDefault=MacOS) instead of
+  an all-zero PRAM; $8A intentionally not forced (V8 handles the real
+  24-bit startup). Wired into the GUI's PRAM load; verified equivalent
+  boot to 800M cycles (overlay, WarmStart, SCSI scan identical).
+- `lcii_trace` now logs the **WarmStart `'WLSC'` milestone at $CFC**
+  (the ROM's own "low memory is valid" marker, what Basilisk gates all
+  host callbacks on) — brackets any fault as before/after low-mem
+  validity; fires at ~332M cycles on the boot.vhd path.
+
+## 2026-07-15 — O6: **Mac LC II boots to the Finder desktop**
+
+- **POM68K boots a System disk (`hdv/boot.vhd`, volume "MacPack") all
+  the way to the Finder** on the emulated V8 machine: menu bar, an open
+  window of folders, desktop icons and Trash, "1.1 GB in disk / 223.3 MB
+  available" — the whole classic Mac OS Toolbox running on the O6
+  hardware (68030+PMMU, Egret, V8 RAM/video, ASC, SCSI). O6.8 gated by
+  `tests/lcii_boot_etalon.cpp` (Finder signature + SCSI command count;
+  soft-skips without the ROM/image; adds the $6A DDM entry in memory).
+- The user's own disk `hdv/GISTPERSO.vhd` (wrapped bootable) *starts*
+  booting — driver, partition map, blessed System Folder, System files
+  loaded — but stalls in an exception storm at RAM $13160 (its System
+  trips something boot.vhd's doesn't). Tracked as O6.9.
+- **Two final gaps closed after the ?-icon stage:**
+  1. **SCSI driver load** — the LC II ROM's boot scan ($A07264) only
+     loads the driver whose DDM entry `ddType` is **$6A**; a bare-HFS or
+     type-$0001-only image is silently rejected and the ROM keeps
+     blinking the ?. Added `tools/wrap_hfs.py` to wrap a bare HFS volume
+     into an Apple-partitioned disk with a DDM $6A driver entry, and
+     modeled the **5380 IRQ latch** (BSR bit 4 sets on a DMA-phase change
+     — enterStatus/MsgIn/BusFree; cleared by the RPI register) that the
+     SCSI Manager polls to end a blind transfer. The Plus path is
+     unchanged (its ROM ignores the latch), all 22 gates stay green.
+  2. **68882 default-on** — the target software issues FPU instructions
+     and a bare LC II faults with "system error 10" (Line-F). The LC II's
+     68882 is a PDS option; POM68K attaches it by default (the O5 core),
+     `POM68K_NOFPU` models a bare machine. This was the last thing
+     between a rendered system-error dialog and the live Finder.
+
+## 2026-07-15 — O6: the LC II ROM boots to the blinking-? screen
+
+- **Milestone**: the real, unpatched LC II ROM ($35C28F5F) now completes
+  its entire ROM phase on the emulated V8 machine — POST, boot chime,
+  32-bit switch through the PMMU, low-memory + trap-table setup,
+  QuickDraw init — and paints the gray desktop with the mouse cursor
+  and the blinking-? boot icon while scanning SCSI (hundreds of
+  selections, READ(6) traffic against the attached .vhd).
+- **The blocker was Egret command $02 = ReadXPram(count, offset)** — an
+  Egret-specific command absent from the Cuda documentation. The ROM's
+  `_ReadXPRam` ($A0CC64) loads the boot-mode flag byte from XPRAM $8A
+  into low-mem $1EFC; with no reply data, $1EFC kept the $FFFFFFFF
+  low-memory fill, its bit 4 selected _InitZone on a diagnostic
+  zone-at-zero pblock ($A00518), the zone-header clear wiped exception
+  vectors 0-12, and the very next OS trap ($A02D) dispatched through a
+  zeroed vector 10 into address 0. Found by walking the chain backwards
+  with lcii_trace (vector watch → InitZone pblock → $1EFC → _ReadXPRam
+  → the unanswered Egret exchange). Independently confirmed by the
+  Basilisk II study (docs/BASILISK_ROM_NOTES.md): Basilisk stubs the
+  same service (`_ClkNoMem`) and forces XPRAM $8A itself.
+- lcii_trace grew the debugging instruments that made this tractable:
+  --ring-from instruction rings with register columns, --probe register
+  dumps at a pc, --hot-from tail histograms, automatic MMU table walks
+  and root-table dumps on unexpected faults, low-mem watches, PPM
+  screenshots, PRAM persistence.
+
+## 2026-07-15 — O6 (LC II machine): first six slices
+
+- **New machine core**: `V8Memory` (address map masked $80FFFFFF, RAM
+  config register with the fixed $800000 2 MB alias, overlay cleared by
+  any $A00000 read, bus errors on unmapped I/O — the ROM's AddrMapFlags
+  probe reproduces the real-hardware $773F), `PseudoVia`, `Cpu030`,
+  `Egret` + `AdbBus`, `AscV8`, `V8Video` + `Ariel`, SCSI pseudo-DMA
+  windows over the Plus `Ncr5380`, SWIM1 shim over the Plus `Iwm`.
+  Six new CTest gates (20 total green).
+- **Moira vendored patches driven by the real ROM** (all documented in
+  POM68K_VENDOR.md): external `extBusError()` producing exact $A/$B
+  frames; RTE of format $A; **prefetch-pipe carry across PMOVE to
+  TC/CRP/SRP** — the ROM enables the MMU with `pmove tc; nop; bne;
+  jmp (A5)` and those three pipe words must execute under the
+  pre-switch mapping (start-of-instruction refetch read RAM garbage and
+  sank the boot into the POST debug console); **POLL_IPL at mode-5
+  instruction boundaries** — the ROM's TimeDBRA calibration parks in a
+  data-access-free `dbra` loop waiting for a VIA1 T2 level-1 interrupt,
+  and without per-instruction IPL sampling the interrupt landed after
+  the loop timed out, double-storing a result and derailing the table-
+  driven dispatch. Neither divergence is visible to single-instruction
+  differential fuzzing — machine-level etalons are the only net that
+  catches this class.
+- **Egret wire protocol decoded from the ROM itself** (no public doc):
+  replies are `[sync, status, status, cmdEcho, data…]`, XCVR_SESSION
+  drops WITH the last byte, next-byte trigger is the VIA_FULL falling
+  edge, PRAM addresses are 16-bit, periodic TIMER packets (first one
+  after reset is a 10-byte boot heartbeat, later ticks 3 bytes), and an
+  unacknowledged Egret-initiated packet must be retracted or the ROM's
+  bus-quiet waits deadlock. Pinned in `src/Egret.cpp` comments +
+  `egret_test`.
+
+## 2026-07-15 — O5 follow-ups: 68882 timing + FRESTORE frame acceptance
+
+- **FPU instruction timing** replaces the `CYCLES_68020(6/20)`
+  placeholders in `extern/moira/Moira/MoiraExecFPU_cpp.h` with the
+  MC68881/MC68882UM Section 8 figures (68882 column), kept in a single
+  table/section: Table 8-3 per-opmode totals + per-format spread +
+  FMOVE-out row + FMOVECR, Table 8-6 control/FMOVEM (cache case, +2
+  MC68882 footnote), Table 8-7 conditionals, Table 8-8 FSAVE/FRESTORE
+  per frame. EA cycles reuse the integer `cp` mechanism unchanged
+  (`computeEA` accumulates, `CYCLES_68020` adds); 68000/68010 timing
+  untouched. **Why**: cycles are advisory in Phase 2 (SST030 `length`
+  is not compared) but `emuCycles` drives event ordering — a 570-cycle
+  FTWOTOX billed as 20 would skew every interrupt/VBL interleave on the
+  future LC II. Two exact timing smokes in `fpu_sanity` (FADD.X 56,
+  FMOVECR 32).
+- **FSAVE BUSY frames: decided, not implemented** — WinUAE's 6888x
+  support never generates them (no mid-instruction save window in its
+  coprocessor model) and the oracle is the convergence target, so FSAVE
+  stays NULL/IDLE-only (documented in `execFSave` +
+  POM68K_VENDOR.md § FPU).
+- **FRESTORE accepts every documented frame exactly like WinUAE**
+  (`fpuop_restore`, fpp.c:2593-2812): NULL $00, 68881 IDLE $1F18,
+  68882 IDLE $1F38 (BIU bit 27 clear re-arms a pending exception),
+  BUSY $1FB4/$1FD4 skipped, **and the $41 68040 version-hack frames**
+  (fpp.c:2799: active because the oracle runs
+  `fpu_no_unimplemented = false` — $41 idle/unimp/busy are accepted or
+  skipped, $40 and everything else is a format error, vector 14).
+  **Why the hack is replicated**: oracle wins over spec; MC68882UM § 6
+  knows nothing of it, but fuzzed $41 frames hit it in WinUAE.
+- `oracle/fuzz/gen030.py` plants a well-formed frame image at ~60 % of
+  FRESTORE operand addresses (all matrix rows, plausible IDLE
+  internals, CU_SAVEPC kept off $FE so WinUAE's unimplemented
+  68040-busy resume never triggers). Fresh-seed verify (29/31, n=200,
+  fpu × off/identity, WinUAE-solo): **800/800 at first replay**,
+  93 FRESTOREs covering the whole matrix. Gates unchanged: ctest
+  15/15, sst68030 2 082/2 082, sst68000 1 000 058/1 000 058.
+  Still open from the O5 list: FMOVEM indirect-EA read order.
+- **Post-retirement repin — gate now 3 082/3 082** (12 corpus files):
+  the duo/solo split merged into the standard names (`fpu_off` 1 099,
+  `fpu_identity` 732 — duo seeds 1/7 + solo 11/17 + frame-planted
+  29/31), and `fpu_tt` grew 11 → **211** with the first full
+  FPU-through-translation solo cell (seed 41, 200/200 on first
+  replay — the O5 fault-class fixes hold under `tt` too).
+
+## 2026-07-15 — Musashi oracle retired: the loop is WinUAE-solo
+
+- The second oracle (`oracle/musashi/`, MAME m68kmmu on kstenerud
+  Musashi 4.60) is **deleted**, along with its build dir and every
+  loop/fuzzer reference. **Why**: across all arbitrations D1-D22 it won
+  **zero** rulings — WinUAE (+ manual) took every contested call; its
+  fault model is architecturally divergent (D8/D9: faulted instructions
+  run to completion, zero-filled $A/$B frames) and blind to 68030
+  address errors (D11); its 6888x manages ~13 % agreement (D18-D20)
+  and cannot testify on FSAVE/FRESTORE, packed decimal, FDBcc/FTRAPcc
+  or FMOVEM-fp (D22). Patching it to each ruling cost more than its
+  testimony was worth — it was no longer up to standard.
+- The differential loop becomes **WinUAE-solo + manual arbitration**:
+  solo cells mean "the oracle's word is law"; Moira-vs-oracle disputes
+  are settled by MC68030UM / MC68881-882UM readings under the standing
+  oracle-wins-over-spec policy (real-hardware traces welcome). Ruling
+  appended as `oracle/fuzz/disputes/NOTES.md § Musashi retired`
+  (D1-D22 history untouched).
+- `loop.sh` now builds one oracle and fuzzes a single grid
+  (`{core,mmu,random,fpu} × {off,identity,tt}` + `fault ×
+  {identity,tt}`) into the standard `${family}_${mmu}.json` names; the
+  duo/solo corpus split (`fpusolo_*`) merges away on the next repin.
+  `fuzz030.py` keeps the generic `--b` slot for a future second oracle
+  but drops `ruled_for_a` (standing-ruling auto-arbitration only made
+  sense against a known-deficient B). Pinned corpora untouched: ctest
+  15/15, sst68030 2 082/2 082, sst68000 1 000 058/1 000 058.
+
+## 2026-07-15 — O5 slice 2: 68882 FPU execution in Moira
+
+- **Moira executes the full MC68882 instruction set** (the LC II PDS
+  FPU), backed by a new vendored `extern/softfloat/` (SoftFloat-2a +
+  Previous/WinUAE FPSP transcendentals, copied from the oracle vendor
+  tree — GPLv2+, linked as a separate static lib so Moira stays MIT).
+  **Why this softfloat**: it is the exact arithmetic the primary oracle
+  (WinUAE) runs, and the oracle wins disputes by project policy — so
+  numerical convergence with the differential corpus holds by
+  construction. Semantics ported from WinUAE `fpp.c`/`fpp_softfloat.c`
+  6888x branches with line citations (constant-ROM garbage entries,
+  alias opmodes, packed-decimal k-factor quirks, the FPIAR
+  only-when-enabled economy, the 68882 NULL-frame word `$00380000`, the
+  68030-build FSAVE that *skips* the internal longs — all oracle-exact
+  on purpose).
+- Attach/detach follows the CPU-model mechanism: `setFPUModel()`
+  rebuilds the jump table; `FPUModel::NONE` (default) keeps it
+  byte-identical to stock Moira. **Nothing moved on the gates**:
+  sst68030 1 040/1 040 (FPU-less corpus), sst68000
+  1 000 058/1 000 058, Mac Plus etalons green.
+- `tests/sst68030.cpp` learned the SST030 FP fields (`fp0`-`fp7` as
+  3×u32 raw words — fixed contract with the fuzzer — plus
+  `fpcr/fpsr/fpiar`) and attaches the 68882 per vector. New gate
+  `fpu_sanity` (hand-computed FMOVECR pi, 2+2, 1/0=+inf DZ,
+  sqrt(-1)=NaN OPERR, FCMP/FScc orderings, FMOVEM raw image, packed
+  1.0, FPCR roundtrip, detached F-line) — ctest now 15/15. The first
+  parallel-generated FPU corpus replays 41/41.
+- Known-incomplete for the loop (documented in POM68K_VENDOR.md § FPU):
+  FSAVE BUSY frames, FPU timing, FMOVEM indirect-EA read order.
+- **Same-day solo-corpus convergence** (WinUAE-solo FPU corpus, 700
+  vectors, 617→700 after three fixes; duo corpora 41/41 + 90/90 and all
+  hard gates unchanged): (1) state-restore convention — loading FPU
+  state through the setters leaves the FPU non-null, so a subsequent
+  FSAVE emits the IDLE frame like the oracle glue's forced
+  `fpu_state = 1`; (2) ruling **D21** — FRESTORE bad-frame format error
+  (vector 14) stacks the PC past all consumed words (WinUAE
+  `m68k_getpc()`), not Moira's generic `reg.pc - 2`; (3)
+  post-instruction FP traps stack the **format $3** floating-point
+  frame (next PC + operand fp_ea, newcpu_common.c:1616) instead of a
+  format $0 stub.
+- **Fresh-seed re-verify (seeds 17/19) closed two FPU-through-MMU fault
+  classes**: FMOVEM FP-block transfers are *unlogged* with integer-MOVEM
+  bookkeeping (MOVEM1/FMOVEM flags, state[0] long counter, fmovem_store
+  in the $B frame's padding slots — WinUAE uses the non-state accessors
+  there, fpp.c:2810/2875), and FPU (An)± operands arm *plain* mmufixups
+  (register restored on a fault, status byte 0 — bit 7 of
+  `mmuFixupReg[]`). Solo seeds 11/17/19/23: 700/700, 211/211, 100/100,
+  100/100; full ctest 15/15.
+- **O5 closed — gate re-pinned at 2 082/2 082** (14 corpus files): duo
+  `fpu_off` 99 (seeds 1/7), `fpu_identity` 32 (1/7), `fpu_tt` 11 (13),
+  plus WinUAE-solo `fpusolo_off` 600 / `fpusolo_identity` 300 (seeds
+  11/17) under **ruling D22** — the slice-1 solo proposals
+  (FSAVE/FRESTORE frames, packed decimal, FDBcc/FTRAPcc, FMOVEM-fp)
+  promoted to a pinned solo class, same status as the D9 fault family.
+  **Why solo**: Musashi's 6888x cannot testify on those classes (~13 %
+  duo agreement, D18-D20); every future Musashi convergence patch grows
+  the duo side and shrinks the solo residue. `loop.sh` now fuzzes fpu
+  in the duo grid (off/identity/tt) + solo cells; the pending dir is
+  retired.
+
+## 2026-07-15 — O4 slice 4: integer-family arbitration (O4 complete)
+
+- The last integer disagreements between the two 68030 oracles were
+  swept (3 000 duo states → 88 disputes), categorized by opcode, probed
+  case-by-case, and arbitrated: **WinUAE won every ruling** (D11-D17 +
+  the D6-remainder, `oracle/fuzz/disputes/NOTES.md` § slice 4) — its
+  undefined-flag tables in `newcpu_common.c` are hardware-verified.
+  Musashi was patched to the rulings (12 BCD bodies, DIV/CHK/CHK2
+  tables, PACK/UNPK byte order, reserved I/IS=100, F-line priv windows,
+  format-$2 next-PC, `oracle/musashi/VENDOR.md`); Moira's 020 paths now
+  route to its existing UAE-derived helpers instead of the SST-68000
+  rules — gated `if constexpr (C68020)` like D10, so the 68000 core is
+  bit-identical (sst68000 still 1 000 058/1 000 058).
+- **Why two non-obvious fixes existed at all**: Moira's imported copy
+  of WinUAE's CHK table had silently dropped `SET_NFLG(dst < 0)` —
+  only fresh-seed replay caught it; and Musashi needed **`-fwrapv`**
+  because the (deliberately overflowing) CHK bound-subtractions were
+  being folded by GCC into `bound < val` while the WinUAE oracle
+  already built with `-fwrapv` — same C code, different .so truth.
+- **D11 — the Musashi address-error gap became a standing ruling**:
+  odd control-flow targets raise vector 3 with a real format $B frame
+  on a 68030 (SSW $0066, per-instruction stacked-PC conventions,
+  access log in the internal words — all probed); Musashi cannot model
+  it, so `fuzz030.py` now auto-arbitrates that signature to WinUAE
+  (`ruled_for_a`, D9 precedent) and the vectors enter the corpora.
+  Moira replays them byte-for-byte: odd-target checks in nine handlers
+  + `execAddressError030`, with WinUAE's quirks kept (BSR decrements A7
+  without writing, DBcc faults even on an expired counter, JSR defers
+  the fault to the next fetch). The M68030 read/write funnel is now
+  taken with TC.E off too — WinUAE's `_state` accessors always log,
+  and those logs are what the $B frames stack.
+- The Musashi 68881 is **disabled on the 030** (FPU-less LC II, like
+  the WinUAE `fpu_model = 0` build): the whole $F2xx/$F3xx space is
+  duo-agreed as Line-F/priv until the O5 FPU slice re-enables both
+  sides; `move16` and 68040-PFLUSH no longer leak onto the 030.
+- Result: **the `--mmu off` grid is fully converged** (core/mmu/random
+  100 % over fresh seeds; random was ≈94 % before the slice);
+  identity/tt at 96-100 % with the residue fully explained (D8/D9
+  Musashi fault-model gap, covered by the WinUAE-solo fault corpora).
+  Moira replays 100 % of every agreed vector (2 672/2 672 grid +
+  2 000/2 000 sweep). Gates re-pinned: `random_off.json` 250,
+  `random_identity.json` 121 (fresh seeds 81/91, D11 vectors included)
+  → `ctest -R sst68030` = **1 040/1 040**; full ctest 14/14. **O4 is
+  complete** — next: O5 (FPU) per TODO § Phase 2.
+
+## 2026-07-15 — O4 slice 3: the 68030 MMU bus layer (Moira translates)
+
+- Moira now translates **every bus access** when `Model::M68030` and
+  TC.E=1 (MC68030UM § 9.5, modeled on the primary oracle WinUAE
+  `cpummu030.c`): transparent-translation match, 22-entry ATC with
+  pseudo-LRU replacement and the *write-to-unmodified-page invalidates*
+  rule, a full table search (FCL, short/long descriptors, limits, early
+  termination, indirection, U/M history writes), and 68030 bus
+  splitting for unaligned accesses — each sub-access translated
+  separately, so a long can straddle a good and a bad page and commit
+  its first half. PFLUSH/PFLUSHA/PLOAD/PMOVE-with-FD-clear now flush a
+  REAL ATC; PTEST level 0 searches it. Hook cost outside the LC II
+  path: `if constexpr` — the 68000/68010 template instantiations are
+  bit-identical in behaviour (sst68000 still 1 000 058/1 000 058
+  cycle-exact, all Mac Plus boot etalons green).
+- Translation faults raise vector-2 bus errors with **byte-for-byte
+  WinUAE format $A/$B frames** (the fuzzer compares raw RAM): $A on a
+  fault at the instruction's last write (next-instruction PC, updated
+  CCR, (An)± kept), $B otherwise (instruction PC, CCR + pending-fixup
+  restore, access-value log, wb2/wb3 fixup encodings, MOVEM counter,
+  SUBACCESS flags, disp-store words; prefetch-phase faults flag bit 31
+  of the pipeline-status long). Double fault (odd vector 2 / fault
+  while stacking) → HALT.
+- **Why the fault corpus is WinUAE-solo (ruling D9)**: Musashi runs
+  faulted instructions to completion and pushes zero-filled frames —
+  architecturally incapable without a rewrite, so every fault vector
+  self-quarantines in the duo differ. Majority rule (WinUAE + manual):
+  the new `--family fault` corpora (`fault_{identity,tt}.json`, aimed
+  at invalid/WP/remapped pages, unaligned page-straddles, MOVEM, MOVES,
+  TAS/CAS locked-RMW) are generated from WinUAE alone. Two oracle
+  determinism bugs were fixed on the way (VENDOR patches 5-6): the
+  setjmp-clobbered CCR capture (`volatile`) and stale restart globals
+  leaking history into frames (`oracle_set_state` zeroes them).
+- Also arbitrated: **D10** — the SST-68000 "ASR past width clears C/X"
+  rule is 68000/68010-only (both 68030 oracles keep the sign as C/X);
+  MOVES joined the `core` fuzz family (SFC/DFC-driven translation).
+- Gates: `ctest -R sst68030` = **875/875** across 9 corpora (mmu-off
+  520, duo-agreed identity/tt 250, fault-solo 105); the harness replays
+  translation-enabled vectors first-class (`--skip-translation` kept
+  for debugging). Scratch sweep: 2 342/2 342 duo-agreed vectors across
+  3 families × identity/tt × 3 seeds. Full ctest: 14/14.
+
+## 2026-07-15 — Phase 2 live: two 68030 oracles + arbitration turn 1
+
+- The differential loop of TODO § Phase 2 exists end-to-end: WinUAE
+  (Hatari e77819f7, `oracle/uae/`) and MAME-Musashi (m68kmmu 0.276 on
+  kstenerud 4.60, `oracle/musashi/`) behind one C ABI
+  (`oracle/oracle_api.h`), fuzzed by `oracle/fuzz/` with real MMU
+  translation trees in RAM, exchanged as SST030 JSON, replayed against
+  Moira by `tests/sst68030` (gate 14). `oracle/fuzz/loop.sh` = one turn.
+- Arbitration turn 1 (D1-D5 + bonuses): **WinUAE won every ruling** —
+  MMU ops are privileged with the S-check *before* the extension fetch;
+  PMOVE MMUSR,Dn is an invalid EA → Line-F (the D2 replace-vs-merge
+  question was unreachable on real hardware); long-indirect descriptors
+  read the second long at +4 (Musashi also had an unmasked-shift bug that
+  killed indirection except at TID); DT=0 walks keep accumulated MMUSR
+  bits; the vector-56 frame is format $0 with next-PC; MOVEM list,-(An)
+  with the base register in the list stores initial−size (020+ PRM).
+  Musashi oracle and Moira both fixed; the losing behaviours are
+  catalogued in `oracle/musashi/VENDOR.md` and
+  `extern/moira/POM68K_VENDOR.md`, rulings in
+  `oracle/fuzz/disputes/NOTES.md § Arbitrated`.
+- State: oracle agreement 200/200 (core and mmu families, MMU off);
+  Moira replays 100 % of every duo-agreed corpus (520 gated vectors +
+  fresh-seed 300/300 spot-check). Translation-enabled vectors stay
+  mmu-skipped until the bus/ATC slice.
+
+## 2026-07-15 — O4 slice 1: Moira executes the 68030 MMU instructions
+
+- PMOVE/PTEST/PFLUSH/PFLUSHA/PLOAD execute for real (Model::M68030):
+  crp/srp/tc/tt0/tt1/mmusr live in `Registers` with getVBR-style
+  accessors, PMOVE moves all of them (TC validation → vector-56 MMU
+  configuration error, format-2 frame), PTEST performs the § 9.5.3
+  translation-table walk into MMUSR (+ descriptor address → An), PLOAD
+  walks with U/M history writes to RAM, PFLUSH* are no-ops (no ATC yet).
+  Verified by the O3 differential loop against the Musashi oracle:
+  100 % on `family=mmu --mmu off` (2 900+ vectors, 8 seeds); gate
+  corpus `tests/data/sst68030/mmu_off.json` (200 vectors) wired into
+  `ctest -R sst68030`, which now loads/compares the MMU registers and
+  only skips vectors whose *initial* TC has E set (bus translation is
+  the next slice). Harness parser fix: `"length":-1` (oracle_step < 0
+  in translation-enabled corpora) used to livelock the hand-rolled JSON
+  scanner; it now accepts negative literals.
+- The non-obvious part: the oracle contradicts MC68030UM in several
+  places and, per the project rule, wins — most notably **Musashi never
+  privilege-checks MMU instructions** (user-mode PMOVE executes; ~30 %
+  of the corpus), MMUSR→Dn replaces the whole register, and an
+  invalid-descriptor walk erases previously accumulated MMUSR bits. All
+  logged as D1-D7 in `oracle/fuzz/disputes/NOTES.md` for re-arbitration
+  when the WinUAE oracle lands. Vendor catalogue updated
+  (`extern/moira/POM68K_VENDOR.md` § 68030 MMU-instruction convergence).
+
 ## 2026-07-15 — M6: the startup chime plays
 
 - Sound: `MacAudio` pulls the 370-sample/frame PWM buffer (ramTop−$300,

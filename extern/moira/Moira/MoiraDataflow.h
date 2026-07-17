@@ -53,6 +53,12 @@ template <Core C, Mode M, Size S, Flags F = 0> u32 computeEA(u32 n);
 template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAbrief(u32 an);
 template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAfull(u32 an);
 
+// POM68K O4 slice 3: 68030 extended EA with WinUAE disp-store semantics
+template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAdisp030(u32 base);
+
+// POM68K O4 slice 3: PC skip that still logs the consumed word (68030)
+template <Core C> void skipExt();
+
 /* Reads an operand
  *
  * The source of the operand is determined by the addressing mode M. If the

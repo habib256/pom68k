@@ -156,8 +156,13 @@ Moira::shift(int cnt, u64 data) {
 
             // POM68K: shifting past the operand width clears C and X even
             // for negative values (SingleStepTests/680x0 rule; flagged in
-            // POM68K_VENDOR.md for re-verification against oracle #2)
-            if (cnt > 8 * (int)S) carry = false;
+            // POM68K_VENDOR.md for re-verification against oracle #2).
+            // O4 slice 3 re-verification: BOTH 68030 oracles (WinUAE,
+            // Musashi) keep C/X = the last bit shifted out (the sign) on
+            // 020+, so the clear is a 68000/68010-only behaviour.
+            if constexpr (C != Core::C68020) {
+                if (cnt > 8 * (int)S) carry = false;
+            }
 
             if (cnt) reg.sr.x = carry;
             reg.sr.c = carry;
@@ -710,9 +715,20 @@ Moira::divsMoira(u32 op1, u32 op2)
 
     if (overflow) {
 
-        // POM68K: V=1, C=0, N/Z PRESERVED (SingleStepTests/680x0 — differs
-        // from WinUAE's N=1,Z=0; see extern/moira/POM68K_VENDOR.md)
-        reg.sr.c = 0;
+        if constexpr (C == Core::C68020) {
+
+            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
+            // (setdivsflags: clears NZC, then N/Z from the low byte of the
+            // absolute quotient unless the overflow is absolute)
+            setUndefinedDIVS<C, Word>(i32(op1), i16(op2));
+
+        } else {
+
+            // POM68K: V=1, C=0, N/Z PRESERVED on the 68000/68010
+            // (SingleStepTests/680x0 — differs from WinUAE's N=1,Z=0; see
+            // extern/moira/POM68K_VENDOR.md)
+            reg.sr.c = 0;
+        }
 
     } else {
 
@@ -739,8 +755,18 @@ Moira::divuMoira(u32 op1, u32 op2)
 
     if (overflow) {
 
-        // POM68K: V=1, C=0, N/Z preserved (SingleStepTests/680x0)
-        reg.sr.c = 0;
+        if constexpr (C == Core::C68020) {
+
+            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
+            // (setdivuflags: N set for a negative dividend; Z/C untouched)
+            setUndefinedDIVU<C, Word>(op1, (u16)op2);
+
+        } else {
+
+            // POM68K: V=1, C=0, N/Z preserved on the 68000/68010
+            // (SingleStepTests/680x0)
+            reg.sr.c = 0;
+        }
 
     } else {
 
@@ -835,7 +861,8 @@ Moira::divlsMoira(i64 a, u32 src)
         if ((quotient & u64(0xffffffff80000000)) != 0
             && (quotient & u64(0xffffffff80000000)) != u64(0xffffffff80000000)) {
 
-            assert(S != Word);
+            // POM68K O4 slice 4: also reachable in the 32/32 form
+            // ($80000000 / -1); the caller keeps the registers unchanged
             reg.sr.v = 1;
             return { u32(0), u32(0) };
 
@@ -1137,6 +1164,9 @@ Moira::setUndefinedCHK(i32 src, i32 dst)
             reg.sr.c = reg.sr.z = reg.sr.n = reg.sr.v = 0;
 
             if (dst == 0) reg.sr.z = 1;
+            // POM68K O4 slice 4: upstream dropped WinUAE's
+            // SET_NFLG(dst < 0) when porting setchkundefinedflags
+            reg.sr.n = dst < 0;
             if (dst < 0 || dst > src) {
 
                 if constexpr (S == Word) {

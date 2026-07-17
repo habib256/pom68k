@@ -200,7 +200,11 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
 }
 
 uint16_t MacMemory::read16(uint32_t addr) {
-    return uint16_t((read8(addr) << 8) | read8(addr + 1));   // 68000 big-endian
+    // Sequenced: read8 has side effects on device space (VIA interrupt
+    // flags clear on read, IWM state advances) and `|` operands carry
+    // no evaluation-order guarantee in C++.
+    const uint16_t hi = read8(addr);                         // 68000 big-endian
+    return uint16_t(hi << 8) | read8(addr + 1);
 }
 
 void MacMemory::write16(uint32_t addr, uint16_t v) {

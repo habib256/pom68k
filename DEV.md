@@ -161,6 +161,43 @@ implementation depends on, several found the hard way with `sony_trace`:
   B = the WR2 vector with bits 3:1 replaced by the highest pending source**
   (A-ext = 101, B-ext = 001, idle = 011) — the ROM's level-2 handler
   dispatches Lvl2DT on those bits; it never reads RR3.
+- **LC II AppleTalk path (O6.10, the `Scc8530` at V8 $50F04000, IPL 4)**:
+  the LC II has no LocalTalk peer, so the System's `.MPP`/LAP layer must
+  hit its own "no network" timeout rather than hang. Two additions to
+  the same class, both standard 8530 behaviour, both gated by
+  `scc_ext_test` and invisible to the Plus mouse path (`input_etalon`
+  green):
+  1. **Break/Abort on the open line** — `setAbortIdle(true)` (set by
+     V8Memory) makes RR0 bit 7 stand and arming WR15 bit 7 latch the
+     external/status interrupt: AppleTalk's carrier-sense wait ($A5B28
+     spin on the driver mutex $63E) unblocks.
+  2. **Tx Buffer Empty interrupt** — the transmit buffer accepts a byte
+     instantly (no shift register), so enabling Tx ints (WR1 bit 1) or
+     writing data latches Tx-empty (RR3 D4/D1, RR2 status codes
+     100/000, cleared by WR0 Reset Tx Int Pending $28). The LAP driver
+     arms a serial transaction and sleeps on this completion interrupt
+     ($A6540 mutex spin); without it the ISR never runs and boot hangs
+     at the « Bienvenue » bar. WR2/WR9 are mirrored to both channels
+     (chip-global on a real 8530). RR0 bit 2 (Tx empty) stays asserted.
+  Since O6.11 (2026-07-16) this whole path only runs when the user turns
+  AppleTalk ON in the Chooser: the factory default is **AppleTalk
+  inactive** via classic-PRAM SPConfig (XPRAM $13 = $22, port B nibble
+  2 = useAsync; 1 = useATalk — Apple supermario `BeforePatches.a` /
+  Patches note #1032330). `.MPP` then never opens LocalTalk. XPRAM
+  $E0-$E3 is only the LAP connection selector ('atlk' id, 0 = built-in)
+  and cannot disable AppleTalk (bad id → fall back to built-in).
+- **Egret XPRAM wire protocol (O6.11, pinned from the ROM's drivers)**:
+  ReadXPram `[1,2,1,addr]` and GetPram `[1,7,hi,lo]` are **byte streams
+  with no length on the wire** — Egret keeps supplying successive bytes;
+  the HOST takes its count, drops SYS_SESSION and waits for the
+  XCVR_SESSION release (32-bit engine $40A149C4, 24-bit reader
+  $A4A3B4-BC). WriteXPram is `[1,8,1,addr,data…]` (length = data). The
+  ROM's SysParam restore is TWO GetPram streams: 16 bytes at XPRAM $10
+  → $1F8-$207, then 4 at $08 → $208-$20B — that is where low-mem
+  SPConfig ($1FB) comes from. Getting this wrong fails the 'NuMc'
+  validity read at $0C and re-runs the cold-PRAM XPRAM re-init on every
+  boot. Gate: `egret_test` (stream + host-terminated session +
+  WriteXPram round-trip).
 - **Keyboard (M0110A)**: commands Inquiry $10 / Instant $14 / Model $16
   (→ $0B) / Test $36 (→ $7D); Null = $7B; transition = keycode*2+1,
   bit 7 = release. Transaction = TWO VIA SR interrupts: one when the

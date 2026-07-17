@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "ScsiDisk.h"
-#include <fstream>
+#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -13,11 +13,20 @@ constexpr uint8_t kGood = 0x00, kCheck = 0x02;
 constexpr uint8_t kNoSense = 0x00, kIllegalRequest = 0x05;
 }
 
-bool ScsiDisk::open(const std::string& path) {
+bool ScsiDisk::open(const std::string& path, bool writeBack) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return false;
     image_.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     blocks_ = uint32_t(image_.size() / kBlockSize);
+    if (file_.is_open()) file_.close();
+    writeBack_ = false;
+    if (blocks_ && writeBack) {
+        file_.open(path, std::ios::in | std::ios::out | std::ios::binary);
+        writeBack_ = file_.is_open();
+        if (!writeBack_)
+            std::fprintf(stderr, "SCSI: %s not writable — session writes "
+                         "will be lost on exit\n", path.c_str());
+    }
     return blocks_ > 0;
 }
 
@@ -32,8 +41,9 @@ void ScsiDisk::read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out) {
     }
 }
 
-// Writes land in the in-memory image only (the backing file is never
-// modified — changes are lost on exit; enough for the driver to mount).
+// Writes land in the in-memory image; with write-back each one is also
+// written through to the backing file immediately, so nothing is lost
+// even if the process dies (no exit-time flush to miss).
 void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& in) {
     uint64_t off = uint64_t(lba) * kBlockSize;
     uint64_t n = uint64_t(count) * kBlockSize;
@@ -42,6 +52,16 @@ void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& i
     uint64_t w = n < avail ? n : avail;
     if (w > in.size()) w = in.size();
     std::memcpy(image_.data() + off, in.data(), size_t(w));
+    if (writeBack_ && w) {
+        file_.seekp(std::streamoff(off));
+        file_.write(reinterpret_cast<const char*>(in.data()), std::streamoff(w));
+        file_.flush();
+        if (!file_) {                        // disk full / I/O error: warn once
+            std::fprintf(stderr, "SCSI: write-back failed at block %u — "
+                         "disabling (session writes stay in memory)\n", lba);
+            writeBack_ = false;
+        }
+    }
 }
 
 void ScsiDisk::setSense(uint8_t key, uint8_t asc) { senseKey_ = key; senseAsc_ = asc; }

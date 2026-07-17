@@ -29,9 +29,14 @@ protected:
     
     // Emulated CPU model
     Model cpuModel = Model::M68000;
-    
+
     // Instruction set used by the disassembler
     Model dasmModel = Model::M68000;
+
+    // POM68K O5: FPU attached through the coprocessor interface (68882 on
+    // the Mac LC II PDS card). NONE keeps the jump table byte-identical to
+    // stock Moira (F2xx = Line-F). Configured via setFPUModel().
+    FPUModel fpuModel = FPUModel::NONE;
     
     // Visual style for disassembled instructions
     DasmStyle instrStyle;
@@ -85,6 +90,10 @@ protected:
     // la valeur POLLÉE à la frontière SUIVANTE (rotation ipl[0]=ipl[1] de la run
     // loop, newcpu.c:5693). −1 = rien en attente.
     int iplDeferred {-1};
+
+    // POM68K: one-instruction interrupt-recognition delay after a mask-
+    // lowering SR-write (see setSR / the run loop). 68020+ only.
+    int irqDelay {0};
 
     // Value on the lower two function code pins (FC1|FC0)
     u8 fcl {2};
@@ -165,6 +174,11 @@ public:
     // Sets the emulated CPU models
     void setModel(Model cpuModel, Model dasmModel);
     void setModel(Model model) { setModel(model, model); }
+
+    // POM68K O5: attaches or detaches an FPU (rebuilds the jump table and
+    // resets the FPU to its power-up state, MC68881/882UM § 6.1)
+    void setFPUModel(FPUModel model);
+    FPUModel getFPUModel() const { return fpuModel; }
     
     // Configures the syntax style for disassembly output
     void setDasmSyntax(Syntax value);
@@ -241,7 +255,12 @@ public:
     
     // Checks if the CPU is in a HALT state
     bool isHalted() const { return flags & State::HALTED; }
-    
+
+    // POM68K: checks if the CPU sits in a STOP instruction (waiting for
+    // an interrupt) — the diagnostic that separates "spinning" from
+    // "stopped on an IPL that never rises" (tests/lcii_trace.cpp)
+    bool isStopped() const { return flags & State::STOPPED; }
+
 private:
     
     // Processes an exception that was caught during execution
@@ -577,7 +596,151 @@ public:
     u32 getCAAR() const { return reg.caar; }
     void setCAAR(u32 val);
 
-    
+    // POM68K: gets or sets the 68030 MMU registers (MC68030UM § 9.7.2)
+    u64 getCRP() const { return reg.crp; }
+    void setCRP(u64 val) { reg.crp = val; }
+
+    u64 getSRP() const { return reg.srp; }
+    void setSRP(u64 val) { reg.srp = val; }
+
+    u32 getTC() const { return reg.tc; }
+    void setTC(u32 val) { reg.tc = val; }
+
+    u32 getTT0() const { return reg.tt0; }
+    void setTT0(u32 val) { reg.tt0 = val; }
+
+    u32 getTT1() const { return reg.tt1; }
+    void setTT1(u32 val) { reg.tt1 = val; }
+
+    u16 getMMUSR() const { return reg.mmusr; }
+    void setMMUSR(u16 val) { reg.mmusr = val; }
+
+    // POM68K O5: 68882 programmer's model (MC68881/882UM § 1.4). getFP /
+    // setFP use the SST030 raw-word contract: w[0] = (sign|exp) << 16,
+    // w[1] = mantissa bits 63..32, w[2] = bits 31..0.
+    //
+    // State-restore convention (solo-corpus convergence): loading FPU
+    // state through any of these setters leaves the FPU in the NON-NULL
+    // (idle) state — the WinUAE oracle glue forces regs.fpu_state = 1
+    // after oracle_set_state, so a subsequent FSAVE emits the 68882 IDLE
+    // frame, never the 4-byte NULL frame. A freshly reset FPU that has
+    // executed nothing still FSAVEs a NULL frame.
+    void getFP(int n, u32 w[3]) const {
+        w[0] = u32(fpu.fp[n].high) << 16;
+        w[1] = u32(fpu.fp[n].low >> 32);
+        w[2] = u32(fpu.fp[n].low);
+    }
+    void setFP(int n, const u32 w[3]) {
+        fpu.fp[n].high = u16(w[0] >> 16);
+        fpu.fp[n].low = u64(w[1]) << 32 | w[2];
+        fpu.state = 1;
+    }
+
+    // 6888x register masks: FPCR bits 3-0 always read 0 (§ 4.2, WinUAE
+    // fpcr_mask = 0xfff0); FPSR bits 31-28 and 2-0 always 0 (fpsr_mask)
+    u32 getFPCR() const { return fpu.fpcr & 0xfff0; }
+    void setFPCR(u32 val) { fpu.fpcr = val & 0xfff0; fpu.state = 1; }
+
+    u32 getFPSR() const { return fpu.fpsr & 0x0ffffff8; }
+    void setFPSR(u32 val) { fpu.fpsr = val & 0x0ffffff8; fpu.state = 1; }
+
+    u32 getFPIAR() const { return fpu.fpiar; }
+    void setFPIAR(u32 val) { fpu.fpiar = val; fpu.state = 1; }
+
+
+    //
+    // 68882 FPU state (POM68K O5 slice 2, MoiraExecFPU_cpp.h)
+    //
+    // Execution is backed by extern/softfloat (same softfloat family as
+    // the primary oracle, WinUAE); the 6888x semantics are ported from
+    // WinUAE fpp.c / fpp_softfloat.c with file:line citations. Nothing
+    // here is reachable while fpuModel == NONE (the jump table then holds
+    // stock Line-F handlers). See extern/moira/POM68K_VENDOR.md § FPU.
+    //
+
+protected:
+
+    struct {
+
+        FpuExtended fp[8];  // FP0-FP7 (reset = nonsignaling NaN, § 6.1)
+        u32 fpcr {};        // control register (enables + mode byte)
+        u32 fpsr {};        // status register (cc, quotient, exc, accrued)
+        u32 fpiar {};       // instruction address register
+
+        // Frame micro-state (WinUAE regs.fpu_state / fpu_exp_state):
+        // state 0 = reset/null (FSAVE writes a NULL frame), 1 = idle
+        int state {};
+        int expState {};    // nonzero = exceptional state pending in frame
+        int expPend {};     // pending arithmetic exception vector (0 = none)
+        u32 fsaveCcr {};    // IDLE-frame command/condition register
+        u32 fsaveEo[3] {};  // IDLE-frame exceptional operand
+        u32 ea {};          // last operand EA (WinUAE regs.fp_ea) — lands
+                            // in the format $3 post-instruction frame
+    } fpu;
+
+private:
+
+    // Power-up / null-frame state (MC68881/882UM § 6.1: control registers
+    // zeroed, data registers = nonsignaling NaN $7FFF FFFF...FFFF)
+    void fpuResetState();
+
+    // FPCR mode byte -> softfloat rounding mode/precision (fpp_softfloat.c
+    // fp_set_mode) + the 6888x NaN/infinity special flags
+    void fpuSetMode();
+
+    // FPSR maintenance (WinUAE fpp.c fpsr_* helpers)
+    void fpuClearStatus();                      // exc byte + host flags
+    u32  fpuMakeStatus();                       // host flags -> FPSR + accrued
+    void fpuSetResultFlags(const FpuExtended &r); // condition code byte
+    void fpuSetQuotient(u64 quot, u8 sign);
+    void fpuGetQuotient(u64 *quot, u8 *sign);
+
+    // The 32 conditional predicates (MC68881UM § 4.6.2.2, 6888x table);
+    // sets BSUN/AIOP on the IEEE non-aware predicates, returns -2 when an
+    // enabled BSUN trap was taken
+    template <Core C> int fpuCondEval(u16 cond);
+
+    // Pending pre-instruction exception check (WinUAE fp_exception_pending)
+    template <Core C> bool fpuCheckPending();
+
+    // FPU exception: pre-instruction = format $0 (PC = re-executing FP
+    // instruction), post-instruction = format $3 with fp_ea (WinUAE
+    // Exception_build_stack_frame_common nr 48-55)
+    template <Core C> void execFpuException(u16 vector, bool pre);
+
+    // FRESTORE invalid-frame format error (vector 14) — stacks WinUAE's
+    // PC (past all consumed words), ruling D21
+    template <Core C> void execFRestoreFormatError();
+
+    // Arms a plain (An)± fixup for FPU operands on the 68030 (WinUAE
+    // fpp.c mmufixup arming): the register is RESTORED on a non-lastwrite
+    // bus fault, but the $A/$B frame's wb2/wb3 status byte stays 0
+    void fpuArmFixup(int n);
+
+    // Arithmetic-exception latch + 68882 FSAVE frame data capture
+    // (WinUAE fpsr_check_arithmetic_exception, 6888x branch); ea = the
+    // operand's effective address (0 for register/immediate operands),
+    // latched into fpu.ea for the format $3 frame
+    bool fpuCheckArithException(const FpuExtended &src, u16 opcode, u16 ext, u32 ea);
+
+    // Normalizes denormal/unnormal operands (6888x supports denormals:
+    // WinUAE normalize_or_fault_if_no_denormal_support, 6888x branch)
+    void fpuNormalize(FpuExtended &v);
+
+    // FMOVECR constant ROM incl. undefined offsets (WinUAE fpu_get_constant)
+    bool fpuGetConstant(FpuExtended &v, int cr);
+
+    // Opmode dispatch (WinUAE fp_arithmetic); returns true when the result
+    // is to be stored in the destination register
+    bool fpuArithmetic(const FpuExtended &src, FpuExtended &dst, u16 ext);
+
+    // Operand transfer, all 7 formats (WinUAE get_fp_value/put_fp_value2);
+    // return 1 = done, 0 = invalid encoding (Line-F); ea receives the
+    // memory operand's effective address (untouched otherwise)
+    template <Core C, Mode M> int fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea);
+    template <Core C, Mode M> int fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea);
+
+
     //
     // Supervisor mode
     //
@@ -668,8 +831,226 @@ private:
     
     // Validates extension words for FPU-related instructions
     bool isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const;
-    
-    
+
+
+    //
+    // 68030 MMU instruction support (POM68K O4, MoiraExecMMU_cpp.h)
+    //
+    // Two-oracle arbitrated (2026-07-15): WinUAE (oracle/uae, primary) +
+    // Musashi (oracle/musashi); rulings in oracle/fuzz/disputes/NOTES.md.
+    // Manual references MC68030UM § 9. Physical bus accesses (table
+    // walks) go through the raw read16/write16 interface.
+    //
+
+private:
+
+    // Raw 32-bit physical bus access (table walk / descriptor update)
+    u32 mmuRead32(u32 addr) const;
+    void mmuWrite32(u32 addr, u32 val) const;
+
+    // FC field decoding of PTEST/PFLUSH/PLOAD extension words (§ 9.7.6);
+    // false = undecodable field (bits 4-3 = 11) → Line-F
+    bool mmuFCFromModes(u16 modes, int &fc) const;
+
+    // Transparent translation register match (§ 9.5.4)
+    bool mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const;
+
+    // MMUSR bit accumulation from a fetched descriptor (§ 9.7.2.6)
+    void mmuUpdateSR(int type, u32 entry, int fc, bool isLong, u16 &sr) const;
+
+    // History (U) / modified (M) descriptor maintenance in RAM (§ 9.5.3.5)
+    void mmuUpdateDescriptor(u32 tptr, int type, u32 entry, int rw) const;
+
+    // Translation-table walk (§ 9.5.3); returns true when resolved
+    bool mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
+                       int rw, bool ptest, u32 &addrOut, u16 &sr) const;
+
+    // Root pointer selection for a walk (SRP when SRE + supervisor FC)
+    void mmuRootPointer(int fc, u32 &table, int &type) const;
+
+    // EA decode for the $F000-$F03F window (WinUAE MMUOP030 order:
+    // computed before validation, side effects survive Line-F)
+    template <Core C, Mode M> u32 mmuDecodeEA(int n);
+
+    // MMU configuration exception (vector 56, format 0 frame)
+    template <Core C> void execMmuConfigError();
+
+
+    //
+    // 68030 MMU bus layer (POM68K O4 slice 3, MoiraExecMMU_cpp.h)
+    //
+    // Address translation on every bus access when cpuModel == M68030 and
+    // TC.E is set (MC68030UM § 9.5), modeled byte-for-byte on the primary
+    // oracle, WinUAE cpummu030.c (hatari e77819f7) — including the 22-entry
+    // ATC, the format $A/$B bus-fault frames and their internal-state words
+    // (access log, SSW, pending register fixups). All members and hooks are
+    // compiled out of the Core::C68000/C68010 template instantiations; the
+    // Mac Plus path is untouched. See POM68K_VENDOR.md § MMU bus layer.
+    //
+
+public:
+
+    // POM68K O6 (LC II): external /BERR. A memory-system bus callback
+    // (read8/16, write8/16) calls this when the machine flags the current
+    // physical (sub-)access as a bus error — unmapped I/O (the LC II ROM's
+    // address-map probe relies on it) or the SCSI pseudo-DMA DRQ timeout.
+    // M68030 model only: funnels into mmuPageFault so the stacked $A/$B
+    // frame is exactly what a translation fault at the same point would
+    // produce. Throws MmuBusError (never returns); the per-instruction
+    // handler turns it into a vector-2 exception, a nested fault → HALT.
+    [[noreturn]] void extBusError();
+
+protected:
+
+    // Address translation cache — 22 fully-associative entries with a
+    // pseudo-LRU history bit (§ 9.5.2; WinUAE MMU030_ATC_LINE)
+    struct MmuAtcEntry {
+        u32 logical;            // page-aligned logical address
+        u32 physical;           // page-aligned physical address
+        u8  fc;                 // function code (exact match)
+        bool valid;
+        bool busError;          // invalid / supervisor-only page
+        bool writeProtect;
+        bool modified;
+        bool cacheInhibit;
+        bool mru;               // history bit
+    };
+    static constexpr int MMU_ATC_ENTRIES = 22;
+    MmuAtcEntry mmuAtcArr[MMU_ATC_ENTRIES] {};
+
+    // Per-instruction restart/fault bookkeeping (WinUAE globals in
+    // comments). Values land verbatim in the $A/$B frame internal words.
+    u16 mmuState[3] {};         // mmu030_state[0..2] (MOVEM count, flags, EA words)
+    u32 mmuAd[10] {};           // mmu030_ad[].val — completed-access value log
+    u32 mmuFmovemStore[2] {};   // mmu030_fmovem_store — first two longs of the
+                                // FMOVEM register in flight (O5: $B-frame slots)
+    int mmuIdx {};              // mmu030_idx — accesses attempted
+    int mmuIdxDone {};          // mmu030_idx_done — accesses completed
+    u32 mmuDataBuffer {};       // mmu030_data_buffer_out
+    u32 mmuDispStore[2] {};     // mmu030_disp_store (extended-EA results)
+    u32 mmuOpcodeV {0xFFFFFFFF};// mmu030_opcode ($FFFFFFFF = prefetch phase)
+    u8  mmuFixupReg[2] {};      // mmufixup encodings (wb2/wb3 status bytes)
+                                // O5: bit 7 = plain (FPU) fixup — restore
+                                // active but the frame status byte reads 0
+                                // (WinUAE mmu030fixupreg returns 0 when the
+                                // fpp.c-armed reg lacks the 0x300 flags)
+    u32 mmuFixupVal[2] {};      // mmufixup .value (An before adjustment)
+    bool mmuLogging {};         // instruction-level accesses feed mmuAd
+    bool mmuRmw {};             // islrmw030 — inside a locked RMW cycle
+    u16 mmuCcrSave {};          // CCR at instruction start ($B fault restore)
+    u32 mmuLastWritePc {};      // next-instruction PC for $A (last-write) faults
+    // POM68K O6 (LC II): 68030 prefetch-pipe carry-over across a
+    // translation change. A PMOVE to TC/CRP/SRP captures the next words
+    // through the STILL-CURRENT mapping; mmuFetchWord serves them while
+    // execution stays linear and drops them on the first jump. The real
+    // 030 pipe holds ~3 words fetched pre-switch — Apple's ROMs bank on
+    // it ("pmove tc; nop; bne; jmp (An)", LC II ROM $A416AA-$A416B6);
+    // a start-of-instruction refetch through the NEW map reads garbage.
+    u32 mmuPipeAddr {};
+    u16 mmuPipe[4] {};
+    int mmuPipeCnt {};
+
+    // POM68K O6 (LC II): context of the physical (sub-)access in flight,
+    // recorded by mmuTranslateAccess/mmuFetchWord before every read8/16
+    // and write8/16 on the M68030 model — extBusError() replays it into
+    // mmuPageFault when the machine asserts /BERR from a bus callback
+    u32 mmuAccAddr {};
+    u32 mmuAccSsw {};
+    u8  mmuAccFc {};
+    bool mmuAccWrite {};
+    // POM68K O6.9: RTE of a $B fault frame whose SSW DF bit was cleared
+    // by the handler (bit 9 = "frame carried DF" marker, per WinUAE's
+    // encoding, survives; bit 8 cleared) — the faulted data cycle must
+    // NOT be re-run. Moira re-executes the faulting instruction, so a
+    // one-shot latch completes the retried access without a bus cycle:
+    // a read yields the frame's data input buffer, a write is skipped
+    // (WinUAE m68k_do_rte_mmu030 "DF not set: mark access as done").
+    // This is Mac OS's slot-probe recovery protocol (bclr #0 on the
+    // stacked SSW high byte, then RTE).
+    bool mmuRteSubstArmed {};
+    bool mmuRteSubstWrite {};
+    u32 mmuRteSubstAddr {};
+    u32 mmuRteSubstData {};     // stacked data input buffer
+    u32 mmuRteSubstPc {};       // stacked PC (the faulting instruction)
+
+    // Fault capture, valid while a MmuBusError unwinds (mmu030_page_fault)
+    u32 mmuFaultAddr {};
+    u16 mmuSsw {};
+    u32 mmuStageB {};           // mm030_stageb_address
+    u32 mmuWb3Data {};          // regs.wb3_data (pending write value)
+    u16 mmuWb2Address {};       // regs.wb2_address (= mmuState[1] at fault)
+    u16 mmuWb2Status {};        // regs.wb2_status (fixup 0 encoding)
+    u16 mmuWb3Status {};        // regs.wb3_status (fixup 1 encoding)
+
+private:
+
+    // True when bus-level translation is active
+    bool mmuActive() const {
+        return cpuModel == Model::M68030 && (reg.tc & 0x80000000);
+    }
+
+    // Page masks derived from TC.PS (§ 9.7.2.2)
+    u32 mmuPageMask() const { return (u32(1) << (reg.tc >> 20 & 0xf)) - 1; }
+
+    // Per-instruction state reset + mode-5-style opcode fetch; returns
+    // false when the fetch faulted (exception already processed)
+    template <Core C> bool mmuExecuteStart();
+
+    // Instruction-stream word fetch (translated, unlogged, never split)
+    u16 mmuFetchWord(u32 addr);
+
+    // Captures the prefetch pipe before a translation change (see the
+    // mmuPipe members above); never faults — a short capture just ends
+    void mmuCapturePipe();
+
+    // Logs the consumption of an extension word (WinUAE next_iword_state)
+    void mmuLogExtWord(u32 value);
+
+    // Arms a pending (An)+/-(An) fixup (WinUAE mmufixup[])
+    template <Size S> void mmuArmFixup(int n, bool predec);
+
+    // Transparent translation match for bus accesses (OK-match only)
+    bool mmuMatchTTAccess(u32 addr, u8 fc, bool write) const;
+
+    // Bus-level table search (WinUAE mmu030_table_search, level 0):
+    // U/M maintenance, limit checks; returns MMUSR-style status bits
+    u16 mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci);
+
+    // ATC operations (§ 9.5.2)
+    int  mmuAtcLookup(u32 addr, u8 fc, bool write);
+    void mmuAtcFill(u32 addr, u8 fc, bool write);
+    void mmuAtcTouch(int i);
+    void mmuAtcFlushAll();
+    void mmuAtcFlushFc(u32 fcBase, u32 fcMask);
+    void mmuAtcFlushPage(u32 addr);
+    void mmuAtcFlushPageFc(u32 addr, u32 fcBase, u32 fcMask);
+
+    // Logical → physical for one bus (sub-)access; throws MmuBusError
+    u32 mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags);
+
+    // Fault capture + throw (WinUAE mmu030_page_fault)
+    [[noreturn]] void mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc);
+
+    // Translated read/write with 68030 bus splitting + access log
+    template <Core C, Size S, Flags F> u32 mmuRead(u32 addr);
+    template <Core C, Size S, Flags F> void mmuWrite(u32 addr, u32 val);
+
+    // Bus-fault exception processing (frame $A/$B + vector 2)
+    template <Core C> void execMmuBusError();
+    template <Core C> void writeStackFrameShortBusFault(u16 sr, u32 pc);
+    template <Core C> void writeStackFrameLongBusFault(u16 sr, u32 pc, int nr = 2);
+
+    // POM68K O4 slice 4 — 68030 odd-address instruction-fetch fault
+    // (WinUAE Exception_mmu030 vector 3: format $B frame, SSW $0066).
+    // mmuCheckOddPc raises it and returns true when `target` is odd.
+    template <Core C> void execAddressError030(u32 target, u32 stackedPc);
+    template <Core C> bool mmuCheckOddPc(u32 target, u32 stackedPc);
+
+    // Rebuilds the per-instruction access log so a fault frame stacks
+    // exactly what WinUAE's get_iword/get_long_mmu030_state logged
+    void mmuLogReset() { mmuIdx = mmuIdxDone = 0; for (auto &v : mmuAd) v = 0; }
+
+
     //
     // Disassembler Support
     //

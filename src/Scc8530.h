@@ -8,8 +8,16 @@
 // autovectored) which the mouse driver services by reading RR0 and issuing
 // the Reset External/Status Interrupts command. Serial ports come later
 // (M7, POMIIGS Scc8530 port).
+// O6.10 (LC II): same chip behind V8 at $50F04000, IRQ = 68030 level 4.
+// setAbortIdle(true) models an OPEN LocalTalk line: in SDLC hunt the
+// receiver sees continuous marks = a standing Break/Abort condition
+// (RR0 bit 7), and arming WR15 bit 7 latches the external/status
+// interrupt AppleTalk's LAP manager sleeps on for carrier sense — the
+// interrupt is what tells it "the wire is dead", unblocking boot.
+// WR2 (vector) and WR9 (master int ctl) are chip-global on a real 8530
+// and are mirrored to both channels here.
 // Source of truth: MAME z80scc.cpp + mac128.cpp; DEV.md § SCC (pinned).
-// Gate: tests/input_etalon.cpp.
+// Gates: tests/input_etalon.cpp (Plus), tests/scc_ext_test.cpp (LAP arm).
 
 #pragma once
 #include <cstdint>
@@ -21,11 +29,27 @@ public:
     // Bus access: channel 0 = B, 1 = A; ctl/data per address decode.
     uint8_t readCtl(int channel);
     void writeCtl(int channel, uint8_t v);
-    uint8_t readData(int channel) { return 0; }
-    void writeData(int channel, uint8_t) { }
+    uint8_t readData(int channel);
+    void writeData(int channel, uint8_t v);
 
     // Mouse quadrature inputs (X1 → channel A DCD, Y1 → channel B DCD)
     void setDcd(int channel, bool level);
+
+    // LC II: the machine has no LocalTalk peer — SDLC hunt sees a
+    // standing abort (see header comment)
+    void setAbortIdle(bool on) { abortIdle_ = on; }
+
+    // Periodic tick (CPU cycles). On an open LocalTalk line the SDLC
+    // receiver keeps detecting aborts, so the ext/status interrupt must
+    // RE-present after each Reset Ext/Status — the LAP retry loop waits
+    // on a *stream* of aborts to run down its retry counter, then
+    // reports "no node" and boot continues (O6.11). EVENT-driven since
+    // the 2026-07-16 review: servicing (Reset Ext/Status) re-arms a
+    // ~130 µs countdown; an armed-but-unserviced channel latches ONCE
+    // (a real 8530 latches on transitions, not levels), so non-LAP
+    // ext/status users don't get an interrupt storm. Returns true if
+    // the IRQ line may have changed (caller recomputes IPL).
+    bool tick(int cycles);
 
     bool irqAsserted() const;
 
@@ -40,8 +64,16 @@ private:
         bool extPending = false;     // latched external/status interrupt
         uint8_t rr0Latch = 0;        // RR0 frozen at interrupt time
         bool latched = false;
+        bool txIp = false;           // Tx Buffer Empty interrupt pending
+        bool txEmptyEvent = false;   // buffer BECAME empty since last
+                                     // Reset Tx Int Pending (8530: TxIP
+                                     // is edge-, not level-triggered)
+        int relatch = 0;             // countdown to the next standing-
+                                     // abort presentation (0 = disarmed)
     };
     uint8_t rr0(const Chan& c) const;
     Chan ch_[2];                     // [0] = B, [1] = A
     int ptr_ = 0;                    // register pointer (WR0 low bits)
+    bool abortIdle_ = false;         // open-line Break/Abort (LC II)
+    static constexpr int kAbortRelatch = 2000;   // ≈130 µs @ 15.67 MHz
 };

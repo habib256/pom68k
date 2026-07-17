@@ -32,11 +32,19 @@ public:
     void stop() { if (started_) ma_device_uninit(&device_); started_ = false; }
 
     // Push a frame's samples — but only if it carries real sound, so the
-    // ring doesn't fill with silence while the machine runs fast.
+    // ring doesn't fill with silence while the machine runs fast. The
+    // gate is on AC amplitude (min/max span), not absolute peak: an
+    // underrun ASC FIFO repeats its stale byte (MAME-faithful), which is
+    // a full-scale DC stream a peak gate would happily push, filling
+    // the ring with a pop-inducing constant (review 2026-07-16).
     void pushFrame(const std::vector<float>& s, size_t begin) {
-        float peak = 0;
-        for (size_t i = begin; i < s.size(); i++) { float a = s[i] < 0 ? -s[i] : s[i]; if (a > peak) peak = a; }
-        if (peak < 0.01f) return;                   // silent frame → skip
+        if (begin >= s.size()) return;
+        float lo = s[begin], hi = s[begin];
+        for (size_t i = begin; i < s.size(); i++) {
+            if (s[i] < lo) lo = s[i];
+            if (s[i] > hi) hi = s[i];
+        }
+        if (hi - lo < 0.02f) return;                // silence or DC → skip
         for (size_t i = begin; i < s.size(); i++) {
             size_t w = write_.load(std::memory_order_relaxed);
             size_t next = (w + 1) % kRing;

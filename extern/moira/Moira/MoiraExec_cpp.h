@@ -62,6 +62,39 @@ Moira::execLineF(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
+    // POM68K O4 slice 4 (WinUAE-arbitrated, D6-remainder): on a
+    // coprocessor-less 020/030 the USER-mode cpSAVE/cpRESTORE windows of
+    // every coprocessor id take a privilege violation BEFORE the Line-F
+    // trap — but only for the EA modes a real cpSAVE/cpRESTORE decodes
+    // (WinUAE op_illg -> privileged_copro_instruction).
+    if constexpr (C == Core::C68020) {
+
+        if (!reg.sr.s) {
+
+            int mode = opcode >> 3 & 7;
+            int rg = opcode & 7;
+            bool priv = false;
+
+            if ((opcode & 0xF1C0) == 0xF100) {      // cpSAVE shape
+                priv = mode == 2 || (mode >= 4 && mode <= 6)
+                    || (mode == 7 && (rg == 0 || rg == 1));
+            }
+            if ((opcode & 0xF1C0) == 0xF140) {      // cpRESTORE shape
+                priv = mode == 2 || mode == 3 || (mode >= 5 && mode <= 6)
+                    || (mode == 7 && rg <= 3);
+            }
+            if (priv) {
+
+                execException<C>(M68kException::PRIVILEGE);
+
+                CYCLES_68020(34)
+
+                FINALIZE
+                return;
+            }
+        }
+    }
+
     execException<C>(M68kException::LINEF);
 
     CYCLES_68000(34)
@@ -864,6 +897,21 @@ Moira::execBra(u16 opcode)
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
     }
 
+    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
+    // mmu030 handlers raise vector 3 with a format $B frame
+    // (exception3_read_prefetch*); see execAddressError030.
+    // Stacked PC = the branch instruction; the log holds the displacement.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030 && (newpc & 1)) {
+            mmuLogReset();
+            if constexpr (S == Word) mmuLogExtWord(u16(disp));
+            if constexpr (S == Long) mmuLogExtWord(disp);
+            execAddressError030<C>(newpc, reg.pc0);
+            FINALIZE
+            return;
+        }
+    }
+
     reg.pc = newpc;
     fullPrefetch<C, POLL>();
 
@@ -899,6 +947,20 @@ Moira::execBcc(u16 opcode)
         // POM68K: same rule as Bra above (SingleStepTests/680x0)
         if (misaligned<C>(newpc)) {
             throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
+        }
+
+    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
+    // mmu030 handlers raise vector 3 with a format $B frame
+    // (exception3_read_prefetch*); see execAddressError030.
+        if constexpr (C == Core::C68020) {
+            if (cpuModel == Model::M68030 && (newpc & 1)) {
+                mmuLogReset();
+                if constexpr (S == Word) mmuLogExtWord(u16(disp));
+                if constexpr (S == Long) mmuLogExtWord(disp);
+                execAddressError030<C>(newpc, reg.pc0);
+                FINALIZE
+                return;
+            }
         }
 
         // Take branch
@@ -1399,6 +1461,23 @@ Moira::execBsr(u16 opcode)
             throw AddressError(makeFrame(newpc));
         }
 
+    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
+    // mmu030 handlers raise vector 3 with a format $B frame
+    // (exception3_read_prefetch*); see execAddressError030.
+        // WinUAE BSR: A7 is decremented but the return address is never
+        // written; stacked PC = the BSR instruction.
+        if constexpr (C == Core::C68020) {
+            if (cpuModel == Model::M68030 && (newpc & 1)) {
+                reg.sp -= 4;
+                mmuLogReset();
+                if constexpr (S == Word) mmuLogExtWord(u16(disp));
+                if constexpr (S == Long) mmuLogExtWord(disp);
+                execAddressError030<C>(newpc, reg.pc0);
+                FINALIZE
+                return;
+            }
+        }
+
         // Save return address on stack
         push<C, Long, POLL>(retpc);
 
@@ -1452,6 +1531,12 @@ Moira::execCas(u16 opcode)
 
     u32 ea, data;
 
+    // POM68K O4 slice 3: CAS drives a locked read-modify-write cycle on
+    // the 68030 (SSW RM bit, RWM-only TT matching, write-probed ATC)
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
+    }
+
     readExt<C>();
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
 
@@ -1488,6 +1573,8 @@ Moira::execCas(u16 opcode)
         CYCLES_AW   ( 0,  0, 19,        0,  0, 19,        0,  0, 19)
         CYCLES_AL   ( 0,  0, 19,        0,  0, 19,        0,  0, 19)
     }
+
+    if constexpr (C == Core::C68020) mmuRmw = false;    // POM68K O4 slice 3
 
     prefetch<C, POLL>();
 
@@ -1609,6 +1696,15 @@ Moira::execChk(u16 opcode)
         reg.sr.z = ZERO<S>(dy);
         reg.sr.v = 0;
         reg.sr.c = 0;
+
+    } else if constexpr (C == Core::C68020) {
+
+        // POM68K O4 slice 4: WinUAE-arbitrated 020/030 undefined CCR —
+        // N/Z always refreshed; V/C from the bound-value subtraction when
+        // the value is out of range (setchkundefinedflags, hardware-
+        // verified tables; NOTES.md § slice 4). The 68000 rule below is
+        // pinned by SingleStepTests and stays untouched.
+        setUndefinedCHK<C, S>(SEXT<S>(data), SEXT<S>(dy));
 
     } else {
 
@@ -2178,6 +2274,21 @@ Moira::execDbcc(u16 opcode)
                 throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
             }
 
+        // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
+    // mmu030 handlers raise vector 3 with a format $B frame
+    // (exception3_read_prefetch*); see execAddressError030.
+            // WinUAE DBcc: pc is advanced and Dn decremented first, and the
+            // fault fires EVEN when the loop counter expired (the odd check
+            // precedes the counter test); stacked PC = the odd target.
+            if constexpr (C == Core::C68020) {
+                if (cpuModel == Model::M68030 && (newpc & 1)) {
+                    mmuLogReset();
+                    mmuLogExtWord(u16(queue.irc));
+                    execAddressError030<C>(newpc, newpc);
+                    return;
+                }
+            }
+
             // Branch
             if (takeBranch) {
                 reg.pc = newpc;
@@ -2460,6 +2571,19 @@ Moira::execJmp(u16 opcode)
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(ea, U32_SUB(ea, 4)));
     }
 
+    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
+    // mmu030 handlers raise vector 3 with a format $B frame; see
+    // execAddressError030.
+    // Stacked PC = instruction address + 2 for every JMP EA mode; the EA
+    // extension words were logged at consumption (readExt/skipExt).
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030 && (ea & 1)) {
+            execAddressError030<C>(ea, reg.pc0 + 2);
+            FINALIZE
+            return;
+        }
+    }
+
     // Jump to new address
     reg.pc = ea;
 
@@ -2710,6 +2834,15 @@ Moira::execMove2(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
+            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+            // destination write (gencpu order) — a last-write fault stacks
+            // the updated CCR
+            if (cpuModel == Model::M68030) {
+                reg.sr.n = NBIT<S>(data);
+                reg.sr.z = ZERO<S>(data);
+                reg.sr.v = 0;
+                reg.sr.c = 0;
+            }
             writeOp<C, Mode::AI, S, POLL>(dst, data);
 
             reg.sr.n = NBIT<S>(data);
@@ -2735,6 +2868,15 @@ Moira::execMove2(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
+            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+            // destination write (gencpu order) — a last-write fault stacks
+            // the updated CCR
+            if (cpuModel == Model::M68030) {
+                reg.sr.n = NBIT<S>(data);
+                reg.sr.z = ZERO<S>(data);
+                reg.sr.v = 0;
+                reg.sr.c = 0;
+            }
             writeOp<C, Mode::AI, S>(dst, data);
 
             reg.sr.n = NBIT<S>(data);
@@ -2749,6 +2891,15 @@ Moira::execMove2(u16 opcode)
 
             POLL_IPL;
 
+            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+            // destination write (gencpu order) — a last-write fault stacks
+            // the updated CCR
+            if (cpuModel == Model::M68030) {
+                reg.sr.n = NBIT<S>(data);
+                reg.sr.z = ZERO<S>(data);
+                reg.sr.v = 0;
+                reg.sr.c = 0;
+            }
             writeOp<C, Mode::AI, S>(dst, data);
 
             reg.sr.n = NBIT<S>(data);
@@ -2774,6 +2925,15 @@ Moira::execMove2(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
+            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+            // destination write (gencpu order) — a last-write fault stacks
+            // the updated CCR
+            if (cpuModel == Model::M68030) {
+                reg.sr.n = NBIT<S>(data);
+                reg.sr.z = ZERO<S>(data);
+                reg.sr.v = 0;
+                reg.sr.c = 0;
+            }
             writeOp<C, Mode::AI, S>(dst, data);
 
             reg.sr.n = NBIT<S>(data);
@@ -2828,6 +2988,15 @@ Moira::execMove3(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+        // destination write (gencpu order) — a last-write fault stacks
+        // the updated CCR
+        if (cpuModel == Model::M68030) {
+            reg.sr.n = NBIT<S>(data);
+            reg.sr.z = ZERO<S>(data);
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+        }
         writeOp<C, Mode::PI, S, POLL>(dst, data);
 
         reg.sr.n = NBIT<S>(data);
@@ -2842,6 +3011,16 @@ Moira::execMove3(u16 opcode)
         if constexpr (!isMemMode(M)) {
 
             POLL_IPL;
+
+            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+            // destination write (gencpu order) — a last-write fault stacks
+            // the updated CCR
+            if (cpuModel == Model::M68030) {
+                reg.sr.n = NBIT<S>(data);
+                reg.sr.z = ZERO<S>(data);
+                reg.sr.v = 0;
+                reg.sr.c = 0;
+            }
             writeOp<C, Mode::PI, S>(dst, data);
 
             reg.sr.n = NBIT<S>(data);
@@ -2867,6 +3046,15 @@ Moira::execMove3(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
+            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+            // destination write (gencpu order) — a last-write fault stacks
+            // the updated CCR
+            if (cpuModel == Model::M68030) {
+                reg.sr.n = NBIT<S>(data);
+                reg.sr.z = ZERO<S>(data);
+                reg.sr.v = 0;
+                reg.sr.c = 0;
+            }
             writeOp<C, Mode::PI, S, POLL>(dst, data);
             looping<I>() ? noPrefetch<C>() : prefetch<C>();
             if (looping<I>() && S == Long) loopModeDelay = 0;
@@ -2946,6 +3134,37 @@ Moira::execMove4(u16 opcode)
         if (format == 2) { SYNC(2); throw AddressError(makeFrame<flags2>(ea, reg.pc + 2, getSR(), ird)); }
     }
 
+    // POM68K O4 slice 3: 68030 — An is decremented before the write
+    // (gencpu Apdi order), the write is the instruction's last (format $A
+    // fault frame, updated CCR), and longs go out high word first
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+
+            updateAn<Mode::PD, S>(dst);
+            mmuState[1] |= 0x0100;              // LASTWRITE
+            mmuLastWritePc = reg.pc;
+            writeM<C, Mode::PD, S>(ea, data);
+
+            //           00  10  20        00  10  20        00  10  20
+            //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+            CYCLES_DN   ( 8,  8,  5,        8,  8,  5,       12, 14,  5)
+            CYCLES_AN   ( 0,  0,  0,        8,  8,  5,       12, 14,  5)
+            CYCLES_AI   (12, 12,  9,       12, 12,  9,       20, 22,  9)
+            CYCLES_PI   (12, 12,  9,       12, 12,  9,       20, 22,  9)
+            CYCLES_PD   (14, 14, 10,       14, 14, 10,       22, 24, 10)
+            CYCLES_DI   (16, 16, 10,       16, 16, 10,       24, 26, 10)
+            CYCLES_IX   (18, 18, 12,       18, 18, 12,       26, 28, 12)
+            CYCLES_AW   (16, 16,  9,       16, 16,  9,       24, 26,  9)
+            CYCLES_AL   (20, 20,  9,       20, 20,  9,       28, 30,  9)
+            CYCLES_DIPC (16, 16, 10,       16, 16, 10,       24, 26, 10)
+            CYCLES_IXPC (18, 18, 12,       18, 18, 12,       26, 28, 12)
+            CYCLES_IM   (12, 12,  7,       12, 12,  7,       20, 22,  9)
+
+            FINALIZE
+            return;
+        }
+    }
+
     writeM<C, Mode::PD, S, REVERSE>(ea, data);
     updateAn<Mode::PD, S>(dst);
 
@@ -2986,6 +3205,15 @@ Moira::execMove5(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+        // destination write (gencpu order) — a last-write fault stacks
+        // the updated CCR
+        if (cpuModel == Model::M68030) {
+            reg.sr.n = NBIT<S>(data);
+            reg.sr.z = ZERO<S>(data);
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+        }
         writeOp<C, Mode::DI, S, POLL>(dst, data);
 
         reg.sr.n = NBIT<S>(data);
@@ -3002,6 +3230,15 @@ Moira::execMove5(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+        // destination write (gencpu order) — a last-write fault stacks
+        // the updated CCR
+        if (cpuModel == Model::M68030) {
+            reg.sr.n = NBIT<S>(data);
+            reg.sr.z = ZERO<S>(data);
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+        }
         writeOp<C, Mode::DI, S>(dst, data);
         prefetch<C, POLL>();
     }
@@ -3043,6 +3280,15 @@ Moira::execMove6(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+        // destination write (gencpu order) — a last-write fault stacks
+        // the updated CCR
+        if (cpuModel == Model::M68030) {
+            reg.sr.n = NBIT<S>(data);
+            reg.sr.z = ZERO<S>(data);
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+        }
         writeOp<C, Mode::IX, S, POLL>(dst, data);
 
         reg.sr.n = NBIT<S>(data);
@@ -3059,6 +3305,15 @@ Moira::execMove6(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+        // destination write (gencpu order) — a last-write fault stacks
+        // the updated CCR
+        if (cpuModel == Model::M68030) {
+            reg.sr.n = NBIT<S>(data);
+            reg.sr.z = ZERO<S>(data);
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+        }
         writeOp<C, Mode::IX, S>(dst, data);
         prefetch<C, POLL>();
     }
@@ -3098,6 +3353,15 @@ Moira::execMove7(u16 opcode)
     reg.sr.v = 0;
     reg.sr.c = 0;
 
+    // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+    // destination write (gencpu order) — a last-write fault stacks
+    // the updated CCR
+    if (cpuModel == Model::M68030) {
+        reg.sr.n = NBIT<S>(data);
+        reg.sr.z = ZERO<S>(data);
+        reg.sr.v = 0;
+        reg.sr.c = 0;
+    }
     writeOp<C, Mode::AW, S>(dst, data);
     prefetch<C, POLL>();
 
@@ -3184,6 +3448,15 @@ Moira::execMove8(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
+        // destination write (gencpu order) — a last-write fault stacks
+        // the updated CCR
+        if (cpuModel == Model::M68030) {
+            reg.sr.n = NBIT<S>(data);
+            reg.sr.z = ZERO<S>(data);
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+        }
         writeOp<C, Mode::AL, S>(dst, data);
     }
 
@@ -3361,9 +3634,25 @@ Moira::execMovemEaRg(u16 opcode)
 
     int src  = _____________xxx(opcode);
     u16 mask = (u16)readI<C, Word>();
-    u32 ea   = computeEA<C, M, S>(src);
+    u32 ea   = computeEA<C, M, S, MMU_NOFIXUP>(src);
 
     int cnt = 0;
+
+    // POM68K O4 slice 3: WinUAE MOVEM restart bookkeeping — the MOVEM1
+    // flag and the transfer counter (mmuState[0]) land in $B fault
+    // frames; the EA is logged (state_store_mmu030) but the transfers
+    // themselves are not, and the 68000 guard reads do not exist.
+    bool mmu030 = false;
+    bool logSave = false;
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            mmu030 = true;
+            mmuState[1] |= 0x4000;              // MOVEM1
+            mmuLogExtWord(ea);                  // srca = state_store(srca)
+            logSave = mmuLogging;
+            mmuLogging = false;
+        }
+    }
 
     // Check for address error
     // POM68K: +2 idle, uniform PC-2 frame, and (An)+ leaves An advanced by
@@ -3376,7 +3665,7 @@ Moira::execMovemEaRg(u16 opcode)
         throw AddressError(makeFrame<AE_SET_DF|AE_SET_RW>(ea));
     }
 
-    if constexpr (S == Long) (void)read<C, AddrSpace::DATA, Word>(ea);
+    if constexpr (S == Long) { if (!mmu030) (void)read<C, AddrSpace::DATA, Word>(ea); }
 
     if constexpr (M == Mode(3)) {     // (An)+
 
@@ -3388,6 +3677,7 @@ Moira::execMovemEaRg(u16 opcode)
             writeR(i, SEXT<S>(readM<C, M, S>(ea)));
             ea += S;
             cnt++;
+            if (mmu030) mmuState[0]++;
         }
 
         writeA(src, ea);
@@ -3402,9 +3692,12 @@ Moira::execMovemEaRg(u16 opcode)
             writeR(i, SEXT<S>(readM<C, M, S>(ea)));
             ea += S;
             cnt++;
+            if (mmu030) mmuState[0]++;
         }
     }
-    if constexpr (S == Word) (void)read<C, AddrSpace::DATA, Word>(ea);
+    if constexpr (S == Word) { if (!mmu030) (void)read<C, AddrSpace::DATA, Word>(ea); }
+
+    if (mmu030) mmuLogging = logSave;
 
     prefetch<C, POLL>();
 
@@ -3434,9 +3727,27 @@ Moira::execMovemRgEa(u16 opcode)
 
     int cnt = 0;
 
+    // POM68K O4 slice 3: WinUAE MOVEM store bookkeeping — transfers are
+    // unlogged with the value in the data buffer, the MOVEM1 flag and the
+    // transfer counter land in $B fault frames, and the FINAL transfer is
+    // a last-write ($A frame, base register updated before the write).
+    bool mmu030 = false;
+    bool logSave = false;
+    int total = 0;
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            mmu030 = true;
+            mmuState[1] |= 0x4000;              // MOVEM1
+            logSave = mmuLogging;
+            mmuLogging = false;
+            for (int i = 0; i < 16; i++) if (mask & (1 << i)) total++;
+        }
+    }
+
     if constexpr (M == Mode(4)) {     // -(An)
 
         u32 ea = readA(dst);
+        const u32 initial = ea;
 
         for (int i = 15; i >= 0; i--) {
 
@@ -3455,15 +3766,39 @@ Moira::execMovemRgEa(u16 opcode)
 
             // Write register contents into memory
             ea -= S;
-            if constexpr (C == Core::C68020 && !MOIRA_MIMIC_MUSASHI) writeA(dst, ea);
-            writeM<C, M, S, MOIRA_MIMIC_MUSASHI ? REVERSE : 0>(ea, reg.r[i]);
+            // POM68K (two-oracle arbitrated 2026-07-15): on 020+, when
+            // the base register is part of the list, the value stored is
+            // the INITIAL value decremented by one operation size
+            // (M68000PRM MOVEM; WinUAE stores initial - S regardless of
+            // the register's position in the list) — not the running EA
+            // that upstream's per-iteration writeA produced.
+            if (mmu030) {
+
+                u32 value = (i == dst + 8) ? U32_SUB(initial, S) : reg.r[i];
+                mmuDataBuffer = value;
+                if (cnt == total - 1) {         // last write (gencpu)
+                    writeA(dst, ea);
+                    mmuState[1] |= 0x0100;      // LASTWRITE
+                    mmuState[1] &= u16(~0x4000);
+                    mmuLastWritePc = reg.pc;
+                }
+                writeM<C, M, S>(ea, value);
+
+            } else {
+
+                if constexpr (C == Core::C68020 && !MOIRA_MIMIC_MUSASHI) {
+                    if (cnt == 0) writeA(dst, U32_SUB(readA(dst), S));
+                }
+                writeM<C, M, S, MOIRA_MIMIC_MUSASHI ? REVERSE : 0>(ea, reg.r[i]);
+            }
             cnt++;
+            if (mmu030) mmuState[0]++;
         }
-        if constexpr (C != Core::C68020 || MOIRA_MIMIC_MUSASHI) writeA(dst, ea);
+        writeA(dst, ea);
 
     } else {
 
-        u32 ea = computeEA<C, M, S>(dst);
+        u32 ea = computeEA<C, M, S, MMU_NOFIXUP>(dst);
 
         for(int i = 0; i < 16; i++) {
 
@@ -3481,11 +3816,24 @@ Moira::execMovemRgEa(u16 opcode)
             }
 
             // Write register contents into memory
+            if (mmu030) {
+
+                mmuDataBuffer = reg.r[i];
+                if (cnt == total - 1) {         // last write (gencpu)
+                    mmuState[1] |= 0x0100;      // LASTWRITE
+                    mmuState[1] &= u16(~0x4000);
+                    mmuLastWritePc = reg.pc;
+                }
+            }
             writeM<C, M, S>(ea, reg.r[i]);
             ea += S;
             cnt++;
+            if (mmu030) mmuState[0]++;
         }
     }
+
+    if (mmu030) mmuLogging = logSave;
+
     prefetch<C, POLL>();
 
     auto c = (C == Core::C68020 || S == Word) ? 4 * cnt : 8 * cnt;
@@ -3639,23 +3987,55 @@ Moira::execMoves(u16 opcode)
         // Make the DFC register visible on the FC pins
         fcSource = 2;
 
-        // writeOp<C, M, S>(dst, value);
-        try {
-            writeM<C, M, S, AE_INC_PC>(ea, value);
-        } catch (AddressError &exc) {
+        // POM68K O4 slice 3: MOVES Rg,Ea is the instruction's last write
+        // on the 68030 (gencpu genastore_fc → gen_set_fault_pc), and the
+        // pending-write buffer holds the FULL source register (gencpu
+        // passes uae_u32 src = regs.regs[n], unclipped)
+        bool done030 = false;
+        if constexpr (C == Core::C68020) {
+            if (cpuModel == Model::M68030) [[unlikely]] {
 
-            writeBuffer = (S == Long ? u16(value >> 16) : u16(value & 0xFFFF));
+                mmuState[1] |= 0x0100;          // LASTWRITE
+                mmuLastWritePc = reg.pc;
 
-            // EXPERIMENTAL: CLEAN THIS UP (RENAME stackFrame.ird to irc?!)
-            fcSource = 0;
-            queue.irc = old;
-            throw exc;
+                bool logSave = mmuLogging;
+                if (logSave) {                  // ACCESS_CHECK_PUT
+                    mmuIdx++;
+                    mmuDataBuffer = readR(src);
+                    mmuLogging = false;
+                }
+                writeM<C, M, S, AE_INC_PC>(ea, value);
+                if (logSave) {                  // ACCESS_EXIT_PUT
+                    mmuLogging = true;
+                    if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuDataBuffer;
+                    mmuIdxDone++;
+                }
+
+                fcSource = 0;
+                done030 = true;
+            }
         }
 
-        // Switch back to the old FC pin values
-        fcSource = 0;
+        if (!done030) {
 
-        if (S == Long && (cpuModel == Model::M68020 || cpuModel == Model::M68EC020)) cp += 2;
+            // writeOp<C, M, S>(dst, value);
+            try {
+                writeM<C, M, S, AE_INC_PC>(ea, value);
+            } catch (AddressError &exc) {
+
+                writeBuffer = (S == Long ? u16(value >> 16) : u16(value & 0xFFFF));
+
+                // EXPERIMENTAL: CLEAN THIS UP (RENAME stackFrame.ird to irc?!)
+                fcSource = 0;
+                queue.irc = old;
+                throw exc;
+            }
+
+            // Switch back to the old FC pin values
+            fcSource = 0;
+
+            if (S == Long && (cpuModel == Model::M68020 || cpuModel == Model::M68EC020)) cp += 2;
+        }
 
     } else {                    // Ea -> Rg
 
@@ -4325,10 +4705,21 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
 
     if (divisor == 0) {
 
-        reg.sr.n = 0;
-        reg.sr.z = 0;
-        reg.sr.v = 0;
-        reg.sr.c = 0;
+        if constexpr (C == Core::C68020) {
+
+            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
+            // (divbyzero_special: signed clears CZNV then sets Z)
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+            setDivZeroDIVS<C, S>(dividend);
+
+        } else {
+
+            reg.sr.n = 0;
+            reg.sr.z = 0;
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+        }
 
         SYNC(8);
         execException<C>(M68kException::DIVIDE_BY_ZERO);
@@ -4458,10 +4849,21 @@ Moira::execDivuMoira(u16 opcode, bool *divByZero)
     // Check for division by zero
     if (divisor == 0) {
 
-        reg.sr.n = 0;
-        reg.sr.z = 0;
-        reg.sr.v = 0;
-        reg.sr.c = 0;
+        if constexpr (C == Core::C68020) {
+
+            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
+            // (divbyzero_special: unsigned takes N/Z from the dividend's
+            // HIGH word and sets V)
+            reg.sr.c = 0;
+            setDivZeroDIVU<C, S>(dividend);
+
+        } else {
+
+            reg.sr.n = 0;
+            reg.sr.z = 0;
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+        }
 
         SYNC(8);
         execException<C>(M68kException::DIVIDE_BY_ZERO);
@@ -4618,8 +5020,17 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
         {
             auto result = divlsMoira<Word>(dividend, divisor);
 
-            writeD(dh, result.second);
-            writeD(dl, result.first);
+            // POM68K O4 slice 4: $80000000 / -1 overflows — registers stay
+            // unchanged, undefined N/Z per WinUAE divsl_overflow
+            if(!reg.sr.v) {
+
+                writeD(dh, result.second);
+                writeD(dl, result.first);
+
+            } else {
+
+                setUndefinedDIVSL<C, Word>(i64(i32(dividend)), i32(divisor));
+            }
             break;
         }
         case 0b11:
@@ -5032,6 +5443,22 @@ Moira::execRtd(u16 opcode)
         throw AddressError(makeFrame<AE_PROG>(newpc));
     }
 
+    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
+    // mmu030 handlers raise vector 3 with a format $B frame; see
+    // execAddressError030.
+    // WinUAE logs the displacement word BEFORE the popped long; A7 keeps
+    // both adjustments; stacked PC = the RTD instruction.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030 && (newpc & 1)) {
+            mmuLogReset();
+            mmuLogExtWord(u16(queue.irc));
+            mmuLogExtWord(newpc);
+            execAddressError030<C>(newpc, reg.pc0);
+            FINALIZE
+            return;
+        }
+    }
+
     setPC(newpc);
     fullPrefetch<C, POLL>();
 
@@ -5050,6 +5477,7 @@ Moira::execRte(u16 opcode)
 
     u16 newsr = 0;
     u32 newpc = 0;
+    [[maybe_unused]] u16 fword = 0;     // POM68K slice 4: last format word
 
     switch (C) {
 
@@ -5143,7 +5571,8 @@ Moira::execRte(u16 opcode)
         {
             while (1) {
 
-                u16 format = (u16)(read<C, AddrSpace::DATA, Word>(reg.sp + 6) >> 12);
+                fword = (u16)read<C, AddrSpace::DATA, Word>(reg.sp + 6);
+                u16 format = u16(fword >> 12);
 
                 if (format == 0b000) {  // Standard frame
 
@@ -5186,7 +5615,13 @@ Moira::execRte(u16 opcode)
                     (void)pop<C, Long>();
                     break;
 
-                } else if (format == 0b1011) {
+                } else if (format == 0b1010) {
+
+                    // POM68K O6: short bus-fault frame ($A, 16 words) —
+                    // stacked by writeStackFrameShortBusFault on a
+                    // last-write fault (extBusError / MMU). PC = next
+                    // instruction; the faulted write is NOT re-run
+                    // (restart model, same policy as the $B frame below).
 
                     // Status register
                     newsr = (u16)pop<C, Word>();
@@ -5194,7 +5629,7 @@ Moira::execRte(u16 opcode)
                     // Program counter
                     newpc = pop<C, Long>();
 
-                    // 1011 | Vector offset
+                    // 1010 | Vector offset
                     (void)pop<C, Word>();
 
                     // Internal register
@@ -5211,6 +5646,42 @@ Moira::execRte(u16 opcode)
 
                     // Data cycle fault address
                     (void)pop<C, Long>();
+
+                    // Internal register (opcode storage)
+                    (void)pop<C, Long>();
+
+                    // Data output buffer
+                    (void)pop<C, Long>();
+
+                    // Internal register (pipeline status)
+                    (void)pop<C, Long>();
+                    break;
+
+                } else if (format == 0b1011) {
+
+                    // Status register
+                    newsr = (u16)pop<C, Word>();
+
+                    // Program counter
+                    newpc = pop<C, Long>();
+
+                    // 1011 | Vector offset
+                    (void)pop<C, Word>();
+
+                    // Internal register
+                    (void)pop<C, Word>();
+
+                    // Special status register
+                    [[maybe_unused]] u16 ssw = (u16)pop<C, Word>();
+
+                    // Instruction pipe stage C
+                    (void)pop<C, Word>();
+
+                    // Instruction pipe stage B
+                    (void)pop<C, Word>();
+
+                    // Data cycle fault address
+                    [[maybe_unused]] u32 faultAddr = pop<C, Long>();
 
                     // Internal registers
                     (void)pop<C, Word>();
@@ -5230,11 +5701,31 @@ Moira::execRte(u16 opcode)
                     (void)pop<C, Long>();
 
                     // Data input buffer
-                    (void)pop<C, Long>();
+                    [[maybe_unused]] u32 dataIn = pop<C, Long>();
 
                     // Internal registers
                     (void)pop<C, Word>();
                     (void)pop<C, Long>();
+
+                    // POM68K O6.9: the handler cleared the SSW DF bit
+                    // (bit 9 marker still set) — the faulted data cycle
+                    // is done as far as software is concerned. Arm the
+                    // one-shot substitution consumed when the restarted
+                    // instruction re-issues that exact access (see
+                    // Moira.h; WinUAE m68k_do_rte_mmu030, RM excluded —
+                    // WinUAE treats RMW+cleared-DF as instruction done,
+                    // which Moira's restart model cannot express).
+                    if constexpr (C == Core::C68020) {
+                        if (cpuModel == Model::M68030
+                            && (ssw & 0x0200) && !(ssw & 0x0100)
+                            && !(ssw & 0x0080)) {
+                            mmuRteSubstArmed = true;
+                            mmuRteSubstWrite = !(ssw & 0x0040);
+                            mmuRteSubstAddr = faultAddr;
+                            mmuRteSubstData = dataIn;
+                            mmuRteSubstPc = newpc;
+                        }
+                    }
 
                     // Version#, Internal information
                     (void)pop<C, Word>();
@@ -5267,6 +5758,24 @@ Moira::execRte(u16 opcode)
     // Check for address error
     if (misaligned<C>(newpc)) {
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
+    }
+
+    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
+    // mmu030 handlers raise vector 3 with a format $B frame; see
+    // execAddressError030.
+    // New SR already applied, A7 stays popped. WinUAE's per-frame reads
+    // are SR, PC, FORMAT (three log entries — Moira peeks the format
+    // first, so the log is rebuilt); stacked PC = the RTE instruction.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030 && (newpc & 1)) {
+            mmuLogReset();
+            mmuLogExtWord(newsr);
+            mmuLogExtWord(newpc);
+            mmuLogExtWord(fword);
+            execAddressError030<C>(newpc, reg.pc0);
+            FINALIZE
+            return;
+        }
     }
 
     setPC(newpc);
@@ -5318,6 +5827,19 @@ Moira::execRtr(u16 opcode)
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
     }
 
+    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
+    // mmu030 handlers raise vector 3 with a format $B frame; see
+    // execAddressError030.
+    // CCR already updated, A7 stays popped, both pops are in the access
+    // log; stacked PC = instruction address + 2 (WinUAE oldpc + 2).
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030 && (newpc & 1)) {
+            execAddressError030<C>(newpc, reg.pc0 + 2);
+            FINALIZE
+            return;
+        }
+    }
+
     setPC(newpc);
     fullPrefetch<C, POLL>();
 
@@ -5347,6 +5869,19 @@ Moira::execRts(u16 opcode)
     // Check for address error
     if (misaligned<C>(newpc)) {
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
+    }
+
+    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
+    // mmu030 handlers raise vector 3 with a format $B frame; see
+    // execAddressError030.
+    // A7 stays popped; the popped long is in the access log (funnel);
+    // stacked PC = the RTS instruction.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030 && (newpc & 1)) {
+            execAddressError030<C>(newpc, reg.pc0);
+            FINALIZE
+            return;
+        }
     }
 
     setPC(newpc);
@@ -5525,6 +6060,11 @@ Moira::execTasEa(u16 opcode)
         if constexpr (M == Mode::PI) SYNC(4);
         if constexpr (M == Mode::PD) SYNC(2);
         if constexpr (M == Mode::IX) SYNC(2);
+
+        // POM68K O4 slice 3: TAS = locked RMW cycle on the 68030
+        if constexpr (C == Core::C68020) {
+            if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
+        }
 
         readOp<C, M, Byte>(dst, &ea, &data);
 

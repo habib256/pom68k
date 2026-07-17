@@ -259,6 +259,199 @@ Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr)
     push<C, Word>(sr);
 }
 
+//
+// POM68K O4 slice 3 — 68030 MMU bus-fault frames (MC68030UM § 8.1.4),
+// byte-for-byte replicas of WinUAE Exception_build_stack_frame cases
+// $A/$B (newcpu_common.c) as produced by the mode-5 68030+MMU core:
+// prefetch020[] and the pipeline words are always zero there, the
+// internal words carry the access log, the pending-fixup encodings and
+// the MOVEM/EA restart state. See POM68K_VENDOR.md § MMU bus layer.
+//
+
+template <Core C> void
+Moira::writeStackFrameShortBusFault(u16 sr, u32 pc)
+{
+    push<C, Long>(0);                           // internal (pipeline status)
+    push<C, Long>(mmuWb3Data);                  // data output buffer
+    push<C, Long>(mmuOpcodeV & 0xFFFF);         // internal (opcode storage)
+    push<C, Long>(mmuFaultAddr);                // data cycle fault address
+    push<C, Word>(0);                           // instr. pipe stage B
+    push<C, Word>(0);                           // instr. pipe stage C
+    push<C, Word>(mmuSsw);                      // special status word
+    push<C, Word>(mmuWb2Address);               // internal (= mmuState[1])
+    push<C, Word>(u16(0xA000 | (2 << 2)));      // format $A | vector offset
+    push<C, Long>(pc);
+    push<C, Word>(sr);
+}
+
+template <Core C> void
+Moira::writeStackFrameLongBusFault(u16 sr, u32 pc, int nr)
+{
+    // A faulting write parks the pending value in the access log so RTE
+    // can retry it (WinUAE: mmu030_ad[idx_done].val = wb3_data)
+    if (!(mmuSsw & 0x0040) && mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuWb3Data;
+
+    const u32 ps = (mmuOpcodeV == 0xFFFFFFFF) ? 0x80000000 : 0;
+    const int done = mmuIdxDone < 9 ? mmuIdxDone : 8;
+
+    int i;
+    for (i = 0; i < done + 1; i++) push<C, Long>(mmuAd[i]);     // access log
+    for (; i < 9; i++) {
+        // POM68K O5: during an FMOVEM (state[1] FMOVEM flag) the padding
+        // slots MAX-2/MAX-1 carry the first two longs of the register in
+        // flight (WinUAE Exception_build_stack_frame case 0xB,
+        // newcpu_common.c: mmu030_fmovem_store)
+        u32 v = 0;
+        if (mmuState[1] & 0x2000) {
+            if (i == 7) v = mmuFmovemStore[0];
+            if (i == 8) v = mmuFmovemStore[1];
+        }
+        push<C, Long>(v);
+    }
+    push<C, Word>(u16((mmuIdx & 0xf) | ((mmuIdxDone & 0xf) << 4)
+                      | (mmuWb2Status << 8)));  // version / internal info
+    push<C, Word>(u16(mmuState[2] | (mmuWb3Status << 8)));
+    push<C, Word>(mmuWb2Address);
+    push<C, Word>(mmuState[0]);                 // MOVEM counter
+    push<C, Long>(mmuFaultAddr);                // data input buffer
+    push<C, Long>(ps);
+    push<C, Long>(mmuStageB);                   // stage B address
+    push<C, Long>(mmuDispStore[1]);
+    push<C, Long>(mmuDispStore[0]);
+    push<C, Long>(mmuWb3Data);                  // data output buffer
+    push<C, Long>(mmuOpcodeV & 0xFFFF);         // internal (opcode storage)
+    push<C, Long>(mmuFaultAddr);                // data cycle fault address
+    push<C, Word>(0);                           // instr. pipe stage B
+    push<C, Word>(0);                           // instr. pipe stage C
+    push<C, Word>(mmuSsw);
+    push<C, Word>(mmuWb2Address);
+    push<C, Word>(u16(0xB000 | (nr << 2)));     // format $B | vector offset
+    push<C, Long>(pc);
+    push<C, Word>(sr);
+}
+
+// POM68K O4 slice 4 — 68030 address error on an odd instruction-flow
+// target (WinUAE Exception_mmu030 nr == 3, reached from the exception3_*
+// hooks in the mmu030 gencpu handlers): vector 3, format $B frame with
+// SSW = RW|SIZE_W|FC 6 (constant — S is already set when WinUAE evaluates
+// it), fault address = the odd target, restart state and data buffers
+// zeroed. The caller has already applied every architectural side effect
+// that precedes the fault (pops, (An) updates, CCR/SR changes) and passes
+// the stacked PC required by the faulting instruction's convention.
+template <Core C> void
+Moira::execAddressError030(u32 target, u32 stackedPc)
+{
+    mmuLogging = false;
+
+    willExecute(M68kException::ADDRESS_ERROR, 3);
+
+    u16 status = getSR();
+
+    setSupervisorMode(true);
+    clearTraceFlags();
+    flags &= ~State::TRACE_EXC;
+    SYNC(8);
+
+    // WinUAE zeroes the restart state; the wb*/stage-B capture is left
+    // to the deterministic reset values (oracle_set_state zeroes them)
+    mmuState[0] = mmuState[1] = 0;
+    mmuDataBuffer = 0;
+    mmuFaultAddr = target;
+    mmuStageB = 0;
+    mmuWb2Address = 0;
+    mmuWb2Status = mmuWb3Status = 0;
+    mmuWb3Data = 0;
+    mmuSsw = 0x0066;                            // RW | SIZE_W | FC = 6
+
+    // The vector is fetched before the frame is stacked (WinUAE order)
+    u32 vectorAddr = (reg.vbr & ~u32(0x1)) + 4 * 3;
+    u32 newpc = read<C, AddrSpace::DATA, Long>(vectorAddr);
+
+    writeStackFrameLongBusFault<C>(status, stackedPc, 3);
+
+    if (newpc & 1) { halt(); return; }          // double fault
+
+    reg.pc = reg.pc0 = newpc;
+
+    if (debugger.catchpointMatches(3)) didReachCatchpoint(u8(3));
+    didJumpToVector(3, reg.pc);
+
+    didExecute(M68kException::ADDRESS_ERROR, 3);
+}
+
+template <Core C> bool
+Moira::mmuCheckOddPc(u32 target, u32 stackedPc)
+{
+    if constexpr (C == Core::C68020) {
+
+        if (cpuModel == Model::M68030 && (target & 1)) {
+
+            execAddressError030<C>(target, stackedPc);
+            return true;
+        }
+    }
+    return false;
+}
+
+// Bus-error exception processing for MMU translation faults, mirroring
+// the CATCH block of WinUAE m68k_run_mmu030 + Exception_mmu030: frame $A
+// for a fault on the instruction's last write (PC = next instruction,
+// CCR kept), frame $B otherwise (PC = faulted instruction, CCR and the
+// (An)± fixups restored; a prefetch-phase fault sets bit 31 of the
+// pipeline-status long).
+template <Core C> void
+Moira::execMmuBusError()
+{
+    mmuLogging = false;
+
+    u32 currpc;
+
+    if (mmuOpcodeV == 0xFFFFFFFF) {             // fault on the opcode fetch
+
+        currpc = reg.pc0;
+
+    } else if (mmuState[1] & 0x0100) {          // fault on the last write
+
+        currpc = mmuLastWritePc;
+
+    } else {
+
+        setCCR(u8(mmuCcrSave));                 // pre-instruction CCR
+        for (int i = 0; i < 2; i++)             // cpu_restore_fixup
+            if (mmuFixupReg[i]) reg.a[mmuFixupReg[i] & 7] = mmuFixupVal[i];
+        currpc = reg.pc0;
+    }
+
+    willExecute(M68kException::BUS_ERROR, 2);
+
+    u16 status = getSR();
+
+    setSupervisorMode(true);
+    clearTraceFlags();
+    flags &= ~State::TRACE_EXC;
+    SYNC(8);
+
+    // The vector is fetched before the frame is stacked (WinUAE order);
+    // both go through address translation
+    u32 vectorAddr = (reg.vbr & ~u32(0x1)) + 4 * 2;
+    u32 newpc = read<C, AddrSpace::DATA, Long>(vectorAddr);
+
+    if (mmuState[1] & 0x0100) {
+        writeStackFrameShortBusFault<C>(status, currpc);
+    } else {
+        writeStackFrameLongBusFault<C>(status, currpc);
+    }
+
+    if (newpc & 1) { halt(); return; }          // double fault (vector 2)
+
+    reg.pc = reg.pc0 = newpc;
+
+    if (debugger.catchpointMatches(2)) didReachCatchpoint(u8(2));
+    didJumpToVector(2, reg.pc);
+
+    didExecute(M68kException::BUS_ERROR, 2);
+}
+
 template <Core C> void
 Moira::execAddressError(StackFrame frame, int delay)
 {
@@ -351,6 +544,10 @@ Moira::execException(M68kException exc, int nr)
 template <Core C> void
 Moira::execException(M68kException exc, int nr)
 {
+    // POM68K O4 slice 3: exception stacking is not part of the 68030
+    // instruction-restart access log (WinUAE uses non-state accessors)
+    mmuLogging = false;
+
     u16 status = getSR();
 
     // Determine the exception vector number
@@ -420,9 +617,12 @@ Moira::execException(M68kException exc, int nr)
             // Write stack frame
             // POM68K: divide-by-zero stacks the DIV instruction's own
             // address; CHK/TRAPV stack the next instruction
-            // (SingleStepTests/680x0, CLK use_current_instruction_pc)
+            // (SingleStepTests/680x0, CLK use_current_instruction_pc).
+            // O4 slice 4: on the 020/030 the format-$2 "instruction
+            // address" field also holds the NEXT instruction (WinUAE
+            // Exception_cpu oldpc, probed; Musashi patched to match).
             C == Core::C68020 ?
-            writeStackFrame0010<C>(status, reg.pc, reg.pc0, vector) :
+            writeStackFrame0010<C>(status, reg.pc, reg.pc, vector) :
             writeStackFrame0000<C>(status,
                 exc == M68kException::DIVIDE_BY_ZERO ? reg.pc0 : reg.pc,
                 vector);
@@ -512,6 +712,9 @@ template <Core C> void
 Moira::execInterrupt(u8 level)
 {
     assert(level < 8);
+
+    // POM68K O4 slice 3: see execException
+    mmuLogging = false;
 
     // Notify delegate
     willInterrupt(level);

@@ -73,8 +73,8 @@ public:
     bool sccIrq() const { return scc_.irqAsserted(); }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisk_; }
-    bool attachScsi(const std::string& path) {
-        if (!scsiDisk_.open(path)) return false;
+    bool attachScsi(const std::string& path, bool writeBack = false) {
+        if (!scsiDisk_.open(path, writeBack)) return false;
         scsi_.attach(&scsiDisk_);
         return true;
     }

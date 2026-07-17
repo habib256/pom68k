@@ -48,6 +48,8 @@ public:
     void raiseShift() { setIfr(SHIFT); }    // command byte finished shifting out
     uint8_t acr() const { return acr_; }
     uint8_t srValue() const { return sr_; }
+    // SR byte loaded but not yet read (Egret paces its clocking on this)
+    bool shiftPending() const { return (ifr_ & SHIFT) != 0; }
     bool irqAsserted() const { return (ifr_ & ier_ & 0x7F) != 0; }
 
 private:

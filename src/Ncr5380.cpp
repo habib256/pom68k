@@ -16,6 +16,7 @@ void Ncr5380::reset() {
     odr_ = icr_ = mode_ = tcr_ = selEnable_ = 0;
     phase_ = BUS_FREE;
     req_ = false;
+    irq_ = false;
     cmd_.clear(); dataIn_.clear(); dataPos_ = 0; cmdLen_ = 0; status_ = 0;
 }
 
@@ -49,9 +50,12 @@ bool Ncr5380::targetPhase() const {
 
 // ── Phase transitions ───────────────────────────────────────────────────
 void Ncr5380::enterCommand() { phase_ = COMMAND; cmd_.clear(); cmdLen_ = 0; req_ = true; }
-void Ncr5380::enterBusFree() { phase_ = BUS_FREE; req_ = false; }
-void Ncr5380::enterStatus()  { phase_ = STATUS;  dataPos_ = 0; req_ = true; }
-void Ncr5380::enterMsgIn()   { phase_ = MSG_IN;  req_ = true; }
+void Ncr5380::enterBusFree() { if (mode_ & MODE_DMA) irq_ = true;
+                               phase_ = BUS_FREE; req_ = false; }
+void Ncr5380::enterStatus()  { if (mode_ & MODE_DMA) irq_ = true;
+                               phase_ = STATUS;  dataPos_ = 0; req_ = true; }
+void Ncr5380::enterMsgIn()   { if (mode_ & MODE_DMA) irq_ = true;
+                               phase_ = MSG_IN;  req_ = true; }
 
 // Expected DATA OUT byte count for WRITE(6)/WRITE(10), else 0.
 int Ncr5380::writeByteCount(const std::vector<uint8_t>& cdb) {
@@ -65,6 +69,7 @@ int Ncr5380::writeByteCount(const std::vector<uint8_t>& cdb) {
 
 void Ncr5380::execute() {
     commands++; lastCmd = cmd_.empty() ? 0 : cmd_[0];
+    if (onCommand) onCommand(cmd_);
     int wbytes = writeByteCount(cmd_);
     if (wbytes > 0) {                                          // WRITE: collect DATA OUT first
         phase_ = DATA_OUT; dataOut_.clear(); dataOutExpected_ = size_t(wbytes);
@@ -139,16 +144,32 @@ uint8_t Ncr5380::liveBusStatus() const {
 
 uint8_t Ncr5380::busAndStatus() const {
     uint8_t v = 0;
-    if ((phaseSignals() & 0x1C) == ((tcr_ & 0x07) << 2 & 0x1C) && targetPhase())
-        v |= BSR_PHASE;                           // PHASE_MATCH (approx)
-    if (req_ && (mode_ & MODE_DMA)) v |= BSR_DRQ; // DRQ for pseudo-DMA
+    if (phaseMatch()) v |= BSR_PHASE;             // PHASE_MATCH (live)
+    if (drqActive()) v |= BSR_DRQ;                // DRQ for pseudo-DMA
+    if (irq_) v |= BSR_IRQ;                       // latched (phase mismatch)
     if (icr_ & ICR_ACK) v |= BSR_ACK;
     if (icr_ & ICR_ATN) v |= BSR_ATN;
     return v;
 }
 
+// TCR-programmed phase vs the live bus phase (5380 datasheet: DMA
+// requests stop and the IRQ latch sets when the target changes phase)
+bool Ncr5380::phaseMatch() const {
+    return targetPhase()
+        && (phaseSignals() & 0x1C) == ((tcr_ & 0x07) << 2 & 0x1C);
+}
+
 uint8_t Ncr5380::read(int reg) {
     reads++;
+    if (onAccess) {
+        uint8_t v = 0;
+        switch (reg) {
+            case R_CSR: v = liveBusStatus(); break;
+            case R_BSR: v = busAndStatus(); break;
+            default: break;
+        }
+        onAccess(reg, false, v);
+    }
     switch (reg) {
         case R_DATA:
             return (phase_ == DATA_IN && dataPos_ < dataIn_.size()) ? dataIn_[dataPos_]
@@ -160,13 +181,14 @@ uint8_t Ncr5380::read(int reg) {
         case R_CSR:  return liveBusStatus();
         case R_BSR:  return busAndStatus();
         case R_IDR:  return (phase_ == DATA_IN && dataPos_ < dataIn_.size()) ? dataIn_[dataPos_] : 0;
-        case R_RPI:  return 0;                     // reset parity/interrupt
+        case R_RPI:  irq_ = false; return 0;       // reset parity/interrupt
     }
     return 0xFF;
 }
 
 void Ncr5380::write(int reg, uint8_t v) {
     writes++;
+    if (onAccess) onAccess(reg, true, v);
     switch (reg) {
         case R_DATA: odr_ = v; break;
         case R_ICR: {
@@ -195,6 +217,7 @@ void Ncr5380::write(int reg, uint8_t v) {
 // Pseudo-DMA: each access auto-handshakes one byte (A9/DACK path).
 uint8_t Ncr5380::dmaRead() {
     if (phase_ == DATA_IN) {
+        dmaBytes++;
         uint8_t b = dataPos_ < dataIn_.size() ? dataIn_[dataPos_] : 0;
         dataPos_++;
         if (dataPos_ >= dataIn_.size()) enterStatus();
@@ -216,4 +239,8 @@ void Ncr5380::dmaWrite(uint8_t v) {
     }
 }
 
+// DRQ policy: kept permissive (any REQ under MODE_DMA) — the Plus ROM
+// pulls STATUS/MESSAGE through the pseudo-DMA port without touching
+// TCR. The LC II SCSI Manager detects end-of-transfer through the IRQ
+// latch (phase change under DMA, see enterStatus) rather than DRQ.
 bool Ncr5380::drqActive() const { return req_ && (mode_ & MODE_DMA); }

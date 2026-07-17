@@ -5,6 +5,18 @@
 // Published under the terms of the MIT License
 // -----------------------------------------------------------------------------
 
+// POM68K O4 slice 3: SKIP_LAST_RD advances the PC without refilling the
+// queue; on the 68030 the consumed word must still enter the access log
+// (WinUAE reads every extension word at consumption time)
+template <Core C> void
+Moira::skipExt()
+{
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] mmuLogExtWord(queue.irc);
+    }
+    reg.pc += 2;
+}
+
 template <Core C, Mode M, Size S, Flags F> u32
 Moira::computeEA(u32 n) {
 
@@ -28,12 +40,26 @@ Moira::computeEA(u32 n) {
         case 3:  // (An)+
         {
             result = readA(n);
+
+            // POM68K O4 slice 3: arm the pending-fixup slot (WinUAE
+            // mmufixup) — its encoding lands in $B fault frames and the
+            // register is restored from it on non-last-write faults
+            if constexpr (C == Core::C68020) {
+                if (cpuModel == Model::M68030 && (F & MMU_NOFIXUP) == 0) [[unlikely]]
+                    mmuArmFixup<S>(int(n), false);
+            }
             break;
         }
         case 4:  // -(An)
         {
             if ((F & IMPL_DEC) == 0) SYNC(2);
             result = readA(n) - ((n == 7 && S == Byte) ? 2 : S);
+
+            // POM68K O4 slice 3: see case 3
+            if constexpr (C == Core::C68020) {
+                if (cpuModel == Model::M68030 && (F & MMU_NOFIXUP) == 0) [[unlikely]]
+                    mmuArmFixup<S>(int(n), true);
+            }
             break;
         }
         case 5: // (d,An)
@@ -42,12 +68,19 @@ Moira::computeEA(u32 n) {
             i16  d = (i16)queue.irc;
 
             result = U32_ADD(an, d);
-            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
+            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
         }
         case 6: // (d,An,Xi)
         {
             if constexpr (C == Core::C68020) {
+
+                // POM68K O4 slice 3: 68030 extended EAs go through the
+                // disp-store machinery (WinUAE get_disp_ea_020_mmu030)
+                if (cpuModel == Model::M68030) [[unlikely]] {
+                    result = computeEAdisp030<C, M, S, F>(readA(n));
+                    break;
+                }
 
                 if (queue.irc & 0x100) {
                     result = computeEAfull<C, M, S, F>(readA(n));
@@ -64,7 +97,7 @@ Moira::computeEA(u32 n) {
                 result = U32_ADD3(an, d, ((queue.irc & 0x800) ? xi : SEXT<Word>(xi)));
 
                 SYNC(2);
-                if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
+                if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             }
             break;
         }
@@ -73,17 +106,34 @@ Moira::computeEA(u32 n) {
             result = (i16)queue.irc;
             readBuffer = queue.irc;
 
-            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
+            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
         }
         case 8: // ABS.L
         {
+            // POM68K O4 slice 3: the 68030 logs ABS.L as ONE long access
+            // (WinUAE next_ilong_mmu030_state), not two word accesses
+            if constexpr (C == Core::C68020) {
+                if (cpuModel == Model::M68030) [[unlikely]] {
+                    bool logSave = mmuLogging;
+                    mmuLogging = false;
+                    result = queue.irc << 16;
+                    readExt<C>();
+                    result |= queue.irc;
+                    readBuffer = queue.irc;
+                    if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
+                    mmuLogging = logSave;
+                    mmuLogExtWord(result);
+                    break;
+                }
+            }
+
             result = queue.irc << 16;
             readExt<C>();
             result |= queue.irc;
             readBuffer = queue.irc;
 
-            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
+            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
         }
         case 9: // (d,PC)
@@ -91,12 +141,18 @@ Moira::computeEA(u32 n) {
             i16  d = (i16)queue.irc;
 
             result = U32_ADD(reg.pc, d);
-            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
+            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
         }
         case 10: // (d,PC,Xi)
         {
             if constexpr (C == Core::C68020) {
+
+                // POM68K O4 slice 3: see case 6
+                if (cpuModel == Model::M68030) [[unlikely]] {
+                    result = computeEAdisp030<C, M, S, F>(reg.pc);
+                    break;
+                }
 
                 if (queue.irc & 0x100) {
                     result = computeEAfull<C, M, S, F>(reg.pc);
@@ -111,7 +167,7 @@ Moira::computeEA(u32 n) {
 
                 result = U32_ADD3(reg.pc, d, ((queue.irc & 0x800) ? xi : SEXT<Word>(xi)));
                 SYNC(2);
-                if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
+                if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             }
             break;
         }
@@ -148,7 +204,7 @@ Moira::computeEAbrief(u32 an)
     result = U32_ADD3(an, i8(disp), xn);
 
     SYNC(2);
-    if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
+    if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
 
     return result;
 }
@@ -189,16 +245,52 @@ Moira::computeEAfull(u32 an)
     if (!is) xn = (lw ? readR(rn) : SEXT<Word>(readR(rn))) << scale;
 
     // Compute effective address
-    if (iis & 0b100) {
-        result = readM<C, M, Long>(an + bd) + xn + od;
-    } else if (iis & 0b011) {
-        result = readM<C, M, Long>(an + bd + xn) + od;
-    } else {
+    // POM68K O4 slice 4 (WinUAE-arbitrated): memory indirection only
+    // happens when the outer-displacement bits (I/IS & 3) are nonzero —
+    // the reserved encoding I/IS = 100 computes base + bd + Xn without a
+    // memory fetch (WinUAE get_disp_ea_020: `if (dp & 0x3) base =
+    // get_long(base)`). Upstream dereferenced on 100 like Musashi did.
+    if ((iis & 0b011) == 0) {
         result = an + bd + xn;
+    } else if (iis & 0b100) {
+        result = readM<C, M, Long>(an + bd) + xn + od;
+    } else {
+        result = readM<C, M, Long>(an + bd + xn) + od;
     }
 
     // Add the number of extra cycles consumed in this addressing mode
     cp += penaltyCycles<C, M, S>(ext);
+
+    return result;
+}
+
+// POM68K O4 slice 3: 68030 extended-EA computation with the WinUAE
+// get_disp_ea_020_mmu030 restart semantics: the inner extension-word and
+// memory-indirect accesses are rewound from the access log; the result is
+// parked in mmuDispStore with the DISP0/1 flag and the consumed word
+// count (state[2] nibble) — exactly what a $B fault frame stacks.
+template <Core C, Mode M, Size S, Flags F> u32
+Moira::computeEAdisp030(u32 base)
+{
+    const int idx = (mmuState[1] & 0x0001) ? 1 : 0;
+
+    const int oldIdx = mmuIdx, oldDone = mmuIdxDone;
+    const u32 pcBefore = reg.pc;
+
+    u32 result;
+    if (queue.irc & 0x100) {
+        result = computeEAfull<C, M, S, F>(base);
+    } else {
+        result = computeEAbrief<C, M, S, F>(base);
+    }
+
+    mmuIdx = oldIdx;                    // WinUAE: mmu030_idx = oldidx
+    mmuIdxDone = oldDone;
+
+    const u32 pcadd = (reg.pc - pcBefore) >> 1;
+    mmuState[1] |= u16(1 << idx);
+    mmuState[2] |= u16((pcadd & 15) << (idx * 4));
+    mmuDispStore[idx] = result;
 
     return result;
 }
@@ -250,6 +342,20 @@ Moira::writeOp(int n, u32 val)
             // Emulate -(An) register modification
             updateAnPD<M, S>(n);
 
+            // POM68K O4 slice 3: the 68030 updates (An)+ BEFORE its last
+            // write and marks the write as restartable (gencpu
+            // gen_set_fault_pc: a fault here stacks a format $A frame
+            // with the next-instruction PC and keeps the updated CCR)
+            if constexpr (C == Core::C68020) {
+                if (cpuModel == Model::M68030) [[unlikely]] {
+                    updateAnPI<M, S>(n);
+                    mmuState[1] |= 0x0100;      // LASTWRITE
+                    mmuLastWritePc = reg.pc;
+                    writeM<C, M, S, F>(ea, val);
+                    return;
+                }
+            }
+
             // Write to effective address
             // POM68K: WRITE faults leave (An)+ unmodified - only reads
             // pre-update An (SingleStepTests/680x0, MOVE.w x,(An)+ vectors)
@@ -272,6 +378,14 @@ Moira::writeOp(int n, u32 ea, u32 val)
         default:
 
             writeBuffer = (S == Long) ? u16(val >> 16) : u16(val & 0xFFFF);
+
+            // POM68K O4 slice 3: see the other writeOp overload
+            if constexpr (C == Core::C68020) {
+                if (cpuModel == Model::M68030) [[unlikely]] {
+                    mmuState[1] |= 0x0100;      // LASTWRITE
+                    mmuLastWritePc = reg.pc;
+                }
+            }
 
             // Write to effective address
             writeM<C, M, S, F>(ea, val);
@@ -369,6 +483,20 @@ Moira::read(u32 addr)
 
     // Update function code pins
     setFC(AS == AddrSpace::DATA ? FC::USER_DATA : FC::USER_PROG);
+
+    // POM68K O4 slice 3: 68030 bus-level address translation. Compiled
+    // out of the 68000/68010 instantiations; a single predictable branch
+    // for the 68020 core (see POM68K_VENDOR.md § MMU bus layer).
+    // Slice 4: the funnel is taken for the M68030 model even with TC.E
+    // off — WinUAE's *_mmu030_state accessors always log/split accesses
+    // (translation is the only conditional part), and the access log is
+    // what a vector-3 format $B frame stacks on an odd-PC address error.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            return mmuRead<C, S, F>(addr);
+        }
+    }
+
     SYNC(2);
 
     // Check for address errors
@@ -425,6 +553,16 @@ Moira::write(u32 addr, u32 val)
 {
     // Update function code pins
     setFC(AS == AddrSpace::DATA ? FC::USER_DATA : FC::USER_PROG);
+
+    // POM68K O4 slice 3: 68030 bus-level address translation (see read;
+    // slice 4: taken for M68030 even with TC.E off — logging/splitting)
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            mmuWrite<C, S, F>(addr, val);
+            return;
+        }
+    }
+
     SYNC(2);
 
     // Check for address errors
@@ -477,6 +615,23 @@ template <Core C, Size S> u32
 Moira::readI()
 {
     u32 result;
+
+    // POM68K O4 slice 3: the 68030 logs a long immediate as ONE access
+    // (WinUAE next_ilong_mmu030_state)
+    if constexpr (C == Core::C68020 && S == Long) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            bool logSave = mmuLogging;
+            mmuLogging = false;
+            result = queue.irc << 16;
+            readExt<C>();
+            result |= queue.irc;
+            readExt<C>();
+            mmuLogging = logSave;
+            mmuLogExtWord(result);
+            readBuffer = queue.irc;
+            return result;
+        }
+    }
 
     switch (S) {
 
@@ -594,6 +749,13 @@ Moira::prefetch()
      */
     reg.pc0 = reg.pc;
 
+    // POM68K O4 slice 3: mode-5 68030 has no prefetch queue — the next
+    // opcode is fetched (through translation) at the start of the next
+    // instruction (mmuExecuteStart); queue refills are suppressed here.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] return;
+    }
+
     queue.ird = queue.irc;
     queue.irc = (u16)read<C, AddrSpace::PROG, Word, F>(reg.pc + 2);
     readBuffer = queue.irc;
@@ -602,6 +764,15 @@ Moira::prefetch()
 template <Core C, Flags F, int delay> void
 Moira::fullPrefetch()
 {
+    // POM68K O4 slice 3: see prefetch — jumps do not fetch the target on
+    // the mode-5 68030; the fetch happens at the next instruction start
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            reg.pc0 = reg.pc;
+            return;
+        }
+    }
+
     assert(!misaligned<C>(reg.pc));
 
     queue.irc = (u16)read<C, AddrSpace::PROG, Word>(reg.pc);
@@ -622,6 +793,19 @@ Moira::noPrefetch(int delay)
 template <Core C> void
 Moira::readExt()
 {
+    // POM68K O4 slice 3: on the 68030 the CONSUMED extension word is the
+    // one the oracle reads (and logs) at this point (WinUAE
+    // next_iword_mmu030_state); the refill of irc is Moira's one-slot
+    // lookahead, translated but unlogged.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            mmuLogExtWord(queue.irc);
+            reg.pc += 2;
+            queue.irc = mmuFetchWord(reg.pc);
+            return;
+        }
+    }
+
     assert(!misaligned<C>(reg.pc));
 
     reg.pc += 2;
@@ -694,6 +878,16 @@ Moira::jumpToVector(int nr)
     }
 
     // Update the prefetch queue
+    // POM68K O4 slice 3: not on the mode-5 68030 (fill_prefetch is a
+    // no-op there; the handler opcode is fetched at the next step)
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            reg.pc0 = reg.pc;
+            if (debugger.catchpointMatches(nr)) didReachCatchpoint(u8(nr));
+            didJumpToVector(nr, reg.pc);
+            return;
+        }
+    }
     queue.irc = (u16)read<C, AddrSpace::PROG, Word>(reg.pc);
     SYNC(2);
     prefetch<C, POLL>();

@@ -19,6 +19,12 @@ if(POM68K_SANITIZE AND NOT MSVC)
     add_link_options   (-fsanitize=${POM68K_SANITIZE})
 endif()
 
+# ─── softfloat (vendored 80-bit softfloat — see extern/softfloat/VENDOR.md) ─
+# O5: backs Moira's 68882 FPU. Plain C, kept as a separate static lib
+# (GPLv2+; Moira stays MIT and only links against it).
+enable_language(C)
+add_subdirectory(extern/softfloat)
+
 # ─── Moira (vendored from NeoST — see extern/moira/POM68K_VENDOR.md) ──────
 set(MOIRA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/moira/Moira)
 if(NOT EXISTS "${MOIRA_DIR}/Moira.cpp")
@@ -26,6 +32,7 @@ if(NOT EXISTS "${MOIRA_DIR}/Moira.cpp")
 endif()
 add_library(moira STATIC ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraDebugger.cpp)
 target_include_directories(moira PUBLIC ${MOIRA_DIR})
+target_link_libraries(moira PUBLIC softfloat68k)
 if(NOT MSVC)
     target_compile_options(moira PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 endif()
@@ -42,6 +49,12 @@ add_library(pom68k_core STATIC
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
     src/Ncr5380.cpp       # M7 — SCSI controller (phase engine)
+    src/PseudoVia.cpp     # O6 — LC II pseudo-VIA (V8 interrupt core)
+    src/V8Memory.cpp      # O6 — LC II memory map + V8 gate array
+    src/Cpu030.cpp        # O6 — Moira 68030 wrapper (LC II)
+    src/Egret.cpp         # O6 — Egret ADB/RTC/PRAM MCU (HLE)
+    src/AdbBus.cpp        # O6 — ADB bus + HLE keyboard/mouse
+    src/Asc.cpp           # O6 — ASC-V8 sound (FIFO A, 22 257 Hz)
 )
 target_include_directories(pom68k_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pom68k_core PUBLIC moira)
@@ -167,6 +180,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME input_etalon COMMAND input_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # O6.10 gate: SCC external/status interrupt for AppleTalk carrier
+    # sense (LC II open-line Break/Abort → LAP manager unblocks).
+    add_executable(scc_ext_test tests/scc_ext_test.cpp)
+    target_link_libraries(scc_ext_test PRIVATE pom68k_core)
+    add_test(NAME scc_ext_test COMMAND scc_ext_test)
+
     # M4.5 gate: SingleStepTests/680x0 68000 vectors against bare Moira.
     # Data is user-fetched (~1 GB): tests/fetch_sst_68000.sh <dir>.
     # Soft-skips when absent.
@@ -175,10 +194,81 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     set(POM68K_SST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68000"
         CACHE PATH "Directory of SingleStepTests/680x0 68000 .json vectors")
     add_test(NAME sst68000 COMMAND sst68000 "${POM68K_SST_DIR}")
+
+    # Phase-2 gate (O4): oracle-agreed SST030 vectors against Moira M68030.
+    # Corpus is generated locally: oracle/fuzz/fuzz030.py (see oracle/README.md).
+    # Soft-skips when absent.
+    add_executable(sst68030 tests/sst68030.cpp)
+    target_link_libraries(sst68030 PRIVATE moira)
+    set(POM68K_SST030_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030"
+        CACHE PATH "Directory of oracle-generated SST030 .json vectors")
+    add_test(NAME sst68030 COMMAND sst68030 "${POM68K_SST030_DIR}")
+
+    # O6.2 gates: LC II pseudo-VIA semantics + V8 memory controller.
+    add_executable(pseudovia_test tests/pseudovia_test.cpp)
+    target_link_libraries(pseudovia_test PRIVATE pom68k_core)
+    add_test(NAME pseudovia_test COMMAND pseudovia_test)
+
+    add_executable(v8_ramsize tests/v8_ramsize.cpp)
+    target_link_libraries(v8_ramsize PRIVATE pom68k_core)
+    add_test(NAME v8_ramsize COMMAND v8_ramsize)
+
+    # O6.6 gate: ASC-V8 FIFO/level-IRQ semantics (boot beep depends on it).
+    add_executable(asc_test tests/asc_test.cpp)
+    target_link_libraries(asc_test PRIVATE pom68k_core)
+    add_test(NAME asc_test COMMAND asc_test)
+
+    # O6.3 gate: Egret HLE transport + command set (protocol pinned from
+    # the LC II ROM's own drivers — see src/Egret.cpp).
+    add_executable(egret_test tests/egret_test.cpp)
+    target_link_libraries(egret_test PRIVATE pom68k_core)
+    add_test(NAME egret_test COMMAND egret_test)
+
+    # O6.4 gate: V8 video decode + Ariel palette + VBL cadence.
+    add_executable(v8_video_test tests/v8_video_test.cpp)
+    target_link_libraries(v8_video_test PRIVATE pom68k_core)
+    add_test(NAME v8_video_test COMMAND v8_video_test)
+
+    # O6.5 gate: SCSI pseudo-DMA windows + DRQ-gated BERR timeout
+    # (soft-skips without the disk image).
+    add_executable(scsi_pdma_test tests/scsi_pdma_test.cpp)
+    target_link_libraries(scsi_pdma_test PRIVATE pom68k_core)
+    add_test(NAME scsi_pdma_test COMMAND scsi_pdma_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # O6.8 gate: the real LC II ROM boots a bootable image to the Finder
+    # (whole-machine etalon; soft-skips without ROM + hdv/ image).
+    add_executable(lcii_boot_etalon tests/lcii_boot_etalon.cpp)
+    target_link_libraries(lcii_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME lcii_boot_etalon COMMAND lcii_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # O6 slice 1 gate: external /BERR + RTE $A/$B on the 68030 (the LC II
+    # ROM's address-map probe and the SCSI pseudo-DMA timeout rely on it).
+    add_executable(berr030_test tests/berr030_test.cpp)
+    target_link_libraries(berr030_test PRIVATE moira)
+    add_test(NAME berr030_test COMMAND berr030_test)
+
+    # O5 gate: hand-computed 68882 smoke cases (FMOVECR/FADD/DZ/OPERR/
+    # FCMP/FMOVEM + detached F-line). The differential FPU corpus replays
+    # through sst68030 (tests/data/sst68030_fpu, generated by a parallel
+    # fuzz run) once available.
+    add_executable(fpu_sanity tests/fpu_sanity.cpp)
+    target_link_libraries(fpu_sanity PRIVATE moira)
+    add_test(NAME fpu_sanity COMMAND fpu_sanity)
 endif()
 
 # Dev tool (not a gate): instruction-level Sony-driver trace.
 if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(sony_trace tests/sony_trace.cpp)
     target_link_libraries(sony_trace PRIVATE pom68k_core)
+
+    # Dev tool (not a gate): real LC II ROM boot trace on the O6 machine.
+    add_executable(lcii_trace tests/lcii_trace.cpp)
+    target_link_libraries(lcii_trace PRIVATE pom68k_core)
+
+    # Dev tool (not a gate): offline Mac ROM introspection (header,
+    # resources, trap table, UniversalInfo) — Basilisk II-derived parsers,
+    # see docs/BASILISK_ROM_NOTES.md. Standalone, no emulator core.
+    add_executable(rominfo tools/rominfo.cpp)
 endif()

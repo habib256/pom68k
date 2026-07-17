@@ -13,6 +13,9 @@ conventions and milestone discipline; the CPU integration pattern comes from
 - `TODO.md` — active backlog + milestone roadmap (incl. the LC II / 68030
   AI-differential plan).
 - `CHANGELOG.md` — resolved items + the **why** behind non-obvious fixes.
+- `docs/` — LC II research: `LCII_HARDWARE.md` (machine blueprint),
+  `BASILISK_ROM_NOTES.md` ($067C ROM-behaviour oracle; §8 = facts
+  verified on the real LC II ROM with `tools/rominfo`).
 
 ## CPU core: Moira (vendored)
 
@@ -71,8 +74,10 @@ CPU **7.8336 MHz**, frame **60.15 Hz** (130 240 cycles/frame), video
 | **IWM + Sony 3.5" 800K GCR** | `Iwm.h/.cpp`, `SonyDrive.h/.cpp` | M5 ✓ | MAME `iwm.cpp`/`ap_dsk35.cpp` |
 | **Keyboard (M0110) + mouse** | `MacInput.h/.cpp`, `Scc8530.h/.cpp` | M5.5 ✓ | MAME/Mini vMac/Snow |
 | **SCSI NCR 5380 + hard disk** | `Ncr5380.h/.cpp`, `ScsiDisk.h/.cpp` | M7 ✓ | MAME `ncr5380.cpp`, pce |
-| SCC 8530 serial ports | `Scc8530.*` (mouse DCD only) | M7.1 | POMIIGS `Scc8530` reuse |
-| **68030 core + MMU (LC II)** | `extern/moira` extension | phase 2 | Motorola manual + 2 oracles |
+| SCC 8530 serial ports | `Scc8530.*` (mouse DCD + LC II LAP ext ints) | M7.1 / O6.10 | POMIIGS `Scc8530` reuse |
+| **68030 oracle + fuzz loop** | `oracle/` (api, uae, fuzz) | O1-O3 ✓ (Musashi retired) | WinUAE (Hatari) |
+| **68030 core + MMU (LC II)** | `extern/moira` extension | O4: MMU instrs ✓, bus/ATC/faults ✓ | MC68030UM + WinUAE oracle |
+| **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ | MC68881/882UM; WinUAE fpp.c |
 
 ## Memory map (Mac Plus, 24-bit)
 
@@ -96,7 +101,21 @@ Full pinned detail + timing/contention model in `DEV.md`.
 **Mac Plus is a usable machine (M0–M7 done).** It boots System 6 from a
 floppy *and* from a SCSI hard disk to the Finder, the mouse/keyboard drive
 it, and the startup chime plays. Moira passes 1 000 058/1 000 058
-SingleStepTests 68000 vectors. 13 CTest gates. Remaining Plus polish in
+SingleStepTests 68000 vectors. 15 CTest gates. Remaining Plus polish in
 `TODO.md` (floppy write, serial, cycle-accurate sound, save states, WASM).
-**Next big phase: the Mac LC II — the 68030 + MMU execution core built by
-AI + differential fuzzing against two oracles** (see `TODO.md § Phase 2`).
+**Phase 2 (Mac LC II): the 68030+MMU+FPU CPU side is done (O1-O5).** The
+WinUAE/Hatari 68030 oracle runs behind a C API (`oracle/oracle_api.h`),
+fuzzed with real MMU tables (`oracle/fuzz/`, SST030 format), replayed
+against Moira (`tests/sst68030`, **3 082 pinned vectors**: integer + MMU
+instrs + bus/ATC/fault frames + 68882 FPU, rulings D1-D22). Musashi was
+retired 2026-07-15 (0 arbitrations won) — the loop is **WinUAE-solo with
+manual arbitration** (`oracle/fuzz/disputes/NOTES.md`).
+**O6 (the LC II machine) boots classic Mac OS to the Finder desktop**
+off real disk images (2026-07-15 boot.vhd; 2026-07-16 GISTPERSO —
+System 7.5, AppleTalk made genuinely inactive via SPConfig after the
+O6.11 Egret XPRAM stream-protocol fix): V8 gate array (`V8Memory`), Egret
+HLE (`Egret`/`AdbBus`), ASC-V8 sound (`Asc`), V8 video + Ariel
+(`V8Video`), SCSI pseudo-DMA over the reused `Ncr5380`, SWIM1 GCR over
+the reused `Iwm`, 68030+PMMU+68882 via the O1-O5 core. 24 CTest gates
+(incl. `lcii_boot_etalon`). Remaining = polish (no-FPU SANE path, MFM
+floppy, sound-out, cycle accuracy, save states) in `TODO.md § O6`.

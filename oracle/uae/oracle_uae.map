@@ -1,0 +1,11 @@
+/* POM68K — oracle_uae exported symbols: exactly the oracle_api.h C ABI. */
+{
+    global:
+        oracle_name;
+        oracle_init;
+        oracle_set_state;
+        oracle_step;
+        oracle_get_state;
+    local:
+        *;
+};

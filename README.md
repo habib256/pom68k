@@ -19,8 +19,9 @@ Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
 ## Run
 
 ```bash
-./build/POM68K                    # no ROM → built-in 68000 demo pattern
-./build/POM68K roms/macplus.rom   # user-provided Mac Plus ROM (128 KB)
+./build/POM68K                          # no ROM → built-in 68000 demo pattern
+./build/POM68K roms/macplus.rom         # Mac Plus ROM (128 KB)
+./build/POM68K roms/maclcii.rom hdv/disk.vhd   # 512 KB ROM → Mac LC II (68030)
 ```
 
 ROMs are copyrighted and **never** part of the repository: drop your own
@@ -28,6 +29,21 @@ ROMs are copyrighted and **never** part of the repository: drop your own
 hand-assembled 68000 demo that clears the boot overlay through the VIA and
 animates a pattern in the 512×342 framebuffer — the same code path a real
 ROM takes.
+
+A **512 KB ROM selects the Mac LC II machine** (68030 + PMMU, V8 gate
+array, Egret ADB, 512×384 video — work in progress, O6): the second
+argument is a SCSI disk image (default `hdv/GISTPERSO.vhd`, then
+`hdv/HD20SC.vhd`). PRAM + clock persist next to the disk image
+(`<disk>.pram`) — the first cold boot runs the ROM's full-RAM burn-in,
+which is long; later boots skip it, like a real battery-backed machine.
+
+**Controls**: the mouse drives the Mac while hovering the screen; a drag
+started on the screen (Finder drag-and-drop) keeps tracking outside it
+and never moves the host-side window (its title bar still does). The
+**Delete key toggles full mouse capture** (cursor grabbed, raw motion;
+press Delete again to release). The **Machine menu** in the top menu bar
+switches between the Mac Plus and Mac LC II profiles (needs the matching
+ROM in `roms/`; the app relaunches on the other machine).
 
 ## Headless tools
 

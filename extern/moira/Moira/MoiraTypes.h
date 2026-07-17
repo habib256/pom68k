@@ -66,6 +66,17 @@ enum class Core
     C68020                  // Used by all other models
 };
 
+// POM68K O5: FPU variants attachable through the coprocessor interface.
+// Follows the CPU-model mechanism: setFPUModel() rebuilds the jump table,
+// so a detached FPU (NONE, the default) leaves the table byte-identical
+// to stock Moira (F-line traps, gated by the FPU-less SST030 corpus).
+enum class FPUModel
+{
+    NONE,                   // No FPU — F2xx opcodes take Line-F (vector 11)
+    M68881,
+    M68882                  // Mac LC II PDS FPU (only model implemented)
+};
+
 // Syntax styles for disassembly output
 enum class Syntax
 {
@@ -308,6 +319,26 @@ struct Registers {
     // Unemulated registers
     u32 cacr;                   // Cache Control Register           (68020+)
     u32 caar;                   // Cache Address Register           (68020+)
+
+    // POM68K: 68030 on-chip MMU registers (MC68030UM § 9.7.2). Cleared on
+    // reset (reg = { } — § 9.7.2.2: reset clears TC.E, so translation is
+    // off). PMOVE/PTEST maintain them; bus translation is a later slice.
+    u64 crp;                    // CPU Root Pointer                 (68030)
+    u64 srp;                    // Supervisor Root Pointer          (68030)
+    u32 tc;                     // Translation Control              (68030)
+    u32 tt0;                    // Transparent Translation 0        (68030)
+    u32 tt1;                    // Transparent Translation 1        (68030)
+    u16 mmusr;                  // MMU Status Register (PSR)        (68030)
+};
+
+// POM68K O5: one 80-bit extended-precision FPU data register, mirroring
+// softfloat's floatx80 layout ({u16 high = sign|15-bit exponent; u64 low =
+// mantissa with explicit integer bit}) so MoiraExecFPU_cpp.h can bit-copy.
+// Kept softfloat-free here: Moira.h must not depend on extern/softfloat.
+struct FpuExtended {
+
+    u16 high;               // sign (bit 15) | biased exponent (bits 14-0)
+    u64 low;                // mantissa, bit 63 = explicit integer bit
 };
 
 struct PrefetchQueue {
@@ -452,6 +483,9 @@ static constexpr u64 AE_SET_IF      = (1 << 13);  // Set bit 13 in the special s
 
 // Timing flags
 static constexpr u64 IMPL_DEC       = (1 << 14);  // Omit 2 cycle delay in -(An) mode
+
+// POM68K O4 slice 3 (68030 MMU bus layer)
+static constexpr u64 MMU_NOFIXUP    = (1 << 15);  // Suppress (An)± fixup arming (MOVEM)
 }
 
 //
@@ -472,5 +506,11 @@ struct BusError : public std::exception {
     StackFrame stackFrame;
     BusError(const StackFrame frame) { stackFrame = frame; }
 };
+
+// POM68K O4 slice 3: 68030 MMU translation fault (bus error, vector 2,
+// format $A/$B frame per MC68030UM § 8.1.4). All fault details live in
+// Moira's mmu* members, captured by mmuPageFault before the throw — see
+// POM68K_VENDOR.md § MMU bus layer.
+struct MmuBusError : public std::exception { };
 
 }

@@ -19,6 +19,7 @@
 
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <vector>
 #include <string>
 
@@ -37,7 +38,12 @@ public:
     bool drqActive() const;          // A9 path routes to dma* only when set
 
     long reads = 0, writes = 0, selects = 0, commands = 0;   // debug counters
+    long dmaBytes = 0;                       // data bytes handshaked out/in
     uint8_t lastCmd = 0;
+    // Debug hooks: full CDB of each executed command; every register
+    // access (reg, isWrite, value)
+    std::function<void(const std::vector<uint8_t>&)> onCommand;
+    std::function<void(int, bool, uint8_t)> onAccess;
 
     // ── 5380 register indices ──
     enum Reg {
@@ -82,6 +88,7 @@ private:
     enum Phase { BUS_FREE, ARBITRATION, SELECTION, COMMAND, DATA_IN, DATA_OUT,
                  STATUS, MSG_IN, MSG_OUT } phase_ = BUS_FREE;
     bool req_ = false;               // target asserting REQ
+    bool irq_ = false;               // 5380 IRQ latch (phase mismatch)
 
     // Transfer buffers for the current command
     std::vector<uint8_t> cmd_, dataIn_, dataOut_;
@@ -89,6 +96,7 @@ private:
     int cmdLen_ = 0;
     uint8_t status_ = 0;
 
+    bool phaseMatch() const;
     void trySelect();
     void enterCommand();
     void enterStatus();

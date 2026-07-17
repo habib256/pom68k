@@ -16,6 +16,14 @@
 #include <vector>
 #include <stdexcept>
 
+// POM68K O5: 80-bit softfloat backing the 68882 FPU (extern/softfloat,
+// GPLv2+ — linked, not incorporated; Moira itself stays MIT). Included
+// before the moira namespace so the C declarations stay global.
+extern "C" {
+#include "softfloat.h"
+#include "softfloat-specialize.h"
+}
+
 namespace moira {
 
 using namespace Flag;
@@ -134,6 +142,9 @@ Moira::hasMMU() const
 bool
 Moira::hasFPU() const
 {
+    // POM68K O5: an attached 6888x counts (Mac LC II PDS 68882)
+    if (fpuModel != FPUModel::NONE) return true;
+
     switch (cpuModel) {
 
         case Model::M68040:
@@ -141,6 +152,19 @@ Moira::hasFPU() const
 
         default:
             return false;
+    }
+}
+
+void
+Moira::setFPUModel(FPUModel model)
+{
+    // POM68K O5: same mechanism as setModel — rebuild the jump table so the
+    // F2xx window switches between Line-F (NONE) and the FPU handlers.
+    if (fpuModel != model) {
+
+        fpuModel = model;
+        createJumpTable(cpuModel, dasmModel);
+        fpuResetState();
     }
 }
 
@@ -208,6 +232,26 @@ Moira::reset()
     ipl = 0;
     fcl = 2;
     fcSource = 0;
+    irqDelay = 0;                  // POM68K: clear the SR-write IRQ delay too
+
+    // POM68K O4 slice 3: reset invalidates the ATC and the MMU restart
+    // bookkeeping (MC68030UM § 9.5.2; TC.E is cleared via reg = { })
+    for (auto &e : mmuAtcArr) { e.valid = false; e.mru = false; }
+    mmuState[0] = mmuState[1] = mmuState[2] = 0;
+    mmuIdx = mmuIdxDone = 0;
+    for (auto &v : mmuAd) v = 0;
+    mmuFmovemStore[0] = mmuFmovemStore[1] = 0;
+    mmuDataBuffer = 0;
+    mmuDispStore[0] = mmuDispStore[1] = 0;
+    mmuOpcodeV = 0xFFFFFFFF;
+    mmuFixupReg[0] = mmuFixupReg[1] = 0;
+    mmuLogging = false;
+    mmuRmw = false;
+    mmuPipeCnt = 0;                     // POM68K O6: prefetch-pipe carry
+
+    // POM68K O5: the reset line also resets an attached FPU
+    // (MC68881/882UM § 6.1)
+    fpuResetState();
 
     SYNC(16);
 
@@ -266,6 +310,14 @@ Moira::execute()
         // Fast path: Call the instruction handler and return
         //
 
+        // POM68K O4 slice 3: on the 68030 every instruction starts with a
+        // per-instruction MMU state reset and a mode-5-style translated
+        // opcode fetch (may fault). One predictable branch for the other
+        // models; emulated 68000 cycles are unaffected.
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            if (!mmuExecuteStart<Core::C68020>()) return;
+        }
+
         reg.pc += 2;
         try {
             (this->*exec[queue.ird])(queue.ird);
@@ -310,10 +362,17 @@ Moira::execute()
         // Process pending interrupt (if any)
         if (flags & CHECK_IRQ) {
 
-            try {
-                if (checkForIrq()) goto done;
-            } catch (const std::exception &exc) {
-                processException(exc);
+            // POM68K: honour the one-instruction delay armed by a mask-
+            // lowering SR-write — run the next instruction before taking
+            // the IRQ (breaks the SimCity-2000 redraw livelock).
+            if (irqDelay) {
+                irqDelay--;
+            } else {
+                try {
+                    if (checkForIrq()) goto done;
+                } catch (const std::exception &exc) {
+                    processException(exc);
+                }
             }
         }
 
@@ -365,6 +424,11 @@ Moira::execute()
         }
 
         // Execute the instruction
+        // POM68K O4 slice 3: see the fast path
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            if (!mmuExecuteStart<Core::C68020>()) goto done;
+        }
+
         reg.pc += 2;
 
         if (flags & LOOPING) {
@@ -436,6 +500,21 @@ template <Core C> void
 Moira::processException(const std::exception &exc)
 {
     try {
+
+        // POM68K O4 slice 3: 68030 MMU translation fault → bus error with
+        // a format $A/$B frame; a nested fault while stacking it is a
+        // double fault → HALT (WinUAE Exception_mmu030 / cpu_halt)
+        if constexpr (C == Core::C68020) {
+            if (dynamic_cast<const MmuBusError *>(&exc)) {
+
+                try {
+                    execMmuBusError<C>();
+                } catch (...) {
+                    halt();
+                }
+                return;
+            }
+        }
 
         if (auto ae = dynamic_cast<const AddressError *>(&exc); ae) {
 
@@ -560,6 +639,13 @@ Moira::setSR(u16 val)
     bool t1  = (val >> 15) & 1;
     bool s   = (val >> 13) & 1;
     u8   ipl = (val >>  8) & 7;
+
+    // POM68K: arm a one-instruction IRQ-recognition delay when an SR-write
+    // lowers the mask (RTE / MOVE-to-SR / etc.) — the 68k does not sample
+    // interrupts until after the instruction following a mask change
+    // (M68000 PRM). Guarantees forward progress and breaks the SimCity-2000
+    // redraw interrupt livelock (POM68K_VENDOR.md § IRQ delay). 68020+ only.
+    if (cpuModel >= Model::M68020 && ipl < reg.sr.ipl) irqDelay = 2;
 
     reg.sr.ipl = ipl;
     flags |= State::CHECK_IRQ;

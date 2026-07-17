@@ -1,0 +1,16 @@
+--- src/Scc8530.cpp.orig	2026-07-17 00:00:00.000000000 +0000
++++ src/Scc8530.cpp	2026-07-17 00:00:00.000000000 +0000
+@@ -127,6 +127,11 @@
+     // 8530's TxIP is set when the buffer BECOMES empty, not because it
+     // is empty (Zilog SCC UM; review 2026-07-16 — the old
+     // latch-on-enable fired a spurious level-2 on the Plus for any app
+     // arming WR1 bit 1 during driver open).
+     if (ptr_ == 1 && (v & 0x02) && c.txEmptyEvent) c.txIp = true;
++    // Enabling Ext Int Enable (WR1 bit 0) with Break/Abort IE already set
++    // should also latch the interrupt, mirroring the WR15 path (line 118).
++    if (ptr_ == 1 && (v & 0x01) && abortIdle_ && (c.wr[15] & 0x80)) {
++        if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
++        c.extPending = true;
++    }
+     ptr_ = 0;
+ }
