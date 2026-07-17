@@ -97,6 +97,13 @@ vendored and linked (`--gc-sections` trims the .so).
    reset on exception paths; `glue.c oracle_set_state()` calls the hook so
    FSAVE output is deterministic from the initial state (same rationale
    as patch 6 / D9).
+8. `upstream/newcpu.c`, `m68k_run_mmu040()` (Q1, 2026-07-17) — the same
+   four single-step patches as 2-5 applied to the Aranym 68040 MMU run
+   loop: `while (!halt && !bQuitProgram)`, `bQuitProgram = true` after
+   `Exception(prb)` in the CATCH block, `if (halt) cpu_halt(halt)`, and
+   `volatile struct flag_struct f` (identical C11 longjmp clobber).
+   Verified by `smoke040.c` (e): CCR-carrying frames + single-step exit
+   at the exception boundary.
 
 No other vendored file is modified.
 
@@ -163,8 +170,17 @@ step).
 
 ```
 cmake -S oracle/uae -B build-oracle-uae -DCMAKE_BUILD_TYPE=Release
-cmake --build build-oracle-uae -j8      # → liboracle_uae.so + smoke
-ctest --test-dir build-oracle-uae       # gate: oracle_uae_smoke
+cmake --build build-oracle-uae -j8      # → liboracle_uae.so + smokes
+ctest --test-dir build-oracle-uae       # gates: oracle_uae_smoke + _smoke040
 ```
+
+Q1 (2026-07-17): the library also serves as the **68040 oracle** —
+`oracle_set_model(68040, 0)` before `oracle_init` selects the 68LC040
+pairing (integer + Aranym `cpummu.c` MMU, no FPU; `op_smalltbl_31`).
+`OracleState` grew the 040 MMU registers (appended, 030 offsets stable);
+restore follows the upstream prefs-change sequence (`mmu_reset`,
+`mmu_set_tc`, `mmu_set_super`, `mmu_tt_modified`). Gate: `smoke040.c`
+(integer, TRAP, MOVE16, translated MOVE with U/M descriptor updates,
+PTESTR → MMUSR, invalid-descriptor fault → format $7 frame with FA/SSW).
 
 Licenses: WinUAE core GPLv2+ (headers kept intact); POM68K additions GPLv3.

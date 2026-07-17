@@ -6497,7 +6497,11 @@ static void m68k_run_mmu060 (void)
 /* Aranym MMU 68040  */
 static void m68k_run_mmu040 (void)
 {
-	struct flag_struct f;
+	/* POM68K: volatile — same C11 longjmp clobber as m68k_run_mmu030
+	 * below: f is written between setjmp (TRY) and the THROW of an MMU
+	 * access fault and read in the CATCH block; without volatile the
+	 * restored CCR is stale in release builds. See ../VENDOR.md. */
+	volatile struct flag_struct f;
 	int halt = 0;
 
 	check_halt();
@@ -6506,7 +6510,7 @@ static void m68k_run_mmu040 (void)
 	CpuRunFuncNoret = false;
 #endif
 
-	while (!halt) {
+	while (!halt && !bQuitProgram) {	/* POM68K: single-step oracle exit after exception (see ../VENDOR.md) */
 		check_debugger();
 		TRY (prb) {
 			for (;;) {
@@ -6583,9 +6587,10 @@ static void m68k_run_mmu040 (void)
 			} CATCH (prb2) {
 				halt = 1;
 			} ENDTRY
+			bQuitProgram = true;	/* POM68K: exception processing ends the single step (see ../VENDOR.md) */
 		} ENDTRY
 	}
-	cpu_halt(halt);
+	if (halt) cpu_halt(halt);	/* POM68K: normal single-step exit is not a halt (see ../VENDOR.md) */
 }
 
 #endif

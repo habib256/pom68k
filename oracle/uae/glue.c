@@ -44,6 +44,22 @@ void pom_fpu_clear_internal(void);
 
 static int pom_inited = 0;
 
+// Q1: model selected before oracle_init (68030+68882 default = the O1-O5
+// LC II pairing; 68040 + fpu 0 = the 68LC040 of the LC 475/Quadra 605).
+static int pom_cpu_model = 68030;
+static int pom_fpu_model = 68882;
+
+ORACLE_EXPORT void oracle_set_model(int cpu_model, int fpu_model)
+{
+	if (pom_inited)
+		return;
+	if (cpu_model == 68030 || cpu_model == 68040)
+		pom_cpu_model = cpu_model;
+	if (fpu_model == 0 || fpu_model == 68881 || fpu_model == 68882 ||
+	    fpu_model == 68040)
+		pom_fpu_model = fpu_model;
+}
+
 // Called from the M68000_AddCycles() shim: cycles are only consumed while an
 // instruction executes, so request the run loop to stop right after it.
 // SPCFLAG_BRK is re-armed here because m68k_reset2() (init) clears spcflags.
@@ -55,22 +71,26 @@ void pom_request_break(void)
 
 ORACLE_EXPORT const char *oracle_name(void)
 {
-	return "winuae mmu030+68882 softfloat (hatari 2026-07-06 e77819f7)";
+	return pom_cpu_model == 68040
+	    ? "winuae mmu040 softfloat (hatari 2026-07-06 e77819f7)"
+	    : "winuae mmu030+68882 softfloat (hatari 2026-07-06 e77819f7)";
 }
 
 static void pom_default_prefs(struct uae_prefs *p)
 {
 	memset(p, 0, sizeof *p);
-	p->cpu_model = 68030;
-	p->mmu_model = 68030;
+	p->cpu_model = pom_cpu_model;
+	p->mmu_model = pom_cpu_model;
 	p->mmu_ec = false;
 	// O5: 68882 fitted, SOFTFLOAT backend (fpu_mode > 0 selects
 	// fp_init_softfloat in fpp.c fpu_reset() — deterministic across hosts,
 	// unlike fpp_native's host doubles). The oracle pair models
 	// 68030+68882 even though the real LC II has no FPU socket.
-	p->fpu_model = 68882;
-	p->fpu_mode = 1;
+	// Q1: fpu_model 0 = 68LC040 (no FPU; F-line traps unimplemented).
+	p->fpu_model = pom_fpu_model;
+	p->fpu_mode = pom_fpu_model ? 1 : 0;
 	p->cpu_compatible = false;   // mode 5: op_smalltbl_32 (Previous MMU030)
+	                             // / 040: op_smalltbl_31 (Aranym MMU040)
 	p->cpu_cycle_exact = false;
 	p->cpu_memory_cycle_exact = false;
 	p->blitter_cycle_exact = false;
@@ -144,6 +164,7 @@ ORACLE_EXPORT void oracle_set_state(const OracleState *st)
 	regs.cacr = st->cacr;
 	regs.caar = st->caar;
 
+	if (pom_fpu_model) {
 	// 68882 softfloat FPU (O5): install the raw 96-bit extended registers
 	// through the active backend (fpp_softfloat.c to_exten_fmovem:
 	// fpx.high = wrd1 >> 16, fpx.low = wrd2:wrd3 — exactly the
@@ -166,7 +187,26 @@ ORACLE_EXPORT void oracle_set_state(const OracleState *st)
 	fpp_set_fpcr(st->fpcr);      // masks fpcr_mask = 0xfff0 (6888x, fpp.c get_features)
 	fpp_set_fpsr(st->fpsr);      // masks fpsr_mask = 0x0ffffff8
 	fpp_set_fpiar(st->fpiar);
+	}
 
+	if (pom_cpu_model == 68040) {
+		// 68040 MMU (Q1): registers + full re-arm — the exact sequence of
+		// the upstream savestate/prefs-change paths (newcpu.c
+		// prefs_changed_cpu(): mmu_reset, mmu_set_tc, mmu_set_super,
+		// mmu_tt_modified; mmu_reset also flushes the ATC).
+		regs.urp = st->urp040;
+		regs.srp = st->srp040;
+		regs.tcr = st->tc040 & 0xffff;
+		regs.itt0 = st->itt0;
+		regs.itt1 = st->itt1;
+		regs.dtt0 = st->dtt0;
+		regs.dtt1 = st->dtt1;
+		regs.mmusr = st->mmusr040;
+		mmu_reset();
+		mmu_set_tc(regs.tcr);
+		mmu_set_super(((st->sr >> 13) & 1) != 0);
+		mmu_tt_modified();
+	} else {
 	// 68030 MMU: registers + full re-arm (same sequence as the upstream
 	// savestate/prefs-change paths: newcpu.c prefs_changed_cpu()).
 	mmu030_reset(-1);            // keeps registers, resets ATC/state, set_funcs
@@ -179,6 +219,7 @@ ORACLE_EXPORT void oracle_set_state(const OracleState *st)
 	mmu030_flush_atc_all();
 	restore_mmu030_finish();     // decode TT0/TT1
 	mmu030_decode_tc(tc_030, false); // TC.E=1 really enables translation
+	}
 
 	regs.stopped = st->stopped ? 1 : 0;
 	if (regs.stopped)
@@ -272,13 +313,25 @@ ORACLE_EXPORT void oracle_get_state(OracleState *st)
 	st->cacr = regs.cacr;
 	st->caar = regs.caar;
 
-	st->crp = crp_030;
-	st->srp = srp_030;
-	st->tc = tc_030;
-	st->tt0 = tt0_030;
-	st->tt1 = tt1_030;
-	st->mmusr = mmusr_030;
+	if (pom_cpu_model == 68040) {
+		st->urp040 = regs.urp;
+		st->srp040 = regs.srp;
+		st->tc040 = regs.tcr & 0xffff;
+		st->itt0 = regs.itt0;
+		st->itt1 = regs.itt1;
+		st->dtt0 = regs.dtt0;
+		st->dtt1 = regs.dtt1;
+		st->mmusr040 = regs.mmusr;
+	} else {
+		st->crp = crp_030;
+		st->srp = srp_030;
+		st->tc = tc_030;
+		st->tt0 = tt0_030;
+		st->tt1 = tt1_030;
+		st->mmusr = mmusr_030;
+	}
 
+	if (pom_fpu_model) {
 	// 68882 FPU (O5): raw extended out via the softfloat backend
 	// (fpp_softfloat.c from_exten_fmovem, inverse of set_state).
 	for (int i = 0; i < 8; i++)
@@ -286,6 +339,7 @@ ORACLE_EXPORT void oracle_get_state(OracleState *st)
 	st->fpcr = regs.fpcr;
 	st->fpsr = fpp_get_fpsr();   // plain regs.fpsr in this non-JIT build
 	st->fpiar = regs.fpiar;
+	}
 
 	st->stopped = regs.stopped ? 1 : 0;
 }

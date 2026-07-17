@@ -49,10 +49,22 @@ typedef struct OracleState {
     // STOP state: 1 if the CPU is stopped waiting for an interrupt
     uint8_t  stopped;
     uint8_t  pad[3];
+    // 68040 on-chip MMU registers (Q1; appended so every 68030-era field
+    // keeps its offset — zeroed by/ignored on 68030 oracles)
+    uint32_t urp040, srp040;   // 32-bit root pointers (page-table roots)
+    uint32_t tc040;            // 16-bit TC in the low half (E, P bits)
+    uint32_t itt0, itt1;       // instruction transparent translation
+    uint32_t dtt0, dtt1;       // data transparent translation
+    uint32_t mmusr040;         // PTEST result register
 } OracleState;
 
 // Identify the library ("winuae 5.x / previous r####").
 const char* oracle_name(void);
+
+// Select the CPU model BEFORE oracle_init (Q1). cpu_model: 68030 (default)
+// or 68040 (integer + 040 MMU). fpu_model: 0 = none (68LC040), 68882
+// (68030 pairing), 68040 (on-chip). Calling after init has no effect.
+void oracle_set_model(int cpu_model, int fpu_model);
 
 // Bind the flat memory buffer. size must be a power of two (mask = size-1).
 // Must be called before any other call. Returns 0 on success.

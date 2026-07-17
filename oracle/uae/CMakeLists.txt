@@ -80,9 +80,15 @@ endif()
 set_target_properties(oracle_uae PROPERTIES
     LINK_FLAGS "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/oracle_uae.map")
 
-# ---- smoke test ----------------------------------------------------------
+# ---- smoke tests ---------------------------------------------------------
 enable_testing()
 add_executable(oracle_uae_smoke smoke.c)
 target_include_directories(oracle_uae_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(oracle_uae_smoke PRIVATE oracle_uae)
 add_test(NAME oracle_uae_smoke COMMAND oracle_uae_smoke)
+
+# Q1: the same library switched to 68040 (oracle_set_model before init)
+add_executable(oracle_uae_smoke040 smoke040.c)
+target_include_directories(oracle_uae_smoke040 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_link_libraries(oracle_uae_smoke040 PRIVATE oracle_uae)
+add_test(NAME oracle_uae_smoke040 COMMAND oracle_uae_smoke040)

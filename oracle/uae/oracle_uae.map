@@ -2,6 +2,7 @@
 {
     global:
         oracle_name;
+        oracle_set_model;
         oracle_init;
         oracle_set_state;
         oracle_step;
