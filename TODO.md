@@ -301,8 +301,11 @@ with an AI loop verified by differential testing:
     If a future guest word-accesses the SCC, mirror the VIA fast-path.
 
   **App-compat bugs found while playing (2026-07-16):**
-  - [~] **SimCity 2000 crash — "coprocesseur arithmétique absent"
-    (Line-F)** — GREATLY IMPROVED, NOT resolved (2026-07-17). The 68030
+  - [x] **SimCity 2000 crash — "coprocesseur arithmétique absent"
+    (Line-F)** — RESOLVED 2026-07-17: Egret mid-flight packet retraction
+    → ghost 1-byte ADB session → driver length -3 → 64KB stack copy (see
+    the ★ item below + CHANGELOG). The long investigation record below
+    is kept for method. — Earlier state: GREATLY IMPROVED. The 68030
     i-cache throughput model (`Cpu030` kCacheBoost=2, CHANGELOG 2026-07-16)
     plus the adaptive boost let SC2K boot to gameplay, load even the biggest
     city, and play; but the user reports it **still crashes after ~2 min of
@@ -370,8 +373,25 @@ with an AI loop verified by differential testing:
     within its frame); (c) audit per-instruction cycle costs on the blit
     path so functional timing tracks the real 030 more closely. Raising
     maxBoost further is NOT the fix — it distorts sound/timer pitch.
-  - [ ] **★ Fix the VBL/redraw PHASE RACE** (the real remaining cause of the
-    SC2K "coproc absent" crash — diagnosed 2026-07-17, NOT throughput). Proven
+  - [x] **★ SC2K "coproc absent" crash — ROOT-CAUSED AND FIXED 2026-07-17**
+    (see CHANGELOG): it was neither throughput NOR the VBL/A5 phase race —
+    it was the **Egret HLE retracting an initiated packet mid-flight**
+    (`kAbortDelay`) while the host's L1 byte loop was preempted 300K+
+    cycles by the redraw. The late host saw a ghost 1-byte session; the
+    ROM driver computed the ADB record length as received-4 = **-3**
+    (no guard — the real Egret never truncates); the dispatcher's
+    `dbra`-copy smashed 64KB of stack+A5 world; the epilogue's
+    `movea.l (A7),A7; rts` returned into a dither pattern; address error
+    → _ExitToShell through a smashed jump table → Line-F bomb. FIX =
+    initiated packets are committed once the sync byte is on the wire
+    (retraction removed, `Egret::tick`). Repro crashes=0 (6000-frame
+    wiggle, was 2 bombs), 24/24 CTest green (boot etalons prove the old
+    boot bus-quiet deadlock doesn't return). Historical options list
+    kept below for the method record; option (a) was MEASURED-GOOD
+    (irqDelay=2 protects the window — `racecheck`: 0 of 83K IRQs
+    accepted with A5=$4FA8) and the rest are moot.
+    Historical diagnosis (superseded — the "phase race" was real as a
+    correlation but not the cause): proven
     by two facts: (1) the crash count is **non-monotonic** in the cache boost
     (boost 4 crashes MORE than boost 2 — if it were throughput, more would
     always help); (2) the i-cache overlay measured the redraw at **95% cache-
@@ -409,6 +429,22 @@ with an AI loop verified by differential testing:
     Repro: `scratchpad/loadcity640.cpp` (crashes=N), `scratchpad/icachestat.cpp`
     (hit rates), the co-sim/irqtrace harnesses. Start with (a) — it's the
     cheapest and most likely (the window is exactly one instruction wide).
+    **MEASURED 2026-07-17 (`scratchpad/racecheck.cpp` — loadcity640 nav +
+    willInterrupt logging): option (a) is RESOLVED-GOOD and the $4FA8 race
+    is GONE.** Over 83 296 interrupts, ZERO were accepted with A5=$4FA8;
+    all 370 acceptances inside the blit window hit PC=$A4B41C, i.e. AFTER
+    the A5-restoring movem — `irqDelay=2` protects the window exactly as
+    designed. Also disassembled the blit ($A4B2C8-$A4B41C): it only masks
+    IPL→2 around the VRAM copy ($A4B3D0-$A4B414); the long per-pixel
+    conversion loop $A4B362-$A4B3C0 runs UNMASKED with A5=working — yet no
+    IRQ ever lands there with $4FA8 (measured), and its mulu #$4CCC/#$970A/
+    #$1C29 are the 0.30/0.59/0.11 luminance weights → this is QuickDraw's
+    slow RGB→gray conversion blit (relevant to option (d): why is this
+    path taken per-VBL at all?). **The crash that remains has a NEW
+    signature**: 2× Line-F at PC=$1400094E (top byte $14 = tagged/garbage
+    pointer; 24-bit execution at low-mem $94E) with a HEALTHY A5=$92280C —
+    a guest-level wild jump, not the A5 race. The ring dump led to the
+    full resolution — Egret retraction, see the ★ item above.
   - [x] **App sound never reached the ASC** (FIXED 2026-07-17) — the
     Sound Manager → ASC output path. TRACED with `AscV8::onWrite/onRead`
     taps + line-A trap logging (`getIRD()` at vector 10) + `PseudoVia::reg()`
@@ -425,7 +461,9 @@ with an AI loop verified by differential testing:
     re-samples it into IFR bit 4 every `recalcIrqs()` (like the slot lines).
     Now SC2K writes 3996 non-silent samples on city-load; 24/24 CTest green
     (CHANGELOG 2026-07-17).
-  - [ ] **Sound tempo wobble + SC2K still crashes with sound on**
+  - [ ] **Sound tempo wobble** (the "SC2K still crashes" half of this item
+    is RESOLVED 2026-07-17 — Egret retraction, see the ★ item; what
+    remains open here is only the audio pacing work below.)
     (user report 2026-07-17, GUI): with the fix above, SC2K sound plays but
     (1) the tempo is too slow at first then speeds up / slows erratically,
     and (2) the "coproc absent" livelock crash STILL happens (music keeps

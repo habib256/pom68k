@@ -15,7 +15,9 @@ conventions and milestone discipline; the CPU integration pattern comes from
 - `CHANGELOG.md` — resolved items + the **why** behind non-obvious fixes.
 - `docs/` — LC II research: `LCII_HARDWARE.md` (machine blueprint),
   `BASILISK_ROM_NOTES.md` ($067C ROM-behaviour oracle; §8 = facts
-  verified on the real LC II ROM with `tools/rominfo`).
+  verified on the real LC II ROM with `tools/rominfo`);
+  `68K_FAMILY_SCOPE.md` (which other 68K Macs POM68K could support
+  later and at what effort).
 
 ## CPU core: Moira (vendored)
 

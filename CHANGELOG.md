@@ -1,5 +1,56 @@
 # CHANGELOG
 
+## 2026-07-17 — SC2K "coprocesseur absent" ROOT-CAUSED AND FIXED: Egret
+## mid-flight packet retraction manufactured ghost ADB sessions
+
+The crash that survived every timing fix (the ★ TODO item) was never the
+VBL/A5 phase race — measurement killed that theory (`racecheck.cpp`:
+over 83K interrupts, ZERO were accepted with A5=$4FA8; the O6.12
+`irqDelay=2` guard protects the $A4B414-$A4B418 window exactly as
+designed; every in-window acceptance lands at $A4B41C, after the movem).
+
+The real chain, established with deterministic single-step harnesses
+(`stackwatch2` → `dispatchtrace` → `jumptrace` → `coptrace` → `d2trace`
+in the session scratchpad):
+
+1. `Egret::tick` retracted an initiated packet the host hadn't acked for
+   150K cycles (`kAbortDelay`). But initiation had already loaded the
+   sync byte into the VIA1 shift register — the host's level-1 interrupt
+   was in flight. Under SC2K's per-VBL redraw load the ROM's byte-read
+   loop is legitimately preempted for 300K+ cycles, so the retraction
+   fired routinely during play with the mouse moving.
+2. The late host then consumed the stale sync, found XCVR_SESSION
+   already low, and recorded a **1-byte session**.
+3. The ROM Egret driver computes the ADB record's data length as
+   `received - 4` (header) with no guard — the real Egret can never
+   deliver a short initiated packet — giving **D2 = -3 = $FFFD**
+   ($A14ACE/$A14AD2 `move.w ($10,A2),D0; subq.w #4` → $A151F4
+   `move.w D0,D2`).
+4. The ADB response dispatcher ($A0A494/$A0A4B4-$A0A4C0) then runs
+   `move.b (A2)+,(A0)+ / dbra D2` — 64K iterations — **copying 64KB
+   over the stack** starting at its own frame (A0=$91ACCA = entry SP),
+   wiping the saved-SP cell, the caller frames, and the application's
+   A5 world up to the jump table.
+5. The epilogue's `movea.l (A7),A7; rts` then pops a smashed cell and
+   returns into a QuickDraw dither pattern ($6D $B6 $DB repeating —
+   decodes as `blt.s -74` chains, the -$48-stride PC walk in the crash
+   rings); the wander takes an address error, the System Error handler
+   calls _ExitToShell, whose patch dispatches through the (also smashed)
+   jump table entry `$1400094E` → Line-F → the ROM's generic
+   "coprocesseur arithmétique absent" bomb. All red herrings.
+
+FIX: an initiated packet is COMMITTED once its sync byte is on the wire
+— the retraction is removed entirely (`Egret::tick`; the transfer is
+synchronous and host-clocked on the real part, and collisions are
+host-handled — the ROM's senders check XCVR first). The boot-era
+"bus-quiet deadlock" the retraction had been added for does not return:
+24/24 CTest green including `egret_test` and both boot etalons. The
+crash repro (loadcity640 navigation + 6000-frame mouse wiggle, formerly
+2 Line-F bombs) now runs clean: **crashes=0**; a 30000-frame endurance
+run is clean too. The abort machinery (`kAbortDelay`, `abortTimer_`)
+is deleted outright. The i-cache overlay + irqDelay remain as-is — they
+were correct; they just weren't this bug.
+
 ## 2026-07-17 — 68030 instruction-cache timing overlay (replaces the flat boost)
 
 Replaced the constant boost with a real (if small) model of the 68030

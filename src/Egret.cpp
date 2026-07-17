@@ -124,11 +124,10 @@ void Egret::portBChanged(uint8_t pb) {
         if (phase_ == HOST_CMD) hostByte(via_.srValue());
         // In RESP_SEND the rise happens BEFORE the host reads the SR
         // (ROM $A14E72-76) — loading here would overwrite the byte.
-        if (phase_ == RESP_SEND) abortTimer_ = 0;   // host is listening
+        // (RESP_SEND: nothing to do — the byte is clocked on the FALL)
     }
     if (fell & 0x10) {                   // VIA_FULL fall: byte consumed
         if (phase_ == RESP_SEND) {
-            abortTimer_ = 0;
             if (!via_.shiftPending()) delay_ = kByteDelay;
         }
     }
@@ -357,19 +356,22 @@ void Egret::tick(int cpuCycles) {
 
     if (quiet_ > 0) quiet_ -= cpuCycles;
 
-    // An initiated packet the host never acks (it may be waiting for the
-    // bus to go quiet before its own command) is retracted — the real
-    // Egret gives up too rather than wedging XCVR_SESSION forever.
-    if (phase_ == RESP_SEND && initiated_) {
-        abortTimer_ += cpuCycles;
-        if (abortTimer_ > kAbortDelay) {
-            xcvr_ = false;
-            phase_ = IDLE;
-            resp_.clear();
-            initiated_ = false;
-            quiet_ = kQuietDelay;
-        }
-    }
+    // NO unilateral retraction of an initiated packet (2026-07-17). Once
+    // initiation loads the sync byte into the VIA SR, the host's level-1
+    // shift interrupt is already in flight — retracting after that
+    // manufactures a "ghost" short session: the host services the L1
+    // late (SC2K's per-VBL redraw preempts the byte loop for 300K+
+    // cycles), consumes the stale sync, sees XCVR already low, and
+    // counts a 1-byte packet; the System's Egret driver then computes
+    // the ADB record length as (count 1) - (header 4) = -3 and its
+    // dispatcher `dbra` copies 64KB over the stack → the SC2K
+    // "coprocesseur absent" bomb (TODO ★, dispatchtrace/coptrace
+    // evidence: fatal COPYSETUP D2=$FFFD at clk 8837754661). The real
+    // Egret never truncates an initiated transfer — the byte handshake
+    // is synchronous and host-clocked; collisions are host-handled (its
+    // senders check XCVR first, ROM $A1536C). The old boot-time
+    // "bus-quiet deadlock" this abort addressed is covered by the
+    // machine gates (egret_test, lcii_boot_etalon — green without it).
 
     // Egret-initiated transfers: assert XCVR_SESSION and clock the sync
     // byte; the host joins and acks (via-cuda.c "case idle"; ROM reader
@@ -382,7 +384,6 @@ void Egret::tick(int cpuCycles) {
         xcvr_ = true;
         phase_ = RESP_SEND;
         initiated_ = true;
-        abortTimer_ = 0;
         loadNextByte();
     }
 }

@@ -97,9 +97,7 @@ private:
     static constexpr int kByteDelay = 200;     // ≈13 µs at 15.67 MHz
     static constexpr int kResetHold = 100000;  // ≈6 ms power-on hold
     static constexpr int kQuietDelay = 100000; // gap between own packets
-    static constexpr int kAbortDelay = 150000; // unacked initiated packet
     int holdTimer_ = kResetHold;
     int quiet_ = 0;                            // XCVR must be seen deasserted
     bool initiated_ = false;                   // current resp is Egret-initiated
-    int abortTimer_ = 0;                       // since last host ack
 };
