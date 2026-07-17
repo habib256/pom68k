@@ -29,6 +29,13 @@ _INT_FIELDS = [
     ("fpcr", ctypes.c_uint32), ("fpsr", ctypes.c_uint32), ("fpiar", ctypes.c_uint32),
     ("stopped", ctypes.c_uint8),
     ("pad", ctypes.c_uint8 * 3),
+    # 68040 MMU registers (Q2.1) — appended after stopped+pad exactly like
+    # oracle_api.h so every 68030-era field keeps its offset.
+    ("urp040", ctypes.c_uint32), ("srp040", ctypes.c_uint32),
+    ("tc040", ctypes.c_uint32),
+    ("itt0", ctypes.c_uint32), ("itt1", ctypes.c_uint32),
+    ("dtt0", ctypes.c_uint32), ("dtt1", ctypes.c_uint32),
+    ("mmusr040", ctypes.c_uint32),
 ]
 
 
@@ -38,9 +45,13 @@ class COracleState(ctypes.Structure):
 
 # Scalar register names, in canonical SST030 JSON order.
 # fpcr/fpsr/fpiar joined at O5 (fp0-fp7 are 3-long arrays, handled apart).
+# The 040 MMU block joined at Q2.1 (zero on 68030 oracles; sst030.py does
+# NOT emit them — sst040.py does).
 SCALARS = ["usp", "isp", "msp", "pc", "sr", "vbr", "sfc", "dfc", "cacr",
            "caar", "crp", "srp", "tc", "tt0", "tt1", "mmusr",
-           "fpcr", "fpsr", "fpiar", "stopped"]
+           "fpcr", "fpsr", "fpiar", "stopped",
+           "urp040", "srp040", "tc040", "itt0", "itt1", "dtt0", "dtt1",
+           "mmusr040"]
 
 
 @dataclass
@@ -59,6 +70,10 @@ class State:
     fp: list[list[int]] = field(default_factory=lambda: [[0, 0, 0] for _ in range(8)])
     fpcr: int = 0; fpsr: int = 0; fpiar: int = 0
     stopped: int = 0
+    # 68040 on-chip MMU (Q2.1) — zero/ignored on 68030 oracles
+    urp040: int = 0; srp040: int = 0; tc040: int = 0
+    itt0: int = 0; itt1: int = 0; dtt0: int = 0; dtt1: int = 0
+    mmusr040: int = 0
     ram: list[tuple[int, int]] = field(default_factory=list)  # (addr, byte)
 
     def to_c(self) -> COracleState:
@@ -102,9 +117,14 @@ class State:
 
 
 class Oracle:
-    """One loaded oracle .so bound to its own 16 MB buffer."""
+    """One loaded oracle .so bound to its own 16 MB buffer.
 
-    def __init__(self, so_path: str):
+    model: 68030 (default — no oracle_set_model call, so pre-Q1 .so files
+    keep working) or 68040 (oracle_set_model(68040, 0) = 68LC040, integer +
+    040 MMU, no FPU — the Q1 gate configuration; must precede oracle_init).
+    """
+
+    def __init__(self, so_path: str, model: int = 68030):
         self.lib = ctypes.CDLL(so_path)
         self.lib.oracle_name.restype = ctypes.c_char_p
         self.lib.oracle_init.restype = ctypes.c_int
@@ -112,6 +132,11 @@ class Oracle:
         self.lib.oracle_set_state.argtypes = [ctypes.POINTER(COracleState)]
         self.lib.oracle_get_state.argtypes = [ctypes.POINTER(COracleState)]
         self.lib.oracle_step.restype = ctypes.c_int32
+        self.model = model
+        if model != 68030:
+            self.lib.oracle_set_model.argtypes = [ctypes.c_int, ctypes.c_int]
+            self.lib.oracle_set_model.restype = None
+            self.lib.oracle_set_model(model, 0)
         self.mem = (ctypes.c_uint8 * MEM_SIZE)()
         rc = self.lib.oracle_init(self.mem, MEM_SIZE)
         if rc != 0:
