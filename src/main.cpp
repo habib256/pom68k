@@ -21,12 +21,18 @@
 #include "V8Video.h"
 
 #include <GLFW/glfw3.h>
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
+#include <functional>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 #ifdef __linux__
 #include <unistd.h>
@@ -134,9 +140,10 @@ private:
 // Main-menu-bar "Machine": pick the Mac Plus or Mac LC II profile.
 // Selecting the other machine relaunches the process on its ROM — clean
 // state, since each machine is built once at startup.
-static std::string gSwitchRom;
+static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 
-static void machineMenu(bool isLcII, GLFWwindow* window) {
+static void machineMenu(bool isLcII, GLFWwindow* window,
+                        const std::function<void()>& extraMenus = {}) {
     if (!ImGui::BeginMainMenuBar()) return;
     if (ImGui::BeginMenu("Machine")) {
         struct Profile { const char* label; bool cur; const char* rom[2]; };
@@ -150,28 +157,255 @@ static void machineMenu(bool isLcII, GLFWwindow* window) {
             if (path.empty() && pr.rom[1]) path = findPath(pr.rom[1]);
             if (ImGui::MenuItem(pr.label, nullptr, pr.cur,
                                 pr.cur || !path.empty()) && !pr.cur) {
-                gSwitchRom = path;
+                gSwitchArgs = { path };
                 glfwSetWindowShouldClose(window, GLFW_TRUE);
             }
         }
         ImGui::EndMenu();
     }
+    if (extraMenus) extraMenus();
     ImGui::TextDisabled("|  Delete: capture mouse");
     ImGui::EndMainMenuBar();
 }
 
-// Relaunch on the ROM the menu picked (no-op when none was).
+// Relaunch on the argument list the menu picked (no-op when none was).
 static void relaunchIfSwitched(char* argv0) {
 #if defined(__linux__) && !defined(__EMSCRIPTEN__)
-    if (gSwitchRom.empty()) return;
-    char* args[] = { argv0, const_cast<char*>(gSwitchRom.c_str()), nullptr };
-    ::execv("/proc/self/exe", args);
-    std::fprintf(stderr, "relaunch failed — start manually: %s \"%s\"\n",
-                 argv0, gSwitchRom.c_str());
+    if (gSwitchArgs.empty()) return;
+    std::vector<char*> args = { argv0 };
+    for (const std::string& a : gSwitchArgs)
+        args.push_back(const_cast<char*>(a.c_str()));
+    args.push_back(nullptr);
+    ::execv("/proc/self/exe", args.data());
+    std::fprintf(stderr, "relaunch failed — start manually: %s \"%s...\"\n",
+                 argv0, gSwitchArgs[0].c_str());
 #else
     (void)argv0;
 #endif
 }
+
+// List the disk images next to the current one (or under hdv/) — the pool
+// the "Disques" menu offers. Sorted for a stable menu order.
+static std::vector<std::string> listDiskImages(const std::string& nearPath) {
+    namespace fs = std::filesystem;
+    std::string dir = nearPath.empty()
+        ? findPath("hdv") : fs::path(nearPath).parent_path().string();
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(dir.empty() ? "hdv" : dir, ec)) {
+        std::string ext = e.path().extension().string();
+        for (char& ch : ext) ch = char(tolower(ch));
+        if (ext == ".vhd" || ext == ".hda" || ext == ".img")
+            out.push_back(e.path().string());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+// ── LC II machine thread ────────────────────────────────────────────────
+// Runs the emulation + audio-clocked pacing OFF the vsync'd ImGui thread
+// (TODO § Performance): a slow GPU frame or a compositor stall no longer
+// steals emulation time, and the pacer sleeps on its own schedule instead
+// of piggybacking on vsync. GUI ↔ machine contract:
+//   - input and machine controls cross as queued commands (cmdMu_) applied
+//     between frame slices — the ADB/CPU objects are only ever touched here;
+//   - the framebuffer crosses as a decoded copy (fbMu_);
+//   - the CPU-window status line crosses as relaxed atomics (display only);
+//   - the ASC audio ring keeps its SPSC discipline (the producer just moved
+//     from the GUI thread to this one).
+// Under Emscripten there is no thread: the GUI frame calls stepTick()
+// inline — one code path, two drivers.
+struct LcMachine {
+    V8Memory& mem; Cpu030& cpu; V8Video& video; MacAudioHost& audioHost;
+    LcMachine(V8Memory& m, Cpu030& c, V8Video& v, MacAudioHost& a)
+        : mem(m), cpu(c), video(v), audioHost(a) {}
+    // Any exit() while the thread runs (Xlib's default error handler exits
+    // behind GLFW's back) would otherwise destroy a joinable std::thread —
+    // an instant std::terminate. Joining here turns that into a clean stop.
+    ~LcMachine() { stop(); }
+
+    std::atomic<bool> running{true}, turbo{true}, quit{false};
+
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense } t; int a = 0, b = 0; };
+    void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
+
+    // Latest decoded frame (00RRGGBB, alpha forced — see the decode note).
+    // Returns false until the first publish.
+    bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
+        std::lock_guard<std::mutex> l(fbMu_);
+        if (fbShared_.empty()) return false;
+        out = fbShared_; w = fbW_; h = fbH_;
+        return true;
+    }
+
+    struct Status { uint32_t pc; long long clock; bool overlay, mmu, held; uint8_t config; };
+    Status status() const {
+        return { stPc_.load(std::memory_order_relaxed),
+                 stClock_.load(std::memory_order_relaxed),
+                 (stFlags_.load(std::memory_order_relaxed) & 1) != 0,
+                 (stFlags_.load(std::memory_order_relaxed) & 2) != 0,
+                 (stFlags_.load(std::memory_order_relaxed) & 4) != 0,
+                 stConfig_.load(std::memory_order_relaxed) };
+    }
+
+    // One pacing tick (the former GUI-frame emulation block, verbatim
+    // logic). Returns how long the caller may sleep (µs) before the next
+    // tick — 0 = come straight back.
+    int stepTick() {
+        applyCmds();
+        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
+        int sleepUs = 0;
+        // Audio-clocked pacing (TODO § sound tempo wobble): while the guest
+        // streams sound, the emulation speed IS the tempo, so it must track
+        // the host DAC, not the host CPU. When sound was heard recently
+        // (activeHold_), each tick emulates just enough frames to keep the
+        // host ring near ~100 ms — the DAC's 22 254 Hz consumption paces the
+        // machine at real time and absorbs the 60.15 vs wall-clock drift
+        // with no resampler. Silence between notes is pushed too (pushRaw):
+        // it is part of the musical timeline. When no sound plays, the
+        // time-budgeted turbo runs (fast boot/Finder; gated push keeps the
+        // ring free of silence).
+        if (activeHold_ > 0 && audioHost.started()) {
+            int n = 0;
+            while (audioHost.buffered() < kTarget && n < 8) {
+                runOne();
+                if (drain()) activeHold_ = 90; else activeHold_--;
+                audioHost.pushRaw(samp_, 0);
+                n++;
+            }
+            if (n == 0) {
+                // Ring at target: real time says "no frame due yet". Sleep a
+                // hair and let the DAC drain — unless it stopped consuming
+                // entirely (unplugged device): after ~160 ms of that, force
+                // a frame so the machine never freezes.
+                if (++starve_ > 80) {
+                    runOne();
+                    if (drain()) activeHold_ = 90; else activeHold_--;
+                    starve_ = 0;
+                }
+                sleepUs = 2000;
+            } else starve_ = 0;
+        } else {
+            // Time-budgeted turbo: emulate in ≤10 ms bursts so commands and
+            // the published frame stay fresh; between bursts the GUI thread
+            // runs undisturbed on its own core. Without turbo, pace one
+            // frame per 60.15 Hz period.
+            auto t0 = std::chrono::steady_clock::now();
+            int n = 0;
+            do {
+                runOne();
+            } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
+                     std::chrono::steady_clock::now() - t0 <
+                         std::chrono::milliseconds(10));
+            if (drain()) {
+                activeHold_ = 90;                       // sound starts:
+                audioHost.pushFrame(samp_, 0);          // switch to pacing
+            }
+            if (!turbo.load(std::memory_order_relaxed)) {
+                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - t0).count();
+                sleepUs = int(std::max<long long>(0, 16625 - spent));
+            }
+        }
+        publish();
+        return sleepUs;
+    }
+
+    void start() {
+#ifndef __EMSCRIPTEN__
+        th_ = std::thread([this] {
+            while (!quit.load(std::memory_order_relaxed)) {
+                int us = stepTick();
+                if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
+            }
+        });
+#endif
+    }
+    void stop() {
+#ifndef __EMSCRIPTEN__
+        quit.store(true);
+        if (th_.joinable()) th_.join();
+#endif
+    }
+
+    // Decode + hand over the frame and the status snapshot. Throttled: a
+    // tick that emulated nothing (audio ring full, pause) publishes at most
+    // ~60 Hz, so the 640×480 decode isn't re-run 500×/s during the pacing
+    // sleeps.
+    void publish(bool force = false) {
+        auto now = std::chrono::steady_clock::now();
+        if (!force && framesRun_ == 0 &&
+            now - lastPub_ < std::chrono::milliseconds(16)) return;
+        lastPub_ = now; framesRun_ = 0;
+        int hres, vres;
+        V8Video::resolution(mem.monitorSense(), hres, vres);
+        video.decode(fb_);
+        // decode() packs 00RRGGBB — alpha 0. ImGui renders textures with
+        // alpha blending on, so a 0 alpha draws fully transparent (black
+        // window background); force A=$FF before the BGRA upload.
+        for (uint32_t& px : fb_) px |= 0xFF000000u;
+        {
+            std::lock_guard<std::mutex> l(fbMu_);
+            fbShared_ = fb_; fbW_ = hres; fbH_ = vres;
+        }
+        stPc_.store(cpu.getPC(), std::memory_order_relaxed);
+        stClock_.store(cpu.getClock(), std::memory_order_relaxed);
+        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
+                               ((cpu.getTC() & 0x80000000) ? 2 : 0) |
+                               (mem.cpuHeld() ? 4 : 0)),
+                       std::memory_order_relaxed);
+        stConfig_.store(mem.ramConfig(), std::memory_order_relaxed);
+    }
+
+private:
+    static constexpr int kFrame = 640 * 407;   // dots per 60.15 Hz frame
+    static constexpr size_t kTarget = 2225;    // ~100 ms of 22 257 Hz sound
+
+    void runOne() {
+        if (mem.cpuHeld()) mem.tick(kFrame);   // Egret power-on hold
+        else cpu.runCycles(kFrame);
+        framesRun_++;
+    }
+    // Drain the ASC samples produced by the last slice (22 257 Hz mono,
+    // continuous — an empty FIFO repeats its stale byte) and report whether
+    // they carry real sound (AC span, same gate as MacAudioHost::pushFrame).
+    bool drain() {
+        samp_.clear();
+        while (mem.asc().available() > 0)
+            samp_.push_back(float(mem.asc().pop()) / 32768.0f);
+        float lo = 1.f, hi = -1.f;
+        for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
+        return !samp_.empty() && hi - lo >= 0.02f;
+    }
+    void applyCmds() {
+        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
+        for (const Cmd& c : cmdsApply_) switch (c.t) {
+            case Cmd::MouseMove:   mem.adb().mouseMove(c.a, c.b); break;
+            case Cmd::MouseButton: mem.adb().mouseButton(c.a != 0); break;
+            case Cmd::Key:         mem.adb().keyEvent(uint8_t(c.a), c.b != 0); break;
+            case Cmd::HardReset:   cpu.hardReset(); break;
+            case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
+        }
+        cmdsApply_.clear();
+    }
+
+    std::thread th_;
+    std::mutex cmdMu_;
+    std::vector<Cmd> cmds_, cmdsApply_;
+    std::mutex fbMu_;
+    std::vector<uint32_t> fbShared_;
+    int fbW_ = 0, fbH_ = 0;
+    std::atomic<uint32_t> stPc_{0};
+    std::atomic<long long> stClock_{0};
+    std::atomic<uint8_t> stFlags_{0};
+    std::atomic<uint8_t> stConfig_{0};
+    int activeHold_ = 0;           // machine frames of sound-recent state
+    int starve_ = 0;               // safety against a dead DAC
+    int framesRun_ = 0;            // frames emulated since the last publish
+    std::chrono::steady_clock::time_point lastPub_{};
+    std::vector<uint32_t> fb_;
+    std::vector<float> samp_;
+};
 
 // ── Mac LC II (O6): V8 + 68030, selected by a 512 KB ROM ────────────────
 // Pre-Ui-class shape like the Plus loop below; the shared boilerplate
@@ -223,8 +457,20 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     // inside the emulated Mac must survive the session. Tests attach
     // read-only so reference images are never modified.
     static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD: %s (write-back)\n", hddPath.c_str());
+    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
     else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
+    // Secondary volumes (argv[3..] → SCSI IDs 1..6): mounted by the
+    // System's boot-time bus scan. The "Disques" menu edits this list by
+    // relaunching with new arguments (clean PRAM + machine state).
+    static std::vector<std::string> extraDisks;
+    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
+        if (argv[i] == hddPath) continue;            // never double-attach
+        int id = int(extraDisks.size()) + 1;
+        if (mem.attachScsi(argv[i], true, id)) {
+            extraDisks.push_back(argv[i]);
+            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
+        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
+    }
 
     // Battery-backed PRAM+clock: a cold PRAM triggers the ROM's long
     // full-RAM burn-in on every boot — persist it like a real battery.
@@ -261,108 +507,91 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
 
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
+    static LcMachine machine{mem, cpu, video, audioHost};
+    machine.publish(true);              // first frame before the GUI shows
+
     struct Ctx {
-        GLFWwindow* window; V8Memory& mem; Cpu030& cpu; V8Video& video;
-        MacAudioHost& audioHost; GLuint tex; bool running; bool turbo;
-        std::vector<uint32_t> fb; std::vector<float> samp;
+        GLFWwindow* window; LcMachine& m; GLuint tex;
+        std::vector<uint32_t> fb;                // GUI-side framebuffer copy
+        std::string romName, hddPath;            // for the "Disques" relaunch
+        std::vector<std::string>& extraDisks;
     };
-    static Ctx ctx{window, mem, cpu, video, audioHost, screenTex, true, true, {}, {}};
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks};
 
     auto frame = [](void* p) {
         Ctx& c = *static_cast<Ctx*>(p);
         glfwPollEvents();
         ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
 
-        if (c.running) {
-            // 512×384 frame = 640×407 dots at the CPU clock (60.15 Hz).
-            static constexpr int kFrame = 640 * 407;
-            auto runOne = [&c] {
-                if (c.mem.cpuHeld()) c.mem.tick(kFrame);   // Egret power-on hold
-                else c.cpu.runCycles(kFrame);
-            };
-            // Drain the ASC samples produced by the last slice (22 257 Hz
-            // mono, continuous — an empty FIFO repeats its stale byte) and
-            // report whether they carry real sound (AC span, same gate as
-            // MacAudioHost::pushFrame).
-            auto drain = [&c] {
-                c.samp.clear();
-                while (c.mem.asc().available() > 0)
-                    c.samp.push_back(float(c.mem.asc().pop()) / 32768.0f);
-                float lo = 1.f, hi = -1.f;
-                for (float v : c.samp) { if (v < lo) lo = v; if (v > hi) hi = v; }
-                return !c.samp.empty() && hi - lo >= 0.02f;
-            };
-            // Audio-clocked pacing (TODO § sound tempo wobble): while the
-            // guest streams sound, the emulation speed IS the tempo, so it
-            // must track the host DAC, not the host CPU. When sound was
-            // heard recently (activeHold), each GUI tick emulates just
-            // enough frames to keep the host ring near ~100 ms — the DAC's
-            // 22 254 Hz consumption paces the machine at real time and
-            // absorbs the vsync-60.00 vs frame-60.15 drift with no
-            // resampler. Silence between notes is pushed too (pushRaw): it
-            // is part of the musical timeline. When no sound plays, the
-            // old time-budgeted turbo runs (fast boot/Finder, gated push
-            // keeps the ring free of silence).
-            static int activeHold = 0;   // GUI frames of sound-recent state
-            static int starve = 0;       // safety against a dead DAC
-            const size_t kTarget = 2225;                    // ~100 ms queued
-            if (activeHold > 0 && c.audioHost.started()) {
-                int n = 0;
-                while (c.audioHost.buffered() < kTarget && n < 8) {
-                    runOne();
-                    if (drain()) activeHold = 90; else activeHold--;
-                    c.audioHost.pushRaw(c.samp, 0);
-                    n++;
-                }
-                // Ring at target: real time says "no frame due yet" (a
-                // >60 fps GUI tick, or the 60.15/60.00 drift catching up).
-                // Skip emulation this tick — unless the DAC stopped
-                // consuming entirely (unplugged device): then force one
-                // frame every 10 ticks so the machine never freezes.
-                if (n == 0 && ++starve > 10) {
-                    runOne();
-                    if (drain()) activeHold = 90; else activeHold--;
-                    starve = 0;
-                } else if (n > 0) starve = 0;
-            } else {
-                // Time-budgeted turbo: the 68030 core runs ~1.4× real time
-                // on a good host core, so a fixed ×8 would spend ~100 ms
-                // per GUI frame and drop the UI (and the mouse) to ~10
-                // fps. Run one frame slice, then let turbo keep emulating
-                // only while the 16.6 ms vsync budget has room.
-                auto slice0 = std::chrono::steady_clock::now();
-                int n = 0;
-                do {
-                    runOne();
-                } while (c.turbo && ++n < 8 &&
-                         std::chrono::steady_clock::now() - slice0 <
-                             std::chrono::milliseconds(10));
-                if (drain()) {
-                    activeHold = 90;                        // sound starts:
-                    c.audioHost.pushFrame(c.samp, 0);       // switch to pacing
-                }
-            }
+#ifdef __EMSCRIPTEN__
+        c.m.stepTick();                 // no thread: emulate inline per frame
+#endif
+
+        int hres = 0, vres = 0;
+        if (c.m.latchFrame(c.fb, hres, vres)) {
+            glBindTexture(GL_TEXTURE_2D, c.tex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
+                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
         }
 
-        int hres, vres;
-        V8Video::resolution(c.mem.monitorSense(), hres, vres);
-        c.video.decode(c.fb);
-        // decode() packs 00RRGGBB — alpha 0. ImGui renders textures with
-        // alpha blending on, so a 0 alpha draws fully transparent (black
-        // window background); force A=$FF before the BGRA upload.
-        for (uint32_t& px : c.fb) px |= 0xFF000000u;
-        glBindTexture(GL_TEXTURE_2D, c.tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                     GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-
-        machineMenu(true, c.window);
+        machineMenu(true, c.window, [&c] {
+            // ── "Disques" menu: pick the boot + secondary SCSI volumes.
+            // Any change relaunches the emulator with the new argv list —
+            // the ROM only scans the SCSI bus at boot, and the .pram file
+            // follows the boot disk (same mechanism as the machine switch).
+            namespace fs = std::filesystem;
+            auto samePath = [](const std::string& a, const std::string& b) {
+                std::error_code ec;
+                return a == b || fs::equivalent(a, b, ec);
+            };
+            auto relaunch = [&c](const std::string& boot,
+                                 const std::vector<std::string>& extras) {
+                gSwitchArgs = { c.romName, boot };
+                for (const std::string& e : extras)
+                    if (e != boot) gSwitchArgs.push_back(e);
+                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+            };
+            if (ImGui::BeginMenu("Disques")) {
+                const auto disks = listDiskImages(c.hddPath);
+                ImGui::TextDisabled("Démarrage (SCSI 0)");
+                for (const std::string& d : disks) {
+                    bool cur = samePath(d, c.hddPath);
+                    std::string name = fs::path(d).filename().string();
+                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
+                        relaunch(d, c.extraDisks);
+                }
+                ImGui::Separator();
+                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
+                for (const std::string& d : disks) {
+                    if (samePath(d, c.hddPath)) continue;
+                    bool on = false;
+                    for (const std::string& e : c.extraDisks)
+                        if (samePath(d, e)) { on = true; break; }
+                    std::string name = fs::path(d).filename().string();
+                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
+                        std::vector<std::string> extras;
+                        for (const std::string& e : c.extraDisks)
+                            if (!samePath(d, e)) extras.push_back(e);
+                        if (!on) extras.push_back(d);
+                        relaunch(c.hddPath, extras);
+                    }
+                }
+                ImGui::Separator();
+                ImGui::TextDisabled("Changer un disque relance l'émulateur");
+                ImGui::EndMenu();
+            }
+            // One-click machine reset (= power cycle: overlay + chips + CPU;
+            // the ROM rescans the SCSI bus, so hot-attached media appear).
+            if (ImGui::MenuItem("Redémarrer"))
+                c.m.push({LcMachine::Cmd::HardReset});
+        });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
         ImGui::Begin("Macintosh LC II", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.mem.adb().mouseMove(dx, dy); },
-                    [&](bool down) { c.mem.adb().mouseButton(down); });
+                    [&](int dx, int dy) { c.m.push({LcMachine::Cmd::MouseMove, dx, dy}); },
+                    [&](bool down) { c.m.push({LcMachine::Cmd::MouseButton, down ? 1 : 0}); });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -398,24 +627,30 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false)) c.mem.adb().keyEvent(uint8_t(e.m0110 >> 1), true);
-                if (ImGui::IsKeyReleased(e.k)) c.mem.adb().keyEvent(uint8_t(e.m0110 >> 1), false);
+                if (ImGui::IsKeyPressed(e.k, false))
+                    c.m.push({LcMachine::Cmd::Key, e.m0110 >> 1, 1});
+                if (ImGui::IsKeyReleased(e.k))
+                    c.m.push({LcMachine::Cmd::Key, e.m0110 >> 1, 0});
             }
         }
 
         ImGui::SetNextWindowPos(ImVec2(20, 830), ImGuiCond_FirstUseEver);
         ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        // Display-only snapshot published by the machine thread.
+        LcMachine::Status st = c.m.status();
         ImGui::Text("68030 @ 15.6672 MHz (Moira + PMMU)  PC=%08X  clock=%lld",
-                    c.cpu.getPC(), (long long)c.cpu.getClock());
+                    st.pc, st.clock);
         ImGui::Text("overlay=%d  config=$%02X  MMU=%s  held=%d",
-                    c.mem.overlay() ? 1 : 0, c.mem.ramConfig(),
-                    (c.cpu.getTC() & 0x80000000) ? "on" : "off",
-                    c.mem.cpuHeld() ? 1 : 0);
-        if (ImGui::Button(c.running ? "Pause" : "Run")) c.running = !c.running;
+                    st.overlay ? 1 : 0, st.config,
+                    st.mmu ? "on" : "off", st.held ? 1 : 0);
+        bool running = c.m.running.load(std::memory_order_relaxed);
+        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
         ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.cpu.hardReset();
+        if (ImGui::Button("Reset")) c.m.push({LcMachine::Cmd::HardReset});
         ImGui::SameLine();
-        ImGui::Checkbox("Turbo", &c.turbo);      // as fast as the host allows (≤×8)
+        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Turbo", &turbo))    // as fast as the host allows
+            c.m.turbo.store(turbo);
 
         // Monitor sense = the ID resistors on a real Mac's video connector;
         // the ROM reads it at reset to pick the resolution. Switching it is
@@ -423,14 +658,14 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
         // LC II's built-in V8 video only drives these two color modes (512KB
         // VRAM + V8 bandwidth); depth is per-monitor, so a fresh mode may
         // come up B&W until you set "256 couleurs" in Moniteurs + restart.
-        int sense = c.mem.monitorSense();
+        int sense = c.m.mem.monitorSense();      // byte read; only the GUI changes it
         ImGui::Text("Moniteur:");
         ImGui::SameLine();
         auto monoBtn = [&](const char* label, int s) {
             bool cur = sense == s;
             if (cur) ImGui::PushStyleColor(ImGuiCol_Button,
                                            ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-            if (ImGui::Button(label) && !cur) { c.mem.setMonitorSense(uint8_t(s)); c.cpu.hardReset(); }
+            if (ImGui::Button(label) && !cur) c.m.push({LcMachine::Cmd::Sense, s});
             if (cur) ImGui::PopStyleColor();
             ImGui::SameLine();
         };
@@ -451,7 +686,9 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
 #else
+    machine.start();                    // emulation runs on its own core
     while (!glfwWindowShouldClose(window)) frame(&ctx);
+    machine.stop();                     // join before touching machine state
     mem.egret().savePram(pramPath);
     audioHost.stop();
     glDeleteTextures(1, &screenTex);
@@ -566,7 +803,9 @@ int main(int argc, char** argv) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, c.video.width(), c.video.height(),
                      0, GL_RGBA, GL_UNSIGNED_BYTE, fb);
 
-        machineMenu(false, c.window);
+        machineMenu(false, c.window, [&c] {
+            if (ImGui::MenuItem("Redémarrer")) c.cpu.hardReset();
+        });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
         ImGui::Begin("Macintosh Plus", nullptr, ImGuiWindowFlags_AlwaysAutoResize);

@@ -40,11 +40,15 @@ public:
     // POM68K_FPU_LOG.
     void enableFpuLog(const std::string& path, size_t ringSize = 4096);
 
-    // 68030 i-cache measurement (validation before the timing overlay is
-    // wired). Counts instruction-fetch hits/misses against the modeled cache.
+    // 68030 i-cache diagnostics (hit/miss counters of the timing overlay,
+    // which lives inline in Moira — Moira.h § PomIcache).
     struct ICacheStats { moira::i64 hits = 0, misses = 0, fetches = 0; };
-    ICacheStats icacheStats() const { return icStats_; }
-    void resetICacheStats() { icStats_ = {}; }
+    ICacheStats icacheStats() const {
+        return { pomIcache.hits, pomIcache.misses, pomIcache.fetches };
+    }
+    void resetICacheStats() {
+        pomIcache.fetches = pomIcache.hits = pomIcache.misses = 0;
+    }
     bool icacheEnabled() const { return (getCACR() & 0x1) != 0; }
 
 private:
@@ -54,7 +58,6 @@ private:
     void write16(moira::u32 addr, moira::u16 v) const override;
     void sync(int cycles) override;
     void willExecute(moira::M68kException exc, moira::u16 vector) override;
-    void willFetchInstr(moira::u32 addr, bool super) override;  // 68030 i-cache
     void didChangeCACR(moira::u32 value) override;              // cache clear/enable
     void catchUp();
     void dumpFpuLog(moira::u16 vector);
@@ -90,33 +93,12 @@ private:
     int icacheMiss_ = 4;           // boosted cycles charged per i-cache miss
     moira::i64 periphAccum_ = 0;   // sub-ratio remainder for exact scaling
 
-    // 68030 on-chip instruction cache model (MC68030UM §6): 256 bytes = 16
-    // lines × 4 longwords, LOGICAL, direct-mapped. Line = logical A[7:4],
-    // longword = A[3:2], tag = A[31:8] + supervisor(FC2) bit. Each line has
-    // 4 per-longword valid bits; a miss whose tag differs evicts the line
-    // (direct-mapped). Non-burst fill (one longword per miss) — conservative
-    // vs the real burst line-fill, refined later if needed. Fed by
-    // willFetchInstr() (every instruction-word fetch), gated on CACR bit 0
-    // (enable i-cache). The real chip runs tight cache-resident loops with no
-    // instruction-fetch bus cycles — this model is what lets our timing
-    // reflect that per code path instead of a global boost fudge.
-    struct ICache {
-        static constexpr int kLines = 16;
-        moira::u32 tag_[kLines];
-        moira::u8  valid_[kLines];
-        void reset() { for (int i = 0; i < kLines; i++) { tag_[i] = 0xFFFFFFFF; valid_[i] = 0; } }
-        bool access(moira::u32 addr, bool super) {          // returns true on hit
-            moira::u32 t = (addr >> 8) | (super ? 0x80000000u : 0u);
-            int line = int((addr >> 4) & (kLines - 1));
-            int lw   = int((addr >> 2) & 3);
-            if (tag_[line] == t && (valid_[line] & (1u << lw))) return true;
-            if (tag_[line] != t) { tag_[line] = t; valid_[line] = 0; }   // evict
-            valid_[line] |= moira::u8(1u << lw);
-            return false;
-        }
-    };
-    ICache icache_;
-    ICacheStats icStats_;
+    // The 68030 on-chip i-cache model itself (MC68030UM §6: 256 bytes = 16
+    // lines × 4 longwords, logical, direct-mapped, non-burst fill) lives
+    // INLINE in Moira's mmuFetchWord (Moira.h § PomIcache): a virtual
+    // per-fetch hook cost ~11% of the emulator in call overhead. The
+    // constructor arms it and hands it icacheMiss_; this class keeps the
+    // knobs, the CACR clear strobes and the stats accessors.
 
     // Line-F logging state
     bool fpuLog_ = false;

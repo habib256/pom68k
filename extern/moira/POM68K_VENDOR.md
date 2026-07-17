@@ -665,6 +665,19 @@ mmuFetchWord). Not a new `Core::C68030`: the 020/030 share Moira's execution
 core by design, and the cache is a timing overlay, not a different instruction
 set. See `src/Cpu030.*`, CHANGELOG 2026-07-17.
 
+**Folded inline (2026-07-17, perf):** the virtual hook is GONE — the
+per-instruction-word indirect call + out-of-line model measured ~11% of the
+whole emulator (TODO § Performance). The cache model now lives as a
+`protected` member struct `Moira::PomIcache` (`Moira.h`, same MC68030UM §6
+16×4-LW logical direct-mapped model, same CACR-bit-0 gate and miss penalty)
+executed inline at the same spot in `mmuFetchWord`, guarded by
+`pomIcache.armed` (default off — bare-Moira users and the 68000 wrapper pay
+one predictable branch, nothing else). `Cpu030` arms it in its constructor
+(`missPenalty` = `POM68K_ICACHE_MISS`), flushes it from `didChangeCACR`/
+`hardReset`, and re-exports the hit/miss counters via `icacheStats()`.
+Behaviour byte-identical (lcii_boot_etalon: same 0.09/0.48 metrics, same
+9583 SCSI commands); boot etalon wall time 143 s → 122 s (-15%).
+
 ## Odd-SP interrupt frames: no A0 masking on 010/020, single vector
 ## scaling (2026-07-17, Lode Runner launch freeze)
 
@@ -724,6 +737,14 @@ Both are exactness-preserving optimizations, confirmed by the sst68030
 gate (3082 pinned WinUAE-differential vectors incl. the mmu/fault
 families) and the boot etalons. Speed: with the V8 bus word fast paths
 and -march=native/LTO, the LC II went from 0.40× to 1.91× realtime.
+
+Follow-up (same day): `Moira.h` declares `mmuAtcLookup`, `mmuAtcTouch`
+and `mmuTranslateAccess` with `MOIRA_HOT_INLINE`
+(`__attribute__((always_inline))` on GCC/Clang, plain `inline`
+elsewhere). Callgrind showed GCC keeping them out of line (the 22-entry
+fallback scan trips its size heuristics) at ~35 Ir per access of pure
+call overhead — ~9% of the whole emulator. All three live in the
+Moira.cpp translation unit, so forcing the inline changes no behaviour.
 
 ## Model support in this copy (`MoiraTypes.h`)
 

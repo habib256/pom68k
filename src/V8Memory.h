@@ -75,10 +75,12 @@ public:
     AdbBus& adb() { return adb_; }
     AscV8& asc() { return asc_; }
     Ncr5380& scsi() { return scsi_; }
-    ScsiDisk& scsiDisk() { return scsiDisk_; }
-    bool attachScsi(const std::string& path, bool writeBack = false) {
-        if (!scsiDisk_.open(path, writeBack)) return false;
-        scsi_.attach(&scsiDisk_);
+    ScsiDisk& scsiDisk() { return scsiDisks_[0]; }  // boot drive (tests poke it)
+    // Attach a disk image at a SCSI ID (0 = boot drive, 1-6 = secondary
+    // volumes picked up by the System's boot-time bus scan).
+    bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
+        if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
+        scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
     // SWIM1 comes up IWM-compatible (GCR); the Plus IWM + Sony drive
@@ -148,7 +150,7 @@ private:
     AdbBus adb_;
     AscV8 asc_;
     Ncr5380 scsi_;
-    ScsiDisk scsiDisk_;
+    ScsiDisk scsiDisks_[7];          // by SCSI ID; [0] = boot drive
     Iwm iwm_;
     SonyDrive drive_;
     Cpu030* cpu_ = nullptr;

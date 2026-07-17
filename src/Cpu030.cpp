@@ -17,41 +17,28 @@ Cpu030::Cpu030(V8Memory& mem, bool withFpu) : mem_(mem) {
         int v = atoi(p);
         if (v >= 0 && v <= 64) icacheMiss_ = v;   // boosted cycles charged per miss
     }
+    // Arm the i-cache timing overlay folded into Moira's fetch path
+    // (Moira.h § PomIcache; model rationale in Cpu030.h).
+    pomIcache.armed = true;
+    pomIcache.missPenalty = icacheMiss_;
+    pomIcache.reset();
 }
 
 void Cpu030::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
-    icache_.reset();
+    pomIcache.reset();
     reset();                       // SSP/PC from $0 (ROM via overlay)
-}
-
-// 68030 instruction-cache timing overlay (see Cpu030.h). Fires on every
-// instruction-word fetch. The core runs at cacheBoost_× (the resident-code
-// ceiling, ~real-030-cached throughput); a cache MISS charges icacheMiss_
-// boosted cycles here, modelling the instruction-fetch bus access the real
-// chip pays only on a miss. So a tight cache-resident loop (SimCity's redraw,
-// 95% hit) runs near the ceiling and finishes its frame, while miss-heavy cold
-// code is throttled back toward real speed — one physical model instead of a
-// global fudge that can't tell the two apart. Measured hits/misses feed the
-// icacheStats() diagnostic. Gated on CACR bit 0 (System enables the i-cache).
-void Cpu030::willFetchInstr(moira::u32 addr, bool super) {
-    icStats_.fetches++;
-    if (!(getCACR() & 0x1)) return;             // i-cache off: no residency model
-    if (icache_.access(addr, super)) {
-        icStats_.hits++;
-    } else {
-        icStats_.misses++;
-        clock += icacheMiss_;                    // a miss pays the fetch bus cycles
-    }
 }
 
 // The System (and self-modifying code like SimCity's dynamic blit generator)
 // clears the i-cache via CACR: bit 3 = Clear Instruction cache, bit 2 = Clear
 // Entry (CAAR). These are write-only strobes (raw value, not the stored CACR).
 // Flush the whole model on either — conservative, never reports a stale hit.
+// (The i-cache timing model itself runs inline in Moira's fetch path —
+// Moira.h § PomIcache.)
 void Cpu030::didChangeCACR(moira::u32 value) {
-    if (value & 0x0C) icache_.reset();
+    if (value & 0x0C) pomIcache.reset();
 }
 
 void Cpu030::runCycles(moira::i64 n) {

@@ -8,8 +8,10 @@
 // handshake while the CPU moves each byte through the DMA data ports.
 // SCSI on the Plus is POLLED (no 68000 interrupt); the ROM reads the Bus
 // and Status Register to follow bus phase.
-// Only the initiator side, one target (a ScsiDisk) — enough for the ROM to
-// read the driver + boot blocks and launch System 6.
+// Only the initiator side; up to 7 targets (ScsiDisk, IDs 0-6 — ID 7 is
+// the Mac) selected by the ID bit the initiator drives on the data bus.
+// One disk at ID 0 is enough for the ROM to read the driver + boot blocks
+// and launch System 6; extra IDs let the GUI mount secondary volumes.
 // Source of truth: MAME ncr5380.cpp; NCR 5380 datasheet; DEV.md § SCSI.
 // Gate: tests/scsi_boot_etalon.cpp.
 //
@@ -28,7 +30,11 @@ class ScsiDisk;
 class Ncr5380 {
 public:
     void reset();
-    void attach(ScsiDisk* disk) { disk_ = disk; }
+    // Attach a target at a SCSI ID (0-6). The historical single-disk call
+    // sites (Plus, tests) keep the default ID 0.
+    void attach(ScsiDisk* disk, int id = 0) {
+        if (id >= 0 && id < 7) targets_[id] = disk;
+    }
 
     // reg = (addr>>4)&7. Pseudo-DMA (A9) handled by the dma* entry points.
     uint8_t read(int reg);
@@ -79,7 +85,8 @@ public:
     };
 
 private:
-    ScsiDisk* disk_ = nullptr;
+    ScsiDisk* targets_[7] = {};      // by SCSI ID (7 = initiator, never used)
+    ScsiDisk* disk_ = nullptr;       // target selected by the current session
 
     // Register file (as written by the initiator)
     uint8_t odr_ = 0, icr_ = 0, mode_ = 0, tcr_ = 0, selEnable_ = 0;

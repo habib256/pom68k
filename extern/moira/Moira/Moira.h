@@ -395,14 +395,28 @@ protected:
     // Called when the CAAR register is modified
     virtual void didChangeCAAR(u32 value) { }
 
-    // POM68K: 68030 instruction-cache overlay hook. Fires on every
-    // instruction-word fetch (opcode, one-slot lookahead, extension words)
-    // from mmuFetchWord, with the LOGICAL fetch address and the supervisor
-    // flag — so a wrapper (Cpu030) can model the on-chip 256-byte i-cache
-    // and make instruction-throughput timing reflect cache residency
-    // (tight cached loops run at the real 030's speed without a global
-    // fudge). Zero cost when not overridden.
-    virtual void willFetchInstr(u32 addr, bool super) { }
+    // POM68K: 68030 instruction-cache timing overlay, folded inline into
+    // mmuFetchWord. It was a virtual willFetchInstr(addr, super) hook fired
+    // per instruction word; the indirect call + out-of-line model cost ~11%
+    // of the whole emulator (TODO § Performance), and everything it needs
+    // (reg.cacr, reg.sr.s, clock) lives right here. The wrapper (Cpu030)
+    // arms it, owns the knobs and reads the stats; the model itself is the
+    // MC68030UM §6 on-chip i-cache: 256 bytes = 16 lines × 4 longwords,
+    // LOGICAL, direct-mapped, tag = A[31:8] + supervisor(FC2), per-longword
+    // valid bits, whole-line evict on tag change, gated on CACR bit 0.
+    // A miss charges `missPenalty` cycles (the fetch bus access the real
+    // chip pays only on a miss). Zero cost when not armed.
+    struct PomIcache {
+        bool armed = false;         // wrapper opted in (LC II machine)
+        i32  missPenalty = 0;       // cycles charged per i-cache miss
+        u32  tag[16] = {};
+        u8   valid[16] = {};
+        i64  fetches = 0, hits = 0, misses = 0;
+        void reset() {              // CACR clear strobes / hard reset
+            for (int i = 0; i < 16; i++) { tag[i] = 0xFFFFFFFFu; valid[i] = 0; }
+        }
+    };
+    PomIcache pomIcache;
 
     
     //
@@ -1036,16 +1050,26 @@ private:
     u16 mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci);
 
     // ATC operations (§ 9.5.2)
-    int  mmuAtcLookup(u32 addr, u8 fc, bool write);
+    // POM68K perf (callgrind 2026-07-17): lookup/touch/translate run on
+    // EVERY memory access but GCC keeps them out of line (the 22-entry
+    // fallback scan trips its size heuristics) — ~35 Ir/access of pure
+    // call overhead, ~9% of the whole emulator. Everything lives in the
+    // Moira.cpp TU, so forcing the inline changes no behaviour.
+#if defined(__GNUC__) || defined(__clang__)
+#define MOIRA_HOT_INLINE __attribute__((always_inline)) inline
+#else
+#define MOIRA_HOT_INLINE inline
+#endif
+    MOIRA_HOT_INLINE int  mmuAtcLookup(u32 addr, u8 fc, bool write);
     void mmuAtcFill(u32 addr, u8 fc, bool write);
-    void mmuAtcTouch(int i);
+    MOIRA_HOT_INLINE void mmuAtcTouch(int i);
     void mmuAtcFlushAll();
     void mmuAtcFlushFc(u32 fcBase, u32 fcMask);
     void mmuAtcFlushPage(u32 addr);
     void mmuAtcFlushPageFc(u32 addr, u32 fcBase, u32 fcMask);
 
     // Logical → physical for one bus (sub-)access; throws MmuBusError
-    u32 mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags);
+    MOIRA_HOT_INLINE u32 mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags);
 
     // Fault capture + throw (WinUAE mmu030_page_fault)
     [[noreturn]] void mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc);

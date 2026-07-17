@@ -4,19 +4,19 @@
 // Register-write-driven phase engine, modelled on pce's macplus/scsi.c and
 // cross-checked against MAME ncr5380.cpp bit layouts — see DEV.md § SCSI.
 // The Plus SCSI is polled: no interrupt is ever raised. Each register write
-// advances the bus phase; reads reflect the live bus. One direct-access
-// target (ScsiDisk) answers at SCSI ID 0 (internal-drive convention).
+// advances the bus phase; reads reflect the live bus. Direct-access targets
+// (ScsiDisk) answer at SCSI IDs 0-6; the boot drive sits at ID 0
+// (internal-drive convention).
 
 #include "Ncr5380.h"
 #include "ScsiDisk.h"
-
-namespace { constexpr int kTargetId = 0; }
 
 void Ncr5380::reset() {
     odr_ = icr_ = mode_ = tcr_ = selEnable_ = 0;
     phase_ = BUS_FREE;
     req_ = false;
     irq_ = false;
+    disk_ = nullptr;                 // drop the selected session, keep targets
     cmd_.clear(); dataIn_.clear(); dataPos_ = 0; cmdLen_ = 0; status_ = 0;
 }
 
@@ -94,10 +94,14 @@ void Ncr5380::finishWrite() {
 void Ncr5380::trySelect() {
     uint8_t targets = odr_ & 0x7F;                // exclude the initiator's ID 7
     selects++;
-    if (disk_ && disk_->present() && (targets & (1 << kTargetId)))
-        enterCommand();                           // device answers → COMMAND
-    else
-        enterBusFree();                           // selection timeout (no device)
+    for (int id = 0; id < 7; id++) {
+        if ((targets & (1 << id)) && targets_[id] && targets_[id]->present()) {
+            disk_ = targets_[id];                 // device answers → COMMAND
+            enterCommand();
+            return;
+        }
+    }
+    enterBusFree();                               // selection timeout (no device)
 }
 
 // ── ACK handshake (one byte per REQ/ACK cycle) ──────────────────────────
