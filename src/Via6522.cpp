@@ -9,6 +9,7 @@ void Via6522::reset() {
     acr_ = pcr_ = sr_ = ifr_ = ier_ = 0;
     t1_ = t2_ = 0; t1latch_ = 0; t2ll_ = 0;
     t1armed_ = t2armed_ = false;
+    srHostWritten_ = false;
 }
 
 // T1: sets IFR6 on underflow; free-run mode (ACR6) reloads from the latch
@@ -76,7 +77,7 @@ void Via6522::write(int reg, uint8_t v) {
         case T2CH:   t2_ = int32_t((uint32_t(v) << 8) | t2ll_);   // latch → counter
                      t2armed_ = true;
                      ifr_ &= uint8_t(~TIMER2); break;
-        case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); break;
+        case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); srHostWritten_ = true; break;
         case ACR:    acr_ = v; break;
         case PCR:    pcr_ = v; break;
         case IFR:    ifr_ &= uint8_t(~(v & 0x7F)); break;   // write-1-to-clear

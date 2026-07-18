@@ -886,7 +886,44 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   $003FF980 via the pseudo-DMA window; STATUS = $00 (GOOD), COMMAND
   COMPLETE message, clean CI_COMPLETE/MSG_ACCEPT. ctest 26/26.
 
-  **Q6.2 — CURRENT BLOCKER: the boot re-reads block 0 forever (~48 700
+  **Q6.2 — RESOLVED 2026-07-19 (the Cuda ReadXPram reply had one header
+  byte too many + a ghost-session bug).** The block-0 re-read was the
+  Start Manager's boot-driver scan matching a wanted ddType = low byte of
+  the `_GetOSDefault` result; ours came out $0200 (wanted $00, matches no
+  DDM entry) instead of MAME's $0001 (wanted $01, matches DDM entry0).
+  Two independent Cuda-flavor bugs in the Egret HLE (both gated on
+  `cudaPolarity_`, LC II Egret path untouched — egret_test +
+  lcii_boot_etalon stay green):
+  - **ReadXPram reply framing (the root cause).** `_GetOSDefault` reads
+    XPRAM $76:$77 via a Cuda ReadXPram ($01 $02 $01 $76). The Quadra
+    Cuda's ReadXPram reply carries a **3-byte header [sync,status0,
+    status1] then data directly — NO command-echo byte**; our HLE (matching
+    the LC II Egret driver) appended the cmdEcho as a 4th header byte. The
+    ROM's device-manager receive ISR ($408A9BC0-$408A9C30) reads its fixed
+    header count then copies data, so the cmdEcho $02 became data[0] →
+    _GetOSDefault = $0200. Fix: drop the cmdEcho from the Cuda ReadXPram
+    reply (`Egret::process`). Result byte-identical to MAME: D3=$0001FFFF
+    at the scan (`$4080722C`), wanted ddType $01 → DDM match at $40807272 →
+    driver at block $40 → partition map → the boot reads the System (977
+    progressive SCSI READ10s, block-0 re-read count 48 674→0).
+  - **Ghost command session (a latent contaminator).** Between real Cuda
+    transactions the ROM toggles TIP/BYTEACK to poll the idle bus WITHOUT
+    writing the SR; our HLE grabbed the stale SR (our last $AA sync ack) as
+    "byte 0", built a bogus `AA AA AA AA AA` command, and answered with the
+    unknown-type error report `{01,02,00,AA}` whose $02 also poisoned the
+    device-manager block. Fix: a Cuda command session only starts when the
+    host actually loaded a command byte — new `Via6522::srHostWritten()`
+    (set on a host SR write, cleared on device `loadSR`), gated into the
+    SYS_SESSION-rise HOST_CMD entry in `Egret::portBChanged`.
+  **Next (Q6.3): the boot now spins at `$40899704`** (`move.b ($40,A3),D5;
+  btst #7,D5; beq`, A3=$50F10000 = 53C96 base) polling SCSI Status bit 7
+  after a 512-byte pseudo-DMA READ10 (driver DMA loop $408D2308-$408D2352,
+  A1=$50F50100). Our `Ncr53c96` isn't raising the completion/interrupt flag
+  the driver waits on for this transfer shape — a controller issue, well
+  past block 0. Attack with the same trace+MAME-oracle method.
+
+  **Q6.2 — HISTORICAL BLOCKER writeup (kept for method): the boot
+  re-reads block 0 forever (~48 700
   times, always READ6 LBA 0, ~7 selects each = a full ID 6→0 scan per
   read) and NEVER advances to block 1 (partition map 'PM') or the driver
   at block $40.** This is NOT a SCSI fault — data + status + completion

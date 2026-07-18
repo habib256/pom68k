@@ -116,7 +116,19 @@ void Egret::portBChanged(uint8_t pb) {
     // fall — the FALL means "consumed, clock the next one". The pending-
     // SR guard keeps multiple triggers from skipping bytes.
     if (rose & 0x20) {                   // SYS_SESSION rise
-        if (phase_ == IDLE) {
+        // Q6 Cuda: a command session only begins when the host has actually
+        // LOADED a command byte into the SR (srHostWritten). Between real
+        // transactions the Quadra ROM toggles TIP/BYTEACK to poll the idle
+        // bus WITHOUT writing the SR (device-manager Cuda path $408A9Cxx);
+        // the old code grabbed the stale SR (our last $AA sync ack) as
+        // "byte 0", built a ghost `AA AA AA AA AA` command, and answered
+        // with the unknown-type error report `{01,02,00,AA}` — whose status
+        // byte $02 was captured by the device-manager receiver as the
+        // _GetOSDefault result (→ wanted ddType $00, the block-0 re-read
+        // loop). Gating on srHostWritten() rejects that ghost session so
+        // OSDefault reads PRAM $76:$77 = $0001. The Egret (non-cuda) path
+        // is unchanged.
+        if (phase_ == IDLE && (!cudaPolarity_ || via_.srHostWritten())) {
             phase_ = HOST_CMD;
             cmd_.clear();
             // Q5 Cuda: the FIRST command byte is already in the SR when
@@ -288,6 +300,20 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
                          | uint32_t(cmd[4]) << 8 | cmd[5];
             break;
         case kReadXPram:                 // [1, 2, 1, addr] → byte STREAM
+            // Q6.2: the Quadra Cuda's ReadXPram reply carries NO command-
+            // echo byte — its header is 3 bytes [sync, status0, status1]
+            // and the XPRAM data follows directly. The device-manager
+            // receive ISR ($408A9BC0-$408A9C30) reads exactly that header
+            // count then copies the data; if we echo the command as a 4th
+            // header byte, the ROM captures cmdEcho($02) as data[0] and
+            // _GetOSDefault (ReadXPram $76) returns $0200 → wanted ddType
+            // $00 → the Start Manager's boot-driver scan matches no DDM
+            // descriptor and re-reads block 0 forever. Dropping the echo
+            // makes _GetOSDefault return PRAM $76:$77 = $0001 (verified
+            // byte-identical to the MAME macqd605 golden boot). The LC II
+            // Egret path keeps the 4-byte header (its driver echoes the
+            // command, comment above), so gate on cudaPolarity_.
+            if (cudaPolarity_ && !reply.empty()) reply.pop_back();
             if (cmd.size() >= 4) {       // No length on the wire (O6.11,
                 // pinned from the ROM: the 'NuMc' check sends [1,2,1,$0C]
                 // and reads 4 bytes, the boot-flag read sends [1,2,1,$8A]

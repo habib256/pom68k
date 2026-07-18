@@ -1,33 +1,50 @@
 # CHANGELOG
 
-## 2026-07-19 — Q6.2 ROOT-CAUSED (investigation, no fix committed): the
-## block-0 re-read loop is a Cuda reply-framing divergence, not SCSI
+## 2026-07-19 — Q6.2 RESOLVED: the block-0 re-read loop was a Cuda
+## ReadXPram reply-framing divergence — the boot now loads the driver,
+## partition map and System (progresses to a new SCSI blocker)
 
-Diffed our boot against a MAME macqd605 golden `trace` (the disk boots
-to the Finder there). The Start Manager's boot-driver scan
-(`$40807224`) matches a DDM driver descriptor by a **wanted ddType** it
-derives from `_GetDefaultStartup`/`_GetOSDefault` ($A07D/$A084). MAME
-wants ddType $0001 (matches our disk's DDM entry0) and proceeds; ours
-wants $0000 and matches nothing, so the Start Manager re-runs the whole
-SCSI scan → block 0 re-read ~48 700×. Traced the wanted value to the
-device-manager ADB block the Cuda receive ISR fills. The wanted ddType
-is the **low byte of the `_GetOSDefault` result**: MAME $0001 → low $01
-→ wanted $01 (matches DDM entry0, boots); ours $0200 → low $00 → wanted
-$00 (matches nothing). The $0200 traces (`--wwatch`) to a byte $02
-stored at `$408A9C10` with A2=$21D0 — the **ADB autopoll buffer, not the
-OSDefault device-manager block ($17FF9C/$de0)** — so our `_GetOSDefault`
-result is contaminated by an ADB autopoll packet read from the wrong
-buffer. Two Cuda reply-header probes were tried and reverted (tree
-clean): a blanket 3-byte Cuda header breaks the POST direct reader
-(double fault); swapping the header to MAME's exact `$00 $01 $00 <cmd>`
-keeps POST alive but does NOT change $0200 — confirming the value is not
-sourced from the pseudo-reply header but from the autopoll/device-manager
-buffer routing. Full diagnosis + next step (match MAME's ADB
-autopoll-vs-device-manager buffer handoff, gated on `cudaPolarity_`,
-POST-preserving) in TODO § Q6.2. Tooling note: in the MAME imgui debugger under Xvfb,
-`tracelog` in a bp/wp action WORKS; `save`-expressions and bp/wp
-*conditions* are unreliable (fire on first hit / mis-evaluate) — drive
-everything through `trace <file>,maincpu,,{ tracelog "" }` + taps.
+The Start Manager's boot-driver scan (`$40807224`) matches a DDM driver
+descriptor by a **wanted ddType** = low byte of the `_GetOSDefault`
+result. MAME macqd605 (golden, boots our exact disk to the Finder) gets
+$0001 → wanted $01 → matches our disk's DDM entry0 → driver at block $40
+→ partition map → System. Ours got $0200 → wanted $00 → matches nothing
+→ the scan re-ran the whole ID 6→0 poll → block 0 re-read ~48 700×.
+
+`_GetOSDefault` reads XPRAM $76:$77 via a Cuda ReadXPram (`01 02 01 76`);
+PRAM $76:$77 already held the correct $0001. The divergence was the
+**reply framing**: the Quadra Cuda's ReadXPram reply is a **3-byte
+header `[sync, status0, status1]` followed by data directly — with NO
+command-echo byte**, but our Egret HLE (matching the LC II Egret driver,
+which does echo) appended a 4th cmdEcho header byte. The ROM's
+device-manager receive ISR (`$408A9BC0-$408A9C30`) reads its fixed
+header count then copies the data, so the cmdEcho `$02` landed as
+data[0] and _GetOSDefault returned `$0200`. Fix: drop the cmdEcho from
+the Cuda ReadXPram reply (`Egret::process`, gated on `cudaPolarity_`) →
+D3=$0001FFFF at the scan, byte-identical to MAME.
+
+Also fixed a latent **ghost Cuda session**: between transactions the ROM
+toggles TIP/BYTEACK to poll the idle bus without writing the SR; the HLE
+grabbed the stale SR (our last `$AA` sync ack) as byte 0, built a bogus
+`AA AA AA AA AA` command and answered with the unknown-type error report
+`{01,02,00,AA}` (its `$02` status a second contaminator). Fix: a Cuda
+command session only begins when the host actually loaded a command byte
+— new `Via6522::srHostWritten()` (set on a host SR write, cleared on
+device `loadSR`), gated into the SYS_SESSION-rise HOST_CMD entry in
+`Egret::portBChanged`.
+
+Both fixes are gated on `cudaPolarity_`; the LC II Egret path is
+untouched — `egret_test` and `lcii_boot_etalon` stay green, full ctest
+26/26. The two earlier reverted probes (blanket 3-byte Cuda header /
+byte-swapped header) failed because they targeted the pseudo-reply
+*header status bytes*; the real error was one extra *header byte* on the
+ReadXPram reply specifically. Next blocker (Q6.3): the boot now reads
+977 progressive blocks then spins at `$40899704` polling 53C96 Status
+bit 7 after a pseudo-DMA READ10 — a controller completion-flag gap, far
+past block 0. Tooling note (MAME imgui debugger under Xvfb): `tracelog`
+in a bp/wp action WORKS; `save`-expressions and bp/wp *conditions* are
+unreliable — drive everything through `trace <file>,maincpu,,{ tracelog
+"" }` + taps.
 
 ## 2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work — the Mac OS 8.1 SCSI
 ## driver now transfers full 512-byte blocks off the disk

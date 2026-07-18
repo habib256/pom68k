@@ -44,10 +44,15 @@ public:
     void raiseCa1() { setIfr(CA1); }        // vblank, per video frame
     void raiseCa2() { setIfr(CA2); }        // RTC one-second tick
     // Keyboard transaction hooks (M0110 over the shift register)
-    void loadSR(uint8_t v) { sr_ = v; setIfr(SHIFT); }
+    void loadSR(uint8_t v) { sr_ = v; setIfr(SHIFT); srHostWritten_ = false; }
     void raiseShift() { setIfr(SHIFT); }    // command byte finished shifting out
     uint8_t acr() const { return acr_; }
     uint8_t srValue() const { return sr_; }
+    // Q6: true when the HOST (guest CPU) has written the SR since the last
+    // device loadSR — i.e. the SR holds a fresh host-supplied byte, not a
+    // stale device value. The Cuda HLE uses this to reject a ghost command
+    // session where the ROM toggles the handshake without loading a byte.
+    bool srHostWritten() const { return srHostWritten_; }
     // SR byte loaded but not yet read (Egret paces its clocking on this)
     bool shiftPending() const { return (ifr_ & SHIFT) != 0; }
     bool irqAsserted() const { return (ifr_ & ier_ & 0x7F) != 0; }
@@ -63,6 +68,7 @@ private:
     uint8_t ora_ = 0, orb_ = 0, ddra_ = 0, ddrb_ = 0;
     uint8_t inA_ = 0xFF, inB_ = 0xFF;
     uint8_t acr_ = 0, pcr_ = 0, sr_ = 0, ifr_ = 0, ier_ = 0;
+    bool srHostWritten_ = false;                // Q6: host wrote SR (see .h)
     int32_t t1_ = 0, t2_ = 0;
     uint16_t t1latch_ = 0;
     uint8_t t2ll_ = 0;                          // T2 low-latch (staged by T2CL)
