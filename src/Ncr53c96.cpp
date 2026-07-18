@@ -363,12 +363,17 @@ void Ncr53c96::transferInfo() {
             // 8.1 driver polls S_TC0 (Status bit4) to know the requested count
             // has landed BEFORE it bulk-reads 16 bytes at a time ($408D1F7C →
             // $408D1FA2). Signal that here so the polled path unblocks.
-            if (dmaCommand_ && dataInPos_ < dataIn_.size()) {
+            if (dataInPos_ < dataIn_.size()) {
                 status_ |= S_TC0;
-                // A completed DMA Transfer Info also raises the bus-service
-                // interrupt (ncr53c90.cpp:686 bus_complete): the driver drains
-                // the 16-byte window burst then waits on Status bit7 ($408D1FC0)
-                // and reads R_ISTAT ($408D1FC8) before the next chunk.
+                // A completed Transfer Info raises the bus-service interrupt
+                // (ncr53c90.cpp:686 bus_complete). This fires for BOTH the DMA
+                // variant ($90 — the driver bursts the window then waits on
+                // Status bit7 at $408D1FC0/$408D2352) AND the polled variant
+                // ($10 — Q6.3: the Mac OS 8.1 multi-block read's byte-tail
+                // loop at $408D237A issues CI_XFER $10 with TC=1, waits for
+                // S_INTERRUPT, then reads ONE byte from the FIFO port
+                // ($408D2388 move.b ($20,A3),(A2)+)). Without the polled
+                // signal the byte-tail wait ($40899704) spun forever.
                 raiseIrq(I_BUS);
             }
             updateDrq();
@@ -406,9 +411,20 @@ uint8_t Ncr53c96::dmaRead() {
         dmaBytes++;
         uint8_t b = dataIn_[dataInPos_++];
         if (tcounter_) tcounter_--;
-        if (dataInPos_ >= dataIn_.size()) {   // payload drained → transfer done
+        // Q6.3: the DMA Transfer Info moves exactly the programmed transfer
+        // count (TC) per command, then raises the bus-service interrupt
+        // (ncr53c90.cpp bus_complete, S_TC0). The Mac OS 8.1 driver's
+        // multi-block read ($408D22C6) programs TC = one chunk, DMA-bursts
+        // TC bytes from the pseudo-DMA window, then waits for S_INTERRUPT
+        // ($40899704) before setting up the next chunk. Signal per-chunk
+        // completion when TC hits 0 — NOT only when the whole payload is
+        // drained (that stalled multi-block reads: dataIn_ held all 56
+        // blocks, so the first-chunk interrupt never re-armed). Advance to
+        // STATUS only once the last byte of the payload has left.
+        if (tcounter_ == 0 || dataInPos_ >= dataIn_.size()) {
             status_ |= S_TC0;
-            advanceToStatus();
+            if (dataInPos_ >= dataIn_.size())
+                advanceToStatus();            // whole payload done → STATUS
             raiseIrq(I_BUS);                  // bus_complete (ncr53c90.cpp:686)
         }
         updateDrq();

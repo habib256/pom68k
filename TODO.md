@@ -915,12 +915,40 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
     host actually loaded a command byte — new `Via6522::srHostWritten()`
     (set on a host SR write, cleared on device `loadSR`), gated into the
     SYS_SESSION-rise HOST_CMD entry in `Egret::portBChanged`.
-  **Next (Q6.3): the boot now spins at `$40899704`** (`move.b ($40,A3),D5;
-  btst #7,D5; beq`, A3=$50F10000 = 53C96 base) polling SCSI Status bit 7
-  after a 512-byte pseudo-DMA READ10 (driver DMA loop $408D2308-$408D2352,
-  A1=$50F50100). Our `Ncr53c96` isn't raising the completion/interrupt flag
-  the driver waits on for this transfer shape — a controller issue, well
-  past block 0. Attack with the same trace+MAME-oracle method.
+  **Q6.2 boot chain VERIFIED (2026-07-19):** block 0 → DDM 'ER' →
+  ddType match at `$40807272` → driver at block $40 (`READ6 $40`, 19
+  blocks / 9728 B) → partition map (blocks 1,2,3) → System (READ10s). 977
+  progressive SCSI commands (was 48 674 re-reads of block 0), only 13
+  benign empty-slot VEC2, desktop dither rendered in VRAM.
+
+  **Q6.3 — RESOLVED 2026-07-19: the SCSI Transfer Info needed the polled
+  ($10) DATA IN completion interrupt.** The Mac OS 8.1 SCSI driver's
+  large read ($408D2280) has two paths off the pseudo-DMA window: a
+  DMA-variant burst (`CI_XFER|DMA` = $90, drained through the $50F50100
+  window then wait S_INTERRUPT at $40899704) AND a **polled byte tail**
+  (`CI_XFER` = $10, TC=1, wait S_INTERRUPT, then `move.b ($20,A3),(A2)+`
+  = one FIFO byte at $408D2388). Our `Ncr53c96::transferInfo` DATA_IN
+  branch only raised the bus-service interrupt for the DMA variant
+  (`if (dmaCommand_ …)`), so the $10 tail spun forever at $40899704. Fix:
+  raise `S_TC0 | I_BUS` for a DATA_IN Transfer Info whenever data is
+  pending, DMA or polled (drop the `dmaCommand_` guard). Also made
+  `dmaRead` raise the per-chunk I_BUS at TC=0 (not only at full-payload
+  drain) for multi-block DMA reads. `scsi_pdma_test` + `ncr53c96_test`
+  stay green. Result: block-0-onward boot now reads 1 281 SCSI commands
+  (43 775 writes), loads the System, then falls into the POST serial
+  console — the next blocker.
+
+  **Q6.4 — CURRENT BLOCKER (2026-07-19): after the System loads the boot
+  diverts to the POST serial console** ($408B9928 → $408BA0EA loop,
+  `btst #$11,D7` / `btst #$0,($2,A3)` polling the SCC, sr=$270C). The
+  System file loaded off disk (1 281 SCSI commands, 43 775 writes, VRAM
+  holds the boot-screen dither) but a System-startup error routes to the
+  console instead of continuing to the Finder. Next: catch the divergence
+  that sets the console-entry D7 bit (Q5.1a localized console entry at
+  $4084AAA2 / $408B98BC via the POST-executive table) — likely a missing
+  machine subsystem the early System init consults (real DAFB video paint,
+  a Time-Manager/VBL tick, sound, or an NMI/interrupt). Diff against the
+  MAME macqd605 golden boot at the point the System takes over from the ROM.
 
   **Q6.2 — HISTORICAL BLOCKER writeup (kept for method): the boot
   re-reads block 0 forever (~48 700

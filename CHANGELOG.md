@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-07-19 — Q6.3 RESOLVED: SCSI multi-block read — the polled ($10)
+## Transfer Info needed the DATA IN bus-service interrupt
+
+With Q6.2 letting the boot load the driver/partition-map/System, it then
+spun forever at `$40899704` (`btst #7,($40,A3)`, R_STATUS bit 7 =
+S_INTERRUPT) after a large read. The Mac OS 8.1 SCSI driver's read
+($408D2280) uses the pseudo-DMA window two ways: a DMA-variant burst
+(`CI_XFER|DMA` = $90, drained through $50F50100 then wait S_INTERRUPT)
+and a **polled byte tail** (`CI_XFER` = $10, TC=1, wait S_INTERRUPT, then
+`move.b ($20,A3),(A2)+` — one FIFO byte at $408D2388). Our
+`Ncr53c96::transferInfo` DATA_IN branch only raised the bus-service
+interrupt for the DMA variant, so the $10 tail never completed. Fix:
+raise `S_TC0 | I_BUS` for any DATA_IN Transfer Info with data pending
+(DMA or polled), and make `dmaRead` raise I_BUS per-chunk at TC=0 (not
+only at full-payload drain) for multi-block DMA reads. `scsi_pdma_test`
+and `ncr53c96_test` stay green. The boot now reads 1 281 SCSI commands
+(43 775 writes), loads the System, and advances to a new blocker (Q6.4:
+it diverts to the POST serial console during System startup —
+$408B9928/$408BA0EA — instead of continuing to the Finder).
+
 ## 2026-07-19 — Q6.2 RESOLVED: the block-0 re-read loop was a Cuda
 ## ReadXPram reply-framing divergence — the boot now loads the driver,
 ## partition map and System (progresses to a new SCSI blocker)
