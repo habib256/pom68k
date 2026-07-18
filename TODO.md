@@ -694,24 +694,93 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   `Moira::extBusError040`) + `Cpu040` wrapper + `q605_trace` dev tool;
   Egret HLE reused as the Cuda (same 3-wire transport). MAME refs
   fetched to `~/src/refs/mame-apple` (macquadra605/djmemc/iosb/
-  pseudovia/cuda). **Status: the FF7439EE ROM executes ($408xxxxx),
-  programs the SCC and parks in the POST serial-console wait loop at
-  $408B9928 (btst #0 on RR0)** — an earlier POST step fails and
-  diverts to the console. Findings so far (q605_trace --stop-at):
-  RAM POST passes (zero /BERR), the ROM's FPU probe works through the
-  Q4 format-$4 frame (VBR-shifted FNOP at $40804654 → handler
-  $40847054 → "no FPU" path ✓), the ASC boot-chime loop runs
-  ($408070F8, $200-strided banks), then the table-driven POST
-  executive ($40802F82, table A1=$408A8080) enters the console entry
-  ($408B9F58, device rec A0=$408A8680) with D6=$1 D7=$30 — WITHOUT
-  ever touching VIA1/Cuda, so the failing step is upstream of the ADB
-  path: prime suspects are the MEMCjr/DAFB probe (our reg-file stub
-  echoes writes) and the VRAM/monitor sense. Next: identify the table
-  entry that set the error, implement the real DAFB HLE (CLUT +
-  Swatch + sense), then gray screen + cursor.
-  Remaining for the gate: real DAFB HLE (CLUT + Swatch VBL), Cuda
-  protocol deltas, TurboSCSI hookup (Q6). Gate: POST passes, gray
-  screen + cursor.
+  pseudovia/cuda/dafb). **Status 2026-07-18 (working tree, NOT yet
+  committed — commit this first): POST passes end-to-end (RAM +
+  burn-in, Cuda transactions, FPU probe), video init + console
+  init are traversed, the boot reaches the Slot Manager, then falls
+  back into the POST serial-console wait loop at $408B9928.**
+  Work-tree changes on top of 6a8b82e: (a) SWIM2 stub reads $00, not
+  $FF (ROM polled the ISM phase reg at +$1800 and spun forever on an
+  all-$FF stub); (b) full DAFB HLE in `Q605Memory` (ref MAME
+  `dafb.cpp` in ~/src/refs/mame-apple): monitor sense $1C=6^7
+  (13" RGB), version $2C=|3<<9, Swatch timer (int-status $108,
+  enable $104, clears $10C/$114, cursor line $118), Antelope RAMDAC
+  CLUT ($200/$210/$220), VBL timing in tick() (525-line frame, VBL
+  at line 480); (c) `q605_trace` diagnostics: VRAM snapshot, VEC2
+  format-$7 frame dump + spBlock hexdump + manual MMU walks at each
+  bus-error vector, disassembly at --stop-at.
+
+  **Q5.1 — CURRENT BLOCKER analysis (read this before touching
+  anything).** Repro: `cd build && cmake .. && make -j q605_trace &&
+  ./q605_trace "../docs/1MB ROMs/1993-10 - FF7439EE - LC475,575,
+  Quadra 605,Performa 475,476,575,577,578.ROM" --cycles 900000000
+  --io 0 --ram 32 > log 2>&1` (~1 min). Facts established from the
+  fresh run + ROM disassembly (capstone, CS_MODE_M68K_040, base
+  $40800000):
+  - VEC2 #1-#13 (pc=$40805F04, A3=$FnFFFFFF, D1=slot n = E,D,C,B,A,
+    8..1 — note $9 skipped) are the Slot Manager probing EMPTY slot
+    spaces top-byte-first. These bus errors are **normal and
+    handled** (SR=$2700, sExec probe with handler installed). Do not
+    "fix" them.
+  - VEC2 #14 is the interesting one: pc=$40805A36
+    `move.b (A3),(A1)+` inside the ROM's **sReadStruct byte-lane
+    copy loop** ($408059E0-$40805A66; A0=spBlock, A3=spsPointer(+4),
+    A1=StripAddress(spResult(+0)), D2=spSize(+8)-1, D1=byte-lane
+    stride pattern computed by jsr ([$DB8],$E8), $01010101 = all 4
+    lanes, stride 1). spBlock@$003FF99E: spsPointer=$408F27B4,
+    spSize=$0002FFFD. After $D84C bytes A3 hits **exactly end of
+    ROM**: $408F27B4+$D84C=$40900000 → ATC miss → bus error.
+  - **spSize=$2FFFD = $00030001−4, and the long AT $408F27B4 is
+    precisely $0003.0001** (first sRsrcType record: category 3
+    Display, cType 1). So the ROM read the pointed-at data as an
+    sBlock size header. The pointer or the upstream selection is
+    wrong, not the copy routine: $408F27B4 is the ROM's table of
+    video sRsrcType records (DrHW ids $1A,$1B,$1C,$1E,$22,$28,$110
+    at $408F27B4..$408F27D8) — the boot code detects the video
+    controller and picks a DrHW; prime suspect remains **our
+    DAFB/MEMCjr sense/version answers driving a wrong selection**.
+  - The MMU tables (built by the ROM itself, TC040=$C000 → enabled,
+    8K pages) map ROM pages $40800000-$408FFFFF ONLY (walk:
+    ptr[$23] valid, ptr[$24]=$00000018 invalid). DTT0=$F900C060
+    covers $F9xxxxxx transparently (DAFB regs $F9800000, VRAM
+    $F9000000 — matches MAME djmemc.cpp:30-32); DTT1=$807FC040
+    covers $80000000-$FFFFFFFF. So a physical ROM mirror does NOT
+    rescue this access — the fault is logical/ATC. Real hardware
+    would fault here too; on real hardware the copy simply never
+    reaches $40900000.
+  - **The machine survives VEC2 #14**: Cuda traffic resumes after
+    it, then the known-benign ROM32 probes fire (#15 $5FFFFFFC, #16
+    $50101C00, #17 $50F81C00 …, 44 VEC2 total), and the run ends in
+    the console loop ($408B9928, btst #$10/#$11 on D7). So either
+    the sReadStruct fault is caught and poisons a result that later
+    trips the console entry, or the console entry has an independent
+    cause. **First divergence not yet localized.**
+  - Physical ROM decode: MAME `djmemc.cpp:29,142` maps the 1 MB ROM
+    at $40000000 with `.mirror(0x0ff00000).nopw()` — 256 mirrors
+    across $40000000-$4FFFFFFF. Our physical map already mirrors
+    (`rom_[addr & (kRomSize-1)]` for addr<$50000000), consistent.
+  - Declaration-ROM geography (all offsets ROM-relative): format
+    block ends at $FFFFF (fhByteLanes=$0F, fhTstPat=$5A932BC7,
+    fhFormat=$01); dirOffset is the 24-bit signed field $FF0C92 =
+    −$F36E from $408FFFEC → directory at $408F0C7E, ONE entry
+    (id $01 → board sResource: sRsrcName "Unknown Macintosh",
+    vendor, ids). Video sResources ("Display_Video_Apple_V8" etc.,
+    mode lists at $408F2740/$408F2778/$408F2790) are NOT in the
+    directory — the ROM inserts the right one at boot from the
+    detected DrHW. Basilisk II `slot_rom.cpp` (~/src/macemu) is the
+    field-by-field reference for every sResource/format-block
+    structure (agent report 2026-07-18; grep for 0x40900000 in
+    Basilisk+MAME: zero hits — the address is emergent, not magic).
+  Next steps, in order: (1) instrument sReadStruct entry
+  ($408059E0) — log caller return address + spBlock at ENTRY for
+  every call, find who plants spsPointer=$408F27B4/spSize junk and
+  which DrHW the ROM selected (compare against our DAFB sense=$6^7 /
+  version=$2C answers; try MAME dafb.cpp values for LC475's
+  DJMEMC-integrated DAFB II, not vanilla DAFB); (2) localize the
+  console-entry cause with the O6 method (vector histogram, --watch
+  on the POST executive table $408A8080 / console entry $408B9F58);
+  (3) then gray screen + cursor. Gate: POST passes, gray screen +
+  cursor.
 - [ ] **Q6 — SCSI 53C96**: the one genuinely new peripheral (MAME
   `ncr53c90.cpp` reference); `ScsiDisk` target reused as-is. Gate:
   boot blocks read.

@@ -126,6 +126,20 @@ private:
     uint32_t dafb_[0x100] = {};    // $F9800000 register file (u32 index)
     uint16_t iosbRegs_[0x20] = {}; // $50018000, u16 every $100
 
+    // DAFB HLE (MEMCjr integrated cell, version 3) — MAME dafb.cpp.
+    // The raw dafb_[] file backs unknown registers; the fields below
+    // implement the ones the ROM's video driver depends on.
+    uint32_t dafbRegRead(uint32_t off);          // u32 semantics
+    void     dafbRegWrite(uint32_t off, uint32_t v);
+    void     dafbRecalcIrq();
+    uint8_t  dafbIntStatus_ = 0;   // bit 0 = VBL, bit 2 = cursor scanline
+    uint32_t swatchIntEnable_ = 0; // $104: bit 0 VBL, bit 2 cursor line
+    uint32_t dafbCursorLine_ = 0;  // $118
+    uint8_t  palAddress_ = 0, palIdx_ = 0;       // Antelope RAMDAC
+    uint8_t  ac842Pbctrl_ = 0, pcbr1_ = 0;
+    uint8_t  clut_[256][3] = {};
+    int      prevLine_ = 0;        // scanline edge detect (525-line frame)
+
     // 60.15 Hz tick + VBL (DAFB "Swatch"): both derived from CPU cycles
     int viaPhase_ = 0;
     int64_t tickAcc_ = 0;

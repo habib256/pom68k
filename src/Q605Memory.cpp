@@ -9,6 +9,12 @@
 Q605Memory::Q605Memory(uint32_t totalRam)
     : totalRam_(totalRam)
 {
+    // The ROM's bank prober sizes RAM by ALIASING (write a pattern,
+    // find where it reappears): the size must be a power of two and
+    // the whole $0-$3FFFFFFF window must mirror modulo the size, like
+    // undecoded address lines on a real bank. Round down to a power of
+    // two.
+    while (totalRam_ & (totalRam_ - 1)) totalRam_ &= totalRam_ - 1;
     ram_.assign(totalRam_, 0);
     rom_.assign(kRomSize, 0xFF);
     vram_.assign(kVramSize, 0);
@@ -142,19 +148,93 @@ uint8_t Q605Memory::via2Access8(uint32_t addr, bool write, uint8_t v) {
     }
 }
 
+// ── DAFB HLE (MEMCjr integrated cell) — MAME dafb.cpp ──
+// Map (dafb_base::map): +$000 main regs, +$100 Swatch, +$200 RAMDAC
+// (Antelope = revised AC842a), +$300 clockgen (Gazelle, reads 0).
+// Registers are ≤12 bits, accessed as u32; unknown offsets fall back
+// to the raw echo file.
+
+void Q605Memory::dafbRecalcIrq() {
+    // write_irq -> primetime via2_irq_w<0x40>: nubus bit 6, active low
+    vblIrq(dafbIntStatus_ != 0);
+}
+
+uint32_t Q605Memory::dafbRegRead(uint32_t off) {
+    switch (off & 0x3FC) {
+        // main ($000): dafb_r
+        case 0x1C:
+            // inverse of monitor sense — 13" RGB 640×480 = plain code 6
+            return 6u ^ 7u;
+        case 0x24: return dafb_[0x24 >> 2];      // SCSI ctrl (DRQ=0 for now)
+        case 0x28: return dafb_[0x28 >> 2];
+        case 0x2C: return (dafb_[0x2C >> 2] & 0x1FF) | (3u << 9);  // version 3
+        // Swatch ($100): swatch_r
+        case 0x108: return dafbIntStatus_;
+        case 0x10C: dafbIntStatus_ &= ~4u; dafbRecalcIrq(); return 0;
+        case 0x114: dafbIntStatus_ &= ~1u; dafbRecalcIrq(); return 0;
+        // RAMDAC ($200): ramdac_r (Antelope PCBR1 dance)
+        case 0x200: palIdx_ = 0; return palAddress_;
+        case 0x210: {
+            uint8_t c = clut_[palAddress_][palIdx_ % 3];
+            if (++palIdx_ == 3) palIdx_ = 0;
+            return c;
+        }
+        case 0x220:
+            if (palAddress_ == 1 && (ac842Pbctrl_ & 0x06) == 0x06)
+                return pcbr1_;
+            return ac842Pbctrl_;
+        default:
+            if ((off & 0x300) == 0x300) return 0;   // Gazelle clockgen
+            return dafb_[(off >> 2) & 0xFF];
+    }
+}
+
+void Q605Memory::dafbRegWrite(uint32_t off, uint32_t v) {
+    uint32_t idx = (off >> 2) & 0xFF;
+    dafb_[idx] = v;
+    switch (off & 0x3FC) {
+        case 0x104:                              // Swatch int enable
+            swatchIntEnable_ = v;
+            if (!(v & 1)) dafbIntStatus_ &= ~1u;
+            if (!(v & 4)) dafbIntStatus_ &= ~4u;
+            dafbRecalcIrq();
+            break;
+        case 0x10C: dafbIntStatus_ &= ~4u; dafbRecalcIrq(); break;
+        case 0x114: dafbIntStatus_ &= ~1u; dafbRecalcIrq(); break;
+        case 0x118: dafbCursorLine_ = v & 0xFFF; break;
+        case 0x200: palAddress_ = uint8_t(v); palIdx_ = 0; break;
+        case 0x210:
+            clut_[palAddress_][palIdx_] = uint8_t(v);
+            if (++palIdx_ == 3) { palIdx_ = 0; palAddress_++; }
+            break;
+        case 0x220:                              // Antelope PCBR0/PCBR1
+            if (palAddress_ == 1 && (ac842Pbctrl_ & 0x06) == 0x06)
+                pcbr1_ = uint8_t(v & 0xF0) | 0x02;   // Antelope version ID
+            else
+                ac842Pbctrl_ = uint8_t(v);
+            break;
+        default: break;
+    }
+}
+
 uint8_t Q605Memory::dafbRead8(uint32_t addr) {
-    // HLE register file: reads return what was written (the 6-bit
-    // holding-register dance of the real MEMCjr is not modelled — the
-    // ROM reads back what it programmed). Grown by the boot trace.
-    uint32_t idx = (addr >> 2) & 0xFF;
-    uint32_t val = dafb_[idx];
+    // Byte lanes of the u32 register; side-effectful reads (int clears,
+    // pal index) repeat within one long access but are idempotent —
+    // except the CLUT data register, served on the low lane only.
+    if (onIoAccess) onIoAccess(0xF9800000 + (addr & 0x3FF), false, 0xFFFFFFFF);
+    if ((addr & 0x3FC) == 0x210 && (addr & 3) != 3) return 0;
+    uint32_t val = dafbRegRead(addr & ~3u);
     return uint8_t(val >> (8 * (3 - (addr & 3))));
 }
 
 void Q605Memory::dafbWrite8(uint32_t addr, uint8_t v) {
+    // Registers are ≤12 bits: commit semantics once, on the low lane.
+    if (onIoAccess) onIoAccess(0xF9800000 + (addr & 0x3FF), true, v);
     uint32_t idx = (addr >> 2) & 0xFF;
     int sh = 8 * (3 - (addr & 3));
-    dafb_[idx] = (dafb_[idx] & ~(0xFFu << sh)) | (uint32_t(v) << sh);
+    uint32_t merged = (dafb_[idx] & ~(0xFFu << sh)) | (uint32_t(v) << sh);
+    if ((addr & 3) == 3) dafbRegWrite(addr & ~3u, merged);
+    else                 dafb_[idx] = merged;
 }
 
 uint8_t Q605Memory::ioRead8(uint32_t addr) {
@@ -176,8 +256,14 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
         return d;
     }
     if (base >= 0x0E000 && base < 0x10000) {     // MEMCjr regs
+        // MAME memcjr_r: every register reads back 0 except the DAFB
+        // holding at $7C — the ROM's bank prober loops forever on an
+        // echoing bank-config register ($04), and settles on defaults
+        // when the readback is 0.
         uint32_t idx = (base & 0x7F) >> 2;
-        return uint8_t(memcjr_[idx] >> (8 * (3 - (base & 3))));
+        if (idx == (0x7C >> 2))
+            return uint8_t(memcjr_[idx] >> (8 * (3 - (base & 3))));
+        return 0;
     }
     if (base >= 0x10000 && base < 0x10100)       // TurboSCSI regs — Q6
         return 0;
@@ -194,7 +280,9 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
         return 0;   // PrimeTime II ATA/status window — ROM probes $1A101
 
     if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000)
-        return 0xFF;                             // SWIM2 stub (no floppy)
+        return 0x00;    // SWIM2 stub (no floppy) — NOT $FF: the ROM polls
+                        // the ISM phase register (+$1800) until bit 5
+                        // drops; an all-FF stub loops it forever
 
     busError(addr, false);
 }
@@ -244,9 +332,10 @@ uint8_t Q605Memory::read8(uint32_t addr) {
     if (addr < 0x40000000) {
         if (overlay_) return rom_[addr & (kRomSize - 1)];
         if (addr < totalRam_) return ram_[addr];
-        return 0xFF;        // open bus — the ROM's RAM sizing probes the
-                            // whole window and reads back its pattern
-                            // (MAME: unmapped space, no /BERR)
+        return 0xFF;        // open bus above the installed bank(s): the
+                            // sizer must find NO alias there or it
+                            // invents phantom banks (5 x mirror) whose
+                            // burn-in self-corrupts
     }
     if (addr < 0x50000000) {                     // ROM window
         if (overlay_) overlay_ = false;          // djmemc rom_switch_r
@@ -269,7 +358,7 @@ uint16_t Q605Memory::read16(uint32_t addr) {
         }
         if (addr + 1 < totalRam_)
             return uint16_t(ram_[addr] << 8 | ram_[addr + 1]);
-        return 0xFFFF;      // open bus (see read8)
+        return 0xFFFF;
     }
     if (addr < 0x50000000) {
         if (overlay_) overlay_ = false;
@@ -286,8 +375,8 @@ uint16_t Q605Memory::read16(uint32_t addr) {
 void Q605Memory::write8(uint32_t addr, uint8_t v) {
     if (addr < 0x40000000) {
         if (overlay_) return;                    // ROM mirror: writes drop
-        if (addr < totalRam_) { ram_[addr] = v; return; }
-        return;             // open bus: writes beyond RAM drop silently
+        if (addr < totalRam_) ram_[addr] = v;
+        return;
     }
     if (addr < 0x50000000) return;               // ROM window (nopw)
     if (addr < 0x60000000) { ioWrite8(addr, v); return; }
@@ -303,9 +392,11 @@ void Q605Memory::write8(uint32_t addr, uint8_t v) {
 }
 
 void Q605Memory::write16(uint32_t addr, uint16_t v) {
-    if (addr < 0x40000000 && !overlay_ && addr + 1 < totalRam_) {
-        ram_[addr] = uint8_t(v >> 8);
-        ram_[addr + 1] = uint8_t(v);
+    if (addr < 0x40000000 && !overlay_) {
+        if (addr + 1 < totalRam_) {
+            ram_[addr] = uint8_t(v >> 8);
+            ram_[addr + 1] = uint8_t(v);
+        }
         return;
     }
     if (addr >= 0xF9000000 && addr + 1 < 0xF9000000 + kVramSize) {
@@ -347,14 +438,24 @@ void Q605Memory::tick(int cpuCycles) {
         updateIrq();
     }
 
-    // DAFB VBL — placeholder timing (640×480@60: blank ≈ the last 5% of
-    // the frame) until the Swatch registers drive it (Q5 follow-up)
+    // DAFB Swatch — 640×480@60 as a 525-line frame; the VBL timer fires
+    // at line 480, the cursor timer at the programmed line, each frame,
+    // when enabled by Swatch $104 (MAME dafb.cpp vbl_tick/cursor_tick).
     framePos_ += cpuCycles;
     int64_t frameLen = kCpuHz / 60;
-    framePos_ %= frameLen;
-    bool vbl = framePos_ >= frameLen * 95 / 100;
-    if (vbl != vblState_) {
-        vblState_ = vbl;
-        vblIrq(vbl);
+    if (framePos_ >= frameLen) framePos_ -= frameLen;
+    int line = int(framePos_ * 525 / frameLen);
+    if (line != prevLine_) {
+        bool wrap = line < prevLine_;
+        auto crossed = [&](int target) {
+            return wrap ? (target > prevLine_ || target <= line)
+                        : (target > prevLine_ && target <= line);
+        };
+        uint8_t st = dafbIntStatus_;
+        if ((swatchIntEnable_ & 1) && crossed(480)) st |= 1;
+        if ((swatchIntEnable_ & 4) && crossed(int(dafbCursorLine_ % 525)))
+            st |= 4;
+        prevLine_ = line;
+        if (st != dafbIntStatus_) { dafbIntStatus_ = st; dafbRecalcIrq(); }
     }
 }

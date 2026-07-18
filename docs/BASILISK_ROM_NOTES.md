@@ -572,3 +572,65 @@ proved load-bearing: GISTPERSO's System otherwise opens .MPP and hangs
 its SCC transaction loop on our SCC stub at the « Bienvenue » bar.
 `lcii_trace` logs the WarmStart `'WLSC'` milestone at $CFC (§4.3) and
 applies the same factory defaults as the GUI.
+
+## 9. Slot declaration ROMs (`slot_rom.cpp`) — studied for Q5 (Quadra 605)
+
+Agent sweep 2026-07-18, for the Q5 Slot-Manager blocker (TODO § Q5.1).
+Basilisk II builds a synthetic declaration ROM appended to the top of
+the Mac ROM; it is our field-by-field reference for every structure the
+Slot Manager walks. All cites `BasiliskII/src/slot_rom.cpp`.
+
+### 9.1 Format block (last 20 bytes of the ROM, lines 440-446)
+
+| Offset from end | Size | Field |
+|---|---|---|
+| −20 | 4 | fhDirOffset — **self-relative** offset to sResource directory |
+| −16 | 4 | fhLength — length of the declaration ROM |
+| −12 | 4 | fhCRC |
+| −8  | 2 | fhROMRev / fhFormat = $0101 |
+| −6  | 4 | fhTstPat = $5A932BC7 |
+| −2  | 2 | reserved $00 + fhByteLanes ($0F = all four lanes) |
+
+CRC (lines 461-478): zero the CRC field, then over every byte
+`crc = rotl32(crc,1) + byte`, store big-endian.
+
+On the real FF7439EE ROM the trailing block reads
+`..0101 5A932BC7 000F` and the live dirOffset is the 24-bit signed
+field at ROM−$14 : $FF0C92 = −$F36E → directory at ROM offset $F0C7E
+(one entry only, the board sResource "Unknown Macintosh"; the video
+sResources are inserted at boot from the detected DrHW — TODO § Q5.1).
+
+### 9.2 Record grammar (lines 53-106)
+
+Directory and sResource lists are arrays of 4-byte entries:
+`Offs(type, target)` = type byte + **24-bit self-relative offset**;
+`Rsrc(type, data)` = type byte + 24-bit immediate; terminator
+`EndOfList()` = $FF000000. Entries must be ascending by type.
+
+### 9.3 Video sResource fields (VMonitor, lines 178-227)
+
+$01 sRsrcType → Offs to `Word(category=3 Display) Word(cType=1)
+Word(DrSW=1) Word(DrHW)`; $02 sRsrcName → C-string; $04 sRsrcDrvrDir
+→ Offs to a driver directory (`$02 → driver code block`, block =
+`Long(size) code…`); $08 = Rsrc hardware id; $0A/$0B minorBase/
+minorLength → Offs to Long; $40 gamma directory (table layout lines
+324-349: header 38 B + 256 byte entries, id $2000, "Mac HiRes Std
+Gamma"); $7D video attributes (Rsrc, bit1 built-in|bit2 color);
+$80+i one Offs per depth mode → 50-byte VModeParms block (lines
+108-166: `Long(50) Long(0) Word(rowBytes) Rect(bounds) Word(version)
+… HRes/VRes $00480000 … pixelType/pixelSize/cmpCount/cmpSize
+planeBytes`).
+
+### 9.4 Q5 findings that killed wrong hypotheses
+
+- `grep 0x40900000` over Basilisk II **and** MAME: zero hits — the
+  faulting address in Q5.1 is emergent (end-of-ROM overrun), not a
+  hardware window anybody maps.
+- Built-in video on Quadra-class machines is **not** a slot-9
+  declaration ROM: MAME `djmemc.cpp:30-32` integrates DAFB II inside
+  MEMCjr ($F9800000 regs, $F9000000 VRAM) and `djmemc.cpp:29,142`
+  mirrors the 1 MB ROM over $40000000-$4FFFFFFF
+  (`.mirror(0x0ff00000).nopw()`).
+- Basilisk assigns built-in video slot ids from $80 upward
+  (`video.cpp:45`), matching the runtime-inserted sResources we see
+  in the FF7439EE ROM.
