@@ -329,6 +329,18 @@ struct Registers {
     u32 tt0;                    // Transparent Translation 0        (68030)
     u32 tt1;                    // Transparent Translation 1        (68030)
     u16 mmusr;                  // MMU Status Register (PSR)        (68030)
+
+    // POM68K Q2: 68040 on-chip MMU registers (M68040UM § 3.1.1), MOVEC-
+    // accessible only. Distinct from the 030 set above — an OS switching
+    // models never aliases. Cleared on reset (reg = { }: TC.E off).
+    u32 urp040;                 // User Root Pointer                (68040)
+    u32 srp040;                 // Supervisor Root Pointer          (68040)
+    u32 tc040;                  // Translation Control (E, P)       (68040)
+    u32 itt0;                   // Instruction Transparent Transl. 0 (68040)
+    u32 itt1;                   // Instruction Transparent Transl. 1 (68040)
+    u32 dtt0;                   // Data Transparent Translation 0   (68040)
+    u32 dtt1;                   // Data Transparent Translation 1   (68040)
+    u32 mmusr040;               // MMU Status Register (PTEST)      (68040)
 };
 
 // POM68K O5: one 80-bit extended-precision FPU data register, mirroring

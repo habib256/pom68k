@@ -147,6 +147,24 @@ instruction executed is `ORI.B #0,D0` at PC 0.
 and leaves the pipeline empty (mode 5 prefetches via `x_prefetch(0)` at each
 step).
 
+Two state-leak fixes (2026-07-18, found by the Q2 68040 fuzz loop —
+both produced sequence-order-dependent corpus vectors):
+
+- **Stale trace bits**: `regs.t1/t0` and `regs.trace_pc` are ZEROED
+  before `MakeFromSR()`. MakeFromSR_x keeps the architectural "an SR
+  write that clears Tx still traces once" rule (`oldt0/oldt1` ->
+  `activate_trace()`); with Tx left over from the previous vector it
+  armed a one-shot SPCFLAG_DOTRACE on a plain state load — e.g. an
+  untraced RTS stacking a phantom vector-9 format-$2 frame whose
+  address field carried the previous vector's `trace_pc`. Zeroed Tx
+  also defeats MakeFromSR's early-return, so a loaded SR with T1 = 1
+  still arms SPCFLAG_TRACE for the step.
+- **Stale MOVEM restart latch** (68040 path): `mmu040_movem` /
+  `mmu040_movem_ea` are cleared after `mmu_reset()`. A faulted MOVEM
+  from the previous vector left the latch armed, and the next MOVEM
+  silently reused the stale saved EA (`cpuemu_31: if (mmu040_movem)
+  srca = mmu040_movem_ea`).
+
 ## Known limitations
 
 - **Cycle counts are functional estimates** (allowed by `oracle_api.h`):

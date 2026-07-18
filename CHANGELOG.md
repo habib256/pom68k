@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## 2026-07-18 — Q2+Q4: the 68LC040 integer core executes in Moira,
+## WinUAE-differential (5 400/5 400), no-FPU F-line included
+
+Phase 3 (Mac OS 8.1 on an LC 475 / Quadra 605) CPU side, first two
+milestones, converged by the established loop (fuzz040.py WinUAE-solo →
+sst68040 replay → fix → fresh-seed re-verify). `Model::M68LC040` now
+executes on Moira's shared C68020 core; every change is runtime-gated on
+`cpuModel >= M68EC040`, so the 3 082-vector sst68030 gate and the
+1 000 058-vector sst68000 gate are byte-identical. Full change list in
+`extern/moira/POM68K_VENDOR.md § Q2/Q4`; highlights:
+
+- MOVE16/CINV/CPUSH/MOVEC-040 execute; odd instruction-flow targets take
+  the 040's format $2 address error with WinUAE's per-instruction A7/PC
+  conventions (RTS re-pushes, RTD/RTR restore, Bcc/DBcc pre-condition
+  checks); RTE handles formats $3/$4/$7 (SSW.CT continuation copy); the
+  040 trace one-shot ("an SR write with old Tx set traces once") and
+  post-instruction staged trace; 040 undefined-CCR rows for
+  DIV/DIVL/CHK/ABCD.
+- Q4 folded in: F2xx with no FPU → vector 11, format $4 frame with
+  per-shape word consumption and EA (fpp.c `fault_if_no_fpu` call-site
+  conventions), FBcc pseudo-conditions, FMOVEM invalid-EA Line-F. The
+  sst68040 harness never attaches an FPU — an attached 68882 would mask
+  the format-$4 path.
+- **Why non-obvious**: two corpus-poisoning ORACLE-GLUE state leaks were
+  unmasked (not Moira bugs, both sequence-order-dependent): stale
+  `regs.t1/t0` at state load armed WinUAE's MakeFromSR one-shot trace
+  (phantom vector-9 frames carrying the previous vector's `trace_pc` —
+  an untraced RTS "taking a trace"), and the `mmu040_movem` restart
+  latch made a MOVEM reuse the previous vector's faulted EA. Fixed in
+  `oracle/uae/glue.c` (VENDOR.md); the corpora regenerate clean.
+- Gate: **`sst68040`** (new CMake gate, tests/data/sst68040, 2 400
+  pinned vectors core/random/mmu × off, soft-skip when absent) +
+  3 000/3 000 fresh-seed re-verify; full CTest 25/25 including both
+  boot etalons.
+
 ## 2026-07-18 — GISTPERSO (7.5) boot hang: heap corruption racing an
 ## app launch at Finder startup — NOT the pending changes, NOT the disk
 

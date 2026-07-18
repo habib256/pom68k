@@ -746,6 +746,75 @@ fallback scan trips its size heuristics) at ~35 Ir per access of pure
 call overhead — ~9% of the whole emulator. All three live in the
 Moira.cpp translation unit, so forcing the inline changes no behaviour.
 
+## 68040 integer core + no-FPU F-line (2026-07-18, Q2/Q4)
+
+The 68LC040 (LC 475 / Quadra 605 CPU) now **executes** on the shared
+C68020 core, converged by the Phase-3 WinUAE-solo loop (`oracle/fuzz/
+fuzz040.py`, SST040 vectors) — 5 400/5 400 across core/random/mmu × off
+on two seed sets (101-103 pinned in `tests/data/sst68040`, 777-779
+fresh-seed re-verify). Every change is runtime-gated on
+`cpuModel >= Model::M68EC040` inside the C68020 blocks — `sst68030`
+(3 082) and `sst68000` (1 000 058) are byte-identical.
+
+- `MoiraTypes.h Registers` — the eight 040 MMU registers (`urp040
+  srp040 tc040 itt0 itt1 dtt0 dtt1 mmusr040`), distinct from the 030
+  set; `Moira.h` accessors apply the WinUAE MOVEC masks (TC & $C000,
+  ITT/DTT & $FFFFE364, URP/SRP/MMUSR full 32 bits).
+- **MOVEC** (`execMovecRcRx/RxRc`): model-dependent legality (WinUAE
+  `movec_illg`): 040 = $000-$007 + $800-$807 minus CAAR ($802); the
+  040 rows route to the new registers. `cacrMask()` = $80008000.
+- **MOVE16** (5 forms) executes: lines masked `& ~15`, abs.l consumed
+  first, 4 long reads then 4 long writes, post-increment after the
+  transfer, shared register increments once (WinUAE op_f6xx_31).
+- **CINV/CPUSH**: scope 00 = Line-F even in supervisor mode (WinUAE
+  cpudefs mask $FF38); otherwise supervisor-checked no-ops (caches not
+  modelled architecturally).
+- **PFLUSH40/PTEST40**: supervisor-checked; PFLUSH is a no-op until the
+  Q3 ATC lands, PTEST does not touch MMUSR040 yet (Q3).
+- **Odd instruction-flow targets** — `execAddressError040` (vector 3,
+  **format $2**, address = target & ~1, WinUAE `Exception_mmu` nr 3)
+  with WinUAE's per-instruction conventions: Bcc/DBcc check the odd
+  displacement BEFORE the condition (and DBcc before the Dn decrement);
+  BSR checks before pushing (A7 untouched); RTS re-pushes (A7 -= 4);
+  RTD/RTR restore A7 fully (RTR keeps the popped CCR); RTE keeps A7
+  popped with the new SR applied; JMP stacks instruction + 2 (indexed
+  EAs: the running pc + 2); JSR stays uncheck (fault at the next fetch).
+- **RTE formats**: 040 accepts $0/$1/$2/$3 (+12)/$4 (+16)/$7 (+60);
+  $A/$B are now 020/030-only (format error on the 040). The $7 pop
+  replays WinUAE `m68k_do_rte_mmu040`: SSW.CT copies the frame's raw
+  SR/PC/+8-long to the popped position; SSW.CM (MOVEM restart) is
+  machine-level and deferred to Q3.
+- **68040 trace machinery** (`trace040Pending`/`tracePc040`,
+  Moira.cpp): an SR write whose OLD Tx bits were set traces once after
+  the instruction even if the write cleared them (WinUAE MakeFromSR_x
+  one-shot; covers RTE throwaway chains); a staged TRACE_EXC on the 040
+  no longer preempts — the next instruction runs first and vector 9
+  follows (WinUAE SPCFLAG_DOTRACE order); the trace frame is **format
+  $2** with address = WinUAE's `trace_pc`. Any exception cancels the
+  pending trace (`exception_check_trace`, 040 row).
+- **Undefined CCR, 040 rows** (WinUAE newcpu_common.c helpers):
+  DIVS/DIVU/DIVSL/DIVUL overflow = V=1 C=0 N/Z untouched; divide-by-
+  zero = C=0 only; CHK = C computed from the out-of-range shape,
+  N = value<0, Z/V/X untouched (trap or no trap); ABCD/SBCD leave N and
+  V untouched.
+- **Q4 — F2xx with no FPU** (68LC040/68EC040): the FPU window is
+  registered for the FPU-less models too; each handler behind
+  `!hasFPU()` consumes the shape's words and takes **vector 11 with the
+  format $4 frame** {SR, pc-after-consumed-words, $402C, EA,
+  instruction PC} (`execFpuDisabled040`, WinUAE `fault_if_no_fpu`).
+  EA conventions mirror fpp.c call sites: 0 for FGen register forms/
+  immediates/FBcc/FTRAPcc, `(ext<<16)|disp` for FDBcc, the computed
+  address for FScc (with the -(An) byte adjust), FSAVE/FRESTORE and
+  FGen/FMOVEM memory forms; FMOVEM with Dn/An/#imm stays Line-F
+  (get_fp_ad failure). FBcc pseudo-conditions $20-$3F are registered on
+  the 040 family only (format $4 without FPU, Line-F with).
+
+Oracle-glue fixes found by this loop (see `oracle/uae/VENDOR.md`):
+stale `regs.t1/t0` at `oracle_set_state` armed WinUAE's one-shot
+DOTRACE on a plain state load (phantom vector-9 corpus vectors carrying
+the previous vector's `trace_pc`), and the `mmu040_movem` restart latch
+leaked a faulted MOVEM's saved EA into the next vector's MOVEM.
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)
@@ -755,9 +824,11 @@ Moira.cpp translation unit, so forcing the inline changes no behaviour.
   frames** ✓ (O4 slice 3, see above).
 - 68881/68882 — **execution ✓** when attached via `setFPUModel()` (O5
   slice 2, see above; softfloat-backed, 68882 = LC II PDS FPU).
-- 68040 — **disassembler only**. The remaining 68030 work is the POM68K
-  LC II phase, built with AI + differential testing against two oracles
-  (WinUAE, MAME) — see `TODO.md § LC II`.
+- 68LC040 / 68EC040 / 68040 — **integer execution ✓** (Q2, section
+  above: MOVE16, CINV/CPUSH, MOVEC 040 set, format $2/$4/$7 frames,
+  040 trace and undefined-CCR rules) and the no-FPU F-line ✓ (Q4).
+  The 040 MMU (bus translation, ATC, PTEST/PFLUSH, format $7 faults)
+  is the Q3 slice — see `TODO.md § Phase 3`.
 
 Do **not** re-sync from upstream blindly: diff against this file and
 `NEOST_VENDOR.md` first.

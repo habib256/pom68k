@@ -20,6 +20,7 @@
 #include "maccess.h"
 #include "memory.h"
 #include "newcpu.h"
+#include "cpummu.h"
 #include "cpummu030.h"
 #include "fpp.h"
 
@@ -153,9 +154,21 @@ ORACLE_EXPORT void oracle_set_state(const OracleState *st)
 
 	// Pre-sync S/M so MakeFromSR() doesn't swap the already-correct A7,
 	// then let it recompute T1/T0/intmask, CCR flags and trace spcflags.
+	//
+	// Q2 fix: T1/T0 are ZEROED first, not left stale. MakeFromSR_x keeps
+	// the architectural "an SR write that clears Tx still traces once"
+	// rule (newcpu.c oldt0/oldt1 -> activate_trace()); with Tx bits left
+	// over from the PREVIOUS vector it armed a one-shot SPCFLAG_DOTRACE
+	// on a plain state load, producing phantom vector-9 exceptions whose
+	// format-$2 frame carried the previous vector's trace_pc (seen as
+	// sequence-order-dependent corpus vectors: an untraced RTS stacking
+	// a trace frame). Zeroed Tx also defeats MakeFromSR's early-return,
+	// so a loaded SR with T1=1 still arms SPCFLAG_TRACE for the step.
 	regs.sr = st->sr;
 	regs.s = (st->sr >> 13) & 1;
 	regs.m = (st->sr >> 12) & 1;
+	regs.t1 = regs.t0 = 0;
+	regs.trace_pc = 0;
 	MakeFromSR();
 
 	regs.vbr = st->vbr;
@@ -206,6 +219,12 @@ ORACLE_EXPORT void oracle_set_state(const OracleState *st)
 		mmu_set_tc(regs.tcr);
 		mmu_set_super(((st->sr >> 13) & 1) != 0);
 		mmu_tt_modified();
+		// Q2 fix: the MOVEM restart latch (cpummu.c globals) survives a
+		// faulted MOVEM from the PREVIOUS vector — the next MOVEM would
+		// silently reuse the stale saved EA (cpuemu_31: `if (mmu040_movem)
+		// srca = mmu040_movem_ea`), another sequence-order corpus poison.
+		mmu040_movem = 0;
+		mmu040_movem_ea = 0;
 	} else {
 	// 68030 MMU: registers + full re-arm (same sequence as the upstream
 	// savestate/prefs-change paths: newcpu.c prefs_changed_cpu()).

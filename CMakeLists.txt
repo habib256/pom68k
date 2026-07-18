@@ -219,6 +219,15 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         CACHE PATH "Directory of oracle-generated SST030 .json vectors")
     add_test(NAME sst68030 COMMAND sst68030 "${POM68K_SST030_DIR}")
 
+    # Phase-3 gate (Q2): WinUAE-solo SST040 vectors against Moira M68LC040.
+    # Corpus is generated locally: oracle/fuzz/fuzz040.py. Soft-skips when
+    # absent.
+    add_executable(sst68040 tests/sst68040.cpp)
+    target_link_libraries(sst68040 PRIVATE moira)
+    set(POM68K_SST040_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040"
+        CACHE PATH "Directory of oracle-generated SST040 .json vectors")
+    add_test(NAME sst68040 COMMAND sst68040 "${POM68K_SST040_DIR}")
+
     # O6.2 gates: LC II pseudo-VIA semantics + V8 memory controller.
     add_executable(pseudovia_test tests/pseudovia_test.cpp)
     target_link_libraries(pseudovia_test PRIVATE pom68k_core)

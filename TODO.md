@@ -657,17 +657,28 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   8). Gate: **oracle_uae_smoke040 PASSED** (integer, TRAP, MOVE16,
   3-level translated MOVE with U/M updates, PTESTR→MMUSR, invalid
   descriptor → format $7 with FA/SSW) + 030 smoke unregressed.
-- [ ] **Q2 — 040 integer core in Moira** (loop): ISA deltas vs 030 —
-  MOVE16, CINV/CPUSH, the format $7 access-error frame (replaces
-  $A/$B), removed 030 instrs (PMOVE...), new trap behaviours. Fuzz via
-  `fuzz040.py` (SST040 = SST030 + 040 regs). Gate: `sst68040` pinned.
+- [x] **Q2 — 040 integer core in Moira** (2026-07-18): Model::M68LC040
+  executes on the C68020 core, all changes runtime-gated
+  (`POM68K_VENDOR.md § Q2/Q4`): MOVE16, CINV/CPUSH (scope-0 = Line-F),
+  MOVEC 040 set + masks, format $2 odd-target address errors with the
+  WinUAE per-instruction A7/PC conventions, RTE formats $3/$4/$7
+  (incl. the SSW.CT continuation copy), the 040 one-shot/staged trace
+  machinery, 040 undefined-CCR rows (DIV/DIVL/CHK/ABCD). Two oracle
+  GLUE state leaks fixed (stale Tx one-shot trace, stale mmu040_movem
+  latch — `oracle/uae/VENDOR.md`). Gate: **`sst68040` = 2 400/2 400
+  pinned** (core/random/mmu × off, seeds 101-103) + 3 000/3 000
+  fresh-seed re-verify (777-779); sst68030 3 082 and sst68000
+  1 000 058 unregressed.
 - [ ] **Q3 — 040 MMU** (loop): fixed table format, URP/SRP 3-level walk
   with U/M descriptor updates, 4K/8K pages, ITT/DTT transparent regs,
-  64-entry ATC, new PTEST/PFLUSH forms, faults via format $7. Reuse
-  `gen030.py` → `gen040.py` real fuzzed tables. Gate: MMU families in
-  sst68040.
-- [ ] **Q4 — no FPU** (68LC040): F-line → unimplemented vector; fuzz
-  that one family. (Full-040 FPU + FPSP = optional later phase.)
+  64-entry ATC, PTEST (fills MMUSR040)/PFLUSH forms, faults via
+  format $7; MOVEM/MOVE16 restart via SSW.CM. Fuzz `gen040.py`
+  identity/tt/fault cells. Gate: MMU families in sst68040.
+- [x] **Q4 — no FPU** (68LC040, 2026-07-18, folded into the Q2 pass):
+  F2xx → vector 11 **format $4** frame with WinUAE's per-shape word
+  consumption + EA (`execFpuDisabled040`); FBcc pseudo-conditions
+  registered on the 040 family; FMOVEM Dn/An/#imm stays Line-F.
+  Gated by the same sst68040 corpora (random family).
 - [ ] **Q5 — machine skeleton**: djMEMC (RAM banks) + IOSB (pseudo-VIA
   successor) from MAME `macquadra605.cpp`/`djmemc.cpp`/`iosb.cpp`;
   **Cuda HLE** = light fork of Egret.cpp (same 68HC05 wire protocol);

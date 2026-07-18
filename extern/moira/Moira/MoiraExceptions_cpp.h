@@ -403,6 +403,44 @@ Moira::mmuCheckOddPc(u32 target, u32 stackedPc)
     return false;
 }
 
+// POM68K Q2 — 68040 address error on an odd instruction-flow target
+// (WinUAE Exception_mmu nr == 3, reached from the exception3_* hooks in
+// the mmu040 gencpu handlers): vector 3, format $2 frame, address field
+// = the odd target with bit 0 cleared (exception3f: addr &= ~1 on
+// 68040+). The caller has already applied the WinUAE per-instruction
+// conventions (A7 restores/re-pushes, CCR/SR pops) and passes the
+// stacked PC. The vector is fetched before the frame (Exception_mmu
+// order); an odd handler address double-faults into HALT.
+template <Core C> void
+Moira::execAddressError040(u32 target, u32 stackedPc)
+{
+    willExecute(M68kException::ADDRESS_ERROR, 3);
+
+    trace040Pending = false;        // exceptions cancel a pending trace
+
+    u16 status = getSR();
+
+    setSupervisorMode(true);
+    clearTraceFlags();
+    flags &= ~State::TRACE_EXC;
+    SYNC(8);
+
+    u32 vectorAddr = reg.vbr + 4 * 3;
+    u32 newpc = read<C, AddrSpace::DATA, Long>(vectorAddr);
+
+    writeStackFrame0010<C>(status, stackedPc, target & ~u32(1), 3);
+
+    if (newpc & 1) { halt(); return; }          // double fault
+
+    reg.pc = reg.pc0 = newpc;
+    fullPrefetch<C, POLL>();
+
+    if (debugger.catchpointMatches(3)) didReachCatchpoint(u8(3));
+    didJumpToVector(3, reg.pc);
+
+    didExecute(M68kException::ADDRESS_ERROR, 3);
+}
+
 // Bus-error exception processing for MMU translation faults, mirroring
 // the CATCH block of WinUAE m68k_run_mmu030 + Exception_mmu030: frame $A
 // for a fault on the instruction's last write (PC = next instruction,
@@ -573,6 +611,12 @@ Moira::execException(M68kException exc, int nr)
     setSupervisorMode(true);
     clearTraceFlags();
 
+    // POM68K Q2: on the 68040 any exception cancels a pending trace
+    // (WinUAE exception_check_trace: SPCFLAG_DOTRACE is unset, and the
+    // <68040 internal-exception retention branch does not apply)
+    if (cpuModel >= Model::M68EC040 && exc != M68kException::TRACE)
+        trace040Pending = false;
+
     switch (exc) {
 
         case M68kException::BUS_ERROR:
@@ -666,7 +710,14 @@ Moira::execException(M68kException exc, int nr)
             SYNC(4);
 
             // Write stack frame
-            writeStackFrame0000<C>(status, reg.pc, vector);
+            // POM68K Q2: the 68040 stacks a format $2 frame whose address
+            // field is WinUAE's regs.trace_pc (Exception_build_stack_
+            // frame_common nr == 9; 0 unless the staged path latched it)
+            if (C == Core::C68020 && cpuModel >= Model::M68EC040) {
+                writeStackFrame0010<C>(status, reg.pc, tracePc040, vector);
+            } else {
+                writeStackFrame0000<C>(status, reg.pc, vector);
+            }
 
             // Branch to exception handler
             jumpToVector<C>(vector);

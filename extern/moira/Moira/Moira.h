@@ -95,6 +95,15 @@ protected:
     // lowering SR-write (see setSR / the run loop). 68020+ only.
     int irqDelay {0};
 
+    // POM68K Q2 — 68040 trace machinery (WinUAE MakeFromSR_x one-shot +
+    // do_trace): trace040Pending fires vector 9 AFTER the current
+    // instruction (armed by an SR write whose OLD Tx bits were set, even
+    // if the write cleared them, or by a staged TRACE_EXC on the 040);
+    // tracePc040 is WinUAE's regs.trace_pc — the format-$2 frame's
+    // address field (0 unless the staged path latched it).
+    bool trace040Pending {false};
+    u32 tracePc040 {0};
+
     // Value on the lower two function code pins (FC1|FC0)
     u8 fcl {2};
     
@@ -638,6 +647,34 @@ public:
     u16 getMMUSR() const { return reg.mmusr; }
     void setMMUSR(u16 val) { reg.mmusr = val; }
 
+    // POM68K Q2: gets or sets the 68040 MMU registers (M68040UM § 3.1.1).
+    // Setter masks mirror the oracle (WinUAE newcpu_common.c m68k_move2c,
+    // 68040 rows): TC keeps E|P, ITT/DTT keep $FFFFE364, URP/SRP/MMUSR
+    // store all 32 bits.
+    u32 getURP040() const { return reg.urp040; }
+    void setURP040(u32 val) { reg.urp040 = val; }
+
+    u32 getSRP040() const { return reg.srp040; }
+    void setSRP040(u32 val) { reg.srp040 = val; }
+
+    u32 getTC040() const { return reg.tc040; }
+    void setTC040(u32 val) { reg.tc040 = val & 0xC000; }
+
+    u32 getITT0() const { return reg.itt0; }
+    void setITT0(u32 val) { reg.itt0 = val & 0xFFFFE364; }
+
+    u32 getITT1() const { return reg.itt1; }
+    void setITT1(u32 val) { reg.itt1 = val & 0xFFFFE364; }
+
+    u32 getDTT0() const { return reg.dtt0; }
+    void setDTT0(u32 val) { reg.dtt0 = val & 0xFFFFE364; }
+
+    u32 getDTT1() const { return reg.dtt1; }
+    void setDTT1(u32 val) { reg.dtt1 = val & 0xFFFFE364; }
+
+    u32 getMMUSR040() const { return reg.mmusr040; }
+    void setMMUSR040(u32 val) { reg.mmusr040 = val; }
+
     // POM68K O5: 68882 programmer's model (MC68881/882UM § 1.4). getFP /
     // setFP use the SST030 raw-word contract: w[0] = (sign|exp) << 16,
     // w[1] = mantissa bits 63..32, w[2] = bits 31..0.
@@ -734,6 +771,13 @@ private:
     // FRESTORE invalid-frame format error (vector 14) — stacks WinUAE's
     // PC (past all consumed words), ruling D21
     template <Core C> void execFRestoreFormatError();
+
+    // POM68K Q4: 68LC040/68EC040 F2xx with no FPU — vector 11, format $4
+    // "FP disabled" frame {SR, PC-after-consumed-words, $402C, EA,
+    // instruction PC} (WinUAE fpu_op_illg + Exception_build_stack_frame
+    // case 0x4). The caller consumed the shape's words and passes the EA
+    // per WinUAE's fault_if_no_fpu call site (0 for most shapes).
+    template <Core C> void execFpuDisabled040(u32 ea);
 
     // Arms a plain (An)± fixup for FPU operands on the 68030 (WinUAE
     // fpp.c mmufixup arming): the register is RESTORED on a non-lastwrite
@@ -1088,6 +1132,11 @@ private:
     // mmuCheckOddPc raises it and returns true when `target` is odd.
     template <Core C> void execAddressError030(u32 target, u32 stackedPc);
     template <Core C> bool mmuCheckOddPc(u32 target, u32 stackedPc);
+
+    // POM68K Q2: 68040 odd instruction-flow target — vector 3, format $2
+    // frame (WinUAE Exception_mmu nr == 3). Call sites apply the WinUAE
+    // per-instruction A7/CCR conventions first (see the exec handlers).
+    template <Core C> void execAddressError040(u32 target, u32 stackedPc);
 
     // Rebuilds the per-instruction access log so a fault frame stacks
     // exactly what WinUAE's get_iword/get_long_mmu030_state logged

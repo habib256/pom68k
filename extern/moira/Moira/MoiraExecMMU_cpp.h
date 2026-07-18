@@ -1370,7 +1370,17 @@ template <Core C, Instr I, Mode M, Size S> void
 Moira::execPFlush40(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
-    throw std::runtime_error("Attempt to execute an unsupported 68040 instruction.");
+
+    // POM68K Q2: PFLUSHN/PFLUSH/PFLUSHAN/PFLUSHA (M68040UM § 3.4.1),
+    // supervisor-only (WinUAE cpuemu_31 op_f500: Exception 8 first). No
+    // 040 ATC is modelled yet (Q3), so a valid encoding is a no-op.
+    SUPERVISOR_MODE_ONLY
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(4)
+
+    FINALIZE
 }
 
 template <Core C, Instr I, Mode M, Size S> void
@@ -1637,5 +1647,15 @@ template <Core C, Instr I, Mode M, Size S> void
 Moira::execPTest40(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
-    throw std::runtime_error("Attempt to execute an unsupported 68040 instruction.");
+
+    // POM68K Q2: PTESTR/PTESTW (M68040UM § 3.4.2), supervisor-only. The
+    // table walk + MMUSR040 report is the Q3 slice (WinUAE cpummu.c
+    // mmu_op_real → mmu_fill_atc); until then the register is untouched.
+    SUPERVISOR_MODE_ONLY
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(8)
+
+    FINALIZE
 }

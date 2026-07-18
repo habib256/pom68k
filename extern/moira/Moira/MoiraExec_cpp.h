@@ -910,6 +910,14 @@ Moira::execBra(u16 opcode)
             FINALIZE
             return;
         }
+        // POM68K Q2: 68040 — vector 3, format $2, stacked PC = the branch
+        // instruction (WinUAE op_60xx_31: exception3_read_prefetch with
+        // the pc untouched)
+        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+            execAddressError040<C>(newpc, reg.pc0);
+            FINALIZE
+            return;
+        }
     }
 
     reg.pc = newpc;
@@ -930,6 +938,26 @@ Moira::execBcc(u16 opcode)
     u32 oldpc = reg.pc;
 
     SYNC(2);
+
+    // POM68K Q2: the 68040 raises the odd-displacement address error
+    // BEFORE evaluating the condition (WinUAE op_6xxx_31: the `src & 1`
+    // check precedes cctrue, even on the not-taken path). The second
+    // extension word of the .L form is peeked without being consumed —
+    // WinUAE's get_ilong(2) does not advance the pc either.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel >= Model::M68EC040) {
+            u32 d40 = S == Byte ? (u8)opcode : queue.irc;
+            if constexpr (S == Long) {
+                d40 = d40 << 16 | (u16)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+            }
+            u32 t40 = U32_ADD(oldpc, SEXT<S>(d40));
+            if (t40 & 1) {
+                execAddressError040<C>(t40, reg.pc0);
+                FINALIZE
+                return;
+            }
+        }
+    }
 
     if (cond<I>()) {
 
@@ -1476,6 +1504,14 @@ Moira::execBsr(u16 opcode)
                 FINALIZE
                 return;
             }
+            // POM68K Q2: 68040 BSR checks BEFORE pushing (WinUAE
+            // op_6100_31: exception3_read_prefetch precedes
+            // m68k_do_bsr) — A7 is untouched, stacked PC = the BSR.
+            if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+                execAddressError040<C>(newpc, reg.pc0);
+                FINALIZE
+                return;
+            }
         }
 
         // Save return address on stack
@@ -1699,12 +1735,29 @@ Moira::execChk(u16 opcode)
 
     } else if constexpr (C == Core::C68020) {
 
-        // POM68K O4 slice 4: WinUAE-arbitrated 020/030 undefined CCR —
-        // N/Z always refreshed; V/C from the bound-value subtraction when
-        // the value is out of range (setchkundefinedflags, hardware-
-        // verified tables; NOTES.md § slice 4). The 68000 rule below is
-        // pinned by SingleStepTests and stays untouched.
-        setUndefinedCHK<C, S>(SEXT<S>(data), SEXT<S>(dy));
+        if (cpuModel >= Model::M68EC040) {
+
+            // POM68K Q2: 68040 CHK — C computed from the out-of-range
+            // shape, N = value<0, Z/V/X untouched (WinUAE
+            // setchkundefinedflags, 68040 row; applied trap or no trap)
+            i32 s040 = SEXT<S>(data), d040 = SEXT<S>(dy);
+            reg.sr.c = 0;
+            if (d040 < 0 || d040 > s040) {
+                if (d040 < 0 && s040 >= 0)       reg.sr.c = 1;
+                else if (s040 >= 0 && d040 >= s040) reg.sr.c = 1;
+                else if (d040 < 0 && s040 < d040)   reg.sr.c = 1;
+            }
+            reg.sr.n = d040 < 0;
+
+        } else {
+
+            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 undefined CCR —
+            // N/Z always refreshed; V/C from the bound-value subtraction when
+            // the value is out of range (setchkundefinedflags, hardware-
+            // verified tables; NOTES.md § slice 4). The 68000 rule below is
+            // pinned by SingleStepTests and stays untouched.
+            setUndefinedCHK<C, S>(SEXT<S>(data), SEXT<S>(dy));
+        }
 
     } else {
 
@@ -2254,6 +2307,20 @@ Moira::execDbcc(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
+    // POM68K Q2: 68040 — the odd-displacement check precedes both the
+    // condition test and the Dn decrement (WinUAE op_51c8_31: the fault
+    // path returns before either); stacked PC = the DBcc instruction.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel >= Model::M68EC040) {
+            u32 t40 = U32_ADD(reg.pc, (i16)queue.irc);
+            if (t40 & 1) {
+                execAddressError040<C>(t40, reg.pc0);
+                FINALIZE
+                return;
+            }
+        }
+    }
+
     auto exec68000 = [&]() {
 
         SYNC(2);
@@ -2579,6 +2646,19 @@ Moira::execJmp(u16 opcode)
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030 && (ea & 1)) {
             execAddressError030<C>(ea, reg.pc0 + 2);
+            FINALIZE
+            return;
+        }
+        // POM68K Q2: 68040 JMP — stacked PC = instruction + 2 for the
+        // plain EA modes (WinUAE op_4edx_31: m68k_incpci(2) before the
+        // fault, the d16/abs words are read without advancing the pc);
+        // the indexed modes advance the pc per consumed extension word
+        // first (x_get_disp_ea_020 uses next_iword), so the stacked PC
+        // is the running pc + 2.
+        if (cpuModel >= Model::M68EC040 && (ea & 1)) {
+            u32 stackedPc = (M == Mode::IX || M == Mode::IXPC)
+                ? reg.pc + 2 : reg.pc0 + 2;
+            execAddressError040<C>(ea, stackedPc);
             FINALIZE
             return;
         }
@@ -3543,8 +3623,18 @@ Moira::execMovecRcRx(u16 opcode)
 
         auto rc = arg & 0xFFF;
 
-        if (rc != 0x000 && rc != 0x001 && rc != 0x800 && rc != 0x801 &&
-            rc != 0x002 && rc != 0x802 && rc != 0x803 && rc != 0x804) {
+        // POM68K Q2: legality is model-dependent (WinUAE newcpu_common.c
+        // movec_illg): the 040 gains $003-$007/$805-$807 and loses CAAR
+        // ($802); 020/030 keep the historic set.
+        if (cpuModel >= Model::M68EC040) {
+
+            if (!((rc & 0x7FF) < 8 && rc != 0x802)) {
+
+                execIllegal<C, I, M, S>(opcode);
+                return;
+            }
+        } else if (rc != 0x000 && rc != 0x001 && rc != 0x800 && rc != 0x801 &&
+                   rc != 0x002 && rc != 0x802 && rc != 0x803 && rc != 0x804) {
 
             execIllegal<C, I, M, S>(opcode);
             return;
@@ -3561,6 +3651,18 @@ Moira::execMovecRcRx(u16 opcode)
         case 0x802: reg.r[dst] = getCAAR(); break;
         case 0x803: reg.r[dst] = reg.sr.m ? getSP() : getMSP(); break;
         case 0x804: reg.r[dst] = reg.sr.m ? getISP() : getSP(); break;
+
+        // POM68K Q2: 68040 MMU registers (M68040UM § 3.1.1; WinUAE
+        // m68k_movec2 68040 rows). Only reachable on 040 models — the
+        // legality gate above rejects them on 010/020/030.
+        case 0x003: reg.r[dst] = getTC040(); break;
+        case 0x004: reg.r[dst] = getITT0(); break;
+        case 0x005: reg.r[dst] = getITT1(); break;
+        case 0x006: reg.r[dst] = getDTT0(); break;
+        case 0x007: reg.r[dst] = getDTT1(); break;
+        case 0x805: reg.r[dst] = getMMUSR040(); break;
+        case 0x806: reg.r[dst] = getURP040(); break;
+        case 0x807: reg.r[dst] = getSRP040(); break;
     }
 
     prefetch<C, POLL>();
@@ -3597,8 +3699,16 @@ Moira::execMovecRxRc(u16 opcode)
 
         auto reg = arg & 0xFFF;
 
-        if (reg != 0x000 && reg != 0x001 && reg != 0x800 && reg != 0x801 &&
-            reg != 0x002 && reg != 0x802 && reg != 0x803 && reg != 0x804) {
+        // POM68K Q2: same model-dependent legality as MOVEC Rc,Rx
+        if (cpuModel >= Model::M68EC040) {
+
+            if (!((reg & 0x7FF) < 8 && reg != 0x802)) {
+
+                execIllegal<C, I, M, S>(opcode);
+                return;
+            }
+        } else if (reg != 0x000 && reg != 0x001 && reg != 0x800 && reg != 0x801 &&
+                   reg != 0x002 && reg != 0x802 && reg != 0x803 && reg != 0x804) {
 
             execIllegal<C, I, M, S>(opcode);
             return;
@@ -3616,6 +3726,18 @@ Moira::execMovecRxRc(u16 opcode)
         case 0x802: setCAAR(val); break;
         case 0x803: reg.sr.m ? setSP(val) : setMSP(val); break;
         case 0x804: reg.sr.m ? setISP(val) : setSP(val); break;
+
+        // POM68K Q2: 68040 MMU registers — setter masks in Moira.h mirror
+        // WinUAE m68k_move2c (TC & $C000, ITT/DTT & $FFFFE364, URP/SRP/
+        // MMUSR full 32 bits)
+        case 0x003: setTC040(val); break;
+        case 0x004: setITT0(val); break;
+        case 0x005: setITT1(val); break;
+        case 0x006: setDTT0(val); break;
+        case 0x007: setDTT1(val); break;
+        case 0x805: setMMUSR040(val); break;
+        case 0x806: setURP040(val); break;
+        case 0x807: setSRP040(val); break;
     }
 
     prefetch<C, POLL>();
@@ -4707,11 +4829,20 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
 
         if constexpr (C == Core::C68020) {
 
-            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
-            // (divbyzero_special: signed clears CZNV then sets Z)
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-            setDivZeroDIVS<C, S>(dividend);
+            if (cpuModel >= Model::M68EC040) {
+
+                // POM68K Q2: 68040 div-zero — C=0 only, N/Z/V untouched
+                // (WinUAE divbyzero_special, 68040 row)
+                reg.sr.c = 0;
+
+            } else {
+
+                // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
+                // (divbyzero_special: signed clears CZNV then sets Z)
+                reg.sr.v = 0;
+                reg.sr.c = 0;
+                setDivZeroDIVS<C, S>(dividend);
+            }
 
         } else {
 
@@ -4851,11 +4982,20 @@ Moira::execDivuMoira(u16 opcode, bool *divByZero)
 
         if constexpr (C == Core::C68020) {
 
-            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
-            // (divbyzero_special: unsigned takes N/Z from the dividend's
-            // HIGH word and sets V)
-            reg.sr.c = 0;
-            setDivZeroDIVU<C, S>(dividend);
+            if (cpuModel >= Model::M68EC040) {
+
+                // POM68K Q2: 68040 div-zero — C=0 only, N/Z/V untouched
+                // (WinUAE divbyzero_special, 68040 row)
+                reg.sr.c = 0;
+
+            } else {
+
+                // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
+                // (divbyzero_special: unsigned takes N/Z from the dividend's
+                // HIGH word and sets V)
+                reg.sr.c = 0;
+                setDivZeroDIVU<C, S>(dividend);
+            }
 
         } else {
 
@@ -4972,7 +5112,13 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
 
     if (divisor == 0) {
 
-        if (ext & 0x800) {
+        if (cpuModel >= Model::M68EC040) {
+
+            // POM68K Q2: 68040 DIVL div-zero — C=0 only, N/Z/V untouched
+            // (WinUAE divsl_divbyzero / divul_divbyzero, 68040 rows)
+            reg.sr.c = 0;
+
+        } else if (ext & 0x800) {
 
             reg.sr.c = 0;
             setDivZeroDIVSL<C, S>(i64(dividend));
@@ -5010,6 +5156,12 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
                 writeD(dh, result.second);
                 writeD(dl, result.first);
 
+            } else if (cpuModel >= Model::M68EC040) {
+
+                // POM68K Q2: 68040 — V=1, C=0, N/Z untouched
+                // (WinUAE divul_overflow, 68040 row)
+                reg.sr.c = 0;
+
             } else {
 
                 setUndefinedDIVUL<C, S>(dividend, divisor);
@@ -5027,6 +5179,12 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
                 writeD(dh, result.second);
                 writeD(dl, result.first);
 
+            } else if (cpuModel >= Model::M68EC040) {
+
+                // POM68K Q2: 68040 — V=1, C=0, N/Z untouched
+                // (WinUAE divsl_overflow, 68040 row)
+                reg.sr.c = 0;
+
             } else {
 
                 setUndefinedDIVSL<C, Word>(i64(i32(dividend)), i32(divisor));
@@ -5041,6 +5199,12 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
 
                 writeD(dh, result.second);
                 writeD(dl, result.first);
+
+            } else if (cpuModel >= Model::M68EC040) {
+
+                // POM68K Q2: 68040 — V=1, C=0, N/Z untouched
+                // (WinUAE divsl_overflow, 68040 row)
+                reg.sr.c = 0;
 
             } else {
 
@@ -5457,6 +5621,14 @@ Moira::execRtd(u16 opcode)
             FINALIZE
             return;
         }
+        // POM68K Q2: 68040 RTD restores A7 completely before faulting
+        // (WinUAE op_4e74_31: a7 -= 4 + offs); stacked PC = the RTD.
+        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+            reg.sp -= 4 + i16(queue.irc);
+            execAddressError040<C>(newpc, reg.pc0);
+            FINALIZE
+            return;
+        }
     }
 
     setPC(newpc);
@@ -5604,18 +5776,65 @@ Moira::execRte(u16 opcode)
 
                     // Status register
                     newsr = (u16)pop<C, Word>();
-                    
+
                     // Program counter
                     newpc = pop<C, Long>();
-                    
+
                     //
                     (void)pop<C, Word>();
-                    
+
                     //
                     (void)pop<C, Long>();
                     break;
 
-                } else if (format == 0b1010) {
+                } else if (format == 0b011 && cpuModel >= Model::M68EC040) {
+
+                    // POM68K Q2: FP post-instruction frame (12 bytes) —
+                    // WinUAE op_4e73_31 frame 0x3: offset + 4
+                    newsr = (u16)pop<C, Word>();
+                    newpc = pop<C, Long>();
+                    (void)pop<C, Word>();
+                    (void)pop<C, Long>();          // effective address
+                    break;
+
+                } else if (format == 0b100 && cpuModel >= Model::M68EC040) {
+
+                    // POM68K Q2: 68040 FP-disabled / unimplemented frame
+                    // (16 bytes) — WinUAE frame 0x4: offset + 8
+                    newsr = (u16)pop<C, Word>();
+                    newpc = pop<C, Long>();
+                    (void)pop<C, Word>();
+                    (void)pop<C, Long>();          // effective address
+                    (void)pop<C, Long>();          // PC of faulted instruction
+                    break;
+
+                } else if (format == 0b111 && cpuModel >= Model::M68EC040) {
+
+                    // POM68K Q2: 68040 access-error frame (60 bytes) —
+                    // WinUAE op_4e73_31 frame 0x7 + m68k_do_rte_mmu040
+                    // (cpummu.c:1621-1642): SSW.CT copies the frame's raw
+                    // SR/PC and the +8 long to the popped position above
+                    // (a continuation mini-frame); SSW.CM re-arms the
+                    // MOVEM restart latch (machine-level only — no
+                    // architectural state until a MOVEM resumes, Q3).
+                    u32 base = reg.sp;
+                    newsr = (u16)pop<C, Word>();
+                    newpc = pop<C, Long>();
+                    (void)pop<C, Word>();               // format | vector
+                    (void)pop<C, Long>();               // effective address
+                    u16 ssw040 = (u16)pop<C, Word>();   // special status word
+                    for (int i = 0; i < 23; i++) (void)pop<C, Word>();
+
+                    if (ssw040 & 0x2000) {              // MMU_SSW_CT
+                        u32 dst = base + 60;
+                        writeM<C, M, Word>(dst + 0, readM<C, M, Word>(base + 0));
+                        writeM<C, M, Long>(dst + 2, readM<C, M, Long>(base + 2));
+                        // the frame word at +6 is skipped (WinUAE comment)
+                        writeM<C, M, Long>(dst + 8, readM<C, M, Long>(base + 8));
+                    }
+                    break;
+
+                } else if (format == 0b1010 && cpuModel < Model::M68EC040) {
 
                     // POM68K O6: short bus-fault frame ($A, 16 words) —
                     // stacked by writeStackFrameShortBusFault on a
@@ -5657,7 +5876,7 @@ Moira::execRte(u16 opcode)
                     (void)pop<C, Long>();
                     break;
 
-                } else if (format == 0b1011) {
+                } else if (format == 0b1011 && cpuModel < Model::M68EC040) {
 
                     // Status register
                     newsr = (u16)pop<C, Word>();
@@ -5776,6 +5995,16 @@ Moira::execRte(u16 opcode)
             FINALIZE
             return;
         }
+        // POM68K Q2: 68040 RTE — the new SR is fully applied (setSR
+        // above) and A7 stays popped (WinUAE op_4e73_31); the frame's
+        // SR field carries the NEW SR (the Exception_normal RTR/RTE
+        // stacked-SR patch does not exist on the Exception_mmu path the
+        // oracle runs). Stacked PC = the RTE instruction.
+        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+            execAddressError040<C>(newpc, reg.pc0);
+            FINALIZE
+            return;
+        }
     }
 
     setPC(newpc);
@@ -5838,6 +6067,16 @@ Moira::execRtr(u16 opcode)
             FINALIZE
             return;
         }
+        // POM68K Q2: 68040 RTR restores A7 (WinUAE op_4e77_31: a7 -= 6)
+        // with the popped CCR applied; stacked PC = the RTR. The frame
+        // carries the CCR-updated SR (Exception_mmu path — the
+        // Exception_normal secondarysr patch is not reached).
+        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+            reg.sp -= 6;
+            execAddressError040<C>(newpc, reg.pc0);
+            FINALIZE
+            return;
+        }
     }
 
     setPC(newpc);
@@ -5879,6 +6118,15 @@ Moira::execRts(u16 opcode)
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030 && (newpc & 1)) {
             execAddressError030<C>(newpc, reg.pc0);
+            FINALIZE
+            return;
+        }
+        // POM68K Q2: 68040 RTS re-pushes — A7 is restored to its
+        // pre-RTS value (WinUAE op_4e75_31: a7 -= 4 after the pop);
+        // stacked PC = the RTS instruction.
+        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+            reg.sp -= 4;
+            execAddressError040<C>(newpc, reg.pc0);
             FINALIZE
             return;
         }
@@ -6288,12 +6536,28 @@ Moira::execUnpkPd(u16 opcode)
     FINALIZE
 }
 
+// POM68K Q2: CINV/CPUSH execute on the 040 models (M68040UM § 4.5/4.6).
+// Caches are not modelled architecturally, so a valid encoding has no
+// state effect beyond the privilege check. Scope 00 is not a valid
+// encoding (WinUAE cpudefs registers only the $F408/$F410/$F418 rows,
+// mask $FF38) and falls to Line-F even in supervisor mode; the cache
+// field (bits 7-6) is a don't-care, including 00.
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execCinv(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    execLineF<C, I, M, S>(opcode);
+    if ((opcode & 0x18) == 0) {
+
+        execLineF<C, I, M, S>(opcode);
+        return;
+    }
+
+    SUPERVISOR_MODE_ONLY
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(4)
 
     FINALIZE
 }
@@ -6303,17 +6567,50 @@ Moira::execCpush(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    execLineF<C, I, M, S>(opcode);
+    if ((opcode & 0x18) == 0) {
+
+        execLineF<C, I, M, S>(opcode);
+        return;
+    }
+
+    SUPERVISOR_MODE_ONLY
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(4)
 
     FINALIZE
 }
 
+// POM68K Q2: MOVE16 (M68040UM § MOVE16), modelled on the WinUAE mmu040
+// handlers (generated/cpuemu_31.c op_f6xx + cpummu.c mmu_get/put_move16):
+// both line addresses are masked & ~15, the absolute-long operand is
+// consumed first, the 16 bytes move as four longs read-then-written, and
+// the postincrement lands after the transfer. In the (Ax)+,(Ay)+ form the
+// outer register comes from bits 14-12 of the extension word and a shared
+// register increments only once.
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execMove16PiPi(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    execLineF<C, I, M, S>(opcode);
+    int ax = _____________xxx(opcode);
+    u16 ext = u16(readI<C, Word>());
+    int ay = xxxx____________(ext) & 7;
+
+    u32 src = reg.a[ax] & ~u32(15);
+    u32 dst = reg.a[ay] & ~u32(15);
+
+    u32 v[4];
+    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
+    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+
+    if (ax != ay) reg.a[ax] += 16;
+    reg.a[ay] += 16;
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(4)
 
     FINALIZE
 }
@@ -6323,7 +6620,21 @@ Moira::execMove16PiAl(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    execLineF<C, I, M, S>(opcode);
+    int an = _____________xxx(opcode);
+    u32 abs = u32(readI<C, Long>());
+
+    u32 src = reg.a[an] & ~u32(15);
+    u32 dst = abs & ~u32(15);
+
+    u32 v[4];
+    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
+    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+
+    reg.a[an] += 16;
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(8)
 
     FINALIZE
 }
@@ -6333,7 +6644,21 @@ Moira::execMove16AlPi(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    execLineF<C, I, M, S>(opcode);
+    int an = _____________xxx(opcode);
+    u32 abs = u32(readI<C, Long>());
+
+    u32 src = abs & ~u32(15);
+    u32 dst = reg.a[an] & ~u32(15);
+
+    u32 v[4];
+    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
+    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+
+    reg.a[an] += 16;
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(8)
 
     FINALIZE
 }
@@ -6343,7 +6668,19 @@ Moira::execMove16AiAl(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    execLineF<C, I, M, S>(opcode);
+    int an = _____________xxx(opcode);
+    u32 abs = u32(readI<C, Long>());
+
+    u32 src = reg.a[an] & ~u32(15);
+    u32 dst = abs & ~u32(15);
+
+    u32 v[4];
+    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
+    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(8)
 
     FINALIZE
 }
@@ -6353,7 +6690,19 @@ Moira::execMove16AlAi(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    execLineF<C, I, M, S>(opcode);
+    int an = _____________xxx(opcode);
+    u32 abs = u32(readI<C, Long>());
+
+    u32 src = abs & ~u32(15);
+    u32 dst = reg.a[an] & ~u32(15);
+
+    u32 v[4];
+    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
+    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+
+    prefetch<C, POLL>();
+
+    CYCLES_68020(8)
 
     FINALIZE
 }

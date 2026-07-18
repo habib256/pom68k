@@ -311,9 +311,11 @@ Moira::bcd(u32 op1, u32 op2)
             }
 
             // Set V flag
+            // POM68K Q2: the 68040 leaves V (and N, see below) untouched
+            // (WinUAE cpuemu_31 op_c100: no SET_VFLG/SET_NFLG)
             if constexpr (C != Core::C68020) {
                 reg.sr.v = ((tmp & 0x80) == 0) && ((result & 0x80) == 0x80);
-            } else {
+            } else if (cpuModel < Model::M68EC040) {
                 reg.sr.v = 0;
             }
 
@@ -341,9 +343,10 @@ Moira::bcd(u32 op1, u32 op2)
             }
 
             // Set V flag
+            // POM68K Q2: 68040 leaves V/N untouched (see ABCD above)
             if constexpr (C != Core::C68020) {
                 reg.sr.v = ((tmp & 0x80) == 0x80) && ((result & 0x80) == 0);
-            } else {
+            } else if (cpuModel < Model::M68EC040) {
                 reg.sr.v = 0;
             }
 
@@ -356,7 +359,7 @@ Moira::bcd(u32 op1, u32 op2)
 
     // Set other flags
     reg.sr.c = reg.sr.x;
-    reg.sr.n = NBIT<S>(result);
+    if (C != Core::C68020 || cpuModel < Model::M68EC040) reg.sr.n = NBIT<S>(result);
     if (CLIP<Byte>(result)) reg.sr.z = 0;
 
     return (u32)result;
@@ -717,10 +720,19 @@ Moira::divsMoira(u32 op1, u32 op2)
 
         if constexpr (C == Core::C68020) {
 
-            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
-            // (setdivsflags: clears NZC, then N/Z from the low byte of the
-            // absolute quotient unless the overflow is absolute)
-            setUndefinedDIVS<C, Word>(i32(op1), i16(op2));
+            if (cpuModel >= Model::M68EC040) {
+
+                // POM68K Q2: 68040 overflow — V=1, C=0, N/Z untouched
+                // (WinUAE setdivsflags, 68040 row)
+                reg.sr.c = 0;
+
+            } else {
+
+                // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
+                // (setdivsflags: clears NZC, then N/Z from the low byte of
+                // the absolute quotient unless the overflow is absolute)
+                setUndefinedDIVS<C, Word>(i32(op1), i16(op2));
+            }
 
         } else {
 
@@ -757,9 +769,18 @@ Moira::divuMoira(u32 op1, u32 op2)
 
         if constexpr (C == Core::C68020) {
 
-            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
-            // (setdivuflags: N set for a negative dividend; Z/C untouched)
-            setUndefinedDIVU<C, Word>(op1, (u16)op2);
+            if (cpuModel >= Model::M68EC040) {
+
+                // POM68K Q2: 68040 overflow — V=1, C=0, N/Z untouched
+                // (WinUAE setdivuflags, 68040 row)
+                reg.sr.c = 0;
+
+            } else {
+
+                // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
+                // (setdivuflags: N set for a negative dividend; Z/C untouched)
+                setUndefinedDIVU<C, Word>(op1, (u16)op2);
+            }
 
         } else {
 

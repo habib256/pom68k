@@ -757,6 +757,33 @@ Moira::execFRestoreFormatError()
     jumpToVector<C, AE_SET_CB3>(14);
 }
 
+template <Core C> void
+Moira::execFpuDisabled040(u32 ea)
+{
+    // POM68K Q4 — F2xx on a FPU-less 040 (68LC040/68EC040): vector 11
+    // with the format $4 "FP disabled" frame (WinUAE fpu_op_illg
+    // fpp.c:1085-1094: fp_unimp_ins -> Exception(11);
+    // Exception_build_stack_frame_common nr==11 && fp_unimp_ins &&
+    // 68040 && fpu_model==0 -> frame 0x4 {SR, currpc, $402C, fp_ea,
+    // instruction_pc}). The caller consumed the shape's extension words
+    // (reg.pc mirrors WinUAE's m68k_getpc()) and passes fp_ea.
+    u16 status = getSR();
+
+    setSupervisorMode(true);
+    clearTraceFlags();
+    flags &= ~State::TRACE_EXC;
+    trace040Pending = false;
+    SYNC(4);
+
+    push<C, Long>(reg.pc0);                 // PC of the faulted instruction
+    push<C, Long>(ea);                      // effective address (fp_ea)
+    push<C, Word>(0x4000 | 11 << 2);        // format $4 | vector offset $2C
+    push<C, Long>(reg.pc);                  // PC past the consumed words
+    push<C, Word>(status);
+
+    jumpToVector<C>(11);
+}
+
 template <Core C> bool
 Moira::fpuCheckPending()
 {
@@ -1286,7 +1313,21 @@ Moira::execFBcc(u16 opcode)
     // FBcc (MC68881UM § 4.6; WinUAE fpuop_bcc, fpp.c:2333-2363). FNOP is
     // FBF.W with zero displacement and needs no special handling: the
     // predicate is never true and the fall-through consumes the word.
+    // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
+    // consumed, then vector 11 / format $4 (see execFpuDisabled040)
+    if (cpuModel >= Model::M68EC040 && !hasFPU()) {
+        (void)readI<C, S>();                // the displacement
+        execFpuDisabled040<C>(0);           // fpuop_bcc: fault ea = 0
+        FINALIZE
+        return;
+    }
+
     if (fpuCheckPending<C>()) return;
+
+    // POM68K Q4: pseudo-conditions ($20-$3F, registered on the 040 family
+    // only) are Line-F when an FPU is present (WinUAE fpp_cond -> -1 ->
+    // fpu_op_illg -> op_illg)
+    if ((opcode & 0x3f) >= 0x20) { execLineF<C, I, M, S>(opcode); FINALIZE return; }
 
     fpu.state = 1;                          // maybe_idle_state (fpp.c:2186)
 
@@ -1341,6 +1382,17 @@ Moira::execFDbcc(u16 opcode)
     AVAILABILITY(Core::C68020)
 
     // FDBcc (MC68881UM § 4.7; WinUAE fpuop_dbcc, fpp.c:2201-2241)
+    // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
+    // consumed, then vector 11 / format $4 (see execFpuDisabled040)
+    if (cpuModel >= Model::M68EC040 && !hasFPU()) {
+        u16 cw = u16(readI<C, Word>());     // condition word
+        u16 dw = u16(readI<C, Word>());     // displacement word
+        // fpuop_dbcc quirk: fault ea = (extra << 16) | (disp & $FFFF)
+        execFpuDisabled040<C>(u32(cw) << 16 | dw);
+        FINALIZE
+        return;
+    }
+
     if (fpuCheckPending<C>()) return;
 
     u16 ext = u16(readI<C, Word>());        // condition word
@@ -1405,6 +1457,24 @@ Moira::execFScc(u16 opcode)
     // FScc (MC68881UM § 4.8; WinUAE fpuop_scc, fpp.c:2243-2302). EA
     // extension words are consumed before the predicate is evaluated;
     // the (An)+/-(An) adjustment happens after (fpp.c:2264-2299).
+    // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
+    // consumed, then vector 11 / format $4 (see execFpuDisabled040)
+    if (cpuModel >= Model::M68EC040 && !hasFPU()) {
+        (void)readI<C, Word>();             // condition word
+        u32 ea40 = 0;                       // get_fp_ad conventions
+        int n40 = _____________xxx(opcode);
+        if constexpr (M == Mode::AI || M == Mode::PI) ea40 = readA(n40);
+        // fpuop_scc pre-adjusts -(An) by the byte size (fpp.c:2281-2284)
+        if constexpr (M == Mode::PD) ea40 = readA(n40) - (n40 == 7 ? 2 : 1);
+        if constexpr (M == Mode::DI || M == Mode::IX ||
+                      M == Mode::AW || M == Mode::AL) {
+            ea40 = computeEA<C, M, Byte>(n40);
+        }
+        execFpuDisabled040<C>(ea40);
+        FINALIZE
+        return;
+    }
+
     if (fpuCheckPending<C>()) return;
 
     u16 ext = u16(readI<C, Word>());
@@ -1456,6 +1526,17 @@ Moira::execFTrapcc(u16 opcode)
     // FTRAPcc (MC68881UM § 4.9; WinUAE fpuop_trapcc, fpp.c:2304-2331).
     // Takes the TRAPcc exception (vector 7, format $2 frame with the
     // next-instruction PC — same as the integer TRAPcc family).
+    // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
+    // consumed, then vector 11 / format $4 (see execFpuDisabled040)
+    if (cpuModel >= Model::M68EC040 && !hasFPU()) {
+        (void)readI<C, Word>();             // condition word
+        if ((opcode & 0b111) == 0b010) (void)readI<C, Word>();
+        if ((opcode & 0b111) == 0b011) (void)readI<C, Long>();
+        execFpuDisabled040<C>(0);           // fpuop_trapcc: fault ea = 0
+        FINALIZE
+        return;
+    }
+
     if (fpuCheckPending<C>()) return;
 
     u16 ext = u16(readI<C, Word>());
@@ -1524,6 +1605,15 @@ Moira::execFSave(u16 opcode)
         ad = readA(n);
     } else {
         ad = computeEA<C, M, Long>(n);
+    }
+
+    // POM68K Q4: FPU-less 040 — privilege check and EA computation first
+    // (WinUAE fpuop_save: get_fp_ad before fault_if_no_fpu), then the
+    // format $4 frame with the computed address
+    if (cpuModel >= Model::M68EC040 && !hasFPU()) {
+        execFpuDisabled040<C>(ad);
+        FINALIZE
+        return;
     }
 
     const int fpuVersion = 0x1f;                        // fpp.c:1429-1432
@@ -1610,6 +1700,14 @@ Moira::execFRestore(u16 opcode)
         ad = readA(n);
     } else {
         ad = computeEA<C, M, Long>(n);
+    }
+
+    // POM68K Q4: FPU-less 040 — same convention as FSAVE (WinUAE
+    // fpuop_restore: get_fp_ad before fault_if_no_fpu)
+    if (cpuModel >= Model::M68EC040 && !hasFPU()) {
+        execFpuDisabled040<C>(ad);
+        FINALIZE
+        return;
     }
 
     const u32 adOrig = ad;
@@ -1732,6 +1830,103 @@ Moira::execFGen(u16 opcode)
     // other opclasses)
     if constexpr (M == Mode::AN) {
         if (ext & 0x4000) { execLineF<C, I, M, S>(opcode); return; }
+    }
+
+    // POM68K Q4: FPU-less 040 — mirror WinUAE fpuop_arithmetic2 with
+    // fpu_model = 0 per opclass (fpp.c:3168-3600): the extension word is
+    // always consumed; the EA (and its extension words) are computed
+    // exactly where WinUAE computes them before fault_if_no_fpu, and Dn/
+    // An/#imm FMOVEM shapes stay Line-F (get_fp_ad failure -> fpu_noinst).
+    if (cpuModel >= Model::M68EC040 && !hasFPU()) {
+
+        u16 x = u16(readI<C, Word>());
+        int opclass = (x >> 13) & 7;
+        int n = _____________xxx(opcode);
+        int size = (x >> 10) & 7;
+
+        // get_fp_value/put_fp_value operand sizes (fpp.c sz1/sz2)
+        static constexpr int sz1[8] = { 4, 4, 12, 12, 2, 8, 1, 0 };
+
+        if (opclass == 6 || opclass == 7) {
+
+            // FMOVEM FPn<>mem — get_fp_ad fails on Dn/An/#imm -> Line-F
+            if constexpr (M == Mode::DN || M == Mode::AN || M == Mode::IM) {
+                execLineF<C, I, M, S>(opcode);
+                return;
+            } else {
+                u32 ea = 0;
+                if constexpr (M == Mode::AI || M == Mode::PI || M == Mode::PD) {
+                    ea = readA(n);
+                } else {
+                    ea = computeEA<C, M, Long>(n);
+                }
+                execFpuDisabled040<C>(ea);
+                return;
+            }
+
+        } else if (opclass == 4 || opclass == 5) {
+
+            // FMOVE(M) control registers: Dn/An forms fault with ea = 0;
+            // the #imm form consumes one long per selected register first
+            // (fpp.c:3288-3296); memory forms compute the EA
+            if constexpr (M == Mode::IM) {
+                if (x & 0x1000) (void)readI<C, Long>();
+                if (x & 0x0800) (void)readI<C, Long>();
+                if (x & 0x0400) (void)readI<C, Long>();
+                execFpuDisabled040<C>(0);
+                return;
+            } else if constexpr (M == Mode::DN || M == Mode::AN) {
+                execFpuDisabled040<C>(0);
+                return;
+            } else {
+                u32 ea = 0;
+                if constexpr (M == Mode::AI || M == Mode::PI || M == Mode::PD) {
+                    ea = readA(n);
+                } else {
+                    ea = computeEA<C, M, Long>(n);
+                }
+                execFpuDisabled040<C>(ea);
+                return;
+            }
+
+        } else {
+
+            // opclass 0-3: register/memory operands through get_fp_value /
+            // put_fp_value — FPx-to-FPx, FMOVECR and Dn/#imm fault with
+            // ea = 0 (immediate words consumed); the memory modes compute
+            // the operand address with the (An)± conventions (register
+            // restored by the fault, so only the EA value shows)
+            if (!(x & 0x4000) || (x & 0xFC00) == 0x5C00) {
+                execFpuDisabled040<C>(0);
+                return;
+            }
+            if constexpr (M == Mode::DN || M == Mode::AN) {
+                execFpuDisabled040<C>(0);
+                return;
+            } else if constexpr (M == Mode::IM) {
+                switch (size) {
+                    case 0: case 1: (void)readI<C, Long>(); break;
+                    case 2: case 3: (void)readI<C, Long>();
+                                    (void)readI<C, Long>();
+                                    (void)readI<C, Long>(); break;
+                    case 5: (void)readI<C, Long>();
+                            (void)readI<C, Long>(); break;
+                    default: (void)readI<C, Word>(); break;
+                }
+                execFpuDisabled040<C>(0);
+                return;
+            } else if constexpr (M == Mode::AI || M == Mode::PI) {
+                execFpuDisabled040<C>(readA(n));
+                return;
+            } else if constexpr (M == Mode::PD) {
+                int dec = (n == 7 && sz1[size] == 1) ? 2 : sz1[size];
+                execFpuDisabled040<C>(readA(n) - dec);
+                return;
+            } else {
+                execFpuDisabled040<C>(computeEA<C, M, Long>(n));
+                return;
+            }
+        }
     }
 
     if (fpuCheckPending<C>()) return;       // pre-instruction (fpp.c:3176)

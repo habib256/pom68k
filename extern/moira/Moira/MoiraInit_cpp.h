@@ -2020,7 +2020,13 @@ Moira::createJumpTable(Model model, bool regDasm)
     bool fpuAttachable = model == Model::M68EC020 || model == Model::M68020 ||
                          model == Model::M68EC030 || model == Model::M68030;
 
+    // POM68K Q4: the FPU-less 040 variants (68LC040/68EC040) register the
+    // window too — their F2xx opcodes take the format $4 "FP disabled"
+    // exception (vector 11) with per-shape word consumption and EA, which
+    // the exec handlers implement behind `!hasFPU()` (WinUAE
+    // fault_if_no_fpu). Plain Line-F would stack the wrong frame.
     if (model == Model::M68040 ||
+        model == Model::M68LC040 || model == Model::M68EC040 ||
         (fpuModel != FPUModel::NONE && fpuAttachable)) {
 
         opcode = parse("1111 0010 100- ----");
@@ -2028,6 +2034,21 @@ Moira::createJumpTable(Model model, bool regDasm)
 
         opcode = parse("1111 0010 110- ----");
         ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
+
+        // POM68K Q4: the 040 family decodes the pseudo-condition FBcc
+        // window too ($20-$3F — WinUAE cpudefs registers the full 6-bit
+        // field): with no FPU they take the format $4 exception like any
+        // FBcc; with an FPU the handler falls to Line-F (fpp_cond -> -1
+        // -> fpu_op_illg). 020/030 keep the historic 5-bit registration.
+        if (model == Model::M68040 || model == Model::M68LC040 ||
+            model == Model::M68EC040) {
+
+            opcode = parse("1111 0010 101- ----");
+            ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
+
+            opcode = parse("1111 0010 111- ----");
+            ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
+        }
 
         opcode = parse("1111 0010 00-- ----");
         __________XXXXXX(opcode, Instr::cpGEN, Mode::IP, Unsized, FGen, CIMS)

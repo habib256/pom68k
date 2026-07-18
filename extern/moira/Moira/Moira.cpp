@@ -175,7 +175,12 @@ Moira::cacrMask() const
 
         case Model::M68020: case Model::M68EC020: return 0x0003;
         case Model::M68030: case Model::M68EC030: return 0x3F13;
-        
+
+        // POM68K Q2: 68040 CACR = DE (bit 31) | IE (bit 15) — WinUAE
+        // newcpu_common.c m68k_move2c case 2 (cacr_mask, 68040 row)
+        case Model::M68EC040: case Model::M68LC040: case Model::M68040:
+            return 0x80008000;
+
         default:
             return 0xFFFF;
     }
@@ -233,6 +238,8 @@ Moira::reset()
     fcl = 2;
     fcSource = 0;
     irqDelay = 0;                  // POM68K: clear the SR-write IRQ delay too
+    trace040Pending = false;       // POM68K Q2: 68040 trace machinery
+    tracePc040 = 0;
 
     // POM68K O4 slice 3: reset invalidates the ATC and the MMU restart
     // bookkeeping (MC68030UM § 9.5.2; TC.E is cleared via reg = { })
@@ -327,6 +334,18 @@ Moira::execute()
             processException(exc);
         }
 
+        // POM68K Q2: 68040 one-shot trace armed mid-instruction (an SR
+        // write with old Tx set — RTE/MOVE-to-SR). Fires after the
+        // instruction, exactly like WinUAE's SPCFLAG_DOTRACE.
+        if (trace040Pending) [[unlikely]] {
+            trace040Pending = false;
+            try {
+                execException(M68kException::TRACE);
+            } catch (const std::exception &exc) {
+                processException(exc);
+            }
+        }
+
     } else {
 
         //
@@ -347,12 +366,25 @@ Moira::execute()
             // ADDRESS ERROR (groupe 0) à prendre, pas un abort de l'émulateur
             // (crash « terminate » observé sur Beyond the Ice Palace, bureau TOS).
             if (flags & TRACE_EXC) {
-                try {
-                    execException(M68kException::TRACE);
-                } catch (const std::exception &exc) {
-                    processException(exc);
+
+                // POM68K Q2: on the 68040 a staged trace does not
+                // preempt the instruction — WinUAE runs the next
+                // instruction first and takes vector 9 afterwards
+                // (SPCFLAG_DOTRACE is processed post-instruction).
+                // Latch trace_pc (= this instruction's address, i.e.
+                // the pc after the TRACED one) and fall through.
+                if (cpuModel >= Model::M68EC040) {
+                    flags &= ~TRACE_EXC;
+                    trace040Pending = true;
+                    tracePc040 = reg.pc0;
+                } else {
+                    try {
+                        execException(M68kException::TRACE);
+                    } catch (const std::exception &exc) {
+                        processException(exc);
+                    }
+                    goto done;
                 }
-                goto done;
             }
 
             // Check if the T flag is set inside the status register
@@ -448,6 +480,17 @@ Moira::execute()
 
             try {
                 (this->*exec[queue.ird])(queue.ird);
+            } catch (const std::exception &exc) {
+                processException(exc);
+            }
+        }
+
+        // POM68K Q2: 68040 pending trace (staged TRACE_EXC consumed above,
+        // or armed mid-instruction by an SR write) — fires post-instruction
+        if (trace040Pending) [[unlikely]] {
+            trace040Pending = false;
+            try {
+                execException(M68kException::TRACE);
             } catch (const std::exception &exc) {
                 processException(exc);
             }
@@ -641,6 +684,14 @@ Moira::setSR(u16 val)
     bool t1  = (val >> 15) & 1;
     bool s   = (val >> 13) & 1;
     u8   ipl = (val >>  8) & 7;
+
+    // POM68K Q2: 68040 one-shot trace — an SR write performed while a Tx
+    // bit WAS set traces once after the instruction, even if the write
+    // cleared Tx (WinUAE MakeFromSR_x: `(oldt0 && t0trace) || oldt1` ->
+    // activate_trace()). Covers RTE/MOVE-to-SR/ANDI-to-SR and throwaway
+    // RTE chains. Harness state loads are safe: reset() precedes them.
+    if (cpuModel >= Model::M68EC040 && (reg.sr.t1 || reg.sr.t0))
+        trace040Pending = true;
 
     // POM68K: arm a one-instruction IRQ-recognition delay when an SR-write
     // lowers the mask (RTE / MOVE-to-SR / etc.) — the 68k does not sample
