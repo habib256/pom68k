@@ -112,6 +112,8 @@ int main(int argc, char** argv) {
             long long c = cpu.getClock();
             if (c < scsiFrom || c > scsiTo) return;
             if (!w && reg == 4) return;          // skip the phase-poll spam
+            if (w && reg == 3 && v == 0x90) return;   // skip DMA-chunk XFER spam
+            if (!w && (reg == 7 || reg == 5)) return; // skip chunk-loop reads
             if (scsiRegLog++ > 400) return;
             std::printf("  SCSI %c reg%X = $%02X  (pc=$%08X clk=%lld)\n",
                         w ? 'W' : 'R', reg, v, cpu.getPC0(), c);
@@ -229,6 +231,15 @@ int main(int argc, char** argv) {
             std::printf("  LOWMEM MemTop($108)=$%08X BufPtr($10C)=$%08X "
                         "MemSize($1EF8?)=%08X\n",
                         peekL(0x108), peekL(0x10C), peekL(0x1EF8));
+            {
+                uint32_t buf = cpu.getA(2);      // SCSI DATA IN destination
+                std::printf("  [A2 buffer $%08X]:", buf);
+                for (int i = -16; i < 48; i++) {
+                    if (i % 16 == 0) std::printf("\n   $%08X:", buf + i);
+                    std::printf(" %02X", mem.peek8(buf + i));
+                }
+                std::printf("\n");
+            }
             uint32_t a1 = cpu.getA(1);
             std::printf("  [A1-32..A1+64]:");
             for (int i = -32; i < 64; i++) {
