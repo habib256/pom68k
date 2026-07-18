@@ -737,8 +737,69 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
     wrong, not the copy routine: $408F27B4 is the ROM's table of
     video sRsrcType records (DrHW ids $1A,$1B,$1C,$1E,$22,$28,$110
     at $408F27B4..$408F27D8) — the boot code detects the video
-    controller and picks a DrHW; prime suspect remains **our
-    DAFB/MEMCjr sense/version answers driving a wrong selection**.
+    controller and picks a DrHW; the earlier prime suspect (our
+    DAFB sense/version answers driving a wrong DrHW selection) is
+    **DISPROVEN 2026-07-18** — see the update below.
+
+  **Q5.1a — DAFB-sense theory DISPROVEN, blocker re-localized
+  (2026-07-18).** Instrumented the boot with the full I/O trace
+  (`--io 100000`, grouped by address) and the new `q605_trace
+  --stop-skip N` (ignore the first N hits of `--stop-at`, so a
+  specific call in a hot routine can be caught). Findings:
+  - **The ROM never reads the DAFB monitor-sense register.** Over
+    the whole boot the DAFB register file is touched by only 8
+    WRITES (timing config at pc=$4080496A-$40804982, clk~3800) and
+    ZERO reads of $1C (sense) or $2C (version). So our DAFB
+    sense=$6^7 / version answers cannot be driving the DrHW pick —
+    the bad spBlock is built without ever consulting them.
+  - **The DAFB is not even at $F9800000 for this ROM.** MAME
+    `djmemc.cpp:142-146` maps MEMCjr's DAFB behind a 6-bit *holding
+    register* window: reg data at $5000E000 (mirror $00FC0000, so the
+    ROM hits $50F0E0xx), top-6-bits latch via MEMCjr reg $7C, and a
+    second video-register block at $50F18xxx (decoded as IOSB regs in
+    our map). Our HLE serves the DAFB at $F9800000 — an address this
+    ROM never touches during POST/Slot-Manager. Harmless today (the 8
+    init writes don't need a read-back), logged for Q8 when DAFB
+    video actually paints, but it means the sense HLE is dead code on
+    the boot path.
+  - **The faulting copy is shared code reached via the low-mem
+    `[$db8]` vector, NOT a plain call to sReadStruct.** sReadStruct
+    ($408059E0) and the video-sResource builder ($40806036) are each
+    called only a handful of times and always with spBlock A0=
+    $0017FFC0 (the Slot Manager's working block). Both route through
+    `pea …; move.l ([$db8],$e8),-(a7); rts` into the byte-lane copy at
+    $40805A26/$40805A36. The FAILING copy runs on a *different*
+    spBlock at $003FF99E (spResult=$01010101, spsPointer=$408F27B4,
+    spSize=$0002FFFD) — a decl-ROM sResource-insertion buffer built
+    elsewhere, whose spSize was computed as `1 − (long at the
+    sRsrcType table)` = 1 − $30001 (see $40806036-$4080604C:
+    `move.l $4(a4),d2; moveq #1,d1; sub.l d2,d1`). The ROM is reading
+    its OWN video DrHW record table ($408F27A0: eight-byte records
+    `00 03 00 01 00 01 00 {1A,1B,1C,1E,22,28}` + a `01 10` record) as
+    if the first long were an sBlock size. DrHW=$1C (High-Res 13")
+    was selected (the `00 03 00 01 00 01 00 1C` record sits at
+    spBlock+$24).
+  - The doc's own conclusion stands: **$40900000 is emergent and a
+    real Quadra 605 would fault here too** — so the machine-visible
+    DIVERGENCE that makes spSize huge must be an UPSTREAM value that
+    differs from real hardware, fed into the decl-ROM directory walk
+    that plants spsPointer=$408F27B4/spSize=$2FFFD into the
+    $003FF99E buffer. That producer is not yet caught (it is neither
+    sReadStruct nor $40806036 — both operate on $0017FFC0). Next: put
+    a memory-write watch on $003FF9A2/$003FF9A6 (spBlock+4/+8) to
+    catch the writer, then WinUAE-differential that window (the O1-O5
+    method) — a real 605's writer must plant a SMALL spSize.
+  - **Console fallback is the POST serial console, entered
+    unconditionally by one POST-executive table entry** at
+    $4084AAA2 (`bset #$10,d7; bset #$16,d7` then CACR enable →
+    $408B98BC), reached through the computed dispatch `jmp
+    $4084aa6a(pc,a0.l)` at $4084AA70 (no static caller). Whether the
+    walk reaches that entry is keyed on D7 progress/fail bits
+    (D7=$00040053 through the run). So the console entry is
+    downstream of the POST-executive state, which the sReadStruct
+    fault poisons (VEC2 #15+ after it carry a corrupt A3=$5193D028).
+    Localizing the exact D7 bit that diverts to console is the second
+    front. Tool added this pass: `--stop-skip N`.
   - The MMU tables (built by the ROM itself, TC040=$C000 → enabled,
     8K pages) map ROM pages $40800000-$408FFFFF ONLY (walk:
     ptr[$23] valid, ptr[$24]=$00000018 invalid). DTT0=$F900C060
@@ -771,16 +832,24 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
     field-by-field reference for every sResource/format-block
     structure (agent report 2026-07-18; grep for 0x40900000 in
     Basilisk+MAME: zero hits — the address is emergent, not magic).
-  Next steps, in order: (1) instrument sReadStruct entry
-  ($408059E0) — log caller return address + spBlock at ENTRY for
-  every call, find who plants spsPointer=$408F27B4/spSize junk and
-  which DrHW the ROM selected (compare against our DAFB sense=$6^7 /
-  version=$2C answers; try MAME dafb.cpp values for LC475's
-  DJMEMC-integrated DAFB II, not vanilla DAFB); (2) localize the
-  console-entry cause with the O6 method (vector histogram, --watch
-  on the POST executive table $408A8080 / console entry $408B9F58);
-  (3) then gray screen + cursor. Gate: POST passes, gray screen +
-  cursor.
+  Next steps, in order (REVISED 2026-07-18 per Q5.1a — the DAFB-sense
+  lead is dead): (1) catch the writer of the $003FF99E spBlock —
+  a memory-write watch on spBlock+4/+8 ($003FF9A2/$003FF9A6, where
+  spsPointer=$408F27B4/spSize=$2FFFD land) → find the decl-ROM
+  directory walk that plants them, then WinUAE-co-simulate that
+  window (O1-O5 method) to see which UPSTREAM value our machine
+  reports differently from a real 605 (a real machine plants a SMALL
+  spSize). The producer is NOT sReadStruct nor $40806036 (both use
+  $0017FFC0). (2) In parallel, walk the POST-executive D7 state:
+  which bit set before $4084AAA2 diverts the table walk to the serial
+  console; is it set as fallout of the VEC2 #14 fault (VEC2 #15+ carry
+  corrupt A3=$5193D028) or independently. Tool: `--stop-skip N` +
+  `--watch`, vector histogram, POST table $408A8080 / console entry
+  $408B9F58. (3) then gray screen + cursor. Gate: POST passes, gray
+  screen + cursor. NOTE for Q8: the DAFB HLE lives at $F9800000 but
+  this ROM drives DAFB through the MEMCjr holding window
+  ($50F0E0xx / $50F18xxx); wire that path when video actually paints
+  (MAME djmemc.cpp:142-178 dafb_holding_r/w + memcjr_r/w).
 - [ ] **Q6 — SCSI 53C96**: the one genuinely new peripheral (MAME
   `ncr53c90.cpp` reference); `ScsiDisk` target reused as-is. Gate:
   boot blocks read.

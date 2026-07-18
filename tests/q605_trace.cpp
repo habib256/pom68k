@@ -7,6 +7,9 @@
 // sites and the first I/O accesses. Not a CTest gate.
 //
 // Usage: q605_trace <rom> [--cycles N] [--io N] [--berr N] [--pcring N]
+//                   [--stop-at HEXPC [--stop-skip N]] [--watch HEXPC]
+// --stop-skip N ignores the first N hits of --stop-at, to catch a
+// specific call of a routine that runs many times.
 
 #include "Cpu040.h"
 #include "Q605Memory.h"
@@ -43,6 +46,7 @@ int main(int argc, char** argv) {
     long long cycles = 200000000;   // 8 machine-seconds at 25 MHz
     int ioMax = 60, berrMax = 40; size_t pcRing = 32;
     uint32_t stopAt = 0, watch = 0;
+    long stopSkip = 0;                 // ignore the first N hits of --stop-at
     for (int i = 2; i < argc; i++) {
         std::string a = argv[i];
         if (a == "--cycles" && i + 1 < argc) cycles = atoll(argv[++i]);
@@ -50,6 +54,7 @@ int main(int argc, char** argv) {
         else if (a == "--berr" && i + 1 < argc) berrMax = atoi(argv[++i]);
         else if (a == "--pcring" && i + 1 < argc) pcRing = size_t(atoll(argv[++i]));
         else if (a == "--stop-at" && i + 1 < argc) stopAt = uint32_t(strtoul(argv[++i], nullptr, 16));
+        else if (a == "--stop-skip" && i + 1 < argc) stopSkip = atol(argv[++i]);
         else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
     }
 
@@ -104,7 +109,10 @@ int main(int argc, char** argv) {
             uint32_t pc = cpu.getPC0();
             ring[rp++ % ring.size()] = pc;
             pcCov[pc >> 16]++;
-            if (stopAt && pc == stopAt) { stop = true; break; }
+            if (stopAt && pc == stopAt) {
+                if (stopSkip > 0) stopSkip--;
+                else { stop = true; break; }
+            }
             if (watch && pc == watch) {
                 static int wn = 0;
                 if (wn++ < 120)

@@ -1,5 +1,48 @@
 # CHANGELOG
 
+## 2026-07-18 — Q5.1a: the Slot-Manager blocker re-localized —
+## the DAFB-sense theory is disproven, the fault is a decl-ROM parse
+
+Chased the Q5 boot blocker (VEC2 #14 sReadStruct overrun at $40900000 →
+POST serial console) instead of guessing. The prior working hypothesis —
+that our DAFB monitor-sense/version answers steer the ROM to a wrong
+video DrHW and so build a junk spBlock — is **DISPROVEN**: a grouped
+I/O trace shows the ROM never reads the DAFB sense ($1C) or version
+($2C) register at all during POST/Slot-Manager; the DAFB file sees only
+8 timing-config WRITES. Moreover this ROM does not touch our DAFB HLE
+address ($F9800000) at all — MEMCjr exposes the DAFB behind a 6-bit
+holding-register window ($5000E000/$50F0E0xx mirror + a video block at
+$50F18xxx), per MAME `djmemc.cpp:142-178`. So the sense HLE is dead code
+on the boot path (logged for Q8 when video paints).
+
+Re-localized: the faulting byte-lane copy is shared code entered via the
+low-mem `[$db8]` dispatch (both sReadStruct $408059E0 and the video
+builder $40806036 route through it, always on the Slot Manager's working
+block $0017FFC0). The copy that overruns runs on a *separate* decl-ROM
+sResource-insertion buffer at $003FF99E whose spSize=$0002FFFD was
+computed as `1 − (long at the ROM's video sRsrcType table $408F27B4)` =
+`1 − $30001` (see $40806036: `move.l $4(a4),d2; moveq #1,d1; sub.l
+d2,d1`). The ROM reads its own DrHW record table as if the first record
+header were an sBlock size. DrHW=$1C (High-Res 13") was picked.
+
+- **Why non-obvious / what this means**: $40900000 is emergent (grep of
+  Basilisk+MAME: zero hits) and a real Quadra 605 faults there too — so
+  the machine-visible DIVERGENCE that makes spSize *huge* has to be an
+  UPSTREAM value fed into the decl-ROM directory walk that plants
+  spsPointer=$408F27B4/spSize=$2FFFD into the $003FF99E buffer. That
+  producer is not yet caught (it is neither sReadStruct nor $40806036).
+  A real 605's writer plants a SMALL spSize. Next front is a
+  memory-write watch on spBlock+4/+8 + WinUAE co-sim of that window
+  (the O1-O5 method). The serial console at $408B9928 is entered
+  unconditionally by ONE POST-executive table entry ($4084AAA2 `bset
+  #$10,d7`), reached via the computed dispatch at $4084AA70; it is
+  downstream of the POST D7 state, which the sReadStruct fault poisons.
+- Tooling: `q605_trace --stop-skip N` (ignore the first N hits of
+  `--stop-at`, so a specific call in a hot routine can be isolated —
+  used to prove every sReadStruct/$40806036 call uses spBlock $0017FFC0,
+  ruling those two out as the producer). No machine/CPU code changed;
+  CTest 25/25 unchanged. Full analysis in `TODO.md § Q5.1a`.
+
 ## 2026-07-18 — Q3: the 68040 MMU translates in Moira — full grid
 ## 7 200/7 200 pinned, the LC 475 CPU side is complete
 
