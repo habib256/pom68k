@@ -64,6 +64,7 @@ add_library(pom68k_core STATIC
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
     src/Ncr5380.cpp       # M7 — SCSI controller (phase engine)
+    src/Ncr53c96.cpp      # Q6 — NCR 53C96 SCSI controller (Quadra 605)
     src/PseudoVia.cpp     # O6 — LC II pseudo-VIA (V8 interrupt core)
     src/V8Memory.cpp      # O6 — LC II memory map + V8 gate array
     src/Cpu030.cpp        # O6 — Moira 68030 wrapper (LC II)
@@ -181,6 +182,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(ncr5380_test tests/ncr5380_test.cpp)
     target_link_libraries(ncr5380_test PRIVATE pom68k_core)
     add_test(NAME ncr5380_test COMMAND ncr5380_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Q6 gate: the NCR 53C96 command-driven phase engine driven like the
+    # Mac OS 8.1 SCSI Manager on the Quadra 605 (soft-skips without an image).
+    add_executable(ncr53c96_test tests/ncr53c96_test.cpp)
+    target_link_libraries(ncr53c96_test PRIVATE pom68k_core)
+    add_test(NAME ncr53c96_test COMMAND ncr53c96_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # M7 gate: full ROM boot from SCSI hard disk to the Finder (soft-skips).
