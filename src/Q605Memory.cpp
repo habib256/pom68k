@@ -143,7 +143,11 @@ uint8_t Q605Memory::via2Access8(uint32_t addr, bool write, uint8_t v) {
     switch (reg) {
         case 0:  return pvPortB_;
         case 1: case 15: return nubusIrqs_;
-        case 13: return pvIfr_;
+        // IFR bit0 reflects the live SCSI DRQ line (pseudovia.cpp:162
+        // scsi_drq_w sets reg[3] |= 0x01). The Mac OS 8.1 SCSI driver polls
+        // this bit ($408D1FA2) between the 53C96's S_TC0 and its 16-byte
+        // pseudo-DMA window burst.
+        case 13: return (pvIfr_ & ~0x01) | (scsi_.drq() ? 0x01 : 0);
         case 14: return pvIer_;
         default: return 0;
     }

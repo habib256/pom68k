@@ -110,7 +110,9 @@ int main(int argc, char** argv) {
     if (scsiTo)
         mem.scsi().onAccess = [&](int reg, bool w, uint8_t v) {
             long long c = cpu.getClock();
-            if (c < scsiFrom || c > scsiTo || scsiRegLog++ > 400) return;
+            if (c < scsiFrom || c > scsiTo) return;
+            if (!w && reg == 4) return;          // skip the phase-poll spam
+            if (scsiRegLog++ > 400) return;
             std::printf("  SCSI %c reg%X = $%02X  (pc=$%08X clk=%lld)\n",
                         w ? 'W' : 'R', reg, v, cpu.getPC0(), c);
         };

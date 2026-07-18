@@ -30,6 +30,19 @@
 
 // ── FIFO ────────────────────────────────────────────────────────────────
 void Ncr53c96::fifoPush(uint8_t v) {
+    // In COMMAND phase after a select, FIFO writes ARE the command descriptor
+    // block. On real hardware the SELECT sequence streams the FIFO to the
+    // target (ncr53c90.cpp DISC_SEL_WAIT_REQ/SEND_BYTE, :544-570) and the
+    // target flips the phase once the whole CDB is in — the driver polls that
+    // phase change ($408D1A84) rather than issuing a Transfer Info. Model that
+    // functionally: accumulate the CDB and run the target as soon as it is
+    // complete, which advances phase_ out of COMMAND.
+    if (phase_ == COMMAND && disk_) {
+        cmd_.push_back(v);
+        if (int(cmd_.size()) >= cdbLength(cmd_[0])) runTarget();
+        updateDrq();
+        return;
+    }
     if (fifoPos_ < 16) fifo_[fifoPos_++] = v;
     updateDrq();
 }
@@ -47,11 +60,13 @@ void Ncr53c96::raiseIrq(uint8_t bits) { istatus_ |= bits; irq_ = istatus_ != 0; 
 
 // DRQ policy (ncr53c90.cpp:1207-1232 + c94 check_drq:1374). We assert DRQ
 // whenever a DMA transfer-info command is active and the FIFO can move a byte
-// in the required direction and the transfer count isn't exhausted. The
-// integrator uses this to hold off /DTACK on the pseudo-DMA window.
+// in the required direction. DRQ tracks CPU-side data availability and is
+// independent of S_TC0 (the SCSI-bus transfer count) — the driver polls S_TC0
+// to know a chunk has landed, then drains it through the window while DRQ
+// holds. The integrator uses DRQ to hold off /DTACK on the pseudo-DMA window.
 void Ncr53c96::updateDrq() {
     bool d = false;
-    if (dmaCommand_ && !(status_ & S_TC0)) {
+    if (dmaCommand_) {
         if (phase_ == DATA_IN)  d = dataInPos_ < dataIn_.size();
         else if (phase_ == DATA_OUT) d = dataOut_.size() < dataOutExpected_;
     }
@@ -142,7 +157,17 @@ uint8_t Ncr53c96::read(int reg) {
             }
             break;
         case R_SEQ:    v = seq_; break;                       // sequence step
-        case R_FLAGS:  v = uint8_t(fifoPos_ & 0x1F) | (uint8_t(seq_) << 5); break;
+        // FIFO flags: low 5 bits = byte count, top 3 = seq step. In DATA IN the
+        // payload is drained through dataIn_ (window/FIFO port), not the real
+        // FIFO array, so report the pending count there (the driver's DMA loop
+        // gates its 16-byte bulk read on bit4 = "≥16 bytes ready", $408D1FAC).
+        case R_FLAGS: {
+            uint32_t cnt = (phase_ == DATA_IN)
+                ? std::min<size_t>(dataIn_.size() - dataInPos_, 16)
+                : uint32_t(fifoPos_);
+            v = uint8_t(cnt & 0x1F) | (uint8_t(seq_) << 5);
+            break;
+        }
         case R_CONFIG1: v = config1_; break;
         case R_CONFIG2: v = config2_; break;
         case R_CONFIG3: v = config3_; break;
@@ -332,9 +357,20 @@ void Ncr53c96::transferInfo() {
     switch (phase_) {
         case DATA_IN:
             // Payload sits in dataIn_. Both the polled path (R_FIFO reads) and
-            // the DMA path (dmaRead) drain it directly and raise I_BUS
-            // (bus_complete) on the last byte. Nothing to stage here; DRQ just
-            // reflects that data is available for the DMA window.
+            // the DMA path (dmaRead) drain it directly. For a DMA transfer the
+            // chip first buffers `tcounter_` bytes off the SCSI bus and then
+            // lets the CPU drain them through the pseudo-DMA window; the Mac OS
+            // 8.1 driver polls S_TC0 (Status bit4) to know the requested count
+            // has landed BEFORE it bulk-reads 16 bytes at a time ($408D1F7C →
+            // $408D1FA2). Signal that here so the polled path unblocks.
+            if (dmaCommand_ && dataInPos_ < dataIn_.size()) {
+                status_ |= S_TC0;
+                // A completed DMA Transfer Info also raises the bus-service
+                // interrupt (ncr53c90.cpp:686 bus_complete): the driver drains
+                // the 16-byte window burst then waits on Status bit7 ($408D1FC0)
+                // and reads R_ISTAT ($408D1FC8) before the next chunk.
+                raiseIrq(I_BUS);
+            }
             updateDrq();
             break;
 
