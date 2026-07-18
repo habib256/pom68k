@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 2026-07-18 — Q6: NCR 53C96 wired into the Quadra 605 + the
+## sReadWord producer chain pinned (boot-integration round 1)
+
+Merged the standalone `Ncr53c96` controller (MAME `ncr53c90.cpp`
+reference: command-driven 16-byte FIFO, 24-bit transfer counter,
+pseudo-DMA data path) and its `ncr53c96_test` gate, then WIRED it into
+`Q605Memory`:
+- register file at PrimeTime+$10000 (absolute $50010000, reg =
+  (addr>>4)&$F per iosb.cpp:58-59 turboscsi_r);
+- pseudo-DMA port at $50010100 → dmaRead/dmaWrite, with the same
+  DRQ-gated /BERR holdoff the LC II V8 SCSI path already uses (the SCSI
+  Manager's blind transfers catch the bus error to terminate; a live
+  53C96 transfer count keeps DRQ asserted — macquadra605.cpp:206);
+- level-sensitive IRQ into the Quadra pseudo-VIA2 SCSI line, re-sampled
+  on every register/DMA access, IntStatus-read clears it
+  (macquadra605.cpp:204-206 → pseudovia.cpp:148);
+- `Q605Memory::attachScsi(path)` mounts the boot drive at SCSI ID 0.
+`q605_trace` grew `--disk/--scsi IMG` (attach at ID 0), Cuda PRAM
+persistence (q605_trace.pram + factory XPRAM), `--scsi-log FROM TO`
+(register/CDB trace window), and `--wwatch ADDR` (a RAM write-watch that
+dumps PC + A-registers on any store touching ADDR). ctest 26/26 (adds
+ncr53c96_test); the ROM reaches and exercises the 53C96 (1682 register
+reads, a bus RESET) but stops at the Q5 Slot-Manager overrun before it
+selects the target.
+
+**Blocker localization advanced (Q5.1b).** With `--wwatch` the exact
+producer of the junk spSize=$0002FFFD is now pinned. The fatal copy runs
+on spBlock $003FF99E; spSize is built by: `$40806C50` (sReadWord) reads
+four byte-lane bytes from spsPointer into d1 → `$40806C88 move.l d1,(a0)`
+stores that long into **spResult** (spBlock+0) → `$40806C26 move.l
+(a0),$8(a0)` copies spResult into spSize → `$40805990 move.l $8(a0),d0;
+subq.l #4,d0; $4080599E move.l d0,$8(a0)` makes spSize = spResult − 4.
+In the fatal call spsPointer=$408F27B4 (the ROM's own video DrHW
+sRsrcType record table), so spResult = long there = $00030001 → spSize =
+$0002FFFD. The TRUE upstream bug is that the `[$db8]` Slot-Manager
+sResource-list walk set spsPointer to the raw DrHW table instead of to a
+genuine sBlock header. Also corrected an O6-round claim: the DAFB at
+$F9800000 **is** on the boot path (the ROM zero-fills the whole register
+file at pc=$00006C5E and does 93k+ reads during video/Slot init); whether
+a DAFB read steers the DrHW pick ($1C = High-Res 13" was selected) is the
+next thing to instrument, then WinUAE-co-simulate the walk window.
+
 ## 2026-07-18 — Q5.1a: the Slot-Manager blocker re-localized —
 ## the DAFB-sense theory is disproven, the fault is a decl-ROM parse
 

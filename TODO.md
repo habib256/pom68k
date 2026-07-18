@@ -850,9 +850,62 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   this ROM drives DAFB through the MEMCjr holding window
   ($50F0E0xx / $50F18xxx); wire that path when video actually paints
   (MAME djmemc.cpp:142-178 dafb_holding_r/w + memcjr_r/w).
-- [ ] **Q6 — SCSI 53C96**: the one genuinely new peripheral (MAME
-  `ncr53c90.cpp` reference); `ScsiDisk` target reused as-is. Gate:
-  boot blocks read.
+- [~] **Q6 — SCSI 53C96** (DEVICE + WIRING DONE 2026-07-18, boot-blocks
+  read gated by the Q5 blocker upstream): `Ncr53c96` (MAME
+  `ncr53c90.cpp` reference — command-driven FIFO controller, 24-bit
+  transfer counter, pseudo-DMA), `ScsiDisk` target reused verbatim, unit
+  gate `ncr53c96_test` (READ CAPACITY/READ6/READ10 polled + pseudo-DMA,
+  selection timeout) green on the real `MacOS-8.1-boot.vhd`. WIRED into
+  `Q605Memory`: register file at $50010000 (reg=(addr>>4)&$F,
+  iosb.cpp:58-59), pseudo-DMA port at $50010100 with the same DRQ-gated
+  /BERR holdoff the LC II V8 path uses, level IRQ into the Quadra
+  pseudo-VIA2 SCSI line (re-sampled per access, IntStatus-read clears —
+  macquadra605.cpp:204-206). `q605_trace --disk IMG` attaches at ID 0
+  (+ q605_trace.pram Cuda persistence, --scsi-log, --wwatch RAM watch).
+  The ROM reaches and exercises the 53C96 (1682 register reads, bus
+  RESET issued) but the boot still stops at the Q5 Slot-Manager overrun
+  before it selects the target. Gate for the milestone (boot blocks
+  read) waits on Q5.1b below. ctest 26/26.
+
+  **Q5.1b — sReadWord producer chain PINNED (2026-07-18).** Round-1
+  integration re-traced the VEC2 #14 overrun with the new `--wwatch`
+  (RAM write-watch) + `--watch`/`--stop-skip`. The exact producer chain
+  is now nailed (all ROM-relative, base $40800000):
+  - The failing copy runs on spBlock $003FF99E with spSize=$0002FFFD,
+    spsPointer=$408F27B4. It is NOT the $40805A26 copy (every one of
+    those runs on $0017FFC0, confirmed by 120+ --watch hits): the fatal
+    loop that reaches A3=$40900000 is the SAME shared byte-lane copier
+    but entered on the $003FF99E block by a different caller.
+  - spSize is assembled thus: `$40806C50` (sReadWord: reads 4 byte-lane
+    bytes from spsPointer into d1) → `$40806C88 move.l d1,(a0)` stores
+    the assembled long into **spResult** (spBlock+0). In the fatal call
+    A1=spsPointer=$408F27B4, so spResult = long at $408F27B4 =
+    **$00030001** (the first video sRsrcType/DrHW record header, NOT an
+    sBlock size). Then `$40806C26 move.l (a0),$8(a0)` copies spResult →
+    spSize, and `$4080599E` (after `$40805990 move.l $8(a0),d0;
+    subq.l #4,d0`) writes spSize = $00030001 − 4 = **$0002FFFD**. Exact,
+    reproduced at clk 375703581/375704239.
+  - So the TRUE upstream bug is: **spsPointer was set to $408F27B4 (the
+    ROM's own DrHW sRsrcType record table) instead of to a real sBlock
+    header.** The producer of spsPointer is the `[$db8]` Slot-Manager
+    sResource-list walk (dispatch `move.l ([$db8],$e8/$dc/$ec),-(a7);
+    rts`); spByteLanes ($18(a0)) is $01010101 (all four lanes) in this
+    call. This is the frontier: which machine-visible value our Q605
+    reports differently from a real 605 makes the walk land spsPointer
+    on the raw DrHW table.
+  - **DAFB $F9800000 IS on the boot path after all** (the O6-round
+    "dead code" claim is wrong): the ROM zero-fills the whole DAFB
+    register file at pc=$00006C5E (clk~345M) and does 93k+ DAFB reads
+    during video/Slot init. Whether a DAFB read steers the DrHW pick is
+    still open — instrument the specific register the DrHW selector
+    consults (candidate: monitor sense; the record picked is
+    `00 03 00 01 00 01 00 1C`, DrHW $1C = High-Res 13").
+  Next (unchanged method, now with a sharper target): put `--watch` on
+  the `[$db8]` sResource-walk that writes spsPointer=$408F27B4 into
+  $003FF9A2, dump its inputs, then WinUAE-co-simulate that exact window
+  (O1-O5 method) — a real 605 plants a spsPointer to a genuine sBlock so
+  spSize stays small. Tools this round: `q605_trace --wwatch ADDR`,
+  `--disk`, `--scsi-log`.
 - [ ] **Q7 — Mac OS 8.1 boots**: `q605_trace` (lcii_trace clone: rings,
   probes, MMU walks). Gate: **`q605_boot_etalon`** (menu-bar/desktop
   metrics + SCSI count, same shape as lcii_boot_etalon).

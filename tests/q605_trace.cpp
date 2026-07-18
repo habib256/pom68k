@@ -157,10 +157,12 @@ int main(int argc, char** argv) {
             }
             if (watch && pc == watch) {
                 static int wn = 0;
-                if (wn++ < 120)
-                    std::printf("  WATCH $%08X #%d: D1=$%08X D6=$%08X D7=$%08X A0=$%08X A1=$%08X A6=$%08X clk=%lld\n",
-                                watch, wn, cpu.getD(1), cpu.getD(6), cpu.getD(7),
-                                cpu.getA(0), cpu.getA(1), cpu.getA(6),
+                uint32_t a0 = cpu.getA(0);
+                uint32_t spSize = uint32_t(mem.peek8(a0+8))<<24 | uint32_t(mem.peek8(a0+9))<<16 |
+                                  uint32_t(mem.peek8(a0+10))<<8 | mem.peek8(a0+11);
+                if (wn++ < 400)
+                    std::printf("  WATCH $%08X #%d: A0=$%08X spSize=$%08X A1=$%08X A3=$%08X A6=$%08X clk=%lld\n",
+                                watch, wn, a0, spSize, cpu.getA(1), cpu.getA(3), cpu.getA(6),
                                 (long long)cpu.getClock());
             }
             cpu.execute();
