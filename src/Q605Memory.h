@@ -36,6 +36,8 @@
 #include "Egret.h"
 #include "AdbBus.h"
 #include "Scc8530.h"
+#include "Ncr53c96.h"
+#include "ScsiDisk.h"
 #include <cstdint>
 #include <cstddef>
 #include <functional>
@@ -73,6 +75,15 @@ public:
     Egret& cuda() { return cuda_; }
     AdbBus& adb() { return adb_; }
     Scc8530& scc() { return scc_; }
+    Ncr53c96& scsi() { return scsi_; }
+    ScsiDisk& scsiDisk() { return scsiDisks_[0]; }  // boot drive (tests poke it)
+
+    // Attach a SCSI target from a backing image (boot drive = ID 0).
+    bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
+        if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
     bool cpuHeld() const { return cuda_.cpuHeld(); }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
@@ -87,6 +98,10 @@ public:
     // Debug hooks (q605_trace)
     std::function<void(uint32_t, bool, uint32_t)> onIoAccess;   // addr, isWrite, value
     std::function<void(uint32_t, bool)> onBusError;             // addr, isWrite
+    // RAM write-watch: fires onRamWrite(addr,size,value) when a write's
+    // byte range covers ramWatch_ (0 = disabled). Diagnostic only.
+    uint32_t ramWatch_ = 0;
+    std::function<void(uint32_t, int, uint32_t)> onRamWrite;
 
     // Quadra pseudo-VIA (VIA2) state — MAME devices/machine/pseudovia.cpp
     // quadra flavor: reg 0 = port B, 1/15 = port A (nubus IRQs, active
@@ -102,6 +117,9 @@ private:
     [[noreturn]] void busError(uint32_t addr, bool write) const;
     uint8_t ioRead8(uint32_t addr);
     void ioWrite8(uint32_t addr, uint8_t v);
+    uint8_t scsiDmaRead_();                  // DRQ-gated pseudo-DMA byte in
+    void    scsiDmaWrite_(uint8_t v);        // DRQ-gated pseudo-DMA byte out
+    void    scsiPoll_();                      // feed 53C96 irq()/drq() to VIA2
     uint8_t dafbRead8(uint32_t addr);
     void dafbWrite8(uint32_t addr, uint8_t v);
 
@@ -110,6 +128,8 @@ private:
     Egret cuda_{via1_, true};      // Cuda flavor: TIP/BYTEACK active low
     AdbBus adb_;
     Scc8530 scc_;
+    Ncr53c96 scsi_;                // TurboSCSI 53C96 (Q6)
+    ScsiDisk scsiDisks_[7];        // by SCSI ID; [0] = boot drive
     Cpu040* cpu_ = nullptr;
 
     uint32_t totalRam_;

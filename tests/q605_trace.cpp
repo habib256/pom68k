@@ -45,8 +45,10 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: %s <rom> [--cycles N] [--io N] [--berr N] [--pcring N]\n", argv[0]); return 2; }
     long long cycles = 200000000;   // 8 machine-seconds at 25 MHz
     int ioMax = 60, berrMax = 40; size_t pcRing = 32;
-    uint32_t stopAt = 0, watch = 0;
+    uint32_t stopAt = 0, watch = 0, wwatch = 0;
     long stopSkip = 0;                 // ignore the first N hits of --stop-at
+    std::string diskPath;             // --disk / --scsi: boot image at ID 0
+    long long scsiFrom = 0, scsiTo = 0;   // SCSI register-trace clock window
     for (int i = 2; i < argc; i++) {
         std::string a = argv[i];
         if (a == "--cycles" && i + 1 < argc) cycles = atoll(argv[++i]);
@@ -56,6 +58,9 @@ int main(int argc, char** argv) {
         else if (a == "--stop-at" && i + 1 < argc) stopAt = uint32_t(strtoul(argv[++i], nullptr, 16));
         else if (a == "--stop-skip" && i + 1 < argc) stopSkip = atol(argv[++i]);
         else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
+        else if ((a == "--disk" || a == "--scsi") && i + 1 < argc) diskPath = argv[++i];
+        else if (a == "--scsi-log" && i + 2 < argc) { scsiFrom = atoll(argv[++i]); scsiTo = atoll(argv[++i]); }
+        else if (a == "--wwatch" && i + 1 < argc) wwatch = uint32_t(strtoul(argv[++i], nullptr, 16));
     }
 
     std::ifstream in(argv[1], std::ios::binary);
@@ -71,7 +76,44 @@ int main(int argc, char** argv) {
     TraceCpu cpu(mem);
     mem.setCpu(&cpu);
 
+    // SCSI boot disk at ID 0 (the ROM's boot scan needs the $6A DDM entry;
+    // wrap bare images with tools/wrap_hfs.py). Seed factory XPRAM + a
+    // persisted PRAM the same way the LC II tracer does so the cold-boot
+    // full-RAM burn-in is skipped on re-runs.
+    if (!diskPath.empty())
+        std::printf("SCSI disk: %s %s\n", diskPath.c_str(),
+                    mem.attachScsi(diskPath) ? "attached" : "FAILED");
+    if (mem.cuda().loadPram("q605_trace.pram"))
+        std::printf("PRAM: q605_trace.pram loaded\n");
+    mem.cuda().factoryDefaults();
+
+    if (wwatch) {
+        mem.ramWatch_ = wwatch;
+        mem.onRamWrite = [&](uint32_t a, int sz, uint32_t v) {
+            static long n = 0;
+            if (n++ > 200) return;
+            std::printf("  WWATCH $%08X sz%d = $%0*X  pc=$%08X A0=$%08X A1=$%08X A2=$%08X A3=$%08X A4=$%08X clk=%lld\n",
+                        a, sz, sz * 2, v, cpu.getPC0(), cpu.getA(0), cpu.getA(1),
+                        cpu.getA(2), cpu.getA(3), cpu.getA(4), (long long)cpu.getClock());
+        };
+    }
+
     int ioSeen = 0, berrSeen = 0;
+    long scsiRegLog = 0, lastDma = 0;
+    mem.scsi().onCommand = [&](const std::vector<uint8_t>& cdb) {
+        std::printf("  SCSI CDB [");
+        for (uint8_t b : cdb) std::printf("%02X ", b);
+        std::printf("] (data since prev: %ld) clk=%lld\n",
+                    mem.scsi().dmaBytes - lastDma, (long long)cpu.getClock());
+        lastDma = mem.scsi().dmaBytes;
+    };
+    if (scsiTo)
+        mem.scsi().onAccess = [&](int reg, bool w, uint8_t v) {
+            long long c = cpu.getClock();
+            if (c < scsiFrom || c > scsiTo || scsiRegLog++ > 400) return;
+            std::printf("  SCSI %c reg%X = $%02X  (pc=$%08X clk=%lld)\n",
+                        w ? 'W' : 'R', reg, v, cpu.getPC0(), c);
+        };
     mem.onIoAccess = [&](uint32_t a, bool w, uint32_t v) {
         if (ioSeen++ < ioMax)
             std::printf("  IO  %c $%08X = $%02X  (pc=$%08X clk=%lld)\n", w ? 'W' : 'R', a, v, cpu.getPC0(),
@@ -265,5 +307,10 @@ int main(int argc, char** argv) {
         catch (...) { std::snprintf(da, sizeof da, "<dasm fault>"); }
         std::printf("  $%08X  %s\n", pc, da);
     }
+
+    std::printf("-- SCSI: reads=%ld writes=%ld selects=%ld commands=%ld dmaBytes=%ld lastCmd=$%02X --\n",
+                mem.scsi().reads, mem.scsi().writes, mem.scsi().selects,
+                mem.scsi().commands, mem.scsi().dmaBytes, mem.scsi().lastCmd);
+    mem.cuda().savePram("q605_trace.pram");
     return 0;
 }

@@ -45,6 +45,7 @@ void Q605Memory::reset() {
     via1_.reset();
     cuda_.reset();
     scc_.reset();
+    scsi_.reset();
     scc_.setCtsHigh(false);        // no serial debugger attached (POST check)
     viaPhase_ = 0;
     tickAcc_ = 0;
@@ -265,10 +266,15 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
             return uint8_t(memcjr_[idx] >> (8 * (3 - (base & 3))));
         return 0;
     }
-    if (base >= 0x10000 && base < 0x10100)       // TurboSCSI regs — Q6
-        return 0;
-    if (base >= 0x10100 && base < 0x10104)       // TurboSCSI DMA — Q6
-        return 0;
+    if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
+        // reg select = (addr>>4)&0xF (iosb.cpp:58-59 turboscsi_r reads
+        // m_ncr->read(offset>>4)); absolute reg N at PrimeTime+$10000+N*$10.
+        uint8_t d = scsi_.read((base >> 4) & 0xF);
+        scsiPoll_();
+        return d;
+    }
+    if (base >= 0x10100 && base < 0x10104)       // TurboSCSI pseudo-DMA — Q6
+        return scsiDmaRead_();
     if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000)
         return 0;                                // ASC — Q8 (stub)
     if ((sub & ~0xF00000u) >= 0x18000 && (sub & ~0xF00000u) < 0x1A000) {
@@ -313,7 +319,15 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         memcjr_[idx] = (memcjr_[idx] & ~(0xFFu << sh)) | (uint32_t(v) << sh);
         return;
     }
-    if (base >= 0x10000 && base < 0x10104) return;   // SCSI — Q6
+    if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
+        scsi_.write((base >> 4) & 0xF, v);
+        scsiPoll_();
+        return;
+    }
+    if (base >= 0x10100 && base < 0x10104) {     // TurboSCSI pseudo-DMA — Q6
+        scsiDmaWrite_(v);
+        return;
+    }
     if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000)
         return;                                      // ASC stub
     if ((sub & ~0xF00000u) >= 0x18000 && (sub & ~0xF00000u) < 0x1A000) {
@@ -326,6 +340,34 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;                                      // SWIM2 stub
 
     busError(addr, true);
+}
+
+// ── TurboSCSI pseudo-DMA (PrimeTime + $10100) ──
+// On a CPU access to the DMA window the PrimeTime/IOSB holds off completion
+// while !DRQ (MAME iosb.cpp:498-591 turboscsi_dma_r/w spin on the DRQ line).
+// Functionally we mirror the LC II V8 path: no data available (!drq) raises
+// /BERR, which the SCSI Manager's blind-transfer loops catch to terminate;
+// with a proper transfer count the 53C96 keeps DRQ asserted until the
+// payload is drained. macquadra605.cpp:206 drq_handler -> primetime
+// scsi_drq_w -> via2.
+uint8_t Q605Memory::scsiDmaRead_() {
+    if (!scsi_.drq()) busError(0x50010100, false);
+    uint8_t d = scsi_.dmaRead();
+    scsiPoll_();
+    return d;
+}
+
+void Q605Memory::scsiDmaWrite_(uint8_t v) {
+    if (!scsi_.drq()) busError(0x50010100, true);
+    scsi_.dmaWrite(v);
+    scsiPoll_();
+}
+
+// Level-sensitive IRQ/DRQ from the 53C96 into the Quadra pseudo-VIA2:
+// macquadra605.cpp:204-206 wires ncr1->irq_handler_cb -> primetime
+// scsi_irq_w -> via2 (pseudovia.cpp:148); IntStatus-read clears the IRQ.
+void Q605Memory::scsiPoll_() {
+    scsiIrq(scsi_.irq());
 }
 
 uint8_t Q605Memory::read8(uint32_t addr) {
@@ -375,6 +417,7 @@ uint16_t Q605Memory::read16(uint32_t addr) {
 void Q605Memory::write8(uint32_t addr, uint8_t v) {
     if (addr < 0x40000000) {
         if (overlay_) return;                    // ROM mirror: writes drop
+        if (ramWatch_ && onRamWrite && addr == ramWatch_) onRamWrite(addr, 1, v);
         if (addr < totalRam_) ram_[addr] = v;
         return;
     }
@@ -393,6 +436,8 @@ void Q605Memory::write8(uint32_t addr, uint8_t v) {
 
 void Q605Memory::write16(uint32_t addr, uint16_t v) {
     if (addr < 0x40000000 && !overlay_) {
+        if (ramWatch_ && onRamWrite && (addr == ramWatch_ || addr + 1 == ramWatch_))
+            onRamWrite(addr, 2, v);
         if (addr + 1 < totalRam_) {
             ram_[addr] = uint8_t(v >> 8);
             ram_[addr + 1] = uint8_t(v);
