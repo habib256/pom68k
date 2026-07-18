@@ -906,6 +906,67 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   (O1-O5 method) — a real 605 plants a spsPointer to a genuine sBlock so
   spSize stays small. Tools this round: `q605_trace --wwatch ADDR`,
   `--disk`, `--scsi-log`.
+
+  **Q5.1c — the fatal `_sReadStruct` call fully anatomised; DrHW pick
+  PROVEN correct; full-machine oracle blocked (2026-07-18, round 2).**
+  Traced the fatal spBlock ($003FF99E) end to end with `--wwatch` on
+  every field (+0/+4/+8/+C/+18/+$32) and `--stop-at` on the RAM
+  orchestrator:
+  - **The fatal sequence runs from RAM, not ROM.** At `$000094E0`
+    (low-RAM, the ROM's own trap/dispatch code copied down at boot) the
+    orchestrator does `move.b #$1,$32(a0)` (spID := $01 = sRsrcType) then
+    `moveq #$5,d0; $A06E` = internal Slot-Manager **`_sReadStruct`
+    (selector 5)** — WITHOUT first setting spSize. Confirmed spID=$01
+    written at $000094E0 (clk 375698538); spBlock+$32 = $01 at the fault.
+  - **`sFindStruct` on id $01 is CORRECT.** `$40806BA8-$40806BCE` scans
+    the sResource list for id == spID ($01), matches entry
+    `01 00 0A E8` at $408F1CC8 (id $01, 24-bit self-rel offset $0AE8),
+    stores spOffset=$0AE8 (`$40806BCA`) and spsPointer=$408F1CC8
+    (`$40806BCE`). `sOffsetData` (`$40805C80`/`$40805D04
+    add.l d5,$4(a0)`) then advances spsPointer by the byte-lane-scaled
+    offset to **$408F27B4**, the sRsrcType body `0003 0001 0001 001C`
+    (cat 3 Display / cType 1 / DrSW 1 / **DrHW $1C**). That landing is
+    RIGHT — it is exactly the DrHW record the search wants.
+  - **DrHW $1C (Hi-Res 13" 640×480) is the CORRECT selection** — NOT a
+    DAFB-sense artefact. MAME `dafb.cpp:204` sets the Quadra 605 default
+    `monitor_config` = **6** (Hi-Res 640×480), and `dafb.cpp:389-416`
+    returns sense = mon^7 = 6^7 = 1, which is exactly what our HLE
+    returns (`Q605Memory.cpp:166-168` `6u^7u`). So the video path picks
+    DrHW $1C on real hardware too. The DAFB-sense theory is dead for good.
+  - **The category error is in `_sReadStruct` selector 5 itself
+    ($40806BE0):** after `sFindStruct`+`sOffsetData` land spsPointer on
+    the sRsrcType body, the handler runs sub-selectors $06/$2E/$2F, tests
+    `move.w $4(a1),d0; bmi …` (a1=spResult; $4(a1)=DrSW word=$0001, so
+    POSITIVE → does NOT skip), runs $28, then `sReadWord` ([$db8],$dc)
+    reads the long at $408F27B4 = **$00030001** into spResult
+    (`$40806C88`), copies spResult→spSize (`$40806C26`), and `$4080599E`
+    subtracts 4 → spSize=**$0002FFFD**. The byte-lane copy then overruns
+    $D84C bytes to end-of-ROM $40900000 → ATC miss → VEC2 #14 (SR=$2000,
+    a genuine UNHANDLED data fault, unlike the SR=$2700 sExec probes
+    #1-13). VEC2 #15+ then carry corrupt A3=$5193D028 and the run ends in
+    the POST serial console ($408B9928).
+  - **So the divergence is data-driven and upstream of the CPU** (sst68040
+    7200/7200 green; the CPU executes this faithfully). Either (a) the
+    RAM orchestrator at $000094E0 SHOULD have set a small spSize before
+    selector 5 and a machine value earlier changed its branch, or (b) the
+    sRsrcType-vs-sBlock discriminator (`$40806BFA move.w $4(a1),d0; bmi`)
+    should have taken the skip branch (needs $4(a1) < 0). On a real 605
+    the copy never reaches $40900000, so one of those two upstream inputs
+    differs — findable ONLY by a full-machine reference.
+  - **Full-machine oracle attempt BLOCKED.** MAME `macqd605` uses exactly
+    our ROM (`ff7439ee.bin`, SHA1 1d833125…, matches) and a flatpak MAME
+    is installed, but it also **requires the Cuda 341S0788 ROM + Cuda
+    NVRAM** (`cuda.cpp:344`, CRC df6e1b43) which we do not have and cannot
+    obtain here — so MAME cannot boot the machine for co-simulation, and
+    the UAE oracle is instruction-level only (cannot answer machine-state
+    questions). This is the hard blocker for localizing the divergence;
+    it is NOT a CPU, DAFB-sense, or Slot-Manager-arithmetic bug.
+  Next (when a Cuda ROM or an alternate full-machine reference becomes
+  available): break MAME at $000094E0/$40806BFA, dump spBlock+$4(spResult)
+  and the selector-5 spSize, diff against ours; the single differing
+  input is the machine value to fix. Do NOT apply a speculative
+  size-clamp patch — it would mask the real divergence and risks the
+  passing POST.
 - [ ] **Q7 — Mac OS 8.1 boots**: `q605_trace` (lcii_trace clone: rings,
   probes, MMU walks). Gate: **`q605_boot_etalon`** (menu-bar/desktop
   metrics + SCSI count, same shape as lcii_boot_etalon).

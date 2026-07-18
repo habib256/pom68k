@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## 2026-07-18 — Q5.1c: the fatal `_sReadStruct` fully anatomised;
+## DrHW pick proven correct; full-machine oracle blocked (round 2)
+
+Chased the Q5 Slot-Manager overrun end to end with per-field `--wwatch`
+and `--stop-at` on the RAM orchestrator. New, proven facts:
+- **The fatal call originates in RAM.** At `$000094E0` (the ROM's own
+  dispatch code copied to low RAM at boot) the orchestrator sets
+  spID := $01 (sRsrcType) and invokes internal `_sReadStruct` (selector
+  5, `$A06E`) WITHOUT pre-setting spSize.
+- **`sFindStruct`/`sOffsetData` land correctly** on the DrHW sRsrcType
+  body $408F27B4 = `0003 0001 0001 001C` (DrHW $1C, Hi-Res 13").
+- **DrHW $1C is the CORRECT selection**, not a sense artefact: MAME
+  `dafb.cpp:204` defaults the Quadra 605 monitor to 6 (Hi-Res 640×480)
+  and `dafb.cpp:389-416` returns sense 6^7 = 1 — identical to our HLE
+  (`Q605Memory.cpp:166` `6u^7u`). The DAFB-sense theory is dead for good.
+- **The size blow-up is inside `_sReadStruct` selector 5 ($40806BE0):**
+  the sRsrcType-vs-sBlock discriminator `move.w $4(a1),d0; bmi` sees
+  DrSW=$0001 (positive) so it does NOT skip, then reads the long
+  $00030001 at $408F27B4 as a block size → spSize = $30001−4 = $2FFFD →
+  $D84C-byte overrun to end-of-ROM $40900000 → ATC miss → VEC2 #14
+  (SR=$2000, a real UNHANDLED fault, unlike the SR=$2700 empty-slot
+  probes) → boot ends in the POST serial console.
+- **Full-machine co-simulation is BLOCKED.** MAME `macqd605` accepts our
+  exact ROM (SHA1 1d833125…) but also demands the Cuda 341S0788 firmware
+  ROM + NVRAM (`cuda.cpp:344`), which we do not have; the UAE oracle is
+  instruction-level only. So the single upstream machine value that a
+  real 605 reports differently (making the copy never reach $40900000)
+  cannot be localized here. It is NOT the CPU (sst68040 7200/7200), the
+  DAFB sense, or Slot-Manager arithmetic — full detail + the exact
+  re-attack plan in TODO § Q5.1c. No speculative size-clamp applied (it
+  would mask the divergence and risks the passing POST).
+
 ## 2026-07-18 — Q6: NCR 53C96 wired into the Quadra 605 + the
 ## sReadWord producer chain pinned (boot-integration round 1)
 
