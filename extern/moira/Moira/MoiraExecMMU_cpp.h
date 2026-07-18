@@ -1831,7 +1831,8 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
 }
 
 template <Core C> void
-Moira::mmu040Fault(u32 addr, u32 val, int fc, bool write, int szCode)
+Moira::mmu040Fault(u32 addr, u32 val, int fc, bool write, int szCode,
+                   bool atc)
 {
     // WinUAE mmu_bus_error, 68040 branch — SSW + writeback capture
     u16 ssw = 0;
@@ -1881,7 +1882,7 @@ Moira::mmu040Fault(u32 addr, u32 val, int fc, bool write, int szCode)
         mmu040Lrmw = false;
     }
 
-    ssw |= 0x0400;                                      // ATC (MMU fault)
+    if (atc) ssw |= 0x0400;                             // ATC (MMU fault)
 
     u32 fa = addr;
     if (!mmu040AccFirst) {                              // split, later part
@@ -1906,6 +1907,11 @@ Moira::mmu040Read(u32 addr, bool data)
     mmu040AccBase = addr;
     mmu040AccFirst = true;
     mmu040AccSplit = false;
+    mmu040AccAddr = addr;                               // extBusError040
+    mmu040AccVal = 0;
+    mmu040AccSz = S == Byte ? 0 : S == Word ? 1 : 2;
+    mmu040AccWrite = false;
+    mmu040AccData = data;
 
     if constexpr (S == Byte) {
 
@@ -1994,6 +2000,11 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
     mmu040AccFirst = true;
     mmu040AccSplit = false;
     mmu040FullVal = val;
+    mmu040AccAddr = addr;                               // extBusError040
+    mmu040AccVal = val;
+    mmu040AccSz = S == Byte ? 0 : S == Word ? 1 : 2;
+    mmu040AccWrite = true;
+    mmu040AccData = data;
 
     if constexpr (S == Byte) {
 
@@ -2094,6 +2105,19 @@ Moira::mmu040PutMove16(u32 addr)
         write16((pa + 4 * i + 2) & addrMask<C>(), u16(mmu040Move16[i]));
     }
     SYNC(8);
+}
+
+void
+Moira::extBusError040()
+{
+    // External /BERR (unmapped I/O): the machine calls this from inside
+    // a bus callback; the captured access context builds the same
+    // format $7 frame as a translation fault, with SSW.ATC clear
+    // (WinUAE mmu_hardware_bus_error -> mmu_bus_error nonmmu = true).
+    bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0 : bool(reg.sr.s);
+    int fc = (super ? 4 : 0) | (mmu040AccData ? 1 : 2);
+    mmu040Fault<Core::C68020>(mmu040AccAddr, mmu040AccVal, fc,
+                              mmu040AccWrite, mmu040AccSz, false);
 }
 
 // Bus-fault exception processing: WinUAE m68k_run_mmu040 CATCH (restart:

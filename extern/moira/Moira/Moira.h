@@ -1186,6 +1186,24 @@ private:
     // M-bit walk) and faults carry SSW.LK with RW cleared
     bool mmu040Lrmw {};
 
+public:
+
+    // POM68K Q5 — external /BERR entry for the 68040 machine (the O6
+    // extBusError twin): called from INSIDE a read8/16 / write8/16 bus
+    // callback when the machine asserts /BERR (unmapped I/O). Replays
+    // the captured in-flight access into mmu040Fault with the ATC bit
+    // CLEAR (WinUAE mmu_hardware_bus_error, nonmmu = true).
+    [[noreturn]] void extBusError040();
+
+private:
+
+    // In-flight access context for extBusError040
+    u32 mmu040AccAddr {};
+    u32 mmu040AccVal {};
+    int mmu040AccSz {2};
+    bool mmu040AccWrite {};
+    bool mmu040AccData {true};
+
     bool mmu040Enabled() const { return (reg.tc040 & 0x8000) != 0; }
     u32 mmu040PageMaskI() const { return (reg.tc040 & 0x4000) ? 0xFFFFE000 : 0xFFFFF000; }
 
@@ -1205,9 +1223,11 @@ private:
                                           bool data, bool write, int szCode);
 
     // Fault capture + throw (WinUAE mmu_bus_error, 68040 branch);
-    // szCode: 0 = byte, 1 = word, 2 = long, 3 = MOVE16 line
+    // szCode: 0 = byte, 1 = word, 2 = long, 3 = MOVE16 line;
+    // atc = false for external /BERR (nonmmu — SSW.ATC stays clear)
     template <Core C> [[noreturn]] void mmu040Fault(u32 addr, u32 val, int fc,
-                                                    bool write, int szCode);
+                                                    bool write, int szCode,
+                                                    bool atc = true);
 
     // Translated read/write with 68040 page-boundary splitting
     template <Core C, Size S> u32 mmu040Read(u32 addr, bool data);

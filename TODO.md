@@ -687,11 +687,20 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   consumption + EA (`execFpuDisabled040`); FBcc pseudo-conditions
   registered on the 040 family; FMOVEM Dn/An/#imm stays Line-F.
   Gated by the same sst68040 corpora (random family).
-- [ ] **Q5 — machine skeleton**: djMEMC (RAM banks) + IOSB (pseudo-VIA
-  successor) from MAME `macquadra605.cpp`/`djmemc.cpp`/`iosb.cpp`;
-  **Cuda HLE** = light fork of Egret.cpp (same 68HC05 wire protocol);
-  internal video + CLUT (V8Video/Ariel experience applies); SWIM2
-  stubbed (SCSI boot only, like early LC II). Gate: POST passes, gray
+- [ ] **Q5 — machine skeleton** (IN PROGRESS 2026-07-18): first light —
+  `Q605Memory` (MEMCjr overlay/ROM + PrimeTime map: VIA1, Quadra
+  pseudo-VIA2 lite, SCC, MEMCjr/IOSB reg files, machine ID $A55A2221,
+  DAFB reg-file stub + 1 MB VRAM, unmapped-I/O /BERR via the new
+  `Moira::extBusError040`) + `Cpu040` wrapper + `q605_trace` dev tool;
+  Egret HLE reused as the Cuda (same 3-wire transport). MAME refs
+  fetched to `~/src/refs/mame-apple` (macquadra605/djmemc/iosb/
+  pseudovia/cuda). **Status: the FF7439EE ROM executes ($408xxxxx),
+  programs the SCC and parks in the POST serial-console wait loop at
+  $408B9928 (btst #0 on RR0)** — an earlier POST step fails and
+  diverts to the console; next: trace the failing step (likely Cuda
+  handshake, VIA1 ID bits or DAFB probe), then gray screen + cursor.
+  Remaining for the gate: real DAFB HLE (CLUT + Swatch VBL), Cuda
+  protocol deltas, TurboSCSI hookup (Q6). Gate: POST passes, gray
   screen + cursor.
 - [ ] **Q6 — SCSI 53C96**: the one genuinely new peripheral (MAME
   `ncr53c90.cpp` reference); `ScsiDisk` target reused as-is. Gate:

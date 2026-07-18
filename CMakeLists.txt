@@ -70,6 +70,8 @@ add_library(pom68k_core STATIC
     src/Egret.cpp         # O6 — Egret ADB/RTC/PRAM MCU (HLE)
     src/AdbBus.cpp        # O6 — ADB bus + HLE keyboard/mouse
     src/Asc.cpp           # O6 — ASC-V8 sound (FIFO A, 22 257 Hz)
+    src/Q605Memory.cpp    # Q5 — LC 475/Quadra 605 map (MEMCjr + PrimeTime)
+    src/Cpu040.cpp        # Q5 — Moira 68LC040 wrapper
 )
 target_include_directories(pom68k_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pom68k_core PUBLIC moira)
@@ -289,6 +291,10 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
 
     # Dev tool (not a gate): real LC II ROM boot trace on the O6 machine.
     add_executable(lcii_trace tests/lcii_trace.cpp)
+
+    # Dev tool (not a gate): LC 475 / Quadra 605 ROM boot trace (Q5).
+    add_executable(q605_trace tests/q605_trace.cpp)
+    target_link_libraries(q605_trace PRIVATE pom68k_core)
     target_link_libraries(lcii_trace PRIVATE pom68k_core)
 
     # Dev tool (not a gate): offline Mac ROM introspection (header,
