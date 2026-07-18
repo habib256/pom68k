@@ -34,7 +34,11 @@ class AdbBus;
 
 class Egret {
 public:
-    explicit Egret(Via6522& via);
+    // cudaPolarity: the Cuda's TIP (PB5) and BYTEACK (PB4) are ACTIVE
+    // LOW (Linux via-cuda.c) where the Egret's SYS_SESSION/VIA_FULL are
+    // active high — the wire protocol is otherwise identical, so the
+    // Cuda HLE is this Egret with the PB4/PB5 sense inverted (Q5).
+    explicit Egret(Via6522& via, bool cudaPolarity = false);
 
     void reset();                        // power-on: holds the 68030
     bool cpuHeld() const { return held_; }
@@ -76,6 +80,7 @@ private:
 
     Via6522& via_;
     AdbBus* adb_ = nullptr;
+    bool cudaPolarity_ = false;
 
     enum Phase { IDLE, HOST_CMD, RESP_DELAY, RESP_SEND };
     Phase phase_ = IDLE;
@@ -98,6 +103,7 @@ private:
     static constexpr int kResetHold = 100000;  // ≈6 ms power-on hold
     static constexpr int kQuietDelay = 100000; // gap between own packets
     int holdTimer_ = kResetHold;
-    int quiet_ = 0;                            // XCVR must be seen deasserted
+    int quiet_ = 0;
+    int syncDelay_ = 0;                        // Q5: delayed 2nd sync byte                            // XCVR must be seen deasserted
     bool initiated_ = false;                   // current resp is Egret-initiated
 };

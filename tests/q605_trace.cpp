@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: %s <rom> [--cycles N] [--io N] [--berr N] [--pcring N]\n", argv[0]); return 2; }
     long long cycles = 200000000;   // 8 machine-seconds at 25 MHz
     int ioMax = 60, berrMax = 40; size_t pcRing = 32;
-    uint32_t stopAt = 0;
+    uint32_t stopAt = 0, watch = 0;
     for (int i = 2; i < argc; i++) {
         std::string a = argv[i];
         if (a == "--cycles" && i + 1 < argc) cycles = atoll(argv[++i]);
@@ -42,6 +42,7 @@ int main(int argc, char** argv) {
         else if (a == "--berr" && i + 1 < argc) berrMax = atoi(argv[++i]);
         else if (a == "--pcring" && i + 1 < argc) pcRing = size_t(atoll(argv[++i]));
         else if (a == "--stop-at" && i + 1 < argc) stopAt = uint32_t(strtoul(argv[++i], nullptr, 16));
+        else if (a == "--watch" && i + 1 < argc) watch = uint32_t(strtoul(argv[++i], nullptr, 16));
     }
 
     std::ifstream in(argv[1], std::ios::binary);
@@ -57,7 +58,18 @@ int main(int argc, char** argv) {
     int ioSeen = 0, berrSeen = 0;
     mem.onIoAccess = [&](uint32_t a, bool w, uint32_t v) {
         if (ioSeen++ < ioMax)
-            std::printf("  IO  %c $%08X = $%02X  (pc=$%08X)\n", w ? 'W' : 'R', a, v, cpu.getPC0());
+            std::printf("  IO  %c $%08X = $%02X  (pc=$%08X clk=%lld)\n", w ? 'W' : 'R', a, v, cpu.getPC0(),
+                        (long long)cpu.getClock());
+    };
+    mem.cuda().onByte = [&](bool toCuda, uint8_t b) {
+        std::printf("  CUDA %s $%02X  (clk=%lld)\n", toCuda ? "<-" : "->", b,
+                    (long long)cpu.getClock());
+    };
+    mem.cuda().onEdge = [&](uint8_t pb, int phase, bool xcvr) {
+        static int n = 0;
+        if (n++ < 40)
+            std::printf("  EDGE pb=$%02X phase=%d xcvr=%d (clk=%lld)\n", pb, phase, xcvr,
+                        (long long)cpu.getClock());
     };
     mem.onBusError = [&](uint32_t a, bool w) {
         if (berrSeen++ < berrMax)
@@ -82,6 +94,14 @@ int main(int argc, char** argv) {
             ring[rp++ % ring.size()] = pc;
             pcCov[pc >> 16]++;
             if (stopAt && pc == stopAt) { stop = true; break; }
+            if (watch && pc == watch) {
+                static int wn = 0;
+                if (wn++ < 120)
+                    std::printf("  WATCH $%08X #%d: D1=$%08X D6=$%08X D7=$%08X A0=$%08X A1=$%08X A6=$%08X clk=%lld\n",
+                                watch, wn, cpu.getD(1), cpu.getD(6), cpu.getD(7),
+                                cpu.getA(0), cpu.getA(1), cpu.getA(6),
+                                (long long)cpu.getClock());
+            }
             cpu.execute();
         }
         if (stop) {
@@ -89,6 +109,13 @@ int main(int argc, char** argv) {
             for (int r = 0; r < 8; r++)
                 std::printf("  D%d=$%08X  A%d=$%08X\n", r, cpu.getD(r), r,
                             r == 7 ? cpu.getSP() : cpu.getA(r));
+            uint32_t a1 = cpu.getA(1);
+            std::printf("  [A1-32..A1+64]:");
+            for (int i = -32; i < 64; i++) {
+                if (i % 16 == 0) std::printf("\n   $%08X:", a1 + i);
+                std::printf(" %02X", mem.peek8(a1 + i));
+            }
+            std::printf("\n");
             break;
         }
         if (cpu.isHalted()) { std::printf("[q605_trace] CPU HALTED (double fault)\n"); break; }

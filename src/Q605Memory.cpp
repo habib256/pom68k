@@ -13,6 +13,13 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     rom_.assign(kRomSize, 0xFF);
     vram_.assign(kVramSize, 0);
     cuda_.setAdbBus(&adb_);
+    // A cold (unsigned) XPRAM makes the ROM run its LONG full-RAM
+    // burn-in on every boot and boots B&W — seed the Basilisk-verified
+    // 'NuMc' defaults (docs: macemu main.cpp:106-141)
+    cuda_.factoryDefaults();
+    // XPRAM $78/$7A: boot drive/driver 0 (Basilisk defaults) already 0;
+    // $8A |= $05 = 32-bit mode (Mac OS 8 requires 32-bit clean)
+    cuda_.setPram(0x8A, uint8_t(cuda_.pram(0x8A) | 0x05));
 }
 
 bool Q605Memory::loadRom(const std::vector<uint8_t>& data) {
@@ -153,6 +160,8 @@ void Q605Memory::dafbWrite8(uint32_t addr, uint8_t v) {
 uint8_t Q605Memory::ioRead8(uint32_t addr) {
     uint32_t sub = addr & 0x0FFFFFFF;
 
+    if (onIoAccess) onIoAccess(addr, false, 0xFFFFFFFF);   // pre-access probe log
+
     if (sub >= 0x0FFFFFFC)                       // machine ID (LC 475)
         return uint8_t(0xA55A2221u >> (8 * (3 - (sub & 3))));
 
@@ -164,7 +173,6 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
     if (base >= 0x0C000 && base < 0x0E000) {     // SCC, byte on D8-15
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
-        if (onIoAccess) onIoAccess(addr, false, d);
         return d;
     }
     if (base >= 0x0E000 && base < 0x10000) {     // MEMCjr regs
@@ -182,6 +190,9 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
         uint32_t byteInWord = sub & 1;
         return uint8_t(iosbRegs_[reg] >> (8 * (1 - byteInWord)));
     }
+    if ((sub & ~0xF00000u) >= 0x1A100 && (sub & ~0xF00000u) < 0x1A110)
+        return 0;   // PrimeTime II ATA/status window — ROM probes $1A101
+
     if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000)
         return 0xFF;                             // SWIM2 stub (no floppy)
 
@@ -190,6 +201,9 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
 
 void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
     uint32_t sub = addr & 0x0FFFFFFF;
+
+    if (onIoAccess) onIoAccess(addr, true, v);
+
     if (sub >= 0x0FFFFFFC) return;               // ID is read-only
 
     uint32_t base = sub & 0x0003FFFF;
@@ -201,7 +215,6 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if (base >= 0x0C000 && base < 0x0E000) {
         int ch = (base >> 1) & 1;
-        if (onIoAccess) onIoAccess(addr, true, v);
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
         return;
@@ -231,7 +244,9 @@ uint8_t Q605Memory::read8(uint32_t addr) {
     if (addr < 0x40000000) {
         if (overlay_) return rom_[addr & (kRomSize - 1)];
         if (addr < totalRam_) return ram_[addr];
-        busError(addr, false);
+        return 0xFF;        // open bus — the ROM's RAM sizing probes the
+                            // whole window and reads back its pattern
+                            // (MAME: unmapped space, no /BERR)
     }
     if (addr < 0x50000000) {                     // ROM window
         if (overlay_) overlay_ = false;          // djmemc rom_switch_r
@@ -254,7 +269,7 @@ uint16_t Q605Memory::read16(uint32_t addr) {
         }
         if (addr + 1 < totalRam_)
             return uint16_t(ram_[addr] << 8 | ram_[addr + 1]);
-        busError(addr, false);
+        return 0xFFFF;      // open bus (see read8)
     }
     if (addr < 0x50000000) {
         if (overlay_) overlay_ = false;
@@ -272,7 +287,7 @@ void Q605Memory::write8(uint32_t addr, uint8_t v) {
     if (addr < 0x40000000) {
         if (overlay_) return;                    // ROM mirror: writes drop
         if (addr < totalRam_) { ram_[addr] = v; return; }
-        busError(addr, true);
+        return;             // open bus: writes beyond RAM drop silently
     }
     if (addr < 0x50000000) return;               // ROM window (nopw)
     if (addr < 0x60000000) { ioWrite8(addr, v); return; }

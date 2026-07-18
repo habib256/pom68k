@@ -17,7 +17,8 @@ enum { kAutopoll = 0x01, kReadXPram = 0x02, kGetTime = 0x03, kGetPram = 0x07,
        kSendDfac = 0x0E, kResetSystem = 0x11 };
 } // namespace
 
-Egret::Egret(Via6522& via) : via_(via) {}
+Egret::Egret(Via6522& via, bool cudaPolarity)
+    : via_(via), cudaPolarity_(cudaPolarity) {}
 
 bool Egret::loadPram(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
@@ -100,6 +101,9 @@ void Egret::reset() {
 }
 
 void Egret::portBChanged(uint8_t pb) {
+    // Cuda flavor: fold the active-low TIP/BYTEACK into the Egret's
+    // active-high view (see Egret.h)
+    if (cudaPolarity_) pb ^= 0x30;
     const uint8_t rose = uint8_t(pb & ~lastPb_);
     const uint8_t fell = uint8_t(~pb & lastPb_);
     lastPb_ = pb;
@@ -115,24 +119,70 @@ void Egret::portBChanged(uint8_t pb) {
         if (phase_ == IDLE) {
             phase_ = HOST_CMD;
             cmd_.clear();
+            // Q5 Cuda: the FIRST command byte is already in the SR when
+            // TIP falls — the Cuda clocks it out at once; the SHIFT IFR
+            // ack is what the ROM polls ($408B3B22-32: move SR, bclr
+            // TIP, btst IFR.2)
+            if (cudaPolarity_) {
+                hostByte(via_.srValue());
+                via_.loadSR(via_.srValue());   // SHIFT ack, SR untouched
+            }
         } else if (phase_ == RESP_SEND && !via_.shiftPending()) {
             delay_ = kByteDelay;
         }
     }
 
     if (rose & 0x10) {                   // VIA_FULL rise: host byte ready
-        if (phase_ == HOST_CMD) hostByte(via_.srValue());
+        // Q5 Cuda startup sync: with the bus idle, the ROM toggles
+        // BYTEACK and expects the Cuda to acknowledge by asserting
+        // TREQ until the toggle is released (observed at $408A9F6A:
+        // ORB poll -> BYTEACK low -> wait TREQ low -> BYTEACK high).
+        if (phase_ == IDLE && cudaPolarity_ && !(pb & 0x20)) {
+            // ...and clocks one byte through the VIA shift register —
+            // the ROM waits for IFR bit 2 after each BYTEACK edge
+            // ($408A9FB0/$408A9FE0)
+            xcvr_ = true;
+            via_.loadSR(0xAA);
+        } else
+        if (phase_ == HOST_CMD) {
+            hostByte(via_.srValue());
+            // Cuda: every accepted command byte is SHIFT-acked
+            if (cudaPolarity_) via_.loadSR(via_.srValue());
+        }
         // In RESP_SEND the rise happens BEFORE the host reads the SR
         // (ROM $A14E72-76) — loading here would overwrite the byte.
         // (RESP_SEND: nothing to do — the byte is clocked on the FALL)
+        // Q5 Cuda flavor: BYTEACK is a per-byte TOGGLE (via-cuda.c
+        // `via[B] ^= TACK`) — EVERY transition consumes/clocks a byte,
+        // not just the falling half.
+        else if (phase_ == RESP_SEND && cudaPolarity_) {
+            if (!via_.shiftPending()) delay_ = kByteDelay;
+        }
     }
     if (fell & 0x10) {                   // VIA_FULL fall: byte consumed
+        if (phase_ == IDLE && cudaPolarity_) {
+            xcvr_ = false;               // startup-sync release
+            // The second sync byte must land AFTER the host's SR read
+            // that follows its TREQ-high check ($408A9FDC clears the
+            // SHIFT flag before waiting on it) — clock it a few µs late.
+            syncDelay_ = kByteDelay;
+        }
+        // Cuda: BYTEACK toggles on every byte — the falling half also
+        // delivers a command byte during a host session
+        if (phase_ == HOST_CMD && cudaPolarity_) {
+            hostByte(via_.srValue());
+            via_.loadSR(via_.srValue());
+        }
         if (phase_ == RESP_SEND) {
             if (!via_.shiftPending()) delay_ = kByteDelay;
         }
     }
 
     if (fell & 0x20) {                   // SYS_SESSION drop: command complete
+        // Q5 Cuda: the session close is SHIFT-acked too — after TIP
+        // rises the ROM waits one final SR byte ($408B3BA4-3BB6:
+        // ori #$30 -> wait TREQ high -> wait IFR.2 -> read SR)
+        if (cudaPolarity_) syncDelay_ = kByteDelay;
         if (phase_ == HOST_CMD) endCommand();
         // In RESP_SEND the host is done consuming: XPRAM reads are a
         // stream with no wire length — the ROM driver takes its count
@@ -295,6 +345,12 @@ void Egret::tick(int cpuCycles) {
     if (held_) {
         holdTimer_ -= cpuCycles;
         if (holdTimer_ <= 0) held_ = false;   // releases the 68030
+    } else if (firstTick_ && cudaPolarity_) {
+        // Q5: the Quadra ROM wants the Cuda IDLE (TREQ high) right after
+        // reset — it initiates the first transaction itself. No
+        // unsolicited power-on packet in the Cuda flavor; the periodic
+        // TIMER packets below stay.
+        firstTick_ = false;
     }
 
     secAcc_ += cpuCycles;
@@ -309,7 +365,10 @@ void Egret::tick(int cpuCycles) {
         // ticks use the short reader ($A153C6-flavour: sync + type +
         // final = 3 bytes).
         if (pending_.size() < 4) {
-            if (firstTick_) {
+            if (firstTick_ || cudaPolarity_) {
+                // Q5: the Quadra ROM's tick reader consumes the LONG
+                // form every time (it stalls mid-read on the 3-byte
+                // short form) — the Cuda flavor always sends it.
                 firstTick_ = false;
                 pending_.push_back({ 0x01, 0x03, 0x00,
                                      uint8_t(seconds_ >> 24), uint8_t(seconds_ >> 16),
@@ -319,6 +378,11 @@ void Egret::tick(int cpuCycles) {
                 pending_.push_back({ 0x01, 0x03, uint8_t(seconds_) });
             }
         }
+    }
+
+    if (syncDelay_ > 0) {
+        syncDelay_ -= cpuCycles;
+        if (syncDelay_ <= 0) { syncDelay_ = 0; via_.loadSR(0xAA); }
     }
 
     if (delay_ > 0) {

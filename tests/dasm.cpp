@@ -9,6 +9,8 @@
 #include "Cpu68k.h"
 #include "MacMemory.h"
 #include "Cpu030.h"
+#include "Cpu040.h"
+#include "Q605Memory.h"
 #include "V8Memory.h"
 #include <cstdio>
 #include <cstdlib>
@@ -31,6 +33,18 @@ int main(int argc, char** argv) {
         for (int i = 0; i < count; i++) {
             int bytes = cpu.disassemble(line, addr);
             std::printf("$%06X  %s\n", addr, line);
+            addr += uint32_t(bytes);
+        }
+        return 0;
+    }
+
+    if (rom.size() == Q605Memory::kRomSize) {       // Q5: 1 MB LC475 ROM
+        Q605Memory mem;
+        if (!mem.loadRom(rom)) { std::fprintf(stderr, "bad ROM\n"); return 2; }
+        Cpu040 cpu(mem);
+        for (int i = 0; i < count; i++) {
+            int bytes = cpu.disassemble(line, addr);
+            std::printf("$%08X  %s\n", addr, line);
             addr += uint32_t(bytes);
         }
         return 0;

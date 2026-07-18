@@ -107,7 +107,7 @@ private:
 
     std::vector<uint8_t> ram_, rom_, vram_;
     Via6522 via1_;
-    Egret cuda_{via1_};            // Cuda-compatible HLE (Egret transport)
+    Egret cuda_{via1_, true};      // Cuda flavor: TIP/BYTEACK active low
     AdbBus adb_;
     Scc8530 scc_;
     Cpu040* cpu_ = nullptr;
