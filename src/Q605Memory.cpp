@@ -32,6 +32,7 @@ void Q605Memory::reset() {
     via1_.reset();
     cuda_.reset();
     scc_.reset();
+    scc_.setCtsHigh(false);        // no serial debugger attached (POST check)
     viaPhase_ = 0;
     tickAcc_ = 0;
     framePos_ = 0;

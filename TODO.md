@@ -697,8 +697,18 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   pseudovia/cuda). **Status: the FF7439EE ROM executes ($408xxxxx),
   programs the SCC and parks in the POST serial-console wait loop at
   $408B9928 (btst #0 on RR0)** — an earlier POST step fails and
-  diverts to the console; next: trace the failing step (likely Cuda
-  handshake, VIA1 ID bits or DAFB probe), then gray screen + cursor.
+  diverts to the console. Findings so far (q605_trace --stop-at):
+  RAM POST passes (zero /BERR), the ROM's FPU probe works through the
+  Q4 format-$4 frame (VBR-shifted FNOP at $40804654 → handler
+  $40847054 → "no FPU" path ✓), the ASC boot-chime loop runs
+  ($408070F8, $200-strided banks), then the table-driven POST
+  executive ($40802F82, table A1=$408A8080) enters the console entry
+  ($408B9F58, device rec A0=$408A8680) with D6=$1 D7=$30 — WITHOUT
+  ever touching VIA1/Cuda, so the failing step is upstream of the ADB
+  path: prime suspects are the MEMCjr/DAFB probe (our reg-file stub
+  echoes writes) and the VRAM/monitor sense. Next: identify the table
+  entry that set the error, implement the real DAFB HLE (CLUT +
+  Swatch + sense), then gray screen + cursor.
   Remaining for the gate: real DAFB HLE (CLUT + Swatch VBL), Cuda
   protocol deltas, TurboSCSI hookup (Q6). Gate: POST passes, gray
   screen + cursor.

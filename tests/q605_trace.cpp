@@ -34,12 +34,14 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: %s <rom> [--cycles N] [--io N] [--berr N] [--pcring N]\n", argv[0]); return 2; }
     long long cycles = 200000000;   // 8 machine-seconds at 25 MHz
     int ioMax = 60, berrMax = 40; size_t pcRing = 32;
+    uint32_t stopAt = 0;
     for (int i = 2; i < argc; i++) {
         std::string a = argv[i];
         if (a == "--cycles" && i + 1 < argc) cycles = atoll(argv[++i]);
         else if (a == "--io" && i + 1 < argc) ioMax = atoi(argv[++i]);
         else if (a == "--berr" && i + 1 < argc) berrMax = atoi(argv[++i]);
         else if (a == "--pcring" && i + 1 < argc) pcRing = size_t(atoll(argv[++i]));
+        else if (a == "--stop-at" && i + 1 < argc) stopAt = uint32_t(strtoul(argv[++i], nullptr, 16));
     }
 
     std::ifstream in(argv[1], std::ios::binary);
@@ -74,11 +76,20 @@ int main(int argc, char** argv) {
     while (done < cycles) {
         if (mem.cpuHeld()) { mem.tick(int(slice)); done += slice; continue; }
         moira::i64 t = cpu.getClock() + slice;
+        bool stop = false;
         while (cpu.getClock() < t && !cpu.isHalted()) {
             uint32_t pc = cpu.getPC0();
             ring[rp++ % ring.size()] = pc;
             pcCov[pc >> 16]++;
+            if (stopAt && pc == stopAt) { stop = true; break; }
             cpu.execute();
+        }
+        if (stop) {
+            std::printf("[q605_trace] STOP at $%08X\n", stopAt);
+            for (int r = 0; r < 8; r++)
+                std::printf("  D%d=$%08X  A%d=$%08X\n", r, cpu.getD(r), r,
+                            r == 7 ? cpu.getSP() : cpu.getA(r));
+            break;
         }
         if (cpu.isHalted()) { std::printf("[q605_trace] CPU HALTED (double fault)\n"); break; }
         done += slice;
