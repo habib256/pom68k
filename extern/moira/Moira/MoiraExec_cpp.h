@@ -67,9 +67,11 @@ Moira::execLineF(u16 opcode)
     // every coprocessor id take a privilege violation BEFORE the Line-F
     // trap — but only for the EA modes a real cpSAVE/cpRESTORE decodes
     // (WinUAE op_illg -> privileged_copro_instruction).
+    // Q3: 020/030 ONLY — the 68040 has no coprocessor interface and its
+    // op_illg goes straight to Line-F (fresh-seed arbitrated 2026-07-18).
     if constexpr (C == Core::C68020) {
 
-        if (!reg.sr.s) {
+        if (!reg.sr.s && cpuModel < Model::M68EC040) {
 
             int mode = opcode >> 3 & 7;
             int rg = opcode & 7;
@@ -1571,6 +1573,9 @@ Moira::execCas(u16 opcode)
     // the 68030 (SSW RM bit, RWM-only TT matching, write-probed ATC)
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
+        // POM68K Q3: 68040 locked RMW — reads translate as writes and
+        // faults carry SSW.LK (WinUAE uae_mmu_get_lrmw)
+        if (cpuModel >= Model::M68EC040) [[unlikely]] mmu040Lrmw = true;
     }
 
     readExt<C>();
@@ -1916,6 +1921,25 @@ Moira::execClr(u16 opcode)
         int dst = _____________xxx(opcode);
 
         u32 ea, data;
+
+        // POM68K Q3: the 68040 CLR is a pure store (gencpu genastore) —
+        // no destination read (which would fault/update U where the
+        // oracle only writes); flags final before the last write
+        if (C == Core::C68020 && cpuModel >= Model::M68EC040) {
+
+            ea = computeEA<C, M, S>(dst);
+            updateAn<M, S>(dst);
+            prefetch<C, POLL>();
+
+            reg.sr.n = 0;
+            reg.sr.z = 1;
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+
+            writeOp<C, M, S>(dst, ea, 0);
+
+        } else {
+
         readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
 
         prefetch<C, POLL>();
@@ -1932,6 +1956,8 @@ Moira::execClr(u16 opcode)
         reg.sr.z = 1;
         reg.sr.v = 0;
         reg.sr.c = 0;
+
+        }
     }
 
     if constexpr (C == Core::C68010) {
@@ -2917,7 +2943,7 @@ Moira::execMove2(u16 opcode)
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
-            if (cpuModel == Model::M68030) {
+            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
                 reg.sr.n = NBIT<S>(data);
                 reg.sr.z = ZERO<S>(data);
                 reg.sr.v = 0;
@@ -2951,7 +2977,7 @@ Moira::execMove2(u16 opcode)
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
-            if (cpuModel == Model::M68030) {
+            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
                 reg.sr.n = NBIT<S>(data);
                 reg.sr.z = ZERO<S>(data);
                 reg.sr.v = 0;
@@ -2974,7 +3000,7 @@ Moira::execMove2(u16 opcode)
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
-            if (cpuModel == Model::M68030) {
+            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
                 reg.sr.n = NBIT<S>(data);
                 reg.sr.z = ZERO<S>(data);
                 reg.sr.v = 0;
@@ -3008,7 +3034,7 @@ Moira::execMove2(u16 opcode)
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
-            if (cpuModel == Model::M68030) {
+            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
                 reg.sr.n = NBIT<S>(data);
                 reg.sr.z = ZERO<S>(data);
                 reg.sr.v = 0;
@@ -3071,7 +3097,7 @@ Moira::execMove3(u16 opcode)
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
-        if (cpuModel == Model::M68030) {
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
             reg.sr.n = NBIT<S>(data);
             reg.sr.z = ZERO<S>(data);
             reg.sr.v = 0;
@@ -3095,7 +3121,7 @@ Moira::execMove3(u16 opcode)
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
-            if (cpuModel == Model::M68030) {
+            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
                 reg.sr.n = NBIT<S>(data);
                 reg.sr.z = ZERO<S>(data);
                 reg.sr.v = 0;
@@ -3129,7 +3155,7 @@ Moira::execMove3(u16 opcode)
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
-            if (cpuModel == Model::M68030) {
+            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
                 reg.sr.n = NBIT<S>(data);
                 reg.sr.z = ZERO<S>(data);
                 reg.sr.v = 0;
@@ -3218,12 +3244,15 @@ Moira::execMove4(u16 opcode)
     // (gencpu Apdi order), the write is the instruction's last (format $A
     // fault frame, updated CCR), and longs go out high word first
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] {
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) [[unlikely]] {
 
             updateAn<Mode::PD, S>(dst);
-            mmuState[1] |= 0x0100;              // LASTWRITE
+            mmuState[1] |= 0x0100;              // LASTWRITE (030 frames)
             mmuLastWritePc = reg.pc;
+            mmu040LastWrite = true;             // POM68K Q3 (040 frames)
+            mmu040LastWritePc = reg.pc;
             writeM<C, Mode::PD, S>(ea, data);
+            mmu040LastWrite = false;
 
             //           00  10  20        00  10  20        00  10  20
             //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -3288,7 +3317,7 @@ Moira::execMove5(u16 opcode)
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
-        if (cpuModel == Model::M68030) {
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
             reg.sr.n = NBIT<S>(data);
             reg.sr.z = ZERO<S>(data);
             reg.sr.v = 0;
@@ -3313,7 +3342,7 @@ Moira::execMove5(u16 opcode)
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
-        if (cpuModel == Model::M68030) {
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
             reg.sr.n = NBIT<S>(data);
             reg.sr.z = ZERO<S>(data);
             reg.sr.v = 0;
@@ -3363,7 +3392,7 @@ Moira::execMove6(u16 opcode)
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
-        if (cpuModel == Model::M68030) {
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
             reg.sr.n = NBIT<S>(data);
             reg.sr.z = ZERO<S>(data);
             reg.sr.v = 0;
@@ -3388,7 +3417,7 @@ Moira::execMove6(u16 opcode)
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
-        if (cpuModel == Model::M68030) {
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
             reg.sr.n = NBIT<S>(data);
             reg.sr.z = ZERO<S>(data);
             reg.sr.v = 0;
@@ -3516,7 +3545,17 @@ Moira::execMove8(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // POM68K Q3: the ABS.L destination's second word is consumed
+        // AFTER the write (68000 prefetch order kept on this path) —
+        // pre-arm the last-write marker with the true next-instruction
+        // PC so a 68040 write fault stacks it
+        if (C == Core::C68020 && cpuModel >= Model::M68EC040) {
+            mmu040LastWrite = true;
+            mmu040LastWritePc = reg.pc + 2;
+        }
         writeM<C, Mode::AL, S>(ea2, data);
+        if (C == Core::C68020 && cpuModel >= Model::M68EC040)
+            mmu040LastWrite = false;
         readExt<C>();
 
     } else {
@@ -3531,7 +3570,7 @@ Moira::execMove8(u16 opcode)
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
-        if (cpuModel == Model::M68030) {
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
             reg.sr.n = NBIT<S>(data);
             reg.sr.z = ZERO<S>(data);
             reg.sr.v = 0;
@@ -3774,6 +3813,14 @@ Moira::execMovemEaRg(u16 opcode)
             logSave = mmuLogging;
             mmuLogging = false;
         }
+        // POM68K Q3: 68040 MOVEM restart latch (WinUAE mmu040_movem) —
+        // a faulted MOVEM resumes from the saved EA after the handler's
+        // RTE re-arms the latch (SSW.CM); a fault stacks EA = saved EA
+        if (cpuModel >= Model::M68EC040) [[unlikely]] {
+            if (mmu040MovemArmed) ea = mmu040MovemEa;
+            mmu040MovemArmed = true;
+            mmu040MovemEa = ea;
+        }
     }
 
     // Check for address error
@@ -3787,7 +3834,8 @@ Moira::execMovemEaRg(u16 opcode)
         throw AddressError(makeFrame<AE_SET_DF|AE_SET_RW>(ea));
     }
 
-    if constexpr (S == Long) { if (!mmu030) (void)read<C, AddrSpace::DATA, Word>(ea); }
+    // POM68K Q3: the 68040 has no 68000-style guard reads either
+    if constexpr (S == Long) { if (!mmu030 && cpuModel < Model::M68EC040) (void)read<C, AddrSpace::DATA, Word>(ea); }
 
     if constexpr (M == Mode(3)) {     // (An)+
 
@@ -3817,9 +3865,10 @@ Moira::execMovemEaRg(u16 opcode)
             if (mmu030) mmuState[0]++;
         }
     }
-    if constexpr (S == Word) { if (!mmu030) (void)read<C, AddrSpace::DATA, Word>(ea); }
+    if constexpr (S == Word) { if (!mmu030 && cpuModel < Model::M68EC040) (void)read<C, AddrSpace::DATA, Word>(ea); }
 
     if (mmu030) mmuLogging = logSave;
+    if (cpuModel >= Model::M68EC040) mmu040MovemArmed = false;  // POM68K Q3
 
     prefetch<C, POLL>();
 
@@ -3865,11 +3914,22 @@ Moira::execMovemRgEa(u16 opcode)
             for (int i = 0; i < 16; i++) if (mask & (1 << i)) total++;
         }
     }
+    const bool m040 = C == Core::C68020 && cpuModel >= Model::M68EC040;
 
     if constexpr (M == Mode(4)) {     // -(An)
 
         u32 ea = readA(dst);
         const u32 initial = ea;
+
+        // POM68K Q3: 68040 restart latch — the saved EA is the BASE
+        // (WinUAE op_48e0_31: decrements happen per transfer); An is
+        // only written at the end, and the base-in-list value is
+        // initial - S without the mid-loop writeA below
+        if (m040) {
+            if (mmu040MovemArmed) ea = mmu040MovemEa;
+            mmu040MovemArmed = true;
+            mmu040MovemEa = ea;
+        }
 
         for (int i = 15; i >= 0; i--) {
 
@@ -3906,6 +3966,13 @@ Moira::execMovemRgEa(u16 opcode)
                 }
                 writeM<C, M, S>(ea, value);
 
+            } else if (m040) {
+
+                // POM68K Q3: no mid-loop An update; base-in-list stores
+                // initial - S (WinUAE `areg - predec`, An untouched)
+                u32 value = (i == dst + 8) ? U32_SUB(initial, S) : reg.r[i];
+                writeM<C, M, S>(ea, value);
+
             } else {
 
                 if constexpr (C == Core::C68020 && !MOIRA_MIMIC_MUSASHI) {
@@ -3917,10 +3984,18 @@ Moira::execMovemRgEa(u16 opcode)
             if (mmu030) mmuState[0]++;
         }
         writeA(dst, ea);
+        if (m040) mmu040MovemArmed = false;     // POM68K Q3
 
     } else {
 
         u32 ea = computeEA<C, M, S, MMU_NOFIXUP>(dst);
+
+        // POM68K Q3: 68040 restart latch (see the -(An) branch)
+        if (m040) {
+            if (mmu040MovemArmed) ea = mmu040MovemEa;
+            mmu040MovemArmed = true;
+            mmu040MovemEa = ea;
+        }
 
         for(int i = 0; i < 16; i++) {
 
@@ -3952,6 +4027,7 @@ Moira::execMovemRgEa(u16 opcode)
             cnt++;
             if (mmu030) mmuState[0]++;
         }
+        if (m040) mmu040MovemArmed = false;     // POM68K Q3
     }
 
     if (mmu030) mmuLogging = logSave;
@@ -4109,6 +4185,17 @@ Moira::execMoves(u16 opcode)
         // Make the DFC register visible on the FC pins
         fcSource = 2;
 
+        // POM68K Q3: 68040 MOVES — DFC drives the translation (super =
+        // dfc&4, data space), the store is the last write, and a fault
+        // mangles the SSW fc (WinUAE ismoves)
+        if constexpr (C == Core::C68020) {
+            if (cpuModel >= Model::M68EC040) [[unlikely]] {
+                mmu040Moves = int(reg.dfc);
+                mmu040LastWrite = true;
+                mmu040LastWritePc = reg.pc;
+            }
+        }
+
         // POM68K O4 slice 3: MOVES Rg,Ea is the instruction's last write
         // on the 68030 (gencpu genastore_fc → gen_set_fault_pc), and the
         // pending-write buffer holds the FULL source register (gencpu
@@ -4143,6 +4230,10 @@ Moira::execMoves(u16 opcode)
             // writeOp<C, M, S>(dst, value);
             try {
                 writeM<C, M, S, AE_INC_PC>(ea, value);
+                if (cpuModel >= Model::M68EC040) {          // POM68K Q3
+                    mmu040Moves = -1;
+                    mmu040LastWrite = false;
+                }
             } catch (AddressError &exc) {
 
                 writeBuffer = (S == Long ? u16(value >> 16) : u16(value & 0xFFFF));
@@ -4182,6 +4273,13 @@ Moira::execMoves(u16 opcode)
         // Make the SFC register visible on the FC pins
         fcSource = 1;
 
+        // POM68K Q3: 68040 MOVES — SFC drives the translation and the
+        // SSW fc mangling on a fault (WinUAE ismoves / sfc_get_*)
+        if constexpr (C == Core::C68020) {
+            if (cpuModel >= Model::M68EC040) [[unlikely]]
+                mmu040Moves = int(reg.sfc);
+        }
+
         if constexpr (M == Mode::AI) SYNC(6);
         if constexpr (M == Mode::PI) SYNC(8);
         if constexpr (M == Mode::PD) SYNC(6);
@@ -4191,6 +4289,7 @@ Moira::execMoves(u16 opcode)
         if constexpr (M == Mode::AL) SYNC(4);
 
         u32 data = readM<C, M, S>(ea);
+        if (cpuModel >= Model::M68EC040) mmu040Moves = -1;
 
         if (dst < 8) {
             writeR<S>(dst, data);
@@ -6312,6 +6411,8 @@ Moira::execTasEa(u16 opcode)
         // POM68K O4 slice 3: TAS = locked RMW cycle on the 68030
         if constexpr (C == Core::C68020) {
             if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
+            // POM68K Q3: 68040 locked RMW (see CAS)
+            if (cpuModel >= Model::M68EC040) [[unlikely]] mmu040Lrmw = true;
         }
 
         readOp<C, M, Byte>(dst, &ea, &data);
@@ -6601,9 +6702,10 @@ Moira::execMove16PiPi(u16 opcode)
     u32 src = reg.a[ax] & ~u32(15);
     u32 dst = reg.a[ay] & ~u32(15);
 
-    u32 v[4];
-    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
-    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+    // POM68K Q3: the line moves through translation with the MOVE16
+    // fault conventions (SSW SIZE_CL|TT0, line buffer in the frame)
+    mmu040GetMove16<C>(src);
+    mmu040PutMove16<C>(dst);
 
     if (ax != ay) reg.a[ax] += 16;
     reg.a[ay] += 16;
@@ -6626,9 +6728,8 @@ Moira::execMove16PiAl(u16 opcode)
     u32 src = reg.a[an] & ~u32(15);
     u32 dst = abs & ~u32(15);
 
-    u32 v[4];
-    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
-    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+    mmu040GetMove16<C>(src);        // POM68K Q3: translated line transfer
+    mmu040PutMove16<C>(dst);
 
     reg.a[an] += 16;
 
@@ -6650,9 +6751,8 @@ Moira::execMove16AlPi(u16 opcode)
     u32 src = abs & ~u32(15);
     u32 dst = reg.a[an] & ~u32(15);
 
-    u32 v[4];
-    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
-    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+    mmu040GetMove16<C>(src);        // POM68K Q3: translated line transfer
+    mmu040PutMove16<C>(dst);
 
     reg.a[an] += 16;
 
@@ -6674,9 +6774,8 @@ Moira::execMove16AiAl(u16 opcode)
     u32 src = reg.a[an] & ~u32(15);
     u32 dst = abs & ~u32(15);
 
-    u32 v[4];
-    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
-    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+    mmu040GetMove16<C>(src);        // POM68K Q3: translated line transfer
+    mmu040PutMove16<C>(dst);
 
     prefetch<C, POLL>();
 
@@ -6696,9 +6795,8 @@ Moira::execMove16AlAi(u16 opcode)
     u32 src = abs & ~u32(15);
     u32 dst = reg.a[an] & ~u32(15);
 
-    u32 v[4];
-    for (int i = 0; i < 4; i++) v[i] = readM<C, M, Long>(src + 4 * i);
-    for (int i = 0; i < 4; i++) writeM<C, M, Long>(dst + 4 * i, v[i]);
+    mmu040GetMove16<C>(src);        // POM68K Q3: translated line transfer
+    mmu040PutMove16<C>(dst);
 
     prefetch<C, POLL>();
 

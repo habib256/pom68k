@@ -815,6 +815,69 @@ DOTRACE on a plain state load (phantom vector-9 corpus vectors carrying
 the previous vector's `trace_pc`), and the `mmu040_movem` restart latch
 leaked a faulted MOVEM's saved EA into the next vector's MOVEM.
 
+## 68040 MMU bus translation (2026-07-18, Q3)
+
+Bus-level 040 translation runs on every access for `cpuModel >=
+M68EC040`, modelled on WinUAE `cpummu.c` (the oracle's mmu040 build) and
+converged by the Phase-3 loop over the full 4×3 family×mmu grid —
+**7 200/7 200 pinned** (`tests/data/sst68040`, 11 cells) plus 6 400/6 400
+on fresh seeds 301-308; sst68030 (3 082), the Q2 corpora, and sst68000
+are unregressed. New section at the end of `MoiraExecMMU_cpp.h`:
+
+- **Translation core** (`mmu040Translate`/`mmu040Walk`/`mmu040MatchTTR`):
+  ITT/DTT pair match first (S-field decode, WP faults writes even with
+  TC.E off), then the URP/SRP 3-level walk (WinUAE `mmu_fill_atc`:
+  supervisor-fc physical descriptor fetches, U maintenance on the upper
+  levels, one indirection, U+M on the page — U only when the write will
+  fault — WP accumulated over all levels). No architectural ATC is
+  modelled: the oracle flushes its ATC on every state load, so
+  walk-per-access is observably identical (idempotent U/M rewrites);
+  PFLUSH stays a no-op, PTEST reports the walk (or TTR hit) in MMUSR040.
+- **Access model** (`mmu040Read/Write`): page-boundary splitting exactly
+  like the WinUAE accessors (word straddling = byte+byte; long = word
+  halves when even, four bytes when odd; each part translated with the
+  ORIGINAL size in the SSW); later parts fault with FA = the base
+  address and SSW.MA (`misalignednotfirst`); split write faults report
+  the FULL value in WB3D. Locked RMW (TAS/CAS) translates DATA accesses
+  as writes from the read on and faults with SSW.LK, RW stripped; MOVES
+  translates under SFC/DFC with the `ismoves` SSW fc mangling.
+- **No prefetch queue** (mode-5 pattern, shared with the 030):
+  `mmu040InstrStart` fetches opcode + irc through translation at every
+  instruction start; `readExt` refetches at consumption; queue refills
+  and jump-target fetches are suppressed (a tail refill would fault
+  pages WinUAE only reads at the next step). Same one-word-lookahead
+  known limit as the 030.
+- **Format $7 frame + the last-write dichotomy** (`execMmu040BusError`,
+  gencpu `gen_set_fault_pc`, oracle-probed): a fault on the
+  instruction's LAST write stacks PC = NEXT instruction with no restore
+  — the CCR keeps the just-computed flags and (An)± keeps its
+  adjustment (gencpu adjusts before the final store and disarms the
+  fixup); every other fault restarts — CCR restored to the
+  pre-instruction snapshot, (An)± fixups undone (`cpu_restore_fixup`;
+  fixups stay armed across the whole instruction — a CMPM second-read
+  fault un-does the first (An)+), stacked PC = the instruction. Marking
+  is default-on in `mmu040Write` (data space, MOVEM latch excluded)
+  with per-site pre-arms where a word is consumed after the store
+  (MOVE to ABS.L). Frame fields per `Exception_build_stack_frame` case
+  0x7: EA (`mmu_effective_addr` — only MOVEM/MOVE16 faults set it),
+  SSW, WB status/data, FA twice, MOVE16 line buffer as PD0-3.
+- **Instruction reorderings for the gencpu order** (all 040-gated):
+  readOp (An)+ increments AFTER the read; writeOp/execMove4 (An)±
+  adjust BEFORE the write; execClr is a pure store (no destination
+  read); the D6-remainder user-mode cpSAVE/cpRESTORE privilege rule is
+  now 020/030-only (040 `op_illg` = straight Line-F); FGen with an An
+  EA on a FPU-less 040 = format $4, not Line-F.
+- **MOVEM restart latch** (`mmu040MovemArmed/Ea`, WinUAE
+  `mmu040_movem`): armed with the start EA for every MOVEM, resumed
+  from the saved EA when re-armed (fault → SSW.CM + EA = saved EA →
+  handler RTE with SSW.CT re-arms), -(An) stores base-in-list as
+  initial − S with An written only at the end, no 68000 guard reads.
+- **Third oracle-glue leak fixed** (`oracle/uae/VENDOR.md`): WinUAE only
+  writes `regs.mmu_effective_addr` on MOVEM/MOVE16 faults and keeps
+  `mmu040_move16[]` across vectors — ordinary faults stacked the
+  PREVIOUS vector's values in the frame's EA and PD0-3 fields;
+  `oracle_set_state` zeroes them (with `wb2_address`/`wb3_data`).
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)
@@ -824,11 +887,13 @@ leaked a faulted MOVEM's saved EA into the next vector's MOVEM.
   frames** ✓ (O4 slice 3, see above).
 - 68881/68882 — **execution ✓** when attached via `setFPUModel()` (O5
   slice 2, see above; softfloat-backed, 68882 = LC II PDS FPU).
-- 68LC040 / 68EC040 / 68040 — **integer execution ✓** (Q2, section
-  above: MOVE16, CINV/CPUSH, MOVEC 040 set, format $2/$4/$7 frames,
-  040 trace and undefined-CCR rules) and the no-FPU F-line ✓ (Q4).
-  The 040 MMU (bus translation, ATC, PTEST/PFLUSH, format $7 faults)
-  is the Q3 slice — see `TODO.md § Phase 3`.
+- 68LC040 / 68EC040 / 68040 — **integer execution ✓** (Q2: MOVE16,
+  CINV/CPUSH, MOVEC 040 set, format $2 address errors, 040 trace and
+  undefined-CCR rules), **no-FPU F-line ✓** (Q4, format $4) and the
+  **040 MMU bus translation ✓** (Q3, section above: TTR + URP/SRP walk
+  with U/M, page-split accesses, format $7 faults with the last-write
+  dichotomy, MOVEM restart, PTEST). Remaining: a perf ATC overlay and
+  the 8K-page (TC.P) cell, untested by the fuzzer (Mac OS uses 4K).
 
 Do **not** re-sync from upstream blindly: diff against this file and
 `NEOST_VENDOR.md` first.

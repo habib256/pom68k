@@ -1648,14 +1648,525 @@ Moira::execPTest40(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // POM68K Q2: PTESTR/PTESTW (M68040UM § 3.4.2), supervisor-only. The
-    // table walk + MMUSR040 report is the Q3 slice (WinUAE cpummu.c
-    // mmu_op_real → mmu_fill_atc); until then the register is untouched.
+    // POM68K Q3: PTESTR/PTESTW (M68040UM § 3.4.2; WinUAE mmu_op_real,
+    // PTEST branch), supervisor-only. DFC selects the address space
+    // (super = dfc&4, data = (dfc&3) != 2); a TTR hit reports T|R (or B
+    // when a PTESTW hits a write-protected TTR), otherwise the walk's
+    // page descriptor lands in MMUSR040 (0 when invalid; WinUAE
+    // mmu_fill_atc status = phys | G|Ux|S|CM|M|W|R).
     SUPERVISOR_MODE_ONLY
+
+    int n = _____________xxx(opcode);
+    bool write = (opcode & 0x20) == 0;          // $F548 = PTESTW
+    u32 addr = readA(n);
+    bool super = (reg.dfc & 4) != 0;
+    bool data = (reg.dfc & 3) != 2;
+
+    int ttr = mmu040MatchTTR(addr, super, data);
+    if (ttr) {
+        reg.mmusr040 = (ttr == 2 && write) ? 0x800     // MMU_MMUSR_B
+                                           : 0x003;    // MMU_MMUSR_T | R
+    } else {
+        u32 status = mmu040Walk<C>(addr, super, write);
+        u32 maski = mmu040PageMaskI();
+        reg.mmusr040 = (status & maski)
+                     | (status & 0x7F7);               // G|Ux|S|CM|M|W|R
+    }
 
     prefetch<C, POLL>();
 
     CYCLES_68020(8)
 
     FINALIZE
+}
+
+// -----------------------------------------------------------------------------
+// POM68K Q3 — 68040 MMU bus translation, modelled byte-for-byte on the
+// primary oracle (WinUAE cpummu.c / cpummu.h mmu040 accessors, hatari
+// e77819f7). No architectural ATC is modelled: the oracle flushes its
+// ATC on every state load, so a walk-on-every-access model is
+// behaviourally identical (U/M rewrites of already-set bits produce no
+// RAM diff); a perf ATC overlay can come later (030 precedent).
+// -----------------------------------------------------------------------------
+
+template <Core C> bool
+Moira::mmu040InstrStart()
+{
+    // Same shape as the mode-5 68030 loop head (mmuExecuteStart): the
+    // 040 oracle has no prefetch queue — the opcode is fetched through
+    // translation at every instruction start (WinUAE x_prefetch(0)) and
+    // extension words at consumption time (readExt); the queue-refill
+    // prefetches at instruction end are suppressed. The irc lookahead at
+    // pc + 2 is Moira's one-slot model (known limit, shared with the
+    // 030: visible only when an instruction sits at a page's last word).
+    POLL_IPL;
+
+    mmu040EffAddr = 0;
+    mmu040AccFirst = true;
+    mmu040AccSplit = false;
+    mmu040LastWrite = false;
+    mmu040Moves = -1;
+    mmu040Lrmw = false;
+    mmuFixupReg[0] = mmuFixupReg[1] = 0;
+    mmu040CcrSave = u8(getCCR());
+
+    try {
+
+        queue.ird = u16(mmu040Read<C, Word>(reg.pc, false));
+        queue.irc = u16(mmu040Read<C, Word>(reg.pc + 2, false));
+
+    } catch (MmuBusError &) {
+
+        try { execMmu040BusError<C>(); } catch (...) { halt(); }
+        return false;
+    }
+
+    return true;
+}
+
+int
+Moira::mmu040MatchTTR(u32 addr, bool super, bool data) const
+{
+    // WinUAE mmu_do_match_ttr over the dtt/itt pair (mmu_match_ttr)
+    const u32 ttrs[2] = { data ? reg.dtt0 : reg.itt0,
+                          data ? reg.dtt1 : reg.itt1 };
+
+    for (u32 ttr : ttrs) {
+
+        if (!(ttr & 0x8000)) continue;                  // E
+
+        u8 msb  = u8(((addr ^ ttr) & 0xFF000000) >> 24);
+        u8 mask = u8((ttr & 0x00FF0000) >> 16);
+        if (msb & ~mask) continue;
+
+        if (!(ttr & 0x4000)) {                          // S-field != both
+            if ((((ttr >> 13) & 1) != 0) != super) continue;
+        }
+        return (ttr & 4) ? 2 : 1;                       // W -> match + WP
+    }
+    return 0;
+}
+
+template <Core C> u32
+Moira::mmu040Walk(u32 addr, bool super, bool write)
+{
+    // WinUAE mmu_fill_atc: descriptors are fetched/updated with
+    // supervisor function codes on the raw physical bus. Returns the
+    // page descriptor (phys | status bits, R = bit 0) with the WP bit
+    // accumulated over all levels, or 0 when any level is invalid.
+    u32 wp = 0;
+
+    u32 desc = super ? reg.srp040 : reg.urp040;
+    u32 descAddr = (desc & 0xFFFFFE00) | ((addr >> 23) & 0x1FC);
+    desc = mmuRead32(descAddr);
+    if (!(desc & 2)) return 0;                          // invalid root
+    wp |= desc;
+    if (!(desc & 8)) mmuWrite32(descAddr, desc | 8);    // U
+
+    descAddr = (desc & 0xFFFFFE00) | ((addr >> 16) & 0x1FC);
+    desc = mmuRead32(descAddr);
+    if (!(desc & 2)) return 0;                          // invalid pointer
+    wp |= desc;
+    if (!(desc & 8)) mmuWrite32(descAddr, desc | 8);
+
+    if (reg.tc040 & 0x4000) {                           // 8K pages
+        descAddr = (desc & 0xFFFFFF80) + ((addr >> 11) & 0x7C);
+    } else {                                            // 4K pages
+        descAddr = (desc & 0xFFFFFF00) + ((addr >> 10) & 0xFC);
+    }
+    desc = mmuRead32(descAddr);
+    if ((desc & 3) == 2) {                              // indirect (once)
+        descAddr = desc & 0xFFFFFFFC;
+        desc = mmuRead32(descAddr);
+    }
+    if (!(desc & 1)) return 0;                          // invalid page
+                                                        // (incl. 2x indirect)
+    wp |= desc;
+    if (write) {
+        if ((wp & 4) || ((desc & 0x80) && !super)) {
+            // write will fault: only U is maintained
+            if (!(desc & 8)) { desc |= 8; mmuWrite32(descAddr, desc); }
+        } else if ((desc & 0x18) != 0x18) {
+            desc |= 0x18;                               // U + M
+            mmuWrite32(descAddr, desc);
+        }
+    } else {
+        if (!(desc & 8)) { desc |= 8; mmuWrite32(descAddr, desc); }
+    }
+    desc |= wp & 4;                                     // accumulated WP
+    return desc;
+}
+
+template <Core C> u32
+Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
+                       bool write, int szCode)
+{
+    // WinUAE mmu_get/put_* accessor heads: TTR match first (a WP match
+    // faults writes even with translation disabled), then the walk.
+    // Locked RMW cycles translate as WRITES from the read on (WinUAE
+    // mmu_get_user_*: the lrmw accessors pass write = true).
+    int fc = (super ? 4 : 0) | (data ? 1 : 2);
+    // The locked-RMW write-flavor applies to DATA accesses only — the
+    // CAS extension word still fetches through the plain read path
+    // (WinUAE wraps only the get_lrmw_* data accessors)
+    bool asWrite = write || (mmu040Lrmw && data);
+
+    int ttr = mmu040MatchTTR(addr, super, data);
+    if (ttr) {
+        if (asWrite && ttr == 2) mmu040Fault<C>(addr, val, fc, asWrite, szCode);
+        return addr;
+    }
+    if (!mmu040Enabled()) return addr;
+
+    u32 status = mmu040Walk<C>(addr, super, asWrite);
+
+    if ((asWrite && (status & 4)) || (!super && (status & 0x80)) ||
+        !(status & 1)) {
+        // locked-RMW reads fault with WRITE semantics (WinUAE passes
+        // write = true through mmu_get_user_*; SSW.LK strips RW anyway)
+        mmu040Fault<C>(addr, val, fc, asWrite, szCode);
+    }
+    u32 maski = mmu040PageMaskI();
+    return (status & maski) | (addr & ~maski);
+}
+
+template <Core C> void
+Moira::mmu040Fault(u32 addr, u32 val, int fc, bool write, int szCode)
+{
+    // WinUAE mmu_bus_error, 68040 branch — SSW + writeback capture
+    u16 ssw = 0;
+
+    if (mmu040Moves >= 0) {                             // ismoves
+        fc = mmu040Moves;
+        if ((fc & 3) == 0 || (fc & 3) == 3) {
+            ssw |= 0x0010;                              // TT1
+        } else if (fc & 2) {
+            fc = (fc & 4) | 1;
+        }
+        mmu040Moves = -1;
+    }
+
+    ssw |= u16(fc & 7);                                 // TM
+
+    switch (szCode) {
+        case 0: ssw |= 0x0020; break;                   // SIZE_B
+        case 1: ssw |= 0x0040; break;                   // SIZE_W
+        default: break;                                 // SIZE_L = 0
+    }
+
+    mmu040Wb3Status = write ? u16(0x80 | (ssw & 0x7F)) : 0;
+    mmu040Wb3Data = val;
+    mmu040Wb2Status = 0;
+    if (!write) ssw |= 0x0100;                          // RW
+
+    if (szCode == 3) {                                  // MOVE16 line
+        ssw |= 0x0060;                                  // SIZE_CL
+        ssw |= 0x0008;                                  // TT0
+        mmu040EffAddr &= ~u32(15);
+        if (write) {
+            mmu040Wb3Status &= ~0x80;
+            mmu040Wb2Status = u16(0x80 | 0x60 | (ssw & 0x1F));
+            mmu040Wb2Address = mmu040EffAddr;
+        }
+    }
+
+    if (mmu040MovemArmed) {                             // MOVEM restart
+        ssw |= 0x1000;                                  // CM
+        mmu040EffAddr = mmu040MovemEa;
+        mmu040MovemArmed = false;
+    }
+    if (mmu040Lrmw) {                                   // locked RMW
+        ssw |= 0x0200;                                  // LK
+        ssw &= u16(~0x0100);                            // RW cleared
+        mmu040Lrmw = false;
+    }
+
+    ssw |= 0x0400;                                      // ATC (MMU fault)
+
+    u32 fa = addr;
+    if (!mmu040AccFirst) {                              // split, later part
+        fa = mmu040AccBase;                             // misalignednotfirst
+        ssw |= 0x0800;                                  // MA
+    }
+    if (write && mmu040AccSplit) mmu040Wb3Data = mmu040FullVal;
+
+    mmu040Ssw = ssw;
+    mmu040FaultAddr = fa;
+
+    throw MmuBusError();
+}
+
+template <Core C, Size S> u32
+Moira::mmu040Read(u32 addr, bool data)
+{
+    const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0
+                                        : bool(reg.sr.s);
+    const u32 pageMask = ~mmu040PageMaskI();
+
+    mmu040AccBase = addr;
+    mmu040AccFirst = true;
+    mmu040AccSplit = false;
+
+    if constexpr (S == Byte) {
+
+        u32 pa = mmu040Translate<C>(addr, 0, super, data, false, 0);
+        SYNC(2);
+        u32 r = read8(pa & addrMask<C>());
+        SYNC(2);
+        return r;
+    }
+
+    if constexpr (S == Word) {
+
+        if ((addr & pageMask) + 2 > pageMask + 1) {     // page-crossing
+            mmu040AccSplit = true;
+            u32 hi = mmu040Translate<C>(addr, 0, super, data, false, 1);
+            SYNC(2);
+            u32 r = u32(read8(hi & addrMask<C>())) << 8;
+            mmu040AccFirst = false;
+            u32 lo = mmu040Translate<C>(addr + 1, 0, super, data, false, 1);
+            r |= read8(lo & addrMask<C>());
+            SYNC(2);
+            return r;
+        }
+        u32 pa = mmu040Translate<C>(addr, 0, super, data, false, 1);
+        SYNC(2);
+        u32 r = read16(pa & addrMask<C>());
+        SYNC(2);
+        return r;
+    }
+
+    if constexpr (S == Long) {
+
+        if ((addr & pageMask) + 4 > pageMask + 1) {     // page-crossing
+            mmu040AccSplit = true;
+            if (!(addr & 1)) {                          // word halves
+                u32 hi = mmu040Translate<C>(addr, 0, super, data, false, 2);
+                SYNC(2);
+                u32 r = u32(read16(hi & addrMask<C>())) << 16;
+                SYNC(4);
+                mmu040AccFirst = false;
+                u32 lo = mmu040Translate<C>(addr + 2, 0, super, data, false, 2);
+                r |= read16(lo & addrMask<C>());
+                SYNC(2);
+                return r;
+            }
+            u32 r = 0;                                  // four bytes
+            for (int i = 0; i < 4; i++) {
+                u32 pa = mmu040Translate<C>(addr + i, 0, super, data, false, 2);
+                r = r << 8 | read8(pa & addrMask<C>());
+                mmu040AccFirst = false;
+            }
+            SYNC(8);
+            return r;
+        }
+        u32 pa = mmu040Translate<C>(addr, 0, super, data, false, 2);
+        SYNC(2);
+        u32 r = u32(read16(pa & addrMask<C>())) << 16;
+        SYNC(4);
+        r |= read16((pa + 2) & addrMask<C>());
+        SYNC(2);
+        return r;
+    }
+}
+
+template <Core C, Size S> void
+Moira::mmu040Write(u32 addr, u32 val, bool data)
+{
+    const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0
+                                        : bool(reg.sr.s);
+    const u32 pageMask = ~mmu040PageMaskI();
+
+    // Default last-write marking (gencpu gen_set_fault_pc): the store an
+    // instruction ends on faults with PC = next instruction and no
+    // restore. reg.pc points at the last consumed word = next - 2...
+    // no: at the final store every extension word has been consumed, so
+    // reg.pc IS the next instruction (Moira's pc tracks irc). Sites
+    // whose write precedes a deferred word (MOVE to ABS.L) pre-arm the
+    // marker with the corrected PC; MOVEM transfers are never last
+    // writes (the CM restart latch covers them).
+    if (data && !mmu040MovemArmed && !mmu040LastWrite) {
+        mmu040LastWrite = true;
+        mmu040LastWritePc = reg.pc;
+    }
+
+    mmu040AccBase = addr;
+    mmu040AccFirst = true;
+    mmu040AccSplit = false;
+    mmu040FullVal = val;
+
+    if constexpr (S == Byte) {
+
+        u32 pa = mmu040Translate<C>(addr, val, super, data, true, 0);
+        SYNC(2);
+        write8(pa & addrMask<C>(), u8(val));
+        SYNC(2);
+        return;
+    }
+
+    if constexpr (S == Word) {
+
+        if ((addr & pageMask) + 2 > pageMask + 1) {
+            mmu040AccSplit = true;
+            u32 hi = mmu040Translate<C>(addr, val >> 8, super, data, true, 1);
+            SYNC(2);
+            write8(hi & addrMask<C>(), u8(val >> 8));
+            mmu040AccFirst = false;
+            u32 lo = mmu040Translate<C>(addr + 1, val, super, data, true, 1);
+            write8(lo & addrMask<C>(), u8(val));
+            SYNC(2);
+            return;
+        }
+        u32 pa = mmu040Translate<C>(addr, val, super, data, true, 1);
+        SYNC(2);
+        write16(pa & addrMask<C>(), u16(val));
+        SYNC(2);
+        return;
+    }
+
+    if constexpr (S == Long) {
+
+        if ((addr & pageMask) + 4 > pageMask + 1) {
+            mmu040AccSplit = true;
+            if (!(addr & 1)) {
+                u32 hi = mmu040Translate<C>(addr, val >> 16, super, data, true, 2);
+                SYNC(2);
+                write16(hi & addrMask<C>(), u16(val >> 16));
+                SYNC(4);
+                mmu040AccFirst = false;
+                u32 lo = mmu040Translate<C>(addr + 2, val, super, data, true, 2);
+                write16(lo & addrMask<C>(), u16(val));
+                SYNC(2);
+                return;
+            }
+            for (int i = 0; i < 4; i++) {
+                u8 b = u8(val >> (24 - 8 * i));
+                u32 pa = mmu040Translate<C>(addr + i, b, super, data, true, 2);
+                write8(pa & addrMask<C>(), b);
+                mmu040AccFirst = false;
+            }
+            SYNC(8);
+            return;
+        }
+        u32 pa = mmu040Translate<C>(addr, val, super, data, true, 2);
+        SYNC(2);
+        write16(pa & addrMask<C>(), u16(val >> 16));
+        SYNC(4);
+        write16((pa + 2) & addrMask<C>(), u16(val));
+        SYNC(2);
+        return;
+    }
+}
+
+template <Core C> void
+Moira::mmu040GetMove16(u32 addr)
+{
+    // WinUAE mmu_get_move16: line-aligned, one translation, four
+    // physical longs into the line buffer (frame PD0-3)
+    const bool super = reg.sr.s;
+    u32 a = addr & ~u32(15);
+
+    mmu040AccBase = a;
+    mmu040AccFirst = true;
+    mmu040AccSplit = false;
+
+    u32 pa = mmu040Translate<C>(a, 0, super, true, false, 3);
+    for (int i = 0; i < 4; i++) {
+        mmu040Move16[i] = u32(read16((pa + 4 * i) & addrMask<C>())) << 16
+                        | read16((pa + 4 * i + 2) & addrMask<C>());
+    }
+    SYNC(8);
+}
+
+template <Core C> void
+Moira::mmu040PutMove16(u32 addr)
+{
+    const bool super = reg.sr.s;
+    u32 a = addr & ~u32(15);
+
+    mmu040AccBase = a;
+    mmu040AccFirst = true;
+    mmu040AccSplit = false;
+
+    u32 pa = mmu040Translate<C>(a, mmu040Move16[0], super, true, true, 3);
+    for (int i = 0; i < 4; i++) {
+        write16((pa + 4 * i) & addrMask<C>(), u16(mmu040Move16[i] >> 16));
+        write16((pa + 4 * i + 2) & addrMask<C>(), u16(mmu040Move16[i]));
+    }
+    SYNC(8);
+}
+
+// Bus-fault exception processing: WinUAE m68k_run_mmu040 CATCH (restart:
+// CCR + PC restored, (An)± fixups undone) + Exception_mmu nr == 2
+// (vector fetched before the frame; both go through translation — a
+// nested fault double-faults into HALT via processException).
+template <Core C> void
+Moira::execMmu040BusError()
+{
+    // gencpu's gen_set_fault_pc dichotomy (probed 2026-07-18): a fault
+    // on the instruction's LAST write sets instruction_pc = NEXT
+    // instruction and mmu_restart = false — no CCR/PC/fixup restore,
+    // the (An)± adjustment survives (the handler completes the write
+    // from WB3 and RTEs past the instruction). Every other fault
+    // restarts: CCR restored to the pre-instruction value, (An)±
+    // fixups undone, stacked PC = the instruction.
+    u32 framePc;
+    if (mmu040LastWrite) {
+        framePc = mmu040LastWritePc;
+        mmu040LastWrite = false;
+    } else {
+        setCCR(u8(mmu040CcrSave));
+        for (int i = 0; i < 2; i++) {
+            if (mmuFixupReg[i]) reg.a[mmuFixupReg[i] & 7] = mmuFixupVal[i];
+            mmuFixupReg[i] = 0;
+        }
+        framePc = reg.pc0;
+    }
+    mmu040Moves = -1;
+    mmu040Lrmw = false;
+    reg.pc = framePc;
+
+    willExecute(M68kException::BUS_ERROR, 2);
+
+    u16 status = getSR();
+
+    setSupervisorMode(true);
+    clearTraceFlags();
+    flags &= ~State::TRACE_EXC;
+    trace040Pending = false;
+    SYNC(8);
+
+    u32 newpc = read<C, AddrSpace::DATA, Long>(reg.vbr + 4 * 2);
+
+    // Format $7 frame (Exception_build_stack_frame case 0x7)
+    push<C, Long>(mmu040Move16[3]);         // PD3
+    push<C, Long>(mmu040Move16[2]);         // PD2
+    push<C, Long>(mmu040Move16[1]);         // PD1
+    push<C, Long>(mmu040Move16[0]);         // WB1D/PD0
+    push<C, Long>(0);                       // WB1A
+    push<C, Long>(0);                       // WB2D
+    push<C, Long>(mmu040Wb2Address);        // WB2A
+    push<C, Long>(mmu040Wb3Data);           // WB3D
+    push<C, Long>(mmu040FaultAddr);         // WB3A
+    push<C, Long>(mmu040FaultAddr);         // FA
+    push<C, Word>(0);
+    push<C, Word>(mmu040Wb2Status);
+    mmu040Wb2Status = 0;
+    push<C, Word>(mmu040Wb3Status);
+    mmu040Wb3Status = 0;
+    push<C, Word>(mmu040Ssw);
+    push<C, Long>(mmu040EffAddr);
+    push<C, Word>(0x7000 | 2 << 2);
+    push<C, Long>(reg.pc);                  // instruction, or next on last-write
+    push<C, Word>(status);
+
+    if (newpc & 1) { halt(); return; }      // double fault
+
+    reg.pc = reg.pc0 = newpc;
+    fullPrefetch<C, POLL>();
+
+    if (debugger.catchpointMatches(2)) didReachCatchpoint(u8(2));
+    didJumpToVector(2, reg.pc);
+
+    didExecute(M68kException::BUS_ERROR, 2);
 }

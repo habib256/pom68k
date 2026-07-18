@@ -164,6 +164,11 @@ both produced sequence-order-dependent corpus vectors):
   from the previous vector left the latch armed, and the next MOVEM
   silently reused the stale saved EA (`cpuemu_31: if (mmu040_movem)
   srca = mmu040_movem_ea`).
+- **Stale format-$7 frame fields** (Q3): WinUAE only writes
+  `regs.mmu_effective_addr` on MOVEM/MOVE16 faults and never clears
+  `mmu040_move16[]`, `wb2_address` or `wb3_data` — an ordinary fault
+  stacked the PREVIOUS vector's values in the frame's EA (+8), PD0-3
+  (+44..+59) and WB fields. All zeroed in `oracle_set_state`.
 
 ## Known limitations
 

@@ -1138,6 +1138,88 @@ private:
     // per-instruction A7/CCR conventions first (see the exec handlers).
     template <Core C> void execAddressError040(u32 target, u32 stackedPc);
 
+    //
+    // POM68K Q3 — 68040 MMU bus translation (WinUAE cpummu.c, mmu040)
+    //
+
+public:
+
+    // Fault capture for the format $7 frame, plus the MOVEM restart
+    // latch (WinUAE mmu040_movem) and the MOVE16 line buffer (frame
+    // PD0-3). mmu040EffAddr mirrors WinUAE regs.mmu_effective_addr:
+    // only MOVEM/MOVE16 faults set it (reset per instruction — the
+    // oracle's per-vector state load zeroes it).
+    u32 mmu040FaultAddr {};
+    u32 mmu040EffAddr {};
+    u16 mmu040Ssw {};
+    u32 mmu040Wb3Data {};
+    u16 mmu040Wb3Status {}, mmu040Wb2Status {};
+    u32 mmu040Wb2Address {};
+    u32 mmu040Move16[4] {};
+    bool mmu040MovemArmed {};
+    u32 mmu040MovemEa {};
+
+private:
+
+    // Context of the (possibly page-split) access in flight — later
+    // sub-accesses fault with FA = the base address and SSW.MA set
+    // (WinUAE misalignednotfirst); split write faults report the FULL
+    // value in WB3D (the unaligned CATCH overwrites wb3_data)
+    u32 mmu040AccBase {};
+    bool mmu040AccFirst {true};
+    bool mmu040AccSplit {};
+    u32 mmu040FullVal {};
+    u8 mmu040CcrSave {};
+
+    // Last-write dichotomy (gencpu gen_set_fault_pc, mmu040 build): a
+    // fault on the instruction's LAST write stacks the NEXT instruction
+    // and skips every restore (the OS completes the write from WB3);
+    // any other fault restarts (CCR + (An)± fixups + PC = instruction).
+    bool mmu040LastWrite {};
+    u32 mmu040LastWritePc {};
+
+    // MOVES fc override (WinUAE ismoves: SFC/DFC drive the translation
+    // and mangle the SSW fc bits); -1 = inactive
+    int mmu040Moves {-1};
+
+    // TAS/CAS locked RMW: reads translate as WRITES (TTR write check +
+    // M-bit walk) and faults carry SSW.LK with RW cleared
+    bool mmu040Lrmw {};
+
+    bool mmu040Enabled() const { return (reg.tc040 & 0x8000) != 0; }
+    u32 mmu040PageMaskI() const { return (reg.tc040 & 0x4000) ? 0xFFFFE000 : 0xFFFFF000; }
+
+    // Per-instruction loop head: translated opcode/irc fetch (mode-5
+    // pattern); returns false when the fetch faulted
+    template <Core C> bool mmu040InstrStart();
+
+    // Transparent translation: 0 = no match, 1 = match, 2 = match + WP
+    int mmu040MatchTTR(u32 addr, bool super, bool data) const;
+
+    // 3-level table walk with U/M maintenance (WinUAE mmu_fill_atc);
+    // returns the page descriptor with accumulated WP, or 0 if invalid
+    template <Core C> u32 mmu040Walk(u32 addr, bool super, bool write);
+
+    // Logical -> physical for one (sub-)access; throws MmuBusError
+    template <Core C> u32 mmu040Translate(u32 addr, u32 val, bool super,
+                                          bool data, bool write, int szCode);
+
+    // Fault capture + throw (WinUAE mmu_bus_error, 68040 branch);
+    // szCode: 0 = byte, 1 = word, 2 = long, 3 = MOVE16 line
+    template <Core C> [[noreturn]] void mmu040Fault(u32 addr, u32 val, int fc,
+                                                    bool write, int szCode);
+
+    // Translated read/write with 68040 page-boundary splitting
+    template <Core C, Size S> u32 mmu040Read(u32 addr, bool data);
+    template <Core C, Size S> void mmu040Write(u32 addr, u32 val, bool data);
+
+    // MOVE16 line transfer through translation (size-16 fault reports)
+    template <Core C> void mmu040GetMove16(u32 addr);
+    template <Core C> void mmu040PutMove16(u32 addr);
+
+    // Bus-fault exception processing (format $7 frame + vector 2)
+    template <Core C> void execMmu040BusError();
+
     // Rebuilds the per-instruction access log so a fault frame stacks
     // exactly what WinUAE's get_iword/get_long_mmu030_state logged
     void mmuLogReset() { mmuIdx = mmuIdxDone = 0; for (auto &v : mmuAd) v = 0; }

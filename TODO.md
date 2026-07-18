@@ -669,11 +669,19 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   pinned** (core/random/mmu × off, seeds 101-103) + 3 000/3 000
   fresh-seed re-verify (777-779); sst68030 3 082 and sst68000
   1 000 058 unregressed.
-- [ ] **Q3 — 040 MMU** (loop): fixed table format, URP/SRP 3-level walk
-  with U/M descriptor updates, 4K/8K pages, ITT/DTT transparent regs,
-  64-entry ATC, PTEST (fills MMUSR040)/PFLUSH forms, faults via
-  format $7; MOVEM/MOVE16 restart via SSW.CM. Fuzz `gen040.py`
-  identity/tt/fault cells. Gate: MMU families in sst68040.
+- [x] **Q3 — 040 MMU** (2026-07-18): bus translation for
+  `cpuModel >= M68EC040` — ITT/DTT match (WP faults with TC.E off),
+  URP/SRP 3-level walk with U/M maintenance + one indirection,
+  page-split accesses (SSW.MA), format $7 faults with gencpu's
+  LAST-WRITE dichotomy (PC = next + no restore on the final store;
+  full restart elsewhere), MOVEM restart latch (SSW.CM/CT), locked-RMW
+  (SSW.LK) and MOVES (SFC/DFC + fc mangling), PTEST → MMUSR040,
+  mode-5-style no-prefetch-queue loop head. No architectural ATC
+  (walk-per-access is observably identical to the oracle's
+  flushed-ATC-per-vector; perf overlay later). Third glue leak fixed
+  (stale frame EA/PD0-3 — VENDOR.md). Gate: **sst68040 = 7 200/7 200
+  pinned** over the full family×mmu grid (11 cells) + 6 400/6 400
+  fresh seeds 301-308. Not fuzzed: 8K pages (TC.P — Mac OS uses 4K).
 - [x] **Q4 — no FPU** (68LC040, 2026-07-18, folded into the Q2 pass):
   F2xx → vector 11 **format $4** frame with WinUAE's per-shape word
   consumption + EA (`execFpuDisabled040`); FBcc pseudo-conditions

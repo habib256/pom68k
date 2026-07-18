@@ -1827,9 +1827,15 @@ Moira::execFGen(u16 opcode)
 
     // An as EA is only decodable for FPx-to-FPx and control-register
     // moves (mirrors dasmFGen; WinUAE returns "no instruction" for the
-    // other opclasses)
+    // other opclasses). On a FPU-less 040 the no-FPU hook below decides
+    // first: get_fp_value's An case reaches fault_if_unimplemented_680x0
+    // -> format $4 (fresh-seed arbitrated 2026-07-18), not Line-F.
     if constexpr (M == Mode::AN) {
-        if (ext & 0x4000) { execLineF<C, I, M, S>(opcode); return; }
+        if ((ext & 0x4000) &&
+            !(cpuModel >= Model::M68EC040 && !hasFPU())) {
+            execLineF<C, I, M, S>(opcode);
+            return;
+        }
     }
 
     // POM68K Q4: FPU-less 040 — mirror WinUAE fpuop_arithmetic2 with

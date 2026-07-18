@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 2026-07-18 — Q3: the 68040 MMU translates in Moira — full grid
+## 7 200/7 200 pinned, the LC 475 CPU side is complete
+
+Bus-level 040 translation (WinUAE cpummu.c model): ITT/DTT transparent
+windows (WP faults even with TC.E off), URP/SRP 3-level walk with U/M
+maintenance and one indirection, page-boundary access splitting
+(SSW.MA), PTEST → MMUSR040, locked-RMW (SSW.LK) and MOVES (SFC/DFC),
+and the format $7 access-error frame with gencpu's **last-write
+dichotomy** — a fault on the instruction's final store stacks the NEXT
+instruction's PC with no state restore (the OS completes the write from
+WB3), everything else restarts with the pre-instruction CCR and (An)±
+fixups undone. MOVEM restarts through the SSW.CM/CT latch. The 040 now
+runs the mode-5-style no-prefetch-queue loop head (shared pattern with
+the 030). Full details in `extern/moira/POM68K_VENDOR.md § Q3`.
+
+- **Why non-obvious**: the WinUAE CATCH's restore block *looks*
+  unconditional but is dead on last-write faults (gencpu emits
+  `mmu_restart = false` + fixup disarm before the final put) — probed
+  empirically before implementing; and a third oracle-glue state leak
+  was found (stale `mmu_effective_addr`/`mmu040_move16[]` stacked the
+  previous vector's values in format-$7 frames — glue.c zeroes them).
+  Also arbitration by fresh seeds: the D6-remainder user-mode
+  cpSAVE/cpRESTORE privilege rule is 020/030-only, and FGen with an An
+  EA on a FPU-less 040 takes format $4, not Line-F.
+- Gate: **sst68040 = 7 200/7 200** pinned across the full family×mmu
+  grid (11 cells incl. fault/identity+tt) + 6 400/6 400 fresh-seed
+  re-verify (301-308); sst68030 3 082, sst68000, both boot etalons —
+  CTest 25/25. Not fuzzed: 8K pages (TC.P; Mac OS uses 4K).
+
 ## 2026-07-18 — Q2+Q4: the 68LC040 integer core executes in Moira,
 ## WinUAE-differential (5 400/5 400), no-FPU F-line included
 

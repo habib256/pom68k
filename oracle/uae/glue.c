@@ -225,6 +225,16 @@ ORACLE_EXPORT void oracle_set_state(const OracleState *st)
 		// srca = mmu040_movem_ea`), another sequence-order corpus poison.
 		mmu040_movem = 0;
 		mmu040_movem_ea = 0;
+		// Q3 fix: two more stale format-$7 frame sources. WinUAE only
+		// writes regs.mmu_effective_addr on MOVEM/MOVE16 faults, so an
+		// ordinary fault stacks whatever the PREVIOUS vector left there
+		// (frame offset +8); mmu040_move16[] is the PD0-3 field block
+		// (frame offsets +44..+59) and holds the previous vector's line
+		// buffer on read faults. Zero both for deterministic frames.
+		regs.mmu_effective_addr = 0;
+		regs.wb2_address = 0;
+		regs.wb3_data = 0;
+		memset(mmu040_move16, 0, sizeof mmu040_move16);
 	} else {
 	// 68030 MMU: registers + full re-arm (same sequence as the upstream
 	// savestate/prefs-change paths: newcpu.c prefs_changed_cpu()).

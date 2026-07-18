@@ -45,7 +45,10 @@ Moira::computeEA(u32 n) {
             // mmufixup) — its encoding lands in $B fault frames and the
             // register is restored from it on non-last-write faults
             if constexpr (C == Core::C68020) {
-                if (cpuModel == Model::M68030 && (F & MMU_NOFIXUP) == 0) [[unlikely]]
+                // POM68K Q3: the 68040 restores (An)± on non-last-write
+                // faults too (WinUAE cpu_restore_fixup)
+                if ((cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
+                    && (F & MMU_NOFIXUP) == 0) [[unlikely]]
                     mmuArmFixup<S>(int(n), false);
             }
             break;
@@ -57,7 +60,9 @@ Moira::computeEA(u32 n) {
 
             // POM68K O4 slice 3: see case 3
             if constexpr (C == Core::C68020) {
-                if (cpuModel == Model::M68030 && (F & MMU_NOFIXUP) == 0) [[unlikely]]
+                // POM68K Q3: see case 3
+                if ((cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
+                    && (F & MMU_NOFIXUP) == 0) [[unlikely]]
                     mmuArmFixup<S>(int(n), true);
             }
             break;
@@ -315,11 +320,16 @@ Moira::readOp(int n, u32 *ea, u32 *result)
             // Emulate (An)+ register modification
             // POM68K: applied BEFORE the access — real 68000 updates An even
             // when the access raises an address error (SingleStepTests/680x0;
-            // see extern/moira/POM68K_VENDOR.md)
-            updateAnPI<M, S>(n);
+            // see extern/moira/POM68K_VENDOR.md).
+            // Q3: the 68040 increments AFTER the access (gencpu mmu040
+            // order) — a faulting read leaves An untouched, no fixups.
+            if (C != Core::C68020 || cpuModel < Model::M68EC040)
+                updateAnPI<M, S>(n);
 
             // Read from effective address
             *result = readM<C, M, S, F>(*ea);
+            if (C == Core::C68020 && cpuModel >= Model::M68EC040)
+                updateAnPI<M, S>(n);
     }
 }
 
@@ -354,6 +364,18 @@ Moira::writeOp(int n, u32 val)
                     writeM<C, M, S, F>(ea, val);
                     return;
                 }
+                // POM68K Q3: 68040 — (An)+ adjusts BEFORE the write, and
+                // the destination store is the instruction's LAST write
+                // (gencpu: incpci + instruction_pc=next + mmu_restart=false
+                // before the put; oracle-probed 2026-07-18)
+                if (cpuModel >= Model::M68EC040) [[unlikely]] {
+                    updateAnPI<M, S>(n);
+                    mmu040LastWrite = true;
+                    mmu040LastWritePc = reg.pc;
+                    writeM<C, M, S, F>(ea, val);
+                    mmu040LastWrite = false;
+                    return;
+                }
             }
 
             // Write to effective address
@@ -384,6 +406,14 @@ Moira::writeOp(int n, u32 ea, u32 val)
                 if (cpuModel == Model::M68030) [[unlikely]] {
                     mmuState[1] |= 0x0100;      // LASTWRITE
                     mmuLastWritePc = reg.pc;
+                }
+                // POM68K Q3: 68040 last-write marker (see overload 1)
+                if (cpuModel >= Model::M68EC040) [[unlikely]] {
+                    mmu040LastWrite = true;
+                    mmu040LastWritePc = reg.pc;
+                    writeM<C, M, S, F>(ea, val);
+                    mmu040LastWrite = false;
+                    break;
                 }
             }
 
@@ -495,6 +525,12 @@ Moira::read(u32 addr)
         if (cpuModel == Model::M68030) [[unlikely]] {
             return mmuRead<C, S, F>(addr);
         }
+        // POM68K Q3: 68040 bus translation (TTR + walk, page-boundary
+        // splitting, format $7 faults) — identity-fast when TC.E and all
+        // TTR.E bits are clear
+        if (cpuModel >= Model::M68EC040) [[unlikely]] {
+            return mmu040Read<C, S>(addr, AS == AddrSpace::DATA);
+        }
     }
 
     SYNC(2);
@@ -559,6 +595,11 @@ Moira::write(u32 addr, u32 val)
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030) [[unlikely]] {
             mmuWrite<C, S, F>(addr, val);
+            return;
+        }
+        // POM68K Q3: 68040 bus translation (see read)
+        if (cpuModel >= Model::M68EC040) [[unlikely]] {
+            mmu040Write<C, S>(addr, val, AS == AddrSpace::DATA);
             return;
         }
     }
@@ -752,8 +793,10 @@ Moira::prefetch()
     // POM68K O4 slice 3: mode-5 68030 has no prefetch queue — the next
     // opcode is fetched (through translation) at the start of the next
     // instruction (mmuExecuteStart); queue refills are suppressed here.
+    // Q3: same model for the 68040 (mmu040InstrStart) — a tail refill
+    // would touch/fault pages WinUAE only reads at the NEXT step.
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] return;
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) [[unlikely]] return;
     }
 
     queue.ird = queue.irc;
@@ -765,9 +808,10 @@ template <Core C, Flags F, int delay> void
 Moira::fullPrefetch()
 {
     // POM68K O4 slice 3: see prefetch — jumps do not fetch the target on
-    // the mode-5 68030; the fetch happens at the next instruction start
+    // the mode-5 68030; the fetch happens at the next instruction start.
+    // Q3: same for the 68040.
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] {
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) [[unlikely]] {
             reg.pc0 = reg.pc;
             return;
         }
@@ -802,6 +846,13 @@ Moira::readExt()
             mmuLogExtWord(queue.irc);
             reg.pc += 2;
             queue.irc = mmuFetchWord(reg.pc);
+            return;
+        }
+        // POM68K Q3: 68040 — the next extension word is fetched through
+        // translation at consumption time (WinUAE next_iword_mmu040)
+        if (cpuModel >= Model::M68EC040) [[unlikely]] {
+            reg.pc += 2;
+            queue.irc = u16(mmu040Read<C, Word>(reg.pc, false));
             return;
         }
     }
@@ -879,9 +930,10 @@ Moira::jumpToVector(int nr)
 
     // Update the prefetch queue
     // POM68K O4 slice 3: not on the mode-5 68030 (fill_prefetch is a
-    // no-op there; the handler opcode is fetched at the next step)
+    // no-op there; the handler opcode is fetched at the next step).
+    // Q3: same for the 68040.
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] {
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) [[unlikely]] {
             reg.pc0 = reg.pc;
             if (debugger.catchpointMatches(nr)) didReachCatchpoint(u8(nr));
             didJumpToVector(nr, reg.pc);

@@ -241,6 +241,16 @@ Moira::reset()
     trace040Pending = false;       // POM68K Q2: 68040 trace machinery
     tracePc040 = 0;
 
+    // POM68K Q3: 68040 MMU fault capture + MOVEM latch + MOVE16 buffer
+    mmu040FaultAddr = mmu040EffAddr = 0;
+    mmu040Ssw = 0;
+    mmu040Wb3Data = 0;
+    mmu040Wb3Status = mmu040Wb2Status = 0;
+    mmu040Wb2Address = 0;
+    for (auto &m : mmu040Move16) m = 0;
+    mmu040MovemArmed = false;
+    mmu040MovemEa = 0;
+
     // POM68K O4 slice 3: reset invalidates the ATC and the MMU restart
     // bookkeeping (MC68030UM § 9.5.2; TC.E is cleared via reg = { })
     for (auto &e : mmuAtcArr) { e.valid = false; e.mru = false; }
@@ -325,6 +335,8 @@ Moira::execute()
         // models; emulated 68000 cycles are unaffected.
         if (cpuModel == Model::M68030) [[unlikely]] {
             if (!mmuExecuteStart<Core::C68020>()) return;
+        } else if (cpuModel >= Model::M68EC040) [[unlikely]] {
+            if (!mmu040InstrStart<Core::C68020>()) return;
         }
 
         reg.pc += 2;
@@ -461,6 +473,8 @@ Moira::execute()
         // POM68K O4 slice 3: see the fast path
         if (cpuModel == Model::M68030) [[unlikely]] {
             if (!mmuExecuteStart<Core::C68020>()) goto done;
+        } else if (cpuModel >= Model::M68EC040) [[unlikely]] {
+            if (!mmu040InstrStart<Core::C68020>()) goto done;
         }
 
         reg.pc += 2;
@@ -553,7 +567,13 @@ Moira::processException(const std::exception &exc)
             if (dynamic_cast<const MmuBusError *>(&exc)) {
 
                 try {
-                    execMmuBusError<C>();
+                    // POM68K Q3: the 68040 stacks a format $7 frame with
+                    // the restart model; the 030 keeps its $A/$B frames
+                    if (cpuModel >= Model::M68EC040) {
+                        execMmu040BusError<C>();
+                    } else {
+                        execMmuBusError<C>();
+                    }
                 } catch (...) {
                     halt();
                 }
