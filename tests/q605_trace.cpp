@@ -211,9 +211,22 @@ int main(int argc, char** argv) {
         }
         if (stop) {
             std::printf("[q605_trace] STOP at $%08X\n", stopAt);
+            std::printf("  RING (oldest->newest):");
+            for (size_t i = 0; i < ring.size(); i++) {
+                uint32_t rpc = ring[(rp + i) % ring.size()];
+                if (rpc) std::printf(" $%08X", rpc);
+            }
+            std::printf("\n");
             for (int r = 0; r < 8; r++)
                 std::printf("  D%d=$%08X  A%d=$%08X\n", r, cpu.getD(r), r,
                             r == 7 ? cpu.getSP() : cpu.getA(r));
+            auto peekL = [&](uint32_t a) {
+                return uint32_t(mem.peek8(a))<<24 | uint32_t(mem.peek8(a+1))<<16 |
+                       uint32_t(mem.peek8(a+2))<<8 | mem.peek8(a+3);
+            };
+            std::printf("  LOWMEM MemTop($108)=$%08X BufPtr($10C)=$%08X "
+                        "MemSize($1EF8?)=%08X\n",
+                        peekL(0x108), peekL(0x10C), peekL(0x1EF8));
             uint32_t a1 = cpu.getA(1);
             std::printf("  [A1-32..A1+64]:");
             for (int i = -32; i < 64; i++) {
