@@ -14,6 +14,8 @@ roms/
 *.hdv
 # Large user-fetched test corpora (tests/fetch_sst_68000.sh)
 tests/data/
+# User-provided game/CD images (never committed — GitHub 100MB limit)
+input/
 # Editor/tooling
 .cache/
 compile_commands.json
