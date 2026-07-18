@@ -1,5 +1,90 @@
 # CHANGELOG
 
+## 2026-07-18 — Q5.1d: Q5 Slot-Manager blocker RESOLVED — the missing
+## MEMCjr DAFB bus-holding split; boot now drives the SCSI bus
+
+Root-caused via a newly-unblocked full-machine MAME oracle, then fixed
+in `Q605Memory`. The MEMCjr accesses the DAFB register file at
+$F9800000-$F98001FF as a **12-bit port split into two 6-bit halves**
+(`djmemc.cpp:149-198`): a read returns `reg & 0x3f` and latches
+`(reg>>6)&0x3f`; a write ORs that latch back in; the high-6 half is
+carried through `$50F0E07C` (mirror $5000E07C). Our HLE returned/wrote
+the full register in one $F9800000 access, so the ROM reconstructed
+wrong DAFB config/timing values, which steered the video sResource
+directory walk to the WRONG per-DrHW sRsrcType list ($408F1CC8 instead
+of $408F1C90) → `_sReadStruct` selector 5 read the raw `00030001`
+sRsrcType header as a block size → spSize=$2FFFD → the byte-lane copy
+overran to end-of-ROM $40900000 → the boot fell to the POST console.
+- **Fix** (`Q605Memory.cpp`): `dafbRegRead` now wraps `dafbRegReadRaw`
+  and applies the low-6/latch-high-6 split for offsets < $200;
+  `dafbRegWrite` ORs `dafbHolding_` into writes < $200 then clears it;
+  `$50F0E07C` (`memcjr_r/w` $7C) reads `dafbHolding_>>6` and writes
+  `(v&0x3f)<<6`. BOTH the read and write halves were required — the
+  write-side alone was inert.
+- **Result**: no more $2FFFD overrun, no POST-console park at 4 MB or
+  32 MB, and the machine now issues real SCSI CDBs (68-103 commands,
+  273-410 selections with `--disk MacOS-8.1-boot.vhd`). VEC2 count 44→13
+  (only benign empty-slot probes remain). ctest 26/26.
+- **New frontier (Q6/Q7)**: the SCSI pseudo-DMA data path — the driver
+  spins at $408D1A84 polling the 53C96 phase register with dmaBytes=0;
+  READ CAPACITY/READ blocks don't yet deliver a payload.
+
+### Oracle harness recipe (record it — several dead ends)
+
+`-debugger none` SILENTLY DISCARDS debugger console/printf/trace output.
+`-debugger gdbstub` refuses m68040. The WORKING recipe is the imgui
+debugger under Xvfb+bgfx: `xvfb-run -a flatpak run org.mamedev.MAME
+-rompath "$PWD" macqd605 -ramsize <bytes> -video bgfx -sound none
+-nothrottle -seconds_to_run N -debug -debugger imgui -debugscript <f>`.
+Gotchas: (1) breakpoints only arm after `focus maincpu` in the script;
+(2) capture state via `save <absfile>,<expr>,<len>` inside a breakpoint
+ACTION (`bpset a,cond,{ save f.bin,a0,64 ; bpclear ; g }`) — printf /
+tracelog / trace-action all produce nothing; (3) the flatpak HOME is
+`~/.var/app/org.mamedev.MAME`, so save/trace files need an absolute path
+under `/home/...` (or a relative path, which lands in the rompath dir).
+Expr syntax: `l@(a0+4)`, `w@(a1+4)`, `b@(a0+0x32)`, `sp`, `pc`, C ops.
+
+
+
+The Cuda-ROM blocker on `macqd605` was cleared (romset under
+`roms/mame/`, zeroed NVRAM placeholder → MAME warns but runs and
+factory-inits XPRAM like our Egret HLE). Built a working headless MAME
+debug harness and co-simulated our exact ROM against it. Results:
+- **It is genuinely OUR bug, not a RAM-size artefact.** MAME boots PAST
+  the Slot Manager (never reaches the POST console $408B9928) at BOTH
+  4 MB and 32 MB, with the SAME MemTop as us. Our machine reaches the
+  console at both sizes. The 32 MB fatal `_sReadStruct` overrun
+  (SR=$2000 → $40900000) DISAPPEARS at 4 MB but a *different* POST test
+  still parks us in the console — same upstream cause.
+- **Root cause pinned to video sResource-LIST selection.** The ROM holds
+  a sequence of per-DrHW sRsrcType lists; MAME's Slot walk selects list
+  **$408F1C90**, ours selects the NEXT one **$408F1CC8** (off by one
+  $38-byte list block). MAME's video sReadStruct(spID=1) then runs on the
+  board directory (spsPointer=$408FFFDC, spOffset=−$2C, spSize=$10 — a
+  correct small copy); ours lands sel5's spsPointer on the raw
+  `00030001` sRsrcType header and reads it as a size → spSize=$2FFFD →
+  the byte-lane copy overruns to end-of-ROM. MAME NEVER calls sel5 with
+  spsPointer=$408F1CC8, and NEVER executes the RAM sExec at $000094E0.
+- **Prime suspect: the MEMCjr DAFB *holding-register* access model our
+  HLE omits.** For MEMCjr the DAFB regs are read through a 6-bit split
+  (`djmemc.cpp:143-198`): `dafb_holding_r` at $F9800000-$F98001FF returns
+  only `reg & 0x3f` and latches `(reg>>6)&0x3f`, read back via
+  `memcjr_r` at $5000E07C ($50F0E07C mirror). Our `dafbRegRead`
+  (`Q605Memory.cpp:163-190`) returns the full register in one $F9800000
+  access with no split. The monitor-sense reg $1C survives (value 1 < 
+  $40, DrHW $1C pick stays correct), but wider regs (version/config/
+  timing/RAMDAC id) come back wrong and one steers the off-by-one list
+  pick. Our boot does 85 840 $F9800000 + 900 $50F0E0 reads — the protocol
+  is heavily exercised. Full recipe + fix plan in TODO § Q5.1d.
+- **No speculative patch applied** (project discipline): the fix is a
+  real access-model rewrite (mask+latch every DAFB read, honour the
+  $50F0E07C holding read/write) that must be iterated against the oracle
+  to avoid regressing the passing DAFB init / Swatch VBL path.
+- **Tooling**: `q605_trace --stop-at` now also dumps the PC RING
+  (caller chain) and the LOWMEM globals (MemTop $108 / BufPtr $10C), used
+  to pin the caller of $000094E0 to the $40809A0A sExec trampoline and to
+  confirm MemTop matches MAME.
+
 ## 2026-07-18 — Q5.1c: the fatal `_sReadStruct` fully anatomised;
 ## DrHW pick proven correct; full-machine oracle blocked (round 2)
 

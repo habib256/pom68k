@@ -8,6 +8,7 @@ hdv/
 *.vhd
 docs/*.zip
 docs/*ROMs/
+roms/
 *.dsk
 *.img
 *.hdv

@@ -122,6 +122,7 @@ private:
     void    scsiPoll_();                      // feed 53C96 irq()/drq() to VIA2
     uint8_t dafbRead8(uint32_t addr);
     void dafbWrite8(uint32_t addr, uint8_t v);
+    uint32_t dafbRegReadRaw(uint32_t off);   // pre-holding-split register value
 
     std::vector<uint8_t> ram_, rom_, vram_;
     Via6522 via1_;

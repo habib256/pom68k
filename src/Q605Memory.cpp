@@ -161,6 +161,25 @@ void Q605Memory::dafbRecalcIrq() {
 }
 
 uint32_t Q605Memory::dafbRegRead(uint32_t off) {
+    uint32_t full = dafbRegReadRaw(off);
+    // MEMCjr DAFB bus-holding split (djmemc.cpp:149-165, dafb_holding_r):
+    // the $F9800000-$F98001FF window ($000 main + $100 Swatch) is a 12-bit
+    // port — a read returns only the low-6 bits and latches the high-6, which
+    // the ROM reads back at $50F0E07C (memcjr_r $7C → `holding>>6`) to rebuild
+    // the 12-bit value. We keep `dafbHolding_` in bits [11:6] throughout (the
+    // memcjr_w/r + DAFB-write convention, djmemc.cpp:172/186/197); MAME's
+    // dafb_holding_r stashes it unshifted, an internal asymmetry that would
+    // make the high-half read-back return 0 — but this ROM DOES read the high
+    // half back after a register read, so we store it shifted so memcjr_r's
+    // `>>6` recovers it. Side-effect reads already ran in dafbRegReadRaw above.
+    if ((off & 0x3FC) < 0x200) {
+        dafbHolding_ = uint16_t(((full >> 6) & 0x3f) << 6);
+        return full & 0x3f;
+    }
+    return full;
+}
+
+uint32_t Q605Memory::dafbRegReadRaw(uint32_t off) {
     switch (off & 0x3FC) {
         // main ($000): dafb_r
         case 0x1C:
@@ -191,6 +210,16 @@ uint32_t Q605Memory::dafbRegRead(uint32_t off) {
 }
 
 void Q605Memory::dafbRegWrite(uint32_t off, uint32_t v) {
+    // MEMCjr DAFB bus-holding split (djmemc.cpp:167-178, dafb_holding_w):
+    // the $F9800000-$F98001FF window ($000 main + $100 Swatch) is a
+    // 12-bit port whose write value is `(this write & 0x3f) | holding`,
+    // the high-6 half having been latched by a prior $50F0E07C write;
+    // the latch then clears. Outside that window (RAMDAC $200+) the DAFB
+    // is written whole.
+    if ((off & 0x3FC) < 0x200) {
+        v = (v & 0x3f) | uint32_t(dafbHolding_);
+        dafbHolding_ = 0;
+    }
     uint32_t idx = (off >> 2) & 0xFF;
     dafb_[idx] = v;
     switch (off & 0x3FC) {
@@ -257,13 +286,16 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
         return d;
     }
     if (base >= 0x0E000 && base < 0x10000) {     // MEMCjr regs
-        // MAME memcjr_r: every register reads back 0 except the DAFB
-        // holding at $7C — the ROM's bank prober loops forever on an
-        // echoing bank-config register ($04), and settles on defaults
-        // when the readback is 0.
+        // MAME memcjr_r (djmemc.cpp:181-190): every register reads back 0
+        // except $7C, the DAFB bus-holding register, which returns the
+        // latched high-6 bits (`m_dafb_holding >> 6`). The high-6 half of
+        // a 12-bit DAFB register is transferred through this latch; the
+        // low-6 half goes directly at $F9800000 (dafb_holding_r/w).
         uint32_t idx = (base & 0x7F) >> 2;
-        if (idx == (0x7C >> 2))
-            return uint8_t(memcjr_[idx] >> (8 * (3 - (base & 3))));
+        if (idx == (0x7C >> 2)) {
+            uint32_t hi = uint32_t(dafbHolding_) >> 6;   // 6 bits
+            return uint8_t(hi >> (8 * (3 - (base & 3))));
+        }
         return 0;
     }
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
@@ -317,6 +349,14 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         uint32_t idx = (base & 0x7F) >> 2;
         int sh = 8 * (3 - (base & 3));
         memcjr_[idx] = (memcjr_[idx] & ~(0xFFu << sh)) | (uint32_t(v) << sh);
+        // MAME memcjr_w (djmemc.cpp:192-199): a write to $7C latches the
+        // high-6 half of the next DAFB register write —
+        // `m_dafb_holding = (data & 0x3f) << 6`. The 12-bit DAFB write at
+        // $F9800000 then ORs this latch in (dafb_holding_w). Sample the
+        // full u32 written to $7C on its low lane ($7F) so all 4 bytes
+        // have landed in memcjr_[].
+        if (idx == (0x7C >> 2) && (base & 3) == 3)
+            dafbHolding_ = uint16_t((memcjr_[idx] & 0x3f) << 6);
         return;
     }
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
