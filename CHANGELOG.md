@@ -1,5 +1,42 @@
 # CHANGELOG
 
+## 2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work — the Mac OS 8.1 SCSI
+## driver now transfers full 512-byte blocks off the disk
+
+With the Q5 Slot-Manager fix letting the boot reach SCSI target
+selection, three gaps in the `Ncr53c96` model blocked the driver's
+polled-DMA read loop ($408D1F40). Each was pinned by tracing the driver
+against the MAME `ncr53c90` FSM (references in comments):
+- **CDB streaming.** The driver SELECTs (no ATN, cmd $C1) with a flushed
+  FIFO, THEN pushes the CDB into the FIFO and polls for the phase to
+  leave COMMAND ($408D1A84). Our select consumed nothing and parked in
+  COMMAND forever. Fix: `fifoPush` while in COMMAND phase accumulates the
+  CDB and runs the target once complete (models the real
+  DISC_SEL_WAIT_REQ/SEND_BYTE streaming, ncr53c90.cpp:544-570), advancing
+  the phase out of COMMAND.
+- **Chunked DATA IN.** The driver reads 16 bytes per iteration: set
+  TC=16, Transfer Info DMA ($90), wait S_TC0 (chunk landed) + VIA2 DRQ +
+  FIFO-full (reg7 bit4), burst 4 longwords from the $50F50100 window,
+  then wait on Status bit7 (bus-service IRQ) and read R_ISTAT. Fix:
+  `transferInfo` sets S_TC0 and raises I_BUS per DMA chunk; `R_FLAGS`
+  reports the DATA IN remaining count (not the physical FIFO); DRQ is
+  decoupled from S_TC0 (it tracks CPU-side availability).
+- **VIA2 DRQ line.** The driver polls the 53C96 DRQ through pseudo-VIA2
+  IFR bit0 ($50F03A00 = via2 reg 13, pseudovia.cpp:162 scsi_drq_w), a
+  line we never reflected. Fix: via2 IFR reads OR in the live
+  `scsi_.drq()`.
+
+Verified end to end: block 0's Driver Descriptor Map ('ER' 02 00 00 09
+60 60 …) lands byte-perfect at the driver buffer $003FF980 via the
+pseudo-DMA window; the transaction completes with GOOD status ($00), a
+COMMAND COMPLETE message, and a clean CI_COMPLETE/MSG_ACCEPT. `ctest`
+26/26. `q605_trace` gained SCSI chunk-loop log filters and an A2-buffer
+dump (commit 04f1b40).
+
+Known next blocker (Q6.2): the boot re-reads block 0 in a loop and never
+advances to the partition map or the SCSI driver — a boot-logic issue
+above the SCSI A-trap, not a controller fault (see TODO § Q6.2).
+
 ## 2026-07-18 — Q5.1d: Q5 Slot-Manager blocker RESOLVED — the missing
 ## MEMCjr DAFB bus-holding split; boot now drives the SCSI bus
 

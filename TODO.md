@@ -850,22 +850,59 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   this ROM drives DAFB through the MEMCjr holding window
   ($50F0E0xx / $50F18xxx); wire that path when video actually paints
   (MAME djmemc.cpp:142-178 dafb_holding_r/w + memcjr_r/w).
-- [~] **Q6 — SCSI 53C96** (DEVICE + WIRING DONE 2026-07-18, boot-blocks
-  read gated by the Q5 blocker upstream): `Ncr53c96` (MAME
-  `ncr53c90.cpp` reference — command-driven FIFO controller, 24-bit
-  transfer counter, pseudo-DMA), `ScsiDisk` target reused verbatim, unit
-  gate `ncr53c96_test` (READ CAPACITY/READ6/READ10 polled + pseudo-DMA,
-  selection timeout) green on the real `MacOS-8.1-boot.vhd`. WIRED into
-  `Q605Memory`: register file at $50010000 (reg=(addr>>4)&$F,
-  iosb.cpp:58-59), pseudo-DMA port at $50010100 with the same DRQ-gated
-  /BERR holdoff the LC II V8 path uses, level IRQ into the Quadra
-  pseudo-VIA2 SCSI line (re-sampled per access, IntStatus-read clears —
-  macquadra605.cpp:204-206). `q605_trace --disk IMG` attaches at ID 0
-  (+ q605_trace.pram Cuda persistence, --scsi-log, --wwatch RAM watch).
-  The ROM reaches and exercises the 53C96 (1682 register reads, bus
-  RESET issued) but the boot still stops at the Q5 Slot-Manager overrun
-  before it selects the target. Gate for the milestone (boot blocks
-  read) waits on Q5.1b below. ctest 26/26.
+- [~] **Q6 — SCSI 53C96** (DEVICE + WIRING + pseudo-DMA READS DONE
+  2026-07-18): `Ncr53c96` (MAME `ncr53c90.cpp` reference — command-driven
+  FIFO controller, 24-bit transfer counter, pseudo-DMA), `ScsiDisk`
+  target reused verbatim, unit gate `ncr53c96_test` (READ CAPACITY/READ6/
+  READ10 polled + pseudo-DMA, selection timeout) green on the real
+  `MacOS-8.1-boot.vhd`. WIRED into `Q605Memory`: register file at
+  $50010000 (reg=(addr>>4)&$F, iosb.cpp:58-59), pseudo-DMA port at
+  $50010100 with DRQ-gated /BERR holdoff, level IRQ into the Quadra
+  pseudo-VIA2 SCSI line. `q605_trace --disk IMG` attaches at ID 0.
+
+  **Q6.1 — the Mac OS 8.1 SCSI driver now reads full 512-byte blocks
+  (commits 304eb61 + 04f1b40, 2026-07-18 Opus session).** After the Q5
+  Slot-Manager fix let the boot reach target selection, three gaps in
+  the 53C96 model blocked the polled-DMA read loop ($408D1F40); each
+  found by tracing the driver against the MAME ncr53c90 FSM:
+  1. **CDB streaming.** The driver SELECTs (no ATN, cmd $C1) with a
+     flushed FIFO, THEN pushes the CDB into the FIFO and polls for the
+     phase to leave COMMAND ($408D1A84). Our select consumed nothing
+     and parked in COMMAND forever. Fix: `fifoPush` in COMMAND phase
+     accumulates the CDB and runs the target once complete (models the
+     real DISC_SEL_WAIT_REQ/SEND_BYTE streaming, ncr53c90.cpp:544-570).
+  2. **Chunked DATA IN.** The driver reads 16 bytes at a time: TC=16,
+     Transfer Info DMA ($90), wait S_TC0 + VIA2 DRQ + FIFO-full
+     (reg7 bit4), burst 4 longwords from the $50F50100 window, then
+     wait on Status bit7 (bus-service IRQ). Fix: `transferInfo` sets
+     S_TC0 and raises I_BUS per DMA chunk; `R_FLAGS` reports the DATA IN
+     count; DRQ decoupled from S_TC0.
+  3. **VIA2 DRQ line.** The driver polls the 53C96 DRQ through
+     pseudo-VIA2 IFR bit0 ($50F03A00 = via2 reg13, pseudovia.cpp:162
+     scsi_drq_w) — never reflected. Fix: via2 IFR reads OR in live
+     `scsi_.drq()`.
+  VERIFIED end to end: block 0's DDM ('ER' 02 00 00 09 60 60 …, 2 SCSI
+  drivers, first at block $40) lands byte-perfect at the driver buffer
+  $003FF980 via the pseudo-DMA window; STATUS = $00 (GOOD), COMMAND
+  COMPLETE message, clean CI_COMPLETE/MSG_ACCEPT. ctest 26/26.
+
+  **Q6.2 — CURRENT BLOCKER: the boot re-reads block 0 forever (~48 700
+  times, always READ6 LBA 0, ~7 selects each = a full ID 6→0 scan per
+  read) and NEVER advances to block 1 (partition map 'PM') or the driver
+  at block $40.** This is NOT a SCSI fault — data + status + completion
+  are all correct and verified. The ROM reads the valid DDM and rejects/
+  re-polls it. The read is issued via an A-trap (SCSI/Device Manager
+  dispatcher at $408099xx), so the retry decision is in the boot logic
+  ABOVE the trap. VRAM shows rendered content (a `####`/`+` icon block —
+  likely the "no bootable disk" poll icon). Next: golden-trace the boot
+  sequence in MAME macqd605 (oracle at `roms/mame/`, harness in § Q5.1d)
+  — break where the ROM parses the DDM after the block-0 read and diff
+  what a real 605 does next (read PM/driver) vs our re-poll; the
+  divergence is likely a boot-time subsystem the DDM handler consults
+  (Start Manager state, a Time Manager/VBL tick, drive-queue registration
+  the SCSI Manager needs). Suspect classes to rule out first: (a) the
+  ROM's async SCSI completion / drive-queue insertion, (b) a missing
+  interrupt tick that gates the Start Manager state machine.
 
   **Q5.1b — sReadWord producer chain PINNED (2026-07-18).** Round-1
   integration re-traced the VEC2 #14 overrun with the new `--wwatch`
