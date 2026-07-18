@@ -900,9 +900,28 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   what a real 605 does next (read PM/driver) vs our re-poll; the
   divergence is likely a boot-time subsystem the DDM handler consults
   (Start Manager state, a Time Manager/VBL tick, drive-queue registration
-  the SCSI Manager needs). Suspect classes to rule out first: (a) the
-  ROM's async SCSI completion / drive-queue insertion, (b) a missing
-  interrupt tick that gates the Start Manager state machine.
+  the SCSI Manager needs). Suspect classes: (a) the ROM's async SCSI
+  completion / drive-queue insertion — the ROM likely waits on an
+  interrupt-driven completion (bus-service/disconnect IRQ into VIA2) that
+  we deliver only synchronously, so the drive never registers and the
+  scan re-polls; (b) a missing interrupt tick that gates the Start
+  Manager state machine. XPRAM boot-device is RULED OUT (oracle below).
+
+  **VALIDATED FULL-FINDER ORACLE (2026-07-19).** MAME macqd605 boots our
+  EXACT disk all the way to the Mac OS 8.1 Finder desktop (menu bar,
+  mounted HD icon, "About This Computer" 32 MB) — screenshot-confirmed.
+  Command (disk staged as `roms/mame/boot.hdv` = copy of
+  `hdv/MacOS-8.1-boot.vhd`):
+    cd roms/mame && flatpak run org.mamedev.MAME -rompath "$PWD" macqd605 \
+      -scsi:0 harddisk -hard boot.hdv -window -video soft -ramsize 32M
+  (headless: add -seconds_to_run N; debugger: -debug under Xvfb per
+  § Q5.1d; MAME's low default RAM triggers a benign "not enough memory
+  for extensions" dialog — pass -ramsize 32M.) It boots with the SAME
+  zero-filled cuda_nvram.bin we have (MAME warns WRONG CHECKSUM, boots
+  anyway) → RULES OUT any XPRAM boot-device dependency: a blank NVRAM
+  still reaches the Finder. So the block-0 re-read is purely our bug, and
+  this is the golden step-by-step reference to diff against (block 0 →
+  driver block $40 → partition map → System → extensions → Finder).
 
   **Q5.1b — sReadWord producer chain PINNED (2026-07-18).** Round-1
   integration re-traced the VEC2 #14 overrun with the new `--wwatch`
