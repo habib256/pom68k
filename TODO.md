@@ -943,12 +943,26 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   `btst #$11,D7` / `btst #$0,($2,A3)` polling the SCC, sr=$270C). The
   System file loaded off disk (1 281 SCSI commands, 43 775 writes, VRAM
   holds the boot-screen dither) but a System-startup error routes to the
-  console instead of continuing to the Finder. Next: catch the divergence
-  that sets the console-entry D7 bit (Q5.1a localized console entry at
-  $4084AAA2 / $408B98BC via the POST-executive table) — likely a missing
-  machine subsystem the early System init consults (real DAFB video paint,
-  a Time-Manager/VBL tick, sound, or an NMI/interrupt). Diff against the
-  MAME macqd605 golden boot at the point the System takes over from the ROM.
+  console instead of continuing to the Finder. It is TERMINAL (still in
+  the loop at 8e9 cycles). Console-entry caller chain (RING at
+  $408B9F58 console-init): `$40802F82 → $40804640 → $40847054 →
+  $40804B0C → $40804BDC → $408B9F58` — a ROM-level exception/SysError
+  path (NOT a System crash of its own): the extra vec-2 bus errors are
+  all the benign empty-slot probes ($FnFFFFFF @ $40805F04), so the
+  divergence is NOT an unhandled bus error. The routing point is the
+  **POST-executive dispatcher** at `$40802F82` (D0=machine ID $A55A2221,
+  A1=$408A8080 = the POST table from Q5.1a, D1=$670 = current entry
+  offset, D7=$08000000 = progress/fail bits): `move.l ($18,A1),D0; beq;
+  move.l ($10,A1),D2; bra $40804B0C` — the table entry at $408A8080+$670
+  carries a non-zero handler ($18) that jumps to $40804B0C → the console.
+  So the ROM POST executive (re-entered after the OS boot-block handoff)
+  walks its entry table and one entry diverts to the serial console.
+  Next: identify which POST entry ($408A8080+$670) it is and why its
+  condition trips (D7 bit set upstream), and diff the System-takeover
+  point against the MAME macqd605 golden boot — likely a missing machine
+  subsystem the early boot/System init consults (real DAFB video paint
+  through the MEMCjr holding window $50F0E0xx/$50F18xxx, a Time-Manager/
+  VBL tick, sound, or an NMI/interrupt the System arms).
 
   **Q6.2 — HISTORICAL BLOCKER writeup (kept for method): the boot
   re-reads block 0 forever (~48 700
