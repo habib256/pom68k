@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 2026-07-19 — Q6.2 ROOT-CAUSED (investigation, no fix committed): the
+## block-0 re-read loop is a Cuda reply-framing divergence, not SCSI
+
+Diffed our boot against a MAME macqd605 golden `trace` (the disk boots
+to the Finder there). The Start Manager's boot-driver scan
+(`$40807224`) matches a DDM driver descriptor by a **wanted ddType** it
+derives from `_GetDefaultStartup`/`_GetOSDefault` ($A07D/$A084). MAME
+wants ddType $0001 (matches our disk's DDM entry0) and proceeds; ours
+wants $0000 and matches nothing, so the Start Manager re-runs the whole
+SCSI scan → block 0 re-read ~48 700×. Traced the wanted value to the
+device-manager ADB block the Cuda receive ISR fills. The wanted ddType
+is the **low byte of the `_GetOSDefault` result**: MAME $0001 → low $01
+→ wanted $01 (matches DDM entry0, boots); ours $0200 → low $00 → wanted
+$00 (matches nothing). The $0200 traces (`--wwatch`) to a byte $02
+stored at `$408A9C10` with A2=$21D0 — the **ADB autopoll buffer, not the
+OSDefault device-manager block ($17FF9C/$de0)** — so our `_GetOSDefault`
+result is contaminated by an ADB autopoll packet read from the wrong
+buffer. Two Cuda reply-header probes were tried and reverted (tree
+clean): a blanket 3-byte Cuda header breaks the POST direct reader
+(double fault); swapping the header to MAME's exact `$00 $01 $00 <cmd>`
+keeps POST alive but does NOT change $0200 — confirming the value is not
+sourced from the pseudo-reply header but from the autopoll/device-manager
+buffer routing. Full diagnosis + next step (match MAME's ADB
+autopoll-vs-device-manager buffer handoff, gated on `cudaPolarity_`,
+POST-preserving) in TODO § Q6.2. Tooling note: in the MAME imgui debugger under Xvfb,
+`tracelog` in a bp/wp action WORKS; `save`-expressions and bp/wp
+*conditions* are unreliable (fire on first hit / mis-evaluate) — drive
+everything through `trace <file>,maincpu,,{ tracelog "" }` + taps.
+
 ## 2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work — the Mac OS 8.1 SCSI
 ## driver now transfers full 512-byte blocks off the disk
 

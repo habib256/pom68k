@@ -923,6 +923,76 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   this is the golden step-by-step reference to diff against (block 0 →
   driver block $40 → partition map → System → extensions → Finder).
 
+  **Q6.2 ROOT-CAUSED (2026-07-19) — a Cuda reply-framing divergence,
+  NOT a SCSI fault.** Walked the boot logic above the SCSI trap with
+  `q605_trace --stop-at`/`--wwatch` and diffed against a MAME `trace`
+  golden log (the `tracelog` action DOES work in the imgui debugger under
+  Xvfb — bp save-expressions and bp *conditions* do NOT, they fire on the
+  first hit regardless; use `trace <file>,maincpu,,{ tracelog "..." }` +
+  a `wpset`/`bpset` tap that `tracelog`s the wanted regs/mem). Chain:
+  - The re-poll is the Start Manager's **boot-driver scan** (`$408071FC`
+    per SCSI ID, `$40807224` per ID; DDM 'ER' check at `$40807246`, the
+    driver-descriptor match loop `$40807260`-`$4080726E`). It reads
+    block 0, verifies 'ER' (OK), then loops the DDM's driver descriptors
+    matching each ddType (`$6(A0)`) against a **wanted ddType** in
+    `-$a(A6)`. Our disk's DDM has ddType $0001 (entry0) and $006A
+    (entry1). MAME wants **$0001** → matches entry0 → reads the driver at
+    ddBlock $40 (`$40807290`), the partition map ('PM'/'TS'), advances to
+    the Finder. **Ours wants $0000** → matches neither → returns $FF →
+    the Start Manager re-runs the whole scan → block 0 re-read forever.
+  - The wanted ddType = D3[16:23] via `swap d3; move.b d3,d0` at
+    `$4080722C`. D3 is set by the Start Manager from **`_GetDefaultStartup`
+    ($A07D) + `_GetOSDefault` ($A084)** at `$40801430`-`$40801446`
+    (`move.w (a7)+,d3`/`swap d3; move.w (a7)+,d3`). MAME: `_GetOSDefault`
+    → **$0001**, `_GetDefaultStartup` → $FFFF (D3=$0001FFFF, wanted $01).
+    Ours: D3=$020002FF (wanted $00).
+  - Both traps read the **device-manager ADB block** ($de0 / a working
+    block ~$0017FF9C): the handler `$408A9C62` polls VIA1 IFR.2 (Cuda SR
+    interrupt) then reads the block the Cuda receive ISR (`$408A9BD0`,
+    `move.b d0,(a0,d1.w)`) filled. The captured result byte is $02 in
+    ours, $01 in MAME.
+  - **The single divergence is the Cuda reply header.** MAME
+    macqd605's real Cuda answers a pseudo command with **`$00 $01 $00
+    <cmdEcho>`** (e.g. ReadXPram → `00 01 00 02`, WriteXPram →
+    `00 01 00 08`, verified by segmenting the MAME SR TX/RX trace). Our
+    Egret HLE answers **`$01 $00 $00 <cmdEcho>`** (`Egret::process`,
+    reply builders) — the first two header bytes are swapped, and (for
+    XPRAM reads) we then STREAM 32 PRAM bytes where the Quadra Cuda
+    sends a short fixed reply. Because the device-manager receiver
+    discards byte0 (sync) and captures byte1 as the payload, our $00 lands
+    where the Cuda's $01 should, so `_GetOSDefault` returns $0200/$0000
+    instead of $0001.
+  - **NOT the fix yet** (two probes tried, both reverted — tree clean):
+    (1) blanket 3-byte header `{$01,$00,cmd}` for the Cuda → POST breaks
+    (double-fault at $408099B4, sp=$FFFFFFF8) because the POST direct
+    reader ($408B3B..) needs the 4-byte framing; (2) swapping only the
+    first two header bytes to `{$00,$01,$00,cmd}` for the Cuda flavor
+    (byte-identical to MAME's `00 01 00 02`) → POST survives but OSDefault
+    stays $0200.
+    **Why the swap doesn't help — the value's true source, PINNED:** the
+    wanted ddType = **low byte of the `_GetOSDefault` result**. D3.high is
+    set to the result at `$40801442` (`swap d3; move.w (a7)+,d3; swap d3`),
+    and the scan takes `swap d3; move.b d3,d0` at `$4080722C` = the
+    result's LOW byte. MAME result $0001 → low $01 → wanted $01 (matches
+    DDM entry0). Ours $0200 → low $00 → wanted $00. The $0200 traces (via
+    `--wwatch 1FD7F2`) to a byte **$02 stored at `$408A9C10` with
+    A2=$000021D0 — the ADB AUTOPOLL buffer, NOT the OSDefault
+    device-manager block ($17FF9C)**. So our `_GetOSDefault` result is
+    contaminated by an ADB autopoll packet read from the wrong buffer;
+    the pseudo-reply header (fixed or not) is not what it reads, which is
+    why the swap changes nothing. The real fix is in the Cuda
+    autopoll/device-manager buffer routing: our autopoll packet
+    (`{$01,$00,$40,talk,data}`, ~11 ms) or the device-manager block
+    handoff must match MAME so `_GetOSDefault` reads OSDefault (PRAM
+    $76:$77 = $0001, already held correctly) instead of a stray $02.
+    NEXT: with the segmented-tracelog method (`roms/mame/*.tr`) diff how
+    MAME routes the ADB autopoll buffer ($21D0) vs the device-manager
+    block ($17FF9C/$de0) and how `_GetOSDefault` picks the right one — our
+    autopoll is leaking a $02 into the result slot. (MAME's `_GetOSDefault`
+    does NO fresh Cuda read: the value is pre-seeded, likely by the
+    earlier `_GetDefaultStartup` at $408986F4 — match that init.) Verify
+    the fix reaches the `$40807272` DDM match + keeps all 26 CTests green.
+
   **Q5.1b — sReadWord producer chain PINNED (2026-07-18).** Round-1
   integration re-traced the VEC2 #14 overrun with the new `--wwatch`
   (RAM write-watch) + `--watch`/`--stop-skip`. The exact producer chain
