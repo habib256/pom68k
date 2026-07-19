@@ -1,5 +1,42 @@
 # CHANGELOG
 
+## 2026-07-19 — Q6.5b/c: the async SCSI SIM crash + the SCC/reselection spin
+## are BOTH fixed — the boot loads System, applies patches, stops at dsBadPatch
+
+Two MAME-source-driven 53C96 fixes (ncr53c90.cpp FSM, read via scrapling +
+local clone) took the boot from the "illegal instruction" crash all the way to
+the System's ROM-patch-application stage:
+
+- **DMA SELECT raises DRQ, not an interrupt (Q6.5b).** MAME's CD_SELECT with a
+  DMA command does `dma_set(DMA_OUT)`; in DISC_SEL_ARBITRATION with an empty
+  FIFO it runs `seq=1; check_drq(); break;` — DRQ goes HIGH and NO interrupt
+  fires. The Mac OS 8 async SCSI SIM polls that DRQ (pseudo-VIA2 IFR bit0, via
+  `$0011E5A6`) to detect an async transaction and install its completion
+  continuation (trampoline `$0011EC80`, `move.l a1,$f0(a0)`). Our selectTarget()
+  raised I_BUS|I_FUNCTION immediately on the empty-CDB select and never raised
+  DRQ → the SIM took the SYNC path, skipped the trampoline, and its later "$02
+  service" message jumped through the never-installed NULL continuation → jump
+  to `$2` → vector table executed → vec-4 crash alert. Oracle proof: the module
+  is loaded at +$10B0 on MAME; at the isr the continuation reads `$0011FA54`
+  (VALID) because the trampoline ran first; ours was NULL. Fix: incomplete-CDB
+  select → phase=COMMAND, seq=1, selCdbWait_, DRQ high, no IRQ; the completion
+  IRQ (I_BUS|I_FUNCTION) fires when the streamed CDB completes.
+- **CD_ENABLE_SEL raises no interrupt (Q6.5c).** MAME just
+  `command_pop_and_chain()` (ncr53c90.cpp:841); only CD_DISABLE_SEL does
+  function_complete(). Our spurious I_FUNCTION mis-sequenced the SIM's async
+  completion wait (the `$001B7860` loop polling I/O status `$171D02==$8001`,
+  which also polls the SCC `$1D8`/`$1DC`).
+
+Result: crash GONE (0 vec-4), boot advances **1583 → 2882 SCSI commands**,
+launches and runs the loaded System, and reaches the **ROM-patch application
+stage** — where it stops at a System caution+Restart alert. Read the screen
+(new raw-VRAM dump) + DSErrCode `$AF0` = **99 = dsBadPatch, "Can't load patch
+resource"**, raised by a System patch stub at `$0004C966` that validates ROM
+return addresses (`$4080F244`/`$4080F300`) and errors on mismatch. This is the
+FINAL startup stage before the Finder launches. 26/26 CTest green throughout;
+ncr53c96_test unchanged. New frontier (Q6.5d): why the patch validation fails —
+trace the patch-resource load / the `$4080F244` ROM return-address flow vs MAME.
+
 ## 2026-07-19 — Q6.5: the boot restart loop is ACTUALLY resolved — the ROM's
 ## POST XPRAM validity read uses a THIRD Cuda framing (direct-driver GetPram)
 

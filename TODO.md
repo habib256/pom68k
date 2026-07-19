@@ -974,31 +974,39 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   cycles. Fix: drop status1+cmdEcho from the Quadra GetPram reply. Result:
   ZERO restarts, the System loads (1583 SCSI cmds) AND LAUNCHES. 26/26.
 
-  **Q6.5b — CURRENT BLOCKER: the running System crashes with the "illegal
-  instruction" alert** (modal crash dialog spins on MBState $172 waiting for a
-  Restart click; read via the Q605_STRTAP dialog-text tap). Chain, fully
-  localized (CHANGELOG 2026-07-19): the Mac OS 8 linked-patch **async SCSI
-  SIM** (loaded in the system heap at $0011A6xx-$001236xx; neighbours 'lmem'/
-  'pch' resources; invoked during the late-boot 'prnt'/"PrintMonitor
-  Documents" folder scan, ~22.4 s emulated) runs its per-transaction script
-  (ctx+$9E index → message codes via the $001222C4 jump table): $0F=select
-  ($C1), $11=send CDB (READ10) + CI_XFER $10 — its collector $11E386
-  SPIN-POLLS S_INTERRUPT — then posts $02="service interrupt" whose handler
-  $0011E996 does `jmp *(ctx+$F0)` — but the continuation at ctx+$F0 is NULL
-  (the installing trampoline $0011EC80 `move.l a1,$f0(a0)` never ran; ctx
-  freshly NewPtr-clear'ed at 559.88M) → jump to $2 → vector table executed →
-  vec-4. NOT an IRQ-delivery problem (via2IER SCSI bit off, scsi.irq()=0 at
-  dispatch — the pump runs from the deferred-task queue) and NOT a latency
-  race (deferring the 53C96 bus-service IRQ via the new POM68K_SCSI_LAT knob
-  only delays the same ordering — the collector spin-waits). MAME oracle: a
-  20-emulated-second full trace never executes $0011xxxx, but byte-searching
-  MAME RAM found the module RELOCATED and its breakpoints DO fire in a longer
-  window (oracleE2_*, agent report pending) — so the module runs fine on real
-  HW: diff its script progression/chip reads there vs ours to find the
-  diverging machine input (suspects: our 53C96 reg8/CONFIG readback $C7,
-  FLAGS/SEQ details, or an earlier script step skipped). Repro:
-  `q605_trace --disk hdv/MacOS-8.1-boot.vhd --cycles 561000000` + taps
-  Q605_EVTAP/Q605_STRTAP/Q605_SCSIALL/Q605_WWFROM/Q605_RAMDUMP.
+  **Q6.5b/c — RESOLVED 2026-07-19 (commits 8c299f9, ef7c456): two 53C96 fixes
+  from MAME's ncr53c90.cpp FSM took the boot past the async-SIM crash AND the
+  SCC/reselection spin.** (1) DMA SELECT with an empty FIFO must raise DRQ (not
+  an interrupt) so the async SCSI SIM detects the async transaction and installs
+  its completion continuation; our instant I_BUS|I_FUNCTION made it take the
+  sync path → later NULL-continuation jump → "illegal instruction" crash. Fix:
+  selectTarget() incomplete-CDB → phase=COMMAND, seq=1, selCdbWait_, DRQ high,
+  no IRQ; completion IRQ fires when the streamed CDB lands. (2) CD_ENABLE_SEL
+  must raise NO interrupt (MAME command_pop_and_chain) — our spurious I_FUNCTION
+  mis-sequenced the SIM's async completion wait ($001B7860 loop on I/O status
+  $171D02==$8001). Oracle-proven (module relocated +$10B0 on MAME; the isr's
+  continuation is VALID there because the trampoline ran, NULL on ours). Boot:
+  1583 → 2882 SCSI commands, crash gone, System launches.
+
+  **Q6.5d — CURRENT BLOCKER: dsBadPatch (System error 99) at the ROM-patch
+  application stage — the LAST step before the Finder.** The System loads and
+  runs, applies its ROM patches ('ptch'/'lmem'/'gpch'), and one patch fails →
+  the ROM SysError draws a caution+Restart alert (no crash: 0 vec-4, 13 benign
+  slot vec-2). Localized: DSErrCode $AF0 = 99 = dsBadPatch "Can't load patch
+  resource" (also D6=$63 in the modal ring), set via a System patch stub at
+  `$0004C966` that validates ROM return addresses (`cmpi.l #$4080F244,(a7)` /
+  `#$4080F300`) and jumps to SysError(99) at `$40802720`→`$40802786` on
+  mismatch. So our ROM execution flow doesn't hit the return address the patch
+  expects (a come-from / tail-patch validation), OR the patch resource load
+  itself diverged. Next: trace the `$4080F244`/`$4080F300` ROM routines and why
+  the patch stub's return-address check fails vs MAME; check the patch-resource
+  _GetResource path. NOTE: the screen renders at a wrong (tiny) size because the
+  DAFB video HLE is incomplete (Q8) — the alert is real, just mis-scaled; read
+  it via the raw VRAM dump (q605_vram.raw, 8bpp) + DSErrCode, not the pixels.
+  Repro: `q605_trace --disk hdv/MacOS-8.1-boot.vhd --cycles 1300000000
+  --stop-at 40802A38`; taps Q605_STRTAP/Q605_RAMDUMP/Q605_WWFROM; DSErrCode at
+  $AF0. Tooling added: Q605_EVTAP, Q605_ASYNCHK, Q605_SCSIALL, Q605_WWFROM,
+  raw VRAM dump, POM68K_SCSI_LAT (off).
 
   Also open (Q6.5 polish): proper long-term cure for the `$76` special-case
   (make the `_GetOSDefault` reader consume the echo like the ISR instead of
