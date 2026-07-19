@@ -938,8 +938,46 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   (43 775 writes), loads the System, then falls into the POST serial
   console — the next blocker.
 
-  **Q6.4 — CURRENT BLOCKER (2026-07-19): after the System loads the boot
-  diverts to the POST serial console** ($408B9928 → $408BA0EA loop,
+  **Q6.4 — restart loop ROOT-CAUSED & FIXED (2026-07-19), but it un-masks
+  the coupled Q6.2 block-0 loop; Finder NOT yet reached.** The restart-loop
+  was a **Q6.2 regression**: the ReadXPram reply echo-pop corrupted the
+  ROM's XPRAM SysParam validity read, so the ROM re-initialised XPRAM
+  (clearing the 32-bit boot flag `$8A`) every boot and Mac OS 8's `'ROvr'`
+  patch kept doing `_WriteXPRam $8A|=$05; _ShutDown ShutDwnStart` forever.
+  Fix (`src/Egret.cpp` `kReadXPram`, Quadra-only `cudaPolarity_`, LC II
+  untouched): keep the full 4-byte ReadXPram header (echo present) so the
+  device-manager receive ISR at `$408A9BBE` lands on `pram[$10]=$A8` and the
+  validity check at `$4080C5DE` passes. The restart loop is gone and the
+  validity read is correct (`$1F8`=`$A8`); 26/26 gates green.
+
+  **BUT the SAME echo un-masks Q6.2.** `_GetOSDefault` now returns `$0200`
+  not `$0001`, so the Start-Manager DDM scan at `$40807264` compares wanted
+  ddType `$00` (low byte of `$0200`) against the disk descriptors (`$0001`,
+  `$006A`), matches neither, and re-reads block 0 forever (44 000+ identical
+  `READ(6) LBA 0` — the Q6.2 block-0 loop, NOT System loading). The DDM is
+  read perfectly off SCSI; this is purely `_GetOSDefault`. Q6.2's echo-pop
+  masked the OSDefault bug at the cost of the SysParam validity (→ Q6.4);
+  removing it fixes validity but re-exposes OSDefault. Neither blunt
+  pop/no-pop reaches the Finder.
+
+  **Q6.5 — UNIFIED FIX WANTED (2026-07-19): keep the echo AND make
+  `_GetOSDefault` return `$0001`.** The echo genuinely belongs (proven: the
+  device-manager receive ISR consumes a fixed 4-byte header
+  `[sync,status0,status1,cmdEcho]` — the new `q605_trace` `$408A9BE2`
+  HDRDONE tap shows `hdrbuf 01 00 00 02` with data landing correctly only
+  when the echo is present). So OSDefault `$0200` is a SEPARATE defect, not
+  the echo — it is the ADB-autopoll buffer contamination Q6.2 first
+  identified (receive block `A2=$000021D0`) before mis-attributing the fix
+  to the echo. Find which read/store populates the OSDefault low-mem (D3's
+  high word, popped at `$40801442`; the DDM scan is `$408071FC`→`$40807224`)
+  and why it gets `$02` with the echo present; fix that at its source with
+  the echo KEPT and both reads come out right. The historical Q6.4
+  investigation notes below are kept for reference (POST-console divert,
+  restart machinery, ruled-out candidates) but are now SUPERSEDED.
+
+  **[SUPERSEDED] Q6.4 investigation notes (kept for reference):**
+  **after the System loads the boot diverts to the POST serial console**
+  ($408B9928 → $408BA0EA loop,
   `btst #$11,D7` / `btst #$0,($2,A3)` polling the SCC, sr=$270C). The
   System file loaded off disk (1 281 SCSI commands, 43 775 writes, VRAM
   holds the boot-screen dither) but a System-startup error routes to the

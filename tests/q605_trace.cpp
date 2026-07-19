@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: %s <rom> [--cycles N] [--io N] [--berr N] [--pcring N]\n", argv[0]); return 2; }
     long long cycles = 200000000;   // 8 machine-seconds at 25 MHz
     int ioMax = 60, berrMax = 40; size_t pcRing = 32;
-    uint32_t stopAt = 0, watch = 0, wwatch = 0, firstpc = 0, complog = 0;
+    uint32_t stopAt = 0, watch = 0, wwatch = 0, firstpc = 0, complog = 0, dumpAt = 0;
     long stopSkip = 0;                 // ignore the first N hits of --stop-at
     std::string diskPath;             // --disk / --scsi: boot image at ID 0
     long long scsiFrom = 0, scsiTo = 0;   // SCSI register-trace clock window
@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
         else if (a == "--wwatch" && i + 1 < argc) wwatch = uint32_t(strtoul(argv[++i], nullptr, 16));
         else if (a == "--firstpc" && i + 1 < argc) firstpc = uint32_t(strtoul(argv[++i], nullptr, 16));
         else if (a == "--complog" && i + 1 < argc) complog = uint32_t(strtoul(argv[++i], nullptr, 16));
+        else if (a == "--dumpat" && i + 1 < argc) dumpAt = uint32_t(strtoul(argv[++i], nullptr, 16));
     }
 
     std::ifstream in(argv[1], std::ios::binary);
@@ -146,6 +147,23 @@ int main(int argc, char** argv) {
     std::printf("[q605_trace] reset: cpuHeld=%d overlay=%d pc=$%08X sp=$%08X\n",
                 mem.cpuHeld(), mem.overlay(), cpu.getPC0(), cpu.getSP());
 
+    // --dumpat with no --stop-at: static ROM/RAM disassembly right after
+    // reset (overlay on → ROM mapped), then exit. Handy for reading ROM
+    // routines without having to hit a runtime breakpoint.
+    if (dumpAt && !stopAt) {
+        std::printf("[q605_trace] static disasm at $%08X:\n", dumpAt);
+        uint32_t dpc = dumpAt;
+        char dbuf[128];
+        for (int i = 0; i < 96; i++) {
+            int len = 2;
+            try { len = cpu.disassemble(dbuf, dpc); }
+            catch (...) { std::snprintf(dbuf, sizeof dbuf, "<fault>"); }
+            std::printf("   $%08X  %s\n", dpc, dbuf);
+            dpc += len;
+        }
+        return 0;
+    }
+
     std::vector<uint32_t> ring(pcRing, 0);
     size_t rp = 0;
     std::map<uint32_t, long> pcCov;               // 64 KB granularity
@@ -201,6 +219,25 @@ int main(int argc, char** argv) {
                                 tn, (long long)cpu.getClock(), cpu.getA(2),
                                 uint16_t(mem.peek8(cpu.getA(2)+4)<<8 | mem.peek8(cpu.getA(2)+5)),
                                 cpu.getD(5), cpu.getA(0));
+            }
+            // Cuda receive-ISR header-done tap ($408A9BE2): the ISR has
+            // just consumed ($e,A2) header bytes into the header buffer at
+            // ($18,A2); ($1,A0)=header[1] gates the +1 dynamic extension
+            // (cmpi.b #$2). Log header bytes + the header/data counts + dest
+            // to see how each XPRAM read is framed (OSDefault vs SysParam).
+            if (pc == 0x408A9BE2) {
+                static long hn = 0;
+                if (hn++ < 40) {
+                    uint32_t a2 = cpu.getA(2);
+                    uint16_t hcnt = uint16_t(mem.peek8(a2+0x0e)<<8 | mem.peek8(a2+0x0f));
+                    uint16_t dcnt = uint16_t(mem.peek8(a2+0x12)<<8 | mem.peek8(a2+0x13));
+                    uint32_t dest = uint32_t(mem.peek8(a2+0x14))<<24 | uint32_t(mem.peek8(a2+0x15))<<16
+                                  | uint32_t(mem.peek8(a2+0x16))<<8 | mem.peek8(a2+0x17);
+                    std::printf("  HDRDONE #%ld clk=%lld A2=$%08X hcnt=%u dcnt=%u dest=$%08X hdrbuf:",
+                                hn, (long long)cpu.getClock(), a2, hcnt, dcnt, dest);
+                    for (int i = 0; i < 8; i++) std::printf(" %02X", mem.peek8(a2+0x18+i));
+                    std::printf("\n");
+                }
             }
             if (complog && pc == complog) {
                 static long cn = 0;
@@ -329,6 +366,28 @@ int main(int argc, char** argv) {
                 std::printf(" %02X", mem.peek8(sp + i));
             }
             std::printf("\n");
+            if (dumpAt) {
+                std::printf("  [DUMPAT $%08X] bytes:", dumpAt);
+                for (int i = 0; i < 128; i++) {
+                    if (i % 16 == 0) std::printf("\n   $%08X:", dumpAt + i);
+                    std::printf(" %02X", mem.peek8(dumpAt + i));
+                }
+                // Disassemble from a byte buffer via a scratch RAM window:
+                // Moira reads code through the CPU, but here peek8 gives us
+                // the physical bytes; disassemble them directly with Moira's
+                // static disassembler by temporarily executing from dumpAt.
+                std::printf("\n  [DUMPAT disasm]:");
+                uint32_t dpc = dumpAt;
+                char dbuf[128];
+                for (int i = 0; i < 48; i++) {
+                    int len = 2;
+                    try { len = cpu.disassemble(dbuf, dpc); }
+                    catch (...) { std::snprintf(dbuf, sizeof dbuf, "<fault>"); }
+                    std::printf("\n   $%08X  %s", dpc, dbuf);
+                    dpc += len;
+                }
+                std::printf("\n");
+            }
             break;
         }
         if (cpu.isHalted()) { std::printf("[q605_trace] CPU HALTED (double fault)\n"); break; }

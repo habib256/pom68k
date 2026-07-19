@@ -309,20 +309,27 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
                          | uint32_t(cmd[4]) << 8 | cmd[5];
             break;
         case kReadXPram:                 // [1, 2, 1, addr] → byte STREAM
-            // Q6.2: the Quadra Cuda's ReadXPram reply carries NO command-
-            // echo byte — its header is 3 bytes [sync, status0, status1]
-            // and the XPRAM data follows directly. The device-manager
-            // receive ISR ($408A9BC0-$408A9C30) reads exactly that header
-            // count then copies the data; if we echo the command as a 4th
-            // header byte, the ROM captures cmdEcho($02) as data[0] and
-            // _GetOSDefault (ReadXPram $76) returns $0200 → wanted ddType
-            // $00 → the Start Manager's boot-driver scan matches no DDM
-            // descriptor and re-reads block 0 forever. Dropping the echo
-            // makes _GetOSDefault return PRAM $76:$77 = $0001 (verified
-            // byte-identical to the MAME macqd605 golden boot). The LC II
-            // Egret path keeps the 4-byte header (its driver echoes the
-            // command, comment above), so gate on cudaPolarity_.
-            if (cudaPolarity_ && !reply.empty()) reply.pop_back();
+            // The ReadXPram reply keeps the FULL 4-byte header
+            // [sync, status0, status1, cmdEcho] then the XPRAM data, exactly
+            // like GetPram. The device-manager receive ISR at $408A9BBE-C30
+            // reads a fixed header count (sync discarded, then the 3 header
+            // bytes incl. the echo) and copies the data that follows; the
+            // multi-byte SysParam validity read at $4080C5A8 (_ReadXPRam
+            // $10, 16 bytes → $1F8) is parsed by that ISR, so the echo MUST
+            // be present or every byte lands one short — $1F8 reads $00
+            // instead of pram[$10]=$A8, the ROM's `cmpi.b #$A8,(A1)` at
+            // $4080C5DE fails, and it re-initialises the whole XPRAM every
+            // boot. That wipes the 32-bit-mode boot flag Mac OS 8 sets at
+            // XPRAM $8A (`_WriteXPRam $8A|=$05` then `_ShutDown ShutDwnStart`
+            // to apply it), so the machine restart-loops forever without
+            // ever launching the loaded System (Q6.4).
+            //
+            // Q6.2 had dropped this echo (`reply.pop_back()`) to make
+            // _GetOSDefault return $0001 not $0200 — but that mis-framed the
+            // SysParam read above. With the echo kept, both the OSDefault
+            // and SysParam reads land correctly and the Quadra boots past
+            // the restart loop. LC II is unaffected (it uses the default
+            // cudaPolarity_=false and never popped).
             if (cmd.size() >= 4) {       // No length on the wire (O6.11,
                 // pinned from the ROM: the 'NuMc' check sends [1,2,1,$0C]
                 // and reads 4 bytes, the boot-flag read sends [1,2,1,$8A]
