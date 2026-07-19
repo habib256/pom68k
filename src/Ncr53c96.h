@@ -149,6 +149,9 @@ private:
     int latency_ = 0;                    // bus-service IRQ latency (0 = instant)
     int pendDelay_ = 0;                  // countdown to the deferred raiseIrq
     uint8_t pendBits_ = 0;               // istatus bits held back by the latency
+    bool selCdbWait_ = false;            // select left CDB incomplete: waiting
+                                         // for the driver to stream it in (MAME
+                                         // DISC_SEL_ARBITRATION empty-FIFO path)
     bool testMode_ = false;
 
     // 24-bit transfer counter (reload latch `tcount_`, live `tcounter_`).

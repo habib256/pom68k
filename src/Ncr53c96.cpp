@@ -39,7 +39,18 @@ void Ncr53c96::fifoPush(uint8_t v) {
     // complete, which advances phase_ out of COMMAND.
     if (phase_ == COMMAND && disk_) {
         cmd_.push_back(v);
-        if (int(cmd_.size()) >= cdbLength(cmd_[0])) runTarget();
+        if (int(cmd_.size()) >= cdbLength(cmd_[0])) {
+            // Whole CDB now streamed in: the target flips phase and the chip
+            // reports the select's function_bus_complete (I_BUS|I_FUNCTION,
+            // ncr53c90.cpp DISC_SEL_WAIT_REQ phase change). This is the FIRST
+            // interrupt of the transaction the async SIM waits for after it
+            // saw DRQ and installed its continuation (Q6.5b).
+            bool wasSelWait = selCdbWait_;
+            selCdbWait_ = false;
+            seq_ = 4;
+            runTarget();
+            if (wasSelWait) raiseIrq(I_BUS | I_FUNCTION);
+        }
         updateDrq();
         return;
     }
@@ -79,6 +90,14 @@ void Ncr53c96::updateDrq() {
     if (dmaCommand_) {
         if (phase_ == DATA_IN)  d = dataInPos_ < dataIn_.size();
         else if (phase_ == DATA_OUT) d = dataOut_.size() < dataOutExpected_;
+        // A DMA SELECT ($C1) whose CDB has not landed yet raises DRQ to fetch
+        // it (MAME dma_set(DMA_OUT) at CD_SELECT + check_drq in
+        // DISC_SEL_ARBITRATION: DMA_OUT with fifo<16, no S_TC0 → DRQ true,
+        // ncr53c90.cpp:987/500-510/1207). The Mac OS 8 async SCSI SIM polls
+        // this DRQ (pseudo-VIA2 IFR bit0) to detect an async transaction and
+        // install its completion continuation (Q6.5b) — without it the SIM
+        // took the sync path and later jumped through a NULL handler.
+        else if (selCdbWait_ && phase_ == COMMAND) d = true;
     }
     drq_ = d;
 }
@@ -128,6 +147,7 @@ void Ncr53c96::reset() {
     dataOut_.clear(); dataOutExpected_ = 0;
     targetStatus_ = 0; msgInLeft_ = 0; dmaCommand_ = false;
     pendDelay_ = 0; pendBits_ = 0;       // latency_ itself survives (wiring)
+    selCdbWait_ = false;
 }
 
 // ── Register interface ──────────────────────────────────────────────────
@@ -314,18 +334,32 @@ void Ncr53c96::selectTarget(bool withAtn) {
         if (cmd_.size() == 1) expected = cdbLength(b);
         if (int(cmd_.size()) >= expected) break;
     }
-    // seq_step counts the phase progression; 4 = command fully transferred.
-    seq_ = 4;
-
     if (expected && int(cmd_.size()) >= expected) {
         // Whole CDB is in — run it and set up the resulting phase.
+        // seq_step 4 = command fully transferred; select completes with
+        // I_BUS | I_FUNCTION (ncr53c90.cpp function_bus_complete via
+        // DISC_SEL_WAIT_REQ phase change, :544-556).
+        seq_ = 4;
         runTarget();
-    } else {
-        // CDB not fully loaded yet: stay in COMMAND (driver may XFER more).
-        phase_ = COMMAND;
+        raiseIrq(I_BUS | I_FUNCTION);
+        updateDrq();
+        return;
     }
-    // Select-with-ATN completes with I_BUS | I_FUNCTION (ncr53c90.cpp:772/537).
-    raiseIrq(I_BUS | I_FUNCTION);
+    // CDB not fully loaded yet: stay in COMMAND and WAIT for it — with NO
+    // interrupt (MAME DISC_SEL_ARBITRATION, ncr53c90.cpp:500-510: empty FIFO
+    // → `seq = 1; check_drq(); break;`). For the DMA select variant ($C1 =
+    // CMD_DMA|CD_SELECT — both the ROM polled driver and the Mac OS 8 async
+    // SCSI SIM use it) the chip raises DRQ to fetch the CDB: the SIM's
+    // select handler POLLS that DRQ through pseudo-VIA2 IFR bit 0 and only
+    // arms its ASYNC continuation (trampoline install at ctx+$F0) when it
+    // sees the line — our old instant I_BUS|I_FUNCTION made it take the
+    // never-exercised sync path whose later "service interrupt" message
+    // jumped through the never-installed continuation (Q6.5b crash). The
+    // completion IRQ now fires when the CDB lands (fifoPush/dmaWrite →
+    // runTarget) — see selCdbWait_.
+    phase_ = COMMAND;
+    seq_ = 1;
+    selCdbWait_ = true;
     updateDrq();
 }
 

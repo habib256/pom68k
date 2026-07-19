@@ -312,6 +312,22 @@ int main(int argc, char** argv) {
                                 mem.peek8(ctx+0xF0), mem.peek8(ctx+0xF1), mem.peek8(ctx+0xF2), mem.peek8(ctx+0xF3));
                 }
             }
+            // Q6.5b: async-decision probe — at the bne after $11E5A6 ($0011A9D2)
+            // log the SIM's interrupt-check inputs: flag A5+$38, the polled
+            // hardware byte ptr *(A5+$C) and its live value, the bit number
+            // A5+$4D, and Z (bne taken = async/trampoline path when Z=0).
+            if (getenv("Q605_ASYNCHK") && pc == 0x0011A9D2) {
+                static long an = 0;
+                if (an++ < 12) {
+                    uint32_t a5 = cpu.getA(5);
+                    uint32_t p = uint32_t(mem.peek8(a5+0xC))<<24 | uint32_t(mem.peek8(a5+0xD))<<16 |
+                                 uint32_t(mem.peek8(a5+0xE))<<8 | mem.peek8(a5+0xF);
+                    std::printf("  ASYNCHK clk=%lld flag38=$%02X ptr(A5+C)=$%08X [ptr]=$%02X bit4D=%u Z=%d scsiIRQ=%d via2IFR=$%02X\n",
+                                (long long)cpu.getClock(), mem.peek8(a5+0x38), p, mem.peek8(p),
+                                mem.peek8(a5+0x4D), (cpu.getSR() >> 2) & 1,
+                                mem.scsi().irq(), mem.via2Ifr());
+                }
+            }
             // Q6.5b: at the SCSI interrupt handler $0011E996, log the VIA2
             // IFR/IER + SCSI irq/context so the spurious-IRQ crash can be
             // characterized (is the SCSI int enabled? is irq_ stale?).
