@@ -1,0 +1,5 @@
+POM68K — Macintosh 68k emulator (Mac Plus)
+Machine: LC 475 / Quadra 605 (68LC040 @ 25 MHz, MEMCjr+PrimeTime)
+Loaded ROM: roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM (1024 KB)
+SCSI HD 0: hdv/MacOS-8.1-boot.vhd (write-back)
+PRAM: hdv/MacOS-8.1-boot.vhd.pram

@@ -4,7 +4,8 @@
 // M3 shell: run the 68000 (Moira) against the Mac Plus memory map and display
 // the 512×342 framebuffer in an ImGui window. Structure mirrors POMIIGS's
 // main.cpp so it grows into the same shape (Ui class, audio, disks later).
-// O6: a 512 KB ROM selects the Mac LC II machine (V8 + 68030) instead.
+// O6: a 512 KB ROM selects the Mac LC II machine (V8 + 68030); Q6: a 1 MB
+// ROM selects the LC 475 / Quadra 605 machine (MEMCjr/PrimeTime + 68LC040).
 
 #include "imgui.h"
 #include "backends/imgui_impl_glfw.h"
@@ -19,6 +20,8 @@
 #include "Cpu030.h"
 #include "V8Memory.h"
 #include "V8Video.h"
+#include "Cpu040.h"
+#include "Q605Memory.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -30,6 +33,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -75,6 +79,40 @@ static std::string findPath(const std::string& rel) {
         if (f) return base + rel;
     }
     return {};
+}
+
+// Locate a ROM by a stable signature substring in its filename — the CRC32
+// hex that Apple ROM dumps are named with (e.g. "35C28F5F" = Mac LC II,
+// "FF7439EE" = Quadra 605). Scanning the roms/ tree for the signature avoids
+// hardcoding the exact dated filename and subdirectory, and disambiguates
+// same-size ROMs (a 512K IIfx dump ≠ the LC II). Returns "" if none match.
+static std::string findRomBySignature(const std::string& sig) {
+    namespace fs = std::filesystem;
+    // Cached per signature: the menu resolves this every frame, and the roms/
+    // tree doesn't change during a session — never rescan on the hot path.
+    static std::map<std::string, std::string> cache;
+    auto hit = cache.find(sig);
+    if (hit != cache.end()) return hit->second;
+
+    std::string want = sig;
+    for (char& c : want) c = char(toupper(c));
+    std::string ed = execDir();
+    std::string found;
+    for (const std::string& base : { std::string("roms"), ed + "roms", ed + "../roms" }) {
+        std::error_code ec;
+        if (!fs::is_directory(base, ec)) continue;
+        for (auto it = fs::recursive_directory_iterator(base, ec);
+             it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            if (ec) break;
+            if (!it->is_regular_file(ec)) continue;
+            std::string name = it->path().filename().string();
+            for (char& c : name) c = char(toupper(c));
+            if (name.find(want) != std::string::npos) { found = it->path().string(); break; }
+        }
+        if (!found.empty()) break;
+    }
+    cache[sig] = found;
+    return found;
 }
 
 static void glfwErrorCallback(int e, const char* d) { std::fprintf(stderr, "GLFW error %d: %s\n", e, d); }
@@ -137,26 +175,32 @@ private:
 };
 
 // ── Machine profile menu ────────────────────────────────────────────────
-// Main-menu-bar "Machine": pick the Mac Plus or Mac LC II profile.
-// Selecting the other machine relaunches the process on its ROM — clean
-// state, since each machine is built once at startup.
+// Main-menu-bar "Machine": pick the Mac Plus, Mac LC II or Quadra 605
+// profile. Selecting another machine relaunches the process on its ROM —
+// clean state, since each machine is built once at startup (the ROM size
+// alone selects the machine in main()).
+enum class MachineKind { Plus, LcII, Quadra };
 static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 
-static void machineMenu(bool isLcII, GLFWwindow* window,
+static void machineMenu(MachineKind cur, GLFWwindow* window,
                         const std::function<void()>& extraMenus = {}) {
     if (!ImGui::BeginMainMenuBar()) return;
     if (ImGui::BeginMenu("Machine")) {
-        struct Profile { const char* label; bool cur; const char* rom[2]; };
+        // rom = canonical short name (a convenience symlink); sig = the CRC32
+        // signature scanned for under roms/ when the short name is absent, so
+        // the exact dated filename is never hardcoded.
+        struct Profile { const char* label; MachineKind kind; const char* rom; const char* sig; };
         const Profile kProfiles[] = {
-            { "Macintosh Plus", !isLcII, { "roms/macplus.rom", nullptr } },
-            { "Macintosh LC II", isLcII, { "roms/maclcii.rom",
-              "docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" } },
+            { "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr },
+            { "Macintosh LC II", MachineKind::LcII, "roms/maclcii.rom", "35C28F5F" },
+            { "Quadra 605 / LC 475", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE" },
         };
         for (const Profile& pr : kProfiles) {
-            std::string path = findPath(pr.rom[0]);
-            if (path.empty() && pr.rom[1]) path = findPath(pr.rom[1]);
-            if (ImGui::MenuItem(pr.label, nullptr, pr.cur,
-                                pr.cur || !path.empty()) && !pr.cur) {
+            bool isCur = pr.kind == cur;
+            std::string path = findPath(pr.rom);
+            if (path.empty() && pr.sig) path = findRomBySignature(pr.sig);
+            if (ImGui::MenuItem(pr.label, nullptr, isCur,
+                                isCur || !path.empty()) && !isCur) {
                 gSwitchArgs = { path };
                 glfwSetWindowShouldClose(window, GLFW_TRUE);
             }
@@ -534,7 +578,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
                          GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
         }
 
-        machineMenu(true, c.window, [&c] {
+        machineMenu(MachineKind::LcII, c.window, [&c] {
             // ── "Disques" menu: pick the boot + secondary SCSI volumes.
             // Any change relaunches the emulator with the new argv list —
             // the ROM only scans the SCSI bus at boot, and the .pram file
@@ -702,6 +746,474 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     return 0;
 }
 
+// ── Quadra 605 / LC 475 machine thread ──────────────────────────────────
+// Same GUI ↔ machine contract as LcMachine (commands queued, framebuffer +
+// status copied out), but the Q605 has no ASC wired in POM68K yet, so the
+// pacing is the plain time-budgeted turbo — no audio-clocked path. The
+// framebuffer is decoded straight from VRAM using the live screen geometry
+// read from the main GDevice's PixMap (same derivation as q605_trace); the
+// Mac OS 8.1 Finder comes up 1bpp 640×480, colour modes decode via the
+// Antelope CLUT.
+struct QuadraMachine {
+    Q605Memory& mem; Cpu040& cpu; MacAudioHost& audioHost;
+    QuadraMachine(Q605Memory& m, Cpu040& c, MacAudioHost& a)
+        : mem(m), cpu(c), audioHost(a) {}
+    ~QuadraMachine() { stop(); }
+
+    std::atomic<bool> running{true}, turbo{true}, quit{false};
+
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset } t; int a = 0, b = 0; };
+    void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
+
+    bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
+        std::lock_guard<std::mutex> l(fbMu_);
+        if (fbShared_.empty()) return false;
+        out = fbShared_; w = fbW_; h = fbH_;
+        return true;
+    }
+
+    struct Status { uint32_t pc; long long clock; bool overlay, mmu, held; int w, h, depth; };
+    Status status() const {
+        return { stPc_.load(std::memory_order_relaxed),
+                 stClock_.load(std::memory_order_relaxed),
+                 (stFlags_.load(std::memory_order_relaxed) & 1) != 0,
+                 (stFlags_.load(std::memory_order_relaxed) & 2) != 0,
+                 (stFlags_.load(std::memory_order_relaxed) & 4) != 0,
+                 stW_.load(std::memory_order_relaxed),
+                 stH_.load(std::memory_order_relaxed),
+                 stDepth_.load(std::memory_order_relaxed) };
+    }
+
+    // Same audio-clocked pacing as LcMachine: while the guest streams sound
+    // the emulation speed IS the tempo, so it tracks the host DAC via the ASC
+    // ring; otherwise a time-budgeted turbo runs (fast boot/Finder).
+    int stepTick() {
+        applyCmds();
+        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
+        int sleepUs = 0;
+        if (activeHold_ > 0 && audioHost.started()) {
+            int n = 0;
+            while (audioHost.buffered() < kTarget && n < 8) {
+                runOne();
+                if (drain()) activeHold_ = 90; else activeHold_--;
+                audioHost.pushRaw(samp_, 0);
+                n++;
+            }
+            if (n == 0) {
+                if (++starve_ > 80) {
+                    runOne();
+                    if (drain()) activeHold_ = 90; else activeHold_--;
+                    starve_ = 0;
+                }
+                sleepUs = 2000;
+            } else starve_ = 0;
+        } else {
+            // Time-budgeted turbo: emulate in ≤10 ms bursts so commands and the
+            // published frame stay fresh; without turbo, pace ~60 Hz.
+            auto t0 = std::chrono::steady_clock::now();
+            int n = 0;
+            do {
+                runOne();
+            } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
+                     std::chrono::steady_clock::now() - t0 <
+                         std::chrono::milliseconds(10));
+            if (drain()) {
+                activeHold_ = 90;                       // sound starts:
+                audioHost.pushFrame(samp_, 0);          // switch to pacing
+            }
+            if (!turbo.load(std::memory_order_relaxed)) {
+                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - t0).count();
+                sleepUs = int(std::max<long long>(0, 16625 - spent));
+            }
+        }
+        publish();
+        return sleepUs;
+    }
+
+    void start() {
+#ifndef __EMSCRIPTEN__
+        th_ = std::thread([this] {
+            while (!quit.load(std::memory_order_relaxed)) {
+                int us = stepTick();
+                if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
+            }
+        });
+#endif
+    }
+    void stop() {
+#ifndef __EMSCRIPTEN__
+        quit.store(true);
+        if (th_.joinable()) th_.join();
+#endif
+    }
+
+    void publish(bool force = false) {
+        auto now = std::chrono::steady_clock::now();
+        if (!force && framesRun_ == 0 &&
+            now - lastPub_ < std::chrono::milliseconds(16)) return;
+        lastPub_ = now; framesRun_ = 0;
+        int w = 0, h = 0, depth = 0;
+        decode(fb_, w, h, depth);
+        {
+            std::lock_guard<std::mutex> l(fbMu_);
+            fbShared_ = fb_; fbW_ = w; fbH_ = h;
+        }
+        stPc_.store(cpu.getPC(), std::memory_order_relaxed);
+        stClock_.store(cpu.getClock(), std::memory_order_relaxed);
+        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
+                               ((cpu.getTC040() & 0x8000) ? 2 : 0) |
+                               (mem.cpuHeld() ? 4 : 0)),
+                       std::memory_order_relaxed);
+        stW_.store(w, std::memory_order_relaxed);
+        stH_.store(h, std::memory_order_relaxed);
+        stDepth_.store(depth, std::memory_order_relaxed);
+    }
+
+    // Decode the Q605 framebuffer (VRAM at $F9000000) into 00RRGGBB. Screen
+    // geometry (base, rowBytes, bounds, depth) is read live from the main
+    // GDevice → PixMap, falling back to 640×480 1bpp before the video driver
+    // has published a PixMap.
+    void decode(std::vector<uint32_t>& out, int& w, int& h, int& depth) {
+        auto pk32 = [&](uint32_t a) {
+            return uint32_t(mem.peek8(a)) << 24 | uint32_t(mem.peek8(a+1)) << 16 |
+                   uint32_t(mem.peek8(a+2)) << 8 | mem.peek8(a+3);
+        };
+        uint32_t scrnBase = pk32(0x0824);
+        uint32_t mainDevH = pk32(0x08A4);
+        uint32_t mainDev  = mainDevH ? pk32(mainDevH) : 0;
+        uint32_t pmapH    = mainDev ? pk32(mainDev + 0x16) : 0;
+        uint32_t pmap     = pmapH ? pk32(pmapH) : 0;
+        uint32_t pmBase = 0, pmRow = 0, pmDepth = 0, pmT = 0, pmL = 0, pmB = 0, pmR = 0;
+        if (pmap) {
+            pmBase = pk32(pmap + 0x00);
+            pmRow  = (pk32(pmap + 0x04) >> 16) & 0x3FFF;
+            pmT = (pk32(pmap+0x06)>>16)&0xFFFF; pmL = pk32(pmap+0x06)&0xFFFF;
+            pmB = (pk32(pmap+0x0A)>>16)&0xFFFF; pmR = pk32(pmap+0x0A)&0xFFFF;
+            pmDepth = (pk32(pmap+0x1C)>>16)&0xFFFF;
+        }
+        // The framebuffer pointer is either the physical VRAM window
+        // ($F9000000 + off) or a MMU/alias logical view of it ($5190xxxx —
+        // Mac OS 8.1 runs the Quadra 32-bit clean and hands QuickDraw a
+        // logical base). The aperture is VRAM-size aligned, so the low
+        // log2(kVramSize) bits are the byte offset into VRAM either way —
+        // masking works for both forms and skips the leading offscreen band
+        // (the "same"/"diff" scratch at VRAM 0 the ROM leaves before the
+        // visible screen, which otherwise paints a stray white strip on top).
+        uint32_t src = pmBase ? pmBase : scrnBase;
+        uint32_t off = src & (Q605Memory::kVramSize - 1);
+        w = (pmR > pmL && pmR - pmL <= 1600) ? int(pmR - pmL) : 640;
+        h = (pmB > pmT && pmB - pmT <= 1200) ? int(pmB - pmT) : 480;
+        depth = (pmDepth == 1 || pmDepth == 2 || pmDepth == 4 || pmDepth == 8)
+              ? int(pmDepth) : 1;
+        uint32_t stride = pmRow ? pmRow : uint32_t((w * depth + 7) / 8);
+        // Guard a bogus base (before the driver publishes one): the visible
+        // screen must fit within VRAM, else fall back to offset 0.
+        if (uint64_t(off) + uint64_t(h) * stride > Q605Memory::kVramSize) off = 0;
+
+        const uint8_t* vr = mem.vram();
+        const uint8_t (*cl)[3] = mem.clut();
+        auto vb = [&](uint32_t o) -> uint8_t {
+            return o < Q605Memory::kVramSize ? vr[o] : 0;
+        };
+        out.assign(size_t(w) * h, 0xFF000000u);
+        for (int y = 0; y < h; y++) {
+            uint32_t rowOff = off + uint32_t(y) * stride;
+            for (int x = 0; x < w; x++) {
+                uint32_t rgb;
+                switch (depth) {
+                    case 1: { int bit = (vb(rowOff + (x >> 3)) >> (7 - (x & 7))) & 1;
+                              rgb = bit ? 0x000000u : 0xFFFFFFu; break; }
+                    case 2: { int v = (vb(rowOff + (x >> 2)) >> (6 - 2*(x & 3))) & 3;
+                              const uint8_t* c = cl[v];
+                              rgb = uint32_t(c[0])<<16 | uint32_t(c[1])<<8 | c[2]; break; }
+                    case 4: { uint8_t bt = vb(rowOff + (x >> 1));
+                              int v = (x & 1) ? (bt & 0xF) : (bt >> 4);
+                              const uint8_t* c = cl[v];
+                              rgb = uint32_t(c[0])<<16 | uint32_t(c[1])<<8 | c[2]; break; }
+                    default: { const uint8_t* c = cl[vb(rowOff + x)];   // 8 bpp
+                              rgb = uint32_t(c[0])<<16 | uint32_t(c[1])<<8 | c[2]; break; }
+                }
+                out[size_t(y) * w + x] = 0xFF000000u | rgb;
+            }
+        }
+    }
+
+private:
+    // One 60 Hz emulation quantum (25 MHz / 60 ≈ 416 667 cycles). During the
+    // Cuda power-on hold the CPU is parked, so just tick the peripherals.
+    static constexpr int kFrame = 416667;
+    static constexpr size_t kTarget = 2225;    // ~100 ms of 22 257 Hz sound
+    void runOne() {
+        if (mem.cpuHeld()) mem.tick(kFrame);
+        else cpu.runCycles(kFrame);
+        framesRun_++;
+    }
+    // Drain the ASC samples produced by the last slice (22 257 Hz mono) and
+    // report whether they carry real sound (AC span). Same gate as LcMachine.
+    bool drain() {
+        samp_.clear();
+        while (mem.asc().available() > 0)
+            samp_.push_back(float(mem.asc().pop()) / 32768.0f);
+        float lo = 1.f, hi = -1.f;
+        for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
+        return !samp_.empty() && hi - lo >= 0.02f;
+    }
+    void applyCmds() {
+        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
+        for (const Cmd& c : cmdsApply_) switch (c.t) {
+            case Cmd::MouseMove:   mem.adb().mouseMove(c.a, c.b); break;
+            case Cmd::MouseButton: mem.adb().mouseButton(c.a != 0); break;
+            case Cmd::Key:         mem.adb().keyEvent(uint8_t(c.a), c.b != 0); break;
+            case Cmd::HardReset:   cpu.hardReset(); break;
+        }
+        cmdsApply_.clear();
+    }
+
+    std::thread th_;
+    std::mutex cmdMu_;
+    std::vector<Cmd> cmds_, cmdsApply_;
+    std::mutex fbMu_;
+    std::vector<uint32_t> fbShared_;
+    int fbW_ = 0, fbH_ = 0;
+    std::atomic<uint32_t> stPc_{0};
+    std::atomic<long long> stClock_{0};
+    std::atomic<uint8_t> stFlags_{0};
+    std::atomic<int> stW_{0}, stH_{0}, stDepth_{0};
+    int framesRun_ = 0;
+    int activeHold_ = 0;           // machine frames of sound-recent state
+    int starve_ = 0;               // safety against a dead DAC
+    std::chrono::steady_clock::time_point lastPub_{};
+    std::vector<uint32_t> fb_;
+    std::vector<float> samp_;
+};
+
+// ── LC 475 / Quadra 605 (Q6): MEMCjr/PrimeTime + 68LC040, selected by a
+// 1 MB ROM. Structure mirrors runLcII; the Q605 has no ASC yet (silent).
+static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
+                     int argc, char** argv) {
+    std::printf("Machine: LC 475 / Quadra 605 (68LC040 @ 25 MHz, MEMCjr+PrimeTime)\n");
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
+
+    static Q605Memory mem;
+    static Cpu040 cpu(mem);
+    static MacAudioHost audioHost;
+    mem.loadRom(rom);
+    mem.setCpu(&cpu);
+    cpu.hardReset();
+
+    // Boot volume: argv[2], else the Mac OS 8.1 image the Q6 trace boots to
+    // the Finder. As on the LC II, the ROM only boots wrapped images (DDM +
+    // $6A driver entry — tools/wrap_hfs.py); a bare HFS image blinks the ?.
+    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/MacOS-8.1-boot.vhd");
+    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
+    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
+    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
+    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
+    // Secondary volumes (argv[3..] → SCSI IDs 1..6).
+    static std::vector<std::string> extraDisks;
+    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
+        if (argv[i] == hddPath) continue;
+        int id = int(extraDisks.size()) + 1;
+        if (mem.attachScsi(argv[i], true, id)) {
+            extraDisks.push_back(argv[i]);
+            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
+        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
+    }
+
+    // Battery-backed PRAM+clock (Cuda XPRAM) — persist it like the LC II so a
+    // cold PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
+    static std::string pramPath =
+        (hddPath.empty() ? std::string("quadra605") : hddPath) + ".pram";
+    if (mem.cuda().loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
+    mem.cuda().factoryDefaults();
+
+    glfwSetErrorCallback(glfwErrorCallback);
+    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    // 640×480 shown at 2× fits with the menu bar and the CPU window.
+    GLFWwindow* window = glfwCreateWindow(1320, 1080, "POM68K — Quadra 605", nullptr, nullptr);
+    if (!window) { glfwTerminate(); return 1; }
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(1);
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 130");
+
+    static GLuint screenTex = 0;
+    glGenTextures(1, &screenTex);
+    glBindTexture(GL_TEXTURE_2D, screenTex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
+
+    static QuadraMachine machine{mem, cpu, audioHost};
+    machine.publish(true);
+
+    struct Ctx {
+        GLFWwindow* window; QuadraMachine& m; GLuint tex;
+        std::vector<uint32_t> fb;
+        std::string romName, hddPath;
+        std::vector<std::string>& extraDisks;
+    };
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks};
+
+    auto frame = [](void* p) {
+        Ctx& c = *static_cast<Ctx*>(p);
+        glfwPollEvents();
+        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
+
+#ifdef __EMSCRIPTEN__
+        c.m.stepTick();
+#endif
+
+        int hres = 0, vres = 0;
+        if (c.m.latchFrame(c.fb, hres, vres)) {
+            glBindTexture(GL_TEXTURE_2D, c.tex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
+                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
+        }
+
+        machineMenu(MachineKind::Quadra, c.window, [&c] {
+            namespace fs = std::filesystem;
+            auto samePath = [](const std::string& a, const std::string& b) {
+                std::error_code ec;
+                return a == b || fs::equivalent(a, b, ec);
+            };
+            auto relaunch = [&c](const std::string& boot,
+                                 const std::vector<std::string>& extras) {
+                gSwitchArgs = { c.romName, boot };
+                for (const std::string& e : extras)
+                    if (e != boot) gSwitchArgs.push_back(e);
+                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+            };
+            if (ImGui::BeginMenu("Disques")) {
+                const auto disks = listDiskImages(c.hddPath);
+                ImGui::TextDisabled("Démarrage (SCSI 0)");
+                for (const std::string& d : disks) {
+                    bool cur = samePath(d, c.hddPath);
+                    std::string name = fs::path(d).filename().string();
+                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
+                        relaunch(d, c.extraDisks);
+                }
+                ImGui::Separator();
+                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
+                for (const std::string& d : disks) {
+                    if (samePath(d, c.hddPath)) continue;
+                    bool on = false;
+                    for (const std::string& e : c.extraDisks)
+                        if (samePath(d, e)) { on = true; break; }
+                    std::string name = fs::path(d).filename().string();
+                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
+                        std::vector<std::string> extras;
+                        for (const std::string& e : c.extraDisks)
+                            if (!samePath(d, e)) extras.push_back(e);
+                        if (!on) extras.push_back(d);
+                        relaunch(c.hddPath, extras);
+                    }
+                }
+                ImGui::Separator();
+                ImGui::TextDisabled("Changer un disque relance l'émulateur");
+                ImGui::EndMenu();
+            }
+            if (ImGui::MenuItem("Redémarrer"))
+                c.m.push({QuadraMachine::Cmd::HardReset});
+        });
+
+        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Quadra 605", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        static ScreenInput input;
+        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
+                    [&](int dx, int dy) { c.m.push({QuadraMachine::Cmd::MouseMove, dx, dy}); },
+                    [&](bool down) { c.m.push({QuadraMachine::Cmd::MouseButton, down ? 1 : 0}); });
+        ImGuiIO& io = ImGui::GetIO();
+        ImGui::End();
+
+        // Keyboard → ADB key codes (= M0110 transition code >> 1); same table
+        // as the LC II loop.
+        if (!io.WantTextInput) {
+            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
+                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
+                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
+                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
+                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
+                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
+                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
+                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
+                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
+                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
+                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
+                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
+                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
+                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
+                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
+                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
+                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
+                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
+                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
+                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
+                {ImGuiKey_Keypad9,0xB8},
+            };
+            for (auto& e : kKeys) {
+                if (ImGui::IsKeyPressed(e.k, false))
+                    c.m.push({QuadraMachine::Cmd::Key, e.m0110 >> 1, 1});
+                if (ImGui::IsKeyReleased(e.k))
+                    c.m.push({QuadraMachine::Cmd::Key, e.m0110 >> 1, 0});
+            }
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
+        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        QuadraMachine::Status st = c.m.status();
+        ImGui::Text("68LC040 @ 25 MHz (Moira + 040 MMU)  PC=%08X  clock=%lld",
+                    st.pc, st.clock);
+        ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
+                    st.overlay ? 1 : 0, st.w, st.h, st.depth,
+                    st.mmu ? "on" : "off", st.held ? 1 : 0);
+        bool running = c.m.running.load(std::memory_order_relaxed);
+        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
+        ImGui::SameLine();
+        if (ImGui::Button("Reset")) c.m.push({QuadraMachine::Cmd::HardReset});
+        ImGui::SameLine();
+        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Turbo", &turbo)) c.m.turbo.store(turbo);
+        ImGui::End();
+
+        ImGui::Render();
+        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
+        glViewport(0, 0, w, h);
+        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        glfwSwapBuffers(c.window);
+    };
+
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
+#else
+    machine.start();
+    while (!glfwWindowShouldClose(window)) frame(&ctx);
+    machine.stop();
+    mem.cuda().savePram(pramPath);
+    audioHost.stop();
+    glDeleteTextures(1, &screenTex);
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    relaunchIfSwitched(argv[0]);
+#endif
+    return 0;
+}
+
 int main(int argc, char** argv) {
     std::printf("POM68K — Macintosh 68k emulator (Mac Plus)\n");
 
@@ -718,9 +1230,19 @@ int main(int argc, char** argv) {
     else {
         rom = findResource("roms/macplus.rom", matched);
         if (rom.empty()) rom = findResource("roms/maclcii.rom", matched);
+        if (rom.empty()) rom = findResource("roms/quadra605.rom", matched);
+        // No canonical short name found — scan roms/ by CRC signature so a
+        // stock LC II / Quadra dump boots without needing a symlink.
+        for (const char* sig : { "35C28F5F", "FF7439EE" }) {
+            if (!rom.empty()) break;
+            std::string p = findRomBySignature(sig);
+            if (!p.empty()) { rom = readFile(p); matched = p; }
+        }
     }
 
-    // 512 KB ROM = Mac LC II (O6); 128 KB = Mac Plus
+    // ROM size alone selects the machine: 1 MB = LC 475/Quadra 605 (Q6),
+    // 512 KB = Mac LC II (O6), 128 KB = Mac Plus.
+    if (rom.size() == Q605Memory::kRomSize) return runQuadra(std::move(rom), matched, argc, argv);
     if (rom.size() == V8Memory::kRomSize) return runLcII(std::move(rom), matched, argc, argv);
 
     static bool demoMode = rom.empty() || !mem.loadRom(rom);
@@ -803,7 +1325,7 @@ int main(int argc, char** argv) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, c.video.width(), c.video.height(),
                      0, GL_RGBA, GL_UNSIGNED_BYTE, fb);
 
-        machineMenu(false, c.window, [&c] {
+        machineMenu(MachineKind::Plus, c.window, [&c] {
             if (ImGui::MenuItem("Redémarrer")) c.cpu.hardReset();
         });
 

@@ -131,11 +131,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME demo_screenshot COMMAND demo_screenshot --frames 30)
 
     # Dev tool (not a gate): trace a real ROM boot — hot PCs, overlay, screen.
-    add_executable(boot_trace tests/boot_trace.cpp)
+    # EXCLUDE_FROM_ALL: dev tools are not built by `make`/`ctest` (they'd relink
+    # the whole core with LTO each time — slow); build on demand: `make dasm`.
+    add_executable(boot_trace EXCLUDE_FROM_ALL tests/boot_trace.cpp)
     target_link_libraries(boot_trace PRIVATE pom68k_core)
 
     # Dev tool: disassemble ROM ranges (Moira dasm).
-    add_executable(dasm tests/dasm.cpp)
+    add_executable(dasm EXCLUDE_FROM_ALL tests/dasm.cpp)
     target_link_libraries(dasm PRIVATE pom68k_core)
 
     # M4 gate: RAM/video contention budget vs GttMFH numbers.
@@ -294,19 +296,22 @@ endif()
 
 # Dev tool (not a gate): instruction-level Sony-driver trace.
 if(POM68K_TESTS AND NOT EMSCRIPTEN)
-    add_executable(sony_trace tests/sony_trace.cpp)
+    # All dev tools below are EXCLUDE_FROM_ALL — not built by `make`/`ctest`
+    # (each relinks the core with LTO = slow); build on demand by name,
+    # e.g. `make q605_trace`.
+    add_executable(sony_trace EXCLUDE_FROM_ALL tests/sony_trace.cpp)
     target_link_libraries(sony_trace PRIVATE pom68k_core)
 
     # Dev tool (not a gate): real LC II ROM boot trace on the O6 machine.
-    add_executable(lcii_trace tests/lcii_trace.cpp)
+    add_executable(lcii_trace EXCLUDE_FROM_ALL tests/lcii_trace.cpp)
 
     # Dev tool (not a gate): LC 475 / Quadra 605 ROM boot trace (Q5).
-    add_executable(q605_trace tests/q605_trace.cpp)
+    add_executable(q605_trace EXCLUDE_FROM_ALL tests/q605_trace.cpp)
     target_link_libraries(q605_trace PRIVATE pom68k_core)
     target_link_libraries(lcii_trace PRIVATE pom68k_core)
 
     # Dev tool (not a gate): offline Mac ROM introspection (header,
     # resources, trap table, UniversalInfo) — Basilisk II-derived parsers,
     # see docs/BASILISK_ROM_NOTES.md. Standalone, no emulator core.
-    add_executable(rominfo tools/rominfo.cpp)
+    add_executable(rominfo EXCLUDE_FROM_ALL tools/rominfo.cpp)
 endif()

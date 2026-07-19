@@ -1083,6 +1083,60 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
      pre-advance. All 26 gates green; deterministic. Advanced 5363 → 5973 cmds →
      Finder.
 
+- [x] **Q7 — GUI machine + Quadra usable interactively (2026-07-20, Opus,
+  WORKING TREE, NOT COMMITTED).** The Quadra 605 now runs in the ImGui GUI,
+  selectable from the **Machine** menu alongside Mac Plus / LC II. Changes are
+  all in `src/main.cpp` + `src/Q605Memory.{h,cpp}` + `tests/q605_trace.cpp` +
+  `CMakeLists.txt` (uncommitted — `git status`: 5 modified). Verified with
+  `Q605_NOPRAM=1 q605_trace <FF7439EE.ROM> --disk hdv/MacOS-8.1-boot.vhd
+  --cycles 2500000000` (Finder reached: PixMap 640×480 rowBytes 1024, SCSI 5785
+  cmds) each step. Delivered:
+  1. **Menu dispatch by ROM size** — 1 MB → `runQuadra` (new), 512 KB → LC II,
+     128 KB → Plus. `runQuadra`/`QuadraMachine` mirror `runLcII`/`LcMachine`.
+  2. **ASC audio wired** (`Q605Memory`): the IOSB EASC at $50014000 is clocked
+     C15M=15.6672 MHz (iosb.cpp:89) = same clock as the LC II ASC; IRQ→pseudo-
+     VIA2 bit 4 (mask $1B; iosb.cpp:358-361). Reuses the `AscV8` model (mono
+     FIFO A, version $E8) as a **stopgap** — a faithful stereo EASC (version,
+     FIFO B) is TODO Q8. 25 MHz CPU → 15.67 MHz ASC bridged by `ascCycAcc_` in
+     `tick()`. Audio-clocked pacing in `QuadraMachine`. Verified: 31 690 bytes
+     fed into FIFO A during boot (chime/system sounds); no boot regression.
+  3. **ROM paths de-hardcoded** — the LC II fallback pointed at a DEAD path
+     (`docs/512KB ROMs/…`; the file is under `roms/`). New `findRomBySignature()`
+     (cached) scans `roms/` for the CRC signature (`35C28F5F`=LC II,
+     `FF7439EE`=Quadra); used in the menu fallback AND main() auto-detect.
+  4. **Top-of-screen white band fixed** (render only) — PixMap baseAddr /
+     ScrnBase $824 = $51901000 is the LOGICAL (32-bit MMU alias) framebuffer
+     base; the old render forced VRAM offset 0 when the base wasn't in the
+     physical $F9000000 window → showed the offscreen scratch ("same"/"diff" at
+     VRAM row 0) as a stray white strip, shoving the menu bar down. Fix:
+     **VRAM offset = baseAddr & (kVramSize−1)** (aperture is VRAM-size aligned,
+     so low bits = the byte offset whether the base is physical or logical).
+     $51901000&0xFFFFF=$1000 → flush menu bar. Fixed in `QuadraMachine::decode`
+     AND `q605_trace` render. Guard: off+screen>VRAM → 0.
+  5. **Dev-tool build cost** — `q605_trace`/`lcii_trace`/`boot_trace`/
+     `sony_trace`/`dasm`/`rominfo` are now `EXCLUDE_FROM_ALL`: `make` no longer
+     relinks the core with LTO for them (faster build); `make q605_trace` on
+     demand. None have a `ctest` gate, so nothing is lost.
+
+- [ ] **Q8 — DAFB 256-color depth support (NEXT, 2026-07-20).** Reported bug:
+  in the running Finder, **Monitors & Sound ▸ 256 colors → display stays B&W,
+  distorts, then crashes the machine** (this is the "graphics card not well
+  supported" the user saw; the improper-shutdown dialog on the next boot is the
+  transient consequence, not a separate fault). The DAFB HLE models the CLUT
+  (Antelope RAMDAC $200/$210/$220), sense ($1C=6^7), version ($2C=3) — but NOT
+  the **pixel depth** or the **framebuffer stride** register, so `SetDepth(8bpp)`
+  writes/reads registers we don't model → inconsistent framebuffer → crash.
+  Encouraging: XPRAM already REQUESTS 256 colors (`Egret.cpp:75` `pram_[0x58]=
+  0x83`) and the GUI decoder already handles 1/2/4/8 bpp via the CLUT — only the
+  DAFB machine side is missing. Reference `~/src/refs/mame-apple/dafb.cpp`:
+  depth `m_mode` (0=1bpp…3=8bpp…5=16bpp) is derived from the AC842 RAMDAC
+  control (`dafb.cpp:799-815` map pbctrl bits → m_mode); stride from `dafb_w`
+  offset ~$08 (`m_stride = data<<2`, `dafb_r` returns `m_stride>>2`; line
+  451/381); `stride = BIT(m_config,3) ? 1024 : m_stride` (line 268). PLAN:
+  (1) model the DAFB stride register + RAMDAC→m_mode mapping in `Q605Memory`;
+  (2) make it traceable by booting DIRECTLY in 256 colors (XPRAM asks for it) —
+  no GUI clicks needed; (3) diagnose/fix the crash from `q605_trace`, iterate.
+
   **[HISTORICAL — Q6.5d investigation trail, superseded by the fix above]**
   **dsBadPatch root cause found = a stalled SCSI resource read, NOT a
   patch/come-from problem.**

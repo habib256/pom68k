@@ -125,6 +125,11 @@ int main(int argc, char** argv) {
         };
     }
 
+    // ASC FIFO-A feed counter (Q8 sound wiring): count bytes pushed into the
+    // EASC FIFO so a run can confirm the boot chime / System sound is fed.
+    long ascFifoWrites = 0;
+    mem.asc().onWrite = [&](uint32_t off, uint8_t) { if (off < 0x400) ascFifoWrites++; };
+
     int ioSeen = 0, berrSeen = 0;
     long scsiRegLog = 0, lastDma = 0;
     mem.scsi().onCommand = [&](const std::vector<uint8_t>& cdb) {
@@ -724,11 +729,18 @@ int main(int argc, char** argv) {
                     scrnBase, mainDev, pmap);
         std::printf("--   PixMap baseAddr=$%08X rowBytes=%u depth=%u bounds=(%u,%u,%u,%u)\n",
                     pmBase, pmRow, pmDepth, pmT, pmL, pmB, pmR);
-        uint32_t fbBase = (pmBase >= 0xF9000000 && pmBase < 0xF9000000 + Q605Memory::kVramSize)
-                        ? pmBase
-                        : (scrnBase >= 0xF9000000 && scrnBase < 0xF9000000 + Q605Memory::kVramSize)
-                        ? scrnBase : 0xF9000000;
-        uint32_t fbOff = fbBase - 0xF9000000;
+        // The framebuffer base is either the physical VRAM window
+        // ($F9000000 + off) or a logical MMU alias of it ($5190xxxx, the base
+        // Mac OS 8.1 hands QuickDraw in 32-bit mode). The aperture is VRAM-
+        // size aligned, so the low log2(kVramSize) bits are the VRAM byte
+        // offset either way — masking skips the leading offscreen scratch
+        // ("same"/"diff" at VRAM 0) that otherwise shows as a white band atop
+        // the screen.
+        uint32_t fbSrc = pmBase ? pmBase : scrnBase;
+        uint32_t fbOff = fbSrc & (Q605Memory::kVramSize - 1);
+        uint32_t fbBase = 0xF9000000 + fbOff;
+        if (uint64_t(fbOff) + uint64_t((pmB > pmT ? pmB - pmT : 480)) *
+                (pmRow ? pmRow : 1024) > Q605Memory::kVramSize) { fbOff = 0; fbBase = 0xF9000000; }
         // Screen geometry: width/height from the PixMap bounds, stride from
         // rowBytes (default 640x480 @ rowBytes 1024). Mac OS 8.1 boots this
         // Quadra in 1bpp (640x480, rowBytes 1024) — the confirmed Finder mode.
@@ -779,6 +791,7 @@ int main(int argc, char** argv) {
     std::printf("-- SCSI: reads=%ld writes=%ld selects=%ld commands=%ld dmaBytes=%ld lastCmd=$%02X --\n",
                 mem.scsi().reads, mem.scsi().writes, mem.scsi().selects,
                 mem.scsi().commands, mem.scsi().dmaBytes, mem.scsi().lastCmd);
+    std::printf("-- ASC: FIFO-A bytes fed=%ld --\n", ascFifoWrites);
     if (!noPram) mem.cuda().savePram("q605_trace.pram");
     return 0;
 }

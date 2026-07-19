@@ -38,6 +38,7 @@
 #include "Scc8530.h"
 #include "Ncr53c96.h"
 #include "ScsiDisk.h"
+#include "Asc.h"
 #include <cstdint>
 #include <cstddef>
 #include <functional>
@@ -75,6 +76,7 @@ public:
     Egret& cuda() { return cuda_; }
     AdbBus& adb() { return adb_; }
     Scc8530& scc() { return scc_; }
+    AscV8& asc() { return asc_; }
     Ncr53c96& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }  // boot drive (tests poke it)
 
@@ -94,6 +96,7 @@ public:
     // bit encodings identical to a real VIA's IFR)
     void vblIrq(bool s);
     void scsiIrq(bool s);
+    void ascIrq(bool s);                         // EASC half-empty → IFR bit 4
     void sccIrqLine(bool s) { sccIrq_ = s; updateIrq(); }
 
     // Debug hooks (q605_trace)
@@ -132,6 +135,15 @@ private:
     Egret cuda_{via1_, true};      // Cuda flavor: TIP/BYTEACK active low
     AdbBus adb_;
     Scc8530 scc_;
+    // Sound: the IOSB integrates an EASC-like ASC at $50014000 clocked at
+    // C15M (15.6672 MHz — iosb.cpp:89 ASC_EASC(config, m_asc, C15M)), IRQ
+    // wired to pseudo-VIA2 bit 4 (iosb.cpp:358-361 asc_irq → via2). POM68K
+    // reuses the V8 ASC model (mono FIFO A) as a stopgap — enough for the
+    // startup chime and FIFO-fed sound; a faithful stereo EASC (version byte,
+    // FIFO B) is TODO § Q8. Its own 15.6672 MHz clock is decoupled from the
+    // 25 MHz CPU by ascCycAcc_ in tick().
+    AscV8 asc_;
+    int64_t ascCycAcc_ = 0;        // 25 MHz CPU → 15.6672 MHz ASC clock bridge
     Ncr53c96 scsi_;                // TurboSCSI 53C96 (Q6)
     ScsiDisk scsiDisks_[7];        // by SCSI ID; [0] = boot drive
     Cpu040* cpu_ = nullptr;

@@ -21,6 +21,8 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     rom_.assign(kRomSize, 0xFF);
     vram_.assign(kVramSize, 0);
     cuda_.setAdbBus(&adb_);
+    // EASC half-empty IRQ → pseudo-VIA2 bit 4 (iosb.cpp:358-361).
+    asc_.onIrq = [this](bool s) { ascIrq(s); };
     // A cold (unsigned) XPRAM makes the ROM run its LONG full-RAM
     // burn-in on every boot and boots B&W — seed the Basilisk-verified
     // 'NuMc' defaults (docs: macemu main.cpp:106-141)
@@ -58,6 +60,8 @@ void Q605Memory::reset() {
     cuda_.reset();
     scc_.reset();
     scsi_.reset();
+    asc_.reset();
+    ascCycAcc_ = 0;
     scc_.setCtsHigh(false);        // no serial debugger attached (POST check)
     scc_.setAbortIdle(true);       // no LocalTalk peer — SDLC hunt streams the
                                    // standing Break/Abort as a level-4 ext/status
@@ -107,6 +111,12 @@ void Q605Memory::vblIrq(bool s) {
 void Q605Memory::scsiIrq(bool s) {
     if (s) pvIfr_ |= 0x08;                   // CB2 bit (pseudovia.cpp:148)
     else   pvIfr_ &= ~0x08;
+    via2Recalc();
+}
+
+void Q605Memory::ascIrq(bool s) {
+    if (s) pvIfr_ |= 0x10;                   // EASC bit 4 (IFR/IER mask $1B)
+    else   pvIfr_ &= ~0x10;
     via2Recalc();
 }
 
@@ -332,7 +342,7 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
     if (base >= 0x10100 && base < 0x10104)       // TurboSCSI pseudo-DMA — Q6
         return scsiDmaRead_();
     if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000)
-        return 0;                                // ASC — Q8 (stub)
+        return asc_.read(addr & 0xFFF);          // EASC (V8 model stopgap)
     if ((sub & ~0xF00000u) >= 0x18000 && (sub & ~0xF00000u) < 0x1A000) {
         uint32_t reg = ((sub & 0x1FFF) >> 8) & 0x1F;
         uint32_t byteInWord = sub & 1;
@@ -393,8 +403,10 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         scsiDmaWrite_(v);
         return;
     }
-    if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000)
-        return;                                      // ASC stub
+    if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000) {
+        asc_.write(addr & 0xFFF, v);                 // EASC (V8 model stopgap)
+        return;
+    }
     if ((sub & ~0xF00000u) >= 0x18000 && (sub & ~0xF00000u) < 0x1A000) {
         uint32_t reg = ((sub & 0x1FFF) >> 8) & 0x1F;
         if (sub & 1) iosbRegs_[reg] = uint16_t((iosbRegs_[reg] & 0xFF00) | v);
@@ -547,6 +559,14 @@ void Q605Memory::tick(int cpuCycles) {
     scc_.tick(cpuCycles);
     if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }
     localTalkWatchdog(cpuCycles);            // Q6.6 LAP unwedge
+
+    // EASC FIFO drain: the ASC runs on its own 15.6672 MHz clock (C15M),
+    // independent of the 25 MHz CPU — convert cpuCycles into ASC-clock ticks
+    // via a fractional accumulator so the 22 257 Hz sample rate stays exact.
+    ascCycAcc_ += int64_t(cpuCycles) * AscV8::kCpuHz;
+    int ascCyc = int(ascCycAcc_ / kCpuHz);
+    ascCycAcc_ -= int64_t(ascCyc) * kCpuHz;
+    asc_.tick(ascCyc);
 
     // SCSI bus-service latency countdown (Q6.5b) → reflect the deferred IRQ
     // into the pseudo-VIA2 line when it lands.
