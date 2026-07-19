@@ -46,13 +46,25 @@ New frontier (Q6.5b): the boot now **launches and runs the loaded System**
 per the VRAM), waits for the button DOWN (`$172`==0), tracks the click, then
 waits for button UP — a classic `_ModalDialog`/menu-track loop. Headless there
 is no click, so it spins. MAME macqd605 **never executes `$408028C0`** — so our
-running System uniquely puts up this dialog, almost certainly a **startup-error
-alert** caused by an upstream divergence (a still-stubbed/wrong subsystem). Next
-step: find what error our System reports that MAME's does not (diff the
-System-RAM startup path, or inject a click at the OK button to read what's on
-the other side). Tooling added this pass: `Egret::onXPramWrite`; `q605_trace`
-`--pcring`-driven `$8A` write tracer, `Q605_CKPT` progress checkpoints,
-`Q605_CUDA_FROM` clk-gated Cuda byte log.
+running System uniquely puts up this dialog. **Read the dialog text** (new
+`Q605_STRTAP` Dialog-Manager string tap): it is the System Error crash alert
+**"illegal instruction … Restart"** — so the running System takes a **vector-4
+illegal-instruction exception** during startup (a `willExecute` vec-4 log at
+`pc=$00000064`, clk 560 M). Traced it: a **wild `jmp (A1)`** at `$0011E996`
+(`movea.l ($f0,A0),A1; jmp (A1)`, A0=`$0000F180`) reads a handler pointer from
+`$0000F270` that holds `$00000002`, jumps to `$2`, and executes the low-memory
+vector table as code up to `$64` → illegal. A RAM write-watch shows `$F270` is
+written by the **SCSI driver** (`pc=$408D231A`, `A1=$50F50100` = the 53C96
+pseudo-DMA data port, `A3=$50F10000`) — i.e. `$F270` is inside a SCSI read
+buffer, and its bytes later get used as an interrupt/driver handler pointer.
+So the crash is a **handler pointer clobbered by SCSI-buffer data** — most
+likely a 53C96 pseudo-DMA overrun / wrong-address / structure-vs-buffer
+aliasing (ties back to the Q6.1/Q6.3 SCSI path). Next: confirm whether our
+pseudo-DMA over-delivers into `$F180`'s driver structure, or A0=`$F180` is
+itself wrong at the dispatch. Tooling this pass: `Egret::onXPramWrite`;
+`q605_trace` `$8A` write tracer, `Q605_CKPT` checkpoints, `Q605_CUDA_FROM`
+Cuda byte log, `Q605_STRTAP` dialog-text tap, vec-4/11 exception logging,
+`q605_boot.ppm` screen dump.
 
 ## 2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the
 ## block-0 loop were one coupled Cuda-reply-framing bug; the System now loads

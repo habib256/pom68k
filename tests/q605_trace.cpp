@@ -37,6 +37,16 @@ public:
             justFaulted = true;
             std::printf("       D1=$%08X D2=$%08X D3=$%08X\n", getD(1), getD(2), getD(3));
         }
+        // Q6.5b: the System Error "illegal instruction" crash dialog is raised
+        // by vector 4 (illegal), 10 (line-A), or 11 (line-F). Log the faulting
+        // PC + regs so the offending opcode can be disassembled.
+        if (vector == 4 || vector == 11) {
+            static long en = 0;
+            if (en++ < 20)
+                std::printf("  EXC vec=%u pc=$%08X sr=$%04X D0=$%08X D1=$%08X A0=$%08X A1=$%08X A6=$%08X SP=$%08X clk=%lld\n",
+                            vector, getPC0(), getSR(), getD(0), getD(1), getA(0), getA(1),
+                            getA(6), getSP(), (long long)getClock());
+        }
     }
     bool justFaulted = false;
 };
@@ -246,6 +256,24 @@ int main(int argc, char** argv) {
                             std::printf(" %02X%02X", mem.peek8(sp+i), mem.peek8(sp+i+1));
                         std::printf("\n");
                     }
+                }
+            }
+            // Dialog/Alert text tap ($4082919C): the ROM string-draw helper
+            // reads a Pascal string ptr from ($4,A7). Dump printable strings so
+            // a startup-error alert can be read (Q6.5b). Env Q605_STRTAP.
+            if (getenv("Q605_STRTAP") && pc == 0x4082919C) {
+                static long strn = 0;
+                uint32_t sp = cpu.getSP();
+                uint32_t p = uint32_t(mem.peek8(sp+4))<<24 | uint32_t(mem.peek8(sp+5))<<16 |
+                             uint32_t(mem.peek8(sp+6))<<8 | mem.peek8(sp+7);
+                uint8_t len = mem.peek8(p);
+                if (len && len < 64 && strn++ < 400) {
+                    std::printf("  STR clk=%lld \"", (long long)cpu.getClock());
+                    for (int i = 1; i <= len; i++) {
+                        uint8_t ch = mem.peek8(p + i);
+                        std::putchar(ch >= 0x20 && ch < 0x7F ? ch : '.');
+                    }
+                    std::printf("\"\n");
                 }
             }
             // Task-walk handler tap: at $4080EEB2 (jsr (A0)) log the task
