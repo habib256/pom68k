@@ -162,7 +162,12 @@ uint8_t Ncr53c96::read(int reg) {
         // reads). Everything else reads the real FIFO (STATUS/MSG bytes that
         // CI_COMPLETE latched, or a staged CDB echo).
         case R_FIFO:
-            if (phase_ == DATA_IN && dataInPos_ < dataIn_.size()) {
+            // Drain the read payload through the FIFO port whenever bytes are
+            // still pending — keyed on dataInPos_, NOT the phase: a polled
+            // Transfer Info that drains the tail pre-advances phase_ to STATUS
+            // at command time (Q6.6), but the driver still reads the staged
+            // byte(s) here afterwards.
+            if (dataInPos_ < dataIn_.size()) {
                 v = dataIn_[dataInPos_++];
                 if (tcounter_) tcounter_--;
                 if (dataInPos_ >= dataIn_.size()) {
@@ -434,6 +439,24 @@ void Ncr53c96::transferInfo() {
                 // signal the byte-tail wait ($40899704) spun forever.
                 // Deferred (Q6.5b): held back by the bus-service latency.
                 raiseIrqDeferred(I_BUS);
+                // Q6.6 — polled Transfer Info ($10, non-DMA) that drains the
+                // last of the payload: the target ends the DATA phase and
+                // switches to STATUS as part of THIS command. Reflect that
+                // phase change now, at command time — before the driver's
+                // per-byte interrupt service ($0011E616 → $0011E686, called
+                // right after the CI_XFER write and BEFORE the FIFO byte read)
+                // — so the polled service sees STATUS and finalizes the
+                // command. Otherwise (advancing only on the FIFO read) the
+                // service always saw DATA_IN and the completion flag was never
+                // set: the OS 8.1 SCSI-Manager bus-scan INQUIRY discard loop
+                // ($0011B2EE) drained all 36 bytes then spun in its sequencer
+                // ($00121Axx/$00122Dxx) forever. The FIFO-port read below still
+                // drains the staged bytes (it keys on dataInPos_, not phase).
+                // DMA ($90) is unaffected — dmaRead() drives its own STATUS
+                // transition when the pseudo-DMA window empties the payload.
+                if (!dmaCommand_ &&
+                    dataInPos_ + (tcounter_ ? tcounter_ : 1) >= dataIn_.size())
+                    advanceToStatus();
             }
             updateDrq();
             break;
