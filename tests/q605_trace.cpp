@@ -490,6 +490,22 @@ int main(int argc, char** argv) {
         } else std::printf("-- VRAM all zero --\n");
     }
 
+    {   // Full-res 640x480 PPM through the CLUT, so a drawn dialog/screen can
+        // be read directly (Read the image). 8bpp, stride 640.
+        const uint8_t* vr = mem.vram();
+        const uint8_t (*cl)[3] = mem.clut();
+        FILE* pf = std::fopen("q605_boot.ppm", "wb");
+        if (pf) {
+            std::fprintf(pf, "P6\n640 480\n255\n");
+            for (uint32_t i = 0; i < 640u * 480u; i++) {
+                const uint8_t* c = cl[vr[i]];
+                std::fputc(c[0], pf); std::fputc(c[1], pf); std::fputc(c[2], pf);
+            }
+            std::fclose(pf);
+            std::printf("-- wrote q605_boot.ppm (640x480 via CLUT) --\n");
+        }
+    }
+
     std::printf("-- last %zu PCs --\n", ring.size());
     char da[128];
     for (size_t i = 0; i < ring.size(); i++) {

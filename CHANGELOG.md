@@ -38,11 +38,19 @@ restarts** over a 6 G-cycle boot (was 66), the full System loads (1583 SCSI
 commands) and runs. LC II is untouched (`cudaPolarity_=false` keeps its 4-byte
 header, `lcii_boot_etalon` + `egret_test` green; all 26 CTest gates pass).
 
-New frontier (Q6.5b): the boot now advances into a spin at `$40802A38`
-(`tst.b $172.w; bne` — Event Manager, `$172` bit 7 set at `$408B6DD6` and
-never cleared). MAME macqd605 **never executes `$40802A38`**, so our machine
-reaches it via a still-divergent path — the next thing to diff against the
-oracle. Tooling added this pass: `Egret::onXPramWrite`; `q605_trace`
+New frontier (Q6.5b): the boot now **launches and runs the loaded System**
+(RAM code at `$0002xxxx`/`$0006xxxx` driving ROM Toolbox), but wedges in a
+**modal mouse-click tracking loop** at `$40802A38` (`tst.b $172.w; bne` —
+`$0172` = **MBState**, the mouse-button low-mem global, `$80`=up). The routine
+`$408028C0`/`$408029EC` draws two boxed shapes (an alert icon + dialog frame,
+per the VRAM), waits for the button DOWN (`$172`==0), tracks the click, then
+waits for button UP — a classic `_ModalDialog`/menu-track loop. Headless there
+is no click, so it spins. MAME macqd605 **never executes `$408028C0`** — so our
+running System uniquely puts up this dialog, almost certainly a **startup-error
+alert** caused by an upstream divergence (a still-stubbed/wrong subsystem). Next
+step: find what error our System reports that MAME's does not (diff the
+System-RAM startup path, or inject a click at the OK button to read what's on
+the other side). Tooling added this pass: `Egret::onXPramWrite`; `q605_trace`
 `--pcring`-driven `$8A` write tracer, `Q605_CKPT` progress checkpoints,
 `Q605_CUDA_FROM` clk-gated Cuda byte log.
 

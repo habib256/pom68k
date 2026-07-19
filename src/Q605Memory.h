@@ -88,6 +88,7 @@ public:
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
     const uint32_t* dafbRegs() const { return dafb_; }
+    const uint8_t (*clut() const)[3] { return clut_; }
 
     // VIA2 IFR device lines (Quadra pseudo-VIA: CA1=slot/VBL summary,
     // bit encodings identical to a real VIA's IFR)
