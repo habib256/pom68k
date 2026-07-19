@@ -3,6 +3,8 @@
 
 #include "Egret.h"
 #include "AdbBus.h"
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 
@@ -227,6 +229,13 @@ void Egret::endCommand() {
 }
 
 void Egret::queueResponse(std::vector<uint8_t> resp) {
+    if (std::getenv("EGRET_CMD_LOG")) {
+        std::fprintf(stderr, "[egret] cmd:");
+        for (uint8_t b : cmd_) std::fprintf(stderr, " %02X", b);
+        std::fprintf(stderr, "  reply:");
+        for (uint8_t b : resp) std::fprintf(stderr, " %02X", b);
+        std::fprintf(stderr, "\n");
+    }
     resp_ = std::move(resp);
     respIdx_ = 0;
     phase_ = RESP_DELAY;

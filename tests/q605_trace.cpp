@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: %s <rom> [--cycles N] [--io N] [--berr N] [--pcring N]\n", argv[0]); return 2; }
     long long cycles = 200000000;   // 8 machine-seconds at 25 MHz
     int ioMax = 60, berrMax = 40; size_t pcRing = 32;
-    uint32_t stopAt = 0, watch = 0, wwatch = 0, firstpc = 0;
+    uint32_t stopAt = 0, watch = 0, wwatch = 0, firstpc = 0, complog = 0;
     long stopSkip = 0;                 // ignore the first N hits of --stop-at
     std::string diskPath;             // --disk / --scsi: boot image at ID 0
     long long scsiFrom = 0, scsiTo = 0;   // SCSI register-trace clock window
@@ -64,6 +64,7 @@ int main(int argc, char** argv) {
         else if (a == "--scsi-log" && i + 2 < argc) { scsiFrom = atoll(argv[++i]); scsiTo = atoll(argv[++i]); }
         else if (a == "--wwatch" && i + 1 < argc) wwatch = uint32_t(strtoul(argv[++i], nullptr, 16));
         else if (a == "--firstpc" && i + 1 < argc) firstpc = uint32_t(strtoul(argv[++i], nullptr, 16));
+        else if (a == "--complog" && i + 1 < argc) complog = uint32_t(strtoul(argv[++i], nullptr, 16));
     }
 
     std::ifstream in(argv[1], std::ios::binary);
@@ -169,6 +170,55 @@ int main(int argc, char** argv) {
             prevpc = pc;
             ring[rp++ % ring.size()] = pc;
             pcCov[pc >> 16]++;
+            // --complog: dump the Cuda completion-ISR reply framing at
+            // $408A9CFC (move.w ($10,A2),D0). A2 = receive-state block:
+            // ($10,A2) = received byte count, ($0C,A2)/A1 = reply buffer,
+            // ($08,A2) = data destination. The count-4 drives the dbra copy.
+            // Selector-dispatch tap at $4080ED7E: the dispatcher does
+            // move.l (A7)+,D2; move.w (A7)+,D0 — so [SP]=D2(4), [SP+4]=selector.
+            if (pc == 0x4080ED7E) {
+                static long sn = 0;
+                if (sn++ < 60) {
+                    uint32_t sp = cpu.getSP();
+                    uint16_t sel = uint16_t(mem.peek8(sp+4)<<8 | mem.peek8(sp+5));
+                    std::printf("  SELDISP #%ld clk=%lld sel=$%04X D1=$%08X D2=$%08X A0=$%08X A1=$%08X\n",
+                                sn, (long long)cpu.getClock(), sel, cpu.getD(1), cpu.getD(2),
+                                cpu.getA(0), cpu.getA(1));
+                    if (sel == 2) {   // restart (ShutDwnStart): dump raw stack
+                        std::printf("    STACK[sp..sp+96]:");
+                        for (int i = 0; i < 96; i += 2)
+                            std::printf(" %02X%02X", mem.peek8(sp+i), mem.peek8(sp+i+1));
+                        std::printf("\n");
+                    }
+                }
+            }
+            // Task-walk handler tap: at $4080EEB2 (jsr (A0)) log the task
+            // element (A2), its flags word, and the handler address A0.
+            if (pc == 0x4080EEB2) {
+                static long tn = 0;
+                if (tn++ < 200)
+                    std::printf("  TASK #%ld clk=%lld A2=$%08X flags=$%04X D5=%u handler(A0)=$%08X\n",
+                                tn, (long long)cpu.getClock(), cpu.getA(2),
+                                uint16_t(mem.peek8(cpu.getA(2)+4)<<8 | mem.peek8(cpu.getA(2)+5)),
+                                cpu.getD(5), cpu.getA(0));
+            }
+            if (complog && pc == complog) {
+                static long cn = 0;
+                if (cn++ < 120) {
+                    uint32_t a2 = cpu.getA(2), a1 = cpu.getA(1);
+                    uint32_t cnt = uint32_t(mem.peek8(a2+0x10))<<8 | mem.peek8(a2+0x11);
+                    // DCE = A2's $34 field (movea.l ($34,A2),A0 earlier);
+                    // its ioCompletion is at DCE+$10 (($10,A0)).
+                    uint32_t a0 = uint32_t(mem.peek8(a2+0x34))<<24 | uint32_t(mem.peek8(a2+0x35))<<16
+                                | uint32_t(mem.peek8(a2+0x36))<<8 | mem.peek8(a2+0x37);
+                    uint32_t comp = uint32_t(mem.peek8(a0+0x10))<<24 | uint32_t(mem.peek8(a0+0x11))<<16
+                                  | uint32_t(mem.peek8(a0+0x12))<<8 | mem.peek8(a0+0x13);
+                    std::printf("  COMPLOG #%ld clk=%lld A2=$%08X len=%u DCE(A0)=$%08X ioComp=$%08X reply:",
+                                cn, (long long)cpu.getClock(), a2, cnt, a0, comp);
+                    for (int i = 0; i < 16; i++) std::printf(" %02X", mem.peek8(a1 + i));
+                    std::printf("\n");
+                }
+            }
             if (stopAt && pc == stopAt) {
                 if (stopSkip > 0) stopSkip--;
                 else { stop = true; break; }

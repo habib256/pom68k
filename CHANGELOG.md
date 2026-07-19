@@ -1,5 +1,56 @@
 # CHANGELOG
 
+## 2026-07-19 — Q6.4 re-localized: it is a System-launch HANDOFF failure,
+## NOT a Cuda reply-framing bug (the prior "completion ISR buffer-smash"
+## lead is disproven; no fix landed yet)
+
+Followed the Q6.4 "diff the Cuda completion reply framing against MAME"
+lead to its conclusion and DISPROVED it as the fix, then re-localized the
+blocker one level up. Established (MAME macqd605 oracle via the working
+`save`-marker method, `roms/mame/oracleQ_*`; our side via new `q605_trace`
+taps):
+
+- **`$4080ED7E` is the ROM's Shutdown Manager selector dispatcher**
+  (selector 2 = `ShutDwnStart` = restart → `$4080EE06` → `jsr $4084C148` →
+  `$4080EE12` → `jmp $4080000A`). **MAME reaches `$4080ED7E` ONLY with
+  selector 0 (init)** across its full 20 s boot to the Finder and NEVER
+  hits `$4080EE06`/`$4080000A`/the `$4080EE94` task-walk. **Our machine
+  hits it with selector 2** (identical regs every restart:
+  `D1=$B0D70002 D2=$B0D7EF88 A0=$003FF974 A1=$40800000`, clk 434067092).
+  So the entire restart/task-walk machinery is code MAME never runs.
+- **The completion-ISR buffer-smash lead is disproven:** at `$408A9CFC`
+  the received count `w@(a2+$10)` is **always exactly 4** on our machine
+  (no `dbra` wrap, no 64KB copy). Two experiments that should have fixed a
+  framing bug do NOT stop the restart: (a) swapping the Cuda pseudo-reply
+  header to `00 01 00 <echo>` (matching an SR-wire measurement) only shifts
+  the restart 434M→443M; (b) suppressing the periodic Cuda TIMER packets
+  leaves it at ~437M. The Q6.2 ReadXPram-echo class is not the Q6.4 cause.
+- **Root shape: the System loads off SCSI (1281 cmds) but NEVER LAUNCHES.**
+  PC coverage over one boot attempt: `$40840000` (ROM POST/SANE) = 38.9M
+  hits; the loaded System code in RAM (`$008xxxxx`) = only ~700 hits total.
+  On MAME the ROM's Cuda completion ISR `$408A9CFC` stops firing after
+  ~20M cycles (control handed to the System's own ADB driver); on ours it
+  keeps firing to 434M — we stay in the ROM's boot code and restart
+  ~every 118M cycles (~4.7 s @ 25 MHz), each attempt loading slightly more
+  of the System (SCSI 995→1281). Q6.4 is therefore a **boot-block /
+  System-launch handoff failure**, and the next step is to diff MAME's
+  ~15-20M-cycle handoff window (where it reads and `jmp`s the boot blocks)
+  against ours to find why our machine never launches the loaded System.
+- Non-fix findings kept for the record: the shared Egret `kCpuHz` is the
+  LC II 15.67 MHz (Q605 is 25 MHz) so the Cuda RTC/TIMER cadence runs ~1.6×
+  fast — harmless to the restart, make it per-machine when polishing; and
+  MAME's `00 01 00` pseudo-reply header was an SR-wire measurement, NOT the
+  `$408A9CFC` framing (that ISR frames `00 00 00 <byte>`) — don't diff the
+  HLE against those bytes for XPRAM.
+
+Tooling: `tests/q605_trace.cpp` gained `--complog HEXPC` (dump the Cuda
+completion-ISR reply count + bytes + DCE/ioCompletion at a PC) plus
+always-on low-volume taps at `$4080ED7E` (SELDISP: selector + regs, and a
+raw stack dump when selector==2) and `$4080EEB2` (TASK: the walked task
+element + handler). `src/Egret.cpp` gained an env-gated (`EGRET_CMD_LOG`)
+command/reply logger — off by default, no behaviour change. `egret_test`
+and `lcii_boot_etalon` stay green (shared Egret path untouched).
+
 ## 2026-07-19 — Q6.4 deeply localized: the console divert is a periodic
 ## boot-RESTART loop, not a fault — several candidates ruled out (no fix yet)
 

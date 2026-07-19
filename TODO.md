@@ -1020,25 +1020,62 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
     Manager path (agentQ found MAME hits $40809A0A once, cleanly).
     Original (superseded) hypothesis kept: "a missing subsystem the System
     consults — DAFB paint / Time-Manager-VBL / sound / NMI."
-  * **STRONGEST LEAD for the fix (2026-07-19, start here):** the restart is
-    reached through the **Cuda/ADB device-manager completion ISR**
-    `$408A9CD8-$408A9D26` (receive-ISR that copies the Cuda reply into a DCE
-    buffer then `jsr`s the ioCompletion at `$408A9DD4`). The path is:
-    Cuda reply → this ISR → completion callback → $40809B70 (Device Mgr) →
-    $4080ED7E dispatcher **selector 2** → $4080EE06 → $4080EE12 → restart.
-    At $408A9CFC the ISR does `move.w $10(a2),d0; subq.w #$4,d0` then
-    `dbra d0` copies d0+1 bytes — i.e. **replyLen−4**; a reply one byte
-    short makes d0 wrap to a huge copy (the exact shape of the SimCity-2000
-    Egret-retraction crash, CHANGELOG 2026-07-17). The Cuda replies seen
-    right before the first restart (clk 434M) are 3-byte `01 00 00` answers
-    to pseudo-commands `01 07 00 7B 7B` / `01 22 DE 0C 47` / `01 22 DE 0F
-    41` (GetPram/WriteXPRAM-like). **Suspect another Cuda-vs-Egret reply-
-    framing divergence in the shared `Egret` HLE** (Q6.2 already found one:
-    the Quadra Cuda ReadXPram reply drops the cmd-echo header byte the LC II
-    Egret keeps). DIFF these completions against MAME macqd605 byte-for-byte
-    (the receive header count the ROM ISR expects vs what our HLE emits),
-    gate on `cudaPolarity_` so the LC II Egret path (egret_test +
-    lcii_boot_etalon) does NOT regress. This is the most likely single fix.
+  * **The old "Cuda completion ISR buffer-smash" lead (2026-07-19) is
+    DISPROVEN (2026-07-19 session 2).** Measured: at $408A9CFC the ISR reads
+    `move.w $10(a2),d0` and the count is **always exactly 4** on our machine
+    (no wrap, no 64KB copy). Header-swap and timer-packet experiments below
+    were tried and do NOT stop the restart, so the restart is NOT a Cuda
+    reply-framing bug in the SimCity class.
+  * **RE-LOCALIZED (2026-07-19 session 2) — the restart is the ROM's
+    Shutdown Manager doing `ShutDwnStart` (restart), and THE BOOT NEVER
+    HANDS OFF TO THE LOADED SYSTEM.** New evidence:
+    - `$4080ED7E` is the **Shutdown Manager selector dispatcher**
+      (`move.l (A7)+,D2; move.w (A7)+,D0; subq #1; subq #2 …`): **selector
+      0 = init, 1, 2 = ShutDwnStart(RESTART) → $4080EE06 → jsr $4084C148 →
+      $4080EE12 → jmp $4080000A**, 3 = ShutDwnRun, 4 = walk procs. Selectors
+      3/4 walk the proc list at low-mem `$BBC`.
+    - **MAME macqd605 reaches `$4080ED7E` ONLY with selector 0** (init) over
+      its whole 20-second boot to the Finder, and NEVER hits `$4080EE06`,
+      `$4080000A`, or `$4080EE94` (agent-confirmed, `save`-marker method:
+      `roms/mame/oracleQ_*`; `oracleQ_cf_ed7e_sel.bin`=$0000, restart/reset/
+      taskwalk markers never created). **Our machine hits `$4080ED7E` with
+      selector 2** at clk 434067092 (regs identical each restart:
+      `D1=$B0D70002 D2=$B0D7EF88 A0=$003FF974 A1=$40800000`). So the whole
+      restart/task-walk machinery is code MAME never executes — our bug is
+      upstream: something makes OUR Device Manager request ShutDwnStart.
+    - **The System file loads off SCSI (1281 cmds) but BARELY EXECUTES.**
+      PC coverage over a full boot attempt (0→434M): `$40840000`=38.9M hits
+      (ROM POST/SANE), `$008xxxxx` (loaded System code in RAM) = only ~700
+      hits TOTAL. On MAME the ROM's Cuda completion ISR `$408A9CFC` stops
+      firing after ~20M cycles (handoff to the System's own ADB driver);
+      on ours it keeps firing to 434M → **we never hand off; the ROM stays
+      in its own boot code and restarts ~every 118M cycles (~4.7 s @ 25MHz),
+      each attempt loading a bit more of the System (SCSI 995→1281).**
+    - So Q6.4 is a **boot-block / System-launch handoff failure**, not a
+      Cuda-framing bug. NEXT: find where the ROM should read + `jmp` the
+      boot blocks ('boot' 1 code) and launch the System, and why our machine
+      never gets there (or gets there and the launch condition fails). Diff
+      the ~15-20M-cycle window in MAME (its handoff) against ours: what does
+      MAME do right before its LAST `$408A9CFC` at ~20M that we never reach.
+      The `_ShutDown(ShutDwnStart)` caller on our side returns into RAM
+      ($008xxxxx System/heap) — capture it with a WinUAE co-sim or a
+      windowed instruction trace of the ~20M-handoff window (the MAME
+      full-instruction `trace` distorts Cuda timing and stalls the boot at
+      the `$4084799x` checksum loop — use `save`-markers or the cudamcu
+      trace, never a bare maincpu `trace`).
+    - Two real but NON-fix findings this session, kept for the record:
+      (1) the shared Egret `kCpuHz=15667200` (LC II 15.67MHz) is wrong for
+      the 25MHz Q605 — the Cuda RTC-seconds / TIMER-packet cadence runs
+      ~1.6× fast; harmless to the restart (suppressing the timer packets
+      does not stop it) but should be made per-machine when polishing.
+      (2) MAME's pseudo-reply header (`00 01 00 …`) I measured earlier was
+      from an SR-wire tap, NOT the `$408A9CFC` completion ISR (which frames
+      as `00 00 00 <byte>`) — do NOT diff the Egret HLE against the
+      $408A9CFC bytes for the XPRAM case (agent note, oracleQ report).
+  * **Superseded lead (kept):** the restart is reached through the Cuda/ADB
+    device-manager completion ISR `$408A9CD8-$408A9D26` → `$40809B70` (Device
+    Mgr rte/deferred-task) → `$4080ED7E` selector 2. At `$408A9CFC` the ISR
+    copies `replyLen−4` bytes, but replyLen is always 4 here (no smash).
 
   **Q6.2 — HISTORICAL BLOCKER writeup (kept for method): the boot
   re-reads block 0 forever (~48 700
