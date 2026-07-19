@@ -59,9 +59,26 @@ pseudo-DMA data port, `A3=$50F10000`) — i.e. `$F270` is inside a SCSI read
 buffer, and its bytes later get used as an interrupt/driver handler pointer.
 So the crash is a **handler pointer clobbered by SCSI-buffer data** — most
 likely a 53C96 pseudo-DMA overrun / wrong-address / structure-vs-buffer
-aliasing (ties back to the Q6.1/Q6.3 SCSI path). Next: confirm whether our
-pseudo-DMA over-delivers into `$F180`'s driver structure, or A0=`$F180` is
-itself wrong at the dispatch. Tooling this pass: `Egret::onXPramWrite`;
+aliasing (ties back to the Q6.1/Q6.3 SCSI path).
+
+**ROOT CAUSE pinned (2026-07-19): a deferred-task context clobbered by SCSI
+buffer reuse (use-after-free), NOT a live interrupt.** MAME never reaches
+`$0011E996`. It is reached on our machine via the **event/deferred-task
+processor** `$0011A6D2` (handler=table[D0], context A0=*(A4+4)=`$F180`), NOT
+from a hardware IRQ: measured at ISR entry `via2IFR=$00`, `via2IER=$12` (SCSI
+bit 3 **not** even enabled), `scsi.irq()=0`. So an earlier SCSI event was
+**queued** as a deferred task referencing context `$F180`; before the task ran,
+`$F180`'s region (`$F270 = $F180+$F0`, the task's handler field) was **reused as
+a SCSI read buffer** (write-watch: `pc=$408D231A`, 53C96 pseudo-DMA port
+`$50F50100`) → the handler field holds stale disk bytes (`$0/$2`) → the deferred
+task jumps to `$2` → runs the low-mem vector table → illegal instruction.
+This is a **heap/allocation + deferred-task ordering divergence** (kin to the
+LC II SimCity timing race): on real hardware the SCSI buffer does not overlap
+the live task context, or the task runs before the buffer is reused. Next: find
+why our SCSI driver's read buffer lands on the deferred-task context `$F180`
+(an upstream heap-allocation divergence) or why the task is deferred past the
+buffer reuse — diff the allocation/queue ordering against MAME. A speculative
+53C96 tweak is the WRONG move (the crash is not an IRQ); this is above the chip. Tooling this pass: `Egret::onXPramWrite`;
 `q605_trace` `$8A` write tracer, `Q605_CKPT` checkpoints, `Q605_CUDA_FROM`
 Cuda byte log, `Q605_STRTAP` dialog-text tap, vec-4/11 exception logging,
 `q605_boot.ppm` screen dump.

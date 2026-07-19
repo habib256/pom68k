@@ -109,6 +109,8 @@ public:
     // low, bit 6 = VBL), 13 = IFR, 14 = IER; IFR/IER mask $1B =
     // DRQ(0) | slots(1) | SCSI(3) | ASC(4).
     bool via2IrqAsserted() const { return (pvIfr_ & pvIer_ & 0x1B) != 0; }
+    uint8_t via2Ifr() const { return pvIfr_; }   // Q6.5b diag
+    uint8_t via2Ier() const { return pvIer_; }
 
 private:
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);

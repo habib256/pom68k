@@ -234,6 +234,18 @@ int main(int argc, char** argv) {
                                 (long long)cpu.getClock());
             }
             prevpc = pc;
+            // Q6.5b: log SCSI 53C96 IRQ-line 0->1 transitions with clk, to find
+            // the spurious interrupt that dispatches the crash event ($0011E996
+            // is only reached on our machine, never on MAME). Env Q605_SCSIIRQ.
+            if (getenv("Q605_SCSIIRQ")) {
+                static bool prevIrq = false; static long sq = 0;
+                static long long from = atoll(getenv("Q605_SCSIIRQ"));
+                bool iq = mem.scsi().irq();
+                if (iq && !prevIrq && cpu.getClock() >= from && sq++ < 200)
+                    std::printf("  SCSIIRQ^ clk=%lld pc=$%08X lastCmd=$%02X\n",
+                                (long long)cpu.getClock(), pc, mem.scsi().lastCmd);
+                prevIrq = iq;
+            }
             ring[rp++ % ring.size()] = pc;
             pcCov[pc >> 16]++;
             // --complog: dump the Cuda completion-ISR reply framing at
@@ -275,6 +287,18 @@ int main(int argc, char** argv) {
                     }
                     std::printf("\"\n");
                 }
+            }
+            // Q6.5b: at the SCSI interrupt handler $0011E996, log the VIA2
+            // IFR/IER + SCSI irq/context so the spurious-IRQ crash can be
+            // characterized (is the SCSI int enabled? is irq_ stale?).
+            if (pc == 0x0011E996) {
+                static long hn = 0;
+                if (hn++ < 30)
+                    std::printf("  SCSIISR clk=%lld A0=$%08X hdlr=*(A0+F0)=$%08X via2IFR=$%02X via2IER=$%02X scsiIRQ=%d sr=$%04X\n",
+                                (long long)cpu.getClock(), cpu.getA(0),
+                                uint32_t(mem.peek8(cpu.getA(0)+0xF0))<<24 | uint32_t(mem.peek8(cpu.getA(0)+0xF1))<<16 |
+                                uint32_t(mem.peek8(cpu.getA(0)+0xF2))<<8 | mem.peek8(cpu.getA(0)+0xF3),
+                                mem.via2Ifr(), mem.via2Ier(), mem.scsi().irq(), cpu.getSR());
             }
             // Task-walk handler tap: at $4080EEB2 (jsr (A0)) log the task
             // element (A2), its flags word, and the handler address A0.
