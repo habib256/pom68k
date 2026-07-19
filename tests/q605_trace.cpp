@@ -697,18 +697,69 @@ int main(int argc, char** argv) {
     }
 
     {   // Full-res 640x480 PPM through the CLUT, so a drawn dialog/screen can
-        // be read directly (Read the image). 8bpp, stride 640.
+        // be read directly (Read the image). The framebuffer base is taken from
+        // ScrnBase (low-mem $0824), which the video driver points into the VRAM
+        // window ($F9000000); depth from ScreenRow / bounds heuristics.
         const uint8_t* vr = mem.vram();
         const uint8_t (*cl)[3] = mem.clut();
+        auto pk32 = [&](uint32_t a){ return uint32_t(mem.peek8(a))<<24 | uint32_t(mem.peek8(a+1))<<16 |
+                                            uint32_t(mem.peek8(a+2))<<8 | mem.peek8(a+3); };
+        uint32_t scrnBase = pk32(0x0824);
+        // Authoritative geometry from the main GDevice (low-mem MainDevice
+        // $08A4 → GDevice → +$16 gdPMap handle → PixMap): baseAddr $00,
+        // rowBytes+flags $04, bounds $06, pixelSize $1C.
+        uint32_t mainDevH = pk32(0x08A4);
+        uint32_t mainDev  = mainDevH ? pk32(mainDevH) : 0;
+        uint32_t pmapH    = mainDev ? pk32(mainDev + 0x16) : 0;
+        uint32_t pmap     = pmapH ? pk32(pmapH) : 0;
+        uint32_t pmBase = 0, pmRow = 0, pmDepth = 0, pmT=0,pmL=0,pmB=0,pmR=0;
+        if (pmap) {
+            pmBase = pk32(pmap + 0x00);
+            pmRow  = (pk32(pmap + 0x04) >> 16) & 0x3FFF;
+            pmT = (pk32(pmap+0x06)>>16)&0xFFFF; pmL = pk32(pmap+0x06)&0xFFFF;
+            pmB = (pk32(pmap+0x0A)>>16)&0xFFFF; pmR = pk32(pmap+0x0A)&0xFFFF;
+            pmDepth = (pk32(pmap+0x1C)>>16)&0xFFFF;
+        }
+        std::printf("-- ScrnBase($824)=$%08X  MainDevice=$%08X PixMap=$%08X\n",
+                    scrnBase, mainDev, pmap);
+        std::printf("--   PixMap baseAddr=$%08X rowBytes=%u depth=%u bounds=(%u,%u,%u,%u)\n",
+                    pmBase, pmRow, pmDepth, pmT, pmL, pmB, pmR);
+        uint32_t fbBase = (pmBase >= 0xF9000000 && pmBase < 0xF9000000 + Q605Memory::kVramSize)
+                        ? pmBase
+                        : (scrnBase >= 0xF9000000 && scrnBase < 0xF9000000 + Q605Memory::kVramSize)
+                        ? scrnBase : 0xF9000000;
+        uint32_t fbOff = fbBase - 0xF9000000;
+        // Screen geometry: width/height from the PixMap bounds, stride from
+        // rowBytes (default 640x480 @ rowBytes 1024). Mac OS 8.1 boots this
+        // Quadra in 1bpp (640x480, rowBytes 1024) — the confirmed Finder mode.
+        uint32_t w = (pmR > pmL && pmR - pmL <= 1600) ? pmR - pmL : 640;
+        uint32_t h = (pmB > pmT && pmB - pmT <= 1200) ? pmB - pmT : 480;
+        uint32_t stride = pmRow ? pmRow : 1024;
+        std::printf("-- render fbBase=$%08X off=$%05X %ux%u stride=%u bytes:",
+                    fbBase, fbOff, w, h, stride);
+        for (int i = 0; i < 16; i++) std::printf(" %02X", vr[fbOff + i]);
+        std::printf("\n");
+        // 1bpp screenshot (P4 PBM) — the boot mode. 1 = black on classic Mac.
+        FILE* mf = std::fopen("q605_boot_1bpp.pbm", "wb");
+        if (mf) {
+            std::fprintf(mf, "P4\n%u %u\n", w, h);
+            for (uint32_t y = 0; y < h; y++)
+                for (uint32_t xb = 0; xb < (w + 7) / 8; xb++)
+                    std::fputc(vr[fbOff + y * stride + xb], mf);
+            std::fclose(mf);
+            std::printf("-- wrote q605_boot_1bpp.pbm (%ux%u 1bpp stride %u) --\n", w, h, stride);
+        }
+        // 8bpp CLUT fallback (P6 PPM), in case a colour mode is ever selected.
         FILE* pf = std::fopen("q605_boot.ppm", "wb");
         if (pf) {
-            std::fprintf(pf, "P6\n640 480\n255\n");
-            for (uint32_t i = 0; i < 640u * 480u; i++) {
-                const uint8_t* c = cl[vr[i]];
-                std::fputc(c[0], pf); std::fputc(c[1], pf); std::fputc(c[2], pf);
-            }
+            std::fprintf(pf, "P6\n%u %u\n255\n", w, h);
+            for (uint32_t y = 0; y < h; y++)
+                for (uint32_t x = 0; x < w; x++) {
+                    const uint8_t* c = cl[vr[fbOff + y * stride + x]];
+                    std::fputc(c[0], pf); std::fputc(c[1], pf); std::fputc(c[2], pf);
+                }
             std::fclose(pf);
-            std::printf("-- wrote q605_boot.ppm (640x480 via CLUT) --\n");
+            std::printf("-- wrote q605_boot.ppm (%ux%u 8bpp stride %u via CLUT) --\n", w, h, stride);
         }
         FILE* rf = std::fopen("q605_vram.raw", "wb");
         if (rf) { std::fwrite(vr, 1, Q605Memory::kVramSize, rf); std::fclose(rf);

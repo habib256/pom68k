@@ -21,6 +21,10 @@ input/
 compile_commands.json
 *.ppm
 *.png
+*.pbm
+# q605_trace debug artifacts (VRAM snapshot + PRAM dump)
+q605_vram.raw
+q605_trace.pram
 
 # Sound capture artifacts (sound_test)
 *.wav

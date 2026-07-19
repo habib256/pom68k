@@ -1,5 +1,62 @@
 # CHANGELOG
 
+## 2026-07-20 — Q6.6 RESOLVED: Mac OS 8.1 boots the Quadra 605 (68LC040) to the
+## Finder desktop — two blockers, the FPU trap and a DMA-final-chunk STATUS race
+
+The Quadra 605 now boots Mac OS 8.1 all the way to the Finder: `q605_trace`
+renders the full desktop (🍎/File/Edit/View/Special/Help menu bar, the
+`Mac-8.1-US` boot volume icon, Browse-the-Internet/Mail/Trash, gray-dither
+background) at clk ~1.8 G, then idles (SCSI commands plateau at 5973 while the
+Cuda one-second ticks keep running). All 26 CTest gates stay green.
+
+**1. `$40802A38` "MBState" dialog spin = SysError(10) dsLineFErr — an FPU trap.**
+The boot parked in a ROM modal-alert loop (`tst.b $172.w; bne`) waiting for the
+mouse-button low-mem to clear. The real cause was upstream: the ROM
+unconditionally runs FPU init (`fmove.l fpcr,D0` @ `$408E9AC0`); our
+68LC040-without-FPU trapped that F-line to the System's vector-11 "no FP
+package" stub (`$0002747E`), which raised `SysError(10)` = dsLineFErr and drew
+the alert. MAME's golden oracle `macqd605` is a **full 68040 with an FPU**
+(`macquadra605.cpp:158 M68040(...)`; only its lc475/lc575 variants use
+M68LC040). Fix (`src/Cpu040.cpp`): `setModel(M68040)` + `setFPUModel(M68882)`;
+`POM68K_Q605_NOFPU` restores the bare 68LC040/no-FPU config (accurate to real
+Quadra-605 hardware, but this System ships no SANE FP emulator so it cannot
+reach the Finder that way). This advanced the boot 3705 → 5363 SCSI commands.
+
+**2. SCSI SIM stall at 5363 commands = a whole-block DMA read whose final chunk
+never flipped the bus to STATUS.** After the FPU fix the boot wedged in the OS
+8.1 SCSI Manager's SIM sequencer (`$00122A78`, state `($88,A4)=$d`), spinning on
+the data-transfer-complete flag `($5e,A3)` bit 4, which never set.
+
+- **Symptom chain (all traced):** the failing transaction is a multi-block
+  READ(10) at LBA `$49E21`, 22 blocks = 11264 B. The Manager drains it in a
+  per-512-byte-block pattern of **three PIO bytes (CI_XFER `$10`, one reg2 read
+  each) + one TC=509 DMA chunk (CI_XFER `$90`)**. Because 11264 is an exact
+  multiple of 512, the *last* Transfer Info of the whole transaction is always
+  that DMA chunk. On this PIO-mode device (non-DMA select `$42`, no pseudo-DMA
+  window) even the `$90` chunk is drained through the **register FIFO port**
+  (reg2 / `read(R_FIFO)`), never `dmaRead()`.
+- **Root cause:** the SIM's per-CI_XFER completion service (`$0011E686`) reads
+  reg4's phase bits right after each Transfer Info and sets `($5e,A3)` bit 4
+  only if it sees STATUS. Our model advanced DATA_IN→STATUS lazily — on the last
+  byte *read* — and the Q6.6-fix-#3 pre-advance was gated `!dmaCommand_`, so for
+  the final `$90` chunk the phase was still DATA_IN when the service ran; the
+  R_FIFO drain flipped it to STATUS only afterwards. Bit 4 never set → the
+  sequencer spun forever. (`dmaRead()`-drained transactions were unaffected —
+  `dmaRead()` drives its own STATUS transition inline, before the service.)
+- **Fix (`src/Ncr53c96.cpp`):** pre-advance to STATUS at the last Transfer Info
+  **regardless of the DMA flag** (bytes are considered moved off the bus at the
+  Transfer Info, as on real hardware), so the completion service sees STATUS.
+  To keep that from breaking the ROM's pseudo-DMA read loop (`$408D1FAC
+  btst #4,($70,A3)`, "≥16 bytes ready") which drains *in* DATA_IN, `dmaRead()`,
+  `updateDrq()` and `R_FLAGS` now key on `dataInPos_` (bytes still buffered)
+  rather than `phase_==DATA_IN`, so a window drain survives the pre-advance.
+  Advanced the boot 5363 → 5973 SCSI commands → the Finder. All 26 gates green,
+  deterministic; the ncr53c96 / scsi_pdma unit tests still pass.
+
+`tests/q605_trace.cpp` now reads the true screen geometry from the main GDevice
+PixMap (baseAddr/rowBytes/bounds) and emits a correct 640×480 1bpp screenshot
+(`q605_boot_1bpp.pbm`).
+
 ## 2026-07-19 — Q6.5d RESOLVED: dsBadPatch(99) was a 53C96 FIFO-count lie that
 ## sent the OS SCSI Manager's resource read into its DISCARD engine
 

@@ -88,7 +88,13 @@ void Ncr53c96::raiseIrqDeferred(uint8_t bits) {
 void Ncr53c96::updateDrq() {
     bool d = false;
     if (dmaCommand_) {
-        if (phase_ == DATA_IN)  d = dataInPos_ < dataIn_.size();
+        // Key the read-payload DRQ on dataInPos_ rather than phase_==DATA_IN:
+        // the last DMA Transfer Info pre-advances phase_ to STATUS (Q6.6b) while
+        // buffered payload is still being drained through the pseudo-DMA window,
+        // and DRQ must stay asserted until the CPU has emptied it (else
+        // scsiDmaRead_ raises a spurious /BERR).
+        if (dataInPos_ < dataIn_.size() && (phase_ == DATA_IN || phase_ == STATUS))
+            d = true;
         else if (phase_ == DATA_OUT) d = dataOut_.size() < dataOutExpected_;
         // A DMA SELECT ($C1) whose CDB has not landed yet raises DRQ to fetch
         // it (MAME dma_set(DMA_OUT) at CD_SELECT + check_drq in
@@ -203,8 +209,15 @@ uint8_t Ncr53c96::read(int reg) {
         // Manager's post-select check ($0011ADD4) sees phantom residue and
         // routes the whole read to its DISCARD engine (Q6.5d dsBadPatch).
         case R_FLAGS: {
-            uint32_t cnt = (phase_ == DATA_IN)
-                ? (dataXfer_ ? std::min<size_t>(dataIn_.size() - dataInPos_, 16) : 0u)
+            // Q6.6b — key the pending-payload count on dataInPos_, not
+            // phase_==DATA_IN: the final DMA Transfer Info pre-advances phase_
+            // to STATUS while the ROM's pseudo-DMA read loop ($408D1FAC
+            // btst #4,($70,A3)) is still draining and gates its 16-byte bursts
+            // on FLAGS bit4 (≥16 ready). Reporting min(remaining,16) as long as
+            // bytes remain keeps that loop draining after the pre-advance; once
+            // the payload is drained it falls back to the real FIFO count.
+            uint32_t cnt = (dataXfer_ && dataInPos_ < dataIn_.size())
+                ? std::min<size_t>(dataIn_.size() - dataInPos_, 16)
                 : uint32_t(fifoPos_);
             v = uint8_t(cnt & 0x1F) | (uint8_t(seq_) << 5);
             break;
@@ -452,10 +465,26 @@ void Ncr53c96::transferInfo() {
                 // ($0011B2EE) drained all 36 bytes then spun in its sequencer
                 // ($00121Axx/$00122Dxx) forever. The FIFO-port read below still
                 // drains the staged bytes (it keys on dataInPos_, not phase).
-                // DMA ($90) is unaffected — dmaRead() drives its own STATUS
-                // transition when the pseudo-DMA window empties the payload.
-                if (!dmaCommand_ &&
-                    dataInPos_ + (tcounter_ ? tcounter_ : 1) >= dataIn_.size())
+                //
+                // Q6.6b — this MUST also fire for the DMA variant ($90). A
+                // whole-block multi-block READ (e.g. READ(10) $49E21, 22 blocks
+                // = 11264 B) is drained by the OS 8.1 SCSI Manager in a
+                // "3 PIO bytes + a TC=509 DMA chunk" pattern per 512-byte block
+                // ($0011B7CE/$0011B89A). Because the payload ends exactly on a
+                // block boundary, the FINAL Transfer Info of the transaction is
+                // that DMA chunk ($90) — and on a PIO-mode device (select $42,
+                // no pseudo-DMA window) it is drained through the register FIFO
+                // port (reg2), NOT dmaRead(). So dmaRead() never drives the
+                // STATUS transition; only the last R_FIFO byte does, AFTER the
+                // per-CI_XFER completion service ($0011E686) has already read
+                // reg4 and seen DATA_IN → the SIM data-complete flag ($5e,A3
+                // bit4) never sets and the sequencer ($00122A78, state $d) spins
+                // forever. Pre-advancing here (bytes considered moved off the
+                // bus at the Transfer Info, as on real hardware) lets that
+                // service see STATUS. dmaRead()/updateDrq() key on dataInPos_
+                // (not the phase) so a genuine pseudo-DMA-window drain still
+                // works after the pre-advance.
+                if (dataInPos_ + (tcounter_ ? tcounter_ : 1) >= dataIn_.size())
                     advanceToStatus();
             }
             updateDrq();
@@ -489,7 +518,10 @@ void Ncr53c96::transferInfo() {
 
 // ── Pseudo-DMA data port (Q605 PrimeTime + $10100) ──────────────────────
 uint8_t Ncr53c96::dmaRead() {
-    if (phase_ == DATA_IN && dataInPos_ < dataIn_.size()) {
+    // Keyed on dataInPos_ (not phase_==DATA_IN): the final DMA Transfer Info
+    // pre-advances phase_ to STATUS (Q6.6b) while buffered payload remains, so
+    // the window drain must continue in STATUS phase too.
+    if (dataInPos_ < dataIn_.size()) {
         dmaBytes++;
         uint8_t b = dataIn_[dataInPos_++];
         if (tcounter_) tcounter_--;

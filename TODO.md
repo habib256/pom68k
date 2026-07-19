@@ -1048,26 +1048,40 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
      Fix = a polled (non-DMA) Transfer Info that drains the tail now calls
      `advanceToStatus()` at command time; R_FIFO re-keyed on `dataInPos_`.
 
-  **Q6.6 NEW FRONTIER (current): ROM modal-dialog spin at `$40802A38`
-  (`tst.b $172.w; bne`).** After the bus scan the boot reaches a ROM Toolbox
-  routine (`$408029EC`, entered NORMALLY from `$408028E0` at clk ~1.07 G — NO
-  crash: only 13 benign vec-2 + normal A-traps) that draws via QuickDraw
-  (`$A8A3/$A893/$A89E/$A8B0`…) then spins waiting for low-mem **`$172` = MBState
-  (mouse button state) == 0 (button DOWN)**. `$172` bit7 is set by the ROM's
-  ADB/event task at `$408B6DD6`/`$408B682E` (`bset #7,$172` + `_PostEvent`) and
-  cleared at `$408B67EA` (`clr.b $172` + `_PostEvent`); the clearer is gated on
-  `A1==($4,A0)` / `($15,A1)==0` and never runs, so MBState stays $80 and the
-  spin never exits. SCSI frozen at 3705 cmds, VRAM shows two framed icon/box
-  shapes. **MAME macqd605 NEVER executes `$40802A38`** → we diverge into this
-  dialog. NEXT: (1) identify the dialog/routine (`$408028E0` caller chain, D0=
-  $A9A9, gated on low-mem `$A8C`); (2) diff vs MAME macqd605 to find where the
-  boot path forks toward this ROM routine instead of continuing to the Finder;
-  (3) determine whether it's a genuine "wait for click" (inject via
-  MacInput/ADB) or a symptom of an earlier divergence. Repro:
-  `Q605_NOPRAM=1 q605_trace roms/mame/macqd605/ff7439ee.bin --disk
-  hdv/MacOS-8.1-boot.vhd --cycles 1300000000` (parks at $40802A3C). Taps:
-  Q605_PCLOG, Q605_SCSIALL, --wwatch, --dumpat, --stop-at (now also dumps
-  A3/A4/device-record + SCSI/VIA2 IRQ state).
+  **Q6.6 — FINDER REACHED (2026-07-20, Opus). Mac OS 8.1 boots to the Quadra
+  605 Finder desktop.** Two post-$40802A38 blockers cleared; `q605_trace` renders
+  the full desktop (menu bar 🍎/File/Edit/View/Special/Help, `Mac-8.1-US` boot
+  volume, Browse-the-Internet/Mail/Trash icons, gray-dither background) at clk
+  ~1.8 G, then idles (scsiCmds plateaus at 5973, Cuda 1-Hz ticks keep running).
+  Repro: `Q605_NOPRAM=1 q605_trace roms/mame/macqd605/ff7439ee.bin --disk
+  hdv/MacOS-8.1-boot.vhd --cycles 2000000000` → writes `q605_boot_1bpp.pbm`
+  (640×480 1bpp, rowBytes 1024, taken from the main GDevice PixMap).
+
+  1. **`$40802A38` MBState dialog = SysError(10) dsLineFErr (FPU trap).** The ROM
+     runs `fmove.l fpcr,D0` ($408E9AC0); our 68LC040-without-FPU trapped F-line
+     to the System's "no FP package" stub → SysError. MAME's `macqd605` oracle is
+     a *full* 68040 WITH FPU (macquadra605.cpp:158). Fix (`src/Cpu040.cpp`):
+     `setModel(M68040)` + `setFPUModel(M68882)`; `POM68K_Q605_NOFPU` restores the
+     bare 68LC040 (accurate to real hardware, but this System has no SANE FP
+     emulator so it never reaches the Finder). Advanced 3705 → 5363 SCSI cmds.
+
+  2. **SCSI SIM stall at 5363 cmds = a whole-block DMA-final-chunk that never
+     flipped the bus to STATUS (`src/Ncr53c96.cpp`).** A multi-block READ(10)
+     ($49E21, 22 blocks = 11264 B) is drained by the OS 8.1 SCSI Manager in a
+     "3 PIO bytes + a TC=509 DMA chunk" pattern per 512-byte block. Because the
+     payload ends exactly on a block boundary, the FINAL Transfer Info is that
+     DMA chunk (`$90`); on this PIO-mode device (select $42) it drains through
+     the register FIFO port (reg2), NOT `dmaRead()`. So `dmaRead()` never drove
+     the DATA→STATUS transition — only the last R_FIFO byte did, AFTER the SIM's
+     per-CI_XFER completion service (`$0011E686`) had already read reg4 and seen
+     DATA_IN → the SIM data-complete flag (`$5e,A3` bit4) never set and the
+     sequencer (`$00122A78`, state `$d`) spun forever. Fix = pre-advance to
+     STATUS at the last Transfer Info **regardless of the DMA flag** (was gated
+     `!dmaCommand_`, Q6.6 fix #3); `dmaRead()`, `updateDrq()` and `R_FLAGS` now
+     key on `dataInPos_` (not `phase_==DATA_IN`) so the ROM's pseudo-DMA read
+     loop (`$408D1FAC btst #4,($70,A3)`, ≥16-ready) keeps draining after the
+     pre-advance. All 26 gates green; deterministic. Advanced 5363 → 5973 cmds →
+     Finder.
 
   **[HISTORICAL — Q6.5d investigation trail, superseded by the fix above]**
   **dsBadPatch root cause found = a stalled SCSI resource read, NOT a
