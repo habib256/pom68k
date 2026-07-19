@@ -965,16 +965,45 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   the `$408A9BE2` HDRDONE tap + the `01 02 01 76` reply. See CHANGELOG
   2026-07-19 "Q6.4 + Q6.2 BOTH RESOLVED".
 
-  **Q6.5 — carry the launch to the Finder desktop (open).** The boot is slow
-  (calibrated delay loops run in real cycles; ASC sound is a stub) but
-  PROGRESSING, not looping — SCSI/PC counters keep advancing past both loops.
-  Next: run it much longer / speed the delay loops; watch the ASC chime path
-  and diff the sustained boot vs the MAME macqd605 golden run to find the next
-  real stall on the way to the desktop. Proper long-term cure for the `$76`
-  special-case: make the `_GetOSDefault` reader consume the echo like the ISR
-  (a byte-delivery detail) instead of address-gating the reply. The
-  historical Q6.4 investigation notes below are kept for reference but are
-  now SUPERSEDED.
+  **Q6.5 — RESTART LOOP ACTUALLY RESOLVED (2026-07-19, commit f4b4d10; the
+  earlier "Q6.4 resolved" was optimistic).** The ROM's POST XPRAM validity
+  read uses a THIRD Cuda framing: the direct driver ($408B34xx) reads XPRAM
+  byte-by-byte via GetPram expecting [sync, status, DATA]; our 4-byte header
+  made it see all-zero XPRAM → 'NuMc'/SysParam signature checks failed →
+  full XPRAM re-init each boot → ROvr flag $8A wiped → restart every ~121M
+  cycles. Fix: drop status1+cmdEcho from the Quadra GetPram reply. Result:
+  ZERO restarts, the System loads (1583 SCSI cmds) AND LAUNCHES. 26/26.
+
+  **Q6.5b — CURRENT BLOCKER: the running System crashes with the "illegal
+  instruction" alert** (modal crash dialog spins on MBState $172 waiting for a
+  Restart click; read via the Q605_STRTAP dialog-text tap). Chain, fully
+  localized (CHANGELOG 2026-07-19): the Mac OS 8 linked-patch **async SCSI
+  SIM** (loaded in the system heap at $0011A6xx-$001236xx; neighbours 'lmem'/
+  'pch' resources; invoked during the late-boot 'prnt'/"PrintMonitor
+  Documents" folder scan, ~22.4 s emulated) runs its per-transaction script
+  (ctx+$9E index → message codes via the $001222C4 jump table): $0F=select
+  ($C1), $11=send CDB (READ10) + CI_XFER $10 — its collector $11E386
+  SPIN-POLLS S_INTERRUPT — then posts $02="service interrupt" whose handler
+  $0011E996 does `jmp *(ctx+$F0)` — but the continuation at ctx+$F0 is NULL
+  (the installing trampoline $0011EC80 `move.l a1,$f0(a0)` never ran; ctx
+  freshly NewPtr-clear'ed at 559.88M) → jump to $2 → vector table executed →
+  vec-4. NOT an IRQ-delivery problem (via2IER SCSI bit off, scsi.irq()=0 at
+  dispatch — the pump runs from the deferred-task queue) and NOT a latency
+  race (deferring the 53C96 bus-service IRQ via the new POM68K_SCSI_LAT knob
+  only delays the same ordering — the collector spin-waits). MAME oracle: a
+  20-emulated-second full trace never executes $0011xxxx, but byte-searching
+  MAME RAM found the module RELOCATED and its breakpoints DO fire in a longer
+  window (oracleE2_*, agent report pending) — so the module runs fine on real
+  HW: diff its script progression/chip reads there vs ours to find the
+  diverging machine input (suspects: our 53C96 reg8/CONFIG readback $C7,
+  FLAGS/SEQ details, or an earlier script step skipped). Repro:
+  `q605_trace --disk hdv/MacOS-8.1-boot.vhd --cycles 561000000` + taps
+  Q605_EVTAP/Q605_STRTAP/Q605_SCSIALL/Q605_WWFROM/Q605_RAMDUMP.
+
+  Also open (Q6.5 polish): proper long-term cure for the `$76` special-case
+  (make the `_GetOSDefault` reader consume the echo like the ISR instead of
+  address-gating the reply). The historical Q6.4 investigation notes below
+  are kept for reference but are now SUPERSEDED.
 
   **[SUPERSEDED] Q6.4 investigation notes (kept for reference):**
   **after the System loads the boot diverts to the POST serial console**
