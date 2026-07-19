@@ -610,6 +610,9 @@ int main(int argc, char** argv) {
             std::fclose(pf);
             std::printf("-- wrote q605_boot.ppm (640x480 via CLUT) --\n");
         }
+        FILE* rf = std::fopen("q605_vram.raw", "wb");
+        if (rf) { std::fwrite(vr, 1, Q605Memory::kVramSize, rf); std::fclose(rf);
+                  std::printf("-- wrote q605_vram.raw (1MB) --\n"); }
     }
 
     std::printf("-- last %zu PCs --\n", ring.size());
