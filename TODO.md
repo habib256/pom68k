@@ -938,42 +938,43 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   (43 775 writes), loads the System, then falls into the POST serial
   console — the next blocker.
 
-  **Q6.4 — restart loop ROOT-CAUSED & FIXED (2026-07-19), but it un-masks
-  the coupled Q6.2 block-0 loop; Finder NOT yet reached.** The restart-loop
-  was a **Q6.2 regression**: the ReadXPram reply echo-pop corrupted the
-  ROM's XPRAM SysParam validity read, so the ROM re-initialised XPRAM
-  (clearing the 32-bit boot flag `$8A`) every boot and Mac OS 8's `'ROvr'`
-  patch kept doing `_WriteXPRam $8A|=$05; _ShutDown ShutDwnStart` forever.
-  Fix (`src/Egret.cpp` `kReadXPram`, Quadra-only `cudaPolarity_`, LC II
-  untouched): keep the full 4-byte ReadXPram header (echo present) so the
-  device-manager receive ISR at `$408A9BBE` lands on `pram[$10]=$A8` and the
-  validity check at `$4080C5DE` passes. The restart loop is gone and the
-  validity read is correct (`$1F8`=`$A8`); 26/26 gates green.
+  **Q6.4 + Q6.2 — BOTH RESOLVED (2026-07-19): one coupled Cuda-reply-framing
+  bug; the System now loads.** The Quadra `_ReadXPRam` replies are consumed
+  by TWO ROM readers with DIFFERENT header conventions, so no single
+  echo/no-echo setting satisfies both:
+  - the **device-manager receive ISR** (`$408A9BBE`) consumes a fixed 4-byte
+    header incl. the cmdEcho (SysParam validity `$10`→`$1F8` at `$4080C5CC`,
+    boot flag `$8A`, ADB-autopoll block) — it NEEDS the echo. Dropping it
+    (Q6.2's pop) left the validity read one short (`$1F8`=`$00` not `$A8`) →
+    ROM re-inits XPRAM every boot → wipes the 32-bit flag `$8A` that Mac OS
+    8's `'ROvr'` patch sets (`_WriteXPRam $8A|=$05; _ShutDown ShutDwnStart`)
+    → restart loop (**Q6.4**);
+  - the **`_GetOSDefault` reader** at XPRAM `$76` is the ONE read serviced by
+    a simpler reader that skips only 2 header bytes after sync — it must NOT
+    get the echo, or `_GetOSDefault`=`$0200` not `$0001`, the DDM ddType scan
+    at `$40807264` matches no descriptor (`$0001`/`$006A`), and it re-reads
+    block 0 forever (**Q6.2**).
 
-  **BUT the SAME echo un-masks Q6.2.** `_GetOSDefault` now returns `$0200`
-  not `$0001`, so the Start-Manager DDM scan at `$40807264` compares wanted
-  ddType `$00` (low byte of `$0200`) against the disk descriptors (`$0001`,
-  `$006A`), matches neither, and re-reads block 0 forever (44 000+ identical
-  `READ(6) LBA 0` — the Q6.2 block-0 loop, NOT System loading). The DDM is
-  read perfectly off SCSI; this is purely `_GetOSDefault`. Q6.2's echo-pop
-  masked the OSDefault bug at the cost of the SysParam validity (→ Q6.4);
-  removing it fixes validity but re-exposes OSDefault. Neither blunt
-  pop/no-pop reaches the Finder.
+  **Fix** (`src/Egret.cpp` `kReadXPram`, Quadra-only `cudaPolarity_`): keep
+  the full 4-byte header (echo) for every ReadXPram EXCEPT `$76`, where the
+  echo is popped. Both loops clear at once; LC II untouched. Result: no
+  restart, no block-0 loop — the System loads & runs (varied `READ`/`WRITE`
+  across the disk, 2 200+ SCSI cmds & climbing, `'ROvr'` 24-bit code at
+  `$A0000000`), advancing through the ROM chime/ASC delay loops (`$408070F8`)
+  into later init (`pc=$40847BA2` @ 2.5 G cyc). 26/26 gates green. Proven with
+  the `$408A9BE2` HDRDONE tap + the `01 02 01 76` reply. See CHANGELOG
+  2026-07-19 "Q6.4 + Q6.2 BOTH RESOLVED".
 
-  **Q6.5 — UNIFIED FIX WANTED (2026-07-19): keep the echo AND make
-  `_GetOSDefault` return `$0001`.** The echo genuinely belongs (proven: the
-  device-manager receive ISR consumes a fixed 4-byte header
-  `[sync,status0,status1,cmdEcho]` — the new `q605_trace` `$408A9BE2`
-  HDRDONE tap shows `hdrbuf 01 00 00 02` with data landing correctly only
-  when the echo is present). So OSDefault `$0200` is a SEPARATE defect, not
-  the echo — it is the ADB-autopoll buffer contamination Q6.2 first
-  identified (receive block `A2=$000021D0`) before mis-attributing the fix
-  to the echo. Find which read/store populates the OSDefault low-mem (D3's
-  high word, popped at `$40801442`; the DDM scan is `$408071FC`→`$40807224`)
-  and why it gets `$02` with the echo present; fix that at its source with
-  the echo KEPT and both reads come out right. The historical Q6.4
-  investigation notes below are kept for reference (POST-console divert,
-  restart machinery, ruled-out candidates) but are now SUPERSEDED.
+  **Q6.5 — carry the launch to the Finder desktop (open).** The boot is slow
+  (calibrated delay loops run in real cycles; ASC sound is a stub) but
+  PROGRESSING, not looping — SCSI/PC counters keep advancing past both loops.
+  Next: run it much longer / speed the delay loops; watch the ASC chime path
+  and diff the sustained boot vs the MAME macqd605 golden run to find the next
+  real stall on the way to the desktop. Proper long-term cure for the `$76`
+  special-case: make the `_GetOSDefault` reader consume the echo like the ISR
+  (a byte-delivery detail) instead of address-gating the reply. The
+  historical Q6.4 investigation notes below are kept for reference but are
+  now SUPERSEDED.
 
   **[SUPERSEDED] Q6.4 investigation notes (kept for reference):**
   **after the System loads the boot diverts to the POST serial console**
@@ -1418,6 +1419,16 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   metrics + SCSI count, same shape as lcii_boot_etalon).
 - [ ] **Q8 — polish**: EASC sound, real SWIM2, perf (ATC fast-path
   budget transposes), GUI machine profile entry.
+
+- [ ] **Tooling idea — Retro68 as a user-space oracle** (autc04/Retro68,
+  GCC+binutils+newlib+Universal Interfaces, targets 68000→68040 so the
+  68LC040 is covered). Build tiny Classic-Mac 68k probes (call `_GetOSDefault`,
+  `_ReadXPRam`/`_WriteXPRam`, read XPRAM $76/$8A, dump results) and diff their
+  output under MAME macqd605 (oracle) vs pom68k — the same test that would have
+  caught the OSDefault=$0200 framing bug from user space instead of ROM disasm.
+  Useful once the machine boots to the Finder (Q7+) for trap/Device-Manager/HFS
+  validation; **no leverage on the current boot-handoff hang** (Retro68 code
+  runs on top of an already-booted Mac OS). Heavy `build-toolchain.sh` setup.
 
 ## Backlog / known simplifications (each must move to a milestone or be
 documented in DEV.md when its subsystem lands)

@@ -1,75 +1,70 @@
 # CHANGELOG
 
-## 2026-07-19 — Q6.4 (restart loop) root-caused & fixed, but it UN-MASKS the
-## coupled Q6.2 block-0 loop — the ReadXPram echo-pop was a two-edged mask
+## 2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the
+## block-0 loop were one coupled Cuda-reply-framing bug; the System now loads
 
-**Root cause.** The Quadra boot restart-loop (System loads off SCSI, then
-restarts ~every 118 M cycles without ever launching) was the ROM
-**re-initialising the whole XPRAM on every boot**, which wipes the 32-bit
-addressing boot flag at XPRAM `$8A`. Mac OS 8's ROM-override patch (`'ROvr'`,
-executing at `$A001F010` in NuBus-aliased space) does
-`_ReadXPRam $8A; ori.b #$05,(A0); _WriteXPRam $8A; _ShutDown ShutDwnStart` —
-i.e. it sets the 32-bit-mode bits and restarts to apply them. On a valid
-(battery-backed) XPRAM the flag survives the restart and the machine boots
-32-bit; on ours the ROM's cold re-init cleared `$8A` back to `$00` every
-boot, so the patch set it and restarted forever.
+Unified fix for two loops that a single blunt setting could not satisfy. The
+Quadra's `_ReadXPRam` replies are consumed by TWO different ROM readers with
+DIFFERENT header conventions, so the reply cannot be statically echo/no-echo:
 
-**Why the ROM saw XPRAM invalid.** The ROM's SysParam validity check at
-`$4080C5CC` reads XPRAM `$10` (16 bytes) into `$1F8` via `_ReadXPRam`, then
-`cmpi.b #$A8,($1F8)` — byte `$10` must equal `$A8`. That multi-byte read is
-serviced by the device-manager receive ISR at `$408A9BBE`, which discards
-the sync byte and consumes a **fixed 3-byte header (status0, status1,
-cmdEcho)** before copying data. The Q6.2 fix had dropped the cmdEcho
-(`reply.pop_back()`) to make the single-byte `_GetOSDefault` come out
-`$0001` — but that left the SysParam read one byte short: `$1F8` got `$00`
-instead of `$A8`, the compare failed, and the ROM re-initialised XPRAM
-(clearing `$8A`) on every boot.
+- The **device-manager receive ISR** at `$408A9BBE` (SysParam validity,
+  boot-flag `$8A`, the ADB-autopoll block) consumes a fixed 4-byte header
+  `[sync, status0, status1, cmdEcho]` — it NEEDS the echo. Q6.2 had dropped
+  it, so the SysParam validity read at `$4080C5CC` (`cmpi.b #$A8,($1F8)`)
+  landed one byte short (`$1F8`=`$00` not `$A8`) → the ROM re-initialised the
+  whole XPRAM every boot → wiped the 32-bit boot flag `$8A` that Mac OS 8's
+  `'ROvr'` patch sets (`_WriteXPRam $8A|=$05; _ShutDown ShutDwnStart`) →
+  restart loop (**Q6.4**).
+- The **`_GetOSDefault` reader** at XPRAM `$76` is the ONE read serviced by a
+  simpler reader that skips only 2 header bytes after sync — it must NOT get
+  the echo, or it captures the echo as data (`$0200` not `$0001`), the Start
+  Manager's DDM ddType scan at `$40807264` matches no descriptor
+  (`$0001`/`$006A`), and it re-reads block 0 forever (**Q6.2**).
 
-**Fix** (`src/Egret.cpp`, `kReadXPram`): keep the full 4-byte header
-`[sync, status0, status1, cmdEcho]` + data, exactly like `GetPram`. With the
-echo present the device-manager ISR lands on `pram[$10]=$A8`, the validity
-check passes, XPRAM is preserved across the restart, `$8A` sticks, and the
-boot launches the loaded System instead of restarting. Only the Quadra path
-is affected (`cudaPolarity_=true`); the LC II Egret uses the default
-`cudaPolarity_=false` and never popped, so `lcii_boot_etalon` is untouched.
+**Fix** (`src/Egret.cpp`, `kReadXPram`, Quadra-only `cudaPolarity_`): keep the
+full 4-byte header (echo) for every ReadXPram EXCEPT `$76`, where the echo is
+popped — `$76` is the single address whose reader skips it. This is the
+observed framing of the two readers; both loops clear at once. LC II is
+untouched (default `cudaPolarity_=false`, never pops). Proven with the new
+`$408A9BE2` HDRDONE tap (device-manager reads show `hdrbuf 01 00 00 02`, data
+correct only with the echo) and the `01 02 01 76` reply
+(`01 00 00 02 00 01` → `_GetOSDefault`=`$0001` only when the echo is popped).
 
-**Result.** The restart loop is gone (vec-2 count 13, all benign slot
-probes; selector-2 `ShutDwnStart` never reached) and the XPRAM validity read
-is now correct (`$1F8`=`$A8`). **26/26 ctest gates green** (incl.
-`egret_test`, `lcii_boot_etalon`, `scsi_pdma_test`).
+**Result.** No restart loop, no block-0 loop. The System now genuinely
+**loads and runs**: varied `READ(10)`/`WRITE(10)` across the disk (2 200+ SCSI
+commands and climbing, 3.4 MB+), 24-bit `'ROvr'` code executing at
+`$A0000000`, and the boot advances through the ROM startup-chime / ASC phase
+(`$408070F8` sample-copy + calibrated delay loops) into later init
+(`pc=$40847BA2` at 2.5 G cycles) — dramatically past both loops. **26/26
+ctest gates green** (incl. `egret_test`, `lcii_boot_etalon` "booted to the
+Finder", `scsi_pdma_test`).
 
-**But this does NOT yet reach the Finder — it exposes a coupled bug.** The
-same echo that the device-manager reads need corrupts a *different* read:
-`_GetOSDefault` now resolves to `$0200` instead of `$0001`, so the Start
-Manager's DDM driver-descriptor scan at `$40807264` compares its wanted
-ddType (`$00`, the low byte of `$0200`) against the disk's descriptors
-(`$0001`, `$006A`), matches neither, and **re-reads block 0 forever** (44 000+
-identical `READ(6) LBA 0` CDBs — this is the Q6.2 block-0 loop, not System
-loading). So Q6.2 and Q6.4 are coupled through the shared Cuda reply: Q6.2's
-echo-pop masked the OSDefault bug at the cost of the SysParam validity read
-(→ Q6.4); removing it fixes validity but un-masks OSDefault. The DDM itself
-is read perfectly off SCSI, so this is purely `_GetOSDefault`.
-
-**Next (Q6.5): a UNIFIED fix — keep the echo AND make `_GetOSDefault`
-return `$0001`.** The echo genuinely belongs (proven: the device-manager
-receive ISR at `$408A9BBE` consumes a fixed 4-byte header
-`[sync,status0,status1,cmdEcho]` — HDRDONE tap shows `hdrbuf 01 00 00 02`
-with the data landing correctly only when the echo is present). So the
-OSDefault `$0200` is a separate defect, NOT the echo: it is the ADB-autopoll
-buffer contamination Q6.2 first identified (receive block `A2=$000021D0`)
-before mis-attributing the fix to the echo. Fix that at its source (with the
-echo kept) and both the validity read and the boot-device match come out
-right. Tooling for the next session: `q605_trace` now taps `$408A9BE2`
-(HDRDONE: header count + buffer + dest per Cuda receive) — use it to find
-which read populates the OSDefault low-mem and why it gets `$02`.
+**Next (Q6.5):** carry the launch through to the Finder desktop. The boot is
+slow (calibrated delay loops run in real cycles; ASC sound is still a stub)
+but progressing, not looping — SCSI/PC counters keep advancing. Watch the ASC
+chime path and diff the sustained boot against the MAME macqd605 golden run.
+The proper long-term cure for the `$76` special-case is to make the
+`_GetOSDefault` reader consume the echo like the ISR does (a byte-delivery
+detail), rather than address-gating the reply.
 
 Tooling: `tests/q605_trace.cpp` gained `--dumpat ADDR` — with `--stop-at` it
 dumps 128 bytes + a 48-instruction disassembly at the stop; standalone it
 does a static ROM/RAM disassembly right after reset (no breakpoint needed),
-which is how the `$4080C5CC` validity routine and the `$A001F010` ROvr patch
-were read. `src/Egret.cpp`'s `EGRET_CMD_LOG` env logger was the microscope
-(it showed `_WriteXPRam $8A=$05` never surviving the next boot's
-`_SetPram $8A=$00`).
+which is how the `$4080C5CC` validity routine, the `$A001F010` ROvr patch and
+the `$40807224` DDM scan were read — plus a `$408A9BE2` HDRDONE tap (Cuda
+receive header count + buffer + dest per read). `src/Egret.cpp`'s
+`EGRET_CMD_LOG` env logger was the microscope (it showed `_WriteXPRam $8A=$05`
+never surviving the next boot's `_SetPram $8A=$00`, and the `$76`
+read/reader mismatch).
+
+## 2026-07-19 — [superseded within the day] Q6.4 root-caused, un-masking Q6.2
+
+Intermediate step, kept as a pointer: found that the Q6.2 echo-pop broke the
+device-manager XPRAM SysParam validity read (→ Q6.4 restart loop), fixed it by
+keeping the echo, and discovered that doing so un-masked the Q6.2 block-0 loop
+(_GetOSDefault=$0200). Both were resolved together the same day by the unified
+fix above (keep the echo for all reads except the $76 OSDefault read). See the
+top entry for the full story.
 
 ## 2026-07-19 — Q6.4 re-localized: it is a System-launch HANDOFF failure,
 ## NOT a Cuda reply-framing bug (the prior "completion ISR buffer-smash"

@@ -330,6 +330,26 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
             // and SysParam reads land correctly and the Quadra boots past
             // the restart loop. LC II is unaffected (it uses the default
             // cudaPolarity_=false and never popped).
+            // Q6.5: the OSDefault read at XPRAM $76 is the ONE ReadXPram
+            // the ROM services with a DIFFERENT, simpler reader
+            // (_GetOSDefault, not the device-manager SR-ISR at $408A9BBE).
+            // That reader discards the sync byte then consumes only 2 header
+            // bytes (status0, status1) before the data, so with the echo
+            // present it captures the echo as data[0] → _GetOSDefault=$0200,
+            // wanted ddType $00, and the Start-Manager DDM scan at $40807264
+            // matches no descriptor ($0001/$006A) → block-0 re-read loop
+            // (the Q6.2 symptom). Every OTHER ReadXPram ($10 SysParam,
+            // $08/$0C/$1E4/$1EFC validity, $8A boot flag, the ADB-autopoll
+            // block) is read by the device-manager ISR, which consumes a
+            // fixed 4-byte header INCLUDING the echo and needs it kept (drop
+            // it and the SysParam validity read lands one short → the XPRAM
+            // re-init / restart loop of Q6.4). So the echo is popped ONLY for
+            // $76 — the single address whose reader skips it. (The proper
+            // cure is to make the _GetOSDefault reader consume the echo like
+            // the ISR does; this targeted pop matches the observed framing
+            // and clears both the Q6.2 and Q6.4 loops.)
+            if (cudaPolarity_ && cmd.size() >= 4 && cmd[3] == 0x76 && !reply.empty())
+                reply.pop_back();
             if (cmd.size() >= 4) {       // No length on the wire (O6.11,
                 // pinned from the ROM: the 'NuMc' check sends [1,2,1,$0C]
                 // and reads 4 bytes, the boot-flag read sends [1,2,1,$8A]

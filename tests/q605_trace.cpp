@@ -227,7 +227,7 @@ int main(int argc, char** argv) {
             // to see how each XPRAM read is framed (OSDefault vs SysParam).
             if (pc == 0x408A9BE2) {
                 static long hn = 0;
-                if (hn++ < 40) {
+                if (hn++ < 400) {
                     uint32_t a2 = cpu.getA(2);
                     uint16_t hcnt = uint16_t(mem.peek8(a2+0x0e)<<8 | mem.peek8(a2+0x0f));
                     uint16_t dcnt = uint16_t(mem.peek8(a2+0x12)<<8 | mem.peek8(a2+0x13));
