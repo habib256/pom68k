@@ -1,5 +1,51 @@
 # CHANGELOG
 
+## 2026-07-19 — Q6.5: the boot restart loop is ACTUALLY resolved — the ROM's
+## POST XPRAM validity read uses a THIRD Cuda framing (direct-driver GetPram)
+
+The previous entry's `_ReadXPRam $76` echo fix let the System *load* but did
+NOT stop the restart loop: instrumenting the ROvr boot flag (`q605_trace`
+`--pcring` + a new `Egret::onXPramWrite` hook) showed the machine still jumped
+to the ROM reset re-entry `$4080000A` ~every 121 M cycles (66 restarts over
+8 G), re-reading a bit more of the System each time but never launching it —
+exactly the cadence the Q6.4 notes described. The MAME macqd605 oracle
+confirmed real hardware **never** restarts (`$4080008C` never hit, blank NVRAM).
+
+Root cause, localized end-to-end: the ROvr flag XPRAM `$8A` (set by Mac OS 8's
+`_WriteXPRam $8A|=$05` then `_ShutDown ShutDwnStart`) was being **cleared to
+`$00` by the ROM's full-XPRAM re-init every boot**, so ROvr re-applied and
+restarted forever. The re-init is gated in `$4080B280` by two signature checks
+on a stack buffer filled by a Cuda XPRAM read at `$4080B286`: `cmpi.b
+#$A8,($10,A7)` (SysParam) and `cmp.l #'NuMc',($C,A7)`. That buffer came back
+**all zero** (D3=`$0` at the `$4080B2C8` compare) even though `pram[$0C..$0F]`
+holds `'NuMc'` and `pram[$10]=$A8`.
+
+The read that fills the buffer goes through the ROM's **direct Cuda driver**
+(`$408B34xx` byte-lane receiver — NOT the device-manager ISR of the previous
+fix), and it reads XPRAM one byte at a time via **GetPram** (`$01 $07 $00
+addr`), framing each reply as `[sync, status, DATA]` — it takes the data as
+the byte right after ONE status byte. Our `kGetPram` reply carried the full
+`[sync, status0, status1, cmdEcho]` 4-byte header (correct for the
+device-manager ISR), so the direct driver read `status1` (`$00`) as the data
+and saw an all-zero XPRAM (verified on the Cuda wire: GetPram `$0C` → reply
+`$01 $00 $00`, 3rd byte `$00` instead of `$4E`='N').
+
+**Fix** (`src/Egret.cpp`, `kGetPram`, Quadra-only `cudaPolarity_`): drop
+`status1`+`cmdEcho` from the GetPram reply so the data lands as the 3rd byte
+(`[sync, status, data…]`). After the fix the `$4080B2C8` compare reads
+D3=`$4E754D63`='NuMc' → the ROM skips the re-init → `$8A` survives → **zero
+restarts** over a 6 G-cycle boot (was 66), the full System loads (1583 SCSI
+commands) and runs. LC II is untouched (`cudaPolarity_=false` keeps its 4-byte
+header, `lcii_boot_etalon` + `egret_test` green; all 26 CTest gates pass).
+
+New frontier (Q6.5b): the boot now advances into a spin at `$40802A38`
+(`tst.b $172.w; bne` — Event Manager, `$172` bit 7 set at `$408B6DD6` and
+never cleared). MAME macqd605 **never executes `$40802A38`**, so our machine
+reaches it via a still-divergent path — the next thing to diff against the
+oracle. Tooling added this pass: `Egret::onXPramWrite`; `q605_trace`
+`--pcring`-driven `$8A` write tracer, `Q605_CKPT` progress checkpoints,
+`Q605_CUDA_FROM` clk-gated Cuda byte log.
+
 ## 2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the
 ## block-0 loop were one coupled Cuda-reply-framing bug; the System now loads
 

@@ -128,9 +128,12 @@ int main(int argc, char** argv) {
             std::printf("  IO  %c $%08X = $%02X  (pc=$%08X clk=%lld)\n", w ? 'W' : 'R', a, v, cpu.getPC0(),
                         (long long)cpu.getClock());
     };
+    long long cudaFrom = 0;
+    { const char* e = getenv("Q605_CUDA_FROM"); if (e) cudaFrom = atoll(e); }
     mem.cuda().onByte = [&](bool toCuda, uint8_t b) {
-        std::printf("  CUDA %s $%02X  (clk=%lld)\n", toCuda ? "<-" : "->", b,
-                    (long long)cpu.getClock());
+        if (cudaFrom && cpu.getClock() < cudaFrom) return;
+        std::printf("  CUDA %s $%02X  (clk=%lld pc=$%08X)\n", toCuda ? "<-" : "->", b,
+                    (long long)cpu.getClock(), cpu.getPC0());
     };
     mem.cuda().onEdge = [&](uint8_t pb, int phase, bool xcvr) {
         static int n = 0;
@@ -166,15 +169,50 @@ int main(int argc, char** argv) {
 
     std::vector<uint32_t> ring(pcRing, 0);
     size_t rp = 0;
+    // Q6.4: trace who clears the ROvr boot flag XPRAM $8A. Print the CPU PC
+    // and the recent PC ring when a Cuda XPRAM write targets $8A.
+    mem.cuda().onXPramWrite = [&](int addr, uint8_t v) {
+        if (!getenv("Q605_XPRAM8A") || addr != 0x8A) return;
+        static long n = 0;
+        if (n++ > 20) return;
+        std::printf("  XPWRITE $8A = $%02X  pc=$%08X  clk=%lld\n", v, cpu.getPC0(),
+                    (long long)cpu.getClock());
+        // Walk the stack for ROM return addresses ($408xxxxx) to find the
+        // semantic caller above the Cuda transport driver.
+        uint32_t sp = cpu.getSP();
+        std::printf("    stack ROM callers:");
+        for (int i = 0; i < 200; i += 2) {
+            uint32_t w = uint32_t(mem.peek8(sp+i))<<24 | uint32_t(mem.peek8(sp+i+1))<<16 |
+                         uint32_t(mem.peek8(sp+i+2))<<8 | mem.peek8(sp+i+3);
+            if ((w & 0xFFF00000u) == 0x40800000u) std::printf(" [sp+%d]=$%08X", i, w);
+        }
+        std::printf("\n");
+    };
     std::map<uint32_t, long> pcCov;               // 64 KB granularity
     long long slice = 5000;
     long long done = 0;
+    // --ckpt N: every N cycles print a progress line (SCSI cmds, current PC,
+    // count of instructions executed in loaded-System RAM $0080_0000..$008F_FFFF
+    // since the last checkpoint, and restart-vector $4080000A hits) so a single
+    // run reveals the boot trajectory (progressing vs looping).
+    long long ckpt = 0, nextCkpt = 0; long sysHits = 0, restartHits = 0;
+    { const char* e = getenv("Q605_CKPT"); if (e) { ckpt = atoll(e); nextCkpt = ckpt; } }
     while (done < cycles) {
+        if (ckpt && cpu.getClock() >= nextCkpt) {
+            std::printf("  CKPT clk=%lld pc=$%08X scsiCmds=%ld sysRAMhits+=%ld restart=%ld\n",
+                        (long long)cpu.getClock(), cpu.getPC0(),
+                        mem.scsi().commands, sysHits, restartHits);
+            sysHits = 0; nextCkpt += ckpt;
+        }
         if (mem.cpuHeld()) { mem.tick(int(slice)); done += slice; continue; }
         moira::i64 t = cpu.getClock() + slice;
         bool stop = false;
         while (cpu.getClock() < t && !cpu.isHalted()) {
             uint32_t pc = cpu.getPC0();
+            if (ckpt) {
+                if ((pc >> 20) == 0x008) sysHits++;
+                else if (pc == 0x4080000A) restartHits++;
+            }
             static uint32_t prevpc = 0;
             if (firstpc && pc == firstpc && prevpc != firstpc &&
                 (prevpc < pc || prevpc > pc + 8)) {

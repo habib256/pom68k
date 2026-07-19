@@ -70,6 +70,8 @@ public:
     std::function<void(uint8_t, int, bool)> onEdge;
     // XPRAM/PRAM read hook (offset, count) — O6.11 LocalTalk-config trace
     std::function<void(int, int)> onXPramRead;
+    // XPRAM/PRAM write hook (offset, value) — Q6.4 restart-loop trace
+    std::function<void(int, uint8_t)> onXPramWrite;
 
 private:
     void hostByte(uint8_t b);            // latched on VIA_FULL rise

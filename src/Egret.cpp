@@ -366,8 +366,11 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
             }
             break;
         case kWriteXPram:                // [1, 8, 1, addr, data…] — length
-            for (size_t i = 4; i < cmd.size(); i++)   // = the data itself
-                pram_[(cmd[3] + (i - 4)) & 0xFF] = cmd[i];
+            for (size_t i = 4; i < cmd.size(); i++) { // = the data itself
+                int wa = (cmd[3] + int(i - 4)) & 0xFF;
+                pram_[wa] = cmd[i];
+                if (onXPramWrite) onXPramWrite(wa, cmd[i]);
+            }
             break;                       // ack-only reply
         case kGetPram:                   // [1, 7, addrHi, addrLo] → STREAM
             if (cmd.size() >= 4) {       // Same host-terminated stream as
@@ -376,6 +379,26 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
                 // ($40A1559C: recv-count $10, dest $1F8), while the
                 // 24-bit reader takes a single byte then drops
                 // SYS_SESSION and waits for XCVR release ($A4A3B4-BC).
+                //
+                // Q6.5 (Quadra Cuda, cudaPolarity_): the ROM's *direct* Cuda
+                // driver ($408B34xx byte-lane receiver, used by the POST
+                // XPRAM validity read at $4080B286) frames a GetPram reply as
+                // [sync, status, DATA…] — it takes the data as the byte right
+                // after ONE status byte. Our default reply carries the full
+                // [sync, status0, status1, cmdEcho] 4-byte header (needed by
+                // the device-manager receive ISR, like ReadXPram), so the
+                // direct driver read status1 ($00) as the data and saw an
+                // all-zero XPRAM → the 'NuMc' ($0C) / SysParam ($10) signature
+                // checks in $4080B280 failed → the ROM re-initialised the
+                // whole XPRAM every boot, wiping the 32-bit-mode ROvr boot
+                // flag $8A that Mac OS 8 sets (`_WriteXPRam $8A|=$05` then
+                // `_ShutDown ShutDwnStart`) → the machine restart-looped
+                // forever without ever launching the loaded System (Q6.4).
+                // Drop status1+cmdEcho for the Quadra GetPram so the data
+                // lands as the 3rd byte. LC II (cudaPolarity_=false) keeps the
+                // 4-byte header its Egret driver expects.
+                if (cudaPolarity_ && reply.size() >= 4)
+                    reply.erase(reply.begin() + 2, reply.begin() + 4);
                 int addr = cmd[2] << 8 | cmd[3];
                 if (onXPramRead) onXPramRead(addr, 32);
                 for (int i = 0; i < 32; i++)
@@ -383,8 +406,11 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
             }
             break;
         case kSetPram:                   // [1, $C, addrHi, addrLo, value]
-            if (cmd.size() >= 5)
-                pram_[(cmd[2] << 8 | cmd[3]) & 0xFF] = cmd[4];
+            if (cmd.size() >= 5) {
+                int sa = (cmd[2] << 8 | cmd[3]) & 0xFF;
+                pram_[sa] = cmd[4];
+                if (onXPramWrite) onXPramWrite(sa, cmd[4]);
+            }
             break;
         case kAutopoll:
             autopoll_ = cmd.size() >= 3 && cmd[2] != 0;
