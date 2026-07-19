@@ -499,10 +499,22 @@ void Ncr53c96::dmaWrite(uint8_t v) {
         dmaBytes++;
         dataOut_.push_back(v);
         if (tcounter_) tcounter_--;
-        if (dataOut_.size() >= dataOutExpected_) {
+        // Q6.6: per-chunk completion, mirroring dmaRead (Q6.3). The OS 8.1
+        // SCSI Manager writes a multi-block payload block-by-block: it programs
+        // TC = one block ($200), DMA-bursts that many bytes through the window,
+        // then waits for S_INTERRUPT (I_BUS + S_TC0) before setting up the next
+        // chunk. Signal bus-service when the programmed count (tcounter_) drains
+        // — NOT only when the whole payload (dataOutExpected_) is gathered: a
+        // 2+-block WRITE (e.g. WRITE(10) LBA $8A1, 2 blocks) otherwise stalls
+        // after the first 512 bytes (the chunk interrupt never re-arms) → the
+        // async write never completes → the SCSI Manager spins on ioResult in
+        // its deferred-task loop ($00123BA6/$0011CD2C) forever. Commit the WRITE
+        // to the target and advance to STATUS only once the last byte lands.
+        if (tcounter_ == 0 || dataOut_.size() >= dataOutExpected_) {
             status_ |= S_TC0;
-            advanceToStatus();                // commit the WRITE to the target
-            raiseIrq(I_BUS);
+            if (dataOut_.size() >= dataOutExpected_)
+                advanceToStatus();            // whole payload gathered → commit WRITE
+            raiseIrq(I_BUS);                  // bus_complete (ncr53c90.cpp:686)
         }
         updateDrq();
         return;

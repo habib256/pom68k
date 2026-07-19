@@ -533,6 +533,8 @@ int main(int argc, char** argv) {
             for (int r = 0; r < 8; r++)
                 std::printf("  D%d=$%08X  A%d=$%08X\n", r, cpu.getD(r), r,
                             r == 7 ? cpu.getSP() : cpu.getA(r));
+            std::printf("  IRQ: scsi.irq=%d via2IFR=$%02X via2IER=$%02X sr=$%04X\n",
+                        mem.scsi().irq(), mem.via2Ifr(), mem.via2Ier(), cpu.getSR());
             auto peekL = [&](uint32_t a) {
                 return uint32_t(mem.peek8(a))<<24 | uint32_t(mem.peek8(a+1))<<16 |
                        uint32_t(mem.peek8(a+2))<<8 | mem.peek8(a+3);
@@ -554,6 +556,26 @@ int main(int argc, char** argv) {
             for (int i = -32; i < 64; i++) {
                 if (i % 16 == 0) std::printf("\n   $%08X:", a1 + i);
                 std::printf(" %02X", mem.peek8(a1 + i));
+            }
+            // Q6.6: the async-wait control blocks. A3 = deferred-task element
+            // ($48 = its ready flag longword), A4 = the IOPB-ish block whose
+            // $a0 word is the ioResult-style busy flag polled at $00123BB0.
+            // $0C0C = jSCSIInt device record (($be)/($c0,A0) gate at $0011CD44).
+            for (int rr : {3, 4}) {
+                uint32_t base = cpu.getA(rr);
+                std::printf("\n  [A%d $%08X]:", rr, base);
+                for (int i = 0; i < 0xB0; i++) {
+                    if (i % 16 == 0) std::printf("\n   $%08X:", base + i);
+                    std::printf(" %02X", mem.peek8(base + i));
+                }
+            }
+            {
+                uint32_t dr = peekL(0x0C0C);
+                std::printf("\n  [$0C0C]->$%08X devrec:", dr);
+                for (int i = 0; i < 0xD0; i++) {
+                    if (i % 16 == 0) std::printf("\n   $%08X:", dr + i);
+                    std::printf(" %02X", mem.peek8(dr + i));
+                }
             }
             std::printf("\n  disasm from stop:");
             {
