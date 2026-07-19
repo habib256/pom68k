@@ -988,25 +988,80 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   continuation is VALID there because the trampoline ran, NULL on ours). Boot:
   1583 → 2882 SCSI commands, crash gone, System launches.
 
-  **Q6.5d — CURRENT BLOCKER: dsBadPatch (System error 99) at the ROM-patch
-  application stage — the LAST step before the Finder.** The System loads and
-  runs, applies its ROM patches ('ptch'/'lmem'/'gpch'), and one patch fails →
-  the ROM SysError draws a caution+Restart alert (no crash: 0 vec-4, 13 benign
-  slot vec-2). Localized: DSErrCode $AF0 = 99 = dsBadPatch "Can't load patch
-  resource" (also D6=$63 in the modal ring), set via a System patch stub at
-  `$0004C966` that validates ROM return addresses (`cmpi.l #$4080F244,(a7)` /
-  `#$4080F300`) and jumps to SysError(99) at `$40802720`→`$40802786` on
-  mismatch. So our ROM execution flow doesn't hit the return address the patch
-  expects (a come-from / tail-patch validation), OR the patch resource load
-  itself diverged. Next: trace the `$4080F244`/`$4080F300` ROM routines and why
-  the patch stub's return-address check fails vs MAME; check the patch-resource
-  _GetResource path. NOTE: the screen renders at a wrong (tiny) size because the
-  DAFB video HLE is incomplete (Q8) — the alert is real, just mis-scaled; read
-  it via the raw VRAM dump (q605_vram.raw, 8bpp) + DSErrCode, not the pixels.
-  Repro: `q605_trace --disk hdv/MacOS-8.1-boot.vhd --cycles 1300000000
-  --stop-at 40802A38`; taps Q605_STRTAP/Q605_RAMDUMP/Q605_WWFROM; DSErrCode at
-  $AF0. Tooling added: Q605_EVTAP, Q605_ASYNCHK, Q605_SCSIALL, Q605_WWFROM,
-  raw VRAM dump, POM68K_SCSI_LAT (off).
+  **Q6.5d — CURRENT BLOCKER: dsBadPatch (System error 99) → ROOT CAUSE FOUND
+  2026-07-19 = a stalled SCSI resource read, NOT a patch/come-from problem.**
+  The System loads and runs, but one boot resource fails to load → the ROM
+  SysError draws a caution+Restart alert (no crash: 0 vec-4, 13 benign slot
+  vec-2). DSErrCode $AF0 = 99 = dsBadPatch. Full chain traced (all confirmed):
+
+  1. `$017F82B8 _GetResource('scod', $BFAA=-16470)` returns NULL → the boot
+     code at `$017F830A moveq #99,D0 / $017F830C _SysError` bombs. ('scod'
+     -16470 = a resSysHeap|resPurgeable boot resource, present in the System
+     map at dataOff $1477EF; 'scod' type is real, 59 copies on disk.)
+  2. The `$0004C966` stub is just the _SysError ($A9C9) trap patch (a come-from
+     that flags the two ROM SysError sites $4080F244/$4080F300); it forwards to
+     the real SysError $40802720 — it does NOT raise 99. The come-from theory
+     was WRONG.
+  3. Why GetResource returns NULL: ResErr ($0A60) = -108 memFullErr, though the
+     system zone has 23.7 MB free (zcbFree). The size is bogus because the
+     resource DATA read failed first: WWATCH on $0A60 shows -36 (ioErr) written
+     at ROM `$4081BA24` (post `_Read`/`_Write` param-block) THEN -108 at
+     `$4081B95A` (`_ReallocHandle $A027` with a garbage size, returns NULL A0).
+  4. The failing disk op: `READ(10) LBA=$00051F08, 1 block` (a valid in-range
+     block — disk is 300 MB, block holds correct 68k code) is issued repeatedly
+     (retried every ~316 k cyc) and never completes. Early boot (clk 435 M) read
+     the SAME block fine via DMA (2040 B); the LATE failing reads go through the
+     **OS 8.1 SCSI Manager (RAM $0011xxxx), NOT the ROM driver.**
+  5. Chip-level (Ncr53c96, our 53C96 model): the SCSI Manager issues `$C1`
+     DMA-SELECT (CDB pre-loaded in FIFO, TC=2), the select completes fine
+     (istatus $18 = I_BUS|I_FUNCTION, phase→DATA_IN), then it flushes the FIFO
+     and drains the payload with **non-DMA single-byte Transfer-Info (`$10`) —
+     one reg2 FIFO byte per CI_XFER** (`$0011B372` issue, `$0011AEEE` read).
+     Data returned is byte-perfect vs disk; the transaction even completes
+     cleanly (MSG_IN → CI_COMPLETE status $00 → CI_MSG_ACCEPT → I_DISCONNECT).
+     BUT only ~54 bytes move per attempt, pathologically slowly (huge gaps
+     between bytes) → the block never finishes → FS times out → ioErr → retry
+     → give up. MAME ncr53c90.cpp:648-650 confirms non-DMA DATA-IN transfers
+     exactly ONE byte per Transfer-Info (`fifo_pos==1`), so byte-by-byte itself
+     is correct 53C90 behaviour — the real machine simply would NOT use PIO for
+     a 512 B block; it DMAs.
+
+  FRONTIER (refined 2026-07-19): **the SCSI read itself is PERFECT — the bug is
+  that the real machine would DMA it but ours does slow PIO, and a File-Manager
+  I/O watchdog times out the slow transfer.** Proven by instrumenting Ncr53c96:
+  every attempt drains 512/512 bytes, correct data, targetStatus $00, and
+  completes cleanly (last byte → advanceToStatus → STATUS → CI_COMPLETE status
+  $00 → CI_MSG_ACCEPT → I_DISCONNECT). Then after only ~8848 cyc the driver
+  re-issues the identical CDB — 17× total, NOT a data/status failure. The whole
+  512 B transfer takes ~295 k cyc (≈512 × ~576 cyc/byte) because the OS SCSI
+  Manager drains it byte-at-a-time: per byte it issues CI_XFER `$10` (non-DMA),
+  polls 5 status regs via `$0011E616`, then reads ONE FIFO byte (`$0011AEEE`).
+  ($1A6,A5) is just a phase state (2=selecting→8=data at `$0011AD20`), NOT the
+  DMA/PIO switch. This same code would be just as slow on a real Quadra — so the
+  real machine does NOT take this path; it DMAs (the 6.3 M early-boot reads, incl.
+  this same block $51F08 at clk 435 M, used DMA — pseudo-DMA window, dmaBytes++).
+  NEXT: find the async-SIM DMA-eligibility decision (per-request, from the IOPB
+  at A0 — e.g. the `move.l ($14,A0),D0; andi.l #$1000000,D0` scatter/buffer flag
+  tests at `$0011AC34`/`$0011AD4C`) — what makes it choose the PIO drain for this
+  resource read vs DMA for file reads. Candidate chip-side triggers to diff vs
+  MAME (ncr53c90 + iosb.cpp turboscsi): (a) our reg7/R_FLAGS returns
+  min(remaining,16) in PIO DATA-IN whereas MAME returns the real FIFO count
+  (1 after a non-DMA byte TI, 0 after the reg2 drain) — a wrong FIFO-count could
+  fail the SIM's DMA-readiness test; (b) tcounter_ is left 0 for non-DMA so any
+  residual/actualCount read would be wrong; (c) the pseudo-DMA window ($10100) is
+  byte-wide in Q605Memory but MAME's turboscsi_dma_r is 16-bit (dma16_swap_r,
+  two halves → 32-bit) with restart_this_instruction DTACK-holdoff on !DRQ.
+
+  NOTE: the screen renders at a wrong (tiny) size because the DAFB video HLE is
+  incomplete (Q8) — the alert is real, just mis-scaled; read it via the raw
+  VRAM dump (q605_vram.raw, 8bpp) + DSErrCode, not the pixels.
+  Repro (DETERMINISTIC): `Q605_NOPRAM=1 q605_trace <ROM> --disk
+  hdv/MacOS-8.1-boot.vhd --cycles 1300000000 --stop-at 017F830A` — lands at
+  exactly clk 1235015000. **Q605_NOPRAM is now mandatory for reproducibility:**
+  the tool auto-load/saves q605_trace.pram, so without it each run mutates XPRAM
+  and the next run diverges (SCSI counts shift, stop-at moves ~15M cyc). Taps:
+  Q605_SYSERR (per-_SysError code+caller), Q605_SCSIMODE, Q605_STRTAP/RAMDUMP/
+  WWFROM/EVTAP/ASYNCHK/SCSIALL, raw VRAM dump, POM68K_SCSI_LAT (off).
 
   Also open (Q6.5 polish): proper long-term cure for the `$76` special-case
   (make the `_GetOSDefault` reader consume the echo like the ISR instead of
@@ -1466,6 +1521,55 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   Useful once the machine boots to the Finder (Q7+) for trap/Device-Manager/HFS
   validation; **no leverage on the current boot-handoff hang** (Retro68 code
   runs on top of an already-booted Mac OS). Heavy `build-toolchain.sh` setup.
+
+## Idea — Accélérateur HLE (mode non conforme)
+
+Opt-in HLE overlay **on top of** the accurate LLE core, à la Basilisk II's
+targeted ROM patches — trade fidelity for speed *only* where the user asks.
+**Non-negotiable framing: opt-in, never default, never active during any
+oracle/accuracy gate.** LLE stays the source of truth; HLE is an assumed
+"fast-forward" mode with a visible indicator, not a second nature of the engine.
+
+- **Why it can pay off**: HLE doesn't speed up the CPU (the future JIT does
+  that) — it elides what cycle-exact emulation makes the machine *wait on*.
+  Ranked by value/risk: `disk.sony`/SCSI Manager (native block `pread` instead
+  of IWM/pseudo-DMA polling — high value), busy-wait/`Delay`/Time-Manager
+  elision (high value, high divergence — **defer vs the JIT, which overlaps it**),
+  boot checksum + memtest skip (cheap, low risk — good first proof), boot
+  hw-probe skip, native sound mix, host serial. Note: disk-HLE is orthogonal to
+  the JIT and stays worthwhile; timing-HLE overlaps the JIT — decide when JIT lands.
+- **Hook mechanism (already present)**: `Cpu68k : moira::Moira` exposes
+  `willExecute(func,I,M,S,opcode)` (pre-instruction — the EMUL_OP dispatch point,
+  Basilisk-style `$71xx` illegal-MOVEQ trap plane) and the `MoiraDebugger`
+  breakpoint/softstop path. Two accroche strategies, support both: **address hook**
+  (ROM intact, no checksum issue, trivially reversible on toggle — the v1 choice)
+  vs **ROM byte-patch** (zero per-instruction cost, needed pre-JIT, but breaks the
+  ROM checksum → must also neutralize the checksum routine; a patched ROM region
+  behaves like self-modifying code to a method-JIT → must invalidate its blocks —
+  document this in the future JIT's POM68K_VENDOR).
+- **Structure ("one concern per file")**: `HleModule` = {id, label, accuracyNote,
+  machineMask, romMatch, install(), handler(), enabled}. `HleRegistry` enumerates
+  them; on ROM load, scan by **signature (never a hardcoded address** — the Basilisk
+  lesson that survives Plus/LC II/Quadra ROM versions); activate only checked +
+  signature-matched modules. `log()` on a non-matching signature; never patch silently.
+- **Guardrails (keep the oracle discipline)**: a global `HLE_FORBIDDEN` purity
+  flag the accuracy gates set (`lcii_boot_etalon`, `macqd605`, SST vectors) →
+  any HLE accroche under it `abort()`s. Per-module **A/B gate**: run the scenario
+  HLE-off then HLE-on, compare the *functional* result (not cycle-exact) — a
+  divergence is an LLE bug ticket, not a shrug. Save-state **stamps active
+  modules** and refuses/warns on reload mismatch. Status-bar "cheat" indicator
+  whenever ≥1 module is active so no bug is ever reported from an unknown state.
+- **UI**: separate ImGui "Acceleration (HLE)" window with a warning banner,
+  checkboxes grouped Boot/Disk/Timing/Sound (each with its `accuracyNote`
+  tooltip, greyed when the signature doesn't match the loaded ROM/machine),
+  a master "All LLE (faithful)" switch = the first-launch default.
+- **Phasing (don't build the framework first)**: (1) one hidden flag,
+  `boot.checksum` via breakpoint (ROM intact), no UI — proves dispatch +
+  registry + purity mode; (2) generalize `HleModule`/registry/signature scan;
+  (3) add `disk.sony` + its A/B gate; (4) ImGui UI + save-state stamp + status
+  voyant; (5) at JIT time, settle timing-HLE vs JIT and the pre-compile
+  byte-patch question. The real trap is disciplinary (bitrot of the unexercised
+  LLE path), not technical — the mechanism is cheap given the existing hooks.
 
 ## Backlog / known simplifications (each must move to a milestone or be
 documented in DEV.md when its subsystem lands)

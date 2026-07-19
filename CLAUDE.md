@@ -17,7 +17,8 @@ conventions and milestone discipline; the CPU integration pattern comes from
   `BASILISK_ROM_NOTES.md` ($067C ROM-behaviour oracle; §8 = facts
   verified on the real LC II ROM with `tools/rominfo`);
   `68K_FAMILY_SCOPE.md` (which other 68K Macs POM68K could support
-  later and at what effort).
+  later and at what effort); `HLE_OVERLAY.md` (design study — opt-in
+  HLE accelerator layered on the LLE core, non-conformant mode).
 
 ## CPU core: Moira (vendored)
 
