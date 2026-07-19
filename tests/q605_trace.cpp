@@ -98,7 +98,14 @@ int main(int argc, char** argv) {
     if (!diskPath.empty())
         std::printf("SCSI disk: %s %s\n", diskPath.c_str(),
                     mem.attachScsi(diskPath) ? "attached" : "FAILED");
-    if (mem.cuda().loadPram("q605_trace.pram"))
+    // PRAM persistence makes back-to-back runs DIVERGE: a boot mutates XPRAM,
+    // the next run loads the mutated state and takes a different path (SCSI
+    // counts differ, --stop-at points shift by ~15M cycles). For reproducible
+    // debugging set Q605_NOPRAM to force the deterministic factory cold boot
+    // (identical every run; the Q6.5d dsBadPatch repro lands at exactly clk
+    // 1235015000). Without it the on-disk q605_trace.pram is loaded/saved.
+    bool noPram = getenv("Q605_NOPRAM") != nullptr;
+    if (!noPram && mem.cuda().loadPram("q605_trace.pram"))
         std::printf("PRAM: q605_trace.pram loaded\n");
     mem.cuda().factoryDefaults();
 
@@ -241,6 +248,38 @@ int main(int argc, char** argv) {
                                 (long long)cpu.getClock());
             }
             prevpc = pc;
+            // Q6.5d: Q605_PCLOG="<from> <to>" — log the instruction path inside a
+            // tight clock window (e.g. the ~8848-cyc gap between a successful
+            // $51F08 read completing and the SIM/FM re-issuing it) to see the
+            // decision that re-reads. Collapses runs of the same PC; caps output.
+            if (const char* pl = getenv("Q605_PCLOG")) {
+                static long long plFrom = 0, plTo = 0; static bool plInit = false;
+                if (!plInit) { std::sscanf(pl, "%lld %lld", &plFrom, &plTo); plInit = true; }
+                static long pn = 0; static uint32_t lastLogged = 0;
+                long long c = cpu.getClock();
+                if (c >= plFrom && c <= plTo && pc != lastLogged && pn++ < 1500) {
+                    lastLogged = pc;
+                    char db[96];
+                    try { cpu.disassemble(db, pc); } catch (...) { db[0] = 0; }
+                    std::printf("  PCLOG clk=%lld $%08X  %s\n", c, pc, db);
+                }
+            }
+            // Q6.5d: at the SCSI Manager 4.3 completion decision $00121B60
+            // (cmpi.w #$84,($8,A3) → if equal, re-issue the read), log the nexus
+            // A3 and its condition fields so the retry trigger can be traced.
+            // ($8,A3)==$84 → re-read; a normal completion differs. Env Q605_NEXUS.
+            if (getenv("Q605_NEXUS") && pc == 0x00121B5A) {
+                static long nn = 0;
+                if (nn++ < 40) {
+                    uint32_t a3 = cpu.getA(3), a4 = cpu.getA(4);
+                    std::printf("  NEXUS clk=%lld A3=$%08X A4=$%08X (8,A3)=$%02X (e,A3)=$%02X (bc,A3)=$%04X (88,A4)state=$%04X (96,A4)=$%04X\n",
+                                (long long)cpu.getClock(), a3, a4,
+                                mem.peek8(a3+8), mem.peek8(a3+0xE),
+                                (mem.peek8(a3+0xBC)<<8)|mem.peek8(a3+0xBD),
+                                (mem.peek8(a4+0x88)<<8)|mem.peek8(a4+0x89),
+                                (mem.peek8(a4+0x96)<<8)|mem.peek8(a4+0x97));
+                }
+            }
             // Q6.5b: log SCSI 53C96 IRQ-line 0->1 transitions with clk, to find
             // the spurious interrupt that dispatches the crash event ($0011E996
             // is only reached on our machine, never on MAME). Env Q605_SCSIIRQ.
@@ -275,6 +314,36 @@ int main(int argc, char** argv) {
                             std::printf(" %02X%02X", mem.peek8(sp+i), mem.peek8(sp+i+1));
                         std::printf("\n");
                     }
+                }
+            }
+            // Q6.5d: SCSI Manager DMA-vs-PIO decision ($0011B3A0
+            // cmpi.b #1,($1A6,A5)). ($1A6,A5)==1 → the pathological non-DMA
+            // single-byte Transfer-Info path (used for the scod/-16470 resource
+            // read of LBA $51F08 that stalls → ioErr → dsBadPatch). Log A5 +
+            // the mode byte so the flag's origin can be found. Env Q605_SCSIMODE.
+            if (getenv("Q605_SCSIMODE") && pc == 0x0011B3A0) {
+                static long mn = 0;
+                if (mn++ < 30) {
+                    uint32_t a5 = cpu.getA(5);
+                    std::printf("  SCSIMODE clk=%lld A5=$%08X [A5+1A6]=$%02X [A5+3E]=$%02X [A5+39]=$%02X\n",
+                                (long long)cpu.getClock(), a5, mem.peek8(a5+0x1A6),
+                                mem.peek8(a5+0x3E), mem.peek8(a5+0x39));
+                }
+            }
+            // Q6.5d: _SysError trap patch stub ($0004C966) — every _SysError
+            // ($A9C9) invocation is intercepted here. Log the error code (D0.w)
+            // and the caller = (A7) so the site that raises dsBadPatch(99) can
+            // be identified vs MAME. Env Q605_SYSERR=<startClk>.
+            if (getenv("Q605_SYSERR") && pc == 0x0004C966) {
+                static long long seFrom = atoll(getenv("Q605_SYSERR"));
+                static long sen = 0;
+                if (cpu.getClock() >= seFrom && sen++ < 200) {
+                    uint32_t sp = cpu.getSP();
+                    uint32_t ret = uint32_t(mem.peek8(sp))<<24 | uint32_t(mem.peek8(sp+1))<<16 |
+                                   uint32_t(mem.peek8(sp+2))<<8 | mem.peek8(sp+3);
+                    std::printf("  SYSERR clk=%lld D0=%d($%04X) caller=$%08X D4=$%08X D5=$%08X\n",
+                                (long long)cpu.getClock(), cpu.getD(0) & 0xFFFF,
+                                cpu.getD(0) & 0xFFFF, ret, cpu.getD(4), cpu.getD(5));
                 }
             }
             // Dialog/Alert text tap ($4082919C): the ROM string-draw helper
@@ -332,13 +401,22 @@ int main(int argc, char** argv) {
             // IFR/IER + SCSI irq/context so the spurious-IRQ crash can be
             // characterized (is the SCSI int enabled? is irq_ stale?).
             if (pc == 0x0011E996) {
+                // Q605_ISRFROM=<clk>: gate ISR logging to a late window (e.g. the
+                // Q6.5d dsBadPatch completion ~1220592000) instead of the first
+                // 30 early-boot hits. Shows whether the SCSI ISR fires at the
+                // transaction's completion and which continuation (*(A0+F0)) it
+                // jumps to — the async-completion path.
+                static long long isrFrom = getenv("Q605_ISRFROM") ? atoll(getenv("Q605_ISRFROM")) : -1;
                 static long hn = 0;
-                if (hn++ < 30)
+                bool show = (isrFrom < 0) ? (hn < 30) : (cpu.getClock() >= isrFrom && hn < 60);
+                if (show) {
+                    hn++;
                     std::printf("  SCSIISR clk=%lld A0=$%08X hdlr=*(A0+F0)=$%08X via2IFR=$%02X via2IER=$%02X scsiIRQ=%d sr=$%04X\n",
                                 (long long)cpu.getClock(), cpu.getA(0),
                                 uint32_t(mem.peek8(cpu.getA(0)+0xF0))<<24 | uint32_t(mem.peek8(cpu.getA(0)+0xF1))<<16 |
                                 uint32_t(mem.peek8(cpu.getA(0)+0xF2))<<8 | mem.peek8(cpu.getA(0)+0xF3),
                                 mem.via2Ifr(), mem.via2Ier(), mem.scsi().irq(), cpu.getSR());
+                }
             }
             // Task-walk handler tap: at $4080EEB2 (jsr (A0)) log the task
             // element (A2), its flags word, and the handler address A0.
@@ -628,6 +706,6 @@ int main(int argc, char** argv) {
     std::printf("-- SCSI: reads=%ld writes=%ld selects=%ld commands=%ld dmaBytes=%ld lastCmd=$%02X --\n",
                 mem.scsi().reads, mem.scsi().writes, mem.scsi().selects,
                 mem.scsi().commands, mem.scsi().dmaBytes, mem.scsi().lastCmd);
-    mem.cuda().savePram("q605_trace.pram");
+    if (!noPram) mem.cuda().savePram("q605_trace.pram");
     return 0;
 }

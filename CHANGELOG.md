@@ -1,5 +1,49 @@
 # CHANGELOG
 
+## 2026-07-19 — Q6.5d RESOLVED: dsBadPatch(99) was a 53C96 FIFO-count lie that
+## sent the OS SCSI Manager's resource read into its DISCARD engine
+
+The Quadra 605 boot reached the ROM-patch stage then drew a `dsBadPatch`
+(System error 99) alert — the last step before the Finder. The whole cause was
+a single wrong register value in our 53C96 model.
+
+- **Symptom chain (all traced):** `_GetResource('scod',-16470)` → NULL →
+  `_SysError(99)`. GetResource returned NULL with ResErr = memFullErr(-108)
+  though the system heap had 23.7 MB free, because a `_ReallocHandle` was asked
+  for a garbage size — the resource's 4-byte length prefix read back as garbage.
+  The File Manager kept re-reading the SAME disk block ($51F08, READ(10) 1 block)
+  16× and never advanced. Each SCSI read actually SUCCEEDED (512/512 bytes,
+  correct data, status $00, clean CI_COMPLETE/MSG/DISCONNECT) — yet the data
+  never reached the resource-manager's buffer.
+- **Root cause:** the OS 8.1 SCSI Manager, right after the DMA-SELECT completes,
+  reads reg7 (FIFO byte count) at `$0011ADD4` (`moveq #$1f,D1; and.b reg7,D1;
+  cmpi.b #$1,D1`) to sanity-check the FIFO. On the real 53CF96 the FIFO is EMPTY
+  there (the CDB already streamed out), so the count is 0 (or 1). Our `R_FLAGS`
+  returned `min(dataIn_.size(),16)=16` because we short-circuit the whole payload
+  through `dataIn_` instead of the physical FIFO. Seeing "16 stray bytes" the
+  Manager flagged the transfer abnormal (`($a,A4)=5`) and routed the read to its
+  DISCARD engine (`$0011AEEA`: read the FIFO byte into D0, then `$0011AEB4`
+  immediately overwrites D0 with the state — thrown away), never the STORE engine
+  (`$0011B34C`/`$0011B358 move.b ($20,A3),(A2)+`). Buffer empty → garbage length
+  → memFullErr → dsBadPatch.
+- **Fix (src/Ncr53c96.h + .cpp):** a `dataXfer_` flag — cleared when a DATA-IN
+  phase is entered (`runTarget`), set when a data-phase Transfer-Info actually
+  fetches bytes (`transferInfo`). `R_FLAGS` in DATA_IN now reports 0 until
+  `dataXfer_`, then `min(remaining,16)` as before (so the ROM driver's DMA
+  16-byte-ready gate is unchanged). Now the Manager sees FIFO=0 after the select,
+  takes the normal path, and DMAs the read (`lastCmd=$90`, dmaBytes climbs).
+  dsBadPatch is gone, the boot runs far past it, 26/26 CTest gates stay green
+  (the working DMA path and the LC II 5380 are untouched).
+- **Method note:** the win was the `Q605_PCLOG="<from> <to>"` window PC-tracer
+  added to q605_trace (plus Q605_NOPRAM for a deterministic cold boot — the tool
+  auto-load/saved q605_trace.pram which made runs diverge). It showed the data
+  loop never reaches the STORE engine. Eliminated on the way: it is NOT an
+  ISR/async-completion problem (the polled wait masks IRQ and reads istatus
+  inline), NOT a bad-status rejection (all interrupt causes were "good"), and
+  NOT a fixed-period watchdog (retries were back-to-back). Remaining: the boot
+  now spins in the SCSI Manager completion loop (`$00123BA8`/`$0011CD2C`, IPL +
+  device-record `$0C0C` check) — the new frontier Q6.6, Finder not yet reached.
+
 ## 2026-07-19 — Q6.5b/c: the async SCSI SIM crash + the SCC/reselection spin
 ## are BOTH fixed — the boot loads System, applies patches, stops at dsBadPatch
 

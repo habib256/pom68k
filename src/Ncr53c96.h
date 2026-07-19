@@ -162,6 +162,16 @@ private:
     uint8_t fifo_[16] = {};
     int fifoPos_ = 0;
 
+    // Q6.5d: has a DATA-phase Transfer Info fetched bytes into the FIFO yet?
+    // Our model short-circuits the payload through dataIn_ instead of the real
+    // FIFO, so R_FLAGS (FIFO byte count) must NOT report the whole pending
+    // payload before a CI_XFER has actually "moved" it: right after a
+    // (DMA-)SELECT the physical FIFO is empty (the CDB drained out), so the OS
+    // 8.1 SCSI Manager's post-select check `and.b reg7,#$1F; cmpi #1` at
+    // $0011ADD4 must see 0 — else it treats the 16 phantom bytes as stray FIFO
+    // residue and routes the read to its DISCARD engine (data never stored).
+    bool dataXfer_ = false;               // a data-phase CI_XFER has run
+
     // Bus phase + per-session transfer buffers (functional target I/O).
     Phase phase_ = BUS_FREE;
     std::vector<uint8_t> cmd_;            // CDB accumulator (COMMAND phase)
