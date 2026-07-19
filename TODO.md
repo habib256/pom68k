@@ -1020,6 +1020,25 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
     Manager path (agentQ found MAME hits $40809A0A once, cleanly).
     Original (superseded) hypothesis kept: "a missing subsystem the System
     consults — DAFB paint / Time-Manager-VBL / sound / NMI."
+  * **STRONGEST LEAD for the fix (2026-07-19, start here):** the restart is
+    reached through the **Cuda/ADB device-manager completion ISR**
+    `$408A9CD8-$408A9D26` (receive-ISR that copies the Cuda reply into a DCE
+    buffer then `jsr`s the ioCompletion at `$408A9DD4`). The path is:
+    Cuda reply → this ISR → completion callback → $40809B70 (Device Mgr) →
+    $4080ED7E dispatcher **selector 2** → $4080EE06 → $4080EE12 → restart.
+    At $408A9CFC the ISR does `move.w $10(a2),d0; subq.w #$4,d0` then
+    `dbra d0` copies d0+1 bytes — i.e. **replyLen−4**; a reply one byte
+    short makes d0 wrap to a huge copy (the exact shape of the SimCity-2000
+    Egret-retraction crash, CHANGELOG 2026-07-17). The Cuda replies seen
+    right before the first restart (clk 434M) are 3-byte `01 00 00` answers
+    to pseudo-commands `01 07 00 7B 7B` / `01 22 DE 0C 47` / `01 22 DE 0F
+    41` (GetPram/WriteXPRAM-like). **Suspect another Cuda-vs-Egret reply-
+    framing divergence in the shared `Egret` HLE** (Q6.2 already found one:
+    the Quadra Cuda ReadXPram reply drops the cmd-echo header byte the LC II
+    Egret keeps). DIFF these completions against MAME macqd605 byte-for-byte
+    (the receive header count the ROM ISR expects vs what our HLE emits),
+    gate on `cudaPolarity_` so the LC II Egret path (egret_test +
+    lcii_boot_etalon) does NOT regress. This is the most likely single fix.
 
   **Q6.2 — HISTORICAL BLOCKER writeup (kept for method): the boot
   re-reads block 0 forever (~48 700
