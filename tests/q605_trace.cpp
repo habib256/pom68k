@@ -26,6 +26,8 @@ class TraceCpu : public Cpu040 {
 public:
     using Cpu040::Cpu040;
     std::map<int, long> vecHist;
+    long irqCount[8] = {};
+    void willInterrupt(moira::u8 level) override { irqCount[level & 7]++; }
     void willExecute(moira::M68kException, moira::u16 vector) override {
         vecHist[vector]++;
         if (vector == 2) {
@@ -45,7 +47,7 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: %s <rom> [--cycles N] [--io N] [--berr N] [--pcring N]\n", argv[0]); return 2; }
     long long cycles = 200000000;   // 8 machine-seconds at 25 MHz
     int ioMax = 60, berrMax = 40; size_t pcRing = 32;
-    uint32_t stopAt = 0, watch = 0, wwatch = 0;
+    uint32_t stopAt = 0, watch = 0, wwatch = 0, firstpc = 0;
     long stopSkip = 0;                 // ignore the first N hits of --stop-at
     std::string diskPath;             // --disk / --scsi: boot image at ID 0
     long long scsiFrom = 0, scsiTo = 0;   // SCSI register-trace clock window
@@ -61,6 +63,7 @@ int main(int argc, char** argv) {
         else if ((a == "--disk" || a == "--scsi") && i + 1 < argc) diskPath = argv[++i];
         else if (a == "--scsi-log" && i + 2 < argc) { scsiFrom = atoll(argv[++i]); scsiTo = atoll(argv[++i]); }
         else if (a == "--wwatch" && i + 1 < argc) wwatch = uint32_t(strtoul(argv[++i], nullptr, 16));
+        else if (a == "--firstpc" && i + 1 < argc) firstpc = uint32_t(strtoul(argv[++i], nullptr, 16));
     }
 
     std::ifstream in(argv[1], std::ios::binary);
@@ -153,6 +156,17 @@ int main(int argc, char** argv) {
         bool stop = false;
         while (cpu.getClock() < t && !cpu.isHalted()) {
             uint32_t pc = cpu.getPC0();
+            static uint32_t prevpc = 0;
+            if (firstpc && pc == firstpc && prevpc != firstpc &&
+                (prevpc < pc || prevpc > pc + 8)) {
+                static int fn = 0;
+                if (fn++ < 30)
+                    std::printf("  FIRSTPC $%08X from $%08X  D0=$%08X D1=$%08X D2=$%08X D7=$%08X A0=$%08X A1=$%08X A6=$%08X SP=$%08X clk=%lld\n",
+                                pc, prevpc, cpu.getD(0), cpu.getD(1), cpu.getD(2), cpu.getD(7),
+                                cpu.getA(0), cpu.getA(1), cpu.getA(6), cpu.getSP(),
+                                (long long)cpu.getClock());
+            }
+            prevpc = pc;
             ring[rp++ % ring.size()] = pc;
             pcCov[pc >> 16]++;
             if (stopAt && pc == stopAt) {
@@ -277,6 +291,9 @@ int main(int argc, char** argv) {
     std::printf("-- vector histogram --\n");
     for (auto& [v, n] : cpu.vecHist)
         std::printf("  vec %3d : %ld\n", v, n);
+    std::printf("-- IRQ (willInterrupt) by level --\n");
+    for (int l = 1; l < 8; l++)
+        if (cpu.irqCount[l]) std::printf("  IPL %d : %ld\n", l, cpu.irqCount[l]);
 
     std::printf("-- PC coverage (64 KB regions, top 24) --\n");
     std::vector<std::pair<long, uint32_t>> cov;

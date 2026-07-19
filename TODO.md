@@ -957,12 +957,69 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   carries a non-zero handler ($18) that jumps to $40804B0C → the console.
   So the ROM POST executive (re-entered after the OS boot-block handoff)
   walks its entry table and one entry diverts to the serial console.
-  Next: identify which POST entry ($408A8080+$670) it is and why its
-  condition trips (D7 bit set upstream), and diff the System-takeover
-  point against the MAME macqd605 golden boot — likely a missing machine
-  subsystem the early boot/System init consults (real DAFB video paint
-  through the MEMCjr holding window $50F0E0xx/$50F18xxx, a Time-Manager/
-  VBL tick, sound, or an NMI/interrupt the System arms).
+
+  **Q6.4 DEEPLY LOCALIZED (2026-07-19) — it is a periodic BOOT-RESTART
+  loop that terminally falls to the serial debugger; several candidates
+  RULED OUT.** New tooling: `q605_trace --firstpc HEXPC` (logs the first
+  control-flow edge INTO a PC from a non-adjacent caller, with regs+clk —
+  the microscope that cracked this) and a `willInterrupt`-based IRQ
+  histogram (the old vec-histogram only counted `willExecute`, so it
+  MISSED interrupts — a measurement trap that cost a detour). Findings,
+  all MAME-oracle-confirmed (agentQ_* markers under roms/mame/, save-marker
+  method; the MAME symbol is `totalcycles` NOT `total_cycles`; printf in
+  bp actions is silent, use `save absfile,EXPR,len`):
+  * **The boot RESTARTS ~every 118M cycles** (at clk 434M/551M/672M/790M/
+    908M) by jumping to the ROM reset re-entry `$4080000A` (reset vector
+    $2A→`jmp $8C`; $4080000A→$4080008C). Triggered from the Device/Slot
+    Manager: `$40809A0A` → … → `$4080EE94` (a VBL/slot-task list walk that
+    `jsr`s each installed task) → `$4084C1A8` → `$4080EE12` (`bsr
+    $408B7716`, a trap-implemented check) → `$4080EE1E` (`jmp (a0)`,
+    a0=$40800000 → $4080000A). MAME **never** hits $4080000A/$4080EE12/
+    $4080008C(high alias) and boots to Finder in only ~20M of its OWN
+    cycles → OUR restart loop has no MAME analog. **BUT each restart makes
+    FORWARD SCSI progress** (commands 995→1083→1149→1281), so it is not a
+    pure reboot — it is the ROM re-attempting/retrying the boot handoff.
+  * After the System fully loads (1281 SCSI cmds), a late POST re-test at
+    clk ~909-953M reaches `$4084AA58 btst #$1a,D7; bne $4084aa7a` — **D7
+    bit 26 is CLEAR** → falls to `$4084AA66 lea $4084AA74,A6` → `bra
+    $408B98BC` / the console-init at $408B9F58 → the $408B9928 loop. Bit 26
+    is SET only by `$408473B6 bset #26,D7`, which is reached via the POST
+    test entry at `$40847388` — and that entry is **NEVER executed** on our
+    machine (the pass/OK setter is skipped, only the failing CHECK runs).
+    So the terminal console is: a POST subsystem re-test whose OK-marker
+    path is skipped.
+  * **RULED OUT (do not re-investigate):**
+    - *Interrupts work.* IPL-1 (VIA1/VBL) fires 3443×, IPL-2 (VIA2/slot)
+      312× over 1e9 cyc (confirmed via the new `willInterrupt` histogram —
+      the old "zero interrupts" reading was the willExecute artifact).
+    - *24-bit MMU aliasing works.* The System runs code in NuBus super-slot
+      space `$A001F0xx`/`$A00031F0` (e.g. the `'ROvr'` ROM-patch resource:
+      `_GetResource('ROvr')` → handle $18D14 → master ptr **$A00031F0**,
+      the $A0 = 24-bit MemMgr lock/resource flag byte). At that moment
+      MMU32Bit ($CB2)=0 (24-bit mode, mid-`_SwapMMUMode` slot access), the
+      live 040 MMU has TTRs OFF and SRP=$01FF5C00, and the 24-bit page
+      table correctly ALIASES both $A00031F0 and $000031F0 to the same
+      phys $000061F0 (valid ROvr code `60 08 52 4F`). No $A0-space bus
+      error occurs (all 65 vec-2 are the benign $FnFFFFFF slot probes). So
+      the $A0 execution is legitimate 24-bit operation and is a RED HERRING.
+    - *No unhandled fault / SysError of our own.* Only vec 2 (65 benign
+      slot probes) and vec 10 (A-line traps) occur.
+  * **NEXT (the crux, still open):** find why the boot never completes the
+    handoff and keeps restarting where MAME hands off cleanly. The Device-
+    Manager `$4080EE94` task-walk that leads to `$4080EE12`→restart is the
+    place to diff instruction-for-instruction against MAME (use the working
+    `save`-marker method or a windowed `trace`): what does that installed
+    task / the `$408B7716` trap-implemented check return on a real 605 vs
+    ours, and why does our path take the restart selector while MAME's
+    returns normally? Suspect an installed VBL/slot/driver task whose
+    completion or a low-mem it reads differs because of a still-stubbed
+    subsystem (ASC is a pure stub returning 0; the $50F14xxx ASC RAM the
+    early POST at `$408070E0` write/read-tests is not backed — though that
+    specific test PASSED on 4 of 5 iterations, so it is not obviously the
+    trigger). Also worth a look: whether MAME's boot even RUNS this Device-
+    Manager path (agentQ found MAME hits $40809A0A once, cleanly).
+    Original (superseded) hypothesis kept: "a missing subsystem the System
+    consults — DAFB paint / Time-Manager-VBL / sound / NMI."
 
   **Q6.2 — HISTORICAL BLOCKER writeup (kept for method): the boot
   re-reads block 0 forever (~48 700

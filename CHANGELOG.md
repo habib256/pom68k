@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## 2026-07-19 — Q6.4 deeply localized: the console divert is a periodic
+## boot-RESTART loop, not a fault — several candidates ruled out (no fix yet)
+
+The Q6.4 blocker (System loads off SCSI, then the boot diverts to the ROM
+serial-console loop at $408B9928) was traced end-to-end and materially
+narrowed, though the single fix is not yet landed. Established (all
+MAME-oracle-confirmed via the `save`-marker method — see TODO § Q6.4 for
+the full write-up and the `agentQ_*` evidence under roms/mame/):
+
+- The boot **restarts ~every 118M cycles** (jumps to the ROM reset re-entry
+  $4080000A) via the Device/Slot Manager's VBL/slot-task walk ($4080EE94)
+  → $4080EE12 → $4080EE1E. MAME never restarts and boots to the Finder in
+  ~20M of its own cycles. Each of our restarts makes FORWARD SCSI progress
+  (995→1281 commands), so it is the ROM re-attempting the boot, not a hard
+  reboot. Terminally (clk ~953M) a late POST re-test finds D7 bit 26 clear
+  at $4084AA58 (its OK-setter $408473B6 is never reached) and drops to the
+  serial console.
+- **Ruled out (do not re-investigate):** (1) interrupt delivery — IPL-1
+  (VBL) and IPL-2 (slot) fire thousands of times (the earlier "zero
+  interrupts" was a measurement artifact: the vec histogram counted only
+  `willExecute`, missing `willInterrupt`); (2) 24-bit MMU addressing — the
+  System legitimately runs `'ROvr'` ROM-patch code through a flagged 24-bit
+  master pointer ($A00031F0, $A0 = MemMgr lock/resource flags) while
+  MMU32Bit ($CB2)=0, and our 040 24-bit page table correctly aliases
+  $A00031F0→phys $000061F0 (no bus error); (3) no unhandled fault of our
+  own (only benign $FnFFFFFF slot-probe vec-2s + A-line traps).
+
+Tooling added to `tests/q605_trace.cpp` (only file changed; no source/Moira
+edits, ctest 26/26 green incl. egret_test + lcii_boot_etalon): `--firstpc
+HEXPC` logs the first control-flow edge INTO a PC from a non-adjacent
+caller (regs+clk), and the trace now hooks `willInterrupt` for a real
+IRQ-by-level histogram. Next: instruction-diff the $4080EE94 task-walk /
+$408B7716 restart-check against MAME to find why our path takes the restart
+selector where MAME returns normally.
+
 ## 2026-07-19 — Q6.3 RESOLVED: SCSI multi-block read — the polled ($10)
 ## Transfer Info needed the DATA IN bus-service interrupt
 
