@@ -1010,27 +1010,64 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   loops on block $51F08. The full investigation trail is kept below (UPDATE 1-4)
   for the reasoning; the SIGNATURE candidate (#2) was the winner.
 
-  **Q6.6 — NEW CURRENT BLOCKER (2026-07-19, right after the Q6.5d fix): the boot
-  runs past the resource patches but then SPINS in the SCSI Manager completion
-  loop; the Finder is NOT reached.** State: `Q605_NOPRAM=1 q605_trace --disk
-  hdv/MacOS-8.1-boot.vhd --cycles 2600000000` → at clk 2.6 G pc is parked around
-  `$0011CD2C`/`$0011CD7E`, SCSI is FROZEN (reads=124262 writes=88070 selects=2497
-  commands=2491 dmaBytes=3827184 lastCmd=$90 — identical at 1.3 G and 2.6 G, so
-  NO new SCSI after ~1.3 G), and vec-10 (A-trap) fires ~109 618× (one per ~12 k
-  cyc — periodic, event/VBL-driven, not a tight spin). The hot loop is
-  `$00123BA8 jsr $11cd2c` → `$0011CD2C` → `$0011CD36 jsr $11f2b2` (reads SR,
-  `andi #$700; lsr #8` = current IPL) → `$0011CD3E cmpi.w #$1,D1; bhi $11cd58`
-  (defer if IPL>1) → `$0011CD44 movea.l $c0c.w,A0; tst.l ($c0,A0); bne` /
-  `$0011CD52 tst.w ($be,A0); beq $11cd7a` — a "run deferred SCSI completion
-  unless at interrupt level / device busy" check gated on the device record at
-  low-mem `$0C0C`. Reads as the SCSI Manager waiting for a completion/interrupt
-  that never arrives (SCSI already idle at 2491 cmds), OR the System/Finder init
-  polling. NEXT: (1) confirm whether it's a genuine spin (same PCs forever) vs
-  slow Toolbox progress — dump VRAM (q605_vram.raw) + low-mem to see if the
-  desktop is coming up; (2) if a spin, find what `($be,A0)`/`($c0,A0)` at
-  `$0C0C` waits on and which SCSI/interrupt event should clear it; (3) diff vs
-  MAME macqd605 at the same PC. Taps ready: Q605_PCLOG, Q605_SCSIALL, Q605_NEXUS.
-  Repro is deterministic with Q605_NOPRAM=1.
+  **Q6.6 — THREE consecutive post-Q6.5d hangs CLEARED (2026-07-19, commits
+  a0fa441 + bde6655); the boot now runs ~703 M → ~1.2 G cycles (SCSI 2491 →
+  3705 commands). Finder still not reached — new frontier below.** Each fix was
+  traced end-to-end with `Q605_NOPRAM=1 q605_trace` (deterministic repro) and
+  keeps all 26 gates green.
+
+  1. **Multi-block SCSI WRITE stalled after the first block** (`Ncr53c96::
+     dmaWrite`). The OS 8.1 SCSI Manager writes block-by-block: program
+     TC=$200, DMA-burst 512 B, wait S_INTERRUPT, repeat. dmaWrite raised the
+     bus-service IRQ only when the WHOLE `dataOutExpected_` payload was gathered,
+     so a 2-block WRITE(10) (LBA $8A1) stalled after 512 B → async write never
+     completed → SCSI Manager spun forever on ioResult in its deferred-task loop
+     `$00123BA6`/`$0011CD2C` (waits `($a0,A4)==1`; A4=$F010 IOPB, deferred-task
+     element A3=$EAB0 ready-bit `($48)` never set). Fix = per-TC-chunk IRQ
+     (mirror of the Q6.3 dmaRead fix), commit+STATUS only on the last byte.
+
+  2. **AppleTalk/LocalTalk LAP wedge** (`Q605Memory` SCC was UNWIRED). OS 8.1's
+     active .MPP AARP address-probe (`$001B7846` wait routine) armed an SDLC
+     transmit via the SCC (WR6/WR14) and busy-waited on its transmit flag
+     (`$3A6` in the AppleTalk globals `*(*($2B6)+$70)` = $1716A0 → $171A46) for a
+     completion the SCC never delivered — Q605Memory never called
+     `setAbortIdle`, never routed `sccIrqLine(scc_.irqAsserted())`, never
+     `scc_.tick()`. Fix = wire the SCC exactly like the LC II (O6.10) + a Quadra
+     `localTalkWatchdog()` (twin of V8Memory's) that clears the wedged send flag
+     so the probe times out (= address free = good). POM68K_NO_LTALK_WD disables.
+     XPRAM $13=$22 (SPConfig async) does NOT keep OS 8.1's .MPP from probing.
+
+  3. **Polled INQUIRY bus-scan never completed** (`Ncr53c96` DATA_IN→STATUS
+     timing). The SCSI Manager bus-scan runs POLLED (via2IER bit3=0, no ISR):
+     the discard-drain loop `$0011B2EE` does CI_XFER $10 per byte and services
+     completion at `$0011E616`→`$0011E686` (sets SIM flag `($5e,A3)` bit4) only
+     if the target is in STATUS — but that service runs BEFORE the FIFO byte
+     read, and our model only advanced to STATUS on the read, so the service
+     always saw DATA_IN → bit4 never set → the SIM sequencer (`$00121Axx`/
+     `$00122Dxx`, state `($88,A4)=$d`) spun forever after draining all 36 bytes.
+     Fix = a polled (non-DMA) Transfer Info that drains the tail now calls
+     `advanceToStatus()` at command time; R_FIFO re-keyed on `dataInPos_`.
+
+  **Q6.6 NEW FRONTIER (current): ROM modal-dialog spin at `$40802A38`
+  (`tst.b $172.w; bne`).** After the bus scan the boot reaches a ROM Toolbox
+  routine (`$408029EC`, entered NORMALLY from `$408028E0` at clk ~1.07 G — NO
+  crash: only 13 benign vec-2 + normal A-traps) that draws via QuickDraw
+  (`$A8A3/$A893/$A89E/$A8B0`…) then spins waiting for low-mem **`$172` = MBState
+  (mouse button state) == 0 (button DOWN)**. `$172` bit7 is set by the ROM's
+  ADB/event task at `$408B6DD6`/`$408B682E` (`bset #7,$172` + `_PostEvent`) and
+  cleared at `$408B67EA` (`clr.b $172` + `_PostEvent`); the clearer is gated on
+  `A1==($4,A0)` / `($15,A1)==0` and never runs, so MBState stays $80 and the
+  spin never exits. SCSI frozen at 3705 cmds, VRAM shows two framed icon/box
+  shapes. **MAME macqd605 NEVER executes `$40802A38`** → we diverge into this
+  dialog. NEXT: (1) identify the dialog/routine (`$408028E0` caller chain, D0=
+  $A9A9, gated on low-mem `$A8C`); (2) diff vs MAME macqd605 to find where the
+  boot path forks toward this ROM routine instead of continuing to the Finder;
+  (3) determine whether it's a genuine "wait for click" (inject via
+  MacInput/ADB) or a symptom of an earlier divergence. Repro:
+  `Q605_NOPRAM=1 q605_trace roms/mame/macqd605/ff7439ee.bin --disk
+  hdv/MacOS-8.1-boot.vhd --cycles 1300000000` (parks at $40802A3C). Taps:
+  Q605_PCLOG, Q605_SCSIALL, --wwatch, --dumpat, --stop-at (now also dumps
+  A3/A4/device-record + SCSI/VIA2 IRQ state).
 
   **[HISTORICAL — Q6.5d investigation trail, superseded by the fix above]**
   **dsBadPatch root cause found = a stalled SCSI resource read, NOT a
