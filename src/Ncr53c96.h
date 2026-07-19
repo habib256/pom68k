@@ -61,6 +61,24 @@ public:
     bool irq() const { return irq_; }    // → PrimeTime scsi_irq_w → VIA2 / IPL
     bool drq() const { return drq_; }    // → PrimeTime scsi_drq_w → /DTACK gate
 
+    // ── Bus-service latency model (Q6.5b) ──
+    // A real target takes time between a Transfer Info command and the
+    // bus-service interrupt (target processing + bus turnaround). Our instant
+    // completion made the Mac OS 8.1 async SCSI SIM see S_INTERRUPT in the poll
+    // right after its send-CDB handler, so it posted its "service interrupt"
+    // message BEFORE the client installed the continuation routine at ctx+$F0
+    // → wild jmp through NULL → the "illegal instruction" crash alert.
+    // latency=0 keeps the historical instant behaviour (unit tests drive the
+    // chip without a tick source); the Q605 machine enables it and pumps
+    // tick() from Q605Memory::tick.
+    void setLatency(int cycles) { latency_ = cycles; }
+    void tick(int cycles) {
+        if (pendDelay_ > 0) {
+            pendDelay_ -= cycles;
+            if (pendDelay_ <= 0 && pendBits_) { raiseIrq(pendBits_); pendBits_ = 0; }
+        }
+    }
+
     // ── 53C96 register indices (ncr53c90.cpp:29-42, +c94/c96 extensions) ──
     enum Reg {
         R_TCLOW  = 0x0,   // Transfer Count LSB   (R: current / W: reload)
@@ -128,6 +146,9 @@ private:
     uint8_t status_ = 0, istatus_ = 0;
     uint8_t scsiId_ = 7;                 // this initiator's ID (CONFIG1 low 3)
     bool irq_ = false, drq_ = false;
+    int latency_ = 0;                    // bus-service IRQ latency (0 = instant)
+    int pendDelay_ = 0;                  // countdown to the deferred raiseIrq
+    uint8_t pendBits_ = 0;               // istatus bits held back by the latency
     bool testMode_ = false;
 
     // 24-bit transfer counter (reload latch `tcount_`, live `tcounter_`).
@@ -153,6 +174,7 @@ private:
     void selectTarget(bool withAtn);
     void transferInfo();                  // CI_XFER: move one phase's worth
     void raiseIrq(uint8_t istatusBits);
+    void raiseIrqDeferred(uint8_t istatusBits);   // honors latency_ (tick-driven)
     void updateDrq();
     void fifoPush(uint8_t v);
     uint8_t fifoPop();

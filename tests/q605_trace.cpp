@@ -106,6 +106,11 @@ int main(int argc, char** argv) {
         mem.ramWatch_ = wwatch;
         mem.onRamWrite = [&](uint32_t a, int sz, uint32_t v) {
             static long n = 0;
+            // Q605_WWFROM: only log write-watch hits at/after this clock, so a
+            // hot address can be observed near a late event without burning the
+            // 200-line budget on early-boot traffic.
+            static long long wwFrom = getenv("Q605_WWFROM") ? atoll(getenv("Q605_WWFROM")) : 0;
+            if (cpu.getClock() < wwFrom) return;
             if (n++ > 200) return;
             std::printf("  WWATCH $%08X sz%d = $%0*X  pc=$%08X A0=$%08X A1=$%08X A2=$%08X A3=$%08X A4=$%08X clk=%lld\n",
                         a, sz, sz * 2, v, cpu.getPC0(), cpu.getA(0), cpu.getA(1),
@@ -126,9 +131,11 @@ int main(int argc, char** argv) {
         mem.scsi().onAccess = [&](int reg, bool w, uint8_t v) {
             long long c = cpu.getClock();
             if (c < scsiFrom || c > scsiTo) return;
-            if (!w && reg == 4) return;          // skip the phase-poll spam
-            if (w && reg == 3 && v == 0x90) return;   // skip DMA-chunk XFER spam
-            if (!w && (reg == 7 || reg == 5)) return; // skip chunk-loop reads
+            if (!getenv("Q605_SCSIALL")) {            // Q605_SCSIALL: no filter
+                if (!w && reg == 4) return;      // skip the phase-poll spam
+                if (w && reg == 3 && v == 0x90) return; // skip DMA XFER spam
+                if (!w && (reg == 7 || reg == 5)) return; // chunk-loop reads
+            }
             if (scsiRegLog++ > 400) return;
             std::printf("  SCSI %c reg%X = $%02X  (pc=$%08X clk=%lld)\n",
                         w ? 'W' : 'R', reg, v, cpu.getPC0(), c);
@@ -286,6 +293,23 @@ int main(int argc, char** argv) {
                         std::putchar(ch >= 0x20 && ch < 0x7F ? ch : '.');
                     }
                     std::printf("\"\n");
+                }
+            }
+            // Q6.5b: event/deferred-task dispatcher tap ($0011A6E6, right after
+            // handler=table[D0] and before jsr): log event code D0, task record
+            // A4, context A0=*(A4+4), the chosen handler A1, and the context's
+            // +$F0 completion field — to see the event stream and catch the
+            // fatal record's provenance. Env Q605_EVTAP=<startClk>.
+            if (getenv("Q605_EVTAP") && pc == 0x0011A6E6) {
+                static long long evFrom = atoll(getenv("Q605_EVTAP"));
+                static long evn = 0;
+                if (cpu.getClock() >= evFrom && evn++ < 300) {
+                    uint32_t a4 = cpu.getA(4);
+                    uint32_t ctx = uint32_t(mem.peek8(a4+4))<<24 | uint32_t(mem.peek8(a4+5))<<16 |
+                                   uint32_t(mem.peek8(a4+6))<<8 | mem.peek8(a4+7);
+                    std::printf("  EVT clk=%lld code=$%04X rec=$%08X ctx=$%08X hdlr(A1)=$%08X ctx+F0=$%02X%02X%02X%02X\n",
+                                (long long)cpu.getClock(), cpu.getD(0) & 0xFFFF, a4, ctx, cpu.getA(1),
+                                mem.peek8(ctx+0xF0), mem.peek8(ctx+0xF1), mem.peek8(ctx+0xF2), mem.peek8(ctx+0xF3));
                 }
             }
             // Q6.5b: at the SCSI interrupt handler $0011E996, log the VIA2
@@ -456,6 +480,20 @@ int main(int argc, char** argv) {
                 std::printf(" %02X", mem.peek8(sp + i));
             }
             std::printf("\n");
+            // Q605_RAMDUMP="<hexFrom> <hexLen> <file>": at the stop point, dump
+            // a raw RAM window to a binary file so guest code can be searched
+            // offline (objdump/grep for instruction patterns).
+            if (const char* rd = getenv("Q605_RAMDUMP")) {
+                unsigned rdFrom = 0, rdLen = 0; char rdFile[256] = {};
+                if (std::sscanf(rd, "%x %x %255s", &rdFrom, &rdLen, rdFile) == 3) {
+                    FILE* rf = std::fopen(rdFile, "wb");
+                    if (rf) {
+                        for (unsigned i = 0; i < rdLen; i++) std::fputc(mem.peek8(rdFrom + i), rf);
+                        std::fclose(rf);
+                        std::printf("  [RAMDUMP $%08X +$%X -> %s]\n", rdFrom, rdLen, rdFile);
+                    }
+                }
+            }
             if (dumpAt) {
                 std::printf("  [DUMPAT $%08X] bytes:", dumpAt);
                 for (int i = 0; i < 128; i++) {

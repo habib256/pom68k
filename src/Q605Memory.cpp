@@ -4,6 +4,7 @@
 #include "Q605Memory.h"
 #include "Cpu040.h"
 #include "Moira.h"
+#include <cstdlib>
 #include <cstring>
 
 Q605Memory::Q605Memory(uint32_t totalRam)
@@ -26,6 +27,16 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     // XPRAM $78/$7A: boot drive/driver 0 (Basilisk defaults) already 0;
     // $8A |= $05 = 32-bit mode (Mac OS 8 requires 32-bit clean)
     cuda_.setPram(0x8A, uint8_t(cuda_.pram(0x8A) | 0x05));
+    // SCSI bus-service latency knob (Q6.5b diagnostics): cycles between a
+    // Transfer Info and its interrupt. Tested against the async-SIM NULL-
+    // continuation crash: the SIM's send-CDB handler SPIN-POLLS S_INTERRUPT
+    // (collector $11E386 loop), so deferring the IRQ only delays the same
+    // ordering — the crash is structural, not a latency race. Default 0
+    // (instant, historical behaviour); POM68K_SCSI_LAT=N opts in for tests.
+    {
+        const char* e = std::getenv("POM68K_SCSI_LAT");
+        scsi_.setLatency(e ? std::atoi(e) : 0);
+    }
 }
 
 bool Q605Memory::loadRom(const std::vector<uint8_t>& data) {
@@ -518,6 +529,12 @@ void Q605Memory::tick(int cpuCycles) {
     if (viaCycles && via1_.tick(viaCycles)) updateIrq();
 
     cuda_.tick(cpuCycles);
+
+    // SCSI bus-service latency countdown (Q6.5b) → reflect the deferred IRQ
+    // into the pseudo-VIA2 line when it lands.
+    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+    scsi_.tick(cpuCycles);
+    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
 
     // 60.15 Hz CA1 tick (iosb 6015_timer)
     tickAcc_ += int64_t(cpuCycles) * 6015;

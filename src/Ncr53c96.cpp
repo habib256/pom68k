@@ -58,6 +58,16 @@ uint8_t Ncr53c96::fifoPop() {
 // is non-zero (ncr53c90.cpp:1079-1086 check_irq). Reading R_ISTAT clears it.
 void Ncr53c96::raiseIrq(uint8_t bits) { istatus_ |= bits; irq_ = istatus_ != 0; }
 
+// Bus-service latency (Q6.5b): hold the interrupt back for latency_ cycles —
+// the delay a real target/bus needs — so software that polls right after
+// issuing a Transfer Info does not see an instant completion. tick() applies
+// the held bits. latency_=0 → identical to raiseIrq (unit-test default).
+void Ncr53c96::raiseIrqDeferred(uint8_t bits) {
+    if (latency_ <= 0) { raiseIrq(bits); return; }
+    pendBits_ |= bits;
+    pendDelay_ = latency_;
+}
+
 // DRQ policy (ncr53c90.cpp:1207-1232 + c94 check_drq:1374). We assert DRQ
 // whenever a DMA transfer-info command is active and the FIFO can move a byte
 // in the required direction. DRQ tracks CPU-side data availability and is
@@ -117,6 +127,7 @@ void Ncr53c96::reset() {
     cmd_.clear(); dataIn_.clear(); dataInPos_ = 0;
     dataOut_.clear(); dataOutExpected_ = 0;
     targetStatus_ = 0; msgInLeft_ = 0; dmaCommand_ = false;
+    pendDelay_ = 0; pendBits_ = 0;       // latency_ itself survives (wiring)
 }
 
 // ── Register interface ──────────────────────────────────────────────────
@@ -374,7 +385,8 @@ void Ncr53c96::transferInfo() {
                 // S_INTERRUPT, then reads ONE byte from the FIFO port
                 // ($408D2388 move.b ($20,A3),(A2)+)). Without the polled
                 // signal the byte-tail wait ($40899704) spun forever.
-                raiseIrq(I_BUS);
+                // Deferred (Q6.5b): held back by the bus-service latency.
+                raiseIrqDeferred(I_BUS);
             }
             updateDrq();
             break;
@@ -391,16 +403,16 @@ void Ncr53c96::transferInfo() {
                 cmd_.push_back(b);
                 if (int(cmd_.size()) >= cdbLength(cmd_[0])) { runTarget(); break; }
             }
-            raiseIrq(I_BUS);
+            raiseIrqDeferred(I_BUS);
             break;
 
         case STATUS:
         case MSG_IN:
-            raiseIrq(I_BUS);
+            raiseIrqDeferred(I_BUS);
             break;
 
         default:
-            raiseIrq(I_BUS);
+            raiseIrqDeferred(I_BUS);
             break;
     }
 }
