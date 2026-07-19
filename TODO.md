@@ -988,8 +988,53 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   continuation is VALID there because the trampoline ran, NULL on ours). Boot:
   1583 → 2882 SCSI commands, crash gone, System launches.
 
-  **Q6.5d — CURRENT BLOCKER: dsBadPatch (System error 99) → ROOT CAUSE FOUND
-  2026-07-19 = a stalled SCSI resource read, NOT a patch/come-from problem.**
+  **Q6.5d — RESOLVED 2026-07-19 (fix in src/Ncr53c96.h + .cpp, `dataXfer_`).**
+  ONE-LINE FIX: the 53C96 `R_FLAGS` (reg7 FIFO byte-count) reported the whole
+  pending DATA-IN payload as if it sat in the physical FIFO, even BEFORE any
+  data-phase Transfer-Info had fetched it. Right after a (DMA-)SELECT the real
+  FIFO is empty (the CDB drained out), but ours returned `min(remaining,16)=16`.
+  The OS 8.1 SCSI Manager's post-select check at `$0011ADD4`
+  (`moveq #$1f,D1; and.b reg7,D1; cmpi.b #$1,D1`) then saw "16 stray FIFO bytes"
+  (expected 0 or 1) → treated the transfer as abnormal (`($a,A4)=5`) → routed
+  the whole read to its DISCARD engine (`$0011AEEA`: read FIFO byte to D0,
+  overwrite D0 at `$0011AEB4` — thrown away), NEVER the STORE engine
+  (`$0011B34C`/`$0011B358 move.b ($20,A3),(A2)+`). So the resource-manager's
+  buffer got NOTHING → garbage 4-byte length prefix → `_ReallocHandle`(garbage)
+  → memFullErr → dsBadPatch. FIX: a `dataXfer_` flag (false on entering DATA_IN
+  in `runTarget`, set true in `transferInfo` DATA_IN); `R_FLAGS` in DATA_IN
+  returns 0 until `dataXfer_`, then `min(remaining,16)` as before. RESULT: the
+  SIM now takes the normal path and DMAs the read (`lastCmd=$90`,
+  `dmaBytes=3.8M`), dsBadPatch GONE, boot runs far past it, **26/26 gates green**
+  (incl. ncr53c96_test, scsi_boot_etalon, scsi_pdma_test, lcii_boot_etalon —
+  the DMA path and the LC II 5380 are untouched). Verified the read no longer
+  loops on block $51F08. The full investigation trail is kept below (UPDATE 1-4)
+  for the reasoning; the SIGNATURE candidate (#2) was the winner.
+
+  **Q6.6 — NEW CURRENT BLOCKER (2026-07-19, right after the Q6.5d fix): the boot
+  runs past the resource patches but then SPINS in the SCSI Manager completion
+  loop; the Finder is NOT reached.** State: `Q605_NOPRAM=1 q605_trace --disk
+  hdv/MacOS-8.1-boot.vhd --cycles 2600000000` → at clk 2.6 G pc is parked around
+  `$0011CD2C`/`$0011CD7E`, SCSI is FROZEN (reads=124262 writes=88070 selects=2497
+  commands=2491 dmaBytes=3827184 lastCmd=$90 — identical at 1.3 G and 2.6 G, so
+  NO new SCSI after ~1.3 G), and vec-10 (A-trap) fires ~109 618× (one per ~12 k
+  cyc — periodic, event/VBL-driven, not a tight spin). The hot loop is
+  `$00123BA8 jsr $11cd2c` → `$0011CD2C` → `$0011CD36 jsr $11f2b2` (reads SR,
+  `andi #$700; lsr #8` = current IPL) → `$0011CD3E cmpi.w #$1,D1; bhi $11cd58`
+  (defer if IPL>1) → `$0011CD44 movea.l $c0c.w,A0; tst.l ($c0,A0); bne` /
+  `$0011CD52 tst.w ($be,A0); beq $11cd7a` — a "run deferred SCSI completion
+  unless at interrupt level / device busy" check gated on the device record at
+  low-mem `$0C0C`. Reads as the SCSI Manager waiting for a completion/interrupt
+  that never arrives (SCSI already idle at 2491 cmds), OR the System/Finder init
+  polling. NEXT: (1) confirm whether it's a genuine spin (same PCs forever) vs
+  slow Toolbox progress — dump VRAM (q605_vram.raw) + low-mem to see if the
+  desktop is coming up; (2) if a spin, find what `($be,A0)`/`($c0,A0)` at
+  `$0C0C` waits on and which SCSI/interrupt event should clear it; (3) diff vs
+  MAME macqd605 at the same PC. Taps ready: Q605_PCLOG, Q605_SCSIALL, Q605_NEXUS.
+  Repro is deterministic with Q605_NOPRAM=1.
+
+  **[HISTORICAL — Q6.5d investigation trail, superseded by the fix above]**
+  **dsBadPatch root cause found = a stalled SCSI resource read, NOT a
+  patch/come-from problem.**
   The System loads and runs, but one boot resource fails to load → the ROM
   SysError draws a caution+Restart alert (no crash: 0 vec-4, 13 benign slot
   vec-2). DSErrCode $AF0 = 99 = dsBadPatch. Full chain traced (all confirmed):
@@ -1051,6 +1096,94 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   residual/actualCount read would be wrong; (c) the pseudo-DMA window ($10100) is
   byte-wide in Q605Memory but MAME's turboscsi_dma_r is 16-bit (dma16_swap_r,
   two halves → 32-bit) with restart_this_instruction DTACK-holdoff on !DRQ.
+
+  UPDATE (2026-07-19, later): the transfer is NOT rejected on a bad status —
+  at completion the SIM samples only GOOD interrupt causes (I_FUNCTION $08 then
+  I_DISCONNECT $20, reg4 $97→$90, no S_GROSS/S_PARITY) via its wait routine
+  `$0011E67E` (packs [reg3][reg4][reg7][reg5] into a word at ($1B4,A5); istatus
+  & $C7 ≠ 0 → error, istatus==0 → SysError(14); ours passes both). Yet after
+  clk 1219 M ONLY block $51F08 is read (16×, FS never advances to $51F09) —
+  a stuck retry, not progress. So the SIM believes the read SUCCEEDED at the
+  chip level but the File Manager's async read never COMPLETES: most likely the
+  **async-SIM completion continuation (the Q6.5b trampoline at ctx+$F0, installed
+  when DRQ was seen on the DMA-SELECT) is never invoked after our final
+  I_DISCONNECT**, so the FM request hangs → a watchdog re-issues it → 16 tries →
+  ioErr(-36) → memFullErr → dsBadPatch. This is the Q6.5b async-completion path,
+  not the data path. NEXT: trace whether that continuation runs after the
+  transaction's I_DISCONNECT (does the SIM's interrupt handler reach ctx+$F0?),
+  and which final interrupt cause the SIM waits on to fire FM completion — diff
+  our post-DISCONNECT istatus/seq sequence vs MAME ncr53c90. SIM engine map
+  (all RAM $0011xxxx): PIO byte engine = phase table `$0011AEC0`/`$0011AEB4`
+  (1 byte/CI_XFER $10 via reg2); a DMA-window path exists too (`$0011AE2A`
+  `move.w D0,($100,A3)` for DATA-OUT); state dispatch on ($1A6,A5) (2=select,
+  8=data at `$0011AD20`); wait/status-sample = `$0011E67E`; a select "fast path"
+  at `$0011ACFA` wants signature status $0A/reg7 $30/reg6 $C1 (ours: $81/$90/$04)
+  → not taken. The 6.3 M early reads use the ROM driver `$408Dxxxx` (programs
+  TC=512, CI_XFER $90 DMA, toggles Config1 bit7 via reg8) — a DIFFERENT driver.
+
+  UPDATE 3 (2026-07-19, deepest): two hypotheses ELIMINATED. (a) NOT an
+  ISR/async-completion problem: the SCSI ISR `$0011E996` never fires during the
+  read — the polled wait `$0011E67E` does `ori.w #$700,SR` (masks IRQ) and reads
+  istatus inline, so completion is handled inline, no continuation needed. (b)
+  NOT the `($8,A3)==$84` branch at `$00121B60`: that condition is CONSTANT ($84
+  every op from clk 572 M on, ~316 k cyc cadence) — it's the SCSI Manager 4.3
+  SIM's NORMAL per-command dispatch (nexus A3=$F010, SIM globals A4=$C0840, jump
+  table `$00121B02` on state ($88,A4); `$00121D48` sets state=4 and calls the SIM
+  action `($C,A4)`→`$0011A9C4`→ select), not a retry path. So: the SCSI
+  transaction genuinely SUCCEEDS and completes, yet the File Manager's `_Read`
+  returns ioErr(-36) (the -36 landed at ROM `$4081BA24`) and re-issues the same
+  block. Leading explanation now = a **timeout**: the async `_Read` starts the
+  slow PIO transfer (~295 k cyc ≈ the full ~316 k retry interval), an FM/SIM
+  watchdog expires DURING it and marks the request ioErr + re-issues; the old
+  read finishes into limbo, the new one starts — 16× then permanent ioErr.
+  BUT the retries are BACK-TO-BACK, not fixed-period (interval ~316 k cyc ≈ the
+  read's own ~295 k + ~8848 cyc processing), AND -36 is written to ResErr ONLY
+  ONCE (clk 1225361392), not per-retry. So the 16 re-reads each SUCCEED (512/512,
+  status $00) but do not SATISFY the resource-manager, which re-reads until a
+  16-try limit, then finally reports ioErr → the garbage-size _ReallocHandle →
+  memFullErr → dsBadPatch. So the real question is NOT "why ioErr" but **why 16
+  successful SCSI reads fail to deliver USABLE data to the resource-manager's
+  buffer.** Leading candidate: the data read via the PIO phase-engine
+  (`$0011B358 move.b ($20,A3),(A2)+`) lands at (A2)+ but the SIM reports a wrong
+  actualCount (or A2/buffer is wrong), so the File Manager copies 0 bytes up —
+  the resource's 4-byte length prefix reads back stale/garbage → garbage size.
+  Note tcounter_ is 0 for the non-DMA `$10` drain and the SIM programmed only
+  TC=2 (for the DMA-SELECT's 2-byte CDB tail), so any actualCount = requested −
+  residual(tcounter) computation would be wrong. NEXT: verify the 512 bytes
+  actually reach the resource-manager's buffer after one read (dump the buffer)
+  and find the SIM's actualCount/scDataResidual computation; the clean cure is
+  still to make this read use DMA like the ROM driver (TC=512 + CI_XFER $90 +
+  pseudo-DMA window) — trace SIM ExecIO `$0011A9C4` (jump table `($A0,A5,D0*4)`)
+  for the PIO-vs-DMA choice. Taps: Q605_PCLOG (gap PC path), Q605_NEXUS (nexus),
+  Q605_ISRFROM (late ISR window).
+
+  UPDATE 4 (2026-07-19, BREAKTHROUGH — the actual mechanism): **the SIM DISCARDS
+  all 512 data bytes — it never stores them to the buffer.** Confirmed by the new
+  Q605_PCLOG over the data phase: the per-byte loop is CI_XFER `$10` (`$0011B372`)
+  → wait (`$0011E616`/`$0011E67E`) → read the FIFO byte to D0 (`$0011AEEE
+  move.b ($20,A3),D0`) → `bra $0011AEB4` which IMMEDIATELY OVERWRITES D0 with the
+  state (`move.b ($1A6,A5),D0`) → dispatch. The byte is thrown away. The SIM's
+  STORE engine `$0011B34C`/`$0011B358` (`move.b ($20,A3),(A2)+`) is NEVER reached
+  in the whole data phase (grep empty over ~20 iterations; the only `(A2)+` seen
+  is `$408099B8`, the unrelated boot dispatcher). So the resource-manager's buffer
+  gets NOTHING → its 4-byte length prefix reads back stale/garbage (= block
+  $51F08's own first long $40661E20, huge) → `_ReallocHandle`(garbage) →
+  memFullErr; 16 futile re-reads → ioErr → dsBadPatch. THIS fully explains the
+  garbage size AND the retries. Dispatch: `$0011AEB4` switches on the state
+  ($1A6,A5) which is set to the SCSI phase&7 at `$0011E6E8` (=1 for DATA_IN) →
+  the DATA_IN case `$0011AEEA` is the DISCARD path. A store path exists
+  (`$0011B34C`); the SIM chose discard. FRONTIER now precise: **why does the SIM
+  route this DATA-IN to the discard engine instead of the store engine
+  `$0011B34C`?** — likely the request's buffer/byte-count for the transfer is 0
+  (so it drains-and-discards), or the state is wrong because the select "fast
+  path" that would set ($1A6,A5)=8 (`$0011AD1C`→`$0011D480`→`$0011AD20`) is gated
+  by a post-select chip SIGNATURE (`$0011ACFA`: status $0A / reg7 $30 / reg6 $C1)
+  our 53C96 does NOT produce (we give $81 / $90 / $04). NEXT: find where the
+  store-vs-discard is chosen (what sets the buffer ptr A2 + count for a WORKING
+  SIM read vs this one) and whether matching the post-select signature (or the
+  reg7 FIFO-count / seq values) flips it to the store engine. Compare a
+  known-good SIM read (if any deliver data) to this one; else diff vs MAME
+  ncr53c90 post-select register state.
 
   NOTE: the screen renders at a wrong (tiny) size because the DAFB video HLE is
   incomplete (Q8) — the alert is real, just mis-scaled; read it via the raw

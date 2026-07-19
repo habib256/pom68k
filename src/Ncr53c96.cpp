@@ -147,7 +147,7 @@ void Ncr53c96::reset() {
     dataOut_.clear(); dataOutExpected_ = 0;
     targetStatus_ = 0; msgInLeft_ = 0; dmaCommand_ = false;
     pendDelay_ = 0; pendBits_ = 0;       // latency_ itself survives (wiring)
-    selCdbWait_ = false;
+    selCdbWait_ = false; dataXfer_ = false;
 }
 
 // ── Register interface ──────────────────────────────────────────────────
@@ -191,10 +191,15 @@ uint8_t Ncr53c96::read(int reg) {
         // FIFO flags: low 5 bits = byte count, top 3 = seq step. In DATA IN the
         // payload is drained through dataIn_ (window/FIFO port), not the real
         // FIFO array, so report the pending count there (the driver's DMA loop
-        // gates its 16-byte bulk read on bit4 = "≥16 bytes ready", $408D1FAC).
+        // gates its 16-byte bulk read on bit4 = "≥16 bytes ready", $408D1FAC) —
+        // but ONLY once a DATA-phase CI_XFER has actually fetched bytes into the
+        // FIFO (dataXfer_). Before that (right after the SELECT, CDB already
+        // drained) the physical FIFO is empty, so report 0; else the OS 8.1 SCSI
+        // Manager's post-select check ($0011ADD4) sees phantom residue and
+        // routes the whole read to its DISCARD engine (Q6.5d dsBadPatch).
         case R_FLAGS: {
             uint32_t cnt = (phase_ == DATA_IN)
-                ? std::min<size_t>(dataIn_.size() - dataInPos_, 16)
+                ? (dataXfer_ ? std::min<size_t>(dataIn_.size() - dataInPos_, 16) : 0u)
                 : uint32_t(fifoPos_);
             v = uint8_t(cnt & 0x1F) | (uint8_t(seq_) << 5);
             break;
@@ -382,7 +387,7 @@ void Ncr53c96::runTarget() {
     dataIn_.clear(); dataInPos_ = 0;
     std::vector<uint8_t> none;
     targetStatus_ = disk_ ? disk_->command(cmd_.data(), int(cmd_.size()), dataIn_, none) : 0x02;
-    if (!dataIn_.empty()) { phase_ = DATA_IN; dataInPos_ = 0; }
+    if (!dataIn_.empty()) { phase_ = DATA_IN; dataInPos_ = 0; dataXfer_ = false; }
     else phase_ = STATUS;
 }
 
@@ -416,6 +421,7 @@ void Ncr53c96::transferInfo() {
             // has landed BEFORE it bulk-reads 16 bytes at a time ($408D1F7C →
             // $408D1FA2). Signal that here so the polled path unblocks.
             if (dataInPos_ < dataIn_.size()) {
+                dataXfer_ = true;         // FIFO now holds fetched payload (R_FLAGS)
                 status_ |= S_TC0;
                 // A completed Transfer Info raises the bus-service interrupt
                 // (ncr53c90.cpp:686 bus_complete). This fires for BOTH the DMA
