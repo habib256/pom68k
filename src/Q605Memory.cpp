@@ -4,6 +4,7 @@
 #include "Q605Memory.h"
 #include "Cpu040.h"
 #include "Moira.h"
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -58,11 +59,18 @@ void Q605Memory::reset() {
     scc_.reset();
     scsi_.reset();
     scc_.setCtsHigh(false);        // no serial debugger attached (POST check)
+    scc_.setAbortIdle(true);       // no LocalTalk peer — SDLC hunt streams the
+                                   // standing Break/Abort as a level-4 ext/status
+                                   // interrupt so OS 8.1's .MPP LAP carrier-sense
+                                   // sees "wire dead" and its send/receive times
+                                   // out instead of wedging (Q6.6; O6.10 on LC II)
     viaPhase_ = 0;
     tickAcc_ = 0;
     framePos_ = 0;
     vblState_ = false;
     sccIrq_ = false;
+    lapHeldCycles_ = 0;
+    lapWatchdog_ = getenv("POM68K_NO_LTALK_WD") == nullptr;   // Q6.6
 }
 
 void Q605Memory::busError(uint32_t addr, bool write) const {
@@ -298,7 +306,8 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
     if (base >= 0x0C000 && base < 0x0E000) {     // SCC, byte on D8-15
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
-        return d;
+        sccIrqLine(scc_.irqAsserted());          // reading RR0 / data can clear
+        return d;                                // or (re-)assert the level-4 line
     }
     if (base >= 0x0E000 && base < 0x10000) {     // MEMCjr regs
         // MAME memcjr_r (djmemc.cpp:181-190): every register reads back 0
@@ -358,7 +367,8 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
-        return;
+        sccIrqLine(scc_.irqAsserted());          // WR1/WR9/WR15 + Reset Ext/Status
+        return;                                  // change the pending interrupt
     }
     if (base >= 0x0E000 && base < 0x10000) {
         uint32_t idx = (base & 0x7F) >> 2;
@@ -530,6 +540,14 @@ void Q605Memory::tick(int cpuCycles) {
 
     cuda_.tick(cpuCycles);
 
+    // SCC open-line Break/Abort stream (Q6.6): on a machine with no LocalTalk
+    // peer the SDLC receiver keeps detecting aborts, so the level-4 ext/status
+    // interrupt must re-assert periodically — this is the carrier-sense signal
+    // OS 8.1's .MPP LAP sleeps on. A de-asserted SCC must also lower the line.
+    scc_.tick(cpuCycles);
+    if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }
+    localTalkWatchdog(cpuCycles);            // Q6.6 LAP unwedge
+
     // SCSI bus-service latency countdown (Q6.5b) → reflect the deferred IRQ
     // into the pseudo-VIA2 line when it lands.
     if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
@@ -564,4 +582,49 @@ void Q605Memory::tick(int cpuCycles) {
         prevLine_ = line;
         if (st != dafbIntStatus_) { dafbIntStatus_ = st; dafbRecalcIrq(); }
     }
+}
+
+// Q6.6 — HLE LocalTalk-LAP unwedge (Quadra / Mac OS 8.1 .MPP). See the header
+// note and V8Memory::localTalkWatchdog (O6.11, the LC II / System 7.5 twin).
+// With AppleTalk active and no LocalTalk peer, .MPP's AARP address-probe arms
+// an SDLC transmit and busy-waits on the transmit-in-progress byte in its
+// globals ($3A6) for a completion that, on real hardware, arrives when the SCC
+// finishes the frame; our level-4 SCC ISR streams the standing Break/Abort but
+// does not run the full .MPP transmit state machine, so the byte never clears.
+// Recognise the wedged send (byte held far longer than any real transmit) and
+// clear it: the wait routine ($1B7846) then re-checks for an ack, the retry
+// loop (D4=10) runs down with no responder, and the probe returns "no node
+// responded" — which for an AARP probe means the tentative address is FREE, the
+// good outcome. AppleTalk finishes coming up and the boot proceeds.
+//   AppleTalk globals: a2 = *(*(ExpandMem $2B6) + $70); the send flag is +$3A6.
+void Q605Memory::localTalkWatchdog(int cpuCycles) {
+    // Only while the LAP has LocalTalk live: Break/Abort IE armed on the SCC
+    // (WR15 bit 7) with master interrupts enabled (WR9 bit 3).
+    if (!lapWatchdog_ ||
+        (!(scc_.wr(0, 15) & 0x80) && !(scc_.wr(1, 15) & 0x80)) ||
+        (!(scc_.wr(0, 9) & 0x08) && !(scc_.wr(1, 9) & 0x08))) {
+        lapHeldCycles_ = 0;
+        return;
+    }
+    auto rd32 = [&](uint32_t a) {
+        return uint32_t(peek8(a)) << 24 | uint32_t(peek8(a + 1)) << 16
+             | uint32_t(peek8(a + 2)) << 8 | peek8(a + 3);
+    };
+    uint32_t xm = rd32(0x2B6);
+    if (xm < 0x1000 || xm >= 0xA00000) { lapHeldCycles_ = 0; return; }
+    uint32_t a2 = rd32(xm + 0x70);
+    if (a2 < 0x1000 || a2 >= 0xA00000) { lapHeldCycles_ = 0; return; }
+
+    if (peek8(a2 + 0x3A6) == 0) { lapHeldCycles_ = 0; return; }   // idle
+
+    // Held — a real SDLC frame transmits in microseconds; ~0.1 s (2.5M cycles
+    // at 25 MHz) with the abort stream running means the send is wedged.
+    lapHeldCycles_ += cpuCycles;
+    if (lapHeldCycles_ < 2'500'000) return;
+    lapHeldCycles_ = 0;
+    // Loud on purpose: pinned to ONE AppleTalk version's globals layout — if it
+    // ever fires against a different System the trace must say so.
+    std::fprintf(stderr, "[Q605] LocalTalk watchdog: releasing .MPP send flag "
+                 "at $%06X (POM68K_NO_LTALK_WD disables)\n", a2 + 0x3A6);
+    write8(a2 + 0x3A6, 0);                   // release the transmit-busy byte
 }

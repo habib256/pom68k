@@ -1010,27 +1010,78 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   loops on block $51F08. The full investigation trail is kept below (UPDATE 1-4)
   for the reasoning; the SIGNATURE candidate (#2) was the winner.
 
-  **Q6.6 — NEW CURRENT BLOCKER (2026-07-19, right after the Q6.5d fix): the boot
-  runs past the resource patches but then SPINS in the SCSI Manager completion
-  loop; the Finder is NOT reached.** State: `Q605_NOPRAM=1 q605_trace --disk
-  hdv/MacOS-8.1-boot.vhd --cycles 2600000000` → at clk 2.6 G pc is parked around
-  `$0011CD2C`/`$0011CD7E`, SCSI is FROZEN (reads=124262 writes=88070 selects=2497
-  commands=2491 dmaBytes=3827184 lastCmd=$90 — identical at 1.3 G and 2.6 G, so
-  NO new SCSI after ~1.3 G), and vec-10 (A-trap) fires ~109 618× (one per ~12 k
-  cyc — periodic, event/VBL-driven, not a tight spin). The hot loop is
-  `$00123BA8 jsr $11cd2c` → `$0011CD2C` → `$0011CD36 jsr $11f2b2` (reads SR,
-  `andi #$700; lsr #8` = current IPL) → `$0011CD3E cmpi.w #$1,D1; bhi $11cd58`
-  (defer if IPL>1) → `$0011CD44 movea.l $c0c.w,A0; tst.l ($c0,A0); bne` /
-  `$0011CD52 tst.w ($be,A0); beq $11cd7a` — a "run deferred SCSI completion
-  unless at interrupt level / device busy" check gated on the device record at
-  low-mem `$0C0C`. Reads as the SCSI Manager waiting for a completion/interrupt
-  that never arrives (SCSI already idle at 2491 cmds), OR the System/Finder init
-  polling. NEXT: (1) confirm whether it's a genuine spin (same PCs forever) vs
-  slow Toolbox progress — dump VRAM (q605_vram.raw) + low-mem to see if the
-  desktop is coming up; (2) if a spin, find what `($be,A0)`/`($c0,A0)` at
-  `$0C0C` waits on and which SCSI/interrupt event should clear it; (3) diff vs
-  MAME macqd605 at the same PC. Taps ready: Q605_PCLOG, Q605_SCSIALL, Q605_NEXUS.
-  Repro is deterministic with Q605_NOPRAM=1.
+  **Q6.6 — THREE consecutive post-Q6.5d hangs CLEARED (2026-07-19, commits
+  a0fa441 + bde6655); the boot now runs ~703 M → ~1.2 G cycles (SCSI 2491 →
+  3705 commands). Finder still not reached — new frontier below.** Each fix was
+  traced end-to-end with `Q605_NOPRAM=1 q605_trace` (deterministic repro) and
+  keeps all 26 gates green.
+
+  1. **Multi-block SCSI WRITE stalled after the first block** (`Ncr53c96::
+     dmaWrite`). The OS 8.1 SCSI Manager writes block-by-block: program
+     TC=$200, DMA-burst 512 B, wait S_INTERRUPT, repeat. dmaWrite raised the
+     bus-service IRQ only when the WHOLE `dataOutExpected_` payload was gathered,
+     so a 2-block WRITE(10) (LBA $8A1) stalled after 512 B → async write never
+     completed → SCSI Manager spun forever on ioResult in its deferred-task loop
+     `$00123BA6`/`$0011CD2C` (waits `($a0,A4)==1`; A4=$F010 IOPB, deferred-task
+     element A3=$EAB0 ready-bit `($48)` never set). Fix = per-TC-chunk IRQ
+     (mirror of the Q6.3 dmaRead fix), commit+STATUS only on the last byte.
+
+  2. **AppleTalk/LocalTalk LAP wedge** (`Q605Memory` SCC was UNWIRED). OS 8.1's
+     active .MPP AARP address-probe (`$001B7846` wait routine) armed an SDLC
+     transmit via the SCC (WR6/WR14) and busy-waited on its transmit flag
+     (`$3A6` in the AppleTalk globals `*(*($2B6)+$70)` = $1716A0 → $171A46) for a
+     completion the SCC never delivered — Q605Memory never called
+     `setAbortIdle`, never routed `sccIrqLine(scc_.irqAsserted())`, never
+     `scc_.tick()`. Fix = wire the SCC exactly like the LC II (O6.10) + a Quadra
+     `localTalkWatchdog()` (twin of V8Memory's) that clears the wedged send flag
+     so the probe times out (= address free = good). POM68K_NO_LTALK_WD disables.
+     XPRAM $13=$22 (SPConfig async) does NOT keep OS 8.1's .MPP from probing.
+
+  3. **Polled INQUIRY bus-scan never completed** (`Ncr53c96` DATA_IN→STATUS
+     timing). The SCSI Manager bus-scan runs POLLED (via2IER bit3=0, no ISR):
+     the discard-drain loop `$0011B2EE` does CI_XFER $10 per byte and services
+     completion at `$0011E616`→`$0011E686` (sets SIM flag `($5e,A3)` bit4) only
+     if the target is in STATUS — but that service runs BEFORE the FIFO byte
+     read, and our model only advanced to STATUS on the read, so the service
+     always saw DATA_IN → bit4 never set → the SIM sequencer (`$00121Axx`/
+     `$00122Dxx`, state `($88,A4)=$d`) spun forever after draining all 36 bytes.
+     Fix = a polled (non-DMA) Transfer Info that drains the tail now calls
+     `advanceToStatus()` at command time; R_FIFO re-keyed on `dataInPos_`.
+
+  **Q6.6 — FINDER REACHED (2026-07-20, Opus). Mac OS 8.1 boots to the Quadra
+  605 Finder desktop.** Two post-$40802A38 blockers cleared; `q605_trace` renders
+  the full desktop (menu bar 🍎/File/Edit/View/Special/Help, `Mac-8.1-US` boot
+  volume, Browse-the-Internet/Mail/Trash icons, gray-dither background) at clk
+  ~1.8 G, then idles (scsiCmds plateaus at 5973, Cuda 1-Hz ticks keep running).
+  Repro: `Q605_NOPRAM=1 q605_trace roms/mame/macqd605/ff7439ee.bin --disk
+  hdv/MacOS-8.1-boot.vhd --cycles 2000000000` → writes `q605_boot_1bpp.pbm`
+  (640×480 1bpp, rowBytes 1024, taken from the main GDevice PixMap).
+
+  1. **`$40802A38` MBState dialog = SysError(10) dsLineFErr (FPU trap).** The ROM
+     runs `fmove.l fpcr,D0` ($408E9AC0); our 68LC040-without-FPU trapped F-line
+     to the System's "no FP package" stub → SysError. MAME's `macqd605` oracle is
+     a *full* 68040 WITH FPU (macquadra605.cpp:158). Fix (`src/Cpu040.cpp`):
+     `setModel(M68040)` + `setFPUModel(M68882)`; `POM68K_Q605_NOFPU` restores the
+     bare 68LC040 (accurate to real hardware, but this System has no SANE FP
+     emulator so it never reaches the Finder). Advanced 3705 → 5363 SCSI cmds.
+
+  2. **SCSI SIM stall at 5363 cmds = a whole-block DMA-final-chunk that never
+     flipped the bus to STATUS (`src/Ncr53c96.cpp`).** A multi-block READ(10)
+     ($49E21, 22 blocks = 11264 B) is drained by the OS 8.1 SCSI Manager in a
+     "3 PIO bytes + a TC=509 DMA chunk" pattern per 512-byte block. Because the
+     payload ends exactly on a block boundary, the FINAL Transfer Info is that
+     DMA chunk (`$90`); on this PIO-mode device (select $42) it drains through
+     the register FIFO port (reg2), NOT `dmaRead()`. So `dmaRead()` never drove
+     the DATA→STATUS transition — only the last R_FIFO byte did, AFTER the SIM's
+     per-CI_XFER completion service (`$0011E686`) had already read reg4 and seen
+     DATA_IN → the SIM data-complete flag (`$5e,A3` bit4) never set and the
+     sequencer (`$00122A78`, state `$d`) spun forever. Fix = pre-advance to
+     STATUS at the last Transfer Info **regardless of the DMA flag** (was gated
+     `!dmaCommand_`, Q6.6 fix #3); `dmaRead()`, `updateDrq()` and `R_FLAGS` now
+     key on `dataInPos_` (not `phase_==DATA_IN`) so the ROM's pseudo-DMA read
+     loop (`$408D1FAC btst #4,($70,A3)`, ≥16-ready) keeps draining after the
+     pre-advance. All 26 gates green; deterministic. Advanced 5363 → 5973 cmds →
+     Finder.
 
   **[HISTORICAL — Q6.5d investigation trail, superseded by the fix above]**
   **dsBadPatch root cause found = a stalled SCSI resource read, NOT a
