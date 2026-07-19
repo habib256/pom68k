@@ -260,8 +260,15 @@ void Ncr53c96::startCommand(uint8_t c) {
         case CD_SELECT_ATN_STOP: selectTarget(true); break;
 
         case CD_ENABLE_SEL:
+            // Enable selection/reselection: MAME just command_pop_and_chain()
+            // — NO interrupt (ncr53c90.cpp:841). The Mac OS 8 SCSI Manager
+            // issues this to arm reselection handling after an async command;
+            // our old spurious I_FUNCTION mis-sequenced its interrupt-driven
+            // completion wait (Q6.5c). Chain silently.
+            break;
         case CD_DISABLE_SEL:
-            // Target-mode selection enable — never used as initiator.
+            // Disable selection/reselection: function_complete() (I_FUNCTION)
+            // then chain (ncr53c90.cpp:845).
             raiseIrq(I_FUNCTION);
             break;
 
