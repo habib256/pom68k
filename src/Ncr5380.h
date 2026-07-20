@@ -42,6 +42,8 @@ public:
     uint8_t dmaRead();
     void dmaWrite(uint8_t v);
     bool drqActive() const;          // A9 path routes to dma* only when set
+    // Mac II: IRQ → VIA2 CB2 (active low into the 6522). Plus ignores it.
+    bool irqAsserted() const { return irq_; }
 
     long reads = 0, writes = 0, selects = 0, commands = 0;   // debug counters
     long dmaBytes = 0;                       // data bytes handshaked out/in

@@ -68,8 +68,13 @@ uint32_t TobyVideo::read32(uint32_t slotOff) {
 void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
     uint32_t r = mapOff(slotOff);
     if (r >= 0xA0000 && r < 0xB0000) {
+        // MAME vbl_w: offset bit 2 selects disable (1) vs enable+ack (0).
         if (r & 4) vblDisable_ = true;
-        else { vblDisable_ = false; bus_.setSlotIrq(slot_, false); }
+        else {
+            vblDisable_ = false;
+            vblEnableWrites++;
+            bus_.setSlotIrq(slot_, false);
+        }
         return;
     }
     if (r >= 0x90000 && r < 0x90020) {
@@ -82,7 +87,16 @@ void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
         }
         return;
     }
-    write32(slotOff & ~3u, uint32_t(v) << 24);
+    if (r < kVramSize) {
+        size_t idx = r / 4;
+        if (idx >= vram_.size()) return;
+        const int sh = 24 - int(r % 4) * 8;
+        uint32_t w = vram_[idx];
+        w = (w & ~uint32_t(0xFFu << sh)) | (uint32_t(v) << sh);
+        vram_[idx] = w;
+        vramWrites++;
+        return;
+    }
 }
 
 void TobyVideo::write16(uint32_t slotOff, uint16_t v) {
@@ -92,6 +106,19 @@ void TobyVideo::write16(uint32_t slotOff, uint16_t v) {
 
 void TobyVideo::write32(uint32_t slotOff, uint32_t v) {
     uint32_t r = mapOff(slotOff);
+    // VBL enable/disable is byte-decoded; a long write still hits bit 2 of
+    // the address (MAME umask32 on vbl_w). Route before VRAM.
+    if (r >= 0xA0000 && r < 0xB0000) {
+        write8(slotOff, uint8_t(v >> 24));
+        return;
+    }
+    if (r >= 0x90000 && r < 0x90020) {
+        write8(slotOff, uint8_t(v >> 24));
+        write8(slotOff + 1, uint8_t(v >> 16));
+        write8(slotOff + 2, uint8_t(v >> 8));
+        write8(slotOff + 3, uint8_t(v));
+        return;
+    }
     if (r < kVramSize && (r & 3) == 0) {
         size_t idx = r / 4;
         if (idx < vram_.size()) vram_[idx] = v ^ 0xFFFFFFFFu;
@@ -107,6 +134,7 @@ void TobyVideo::tfbWrite(int reg, uint32_t data, uint32_t memMask) {
     data ^= 0xFFFFFFFFu;
     if (memMask == 0xFF000000u) data >>= 24;
     regs_[reg & 0xF] = uint8_t(data & 0xFF);
+    tfbWrites++;
     if ((reg & 0xF) == MISC2) calcScreenParams();
 }
 
@@ -129,12 +157,16 @@ void TobyVideo::vblPulse() {
 }
 
 void TobyVideo::tick(int cpuCycles) {
+    // Drive VBL at ~60.15 Hz in CPU cycles (Mac II = 15.6672 MHz), not
+    // raw pixel clocks — 800×525 as a cycle count undersampled IRQs.
+    constexpr int64_t kFrameCycles = 15667200 / 60;   // ≈ 261 120
     framePos_ += cpuCycles;
-    while (framePos_ >= kFrameTotal) {
-        framePos_ -= kFrameTotal;
+    while (framePos_ >= kFrameCycles) {
+        framePos_ -= kFrameCycles;
         vblPulse();
     }
-    vblLine_ = framePos_ >= kVblStart;
+    // Active-display vs blanking for the $D0000 sense port (any fraction).
+    vblLine_ = framePos_ >= (kFrameCycles * 480 / 525);
 }
 
 void TobyVideo::decode(std::vector<uint32_t>& out) const {

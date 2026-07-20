@@ -66,6 +66,9 @@ public:
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     bool overlay() const { return overlay_; }
     uint8_t nubusIrqState() const { return nubusIrqState_; }
+    long vblPulses() const { return vblPulses_; }
+    long tickCalls() const { return tickCalls_; }
+    long vblPulseNoIrq() const { return vblPulseNoIrq_; }
 
     void keyEvent(uint8_t code, bool down) { adbVia_.keyEvent(code, down); }
     void mouseMove(int dx, int dy) { adbVia_.mouseMove(dx, dy); }
@@ -80,6 +83,8 @@ private:
     void refreshVia2PortA();
     void nubusSlotIrq(int slot, bool active);
     void applyRamBank();
+    uint8_t* ramAt(uint32_t addr);
+    const uint8_t* ramAt(uint32_t addr) const;
     [[noreturn]] void busError() const;
     uint8_t scsiDma();
     void scsiDmaW(uint8_t v);
@@ -91,7 +96,7 @@ private:
     TobyVideo* toby_ = nullptr;
     AdbVia adbVia_;
     AdbBus adb_;
-    AscV8 asc_;
+    AscV8 asc_{0x00};   // Mac II discrete ASC (version $00), not V8
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
     Iwm iwm_;
@@ -102,11 +107,15 @@ private:
 
     uint32_t ramSize_;
     bool overlay_ = true;
-    uint8_t glueRamSize_ = 0xC0;
+    uint8_t glueRamSize_ = 0x00;             // MAME: via2_out_a(0x3f) → 0
     uint8_t nubusIrqState_ = 0x3F;
     bool sccIrq_ = false;
     bool via2Irq_ = false;
-    bool ascIrq_ = false;
+    bool via2Pb7_ = true;                    // last VIA2 PB7 level (→ VIA1 CA1)
     int viaPhase_ = 0;
     int64_t tickAcc_ = 0;
+    int64_t secAcc_ = 0;
+    long vblPulses_ = 0;
+    long tickCalls_ = 0;
+    long vblPulseNoIrq_ = 0;
 };

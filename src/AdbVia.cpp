@@ -129,23 +129,23 @@ void AdbVia::tick(int cpuCycles) {
         if (timer_ <= 0) {
             timer_ = 0;
             const uint8_t acrShift = (via_->acr() >> 2) & 7;
-            const bool shiftOut = (acrShift == 7);   // φ2 / ext out under T2?
-            // ACR shift modes used by Mac ADB: 110/111 = shift out under
-            // CB1 control; 010/011 = shift in under CB1.
+            // ACR 1xx = shift out (host→PIC), 0x1/0x2/0x3 = shift in (PIC→host)
             const bool hostToPic = (acrShift >= 4);
 
-            if (state_ == NEW && hostToPic)
+            if (state_ == NEW && hostToPic) {
+                // Wait until the host has actually loaded the SR (ROM often
+                // sets ST=NEW before writing the command byte).
+                if (!via_->srHostWritten()) { timer_ = kByteDelay; return; }
                 takeHostByte();
-            else if ((state_ == EVEN || state_ == ODD) && expectingListen_ && hostToPic)
+            } else if ((state_ == EVEN || state_ == ODD) && expectingListen_ && hostToPic) {
+                if (!via_->srHostWritten()) { timer_ = kByteDelay; return; }
                 takeHostByte();
-            else if ((state_ == EVEN || state_ == ODD) && !expectingListen_)
+            } else if ((state_ == EVEN || state_ == ODD) && !expectingListen_)
                 pushDeviceByte();
             else if (state_ == NEW && !hostToPic) {
-                // Throwaway / status read on NEW — still complete a shift.
                 via_->raiseShift();
                 irqPending_ = true;
             }
-            (void)shiftOut;
         }
     }
     applyIrqToVia();

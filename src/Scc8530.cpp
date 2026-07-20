@@ -9,10 +9,11 @@ void Scc8530::reset() {
     ptr_ = 0;
 }
 
-// RR0 external status: bit 3 = DCD level, bit 5 = CTS, bit 2 = TxD empty,
-// bit 7 = Break/Abort (standing on an open LocalTalk line, O6.10).
+// RR0 external status: bit 0 = Rx char available, bit 3 = DCD level,
+// bit 5 = CTS, bit 2 = TxD empty, bit 7 = Break/Abort.
 uint8_t Scc8530::rr0(const Chan& c) const {
-    return uint8_t((c.dcd ? 0x08 : 0x00) | 0x04 | (ctsHigh_ ? 0x20 : 0x00)
+    return uint8_t((rxStanding_ ? 0x01 : 0x00)
+                   | (c.dcd ? 0x08 : 0x00) | 0x04 | (ctsHigh_ ? 0x20 : 0x00)
                    | (abortIdle_ ? 0x80 : 0x00));
 }
 

@@ -41,10 +41,17 @@ bool NuBus::decode(uint32_t addr, int& slot, uint32_t& off, bool super) const {
         if (addr < 0x90000000u || addr >= 0xF0000000u) return false;
         slot = kFirstSlot + int((addr - 0x90000000u) / kSuperSlotSize);
         off = (addr - superSlotBase(slot)) & (kSuperSlotSize - 1);
-    } else {
-        if (addr < 0xF9000000u || addr >= 0xFF000000u) return false;
+    } else if (addr >= 0xF9000000u && addr < 0xFF000000u) {
+        // 32-bit slot space Fs000000 (16 MB per slot)
         slot = kFirstSlot + int((addr - 0xF9000000u) / kSlotSize);
         off = (addr - slotBase(slot)) & (kSlotSize - 1);
+    } else if (addr >= 0x00900000u && addr < 0x00F00000u) {
+        // 24-bit classic NuBus: $s00000-$sFFFFF for slots $9-$E (AMU/HMMU
+        // presents these; Mac II ROM Primary Init often uses them).
+        slot = int(addr >> 20);
+        off = addr & 0xFFFFFu;
+    } else {
+        return false;
     }
     return slot >= kFirstSlot && slot <= kLastSlot && slots_[slot].dev;
 }

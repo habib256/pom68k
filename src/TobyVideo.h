@@ -29,6 +29,11 @@ public:
     void write32(uint32_t slotOff, uint32_t v) override;
     void tick(int cpuCycles) override;
 
+    const std::array<uint8_t, 16>& regs() const { return regs_; }
+    bool vblDisabled() const { return vblDisable_; }
+    long vblEnableWrites = 0;            // diagnostic: count of enable-side writes
+    long tfbWrites = 0;
+    long vramWrites = 0;
     uint8_t mode() const { return mode_; }
     int hres() const { return hres_; }
     int vres() const { return vres_; }

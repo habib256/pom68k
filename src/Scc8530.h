@@ -27,6 +27,9 @@ public:
     // Q5: the Quadra POST reads CTS as "serial debugger attached" — the
     // LC 475 machine pulls it low; the LC II keeps the historic high.
     void setCtsHigh(bool v) { ctsHigh_ = v; }
+    // Optional standing Rx (RR0 bit 0). Mac II POST does NOT need this when
+    // GLUE RAM banking is correct; kept for targeted SCC experiments.
+    void setRxStanding(bool on) { rxStanding_ = on; }
     void reset();
 
     // Bus access: channel 0 = B, 1 = A; ctl/data per address decode.
@@ -79,5 +82,6 @@ private:
     int ptr_ = 0;                    // register pointer (WR0 low bits)
     bool abortIdle_ = false;         // open-line Break/Abort (LC II)
     bool ctsHigh_ = true;
+    bool rxStanding_ = false;        // Mac II POST: standing Rx available
     static constexpr int kAbortRelatch = 2000;   // ≈130 µs @ 15.67 MHz
 };

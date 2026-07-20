@@ -25,6 +25,9 @@ public:
     static constexpr int kSampleRate = 22257;
     static constexpr int64_t kCpuHz = 15667200;
 
+    // Mac II discrete ASC reports version $00; V8 (LC II) reports $E8.
+    explicit AscV8(uint8_t version = 0xE8) : version_(version) {}
+
     void reset();
 
     // Bus access, offset = byte offset inside the $F14000-$F15FFF window
@@ -61,12 +64,16 @@ private:
     }
 
     uint8_t fifo_[0x400] = {};
+    uint8_t fifoB_[0x400] = {};              // classic ASC channel B
     uint16_t rd_ = 0, wr_ = 0;
+    uint16_t wrB_ = 0;
     int cap_ = 0;
+    int capB_ = 0;
     uint8_t regs_[0x20] = {};                // sparse classic regs ($800+)
     uint8_t fifoStat_ = STAT_EMPTY_OR_FULL_A;
     bool irq_ = false;
     int64_t drainAcc_ = 0;
+    uint8_t version_ = 0xE8;
 
     static constexpr int kOutSize = 8192;    // power of two
     int16_t out_[kOutSize] = {};

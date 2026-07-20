@@ -2,12 +2,16 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Asc.h"
+#include <cstring>
 
 void AscV8::reset() {
     rd_ = wr_ = 0;
-    cap_ = 0;
+    wrB_ = 0;
+    cap_ = capB_ = 0;
     for (auto& r : regs_) r = 0;
-    fifoStat_ = STAT_EMPTY_OR_FULL_A;        // FIFO A empty (asc.cpp:755-761)
+    std::memset(fifo_, 0, sizeof fifo_);
+    std::memset(fifoB_, 0, sizeof fifoB_);
+    fifoStat_ = STAT_EMPTY_OR_FULL_A;
     drainAcc_ = 0;
     outRd_ = outWr_ = 0;
     setIrq(false);
@@ -22,18 +26,29 @@ uint8_t AscV8::read(uint32_t offset) {
 }
 
 uint8_t AscV8::readReg(uint32_t offset) {
-    if (offset < 0x800) return 0;            // FIFO space reads nothing useful
+    // Classic ASC (Mac II): FIFO windows are memory-mapped (MAME asc_base
+    // read). V8 returns 0 for FIFO space — ROM POST never peeks them.
+    if (offset < 0x400) {
+        if (version_ == 0xE8) return 0;
+        return fifo_[offset & 0x3FF];
+    }
+    if (offset < 0x800) {
+        if (version_ == 0xE8) return 0;
+        return fifoB_[(offset - 0x400) & 0x3FF];
+    }
 
     switch (offset - 0x800) {
-    case 0x00: return 0xE8;                  // version (get_version)
-    case 0x01:                               // mode: forced 1 (FIFO)
+    case 0x00: return version_;              // version (get_version)
+    case 0x01:                               // mode
+        return (version_ == 0xE8) ? 1 : regs_[0x01];
     case 0x02:                               // control
+        return (version_ == 0xE8) ? 1 : regs_[0x02];
     case 0x03:                               // fifo mode
-        return 1;
+        return (version_ == 0xE8) ? 1 : regs_[0x03];
     case 0x05:                               // wavetable control
     case 0x07:                               // clock
     case 0x08:                               // "batman" control
-        return 0;
+        return (version_ == 0xE8) ? 0 : regs_[offset - 0x800];
     case 0x04:                               // FIFO status
         // reading clears the IRQ, but only when no longer half-empty —
         // the LEVEL behaviour System 7 depends on (asc.cpp:858-866)
@@ -50,12 +65,19 @@ void AscV8::write(uint32_t offset, uint8_t v) {
     offset &= 0xFFF;
     if (onWrite) onWrite(offset, v);                 // diagnostic tap (off by default)
 
-    if (offset >= 0x400 && offset < 0x800) return;   // FIFO B: mono, ignored
+    if (offset >= 0x400 && offset < 0x800) {
+        // FIFO B: V8 mono ignores; classic ASC (Mac II) is stereo-capable.
+        if (version_ == 0xE8) return;
+        fifoB_[wrB_ & 0x3FF] = v;
+        wrB_ = (wrB_ + 1) & 0x3FF;
+        if (capB_ < 0x400) capB_++;
+        return;
+    }
 
     if (offset < 0x400) {                    // FIFO A push
-        if (cap_ < 0x400) {                  // drop writes past FULL (don't
-            fifo_[wr_] = v;                  // overwrite the oldest unread byte
-            wr_ = (wr_ + 1) & 0x3FF;         // + stall wr_/cap_, like MAME)
+        if (cap_ < 0x400) {
+            fifo_[wr_] = v;
+            wr_ = (wr_ + 1) & 0x3FF;
             cap_++;
         }
         if (cap_ >= 0x200) {
@@ -70,7 +92,10 @@ void AscV8::write(uint32_t offset, uint8_t v) {
 
     switch (offset - 0x800) {
     case 0x01: case 0x02: case 0x05: case 0x07: case 0x08:
-        return;                              // read-only / no-op on V8
+        // V8: read-only / no-op. Classic ASC ($00): mode/control are writable.
+        if (version_ == 0xE8) return;
+        if (offset - 0x800 < 0x20) regs_[offset - 0x800] = v;
+        return;
     default:
         if (offset == 0xE00) {               // test hook: force status + IRQ
             fifoStat_ |= 0x0F;

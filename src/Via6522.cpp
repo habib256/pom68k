@@ -10,6 +10,7 @@ void Via6522::reset() {
     t1_ = t2_ = 0; t1latch_ = 0; t2ll_ = 0;
     t1armed_ = t2armed_ = false;
     srHostWritten_ = false;
+    cb1_ = cb2_ = true;
 }
 
 // T1: sets IFR6 on underflow; free-run mode (ACR6) reloads from the latch
@@ -37,6 +38,20 @@ bool Via6522::tick(int n) {
         }
     }
     return hit;
+}
+
+void Via6522::setCb1(bool level) {
+    if (level == cb1_) return;
+    const bool fell = cb1_ && !level;
+    cb1_ = level;
+    if (fell) setIfr(CB1);
+}
+
+void Via6522::setCb2(bool level) {
+    if (level == cb2_) return;
+    const bool fell = cb2_ && !level;
+    cb2_ = level;
+    if (fell) setIfr(CB2);
 }
 
 uint8_t Via6522::read(int reg) {
@@ -80,7 +95,8 @@ void Via6522::write(int reg, uint8_t v) {
         case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); srHostWritten_ = true; break;
         case ACR:    acr_ = v; break;
         case PCR:    pcr_ = v; break;
-        case IFR:    ifr_ &= uint8_t(~(v & 0x7F)); break;   // write-1-to-clear
+        case IFR:    if (v & CA1) ++ca1Cleared;
+                     ifr_ &= uint8_t(~(v & 0x7F)); break;   // write-1-to-clear
         case IER:    if (v & 0x80) ier_ |= (v & 0x7F); else ier_ &= uint8_t(~(v & 0x7F)); break;
     }
 }

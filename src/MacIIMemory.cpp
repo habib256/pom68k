@@ -11,9 +11,10 @@ MacIIMemory::~MacIIMemory() { delete toby_; }
 MacIIMemory::MacIIMemory(uint32_t ramSize)
     : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize) {
     adbVia_.attach(via1_, adb_);
+    // MAME mac_asc_irq: VIA2 CB1 = !asc_irq (active-low into the 6522).
     asc_.onIrq = [this](bool s) {
-        ascIrq_ = s;
-        via2Irq_ = ascIrq_ || via2_.irqAsserted();
+        via2_.setCb1(!s);
+        via2Irq_ = via2_.irqAsserted();
         updateIrq();
     };
     nubus_.setIrqCallback([this](int slot, bool active) { nubusSlotIrq(slot, active); });
@@ -52,13 +53,16 @@ bool MacIIMemory::installTobyVideo(const std::string& declRomPath) {
 
 void MacIIMemory::reset() {
     overlay_ = true;
-    glueRamSize_ = 0xC0;
+    // MAME m_glue_ram_size starts 0; overlay-clear calls via2_out_a(0x3f)
+    // which stores (0x3f & 0xc0) == 0 → bank B at 1 MiB.
+    glueRamSize_ = 0x00;
     nubusIrqState_ = 0x3F;
     sccIrq_ = false;
     via2Irq_ = false;
-    ascIrq_ = false;
+    via2Pb7_ = true;
     viaPhase_ = 0;
     tickAcc_ = 0;
+    secAcc_ = 0;
     via1_.reset();
     via2_.reset();
     rtc_.reset();
@@ -71,15 +75,38 @@ void MacIIMemory::reset() {
     iwm_.attachDrive(&drive_, nullptr);
     drive_.reset();
     scc_.reset();
+    // Mac II POST probes RR0 &$70 (Sync/CTS/TxU); CTS high looks like a
+    // serial debugger (same Q5 Quadra note) — pull it low like the LC 475.
+    scc_.setCtsHigh(false);
+    // No standing Rx: D7=$…0005 in the diagnostic console means the RAM
+    // sizing probe failed first; fixing glue/mirrors exits that path.
     if (toby_) toby_->reset();
     via1_.setInA(0x81);
     via1_.setInB(0xCF);
+    via2_.setInB(0xCF);                      // MAME via2_in_b
+    via2_.setCb1(true);
+    via2_.setCb2(true);
     refreshVia2PortA();
 }
 
 void MacIIMemory::applyRamBank() {
-    // GLUE RAM banking via VIA2 PA6-7 (macii.cpp via2_out_a) — functional stub:
-    // all RAM visible at $0 for ≤8 MB configs.
+    // GLUE PA6-7 select bank-B window (macii.cpp via2_out_a). Physical RAM
+    // stays contiguous at $0; mirrors beyond ramSize_ are handled in ramAt().
+}
+
+// MAME via2_out_a for 8 MiB: asize=4 MiB mirrored at [memsize, memsize+asize).
+uint8_t* MacIIMemory::ramAt(uint32_t addr) {
+    if (addr < ramSize_) return &ram_[addr];
+    if (ramSize_ == 0x800000 && addr < 0x00C00000u)
+        return &ram_[addr - 0x800000];       // 8–12 MiB → bank A[0–4 MiB)
+    return nullptr;
+}
+
+const uint8_t* MacIIMemory::ramAt(uint32_t addr) const {
+    if (addr < ramSize_) return &ram_[addr];
+    if (ramSize_ == 0x800000 && addr < 0x00C00000u)
+        return &ram_[addr - 0x800000];
+    return nullptr;
 }
 
 void MacIIMemory::nubusSlotIrq(int slot, bool active) {
@@ -117,7 +144,7 @@ void MacIIMemory::busError() const {
 
 int MacIIMemory::iplLevel() const {
     if (sccIrq_) return 4;
-    if (via2Irq_ || via2_.irqAsserted() || ascIrq_) return 2;
+    if (via2Irq_ || via2_.irqAsserted()) return 2;
     if (via1_.irqAsserted()) return 1;
     return 0;
 }
@@ -145,13 +172,33 @@ bool MacIIMemory::isIo(uint32_t addr, uint32_t& off) const {
 uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_t v,
                                 bool isVia1) {
     viaSync();
-    int reg = (addr >> 8) & 0xF;
+    // MAME via_r: word_offset >> 8 ≡ byte_offset >> 9 ($200 register stride,
+    // same as Mac Plus / V8). Using >> 8 on byte offsets mis-routed ORA_NH
+    // ($1E00) into IER and left ROM overlay stuck on.
+    int reg = (addr >> 9) & 0xF;
     if (write) {
         if (reg == Via6522::ORA || reg == Via6522::ORA_NH || reg == Via6522::DDRA) {
             via.write(reg, uint8_t(v & 0xFF));
             if (isVia1) {
-                overlay_ = (via.portA() & 0x10) != 0;
-                iwm_.setSel((via.portA() & 0x20) != 0);
+                // MAME via_out_a(data): overlay from the PA write data bit,
+                // not floating inputs (DDRA may still mark the pin as input).
+                if (reg == Via6522::ORA || reg == Via6522::ORA_NH)
+                    overlay_ = (v & 0x10) != 0;
+                else
+                    overlay_ = (via.portA() & 0x10) != 0;
+                iwm_.setSel((reg == Via6522::ORA || reg == Via6522::ORA_NH)
+                            ? (v & 0x20) != 0
+                            : (via.portA() & 0x20) != 0);
+                // MAME set_memory_overlay(0): via2_out_a(0x3f) → glue &= $C0 == 0.
+                if (!overlay_) {
+                    glueRamSize_ = 0x00;
+                    refreshVia2PortA();
+                }
+            } else if (reg == Via6522::ORA || reg == Via6522::ORA_NH) {
+                // MAME via2_out_a(data): glue from the written byte, not portA().
+                glueRamSize_ = uint8_t(v & 0xC0);
+                applyRamBank();
+                refreshVia2PortA();
             } else {
                 glueRamSize_ = uint8_t(via.portA() & 0xC0);
                 applyRamBank();
@@ -168,6 +215,14 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
             rtc_.setLines((via.portB() & 0x04) != 0,
                           (via.portB() & 0x02) != 0,
                           (via.portB() & 0x01) != 0);
+        } else if (reg == Via6522::ORB || reg == Via6522::DDRB) {
+            // MAME via2_out_b: PB7 level chains into VIA1 CA1 (60.15 Hz).
+            const bool pb7 = (via.portB() & 0x80) != 0;
+            if (pb7 != via2Pb7_) {
+                via2Pb7_ = pb7;
+                if (!pb7) via1_.raiseCa1();
+                updateIrq();
+            }
         }
         if (!isVia1 && reg == Via6522::IFR)
             via2Irq_ = via.irqAsserted();
@@ -199,7 +254,7 @@ uint8_t MacIIMemory::read8(uint32_t addr) {
             if (addr < kRomSize) return rom_[addr];
             return 0xFF;
         }
-        if (addr < ramSize_) return ram_[addr];
+        if (const uint8_t* p = ramAt(addr)) return *p;
         return 0xFF;
     }
     if (addr >= 0x40000000u && addr < 0x50000000u)
@@ -227,20 +282,26 @@ uint8_t MacIIMemory::read8(uint32_t addr) {
         if (ioOff == 0x6000 || ioOff == 0x6060 || ioOff == 0x12000)
             return scsiDma();
         if (ioOff >= 0x10000 && ioOff < 0x12000) {
-            int reg = (ioOff >> 3) & 7;
-            if (reg == 6 && (ioOff & 0x30) == 0x30) return scsiDma();
+            // MAME scsi_r: reg = (word_offset >> 3) & 0xf ≡ byte_off >> 4.
+            const uint32_t rel = ioOff - 0x10000;
+            int reg = (rel >> 4) & 7;
+            // pseudo-DMA read: word offset $130 → byte $260 into the window
+            if (reg == 6 && rel == 0x260) return scsiDma();
             return scsi_.read(reg);
         }
         if (ioOff >= 0x14000 && ioOff < 0x16000)
             return asc_.read(ioOff - 0x14000);
         if (ioOff >= 0x16000 && ioOff < 0x18000) {
             if (cpu_) cpu_->stall(5);
-            return iwm_.read((ioOff >> 8) & 0xF);
+            return iwm_.read((ioOff >> 9) & 0xF);
         }
         return 0xFF;                             // open bus (map probe)
     }
 
     if (addr >= 0x90000000u && addr < 0xFF000000u)
+        return nubus_.read8(addr);
+    // 24-bit NuBus slot window $s00000 (s=$9..$E)
+    if (addr >= 0x00900000u && addr < 0x00F00000u)
         return nubus_.read8(addr);
     return 0xFF;                                 // unmapped: open bus
 }
@@ -265,7 +326,7 @@ uint16_t MacIIMemory::read16(uint32_t addr) {
 void MacIIMemory::write8(uint32_t addr, uint8_t v) {
     if (addr < 0x40000000u) {
         if (overlay_) return;
-        if (addr < ramSize_) ram_[addr] = v;
+        if (uint8_t* p = ramAt(addr)) *p = v;
         return;
     }
     if (addr >= 0x40000000u && addr < 0x50000000u) return;
@@ -293,8 +354,10 @@ void MacIIMemory::write8(uint32_t addr, uint8_t v) {
             scsiDmaW(v); return;
         }
         if (ioOff >= 0x10000 && ioOff < 0x12000) {
-            int reg = (ioOff >> 3) & 7;
-            if (reg == 0 && (ioOff & 0x100) == 0x100) { scsiDmaW(v); return; }
+            const uint32_t rel = ioOff - 0x10000;
+            int reg = (rel >> 4) & 7;
+            // pseudo-DMA write: word offset $100 → byte $200 into the window
+            if (reg == 0 && rel == 0x200) { scsiDmaW(v); return; }
             scsi_.write(reg, v);
             return;
         }
@@ -303,13 +366,17 @@ void MacIIMemory::write8(uint32_t addr, uint8_t v) {
         }
         if (ioOff >= 0x16000 && ioOff < 0x18000) {
             if (cpu_) cpu_->stall(5);
-            iwm_.write((ioOff >> 8) & 0xF, v);
+            iwm_.write((ioOff >> 9) & 0xF, v);
             return;
         }
         return;                                    // open bus
     }
 
     if (addr >= 0x90000000u && addr < 0xFF000000u) {
+        nubus_.write8(addr, v);
+        return;
+    }
+    if (addr >= 0x00900000u && addr < 0x00F00000u) {
         nubus_.write8(addr, v);
         return;
     }
@@ -334,21 +401,34 @@ void MacIIMemory::write16(uint32_t addr, uint16_t v) {
 }
 
 uint8_t MacIIMemory::peek8(uint32_t addr) const {
-    if (addr < ramSize_ && !overlay_) return ram_[addr];
+    if (!overlay_) {
+        if (const uint8_t* p = ramAt(addr)) return *p;
+    }
     if (addr >= 0x40000000u && addr < 0x50000000u)
         return rom_[(addr - 0x40000000u) & (kRomSize - 1)];
     return 0xFF;
 }
 
 void MacIIMemory::tick(int cpuCycles) {
+    tickCalls_++;
     viaPhase_ += cpuCycles;
     int t = viaPhase_ / 20;
     viaPhase_ %= 20;
     if (t) {
         if (via1_.tick(t)) updateIrq();
-        if (via2_.tick(t)) { via2Irq_ = true; updateIrq(); }
+        via2_.tick(t);
+        // Only IER-enabled IFR bits raise IPL (MAME via6522). A sticky
+        // via2Irq_=true on any T1 underflow with IER empty pinned IPL at 2
+        // and starved the VIA1 VBL path the $6DD8 wait needs.
+        via2Irq_ = via2_.irqAsserted();
+        if (via2Irq_) updateIrq();
     }
     adbVia_.tick(cpuCycles);
+    asc_.tick(cpuCycles);
+    // MAME scsi_irq → VIA2 CB2 active-low (write_cb2(state ^ 1)).
+    via2_.setCb2(!scsi_.irqAsserted());
+    via2Irq_ = via2_.irqAsserted();
+    updateIrq();
     iwm_.tick(cpuCycles);
     drive_.tick(cpuCycles);
     int stepped = mouse_.tick(cpuCycles);
@@ -363,6 +443,16 @@ void MacIIMemory::tick(int cpuCycles) {
     tickAcc_ += cpuCycles;
     if (tickAcc_ >= kCpuHz / 60) {
         tickAcc_ -= kCpuHz / 60;
+        // Prefer VIA2 PB7→VIA1 CA1 when the ROM has armed that path; otherwise
+        // pulse CA1 directly so VBL still arrives (MAME scanline / via2_out_b).
+        via1_.raiseCa1();
+        vblPulses_++;
+        if (!via1_.irqAsserted()) ++vblPulseNoIrq_;
+        updateIrq();
+    }
+    secAcc_ += cpuCycles;
+    if (secAcc_ >= kCpuHz) {
+        secAcc_ -= kCpuHz;
         rtc_.tickSecond();
         via1_.raiseCa2();
         updateIrq();

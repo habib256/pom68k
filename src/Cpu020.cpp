@@ -29,6 +29,11 @@ void Cpu020::runUntil(moira::i64 clockTarget) {
 
 void Cpu020::updateIpl() {
     setIPL(moira::u8(mem_.iplLevel()));
+    // Moira checkForIrq() samples reg.ipl (last POLL_IPL), not the pin.
+    // Peripheral updates often land between instructions; force a poll so a
+    // newly raised VIA1 CA1 is visible on the next CHECK_IRQ (Mac II POST
+    // $6DD8 VBL wait was starving with pin=1 / reg.ipl=0).
+    pollIpl();
 }
 
 void Cpu020::stall(int cycles) {
