@@ -59,10 +59,9 @@ public:
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
-        // Mac II ROM scans IDs 7→0 with multi-second BSY waits on empty
-        // targets ($40826CC0). Mirror the boot volume on every ID so the
-        // scan does not stall; StartBoot still dedupes via $B2E once a
-        // driver is installed for an ID.
+        // Mirror on every ID so StartBoot's 7→0 scan does not burn multi-
+        // second BSY waits on empty targets ($40826CC0). Deduping is left
+        // to the ROM ($B2E); we still prefer a single open image.
         for (int i = 0; i < 7; i++)
             scsi_.attach(&scsiDisks_[id], i);
         return true;

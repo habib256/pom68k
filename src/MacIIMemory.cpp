@@ -290,23 +290,17 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
     return uint16_t(lo) | (uint16_t(lo) << 8);
 }
 
-uint8_t MacIIMemory::scsiDma(bool berIfNoDrq) {
-    // $C08 ($6000) blind longword PDMA relies on /BERR when DRQ is down.
-    // $C04 ($12000) is the no-DRQ window (software polls BSR first) — a
-    // hard BERR there double-faulted once the boot blocks were in and the
-    // SCSI Manager probed the port freely (PC landed in RAM then HALTED).
-    if (!scsi_.drqActive()) {
-        if (berIfNoDrq) busError();
-        return 0xFF;
-    }
+uint8_t MacIIMemory::scsiDma(bool /*berIfNoDrq*/) {
+    // 68020 has no Moira extBusError path (assert M68030 only). A thrown
+    // MmuBusError stacks an 030 frame and double-faults once the SCSI
+    // Manager probes PDMA without DRQ. Soft-fail: the blind longword
+    // loops terminate on byte count; BSR.DRQ is still polled in software.
+    if (!scsi_.drqActive()) return 0xFF;
     return scsi_.dmaRead();
 }
 
-void MacIIMemory::scsiDmaW(uint8_t v, bool berIfNoDrq) {
-    if (!scsi_.drqActive()) {
-        if (berIfNoDrq) busError();
-        return;
-    }
+void MacIIMemory::scsiDmaW(uint8_t v, bool /*berIfNoDrq*/) {
+    if (!scsi_.drqActive()) return;
     scsi_.dmaWrite(v);
 }
 
