@@ -55,7 +55,18 @@ void Q605Memory::reset() {
     std::memset(memcjr_, 0, sizeof memcjr_);
     std::memset(dafb_, 0, sizeof dafb_);
     std::memset(iosbRegs_, 0, sizeof iosbRegs_);
+    std::memset(clut_, 0, sizeof clut_);
     dafbHolding_ = 0;
+    dafbIntStatus_ = 0;
+    swatchIntEnable_ = 0;
+    dafbCursorLine_ = 0;
+    palAddress_ = palIdx_ = 0;
+    ac842Pbctrl_ = pcbr1_ = 0;
+    dafbBase_ = 0;
+    dafbStride_ = 1024;
+    dafbConfig_ = 0;
+    dafbMode_ = 0;
+    prevLine_ = 0;
     via1_.reset();
     cuda_.reset();
     scc_.reset();
@@ -215,6 +226,10 @@ uint32_t Q605Memory::dafbRegRead(uint32_t off) {
 uint32_t Q605Memory::dafbRegReadRaw(uint32_t off) {
     switch (off & 0x3FC) {
         // main ($000): dafb_r
+        case 0x00: return (dafbBase_ >> 9) & 0xFFF;
+        case 0x04: return (dafbBase_ >> 5) & 0x0F;
+        case 0x08: return dafbStride_ >> 2;       // stride in 32-bit words
+        case 0x10: return dafbConfig_;
         case 0x1C:
             // inverse of monitor sense — 13" RGB 640×480 = plain code 6
             return 6u ^ 7u;
@@ -252,10 +267,23 @@ void Q605Memory::dafbRegWrite(uint32_t off, uint32_t v) {
     if ((off & 0x3FC) < 0x200) {
         v = (v & 0x3f) | uint32_t(dafbHolding_);
         dafbHolding_ = 0;
+        v &= 0xFFF;                              // 12-bit DAFB register port
     }
     uint32_t idx = (off >> 2) & 0xFF;
     dafb_[idx] = v;
     switch (off & 0x3FC) {
+        case 0x00:
+            dafbBase_ = (dafbBase_ & 0x1E0) | ((v & 0xFFF) << 9);
+            break;
+        case 0x04:
+            dafbBase_ = (dafbBase_ & ~0x1E0u) | ((v & 0x0F) << 5);
+            break;
+        case 0x08:
+            dafbStride_ = v << 2;                 // register is 32-bit words
+            break;
+        case 0x10:
+            dafbConfig_ = uint16_t(v);
+            break;
         case 0x104:                              // Swatch int enable
             swatchIntEnable_ = v;
             if (!(v & 1)) dafbIntStatus_ &= ~1u;
@@ -273,8 +301,20 @@ void Q605Memory::dafbRegWrite(uint32_t off, uint32_t v) {
         case 0x220:                              // Antelope PCBR0/PCBR1
             if (palAddress_ == 1 && (ac842Pbctrl_ & 0x06) == 0x06)
                 pcbr1_ = uint8_t(v & 0xF0) | 0x02;   // Antelope version ID
-            else
+            else {
                 ac842Pbctrl_ = uint8_t(v);
+                if ((pcbr1_ & 0xC0) == 0xC0 && (ac842Pbctrl_ & 0x06) == 0x06) {
+                    dafbMode_ = 5;                // Antelope x555
+                } else {
+                    switch (ac842Pbctrl_ & 0x1C) {
+                        case 0x00: dafbMode_ = 0; break; // 1 bpp
+                        case 0x08: dafbMode_ = 1; break; // 2 bpp
+                        case 0x10: dafbMode_ = 2; break; // 4 bpp
+                        case 0x18: dafbMode_ = 3; break; // 8 bpp
+                        case 0x1C: dafbMode_ = 4; break; // 24 bpp
+                    }
+                }
+            }
             break;
         default: break;
     }

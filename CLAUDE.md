@@ -2,16 +2,17 @@
 
 Orientation **always-loaded index** — keep terse, defer detail to other docs.
 
-POM68K is a **Macintosh 68k** emulator: **Mac Plus** first (68000,
-cycle-exact), **Mac LC II** second (68030 + MMU, functional accuracy). It is
-the 68k sibling of [POMIIGS](../POMIIGS/) and reuses its architecture,
-conventions and milestone discipline; the CPU integration pattern comes from
+POM68K is a **Macintosh 68k** emulator: **Mac Plus** (68000, cycle-exact),
+**Mac LC II** (68030 + MMU + 68882, functional accuracy), and **Quadra 605 /
+LC 475 profile** (68040/68LC040 + 040 MMU, functional accuracy). It is the 68k
+sibling of [POMIIGS](../POMIIGS/) and reuses its architecture, conventions and
+milestone discipline; the CPU integration pattern comes from
 [NeoST](../neost/) (Moira wrapper, see below).
 
 - `README.md` — user walkthrough (build, ROM placement, keys, CLI).
 - `DEV.md` — implementation deep-dives (references, internals, pinned tests).
-- `TODO.md` — active backlog + milestone roadmap (incl. the LC II / 68030
-  AI-differential plan).
+- `TODO.md` — active backlog + milestone roadmap (68030/68040 differential
+  cores, LC II and Quadra 605 machines).
 - `CHANGELOG.md` — resolved items + the **why** behind non-obvious fixes.
 - `docs/` — LC II research: `LCII_HARDWARE.md` (machine blueprint),
   `BASILISK_ROM_NOTES.md` ($067C ROM-behaviour oracle; §8 = facts
@@ -26,10 +27,11 @@ conventions and milestone discipline; the CPU integration pattern comes from
 MIT), with NeoST's patches included — provenance and every local change in
 `extern/moira/POM68K_VENDOR.md`. Config: `MOIRA_PRECISE_TIMING`,
 `MOIRA_EMULATE_ADDRESS_ERROR`, no Musashi mimicry. This copy executes
-68000/68010 cycle-exact and 68020 functionally; **68030 is disassembler-only**
-— its execution core (incl. MMU) is the LC II phase, built from the Motorola
-68030 manual with AI + differential fuzzing against **two oracles (WinUAE,
-MAME m68k)**; on spec/oracle conflict, **the oracle wins**.
+68000/68010 cycle-exact and 68020, **68030 + PMMU**, and **68040/68LC040 + 040
+MMU** functionally. The 030/040 extensions were built from the Motorola manuals
+with AI + differential fuzzing against the vendored **WinUAE/Hatari oracle**;
+Musashi was retired after losing every 030 arbitration. On spec/oracle conflict,
+**the oracle wins**. The 040 path has no architectural cache/timing model yet.
 
 ## Source of truth (ranked, cite file + line range in comments)
 
@@ -53,12 +55,13 @@ MAME m68k)**; on spec/oracle conflict, **the oracle wins**.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # gates: cpu_smoke, demo_screenshot
-./POM68K [roms/macplus.rom]  # no ROM → built-in 68000 demo pattern
+ctest                        # 27 gates (asset-dependent gates may soft-skip)
+./POM68K [ROM] [media...]    # 128K=Plus, 512K=LC II, 1MB=Quadra 605
 ```
 
-CPU **7.8336 MHz**, frame **60.15 Hz** (130 240 cycles/frame), video
-**512×342 × 1 bpp**, MSB = leftmost, 1 = black.
+Mac Plus: CPU **7.8336 MHz**, frame **60.15 Hz** (130 240 cycles/frame), video
+**512×342 × 1 bpp**, MSB = leftmost, 1 = black. LC II runs at 15.6672 MHz;
+the Quadra profile runs at 25 MHz with 640×480 DAFB video.
 
 ## Subsystem map
 
@@ -81,6 +84,11 @@ CPU **7.8336 MHz**, frame **60.15 Hz** (130 240 cycles/frame), video
 | **68030 oracle + fuzz loop** | `oracle/` (api, uae, fuzz) | O1-O3 ✓ (Musashi retired) | WinUAE (Hatari) |
 | **68030 core + MMU (LC II)** | `extern/moira` extension | O4: MMU instrs ✓, bus/ATC/faults ✓ | MC68030UM + WinUAE oracle |
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ | MC68881/882UM; WinUAE fpp.c |
+| **68040 oracle + core + MMU** | `oracle/`, `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; 7 200 pinned vectors | MC68040UM + WinUAE oracle |
+| **LC II machine** (V8/Egret/ASC/Ariel) | `V8Memory.*`, `Cpu030.*`, `Egret.*`, `Asc.*`, `V8Video.h` | O6 ✓; Finder | MAME `maclc.cpp` + LC II ROM |
+| **Quadra 605 machine** (MEMCjr/PrimeTime/Cuda/DAFB) | `Q605Memory.*`, `Cpu040.*` | Q5-Q7 ✓; Mac OS 8.1 Finder | MAME `macquadra605.cpp` |
+| **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` + ROM/OS 8 |
+| **DAFB/Antelope video** | `Q605Memory.*`, GUI decoder | Q8.1: depth/stride gated; Finder 256-color validation open | MAME `dafb.cpp` |
 
 ## Memory map (Mac Plus, 24-bit)
 
@@ -104,7 +112,7 @@ Full pinned detail + timing/contention model in `DEV.md`.
 **Mac Plus is a usable machine (M0–M7 done).** It boots System 6 from a
 floppy *and* from a SCSI hard disk to the Finder, the mouse/keyboard drive
 it, and the startup chime plays. Moira passes 1 000 058/1 000 058
-SingleStepTests 68000 vectors. 15 CTest gates. Remaining Plus polish in
+accepted SingleStepTests 68000 vectors. Remaining Plus polish in
 `TODO.md` (floppy write, serial, cycle-accurate sound, save states, WASM).
 **Phase 2 (Mac LC II): the 68030+MMU+FPU CPU side is done (O1-O5).** The
 WinUAE/Hatari 68030 oracle runs behind a C API (`oracle/oracle_api.h`),
@@ -119,6 +127,13 @@ System 7.5, AppleTalk made genuinely inactive via SPConfig after the
 O6.11 Egret XPRAM stream-protocol fix): V8 gate array (`V8Memory`), Egret
 HLE (`Egret`/`AdbBus`), ASC-V8 sound (`Asc`), V8 video + Ariel
 (`V8Video`), SCSI pseudo-DMA over the reused `Ncr5380`, SWIM1 GCR over
-the reused `Iwm`, 68030+PMMU+68882 via the O1-O5 core. 24 CTest gates
-(incl. `lcii_boot_etalon`). Remaining = polish (no-FPU SANE path, MFM
-floppy, sound-out, cycle accuracy, save states) in `TODO.md § O6`.
+the reused `Iwm`, 68030+PMMU+68882 via the O1-O5 core.
+**Phase 3 (Quadra 605) also reaches a usable Finder desktop:** the Q1-Q4
+68040/040-MMU core drives MEMCjr/PrimeTime, Cuda HLE, DAFB/Antelope, ASC
+sound and NCR 53C96 SCSI; Mac OS 8.1 boots and the GUI exposes the machine
+alongside Plus/LC II. The default compatibility configuration follows MAME's
+full-68040/FPU `macqd605`; `POM68K_Q605_NOFPU=1` restores bare 68LC040
+behaviour. Q8.1 adds gated DAFB stride/depth state and indexed-color host
+rendering, but a real Finder `SetDepth(8)` run is still required before calling
+the reported 256-color guest crash fixed. **27 CTest gates** total, including
+`lcii_boot_etalon`, `sst68040`, and `q605_dafb_test`.

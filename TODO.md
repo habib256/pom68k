@@ -73,9 +73,9 @@
 
 ### Phase 2 — Mac LC II (68030 + MMU, functional accuracy)
 
-The 68030 execution core does not exist in Moira (disassembler only). Build
-it **from the Motorola MC68030 User's Manual, not from UAE's generated code**,
-with an AI loop verified by differential testing:
+At the start of Phase 2, Moira's 68030 support was disassembler-only. The
+execution core was built **from the Motorola MC68030 User's Manual, not from
+UAE's generated code**, with an AI loop verified by differential testing:
 
 - [x] **O1 — Oracle A** (2026-07-15): WinUAE 68030 core (newcpu +
   cpummu030, via Hatari e77819f7) → `oracle/uae/` → `liboracle_uae.so`,
@@ -687,7 +687,8 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   consumption + EA (`execFpuDisabled040`); FBcc pseudo-conditions
   registered on the 040 family; FMOVEM Dn/An/#imm stays Line-F.
   Gated by the same sst68040 corpora (random family).
-- [ ] **Q5 — machine skeleton** (IN PROGRESS 2026-07-18): first light —
+- [x] **Q5 — machine skeleton** (DONE 2026-07-18; investigation trail below):
+  first light —
   `Q605Memory` (MEMCjr overlay/ROM + PrimeTime map: VIA1, Quadra
   pseudo-VIA2 lite, SCC, MEMCjr/IOSB reg files, machine ID $A55A2221,
   DAFB reg-file stub + 1 MB VRAM, unmapped-I/O /BERR via the new
@@ -1083,11 +1084,11 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
      pre-advance. All 26 gates green; deterministic. Advanced 5363 → 5973 cmds →
      Finder.
 
-- [x] **Q7 — GUI machine + Quadra usable interactively (2026-07-20, Opus,
-  WORKING TREE, NOT COMMITTED).** The Quadra 605 now runs in the ImGui GUI,
+- [x] **Q7 — GUI machine + Quadra usable interactively (2026-07-20).**
+  The Quadra 605 now runs in the ImGui GUI,
   selectable from the **Machine** menu alongside Mac Plus / LC II. Changes are
-  all in `src/main.cpp` + `src/Q605Memory.{h,cpp}` + `tests/q605_trace.cpp` +
-  `CMakeLists.txt` (uncommitted — `git status`: 5 modified). Verified with
+  in `src/main.cpp` + `src/Q605Memory.{h,cpp}` + `tests/q605_trace.cpp` +
+  `CMakeLists.txt` (landed in `1fadd4c`). Verified with
   `Q605_NOPRAM=1 q605_trace <FF7439EE.ROM> --disk hdv/MacOS-8.1-boot.vhd
   --cycles 2500000000` (Finder reached: PixMap 640×480 rowBytes 1024, SCSI 5785
   cmds) each step. Delivered:
@@ -1118,24 +1119,32 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
      relinks the core with LTO for them (faster build); `make q605_trace` on
      demand. None have a `ctest` gate, so nothing is lost.
 
-- [ ] **Q8 — DAFB 256-color depth support (NEXT, 2026-07-20).** Reported bug:
+- [ ] **Q8 — Quadra polish (IN PROGRESS, Q8.1 done 2026-07-20).** Reported bug:
   in the running Finder, **Monitors & Sound ▸ 256 colors → display stays B&W,
   distorts, then crashes the machine** (this is the "graphics card not well
   supported" the user saw; the improper-shutdown dialog on the next boot is the
-  transient consequence, not a separate fault). The DAFB HLE models the CLUT
-  (Antelope RAMDAC $200/$210/$220), sense ($1C=6^7), version ($2C=3) — but NOT
-  the **pixel depth** or the **framebuffer stride** register, so `SetDepth(8bpp)`
-  writes/reads registers we don't model → inconsistent framebuffer → crash.
-  Encouraging: XPRAM already REQUESTS 256 colors (`Egret.cpp:75` `pram_[0x58]=
-  0x83`) and the GUI decoder already handles 1/2/4/8 bpp via the CLUT — only the
-  DAFB machine side is missing. Reference `~/src/refs/mame-apple/dafb.cpp`:
-  depth `m_mode` (0=1bpp…3=8bpp…5=16bpp) is derived from the AC842 RAMDAC
-  control (`dafb.cpp:799-815` map pbctrl bits → m_mode); stride from `dafb_w`
-  offset ~$08 (`m_stride = data<<2`, `dafb_r` returns `m_stride>>2`; line
-  451/381); `stride = BIT(m_config,3) ? 1024 : m_stride` (line 268). PLAN:
-  (1) model the DAFB stride register + RAMDAC→m_mode mapping in `Q605Memory`;
-  (2) make it traceable by booting DIRECTLY in 256 colors (XPRAM asks for it) —
-  no GUI clicks needed; (3) diagnose/fix the crash from `q605_trace`, iterate.
+  transient consequence, not a separate fault). The initial diagnosis blamed
+  missing DAFB depth/stride state; Q8.1 below implemented and gated that state,
+  but also proved the old raw register file already echoed basic guest writes.
+  Therefore the visual distortion and the guest crash must be treated as
+  separate claims until a real Finder `SetDepth(8)` run is captured. Reference:
+  `~/src/refs/mame-apple/dafb.cpp` (`m_stride`, `m_config`, AC842 `m_mode`).
+
+  **Q8.1 DONE (2026-07-20) — DAFB display state is now explicit and gated.**
+  `Q605Memory` models `$008` stride (register words → bytes), `$010` config
+  (convolution forces the 1024-byte pitch), and Antelope PCBR0/PCBR1 depth
+  selection (1/2/4/8/24 bpp + x555). Reset now clears all DAFB/CLUT state.
+  The GUI and `q605_trace` decode from the live hardware depth/stride rather
+  than trusting a possibly stale PixMap during `SetDepth`; the trace emits a
+  depth-correct CLUT PPM. New gate: `q605_dafb_test` (27 CTests total).
+  Important correction to the initial diagnosis: the old raw `dafb_[]` echo
+  already gave the guest basic `$008`/`$010` readback, so this slice fixes the
+  visibly distorted display but by itself does **not prove** the guest crash
+  fixed. Full Finder 256-color validation is still required. It could not run
+  in this checkout because neither the FF7439EE ROM nor
+  `hdv/MacOS-8.1-boot.vhd` is present. NEXT: reproduce `SetDepth(8)` with those
+  user-provided assets; if the guest still crashes, trace the first exception
+  and DAFB access sequence rather than attributing it to host rendering.
 
   **[HISTORICAL — Q6.5d investigation trail, superseded by the fix above]**
   **dsBadPatch root cause found = a stalled SCSI resource read, NOT a
@@ -1744,11 +1753,13 @@ gencpu); `loop.sh`/SST/disputes harness; `hdv/MacOS-8.1-boot.vhd`.
   New frontier (Q6/Q7): the SCSI pseudo-DMA data path — the ROM's driver
   spins at $408D1A84 polling the 53C96 phase register with dmaBytes=0
   (no payload delivered yet); the READ CAPACITY/READ blocks don't complete.
-- [ ] **Q7 — Mac OS 8.1 boots**: `q605_trace` (lcii_trace clone: rings,
-  probes, MMU walks). Gate: **`q605_boot_etalon`** (menu-bar/desktop
-  metrics + SCSI count, same shape as lcii_boot_etalon).
-- [ ] **Q8 — polish**: EASC sound, real SWIM2, perf (ATC fast-path
-  budget transposes), GUI machine profile entry.
+- [x] **Q7 — Mac OS 8.1 boots** (2026-07-20): `q605_trace` reaches and
+  renders the Finder; the interactive GUI profile is landed. Still open:
+  **`q605_boot_etalon`** (menu-bar/desktop metrics + SCSI count, same shape
+  as `lcii_boot_etalon`) once its user-provided assets are available.
+- [ ] **Q8 — polish**: complete Finder 256-color validation (Q8.1 register
+  model + host rendering done), faithful stereo EASC, real SWIM2, no-FPU
+  SANE path, and performance work (ATC/cache fast paths). GUI profile done.
 
 - [ ] **Tooling idea — Retro68 as a user-space oracle** (autc04/Retro68,
   GCC+binutils+newlib+Universal Interfaces, targets 68000→68040 so the

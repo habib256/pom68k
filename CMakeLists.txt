@@ -265,6 +265,11 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(v8_video_test PRIVATE pom68k_core)
     add_test(NAME v8_video_test COMMAND v8_video_test)
 
+    # Q8 gate: MEMCjr DAFB stride register + Antelope RAMDAC depth modes.
+    add_executable(q605_dafb_test tests/q605_dafb_test.cpp)
+    target_link_libraries(q605_dafb_test PRIVATE pom68k_core)
+    add_test(NAME q605_dafb_test COMMAND q605_dafb_test)
+
     # O6.5 gate: SCSI pseudo-DMA windows + DRQ-gated BERR timeout
     # (soft-skips without the disk image).
     add_executable(scsi_pdma_test tests/scsi_pdma_test.cpp)

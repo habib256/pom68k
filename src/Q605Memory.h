@@ -91,6 +91,15 @@ public:
     const uint8_t* vram() const { return vram_.data(); }
     const uint32_t* dafbRegs() const { return dafb_; }
     const uint8_t (*clut() const)[3] { return clut_; }
+    uint32_t dafbStride() const {
+        return (dafbConfig_ & 0x08) ? 1024u : dafbStride_;
+    }
+    uint32_t dafbBase() const { return dafbBase_; }
+    uint8_t dafbMode() const { return dafbMode_; }
+    uint8_t dafbDepth() const {
+        static constexpr uint8_t depths[] = { 1, 2, 4, 8, 24, 16 };
+        return dafbMode_ < sizeof depths ? depths[dafbMode_] : 1;
+    }
 
     // VIA2 IFR device lines (Quadra pseudo-VIA: CA1=slot/VBL summary,
     // bit encodings identical to a real VIA's IFR)
@@ -173,6 +182,10 @@ private:
     uint32_t dafbCursorLine_ = 0;  // $118
     uint8_t  palAddress_ = 0, palIdx_ = 0;       // Antelope RAMDAC
     uint8_t  ac842Pbctrl_ = 0, pcbr1_ = 0;
+    uint32_t dafbBase_ = 0;          // $000/$004, byte offset into VRAM
+    uint32_t dafbStride_ = 1024;    // $008, bytes (register stores 32-bit words)
+    uint16_t dafbConfig_ = 0;       // $010; bit 3 forces convolution stride 1024
+    uint8_t  dafbMode_ = 0;         // AC842 PCBR0: 0=1,1=2,2=4,3=8,4=24,5=16 bpp
     uint8_t  clut_[256][3] = {};
     int      prevLine_ = 0;        // scanline edge detect (525-line frame)
 

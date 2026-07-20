@@ -871,9 +871,9 @@ struct QuadraMachine {
     }
 
     // Decode the Q605 framebuffer (VRAM at $F9000000) into 00RRGGBB. Screen
-    // geometry (base, rowBytes, bounds, depth) is read live from the main
-    // GDevice → PixMap, falling back to 640×480 1bpp before the video driver
-    // has published a PixMap.
+    // base and bounds are read live from the main GDevice → PixMap. Pixel
+    // depth and stride come from the DAFB hardware registers; the PixMap is
+    // only a fallback while the video driver is publishing a new mode.
     void decode(std::vector<uint32_t>& out, int& w, int& h, int& depth) {
         auto pk32 = [&](uint32_t a) {
             return uint32_t(mem.peek8(a)) << 24 | uint32_t(mem.peek8(a+1)) << 16 |
@@ -904,9 +904,15 @@ struct QuadraMachine {
         uint32_t off = src & (Q605Memory::kVramSize - 1);
         w = (pmR > pmL && pmR - pmL <= 1600) ? int(pmR - pmL) : 640;
         h = (pmB > pmT && pmB - pmT <= 1200) ? int(pmB - pmT) : 480;
-        depth = (pmDepth == 1 || pmDepth == 2 || pmDepth == 4 || pmDepth == 8)
-              ? int(pmDepth) : 1;
-        uint32_t stride = pmRow ? pmRow : uint32_t((w * depth + 7) / 8);
+        uint32_t hwDepth = mem.dafbDepth();
+        depth = (hwDepth == 1 || hwDepth == 2 || hwDepth == 4 || hwDepth == 8)
+              ? int(hwDepth)
+              : ((pmDepth == 1 || pmDepth == 2 || pmDepth == 4 || pmDepth == 8)
+                    ? int(pmDepth) : 1);
+        uint32_t minStride = uint32_t((w * depth + 7) / 8);
+        uint32_t hwStride = mem.dafbStride();
+        uint32_t stride = (hwStride >= minStride && hwStride <= Q605Memory::kVramSize)
+                        ? hwStride : (pmRow >= minStride ? pmRow : minStride);
         // Guard a bogus base (before the driver publishes one): the visible
         // screen must fit within VRAM, else fall back to offset 0.
         if (uint64_t(off) + uint64_t(h) * stride > Q605Memory::kVramSize) off = 0;

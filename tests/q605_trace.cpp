@@ -741,37 +741,58 @@ int main(int argc, char** argv) {
         uint32_t fbBase = 0xF9000000 + fbOff;
         if (uint64_t(fbOff) + uint64_t((pmB > pmT ? pmB - pmT : 480)) *
                 (pmRow ? pmRow : 1024) > Q605Memory::kVramSize) { fbOff = 0; fbBase = 0xF9000000; }
-        // Screen geometry: width/height from the PixMap bounds, stride from
-        // rowBytes (default 640x480 @ rowBytes 1024). Mac OS 8.1 boots this
-        // Quadra in 1bpp (640x480, rowBytes 1024) — the confirmed Finder mode.
+        // Screen bounds/base come from the PixMap, but depth and stride are
+        // hardware state. During SetDepth the PixMap can lag the DAFB writes.
         uint32_t w = (pmR > pmL && pmR - pmL <= 1600) ? pmR - pmL : 640;
         uint32_t h = (pmB > pmT && pmB - pmT <= 1200) ? pmB - pmT : 480;
-        uint32_t stride = pmRow ? pmRow : 1024;
-        std::printf("-- render fbBase=$%08X off=$%05X %ux%u stride=%u bytes:",
-                    fbBase, fbOff, w, h, stride);
+        uint32_t depth = mem.dafbDepth();
+        if (depth != 1 && depth != 2 && depth != 4 && depth != 8)
+            depth = (pmDepth == 1 || pmDepth == 2 || pmDepth == 4 || pmDepth == 8)
+                  ? pmDepth : 1;
+        uint32_t minStride = (w * depth + 7) / 8;
+        uint32_t stride = mem.dafbStride();
+        if (stride < minStride || stride > Q605Memory::kVramSize)
+            stride = pmRow >= minStride ? pmRow : minStride;
+        if (uint64_t(fbOff) + uint64_t(h) * stride > Q605Memory::kVramSize) {
+            fbOff = 0;
+            fbBase = 0xF9000000;
+        }
+        std::printf("-- DAFB base=$%05X mode=%u depth=%u stride=%u\n",
+                    mem.dafbBase(), mem.dafbMode(), mem.dafbDepth(), mem.dafbStride());
+        std::printf("-- render fbBase=$%08X off=$%05X %ux%u depth=%u stride=%u bytes:",
+                    fbBase, fbOff, w, h, depth, stride);
         for (int i = 0; i < 16; i++) std::printf(" %02X", vr[fbOff + i]);
         std::printf("\n");
-        // 1bpp screenshot (P4 PBM) — the boot mode. 1 = black on classic Mac.
-        FILE* mf = std::fopen("q605_boot_1bpp.pbm", "wb");
-        if (mf) {
-            std::fprintf(mf, "P4\n%u %u\n", w, h);
-            for (uint32_t y = 0; y < h; y++)
-                for (uint32_t xb = 0; xb < (w + 7) / 8; xb++)
-                    std::fputc(vr[fbOff + y * stride + xb], mf);
-            std::fclose(mf);
-            std::printf("-- wrote q605_boot_1bpp.pbm (%ux%u 1bpp stride %u) --\n", w, h, stride);
+        if (depth == 1) {
+            FILE* mf = std::fopen("q605_boot_1bpp.pbm", "wb");
+            if (mf) {
+                std::fprintf(mf, "P4\n%u %u\n", w, h);
+                for (uint32_t y = 0; y < h; y++)
+                    for (uint32_t xb = 0; xb < (w + 7) / 8; xb++)
+                        std::fputc(vr[fbOff + y * stride + xb], mf);
+                std::fclose(mf);
+                std::printf("-- wrote q605_boot_1bpp.pbm (%ux%u stride %u) --\n",
+                            w, h, stride);
+            }
         }
-        // 8bpp CLUT fallback (P6 PPM), in case a colour mode is ever selected.
+        // P6 screenshot at the active indexed depth, through the Antelope CLUT.
         FILE* pf = std::fopen("q605_boot.ppm", "wb");
         if (pf) {
             std::fprintf(pf, "P6\n%u %u\n255\n", w, h);
             for (uint32_t y = 0; y < h; y++)
                 for (uint32_t x = 0; x < w; x++) {
-                    const uint8_t* c = cl[vr[fbOff + y * stride + x]];
+                    uint8_t b = vr[fbOff + y * stride + x * depth / 8];
+                    uint8_t pen;
+                    if (depth == 1) pen = (b >> (7 - (x & 7))) & 1;
+                    else if (depth == 2) pen = (b >> (6 - 2 * (x & 3))) & 3;
+                    else if (depth == 4) pen = (x & 1) ? (b & 0x0F) : (b >> 4);
+                    else pen = b;
+                    const uint8_t* c = cl[pen];
                     std::fputc(c[0], pf); std::fputc(c[1], pf); std::fputc(c[2], pf);
                 }
             std::fclose(pf);
-            std::printf("-- wrote q605_boot.ppm (%ux%u 8bpp stride %u via CLUT) --\n", w, h, stride);
+            std::printf("-- wrote q605_boot.ppm (%ux%u %ubpp stride %u via CLUT) --\n",
+                        w, h, depth, stride);
         }
         FILE* rf = std::fopen("q605_vram.raw", "wb");
         if (rf) { std::fwrite(vr, 1, Q605Memory::kVramSize, rf); std::fclose(rf);

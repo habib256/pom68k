@@ -1,5 +1,48 @@
 # CHANGELOG
 
+## 2026-07-20 — Q8.1: DAFB stride/depth model and 256-color host rendering
+
+The Quadra 605 DAFB HLE now tracks the split `$000/$004` framebuffer base,
+`$008` stride, `$010` configuration (including the fixed 1024-byte convolution
+pitch), and Antelope RAMDAC PCBR0/PCBR1 pixel modes. The GUI and `q605_trace`
+render using the live hardware depth/stride instead of relying on the main
+GDevice PixMap while Mac OS is changing depth. DAFB reset now also clears the
+CLUT and all mode/interrupt state. `q605_trace` emits a CLUT-decoded PPM for
+1/2/4/8 bpp and reports the hardware geometry.
+
+New `q605_dafb_test` pins the MEMCjr 6+6-bit register protocol, stride
+conversion/config override, all indexed depths, Antelope x555 selection, and
+reset defaults. This raises the suite to 27 CTest gates.
+
+The original Q8 diagnosis was too strong: the previous raw DAFB register file
+already echoed basic stride/config writes to the guest. This change fixes the
+host-side B&W/distorted rendering, but the reported guest crash still requires
+a real Finder `SetDepth(8)` reproduction. That integration run was unavailable
+in this checkout because the user-provided FF7439EE ROM and Mac OS 8.1 disk
+image are absent.
+
+## 2026-07-20 — Q7: Quadra 605 GUI profile, audio and ROM discovery
+
+The Quadra 605 is now a third interactive GUI machine beside the Mac Plus and
+LC II. A 1 MB ROM dispatches to `runQuadra`; the Machine menu can switch among
+all three profiles. The machine thread exposes ADB input, reset, SCSI disks,
+turbo/pacing and live DAFB framebuffer decoding. ROM fallbacks no longer depend
+on stale hard-coded paths: `findRomBySignature()` scans `roms/` for the LC II
+`35C28F5F` and Quadra `FF7439EE` signatures.
+
+The IOSB EASC window at `$50014000` is connected to the existing `AscV8`
+engine as a mono FIFO-A stopgap, clocked at C15M=15.6672 MHz from the 25 MHz
+CPU and interrupting through pseudo-VIA2 bit 4. Boot traces consumed 31 690
+non-silent FIFO bytes without regressing the Finder boot. A faithful stereo
+EASC/version/FIFO-B implementation remains open.
+
+Framebuffer base handling now accepts the 32-bit MMU alias published by
+QuickDraw: because the VRAM aperture is 1 MB aligned, `baseAddr & 0xFFFFF`
+selects the physical offset. This removes the false white band previously
+rendered from VRAM scratch row zero. Development-only trace/disassembly tools
+are also `EXCLUDE_FROM_ALL`, avoiding unnecessary LTO relinks during a normal
+build.
+
 ## 2026-07-20 — Q6.6 RESOLVED: Mac OS 8.1 boots the Quadra 605 (68LC040) to the
 ## Finder desktop — two blockers, the FPU trap and a DMA-final-chunk STATUS race
 
