@@ -268,12 +268,13 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   three-level URP/SRP translation, MMUSR/PTEST and restartable MMU faults.
   `sst68040` pins **7 200/7 200** vectors across integer, random and MMU
   families. Caches and cycle-accurate 040 timing are not modeled.
-- **FPU compatibility:** a real Quadra 605 is a 68LC040, but the MAME
-  `macqd605` oracle is configured as a full 68040. The Mac OS 8.1 image used
-  for boot validation executes ROM FPU initialization and lacks the SANE package
-  needed by the no-FPU trap path. POM68K therefore defaults to M68040 +
-  Moira's 68882-compatible FPU model; `POM68K_Q605_NOFPU=1` selects the
-  architecturally accurate bare 68LC040 path.
+- **FPU compatibility:** a real Quadra 605 / LC 475 is a 68LC040. The MAME
+  `macqd605` oracle is a full 68040, and POM68K defaults to M68040 + Moira's
+  68882 for compatibility with that path. `POM68K_Q605_NOFPU=1` selects
+  M68LC040 with no FPU and, after GetHardwareInfo's FPU probe, masks
+  UniversalInfo `$0A8080` HWCfgFlags bit 28 on ROM reads (machine ID
+  `$A55A2221`) so System installs PACK 4 — without mutating `rom_[]`.
+  `q605_nofpu_boot_etalon` gates Finder under that configuration.
 - **Memory/I/O:** `Q605Memory` models MEMCjr ROM overlay/RAM sizing and the
   PrimeTime window: VIA1, Quadra pseudo-VIA2, SCC, IOSB/MEMCjr registers,
   Cuda-flavoured `Egret`, ASC stopgap, SWIM2 stub and `Ncr53c96` TurboSCSI.
@@ -286,7 +287,8 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   1/2/4/8/16/24-bit modes. `q605_dafb_test` pins register/depth/reset
   semantics. GUI and `q605_trace` render indexed modes from live hardware
   state; a real Finder `SetDepth(8)` integration run remains required before
-  the reported guest crash can be closed.
+  the reported guest crash can be closed. `q605_trace --dafb-io N` gives DAFB
+  and MEMCjr holding-port traffic its own trace budget for that reproduction.
 - **Boot/UI:** the FF7439EE 1 MB ROM boots Mac OS 8.1 to a 640×480 Finder
   desktop and is selectable beside Plus/LC II in the GUI. `q605_trace` is the
   diagnostic whole-machine runner. A self-contained `q605_boot_etalon` is

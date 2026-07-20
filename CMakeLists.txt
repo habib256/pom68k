@@ -71,6 +71,7 @@ add_library(pom68k_core STATIC
     src/Egret.cpp         # O6 — Egret ADB/RTC/PRAM MCU (HLE)
     src/AdbBus.cpp        # O6 — ADB bus + HLE keyboard/mouse
     src/Asc.cpp           # O6 — ASC-V8 sound (FIFO A, 22 257 Hz)
+    src/Swim2.cpp         # Q8 — PrimeTime/IOSB SWIM2 register + FIFO core
     src/Q605Memory.cpp    # Q5 — LC 475/Quadra 605 map (MEMCjr + PrimeTime)
     src/Cpu040.cpp        # Q5 — Moira 68LC040 wrapper
 )
@@ -253,6 +254,40 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(asc_test tests/asc_test.cpp)
     target_link_libraries(asc_test PRIVATE pom68k_core)
     add_test(NAME asc_test COMMAND asc_test)
+
+    # Q8 gate: PrimeTime/IOSB $BB ASC stereo FIFOs + level IRQ semantics.
+    add_executable(q605_asc_test tests/q605_asc_test.cpp)
+    target_link_libraries(q605_asc_test PRIVATE pom68k_core)
+    add_test(NAME q605_asc_test COMMAND q605_asc_test)
+
+    # Q8 gate: FF7439EE + Mac OS 8.1 boot to 640x480x8 Finder (soft-skip).
+    add_executable(q605_boot_etalon tests/q605_boot_etalon.cpp)
+    target_link_libraries(q605_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_boot_etalon COMMAND q605_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Q8 gate: same Finder boot under POM68K_Q605_NOFPU (real 68LC040, no
+    # 68882) — UniversalInfo FPU bit cleared so System installs PACK 4.
+    add_executable(q605_nofpu_boot_etalon tests/q605_nofpu_boot_etalon.cpp)
+    target_link_libraries(q605_nofpu_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_nofpu_boot_etalon COMMAND q605_nofpu_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Q8 gate: PrimeTime SWIM2 register/FIFO core and 16-bit bus mapping.
+    add_executable(swim2_test tests/swim2_test.cpp)
+    target_link_libraries(swim2_test PRIVATE pom68k_core)
+    add_test(NAME swim2_test COMMAND swim2_test)
+
+    # Q8 gate: SWIM2 + SonyDrive MFM 1.44MB / GCR 800K media + sector R/W.
+    add_executable(swim2_media_test tests/swim2_media_test.cpp)
+    target_link_libraries(swim2_media_test PRIVATE pom68k_core)
+    add_test(NAME swim2_media_test COMMAND swim2_media_test)
+
+    # Q8 gate: Quadra SuperDrive stack (synthetic HD image via SWIM2).
+    add_executable(q605_floppy_boot_etalon tests/q605_floppy_boot_etalon.cpp)
+    target_link_libraries(q605_floppy_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_floppy_boot_etalon COMMAND q605_floppy_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # O6.3 gate: Egret HLE transport + command set (protocol pinned from
     # the LC II ROM's own drivers — see src/Egret.cpp).

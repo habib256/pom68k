@@ -20,7 +20,7 @@
 //               +$10100 TurboSCSI DMA port — Q6
 //               +$14000 ASC (EASC-like)
 //               +$18000 IOSB regs (u16 every $100)
-//               +$1E000 SWIM2 (stub: SCSI boot only, like early LC II)
+//               +$1E000 SWIM2 (register/FIFO + SuperDrive media)
 //   $5FFFFFFC   machine ID $A55A2221 (LC 475)
 //   $F9000000-  VRAM (1 MB modelled)
 //   $F9800000-  DAFB II registers (HLE stub grown by the boot trace)
@@ -39,6 +39,8 @@
 #include "Ncr53c96.h"
 #include "ScsiDisk.h"
 #include "Asc.h"
+#include "Swim2.h"
+#include "SonyDrive.h"
 #include <cstdint>
 #include <cstddef>
 #include <functional>
@@ -58,6 +60,13 @@ public:
     bool loadRom(const std::vector<uint8_t>& data);  // 1 MB flat image
     void reset();
 
+    // True once NOFPU lowmem scrub (post probe) or late ROM patch ran.
+    bool romNoFpuPatched() const {
+        return romNoFpuLowmemPatched_ && romNoFpuMasked_;
+    }
+    bool romNoFpuLowmemPatched() const { return romNoFpuLowmemPatched_; }
+    void maybePatchRomNoFpu(uint32_t pc);
+
     uint8_t  read8(uint32_t addr);
     uint16_t read16(uint32_t addr);
     void     write8(uint32_t addr, uint8_t v);
@@ -76,7 +85,12 @@ public:
     Egret& cuda() { return cuda_; }
     AdbBus& adb() { return adb_; }
     Scc8530& scc() { return scc_; }
-    AscV8& asc() { return asc_; }
+    AscIosb& asc() { return asc_; }
+    Swim2& swim() { return swim_; }
+    SonyDrive& internalDrive() { return drive0_; }
+    SonyDrive& externalDrive() { return drive1_; }
+    bool insertDisk(const std::string& path) { return drive0_.insert(path); }
+    void ejectDisk() { drive0_.eject(); }
     Ncr53c96& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }  // boot drive (tests poke it)
 
@@ -140,19 +154,28 @@ private:
     uint32_t dafbRegReadRaw(uint32_t off);   // pre-holding-split register value
 
     std::vector<uint8_t> ram_, rom_, vram_;
+    bool romNoFpuLowmemPatched_ = false;
+    bool romNoFpuMasked_ = false;
+    bool romNoFpuPending_ = false;
     Via6522 via1_;
     Egret cuda_{via1_, true};      // Cuda flavor: TIP/BYTEACK active low
     AdbBus adb_;
     Scc8530 scc_;
-    // Sound: the IOSB integrates an EASC-like ASC at $50014000 clocked at
-    // C15M (15.6672 MHz — iosb.cpp:89 ASC_EASC(config, m_asc, C15M)), IRQ
-    // wired to pseudo-VIA2 bit 4 (iosb.cpp:358-361 asc_irq → via2). POM68K
-    // reuses the V8 ASC model (mono FIFO A) as a stopgap — enough for the
-    // startup chime and FIFO-fed sound; a faithful stereo EASC (version byte,
-    // FIFO B) is TODO § Q8. Its own 15.6672 MHz clock is decoupled from the
-    // 25 MHz CPU by ascCycAcc_ in tick().
-    AscV8 asc_;
+    // PrimeTime's IOSB audio cell at $50014000: $BB version, stereo FIFO A/B,
+    // 22.257 kHz at C15M (15.6672 MHz), level IRQ on pseudo-VIA2 bit 4.
+    // This is the IOSB ASC verified by ASCTester on an LC 475, not the $B0
+    // discrete EASC despite MAME iosb.cpp's historical ASC_EASC wiring.
+    AscIosb asc_;
     int64_t ascCycAcc_ = 0;        // 25 MHz CPU → 15.6672 MHz ASC clock bridge
+    Swim2 swim_;                   // PrimeTime SWIM2 at $5001E000
+    SonyDrive drive0_;             // internal SuperDrive (SWIM2 soft-select A)
+    SonyDrive drive1_;             // external SuperDrive (soft-select B)
+    // MAME swim2_device::read/write call sync() on every access so the
+    // FIFO drains between a write-ACTION and the handshake poll. Batching
+    // only from Cpu040::catchUp left the ROM spinning on bit 7 forever.
+    void syncSwimFromCpu();
+    int64_t swimLastCpu_ = -1;     // <0: latch on first sync
+    int64_t swimCycAcc_ = 0;       // CPU→C15M fractional bridge (shared timeline)
     Ncr53c96 scsi_;                // TurboSCSI 53C96 (Q6)
     ScsiDisk scsiDisks_[7];        // by SCSI ID; [0] = boot drive
     Cpu040* cpu_ = nullptr;
@@ -164,6 +187,7 @@ private:
     // Quadra pseudo-VIA registers
     uint8_t pvIfr_ = 0, pvIer_ = 0, pvPortB_ = 0;
     uint8_t nubusIrqs_ = 0xFF;     // active low; bit 6 = VBL (MEMCjr video)
+    bool ascLine_ = false;          // live level, re-sampled after IFR ack
 
     // MEMCjr / DAFB HLE state
     uint32_t memcjr_[0x20] = {};   // $5000E000, u32 every 4 (only $7C used)

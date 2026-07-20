@@ -107,3 +107,153 @@ void AscV8::tick(int cpuCycles) {
         else           fifoStat_ &= uint8_t(~STAT_EMPTY_OR_FULL_A);
     }
 }
+
+// ── IOSB / PrimeTime ASC ($BB) ─────────────────────────────────────────
+
+void AscIosb::clearFifos() {
+    rd_[0] = rd_[1] = wr_[0] = wr_[1] = 0;
+    cap_[0] = cap_[1] = 0;
+}
+
+void AscIosb::reset() {
+    clearFifos();
+    for (auto& channel : fifo_)
+        for (uint8_t& sample : channel) sample = 0;
+    mode_ = 1;
+    fifoStat_ = 0x0E;                 // ASCTester LC 475 idle value
+    playRec_ = 0;
+    fifoIrqEn_[0] = fifoIrqEn_[1] = 1;
+    lastL_ = lastR_ = 0;
+    drainAcc_ = 0;
+    outRd_ = outWr_ = 0;
+    setIrq(false);
+}
+
+uint8_t AscIosb::read(uint32_t offset) {
+    offset &= 0xFFF;
+    uint8_t v = 0;
+    if (offset >= 0x800) {
+        switch (offset) {
+        case 0x800: v = 0xBB; break;
+        case 0x801: v = mode_; break;
+        case 0x802: case 0x803: case 0x805: case 0x807: case 0x808:
+            v = 0; break;
+        case 0x804:
+            v = fifoStat_;
+            if (!(fifoStat_ & STAT_HALF_B)) setIrq(false);
+            break;
+        case 0x809: v = fifoIrqEn_[0]; break;
+        case 0x80A: v = playRec_; break;
+        case 0x829: v = fifoIrqEn_[1]; break;
+        case 0xF0E: case 0xF2E: v = 0x2C; break;
+        default: v = 0; break;
+        }
+    }
+    if (onRead) onRead(offset, v);
+    return v;
+}
+
+void AscIosb::push(int channel, uint8_t v) {
+    if (cap_[channel] < 0x400) {
+        fifo_[channel][wr_[channel]] = v;
+        wr_[channel] = (wr_[channel] + 1) & 0x3FF;
+        cap_[channel]++;
+    }
+
+    uint8_t half = channel ? STAT_HALF_B : STAT_HALF_A;
+    uint8_t edge = channel ? STAT_EMPTY_OR_FULL_B : STAT_EMPTY_OR_FULL_A;
+    if (cap_[channel] >= 0x200) {
+        fifoStat_ &= uint8_t(~half);
+        if (cap_[channel] >= 0x3FF) fifoStat_ |= edge;
+    } else if (cap_[channel] > 0) {
+        fifoStat_ &= uint8_t(~edge);
+    }
+    // IOSB playback mode reports FIFO A empty even while software feeds it.
+    if (channel == 0 && !(playRec_ & 1)) fifoStat_ |= STAT_EMPTY_OR_FULL_A;
+}
+
+void AscIosb::write(uint32_t offset, uint8_t v) {
+    offset &= 0xFFF;
+    if (onWrite) onWrite(offset, v);
+
+    if (offset < 0x400) { push(0, v); return; }
+    if (offset < 0x800) { push(1, v); return; }
+
+    switch (offset) {
+    case 0x801:
+        v &= 1;
+        if (v != mode_) clearFifos();
+        mode_ = v;
+        fifoStat_ |= STAT_EMPTY_OR_FULL_B;
+        return;
+    case 0x802: case 0x805: case 0x807: case 0x808:
+        return;                                 // read-only / no-op on IOSB
+    case 0x803:
+        if (v & 0x80) {
+            clearFifos();
+            fifoStat_ |= STAT_EMPTY_OR_FULL_A | STAT_EMPTY_OR_FULL_B;
+        }
+        return;
+    case 0x809:
+        if (!(v & 1) && (fifoIrqEn_[0] & 1) && (fifoStat_ & STAT_HALF_A))
+            setIrq(true);
+        fifoIrqEn_[0] = v & 1;
+        return;
+    case 0x80A:
+        playRec_ = v;
+        return;
+    case 0x829:
+        if (!(v & 1) && (fifoIrqEn_[1] & 1) && (fifoStat_ & STAT_HALF_B))
+            setIrq(true);
+        fifoIrqEn_[1] = v & 1;
+        return;
+    case 0xE00:
+        fifoStat_ |= 0x0F;
+        setIrq(true);
+        return;
+    default:
+        return;
+    }
+}
+
+void AscIosb::tick(int cpuCycles) {
+    drainAcc_ += int64_t(cpuCycles) * kSampleRate;
+    while (drainAcc_ >= kCpuHz) {
+        drainAcc_ -= kCpuHz;
+
+        if (mode_ == 0) {
+            fifoStat_ |= STAT_HALF_B;
+        } else {
+            if (!(playRec_ & 1)) {
+                fifoStat_ |= STAT_EMPTY_OR_FULL_A;
+                if (!(fifoIrqEn_[0] & 1)) setIrq(true);
+            }
+
+            lastL_ = int8_t(fifo_[0][rd_[0]] ^ 0x80);
+            lastR_ = int8_t(fifo_[1][rd_[1]] ^ 0x80);
+            for (int ch = 0; ch < 2; ch++) {
+                if (cap_[ch]) {
+                    rd_[ch] = (rd_[ch] + 1) & 0x3FF;
+                    cap_[ch]--;
+                }
+            }
+
+            if (cap_[0] < 0x200 || cap_[1] < 0x200) {
+                fifoStat_ |= STAT_HALF_B;
+                if (!(fifoIrqEn_[1] & 1)) setIrq(true);
+            } else {
+                fifoStat_ &= uint8_t(~STAT_HALF_B);
+            }
+            if (cap_[0] == 0 || cap_[1] == 0)
+                fifoStat_ |= STAT_EMPTY_OR_FULL_B;
+            else
+                fifoStat_ &= uint8_t(~STAT_EMPTY_OR_FULL_B);
+        }
+
+        if (((outWr_ - outRd_) & (kOutSize - 1)) < kOutSize - 1) {
+            uint32_t i = outWr_++ & (kOutSize - 1);
+            outL_[i] = int16_t(int(lastL_) * 256);
+            outR_[i] = int16_t(int(lastR_) * 256);
+        }
+    }
+}

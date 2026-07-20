@@ -15,14 +15,11 @@ Cpu040::Cpu040(Q605Memory& mem) : mem_(mem) {
     // oracle `macqd605` (macquadra605.cpp:158 `M68040(...)`; only its
     // lc475/lc575 variants use M68LC040). In Moira M68040 and M68LC040 are
     // identical except the FPU-availability bit, so this only turns the FPU
-    // on. Our MacOS 8.1 boot disk (validated on that oracle) unconditionally
-    // runs the ROM's FPU init (`$408E9AC0 fmove.l fpcr,D0`); on a no-FPU
-    // 68LC040 that F-line trapped to the System's vector-11 "no FP package"
-    // stub ($0002747E), which SysError(10)=dsLineFErr → the modal-alert spin
-    // at $40802A38. With the FPU present the instruction executes in-core and
-    // the boot proceeds. POM68K_Q605_NOFPU restores the 68LC040/no-FPU config
-    // (accurate to bare Quadra 605 hardware, but this System has no SANE FP
-    // emulator so it does not reach the Finder). The FPU model is the 68882
+    // on. With it present, Mac OS 8.1 runs the ROM's FPU init
+    // (`$408E9AC0 fmove.l fpcr,D0`) and boots. POM68K_Q605_NOFPU restores the
+    // 68LC040/no-FPU config; Q605Memory::loadRom then clears UniversalInfo
+    // HWCfgFlags bit 28 on ROM reads so System installs PACK 4.
+    // The FPU model is the 68882
     // superset (Moira's only FPU) — the 040's would trap transcendentals to
     // the FPSP; results match either way.
     if (getenv("POM68K_Q605_NOFPU")) {
@@ -67,9 +64,13 @@ void Cpu040::catchUp() {
 
 void Cpu040::flushTicks() {
     moira::i64 d = clock - lastPeriphClock_;
-    if (d <= 0) return;
-    lastPeriphClock_ = clock;
-    mem_.tick(int(d));
+    if (d > 0) {
+        lastPeriphClock_ = clock;
+        mem_.tick(int(d));
+    }
+    // Clock-gated ROM UniversalInfo FPU clear — must run even when the
+    // peripheral batch was already drained by sync() during executeUntil.
+    mem_.maybePatchRomNoFpu(getPC());
 }
 
 void Cpu040::sync(int cycles) {

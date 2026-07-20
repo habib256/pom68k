@@ -1,5 +1,77 @@
 # CHANGELOG
 
+## 2026-07-20 — Q8.6: SWIM2 SuperDrive media (MFM 1.44 + GCR)
+
+`SonyDrive` accepts 1.44 MB HD images (80×2×18×512 @ 300 RPM) alongside
+800K/400K GCR, with SuperDrive sense bits, MFM IBM System 34 track encoding
+(MARK on A1 syncs), `nextByte` for SWIM2, sector R/W and `eject()`. `Swim2`
+attaches two drives, maps phases→CA/LSTRB, mode motor/devsel/HDSEL/ACTION and
+setup GCR/MFM, and clocks FIFO bytes from/to the selected drive. `Q605Memory`
+owns `drive0_`/`drive1_`, `insertDisk`/`ejectDisk`, and ticks both spindles;
+the Quadra GUI can insert/eject floppies under `disks35/`. Gates:
+`swim2_media_test` (MFM/GCR/write-back) and `q605_floppy_boot_etalon`
+(synthetic HD sector0 via the SWIM2 stack; ROM floppy boot still optional /
+soft-skip). Plus/LC II IWM + `gcr_test` unchanged.
+
+## 2026-07-20 — Q8.5: 68LC040 NOFPU path via UniversalInfo FPU-bit read mask
+
+`POM68K_Q605_NOFPU=1` selects Moira `M68LC040` + `FPUModel::NONE`. GetHardwareInfo
+probes FPU with `fnop` and clears bit 28 in D2, but Mac OS 8.1 still skipped
+ROM PACK 4 because later code re-reads Primus UniversalInfo `$0A8080`
+(machine ID `$A55A2221` / Gestalt 89) which kept bit 28 set in the ROM image.
+Mutating `rom_[]` or masking that long too early hung StartInit. After SCSI
+boot begins (or ≥400M cycles), `Q605Memory` arms a read mask on offset
+`$0A8090` that clears bit 28 (`$DC`→`$CC`) without touching storage —
+Basilisk's `rom_patches`/`emul_op` FPU contract. `q605_nofpu_boot_etalon`
+gates Finder under NOFPU; default FPU boot is unchanged.
+
+## 2026-07-20 — Q8.4: SWIM2 register/FIFO core replaces the zero stub
+
+PrimeTime's `$5001E000` floppy window now uses a dedicated `Swim2` device
+instead of returning zero. This first media-independent slice implements the
+MAME reset state, mode set/clear, setup/phases, four rotating timing
+parameters, the two-entry data/mark/CRC FIFO, clear-on-read errors and
+read/write handshake levels. IOSB's register spacing and 16-bit lane behavior
+are modeled explicitly so a word access has exactly one FIFO side effect. A
+C15M-clocked no-media shifter supplies idle `$FF` read bytes and drains write
+bytes; this is required by the ROM's SWIM speed calibration before SCSI boot.
+Each SWIM bus transaction also applies IOSB's documented five-cycle wait state.
+
+New `swim2_test` pins the chip register contract, PrimeTime bus wrapper and wait
+state.
+The real `q605_boot_etalon` still reaches the 256-color Finder. Drive selection,
+flux timing and GCR/MFM media land in Q8.6.
+
+## 2026-07-20 — Q8.3: Quadra 605 whole-machine boot gate
+
+Added `q605_boot_etalon`, a soft-skipping whole-machine gate for the
+user-provided FF7439EE ROM and Mac OS 8.1 disk image. It runs the 68040 machine
+for up to 2.5 billion cycles, decodes the live main-GDevice framebuffer through
+the DAFB CLUT, and requires the 640×480×8 mode, DAFB mode 3, Finder-like
+menu/desktop luminance separation, and more than 5,000 SCSI commands. Missing
+assets remain a clean pass, matching the existing LC II etalon discipline.
+The real assets pass with DAFB base `$1000`, stride 1024, mode 3, menu/desktop
+luminance 204/141 and 5,002 SCSI commands.
+
+## 2026-07-20 — Q8.2: Quadra 605 PrimeTime/IOSB ASC stereo
+
+The Quadra sound device is now the hardware-appropriate `AscIosb`, identified
+as version `$BB` by ASCTester on a real LC 475, instead of the mono V8 `$E8`
+stopgap. It implements separate 1 KB FIFO A/B channels, the four-bit stereo
+FIFO status, writable A/B interrupt enables, PLAYRECA behavior, lockstep
+22.257 kHz draining, and distinct left/right output. The discrete `$B0` EASC's
+44.1 kHz SRC/CD-XA path is intentionally not conflated with this IOSB cell.
+
+PrimeTime's pseudo-VIA2 now re-latches bit 4 when software acknowledges IFR
+while the ASC interrupt line remains high. The host audio ring carries stereo
+frames; existing Mac Plus and LC II mono samples are duplicated to both host
+channels. `q605_trace` reports FIFO A/B traffic and the `$BB` identity.
+
+New gate `q605_asc_test` pins version/register defaults, independent FIFO
+feeding, stereo drain and samples, interrupt enable/level semantics, and
+pseudo-VIA2 re-latching. The original `asc_test` remains unchanged and guards
+the LC II V8 variant.
+
 ## 2026-07-20 — Q8.1: DAFB stride/depth model and 256-color host rendering
 
 The Quadra 605 DAFB HLE now tracks the split `$000/$004` framebuffer base,
@@ -8,7 +80,8 @@ pitch), and Antelope RAMDAC PCBR0/PCBR1 pixel modes. The GUI and `q605_trace`
 render using the live hardware depth/stride instead of relying on the main
 GDevice PixMap while Mac OS is changing depth. DAFB reset now also clears the
 CLUT and all mode/interrupt state. `q605_trace` emits a CLUT-decoded PPM for
-1/2/4/8 bpp and reports the hardware geometry.
+1/2/4/8 bpp, reports the hardware geometry, and offers `--dafb-io N` to trace
+DAFB plus MEMCjr holding-port traffic independently of the generic I/O budget.
 
 New `q605_dafb_test` pins the MEMCjr 6+6-bit register protocol, stride
 conversion/config override, all indexed depths, Antelope x555 selection, and

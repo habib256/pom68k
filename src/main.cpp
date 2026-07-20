@@ -228,6 +228,23 @@ static void relaunchIfSwitched(char* argv0) {
 #endif
 }
 
+// List floppy images under disks35/ (raw .dsk / .img SuperDrive media).
+static std::vector<std::string> listFloppyImages() {
+    namespace fs = std::filesystem;
+    std::string dir = findPath("disks35");
+    std::vector<std::string> out;
+    if (dir.empty()) return out;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(dir, ec)) {
+        std::string ext = e.path().extension().string();
+        for (char& ch : ext) ch = char(tolower(ch));
+        if (ext == ".dsk" || ext == ".img" || ext == ".image")
+            out.push_back(e.path().string());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 // List the disk images next to the current one (or under hdv/) — the pool
 // the "Disques" menu offers. Sorted for a stable menu order.
 static std::vector<std::string> listDiskImages(const std::string& nearPath) {
@@ -762,8 +779,24 @@ struct QuadraMachine {
 
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset } t; int a = 0, b = 0; };
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, InsertFloppy, EjectFloppy } t;
+                 int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
+    void requestInsertFloppy(std::string path) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        floppyPending_ = std::move(path);
+        cmds_.push_back({Cmd::InsertFloppy});
+    }
+    void requestEjectFloppy() {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::EjectFloppy});
+    }
+    bool floppyInserted() const {
+        return floppyFlag_.load(std::memory_order_relaxed);
+    }
+    void setFloppyInserted(bool on) {
+        floppyFlag_.store(on, std::memory_order_relaxed);
+    }
 
     bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
         std::lock_guard<std::mutex> l(fbMu_);
@@ -796,7 +829,7 @@ struct QuadraMachine {
             while (audioHost.buffered() < kTarget && n < 8) {
                 runOne();
                 if (drain()) activeHold_ = 90; else activeHold_--;
-                audioHost.pushRaw(samp_, 0);
+                audioHost.pushRawStereo(samp_, 0);
                 n++;
             }
             if (n == 0) {
@@ -819,7 +852,7 @@ struct QuadraMachine {
                          std::chrono::milliseconds(10));
             if (drain()) {
                 activeHold_ = 90;                       // sound starts:
-                audioHost.pushFrame(samp_, 0);          // switch to pacing
+                audioHost.pushFrameStereo(samp_, 0);    // switch to pacing
             }
             if (!turbo.load(std::memory_order_relaxed)) {
                 auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -955,12 +988,14 @@ private:
         else cpu.runCycles(kFrame);
         framesRun_++;
     }
-    // Drain the ASC samples produced by the last slice (22 257 Hz mono) and
-    // report whether they carry real sound (AC span). Same gate as LcMachine.
+    // Drain interleaved IOSB ASC stereo frames and report real AC content.
     bool drain() {
         samp_.clear();
-        while (mem.asc().available() > 0)
-            samp_.push_back(float(mem.asc().pop()) / 32768.0f);
+        int16_t left, right;
+        while (mem.asc().popStereo(left, right)) {
+            samp_.push_back(float(left) / 32768.0f);
+            samp_.push_back(float(right) / 32768.0f);
+        }
         float lo = 1.f, hi = -1.f;
         for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
         return !samp_.empty() && hi - lo >= 0.02f;
@@ -972,6 +1007,15 @@ private:
             case Cmd::MouseButton: mem.adb().mouseButton(c.a != 0); break;
             case Cmd::Key:         mem.adb().keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
+            case Cmd::InsertFloppy:
+                if (!floppyPending_.empty() && mem.insertDisk(floppyPending_))
+                    floppyFlag_.store(true, std::memory_order_relaxed);
+                floppyPending_.clear();
+                break;
+            case Cmd::EjectFloppy:
+                mem.ejectDisk();
+                floppyFlag_.store(false, std::memory_order_relaxed);
+                break;
         }
         cmdsApply_.clear();
     }
@@ -979,6 +1023,8 @@ private:
     std::thread th_;
     std::mutex cmdMu_;
     std::vector<Cmd> cmds_, cmdsApply_;
+    std::string floppyPending_;
+    std::atomic<bool> floppyFlag_{false};
     std::mutex fbMu_;
     std::vector<uint32_t> fbShared_;
     int fbW_ = 0, fbH_ = 0;
@@ -1016,10 +1062,30 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
     if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
     else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
+    // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
+    // SCSI remains the default boot path; a floppy is just media presence for the GUI.
+    std::string floppyPath;
+    if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
+    if (floppyPath.empty()) floppyPath = findPath("disks35/Disk605.dsk");
+    if (floppyPath.empty()) floppyPath = findPath("disks35/quadra.img");
+    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
+    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
     // Secondary volumes (argv[3..] → SCSI IDs 1..6).
     static std::vector<std::string> extraDisks;
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;
+        // Treat .dsk / raw SuperDrive images as floppy inserts, not SCSI.
+        std::string arg = argv[i];
+        auto ext = std::filesystem::path(arg).extension().string();
+        for (char& c : ext) c = char(std::tolower(c));
+        if (ext == ".dsk" || ext == ".image") {
+            if (mem.insertDisk(arg)) {
+                floppyPath = arg;
+                floppyOk = true;
+                std::printf("Floppy: %s\n", arg.c_str());
+            }
+            continue;
+        }
         int id = int(extraDisks.size()) + 1;
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
@@ -1059,15 +1125,18 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static QuadraMachine machine{mem, cpu, audioHost};
+    machine.setFloppyInserted(floppyOk);
     machine.publish(true);
 
     struct Ctx {
         GLFWwindow* window; QuadraMachine& m; GLuint tex;
         std::vector<uint32_t> fb;
-        std::string romName, hddPath;
+        std::string romName, hddPath, floppyPath;
         std::vector<std::string>& extraDisks;
+        bool& floppyOk;
     };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks};
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
+                   extraDisks, floppyOk};
 
     auto frame = [](void* p) {
         Ctx& c = *static_cast<Ctx*>(p);
@@ -1124,7 +1193,23 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                     }
                 }
                 ImGui::Separator();
-                ImGui::TextDisabled("Changer un disque relance l'émulateur");
+                ImGui::TextDisabled("Floppy (SWIM2)");
+                if (ImGui::MenuItem("Éjecter", nullptr, false, c.m.floppyInserted())) {
+                    c.m.requestEjectFloppy();
+                    c.floppyOk = false;
+                    c.floppyPath.clear();
+                }
+                for (const std::string& d : listFloppyImages()) {
+                    bool cur = !c.floppyPath.empty() && samePath(d, c.floppyPath);
+                    std::string name = fs::path(d).filename().string();
+                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur) {
+                        c.m.requestInsertFloppy(d);
+                        c.floppyPath = d;
+                        c.floppyOk = true;
+                    }
+                }
+                ImGui::Separator();
+                ImGui::TextDisabled("Changer un disque SCSI relance l'émulateur");
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Redémarrer"))
@@ -1183,6 +1268,9 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
         ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
                     st.overlay ? 1 : 0, st.w, st.h, st.depth,
                     st.mmu ? "on" : "off", st.held ? 1 : 0);
+        ImGui::Text("floppy=%s", c.m.floppyInserted()
+                    ? (c.floppyPath.empty() ? "inserted" : c.floppyPath.c_str())
+                    : "none");
         bool running = c.m.running.load(std::memory_order_relaxed);
         if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
         ImGui::SameLine();

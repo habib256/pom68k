@@ -23,6 +23,10 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     cuda_.setAdbBus(&adb_);
     // EASC half-empty IRQ → pseudo-VIA2 bit 4 (iosb.cpp:358-361).
     asc_.onIrq = [this](bool s) { ascIrq(s); };
+    // Two MFD-75W SuperDrives behind PrimeTime's SWIM2.
+    drive0_.setSuperDrive(true);
+    drive1_.setSuperDrive(true);
+    swim_.attachDrive(&drive0_, &drive1_);
     // A cold (unsigned) XPRAM makes the ROM run its LONG full-RAM
     // burn-in on every boot and boots B&W — seed the Basilisk-verified
     // 'NuMc' defaults (docs: macemu main.cpp:106-141)
@@ -45,7 +49,64 @@ Q605Memory::Q605Memory(uint32_t totalRam)
 bool Q605Memory::loadRom(const std::vector<uint8_t>& data) {
     if (data.size() != kRomSize) return false;
     std::memcpy(rom_.data(), data.data(), kRomSize);
+    romNoFpuLowmemPatched_ = false;
+    romNoFpuMasked_ = false;
+    // GetHardwareInfo must run against the unmodified ROM. Once its probe has
+    // completed, the real 68LC040 profile clears UniversalInfo's FPU-present
+    // bit so the System selects the ROM's second PACK 4 (Basilisk
+    // rom_patches.cpp, HWCfgFlags bit 28).
+    romNoFpuPending_ = std::getenv("POM68K_Q605_NOFPU") != nullptr;
     return true;
+}
+
+// FF7439EE Primus/LC 475 UniversalInfo $0A8080 + $10 (HWCfgFlags/IDs).
+static constexpr uint32_t kLc475HwCfgRom = 0x0A8090u;
+
+void Q605Memory::maybePatchRomNoFpu(uint32_t pc) {
+    if (!romNoFpuPending_ || !cpu_) return;
+
+    const bool probeDone = (pc >= 0x40804B18u && pc <= 0x40804C00u);
+    const bool probeFallback = cpu_->getClock() >= 120000;
+    if (!romNoFpuLowmemPatched_ && (probeDone || probeFallback)) {
+        // StartInit may already have copied HWCfgFlags into low memory.
+        // Clear only known FF7439EE records, never arbitrary bit-28 values.
+        static constexpr uint32_t kStale[] = {
+            0xDC00530Du, 0xDD00530Du, 0xDC00540Du, 0xDD001B0Cu,
+        };
+        constexpr uint32_t kLowmemLimit = 0x100000;
+        for (uint32_t a = 0; a + 4 <= kLowmemLimit && a + 4 <= totalRam_; a += 4) {
+            uint32_t v = uint32_t(ram_[a]) << 24 | uint32_t(ram_[a + 1]) << 16 |
+                         uint32_t(ram_[a + 2]) << 8 | ram_[a + 3];
+            for (uint32_t pat : kStale) {
+                if (v != pat) continue;
+                v &= ~0x10000000u;
+                ram_[a]     = uint8_t(v >> 24);
+                ram_[a + 1] = uint8_t(v >> 16);
+                ram_[a + 2] = uint8_t(v >> 8);
+                ram_[a + 3] = uint8_t(v);
+                break;
+            }
+        }
+        romNoFpuLowmemPatched_ = true;
+    }
+
+    if (romNoFpuMasked_) return;
+    const bool lateBoot = scsi_.commands > 0 || cpu_->getClock() >= 400000000;
+    if (!lateBoot) return;
+
+    uint32_t v = uint32_t(rom_[kLc475HwCfgRom]) << 24 |
+                 uint32_t(rom_[kLc475HwCfgRom + 1]) << 16 |
+                 uint32_t(rom_[kLc475HwCfgRom + 2]) << 8 |
+                 rom_[kLc475HwCfgRom + 3];
+    if (v & 0x10000000u) {
+        v &= ~0x10000000u;                     // $DC00530D → $CC00530D
+        rom_[kLc475HwCfgRom]     = uint8_t(v >> 24);
+        rom_[kLc475HwCfgRom + 1] = uint8_t(v >> 16);
+        rom_[kLc475HwCfgRom + 2] = uint8_t(v >> 8);
+        rom_[kLc475HwCfgRom + 3] = uint8_t(v);
+    }
+    romNoFpuMasked_ = true;
+    romNoFpuPending_ = !romNoFpuLowmemPatched_;
 }
 
 void Q605Memory::reset() {
@@ -72,7 +133,14 @@ void Q605Memory::reset() {
     scc_.reset();
     scsi_.reset();
     asc_.reset();
+    swim_.reset();
+    swim_.attachDrive(&drive0_, &drive1_);
+    drive0_.reset();
+    drive1_.reset();
+    ascLine_ = false;
     ascCycAcc_ = 0;
+    swimLastCpu_ = -1;
+    swimCycAcc_ = 0;
     scc_.setCtsHigh(false);        // no serial debugger attached (POST check)
     scc_.setAbortIdle(true);       // no LocalTalk peer — SDLC hunt streams the
                                    // standing Break/Abort as a level-4 ext/status
@@ -106,6 +174,7 @@ void Q605Memory::updateIrq() {
 }
 
 void Q605Memory::via2Recalc() {
+    if (ascLine_) pvIfr_ |= 0x10;
     if (via2IrqAsserted()) pvIfr_ |= 0x80; else pvIfr_ &= ~0x80;
     updateIrq();
 }
@@ -125,7 +194,23 @@ void Q605Memory::scsiIrq(bool s) {
     via2Recalc();
 }
 
+// MAME swim2_device::read/write begin with sync(). Drive SWIM from the CPU
+// clock so sync-on-access and the batched machine tick share one timeline.
+void Q605Memory::syncSwimFromCpu() {
+    if (!cpu_) return;
+    const int64_t now = int64_t(cpu_->getClock());
+    if (swimLastCpu_ < 0) { swimLastCpu_ = now; return; }
+    const int64_t delta = now - swimLastCpu_;
+    if (delta <= 0) return;
+    swimLastCpu_ = now;
+    swimCycAcc_ += delta * AscIosb::kCpuHz;
+    const int cyc = int(swimCycAcc_ / kCpuHz);
+    swimCycAcc_ -= int64_t(cyc) * kCpuHz;
+    if (cyc) swim_.tick(cyc);
+}
+
 void Q605Memory::ascIrq(bool s) {
+    ascLine_ = s;
     if (s) pvIfr_ |= 0x10;                   // EASC bit 4 (IFR/IER mask $1B)
     else   pvIfr_ &= ~0x10;
     via2Recalc();
@@ -382,7 +467,7 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
     if (base >= 0x10100 && base < 0x10104)       // TurboSCSI pseudo-DMA — Q6
         return scsiDmaRead_();
     if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000)
-        return asc_.read(addr & 0xFFF);          // EASC (V8 model stopgap)
+        return asc_.read(addr & 0xFFF);          // PrimeTime/IOSB ASC ($BB)
     if ((sub & ~0xF00000u) >= 0x18000 && (sub & ~0xF00000u) < 0x1A000) {
         uint32_t reg = ((sub & 0x1FFF) >> 8) & 0x1F;
         uint32_t byteInWord = sub & 1;
@@ -391,10 +476,11 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
     if ((sub & ~0xF00000u) >= 0x1A100 && (sub & ~0xF00000u) < 0x1A110)
         return 0;   // PrimeTime II ATA/status window — ROM probes $1A101
 
-    if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000)
-        return 0x00;    // SWIM2 stub (no floppy) — NOT $FF: the ROM polls
-                        // the ISM phase register (+$1800) until bit 5
-                        // drops; an all-FF stub loops it forever
+    if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000) {
+        if (cpu_) cpu_->stall(5);                 // iosb.cpp swim_r wait states
+        syncSwimFromCpu();                        // MAME swim2::read → sync()
+        return (addr & 1) ? 0 : swim_.read((sub >> 9) & 0x0F);
+    }
 
     busError(addr, false);
 }
@@ -444,7 +530,7 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000) {
-        asc_.write(addr & 0xFFF, v);                 // EASC (V8 model stopgap)
+        asc_.write(addr & 0xFFF, v);                 // PrimeTime/IOSB ASC
         return;
     }
     if ((sub & ~0xF00000u) >= 0x18000 && (sub & ~0xF00000u) < 0x1A000) {
@@ -453,8 +539,12 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         else         iosbRegs_[reg] = uint16_t((iosbRegs_[reg] & 0x00FF) | (v << 8));
         return;
     }
-    if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000)
-        return;                                      // SWIM2 stub
+    if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000) {
+        if (cpu_) cpu_->stall(5);                 // iosb.cpp swim_w wait states
+        syncSwimFromCpu();                        // MAME swim2::write → sync()
+        swim_.write((sub >> 9) & 0x0F, v);
+        return;
+    }
 
     busError(addr, true);
 }
@@ -528,6 +618,11 @@ uint16_t Q605Memory::read16(uint32_t addr) {
         uint32_t o = addr - 0xF9000000;
         return uint16_t(vram_[o] << 8 | vram_[o + 1]);
     }
+    if (addr >= 0x50000000 && addr < 0x60000000) {
+        uint32_t swimOff = (addr & 0x0FFFFFFF) & ~0xF00000u;
+        if (swimOff >= 0x1E000 && swimOff < 0x20000)
+            return uint16_t(read8(addr) << 8);    // IOSB result on D15-D8
+    }
     return uint16_t(read8(addr) << 8 | read8(addr + 1));
 }
 
@@ -567,6 +662,13 @@ void Q605Memory::write16(uint32_t addr, uint16_t v) {
         vram_[o + 1] = uint8_t(v);
         return;
     }
+    if (addr >= 0x50000000 && addr < 0x60000000) {
+        uint32_t swimOff = (addr & 0x0FFFFFFF) & ~0xF00000u;
+        if (swimOff >= 0x1E000 && swimOff < 0x20000) {
+            write8(addr + 1, uint8_t(v));         // IOSB accepts low byte
+            return;
+        }
+    }
     write8(addr, uint8_t(v >> 8));
     write8(addr + 1, uint8_t(v));
 }
@@ -600,13 +702,16 @@ void Q605Memory::tick(int cpuCycles) {
     if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }
     localTalkWatchdog(cpuCycles);            // Q6.6 LAP unwedge
 
-    // EASC FIFO drain: the ASC runs on its own 15.6672 MHz clock (C15M),
+    // IOSB ASC and SWIM2 run on C15M (15.6672 MHz),
     // independent of the 25 MHz CPU — convert cpuCycles into ASC-clock ticks
     // via a fractional accumulator so the 22 257 Hz sample rate stays exact.
-    ascCycAcc_ += int64_t(cpuCycles) * AscV8::kCpuHz;
+    ascCycAcc_ += int64_t(cpuCycles) * AscIosb::kCpuHz;
     int ascCyc = int(ascCycAcc_ / kCpuHz);
     ascCycAcc_ -= int64_t(ascCyc) * kCpuHz;
     asc_.tick(ascCyc);
+    syncSwimFromCpu();
+    drive0_.tick(cpuCycles);
+    drive1_.tick(cpuCycles);
 
     // SCSI bus-service latency countdown (Q6.5b) → reflect the deferred IRQ
     // into the pseudo-VIA2 line when it lands.

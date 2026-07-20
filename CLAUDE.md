@@ -135,5 +135,5 @@ alongside Plus/LC II. The default compatibility configuration follows MAME's
 full-68040/FPU `macqd605`; `POM68K_Q605_NOFPU=1` restores bare 68LC040
 behaviour. Q8.1 adds gated DAFB stride/depth state and indexed-color host
 rendering, but a real Finder `SetDepth(8)` run is still required before calling
-the reported 256-color guest crash fixed. **27 CTest gates** total, including
-`lcii_boot_etalon`, `sst68040`, and `q605_dafb_test`.
+the reported 256-color guest crash fixed. **28 CTest gates** total, including
+`lcii_boot_etalon`, `sst68040`, `q605_dafb_test`, and `q605_nofpu_boot_etalon`.

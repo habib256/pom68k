@@ -6,7 +6,8 @@
 // and reports PC coverage, the exception-vector histogram, bus-error
 // sites and the first I/O accesses. Not a CTest gate.
 //
-// Usage: q605_trace <rom> [--cycles N] [--io N] [--berr N] [--pcring N]
+// Usage: q605_trace <rom> [--cycles N] [--io N] [--dafb-io N] [--swim-io N]
+//                   [--berr N] [--pcring N]
 //                   [--stop-at HEXPC [--stop-skip N]] [--watch HEXPC]
 // --stop-skip N ignores the first N hits of --stop-at, to catch a
 // specific call of a routine that runs many times.
@@ -54,9 +55,14 @@ public:
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr, "usage: %s <rom> [--cycles N] [--io N] [--berr N] [--pcring N]\n", argv[0]); return 2; }
+    if (argc < 2) {
+        std::fprintf(stderr,
+            "usage: %s <rom> [--cycles N] [--io N] [--dafb-io N] [--swim-io N] [--berr N] [--pcring N]\n",
+            argv[0]);
+        return 2;
+    }
     long long cycles = 200000000;   // 8 machine-seconds at 25 MHz
-    int ioMax = 60, berrMax = 40; size_t pcRing = 32;
+    int ioMax = 60, dafbIoMax = 0, swimIoMax = 0, berrMax = 40; size_t pcRing = 32;
     uint32_t stopAt = 0, watch = 0, wwatch = 0, firstpc = 0, complog = 0, dumpAt = 0;
     long stopSkip = 0;                 // ignore the first N hits of --stop-at
     std::string diskPath;             // --disk / --scsi: boot image at ID 0
@@ -65,6 +71,8 @@ int main(int argc, char** argv) {
         std::string a = argv[i];
         if (a == "--cycles" && i + 1 < argc) cycles = atoll(argv[++i]);
         else if (a == "--io" && i + 1 < argc) ioMax = atoi(argv[++i]);
+        else if (a == "--dafb-io" && i + 1 < argc) dafbIoMax = atoi(argv[++i]);
+        else if (a == "--swim-io" && i + 1 < argc) swimIoMax = atoi(argv[++i]);
         else if (a == "--berr" && i + 1 < argc) berrMax = atoi(argv[++i]);
         else if (a == "--pcring" && i + 1 < argc) pcRing = size_t(atoll(argv[++i]));
         else if (a == "--stop-at" && i + 1 < argc) stopAt = uint32_t(strtoul(argv[++i], nullptr, 16));
@@ -125,12 +133,13 @@ int main(int argc, char** argv) {
         };
     }
 
-    // ASC FIFO-A feed counter (Q8 sound wiring): count bytes pushed into the
-    // EASC FIFO so a run can confirm the boot chime / System sound is fed.
-    long ascFifoWrites = 0;
-    mem.asc().onWrite = [&](uint32_t off, uint8_t) { if (off < 0x400) ascFifoWrites++; };
+    // IOSB ASC feed counters: distinguish left/right FIFO traffic.
+    long ascFifoWrites[2] = {};
+    mem.asc().onWrite = [&](uint32_t off, uint8_t) {
+        if (off < 0x800) ascFifoWrites[(off >> 10) & 1]++;
+    };
 
-    int ioSeen = 0, berrSeen = 0;
+    int ioSeen = 0, dafbIoSeen = 0, swimIoSeen = 0, berrSeen = 0;
     long scsiRegLog = 0, lastDma = 0;
     mem.scsi().onCommand = [&](const std::vector<uint8_t>& cdb) {
         std::printf("  SCSI CDB [");
@@ -156,6 +165,17 @@ int main(int argc, char** argv) {
         if (ioSeen++ < ioMax)
             std::printf("  IO  %c $%08X = $%02X  (pc=$%08X clk=%lld)\n", w ? 'W' : 'R', a, v, cpu.getPC0(),
                         (long long)cpu.getClock());
+        bool dafb = a >= 0xF9800000 && a < 0xF9800400;
+        bool holding = (a & 0xFFFF) >= 0xE07C && (a & 0xFFFF) <= 0xE07F;
+        if ((dafb || holding) && dafbIoSeen++ < dafbIoMax)
+            std::printf("  DAFB %c $%08X = $%02X  (pc=$%08X clk=%lld)\n",
+                        w ? 'W' : 'R', a, v, cpu.getPC0(),
+                        (long long)cpu.getClock());
+        uint32_t io = (a & 0x0FFFFFFF) & ~0xF00000u;
+        if (io >= 0x1E000 && io < 0x20000 && swimIoSeen++ < swimIoMax)
+            std::printf("  SWIM %c reg%X $%08X = $%02X  (pc=$%08X clk=%lld)\n",
+                        w ? 'W' : 'R', (io >> 9) & 0x0F, a, v,
+                        cpu.getPC0(), (long long)cpu.getClock());
     };
     long long cudaFrom = 0;
     { const char* e = getenv("Q605_CUDA_FROM"); if (e) cudaFrom = atoll(e); }
@@ -812,7 +832,8 @@ int main(int argc, char** argv) {
     std::printf("-- SCSI: reads=%ld writes=%ld selects=%ld commands=%ld dmaBytes=%ld lastCmd=$%02X --\n",
                 mem.scsi().reads, mem.scsi().writes, mem.scsi().selects,
                 mem.scsi().commands, mem.scsi().dmaBytes, mem.scsi().lastCmd);
-    std::printf("-- ASC: FIFO-A bytes fed=%ld --\n", ascFifoWrites);
+    std::printf("-- ASC-IOSB: version=$%02X FIFO bytes fed A=%ld B=%ld --\n",
+                mem.asc().read(0x800), ascFifoWrites[0], ascFifoWrites[1]);
     if (!noPram) mem.cuda().savePram("q605_trace.pram");
     return 0;
 }
