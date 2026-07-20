@@ -23,16 +23,35 @@ MacIIMemory::MacIIMemory(uint32_t ramSize)
 bool MacIIMemory::loadRom(const std::vector<uint8_t>& data) {
     if (data.size() != kRomSize) return false;
     rom_ = data;
-    // StartBoot ($40807B08) takes the Apple_HFS partition path only when the
-    // ddType it seeks is 1 (68020). That byte is packed from GetTimeout's
-    // low byte ($408015BE…); with virgin PRAM GetTimeout returns $FFFF so
-    // the ROM seeks type $FF, skips the HFS hunt, JSRs the driver with A0
-    // pointing at the wrong PM block, and never installs a DrvQ entry.
-    // Force wantType=1 and repair the ROM checksum at $0 (sum of BE words
-    // from $4..end — tools/rominfo.cpp).
+    // Two virgin-PRAM StartBoot traps, then repair the ROM checksum at $0
+    // (sum of BE words from $4..end — tools/rominfo.cpp):
+    //
+    // 1) wantType: StartBoot ($40807B08) takes the Apple_HFS partition path
+    //    only when the ddType it seeks is 1 (68020). That byte is packed from
+    //    GetTimeout's low byte ($408015BE…); virgin PRAM → $FFFF → seek type
+    //    $FF, skip the HFS hunt, JSR the driver with A0 on the wrong PM block,
+    //    and never install a DrvQ entry. Force wantType=1 at $7B12.
+    //
+    // 2) boot drive matcher: GetDefaultStartup returns floppy refNum $FFFB, so
+    //    $40801800 picks drive 1 and loops on empty Sony. Retarget the initial
+    //    lea a3 at $408015D6 to the SCSI-refNum matcher ($40801826).
+    //
+    // 3) $B0E boot mask: after AddDrive, $B0E settles at $80FF (bits 0–7 + 15).
+    //    SCSI drives are numbered 8..14, so $408017EE's btst skips them all and
+    //    the second-pass a3=$4080183A falls back to floppy. Replace the btst
+    //    body with moveq #1,d0 (always pass once 01854 accepts the unit).
     if (rom_.size() > 0x7B16) {
         rom_[0x7B12] = 0x70; rom_[0x7B13] = 0x01;   // moveq #1, d0
         rom_[0x7B14] = 0x4E; rom_[0x7B15] = 0x71;   // nop
+        // lea $40801826(pc), a3  — was lea $40801800(pc), a3 ($47FA $0228)
+        rom_[0x15D6] = 0x47; rom_[0x15D7] = 0xFA;
+        rom_[0x15D8] = 0x02; rom_[0x15D9] = 0x4E;
+        // $408017F4..$017FD: was move.w 6(a2),d1 / move.w $B0E,d0 / btst d1,d0
+        rom_[0x17F4] = 0x70; rom_[0x17F5] = 0x01;   // moveq #1, d0
+        rom_[0x17F6] = 0x4E; rom_[0x17F7] = 0x71;   // nop
+        rom_[0x17F8] = 0x4E; rom_[0x17F9] = 0x71;
+        rom_[0x17FA] = 0x4E; rom_[0x17FB] = 0x71;
+        rom_[0x17FC] = 0x4E; rom_[0x17FD] = 0x71;
         uint32_t sum = 0;
         for (size_t o = 4; o + 1 < rom_.size(); o += 2)
             sum += (uint32_t(rom_[o]) << 8) | rom_[o + 1];

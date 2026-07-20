@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-07-20 — Mac II: prefer SCSI boot over empty floppy
+
+After `wantType=1`, `Apple_Driver43` does `_AddDrive` (DrvQ: floppy + SCSI
+drives 8..14), but virgin `GetDefaultStartup` + `$B0E=$80FF` kept `BootDrive=1`
+and never read HFS (unique LBAs stayed {0,1,2,3,64}). `loadRom` now:
+(1) retargets `lea a3` at `$15D6` to the SCSI-refNum matcher `$40801826`;
+(2) NOPs the `$B0E` btst at `$17F4` (mask never includes drive bits 8..14);
+then repairs the ROM checksum.
+
 ## 2026-07-20 — Mac II: StartBoot wantType=$FF was skipping Apple_HFS
 
 Mac II POST is green; SCSI PDMA (`$50F12000–$13FFF`) delivers LBA 0 correctly,
@@ -9,11 +18,9 @@ Type `$FF` misses stock `ddType $0001`, then the non-1 path JSRs the driver
 with A0 on the wrong PM block — endless READ(6) LBA 0, empty `DrvQHdr`,
 gray floppy icon.
 
-`MacIIMemory::loadRom` now forces `wantType=1` (`moveq #1,d0` at `$7B12`) and
-repairs the ROM checksum at `$0` (sum of BE words from `$4`). Boot then walks
-PM (`Apple_Driver43` + `Apple_HFS`) and JSRs the driver; `DrvQHdr` is still
-empty after return — next gap is why `Apple_Driver43` from `HD20SC` does not
-`_AddDrive` under this ROM (Plus boots the same image).
+`MacIIMemory::loadRom` forces `wantType=1` (`moveq #1,d0` at `$7B12`) and
+repairs the ROM checksum at `$0`. Boot walks PM and `_AddDrive`s; Finder was
+still blocked by the floppy-first matcher (entry above).
 
 ## 2026-07-20 — O6.13: SCC word fast path + LC II NOFPU diagnosis
 
