@@ -1,13 +1,18 @@
 # CHANGELOG
 
+## 2026-07-20 — Mac II: PDMA $50F060xx must decode A0..A1
+
+Boot selected SCSI and issued READ(10) LBA 96 (n=2), but blind `move.l`
+PDMA via `$C08=$50F06000` only hit exact `$6060` — the three sibling
+bytes of each long were open bus → 256 DMA bytes per 1024-byte xfer and
+endless retry. Map `$6000–$7FFF` (and `$12000–$13FFF`) as DACK.
+
 ## 2026-07-20 — Mac II: prefer SCSI boot over empty floppy
 
 After `wantType=1`, `Apple_Driver43` does `_AddDrive` (DrvQ: floppy + SCSI
 drives 8..14), but virgin `GetDefaultStartup` + `$B0E=$80FF` kept `BootDrive=1`
-and never read HFS (unique LBAs stayed {0,1,2,3,64}). `loadRom` now:
-(1) retargets `lea a3` at `$15D6` to the SCSI-refNum matcher `$40801826`;
-(2) NOPs the `$B0E` btst at `$17F4` (mask never includes drive bits 8..14);
-then repairs the ROM checksum.
+and never read HFS. `loadRom` now: (1) retargets `lea a3` at `$15D6` to
+`$40801826`; (2) NOPs the `$B0E` btst at `$17F4`; repairs the checksum.
 
 ## 2026-07-20 — Mac II: StartBoot wantType=$FF was skipping Apple_HFS
 

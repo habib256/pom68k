@@ -1,4 +1,5 @@
 #include "MacIIMemory.h"
+#include "TobyVideo.h"
 #include "Cpu020.h"
 #include <cstdio>
 #include <fstream>
@@ -8,7 +9,6 @@ static std::string find(const char* rel) {
   for (const std::string b:{"","../"}) if (std::ifstream(b+rel,std::ios::binary)) return b+rel;
   return {};
 }
-static long gBusErr=0;
 int main() {
   auto rom=find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
   auto img=find("hdv/HD20SC.vhd");
@@ -17,27 +17,25 @@ int main() {
   MacIIMemory mem; mem.loadRom(rd); mem.installTobyVideo();
   Cpu020 cpu(mem,true); mem.setCpu(&cpu); cpu.hardReset();
   mem.attachScsi(img);
-  for (int i=1;i<7;i++) mem.scsi().attach(nullptr, i);
-
-  // wrap: count DMA reads per DATA_IN session via onAccess? use onCommand + dma counter
-  long prevDma=0; int n96=0;
-  mem.scsi().onCommand=[&](const std::vector<uint8_t>& cdb){
-    if (cdb.size()<10||cdb[0]!=0x28) return;
-    uint32_t a=(uint32_t(cdb[2])<<24)|(uint32_t(cdb[3])<<16)|(uint32_t(cdb[4])<<8)|cdb[5];
-    uint32_t n=(uint32_t(cdb[7])<<8)|cdb[8];
-    if (a!=96) { prevDma=mem.scsi().dmaBytes; return; }
-    if (n96<5) {
-      auto be16=[&](uint32_t x){return uint16_t((mem.read8(x)<<8)|mem.read8(x+1));};
-      std::printf("LBA96 #%d n=%u dmaDelta=%ld $B24=%u $DA6=%u $C04=%08X $C08=%08X\n",
-        n96,n,mem.scsi().dmaBytes-prevDma, be16(0xB24), be16(0xDA6),
-        (mem.read8(0xC04)<<24)|(mem.read8(0xC05)<<16)|(mem.read8(0xC06)<<8)|mem.read8(0xC07),
-        (mem.read8(0xC08)<<24)|(mem.read8(0xC09)<<16)|(mem.read8(0xC0A)<<8)|mem.read8(0xC0B));
-    }
-    n96++; prevDma=mem.scsi().dmaBytes;
-  };
   const int64_t kFrame=800*525;
   auto be16=[&](uint32_t a){return uint16_t((mem.read8(a)<<8)|mem.read8(a+1));};
-  for (long f=0;f<400&&!cpu.isHalted();f++) cpu.runCycles(kFrame);
-  std::printf("timings $B24=%u $DA6=%u $D00=%u BootDrive=%d n96=%d cmds=%ld\n",
-    be16(0xB24),be16(0xDA6),be16(0xD00),int16_t(be16(0x210)),n96,mem.scsi().commands);
+  long lastOk=0;
+  for (long f=0;f<20000&&!cpu.isHalted();f++) {
+    try {
+      cpu.runCycles(kFrame);
+    } catch (const std::exception& e) {
+      std::printf("exception f=%ld PC=$%08X what=%s\n", f, cpu.getPC(), e.what());
+      return 1;
+    }
+    lastOk=f;
+    if (f%2000==0)
+      std::printf("f=%ld PC=$%08X BootDrive=%d cmds=%ld halted=%d\n",
+        f,cpu.getPC(),int16_t(be16(0x210)),mem.scsi().commands,cpu.isHalted());
+  }
+  TobyVideo* tv=mem.toby();
+  std::vector<uint32_t> fb; tv->decode(fb);
+  int W=tv->hres(),H=tv->vres();
+  auto br=[&](int x0,int x1,int y0,int y1){long b=0;for(int y=y0;y<y1;y++)for(int x=x0;x<x1;x++)if((fb[y*W+x]&0xFF)<0x80)b++;return double(b)/(x1-x0)/(y1-y0);};
+  std::printf("DONE f=%ld halted=%d PC=$%08X menu=%.2f desk=%.2f cmds=%ld\n",
+    lastOk,cpu.isHalted(),cpu.getPC(),br(0,W,2,20),br(W/2,W,40,H-40),mem.scsi().commands);
 }

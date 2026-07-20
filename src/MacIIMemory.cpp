@@ -290,13 +290,23 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
     return uint16_t(lo) | (uint16_t(lo) << 8);
 }
 
-uint8_t MacIIMemory::scsiDma() {
-    if (!scsi_.drqActive()) busError();
+uint8_t MacIIMemory::scsiDma(bool berIfNoDrq) {
+    // $C08 ($6000) blind longword PDMA relies on /BERR when DRQ is down.
+    // $C04 ($12000) is the no-DRQ window (software polls BSR first) — a
+    // hard BERR there double-faulted once the boot blocks were in and the
+    // SCSI Manager probed the port freely (PC landed in RAM then HALTED).
+    if (!scsi_.drqActive()) {
+        if (berIfNoDrq) busError();
+        return 0xFF;
+    }
     return scsi_.dmaRead();
 }
 
-void MacIIMemory::scsiDmaW(uint8_t v) {
-    if (!scsi_.drqActive()) busError();
+void MacIIMemory::scsiDmaW(uint8_t v, bool berIfNoDrq) {
+    if (!scsi_.drqActive()) {
+        if (berIfNoDrq) busError();
+        return;
+    }
     scsi_.dmaWrite(v);
 }
 
@@ -355,18 +365,17 @@ uint8_t MacIIMemory::read8Decoded(uint32_t addr) {
             updateIrq();
             return d;
         }
-        // MAME: $50006000/$6060 and the whole $50012000-$50013FFF window
-        // are SCSI pseudo-DMA (DACK). ROM $C04=$50F12000; blind xfer uses
-        // $60(A1) → $50F12060 — must not fall through as open bus.
-        if (ioOff == 0x6000 || ioOff == 0x6060
-            || (ioOff >= 0x12000 && ioOff < 0x14000))
-            return scsiDma();
+        // $6000 page = DRQ+/BERR ($C08); $12000 window = no-/BERR ($C04).
+        if (ioOff >= 0x6000 && ioOff < 0x8000)
+            return scsiDma(true);
+        if (ioOff >= 0x12000 && ioOff < 0x14000)
+            return scsiDma(false);
         if (ioOff >= 0x10000 && ioOff < 0x12000) {
             // MAME scsi_r: reg = (word_offset >> 3) & 0xf ≡ byte_off >> 4.
             const uint32_t rel = ioOff - 0x10000;
             int reg = (rel >> 4) & 7;
             // pseudo-DMA read: word offset $130 → byte $260 into the window
-            if (reg == 6 && rel == 0x260) return scsiDma();
+            if (reg == 6 && (rel & ~3u) == 0x260) return scsiDma();
             return scsi_.read(reg);
         }
         if (ioOff >= 0x14000 && ioOff < 0x16000)
@@ -435,9 +444,11 @@ void MacIIMemory::write8Decoded(uint32_t addr, uint8_t v) {
             updateIrq();
             return;
         }
-        if (ioOff == 0x6000 || ioOff == 0x6060
-            || (ioOff >= 0x12000 && ioOff < 0x14000)) {
-            scsiDmaW(v); return;
+        if (ioOff >= 0x6000 && ioOff < 0x8000) {
+            scsiDmaW(v, true); return;
+        }
+        if (ioOff >= 0x12000 && ioOff < 0x14000) {
+            scsiDmaW(v, false); return;
         }
         if (ioOff >= 0x10000 && ioOff < 0x12000) {
             const uint32_t rel = ioOff - 0x10000;

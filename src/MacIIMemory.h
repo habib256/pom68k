@@ -96,8 +96,8 @@ private:
     uint8_t* ramAt(uint32_t addr);
     const uint8_t* ramAt(uint32_t addr) const;
     [[noreturn]] void busError() const;
-    uint8_t scsiDma();
-    void scsiDmaW(uint8_t v);
+    uint8_t scsiDma(bool berIfNoDrq = true);
+    void scsiDmaW(uint8_t v, bool berIfNoDrq = true);
 
     std::vector<uint8_t> ram_, rom_;
     Via6522 via1_, via2_;
