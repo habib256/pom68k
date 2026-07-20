@@ -50,8 +50,9 @@ public:
     bool cb1() const { return cb1_; }
     bool cb2() const { return cb2_; }
     // Keyboard transaction hooks (M0110 over the shift register)
-    void loadSR(uint8_t v) { sr_ = v; setIfr(SHIFT); srHostWritten_ = false; }
-    void raiseShift() { setIfr(SHIFT); }    // command byte finished shifting out
+    void loadSR(uint8_t v) { sr_ = v; setIfr(SHIFT); srHostWritten_ = false; shiftCount_ = 0; }
+    void raiseShift() { setIfr(SHIFT); shiftCount_ = 0; }    // command byte finished shifting out
+    void armShiftComplete(int clocks = 16) { shiftCount_ = clocks; }
     uint8_t acr() const { return acr_; }
     uint8_t srValue() const { return sr_; }
     // Q6: true when the HOST (guest CPU) has written the SR since the last
@@ -82,6 +83,7 @@ private:
     uint8_t inA_ = 0xFF, inB_ = 0xFF;
     uint8_t acr_ = 0, pcr_ = 0, sr_ = 0, ifr_ = 0, ier_ = 0;
     bool srHostWritten_ = false;                // Q6: host wrote SR (see .h)
+    int shiftCount_ = 0;                        // φ2 clocks until IFR.SHIFT
     bool cb1_ = true, cb2_ = true;              // input pin levels (idle high)
     int32_t t1_ = 0, t2_ = 0;
     uint16_t t1latch_ = 0;

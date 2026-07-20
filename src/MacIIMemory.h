@@ -111,8 +111,6 @@ private:
     uint8_t nubusIrqState_ = 0x3F;
     bool sccIrq_ = false;
     bool via2Irq_ = false;
-    bool via2Ca1PostHle_ = false;            // forced IER.CA1 only for $6DD8 wait
-    uint32_t postSoftA3_ = 0;                // A3 while in Slot Manager soft-wait
     bool via2Pb7_ = true;                    // last VIA2 PB7 level (→ VIA1 CA1)
     int viaPhase_ = 0;
     int64_t tickAcc_ = 0;

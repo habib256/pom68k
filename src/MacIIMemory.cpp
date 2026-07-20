@@ -62,8 +62,6 @@ void MacIIMemory::reset() {
     nubusIrqState_ = 0x3F;
     sccIrq_ = false;
     via2Irq_ = false;
-    via2Ca1PostHle_ = false;
-    postSoftA3_ = 0;
     via2Pb7_ = true;
     viaPhase_ = 0;
     tickAcc_ = 0;
@@ -122,33 +120,11 @@ void MacIIMemory::nubusSlotIrq(int slot, bool active) {
     else nubusIrqState_ |= masks[idx];
     refreshVia2PortA();
     // MAME nubus_slot_interrupt → VIA2 CA1 edge; IPL follows IFR&IER.
-    // Decl Primary Init often leaves Toby VBL off until VRAM paint; the
-    // $6DD8 wait needs VIA2 CA1 → $6E16 → bclr soft-flag @$15D(A3). Arm
-    // IER.CA1 only while that soft-flag is set — PC-scoped arming was too
-    // narrow (handler body at $6E24.. disarmed mid-flight) and too wide
-    // (kept IER into the boot VIA dispatcher → SysError 51 at $62DC).
-    if (cpu_) {
-        const uint32_t pcOff = cpu_->getPC() & 0xFFFF;
-        if (pcOff == 0x6DD8 || pcOff == 0x6DDE)
-            postSoftA3_ = cpu_->getA(3);
-    }
-    const bool softPending = postSoftA3_ != 0
-                          && (peek8(postSoftA3_ + 0x15D) & 0x20) != 0;
-    if ((nubusIrqState_ & 0x3F) != 0x3F) {
-        if (via2_.ierRaw() & Via6522::CA1) {
-            via2_.raiseCa1();
-        } else if (softPending) {
-            via2_.write(Via6522::IER, uint8_t(0x80 | Via6522::CA1));
-            via2Ca1PostHle_ = true;
-            via2_.raiseCa1();
-        }
-    }
-    if (via2Ca1PostHle_ && !softPending) {
-        via2_.write(Via6522::IER, Via6522::CA1);     // bit7=0 → clear enable
-        via2_.write(Via6522::IFR, Via6522::CA1);     // drop standing request
-        via2Ca1PostHle_ = false;
-        postSoftA3_ = 0;
-    }
+    // Do NOT force IER.CA1: Slot Manager's $6DD8 soft-flag wait is driven by
+    // VIA1 SHIFT ($7002 → $7100 → $6E16), and a hanging VIA2 CA1 with an
+    // empty $D04 task is SysError(51) at $62DC.
+    if ((nubusIrqState_ & 0x3F) != 0x3F && (via2_.ierRaw() & Via6522::CA1))
+        via2_.raiseCa1();
     via2Irq_ = via2_.irqAsserted();
     updateIrq();
 }
@@ -240,6 +216,16 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
             if (reg == Via6522::ORB || reg == Via6522::DDRB || reg == Via6522::SR
                 || reg == Via6522::ACR)
                 adbVia_.sync();
+            // Mac II Slot Manager $6DD8: after ORB selects a NuBus slot the
+            // card clocks VIA1 SR (shift-in). Re-arm IFR.SHIFT only while
+            // soft-flag bit5 @$15D(A3) is set — unbounded ORB→SHIFT livelocks
+            // in $70xx after the wait completes.
+            if (reg == Via6522::ORB && (via.acr() & 0x1C) && (via.ierRaw() & Via6522::SHIFT)) {
+                const uint32_t a3 = (uint32_t(peek8(0xCF8)) << 24) | (uint32_t(peek8(0xCF9)) << 16)
+                                  | (uint32_t(peek8(0xCFA)) << 8) | peek8(0xCFB);
+                if (a3 && (peek8(a3 + 0x15D) & 0x20))
+                    via.armShiftComplete();
+            }
             rtc_.setLines((via.portB() & 0x04) != 0,
                           (via.portB() & 0x02) != 0,
                           (via.portB() & 0x01) != 0);

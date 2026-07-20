@@ -10,6 +10,7 @@ void Via6522::reset() {
     t1_ = t2_ = 0; t1latch_ = 0; t2ll_ = 0;
     t1armed_ = t2armed_ = false;
     srHostWritten_ = false;
+    shiftCount_ = 0;
     cb1_ = cb2_ = true;
 }
 
@@ -35,6 +36,18 @@ bool Via6522::tick(int n) {
         if (t2_ < 0) {
             if (t2armed_) { setIfr(TIMER2); hit = true; t2armed_ = false; }
             t2_ &= 0xFFFF;
+        }
+    }
+    // Shift-out/in under φ2 or T2 (ACR bits 2–4): after a host SR write,
+    // present IFR.SHIFT when the byte would have finished. Mac II Slot
+    // Manager POST ($6DD8) arms VIA1 IER=$84 and waits on this path
+    // ($7002 → $7100 → $6E16); without it the soft-flag never clears.
+    if (shiftCount_ > 0) {
+        shiftCount_ -= n;
+        if (shiftCount_ <= 0) {
+            shiftCount_ = 0;
+            setIfr(SHIFT);
+            hit = true;
         }
     }
     return hit;
@@ -92,7 +105,10 @@ void Via6522::write(int reg, uint8_t v) {
         case T2CH:   t2_ = int32_t((uint32_t(v) << 8) | t2ll_);   // latch → counter
                      t2armed_ = true;
                      ifr_ &= uint8_t(~TIMER2); break;
-        case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); srHostWritten_ = true; break;
+        case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); srHostWritten_ = true;
+                     // ACR2–4 ≠ 0 → shift engine engaged; ~16 φ2 clocks/byte.
+                     if (acr_ & 0x1C) shiftCount_ = 16;
+                     break;
         case ACR:    acr_ = v; break;
         case PCR:    pcr_ = v; break;
         case IFR:    if (v & CA1) ++ca1Cleared;
