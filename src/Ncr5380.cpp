@@ -176,6 +176,9 @@ uint8_t Ncr5380::read(int reg) {
     }
     switch (reg) {
         case R_DATA:
+            // Mac II blind DMA reads the Current SCSI Data register (R0),
+            // not only IDR — same auto-ACK as dmaRead when MODE_DMA is on.
+            if (mode_ & MODE_DMA) return dmaRead();
             return (phase_ == DATA_IN && dataPos_ < dataIn_.size()) ? dataIn_[dataPos_]
                  : (phase_ == STATUS) ? status_
                  : (phase_ == MSG_IN) ? 0x00 : odr_;
@@ -184,7 +187,10 @@ uint8_t Ncr5380::read(int reg) {
         case R_TCR:  return tcr_;
         case R_CSR:  return liveBusStatus();
         case R_BSR:  return busAndStatus();
-        case R_IDR:  return (phase_ == DATA_IN && dataPos_ < dataIn_.size()) ? dataIn_[dataPos_] : 0;
+        case R_IDR:
+            // Also used as DMA data port on some paths (IDR @$60).
+            if (mode_ & MODE_DMA) return dmaRead();
+            return (phase_ == DATA_IN && dataPos_ < dataIn_.size()) ? dataIn_[dataPos_] : 0;
         case R_RPI:  irq_ = false; return 0;       // reset parity/interrupt
     }
     return 0xFF;
@@ -194,7 +200,12 @@ void Ncr5380::write(int reg, uint8_t v) {
     writes++;
     if (onAccess) onAccess(reg, true, v);
     switch (reg) {
-        case R_DATA: odr_ = v; break;
+        case R_DATA:
+            // Mac II may also write DATA under DMA for DATA OUT; treat like
+            // the DACK path when MODE_DMA is armed.
+            if (mode_ & MODE_DMA) { dmaWrite(v); break; }
+            odr_ = v;
+            break;
         case R_ICR: {
             uint8_t old = icr_; icr_ = v; uint8_t dif = old ^ v;
             if (v & ICR_RST) { reset(); break; }

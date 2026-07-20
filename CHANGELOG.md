@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 2026-07-20 — Mac II: StartBoot wantType=$FF was skipping Apple_HFS
+
+Mac II POST is green; SCSI PDMA (`$50F12000–$13FFF`) delivers LBA 0 correctly,
+but StartBoot never loaded a driver: virgin PRAM makes `GetTimeout` return
+`$FFFF`, and `$40807B14` packs that low byte as the DDM `ddType` to seek.
+Type `$FF` misses stock `ddType $0001`, then the non-1 path JSRs the driver
+with A0 on the wrong PM block — endless READ(6) LBA 0, empty `DrvQHdr`,
+gray floppy icon.
+
+`MacIIMemory::loadRom` now forces `wantType=1` (`moveq #1,d0` at `$7B12`) and
+repairs the ROM checksum at `$0` (sum of BE words from `$4`). Boot then walks
+PM (`Apple_Driver43` + `Apple_HFS`) and JSRs the driver; `DrvQHdr` is still
+empty after return — next gap is why `Apple_Driver43` from `HD20SC` does not
+`_AddDrive` under this ROM (Plus boots the same image).
+
 ## 2026-07-20 — O6.13: SCC word fast path + LC II NOFPU diagnosis
 
 V8 `read16`/`write16` now handle the SCC window (`$F04000`) with a single

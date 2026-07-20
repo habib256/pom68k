@@ -17,26 +17,15 @@ static std::string find(const char* rel) {
     return {};
 }
 
-static void ensureBootDriverType(std::vector<uint8_t>& img) {
-    if (img.size() < 512 || img[0] != 'E' || img[1] != 'R') return;
-    int count = (img[0x10] << 8) | img[0x11];
-    for (int i = 0; i < count && 0x12 + i * 8 + 8 <= 512; i++) {
-        int e = 0x12 + i * 8;
-        if (((img[e + 6] << 8) | img[e + 7]) == 0x6A) return;
-    }
-    if (count >= 1 && 0x12 + count * 8 + 8 <= 512) {
-        int src = 0x12, dst = 0x12 + count * 8;
-        for (int k = 0; k < 8; k++) img[dst + k] = img[src + k];
-        img[dst + 6] = 0x00; img[dst + 7] = 0x6A;
-        img[0x10] = uint8_t((count + 1) >> 8);
-        img[0x11] = uint8_t(count + 1);
-    }
-}
+// MacIIMemory::loadRom forces StartBoot wantType=1 so a stock type-$0001
+// Apple_Driver DDM entry matches (virgin PRAM otherwise seeks $FF).
 
 int main() {
     std::string rom = find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
     if (rom.empty()) rom = find("roms/256KB ROMs/1987-03 - 97851DB6 - MacII (800k v1).ROM");
-    std::string img = find("hdv/GISTPERSO-boot.vhd");
+    // Prefer System 6 (HD20SC) — original Mac II target; System 7.5 next.
+    std::string img = find("hdv/HD20SC.vhd");
+    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs Mac II ROM + bootable hdv/ image\n");
@@ -57,7 +46,6 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
-    ensureBootDriverType(mem.scsiDisk().image());
 
     const int64_t kFrame = 800 * 525;
     const long kFrames = 20000;

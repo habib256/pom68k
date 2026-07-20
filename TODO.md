@@ -179,6 +179,12 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
 
 ## Future machine profiles
 
+- [ ] **Macintosh II → Finder** (in progress). POST green (`macii_post_etalon`).
+  HMMU + SCSI PDMA window fixed; StartBoot `wantType` forced to 1 so the
+  Apple_HFS path runs. Still open: `Apple_Driver43` on `HD20SC` JSRs but
+  never fills `DrvQHdr` (Plus boots the same image) — gate
+  `macii_boot_etalon` stays red (gray floppy / menu≈0.50).
+
 - [ ] **Add the original Macintosh LC (68020)** as the next low-cost profile,
   reusing V8/Egret/ASC and validating multi-machine parameterization.
 

@@ -23,6 +23,22 @@ MacIIMemory::MacIIMemory(uint32_t ramSize)
 bool MacIIMemory::loadRom(const std::vector<uint8_t>& data) {
     if (data.size() != kRomSize) return false;
     rom_ = data;
+    // StartBoot ($40807B08) takes the Apple_HFS partition path only when the
+    // ddType it seeks is 1 (68020). That byte is packed from GetTimeout's
+    // low byte ($408015BE…); with virgin PRAM GetTimeout returns $FFFF so
+    // the ROM seeks type $FF, skips the HFS hunt, JSRs the driver with A0
+    // pointing at the wrong PM block, and never installs a DrvQ entry.
+    // Force wantType=1 and repair the ROM checksum at $0 (sum of BE words
+    // from $4..end — tools/rominfo.cpp).
+    if (rom_.size() > 0x7B16) {
+        rom_[0x7B12] = 0x70; rom_[0x7B13] = 0x01;   // moveq #1, d0
+        rom_[0x7B14] = 0x4E; rom_[0x7B15] = 0x71;   // nop
+        uint32_t sum = 0;
+        for (size_t o = 4; o + 1 < rom_.size(); o += 2)
+            sum += (uint32_t(rom_[o]) << 8) | rom_[o + 1];
+        rom_[0] = uint8_t(sum >> 24); rom_[1] = uint8_t(sum >> 16);
+        rom_[2] = uint8_t(sum >> 8);  rom_[3] = uint8_t(sum);
+    }
     return true;
 }
 
@@ -320,7 +336,11 @@ uint8_t MacIIMemory::read8Decoded(uint32_t addr) {
             updateIrq();
             return d;
         }
-        if (ioOff == 0x6000 || ioOff == 0x6060 || ioOff == 0x12000)
+        // MAME: $50006000/$6060 and the whole $50012000-$50013FFF window
+        // are SCSI pseudo-DMA (DACK). ROM $C04=$50F12000; blind xfer uses
+        // $60(A1) → $50F12060 — must not fall through as open bus.
+        if (ioOff == 0x6000 || ioOff == 0x6060
+            || (ioOff >= 0x12000 && ioOff < 0x14000))
             return scsiDma();
         if (ioOff >= 0x10000 && ioOff < 0x12000) {
             // MAME scsi_r: reg = (word_offset >> 3) & 0xf ≡ byte_off >> 4.
@@ -396,7 +416,8 @@ void MacIIMemory::write8Decoded(uint32_t addr, uint8_t v) {
             updateIrq();
             return;
         }
-        if (ioOff == 0x6000 || ioOff == 0x6060 || ioOff == 0x12000) {
+        if (ioOff == 0x6000 || ioOff == 0x6060
+            || (ioOff >= 0x12000 && ioOff < 0x14000)) {
             scsiDmaW(v); return;
         }
         if (ioOff >= 0x10000 && ioOff < 0x12000) {
