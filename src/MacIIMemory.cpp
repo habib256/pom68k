@@ -33,9 +33,12 @@ bool MacIIMemory::installTobyVideo(const std::string& declRomPath) {
     if (!declRomPath.empty())
         decl = DeclRom::loadTobyRaw(declRomPath);
     if (decl.empty()) {
+        // CTest / tools often run from build/; keep repo-root and ../ variants.
         static const char* paths[] = {
             "tests/data/342-0008-a.bin",
+            "../tests/data/342-0008-a.bin",
             "roms/342-0008-a.bin",
+            "../roms/342-0008-a.bin",
         };
         for (const char* p : paths) {
             decl = DeclRom::loadTobyRaw(p);
@@ -116,12 +119,17 @@ void MacIIMemory::nubusSlotIrq(int slot, bool active) {
     if (active) nubusIrqState_ &= uint8_t(~masks[idx]);
     else nubusIrqState_ |= masks[idx];
     refreshVia2PortA();
+    // MAME nubus_slot_interrupt → VIA2 write_ca1 edge; IPL follows IFR&IER.
+    // Slot Manager expects VIA2 IER.CA1 armed once a board is present — the
+    // ROM usually writes $82 to VIA2 IER during InitSlot; if that path was
+    // skipped, IFR.CA1 latches forever with IPL stuck at 0 and the $6DD8
+    // soft-flag wait never sees $6E16.
     if ((nubusIrqState_ & 0x3F) != 0x3F) {
         via2_.raiseCa1();
-        via2Irq_ = true;
-    } else {
-        via2Irq_ = via2_.irqAsserted();
+        if (!(via2_.ierRaw() & Via6522::CA1))
+            via2_.write(Via6522::IER, uint8_t(0x80 | Via6522::CA1));
     }
+    via2Irq_ = via2_.irqAsserted();
     updateIrq();
 }
 

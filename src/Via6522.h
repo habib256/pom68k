@@ -62,6 +62,9 @@ public:
     // SR byte loaded but not yet read (Egret paces its clocking on this)
     bool shiftPending() const { return (ifr_ & SHIFT) != 0; }
     bool irqAsserted() const { return (ifr_ & ier_ & 0x7F) != 0; }
+    // Side-effect-free peeks (read(IFR/IER) ORs ANY / forces IER bit7).
+    uint8_t ifrRaw() const { return ifr_; }
+    uint8_t ierRaw() const { return ier_; }
 
 private:
     void setIfr(uint8_t bits) { ifr_ |= bits; }

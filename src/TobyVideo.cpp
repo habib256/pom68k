@@ -16,9 +16,9 @@ TobyVideo::TobyVideo(NuBus& bus, int slot) : bus_(bus), slot_(slot) {
 
 void TobyVideo::reset() {
     std::fill(regs_.begin(), regs_.end(), 0);
-    std::fill(pens_.begin(), pens_.end(), 0xFFFFFFFFu);
-    pens_[0] = 0xFFFFFFFFu;
-    pens_[1] = 0x000000FFu;
+    std::fill(pens_.begin(), pens_.end(), 0x00FFFFFFu);
+    pens_[0] = 0x00FFFFFFu;                      // white (00RRGGBB)
+    pens_[1] = 0x00000000u;                      // black
     mode_ = 0;
     vblDisable_ = true;
     hres_ = W;
@@ -68,9 +68,14 @@ uint32_t TobyVideo::read32(uint32_t slotOff) {
 void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
     uint32_t r = mapOff(slotOff);
     if (r >= 0xA0000 && r < 0xB0000) {
-        // MAME vbl_w: offset bit 2 selects disable (1) vs enable+ack (0).
-        if (r & 4) vblDisable_ = true;
-        else {
+        if (r & 4) {
+            // Primary Init disables VBL before setup (`ADDA #$A0004; CLR.B`).
+            // If it never reaches the matching enable @$A0000 (trap/MAC2
+            // early return), the ROM $6DD8 wait starves. Keep VBL armed once
+            // the framebuffer has been painted.
+            if (vramWrites == 0)
+                vblDisable_ = true;
+        } else {
             vblDisable_ = false;
             vblEnableWrites++;
             bus_.setSlotIrq(slot_, false);
@@ -87,16 +92,22 @@ void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
         }
         return;
     }
-    if (r < kVramSize) {
-        size_t idx = r / 4;
-        if (idx >= vram_.size()) return;
-        const int sh = 24 - int(r % 4) * 8;
-        uint32_t w = vram_[idx];
-        w = (w & ~uint32_t(0xFFu << sh)) | (uint32_t(v) << sh);
-        vram_[idx] = w;
-        vramWrites++;
-        return;
-    }
+        if (r < kVramSize) {
+            size_t idx = r / 4;
+            if (idx >= vram_.size()) return;
+            const int sh = 24 - int(r % 4) * 8;
+            uint32_t w = vram_[idx];
+            w = (w & ~uint32_t(0xFFu << sh)) | (uint32_t(v) << sh);
+            vram_[idx] = w;
+            vramWrites++;
+            // Arm VBL once Primary Init starts painting — stands in for the
+            // Decl ROM CLR.B @$A0000 that successful init would perform.
+            if (vblDisable_) {
+                vblDisable_ = false;
+                vblEnableWrites++;
+            }
+            return;
+        }
 }
 
 void TobyVideo::write16(uint32_t slotOff, uint16_t v) {

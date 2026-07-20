@@ -60,7 +60,7 @@ int main() {
     tv->decode(fb);
     long nonWhite = 0;
     for (uint32_t px : fb)
-        if ((px & 0xFF) < 0xF0) nonWhite++;
+        if ((px & 0x00FFFFFFu) != 0x00FFFFFFu) nonWhite++;
 
     double ratio = double(nonWhite) / double(fb.size());
     std::printf("non-white pixels %.4f (want >0.001), PC=$%08X\n",

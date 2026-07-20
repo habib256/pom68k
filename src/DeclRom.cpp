@@ -224,12 +224,22 @@ std::vector<uint8_t> DeclRom::installRaw(const uint8_t* raw, size_t n) {
 
     switch (byteLanes) {
     case 0x0F:
+        // All 4 lanes: still BYTE4_XOR_BE on a BE-facing image so each
+        // logical byte lands at the address the Slot Manager expects.
+        // (MAME applies XOR because its memory layer is LE-host; we store
+        // the guest-visible BE layout directly — see 0xE1 below.)
         out.resize(n);
-        for (size_t i = 0; i < n; i++) out[byte4XorBe(i)] = rom[i];
+        for (size_t i = 0; i < n; i++) out[i] = rom[i];
         break;
     case 0xE1:
+        // Lane 0 only = MSB of each BE longword = byte address & 3 == 0.
+        // MAME writes BYTE4_XOR_BE(i*4) into an LE-host buffer that XORs
+        // again on guest access; we must place bytes at i*4 so $F9FFFFFC
+        // carries the format/$E1 byte (ROM probe: BTST D2 with D2=0 on
+        // the FC address). XOR here left $E1 at $F9FFFFFF and the Slot
+        // Manager returned smNoBoard ($FECB).
         scramble(4);
-        for (size_t i = 0; i < n; i++) out[byte4XorBe(i * 4)] = rom[i];
+        for (size_t i = 0; i < n; i++) out[i * 4] = rom[i];
         break;
     default:
         return {};
@@ -242,6 +252,8 @@ std::vector<uint8_t> DeclRom::installRaw(const uint8_t* raw, size_t n) {
 
 std::vector<uint8_t> DeclRom::loadTobyRaw(const std::string& path) {
     auto raw = readFile(path);
+    if (raw.empty())
+        return {};                          // missing path — silent, caller tries next
     if (raw.size() != 4096) {
         std::fprintf(stderr, "DeclRom: %s is %zu bytes, want 4096\n",
                      path.c_str(), raw.size());
