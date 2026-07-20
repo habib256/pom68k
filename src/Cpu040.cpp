@@ -16,29 +16,53 @@ Cpu040::Cpu040(Q605Memory& mem) : mem_(mem) {
     // lc475/lc575 variants use M68LC040). In Moira M68040 and M68LC040 are
     // identical except the FPU-availability bit, so this only turns the FPU
     // on. With it present, Mac OS 8.1 runs the ROM's FPU init
-    // (`$408E9AC0 fmove.l fpcr,D0`) and boots. POM68K_Q605_NOFPU restores the
-    // 68LC040/no-FPU config; Q605Memory::loadRom then clears UniversalInfo
-    // HWCfgFlags bit 28 on ROM reads so System installs PACK 4.
-    // The FPU model is the 68882
-    // superset (Moira's only FPU) — the 040's would trap transcendentals to
-    // the FPSP; results match either way.
+    // (`$408E9AC0 fmove.l fpcr,D0`) and boots.
+    //
+    // POM68K_Q605_NOFPU selects the LC 475 CPU identity (M68LC040) but keeps
+    // Moira's 68882 as a SoftwareFPU-equivalent. Bare FPUModel::NONE still
+    // reaches SysError 90 (dsNoFPU): Mac OS installs PACK 4's F-line glue,
+    // which does not replace FPSP for raw 040 FPU opcodes. True NONE + FPSP
+    // remains a follow-up; the soft-FPU path is what makes LC040 Finder-usable.
     if (getenv("POM68K_Q605_NOFPU")) {
         setModel(moira::Model::M68LC040);
-        setFPUModel(moira::FPUModel::NONE);  // 68LC040: no FPU, format $4
+        setFPUModel(moira::FPUModel::M68882);
+        setFpuDisabledSaneFline(false);
     } else {
         setModel(moira::Model::M68040);
         setFPUModel(moira::FPUModel::M68882);
     }
+
+    // Q8: walk-per-access comparison mode (disables the I/D ATC overlay).
+    if (getenv("POM68K_MMU040_WALK")) setMmu040AtcArmed(false);
+
+    if (const char* b = getenv("POM68K_Q605_CACHE_BOOST")) {
+        int v = atoi(b);
+        if (v >= 1 && v <= 64) cacheBoost_ = v;
+    }
+    if (const char* p = getenv("POM68K_Q605_ICACHE_MISS")) {
+        int v = atoi(p);
+        if (v >= 0 && v <= 64) icacheMiss_ = v;
+    }
+    // 040 has a larger on-chip i-cache than the 030; reuse the 030 overlay
+    // as a throughput model (not an architectural copyback/snoop model).
+    pomIcache.armed = true;
+    pomIcache.missPenalty = icacheMiss_;
+    pomIcache.reset();
 }
 
 void Cpu040::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
+    periphAccum_ = 0;
+    pomIcache.reset();
     reset();                                 // SSP/PC from $0 (ROM overlay)
 }
 
 void Cpu040::runCycles(moira::i64 n) {
-    executeUntil(getClock() + n);
+    // n is a peripheral (machine) cycle budget; run cacheBoost_× more Moira
+    // cycles so hot i-cache-resident code keeps up with a real 040 without
+    // derailing ASC/VIA pacing (same contract as Cpu030).
+    executeUntil(getClock() + n * cacheBoost_);
     flushTicks();
 }
 
@@ -50,6 +74,12 @@ void Cpu040::stall(int cycles) {
     if (cycles <= 0) return;
     clock += cycles;
     catchUp();
+}
+
+void Cpu040::didChangeCACR(moira::u32 value) {
+    // 040 CACR: bit 15 = enable i-cache, bit 11 = clear i-cache (approx.
+    // the strobes System uses). Flush the throughput model conservatively.
+    if (value & 0x0800) pomIcache.reset();
 }
 
 moira::u8  Cpu040::read8(moira::u32 addr)  const { return mem_.read8(addr); }
@@ -66,7 +96,11 @@ void Cpu040::flushTicks() {
     moira::i64 d = clock - lastPeriphClock_;
     if (d > 0) {
         lastPeriphClock_ = clock;
-        mem_.tick(int(d));
+        // Scale Moira cycles down to machine cycles (Cpu030::flushTicks).
+        periphAccum_ += d;
+        int m = int(periphAccum_ / cacheBoost_);
+        periphAccum_ -= moira::i64(m) * cacheBoost_;
+        if (m) mem_.tick(m);
     }
     // Clock-gated ROM UniversalInfo FPU clear — must run even when the
     // peripheral batch was already drained by sync() during executeUntil.

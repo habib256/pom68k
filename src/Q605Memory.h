@@ -65,6 +65,7 @@ public:
         return romNoFpuLowmemPatched_ && romNoFpuMasked_;
     }
     bool romNoFpuLowmemPatched() const { return romNoFpuLowmemPatched_; }
+    bool romNoFpuMasked() const { return romNoFpuMasked_; }
     void maybePatchRomNoFpu(uint32_t pc);
 
     uint8_t  read8(uint32_t addr);
@@ -152,6 +153,8 @@ private:
     uint8_t dafbRead8(uint32_t addr);
     void dafbWrite8(uint32_t addr, uint8_t v);
     uint32_t dafbRegReadRaw(uint32_t off);   // pre-holding-split register value
+    uint8_t romByteMasked(uint32_t romOff) const;
+    void scrubNoFpuHwCfgLowmem_();
 
     std::vector<uint8_t> ram_, rom_, vram_;
     bool romNoFpuLowmemPatched_ = false;

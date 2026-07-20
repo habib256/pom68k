@@ -767,6 +767,19 @@ Moira::execFpuDisabled040(u32 ea)
     // 68040 && fpu_model==0 -> frame 0x4 {SR, currpc, $402C, fp_ea,
     // instruction_pc}). The caller consumed the shape's extension words
     // (reg.pc mirrors WinUAE's m68k_getpc()) and passes fp_ea.
+    //
+    // Mac OS PACK 4 F-line glue only accepts format $0 ($002C). Real LC 475
+    // loads FPSP for format $4; until that path is selected,
+    // fpuDisabledSaneFline (Cpu040 under POM68K_Q605_NOFPU) rewinds to the
+    // opcode and stacks classic Line-F so SANE can emulate. sst68040 leaves
+    // the knob clear and keeps the architectural format $4 frame.
+    if (fpuDisabledSaneFline) {
+        (void)ea;
+        reg.pc = reg.pc0;
+        execException<C>(M68kException::LINEF);
+        return;
+    }
+
     u16 status = getSR();
 
     setSupervisorMode(true);

@@ -808,6 +808,14 @@ fresh-seed re-verify). Every change is runtime-gated on
   FGen/FMOVEM memory forms; FMOVEM with Dn/An/#imm stays Line-F
   (get_fp_ad failure). FBcc pseudo-conditions $20-$3F are registered on
   the 040 family only (format $4 without FPU, Line-F with).
+- **Q8 — Mac PACK 4 vs format $4:** `fpuDisabledSaneFline` (Cpu040 may set
+  it) rewinds to the opcode and stacks classic format $0 Line-F so guest
+  PACK 4 glue accepts the frame. Architectural default remains format $4
+  (`sst68040`). Bare NONE + PACK 4 still ends in SysError 90 (dsNoFPU)
+  without FPSP; Quadra NOFPU uses soft 68882 instead.
+- **Q8 — 040 I/D ATC:** 32-entry separate I/D ATC overlay on
+  `mmu040Translate` (flush PFLUSH*/TC/URP/SRP; `POM68K_MMU040_WALK=1`
+  disables). U/M/WP semantics preserved vs walk-per-access.
 
 Oracle-glue fixes found by this loop (see `oracle/uae/VENDOR.md`):
 stale `regs.t1/t0` at `oracle_set_state` armed WinUAE's one-shot

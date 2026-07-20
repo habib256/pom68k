@@ -13,17 +13,26 @@ the Quadra GUI can insert/eject floppies under `disks35/`. Gates:
 (synthetic HD sector0 via the SWIM2 stack; ROM floppy boot still optional /
 soft-skip). Plus/LC II IWM + `gcr_test` unchanged.
 
-## 2026-07-20 — Q8.5: 68LC040 NOFPU path via UniversalInfo FPU-bit read mask
+## 2026-07-20 — Q8.7: 040 I/D ATC + Cpu040 throughput overlay
 
-`POM68K_Q605_NOFPU=1` selects Moira `M68LC040` + `FPUModel::NONE`. GetHardwareInfo
-probes FPU with `fnop` and clears bit 28 in D2, but Mac OS 8.1 still skipped
-ROM PACK 4 because later code re-reads Primus UniversalInfo `$0A8080`
-(machine ID `$A55A2221` / Gestalt 89) which kept bit 28 set in the ROM image.
-Mutating `rom_[]` or masking that long too early hung StartInit. After SCSI
-boot begins (or ≥400M cycles), `Q605Memory` arms a read mask on offset
-`$0A8090` that clears bit 28 (`$DC`→`$CC`) without touching storage —
-Basilisk's `rom_patches`/`emul_op` FPU contract. `q605_nofpu_boot_etalon`
-gates Finder under NOFPU; default FPU boot is unchanged.
+Moira gains a 32-entry I/D ATC for 68040 translation (flush on PFLUSH*/TC/
+URP/SRP; `POM68K_MMU040_WALK=1` forces walk-per-access). `Cpu040` arms the
+030-style i-cache overlay with `POM68K_Q605_CACHE_BOOST` (default **1** —
+boost 4 stalled SCSI bring-up) and `POM68K_Q605_ICACHE_MISS`. `sst68040` and
+`q605_boot_etalon` remain the non-regression gates.
+
+## 2026-07-20 — Q8.5: 68LC040 NOFPU path (soft FPU; bare NONE = dsNoFPU 90)
+
+`POM68K_Q605_NOFPU=1` selects Moira `M68LC040` with the 68882 kept attached as
+a SoftwareFPU-equivalent so Mac OS 8.1 reaches the Finder under the LC 475 CPU
+identity. Bare `FPUModel::NONE` still fails: GetHardwareInfo correctly clears
+the FPU bit, System installs PACK 4's F-line glue (`v11` → RAM), then a raw
+040 FPU opcode raises **SysError 90 (dsNoFPU)** and the ROM spins on MBState
+at `$40802A38`. PACK 4 is not FPSP; format-$4 F-line (architectural LC040)
+and format-$0 SANE glue both end there without Apple's FPSP. The UniversalInfo
+bit-28 read mask remains available for a future true-NONE + FPSP attempt.
+`q605_nofpu_boot_etalon` gates the soft-FPU LC040 Finder path; default boots
+stay M68040+68882.
 
 ## 2026-07-20 — Q8.4: SWIM2 register/FIFO core replaces the zero stub
 

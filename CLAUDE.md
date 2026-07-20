@@ -132,8 +132,9 @@ the reused `Iwm`, 68030+PMMU+68882 via the O1-O5 core.
 68040/040-MMU core drives MEMCjr/PrimeTime, Cuda HLE, DAFB/Antelope, ASC
 sound and NCR 53C96 SCSI; Mac OS 8.1 boots and the GUI exposes the machine
 alongside Plus/LC II. The default compatibility configuration follows MAME's
-full-68040/FPU `macqd605`; `POM68K_Q605_NOFPU=1` restores bare 68LC040
-behaviour. Q8.1 adds gated DAFB stride/depth state and indexed-color host
-rendering, but a real Finder `SetDepth(8)` run is still required before calling
-the reported 256-color guest crash fixed. **28 CTest gates** total, including
-`lcii_boot_etalon`, `sst68040`, `q605_dafb_test`, and `q605_nofpu_boot_etalon`.
+full-68040/FPU `macqd605`; `POM68K_Q605_NOFPU=1` selects 68LC040 + soft 68882
+(SoftwareFPU-equivalent; bare NONE still hits dsNoFPU 90 pending FPSP).
+Q8.1 adds gated DAFB stride/depth state and indexed-color host
+rendering; Finder 256-color boots are gated by `q605_boot_etalon`. **30+ CTest
+gates** total, including `lcii_boot_etalon`, `sst68040`, `q605_dafb_test`,
+`q605_asc_test`, `swim2_test`, `swim2_media_test`, and `q605_nofpu_boot_etalon`.

@@ -256,6 +256,8 @@ Moira::reset()
     for (auto &e : mmuAtcArr) { e.valid = false; e.mru = false; }
     mmuAtcMruCount = 0;                 // POM68K perf: O(1) LRU counter
     for (auto &r : mmuAtcLast) r[0] = r[1] = 0;
+    // POM68K Q8: 040 I/D ATCs
+    mmu040AtcFlushAll();
     mmuState[0] = mmuState[1] = mmuState[2] = 0;
     mmuIdx = mmuIdxDone = 0;
     for (auto &v : mmuAd) v = 0;

@@ -35,10 +35,14 @@ public:
     void setWriteProtected(bool on) { writeProtected_ = on; }
 
     // Sense bit for (CA2,CA1,CA0,SEL) — returned on IWM status bit 7 /
-    // SWIM2 handshake bit 3 (MAME mac_floppy_device::wpt_r multiplex).
+    // SWIM2 handshake bit 3.
     bool sense(int addr) const;
     // LSTRB rising-edge command; CA2 = value, (CA1,CA0,SEL) = address
     void command(int addr);
+    // SWIM2/mac_floppy uses the direct phase register:
+    // phase[2:0] | (HDSEL << 3), unlike the classic IWM CA packing above.
+    bool senseSwim(int reg) const;
+    void commandSwim(int reg);
     void setMotor(bool on) { motorOn_ = on; }
     bool motorOn() const { return motorOn_; }
 

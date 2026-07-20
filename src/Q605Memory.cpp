@@ -55,12 +55,42 @@ bool Q605Memory::loadRom(const std::vector<uint8_t>& data) {
     // completed, the real 68LC040 profile clears UniversalInfo's FPU-present
     // bit so the System selects the ROM's second PACK 4 (Basilisk
     // rom_patches.cpp, HWCfgFlags bit 28).
-    romNoFpuPending_ = std::getenv("POM68K_Q605_NOFPU") != nullptr;
+    romNoFpuPending_ = false;  // soft-FPU NOFPU path needs no UniversalInfo mask
     return true;
 }
 
 // FF7439EE Primus/LC 475 UniversalInfo $0A8080 + $10 (HWCfgFlags/IDs).
 static constexpr uint32_t kLc475HwCfgRom = 0x0A8090u;
+
+uint8_t Q605Memory::romByteMasked(uint32_t romOff) const {
+    uint8_t v = rom_[romOff & (kRomSize - 1)];
+    // Clear HWCfgFlags bit 28 on the fly (hi byte of the long at $0A8090).
+    if (romNoFpuMasked_ && (romOff & (kRomSize - 1)) == kLc475HwCfgRom)
+        v = uint8_t(v & ~0x10);
+    return v;
+}
+
+void Q605Memory::scrubNoFpuHwCfgLowmem_() {
+    // StartInit / GetHardwareInfo may copy HWCfgFlags into low memory.
+    // Clear only known FF7439EE records, never arbitrary bit-28 values.
+    static constexpr uint32_t kStale[] = {
+        0xDC00530Du, 0xDD00530Du, 0xDC00540Du, 0xDD001B0Cu,
+    };
+    constexpr uint32_t kLowmemLimit = 0x100000;
+    for (uint32_t a = 0; a + 4 <= kLowmemLimit && a + 4 <= totalRam_; a += 4) {
+        uint32_t v = uint32_t(ram_[a]) << 24 | uint32_t(ram_[a + 1]) << 16 |
+                     uint32_t(ram_[a + 2]) << 8 | ram_[a + 3];
+        for (uint32_t pat : kStale) {
+            if (v != pat) continue;
+            v &= ~0x10000000u;
+            ram_[a]     = uint8_t(v >> 24);
+            ram_[a + 1] = uint8_t(v >> 16);
+            ram_[a + 2] = uint8_t(v >> 8);
+            ram_[a + 3] = uint8_t(v);
+            break;
+        }
+    }
+}
 
 void Q605Memory::maybePatchRomNoFpu(uint32_t pc) {
     if (!romNoFpuPending_ || !cpu_) return;
@@ -68,45 +98,20 @@ void Q605Memory::maybePatchRomNoFpu(uint32_t pc) {
     const bool probeDone = (pc >= 0x40804B18u && pc <= 0x40804C00u);
     const bool probeFallback = cpu_->getClock() >= 120000;
     if (!romNoFpuLowmemPatched_ && (probeDone || probeFallback)) {
-        // StartInit may already have copied HWCfgFlags into low memory.
-        // Clear only known FF7439EE records, never arbitrary bit-28 values.
-        static constexpr uint32_t kStale[] = {
-            0xDC00530Du, 0xDD00530Du, 0xDC00540Du, 0xDD001B0Cu,
-        };
-        constexpr uint32_t kLowmemLimit = 0x100000;
-        for (uint32_t a = 0; a + 4 <= kLowmemLimit && a + 4 <= totalRam_; a += 4) {
-            uint32_t v = uint32_t(ram_[a]) << 24 | uint32_t(ram_[a + 1]) << 16 |
-                         uint32_t(ram_[a + 2]) << 8 | ram_[a + 3];
-            for (uint32_t pat : kStale) {
-                if (v != pat) continue;
-                v &= ~0x10000000u;
-                ram_[a]     = uint8_t(v >> 24);
-                ram_[a + 1] = uint8_t(v >> 16);
-                ram_[a + 2] = uint8_t(v >> 8);
-                ram_[a + 3] = uint8_t(v);
-                break;
-            }
-        }
+        scrubNoFpuHwCfgLowmem_();
         romNoFpuLowmemPatched_ = true;
     }
 
     if (romNoFpuMasked_) return;
+    // Mutating/masking UniversalInfo during StartInit hangs the ROM (SCSI=0).
+    // Wait until SCSI I/O has begun — or a late cycle fallback — then arm a
+    // read-side mask only (do not rewrite rom_[]). Re-scrub lowmem so copies
+    // made after the early scrub lose bit 28 before PACK 4 selection.
     const bool lateBoot = scsi_.commands > 0 || cpu_->getClock() >= 400000000;
     if (!lateBoot) return;
-
-    uint32_t v = uint32_t(rom_[kLc475HwCfgRom]) << 24 |
-                 uint32_t(rom_[kLc475HwCfgRom + 1]) << 16 |
-                 uint32_t(rom_[kLc475HwCfgRom + 2]) << 8 |
-                 rom_[kLc475HwCfgRom + 3];
-    if (v & 0x10000000u) {
-        v &= ~0x10000000u;                     // $DC00530D → $CC00530D
-        rom_[kLc475HwCfgRom]     = uint8_t(v >> 24);
-        rom_[kLc475HwCfgRom + 1] = uint8_t(v >> 16);
-        rom_[kLc475HwCfgRom + 2] = uint8_t(v >> 8);
-        rom_[kLc475HwCfgRom + 3] = uint8_t(v);
-    }
+    scrubNoFpuHwCfgLowmem_();
     romNoFpuMasked_ = true;
-    romNoFpuPending_ = !romNoFpuLowmemPatched_;
+    romNoFpuPending_ = false;
 }
 
 void Q605Memory::reset() {
@@ -579,7 +584,7 @@ void Q605Memory::scsiPoll_() {
 
 uint8_t Q605Memory::read8(uint32_t addr) {
     if (addr < 0x40000000) {
-        if (overlay_) return rom_[addr & (kRomSize - 1)];
+        if (overlay_) return romByteMasked(addr);
         if (addr < totalRam_) return ram_[addr];
         return 0xFF;        // open bus above the installed bank(s): the
                             // sizer must find NO alias there or it
@@ -588,7 +593,7 @@ uint8_t Q605Memory::read8(uint32_t addr) {
     }
     if (addr < 0x50000000) {                     // ROM window
         if (overlay_) overlay_ = false;          // djmemc rom_switch_r
-        return rom_[addr & (kRomSize - 1)];
+        return romByteMasked(addr);
     }
     if (addr < 0x60000000) return ioRead8(addr);
     if (addr >= 0xF9000000 && addr < 0xF9000000 + kVramSize)
@@ -603,7 +608,7 @@ uint16_t Q605Memory::read16(uint32_t addr) {
     if (addr < 0x40000000) {
         if (overlay_) {
             uint32_t o = addr & (kRomSize - 1);
-            return uint16_t(rom_[o] << 8 | rom_[o + 1]);
+            return uint16_t(romByteMasked(o) << 8 | romByteMasked(o + 1));
         }
         if (addr + 1 < totalRam_)
             return uint16_t(ram_[addr] << 8 | ram_[addr + 1]);
@@ -612,7 +617,7 @@ uint16_t Q605Memory::read16(uint32_t addr) {
     if (addr < 0x50000000) {
         if (overlay_) overlay_ = false;
         uint32_t o = addr & (kRomSize - 1);
-        return uint16_t(rom_[o] << 8 | rom_[o + 1]);
+        return uint16_t(romByteMasked(o) << 8 | romByteMasked(o + 1));
     }
     if (addr >= 0xF9000000 && addr + 1 < 0xF9000000 + kVramSize) {
         uint32_t o = addr - 0xF9000000;
@@ -675,11 +680,11 @@ void Q605Memory::write16(uint32_t addr, uint16_t v) {
 
 uint8_t Q605Memory::peek8(uint32_t addr) const {
     if (addr < 0x40000000) {
-        if (overlay_) return rom_[addr & (kRomSize - 1)];
+        if (overlay_) return romByteMasked(addr);
         if (addr < totalRam_) return ram_[addr];
         return 0xFF;
     }
-    if (addr < 0x50000000) return rom_[addr & (kRomSize - 1)];
+    if (addr < 0x50000000) return romByteMasked(addr);
     if (addr >= 0xF9000000 && addr < 0xF9000000 + kVramSize)
         return vram_[addr - 0xF9000000];
     return 0xFF;

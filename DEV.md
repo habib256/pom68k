@@ -267,17 +267,22 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   implements MOVE16, 040 control registers, 040 exception frames, TTRs,
   three-level URP/SRP translation, MMUSR/PTEST and restartable MMU faults.
   `sst68040` pins **7 200/7 200** vectors across integer, random and MMU
-  families. Caches and cycle-accurate 040 timing are not modeled.
-- **FPU compatibility:** a real Quadra 605 / LC 475 is a 68LC040. The MAME
-  `macqd605` oracle is a full 68040, and POM68K defaults to M68040 + Moira's
-  68882 for compatibility with that path. `POM68K_Q605_NOFPU=1` selects
-  M68LC040 with no FPU and, after GetHardwareInfo's FPU probe, masks
-  UniversalInfo `$0A8080` HWCfgFlags bit 28 on ROM reads (machine ID
-  `$A55A2221`) so System installs PACK 4 — without mutating `rom_[]`.
-  `q605_nofpu_boot_etalon` gates Finder under that configuration.
+  families. Q8 adds a functional I/D ATC and a Cpu040 i-cache/throughput
+  overlay; architectural copyback/snooping and cycle-accurate 040 timing
+  are not modeled.
+- **FPU compatibility:** a real Quadra 605 has a full 68040+FPU; LC 475 is
+  68LC040. The MAME `macqd605` oracle is a full 68040, and POM68K defaults to
+  M68040 + Moira's 68882. `POM68K_Q605_NOFPU=1` selects **M68LC040 + soft
+  68882** (SoftwareFPU-equivalent) so Finder remains reachable under the LC
+  CPU identity. Bare `FPUModel::NONE` still hits SysError 90 (dsNoFPU): System
+  installs PACK 4, not FPSP. `q605_nofpu_boot_etalon` gates the soft-FPU path.
+  Q8 also adds a separate I/D ATC (32 entries) and a Cpu040 i-cache/throughput
+  overlay (`POM68K_Q605_CACHE_BOOST`, default 1; `POM68K_MMU040_WALK` disables
+  the ATC).
 - **Memory/I/O:** `Q605Memory` models MEMCjr ROM overlay/RAM sizing and the
   PrimeTime window: VIA1, Quadra pseudo-VIA2, SCC, IOSB/MEMCjr registers,
-  Cuda-flavoured `Egret`, ASC stopgap, SWIM2 stub and `Ncr53c96` TurboSCSI.
+  Cuda-flavoured `Egret`, IOSB ASC `$BB` stereo, SWIM2 (MFM/GCR SuperDrive) and
+  `Ncr53c96` TurboSCSI.
   The 53C96 supports streamed CDBs, PIO Transfer Info, DRQ-gated pseudo-DMA,
   STATUS/MSG completion and the OS 8.1 SCSI Manager's mixed PIO/DMA chunking.
 - **DAFB/Antelope:** 1 MB VRAM at `$F9000000`; DAFB registers at

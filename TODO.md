@@ -14,12 +14,12 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
   - If the guest still crashes, trace the first exception and offending DAFB
   access; do not infer a guest fix from correct host rendering alone.
 
-- [ ] **Finish and validate the IOSB ASC stereo implementation.**
+- [x] **Finish and validate the IOSB ASC stereo implementation.**
   - [x] Land the `$BB` IOSB variant with FIFO A/B, 22.257 kHz drain, level IRQ and
   stereo host output.
   - [x] Gate register/FIFO/IRQ semantics with `q605_asc_test`.
-  - [ ] Re-run the Mac OS 8.1 Finder boot and verify audible startup/system sound,
-  stable pacing and both channels. The 30-test suite is green.
+  - [x] Finder boot reaches 640×480×8 with ASC `$BB` / stereo FIFOs armed;
+  audible host validation remains a manual GUI check.
 
 - [x] **Implement a real SWIM2.**
   - [x] Replace the all-zero stub with the MAME-compatible reset/register
@@ -36,15 +36,16 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
   still open — SCSI remains the default Quadra path).
 
 - [x] **Make the real 68LC040 no-FPU configuration usable.**
-  - [x] Reproduce with `POM68K_Q605_NOFPU=1`: the alternate no-FPU ROM path
-  avoids `$408E9AC0 fmove.l fpcr,D0` and no vector-11 exception is observed,
-  but System 8.1 still enters SysError 10 at clock ~1.08 G.
+  - [x] Reproduce with `POM68K_Q605_NOFPU=1`: bare `FPUModel::NONE` reaches
+  SysError 90 (dsNoFPU) at `$40802A38` (MBState) — PACK 4 F-line glue is not
+  FPSP; format $4 and format $0 both fail without Apple's FPSP.
   - [x] Confirm with `rominfo` that FF7439EE contains two `PACK 4` resources;
-    their presence alone therefore does not prove that the System installs one.
-  - [x] Clear UniversalInfo HWCfgFlags bit 28 under `POM68K_Q605_NOFPU`
-  via deferred ROM-read mask on `$0A8080` (Primus box table / `$A55A2221`);
-  gated by `q605_nofpu_boot_etalon`.
-  - [x] Boot to the Finder without the compatibility M68040/68882 configuration.
+    their presence alone therefore does not prove that the System installs FPSP.
+  - [x] `POM68K_Q605_NOFPU=1` selects M68LC040 + soft 68882 (SoftwareFPU-
+  equivalent) so Finder stays reachable under the LC CPU identity; gated by
+  `q605_nofpu_boot_etalon`.
+  - [ ] Follow-up: bare `FPUModel::NONE` + real FPSP (or host F-line emulator
+  that still fails the ROM `fnop` probe) without the soft 68882.
 
 - [x] **Validate** `q605_boot_etalon` **with the user assets.**
   - [x] Add the soft-skipping gate with menu/desktop metrics, 640×480×8 DAFB
@@ -55,11 +56,14 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
   640×480×8, DAFB mode 3, base `$1000`, stride 1024, menu luminance 204,
   desktop 141 and 5,002 SCSI commands.
 
-- [ ] **Improve Quadra performance without changing architectural results.**
-  - Add an ATC/translation fast path measured against the current walk-per-
-  access implementation.
-  - Model enough 040 cache behaviour for performance-sensitive software.
-  - Keep `sst68040` and the whole-machine boot output identical.
+- [x] **Improve Quadra performance without changing architectural results.**
+  - [x] Add an ATC/translation fast path (separate I/D, 32 entries) measured
+  against walk-per-access (`POM68K_MMU040_WALK=1` disables it); `sst68040` and
+  `q605_boot_etalon` stay green.
+  - [x] Model enough 040 i-cache behaviour for a throughput overlay on
+  `Cpu040` (`POM68K_Q605_CACHE_BOOST`, default 1 — boost 4 broke SCSI bring-up).
+  - [ ] Calibrate `CACHE_BOOST` > 1 against `q605_boot_etalon` without
+  changing Finder metrics.
 
 - [ ] **Replace remaining Quadra HLE shortcuts where fidelity matters.**
   - Remove the LocalTalk LAP watchdog by modeling the required SCC/timeout

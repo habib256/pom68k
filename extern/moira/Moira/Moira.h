@@ -37,6 +37,9 @@ protected:
     // the Mac LC II PDS card). NONE keeps the jump table byte-identical to
     // stock Moira (F2xx = Line-F). Configured via setFPUModel().
     FPUModel fpuModel = FPUModel::NONE;
+    // When set, FPU-less 040 F2xx stacks classic format $0 Line-F (Mac OS
+    // PACK 4) instead of architectural format $4. sst68040 leaves this clear.
+    bool fpuDisabledSaneFline = false;
     
     // Visual style for disassembled instructions
     DasmStyle instrStyle;
@@ -188,6 +191,10 @@ public:
     // resets the FPU to its power-up state, MC68881/882UM § 6.1)
     void setFPUModel(FPUModel model);
     FPUModel getFPUModel() const { return fpuModel; }
+    Model getModel() const { return cpuModel; }
+    // Mac OS PACK 4 wants format $0 F-line on FPU-less 040; oracle wants $4.
+    void setFpuDisabledSaneFline(bool v) { fpuDisabledSaneFline = v; }
+    bool getFpuDisabledSaneFline() const { return fpuDisabledSaneFline; }
     
     // Configures the syntax style for disassembly output
     void setDasmSyntax(Syntax value);
@@ -652,13 +659,21 @@ public:
     // 68040 rows): TC keeps E|P, ITT/DTT keep $FFFFE364, URP/SRP/MMUSR
     // store all 32 bits.
     u32 getURP040() const { return reg.urp040; }
-    void setURP040(u32 val) { reg.urp040 = val; }
+    void setURP040(u32 val) { reg.urp040 = val; mmu040AtcFlushAll(); }
 
     u32 getSRP040() const { return reg.srp040; }
-    void setSRP040(u32 val) { reg.srp040 = val; }
+    void setSRP040(u32 val) { reg.srp040 = val; mmu040AtcFlushAll(); }
 
     u32 getTC040() const { return reg.tc040; }
-    void setTC040(u32 val) { reg.tc040 = val & 0xC000; }
+    void setTC040(u32 val) {
+        reg.tc040 = val & 0xC000;
+        mmu040AtcFlushAll();                 // page size / enable change
+    }
+
+    // POM68K Q8: disable the 040 ATC and force walk-per-access (oracle-
+    // identical mode used for differential checks). Default is ATC on.
+    void setMmu040AtcArmed(bool on) { mmu040AtcArmed = on; }
+    bool mmu040AtcIsArmed() const { return mmu040AtcArmed; }
 
     u32 getITT0() const { return reg.itt0; }
     void setITT0(u32 val) { reg.itt0 = val & 0xFFFFE364; }
@@ -1206,6 +1221,33 @@ private:
 
     bool mmu040Enabled() const { return (reg.tc040 & 0x8000) != 0; }
     u32 mmu040PageMaskI() const { return (reg.tc040 & 0x4000) ? 0xFFFFE000 : 0xFFFFF000; }
+
+    // POM68K Q8: separate instruction/data ATCs (M68040UM §3.3). 32 fully
+    // associative lines each with pseudo-LRU; page size follows TC.P
+    // (4K/8K). Global bit G ($400) is honoured by PFLUSHN/PFLUSHAN.
+    // Behaviour matches walk-per-access for U/M/WP (write hits on
+    // unmodified pages re-walk). POM68K_MMU040_WALK disables the overlay.
+    struct Mmu040AtcEntry {
+        u32 logical = 0;            // page-aligned logical
+        u32 physical = 0;           // page-aligned physical
+        u32 status = 0;             // descriptor status (WP|G|S|CM|M|R…)
+        bool valid = false;
+        bool mru = false;
+    };
+    static constexpr int MMU040_ATC_ENTRIES = 32;
+    Mmu040AtcEntry mmu040AtcI[MMU040_ATC_ENTRIES] {};
+    Mmu040AtcEntry mmu040AtcD[MMU040_ATC_ENTRIES] {};
+    int mmu040AtcMruI {0}, mmu040AtcMruD {0};
+    i8  mmu040AtcLastI[2] {};       // [write]
+    i8  mmu040AtcLastD[2] {};
+    bool mmu040AtcArmed {true};
+
+    void mmu040AtcFlushAll();
+    void mmu040AtcFlushNonGlobal();
+    void mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly);
+    void mmu040AtcTouch(Mmu040AtcEntry* arr, int& mruCount, int i);
+    int  mmu040AtcLookup(bool data, u32 addr, bool write);
+    void mmu040AtcFill(bool data, u32 addr, u32 status);
 
     // Per-instruction loop head: translated opcode/irc fetch (mode-5
     // pattern); returns false when the fetch faulted

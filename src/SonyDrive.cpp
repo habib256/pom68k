@@ -411,6 +411,63 @@ bool SonyDrive::sense(int addr) const {
     return true;
 }
 
+// MAME mac_floppy_device::wpt_r (floppy.cpp:3217-3285). SWIM2 presents the
+// phase register directly; retain sense()/command() above for the IWM wiring.
+bool SonyDrive::senseSwim(int reg) const {
+    switch (reg & 0x0F) {
+    case 0x0: return dirToZero_;                 // direction
+    case 0x1: return true;                       // step complete
+    case 0x2: return !motorOn_;                  // motor is active low
+    case 0x3: return !hasDisk();                 // !m_dskchg (unload = high)
+    case 0x4: case 0xC:                          // index/read-data
+        // MAME reports high for a SuperDrive while stopped/no media, which
+        // forms the documented initial capability signature x011 (2M,
+        // ready, MFM, RD1). Once spinning, approximate the narrow index pulse.
+        if (!superDrive_) return false;
+        if (!hasDisk() || !motorOn_) return true;
+        return (spin_ % (7833600LL / 5)) > 2000; // 300 RPM, active-low index
+    case 0x5: return superDrive_;                // MFD-75W capability
+    case 0x6: return doubleSided_;
+    case 0x7: return false;                      // drive exists
+    case 0x8: return !hasDisk();
+    case 0x9: return !writeProtected_;
+    case 0xA: return track_ != 0;
+    case 0xB: {                                  // 120 tach inversions/rev
+        if (!hasDisk() || !motorOn_) return false;
+        const int rpm = hd_ ? 300 : 394;
+        const int64_t cyclesPerRev = 7833600LL * 60 / rpm;
+        return ((spin_ % cyclesPerRev) * 120 / cyclesPerRev) & 1;
+    }
+    case 0xD: return mfmMode_;
+    case 0xE: return !hasDisk() || !motorOn_;     // NoReady (active high)
+    case 0xF: return superDrive_ && hasDisk() && !hd_; // MAME mfd75w::is_2m
+    }
+    return false;
+}
+
+// MAME mac_floppy_device::seek_phase_w (floppy.cpp:3292-3361).
+void SonyDrive::commandSwim(int reg) {
+    switch (reg & 0x0F) {
+    case 0x0: dirToZero_ = false; break;          // next cylinder
+    case 0x1:                                      // STEP pulse
+        track_ += dirToZero_ ? -1 : 1;
+        if (track_ < 0) track_ = 0;
+        if (track_ > 79) track_ = 79;
+        encodeTrack();
+        break;
+    case 0x2: motorOn_ = true; break;
+    case 0x4: dirToZero_ = true; break;           // previous cylinder
+    case 0x6: motorOn_ = false; break;
+    case 0x7: eject(); break;
+    case 0x9:
+        if (superDrive_) setMfmMode(true);
+        break;
+    case 0xC: break;                             // clear dskchg (inserted stays low)
+    case 0xD: setMfmMode(false); break;
+    default: break;
+    }
+}
+
 // LSTRB rising-edge commands: CA2 is the value, (CA1,CA0,SEL) the address.
 void SonyDrive::command(int addr) {
     bool ca2 = (addr & 8) != 0;

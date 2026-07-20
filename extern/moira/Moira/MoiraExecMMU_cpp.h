@@ -1371,10 +1371,27 @@ Moira::execPFlush40(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // POM68K Q2: PFLUSHN/PFLUSH/PFLUSHAN/PFLUSHA (M68040UM § 3.4.1),
-    // supervisor-only (WinUAE cpuemu_31 op_f500: Exception 8 first). No
-    // 040 ATC is modelled yet (Q3), so a valid encoding is a no-op.
+    // POM68K Q2/Q8: PFLUSHN/PFLUSH/PFLUSHAN/PFLUSHA (M68040UM § 3.4.1),
+    // supervisor-only (WinUAE cpuemu_31 op_f500: Exception 8 first).
+    // Mode field bits 4:3 select the variant (MoiraDasmMMU_cpp.h).
     SUPERVISOR_MODE_ONLY
+
+    const u8 mode = ___________xx___(opcode);
+    const u8 an = _____________xxx(opcode);
+    switch (mode) {
+    case 0:                                         // PFLUSHN (An)
+        mmu040AtcFlushPage(readA(an), true);
+        break;
+    case 1:                                         // PFLUSH (An)
+        mmu040AtcFlushPage(readA(an), false);
+        break;
+    case 2:                                         // PFLUSHAN
+        mmu040AtcFlushNonGlobal();
+        break;
+    default:                                        // PFLUSHA
+        mmu040AtcFlushAll();
+        break;
+    }
 
     prefetch<C, POLL>();
 
@@ -1683,11 +1700,118 @@ Moira::execPTest40(u16 opcode)
 // -----------------------------------------------------------------------------
 // POM68K Q3 — 68040 MMU bus translation, modelled byte-for-byte on the
 // primary oracle (WinUAE cpummu.c / cpummu.h mmu040 accessors, hatari
-// e77819f7). No architectural ATC is modelled: the oracle flushes its
-// ATC on every state load, so a walk-on-every-access model is
-// behaviourally identical (U/M rewrites of already-set bits produce no
-// RAM diff); a perf ATC overlay can come later (030 precedent).
+// e77819f7). Q8 adds a separate I/D ATC overlay that preserves U/M/WP
+// semantics (write hits on unmodified pages re-walk). POM68K_MMU040_WALK
+// restores the walk-per-access baseline for differential checks.
 // -----------------------------------------------------------------------------
+
+void
+Moira::mmu040AtcFlushAll()
+{
+    for (auto &e : mmu040AtcI) { e.valid = false; e.mru = false; }
+    for (auto &e : mmu040AtcD) { e.valid = false; e.mru = false; }
+    mmu040AtcMruI = mmu040AtcMruD = 0;
+    mmu040AtcLastI[0] = mmu040AtcLastI[1] = 0;
+    mmu040AtcLastD[0] = mmu040AtcLastD[1] = 0;
+}
+
+void
+Moira::mmu040AtcFlushNonGlobal()
+{
+    for (auto &e : mmu040AtcI)
+        if (e.valid && !(e.status & 0x400)) e.valid = false;
+    for (auto &e : mmu040AtcD)
+        if (e.valid && !(e.status & 0x400)) e.valid = false;
+}
+
+void
+Moira::mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly)
+{
+    const u32 imask = mmu040PageMaskI();
+    addr &= imask;
+    auto flush = [&](Mmu040AtcEntry* arr) {
+        for (int i = 0; i < MMU040_ATC_ENTRIES; i++) {
+            auto &e = arr[i];
+            if (!e.valid || (e.logical & imask) != addr) continue;
+            if (nonGlobalOnly && (e.status & 0x400)) continue;
+            e.valid = false;
+        }
+    };
+    flush(mmu040AtcI);
+    flush(mmu040AtcD);
+}
+
+void
+Moira::mmu040AtcTouch(Mmu040AtcEntry* arr, int& mruCount, int i)
+{
+    auto &e = arr[i];
+    if (e.mru) return;
+    e.mru = true;
+    if (++mruCount >= MMU040_ATC_ENTRIES) {
+        for (int j = 0; j < MMU040_ATC_ENTRIES; j++) arr[j].mru = false;
+        e.mru = true;
+        mruCount = 1;
+    }
+}
+
+int
+Moira::mmu040AtcLookup(bool data, u32 addr, bool write)
+{
+    Mmu040AtcEntry* arr = data ? mmu040AtcD : mmu040AtcI;
+    int& mruCount = data ? mmu040AtcMruD : mmu040AtcMruI;
+    i8* last = data ? mmu040AtcLastD : mmu040AtcLastI;
+    const u32 imask = mmu040PageMaskI();
+    const u32 maddr = addr & imask;
+
+    {
+        auto &e = arr[last[write]];
+        if (e.valid && (e.logical & imask) == maddr) {
+            // Write hit on an unmodified, unprotected page must re-walk
+            // so the table search sets M (030 ATC precedent).
+            if (!write || (e.status & 0x10) || (e.status & 4)) {
+                mmu040AtcTouch(arr, mruCount, last[write]);
+                return last[write];
+            }
+            e.valid = false;
+        }
+    }
+
+    for (int i = 0; i < MMU040_ATC_ENTRIES; i++) {
+        auto &e = arr[i];
+        if (!e.valid || (e.logical & imask) != maddr) continue;
+        if (!write || (e.status & 0x10) || (e.status & 4)) {
+            mmu040AtcTouch(arr, mruCount, i);
+            last[write] = i8(i);
+            return i;
+        }
+        e.valid = false;
+    }
+    return -1;
+}
+
+void
+Moira::mmu040AtcFill(bool data, u32 addr, u32 status)
+{
+    Mmu040AtcEntry* arr = data ? mmu040AtcD : mmu040AtcI;
+    int& mruCount = data ? mmu040AtcMruD : mmu040AtcMruI;
+    i8* last = data ? mmu040AtcLastD : mmu040AtcLastI;
+    const u32 imask = mmu040PageMaskI();
+
+    int i;
+    for (i = 0; i < MMU040_ATC_ENTRIES; i++) if (!arr[i].valid) break;
+    if (i == MMU040_ATC_ENTRIES) {
+        for (i = 0; i < MMU040_ATC_ENTRIES; i++) if (!arr[i].mru) break;
+    }
+    if (i >= MMU040_ATC_ENTRIES) i = 0;
+    mmu040AtcTouch(arr, mruCount, i);
+
+    auto &e = arr[i];
+    e.logical = addr & imask;
+    e.physical = status & imask;
+    e.status = status;
+    e.valid = true;
+    last[0] = last[1] = i8(i);
+}
 
 template <Core C> bool
 Moira::mmu040InstrStart()
@@ -1818,7 +1942,23 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
     }
     if (!mmu040Enabled()) return addr;
 
-    u32 status = mmu040Walk<C>(addr, super, asWrite);
+    u32 maski = mmu040PageMaskI();
+    u32 status;
+
+    if (mmu040AtcArmed) {
+        int hit = mmu040AtcLookup(data, addr, asWrite);
+        if (hit >= 0) {
+            const auto &e = (data ? mmu040AtcD : mmu040AtcI)[hit];
+            status = e.status;
+            if ((asWrite && (status & 4)) || (!super && (status & 0x80)) ||
+                !(status & 1)) {
+                mmu040Fault<C>(addr, val, fc, asWrite, szCode);
+            }
+            return e.physical | (addr & ~maski);
+        }
+    }
+
+    status = mmu040Walk<C>(addr, super, asWrite);
 
     if ((asWrite && (status & 4)) || (!super && (status & 0x80)) ||
         !(status & 1)) {
@@ -1826,7 +1966,7 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
         // write = true through mmu_get_user_*; SSW.LK strips RW anyway)
         mmu040Fault<C>(addr, val, fc, asWrite, szCode);
     }
-    u32 maski = mmu040PageMaskI();
+    if (mmu040AtcArmed) mmu040AtcFill(data, addr, status);
     return (status & maski) | (addr & ~maski);
 }
 

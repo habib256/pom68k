@@ -1,9 +1,10 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Q8 gate: 68LC040 / POM68K_Q605_NOFPU boots Mac OS 8.1 to the Finder
-// without attaching a fake 68882. Soft-skips when assets are absent.
-// Pins UniversalInfo HWCfgFlags bit-28 clearing (PACK 4 / SANE selection).
+// Q8 gate: 68LC040 / POM68K_Q605_NOFPU boots Mac OS 8.1 to the Finder.
+// Soft-skips when assets are absent. Pins the LC040 + soft-FPU (68882)
+// compatibility path — bare FPUModel::NONE still hits SysError 90 (dsNoFPU)
+// until FPSP replaces PACK 4 for raw F-line opcodes.
 
 #include "Cpu040.h"
 #include "Q605Memory.h"
@@ -136,7 +137,7 @@ int main() {
         return 1;
     }
 
-    // File image must still advertise FPU; the patch is in-memory only.
+    // File image must still advertise FPU at UniversalInfo (unchanged ROM).
     constexpr uint32_t kLc475Hw = 0x0A8090;       // UniversalInfo $0A8080 + $10
     uint32_t fileHw = uint32_t(rom[kLc475Hw]) << 24 | uint32_t(rom[kLc475Hw + 1]) << 16 |
                       uint32_t(rom[kLc475Hw + 2]) << 8 | rom[kLc475Hw + 3];
@@ -153,21 +154,15 @@ int main() {
     }
     Cpu040 cpu(mem);
     mem.setCpu(&cpu);
-    cpu.hardReset();
-    while (mem.cpuHeld()) mem.tick(1000);
-
-    // UniversalInfo FPU-bit patch arms after GetHardwareInfo probe exit.
-    // Phase 1 after probe: scrub stale HWCfg copies; phase 2 at SCSI/400M:
-    // patch in-memory UniversalInfo (Basilisk rom_patches bit 28).
-    for (int i = 0; i < 4 && !mem.romNoFpuLowmemPatched() && !cpu.isHalted(); i++)
-        cpu.runCycles(416667);
-    if (!mem.romNoFpuLowmemPatched()) {
-        std::fprintf(stderr, "FAIL: NOFPU lowmem HWCfg scrub did not run\n");
+    if (cpu.getModel() != moira::Model::M68LC040 ||
+        cpu.getFPUModel() != moira::FPUModel::M68882) {
+        std::fprintf(stderr, "FAIL: NOFPU should select M68LC040 + soft 68882\n");
         return 1;
     }
-    std::printf("NOFPU lowmem HWCfg scrub OK (clk=%lld)\n",
-                (long long)cpu.getClock());
+    std::printf("NOFPU CPU: M68LC040 + soft 68882 (SoftwareFPU-equivalent)\n");
     std::fflush(stdout);
+    cpu.hardReset();
+    while (mem.cpuHeld()) mem.tick(1000);
 
     // Continue to Finder — same budget as q605_boot_etalon.
     constexpr int kFrameCycles = 416667;
@@ -241,7 +236,7 @@ int main() {
         std::printf("HWCfg RAM copies: stale=%d clean=%d romHW=$%08X\n",
                     stale, clean, romHw);
     }
-    std::printf("%s\n", ok ? "PASSED — 68LC040 NOFPU Finder in 256 colors"
+    std::printf("%s\n", ok ? "PASSED — 68LC040 + soft FPU Finder in 256 colors"
                            : "FAILED");
     return ok ? 0 : 1;
 }

@@ -42,10 +42,9 @@ bool Swim2::isWriteProtected() const {
 }
 
 int Swim2::senseAddr() const {
-    // IWM-compatible CA packing used by SonyDrive (DEV.md § Sony):
-    // (CA2<<3)|(CA1<<2)|(CA0<<1)|SEL — SEL from HDSEL (mode bit 5).
-    return ((phases_ & 4) ? 8 : 0) | ((phases_ & 2) ? 4 : 0)
-         | ((phases_ & 1) ? 2 : 0) | (side1() ? 1 : 0);
+    // mac_floppy_device::seek_phase_w/wpt_r: direct phase register with
+    // HDSEL as bit 3 (floppy.cpp:3227,3303).
+    return (phases_ & 7) | (side1() ? 8 : 0);
 }
 
 void Swim2::updateDevsel() {
@@ -56,14 +55,14 @@ void Swim2::updateDevsel() {
 }
 
 void Swim2::applyPhases(uint8_t value) {
-    // applefdintf phases → mac_floppy seek_phase_w: bits 0-2 = CA0-2,
-    // bit 3 = LSTRB. Rising LSTRB strobes the command (Iwm.cpp:32-36).
+    // applefdintf phases → mac_floppy seek_phase_w: bits 0-2 choose the
+    // direct drive register; bit 3 is LSTRB.
     const bool lstrb = (value & 0x08) != 0;
     const bool rising = lstrb && !lstrb_;
     phases_ = value;
     lstrb_ = lstrb;
     if (rising) {
-        if (SonyDrive* d = selectedDrive()) d->command(senseAddr());
+        if (SonyDrive* d = selectedDrive()) d->commandSwim(senseAddr());
     }
 }
 
@@ -122,7 +121,7 @@ uint8_t Swim2::read(int reg) {
         }
         // Sense multiplex on the classic "WPRT" line (mac_floppy::wpt_r).
         SonyDrive* d = selectedDrive();
-        bool senseHigh = !d || d->sense(senseAddr());
+        bool senseHigh = !d || d->senseSwim(senseAddr());
         if (senseHigh) value |= 0x08;
         if (error_) value |= 0x20;
         if (mode_ & 0x10) {                      // write: report available room
@@ -177,15 +176,8 @@ void Swim2::write(int reg, uint8_t value) {
     }
     if (mode_ & 0x01) fifoClear();
     if ((mode_ ^ previousMode) & 0x86) updateDevsel();
-    // Motor bit mirrors onto the selected drive (IWM ENABLE equivalent).
-    if ((mode_ ^ previousMode) & 0x80) {
-        updateDevsel();
-        if (SonyDrive* d = selectedDrive()) d->setMotor((mode_ & 0x80) != 0);
-        else {
-            if (drive_[0]) drive_[0]->setMotor(false);
-            if (drive_[1]) drive_[1]->setMotor(false);
-        }
-    }
+    // Mode bit 7 enables soft-selection; motor state itself is driven by
+    // phase commands 2/6 on the MFD-75W.
     if ((mode_ & 0x18) != (previousMode & 0x18)) cellPhase_ = 0;
 }
 
