@@ -51,11 +51,13 @@ void V8Memory::reset() {
     lapWatchdog_ = getenv("POM68K_NO_LTALK_WD") == nullptr;
     viaPhase_ = 0;
     tickAcc_ = 0;
+    tickAcc60_ = 0;
     simmMapped_ = mbMapped_ = false;         // no RAM until the overlay drops
     via_.reset();
     pvia_.reset();
     ariel_.reset();
     egret_.reset();
+    egret_.factoryDefaults();                // SPConfig XPRAM $13 = $22
     adb_.reset();
     asc_.reset();
     scsi_.reset();
@@ -63,6 +65,11 @@ void V8Memory::reset() {
     iwm_.attachDrive(&drive_, nullptr);
     framePos_ = 0;
     vblState_ = false;
+    scsiStallFrames_ = 0;
+    lastScsiCmds_ = -1;
+    alertDismissPosts_ = 0;
+    alertDismissCool_ = 0;
+    alertEvSlot_ = 0;
     // VIA1 port A input = V8-family machine ID $D4 | diag bit
     // (v8.cpp:249-252); PB3 = Egret XCVR_SESSION, idle high. PB0-PB2
     // (legacy RTC lines) and PB6-PB7 keep the 6522 pull-up default 1
@@ -417,7 +424,82 @@ void V8Memory::tick(int cpuCycles) {
                                              // must lower the line too (updateIrq
                                              // below applies it); was latch-high only
     localTalkWatchdog(cpuCycles);            // O6.11 LAP unwedge
+
+    // Keep AppleTalk inactive: XPRAM $13 and SysParam SPConfig $1FB = $22
+    // (same policy as Mac II / Rtc). Infinite Mac Sys7 still surfaces
+    // EtherTalk CautionAlerts — cleared by maybeDismissBootAlerts.
+    if (egret_.pram(0x13) != 0x22)
+        egret_.setPram(0x13, 0x22);
+    if (peek8(0x1F8) == 0xA8 && peek8(0x1FB) != 0x22)
+        write8(0x1FB, 0x22);
+
+    tickAcc60_ += cpuCycles;
+    if (tickAcc60_ >= kCpuHz / 60) {
+        tickAcc60_ -= kCpuHz / 60;
+        maybeDismissBootAlerts();
+    }
     updateIrq();
+}
+
+void V8Memory::postKeyReturn() {
+    // EvQEl below SysZone: 32-byte slots at $0F00+ (Mac II path reused).
+    const uint32_t el = 0x00000F00u + uint32_t(alertEvSlot_++ & 7) * 32u;
+    auto w16 = [this](uint32_t a, uint16_t v) {
+        write8(a, uint8_t(v >> 8));
+        write8(a + 1, uint8_t(v));
+    };
+    auto w32 = [this](uint32_t a, uint32_t v) {
+        write8(a, uint8_t(v >> 24));
+        write8(a + 1, uint8_t(v >> 16));
+        write8(a + 2, uint8_t(v >> 8));
+        write8(a + 3, uint8_t(v));
+    };
+    auto p32 = [this](uint32_t a) {
+        return (uint32_t(peek8(a)) << 24) | (uint32_t(peek8(a + 1)) << 16) |
+               (uint32_t(peek8(a + 2)) << 8) | peek8(a + 3);
+    };
+    w32(el, 0);
+    w16(el + 4, 0);
+    w16(el + 6, 3);                            // keyDown
+    w32(el + 8, 0x240D);                       // ADB Return / CR
+    w32(el + 12, p32(0x16A));                  // when = Ticks
+    w16(el + 16, 256);
+    w16(el + 18, 192);
+    w16(el + 20, 0);
+    const uint32_t tail = p32(0x150);
+    if (tail && tail < 0xA00000)
+        w32(tail, el);
+    else
+        w32(0x14C, el);
+    w32(0x150, el);
+}
+
+void V8Memory::maybeDismissBootAlerts() {
+    // Infinite Mac Sys7 EtherTalk CautionAlerts block ModalDialog; soft-post
+    // Return. Gated on CurActivate bit31 + SCSI stall so Finder (CurActivate=0)
+    // is untouched — same heuristic as MacIIMemory.
+    if (alertDismissCool_ > 0) {
+        alertDismissCool_--;
+        return;
+    }
+    const long cmds = scsi_.commands;
+    if (cmds == lastScsiCmds_ && cmds > 200)
+        scsiStallFrames_++;
+    else
+        scsiStallFrames_ = 0;
+    lastScsiCmds_ = cmds;
+
+    const uint32_t curAct =
+        (uint32_t(peek8(0xA64)) << 24) | (uint32_t(peek8(0xA65)) << 16) |
+        (uint32_t(peek8(0xA66)) << 8) | peek8(0xA67);
+    const bool modal = (curAct & 0x80000000u) != 0;
+    if (!modal || scsiStallFrames_ < 45 || alertDismissPosts_ >= 6)
+        return;
+
+    postKeyReturn();
+    alertDismissPosts_++;
+    alertDismissCool_ = 90;
+    scsiStallFrames_ = 0;
 }
 
 // O6.11 — HLE LocalTalk-LAP unwedge. When AppleTalk is active on a

@@ -60,12 +60,15 @@ static void ensureBootDriverType(std::vector<uint8_t>& img) {
 }
 
 int main() {
-    std::string rom = find("docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
+    std::string rom = find("roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
+    if (rom.empty()) rom = find("docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
     // A System disk the machine boots to the Finder. boot.vhd (volume
     // "MacPack") is the reference; the user's own volumes can be wrapped
     // bootable with tools/wrap_hfs.py and dropped in as hdv/lcii-boot.vhd.
     std::string img = find("hdv/lcii-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
+    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+    if (img.empty()) img = find("hdv/System 7.5 HD.dsk");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs the 512 KB LC II ROM + a bootable hdv/ image\n");
         return 0;

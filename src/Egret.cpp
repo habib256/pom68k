@@ -52,16 +52,21 @@ void Egret::savePram(const std::string& path) const {
 // startup path. A valid signature also spares the ROM's cold-PRAM
 // detours (full-RAM burn-in, PRAM re-init) on a first boot.
 void Egret::factoryDefaults() {
-    if (pram_[0x0C] == 0x4E && pram_[0x0D] == 0x75
-     && pram_[0x0E] == 0x4D && pram_[0x0F] == 0x63) return;
-    std::memset(pram_, 0, sizeof pram_);
+    // Always (re)seed AppleTalk-inactive SPConfig even when 'NuMc' is already
+    // present — AppleTalk 57.x self-heals 0/$F → active, and Infinite Mac
+    // Sys7 images leave SysParam/XPRAM selecting EtherTalk/LocalTalk. Same
+    // policy as Rtc::factoryDefaults (Mac II).
+    const bool hadSig = pram_[0x0C] == 0x4E && pram_[0x0D] == 0x75
+                     && pram_[0x0E] == 0x4D && pram_[0x0F] == 0x63;
+    if (!hadSig)
+        std::memset(pram_, 0, sizeof pram_);
     pram_[0x0C] = 0x4E; pram_[0x0D] = 0x75;      // 'NuMc'
     pram_[0x0E] = 0x4D; pram_[0x0F] = 0x63;
     pram_[0x01] = 0x80;                          // InternalWaitFlags=DynWait
     pram_[0x08] = 0x13; pram_[0x09] = 0x88;
     pram_[0x0A] = 0x00; pram_[0x0B] = 0xCC;
     pram_[0x10] = 0xA8; pram_[0x11] = 0x00;      // standard PRAM values
-    pram_[0x12] = 0x00; pram_[0x13] = 0x22;
+    pram_[0x12] = 0x00; pram_[0x13] = 0x22;      // SPConfig: both ports async
     pram_[0x14] = 0xCC; pram_[0x15] = 0x0A;
     pram_[0x16] = 0xCC; pram_[0x17] = 0x0A;
     pram_[0x1C] = 0x00; pram_[0x1D] = 0x02;
@@ -72,7 +77,8 @@ void Egret::factoryDefaults() {
     // (B&W); picking "256 colors" in Monitors + Restart writes $83, and
     // the next boot comes up 8 bpp from the ROM onward (verified against
     // the real LC II ROM on the O6 machine). Seed color for first boots.
-    pram_[0x58] = 0x83;
+    if (!hadSig || (pram_[0x58] & 0x80) == 0)
+        pram_[0x58] = 0x83;
     // AppleTalk stays INACTIVE via SPConfig = XPRAM $13 above: classic
     // PRAM byte 3, low nibble = port B use, 1 = useATalk, 2 = useAsync
     // (Apple system source, Patches Release Notes #1032330 + supermario
