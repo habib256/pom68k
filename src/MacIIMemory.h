@@ -55,6 +55,7 @@ public:
     TobyVideo* toby() { return toby_; }
     AdbBus& adb() { return adb_; }
     AdbVia& adbVia() { return adbVia_; }
+    AscV8& asc() { return asc_; }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {

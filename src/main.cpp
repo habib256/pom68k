@@ -22,6 +22,9 @@
 #include "V8Video.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include "Cpu020.h"
+#include "MacIIMemory.h"
+#include "TobyVideo.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
