@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-# POM68K — wrap a bare HFS volume image ('LK' boot blocks at block 0)
-# into a bootable Apple SCSI disk image: Driver Descriptor Map ('ER') +
-# Apple partition map + Apple_Driver43 partition + the HFS volume.
-# The DDM/map/driver template is lifted from an existing well-formed
-# image (default hdv/boot.vhd, Apple_Driver43 layout @64+32).
+# POM68K — offline wrap of a bare HFS volume ('LK' at block 0) into a
+# bootable Apple SCSI image: DDM ('ER') + partition map + Apple_Driver43
+# + the HFS volume. Prefer the in-emulator façade in ScsiDisk::open
+# (auto-detects 'LK', same layout); this script remains for baking a
+# permanent .vhd when you want write-back of the full partitioned image.
 #
-# The LC II ROM's boot scan only loads a driver whose DDM entry has
-# ddType $6A (probed against the real ROM at $A07264 — a lone type
-# $0001 entry is ignored and the ROM keeps showing the blinking ?), so
-# the driver entry is mirrored with that type.
+# Template (default hdv/boot.vhd): Apple_Driver43 @64+32. A ddType $6A
+# DDM entry is added so LC II StartBoot ($A07264) accepts the disk.
 #
 # Usage: wrap_hfs.py <bare_hfs.vhd> <output.vhd> [template.vhd]
 

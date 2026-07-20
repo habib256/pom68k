@@ -4,7 +4,60 @@ Active work only. Completed milestones, resolved bugs, investigation trails and
 design rationale belong in `CHANGELOG.md` (with implementation detail in
 `DEV.md` and the vendor notes).
 
-## Current priority — Quadra 605 / LC 475
+## Current priority — Finder matrix (ROM × System, oldest → newest)
+
+Goal: every **supported** machine profile reaches the Finder for each
+compatible System image, then extend profiles until every **68k** ROM under
+`roms/` (not PPC 4 MB) has a matching machine. GUI already exposes Plus /
+Mac II / LC II / Quadra 605.
+
+Assets (local; do not commit — `hdv/` is gitignored):
+- Infinite Mac copies in `hdv/`: System 4.1 (floppy), 5.1 / 6.0 / 6.0.8 /
+  7.0 / 7.1 / 7.5 / 7.5.5 HD `.dsk`, plus existing `HD20SC.vhd`,
+  `boot.vhd` / `GISTPERSO-boot.vhd`, `MacOS-7.6-boot.vhd`,
+  `MacOS-8.1-boot.vhd`.
+- Full Infinite Mac tree also at `../refs/infinite-mac/Images` (or
+  `/home/gistarcade/src/refs/infinite-mac/Images`). If a file is missing,
+  fetch with **Scrapling** (not raw `curl` through the sandbox proxy):
+  `Fetcher.get` / `scrapling extract get` on
+  `https://raw.githubusercontent.com/mihaip/infinite-mac/main/Images/…`.
+
+Harness:
+- [ ] Finish and build `tests/finder_boot_matrix.cpp`
+  (`make finder_boot_matrix`): argv `plus|macii|lcii|q605` + ROM + disk;
+  Finder metrics aligned with the existing `*_boot_etalon` gates.
+  Soft-skip / log PASS|FAIL per cell; optional PNG dump on FAIL.
+
+Phase A — cells on machines that already boot (fix chronologically):
+- [ ] **Plus** (128 KB ROMs `4D1EEEE1` → `4D1EEAE1` → `4D1F8172`):
+  SCSI HD System 5.1 → 6.0 → 6.0.8 (`HD20SC` as known-good control);
+  floppy System 4.1 via `insertDisk` if SCSI image is not bootable.
+- [ ] **Mac II** (256 KB `97851DB6` → `9779D2C4`): System 6.0 → 6.0.8 →
+  7.0 → 7.1 (HD). Keep `macii_boot_etalon` green on the reference cell.
+- [ ] **LC II** (`35C28F5F`): System 7.1 → 7.5 → 7.5.5 (+ `boot.vhd` /
+  GISTPERSO control). Ensure DDM `$6A` driver fixup for Infinite Mac `.dsk`.
+- [ ] **Quadra 605** (`FF7439EE`): System 7.5.5 → 7.6 → 8.1. Prefer
+  `q605_boot_etalon` PixMap metrics for 8.1; loosen only if a System is
+  1bpp/4bpp at first Finder.
+
+Phase B — report and fix before adding machines:
+- [ ] Write a one-page result table (ROM CRC × disk → PASS/FAIL + SCSI
+  cmds / menu-desk metrics) into `CHANGELOG.md` or a short note under
+  `docs/` when the matrix is first green for Phase A.
+- [ ] Fix any FAIL that is an emulator bug (not wrong ROM↔machine pairing)
+  before Phase C.
+
+Phase C — new profiles so remaining `roms/` 68k dumps can join the matrix
+(order from `docs/68K_FAMILY_SCOPE.md`; each profile gets at least one
+Finder cell before the next):
+- [ ] Macintosh LC (68020) — V8 reuse; ROM `350EACF0`.
+- [ ] Classic II → Color Classic → LC III → IIsi (030 / Egret cluster).
+- [ ] SE / Classic (68000 + ADB) for 256/512 KB compact ROMs.
+- [ ] Nearby 040 (LC 475 identity, then Centris/Q610…) for other 1 MB ROMs.
+- [ ] Explicitly **out of Phase C**: PowerBook PMU, IIfx IOPs, AV DSP, all
+  4 MB PPC ROMs.
+
+## Deferred polish — Quadra 605 / LC 475
 
 - [x] **Reproduce and close the Finder 256-color issue.**
   - Boot the FF7439EE ROM with `hdv/MacOS-8.1-boot.vhd`.
@@ -179,24 +232,21 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
 
 ## Future machine profiles
 
-- [x] **Macintosh II → Finder** (`macii_boot_etalon`). POST + Welcome + System 6
-  Finder on `HD20SC` (menu/desk ≈0.10/0.49, SCSI cmds ≫ 500). Fixes that
-  unblocked post-Welcome: NCR5380 one-shot CSR.REQ gap for `scLoop` TIBs,
-  VIA2 CA1 only when `$D04` has a slot task (else SysError 51).
+Driven by **Phase C** of the Finder matrix above; detail and effort tiers in
+`docs/68K_FAMILY_SCOPE.md`.
 
-- [ ] **Add the original Macintosh LC (68020)** as the next low-cost profile,
-  reusing V8/Egret/ASC and validating multi-machine parameterization.
+- [x] **Macintosh II → Finder** (`macii_boot_etalon` + GUI Machine menu).
+  System 6 on `HD20SC`; NCR5380 CSR.REQ gap + VIA2 CA1 `$D04` guard.
 
-- [ ] **Expand the nearby 68030 family** in this order: Classic II, Color
-  Classic, LC III, then IIsi. Implement Sonora/RBV/Cuda/SWIM2 variants as
-  separate tested devices.
+- [ ] **Macintosh LC (68020)** — next low-cost profile (V8/Egret/ASC reuse).
 
-- [ ] **Expand the nearby 68040 family** after Quadra polish: LC/Performa 475,
-  LC 575, then Quadra/Centris 610/650/800.
+- [ ] **Nearby 68030**: Classic II → Color Classic → LC III → IIsi
+  (Sonora/RBV/Cuda/SWIM2 as separate gated devices).
 
-- [ ] **Expand NuBus + slot video** for IIx/IIcx/IIci and NuBus Quadras
-  (Mac II Toby path already boots Finder).
+- [ ] **Nearby 68040**: LC/Performa 475 identity, LC 575, then
+  Quadra/Centris 610/650/800.
 
-- [ ] **Treat PowerBook power management, IIfx IOPs and 660AV/840AV DSPs as
-  independent major projects.** Scope and effort are tracked in
-  `docs/68K_FAMILY_SCOPE.md`.
+- [ ] **NuBus + slot video** beyond Mac II Toby: IIx/IIcx/IIci and NuBus
+  Quadras.
+
+- [ ] **Independent majors**: PowerBook PMU, IIfx IOPs, 660AV/840AV DSP.

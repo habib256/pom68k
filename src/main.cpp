@@ -440,13 +440,14 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     mem.setCpu(&cpu);
     cpu.hardReset();
 
-    // Prefer System 6 HD20SC (original Mac II target); fall back like the etalon.
-    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/HD20SC.vhd");
+    // Prefer Infinite Mac System 6.0.8 HD, then HD20SC / other SCSI images.
+    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/System 6.0.8 HD.dsk");
+    if (hddPath.empty()) hddPath = findPath("hdv/HD20SC.vhd");
     if (hddPath.empty()) hddPath = findPath("hdv/GISTPERSO-boot.vhd");
     if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
     static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
     if (hddOk) std::printf("SCSI HD: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
+    else std::fprintf(stderr, "No SCSI image — drop a .dsk/.vhd in hdv/.\n");
 
     static std::vector<std::string> extraDisks;
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {

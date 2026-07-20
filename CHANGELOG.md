@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 2026-07-20 — SCSI flat-HFS façade
+
+`ScsiDisk::open` detects bare HFS volumes (`'LK'` boot blocks at LBA 0 —
+Infinite Mac / Basilisk `.dsk`) and prepends an in-memory DDM + partition
+map + `Apple_Driver43` template (same 96-block layout as
+`tools/wrap_hfs.py`), including a ddType `$6A` driver entry for LC II
+StartBoot. Write-back maps LBAs ≥ 96 onto the original flat file; the
+synthetic prefix stays memory-only. Template search:
+`$POM68K_SCSI_DDM_TEMPLATE`, then `HD20SC.vhd` / `boot.vhd` beside the
+image or under `hdv/`. Gate: `scsi_hfs_facade_test`.
+
 ## 2026-07-20 — Mac II boots System 6 to the Finder
 
 Post-Welcome stall at ~235 SCSI cmds was two bugs:

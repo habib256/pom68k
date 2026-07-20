@@ -208,6 +208,11 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME scsi_boot_etalon COMMAND scsi_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    add_executable(scsi_hfs_facade_test tests/scsi_hfs_facade_test.cpp)
+    target_link_libraries(scsi_hfs_facade_test PRIVATE pom68k_core)
+    add_test(NAME scsi_hfs_facade_test COMMAND scsi_hfs_facade_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # M5.5 gate: keyboard/mouse against the System 6 drivers (soft-skips).
     add_executable(input_etalon tests/input_etalon.cpp)
     target_link_libraries(input_etalon PRIVATE pom68k_core)
@@ -362,6 +367,10 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(macii_boot_etalon PRIVATE pom68k_core)
     add_test(NAME macii_boot_etalon COMMAND macii_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Dev harness: ROM×disk Finder matrix (not a CTest gate).
+    add_executable(finder_boot_matrix EXCLUDE_FROM_ALL tests/finder_boot_matrix.cpp)
+    target_link_libraries(finder_boot_matrix PRIVATE pom68k_core)
 endif()
 
 # Dev tool (not a gate): instruction-level Sony-driver trace.

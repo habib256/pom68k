@@ -53,8 +53,9 @@ forces the 512×384 12" mode (also switchable live in the CPU window).
 
 The second argument is the boot SCSI image (default
 `hdv/GISTPERSO-boot.vhd`, then `hdv/boot.vhd`, `hdv/HD20SC.vhd`); further
-arguments attach as secondary volumes at SCSI IDs 1–6. Images must be
-DDM-wrapped (see `tools/wrap_hfs.py`) or the ROM blinks `?` forever.
+arguments attach as secondary volumes at SCSI IDs 1–6. Bare HFS `.dsk`
+files (Infinite Mac style, `'LK'` at LBA 0) get an in-memory SCSI façade
+automatically; otherwise use a DDM-wrapped image (`tools/wrap_hfs.py`).
 PRAM + clock persist next to the boot image (`<disk>.pram`) — the first
 cold boot runs the ROM's full-RAM burn-in; later boots skip it.
 
