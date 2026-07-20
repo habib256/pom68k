@@ -162,6 +162,12 @@ void TobyVideo::calcScreenParams() {
 
 void TobyVideo::vblPulse() {
     if (!vblDisable_) {
+        // Edge per frame: a level that stays high after the first VBL never
+        // re-enters NuBus::setSlotIrq (no-op on same state), so the $6DD8
+        // soft-flag wait would miss VIA2 CA1 if the first pulse landed
+        // before IER was armed. Real Toby drops the line when SW ACKs the
+        // VBL latch; pulse low→high approximates that cadence.
+        bus_.setSlotIrq(slot_, false);
         bus_.setSlotIrq(slot_, true);
         if (irqCb_) irqCb_(true);
     }

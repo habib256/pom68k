@@ -62,6 +62,8 @@ void MacIIMemory::reset() {
     nubusIrqState_ = 0x3F;
     sccIrq_ = false;
     via2Irq_ = false;
+    via2Ca1PostHle_ = false;
+    postSoftA3_ = 0;
     via2Pb7_ = true;
     viaPhase_ = 0;
     tickAcc_ = 0;
@@ -119,15 +121,33 @@ void MacIIMemory::nubusSlotIrq(int slot, bool active) {
     if (active) nubusIrqState_ &= uint8_t(~masks[idx]);
     else nubusIrqState_ |= masks[idx];
     refreshVia2PortA();
-    // MAME nubus_slot_interrupt → VIA2 write_ca1 edge; IPL follows IFR&IER.
-    // Slot Manager expects VIA2 IER.CA1 armed once a board is present — the
-    // ROM usually writes $82 to VIA2 IER during InitSlot; if that path was
-    // skipped, IFR.CA1 latches forever with IPL stuck at 0 and the $6DD8
-    // soft-flag wait never sees $6E16.
+    // MAME nubus_slot_interrupt → VIA2 CA1 edge; IPL follows IFR&IER.
+    // Decl Primary Init often leaves Toby VBL off until VRAM paint; the
+    // $6DD8 wait needs VIA2 CA1 → $6E16 → bclr soft-flag @$15D(A3). Arm
+    // IER.CA1 only while that soft-flag is set — PC-scoped arming was too
+    // narrow (handler body at $6E24.. disarmed mid-flight) and too wide
+    // (kept IER into the boot VIA dispatcher → SysError 51 at $62DC).
+    if (cpu_) {
+        const uint32_t pcOff = cpu_->getPC() & 0xFFFF;
+        if (pcOff == 0x6DD8 || pcOff == 0x6DDE)
+            postSoftA3_ = cpu_->getA(3);
+    }
+    const bool softPending = postSoftA3_ != 0
+                          && (peek8(postSoftA3_ + 0x15D) & 0x20) != 0;
     if ((nubusIrqState_ & 0x3F) != 0x3F) {
-        via2_.raiseCa1();
-        if (!(via2_.ierRaw() & Via6522::CA1))
+        if (via2_.ierRaw() & Via6522::CA1) {
+            via2_.raiseCa1();
+        } else if (softPending) {
             via2_.write(Via6522::IER, uint8_t(0x80 | Via6522::CA1));
+            via2Ca1PostHle_ = true;
+            via2_.raiseCa1();
+        }
+    }
+    if (via2Ca1PostHle_ && !softPending) {
+        via2_.write(Via6522::IER, Via6522::CA1);     // bit7=0 → clear enable
+        via2_.write(Via6522::IFR, Via6522::CA1);     // drop standing request
+        via2Ca1PostHle_ = false;
+        postSoftA3_ = 0;
     }
     via2Irq_ = via2_.irqAsserted();
     updateIrq();
