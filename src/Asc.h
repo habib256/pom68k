@@ -55,24 +55,33 @@ public:
         return out_[outRd_++ & (kOutSize - 1)];
     }
     int fifoCap() const { return cap_; }
+    int fifoCapB() const { return capB_; }
 
 private:
     uint8_t readReg(uint32_t offset);        // read logic (onRead tap wraps it)
-    enum { STAT_HALF_A = 0x01, STAT_EMPTY_OR_FULL_A = 0x02 };
+    enum {
+        STAT_HALF_A = 0x01, STAT_EMPTY_OR_FULL_A = 0x02,
+        STAT_HALF_B = 0x04, STAT_EMPTY_OR_FULL_B = 0x08
+    };
     void setIrq(bool s) {
         if (s != irq_) { irq_ = s; if (onIrq) onIrq(s); }
     }
+    bool classic() const { return version_ != 0xE8; }
+    void classicResetFifos();
 
     uint8_t fifo_[0x400] = {};
     uint8_t fifoB_[0x400] = {};              // classic ASC channel B
     uint16_t rd_ = 0, wr_ = 0;
-    uint16_t wrB_ = 0;
+    uint16_t rdB_ = 0, wrB_ = 0;
     int cap_ = 0;
     int capB_ = 0;
     uint8_t regs_[0x20] = {};                // sparse classic regs ($800+)
     uint8_t fifoStat_ = STAT_EMPTY_OR_FULL_A;
     bool irq_ = false;
     int64_t drainAcc_ = 0;
+    // Classic ASC: Mac OS leaves FIFO mode on after playback and expects a
+    // fresh empty/half IRQ once per 1 KB drain cycle (QEMU asc.c).
+    int emptyCycleSamples_ = 0;
     uint8_t version_ = 0xE8;
 
     static constexpr int kOutSize = 8192;    // power of two

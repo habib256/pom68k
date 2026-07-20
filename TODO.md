@@ -23,22 +23,35 @@ Assets (local; do not commit — `hdv/` is gitignored):
   `https://raw.githubusercontent.com/mihaip/infinite-mac/main/Images/…`.
 
 Harness:
-- [ ] Finish and build `tests/finder_boot_matrix.cpp`
-  (`make finder_boot_matrix`): argv `plus|macii|lcii|q605` + ROM + disk;
-  Finder metrics aligned with the existing `*_boot_etalon` gates.
-  Soft-skip / log PASS|FAIL per cell; optional PNG dump on FAIL.
+- [x] `tests/finder_boot_matrix.cpp` (`make finder_boot_matrix`).
+- [x] **Flat HFS → SCSI façade** in `ScsiDisk::open` (`'LK'` → DDM/`$6A`);
+  gate `scsi_hfs_facade_test`. Offline bake: `tools/wrap_hfs.py`.
 
-Phase A — cells on machines that already boot (fix chronologically):
+Phase A — cells on machines that already boot (test chronologically):
 - [ ] **Plus** (128 KB ROMs `4D1EEEE1` → `4D1EEAE1` → `4D1F8172`):
-  SCSI HD System 5.1 → 6.0 → 6.0.8 (`HD20SC` as known-good control);
-  floppy System 4.1 via `insertDisk` if SCSI image is not bootable.
+  SCSI HD System 5.1 → 6.0 → 6.0.8 (`HD20SC` + Sys 6.0.8 `.dsk` PASS);
+  floppy System 4.1 via `insertDisk` if needed.
 - [ ] **Mac II** (256 KB `97851DB6` → `9779D2C4`): System 6.0 → 6.0.8 →
-  7.0 → 7.1 (HD). Keep `macii_boot_etalon` green on the reference cell.
+  7.0 → 7.1 (HD). `HD20SC` + Sys 6.0.8 `.dsk` PASS after façade.
 - [ ] **LC II** (`35C28F5F`): System 7.1 → 7.5 → 7.5.5 (+ `boot.vhd` /
-  GISTPERSO control). Ensure DDM `$6A` driver fixup for Infinite Mac `.dsk`.
+  GISTPERSO). Façade already injects DDM `$6A`.
 - [ ] **Quadra 605** (`FF7439EE`): System 7.5.5 → 7.6 → 8.1. Prefer
   `q605_boot_etalon` PixMap metrics for 8.1; loosen only if a System is
   1bpp/4bpp at first Finder.
+
+### Phase A results (2026-07-20, `finder_boot_matrix`)
+
+Log: `build/finder_matrix.log` — **13 PASS / 6 FAIL**.
+
+| Cell | Result |
+|---|---|
+| Plus v1/v2/v3 × Sys 5.1 / 6.0 / 6.0.8 + HD20SC | PASS |
+| Mac II v1/v2 × Sys 6.0 / 6.0.8 + HD20SC | PASS |
+| Mac II v2 × Sys 7.0 / 7.1 | FAIL (SCSI≈274 post-ASC; Welcome ASC wait fixed 2026-07-20 — MODE `&3` + empty-cycle IRQ; Finder still open) |
+| LC II × boot.vhd / Sys 7.5 | PASS |
+| LC II × Sys 7.1 / 7.5.5 | FAIL (7.1 SCSI=277; 7.5.5 menu=0.50) |
+| Q605 × OS 8.1 | PASS (640×480×8) |
+| Q605 × OS 7.6 / Sys 7.5.5 | FAIL (reached 1bpp, gate wants 8bpp mode 3) |
 
 Phase B — report and fix before adding machines:
 - [ ] Write a one-page result table (ROM CRC × disk → PASS/FAIL + SCSI

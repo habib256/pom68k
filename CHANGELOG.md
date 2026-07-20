@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## 2026-07-20 — Classic ASC MODE mask + empty-cycle IRQ (Mac II Sys7)
+
+Mac II System 7 hung after Welcome with ASC `mode=$18` / sticky half-empty
+IRQ — Sound Manager writes MODE words whose high bits are **ignored on
+silicon** (`data &= 3`, MAME/QEMU). Unmasked `$18` kept the FIFO engine
+"on" forever under our old `mode ≠ 0` gate. Classic path now matches
+ASCTester/MAME: MODE bits 0–1 only, status `$804` read clears IRQ+bits,
+half-empty is an edge at cap `$1FF`, and **empty-cycle** re-IRQs once per
+1 KB drain while FIFO mode runs dry (QEMU: without this Mac OS freezes).
+V8 (`$E8`) level semantics unchanged. VIA2 CB1 re-latch retained.
+`macii_boot_etalon` (Sys6) still green; Sys7.0 past Welcome ASC wait
+(SCSI 262→274, ASC idle) but Finder matrix still FAIL — next stall is
+non-ASC (SCSI frozen ~274).
+
+## 2026-07-20 — Classic ASC idle IRQ (Mac II)
+
+Mac II's discrete ASC (`AscV8` version `$00`) was asserting the half-empty
+IRQ whenever the FIFO sat below `$200` bytes — including a never-started
+idle chip. That pins VIA2 CB1 once the ROM enables it and starves boot.
+Superseded by the MODE-mask + empty-cycle fix above for Sys7; the idle
+quiet rule remains. V8 (`$E8`) unchanged.
+
 ## 2026-07-20 — SCSI flat-HFS façade
 
 `ScsiDisk::open` detects bare HFS volumes (`'LK'` boot blocks at LBA 0 —

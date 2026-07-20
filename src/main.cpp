@@ -869,9 +869,8 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     }
     cpu.hardReset();
 
-    // GISTPERSO-boot.vhd = the user's real LC II volume wrapped with a
-    // DDM + $6A driver entry (tools/wrap_hfs.py) — bare HFS images are
-    // not bootable and the ROM shows the blinking ? forever.
+    // GISTPERSO-boot.vhd = the user's real LC II volume. Bare HFS `.dsk`
+    // images get an in-memory DDM façade in ScsiDisk::open.
     std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/GISTPERSO-boot.vhd");
     if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
     if (hddPath.empty()) hddPath = findPath("hdv/HD20SC.vhd");
@@ -1415,9 +1414,8 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     mem.setCpu(&cpu);
     cpu.hardReset();
 
-    // Boot volume: argv[2], else the Mac OS 8.1 image the Q6 trace boots to
-    // the Finder. As on the LC II, the ROM only boots wrapped images (DDM +
-    // $6A driver entry — tools/wrap_hfs.py); a bare HFS image blinks the ?.
+    // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
+    // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
     std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/MacOS-8.1-boot.vhd");
     if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
     static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);

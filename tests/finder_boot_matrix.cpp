@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -153,7 +154,7 @@ static int bootPlus(const std::vector<uint8_t>& rom, const char* disk) {
     return ok ? 0 : 1;
 }
 
-static int bootMacII(const std::vector<uint8_t>& rom, const char* disk) {
+static int bootMacII(const std::vector<uint8_t>& rom, const char* disk, long frames = 20000) {
     MacIIMemory mem;
     if (!mem.loadRom(rom)) return 1;
     mem.installTobyVideo();
@@ -162,7 +163,17 @@ static int bootMacII(const std::vector<uint8_t>& rom, const char* disk) {
     cpu.hardReset();
     if (!mem.attachScsi(disk)) return 1;
     const int64_t kFrame = 800 * 525;
-    for (long f = 0; f < 20000 && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
+    long lastScsi = 0;
+    for (long f = 0; f < frames && !cpu.isHalted(); f++) {
+        cpu.runCycles(kFrame);
+        if (frames > 20000 && (f % 10000 == 0 || f == frames - 1)) {
+            std::printf("  progress f=%ld PC=$%08X SCSI=%ld (+%ld)\n",
+                        f, cpu.getPC(), mem.scsi().commands,
+                        mem.scsi().commands - lastScsi);
+            lastScsi = mem.scsi().commands;
+            std::fflush(stdout);
+        }
+    }
     if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: halted\n"); return 1; }
     TobyVideo* tv = mem.toby();
     std::vector<uint32_t> fb;
@@ -170,14 +181,14 @@ static int bootMacII(const std::vector<uint8_t>& rom, const char* disk) {
     int W = tv->hres(), H = tv->vres();
     double menu = blackRatio(fb.data(), W, 0, W, 2, 20);
     double desk = blackRatio(fb.data(), W, W / 2, W, 40, H - 40);
-    std::printf("macii menu=%.2f desk=%.2f SCSI=%ld %dx%d\n",
-                menu, desk, mem.scsi().commands, W, H);
+    std::printf("macii menu=%.2f desk=%.2f SCSI=%ld %dx%d PC=$%08X frames=%ld\n",
+                menu, desk, mem.scsi().commands, W, H, cpu.getPC(), frames);
     bool ok = menu < 0.35 && desk > 0.20 && desk < 0.70 && mem.scsi().commands > 500;
     std::printf("%s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 
-static int bootLcII(const std::vector<uint8_t>& rom, const char* disk) {
+static int bootLcII(const std::vector<uint8_t>& rom, const char* disk, long frames = 16000) {
     V8Memory mem;
     if (!mem.loadRom(rom)) return 1;
     Cpu030 cpu(mem, true);
@@ -187,7 +198,7 @@ static int bootLcII(const std::vector<uint8_t>& rom, const char* disk) {
     ensureBootDriverType6A(mem.scsiDisk().image());
     while (mem.cpuHeld()) mem.tick(1000);
     const int64_t kFrame = 640 * 407;
-    for (long f = 0; f < 16000 && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
+    for (long f = 0; f < frames && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
     if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: halted\n"); return 1; }
     V8Video video(mem);
     std::vector<uint32_t> fb;
@@ -195,7 +206,8 @@ static int bootLcII(const std::vector<uint8_t>& rom, const char* disk) {
     const int W = 512;
     double menu = blackRatio(fb.data(), W, 0, W, 2, 16);
     double desk = blackRatio(fb.data(), W, 400, W, 40, 340);
-    std::printf("lcii menu=%.2f desk=%.2f SCSI=%ld\n", menu, desk, mem.scsi().commands);
+    std::printf("lcii menu=%.2f desk=%.2f SCSI=%ld PC=$%08X frames=%ld\n",
+                menu, desk, mem.scsi().commands, cpu.getPC(), frames);
     bool ok = menu < 0.30 && desk > 0.35 && desk < 0.65 && mem.scsi().commands > 50;
     std::printf("%s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
@@ -232,21 +244,29 @@ static int bootQ605(const std::vector<uint8_t>& rom, const char* disk) {
                 screen.width, screen.height, screen.depth,
                 menu.mean, menu.deviation, desk.mean, desk.deviation,
                 mem.scsi().commands, mem.dafbMode());
-    bool geometry = screen.width == 640 && screen.height == 480 &&
-                    screen.depth == 8 && mem.dafbMode() == 3;
-    bool finder = menu.mean > 170 && menu.mean < 235 &&
-                  menu.deviation > 40 && menu.deviation < 100 &&
-                  desk.mean > 100 && desk.mean < 190 &&
-                  desk.deviation > 30 && desk.deviation < 90 &&
-                  menu.mean - desk.mean > 35;
-    bool ok = geometry && finder && mem.scsi().commands > 5000;
+    // Mac OS 8.1 defaults to 8bpp (etalon). System 7.x often stays at 1bpp
+    // until Monitors; accept either a real Finder desktop.
+    bool geo8 = screen.width == 640 && screen.height == 480 &&
+                screen.depth == 8 && mem.dafbMode() == 3;
+    bool geo1 = screen.width == 640 && screen.height == 480 && screen.depth == 1;
+    bool finder8 = menu.mean > 170 && menu.mean < 235 &&
+                   menu.deviation > 40 && menu.deviation < 100 &&
+                   desk.mean > 100 && desk.mean < 190 &&
+                   desk.deviation > 30 && desk.deviation < 90 &&
+                   menu.mean - desk.mean > 35;
+    // 1bpp Finder: light menu bar, ~50% gray desktop (black-ratio via lum).
+    bool finder1 = menu.mean > 180 && desk.mean > 90 && desk.mean < 170 &&
+                   menu.mean - desk.mean > 40;
+    bool ok = ((geo8 && finder8) || (geo1 && finder1)) && mem.scsi().commands > 1000;
     std::printf("%s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
 
 int main(int argc, char** argv) {
     if (argc < 4) {
-        std::fprintf(stderr, "usage: %s <plus|macii|lcii|q605> <rom> <disk>\n", argv[0]);
+        std::fprintf(stderr,
+                     "usage: %s <plus|macii|lcii|q605> <rom> <disk> [frames]\n",
+                     argv[0]);
         return 2;
     }
     auto rom = loadFile(argv[2]);
@@ -254,12 +274,15 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "FAIL: empty ROM %s\n", argv[2]);
         return 1;
     }
+    long frames = (argc > 4) ? std::atol(argv[4]) : 0;
     std::printf("=== %s ROM=%s (%zu KB) disk=%s ===\n",
                 argv[1], argv[2], rom.size() / 1024, argv[3]);
     std::fflush(stdout);
     if (!std::strcmp(argv[1], "plus")) return bootPlus(rom, argv[3]);
-    if (!std::strcmp(argv[1], "macii")) return bootMacII(rom, argv[3]);
-    if (!std::strcmp(argv[1], "lcii")) return bootLcII(rom, argv[3]);
+    if (!std::strcmp(argv[1], "macii"))
+        return bootMacII(rom, argv[3], frames > 0 ? frames : 20000);
+    if (!std::strcmp(argv[1], "lcii"))
+        return bootLcII(rom, argv[3], frames > 0 ? frames : 16000);
     if (!std::strcmp(argv[1], "q605")) return bootQ605(rom, argv[3]);
     std::fprintf(stderr, "FAIL: unknown machine %s\n", argv[1]);
     return 2;

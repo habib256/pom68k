@@ -544,6 +544,12 @@ void MacIIMemory::tick(int cpuCycles) {
     }
     adbVia_.tick(cpuCycles);
     asc_.tick(cpuCycles);
+    // Classic ASC half-empty is edge + empty-cycle (see Asc.cpp); VIA2 CB1
+    // is edge-only. Re-latch IFR.CB1 while the line stays asserted so a
+    // level ASC IRQ is not lost after the first IFR clear.
+    if (asc_.irqAsserted() && (via2_.ierRaw() & Via6522::CB1)
+        && !(via2_.ifrRaw() & Via6522::CB1))
+        via2_.raiseCb1();
     // MAME scsi_irq → VIA2 CB2 active-low (write_cb2(state ^ 1)).
     via2_.setCb2(!scsi_.irqAsserted());
     via2Irq_ = via2_.irqAsserted();

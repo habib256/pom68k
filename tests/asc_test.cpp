@@ -74,6 +74,36 @@ int main() {
     check((quiet.read(0x804) & 0x03) == 0x03, "empty FIFO: empty + half-empty set");
     check(quiet.available() >= 49, "silence samples still produced for the host");
 
+    // ── Classic ASC ($00, Mac II) — MAME asc_device + QEMU empty-cycle ──
+    std::printf("asc_test — classic ASC ($00) Mac II semantics\n");
+    AscV8 classic(0x00);
+    bool cIrq = false;
+    classic.onIrq = [&](bool s) { cIrq = s; };
+    classic.reset();
+    check(classic.read(0x800) == 0x00, "classic version $00");
+    check(classic.read(0x804) == 0x00 && !cIrq, "classic idle: status $00, no IRQ");
+    classic.write(0x801, 0x18);              // high bits must be masked
+    check(classic.read(0x801) == 0x00, "MODE write $18 masks to $00");
+    check(!cIrq, "masked-off MODE stays quiet");
+
+    classic.write(0x801, 1);                 // FIFO mode
+    for (int i = 0; i < 0x200; i++) classic.write(0, 0x80);
+    classic.tick(704 * 2);                   // cross half → edge IRQ
+    check(cIrq, "classic half-cross asserts IRQ");
+    (void)classic.read(0x804);
+    check(!cIrq && classic.read(0x804) == 0x00,
+          "classic status read clears IRQ and status");
+
+    // Empty-cycle: FIFO mode left running, no samples → periodic re-IRQ
+    classic.write(0x801, 0);
+    classic.write(0x801, 1);                 // enter FIFO mode with empty FIFOs
+    cIrq = false;
+    classic.tick(704 * 0x400);
+    check(cIrq, "classic empty-cycle re-asserts IRQ (Sound Manager)");
+    uint8_t st = classic.read(0x804);
+    check((st & 0x03) == 0x03, "empty-cycle status has A half+empty");
+    check(!cIrq, "status read clears the empty-cycle IRQ");
+
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");
     return gFails ? 1 : 0;
 }

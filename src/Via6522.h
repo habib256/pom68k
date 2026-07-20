@@ -43,6 +43,7 @@ public:
 
     void raiseCa1() { setIfr(CA1); }        // vblank, per video frame
     void raiseCa2() { setIfr(CA2); }        // RTC one-second tick
+    void raiseCb1() { setIfr(CB1); }        // level-sensitive sources (ASC)
     // Mac II: ASC IRQ → VIA2 CB1 (active low), SCSI IRQ → VIA2 CB2.
     // Edge into IFR on the active (falling) transition — MAME write_cb1/2.
     void setCb1(bool level);
