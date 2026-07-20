@@ -47,11 +47,13 @@ moira::u16 Cpu020::read16(moira::u32 addr) const { return mem_.read16(addr); }
 
 // Mac II 256 KB ROM: header at $0 is checksum, not vectors — Basilisk
 // hardcodes SSP=$2000 and PC=ROMBase+$2A (newcpu.cpp m68k_reset).
+// ROMBase is $40800000 (HMMU maps $8xxxxx → ROM); $4000002A would fetch
+// RAM once VIA2 PB3 enables 24-bit mode (MAME m68kmmu.h ENABLE_II).
 moira::u16 Cpu020::read16OnReset(moira::u32 addr) const {
     switch (addr) {
     case 0: return 0;
     case 2: return 0x2000;
-    case 4: return 0x4000;
+    case 4: return 0x4080;
     case 6: return 0x002A;
     default: return mem_.read16(addr);
     }

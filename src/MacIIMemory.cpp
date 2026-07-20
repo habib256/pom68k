@@ -63,6 +63,7 @@ void MacIIMemory::reset() {
     sccIrq_ = false;
     via2Irq_ = false;
     via2Pb7_ = true;
+    hmmu24_ = false;                         // MAME: HMMU off until VIA2 PB3 cleared
     viaPhase_ = 0;
     tickAcc_ = 0;
     secAcc_ = 0;
@@ -237,6 +238,8 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
                 if (!pb7) via1_.raiseCa1();
                 updateIrq();
             }
+            // MAME hmmu_via2_out_b: PB3=0 → HMMU_ENABLE_II, PB3=1 → disable.
+            updateHmmuFromVia2();
         }
         if (!isVia1 && reg == Via6522::IFR)
             via2Irq_ = via.irqAsserted();
@@ -262,7 +265,31 @@ void MacIIMemory::scsiDmaW(uint8_t v) {
     scsi_.dmaWrite(v);
 }
 
+void MacIIMemory::updateHmmuFromVia2() {
+    // MAME macii.cpp hmmu_via2_out_b: (data & 0x8) ? DISABLE : ENABLE_II.
+    hmmu24_ = (via2_.portB() & 0x08) == 0;
+}
+
+uint32_t MacIIMemory::physAddr(uint32_t addr) const {
+    // MAME m68kmmu.h hmmu_translate_addr — Mac II style (ENABLE_II).
+    if (!hmmu24_) return addr;
+    uint32_t out = addr & 0x00FFFFFFu;
+    if (out >= 0x800000u && out <= 0x8FFFFFu)
+        out |= 0x40000000u;                  // ROM
+    else if (out >= 0x900000u && out <= 0xEFFFFFu) {
+        out = 0xF0000000u;                   // NuBus slot
+        out |= (addr & 0x00F00000u) << 4;
+        out |= addr & 0x000FFFFFu;
+    } else if (out >= 0xF00000u)
+        out |= 0x50000000u;                  // I/O
+    return out;
+}
+
 uint8_t MacIIMemory::read8(uint32_t addr) {
+    return read8Decoded(physAddr(addr));
+}
+
+uint8_t MacIIMemory::read8Decoded(uint32_t addr) {
     if (addr < 0x40000000u) {
         if (overlay_) {
             if (addr < kRomSize) return rom_[addr];
@@ -321,6 +348,7 @@ uint8_t MacIIMemory::read8(uint32_t addr) {
 }
 
 uint16_t MacIIMemory::read16(uint32_t addr) {
+    addr = physAddr(addr);
     if (addr >= 0x50000000u && addr < 0x60000000u) {
         uint32_t ioOff = 0;
         if (isIo(addr, ioOff)) {
@@ -329,15 +357,19 @@ uint16_t MacIIMemory::read16(uint32_t addr) {
             if (ioOff < 0x4000)
                 return viaAccess(via2_, ioOff - 0x2000, false, 0, false);
             if (ioOff < 0x6000) {
-                uint8_t d = read8(addr);
+                uint8_t d = read8Decoded(addr);
                 return uint16_t(d) | (uint16_t(d) << 8);
             }
         }
     }
-    return uint16_t(read8(addr) << 8) | read8(addr + 1);
+    return uint16_t(read8Decoded(addr) << 8) | read8Decoded(addr + 1);
 }
 
 void MacIIMemory::write8(uint32_t addr, uint8_t v) {
+    write8Decoded(physAddr(addr), v);
+}
+
+void MacIIMemory::write8Decoded(uint32_t addr, uint8_t v) {
     if (addr < 0x40000000u) {
         if (overlay_) return;
         if (uint8_t* p = ramAt(addr)) *p = v;
@@ -397,6 +429,7 @@ void MacIIMemory::write8(uint32_t addr, uint8_t v) {
 }
 
 void MacIIMemory::write16(uint32_t addr, uint16_t v) {
+    addr = physAddr(addr);
     if (addr >= 0x50000000u && addr < 0x60000000u) {
         uint32_t ioOff = 0;
         if (isIo(addr, ioOff)) {
@@ -410,16 +443,19 @@ void MacIIMemory::write16(uint32_t addr, uint16_t v) {
             }
         }
     }
-    write8(addr, uint8_t(v >> 8));
-    write8(addr + 1, uint8_t(v));
+    write8Decoded(addr, uint8_t(v >> 8));
+    write8Decoded(addr + 1, uint8_t(v));
 }
 
 uint8_t MacIIMemory::peek8(uint32_t addr) const {
+    addr = physAddr(addr);
     if (!overlay_) {
         if (const uint8_t* p = ramAt(addr)) return *p;
     }
     if (addr >= 0x40000000u && addr < 0x50000000u)
         return rom_[(addr - 0x40000000u) & (kRomSize - 1)];
+    if (addr < 0x40000000u && overlay_ && addr < kRomSize)
+        return rom_[addr];
     return 0xFF;
 }
 

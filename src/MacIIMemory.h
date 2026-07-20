@@ -1,8 +1,8 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Mac II 32-bit GLUE map: RAM/overlay, ROM, I/O @$50xxxxxx, NuBus slots.
-// Source: MAME macii.cpp (2026-07-20), docs/MACII_HARDWARE.md.
+// Mac II GLUE map + Apple HMMU (VIA2 PB3): RAM/overlay, ROM @$40000000,
+// I/O @$50xxxxxx, NuBus. Source: MAME macii.cpp / m68kmmu.h (2026-07-20).
 
 #pragma once
 #include "Via6522.h"
@@ -59,12 +59,17 @@ public:
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
-        scsi_.attach(&scsiDisks_[id], id);
+        // Mac II ROM probes SCSI IDs from the high end (ODR often $C0 → ID 6
+        // first). Mirror the boot volume on every ID so selection succeeds
+        // without burning the ROM's multi-second BSY waits per missing ID.
+        for (int i = 0; i < 7; i++)
+            scsi_.attach(&scsiDisks_[id], i);
         return true;
     }
     Iwm& iwm() { return iwm_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     bool overlay() const { return overlay_; }
+    bool hmmu24() const { return hmmu24_; }
     uint8_t nubusIrqState() const { return nubusIrqState_; }
     long vblPulses() const { return vblPulses_; }
     long tickCalls() const { return tickCalls_; }
@@ -81,6 +86,10 @@ private:
                        bool isVia1);
     void refreshVia1PortB();
     void refreshVia2PortA();
+    void updateHmmuFromVia2();
+    uint32_t physAddr(uint32_t addr) const;
+    uint8_t read8Decoded(uint32_t addr);
+    void write8Decoded(uint32_t addr, uint8_t v);
     void nubusSlotIrq(int slot, bool active);
     void applyRamBank();
     uint8_t* ramAt(uint32_t addr);
@@ -112,6 +121,7 @@ private:
     bool sccIrq_ = false;
     bool via2Irq_ = false;
     bool via2Pb7_ = true;                    // last VIA2 PB7 level (→ VIA1 CA1)
+    bool hmmu24_ = false;                    // VIA2 PB3=0 → M68K_HMMU_ENABLE_II
     int viaPhase_ = 0;
     int64_t tickAcc_ = 0;
     int64_t secAcc_ = 0;
