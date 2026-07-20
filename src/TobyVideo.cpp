@@ -188,13 +188,21 @@ void TobyVideo::tick(int cpuCycles) {
 
 void TobyVideo::decode(std::vector<uint32_t>& out) const {
     out.assign(size_t(hres_) * size_t(vres_), 0xFFFFFFFFu);
-    const uint8_t* vram8 = reinterpret_cast<const uint8_t*>(vram_.data()) + 0x20;
+    // VRAM is stored as big-endian lanes inside uint32_t words (write8 uses
+    // shift 24-(off%4)*8). Reading via host uint8_t* on LE reverses each
+    // longword and splits 1-bpp glyphs (Sad Mac halves). Match write8.
+    auto be8 = [this](uint32_t byteOff) -> uint8_t {
+        const size_t idx = byteOff / 4;
+        if (idx >= vram_.size()) return 0;
+        return uint8_t(vram_[idx] >> (24 - int(byteOff % 4) * 8));
+    };
+    constexpr uint32_t kBase = 0x20;              // visible origin in VRAM
 
     switch (mode_) {
     case 0:
         for (int y = 0; y < vres_; y++)
             for (int x = 0; x < hres_ / 8; x++) {
-                uint8_t px = vram8[(y * 128) + x];
+                uint8_t px = be8(kBase + uint32_t(y * 128 + x));
                 for (int b = 0; b < 8; b++) {
                     int xi = x * 8 + b;
                     if (xi < hres_)
@@ -205,7 +213,7 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
     case 1:
         for (int y = 0; y < vres_; y++)
             for (int x = 0; x < hres_ / 4; x++) {
-                uint8_t px = vram8[(y * 256) + x];
+                uint8_t px = be8(kBase + uint32_t(y * 256 + x));
                 for (int b = 0; b < 4; b++) {
                     int xi = x * 4 + b;
                     if (xi < hres_)
@@ -216,7 +224,7 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
     case 2:
         for (int y = 0; y < vres_; y++)
             for (int x = 0; x < hres_ / 2; x++) {
-                uint8_t px = vram8[(y * 512) + x];
+                uint8_t px = be8(kBase + uint32_t(y * 512 + x));
                 if (x * 2 < hres_) out[y * hres_ + x * 2]     = pens_[(px >> 4) & 0xF] | 0xFF000000u;
                 if (x * 2 + 1 < hres_) out[y * hres_ + x * 2 + 1] = pens_[px & 0xF] | 0xFF000000u;
             }
@@ -224,7 +232,7 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
     case 3:
         for (int y = 0; y < vres_; y++)
             for (int x = 0; x < hres_; x++)
-                out[y * hres_ + x] = pens_[vram8[(y * 1024) + x]] | 0xFF000000u;
+                out[y * hres_ + x] = pens_[be8(kBase + uint32_t(y * 1024 + x))] | 0xFF000000u;
         break;
     }
 }

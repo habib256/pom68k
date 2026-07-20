@@ -3,6 +3,7 @@
 #include "Cpu020.h"
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 static std::string find(const char* rel) {
@@ -23,35 +24,57 @@ static void ensureBootDriverType(std::vector<uint8_t>& img) {
     img[0x10]=uint8_t((count+1)>>8); img[0x11]=uint8_t(count+1);
   }
 }
+static uint16_t r16(MacIIMemory& m,uint32_t a){return uint16_t((m.peek8(a)<<8)|m.peek8(a+1));}
+static uint32_t r32(MacIIMemory& m,uint32_t a){
+  return (uint32_t(m.peek8(a))<<24)|(uint32_t(m.peek8(a+1))<<16)|(uint32_t(m.peek8(a+2))<<8)|m.peek8(a+3);}
 int main(int argc, char** argv) {
-  long frames = argc>1 ? std::atol(argv[1]) : 30000;
+  const char* disk = argc>1?argv[1]:"hdv/HD20SC.vhd";
+  long frames = argc>2?std::atol(argv[2]):8000;
   auto rom=find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
-  auto img=find("hdv/GISTPERSO-boot.vhd");
+  auto img=find(disk);
   std::ifstream rin(rom,std::ios::binary);
   std::vector<uint8_t> rd((std::istreambuf_iterator<char>(rin)),{});
   MacIIMemory mem; mem.loadRom(rd); mem.installTobyVideo();
   Cpu020 cpu(mem,true); mem.setCpu(&cpu); cpu.hardReset();
   mem.attachScsi(img); ensureBootDriverType(mem.scsiDisk().image());
+
+  std::map<uint32_t,long> lbaHits;
+  std::map<uint8_t,long> cmdHits;
+  long logged=0;
+  mem.scsi().onCommand = [&](const std::vector<uint8_t>& cdb) {
+    if (cdb.empty()) return;
+    cmdHits[cdb[0]]++;
+    uint32_t lba=0; int n=1;
+    if (cdb[0]==0x08 && cdb.size()>=6) { // READ(6)
+      lba=((cdb[1]&0x1F)<<16)|(cdb[2]<<8)|cdb[3];
+      n=cdb[4]?cdb[4]:256;
+      lbaHits[lba]++;
+    } else if (cdb[0]==0x28 && cdb.size()>=10) {
+      lba=(cdb[2]<<24)|(cdb[3]<<16)|(cdb[4]<<8)|cdb[5];
+      n=(cdb[7]<<8)|cdb[8];
+      lbaHits[lba]++;
+    }
+    if (logged++ < 20)
+      std::printf("CMD#%ld $%02X LBA=%u n=%d PC=$%08X\n",
+        mem.scsi().commands, cdb[0], lba, n, cpu.getPC());
+  };
+
   const int64_t kFrame=800*525;
   for (long f=0;f<frames&&!cpu.isHalted();f++) cpu.runCycles(kFrame);
-  TobyVideo* tv=mem.toby();
-  std::vector<uint32_t> fb; tv->decode(fb);
-  int W=tv->hres(), H=tv->vres();
-  auto blackRatio=[&](int x0,int x1,int y0,int y1){
-    long black=0; for(int y=y0;y<y1;y++) for(int x=x0;x<x1;x++)
-      if ((fb[y*W+x]&0xFF)<0x80) black++;
-    return double(black)/double(x1-x0)/double(y1-y0);
-  };
-  double menu=blackRatio(0,W,2,20);
-  double desk=blackRatio(W/2,W,40,H-40);
-  std::printf("frames=%ld PC=$%08X SCSI=%ld menu=%.2f desk=%.2f %dx%d\n",
-    frames, cpu.getPC(), mem.scsi().commands, menu, desk, W, H);
-  // write PPM
-  std::ofstream out("macii_boot.ppm");
-  out << "P6\n" << W << " " << H << "\n255\n";
-  for (int i=0;i<W*H;i++) {
-    uint32_t p=fb[i];
-    out.put(char((p>>16)&0xFF)); out.put(char((p>>8)&0xFF)); out.put(char(p&0xFF));
-  }
-  std::printf("wrote macii_boot.ppm\n");
+
+  std::printf("\nend PC=$%08X SCSI=%ld dma=%ld $DA6=%04X BootDrive=%04X\n",
+    cpu.getPC(), mem.scsi().commands, mem.scsi().dmaBytes, r16(mem,0xDA6), r16(mem,0x210));
+  std::printf("MemTop=$%08X BufPtr=$%08X SysZone=$%08X\n",
+    r32(mem,0x108), r32(mem,0x10C), r32(mem,0x2A6));
+  std::printf("cmds:");
+  for (auto& kv: cmdHits) std::printf(" $%02X=%ld", kv.first, kv.second);
+  std::printf("\n");
+  // top LBAs
+  std::vector<std::pair<long,uint32_t>> v;
+  for (auto& kv: lbaHits) v.push_back({kv.second, kv.first});
+  std::sort(v.rbegin(), v.rend());
+  std::printf("top LBAs:\n");
+  for (int i=0;i<15&&i<(int)v.size();i++)
+    std::printf("  LBA %6u x%ld\n", v[i].second, v[i].first);
+  std::printf("unique LBAs=%zu\n", lbaHits.size());
 }
