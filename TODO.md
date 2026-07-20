@@ -31,8 +31,9 @@ Phase A — cells on machines that already boot (test chronologically):
 - [ ] **Plus** (128 KB ROMs `4D1EEEE1` → `4D1EEAE1` → `4D1F8172`):
   SCSI HD System 5.1 → 6.0 → 6.0.8 (`HD20SC` + Sys 6.0.8 `.dsk` PASS);
   floppy System 4.1 via `insertDisk` if needed.
-- [ ] **Mac II** (256 KB `97851DB6` → `9779D2C4`): System 6.0 → 6.0.8 →
-  7.0 → 7.1 (HD). `HD20SC` + Sys 6.0.8 `.dsk` PASS after façade.
+- [x] **Mac II** (256 KB `97851DB6` → `9779D2C4`): System 6.0 → 6.0.8 →
+  7.0 → 7.1 (HD). `HD20SC` + Sys 6/7 Finder PASS (`macii_boot_etalon`,
+  `macii_sys7_boot_etalon`; EtherTalk CautionAlerts dismissed via EvQ).
 - [ ] **LC II** (`35C28F5F`): System 7.1 → 7.5 → 7.5.5 (+ `boot.vhd` /
   GISTPERSO). Façade already injects DDM `$6A`.
 - [ ] **Quadra 605** (`FF7439EE`): System 7.5.5 → 7.6 → 8.1. Prefer
@@ -41,13 +42,14 @@ Phase A — cells on machines that already boot (test chronologically):
 
 ### Phase A results (2026-07-20, `finder_boot_matrix`)
 
-Log: `build/finder_matrix.log` — **13 PASS / 6 FAIL**.
+Log: `build/finder_matrix.log` — Mac II Sys 7.0/7.1 now PASS (was FAIL
+on EtherTalk CautionAlert); re-run full matrix to refresh the 13/6 tally.
 
 | Cell | Result |
 |---|---|
 | Plus v1/v2/v3 × Sys 5.1 / 6.0 / 6.0.8 + HD20SC | PASS |
 | Mac II v1/v2 × Sys 6.0 / 6.0.8 + HD20SC | PASS |
-| Mac II v2 × Sys 7.0 / 7.1 | FAIL (SCSI≈274 = AppleTalk CautionAlert modal, not 5380; ADB modem stuck ST=EVEN blocks OK; see CHANGELOG 2026-07-20) |
+| Mac II v2 × Sys 7.0 / 7.1 | PASS (SPConfig `$22` + EvQ Return dismiss; gate `macii_sys7_boot_etalon`) |
 | LC II × boot.vhd / Sys 7.5 | PASS |
 | LC II × Sys 7.1 / 7.5.5 | FAIL (7.1 SCSI=277; 7.5.5 menu=0.50) |
 | Q605 × OS 8.1 | PASS (640×480×8) |

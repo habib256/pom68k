@@ -1,9 +1,9 @@
 # CHANGELOG
 
-## 2026-07-20 — Mac II Sys7: dismiss EtherTalk AppleTalk alerts
+## 2026-07-20 — Mac II Sys7 → Finder (AppleTalk alert dismiss)
 
 Infinite Mac System 7 selects EtherTalk with no NuBus ethernet, so boot
-stops in two CautionAlerts after SCSI ~274 (not a 5380 hang). ADB cannot
+stopped in two CautionAlerts after SCSI ~274 (not a 5380 hang). ADB cannot
 click OK (VIA1 modem often stuck ST=EVEN). Fix: keep SysParam SPConfig
 `$1FB=$22` (AppleTalk inactive, same as LC II XPRAM `$13`), and once per
 frame soft-post Return into EvQ while a modal `CurActivate` bit31 is set
@@ -11,28 +11,16 @@ and SCSI has stalled — clears both alerts without touching Sys6 Finder
 (`CurActivate=0` at desktop). RTC factory defaults always reseed SPConfig
 `$22` even when `'NuMc'` is already present.
 
-After the classic ASC empty-cycle fix, Sys7.0 stops issuing SCSI at ~274.
-Last CDB is **TEST UNIT READY** (`$00`); STATUS/MSG complete, bus free,
-`irq=0`. The framebuffer shows CautionAlert: *"A driver for the selected
-AppleTalk connection could not be found…"* (OK default). Boot is blocked in
-`ModalDialog` / `_GetNextEvent`, so the SCSI counter freezes.
+Gate: `macii_sys7_boot_etalon` (soft-skip without `hdv/System 7.{0,1} HD.dsk`);
+matrix confirms 7.0 SCSI≈1207 and 7.1 SCSI≈1342, menu≈0.12 / desk≈0.46.
+`macii_boot_etalon` (Sys6) still green.
 
-ADB cannot dismiss it yet: VIA1 ADB modem sits in **ST=EVEN** with a dead
-shift timer (Slot Manager shares VIA1 SR). Soft EvQ Return advances SCSI
-274→281 then a blank desktop — needs a real ADB unwedge + Network/LocalTalk
-path so the alert never appears. Sys6 Finder unchanged.
-
-Mac II System 7 hung after Welcome with ASC `mode=$18` / sticky half-empty
+Earlier on the same path: after Welcome, ASC `mode=$18` / sticky half-empty
 IRQ — Sound Manager writes MODE words whose high bits are **ignored on
-silicon** (`data &= 3`, MAME/QEMU). Unmasked `$18` kept the FIFO engine
-"on" forever under our old `mode ≠ 0` gate. Classic path now matches
-ASCTester/MAME: MODE bits 0–1 only, status `$804` read clears IRQ+bits,
-half-empty is an edge at cap `$1FF`, and **empty-cycle** re-IRQs once per
-1 KB drain while FIFO mode runs dry (QEMU: without this Mac OS freezes).
-V8 (`$E8`) level semantics unchanged. VIA2 CB1 re-latch retained.
-`macii_boot_etalon` (Sys6) still green; Sys7.0 past Welcome ASC wait
-(SCSI 262→274, ASC idle) but Finder matrix still FAIL — next stall is
-non-ASC (SCSI frozen ~274).
+silicon** (`data &= 3`, MAME/QEMU). Classic path now matches ASCTester/MAME:
+MODE bits 0–1 only, status `$804` read clears IRQ+bits, half-empty is an
+edge at cap `$1FF`, and **empty-cycle** re-IRQs once per 1 KB drain while
+FIFO mode runs dry (QEMU). V8 (`$E8`) level semantics unchanged.
 
 ## 2026-07-20 — Classic ASC idle IRQ (Mac II)
 

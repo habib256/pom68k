@@ -12,7 +12,7 @@ core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — se
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 33 milestone gates (asset-dependent may soft-skip)
+ctest                             # 34 milestone gates (asset-dependent may soft-skip)
 ```
 
 Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).

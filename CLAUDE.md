@@ -145,7 +145,8 @@ SWIM, DFAC audio polish, bus/timing).
 68040/040-MMU core drives MEMCjr/PrimeTime, Cuda HLE (Egret flavor),
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8.
-GUI exposes the machine alongside Plus/LC II. **33 CTest gates**, including
-`lcii_boot_etalon`, `sst68040`, `q605_boot_etalon`, `q605_dafb_test`,
-`q605_asc_test`, `swim2_test`, `swim2_media_test`,
-`q605_floppy_boot_etalon`, and `q605_nofpu_boot_etalon`.
+GUI exposes the machine alongside Plus/LC II. **34 CTest gates**, including
+`lcii_boot_etalon`, `macii_boot_etalon`, `macii_sys7_boot_etalon`,
+`sst68040`, `q605_boot_etalon`, `q605_dafb_test`, `q605_asc_test`,
+`swim2_test`, `swim2_media_test`, `q605_floppy_boot_etalon`, and
+`q605_nofpu_boot_etalon`.

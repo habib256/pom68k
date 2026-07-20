@@ -1,0 +1,80 @@
+// POM68K — Mac II System 7 → Finder gate (EtherTalk alert dismiss path).
+// Soft-skips without Mac II ROM + System 7.0/7.1 HD .dsk.
+
+#include "MacIIMemory.h"
+#include "TobyVideo.h"
+#include "Cpu020.h"
+#include <cstdio>
+#include <fstream>
+#include <string>
+#include <vector>
+
+static std::string find(const char* rel) {
+    for (const std::string base : { "", "../" }) {
+        std::string p = base + rel;
+        if (std::ifstream(p, std::ios::binary)) return p;
+    }
+    return {};
+}
+
+int main() {
+    std::string rom = find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
+    if (rom.empty()) rom = find("roms/256KB ROMs/1987-03 - 97851DB6 - MacII (800k v1).ROM");
+    std::string img = find("hdv/System 7.0 HD.dsk");
+    if (img.empty()) img = find("hdv/System 7.1 HD.dsk");
+    if (rom.empty() || img.empty()) {
+        std::printf("SKIP: needs Mac II ROM + hdv/System 7.0|7.1 HD.dsk\n");
+        return 0;
+    }
+
+    std::ifstream rin(rom, std::ios::binary);
+    std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
+    if (romData.size() != MacIIMemory::kRomSize) {
+        std::fprintf(stderr, "FAIL: ROM size\n");
+        return 1;
+    }
+
+    MacIIMemory mem;
+    if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
+    mem.installTobyVideo();
+    Cpu020 cpu(mem, true);
+    mem.setCpu(&cpu);
+    cpu.hardReset();
+    if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
+
+    // Sys7 Welcome + two AppleTalk CautionAlerts need more frames than Sys6.
+    const int64_t kFrame = 800 * 525;
+    const long kFrames = 25000;
+    for (long f = 0; f < kFrames && !cpu.isHalted(); f++)
+        cpu.runCycles(kFrame);
+
+    if (cpu.isHalted()) {
+        std::fprintf(stderr, "FAIL: CPU halted\n");
+        return 1;
+    }
+
+    TobyVideo* tv = mem.toby();
+    std::vector<uint32_t> fb;
+    tv->decode(fb);
+    const int W = tv->hres();
+    const int H = tv->vres();
+    auto blackRatio = [&](int x0, int x1, int y0, int y1) {
+        long black = 0;
+        for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++)
+                if (x < W && y < H && (fb[y * W + x] & 0xFF) < 0x80) black++;
+        return double(black) / double(x1 - x0) / double(y1 - y0);
+    };
+    double menuBar = blackRatio(0, W, 2, 20);
+    double desktop = blackRatio(W / 2, W, 40, H - 40);
+
+    std::printf("menu bar black %.2f, desktop %.2f, SCSI commands %ld\n",
+                menuBar, desktop, mem.scsi().commands);
+
+    // Stall at EtherTalk CautionAlert: SCSI≈274, menu often dark. Finder
+    // after dismiss: SCSI>500, menu light, desk mid-grey.
+    bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
+           && mem.scsi().commands > 500;
+    std::printf("%s\n", ok ? "PASSED — Sys7 Finder" : "FAILED");
+    return ok ? 0 : 1;
+}
