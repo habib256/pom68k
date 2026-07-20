@@ -1,10 +1,10 @@
 # POM68K — Macintosh 68k emulator
 
-Macintosh **Plus** (68000, cycle-exact), Macintosh **LC II** (68030 + PMMU +
-68882), and **Quadra 605 / LC 475** (68040/68LC040 + 040 MMU). Sibling of
-[POMIIGS](../POMIIGS/) (Apple IIgs) and [POM2](../POM2/) (Apple II), sharing
-their architecture and conventions. CPU core:
-[Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — see
+Macintosh **Plus** (68000, cycle-exact), Macintosh **II** (68020 + Toby NuBus),
+Macintosh **LC II** (68030 + PMMU + 68882), and **Quadra 605 / LC 475**
+(68040/68LC040 + 040 MMU). Sibling of [POMIIGS](../POMIIGS/) (Apple IIgs) and
+[POM2](../POM2/) (Apple II), sharing their architecture and conventions. CPU
+core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — see
 `extern/moira/POM68K_VENDOR.md`).
 
 ## Build
@@ -19,15 +19,18 @@ Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
 
 ## Run
 
-ROM size selects the machine: **128 KB** = Mac Plus, **512 KB** = LC II,
-**1 MB** = Quadra 605 / LC 475. Without a ROM argument the app probes
-`roms/macplus.rom`, `roms/maclcii.rom`, `roms/quadra605.rom`, then scans
-`roms/` for the LC II (`35C28F5F`) / Quadra (`FF7439EE`) CRC signatures.
+ROM size selects the machine: **128 KB** = Mac Plus, **256 KB** = Mac II,
+**512 KB** = LC II, **1 MB** = Quadra 605 / LC 475. Without a ROM argument the
+app probes `roms/macplus.rom`, `roms/macii.rom`, `roms/maclcii.rom`,
+`roms/quadra605.rom`, then scans `roms/` for CRC signatures (Mac II
+`9779D2C4`, LC II `35C28F5F`, Quadra `FF7439EE`). The **Machine** menu
+switches profiles the same way.
 
 ```bash
 ./build/POM68K                                    # no ROM → built-in 68000 demo
 ./build/POM68K roms/macplus.rom                   # Mac Plus (128 KB)
 ./build/POM68K roms/macplus.rom disks35/Disk605.dsk hdv/HD20SC.vhd
+./build/POM68K "roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM" hdv/HD20SC.vhd
 ./build/POM68K roms/maclcii.rom hdv/GISTPERSO-boot.vhd
 ./build/POM68K roms/maclcii.rom hdv/boot.vhd hdv/data.vhd   # + SCSI IDs 1–6
 ./build/POM68K roms/quadra605.rom hdv/MacOS-8.1-boot.vhd
