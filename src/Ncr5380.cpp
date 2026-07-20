@@ -15,6 +15,7 @@ void Ncr5380::reset() {
     odr_ = icr_ = mode_ = tcr_ = selEnable_ = 0;
     phase_ = BUS_FREE;
     req_ = false;
+    reqGap_ = false;
     irq_ = false;
     disk_ = nullptr;                 // drop the selected session, keep targets
     cmd_.clear(); dataIn_.clear(); dataPos_ = 0; cmdLen_ = 0; status_ = 0;
@@ -49,13 +50,27 @@ bool Ncr5380::targetPhase() const {
 }
 
 // ── Phase transitions ───────────────────────────────────────────────────
-void Ncr5380::enterCommand() { phase_ = COMMAND; cmd_.clear(); cmdLen_ = 0; req_ = true; }
-void Ncr5380::enterBusFree() { if (mode_ & MODE_DMA) irq_ = true;
-                               phase_ = BUS_FREE; req_ = false; }
-void Ncr5380::enterStatus()  { if (mode_ & MODE_DMA) irq_ = true;
-                               phase_ = STATUS;  dataPos_ = 0; req_ = true; }
-void Ncr5380::enterMsgIn()   { if (mode_ & MODE_DMA) irq_ = true;
-                               phase_ = MSG_IN;  req_ = true; }
+void Ncr5380::enterCommand() {
+    // New CDB phase: drop a stale DMA-complete IRQ. Mac II SCSI Manager
+    // polls BSR.IRQ to end blind PDMA; a latch left set from the previous
+    // command aborts the next READ after one block and spins on PHASE_MATCH
+    // (seen at cmds=235, PC=$1E090, 512 of 1536 bytes).
+    irq_ = false;
+    phase_ = COMMAND; cmd_.clear(); cmdLen_ = 0; req_ = true;
+}
+void Ncr5380::enterBusFree() {
+    // Bus-free after MSG_IN: do not re-raise IRQ (one edge on DATA→STATUS).
+    phase_ = BUS_FREE; req_ = false;
+}
+void Ncr5380::enterStatus()  {
+    // Phase change out of DATA under MODE_DMA → IRQ (MAME phase mismatch).
+    if (mode_ & MODE_DMA) irq_ = true;
+    phase_ = STATUS;  dataPos_ = 0; req_ = true;
+}
+void Ncr5380::enterMsgIn()   {
+    // Keep the STATUS-time IRQ; do not pulse again on STATUS→MSG.
+    phase_ = MSG_IN;  req_ = true;
+}
 
 // Expected DATA OUT byte count for WRITE(6)/WRITE(10), else 0.
 int Ncr5380::writeByteCount(const std::vector<uint8_t>& cdb) {
@@ -185,7 +200,19 @@ uint8_t Ncr5380::read(int reg) {
         case R_ICR:  return uint8_t(icr_ | (phase_ == ARBITRATION ? ICR_AIP : 0));
         case R_MODE: return mode_;
         case R_TCR:  return tcr_;
-        case R_CSR:  return liveBusStatus();
+        case R_CSR: {
+            // One-shot REQ gap after DACK: this read returns REQ clear, then
+            // re-arms so the Plus (polls REQ between PDMA bytes) and Mac II
+            // scLoop wait ($1E088) both see a falling edge without sticking.
+            const uint8_t v = liveBusStatus();
+            if (reqGap_) {
+                reqGap_ = false;
+                if (phase_ == DATA_IN && dataPos_ < dataIn_.size()) req_ = true;
+                else if (phase_ == DATA_OUT && dataOut_.size() < dataOutExpected_)
+                    req_ = true;
+            }
+            return v;
+        }
         case R_BSR:  return busAndStatus();
         case R_IDR:
             // Also used as DMA data port on some paths (IDR @$60).
@@ -225,7 +252,16 @@ void Ncr5380::write(int reg, uint8_t v) {
             break;
         case R_TCR:  tcr_ = v; break;
         case R_CSR:  selEnable_ = v; break;
-        case R_BSR: case R_IDR: case R_RPI: break; // start-DMA triggers: no-op (polled)
+        case R_BSR:  // Start DMA Send (initiator DATA OUT) — polled PDMA
+        case R_IDR:  // Start DMA Target Receive — unused (we are initiator)
+            break;
+        case R_RPI:
+            // Start DMA Initiator Receive (MAME sdir_w). Arms the IRQ-on-
+            // phase-change path; clear any stale latch so the upcoming
+            // PDMA loop is not cut short by BSR.IRQ from the last CDB.
+            if ((mode_ & MODE_DMA) && !(mode_ & MODE_TARGET))
+                irq_ = false;
+            break;
     }
 }
 
@@ -235,7 +271,16 @@ uint8_t Ncr5380::dmaRead() {
         dmaBytes++;
         uint8_t b = dataPos_ < dataIn_.size() ? dataIn_[dataPos_] : 0;
         dataPos_++;
-        if (dataPos_ >= dataIn_.size()) enterStatus();
+        if (dataPos_ >= dataIn_.size()) {
+            enterStatus();
+        } else {
+            // REQ/ACK: after DACK, REQ falls for one CSR sample (reqGap_),
+            // then re-arms on the next CSR read. Mac II SCSIMgr scLoop
+            // ($1E088) needs that clear between TIB chunks; the Plus polls
+            // REQ between PDMA bytes and needs the re-arm.
+            req_ = false;
+            reqGap_ = true;
+        }
         return b;
     }
     if (phase_ == STATUS) { uint8_t s = status_; enterMsgIn(); return s; }
@@ -251,11 +296,16 @@ void Ncr5380::dmaWrite(uint8_t v) {
     } else if (phase_ == DATA_OUT) {
         dataOut_.push_back(v);
         if (dataOut_.size() >= dataOutExpected_) finishWrite();
+        else { req_ = false; reqGap_ = true; }
     }
 }
 
-// DRQ policy: kept permissive (any REQ under MODE_DMA) — the Plus ROM
-// pulls STATUS/MESSAGE through the pseudo-DMA port without touching
-// TCR. The LC II SCSI Manager detects end-of-transfer through the IRQ
-// latch (phase change under DMA, see enterStatus) rather than DRQ.
-bool Ncr5380::drqActive() const { return req_ && (mode_ & MODE_DMA); }
+// DRQ: asserted while MODE_DMA and a byte remains to move. Independent of
+// the CSR.REQ gap so blind PDMA can still see BSR.DRQ after ACK.
+// STATUS/MSG still use req_ (single-byte phases).
+bool Ncr5380::drqActive() const {
+    if (!(mode_ & MODE_DMA)) return false;
+    if (phase_ == DATA_IN) return dataPos_ < dataIn_.size();
+    if (phase_ == DATA_OUT) return dataOut_.size() < dataOutExpected_;
+    return req_ && (phase_ == STATUS || phase_ == MSG_IN || phase_ == COMMAND);
+}

@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## 2026-07-20 — Mac II boots System 6 to the Finder
+
+Post-Welcome stall at ~235 SCSI cmds was two bugs:
+
+1. **NCR 5380 sticky CSR.REQ** during DATA_IN. Mac II SCSIMgr uses TIB
+   `scInc` 512 × `scLoop` N; between chunks `$1E088` waits for REQ clear.
+   REQ stayed asserted → hang mid-READ (512 of 1536). Fix: one-shot REQ
+   gap after each DACK (`reqGap_`), re-arm on the next CSR read (Plus still
+   polls REQ between PDMA bytes). Also: clear stale DMA IRQ on
+   `enterCommand` / Start-DMA-Initiator-Receive; one IRQ edge on DATA→STATUS
+   only (not again on MSG/BusFree).
+
+2. **VIA2 CA1 with empty `$D04` slot queue → SysError(51)** then IPL2
+   livelock / wild PC. Raise CA1 only when `via2Ca1SlotTaskArmed()`.
+
+Gate: `macii_boot_etalon` green (menu/desk ≈0.10/0.49, cmds≈1162).
+
 ## 2026-07-20 — Mac II: overlay is a one-way latch
 
 After Welcome to Macintosh the System rewrites VIA1 PA with bit4 set;

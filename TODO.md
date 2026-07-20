@@ -179,12 +179,10 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
 
 ## Future machine profiles
 
-- [ ] **Macintosh II → Finder** (in progress). POST green (`macii_post_etalon`).
-  Reaches **Welcome to Macintosh** on `HD20SC` after: `wantType=1`, SCSI
-  boot-drive matcher (`$15D6`/`$17F4`), PDMA `$6000–$7FFF` longword decode,
-  overlay one-way latch. Stalls there (~235 SCSI cmds) then wanders to a
-  bad PC (`$21D44080`); jailbars can false-pass menu/desk≈0.22 — etalon now
-  requires `commands > 500`. Next: why System load stops after Welcome.
+- [x] **Macintosh II → Finder** (`macii_boot_etalon`). POST + Welcome + System 6
+  Finder on `HD20SC` (menu/desk ≈0.10/0.49, SCSI cmds ≫ 500). Fixes that
+  unblocked post-Welcome: NCR5380 one-shot CSR.REQ gap for `scLoop` TIBs,
+  VIA2 CA1 only when `$D04` has a slot task (else SysError 51).
 
 - [ ] **Add the original Macintosh LC (68020)** as the next low-cost profile,
   reusing V8/Egret/ASC and validating multi-machine parameterization.
@@ -196,8 +194,8 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
 - [ ] **Expand the nearby 68040 family** after Quadra polish: LC/Performa 475,
   LC 575, then Quadra/Centris 610/650/800.
 
-- [ ] **Implement NuBus and slot video** before Mac II, IIx/IIcx/IIci or the
-  NuBus Quadras.
+- [ ] **Expand NuBus + slot video** for IIx/IIcx/IIci and NuBus Quadras
+  (Mac II Toby path already boots Finder).
 
 - [ ] **Treat PowerBook power management, IIfx IOPs and 660AV/840AV DSPs as
   independent major projects.** Scope and effort are tracked in

@@ -148,6 +148,22 @@ const uint8_t* MacIIMemory::ramAt(uint32_t addr) const {
     return nullptr;
 }
 
+bool MacIIMemory::via2Ca1SlotTaskArmed() const {
+    // ROM $4080628A walks $D08 bit numbers then $D04[i] queue headers;
+    // empty header+2 → SysError(51). CA1 is VIA bit 1.
+    const uint32_t d08 = peek32(0xD08);
+    const uint32_t d04 = peek32(0xD04);
+    if (!d08 || !d04 || d08 >= ramSize_ || d04 >= ramSize_) return false;
+    for (int i = 0; i < 6; i++) {
+        if (peek32(d08 + uint32_t(i) * 4) != 1) continue;
+        const uint32_t hdr = peek32(d04 + uint32_t(i) * 4);
+        if (!hdr || hdr >= ramSize_) return false;
+        const uint32_t task = peek32(hdr + 2);
+        return task != 0 && task < ramSize_;
+    }
+    return false;
+}
+
 void MacIIMemory::nubusSlotIrq(int slot, bool active) {
     static const uint8_t masks[] = {0x1, 0x2, 0x4, 0x8, 0x10, 0x20};
     int idx = slot - 9;
@@ -157,9 +173,11 @@ void MacIIMemory::nubusSlotIrq(int slot, bool active) {
     refreshVia2PortA();
     // MAME nubus_slot_interrupt → VIA2 CA1 edge; IPL follows IFR&IER.
     // Do NOT force IER.CA1: Slot Manager's $6DD8 soft-flag wait is driven by
-    // VIA1 SHIFT ($7002 → $7100 → $6E16), and a hanging VIA2 CA1 with an
-    // empty $D04 task is SysError(51) at $62DC.
-    if ((nubusIrqState_ & 0x3F) != 0x3F && (via2_.ierRaw() & Via6522::CA1))
+    // VIA1 SHIFT ($7002 → $7100 → $6E16). Toby VBL can assert before the
+    // Decl ROM's SIntInstall sticks in $D04 — raising CA1 then SysError(51)s
+    // at $408062DC and livelocks the IPL2 dispatcher (Welcome stall).
+    if ((nubusIrqState_ & 0x3F) != 0x3F && (via2_.ierRaw() & Via6522::CA1)
+        && via2Ca1SlotTaskArmed())
         via2_.raiseCa1();
     via2Irq_ = via2_.irqAsserted();
     updateIrq();

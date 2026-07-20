@@ -97,6 +97,7 @@ private:
     enum Phase { BUS_FREE, ARBITRATION, SELECTION, COMMAND, DATA_IN, DATA_OUT,
                  STATUS, MSG_IN, MSG_OUT } phase_ = BUS_FREE;
     bool req_ = false;               // target asserting REQ
+    bool reqGap_ = false;            // one CSR read sees REQ low after DACK
     bool irq_ = false;               // 5380 IRQ latch (phase mismatch)
 
     // Transfer buffers for the current command

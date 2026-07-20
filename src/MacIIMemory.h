@@ -91,6 +91,13 @@ private:
     uint8_t read8Decoded(uint32_t addr);
     void write8Decoded(uint32_t addr, uint8_t v);
     void nubusSlotIrq(int slot, bool active);
+    // True when Slot Manager has a CA1 ($D04) task — raising VIA2 CA1 with
+    // an empty queue is SysError(51) at ROM $408062DC.
+    bool via2Ca1SlotTaskArmed() const;
+    uint32_t peek32(uint32_t addr) const {
+        return (uint32_t(peek8(addr) << 24) | (uint32_t(peek8(addr + 1)) << 16) |
+                (uint32_t(peek8(addr + 2)) << 8) | peek8(addr + 3));
+    }
     void applyRamBank();
     uint8_t* ramAt(uint32_t addr);
     const uint8_t* ramAt(uint32_t addr) const;

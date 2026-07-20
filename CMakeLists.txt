@@ -389,9 +389,6 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(macii_hmmu_trace EXCLUDE_FROM_ALL tests/macii_hmmu_trace.cpp)
     target_link_libraries(macii_hmmu_trace PRIVATE pom68k_core)
 
-    add_executable(macii_boot_probe EXCLUDE_FROM_ALL tests/macii_boot_probe.cpp)
-    target_link_libraries(macii_boot_probe PRIVATE pom68k_core)
-
     # Dev tool (not a gate): offline Mac ROM introspection (header,
     # resources, trap table, UniversalInfo) — Basilisk II-derived parsers,
     # see docs/BASILISK_ROM_NOTES.md. Standalone, no emulator core.
