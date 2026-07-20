@@ -11,14 +11,19 @@ void Rtc::reset() {
 }
 
 void Rtc::factoryDefaults() {
-    if (pram_[12] == 0x4E && pram_[13] == 0x75
-     && pram_[14] == 0x4D && pram_[15] == 0x63) return;
-    std::memset(pram_, 0, sizeof pram_);
+    // Always (re)seed AppleTalk-inactive SPConfig even when 'NuMc' is already
+    // present — AppleTalk 57.x self-heals 0/$F → active, and a prior boot may
+    // have left PRAM[7]=0. Keep DynWait + signature; refresh the rest.
+    const bool hadSig = pram_[12] == 0x4E && pram_[13] == 0x75
+                     && pram_[14] == 0x4D && pram_[15] == 0x63;
+    if (!hadSig)
+        std::memset(pram_, 0, sizeof pram_);
     pram_[1]  = 0x80;                          // InternalWaitFlags = DynWait
     pram_[12] = 0x4E; pram_[13] = 0x75;      // 'NuMc'
     pram_[14] = 0x4D; pram_[15] = 0x63;
     pram_[0]  = 0x13; pram_[2]  = 0x00; pram_[3]  = 0xCC;
-    pram_[4]  = 0xA8; pram_[5]  = 0x00; pram_[6]  = 0x00; pram_[7]  = 0x22;
+    pram_[4]  = 0xA8; pram_[5]  = 0x00; pram_[6]  = 0x00;
+    pram_[7]  = 0x22;                          // SPConfig: both ports async
     pram_[8]  = 0xCC; pram_[9]  = 0x0A; pram_[10] = 0xCC; pram_[11] = 0x0A;
 }
 

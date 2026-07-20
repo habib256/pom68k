@@ -80,6 +80,12 @@ public:
     void mouseMove(int dx, int dy) { adbVia_.mouseMove(dx, dy); }
     void mouseButton(bool down) { adbVia_.mouseButton(down); }
 
+    // Soft-post keyDown Return into EvQ (ADB modem may be wedged). Used to
+    // clear Sys7 AppleTalk CautionAlerts when EtherTalk is selected but no
+    // NuBus ethernet is present.
+    void postKeyReturn();
+    void maybeDismissBootAlerts();
+
 private:
     bool isIo(uint32_t addr, uint32_t& off) const;
     void viaSync();
@@ -136,4 +142,11 @@ private:
     long vblPulses_ = 0;
     long tickCalls_ = 0;
     long vblPulseNoIrq_ = 0;
+
+    // Sys7 AppleTalk modal dismiss (see maybeDismissBootAlerts)
+    long scsiStallFrames_ = 0;
+    long lastScsiCmds_ = -1;
+    int alertDismissPosts_ = 0;
+    int alertDismissCool_ = 0;
+    int alertEvSlot_ = 0;
 };

@@ -1,6 +1,15 @@
 # CHANGELOG
 
-## 2026-07-20 — Mac II Sys7 SCSI≈274 is an AppleTalk modal, not a 5380 hang
+## 2026-07-20 — Mac II Sys7: dismiss EtherTalk AppleTalk alerts
+
+Infinite Mac System 7 selects EtherTalk with no NuBus ethernet, so boot
+stops in two CautionAlerts after SCSI ~274 (not a 5380 hang). ADB cannot
+click OK (VIA1 modem often stuck ST=EVEN). Fix: keep SysParam SPConfig
+`$1FB=$22` (AppleTalk inactive, same as LC II XPRAM `$13`), and once per
+frame soft-post Return into EvQ while a modal `CurActivate` bit31 is set
+and SCSI has stalled — clears both alerts without touching Sys6 Finder
+(`CurActivate=0` at desktop). RTC factory defaults always reseed SPConfig
+`$22` even when `'NuMc'` is already present.
 
 After the classic ASC empty-cycle fix, Sys7.0 stops issuing SCSI at ~274.
 Last CDB is **TEST UNIT READY** (`$00`); STATUS/MSG complete, bus free,

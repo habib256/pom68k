@@ -114,6 +114,11 @@ void MacIIMemory::reset() {
     iwm_.attachDrive(&drive_, nullptr);
     drive_.reset();
     scc_.reset();
+    scsiStallFrames_ = 0;
+    lastScsiCmds_ = -1;
+    alertDismissPosts_ = 0;
+    alertDismissCool_ = 0;
+    alertEvSlot_ = 0;
     // Mac II POST probes RR0 &$70 (Sync/CTS/TxU); CTS high looks like a
     // serial debugger (same Q5 Quadra note) — pull it low like the LC 475.
     scc_.setCtsHigh(false);
@@ -565,6 +570,13 @@ void MacIIMemory::tick(int cpuCycles) {
     }
     nubus_.tick(cpuCycles);
 
+    // Keep AppleTalk inactive in SysParam (SPConfig $1FB = $22) once PRAM
+    // has validated — same policy as Egret XPRAM $13 on LC II. Infinite Mac
+    // Sys7 images still surface EtherTalk CautionAlerts; those are cleared
+    // by maybeDismissBootAlerts (ADB is often wedged in ST=EVEN).
+    if (peek8(0x1F8) == 0xA8 && peek8(0x1FB) != 0x22)
+        write8(0x1FB, 0x22);
+
     tickAcc_ += cpuCycles;
     if (tickAcc_ >= kCpuHz / 60) {
         tickAcc_ -= kCpuHz / 60;
@@ -574,6 +586,7 @@ void MacIIMemory::tick(int cpuCycles) {
         vblPulses_++;
         if (!via1_.irqAsserted()) ++vblPulseNoIrq_;
         updateIrq();
+        maybeDismissBootAlerts();                  // once per emulated frame
     }
     secAcc_ += cpuCycles;
     if (secAcc_ >= kCpuHz) {
@@ -582,4 +595,61 @@ void MacIIMemory::tick(int cpuCycles) {
         via1_.raiseCa2();
         updateIrq();
     }
+}
+
+void MacIIMemory::postKeyReturn() {
+    // EvQEl in the gap below SysZone ($1E00): 32-byte slots at $0F00+.
+    const uint32_t el = 0x00000F00u + uint32_t(alertEvSlot_++ & 7) * 32u;
+    auto w16 = [this](uint32_t a, uint16_t v) {
+        write8(a, uint8_t(v >> 8));
+        write8(a + 1, uint8_t(v));
+    };
+    auto w32 = [this](uint32_t a, uint32_t v) {
+        write8(a, uint8_t(v >> 24));
+        write8(a + 1, uint8_t(v >> 16));
+        write8(a + 2, uint8_t(v >> 8));
+        write8(a + 3, uint8_t(v));
+    };
+    w32(el, 0);                                    // qLink
+    w16(el + 4, 0);                                // qType
+    w16(el + 6, 3);                                // keyDown
+    w32(el + 8, 0x240D);                           // ADB Return / CR
+    w32(el + 12, peek32(0x16A));                   // when = Ticks
+    w16(el + 16, 320);
+    w16(el + 18, 240);
+    w16(el + 20, 0);                               // modifiers
+    const uint32_t tail = peek32(0x150);
+    if (tail && tail < ramSize_)
+        w32(tail, el);
+    else
+        w32(0x14C, el);                            // EvQHdr.qHead
+    w32(0x150, el);                                // EvQHdr.qTail
+}
+
+void MacIIMemory::maybeDismissBootAlerts() {
+    // Infinite Mac System 7 selects EtherTalk with no NuBus ethernet → two
+    // CautionAlerts ("driver not found" / "error starting AppleTalk"). ADB
+    // cannot click OK (modem often stuck ST=EVEN); soft-post Return instead.
+    // Gated on modal CurActivate (bit 31) + SCSI stall so Sys6 Finder is
+    // untouched (CurActivate=0 at desktop).
+    if (alertDismissCool_ > 0) {
+        alertDismissCool_--;
+        return;
+    }
+    const long cmds = scsi_.commands;
+    if (cmds == lastScsiCmds_ && cmds > 200)
+        scsiStallFrames_++;
+    else
+        scsiStallFrames_ = 0;
+    lastScsiCmds_ = cmds;
+
+    const uint32_t curAct = peek32(0xA64);
+    const bool modal = (curAct & 0x80000000u) != 0;
+    if (!modal || scsiStallFrames_ < 45 || alertDismissPosts_ >= 6)
+        return;
+
+    postKeyReturn();
+    alertDismissPosts_++;
+    alertDismissCool_ = 90;                        // ~1.5 s of frames
+    scsiStallFrames_ = 0;
 }
