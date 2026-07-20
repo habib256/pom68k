@@ -2,11 +2,24 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Rtc.h"
+#include <cstring>
 
 void Rtc::reset() {
     phase_ = CMD; bitCnt_ = 0; shift_ = 0; cmd_ = 0; out_ = 1;
     enabled_ = false; lastClk_ = false;
     // seconds_ / pram_ survive reset (battery-backed)
+}
+
+void Rtc::factoryDefaults() {
+    if (pram_[12] == 0x4E && pram_[13] == 0x75
+     && pram_[14] == 0x4D && pram_[15] == 0x63) return;
+    std::memset(pram_, 0, sizeof pram_);
+    pram_[1]  = 0x80;                          // InternalWaitFlags = DynWait
+    pram_[12] = 0x4E; pram_[13] = 0x75;      // 'NuMc'
+    pram_[14] = 0x4D; pram_[15] = 0x63;
+    pram_[0]  = 0x13; pram_[2]  = 0x00; pram_[3]  = 0xCC;
+    pram_[4]  = 0xA8; pram_[5]  = 0x00; pram_[6]  = 0x00; pram_[7]  = 0x22;
+    pram_[8]  = 0xCC; pram_[9]  = 0x0A; pram_[10] = 0xCC; pram_[11] = 0x0A;
 }
 
 uint8_t Rtc::readReg(uint8_t cmd) const {

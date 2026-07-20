@@ -71,8 +71,11 @@ void Cpu040::updateIpl() {
 }
 
 void Cpu040::stall(int cycles) {
+    // Wait states are specified in machine cycles (VIA E-clock, SWIM +5).
+    // Scale into Moira time so flushTicks() still yields `cycles` of
+    // peripheral time under cacheBoost_ > 1.
     if (cycles <= 0) return;
-    clock += cycles;
+    clock += moira::i64(cycles) * cacheBoost_;
     catchUp();
 }
 

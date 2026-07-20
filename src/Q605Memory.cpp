@@ -4,6 +4,7 @@
 #include "Q605Memory.h"
 #include "Cpu040.h"
 #include "Moira.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -201,6 +202,8 @@ void Q605Memory::scsiIrq(bool s) {
 
 // MAME swim2_device::read/write begin with sync(). Drive SWIM from the CPU
 // clock so sync-on-access and the batched machine tick share one timeline.
+// Moira's clock runs cacheBoost_× ahead of machine time; convert deltas
+// before the C15M ratio so SWIM stays locked to VIA/ASC/SCSI under boost.
 void Q605Memory::syncSwimFromCpu() {
     if (!cpu_) return;
     const int64_t now = int64_t(cpu_->getClock());
@@ -208,7 +211,8 @@ void Q605Memory::syncSwimFromCpu() {
     const int64_t delta = now - swimLastCpu_;
     if (delta <= 0) return;
     swimLastCpu_ = now;
-    swimCycAcc_ += delta * AscIosb::kCpuHz;
+    const int boost = std::max(1, cpu_->cacheBoost());
+    swimCycAcc_ += (delta * AscIosb::kCpuHz) / boost;
     const int cyc = int(swimCycAcc_ / kCpuHz);
     swimCycAcc_ -= int64_t(cyc) * kCpuHz;
     if (cyc) swim_.tick(cyc);
@@ -223,10 +227,12 @@ void Q605Memory::ascIrq(bool s) {
 
 // VIA1 E-clock sync (iosb via_sync, same arithmetic as the LC II):
 // cpuClk/viaClk = 25 MHz / 783.36 kHz ≈ 31.91 — use the same integer
-// scheme with a 32:1 approximation.
+// scheme with a 32:1 approximation. Work in machine-cycle space so the
+// alignment is invariant under POM68K_Q605_CACHE_BOOST.
 void Q605Memory::viaSync() {
     if (!cpu_) return;
-    int64_t c = cpu_->getClock();
+    const int boost = std::max(1, cpu_->cacheBoost());
+    int64_t c = int64_t(cpu_->getClock()) / boost;
     int64_t viaCycle = c / 32;
     int64_t target = (viaCycle * 2 + 3) * 16 + 1;
     if (target > c) cpu_->stall(int(target - c));

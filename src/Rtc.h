@@ -21,6 +21,9 @@ public:
     void tickSecond() { seconds_++; }
     void setSeconds(uint32_t s) { seconds_ = s; }
 
+    // Cold-start PRAM: 'NuMc' + DynWait (Basilisk XPRAMInit defaults).
+    void factoryDefaults();
+
 private:
     uint8_t readReg(uint8_t cmd) const;
     void writeReg(uint8_t cmd, uint8_t v);

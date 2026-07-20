@@ -62,8 +62,10 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
   `q605_boot_etalon` stay green.
   - [x] Model enough 040 i-cache behaviour for a throughput overlay on
   `Cpu040` (`POM68K_Q605_CACHE_BOOST`, default 1 — boost 4 broke SCSI bring-up).
-  - [ ] Calibrate `CACHE_BOOST` > 1 against `q605_boot_etalon` without
-  changing Finder metrics.
+  - [x] Calibrate `CACHE_BOOST` > 1 against `q605_boot_etalon`: boost 2/3/4
+  all fail with SCSI=0 (hang ~`$408BA0EE`). Default stays **1**. Stall /
+  viaSync / syncSwimFromCpu are now boost-invariant; a future milestone
+  may raise the default once Cuda/SCSI relative timing tolerates it.
 
 - [ ] **Replace remaining Quadra HLE shortcuts where fidelity matters.**
   - Remove the LocalTalk LAP watchdog by modeling the required SCC/timeout
@@ -71,15 +73,22 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
   - Expand Cuda commands only from ROM/driver traces.
   - Add accurate 040 timing, cache copyback/snooping and on-chip-FPU/FPSP
   behaviour as separate, oracle-gated milestones.
+  - (Follow-up from Q8.8) Make `CACHE_BOOST` > 1 Finder-safe without
+  changing etalon metrics.
 
 
 
 ## Mac LC II
 
 - [ ] **Fix the no-FPU SANE path.**
-  - Boot with `POM68K_NOFPU=1`.
-  - Trace ROM `PACK 4` selection through UniversalInfo/defaultRSRCs.
-  - Ensure System software handles F-line instructions without error 10.
+  - [x] Boot with `POM68K_NOFPU=1` and capture the failure: stock Mac LC
+  UniversalInfo `$DC00` → `$F200` Line-F → SysError dialog `$40A02A38`.
+  - [x] Confirm `rominfo`: two `PACK 4` resources; FD/`$CC00` LC II-shaped
+  entry exists; Mac LC record is what VIA PA `$D4` currently selects.
+  - [x] Prove `$CC00` overlay (and soft-FPU+`$CC00`) hangs StartInit at
+  `$A49A7A` (D7 bit 16 clear; bit 16 set only after FPU success path).
+  - [ ] Select the real no-FPU UniversalInfo / defaultRSRCs path so PACK 4
+  installs without the bit-16 gate; Finder under bare `FPUModel::NONE`.
 
 - [x] **Fix the GISTPERSO/SimCity 2000 startup race.**
   - Reproduce the normal boot heap corruption with
@@ -94,8 +103,8 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
   - Verify long-running audio tempo under GUI load.
 
 - [ ] **Close deferred LC II bus and timing gaps.**
-  - Add an SCC 16-bit fast path so word accesses do not double-advance the
-  register pointer.
+  - [x] Add an SCC 16-bit fast path so word accesses do not double-advance the
+  register pointer (`scc_ext_test`).
   - Compare interrupt, VBL, VIA and memory timings with real hardware.
   - Diagnose the idle screen dim seen after very long runs.
 

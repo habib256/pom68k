@@ -1,5 +1,41 @@
 # CHANGELOG
 
+## 2026-07-20 — O6.13: SCC word fast path + LC II NOFPU diagnosis
+
+V8 `read16`/`write16` now handle the SCC window (`$F04000`) with a single
+ctl/data side-effect and a mirrored data lane, so a speculative word access
+cannot double-advance `Scc8530`'s register pointer. Gated by an extra check
+in `scc_ext_test`. Mac drivers still use `move.b`; this is defensive.
+
+**NOFPU / SANE (still open for a Finder gate):** `rominfo` confirms two
+`PACK 4` resources and a Mac LC UniversalInfo at `$003BA6` with
+`hwCfgWord $DC00` (FPU). `POM68K_NOFPU=1` (`FPUModel::NONE`) reaches
+StartInit's `$F200` probe with `D3=$DC00`, takes vector 11 twice, then
+spins the SysError dialog at `$40A02A38` (`$172`). Forcing the no-FPU
+shape (`$CC00`, productKind 31, `rom85 $7FFF`) avoids the F-line but hangs
+earlier at `$A499F6`/`$A49A7A`: `btst #16,D7` fails because bit 16 is only
+`bset` on the successful FPU/AAAA path (`$48D30` / `$49BA0` after
+`$F010`). Soft 68882 + `$CC00` hybrid still hangs — StartInit never reaches
+the FPU probe. Default remains 68882 attached; true PACK 4 selection needs
+a VIA-ID→UniversalInfo path that takes the FD/`$CC00` entry without
+entering the bit-16 gate.
+
+## 2026-07-20 — Q8.8: CACHE_BOOST calibration (default stays 1)
+
+Measured `POM68K_Q605_CACHE_BOOST` against `q605_boot_etalon` with the
+FF7439EE + Mac OS 8.1 assets. Boost **1** remains the only value that
+reaches the Finder (640×480×8, menu/desktop 204.4/141.2, SCSI≈5004,
+~19 s). Boost **2/3/4** all exhaust the 2.5 G-cycle budget with
+`SCSI=0`, DAFB still reset, and PC near `$408BA0EE` — the throughput
+overlay races Cuda/SWIM/SCSI bring-up even when wait-state and SWIM
+clocking are boost-invariant.
+
+Made those paths boost-correct without changing the default: `Cpu040::stall`
+scales machine-cycle wait states by `cacheBoost_`, `viaSync` aligns in
+machine-cycle space, and `syncSwimFromCpu` converts Moira deltas through
+`cacheBoost` before the C15M ratio. Raising the default above 1 is a
+separate relative-timing milestone (not copyback/snooping).
+
 ## 2026-07-20 — Q8.6: SWIM2 SuperDrive media (MFM 1.44 + GCR)
 
 `SonyDrive` accepts 1.44 MB HD images (80×2×18×512 @ 300 RPM) alongside
@@ -18,8 +54,8 @@ soft-skip). Plus/LC II IWM + `gcr_test` unchanged.
 Moira gains a 32-entry I/D ATC for 68040 translation (flush on PFLUSH*/TC/
 URP/SRP; `POM68K_MMU040_WALK=1` forces walk-per-access). `Cpu040` arms the
 030-style i-cache overlay with `POM68K_Q605_CACHE_BOOST` (default **1** —
-boost 4 stalled SCSI bring-up) and `POM68K_Q605_ICACHE_MISS`. `sst68040` and
-`q605_boot_etalon` remain the non-regression gates.
+boost 2+ fails SCSI bring-up; see Q8.8) and `POM68K_Q605_ICACHE_MISS`.
+`sst68040` and `q605_boot_etalon` remain the non-regression gates.
 
 ## 2026-07-20 — Q8.5: 68LC040 NOFPU path (soft FPU; bare NONE = dsNoFPU 90)
 

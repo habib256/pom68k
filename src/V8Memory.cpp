@@ -295,6 +295,17 @@ uint16_t V8Memory::read16(uint32_t addr) {
         uint16_t d = viaAccess8(addr, false, 0);
         return uint16_t(d | (d << 8));
     }
+    // SCC word fast path: one ctl/data side-effect, byte mirrored on both
+    // lanes. Falling through to two read8() would double-advance ptr_.
+    if (addr >= 0xF04000 && addr < 0xF06000 && !(addr & 0x80000000)) {
+        if (cpu_) cpu_->flushTicks();
+        int ch = (addr >> 1) & 1;
+        uint8_t d = ((addr >> 2) & 1) ? scc_.readData(ch)
+                                      : scc_.readCtl(ch);
+        sccIrqLine(scc_.irqAsserted());
+        if (onSccAccess) onSccAccess(addr, false, d);
+        return uint16_t(d | (d << 8));
+    }
     // Two sequenced statements: the operands of `|` are unsequenced in
     // C++ and read8 has side effects on device space (the SCSI
     // pseudo-DMA windows pop one FIFO byte per access) — a right-first
@@ -326,6 +337,17 @@ void V8Memory::write16(uint32_t addr, uint16_t v) {
     if (addr >= 0xF00000 && addr < 0xF02000 && !(addr & 0x80000000)) {
         viaAccess8(addr, true, uint8_t(v));
         viaAccess8(addr, true, uint8_t(v >> 8));
+        return;
+    }
+    // SCC: one side-effect (high byte), matching the read16 mirror rule.
+    if (addr >= 0xF04000 && addr < 0xF06000 && !(addr & 0x80000000)) {
+        if (cpu_) cpu_->flushTicks();
+        int ch = (addr >> 1) & 1;
+        uint8_t b = uint8_t(v >> 8);
+        if ((addr >> 2) & 1) scc_.writeData(ch, b);
+        else                 scc_.writeCtl(ch, b);
+        sccIrqLine(scc_.irqAsserted());
+        if (onSccAccess) onSccAccess(addr, true, b);
         return;
     }
     write8(addr, uint8_t(v >> 8));

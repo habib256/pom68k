@@ -15,8 +15,10 @@
 // Exit 0 = pass, 1 = fail.
 
 #include "Scc8530.h"
+#include "V8Memory.h"
 
 #include <cstdio>
+#include <vector>
 
 namespace {
 int gFails = 0;
@@ -103,6 +105,24 @@ int main() {
         writeReg(scc, B, 9, 0x08);              // MIE, through channel B
         check(scc.wr(1, 2) == 0x18, "WR2 mirrored to channel A");
         check(scc.wr(1, 9) == 0x08, "WR9 mirrored to channel A");
+    }
+
+    // ── 6. V8 word access must not double-advance the register pointer ─
+    {
+        V8Memory mem(4u << 20);
+        std::vector<uint8_t> rom(V8Memory::kRomSize, 0xFF);
+        rom[0] = 0x35; rom[1] = 0xC2; rom[2] = 0x8F; rom[3] = 0x5F;
+        mem.loadRom(rom);
+        mem.reset();
+        // Word read: one side-effect, byte mirrored on both lanes.
+        mem.write16(0xF04000, 0x0000);          // WR0 = 0 (point at RR0)
+        uint16_t w1 = mem.read16(0xF04000);
+        check(((w1 >> 8) & 0xFF) == (w1 & 0xFF), "SCC word read mirrors both lanes");
+        // Word write after an explicit pointer: high byte only, once.
+        mem.write8(0xF04000, 9);                // WR0 pointer = WR9
+        mem.write16(0xF04000, 0x0800);          // WR9 = $08 (MIE)
+        check(mem.scc().wr(0, 9) == 0x08, "SCC word write hits WR9 once");
+        check(mem.scc().wr(1, 9) == 0x08, "SCC WR9 still chip-global after word write");
     }
 
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");

@@ -816,6 +816,8 @@ fresh-seed re-verify). Every change is runtime-gated on
 - **Q8 — 040 I/D ATC:** 32-entry separate I/D ATC overlay on
   `mmu040Translate` (flush PFLUSH*/TC/URP/SRP; `POM68K_MMU040_WALK=1`
   disables). U/M/WP semantics preserved vs walk-per-access.
+  `POM68K_Q605_CACHE_BOOST` stays default 1 (boost 2+ fails SCSI
+  bring-up); machine-cycle stall / VIA sync / SWIM C15M are boost-invariant.
 
 Oracle-glue fixes found by this loop (see `oracle/uae/VENDOR.md`):
 stale `regs.t1/t0` at `oracle_set_state` armed WinUAE's one-shot

@@ -74,6 +74,12 @@ add_library(pom68k_core STATIC
     src/Swim2.cpp         # Q8 — PrimeTime/IOSB SWIM2 register + FIFO core
     src/Q605Memory.cpp    # Q5 — LC 475/Quadra 605 map (MEMCjr + PrimeTime)
     src/Cpu040.cpp        # Q5 — Moira 68LC040 wrapper
+    src/DeclRom.cpp       # Mac II — NuBus declaration ROM builder
+    src/NuBus.cpp         # Mac II — NuBus slot decode + IRQ
+    src/TobyVideo.cpp     # Mac II — Toby Frame Buffer HLE
+    src/MacIIMemory.cpp   # Mac II — 32-bit GLUE memory map
+    src/Cpu020.cpp        # Mac II — Moira 68020 wrapper
+    src/AdbVia.cpp        # Mac II — ADB HLE on VIA1
 )
 target_include_directories(pom68k_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pom68k_core PUBLIC moira)
@@ -332,6 +338,30 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(fpu_sanity tests/fpu_sanity.cpp)
     target_link_libraries(fpu_sanity PRIVATE moira)
     add_test(NAME fpu_sanity COMMAND fpu_sanity)
+
+    # Mac II gates: declaration ROM, NuBus, Toby video HLE.
+    add_executable(declrom_test tests/declrom_test.cpp)
+    target_link_libraries(declrom_test PRIVATE pom68k_core)
+    add_test(NAME declrom_test COMMAND declrom_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    add_executable(nubus_test tests/nubus_test.cpp)
+    target_link_libraries(nubus_test PRIVATE pom68k_core)
+    add_test(NAME nubus_test COMMAND nubus_test)
+
+    add_executable(toby_test tests/toby_test.cpp)
+    target_link_libraries(toby_test PRIVATE pom68k_core)
+    add_test(NAME toby_test COMMAND toby_test)
+
+    add_executable(macii_post_etalon tests/macii_post_etalon.cpp)
+    target_link_libraries(macii_post_etalon PRIVATE pom68k_core)
+    add_test(NAME macii_post_etalon COMMAND macii_post_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    add_executable(macii_boot_etalon tests/macii_boot_etalon.cpp)
+    target_link_libraries(macii_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME macii_boot_etalon COMMAND macii_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
 # Dev tool (not a gate): instruction-level Sony-driver trace.
@@ -349,6 +379,9 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(q605_trace EXCLUDE_FROM_ALL tests/q605_trace.cpp)
     target_link_libraries(q605_trace PRIVATE pom68k_core)
     target_link_libraries(lcii_trace PRIVATE pom68k_core)
+
+    add_executable(macii_trace EXCLUDE_FROM_ALL tests/macii_trace.cpp)
+    target_link_libraries(macii_trace PRIVATE pom68k_core)
 
     # Dev tool (not a gate): offline Mac ROM introspection (header,
     # resources, trap table, UniversalInfo) — Basilisk II-derived parsers,

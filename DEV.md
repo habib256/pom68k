@@ -165,10 +165,11 @@ implementation depends on, several found the hard way with `sony_trace`:
   dispatches Lvl2DT on those bits; it never reads RR3.
 - **LC II AppleTalk path (O6.10, the `Scc8530` at V8 $50F04000, IPL 4)**:
   the LC II has no LocalTalk peer, so the System's `.MPP`/LAP layer must
-  hit its own "no network" timeout rather than hang. Two additions to
-  the same class, both standard 8530 behaviour, both gated by
-  `scc_ext_test` and invisible to the Plus mouse path (`input_etalon`
-  green):
+  hit its own "no network" timeout rather than hang. O6.13: V8 word
+  accesses on `$F04000` take one ctl/data side-effect (mirrored lanes)
+  so they cannot double-advance `ptr_`. Two additions to the same class,
+  both standard 8530 behaviour, both gated by `scc_ext_test` and
+  invisible to the Plus mouse path (`input_etalon` green):
   1. **Break/Abort on the open line** — `setAbortIdle(true)` (set by
      V8Memory) makes RR0 bit 7 stand and arming WR15 bit 7 latch the
      external/status interrupt: AppleTalk's carrier-sense wait ($A5B28
@@ -277,8 +278,10 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   CPU identity. Bare `FPUModel::NONE` still hits SysError 90 (dsNoFPU): System
   installs PACK 4, not FPSP. `q605_nofpu_boot_etalon` gates the soft-FPU path.
   Q8 also adds a separate I/D ATC (32 entries) and a Cpu040 i-cache/throughput
-  overlay (`POM68K_Q605_CACHE_BOOST`, default 1; `POM68K_MMU040_WALK` disables
-  the ATC).
+  overlay (`POM68K_Q605_CACHE_BOOST`, default **1** — boost 2+ fails SCSI
+  bring-up; `POM68K_MMU040_WALK` disables the ATC). Stall / VIA E-clock /
+  SWIM C15M sync are boost-invariant so a future raise only needs device-
+  relative timing work.
 - **Memory/I/O:** `Q605Memory` models MEMCjr ROM overlay/RAM sizing and the
   PrimeTime window: VIA1, Quadra pseudo-VIA2, SCC, IOSB/MEMCjr registers,
   Cuda-flavoured `Egret`, IOSB ASC `$BB` stereo, SWIM2 (MFM/GCR SuperDrive) and

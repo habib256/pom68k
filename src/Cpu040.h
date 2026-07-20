@@ -24,8 +24,9 @@ public:
     void hardReset();                       // overlay + CPU reset
     void runCycles(moira::i64 n);
     void updateIpl();                       // from the PrimeTime resolver
-    void stall(int cycles);
+    void stall(int cycles);                 // `cycles` are machine cycles
     void flushTicks();                      // run peripherals up to `clock`
+    int cacheBoost() const { return cacheBoost_; }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;
@@ -39,9 +40,10 @@ private:
     Q605Memory& mem_;
     moira::i64 lastPeriphClock_ = 0;
 
-    // Throughput ceiling (Cpu030 pattern). Default 1 keeps the Q6.6/Q8
-    // boot bit-identical; raise via POM68K_Q605_CACHE_BOOST only after
-    // measuring against q605_boot_etalon (boost 4 broke SCSI bring-up).
+    // Throughput ceiling (Cpu030 pattern). Default 1 is the only value
+    // that keeps q605_boot_etalon green (boost 2+ → SCSI=0). Stall /
+    // viaSync / syncSwimFromCpu are boost-invariant; raise via
+    // POM68K_Q605_CACHE_BOOST only after a relative-timing milestone.
     // flushTicks() scales Moira cycles back down by cacheBoost_.
     int cacheBoost_ = 1;
     int icacheMiss_ = 0;                    // POM68K_Q605_ICACHE_MISS

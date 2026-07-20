@@ -28,21 +28,27 @@ std::vector<uint8_t> AdbBus::command(uint8_t cmd, const std::vector<uint8_t>& da
     const uint8_t op = (cmd >> 2) & 3;   // 0 = reset/flush, 2 = listen, 3 = talk
     const uint8_t reg = cmd & 3;
 
+    if ((cmd & 0x0F) == 0) {             // ADB reset
+        kbdAddr_ = 2;
+        mouseAddr_ = 3;
+        return {};
+    }
+
     if (op == 3 && addr == kbdAddr_) {   // keyboard talk
         if (reg == 0) {
-            if (keyQueue_.empty()) return {};
+            if (keyQueue_.empty()) return { 0xFF, 0xFF };
             uint8_t k0 = keyQueue_.front(); keyQueue_.pop_front();
             uint8_t k1 = 0xFF;
             if (!keyQueue_.empty()) { k1 = keyQueue_.front(); keyQueue_.pop_front(); }
             return { k0, k1 };
         }
-        if (reg == 3) return { uint8_t(0x60 | kbdAddr_), 0x02 };  // handler ID 2
+        if (reg == 2) return { 0xFF, 0xFF };
+        if (reg == 3) return { uint8_t(0x60 | kbdAddr_), 0x05 };  // handler ID 5
         return {};
     }
 
     if (op == 3 && addr == mouseAddr_) { // mouse talk
         if (reg == 0) {
-            if (!mousePending()) return {};
             auto clamp7 = [](int& v) {
                 int d = std::clamp(v, -64, 63);
                 v -= d;
