@@ -180,10 +180,11 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
 ## Future machine profiles
 
 - [ ] **Macintosh II → Finder** (in progress). POST green (`macii_post_etalon`).
-  HMMU + SCSI PDMA window fixed; StartBoot `wantType` forced to 1 so the
-  Apple_HFS path runs. Still open: `Apple_Driver43` on `HD20SC` JSRs but
-  never fills `DrvQHdr` (Plus boots the same image) — gate
-  `macii_boot_etalon` stays red (gray floppy / menu≈0.50).
+  Reaches **Welcome to Macintosh** on `HD20SC` after: `wantType=1`, SCSI
+  boot-drive matcher (`$15D6`/`$17F4`), PDMA `$6000–$7FFF` longword decode,
+  overlay one-way latch. Stalls there (~235 SCSI cmds) then wanders to a
+  bad PC (`$21D44080`); jailbars can false-pass menu/desk≈0.22 — etalon now
+  requires `commands > 500`. Next: why System load stops after Welcome.
 
 - [ ] **Add the original Macintosh LC (68020)** as the next low-cost profile,
   reusing V8/Egret/ASC and validating multi-machine parameterization.

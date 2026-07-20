@@ -1,11 +1,18 @@
 # CHANGELOG
 
+## 2026-07-20 — Mac II: overlay is a one-way latch
+
+After Welcome to Macintosh the System rewrites VIA1 PA with bit4 set;
+treating that as overlay-on remapped RAM to open bus and left the CPU
+spinning at `$640000` (FFFF). Clear overlay only — never re-arm.
+
 ## 2026-07-20 — Mac II: PDMA $50F060xx must decode A0..A1
 
 Boot selected SCSI and issued READ(10) LBA 96 (n=2), but blind `move.l`
 PDMA via `$C08=$50F06000` only hit exact `$6060` — the three sibling
 bytes of each long were open bus → 256 DMA bytes per 1024-byte xfer and
-endless retry. Map `$6000–$7FFF` (and `$12000–$13FFF`) as DACK.
+endless retry. Map `$6000–$7FFF` (and `$12000–$13FFF`) as DACK. 68020
+has no `extBusError` path — soft-fail when DRQ is down (no MmuBusError).
 
 ## 2026-07-20 — Mac II: prefer SCSI boot over empty floppy
 

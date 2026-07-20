@@ -220,12 +220,18 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
         if (reg == Via6522::ORA || reg == Via6522::ORA_NH || reg == Via6522::DDRA) {
             via.write(reg, uint8_t(v & 0xFF));
             if (isVia1) {
-                // MAME via_out_a(data): overlay from the PA write data bit,
-                // not floating inputs (DDRA may still mark the pin as input).
-                if (reg == Via6522::ORA || reg == Via6522::ORA_NH)
-                    overlay_ = (v & 0x10) != 0;
-                else
-                    overlay_ = (via.portA() & 0x10) != 0;
+                // MAME/QEMU: Mac II still has VIA1 PA4 as the ROM overlay
+                // bit. After StartBoot clears it, the System may rewrite PA
+                // with bit4 set (other PA duties / sound path); treating
+                // that as overlay-on maps low mem back to ROM/open-bus,
+                // discards RAM writes, and the CPU dies at $640000 (FFFF).
+                // Overlay is a one-way latch: once clear, stay clear.
+                if (reg == Via6522::ORA || reg == Via6522::ORA_NH) {
+                    if (overlay_ && !(v & 0x10))
+                        overlay_ = false;
+                } else if (overlay_ && !(via.portA() & 0x10)) {
+                    overlay_ = false;
+                }
                 iwm_.setSel((reg == Via6522::ORA || reg == Via6522::ORA_NH)
                             ? (v & 0x20) != 0
                             : (via.portA() & 0x20) != 0);

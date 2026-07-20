@@ -75,8 +75,10 @@ int main() {
     std::printf("menu bar black %.2f, desktop %.2f, SCSI commands %ld\n",
                 menuBar, desktop, mem.scsi().commands);
 
+    // Jailbars after a stalled Welcome scored ~0.22/0.22 with only ~235 SCSI
+    // cmds; a real Finder boot keeps reading the volume (thousands of cmds).
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
-           && mem.scsi().commands > 50;
+           && mem.scsi().commands > 500;
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     return ok ? 0 : 1;
 }
