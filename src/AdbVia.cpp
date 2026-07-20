@@ -124,6 +124,11 @@ void AdbVia::pushDeviceByte() {
 
 void AdbVia::tick(int cpuCycles) {
     if (!via_ || !adb_) return;
+    // Mid-transaction with a dead timer: re-arm so SHIFT is re-presented.
+    // Slot Manager and ADB share VIA1 SR; a lost SHIFT edge leaves ST=EVEN
+    // forever (Mac II Sys7: AppleTalk alert, no keyboard/mouse).
+    if ((state_ == EVEN || state_ == ODD) && timer_ <= 0)
+        timer_ = kByteDelay;
     if (timer_ > 0) {
         timer_ -= cpuCycles;
         if (timer_ <= 0) {
@@ -148,5 +153,8 @@ void AdbVia::tick(int cpuCycles) {
             }
         }
     }
+    // Device SRQ while the modem is idle: pull PB3 so the ADB Mgr polls.
+    if (state_ == IDLE && adb_->srqPending())
+        irqPending_ = true;
     applyIrqToVia();
 }

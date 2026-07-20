@@ -47,7 +47,7 @@ Log: `build/finder_matrix.log` — **13 PASS / 6 FAIL**.
 |---|---|
 | Plus v1/v2/v3 × Sys 5.1 / 6.0 / 6.0.8 + HD20SC | PASS |
 | Mac II v1/v2 × Sys 6.0 / 6.0.8 + HD20SC | PASS |
-| Mac II v2 × Sys 7.0 / 7.1 | FAIL (SCSI≈274 post-ASC; Welcome ASC wait fixed 2026-07-20 — MODE `&3` + empty-cycle IRQ; Finder still open) |
+| Mac II v2 × Sys 7.0 / 7.1 | FAIL (SCSI≈274 = AppleTalk CautionAlert modal, not 5380; ADB modem stuck ST=EVEN blocks OK; see CHANGELOG 2026-07-20) |
 | LC II × boot.vhd / Sys 7.5 | PASS |
 | LC II × Sys 7.1 / 7.5.5 | FAIL (7.1 SCSI=277; 7.5.5 menu=0.50) |
 | Q605 × OS 8.1 | PASS (640×480×8) |

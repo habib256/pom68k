@@ -1,6 +1,17 @@
 # CHANGELOG
 
-## 2026-07-20 — Classic ASC MODE mask + empty-cycle IRQ (Mac II Sys7)
+## 2026-07-20 — Mac II Sys7 SCSI≈274 is an AppleTalk modal, not a 5380 hang
+
+After the classic ASC empty-cycle fix, Sys7.0 stops issuing SCSI at ~274.
+Last CDB is **TEST UNIT READY** (`$00`); STATUS/MSG complete, bus free,
+`irq=0`. The framebuffer shows CautionAlert: *"A driver for the selected
+AppleTalk connection could not be found…"* (OK default). Boot is blocked in
+`ModalDialog` / `_GetNextEvent`, so the SCSI counter freezes.
+
+ADB cannot dismiss it yet: VIA1 ADB modem sits in **ST=EVEN** with a dead
+shift timer (Slot Manager shares VIA1 SR). Soft EvQ Return advances SCSI
+274→281 then a blank desktop — needs a real ADB unwedge + Network/LocalTalk
+path so the alert never appears. Sys6 Finder unchanged.
 
 Mac II System 7 hung after Welcome with ASC `mode=$18` / sticky half-empty
 IRQ — Sound Manager writes MODE words whose high bits are **ignored on
