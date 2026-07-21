@@ -144,16 +144,28 @@ int main() {
     while (mem.cpuHeld()) mem.tick(1000);
 
     constexpr int kFrameCycles = 416667;      // 25 MHz / ~60 Hz
-    constexpr int kMaxFrames = 6000;          // 2.5 G cycles
+    constexpr int kMaxFrames = 12000;         // 5 G cycles: AppleTalk-active
+                                              // boots (disk prefs) add LAP
+                                              // no-peer timeouts before Finder
     Screen screen;
     for (int frame = 0; frame < kMaxFrames && !cpu.isHalted(); frame++) {
         cpu.runCycles(kFrameCycles);
-        // Finder previously stabilised near 1.8 G cycles. Sample sparsely
-        // after 1.5 G and stop as soon as the expected live mode appears.
+        // Sample sparsely after 1.5 G cycles and stop only when the FULL
+        // Finder signature holds — depth 8 alone appears well before the
+        // desktop is drawn, and breaking on it sampled a half-built screen
+        // once AppleTalk delays slowed the boot.
         if (frame >= 3600 && !(frame % 60) && mem.scsi().commands > 4000) {
             screen = decodeScreen(mem);
-            if (screen.width == 640 && screen.height == 480 && screen.depth == 8)
-                break;
+            if (screen.width == 640 && screen.height == 480 && screen.depth == 8) {
+                Stats m = luminanceStats(screen, 0, screen.width, 2, 16);
+                Stats d = luminanceStats(screen, 520, 630, 40, 430);
+                if (m.mean > 170 && m.mean < 235 &&
+                    m.deviation > 40 && m.deviation < 100 &&
+                    d.mean > 100 && d.mean < 190 &&
+                    d.deviation > 30 && d.deviation < 90 &&
+                    m.mean - d.mean > 35)
+                    break;
+            }
         }
     }
     if (cpu.isHalted()) {

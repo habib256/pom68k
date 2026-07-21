@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 2026-07-21 — LLE step 2: per-tick SPConfig clamps removed (all three machines)
+
+The tick-time guest-state clamps that forced XPRAM `$13` / low-memory
+SysParam `$1FB` to `$22` on every `tick()` (`Q605Memory`, `V8Memory`,
+`MacIIMemory` — `docs/LLE_VS_HLE.md` §1.3) are **deleted**. The
+reset-time `factoryDefaults` seed (Egret / Cuda / Rtc, which always
+reseeds SPConfig `$22` even over a persisted `.pram`) is now the only
+AppleTalk-inactive policy, and it is sufficient: with the RTC/Egret
+XPRAM paths actually working, the SysParam restore hands the guest
+`$1FB = $22` legitimately.
+
+Consequence surfaced by the gates: the Infinite Mac OS 8.1 image
+re-activates AppleTalk from its on-disk prefs during boot (its right —
+a real Quadra would do the same), so the Q605 boot now goes through the
+`.MPP` LAP no-peer timeouts and reaches the same 256-color Finder a
+little later. `q605_boot_etalon` broke on that: its early-exit sampled
+the screen on "depth 8" alone (true long before the desktop is drawn)
+and its 2.5 G-cycle budget was tuned for AppleTalk-off boots. Fixed the
+gate, not the guest: early-exit now requires the full Finder
+menu/desktop signature (like `finder_boot_matrix`) and the budget is
+5 G cycles; the nofpu variant matches.
+
+Gates: full 41/41 sweep green clamp-free (both LC II Sys 7 etalons, Mac
+II Sys 6/7, Q605 8.1 + nofpu).
+
 ## 2026-07-21 — LLE step 1: Mac II boots an UNMODIFIED ROM (RTC was mute, then bit-shifted)
 
 The three load-time Mac II ROM patches (forced StartBoot wantType,

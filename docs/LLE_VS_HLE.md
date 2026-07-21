@@ -55,21 +55,15 @@ on LC II** and is disabled there.
 modals; with SPConfig seeded correctly at PRAM level the alerts should
 not appear at all.
 
-### 1.3 SPConfig / AppleTalk clamp, re-applied every tick
+### 1.3 SPConfig / AppleTalk clamp, re-applied every tick — **RESOLVED 2026-07-21**
 
-- `Q605Memory.cpp:716-721` — forces Cuda XPRAM `$13` **and** low-memory
-  SysParam `$1FB` to `$22` on every `tick()`.
-- `V8Memory.cpp:422-429` — same on LC II.
-- `MacIIMemory.cpp:573-578` — low-memory `$1FB` clamp on Mac II.
-
-Seeding PRAM defaults at cold boot (`Egret::factoryDefaults`,
-`Rtc::factoryDefaults`) is a legitimate device-level default — a real
-machine with a factory PRAM has AppleTalk off. The **per-tick re-clamp**
-is not: it writes guest RAM continuously, and it would fight a user who
-turns AppleTalk ON in the Chooser.
-*Proper LLE:* keep the cold-boot seed, delete the per-tick clamp, and
-let the LLE SCC no-peer timeout path (below) handle an enabled
-AppleTalk.
+The tick-time clamps in `Q605Memory` / `V8Memory` / `MacIIMemory` are
+deleted; only the reset-time `factoryDefaults` seed remains (§1.7 —
+factory PRAM contents, hardware-plausible). The guest may now turn
+AppleTalk on (Chooser or on-disk prefs — the Infinite Mac OS 8.1 image
+does exactly that) and the LLE SCC no-peer path handles it; the Q605
+etalon needed a real-Finder early-exit and a bigger cycle budget to
+absorb the LAP timeouts (CHANGELOG 2026-07-21 "LLE step 2").
 
 ### 1.4 LocalTalk LAP watchdogs — `V8Memory.cpp:434-487`, `Q605Memory.cpp:770-813`
 
@@ -168,9 +162,9 @@ the existing etalons (`finder_boot_matrix` must stay green):
 1. ~~**PRAM-seed instead of ROM-patch on Mac II**~~ **DONE 2026-07-21**
    (see 1.1): the fix turned out to be LLE-correcting the `Rtc` itself —
    `macii_boot_etalon` is green with the `loadRom` patches deleted.
-2. **Delete the per-tick SPConfig clamps** (1.3), keeping only cold-boot
-   factory defaults. Success = Sys 7 matrix cells still green; Chooser
-   AppleTalk-ON reaches the SCC timeout path instead of being fought.
+2. ~~**Delete the per-tick SPConfig clamps**~~ **DONE 2026-07-21**
+   (see 1.3): 41/41 gates green clamp-free; AppleTalk-active boots go
+   through the SCC no-peer timeouts instead of being fought.
 3. **SCC/SDLC no-peer timeout completion** (kills 1.4 and 1.5): finish
    the LLE carrier-sense/Tx path so `.MPP` times out on all three
    machines; then delete both watchdogs and the `ltlk` stub.

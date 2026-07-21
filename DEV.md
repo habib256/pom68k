@@ -271,8 +271,9 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   `$08-$0B`/`$10-$1F`), so the ROM cold-inits its own PRAM and boots
   SCSI via its own `$78-$7B` defaults (driver refNum -33 = SCSI ID 0).
 - **Remaining boot HLE (see `docs/LLE_VS_HLE.md`):** Sys 7 EtherTalk
-  CautionAlerts are dismissed by soft-posting Return into EvQ while
-  SPConfig is clamped to `$22`.
+  CautionAlerts are dismissed by soft-posting Return into EvQ. SPConfig
+  `$22` (AppleTalk inactive) is only a reset-time factory seed now — the
+  per-tick clamp was removed 2026-07-21.
 - **Gates:** `macii_post_etalon`, `macii_boot_etalon` (Sys 6),
   `macii_sys7_boot_etalon` (Sys 7.0/7.1), `declrom_test`, `nubus_test`,
   `toby_test`.

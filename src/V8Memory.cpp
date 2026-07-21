@@ -419,15 +419,6 @@ void V8Memory::tick(int cpuCycles) {
                                              // below applies it); was latch-high only
     localTalkWatchdog(cpuCycles);            // O6.11 LAP unwedge
 
-    // Keep AppleTalk inactive: XPRAM $13 and SysParam SPConfig $1FB = $22
-    // (same policy as Mac II / Rtc). On LC II the clamp alone is enough for
-    // Infinite Mac Sys 7.1 / 7.5.5 — soft EvQ Return dismiss (Mac II path)
-    // double-faults System 7.5.5 at ROM $40A09A32.
-    if (egret_.pram(0x13) != 0x22)
-        egret_.setPram(0x13, 0x22);
-    if (peek8(0x1F8) == 0xA8 && peek8(0x1FB) != 0x22)
-        write8(0x1FB, 0x22);
-
     updateIrq();
 }
 

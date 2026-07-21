@@ -546,13 +546,6 @@ void MacIIMemory::tick(int cpuCycles) {
     }
     nubus_.tick(cpuCycles);
 
-    // Keep AppleTalk inactive in SysParam (SPConfig $1FB = $22) once PRAM
-    // has validated — same policy as Egret XPRAM $13 on LC II. Infinite Mac
-    // Sys7 images still surface EtherTalk CautionAlerts; those are cleared
-    // by maybeDismissBootAlerts (ADB is often wedged in ST=EVEN).
-    if (peek8(0x1F8) == 0xA8 && peek8(0x1FB) != 0x22)
-        write8(0x1FB, 0x22);
-
     tickAcc_ += cpuCycles;
     if (tickAcc_ >= kCpuHz / 60) {
         tickAcc_ -= kCpuHz / 60;

@@ -164,9 +164,10 @@ int main() {
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);
 
-    // Continue to Finder — same budget as q605_boot_etalon.
+    // Continue to Finder — same budget as q605_boot_etalon (AppleTalk-active
+    // disk prefs add LAP no-peer timeouts before the desktop settles).
     constexpr int kFrameCycles = 416667;
-    constexpr int kMaxFrames = 6000;
+    constexpr int kMaxFrames = 12000;
     Screen screen;
     for (int frame = 0; frame < kMaxFrames && !cpu.isHalted(); frame++) {
         cpu.runCycles(kFrameCycles);

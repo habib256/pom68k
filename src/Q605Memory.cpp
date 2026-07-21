@@ -713,13 +713,6 @@ void Q605Memory::tick(int cpuCycles) {
     if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }
     localTalkWatchdog(cpuCycles);            // Q6.6 LAP unwedge
 
-    // Keep AppleTalk inactive (XPRAM $13 + SysParam $1FB = $22), same policy
-    // as V8/Mac II. Infinite Mac Sys7.x self-heals SPConfig otherwise.
-    if (cuda_.pram(0x13) != 0x22)
-        cuda_.setPram(0x13, 0x22);
-    if (peek8(0x1F8) == 0xA8 && peek8(0x1FB) != 0x22)
-        write8(0x1FB, 0x22);
-
     // IOSB ASC and SWIM2 run on C15M (15.6672 MHz),
     // independent of the 25 MHz CPU — convert cpuCycles into ASC-clock ticks
     // via a fractional accumulator so the 22 257 Hz sample rate stays exact.
