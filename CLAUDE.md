@@ -61,7 +61,7 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 41 gates (asset-dependent gates may soft-skip)
+ctest                        # 42 gates (asset-dependent gates may soft-skip)
 ./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=LC II, 1MB=Quadra
 ```
 
@@ -70,8 +70,8 @@ Mac Plus: CPU **7.8336 MHz**, frame **60.15 Hz** (130 240 cycles/frame), video
 (default 640×480 V8 video; `POM68K_MONITOR=512` → 512×384). Quadra profile
 runs at **25 MHz** with 640×480 DAFB video. Default Quadra CPU is full
 **68040 + soft 68882** (MAME `macqd605`); `POM68K_Q605_NOFPU=1` selects
-68LC040 + soft 68882. Bare `FPUModel::NONE` still hits dsNoFPU 90 pending
-real FPSP.
+68LC040 + soft 68882, `=2` TRUE bare `FPUModel::NONE` — both reach the
+Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 
 ## Subsystem map
 
@@ -150,12 +150,12 @@ SWIM, DFAC audio polish, bus/timing).
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
-GUI exposes the machine alongside Plus/Mac II/LC II. **41 CTest gates**,
+GUI exposes the machine alongside Plus/Mac II/LC II. **42 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `sst68040`,
 `q605_boot_etalon`, `q605_dafb_test`, `q605_asc_test`, `swim2_test`,
-`swim2_media_test`, `q605_floppy_boot_etalon`, and
-`q605_nofpu_boot_etalon`.
+`swim2_media_test`, `q605_floppy_boot_etalon`,
+`q605_nofpu_boot_etalon`, and `q605_barefpu_boot_etalon`.
 
 **The Finder boot matrix (Phase A/B) is green** on all four machines ×
 System 4.1–8.1 era images (`tests/finder_boot_matrix.cpp`; CHANGELOG

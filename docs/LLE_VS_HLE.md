@@ -81,10 +81,24 @@ unreachable since the soft-FPU path landed, and the ROM's own fnop
 probe handles no-FPU detection unaided (HWCfg self-clears to `$EC00`).
 `POM68K_Q605_NOFPU=1` (68LC040 + soft 68882 — a SoftwareFPU-equivalent
 FPU-model choice, not a guest-state intervention) is the supported
-no-FPU config. TRUE bare `FPUModel::NONE` (`POM68K_Q605_NOFPU=2`) boots
-deep and dies at Mac OS 8.1's FPU-flavored `_FP68K` binding — fully
-mapped in CHANGELOG 2026-07-21 "LLE step 5"; the remaining System-side
-PACK 4 selection input is tracked in TODO.
+no-FPU config. TRUE bare `FPUModel::NONE` (`POM68K_Q605_NOFPU=2`)
+**boots to the Finder since 2026-07-21** (gate
+`q605_barefpu_boot_etalon`): the `_FP68K` FPU-flavored binding turned
+out to be a Cuda HLE reply-framing bug — Mac OS 8.1's own Cuda reader
+took our READ_XPRAM command echo for the XPRAM `$AE` ROM-resource
+combo (CHANGELOG "Bare no-FPU solved").
+
+### 1.6b Cuda reply framing serves per-reader accommodations — `Egret.cpp`
+
+The Cuda-flavor reply wire is still HLE-shaped: a 4-byte header
+`[01, 00, 00, cmdEcho]` pinned against the ROM device-manager ISR, with
+per-reader patches on top — the `$76` echo-pop (Q6.5), the GetPram
+2-byte erase, and now the Q8.2 echo-slot **data duplication** for
+ReadXPram (System reader consumes a 3-byte header). The real Cuda
+packet is `[type, flags, cmdEcho, data…]` (DingusPPC
+`viacuda.cpp response_header`; MAME runs the actual 6805 firmware).
+Migrating means re-pinning every ROM reader against the real wire plus
+a turnaround sync byte — tracked in TODO ("Cuda wire-model redo").
 
 ### 1.7 Mac II / LC II RTC + Egret PRAM factory seeding — `Rtc.cpp:13-28`, `Egret.cpp:54-91`
 
@@ -165,8 +179,8 @@ the existing etalons (`finder_boot_matrix` must stay green):
    Return over ADB.
 5. ~~**FPSP for bare no-FPU**~~ **DONE 2026-07-21** (see 1.6): the 1.6
    guest-state machinery is deleted; soft-FPU stays as the supported
-   config and the bare-NONE `_FP68K` binding question is a mapped TODO
-   follow-up.
+   config, and the bare-NONE `_FP68K` binding was solved the same day
+   (see 1.6b) — bare `FPUModel::NONE` reaches the Finder, gated.
 6. Longer term: DAFB → MAME parity, 040 copyback/snooping, Egret/Cuda
    firmware LLE (only if a use case demands it).
 

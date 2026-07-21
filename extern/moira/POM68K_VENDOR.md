@@ -888,6 +888,19 @@ are unregressed. New section at the end of `MoiraExecMMU_cpp.h`:
   PREVIOUS vector's values in the frame's EA and PD0-3 fields;
   `oracle_set_state` zeroes them (with `wb2_address`/`wb3_data`).
 
+## Watchpoints under the MMU: logical-address hooks (2026-07-21, Q8.2)
+
+`readM`/`writeM` host the debugger watchpoint checks, but the 030 and
+040 translated bus paths branch away before reaching them
+(`mmuRead`/`mmuWrite` in `MoiraExecMMU_cpp.h`, and
+`mmu040Read`/`mmu040Write`), so `debugger.watchpoints` never fired on
+those models. Each of the four entry points now runs the same
+`CHECK_WP` → `watchpointMatches(addr & addrMask, S)` →
+`didReachWatchpoint` sequence on the **logical** address before
+translation. Found (and used) while tracing who binds `_FP68K` ($15AC)
+during the Quadra bare no-FPU boot; debug-only, `flags & CHECK_WP` is
+clear unless a watchpoint is armed.
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)

@@ -1,5 +1,52 @@
 # CHANGELOG
 
+## 2026-07-21 — Bare no-FPU solved: _FP68K binds the integer PACK 4 (Cuda XPRAM echo bug)
+
+The "LLE step 5" enigma is closed: `POM68K_Q605_NOFPU=2` (true
+`FPUModel::NONE`, no soft 68882) boots Mac OS 8.1 to the Finder — new
+gate `q605_barefpu_boot_etalon`. The chain was captured with a Moira
+watchpoint on `$15AC`, which required new logical-address watchpoint
+hooks in the translated MMU paths (`mmuRead`/`mmuWrite` for the 030,
+`mmu040Read`/`mmu040Write` for the 040 — they bypass `readM`/`writeM`
+where the debugger checks live; the crashed session had hooked only the
+030 pair).
+
+1. **The System-side selector is the ROM-resource combo.** Every entry
+   of the ROM resource directory carries an 8-byte combo mask (FPU
+   PACK 4 entry @rom `$E99F0`, mask `$70000000` = bit indices 1-3;
+   integer PACK 4 @`$73910`, mask `$08000000` = bit 4). The
+   InitResources walkers (boot `$4081AB28`, System-era `$408A07A6`)
+   test entry bit N where **N = XPRAM byte `$AE`** (`_ReadXPRam`
+   `#$1_00AE` at `$4081AB44`/`$408A07D0`).
+2. **Validation** (`$4084BF86`): N = 0 or > max (dir header byte = 4)
+   falls back to `UniversalInfo+$16` (defaultRSRCs, = 4 on the LC 475
+   record at `$408A8080`); combo 4 is *promoted* to 3 when HWCfgFlags
+   bit 12 says "FPU fitted". There is **no 3→4 demotion** — zapping the
+   PRAM is Apple's own cure for a stale FPU combo.
+3. Our inputs were all correct (XPRAM `$AE` = 0, defaultRSRCs = 4,
+   HWCfg `$EC00`), and the boot-time pass did bind sanely — but the
+   second InitResources pass, running through **Mac OS 8.1's own Cuda
+   reader**, got `$02` from `_ReadXPRam($AE)`: that reader consumes a
+   3-byte reply header where the ROM device-manager ISR consumes 4, so
+   it took our READ_XPRAM **command echo** as the data (wire-traced:
+   the session consumed exactly `01 00 00 02` then closed). Combo 2 =
+   "FPU fitted" → map rebuilt with the FPU PACK 4 → its first
+   `fmove.l fpcr,d0` (`$408E9AC0`) → dsNoFPU.
+4. **Fix** (`Egret.cpp` Q8.2): the Cuda ReadXPram reply duplicates the
+   first data byte into the echo slot — the ROM ISR is position-based
+   and never verifies that echo, and the System reader now gets real
+   data at its index 3. Exact for every 1-byte System read (combo,
+   boot flags); multi-byte System reads stay off-by-one as they always
+   were. The real cure — reply framing `[type, flags, cmdEcho, data…]`
+   (DingusPPC `viacuda.cpp response_header`) plus an *unclocked*
+   turnaround sync byte — hangs the ROM pollers, which wait on SHIFT
+   for their sync byte; the wire-model redo is logged in
+   `docs/LLE_VS_HLE.md`.
+
+Gates: q605 suite 7/7 green, new `q605_barefpu_boot_etalon` (Finder
+640×480×8, menu 204.4/70.1, desktop 129.6/31.3, SCSI 4341); full sweep
+below.
+
 ## 2026-07-21 — DAFB extracted into Dafb.h/.cpp (one concern per file)
 
 The DAFB II cell (register file, Swatch CRTC + interrupts, Antelope

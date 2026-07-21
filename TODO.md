@@ -40,6 +40,37 @@ gets at least one Finder cell before the next:
 - [ ] Explicitly **out of Phase C**: PowerBook PMU, IIfx IOPs, AV DSP, all
   4 MB PPC ROMs.
 
+## LocalTalk between two POM68K instances (virtual LLAP cable)
+
+Feasible, and a natural sequel to LLE step 3 (CHANGELOG 2026-07-21) —
+SCC emission/reception is now honest. Scheme: wire one instance's SCC Tx
+to the other's Rx over a host transport (local UNIX socket, TCP, or UDP
+multicast; two physical machines work the same way, just a network
+socket).
+
+- Tx side already serialises SDLC frames (the LLAP ENQ probes prove it);
+  encapsulate frame-by-frame — the EOM/Underrun latch gives the frame
+  boundaries.
+- Rx side is the bulk of the work: the reverse path in `Scc8530` —
+  inject a frame into the Rx FIFO, drop Sync/Hunt (carrier present =
+  line busy), raise the Rx interrupts and the end-of-frame CRC result.
+  Today's carrier sense always says "line free" since nobody transmits
+  on the far end.
+- Honour the LLAP RTS/CTS dance for directed frames; address-acquisition
+  collisions can stay unmodelled as long as the two nodes draw different
+  random addresses.
+
+Precedents: Mini vMac does exactly this (LocalTalk over UDP between
+instances); Basilisk II/SheepShaver bridge AppleTalk differently.
+
+Payoff: Chooser sees the other Mac, AppleShare file sharing between a
+Quadra under OS 8.1 and a Mac Plus under System 6, and a real test bench
+for the SCC/LLAP layer.
+
+First milestone: LLAP frame encapsulation over UDP + full Rx path in
+`Scc8530`, gated by a two-instance test where each node sees the other's
+ENQ probes.
+
 ## LLE fidelity — replace HLE shortcuts (see `docs/LLE_VS_HLE.md`)
 
 - [ ] **Quadra 605 / LC 475** shortcuts where fidelity matters:
@@ -48,13 +79,14 @@ gets at least one Finder cell before the next:
     behaviour as separate, oracle-gated milestones.
   - (Follow-up from Q8.8) Make `CACHE_BOOST` > 1 Finder-safe without
     changing etalon metrics.
-- [ ] **Quadra bare no-FPU follow-up** (state fully mapped — CHANGELOG
-  2026-07-21 "LLE step 5"): `POM68K_Q605_NOFPU=2` (true `FPUModel::NONE`)
-  boots deep; the ROM fnop probe and HWCfg are correct, but Mac OS 8.1
-  binds `_FP68K` ($15AC) to the ROM's FPU PACK 4 ($E9A2C) instead of the
-  integer one ($73940). Remaining question: what System-side input picks
-  the PACK (decision code near RAM $25974; combos $70000000 vs
-  $08000000). The soft-FPU path (`=1`) is gated and stays.
+- [ ] **Cuda wire-model redo** (follow-up to the solved bare no-FPU
+  enigma — CHANGELOG 2026-07-21 "Bare no-FPU solved"): replace the
+  per-reader reply-framing accommodations in `Egret.cpp` (echo-slot
+  data duplication for ReadXPram, the $76 pop, the GetPram erase) with
+  the real Cuda packet `[type, flags, cmdEcho, data…]` + a turnaround
+  sync byte the ROM pollers can wait on. Needs re-pinning every ROM
+  reader (`$408A9BBE` ISR, `$408B3Bxx` direct pollers) against that
+  wire.
 
 ## Mac LC II
 

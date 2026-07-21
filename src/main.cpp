@@ -142,12 +142,18 @@ struct ScreenInput {
         ImGui::GetWindowDrawList()->AddImage(
             ImTextureID(intptr_t(tex)), p, ImVec2(p.x + size.x, p.y + size.y));
 
+        if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+            std::fprintf(stderr, "[DBG] DEL pressed: WantTextInput=%d captured=%d\n",
+                         io.WantTextInput, captured);
         if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
             setCaptured(win, !captured);
 
         if (captured) {                  // raw deltas from the virtual cursor
             double x, y;
             glfwGetCursorPos(win, &x, &y);
+            if (x != lastX || y != lastY)
+                std::fprintf(stderr, "[DBG] cap move raw dx=%.1f dy=%.1f\n",
+                             x - lastX, y - lastY);
             feed(float(x - lastX), float(y - lastY), move);
             lastX = x; lastY = y;
             button(glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
@@ -158,6 +164,7 @@ struct ScreenInput {
     }
 
     void setCaptured(GLFWwindow* win, bool on) {
+        std::fprintf(stderr, "[DBG] setCaptured(%d)\n", on);
         captured = on;
         glfwSetInputMode(win, GLFW_CURSOR,
                          on ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
@@ -1681,13 +1688,18 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> rom;
     if (argc > 1) { rom = readFile(argv[1]); matched = argv[1]; }
     else {
-        rom = findResource("roms/macplus.rom", matched);
-        if (rom.empty()) rom = findResource("roms/maclcii.rom", matched);
+        // Default machine: Mac LC II. Prefer its canonical short name, then a
+        // CRC scan so a stock LC II dump boots without needing a symlink.
+        rom = findResource("roms/maclcii.rom", matched);
+        if (rom.empty()) {
+            std::string p = findRomBySignature("35C28F5F");
+            if (!p.empty()) { rom = readFile(p); matched = p; }
+        }
+        // Fall back to the other short names, then the remaining CRC signatures.
+        if (rom.empty()) rom = findResource("roms/macplus.rom", matched);
         if (rom.empty()) rom = findResource("roms/macii.rom", matched);
         if (rom.empty()) rom = findResource("roms/quadra605.rom", matched);
-        // No canonical short name found — scan roms/ by CRC signature so a
-        // stock Mac II / LC II / Quadra dump boots without needing a symlink.
-        for (const char* sig : { "9779D2C4", "35C28F5F", "FF7439EE" }) {
+        for (const char* sig : { "9779D2C4", "FF7439EE" }) {
             if (!rom.empty()) break;
             std::string p = findRomBySignature(sig);
             if (!p.empty()) { rom = readFile(p); matched = p; }

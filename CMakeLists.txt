@@ -285,6 +285,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME q605_nofpu_boot_etalon COMMAND q605_nofpu_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # Q8.2 gate: TRUE bare no-FPU (NOFPU=2, FPUModel::NONE) Finder boot —
+    # guards the _FP68K integer-PACK-4 binding (XPRAM $AE combo read).
+    add_executable(q605_barefpu_boot_etalon tests/q605_barefpu_boot_etalon.cpp)
+    target_link_libraries(q605_barefpu_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_barefpu_boot_etalon COMMAND q605_barefpu_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # Q8 gate: PrimeTime SWIM2 register/FIFO core and 16-bit bus mapping.
     add_executable(swim2_test tests/swim2_test.cpp)
     target_link_libraries(swim2_test PRIVATE pom68k_core)

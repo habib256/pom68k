@@ -356,6 +356,31 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
             // and clears both the Q6.2 and Q6.4 loops.)
             if (cudaPolarity_ && cmd.size() >= 4 && cmd[3] == 0x76 && !reply.empty())
                 reply.pop_back();
+            // Q8.2 (bare no-FPU _FP68K enigma): Mac OS 8.1's System-side
+            // Cuda reader consumes only THREE header bytes before the data
+            // — one fewer than the ROM device-manager ISR the framing above
+            // was pinned against — so every System _ReadXPRam returned our
+            // echo byte $02 as the data. The ROM-resource combo read
+            // (XPRAM $AE, InitResources walker $408A07CC) then validated
+            // combo 2 = "FPU fitted" ($4084BF86: only 0 or >max falls back
+            // to UniversalInfo defaultRSRCs, and 4→3 promotion exists but
+            // no 3→4 demotion), rebuilt the ROM resource map with the FPU
+            // PACK 4 ($408E9A2C, combo mask $70000000) instead of the
+            // integer one ($40873940, mask $08000000), and _FP68K died at
+            // its first fmove on a bare 68LC040 (dsNoFPU). Real Cuda
+            // framing per DingusPPC viacuda.cpp response_header is
+            // [type, flags, cmdEcho, data…] — our extra pad byte exists
+            // only to feed the ROM ISR's 4-byte header expectation, itself
+            // an artifact of reply[0] doubling as the session sync on this
+            // HLE wire. Until that wire model is redone (LLE_VS_HLE
+            // follow-up), serve BOTH readers by duplicating the first data
+            // byte into the echo slot: the ROM ISR is position-based (it
+            // never verifies the ReadXPram echo), the System reader gets
+            // real data at its index 3. Exact for every 1-byte System read;
+            // multi-byte System reads stay off-by-one as they always were.
+            if (cudaPolarity_ && cmd.size() >= 4 && cmd[3] != 0x76
+                && !reply.empty())
+                reply.back() = pram_[cmd[3]];
             if (cmd.size() >= 4) {       // No length on the wire (O6.11,
                 // pinned from the ROM: the 'NuMc' check sends [1,2,1,$0C]
                 // and reads 4 bytes, the boot-flag read sends [1,2,1,$8A]

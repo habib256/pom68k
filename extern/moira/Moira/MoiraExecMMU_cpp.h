@@ -968,6 +968,14 @@ Moira::extBusError()
 template <Core C, Size S, Flags F> u32
 Moira::mmuRead(u32 addr)
 {
+    // POM68K: the translated 030/040 path bypasses readM's watchpoint
+    // hook — match on the LOGICAL address here so the debugger works
+    // under the MMU too (found chasing the Q605 _FP68K trap install).
+    if ((flags & State::CHECK_WP)
+        && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
+        didReachWatchpoint(addr & addrMask<C>());
+    }
+
     const bool log = mmuLogging;
     if (log) mmuIdx++;
 
@@ -1067,6 +1075,12 @@ Moira::mmuRead(u32 addr)
 template <Core C, Size S, Flags F> void
 Moira::mmuWrite(u32 addr, u32 val)
 {
+    // POM68K: logical-address watchpoint hook (see mmuRead above).
+    if ((flags & State::CHECK_WP)
+        && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
+        didReachWatchpoint(addr & addrMask<C>());
+    }
+
     const bool log = mmuLogging;
     if (log) {
         mmuIdx++;
@@ -2040,6 +2054,13 @@ Moira::mmu040Fault(u32 addr, u32 val, int fc, bool write, int szCode,
 template <Core C, Size S> u32
 Moira::mmu040Read(u32 addr, bool data)
 {
+    // POM68K: logical-address watchpoint hook (see mmuRead above — the
+    // 040 bus path bypasses readM's check just like the 030 one).
+    if ((flags & State::CHECK_WP)
+        && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
+        didReachWatchpoint(addr & addrMask<C>());
+    }
+
     const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0
                                         : bool(reg.sr.s);
     const u32 pageMask = ~mmu040PageMaskI();
@@ -2119,6 +2140,12 @@ Moira::mmu040Read(u32 addr, bool data)
 template <Core C, Size S> void
 Moira::mmu040Write(u32 addr, u32 val, bool data)
 {
+    // POM68K: logical-address watchpoint hook (see mmuRead above).
+    if ((flags & State::CHECK_WP)
+        && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
+        didReachWatchpoint(addr & addrMask<C>());
+    }
+
     const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0
                                         : bool(reg.sr.s);
     const u32 pageMask = ~mmu040PageMaskI();

@@ -307,9 +307,12 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
 - **FPU compatibility:** a real Quadra 605 has a full 68040+FPU; LC 475 is
   68LC040. The MAME `macqd605` oracle is a full 68040, and POM68K defaults to
   M68040 + Moira's 68882. `POM68K_Q605_NOFPU=1` selects **M68LC040 + soft
-  68882** (SoftwareFPU-equivalent) so Finder remains reachable under the LC
-  CPU identity. Bare `FPUModel::NONE` still hits SysError 90 (dsNoFPU): System
-  installs PACK 4, not FPSP. `q605_nofpu_boot_etalon` gates the soft-FPU path.
+  68882** (SoftwareFPU-equivalent); `=2` selects TRUE bare `FPUModel::NONE`,
+  and Mac OS 8.1 installs the ROM's **integer PACK 4** for it — the selector
+  is the ROM-resource combo in XPRAM `$AE`, validated against UniversalInfo
+  defaultRSRCs and HWCfgFlags bit 12 (CHANGELOG 2026-07-21 "Bare no-FPU
+  solved"). `q605_nofpu_boot_etalon` gates the soft path,
+  `q605_barefpu_boot_etalon` the bare one.
   Q8 also adds a separate I/D ATC (32 entries) and a Cpu040 i-cache/throughput
   overlay (`POM68K_Q605_CACHE_BOOST`, default **1** — boost 2+ fails SCSI
   bring-up; `POM68K_MMU040_WALK` disables the ATC). Stall / VIA E-clock /
