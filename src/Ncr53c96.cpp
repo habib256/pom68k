@@ -29,6 +29,22 @@
 #include <cstring>
 
 // ── FIFO ────────────────────────────────────────────────────────────────
+void Ncr53c96::acceptDataOutByte_(uint8_t v) {
+    // Shared DATA OUT gather for dmaWrite (pseudo-DMA window) and fifoPush
+    // (polled R_FIFO). Ends the active Transfer Info with I_BUS when the
+    // programmed count drains or the whole write payload is gathered
+    // (ncr53c90.cpp:686 bus_complete / INIT_XFR_BUS_COMPLETE).
+    dataOut_.push_back(v);
+    if (tcounter_) tcounter_--;
+    if (tcounter_ == 0 || dataOut_.size() >= dataOutExpected_) {
+        status_ |= S_TC0;
+        if (dataOut_.size() >= dataOutExpected_)
+            advanceToStatus();
+        raiseIrq(I_BUS);
+    }
+    updateDrq();
+}
+
 void Ncr53c96::fifoPush(uint8_t v) {
     // In COMMAND phase after a select, FIFO writes ARE the command descriptor
     // block. On real hardware the SELECT sequence streams the FIFO to the
@@ -52,6 +68,14 @@ void Ncr53c96::fifoPush(uint8_t v) {
             if (wasSelWait) raiseIrq(I_BUS | I_FUNCTION);
         }
         updateDrq();
+        return;
+    }
+    // Polled DATA OUT (CI_XFER $10): the System 7.5.5 SCSI Manager 4.3 HAL
+    // feeds write payloads through R_FIFO, not the PrimeTime pseudo-DMA
+    // window. Mirror dmaWrite so the gather + bus_complete path matches
+    // (without this, WRITE(10) hangs the async wait — Q605 × 7.5.5/7.6).
+    if (phase_ == DATA_OUT && dataXfer_) {
+        acceptDataOutByte_(v);
         return;
     }
     if (fifoPos_ < 16) fifo_[fifoPos_++] = v;
@@ -491,7 +515,19 @@ void Ncr53c96::transferInfo() {
             break;
 
         case DATA_OUT:
-            updateDrq();                      // driver feeds bytes via dmaWrite/FIFO
+            // Arm the gather path. DMA ($90) drains through dmaWrite; polled
+            // ($10) drains through R_FIFO → fifoPush. startCommand clears
+            // tcounter_ for non-DMA, so re-load from tcount_ (or the remaining
+            // payload) here — otherwise fifoPush never sees a completion count
+            // and the 7.5.5 HAL's WRITE(10) spins forever waiting for I_BUS.
+            dataXfer_ = true;
+            if (!dmaCommand_) {
+                const uint32_t remain = dataOutExpected_ > dataOut_.size()
+                    ? uint32_t(dataOutExpected_ - dataOut_.size()) : 0;
+                tcounter_ = tcount_ ? tcount_ : remain;
+                status_ &= ~S_TC0;
+            }
+            updateDrq();
             break;
 
         case COMMAND:
@@ -551,27 +587,14 @@ uint8_t Ncr53c96::dmaRead() {
 
 void Ncr53c96::dmaWrite(uint8_t v) {
     if (phase_ == DATA_OUT) {
-        dmaBytes++;
-        dataOut_.push_back(v);
-        if (tcounter_) tcounter_--;
         // Q6.6: per-chunk completion, mirroring dmaRead (Q6.3). The OS 8.1
         // SCSI Manager writes a multi-block payload block-by-block: it programs
         // TC = one block ($200), DMA-bursts that many bytes through the window,
         // then waits for S_INTERRUPT (I_BUS + S_TC0) before setting up the next
         // chunk. Signal bus-service when the programmed count (tcounter_) drains
-        // — NOT only when the whole payload (dataOutExpected_) is gathered: a
-        // 2+-block WRITE (e.g. WRITE(10) LBA $8A1, 2 blocks) otherwise stalls
-        // after the first 512 bytes (the chunk interrupt never re-arms) → the
-        // async write never completes → the SCSI Manager spins on ioResult in
-        // its deferred-task loop ($00123BA6/$0011CD2C) forever. Commit the WRITE
-        // to the target and advance to STATUS only once the last byte lands.
-        if (tcounter_ == 0 || dataOut_.size() >= dataOutExpected_) {
-            status_ |= S_TC0;
-            if (dataOut_.size() >= dataOutExpected_)
-                advanceToStatus();            // whole payload gathered → commit WRITE
-            raiseIrq(I_BUS);                  // bus_complete (ncr53c90.cpp:686)
-        }
-        updateDrq();
+        // — NOT only when the whole payload (dataOutExpected_) is gathered.
+        dmaBytes++;
+        acceptDataOutByte_(v);
         return;
     }
     fifoPush(v);

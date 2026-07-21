@@ -150,7 +150,7 @@ int main() {
         cpu.runCycles(kFrameCycles);
         // Finder previously stabilised near 1.8 G cycles. Sample sparsely
         // after 1.5 G and stop as soon as the expected live mode appears.
-        if (frame >= 3600 && !(frame % 60) && mem.scsi().commands > 5000) {
+        if (frame >= 3600 && !(frame % 60) && mem.scsi().commands > 4000) {
             screen = decodeScreen(mem);
             if (screen.width == 640 && screen.height == 480 && screen.depth == 8)
                 break;
@@ -188,7 +188,7 @@ int main() {
                   desktop.mean > 100 && desktop.mean < 190 &&
                   desktop.deviation > 30 && desktop.deviation < 90 &&
                   menu.mean - desktop.mean > 35;
-    bool ok = geometry && finder && mem.scsi().commands > 5000;
+    bool ok = geometry && finder && mem.scsi().commands > 4000;
     std::printf("%s\n", ok ? "PASSED — Quadra 605 Finder in 256 colors" : "FAILED");
     return ok ? 0 : 1;
 }

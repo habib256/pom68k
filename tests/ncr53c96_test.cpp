@@ -177,6 +177,39 @@ int main() {
         CHECK(ist & R::I_DISCONNECT, "selection timeout raises I_DISCONNECT (got %02X)", ist);
     }
 
+    // ── WRITE(10) 1 block, polled R_FIFO (System 7.5.5 SCSI HAL path) ──
+    {
+        std::vector<uint8_t> orig;
+        CHECK(readBlock(scsi, 1, true, true, orig) == 0, "seed READ(10) LBA 1");
+        std::vector<uint8_t> cdb = { 0x2A, 0x00, 0x00, 0x00, 0x00, 0x01,
+                                     0x00, 0x00, 0x01, 0x00 };
+        selectAndCommand(scsi, cdb);
+        (void)scsi.read(R::R_ISTAT);              // clear select IRQ
+        scsi.write(R::R_TCLOW, 0x00);
+        scsi.write(R::R_TCMID, 0x02);             // TC = 512
+        scsi.write(R::R_TCHIGH, 0);
+        scsi.write(R::R_COMMAND, R::CI_XFER);     // non-DMA — HAL uses $10
+        for (int i = 0; i < 512; i++)
+            scsi.write(R::R_FIFO, uint8_t(orig[i] ^ 0xA5));
+        CHECK(scsi.irq(), "polled WRITE raises I_BUS after 512 FIFO bytes");
+        uint8_t ist = scsi.read(R::R_ISTAT);
+        CHECK(ist & R::I_BUS, "I_BUS after polled WRITE (got %02X)", ist);
+        uint8_t status = 0xFF, msg = 0xFF;
+        CHECK(finish(scsi, status, msg) == 0, "polled WRITE to bus-free");
+        CHECK(status == 0x00, "polled WRITE GOOD status, got %02X", status);
+        // Restore the block so other tests/images stay clean.
+        selectAndCommand(scsi, cdb);
+        (void)scsi.read(R::R_ISTAT);
+        scsi.write(R::R_TCLOW, 0x00);
+        scsi.write(R::R_TCMID, 0x02);
+        scsi.write(R::R_TCHIGH, 0);
+        scsi.write(R::R_COMMAND, R::CI_XFER | R::CMD_DMA);
+        for (uint8_t b : orig) scsi.dmaWrite(b);
+        (void)scsi.read(R::R_ISTAT);
+        CHECK(finish(scsi, status, msg) == 0, "restore WRITE DMA");
+        std::printf("  WRITE(10) polled LBA 1 (512 B via R_FIFO) OK\n");
+    }
+
     std::printf("ncr53c96_test: full 53C96 transactions (polled + pseudo-DMA, "
                 "READ6/READ10/READ CAPACITY, selection timeout) OK\n");
     return 0;

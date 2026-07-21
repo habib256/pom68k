@@ -225,10 +225,18 @@ static int bootQ605(const std::vector<uint8_t>& rom, const char* disk) {
     QScreen screen;
     for (int frame = 0; frame < kMaxFrames && !cpu.isHalted(); frame++) {
         cpu.runCycles(kFrameCycles);
-        if (frame >= 3600 && !(frame % 60) && mem.scsi().commands > 5000) {
+        if (frame >= 3600 && !(frame % 60) && mem.scsi().commands > 500) {
             screen = decodeQ605(mem);
-            if (screen.width == 640 && screen.height == 480 && screen.depth == 8)
-                break;
+            if (screen.width == 640 && screen.height == 480 &&
+                (screen.depth == 8 || screen.depth == 1)) {
+                Stats menu = luminance(screen, 0, screen.width, 2, 16);
+                Stats desk = luminance(screen, 520, 630, 40, 430);
+                bool finder8 = screen.depth == 8 && menu.mean > 170 &&
+                               menu.mean - desk.mean > 35;
+                bool finder1 = screen.depth == 1 && menu.mean > 180 &&
+                               menu.mean - desk.mean > 40 && menu.deviation < 120;
+                if (finder8 || finder1) break;
+            }
         }
     }
     if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: halted\n"); return 1; }
@@ -254,10 +262,13 @@ static int bootQ605(const std::vector<uint8_t>& rom, const char* disk) {
                    desk.mean > 100 && desk.mean < 190 &&
                    desk.deviation > 30 && desk.deviation < 90 &&
                    menu.mean - desk.mean > 35;
-    // 1bpp Finder: light menu bar, ~50% gray desktop (black-ratio via lum).
-    bool finder1 = menu.mean > 180 && desk.mean > 90 && desk.mean < 170 &&
-                   menu.mean - desk.mean > 40;
+    // 1bpp Finder: light menu bar; desktop may be 50% gray OR a darker
+    // custom pattern (GISTPERSO). Reject the 7.5.5 hang signature (full-screen
+    // ~50% dither with MBarHeight=0 → menu≈127).
+    bool finder1 = menu.mean > 180 && desk.mean < 170 &&
+                   menu.mean - desk.mean > 40 && menu.deviation < 120;
     bool ok = ((geo8 && finder8) || (geo1 && finder1)) && mem.scsi().commands > 1000;
+    // Early-exit once 1bpp Finder is stable too (not only 8bpp).
     std::printf("%s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

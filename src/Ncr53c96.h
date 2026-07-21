@@ -191,6 +191,7 @@ private:
     void updateDrq();
     void fifoPush(uint8_t v);
     uint8_t fifoPop();
+    void acceptDataOutByte_(uint8_t v);   // DATA OUT gather (FIFO or DMA)
     void runTarget();                     // execute the accumulated CDB
     void advanceToStatus();               // DATA/COMMAND done → STATUS
     uint8_t phaseStatusBits() const;      // low 3 bits of the STATUS register
