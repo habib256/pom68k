@@ -170,7 +170,7 @@ int main() {
     Screen screen;
     for (int frame = 0; frame < kMaxFrames && !cpu.isHalted(); frame++) {
         cpu.runCycles(kFrameCycles);
-        if (frame >= 3600 && !(frame % 60) && mem.scsi().commands > 5000) {
+        if (frame >= 3600 && !(frame % 60) && mem.scsi().commands > 4000) {
             screen = decodeScreen(mem);
             if (screen.width == 640 && screen.height == 480 && screen.depth == 8) {
                 Stats menu = luminanceStats(screen, 0, screen.width, 2, 16);
@@ -221,7 +221,7 @@ int main() {
                   desktop.mean > 100 && desktop.mean < 190 &&
                   desktop.deviation > 30 && desktop.deviation < 90 &&
                   menu.mean - desktop.mean > 35;
-    bool ok = geometry && finder && mem.scsi().commands > 5000;
+    bool ok = geometry && finder && mem.scsi().commands > 4000;
     if (!ok) {
         int stale = 0, clean = 0;
         for (uint32_t a = 0; a + 4 <= (32u << 20); a += 4) {

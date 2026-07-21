@@ -106,10 +106,30 @@ void Via6522::write(int reg, uint8_t v) {
                      t2armed_ = true;
                      ifr_ &= uint8_t(~TIMER2); break;
         case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); srHostWritten_ = true;
-                     // ACR2–4 ≠ 0 → shift engine engaged; ~16 φ2 clocks/byte.
-                     if (acr_ & 0x1C) shiftCount_ = 16;
+                     // Internally-clocked shift modes (T2/φ2: ACR2-4 =
+                     // 001/010/100/101/110) complete on their own, ~16 φ2
+                     // clocks/byte (R6522 §2.4). External-clock modes
+                     // (011/111) shift only on the peripheral's CB1 edges —
+                     // the Plus M0110 keyboard (mode 111) is timed by
+                     // MacMemory (~3 ms/byte); auto-completing here fired
+                     // SHIFT #1 early and desynced the transaction
+                     // (input_etalon). Mac II Slot Manager's card-clocked
+                     // shift-in keeps its explicit soft-flag-gated
+                     // armShiftComplete() in MacIIMemory.
+                     { const uint8_t m = uint8_t((acr_ >> 2) & 7);
+                       shiftCount_ = (m && m != 3 && m != 7) ? 16 : 0; }
                      break;
-        case ACR:    acr_ = v; break;
+        case ACR:    acr_ = v;
+                     // Switching the shifter to disabled (000) or an
+                     // external-clock mode (011/111) halts the internal
+                     // shift engine — cancel a pending φ2/T2 completion.
+                     // The Plus keyboard driver does an ACR $18→$00→$1C
+                     // dance before each M0110 command; a completion armed
+                     // by the throwaway $18 (mode 110) write must not fire
+                     // into the external-clock transaction (input_etalon).
+                     { const uint8_t m = uint8_t((v >> 2) & 7);
+                       if (!m || m == 3 || m == 7) shiftCount_ = 0; }
+                     break;
         case PCR:    pcr_ = v; break;
         case IFR:    if (v & CA1) ++ca1Cleared;
                      ifr_ &= uint8_t(~(v & 0x7F)); break;   // write-1-to-clear
