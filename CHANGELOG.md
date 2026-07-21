@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## 2026-07-21 — LLE step 6: DAFB toward MAME parity (Swatch CRTC, Gazelle, sense)
+
+The MEMCjr DAFB cell now implements the dafb.cpp semantics it was
+hard-coding around:
+
+- **Swatch CRTC timing registers** (`$124-$148` horizontal, `$14C-$164`
+  vertical, 12-bit, half-line vertical units) are stored and
+  `recalc_mode()` derives hres/vres/htotal/vtotal from HAL/HFP/VAL/VFP/
+  HPIX/VFPEQ on each PCBR0 write — including the AC842a clock-divider
+  bits, the convolution branch (register parity; MEMCjr machines never
+  enable it) and interlace doubling. Exposed as
+  `dafbHres()/dafbVres()`.
+- **Gazelle clock generator** (`$3C3` byte port): the 20-bit M/N/P word
+  is bit-banged in on rising clock edges; pclk = N/(M·P) × 31.3344 MHz
+  (`dafbPixelClock()`).
+- **Frame timing follows the guest**: `tick()` derives the frame length
+  from the programmed `htotal × vtotal / pclk` instead of a hard-coded
+  60 Hz/525 lines (legacy shape kept until the ROM programs the CRTC).
+  At the OS 8.1 Finder the guest programs 896×525 at a Gazelle pclk of
+  30 253 903 Hz — the machine now runs the VBL at the rate the driver
+  asked for.
+- **Extended monitor sense** (`$1C`): drive-pins write + ext(bc,ac,ab)
+  read-back composition (plain type 6 = 13" Hi-Res stays the default;
+  `setDafbMonitor()` selects others).
+- **Swatch mode bit 0** (display disable) is honored via
+  `dafbBlanked()` — set at reset, cleared by the driver, like MAME's
+  `screen_update` early-out.
+
+Gate: `q605_dafb_test` grows 11 checks (CRTC round-trip + derivation,
+Gazelle programming, VGA extended sense dance, blank bit). A probe run
+confirms the real ROM exercises the whole pipeline (640×480, mode 3,
+unblanked, Gazelle-programmed pclk). Full 41/41 sweep green.
+
 ## 2026-07-21 — LLE step 5: UniversalInfo FPU masking deleted; bare no-FPU fully mapped
 
 The §1.6 guest-state machinery (`romByteMasked` read-mask on HWCfgFlags

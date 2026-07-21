@@ -323,13 +323,20 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   STATUS/MSG completion and the OS 8.1 SCSI Manager's mixed PIO/DMA chunking.
 - **DAFB/Antelope:** 1 MB VRAM at `$F9000000`; DAFB registers at
   `$F9800000`. MEMCjr transfers DAFB values through the real 6+6-bit holding
-  protocol. The HLE implements monitor sense/version, Swatch VBL/cursor
-  interrupts, CLUT, `$008` stride, `$010` configuration and RAMDAC-selected
-  1/2/4/8/16/24-bit modes. `q605_dafb_test` pins register/depth/reset
-  semantics. GUI and `q605_trace` render indexed modes from live hardware
-  state; the 256-color Finder is proven live (`q605_boot_etalon`: mode 3,
-  base `$1000`, stride 1024). `q605_trace --dafb-io N` gives DAFB and
-  MEMCjr holding-port traffic its own trace budget.
+  protocol. MAME-parity pass (2026-07-21): Swatch CRTC timing registers
+  drive `recalc_mode()`-derived geometry (`dafbHres/Vres`), the Gazelle
+  clock generator's bit-banged 20-bit M/N/P word sets the pixel clock,
+  and the frame/VBL timing follows the guest's programmed
+  `htotal×vtotal/pclk` (OS 8.1 programs 896×525 at 30.25 MHz). Extended
+  monitor sense (drive pins + ext-code read-back), Swatch display-disable
+  bit, VBL/cursor interrupts, CLUT and RAMDAC-selected 1/2/4/8/16/24-bit
+  modes are all dafb.cpp semantics. `q605_dafb_test` pins
+  register/depth/reset/CRTC/Gazelle/sense. GUI and `q605_trace` render
+  indexed modes from live hardware state; the 256-color Finder is proven
+  live (`q605_boot_etalon`: mode 3, base `$1000`, stride 1024).
+  `q605_trace --dafb-io N` gives DAFB and MEMCjr holding-port traffic its
+  own trace budget. Remaining gaps: no VRAM arbitration, VBL line
+  hard-coded at 480 (as in MAME).
 - **Boot/UI:** the FF7439EE 1 MB ROM boots Mac OS 8.1 (640×480×8) and
   System 7.5 / 7.5.5 / 7.6 (often 1bpp until Monitors) to the Finder, and
   is selectable beside Plus/Mac II/LC II in the GUI. `q605_trace` is the

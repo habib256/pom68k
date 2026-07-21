@@ -107,6 +107,17 @@ public:
         static constexpr uint8_t depths[] = { 1, 2, 4, 8, 24, 16 };
         return dafbMode_ < sizeof depths ? depths[dafbMode_] : 1;
     }
+    // Swatch-derived geometry (dafb.cpp recalc_mode; 0 until the ROM has
+    // programmed the timing registers and touched PCBR0).
+    uint32_t dafbHres() const { return dafbHres_; }
+    uint32_t dafbVres() const { return dafbVres_; }
+    uint32_t dafbPixelClock() const { return dafbPixelClock_; }
+    // Swatch mode bit 0 = display disable (dafb.cpp screen_update).
+    bool dafbBlanked() const { return (swatchMode_ & 1) != 0; }
+    // Monitor sense code on the 3 ID pins (dafb.cpp monitor_config):
+    // plain codes 0-7, or ext(bc,ac,ab) = $40|bc<<4|ac<<2|ab extended
+    // codes. Default 6 = 13" 640×480 Hi-Res RGB.
+    void setDafbMonitor(uint8_t code) { monitorConfig_ = code; }
 
     // VIA2 IFR device lines (Quadra pseudo-VIA: CA1=slot/VBL summary,
     // bit encodings identical to a real VIA's IFR)
@@ -205,7 +216,30 @@ private:
     uint16_t dafbConfig_ = 0;       // $010; bit 3 forces convolution stride 1024
     uint8_t  dafbMode_ = 0;         // AC842 PCBR0: 0=1,1=2,2=4,3=8,4=24,5=16 bpp
     uint8_t  clut_[256][3] = {};
-    int      prevLine_ = 0;        // scanline edge detect (525-line frame)
+    int      prevLine_ = 0;        // scanline edge detect
+
+    // Swatch CRTC timing (dafb.cpp swatch_w $24-$64, 12-bit each) and the
+    // geometry recalc_mode derives from them on each PCBR0 write.
+    uint16_t hParams_[10] = {};    // HSERR..HPIX ($124-$148)
+    uint16_t vParams_[7] = {};     // VHLINE..VFPEQ ($14C-$164, half-lines)
+    uint32_t swatchMode_ = 1;      // $100; bit 0 = display disable (reset: on)
+    uint32_t dafbHres_ = 0, dafbVres_ = 0;      // derived active area
+    uint32_t dafbHtotal_ = 0, dafbVtotal_ = 0;  // derived totals
+    void     dafbRecalcMode();
+
+    // Monitor sense (dafb_r/dafb_w $1C): the ROM drives ID pins and reads
+    // the undriven ones back for extended codes.
+    uint8_t  monitorConfig_ = 6;   // attached monitor (plain or ext code)
+    uint8_t  monitorId_ = 0;       // pins currently driven by the host
+
+    // Gazelle clock generator (dafb_memcjr clockgen_w $3C3): a 20-bit
+    // M/N/P word is bit-banged in; pclk = N / (M*P) × 31.3344 MHz.
+    uint32_t dafbPixelClock_ = 31334400;
+    uint32_t gazShift_ = 0;
+    int      gazBits_ = 0;
+    uint8_t  gazLastClock_ = 0;
+    uint32_t gazMclk_ = 31334400;
+    void     gazelleWrite(uint32_t off, uint8_t v);
 
     // 60.15 Hz tick + VBL (DAFB "Swatch"): both derived from CPU cycles
     int viaPhase_ = 0;

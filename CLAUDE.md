@@ -99,7 +99,7 @@ real FPSP.
 | **LC II machine** (V8/Egret/ASC/Ariel) | `V8Memory.*`, `Cpu030.*`, `Egret.*`, `AdbBus.*`, `Asc.*`, `V8Video.h` | O6 ✓; Finder | MAME `maclc.cpp` + LC II ROM |
 | **Quadra 605 machine** (MEMCjr/PrimeTime/Cuda/DAFB) | `Q605Memory.*`, `Cpu040.*`, Cuda via `Egret` flavor | Q5-Q7 ✓; Mac OS 8.1 Finder | MAME `macquadra605.cpp` |
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` + ROM/OS 8 |
-| **DAFB/Antelope video** | `Q605Memory.*` (stride/depth/CLUT HLE) | Q8.1 ✓; 640×480×8 Finder gated | MAME `dafb.cpp` |
+| **DAFB/Antelope video** | `Q605Memory.*` (Swatch CRTC/Gazelle/CLUT/sense) | Q8.1 ✓ + MAME-parity pass; 640×480×8 Finder gated | MAME `dafb.cpp` |
 | **IOSB ASC stereo** | `Asc.*` (`AscIosb`) | Q8 ✓; `$BB` FIFO/IRQ gated | MAME IOSB / ASC |
 | **SWIM2 + SuperDrive** | `Swim2.*`, `SonyDrive.*` | ✓; GCR+MFM media gated | MAME SWIM2 |
 | **Pseudo-VIA2** | `PseudoVia.*` | ✓ | MAME IOSB VIA2 layout |
