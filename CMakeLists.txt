@@ -330,6 +330,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME lcii_boot_etalon COMMAND lcii_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # LC II System 7 Finder (SPConfig $22 clamp — no EvQ dismiss).
+    add_executable(lcii_sys7_boot_etalon tests/lcii_sys7_boot_etalon.cpp)
+    target_link_libraries(lcii_sys7_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME lcii_sys7_boot_etalon COMMAND lcii_sys7_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # O6 slice 1 gate: external /BERR + RTE $A/$B on the 68030 (the LC II
     # ROM's address-map probe and the SCSI pseudo-DMA timeout rely on it).
     add_executable(berr030_test tests/berr030_test.cpp)

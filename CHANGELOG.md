@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-07-20 — LC II Sys 7.1 / 7.5.5 → Finder (SPConfig clamp)
+
+Infinite Mac LC II images self-heal SysParam SPConfig to `$01` (AppleTalk
+active) when XPRAM `$13` is cold-zero — boot stalls at SCSI≈277 in an
+EtherTalk CautionAlert (`CurActivate=$FFFFFFFF`, menu≈0.50). Fix: call
+`Egret::factoryDefaults()` from `V8Memory::reset` and keep XPRAM `$13` +
+SysParam `$1FB` at `$22` (AppleTalk inactive), same policy as Mac II RTC /
+Egret O6.11. Soft EvQ Return dismiss (needed on Mac II) **must not** run
+on LC II — it double-faults System 7.5.5 at ROM `$40A09A32`.
+
+Gates: `finder_boot_matrix lcii` × 7.1 (SCSI≈746) / 7.5.5 (SCSI≈3231)
+PASS; Sys 7.5 + `lcii_boot_etalon` still green. `Egret::factoryDefaults`
+now always reseeds SPConfig even when `'NuMc'` is present.
+
 ## 2026-07-20 — Mac II Sys7 → Finder (AppleTalk alert dismiss)
 
 Infinite Mac System 7 selects EtherTalk with no NuBus ethernet, so boot

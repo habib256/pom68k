@@ -68,11 +68,6 @@ public:
     // (φ2 = CPU/20 = 783.36 kHz) + the free-running 60.15 Hz CA1 tick.
     void tick(int cpuCycles);
 
-    // Soft-post keyDown Return into EvQ (clear Sys7 AppleTalk CautionAlerts
-    // when EtherTalk is selected with no ethernet — same as Mac II).
-    void postKeyReturn();
-    void maybeDismissBootAlerts();
-
     Via6522& via1() { return via_; }
     PseudoVia& pseudoVia() { return pvia_; }
     Ariel& ariel() { return ariel_; }
@@ -181,18 +176,10 @@ private:
     bool sccIrq_ = false;
     int viaPhase_ = 0;                       // CPU-cycle remainder for ÷20
     int64_t tickAcc_ = 0;                    // 60.15 Hz Bresenham accumulator
-    int64_t tickAcc60_ = 0;                  // ~60 Hz alert-dismiss cadence
     // 512×384 12" RGB frame: dot clock = CPU clock, 640×407 total dots
     // (v8.cpp:717) — VBL asserted during lines 384-406
     int64_t framePos_ = 0;
     bool vblState_ = false;
     uint8_t scsiDma_();                      // DRQ-gated window byte read
     void scsiDmaW_(uint8_t v);
-
-    // Sys7 AppleTalk modal dismiss (see maybeDismissBootAlerts)
-    long scsiStallFrames_ = 0;
-    long lastScsiCmds_ = -1;
-    int alertDismissPosts_ = 0;
-    int alertDismissCool_ = 0;
-    int alertEvSlot_ = 0;
 };

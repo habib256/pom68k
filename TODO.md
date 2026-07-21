@@ -34,8 +34,8 @@ Phase A — cells on machines that already boot (test chronologically):
 - [x] **Mac II** (256 KB `97851DB6` → `9779D2C4`): System 6.0 → 6.0.8 →
   7.0 → 7.1 (HD). `HD20SC` + Sys 6/7 Finder PASS (`macii_boot_etalon`,
   `macii_sys7_boot_etalon`; EtherTalk CautionAlerts dismissed via EvQ).
-- [ ] **LC II** (`35C28F5F`): System 7.1 → 7.5 → 7.5.5 (+ `boot.vhd` /
-  GISTPERSO). Façade already injects DDM `$6A`.
+- [x] **LC II** (`35C28F5F`): System 7.1 → 7.5 → 7.5.5 (+ `boot.vhd` /
+  GISTPERSO). SPConfig `$22` clamp (no EvQ dismiss — kills 7.5.5).
 - [ ] **Quadra 605** (`FF7439EE`): System 7.5.5 → 7.6 → 8.1. Prefer
   `q605_boot_etalon` PixMap metrics for 8.1; loosen only if a System is
   1bpp/4bpp at first Finder.
@@ -50,8 +50,7 @@ on EtherTalk CautionAlert); re-run full matrix to refresh the 13/6 tally.
 | Plus v1/v2/v3 × Sys 5.1 / 6.0 / 6.0.8 + HD20SC | PASS |
 | Mac II v1/v2 × Sys 6.0 / 6.0.8 + HD20SC | PASS |
 | Mac II v2 × Sys 7.0 / 7.1 | PASS (SPConfig `$22` + EvQ Return dismiss; gate `macii_sys7_boot_etalon`) |
-| LC II × boot.vhd / Sys 7.5 | PASS |
-| LC II × Sys 7.1 / 7.5.5 | FAIL (7.1 SCSI=277; 7.5.5 menu=0.50) |
+| LC II × boot.vhd / Sys 7.5 / 7.1 / 7.5.5 | PASS (SPConfig `$22` clamp; see CHANGELOG 2026-07-20) |
 | Q605 × OS 8.1 | PASS (640×480×8) |
 | Q605 × OS 7.6 / Sys 7.5.5 | FAIL (reached 1bpp, gate wants 8bpp mode 3) |
 
