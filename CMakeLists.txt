@@ -73,6 +73,7 @@ add_library(pom68k_core STATIC
     src/Asc.cpp           # O6 — ASC-V8 sound (FIFO A, 22 257 Hz)
     src/Swim2.cpp         # Q8 — PrimeTime/IOSB SWIM2 register + FIFO core
     src/Q605Memory.cpp    # Q5 — LC 475/Quadra 605 map (MEMCjr + PrimeTime)
+    src/Dafb.cpp          # Q8 — DAFB II video cell (Swatch CRTC/Gazelle/RAMDAC)
     src/Cpu040.cpp        # Q5 — Moira 68LC040 wrapper
     src/DeclRom.cpp       # Mac II — NuBus declaration ROM builder
     src/NuBus.cpp         # Mac II — NuBus slot decode + IRQ

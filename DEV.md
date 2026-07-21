@@ -321,7 +321,9 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   `Ncr53c96` TurboSCSI.
   The 53C96 supports streamed CDBs, PIO Transfer Info, DRQ-gated pseudo-DMA,
   STATUS/MSG completion and the OS 8.1 SCSI Manager's mixed PIO/DMA chunking.
-- **DAFB/Antelope:** 1 MB VRAM at `$F9000000`; DAFB registers at
+- **DAFB/Antelope** (`Dafb.h/.cpp` since 2026-07-21 — one concern per
+  file; the MEMCjr 6+6-bit holding split and the VRAM stay with the bus
+  decoder in `Q605Memory`): 1 MB VRAM at `$F9000000`; DAFB registers at
   `$F9800000`. MEMCjr transfers DAFB values through the real 6+6-bit holding
   protocol. MAME-parity pass (2026-07-21): Swatch CRTC timing registers
   drive `recalc_mode()`-derived geometry (`dafbHres/Vres`), the Gazelle

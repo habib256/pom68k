@@ -23,7 +23,8 @@
 //               +$1E000 SWIM2 (register/FIFO + SuperDrive media)
 //   $5FFFFFFC   machine ID $A55A2221 (LC 475)
 //   $F9000000-  VRAM (1 MB modelled)
-//   $F9800000-  DAFB II registers (HLE stub grown by the boot trace)
+//   $F9800000-  DAFB II register cell (Dafb.h/.cpp; the MEMCjr 6+6-bit
+//               holding split over the 12-bit window stays here)
 // Anything else in I/O space bus-errors — the ROM's address-map probe
 // relies on it (same discipline as the LC II V8).
 // Cuda replaces Egret+RTC: VIA1 PB3=TREQ in, PB4=BYTEACK, PB5=TIP,
@@ -40,6 +41,7 @@
 #include "ScsiDisk.h"
 #include "Asc.h"
 #include "Swim2.h"
+#include "Dafb.h"
 #include "SonyDrive.h"
 #include <cstdint>
 #include <cstddef>
@@ -96,28 +98,19 @@ public:
     bool cpuHeld() const { return cuda_.cpuHeld(); }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
-    const uint32_t* dafbRegs() const { return dafb_; }
-    const uint8_t (*clut() const)[3] { return clut_; }
-    uint32_t dafbStride() const {
-        return (dafbConfig_ & 0x08) ? 1024u : dafbStride_;
-    }
-    uint32_t dafbBase() const { return dafbBase_; }
-    uint8_t dafbMode() const { return dafbMode_; }
-    uint8_t dafbDepth() const {
-        static constexpr uint8_t depths[] = { 1, 2, 4, 8, 24, 16 };
-        return dafbMode_ < sizeof depths ? depths[dafbMode_] : 1;
-    }
-    // Swatch-derived geometry (dafb.cpp recalc_mode; 0 until the ROM has
-    // programmed the timing registers and touched PCBR0).
-    uint32_t dafbHres() const { return dafbHres_; }
-    uint32_t dafbVres() const { return dafbVres_; }
-    uint32_t dafbPixelClock() const { return dafbPixelClock_; }
-    // Swatch mode bit 0 = display disable (dafb.cpp screen_update).
-    bool dafbBlanked() const { return (swatchMode_ & 1) != 0; }
-    // Monitor sense code on the 3 ID pins (dafb.cpp monitor_config):
-    // plain codes 0-7, or ext(bc,ac,ab) = $40|bc<<4|ac<<2|ab extended
-    // codes. Default 6 = 13" 640×480 Hi-Res RGB.
-    void setDafbMonitor(uint8_t code) { monitorConfig_ = code; }
+    // DAFB cell accessors (forwarders; see Dafb.h).
+    Dafb& dafb() { return dafbCell_; }
+    const uint32_t* dafbRegs() const { return dafbCell_.regs(); }
+    const uint8_t (*clut() const)[3] { return dafbCell_.clut(); }
+    uint32_t dafbStride() const { return dafbCell_.stride(); }
+    uint32_t dafbBase() const { return dafbCell_.base(); }
+    uint8_t dafbMode() const { return dafbCell_.mode(); }
+    uint8_t dafbDepth() const { return dafbCell_.depth(); }
+    uint32_t dafbHres() const { return dafbCell_.hres(); }
+    uint32_t dafbVres() const { return dafbCell_.vres(); }
+    uint32_t dafbPixelClock() const { return dafbCell_.pixelClock(); }
+    bool dafbBlanked() const { return dafbCell_.blanked(); }
+    void setDafbMonitor(uint8_t code) { dafbCell_.setMonitor(code); }
 
     // VIA2 IFR device lines (Quadra pseudo-VIA: CA1=slot/VBL summary,
     // bit encodings identical to a real VIA's IFR)
@@ -155,7 +148,6 @@ private:
     void    scsiPoll_();                      // feed 53C96 irq()/drq() to VIA2
     uint8_t dafbRead8(uint32_t addr);
     void dafbWrite8(uint32_t addr, uint8_t v);
-    uint32_t dafbRegReadRaw(uint32_t off);   // pre-holding-split register value
 
     std::vector<uint8_t> ram_, rom_, vram_;
     Via6522 via1_;
@@ -194,58 +186,19 @@ private:
     uint8_t nubusIrqs_ = 0xFF;     // active low; bit 6 = VBL (MEMCjr video)
     bool ascLine_ = false;          // live level, re-sampled after IFR ack
 
-    // MEMCjr / DAFB HLE state
+    // MEMCjr state
     uint32_t memcjr_[0x20] = {};   // $5000E000, u32 every 4 (only $7C used)
     uint16_t dafbHolding_ = 0;     // MEMCjr 6-bit DAFB bus holding register
-    uint32_t dafb_[0x100] = {};    // $F9800000 register file (u32 index)
     uint16_t iosbRegs_[0x20] = {}; // $50018000, u16 every $100
 
-    // DAFB HLE (MEMCjr integrated cell, version 3) — MAME dafb.cpp.
-    // The raw dafb_[] file backs unknown registers; the fields below
-    // implement the ones the ROM's video driver depends on.
-    uint32_t dafbRegRead(uint32_t off);          // u32 semantics
-    void     dafbRegWrite(uint32_t off, uint32_t v);
-    void     dafbRecalcIrq();
-    uint8_t  dafbIntStatus_ = 0;   // bit 0 = VBL, bit 2 = cursor scanline
-    uint32_t swatchIntEnable_ = 0; // $104: bit 0 VBL, bit 2 cursor line
-    uint32_t dafbCursorLine_ = 0;  // $118
-    uint8_t  palAddress_ = 0, palIdx_ = 0;       // Antelope RAMDAC
-    uint8_t  ac842Pbctrl_ = 0, pcbr1_ = 0;
-    uint32_t dafbBase_ = 0;          // $000/$004, byte offset into VRAM
-    uint32_t dafbStride_ = 1024;    // $008, bytes (register stores 32-bit words)
-    uint16_t dafbConfig_ = 0;       // $010; bit 3 forces convolution stride 1024
-    uint8_t  dafbMode_ = 0;         // AC842 PCBR0: 0=1,1=2,2=4,3=8,4=24,5=16 bpp
-    uint8_t  clut_[256][3] = {};
-    int      prevLine_ = 0;        // scanline edge detect
+    // DAFB cell ($F9800000 window) + MEMCjr 6+6-bit holding wrappers.
+    Dafb dafbCell_{kCpuHz};
+    uint32_t dafbRegRead(uint32_t off);          // holding split (read)
+    void     dafbRegWrite(uint32_t off, uint32_t v);   // holding merge (write)
 
-    // Swatch CRTC timing (dafb.cpp swatch_w $24-$64, 12-bit each) and the
-    // geometry recalc_mode derives from them on each PCBR0 write.
-    uint16_t hParams_[10] = {};    // HSERR..HPIX ($124-$148)
-    uint16_t vParams_[7] = {};     // VHLINE..VFPEQ ($14C-$164, half-lines)
-    uint32_t swatchMode_ = 1;      // $100; bit 0 = display disable (reset: on)
-    uint32_t dafbHres_ = 0, dafbVres_ = 0;      // derived active area
-    uint32_t dafbHtotal_ = 0, dafbVtotal_ = 0;  // derived totals
-    void     dafbRecalcMode();
-
-    // Monitor sense (dafb_r/dafb_w $1C): the ROM drives ID pins and reads
-    // the undriven ones back for extended codes.
-    uint8_t  monitorConfig_ = 6;   // attached monitor (plain or ext code)
-    uint8_t  monitorId_ = 0;       // pins currently driven by the host
-
-    // Gazelle clock generator (dafb_memcjr clockgen_w $3C3): a 20-bit
-    // M/N/P word is bit-banged in; pclk = N / (M*P) × 31.3344 MHz.
-    uint32_t dafbPixelClock_ = 31334400;
-    uint32_t gazShift_ = 0;
-    int      gazBits_ = 0;
-    uint8_t  gazLastClock_ = 0;
-    uint32_t gazMclk_ = 31334400;
-    void     gazelleWrite(uint32_t off, uint8_t v);
-
-    // 60.15 Hz tick + VBL (DAFB "Swatch"): both derived from CPU cycles
+    // 60.15 Hz CA1 tick, derived from CPU cycles
     int viaPhase_ = 0;
     int64_t tickAcc_ = 0;
-    int64_t framePos_ = 0;
-    bool vblState_ = false;
 
     // Q6.6 — HLE LocalTalk-LAP unwedge (Quadra / Mac OS 8.1 .MPP). Mirror of
 };

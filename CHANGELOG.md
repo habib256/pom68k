@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 2026-07-21 — DAFB extracted into Dafb.h/.cpp (one concern per file)
+
+The DAFB II cell (register file, Swatch CRTC + interrupts, Antelope
+RAMDAC/CLUT, Gazelle clock generator, monitor sense, frame clock) moves
+out of `Q605Memory` into its own `Dafb` class, mirroring MAME's
+device split: `Q605Memory` keeps only the MEMORY-CONTROLLER concerns —
+the MEMCjr 6+6-bit bus-holding wrappers over the 12-bit window
+(djmemc.cpp `dafb_holding_r/w`), the byte-lane assembly, and the VRAM
+(bus decode + host-side rendering). The public `Q605Memory` API is
+unchanged (forwarders); `dafb()` exposes the cell. Code moved verbatim
+from the step-6 parity pass; behaviour identical — full 41/41 sweep
+green.
+
 ## 2026-07-21 — LLE step 6: DAFB toward MAME parity (Swatch CRTC, Gazelle, sense)
 
 The MEMCjr DAFB cell now implements the dafb.cpp semantics it was

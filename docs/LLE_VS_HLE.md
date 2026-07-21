@@ -116,13 +116,12 @@ traces (TODO: "expand Cuda commands only from ROM/driver traces").
   copyback/snooping.
 - **Video**: `MacVideo.h`, `V8Video.h`, `TobyVideo.*` — whole-frame
   decode, no beam timing.
-- **DAFB/Antelope** (`Q605Memory.cpp`): register-level and close to MAME
-  `dafb.cpp` parity since 2026-07-21 (Swatch CRTC timing → derived
-  geometry, Gazelle clockgen → guest-programmed frame rate, extended
-  monitor sense, display-disable bit, MEMCjr 6+6-bit holding protocol).
-  Remaining gaps: no VRAM arbitration/timing, VBL line hard-coded at 480
-  (as in MAME), still hosted inside `Q605Memory` rather than its own
-  file pair.
+- **DAFB/Antelope** (`Dafb.*`; MEMCjr 6+6-bit holding split stays in
+  `Q605Memory`): register-level and close to MAME `dafb.cpp` parity
+  since 2026-07-21 (Swatch CRTC timing → derived geometry, Gazelle
+  clockgen → guest-programmed frame rate, extended monitor sense,
+  display-disable bit). Remaining gaps: no VRAM arbitration/timing, VBL
+  line hard-coded at 480 (as in MAME).
 - **Floppy**: `Swim2.*` (register file + FIFO real; media transactions
   whole-sector), `SonyDrive.*` (no rotational latency), `Iwm.*` is the
   most faithful (nibble timing, tach).
