@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## 2026-07-21 — LLE step 5: UniversalInfo FPU masking deleted; bare no-FPU fully mapped
+
+The §1.6 guest-state machinery (`romByteMasked` read-mask on HWCfgFlags
+bit 28, the low-mem stale-copy scrub, the clock-gated
+`maybePatchRomNoFpu`) is **deleted**. It was already unreachable —
+nothing armed `romNoFpuPending_` since the soft-FPU path landed — and it
+is provably unnecessary: with Moira's architectural format-$4 F-line,
+the ROM's own fnop probe (site `$40804654`, VBR-shifted handler
+`$40847054` → `jmp (a6)` with D1=1) concludes "no FPU" by itself and
+builds HWCfgFlags `$EC00` (FPU bit 12 clear) with zero outside help.
+`POM68K_Q605_NOFPU=1` (68LC040 + soft 68882, SoftwareFPU-equivalent)
+stays the supported no-FPU configuration; ROM reads are now always the
+plain bytes.
+
+New experiment knobs: `POM68K_Q605_NOFPU=2` selects TRUE bare
+`FPUModel::NONE`, and `POM68K_Q605_ID=<hex>` overrides the `$5FFFFFFC`
+board ID (LC 475 `$A55A2221` default; Q605 `$A55A2225`; LC 575
+`$A55A222E` — MAME macquadra605.cpp).
+
+Bare-NONE status, fully mapped for the follow-up (probes in the
+2026-07-21 session): the boot goes deep (SCSI 2733, HWCfg self-clears,
+board ID already LC 475) and dies at the FIRST `_FP68K`: Mac OS 8.1's
+boot binds `_FP68K` (tool table `$E00 + 4×$1EB = $15AC`) to the ROM's
+FPU PACK 4 (`$408E9A2C`, combo `$70000000`) at the same moment it
+installs its F-line handler (`$2749E`, ~frame 1019); that handler
+(frame word `$002C` + FPU coprocessor id → dsNoFPU trampoline) then
+kills the FPU accelerator's very first `fmove.l fpcr,d0`
+(`$408E9AC0`). A real LC 475 must bind the ROM's integer PACK 4
+(`$073940`, combo `$08000000`); the System-side selection input is the
+one remaining unknown (decision code near RAM `$25974`). The LC 575
+board-ID experiment stalls in POST for unrelated hardware reasons.
+
+Gates: `q605_boot_etalon`, `q605_nofpu_boot_etalon`, `sst68040`,
+`q605_dafb_test`, `q605_asc_test` green; full sweep below.
+
 ## 2026-07-21 — LLE step 4: Mac II EvQ soft-post deleted — alerts dismissed over real ADB
 
 `MacIIMemory::postKeyReturn` / `maybeDismissBootAlerts` (which wrote a

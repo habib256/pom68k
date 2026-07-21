@@ -23,10 +23,17 @@ Cpu040::Cpu040(Q605Memory& mem) : mem_(mem) {
     // reaches SysError 90 (dsNoFPU): Mac OS installs PACK 4's F-line glue,
     // which does not replace FPSP for raw 040 FPU opcodes. True NONE + FPSP
     // remains a follow-up; the soft-FPU path is what makes LC040 Finder-usable.
-    if (getenv("POM68K_Q605_NOFPU")) {
+    if (const char* nofpu = getenv("POM68K_Q605_NOFPU")) {
         setModel(moira::Model::M68LC040);
-        setFPUModel(moira::FPUModel::M68882);
-        setFpuDisabledSaneFline(false);
+        if (nofpu[0] == '2' || nofpu[0] == 'b') {
+            // LLE step 5: BARE 68LC040 — no FPU at all. F2xx opcodes take
+            // the architectural vector-11 format-$4 frame; the ROM's own
+            // FPU probe must conclude "absent" and select the no-FPU
+            // UniversalInfo, like a real LC 475.
+            setFPUModel(moira::FPUModel::NONE);
+        } else {
+            setFPUModel(moira::FPUModel::M68882);
+        }
     } else {
         setModel(moira::Model::M68040);
         setFPUModel(moira::FPUModel::M68882);
@@ -105,9 +112,6 @@ void Cpu040::flushTicks() {
         periphAccum_ -= moira::i64(m) * cacheBoost_;
         if (m) mem_.tick(m);
     }
-    // Clock-gated ROM UniversalInfo FPU clear — must run even when the
-    // peripheral batch was already drained by sync() during executeUntil.
-    mem_.maybePatchRomNoFpu(getPC());
 }
 
 void Cpu040::sync(int cycles) {

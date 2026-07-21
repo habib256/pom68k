@@ -60,14 +60,6 @@ public:
     bool loadRom(const std::vector<uint8_t>& data);  // 1 MB flat image
     void reset();
 
-    // True once NOFPU lowmem scrub (post probe) or late ROM patch ran.
-    bool romNoFpuPatched() const {
-        return romNoFpuLowmemPatched_ && romNoFpuMasked_;
-    }
-    bool romNoFpuLowmemPatched() const { return romNoFpuLowmemPatched_; }
-    bool romNoFpuMasked() const { return romNoFpuMasked_; }
-    void maybePatchRomNoFpu(uint32_t pc);
-
     uint8_t  read8(uint32_t addr);
     uint16_t read16(uint32_t addr);
     void     write8(uint32_t addr, uint8_t v);
@@ -153,13 +145,8 @@ private:
     uint8_t dafbRead8(uint32_t addr);
     void dafbWrite8(uint32_t addr, uint8_t v);
     uint32_t dafbRegReadRaw(uint32_t off);   // pre-holding-split register value
-    uint8_t romByteMasked(uint32_t romOff) const;
-    void scrubNoFpuHwCfgLowmem_();
 
     std::vector<uint8_t> ram_, rom_, vram_;
-    bool romNoFpuLowmemPatched_ = false;
-    bool romNoFpuMasked_ = false;
-    bool romNoFpuPending_ = false;
     Via6522 via1_;
     Egret cuda_{via1_, true};      // Cuda flavor: TIP/BYTEACK active low
     AdbBus adb_;
@@ -184,6 +171,10 @@ private:
     Cpu040* cpu_ = nullptr;
 
     uint32_t totalRam_;
+    // $5FFFFFFC board ID (MAME macquadra605.cpp): LC 475 $A55A2221,
+    // Quadra 605 $A55A2225, LC 575 $A55A222E. POM68K_Q605_ID overrides
+    // (hex) for machine-identity experiments.
+    uint32_t machineId_ = 0xA55A2221u;
     bool overlay_ = true;
     bool sccIrq_ = false;
 

@@ -48,9 +48,13 @@ gets at least one Finder cell before the next:
     behaviour as separate, oracle-gated milestones.
   - (Follow-up from Q8.8) Make `CACHE_BOOST` > 1 Finder-safe without
     changing etalon metrics.
-- [ ] **Quadra no-FPU follow-up:** bare `FPUModel::NONE` + real FPSP (or a
-  host F-line emulator that still fails the ROM `fnop` probe) without the
-  soft 68882 (`POM68K_Q605_NOFPU=1` soft-FPU path is gated and stays).
+- [ ] **Quadra bare no-FPU follow-up** (state fully mapped — CHANGELOG
+  2026-07-21 "LLE step 5"): `POM68K_Q605_NOFPU=2` (true `FPUModel::NONE`)
+  boots deep; the ROM fnop probe and HWCfg are correct, but Mac OS 8.1
+  binds `_FP68K` ($15AC) to the ROM's FPU PACK 4 ($E9A2C) instead of the
+  integer one ($73940). Remaining question: what System-side input picks
+  the PACK (decision code near RAM $25974; combos $70000000 vs
+  $08000000). The soft-FPU path (`=1`) is gated and stays.
 
 ## Mac LC II
 
