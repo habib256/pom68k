@@ -42,18 +42,13 @@ by itself** (CHANGELOG 2026-07-21 "LLE step 1"). This was the model
 outcome for the whole list: the hack pile existed only because one LLE
 device was subtly wrong.
 
-### 1.2 EvQ synthetic Return keypresses — `MacIIMemory.cpp:600-655`
+### 1.2 EvQ synthetic Return keypresses — **RESOLVED 2026-07-21**
 
-When a modal alert is up (`CurActivate` bit 31) and SCSI has stalled,
-the emulator posts a synthetic Return `keyDown` directly into the
-guest's event queue once per frame to dismiss Sys 7 EtherTalk
-CautionAlerts (CHANGELOG 2026-07-20). Exists because the ADB modem
-(`AdbVia`) often sticks at ST=EVEN so a real synthetic click can't be
-delivered. Known fragile: the same trick **double-faults System 7.5.5
-on LC II** and is disabled there.
-*Proper LLE:* fix the `AdbVia` state machine so host input works during
-modals; with SPConfig seeded correctly at PRAM level the alerts should
-not appear at all.
+`postKeyReturn`/`maybeDismissBootAlerts` are deleted. The ADB path
+proved able to deliver keystrokes during the modals (the ST=EVEN wedge
+is covered by `AdbVia::tick`'s dead-timer re-arm), so the Sys 7 alert
+dismissal moved into the tests as real host-side ADB Return presses —
+what a user would do (CHANGELOG 2026-07-21 "LLE step 4").
 
 ### 1.3 SPConfig / AppleTalk clamp, re-applied every tick — **RESOLVED 2026-07-21**
 
@@ -160,8 +155,9 @@ the existing etalons (`finder_boot_matrix` must stay green):
 3. ~~**SCC/SDLC no-peer timeout completion**~~ **DONE 2026-07-21**
    (see 1.4/1.5): hunt bit + EOM latch + mode-gated abort; watchdogs and
    `RsrcPatcher` deleted, LLAP ENQ probes observed on the wire.
-4. **Fix `AdbVia` ST stuck-EVEN** (kills 1.2): real ADB input during
-   modals; delete `postKeyReturn`/`maybeDismissBootAlerts`.
+4. ~~**Fix `AdbVia` ST stuck-EVEN**~~ **DONE 2026-07-21** (see 1.2):
+   ADB delivers input during modals; EvQ machinery deleted, tests press
+   Return over ADB.
 5. **FPSP for bare no-FPU** (retires 1.6): TODO Quadra follow-up.
 6. Longer term: DAFB → MAME parity, 040 copyback/snooping, Egret/Cuda
    firmware LLE (only if a use case demands it).

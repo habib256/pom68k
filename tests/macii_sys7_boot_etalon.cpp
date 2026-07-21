@@ -43,10 +43,32 @@ int main() {
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
 
     // Sys7 Welcome + two AppleTalk CautionAlerts need more frames than Sys6.
+    // The alerts are dismissed the way a user would: the TEST injects real
+    // ADB Return keystrokes (keyEvent $24) when a modal sits on a stalled
+    // boot — the machine itself never touches guest state (LLE step 4;
+    // the old MacIIMemory EvQ soft-post is gone).
+    auto p32 = [&](uint32_t a) {
+        return uint32_t(mem.peek8(a)) << 24 | uint32_t(mem.peek8(a + 1)) << 16
+             | uint32_t(mem.peek8(a + 2)) << 8 | mem.peek8(a + 3);
+    };
     const int64_t kFrame = 800 * 525;
     const long kFrames = 25000;
-    for (long f = 0; f < kFrames && !cpu.isHalted(); f++)
+    long stall = 0, lastCmds = -1;
+    int posts = 0, cool = 0, keyUpIn = 0;
+    for (long f = 0; f < kFrames && !cpu.isHalted(); f++) {
         cpu.runCycles(kFrame);
+        if (keyUpIn && !--keyUpIn) mem.keyEvent(0x24, false);   // Return up
+        if (cool > 0) { cool--; continue; }
+        long cmds = mem.scsi().commands;
+        stall = (cmds == lastCmds && cmds > 200) ? stall + 1 : 0;
+        lastCmds = cmds;
+        const bool modal = (p32(0xA64) & 0x80000000u) != 0;     // CurActivate
+        if (modal && stall >= 45 && posts < 6) {
+            mem.keyEvent(0x24, true);                           // Return down
+            keyUpIn = 6;                                        // ~100 ms hold
+            posts++; cool = 90; stall = 0;
+        }
+    }
 
     if (cpu.isHalted()) {
         std::fprintf(stderr, "FAIL: CPU halted\n");

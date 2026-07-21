@@ -164,8 +164,29 @@ static int bootMacII(const std::vector<uint8_t>& rom, const char* disk, long fra
     if (!mem.attachScsi(disk)) return 1;
     const int64_t kFrame = 800 * 525;
     long lastScsi = 0;
+    // Sys7 EtherTalk CautionAlerts: press Return over ADB like a user
+    // would (host-side input; the machine never touches guest state —
+    // the old MacIIMemory EvQ soft-post is gone, LLE step 4).
+    auto p32 = [&](uint32_t a) {
+        return uint32_t(mem.peek8(a)) << 24 | uint32_t(mem.peek8(a + 1)) << 16
+             | uint32_t(mem.peek8(a + 2)) << 8 | mem.peek8(a + 3);
+    };
+    long stall = 0, stallCmds = -1;
+    int posts = 0, cool = 0, keyUpIn = 0;
     for (long f = 0; f < frames && !cpu.isHalted(); f++) {
         cpu.runCycles(kFrame);
+        if (keyUpIn && !--keyUpIn) mem.keyEvent(0x24, false);   // Return up
+        if (cool > 0) { cool--; }
+        else {
+            long cmds = mem.scsi().commands;
+            stall = (cmds == stallCmds && cmds > 200) ? stall + 1 : 0;
+            stallCmds = cmds;
+            if ((p32(0xA64) & 0x80000000u) && stall >= 45 && posts < 6) {
+                mem.keyEvent(0x24, true);                       // Return down
+                keyUpIn = 6;
+                posts++; cool = 90; stall = 0;
+            }
+        }
         if (frames > 20000 && (f % 10000 == 0 || f == frames - 1)) {
             std::printf("  progress f=%ld PC=$%08X SCSI=%ld (+%ld)\n",
                         f, cpu.getPC(), mem.scsi().commands,

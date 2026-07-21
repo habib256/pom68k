@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## 2026-07-21 — LLE step 4: Mac II EvQ soft-post deleted — alerts dismissed over real ADB
+
+`MacIIMemory::postKeyReturn` / `maybeDismissBootAlerts` (which wrote a
+synthetic keyDown EvQEl straight into guest memory at `$0F00` and
+patched the event queue headers) are **gone**. Probing showed the ADB
+modem path is healthy enough to deliver keystrokes during the Sys 7
+EtherTalk CautionAlerts — the old "ST stuck EVEN" wedge is covered by
+`AdbVia::tick`'s dead-timer re-arm. The dismissal now lives where it
+belongs: `macii_sys7_boot_etalon` and `finder_boot_matrix` press Return
+**over ADB** (`keyEvent $24`, ~100 ms hold) when a modal (`CurActivate`
+bit 31) sits on a stalled boot — exactly what a user at the keyboard
+would do; in the GUI the user clicks OK themselves. The machine no
+longer touches guest state anywhere on the Mac II boot path.
+
+Gates: `macii_post/boot/sys7` etalons + matrix Mac II × Sys 7.0
+(menu 0.09 / desk 0.44 / SCSI 1045) green.
+
 ## 2026-07-21 — LLE step 3: real LLAP carrier sense — LocalTalk watchdogs deleted
 
 The pointer-chasing LocalTalk watchdogs (`V8Memory` / `Q605Memory`
