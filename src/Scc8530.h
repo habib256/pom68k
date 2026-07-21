@@ -9,11 +9,15 @@
 // the Reset External/Status Interrupts command. Serial ports come later
 // (M7, POMIIGS Scc8530 port).
 // O6.10 (LC II): same chip behind V8 at $50F04000, IRQ = 68030 level 4.
-// setAbortIdle(true) models an OPEN LocalTalk line: in SDLC hunt the
-// receiver sees continuous marks = a standing Break/Abort condition
-// (RR0 bit 7), and arming WR15 bit 7 latches the external/status
-// interrupt AppleTalk's LAP manager sleeps on for carrier sense — the
-// interrupt is what tells it "the wire is dead", unblocking boot.
+// setAbortIdle(true) models an OPEN LocalTalk line. LLE step 3
+// (2026-07-21) made the LLAP path real: the standing Break/Abort
+// (RR0 bit 7) exists only while the channel hunts in SDLC mode (async
+// marks are idle, not a break); RR0 bit 4 Sync/Hunt sets on WR3 Enter
+// Hunt and never clears on the dead line — the LLAP sender reads that
+// as "no carrier, clear to send" and transmits its ENQ probes; the Tx
+// Underrun/EOM latch (RR0 bit 6, WR0 $C0 reset, Send Abort) raises the
+// frame-complete ext/status interrupt. RR15 reads back WR15. The LAP
+// then times out on its own — no guest-state watchdog needed.
 // WR2 (vector) and WR9 (master int ctl) are chip-global on a real 8530
 // and are mirrored to both channels here.
 // Source of truth: MAME z80scc.cpp + mac128.cpp; DEV.md § SCC (pinned).
@@ -76,12 +80,26 @@ private:
                                      // is edge-, not level-triggered)
         int relatch = 0;             // countdown to the next standing-
                                      // abort presentation (0 = disarmed)
+        bool txUnderrun = true;      // RR0 bit 6 Tx Underrun/EOM latch —
+                                     // SET while the transmitter idles;
+                                     // WR0 $C0 clears it at frame start
+        int underrunIn = 0;          // cycles until the drained shifter
+                                     // underruns (SDLC frame end)
+        bool hunt = false;           // RR0 bit 4 Sync/Hunt — set by WR3
+                                     // bit 4 (Enter Hunt); never clears
+                                     // on a dead line (no flags arrive).
+                                     // LLAP carrier sense reads it as
+                                     // "line idle, clear to send".
     };
     uint8_t rr0(const Chan& c) const;
+    bool sdlcMode(const Chan& c) const;  // WR4 bits 5-4 = 10
+    uint8_t readCtl_(int channel, Chan& c, int reg);
     Chan ch_[2];                     // [0] = B, [1] = A
     int ptr_ = 0;                    // register pointer (WR0 low bits)
     bool abortIdle_ = false;         // open-line Break/Abort (LC II)
     bool ctsHigh_ = true;
     bool rxStanding_ = false;        // Mac II POST: standing Rx available
     static constexpr int kAbortRelatch = 2000;   // ≈130 µs @ 15.67 MHz
+    static constexpr int kUnderrunDelay = 1200;  // ≈2 byte times at LocalTalk
+                                                 // 230.4 kbps (CRC + flag)
 };

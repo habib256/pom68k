@@ -40,11 +40,16 @@ int main() {
     // but the LAP manager arms both; test channel B).
     constexpr int B = 0;
 
-    // ── 1. open line: RR0 Break/Abort standing ─────────────────────────
+    // ── 1. open line: RR0 Break/Abort standing (SDLC hunt only) ────────
     {
         Scc8530 scc; scc.reset();
         check(!(scc.readCtl(B) & 0x80), "closed line: RR0 bit 7 clear");
         scc.setAbortIdle(true);
+        // In async modes continuous marks are normal idle, NOT a break —
+        // the abort condition exists only while hunting in SDLC mode
+        // (WR4 bits 5-4 = 10), which is what the LAP programs.
+        check(!(scc.readCtl(B) & 0x80), "open line, async mode: no Break/Abort");
+        writeReg(scc, B, 4, 0x20);              // WR4: SDLC mode (LAP init)
         check((scc.readCtl(B) & 0x80) != 0, "open line: RR0 bit 7 (Break/Abort) set");
     }
 
@@ -52,6 +57,7 @@ int main() {
     {
         Scc8530 scc; scc.reset();
         scc.setAbortIdle(true);
+        writeReg(scc, B, 4, 0x20);              // WR4: SDLC mode (LAP init)
         writeReg(scc, B, 1, 0x01);              // WR1: ext int enable
         writeReg(scc, B, 15, 0x80);             // WR15: Break/Abort IE
         check(!scc.irqAsserted(), "ext latched but WR9 MIE off: no IRQ yet");
@@ -96,6 +102,25 @@ int main() {
         check(!scc.irqAsserted(), "re-enabling Tx IE alone does not re-latch");
         scc.writeData(B, 0xAA);
         check(scc.irqAsserted(), "next data write latches TxIP again");
+    }
+
+    // ── 5b. SDLC Tx Underrun/EOM latch (frame-complete interrupt) ──────
+    {
+        Scc8530 scc; scc.reset();
+        writeReg(scc, B, 4, 0x20);              // SDLC mode
+        writeReg(scc, B, 9, 0x08);              // MIE
+        writeReg(scc, B, 1, 0x01);              // ext int enable
+        writeReg(scc, B, 15, 0x40);             // Tx Underrun/EOM IE
+        check((scc.readCtl(B) & 0x40) != 0, "idle transmitter: RR0 bit 6 set");
+        scc.writeCtl(B, 0xC0);                  // WR0: Reset Tx Underrun/EOM
+        check(!(scc.readCtl(B) & 0x40), "frame open: latch reset");
+        scc.writeData(B, 0x55);                 // frame byte
+        check(!scc.irqAsserted(), "mid-frame: no EOM interrupt yet");
+        scc.tick(2000);                         // shifter drains + CRC/flag
+        check((scc.readCtl(B) & 0x40) != 0, "underrun: latch sets again");
+        check(scc.irqAsserted(), "EOM latch 0->1 raises ext/status IRQ");
+        scc.writeCtl(B, 0x10);                  // Reset Ext/Status
+        check(!scc.irqAsserted(), "Reset Ext/Status clears EOM interrupt");
     }
 
     // ── 4. WR2/WR9 are chip-global (written via B, read state via A) ───

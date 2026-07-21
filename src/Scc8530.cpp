@@ -2,6 +2,15 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Scc8530.h"
+#include <cstdio>
+#include <cstdlib>
+
+// SCCDBG=1: trace every register access (wire-level debugging aid; the
+// flag is resolved once).
+static bool sccDbg() {
+    static const bool on = std::getenv("SCCDBG") != nullptr;
+    return on;
+}
 
 void Scc8530::reset() {
     ch_[0] = Chan{};
@@ -11,16 +20,34 @@ void Scc8530::reset() {
 
 // RR0 external status: bit 0 = Rx char available, bit 3 = DCD level,
 // bit 5 = CTS, bit 2 = TxD empty, bit 7 = Break/Abort.
+//
+// The standing Break/Abort of an open LocalTalk line exists only while
+// the channel hunts in SDLC mode (WR4 bits 5-4 = 10): continuous marks
+// are an SDLC ABORT. In async modes the same marks are normal idle —
+// presenting bit 7 there fed an endless break "interrupt storm" to the
+// OS 8.1 serial driver on channel B (async WR4 $4C) and stalled boot.
+bool Scc8530::sdlcMode(const Chan& c) const {
+    return (c.wr[4] & 0x30) == 0x20;
+}
+
 uint8_t Scc8530::rr0(const Chan& c) const {
     return uint8_t((rxStanding_ ? 0x01 : 0x00)
                    | (c.dcd ? 0x08 : 0x00) | 0x04 | (ctsHigh_ ? 0x20 : 0x00)
-                   | (abortIdle_ ? 0x80 : 0x00));
+                   | ((c.hunt && sdlcMode(c)) ? 0x10 : 0x00)
+                   | (c.txUnderrun ? 0x40 : 0x00)
+                   | ((abortIdle_ && sdlcMode(c)) ? 0x80 : 0x00));
 }
 
 uint8_t Scc8530::readCtl(int channel) {
     Chan& c = ch_[channel & 1];
     int reg = ptr_;
     ptr_ = 0;                                   // pointer auto-resets
+    uint8_t rv = readCtl_(channel, c, reg);
+    if (sccDbg()) fprintf(stderr, "[scc] %c rr%d -> %02X\n", channel ? 'A' : 'B', reg, rv);
+    return rv;
+}
+
+uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
     switch (reg) {
         case 0:  rr0Reads++; return c.latched ? c.rr0Latch : rr0(c);
         case 1:  return 0x07;                   // all-sent, no errors
@@ -52,6 +79,14 @@ uint8_t Scc8530::readCtl(int channel) {
                                (ch_[0].txIp ? 0x02 : 0) |
                                (ch_[0].extPending ? 0x01 : 0));
             return 0;
+        case 15:                                // RR15 = WR15 (ext IE mask);
+            return uint8_t(c.wr[15] & 0xFA);    // bits 0/2 always read 0.
+                                                // The LAP's level-4 ISR reads
+                                                // this to route the ext source
+                                                // — returning 0 made every
+                                                // ext/status look disabled and
+                                                // the LAP state machine never
+                                                // advanced past carrier sense.
         default: return 0;
     }
 }
@@ -61,10 +96,15 @@ uint8_t Scc8530::readCtl(int channel) {
 // interrupt latches at once. This is what lets a driver that arms a
 // serial transaction and sleeps for its completion interrupt (AppleTalk
 // LAP on the LC II, O6.10) make progress instead of spinning forever.
-void Scc8530::writeData(int channel, uint8_t) {
+void Scc8530::writeData(int channel, uint8_t d) {
+    if (sccDbg()) fprintf(stderr, "[scc] %c data <- %02X\n", channel ? 'A' : 'B', d);
     Chan& c = ch_[channel & 1];
     c.txEmptyEvent = true;                      // filled → instantly empty
     if (c.wr[1] & 0x02) c.txIp = true;          // WR1 bit 1 = Tx Int Enable
+    // While an SDLC frame is open (underrun latch reset), each data byte
+    // pushes the underrun point out — the frame ends kUnderrunDelay after
+    // the LAST byte drains.
+    if (!c.txUnderrun) c.underrunIn = kUnderrunDelay;
 }
 
 uint8_t Scc8530::readData(int channel) {
@@ -75,10 +115,33 @@ uint8_t Scc8530::readData(int channel) {
 void Scc8530::writeCtl(int channel, uint8_t v) {
     ctlWrites++;
     Chan& c = ch_[channel & 1];
+    if (sccDbg()) fprintf(stderr, "[scc] %c ctl%s wr%d <- %02X\n", channel ? 'A' : 'B', ptr_ ? "" : "0", ptr_, v);
     if (ptr_ == 0) {
         ptr_ = v & 0x07;
         if ((v & 0x38) == 0x08) ptr_ |= 8;      // point-high command
+        // WR0 bits 7-6 (CRC/EOM commands) are independent of bits 5-3.
+        if ((v & 0xC0) == 0xC0) {
+            // Reset Tx Underrun/EOM latch — SDLC frame start. When the
+            // (instantly drained) transmitter underruns, the chip sends
+            // CRC + closing flag and the latch SETS again; that 0→1 edge
+            // is the frame-complete ext/status interrupt the LAP sleeps
+            // on (Zilog SCC UM §4.4.1; kUnderrunDelay ≈ CRC+flag time).
+            c.txUnderrun = false;
+            c.underrunIn = kUnderrunDelay;
+        }
         switch (v & 0x38) {
+            case 0x18:                          // Send Abort (SDLC)
+                // Aborting ends the frame at once: latch sets, ext/status
+                // interrupt if armed (WR15 bit 6 + WR1 bit 0).
+                if (!c.txUnderrun) {
+                    c.txUnderrun = true;
+                    c.underrunIn = 0;
+                    if ((c.wr[15] & 0x40) && (c.wr[1] & 0x01)) {
+                        if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
+                        c.extPending = true;
+                    }
+                }
+                break;
             case 0x10:                          // Reset External/Status ints
                 c.extPending = false;
                 c.latched = false;
@@ -86,7 +149,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                 // an open line the SDLC receiver detects the next abort
                 // ~130 µs later (tick delivers it). Event-driven, so a
                 // channel that never services gets exactly ONE latch.
-                if (abortIdle_ && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
+                if (abortIdle_ && sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
                     c.relatch = kAbortRelatch;
                 break;
             case 0x28:                          // Reset Tx Int Pending
@@ -98,7 +161,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                 c.latched = false;
                 c.txIp = false;
                 c.txEmptyEvent = false;
-                if (abortIdle_ && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
+                if (abortIdle_ && sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
                     c.relatch = kAbortRelatch;
                 break;
             default: break;
@@ -112,13 +175,26 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     if (ptr_ == 2 || ptr_ == 9) ch_[0].wr[ptr_] = ch_[1].wr[ptr_] = v;
     else c.wr[ptr_] = v;
 
+    // WR3 bit 4 = Enter Hunt Mode. With no serial input modeled, a hunt
+    // never completes — RR0 bit 4 stays set, which is precisely what the
+    // LLAP sender's carrier sense wants on a dead line ("no carrier,
+    // clear to transmit"). A Sync/Hunt transition is an ext/status
+    // source when WR15 bit 4 arms it.
+    if (ptr_ == 3 && (v & 0x10) && !c.hunt) {
+        c.hunt = true;
+        if ((c.wr[15] & 0x10) && (c.wr[1] & 0x01)) {
+            if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
+            c.extPending = true;
+        }
+    }
+
     // Arming Break/Abort IE (WR15 bit 7) on an open line latches the
     // external/status interrupt at once: the abort condition is already
     // standing (SDLC hunt, continuous marks). This is the carrier-sense
     // interrupt AppleTalk's LAP manager waits on (O6.10). Gated on WR1
     // bit 0 (per-channel Ext Int Enable) like the DCD path — a real
     // 8530 requires it (review 2026-07-16).
-    if (ptr_ == 15 && (v & 0x80) && abortIdle_ && (c.wr[1] & 0x01)) {
+    if (ptr_ == 15 && (v & 0x80) && abortIdle_ && sdlcMode(c) && (c.wr[1] & 0x01)) {
         if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
         c.extPending = true;
     }
@@ -127,7 +203,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     // enable bit is set, order-independent (Zilog SCC UM). Without this the
     // first-latch timing differed by write order (the tick() re-present only
     // papered over it ~130 µs later).
-    if (ptr_ == 1 && (v & 0x01) && abortIdle_ && (c.wr[15] & 0x80)) {
+    if (ptr_ == 1 && (v & 0x01) && abortIdle_ && sdlcMode(c) && (c.wr[15] & 0x80)) {
         if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
         c.extPending = true;
     }
@@ -174,14 +250,29 @@ bool Scc8530::irqAsserted() const {
 // transitions, not levels) — no storm for non-LAP ext/status users.
 // Guarded by abortIdle_ (LC II only), so the Plus mouse path is untouched.
 bool Scc8530::tick(int cycles) {
-    if (!abortIdle_) return false;
     bool changed = false;
     for (Chan& c : ch_) {
+        // SDLC Tx underrun: the drained shifter sends CRC + closing flag,
+        // then the Tx Underrun/EOM latch sets — frame complete. Runs on
+        // every machine (the latch is architectural, not LC II-specific).
+        if (!c.txUnderrun && c.underrunIn > 0) {
+            c.underrunIn -= cycles;
+            if (c.underrunIn <= 0) {
+                c.underrunIn = 0;
+                c.txUnderrun = true;
+                if ((c.wr[15] & 0x40) && (c.wr[1] & 0x01)) {
+                    if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
+                    c.extPending = true;
+                    changed = true;
+                }
+            }
+        }
+        if (!abortIdle_) continue;
         if (c.relatch <= 0) continue;
         c.relatch -= cycles;
         if (c.relatch > 0) continue;
         c.relatch = 0;
-        if ((c.wr[15] & 0x80) && (c.wr[1] & 0x01) && !c.extPending) {
+        if (sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01) && !c.extPending) {
             if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
             c.extPending = true;
             changed = true;

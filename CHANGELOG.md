@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## 2026-07-21 — LLE step 3: real LLAP carrier sense — LocalTalk watchdogs deleted
+
+The pointer-chasing LocalTalk watchdogs (`V8Memory` / `Q605Memory`
+`localTalkWatchdog`, which cleared `.MPP` globals when a send looked
+wedged) and the never-compiled Basilisk-style `RsrcPatcher` `ltlk` stub
+are **gone**. Three SCC gaps, found by wire-tracing an AppleTalk-active
+OS 8.1 boot with the watchdog off (SCCDBG=1), were what actually wedged
+the LAP:
+
+1. **RR15 read returned 0** instead of WR15 — the level-4 ISR reads the
+   ext-IE mask to route the source; with 0 every ext/status looked
+   disabled and the LAP state machine never advanced.
+2. **The standing Break/Abort fired in async modes too.** An open line
+   is an SDLC ABORT only while hunting (WR4 bits 5-4 = 10); continuous
+   marks in async are normal idle. Presenting bit 7 unconditionally fed
+   an interrupt storm to OS 8.1's async channel-B setup (WR4 `$4C`).
+3. **RR0 bit 4 (Sync/Hunt) was never set.** This is the LLAP carrier
+   sense: the sender enters hunt (WR3 bit 4, written 514× in the trace)
+   and treats "still hunting" as "no carrier, clear to send". With
+   bit 4 stuck 0 the driver saw a permanently busy line and never
+   transmitted a single byte.
+
+With hunt + the new Tx Underrun/EOM latch (RR0 bit 6, WR0 `$C0` reset,
+Send Abort, EOM ext/status interrupt on frame completion — Zilog SCC UM),
+the LAP now runs its real protocol: the trace shows 1254 data bytes of
+`01 01 81` **LLAP ENQ address-acquisition probes**, no reply on the dead
+line, address kept, AppleTalk up. Q605 × OS 8.1 reaches the Finder with
+the watchdog deleted, and an LC II probe with XPRAM `$13` forced to
+AppleTalk-ACTIVE boots System 7.5 to the Finder the same way.
+
+Gates: `scc_ext_test` grows async-no-abort + Tx-underrun/EOM sections
+(28 checks); full 41/41 sweep green. `POM68K_NO_LTALK_WD` no longer
+exists; `SCCDBG=1` traces every SCC register access.
+
 ## 2026-07-21 — LLE step 2: per-tick SPConfig clamps removed (all three machines)
 
 The tick-time guest-state clamps that forced XPRAM `$13` / low-memory

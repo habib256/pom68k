@@ -43,8 +43,6 @@ gets at least one Finder cell before the next:
 ## LLE fidelity — replace HLE shortcuts (see `docs/LLE_VS_HLE.md`)
 
 - [ ] **Quadra 605 / LC 475** shortcuts where fidelity matters:
-  - Remove the LocalTalk LAP watchdog by modeling the required SCC/timeout
-    behaviour.
   - Expand Cuda commands only from ROM/driver traces.
   - Add accurate 040 timing, cache copyback/snooping and on-chip-FPU/FPSP
     behaviour as separate, oracle-gated milestones.

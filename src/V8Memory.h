@@ -164,9 +164,6 @@ private:
     bool mbMapped_ = false;
 
     Scc8530 scc_;                            // Z8530 (O6.10: LAP ext ints)
-    void localTalkWatchdog(int cpuCycles);   // O6.11 HLE LAP unwedge
-    int64_t lapHeldCycles_ = 0;              // cycles the LAP mutex held
-    bool lapWatchdog_ = true;                // POM68K_NO_LTALK_WD disables
     uint8_t config_ = 0;                     // pseudo-VIA reg 1 (RAM size)
     uint8_t videoConfig_ = 0;                // pseudo-VIA reg $10 bits 0-2
     uint8_t montype_ = 2;                    // 512×384 12" RGB

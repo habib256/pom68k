@@ -223,13 +223,4 @@ private:
     bool vblState_ = false;
 
     // Q6.6 — HLE LocalTalk-LAP unwedge (Quadra / Mac OS 8.1 .MPP). Mirror of
-    // V8Memory::localTalkWatchdog (O6.11): with AppleTalk active and no
-    // LocalTalk peer, the .MPP AARP probe arms an SDLC transmit and busy-waits
-    // on the transmit flag in its globals for a completion the level-4 SCC ISR
-    // never delivers. Recognise the wedged send and clear the flag so the
-    // driver's retry loop runs down, the probe times out with "no node
-    // responded" (= address free ⇒ the good outcome), and boot continues.
-    void localTalkWatchdog(int cpuCycles);
-    int64_t lapHeldCycles_ = 0;              // cycles the LAP send flag held
-    bool lapWatchdog_ = true;                // POM68K_NO_LTALK_WD disables
 };

@@ -47,8 +47,6 @@ void V8Memory::reset() {
     sccIrq_ = false;
     scc_.reset();
     scc_.setAbortIdle(true);                 // no LocalTalk peer (O6.10)
-    lapHeldCycles_ = 0;
-    lapWatchdog_ = getenv("POM68K_NO_LTALK_WD") == nullptr;
     viaPhase_ = 0;
     tickAcc_ = 0;
     simmMapped_ = mbMapped_ = false;         // no RAM until the overlay drops
@@ -417,62 +415,6 @@ void V8Memory::tick(int cpuCycles) {
     sccIrq_ = scc_.irqAsserted();            // bidirectional — a de-asserted SCC
                                              // must lower the line too (updateIrq
                                              // below applies it); was latch-high only
-    localTalkWatchdog(cpuCycles);            // O6.11 LAP unwedge
-
     updateIrq();
 }
 
-// O6.11 — HLE LocalTalk-LAP unwedge. When AppleTalk is active on a
-// machine with no LocalTalk peer, the System's built-in .MPP LAP arms an
-// SDLC transaction on the SCC and its caller busy-waits on a driver mutex
-// (RAM byte $63e of the AppleTalk globals) for a completion that, on real
-// hardware, arrives as the LAP send/receive times out ("no node
-// responded") — a path woven through the SCC SDLC engine, the level-4 SCC
-// ISR (which only resets the channel here, $A6C8E) and the Time Manager.
-// POM68K reproduces the SCC side faithfully (Scc8530 streams the standing
-// Break/Abort, delivered as a level-4 interrupt) but not the full LAP
-// timeout state machine. Rather than emulate all three subsystems, this
-// watchdog recognises the wedged transaction — the LAP mutex held for far
-// longer than any real transaction — and performs the completion the
-// driver's own path would (clear the mutex + the pending-op/resume
-// pointers), so the caller falls through, its retry loop runs down, and
-// .MPP reports "network unavailable" and boot continues. Gated so the
-// only machines affected are those actually stuck in this wait.
-//   AppleTalk globals base: a2 = *(*(ExpandMem $2B6) + $70)  (per the ROM
-//   SCC ISR at $A67C0); the mutex/ptrs are +$63e / +$630 / +$634.
-void V8Memory::localTalkWatchdog(int cpuCycles) {
-    // Only while the LAP has LocalTalk live: Break/Abort IE armed on the
-    // SCC channel it drives (WR15 bit 7) with master interrupts enabled.
-    if (!lapWatchdog_ || !(scc_.wr(0, 15) & 0x80) || !(scc_.wr(1, 9) & 0x08)) {
-        lapHeldCycles_ = 0;
-        return;
-    }
-    auto rd32 = [&](uint32_t a) {
-        return uint32_t(peek8(a)) << 24 | uint32_t(peek8(a + 1)) << 16
-             | uint32_t(peek8(a + 2)) << 8 | peek8(a + 3);
-    };
-    uint32_t xm = rd32(0x2B6);
-    if (xm < 0x1000 || xm >= 0xA00000) { lapHeldCycles_ = 0; return; }
-    uint32_t a2 = rd32(xm + 0x70);
-    if (a2 < 0x1000 || a2 >= 0xA00000) { lapHeldCycles_ = 0; return; }
-
-    if (peek8(a2 + 0x63E) == 0) { lapHeldCycles_ = 0; return; }   // free
-
-    // Mutex held — a real transaction clears it in well under a
-    // millisecond; ~0.5 s (8M cycles at 15.67 MHz) with the abort stream
-    // running means the LAP is wedged. Release only the mutex byte the
-    // caller busy-waits on ($63e); the caller's own retry loop then
-    // re-arms the transaction (rewriting the pending-op $630 / resume
-    // $634 pointers) and, after its retry budget, reports failure.
-    // NB: $634 is NOT touched — a stale `jmp ($634)` in the driver must
-    // still land on its real resume ($A6562), not on a zeroed vector.
-    lapHeldCycles_ += cpuCycles;
-    if (lapHeldCycles_ < 8'000'000) return;
-    lapHeldCycles_ = 0;
-    // Loud on purpose: this pokes guest RAM on a fingerprint pinned to
-    // ONE AppleTalk version's globals layout — if it ever fires against
-    // a different System, the trace must say so (review 2026-07-16).
-    std::fprintf(stderr, "[V8] LocalTalk watchdog: releasing LAP mutex "
-                 "at $%06X (POM68K_NO_LTALK_WD disables)\n", a2 + 0x63E);
-    write8(a2 + 0x63E, 0);                   // release the mutex
-}

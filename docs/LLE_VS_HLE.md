@@ -65,27 +65,19 @@ does exactly that) and the LLE SCC no-peer path handles it; the Q605
 etalon needed a real-Finder early-exit and a bigger cycle budget to
 absorb the LAP timeouts (CHANGELOG 2026-07-21 "LLE step 2").
 
-### 1.4 LocalTalk LAP watchdogs — `V8Memory.cpp:434-487`, `Q605Memory.cpp:770-813`
+### 1.4 LocalTalk LAP watchdogs — **RESOLVED 2026-07-21**
 
-Pointer-chase from ExpandMem into the `.MPP` globals and clear a mutex /
-send-flag when it has been held "too long" (8 M / 2.5 M cycles). Pure
-guest-state surgery, layout-specific. Gated by `POM68K_NO_LTALK_WD`.
-*Proper LLE:* model the SCC/SDLC behaviour the LAP driver actually
-times out on (carrier sense, Tx underrun/EOM, no-peer silence) so the
-driver's own timeout fires. The `Scc8530::setAbortIdle` standing-abort
-stream (`Scc8530.h:44-56`) is already halfway there — it is standard
-8530 behaviour for an open line, and can stay, but the watchdogs must go.
+Both watchdogs are deleted. The wedge was three SCC LLE gaps (RR15
+reading 0, standing abort presented in async modes, and no RR0 bit 4
+Sync/Hunt — the LLAP carrier sense). With those fixed plus the Tx
+Underrun/EOM latch, the LAP transmits its real ENQ probes and times out
+on its own (CHANGELOG 2026-07-21 "LLE step 3").
 
-### 1.5 Resource patch-on-load (`ltlk` stub) — `RsrcPatcher.*`
+### 1.5 Resource patch-on-load (`ltlk` stub) — **RESOLVED 2026-07-21**
 
-Basilisk II's vCheckLoad mechanism ported faithfully: a Moira breakpoint
-at the LC II ROM's vCheckLoad (`$A1B8F4`) lets `RsrcPatcher::checkLoad`
-stub the LocalTalk `'ltlk'` ADEV resource to a no-op before the System
-runs it. Self-documented as HLE (O6.11); disables LocalTalk instead of
-emulating it.
-*Proper LLE:* same as 1.4 — a real SCC timeout path makes the stub
-unnecessary. Until then this is the *model* HLE hack: opt-in, table-
-driven, documented, gated (`rsrc_patch_test`).
+`RsrcPatcher.*` turned out to be dead code (never compiled — absent from
+CMakeLists, and its `rsrc_patch_test` gate never existed); the files are
+removed. LocalTalk-active boots now ride the real SCC path (see 1.4).
 
 ### 1.6 Quadra UniversalInfo FPU-bit masking — `Cpu040.cpp:98-111` + `Q605Memory::maybePatchRomNoFpu`
 
@@ -165,9 +157,9 @@ the existing etalons (`finder_boot_matrix` must stay green):
 2. ~~**Delete the per-tick SPConfig clamps**~~ **DONE 2026-07-21**
    (see 1.3): 41/41 gates green clamp-free; AppleTalk-active boots go
    through the SCC no-peer timeouts instead of being fought.
-3. **SCC/SDLC no-peer timeout completion** (kills 1.4 and 1.5): finish
-   the LLE carrier-sense/Tx path so `.MPP` times out on all three
-   machines; then delete both watchdogs and the `ltlk` stub.
+3. ~~**SCC/SDLC no-peer timeout completion**~~ **DONE 2026-07-21**
+   (see 1.4/1.5): hunt bit + EOM latch + mode-gated abort; watchdogs and
+   `RsrcPatcher` deleted, LLAP ENQ probes observed on the wire.
 4. **Fix `AdbVia` ST stuck-EVEN** (kills 1.2): real ADB input during
    modals; delete `postKeyReturn`/`maybeDismissBootAlerts`.
 5. **FPSP for bare no-FPU** (retires 1.6): TODO Quadra follow-up.
