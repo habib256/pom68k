@@ -12,7 +12,7 @@ core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — se
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 35 milestone gates (asset-dependent may soft-skip)
+ctest                             # 41 milestone gates (asset-dependent may soft-skip)
 ```
 
 Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
@@ -62,11 +62,15 @@ cold boot runs the ROM's full-RAM burn-in; later boots skip it.
 ### Quadra 605 / LC 475
 
 A **1 MB ROM** selects MEMCjr/PrimeTime + 68040 (MAME `macqd605`
-default; `POM68K_Q605_NOFPU=1` → 68LC040 + soft 68882). Default boot disk
+default; `POM68K_Q605_NOFPU=1` → 68LC040 + soft 68882). Boots System
+7.5 / 7.5.5 / 7.6 and Mac OS 8.1 to the Finder. Default boot disk
 `hdv/MacOS-8.1-boot.vhd`, then `hdv/boot.vhd`. Optional SuperDrive floppy
-via `POM68K_FLOPPY` or `disks35/`; `.dsk` / `.image` args insert as floppy
-rather than SCSI. Cuda XPRAM persists as `<disk>.pram`. Video is 640×480
-DAFB (incl. 256-color Finder).
+(SWIM2: 800K GCR **and** 1.44 MB MFM media) via `POM68K_FLOPPY` or
+`disks35/`; `.dsk` / `.image` args insert as floppy rather than SCSI.
+Cuda XPRAM persists as `<disk>.pram`. Video is 640×480 DAFB (incl.
+256-color Finder). Tuning: `POM68K_Q605_CACHE_BOOST` (default 1) scales
+the 040 i-cache throughput overlay; `POM68K_MMU040_WALK=1` disables the
+ATC fast path (debug).
 
 ### Controls
 
@@ -74,7 +78,8 @@ The mouse drives the Mac while hovering the screen; a drag started on the
 screen (Finder drag-and-drop) keeps tracking outside it and never moves
 the host window (title bar still does). **Delete** toggles full mouse
 capture (cursor grabbed, raw motion). The **Machine** menu switches
-Plus / LC II / Quadra (needs the matching ROM; the app relaunches). On
+Plus / Mac II / LC II / Quadra (needs the matching ROM; the app
+relaunches). On
 LC II and Quadra, **Disques** picks the boot volume and toggles secondary
 SCSI images next to the current one (relaunches — the ROM only scans the
 bus at boot), and **Redémarrer** power-cycles the machine.

@@ -3,8 +3,9 @@
 Orientation **always-loaded index** — keep terse, defer detail to other docs.
 
 POM68K is a **Macintosh 68k** emulator: **Mac Plus** (68000, cycle-exact),
-**Mac LC II** (68030 + MMU + 68882, functional accuracy), and **Quadra 605 /
-LC 475 profile** (68040/68LC040 + 040 MMU, functional accuracy). It is the 68k
+**Mac II** (68020 + Toby NuBus, functional accuracy), **Mac LC II** (68030 +
+MMU + 68882, functional accuracy), and **Quadra 605 / LC 475 profile**
+(68040/68LC040 + 040 MMU, functional accuracy). It is the 68k
 sibling of [POMIIGS](../POMIIGS/) and reuses its architecture, conventions and
 milestone discipline; the CPU integration pattern comes from
 [NeoST](../neost/) (Moira wrapper, see below).
@@ -19,7 +20,9 @@ milestone discipline; the CPU integration pattern comes from
   verified on the real LC II ROM with `tools/rominfo`);
   `68K_FAMILY_SCOPE.md` (which other 68K Macs POM68K could support
   later and at what effort); `HLE_OVERLAY.md` (design study — opt-in
-  HLE accelerator layered on the LLE core, non-conformant mode).
+  HLE accelerator layered on the LLE core, non-conformant mode);
+  `LLE_VS_HLE.md` (**inventory** of every HLE shortcut vs pure-LLE code,
+  with the migration plan toward more LLE).
 
 ## CPU core: Moira (vendored)
 
@@ -58,8 +61,8 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 33 gates (asset-dependent gates may soft-skip)
-./POM68K [ROM] [media...]    # 128K=Plus, 512K=LC II, 1MB=Quadra 605
+ctest                        # 41 gates (asset-dependent gates may soft-skip)
+./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=LC II, 1MB=Quadra
 ```
 
 Mac Plus: CPU **7.8336 MHz**, frame **60.15 Hz** (130 240 cycles/frame), video
@@ -92,6 +95,7 @@ real FPSP.
 | **68030 core + MMU (LC II)** | `extern/moira` extension | O4 ✓ | MC68030UM + WinUAE oracle |
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ | MC68881/882UM; WinUAE fpp.c |
 | **68040 oracle + core + MMU** | `oracle/`, `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; 7 200 pinned vectors | MC68040UM + WinUAE oracle |
+| **Mac II machine** (GLUE/Toby/ADB modem) | `MacIIMemory.*`, `Cpu020.*`, `AdbVia.*`, `NuBus.*`, `DeclRom.*`, `TobyVideo.*` | ✓; Sys 6 + 7 Finder | MAME `macii.cpp` + Mac II ROM |
 | **LC II machine** (V8/Egret/ASC/Ariel) | `V8Memory.*`, `Cpu030.*`, `Egret.*`, `AdbBus.*`, `Asc.*`, `V8Video.h` | O6 ✓; Finder | MAME `maclc.cpp` + LC II ROM |
 | **Quadra 605 machine** (MEMCjr/PrimeTime/Cuda/DAFB) | `Q605Memory.*`, `Cpu040.*`, Cuda via `Egret` flavor | Q5-Q7 ✓; Mac OS 8.1 Finder | MAME `macquadra605.cpp` |
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` + ROM/OS 8 |
@@ -144,9 +148,16 @@ SWIM, DFAC audio polish, bus/timing).
 **Phase 3 (Quadra 605) reaches a usable Finder desktop:** Q1-Q4
 68040/040-MMU core drives MEMCjr/PrimeTime, Cuda HLE (Egret flavor),
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
-SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8.
-GUI exposes the machine alongside Plus/LC II. **35 CTest gates**, including
-`lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_boot_etalon`,
-`macii_sys7_boot_etalon`, `sst68040`, `q605_boot_etalon`, `q605_dafb_test`,
-`q605_asc_test`, `swim2_test`, `swim2_media_test`, `q605_floppy_boot_etalon`,
-and `q605_nofpu_boot_etalon`.
+SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
+System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
+GUI exposes the machine alongside Plus/Mac II/LC II. **41 CTest gates**,
+including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
+`macii_boot_etalon`, `macii_sys7_boot_etalon`, `sst68040`,
+`q605_boot_etalon`, `q605_dafb_test`, `q605_asc_test`, `swim2_test`,
+`swim2_media_test`, `q605_floppy_boot_etalon`, and
+`q605_nofpu_boot_etalon`.
+
+**The Finder boot matrix (Phase A/B) is green** on all four machines ×
+System 4.1–8.1 era images (`tests/finder_boot_matrix.cpp`; CHANGELOG
+2026-07-21). Next: Phase C machine profiles (`TODO.md`) and the LLE
+fidelity pass (`docs/LLE_VS_HLE.md`).

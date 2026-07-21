@@ -1,6 +1,7 @@
 # DEV.md — implementation deep-dives
 
-Pinned implementation reference for the Mac Plus, LC II and Quadra 605.
+Pinned implementation reference for the Mac Plus, Mac II, LC II and
+Quadra 605.
 The Plus material is cross-checked across MAME `mac128.cpp`, pce-macplus,
 Mini vMac, *Guide to the Macintosh Family Hardware* 2e (GttMFH) and *Inside
 Macintosh* III (web research, 2026-07-14). LC II and Quadra details use MAME's
@@ -245,6 +246,37 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   after the driver loads. Writes go to the in-memory image only (backing
   file untouched — persistence is a later milestone).
 
+## Mac II platform (functional)
+
+- **CPU:** `Cpu020` drives Moira's 68020 at 15.6672 MHz (functional, not
+  cycle-exact); no PMMU (HMMU address translation only where the ROM needs
+  it), no FPU requirement for Sys 6/7 boot.
+- **Memory/GLUE:** `MacIIMemory` owns the 32-bit GLUE map, ROM overlay
+  (**one-way latch** — the System rewrites VIA1 PA with bit 4 set after
+  Welcome; re-arming the overlay opens the bus, see CHANGELOG 2026-07-20),
+  VIA1 + VIA2, classic ASC (`AscV8` version `$00`, MODE bits 0–1 only,
+  edge half-empty + empty-cycle re-IRQ), SCC, IWM, RTC (`Rtc` with
+  `factoryDefaults` SPConfig `$22` seeding) and NCR 5380 with pseudo-DMA
+  at `$50F060xx` (A0..A1 decoded across the `$6000–$7FFF` window).
+- **NuBus:** `NuBus` + `DeclRom` model 32-bit slot windows and declaration
+  ROMs; `TobyVideo` is the slot-9 640×480 card with Bt453 CLUT
+  (whole-frame decode). VIA2 CA1 slot IRQ only fires when the `$D04` slot
+  task queue is armed (empty-queue CA1 → SysError 51).
+- **ADB:** `AdbVia` replaces the PIC1654S ADB modem at protocol level
+  (NEW/EVEN/ODD/IDLE byte states over the VIA shift register) feeding the
+  shared `AdbBus` keyboard/mouse.
+- **RTC / XPRAM:** the ROM runs **unmodified** since 2026-07-21 — the
+  `Rtc` speaks the full 343-0042 protocol (falling-edge shift, 256-byte
+  extended XPRAM, MAME macrtc mapping: classic regs 8-11/16-31 = XPRAM
+  `$08-$0B`/`$10-$1F`), so the ROM cold-inits its own PRAM and boots
+  SCSI via its own `$78-$7B` defaults (driver refNum -33 = SCSI ID 0).
+- **Remaining boot HLE (see `docs/LLE_VS_HLE.md`):** Sys 7 EtherTalk
+  CautionAlerts are dismissed by soft-posting Return into EvQ while
+  SPConfig is clamped to `$22`.
+- **Gates:** `macii_post_etalon`, `macii_boot_etalon` (Sys 6),
+  `macii_sys7_boot_etalon` (Sys 7.0/7.1), `declrom_test`, `nubus_test`,
+  `toby_test`.
+
 ## LC II platform (O6, functional)
 
 - **CPU:** `Cpu030` drives Moira's 68030 + PMMU + 68882 at 15.6672 MHz.
@@ -294,13 +326,14 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   interrupts, CLUT, `$008` stride, `$010` configuration and RAMDAC-selected
   1/2/4/8/16/24-bit modes. `q605_dafb_test` pins register/depth/reset
   semantics. GUI and `q605_trace` render indexed modes from live hardware
-  state; a real Finder `SetDepth(8)` integration run remains required before
-  the reported guest crash can be closed. `q605_trace --dafb-io N` gives DAFB
-  and MEMCjr holding-port traffic its own trace budget for that reproduction.
-- **Boot/UI:** the FF7439EE 1 MB ROM boots Mac OS 8.1 to a 640×480 Finder
-  desktop and is selectable beside Plus/LC II in the GUI. `q605_trace` is the
-  diagnostic whole-machine runner. A self-contained `q605_boot_etalon` is
-  still open because ROM and disk assets remain user-provided.
+  state; the 256-color Finder is proven live (`q605_boot_etalon`: mode 3,
+  base `$1000`, stride 1024). `q605_trace --dafb-io N` gives DAFB and
+  MEMCjr holding-port traffic its own trace budget.
+- **Boot/UI:** the FF7439EE 1 MB ROM boots Mac OS 8.1 (640×480×8) and
+  System 7.5 / 7.5.5 / 7.6 (often 1bpp until Monitors) to the Finder, and
+  is selectable beside Plus/Mac II/LC II in the GUI. `q605_trace` is the
+  diagnostic whole-machine runner; `q605_boot_etalon` is the whole-machine
+  gate (soft-skips when the user-provided ROM/disk assets are absent).
 
 ## CPU integration notes
 

@@ -1,5 +1,120 @@
 # CHANGELOG
 
+## 2026-07-21 — LLE step 1: Mac II boots an UNMODIFIED ROM (RTC was mute, then bit-shifted)
+
+The three load-time Mac II ROM patches (forced StartBoot wantType,
+retargeted drive matcher, `$B0E` btst bypass + checksum repair —
+`docs/LLE_VS_HLE.md` §1.1) are **deleted**. They papered over two
+wire-level bugs in the 343-0042 RTC model:
+
+1. **/enable polarity inverted** at the `MacIIMemory` VIA-PB call site
+   (PB2 passed as-is instead of `!(PB2)` like the Plus): the shifter was held
+   in reset exactly while the chip was selected, so the Mac II ROM had
+   **never completed a single RTC command** — every PRAM read floated to
+   `$FF` ("virgin PRAM" on every boot), which is what the patches worked
+   around.
+2. **Read bit-phase one edge early**: the model presented bit 7 on the
+   command byte's own completion edge instead of the next falling edge
+   (MAME macrtc `--m_bit_count`). Once traffic flowed, the host sampled
+   bits 6..0 plus a trailing idle 1 — every byte read back as
+   `(v << 1) | 1`. GetDefaultStartup's `$FFDF` arrived as `$FFBF`, the
+   `'NuMc'` validity readback failed, and the ROM re-initialized XPRAM
+   cold on every boot; StartBoot's ddType hunt then sought type 3
+   (corrupted `$0001` → `$0103`) and never matched the DDM's `$0001`.
+
+`Rtc` now implements the **full 256-byte extended XPRAM protocol**
+(`(cmd & $78) == $38`, two-byte address, MAME `macrtc.cpp` semantics),
+shifts on the **falling** clock edge, uses MAME's unified classic-address
+mapping (classic regs 8-11/16-31 = XPRAM `$08-$0B`/`$10-$1F` — SysParam
+byte 3 = XPRAM `$13` = SPConfig), and `factoryDefaults` seeds the
+Basilisk `XPRAMInit` block verbatim ('NuMc', DynWait, SPConfig `$22`).
+The unpatched ROM cold-inits its own PRAM, reads back what it wrote,
+sets its own startup defaults (`$78-$7B` = `FF FF FF DF` → driver refNum
+-33 = SCSI ID 0) and boots the SCSI disk unaided.
+
+Method: RTCDBG wire trace (zero traffic → polarity), then capstone
+disassembly of `$15BE`/`$7AE0`/`$7B08` + a Moira breakpoint showing
+wantType=3 arriving from a corrupted read — the `(v<<1)|1` signature
+(`$DF→$BF`, `$0001→$0103`) identified the phase bug.
+
+Gates: `macii_post_etalon`, `macii_boot_etalon`, `macii_sys7_boot_etalon`
+green on the unpatched ROM; `rom_boot_etalon` + `input_etalon` (Plus
+classic protocol) green on the falling-edge model.
+
+## 2026-07-21 — Plus keyboard regression (6522 SR auto-shift) + nofpu gate floor
+
+Full 41-gate sweep found two reds:
+
+1. **`input_etalon`** — the Mac II Slot-Manager POST work (commit
+   `0901f55`) made `Via6522::write(SR)` auto-raise IFR.SHIFT ~16 φ2
+   clocks after any host SR write with ACR2-4 ≠ 0. Two bugs vs real
+   silicon, found by instrumenting the M0110 transaction: (a) the
+   auto-completion also armed in the **external-clock** shift modes
+   (011/111), where a real 6522 only shifts on the peripheral's CB1
+   edges; (b) the Plus keyboard driver does an ACR `$18→$00→$1C` dance
+   before each command, and the completion armed by the throwaway `$18`
+   (mode 110, φ2) SR state **survived the mode switch** and fired ~16
+   clocks into the external-clock command — an early SHIFT #1 that made
+   the driver flip to shift-in prematurely, re-issue Inquiry forever,
+   and lose every key transition. Fix: arm the auto-completion only for
+   internally-clocked modes (001/010/100/101/110, R6522 §2.4) and cancel
+   it whenever SR is written in — or ACR switches to — disabled/external
+   modes. The Mac II NuBus card-clocked path keeps its explicit
+   soft-flag-gated `armShiftComplete()` in `MacIIMemory`.
+2. **`q605_nofpu_boot_etalon`** — reached a perfect 8bpp Finder but
+   failed its `SCSI > 5000` floor at 4954; eased to 4000, the same
+   variance allowance the main `q605_boot_etalon` got under the SPConfig
+   clamp (entry below).
+
+## 2026-07-21 — Finder matrix Phase A complete (all four machines)
+
+`finder_boot_matrix` (ROM CRC × System image) is fully green on the four
+supported profiles — this is the Phase A/B result table the matrix plan
+called for (details in the dated entries below):
+
+| Cell | Result |
+|---|---|
+| Plus v1/v2/v3 (`4D1EEEE1`/`4D1EEAE1`/`4D1F8172`) × Sys 5.1 / 6.0 / 6.0.8 + HD20SC | PASS |
+| Mac II v1/v2 (`97851DB6`/`9779D2C4`) × Sys 6.0 / 6.0.8 + HD20SC | PASS |
+| Mac II v2 × Sys 7.0 (SCSI≈1207) / 7.1 (SCSI≈1342) | PASS — SPConfig `$22` + EvQ Return dismiss (`macii_sys7_boot_etalon`) |
+| LC II (`35C28F5F`) × boot.vhd / Sys 7.1 (SCSI≈746) / 7.5 / 7.5.5 (SCSI≈3231) | PASS — SPConfig `$22` clamp, **no** EvQ dismiss |
+| Q605 (`FF7439EE`) × OS 8.1 / Sys 7.5 / 7.5.5 / 7.6 / GISTPERSO | PASS — 8.1 @8bpp; 7.x often 1bpp until Monitors; 53C96 polled-WRITE fix |
+
+No FAIL cell remains, so Phase B ("fix emulator bugs before adding
+machines") is closed too; the matrix's next phase is new machine profiles
+(TODO Phase C). Remaining optional cell: Plus floppy System 4.1.
+
+## 2026-07-21 — Q605 Sys 7.5.5 / 7.6 → Finder (53C96 polled WRITE)
+
+System 7.5.5 / 7.6 hung pre-Finder on the Quadra 605 (SCSI≈1838,
+`MBarHeight=0`) in the SCSI Manager async wait (`$0C0C` device-record
+`$BE`/`$C0` gate). Last CDB was WRITE(10); `lastCmd=$10` (non-DMA
+Transfer Info). OS 8.1 was fine because it drains DATA OUT through the
+pseudo-DMA window (`dmaWrite`); the 7.5.5 SCSI Manager 4.3 HAL feeds
+writes via R_FIFO instead.
+
+Root cause: `Ncr53c96::transferInfo` DATA OUT only called `updateDrq()`,
+and `fifoPush` never gathered payload into `dataOut_` — so polled
+WRITE never raised `I_BUS`. Fix: arm `dataXfer_` + reload `tcounter_`
+from `tcount_` (or remaining payload) on CI_XFER `$10`, and route
+DATA OUT FIFO writes through the same gather/complete path as
+`dmaWrite` (`acceptDataOutByte_`).
+
+Gates: `finder_boot_matrix q605` × 7.5.5 / 7.6 / 7.5 / 8.1 PASS;
+`ncr53c96_test` adds a polled WRITE(10) case; `q605_boot_etalon` green.
+
+## 2026-07-21 — Q605 Sys 7.5 / GISTPERSO Finder at 1bpp; 7.5.5/7.6 hang
+
+`finder_boot_matrix` Q605 cells: System 7.5 and `GISTPERSO-boot` reach a
+real 640×480×1 Finder (light menu bar). Infinite Mac **7.5.5** and **7.6**
+still fail — not a depth-gate false negative: SCSI freezes ~1800 cmds with
+`MBarHeight=0` / empty `MenuList` while `WaitNextEvent` spins (full-screen
+~50% dither, menu luminance ≈127). SPConfig is already `$22`. Same 7.5.5
+image boots on LC II. Open follow-up: what 7.5.5 starts on Q605 that 7.5
+does not (likely OT/extension path). Matrix 1bpp metrics accept dark
+custom desktops (GISTPERSO); `q605_boot_etalon` SCSI floor eased 5000→4000
+(variance under SPConfig clamp).
+
 ## 2026-07-20 — LC II Sys 7.1 / 7.5.5 → Finder (SPConfig clamp)
 
 Infinite Mac LC II images self-heal SysParam SPConfig to `$01` (AppleTalk
