@@ -22,42 +22,13 @@ MacIIMemory::MacIIMemory(uint32_t ramSize)
 
 bool MacIIMemory::loadRom(const std::vector<uint8_t>& data) {
     if (data.size() != kRomSize) return false;
+    // The ROM runs UNMODIFIED. The old virgin-PRAM StartBoot traps
+    // (forced wantType, retargeted drive matcher, $B0E mask bypass +
+    // checksum repair) are gone: the RTC now answers the extended XPRAM
+    // protocol with Basilisk factory defaults, so GetTimeout ($77 = 1)
+    // and GetDefaultStartup ($78-$7B = 0) return sane values and the
+    // ROM's own SCSI 6→0 scan boots the disk (CHANGELOG 2026-07-21).
     rom_ = data;
-    // Two virgin-PRAM StartBoot traps, then repair the ROM checksum at $0
-    // (sum of BE words from $4..end — tools/rominfo.cpp):
-    //
-    // 1) wantType: StartBoot ($40807B08) takes the Apple_HFS partition path
-    //    only when the ddType it seeks is 1 (68020). That byte is packed from
-    //    GetTimeout's low byte ($408015BE…); virgin PRAM → $FFFF → seek type
-    //    $FF, skip the HFS hunt, JSR the driver with A0 on the wrong PM block,
-    //    and never install a DrvQ entry. Force wantType=1 at $7B12.
-    //
-    // 2) boot drive matcher: GetDefaultStartup returns floppy refNum $FFFB, so
-    //    $40801800 picks drive 1 and loops on empty Sony. Retarget the initial
-    //    lea a3 at $408015D6 to the SCSI-refNum matcher ($40801826).
-    //
-    // 3) $B0E boot mask: after AddDrive, $B0E settles at $80FF (bits 0–7 + 15).
-    //    SCSI drives are numbered 8..14, so $408017EE's btst skips them all and
-    //    the second-pass a3=$4080183A falls back to floppy. Replace the btst
-    //    body with moveq #1,d0 (always pass once 01854 accepts the unit).
-    if (rom_.size() > 0x7B16) {
-        rom_[0x7B12] = 0x70; rom_[0x7B13] = 0x01;   // moveq #1, d0
-        rom_[0x7B14] = 0x4E; rom_[0x7B15] = 0x71;   // nop
-        // lea $40801826(pc), a3  — was lea $40801800(pc), a3 ($47FA $0228)
-        rom_[0x15D6] = 0x47; rom_[0x15D7] = 0xFA;
-        rom_[0x15D8] = 0x02; rom_[0x15D9] = 0x4E;
-        // $408017F4..$017FD: was move.w 6(a2),d1 / move.w $B0E,d0 / btst d1,d0
-        rom_[0x17F4] = 0x70; rom_[0x17F5] = 0x01;   // moveq #1, d0
-        rom_[0x17F6] = 0x4E; rom_[0x17F7] = 0x71;   // nop
-        rom_[0x17F8] = 0x4E; rom_[0x17F9] = 0x71;
-        rom_[0x17FA] = 0x4E; rom_[0x17FB] = 0x71;
-        rom_[0x17FC] = 0x4E; rom_[0x17FD] = 0x71;
-        uint32_t sum = 0;
-        for (size_t o = 4; o + 1 < rom_.size(); o += 2)
-            sum += (uint32_t(rom_[o]) << 8) | rom_[o + 1];
-        rom_[0] = uint8_t(sum >> 24); rom_[1] = uint8_t(sum >> 16);
-        rom_[2] = uint8_t(sum >> 8);  rom_[3] = uint8_t(sum);
-    }
     return true;
 }
 
@@ -291,7 +262,12 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
                 if (a3 && (peek8(a3 + 0x15D) & 0x20))
                     via.armShiftComplete();
             }
-            rtc_.setLines((via.portB() & 0x04) != 0,
+            // /enable is ACTIVE LOW (PB2 = 0 selects the chip), same wiring
+            // as the Plus (MacMemory). The old inverted polarity held the
+            // shifter in reset during every transaction — the ROM never
+            // completed a single RTC command, XPRAM read as $FF (virgin),
+            // and the three StartBoot ROM patches existed to paper over it.
+            rtc_.setLines(!(via.portB() & 0x04),
                           (via.portB() & 0x02) != 0,
                           (via.portB() & 0x01) != 0);
         } else if (reg == Via6522::ORB || reg == Via6522::DDRB) {

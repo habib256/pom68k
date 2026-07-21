@@ -17,8 +17,8 @@ static std::string find(const char* rel) {
     return {};
 }
 
-// MacIIMemory::loadRom forces StartBoot wantType=1 so a stock type-$0001
-// Apple_Driver DDM entry matches (virgin PRAM otherwise seeks $FF).
+// The ROM runs unmodified: the Rtc's extended-XPRAM protocol lets the
+// ROM cold-init its own PRAM and boot SCSI unaided (CHANGELOG 2026-07-21).
 
 int main() {
     std::string rom = find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
