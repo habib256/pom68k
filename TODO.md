@@ -152,7 +152,18 @@ Next milestones:
 - [ ] **Finish NCR 5380/SCSI and serial support.**
   - Support multiple targets/LUNs and correct REQUEST SENSE after CHECK
     CONDITION.
-  - Implement usable SCC serial ports rather than only mouse/LocalTalk paths.
+  - Implement usable SCC serial ports rather than only mouse/LocalTalk
+    paths. Blueprint from the 2026-07-22 MAME `z80scc.cpp` audit
+    (docs/LLE_VS_HLE.md §3; source fetched to `refs/mame`):
+    1. WR4 clock mode X1/16/32/64 (`get_clock_mode`, z80scc.cpp:1157)
+       + WR12/13 BRG constant (`get_brg_rate`, :2476 — rate =
+       source / (2·(2+WR13<<8|WR12)·clockMode)) feeding `byteCycles_`;
+    2. WR11 Rx/Tx clock-source routing (`update_serial`, :2565);
+    3. then WR5 Tx-Enable gating, parity/framing generation,
+       Rx CRC check (RR1 bit 6). Note: MAME's own SDLC side is
+       partial (Send Abort/CRC resets/EOM latch unimplemented) — for
+       LLAP behaviours our implementation is the more complete one;
+       don't regress it chasing MAME parity.
 
 - [ ] **Add pixel-accurate etalons and a WASM build.**
   - Create a screenshot regression runner for the Plus boot/Finder paths.

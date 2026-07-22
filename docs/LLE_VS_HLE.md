@@ -252,14 +252,26 @@ documents the real behavior.
   `CT_ABORT_DMA` missing (initiator-only is fine for a Mac, but
   target-side DISCONNECT sequencing is approximated by direct BUS FREE
   detection); 8-bit pseudo-DMA only (no BUSMOD 16-bit widths).
-- **SCC** (`Scc8530.*`): LLAP carrier-sense side is real since LLE
-  step 3.
-  *Gaps*: **no Rx path at all** — Read Data B returns 0, no Rx FIFO,
-  no hunt→sync transition on carrier, no Rx interrupts or end-of-frame
-  CRC status. This is *the* blocker for the virtual-LLAP-cable project
-  (TODO). Tx Underrun/EOM latch uses a flat 1200-cycle delay instead
-  of counting CRC+flag bit times; the open-line abort re-presents on a
-  ~130 µs countdown rather than level-triggered detection.
+- **SCC** (`Scc8530.*`): the SDLC/LLAP side is real since LLE step 3 +
+  LLAP milestone 1 (2026-07-22): full Rx path (3-deep FIFO with
+  per-byte RR1 status, hunt exit/re-entry carrier sense, WR1 Rx-int
+  modes, address search, EOF+FCS tail), Tx frame capture on the
+  underrun edge, Send Abort, standing-abort re-present, and LLAP
+  inter-dialog-gap deferral on injected frames. A 2026-07-22 audit
+  against MAME `z80scc.cpp` (fetched to `refs/mame/src/devices/
+  machine/`) found we model MORE of SDLC than MAME does — its Send
+  Abort (z80scc.cpp:1602), CRC resets (:1635-1643) and error reset
+  (:1592) are marked "not implemented", and it has no Tx Underrun/EOM
+  latch or hunt/sync machine at all (MAME is async-serial-centric).
+  *Gaps (MAME is the oracle here)*: **no baud machinery** — WR12/13
+  BRG constant (z80scc.cpp:2476 `get_brg_rate`), WR4 clock mode X1/16/
+  32/64 (:1157 `get_clock_mode`) and WR11 clock-source routing (:2565
+  `update_serial`) are ignored; `byteCycles_` is a fixed LocalTalk
+  rate. That is *the* blocker for usable async serial ports (Plus
+  milestone, TODO). Also: no bit-serial engine (parity/framing error
+  generation), WR5 Tx-Enable not gating, no Rx CRC verification (RR1
+  bit 6 never set), Tx Underrun uses a flat 1200-cycle delay instead
+  of counting CRC+flag bit times.
 - **ADB** (`AdbVia.*`, `AdbBus.*`): command-level (§2).
   *Gaps*: `AdbVia` assumes 2-byte Listen payloads (real ADB is 2-8
   bytes; DingusPPC `adbbus.cpp` validates against 8).
