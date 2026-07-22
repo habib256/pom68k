@@ -81,6 +81,8 @@ void Q605Memory::reset() {
     ascCycAcc_ = 0;
     swimLastCpu_ = -1;
     swimCycAcc_ = 0;
+    scc_.setClocks(kCpuHz, 7833600);   // SCC async-baud LLE: SCC85C30 @ C7M
+                                       // (macquadra605.cpp:171)
     scc_.setCtsHigh(false);        // no serial debugger attached (POST check)
     scc_.setAbortIdle(true);       // no *hardwired* LocalTalk peer: on a bare
                                    // line the SDLC hunt streams the standing

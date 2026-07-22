@@ -99,18 +99,37 @@ int main() {
     check(mem.read8(kScsiReg + 0x5 * 0x10) == 0x18,    // R_ISTAT read clears
           "interrupt status reads I_BUS|I_FUNCTION");
 
-    // ── 3. Polled Transfer Information delay ────────────────────────────
+    // ── 3. Transfer Information delays ──────────────────────────────────
+    // Polled (non-DMA) IN moves ONE byte per XFER — MAME raises bus_complete
+    // for every received byte (INIT_XFR_WAIT_REQ `fifo_pos == 1`,
+    // ncr53c90.cpp:652) — so the deferral is one byte's handshake, NOT the
+    // whole remaining payload (that bug wedged the OS 8.1 boot in a 75 ms
+    // retry loop per byte-tail XFER).
     cpu.flushTicks();
-    mem.write8(kScsiReg + 0x0 * 0x10, 0x00);           // TC low (ignored, non-DMA)
-    mem.write8(kScsiReg + 0x1 * 0x10, 0x02);
     mem.write8(kScsiReg + 0x3 * 0x10, 0x10);           // CI_XFER (polled)
     check(!mem.scsi().irq(), "polled XFER bus-service interrupt is not instant");
-    const int xfer512 = xferDelay(512);
-    mem.tick(xfer512 - 1);
-    check(!mem.scsi().irq(), "XFER still pending before 512*syncPeriod+2 clocks");
+    const int xfer1 = xferDelay(1);
+    mem.tick(xfer1 - 1);
+    check(!mem.scsi().irq(), "polled XFER still pending before 1*syncPeriod+2");
     mem.tick(1);
-    check(mem.scsi().irq(), "XFER bus-service lands on the per-byte schedule");
+    check(mem.scsi().irq(), "polled XFER completes per byte (MAME non-DMA IN)");
     (void)mem.read8(kScsiReg + 0x5 * 0x10);            // clear
+
+    // A DMA XFER is charged its programmed chunk (TC=64 here) — and a live
+    // drain-completion absorbs the schedule (raiseIrq coalesce) instead of
+    // firing a phantom interrupt afterwards.
+    cpu.flushTicks();
+    mem.write8(kScsiReg + 0x0 * 0x10, 64);             // TC = 64
+    mem.write8(kScsiReg + 0x1 * 0x10, 0x00);
+    mem.write8(kScsiReg + 0xE * 0x10, 0x00);
+    mem.write8(kScsiReg + 0x3 * 0x10, 0x90);           // CI_XFER | DMA
+    check(!mem.scsi().irq(), "DMA XFER interrupt rides the chunk schedule");
+    for (int i = 0; i < 64; i++) (void)mem.read8(kDmaPlain);
+    check(mem.scsi().irq(), "drain completion raises bus-service immediately");
+    (void)mem.read8(kScsiReg + 0x5 * 0x10);
+    mem.tick(xferDelay(64) + 8);
+    check(!mem.scsi().irq(),
+          "no phantom deferred interrupt after the drain absorbed it");
 
     // ── 4. Pseudo-DMA window wait states (IOSB reg 2) ───────────────────
     // Re-select and run a DMA Transfer Info so DRQ is up while we probe.

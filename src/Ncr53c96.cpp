@@ -525,11 +525,15 @@ void Ncr53c96::transferInfo() {
                 status_ |= S_TC0;
                 // Bytes this Transfer Info moves off the bus — the chunk the
                 // step 9 delay model charges at sync_period clocks each. A
-                // DMA variant moves tcounter_; a polled one the remainder
-                // (startCommand cleared tcounter_ for non-DMA).
+                // DMA variant moves tcounter_; a polled (non-DMA) one moves
+                // ONE byte — MAME's non-DMA IN raises bus_complete per byte
+                // (INIT_XFR_WAIT_REQ, ncr53c90.cpp:652 `fifo_pos == 1`), and
+                // startCommand cleared tcounter_ for non-DMA. Charging the
+                // whole remainder here armed a ~75 ms deferral per polled
+                // byte-tail XFER and wedged the OS 8.1 boot in a retry loop.
                 const uint32_t remaining = uint32_t(dataIn_.size() - dataInPos_);
                 const uint32_t chunk =
-                    tcounter_ ? std::min<uint32_t>(tcounter_, remaining) : remaining;
+                    tcounter_ ? std::min<uint32_t>(tcounter_, remaining) : 1;
                 // A completed Transfer Info raises the bus-service interrupt
                 // (ncr53c90.cpp:686 bus_complete). This fires for BOTH the DMA
                 // variant ($90 — the driver bursts the window then waits on
