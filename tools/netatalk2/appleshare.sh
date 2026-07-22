@@ -84,7 +84,7 @@ EOF
 sleep 3
 "$NA/sbin/afpd" -F "$CONF/afpd.conf" -P "$CONF/afpd.pid" \
     -f "$CONF/AppleVolumes.default" -s "$CONF/AppleVolumes.system"
-sleep 1
+sleep 4                                 # NBP registration takes a moment
 
 echo "── self-check ──"
 echo -n "zones: ";   "$NA/bin/getzones" 2>&1 | head -2
