@@ -106,8 +106,34 @@ Next milestones:
   Follow-up (step 10 there): Egret/Cuda **firmware** LLE — the real
   dumps are on hand (`roms/cuda/341s0788.bin` etc.), the Mac II
   PIC1654S migration is the template.
-
-## Mac LC II
+- [ ] **SCC LLE backlog — 2026-07-22 MAME `z80scc.cpp` audit** (source
+  in `refs/mame/src/devices/machine/`; summary in
+  `docs/LLE_VS_HLE.md` §3). Caveat everywhere: MAME's own SDLC side is
+  partial (Send Abort/CRC resets `:1602/:1635` "not implemented", no
+  EOM latch, no hunt/sync) — for LLAP behaviours we are already the
+  more complete model; use MAME as oracle for the ASYNC side only.
+  - [ ] **High — async baud machinery** (the Plus serial-ports
+    blocker, detailed blueprint under "Mac Plus → serial" below):
+    WR4 clock mode (`get_clock_mode` :1157), WR12/13 BRG
+    (`get_brg_rate` :2476), WR11 clock-source routing
+    (`update_serial` :2565) → computed `byteCycles_`.
+  - [ ] **Medium — Tx/Rx engine fidelity**: WR5 Tx-Enable (bit 3)
+    gating the transmitter (`tra_callback`/`tra_complete` :1037/:1075);
+    clock-driven per-byte Tx pacing + TxIP on the buffer-empty
+    TRANSITION (today: instant accept, TxIP on write); bit-serial Rx
+    with parity/framing error generation (`rcv_complete` →
+    `receive_data` :2282) and WR1 bit 2 parity-as-special-condition
+    (:1661); Rx FCS verification on injected frames → RR1 bit 6
+    CRC/framing error (:1274); Tx Underrun delay counted in CRC+flag
+    bit times at the programmed rate instead of the flat 1200 cycles.
+  - [ ] **Low — completeness**: WR5 RTS output tracking (modem
+    handshake, auto-RTS deassert on all-sent, `tra_complete` :1100);
+    SDLC Rx residue codes (RR1 bits 3-1); chip-variant gating
+    (NMOS 8530 vs 85C30 vs ESCC — FIFO depth 3/8, WR7', status FIFO
+    `:1363`; needed the day a Quadra-era machine wants the ESCC);
+    WR9 VIS/NV vector options (today hardcoded VIS=1, correct for
+    every Mac target); DPLL (MAME stubs it too, `:305-318` — only
+    relevant if a machine ever clocks SDLC off the DPLL for real).
 
 - [ ] **Fix the no-FPU SANE path** (diagnosis done — CHANGELOG 2026-07-20
   O6.13): select the real no-FPU UniversalInfo / defaultRSRCs path so PACK 4
