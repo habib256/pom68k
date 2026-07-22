@@ -26,10 +26,15 @@ Berkeley DB 5.3 and libgcrypt into `extern/netatalk2-build/` (gitignored).
 ## Run (each session)
 
 ```bash
-sudo tools/netatalk2/appleshare_bridge.sh      # ifaces + atalkd + afpd
-.venv-tools/bin/python tools/netatalk2/router.py   # LToUDP ⇄ EtherTalk
+sudo tools/netatalk2/appleshare_bridge.sh          # 1. module + interfaces
+.venv-tools/bin/python tools/netatalk2/router.py   # 2. LToUDP ⇄ EtherTalk (keep running)
+sudo tools/netatalk2/appleshare_daemons.sh         # 3. atalkd (non-seed) + afpd
 POM68K_LTOUDP=1 POM68K_APPLETALK=1 ./build/POM68K <ROM> <disk>…
 ```
+
+Order matters: atalkd runs non-seed and learns net/zone from TashRouter,
+so the router must already be up (two seed routers on one segment fight
+— the first bring-up's getzones timeout).
 
 In the guest: **Chooser → AppleShare** → server "POM68K" → log in as
 Guest → mount **Input**. StuffIt archives can be expanded straight off
