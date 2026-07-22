@@ -105,7 +105,23 @@ Next milestones:
   tick heuristic are deleted, 49/49 gates + Finder matrix green.
   Follow-up (step 10 there): Egret/Cuda **firmware** LLE — the real
   dumps are on hand (`roms/cuda/341s0788.bin` etc.), the Mac II
-  PIC1654S migration is the template.
+  PIC1654S migration is the template. **Blueprint (oracles fetched
+  2026-07-23 to `refs/mame/src/`)**:
+  1. `M68hc05` core (`devices/cpu/m6805/m6805.cpp` + `m68hc05e1.cpp`
+     as oracle — 294-line EGret/Cuda MCU subclass over the 727-line
+     base; ~60 opcodes, 8-bit). Gate: execute the reset vector of
+     `341s0788.bin` for N instructions, pin PC/port-direction writes.
+  2. Wire ports per `mame/apple/cuda.cpp` (PB0-PB2 = TIP/BYTEACK/TREQ
+     on the VIA shim, PA = ADB in/out, timer + PLL regs) behind a
+     `POM68K_CUDA_LLE=1` flag; the `Egret` HLE stays the default until
+     the firmware path passes the boot etalons.
+  3. ADB side: reuse `AdbLine` (already bit-serial, MAME `macadb.cpp`
+     lineage) as the wire under the MCU's PA bit-bang — this is what
+     unblocks retiring `AdbBus` **and** the Mac II HLE `AdbVia`
+     byte-model + the §1.9 ORB hack (LLE_VS_HLE §2).
+  4. Flip the default machine by machine (LC II Egret flavor first,
+     Cuda/Q605 second), each behind its boot etalon, exactly like the
+     `POM68K_ADB_LLE` rollout.
 - [ ] **SCC LLE backlog — 2026-07-22 MAME `z80scc.cpp` audit** (source
   in `refs/mame/src/devices/machine/`; summary in
   `docs/LLE_VS_HLE.md` §3). Caveat everywhere: MAME's own SDLC side is
