@@ -4,11 +4,6 @@
 #include "TobyVideo.h"
 #include <algorithm>
 
-namespace {
-constexpr int64_t kFrameTotal = 800 * 525;
-constexpr int64_t kVblStart   = 800 * 480;
-} // namespace
-
 TobyVideo::TobyVideo(NuBus& bus, int slot) : bus_(bus), slot_(slot) {
     vram_.assign(kVramSize / 4, 0);
     reset();
@@ -23,6 +18,9 @@ void TobyVideo::reset() {
     vblDisable_ = true;
     hres_ = W;
     vres_ = H;
+    htotal_ = 896;                               // MAME power-on defaults
+    vtotal_ = 525;
+    frameCycles_ = kCpuHz / 60;                  // until the CRTC is programmed
     framePos_ = 0;
     vblAcc_ = 0;
     vblLine_ = false;
@@ -80,6 +78,18 @@ void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
             vblEnableWrites++;
             bus_.setSlotIrq(slot_, false);
         }
+        return;
+    }
+    if (r >= 0x80000 && r < 0x90000) {
+        // TFB register file — byte path. The machine splits every slot
+        // write into bytes (MacIIMemory → NuBus::write8), so the register
+        // decode must live here, not only in write32: MAME tfb_w stores
+        // `(data ^ 0xffffffff) & 0xff` whatever the lane (nubus_m2video.cpp
+        // :253-268), so the last lane of a long write carries the value.
+        // Before this branch the guest's CRTC/depth programming was
+        // silently DROPPED — unnoticed because the reset defaults happen
+        // to be the only mode the ROM uses (640×480×1).
+        tfbWrite(int((r - 0x80000) >> 2) & 0xF, uint32_t(v), 0xFFFFFFFFu);
         return;
     }
     if (r >= 0x90000 && r < 0x90020) {
@@ -158,6 +168,26 @@ void TobyVideo::calcScreenParams() {
     vres_ = int(vlines / 2);
     if (hres_ <= 0) hres_ = W;
     if (vres_ <= 0) vres_ = H;
+    // CRTC-derived frame clock (LLE — the DAFB Q8.1 treatment applied to
+    // Toby; MAME nubus_m2video.cpp calc_screen_params): the frame period is
+    // htotal × vtotal ticks of the card's 30.24 MHz pixel crystal
+    // (`attotime::from_ticks(m_htotal * m_vtotal, 30.24_MHz_XTAL)`).
+    const uint32_t hsyncstart  = regs_[HSYNCSTART] + 2;
+    const uint32_t hsyncfinish = regs_[HSYNCFINISH] + 2;
+    const uint32_t hearly      = (regs_[HALFLINE_EARLY] & 0x7f) + 2;
+    const uint32_t hlate       = (regs_[HPIXELS_HLATE] & 0x3f) + 2;
+    const uint32_t vfrontporch = (regs_[VLINES_VPP] & 0x1f) + 1;
+    const uint32_t vsyncfinish = (regs_[SYNCINTERVAL8] & 0x7f) + 1;
+    const uint32_t vbackporch  = (regs_[VBACKPORCH] & 0x3f) + 8;
+    htotal_ = (halfline + hpixels + hsyncstart + hsyncfinish + hearly + hlate)
+              * (16u >> mode_);
+    vtotal_ = (vfrontporch * 2) + vsyncfinish + (vbackporch * 2) + (vlines / 2);
+    frameCycles_ = int64_t(kCpuHz) * htotal_ * vtotal_ / kPixClockHz;
+    // A half-programmed CRTC (the driver writes registers one by one)
+    // yields nonsense totals; every real Toby mode refreshes near 60-67 Hz
+    // (≥ ~230k CPU cycles). Keep the 60 Hz fallback until the programmed
+    // frame is plausible so mid-programming states can't storm the VBL.
+    if (frameCycles_ < 50000) frameCycles_ = kCpuHz / 60;
 }
 
 void TobyVideo::vblPulse() {
@@ -174,16 +204,20 @@ void TobyVideo::vblPulse() {
 }
 
 void TobyVideo::tick(int cpuCycles) {
-    // Drive VBL at ~60.15 Hz in CPU cycles (Mac II = 15.6672 MHz), not
-    // raw pixel clocks — 800×525 as a cycle count undersampled IRQs.
-    constexpr int64_t kFrameCycles = 15667200 / 60;   // ≈ 261 120
+    // Frame clock derived from the guest-programmed CRTC (calcScreenParams:
+    // htotal × vtotal pixel-crystal ticks converted to CPU cycles). Before
+    // the driver programs the CRTC the fallback is a plain 60 Hz frame.
     framePos_ += cpuCycles;
-    while (framePos_ >= kFrameCycles) {
-        framePos_ -= kFrameCycles;
+    while (framePos_ >= frameCycles_) {
+        framePos_ -= frameCycles_;
         vblPulse();
     }
-    // Active-display vs blanking for the $D0000 sense port (any fraction).
-    vblLine_ = framePos_ >= (kFrameCycles * 480 / 525);
+    // Active-display vs blanking for the $D0000 sense port: active for the
+    // visible-lines fraction of the frame, blanking for the rest.
+    const int64_t active = vtotal_
+        ? frameCycles_ * vres_ / int(vtotal_)
+        : frameCycles_ * 480 / 525;
+    vblLine_ = framePos_ >= active;
 }
 
 void TobyVideo::decode(std::vector<uint32_t>& out) const {

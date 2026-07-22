@@ -37,6 +37,10 @@ public:
     uint8_t mode() const { return mode_; }
     int hres() const { return hres_; }
     int vres() const { return vres_; }
+    // CRTC-derived frame geometry/clock (MAME nubus_m2video parity).
+    uint32_t htotal() const { return htotal_; }
+    uint32_t vtotal() const { return vtotal_; }
+    int64_t frameCycles() const { return frameCycles_; }
     const std::array<uint32_t, 256>& palette() const { return pens_; }
     const std::vector<uint32_t>& vram() const { return vram_; }
 
@@ -66,6 +70,13 @@ private:
     uint8_t mode_ = 0;
     bool vblDisable_ = true;
     int hres_ = W, vres_ = H;
+    // Host machine + card crystals: Toby lives on the Mac II (15.6672 MHz
+    // CPU); the card's pixel clock is a 30.24 MHz crystal (MAME
+    // nubus_m2video.cpp:361).
+    static constexpr int64_t kCpuHz = 15667200;
+    static constexpr int64_t kPixClockHz = 30240000;
+    uint32_t htotal_ = 896, vtotal_ = 525;   // MAME power-on defaults
+    int64_t frameCycles_ = kCpuHz / 60;      // until the CRTC is programmed
     int64_t framePos_ = 0;
     int64_t vblAcc_ = 0;
     bool vblLine_ = false;
