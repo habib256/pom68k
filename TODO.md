@@ -42,34 +42,28 @@ gets at least one Finder cell before the next:
 
 ## LocalTalk between two POM68K instances (virtual LLAP cable)
 
-Feasible, and a natural sequel to LLE step 3 (CHANGELOG 2026-07-21) —
-SCC emission/reception is now honest. Scheme: wire one instance's SCC Tx
-to the other's Rx over a host transport (local UNIX socket, TCP, or UDP
-multicast; two physical machines work the same way, just a network
-socket).
+**Milestone 1 DONE (2026-07-22)** — the SCC LLAP wire is bidirectional
+and the LToUDP cable exists (CHANGELOG "LLAP milestone 1"):
+`Scc8530` captures SDLC Tx frames (underrun = frame end, Send Abort
+discards) and has a full Rx path (paced 3-deep FIFO, Hunt exit/re-entry
+carrier sense, WR1 Rx interrupt modes, SDLC address search WR3/WR6 +
+$FF broadcast, EOF + FCS tail in RR1); `LtoUdp` speaks the Mini vMac /
+TashRouter multicast format (239.192.76.84:1954, 4-byte sender tag).
+GUI opt-in `POM68K_LTOUDP=1` on Mac II / LC II / Quadra. Gates:
+`llap_loop_test` (two SCCs, ENQ both ways, filter, abort, carrier),
+`ltoudp_test` (real multicast cable, soft-skips).
 
-- Tx side already serialises SDLC frames (the LLAP ENQ probes prove it);
-  encapsulate frame-by-frame — the EOM/Underrun latch gives the frame
-  boundaries.
-- Rx side is the bulk of the work: the reverse path in `Scc8530` —
-  inject a frame into the Rx FIFO, drop Sync/Hunt (carrier present =
-  line busy), raise the Rx interrupts and the end-of-frame CRC result.
-  Today's carrier sense always says "line free" since nobody transmits
-  on the far end.
-- Honour the LLAP RTS/CTS dance for directed frames; address-acquisition
-  collisions can stay unmodelled as long as the two nodes draw different
-  random addresses.
-
-Precedents: Mini vMac does exactly this (LocalTalk over UDP between
-instances); Basilisk II/SheepShaver bridge AppleTalk differently.
-
-Payoff: Chooser sees the other Mac, AppleShare file sharing between a
-Quadra under OS 8.1 and a Mac Plus under System 6, and a real test bench
-for the SCC/LLAP layer.
-
-First milestone: LLAP frame encapsulation over UDP + full Rx path in
-`Scc8530`, gated by a two-instance test where each node sees the other's
-ENQ probes.
+Next milestones:
+- [ ] **Two-System etalon**: two full instances under Sys 7 with
+  AppleTalk ACTIVE (Chooser toggle or SPConfig seed), each acquiring an
+  LLAP address on the shared cable; assert distinct node IDs + no
+  spurious SysErrors. Needs a headless way to flip AppleTalk on.
+- [ ] LLAP directed-frame RTS/CTS timing against the real driver (the
+  200 µs inter-frame gap tolerance over a polled UDP cable).
+- [ ] Plus machine wiring (its GUI loop is inline, not the thread class).
+- [ ] TashRouter + netatalk 2.x bridge session: Chooser sees an
+  AppleShare server; document the host setup in README.
+- [ ] Interop check against Mini vMac's LToUDP (same multicast group).
 
 ## LLE fidelity — replace HLE shortcuts (see `docs/LLE_VS_HLE.md`)
 

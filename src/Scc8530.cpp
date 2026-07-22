@@ -18,6 +18,19 @@ void Scc8530::reset() {
     ptr_ = 0;
 }
 
+// SDLC FCS = CRC-16/X25 (poly $1021 reflected, init/xorout $FFFF). The
+// drivers never read its value (the chip checks it), but appending the real
+// FCS keeps the wire honest for future interop captures.
+static uint16_t crc16x25(const uint8_t* d, size_t n) {
+    uint16_t crc = 0xFFFF;
+    for (size_t i = 0; i < n; i++) {
+        crc ^= d[i];
+        for (int b = 0; b < 8; b++)
+            crc = (crc & 1) ? uint16_t((crc >> 1) ^ 0x8408) : uint16_t(crc >> 1);
+    }
+    return uint16_t(~crc);
+}
+
 // RR0 external status: bit 0 = Rx char available, bit 3 = DCD level,
 // bit 5 = CTS, bit 2 = TxD empty, bit 7 = Break/Abort.
 //
@@ -31,11 +44,86 @@ bool Scc8530::sdlcMode(const Chan& c) const {
 }
 
 uint8_t Scc8530::rr0(const Chan& c) const {
-    return uint8_t((rxStanding_ ? 0x01 : 0x00)
+    // bit 0 Rx Character Available: real (FIFO) or the legacy standing flag.
+    // Break/Abort (bit 7): only while the line is actually dead — a frame
+    // being received (rxCur/fifo active) means carrier, not abort.
+    const bool rxBusy = !c.fifo.empty() || !c.rxCur.empty();
+    return uint8_t(((rxStanding_ || !c.fifo.empty()) ? 0x01 : 0x00)
                    | (c.dcd ? 0x08 : 0x00) | 0x04 | (ctsHigh_ ? 0x20 : 0x00)
                    | ((c.hunt && sdlcMode(c)) ? 0x10 : 0x00)
                    | (c.txUnderrun ? 0x40 : 0x00)
-                   | ((abortIdle_ && sdlcMode(c)) ? 0x80 : 0x00));
+                   | ((abortIdle_ && sdlcMode(c) && !rxBusy) ? 0x80 : 0x00));
+}
+
+// WR1 bits 4-3: 00 = Rx int off, 01 = first char + special, 10 = all chars
+// + special, 11 = special only.
+void Scc8530::raiseRxInt(Chan& c, bool special) {
+    const int mode = (c.wr[1] >> 3) & 3;
+    if (!mode) return;
+    if (special) { c.specialIp = true; return; }
+    if (mode == 2) c.rxIp = true;
+    else if (mode == 1 && !c.firstCharSeen) { c.rxIp = true; c.firstCharSeen = true; }
+}
+
+void Scc8530::rxStartFrame(Chan& c, int chIdx) {
+    c.rxCur = std::move(c.rxQueue.front());
+    c.rxQueue.pop_front();
+    c.rxPos = 0;
+    c.rxTimer = byteCycles_;
+    // Opening flag: Sync/Hunt clears — the LLAP carrier sense. A 1→0
+    // transition is an ext/status source when WR15 bit 4 arms it.
+    if (c.hunt) {
+        c.hunt = false;
+        if ((c.wr[15] & 0x10) && (c.wr[1] & 0x01)) {
+            if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
+            c.extPending = true;
+        }
+    }
+    if (sccDbg())
+        fprintf(stderr, "[scc] %c rx frame start (%zu bytes)\n",
+                chIdx ? 'A' : 'B', c.rxCur.size());
+}
+
+// Pace one byte of the current frame into the 3-deep Rx FIFO.
+void Scc8530::rxPushByte(Chan& c) {
+    if (c.fifo.size() >= 3) {                    // overrun: drop, flag RR1.5
+        if (!c.fifo.empty()) c.fifo.back().rr1 |= 0x20;
+        raiseRxInt(c, true);
+        return;
+    }
+    const bool last = c.rxPos + 1 == c.rxCur.size();
+    // End of Frame (RR1 bit 7) rides the LAST byte (2nd FCS byte); CRC
+    // error (bit 6) stays 0 = good frame. Bit 0 = all-sent.
+    Chan::RxByte b{c.rxCur[c.rxPos], uint8_t(last ? 0x81 : 0x01)};
+    c.fifo.push_back(b);
+    c.rxPos++;
+    raiseRxInt(c, false);
+    if (last) {
+        raiseRxInt(c, true);                     // special: EOF condition
+        c.rxCur.clear();
+        c.rxPos = 0;
+        // Closing flag then idle: Hunt sets again (0→1 ext/status source).
+        if (!c.hunt) {
+            c.hunt = true;
+            if ((c.wr[15] & 0x10) && (c.wr[1] & 0x01)) {
+                if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
+                c.extPending = true;
+            }
+        }
+    }
+}
+
+void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n) {
+    Chan& c = ch_[ch & 1];
+    if (!n || !sdlcMode(c) || !rxEnabled(c)) return;   // receiver off: no ear
+    // SDLC Address Search Mode (WR3 bit 2): the chip only opens the FIFO
+    // when the first byte matches WR6 or the $FF broadcast.
+    if ((c.wr[3] & 0x04) && d[0] != c.wr[6] && d[0] != 0xFF) return;
+    std::vector<uint8_t> f(d, d + n);
+    const uint16_t fcs = crc16x25(d, n);
+    f.push_back(uint8_t(fcs & 0xFF));            // FCS little-end first (X25)
+    f.push_back(uint8_t(fcs >> 8));
+    c.rxQueue.push_back(std::move(f));
 }
 
 uint8_t Scc8530::readCtl(int channel) {
@@ -49,8 +137,18 @@ uint8_t Scc8530::readCtl(int channel) {
 
 uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
     switch (reg) {
-        case 0:  rr0Reads++; return c.latched ? c.rr0Latch : rr0(c);
-        case 1:  return 0x07;                   // all-sent, no errors
+        case 0: {
+            rr0Reads++;
+            // Only D7-D3 (Break, Underrun, CTS, Sync/Hunt, DCD) freeze at an
+            // ext/status latch; D2-D0 (TxE, zero count, Rx available) always
+            // read LIVE (Zilog SCC UM §3.2) — freezing bit 0 hid every Rx
+            // byte from a driver with an unserviced ext/status pending.
+            uint8_t live = rr0(c);
+            return c.latched ? uint8_t((c.rr0Latch & 0xF8) | (live & 0x07))
+                             : live;
+        }
+        case 1:                                 // status of the FIFO-top byte
+            return c.fifo.empty() ? c.rr1Rd : c.fifo.front().rr1;
         case 2: {
             rr2Reads++;
             // RR2 on channel B returns the vector MODIFIED by the highest
@@ -60,11 +158,15 @@ uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
             if (channel == 0) {
                 // Status-low V3..V1 code by highest-priority source. The
                 // Z8530 ranks, highest first: ChA Rx, ChA Tx, ChA Ext,
-                // ChB Rx, ChB Tx, ChB Ext — so within a channel Tx
-                // outranks Ext. Codes: A Tx=100, A Ext=101, B Tx=000,
-                // B Ext=001, none=011.
-                int code = ch_[1].txIp       ? 0b100
+                // ChB Rx, ChB Tx, ChB Ext; special Rx outranks Rx. Codes:
+                // A Special=111, A Rx=110, A Tx=100, A Ext=101,
+                // B Special=011, B Rx=010, B Tx=000, B Ext=001, none=011.
+                int code = ch_[1].specialIp  ? 0b111
+                         : ch_[1].rxIp       ? 0b110
+                         : ch_[1].txIp       ? 0b100
                          : ch_[1].extPending ? 0b101
+                         : ch_[0].specialIp  ? 0b011
+                         : ch_[0].rxIp       ? 0b010
                          : ch_[0].txIp       ? 0b000
                          : ch_[0].extPending ? 0b001 : 0b011;
                 vec = uint8_t((vec & ~0x0E) | (code << 1));
@@ -72,10 +174,12 @@ uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
             return vec;
         }
         case 3:                                 // RR3 (channel A only): IP bits
-            rr3Reads++;                         // D4=A Tx, D3=A Ext, D1=B Tx,
-            if (channel == 1)                   // D0=B Ext (D5/D2 Rx unmodelled)
-                return uint8_t((ch_[1].txIp ? 0x10 : 0) |
+            rr3Reads++;                         // D5=A Rx, D4=A Tx, D3=A Ext,
+            if (channel == 1)                   // D2=B Rx, D1=B Tx, D0=B Ext
+                return uint8_t(((ch_[1].rxIp || ch_[1].specialIp) ? 0x20 : 0) |
+                               (ch_[1].txIp ? 0x10 : 0) |
                                (ch_[1].extPending ? 0x08 : 0) |
+                               ((ch_[0].rxIp || ch_[0].specialIp) ? 0x04 : 0) |
                                (ch_[0].txIp ? 0x02 : 0) |
                                (ch_[0].extPending ? 0x01 : 0));
             return 0;
@@ -101,6 +205,10 @@ void Scc8530::writeData(int channel, uint8_t d) {
     Chan& c = ch_[channel & 1];
     c.txEmptyEvent = true;                      // filled → instantly empty
     if (c.wr[1] & 0x02) c.txIp = true;          // WR1 bit 1 = Tx Int Enable
+    // SDLC frame capture: bytes accumulate until the underrun (frame
+    // complete, onTxFrame) or a Send Abort (discard). The chip appends the
+    // FCS itself, so txBuf is the raw LLAP frame.
+    if (sdlcMode(c)) c.txBuf.push_back(d);
     // While an SDLC frame is open (underrun latch reset), each data byte
     // pushes the underrun point out — the frame ends kUnderrunDelay after
     // the LAST byte drains.
@@ -108,8 +216,15 @@ void Scc8530::writeData(int channel, uint8_t d) {
 }
 
 uint8_t Scc8530::readData(int channel) {
-    (void)channel;
-    return 0;                                   // no RX (dead line)
+    Chan& c = ch_[channel & 1];
+    if (c.fifo.empty()) return 0;               // dead line / drained FIFO
+    const Chan::RxByte b = c.fifo.front();
+    c.fifo.pop_front();
+    c.rr1Rd = b.rr1;
+    if (c.fifo.empty()) c.rxIp = false;         // level: FIFO drained
+    if (sccDbg()) fprintf(stderr, "[scc] %c data -> %02X rr1=%02X\n",
+                          channel ? 'A' : 'B', b.d, b.rr1);
+    return b.d;
 }
 
 void Scc8530::writeCtl(int channel, uint8_t v) {
@@ -132,7 +247,9 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
         switch (v & 0x38) {
             case 0x18:                          // Send Abort (SDLC)
                 // Aborting ends the frame at once: latch sets, ext/status
-                // interrupt if armed (WR15 bit 6 + WR1 bit 0).
+                // interrupt if armed (WR15 bit 6 + WR1 bit 0). The aborted
+                // frame never reaches the wire.
+                c.txBuf.clear();
                 if (!c.txUnderrun) {
                     c.txUnderrun = true;
                     c.underrunIn = 0;
@@ -141,6 +258,13 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                         c.extPending = true;
                     }
                 }
+                break;
+            case 0x20:                          // Enable Int on Next Rx Char
+                c.firstCharSeen = false;
+                break;
+            case 0x30:                          // Error Reset
+                c.specialIp = false;            // clears the special Rx
+                c.firstCharSeen = false;        // condition; re-arms 1st-char
                 break;
             case 0x10:                          // Reset External/Status ints
                 c.extPending = false;
@@ -161,6 +285,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                 c.latched = false;
                 c.txIp = false;
                 c.txEmptyEvent = false;
+                c.specialIp = false;            // (rxIp is FIFO-level driven)
                 if (abortIdle_ && sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
                     c.relatch = kAbortRelatch;
                 break;
@@ -175,17 +300,31 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     if (ptr_ == 2 || ptr_ == 9) ch_[0].wr[ptr_] = ch_[1].wr[ptr_] = v;
     else c.wr[ptr_] = v;
 
-    // WR3 bit 4 = Enter Hunt Mode. With no serial input modeled, a hunt
-    // never completes — RR0 bit 4 stays set, which is precisely what the
-    // LLAP sender's carrier sense wants on a dead line ("no carrier,
-    // clear to transmit"). A Sync/Hunt transition is an ext/status
-    // source when WR15 bit 4 arms it.
-    if (ptr_ == 3 && (v & 0x10) && !c.hunt) {
-        c.hunt = true;
-        if ((c.wr[15] & 0x10) && (c.wr[1] & 0x01)) {
-            if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
-            c.extPending = true;
+    // WR3 bit 4 = Enter Hunt Mode. On an idle line the hunt persists — RR0
+    // bit 4 stays set, which is what the LLAP sender's carrier sense wants
+    // ("no carrier, clear to transmit"); an incoming frame clears it
+    // (rxStartFrame). A Sync/Hunt transition is an ext/status source when
+    // WR15 bit 4 arms it. Entering hunt abandons a frame mid-delivery.
+    if (ptr_ == 3 && (v & 0x10)) {
+        c.rxCur.clear();
+        c.rxPos = 0;
+        if (!c.hunt) {
+            c.hunt = true;
+            if ((c.wr[15] & 0x10) && (c.wr[1] & 0x01)) {
+                if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
+                c.extPending = true;
+            }
         }
+    }
+    // Rx disable (WR3 bit 0 cleared) flushes the receive path.
+    if (ptr_ == 3 && !(v & 0x01)) {
+        c.rxQueue.clear();
+        c.rxCur.clear();
+        c.rxPos = 0;
+        c.fifo.clear();
+        c.rxIp = false;
+        c.specialIp = false;
+        c.firstCharSeen = false;
     }
 
     // Arming Break/Abort IE (WR15 bit 7) on an open line latches the
@@ -237,7 +376,9 @@ void Scc8530::setDcd(int channel, bool level) {
 bool Scc8530::irqAsserted() const {
     bool mie = (ch_[1].wr[9] & 0x08) != 0;      // WR9 master interrupt enable
     return mie && (ch_[0].extPending || ch_[1].extPending
-                || ch_[0].txIp || ch_[1].txIp);
+                || ch_[0].txIp || ch_[1].txIp
+                || ch_[0].rxIp || ch_[1].rxIp
+                || ch_[0].specialIp || ch_[1].specialIp);
 }
 
 // Re-present the standing Break/Abort on an open LocalTalk line —
@@ -251,7 +392,8 @@ bool Scc8530::irqAsserted() const {
 // Guarded by abortIdle_ (LC II only), so the Plus mouse path is untouched.
 bool Scc8530::tick(int cycles) {
     bool changed = false;
-    for (Chan& c : ch_) {
+    for (int i = 0; i < 2; i++) {
+        Chan& c = ch_[i];
         // SDLC Tx underrun: the drained shifter sends CRC + closing flag,
         // then the Tx Underrun/EOM latch sets — frame complete. Runs on
         // every machine (the latch is architectural, not LC II-specific).
@@ -260,11 +402,34 @@ bool Scc8530::tick(int cycles) {
             if (c.underrunIn <= 0) {
                 c.underrunIn = 0;
                 c.txUnderrun = true;
+                // Frame complete: hand the raw bytes to the wire.
+                if (!c.txBuf.empty()) {
+                    if (onTxFrame) onTxFrame(i, c.txBuf.data(), c.txBuf.size());
+                    c.txBuf.clear();
+                }
                 if ((c.wr[15] & 0x40) && (c.wr[1] & 0x01)) {
                     if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
                     c.extPending = true;
                     changed = true;
                 }
+            }
+        }
+        // ── Rx pacing: one byte per LocalTalk byte-time into the FIFO ──
+        if (sdlcMode(c) && rxEnabled(c)) {
+            if (c.rxCur.empty() && !c.rxQueue.empty()) {
+                bool wasIrq = c.rxIp || c.specialIp || c.extPending;
+                rxStartFrame(c, i);
+                changed = changed || (!wasIrq && (c.extPending));
+            }
+            if (!c.rxCur.empty()) {
+                c.rxTimer -= cycles;
+                while (c.rxTimer <= 0 && !c.rxCur.empty()) {
+                    c.rxTimer += byteCycles_;
+                    bool was = c.rxIp || c.specialIp;
+                    rxPushByte(c);
+                    if (!was && (c.rxIp || c.specialIp)) changed = true;
+                }
+                if (c.rxCur.empty()) c.rxTimer = 0;
             }
         }
         if (!abortIdle_) continue;

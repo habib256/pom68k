@@ -90,7 +90,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | **IWM + Sony 3.5" 800K GCR** | `Iwm.h/.cpp`, `SonyDrive.h/.cpp` | M5 ✓ | MAME `iwm.cpp`/`ap_dsk35.cpp` |
 | **Keyboard (M0110) + mouse** | `MacInput.h/.cpp`, `Scc8530.h/.cpp` | M5.5 ✓ | MAME/Mini vMac/Snow |
 | **SCSI NCR 5380 + hard disk** | `Ncr5380.h/.cpp`, `ScsiDisk.h/.cpp` | M7 ✓ | MAME `ncr5380.cpp`, pce |
-| SCC 8530 serial ports | `Scc8530.*` (mouse DCD + LC II LAP ext ints) | M7.1 / O6.10 | POMIIGS `Scc8530` reuse |
+| SCC 8530 serial ports | `Scc8530.*` (mouse DCD, LAP ext ints, SDLC Tx/Rx LLAP wire) + `LtoUdp.*` (UDP cable, `POM68K_LTOUDP=1`) | M7.1 / O6.10 / LLAP-1 ✓ | POMIIGS reuse; Zilog UM; Mini vMac LToUDP |
 | **68030 oracle + fuzz loop** | `oracle/` (api, uae, fuzz) | O1-O3 ✓ (Musashi retired) | WinUAE (Hatari) |
 | **68030 core + MMU (LC II)** | `extern/moira` extension | O4 ✓ | MC68030UM + WinUAE oracle |
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ | MC68881/882UM; WinUAE fpp.c |
@@ -150,7 +150,7 @@ SWIM, DFAC audio polish, bus/timing).
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
-GUI exposes the machine alongside Plus/Mac II/LC II. **46 CTest gates**,
+GUI exposes the machine alongside Plus/Mac II/LC II. **48 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
 (LLE ADB mouse — default path since 2026-07-22), `sst68040`,

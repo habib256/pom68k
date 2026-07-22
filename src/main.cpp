@@ -25,6 +25,7 @@
 #include "Cpu020.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
+#include "LtoUdp.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -52,6 +53,27 @@ static std::vector<uint8_t> readFile(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return {};
     return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+// ── LocalTalk over UDP (opt-in POM68K_LTOUDP=1) ─────────────────────────
+// Virtual LLAP cable: SCC channel B frames ↔ LToUDP multicast (Mini vMac /
+// TashRouter interop). wireLocalTalk at machine creation (byteCycles = CPU
+// cycles per LocalTalk byte at that machine's clock); pollLocalTalk each
+// emulation quantum on the machine thread (injectRxFrame is thread-bound).
+static LtoUdp g_ltoudp;
+template <class M> static void wireLocalTalk(M& mem, int byteCycles) {
+    if (!std::getenv("POM68K_LTOUDP")) return;
+    if (!g_ltoudp.start()) return;
+    mem.scc().setByteCycles(byteCycles);
+    mem.scc().onTxFrame = [](int ch, const uint8_t* d, size_t n) {
+        if (ch == 0) g_ltoudp.send(d, n);            // channel B = LocalTalk
+    };
+}
+template <class M> static void pollLocalTalk(M& mem) {
+    if (!g_ltoudp.active()) return;
+    g_ltoudp.poll([&mem](const uint8_t* d, size_t n) {
+        mem.scc().injectRxFrame(0, d, n);
+    });
 }
 
 static std::string execDir() {
@@ -384,6 +406,7 @@ private:
 
     void runOne() {
         cpu.runCycles(kFrame);
+        pollLocalTalk(mem);
         framesRun_++;
     }
     bool drain() {
@@ -439,6 +462,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     mem.installTobyVideo();
     mem.setCpu(&cpu);
     cpu.hardReset();
+    wireLocalTalk(mem, 544);                     // 230.4 kbit/s @ 15.6672 MHz
 
     // Prefer Infinite Mac System 6.0.8 HD, then HD20SC / other SCSI images.
     std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/System 6.0.8 HD.dsk");
@@ -786,6 +810,7 @@ private:
     void runOne() {
         if (mem.cpuHeld()) mem.tick(kFrame);   // Egret power-on hold
         else cpu.runCycles(kFrame);
+        pollLocalTalk(mem);
         framesRun_++;
     }
     // Drain the ASC samples produced by the last slice (22 257 Hz mono,
@@ -848,6 +873,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
+    wireLocalTalk(mem, 544);                     // 230.4 kbit/s @ 15.6672 MHz
     // Monitor sense (resolution): the GUI defaults to 640×480 13"/14" RGB —
     // the roomiest built-in mode, and some software (Lode Runner) needs a
     // ≥640×400 screen. POM68K_MONITOR=512 forces the 512×384 12" RGB mode;
@@ -1346,6 +1372,7 @@ private:
     void runOne() {
         if (mem.cpuHeld()) mem.tick(kFrame);
         else cpu.runCycles(kFrame);
+        pollLocalTalk(mem);
         framesRun_++;
     }
     // Drain interleaved IOSB ASC stereo frames and report real AC content.
@@ -1413,6 +1440,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     mem.loadRom(rom);
     mem.setCpu(&cpu);
     cpu.hardReset();
+    wireLocalTalk(mem, 868);                     // 230.4 kbit/s @ 25 MHz
 
     // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
     // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).

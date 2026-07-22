@@ -569,6 +569,13 @@ void MacIIMemory::tick(int cpuCycles) {
     updateIrq();
     iwm_.tick(cpuCycles);
     drive_.tick(cpuCycles);
+    // SCC time base: SDLC Tx underrun (frame end) + LLAP Rx pacing. The
+    // DCD mouse path recomputes sccIrq_ at access time; frame events land
+    // between accesses, so recompute here too (same as Q605Memory).
+    if (scc_.tick(cpuCycles) || sccIrq_ != scc_.irqAsserted()) {
+        sccIrq_ = scc_.irqAsserted();
+        updateIrq();
+    }
     int stepped = mouse_.tick(cpuCycles);
     if (stepped) {
         if (stepped & 1) scc_.setDcd(1, mouse_.x1);

@@ -94,6 +94,16 @@ LC II and Quadra, **Disques** picks the boot volume and toggles secondary
 SCSI images next to the current one (relaunches — the ROM only scans the
 bus at boot), and **Redémarrer** power-cycles the machine.
 
+## LocalTalk between instances (experimental)
+
+`POM68K_LTOUDP=1 ./build/POM68K …` plugs the SCC printer port into a
+virtual LLAP cable over UDP multicast (`239.192.76.84:1954`, the
+Mini vMac / TashRouter LToUDP format) on Mac II / LC II / Quadra. Two
+instances on the same LAN share the wire; the guest-visible AppleTalk
+stack is the real one (activate AppleTalk in the Chooser). Transport +
+SCC receive path are gated (`llap_loop_test`, `ltoudp_test`); the
+two-System AppleShare session is still being validated (TODO).
+
 ## Sharing host files with the Mac (baked HFS volume)
 
 `tools/dir2hfs.py` bakes a host folder into classic-HFS volume(s) that

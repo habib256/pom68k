@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## 2026-07-22 — LLAP milestone 1: SCC receive path + LToUDP virtual cable
+
+The LocalTalk plan's first milestone (TODO): the SCC LLAP wire is now
+**bidirectional** and frames travel between instances over UDP.
+
+- **`Scc8530` Tx capture**: SDLC frame bytes accumulate across
+  `writeData`; the Tx underrun (frame complete — CRC + closing flag on
+  real hardware) hands the raw frame to `onTxFrame`; Send Abort discards
+  it. **Rx path** (was `return 0` — dead line): `injectRxFrame` queues a
+  frame (real CRC-16/X25 FCS appended), delivered at wire pace
+  (`setByteCycles`, 544 cyc/byte @ 15.6672 MHz = 230.4 kbit/s) through a
+  3-deep FIFO with Hunt exit/re-entry (the LLAP carrier sense, ext/status
+  on WR15 bit 4), WR1 Rx-interrupt modes (first-char / all / special),
+  SDLC Address Search (WR3 bit 2 vs WR6, $FF broadcast passes), overrun,
+  and End-of-Frame + CRC-good status riding the last byte in RR1. RR2/RR3
+  gained the Rx/special vector codes and IP bits.
+- **RR0 latch fix** (all machines): only D7-D3 freeze at an ext/status
+  latch; D2-D0 — including bit 0 Rx Character Available — always read
+  LIVE (Zilog SCC UM §3.2). Freezing bit 0 hid every Rx byte from a
+  driver with an unserviced ext/status pending.
+- **`LtoUdp`** (new): the de-facto LocalTalk-over-UDP cable (Mini vMac /
+  TashRouter interop): multicast 239.192.76.84:1954, 4-byte per-instance
+  sender tag, no FCS on the wire. GUI opt-in `POM68K_LTOUDP=1` wires SCC
+  channel B on Mac II / LC II / Quadra (Plus's inline loop: TODO).
+  Mac II now ticks its SCC (it never did — DCD-only until today).
+
+Gates: `llap_loop_test` — two SCCs on a virtual cable run the LLAP
+address-acquisition dialogue (ENQ dst=src=ID both ways, foreign-ID
+filtered in hardware, broadcast passes, aborted frames never sent,
+hunt-exit IRQ as carrier sense); `ltoudp_test` — the real multicast
+cable end-to-end (soft-skips where multicast is unavailable). Remaining
+milestones (two-System etalon, RTS/CTS timing, netatalk bridge) in TODO.
+
 ## 2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)
 
 `tools/dir2hfs.py` (machfs, repo venv `.venv-tools`) bakes a host folder

@@ -61,6 +61,7 @@ add_library(pom68k_core STATIC
     src/Iwm.cpp           # M5 — floppy controller
     src/SonyDrive.cpp     # M5 — 800K GCR drive
     src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
+    src/LtoUdp.cpp        # LLAP — LocalTalk-over-UDP multicast cable
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
     src/Ncr5380.cpp       # M7 — SCSI controller (phase engine)
@@ -239,6 +240,18 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(scc_ext_test tests/scc_ext_test.cpp)
     target_link_libraries(scc_ext_test PRIVATE pom68k_core)
     add_test(NAME scc_ext_test COMMAND scc_ext_test)
+
+    # LLAP milestone gate: two SCCs on a virtual LocalTalk cable — SDLC Tx
+    # frame capture, paced Rx FIFO, address search, EOF/FCS, carrier sense.
+    add_executable(llap_loop_test tests/llap_loop_test.cpp)
+    target_link_libraries(llap_loop_test PRIVATE pom68k_core)
+    add_test(NAME llap_loop_test COMMAND llap_loop_test)
+
+    # LToUDP multicast cable (Mini vMac / TashRouter wire format). Soft-skips
+    # where multicast is unavailable.
+    add_executable(ltoudp_test tests/ltoudp_test.cpp)
+    target_link_libraries(ltoudp_test PRIVATE pom68k_core)
+    add_test(NAME ltoudp_test COMMAND ltoudp_test)
 
     # M4.5 gate: SingleStepTests/680x0 68000 vectors against bare Moira.
     # Data is user-fetched (~1 GB): tests/fetch_sst_68000.sh <dir>.

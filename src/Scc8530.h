@@ -25,6 +25,9 @@
 
 #pragma once
 #include <cstdint>
+#include <deque>
+#include <functional>
+#include <vector>
 
 class Scc8530 {
 public:
@@ -63,6 +66,22 @@ public:
 
     bool irqAsserted() const;
 
+    // ── LLAP wire (LLE LocalTalk milestone) ──
+    // Tx: SDLC frame bytes accumulate across writeData; when the drained
+    // shifter underruns (frame complete, CRC+flag on the real wire) the raw
+    // frame — WITHOUT the FCS the chip appends — is handed to onTxFrame.
+    // Send Abort discards the pending bytes. Channel 0 = B (LocalTalk port).
+    std::function<void(int ch, const uint8_t* d, size_t n)> onTxFrame;
+    // Rx: inject one LLAP frame (dest, src, type, payload — no FCS; the
+    // "chip" computes and appends it so the driver sees the SDLC tail).
+    // Delivered at wire pace (setByteCycles) through the 3-deep Rx FIFO with
+    // Hunt exit, per-byte Rx interrupts (WR1 modes), address search (WR3
+    // bit 2 vs WR6 / $FF broadcast) and End-of-Frame status in RR1.
+    void injectRxFrame(int ch, const uint8_t* d, size_t n);
+    // CPU cycles per LocalTalk byte (230.4 kbit/s): 544 @ 15.6672 MHz
+    // (LC II / Mac II), 272 @ 7.8336 (Plus), 868 @ 25 MHz (Q605).
+    void setByteCycles(int c) { byteCycles_ = c > 0 ? c : 544; }
+
     uint8_t wr(int ch, int r) const { return ch_[ch & 1].wr[r & 15]; }
     long dcdEdges = 0, ctlWrites = 0;   // debug counters
     long rr0Reads = 0, rr3Reads = 0, rr2Reads = 0;
@@ -86,19 +105,36 @@ private:
         int underrunIn = 0;          // cycles until the drained shifter
                                      // underruns (SDLC frame end)
         bool hunt = false;           // RR0 bit 4 Sync/Hunt — set by WR3
-                                     // bit 4 (Enter Hunt); never clears
-                                     // on a dead line (no flags arrive).
-                                     // LLAP carrier sense reads it as
-                                     // "line idle, clear to send".
+                                     // bit 4 (Enter Hunt); clears when a
+                                     // frame arrives (opening flag), sets
+                                     // again after it. LLAP carrier sense
+                                     // reads it as "line idle/busy".
+        // ── LLAP Rx/Tx wire state ──
+        std::vector<uint8_t> txBuf;  // SDLC frame being written (no FCS)
+        std::deque<std::vector<uint8_t>> rxQueue;  // injected frames (FCS added)
+        std::vector<uint8_t> rxCur;  // frame being paced onto the FIFO
+        size_t rxPos = 0;
+        int rxTimer = 0;             // cycles to the next FIFO byte
+        struct RxByte { uint8_t d; uint8_t rr1; };
+        std::deque<RxByte> fifo;     // 3-deep Rx FIFO, per-byte RR1 status
+        bool rxIp = false;           // Rx-char-available interrupt pending
+        bool specialIp = false;      // special receive condition (EOF/ovr)
+        bool firstCharSeen = false;  // WR1 mode 01: int on FIRST char only
+        uint8_t rr1Rd = 0x07;        // RR1 of the last byte read (all-sent)
     };
     uint8_t rr0(const Chan& c) const;
     bool sdlcMode(const Chan& c) const;  // WR4 bits 5-4 = 10
+    bool rxEnabled(const Chan& c) const { return (c.wr[3] & 0x01) != 0; }
     uint8_t readCtl_(int channel, Chan& c, int reg);
+    void rxPushByte(Chan& c);        // pace one frame byte into the FIFO
+    void rxStartFrame(Chan& c, int chIdx);
+    void raiseRxInt(Chan& c, bool special);
     Chan ch_[2];                     // [0] = B, [1] = A
     int ptr_ = 0;                    // register pointer (WR0 low bits)
     bool abortIdle_ = false;         // open-line Break/Abort (LC II)
     bool ctsHigh_ = true;
     bool rxStanding_ = false;        // Mac II POST: standing Rx available
+    int byteCycles_ = 544;           // CPU cycles per LocalTalk byte
     static constexpr int kAbortRelatch = 2000;   // ≈130 µs @ 15.67 MHz
     static constexpr int kUnderrunDelay = 1200;  // ≈2 byte times at LocalTalk
                                                  // 230.4 kbps (CRC + flag)
