@@ -71,6 +71,23 @@ void Scc8530::raiseRxInt(Chan& c, bool special) {
 }
 
 void Scc8530::rxStartFrame(Chan& c, int chIdx) {
+    // Drop the PREVIOUS frame's unread FCS residue before this frame opens.
+    // The LLAP driver reads a frame by its DDP length and skips the trailing
+    // FCS (it trusts the hardware CRC, RR1 bit 6). That frame's crc_hi (its
+    // EOF byte) is usually paced into the FIFO only AFTER the driver has
+    // already re-armed hunt — so it cannot be caught at the Enter-Hunt write
+    // (rxCur still held it there) and lingers as a phantom EOF-flagged byte
+    // at the HEAD of THIS frame. The 44-byte NBP LkUpReply then desynced on
+    // that phantom EOF and the AFPServer entity never populated the guest's
+    // Chooser even though the reply reached the node intact (empty server
+    // list, 2026-07-22 GISTPERSO live capture — the running fix at the
+    // Enter-Hunt write alone did not clear it). A frame only starts after the
+    // inter-dialog gap, by which time the driver has drained everything it
+    // wanted; an EOF-tagged FIFO tail here is therefore always stale residue.
+    if (!c.fifo.empty() && (c.fifo.back().rr1 & 0x80)) {
+        c.fifo.clear();
+        c.rxIp = false;                          // Rx int is FIFO-level driven
+    }
     c.rxCur = std::move(c.rxQueue.front().bytes);
     c.rxPace = c.rxQueue.front().pace;
     c.rxQueue.pop_front();

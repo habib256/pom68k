@@ -443,6 +443,54 @@ int main() {
         CHECK((rr1 & 0x80) && !(rr1 & 0x40), "clean EOF + good FCS on frame 2");
     }
 
+    // ── FCS residue that arrives AFTER the re-arm (the real boot timing) ──
+    // In the live LC II boot the driver reads the frame by length and re-arms
+    // hunt (WR3 Enter Hunt) BEFORE the wire has clocked the trailing crc_hi
+    // into the FIFO — rxCur is still non-empty at the re-arm, so the
+    // Enter-Hunt flush cannot fire. crc_hi lands a byte-time later and lingers
+    // as a phantom EOF byte until the NEXT frame. rxStartFrame must drop it so
+    // the next frame (the NBP LkUpReply) opens on its own first byte. This is
+    // the ordering the running Enter-Hunt-only fix failed to clear (the phantom
+    // survived in a live SCCDBG capture), so it is pinned separately.
+    {
+        Scc8530 s;
+        s.reset();
+        lapArm(s, 1);
+        const uint8_t f1[6] = {1, 2, 0x01, 0xAA, 0xBB, 0xCC};   // 6 + 2 FCS
+        s.injectRxFrame(kB, f1, sizeof f1, false);
+        std::vector<uint8_t> g1;
+        uint8_t rr1 = 0;
+        for (int t = 0; t < 40 && g1.size() < 6; t++) {
+            s.tick(kByteCyc);
+            s.writeCtl(kB, 0x10);
+            while (g1.size() < 6) {
+                s.writeCtl(kB, 0);
+                if (!(s.readCtl(kB) & 0x01)) break;
+                s.writeCtl(kB, 1); rr1 = s.readCtl(kB);
+                g1.push_back(s.readData(kB));
+            }
+        }
+        CHECK(g1.size() == 6, "frame read by length; FCS still on the wire");
+        wr(s, 3, 0xDD);                      // re-arm BEFORE crc_hi hits the FIFO
+        s.tick(kByteCyc); s.tick(kByteCyc);  // the FCS now paces in as a phantom
+        const uint8_t f2[6] = {1, 2, 0x01, 0x11, 0x22, 0x33};
+        s.injectRxFrame(kB, f2, sizeof f2, false);
+        // The real LAP driver does NOT poll the idle inter-dialog gap — it
+        // waits on the carrier-sense (hunt-exit) interrupt, so it reads only
+        // once the next frame opens. Model that: advance WITHOUT reading until
+        // hunt clears (rxStartFrame ran and flushed the phantom), then drain.
+        for (int t = 0; t < 40; t++) {
+            s.tick(kByteCyc);
+            s.writeCtl(kB, 0);
+            if (!(s.readCtl(kB) & 0x10)) break;   // hunt cleared → f2 opened
+        }
+        std::vector<uint8_t> g2 = lapDrain(s, rr1);
+        CHECK(!g2.empty() && g2[0] == 1,
+              "phantom FCS arriving after re-arm is flushed when the next frame opens");
+        CHECK(g2.size() == 8 && g2[2] == 0x01 && g2[5] == 0x33,
+              "the LkUpReply-analogue opens on its own first byte, intact");
+    }
+
     if (failures == 0)
         std::printf("PASS: llap loop (ENQ both ways, addr filter, broadcast, "
                     "abort, RTS/CTS dialogue in-window, express CTS across "
