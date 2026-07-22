@@ -7,22 +7,25 @@
 
 #include "AdbLine.h"
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 
 // Bit-cell / handshake durations, in CPU cycles, calibrated to the PIC1654S
-// firmware's actual ADB line timing (measured: bit cell ≈1054 cyc, attention
-// low ≈8398, reset ≈41514). The PIC IS the LLE timing reference — its clock
-// (1 insn / 34 CPU cyc) and delay loops set the wire timing. Thresholds sit
-// at the mid-points of the PIC's short/long pulses.
-static constexpr int64_t kShort  = 374;    // PIC short pulse (bit "1" low)
-static constexpr int64_t kLong   = 680;    // PIC long pulse  (bit "0" low)
-static constexpr int64_t kSrq    = 1500;
-static constexpr int64_t kT1t    = 680;
-static constexpr int64_t kStop   = 750;
-static constexpr int64_t T_BIT   = 527;    // "1" bit threshold (374↔680 midpoint)
-static constexpr int64_t T_SYNC  = 300;    // Tsync
-static constexpr int64_t T_ATTEN = 4000;   // attention (between bit-cell 1054 and 8398)
-static constexpr int64_t T_RESET = 20000;  // reset (between 8398 and 41514)
-static constexpr int64_t T_T1T   = 1200;
+// firmware's actual ADB line timing under cycle-exact co-stepping (1 PIC
+// cycle = 34 CPU cyc, real 1/2/3-cycle instruction cost). Measured: bit "0"
+// low 1020 + high 544 = bit cell 1564 cyc ≈ 99.8 µs — the ADB spec 100 µs —
+// attention low 12410 ≈ 792 µs (spec ~800 µs). The PIC IS the LLE timing
+// reference; thresholds sit at the mid-points of its short/long pulses.
+static constexpr int64_t kShort  = 544;    // PIC short pulse (bit "1" low, 35 %)
+static constexpr int64_t kLong   = 1020;   // PIC long pulse  (bit "0" low, 65 %)
+static constexpr int64_t kSrq    = 2250;
+static constexpr int64_t kT1t    = 1020;
+static constexpr int64_t kStop   = 1125;
+static constexpr int64_t T_BIT   = 782;    // "1" bit threshold (544↔1020 midpoint)
+static constexpr int64_t T_SYNC  = 450;    // Tsync
+static constexpr int64_t T_ATTEN = 6000;   // attention (between bit-cell 1564 and 12410)
+static constexpr int64_t T_RESET = 30000;  // reset (between 12410 and ~62000)
+static constexpr int64_t T_T1T   = 1800;
 
 void AdbLine::reset() {
     hostDrive_ = deviceDrive_ = true;
@@ -64,6 +67,12 @@ void AdbLine::setHostDrive(bool high) {
     if (nw == old) return;
     int64_t dtime = now_ - lastEdge_;
     lastEdge_ = now_;
+    // Diagnostic tracer: POM68K_ADB_LLE_TRACE=1 dumps every host edge
+    // (new level + previous-level duration) — used to calibrate the constants.
+    static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
+    if (trace)
+        std::fprintf(stderr, "adbline: %s after %lld (state %d)\n",
+                     nw ? "rise" : "fall", (long long)dtime, linestate_);
     receiveEdge(nw, dtime);
 }
 
@@ -193,6 +202,13 @@ void AdbLine::adbTalk() {
     const uint8_t addr = command_ >> 4;
     const uint8_t op = (command_ >> 2) & 3;   // 0/1 reset-flush, 2 listen, 3 talk
     const uint8_t reg = command_ & 3;
+    static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
+    if (trace)
+        std::fprintf(stderr,
+                     "adbtalk: %s cmd=%02X (addr=%d op=%d reg=%d) kbd@%d mouse@%d "
+                     "buf=%02X %02X now=%lld\n",
+                     waitingCmd_ ? "cmd" : "listen-data", command_, addr, op, reg,
+                     kbdAddr_, mouseAddr_, buffer_[0], buffer_[1], (long long)now_);
 
     if (waitingCmd_) {
         datasize_ = 0;

@@ -11,9 +11,9 @@ static int failures = 0;
     std::printf("FAIL: %s\n", msg); failures++; } } while (0)
 
 // Cycle durations mirroring AdbLine's internal (PIC-calibrated) constants:
-// bit "1" high >= T_BIT(527), bit "0" high < 527; attention low >= T_ATTEN(4000).
-static constexpr int64_t kShort = 374, kLong = 680;
-static constexpr int64_t kAtten = 6000, kSync = 400, kGap = 374, kStopHigh = 400;
+// bit "1" high >= T_BIT(782), bit "0" high < 782; attention low >= T_ATTEN(6000).
+static constexpr int64_t kShort = 544, kLong = 1020;
+static constexpr int64_t kAtten = 9000, kSync = 600, kGap = 544, kStopHigh = 600;
 
 // Drive one ADB command byte (Attention + sync + 8 bits, MSB first + stop).
 static void sendCommand(AdbLine& a, uint8_t cmd) {

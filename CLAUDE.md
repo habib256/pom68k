@@ -95,7 +95,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | **68030 core + MMU (LC II)** | `extern/moira` extension | O4 ✓ | MC68030UM + WinUAE oracle |
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ | MC68881/882UM; WinUAE fpp.c |
 | **68040 oracle + core + MMU** | `oracle/`, `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; 7 200 pinned vectors | MC68040UM + WinUAE oracle |
-| **Mac II machine** (GLUE/Toby/ADB modem) | `MacIIMemory.*`, `Cpu020.*`, `AdbVia.*`, `NuBus.*`, `DeclRom.*`, `TobyVideo.*` | ✓; Sys 6 + 7 Finder | MAME `macii.cpp` + Mac II ROM |
+| **Mac II machine** (GLUE/Toby/ADB modem) | `MacIIMemory.*`, `Cpu020.*`, `AdbVia.*`, `Pic1654s.*`, `AdbLine.*`, `NuBus.*`, `DeclRom.*`, `TobyVideo.*` | ✓; Sys 6 + 7 Finder; LLE ADB (real PIC1654S) default, mouse live | MAME `macii.cpp` + Mac II ROM |
 | **LC II machine** (V8/Egret/ASC/Ariel) | `V8Memory.*`, `Cpu030.*`, `Egret.*`, `AdbBus.*`, `Asc.*`, `V8Video.h` | O6 ✓; Finder | MAME `maclc.cpp` + LC II ROM |
 | **Quadra 605 machine** (MEMCjr/PrimeTime/Cuda/DAFB) | `Q605Memory.*`, `Cpu040.*`, Cuda via `Egret` flavor | Q5-Q7 ✓; Mac OS 8.1 Finder | MAME `macquadra605.cpp` |
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` + ROM/OS 8 |
@@ -150,9 +150,10 @@ SWIM, DFAC audio polish, bus/timing).
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
-GUI exposes the machine alongside Plus/Mac II/LC II. **42 CTest gates**,
+GUI exposes the machine alongside Plus/Mac II/LC II. **45 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
-`macii_boot_etalon`, `macii_sys7_boot_etalon`, `sst68040`,
+`macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
+(LLE ADB mouse — default path since 2026-07-22), `sst68040`,
 `q605_boot_etalon`, `q605_dafb_test`, `q605_asc_test`, `swim2_test`,
 `swim2_media_test`, `q605_floppy_boot_etalon`,
 `q605_nofpu_boot_etalon`, and `q605_barefpu_boot_etalon`.

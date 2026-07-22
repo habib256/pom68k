@@ -400,6 +400,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME macii_sys7_boot_etalon COMMAND macii_sys7_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # Gate: LLE ADB (PIC1654S) delivers mouse motion to the Finder — boots,
+    # injects deltas, requires RawMouse/Mouse to move (soft-skips without
+    # ROM+disk). Also pins the VIA2 CA1 slot-VBL → jCrsrTask coupling.
+    add_executable(macii_mouse_trace tests/macii_mouse_trace.cpp)
+    target_link_libraries(macii_mouse_trace PRIVATE pom68k_core)
+    add_test(NAME macii_mouse_etalon COMMAND macii_mouse_trace
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # Dev harness: ROM×disk Finder matrix (not a CTest gate).
     add_executable(finder_boot_matrix EXCLUDE_FROM_ALL tests/finder_boot_matrix.cpp)
     target_link_libraries(finder_boot_matrix PRIVATE pom68k_core)
@@ -426,9 +434,6 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
 
     add_executable(macii_mm_probe EXCLUDE_FROM_ALL tests/macii_mm_probe.cpp)
     target_link_libraries(macii_mm_probe PRIVATE pom68k_core)
-
-    add_executable(macii_mouse_trace EXCLUDE_FROM_ALL tests/macii_mouse_trace.cpp)
-    target_link_libraries(macii_mouse_trace PRIVATE pom68k_core)
 
     add_executable(lcii_mouse_trace EXCLUDE_FROM_ALL tests/lcii_mouse_trace.cpp)
     target_link_libraries(lcii_mouse_trace PRIVATE pom68k_core)

@@ -4,7 +4,14 @@
 #include "MacIIMemory.h"
 #include "Cpu020.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+
+// Diagnostic tracer (POM68K_ADB_PIC_TRACE=1): VIA1 SR/ACR/ORB traffic.
+static bool adbViaTrace() {
+    static const bool t = std::getenv("POM68K_ADB_PIC_TRACE") != nullptr;
+    return t;
+}
 
 MacIIMemory::~MacIIMemory() { delete toby_; }
 
@@ -119,20 +126,25 @@ const uint8_t* MacIIMemory::ramAt(uint32_t addr) const {
     return nullptr;
 }
 
-bool MacIIMemory::via2Ca1SlotTaskArmed() const {
-    // ROM $4080628A walks $D08 bit numbers then $D04[i] queue headers;
-    // empty header+2 → SysError(51). CA1 is VIA bit 1.
+bool MacIIMemory::via2Ca1SlotTaskArmed(int bit) const {
+    // ROM $40806284 CA1 dispatcher: ($D08) → long[6] of VIA2 PA *bit
+    // numbers*; a clear PA bit dispatches ($62B0) via ($D04) indexed BY BIT
+    // NUMBER to a QHdr whose +2 (qHead) task list must be non-empty, else
+    // SysError(51) at $408062DC. Slot 9 (Toby) is PA bit 0 — the old check
+    // looked for entry ==1 and indexed $D04 by loop position, so it never
+    // armed and the runtime slot VBL (SlotVInstall queue → jCrsrTask, the
+    // MTemp→RawMouse cursor coupling) never ran.
     const uint32_t d08 = peek32(0xD08);
     const uint32_t d04 = peek32(0xD04);
     if (!d08 || !d04 || d08 >= ramSize_ || d04 >= ramSize_) return false;
-    for (int i = 0; i < 6; i++) {
-        if (peek32(d08 + uint32_t(i) * 4) != 1) continue;
-        const uint32_t hdr = peek32(d04 + uint32_t(i) * 4);
-        if (!hdr || hdr >= ramSize_) return false;
-        const uint32_t task = peek32(hdr + 2);
-        return task != 0 && task < ramSize_;
-    }
-    return false;
+    bool listed = false;
+    for (int i = 0; i < 6 && !listed; i++)
+        listed = peek32(d08 + uint32_t(i) * 4) == uint32_t(bit);
+    if (!listed) return false;
+    const uint32_t hdr = peek32(d04 + uint32_t(bit) * 4);
+    if (!hdr || hdr >= ramSize_) return false;
+    const uint32_t task = peek32(hdr + 2);
+    return task != 0 && task < ramSize_;
 }
 
 void MacIIMemory::nubusSlotIrq(int slot, bool active) {
@@ -148,7 +160,7 @@ void MacIIMemory::nubusSlotIrq(int slot, bool active) {
     // Decl ROM's SIntInstall sticks in $D04 — raising CA1 then SysError(51)s
     // at $408062DC and livelocks the IPL2 dispatcher (Welcome stall).
     if ((nubusIrqState_ & 0x3F) != 0x3F && (via2_.ierRaw() & Via6522::CA1)
-        && via2Ca1SlotTaskArmed())
+        && via2Ca1SlotTaskArmed(idx))
         via2_.raiseCa1();
     via2Irq_ = via2_.irqAsserted();
     updateIrq();
@@ -209,6 +221,13 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
     // same as Mac Plus / V8). Using >> 8 on byte offsets mis-routed ORA_NH
     // ($1E00) into IER and left ROM overlay stuck on.
     int reg = (addr >> 9) & 0xF;
+    if (isVia1 && adbViaTrace()
+        && (reg == Via6522::ORB || reg == Via6522::SR || reg == Via6522::ACR
+            || reg == Via6522::DDRB || reg == Via6522::IFR))
+        std::fprintf(stderr, "via1: %s reg=%X v=%02X pc=%08X clk=%lld\n",
+                     write ? "wr" : "rd", reg, v & 0xFF,
+                     cpu_ ? unsigned(cpu_->getPC()) : 0u,
+                     cpu_ ? (long long)cpu_->getClock() : 0);
     if (write) {
         if (reg == Via6522::ORA || reg == Via6522::ORA_NH || reg == Via6522::DDRA) {
             via.write(reg, uint8_t(v & 0xFF));
@@ -255,7 +274,15 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
             // card clocks VIA1 SR (shift-in). Re-arm IFR.SHIFT only while
             // soft-flag bit5 @$15D(A3) is set — unbounded ORB→SHIFT livelocks
             // in $70xx after the wait completes.
-            if (reg == Via6522::ORB && (via.acr() & 0x1C) && (via.ierRaw() & Via6522::SHIFT)) {
+            // LLE ADB: NEVER fire this — A3 here is ADBBase ($CF8) and $15D
+            // is the ADB driver's own flag byte ($73E6 bset #0). The hack
+            // raised a phantom SHIFT 320 cyc after every ST write ($73DC ORB
+            // RMW), so the $7002 ISR flipped ACR $1C→$0C ($7092) before the
+            // PIC produced a single CB1 clock and the byte handshake
+            // collapsed. The real PIC's idle-timeout byte (firmware 0x044→
+            // 0x065) provides the genuine SHIFT the $7100 POST wait needs.
+            if (!adbVia_.lle()
+                && reg == Via6522::ORB && (via.acr() & 0x1C) && (via.ierRaw() & Via6522::SHIFT)) {
                 const uint32_t a3 = (uint32_t(peek8(0xCF8)) << 24) | (uint32_t(peek8(0xCF9)) << 16)
                                   | (uint32_t(peek8(0xCFA)) << 8) | peek8(0xCFB);
                 if (a3 && (peek8(a3 + 0x15D) & 0x20))
@@ -288,6 +315,11 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
     if (isVia1 && reg == Via6522::ORB) refreshVia1PortB();
     if (!isVia1 && reg == Via6522::ORA) refreshVia2PortA();
     uint8_t lo = via.read(reg);
+    if (isVia1 && adbViaTrace() && (reg == Via6522::SR || reg == Via6522::IFR
+                                    || reg == Via6522::ORB))
+        std::fprintf(stderr, "via1: rd reg=%X -> %02X pc=%08X clk=%lld\n",
+                     reg, lo, cpu_ ? unsigned(cpu_->getPC()) : 0u,
+                     cpu_ ? (long long)cpu_->getClock() : 0);
     updateIrq();
     if (!isVia1 && reg == Via6522::IFR)
         via2Irq_ = via.irqAsserted();

@@ -262,11 +262,13 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   ROMs; `TobyVideo` is the slot-9 640×480 card with Bt453 CLUT
   (whole-frame decode). VIA2 CA1 slot IRQ only fires when the `$D04` slot
   task queue is armed (empty-queue CA1 → SysError 51).
-- **ADB:** default is `AdbVia` HLE — it replaces the PIC1654S ADB modem at
-  protocol level (NEW/EVEN/ODD/IDLE byte states over the VIA shift register)
-  feeding the shared `AdbBus` keyboard/mouse. An opt-in **LLE** path
-  (`POM68K_ADB_LLE=1`) runs the real transceiver firmware instead — see
-  "Mac II ADB: PIC1654S LLE" below.
+- **ADB:** default is the **LLE PIC1654S** path when
+  `roms/adbmodem/342s0440-b.bin` is present — the real transceiver
+  firmware drives the VIA shifter and the bit-serial bus; the mouse only
+  moves on this path (see "Mac II ADB: PIC1654S LLE" below).
+  `POM68K_ADB_LLE=0` (or a missing dump) falls back to the `AdbVia` HLE
+  byte-model (NEW/EVEN/ODD/IDLE over the VIA SR feeding `AdbBus`), which
+  drops fast `ADBReInit` traffic — phantom mouse address, frozen cursor.
 - **RTC / XPRAM:** the ROM runs **unmodified** since 2026-07-21 — the
   `Rtc` speaks the full 343-0042 protocol (falling-edge shift, 256-byte
   extended XPRAM, MAME macrtc mapping: classic regs 8-11/16-31 = XPRAM
@@ -280,7 +282,7 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   `macii_sys7_boot_etalon` (Sys 7.0/7.1), `declrom_test`, `nubus_test`,
   `toby_test`.
 
-## Mac II ADB: PIC1654S LLE (opt-in, `POM68K_ADB_LLE=1`)
+## Mac II ADB: PIC1654S LLE (default; `POM68K_ADB_LLE=0` → HLE)
 
 The HLE `AdbVia` byte-model drops ~99.99 % of the ROM's fast `ADBReInit`
 traffic (its fixed timer misses the rapid ST transitions), so the ROM's
@@ -299,9 +301,10 @@ timeouts live in the firmware, so they are exact by construction.
 - **`AdbLine`** — bit-serial ADB keyboard+mouse device model (wired-AND
   open-collector line, attention/sync/8-bit/stop framing, SRQ, Listen-R3
   reassignment, change-detected Talk R0), ported from MAME `macadb.cpp`.
-  Timing is calibrated to the PIC's *own* wire rate (its delay loops set
-  the bit cell ≈1054 CPU cyc, attention ≈8398), not MAME's abstract
-  ticks. Gate: `adbline_test`.
+  Timing is calibrated to the PIC's *own* wire rate under cycle-exact
+  co-stepping — bit cell 1564 cyc ≈ 99.8 µs and attention 12410 ≈ 792 µs,
+  i.e. the ADB spec values, since the firmware's delay loops ARE the
+  reference. Gate: `adbline_test`.
 - **`Via6522::extShiftCB1`** — external-clock (CB1) shift-register support
   for the ADB modes (011 shift-in, 111 shift-out), rising-edge clocked to
   match the firmware's shift routines (`0x065` send / `0x077` receive).
@@ -315,14 +318,26 @@ when the 68k leaves them as inputs, so idle = ST=IDLE(3) not a spurious
 NEW that RESET-looped the PIC (`readA` does `portB | ~ddrb`); and the
 line-timing recalibration above.
 
-**Not the default yet** — current blocker: the PIC mis-routes the ROM's
-ADB *self-test loopback* (SR ramps `$03→$1E→…→$E7`, ST NEW→EVEN→ODD, ACR
-`$1C`/`$0C`) as a command and drives `$03` on the bus; nobody answers, so
-`reg0f` bit4 stays clear, `reg17` bit1 (0x1f4/0x1f6) and PB3 (0x1fd) are
-never set, and the ROM waits after one command. Root cause: `syncTo`
-runs the PIC in *bursts* with the VIA state frozen between accesses, so
-it aliases the fast ST edges. Fix (TODO ★): cycle-exact PIC↔CPU
-co-stepping. Repro: `POM68K_ADB_LLE=1 macii_mouse_trace`.
+**Default since 2026-07-22.** The "self-test misroute" blocker was three
+stacked bugs (full detail: CHANGELOG "Mac II LLE ADB default"): PIC
+instruction cost ignored (`tickLle` now charges `run(1)`'s real 1–3-cycle
+cost — the firmware's wire timing then lands on the ADB spec); a phantom
+IFR.SHIFT from the Slot-Manager ORB `armShiftComplete()` hack whose
+`$15D(A3)` guard is ADBBase→flags (gated off in LLE — the firmware's
+idle-timeout byte serves the $7100 POST wait for real); and the VIA
+mode-111 ext shift-out advancing the SR on the *first* CB1 falling edge,
+delivering every ROM byte `<<1` to the PIC. Note for future co-stepping
+work: `syncTo`'s burst-at-VIA-access interleaving is temporally *exact* —
+VIA state only changes at VIA accesses and the CPU only sees PIC effects
+through VIA reads, both of which sync first; only the cost accounting was
+wrong. Firmware map (from disassembly): ST-change dispatch @0x022 with
+index = (last-cmd-op<<2)|newST; 0x065 = shift byte PIC→VIA, 0x077 =
+VIA→PIC (8 CB1 cells); 0x0C5 ladder = wire bit-width measurement; 0x1A0 =
+execute command on the wire; 0x1F3 = IRQ (RB4/PB3) decision.
+Diagnostics: `POM68K_ADB_LLE_TRACE=1` (wire edges + `adbtalk` decode),
+`POM68K_ADB_PIC_TRACE=1` (ST samples, PIC port-B writes, VIA1 traffic).
+Repro/gate: `macii_mouse_trace` (mouse must move; also exercises the
+`via2Ca1SlotTaskArmed` slot-VBL → jCrsrTask fix, same CHANGELOG entry).
 
 ## LC II platform (O6, functional)
 

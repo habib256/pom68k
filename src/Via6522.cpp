@@ -67,9 +67,19 @@ void Via6522::extShiftCB1(bool level, bool cb2FromPic) {
     if (m == 3) {                                // shift in (PIC→VIA), sample on rising
         if (!rose) return;
         sr_ = uint8_t((sr_ << 1) | (cb2FromPic ? 1 : 0));
-    } else if (m == 7) {                         // shift out (VIA→PIC), advance on falling
-        if (!fell) return;
-        sr_ = uint8_t(sr_ << 1);
+    } else if (m == 7) {                         // shift out (VIA→PIC)
+        // Bit7 is presented on CB2 from the moment the host loads the SR; the
+        // PIC reads it after its FIRST rising edge. The SR therefore advances
+        // only on the falling edges of the SECOND and later cells, and the
+        // bit counter tracks rising edges (bits actually consumed). Advancing
+        // on every fall dropped bit7 before the first read — the PIC decoded
+        // every ROM byte as byte<<1 (Talk R0 $2C arrived as Listen $58) and
+        // ADBReInit relocated the devices into phantom addresses.
+        if (fell) {
+            if (extBits_ > 0) sr_ = uint8_t(sr_ << 1);
+            return;
+        }
+        if (!rose) return;
     } else {
         return;
     }

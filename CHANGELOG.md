@@ -1,5 +1,61 @@
 # CHANGELOG
 
+## 2026-07-22 — Mac II LLE ADB default: mouse moves; three bugs, none where predicted
+
+`macii_mouse_trace` PASSes under the PIC1654S LLE path and it is now the
+**default** when `roms/adbmodem/342s0440-b.bin` is present
+(`POM68K_ADB_LLE=0` restores the HLE byte-model; missing dump falls back
+silently). The TODO ★ blocker ("PIC mis-routes the self-test loopback")
+was three stacked bugs, and *none* was the predicted ST-edge aliasing —
+`syncTo`'s burst-at-VIA-access interleaving is temporally exact, because
+the VIA state only changes at VIA accesses (which sync first) and the CPU
+only observes PIC effects through VIA reads (which also sync first):
+
+1. **PIC instruction cost ignored** (`AdbVia::tickLle`): `Pic1654s::run(1)`
+   returns 1–3 cycles (branches/skips 2, computed goto 3) but every
+   instruction was charged one 34-cycle slot, so branch-heavy firmware
+   (DECFSZ+GOTO delay loops = 3 cycles/iter) ran up to 2–3× too fast vs
+   the 68k. Charging the real cost lands the firmware's wire timing
+   exactly on the ADB spec — bit cell 1564 cyc ≈ 99.8 µs (spec 100 µs),
+   attention 12410 ≈ 792 µs (spec ~800 µs) — where the old "calibrated"
+   1054-cyc bit cell was the ×1.5 distortion of the 2-vs-3-cycle loop
+   ratio. `AdbLine` constants recalibrated to the corrected wire
+   (thresholds at the PIC's own pulse midpoints; `adbline_test` mirrors).
+2. **Phantom SHIFT from the Slot-Manager ORB hack** (`MacIIMemory`): the
+   `armShiftComplete()` re-arm fired on *every* VIA1 ORB write with
+   ACR&$1C + IER.SHIFT — including the ADB driver's ST writes ($73DC ORB
+   RMW), and its guard byte `$15D(A3)` is `ADBBase→flags` ($CF8), the very
+   byte the driver mutates ($73E6 `bset #0`). The $7002 SHIFT ISR ran 400
+   cyc after each ST=NEW — before the PIC produced a single CB1 clock —
+   flipped ACR $1C→$0C ($7092 `bclr #4`), and the PIC later clocked 8 bits
+   off a floating CB2: garbage command ($07) on the wire, then silence.
+   Now gated off in LLE mode — the firmware's idle-timeout byte
+   (0x044→0x065) provides the *real* SHIFT the $7100 POST wait needs.
+3. **VIA mode-111 ext shift-out dropped bit7** (`Via6522::extShiftCB1`):
+   the SR advanced on every CB1 falling edge, including the first — before
+   the PIC's first read — so every ROM byte arrived `<<1` (Talk R0 $2C
+   read as $58, the whole self-test ramp shifted). Real 6522: the MSB is
+   presented from SR-load and rotates only after being consumed. Model:
+   count rising edges (bits consumed), shift on the falling edges of the
+   second and later cells.
+
+With those three fixed the whole chain is honest: ROM self-test loopback
+handshakes byte-per-byte, `ADBReInit` relocates kbd/mouse 2→15→2 / 3→15→3
+over real Listen R3 wire frames, Sys 6/7 autopoll Talk R0 at the correct
+addresses, and dy/dx bytes ($82/$83) reach the mouse driver.
+
+**Bonus fix, default mode too — the Mac II cursor task never ran:**
+the driver accumulated deltas into MTemp ($0828) but RawMouse/Mouse
+stayed frozen, because `via2Ca1SlotTaskArmed()` misread the ROM's CA1
+dispatcher tables: `($D08)` holds VIA2 PA *bit numbers* (slot 9/Toby =
+bit 0, not 1) and `($D04)` is indexed by bit number, not loop position.
+It never armed, so the slot VBL → SlotVInstall queue → `jCrsrTask`
+(MTemp→RawMouse coupling) never fired after boot. Rewritten against ROM
+$40806284/$62B0 semantics (gate: `macii_mouse_trace` + all etalons in
+both ADB modes). Diagnostic tracers kept: `POM68K_ADB_LLE_TRACE=1` (wire
+edges + decoded commands), `POM68K_ADB_PIC_TRACE=1` (ST samples, PIC
+port writes, VIA1 SR/ACR/ORB/IFR traffic).
+
 ## 2026-07-22 — Mac II ADB goes LLE: real PIC1654S transceiver (opt-in)
 
 The HLE `AdbVia` byte-model is fundamentally too coarse for the Mac II:

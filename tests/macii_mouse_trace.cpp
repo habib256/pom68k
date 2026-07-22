@@ -1,6 +1,9 @@
-// POM68K — dev tool: verify Mac II ADB mouse delivery (EXCLUDE_FROM_ALL).
-// Boots to the Finder, then injects mouse motion each frame and watches the
-// low-memory mouse globals (RawMouse $082C, Mouse $0830) move.
+// POM68K — gate `macii_mouse_etalon`: Mac II ADB mouse delivery.
+// Boots to the Finder, then injects mouse motion each frame and requires the
+// low-memory mouse globals (RawMouse $082C, Mouse $0830) to move. Under the
+// default LLE ADB this exercises the whole chain: AdbLine wire → PIC1654S
+// firmware → VIA1 shifter → ADB Manager → mouse driver → MTemp → slot VBL
+// (VIA2 CA1) → jCrsrTask. Soft-skips without ROM+disk assets.
 
 #include "MacIIMemory.h"
 #include "TobyVideo.h"

@@ -2,10 +2,18 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "AdbVia.h"
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <vector>
+
+// Diagnostic tracer (POM68K_ADB_PIC_TRACE=1): logs every ST value the PIC
+// samples (with its PC) and every PIC port-B write that changes CB1/CB2/IRQ.
+static bool picTrace() {
+    static const bool t = std::getenv("POM68K_ADB_PIC_TRACE") != nullptr;
+    return t;
+}
 
 void AdbVia::reset() {
     state_ = IDLE;
@@ -23,8 +31,12 @@ void AdbVia::attach(Via6522& via, AdbBus& adb) {
     adb_ = &adb;
     reset();
 
-    // Opt-in LLE: run the real PIC1654S firmware if the dump is present.
-    if (std::getenv("POM68K_ADB_LLE")) {
+    // LLE by DEFAULT when the firmware dump is present (2026-07-22 — the
+    // cycle-exact co-stepping + VIA ext-shift fixes made it the reference;
+    // the mouse only moves on this path). POM68K_ADB_LLE=0 forces the old
+    // HLE byte-model; missing dump falls back to HLE silently.
+    const char* env = std::getenv("POM68K_ADB_LLE");
+    if (!env || env[0] != '0') {
         for (const char* p : { "roms/adbmodem/342s0440-b.bin",
                                "../roms/adbmodem/342s0440-b.bin" }) {
             std::ifstream f(p, std::ios::binary);
@@ -49,6 +61,14 @@ void AdbVia::setupPicPorts() {
         // input ST bits to 1.
         uint8_t pb = uint8_t(via_->portB() | ~via_->ddrb());
         uint8_t st = uint8_t((pb >> 4) & 3);
+        if (picTrace()) {
+            static uint8_t lastSt = 0xFF;
+            if (st != lastSt) {
+                lastSt = st;
+                std::fprintf(stderr, "pic: sampled ST=%d @pc=%03X clk=%lld\n",
+                             st, pic_.pc(), (long long)lastPicClock_);
+            }
+        }
         return uint8_t(st | (line_.line() ? 0x08 : 0));
     };
     pic_.writeA = [this](uint8_t v) {
@@ -58,6 +78,15 @@ void AdbVia::setupPicPorts() {
         return uint8_t(0xF7 | (via_->extShiftCB2Out() ? 0x08 : 0));   // RB3 = CB2 in
     };
     pic_.writeB = [this](uint8_t v) {
+        if (picTrace()) {
+            static uint8_t lastB = 0xFF;
+            if ((v ^ lastB) & 0x1C) {
+                std::fprintf(stderr, "pic: portB=%02X (CB1=%d CB2=%d IRQ=%d) @pc=%03X clk=%lld\n",
+                             v, !!(v & 4), !!(v & 8), !(v & 0x10), pic_.pc(),
+                             (long long)lastPicClock_);
+                lastB = v;
+            }
+        }
         via_->extShiftCB1((v & 0x04) != 0, (v & 0x08) != 0);   // RB2 clock, RB3 data
         irqPending_ = !(v & 0x10);                             // RB4 → PB3 IRQ
     };
@@ -66,10 +95,18 @@ void AdbVia::setupPicPorts() {
 void AdbVia::tickLle(int cpuCycles) {
     picAcc_ += cpuCycles;
     while (picAcc_ >= kCyclesPerPicInsn) {
-        picAcc_ -= kCyclesPerPicInsn;
-        line_.tick(kCyclesPerPicInsn);   // advance the ADB device send timers
-        pic_.run(1);                     // one PIC instruction (drives the ports)
-        pic_.setRtcc(line_.line());      // RTCC pin tracks the ADB line
+        // Cycle-exact co-stepping: charge the *real* instruction cost.
+        // run(1) executes one instruction and returns its cost in PIC cycles
+        // (1; branches/skips 2; computed goto 3). The old code charged every
+        // instruction 1 cycle, so branch-heavy firmware (DECFSZ+GOTO delay
+        // loops = 3 cycles/iter) ran up to 2-3× too fast vs the 68k — its
+        // inter-state timeouts expired early and the ROM's ADB self-test ST
+        // ramp was misrouted as a command (TODO ★, DEV.md "PIC1654S LLE").
+        // With true cost the measured bit cell lands on the ADB spec 100 µs.
+        int cost = pic_.run(1);                    // drives the ports
+        line_.tick(cost * kCyclesPerPicInsn);      // ADB device send timers
+        picAcc_ -= cost * kCyclesPerPicInsn;       // may borrow ≤2 cycles; self-corrects
+        pic_.setRtcc(line_.line());                // RTCC pin tracks the ADB line
     }
     applyIrqToVia();
 }
