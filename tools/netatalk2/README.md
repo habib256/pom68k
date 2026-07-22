@@ -26,15 +26,16 @@ Berkeley DB 5.3 and libgcrypt into `extern/netatalk2-build/` (gitignored).
 ## Run (each session)
 
 ```bash
-sudo tools/netatalk2/appleshare_bridge.sh          # 1. module + interfaces
-.venv-tools/bin/python tools/netatalk2/router.py   # 2. LToUDP ⇄ EtherTalk (keep running)
-sudo tools/netatalk2/appleshare_daemons.sh         # 3. atalkd (non-seed) + afpd
+sudo tools/netatalk2/appleshare.sh                 # everything, in order
 POM68K_LTOUDP=1 POM68K_APPLETALK=1 ./build/POM68K <ROM> <disk>…
 ```
 
-Order matters: atalkd runs non-seed and learns net/zone from TashRouter,
-so the router must already be up (two seed routers on one segment fight
-— the first bring-up's getzones timeout).
+One script brings up module + interfaces, the TashRouter (as your user,
+logs in `run/router.log`), then atalkd + afpd, and self-checks with
+getzones/nbplkup. `sudo tools/netatalk2/appleshare.sh stop` tears it all
+down. Internals: atalkd runs non-seed and learns net/zone from
+TashRouter, so the router is started first (two seed routers on one
+segment fight — the first bring-up's getzones timeout).
 
 In the guest: **Chooser → AppleShare** → server "POM68K" → log in as
 Guest → mount **Input**. StuffIt archives can be expanded straight off
@@ -46,7 +47,7 @@ Notes:
   module ships with Ubuntu's generic kernels.
 - Nothing binds to your physical network: the DDP segment lives on a
   local veth pair, and LToUDP multicast has TTL 1.
-- `tools/netatalk2/run/` holds the generated configs + pid files
-  (gitignored). Stop with `sudo pkill afpd atalkd` and Ctrl-C the router.
+- `tools/netatalk2/run/` holds the generated configs, logs + pid files
+  (gitignored). `sudo tools/netatalk2/appleshare.sh stop` stops it all.
 - System 6 guests: open the Chooser to start AppleTalk (Sys 7 opens it
   at boot with `POM68K_APPLETALK=1`).
