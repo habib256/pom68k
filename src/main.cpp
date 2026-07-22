@@ -78,10 +78,9 @@ template <class M> static void wireLocalTalk(M& mem, int byteCycles) {
         if (n == 3 && d[2] == 0x84) {                // lapRTS
             if (d[0] != 0xFF) {
                 const uint8_t cts[3] = { d[1], d[0], 0x85 };
-                // Express: the synthesized CTS must land inside the LLAP
-                // 200 µs window measured from the RTS underrun; wire-paced
-                // delivery arrived ~185-250 µs later and every retry missed
-                // by the same deterministic phase.
+                // Express: queues through the sender's half-duplex Rx-off
+                // window and starts after an inter-frame gap at wire pace,
+                // exactly like a real peer's CTS (Scc8530::injectRxFrame).
                 mem.scc().injectRxFrame(0, cts, 3, true);
             }
             return;
@@ -581,14 +580,18 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                 glfwSetWindowShouldClose(c.window, GLFW_TRUE);
             };
             ImGui::TextDisabled("Boot SCSI");
+            // Same filename shows up in both sections — scope the ImGui IDs.
+            ImGui::PushID("boot");
             for (const std::string& d : listDiskImages(c.hddPath)) {
                 bool cur = (d == c.hddPath);
                 std::string name = std::filesystem::path(d).filename().string();
                 if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
                     relaunch(d, c.extraDisks);
             }
+            ImGui::PopID();
             ImGui::Separator();
             ImGui::TextDisabled("Volumes secondaires");
+            ImGui::PushID("secondary");
             for (const std::string& d : listDiskImages(c.hddPath)) {
                 if (d == c.hddPath) continue;
                 bool on = std::find(c.extraDisks.begin(), c.extraDisks.end(), d)
@@ -602,6 +605,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                     relaunch(c.hddPath, extras);
                 }
             }
+            ImGui::PopID();
             ImGui::EndMenu();
         });
 
@@ -1050,14 +1054,18 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
             if (ImGui::BeginMenu("Disques")) {
                 const auto disks = listDiskImages(c.hddPath);
                 ImGui::TextDisabled("Démarrage (SCSI 0)");
+                // Same filename shows up in both sections — scope the IDs.
+                ImGui::PushID("boot");
                 for (const std::string& d : disks) {
                     bool cur = samePath(d, c.hddPath);
                     std::string name = fs::path(d).filename().string();
                     if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
                         relaunch(d, c.extraDisks);
                 }
+                ImGui::PopID();
                 ImGui::Separator();
                 ImGui::TextDisabled("Secondaires (SCSI 1-6)");
+                ImGui::PushID("secondary");
                 for (const std::string& d : disks) {
                     if (samePath(d, c.hddPath)) continue;
                     bool on = false;
@@ -1072,6 +1080,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
                         relaunch(c.hddPath, extras);
                     }
                 }
+                ImGui::PopID();
                 ImGui::Separator();
                 ImGui::TextDisabled("Changer un disque relance l'émulateur");
                 ImGui::EndMenu();
@@ -1608,14 +1617,18 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
             if (ImGui::BeginMenu("Disques")) {
                 const auto disks = listDiskImages(c.hddPath);
                 ImGui::TextDisabled("Démarrage (SCSI 0)");
+                // Same filename shows up in several sections — scope the IDs.
+                ImGui::PushID("boot");
                 for (const std::string& d : disks) {
                     bool cur = samePath(d, c.hddPath);
                     std::string name = fs::path(d).filename().string();
                     if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
                         relaunch(d, c.extraDisks);
                 }
+                ImGui::PopID();
                 ImGui::Separator();
                 ImGui::TextDisabled("Secondaires (SCSI 1-6)");
+                ImGui::PushID("secondary");
                 for (const std::string& d : disks) {
                     if (samePath(d, c.hddPath)) continue;
                     bool on = false;
@@ -1630,8 +1643,10 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                         relaunch(c.hddPath, extras);
                     }
                 }
+                ImGui::PopID();
                 ImGui::Separator();
                 ImGui::TextDisabled("Floppy (SWIM2)");
+                ImGui::PushID("floppy");
                 if (ImGui::MenuItem("Éjecter", nullptr, false, c.m.floppyInserted())) {
                     c.m.requestEjectFloppy();
                     c.floppyOk = false;
@@ -1646,6 +1661,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                         c.floppyOk = true;
                     }
                 }
+                ImGui::PopID();
                 ImGui::Separator();
                 ImGui::TextDisabled("Changer un disque SCSI relance l'émulateur");
                 ImGui::EndMenu();

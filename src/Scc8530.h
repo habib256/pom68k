@@ -77,9 +77,12 @@ public:
     // Delivered at wire pace (setByteCycles) through the 3-deep Rx FIFO with
     // Hunt exit, per-byte Rx interrupts (WR1 modes), address search (WR3
     // bit 2 vs WR6 / $FF broadcast) and End-of-Frame status in RR1.
-    // express=true delivers at 8× wire speed — for frames synthesized BY
-    // the cable itself (LToUDP local CTS), which must land inside the LLAP
-    // 200 µs inter-frame window that a real peer would meet.
+    // express=true marks a frame synthesized BY the cable itself (LToUDP
+    // local CTS): it queues even while the receiver is off (the LLAP
+    // sender is half-duplex around its RTS) and starts only after an
+    // inter-frame gap, like a real peer's CTS — early delivery played the
+    // frame while the driver was still re-arming Rx and every byte was
+    // lost on the wire (Chooser RTS retry storm, 2026-07-22).
     void injectRxFrame(int ch, const uint8_t* d, size_t n, bool express = false);
     // CPU cycles per LocalTalk byte (230.4 kbit/s): 544 @ 15.6672 MHz
     // (LC II / Mac II), 272 @ 7.8336 (Plus), 868 @ 25 MHz (Q605).
@@ -114,8 +117,10 @@ private:
                                      // reads it as "line idle/busy".
         // ── LLAP Rx/Tx wire state ──
         std::vector<uint8_t> txBuf;  // SDLC frame being written (no FCS)
-        struct RxFrame { std::vector<uint8_t> bytes; int pace; };
-        std::deque<RxFrame> rxQueue; // injected frames (FCS added) + pace
+        struct RxFrame { std::vector<uint8_t> bytes; int pace; int delay; };
+        std::deque<RxFrame> rxQueue; // injected frames (FCS added) + pace;
+                                     // delay = idle-line cycles before the
+                                     // opening flag (CTS inter-frame gap)
         std::vector<uint8_t> rxCur;  // frame being paced onto the FIFO
         int rxPace = 0;              // cycles/byte for the current frame
         size_t rxPos = 0;
@@ -143,4 +148,8 @@ private:
     static constexpr int kAbortRelatch = 2000;   // ≈130 µs @ 15.67 MHz
     static constexpr int kUnderrunDelay = 1200;  // ≈2 byte times at LocalTalk
                                                  // 230.4 kbps (CRC + flag)
+    static constexpr int kCtsGapBytes = 4;       // synthesized-CTS inter-frame
+                                                 // gap in byte times (~139 µs:
+                                                 // after the sender's post-EOM
+                                                 // Rx re-arm, inside its wait)
 };

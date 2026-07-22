@@ -213,6 +213,54 @@ int main() {
               "directed DATA frame delivered after the handshake");
     }
 
+    // ── Cable-synthesized express CTS across the half-duplex Rx-off window ──
+    // Pins the driver sequence captured on the LToUDP cable (SCCDBG,
+    // 2026-07-22): the LAP sender disables Rx around its directed RTS, sees
+    // the EOM, drops RTS/TxEnable, writes WR3 again with Rx still off, then
+    // re-arms Rx and waits for the CTS carrier. The cable's CTS must
+    // (a) queue through the Rx-off window, (b) survive the intermediate
+    // Rx-off WR3 write (the queue is the WIRE, not the chip), and (c) start
+    // only after an inter-frame gap so the re-armed receiver catches every
+    // byte — instant delivery played the CTS into a closed ear and the
+    // Chooser retried its RTS forever.
+    {
+        Scc8530 s;
+        s.reset();
+        lapArm(s, 1);                            // node 1, as in the capture
+        s.onTxFrame = [&s](int ch, const uint8_t* d, size_t n) {
+            if (ch != kB) return;
+            if (n == 3 && d[2] == 0x84 && d[0] != 0xFF) {
+                const uint8_t cts[3] = { d[1], d[0], 0x85 };
+                s.injectRxFrame(kB, cts, 3, true);   // express (cable CTS)
+            }
+        };
+        wr(s, 5, 0x6B);                          // TxEnable + RTS
+        wr(s, 3, 0xD0);                          // Rx OFF (half-duplex Tx)
+        const uint8_t rts[3] = {0xFE, 1, 0x84};  // directed lapRTS
+        for (uint8_t byte : rts) s.writeData(kB, byte);
+        s.writeCtl(kB, 0xC0);                    // Reset Tx Underrun/EOM
+        int t = 0;                               // poll RR0 for the EOM…
+        for (; t < 1000; t++) {
+            s.tick(8);                           // instruction-grained time
+            s.writeCtl(kB, 0);
+            if (s.readCtl(kB) & 0x40) break;
+        }
+        CHECK(t < 1000, "directed RTS completes (EOM latch sets)");
+        s.writeCtl(kB, 0);
+        CHECK(s.readCtl(kB) & 0x10, "line still idle at EOM (CTS gap)");
+        wr(s, 5, 0x60);                          // drop TxEnable + RTS
+        wr(s, 3, 0xC0);                          // WR3 with Rx still off
+        s.writeCtl(kB, 0x30);                    // Error Reset
+        s.writeCtl(kB, 0x10);                    // Reset Ext/Status
+        wr(s, 3, 0xDD);                          // re-arm Rx + hunt + search
+        uint8_t rr1 = 0;
+        std::vector<uint8_t> got = lapDrain(s, rr1);
+        CHECK(got.size() == 5 && got[0] == 1 && got[1] == 0xFE
+                  && got[2] == 0x85,
+              "re-armed receiver catches the whole synthesized CTS");
+        CHECK((rr1 & 0x80) && !(rr1 & 0x40), "CTS EOF with good FCS");
+    }
+
     // ── Hunt exit is an ext/status event (carrier sense for the LAP) ──
     {
         Scc8530 a, b;
@@ -231,6 +279,7 @@ int main() {
 
     if (failures == 0)
         std::printf("PASS: llap loop (ENQ both ways, addr filter, broadcast, "
-                    "abort, RTS/CTS dialogue in-window, carrier sense)\n");
+                    "abort, RTS/CTS dialogue in-window, express CTS across "
+                    "Rx-off, carrier sense)\n");
     return failures ? 1 : 0;
 }

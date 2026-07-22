@@ -133,9 +133,13 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
     // Receiver off = no ear... except for express (cable-synthesized) frames:
     // LLAP is half-duplex — the driver disables Rx while transmitting the RTS
     // and only re-arms it on the EOM interrupt, which is the very tick that
-    // synthesizes the CTS. A real peer's CTS arrives ~100 µs later with the
-    // receiver back on; express frames therefore WAIT in the queue (delivery
-    // in tick() is already gated on rxEnabled) instead of being dropped.
+    // synthesizes the CTS. A real peer's CTS starts an inter-frame gap later
+    // (LLAP: within 200 µs), by which time the sender has re-armed Rx —
+    // express frames therefore queue through the Rx-off window and carry
+    // that gap as a start delay. Delivering them instantly at 8× wire speed
+    // (the previous model) played the whole CTS while the driver was still
+    // dropping RTS/TxEnable and re-arming Rx: every byte was discarded on
+    // the wire and the Chooser lookup retried its RTS forever (2026-07-22).
     if (!n || !sdlcMode(c) || (!express && !rxEnabled(c))) return;
     // SDLC Address Search Mode (WR3 bit 2): the chip only opens the FIFO
     // when the first byte matches WR6 or the $FF broadcast.
@@ -144,8 +148,8 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
     const uint16_t fcs = crc16x25(d, n);
     f.push_back(uint8_t(fcs & 0xFF));            // FCS little-end first (X25)
     f.push_back(uint8_t(fcs >> 8));
-    const int pace = express ? (byteCycles_ + 7) / 8 : byteCycles_;
-    c.rxQueue.push_back({std::move(f), pace});
+    const int delay = express ? kCtsGapBytes * byteCycles_ : 0;
+    c.rxQueue.push_back({std::move(f), byteCycles_, delay});
 }
 
 uint8_t Scc8530::readCtl(int channel) {
@@ -365,11 +369,13 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
             }
         }
     }
-    // Rx disable (WR3 bit 0 cleared) flushes the receive path.
+    // Rx disable (WR3 bit 0 cleared) flushes the CHIP's receive path —
+    // FIFO and pending Rx interrupts. The wire (rxQueue/rxCur) is not the
+    // chip's to empty: frames in flight keep playing with their bytes lost
+    // (rxPushByte), and queued express frames survive the half-duplex
+    // Rx-off window the LLAP sender opens around its RTS (2026-07-22 —
+    // flushing the queue here killed the cable's delayed CTS).
     if (ptr_ == 3 && !(v & 0x01)) {
-        c.rxQueue.clear();
-        c.rxCur.clear();
-        c.rxPos = 0;
         c.fifo.clear();
         c.rxIp = false;
         c.specialIp = false;
@@ -471,9 +477,17 @@ bool Scc8530::tick(int cycles) {
         // FIFO while the receiver is enabled (rxPushByte).
         if (sdlcMode(c)) {
             if (c.rxCur.empty() && !c.rxQueue.empty()) {
-                bool wasIrq = c.rxIp || c.specialIp || c.extPending;
-                rxStartFrame(c, i);
-                changed = changed || (!wasIrq && (c.extPending));
+                // Inter-frame gap: the line stays idle (hunt, standing
+                // abort) until the queued frame's start delay elapses —
+                // the LLAP sender polls RR0 across this gap waiting for
+                // the CTS carrier to appear.
+                Chan::RxFrame& f = c.rxQueue.front();
+                if (f.delay > 0) f.delay -= cycles;
+                if (f.delay <= 0) {
+                    bool wasIrq = c.rxIp || c.specialIp || c.extPending;
+                    rxStartFrame(c, i);
+                    changed = changed || (!wasIrq && (c.extPending));
+                }
             }
             if (!c.rxCur.empty()) {
                 c.rxTimer -= cycles;
