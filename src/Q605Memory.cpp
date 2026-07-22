@@ -80,11 +80,14 @@ void Q605Memory::reset() {
     swimLastCpu_ = -1;
     swimCycAcc_ = 0;
     scc_.setCtsHigh(false);        // no serial debugger attached (POST check)
-    scc_.setAbortIdle(true);       // no LocalTalk peer — SDLC hunt streams the
-                                   // standing Break/Abort as a level-4 ext/status
-                                   // interrupt so OS 8.1's .MPP LAP carrier-sense
-                                   // sees "wire dead" and its send/receive times
-                                   // out instead of wedging (Q6.6; O6.10 on LC II)
+    scc_.setAbortIdle(true);       // no *hardwired* LocalTalk peer: on a bare
+                                   // line the SDLC hunt streams the standing
+                                   // Break/Abort as a level-4 ext/status so OS
+                                   // 8.1's .MPP LAP carrier-sense sees "wire
+                                   // dead" and times out instead of wedging
+                                   // (Q6.6; O6.10 on LC II). A real peer on the
+                                   // LToUDP cable drops it — Scc8530::openLine
+                                   // (LLE step 8, docs/LLE_VS_HLE.md §1.8).
     viaPhase_ = 0;
     tickAcc_ = 0;
     sccIrq_ = false;
@@ -550,10 +553,12 @@ void Q605Memory::tick(int cpuCycles) {
 
     cuda_.tick(cpuCycles);
 
-    // SCC open-line Break/Abort stream (Q6.6): on a machine with no LocalTalk
-    // peer the SDLC receiver keeps detecting aborts, so the level-4 ext/status
-    // interrupt must re-assert periodically — this is the carrier-sense signal
-    // OS 8.1's .MPP LAP sleeps on. A de-asserted SCC must also lower the line.
+    // SCC open-line Break/Abort stream (Q6.6): on a BARE line (no peer) the
+    // SDLC receiver keeps detecting aborts, so the level-4 ext/status
+    // interrupt re-asserts periodically — the carrier-sense signal OS 8.1's
+    // .MPP LAP sleeps on. A real LToUDP peer transmitting drops the stream
+    // (Scc8530::openLine, LLE step 8). A de-asserted SCC must also lower the
+    // line.
     scc_.tick(cpuCycles);
     if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }
 

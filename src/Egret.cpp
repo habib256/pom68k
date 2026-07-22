@@ -256,22 +256,34 @@ void Egret::endCommand() {
 
 std::vector<uint8_t> Egret::replyHeader(uint8_t type, uint8_t flags,
                                         uint8_t echo) const {
-    // Real Cuda framing [type, flags, cmdEcho, …] (DingusPPC
-    // response_header, viacuda.cpp:498). The Egret flavor's byte 0
-    // doubles as the on-buffer attention byte (pinned LC II wire: the
-    // reply's first byte is read without an ack and discarded, $A14D56).
+    // Cuda framing is [type, flags, cmdEcho, …] (DingusPPC
+    // response_header, viacuda.cpp:498) — byte 0 IS the packet type.
     if (cudaPolarity_) return { type, flags, echo };
-    return { 0x01, type, flags, echo };
+    // The EGRET framing is DIFFERENT: [sync, status0, status1, cmdEcho]
+    // where byte 0 is the discarded attention/sync byte ($A14D56) and
+    // byte 1 is STATUS-0, always $00 on success — NOT the packet type.
+    // The redo wrongly put `type` ($01 for pseudo) in byte 1; the LC II
+    // ROM reads that as a status and a non-zero value broke the colour
+    // (8 bpp) video bring-up — the desktop rendered as noise while the
+    // 1 bpp etalon (which never exercises the colour path) stayed green
+    // (2026-07-22 regression from LLE step 7). `flags` maps to status-1
+    // (e.g. the $40 ADB-autopoll marker), exactly as before the redo.
+    return { 0x01, 0x00, flags, echo };
 }
 
 void Egret::queueError(uint8_t err, uint8_t pktType, uint8_t cmd) {
-    // Error packet [$02, errCode, pktType, cmd] (DingusPPC
-    // error_response, viacuda.cpp:509)
-    std::vector<uint8_t> r;
-    if (!cudaPolarity_) r.push_back(0x01);
-    r.push_back(0x02); r.push_back(err); r.push_back(pktType);
-    r.push_back(cmd);
-    queueResponse(std::move(r));
+    if (cudaPolarity_) {
+        // Cuda error packet [$02, errCode, pktType, cmd] (DingusPPC
+        // error_response, viacuda.cpp:509).
+        queueResponse({ 0x02, err, pktType, cmd });
+        return;
+    }
+    // Egret: same [sync, status0, status1, cmdEcho] shape as a normal
+    // reply, with status0 = $02 marking the error (the LC II ROM's
+    // $A14D9C caller only length-checks the two status bytes). Matches
+    // the pre-redo `{01, 02, 00, type}`.
+    (void)err; (void)pktType;
+    queueResponse({ 0x01, 0x02, 0x00, cmd });
 }
 
 void Egret::queueResponse(std::vector<uint8_t> resp, StreamSrc stream,
@@ -381,12 +393,26 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
             seconds_ = uint32_t(cmd[2]) << 24 | uint32_t(cmd[3]) << 16
                      | uint32_t(cmd[4]) << 8 | cmd[5];
         break;
-    case kReadMcu: {                     // [1, 2, hi, lo] → byte STREAM
-        // No length on the wire (O6.11): the real firmware streams
-        // successive bytes; the HOST terminates by dropping the session
-        // after its count (ROM driver $40A149C4). PRAM window at
-        // $0100-$01FF, MCU scratch RAM below, zeros elsewhere.
+    case kReadMcu: {                     // → byte STREAM, no wire length
+        // The two flavors address $02/$08 DIFFERENTLY, and conflating them
+        // is what broke LC II colour boots (2026-07-22 regression from LLE
+        // step 7): V8 rendered the colour desktop as noise because the ROM
+        // read the video-mode sPRAM through here and got zeros.
         if (cmd.size() < 4) break;       // ack-only on a short command
+        if (!cudaPolarity_) {
+            // EGRET (LC II): [1, 2, 1, addr] — cmd[2] is a fixed marker,
+            // cmd[3] the 8-bit offset straight into the 256-byte PRAM
+            // (pinned O6.11 from the real LC II ROM traffic; cmd[2] is
+            // $00 OR $01 on the wire and is ignored for addressing, as it
+            // always was before the redo). The firmware streams
+            // successive PRAM bytes; the HOST drops the session after its
+            // count ($40A149C4).
+            if (onXPramRead) onXPramRead(cmd[3], 32);
+            queueResponse(std::move(reply), STREAM_PRAM, cmd[3]);
+            return;
+        }
+        // CUDA (Quadra): real 16-bit MCU addressing (DingusPPC viacuda) —
+        // PRAM window $0100-$01FF, MCU scratch RAM below, zeros elsewhere.
         const uint16_t a = uint16_t(uint16_t(cmd[2]) << 8 | cmd[3]);
         if (a >= 0x100 && a <= 0x1FF) {
             if (onXPramRead) onXPramRead(a - 0x100, 32);
@@ -399,8 +425,20 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
         }
         return;
     }
-    case kWriteMcu:                      // [1, 8, hi, lo, data…] — length
+    case kWriteMcu:                      // [1, 8, …, addr, data…] — length
         if (cmd.size() < 4) break;       // = the data itself
+        if (!cudaPolarity_) {
+            // EGRET: 8-bit XPRAM write straight into PRAM (cmd[3] offset,
+            // cmd[2] ignored — matches the pre-redo behaviour and the
+            // O6.11 LC II wire, e.g. `01 08 00 B3 …` writes PRAM $B3).
+            for (size_t i = 4; i < cmd.size(); i++) {
+                const uint8_t w = uint8_t(cmd[3] + (i - 4));
+                pram_[w] = cmd[i];
+                if (onXPramWrite) onXPramWrite(w, cmd[i]);
+            }
+            break;
+        }
+        // CUDA: 16-bit MCU addressing (PRAM $0100-$01FF, MCU scratch below).
         for (size_t i = 4; i < cmd.size(); i++) {
             const uint16_t w =
                 uint16_t((uint16_t(cmd[2]) << 8 | cmd[3]) + (i - 4));

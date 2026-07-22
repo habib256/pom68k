@@ -46,7 +46,10 @@ void V8Memory::reset() {
     videoConfig_ = 0;
     sccIrq_ = false;
     scc_.reset();
-    scc_.setAbortIdle(true);                 // no LocalTalk peer (O6.10)
+    scc_.setAbortIdle(true);                 // no hardwired LocalTalk peer
+                                             // (O6.10); a real LToUDP peer
+                                             // drops the standing abort —
+                                             // Scc8530::openLine (LLE step 8)
     viaPhase_ = 0;
     tickAcc_ = 0;
     simmMapped_ = mbMapped_ = false;         // no RAM until the overlay drops

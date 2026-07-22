@@ -16,6 +16,8 @@ void Scc8530::reset() {
     ch_[0] = Chan{};
     ch_[1] = Chan{};
     ptr_ = 0;
+    peerHold_ = 0;                    // no peer seen yet (line state, not
+                                     // machine config — abortIdle_ persists)
 }
 
 // SDLC FCS = CRC-16/X25 (poly $1021 reflected, init/xorout $FFFF). The
@@ -55,7 +57,7 @@ uint8_t Scc8530::rr0(const Chan& c) const {
                    | (c.dcd ? 0x08 : 0x00) | 0x04 | (ctsHigh_ ? 0x20 : 0x00)
                    | ((c.hunt && sdlcMode(c)) ? 0x10 : 0x00)
                    | (c.txUnderrun ? 0x40 : 0x00)
-                   | ((abortIdle_ && sdlcMode(c) && !rxBusy) ? 0x80 : 0x00));
+                   | ((openLine() && sdlcMode(c) && !rxBusy) ? 0x80 : 0x00));
 }
 
 // WR1 bits 4-3: 00 = Rx int off, 01 = first char + special, 10 = all chars
@@ -140,6 +142,11 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
     // (the previous model) played the whole CTS while the driver was still
     // dropping RTS/TxEnable and re-arming Rx: every byte was discarded on
     // the wire and the Chooser lookup retried its RTS forever (2026-07-22).
+    // A non-express frame is a REAL peer transmitting on the transport
+    // (an LToUDP multicast frame, not the cable's own synthesized CTS):
+    // it makes the line a live, terminated network, so the open-line
+    // standing abort drops for a hold window (LLE_VS_HLE §1.8 / step 8).
+    if (!express) peerHold_ = kPeerHold;
     if (!n || !sdlcMode(c) || (!express && !rxEnabled(c))) return;
     // SDLC Address Search Mode (WR3 bit 2): the chip only opens the FIFO
     // when the first byte matches WR6 or the $FF broadcast.
@@ -148,21 +155,20 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
     const uint16_t fcs = crc16x25(d, n);
     f.push_back(uint8_t(fcs & 0xFF));            // FCS little-end first (X25)
     f.push_back(uint8_t(fcs >> 8));
-    // A sender defers until the line has been idle for LLAP's minimum
-    // 400 µs INTER-DIALOG gap — so a frame arriving on a busy (or
-    // just-freed) line starts only once the gap is filled. With no gap,
-    // back-to-back cable frames (the router's LkUp broadcast then afpd's
-    // LkUpReply) started while the driver was still consuming the
-    // previous frame's tail and re-arming hunt: the reply's first bytes
-    // landed in the closing FIFO and the rest played into hunt — the
-    // Chooser never saw any server (2026-07-22, GISTPERSO live capture).
-    // A frame arriving on a long-idle line still starts at once (the
-    // gap is already filled), and express CTS frames keep their short
-    // fixed gap — intra-dialog frames must land inside the sender's
-    // 200 µs INTER-FRAME window, not after an IDG.
-    const int delay = express ? kCtsGapBytes * byteCycles_
-                    : std::max(0, kIdgBytes * byteCycles_ - c.rxIdle);
-    c.rxQueue.push_back({std::move(f), byteCycles_, delay});
+    // A non-express (real peer) frame defers until the line has been idle
+    // for LLAP's minimum 400 µs INTER-DIALOG gap. That idle is evaluated at
+    // DEQUEUE from rxIdle (tick()), NOT baked in here: when two frames are
+    // injected in one poll — the router's LkUp broadcast then afpd's
+    // LkUpReply — the second's gap must be measured from the FIRST frame's
+    // END, not from this injection instant (when the line still reads idle).
+    // Baking `IDG - rxIdle` here made the reply start the instant the
+    // broadcast finished, its first bytes landing in the still-closing FIFO
+    // and the rest playing into hunt — the Chooser re-sent the AFPServer
+    // lookup forever and never listed the server (2026-07-22 GISTPERSO live
+    // capture). Express CTS frames keep their short fixed gap: an intra-
+    // dialog CTS must land inside the sender's 200 µs INTER-FRAME window.
+    const int delay = express ? kCtsGapBytes * byteCycles_ : 0;
+    c.rxQueue.push_back({std::move(f), byteCycles_, delay, express});
 }
 
 uint8_t Scc8530::readCtl(int channel) {
@@ -312,7 +318,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                 // an open line the SDLC receiver detects the next abort
                 // ~130 µs later (tick delivers it). Event-driven, so a
                 // channel that never services gets exactly ONE latch.
-                if (abortIdle_ && sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
+                if (openLine() && sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
                     c.relatch = kAbortRelatch;
                 break;
             case 0x28:                          // Reset Tx Int Pending
@@ -325,7 +331,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                 c.txIp = false;
                 c.txEmptyEvent = false;
                 c.specialIp = false;            // (rxIp is FIFO-level driven)
-                if (abortIdle_ && sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
+                if (openLine() && sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
                     c.relatch = kAbortRelatch;
                 break;
             default: break;
@@ -385,6 +391,26 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     // (rxPushByte). Queued-but-not-started frames (rxQueue) are untouched
     // either way, as before.
     if (ptr_ == 3 && (v & 0x10) && c.rxCur.empty()) {
+        // Frame-boundary re-arm: flush the previous frame's UNREAD FCS
+        // residue. The LLAP driver reads a received frame by its DDP length
+        // and re-enters hunt for the next opening flag WITHOUT reading the
+        // trailing FCS — it trusts the hardware CRC result (RR1 bit 6). Left
+        // in the 3-deep FIFO, that frame's crc_hi (its End-Of-Frame byte)
+        // surfaced at the HEAD of the NEXT frame as a phantom EOF-flagged
+        // byte (its value tracks the previous frame's CRC, not this one's
+        // data). The 44-byte NBP LkUpReply then desynced on that phantom
+        // EOF — the driver saw a 1-byte "frame", error-reset and re-hunted
+        // through the real DDP/NBP header — so the AFPServer entity never
+        // populated the guest's Chooser even though the reply reached the
+        // node intact on the wire (empty server list, 2026-07-22 GISTPERSO
+        // capture). rxCur.empty() means no NEXT frame is being clocked yet;
+        // an EOF-flagged FIFO tail means the bytes are a COMPLETED frame's
+        // residue — safe to drop. (A real Enter Hunt resets the receive
+        // path; it does not carry a finished frame's FCS into the next one.)
+        if (!c.fifo.empty() && (c.fifo.back().rr1 & 0x80)) {
+            c.fifo.clear();
+            c.rxIp = false;                  // Rx int is FIFO-level driven
+        }
         c.rxPos = 0;
         if (!c.hunt) {
             c.hunt = true;
@@ -413,7 +439,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     // interrupt AppleTalk's LAP manager waits on (O6.10). Gated on WR1
     // bit 0 (per-channel Ext Int Enable) like the DCD path — a real
     // 8530 requires it (review 2026-07-16).
-    if (ptr_ == 15 && (v & 0x80) && abortIdle_ && sdlcMode(c) && (c.wr[1] & 0x01)) {
+    if (ptr_ == 15 && (v & 0x80) && openLine() && sdlcMode(c) && (c.wr[1] & 0x01)) {
         if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
         c.extPending = true;
     }
@@ -422,7 +448,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     // enable bit is set, order-independent (Zilog SCC UM). Without this the
     // first-latch timing differed by write order (the tick() re-present only
     // papered over it ~130 µs later).
-    if (ptr_ == 1 && (v & 0x01) && abortIdle_ && sdlcMode(c) && (c.wr[15] & 0x80)) {
+    if (ptr_ == 1 && (v & 0x01) && openLine() && sdlcMode(c) && (c.wr[15] & 0x80)) {
         if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
         c.extPending = true;
     }
@@ -472,6 +498,10 @@ bool Scc8530::irqAsserted() const {
 // Guarded by abortIdle_ (LC II only), so the Plus mouse path is untouched.
 bool Scc8530::tick(int cycles) {
     bool changed = false;
+    // The "peer present" window runs down chip-wide (the LocalTalk line is
+    // channel B, but the counter is a single line state). When it expires
+    // the peer is treated as gone and the open-line abort returns.
+    if (peerHold_ > 0) { peerHold_ -= cycles; if (peerHold_ < 0) peerHold_ = 0; }
     for (int i = 0; i < 2; i++) {
         Chan& c = ch_[i];
         // SDLC Tx underrun: the drained shifter sends CRC + closing flag,
@@ -506,13 +536,24 @@ bool Scc8530::tick(int cycles) {
             if (!c.rxCur.empty()) c.rxIdle = 0;
             else if (c.rxIdle < (1 << 24)) c.rxIdle += cycles;
             if (c.rxCur.empty() && !c.rxQueue.empty()) {
-                // Inter-frame gap: the line stays idle (hunt, standing
-                // abort) until the queued frame's start delay elapses —
-                // the LLAP sender polls RR0 across this gap waiting for
-                // the CTS carrier to appear.
+                // Start the queued frame once the inter-frame gap has
+                // elapsed. Express (synthesized CTS): a short fixed
+                // countdown so it lands inside the sender's IFG window.
+                // Non-express (real peer): require a full LLAP IDG of
+                // ACTUAL line-idle since the previous frame ended (rxIdle)
+                // — this is what serializes back-to-back injected frames
+                // (router LkUp broadcast + afpd LkUpReply) so the second
+                // no longer plays into the FIFO still closing on the first
+                // (the empty-Chooser bug, 2026-07-22).
                 Chan::RxFrame& f = c.rxQueue.front();
-                if (f.delay > 0) f.delay -= cycles;
-                if (f.delay <= 0) {
+                bool ready;
+                if (f.express) {
+                    if (f.delay > 0) f.delay -= cycles;
+                    ready = f.delay <= 0;
+                } else {
+                    ready = c.rxIdle >= kIdgBytes * byteCycles_;
+                }
+                if (ready) {
                     bool wasIrq = c.rxIp || c.specialIp || c.extPending;
                     rxStartFrame(c, i);
                     changed = changed || (!wasIrq && (c.extPending));
@@ -529,7 +570,7 @@ bool Scc8530::tick(int cycles) {
                 if (c.rxCur.empty()) c.rxTimer = 0;
             }
         }
-        if (!abortIdle_) continue;
+        if (!openLine()) continue;
         if (c.relatch <= 0) continue;
         c.relatch -= cycles;
         if (c.relatch > 0) continue;

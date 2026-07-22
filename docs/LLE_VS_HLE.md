@@ -154,18 +154,24 @@ factory PRAM contents is hardware-plausible, and it prevents the ROM's
 cold-PRAM re-init loop. Keep, but treat the *contents* as a documented
 policy, not scattered magic.
 
-### 1.8 SCC `abortIdle` — static "no LocalTalk peer" assumption
+### 1.8 SCC `abortIdle` — now a transport-driven line state — **RESOLVED 2026-07-22**
 
-`V8Memory.cpp:49` and `Q605Memory.cpp:83` call `setAbortIdle(true)`
-unconditionally: the SDLC receiver models a permanently OPEN line
-(standing Break/Abort in hunt). That is legitimate LLE *for an
-unterminated connector* — but it is a machine-level constant, not a
-line state. The virtual-LLAP-cable project (TODO) requires carrier to
-come from the transport: `abortIdle` must become "no remote attached",
-dropped when a peer transmits. Also: one stale `// Q6.6 — HLE
-LocalTalk-LAP unwedge` comment survives at the tail of
-`Q605Memory.cpp` (the function it described was deleted in LLE
-step 3) — remove on next touch.
+`setAbortIdle(true)` (still at `V8Memory.cpp:49` / `Q605Memory.cpp:83`)
+no longer means "permanently open line" — it now marks a machine with
+**no *hardwired* peer**, and the standing Break/Abort it presents is a
+LINE STATE driven by the transport. The moment a REAL peer transmits (a
+non-express `injectRxFrame` — an LToUDP multicast frame, not the cable's
+own synthesized CTS, which stays `express`) the SDLC line becomes a
+live, terminated network whose idle is clean flags, and the abort drops
+for a `kPeerHold` (~2 s) window refreshed on each peer frame; it returns
+only once the peer goes quiet (`Scc8530::openLine()`,
+`peerHold_`). A solo boot with no cable never refreshes it, so the
+no-peer LAP timeout that lets `lcii_boot_etalon` / `q605_boot_etalon`
+proceed is unchanged. Gate: `llap_loop_test` (a real peer's frame drops
+the abort, a synthesized CTS does not, the abort returns after the
+hold); the two-System and boot etalons stay green. The `setAbortIdle`
+comments in `V8Memory.cpp` / `Q605Memory.cpp` now read "no *hardwired*
+peer" and point at `openLine`.
 
 ## 2. HLE replacements (whole devices at protocol level)
 
@@ -329,11 +335,17 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
    the `$76` echo-pop, GetPram erase, Q8.2 duplication and tick
    heuristic are deleted, 49/49 gates + Finder matrix green (CHANGELOG
    "LLE step 7"). The last per-reader wire hacks are retired.
-8. **SCC Rx path** — Rx FIFO, carrier-driven hunt→sync, Rx character
-   + special-condition interrupts, end-of-frame CRC status; turn
-   `abortIdle` (§1.8) into a transport-driven line state. Direct
-   prerequisite for the virtual-LLAP-cable project (TODO), which then
-   provides the two-instance gate that exercises it.
+8. ~~**SCC Rx path**~~ **DONE 2026-07-22.** Rx FIFO, carrier-driven
+   hunt→sync, Rx character + special-condition interrupts, end-of-frame
+   CRC status all landed with LLAP milestone 1; this pass added the two
+   fidelity bugs a real AppleTalk flow exposed — the mid-frame Enter-Hunt
+   no longer truncates a long directed frame (the empty-Chooser bug), the
+   inter-dialog-gap deferral, and `abortIdle` is now a **transport-driven
+   line state** (§1.8): a real peer drops the standing abort,
+   `Scc8530::openLine`/`peerHold_`. The MAME `z80scc.cpp` audit (§3)
+   found we model more SDLC than MAME; the remaining SCC work is the
+   **async-serial** baud machinery (WR4/WR11/WR12-13), tracked separately
+   under the Plus serial-ports TODO, not part of the LLAP path.
 9. **53C96 + DAFB TurboSCSI fidelity** — tcounter↔FIFO phase engine,
    scheduled selection/arbitration latency (non-zero default for
    `POM68K_SCSI_LAT`), sync-negotiation plumbing, and the DAFB

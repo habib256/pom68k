@@ -117,10 +117,14 @@ private:
                                      // reads it as "line idle/busy".
         // ── LLAP Rx/Tx wire state ──
         std::vector<uint8_t> txBuf;  // SDLC frame being written (no FCS)
-        struct RxFrame { std::vector<uint8_t> bytes; int pace; int delay; };
-        std::deque<RxFrame> rxQueue; // injected frames (FCS added) + pace;
-                                     // delay = idle-line cycles before the
-                                     // opening flag (CTS inter-frame gap)
+        struct RxFrame { std::vector<uint8_t> bytes; int pace; int delay;
+                         bool express; };
+        std::deque<RxFrame> rxQueue; // injected frames (FCS added) + pace.
+                                     // express: countdown `delay` = CTS
+                                     // inter-frame gap. non-express: gated
+                                     // on rxIdle ≥ IDG at dequeue (the gap
+                                     // is measured from the PREVIOUS frame's
+                                     // end, not baked in at injection)
         std::vector<uint8_t> rxCur;  // frame being paced onto the FIFO
         int rxPace = 0;              // cycles/byte for the current frame
         size_t rxPos = 0;
@@ -143,13 +147,28 @@ private:
     void rxPushByte(Chan& c);        // pace one frame byte into the FIFO
     void rxStartFrame(Chan& c, int chIdx);
     void raiseRxInt(Chan& c, bool special);
+    // The open-line standing Break/Abort is a LINE state, not a machine
+    // constant: setAbortIdle(true) marks a connector with no hardwired
+    // peer, but the moment a REAL peer transmits on the transport (a
+    // non-express injectRxFrame — an LToUDP multicast frame, not the
+    // cable's own synthesized CTS) the line becomes a live, terminated
+    // network whose idle is clean flags, not aborts. peerHold_ counts
+    // down the "peer present" window from the last real peer frame; while
+    // it is positive the standing abort is suppressed (openLine() false).
+    // A solo boot (no cable, no peer traffic) never refreshes it, so the
+    // no-peer LAP timeout is unchanged — LLE_VS_HLE §1.8 / step 8.
+    bool openLine() const { return abortIdle_ && peerHold_ <= 0; }
     Chan ch_[2];                     // [0] = B, [1] = A
     int ptr_ = 0;                    // register pointer (WR0 low bits)
-    bool abortIdle_ = false;         // open-line Break/Abort (LC II)
+    bool abortIdle_ = false;         // no hardwired LocalTalk peer (LC II/Q605)
+    int peerHold_ = 0;               // cycles a real peer stays "present"
     bool ctsHigh_ = true;
     bool rxStanding_ = false;        // Mac II POST: standing Rx available
     int byteCycles_ = 544;           // CPU cycles per LocalTalk byte
     static constexpr int kAbortRelatch = 2000;   // ≈130 µs @ 15.67 MHz
+    static constexpr int kPeerHold = 30000000;   // ≈2 s: a peer that has
+                                                 // transmitted holds the line
+                                                 // "live" until it goes quiet
     static constexpr int kUnderrunDelay = 1200;  // ≈2 byte times at LocalTalk
                                                  // 230.4 kbps (CRC + flag)
     static constexpr int kCtsGapBytes = 4;       // synthesized-CTS inter-frame

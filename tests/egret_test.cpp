@@ -86,8 +86,8 @@ int main() {
         h.sendCommand({ 0x01, 0x03 });
         auto r = h.readReply();
         check(r.size() == 8, "GET_TIME reply is 8 bytes (sync+hdr+4)");
-        check(r.size() == 8 && r[1] == 0x01 && r[2] == 0x00 && r[3] == 0x03,
-              "GET_TIME header = [attn, PSEUDO(1), flags, cmd echo]");
+        check(r.size() == 8 && r[1] == 0x00 && r[2] == 0x00 && r[3] == 0x03,
+              "GET_TIME header = [attn, status0(0), status1(0), cmd echo]");
         check(r.size() == 8 && r[4] == 0xA1 && r[5] == 0xB2 && r[6] == 0xC3 && r[7] == 0xD4,
               "GET_TIME returns the RTC seconds");
         check(h.egret.xcvrSession() == 1, "XCVR_SESSION idle after the reply");

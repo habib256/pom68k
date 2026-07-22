@@ -324,6 +324,125 @@ int main() {
         CHECK((rr1 & 0x80) && !(rr1 & 0x40), "EOF + good FCS on the last byte");
     }
 
+    // ── The open-line standing abort is transport-driven, not a constant ──
+    // setAbortIdle(true) marks a machine with no hardwired peer: its idle
+    // SDLC line reads a standing Break/Abort (RR0 bit 7), the carrier-sense
+    // signal the LAP times out on when solo. But the instant a REAL peer
+    // transmits (a non-express injected frame — an LToUDP multicast frame,
+    // not the cable's own synthesized CTS) the line becomes a live,
+    // terminated network and the abort drops for a hold window; it returns
+    // only once the peer goes quiet (LLE_VS_HLE §1.8 / step 8).
+    {
+        Scc8530 s;
+        s.reset();
+        s.setAbortIdle(true);              // LC II/Q605: no hardwired peer
+        lapArm(s, 1);
+        s.writeCtl(kB, 0);
+        CHECK(s.readCtl(kB) & 0x80, "solo open line shows the standing abort");
+
+        // A real peer's frame (express=false) → line live, abort drops.
+        // Drain it so rxCur is empty: the drop is then the peer state, not
+        // the frame-in-flight mask.
+        const uint8_t enq[3] = {1, 2, 0x81};
+        s.injectRxFrame(kB, enq, 3, false);
+        uint8_t rr1 = 0;
+        (void)lapDrain(s, rr1);
+        s.writeCtl(kB, 0);
+        CHECK(!(s.readCtl(kB) & 0x80),
+              "a real peer's frame drops the standing abort (line is live)");
+
+        // Peer goes quiet past the hold window → open line returns.
+        s.tick(31000000);                  // > kPeerHold
+        s.writeCtl(kB, 0);
+        CHECK(s.readCtl(kB) & 0x80, "abort returns after the peer goes quiet");
+
+        // The cable's own synthesized CTS (express=true) is NOT a peer.
+        const uint8_t cts[3] = {1, 2, 0x85};
+        s.injectRxFrame(kB, cts, 3, true);
+        (void)lapDrain(s, rr1);
+        s.writeCtl(kB, 0);
+        CHECK(s.readCtl(kB) & 0x80,
+              "a synthesized (express) frame does not mark a peer present");
+    }
+
+    // ── Back-to-back injected frames both survive (empty-Chooser bug) ──
+    // The router delivers a LkUp broadcast and afpd's LkUpReply in one poll,
+    // so two non-express frames land in the Rx queue together. The second
+    // must NOT start the instant the first ends (its head would fall into
+    // the still-closing FIFO): the inter-dialog gap is measured from the
+    // FIRST frame's END (rxIdle), not from injection. Both must be delivered
+    // in full — the live GISTPERSO capture showed the guest re-sending the
+    // AFPServer lookup forever because the reply (frame 2) was lost.
+    {
+        Scc8530 s;
+        s.reset();
+        lapArm(s, 1);
+        const uint8_t f1[4] = {1, 2, 0x01, 0xAA};    // "broadcast LkUp"
+        const uint8_t f2[4] = {1, 2, 0x01, 0xBB};    // "LkUpReply" — the one lost
+        s.injectRxFrame(kB, f1, 4, false);
+        s.injectRxFrame(kB, f2, 4, false);           // same poll, back-to-back
+        uint8_t rr1 = 0;
+        auto got = lapDrain(s, rr1, 96);
+        bool sawA = false, sawB = false;
+        for (uint8_t b : got) { if (b == 0xAA) sawA = true; if (b == 0xBB) sawB = true; }
+        CHECK(sawA, "back-to-back: the first frame is delivered");
+        CHECK(sawB, "back-to-back: the SECOND frame (LkUpReply) is delivered too");
+    }
+
+    // ── FCS residue must not surface at the head of the NEXT frame ──
+    // The real LAP driver (unlike lapDrain, which reads every byte) reads a
+    // frame by its DDP length and re-enters hunt WITHOUT reading the trailing
+    // FCS — it trusts the hardware CRC (RR1 bit 6). Those unread FCS bytes
+    // must be flushed at the frame boundary: left in the 3-deep FIFO the
+    // previous frame's crc_hi (its EOF byte) surfaced as a phantom EOF-flagged
+    // byte at the HEAD of the next frame, desyncing the 44-byte NBP LkUpReply
+    // so the AFPServer entity never populated the Chooser (empty server list,
+    // 2026-07-22 GISTPERSO capture). Here we read a frame by its length,
+    // leave the 2 FCS bytes unread, re-arm hunt, then verify the NEXT frame
+    // is delivered starting on its OWN first byte with no phantom leader.
+    {
+        Scc8530 s;
+        s.reset();
+        lapArm(s, 1);
+        const uint8_t f1[6] = {1, 2, 0x01, 0xAA, 0xBB, 0xCC};   // 6 + 2 FCS
+        s.injectRxFrame(kB, f1, sizeof f1, false);
+        // Read exactly the 6 payload bytes (as the driver does by DDP length).
+        std::vector<uint8_t> g1;
+        uint8_t rr1 = 0;
+        for (int t = 0; t < 40 && g1.size() < 6; t++) {
+            s.tick(kByteCyc);
+            s.writeCtl(kB, 0x10);
+            while (g1.size() < 6) {
+                s.writeCtl(kB, 0);
+                if (!(s.readCtl(kB) & 0x01)) break;
+                s.writeCtl(kB, 1); rr1 = s.readCtl(kB);
+                g1.push_back(s.readData(kB));
+            }
+        }
+        CHECK(g1.size() == 6 && g1[0] == 1 && g1[5] == 0xCC,
+              "frame read by DDP length, FCS left unread");
+        // Clock the 2 unread FCS bytes onto the FIFO (crc_lo, crc_hi=EOF)
+        // without reading them — the residue the real driver skips.
+        s.tick(kByteCyc); s.tick(kByteCyc);
+        s.writeCtl(kB, 0);
+        CHECK(s.readCtl(kB) & 0x01, "unread FCS residue sits in the FIFO");
+        // Frame boundary: driver re-arms with WR3 Enter Hunt (0xDD, bit 4).
+        // This must flush the EOF-flagged residue.
+        wr(s, 3, 0xDD);
+        s.writeCtl(kB, 0);
+        CHECK(!(s.readCtl(kB) & 0x01),
+              "Enter Hunt at the frame boundary flushes the FCS residue");
+        // The LkUpReply-analogue now arrives; it must start on its own byte.
+        const uint8_t f2[6] = {1, 2, 0x01, 0x11, 0x22, 0x33};
+        s.injectRxFrame(kB, f2, sizeof f2, false);
+        std::vector<uint8_t> g2 = lapDrain(s, rr1);
+        CHECK(!g2.empty() && g2[0] == 1,
+              "next frame starts on its own first byte, not a phantom EOF");
+        CHECK(g2.size() == 8 && g2[2] == 0x01 && g2[5] == 0x33,
+              "the second frame is delivered intact (no stale leading byte)");
+        CHECK((rr1 & 0x80) && !(rr1 & 0x40), "clean EOF + good FCS on frame 2");
+    }
+
     if (failures == 0)
         std::printf("PASS: llap loop (ENQ both ways, addr filter, broadcast, "
                     "abort, RTS/CTS dialogue in-window, express CTS across "
