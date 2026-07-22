@@ -119,7 +119,13 @@ void Scc8530::rxPushByte(Chan& c) {
 
 void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
     Chan& c = ch_[ch & 1];
-    if (!n || !sdlcMode(c) || !rxEnabled(c)) return;   // receiver off: no ear
+    // Receiver off = no ear... except for express (cable-synthesized) frames:
+    // LLAP is half-duplex — the driver disables Rx while transmitting the RTS
+    // and only re-arms it on the EOM interrupt, which is the very tick that
+    // synthesizes the CTS. A real peer's CTS arrives ~100 µs later with the
+    // receiver back on; express frames therefore WAIT in the queue (delivery
+    // in tick() is already gated on rxEnabled) instead of being dropped.
+    if (!n || !sdlcMode(c) || (!express && !rxEnabled(c))) return;
     // SDLC Address Search Mode (WR3 bit 2): the chip only opens the FIFO
     // when the first byte matches WR6 or the $FF broadcast.
     if ((c.wr[3] & 0x04) && d[0] != c.wr[6] && d[0] != 0xFF) return;
