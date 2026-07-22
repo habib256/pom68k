@@ -95,7 +95,22 @@ uint8_t Ncr53c96::fifoPop() {
 // ── IRQ / DRQ lines ─────────────────────────────────────────────────────
 // The 53c90a+ latches interrupt cause into istatus and asserts IRQ while it
 // is non-zero (ncr53c90.cpp:1079-1086 check_irq). Reading R_ISTAT clears it.
-void Ncr53c96::raiseIrq(uint8_t bits) { istatus_ |= bits; irq_ = istatus_ != 0; }
+void Ncr53c96::raiseIrq(uint8_t bits) {
+    // A live event absorbs a scheduled one for the same cause. MAME's
+    // bus_complete fires once — when the transfer counter is exhausted AND
+    // the FIFO has drained (ncr53c90.cpp:672-692); our buffered model splits
+    // that into a scheduled "bytes fetched" deferral (transferInfo) and an
+    // instant drain-completion (dmaRead / R_FIFO / acceptDataOutByte_). When
+    // the CPU out-drains the schedule the instant event supersedes the
+    // pending one — without this the stale deferral fired AFTER the driver
+    // had already consumed the completion, injecting a phantom bus-service
+    // interrupt into the Mac OS 8.1 async SIM's ISR (boot wedged in
+    // timeout/retry, q605_boot_etalon red at 2416 SCSI commands / 5 G).
+    pendBits_ &= ~bits;
+    if (!pendBits_) pendDelay_ = 0;
+    istatus_ |= bits;
+    irq_ = istatus_ != 0;
+}
 
 // ── MAME-derived delay model (LLE step 9, docs/LLE_VS_HLE.md §5.9) ──
 // The 53C96 sequencer schedules every step on its own clock: delay(n) costs

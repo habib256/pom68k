@@ -278,16 +278,30 @@ documents the real behavior.
 - **NuBus/DeclRom**: functional slot windows, no arbitration/timeout
   cycles.
 - **SCSI**: `Ncr5380.*`, `Ncr53c96.*` — register/phase engines faithful
-  to MAME; pseudo-DMA handshake per-byte without bus timing.
+  to MAME; pseudo-DMA handshake per-byte. Since 2026-07-23 (step 9,
+  partial) the 53C96 **schedules its delays**: selection = the
+  `ncr53c90.cpp` arbitrate/assert/settle chain (19×CCF+6 SCSI clocks +
+  `sync_period` per CDB byte at the 40 MHz chip clock), transfers =
+  `sync_period`×bytes+2, default ON in `Q605Memory`
+  (`POM68K_SCSI_LAT=0` restores instant, `=N` flat) — so the
+  guest-programmed `R_CLOCK`/`R_SEQ` sync registers finally *do*
+  something; and the **PrimeTime TurboSCSI wait-state cell** is in
+  (`iosb.cpp:482-618`: 3-cycle register stalls, IOSB reg 2 →
+  `times[4]={5,5,4,3}` on the bit-19 waitstated DMA alias). Gate:
+  `q605_turboscsi_test`.
   *Gaps vs MAME `ncr53c90.cpp`* (120+ sub-state machine): no
   tcounter↔FIFO interplay (MAME decides phase advance from
-  `fifo_pos + tcounter`); sync-negotiation registers stubbed (all
-  transfers async); zero-latency selection/arbitration
-  (`POM68K_SCSI_LAT` default 0 — MAME schedules per-step
-  `delay_cycles`); target-mode `CT_*` command family and
-  `CT_ABORT_DMA` missing (initiator-only is fine for a Mac, but
-  target-side DISCONNECT sequencing is approximated by direct BUS FREE
-  detection); 8-bit pseudo-DMA only (no BUSMOD 16-bit widths).
+  `fifo_pos + tcounter`; our payload short-circuits the physical FIFO
+  through `dataIn_`/`dataOut_` — the pinned Q6.3-Q6.6b driver
+  interactions make this the highest-risk remaining rewrite);
+  sync-negotiation SDTR messages not modelled (the sync registers pace
+  timing but every transfer is logically async); selection timeout on
+  empty IDs stays instant (MAME ships a `DELAY_HACK` for the same
+  reason — the real ~250 ms × 6-ID bus scan would bloat every etalon);
+  target-mode `CT_*` command family and `CT_ABORT_DMA` missing
+  (initiator-only is fine for a Mac, but target-side DISCONNECT
+  sequencing is approximated by direct BUS FREE detection); 8-bit
+  pseudo-DMA only (no BUSMOD 16-bit widths).
 - **SCC** (`Scc8530.*`): the SDLC/LLAP side is real since LLE step 3 +
   LLAP milestone 1 (2026-07-22): full Rx path (3-deep FIFO with
   per-byte RR1 status, hunt exit/re-entry carrier sense, WR1 Rx-int
@@ -388,12 +402,19 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
    found we model more SDLC than MAME; the remaining SCC work is the
    **async-serial** baud machinery (WR4/WR11/WR12-13), tracked separately
    under the Plus serial-ports TODO, not part of the LLAP path.
-9. **53C96 + DAFB TurboSCSI fidelity** — tcounter↔FIFO phase engine,
-   scheduled selection/arbitration latency (non-zero default for
-   `POM68K_SCSI_LAT`), sync-negotiation plumbing, and the DAFB
-   TurboSCSI wait-state/DTACK-holdoff cell (MAME `ncr53c90.cpp` +
-   `dafb.cpp` as oracles). Gate: existing SCSI etalons + a timing
-   probe pinned against MAME's cycle counts.
+9. **53C96 + TurboSCSI fidelity** — **partially DONE 2026-07-23**
+   (CHANGELOG "LLE step 9 (partial)"): the PrimeTime TurboSCSI
+   wait-state cell (IOSB reg 2 → `times[4]={5,5,4,3}`, 3-cycle
+   register stalls, bit-19 waitstated DMA alias — on the Q605 the cell
+   is in **IOSB/PrimeTime**, so `iosb.cpp` is the oracle, not
+   `dafb.cpp`) and the scheduled selection/bus-service delay model
+   (MAME's arbitrate/settle chain + `sync_period` per byte at the
+   40 MHz chip clock, **default ON**; `POM68K_SCSI_LAT=0` → instant)
+   are in, with the sync-register plumbing riding the same model.
+   Gate: `q605_turboscsi_test` pinned against MAME's cycle counts.
+   *Remaining* (see §3 SCSI gaps): the true tcounter↔FIFO staging
+   engine, 16-bit BUSMOD widths, SDTR messages, scheduled selection
+   timeout.
 10. Longer term: Toby CRTC-derived frame clock, SWIM2/SonyDrive MFM
     cell timing + CRC, NuBus arbitration, 040 copyback/snooping,
     Egret/Cuda **firmware** LLE (68HC05 core + the dumps already under

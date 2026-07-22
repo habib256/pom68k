@@ -1,5 +1,51 @@
 # CHANGELOG
 
+## 2026-07-23 — LLE step 9 (partial): TurboSCSI wait-state cell + 53C96 scheduled delays
+
+The Quadra's SCSI path stops being zero-time. Two of step 9's four
+items land, pinned by the new `q605_turboscsi_test` gate (17 checks,
+no asset needed — it runs against a synthetic zero image):
+
+- **PrimeTime TurboSCSI wait-state cell** (MAME `iosb.cpp:482-618`
+  parity): every 53C96 register access now stalls the CPU 3 cycles;
+  the pseudo-DMA window's **waitstated alias** (byte-address bit 19 —
+  MAME's `BIT(offset<<1,18)` under `.select(0xfc0000)`) costs the
+  guest-programmed count while the plain window stays free. **IOSB
+  reg 2** (`$50018200`) programs the DMA read (bits 8-9) / write
+  (bits 11-12) wait states through `times[4] = {5,5,4,3}` exactly as
+  `iosb_regs_w` does; power-on default 3. This is the "DAFB TurboSCSI
+  cell" of `docs/LLE_VS_HLE.md` §3 — on the Q605 the cell lives in
+  PrimeTime/IOSB, so `iosb.cpp` (not `dafb.cpp`) is the oracle.
+- **Scheduled selection/bus-service delays, default ON** (the step 9
+  "non-zero default for `POM68K_SCSI_LAT`"): `Ncr53c96` grows a
+  MAME-derived delay model in place of the flat Q6.5b latency knob.
+  Selection-with-ATN raises I_BUS|I_FUNCTION only after the
+  `ncr53c90.cpp` arbitrate/assert/settle chain (`delay(11)+delay(6)+
+  delay_cycles(4)+delay(2)+delay_cycles(2)` = 19×CCF+6 SCSI clocks,
+  CCF 0 ≡ 8) plus `sync_period` clocks per IDENTIFY/CDB byte; a
+  Transfer Information defers its bus-service interrupt by
+  `sync_period`×bytes+2 clocks (`delay_cycles(sync_period)` per byte,
+  :462/:762). The chip runs at 40 MHz (`macquadra605.cpp:202`) against
+  the 25 MHz CPU → ×5/8 rounded up. **This is the sync-register
+  plumbing too**: the guest-programmed `R_CLOCK` conversion factor and
+  `R_SEQ` sync-period now have a real timing effect instead of being
+  write-only stubs. `POM68K_SCSI_LAT=0` forces the historical instant
+  behaviour, `=N` a flat deferral; unit tests that drive the bare chip
+  keep instant (the model is enabled by `Q605Memory`).
+- The pseudo-DMA `/DTACK` holdoff comment now states the honest
+  equivalence: our 53C96 changes DRQ only on CPU-driven accesses, so a
+  `!DRQ` window access can never be released mid-hold — the immediate
+  `/BERR` is the observable form of the eventual bus timeout (MAME
+  spins because its chip runs on its own timers).
+- **Still open from step 9** (tracked in `docs/LLE_VS_HLE.md` §3): the
+  true tcounter↔FIFO staging engine (payload still short-circuits
+  `dataIn_`/`dataOut_` around the physical FIFO; the carefully pinned
+  Q6.3-Q6.6b driver interactions make that a high-risk rewrite),
+  16-bit BUSMOD DMA widths, SDTR sync-negotiation messages, and the
+  selection-timeout delay on empty IDs (kept instant — MAME itself
+  ships a `DELAY_HACK` for it; the boot-time bus scan would otherwise
+  spin ~250 ms × 6 IDs of virtual time in every etalon).
+
 ## 2026-07-22 — `docs/LLE_VS_HLE.md` third pass: inventory re-synced to the live tree
 
 The LLE/HLE inventory was re-verified against `src/` after the Mac II
