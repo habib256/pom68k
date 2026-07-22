@@ -585,5 +585,3 @@ void Q605Memory::tick(int cpuCycles) {
     // DAFB frame clock (VBL/cursor interrupts) — Dafb::tick.
     dafbCell_.tick(cpuCycles);
 }
-
-// Q6.6 — HLE LocalTalk-LAP unwedge (Quadra / Mac OS 8.1 .MPP). See the header

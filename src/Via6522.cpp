@@ -53,6 +53,29 @@ bool Via6522::tick(int n) {
     return hit;
 }
 
+void Via6522::extShiftCB1(bool level, bool cb2FromPic) {
+    // PIC1654S ADB shift routines (firmware 0x065 send / 0x077 receive) drive
+    // CB1 low→high and use the RISING edge. On shift-in (mode 011, PIC→VIA)
+    // the PIC has set CB2 before raising CB1, so the VIA samples CB2 on the
+    // rising edge. On shift-out (mode 111, VIA→PIC) the PIC reads CB2 *after*
+    // raising CB1, so bit7 must stay presented across the rising edge — the SR
+    // advances on the FALLING edge to line up the next bit for the next read.
+    const bool rose = !extCb1_ && level;
+    const bool fell = extCb1_ && !level;
+    extCb1_ = level;
+    const uint8_t m = uint8_t((acr_ >> 2) & 7);
+    if (m == 3) {                                // shift in (PIC→VIA), sample on rising
+        if (!rose) return;
+        sr_ = uint8_t((sr_ << 1) | (cb2FromPic ? 1 : 0));
+    } else if (m == 7) {                         // shift out (VIA→PIC), advance on falling
+        if (!fell) return;
+        sr_ = uint8_t(sr_ << 1);
+    } else {
+        return;
+    }
+    if (++extBits_ >= 8) { extBits_ = 0; setIfr(SHIFT); }
+}
+
 void Via6522::setCb1(bool level) {
     if (level == cb1_) return;
     const bool fell = cb1_ && !level;
@@ -80,7 +103,7 @@ uint8_t Via6522::read(int reg) {
         case T1LH:   return uint8_t(t1latch_ >> 8);
         case T2CL:   ifr_ &= uint8_t(~TIMER2); return uint8_t(t2_ & 0xFF);
         case T2CH:   return uint8_t((t2_ >> 8) & 0xFF);
-        case SR:     ifr_ &= uint8_t(~SHIFT); return sr_;
+        case SR:     ifr_ &= uint8_t(~SHIFT); extBits_ = 0; return sr_;
         case ACR:    return acr_;
         case PCR:    return pcr_;
         case IFR:    return uint8_t((ifr_ & 0x7F) | (irqAsserted() ? ANY : 0));
@@ -105,7 +128,7 @@ void Via6522::write(int reg, uint8_t v) {
         case T2CH:   t2_ = int32_t((uint32_t(v) << 8) | t2ll_);   // latch → counter
                      t2armed_ = true;
                      ifr_ &= uint8_t(~TIMER2); break;
-        case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); srHostWritten_ = true;
+        case SR:     sr_ = v; ifr_ &= uint8_t(~SHIFT); srHostWritten_ = true; extBits_ = 0;
                      // Internally-clocked shift modes (T2/φ2: ACR2-4 =
                      // 001/010/100/101/110) complete on their own, ~16 φ2
                      // clocks/byte (R6522 §2.4). External-clock modes

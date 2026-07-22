@@ -199,6 +199,4 @@ private:
     // 60.15 Hz CA1 tick, derived from CPU cycles
     int viaPhase_ = 0;
     int64_t tickAcc_ = 0;
-
-    // Q6.6 — HLE LocalTalk-LAP unwedge (Quadra / Mac OS 8.1 .MPP). Mirror of
 };

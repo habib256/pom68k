@@ -5,7 +5,11 @@ modeled at register/protocol level from silicon references, verified by
 gates and oracles), and only later layer an **opt-in, clearly-flagged HLE
 accelerator** on top (`HLE_OVERLAY.md`). That requires knowing exactly
 where the current code already deviates from hardware. This document is
-the complete inventory (audited 2026-07-21) and the plan to shrink it.
+the complete inventory and the plan to shrink it. Audited 2026-07-21;
+**second pass the same day** cross-checked every device against MAME
+(`refs/mame-apple`, `refs/mame`) and DingusPPC (`refs/dingusppc`) — the
+per-device gap lists in §3 and the migration steps 7-10 come from that
+pass.
 
 Line numbers are indicative — verify with grep before relying on them.
 
@@ -90,15 +94,42 @@ combo (CHANGELOG "Bare no-FPU solved").
 
 ### 1.6b Cuda reply framing serves per-reader accommodations — `Egret.cpp`
 
-The Cuda-flavor reply wire is still HLE-shaped: a 4-byte header
-`[01, 00, 00, cmdEcho]` pinned against the ROM device-manager ISR, with
-per-reader patches on top — the `$76` echo-pop (Q6.5), the GetPram
-2-byte erase, and now the Q8.2 echo-slot **data duplication** for
-ReadXPram (System reader consumes a 3-byte header). The real Cuda
-packet is `[type, flags, cmdEcho, data…]` (DingusPPC
-`viacuda.cpp response_header`; MAME runs the actual 6805 firmware).
-Migrating means re-pinning every ROM reader against the real wire plus
-a turnaround sync byte — tracked in TODO ("Cuda wire-model redo").
+**The #1 remaining fidelity debt.** The Cuda-flavor reply wire is
+HLE-shaped: a 4-byte header `[01, 00, 00, cmdEcho]` pinned against the
+ROM device-manager ISR, with per-reader patches on top — the `$76`
+echo-pop (Q6.5), the GetPram 2-byte erase, the Q8.2 echo-slot **data
+duplication** for ReadXPram (the System reader consumes a 3-byte
+header), and the long/short one-second-tick heuristic
+(`firstTick_`/`cudaPolarity_`). Each new System version risks bringing
+a new reader shape — Q8.2 proved it (Mac OS 8.1 killed bare no-FPU
+through exactly this).
+
+The redo now has a complete blueprint (DingusPPC `viacuda.cpp` +
+`zdocs/developers/viacuda.md`; MAME `cuda.cpp` runs the real 6805
+firmware and is the timing oracle):
+
+- Reply packet: `[type, flags, cmdEcho, data…]`
+  (`response_header`, viacuda.cpp:498). Error packet:
+  `[$02, errCode, pktType, cmd]` (`error_response`, :509) — ours is
+  `{01, 02, 00, type}`, wrong shape.
+- Session: TIP fall → attention/sync byte scheduled **+61 µs**; each
+  host command byte SR-acked **+71 µs**; each response byte **+88 µs**;
+  TREQ re-asserts **+13 µs** after close. Our `kByteDelay` is a single
+  flat 200-cycle (~13 µs) constant.
+- Open-ended streams (ReadXPram/GetPram) are genuinely
+  host-terminated — our fixed 32-byte push is the right idea, wrong
+  mechanism (length lives in the host's session close, not the reply).
+- One-second modes: command `$1B` selects mode 0/1/2/3 (full header +
+  4-byte RTC / header only / single `$03` byte); we approximate with
+  a first-long-then-short heuristic.
+
+Two naive migrations were tried and failed on 2026-07-21 (3-byte
+header alone; preset unclocked sync byte) — the ROM pollers wait on
+SHIFT for their sync byte, so the redo must schedule a *clocked*
+attention byte with real per-byte pacing, then re-pin every ROM reader
+(`$408A9BBE` ISR, `$408B3Bxx` direct pollers, `$A14D4E`/`$A15376` LC II
+Egret readers) against that wire. Tracked in TODO ("Cuda wire-model
+redo"); migration step 7 below.
 
 ### 1.7 Mac II / LC II RTC + Egret PRAM factory seeding — `Rtc.cpp:13-28`, `Egret.cpp:54-91`
 
@@ -107,6 +138,19 @@ Seeds `'NuMc'` validity signature + Basilisk-style defaults + SPConfig
 factory PRAM contents is hardware-plausible, and it prevents the ROM's
 cold-PRAM re-init loop. Keep, but treat the *contents* as a documented
 policy, not scattered magic.
+
+### 1.8 SCC `abortIdle` — static "no LocalTalk peer" assumption
+
+`V8Memory.cpp:49` and `Q605Memory.cpp:83` call `setAbortIdle(true)`
+unconditionally: the SDLC receiver models a permanently OPEN line
+(standing Break/Abort in hunt). That is legitimate LLE *for an
+unterminated connector* — but it is a machine-level constant, not a
+line state. The virtual-LLAP-cable project (TODO) requires carrier to
+come from the transport: `abortIdle` must become "no remote attached",
+dropped when a peer transmits. Also: one stale `// Q6.6 — HLE
+LocalTalk-LAP unwedge` comment survives at the tail of
+`Q605Memory.cpp` (the function it described was deleted in LLE
+step 3) — remove on next touch.
 
 ## 2. HLE replacements (whole devices at protocol level)
 
@@ -120,31 +164,86 @@ These are pragmatic and well-gated (`egret_test`, `input_etalon`,
 `macii_boot_etalon`); firmware-level LLE is a separate, large milestone
 and **not** a priority — but they must stay protocol-faithful to ROM
 traces (TODO: "expand Cuda commands only from ROM/driver traces").
+Reference hierarchy for the Egret/Cuda protocol, established by the
+second audit: **MAME `cuda.cpp`** (LLE, real 6805 firmware — the
+timing oracle), **DingusPPC `viacuda.cpp` + `zdocs/developers/
+viacuda.md`** (HLE at the same abstraction as ours, but with the real
+packet framing and per-byte scheduling — the *design* oracle), Linux
+`via-cuda.c` (host-side driver cross-check).
 
 ## 3. LLE with simplification (functional, not cycle-exact)
+
+Second-audit format: status, then **Gaps** with the reference that
+documents the real behavior.
 
 - **CPUs**: `Cpu68k` (Plus, cycle-exact **with** RAM contention — the
   exception), `Cpu020`, `Cpu030`, `Cpu040` — 030/040 add i-cache
   *throughput overlays* (`POM68K_Q605_CACHE_BOOST`, `cacheBoost_`
   scaling in `flushTicks`) rather than architectural caches; no 040
   copyback/snooping.
+  *Gaps*: peripheral-tick batching (128 cycles LC II / 256 Q605 —
+  ~8-16 µs IRQ-latency jitter); VIA E-clock synced at a fixed 32:1
+  ratio (real ≈31.91:1).
+- **Egret/Cuda wire** (`Egret.*`): see §1.6b — reply framing, flat
+  `kByteDelay` pacing vs the real 61/71/88 µs per-byte schedule,
+  wrong error-packet shape, lenient command decode (fixed 32-byte
+  XPRAM streams, no length validation), heuristic one-second modes.
+  ADB autopoll period is a hardcoded ≈11 ms accumulator (matches
+  DingusPPC's default `poll_rate`, so acceptable).
 - **Video**: `MacVideo.h`, `V8Video.h`, `TobyVideo.*` — whole-frame
   decode, no beam timing.
+  *Gaps*: `TobyVideo.cpp:179` bakes a 60 Hz / 261 120-cycle frame
+  instead of deriving it from the Toby CRTC registers (the DAFB got
+  this treatment in Q8.1; Toby never did).
 - **DAFB/Antelope** (`Dafb.*`; MEMCjr 6+6-bit holding split stays in
   `Q605Memory`): register-level and close to MAME `dafb.cpp` parity
   since 2026-07-21 (Swatch CRTC timing → derived geometry, Gazelle
-  clockgen → guest-programmed frame rate, extended monitor sense,
-  display-disable bit). Remaining gaps: no VRAM arbitration/timing, VBL
-  line hard-coded at 480 (as in MAME).
+  clockgen → guest-programmed frame rate — which MAME does *not*
+  model — extended monitor sense, display-disable bit).
+  *Gaps*: no VRAM arbitration/timing; VBL line hard-coded at 480 (as
+  in MAME); the DAFB **TurboSCSI cell is absent** — real DAFB/DAFB II
+  inserts configurable wait states per 5394/5396 access and can hold
+  off /DTACK on pseudo-DMA (MAME `dafb.cpp` `m_scsi_*_cycles`); our
+  53C96 pseudo-DMA path bypasses it entirely.
 - **Floppy**: `Swim2.*` (register file + FIFO real; media transactions
   whole-sector), `SonyDrive.*` (no rotational latency), `Iwm.*` is the
   most faithful (nibble timing, tach).
+  *Gaps*: no MFM cell timing or CRC verification (MAME `floppy.cpp`
+  models bit cells); tach is a sampled bit, not a waveform; SWIM2 FIFO
+  drain synced via `syncSwimFromCpu()` batches, not per-access
+  `sync()` as MAME.
 - **NuBus/DeclRom**: functional slot windows, no arbitration/timeout
   cycles.
 - **SCSI**: `Ncr5380.*`, `Ncr53c96.*` — register/phase engines faithful
   to MAME; pseudo-DMA handshake per-byte without bus timing.
+  *Gaps vs MAME `ncr53c90.cpp`* (120+ sub-state machine): no
+  tcounter↔FIFO interplay (MAME decides phase advance from
+  `fifo_pos + tcounter`); sync-negotiation registers stubbed (all
+  transfers async); zero-latency selection/arbitration
+  (`POM68K_SCSI_LAT` default 0 — MAME schedules per-step
+  `delay_cycles`); target-mode `CT_*` command family and
+  `CT_ABORT_DMA` missing (initiator-only is fine for a Mac, but
+  target-side DISCONNECT sequencing is approximated by direct BUS FREE
+  detection); 8-bit pseudo-DMA only (no BUSMOD 16-bit widths).
+- **SCC** (`Scc8530.*`): LLAP carrier-sense side is real since LLE
+  step 3.
+  *Gaps*: **no Rx path at all** — Read Data B returns 0, no Rx FIFO,
+  no hunt→sync transition on carrier, no Rx interrupts or end-of-frame
+  CRC status. This is *the* blocker for the virtual-LLAP-cable project
+  (TODO). Tx Underrun/EOM latch uses a flat 1200-cycle delay instead
+  of counting CRC+flag bit times; the open-line abort re-presents on a
+  ~130 µs countdown rather than level-triggered detection.
+- **ADB** (`AdbVia.*`, `AdbBus.*`): command-level (§2).
+  *Gaps*: `AdbVia` assumes 2-byte Listen payloads (real ADB is 2-8
+  bytes; DingusPPC `adbbus.cpp` validates against 8).
 - **Audio**: `Asc.*` FIFO semantics faithful (MODE mask, edge/level IRQ
   variants); fixed 22 257 Hz drain via fractional accumulators.
+- **Confirmed parity** (second audit, no action): pseudo-VIA register
+  decode + level-triggered ASC IRQ matches MAME `pseudovia.cpp`; the
+  60.15 Hz CA1 tick is an independent timer in `Q605Memory::tick` like
+  MAME IOSB's `6015_timer` (it does NOT depend on DAFB CRTC state);
+  extended monitor sense matches; MEMCjr holding protocol lives in
+  `Q605Memory` exactly where MAME's `djmemc.cpp` puts it.
 
 ## 4. Pure LLE / host convenience
 
@@ -181,8 +280,35 @@ the existing etalons (`finder_boot_matrix` must stay green):
    guest-state machinery is deleted; soft-FPU stays as the supported
    config, and the bare-NONE `_FP68K` binding was solved the same day
    (see 1.6b) — bare `FPUModel::NONE` reaches the Finder, gated.
-6. Longer term: DAFB → MAME parity, 040 copyback/snooping, Egret/Cuda
-   firmware LLE (only if a use case demands it).
+6. ~~DAFB → MAME parity~~ **DONE 2026-07-21** (LLE step 6 + Dafb
+   extraction; remaining DAFB gaps folded into step 9 below).
+
+Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
+
+7. **Cuda wire-model redo** — *proposed next pass.* Real reply framing
+   `[type, flags, cmdEcho, data…]`, error packets
+   `[$02, err, type, cmd]`, a *clocked* attention byte at session
+   open, and per-byte SR scheduling (61/71/88 µs, TREQ +13 µs) per
+   §1.6b's blueprint. Acceptance = **deleting** the `$76` echo-pop,
+   the GetPram erase, the Q8.2 echo-slot duplication and the
+   long/short tick heuristic, with every Cuda/Egret etalon and the
+   Finder matrix green. This retires the last per-reader wire hacks
+   and de-risks every future System version.
+8. **SCC Rx path** — Rx FIFO, carrier-driven hunt→sync, Rx character
+   + special-condition interrupts, end-of-frame CRC status; turn
+   `abortIdle` (§1.8) into a transport-driven line state. Direct
+   prerequisite for the virtual-LLAP-cable project (TODO), which then
+   provides the two-instance gate that exercises it.
+9. **53C96 + DAFB TurboSCSI fidelity** — tcounter↔FIFO phase engine,
+   scheduled selection/arbitration latency (non-zero default for
+   `POM68K_SCSI_LAT`), sync-negotiation plumbing, and the DAFB
+   TurboSCSI wait-state/DTACK-holdoff cell (MAME `ncr53c90.cpp` +
+   `dafb.cpp` as oracles). Gate: existing SCSI etalons + a timing
+   probe pinned against MAME's cycle counts.
+10. Longer term: Toby CRTC-derived frame clock, SWIM2/SonyDrive MFM
+    cell timing + CRC, NuBus arbitration, 040 copyback/snooping,
+    Egret/Cuda **firmware** LLE (68HC05 core + dump, only if a use
+    case demands it — MAME proves it works).
 
 Every remaining hack must be: (a) behind an env flag or module toggle,
 (b) logged when it fires, (c) listed here, and (d) eventually migrated

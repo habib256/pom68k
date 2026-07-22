@@ -26,7 +26,9 @@ public:
     // Egret-level command: returns the response payload (empty = timeout)
     std::vector<uint8_t> command(uint8_t cmd, const std::vector<uint8_t>& data);
 
-    bool srqPending() const { return !keyQueue_.empty() || mousePending(); }
+    bool srqPending() const { return keyPending() || mousePending(); }
+    bool keyPending() const { return !keyQueue_.empty(); }
+    bool mousePending() const { return mdx_ || mdy_ || mbtn_ != mbtnSent_; }
     uint8_t keyboardAddr() const { return kbdAddr_; }
     uint8_t mouseAddr() const { return mouseAddr_; }
 
@@ -36,8 +38,6 @@ public:
     void mouseButton(bool down);
 
 private:
-    bool mousePending() const { return mdx_ || mdy_ || mbtn_ != mbtnSent_; }
-
     std::deque<uint8_t> keyQueue_;       // raw ADB key transitions
     int mdx_ = 0, mdy_ = 0;
     bool mbtn_ = false, mbtnSent_ = false;

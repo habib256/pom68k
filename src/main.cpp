@@ -142,18 +142,12 @@ struct ScreenInput {
         ImGui::GetWindowDrawList()->AddImage(
             ImTextureID(intptr_t(tex)), p, ImVec2(p.x + size.x, p.y + size.y));
 
-        if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
-            std::fprintf(stderr, "[DBG] DEL pressed: WantTextInput=%d captured=%d\n",
-                         io.WantTextInput, captured);
         if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
             setCaptured(win, !captured);
 
         if (captured) {                  // raw deltas from the virtual cursor
             double x, y;
             glfwGetCursorPos(win, &x, &y);
-            if (x != lastX || y != lastY)
-                std::fprintf(stderr, "[DBG] cap move raw dx=%.1f dy=%.1f\n",
-                             x - lastX, y - lastY);
             feed(float(x - lastX), float(y - lastY), move);
             lastX = x; lastY = y;
             button(glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
@@ -164,7 +158,6 @@ struct ScreenInput {
     }
 
     void setCaptured(GLFWwindow* win, bool on) {
-        std::fprintf(stderr, "[DBG] setCaptured(%d)\n", on);
         captured = on;
         glfwSetInputMode(win, GLFW_CURSOR,
                          on ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);

@@ -2,6 +2,10 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "AdbVia.h"
+#include <cstdlib>
+#include <fstream>
+#include <iterator>
+#include <vector>
 
 void AdbVia::reset() {
     state_ = IDLE;
@@ -18,6 +22,65 @@ void AdbVia::attach(Via6522& via, AdbBus& adb) {
     via_ = &via;
     adb_ = &adb;
     reset();
+
+    // Opt-in LLE: run the real PIC1654S firmware if the dump is present.
+    if (std::getenv("POM68K_ADB_LLE")) {
+        for (const char* p : { "roms/adbmodem/342s0440-b.bin",
+                               "../roms/adbmodem/342s0440-b.bin" }) {
+            std::ifstream f(p, std::ios::binary);
+            if (!f) continue;
+            std::vector<uint8_t> rom((std::istreambuf_iterator<char>(f)),
+                                     std::istreambuf_iterator<char>());
+            if (pic_.loadRom(rom.data(), rom.size())) { lle_ = true; break; }
+        }
+        if (lle_) { line_.reset(); picAcc_ = 0; setupPicPorts(); }
+    }
+}
+
+void AdbVia::setupPicPorts() {
+    // Wiring per MAME adbmodem.cpp:
+    //   RA0/RA1 (in)  = VIA PB4/PB5 (ST0/ST1)     RA2 (out, inverted) = ADB line
+    //   RA3 (in)      = ADB line                   RB2 (out) = VIA CB1 shift clock
+    //   RB3 (in/out)  = VIA CB2 shift data         RB4 (out) = VIA PB3 IRQ (active low)
+    pic_.readA = [this]() -> uint8_t {
+        // ST0/ST1 on PB4/PB5. When the 68k leaves those pins as inputs (not
+        // driving a state) they pull high → ST=IDLE(3), not NEW(0); otherwise
+        // the PIC would treat every idle sample as a fresh command. So force
+        // input ST bits to 1.
+        uint8_t pb = uint8_t(via_->portB() | ~via_->ddrb());
+        uint8_t st = uint8_t((pb >> 4) & 3);
+        return uint8_t(st | (line_.line() ? 0x08 : 0));
+    };
+    pic_.writeA = [this](uint8_t v) {
+        line_.setHostDrive(!(v & 0x04));           // RA2=1 pulls the line low
+    };
+    pic_.readB = [this]() -> uint8_t {
+        return uint8_t(0xF7 | (via_->extShiftCB2Out() ? 0x08 : 0));   // RB3 = CB2 in
+    };
+    pic_.writeB = [this](uint8_t v) {
+        via_->extShiftCB1((v & 0x04) != 0, (v & 0x08) != 0);   // RB2 clock, RB3 data
+        irqPending_ = !(v & 0x10);                             // RB4 → PB3 IRQ
+    };
+}
+
+void AdbVia::tickLle(int cpuCycles) {
+    picAcc_ += cpuCycles;
+    while (picAcc_ >= kCyclesPerPicInsn) {
+        picAcc_ -= kCyclesPerPicInsn;
+        line_.tick(kCyclesPerPicInsn);   // advance the ADB device send timers
+        pic_.run(1);                     // one PIC instruction (drives the ports)
+        pic_.setRtcc(line_.line());      // RTCC pin tracks the ADB line
+    }
+    applyIrqToVia();
+}
+
+void AdbVia::syncTo(int64_t cpuClock) {
+    if (!lle_) return;
+    if (lastPicClock_ < 0) { lastPicClock_ = cpuClock; return; }
+    int64_t delta = cpuClock - lastPicClock_;
+    if (delta <= 0) return;
+    lastPicClock_ = cpuClock;
+    tickLle(int(delta));
 }
 
 void AdbVia::applyIrqToVia() {
@@ -33,6 +96,7 @@ void AdbVia::applyIrqToVia() {
 
 void AdbVia::sync() {
     if (!via_ || !adb_) return;
+    if (lle_) { applyIrqToVia(); return; }   // the PIC samples ST via its ports
     State st = State((via_->portB() >> 4) & 3);
     if (st != state_) {
         lastState_ = state_;
@@ -124,6 +188,7 @@ void AdbVia::pushDeviceByte() {
 
 void AdbVia::tick(int cpuCycles) {
     if (!via_ || !adb_) return;
+    if (lle_) return;   // LLE PIC is driven by syncTo(absolute CPU clock)
     // Mid-transaction with a dead timer: re-arm so SHIFT is re-presented.
     // Slot Manager and ADB share VIA1 SR; a lost SHIFT edge leaves ST=EVEN
     // forever (Mac II Sys7: AppleTalk alert, no keyboard/mouse).

@@ -525,8 +525,18 @@ void Egret::tick(int cpuCycles) {
     if (pollAcc_ >= 172339) {            // ≈11 ms ADB poll period
         pollAcc_ = 0;
         if (autopoll_ && adb_ && adb_->srqPending() && pending_.size() < 2) {
-            for (uint8_t addr : { adb_->keyboardAddr(), adb_->mouseAddr() }) {
-                uint8_t talk = uint8_t(addr << 4 | 0x0C);   // talk reg 0
+            // Poll only a device that actually has data pending. The
+            // keyboard's Talk R0 always answers ({$FF,$FF} = "no key"),
+            // so a blanket "non-empty reply" test would let it claim the
+            // slot every poll and the mouse would never be reached
+            // (mouse frozen despite srqPending staying high). Gate each
+            // address on its own pending flag instead.
+            const uint8_t kbd = adb_->keyboardAddr(), mse = adb_->mouseAddr();
+            struct { uint8_t addr; bool has; } devs[] = {
+                { kbd, adb_->keyPending() }, { mse, adb_->mousePending() } };
+            for (auto& d : devs) {
+                if (!d.has) continue;
+                uint8_t talk = uint8_t(d.addr << 4 | 0x0C);   // talk reg 0
                 auto data = adb_->command(talk, {});
                 if (data.empty()) continue;
                 std::vector<uint8_t> pkt = { 0x01, 0x00, 0x40, talk };

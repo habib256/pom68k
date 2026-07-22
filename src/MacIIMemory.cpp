@@ -201,6 +201,10 @@ bool MacIIMemory::isIo(uint32_t addr, uint32_t& off) const {
 uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_t v,
                                 bool isVia1) {
     viaSync();
+    // LLE ADB: run the PIC1654S up to this exact cycle before the ROM touches
+    // VIA1 (SR/ACR/ORB carry the ADB byte handshake). This gives the PIC/ROM
+    // bit-level interleaving instead of a whole sequence per periph batch.
+    if (isVia1 && cpu_) adbVia_.syncTo(cpu_->getClock());
     // MAME via_r: word_offset >> 8 ≡ byte_offset >> 9 ($200 register stride,
     // same as Mac Plus / V8). Using >> 8 on byte offsets mis-routed ORA_NH
     // ($1E00) into IER and left ROM overlay stuck on.
@@ -519,6 +523,7 @@ void MacIIMemory::tick(int cpuCycles) {
         if (via2Irq_) updateIrq();
     }
     adbVia_.tick(cpuCycles);
+    if (cpu_) adbVia_.syncTo(cpu_->getClock());   // LLE: advance the PIC (no-op in HLE)
     asc_.tick(cpuCycles);
     // Classic ASC half-empty is edge + empty-cycle (see Asc.cpp); VIA2 CB1
     // is edge-only. Re-latch IFR.CB1 while the line stays asserted so a
