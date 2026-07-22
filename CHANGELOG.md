@@ -1,5 +1,74 @@
 # CHANGELOG
 
+## 2026-07-22 — LLE step 7: Cuda/Egret wire-model redo (the per-reader hacks are gone)
+
+`Egret.cpp`'s reply wire now follows the real Cuda protocol (DingusPPC
+`viacuda.cpp` as design oracle, MAME `cuda.cpp`/real firmware as the
+timing reference) instead of a 4-byte HLE header with per-reader
+patches. The three accommodations named the "#1 remaining fidelity
+debt" in `docs/LLE_VS_HLE.md` §1.6b — the ReadXPram `$76` echo-pop
+(Q6.5), the GetPram 2-byte header erase (Q6.4), and the Q8.2 echo-slot
+data duplication — are **deleted**, along with the long/short
+one-second-tick heuristic (`firstTick_`). 49/49 gates + the Finder
+boot matrix stay green, bare no-FPU included.
+
+What the redo actually is:
+
+- **Real framing**: replies are `[type, flags, cmdEcho, data…]`, errors
+  `[$02, errCode, pktType, cmd]`. The **attention byte is a wire event,
+  not a buffer byte** (a dummy SHIFT with a stale SR): session close-ack
+  +61 µs, initiated-packet attention +30 µs, host command byte ack
+  +71 µs, response byte +88 µs, TREQ re-assert +13 µs (DingusPPC's
+  measured schedule). That separation is the whole fix: the ROM
+  device-manager ISR counts the close-ack as its discarded "sync" (4
+  header bytes before data), the direct pollers and Mac OS 8.1's
+  System-side reader consume it in their send ritual (3 header bytes
+  before data) — every reader lands on the right byte *naturally*,
+  which is why the hacks could go. The Egret flavor keeps its pinned
+  LC II wire (buffer byte 0 doubles as the attention byte) with the
+  real-framed header behind it.
+- **BYTEACK edges are session-gated**: the ROM's `ori #$30` close
+  raised TIP and BYTEACK in one write and the old code counted the
+  BYTEACK half as a command byte — every captured command had its last
+  byte duplicated, and WriteXPram wrote one extra adjacent byte. Ghost
+  idle-bus polls ($408A9Cxx) get dummy SHIFTs like DingusPPC's null
+  handler.
+- **Commands $02/$08 are READ/WRITE_MCU_MEM with a 16-bit MCU address**:
+  PRAM lives at $0100-$01FF, $0000-$00FF is 68HC05 scratch RAM (new
+  `mcuRam_`). Wire captures (EGRET_CMD_LOG) showed both Systems writing
+  a parameter block at MCU $B3 and reading it back via $A1 — the old
+  8-bit model was silently corrupting PRAM $B3-$B5. PRAM/MCU reads are
+  now genuinely **open-ended streams** (the fixed 32-byte push is gone;
+  the host terminates the session after its count, as pinned in O6.11).
+- **One-second packets obey pseudo command $1B** (mode 0 off / 1 full /
+  2 header / 3 single tick byte; first packet after a change is always
+  full, per the ERS). Captures showed the LC II ROM sending `$1B 00`
+  in its first commands and both Sys 7.5 and Mac OS 8.1 sending
+  `$1B 03` — the heuristic was reimplementing a real command we
+  ignored. Power-on default is mode 1 (the boot heartbeat the LC II
+  ROM's $A15376 reader consumes). Also implemented from the captures:
+  $14/$16 autopoll rate, $19/$1A device bitmap.
+- **The Quadra's Cuda seconds ran 1.6× fast**: `Egret` assumed
+  15.6672 MHz but `Q605Memory` ticks it at 25 MHz. The constructor now
+  takes the machine clock (µs pacing needs it anyway). Consequence:
+  every seconds-keyed boot wait takes its true duration — the
+  AppleTalk-active Mac OS 8.1 image's LAP timeouts most of all —
+  so `q605_barefpu_boot_etalon`'s budget was re-pinned to 30 000
+  frames (bare-SANE Finder lands around clk 10.2G) and
+  `finder_boot_matrix`'s Q605 cell from 6 000 to 30 000 (its early-exit
+  keeps passing cells cheap). The same pass fixed a latent matrix bug
+  the slower boot exposed: the Q605 in-loop early-exit was looser than
+  the final Finder check and broke out on the "Welcome to Mac OS"
+  splash (menu.mean>170 with >35 contrast, no deviation test) — it now
+  uses the strict criteria. All 9 Egret/Cuda matrix cells (Q605 × 8.1
+  / 7.5 / 7.5.5 / 7.6 / GISTPERSO, LC II × boot.vhd / 7.1 / 7.5 /
+  7.5.5) re-verified PASS on the new wire.
+
+`egret_test` re-pins the header as `[attn, type, flags, echo]` and the
+$1B mode machinery. HLE remaining in the Egret/Cuda (tracked in
+`docs/LLE_VS_HLE.md` §2): it is still a packet-level HLE of the 68HC05
+firmware — the next rung is the firmware itself (migration step 10).
+
 ## 2026-07-22 — AppleShare bridge vendored: netatalk 2.4.9 + TashRouter
 
 The path from the emulated Chooser to a host folder is now fully in-tree

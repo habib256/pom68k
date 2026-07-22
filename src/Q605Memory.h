@@ -151,7 +151,9 @@ private:
 
     std::vector<uint8_t> ram_, rom_, vram_;
     Via6522 via1_;
-    Egret cuda_{via1_, true};      // Cuda flavor: TIP/BYTEACK active low
+    // Cuda flavor: TIP/BYTEACK active low; 25 MHz machine clock for the
+    // µs per-byte pacing and the RTC seconds heartbeat
+    Egret cuda_{via1_, true, 25000000};
     AdbBus adb_;
     Scc8530 scc_;
     // PrimeTime's IOSB audio cell at $50014000: $BB version, stereo FIFO A/B,

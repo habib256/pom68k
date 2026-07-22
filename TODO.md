@@ -98,17 +98,14 @@ Next milestones:
     behaviour as separate, oracle-gated milestones.
   - (Follow-up from Q8.8) Make `CACHE_BOOST` > 1 Finder-safe without
     changing etalon metrics.
-- [ ] **Cuda wire-model redo** (follow-up to the solved bare no-FPU
-  enigma — CHANGELOG 2026-07-21 "Bare no-FPU solved"): replace the
-  per-reader reply-framing accommodations in `Egret.cpp` (echo-slot
-  data duplication for ReadXPram, the $76 pop, the GetPram erase, the
-  long/short tick heuristic) with the real Cuda packet
-  `[type, flags, cmdEcho, data…]` + a *clocked* attention byte and
-  per-byte SR scheduling. Full blueprint (framing, error packets,
-  61/71/88 µs timings, failed-attempt notes) in `docs/LLE_VS_HLE.md`
-  §1.6b; migration step 7 there. Needs re-pinning every ROM reader
-  (`$408A9BBE` ISR, `$408B3Bxx` direct pollers, LC II `$A14D4E`)
-  against that wire.
+- [x] **Cuda wire-model redo — DONE 2026-07-22** (CHANGELOG "LLE
+  step 7"; `docs/LLE_VS_HLE.md` §1.6b resolved): real framing +
+  wire-event attention byte + 61/71/88/13/30 µs pacing + `$1B`
+  one-second modes; the $76 pop, GetPram erase, Q8.2 duplication and
+  tick heuristic are deleted, 49/49 gates + Finder matrix green.
+  Follow-up (step 10 there): Egret/Cuda **firmware** LLE — the real
+  dumps are on hand (`roms/cuda/341s0788.bin` etc.), the Mac II
+  PIC1654S migration is the template.
 
 ## Mac LC II
 

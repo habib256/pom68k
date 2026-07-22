@@ -242,7 +242,11 @@ static int bootQ605(const std::vector<uint8_t>& rom, const char* disk) {
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);
     constexpr int kFrameCycles = 416667;
-    constexpr int kMaxFrames = 6000;
+    // Re-pinned 2026-07-22 (Cuda wire redo): the Cuda seconds heartbeat
+    // runs at the real 25 MHz rate (was 1.6x fast), so seconds-keyed
+    // boot waits — AppleTalk-active LAP timeouts chiefly — take their
+    // true duration; the early-exit below keeps passing cells cheap.
+    constexpr int kMaxFrames = 30000;
     QScreen screen;
     for (int frame = 0; frame < kMaxFrames && !cpu.isHalted(); frame++) {
         cpu.runCycles(kFrameCycles);
@@ -252,9 +256,20 @@ static int bootQ605(const std::vector<uint8_t>& rom, const char* disk) {
                 (screen.depth == 8 || screen.depth == 1)) {
                 Stats menu = luminance(screen, 0, screen.width, 2, 16);
                 Stats desk = luminance(screen, 520, 630, 40, 430);
-                bool finder8 = screen.depth == 8 && menu.mean > 170 &&
+                // Early-exit on the SAME criteria as the final check
+                // below — a looser test here used to break out on the
+                // "Welcome to Mac OS" splash (uniform light box on
+                // gray also has menu.mean>170 and a >35 contrast) and
+                // then fail the strict check (exposed 2026-07-22 when
+                // the corrected Cuda seconds clock slowed the boot).
+                bool finder8 = screen.depth == 8 &&
+                               menu.mean > 170 && menu.mean < 235 &&
+                               menu.deviation > 40 && menu.deviation < 100 &&
+                               desk.mean > 100 && desk.mean < 190 &&
+                               desk.deviation > 30 && desk.deviation < 90 &&
                                menu.mean - desk.mean > 35;
                 bool finder1 = screen.depth == 1 && menu.mean > 180 &&
+                               desk.mean < 170 &&
                                menu.mean - desk.mean > 40 && menu.deviation < 120;
                 if (finder8 || finder1) break;
             }

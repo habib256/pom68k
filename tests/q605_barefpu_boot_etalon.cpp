@@ -166,10 +166,14 @@ int main() {
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);
 
-    // Continue to Finder — same budget as q605_boot_etalon (AppleTalk-active
-    // disk prefs add LAP no-peer timeouts before the desktop settles).
+    // Continue to Finder. Budget re-pinned 2026-07-22 (Cuda wire redo):
+    // the Cuda seconds heartbeat now runs at the real 25 MHz rate (it
+    // was 1.6x fast), so every seconds-keyed boot wait — the
+    // AppleTalk-active LAP no-peer timeouts in this image chief among
+    // them — takes its true duration; the bare-SANE Finder lands around
+    // clk 10.2G (frame ~24400).
     constexpr int kFrameCycles = 416667;
-    constexpr int kMaxFrames = 12000;
+    constexpr int kMaxFrames = 30000;
     Screen screen;
     for (int frame = 0; frame < kMaxFrames && !cpu.isHalted(); frame++) {
         cpu.runCycles(kFrameCycles);

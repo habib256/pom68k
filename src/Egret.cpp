@@ -9,18 +9,20 @@
 #include <fstream>
 
 namespace {
-constexpr int64_t kCpuHz = 15667200;
-
-// Cuda/Egret pseudo commands (Linux include/uapi/linux/cuda.h; $02/$08
-// are Egret-specific XPRAM block ops, pinned O6.11 from the LC II ROM's
-// wire traffic: read [1,2,1,addr], write [1,8,1,addr,data…])
-enum { kAutopoll = 0x01, kReadXPram = 0x02, kGetTime = 0x03, kGetPram = 0x07,
-       kWriteXPram = 0x08, kSetTime = 0x09, kPowerDown = 0x0A, kSetPram = 0x0C,
-       kSendDfac = 0x0E, kResetSystem = 0x11 };
+// Cuda/Egret pseudo commands (Linux include/uapi/linux/cuda.h +
+// DingusPPC viacuda.h). $02/$08 are READ/WRITE_MCU_MEM with a 16-bit
+// MCU-space address — PRAM lives at $0100-$01FF, MCU scratch RAM at
+// $0000-$00FF (the System's parameter block at $B3 round-trips through
+// it; observed [1,8,0,B3,…] + [1,2,0,A1] on both LC II and Q605 boots).
+enum { kAutopoll = 0x01, kReadMcu = 0x02, kGetTime = 0x03, kGetPram = 0x07,
+       kWriteMcu = 0x08, kSetTime = 0x09, kPowerDown = 0x0A, kSetPram = 0x0C,
+       kSendDfac = 0x0E, kResetSystem = 0x11, kSetRate = 0x14,
+       kGetRate = 0x16, kSetBitmap = 0x19, kGetBitmap = 0x1A,
+       kOneSecMode = 0x1B };
 } // namespace
 
-Egret::Egret(Via6522& via, bool cudaPolarity)
-    : via_(via), cudaPolarity_(cudaPolarity) {}
+Egret::Egret(Via6522& via, bool cudaPolarity, int clockHz)
+    : via_(via), cudaPolarity_(cudaPolarity), clockHz_(clockHz) {}
 
 bool Egret::loadPram(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
@@ -101,15 +103,25 @@ void Egret::reset() {
     xcvr_ = false;
     lastPb_ = 0;
     delay_ = 0;
+    syncDelay_ = 0;
+    ackDelay_ = 0;
+    treqDelay_ = 0;
     cmd_.clear();
     resp_.clear();
+    respIdx_ = 0;
+    streamSrc_ = NO_STREAM;
+    streamAddr_ = 0;
     pending_.clear();
     autopoll_ = false;
-    firstTick_ = true;
+    pollRate_ = 11;
+    deviceMap_[0] = deviceMap_[1] = 0;
+    oneSecMode_ = 1;             // power-on boot heartbeat; the LC II ROM
+    oneSecFirst_ = true;         // sends $1B 00 (off) in its first commands
     quiet_ = 0;
     pollAcc_ = 0;
     secAcc_ = 0;                 // else a warm reset fires the 1-second heartbeat early
-    // seconds_/pram_ survive (battery-backed, like the Plus RTC)
+    // seconds_/pram_ survive (battery-backed, like the Plus RTC);
+    // mcuRam_ survives too (powered scratch RAM)
 }
 
 void Egret::portBChanged(uint8_t pb) {
@@ -121,115 +133,119 @@ void Egret::portBChanged(uint8_t pb) {
     lastPb_ = pb;
     if (onEdge && ((rose | fell) & 0x30)) onEdge(pb, phase_, xcvr_);
 
-    // Response pacing, decoded from the ROM's own driver ($A14D4E-$A14D90
-    // + subroutines $A14E4A/$A14E6A/$A14E8A): byte 0 is read WITHOUT a
-    // PB4 ack right after the command; the host then raises SYS_SESSION
-    // again (→ byte 1) and acks each further byte with a PB4 rise-read-
-    // fall — the FALL means "consumed, clock the next one". The pending-
-    // SR guard keeps multiple triggers from skipping bytes.
-    if (rose & 0x20) {                   // SYS_SESSION rise
-        // Q6 Cuda: a command session only begins when the host has actually
-        // LOADED a command byte into the SR (srHostWritten). Between real
-        // transactions the Quadra ROM toggles TIP/BYTEACK to poll the idle
-        // bus WITHOUT writing the SR (device-manager Cuda path $408A9Cxx);
-        // the old code grabbed the stale SR (our last $AA sync ack) as
-        // "byte 0", built a ghost `AA AA AA AA AA` command, and answered
-        // with the unknown-type error report `{01,02,00,AA}` — whose status
-        // byte $02 was captured by the device-manager receiver as the
-        // _GetOSDefault result (→ wanted ddType $00, the block-0 re-read
-        // loop). Gating on srHostWritten() rejects that ghost session so
-        // OSDefault reads PRAM $76:$77 = $0001. The Egret (non-cuda) path
-        // is unchanged.
-        if (phase_ == IDLE && (!cudaPolarity_ || via_.srHostWritten())) {
+    // ── session open (bit 5 rises in the folded active-high view) ──
+    if (rose & 0x20) {
+        if (phase_ == RESP_WAIT) {
+            // Cuda: TREQ is asserted with a reply pending — the host's
+            // TIP fall opens the read session; the first packet byte
+            // (the type) is clocked +88 µs later (DingusPPC: the TIP
+            // fall edge itself runs the out handler).
+            phase_ = RESP_SEND;
+            delay_ = usToCycles(kRespByteUs);
+        } else if (phase_ == IDLE
+                   && (!cudaPolarity_ || via_.srHostWritten())) {
+            // Q6 Cuda: a command session only begins when the host has
+            // actually LOADED a command byte into the SR (srHostWritten).
+            // Between real transactions the Quadra ROM toggles
+            // TIP/BYTEACK to poll the idle bus WITHOUT writing the SR
+            // (device-manager Cuda path $408A9Cxx) — see the ghost
+            // branch below.
             phase_ = HOST_CMD;
             cmd_.clear();
             // Q5 Cuda: the FIRST command byte is already in the SR when
             // TIP falls — the Cuda clocks it out at once; the SHIFT IFR
-            // ack is what the ROM polls ($408B3B22-32: move SR, bclr
-            // TIP, btst IFR.2)
-            if (cudaPolarity_) {
-                hostByte(via_.srValue());
-                via_.loadSR(via_.srValue());   // SHIFT ack, SR untouched
-            }
+            // ack (+71 µs) is what the ROM polls ($408B3B22-32: move SR,
+            // bclr TIP, btst IFR.2)
+            if (cudaPolarity_) hostByte(via_.srValue());
+        } else if (phase_ == IDLE && cudaPolarity_) {
+            // Ghost session open: acked with a dummy SHIFT like every
+            // TIP-low edge (DingusPPC null_out_handler)
+            ackDelay_ = usToCycles(kRespByteUs);
         } else if (phase_ == RESP_SEND && !via_.shiftPending()) {
-            delay_ = kByteDelay;
+            // Egret flavor: the host read the unacked byte 0 and joins
+            // the read session — clock byte 1
+            delay_ = cudaPolarity_ ? usToCycles(kRespByteUs) : kByteDelay;
         }
     }
 
-    if (rose & 0x10) {                   // VIA_FULL rise: host byte ready
-        // Q5 Cuda startup sync: with the bus idle, the ROM toggles
-        // BYTEACK and expects the Cuda to acknowledge by asserting
-        // TREQ until the toggle is released (observed at $408A9F6A:
-        // ORB poll -> BYTEACK low -> wait TREQ low -> BYTEACK high).
-        if (phase_ == IDLE && cudaPolarity_ && !(pb & 0x20)) {
-            // ...and clocks one byte through the VIA shift register —
-            // the ROM waits for IFR bit 2 after each BYTEACK edge
-            // ($408A9FB0/$408A9FE0)
-            xcvr_ = true;
-            via_.loadSR(0xAA);
-        } else
-        if (phase_ == HOST_CMD) {
-            hostByte(via_.srValue());
-            // Cuda: every accepted command byte is SHIFT-acked
-            if (cudaPolarity_) via_.loadSR(via_.srValue());
-        }
-        // In RESP_SEND the rise happens BEFORE the host reads the SR
-        // (ROM $A14E72-76) — loading here would overwrite the byte.
-        // (RESP_SEND: nothing to do — the byte is clocked on the FALL)
-        // Q5 Cuda flavor: BYTEACK is a per-byte TOGGLE (via-cuda.c
-        // `via[B] ^= TACK`) — EVERY transition consumes/clocks a byte,
-        // not just the falling half.
-        else if (phase_ == RESP_SEND && cudaPolarity_) {
-            if (!via_.shiftPending()) delay_ = kByteDelay;
-        }
-    }
-    if (fell & 0x10) {                   // VIA_FULL fall: byte consumed
-        if (phase_ == IDLE && cudaPolarity_) {
-            xcvr_ = false;               // startup-sync release
-            // The second sync byte must land AFTER the host's SR read
-            // that follows its TREQ-high check ($408A9FDC clears the
-            // SHIFT flag before waiting on it) — clock it a few µs late.
-            syncDelay_ = kByteDelay;
-        }
-        // Cuda: BYTEACK toggles on every byte — the falling half also
-        // delivers a command byte during a host session
-        if (phase_ == HOST_CMD && cudaPolarity_) {
-            hostByte(via_.srValue());
-            via_.loadSR(via_.srValue());
-        }
-        if (phase_ == RESP_SEND) {
-            if (!via_.shiftPending()) delay_ = kByteDelay;
-        }
-    }
-
-    if (fell & 0x20) {                   // SYS_SESSION drop: command complete
-        // Q5 Cuda: the session close is SHIFT-acked too — after TIP
-        // rises the ROM waits one final SR byte ($408B3BA4-3BB6:
+    // ── session close (bit 5 falls) ──
+    if (fell & 0x20) {
+        // Q5 Cuda: EVERY session close is SHIFT-acked — after TIP rises
+        // the ROM waits one final dummy SR byte (+61 µs; $408B3BA4-3BB6:
         // ori #$30 -> wait TREQ high -> wait IFR.2 -> read SR)
-        if (cudaPolarity_) syncDelay_ = kByteDelay;
-        if (phase_ == HOST_CMD) endCommand();
-        // In RESP_SEND the host is done consuming: XPRAM reads are a
-        // stream with no wire length — the ROM driver takes its count
-        // then drops SYS_SESSION and spins on PB3 until we release
-        // XCVR_SESSION ($40A149C4: bclr #5 then btst #3 loop). Abort
-        // the rest of the reply and free the bus (O6.11).
-        else if (phase_ == RESP_SEND) {
-            xcvr_ = false;
-            phase_ = IDLE;
-            resp_.clear();
-            initiated_ = false;
-            delay_ = 0;
+        if (cudaPolarity_) ackDelay_ = usToCycles(kCloseAckUs);
+        if (phase_ == HOST_CMD) {
+            endCommand();
+        } else if (phase_ == RESP_SEND || phase_ == RESP_WAIT) {
+            // Host done consuming: PRAM/MCU reads are open-ended byte
+            // streams with no wire length — the driver takes its count
+            // then drops the session and spins on PB3 until we release
+            // XCVR_SESSION/TREQ ($40A149C4: bclr #5 then btst #3 loop).
+            // Abort the rest of the reply and free the bus (O6.11).
+            releaseWire();
             quiet_ = kQuietDelay;
+        }
+    }
+
+    // ── byte edges (bit 4) ──
+    if ((rose | fell) & 0x10) {
+        if (pb & 0x20) {                 // in-session: byte transfers
+            if (phase_ == HOST_CMD) {
+                if (cudaPolarity_) {
+                    // Cuda: BYTEACK is a per-byte TOGGLE (via-cuda.c
+                    // `via[B] ^= TACK`) — EVERY transition delivers a
+                    // command byte
+                    hostByte(via_.srValue());
+                } else if (rose & 0x10) {
+                    // Egret: VIA_FULL rise = byte ready (the fall only
+                    // marks it consumed)
+                    hostByte(via_.srValue());
+                }
+            } else if (phase_ == RESP_SEND) {
+                // The pending-SR guard keeps multiple triggers from
+                // skipping bytes; the byte is clocked when the delay
+                // expires. Egret flavor clocks on the FALL only (the
+                // rise happens BEFORE the host reads the SR — loading
+                // there would overwrite the byte, ROM $A14E72-76).
+                if (cudaPolarity_ || (fell & 0x10)) {
+                    if (!via_.shiftPending())
+                        delay_ = cudaPolarity_ ? usToCycles(kRespByteUs)
+                                               : kByteDelay;
+                }
+            } else if (phase_ == IDLE && cudaPolarity_) {
+                // Ghost session byte edge: dummy SHIFT (see above)
+                ackDelay_ = usToCycles(kRespByteUs);
+            }
+        } else if (phase_ == IDLE && cudaPolarity_) {
+            // Q5 Cuda startup sync: with the bus idle, the ROM toggles
+            // BYTEACK and expects the Cuda to acknowledge by asserting
+            // TREQ until the toggle is released (observed at $408A9F6A:
+            // ORB poll -> BYTEACK low -> wait TREQ low -> BYTEACK high),
+            // clocking one byte through the VIA shift register per edge
+            // (the ROM waits for IFR bit 2, $408A9FB0/$408A9FE0).
+            if (rose & 0x10) {
+                xcvr_ = true;
+                via_.loadSR(0xAA);
+            } else {
+                xcvr_ = false;           // startup-sync release
+                // The second sync byte must land AFTER the host's SR
+                // read that follows its TREQ-high check ($408A9FDC
+                // clears the SHIFT flag before waiting on it).
+                syncDelay_ = usToCycles(kCloseAckUs);
+            }
         }
     }
 }
 
-// A host byte is "clocked" through the shift register: raise the SR
-// interrupt as the 8 CB1 pulses would (via-cuda.c per-byte handshake)
 void Egret::hostByte(uint8_t b) {
     cmd_.push_back(b);
     if (onByte) onByte(true, b);
-    via_.raiseShift();
+    // Egret: the byte is acked at once (VIA_FULL handshake, pinned LC II
+    // wire). Cuda: the SHIFT ack lands +71 µs later (DingusPPC pacing);
+    // the delayed loadSR(srValue()) keeps the SR content and clears the
+    // srHostWritten flag exactly like the real per-byte shift would.
+    if (cudaPolarity_) ackDelay_ = usToCycles(kCmdAckUs);
+    else via_.raiseShift();
 }
 
 void Egret::endCommand() {
@@ -238,41 +254,93 @@ void Egret::endCommand() {
     cmd_.clear();
 }
 
-void Egret::queueResponse(std::vector<uint8_t> resp) {
+std::vector<uint8_t> Egret::replyHeader(uint8_t type, uint8_t flags,
+                                        uint8_t echo) const {
+    // Real Cuda framing [type, flags, cmdEcho, …] (DingusPPC
+    // response_header, viacuda.cpp:498). The Egret flavor's byte 0
+    // doubles as the on-buffer attention byte (pinned LC II wire: the
+    // reply's first byte is read without an ack and discarded, $A14D56).
+    if (cudaPolarity_) return { type, flags, echo };
+    return { 0x01, type, flags, echo };
+}
+
+void Egret::queueError(uint8_t err, uint8_t pktType, uint8_t cmd) {
+    // Error packet [$02, errCode, pktType, cmd] (DingusPPC
+    // error_response, viacuda.cpp:509)
+    std::vector<uint8_t> r;
+    if (!cudaPolarity_) r.push_back(0x01);
+    r.push_back(0x02); r.push_back(err); r.push_back(pktType);
+    r.push_back(cmd);
+    queueResponse(std::move(r));
+}
+
+void Egret::queueResponse(std::vector<uint8_t> resp, StreamSrc stream,
+                          uint16_t addr) {
     if (std::getenv("EGRET_CMD_LOG")) {
         std::fprintf(stderr, "[egret] cmd:");
         for (uint8_t b : cmd_) std::fprintf(stderr, " %02X", b);
         std::fprintf(stderr, "  reply:");
         for (uint8_t b : resp) std::fprintf(stderr, " %02X", b);
+        if (stream != NO_STREAM)
+            std::fprintf(stderr, " +stream@%03X", addr);
         std::fprintf(stderr, "\n");
     }
     resp_ = std::move(resp);
     respIdx_ = 0;
-    phase_ = RESP_DELAY;
-    initiated_ = false;
-    delay_ = kByteDelay * 2;             // Egret "thinks", then raises XCVR
+    streamSrc_ = stream;
+    streamAddr_ = addr;
+    if (cudaPolarity_) {
+        // TREQ asserts +13 µs after the command session closed
+        // (DingusPPC treq_timer); the host then opens the read session.
+        phase_ = IDLE;
+        treqDelay_ = usToCycles(kTreqUs);
+    } else {
+        phase_ = RESP_DELAY;
+        delay_ = kByteDelay * 2;         // Egret "thinks", then raises XCVR
+    }
+}
+
+void Egret::releaseWire() {
+    xcvr_ = false;
+    phase_ = IDLE;
+    resp_.clear();
+    respIdx_ = 0;
+    streamSrc_ = NO_STREAM;
+    delay_ = 0;
 }
 
 void Egret::loadNextByte() {
-    if (respIdx_ >= resp_.size()) {      // safety: nothing left
-        xcvr_ = false;
-        phase_ = IDLE;
-        resp_.clear();
-        return;
+    uint8_t b = 0;
+    bool have = false;
+    if (respIdx_ < resp_.size()) {
+        b = resp_[respIdx_++];
+        have = true;
+    } else switch (streamSrc_) {
+    case STREAM_PRAM: b = pram_[streamAddr_++ & 0xFF]; have = true; break;
+    case STREAM_MCU:  b = mcuRam_[streamAddr_++ & 0xFF]; have = true; break;
+    case STREAM_ZERO: b = 0; have = true; break;
+    case NO_STREAM: break;
     }
-    uint8_t b = resp_[respIdx_++];
+    if (!have) { releaseWire(); return; }        // safety: nothing left
     if (onByte) onByte(false, b);
-    // XCVR_SESSION drops WITH the last byte: the host's per-byte "more?"
-    // check (btst #3 right after the SR read, ROM $A4A444) must already
-    // see it deasserted, or its untimed SHIFT wait deadlocks. The quiet
-    // gap keeps the next Egret-initiated packet from re-asserting XCVR
-    // before the host's end-of-session check ($A15424) has seen it low.
-    if (respIdx_ >= resp_.size()) {
+    // XCVR_SESSION/TREQ drops WITH the last byte of a finite reply: the
+    // host's per-byte "more?" check (btst #3 right after the SR read,
+    // ROM $A4A444; DingusPPC negates TREQ on the last-byte load) must
+    // already see it deasserted. Open-ended streams keep it asserted —
+    // the HOST terminates those sessions.
+    if (respIdx_ >= resp_.size() && streamSrc_ == NO_STREAM) {
         xcvr_ = false;
-        phase_ = IDLE;
-        resp_.clear();
-        initiated_ = false;
-        quiet_ = kQuietDelay;
+        if (!cudaPolarity_) {
+            // Egret: the bus idles immediately; the quiet gap keeps the
+            // next Egret-initiated packet from re-asserting XCVR before
+            // the host's end-of-session check ($A15424) has seen it low.
+            phase_ = IDLE;
+            resp_.clear();
+            respIdx_ = 0;
+            quiet_ = kQuietDelay;
+        }
+        // Cuda: stay in RESP_SEND until the host closes the session
+        // (the close is what frees the bus and fires the +61 µs ack).
     }
     via_.loadSR(b);                      // SR interrupt per byte (CB1 ×8)
 }
@@ -280,19 +348,10 @@ void Egret::loadNextByte() {
 void Egret::process(const std::vector<uint8_t>& cmd) {
     const uint8_t type = cmd[0];
 
-    // Reply shape (oracle = the ROM's own drivers, $A14D4E-$A14D9E and
-    // $A4A1EA-$A4A3C0): [sync, status0, status1, cmdEcho, data…].
-    // The sync byte is read without an ack and discarded ($A14D56,
-    // $A4A374); the two status bytes are length-checked only (their
-    // reads fail on early XCVR drop; an error report carries 2 — the
-    // $A14D9C caller tests it); byte 3 must echo the command ($A4A3A4
-    // for GetPram, $A4A234 for SetPram where it is also the last byte);
-    // data follows. XCVR_SESSION must drop exactly with the last byte.
-
     if (type == 0x00) {                  // ADB packet: [0, adbcmd, data…]
-        if (cmd.size() < 2) return;
+        if (cmd.size() < 2) { queueError(3, type, 0); return; }
         const uint8_t adbCmd = cmd[1];
-        std::vector<uint8_t> reply = { 0x01, 0x00, 0x00, adbCmd };
+        auto reply = replyHeader(0x00, 0x00, adbCmd);
         if (adb_) {
             auto data = adb_->command(adbCmd,
                 std::vector<uint8_t>(cmd.begin() + 2, cmd.end()));
@@ -302,203 +361,151 @@ void Egret::process(const std::vector<uint8_t>& cmd) {
         return;
     }
 
-    if (type == 0x01) {                  // pseudo: [1, cmd, args…]
-        if (cmd.size() < 2) return;
-        const uint8_t c = cmd[1];
-        std::vector<uint8_t> reply = { 0x01, 0x00, 0x00, c };
-        switch (c) {
-        case kGetTime:
-            reply.push_back(uint8_t(seconds_ >> 24));
-            reply.push_back(uint8_t(seconds_ >> 16));
-            reply.push_back(uint8_t(seconds_ >> 8));
-            reply.push_back(uint8_t(seconds_));
-            break;
-        case kSetTime:
-            if (cmd.size() >= 6)
-                seconds_ = uint32_t(cmd[2]) << 24 | uint32_t(cmd[3]) << 16
-                         | uint32_t(cmd[4]) << 8 | cmd[5];
-            break;
-        case kReadXPram:                 // [1, 2, 1, addr] → byte STREAM
-            // The ReadXPram reply keeps the FULL 4-byte header
-            // [sync, status0, status1, cmdEcho] then the XPRAM data, exactly
-            // like GetPram. The device-manager receive ISR at $408A9BBE-C30
-            // reads a fixed header count (sync discarded, then the 3 header
-            // bytes incl. the echo) and copies the data that follows; the
-            // multi-byte SysParam validity read at $4080C5A8 (_ReadXPRam
-            // $10, 16 bytes → $1F8) is parsed by that ISR, so the echo MUST
-            // be present or every byte lands one short — $1F8 reads $00
-            // instead of pram[$10]=$A8, the ROM's `cmpi.b #$A8,(A1)` at
-            // $4080C5DE fails, and it re-initialises the whole XPRAM every
-            // boot. That wipes the 32-bit-mode boot flag Mac OS 8 sets at
-            // XPRAM $8A (`_WriteXPRam $8A|=$05` then `_ShutDown ShutDwnStart`
-            // to apply it), so the machine restart-loops forever without
-            // ever launching the loaded System (Q6.4).
-            //
-            // Q6.2 had dropped this echo (`reply.pop_back()`) to make
-            // _GetOSDefault return $0001 not $0200 — but that mis-framed the
-            // SysParam read above. With the echo kept, both the OSDefault
-            // and SysParam reads land correctly and the Quadra boots past
-            // the restart loop. LC II is unaffected (it uses the default
-            // cudaPolarity_=false and never popped).
-            // Q6.5: the OSDefault read at XPRAM $76 is the ONE ReadXPram
-            // the ROM services with a DIFFERENT, simpler reader
-            // (_GetOSDefault, not the device-manager SR-ISR at $408A9BBE).
-            // That reader discards the sync byte then consumes only 2 header
-            // bytes (status0, status1) before the data, so with the echo
-            // present it captures the echo as data[0] → _GetOSDefault=$0200,
-            // wanted ddType $00, and the Start-Manager DDM scan at $40807264
-            // matches no descriptor ($0001/$006A) → block-0 re-read loop
-            // (the Q6.2 symptom). Every OTHER ReadXPram ($10 SysParam,
-            // $08/$0C/$1E4/$1EFC validity, $8A boot flag, the ADB-autopoll
-            // block) is read by the device-manager ISR, which consumes a
-            // fixed 4-byte header INCLUDING the echo and needs it kept (drop
-            // it and the SysParam validity read lands one short → the XPRAM
-            // re-init / restart loop of Q6.4). So the echo is popped ONLY for
-            // $76 — the single address whose reader skips it. (The proper
-            // cure is to make the _GetOSDefault reader consume the echo like
-            // the ISR does; this targeted pop matches the observed framing
-            // and clears both the Q6.2 and Q6.4 loops.)
-            if (cudaPolarity_ && cmd.size() >= 4 && cmd[3] == 0x76 && !reply.empty())
-                reply.pop_back();
-            // Q8.2 (bare no-FPU _FP68K enigma): Mac OS 8.1's System-side
-            // Cuda reader consumes only THREE header bytes before the data
-            // — one fewer than the ROM device-manager ISR the framing above
-            // was pinned against — so every System _ReadXPRam returned our
-            // echo byte $02 as the data. The ROM-resource combo read
-            // (XPRAM $AE, InitResources walker $408A07CC) then validated
-            // combo 2 = "FPU fitted" ($4084BF86: only 0 or >max falls back
-            // to UniversalInfo defaultRSRCs, and 4→3 promotion exists but
-            // no 3→4 demotion), rebuilt the ROM resource map with the FPU
-            // PACK 4 ($408E9A2C, combo mask $70000000) instead of the
-            // integer one ($40873940, mask $08000000), and _FP68K died at
-            // its first fmove on a bare 68LC040 (dsNoFPU). Real Cuda
-            // framing per DingusPPC viacuda.cpp response_header is
-            // [type, flags, cmdEcho, data…] — our extra pad byte exists
-            // only to feed the ROM ISR's 4-byte header expectation, itself
-            // an artifact of reply[0] doubling as the session sync on this
-            // HLE wire. Until that wire model is redone (LLE_VS_HLE
-            // follow-up), serve BOTH readers by duplicating the first data
-            // byte into the echo slot: the ROM ISR is position-based (it
-            // never verifies the ReadXPram echo), the System reader gets
-            // real data at its index 3. Exact for every 1-byte System read;
-            // multi-byte System reads stay off-by-one as they always were.
-            if (cudaPolarity_ && cmd.size() >= 4 && cmd[3] != 0x76
-                && !reply.empty())
-                reply.back() = pram_[cmd[3]];
-            if (cmd.size() >= 4) {       // No length on the wire (O6.11,
-                // pinned from the ROM: the 'NuMc' check sends [1,2,1,$0C]
-                // and reads 4 bytes, the boot-flag read sends [1,2,1,$8A]
-                // and reads ONE — cmd[2] is $01 in every capture, even
-                // for the trap's 20-byte requests). The real Egret
-                // streams successive XPRAM bytes; the HOST terminates by
-                // dropping SYS_SESSION after its count (ROM driver
-                // $40A149C4: bclr PB5, wait XCVR release — handled in
-                // portBChanged). 32 bytes covers every observed block.
-                int addr = cmd[3];
-                if (onXPramRead) onXPramRead(addr, 32);
-                for (int i = 0; i < 32; i++)
-                    reply.push_back(pram_[(addr + i) & 0xFF]);
-            }
-            break;
-        case kWriteXPram:                // [1, 8, 1, addr, data…] — length
-            for (size_t i = 4; i < cmd.size(); i++) { // = the data itself
-                int wa = (cmd[3] + int(i - 4)) & 0xFF;
-                pram_[wa] = cmd[i];
-                if (onXPramWrite) onXPramWrite(wa, cmd[i]);
-            }
-            break;                       // ack-only reply
-        case kGetPram:                   // [1, 7, addrHi, addrLo] → STREAM
-            if (cmd.size() >= 4) {       // Same host-terminated stream as
-                // kReadXPram (O6.11): the ROM's SysParam restore reads 16
-                // bytes at $10 then 4 at $08 through ONE GetPram each
-                // ($40A1559C: recv-count $10, dest $1F8), while the
-                // 24-bit reader takes a single byte then drops
-                // SYS_SESSION and waits for XCVR release ($A4A3B4-BC).
-                //
-                // Q6.5 (Quadra Cuda, cudaPolarity_): the ROM's *direct* Cuda
-                // driver ($408B34xx byte-lane receiver, used by the POST
-                // XPRAM validity read at $4080B286) frames a GetPram reply as
-                // [sync, status, DATA…] — it takes the data as the byte right
-                // after ONE status byte. Our default reply carries the full
-                // [sync, status0, status1, cmdEcho] 4-byte header (needed by
-                // the device-manager receive ISR, like ReadXPram), so the
-                // direct driver read status1 ($00) as the data and saw an
-                // all-zero XPRAM → the 'NuMc' ($0C) / SysParam ($10) signature
-                // checks in $4080B280 failed → the ROM re-initialised the
-                // whole XPRAM every boot, wiping the 32-bit-mode ROvr boot
-                // flag $8A that Mac OS 8 sets (`_WriteXPRam $8A|=$05` then
-                // `_ShutDown ShutDwnStart`) → the machine restart-looped
-                // forever without ever launching the loaded System (Q6.4).
-                // Drop status1+cmdEcho for the Quadra GetPram so the data
-                // lands as the 3rd byte. LC II (cudaPolarity_=false) keeps the
-                // 4-byte header its Egret driver expects.
-                if (cudaPolarity_ && reply.size() >= 4)
-                    reply.erase(reply.begin() + 2, reply.begin() + 4);
-                int addr = cmd[2] << 8 | cmd[3];
-                if (onXPramRead) onXPramRead(addr, 32);
-                for (int i = 0; i < 32; i++)
-                    reply.push_back(pram_[(addr + i) & 0xFF]);
-            }
-            break;
-        case kSetPram:                   // [1, $C, addrHi, addrLo, value]
-            if (cmd.size() >= 5) {
-                int sa = (cmd[2] << 8 | cmd[3]) & 0xFF;
-                pram_[sa] = cmd[4];
-                if (onXPramWrite) onXPramWrite(sa, cmd[4]);
-            }
-            break;
-        case kAutopoll:
-            autopoll_ = cmd.size() >= 3 && cmd[2] != 0;
-            break;
-        case kSendDfac:                  // DFAC volume/filter: swallowed
-        case kPowerDown:
-        case kResetSystem:
-        default:
-            break;                       // ack-only reply
-        }
-        queueResponse(std::move(reply));
+    if (type != 0x01) {                  // unknown packet type
+        queueError(1, type, cmd.size() > 1 ? cmd[1] : 0);
         return;
     }
+    if (cmd.size() < 2) { queueError(3, type, 0); return; }
 
-    // Unknown packet type → error report (status = 2)
-    queueResponse({ 0x01, 0x02, 0x00, type });
+    const uint8_t c = cmd[1];
+    auto reply = replyHeader(0x01, 0x00, c);
+    switch (c) {
+    case kGetTime:
+        reply.push_back(uint8_t(seconds_ >> 24));
+        reply.push_back(uint8_t(seconds_ >> 16));
+        reply.push_back(uint8_t(seconds_ >> 8));
+        reply.push_back(uint8_t(seconds_));
+        break;
+    case kSetTime:
+        if (cmd.size() >= 6)
+            seconds_ = uint32_t(cmd[2]) << 24 | uint32_t(cmd[3]) << 16
+                     | uint32_t(cmd[4]) << 8 | cmd[5];
+        break;
+    case kReadMcu: {                     // [1, 2, hi, lo] → byte STREAM
+        // No length on the wire (O6.11): the real firmware streams
+        // successive bytes; the HOST terminates by dropping the session
+        // after its count (ROM driver $40A149C4). PRAM window at
+        // $0100-$01FF, MCU scratch RAM below, zeros elsewhere.
+        if (cmd.size() < 4) break;       // ack-only on a short command
+        const uint16_t a = uint16_t(uint16_t(cmd[2]) << 8 | cmd[3]);
+        if (a >= 0x100 && a <= 0x1FF) {
+            if (onXPramRead) onXPramRead(a - 0x100, 32);
+            queueResponse(std::move(reply), STREAM_PRAM,
+                          uint16_t(a - 0x100));
+        } else if (a < 0x100) {
+            queueResponse(std::move(reply), STREAM_MCU, a);
+        } else {
+            queueResponse(std::move(reply), STREAM_ZERO, 0);
+        }
+        return;
+    }
+    case kWriteMcu:                      // [1, 8, hi, lo, data…] — length
+        if (cmd.size() < 4) break;       // = the data itself
+        for (size_t i = 4; i < cmd.size(); i++) {
+            const uint16_t w =
+                uint16_t((uint16_t(cmd[2]) << 8 | cmd[3]) + (i - 4));
+            if (w >= 0x100 && w <= 0x1FF) {
+                pram_[w & 0xFF] = cmd[i];
+                if (onXPramWrite) onXPramWrite(w & 0xFF, cmd[i]);
+            } else if (w < 0x100) {
+                mcuRam_[w] = cmd[i];
+            }
+        }
+        break;                           // ack-only reply
+    case kGetPram: {                     // [1, 7, addrHi, addrLo] → STREAM
+        if (cmd.size() < 4) break;
+        const uint16_t a = uint16_t(uint16_t(cmd[2]) << 8 | cmd[3]);
+        if (a > 0xFF) { queueError(4, type, c); return; }
+        if (onXPramRead) onXPramRead(a, 32);
+        queueResponse(std::move(reply), STREAM_PRAM, a);
+        return;
+    }
+    case kSetPram: {                     // [1, $C, addrHi, addrLo, data…]
+        if (cmd.size() < 5) break;
+        const uint16_t a = uint16_t(uint16_t(cmd[2]) << 8 | cmd[3]);
+        if (a > 0xFF) { queueError(4, type, c); return; }
+        for (size_t i = 4; i < cmd.size(); i++) {
+            const uint8_t w = uint8_t(a + (i - 4));
+            pram_[w] = cmd[i];
+            if (onXPramWrite) onXPramWrite(w, cmd[i]);
+        }
+        break;
+    }
+    case kAutopoll:
+        autopoll_ = cmd.size() >= 3 && cmd[2] != 0;
+        break;
+    case kSetRate:
+        if (cmd.size() >= 3 && cmd[2] != 0) pollRate_ = cmd[2];
+        break;
+    case kGetRate:
+        reply.push_back(pollRate_);
+        break;
+    case kSetBitmap:
+        if (cmd.size() >= 4) { deviceMap_[0] = cmd[2]; deviceMap_[1] = cmd[3]; }
+        break;
+    case kGetBitmap:
+        reply.push_back(deviceMap_[0]);
+        reply.push_back(deviceMap_[1]);
+        break;
+    case kOneSecMode:                    // $1B: 0 off / 1 full / 2 header
+        if (cmd.size() >= 3) {           // / 3 single tick byte (ERS; the
+            oneSecMode_ = cmd[2] & 3;    // first packet after a change is
+            oneSecFirst_ = true;         // always the full form)
+        }
+        break;
+    case kSendDfac:                      // DFAC volume/filter: swallowed
+    case kPowerDown:
+    case kResetSystem:
+    default:
+        break;                           // ack-only reply
+    }
+    queueResponse(std::move(reply));
 }
 
 void Egret::tick(int cpuCycles) {
     if (held_) {
         holdTimer_ -= cpuCycles;
-        if (holdTimer_ <= 0) held_ = false;   // releases the 68030
-    } else if (firstTick_ && cudaPolarity_) {
-        // Q5: the Quadra ROM wants the Cuda IDLE (TREQ high) right after
-        // reset — it initiates the first transaction itself. No
-        // unsolicited power-on packet in the Cuda flavor; the periodic
-        // TIMER packets below stay.
-        firstTick_ = false;
+        if (holdTimer_ <= 0) held_ = false;   // releases the CPU
     }
 
     secAcc_ += cpuCycles;
-    while (secAcc_ >= kCpuHz) {
-        secAcc_ -= kCpuHz;
+    while (secAcc_ >= clockHz_) {
+        secAcc_ -= clockHz_;
         seconds_++;
-        // "Egret sends these periodically" (via-cuda.c cuda_input,
-        // TIMER_PACKET) — the boot ROM waits for them as liveness/clock
-        // heartbeats. Lengths pinned against the ROM's readers: the
-        // FIRST packet after reset is read with the D1=8 reader at
-        // $A15376 (sync + 8 + final = 10 bytes, time included); later
-        // ticks use the short reader ($A153C6-flavour: sync + type +
-        // final = 3 bytes).
-        if (pending_.size() < 4) {
-            if (firstTick_ || cudaPolarity_) {
-                // Q5: the Quadra ROM's tick reader consumes the LONG
-                // form every time (it stalls mid-read on the 3-byte
-                // short form) — the Cuda flavor always sends it.
-                firstTick_ = false;
-                pending_.push_back({ 0x01, 0x03, 0x00,
-                                     uint8_t(seconds_ >> 24), uint8_t(seconds_ >> 16),
-                                     uint8_t(seconds_ >> 8),  uint8_t(seconds_),
-                                     0x00, 0x00, 0x00 });
+        // One-second packets per pseudo command $1B (via-cuda.c
+        // cuda_input TIMER_PACKET; DingusPPC one_sec_mode). Power-on
+        // default is mode 1: the boot ROMs read the heartbeat before
+        // the System reprograms the mode (LC II: $1B 00 then Sys 7.5's
+        // $1B 03; Mac OS 8.1 sends $1B 03 — both captured 2026-07-22).
+        if (oneSecMode_ != 0 && pending_.size() < 4) {
+            const bool full = oneSecFirst_ || oneSecMode_ == 1;
+            oneSecFirst_ = false;
+            if (!cudaPolarity_) {
+                // Egret flavor shapes pinned against the LC II ROM's
+                // readers: full = the 10-byte boot heartbeat (D1=8
+                // reader at $A15376: sync + 8 + final), short = the
+                // 3-byte [sync, TIMER(3), seconds] form ($A153C6).
+                if (full)
+                    pending_.push_back({ 0x01, 0x03, 0x00,
+                        uint8_t(seconds_ >> 24), uint8_t(seconds_ >> 16),
+                        uint8_t(seconds_ >> 8),  uint8_t(seconds_),
+                        0x00, 0x00, 0x00 });
+                else if (oneSecMode_ == 2)
+                    pending_.push_back({ 0x01, 0x03, 0x00 });
+                else
+                    pending_.push_back({ 0x01, 0x03, uint8_t(seconds_) });
             } else {
-                pending_.push_back({ 0x01, 0x03, uint8_t(seconds_) });
+                // Real Cuda shapes (DingusPPC autopoll_handler): full =
+                // header + GetTime echo + 4-byte time, mode 2 = header
+                // only, mode 3 = the single CUDA_PKT_TICK byte.
+                if (full)
+                    pending_.push_back({ 0x01, 0x00, 0x03,
+                        uint8_t(seconds_ >> 24), uint8_t(seconds_ >> 16),
+                        uint8_t(seconds_ >> 8),  uint8_t(seconds_) });
+                else if (oneSecMode_ == 2)
+                    pending_.push_back({ 0x01, 0x00, 0x03 });
+                else
+                    pending_.push_back({ 0x03 });
             }
         }
     }
@@ -507,12 +514,34 @@ void Egret::tick(int cpuCycles) {
         syncDelay_ -= cpuCycles;
         if (syncDelay_ <= 0) { syncDelay_ = 0; via_.loadSR(0xAA); }
     }
+    if (ackDelay_ > 0) {
+        ackDelay_ -= cpuCycles;
+        if (ackDelay_ <= 0) {
+            ackDelay_ = 0;
+            // Dummy/ack SHIFT with the SR content untouched (the real
+            // Cuda clocks whatever is on the line; DingusPPC leaves
+            // via_sr). Also clears srHostWritten for the ghost gate.
+            via_.loadSR(via_.srValue());
+        }
+    }
+    if (treqDelay_ > 0) {
+        treqDelay_ -= cpuCycles;
+        if (treqDelay_ <= 0) {
+            if (phase_ == IDLE) {
+                treqDelay_ = 0;
+                xcvr_ = true;            // TREQ: reply ready, host joins
+                phase_ = RESP_WAIT;
+            } else {
+                treqDelay_ = 1;          // host mid-session: retry
+            }
+        }
+    }
 
     if (delay_ > 0) {
         delay_ -= cpuCycles;
         if (delay_ <= 0) {
             delay_ = 0;
-            if (phase_ == RESP_DELAY) {  // assert XCVR and clock byte 1
+            if (phase_ == RESP_DELAY) {  // Egret: assert XCVR, clock byte 0
                 xcvr_ = true;
                 phase_ = RESP_SEND;
                 loadNextByte();
@@ -523,10 +552,12 @@ void Egret::tick(int cpuCycles) {
     }
 
     // ADB autopoll: when enabled and a device has data, send it as an
-    // Egret-initiated packet [sync, ADB(0), status|$40, talkCmd, data…]
+    // Egret-initiated packet [ADB(0), status|$40, talkCmd, data…]
     // — via-cuda.c cuda_input: buf[1] & 0x40 marks autopoll data.
     pollAcc_ += cpuCycles;
-    if (pollAcc_ >= 172339) {            // ≈11 ms ADB poll period
+    const int pollPeriod =
+        int(int64_t(pollRate_ ? pollRate_ : 11) * clockHz_ / 1000);
+    if (pollAcc_ >= pollPeriod) {
         pollAcc_ = 0;
         if (autopoll_ && adb_ && adb_->srqPending() && pending_.size() < 2) {
             // Poll only a device that actually has data pending. The
@@ -543,7 +574,7 @@ void Egret::tick(int cpuCycles) {
                 uint8_t talk = uint8_t(d.addr << 4 | 0x0C);   // talk reg 0
                 auto data = adb_->command(talk, {});
                 if (data.empty()) continue;
-                std::vector<uint8_t> pkt = { 0x01, 0x00, 0x40, talk };
+                auto pkt = replyHeader(0x00, 0x40, talk);
                 pkt.insert(pkt.end(), data.begin(), data.end());
                 pending_.push_back(std::move(pkt));
                 break;                   // one device per poll slot
@@ -554,7 +585,7 @@ void Egret::tick(int cpuCycles) {
     if (quiet_ > 0) quiet_ -= cpuCycles;
 
     // NO unilateral retraction of an initiated packet (2026-07-17). Once
-    // initiation loads the sync byte into the VIA SR, the host's level-1
+    // initiation puts the attention byte on the wire, the host's level-1
     // shift interrupt is already in flight — retracting after that
     // manufactures a "ghost" short session: the host services the L1
     // late (SC2K's per-VBL redraw preempts the byte loop for 300K+
@@ -566,21 +597,27 @@ void Egret::tick(int cpuCycles) {
     // evidence: fatal COPYSETUP D2=$FFFD at clk 8837754661). The real
     // Egret never truncates an initiated transfer — the byte handshake
     // is synchronous and host-clocked; collisions are host-handled (its
-    // senders check XCVR first, ROM $A1536C). The old boot-time
-    // "bus-quiet deadlock" this abort addressed is covered by the
-    // machine gates (egret_test, lcii_boot_etalon — green without it).
+    // senders check XCVR first, ROM $A1536C).
 
-    // Egret-initiated transfers: assert XCVR_SESSION and clock the sync
-    // byte; the host joins and acks (via-cuda.c "case idle"; ROM reader
-    // $A1536C — it may already hold SYS_SESSION high while waiting, and
-    // its senders check XCVR first, so collisions are host-handled).
-    if (phase_ == IDLE && delay_ == 0 && quiet_ <= 0 && !pending_.empty()) {
+    // Egret-initiated transfers. Egret flavor: assert XCVR_SESSION and
+    // clock the attention byte (= packet byte 0); the host joins and
+    // acks (via-cuda.c "case idle"; ROM reader $A1536C). Cuda flavor:
+    // assert TREQ and draw attention with a dummy SHIFT +30 µs
+    // (DingusPPC autopoll_handler); the packet bytes are clocked only
+    // once the host opens the read session.
+    if (phase_ == IDLE && delay_ == 0 && quiet_ <= 0 && treqDelay_ == 0
+        && resp_.empty() && !pending_.empty()) {
         resp_ = pending_.front();
         pending_.erase(pending_.begin());
         respIdx_ = 0;
+        streamSrc_ = NO_STREAM;
         xcvr_ = true;
-        phase_ = RESP_SEND;
-        initiated_ = true;
-        loadNextByte();
+        if (cudaPolarity_) {
+            phase_ = RESP_WAIT;
+            ackDelay_ = usToCycles(kAttnUs);
+        } else {
+            phase_ = RESP_SEND;
+            loadNextByte();
+        }
     }
 }

@@ -86,8 +86,8 @@ int main() {
         h.sendCommand({ 0x01, 0x03 });
         auto r = h.readReply();
         check(r.size() == 8, "GET_TIME reply is 8 bytes (sync+hdr+4)");
-        check(r.size() == 8 && r[1] == 0x00 && r[2] == 0x00 && r[3] == 0x03,
-              "GET_TIME header = [*, 0, 0, cmd echo]");
+        check(r.size() == 8 && r[1] == 0x01 && r[2] == 0x00 && r[3] == 0x03,
+              "GET_TIME header = [attn, PSEUDO(1), flags, cmd echo]");
         check(r.size() == 8 && r[4] == 0xA1 && r[5] == 0xB2 && r[6] == 0xC3 && r[7] == 0xD4,
               "GET_TIME returns the RTC seconds");
         check(h.egret.xcvrSession() == 1, "XCVR_SESSION idle after the reply");
@@ -140,9 +140,13 @@ int main() {
         check(rk.size() >= 4 && rk[3] == 0x2C, "ADB talk echoes the ADB command");
     }
 
-    // Periodic timer packets: Egret-initiated. The FIRST after reset is
-    // the long boot heartbeat (10 bytes, time included — the ROM's D1=8
-    // reader at $A15376); later ticks are the short [sync, 3, s] form.
+    // Periodic timer packets: Egret-initiated, governed by pseudo cmd
+    // $1B (one-second mode — captured from both the LC II ROM, $1B 00,
+    // and Sys 7.5 / Mac OS 8.1, $1B 03). Power-on default is mode 1:
+    // every tick is the full 10-byte boot heartbeat (the ROM's D1=8
+    // reader at $A15376). After a mode change the FIRST packet is still
+    // the full form (ERS), then the mode's own shape — mode 3 = the
+    // short [sync, TIMER(3), seconds] form.
     {
         Host h;
         h.tick(15667200 + 200000);           // one emulated second + margin
@@ -150,11 +154,22 @@ int main() {
         check(h.via.shiftPending(), "timer tick: sync byte clocked");
         auto r = h.readReply();
         check(r.size() == 10 && r[0] == 0x01 && r[1] == 0x03,
-              "first tick = 10-byte boot heartbeat, type 3");
+              "mode-1 tick = 10-byte boot heartbeat, type 3");
+        h.sendCommand({ 0x01, 0x1B, 0x03 });  // one-second mode 3
+        (void)h.readReply();
         h.tick(15667200 + 300000);
         auto r2 = h.readReply();
-        check(r2.size() == 3 && r2[0] == 0x01 && r2[1] == 0x03,
-              "later ticks = short [sync, TIMER(3), seconds]");
+        check(r2.size() == 10 && r2[0] == 0x01 && r2[1] == 0x03,
+              "first tick after $1B is still the full form");
+        h.tick(15667200 + 300000);
+        auto r3 = h.readReply();
+        check(r3.size() == 3 && r3[0] == 0x01 && r3[1] == 0x03,
+              "mode-3 ticks = short [sync, TIMER(3), seconds]");
+        h.sendCommand({ 0x01, 0x1B, 0x00 });  // off
+        (void)h.readReply();
+        h.tick(2 * 15667200 + 300000);
+        check(h.egret.xcvrSession() == 1 && !h.via.shiftPending(),
+              "mode 0 = no timer packets at all");
     }
 
     // An initiated packet is COMMITTED once its sync byte is on the wire

@@ -119,44 +119,32 @@ out to be a Cuda HLE reply-framing bug — Mac OS 8.1's own Cuda reader
 took our READ_XPRAM command echo for the XPRAM `$AE` ROM-resource
 combo (CHANGELOG "Bare no-FPU solved").
 
-### 1.6b Cuda reply framing serves per-reader accommodations — `Egret.cpp`
+### 1.6b Cuda reply framing serves per-reader accommodations — **RESOLVED 2026-07-22**
 
-**The #1 remaining fidelity debt.** The Cuda-flavor reply wire is
-HLE-shaped: a 4-byte header `[01, 00, 00, cmdEcho]` pinned against the
-ROM device-manager ISR, with per-reader patches on top — the `$76`
-echo-pop (Q6.5), the GetPram 2-byte erase, the Q8.2 echo-slot **data
-duplication** for ReadXPram (the System reader consumes a 3-byte
-header), and the long/short one-second-tick heuristic
-(`firstTick_`/`cudaPolarity_`). Each new System version risks bringing
-a new reader shape — Q8.2 proved it (Mac OS 8.1 killed bare no-FPU
-through exactly this).
-
-The redo now has a complete blueprint (DingusPPC `viacuda.cpp` +
-`zdocs/developers/viacuda.md`; MAME `cuda.cpp` runs the real 6805
-firmware and is the timing oracle):
-
-- Reply packet: `[type, flags, cmdEcho, data…]`
-  (`response_header`, viacuda.cpp:498). Error packet:
-  `[$02, errCode, pktType, cmd]` (`error_response`, :509) — ours is
-  `{01, 02, 00, type}`, wrong shape.
-- Session: TIP fall → attention/sync byte scheduled **+61 µs**; each
-  host command byte SR-acked **+71 µs**; each response byte **+88 µs**;
-  TREQ re-asserts **+13 µs** after close. Our `kByteDelay` is a single
-  flat 200-cycle (~13 µs) constant.
-- Open-ended streams (ReadXPram/GetPram) are genuinely
-  host-terminated — our fixed 32-byte push is the right idea, wrong
-  mechanism (length lives in the host's session close, not the reply).
-- One-second modes: command `$1B` selects mode 0/1/2/3 (full header +
-  4-byte RTC / header only / single `$03` byte); we approximate with
-  a first-long-then-short heuristic.
-
-Two naive migrations were tried and failed on 2026-07-21 (3-byte
-header alone; preset unclocked sync byte) — the ROM pollers wait on
-SHIFT for their sync byte, so the redo must schedule a *clocked*
-attention byte with real per-byte pacing, then re-pin every ROM reader
-(`$408A9BBE` ISR, `$408B3Bxx` direct pollers, `$A14D4E`/`$A15376` LC II
-Egret readers) against that wire. Tracked in TODO ("Cuda wire-model
-redo"); migration step 7 below.
+The wire-model redo landed (CHANGELOG "LLE step 7"): replies are the
+real `[type, flags, cmdEcho, data…]`, errors `[$02, err, pktType,
+cmd]`, and the **attention byte is a wire event outside the packet
+buffer** (dummy SHIFT, stale SR) on DingusPPC's measured schedule
+(close-ack +61 µs, attention +30 µs, command ack +71 µs, response
+byte +88 µs, TREQ +13 µs). That separation is what made the hacks
+unnecessary: the ROM device-manager ISR counts the close-ack as its
+discarded sync (4 header bytes), the direct pollers and the Mac OS 8.1
+System reader consume it in their send ritual (3 header bytes) — every
+reader lands on its data naturally. The `$76` echo-pop, the GetPram
+erase, the Q8.2 echo-slot duplication and the `firstTick_` long/short
+heuristic are deleted; one-second packets obey the real `$1B` command
+(captured from the LC II ROM, `$1B 00`, and Sys 7.5 / OS 8.1,
+`$1B 03`). Bonus fidelity from the same pass: BYTEACK edges are
+session-gated (the `ori #$30` close no longer injects a duplicate
+final command byte — WriteXPram was writing one extra adjacent byte),
+$02/$08 decode as READ/WRITE_MCU_MEM with 16-bit addressing (PRAM at
+$0100-$01FF, `mcuRam_` scratch below — the System's $B3 parameter
+block round-trips instead of corrupting PRAM), PRAM reads are
+genuinely open-ended streams, and the Quadra's seconds heartbeat runs
+at the real 25 MHz rate (was 1.6× fast; `q605_barefpu_boot_etalon`
+budget re-pinned accordingly). The Egret flavor keeps its pinned LC II
+wire mechanics (buffer byte 0 = attention) over the same real-framed
+header.
 
 ### 1.7 Mac II / LC II RTC + Egret PRAM factory seeding — `Rtc.cpp:13-28`, `Egret.cpp:54-91`
 
@@ -221,12 +209,14 @@ documents the real behavior.
   *Gaps*: peripheral-tick batching (128 cycles LC II / 256 Q605 —
   ~8-16 µs IRQ-latency jitter); VIA E-clock synced at a fixed 32:1
   ratio (real ≈31.91:1).
-- **Egret/Cuda wire** (`Egret.*`): see §1.6b — reply framing, flat
-  `kByteDelay` pacing vs the real 61/71/88 µs per-byte schedule,
-  wrong error-packet shape, lenient command decode (fixed 32-byte
-  XPRAM streams, no length validation), heuristic one-second modes.
-  ADB autopoll period is a hardcoded ≈11 ms accumulator (matches
-  DingusPPC's default `poll_rate`, so acceptable).
+- **Egret/Cuda wire** (`Egret.*`): real framing + 61/71/88/13/30 µs
+  per-byte schedule + `$1B` one-second modes + open-ended streams
+  since the §1.6b redo (2026-07-22). Autopoll rate obeys `$14`
+  (default 11 ms, DingusPPC's `poll_rate`). *Remaining gaps*: still a
+  packet-level HLE of the 68HC05 firmware (§2 / step 10); the Egret
+  flavor's boot-heartbeat packet shapes are pinned against the LC II
+  ROM readers, not firmware traces; MCU-RAM reads outside PRAM serve a
+  256-byte scratch, not the real register file.
 - **Video**: `MacVideo.h`, `V8Video.h`, `TobyVideo.*` — whole-frame
   decode, no beam timing.
   *Gaps*: `TobyVideo.cpp:179` bakes a 60 Hz / 261 120-cycle frame
@@ -322,15 +312,11 @@ the existing etalons (`finder_boot_matrix` must stay green):
 
 Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
 
-7. **Cuda wire-model redo** — *proposed next pass.* Real reply framing
-   `[type, flags, cmdEcho, data…]`, error packets
-   `[$02, err, type, cmd]`, a *clocked* attention byte at session
-   open, and per-byte SR scheduling (61/71/88 µs, TREQ +13 µs) per
-   §1.6b's blueprint. Acceptance = **deleting** the `$76` echo-pop,
-   the GetPram erase, the Q8.2 echo-slot duplication and the
-   long/short tick heuristic, with every Cuda/Egret etalon and the
-   Finder matrix green. This retires the last per-reader wire hacks
-   and de-risks every future System version.
+7. ~~**Cuda wire-model redo**~~ **DONE 2026-07-22** (see 1.6b): real
+   framing + wire-event attention byte + 61/71/88/13/30 µs schedule;
+   the `$76` echo-pop, GetPram erase, Q8.2 duplication and tick
+   heuristic are deleted, 49/49 gates + Finder matrix green (CHANGELOG
+   "LLE step 7"). The last per-reader wire hacks are retired.
 8. **SCC Rx path** — Rx FIFO, carrier-driven hunt→sync, Rx character
    + special-condition interrupts, end-of-frame CRC status; turn
    `abortIdle` (§1.8) into a transport-driven line state. Direct
