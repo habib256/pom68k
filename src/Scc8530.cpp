@@ -20,6 +20,67 @@ void Scc8530::reset() {
                                      // machine config — abortIdle_ persists)
 }
 
+void Scc8530::setClocks(int64_t cpuHz, int64_t pclkHz) {
+    cpuHz_ = cpuHz;
+    pclkHz_ = pclkHz;
+    updateSerial(ch_[0]);
+    updateSerial(ch_[1]);
+}
+
+// Derive the channel's CPU-cycles-per-byte pace from the guest's serial
+// programming — the SCC async-baud LLE (MAME z80scc.cpp as oracle):
+//   clock mode  WR4 bits 7-6 → ×1/16/32/64 (get_clock_mode :1157)
+//   BRG rate    src/(2+(WR13<<8|WR12))/(2·mode), src = WR14 bit 1 ? PCLK
+//               : RTxC (get_brg_rate :2476)
+//   routing     WR11 bits 4-3 = Tx clock source (update_serial :2565)
+// SDLC (WR4 bits 5-4 = 10): on a Mac the LocalTalk wire is FM0 clocked off
+// the DPLL at RTxC/16 = 230 400 bit/s — deriving exactly the historical
+// 272/544/868 constants at 7.8336/15.6672/25 MHz, so LLAP gates see no
+// timing shift. WR4 stop bits 00 with a non-SDLC sync mode (monosync/
+// bisync) is not modelled → pace 0 → the legacy fallback.
+void Scc8530::updateSerial(Chan& c) {
+    c.pace = 0;
+    if (cpuHz_ <= 0) return;
+    if (sdlcMode(c)) {
+        c.pace = int(cpuHz_ * 8 / (kRtxcHz / 16));
+        return;
+    }
+    if ((c.wr[4] & 0x0C) == 0) return;           // sync modes: not derivable
+    int clockMode = 1;
+    switch (c.wr[4] & 0xC0) {
+        case 0x40: clockMode = 16; break;
+        case 0x80: clockMode = 32; break;
+        case 0xC0: clockMode = 64; break;
+    }
+    int64_t bitRate = 0;
+    switch (c.wr[11] & 0x18) {                    // Tx clock source
+        case 0x00:                                // RTxC pin
+            bitRate = kRtxcHz / clockMode;
+            break;
+        case 0x10:                                // baud-rate generator
+            if (c.wr[14] & 0x01) {                // WR14 bit 0: BRG enable
+                const int64_t src = (c.wr[14] & 0x02) ? pclkHz_ : kRtxcHz;
+                const int64_t brgConst = 2 + ((int64_t(c.wr[13]) << 8) | c.wr[12]);
+                if (src > 0 && brgConst > 0)
+                    bitRate = src / brgConst / (2 * clockMode);
+            }
+            break;
+        default:                                  // TRxC pin / DPLL: no
+            break;                                // async clock modelled
+    }
+    if (bitRate <= 0) return;
+    // Bits per character ×2 (half-stop-bit fixed point): 1 start + data
+    // (WR5 bits 6-5) + parity (WR4 bit 0) + stop (WR4 bits 3-2).
+    static const int dataBits[4] = { 5, 7, 6, 8 };
+    int bits2 = 2 * (1 + dataBits[(c.wr[5] >> 5) & 3] + (c.wr[4] & 1 ? 1 : 0));
+    switch (c.wr[4] & 0x0C) {
+        case 0x04: bits2 += 2; break;             // 1 stop bit
+        case 0x08: bits2 += 3; break;             // 1.5 stop bits
+        case 0x0C: bits2 += 4; break;             // 2 stop bits
+    }
+    c.pace = int(cpuHz_ * bits2 / (2 * bitRate));
+}
+
 // SDLC FCS = CRC-16/X25 (poly $1021 reflected, init/xorout $FFFF). The
 // drivers never read its value (the chip checks it), but appending the real
 // FCS keeps the wire honest for future interop captures.
@@ -184,8 +245,9 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
     // lookup forever and never listed the server (2026-07-22 GISTPERSO live
     // capture). Express CTS frames keep their short fixed gap: an intra-
     // dialog CTS must land inside the sender's 200 µs INTER-FRAME window.
-    const int delay = express ? kCtsGapBytes * byteCycles_ : 0;
-    c.rxQueue.push_back({std::move(f), byteCycles_, delay, express});
+    const int pace = paceCycles(ch);              // guest-derived wire pace
+    const int delay = express ? kCtsGapBytes * pace : 0;
+    c.rxQueue.push_back({std::move(f), pace, delay, express});
 }
 
 uint8_t Scc8530::readCtl(int channel) {
@@ -362,6 +424,12 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     if (ptr_ == 2 || ptr_ == 9) ch_[0].wr[ptr_] = ch_[1].wr[ptr_] = v;
     else c.wr[ptr_] = v;
 
+    // Serial-timing registers → re-derive the channel byte pace (MAME
+    // z80scc.cpp update_serial is called from the same register writes).
+    if (ptr_ == 4 || ptr_ == 5 || ptr_ == 11 || ptr_ == 12 || ptr_ == 13 ||
+        ptr_ == 14)
+        updateSerial(c);
+
     // WR9 D7-D6: 01 = Channel Reset B, 10 = Channel Reset A, 11 = hardware
     // reset. Purge the channel's Rx/Tx machinery — the 7.6 LAP open resets
     // channel B and re-inits from scratch; keeping the stale Rx FIFO made
@@ -388,6 +456,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
         if ((v & 0xC0) == 0x40 || (v & 0xC0) == 0xC0) resetChan(ch_[0]);
         if ((v & 0xC0) == 0x80 || (v & 0xC0) == 0xC0) resetChan(ch_[1]);
     }
+    if (ptr_ == 9) { updateSerial(ch_[0]); updateSerial(ch_[1]); }
 
     // WR3 bit 4 = Enter Hunt Mode. On an idle line the hunt persists — RR0
     // bit 4 stays set, which is what the LLAP sender's carrier sense wants
@@ -568,7 +637,7 @@ bool Scc8530::tick(int cycles) {
                     if (f.delay > 0) f.delay -= cycles;
                     ready = f.delay <= 0;
                 } else {
-                    ready = c.rxIdle >= kIdgBytes * byteCycles_;
+                    ready = c.rxIdle >= kIdgBytes * paceCycles(i);
                 }
                 if (ready) {
                     bool wasIrq = c.rxIp || c.specialIp || c.extPending;

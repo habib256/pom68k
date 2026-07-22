@@ -92,6 +92,9 @@ void MacIIMemory::reset() {
     iwm_.attachDrive(&drive_, nullptr);
     drive_.reset();
     scc_.reset();
+    // SCC async-baud LLE: 15.6672 MHz CPU; PCLK = C7M 7.8336 MHz (the
+    // 85C30 family wiring MAME uses across the II-class boards).
+    scc_.setClocks(15667200, 7833600);
     // Mac II POST probes RR0 &$70 (Sync/CTS/TxU); CTS high looks like a
     // serial debugger (same Q5 Quadra note) — pull it low like the LC 475.
     scc_.setCtsHigh(false);

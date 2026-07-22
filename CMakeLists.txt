@@ -375,6 +375,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(q605_turboscsi_test PRIVATE pom68k_core)
     add_test(NAME q605_turboscsi_test COMMAND q605_turboscsi_test)
 
+    # SCC async-baud LLE gate: WR4/WR11/WR12-14 → derived byte pace
+    # (MAME z80scc get_clock_mode/get_brg_rate/update_serial parity).
+    add_executable(scc_baud_test tests/scc_baud_test.cpp)
+    target_link_libraries(scc_baud_test PRIVATE pom68k_core)
+    add_test(NAME scc_baud_test COMMAND scc_baud_test)
+
     # O6.5 gate: SCSI pseudo-DMA windows + DRQ-gated BERR timeout
     # (soft-skips without the disk image).
     add_executable(scsi_pdma_test tests/scsi_pdma_test.cpp)

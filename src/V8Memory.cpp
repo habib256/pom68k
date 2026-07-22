@@ -46,6 +46,8 @@ void V8Memory::reset() {
     videoConfig_ = 0;
     sccIrq_ = false;
     scc_.reset();
+    scc_.setClocks(kCpuHz, 7833600);         // SCC async-baud LLE: PCLK =
+                                             // C7M (LCII_HARDWARE.md:44)
     scc_.setAbortIdle(true);                 // no hardwired LocalTalk peer
                                              // (O6.10); a real LToUDP peer
                                              // drops the standing abort —

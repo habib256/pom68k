@@ -86,7 +86,27 @@ public:
     void injectRxFrame(int ch, const uint8_t* d, size_t n, bool express = false);
     // CPU cycles per LocalTalk byte (230.4 kbit/s): 544 @ 15.6672 MHz
     // (LC II / Mac II), 272 @ 7.8336 (Plus), 868 @ 25 MHz (Q605).
+    // Legacy fixed pace — the fallback when the machine has not provided
+    // clocks or the guest has not programmed a mode we can derive.
     void setByteCycles(int c) { byteCycles_ = c > 0 ? c : 544; }
+
+    // ── Guest-derived pacing (SCC async-baud LLE, MAME z80scc oracle) ──
+    // With the machine's CPU clock and the SCC's PCLK provided, the per-
+    // channel byte pace is DERIVED from the guest's WR4 (clock mode ×1/16/
+    // 32/64, stop bits, parity), WR11 (Tx clock source), WR12/13 (BRG time
+    // constant) and WR14 (BRG enable/source) — z80scc.cpp get_clock_mode
+    // (:1157), get_brg_rate (:2476, rate = src/(2+(WR13<<8|WR12))/(2·mode)),
+    // update_serial (:2565). RTxC is the 3.6864 MHz serial crystal on every
+    // Mac (MAME configure_channels 3'686'400; LCII_HARDWARE.md). In SDLC
+    // mode the Mac clocks LocalTalk's FM0 wire off the DPLL at RTxC/16 =
+    // 230 400 bit/s, which derives EXACTLY the legacy constants above.
+    void setClocks(int64_t cpuHz, int64_t pclkHz);
+    // Effective pace for a channel: derived if available, else the legacy
+    // fixed byteCycles_. Public as the scc_baud_test hook.
+    int paceCycles(int ch) const {
+        const int p = ch_[ch & 1].pace;
+        return p > 0 ? p : byteCycles_;
+    }
 
     uint8_t wr(int ch, int r) const { return ch_[ch & 1].wr[r & 15]; }
     long dcdEdges = 0, ctlWrites = 0;   // debug counters
@@ -139,9 +159,12 @@ private:
         bool specialIp = false;      // special receive condition (EOF/ovr)
         bool firstCharSeen = false;  // WR1 mode 01: int on FIRST char only
         uint8_t rr1Rd = 0x07;        // RR1 of the last byte read (all-sent)
+        int pace = 0;                // guest-derived CPU cycles per byte
+                                     // (0 = not derivable → byteCycles_)
     };
     uint8_t rr0(const Chan& c) const;
     bool sdlcMode(const Chan& c) const;  // WR4 bits 5-4 = 10
+    void updateSerial(Chan& c);          // derive Chan::pace from WR4/11/12-14
     bool rxEnabled(const Chan& c) const { return (c.wr[3] & 0x01) != 0; }
     uint8_t readCtl_(int channel, Chan& c, int reg);
     void rxPushByte(Chan& c);        // pace one frame byte into the FIFO
@@ -165,6 +188,9 @@ private:
     bool ctsHigh_ = true;
     bool rxStanding_ = false;        // Mac II POST: standing Rx available
     int byteCycles_ = 544;           // CPU cycles per LocalTalk byte
+    int64_t cpuHz_ = 0;              // machine CPU clock (0 = legacy pacing)
+    int64_t pclkHz_ = 0;             // SCC PCLK (BRG source, WR14 bit 1)
+    static constexpr int64_t kRtxcHz = 3'686'400;   // Mac serial crystal
     static constexpr int kAbortRelatch = 2000;   // ≈130 µs @ 15.67 MHz
     static constexpr int kPeerHold = 30000000;   // ≈2 s: a peer that has
                                                  // transmitted holds the line

@@ -24,6 +24,9 @@ void MacMemory::reset() {
     iwm_.attachDrive(&drive_, nullptr);
     drive_.reset();
     scc_.reset();
+    // SCC async-baud LLE: CPU C7M 7.8336 MHz, PCLK 3.9168 MHz (DEV.md:74,
+    // MAME); RTxC 3.6864 MHz is chip-internal to the model.
+    scc_.setClocks(7833600, 3916800);
     scsi_.reset();
     if (scsiDisk_.present()) scsi_.attach(&scsiDisk_);
     kbd_.reset();
