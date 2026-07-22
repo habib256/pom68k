@@ -112,11 +112,12 @@ Next milestones:
   partial (Send Abort/CRC resets `:1602/:1635` "not implemented", no
   EOM latch, no hunt/sync) — for LLAP behaviours we are already the
   more complete model; use MAME as oracle for the ASYNC side only.
-  - [ ] **High — async baud machinery** (the Plus serial-ports
-    blocker, detailed blueprint under "Mac Plus → serial" below):
-    WR4 clock mode (`get_clock_mode` :1157), WR12/13 BRG
-    (`get_brg_rate` :2476), WR11 clock-source routing
-    (`update_serial` :2565) → computed `byteCycles_`.
+  - [x] **High — async baud machinery: DONE 2026-07-23** (CHANGELOG
+    "SCC async-baud machinery"; gate `scc_baud_test`): WR4 clock
+    mode + stop/parity, WR5 data bits, WR12/13+WR14 BRG, WR11
+    routing → per-channel derived pace; machines wire
+    `setClocks(cpuHz, pclkHz)`; SDLC derives the exact legacy
+    272/544/868 LLAP constants.
   - [ ] **Medium — Tx/Rx engine fidelity**: WR5 Tx-Enable (bit 3)
     gating the transmitter (`tra_callback`/`tra_complete` :1037/:1075);
     clock-driven per-byte Tx pacing + TxIP on the buffer-empty
@@ -181,15 +182,15 @@ Next milestones:
   - Implement usable SCC serial ports rather than only mouse/LocalTalk
     paths. Blueprint from the 2026-07-22 MAME `z80scc.cpp` audit
     (docs/LLE_VS_HLE.md §3; source fetched to `refs/mame`):
-    1. WR4 clock mode X1/16/32/64 (`get_clock_mode`, z80scc.cpp:1157)
-       + WR12/13 BRG constant (`get_brg_rate`, :2476 — rate =
-       source / (2·(2+WR13<<8|WR12)·clockMode)) feeding `byteCycles_`;
-    2. WR11 Rx/Tx clock-source routing (`update_serial`, :2565);
+    1. ~~WR4 clock mode + WR12/13 BRG~~ **DONE 2026-07-23**
+       (`scc_baud_test`);
+    2. ~~WR11 clock-source routing~~ **DONE 2026-07-23** (same pass);
     3. then WR5 Tx-Enable gating, parity/framing generation,
-       Rx CRC check (RR1 bit 6). Note: MAME's own SDLC side is
-       partial (Send Abort/CRC resets/EOM latch unimplemented) — for
-       LLAP behaviours our implementation is the more complete one;
-       don't regress it chasing MAME parity.
+       Rx CRC check (RR1 bit 6), and a host-side serial transport
+       (PTY/TCP) to make the ports *usable*, not just timed. Note:
+       MAME's own SDLC side is partial (Send Abort/CRC resets/EOM
+       latch unimplemented) — for LLAP behaviours our implementation
+       is the more complete one; don't regress it chasing MAME parity.
 
 - [ ] **Add pixel-accurate etalons and a WASM build.**
   - Create a screenshot regression runner for the Plus boot/Finder paths.

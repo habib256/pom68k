@@ -1,5 +1,54 @@
 # CHANGELOG
 
+## 2026-07-23 — SCC async-baud machinery: the guest programs the wire pace now
+
+The "High" blocker of the SCC LLE backlog (TODO / `docs/LLE_VS_HLE.md`
+§3) is closed. `Scc8530` derives each channel's byte pace from the
+guest's own serial programming instead of a fixed constant — MAME
+`z80scc.cpp` as oracle (`get_clock_mode` :1157, `get_brg_rate` :2476,
+`update_serial` :2565), gate `scc_baud_test` (15 checks):
+
+- **WR4** clock mode ×1/16/32/64 + stop bits (1/1.5/2) + parity bit;
+  **WR5** data bits (5/6/7/8); **WR11** bits 4-3 Tx clock routing (RTxC
+  pin / BRG; TRxC & DPLL-async fall back); **WR12/13 + WR14** BRG:
+  rate = source / (2+(WR13<<8|WR12)) / (2·mode), source = WR14 bit 1
+  ? PCLK : RTxC.
+- **Clock wiring per machine** (`setClocks(cpuHz, pclkHz)`): RTxC is
+  the 3.6864 MHz serial crystal on every Mac (MAME
+  `configure_channels`; `LCII_HARDWARE.md:44`); PCLK = 3.9168 MHz on
+  the Plus (DEV.md:74), C7M 7.8336 MHz on the II-class boards
+  (`maclc.cpp:378`, `macquadra605.cpp:171`).
+- **SDLC derives the LLAP constants exactly**: RTxC/16 = 230 400 bit/s
+  → 272/544/868 cycles per byte at 7.8336/15.6672/25 MHz — the very
+  numbers `setByteCycles` hardcoded, so the LocalTalk gates see zero
+  timing shift while the constant becomes a *derived* quantity.
+  `byteCycles_` remains only as the pre-programming fallback.
+- Cross-check for 9600 8N1 through the BRG: constant 10 → 3.6864e6 /
+  12 / 32 = 9600 baud exactly — the classic Mac baud-constant table
+  falls out of the formula, confirming the crystal identification.
+
+## 2026-07-23 — Toby: CRTC-derived frame clock + the register file actually writes
+
+Two Toby fixes in one pass (MAME `nubus_m2video.cpp` fetched to
+`refs/mame/src/devices/bus/nubus/` as oracle; gate `toby_test`
+extended):
+
+- **The TFB register file was silently write-dropped.** The machine
+  splits every slot access into bytes (`MacIIMemory` → `NuBus::write8`)
+  and `TobyVideo::write8` had no TFB branch — only the (never used from
+  the bus) `write32` did. Nobody noticed because the reset defaults are
+  the only mode the Mac II ROM uses (640×480×1). The byte path now
+  mirrors MAME `tfb_w` (:253-268): the register stores the inverted
+  lane, the last lane of a long carries the value, MISC2 commits.
+- **CRTC-derived frame clock** — the Q8.1 DAFB treatment finally
+  applied to Toby (the last §3 video gap of that kind): frame period =
+  htotal × vtotal ticks of the card's 30.24 MHz pixel crystal
+  (`calc_screen_params` / `attotime::from_ticks`), with the full
+  sync/porch register decode for the totals. The fixed 60 Hz /
+  261 120-cycle frame remains only until the guest commits a plausible
+  CRTC (a half-programmed CRTC won't storm the VBL: sub-50k-cycle
+  frames keep the fallback).
+
 ## 2026-07-23 — LLE step 9 (partial): TurboSCSI wait-state cell + 53C96 scheduled delays
 
 The Quadra's SCSI path stops being zero-time. Two of step 9's four
@@ -37,6 +86,22 @@ no asset needed — it runs against a synthetic zero image):
   `!DRQ` window access can never be released mid-hold — the immediate
   `/BERR` is the observable form of the eventual bus timeout (MAME
   spins because its chip runs on its own timers).
+- **Two scheduling bugs the etalons caught** (q605_boot_etalon /
+  q605_nofpu_boot_etalon red at SCSI=2416 on first landing):
+  (1) a **polled (non-DMA) Transfer Info moves ONE byte**, not the
+  remaining payload — MAME raises bus_complete for every received
+  byte in non-DMA IN (`INIT_XFR_WAIT_REQ`, ncr53c90.cpp:652
+  `fifo_pos == 1`). Charging the whole remainder armed a ~75 ms
+  deferral per byte-tail XFER and wedged the Mac OS 8.1 boot in an
+  endless retry loop (the probe log showed the same transaction
+  cycling with 1.88 M-cycle gaps). (2) **a live completion absorbs
+  the scheduled one**: `raiseIrq` now clears matching `pendBits_` —
+  MAME's bus_complete fires once, when the counter is exhausted AND
+  the FIFO has drained; our buffered model splits that into a
+  scheduled fetch and an instant drain-completion, and when the CPU
+  out-drains the schedule the stale deferral used to fire *after* the
+  driver had consumed the completion — a phantom bus-service
+  interrupt into the async SIM's ISR.
 - **Still open from step 9** (tracked in `docs/LLE_VS_HLE.md` §3): the
   true tcounter↔FIFO staging engine (payload still short-circuits
   `dataIn_`/`dataOut_` around the physical FIFO; the carefully pinned

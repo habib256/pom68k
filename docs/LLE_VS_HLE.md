@@ -255,9 +255,12 @@ documents the real behavior.
   256-byte scratch, not the real register file.
 - **Video**: `MacVideo.h`, `V8Video.h`, `TobyVideo.*` — whole-frame
   decode, no beam timing.
-  *Gaps*: `TobyVideo.cpp:179` bakes a 60 Hz / 261 120-cycle frame
-  instead of deriving it from the Toby CRTC registers (the DAFB got
-  this treatment in Q8.1; Toby never did).
+  Toby's frame clock is **CRTC-derived since 2026-07-23** (the Q8.1
+  DAFB treatment: htotal×vtotal ticks of the 30.24 MHz crystal, MAME
+  `nubus_m2video.cpp` in `refs/mame/src/devices/bus/nubus/`), and the
+  same pass fixed the TFB register file being silently write-dropped
+  on the byte path the machine actually uses (gate `toby_test`).
+  *Remaining gaps*: whole-frame decode only, no beam position.
 - **DAFB/Antelope** (`Dafb.*`; MEMCjr 6+6-bit holding split stays in
   `Q605Memory`): register-level and close to MAME `dafb.cpp` parity
   since 2026-07-21 (Swatch CRTC timing → derived geometry, Gazelle
@@ -313,15 +316,17 @@ documents the real behavior.
   Abort (z80scc.cpp:1602), CRC resets (:1635-1643) and error reset
   (:1592) are marked "not implemented", and it has no Tx Underrun/EOM
   latch or hunt/sync machine at all (MAME is async-serial-centric).
-  *Gaps (MAME is the oracle here)*: **no baud machinery** — WR12/13
-  BRG constant (z80scc.cpp:2476 `get_brg_rate`), WR4 clock mode X1/16/
-  32/64 (:1157 `get_clock_mode`) and WR11 clock-source routing (:2565
-  `update_serial`) are ignored; `byteCycles_` is a fixed LocalTalk
-  rate. That is *the* blocker for usable async serial ports (Plus
-  milestone, TODO). Also: no bit-serial engine (parity/framing error
-  generation), WR5 Tx-Enable not gating, no Rx CRC verification (RR1
-  bit 6 never set), Tx Underrun uses a flat 1200-cycle delay instead
-  of counting CRC+flag bit times.
+  The **baud machinery is in since 2026-07-23** (gate `scc_baud_test`):
+  WR4 clock mode + stop/parity bits, WR5 data bits, WR11 Tx-clock
+  routing, WR12/13+WR14 BRG all derive each channel's byte pace from
+  the machine clocks (RTxC 3.6864 MHz everywhere; PCLK per machine);
+  SDLC derives the exact legacy LocalTalk constants (272/544/868), so
+  `byteCycles_` is now only the pre-programming fallback.
+  *Remaining gaps (MAME is the oracle here)*: no bit-serial engine
+  (parity/framing error generation), WR5 Tx-Enable not gating, no Rx
+  CRC verification (RR1 bit 6 never set), Tx Underrun uses a flat
+  1200-cycle delay instead of counting CRC+flag bit times at the
+  programmed rate, TRxC-pin/DPLL-async clock sources unmodelled.
 - **ADB**: Mac II default path is firmware LLE (§2 / step 11).
   `AdbBus.*` (LC II / Q605 via Egret/Cuda) and the Mac II HLE fallback
   remain command-level.
@@ -415,11 +420,21 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
    *Remaining* (see §3 SCSI gaps): the true tcounter↔FIFO staging
    engine, 16-bit BUSMOD widths, SDTR messages, scheduled selection
    timeout.
-10. Longer term: Toby CRTC-derived frame clock, SWIM2/SonyDrive MFM
-    cell timing + CRC, NuBus arbitration, 040 copyback/snooping,
-    Egret/Cuda **firmware** LLE (68HC05 core + the dumps already under
-    `roms/cuda/` — only if a use case demands it; MAME proves it works;
-    Mac II ADB step 11 is the integration template).
+10. Longer term: ~~Toby CRTC-derived frame clock~~ **DONE 2026-07-23**
+    (CHANGELOG "Toby: CRTC-derived frame clock" — plus the discovery
+    that the TFB register file was write-dropped on the byte path);
+    SWIM2/SonyDrive MFM cell timing + CRC, NuBus arbitration, 040
+    copyback/snooping, Egret/Cuda **firmware** LLE (68HC05 core + the
+    dumps already under `roms/cuda/` — only if a use case demands it;
+    MAME proves it works; Mac II ADB step 11 is the integration
+    template).
+12. ~~**SCC async-baud machinery**~~ **DONE 2026-07-23** (CHANGELOG
+    "SCC async-baud machinery"; §3 SCC entry): WR4/WR5/WR11/WR12-14 →
+    guest-derived per-channel byte pace, machine-wired clocks, SDLC
+    deriving the legacy LLAP constants exactly. Gate `scc_baud_test`.
+    The remaining SCC fidelity items (bit-serial engine, Tx-Enable
+    gating, Rx CRC → RR1 bit 6, counted underrun delay) stay in the
+    TODO backlog's Medium/Low tiers.
 11. ~~**Mac II ADB → firmware LLE**~~ **DONE, default since 2026-07-22**
     (§2). `Pic1654s` + `AdbLine` + `Via6522::extShiftCB1` run the real
     `342s0440-b.bin`; self-test → `ADBReInit` → mouse-at-addr-3 on the
