@@ -54,6 +54,13 @@ public:
     void loadSR(uint8_t v) { sr_ = v; setIfr(SHIFT); srHostWritten_ = false; shiftCount_ = 0; }
     void raiseShift() { setIfr(SHIFT); shiftCount_ = 0; }    // command byte finished shifting out
     void armShiftComplete(int clocks = 16) { shiftCount_ = clocks; }
+    // Mac II ADB LLE: the PIC1654S supplies the SR shift clock on CB1 and the
+    // data on CB2. Shift one bit per CB1 falling edge in the external-clock
+    // modes (ACR 011 = shift in, 111 = shift out); after 8 bits raise SHIFT.
+    // extShiftCB2Out() is the SR MSB presented to the PIC during shift-out.
+    void extShiftCB1(bool level, bool cb2FromPic);
+    bool extShiftCB2Out() const { return (sr_ >> 7) & 1; }
+    void loadSRDevice(uint8_t v) { sr_ = v; }   // device presents a byte, no IFR
     uint8_t acr() const { return acr_; }
     uint8_t srValue() const { return sr_; }
     // Q6: true when the HOST (guest CPU) has written the SR since the last
@@ -85,6 +92,8 @@ private:
     uint8_t acr_ = 0, pcr_ = 0, sr_ = 0, ifr_ = 0, ier_ = 0;
     bool srHostWritten_ = false;                // Q6: host wrote SR (see .h)
     int shiftCount_ = 0;                        // φ2 clocks until IFR.SHIFT
+    int extBits_ = 0;                           // Mac II ADB: external-clock shift count
+    bool extCb1_ = true;                        // last CB1 level from the PIC
     bool cb1_ = true, cb2_ = true;              // input pin levels (idle high)
     int32_t t1_ = 0, t2_ = 0;
     uint16_t t1latch_ = 0;

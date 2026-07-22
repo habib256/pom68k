@@ -73,6 +73,24 @@ ENQ probes.
 
 ## LLE fidelity — replace HLE shortcuts (see `docs/LLE_VS_HLE.md`)
 
+- [ ] **Mac II ADB — real PIC1654S (in progress, opt-in `POM68K_ADB_LLE=1`).**
+  The HLE `AdbVia` byte-model drops ~all of the ROM's fast `ADBReInit`
+  traffic (mouse ends up mapped to a phantom addr → frozen). Replacing it
+  with the real transceiver firmware: `Pic1654s` (PIC16C5x core, gate
+  `pic1654s_test`) runs `roms/adbmodem/342s0440-b.bin`; `AdbLine`
+  (bit-serial keyboard+mouse, gate `adbline_test`) is the device side;
+  `Via6522::extShiftCB1` adds the external-clock SR shift; `AdbVia` wires
+  the ports and runs the PIC cycle-synced at each VIA1 access
+  (`MacIIMemory::viaAccess syncTo`). Working end-to-end: PIC receives ROM
+  commands, drives the ADB bus, `AdbLine` decodes them.
+  **Remaining (task): the PIC→ROM command-completion return** — after the
+  PIC runs a command and listens for the device reply (firmware 0x1bd),
+  it must shift the result back to the ROM (VIA mode-3) and assert PB3 so
+  the ROM issues the next `ADBReInit` command; today the ROM sends exactly
+  one command then waits. Once that round-trip lands, devices enumerate
+  (mouse→addr 3) and the flag can become the default, retiring the HLE
+  `AdbVia`. Fixed this pass: ST-idle pull-up (PB4/PB5 read high when
+  undriven) and timing calibrated to the PIC's own wire rate.
 - [ ] **Quadra 605 / LC 475** shortcuts where fidelity matters:
   - Expand Cuda commands only from ROM/driver traces.
   - Add accurate 040 timing, cache copyback/snooping and on-chip-FPU/FPSP
@@ -82,11 +100,14 @@ ENQ probes.
 - [ ] **Cuda wire-model redo** (follow-up to the solved bare no-FPU
   enigma — CHANGELOG 2026-07-21 "Bare no-FPU solved"): replace the
   per-reader reply-framing accommodations in `Egret.cpp` (echo-slot
-  data duplication for ReadXPram, the $76 pop, the GetPram erase) with
-  the real Cuda packet `[type, flags, cmdEcho, data…]` + a turnaround
-  sync byte the ROM pollers can wait on. Needs re-pinning every ROM
-  reader (`$408A9BBE` ISR, `$408B3Bxx` direct pollers) against that
-  wire.
+  data duplication for ReadXPram, the $76 pop, the GetPram erase, the
+  long/short tick heuristic) with the real Cuda packet
+  `[type, flags, cmdEcho, data…]` + a *clocked* attention byte and
+  per-byte SR scheduling. Full blueprint (framing, error packets,
+  61/71/88 µs timings, failed-attempt notes) in `docs/LLE_VS_HLE.md`
+  §1.6b; migration step 7 there. Needs re-pinning every ROM reader
+  (`$408A9BBE` ISR, `$408B3Bxx` direct pollers, LC II `$A14D4E`)
+  against that wire.
 
 ## Mac LC II
 

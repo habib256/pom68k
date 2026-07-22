@@ -81,6 +81,8 @@ add_library(pom68k_core STATIC
     src/MacIIMemory.cpp   # Mac II — 32-bit GLUE memory map
     src/Cpu020.cpp        # Mac II — Moira 68020 wrapper
     src/AdbVia.cpp        # Mac II — ADB HLE on VIA1
+    src/Pic1654s.cpp      # Mac II — PIC1654S ADB transceiver core (LLE)
+    src/AdbLine.cpp       # Mac II — bit-serial ADB devices (LLE)
 )
 target_include_directories(pom68k_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pom68k_core PUBLIC moira)
@@ -314,6 +316,16 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(egret_test PRIVATE pom68k_core)
     add_test(NAME egret_test COMMAND egret_test)
 
+    # LLE gate: PIC1654S core (ADB transceiver microcontroller) instruction set.
+    add_executable(pic1654s_test tests/pic1654s_test.cpp)
+    target_link_libraries(pic1654s_test PRIVATE pom68k_core)
+    add_test(NAME pic1654s_test COMMAND pic1654s_test)
+
+    # LLE gate: bit-serial ADB device model (keyboard + mouse) decode/response.
+    add_executable(adbline_test tests/adbline_test.cpp)
+    target_link_libraries(adbline_test PRIVATE pom68k_core)
+    add_test(NAME adbline_test COMMAND adbline_test)
+
     # O6.4 gate: V8 video decode + Ariel palette + VBL cadence.
     add_executable(v8_video_test tests/v8_video_test.cpp)
     target_link_libraries(v8_video_test PRIVATE pom68k_core)
@@ -414,6 +426,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
 
     add_executable(macii_mm_probe EXCLUDE_FROM_ALL tests/macii_mm_probe.cpp)
     target_link_libraries(macii_mm_probe PRIVATE pom68k_core)
+
+    add_executable(macii_mouse_trace EXCLUDE_FROM_ALL tests/macii_mouse_trace.cpp)
+    target_link_libraries(macii_mouse_trace PRIVATE pom68k_core)
+
+    add_executable(lcii_mouse_trace EXCLUDE_FROM_ALL tests/lcii_mouse_trace.cpp)
+    target_link_libraries(lcii_mouse_trace PRIVATE pom68k_core)
 
     add_executable(macii_hmmu_trace EXCLUDE_FROM_ALL tests/macii_hmmu_trace.cpp)
     target_link_libraries(macii_hmmu_trace PRIVATE pom68k_core)
