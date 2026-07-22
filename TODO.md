@@ -81,16 +81,35 @@ ENQ probes.
   (bit-serial keyboard+mouse, gate `adbline_test`) is the device side;
   `Via6522::extShiftCB1` adds the external-clock SR shift; `AdbVia` wires
   the ports and runs the PIC cycle-synced at each VIA1 access
-  (`MacIIMemory::viaAccess syncTo`). Working end-to-end: PIC receives ROM
-  commands, drives the ADB bus, `AdbLine` decodes them.
-  **Remaining (task): the PIC→ROM command-completion return** — after the
-  PIC runs a command and listens for the device reply (firmware 0x1bd),
-  it must shift the result back to the ROM (VIA mode-3) and assert PB3 so
-  the ROM issues the next `ADBReInit` command; today the ROM sends exactly
-  one command then waits. Once that round-trip lands, devices enumerate
-  (mouse→addr 3) and the flag can become the default, retiring the HLE
-  `AdbVia`. Fixed this pass: ST-idle pull-up (PB4/PB5 read high when
-  undriven) and timing calibrated to the PIC's own wire rate.
+  (`MacIIMemory::viaAccess syncTo`). PIC receives ROM commands, drives the
+  ADB bus, `AdbLine` decodes them. Fixed so far: ST-idle pull-up (PB4/PB5
+  read high when the 68k leaves them as inputs → ST=IDLE, not a spurious
+  NEW that RESET-looped the PIC) and line timing calibrated to the PIC's
+  own wire rate (not MAME's abstract ticks).
+
+  Current blocker: the PIC **mis-routes the ROM's ADB self-test loopback
+  as a command** — the ROM ramps the SR ($03→$1E→$3C→$79→$E7…) with ST
+  cycling NEW→EVEN→ODD and ACR flipping $1C/$0C, but the PIC's ST dispatch
+  (computed goto @0x022, index = prev-state|ST) reaches the command path
+  (0x191/0x195) and drives $03 onto the ADB bus instead of echoing the
+  test byte back. $03 addresses nobody → no device reply (RA3 high) →
+  reg0f bit4 clear → reg17 bit1 never set (0x1f4/0x1f6) → PB3 never
+  asserted (0x1fd) → ROM waits forever after one command. Two follow-ups:
+
+  - [ ] **★ PRIORITY / next: cycle-exact PIC↔CPU co-stepping.** The
+    `syncTo` interleaving runs the PIC in *bursts* between VIA1 accesses,
+    with the VIA state (ST/ACR/SR) frozen mid-burst, so the PIC misses or
+    aliases the ROM's fast ST transitions during the self-test. Move to
+    genuine cycle-lockstep (finer than per-VIA-access bursts) so every ST
+    edge is tracked in order. This is the real fix that should unblock the
+    self-test → ADBReInit → mouse-at-addr-3 chain and let the flag become
+    the default (retiring HLE `AdbVia`). Repro:
+    `POM68K_ADB_LLE=1 macii_mouse_trace`.
+  - [ ] Understand the firmware's *intended* self-test handling and why
+    the ST-dispatch index routes to "drive-command" vs "echo" — fix the
+    state tracking at the source. Not on the critical path (the cycle-exact
+    co-stepping above should subsume it), but the analysis will be useful
+    for a future HLE `AdbVia` rewrite.
 - [ ] **Quadra 605 / LC 475** shortcuts where fidelity matters:
   - Expand Cuda commands only from ROM/driver traces.
   - Add accurate 040 timing, cache copyback/snooping and on-chip-FPU/FPSP
