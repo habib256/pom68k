@@ -75,6 +75,20 @@ template <class M> static void pollLocalTalk(M& mem) {
         mem.scc().injectRxFrame(0, d, n);
     });
 }
+// One 60 Hz emulation quantum. With the UDP cable active, slice it ~1 ms and
+// poll between slices: LLAP directed frames (lapRTS → lapCTS) run on
+// 200 µs-class timeouts + driver retries — a 16.7 ms poll period would push
+// every handshake past the retry limit; ~1 ms keeps it within a few retries
+// (Mini vMac's LToUDP takes the same approach).
+template <class M, class C>
+static void runQuantumWithWire(M& mem, C& cpu, int64_t frameCycles) {
+    if (!g_ltoudp.active()) { cpu.runCycles(frameCycles); return; }
+    constexpr int kSlices = 16;
+    for (int i = 0; i < kSlices; i++) {
+        cpu.runCycles(frameCycles / kSlices);
+        pollLocalTalk(mem);
+    }
+}
 
 static std::string execDir() {
 #ifdef __linux__
@@ -405,8 +419,7 @@ private:
     static constexpr size_t kTarget = 2225;
 
     void runOne() {
-        cpu.runCycles(kFrame);
-        pollLocalTalk(mem);
+        runQuantumWithWire(mem, cpu, kFrame);
         framesRun_++;
     }
     bool drain() {
@@ -809,8 +822,7 @@ private:
 
     void runOne() {
         if (mem.cpuHeld()) mem.tick(kFrame);   // Egret power-on hold
-        else cpu.runCycles(kFrame);
-        pollLocalTalk(mem);
+        else runQuantumWithWire(mem, cpu, kFrame);
         framesRun_++;
     }
     // Drain the ASC samples produced by the last slice (22 257 Hz mono,
@@ -1371,8 +1383,7 @@ private:
     static constexpr size_t kTarget = 2225;    // ~100 ms of 22 257 Hz sound
     void runOne() {
         if (mem.cpuHeld()) mem.tick(kFrame);
-        else cpu.runCycles(kFrame);
-        pollLocalTalk(mem);
+        else runQuantumWithWire(mem, cpu, kFrame);
         framesRun_++;
     }
     // Drain interleaved IOSB ASC stereo frames and report real AC content.
@@ -1743,6 +1754,7 @@ int main(int argc, char** argv) {
     }
     mem.setCpu(&cpu);
     cpu.hardReset();
+    wireLocalTalk(mem, 272);                     // 230.4 kbit/s @ 7.8336 MHz
 
     // Floppy: argv[2], else probe disks35/ (CWD, exec dir, and its parent —
     // same resolution as the ROM, so it works whatever the launch directory).
@@ -1802,6 +1814,7 @@ int main(int argc, char** argv) {
             std::vector<float> samp;
             for (int i = 0; i < n; i++) {
                 c.clock.runFrame(c.cpu, c.mem);
+                pollLocalTalk(c.mem);
                 samp.clear();
                 c.audio.renderFrame(c.mem, samp);   // 370 PWM samples
                 c.audioHost.pushFrame(samp, 0);     // plays only non-silent frames

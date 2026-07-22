@@ -60,11 +60,20 @@ Next milestones:
   distinct node IDs over real ENQ traffic (~650 probes each way) in
   ~12 s emulated. Note: System 6 only opens .MPP lazily from the
   Chooser — headless LLAP tests need Sys 7.
-- [ ] LLAP directed-frame RTS/CTS timing against the real driver (the
-  200 µs inter-frame gap tolerance over a polled UDP cable).
-- [ ] Plus machine wiring (its GUI loop is inline, not the thread class).
-- [ ] TashRouter + netatalk 2.x bridge session: Chooser sees an
-  AppleShare server; document the host setup in README.
+- [x] RTS/CTS directed-frame dialogue — pinned in `llap_loop_test`
+  (2026-07-22): CTS answered and received inside the LLAP inter-frame
+  window, DATA follows; GUI quanta are sliced ~1 ms while the UDP cable
+  is active (`runQuantumWithWire`) so handshakes stay within the
+  driver's retry budget.
+- [x] Plus machine wiring (2026-07-22): `wireLocalTalk(mem, 272)` +
+  per-frame poll in the inline GUI loop.
+- [x] TashRouter interop VERIFIED (2026-07-22): its `LtoudpPort` speaks
+  our exact wire format (4-byte pid tag + raw LLAP); a live TashRouter's
+  own address probe (ENQ 254/254/$81) was received on our socket.
+  README documents the minimal router. Remaining:
+- [ ] Full AppleShare session: TashRouter + netatalk **2.x** (DDP) host
+  setup serving `input/`, Chooser mounts the volume. Netatalk 2.x is
+  not packaged on modern distros — container or source build; document.
 - [ ] Interop check against Mini vMac's LToUDP (same multicast group).
 
 ## LLE fidelity — replace HLE shortcuts (see `docs/LLE_VS_HLE.md`)

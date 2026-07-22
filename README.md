@@ -98,11 +98,29 @@ bus at boot), and **Redémarrer** power-cycles the machine.
 
 `POM68K_LTOUDP=1 ./build/POM68K …` plugs the SCC printer port into a
 virtual LLAP cable over UDP multicast (`239.192.76.84:1954`, the
-Mini vMac / TashRouter LToUDP format) on Mac II / LC II / Quadra. Two
+Mini vMac / TashRouter LToUDP format) on all four machines. Two
 instances on the same LAN share the wire; the guest-visible AppleTalk
-stack is the real one (activate AppleTalk in the Chooser). Transport +
-SCC receive path are gated (`llap_loop_test`, `ltoudp_test`); the
-two-System AppleShare session is still being validated (TODO).
+stack is the real one. Add `POM68K_APPLETALK=1` to seed AppleTalk
+active in PRAM (skips the Chooser toggle; System 7 then opens LocalTalk
+at boot — System 6 only opens it from the Chooser). Gated:
+`llap_loop_test` (incl. the RTS/CTS directed-frame dialogue),
+`ltoudp_test`, `llap_two_system_etalon` (two full Systems acquire
+distinct LLAP node IDs over the shared cable).
+
+To reach AppleShare/printers beyond the virtual cable, bridge with
+[TashRouter](https://github.com/lampmerchant/tashrouter) (its `LtoudpPort`
+speaks the same wire format — interop verified against its address
+probes) and a DDP-capable AFP server (netatalk **2.x**; 3.x dropped
+AppleTalk):
+
+```python
+# python3 router.py — minimal TashRouter joining our cable
+from tashrouter.port.localtalk.ltoudp import LtoudpPort
+from tashrouter.router.router import Router
+router = Router('router', ports=(
+    LtoudpPort(seed_network=1, seed_zone_name=b'POM68K Net'),))
+router.start()
+```
 
 ## Sharing host files with the Mac (baked HFS volume)
 

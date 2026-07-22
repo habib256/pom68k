@@ -46,6 +46,13 @@ void lapSend(Scc8530& s, const uint8_t* d, size_t n) {
     s.tick(2000);                      // > kUnderrunDelay: frame completes
 }
 
+// Same, but without advancing time — the caller owns the clock (used by the
+// RTS/CTS dialogue where both ends are co-stepped).
+void lapSendNoWait(Scc8530& s, const uint8_t* d, size_t n) {
+    s.writeCtl(kB, 0xC0);
+    for (size_t i = 0; i < n; i++) s.writeData(kB, d[i]);
+}
+
 // Drain B's Rx FIFO while pacing the wire; returns the delivered bytes and
 // the RR1 status of the last one.
 std::vector<uint8_t> lapDrain(Scc8530& s, uint8_t& lastRr1, int maxByteTimes = 64) {
@@ -134,6 +141,78 @@ int main() {
         CHECK(frames == 0, "aborted frame never reaches the wire");
     }
 
+    // ── Directed-frame dialogue: lapRTS → lapCTS → DATA under 200 µs ──
+    // The receiver's "driver" answers the RTS with a CTS as soon as its Rx
+    // completes; the sender must see the CTS within the LLAP inter-frame
+    // window (IFG 200 µs = ~3130 cycles) of its RTS completing on the wire,
+    // then ships the data frame. Pins the wire's end-to-end latency budget.
+    {
+        Scc8530 a, b;
+        a.reset(); b.reset();
+        lapArm(a, 42); lapArm(b, 7);
+        std::vector<uint8_t> bGot;
+        long ctsAtTick = -1, rtsDoneTick = -1;
+        a.onTxFrame = [&](int ch, const uint8_t* d, size_t n) {
+            if (ch == kB) b.injectRxFrame(kB, d, n);
+        };
+        b.onTxFrame = [&](int ch, const uint8_t* d, size_t n) {
+            if (ch == kB) a.injectRxFrame(kB, d, n);
+        };
+
+        const uint8_t rts[3] = {7, 42, 0x84};    // dst 7, src 42, lapRTS
+        lapSend(a, rts, 3);
+        // Tick both sides in 1/4-byte steps; B's driver replies CTS the
+        // moment its frame completes (EOF byte drained).
+        long t = 0;
+        bool bSawRts = false;
+        uint8_t rr1 = 0;
+        std::vector<uint8_t> aGot;
+        for (; t < 400; t++) {
+            a.tick(kByteCyc / 4);
+            b.tick(kByteCyc / 4);
+            // B side: drain FIFO, on EOF reply CTS.
+            while (true) {
+                b.writeCtl(kB, 0);
+                if (!(b.readCtl(kB) & 0x01)) break;
+                b.writeCtl(kB, 1);
+                uint8_t st = b.readCtl(kB);
+                bGot.push_back(b.readData(kB));
+                if (st & 0x80) {                 // EOF: whole RTS is in
+                    bSawRts = bGot.size() >= 3 && bGot[2] == 0x84;
+                    if (rtsDoneTick < 0) rtsDoneTick = t;
+                    const uint8_t cts[3] = {42, 7, 0x85};
+                    lapSendNoWait(b, cts, 3);
+                }
+            }
+            // A side: watch for the CTS.
+            while (true) {
+                a.writeCtl(kB, 0);
+                if (!(a.readCtl(kB) & 0x01)) break;
+                a.writeCtl(kB, 1);
+                uint8_t st = a.readCtl(kB);
+                aGot.push_back(a.readData(kB));
+                if ((st & 0x80) && aGot.size() >= 3 && aGot[2] == 0x85
+                    && ctsAtTick < 0)
+                    ctsAtTick = t;
+            }
+            if (ctsAtTick >= 0) break;
+        }
+        CHECK(bSawRts, "B received the directed RTS");
+        CHECK(ctsAtTick >= 0, "A received the CTS reply");
+        // Sender-side budget: CTS fully received within IFG(200 µs) + the
+        // CTS frame's own wire time (5 bytes) of the RTS completing.
+        const long budget = (3130 + 5 * kByteCyc) / (kByteCyc / 4) + 1;
+        CHECK(rtsDoneTick >= 0 && ctsAtTick - rtsDoneTick <= budget,
+              "CTS lands inside the LLAP inter-frame window");
+        // And the data frame follows on the open dialogue.
+        const uint8_t data[6] = {7, 42, 0x01, 0xAA, 0xBB, 0xCC};
+        lapSend(a, data, 6);
+        bGot.clear();
+        std::vector<uint8_t> gotData = lapDrain(b, rr1);
+        CHECK(gotData.size() == 8 && gotData[2] == 0x01 && gotData[5] == 0xCC,
+              "directed DATA frame delivered after the handshake");
+    }
+
     // ── Hunt exit is an ext/status event (carrier sense for the LAP) ──
     {
         Scc8530 a, b;
@@ -152,6 +231,6 @@ int main() {
 
     if (failures == 0)
         std::printf("PASS: llap loop (ENQ both ways, addr filter, broadcast, "
-                    "abort, carrier sense)\n");
+                    "abort, RTS/CTS dialogue in-window, carrier sense)\n");
     return failures ? 1 : 0;
 }
