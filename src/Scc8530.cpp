@@ -45,9 +45,12 @@ bool Scc8530::sdlcMode(const Chan& c) const {
 
 uint8_t Scc8530::rr0(const Chan& c) const {
     // bit 0 Rx Character Available: real (FIFO) or the legacy standing flag.
-    // Break/Abort (bit 7): only while the line is actually dead — a frame
-    // being received (rxCur/fifo active) means carrier, not abort.
-    const bool rxBusy = !c.fifo.empty() || !c.rxCur.empty();
+    // Break/Abort (bit 7): the LINE state — masked only while a frame is
+    // actually on the wire (rxCur). Unread bytes sitting in the FIFO do NOT
+    // hold the carrier: the 7.6 LAP open polls RR0 for the idle abort after
+    // abandoning a frame mid-read, and masking on FIFO contents wedged it
+    // ("Impossible d'ouvrir AppleTalk").
+    const bool rxBusy = !c.rxCur.empty();
     return uint8_t(((rxStanding_ || !c.fifo.empty()) ? 0x01 : 0x00)
                    | (c.dcd ? 0x08 : 0x00) | 0x04 | (ctsHigh_ ? 0x20 : 0x00)
                    | ((c.hunt && sdlcMode(c)) ? 0x10 : 0x00)
@@ -299,6 +302,33 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     // them through channel B)
     if (ptr_ == 2 || ptr_ == 9) ch_[0].wr[ptr_] = ch_[1].wr[ptr_] = v;
     else c.wr[ptr_] = v;
+
+    // WR9 D7-D6: 01 = Channel Reset B, 10 = Channel Reset A, 11 = hardware
+    // reset. Purge the channel's Rx/Tx machinery — the 7.6 LAP open resets
+    // channel B and re-inits from scratch; keeping the stale Rx FIFO made
+    // RR0 show RxCA forever on a line the driver believed re-idled.
+    if (ptr_ == 9 && (v & 0xC0)) {
+        auto resetChan = [](Chan& c2) {
+            c2.fifo.clear();
+            c2.rxQueue.clear();
+            c2.rxCur.clear();
+            c2.rxPos = 0;
+            c2.rxTimer = 0;
+            c2.rxIp = c2.specialIp = false;
+            c2.firstCharSeen = false;
+            c2.txBuf.clear();
+            c2.txIp = false;
+            c2.txEmptyEvent = false;
+            c2.extPending = false;
+            c2.latched = false;
+            c2.hunt = false;
+            c2.txUnderrun = true;
+            c2.underrunIn = 0;
+            c2.relatch = 0;
+        };
+        if ((v & 0xC0) == 0x40 || (v & 0xC0) == 0xC0) resetChan(ch_[0]);
+        if ((v & 0xC0) == 0x80 || (v & 0xC0) == 0xC0) resetChan(ch_[1]);
+    }
 
     // WR3 bit 4 = Enter Hunt Mode. On an idle line the hunt persists — RR0
     // bit 4 stays set, which is what the LLAP sender's carrier sense wants
