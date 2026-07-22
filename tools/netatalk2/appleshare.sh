@@ -33,7 +33,7 @@ stop_all() {
 if [ "${1:-}" = "stop" ]; then
     stop_all
     ip link del pomtap0 2>/dev/null || true
-    ip link del veth-atalk 2>/dev/null || true
+    ip link del veth-atalk 2>/dev/null || true   # legacy macvtap-era ifaces
     echo "AppleShare bridge stopped."
     exit 0
 fi
@@ -46,14 +46,14 @@ chown -R "$REAL_USER" "$CONF"
 stop_all
 sleep 1
 
-# ── 1. module + interfaces (idempotent) ──
+# ── 1. module + interface (idempotent) ──
+# A plain TAP: the router (as the user) owns the char device, and the host
+# DDP stack talks directly on pomtap0 — no veth/macvtap (macvtap filtered
+# the 09:00:07 RTMP multicasts and atalkd never learned the network).
 modprobe appletalk
-ip link show veth-atalk >/dev/null 2>&1 || ip link add veth-atalk type veth peer name veth-router
-ip link set veth-atalk up
-ip link set veth-router up
-ip link show pomtap0 >/dev/null 2>&1 || ip link add link veth-router name pomtap0 type macvtap mode bridge
-ip link set pomtap0 up
-chown "$REAL_USER" "/dev/tap$(cat /sys/class/net/pomtap0/ifindex)"
+ip link del veth-atalk 2>/dev/null || true       # clean legacy macvtap setup
+ip link show pomtap0 >/dev/null 2>&1 && ip link del pomtap0 2>/dev/null || true
+ip tuntap add dev pomtap0 mode tap user "$REAL_USER"
 
 # ── 2. router (as the real user; it owns the tap + the LToUDP socket) ──
 sudo -u "$REAL_USER" -- bash -c \
@@ -65,11 +65,12 @@ for i in $(seq 1 20); do
 done
 grep -q "claiming node address" "$CONF/router.log" || {
     echo "router did not come up — $CONF/router.log:"; tail -5 "$CONF/router.log"; exit 1; }
+ip link set pomtap0 up                 # carrier present once the router holds the tap
 echo "router up (run/router.log)"
 
 # ── 3. atalkd (non-seed: learns net/zone from the router) + afpd ──
 cat > "$CONF/atalkd.conf" <<EOF
-veth-atalk -phase 2
+pomtap0 -phase 2
 EOF
 cat > "$CONF/afpd.conf" <<EOF
 "POM68K" -ddp -notcp -uamlist uams_guest.so -nosavepassword

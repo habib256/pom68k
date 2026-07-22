@@ -17,16 +17,21 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'extern' / 'tashrouter'))
 
 from tashrouter.port.localtalk.ltoudp import LtoudpPort
-from tashrouter.port.ethertalk.macvtap import MacvtapPort
+from tashrouter.port.ethertalk.tap import LinuxTapPort
 from tashrouter.router.router import Router
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s: %(message)s')
 
+# TAP, not macvtap: the host DDP stack (atalkd) talks DIRECTLY on pomtap0 —
+# no veth pair, no macvtap multicast filtering (macvtap dropped the
+# 09:00:07:ff:ff:ff RTMP multicasts and atalkd never learned the network).
+# The tap is pre-created user-owned by appleshare.sh; locally-administered
+# MAC for the router's EtherTalk side.
 router = Router('POM68K router', ports=(
     LtoudpPort(seed_network=1, seed_zone_name=b'POM68K'),
-    MacvtapPort(macvtap_name='pomtap0', seed_network_min=2,
-                seed_network_max=2, seed_zone_names=[b'POM68K']),
+    LinuxTapPort('pomtap0', b'\x02POM68', seed_network_min=2,
+                 seed_network_max=2, seed_zone_names=[b'POM68K']),
 ))
 
 print('POM68K AppleTalk router: LToUDP <-> pomtap0 (zone "POM68K")')
