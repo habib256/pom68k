@@ -40,6 +40,9 @@ fi
 
 [ -x "$NA/sbin/afpd" ] || { echo "run tools/netatalk2/build_netatalk2.sh first"; exit 1; }
 mkdir -p "$CONF"
+# run/ may have been created by a previous sudo run — the router writes its
+# pid/log there as the real user.
+chown -R "$REAL_USER" "$CONF"
 stop_all
 sleep 1
 
