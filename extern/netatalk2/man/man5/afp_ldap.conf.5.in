@@ -1,0 +1,173 @@
+'\" t
+.\"     Title: afp_ldap.conf
+.\"    Author: [FIXME: author] [see http://www.docbook.org/tdg5/en/html/author]
+.\" Generator: DocBook XSL Stylesheets vsnapshot <http://docbook.sf.net/>
+.\"      Date: 08 Mar 2024
+.\"    Manual: 2.4.9
+.\"    Source: 2.4.9
+.\"  Language: English
+.\"
+.TH "AFP_LDAP\&.CONF" "5" "08 Mar 2024" "2\&.4\&.9" "2.4.9"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+afp_ldap.conf \- Configuration file used by \fBafpd\fR(8) to configure connections to an LDAP server
+.SH "DESCRIPTION"
+.PP
+afp_ldap\&.conf
+is the configuration file used by
+\fBafpd\fR
+to set up connections to an LDAP server\&. This is needed for ACL support in order to be able to query LDAP for UUIDs\&.
+.PP
+Any line not prefixed with # is interpreted\&.
+.PP
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+.PP
+You can use
+\fBafpldaptest\fR(1)
+to syntactically check your config
+.sp .5v
+.RE
+The required parameters and their meanings are:
+.SH "PARAMETER"
+.PP
+ldap_uri
+.RS 4
+Specifies the LDAP URI of the server to connect to\&. The URI scheme may be ldap, ldapi or ldaps, specifying LDAP over TCP, ICP or TLS respectively (if supported by the LDAP library)\&. This is only needed for explicit ACL support in order to be able to query LDAP for UUIDs\&.
+.sp
+.RE
+.PP
+ldap_auth_method
+.RS 4
+Authentication method:
+\fBnone | simple | sasl\fR
+.PP
+none
+.RS 4
+anonymous LDAP bind
+.RE
+.PP
+simple
+.RS 4
+simple LDAP bind
+.RE
+.PP
+sasl
+.RS 4
+SASL\&. Not yet supported !
+.RE
+.RE
+.PP
+ldap_auth_dn
+.RS 4
+Distinguished Name of the user for simple bind\&.
+.sp
+.RE
+.PP
+ldap_auth_pw
+.RS 4
+Distinguished Name of the user for simple bind\&.
+.sp
+.RE
+.PP
+ldap_userbase
+.RS 4
+DN of the user container in LDAP\&.
+.sp
+.RE
+.PP
+ldap_userscope
+.RS 4
+Search scope for user search:
+\fBbase | one | sub\fR
+.sp
+.RE
+.PP
+ldap_groupbase
+.RS 4
+DN of the group container in LDAP\&.
+.sp
+.RE
+.PP
+ldap_groupscope
+.RS 4
+Search scope for user search:
+\fBbase | one |\ \&sub\fR
+.sp
+.RE
+.PP
+ldap_uuuid_attr
+.RS 4
+Name of the LDAP attribute with the UUIDs\&.
+.sp
+Note: this is used both for users and groups\&.
+.sp
+.RE
+.PP
+ldap_name_attr
+.RS 4
+Name of the LDAP attribute with the users short name\&.
+.sp
+.RE
+.PP
+ldap_group_attr
+.RS 4
+Name of the LDAP attribute with the groups short name\&.
+.sp
+.RE
+.SH "EXAMPLES"
+.PP
+\fBExample.\ \&afp_ldap\&.conf setup with simple bind\fR
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ldap_uri         = ldap://somehost:1234/
+ldap_auth_method = simple
+ldap_auth_dn     = cn=admin,dc=domain,dc=org
+ldap_auth_pw     = notthisone
+ldap_userbase    = ou=users,dc=domain,dc=org
+ldap_userscope   = one
+ldap_groupbase   = ou=groups,dc=domain,dc=org
+ldap_groupscope  = one
+ldap_uuid_attr   = some_attribute
+ldap_name_attr   = cn
+ldap_group_attr  = cn
+.fi
+.if n \{\
+.RE
+.\}
+.SH "SEE ALSO"
+.PP
+\fBafpd\fR(8),
+\fBAppleVolumes.default\fR(5),
+\fBafpldaptest\fR(1)

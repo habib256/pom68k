@@ -1,0 +1,11 @@
+Makefile
+Makefile.in
+.deps
+.libs
+test
+test.conf
+test.default
+test.log
+test.trs
+test.sh.*
+test-suite.log

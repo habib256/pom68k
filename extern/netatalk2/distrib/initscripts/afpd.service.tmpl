@@ -1,0 +1,19 @@
+# This file is part of Netatalk :NETATALK_VERSION:.
+
+[Unit]
+Description=Netatalk AFP fileserver for Macintosh clients
+Documentation=man:afpd(8) man:afpd.conf(5) man:AppleVolumes.default(5) man:afp_signature.conf(5) man:afp_voluuid.conf(5) man:afp_ldap.conf(5)
+Documentation=https://netatalk.io/
+After=network-online.target slpd.service avahi-daemon.service cnid.service atalkd.service
+Requires=cnid.service
+
+[Service]
+Type=forking
+GuessMainPID=no
+ExecStart=:SBINDIR:/afpd
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+Also=cnid.service

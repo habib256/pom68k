@@ -1,0 +1,165 @@
+Information for Netatalk Developers
+===================================
+
+For basic installation instructions, see the Installation chapter
+in the manual, and the INSTALL file in the root of the source tree.
+
+Netatalk is an implementation of AFP, with built in support for
+AFP over TCP (also known as AppleShare IP, or ASIP for short.)
+Netatalk also supports the AppleTalk Protocol Suite for legacy Macs,
+Lisas and Apple IIs via the "atalkd" daemon.
+
+It supports EtherTalk Phase I and II, RTMP, NBP, ZIP, AEP, ATP,
+PAP, and ASP, while expecting the kernel to supply DDP.
+The complete stack looks like this on a BSD-derived system:
+
+    AFP                          AFP
+     |                            |
+    ASP    PAP                   DSI
+      \   /                       |
+       ATP RTMP NBP ZIP AEP       |
+        |    |   |   |   |        |
+   -+---------------------------------------------------+- (kernel boundary)
+    |                    Socket                         |
+    +-----------------------+------------+--------------+
+    |                       |     TCP    |    UDP       |
+    |          DDP          +------------+--------------+
+    |                       |           IP              |
+    +-----------------------+---------------------------+
+    |                Network-Interface                  |
+    +---------------------------------------------------+
+
+* DSI is a session layer used to carry AFP over TCP.
+* DDP is a socket to socket protocol that all other AppleTalk protocols
+  are built on top of.
+* "atalkd" implements RTMP, NBP, ZIP, and AEP.  It
+  is the AppleTalk equivalent of Unix "routed".  There is also a
+  client-stub library for NBP that exists as a client-stub library.
+* ATP and ASP are implemented as libraries.
+* "papd" allows Macs to spool to "lpd", and "pap" allows Unix
+  machines to print to AppleTalk connected printers.
+* "psf" is a PostScript printer filter for "lpd", designed to use "pap".
+* "psorder" is a PostScript reverser, called by "psf" to reverse pages
+  printed to face-up stacking printers.
+* "afpd" provides Macs with an interface to the Unix file system.
+  Refer to the appropriate man pages for operational information.
+
+
+Error checking and logging
+==========================
+
+We want rigid error checking and concise log messages. This often leads
+to significant code bloat where the relevant function call is buried in error
+checking and logging statements.
+In order to alleviate error checking and code readability, we provide a set
+of error checking macros in <atalk/errchk.h>. These macros compare the return
+value of statements againt 0, NULL, -1 (and maybe more, check it out).
+Every macro comes in four flavours: EC_CHECK, EC_CHECK_LOG, EC_CHECK_LOG_ERR
+and EC_CHECK_CUSTOM:
+- EC_CHECK just checks the CHECK
+- EC_CHECK_LOG additionally logs the stringified function call.
+- EC_CHECK_LOG_ERR allows specifying the return value
+- EC_CHECK_CUSTOM allows custom actions
+The macros EC_CHECK* unconditionally jump to a cleanup label where the
+neccessary cleanup can be done alongside controlling the return value.
+EC_CHECK_CUSTOM doesn't do that, so an extra "goto EC_CLEANUP" may be
+performed as appropriate.
+
+Example:
+- stat() without EC macro:
+  static int func(const char *name) {
+    int ret = 0;
+    ...
+    if ((ret = stat(name, &some_struct_stat)) != 0) {
+      LOG(...);
+      ret = -1; /* often needed to explicitly set the error indicating return value */
+      goto cleanup;
+    }
+
+    return ret;
+
+  cleanup:
+    ...
+    return ret;
+  }
+
+- stat() with EC macro:
+  static int func(const char *name) {
+    EC_INIT; /* expands to int ret = 0; */
+
+    char *uppername = NULL
+    EC_NULL(uppername = strdup(name));
+    EC_ZERO(strtoupper(uppername));
+
+    EC_ZERO(stat(uppername, &some_struct_stat)); /* expands to complete if block from above */
+
+    EC_STATUS(0);
+
+EC_CLEANUP:
+    if (uppername) free(uppername);
+    EC_EXIT;
+  }
+
+A boileplate function template is:
+
+int func(void)
+{
+    EC_INIT;
+
+    ...your code here...
+
+    EC_STATUS(0);
+
+EC_CLEANUP:
+    EC_EXIT;
+}
+
+
+Porting to new platforms
+========================
+
+To port netatalk to a new platform, you will need to consider the following:
+
+1) Endian order
+
+If your machine does not specify the byte-order in netinet/in.h,
+you may need to modify sys/netatalk/endian.h.
+
+2) Integer sizes
+
+If your machine does not define intX_t and u_intX_t,
+you will need to define them in sys/netatalk/endian.h.
+To ease matters, you can specify _ISOC9X_SOURCE
+if you have inttypes.h, HAVE_64BIT_LONGS for 64 bit machines,
+or HAVE_32BIT_LONGS for 32 bit machines.
+
+NOTE: you should only use HAVE_32/64BIT_LONGS
+on machines that don't have a header file somewhere
+with the integer sizes. If you have a file with all the relevant
+bits, modify sys/netatalk/endian.h to include it.
+
+3) Quota/statfs information
+
+You may be able to get away with either BSD4_4 or __svr4__,
+but that's unlikely if your OS is some bizarre hybrid.
+If you don't have quota support, just specify NO_QUOTA_SUPPORT.
+
+In addition, if you'll need to specify the include file
+that gets statfs() (usually either USE_VFS_H or USE_STATFS_H,
+although BSD4_4 and __svr4__ bring in a set of include files
+for that). Look at etc/afpd/quota.c, unix.c, and unix.h
+for more information.
+
+Finally, if you have a really old version of rquota,
+you can define USE_OLD_RQUOTA as well.
+
+4) Path information for lock/spool/printer files
+
+You'll need to specify -D_PATH_LOCKDIR if include/atalk/paths.h
+doesn't have the correct paths specified for printer info and lock files.
+
+Beyond that, you should make sure that your operating system looks and
+smells like a Un*x POSIXy operating system. If your operating system
+is peculiar, you may need to add in compatibility routines
+(libatalk/compat, include/atalk/compat.h) to make it look more
+like the others.
