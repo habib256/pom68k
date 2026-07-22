@@ -66,8 +66,24 @@ template <class M> static void wireLocalTalk(M& mem, int byteCycles) {
     if (!std::getenv("POM68K_LTOUDP")) return;
     if (!g_ltoudp.start()) return;
     mem.scc().setByteCycles(byteCycles);
-    mem.scc().onTxFrame = [](int ch, const uint8_t* d, size_t n) {
-        if (ch == 0) g_ltoudp.send(d, n);            // channel B = LocalTalk
+    mem.scc().onTxFrame = [&mem](int ch, const uint8_t* d, size_t n) {
+        if (ch != 0) return;                         // channel B = LocalTalk
+        // LToUDP convention (Mini vMac / TashRouter): directed-frame
+        // control handshakes never cross the UDP cable — peers only handle
+        // ENQ and data. The CABLE answers the guest's lapRTS with a local
+        // lapCTS (the LC II Chooser NBP lookup fired 161 unanswered RTS
+        // retries at the router before this); the guest then sends the
+        // data frame, which does go on the wire. Broadcast RTS expects no
+        // CTS; RTS/CTS themselves stay off the wire.
+        if (n == 3 && d[2] == 0x84) {                // lapRTS
+            if (d[0] != 0xFF) {
+                const uint8_t cts[3] = { d[1], d[0], 0x85 };
+                mem.scc().injectRxFrame(0, cts, 3);
+            }
+            return;
+        }
+        if (n == 3 && d[2] == 0x85) return;          // lapCTS: local only
+        g_ltoudp.send(d, n);
     };
 }
 template <class M> static void pollLocalTalk(M& mem) {
