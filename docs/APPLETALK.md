@@ -321,31 +321,43 @@ closed down" alert you hit.** In netatalk:
   **SIGTERMs the session child** → the client sees exactly *"the file
   server's connection has unexpectedly closed down."*
 
-So your screenshot (Input mounted, then dropped) is an **ASP tickle
-timeout**: the periodic tickle round-trip stopped completing across the
-LToUDP path for ~6 intervals. Likely causes, in POM68K terms:
+A tickle timeout is a real risk on a lossy cable and looks *exactly*
+like this alert — so it was the first suspect for the 2026-07-22
+"Input mounted then dropped" screenshot. **It was not the cause here.**
+The live LToUDP capture showed the wire working perfectly (NBP lookups
+answered, the reply reaching the guest node every time), and the afpd
+syslog gave the real reason:
 
-1. **A dropped tickle frame on our SCC Rx** — if a best-effort tickle
-   TReq (or the guest's reply) is lost during the half-duplex Rx-off
-   window or a FIFO-close race, ATP does not retry hard (`sreqtries=1`),
-   so it just goes missing. Six of those in a row = drop.
-2. **GUI quantum starving the wire** — if the emulator runs long
-   quanta without slicing while the UDP cable is active, a tickle can
-   miss its window. `runQuantumWithWire` (1 ms slices) exists for this;
-   verify it stays active for LC II/idle-desktop, not just during the
-   LLAP handshake.
-3. **IDG deferral over-delaying a reply** — the new inter-dialog-gap
-   deferral must not push the guest's tickle reply past the server's
-   patience; it shouldn't (417 µs ≪ tickleval), but worth confirming
-   the reply is not queued behind another deferred frame.
+```
+afpd: AFPVersion 2.1 Login by gistarcade          ← login OK
+afpd: no suitable network config from CNID server (localhost:4700)
+afpd: get_id: Connection to the CNID backend DB failed ... fatal error.
+      Is the cnid_metad process running?
+```
 
-**Debugging next step:** capture with the LToUDP sniffer
-(`scratchpad/ltoudp_sniff.py`, decodes DDP/NBP) while the mount sits
-idle, and watch for the periodic ATP tickle (DDP type 3, small) every
-`tickleval` s and the guest's response. A one-sided tickle (server
-sends, guest never answers, or vice-versa) localizes it to our Rx or Tx
-path. A blunt mitigation is raising `tickleval` in the afpd config, but
-the real fix is making the tickle exchange lossless on the cable.
+**The real cause was the CNID backend, not ASP.** afpd's default CNID
+scheme (`dbd`) asks a **`cnid_metad`** daemon on `localhost:4700` to
+spawn a per-volume `cnid_dbd` that hands out Catalog Node IDs. Our
+`appleshare.sh` never started `cnid_metad`, so the instant afpd needed a
+CNID (right after the volume mounted) it hit a *fatal* error and killed
+the session child — which the Mac reports with the same
+"unexpectedly closed down" string. The master afpd stayed up (still
+NBP-registered), which is why the server kept appearing in the Chooser
+and the wire looked healthy. **Fix:** `appleshare.sh` now starts
+`cnid_metad` between `atalkd` and `afpd` (commit 2026-07-22). Moral: on
+a "connection closed" alert, read the **afpd syslog first** — the
+network path is usually fine.
+
+**If you ever *do* hit a genuine tickle timeout** (long idle mount that
+dies on a busy/lossy cable), the levers are: capture with the LToUDP
+sniffer (`scratchpad/ltoudp_sniff.py`) and watch for the periodic ATP
+tickle (DDP type 3) each `tickleval` s and the guest's reply — a
+one-sided exchange localizes it to our Rx or Tx; a best-effort tickle
+(`sreqtries=1`) that is lost in the half-duplex Rx-off window or a
+FIFO-close race just goes missing, and 6 in a row drops the session.
+Mitigations: keep `runQuantumWithWire`'s 1 ms slicing active while the
+cable is up, ensure the IDG deferral (417 µs ≪ tickleval) never queues
+the reply behind another frame, or raise `tickleval`.
 
 ### 4.2 ADSP — the full-duplex stream
 
