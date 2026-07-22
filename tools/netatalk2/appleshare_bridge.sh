@@ -19,7 +19,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-NA="$ROOT/extern/netatalk2/install"
+NA="$ROOT/extern/netatalk2-build/install"
 [ -x "$NA/sbin/afpd" ] || { echo "run tools/netatalk2/build_netatalk2.sh first"; exit 1; }
 [ "$(id -u)" = 0 ] || { echo "needs sudo (DDP sockets + interfaces)"; exit 1; }
 

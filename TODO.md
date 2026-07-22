@@ -71,9 +71,15 @@ Next milestones:
   our exact wire format (4-byte pid tag + raw LLAP); a live TashRouter's
   own address probe (ENQ 254/254/$81) was received on our socket.
   README documents the minimal router. Remaining:
-- [ ] Full AppleShare session: TashRouter + netatalk **2.x** (DDP) host
-  setup serving `input/`, Chooser mounts the volume. Netatalk 2.x is
-  not packaged on modern distros — container or source build; document.
+- [~] Full AppleShare session (2026-07-22: infrastructure DONE, live
+  Chooser mount pending manual validation): netatalk **2.4.9** and
+  TashRouter are **vendored** (`extern/netatalk2` + `extern/tashrouter`,
+  POM68K_VENDOR.md each); `tools/netatalk2/build_netatalk2.sh` builds
+  hermetically (static pinned BDB 5.3 + libgcrypt, no system packages —
+  afpd/atalkd 2.4.9 verified running); `appleshare_bridge.sh` (sudo:
+  appletalk module + veth/macvtap pair) + `router.py` complete the
+  chain serving `input/` as "Input" in zone "POM68K". Remaining: run
+  the bridge with a GUI guest and mount the volume from the Chooser.
 - [ ] Interop check against Mini vMac's LToUDP (same multicast group).
 
 ## LLE fidelity — replace HLE shortcuts (see `docs/LLE_VS_HLE.md`)

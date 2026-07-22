@@ -107,20 +107,14 @@ at boot — System 6 only opens it from the Chooser). Gated:
 `ltoudp_test`, `llap_two_system_etalon` (two full Systems acquire
 distinct LLAP node IDs over the shared cable).
 
-To reach AppleShare/printers beyond the virtual cable, bridge with
-[TashRouter](https://github.com/lampmerchant/tashrouter) (its `LtoudpPort`
-speaks the same wire format — interop verified against its address
-probes) and a DDP-capable AFP server (netatalk **2.x**; 3.x dropped
-AppleTalk):
-
-```python
-# python3 router.py — minimal TashRouter joining our cable
-from tashrouter.port.localtalk.ltoudp import LtoudpPort
-from tashrouter.router.router import Router
-router = Router('router', ports=(
-    LtoudpPort(seed_network=1, seed_zone_name=b'POM68K Net'),))
-router.start()
-```
+To mount a host folder in the guest's **Chooser** (AppleShare over real
+AppleTalk), the repo vendors the full bridge: TashRouter
+(`extern/tashrouter`, LToUDP ⇄ EtherTalk) and netatalk **2.4.9**
+(`extern/netatalk2`, the last AFP-over-DDP server — 3.x dropped
+AppleTalk). Build once with `tools/netatalk2/build_netatalk2.sh`
+(hermetic, no system packages), then follow
+`tools/netatalk2/README.md` — the bridge serves `input/` as volume
+"Input" in zone "POM68K".
 
 ## Sharing host files with the Mac (baked HFS volume)
 

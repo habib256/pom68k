@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## 2026-07-22 — AppleShare bridge vendored: netatalk 2.4.9 + TashRouter
+
+The path from the emulated Chooser to a host folder is now fully in-tree
+(user request: vendor like Moira, nothing gitignored):
+
+- **`extern/netatalk2`** — netatalk 2.4.9 pristine sources (tag
+  `netatalk-2-4-9`, GPL-2), the last AFP-over-DDP server; 3.x dropped
+  AppleTalk and 2.x left modern distros. `tools/netatalk2/
+  build_netatalk2.sh` builds it hermetically: static Berkeley DB 5.3 +
+  libgcrypt/libgpg-error fetched with pinned sha256, everything under
+  gitignored `extern/netatalk2-build/` — `afpd`/`atalkd` 2.4.9 verified
+  running, kernel `appletalk` module present on Ubuntu 6.14.
+- **`extern/tashrouter`** — TashRouter (MIT) vendored; its `LtoudpPort`
+  speaks our exact LToUDP format (interop verified live earlier today).
+- **Bridge**: `appleshare_bridge.sh` (sudo: appletalk module, veth pair +
+  macvtap-on-veth so the DDP segment never touches the LAN, generated
+  atalkd/afpd/AppleVolumes configs serving `input/` as "Input", guest
+  login) + `router.py` (LToUDP ⇄ pomtap0, zone "POM68K") +
+  `tools/netatalk2/README.md`. Also GUI: the RTC now seeds from the
+  host's local wall clock at launch (the battery file froze while off).
+
 ## 2026-07-22 — LLAP two-System etalon: real address acquisition between two Systems
 
 `llap_two_system_etalon` boots TWO full Mac II machines under System 7 on

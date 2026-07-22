@@ -37,3 +37,8 @@ Testing/
 build-oracle-uae/
 scratchpad/__pycache__/
 .venv-tools/
+
+# netatalk 2 vendored SOURCE lives in extern/netatalk2 (committed);
+# only its build tree and fetched static deps are ignored
+extern/netatalk2-build/
+tools/netatalk2/run/
