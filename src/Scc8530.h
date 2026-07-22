@@ -125,6 +125,10 @@ private:
         int rxPace = 0;              // cycles/byte for the current frame
         size_t rxPos = 0;
         int rxTimer = 0;             // cycles to the next FIFO byte
+        int rxIdle = 1 << 24;        // cycles since the wire last carried a
+                                     // byte (starts "long idle"; capped) —
+                                     // injectRxFrame fills the LLAP IDG
+                                     // remainder from it
         struct RxByte { uint8_t d; uint8_t rr1; };
         std::deque<RxByte> fifo;     // 3-deep Rx FIFO, per-byte RR1 status
         bool rxIp = false;           // Rx-char-available interrupt pending
@@ -152,4 +156,8 @@ private:
                                                  // gap in byte times (~139 µs:
                                                  // after the sender's post-EOM
                                                  // Rx re-arm, inside its wait)
+    static constexpr int kIdgBytes = 12;         // every other frame: LLAP
+                                                 // minimum 400 µs inter-dialog
+                                                 // gap (~417 µs) so the driver
+                                                 // re-arms on an idle line
 };

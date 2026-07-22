@@ -148,7 +148,20 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
     const uint16_t fcs = crc16x25(d, n);
     f.push_back(uint8_t(fcs & 0xFF));            // FCS little-end first (X25)
     f.push_back(uint8_t(fcs >> 8));
-    const int delay = express ? kCtsGapBytes * byteCycles_ : 0;
+    // A sender defers until the line has been idle for LLAP's minimum
+    // 400 µs INTER-DIALOG gap — so a frame arriving on a busy (or
+    // just-freed) line starts only once the gap is filled. With no gap,
+    // back-to-back cable frames (the router's LkUp broadcast then afpd's
+    // LkUpReply) started while the driver was still consuming the
+    // previous frame's tail and re-arming hunt: the reply's first bytes
+    // landed in the closing FIFO and the rest played into hunt — the
+    // Chooser never saw any server (2026-07-22, GISTPERSO live capture).
+    // A frame arriving on a long-idle line still starts at once (the
+    // gap is already filled), and express CTS frames keep their short
+    // fixed gap — intra-dialog frames must land inside the sender's
+    // 200 µs INTER-FRAME window, not after an IDG.
+    const int delay = express ? kCtsGapBytes * byteCycles_
+                    : std::max(0, kIdgBytes * byteCycles_ - c.rxIdle);
     c.rxQueue.push_back({std::move(f), byteCycles_, delay});
 }
 
@@ -476,6 +489,10 @@ bool Scc8530::tick(int cycles) {
         // therefore always plays out on the wire — bytes only reach the
         // FIFO while the receiver is enabled (rxPushByte).
         if (sdlcMode(c)) {
+            // Line-idle clock for the IDG deferral (injectRxFrame): busy
+            // while a frame is playing, accumulating (capped) otherwise.
+            if (!c.rxCur.empty()) c.rxIdle = 0;
+            else if (c.rxIdle < (1 << 24)) c.rxIdle += cycles;
             if (c.rxCur.empty() && !c.rxQueue.empty()) {
                 // Inter-frame gap: the line stays idle (hunt, standing
                 // abort) until the queued frame's start delay elapses —
