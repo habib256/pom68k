@@ -370,9 +370,21 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
     // bit 4 stays set, which is what the LLAP sender's carrier sense wants
     // ("no carrier, clear to transmit"); an incoming frame clears it
     // (rxStartFrame). A Sync/Hunt transition is an ext/status source when
-    // WR15 bit 4 arms it. Entering hunt abandons a frame mid-delivery.
-    if (ptr_ == 3 && (v & 0x10)) {
-        c.rxCur.clear();
+    // WR15 bit 4 arms it.
+    //
+    // Enter Hunt must NOT abort a frame already being clocked in. A synced
+    // receiver is past the flag-hunt phase, and the LLAP driver re-arms
+    // with Enter Hunt the instant it finishes the PREVIOUS frame's EOF —
+    // which on our byte-paced wire is exactly when the NEXT frame has
+    // already started. Clearing rxCur there truncated every long directed
+    // frame to its first 2-3 bytes: the 44-byte NBP LkUpReply lost its DDP
+    // payload, so the AppleShare server never populated the Chooser even
+    // though the reply reached the node on the wire (2026-07-22, live
+    // GISTPERSO capture). Only honour Enter Hunt when no frame is in
+    // flight; an in-flight frame finishes and re-enters hunt at its EOF
+    // (rxPushByte). Queued-but-not-started frames (rxQueue) are untouched
+    // either way, as before.
+    if (ptr_ == 3 && (v & 0x10) && c.rxCur.empty()) {
         c.rxPos = 0;
         if (!c.hunt) {
             c.hunt = true;

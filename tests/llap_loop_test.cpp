@@ -277,6 +277,53 @@ int main() {
         CHECK(!(b.readCtl(kB) & 0x10), "Sync/Hunt low while carrier present");
     }
 
+    // ── A mid-frame Enter-Hunt must NOT truncate the frame in flight ──
+    // The LLAP driver re-arms the receiver by writing WR3 with the Enter
+    // Hunt bit (0x10) the instant it finishes the previous frame — which
+    // on the byte-paced wire lands while the NEXT frame is already being
+    // clocked in. Clearing the in-flight frame there truncated every long
+    // directed frame to its first 2-3 bytes: the 44-byte NBP LkUpReply
+    // lost its DDP payload and the AppleShare server never populated the
+    // guest's Chooser even though the reply reached the node on the wire
+    // (2026-07-22, live GISTPERSO capture). Enter Hunt while synced onto a
+    // frame is ignored; the frame finishes and re-enters hunt at its EOF.
+    {
+        Scc8530 a, b;
+        a.reset(); b.reset();
+        lapArm(a, 1); lapArm(b, 1);
+        a.onTxFrame = [&](int ch, const uint8_t* d, size_t n) {
+            if (ch == kB) b.injectRxFrame(kB, d, n);
+        };
+        // A 44-byte directed long-DDP frame to node 1 (dst,src,type=$02…),
+        // like an NBP LkUpReply.
+        uint8_t frame[44];
+        frame[0] = 1; frame[1] = 0xFE; frame[2] = 0x02;
+        for (int i = 3; i < 44; i++) frame[i] = uint8_t(0x40 + i);
+        lapSend(a, frame, sizeof frame);
+
+        // Drain, but re-arm with WR3 Enter Hunt (0xD5 has bit 4 set) after
+        // the first two bytes — exactly what the driver does mid-frame.
+        std::vector<uint8_t> got;
+        uint8_t rr1 = 0;
+        for (int t = 0; t < 80; t++) {
+            b.tick(kByteCyc);
+            b.writeCtl(kB, 0x10);                 // Reset Ext/Status
+            while (true) {
+                b.writeCtl(kB, 0);
+                if (!(b.readCtl(kB) & 0x01)) break;
+                b.writeCtl(kB, 1);
+                rr1 = b.readCtl(kB);
+                got.push_back(b.readData(kB));
+                if (got.size() == 2) wr(b, 3, 0xD5);  // mid-frame re-arm
+            }
+        }
+        CHECK(got.size() == sizeof frame + 2,
+              "long directed frame survives a mid-frame Enter Hunt (+FCS)");
+        CHECK(got.size() >= 44 && !std::memcmp(got.data(), frame, 44),
+              "the whole LkUpReply-sized frame is delivered intact");
+        CHECK((rr1 & 0x80) && !(rr1 & 0x40), "EOF + good FCS on the last byte");
+    }
+
     if (failures == 0)
         std::printf("PASS: llap loop (ENQ both ways, addr filter, broadcast, "
                     "abort, RTS/CTS dialogue in-window, express CTS across "
