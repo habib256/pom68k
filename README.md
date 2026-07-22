@@ -45,6 +45,16 @@ overlay through the VIA and animates a pattern in the 512×342 framebuffer.
 Arguments: `[ROM] [floppy] [SCSI]`. Defaults probe `disks35/Disk605.dsk`
 then `hdv/HD20SC.vhd`. Boots System 6 from floppy or SCSI to the Finder.
 
+### Mac II
+
+A **256 KB ROM** selects the 68020 + Toby NuBus video machine; it boots
+System 6 and 7 to the Finder. ADB (keyboard/mouse) uses an HLE
+transceiver by default. An experimental **LLE** ADB path runs the real
+PIC1654S transceiver firmware — set `POM68K_ADB_LLE=1` and drop the dump
+at `roms/adbmodem/342s0440-b.bin` (1024 B, CRC `cffb33eb`, user-provided).
+It is a work in progress (see `DEV.md` "Mac II ADB: PIC1654S LLE") and not
+yet the default.
+
 ### Mac LC II
 
 A **512 KB ROM** selects V8 + 68030 (+ 68882 by default; `POM68K_NOFPU=1`

@@ -13,6 +13,33 @@ pass.
 
 Line numbers are indicative — verify with grep before relying on them.
 
+> ## Principle — a clean LLE **before** the HLE boost
+>
+> **Order matters, and it is not negotiable: the LLE core must be correct
+> and complete first; the HLE "boost" accelerator (`HLE_OVERLAY.md`) is
+> layered on top only afterwards.** The boost is an *optimization/shortcut*
+> mode — it trades conformance for speed or convenience — and it is only
+> ever meaningful, testable, and safe when there is a faithful,
+> gate-verified LLE reference underneath to (a) define correct behaviour,
+> (b) fall back to when the shortcut does not apply, and (c) diff against
+> to prove the shortcut is equivalent where it claims to be.
+>
+> Building the boost first inverts the dependency: shortcuts calcify into
+> the only implementation, "correct" becomes whatever one System image
+> happened to need, and every new image is a guess (exactly the trap the
+> **HLE-hack** class below documents). So:
+>
+> - Finish the LLE for a subsystem (real silicon/firmware, gated) **before**
+>   adding any HLE boost path for it. The Mac II ADB PIC1654S work
+>   (2026-07-22, §2) is the template: the real transceiver goes in first,
+>   opt-in, until it is the default — *then* an HLE fast-path could be
+>   offered as a boost, never as the substitute.
+> - Every HLE shortcut ships **behind a visible non-conformant flag** and
+>   with the LLE path still present and default.
+> - A boost is accepted only once it is shown equivalent to the LLE
+>   reference on the gates; where it diverges, that divergence is the
+>   flag's whole point and must be documented, not hidden.
+
 ## Classification
 
 | Class | Meaning | Long-term policy |
@@ -157,13 +184,23 @@ step 3) — remove on next touch.
 | Device | Files | What is replaced | Proper LLE would be |
 |---|---|---|---|
 | **Egret / Cuda** | `Egret.*` | 68HC05 MCU firmware → packet-level command emulation (ADB autopoll, RTC heartbeat, XPRAM streams, Cuda polarity flavor) | 68HC05 core + dumped Egret/Cuda firmware (big; MAME has it) |
-| **ADB modem (Mac II)** | `AdbVia.*` | PIC1654S firmware → NEW/EVEN/ODD/IDLE byte state machine on the VIA SR | PIC core + firmware dump |
-| **ADB bus** | `AdbBus.*` | Bit-serial ADB → command-level transactions, clamped mouse deltas | Bit-level ADB timing (only matters for exotic peripherals) |
+| **ADB modem (Mac II)** | `AdbVia.*` (HLE default) | PIC1654S firmware → NEW/EVEN/ODD/IDLE byte state machine on the VIA SR | **LLE path built** (opt-in `POM68K_ADB_LLE=1`): `Pic1654s` runs the real `342s0440-b.bin`, `AdbLine` is the bit-serial device, `Via6522::extShiftCB1` the wire — see below |
+| **ADB bus** | `AdbBus.*` (HLE) / `AdbLine.*` (LLE) | HLE: bit-serial ADB → command-level, clamped deltas. LLE: real bit-serial line (`AdbLine`, MAME `macadb.cpp` port) | LLE `AdbLine` is bit-level once the co-stepping lands |
 
 These are pragmatic and well-gated (`egret_test`, `input_etalon`,
-`macii_boot_etalon`); firmware-level LLE is a separate, large milestone
-and **not** a priority — but they must stay protocol-faithful to ROM
-traces (TODO: "expand Cuda commands only from ROM/driver traces").
+`macii_boot_etalon`); they must stay protocol-faithful to ROM traces
+(TODO: "expand Cuda commands only from ROM/driver traces").
+
+The **Mac II ADB modem is the first HLE-replacement being migrated to
+true firmware LLE** (2026-07-22) — the pattern the rest should follow.
+`Pic1654s` (PIC16C5x core, gate `pic1654s_test`) + `AdbLine` (gate
+`adbline_test`) + `Via6522::extShiftCB1` run the *real* transceiver ROM
+behind an opt-in flag; it already reaches the point where the PIC
+receives the ROM's commands, drives the ADB bus, and `AdbLine` decodes
+them. It is **not the default yet** — the remaining blocker (the PIC
+mis-routing the ROM's self-test under burst interleaving) needs
+cycle-exact PIC↔CPU co-stepping (TODO ★). This ordering is deliberate:
+see the principle below.
 Reference hierarchy for the Egret/Cuda protocol, established by the
 second audit: **MAME `cuda.cpp`** (LLE, real 6805 firmware — the
 timing oracle), **DingusPPC `viacuda.cpp` + `zdocs/developers/
@@ -309,6 +346,16 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
     cell timing + CRC, NuBus arbitration, 040 copyback/snooping,
     Egret/Cuda **firmware** LLE (68HC05 core + dump, only if a use
     case demands it — MAME proves it works).
+11. **Mac II ADB → firmware LLE** (started 2026-07-22, §2; opt-in
+    `POM68K_ADB_LLE=1`). `Pic1654s` + `AdbLine` + `Via6522::extShiftCB1`
+    run the real `342s0440-b.bin`. **★ Next / priority: cycle-exact
+    PIC↔CPU co-stepping** — `syncTo` runs the PIC in bursts (VIA state
+    frozen mid-burst), aliasing the ROM's fast ST edges so the PIC
+    mis-routes the ADB self-test as a command; true cycle-lockstep should
+    unblock self-test → `ADBReInit` → mouse-at-addr-3, letting the flag
+    become the default and **retiring the HLE `AdbVia`** (proving the
+    LLE-first principle end to end). This is the concrete precedent for
+    the Egret/Cuda 68HC05 firmware LLE (step 10) later.
 
 Every remaining hack must be: (a) behind an env flag or module toggle,
 (b) logged when it fires, (c) listed here, and (d) eventually migrated

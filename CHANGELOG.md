@@ -1,5 +1,44 @@
 # CHANGELOG
 
+## 2026-07-22 — Mac II ADB goes LLE: real PIC1654S transceiver (opt-in)
+
+The HLE `AdbVia` byte-model is fundamentally too coarse for the Mac II:
+its fixed timer misses the ROM's rapid ST transitions and drops ~99.99 %
+of `ADBReInit`, so the ROM maps the mouse to a phantom address and it
+sits frozen (`macii_mouse_trace` reproduces it). Rather than keep
+patching the shim, start replacing it with the *real* transceiver
+firmware — the way MAME does — behind `POM68K_ADB_LLE=1` (default stays
+HLE, all gates green, no regression).
+
+- **`Pic1654s`** (new): PIC16C5x-family 12-bit core, the GI/NMOS PIC1654S
+  Apple used as the ADB Modem 342S0440-B. Ported from MAME `pic16c5x.cpp`
+  with the `0x1654` quirks (OPTION/SLEEP/TRIS = NOP, port read = pins AND
+  latch, `/8` clock, external-RTCC timer). Runs the dumped
+  `roms/adbmodem/342s0440-b.bin` (CRC `cffb33eb`). Gate `pic1654s_test`.
+- **`AdbLine`** (new): bit-serial ADB keyboard+mouse device model
+  (attention/sync/bit/stop, SRQ, Listen-R3 reassign, change-detected
+  Talk R0), ported from MAME `macadb.cpp`, timed to the PIC's own wire
+  rate. Gate `adbline_test`.
+- **`Via6522::extShiftCB1`**: external-clock CB1 shift for the ADB modes
+  (rising-edge, matching the firmware's shift routines).
+- **`AdbVia`**: runs the firmware, wires the ports to the VIA shifter and
+  the ADB line, and steps the PIC cycle-synced at each VIA1 access
+  (`MacIIMemory::viaAccess` → `syncTo`).
+
+Two non-obvious fixes made it run end-to-end (PIC receives ROM commands,
+drives the ADB bus, `AdbLine` decodes them): **ST-idle pull-up** — PB4/PB5
+read high when the 68k leaves them as inputs, so idle reads as ST=IDLE(3)
+instead of a spurious NEW that made the PIC RESET-loop; and line timing
+**recalibrated to the PIC's own delay loops** (bit cell ≈1054 CPU cyc),
+not MAME's abstract 2 MHz ticks (which were ~2× too large — attention was
+never even detected).
+
+Not the default yet. Remaining blocker (TODO ★): the PIC mis-routes the
+ROM's ADB self-test loopback as a command because `syncTo` runs it in
+bursts (VIA state frozen mid-burst) and aliases the fast ST edges → fix
+is cycle-exact PIC↔CPU co-stepping. Full architecture + repro in DEV.md
+"Mac II ADB: PIC1654S LLE".
+
 ## 2026-07-21 — Bare no-FPU solved: _FP68K binds the integer PACK 4 (Cuda XPRAM echo bug)
 
 The "LLE step 5" enigma is closed: `POM68K_Q605_NOFPU=2` (true
