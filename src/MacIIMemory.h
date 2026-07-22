@@ -69,6 +69,7 @@ public:
     }
     Iwm& iwm() { return iwm_; }
     Scc8530& scc() { return scc_; }
+    Rtc& rtc() { return rtc_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     bool overlay() const { return overlay_; }
     bool hmmu24() const { return hmmu24_; }

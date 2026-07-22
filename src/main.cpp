@@ -34,6 +34,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -88,6 +89,18 @@ static void runQuantumWithWire(M& mem, C& cpu, int64_t frameCycles) {
         cpu.runCycles(frameCycles / kSlices);
         pollLocalTalk(mem);
     }
+}
+
+// Host wall clock → Mac epoch (seconds since 1904-01-01, LOCAL time — the
+// classic RTC keeps local wall time, there is no TZ in PRAM). GUI-only seed:
+// tests never call this, so etalons stay deterministic (clock starts at 0).
+// The Date & Time control panel still writes through as usual; only the
+// power-on value comes from the host. 1904→1970 offset = 2 082 844 800 s.
+static uint32_t hostMacSeconds() {
+    std::time_t now = std::time(nullptr);
+    std::tm lt{};
+    localtime_r(&now, &lt);
+    return uint32_t(uint64_t(now) + uint64_t(int64_t(lt.tm_gmtoff)) + 2082844800ULL);
 }
 
 static std::string execDir() {
@@ -475,6 +488,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     mem.installTobyVideo();
     mem.setCpu(&cpu);
     cpu.hardReset();
+    mem.rtc().setSeconds(hostMacSeconds());      // GUI: real local date/time
     wireLocalTalk(mem, 544);                     // 230.4 kbit/s @ 15.6672 MHz
 
     // Prefer Infinite Mac System 6.0.8 HD, then HD20SC / other SCSI images.
@@ -936,6 +950,9 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     static std::string pramPath =
         (hddPath.empty() ? std::string("lcii") : hddPath) + ".pram";
     if (mem.egret().loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
+    // The battery file's clock froze while the emulator was off; a real
+    // RTC keeps counting. Wall time always comes from the host (GUI only).
+    mem.egret().setSeconds(hostMacSeconds());
     // First boot / stale battery file: seed the Basilisk II known-good
     // XPRAM defaults instead of an all-zero PRAM (no-op once the system
     // software's 'NuMc' signature is present)
@@ -1496,6 +1513,9 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     static std::string pramPath =
         (hddPath.empty() ? std::string("quadra605") : hddPath) + ".pram";
     if (mem.cuda().loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
+    // Same as LC II: the file's clock froze while powered off — wall time
+    // comes from the host at every launch (GUI only).
+    mem.cuda().setSeconds(hostMacSeconds());
     mem.cuda().factoryDefaults();
 
     glfwSetErrorCallback(glfwErrorCallback);
@@ -1754,6 +1774,7 @@ int main(int argc, char** argv) {
     }
     mem.setCpu(&cpu);
     cpu.hardReset();
+    mem.rtc().setSeconds(hostMacSeconds());      // GUI: real local date/time
     wireLocalTalk(mem, 272);                     // 230.4 kbit/s @ 7.8336 MHz
 
     // Floppy: argv[2], else probe disks35/ (CWD, exec dir, and its parent —
