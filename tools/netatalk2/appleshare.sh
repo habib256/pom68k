@@ -72,8 +72,14 @@ echo "router up (run/router.log)"
 cat > "$CONF/atalkd.conf" <<EOF
 pomtap0 -phase 2
 EOF
+# Guest sessions run as the real user, not the default "nobody": Ubuntu
+# homes are drwxr-x--- so nobody cannot traverse to $ROOT/input — afpd
+# then hides the volume at login (empty Chooser volume list, 2026-07-22)
+# — and could not write into it anyway. The DDP segment is local-only,
+# so mapping guest to $REAL_USER is safe and gives read/write with
+# correct file ownership.
 cat > "$CONF/afpd.conf" <<EOF
-"POM68K" -ddp -notcp -uamlist uams_guest.so -nosavepassword
+"POM68K" -ddp -notcp -uamlist uams_guest.so -nosavepassword -guestname "$REAL_USER"
 EOF
 cat > "$CONF/AppleVolumes.default" <<EOF
 $ROOT/input "Input" options:usedots
