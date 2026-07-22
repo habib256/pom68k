@@ -22,7 +22,9 @@ milestone discipline; the CPU integration pattern comes from
   later and at what effort); `HLE_OVERLAY.md` (design study — opt-in
   HLE accelerator layered on the LLE core, non-conformant mode);
   `LLE_VS_HLE.md` (**inventory** of every HLE shortcut vs pure-LLE code,
-  with the migration plan toward more LLE).
+  with the migration plan toward more LLE); `APPLETALK.md` (AppleTalk /
+  LocalTalk / LLAP protocol reference + the netatalk/CUPS bridge, mapped
+  back to `Scc8530`/`LtoUdp` — read before touching LocalTalk/AppleShare).
 
 ## CPU core: Moira (vendored)
 
