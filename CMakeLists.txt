@@ -369,6 +369,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(q605_dafb_test PRIVATE pom68k_core)
     add_test(NAME q605_dafb_test COMMAND q605_dafb_test)
 
+    # LLE step 9 gate: PrimeTime TurboSCSI wait-state cell (IOSB reg 2)
+    # + the 53C96 MAME-derived selection/transfer delay model.
+    add_executable(q605_turboscsi_test tests/q605_turboscsi_test.cpp)
+    target_link_libraries(q605_turboscsi_test PRIVATE pom68k_core)
+    add_test(NAME q605_turboscsi_test COMMAND q605_turboscsi_test)
+
     # O6.5 gate: SCSI pseudo-DMA windows + DRQ-gated BERR timeout
     # (soft-skips without the disk image).
     add_executable(scsi_pdma_test tests/scsi_pdma_test.cpp)
