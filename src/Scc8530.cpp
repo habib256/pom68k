@@ -69,10 +69,11 @@ void Scc8530::raiseRxInt(Chan& c, bool special) {
 }
 
 void Scc8530::rxStartFrame(Chan& c, int chIdx) {
-    c.rxCur = std::move(c.rxQueue.front());
+    c.rxCur = std::move(c.rxQueue.front().bytes);
+    c.rxPace = c.rxQueue.front().pace;
     c.rxQueue.pop_front();
     c.rxPos = 0;
-    c.rxTimer = byteCycles_;
+    c.rxTimer = c.rxPace;
     // Opening flag: Sync/Hunt clears — the LLAP carrier sense. A 1→0
     // transition is an ext/status source when WR15 bit 4 arms it.
     if (c.hunt) {
@@ -116,7 +117,7 @@ void Scc8530::rxPushByte(Chan& c) {
     }
 }
 
-void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n) {
+void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
     Chan& c = ch_[ch & 1];
     if (!n || !sdlcMode(c) || !rxEnabled(c)) return;   // receiver off: no ear
     // SDLC Address Search Mode (WR3 bit 2): the chip only opens the FIFO
@@ -126,7 +127,8 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n) {
     const uint16_t fcs = crc16x25(d, n);
     f.push_back(uint8_t(fcs & 0xFF));            // FCS little-end first (X25)
     f.push_back(uint8_t(fcs >> 8));
-    c.rxQueue.push_back(std::move(f));
+    const int pace = express ? (byteCycles_ + 7) / 8 : byteCycles_;
+    c.rxQueue.push_back({std::move(f), pace});
 }
 
 uint8_t Scc8530::readCtl(int channel) {
@@ -454,7 +456,7 @@ bool Scc8530::tick(int cycles) {
             if (!c.rxCur.empty()) {
                 c.rxTimer -= cycles;
                 while (c.rxTimer <= 0 && !c.rxCur.empty()) {
-                    c.rxTimer += byteCycles_;
+                    c.rxTimer += c.rxPace;
                     bool was = c.rxIp || c.specialIp;
                     rxPushByte(c);
                     if (!was && (c.rxIp || c.specialIp)) changed = true;

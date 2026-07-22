@@ -78,7 +78,11 @@ template <class M> static void wireLocalTalk(M& mem, int byteCycles) {
         if (n == 3 && d[2] == 0x84) {                // lapRTS
             if (d[0] != 0xFF) {
                 const uint8_t cts[3] = { d[1], d[0], 0x85 };
-                mem.scc().injectRxFrame(0, cts, 3);
+                // Express: the synthesized CTS must land inside the LLAP
+                // 200 µs window measured from the RTS underrun; wire-paced
+                // delivery arrived ~185-250 µs later and every retry missed
+                // by the same deterministic phase.
+                mem.scc().injectRxFrame(0, cts, 3, true);
             }
             return;
         }

@@ -77,7 +77,10 @@ public:
     // Delivered at wire pace (setByteCycles) through the 3-deep Rx FIFO with
     // Hunt exit, per-byte Rx interrupts (WR1 modes), address search (WR3
     // bit 2 vs WR6 / $FF broadcast) and End-of-Frame status in RR1.
-    void injectRxFrame(int ch, const uint8_t* d, size_t n);
+    // express=true delivers at 8× wire speed — for frames synthesized BY
+    // the cable itself (LToUDP local CTS), which must land inside the LLAP
+    // 200 µs inter-frame window that a real peer would meet.
+    void injectRxFrame(int ch, const uint8_t* d, size_t n, bool express = false);
     // CPU cycles per LocalTalk byte (230.4 kbit/s): 544 @ 15.6672 MHz
     // (LC II / Mac II), 272 @ 7.8336 (Plus), 868 @ 25 MHz (Q605).
     void setByteCycles(int c) { byteCycles_ = c > 0 ? c : 544; }
@@ -111,8 +114,10 @@ private:
                                      // reads it as "line idle/busy".
         // ── LLAP Rx/Tx wire state ──
         std::vector<uint8_t> txBuf;  // SDLC frame being written (no FCS)
-        std::deque<std::vector<uint8_t>> rxQueue;  // injected frames (FCS added)
+        struct RxFrame { std::vector<uint8_t> bytes; int pace; };
+        std::deque<RxFrame> rxQueue; // injected frames (FCS added) + pace
         std::vector<uint8_t> rxCur;  // frame being paced onto the FIFO
+        int rxPace = 0;              // cycles/byte for the current frame
         size_t rxPos = 0;
         int rxTimer = 0;             // cycles to the next FIFO byte
         struct RxByte { uint8_t d; uint8_t rr1; };
