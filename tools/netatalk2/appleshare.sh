@@ -26,6 +26,8 @@ REAL_USER=${SUDO_USER:-$USER}
 
 stop_all() {
     pkill -f "$NA/sbin/afpd" 2>/dev/null || true
+    pkill -f "$NA/sbin/cnid_metad" 2>/dev/null || true
+    pkill -f "$NA/sbin/cnid_dbd" 2>/dev/null || true
     pkill -f "$NA/sbin/atalkd" 2>/dev/null || true
     pkill -f "tools/netatalk2/router.py" 2>/dev/null || true
 }
@@ -88,6 +90,22 @@ EOF
 
 "$NA/sbin/atalkd" -f "$CONF/atalkd.conf"
 sleep 3
+
+# ── 3b. cnid_metad (CNID database daemon) ──
+# afpd's default CNID backend is "dbd": on every mount it asks a
+# cnid_metad on localhost:4700 to spawn a per-volume cnid_dbd that
+# hands out Catalog Node IDs. Without it the mount SUCCEEDS (login,
+# volume appears) and then dies the instant afpd needs a CNID —
+# "get_id: Connection to the CNID backend DB failed ... fatal", which
+# the Mac shows as *"the file server's connection has unexpectedly
+# closed down"* (diagnosed 2026-07-22 from the afpd syslog; it is NOT
+# an ASP tickle timeout). Run it as the real user so the .AppleDB it
+# creates under the share is owned correctly, and point -s at our
+# vendored cnid_dbd (custom prefix). -h/-p match afpd's default.
+sudo -u "$REAL_USER" "$NA/sbin/cnid_metad" \
+    -h localhost -p 4700 -s "$NA/sbin/cnid_dbd" -l LOG_INFO
+sleep 1
+
 "$NA/sbin/afpd" -F "$CONF/afpd.conf" -P "$CONF/afpd.pid" \
     -f "$CONF/AppleVolumes.default" -s "$CONF/AppleVolumes.system"
 sleep 4                                 # NBP registration takes a moment
