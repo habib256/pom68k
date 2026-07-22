@@ -193,6 +193,16 @@ private:
     uint16_t dafbHolding_ = 0;     // MEMCjr 6-bit DAFB bus holding register
     uint16_t iosbRegs_[0x20] = {}; // $50018000, u16 every $100
 
+    // TurboSCSI wait-state cell (LLE step 9 — MAME iosb.cpp:144-148 defaults,
+    // :482-495 register stalls, :498-552 waitstated DMA alias, :606-618
+    // programming). Register accesses always cost 3 CPU cycles; the DMA
+    // window's waitstated alias (byte-address bit 19, the `.select(0xfc0000)`
+    // bit MAME tests via BIT(offset<<1,18)) costs the guest-programmed
+    // scsiDma*Cycles_ — IOSB reg 2 bits 8-9 (read) / 11-12 (write) through
+    // times[4] = {5,5,4,3}.
+    int scsiReadCycles_ = 3, scsiWriteCycles_ = 3;
+    int scsiDmaReadCycles_ = 3, scsiDmaWriteCycles_ = 3;
+
     // DAFB cell ($F9800000 window) + MEMCjr 6+6-bit holding wrappers.
     Dafb dafbCell_{kCpuHz};
     uint32_t dafbRegRead(uint32_t off);          // holding split (read)

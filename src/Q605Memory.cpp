@@ -37,15 +37,15 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     // XPRAM $78/$7A: boot drive/driver 0 (Basilisk defaults) already 0;
     // $8A |= $05 = 32-bit mode (Mac OS 8 requires 32-bit clean)
     cuda_.setPram(0x8A, uint8_t(cuda_.pram(0x8A) | 0x05));
-    // SCSI bus-service latency knob (Q6.5b diagnostics): cycles between a
-    // Transfer Info and its interrupt. Tested against the async-SIM NULL-
-    // continuation crash: the SIM's send-CDB handler SPIN-POLLS S_INTERRUPT
-    // (collector $11E386 loop), so deferring the IRQ only delays the same
-    // ordering — the crash is structural, not a latency race. Default 0
-    // (instant, historical behaviour); POM68K_SCSI_LAT=N opts in for tests.
+    // SCSI bus-service latency (Q6.5b diagnostics → LLE step 9 default-on):
+    // cycles between a command and its interrupt. Default is the MAME-derived
+    // delay model (-1: ncr53c90.cpp arbitrate/settle chain + sync_period per
+    // byte at the 40 MHz chip clock — Ncr53c96::selectionDelayCpu_/
+    // xferDelayCpu_). POM68K_SCSI_LAT=0 forces the historical instant
+    // behaviour, =N a flat N-cycle deferral (diagnostics).
     {
         const char* e = std::getenv("POM68K_SCSI_LAT");
-        scsi_.setLatency(e ? std::atoi(e) : 0);
+        scsi_.setLatency(e ? std::atoi(e) : -1);
     }
     if (const char* id = std::getenv("POM68K_Q605_ID"))
         machineId_ = uint32_t(std::strtoul(id, nullptr, 16));
@@ -76,6 +76,8 @@ void Q605Memory::reset() {
     drive0_.reset();
     drive1_.reset();
     ascLine_ = false;
+    scsiReadCycles_ = scsiWriteCycles_ = 3;      // iosb.cpp:144-148 defaults
+    scsiDmaReadCycles_ = scsiDmaWriteCycles_ = 3;
     ascCycAcc_ = 0;
     swimLastCpu_ = -1;
     swimCycAcc_ = 0;
@@ -319,12 +321,20 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
         // reg select = (addr>>4)&0xF (iosb.cpp:58-59 turboscsi_r reads
         // m_ncr->read(offset>>4)); absolute reg N at PrimeTime+$10000+N*$10.
+        // Every register access costs 3 CPU cycles (iosb.cpp:486 turboscsi_r
+        // adjust_icount, step 9 wait-state cell).
+        if (cpu_) cpu_->stall(scsiReadCycles_);
         uint8_t d = scsi_.read((base >> 4) & 0xF);
         scsiPoll_();
         return d;
     }
-    if (base >= 0x10100 && base < 0x10104)       // TurboSCSI pseudo-DMA — Q6
+    if (base >= 0x10100 && base < 0x10104) {     // TurboSCSI pseudo-DMA — Q6
+        // The waitstated alias (byte-address bit 19 — MAME iosb.cpp:507
+        // BIT(offset<<1,18) under .select(0xfc0000)) inserts the IOSB-reg-2
+        // programmed wait states; the plain window does not.
+        if (cpu_ && ((sub >> 19) & 1)) cpu_->stall(scsiDmaReadCycles_);
         return scsiDmaRead_();
+    }
     if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000)
         return asc_.read(addr & 0xFFF);          // PrimeTime/IOSB ASC ($BB)
     if ((sub & ~0xF00000u) >= 0x18000 && (sub & ~0xF00000u) < 0x1A000) {
@@ -380,11 +390,14 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
+        if (cpu_) cpu_->stall(scsiWriteCycles_); // iosb.cpp:494 turboscsi_w
         scsi_.write((base >> 4) & 0xF, v);
         scsiPoll_();
         return;
     }
     if (base >= 0x10100 && base < 0x10104) {     // TurboSCSI pseudo-DMA — Q6
+        // Waitstated alias — see ioRead8; write side iosb.cpp:552.
+        if (cpu_ && ((sub >> 19) & 1)) cpu_->stall(scsiDmaWriteCycles_);
         scsiDmaWrite_(v);
         return;
     }
@@ -396,6 +409,14 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         uint32_t reg = ((sub & 0x1FFF) >> 8) & 0x1F;
         if (sub & 1) iosbRegs_[reg] = uint16_t((iosbRegs_[reg] & 0xFF00) | v);
         else         iosbRegs_[reg] = uint16_t((iosbRegs_[reg] & 0x00FF) | (v << 8));
+        if (reg == 2) {
+            // IOSB reg 2 programs the pseudo-DMA wait states (iosb.cpp:610-617
+            // iosb_regs_w): bits 8-9 → DMA read, bits 11-12 → DMA write,
+            // through times[4] = {5,5,4,3} CPU cycles per access.
+            static constexpr int times[4] = { 5, 5, 4, 3 };
+            scsiDmaReadCycles_  = times[(iosbRegs_[2] >> 8) & 3];
+            scsiDmaWriteCycles_ = times[(iosbRegs_[2] >> 11) & 3];
+        }
         return;
     }
     if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000) {
@@ -409,13 +430,16 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
 }
 
 // ── TurboSCSI pseudo-DMA (PrimeTime + $10100) ──
-// On a CPU access to the DMA window the PrimeTime/IOSB holds off completion
+// On a CPU access to the DMA window the PrimeTime/IOSB holds off /DTACK
 // while !DRQ (MAME iosb.cpp:498-591 turboscsi_dma_r/w spin on the DRQ line).
-// Functionally we mirror the LC II V8 path: no data available (!drq) raises
-// /BERR, which the SCSI Manager's blind-transfer loops catch to terminate;
-// with a proper transfer count the 53C96 keeps DRQ asserted until the
-// payload is drained. macquadra605.cpp:206 drq_handler -> primetime
-// scsi_drq_w -> via2.
+// Our 53C96 changes DRQ only on CPU-driven accesses — nothing can assert it
+// while the CPU is held — so a !DRQ access can never be released and the
+// observable equivalent of the eventual bus timeout is an immediate /BERR,
+// which the SCSI Manager's blind-transfer loops catch to terminate (the LC II
+// V8 path behaves the same). With a proper transfer count the 53C96 keeps
+// DRQ asserted until the payload is drained. The waitstated-alias cycle
+// costs are charged at the ioRead8/ioWrite8 call sites (step 9 cell).
+// macquadra605.cpp:206 drq_handler -> primetime scsi_drq_w -> via2.
 uint8_t Q605Memory::scsiDmaRead_() {
     if (!scsi_.drq()) busError(0x50010100, false);
     uint8_t d = scsi_.dmaRead();

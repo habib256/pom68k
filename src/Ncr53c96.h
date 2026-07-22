@@ -61,15 +61,19 @@ public:
     bool irq() const { return irq_; }    // → PrimeTime scsi_irq_w → VIA2 / IPL
     bool drq() const { return drq_; }    // → PrimeTime scsi_drq_w → /DTACK gate
 
-    // ── Bus-service latency model (Q6.5b) ──
-    // A real target takes time between a Transfer Info command and the
-    // bus-service interrupt (target processing + bus turnaround). Our instant
+    // ── Bus-service latency model (Q6.5b → LLE step 9) ──
+    // A real target takes time between a command and its interrupt (bus
+    // arbitration + per-byte handshakes + turnaround). Our instant
     // completion made the Mac OS 8.1 async SCSI SIM see S_INTERRUPT in the poll
     // right after its send-CDB handler, so it posted its "service interrupt"
     // message BEFORE the client installed the continuation routine at ctx+$F0
     // → wild jmp through NULL → the "illegal instruction" crash alert.
-    // latency=0 keeps the historical instant behaviour (unit tests drive the
-    // chip without a tick source); the Q605 machine enables it and pumps
+    // Modes: 0 = instant (unit-test default — the chip may be driven without
+    // a tick source); >0 = flat cycle count for every deferred IRQ (the
+    // POM68K_SCSI_LAT diagnostic knob); <0 = MAME-derived delay model
+    // (selection = the ncr53c90.cpp arbitrate/assert/settle chain, transfers
+    // = sync_period SCSI clocks per byte — see selectionDelayCpu_/
+    // xferDelayCpu_). The Q605 machine defaults to the model and pumps
     // tick() from Q605Memory::tick.
     void setLatency(int cycles) { latency_ = cycles; }
     void tick(int cycles) {
@@ -146,7 +150,7 @@ private:
     uint8_t status_ = 0, istatus_ = 0;
     uint8_t scsiId_ = 7;                 // this initiator's ID (CONFIG1 low 3)
     bool irq_ = false, drq_ = false;
-    int latency_ = 0;                    // bus-service IRQ latency (0 = instant)
+    int latency_ = 0;                    // 0 instant | >0 flat | <0 MAME model
     int pendDelay_ = 0;                  // countdown to the deferred raiseIrq
     uint8_t pendBits_ = 0;               // istatus bits held back by the latency
     bool selCdbWait_ = false;            // select left CDB incomplete: waiting
@@ -187,7 +191,12 @@ private:
     void selectTarget(bool withAtn);
     void transferInfo();                  // CI_XFER: move one phase's worth
     void raiseIrq(uint8_t istatusBits);
-    void raiseIrqDeferred(uint8_t istatusBits);   // honors latency_ (tick-driven)
+    // Defer per latency_: >0 flat, <0 use modelCycles (the MAME-derived cost
+    // computed at the call site), 0 raise immediately. Tick-driven.
+    void raiseIrqDeferred(uint8_t istatusBits, int modelCycles);
+    int scsiClocksToCpu_(int clocks) const;       // 40 MHz SCSI → 25 MHz CPU
+    int selectionDelayCpu_(int bytes) const;      // arbitrate+select+CDB out
+    int xferDelayCpu_(uint32_t bytes) const;      // per-byte handshake pacing
     void updateDrq();
     void fifoPush(uint8_t v);
     uint8_t fifoPop();

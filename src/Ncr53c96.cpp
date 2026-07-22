@@ -26,6 +26,7 @@
 
 #include "Ncr53c96.h"
 #include "ScsiDisk.h"
+#include <algorithm>
 #include <cstring>
 
 // ── FIFO ────────────────────────────────────────────────────────────────
@@ -65,7 +66,10 @@ void Ncr53c96::fifoPush(uint8_t v) {
             selCdbWait_ = false;
             seq_ = 4;
             runTarget();
-            if (wasSelWait) raiseIrq(I_BUS | I_FUNCTION);
+            // Arbitration ran when the SELECT was issued (before the driver
+            // streamed the CDB), so only the CDB bytes' bus time remains.
+            if (wasSelWait)
+                raiseIrqDeferred(I_BUS | I_FUNCTION, xferDelayCpu_(uint32_t(cmd_.size())));
         }
         updateDrq();
         return;
@@ -93,14 +97,48 @@ uint8_t Ncr53c96::fifoPop() {
 // is non-zero (ncr53c90.cpp:1079-1086 check_irq). Reading R_ISTAT clears it.
 void Ncr53c96::raiseIrq(uint8_t bits) { istatus_ |= bits; irq_ = istatus_ != 0; }
 
-// Bus-service latency (Q6.5b): hold the interrupt back for latency_ cycles —
-// the delay a real target/bus needs — so software that polls right after
-// issuing a Transfer Info does not see an instant completion. tick() applies
-// the held bits. latency_=0 → identical to raiseIrq (unit-test default).
-void Ncr53c96::raiseIrqDeferred(uint8_t bits) {
-    if (latency_ <= 0) { raiseIrq(bits); return; }
+// ── MAME-derived delay model (LLE step 9, docs/LLE_VS_HLE.md §5.9) ──
+// The 53C96 sequencer schedules every step on its own clock: delay(n) costs
+// n × clock-conversion-factor SCSI clocks, delay_cycles(n) costs n raw clocks
+// (ncr53c90.cpp:802-810). The Q605 clocks the chip at 40 MHz
+// (macquadra605.cpp:202, 40_MHz_XTAL) against the 25 MHz CPU, so
+// cpuCycles = scsiClocks × 25/40 = ×5/8 (round up — a partial clock still
+// holds the line).
+int Ncr53c96::scsiClocksToCpu_(int clocks) const {
+    return (clocks * 5 + 7) / 8;
+}
+
+// Selection with ATN, arbitration through the last CDB byte
+// (ncr53c90.cpp:336-460 + send_byte): arbitrate() delay(11), ARB_COMPLETE
+// delay(6), ARB_ASSERT_SEL delay_cycles(4), ARB_SET_DEST delay(2),
+// ARB_RELEASE_BUSY delay_cycles(2) = 19×conv + 6 clocks of bus setup, then
+// each outgoing byte (IDENTIFY message + CDB) costs sync_period clocks
+// (SEND path, delay_cycles(sync_period) :762). conv 0 encodes 8
+// (ncr53c90.cpp:804).
+int Ncr53c96::selectionDelayCpu_(int bytes) const {
+    const int conv = clockConv_ ? clockConv_ : 8;
+    const int per  = syncPeriod_ ? syncPeriod_ : 5;
+    return scsiClocksToCpu_(19 * conv + 6 + bytes * per);
+}
+
+// Transfer Information: sync_period clocks per byte moved off/onto the bus
+// (RECV_WAIT_REQ_1 → delay_cycles(sync_period) :462, send path :762) plus a
+// 2-clock settle for the closing REQ/ACK turnaround.
+int Ncr53c96::xferDelayCpu_(uint32_t bytes) const {
+    const int per = syncPeriod_ ? syncPeriod_ : 5;
+    return scsiClocksToCpu_(int(bytes) * per + 2);
+}
+
+// Bus-service latency (Q6.5b → step 9): hold the interrupt back — the time
+// the real sequencer needs — so software that polls right after issuing a
+// command does not see an instant completion. tick() applies the held bits.
+// latency_ = 0 → identical to raiseIrq (unit-test default); > 0 → flat
+// override (POM68K_SCSI_LAT); < 0 → the call site's MAME-derived cost.
+void Ncr53c96::raiseIrqDeferred(uint8_t bits, int modelCycles) {
+    const int d = latency_ > 0 ? latency_ : (latency_ < 0 ? modelCycles : 0);
+    if (d <= 0) { raiseIrq(bits); return; }
     pendBits_ |= bits;
-    pendDelay_ = latency_;
+    pendDelay_ = d;
 }
 
 // DRQ policy (ncr53c90.cpp:1207-1232 + c94 check_drq:1374). We assert DRQ
@@ -375,10 +413,12 @@ void Ncr53c96::selectTarget(bool withAtn) {
     // The FIFO holds [IDENTIFY msg?] + CDB. Drain it: first byte(s) are the
     // MSG OUT (IDENTIFY / message), remainder is the command descriptor block.
     cmd_.clear();
+    int wireBytes = 0;                        // bytes clocked onto the bus
     if (withAtn && fifoPos_ > 0) {
         // Consume the IDENTIFY message byte (msg bytes have bit7 or are 0x80+).
         (void)fifoPop();                      // IDENTIFY (LUN select) — ignored
         seq_ = 2;                             // one MSG OUT byte sent
+        wireBytes++;
     }
     // Remaining FIFO bytes are the CDB.
     int expected = 0;
@@ -392,10 +432,13 @@ void Ncr53c96::selectTarget(bool withAtn) {
         // Whole CDB is in — run it and set up the resulting phase.
         // seq_step 4 = command fully transferred; select completes with
         // I_BUS | I_FUNCTION (ncr53c90.cpp function_bus_complete via
-        // DISC_SEL_WAIT_REQ phase change, :544-556).
+        // DISC_SEL_WAIT_REQ phase change, :544-556). The interrupt arrives
+        // only after the arbitrate/assert/settle chain + the CDB bytes'
+        // bus time (step 9 delay model).
         seq_ = 4;
         runTarget();
-        raiseIrq(I_BUS | I_FUNCTION);
+        raiseIrqDeferred(I_BUS | I_FUNCTION,
+                         selectionDelayCpu_(wireBytes + int(cmd_.size())));
         updateDrq();
         return;
     }
@@ -465,6 +508,13 @@ void Ncr53c96::transferInfo() {
             if (dataInPos_ < dataIn_.size()) {
                 dataXfer_ = true;         // FIFO now holds fetched payload (R_FLAGS)
                 status_ |= S_TC0;
+                // Bytes this Transfer Info moves off the bus — the chunk the
+                // step 9 delay model charges at sync_period clocks each. A
+                // DMA variant moves tcounter_; a polled one the remainder
+                // (startCommand cleared tcounter_ for non-DMA).
+                const uint32_t remaining = uint32_t(dataIn_.size() - dataInPos_);
+                const uint32_t chunk =
+                    tcounter_ ? std::min<uint32_t>(tcounter_, remaining) : remaining;
                 // A completed Transfer Info raises the bus-service interrupt
                 // (ncr53c90.cpp:686 bus_complete). This fires for BOTH the DMA
                 // variant ($90 — the driver bursts the window then waits on
@@ -475,7 +525,7 @@ void Ncr53c96::transferInfo() {
                 // ($408D2388 move.b ($20,A3),(A2)+)). Without the polled
                 // signal the byte-tail wait ($40899704) spun forever.
                 // Deferred (Q6.5b): held back by the bus-service latency.
-                raiseIrqDeferred(I_BUS);
+                raiseIrqDeferred(I_BUS, xferDelayCpu_(chunk));
                 // Q6.6 — polled Transfer Info ($10, non-DMA) that drains the
                 // last of the payload: the target ends the DATA phase and
                 // switches to STATUS as part of THIS command. Reflect that
@@ -530,24 +580,27 @@ void Ncr53c96::transferInfo() {
             updateDrq();
             break;
 
-        case COMMAND:
+        case COMMAND: {
             // Continue draining a partial CDB from the FIFO (rare — the ROM
             // usually sends the whole CDB with SELECT_ATN).
+            uint32_t sent = 0;
             while (fifoPos_ > 0) {
                 uint8_t b = fifoPop();
                 cmd_.push_back(b);
+                sent++;
                 if (int(cmd_.size()) >= cdbLength(cmd_[0])) { runTarget(); break; }
             }
-            raiseIrqDeferred(I_BUS);
+            raiseIrqDeferred(I_BUS, xferDelayCpu_(sent ? sent : 1));
             break;
+        }
 
         case STATUS:
         case MSG_IN:
-            raiseIrqDeferred(I_BUS);
+            raiseIrqDeferred(I_BUS, xferDelayCpu_(1));   // one byte's handshake
             break;
 
         default:
-            raiseIrqDeferred(I_BUS);
+            raiseIrqDeferred(I_BUS, xferDelayCpu_(1));
             break;
     }
 }
