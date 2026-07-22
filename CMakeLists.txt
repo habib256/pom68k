@@ -253,6 +253,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(ltoudp_test PRIVATE pom68k_core)
     add_test(NAME ltoudp_test COMMAND ltoudp_test)
 
+    # LLAP two-System etalon: two Mac II machines boot Sys 6 with AppleTalk
+    # seeded active on a shared virtual cable — real LAP address acquisition
+    # end-to-end (soft-skips without ROM+disk).
+    add_executable(llap_two_system_etalon tests/llap_two_system_etalon.cpp)
+    target_link_libraries(llap_two_system_etalon PRIVATE pom68k_core)
+    add_test(NAME llap_two_system_etalon COMMAND llap_two_system_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # M4.5 gate: SingleStepTests/680x0 68000 vectors against bare Moira.
     # Data is user-fetched (~1 GB): tests/fetch_sst_68000.sh <dir>.
     # Soft-skips when absent.

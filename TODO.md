@@ -54,10 +54,12 @@ GUI opt-in `POM68K_LTOUDP=1` on Mac II / LC II / Quadra. Gates:
 `ltoudp_test` (real multicast cable, soft-skips).
 
 Next milestones:
-- [ ] **Two-System etalon**: two full instances under Sys 7 with
-  AppleTalk ACTIVE (Chooser toggle or SPConfig seed), each acquiring an
-  LLAP address on the shared cable; assert distinct node IDs + no
-  spurious SysErrors. Needs a headless way to flip AppleTalk on.
+- [x] **Two-System etalon — DONE (2026-07-22)**: `llap_two_system_etalon`
+  boots TWO Mac II Sys 7 machines with `POM68K_APPLETALK=1` (SPConfig
+  $21 seed, Rtc + Egret) on a shared cable; both LAP Managers acquire
+  distinct node IDs over real ENQ traffic (~650 probes each way) in
+  ~12 s emulated. Note: System 6 only opens .MPP lazily from the
+  Chooser — headless LLAP tests need Sys 7.
 - [ ] LLAP directed-frame RTS/CTS timing against the real driver (the
   200 µs inter-frame gap tolerance over a polled UDP cable).
 - [ ] Plus machine wiring (its GUI loop is inline, not the thread class).

@@ -66,7 +66,11 @@ void Egret::factoryDefaults() {
     pram_[0x08] = 0x13; pram_[0x09] = 0x88;
     pram_[0x0A] = 0x00; pram_[0x0B] = 0xCC;
     pram_[0x10] = 0xA8; pram_[0x11] = 0x00;      // standard PRAM values
-    pram_[0x12] = 0x00; pram_[0x13] = 0x22;      // SPConfig: both ports async
+    // SPConfig low nibble = port B use (1 = AppleTalk, 2 = async — see the
+    // block comment below). POM68K_APPLETALK=1 seeds LocalTalk ACTIVE for
+    // headless LLAP tests; the default stays deterministic async ($22).
+    pram_[0x12] = 0x00;
+    pram_[0x13] = std::getenv("POM68K_APPLETALK") ? 0x21 : 0x22;
     pram_[0x14] = 0xCC; pram_[0x15] = 0x0A;
     pram_[0x16] = 0xCC; pram_[0x17] = 0x0A;
     pram_[0x1C] = 0x00; pram_[0x1D] = 0x02;

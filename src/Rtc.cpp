@@ -37,7 +37,10 @@ void Rtc::factoryDefaults() {
                                                    // ddType 1 → Apple_HFS hunt
         // $78-$7B (default startup drive/driver) stay 0 → ROM scans SCSI
     }
-    pram_[0x13] = 0x22;
+    // SPConfig low nibble = printer port use: 2 = async (AppleTalk OFF,
+    // the deterministic default), 1 = AppleTalk. POM68K_APPLETALK=1 seeds
+    // it ACTIVE so headless LLAP tests skip the Chooser toggle.
+    pram_[0x13] = std::getenv("POM68K_APPLETALK") ? 0x21 : 0x22;
 }
 
 uint8_t Rtc::readReg(uint8_t cmd) const {

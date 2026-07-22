@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-22 — LLAP two-System etalon: real address acquisition between two Systems
+
+`llap_two_system_etalon` boots TWO full Mac II machines under System 7 on
+a shared virtual LLAP cable and watches the real LAP Managers negotiate:
+each side transmits ~650 ENQ probes (dst = src = tentative ID), hears the
+other's traffic through the cable, and settles on distinct node IDs —
+in ~12 s emulated (System 7 opens `.MPP` right at boot). Boots are offset
+~2 s so the Ticks-seeded random IDs differ, as on real desks.
+
+Enabler: **`POM68K_APPLETALK=1`** seeds SPConfig = `$21` (printer port =
+LocalTalk) in both PRAM paths (`Rtc::factoryDefaults` for Plus/Mac II,
+`Egret::factoryDefaults` for LC II/Quadra); the default stays the
+deterministic AppleTalk-off `$22`. Learned: **System 6 never opens
+`.MPP` headless** — it only opens lazily from the Chooser/apps, so the
+first Sys 6 attempt produced zero wire traffic; Sys 7 is the vehicle.
+
 ## 2026-07-22 — LLAP milestone 1: SCC receive path + LToUDP virtual cable
 
 The LocalTalk plan's first milestone (TODO): the SCC LLAP wire is now
