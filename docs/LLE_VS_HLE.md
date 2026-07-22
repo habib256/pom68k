@@ -5,11 +5,10 @@ modeled at register/protocol level from silicon references, verified by
 gates and oracles), and only later layer an **opt-in, clearly-flagged HLE
 accelerator** on top (`HLE_OVERLAY.md`). That requires knowing exactly
 where the current code already deviates from hardware. This document is
-the complete inventory and the plan to shrink it. Audited 2026-07-21;
-**second pass the same day** cross-checked every device against MAME
-(`refs/mame-apple`, `refs/mame`) and DingusPPC (`refs/dingusppc`) — the
-per-device gap lists in §3 and the migration steps 7-10 come from that
-pass.
+the complete inventory and the plan to shrink it. Current as of
+2026-07-22 (third pass against the live tree — see CHANGELOG). Earlier
+passes: 2026-07-21 MAME (`refs/mame-apple`, `refs/mame`) + DingusPPC
+(`refs/dingusppc`) cross-check → §3 gaps and migration steps 7–10.
 
 Line numbers are indicative — verify with grep before relying on them.
 
@@ -31,9 +30,10 @@ Line numbers are indicative — verify with grep before relying on them.
 >
 > - Finish the LLE for a subsystem (real silicon/firmware, gated) **before**
 >   adding any HLE boost path for it. The Mac II ADB PIC1654S work
->   (2026-07-22, §2) is the template: the real transceiver goes in first,
->   opt-in, until it is the default — *then* an HLE fast-path could be
->   offered as a boost, never as the substitute.
+>   (2026-07-22, §2 / step 11) is the template: the real transceiver is
+>   now the **default** whenever `roms/adbmodem/342s0440-b.bin` is
+>   present; HLE remains only as the no-dump / `POM68K_ADB_LLE=0`
+>   fallback — never as the substitute for a working LLE.
 > - Every HLE shortcut ships **behind a visible non-conformant flag** and
 >   with the LLE path still present and default.
 > - A boost is accepted only once it is shown equivalent to the LLE
@@ -146,13 +146,24 @@ budget re-pinned accordingly). The Egret flavor keeps its pinned LC II
 wire mechanics (buffer byte 0 = attention) over the same real-framed
 header.
 
-### 1.7 Mac II / LC II RTC + Egret PRAM factory seeding — `Rtc.cpp:13-28`, `Egret.cpp:54-91`
+### 1.7 Mac II / LC II / Quadra RTC + Egret PRAM factory seeding — `Rtc.cpp:15-44`, `Egret.cpp:56-97`
 
-Seeds `'NuMc'` validity signature + Basilisk-style defaults + SPConfig
-`$22` on cold boot. **Borderline acceptable**: a device shipping with
-factory PRAM contents is hardware-plausible, and it prevents the ROM's
-cold-PRAM re-init loop. Keep, but treat the *contents* as a documented
-policy, not scattered magic.
+Reset-time seed only (no tick-time rewrite). **Borderline acceptable**:
+factory PRAM is hardware-plausible and prevents the ROM's cold-PRAM
+re-init loop. Keep, but treat the *contents* as documented policy:
+
+- **`Rtc::factoryDefaults`** (Mac II): full Basilisk block only when
+  `'NuMc'` is absent; **always** (re)seeds SPConfig XPRAM `$13` to `$22`
+  (both ports async). `POM68K_APPLETALK=1` → `$21` (LocalTalk active)
+  for headless LLAP tests.
+- **`Egret::factoryDefaults`** (LC II / Cuda on Q605): more aggressive —
+  even with `'NuMc'` present it rewrites DynWait, the classic PRAM
+  block, SPConfig (same `$22`/`$21` policy), and OSDefault; cold / bit7-
+  clear video sPRAM seeds `$58=$83` (8 bpp) so first boots match a
+  Monitors+Restart color Mac rather than the ROM's B&W `$80`.
+
+Do not grow the always-rewrite set without a gate that proves the ROM
+path alone is insufficient.
 
 ### 1.8 SCC `abortIdle` — now a transport-driven line state — **RESOLVED 2026-07-22**
 
@@ -173,28 +184,46 @@ hold); the two-System and boot etalons stay green. The `setAbortIdle`
 comments in `V8Memory.cpp` / `Q605Memory.cpp` now read "no *hardwired*
 peer" and point at `openLine`.
 
+### 1.9 Mac II Slot Manager ORB → phantom SHIFT — HLE-path only
+
+`MacIIMemory.cpp:273-290`: on VIA1 ORB writes, if ACR shift-in is armed
+and soft-flag bit5 at `ADBBase($CF8)+$15D` is set, call
+`Via6522::armShiftComplete()`. Required for the HLE ADB POST wait
+(Slot Manager clocks SR after slot select). **Poisonous under LLE**:
+`$CF8` is ADBBase and `$15D` is the ADB driver's own flag — the hack
+raised a phantom SHIFT ~320 cycles after every ST write, collapsing the
+PIC↔VIA handshake. Gated with `!adbVia_.lle()` since 2026-07-22; never
+fires on the default path. Eliminate when HLE `AdbVia` is retired.
+
 ## 2. HLE replacements (whole devices at protocol level)
 
 | Device | Files | What is replaced | Proper LLE would be |
 |---|---|---|---|
-| **Egret / Cuda** | `Egret.*` | 68HC05 MCU firmware → packet-level command emulation (ADB autopoll, RTC heartbeat, XPRAM streams, Cuda polarity flavor) | 68HC05 core + dumped Egret/Cuda firmware (big; MAME has it) |
-| **ADB modem (Mac II)** | `AdbVia.*` (LLE **default** since 2026-07-22; HLE = no-dump / `POM68K_ADB_LLE=0` fallback) | PIC1654S firmware → NEW/EVEN/ODD/IDLE byte state machine on the VIA SR (HLE fallback only) | **LLE is the default**: `Pic1654s` runs the real `342s0440-b.bin`, `AdbLine` is the bit-serial device, `Via6522::extShiftCB1` the wire — see below |
-| **ADB bus** | `AdbBus.*` (HLE fallback) / `AdbLine.*` (LLE default on Mac II) | HLE: bit-serial ADB → command-level, clamped deltas. LLE: real bit-serial line (`AdbLine`, MAME `macadb.cpp` port) | LLE `AdbLine` is bit-level and default (Mac II) |
+| **Egret / Cuda** | `Egret.*` | 68HC05 MCU firmware → packet-level command emulation (ADB autopoll, RTC heartbeat, XPRAM streams, Cuda polarity flavor). Wire framing/schedule is LLE-faithful since §1.6b | 68HC05 core + dumped firmware — dumps already in `roms/cuda/` (`341s0060.bin`, `341s0417.bin`, `341s0788.bin`); MAME runs them |
+| **ADB modem (Mac II)** | `AdbVia.*` + `Pic1654s.*` + `AdbLine.*` | **LLE default** since 2026-07-22 when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia.cpp:34-49`). HLE = NEW/EVEN/ODD/IDLE byte SM on VIA SR — only if dump missing or `POM68K_ADB_LLE=0` | Done: PIC runs real firmware; `AdbLine` is bit-serial; `Via6522::extShiftCB1` is the wire |
+| **ADB bus (Egret/Cuda machines)** | `AdbBus.*` | Bit-serial ADB → command-level Talk/Listen with clamped mouse deltas (LC II / Q605) | Bit-serial `AdbLine` (or Egret firmware LLE) on those machines too |
 
 These are pragmatic and well-gated (`egret_test`, `input_etalon`,
-`macii_boot_etalon`); they must stay protocol-faithful to ROM traces
-(TODO: "expand Cuda commands only from ROM/driver traces").
+`macii_boot_etalon`, `macii_mouse_etalon`); they must stay
+protocol-faithful to ROM traces (TODO: "expand Cuda commands only from
+ROM/driver traces").
 
-The **Mac II ADB modem is the first HLE-replacement being migrated to
-true firmware LLE** (2026-07-22) — the pattern the rest should follow.
-`Pic1654s` (PIC16C5x core, gate `pic1654s_test`) + `AdbLine` (gate
-`adbline_test`) + `Via6522::extShiftCB1` run the *real* transceiver ROM
-behind an opt-in flag; it already reaches the point where the PIC
-receives the ROM's commands, drives the ADB bus, and `AdbLine` decodes
-them. It is **not the default yet** — the remaining blocker (the PIC
-mis-routing the ROM's self-test under burst interleaving) needs
-cycle-exact PIC↔CPU co-stepping (TODO ★). This ordering is deliberate:
-see the principle below.
+### Mac II ADB modem — LLE default (2026-07-22)
+
+The first HLE-replacement migrated to true firmware LLE — the pattern
+the rest should follow:
+
+- **Default**: `Pic1654s` (gate `pic1654s_test`) + `AdbLine` (gate
+  `adbline_test`) + `Via6522::extShiftCB1` load `342s0440-b.bin`
+  (`AdbVia::attach`). Self-test → `ADBReInit` → mouse-at-addr-3 on the
+  wire; mouse moves (`macii_mouse_etalon` / `macii_mouse_trace`).
+- **Force HLE**: `POM68K_ADB_LLE=0`, or missing dump (silent fallback).
+- **HLE-only leftover**: §1.9 ORB→SHIFT re-arm.
+- Blockers that delayed default (PIC instruction cost, phantom SHIFT,
+  VIA mode-111 first-falling-edge bit7 drop) are fixed — CHANGELOG
+  2026-07-22 "Mac II LLE ADB default". Retire the HLE byte-model once
+  more machines run LLE ADB.
+
 Reference hierarchy for the Egret/Cuda protocol, established by the
 second audit: **MAME `cuda.cpp`** (LLE, real 6805 firmware — the
 timing oracle), **DingusPPC `viacuda.cpp` + `zdocs/developers/
@@ -212,9 +241,10 @@ documents the real behavior.
   *throughput overlays* (`POM68K_Q605_CACHE_BOOST`, `cacheBoost_`
   scaling in `flushTicks`) rather than architectural caches; no 040
   copyback/snooping.
-  *Gaps*: peripheral-tick batching (128 cycles LC II / 256 Q605 —
-  ~8-16 µs IRQ-latency jitter); VIA E-clock synced at a fixed 32:1
-  ratio (real ≈31.91:1).
+  *Gaps*: peripheral-tick batching (`Cpu020::kPeriphBatch=64`,
+  `Cpu030::kPeriphBatch=128`, `Cpu040` `kPeriphBatch=256` — ~4–16 µs
+  IRQ-latency jitter); VIA E-clock synced at a fixed 32:1 ratio
+  (real ≈31.91:1).
 - **Egret/Cuda wire** (`Egret.*`): real framing + 61/71/88/13/30 µs
   per-byte schedule + `$1B` one-second modes + open-ended streams
   since the §1.6b redo (2026-07-22). Autopoll rate obeys `$14`
@@ -278,9 +308,14 @@ documents the real behavior.
   generation), WR5 Tx-Enable not gating, no Rx CRC verification (RR1
   bit 6 never set), Tx Underrun uses a flat 1200-cycle delay instead
   of counting CRC+flag bit times.
-- **ADB** (`AdbVia.*`, `AdbBus.*`): command-level (§2).
-  *Gaps*: `AdbVia` assumes 2-byte Listen payloads (real ADB is 2-8
-  bytes; DingusPPC `adbbus.cpp` validates against 8).
+- **ADB**: Mac II default path is firmware LLE (§2 / step 11).
+  `AdbBus.*` (LC II / Q605 via Egret/Cuda) and the Mac II HLE fallback
+  remain command-level.
+  *Gaps (HLE paths only)*: `AdbVia` HLE assumes 2-byte Listen payloads
+  (real ADB is 2–8 bytes; DingusPPC `adbbus.cpp` validates against 8);
+  mouse deltas clamped. LLE `AdbLine` is bit-serial (MAME `macadb.cpp`
+  lineage) — remaining fidelity is PIC↔device timing under load, not
+  the byte SM.
 - **Audio**: `Asc.*` FIFO semantics faithful (MODE mask, edge/level IRQ
   variants); fixed 22 257 Hz drain via fractional accumulators.
 - **Confirmed parity** (second audit, no action): pseudo-VIA register
@@ -292,10 +327,13 @@ documents the real behavior.
 
 ## 4. Pure LLE / host convenience
 
-- Pure LLE: `Via6522.*`, `PseudoVia.*`, `MacMemory.*` (overlay), `Rtc`
-  serial protocol, `Ariel.h`, `MacFrame.h`.
+- Pure LLE: `Via6522.*` (incl. `extShiftCB1` for Mac II ADB),
+  `PseudoVia.*`, `MacMemory.*` (overlay), `Rtc` serial protocol,
+  `Ariel.h`, `MacFrame.h`, `Pic1654s.*` + `AdbLine.*` (when dump
+  present).
 - Host convenience (guest-invisible): `MacAudioHost.h`, GUI (`main.cpp`),
-  trace tools, PRAM file persistence (`<disk>.pram`).
+  trace tools, PRAM file persistence (`<disk>.pram`), LToUDP peer
+  bridging.
 - **`ScsiDisk` flat-HFS façade** (`ScsiDisk.cpp:70-132`): synthesizes an
   in-memory DDM + partition map + Apple_Driver43 in front of bare HFS
   `.dsk` images. Classified **host convenience** (media-format adapter,
@@ -303,6 +341,10 @@ documents the real behavior.
   sees a valid, consistent SCSI disk and writes round-trip. Keep; the
   synthetic driver partition must stay byte-identical to
   `tools/wrap_hfs.py` output.
+- **`DeclRom::buildSynthetic`** (`MacIIMemory.cpp:61-65`): if no Toby
+  DeclROM dump is found, a minimal synthetic card ROM is installed so
+  Slot Manager still enumerates video. Host convenience / missing-asset
+  fallback — prefer a real DeclROM when available.
 
 ## 5. Migration plan (LLE-first)
 
@@ -354,18 +396,18 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
    probe pinned against MAME's cycle counts.
 10. Longer term: Toby CRTC-derived frame clock, SWIM2/SonyDrive MFM
     cell timing + CRC, NuBus arbitration, 040 copyback/snooping,
-    Egret/Cuda **firmware** LLE (68HC05 core + dump, only if a use
-    case demands it — MAME proves it works).
-11. **Mac II ADB → firmware LLE: DONE, default since 2026-07-22** (§2).
-    `Pic1654s` + `AdbLine` + `Via6522::extShiftCB1` run the real
-    `342s0440-b.bin`; self-test → `ADBReInit` → mouse-at-addr-3 all over
-    the wire, the mouse moves (`macii_mouse_trace`). The blocker was
-    three bugs — PIC instruction cost, a phantom SHIFT from the
-    Slot-Manager ORB hack (now gated off in LLE), and the VIA mode-111
-    first-falling-edge bit7 drop (CHANGELOG 2026-07-22 "Mac II LLE ADB
-    default"). HLE `AdbVia` remains only as the no-dump fallback —
-    retire it once more machines run LLE ADB. This is the concrete
-    precedent for the Egret/Cuda 68HC05 firmware LLE (step 10) later.
+    Egret/Cuda **firmware** LLE (68HC05 core + the dumps already under
+    `roms/cuda/` — only if a use case demands it; MAME proves it works;
+    Mac II ADB step 11 is the integration template).
+11. ~~**Mac II ADB → firmware LLE**~~ **DONE, default since 2026-07-22**
+    (§2). `Pic1654s` + `AdbLine` + `Via6522::extShiftCB1` run the real
+    `342s0440-b.bin`; self-test → `ADBReInit` → mouse-at-addr-3 on the
+    wire; mouse moves (`macii_mouse_etalon`). Blockers fixed: PIC
+    instruction cost, Slot-Manager ORB phantom SHIFT (§1.9, gated
+    `!lle()`), VIA mode-111 first-falling-edge bit7 drop (CHANGELOG
+    2026-07-22 "Mac II LLE ADB default"). HLE `AdbVia` remains only as
+    the no-dump / `POM68K_ADB_LLE=0` fallback — retire it once more
+    machines run LLE ADB. Precedent for Egret/Cuda 68HC05 LLE (step 10).
 
 Every remaining hack must be: (a) behind an env flag or module toggle,
 (b) logged when it fires, (c) listed here, and (d) eventually migrated

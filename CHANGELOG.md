@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 2026-07-22 — `docs/LLE_VS_HLE.md` third pass: inventory re-synced to the live tree
+
+The LLE/HLE inventory was re-verified against `src/` after the Mac II
+ADB PIC1654S default, Cuda wire redo, and SCC peer-hold landed. Drift
+fixed (the doc still said ADB LLE was "not the default yet" / opt-in
+while `AdbVia.cpp:34-49` had already flipped it):
+
+- **ADB modem**: LLE is the default when `roms/adbmodem/342s0440-b.bin`
+  is present; HLE = missing dump or `POM68K_ADB_LLE=0`. Principle + §2
+  + migration step 11 now agree with the "Mac II LLE ADB default"
+  entry below.
+- **§1.7 factory PRAM**: real policy documented — `Rtc` reseeds only
+  SPConfig when `'NuMc'` is present; `Egret` always rewrites the
+  classic block + seeds video sPRAM `$58=$83`; both honour
+  `POM68K_APPLETALK=1` → `$21`.
+- **§1.9** (new): Slot Manager ORB → `armShiftComplete` phantom SHIFT
+  listed as an HLE-path-only leftover (`MacIIMemory.cpp:273-290`,
+  gated `!lle()`).
+- **§3/§4**: CPU periph batches are 64/128/256 (`Cpu020`/`030`/`040`);
+  `Pic1654s`/`AdbLine` counted as pure LLE; `DeclRom::buildSynthetic`
+  as host convenience; Cuda dumps under `roms/cuda/` noted for step 10.
+
+Inventory stays the living status board; the *why* of each LLE step
+remains in the dated entries below.
+
 ## 2026-07-22 — LLE step 7: Cuda/Egret wire-model redo (the per-reader hacks are gone)
 
 `Egret.cpp`'s reply wire now follows the real Cuda protocol (DingusPPC
