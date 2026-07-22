@@ -88,14 +88,25 @@ void Scc8530::rxStartFrame(Chan& c, int chIdx) {
                 chIdx ? 'A' : 'B', c.rxCur.size());
 }
 
-// Pace one byte of the current frame into the 3-deep Rx FIFO.
+// Pace one byte of the current frame onto the line; it reaches the 3-deep
+// Rx FIFO only while the receiver is enabled (else it is lost on the wire —
+// the carrier is still seen via RR0 bit 7).
 void Scc8530::rxPushByte(Chan& c) {
+    const bool last = c.rxPos + 1 == c.rxCur.size();
+    if (!rxEnabled(c)) {
+        c.rxPos++;
+        if (last) {
+            c.rxCur.clear();
+            c.rxPos = 0;
+            if (!c.hunt) c.hunt = true;          // line idles again
+        }
+        return;
+    }
     if (c.fifo.size() >= 3) {                    // overrun: drop, flag RR1.5
         if (!c.fifo.empty()) c.fifo.back().rr1 |= 0x20;
         raiseRxInt(c, true);
         return;
     }
-    const bool last = c.rxPos + 1 == c.rxCur.size();
     // End of Frame (RR1 bit 7) rides the LAST byte (2nd FCS byte); CRC
     // error (bit 6) stays 0 = good frame. Bit 0 = all-sent.
     Chan::RxByte b{c.rxCur[c.rxPos], uint8_t(last ? 0x81 : 0x01)};
@@ -453,7 +464,12 @@ bool Scc8530::tick(int cycles) {
             }
         }
         // ── Rx pacing: one byte per LocalTalk byte-time into the FIFO ──
-        if (sdlcMode(c) && rxEnabled(c)) {
+        // The LINE runs regardless of the receiver: LLAP senders wait for
+        // the CTS with Rx disabled, watching RR0 bit 7 for the carrier
+        // (the 7.5 LAP polls $F4→ waiting for the abort to drop). A frame
+        // therefore always plays out on the wire — bytes only reach the
+        // FIFO while the receiver is enabled (rxPushByte).
+        if (sdlcMode(c)) {
             if (c.rxCur.empty() && !c.rxQueue.empty()) {
                 bool wasIrq = c.rxIp || c.specialIp || c.extPending;
                 rxStartFrame(c, i);
