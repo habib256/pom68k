@@ -36,3 +36,4 @@ imgui.ini
 Testing/
 build-oracle-uae/
 scratchpad/__pycache__/
+.venv-tools/

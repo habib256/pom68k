@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## 2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)
+
+`tools/dir2hfs.py` (machfs, repo venv `.venv-tools`) bakes a host folder
+into classic-HFS volume(s) that mount as secondary SCSI disks: MacBinary
+`.bin` decoded to native forks + Type/Creator, `.zip` expanded host-side,
+`.sit`/`.hqx` typed for StuffIt Expander, CD images (`.toast`/`.cdr`/
+`.iso`) extracted next to the output for direct SCSI attach. 31-char
+MacRoman names sanitized/deduped, 1.9 GB first-fit split (`--max-mb`,
+`--only`). Gate: `dir2hfs_selftest` (46 tests total). README documents
+the workflow; `hdv/INPUT.vhd` (1845 MB, 141 files) baked from `input/`.
+
+`ScsiDisk`'s flat-HFS façade now also detects **data-only** bare volumes
+by the MDB `'BD'` signature at `$400` (zero boot blocks). The first
+attempt stamped fake `'LK'` boot blocks instead — StartBoot scans SCSI
+6→0, saw the higher-ID data volume before the ID-0 boot disk, believed
+the LK, jumped into zeroed boot blocks and died pre-video in the ROM
+serial-debugger stub (`$408BA0EA` on FF7439EE, 21 SCSI commands then
+silence). Data volumes must stay honestly non-bootable. Mount proven
+headless: OS 8.1/Q605 boots identically (5747 SCSI cmds = baseline) and
+clears the volume's MDB clean-unmount bit through write-back.
+
 ## 2026-07-22 — Mac II LLE ADB default: mouse moves; three bugs, none where predicted
 
 `macii_mouse_trace` PASSes under the PIC1654S LLE path and it is now the

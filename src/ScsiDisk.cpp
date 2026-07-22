@@ -67,8 +67,20 @@ static bool findDdmTemplate(const std::string& imagePath, std::vector<uint8_t>& 
 }
 } // namespace
 
+// Bare-HFS detection: bootable volumes carry 'LK' boot blocks at 0; a
+// data-only volume (tools/dir2hfs.py bake) has ZERO boot blocks and is
+// recognized by the MDB signature 'BD' at $400. Data-only volumes must NOT
+// be given fake 'LK' blocks: StartBoot scans SCSI 6→0, sees the higher ID
+// first, believes the LK, jumps into zeroed boot blocks and lands in the
+// ROM serial-debugger stub ($408BA0EA on FF7439EE) before video is up.
+static bool looksBareHfs(const std::vector<uint8_t>& img) {
+    if (img.size() >= 2 && img[0] == 'L' && img[1] == 'K') return true;
+    return img.size() >= 0x402 && img[0x400] == 'B' && img[0x401] == 'D'
+        && !(img[0] == 'E' && img[1] == 'R');       // already partitioned
+}
+
 bool ScsiDisk::applyFlatHfsFacade(const std::string& imagePath) {
-    if (image_.size() < 2 || image_[0] != 'L' || image_[1] != 'K') return false;
+    if (!looksBareHfs(image_)) return false;
     if (image_.size() % kBlockSize) {
         std::fprintf(stderr, "SCSI: %s: bare HFS not a multiple of 512 — "
                      "no façade\n", imagePath.c_str());
@@ -140,7 +152,7 @@ bool ScsiDisk::open(const std::string& path, bool writeBack) {
     if (file_.is_open()) file_.close();
     writeBack_ = false;
 
-    if (blocks_ && image_.size() >= 2 && image_[0] == 'L' && image_[1] == 'K')
+    if (blocks_ && looksBareHfs(image_))
         applyFlatHfsFacade(path);
 
     if (blocks_ && writeBack) {

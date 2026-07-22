@@ -94,6 +94,24 @@ LC II and Quadra, **Disques** picks the boot volume and toggles secondary
 SCSI images next to the current one (relaunches — the ROM only scans the
 bus at boot), and **Redémarrer** power-cycles the machine.
 
+## Sharing host files with the Mac (baked HFS volume)
+
+`tools/dir2hfs.py` bakes a host folder into classic-HFS volume(s) that
+mount on the emulated desktop as a second SCSI disk:
+
+```bash
+python3 -m venv .venv-tools && .venv-tools/bin/pip install machfs   # once
+.venv-tools/bin/python tools/dir2hfs.py input hdv/INPUT             # bake
+./build/POM68K <ROM> hdv/MacOS-8.1-boot.vhd hdv/INPUT.vhd           # mount
+```
+
+(or pick the volume from the **Disques** menu). MacBinary `.bin` files are
+decoded to native forks (usable immediately); `.zip` archives are expanded
+host-side; `.sit`/`.hqx` keep their StuffIt types (unstuff in the guest);
+CD images (`.toast`/`.cdr`/`.iso`) are extracted next to the output and
+attach directly as SCSI disks. The volume is writable (write-back); split
+past 1.9 GB (`--max-mb`), filter with `--only 'glob'`.
+
 ## Headless tools
 
 ```bash

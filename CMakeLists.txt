@@ -216,6 +216,18 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME scsi_hfs_facade_test COMMAND scsi_hfs_facade_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # Gate: tools/dir2hfs.py fixture bake (MacBinary decode, data-only bare
+    # volume for the flat-HFS façade, machfs round-trip). Soft-skips if machfs
+    # is missing — prefers the repo venv (.venv-tools), else system python3.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.venv-tools/bin/python")
+        set(POM68K_TOOLS_PYTHON "${CMAKE_CURRENT_SOURCE_DIR}/.venv-tools/bin/python")
+    else()
+        set(POM68K_TOOLS_PYTHON "python3")
+    endif()
+    add_test(NAME dir2hfs_selftest
+             COMMAND ${POM68K_TOOLS_PYTHON} tools/dir2hfs.py --selftest
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # M5.5 gate: keyboard/mouse against the System 6 drivers (soft-skips).
     add_executable(input_etalon tests/input_etalon.cpp)
     target_link_libraries(input_etalon PRIVATE pom68k_core)
