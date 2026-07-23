@@ -1,0 +1,79 @@
+// POM68K — Macintosh 68k emulator
+// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+//
+// Gate `q605_cudalle_key_etalon`: KEYBOARD input through the REAL Cuda
+// firmware. Repro for the 2026-07-23 field report: typing froze the whole
+// emulator on the Quadra (host-side wedge in the SRQ-driven keyboard
+// path — the mouse rides autopoll, the keyboard is the first real SRQ
+// consumer). Boots Mac OS 8.1 to the Finder, types "8.8.8.8" as timed
+// press/release pairs, and requires (a) the emulation to keep advancing
+// (Ticks $016A — a host hang shows up as the CTest timeout), and (b) the
+// keystrokes to reach the low-memory KeyMap ($0174).
+
+#include "Q605Memory.h"
+#include "Cpu040.h"
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <string>
+#include <vector>
+
+static std::string find(const char* rel) {
+    for (const std::string base : { "", "../" }) {
+        std::string p = base + rel;
+        if (std::ifstream(p, std::ios::binary)) return p;
+    }
+    return {};
+}
+
+int main() {
+    setenv("POM68K_CUDA_LLE", "1", 1);
+    std::string rom = find("roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM");
+    std::string img = find("hdv/MacOS-8.1-boot.vhd");
+    if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM+disk\n"); return 0; }
+
+    std::ifstream rin(rom, std::ios::binary);
+    std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
+    Q605Memory mem(32u << 20);
+    if (!mem.loadRom(romData) || !mem.attachScsi(img)) return 1;
+    if (!mem.cudaLleActive()) { std::printf("SKIP: needs roms/cuda/341s0788.bin\n"); return 0; }
+    Cpu040 cpu(mem);
+    mem.setCpu(&cpu);
+    cpu.hardReset();
+    while (mem.cpuHeld()) mem.tick(1000);
+
+    auto rd32 = [&](uint32_t a) {
+        return (uint32_t(mem.peek8(a)) << 24) | (uint32_t(mem.peek8(a + 1)) << 16)
+             | (uint32_t(mem.peek8(a + 2)) << 8) | uint32_t(mem.peek8(a + 3));
+    };
+
+    constexpr int kFrame = 416667;                   // 25 MHz / ~60 Hz
+    for (long f = 0; f < 9000 && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
+    std::printf("post-boot: Ticks=%u\n", rd32(0x016A));
+
+    // "8.8.8.8" — Mac virtual/ADB codes: '8' = $1C, '.' = $2F.
+    static const uint8_t kSeq[] = { 0x1C, 0x2F, 0x1C, 0x2F, 0x1C, 0x2F, 0x1C };
+    bool keymapSeen = false;
+    const uint32_t ticks0 = rd32(0x016A);
+    for (uint8_t code : kSeq) {
+        mem.keyEvent(code, true);                    // press
+        for (int f = 0; f < 6 && !cpu.isHalted(); f++) {
+            cpu.runCycles(kFrame);
+            // KeyMap $0174-$0183: bit set while the key is down
+            for (int i = 0; i < 16 && !keymapSeen; i++)
+                if (mem.peek8(0x0174 + uint32_t(i)) != 0) keymapSeen = true;
+        }
+        mem.keyEvent(code, false);                   // release
+        for (int f = 0; f < 6 && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
+        std::printf("  key %02X done, Ticks=%u\n", code, rd32(0x016A));
+    }
+    const uint32_t ticks1 = rd32(0x016A);
+
+    const bool alive = ticks1 > ticks0;
+    std::printf("Ticks %u -> %u; KeyMap %s\n", ticks0, ticks1,
+                keymapSeen ? "saw keys" : "SILENT");
+    const bool ok = alive && keymapSeen && !cpu.isHalted();
+    std::printf("%s\n", ok ? "PASS: keyboard types on the real firmware"
+                           : "FAIL: keyboard path wedged or silent");
+    return ok ? 0 : 1;
+}

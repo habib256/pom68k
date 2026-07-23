@@ -2,6 +2,7 @@
 # POM68K — AppleShare bridge, ONE command:
 #
 #   sudo tools/netatalk2/appleshare.sh          # bring everything up
+#   sudo tools/netatalk2/appleshare.sh --macip  # …plus MacIP (TCP/IP for the guest)
 #   sudo tools/netatalk2/appleshare.sh stop     # tear everything down
 #
 # Brings up, in order (order matters — atalkd learns net/zone from the
@@ -12,6 +13,11 @@
 #   2. TashRouter (vendored, runs as the invoking user, logs to run/)
 #   3. atalkd (non-seed) + afpd serving input/ as volume "Input"
 # then self-checks with getzones + nbplkup.
+#
+# With --macip (or POM68K_MACIP=1) it also starts the MacIP layer
+# (tools/macip/macip.sh): the vendored macipgw registers an IPGATEWAY in
+# zone POM68K, tunnels IP-in-DDP to a host tun device, and the host NATs
+# the guests to the internet. Guest config: docs/APPLETALK.md §6.4.
 #
 # Guest side:  POM68K_LTOUDP=1 POM68K_APPLETALK=1 ./build/POM68K <ROM> <disk>
 #              Chooser → AppleShare → "POM68K" → Guest → mount "Input".
@@ -32,19 +38,27 @@ stop_all() {
     pkill -f "tools/netatalk2/router.py" 2>/dev/null || true
 }
 
-if [ "${1:-}" = "stop" ]; then
-    stop_all
-    ip link del pomtap0 2>/dev/null || true
-    ip link del veth-atalk 2>/dev/null || true   # legacy macvtap-era ifaces
-    echo "AppleShare bridge stopped."
-    exit 0
-fi
+MACIP=${POM68K_MACIP:-0}
+for arg in "$@"; do
+    case "$arg" in
+        --macip) MACIP=1 ;;
+        stop)
+            "$HERE/../macip/macip.sh" stop 2>/dev/null || true
+            stop_all
+            ip link del pomtap0 2>/dev/null || true
+            ip link del veth-atalk 2>/dev/null || true   # legacy macvtap-era ifaces
+            echo "AppleShare bridge stopped."
+            exit 0 ;;
+        *) echo "unknown argument: $arg (use --macip or stop)"; exit 1 ;;
+    esac
+done
 
 [ -x "$NA/sbin/afpd" ] || { echo "run tools/netatalk2/build_netatalk2.sh first"; exit 1; }
 mkdir -p "$CONF"
 # run/ may have been created by a previous sudo run — the router writes its
 # pid/log there as the real user.
 chown -R "$REAL_USER" "$CONF"
+"$HERE/../macip/macip.sh" stop >/dev/null 2>&1 || true   # macipgw can't outlive atalkd
 stop_all
 sleep 1
 
@@ -114,6 +128,15 @@ echo "── self-check ──"
 echo -n "zones: ";   "$NA/bin/getzones" 2>&1 | head -2
 echo "nbp:";         "$NA/bin/nbplkup" 2>&1 | head -6
 echo
+
+# ── 4. MacIP (opt-in): TCP/IP for the guests, NATed through the host ──
+if [ "$MACIP" = 1 ]; then
+    echo "── MacIP layer ──"
+    [ -x "$ROOT/extern/netatalk2-build/macipgw/macipgw" ] || \
+        sudo -u "$REAL_USER" "$ROOT/tools/macip/build_macipgw.sh"
+    "$ROOT/tools/macip/macip.sh"
+    echo
+fi
 echo "Bridge up. Now run:"
 echo "  POM68K_LTOUDP=1 POM68K_APPLETALK=1 ./build/POM68K <ROM> <disk>"
 echo "Chooser → AppleShare → 'POM68K' → Guest → mount 'Input'."

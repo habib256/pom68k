@@ -199,7 +199,7 @@ fires on the default path. Eliminate when HLE `AdbVia` is retired.
 
 | Device | Files | What is replaced | Proper LLE would be |
 |---|---|---|---|
-| **Egret / Cuda** | `Egret.*` / `CudaLle.*` | **Firmware LLE is the DEFAULT on BOTH machines since 2026-07-23** — Q605: `M68hc05` + `CudaLle` run the real `341s0788.bin` (gates `m68hc05_test`, `cuda_lle_test`, `q605_cudalle_boot_etalon`, `q605_cudalle_mouse_etalon`); LC II: `CudaLle::Flavor::Egret` runs `roms/egret/341s0850.bin` (gate `egret_lle_test`; falling-edge PC3 release). `Egret.*` HLE remains only as the `POM68K_CUDA_LLE=0` / `POM68K_EGRET_LLE=0` / no-dump fallback | **Done on Q605 + LC II.** Remaining: retire `Egret.*`/`AdbBus` once the fallbacks feel redundant |
+| **Egret / Cuda** | `Egret.*` / `CudaLle.*` | **Q605: firmware LLE is the DEFAULT** since 2026-07-23 — `M68hc05` + `CudaLle` run the real `341s0788.bin` (gates `m68hc05_test`, `cuda_lle_test`, `q605_cudalle_boot_etalon`, `q605_cudalle_mouse_etalon`). **LC II: firmware LLE built but OPT-IN** (`POM68K_EGRET_LLE=1`, gate `egret_lle_test`) — the VIA per-byte dance desyncs under autopoll load (mouse ~1.5% delivery, CHANGELOG 2026-07-23 "back to OPT-IN"); HLE `Egret.*` stays the LC II default until the wire diff vs MAME closes it (TODO step 6) | Fix the LC II VIA dance → re-flip; then retire `Egret.*`/`AdbBus` once the fallbacks feel redundant |
 | **ADB modem (Mac II)** | `AdbVia.*` + `Pic1654s.*` + `AdbLine.*` | **LLE default** since 2026-07-22 when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia.cpp:34-49`). HLE = NEW/EVEN/ODD/IDLE byte SM on VIA SR — only if dump missing or `POM68K_ADB_LLE=0` | Done: PIC runs real firmware; `AdbLine` is bit-serial; `Via6522::extShiftCB1` is the wire |
 | **ADB bus (Egret/Cuda machines)** | `AdbBus.*` | Bit-serial ADB → command-level Talk/Listen with clamped mouse deltas — **fallback-only since 2026-07-23** (both machines feed `AdbLine` under the firmware LLE) | Retire with the Egret HLE |
 
@@ -245,11 +245,11 @@ documents the real behavior.
   `Cpu030::kPeriphBatch=128`, `Cpu040` `kPeriphBatch=256` — ~4–16 µs
   IRQ-latency jitter); VIA E-clock synced at a fixed 32:1 ratio
   (real ≈31.91:1).
-- **Egret/Cuda wire**: the DEFAULT is the real firmware since
-  2026-07-23 (§2 — `M68hc05` + `CudaLle` on both machines), which
-  closes every wire gap on the default path: framing, pacing, MCU RAM
-  and autopoll are the 68HC05's own. The notes below apply to the
-  `Egret.*` HLE **fallback only** (no dump / env off): real framing +
+- **Egret/Cuda wire**: the Q605 DEFAULT is the real firmware since
+  2026-07-23 (§2 — `M68hc05` + `CudaLle`), which closes every wire gap
+  on that path: framing, pacing, MCU RAM and autopoll are the 68HC05's
+  own. The LC II runs the `Egret.*` HLE by default (firmware opt-in —
+  §2). The notes below apply to the `Egret.*` HLE: real framing +
   61/71/88/13/30 µs per-byte schedule + `$1B` one-second modes since
   the §1.6b redo; autopoll obeys `$14`; boot-heartbeat shapes pinned
   against ROM readers, not firmware traces; MCU-RAM reads outside
@@ -464,16 +464,17 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
 10. Longer term: ~~Toby CRTC-derived frame clock~~ **DONE 2026-07-23**
     (CHANGELOG "Toby: CRTC-derived frame clock" — plus the discovery
     that the TFB register file was write-dropped on the byte path);
-    ~~Egret/Cuda **firmware** LLE~~ **DONE on Q605 AND LC II
-    2026-07-23, default on both** (CHANGELOG "The real Cuda firmware
-    is the Quadra's DEFAULT" + "The LC II runs the real Egret
-    firmware too": `M68hc05` 68HC05E1 core + `CudaLle` glue run the
-    real 341S0788 / 341S0850 — Finder boots, mouse moves through the
-    firmware autopoll, PRAM persists; the silicon discoveries en
+    ~~Egret/Cuda **firmware** LLE~~ **DONE on the Q605 (default);
+    LC II built but opt-in** (CHANGELOG "The real Cuda firmware is
+    the Quadra's DEFAULT" + "Egret firmware LLE back to OPT-IN":
+    `M68hc05` 68HC05E1 core + `CudaLle` glue run the real 341S0788 /
+    341S0850 — Finder boots, PRAM persists; silicon discoveries en
     route: the customized-E1 PFW input pin, the inverting ADB output
-    stage, the Egret's falling-edge PC3 release. §2 tracks the HLE
-    retirement). Still longer-term: NuBus arbitration, 040
-    copyback/snooping (~~SWIM2/SonyDrive MFM cell timing~~ → step 13).
+    stage, the Egret's falling-edge PC3 release. The LC II flavor's
+    VIA per-byte dance still desyncs under autopoll load — TODO
+    step 6 tracks the fix + re-flip; §2 tracks the HLE retirement).
+    Still longer-term: NuBus arbitration, 040 copyback/snooping
+    (~~SWIM2/SonyDrive MFM cell timing~~ → step 13).
 12. ~~**SCC async-baud machinery**~~ **DONE 2026-07-23** (CHANGELOG
     "SCC async-baud machinery"; §3 SCC entry): WR4/WR5/WR11/WR12-14 →
     guest-derived per-channel byte pace, machine-wired clocks, SDLC

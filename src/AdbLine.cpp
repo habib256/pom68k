@@ -38,8 +38,6 @@ void AdbLine::reset() {
     mouseAddr_ = 3; mouseHandler_ = 0x23;
     keyBuf_.clear();
     mdx_ = mdy_ = 0; mbtn_ = mbtnSent_ = false;
-    lastMouse_[0] = lastMouse_[1] = 0x80;   // idle mouse report (no motion, button up)
-    lastKbd_[0] = lastKbd_[1] = 0xFF;       // idle keyboard report (no key)
 }
 
 void AdbLine::keyEvent(uint8_t adbCode, bool down) {
@@ -234,9 +232,26 @@ void AdbLine::adbTalk() {
             direction_ = 0;
             if (addr == mouseAddr_) {
                 if (reg == 0) {
+                    // A real mouse answers Talk R0 whenever it has data
+                    // PENDING (accumulated motion / button change) — even
+                    // if the report bytes equal the previous one. MAME
+                    // macadb's byte-compare dedup eats byte-identical
+                    // consecutive reports; under the Egret firmware's
+                    // fast autopoll every steady-drag report is
+                    // identical, which starved the LC II mouse to ~0.5%
+                    // delivery (2026-07-23). The pending test is MAME's
+                    // own adb_pollmouse() "did it change" principle
+                    // applied to our delta model.
                     uint8_t dy = 0, dx = 0;
-                    if (srqSwitch_) { srqSwitch_ = false; }
-                    else {
+                    bool pending = false;
+                    if (srqSwitch_) {
+                        // The SRQ-initiated poll is answered (empty
+                        // report) — the requesting flow needs the reply
+                        // to complete, not a timeout.
+                        srqSwitch_ = false;
+                        pending = true;
+                    } else {
+                        pending = mdx_ || mdy_ || (mbtn_ != mbtnSent_);
                         auto clamp7 = [](int& v) {
                             int d = std::clamp(v, -64, 63); v -= d; return uint8_t(d & 0x7F);
                         };
@@ -245,23 +260,30 @@ void AdbLine::adbTalk() {
                     buffer_[0] = uint8_t((mbtn_ ? 0x00 : 0x80) | dy);
                     buffer_[1] = uint8_t(0x80 | dx);
                     mbtnSent_ = mbtn_;
-                    if (buffer_[0] != lastMouse_[0] || buffer_[1] != lastMouse_[1]) {
-                        datasize_ = 2; lastMouse_[0] = buffer_[0]; lastMouse_[1] = buffer_[1];
-                    } else if (keyPending() && (kbdHandler_ & 0x20)) srqFlag_ = true;
+                    if (pending) {
+                        datasize_ = 2;
+                        if (trace)
+                            std::fprintf(stderr, "adbline: mouse report %02X %02X\n",
+                                         buffer_[0], buffer_[1]);
+                    }
+                    else if (keyPending() && (kbdHandler_ & 0x20)) srqFlag_ = true;
                 } else if (reg == 3) {
                     buffer_[0] = mouseHandler_; buffer_[1] = 0x01; datasize_ = 2;
                 }
             } else if (addr == kbdAddr_) {
                 if (reg == 0) {
+                    // Same pending rule as the mouse: an event popped
+                    // from the queue is always reported (byte-identical
+                    // consecutive keystroke pairs are legitimate).
+                    const bool pending = !keyBuf_.empty();
                     if (keyBuf_.empty()) { buffer_[0] = buffer_[1] = 0xFF; }
                     else {
                         buffer_[1] = keyBuf_.front(); keyBuf_.pop_front();
                         if (!keyBuf_.empty()) { buffer_[0] = keyBuf_.front(); keyBuf_.pop_front(); }
                         else buffer_[0] = 0xFF;
                     }
-                    if (buffer_[0] != lastKbd_[0] || buffer_[1] != lastKbd_[1]) {
-                        datasize_ = 2; lastKbd_[0] = buffer_[0]; lastKbd_[1] = buffer_[1];
-                    } else if (mousePending() && (mouseHandler_ & 0x20)) srqFlag_ = true;
+                    if (pending) datasize_ = 2;
+                    else if (mousePending() && (mouseHandler_ & 0x20)) srqFlag_ = true;
                 } else if (reg == 2) {
                     buffer_[0] = 0xFF; buffer_[1] = 0xFF; datasize_ = 2;   // modifiers (none held)
                 } else if (reg == 3) {

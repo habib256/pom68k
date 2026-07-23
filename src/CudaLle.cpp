@@ -6,6 +6,8 @@
 
 #include "CudaLle.h"
 #include "Via6522.h"
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 CudaLle::CudaLle(Via6522& via, int64_t cpuHz, Flavor flavor)
@@ -90,13 +92,31 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
             adb_.setHostDrive(!(v & 0x80));
             break;
         case 1: {                        // PB (pb_w :123-137)
-            treq_ = uint8_t((v >> 1) & 1);
+            const uint8_t newTreq = uint8_t((v >> 1) & 1);
+            if (newTreq != treq_ && !newTreq) {
+                static const bool trace =
+                    std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
+                if (trace) std::fprintf(stderr, "cudalle: TREQ fall\n");
+            }
+            treq_ = newTreq;
             const bool clock = (v & 0x10) != 0;
             const bool data = (v & 0x20) != 0;
             if (clock != lastViaClock_) {
                 // via_clock drives the host VIA SR's external shift clock
                 // (CB1); via_data rides CB2 — the PIC1654S wire pattern.
                 via_.extShiftCB1(clock, data);
+                traceSessionClocks_++;
+                if (!clock) {                        // sample on falling edge
+                    traceByte_ = uint8_t((traceByte_ << 1) | (data ? 1 : 0));
+                    if (++traceBits_ == 8) {
+                        traceBits_ = 0;
+                        static const bool trace =
+                            std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
+                        if (trace)
+                            std::fprintf(stderr, "cudalle: byte = %02X\n",
+                                         traceByte_);
+                    }
+                }
                 lastViaClock_ = clock;
             }
             break;
@@ -127,7 +147,18 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
 void CudaLle::portBChanged(uint8_t pb) {
     // macquadra605.cpp:230-233: VIA1 PB4 → BYTEACK, PB5 → TIP (active low).
     byteack_ = (pb & 0x10) != 0;
-    tip_ = (pb & 0x20) != 0;
+    const bool newTip = (pb & 0x20) != 0;
+    static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
+    if (newTip != tip_ && trace) {
+        if (!newTip) {
+            traceSessionClocks_ = 0;
+            std::fprintf(stderr, "cudalle: TIP fall (session start)\n");
+        } else {
+            std::fprintf(stderr, "cudalle: TIP rise after %d clock edges\n",
+                         traceSessionClocks_);
+        }
+    }
+    tip_ = newTip;
 }
 
 void CudaLle::tick(int cpuCycles) {

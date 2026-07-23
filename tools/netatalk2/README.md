@@ -27,6 +27,9 @@ Berkeley DB 5.3 and libgcrypt into `extern/netatalk2-build/` (gitignored).
 
 ```bash
 sudo tools/netatalk2/appleshare.sh                 # everything, in order
+sudo tools/netatalk2/appleshare.sh --macip         # …plus MacIP: TCP/IP for
+                                                   # the guest, NATed to the
+                                                   # internet (docs/APPLETALK.md §6.4)
 POM68K_LTOUDP=1 POM68K_APPLETALK=1 ./build/POM68K <ROM> <disk>…
 ```
 
@@ -51,3 +54,9 @@ Notes:
   (gitignored). `sudo tools/netatalk2/appleshare.sh stop` stops it all.
 - System 6 guests: open the Chooser to start AppleTalk (Sys 7 opens it
   at boot with `POM68K_APPLETALK=1`).
+- `--macip` builds (once) and starts the vendored `macipgw`
+  (`extern/macipgw` + `tools/macip/`): the guest's TCP/IP control panel
+  ("Connect via: AppleTalk (MacIP)", zone POM68K) or MacTCP ("LocalTalk",
+  Server addressing) then gets a NATed IP with DNS — Netscape browses
+  plain-HTTP sites (http://frogfind.com). Guest steps, tunables and
+  troubleshooting: `docs/APPLETALK.md` §6.4.

@@ -127,15 +127,26 @@ Next milestones:
      to `AdbLine`, PRAM persistence re-mirrored, the ADB polarity bug
      fixed (electrical line = ¬PA7), `q605_cudalle_mouse_etalon`
      green. `POM68K_CUDA_LLE=0` keeps the Egret HLE fallback.
-  5. ~~LC II Egret flavor~~ **DONE 2026-07-23** (CHANGELOG "The LC II
-     runs the real Egret firmware too"): `CudaLle::Flavor::Egret` on
-     the same 68HC05E1 core — falling-edge PC3 release, PB6-only
-     pull-ups, bare PA idle. `roms/egret/341s0850.bin` (SHA1-verified
-     vs MAME `egret.cpp`), default ON when present,
-     `POM68K_EGRET_LLE=0` keeps the HLE; gate `egret_lle_test`;
-     System 7.5 + 7.1 Finder, mouse via firmware autopoll.
-     **Remaining**: retire the `Egret.*`/`AdbBus` HLE (and the Mac II
-     §1.9 leftover) once the no-dump fallbacks feel redundant.
+  5. ~~LC II Egret flavor~~ **built 2026-07-23, default REVERTED to
+     HLE the same day** (CHANGELOG "Egret firmware LLE back to
+     OPT-IN"): `CudaLle::Flavor::Egret` boots System 7.5/7.1 to the
+     Finder, but the VIA per-byte dance desyncs under autopoll load —
+     every host session closes after ONE byte ($00) and the firmware
+     clocks the real packet after the close; only the one-second
+     packet resyncs (~1.5% of mouse reports land). `POM68K_EGRET_LLE=1`
+     opts in; gate `egret_lle_test` still forces + pins the path.
+  6. **Fix the Egret LLE VIA dance, then re-flip the default.** The
+     evidence chain is in CHANGELOG (2026-07-23) and reproducible with
+     `POM68K_ADB_LLE_TRACE=1 ./lcii_mouse_trace` (TREQ/TIP/byte
+     diagnostics live in `CudaLle`). MAME maclc runs the same firmware
+     + wiring fine → diff OUR VIA-side glue (extShiftCB1 pacing,
+     via_full edge semantics vs the 68HC05's PB polling) against
+     MAME's `egret.cpp`/`maclc.cpp` event order around one autopoll
+     packet. Re-flip criterion: `lcii_mouse_trace` delivery within 10%
+     of the HLE's (which saturates the screen), not just "moved".
+     **Remaining after that**: retire the `Egret.*`/`AdbBus` HLE (and
+     the Mac II §1.9 leftover) once the no-dump fallbacks feel
+     redundant.
 - [ ] **SCC LLE backlog — 2026-07-22 MAME `z80scc.cpp` audit** (source
   in `refs/mame/src/devices/machine/`; summary in
   `docs/LLE_VS_HLE.md` §3). Caveat everywhere: MAME's own SDLC side is
@@ -180,7 +191,11 @@ Next milestones:
   either land the fix entry in CHANGELOG or reopen the differential hunt.
 
 - [ ] **Complete LC II storage and sound devices.**
-  - Add SWIM ISM/MFM support for 1.44 MB media.
+  - ~~Add SWIM ISM/MFM support for 1.44 MB media~~ **controller DONE
+    2026-07-23** (CHANGELOG "SWIM1 ISM"; gate `swim1_test`): IWM+ISM
+    personalities, 1-0-1-1 switch, param RAM, MFM read/write through
+    the cell engines. Remaining: a guest-level 1.44 MB mount/boot
+    etalon (asset: `disks35/Stuffit_Expander_5.5.dsk`).
   - Finish DFAC/sound-out behaviour and host-clock resampling.
   - Verify long-running audio tempo under GUI load.
 

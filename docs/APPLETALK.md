@@ -540,6 +540,126 @@ mostly relevant if POM68K ever emulates *toward* real LocalTalk
 hardware; for the emulator's own use, §6.2 (Mac→CUPS) is the interesting
 half.
 
+### 6.4 MacIP — real TCP/IP for the guest, tunneled in DDP
+
+This is the layer that puts the emulated Mac **on the internet**: IP
+datagrams ride *inside* AppleTalk (IP-in-DDP), the inverse of §6.1's
+LLAP-over-UDP. Historically this is **KIP** (Kinetics IP, for the
+FastPath LocalTalk↔Ethernet gateways), later standardized as **MacIP**;
+Open Transport calls it "AppleTalk (MacIP)". It exists precisely for our
+situation: a Mac whose only network is LocalTalk, wanting TCP/IP.
+
+**Top-down:** the user opens the TCP/IP control panel, picks "Connect
+via: AppleTalk (MacIP)" in zone POM68K, and Netscape loads
+http://frogfind.com. **Bottom-up:** each IP packet is the payload of one
+DDP datagram of **type 22**, unicast between the guest and a *MacIP
+gateway* node; the gateway moves them to a host `tun` device where
+Linux routes and NATs them.
+
+The gateway is the vendored **macipgw** (`extern/macipgw`, Stefan
+Bethke 1997 / Jason King's Linux port — see `POM68K_VENDOR.md` there),
+built against the vendored netatalk 2.4.9 libatalk
+(`tools/macip/build_macipgw.sh`) and run next to `afpd` on the host
+AppleTalk stack. The protocol, all of it (`extern/macipgw/macip.c`,
+verified 2026-07-23):
+
+- **Finding the gateway — NBP again.** The gateway registers
+  `<gw-ip>:IPGATEWAY@<zone>` (`macip.c:71-72,654-670`); the client's
+  MacIP stack does an NBP lookup for type `IPGATEWAY` in its zone.
+  That is the *whole* discovery story — no magic, same LkUp/LkUpReply
+  frames as the Chooser.
+- **Getting an address — one ATP transaction.** The client sends an ATP
+  request to the gateway's **DDP socket 72**: function 1 = *assign me
+  an address* (the reply carries IP, name server, broadcast, netmask —
+  `struct macip_req`, `macip.c:87-104,398-415`), function 3 = *are you
+  a MacIP server* (probe). DHCP in one round-trip, years before DHCP.
+- **"ARP" — NBP a third time.** Each client with an address registers
+  `<client-ip>:IPADDRESS@<zone>`; the gateway resolves IP→AppleTalk
+  address by looking up the dotted-quad *as an NBP object name* of type
+  `IPADDRESS` (`arp_lookup`, `macip.c:224-244`) and also learns
+  mappings from inbound packets. Idle leases are probed with ICMP echo
+  every 30 s and reclaimed after 10 misses (`macip.c:79-81,604-626`).
+- **Data — DDP type 22**, max 586 bytes of IP per datagram, so the tun
+  MTU is 586 (`tunnel_linux.c`). TCP MSS adapts; nothing fragments.
+
+**What runs where:**
+
+```
+guest Mac OS (OT or MacTCP + AppleTalk on)          host
+  IP in DDP-22 ── LLAP/Scc8530 ── LtoUdp ── TashRouter ── pomtap0
+                                                            │ kernel DDP
+                                             macipgw (NBP IPGATEWAY, ATP :72)
+                                                            │ tunX  192.168.151.1/24, MTU 586
+                                             Linux ip_forward + MASQUERADE → internet
+```
+
+**Bring-up** (extends §6.1's bridge):
+
+```bash
+sudo tools/netatalk2/appleshare.sh --macip     # bridge + MacIP in one go
+# or, bridge already up:
+tools/macip/build_macipgw.sh                   # once, no sudo
+sudo tools/macip/macip.sh                      # start · stop to undo
+```
+
+`macip.sh` makes exactly three host changes, echoes each, and reverses
+all of them on `stop`: `net.ipv4.ip_forward=1` (previous value saved),
+three `iptables` rules tagged `pom68k-macip` (MASQUERADE for the MacIP
+subnet + two FORWARD accepts), and the `macipgw` process itself (its
+tun device disappears with it). Tunables: `MACIP_NET`/`MACIP_MASK`
+(default 192.168.151.0/24 — gateway .1, clients .2-.254; must not
+collide with a real host network), `MACIP_DNS` (default 8.8.8.8 —
+must be a resolver reachable *through the NAT*, so never the systemd
+stub 127.0.0.53), `MACIP_ZONE` (POM68K), `MACIP_DEBUG`.
+
+**Guest configuration — Mac OS 8.1 / Open Transport (Quadra 605):**
+
+1. AppleTalk must already be up (boot with `POM68K_LTOUDP=1
+   POM68K_APPLETALK=1`, the §6.1 bridge running).
+2. **TCP/IP control panel** → *Connect via:* **AppleTalk (MacIP)** →
+   *Configure:* **Using MacIP Server**.
+3. *MacIP server zone:* **Select Zone…** → **POM68K** (the gateway is
+   found by NBP in that zone).
+4. *Name server addr:* type the DNS the gateway advertises (default
+   **8.8.8.8**) — the assignment reply carries it too, but filling it
+   in removes one variable. *Search domains* can stay empty.
+5. Close, save. The first TCP/IP user (e.g. Netscape) triggers the
+   NBP lookup + ATP assign; `run/macipgw.log` shows the lease
+   (`MACIP_DEBUG=0x1111` logs `assigned 192.168.151.2`).
+
+**Guest configuration — System 7.5 / classic MacTCP (LC II, Plus,
+Mac II):** MacTCP ships on the System 7.5 install media (Networking
+extras).
+
+1. **MacTCP control panel** → click the **LocalTalk** icon; in the
+   zone list under the icons pick **POM68K**.
+2. **More…** → *Obtain Address:* **Server** (that is MacIP
+   server-assigned mode; leave Gateway Address alone).
+3. *Domain Name Server Information:* domain `.`, IP **8.8.8.8**,
+   *Default* checked.
+4. OK, close, **reboot** (classic MacTCP only reads its config at
+   startup).
+
+**Era caveats — the web side.** The stack is genuine TCP/IP, but a 1996
+browser cannot shake hands with 2026 TLS: **plain HTTP only**. Practical
+destinations: <http://frogfind.com> (search + readability proxy, made
+for this), <http://theoldnet.com> (archived-web proxy, can serve
+year-matched pages), or a self-hosted down-converting proxy (WebOne,
+macproxy) on the host as a follow-up. Netscape 2-4 on OS 8.1 and
+Netscape 2/MacWeb on 7.5 all work against these. Expect the odd 4xx
+from sites that never learned HTTP/1.0.
+
+**Troubleshooting** (host side unless noted):
+
+| Symptom | Check |
+|---|---|
+| Guest OT/MacTCP "can't find MacIP server" | `nbplkup "=:IPGATEWAY@POM68K"` must list the gateway. Empty → `run/macipgw.log` (NBP registration retries 5×5 s; `atalkd` running? started *after* the router?) |
+| Gateway registered but no address assigned | `MACIP_DEBUG=0x1111`, restart `macip.sh`, watch for `MacIP req`/`assigned` in `run/macipgw.log`; sniff the LToUDP cable (`scratchpad/ltoudp_sniff.py`) for ATP to socket 72 |
+| Guest has an IP but nothing loads | `ping 192.168.151.2` from the host (works once the guest holds the lease); `tcpdump -i tunX -n` (guest packets must appear); `iptables -t nat -S \| grep pom68k`; `sysctl net.ipv4.ip_forward` |
+| Sites fail by name, work by IP | DNS: advertised server must be a real resolver reachable through NAT (never 127.0.0.53); try `MACIP_DNS=1.1.1.1` and re-enter it guest-side |
+| `https://` anything | Expected failure — TLS era gap, use FrogFind / theoldnet (above) |
+| Large transfers stall | Check tun MTU is 586 (`ip link show tunX`) — DDP's payload ceiling |
+
 ---
 
 ## 7. Map back to POM68K code
@@ -553,7 +673,8 @@ half.
 | DDP / RTMP / ZIP / NBP routing | TashRouter | `extern/tashrouter` |
 | ATP / ASP / AFP file service | netatalk `afpd` | `extern/netatalk2` |
 | PAP print service → CUPS | netatalk `papd` (`cupsautoadd`) | `extern/netatalk2/etc/papd` |
-| Bring-up / teardown | one-command bridge | `tools/netatalk2/appleshare.sh` |
+| MacIP (IP-in-DDP → tun + NAT) | vendored `macipgw` gateway | `extern/macipgw`, `tools/macip/{build_macipgw,macip}.sh` |
+| Bring-up / teardown | one-command bridge (`--macip` adds TCP/IP) | `tools/netatalk2/appleshare.sh` |
 | Wire debugging | LToUDP sniffer (DDP/NBP decoder) | `scratchpad/ltoudp_sniff.py` |
 
 **Gates** that exercise this stack: `llap_loop_test` (RTS/CTS, ENQ,
@@ -572,9 +693,12 @@ broadcast.
 **LLAP timing:** bit rate 230.4 kbit/s · IDG ≥ 400 µs · IFG ≤ 200 µs ·
 32 retries.
 
-**DDP well-known sockets:** `1` RTMP · `2` NBP · `4` AEP(echo) · `6` ZIP.
+**DDP well-known sockets:** `1` RTMP · `2` NBP · `4` AEP(echo) · `6` ZIP ·
+`72` MacIP config (ATP).
 **DDP protocol types:** `1` RTMP-RD · `2` NBP · `3` ATP · `4` AEP ·
-`5` RTMP-R · `6` ZIP · `7` ADSP.
+`5` RTMP-R · `6` ZIP · `7` ADSP · `22` MacIP (IP-in-DDP).
+**MacIP NBP types:** gateway = `IPGATEWAY` · client = `IPADDRESS`
+(object = the dotted-quad IP). Assign = ATP func 1, server probe = 3.
 **DDP:** short hdr 5 B · long hdr 13 B · max data ~586 B · address =
 net(16)·node(8)·socket(8).
 
@@ -622,6 +746,12 @@ RESPONSE 2 · PROBE 3.
   `libatalk/asp/{asp_getsess.c,asp_tickle.c,asp_child.h}` (tickle/timeout),
   `etc/papd/{main.c,session.c,print_cups.c,printer.h}` (papd + CUPS),
   `bin/pap/pap.c` (pap client).
+- MacIP: **macipgw source vendored in `extern/macipgw/`** (Stefan Bethke
+  1997, Linux port <https://github.com/zero2sixd/macipgw>, provenance in
+  `POM68K_VENDOR.md` there — `macip.c` *is* the MacIP wire spec in
+  practice); the macip.net appliance (same code) for cross-checking;
+  FrogFind <http://frogfind.com> / theoldnet <http://theoldnet.com> for
+  the HTTP-only era gap.
 - POM68K itself: `docs/LLE_VS_HLE.md` §3 (SCC gaps + MAME `z80scc.cpp`
   audit), `CHANGELOG.md` (LLAP milestone 1, SCC IDG fix, AppleShare
   bridge), `src/Scc8530.*`, `src/LtoUdp.*`.

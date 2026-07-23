@@ -1,5 +1,76 @@
 # CHANGELOG
 
+## 2026-07-23 — SWIM1 ISM: 1.44 MB media on the LC II
+
+The LC II's floppy controller grows its second personality (`Swim1.*`,
+new): the chip comes up IWM-compatible (the proven `Iwm` embedded — GCR
+800K plus today's write engine), and the .Sony driver's four
+mode-register writes with bit 6 = 1-0-1-1 switch it to **ISM** (MAME
+`swim1.cpp:555-579`, fetched to refs). The ISM half is the SWIM2-lineage
+register file — data/mark/error/param/phases/setup/mode0-mode1, 2-deep
+FIFO, TSS write serializer, serial CRC-CCITT — with SWIM1's 16-entry
+parameter RAM and param-driven write cell timing (P_TIME0/P_TIME1 + 2×2
+halves, `swim1.cpp:904-916`); a mode-clear dropping bit 6 returns to
+IWM. MAME's LS-pair cell state machine + correction factors discriminate
+real-flux jitter our ideal discrete cells don't have, so the read engine
+reduces to the SWIM2 shifter (accepted simplification, LLE_VS_HLE §3).
+`V8Memory` routes the SWIM window through `Swim1` and the internal drive
+is a SuperDrive (as shipped). Gate: `swim1_test` (60th) — switch magic
+incl. broken-pattern rejection, param-RAM ring, ISM MFM read of a
+1.44 MB image with CRC verify through the FIFO flags, and a param-timed
+TSS write that commits through the cell decoder. DAT1BYTE stays unwired
+(the LC II polls). A 1.44 MB DiskCopy asset exists in `disks35/` for
+future guest-level etalons.
+
+## 2026-07-23 — ADB Talk R0 answers on PENDING data, not on changed bytes
+
+The LC II mouse under the Egret firmware LLE delivered ~0.5% of injected
+motion (`lcii_mouse_trace`: delta (63,42) for 12 000 px injected). First
+layer of the diagnosis: `AdbLine` had inherited MAME macadb's byte-compare
+dedup — a Talk R0 reply was sent only if its two report bytes DIFFERED
+from the previous reply, but the motion accumulators were already drained.
+Under the Egret's fast autopoll every steady-drag report is byte-identical
+to the last, so the deltas were consumed and thrown away. Real ADB devices
+answer Talk R0 whenever they have data pending (MAME's own
+`adb_pollmouse()` "did it change since last poll" principle — its byte
+compare is an approximation of that, valid only when polls sample
+continuous host motion). `AdbLine` now replies iff motion/button change is
+pending (mouse) or an event was popped (keyboard — byte-identical
+consecutive keystroke pairs are legitimate and no longer eaten);
+`lastMouse_`/`lastKbd_` are gone. One nuance found by the Q605 OS 8.1
+boot etalons: the SRQ-initiated poll (`srqSwitch_`) must be ANSWERED
+with its empty report, not timed out — the requesting flow needs the
+reply to complete, and leaving it pending slowed the boot past the
+etalon budgets (blank menu bar at measure time). Benefits every AdbLine
+machine (Mac II PIC, Q605 Cuda, LC II Egret); `adbline_test` and the
+mouse etalons stay green, the Q605 trace still saturates the screen
+(delta (624,464)). Field report the same evening: typing froze the
+Quadra outright on the pre-fix binary (the keyboard is the first real
+SRQ consumer — the mouse rides autopoll); on the fixed tree the new gate
+`q605_cudalle_key_etalon` (61st) types "8.8.8.8" through the firmware to
+the low-mem KeyMap with Ticks advancing.
+
+## 2026-07-23 — LC II: Egret firmware LLE back to OPT-IN (mouse starvation)
+
+Second layer: even with the AdbLine fix the LC II LLE mouse delivers only
+~1.5% — one packet per second. Instrumentation (new `POM68K_ADB_LLE_TRACE`
+diagnostics in `CudaLle`: TREQ falls, TIP sessions with clock-edge counts,
+wire bytes) shows AdbLine now ships one report per injected frame (3 982 /
+4 000) and the firmware raises TREQ for each (5 119), but **every host
+session closes after exactly one byte (16 clock edges, value $00)** and
+the firmware clocks the real packet bytes after the close, into the void —
+host and MCU are one step out of phase, and the System only resyncs on the
+one-second packet (58 successes in 66 s = exactly the 1 Hz heartbeat).
+The HLE Egret on the same trace saturates the screen, and MAME's maclc
+runs the same firmware wiring fine — the defect is in OUR VIA-side glue
+(per-byte via_full dance vs the 68HC05's expectations), not in the
+firmware, AdbLine, or the System. Per the LLE_VS_HLE principle (a
+deficient LLE must not be the default), `POM68K_EGRET_LLE` is **opt-in
+again on the LC II** until the wire diff against MAME closes the gap; the
+Q605 Cuda flavor is unaffected (its OS 8.1 dialect paces differently) and
+stays LLE-default. `egret_lle_test` still forces and gates the firmware
+path. Workaround era: none needed — the default IS the working path.
+
 ## 2026-07-23 — IWM write engine + GCR write-back: floppies are writable
 
 The last dropped-write shortcut in the floppy chain is gone

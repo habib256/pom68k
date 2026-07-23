@@ -91,6 +91,4 @@ private:
     std::deque<uint8_t> keyBuf_;                   // ADB key transition bytes
     int      mdx_ = 0, mdy_ = 0;
     bool     mbtn_ = false, mbtnSent_ = false;
-    uint8_t  lastMouse_[2] = { 0xFF, 0xFF };
-    uint8_t  lastKbd_[2] = { 0xFF, 0xFF };
 };

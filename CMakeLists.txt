@@ -74,6 +74,7 @@ add_library(pom68k_core STATIC
     src/Egret.cpp         # O6 — Egret ADB/RTC/PRAM MCU (HLE)
     src/AdbBus.cpp        # O6 — ADB bus + HLE keyboard/mouse
     src/Asc.cpp           # O6 — ASC-V8 sound (FIFO A, 22 257 Hz)
+    src/Swim1.cpp         # O6.7 — LC II SWIM1 (IWM personality + ISM/MFM)
     src/Swim2.cpp         # Q8 — PrimeTime/IOSB SWIM2 register + FIFO core
     src/Q605Memory.cpp    # Q5 — LC 475/Quadra 605 map (MEMCjr + PrimeTime)
     src/Dafb.cpp          # Q8 — DAFB II video cell (Swatch CRTC/Gazelle/RAMDAC)
@@ -176,6 +177,19 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(iwm_write_test tests/iwm_write_test.cpp)
     target_link_libraries(iwm_write_test PRIVATE pom68k_core)
     add_test(NAME iwm_write_test COMMAND iwm_write_test)
+
+    # O6.7 gate: SWIM1 IWM/ISM personalities — 1-0-1-1 switch magic, param
+    # RAM, and ISM MFM read+write of 1.44 MB media through the cell engine.
+    add_executable(swim1_test tests/swim1_test.cpp)
+    target_link_libraries(swim1_test PRIVATE pom68k_core)
+    add_test(NAME swim1_test COMMAND swim1_test)
+
+    # Keyboard through the real Cuda firmware (SRQ path — the 2026-07-23
+    # freeze repro). Soft-skips without assets.
+    add_executable(q605_cudalle_key_etalon tests/q605_cudalle_key_etalon.cpp)
+    target_link_libraries(q605_cudalle_key_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_cudalle_key_etalon COMMAND q605_cudalle_key_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # M5 gate: real ROM boots a synthetic floppy through the full IWM/GCR
     # chain and executes our boot-block code (soft-skips without a ROM).

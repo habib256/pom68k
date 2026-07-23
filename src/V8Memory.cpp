@@ -21,13 +21,16 @@ V8Memory::V8Memory(uint32_t totalRam)
     egret_.setAdbBus(&adb_);
     // ASC IRQ is LEVEL-triggered into pseudo-VIA IFR bit 4 (v8.cpp:119-122)
     asc_.onIrq = [this](bool s) { pvia_.ascIrq(s); updateIrq(); };
-    // Egret firmware LLE — the DEFAULT whenever the real 341S0850 dump
-    // (LC/LC II revision, MAME egret.cpp:74) is present, like the Q605's
-    // Cuda and the Mac II's PIC1654S; POM68K_EGRET_LLE=0 forces the HLE,
-    // a missing dump falls back silently.
+    // Egret firmware LLE (real 341S0850, MAME egret.cpp:74) — OPT-IN via
+    // POM68K_EGRET_LLE=1 since 2026-07-23: the firmware boots and moves
+    // the mouse, but the VIA per-byte dance desyncs under autopoll load
+    // (~1.5% of mouse packets reach the System; the driver only resyncs
+    // on the one-second packet). The HLE is the default again until the
+    // wire diff against MAME closes the gap — measured in
+    // lcii_mouse_trace, diagnostics behind POM68K_ADB_LLE_TRACE.
     {
         const char* e = std::getenv("POM68K_EGRET_LLE");
-        const bool want = !e || std::atoi(e) != 0;
+        const bool want = e && std::atoi(e) != 0;
         if (want) {
             for (const char* p : { "roms/egret/341s0850.bin",
                                    "../roms/egret/341s0850.bin" }) {
@@ -90,8 +93,8 @@ void V8Memory::reset() {
     adb_.reset();
     asc_.reset();
     scsi_.reset();
-    iwm_.reset();
-    iwm_.attachDrive(&drive_, nullptr);
+    swim_.reset();
+    swim_.attachDrive(&drive_, nullptr);
     drive_.setSpinClockHz(15667200);         // machineTick unit (LC II 68030)
     framePos_ = 0;
     vblState_ = false;
@@ -241,8 +244,8 @@ uint8_t V8Memory::read8(uint32_t addr) {
         // SWIM1 in its IWM-compatible GCR mode (O6.7): reg = A9-A12,
         // +5 CPU cycles per access (maclc.cpp:268-287); HDSEL = VIA1 PA5
         if (cpu_) cpu_->stall(5);
-        iwm_.setSel((via_.portA() & 0x20) != 0);
-        return iwm_.read((addr >> 9) & 0xF);
+        swim_.setSel((via_.portA() & 0x20) != 0);
+        return swim_.read((addr >> 9) & 0xF);
     }
     if (addr >= 0xF24000 && addr < 0xF26000) return ariel_.read(addr & 3);
     if (addr >= 0xF26000 && addr < 0xF28000) {
@@ -291,8 +294,8 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
     if (addr >= 0xF14000 && addr < 0xF16000) { asc_.write(addr - 0xF14000, v); return; }
     if (addr >= 0xF16000 && addr < 0xF18000) {               // SWIM1 (O6.7)
         if (cpu_) cpu_->stall(5);
-        iwm_.setSel((via_.portA() & 0x20) != 0);
-        iwm_.write((addr >> 9) & 0xF, v);
+        swim_.setSel((via_.portA() & 0x20) != 0);
+        swim_.write((addr >> 9) & 0xF, v);
         return;
     }
     if (addr >= 0xF24000 && addr < 0xF26000) { ariel_.write(addr & 3, v); return; }
@@ -446,7 +449,7 @@ void V8Memory::tick(int cpuCycles) {
     if (egretLleOn_) egretLle_.tick(cpuCycles);   // firmware + AdbLine
     else             egret_.tick(cpuCycles);      // may load the SR (SHIFT IRQ)
     asc_.tick(cpuCycles);                    // FIFO drain at 22 257 Hz
-    iwm_.tick(cpuCycles);                    // GCR nibble stream
+    swim_.tick(cpuCycles);                   // IWM nibbles / ISM cell engine
     drive_.tick(cpuCycles);                  // spindle/tach time (was frozen)
     scc_.tick(cpuCycles);                    // open-line Break/Abort stream (O6.11)
     sccIrq_ = scc_.irqAsserted();            // bidirectional — a de-asserted SCC

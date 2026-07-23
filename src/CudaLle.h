@@ -86,6 +86,9 @@ private:
     bool fwLoaded_ = false;
     bool held_ = true;
     uint8_t treq_ = 1;
+    int traceSessionClocks_ = 0;      // diag only (POM68K_ADB_LLE_TRACE)
+    uint8_t traceByte_ = 0;
+    int traceBits_ = 0;
     bool byteack_ = true, tip_ = true;   // host levels as the MCU reads them
     bool lastViaClock_ = true;
     bool resetLine_ = false;             // PC3 latch (rising edge releases)

@@ -24,7 +24,7 @@
 #include "Asc.h"
 #include "Ncr5380.h"
 #include "ScsiDisk.h"
-#include "Iwm.h"
+#include "Swim1.h"
 #include "SonyDrive.h"
 #include "Scc8530.h"
 #include <cstdint>
@@ -84,9 +84,11 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
-    // SWIM1 comes up IWM-compatible (GCR); the Plus IWM + Sony drive
-    // serve the 800K path, ISM/MFM (1.44M) is deferred (O6.7)
-    Iwm& iwm() { return iwm_; }
+    // SWIM1 comes up IWM-compatible (GCR, the proven Plus Iwm inside);
+    // the ISM personality (1.44 MB MFM) engages on the driver's 1-0-1-1
+    // mode-register magic (Swim1.h).
+    Swim1& swim() { return swim_; }
+    Iwm& iwm() { return swim_.iwm(); }
     SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
@@ -204,7 +206,7 @@ private:
     AscV8 asc_;
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];          // by SCSI ID; [0] = boot drive
-    Iwm iwm_;
+    Swim1 swim_;
     SonyDrive drive_;
     Cpu030* cpu_ = nullptr;
 
