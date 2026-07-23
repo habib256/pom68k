@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 2026-07-23 — M68HC05E1 core: the real Cuda firmware executes (step 10 groundwork)
+
+Blueprint step 1 of the Egret/Cuda **firmware** LLE (TODO; oracles
+fetched to `refs/mame/src/`): `M68hc05` is a from-scratch 68HC05E1
+interpreter — full HC05 opcode set with MAME's `s_hc_cycles` counts
+(m6805.cpp:327-345), the E1 on-chip map (ports/DDRs with pullup mixing,
+PLL with the rate-3 cheat, programmable timer at clock/1024, one-second
+timer, RAM $0090-$01FF with the $C0-$FF stack, ROM $0F00-$1FFF), the
+IRQ/TIMER/CPI vector priority of `m68hc05e1.cpp:66-84`, and WAIT/STOP.
+
+Gate `m68hc05_test`: **all three real Cuda dumps run clean from their
+reset vectors** — 341S0788 (Cuda 2.37, the MAME default) executes ~585k
+instructions over 2 M cycles with zero undefined opcodes, programs the
+PLL, sets its port directions and drives the port-B VIA handshake side;
+341S0417 (2.35) and 341S0060 (2.40) pass the same bar. Idle port levels
+are wired per `mame/apple/cuda.cpp` `pa_r/pb_r/pc_r`.
+
+Next steps (blueprint 2-4): wire PB0-PB2/PA6 to the VIA shim and
+`AdbLine` behind `POM68K_CUDA_LLE=1`, then flip machine defaults behind
+the boot etalons — the PIC1654S rollout pattern. This is the path that
+retires the `Egret` HLE, `AdbBus`, the Mac II HLE `AdbVia` byte-model
+and the §1.9 ORB hack.
+
 ## 2026-07-23 — SCC async-baud machinery: the guest programs the wire pace now
 
 The "High" blocker of the SCC LLE backlog (TODO / `docs/LLE_VS_HLE.md`

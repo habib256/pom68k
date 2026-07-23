@@ -61,6 +61,7 @@ add_library(pom68k_core STATIC
     src/Iwm.cpp           # M5 — floppy controller
     src/SonyDrive.cpp     # M5 — 800K GCR drive
     src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
+    src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
     src/LtoUdp.cpp        # LLAP — LocalTalk-over-UDP multicast cable
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
@@ -380,6 +381,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(scc_baud_test tests/scc_baud_test.cpp)
     target_link_libraries(scc_baud_test PRIVATE pom68k_core)
     add_test(NAME scc_baud_test COMMAND scc_baud_test)
+
+    # Egret/Cuda firmware-LLE gate (blueprint step 1): the M68HC05E1 core
+    # runs the real Cuda 2.37 dump from its reset vector (soft-skips).
+    add_executable(m68hc05_test tests/m68hc05_test.cpp)
+    target_link_libraries(m68hc05_test PRIVATE pom68k_core)
+    add_test(NAME m68hc05_test COMMAND m68hc05_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # O6.5 gate: SCSI pseudo-DMA windows + DRQ-gated BERR timeout
     # (soft-skips without the disk image).

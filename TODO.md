@@ -107,10 +107,10 @@ Next milestones:
   dumps are on hand (`roms/cuda/341s0788.bin` etc.), the Mac II
   PIC1654S migration is the template. **Blueprint (oracles fetched
   2026-07-23 to `refs/mame/src/`)**:
-  1. `M68hc05` core (`devices/cpu/m6805/m6805.cpp` + `m68hc05e1.cpp`
-     as oracle — 294-line EGret/Cuda MCU subclass over the 727-line
-     base; ~60 opcodes, 8-bit). Gate: execute the reset vector of
-     `341s0788.bin` for N instructions, pin PC/port-direction writes.
+  1. ~~`M68hc05` core~~ **DONE 2026-07-23** (CHANGELOG "M68HC05E1
+     core"; gate `m68hc05_test`): all three Cuda dumps execute clean
+     from reset — PLL/DDR/port-B traffic pinned, zero undefined
+     opcodes over 2 M cycles each.
   2. Wire ports per `mame/apple/cuda.cpp` (PB0-PB2 = TIP/BYTEACK/TREQ
      on the VIA shim, PA = ADB in/out, timer + PLL regs) behind a
      `POM68K_CUDA_LLE=1` flag; the `Egret` HLE stays the default until
