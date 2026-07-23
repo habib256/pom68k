@@ -61,10 +61,13 @@ int main() {
 
     swim.reset();
     swim.write(7, 0x08);                       // enter read/action mode
-    swim.tick(128);
-    check(swim.fifoCount() == 1 && (swim.read(7) & 0x80),
-          "no-media read amplifier clocks an idle $FF byte");
-    check(swim.read(0) == 0xFF, "idle read byte is $FF");
+    swim.tick(1024);
+    // No media: the PLL free-runs zeros (MAME get_next_bit with no
+    // floppy), so the MFM sync hunter never frames a byte.
+    check(swim.fifoCount() == 0 && (swim.read(7) & 0xC0) == 0,
+          "no-media read leaves the FIFO empty");
+    check(swim.read(0) == 0xFF && (swim.read(2) & 0x04) != 0,
+          "empty-FIFO data read returns $FF and flags underrun");
 
     Q605Memory mem(1u << 20);
     mem.reset();

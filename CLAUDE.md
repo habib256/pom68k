@@ -103,7 +103,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` + ROM/OS 8 |
 | **DAFB/Antelope video** | `Dafb.*` (Swatch CRTC/Gazelle/CLUT/sense; MEMCjr holding in `Q605Memory`) | Q8.1 ✓ + MAME-parity pass; 640×480×8 Finder gated | MAME `dafb.cpp` |
 | **IOSB ASC stereo** | `Asc.*` (`AscIosb`) | Q8 ✓; `$BB` FIFO/IRQ gated | MAME IOSB / ASC |
-| **SWIM2 + SuperDrive** | `Swim2.*`, `SonyDrive.*` | ✓; GCR+MFM media gated | MAME SWIM2 |
+| **SWIM2 + SuperDrive** | `Swim2.*`, `SonyDrive.*` | ✓; LLE cell engines (MFM CRC, rotation) gated | MAME SWIM2 |
 | **Pseudo-VIA2** | `PseudoVia.*` | ✓ | MAME IOSB VIA2 layout |
 
 ## Memory map (Mac Plus, 24-bit)

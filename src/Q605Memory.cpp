@@ -31,6 +31,11 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     // Two MFD-75W SuperDrives behind PrimeTime's SWIM2.
     drive0_.setSuperDrive(true);
     drive1_.setSuperDrive(true);
+    // machineTick spins the drives in 25 MHz machine cycles — declare the
+    // clock so the raw-cell rotation angle (SWIM2 read/write resync) is
+    // in real time.
+    drive0_.setSpinClockHz(kCpuHz);
+    drive1_.setSpinClockHz(kCpuHz);
     swim_.attachDrive(&drive0_, &drive1_);
     // A cold (unsigned) XPRAM makes the ROM run its LONG full-RAM
     // burn-in on every boot and boots B&W — seed the Basilisk-verified

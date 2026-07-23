@@ -7,6 +7,7 @@
 // floppy.cpp:3452-3477). Cross-checked against pce gcr-mac.c — see DEV.md.
 
 #include "SonyDrive.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -26,6 +27,9 @@ const uint8_t kGcr6[0x40] = {
 };
 
 constexpr uint16_t kMark = 0x100;
+// GCR self-sync tag: the byte is a 10-bit sync group (FF + two 0 cells)
+// on the wire. Invisible to the IWM path (uint8_t cast strips it).
+constexpr uint16_t kSync = 0x200;
 
 // IBM MFM CRC-CCITT (poly 0x1021, init 0xFFFF) covering mark+payload
 uint16_t crcCcitt(const uint8_t* data, size_t len) {
@@ -74,6 +78,7 @@ void SonyDrive::setMfmMode(bool on) {
 void SonyDrive::reset() {
     track_ = 0;
     streamPos_ = 0;
+    cellPos_ = 0;
     motorOn_ = false;
     dirToZero_ = false;
     switched_ = false;
@@ -84,7 +89,9 @@ void SonyDrive::reset() {
 void SonyDrive::eject() {
     image_.clear();
     stream_.clear();
+    cells_.clear();
     streamPos_ = 0;
+    cellPos_ = 0;
     hd_ = false;
     mfmMode_ = false;
     switched_ = true;
@@ -146,10 +153,69 @@ void SonyDrive::selectSide(bool side1) {
 
 void SonyDrive::encodeTrack() {
     stream_.clear();
-    if (!hasDisk()) return;
+    if (!hasDisk()) { cells_.clear(); return; }
     if (mfmMode_ && hd_) encodeTrackMfm();
     else encodeTrackGcr();
+    buildCells();
     if (streamPos_ >= stream_.size()) streamPos_ = 0;
+    if (cellPos_ >= cells_.size()) cellPos_ = 0;
+}
+
+int SonyDrive::rpmNow() const {
+    if (mfmMode_ && hd_) return 300;             // SuperDrive HD (mfd75w)
+    static const int kRpm[5] = { 394, 429, 472, 525, 590 };
+    return kRpm[track_ >> 4];
+}
+
+// Nominal cells per revolution: C15M / cell-divider vs the spindle RPM.
+// The encoded track content is slightly shorter; the remainder is the
+// physical gap4, padded with empty cells.
+int64_t SonyDrive::nominalCells() const {
+    const int cellCyc = (mfmMode_ && hd_) ? 16 : 31;   // swim2.cpp:329
+    return (15667200LL * 60) / (int64_t(rpmNow()) * cellCyc);
+}
+
+int64_t SonyDrive::spinCyclesPerRev() const {
+    return spinClockHz_ * 60 / rpmNow();
+}
+
+// Expand the byte stream into raw cells. MFM: clock+data half-cells per
+// bit (clock = neither neighbour set), marks are the raw $4489 pattern
+// with the missing clock. GCR: 8 cells per nibble, 10 for sync groups.
+void SonyDrive::buildCells() {
+    cells_.clear();
+    if (mfmMode_ && hd_) {
+        cells_.reserve(stream_.size() * 16);
+        bool last = false;
+        for (uint16_t v : stream_) {
+            if (v & kMark) {
+                for (int i = 15; i >= 0; i--)
+                    cells_.push_back(uint8_t((0x4489 >> i) & 1));
+                last = true;
+                continue;
+            }
+            const uint8_t b = uint8_t(v);
+            for (int i = 7; i >= 0; i--) {
+                const uint8_t bit = (b >> i) & 1;
+                cells_.push_back(uint8_t(!last && !bit));
+                cells_.push_back(bit);
+                last = bit;
+            }
+        }
+    } else {
+        cells_.reserve(stream_.size() * 10);
+        for (uint16_t v : stream_) {
+            const uint8_t b = uint8_t(v);
+            for (int i = 7; i >= 0; i--) cells_.push_back((b >> i) & 1);
+            if (v & kSync) {
+                cells_.push_back(0);
+                cells_.push_back(0);
+            }
+        }
+    }
+    const int64_t nominal = nominalCells();
+    if (nominal > int64_t(cells_.size()))
+        cells_.resize(size_t(nominal), 0);
 }
 
 // GCR-encode the current (track, side) as a byte-level nibble stream.
@@ -174,17 +240,18 @@ void SonyDrive::encodeTrackGcr() {
         int sector = phys[s];
 
         // Address field
-        for (int i = 0; i < 38; i++) stream_.push_back(0xFF);
+        for (int i = 0; i < 38; i++) stream_.push_back(kSync | 0xFF);
         stream_.push_back(0xD5); stream_.push_back(0xAA); stream_.push_back(0x96);
         stream_.push_back(kGcr6[track_ & 0x3F]);
         stream_.push_back(kGcr6[sector & 0x3F]);
         stream_.push_back(kGcr6[sideByte & 0x3F]);
         stream_.push_back(kGcr6[format & 0x3F]);
         stream_.push_back(kGcr6[(track_ ^ sector ^ sideByte ^ format) & 0x3F]);
-        stream_.push_back(0xDE); stream_.push_back(0xAA); stream_.push_back(0xFF);
+        stream_.push_back(0xDE); stream_.push_back(0xAA);
+        stream_.push_back(kSync | 0xFF);
 
         // Data field: 12 tag bytes (zero) + 512 data bytes, 175 groups of 3
-        for (int i = 0; i < 6; i++) stream_.push_back(0xFF);
+        for (int i = 0; i < 6; i++) stream_.push_back(kSync | 0xFF);
         stream_.push_back(0xD5); stream_.push_back(0xAA); stream_.push_back(0xAD);
         stream_.push_back(kGcr6[sector & 0x3F]);
 
@@ -215,7 +282,7 @@ void SonyDrive::encodeTrackGcr() {
         }
         gcr6Encode(stream_, ca, cb, cc, false);         // 4 checksum nibbles
         stream_.push_back(0xDE); stream_.push_back(0xAA);
-        stream_.push_back(0xFF); stream_.push_back(0xFF);
+        stream_.push_back(kSync | 0xFF); stream_.push_back(kSync | 0xFF);
     }
 }
 
@@ -280,6 +347,144 @@ uint16_t SonyDrive::nextByte(bool side1) {
     uint16_t v = stream_[streamPos_];
     streamPos_ = (streamPos_ + 1) % stream_.size();
     return v;
+}
+
+int SonyDrive::nextCell(bool side1) {
+    if (!hasDisk()) return 0;
+    selectSide(side1);
+    if (cells_.empty()) return 0;
+    const int c = cells_[cellPos_];
+    cellPos_ = (cellPos_ + 1) % cells_.size();
+    return c;
+}
+
+void SonyDrive::syncCellsToRotation(bool side1) {
+    if (!hasDisk()) return;
+    selectSide(side1);
+    if (cells_.empty()) return;
+    const int64_t rev = spinCyclesPerRev();
+    cellPos_ = size_t((spin_ % rev) * int64_t(cells_.size()) / rev);
+}
+
+int64_t SonyDrive::startWriteCells(bool side1) {
+    syncCellsToRotation(side1);
+    return int64_t(cellPos_);
+}
+
+// SWIM2 write-back: splice the written cells into the track, then decode
+// the whole track and commit every sector whose address AND data CRCs
+// verify. writeSector() re-encodes the track afterwards, so the raw cells
+// are canonicalized (exotic layouts are not preserved — accepted
+// simplification vs MAME's flux-level track store).
+void SonyDrive::commitCells(int64_t startCell, int64_t totalCells,
+                            const std::vector<int64_t>& transitions,
+                            bool mfm) {
+    if (!hasDisk() || writeProtected_ || cells_.empty()) return;
+    if (!mfm || !(mfmMode_ && hd_)) {
+        // GCR write-back stays deferred (like the Iwm path) — log the
+        // dropped write so the shortcut is visible (LLE_VS_HLE rule b).
+        std::fprintf(stderr,
+                     "[sony] GCR cell write dropped (%zu transitions)\n",
+                     transitions.size());
+        return;
+    }
+    const int64_t n = int64_t(cells_.size());
+    for (int64_t i = 0; i < std::min(totalCells, n); i++)
+        cells_[size_t((startCell + i) % n)] = 0;
+    for (int64_t t : transitions) {
+        if (t < 0 || t >= totalCells) continue;
+        cells_[size_t((startCell + t) % n)] = 1;
+    }
+    decodeMfmCells();
+}
+
+// Offline replica of the SWIM2 MFM read engine (swim2.cpp:499-546) over
+// the raw cell track: recover mark/CRC-tagged bytes, then walk the IBM
+// System 34 fields. Two passes cover a write span wrapping the index.
+void SonyDrive::decodeMfmCells() {
+    struct TByte { uint8_t val; bool mark; bool crcOk; };
+    std::vector<TByte> bytes;
+    bytes.reserve(cells_.size() / 16);
+    uint16_t sr = 0, crc = 0xCDB4;
+    uint8_t tss = 0;
+    int sync = 0;
+    auto crcUp = [&](int bit) {
+        if ((crc ^ (bit ? 0x8000 : 0x0000)) & 0x8000)
+            crc = uint16_t((crc << 1) ^ 0x1021);
+        else
+            crc = uint16_t(crc << 1);
+    };
+    const size_t n = cells_.size();
+    for (size_t k = 0; k < 2 * n; k++) {
+        const int bit = cells_[k % n];
+        if (sync < 64) {
+            if (bit != (sync & 1)) sync++;
+            else sync = 0;
+            continue;
+        }
+        if (sync == 64 && bit) { sync--; continue; }
+        if (sync == 65 || sync == 81) { tss = 0xFF; sr = 0; }
+        if (sync & 1) {
+            sr |= uint16_t(bit << (((96 - sync) >> 1) & 7));
+            crcUp(bit);
+        }
+        tss = uint8_t((tss << 1) | bit);
+        if ((tss & 0xF) == 1 && !(sync & 1)) sr |= kMark;
+        sync++;
+        if (sync == 80) {
+            if (!(sr & kMark)) sync = 0;
+            else {
+                crc = 0xCDB4;
+                bytes.push_back({uint8_t(sr), true, false});
+            }
+        } else if (sync == 96) {
+            sync -= 16;
+            bool crcOk = false;
+            if (sr & kMark) crc = 0xCDB4;
+            else if (!crc) crcOk = true;
+            bytes.push_back({uint8_t(sr), (sr & kMark) != 0, crcOk});
+        }
+    }
+
+    struct Pending { int t, h, s; uint8_t data[512]; };
+    std::vector<Pending> pending;
+    const size_t m = bytes.size();
+    auto markRun = [&](size_t i) {
+        return bytes[i].mark && bytes[i].val == 0xA1 &&
+               bytes[i + 1].mark && bytes[i + 1].val == 0xA1 &&
+               bytes[i + 2].mark && bytes[i + 2].val == 0xA1;
+    };
+    for (size_t i = 0; i + 10 < m; i++) {
+        if (!(markRun(i) && !bytes[i + 3].mark && bytes[i + 3].val == 0xFE))
+            continue;
+        if (!bytes[i + 9].crcOk) continue;               // address CRC
+        const int c = bytes[i + 4].val;
+        const int h = bytes[i + 5].val;
+        const int s = bytes[i + 6].val;
+        // Data field inside the gap2 window (22×4E + 12×00 + marks)
+        for (size_t j = i + 10; j + 517 < m && j < i + 80; j++) {
+            if (!(markRun(j) && !bytes[j + 3].mark && bytes[j + 3].val == 0xFB))
+                continue;
+            if (!bytes[j + 517].crcOk) break;            // data CRC (2nd byte)
+            Pending p;
+            p.t = c;
+            p.h = h & 1;
+            p.s = s - 1;
+            for (int b = 0; b < 512; b++) p.data[b] = bytes[j + 4 + size_t(b)].val;
+            bool dup = false;
+            for (const Pending& q : pending)
+                if (q.t == p.t && q.h == p.h && q.s == p.s) { dup = true; break; }
+            if (!dup) pending.push_back(p);
+            break;
+        }
+    }
+    if (debug)
+        std::fprintf(stderr, "[sony] cell write-back: %zu CRC-valid sector(s)\n",
+                     pending.size());
+    for (const Pending& p : pending) writeSector(p.t, p.h, p.s, p.data);
+    // Canonicalize the raw cells even when nothing verified (a bad-CRC
+    // write must not leave garbage the next read would see as media).
+    if (pending.empty()) encodeTrack();
 }
 
 bool SonyDrive::writeSector(int track, int side, int sector,

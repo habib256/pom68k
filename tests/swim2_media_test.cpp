@@ -1,9 +1,10 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Q8 SWIM2 media gate: MFM 1.44 MB + GCR 800K through Swim2+SonyDrive,
-// sector write-back, SuperDrive sense bits. Keeps the register-only
-// swim2_test untouched.
+// Q8 SWIM2 media gate, LLE cell-engine edition: MFM 1.44 MB + GCR 800K
+// through the real bit engines (MAME swim2.cpp read shifter + TSS write
+// serializer), CRC-CCITT verified end-to-end, rotational latency from the
+// spin counter. Keeps the register-only swim2_test untouched.
 
 #include "Swim2.h"
 #include "SonyDrive.h"
@@ -20,60 +21,80 @@ void check(bool ok, const char* what) {
 }
 
 constexpr uint16_t kMark = 0x100;
+constexpr uint16_t kCrcOk = 0x200;               // local tag: handshake CRC0
 
-// Pull decoded bytes from Swim2 until `need` collected or budget exhausted.
-std::vector<uint16_t> drainSwim(Swim2& swim, int need, int budgetCycles) {
+// Pull decoded bytes from the Swim2 read engine. Ticks both the SWIM
+// cell clock and the drive spin (same C15M timeline) and pops promptly —
+// the real engine, like hardware, drops bytes on FIFO overrun.
+std::vector<uint16_t> drainSwim(Swim2& swim, SonyDrive& drive, int need,
+                                int byteCycles, int budgetCycles) {
     std::vector<uint16_t> out;
     out.reserve(size_t(need));
-    // Cell rate depends on setup[3:2] (16/31/31/63 clocks per bit). Pace
-    // each tick at the slowest GCR rate so one tick always yields a byte.
-    constexpr int kTick = 63 * 8;
+    const int step = byteCycles / 2;             // ≤1 byte lands per step
     int left = budgetCycles;
     while (int(out.size()) < need && left > 0) {
-        swim.tick(kTick);
-        left -= kTick;
-        while (swim.fifoCount() && int(out.size()) < need)
-            out.push_back(swim.read(1));
+        swim.tick(step);
+        drive.tick(step);
+        left -= step;
+        while (swim.fifoCount() && int(out.size()) < need) {
+            const uint8_t h = swim.read(7);
+            uint16_t v = swim.read(1);
+            if (swim.fifoCount() == 0) {         // flags described this byte
+                if (h & 0x01) v |= kMark;
+                if (!(h & 0x02)) v |= kCrcOk;
+            }
+            out.push_back(v);
+        }
     }
     return out;
 }
 
-bool findMfmSector0(const std::vector<uint16_t>& stream, std::vector<uint8_t>& data) {
-    // Hunt A1 A1 A1 FE 00 00 01 02 … then A1 A1 A1 FB + 512 payload
-    for (size_t i = 0; i + 8 < stream.size(); i++) {
-        if (!(stream[i] == 0xA1 && stream[i + 1] == 0xA1 && stream[i + 2] == 0xA1 &&
-              stream[i + 3] == 0xFE && stream[i + 4] == 0x00 && stream[i + 5] == 0x00 &&
-              stream[i + 6] == 0x01 && stream[i + 7] == 0x02))
+bool findMfmSector(const std::vector<uint16_t>& s, int sector,
+                   std::vector<uint8_t>& data, bool* addrCrcOk = nullptr,
+                   bool* dataCrcOk = nullptr) {
+    auto marks = [&](size_t i) {
+        return s[i] == (kMark | 0xA1) || s[i] == (kMark | kCrcOk | 0xA1);
+    };
+    for (size_t i = 0; i + 10 < s.size(); i++) {
+        if (!(marks(i) && marks(i + 1) && marks(i + 2) &&
+              (s[i + 3] & 0xFF) == 0xFE && !(s[i + 3] & kMark) &&
+              int(s[i + 6] & 0xFF) == sector))
             continue;
-        for (size_t j = i + 8; j + 4 + 512 < stream.size(); j++) {
-            if (!(stream[j] == 0xA1 && stream[j + 1] == 0xA1 && stream[j + 2] == 0xA1 &&
-                  stream[j + 3] == 0xFB))
+        if (addrCrcOk) *addrCrcOk = (s[i + 9] & kCrcOk) != 0;
+        for (size_t j = i + 10; j + 517 < s.size() && j < i + 80; j++) {
+            if (!(marks(j) && marks(j + 1) && marks(j + 2) &&
+                  (s[j + 3] & 0xFF) == 0xFB && !(s[j + 3] & kMark)))
                 continue;
             data.assign(512, 0);
-            for (int k = 0; k < 512; k++) data[size_t(k)] = uint8_t(stream[j + 4 + size_t(k)]);
+            for (int k = 0; k < 512; k++)
+                data[size_t(k)] = uint8_t(s[j + 4 + size_t(k)]);
+            if (dataCrcOk) *dataCrcOk = (s[j + 517] & kCrcOk) != 0;
             return true;
         }
+        return false;
     }
     return false;
 }
 
-bool findGcrSector(const std::vector<uint16_t>& stream, int track, int sector,
-                   std::vector<uint8_t>& /*data*/) {
-    // Address prologue D5 AA 96 is enough to prove GCR via SWIM2.
-    int hits = 0;
-    for (size_t i = 0; i + 3 < stream.size(); i++) {
-        if (stream[i] == 0xD5 && stream[i + 1] == 0xAA && stream[i + 2] == 0x96)
-            hits++;
+int firstMfmSectorNumber(const std::vector<uint16_t>& s) {
+    for (size_t i = 0; i + 9 < s.size(); i++) {
+        if ((s[i] & (kMark | 0xFF)) == (kMark | 0xA1) &&
+            (s[i + 1] & (kMark | 0xFF)) == (kMark | 0xA1) &&
+            (s[i + 2] & (kMark | 0xFF)) == (kMark | 0xA1) &&
+            (s[i + 3] & 0xFF) == 0xFE && !(s[i + 3] & kMark))
+            return int(s[i + 6] & 0xFF);
     }
-    (void)track; (void)sector;
-    return hits >= 4;
+    return -1;
 }
 } // namespace
 
 int main() {
-    std::printf("swim2_media_test — SWIM2 + SonyDrive MFM/GCR media\n");
+    std::printf("swim2_media_test — SWIM2 cell engine + SonyDrive MFM/GCR\n");
 
-    // ── MFM 1.44 MB round-trip through Swim2 FIFO ──────────────────────
+    constexpr int kMfmByte = 16 * 16;            // 16 cells × 16 clocks
+    constexpr int kGcrByte = 8 * 31;
+
+    // ── MFM 1.44 MB read through the bit engine, CRC verified ─────────
     {
         std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);
         for (int i = 0; i < 512; i++)
@@ -81,6 +102,7 @@ int main() {
 
         SonyDrive drive;
         drive.setSuperDrive(true);
+        drive.setSpinClockHz(15667200);          // test ticks in C15M units
         check(drive.insertImage(img), "insert 1.44MB image");
         check(drive.isHd() && drive.mfmMode() && drive.sense(0xA),
               "HD media: SuperDrive + MFM senses");
@@ -88,26 +110,50 @@ int main() {
         Swim2 swim;
         swim.reset();
         swim.attachDrive(&drive, nullptr);
-        // motor + drive A + ACTION (MAME mode bits — swim2.cpp:128-137)
-        swim.write(7, 0x8A);
+        drive.commandSwim(0x2);                  // spindle on
         swim.write(5, 0x00);                     // MFM read clocking
+        swim.write(7, 0x8A);                     // motor + drive A + ACTION
 
-        auto stream = drainSwim(swim, 8000, 8000 * 128);
+        auto stream = drainSwim(swim, drive, 1200, kMfmByte, 1200 * kMfmByte * 4);
         std::vector<uint8_t> sector;
-        check(findMfmSector0(stream, sector), "MFM address+data marks via FIFO");
-        bool payloadOk = true;
+        bool aCrc = false, dCrc = false;
+        check(findMfmSector(stream, 1, sector, &aCrc, &dCrc),
+              "MFM address+data marks via the cell engine");
+        bool payloadOk = !sector.empty();
         for (int i = 0; i < 512 && payloadOk; i++)
             if (sector[size_t(i)] != uint8_t(0xA0 + (i & 0x1F))) payloadOk = false;
         check(payloadOk, "MFM track0 sector1 payload matches image");
+        check(aCrc, "address-field CRC verifies (handshake CRC0)");
+        check(dCrc, "data-field CRC verifies (handshake CRC0)");
     }
 
-    // ── GCR 800K via Swim2 (not only Iwm) ──────────────────────────────
+    // ── Rotational latency: reads start at the spin angle ─────────────
+    {
+        std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);
+        SonyDrive drive;
+        drive.setSuperDrive(true);
+        drive.setSpinClockHz(15667200);
+        drive.insertImage(std::move(img));
+        Swim2 swim;
+        swim.reset();
+        swim.attachDrive(&drive, nullptr);
+        drive.commandSwim(0x2);
+        drive.tick(15667200 / 10);               // ~half a revolution at 300 RPM
+        swim.write(5, 0x00);
+        swim.write(7, 0x8A);                     // ACTION resyncs to rotation
+        auto stream = drainSwim(swim, drive, 700, kMfmByte, 700 * kMfmByte * 4);
+        const int first = firstMfmSectorNumber(stream);
+        check(first > 2, "mid-revolution ACTION lands past the early sectors");
+    }
+
+    // ── GCR 800K via Swim2 (not only Iwm) ─────────────────────────────
     {
         std::vector<uint8_t> img(SonyDrive::kSize800K, 0x55);
         img[0] = 0x4C; img[1] = 0x4B;
 
         SonyDrive drive;
         drive.setSuperDrive(true);
+        drive.setSpinClockHz(15667200);
         check(drive.insertImage(img), "insert 800K GCR image");
         check(!drive.mfmMode() && drive.sense(0xA),
               "800K on SuperDrive: GCR mode, SuperDrive sense");
@@ -115,16 +161,20 @@ int main() {
         Swim2 swim;
         swim.reset();
         swim.attachDrive(&drive, nullptr);
-        swim.write(7, 0x8A);
+        drive.commandSwim(0x2);
         swim.write(5, 0x04);                     // GCR read (setup bit 2)
+        swim.write(7, 0x8A);
 
-        auto stream = drainSwim(swim, 4000, 4000 * 63 * 8);
-        std::vector<uint8_t> dummy;
-        check(findGcrSector(stream, 0, 0, dummy),
-              "GCR address prologues visible via Swim2");
+        auto stream = drainSwim(swim, drive, 2000, kGcrByte, 2000 * kGcrByte * 4);
+        int prologues = 0;
+        for (size_t i = 0; i + 3 < stream.size(); i++)
+            if ((stream[i] & 0xFF) == 0xD5 && (stream[i + 1] & 0xFF) == 0xAA &&
+                (stream[i + 2] & 0xFF) == 0x96)
+                prologues++;
+        check(prologues >= 2, "GCR address prologues frame via the cell engine");
     }
 
-    // ── Sector write then read-back ────────────────────────────────────
+    // ── Direct sector write/read helpers ──────────────────────────────
     {
         std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);
         SonyDrive drive;
@@ -134,45 +184,81 @@ int main() {
         uint8_t pat[512];
         for (int i = 0; i < 512; i++) pat[i] = uint8_t(0x5A ^ i);
         check(drive.writeSector(3, 1, 7, pat), "writeSector(3,1,7)");
-
         uint8_t got[512];
         check(drive.readSector(3, 1, 7, got), "readSector(3,1,7)");
         check(std::memcmp(pat, got, 512) == 0, "writeSector/readSector round-trip");
+    }
 
-        // Swim2 write path: feed MARK A1×3 + FB + payload into the drive
+    // ── SWIM2 TSS write engine: format-style sector, real CRC ─────────
+    {
+        std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);
+        SonyDrive drive;
+        drive.setSuperDrive(true);
+        drive.setSpinClockHz(15667200);
+        drive.insertImage(std::move(img));
+
         Swim2 swim;
         swim.reset();
         swim.attachDrive(&drive, nullptr);
-        drive.command(0b0100);                   // motor on (CA2=0)
-        swim.write(7, 0x9A);                     // motor+A+write+ACTION
-        // Seek to track 0 / assemble sector 2 data field
-        auto push = [&](uint16_t v) {
-            while (swim.fifoCount() >= 2) swim.tick(128);
-            if (v & kMark) swim.write(1, uint8_t(v));
-            else swim.write(0, uint8_t(v));
-            swim.tick(128);
-        };
-        for (int i = 0; i < 3; i++) push(kMark | 0xA1);
-        push(0xFE);
-        push(0); push(0); push(2); push(2);      // C H S N
-        push(0); push(0);                        // fake CRC
-        for (int i = 0; i < 3; i++) push(kMark | 0xA1);
-        push(0xFB);
+        drive.commandSwim(0x2);                  // spindle on
+        swim.write(5, 0x00);                     // MFM write, fclk
+
         uint8_t wr[512];
         for (int i = 0; i < 512; i++) wr[i] = uint8_t(0xC0 + (i & 0x0F));
-        for (int i = 0; i < 512; i++) push(wr[i]);
-        push(0); push(0);                        // CRC → commit
-        for (int i = 0; i < 8; i++) swim.tick(128);
 
+        auto writeField = [&](Swim2& sw, SonyDrive& dr, bool goodCrc) {
+            auto feed = [&](int reg, uint8_t v) {
+                while (sw.fifoCount() >= 2) { sw.tick(64); dr.tick(64); }
+                sw.write(reg, v);
+                sw.tick(kMfmByte / 2);
+                dr.tick(kMfmByte / 2);
+            };
+            sw.write(7, 0x9A);                   // motor + A + write + ACTION
+            for (int i = 0; i < 12; i++) feed(0, 0x00);
+            for (int i = 0; i < 3; i++) feed(1, 0xA1);   // marks
+            feed(0, 0xFE);
+            feed(0, 0x00); feed(0, 0x00); feed(0, 0x02); feed(0, 0x02);
+            feed(2, 0);                          // CRC token → real CRC
+            for (int i = 0; i < 22; i++) feed(0, 0x4E);
+            for (int i = 0; i < 12; i++) feed(0, 0x00);
+            for (int i = 0; i < 3; i++) feed(1, 0xA1);
+            feed(0, 0xFB);
+            for (int i = 0; i < 512; i++) feed(0, wr[i]);
+            if (goodCrc) feed(2, 0);
+            else { feed(0, 0x12); feed(0, 0x34); }       // corrupt CRC
+            for (int i = 0; i < 4; i++) feed(0, 0x4E);
+            while (sw.fifoCount()) { sw.tick(kMfmByte); dr.tick(kMfmByte); }
+            sw.tick(kMfmByte * 2); dr.tick(kMfmByte * 2);
+            sw.write(6, 0x18);                   // exit write → flush/commit
+        };
+
+        writeField(swim, drive, true);
         uint8_t back[512];
-        check(drive.readSector(0, 0, 1, back), "read sector after Swim2 write");
-        bool ok = true;
-        for (int i = 0; i < 512 && ok; i++)
-            if (back[i] != wr[i]) ok = false;
-        check(ok, "Swim2 writeByte path commits sector payload");
+        check(drive.readSector(0, 0, 1, back), "read sector after TSS write");
+        check(std::memcmp(back, wr, 512) == 0,
+              "TSS write with CRC token commits the sector");
+
+        // Same field with a corrupt data CRC: must NOT be committed.
+        std::vector<uint8_t> img2(SonyDrive::kSize1440K, 0);
+        SonyDrive drive2;
+        drive2.setSuperDrive(true);
+        drive2.setSpinClockHz(15667200);
+        drive2.insertImage(std::move(img2));
+        Swim2 swim2;
+        swim2.reset();
+        swim2.attachDrive(&drive2, nullptr);
+        drive2.commandSwim(0x2);
+        swim2.write(5, 0x00);
+        writeField(swim2, drive2, false);
+        uint8_t back2[512];
+        drive2.readSector(0, 0, 1, back2);
+        bool untouched = true;
+        for (int i = 0; i < 512 && untouched; i++)
+            if (back2[i] != 0) untouched = false;
+        check(untouched, "corrupt data CRC is rejected by the decoder");
     }
 
-    // ── Drive detect / eject ───────────────────────────────────────────
+    // ── Drive detect / eject ──────────────────────────────────────────
     {
         SonyDrive drive;
         drive.setSuperDrive(true);

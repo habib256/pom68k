@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## 2026-07-23 — SWIM2: the real cell engines (MFM cell timing + CRC)
+
+The biggest remaining floppy LLE gap (`LLE_VS_HLE.md` step 13): `Swim2`
+no longer synthesizes decoded bytes — it runs MAME `swim2.cpp`'s bit
+engines verbatim over a raw-cell track in `SonyDrive`.
+
+- **Read** (swim2.cpp:482-547): the MFM sync hunter (≥64 alternating
+  cells, 16-cell windows, missing-clock `$4489` → MARK), the serial
+  CRC-CCITT seeded `$CDB4` re-armed on every mark, the `M_CRC0` tag
+  surfaced on handshake bit 1 — CRC verification is now real end to
+  end (the encoder writes real CRCs on the track; corrupting them is
+  detected). GCR frames nibbles on the high bit through 10-bit
+  self-sync groups. FIFO overrun now **loses bytes** like hardware
+  (error $01) instead of pausing the disk.
+- **Write** (swim2.cpp:402-481): the TSS serializer in half-cycles
+  (63/31-half spacings, `$C` missing-clock entry for marks, CRC token
+  → the shifted CRC's two bytes). Transitions are rebuilt into cells
+  **per-gap** like a PLL — an absolute divide would drift 31-vs-32
+  halves per cell and clip the CRC tail (first version's bug, caught
+  by the gate). The written span decodes through the offline replica
+  of the read machine and only commits sectors whose address AND data
+  CRCs verify.
+- **SonyDrive raw cells**: the track is one padded revolution of
+  discrete cells (MFM 16 / GCR 31 C15M clocks per cell — 500 kb/s HD,
+  which also halves the old 2×-fast byte pace); the head lands at the
+  **spin-counter angle** on every ACTION start, so rotational latency
+  is real (`setSpinClockHz` declares the tick unit; Q605 = 25 MHz).
+  The Iwm/SWIM1 nibble path (Plus, LC II) is untouched.
+- Gates: `swim2_media_test` rewritten against the real engines (CRC0
+  flags, mid-revolution latency, TSS format-style write, corrupt-CRC
+  rejection); `swim2_test` re-pinned to oracle no-media behavior
+  (PLL free-runs zeros → FIFO empty, pop = `$FF` + underrun error).
+  `q605_floppy_boot_etalon` (ROM Sony driver, System 7.5 floppy)
+  passed on the first run with the new engine.
+
 ## 2026-07-23 — LLE audit: step 9 closed, the quick wins are exhausted
 
 A re-audit of every remaining `LLE_VS_HLE.md` gap against the oracles,

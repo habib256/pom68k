@@ -2,12 +2,20 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // Apple SWIM2 register/FIFO + SuperDrive media engine (PrimeTime/IOSB).
-// Register model: MAME swim2.cpp. Drive CA protocol: applefdintf phases_w
-// → mac_floppy seek_phase_w; mode/devsel/hdsel from swim2.cpp:128-137,
-// 300-303. Gate: tests/swim2_test.cpp, tests/swim2_media_test.cpp.
+// Register model AND bit engine: MAME swim2.cpp — the MFM sync-hunting
+// shifter (swim2.cpp:498-546), serial CRC-CCITT seeded $CDB4 with the
+// M_CRC0 tag (swim2.cpp:343-355, 535-543), and the TSS write serializer
+// in half-cycles (swim2.cpp:402-481). Cells come from SonyDrive's raw
+// cell track (rotation-synced); MAME's attotime flux + fdc_pll are
+// simplified to discrete cells at the setup-programmed rate
+// (cycles_per_cell {16,31,31,63}, swim2.cpp:329-331). Drive CA protocol:
+// applefdintf phases_w → mac_floppy seek_phase_w; mode/devsel/hdsel from
+// swim2.cpp:128-137, 300-303.
+// Gate: tests/swim2_test.cpp, tests/swim2_media_test.cpp.
 
 #pragma once
 #include <cstdint>
+#include <vector>
 
 class SonyDrive;
 
@@ -29,10 +37,27 @@ public:
     bool isWriteProtected() const;
 
 private:
-    enum : uint16_t { MARK = 0x100, CRC = 0x200 };
+    // FIFO entry tags — MAME swim2.h:41-45 (M_MARK/M_CRC/M_CRC0)
+    enum : uint16_t { MARK = 0x100, CRC = 0x200, CRC0 = 0x400 };
     bool fifoPush(uint16_t value);
     uint16_t fifoPop();
     void fifoClear();
+
+    // Serial CRC-CCITT engine (swim2.cpp:343-355). $CDB4 is the CCITT
+    // state after the three A1 sync marks, re-seeded on every mark byte.
+    void crcClear() { crc_ = 0xCDB4; }
+    void crcUpdate(int bit) {
+        if ((crc_ ^ (bit ? 0x8000 : 0x0000)) & 0x8000)
+            crc_ = uint16_t((crc_ << 1) ^ 0x1021);
+        else
+            crc_ = uint16_t(crc_ << 1);
+    }
+
+    int cellCycles() const;                  // setup[3:2] → clocks per cell
+    void tickRead(int cycles);
+    void tickWrite(int cycles);
+    void startWrite();
+    void finishWrite();
 
     int senseAddr() const;
     void applyPhases(uint8_t value);
@@ -50,5 +75,21 @@ private:
     uint16_t fifo_[2] = {};
     uint8_t fifoPos_ = 0;
     uint8_t error_ = 0;
-    int cellPhase_ = 0;
+    int cellPhase_ = 0;                  // read pacing: cycles into next cell
+
+    // Bit-engine state (MAME m_sr/m_crc/m_tss_*/m_mfm_sync_counter)
+    uint16_t crc_ = 0xCDB4;
+    uint16_t sr_ = 0;
+    uint8_t tssSr_ = 0;
+    uint8_t tssOutput_ = 0;
+    int mfmSyncCounter_ = 0;
+    int currentBit_ = -1;                // -1 = engine idle (MAME 0xff)
+    uint32_t halfWait_ = 0;              // m_half_cycles_before_change
+
+    // Write capture: absolute half-cycles since write start, one entry
+    // per flux transition (MAME m_flux_write → floppy write_flux).
+    uint64_t writeHalfPos_ = 0;
+    int64_t writeStartCell_ = 0;
+    bool writeActive_ = false;
+    std::vector<uint64_t> writeTransitions_;
 };

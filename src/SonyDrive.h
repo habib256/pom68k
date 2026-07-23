@@ -52,6 +52,21 @@ public:
     uint16_t nextByte(bool side1);
     // Write path: feed SWIM2-serialized bytes (MARK bit optional)
     void writeByte(uint16_t value);
+
+    // ── Raw-cell interface (SWIM2 bit engine, LLE MFM cell timing) ──
+    // The track is a discrete cell array (1 = flux transition) at the
+    // SWIM2 cell rate (MFM 16 / GCR 31 C15M clocks), padded to one full
+    // revolution so angular position and latency are real.
+    int nextCell(bool side1);                    // advance one cell
+    void syncCellsToRotation(bool side1);        // land head at spin_ angle
+    int64_t startWriteCells(bool side1);         // resync + current cell
+    // Write-back: blank [startCell, startCell+totalCells), set transition
+    // cells, then decode the track and commit CRC-valid sectors.
+    void commitCells(int64_t startCell, int64_t totalCells,
+                     const std::vector<int64_t>& transitions, bool mfm);
+    // Clock the spin_ counter ticks in (Plus legacy default 7 833 600 Hz;
+    // Q605 passes its 25 MHz machine clock) — used for rotation angle.
+    void setSpinClockHz(int64_t hz) { spinClockHz_ = hz; }
     // Direct sector write-back (tests / host tools)
     bool writeSector(int track, int side, int sector, const uint8_t data[512]);
     bool readSector(int track, int side, int sector, uint8_t data[512]) const;
@@ -70,6 +85,11 @@ private:
     void encodeTrack();
     void encodeTrackGcr();
     void encodeTrackMfm();
+    void buildCells();
+    void decodeMfmCells();
+    int rpmNow() const;
+    int64_t nominalCells() const;
+    int64_t spinCyclesPerRev() const;
     size_t imageOffset(int track, int side, int sector) const;
     void selectSide(bool side1);
     int sectorsOnCurrentTrack() const;
@@ -77,6 +97,9 @@ private:
     std::vector<uint8_t> image_;                 // raw sector data
     std::vector<uint16_t> stream_;               // encoded current track/side
     size_t streamPos_ = 0;
+    std::vector<uint8_t> cells_;                 // raw cells, one revolution
+    size_t cellPos_ = 0;
+    int64_t spinClockHz_ = 7833600;
     int track_ = 0;
     bool side1_ = false;
     bool doubleSided_ = true;

@@ -275,13 +275,20 @@ documents the real behavior.
   IOSB TurboSCSI wait-state cell IS modelled (`q605_turboscsi_test`);
   the DAFB cell only matters for a future Q700/Q950-class profile
   where SCSI DMA flows through DAFB itself.
-- **Floppy**: `Swim2.*` (register file + FIFO real; media transactions
-  whole-sector), `SonyDrive.*` (no rotational latency), `Iwm.*` is the
-  most faithful (nibble timing, tach).
-  *Gaps*: no MFM cell timing or CRC verification (MAME `floppy.cpp`
-  models bit cells); tach is a sampled bit, not a waveform; SWIM2 FIFO
-  drain synced via `syncSwimFromCpu()` batches, not per-access
-  `sync()` as MAME.
+- **Floppy**: `Swim2.*` since 2026-07-23 runs the **real bit engines**
+  (step 13): the MAME `swim2.cpp` MFM sync-hunting shifter with the
+  serial CRC-CCITT ($CDB4 seed, `M_CRC0` handshake tag), the GCR
+  high-bit framer, and the TSS write serializer in half-cycles.
+  `SonyDrive` stores the track as **raw cells** (one padded revolution;
+  rotation angle from the spin counter → real rotational latency at
+  every ACTION start; MFM writes are decoded back through the same
+  state machine and only CRC-valid sectors commit to the image).
+  `Iwm.*` (Plus / LC II SWIM1) still serves the byte-level nibble
+  stream. *Accepted simplifications*: discrete cells at the
+  setup-programmed rate instead of MAME's attotime flux + `fdc_pll`
+  (ideal PLL, no jitter); committed tracks re-encode canonically (no
+  exotic-format preservation); GCR write-back still deferred (logged);
+  tach is a sampled bit, not a waveform.
 - **NuBus/DeclRom**: functional slot windows, no arbitration/timeout
   cycles.
 - **SCSI**: `Ncr5380.*`, `Ncr53c96.*` — register/phase engines faithful
@@ -458,9 +465,8 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
     firmware autopoll, PRAM persists; the silicon discoveries en
     route: the customized-E1 PFW input pin, the inverting ADB output
     stage, the Egret's falling-edge PC3 release. §2 tracks the HLE
-    retirement). Still longer-term:
-    SWIM2/SonyDrive MFM cell timing + CRC, NuBus arbitration, 040
-    copyback/snooping.
+    retirement). Still longer-term: NuBus arbitration, 040
+    copyback/snooping (~~SWIM2/SonyDrive MFM cell timing~~ → step 13).
 12. ~~**SCC async-baud machinery**~~ **DONE 2026-07-23** (CHANGELOG
     "SCC async-baud machinery"; §3 SCC entry): WR4/WR5/WR11/WR12-14 →
     guest-derived per-channel byte pace, machine-wired clocks, SDLC
@@ -468,6 +474,17 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
     The remaining SCC fidelity items (bit-serial engine, Tx-Enable
     gating, Rx CRC → RR1 bit 6, counted underrun delay) stay in the
     TODO backlog's Medium/Low tiers.
+13. ~~**SWIM2/SonyDrive MFM cell timing + CRC**~~ **DONE 2026-07-23**
+    (CHANGELOG "SWIM2: the real cell engines"; §3 Floppy entry): the
+    MAME `swim2.cpp` read/write bit engines ported verbatim (MFM sync
+    hunter, serial CRC $CDB4 + `M_CRC0`, TSS half-cycle serializer)
+    over a raw-cell `SonyDrive` track with real rotational latency;
+    MFM write-back decodes through the same machine and drops
+    CRC-invalid fields. Gates `swim2_test` / `swim2_media_test`
+    re-pinned to oracle behavior (no-media FIFO stays empty, CRC
+    tokens required to commit); `q605_floppy_boot_etalon` green on
+    the first run. Remaining floppy items (GCR write-back, Iwm cell
+    engine, flux-level jitter) are §3 accepted simplifications.
 11. ~~**Mac II ADB → firmware LLE**~~ **DONE, default since 2026-07-22**
     (§2). `Pic1654s` + `AdbLine` + `Via6522::extShiftCB1` run the real
     `342s0440-b.bin`; self-test → `ADBReInit` → mouse-at-addr-3 on the

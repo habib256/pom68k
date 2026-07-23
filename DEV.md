@@ -383,6 +383,18 @@ Repro/gate: `macii_mouse_trace` (mouse must move; also exercises the
   PrimeTime window: VIA1, Quadra pseudo-VIA2, SCC, IOSB/MEMCjr registers,
   Cuda-flavoured `Egret`, IOSB ASC `$BB` stereo, SWIM2 (MFM/GCR SuperDrive) and
   `Ncr53c96` TurboSCSI.
+- **SWIM2 cell engine** (2026-07-23, `LLE_VS_HLE.md` step 13): `Swim2`
+  runs MAME `swim2.cpp`'s bit engines — the MFM sync-hunting shifter with
+  serial CRC-CCITT (`$CDB4` seed, `M_CRC0` on handshake bit 1), the GCR
+  high-bit framer, and the TSS write serializer in half-cycles.
+  `SonyDrive` stores each track as one revolution of raw cells (MFM 16 /
+  GCR 31 C15M clocks per cell) padded to the spindle geometry; ACTION
+  start lands the head at the spin-counter angle (real rotational
+  latency; `setSpinClockHz` declares the spin tick unit — Q605 25 MHz).
+  MFM writes are rebuilt per-gap (PLL-style, drift-proof), decoded by an
+  offline replica of the read machine, and commit only CRC-valid
+  sectors. The Iwm/SWIM1 nibble path is unchanged. Gates: `swim2_test`,
+  `swim2_media_test`, `q605_floppy_boot_etalon`.
   The 53C96 supports streamed CDBs, PIO Transfer Info, DRQ-gated pseudo-DMA,
   STATUS/MSG completion and the OS 8.1 SCSI Manager's mixed PIO/DMA chunking.
 - **DAFB/Antelope** (`Dafb.h/.cpp` since 2026-07-21 — one concern per
