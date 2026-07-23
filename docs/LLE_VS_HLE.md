@@ -245,14 +245,15 @@ documents the real behavior.
   `Cpu030::kPeriphBatch=128`, `Cpu040` `kPeriphBatch=256` — ~4–16 µs
   IRQ-latency jitter); VIA E-clock synced at a fixed 32:1 ratio
   (real ≈31.91:1).
-- **Egret/Cuda wire** (`Egret.*`): real framing + 61/71/88/13/30 µs
-  per-byte schedule + `$1B` one-second modes + open-ended streams
-  since the §1.6b redo (2026-07-22). Autopoll rate obeys `$14`
-  (default 11 ms, DingusPPC's `poll_rate`). *Remaining gaps*: still a
-  packet-level HLE of the 68HC05 firmware (§2 / step 10); the Egret
-  flavor's boot-heartbeat packet shapes are pinned against the LC II
-  ROM readers, not firmware traces; MCU-RAM reads outside PRAM serve a
-  256-byte scratch, not the real register file.
+- **Egret/Cuda wire**: the DEFAULT is the real firmware since
+  2026-07-23 (§2 — `M68hc05` + `CudaLle` on both machines), which
+  closes every wire gap on the default path: framing, pacing, MCU RAM
+  and autopoll are the 68HC05's own. The notes below apply to the
+  `Egret.*` HLE **fallback only** (no dump / env off): real framing +
+  61/71/88/13/30 µs per-byte schedule + `$1B` one-second modes since
+  the §1.6b redo; autopoll obeys `$14`; boot-heartbeat shapes pinned
+  against ROM readers, not firmware traces; MCU-RAM reads outside
+  PRAM serve a 256-byte scratch.
 - **Video**: `MacVideo.h`, `V8Video.h`, `TobyVideo.*` — whole-frame
   decode, no beam timing.
   Toby's frame clock is **CRTC-derived since 2026-07-23** (the Q8.1
@@ -269,8 +270,11 @@ documents the real behavior.
   *Gaps*: no VRAM arbitration/timing; VBL line hard-coded at 480 (as
   in MAME); the DAFB **TurboSCSI cell is absent** — real DAFB/DAFB II
   inserts configurable wait states per 5394/5396 access and can hold
-  off /DTACK on pseudo-DMA (MAME `dafb.cpp` `m_scsi_*_cycles`); our
-  53C96 pseudo-DMA path bypasses it entirely.
+  off /DTACK on pseudo-DMA (MAME `dafb.cpp` `m_scsi_*_cycles`). N/A on
+  the Q605 (audit 2026-07-23): its SCSI sits behind PrimeTime, whose
+  IOSB TurboSCSI wait-state cell IS modelled (`q605_turboscsi_test`);
+  the DAFB cell only matters for a future Q700/Q950-class profile
+  where SCSI DMA flows through DAFB itself.
 - **Floppy**: `Swim2.*` (register file + FIFO real; media transactions
   whole-sector), `SonyDrive.*` (no rotational latency), `Iwm.*` is the
   most faithful (nibble timing, tach).
@@ -292,19 +296,34 @@ documents the real behavior.
   (`iosb.cpp:482-618`: 3-cycle register stalls, IOSB reg 2 →
   `times[4]={5,5,4,3}` on the bit-19 waitstated DMA alias). Gate:
   `q605_turboscsi_test`.
-  *Gaps vs MAME `ncr53c90.cpp`* (120+ sub-state machine): no
-  tcounter↔FIFO interplay (MAME decides phase advance from
-  `fifo_pos + tcounter`; our payload short-circuits the physical FIFO
-  through `dataIn_`/`dataOut_` — the pinned Q6.3-Q6.6b driver
-  interactions make this the highest-risk remaining rewrite);
-  sync-negotiation SDTR messages not modelled (the sync registers pace
-  timing but every transfer is logically async); selection timeout on
-  empty IDs stays instant (MAME ships a `DELAY_HACK` for the same
-  reason — the real ~250 ms × 6-ID bus scan would bloat every etalon);
-  target-mode `CT_*` command family and `CT_ABORT_DMA` missing
-  (initiator-only is fine for a Mac, but target-side DISCONNECT
-  sequencing is approximated by direct BUS FREE detection); 8-bit
-  pseudo-DMA only (no BUSMOD 16-bit widths).
+  *Gaps vs MAME `ncr53c90.cpp`* (120+ sub-state machine) — re-audited
+  2026-07-23, step 9 CLOSED with these as accepted simplifications:
+  - **tcounter↔FIFO staging**: MAME decides phase advance from
+    `fifo_pos + tcounter`; our payload short-circuits the physical
+    FIFO through `dataIn_`/`dataOut_`. The audit re-derived what a
+    true staging engine would change observably: with instant
+    (non-wire-paced) staging, R_FLAGS, DRQ, S_TC0/I_BUS event order
+    and every byte read are IDENTICAL to the current model — the only
+    difference is which internal array holds the bytes. A wire-paced
+    engine WOULD differ (data starvation under a slow bus), but it
+    risks every pinned Q6.3-Q6.6b OS 8.1 interaction for a timing
+    nuance no Mac driver observes (they gate on S_TC0/FLAGS, both
+    already honest). Rewrite dropped unless a real-world divergence
+    shows up.
+  - **Selection timeout on empty IDs is instant — and that IS oracle
+    parity**: MAME ships `#define DELAY_HACK` (`ncr53c90.cpp:382`,
+    `delay(1)` instead of `delay(8192*select_timeout)`), so the
+    oracle's own bus scan is instant too. Not a divergence.
+  - **SDTR** not modelled: no consumer — Quadra-era Mac drivers never
+    negotiate sync on this bus (transfers are logically async; the
+    sync registers still pace the step 9 delay model).
+  - **BUSMOD 16-bit widths**: not wired on the Q605 (MAME
+    `macquadra605.cpp` runs the chip in the 8-bit/BUSMD_1
+    configuration through PrimeTime); would only matter for a future
+    DAFB-DMA machine profile.
+  - target-mode `CT_*` family and `CT_ABORT_DMA` missing
+    (initiator-only is fine for a Mac; target-side DISCONNECT
+    sequencing is approximated by direct BUS FREE detection).
 - **SCC** (`Scc8530.*`): the SDLC/LLAP side is real since LLE step 3 +
   LLAP milestone 1 (2026-07-22): full Rx path (3-deep FIFO with
   per-byte RR1 status, hunt exit/re-entry carrier sense, WR1 Rx-int
@@ -413,19 +432,21 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
    found we model more SDLC than MAME; the remaining SCC work is the
    **async-serial** baud machinery (WR4/WR11/WR12-13), tracked separately
    under the Plus serial-ports TODO, not part of the LLAP path.
-9. **53C96 + TurboSCSI fidelity** — **partially DONE 2026-07-23**
-   (CHANGELOG "LLE step 9 (partial)"): the PrimeTime TurboSCSI
-   wait-state cell (IOSB reg 2 → `times[4]={5,5,4,3}`, 3-cycle
-   register stalls, bit-19 waitstated DMA alias — on the Q605 the cell
-   is in **IOSB/PrimeTime**, so `iosb.cpp` is the oracle, not
-   `dafb.cpp`) and the scheduled selection/bus-service delay model
-   (MAME's arbitrate/settle chain + `sync_period` per byte at the
-   40 MHz chip clock, **default ON**; `POM68K_SCSI_LAT=0` → instant)
-   are in, with the sync-register plumbing riding the same model.
-   Gate: `q605_turboscsi_test` pinned against MAME's cycle counts.
-   *Remaining* (see §3 SCSI gaps): the true tcounter↔FIFO staging
-   engine, 16-bit BUSMOD widths, SDTR messages, scheduled selection
-   timeout.
+9. ~~**53C96 + TurboSCSI fidelity**~~ **CLOSED 2026-07-23** (landed +
+   audit): the PrimeTime TurboSCSI wait-state cell (IOSB reg 2 →
+   `times[4]={5,5,4,3}`, 3-cycle register stalls, bit-19 waitstated
+   DMA alias — on the Q605 the cell is in **IOSB/PrimeTime**, so
+   `iosb.cpp` is the oracle, not `dafb.cpp`) and the scheduled
+   selection/bus-service delay model (MAME's arbitrate/settle chain +
+   `sync_period` per byte at the 40 MHz chip clock, **default ON**;
+   `POM68K_SCSI_LAT=0` → instant) are in, with the sync-register
+   plumbing riding the same model. Gate: `q605_turboscsi_test` pinned
+   against MAME's cycle counts. The remaining items were re-audited
+   and closed as **accepted simplifications** (full verdicts in §3
+   SCSI): the tcounter↔FIFO staging rewrite has no observable payoff
+   against the pinned Q6.3-Q6.6b interactions; the instant selection
+   timeout IS oracle parity (MAME `DELAY_HACK`); SDTR has no consumer;
+   BUSMOD 16-bit is not wired on a Q605.
 10. Longer term: ~~Toby CRTC-derived frame clock~~ **DONE 2026-07-23**
     (CHANGELOG "Toby: CRTC-derived frame clock" — plus the discovery
     that the TFB register file was write-dropped on the byte path);

@@ -1,5 +1,35 @@
 # CHANGELOG
 
+## 2026-07-23 — LLE audit: step 9 closed, the quick wins are exhausted
+
+A re-audit of every remaining `LLE_VS_HLE.md` gap against the oracles,
+closing migration-plan step 9 (53C96/TurboSCSI) — the verdicts, so the
+reasoning is not re-derived next pass:
+
+- **53C96 tcounter↔FIFO staging rewrite: dropped.** Re-derived what a
+  true staging engine would change observably: with instant staging,
+  R_FLAGS, DRQ, S_TC0/I_BUS ordering and every byte are IDENTICAL to
+  the current short-circuit model — only the internal array differs.
+  A wire-paced engine would differ only under data starvation no Mac
+  driver observes (they gate on S_TC0/FLAGS, both already honest), and
+  it risks every pinned Q6.3-Q6.6b OS 8.1 interaction.
+- **Instant selection timeout IS oracle parity**: MAME ships
+  `#define DELAY_HACK` (`ncr53c90.cpp:382`) making its own empty-ID
+  scan instant. What we had marked as a divergence is the oracle's
+  shipping behavior.
+- **SDTR / BUSMOD-16**: no consumer on a Q605 (drivers never negotiate
+  sync; the chip is wired 8-bit through PrimeTime — 16-bit only
+  matters for a DAFB-DMA machine profile, where the absent DAFB
+  TurboSCSI cell would matter too).
+- **VIA ±1-cycle timer latency, per-scanline Plus sound fetch**:
+  surveyed, both unobservable to any gate or pinned driver path today;
+  left in the Plus polish backlog rather than faked as fidelity.
+
+What genuinely remains is big-ticket: SWIM2/SonyDrive MFM cell timing
++ CRC, 040 copyback/snooping, SCC bit-serial engines (needs an async
+transport first), and the Egret/Cuda/AdbVia HLE retirement — a policy
+call (the fallbacks still serve dump-less setups), not a code gap.
+
 ## 2026-07-23 — SCC Tx/Rx engine: the wire gets a real transmitter (Medium tier)
 
 The z80scc-audit backlog's Medium tier, landed as one engine (gate
