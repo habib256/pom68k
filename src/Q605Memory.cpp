@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 
 Q605Memory::Q605Memory(uint32_t totalRam)
     : totalRam_(totalRam)
@@ -49,6 +51,25 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     }
     if (const char* id = std::getenv("POM68K_Q605_ID"))
         machineId_ = uint32_t(std::strtoul(id, nullptr, 16));
+    // Cuda firmware LLE (blueprint step 2): opt-in via POM68K_CUDA_LLE=1
+    // with a real dump present. The staged PRAM mirrors the Egret HLE's
+    // factory seed so both paths boot from the same battery contents.
+    if (std::getenv("POM68K_CUDA_LLE")) {
+        for (const char* p : { "roms/cuda/341s0788.bin",
+                               "../roms/cuda/341s0788.bin" }) {
+            std::ifstream in(p, std::ios::binary);
+            if (!in) continue;
+            std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
+                                    std::istreambuf_iterator<char>());
+            if (cudaLle_.loadFirmware(fw)) { cudaLleOn_ = true; break; }
+        }
+        if (cudaLleOn_)
+            for (int i = 0; i < 256; i++)
+                cudaLle_.setPram(i, cuda_.pram(i));
+        else
+            std::fprintf(stderr, "Q605: POM68K_CUDA_LLE set but no "
+                         "roms/cuda/341s0788.bin — Egret HLE fallback\n");
+    }
 }
 
 bool Q605Memory::loadRom(const std::vector<uint8_t>& data) {
@@ -68,6 +89,7 @@ void Q605Memory::reset() {
     dafbCell_.reset();
     via1_.reset();
     cuda_.reset();
+    cudaLle_.reset();
     scc_.reset();
     scsi_.reset();
     asc_.reset();
@@ -181,13 +203,16 @@ uint8_t Q605Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
         via1_.write(reg, v);
         // Port B outputs carry the Cuda handshake (PB4 BYTEACK/VIA_FULL,
         // PB5 TIP/SYS_SESSION — macquadra605.cpp:230-233)
-        if (reg == Via6522::ORB || reg == Via6522::DDRB)
-            cuda_.portBChanged(via1_.portB());
+        if (reg == Via6522::ORB || reg == Via6522::DDRB) {
+            if (cudaLleOn_) cudaLle_.portBChanged(via1_.portB());
+            else            cuda_.portBChanged(via1_.portB());
+        }
         updateIrq();
         return 0;
     }
     if (reg == Via6522::ORB)                 // PB3 = TREQ, live
-        via1_.setInB(uint8_t(0xC7 | (cuda_.xcvrSession() << 3)));
+        via1_.setInB(uint8_t(0xC7 | ((cudaLleOn_ ? cudaLle_.xcvrSession()
+                                                 : cuda_.xcvrSession()) << 3)));
     uint8_t d = via1_.read(reg);
     updateIrq();
     return d;
@@ -577,7 +602,8 @@ void Q605Memory::tick(int cpuCycles) {
     viaPhase_ %= 32;
     if (viaCycles && via1_.tick(viaCycles)) updateIrq();
 
-    cuda_.tick(cpuCycles);
+    if (cudaLleOn_) cudaLle_.tick(cpuCycles);
+    else            cuda_.tick(cpuCycles);
 
     // SCC open-line Break/Abort stream (Q6.6): on a BARE line (no peer) the
     // SDLC receiver keeps detecting aborts, so the level-4 ext/status

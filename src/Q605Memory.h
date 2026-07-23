@@ -35,6 +35,7 @@
 #pragma once
 #include "Via6522.h"
 #include "Egret.h"
+#include "CudaLle.h"
 #include "AdbBus.h"
 #include "Scc8530.h"
 #include "Ncr53c96.h"
@@ -95,7 +96,13 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
-    bool cpuHeld() const { return cuda_.cpuHeld(); }
+    bool cpuHeld() const {
+        return cudaLleOn_ ? cudaLle_.cpuHeld() : cuda_.cpuHeld();
+    }
+    // Cuda firmware LLE (POM68K_CUDA_LLE=1 + roms/cuda dump — step 2 of
+    // the blueprint; Egret HLE stays the default until etalons pass).
+    bool cudaLleActive() const { return cudaLleOn_; }
+    CudaLle& cudaLle() { return cudaLle_; }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
     // DAFB cell accessors (forwarders; see Dafb.h).
@@ -154,6 +161,8 @@ private:
     // Cuda flavor: TIP/BYTEACK active low; 25 MHz machine clock for the
     // µs per-byte pacing and the RTC seconds heartbeat
     Egret cuda_{via1_, true, 25000000};
+    CudaLle cudaLle_{via1_, kCpuHz};     // real-firmware path (opt-in)
+    bool cudaLleOn_ = false;
     AdbBus adb_;
     Scc8530 scc_;
     // PrimeTime's IOSB audio cell at $50014000: $BB version, stereo FIFO A/B,

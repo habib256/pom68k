@@ -111,10 +111,11 @@ Next milestones:
      core"; gate `m68hc05_test`): all three Cuda dumps execute clean
      from reset — PLL/DDR/port-B traffic pinned, zero undefined
      opcodes over 2 M cycles each.
-  2. Wire ports per `mame/apple/cuda.cpp` (PB0-PB2 = TIP/BYTEACK/TREQ
-     on the VIA shim, PA = ADB in/out, timer + PLL regs) behind a
-     `POM68K_CUDA_LLE=1` flag; the `Egret` HLE stays the default until
-     the firmware path passes the boot etalons.
+  2. ~~Wire ports behind `POM68K_CUDA_LLE=1`~~ **DONE 2026-07-23**
+     (`CudaLle`, gate `cuda_lle_test`): firmware releases the 68040 by
+     its own PC3 write (+280.8 ms), PRAM installs at $0100-$01FF,
+     /TREQ on VIA1 PB3, via_clock/data on the VIA SR via
+     `extShiftCB1`, `AdbLine` on PA7/PA6. Egret HLE stays default.
   3. ADB side: reuse `AdbLine` (already bit-serial, MAME `macadb.cpp`
      lineage) as the wire under the MCU's PA bit-bang — this is what
      unblocks retiring `AdbBus` **and** the Mac II HLE `AdbVia`

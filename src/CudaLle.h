@@ -1,0 +1,82 @@
+// POM68K — Macintosh 68k emulator
+// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+//
+// ── Cuda firmware LLE: M68HC05E1 core wired to the machine (step 2) ──
+// The real 341S0788 (Cuda 2.37) firmware talking to the host VIA and the
+// bit-serial ADB line — the blueprint's step 2 (TODO "Egret/Cuda firmware
+// LLE"), behind POM68K_CUDA_LLE=1; the Egret HLE stays the default until
+// this path passes the boot etalons.
+//
+// Signal map (MAME mame/apple/cuda.cpp pa_r/pa_w/pb_r/pb_w/pc_w +
+// macquadra605.cpp:214-233 wiring):
+//   PA7 out = ADB drive (1 = release)   PA6 in = ADB line level
+//   PB1 out = /TREQ (1 = idle) → host VIA1 PB3
+//   PB4 out = via_clock → VIA1 CB1 (external shift clock)
+//   PB5 out/in = via_data ↔ VIA1 CB2 (SR MSB when the host shifts out)
+//   PB2 in = BYTEACK ← host VIA1 PB4   PB3 in = TIP ← host VIA1 PB5
+//   PC3 out = 680x0 reset release; PRAM (256 B) is installed into the
+//   E1's internal RAM at $0100-$01FF on that rising edge (pc_w :117-131)
+// The VIA side reuses Via6522::extShiftCB1/extShiftCB2Out — the external
+// shift path built for the Mac II ADB PIC1654S (the rollout template).
+//
+// Gate: tests/cuda_lle_test.cpp (firmware releases the host, TREQ idles,
+// staged PRAM lands in MCU RAM).
+
+#pragma once
+#include "M68hc05.h"
+#include "AdbLine.h"
+#include <cstdint>
+#include <vector>
+
+class Via6522;
+
+class CudaLle {
+public:
+    explicit CudaLle(Via6522& via, int64_t cpuHz = 25000000);
+
+    bool loadFirmware(const std::vector<uint8_t>& rom);  // 0x1100 E1 image
+    bool firmwareLoaded() const { return fwLoaded_; }
+    void reset();
+
+    // The firmware holds the 680x0 in reset until its PC3 rising edge.
+    bool cpuHeld() const { return held_; }
+
+    // Host VIA1 port B outputs (machine calls on ORB/DDRB writes):
+    // PB4 = BYTEACK, PB5 = TIP (both active low on a Cuda).
+    void portBChanged(uint8_t pb);
+    // → host VIA1 PB3 input: the MCU's /TREQ (1 = idle).
+    uint8_t xcvrSession() const { return treq_; }
+
+    void tick(int cpuCycles);            // machine cycles → MCU + ADB clocks
+
+    // PRAM staging: contents installed into MCU RAM $0100-$01FF when the
+    // firmware releases the host (MAME m_pram_loaded copy). Reads come
+    // back from staging before release, from live MCU RAM after.
+    uint8_t pram(int i) const;
+    void setPram(int i, uint8_t v);
+
+    AdbLine& adbLine() { return adb_; }  // input events (key/mouse) land here
+    M68hc05& mcu() { return mcu_; }      // gate/debug access
+
+private:
+    uint8_t mcuPortRead(int p);
+    void mcuPortWrite(int p, uint8_t v);
+
+    Via6522& via_;
+    M68hc05 mcu_;
+    AdbLine adb_;
+    const int64_t cpuHz_;                // machine cycles per second
+    static constexpr int64_t kMcuHz = 2097152;    // 4.194304 MHz XTAL / 2
+    static constexpr int64_t kAdbHz = 15667200;   // AdbLine's cycle domain
+    int64_t mcuAcc_ = 0, adbAcc_ = 0;
+
+    bool fwLoaded_ = false;
+    bool held_ = true;
+    uint8_t treq_ = 1;
+    bool byteack_ = true, tip_ = true;   // host levels as the MCU reads them
+    bool lastViaClock_ = true;
+    bool resetLine_ = false;             // PC3 latch (rising edge releases)
+
+    uint8_t stagedPram_[256] = {};
+    bool pramInstalled_ = false;
+};

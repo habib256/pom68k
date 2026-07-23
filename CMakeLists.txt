@@ -62,6 +62,7 @@ add_library(pom68k_core STATIC
     src/SonyDrive.cpp     # M5 — 800K GCR drive
     src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
     src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
+    src/CudaLle.cpp       # step 10 — Cuda firmware ↔ VIA/ADB glue (opt-in)
     src/LtoUdp.cpp        # LLAP — LocalTalk-over-UDP multicast cable
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
@@ -387,6 +388,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(m68hc05_test tests/m68hc05_test.cpp)
     target_link_libraries(m68hc05_test PRIVATE pom68k_core)
     add_test(NAME m68hc05_test COMMAND m68hc05_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Blueprint step 2: the firmware behind the Quadra VIA (POM68K_CUDA_LLE;
+    # reset release + PRAM install + /TREQ idle; soft-skips).
+    add_executable(cuda_lle_test tests/cuda_lle_test.cpp)
+    target_link_libraries(cuda_lle_test PRIVATE pom68k_core)
+    add_test(NAME cuda_lle_test COMMAND cuda_lle_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # O6.5 gate: SCSI pseudo-DMA windows + DRQ-gated BERR timeout

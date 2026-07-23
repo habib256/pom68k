@@ -17,8 +17,21 @@ PLL, sets its port directions and drives the port-B VIA handshake side;
 341S0417 (2.35) and 341S0060 (2.40) pass the same bar. Idle port levels
 are wired per `mame/apple/cuda.cpp` `pa_r/pb_r/pc_r`.
 
-Next steps (blueprint 2-4): wire PB0-PB2/PA6 to the VIA shim and
-`AdbLine` behind `POM68K_CUDA_LLE=1`, then flip machine defaults behind
+**Step 2 landed the same day** (`CudaLle`, gate `cuda_lle_test`): the
+firmware runs behind the Quadra's VIA1 with the full signal map —
+PB1 /TREQ → VIA PB3, PB4/PB5 via_clock/via_data on the VIA SR through
+`Via6522::extShiftCB1` (the PIC1654S external-shift path, reused
+verbatim), BYTEACK/TIP from host PB4/PB5, PA7↔`AdbLine` for the
+bit-serial ADB wire, and PC3 as the host-reset release. On power-on the
+real firmware boots on the MCU core and **releases the 68040 by its own
+PC3 write after 280.8 ms of machine time**; the staged battery PRAM is
+installed into the E1's internal RAM at $0100-$01FF on that edge
+(MAME `pc_w` semantics — and note the address matches what the LLE
+step 7 wire redo had already established for the HLE). Opt-in via
+`POM68K_CUDA_LLE=1` in `Q605Memory`; the Egret HLE remains the default.
+
+Next (blueprint 3-4): first host↔Cuda packet transactions over the SR
+wire against the ROM's device manager, then flip the default behind
 the boot etalons — the PIC1654S rollout pattern. This is the path that
 retires the `Egret` HLE, `AdbBus`, the Mac II HLE `AdbVia` byte-model
 and the §1.9 ORB hack.

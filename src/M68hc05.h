@@ -55,6 +55,9 @@ public:
     uint8_t portLatch(int p) const { return ports_[p & 3]; }
     uint8_t pll() const { return pllCtrl_; }
     uint8_t ramByte(int off) const { return ram_[off & 0x1FF]; }
+    // Integrator poke (MAME cuda.cpp pc_w: PRAM is installed into the E1's
+    // internal RAM once the firmware releases the host reset).
+    void setRamByte(int off, uint8_t v) { ram_[off & 0x1FF] = v; }
     long portWrites = 0, ddrWrites = 0, pllWrites = 0;   // gate counters
     long instructions = 0;
 
