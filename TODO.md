@@ -122,11 +122,20 @@ Next milestones:
      Q605 boot etalons reach the Finder on the firmware path. The
      blocker was the customized-E1 PFW pin (MAME's "cudapfw" tap,
      now `M68hc05::setForcedInputs`).
-  4. Flip the default: FIRST route host input into
-     `CudaLle::adbLine()` (UI feeds `AdbBus` today) + a firmware-path
-     mouse etalon, then default-on with `POM68K_CUDA_LLE=0` fallback,
-     machine by machine — exactly like the `POM68K_ADB_LLE` rollout.
-     The LC II Egret flavor needs its own dump (341S0850) fetched.
+  4. ~~Flip the default on the Q605~~ **DONE 2026-07-23** (CHANGELOG
+     "The real Cuda firmware is the Quadra's DEFAULT"): input routed
+     to `AdbLine`, PRAM persistence re-mirrored, the ADB polarity bug
+     fixed (electrical line = ¬PA7), `q605_cudalle_mouse_etalon`
+     green. `POM68K_CUDA_LLE=0` keeps the Egret HLE fallback.
+  5. ~~LC II Egret flavor~~ **DONE 2026-07-23** (CHANGELOG "The LC II
+     runs the real Egret firmware too"): `CudaLle::Flavor::Egret` on
+     the same 68HC05E1 core — falling-edge PC3 release, PB6-only
+     pull-ups, bare PA idle. `roms/egret/341s0850.bin` (SHA1-verified
+     vs MAME `egret.cpp`), default ON when present,
+     `POM68K_EGRET_LLE=0` keeps the HLE; gate `egret_lle_test`;
+     System 7.5 + 7.1 Finder, mouse via firmware autopoll.
+     **Remaining**: retire the `Egret.*`/`AdbBus` HLE (and the Mac II
+     §1.9 leftover) once the no-dump fallbacks feel redundant.
 - [ ] **SCC LLE backlog — 2026-07-22 MAME `z80scc.cpp` audit** (source
   in `refs/mame/src/devices/machine/`; summary in
   `docs/LLE_VS_HLE.md` §3). Caveat everywhere: MAME's own SDLC side is

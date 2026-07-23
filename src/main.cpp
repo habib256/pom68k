@@ -877,9 +877,11 @@ private:
     void applyCmds() {
         { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
-            case Cmd::MouseMove:   mem.adb().mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.adb().mouseButton(c.a != 0); break;
-            case Cmd::Key:         mem.adb().keyEvent(uint8_t(c.a), c.b != 0); break;
+            // V8Memory routes to the firmware AdbLine when the Egret LLE
+            // is active (POM68K_EGRET_LLE), else to the HLE's AdbBus.
+            case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
+            case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
+            case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
             case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
         }
@@ -973,7 +975,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     // full-RAM burn-in on every boot — persist it like a real battery.
     static std::string pramPath =
         (hddPath.empty() ? std::string("lcii") : hddPath) + ".pram";
-    if (mem.egret().loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
+    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // The battery file's clock froze while the emulator was off; a real
     // RTC keeps counting. Wall time always comes from the host (GUI only).
     mem.egret().setSeconds(hostMacSeconds());
@@ -1194,7 +1196,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     machine.start();                    // emulation runs on its own core
     while (!glfwWindowShouldClose(window)) frame(&ctx);
     machine.stop();                     // join before touching machine state
-    mem.egret().savePram(pramPath);
+    mem.savePram(pramPath);
     audioHost.stop();
     glDeleteTextures(1, &screenTex);
     ImGui_ImplOpenGL3_Shutdown();
@@ -1447,9 +1449,11 @@ private:
     void applyCmds() {
         { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
-            case Cmd::MouseMove:   mem.adb().mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.adb().mouseButton(c.a != 0); break;
-            case Cmd::Key:         mem.adb().keyEvent(uint8_t(c.a), c.b != 0); break;
+            // Q605Memory routes to the firmware AdbLine when the Cuda LLE
+            // is active (POM68K_CUDA_LLE), else to the Egret HLE's AdbBus.
+            case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
+            case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
+            case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
             case Cmd::InsertFloppy:
                 if (!floppyPending_.empty() && mem.insertDisk(floppyPending_))
@@ -1541,7 +1545,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     // cold PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
     static std::string pramPath =
         (hddPath.empty() ? std::string("quadra605") : hddPath) + ".pram";
-    if (mem.cuda().loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
+    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // Same as LC II: the file's clock froze while powered off — wall time
     // comes from the host at every launch (GUI only).
     mem.cuda().setSeconds(hostMacSeconds());
@@ -1749,7 +1753,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     machine.start();
     while (!glfwWindowShouldClose(window)) frame(&ctx);
     machine.stop();
-    mem.cuda().savePram(pramPath);
+    mem.savePram(pramPath);
     audioHost.stop();
     glDeleteTextures(1, &screenTex);
     ImGui_ImplOpenGL3_Shutdown();

@@ -1,5 +1,64 @@
 # CHANGELOG
 
+## 2026-07-23 — The LC II runs the real Egret firmware too (same day, same glue)
+
+The user dropped the Egret dumps (`roms/egret/`, SHA1-verified against
+MAME `egret.cpp` — 341S0850 is the LC/LC II revision) and the Q605's
+`CudaLle` glue absorbed the flavor in one parameter: the Egret is the
+same customized 68HC05E1 at the same 4.19 MHz with the same
+via_clock/via_data/ADB port assignments; the differences are the idle
+input levels (PB bit 7 and the PC power-sense bits absent, PA bare),
+the pull-up set (PB6 only, no PFW tap), and the host-reset edge — the
+Egret releases on the PC3 **falling** edge where the Cuda uses the
+rising one (`egret.cpp pc_w` vs `cuda.cpp pc_w`), which is also when
+the staged PRAM installs.
+
+First try: **the LC II boots System 7.5 AND 7.1 to the Finder on the
+real firmware** (release +259.1 ms), and the mouse moves through the
+firmware's own ADB autopoll (`lcii_mouse_trace` routed through
+`V8Memory::mouseMove`; slower than the HLE's clamped deltas — that's
+the real autopoll cadence). Default ON when the dump is present,
+`POM68K_EGRET_LLE=0` keeps the HLE; gate `egret_lle_test` pins the
+falling-edge release + PRAM install; PRAM persistence and monitor-sense
+sPRAM parking route through the live MCU RAM.
+
+With both machines on firmware, what remains of the Egret/Cuda HLE
+inventory entry is fallback-only. Retirement of `Egret.*`/`AdbBus` (and
+the Mac II §1.9 leftover) can proceed once the fallbacks feel redundant.
+
+## 2026-07-23 — The real Cuda firmware is the Quadra's DEFAULT (blueprint step 4)
+
+The `POM68K_ADB_LLE` rollout pattern, completed for the Cuda: whenever
+`roms/cuda/341s0788.bin` is present the Quadra 605 runs the REAL
+firmware — ADB, PRAM, real-time clock, host packets — with the Egret
+HLE only as the `POM68K_CUDA_LLE=0` / missing-dump fallback.
+
+What landed to get there:
+
+- **Input routing**: `Q605Memory` grows `keyEvent/mouseMove/mouseButton`
+  forwarders that feed the bit-serial `AdbLine` under the LLE (the
+  Egret HLE's command-level `AdbBus` otherwise); the GUI's Quadra
+  runner uses them.
+- **The ADB polarity bug**: the firmware's autopoll ran (31k line
+  edges per 10 s) but `AdbLine` never decoded a command — the trace
+  showed idle-LOW/attention-HIGH, inverted. The Cuda's ADB output
+  stage inverts: **the electrical line is ¬PA7**, PA6 senses the line
+  directly (MAME encodes it as `write_linechange((bit7>>7)^1)` with
+  macadb echoing the level back into PA6). One-line fix in the PA
+  glue; the mouse then sweeps the Finder to the screen corner —
+  gate `q605_cudalle_mouse_etalon` (delta (624,464) over the real
+  autopoll chain: AdbLine wire → 341S0788 → VIA SR → mouse driver).
+- **PRAM persistence routed**: `Q605Memory::loadPram/savePram` keep
+  Egret's file format and factory fallback but re-mirror into the
+  MCU's live internal RAM under the LLE (load re-stages, save
+  harvests).
+
+With the flip, every Quadra gate — the three boot etalons, DAFB/ASC/
+SWIM2/TurboSCSI, the Finder matrix — exercises the firmware path by
+default. The Egret/Cuda HLE inventory entry (LLE_VS_HLE §2) is now
+fallback-only on the Q605; the LC II Egret flavor still needs its own
+341S0850 dump for the same treatment.
+
 ## 2026-07-23 — Mac OS 8.1 boots to the Finder on the REAL Cuda firmware (blueprint step 3)
 
 `POM68K_CUDA_LLE=1` now takes the Quadra all the way: the ROM's Cuda

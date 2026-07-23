@@ -294,8 +294,15 @@ The 60.15 Hz "VBL" heartbeat and the one-second interrupt both live on VIA1
 ## Egret (ADB + RTC + PRAM + power)
 
 68HC05EG, 32.768 kHz×128; on the real board it is *always powered*.
-MAME runs the dumped firmware (341S0850 for LC/LC II, egret.cpp:42-44,74-75);
-POM68K should **HLE** it (one concern: `Egret.cpp`).
+MAME runs the dumped firmware (`egret.cpp` ROM_START): **341S0851**
+(default bios) or earlier **341S0850** for LC/LC II
+(`341s0850.bin` CRC `4906ecd0` / SHA1 `95e08ba0…fd87c`,
+`341s0851.bin` CRC `ea9ea6e4` / SHA1 `8b0dae3e…eb571`, 0x1100 bytes).
+Since 2026-07-23 POM68K runs the **real firmware by default** when
+`roms/egret/341s0850.bin` is present (`CudaLle::Flavor::Egret` on the
+shared 68HC05E1 core; the falling PC3 edge releases the CPU and
+installs the staged PRAM). `POM68K_EGRET_LLE=0` or a missing dump
+falls back to the HLE (`Egret.cpp`) — see `docs/LLE_VS_HLE.md` §2.
 
 **Transport** — VIA1 shift register in external-clock mode; Egret clocks
 CB1 and drives/reads CB2 (maclc.cpp:425-426,433; via-cuda.c:80-82):

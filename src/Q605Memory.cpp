@@ -51,24 +51,30 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     }
     if (const char* id = std::getenv("POM68K_Q605_ID"))
         machineId_ = uint32_t(std::strtoul(id, nullptr, 16));
-    // Cuda firmware LLE (blueprint step 2): opt-in via POM68K_CUDA_LLE=1
-    // with a real dump present. The staged PRAM mirrors the Egret HLE's
-    // factory seed so both paths boot from the same battery contents.
-    if (std::getenv("POM68K_CUDA_LLE")) {
-        for (const char* p : { "roms/cuda/341s0788.bin",
-                               "../roms/cuda/341s0788.bin" }) {
-            std::ifstream in(p, std::ios::binary);
-            if (!in) continue;
-            std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
-                                    std::istreambuf_iterator<char>());
-            if (cudaLle_.loadFirmware(fw)) { cudaLleOn_ = true; break; }
+    // Cuda firmware LLE — the DEFAULT whenever the real dump is present
+    // (blueprint step 4, the POM68K_ADB_LLE rollout pattern);
+    // POM68K_CUDA_LLE=0 forces the Egret HLE, a missing dump falls back
+    // silently. The staged PRAM mirrors the Egret HLE's factory seed so
+    // both paths boot from the same battery contents.
+    {
+        const char* e = std::getenv("POM68K_CUDA_LLE");
+        const bool want = !e || std::atoi(e) != 0;
+        if (want) {
+            for (const char* p : { "roms/cuda/341s0788.bin",
+                                   "../roms/cuda/341s0788.bin" }) {
+                std::ifstream in(p, std::ios::binary);
+                if (!in) continue;
+                std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
+                                        std::istreambuf_iterator<char>());
+                if (cudaLle_.loadFirmware(fw)) { cudaLleOn_ = true; break; }
+            }
+            if (cudaLleOn_)
+                for (int i = 0; i < 256; i++)
+                    cudaLle_.setPram(i, cuda_.pram(i));
+            else if (e)
+                std::fprintf(stderr, "Q605: POM68K_CUDA_LLE set but no "
+                             "roms/cuda/341s0788.bin — Egret HLE fallback\n");
         }
-        if (cudaLleOn_)
-            for (int i = 0; i < 256; i++)
-                cudaLle_.setPram(i, cuda_.pram(i));
-        else
-            std::fprintf(stderr, "Q605: POM68K_CUDA_LLE set but no "
-                         "roms/cuda/341s0788.bin — Egret HLE fallback\n");
     }
 }
 

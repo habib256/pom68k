@@ -103,6 +103,38 @@ public:
     // the blueprint; Egret HLE stays the default until etalons pass).
     bool cudaLleActive() const { return cudaLleOn_; }
     CudaLle& cudaLle() { return cudaLle_; }
+
+    // Battery-backed PRAM persistence — the file format and factory
+    // fallback stay Egret's; under the firmware LLE the live copy is the
+    // MCU's internal RAM, so load re-mirrors into the staging and save
+    // harvests the live bytes back first.
+    bool loadPram(const std::string& path) {
+        bool ok = cuda_.loadPram(path);
+        if (cudaLleOn_)
+            for (int i = 0; i < 256; i++) cudaLle_.setPram(i, cuda_.pram(i));
+        return ok;
+    }
+    void savePram(const std::string& path) {
+        if (cudaLleOn_)
+            for (int i = 0; i < 256; i++) cuda_.setPram(i, cudaLle_.pram(i));
+        cuda_.savePram(path);
+    }
+
+    // Host input events (UI thread → machine) — routed to the firmware's
+    // bit-serial AdbLine when the Cuda LLE is active, else to the
+    // command-level AdbBus behind the Egret HLE (blueprint step 4).
+    void keyEvent(uint8_t code, bool down) {
+        if (cudaLleOn_) cudaLle_.adbLine().keyEvent(code, down);
+        else            adb_.keyEvent(code, down);
+    }
+    void mouseMove(int dx, int dy) {
+        if (cudaLleOn_) cudaLle_.adbLine().mouseMove(dx, dy);
+        else            adb_.mouseMove(dx, dy);
+    }
+    void mouseButton(bool down) {
+        if (cudaLleOn_) cudaLle_.adbLine().mouseButton(down);
+        else            adb_.mouseButton(down);
+    }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
     // DAFB cell accessors (forwarders; see Dafb.h).

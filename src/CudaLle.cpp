@@ -8,18 +8,23 @@
 #include "Via6522.h"
 #include <cstring>
 
-CudaLle::CudaLle(Via6522& via, int64_t cpuHz)
-    : via_(via), cpuHz_(cpuHz)
+CudaLle::CudaLle(Via6522& via, int64_t cpuHz, Flavor flavor)
+    : via_(via), cpuHz_(cpuHz), flavor_(flavor)
 {
     mcu_.readPort = [this](int p) { return mcuPortRead(p); };
     mcu_.writePort = [this](int p, uint8_t v) { mcuPortWrite(p, v); };
-    mcu_.setPullups(1, 0xC0);            // PB6/7 I2C pull-ups (cuda.cpp:88)
-    mcu_.setPullups(2, 0x04);            // PC2 NMI pull-up (cuda.cpp:89)
-    // The real Cuda's PA0 (PFW) is hard-wired as an input — the firmware
-    // sets its DDR bit as output, which on a stock E1 would drive PFW low
-    // and read back "power failing" (the boot then parks in the shutdown
-    // wait, ADB line low). MAME's "cudapfw" write tap, cuda.cpp:146-152.
-    mcu_.setForcedInputs(0, 0x01);
+    if (flavor_ == Flavor::Cuda) {
+        mcu_.setPullups(1, 0xC0);        // PB6/7 I2C pull-ups (cuda.cpp:88)
+        mcu_.setPullups(2, 0x04);        // PC2 NMI pull-up (cuda.cpp:89)
+        // The real Cuda's PA0 (PFW) is hard-wired as an input — the
+        // firmware sets its DDR bit as output, which on a stock E1 would
+        // drive PFW low and read back "power failing" (the boot then parks
+        // in the shutdown wait, ADB line low). MAME's "cudapfw" write tap,
+        // cuda.cpp:146-152.
+        mcu_.setForcedInputs(0, 0x01);
+    } else {
+        mcu_.setPullups(1, 0x40);        // PB6 pull-up only (egret.cpp:90)
+    }
 }
 
 bool CudaLle::loadFirmware(const std::vector<uint8_t>& rom) {
@@ -52,19 +57,23 @@ void CudaLle::setPram(int i, uint8_t v) {
         mcu_.setRamByte(0x100 + (i & 0xFF), v);
 }
 
-// ── MCU port callbacks (cuda.cpp pa_r/pb_r/pc_r) ───────────────────────
+// ── MCU port callbacks (cuda.cpp / egret.cpp pa_r/pb_r/pc_r) ───────────
 uint8_t CudaLle::mcuPortRead(int p) {
+    const bool cuda = flavor_ == Flavor::Cuda;
     switch (p) {
-        case 0:                          // PA: pull-up|PFW|ADB-power-off
-            return uint8_t(0x02 | 0x01 | 0x04 | (adb_.line() ? 0x40 : 0));
-        case 1:                          // PB: +5v | BYTEACK | TIP | via_data
+        case 0:                          // PA: ADB line + power sense
+            // Cuda: pull-up|PFW|ADB-power-off (cuda.cpp:244-260); Egret:
+            // bare ADB line, control-panel bit left floating (egret.cpp).
+            return uint8_t((cuda ? 0x07 : 0x00) | (adb_.line() ? 0x40 : 0));
+        case 1:                          // PB: +5v | BYTEACK/VIA_FULL |
+                                         // TIP/SYS_SESSION | via_data
             return uint8_t(0x01
                            | (byteack_ ? 0x04 : 0)
                            | (tip_ ? 0x08 : 0)
                            | (via_.extShiftCB2Out() ? 0x20 : 0)
-                           | 0x40 | 0x80);
-        default:                         // PC: trickle sense + pull-up
-            return 0x03;
+                           | 0x40 | (cuda ? 0x80 : 0x00));
+        default:                         // PC: power sense (Cuda only)
+            return cuda ? 0x03 : 0x00;
     }
 }
 
@@ -72,7 +81,13 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
     if (onMcuPortWrite) onMcuPortWrite(p, v);
     switch (p) {
         case 0:                          // PA7 = ADB drive (pa_w :96-121)
-            adb_.setHostDrive((v & 0x80) != 0);
+            // The ADB output stage inverts: PA7=1 pulls the line LOW.
+            // MAME encodes it as write_linechange((bit7>>7)^1) and macadb
+            // echoes that level back into PA6 (adb_linechange_w:955) — so
+            // the electrical line is !PA7 and PA6 senses the line direct.
+            // Getting this backwards made AdbLine see idle-low/attention-
+            // high and never decode a single autopoll command.
+            adb_.setHostDrive(!(v & 0x80));
             break;
         case 1: {                        // PB (pb_w :123-137)
             treq_ = uint8_t((v >> 1) & 1);
@@ -86,8 +101,15 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
             }
             break;
         }
-        case 2:                          // PC3 = host reset (pc_w :139-160)
-            if (!resetLine_ && (v & 0x08)) {
+        case 2: {                        // PC3 = host reset
+            // Cuda: RISING edge pulses the host reset and installs the
+            // staged PRAM (cuda.cpp pc_w :139-160). Egret: the FALLING
+            // edge does (egret.cpp pc_w :240-262).
+            const bool level = (v & 0x08) != 0;
+            const bool release = (flavor_ == Flavor::Cuda)
+                ? (!resetLine_ && level)
+                : (resetLine_ && !level);
+            if (release) {
                 held_ = false;
                 if (!pramInstalled_) {   // slap staged PRAM into live RAM
                     for (int i = 0; i < 256; i++)
@@ -95,8 +117,9 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
                     pramInstalled_ = true;
                 }
             }
-            resetLine_ = (v & 0x08) != 0;
+            resetLine_ = level;
             break;
+        }
     }
 }
 

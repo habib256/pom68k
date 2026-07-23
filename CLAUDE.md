@@ -63,7 +63,7 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 42 gates (asset-dependent gates may soft-skip)
+ctest                        # 56 gates (asset-dependent gates may soft-skip)
 ./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=LC II, 1MB=Quadra
 ```
 
@@ -141,24 +141,29 @@ instrs + bus/ATC/fault frames + 68882 FPU, rulings D1-D22). Musashi was
 retired 2026-07-15 (0 arbitrations won) — the loop is **WinUAE-solo with
 manual arbitration** (`oracle/fuzz/disputes/NOTES.md`).
 **O6 boots classic Mac OS to the Finder** off real disk images (GISTPERSO /
-System 7.5): V8 gate array (`V8Memory`), Egret HLE (`Egret`/`AdbBus`),
+System 7.5): V8 gate array (`V8Memory`), Egret **firmware LLE**
+(`CudaLle` Egret flavor, default with `roms/egret/`; HLE fallback),
 ASC-V8 sound (`Asc`), V8 video + Ariel (`V8Video`), SCSI pseudo-DMA over
 the reused `Ncr5380`, SWIM1 GCR over the reused `Iwm`, 68030+PMMU+68882
 via the O1-O5 core. Remaining LC II gaps in `TODO.md` (no-FPU SANE, 1.44 MB
 SWIM, DFAC audio polish, bus/timing).
 
 **Phase 3 (Quadra 605) reaches a usable Finder desktop:** Q1-Q4
-68040/040-MMU core drives MEMCjr/PrimeTime, Cuda HLE (Egret flavor),
+68040/040-MMU core drives MEMCjr/PrimeTime, Cuda **firmware LLE**
+(`M68hc05`+`CudaLle`, default with `roms/cuda/`; HLE fallback),
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
-GUI exposes the machine alongside Plus/Mac II/LC II. **49 CTest gates**,
+GUI exposes the machine alongside Plus/Mac II/LC II. **56 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
 (LLE ADB mouse — default path since 2026-07-22), `sst68040`,
 `q605_boot_etalon`, `q605_dafb_test`, `q605_asc_test`, `swim2_test`,
 `swim2_media_test`, `q605_floppy_boot_etalon`,
-`q605_nofpu_boot_etalon`, and `q605_barefpu_boot_etalon`.
+`q605_nofpu_boot_etalon`, `q605_barefpu_boot_etalon`, and the
+firmware-LLE gates `m68hc05_test`, `cuda_lle_test`,
+`q605_cudalle_boot_etalon`, `q605_cudalle_mouse_etalon`,
+`egret_lle_test` (Cuda/Egret firmware default since 2026-07-23).
 
 **The Finder boot matrix (Phase A/B) is green** on all four machines ×
 System 4.1–8.1 era images (`tests/finder_boot_matrix.cpp`; CHANGELOG

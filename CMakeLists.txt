@@ -404,6 +404,20 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME q605_cudalle_boot_etalon COMMAND q605_cudalle_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # Blueprint step 4: mouse motion through the real firmware's ADB
+    # autopoll (AdbLine → 341S0788 → VIA SR → mouse driver; soft-skips).
+    add_executable(q605_cudalle_mouse_etalon tests/q605_cudalle_mouse_etalon.cpp)
+    target_link_libraries(q605_cudalle_mouse_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_cudalle_mouse_etalon COMMAND q605_cudalle_mouse_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Egret flavor: the real 341S0850 behind the LC II's V8 VIA (falling-
+    # edge PC3 release; soft-skips without the dump).
+    add_executable(egret_lle_test tests/egret_lle_test.cpp)
+    target_link_libraries(egret_lle_test PRIVATE pom68k_core)
+    add_test(NAME egret_lle_test COMMAND egret_lle_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # O6.5 gate: SCSI pseudo-DMA windows + DRQ-gated BERR timeout
     # (soft-skips without the disk image).
     add_executable(scsi_pdma_test tests/scsi_pdma_test.cpp)

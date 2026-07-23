@@ -5,6 +5,8 @@
 #include "Cpu030.h"
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 
 V8Memory::V8Memory(uint32_t totalRam)
     : ram_(totalRam, 0), rom_(kRomSize, 0), vram_(kVramSize, 0),
@@ -19,6 +21,27 @@ V8Memory::V8Memory(uint32_t totalRam)
     egret_.setAdbBus(&adb_);
     // ASC IRQ is LEVEL-triggered into pseudo-VIA IFR bit 4 (v8.cpp:119-122)
     asc_.onIrq = [this](bool s) { pvia_.ascIrq(s); updateIrq(); };
+    // Egret firmware LLE — the DEFAULT whenever the real 341S0850 dump
+    // (LC/LC II revision, MAME egret.cpp:74) is present, like the Q605's
+    // Cuda and the Mac II's PIC1654S; POM68K_EGRET_LLE=0 forces the HLE,
+    // a missing dump falls back silently.
+    {
+        const char* e = std::getenv("POM68K_EGRET_LLE");
+        const bool want = !e || std::atoi(e) != 0;
+        if (want) {
+            for (const char* p : { "roms/egret/341s0850.bin",
+                                   "../roms/egret/341s0850.bin" }) {
+                std::ifstream in(p, std::ios::binary);
+                if (!in) continue;
+                std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
+                                        std::istreambuf_iterator<char>());
+                if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
+            }
+            if (!egretLleOn_ && e)
+                std::fprintf(stderr, "LCII: POM68K_EGRET_LLE set but no "
+                             "roms/egret/341s0850.bin — Egret HLE fallback\n");
+        }
+    }
     reset();
 }
 
@@ -60,6 +83,10 @@ void V8Memory::reset() {
     ariel_.reset();
     egret_.reset();
     egret_.factoryDefaults();                // SPConfig XPRAM $13 = $22
+    egretLle_.reset();
+    if (egretLleOn_)                         // stage the same battery
+        for (int i = 0; i < 256; i++)
+            egretLle_.setPram(i, egret_.pram(i));
     adb_.reset();
     asc_.reset();
     scsi_.reset();
@@ -78,7 +105,7 @@ void V8Memory::reset() {
     // wedge the transport (validated: pull-ups on PB4/PB5 black-screen
     // the boot etalon).
     via_.setInA(0xD5);
-    via_.setInB(uint8_t(0xC7 | (egret_.xcvrSession() << 3)));
+    via_.setInB(uint8_t(0xC7 | (xcvrSession_() << 3)));
 }
 
 // MAME v8.cpp:354-422 ram_size(). SIMM bank (bank A) always maps at 0,
@@ -142,13 +169,15 @@ uint8_t V8Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
         via_.write(reg, v);
         // Port B outputs carry the Egret handshake (PB4 VIA_FULL,
         // PB5 SYS_SESSION, maclc.cpp:425-433)
-        if (reg == Via6522::ORB || reg == Via6522::DDRB)
-            egret_.portBChanged(via_.portB());
+        if (reg == Via6522::ORB || reg == Via6522::DDRB) {
+            if (egretLleOn_) egretLle_.portBChanged(via_.portB());
+            else             egret_.portBChanged(via_.portB());
+        }
         updateIrq();
         return 0;
     }
     if (reg == Via6522::ORB)                 // PB3 = XCVR_SESSION, live
-        via_.setInB(uint8_t(0xC7 | (egret_.xcvrSession() << 3)));
+        via_.setInB(uint8_t(0xC7 | (xcvrSession_() << 3)));
     uint8_t d = via_.read(reg);
     updateIrq();
     return d;
@@ -413,7 +442,8 @@ void V8Memory::tick(int cpuCycles) {
         pvia_.slotIrq(PseudoVia::VBL, vbl);
     }
 
-    egret_.tick(cpuCycles);                  // may load the SR (SHIFT IRQ)
+    if (egretLleOn_) egretLle_.tick(cpuCycles);   // firmware + AdbLine
+    else             egret_.tick(cpuCycles);      // may load the SR (SHIFT IRQ)
     asc_.tick(cpuCycles);                    // FIFO drain at 22 257 Hz
     iwm_.tick(cpuCycles);                    // GCR nibble stream
     scc_.tick(cpuCycles);                    // open-line Break/Abort stream (O6.11)

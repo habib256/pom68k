@@ -19,6 +19,7 @@
 #include "PseudoVia.h"
 #include "Ariel.h"
 #include "Egret.h"
+#include "CudaLle.h"
 #include "AdbBus.h"
 #include "Asc.h"
 #include "Ncr5380.h"
@@ -87,7 +88,47 @@ public:
     // serve the 800K path, ISM/MFM (1.44M) is deferred (O6.7)
     Iwm& iwm() { return iwm_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
-    bool cpuHeld() const { return egret_.cpuHeld(); }  // power-on reset hold
+    bool cpuHeld() const {                             // power-on reset hold
+        return egretLleOn_ ? egretLle_.cpuHeld() : egret_.cpuHeld();
+    }
+    // Egret firmware LLE (roms/egret/341s0850.bin + POM68K_EGRET_LLE) —
+    // the Q605 CudaLle rollout applied to the LC II's Egret flavor.
+    bool egretLleActive() const { return egretLleOn_; }
+    CudaLle& egretLle() { return egretLle_; }
+    // Live PRAM view: the MCU's internal RAM under the LLE, the HLE's
+    // array otherwise (setMonitorSense's video-sPRAM parking uses these).
+    uint8_t pramByte(int i) const {
+        return egretLleOn_ ? egretLle_.pram(i) : egret_.pram(i);
+    }
+    void setPramByte(int i, uint8_t v) {
+        if (egretLleOn_) egretLle_.setPram(i, v);
+        else             egret_.setPram(i, v);
+    }
+    // Battery persistence — Egret file format, re-mirrored under the LLE.
+    bool loadPram(const std::string& path) {
+        bool ok = egret_.loadPram(path);
+        if (egretLleOn_)
+            for (int i = 0; i < 256; i++) egretLle_.setPram(i, egret_.pram(i));
+        return ok;
+    }
+    void savePram(const std::string& path) {
+        if (egretLleOn_)
+            for (int i = 0; i < 256; i++) egret_.setPram(i, egretLle_.pram(i));
+        egret_.savePram(path);
+    }
+    // Host input events — AdbLine under the firmware LLE, AdbBus otherwise.
+    void keyEvent(uint8_t code, bool down) {
+        if (egretLleOn_) egretLle_.adbLine().keyEvent(code, down);
+        else             adb_.keyEvent(code, down);
+    }
+    void mouseMove(int dx, int dy) {
+        if (egretLleOn_) egretLle_.adbLine().mouseMove(dx, dy);
+        else             adb_.mouseMove(dx, dy);
+    }
+    void mouseButton(bool down) {
+        if (egretLleOn_) egretLle_.adbLine().mouseButton(down);
+        else             adb_.mouseButton(down);
+    }
     bool overlay() const { return overlay_; }
     uint8_t ramConfig() const { return config_; }
     const uint8_t* vram() const { return vram_.data(); }
@@ -102,11 +143,11 @@ public:
     // so alternating resolutions never clobbers the other's depth.
     void setMonitorSense(uint8_t m) {
         if (m == montype_) return;
-        for (int i = 0; i < 3; i++) vidSpram_[montype_ & 7][i] = egret_.pram(0x58 + i);
+        for (int i = 0; i < 3; i++) vidSpram_[montype_ & 7][i] = pramByte(0x58 + i);
         vidSpramSaved_[montype_ & 7] = true;
         montype_ = m;
         if (vidSpramSaved_[m & 7])
-            for (int i = 0; i < 3; i++) egret_.setPram(0x58 + i, vidSpram_[m & 7][i]);
+            for (int i = 0; i < 3; i++) setPramByte(0x58 + i, vidSpram_[m & 7][i]);
         // else: a monitor never configured this session — let the ROM/System
         // set it up (it comes up B&W until "256 couleurs" + restart).
     }
@@ -147,6 +188,12 @@ private:
     PseudoVia pvia_;
     Ariel ariel_;
     Egret egret_{via_};
+    // Egret firmware LLE (the Q605 CudaLle with the Egret flavor).
+    CudaLle egretLle_{via_, kCpuHz, CudaLle::Flavor::Egret};
+    bool egretLleOn_ = false;
+    uint8_t xcvrSession_() const {           // → VIA1 PB3 (active path)
+        return egretLleOn_ ? egretLle_.xcvrSession() : egret_.xcvrSession();
+    }
     AdbBus adb_;
     AscV8 asc_;
     Ncr5380 scsi_;

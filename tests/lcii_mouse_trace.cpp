@@ -45,7 +45,7 @@ int main() {
 
     int16_t startX = rd16(0x0832), startY = rd16(0x0830);
     for (long f = 0; f < 4000 && !cpu.isHalted(); f++) {
-        mem.adb().mouseMove(3, 2);
+        mem.mouseMove(3, 2);      // routes to AdbLine under POM68K_EGRET_LLE
         cpu.runCycles(kFrame);
         if (f % 500 == 0)
             std::printf("  f=%ld Mouse=(%d,%d)\n", f, rd16(0x0830), rd16(0x0832));

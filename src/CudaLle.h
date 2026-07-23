@@ -33,7 +33,15 @@ class Via6522;
 
 class CudaLle {
 public:
-    explicit CudaLle(Via6522& via, int64_t cpuHz = 25000000);
+    // The Egret is the same customized 68HC05E1 at the same 4.19 MHz with
+    // the same VIA/ADB port assignments (MAME egret.cpp vs cuda.cpp); the
+    // flavor differences are the idle input levels (PB bit7/PC power sense
+    // absent, PA bare), the pull-up set (PB6 only, no PFW tap needed) and
+    // the host-reset edge (PC3 FALLING releases + installs PRAM, where the
+    // Cuda uses the rising edge).
+    enum class Flavor { Cuda, Egret };
+    explicit CudaLle(Via6522& via, int64_t cpuHz = 25000000,
+                     Flavor flavor = Flavor::Cuda);
 
     bool loadFirmware(const std::vector<uint8_t>& rom);  // 0x1100 E1 image
     bool firmwareLoaded() const { return fwLoaded_; }
@@ -70,6 +78,7 @@ private:
     M68hc05 mcu_;
     AdbLine adb_;
     const int64_t cpuHz_;                // machine cycles per second
+    const Flavor flavor_;
     static constexpr int64_t kMcuHz = 2097152;    // 4.194304 MHz XTAL / 2
     static constexpr int64_t kAdbHz = 15667200;   // AdbLine's cycle domain
     int64_t mcuAcc_ = 0, adbAcc_ = 0;
