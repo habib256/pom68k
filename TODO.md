@@ -135,15 +135,23 @@ Next milestones:
      clocks the real packet after the close; only the one-second
      packet resyncs (~1.5% of mouse reports land). `POM68K_EGRET_LLE=1`
      opts in; gate `egret_lle_test` still forces + pins the path.
-  6. **Fix the Egret LLE VIA dance, then re-flip the default.** The
-     evidence chain is in CHANGELOG (2026-07-23) and reproducible with
-     `POM68K_ADB_LLE_TRACE=1 ./lcii_mouse_trace` (TREQ/TIP/byte
-     diagnostics live in `CudaLle`). MAME maclc runs the same firmware
-     + wiring fine → diff OUR VIA-side glue (extShiftCB1 pacing,
-     via_full edge semantics vs the 68HC05's PB polling) against
-     MAME's `egret.cpp`/`maclc.cpp` event order around one autopoll
-     packet. Re-flip criterion: `lcii_mouse_trace` delivery within 10%
-     of the HLE's (which saturates the screen), not just "moved".
+  6. **Fix the Egret LLE ADB receive, then re-flip the default.**
+     Diagnosis SHARPENED 2026-07-23 (second pass, SR-byte + BYTEACK
+     diagnostics): the VIA dance is FINE — the System reads well-formed
+     acked [00 40 dy dx] autopoll packets; the corruption is UPSTREAM:
+     the 68HC05's ADB receive mis-hears AdbLine's device bytes as
+     zeros because `CudaLle::tick` runs the MCU's whole batch against
+     a FROZEN wire (~8 µs quantization of 35/65 µs cells; the Cuda
+     ROM's receive loop tolerates it, the Egret ROM's does not — only
+     ~50/3982 reports land, and only around the 1 Hz resync). Slicing
+     experiments both failed (see the note in `CudaLle::tick`): the
+     lockstep phase is load-bearing for the boot PC3/VIA dance AND the
+     wire. Proper fix: an event-driven wire — AdbLine exposes edge
+     TIMESTAMPS and `M68hc05` consumes them at exact instruction
+     boundaries (MAME attotime pattern), replacing the batch-frozen
+     `adb_.line()` port read. Repro: `POM68K_EGRET_LLE=1
+     POM68K_ADB_LLE_TRACE=1 ./lcii_mouse_trace`. Re-flip criterion:
+     delivery within 10% of the HLE's (which saturates the screen).
      **Remaining after that**: retire the `Egret.*`/`AdbBus` HLE (and
      the Mac II §1.9 leftover) once the no-dump fallbacks feel
      redundant.

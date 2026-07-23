@@ -2,6 +2,8 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Via6522.h"
+#include <cstdio>
+#include <cstdlib>
 
 void Via6522::reset() {
     ora_ = orb_ = ddra_ = ddrb_ = 0;
@@ -83,7 +85,12 @@ void Via6522::extShiftCB1(bool level, bool cb2FromPic) {
     } else {
         return;
     }
-    if (++extBits_ >= 8) { extBits_ = 0; setIfr(SHIFT); }
+    if (++extBits_ >= 8) {
+        extBits_ = 0;
+        static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
+        if (trace) std::fprintf(stderr, "via: SR byte %02X (SHIFT)\n", sr_);
+        setIfr(SHIFT);
+    }
 }
 
 void Via6522::setCb1(bool level) {

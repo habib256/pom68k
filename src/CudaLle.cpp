@@ -113,8 +113,9 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
                         static const bool trace =
                             std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
                         if (trace)
-                            std::fprintf(stderr, "cudalle: byte = %02X\n",
-                                         traceByte_);
+                            std::fprintf(stderr,
+                                         "cudalle: byte = %02X (tip=%d treq=%d)\n",
+                                         traceByte_, tip_ ? 1 : 0, treq_);
                     }
                 }
                 lastViaClock_ = clock;
@@ -146,7 +147,12 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
 // ── Host-side wiring ───────────────────────────────────────────────────
 void CudaLle::portBChanged(uint8_t pb) {
     // macquadra605.cpp:230-233: VIA1 PB4 → BYTEACK, PB5 → TIP (active low).
-    byteack_ = (pb & 0x10) != 0;
+    const bool newAck = (pb & 0x10) != 0;
+    if (newAck != byteack_) {
+        static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
+        if (trace) std::fprintf(stderr, "cudalle: BYTEACK %d\n", newAck ? 1 : 0);
+    }
+    byteack_ = newAck;
     const bool newTip = (pb & 0x20) != 0;
     static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
     if (newTip != tip_ && trace) {
@@ -162,6 +168,17 @@ void CudaLle::portBChanged(uint8_t pb) {
 }
 
 void CudaLle::tick(int cpuCycles) {
+    // NOTE (2026-07-23, TODO step 6): this batch order — the MCU runs its
+    // whole slice against a FROZEN wire, then the wire advances — is why
+    // the Egret ROM's ADB receive mis-hears device bytes as zeros (the
+    // SR-byte diagnostics show well-formed [00 40 00 00] autopoll packets
+    // whose data the firmware never heard; the Cuda ROM's receive loop
+    // tolerates the same skew). Two slicing experiments failed: uniform
+    // 2 µs interleave breaks the boot-time PC3/VIA dance (guest crash),
+    // busy-gated slicing kills the mouse entirely — the lockstep phase is
+    // load-bearing in both directions. The fix is an event-driven wire
+    // (MAME attotime-style: the MCU consumes line-edge timestamps), not a
+    // slicing heuristic.
     // Machine cycles → the E1's 2.097 MHz cycle domain.
     mcuAcc_ += int64_t(cpuCycles) * kMcuHz;
     int mcuCyc = int(mcuAcc_ / cpuHz_);

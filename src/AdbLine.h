@@ -34,6 +34,11 @@ public:
     // Advance the device timers by `cyc` CPU cycles (runs the send machine).
     void tick(int cyc);
 
+    // A transaction is in flight (decode state machine out of idle, or the
+    // device send timer armed) — the MCU is bit-sampling and needs fine
+    // clock interleaving (CudaLle::tick); an idle wire can batch.
+    bool busy() const { return linestate_ != LST_IDLE || sendTimer_ >= 0; }
+
     // Debug accessors.
     uint8_t mouseAddr() const { return mouseAddr_; }
     uint8_t keyboardAddr() const { return kbdAddr_; }
