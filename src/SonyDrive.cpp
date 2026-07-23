@@ -43,6 +43,18 @@ uint16_t crcCcitt(const uint8_t* data, size_t len) {
     return crc;
 }
 
+// Inverse 6&2 table: encoded nibble → 6-bit value, -1 if not a data nibble
+int gcr6Inv(uint8_t v) {
+    static int inv[256];
+    static bool init = false;
+    if (!init) {
+        for (int& e : inv) e = -1;
+        for (int i = 0; i < 0x40; i++) inv[kGcr6[i]] = i;
+        init = true;
+    }
+    return inv[v];
+}
+
 inline void gcr6Encode(std::vector<uint16_t>& out, uint8_t va, uint8_t vb,
                        uint8_t vc, bool lastGroup) {
     out.push_back(kGcr6[((va >> 2) & 0x30) | ((vb >> 4) & 0x0c) | ((vc >> 6) & 0x03)]);
@@ -91,6 +103,7 @@ void SonyDrive::eject() {
     image_.clear();
     stream_.clear();
     cells_.clear();
+    gcrWrBuf_.clear();
     streamPos_ = 0;
     cellPos_ = 0;
     hd_ = false;
@@ -128,6 +141,7 @@ bool SonyDrive::insertImage(std::vector<uint8_t> data) {
     side1_ = false;
     switched_ = true;
     wrState_ = 0;
+    gcrWrBuf_.clear();
     encodeTrack();
     if (sound_) sound_->click();
     return true;
@@ -382,11 +396,13 @@ void SonyDrive::commitCells(int64_t startCell, int64_t totalCells,
                             const std::vector<int64_t>& transitions,
                             bool mfm) {
     if (!hasDisk() || writeProtected_ || cells_.empty()) return;
-    if (!mfm || !(mfmMode_ && hd_)) {
-        // GCR write-back stays deferred (like the Iwm path) — log the
-        // dropped write so the shortcut is visible (LLE_VS_HLE rule b).
+    const bool mediaMfm = mfmMode_ && hd_;
+    if (mfm != mediaMfm) {
+        // Encoding/media mismatch writes flux the media's decoder can't
+        // read; nothing can commit — log the drop (LLE_VS_HLE rule b).
         std::fprintf(stderr,
-                     "[sony] GCR cell write dropped (%zu transitions)\n",
+                     "[sony] %s cell write on %s media dropped (%zu transitions)\n",
+                     mfm ? "MFM" : "GCR", mediaMfm ? "MFM" : "GCR",
                      transitions.size());
         return;
     }
@@ -397,7 +413,8 @@ void SonyDrive::commitCells(int64_t startCell, int64_t totalCells,
         if (t < 0 || t >= totalCells) continue;
         cells_[size_t((startCell + t) % n)] = 1;
     }
-    decodeMfmCells();
+    if (mediaMfm) decodeMfmCells();
+    else          decodeGcrCells();
 }
 
 // Offline replica of the SWIM2 MFM read engine (swim2.cpp:499-546) over
@@ -489,6 +506,116 @@ void SonyDrive::decodeMfmCells() {
     if (pending.empty()) encodeTrack();
 }
 
+// Offline replica of the SWIM2 GCR read framer (swim2.cpp:486-497) over
+// the raw cell track: MSB-set bytes self-frame, leading zero cells (sync
+// group tails) are absorbed by the empty shifter. Two passes cover a
+// write span wrapping the index.
+void SonyDrive::decodeGcrCells() {
+    std::vector<uint8_t> bytes;
+    bytes.reserve(cells_.size() / 8);
+    uint8_t sr = 0;
+    const size_t n = cells_.size();
+    for (size_t k = 0; k < 2 * n; k++) {
+        sr = uint8_t((sr << 1) | cells_[k % n]);
+        if (sr & 0x80) {
+            bytes.push_back(sr);
+            sr = 0;
+        }
+    }
+    const int committed = decodeGcrBytes(bytes.data(), bytes.size(), side1_);
+    if (debug)
+        std::fprintf(stderr, "[sony] GCR cell write-back: %d valid sector(s)\n",
+                     committed);
+    // Canonicalize even when nothing verified (a bad write must not leave
+    // garbage the next read would see as media).
+    if (!committed) encodeTrack();
+}
+
+// Scan a decoded nibble sequence for D5 AA AD data fields and commit every
+// sector whose rolling 3-way checksum verifies (inverse of encodeTrackGcr;
+// same loop as MAME extract_sectors_from_track_mac_gcr6, pinned by
+// gcr_test). The physical head position names the track/side — a write can
+// only land under the head; the field's own sector nibble names the slot.
+// The 12 recovered tag bytes are dropped (flat images carry no tag space).
+int SonyDrive::decodeGcrBytes(const uint8_t* nib, size_t n, bool side1) {
+    int committed = 0;
+    const int ns = sectorsInTrack(track_);
+    std::vector<int> done;                       // dedup across wrap passes
+    for (size_t p = 0; p + 707 <= n; p++) {
+        if (!(nib[p] == 0xD5 && nib[p + 1] == 0xAA && nib[p + 2] == 0xAD))
+            continue;
+        const int sector = gcr6Inv(nib[p + 3]);
+        if (sector < 0 || sector >= ns) continue;
+        uint8_t sdata[525] = {};
+        uint8_t ca = 0, cb = 0, cc = 0;
+        size_t r = p + 4;
+        auto pull = [&]() { return gcr6Inv(nib[r++]); };
+        bool bad = false;
+        for (int i = 0; i < 175 && !bad; i++) {
+            const int h0 = pull(), n1 = pull(), n2 = pull();
+            const int n3 = (i != 174) ? pull() : 0;
+            if (h0 < 0 || n1 < 0 || n2 < 0 || n3 < 0) { bad = true; break; }
+            uint8_t va = uint8_t((n1 & 0x3F) | ((h0 << 2) & 0xC0));
+            uint8_t vb = uint8_t((n2 & 0x3F) | ((h0 << 4) & 0xC0));
+            uint8_t vc = (i != 174)
+                ? uint8_t((n3 & 0x3F) | ((h0 << 6) & 0xC0)) : 0;
+            cc = uint8_t((cc << 1) | (cc >> 7));
+            va = va ^ cc;
+            const uint16_t suma = uint16_t(ca + va + (cc & 1));
+            ca = uint8_t(suma);
+            vb = vb ^ ca;
+            const uint16_t sumb = uint16_t(cb + vb + (suma >> 8));
+            cb = uint8_t(sumb);
+            vc = vc ^ cb;
+            sdata[3 * i] = va;
+            sdata[3 * i + 1] = vb;
+            if (i != 174) {
+                cc = uint8_t(cc + vc + (sumb >> 8));
+                sdata[3 * i + 2] = vc;
+            }
+        }
+        if (bad) continue;
+        const int h0 = pull(), w1 = pull(), w2 = pull(), w3 = pull();
+        if (h0 < 0 || w1 < 0 || w2 < 0 || w3 < 0) continue;
+        if (ca != uint8_t((w1 & 0x3F) | ((h0 << 2) & 0xC0)) ||
+            cb != uint8_t((w2 & 0x3F) | ((h0 << 4) & 0xC0)) ||
+            cc != uint8_t((w3 & 0x3F) | ((h0 << 6) & 0xC0)))
+            continue;                            // checksum reject
+        bool dup = false;
+        for (int s : done)
+            if (s == sector) dup = true;
+        if (!dup) {
+            done.push_back(sector);
+            if (writeSector(track_, side1 ? 1 : 0, sector, sdata + 12))
+                committed++;
+        }
+        p = r - 1;                               // resume past the field
+    }
+    return committed;
+}
+
+// IWM write path: nibbles accumulate while the IWM shifter runs; the field
+// decode happens at flushWrite (write-mode exit or underrun), mirroring the
+// cell path. The byte stream never touches stream_/cells_, so nothing needs
+// canonicalizing when no field verifies.
+void SonyDrive::writeNibble(uint8_t nibble) {
+    if (!hasDisk() || writeProtected_) return;
+    if (gcrWrBuf_.size() >= 65536) return;       // runaway-writer guard
+    gcrWrBuf_.push_back(nibble);
+}
+
+void SonyDrive::flushWrite(bool side1) {
+    if (gcrWrBuf_.empty()) return;
+    selectSide(side1);                           // re-encode targets this side
+    const int committed =
+        decodeGcrBytes(gcrWrBuf_.data(), gcrWrBuf_.size(), side1);
+    if (debug)
+        std::fprintf(stderr,
+                     "[sony] IWM write-back: %d valid sector(s) from %zu nibbles\n",
+                     committed, gcrWrBuf_.size());
+    gcrWrBuf_.clear();
+}
+
 bool SonyDrive::writeSector(int track, int side, int sector,
                             const uint8_t data[512]) {
     if (!hasDisk() || writeProtected_) return false;
@@ -515,7 +642,8 @@ bool SonyDrive::readSector(int track, int side, int sector,
 }
 
 // Consume SWIM2 write-FIFO bytes: assemble IBM MFM address/data fields and
-// commit 512-byte payloads via writeSector (GCR write is deferred / ignored).
+// commit 512-byte payloads via writeSector (legacy byte path; the cell
+// engine commits through commitCells, GCR included).
 void SonyDrive::writeByte(uint16_t value) {
     if (!hasDisk() || writeProtected_ || !motorOn_) return;
     const bool mark = (value & kMark) != 0;

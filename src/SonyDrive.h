@@ -53,6 +53,11 @@ public:
     uint16_t nextByte(bool side1);
     // Write path: feed SWIM2-serialized bytes (MARK bit optional)
     void writeByte(uint16_t value);
+    // IWM write path (Plus / LC II SWIM1, GCR): buffer written nibbles,
+    // then decode + commit checksum-valid data fields on flushWrite (the
+    // IWM leaving write mode). Side is sampled at flush time (VIA SEL).
+    void writeNibble(uint8_t nibble);
+    void flushWrite(bool side1);
 
     // ── Raw-cell interface (SWIM2 bit engine, LLE MFM cell timing) ──
     // The track is a discrete cell array (1 = flux transition) at the
@@ -91,6 +96,10 @@ private:
     void encodeTrackMfm();
     void buildCells();
     void decodeMfmCells();
+    void decodeGcrCells();
+    // Scan a decoded GCR nibble sequence for D5 AA AD data fields and
+    // commit every checksum-valid sector; returns the commit count.
+    int decodeGcrBytes(const uint8_t* nib, size_t n, bool side1);
     int rpmNow() const;
     int64_t nominalCells() const;
     int64_t spinCyclesPerRev() const;
@@ -125,4 +134,7 @@ private:
     int wrDataPos_ = 0;
     int wrTrack_ = 0, wrHead_ = 0, wrSector_ = 0;
     uint8_t wrData_[512] = {};
+
+    // IWM GCR write buffer (nibbles accumulated until flushWrite)
+    std::vector<uint8_t> gcrWrBuf_;
 };

@@ -63,7 +63,7 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 57 gates (asset-dependent gates may soft-skip)
+ctest                        # 59 gates (asset-dependent gates may soft-skip)
 ./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=LC II, 1MB=Quadra
 ```
 
@@ -89,7 +89,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | Built-in demo ROM | `DemoRom.h` | ✓ (gate vehicle) | — |
 | UI (ImGui/GLFW, turbo, Machine/Disques) | `main.cpp` | M3 shell ✓ | POMIIGS main.cpp |
 | **SST 68000 harness** | `tests/sst68000.cpp` | M4.5 ✓; 1 000 058 vectors | SingleStepTests/680x0 |
-| **IWM + Sony 3.5" 800K GCR** | `Iwm.h/.cpp`, `SonyDrive.h/.cpp` | M5 ✓ | MAME `iwm.cpp`/`ap_dsk35.cpp` |
+| **IWM + Sony 3.5" 800K GCR** | `Iwm.h/.cpp`, `SonyDrive.h/.cpp` | M5 ✓; write engine + GCR write-back (`iwm_write_test`) | MAME `iwm.cpp`/`ap_dsk35.cpp` |
 | **Keyboard (M0110) + mouse** | `MacInput.h/.cpp`, `Scc8530.h/.cpp` | M5.5 ✓ | MAME/Mini vMac/Snow |
 | **SCSI NCR 5380 + hard disk** | `Ncr5380.h/.cpp`, `ScsiDisk.h/.cpp` | M7 ✓ | MAME `ncr5380.cpp`, pce |
 | SCC 8530 serial ports | `Scc8530.*` (mouse DCD, LAP ext ints, SDLC Tx/Rx LLAP wire, derived baud + paced Tx engine/FCS verify) + `LtoUdp.*` (UDP cable, `POM68K_LTOUDP=1`) | M7.1 / O6.10 / LLAP-1 ✓ | POMIIGS reuse; Zilog UM + MAME z80scc; Mini vMac LToUDP |
@@ -155,7 +155,7 @@ SWIM, DFAC audio polish, bus/timing).
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
-GUI exposes the machine alongside Plus/Mac II/LC II. **57 CTest gates**,
+GUI exposes the machine alongside Plus/Mac II/LC II. **59 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
 (LLE ADB mouse — default path since 2026-07-22), `sst68040`,

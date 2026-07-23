@@ -13,6 +13,8 @@ void Iwm::reset() {
     mode_ = 0;
     dataReg_ = 0;
     cellPhase_ = 0;
+    writing_ = wrPending_ = wrUnderrun_ = false;
+    wrPhase_ = 0;
 }
 
 // Sense/command address presented to the drive: CA2 CA1 CA0 = ph2 ph1 ph0,
@@ -40,7 +42,25 @@ uint8_t Iwm::access(int reg) {
         case 6: q6_ = set; break;
         case 7: q7_ = set; break;
     }
+    updateRw();
     return readRegister();
+}
+
+// Read/write mode tracking (MAME iwm.cpp control(), :198-221): q7 while
+// enabled enters write mode — the access that sets q7 can carry the first
+// data byte; clearing q7 (or ENABLE) leaves it and flushes the write-back.
+void Iwm::updateRw() {
+    const bool wantWrite = enable_ && q7_;
+    if (wantWrite && !writing_) {
+        writing_ = true;
+        wrUnderrun_ = false;
+        wrPending_ = false;
+        wrPhase_ = 7;                             // first load: S_IDLE + 7
+    } else if (!wantWrite && writing_) {
+        writing_ = false;
+        wrPending_ = false;
+        if (selectedDrive()) selectedDrive()->flushWrite(sel_);
+    }
 }
 
 uint8_t Iwm::read(int reg) {
@@ -54,7 +74,10 @@ void Iwm::write(int reg, uint8_t v) {
     access(reg);
     if (q6_ && q7_) {
         if (!enable_) mode_ = v & 0x1F;           // mode register ($1F on Mac)
-        // enabled: write-data register — write support is M5.1
+        else if (writing_) {                      // write-data register
+            wrData_ = v;
+            wrPending_ = true;                    // latched: handshake b7 low
+        }
     }
 }
 
@@ -76,7 +99,12 @@ uint8_t Iwm::readRegister() {
         bool sense = selectedDrive() ? selectedDrive()->sense(senseAddr()) : true;
         return uint8_t((sense ? 0x80 : 0x00) | (enable_ ? 0x20 : 0x00) | (mode_ & 0x1F));
     }
-    if (!q6_ && q7_) return 0xC0;                 // write HANDSHAKE: ready, no underrun
+    if (!q6_ && q7_) {                            // write HANDSHAKE (m_whd)
+        // b7 = register empty (ready for the next byte), b6 = write mode
+        // healthy; low bits ride high like MAME's 0xBF reset value.
+        return uint8_t((wrPending_ ? 0x00 : 0x80) |
+                       (writing_ && !wrUnderrun_ ? 0x40 : 0x00) | 0x3F);
+    }
     return 0xFF;                                  // (Q6,Q7) = (1,1)
 }
 
@@ -88,8 +116,28 @@ void Iwm::tick(int cpuCycles) {
         if (clearCountdown_ <= 0) { clearCountdown_ = 0; dataReg_ = 0; }
     }
     if (!enable_ || !selectedDrive() || !selectedDrive()->hasDisk()) return;
-    cellPhase_ += cpuCycles;
     constexpr int kCyclesPerNibble = 128;
+    if (writing_) {
+        // Write shifter (MAME MODE_WRITE): consume the pending byte every
+        // 8 bit windows; loading with nothing pending is an underrun that
+        // halts the engine (SW_UNDERRUN) and flushes what was written.
+        if (wrUnderrun_) return;
+        wrPhase_ -= cpuCycles;
+        while (wrPhase_ <= 0) {
+            if (!wrPending_) {
+                wrUnderrun_ = true;
+                selectedDrive()->flushWrite(sel_);
+                wrPhase_ = 0;
+                break;
+            }
+            selectedDrive()->writeNibble(wrData_);
+            written++;
+            wrPending_ = false;
+            wrPhase_ += kCyclesPerNibble;
+        }
+        return;
+    }
+    cellPhase_ += cpuCycles;
     while (cellPhase_ >= kCyclesPerNibble) {
         cellPhase_ -= kCyclesPerNibble;
         if (dataReg_ & 0x80) overwritten++;

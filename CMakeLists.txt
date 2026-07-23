@@ -170,6 +170,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(gcr_test PRIVATE pom68k_core)
     add_test(NAME gcr_test COMMAND gcr_test)
 
+    # LLE floppy-write gate: IWM write engine (handshake/underrun) + GCR
+    # write-back — a harvested data field replayed through the write path
+    # must commit as the exact inverse of the read path.
+    add_executable(iwm_write_test tests/iwm_write_test.cpp)
+    target_link_libraries(iwm_write_test PRIVATE pom68k_core)
+    add_test(NAME iwm_write_test COMMAND iwm_write_test)
+
     # M5 gate: real ROM boots a synthetic floppy through the full IWM/GCR
     # chain and executes our boot-block code (soft-skips without a ROM).
     add_executable(disk_boot_etalon tests/disk_boot_etalon.cpp)

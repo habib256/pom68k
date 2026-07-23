@@ -38,10 +38,12 @@ public:
     uint8_t consumed[512] = {};           // ring of nibbles the CPU consumed
     int consumedPos = 0;
     long overwritten = 0;                 // nibbles replaced before being read
+    long written = 0;                     // bytes shipped to the drive
 
 private:
     uint8_t access(int reg);
     uint8_t readRegister();
+    void updateRw();
     SonyDrive* selectedDrive() const { return drive_[driveSel_ ? 1 : 0]; }
     int senseAddr() const;
 
@@ -52,4 +54,13 @@ private:
     uint8_t mode_ = 0, dataReg_ = 0;
     int cellPhase_ = 0;
     int clearCountdown_ = 0;              // delayed clear after a data read
+
+    // Write engine (MAME iwm.cpp MODE_WRITE, byte-granular): q7 while
+    // enabled = write mode; the data register holds one pending byte the
+    // shifter consumes every 8 bit windows (128 cycles at mode $1F).
+    bool writing_ = false;
+    bool wrPending_ = false;              // handshake bit 7 low = byte pending
+    bool wrUnderrun_ = false;             // handshake bit 6 low once starved
+    uint8_t wrData_ = 0;
+    int wrPhase_ = 0;                     // cycles until the next shifter load
 };

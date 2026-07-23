@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## 2026-07-23 — IWM write engine + GCR write-back: floppies are writable
+
+The last dropped-write shortcut in the floppy chain is gone
+(`LLE_VS_HLE.md` §3 — "GCR write-back deferred (logged)" since step 13,
+and the Plus M5.1 "write support" stub from the very first IWM):
+
+- **`Iwm` grows the real write mode** (MAME `iwm.cpp` `MODE_WRITE`,
+  byte-granular): q7-while-enabled enters write mode, and the entering
+  access carries the first data byte (control `$C0` + data in one store,
+  exactly the ROM's sequence); the data register holds one pending byte
+  the shifter consumes every 8 bit windows (128 cycles at mode `$1F`,
+  first load at +7 like `S_IDLE`); handshake bit 7 = register empty,
+  bit 6 drops on underrun, which halts the engine (`SW_UNDERRUN`) and
+  flushes; leaving write mode (q7 or ENABLE clear) flushes too. The
+  idle handshake now reads `$BF` (MAME's `m_whd` reset value), not the
+  hardwired `$C0`.
+- **`SonyDrive` decodes written GCR back into sectors** with the same
+  inverse-6&2 + rolling-3-way-checksum loop `gcr_test` already pins
+  (MAME `extract_sectors_from_track_mac_gcr6`), fed from either mouth:
+  the IWM nibble buffer (`writeNibble`/`flushWrite`) or the raw cell
+  track (`decodeGcrCells` — offline replica of the SWIM2 GCR framer,
+  MSB-set bytes self-frame across sync-group zero cells). Only
+  checksum-valid fields commit; the physical head position names
+  track/side (a write can only land under the head), the field's own
+  sector nibble names the slot; recovered tag bytes are dropped (flat
+  images carry no tag space). `commitCells` dispatches on the media
+  encoding — the only remaining logged drop is a true mismatch (MFM
+  cells on GCR media), which real hardware would render unreadable.
+- **Gates**: `iwm_write_test` (59th) harvests an encoded data field from
+  a patterned drive's own read stream and replays it byte-for-byte
+  through the IWM write registers into a blank drive — the sector must
+  commit byte-identical, proving write is the exact inverse of read;
+  underrun and write-protect paths pinned. `swim2_media_test` grows the
+  same inverse proof through the SWIM2 TSS GCR write path (setup bit 6,
+  8 cells/byte) + cell splice + rotation-angle landing.
+
+Covers the Plus **and** the LC II (SWIM1 shares `Iwm`); the Quadra's
+GCR writes through SWIM2 commit as well. Like SCSI (DEV.md), writes land
+in the in-memory image only — host-file persistence stays in the TODO.
+
 ## 2026-07-23 — Mechanical drive sounds (floppy + SCSI hard disk)
 
 `FloppySound` (new, GUI-side): a port of MAME's

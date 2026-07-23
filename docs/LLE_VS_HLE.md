@@ -284,11 +284,18 @@ documents the real behavior.
   every ACTION start; MFM writes are decoded back through the same
   state machine and only CRC-valid sectors commit to the image).
   `Iwm.*` (Plus / LC II SWIM1) still serves the byte-level nibble
-  stream. *Accepted simplifications*: discrete cells at the
-  setup-programmed rate instead of MAME's attotime flux + `fdc_pll`
-  (ideal PLL, no jitter); committed tracks re-encode canonically (no
-  exotic-format preservation); GCR write-back still deferred (logged);
-  tach is a sampled bit, not a waveform.
+  stream on the read side, but since 2026-07-23 it has the **real write
+  mode** (MAME `MODE_WRITE`: handshake bit 7/bit 6, underrun halt,
+  128-cycle byte cadence — gate `iwm_write_test`) and **GCR write-back
+  commits** on both mouths (IWM nibble buffer and SWIM2 cell splice)
+  through the checksum-verified inverse-6&2 decoder; the only logged
+  drop left is an encoding/media mismatch. *Accepted simplifications*:
+  discrete cells at the setup-programmed rate instead of MAME's attotime
+  flux + `fdc_pll` (ideal PLL, no jitter); committed tracks re-encode
+  canonically (no exotic-format preservation, recovered tag bytes
+  dropped — flat images have no tag space); the Iwm read path stays
+  byte-granular (no cell engine); floppy writes are in-memory only (no
+  host-file persistence yet); tach is a sampled bit, not a waveform.
 - **NuBus/DeclRom**: functional slot windows, no arbitration/timeout
   cycles.
 - **SCSI**: `Ncr5380.*`, `Ncr53c96.*` — register/phase engines faithful
@@ -483,8 +490,12 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
     CRC-invalid fields. Gates `swim2_test` / `swim2_media_test`
     re-pinned to oracle behavior (no-media FIFO stays empty, CRC
     tokens required to commit); `q605_floppy_boot_etalon` green on
-    the first run. Remaining floppy items (GCR write-back, Iwm cell
-    engine, flux-level jitter) are §3 accepted simplifications.
+    the first run. Follow-up landed same day: **GCR write-back + the
+    IWM write engine** (CHANGELOG "IWM write engine + GCR write-back";
+    gate `iwm_write_test`) — floppies are writable on all four
+    machines. Remaining floppy items (Iwm read cell engine,
+    flux-level jitter, host-file persistence) are §3 accepted
+    simplifications.
 11. ~~**Mac II ADB → firmware LLE**~~ **DONE, default since 2026-07-22**
     (§2). `Pic1654s` + `AdbLine` + `Via6522::extShiftCB1` run the real
     `342s0440-b.bin`; self-test → `ADBReInit` → mouse-at-addr-3 on the

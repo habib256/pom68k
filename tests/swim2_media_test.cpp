@@ -258,6 +258,71 @@ int main() {
         check(untouched, "corrupt data CRC is rejected by the decoder");
     }
 
+    // ── SWIM2 TSS GCR write: cell write-back commits a valid field ────
+    {
+        // Patterned source drive: harvest the encoded data field of
+        // track 0 side 0 sector 3 straight off the nibble stream — the
+        // write test then proves the TSS + cell decoder invert it.
+        std::vector<uint8_t> img(SonyDrive::kSize800K);
+        for (size_t i = 0; i < img.size(); i++)
+            img[i] = uint8_t(0x11 + (i % 251));
+        SonyDrive src;
+        src.reset();
+        check(src.insertImage(img), "insert patterned 800K GCR source");
+        constexpr uint8_t kGcrSector3 = 0x9b;    // kGcr6[3]
+        std::vector<uint8_t> field;
+        {
+            std::vector<uint8_t> nib;
+            for (int i = 0; i < 24000; i++) nib.push_back(src.nextNibble(false));
+            for (size_t p = 3; p + 720 < nib.size(); p++) {
+                if (nib[p] == 0xD5 && nib[p + 1] == 0xAA && nib[p + 2] == 0xAD &&
+                    nib[p + 3] == kGcrSector3) {
+                    field.assign(nib.begin() + long(p),
+                                 nib.begin() + long(p) + 4 + 703 + 2);
+                    break;
+                }
+            }
+        }
+        check(field.size() == 709, "harvest GCR data field for sector 3");
+
+        SonyDrive dst;
+        dst.setSuperDrive(true);
+        dst.setSpinClockHz(15667200);
+        dst.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0));
+        check(!dst.mfmMode(), "800K target stays GCR");
+
+        Swim2 swim;
+        swim.reset();
+        swim.attachDrive(&dst, nullptr);
+        dst.commandSwim(0x2);                    // spindle on
+        swim.write(5, 0x44);                     // GCR clocking + GCR write
+
+        auto feed = [&](uint8_t v) {
+            while (swim.fifoCount() >= 2) { swim.tick(64); dst.tick(64); }
+            swim.write(0, v);
+            swim.tick(kGcrByte / 2);
+            dst.tick(kGcrByte / 2);
+        };
+        swim.write(7, 0x9A);                     // motor + A + write + ACTION
+        for (int i = 0; i < 6; i++) feed(0xFF);  // leading syncs
+        for (uint8_t b : field) feed(b);
+        while (swim.fifoCount()) { swim.tick(kGcrByte); dst.tick(kGcrByte); }
+        swim.tick(kGcrByte * 2); dst.tick(kGcrByte * 2);
+        swim.write(6, 0x18);                     // exit write → flush/commit
+
+        uint8_t got[512], want[512];
+        check(dst.readSector(0, 0, 3, got), "read back TSS-written GCR sector");
+        src.readSector(0, 0, 3, want);
+        check(std::memcmp(got, want, 512) == 0,
+              "GCR cell write-back is the inverse of the read path");
+        uint8_t other[512];
+        dst.readSector(0, 0, 4, other);
+        bool untouched = true;
+        for (int i = 0; i < 512 && untouched; i++)
+            if (other[i] != 0) untouched = false;
+        check(untouched, "neighbour GCR sector stays blank");
+    }
+
     // ── Drive detect / eject ──────────────────────────────────────────
     {
         SonyDrive drive;

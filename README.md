@@ -44,6 +44,8 @@ overlay through the VIA and animates a pattern in the 512×342 framebuffer.
 
 Arguments: `[ROM] [floppy] [SCSI]`. Defaults probe `disks35/Disk605.dsk`
 then `hdv/HD20SC.vhd`. Boots System 6 from floppy or SCSI to the Finder.
+Floppies are writable (real IWM write engine + GCR sector commit) — but
+writes stay in the emulator's memory; the image file on disk is untouched.
 
 ### Mac II
 

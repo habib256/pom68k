@@ -203,7 +203,12 @@ Next milestones:
     deterministic.
 
 - [ ] **Complete floppy support.**
-  - Add 800K write support, external-drive selection and eject/insert UI.
+  - ~~Add 800K write support~~ **DONE 2026-07-23** (CHANGELOG "IWM write
+    engine + GCR write-back"; gate `iwm_write_test`): the real IWM write
+    mode (handshake/underrun) + checksum-verified GCR sector commit, on
+    the Plus and the LC II (shared `Iwm`). Writes stay in-memory —
+    persisting dirty floppy images back to the host file remains open.
+  - Add external-drive selection and eject/insert UI.
   - Implement keypad/arrow `$79`-prefix handling where required by M0110 input.
 
 - [ ] **Improve classic sound accuracy.**
