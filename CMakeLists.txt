@@ -101,7 +101,8 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         ${IMGUI_DIR}/imgui_widgets.cpp
         ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
         ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
-    add_executable(${PROJECT_NAME} src/main.cpp src/miniaudio_impl.cpp ${IMGUI_SOURCES})
+    add_executable(${PROJECT_NAME} src/main.cpp src/miniaudio_impl.cpp
+        src/FloppySound.cpp ${IMGUI_SOURCES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
     target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core)
     if(EMSCRIPTEN)
@@ -338,6 +339,16 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(swim2_media_test tests/swim2_media_test.cpp)
     target_link_libraries(swim2_media_test PRIVATE pom68k_core)
     add_test(NAME swim2_media_test COMMAND swim2_media_test)
+
+    # Mechanical drive sounds (FloppySound, MAME sample playback). The
+    # miniaudio TU lives outside pom68k_core so headless tests stay slim;
+    # this gate links it explicitly. Soft-skips without the sample WAVs.
+    add_executable(floppy_sound_test tests/floppy_sound_test.cpp
+        src/FloppySound.cpp src/miniaudio_impl.cpp)
+    target_link_libraries(floppy_sound_test PRIVATE pom68k_core
+        ${CMAKE_DL_LIBS} pthread m)
+    add_test(NAME floppy_sound_test COMMAND floppy_sound_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/floppy_samples)
 
     # Q8 gate: Quadra SuperDrive stack (synthetic HD image via SWIM2).
     add_executable(q605_floppy_boot_etalon tests/q605_floppy_boot_etalon.cpp)

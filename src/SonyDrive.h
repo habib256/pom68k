@@ -10,6 +10,7 @@
 // ap_dsk35.cpp; DEV.md. Gate: tests/gcr_test.cpp, swim2_media_test.
 
 #pragma once
+#include "FloppySoundSink.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -43,7 +44,7 @@ public:
     // phase[2:0] | (HDSEL << 3), unlike the classic IWM CA packing above.
     bool senseSwim(int reg) const;
     void commandSwim(int reg);
-    void setMotor(bool on) { motorOn_ = on; }
+    void setMotor(bool on) { setMotorState(on); }
     bool motorOn() const { return motorOn_; }
 
     // GCR nibble stream for the IWM (SEL selects the side)
@@ -67,6 +68,9 @@ public:
     // Clock the spin_ counter ticks in (Plus legacy default 7 833 600 Hz;
     // Q605 passes its 25 MHz machine clock) — used for rotation angle.
     void setSpinClockHz(int64_t hz) { spinClockHz_ = hz; }
+
+    // Mechanical-sound consumer (GUI only; tests leave it null).
+    void setSoundSink(FloppySoundSink* s) { sound_ = s; }
     // Direct sector write-back (tests / host tools)
     bool writeSector(int track, int side, int sector, const uint8_t data[512]);
     bool readSector(int track, int side, int sector, uint8_t data[512]) const;
@@ -93,6 +97,8 @@ private:
     size_t imageOffset(int track, int side, int sector) const;
     void selectSide(bool side1);
     int sectorsOnCurrentTrack() const;
+    void setMotorState(bool on);
+    uint64_t soundMicros() const;
 
     std::vector<uint8_t> image_;                 // raw sector data
     std::vector<uint16_t> stream_;               // encoded current track/side
@@ -109,6 +115,8 @@ private:
     bool writeProtected_ = false;
     bool motorOn_ = false, dirToZero_ = false, switched_ = false;
     int64_t spin_ = 0;                           // motor-on time, CPU cycles
+    int64_t cycles_ = 0;                         // free-running tick time
+    FloppySoundSink* sound_ = nullptr;
 
     // MFM write assembler (address + data field)
     int wrState_ = 0;                            // 0 idle, 1 sync, 2 addr, 3 data

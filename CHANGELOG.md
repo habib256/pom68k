@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 2026-07-23 — Mechanical drive sounds (floppy + SCSI hard disk)
+
+`FloppySound` (new, GUI-side): a port of MAME's
+`floppy.cpp::floppy_sound_device` via POM2's `FloppySoundDevice`, playing
+MAME's BSD-3 sample set (committed under `assets/floppy_samples/` — a
+`.gitignore` exception, since the tree otherwise ignores `*.wav`).
+
+- The 3.5" samples voice the Sony drives on all four machines; the
+  5.25" set plays at 0.25 gain as the SCSI hard-disk proxy (POM2
+  SmartPort precedent) with an **auto-motor-off** addition — the HDD
+  has no motor line, so the spin loop retires after 1.5 s without a
+  block access.
+- Events flow through the header-only `FloppySoundSink` (SonyDrive
+  step/motor/insert/eject, ScsiDisk read/write) so the miniaudio TU
+  never reaches headless builds; `MacAudioHost` mixes the FX after the
+  machine ring, so drives are audible over a silent desktop.
+- Step cadence is measured in **emulated microseconds** (POM2's turbo
+  lesson: wall-clock sees gap≈0 through a turbo'd seek sweep) with a
+  wall-clock fallback for unstamped callers (`kNoStamp`, ScsiDisk).
+- En route: the LC II never ticked its SonyDrive (spindle/tach time
+  frozen since O6) — `V8Memory` now ticks it, and LC II / Mac II
+  declare their 15.6672 MHz spin clocks (`setSpinClockHz`).
+- Gate: `floppy_sound_test` (58th; soft-skips without samples). Toggle:
+  Machine ▸ "Sons des lecteurs"; `POM68K_DRIVE_SFX=0` starts muted.
+
 ## 2026-07-23 — SWIM2: the real cell engines (MFM cell timing + CRC)
 
 The biggest remaining floppy LLE gap (`LLE_VS_HLE.md` step 13): `Swim2`

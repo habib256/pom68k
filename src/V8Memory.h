@@ -87,7 +87,13 @@ public:
     // SWIM1 comes up IWM-compatible (GCR); the Plus IWM + Sony drive
     // serve the 800K path, ISM/MFM (1.44M) is deferred (O6.7)
     Iwm& iwm() { return iwm_; }
+    SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
+    // Mechanical drive sounds (GUI only; headless leaves sinks null).
+    void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
+        drive_.setSoundSink(floppy);
+        for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
+    }
     bool cpuHeld() const {                             // power-on reset hold
         return egretLleOn_ ? egretLle_.cpuHeld() : egret_.cpuHeld();
     }

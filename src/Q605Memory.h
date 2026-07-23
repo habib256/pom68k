@@ -96,6 +96,12 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
+    // Mechanical drive sounds (GUI only; headless leaves sinks null).
+    void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
+        drive0_.setSoundSink(floppy);
+        drive1_.setSoundSink(floppy);
+        for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
+    }
     bool cpuHeld() const {
         return cudaLleOn_ ? cudaLle_.cpuHeld() : cuda_.cpuHeld();
     }

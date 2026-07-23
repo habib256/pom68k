@@ -78,6 +78,11 @@ public:
         scsi_.attach(&scsiDisk_);
         return true;
     }
+    // Mechanical drive sounds (GUI only; headless leaves sinks null).
+    void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
+        drive_.setSoundSink(floppy);
+        scsiDisk_.setSoundSink(hdd);
+    }
 
 private:
     uint8_t viaAccess(uint32_t addr, bool write, uint8_t v);

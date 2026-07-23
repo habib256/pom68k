@@ -105,6 +105,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | **IOSB ASC stereo** | `Asc.*` (`AscIosb`) | Q8 ✓; `$BB` FIFO/IRQ gated | MAME IOSB / ASC |
 | **SWIM2 + SuperDrive** | `Swim2.*`, `SonyDrive.*` | ✓; LLE cell engines (MFM CRC, rotation) gated | MAME SWIM2 |
 | **Pseudo-VIA2** | `PseudoVia.*` | ✓ | MAME IOSB VIA2 layout |
+| **Drive sounds** (floppy+HDD FX) | `FloppySound.*`, `FloppySoundSink.h` | ✓; `floppy_sound_test` | MAME floppy_sound_device via POM2 |
 
 ## Memory map (Mac Plus, 24-bit)
 

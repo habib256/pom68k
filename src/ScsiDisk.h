@@ -22,6 +22,7 @@
 //       tests/scsi_hfs_facade_test.cpp.
 
 #pragma once
+#include "FloppySoundSink.h"
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -50,6 +51,11 @@ public:
                     std::vector<uint8_t>& dataOut,
                     const std::vector<uint8_t>& dataIn);
 
+    // Mechanical-sound consumer (GUI only; tests leave it null). READs
+    // and WRITEs post kNoStamp step events — the sink's auto-motor-off
+    // retires the spin loop once the disk goes idle.
+    void setSoundSink(FloppySoundSink* s) { sound_ = s; }
+
 private:
     void read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out);
     void write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& in);
@@ -64,4 +70,5 @@ private:
     // bytes begin at this LBA and write-back subtracts it from the LBA.
     uint32_t hfsPrefixBlocks_ = 0;
     uint8_t senseKey_ = 0, senseAsc_ = 0;
+    FloppySoundSink* sound_ = nullptr;
 };

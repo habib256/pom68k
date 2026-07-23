@@ -94,6 +94,15 @@ LC II and Quadra, **Disques** picks the boot volume and toggles secondary
 SCSI images next to the current one (relaunches — the ROM only scans the
 bus at boot), and **Redémarrer** power-cycles the machine.
 
+### Mechanical drive sounds
+
+Floppy and hard-disk activity is audible: head steps and seeks, spindle
+spin-up/loop/down, insert/eject clicks (MAME's floppy sample set, ported
+via POM2 — `assets/floppy_samples/`, BSD-3-Clause). The 3.5" set voices
+the Sony drives on all four machines; the 5.25" set plays at low gain as
+the SCSI hard-disk seek proxy. Toggle with **Machine ▸ Sons des
+lecteurs**, or start muted with `POM68K_DRIVE_SFX=0`.
+
 ## LocalTalk between instances (experimental)
 
 `POM68K_LTOUDP=1 ./build/POM68K …` plugs the SCC printer port into a

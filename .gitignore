@@ -28,6 +28,8 @@ q605_trace.pram
 
 # Sound capture artifacts (sound_test)
 *.wav
+# ...but the MAME mechanical-sound sample set IS source (BSD-3, committed)
+!assets/floppy_samples/*.wav
 
 # Build/debug/run artifacts (not source)
 gdb.out

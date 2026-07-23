@@ -68,6 +68,12 @@ public:
         return true;
     }
     Iwm& iwm() { return iwm_; }
+    SonyDrive& internalDrive() { return drive_; }
+    // Mechanical drive sounds (GUI only; headless leaves sinks null).
+    void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
+        drive_.setSoundSink(floppy);
+        for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
+    }
     Scc8530& scc() { return scc_; }
     Rtc& rtc() { return rtc_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }

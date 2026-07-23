@@ -92,6 +92,7 @@ void V8Memory::reset() {
     scsi_.reset();
     iwm_.reset();
     iwm_.attachDrive(&drive_, nullptr);
+    drive_.setSpinClockHz(15667200);         // machineTick unit (LC II 68030)
     framePos_ = 0;
     vblState_ = false;
     // VIA1 port A input = V8-family machine ID $D4 | diag bit
@@ -446,6 +447,7 @@ void V8Memory::tick(int cpuCycles) {
     else             egret_.tick(cpuCycles);      // may load the SR (SHIFT IRQ)
     asc_.tick(cpuCycles);                    // FIFO drain at 22 257 Hz
     iwm_.tick(cpuCycles);                    // GCR nibble stream
+    drive_.tick(cpuCycles);                  // spindle/tach time (was frozen)
     scc_.tick(cpuCycles);                    // open-line Break/Abort stream (O6.11)
     sccIrq_ = scc_.irqAsserted();            // bidirectional — a de-asserted SCC
                                              // must lower the line too (updateIrq

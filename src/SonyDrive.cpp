@@ -87,6 +87,7 @@ void SonyDrive::reset() {
 }
 
 void SonyDrive::eject() {
+    if (sound_ && hasDisk()) sound_->click();
     image_.clear();
     stream_.clear();
     cells_.clear();
@@ -128,6 +129,7 @@ bool SonyDrive::insertImage(std::vector<uint8_t> data) {
     switched_ = true;
     wrState_ = 0;
     encodeTrack();
+    if (sound_) sound_->click();
     return true;
 }
 
@@ -659,10 +661,11 @@ void SonyDrive::commandSwim(int reg) {
         if (track_ < 0) track_ = 0;
         if (track_ > 79) track_ = 79;
         encodeTrack();
+        if (sound_) sound_->step(track_, soundMicros());
         break;
-    case 0x2: motorOn_ = true; break;
+    case 0x2: setMotorState(true); break;
     case 0x4: dirToZero_ = true; break;           // previous cylinder
-    case 0x6: motorOn_ = false; break;
+    case 0x6: setMotorState(false); break;
     case 0x7: eject(); break;
     case 0x9:
         if (superDrive_) setMfmMode(true);
@@ -687,9 +690,10 @@ void SonyDrive::command(int addr) {
                 if (track_ < 0) track_ = 0;
                 if (track_ > 79) track_ = 79;
                 encodeTrack();
+                if (sound_) sound_->step(track_, soundMicros());
             }
             break;
-        case 0b100: motorOn_ = !ca2; break;          // MOTOR ON / OFF
+        case 0b100: setMotorState(!ca2); break;      // MOTOR ON / OFF
         case 0b110:                                  // EJECT (ca2=1)
             if (ca2) eject();
             break;
@@ -716,5 +720,20 @@ void SonyDrive::command(int addr) {
 }
 
 void SonyDrive::tick(int cpuCycles) {
+    cycles_ += cpuCycles;                            // free-running (sound stamps)
     if (motorOn_) spin_ += cpuCycles;                // spin-up itself is instant
+}
+
+// Emulated-time stamp for the sound sink, in microseconds — integer
+// split so precision holds over hours of runtime.
+uint64_t SonyDrive::soundMicros() const {
+    const int64_t hz = spinClockHz_ > 0 ? spinClockHz_ : 7833600;
+    return uint64_t(cycles_ / hz) * 1000000ull +
+           uint64_t((cycles_ % hz) * 1000000 / hz);
+}
+
+void SonyDrive::setMotorState(bool on) {
+    if (on == motorOn_) return;
+    motorOn_ = on;
+    if (sound_) sound_->motor(on, hasDisk());
 }

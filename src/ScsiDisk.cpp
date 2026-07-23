@@ -169,6 +169,10 @@ bool ScsiDisk::open(const std::string& path, bool writeBack) {
 }
 
 void ScsiDisk::read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out) {
+    if (sound_) {
+        sound_->motor(true, true);
+        sound_->step(int(lba >> 11), FloppySoundSink::kNoStamp);
+    }
     out.clear();
     out.resize(size_t(count) * kBlockSize, 0);
     uint64_t off = uint64_t(lba) * kBlockSize;
@@ -184,6 +188,10 @@ void ScsiDisk::read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out) {
 // even if the process dies (no exit-time flush to miss). Flat-HFS façade:
 // only LBAs past the synthetic prefix hit the original file.
 void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& in) {
+    if (sound_) {
+        sound_->motor(true, true);
+        sound_->step(int(lba >> 11), FloppySoundSink::kNoStamp);
+    }
     uint64_t off = uint64_t(lba) * kBlockSize;
     uint64_t n = uint64_t(count) * kBlockSize;
     if (off >= image_.size()) return;

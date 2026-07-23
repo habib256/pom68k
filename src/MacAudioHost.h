@@ -12,8 +12,10 @@
 // Pattern: POMIIGS AudioOut. GUI-only (not built for headless/WASM here).
 
 #pragma once
+#include "FloppySound.h"
 #include "MacAudio.h"
 #include "third_party/miniaudio.h"
+#include <algorithm>
 #include <atomic>
 #include <vector>
 
@@ -32,6 +34,15 @@ public:
     }
     void stop() { if (started_) ma_device_uninit(&device_); started_ = false; }
     bool started() const { return started_; }
+
+    // Mechanical-sound sources (FloppySound), mixed into the callback
+    // after the machine's sample ring — they play even while the ring
+    // is silent (a seeking drive on a quiet desktop). Attach BEFORE
+    // start(); the callback reads the array without locks.
+    void attachFx(FloppySound* fx) {
+        for (FloppySound*& slot : fx_)
+            if (!slot) { slot = fx; fx->setSampleRate(22254); return; }
+    }
 
     // Samples queued and not yet played — the LC II frame loop uses this
     // as its clock when sound is streaming (audio-clocked pacing): it
@@ -116,6 +127,21 @@ private:
             out[i * 2 + 1] = ring_[r].right;
             read_.store((r + 1) % kRing, std::memory_order_release);
         }
+        // Mechanical FX overlay, chunked through a small mono scratch.
+        for (FloppySound* fx : fx_) {
+            if (!fx) continue;
+            ma_uint32 done = 0;
+            while (done < frames) {
+                float buf[256] = {};
+                const ma_uint32 n = std::min<ma_uint32>(256, frames - done);
+                fx->fillAudioBuffer(buf, int(n));
+                for (ma_uint32 i = 0; i < n; i++) {
+                    out[(done + i) * 2] += buf[i];
+                    out[(done + i) * 2 + 1] += buf[i];
+                }
+                done += n;
+            }
+        }
     }
 
     static constexpr size_t kRing = 1 << 16;        // 64k stereo frames (~3 s)
@@ -123,4 +149,5 @@ private:
     std::atomic<size_t> read_{0}, write_{0};
     ma_device device_{};
     bool started_ = false;
+    FloppySound* fx_[2] = { nullptr, nullptr };     // floppy + HDD proxy
 };

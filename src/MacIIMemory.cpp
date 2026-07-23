@@ -91,6 +91,7 @@ void MacIIMemory::reset() {
     iwm_.reset();
     iwm_.attachDrive(&drive_, nullptr);
     drive_.reset();
+    drive_.setSpinClockHz(15667200);         // machineTick unit (Mac II 68020)
     scc_.reset();
     // SCC async-baud LLE: 15.6672 MHz CPU; PCLK = C7M 7.8336 MHz (the
     // 85C30 family wiring MAME uses across the II-class boards).

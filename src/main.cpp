@@ -245,6 +245,39 @@ private:
     }
 };
 
+// ── Mechanical drive sounds ─────────────────────────────────────────────
+// Two FloppySound instances (MAME sample sets, assets/floppy_samples/):
+// the 3.5" set voices the Sony drives, the chunkier 5.25" set stands in
+// for the SCSI hard disks (POM2 SmartPort precedent: spin loop kept
+// alive by per-access step events, auto-retired when the bus goes
+// idle). POM68K_DRIVE_SFX=0 starts muted; the Machine menu toggles.
+static FloppySound gFloppySfx;
+static FloppySound gHddSfx;
+
+static void initDriveSfx(MacAudioHost& host) {
+    static bool inited = false;
+    if (!inited) {
+        inited = true;
+        std::string probe = findPath("assets/floppy_samples/35_step_1_1.wav");
+        const std::string dir = probe.empty()
+            ? std::string("assets/floppy_samples")
+            : probe.substr(0, probe.find_last_of('/'));
+        const bool flOk = gFloppySfx.loadSamples(dir, FloppySound::FormFactor::FF35);
+        const bool hdOk = gHddSfx.loadSamples(dir, FloppySound::FormFactor::FF525);
+        if (!flOk || !hdOk)
+            std::fprintf(stderr, "sfx: drive samples not found under %s "
+                                 "(mechanical sounds off)\n", dir.c_str());
+        gHddSfx.setVolume(0.25f);            // background whirr, not a drive
+        gHddSfx.setAutoMotorOff(1500.0);     // retire after 1.5 s idle bus
+        if (const char* e = std::getenv("POM68K_DRIVE_SFX"); e && e[0] == '0') {
+            gFloppySfx.setMuted(true);
+            gHddSfx.setMuted(true);
+        }
+    }
+    host.attachFx(&gFloppySfx);
+    host.attachFx(&gHddSfx);
+}
+
 // ── Machine profile menu ────────────────────────────────────────────────
 // Main-menu-bar "Machine": pick Plus / Mac II / LC II / Quadra 605.
 // Selecting another machine relaunches the process on its ROM — clean
@@ -276,6 +309,13 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
                 gSwitchArgs = { path };
                 glfwSetWindowShouldClose(window, GLFW_TRUE);
             }
+        }
+        ImGui::Separator();
+        bool sfx = !gFloppySfx.isMuted();
+        if (ImGui::MenuItem("Sons des lecteurs", nullptr, sfx,
+                            gFloppySfx.isLoaded())) {
+            gFloppySfx.setMuted(sfx);
+            gHddSfx.setMuted(sfx);
         }
         ImGui::EndMenu();
     }
@@ -550,6 +590,8 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+    initDriveSfx(audioHost);
+    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static MacIiMachine machine{mem, cpu, audioHost};
@@ -1007,6 +1049,8 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+    initDriveSfx(audioHost);
+    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static LcMachine machine{mem, cpu, video, audioHost};
@@ -1573,6 +1617,8 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+    initDriveSfx(audioHost);
+    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static QuadraMachine machine{mem, cpu, audioHost};
@@ -1855,6 +1901,8 @@ int main(int argc, char** argv) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+    initDriveSfx(audioHost);
+    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     struct Ctx {
