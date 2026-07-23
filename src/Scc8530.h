@@ -74,6 +74,10 @@ public:
     std::function<void(int ch, const uint8_t* d, size_t n)> onTxFrame;
     // Rx: inject one LLAP frame (dest, src, type, payload — no FCS; the
     // "chip" computes and appends it so the driver sees the SDLC tail).
+    // The receiver VERIFIES that FCS as the frame closes: RR1 bit 6 (CRC
+    // error) rides the EOF byte — badFcs corrupts the appended FCS (a
+    // wire-damage test hook; a truncated transport datagram would look
+    // the same).
     // Delivered at wire pace (setByteCycles) through the 3-deep Rx FIFO with
     // Hunt exit, per-byte Rx interrupts (WR1 modes), address search (WR3
     // bit 2 vs WR6 / $FF broadcast) and End-of-Frame status in RR1.
@@ -83,7 +87,17 @@ public:
     // inter-frame gap, like a real peer's CTS — early delivery played the
     // frame while the driver was still re-arming Rx and every byte was
     // lost on the wire (Chooser RTS retry storm, 2026-07-22).
-    void injectRxFrame(int ch, const uint8_t* d, size_t n, bool express = false);
+    void injectRxFrame(int ch, const uint8_t* d, size_t n, bool express = false,
+                       bool badFcs = false);
+    // Async Rx entry (serial-port transports): one received character with
+    // optional wire-error flags. Parity error (RR1 bit 4) exists only when
+    // WR4 bit 0 enables parity; framing error is RR1 bit 6 in async. The
+    // error status rides the byte through the FIFO; the special-condition
+    // interrupt raises when the errored byte is READ (z80scc data_read
+    // :2130), parity only when WR1 bit 2 makes it special. The transport
+    // owns the pacing (no line model on the async side yet).
+    void injectRxByte(int ch, uint8_t d, bool parityError = false,
+                      bool framingError = false);
     // CPU cycles per LocalTalk byte (230.4 kbit/s): 544 @ 15.6672 MHz
     // (LC II / Mac II), 272 @ 7.8336 (Plus), 868 @ 25 MHz (Q605).
     // Legacy fixed pace — the fallback when the machine has not provided
@@ -103,10 +117,7 @@ public:
     void setClocks(int64_t cpuHz, int64_t pclkHz);
     // Effective pace for a channel: derived if available, else the legacy
     // fixed byteCycles_. Public as the scc_baud_test hook.
-    int paceCycles(int ch) const {
-        const int p = ch_[ch & 1].pace;
-        return p > 0 ? p : byteCycles_;
-    }
+    int paceCycles(int ch) const { return paceOf(ch_[ch & 1]); }
 
     uint8_t wr(int ch, int r) const { return ch_[ch & 1].wr[r & 15]; }
     long dcdEdges = 0, ctlWrites = 0;   // debug counters
@@ -123,13 +134,23 @@ private:
         bool txEmptyEvent = false;   // buffer BECAME empty since last
                                      // Reset Tx Int Pending (8530: TxIP
                                      // is edge-, not level-triggered)
+        // ── Tx engine (SCC Tx/Rx-fidelity LLE, MAME z80scc oracle) ──
+        // One-slot Tx buffer (NMOS 8530) feeding a modelled shift register
+        // that drains at the programmed character pace. The byte moves
+        // buffer → shifter only under WR5 bit 3 Tx Enable (tra_complete
+        // :1075 reloads only under TX_ENABLE); that buffer-empty
+        // TRANSITION is the TxIP source and sets RR0 bit 2 again.
+        bool txBufFull = false;      // a byte waits in the Tx buffer
+        uint8_t txBufData = 0;
+        int txShiftIn = 0;           // cycles left in the shifter (0 = idle)
+        bool txFlushing = false;     // shifter is draining the SDLC tail
+                                     // (CRC + closing flag, 24 bit times);
+                                     // completion = Tx underrun/EOM
         int relatch = 0;             // countdown to the next standing-
                                      // abort presentation (0 = disarmed)
         bool txUnderrun = true;      // RR0 bit 6 Tx Underrun/EOM latch —
                                      // SET while the transmitter idles;
                                      // WR0 $C0 clears it at frame start
-        int underrunIn = 0;          // cycles until the drained shifter
-                                     // underruns (SDLC frame end)
         bool hunt = false;           // RR0 bit 4 Sync/Hunt — set by WR3
                                      // bit 4 (Enter Hunt); clears when a
                                      // frame arrives (opening flag), sets
@@ -165,6 +186,8 @@ private:
     uint8_t rr0(const Chan& c) const;
     bool sdlcMode(const Chan& c) const;  // WR4 bits 5-4 = 10
     void updateSerial(Chan& c);          // derive Chan::pace from WR4/11/12-14
+    int paceOf(const Chan& c) const { return c.pace > 0 ? c.pace : byteCycles_; }
+    bool txLoad(Chan& c, int rem);       // buffer → shifter (WR5 gated)
     bool rxEnabled(const Chan& c) const { return (c.wr[3] & 0x01) != 0; }
     uint8_t readCtl_(int channel, Chan& c, int reg);
     void rxPushByte(Chan& c);        // pace one frame byte into the FIFO
@@ -195,8 +218,11 @@ private:
     static constexpr int kPeerHold = 30000000;   // ≈2 s: a peer that has
                                                  // transmitted holds the line
                                                  // "live" until it goes quiet
-    static constexpr int kUnderrunDelay = 1200;  // ≈2 byte times at LocalTalk
-                                                 // 230.4 kbps (CRC + flag)
+    static constexpr int kTailBytes = 3;         // SDLC frame tail the chip
+                                                 // appends after the underrun:
+                                                 // CRC (2 bytes) + closing
+                                                 // flag = 24 bit times at the
+                                                 // programmed pace
     static constexpr int kCtsGapBytes = 4;       // synthesized-CTS inter-frame
                                                  // gap in byte times (~139 µs:
                                                  // after the sender's post-EOM

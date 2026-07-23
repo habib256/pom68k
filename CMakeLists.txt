@@ -383,6 +383,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(scc_baud_test PRIVATE pom68k_core)
     add_test(NAME scc_baud_test COMMAND scc_baud_test)
 
+    # SCC Tx/Rx-engine LLE gate (backlog Medium tier): WR5 Tx-Enable
+    # gating, paced Tx buffer/shifter + TxIP on the buffer-empty edge,
+    # SDLC tail (CRC+flag) at the programmed pace, Rx FCS verification,
+    # async parity/framing error bits + WR1 bit 2 special routing.
+    add_executable(scc_engine_test tests/scc_engine_test.cpp)
+    target_link_libraries(scc_engine_test PRIVATE pom68k_core)
+    add_test(NAME scc_engine_test COMMAND scc_engine_test)
+
     # Egret/Cuda firmware-LLE gate (blueprint step 1): the M68HC05E1 core
     # runs the real Cuda 2.37 dump from its reset vector (soft-skips).
     add_executable(m68hc05_test tests/m68hc05_test.cpp)

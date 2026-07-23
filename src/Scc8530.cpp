@@ -114,8 +114,11 @@ uint8_t Scc8530::rr0(const Chan& c) const {
     // abandoning a frame mid-read, and masking on FIFO contents wedged it
     // ("Impossible d'ouvrir AppleTalk").
     const bool rxBusy = !c.rxCur.empty();
+    // bit 2 Tx Buffer Empty is LIVE: it drops while a byte waits behind a
+    // busy shifter — the pacing the LAP transmit loop polls on.
     return uint8_t(((rxStanding_ || !c.fifo.empty()) ? 0x01 : 0x00)
-                   | (c.dcd ? 0x08 : 0x00) | 0x04 | (ctsHigh_ ? 0x20 : 0x00)
+                   | (c.dcd ? 0x08 : 0x00)
+                   | (c.txBufFull ? 0x00 : 0x04) | (ctsHigh_ ? 0x20 : 0x00)
                    | ((c.hunt && sdlcMode(c)) ? 0x10 : 0x00)
                    | (c.txUnderrun ? 0x40 : 0x00)
                    | ((openLine() && sdlcMode(c) && !rxBusy) ? 0x80 : 0x00));
@@ -187,9 +190,18 @@ void Scc8530::rxPushByte(Chan& c) {
         raiseRxInt(c, true);
         return;
     }
-    // End of Frame (RR1 bit 7) rides the LAST byte (2nd FCS byte); CRC
-    // error (bit 6) stays 0 = good frame. Bit 0 = all-sent.
-    Chan::RxByte b{c.rxCur[c.rxPos], uint8_t(last ? 0x81 : 0x01)};
+    // End of Frame (RR1 bit 7) rides the LAST byte (2nd FCS byte), and so
+    // does the CRC verdict: the receiver re-computes the FCS over the
+    // frame body and compares it to the received tail — RR1 bit 6 set =
+    // CRC error (a corrupted/truncated wire frame), clear = good frame.
+    uint8_t st = uint8_t(last ? 0x81 : 0x01);
+    if (last && c.rxCur.size() >= 2) {
+        const size_t n = c.rxCur.size();
+        const uint16_t want = crc16x25(c.rxCur.data(), n - 2);
+        const uint16_t got = uint16_t(c.rxCur[n - 2] | (c.rxCur[n - 1] << 8));
+        if (want != got) st |= 0x40;
+    }
+    Chan::RxByte b{c.rxCur[c.rxPos], st};
     c.fifo.push_back(b);
     c.rxPos++;
     raiseRxInt(c, false);
@@ -208,7 +220,28 @@ void Scc8530::rxPushByte(Chan& c) {
     }
 }
 
-void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
+// Async Rx entry (serial-port transports): one received character with
+// optional wire-error flags — parity (RR1 bit 4, only meaningful when WR4
+// bit 0 enables parity) and framing (RR1 bit 6 in async). The status rides
+// the byte through the FIFO; the special condition raises at READ time
+// (readData), parity only under WR1 bit 2. The transport owns the pacing.
+void Scc8530::injectRxByte(int ch, uint8_t d, bool parityError, bool framingError) {
+    Chan& c = ch_[ch & 1];
+    if (sdlcMode(c) || !rxEnabled(c)) return;
+    if (c.fifo.size() >= 3) {                    // overrun: drop, flag RR1.5
+        if (!c.fifo.empty()) c.fifo.back().rr1 |= 0x20;
+        raiseRxInt(c, true);
+        return;
+    }
+    uint8_t st = 0x01;
+    if (parityError && (c.wr[4] & 0x01)) st |= 0x10;
+    if (framingError) st |= 0x40;
+    c.fifo.push_back({d, st});
+    raiseRxInt(c, false);
+}
+
+void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
+                            bool badFcs) {
     Chan& c = ch_[ch & 1];
     // Receiver off = no ear... except for express (cable-synthesized) frames:
     // LLAP is half-duplex — the driver disables Rx while transmitting the RTS
@@ -230,7 +263,9 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express) {
     // when the first byte matches WR6 or the $FF broadcast.
     if ((c.wr[3] & 0x04) && d[0] != c.wr[6] && d[0] != 0xFF) return;
     std::vector<uint8_t> f(d, d + n);
-    const uint16_t fcs = crc16x25(d, n);
+    // badFcs models wire damage: the appended tail no longer matches the
+    // body, so the receiver's FCS check (rxPushByte) flags RR1 bit 6.
+    const uint16_t fcs = uint16_t(crc16x25(d, n) ^ (badFcs ? 0x5A5A : 0));
     f.push_back(uint8_t(fcs & 0xFF));            // FCS little-end first (X25)
     f.push_back(uint8_t(fcs >> 8));
     // A non-express (real peer) frame defers until the line has been idle
@@ -271,8 +306,15 @@ uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
             return c.latched ? uint8_t((c.rr0Latch & 0xF8) | (live & 0x07))
                              : live;
         }
-        case 1:                                 // status of the FIFO-top byte
-            return c.fifo.empty() ? c.rr1Rd : c.fifo.front().rr1;
+        case 1: {                               // status of the FIFO-top byte
+            // Bit 0 All Sent is LIVE: set when both the buffer and the
+            // shifter are empty (Zilog UM — and always set in sync modes,
+            // where the transmitter idles on flags, not marks).
+            const bool allSent = (c.wr[4] & 0x0C) == 0
+                              || (!c.txBufFull && c.txShiftIn <= 0);
+            const uint8_t base = c.fifo.empty() ? c.rr1Rd : c.fifo.front().rr1;
+            return uint8_t((base & ~0x01) | (allSent ? 0x01 : 0x00));
+        }
         case 2: {
             rr2Reads++;
             // RR2 on channel B returns the vector MODIFIED by the highest
@@ -319,24 +361,47 @@ uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
     }
 }
 
-// Data port: the transmit buffer accepts the byte instantly (no shift
-// register modelled), so if Tx interrupts are enabled the buffer-empty
-// interrupt latches at once. This is what lets a driver that arms a
-// serial transaction and sleeps for its completion interrupt (AppleTalk
-// LAP on the LC II, O6.10) make progress instead of spinning forever.
+// Buffer → shifter, gated on WR5 bit 3 Tx Enable (z80scc tra_callback
+// :1037 sends marks while disabled; tra_complete :1075 reloads only under
+// TX_ENABLE). The buffer-empty TRANSITION is the TxIP source — a byte the
+// shifter picks up at once (idle transmitter) interrupts immediately, a
+// byte parked behind a busy shifter interrupts one character time later.
+// rem carries the drain overshoot into the next character slot so
+// back-to-back bytes keep the exact wire cadence.
+bool Scc8530::txLoad(Chan& c, int rem) {
+    if (!c.txBufFull || !(c.wr[5] & 0x08)) return false;
+    // SDLC frame capture at the wire: bytes accumulate as the shifter
+    // takes them, until the underrun (frame complete, onTxFrame) or a
+    // Send Abort (discard). The chip appends the FCS itself, so txBuf is
+    // the raw LLAP frame.
+    if (sdlcMode(c)) c.txBuf.push_back(c.txBufData);
+    c.txBufFull = false;
+    c.txShiftIn = paceOf(c) + rem;
+    if (c.txShiftIn <= 0) c.txShiftIn = 1;
+    c.txEmptyEvent = true;                      // buffer BECAME empty
+    if (c.wr[1] & 0x02) c.txIp = true;          // WR1 bit 1 = Tx Int Enable
+    return true;
+}
+
+// Data port: one-slot Tx buffer feeding the paced shifter (txLoad). A
+// driver that sleeps on the completion interrupt (AppleTalk LAP, O6.10)
+// still progresses — TxIP latches the moment the buffer hands its byte
+// to the shifter — but the wire now carries one character per character
+// time instead of accepting bytes instantly (SCC Tx-engine LLE).
 void Scc8530::writeData(int channel, uint8_t d) {
     if (sccDbg()) fprintf(stderr, "[scc] %c data <- %02X\n", channel ? 'A' : 'B', d);
     Chan& c = ch_[channel & 1];
-    c.txEmptyEvent = true;                      // filled → instantly empty
-    if (c.wr[1] & 0x02) c.txIp = true;          // WR1 bit 1 = Tx Int Enable
-    // SDLC frame capture: bytes accumulate until the underrun (frame
-    // complete, onTxFrame) or a Send Abort (discard). The chip appends the
-    // FCS itself, so txBuf is the raw LLAP frame.
-    if (sdlcMode(c)) c.txBuf.push_back(d);
-    // While an SDLC frame is open (underrun latch reset), each data byte
-    // pushes the underrun point out — the frame ends kUnderrunDelay after
-    // the LAST byte drains.
-    if (!c.txUnderrun) c.underrunIn = kUnderrunDelay;
+    // Overwriting a full buffer loses the previous byte, as on the real
+    // chip — drivers pace on TBE (RR0 bit 2) or TxIP.
+    c.txBufData = d;
+    c.txBufFull = true;
+    // Data resuming while the SDLC tail drains cancels the underrun: the
+    // frame continues (the old model's "each byte pushes the underrun out").
+    if (c.txFlushing) {
+        c.txFlushing = false;
+        c.txShiftIn = 0;
+    }
+    if (c.txShiftIn <= 0) txLoad(c, 0);
 }
 
 uint8_t Scc8530::readData(int channel) {
@@ -346,6 +411,13 @@ uint8_t Scc8530::readData(int channel) {
     c.fifo.pop_front();
     c.rr1Rd = b.rr1;
     if (c.fifo.empty()) c.rxIp = false;         // level: FIFO drained
+    // Special Receive Condition interrupts for ERROR bytes raise when the
+    // byte is READ from the FIFO, not when queued (z80scc data_read :2130;
+    // Zilog UM — one status read after the fact instead of one per byte).
+    // CRC/framing (bit 6) is always special; parity (bit 4) only when WR1
+    // bit 2 makes it one. Error Reset clears (specialIp + rr1Rd bits).
+    if (b.rr1 & uint8_t(0x40 | ((c.wr[1] & 0x04) ? 0x10 : 0)))
+        raiseRxInt(c, true);
     if (sccDbg()) fprintf(stderr, "[scc] %c data -> %02X rr1=%02X\n",
                           channel ? 'A' : 'B', b.d, b.rr1);
     return b.d;
@@ -361,12 +433,18 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
         // WR0 bits 7-6 (CRC/EOM commands) are independent of bits 5-3.
         if ((v & 0xC0) == 0xC0) {
             // Reset Tx Underrun/EOM latch — SDLC frame start. When the
-            // (instantly drained) transmitter underruns, the chip sends
-            // CRC + closing flag and the latch SETS again; that 0→1 edge
-            // is the frame-complete ext/status interrupt the LAP sleeps
-            // on (Zilog SCC UM §4.4.1; kUnderrunDelay ≈ CRC+flag time).
+            // drained shifter underruns, the chip sends CRC + closing
+            // flag (kTailBytes character times at the programmed pace)
+            // and the latch SETS again; that 0→1 edge is the frame-
+            // complete ext/status interrupt the LAP sleeps on (Zilog
+            // SCC UM §4.4.1). An idle transmitter underruns at once —
+            // the tail starts draining now; a busy one arms it when the
+            // shifter empties with nothing buffered (tick).
             c.txUnderrun = false;
-            c.underrunIn = kUnderrunDelay;
+            if (c.txShiftIn <= 0 && !c.txBufFull) {
+                c.txFlushing = true;
+                c.txShiftIn = kTailBytes * paceOf(c);
+            }
         }
         switch (v & 0x38) {
             case 0x18:                          // Send Abort (SDLC)
@@ -374,9 +452,11 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                 // interrupt if armed (WR15 bit 6 + WR1 bit 0). The aborted
                 // frame never reaches the wire.
                 c.txBuf.clear();
+                c.txBufFull = false;
+                c.txShiftIn = 0;
+                c.txFlushing = false;
                 if (!c.txUnderrun) {
                     c.txUnderrun = true;
-                    c.underrunIn = 0;
                     if ((c.wr[15] & 0x40) && (c.wr[1] & 0x01)) {
                         if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
                         c.extPending = true;
@@ -389,6 +469,9 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
             case 0x30:                          // Error Reset
                 c.specialIp = false;            // clears the special Rx
                 c.firstCharSeen = false;        // condition; re-arms 1st-char
+                c.rr1Rd &= ~0x70;               // resets the error bits in
+                                                // RR1 (parity/overrun/CRC —
+                                                // z80scc WR0_ERROR_RESET)
                 break;
             case 0x10:                          // Reset External/Status ints
                 c.extPending = false;
@@ -430,6 +513,10 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
         ptr_ == 14)
         updateSerial(c);
 
+    // WR5 bit 3 Tx Enable coming up flushes a byte parked in the buffer
+    // while the transmitter was disabled (txLoad no-ops when still off).
+    if (ptr_ == 5 && c.txShiftIn <= 0 && !c.txFlushing) txLoad(c, 0);
+
     // WR9 D7-D6: 01 = Channel Reset B, 10 = Channel Reset A, 11 = hardware
     // reset. Purge the channel's Rx/Tx machinery — the 7.6 LAP open resets
     // channel B and re-inits from scratch; keeping the stale Rx FIFO made
@@ -446,11 +533,13 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
             c2.txBuf.clear();
             c2.txIp = false;
             c2.txEmptyEvent = false;
+            c2.txBufFull = false;
+            c2.txShiftIn = 0;
+            c2.txFlushing = false;
             c2.extPending = false;
             c2.latched = false;
             c2.hunt = false;
             c2.txUnderrun = true;
-            c2.underrunIn = 0;
             c2.relatch = 0;
         };
         if ((v & 0xC0) == 0x40 || (v & 0xC0) == 0xC0) resetChan(ch_[0]);
@@ -590,23 +679,45 @@ bool Scc8530::tick(int cycles) {
     if (peerHold_ > 0) { peerHold_ -= cycles; if (peerHold_ < 0) peerHold_ = 0; }
     for (int i = 0; i < 2; i++) {
         Chan& c = ch_[i];
-        // SDLC Tx underrun: the drained shifter sends CRC + closing flag,
-        // then the Tx Underrun/EOM latch sets — frame complete. Runs on
-        // every machine (the latch is architectural, not LC II-specific).
-        if (!c.txUnderrun && c.underrunIn > 0) {
-            c.underrunIn -= cycles;
-            if (c.underrunIn <= 0) {
-                c.underrunIn = 0;
-                c.txUnderrun = true;
-                // Frame complete: hand the raw bytes to the wire.
-                if (!c.txBuf.empty()) {
-                    if (onTxFrame) onTxFrame(i, c.txBuf.data(), c.txBuf.size());
-                    c.txBuf.clear();
-                }
-                if ((c.wr[15] & 0x40) && (c.wr[1] & 0x01)) {
-                    if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
-                    c.extPending = true;
-                    changed = true;
+        // ── Tx engine: the shifter drains one character per character
+        // time (paceOf); the buffered byte reloads it (TxIP per reload,
+        // txLoad). When it empties with nothing buffered and an SDLC
+        // frame is open, the chip appends CRC + closing flag (kTailBytes
+        // character times — txFlushing), then the Tx Underrun/EOM latch
+        // sets: frame complete, the raw bytes reach the wire. Runs on
+        // every machine (the engine is architectural, not LC II-specific).
+        if (c.txShiftIn > 0) {
+            c.txShiftIn -= cycles;
+            while (c.txShiftIn <= 0) {
+                const int rem = c.txShiftIn;
+                if (c.txFlushing) {
+                    // CRC + closing flag drained: underrun/EOM.
+                    c.txFlushing = false;
+                    c.txShiftIn = 0;
+                    c.txUnderrun = true;
+                    if (!c.txBuf.empty()) {
+                        if (onTxFrame) onTxFrame(i, c.txBuf.data(), c.txBuf.size());
+                        c.txBuf.clear();
+                    }
+                    if ((c.wr[15] & 0x40) && (c.wr[1] & 0x01)) {
+                        if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
+                        c.extPending = true;
+                        changed = true;
+                    }
+                    if (!txLoad(c, rem)) break;   // a late byte may reload
+                    if (c.txIp) changed = true;
+                } else if (txLoad(c, rem)) {
+                    if (c.txIp) changed = true;   // next byte on the wire
+                } else {
+                    c.txShiftIn = 0;
+                    if (sdlcMode(c) && !c.txUnderrun) {
+                        c.txFlushing = true;      // open frame underruns:
+                        c.txShiftIn = kTailBytes * paceOf(c) + rem;
+                        // ≤ 0: the tail fits in this tick too — the while
+                        // loop re-enters and completes the EOM now.
+                    } else {
+                        break;                    // transmitter idles
+                    }
                 }
             }
         }

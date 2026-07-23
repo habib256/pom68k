@@ -322,11 +322,17 @@ documents the real behavior.
   the machine clocks (RTxC 3.6864 MHz everywhere; PCLK per machine);
   SDLC derives the exact legacy LocalTalk constants (272/544/868), so
   `byteCycles_` is now only the pre-programming fallback.
-  *Remaining gaps (MAME is the oracle here)*: no bit-serial engine
-  (parity/framing error generation), WR5 Tx-Enable not gating, no Rx
-  CRC verification (RR1 bit 6 never set), Tx Underrun uses a flat
-  1200-cycle delay instead of counting CRC+flag bit times at the
-  programmed rate, TRxC-pin/DPLL-async clock sources unmodelled.
+  The **Tx/Rx engine is real since 2026-07-23** (gate `scc_engine_test`,
+  backlog Medium tier): WR5 bit 3 gates the transmitter, a one-slot Tx
+  buffer feeds a shifter paced at the derived rate (TxIP on the
+  buffer-empty transition, RR0 TBE and RR1 All Sent live), the SDLC
+  tail drains CRC+flag in 24 bit times at the programmed pace, the
+  receiver verifies the Rx FCS (RR1 bit 6 on the EOF byte), and async
+  bytes carry parity/framing error status raised as a special condition
+  at READ time with WR1 bit 2 routing (z80scc data_read :2130).
+  *Remaining gaps (MAME is the oracle here)*: no true bit-serial
+  sampling (byte-granular engines, like MAME's device_serial), WR5 RTS
+  pin not tracked, TRxC-pin/DPLL-async clock sources unmodelled.
 - **ADB**: Mac II default path is firmware LLE (§2 / step 11).
   `AdbBus.*` (LC II / Q605 via Egret/Cuda) and the Mac II HLE fallback
   remain command-level.

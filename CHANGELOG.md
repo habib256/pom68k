@@ -1,5 +1,42 @@
 # CHANGELOG
 
+## 2026-07-23 — SCC Tx/Rx engine: the wire gets a real transmitter (Medium tier)
+
+The z80scc-audit backlog's Medium tier, landed as one engine (gate
+`scc_engine_test`; MAME `z80scc.cpp` as oracle):
+
+- **WR5 bit 3 finally gates the transmitter** (`tra_callback :1037`
+  sends marks while disabled): a byte written with Tx off parks in the
+  buffer and flows the moment the driver enables Tx.
+- **One-slot Tx buffer + paced shifter** replace the instant-accept
+  model: the shifter drains one character per character time (the
+  WR4/WR11/WR12-14-derived pace), TxIP fires on the buffer-empty
+  TRANSITION (`tra_complete :1075`), and RR0 TBE / RR1 All Sent read
+  live — the TBE poll a real LAP transmit loop paces itself on now
+  means something. The Plus ticks its SCC now (`MacMemory::tick`);
+  without it a TBE poll would never see the buffer free again.
+- **The SDLC tail is timed, not flat**: after the underrun the chip
+  drains CRC + closing flag in 24 bit times at the programmed pace
+  (`kTailBytes`); the flat 1200-cycle `kUnderrunDelay` is deleted. A
+  data byte arriving mid-tail cancels the flush and the frame
+  continues — the old "each write pushes the underrun out", now with
+  wire-true timing.
+- **The receiver verifies the Rx FCS**: RR1 bit 6 (CRC error) is a
+  computed verdict on the EOF byte, no longer hardwired good — a
+  corrupted or truncated wire frame is flagged like silicon would.
+- **Async error machinery**: `injectRxByte` (the future serial-port
+  transport entry) carries parity/framing flags; the error status
+  rides each byte through the FIFO and raises the special condition
+  when the errored byte is READ (`data_read :2130`, the Zilog
+  FIFO-lock rationale), parity only when WR1 bit 2 makes it special;
+  Error Reset clears the RR1 error bits.
+
+The LLAP gates were re-pinned on the paced wire (the test senders now
+wait TBE between writes like the real driver always had to) and the
+whole 57-gate suite is green — including `llap_two_system_etalon`, the
+live AppleShare dialogue between two booted System 7 machines over the
+now-honest transmitter.
+
 ## 2026-07-23 — The LC II runs the real Egret firmware too (same day, same glue)
 
 The user dropped the Egret dumps (`roms/egret/`, SHA1-verified against

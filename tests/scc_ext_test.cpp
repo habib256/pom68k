@@ -89,19 +89,41 @@ int main() {
     }
 
     // ── 5. TxIP is edge-triggered (became-empty), not level ────────────
+    // Since the Tx-engine LLE the buffer hands its byte to a PACED shifter
+    // (one character time each) and only under WR5 bit 3 Tx Enable — the
+    // real driver enables Tx before writing, so the tests do too.
     {
         Scc8530 scc; scc.reset();
         writeReg(scc, B, 9, 0x08);              // MIE
+        writeReg(scc, B, 5, 0x68);              // Tx 8-bit + Tx Enable
         writeReg(scc, B, 1, 0x02);              // Tx Int Enable, no data yet
         check(!scc.irqAsserted(), "Tx IE on a never-filled buffer: no IRQ");
-        scc.writeData(B, 0x55);                 // fill → instantly empty
+        scc.writeData(B, 0x55);                 // buffer → idle shifter at once
         check(scc.irqAsserted(), "data write with Tx IE: TxIP latches");
         scc.writeCtl(B, 0x28);                  // Reset Tx Int Pending
         check(!scc.irqAsserted(), "Reset Tx Int Pending clears TxIP");
         writeReg(scc, B, 1, 0x02);              // re-enable, still no new data
         check(!scc.irqAsserted(), "re-enabling Tx IE alone does not re-latch");
-        scc.writeData(B, 0xAA);
-        check(scc.irqAsserted(), "next data write latches TxIP again");
+        scc.writeData(B, 0xAA);                 // shifter busy: byte parks
+        check(!scc.irqAsserted(), "byte parked behind the shifter: no TxIP yet");
+        check(!(scc.readCtl(B) & 0x04), "RR0 TBE low while the buffer is full");
+        scc.tick(600);                          // one character time (544)
+        check(scc.irqAsserted(), "shifter reload latches TxIP again");
+        check((scc.readCtl(B) & 0x04) != 0, "RR0 TBE back up after the reload");
+    }
+
+    // ── 5c. WR5 bit 3 gates the transmitter ────────────────────────────
+    {
+        Scc8530 scc; scc.reset();
+        writeReg(scc, B, 9, 0x08);              // MIE
+        writeReg(scc, B, 1, 0x02);              // Tx IE — but Tx DISABLED
+        scc.writeData(B, 0x55);
+        check(!scc.irqAsserted(), "Tx disabled: byte waits, no TxIP");
+        check(!(scc.readCtl(B) & 0x04), "Tx disabled: TBE stays low");
+        scc.tick(5000);
+        check(!scc.irqAsserted(), "Tx disabled: shifter never takes the byte");
+        writeReg(scc, B, 5, 0x68);              // Tx Enable flushes the buffer
+        check(scc.irqAsserted(), "enabling Tx hands the parked byte over");
     }
 
     // ── 5b. SDLC Tx Underrun/EOM latch (frame-complete interrupt) ──────
@@ -109,6 +131,7 @@ int main() {
         Scc8530 scc; scc.reset();
         writeReg(scc, B, 4, 0x20);              // SDLC mode
         writeReg(scc, B, 9, 0x08);              // MIE
+        writeReg(scc, B, 5, 0x68);              // Tx 8-bit + Tx Enable
         writeReg(scc, B, 1, 0x01);              // ext int enable
         writeReg(scc, B, 15, 0x40);             // Tx Underrun/EOM IE
         check((scc.readCtl(B) & 0x40) != 0, "idle transmitter: RR0 bit 6 set");
@@ -116,7 +139,7 @@ int main() {
         check(!(scc.readCtl(B) & 0x40), "frame open: latch reset");
         scc.writeData(B, 0x55);                 // frame byte
         check(!scc.irqAsserted(), "mid-frame: no EOM interrupt yet");
-        scc.tick(2000);                         // shifter drains + CRC/flag
+        scc.tick(2500);                         // byte (544) + CRC/flag (1632)
         check((scc.readCtl(B) & 0x40) != 0, "underrun: latch sets again");
         check(scc.irqAsserted(), "EOM latch 0->1 raises ext/status IRQ");
         scc.writeCtl(B, 0x10);                  // Reset Ext/Status

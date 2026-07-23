@@ -44,6 +44,9 @@ void MacMemory::tick(int cpuCycles) {
     int t = viaPhase_ / 10;          // φ2 = 7.8336 MHz / 10 = 783.36 kHz
     viaPhase_ %= 10;
     if (t && via_.tick(t)) updateIrq();
+    // The SCC Tx engine paces the wire (byte shifter + SDLC tail drain) —
+    // without ticks a TBE poll would never see the buffer free again.
+    if (scc_.tick(cpuCycles)) updateIrq();
     iwm_.tick(cpuCycles);
     drive_.tick(cpuCycles);
 

@@ -32,25 +32,35 @@ void lapArm(Scc8530& s, uint8_t nodeId) {
     wr(s, 9, 0x08);                    // MIE
     wr(s, 4, 0x20);                    // SDLC
     wr(s, 6, nodeId);                  // SDLC address
+    wr(s, 5, 0x68);                    // Tx 8-bit + Tx Enable (WR5 bit 3
+                                       // gates the paced shifter)
     wr(s, 3, 0xD5);                    // Rx 8-bit, hunt, addr search, RxEN
     wr(s, 15, 0x10);                   // Sync/Hunt IE (carrier sense)
     wr(s, 1, 0x11);                    // Rx int on all chars + ext IE
 }
 
 // Transmit one LLAP frame the way the driver does: Reset Tx Underrun/EOM
-// (frame start), stream the bytes, let the shifter drain (underrun = CRC +
-// closing flag on the real wire).
+// (frame start), stream the bytes at the wire pace — the one-slot Tx
+// buffer holds a single byte, so the driver waits a character time (TBE)
+// between writes — then let the shifter drain the SDLC tail (underrun =
+// CRC + closing flag).
 void lapSend(Scc8530& s, const uint8_t* d, size_t n) {
     s.writeCtl(kB, 0xC0);              // WR0: Reset Tx Underrun/EOM latch
-    for (size_t i = 0; i < n; i++) s.writeData(kB, d[i]);
-    s.tick(2000);                      // > kUnderrunDelay: frame completes
+    for (size_t i = 0; i < n; i++) {
+        s.writeData(kB, d[i]);
+        s.tick(kByteCyc);              // one character time: TBE pacing
+    }
+    s.tick(4 * kByteCyc);              // CRC + closing flag: frame completes
 }
 
-// Same, but without advancing time — the caller owns the clock (used by the
-// RTS/CTS dialogue where both ends are co-stepped).
+// Same, but without waiting out the SDLC tail — the caller's co-stepped
+// tick loop drains the CRC+flag and fires the EOM (RTS/CTS dialogue).
 void lapSendNoWait(Scc8530& s, const uint8_t* d, size_t n) {
     s.writeCtl(kB, 0xC0);
-    for (size_t i = 0; i < n; i++) s.writeData(kB, d[i]);
+    for (size_t i = 0; i < n; i++) {
+        s.writeData(kB, d[i]);
+        s.tick(kByteCyc);              // TBE pacing (one-slot buffer)
+    }
 }
 
 // Drain B's Rx FIFO while pacing the wire; returns the delivered bytes and
@@ -237,7 +247,10 @@ int main() {
         wr(s, 5, 0x6B);                          // TxEnable + RTS
         wr(s, 3, 0xD0);                          // Rx OFF (half-duplex Tx)
         const uint8_t rts[3] = {0xFE, 1, 0x84};  // directed lapRTS
-        for (uint8_t byte : rts) s.writeData(kB, byte);
+        for (uint8_t byte : rts) {
+            s.writeData(kB, byte);
+            s.tick(kByteCyc);                    // TBE pacing (1-slot buffer)
+        }
         s.writeCtl(kB, 0xC0);                    // Reset Tx Underrun/EOM
         int t = 0;                               // poll RR0 for the EOM…
         for (; t < 1000; t++) {

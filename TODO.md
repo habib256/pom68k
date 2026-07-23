@@ -148,16 +148,20 @@ Next milestones:
     routing → per-channel derived pace; machines wire
     `setClocks(cpuHz, pclkHz)`; SDLC derives the exact legacy
     272/544/868 LLAP constants.
-  - [ ] **Medium — Tx/Rx engine fidelity**: WR5 Tx-Enable (bit 3)
-    gating the transmitter (`tra_callback`/`tra_complete` :1037/:1075);
-    clock-driven per-byte Tx pacing + TxIP on the buffer-empty
-    TRANSITION (today: instant accept, TxIP on write); bit-serial Rx
-    with parity/framing error generation (`rcv_complete` →
-    `receive_data` :2282) and WR1 bit 2 parity-as-special-condition
-    (:1661); Rx FCS verification on injected frames → RR1 bit 6
-    CRC/framing error (:1274); Tx Underrun delay counted in CRC+flag
-    bit times at the programmed rate instead of the flat 1200 cycles.
-  - [ ] **Low — completeness**: WR5 RTS output tracking (modem
+  - [x] **Medium — Tx/Rx engine fidelity: DONE 2026-07-23** (CHANGELOG
+    "SCC Tx/Rx engine"; gate `scc_engine_test`): WR5 bit 3 gates the
+    transmitter; one-slot Tx buffer feeds a paced shifter (TxIP on the
+    buffer-empty TRANSITION, RR0 TBE + RR1 All Sent live); the SDLC
+    tail (CRC+flag) drains in 24 bit times at the programmed pace
+    (flat 1200 deleted); the receiver VERIFIES the Rx FCS → RR1 bit 6;
+    async `injectRxByte` carries parity/framing error bits, special
+    raised at READ time with WR1 bit 2 routing (z80scc data_read
+    :2130). True bit-serial sampling stays unmodelled (no async
+    transport exists yet; MAME byte-steps via device_serial too) —
+    folded into the Low tier below.
+  - [ ] **Low — completeness**: true bit-serial engines (per-bit Tx/Rx
+    sampling — only worth it with a real async transport to talk to);
+    WR5 RTS output tracking (modem
     handshake, auto-RTS deassert on all-sent, `tra_complete` :1100);
     SDLC Rx residue codes (RR1 bits 3-1); chip-variant gating
     (NMOS 8530 vs 85C30 vs ESCC — FIFO depth 3/8, WR7', status FIFO
