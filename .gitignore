@@ -44,3 +44,5 @@ extern/netatalk2-build/
 tools/netatalk2/run/
 # Python bytecode (router.py runs the vendored tashrouter in-place)
 extern/tashrouter/**/__pycache__/
+# SCC wire-debug log (SCCDBG); regenerated at runtime
+scc.log
