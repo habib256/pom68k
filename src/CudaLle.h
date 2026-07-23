@@ -26,6 +26,7 @@
 #include "M68hc05.h"
 #include "AdbLine.h"
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 class Via6522;
@@ -57,6 +58,9 @@ public:
 
     AdbLine& adbLine() { return adb_; }  // input events (key/mouse) land here
     M68hc05& mcu() { return mcu_; }      // gate/debug access
+    // Debug hook (cuda_lle wire tracing): fires on every MCU port write
+    // (port, value) — the Egret::onEdge equivalent for the firmware path.
+    std::function<void(int, uint8_t)> onMcuPortWrite;
 
 private:
     uint8_t mcuPortRead(int p);

@@ -52,6 +52,7 @@ void M68hc05::reset() {
     pending_ = 0; waiting_ = false;
     illegal_ = false; illegalPc_ = 0; illegalOp_ = 0;
     cycles_ = 0; progTimerAcc_ = 0; onesecAcc_ = 0;
+    progArmed_ = onesecArmed_ = false;
     pc_ = read16(0x1FFE);                            // device_reset rm16
 }
 
@@ -95,6 +96,7 @@ void M68hc05::write8(uint16_t addr, uint8_t v) {
     }
     if (addr >= 0x0004 && addr <= 0x0006) {          // ddrs_w :129
         int p = addr - 4;
+        v &= uint8_t(~forcedIn_[p]);                 // cuda.cpp:146-152 tap
         sendPort(p, uint8_t((ports_[p] & v) | (pullups_[p] & ~v)));
         ddrs_[p] = v;
         ddrWrites++;
@@ -102,7 +104,8 @@ void M68hc05::write8(uint16_t addr, uint8_t v) {
     }
     if (addr == 0x0007) {                            // pll_w :140 (rate-3 cheat)
         if ((v & 3) == 2) v |= 3;
-        pllCtrl_ = v;
+        if (pllCtrl_ != v) { progArmed_ = true; progTimerAcc_ = 0; }
+        pllCtrl_ = v;                                // :158 prog_timer adjust
         pllWrites++;
         return;
     }
@@ -113,6 +116,8 @@ void M68hc05::write8(uint16_t addr, uint8_t v) {
         return;
     }
     if (addr == 0x0012) {                            // onesec_w :199
+        // Every write re-arms the one-second timer (:201 m_timer->adjust).
+        if (!onesecArmed_) { onesecArmed_ = true; onesecAcc_ = 0; }
         if ((onesec_ & 0x40) && !(v & 0x40)) pending_ &= ~INT_CPI;
         onesec_ = v;
         return;
@@ -413,23 +418,27 @@ int M68hc05::run(int budget) {
 
         // Programmable timer: overflow flag every 512 cycles (clock/1024 Hz
         // at 2 clocks per cycle — m68hc05e1.cpp pll_w/timer_tick). TOF sets
-        // bit 7; interrupt when enabled (bit 5).
-        progTimerAcc_ += cyc;
-        while (progTimerAcc_ >= 512) {
-            progTimerAcc_ -= 512;
-            timerCtrl_ |= 0x80;
-            if (timerCtrl_ & 0x20) { pending_ |= INT_TIMER; waiting_ = false; }
+        // bit 7; interrupt when enabled (bit 5). Armed by the first pll_w
+        // like MAME's m_prog_timer->adjust — it does NOT free-run.
+        if (progArmed_) {
+            progTimerAcc_ += cyc;
+            while (progTimerAcc_ >= 512) {
+                progTimerAcc_ -= 512;
+                timerCtrl_ |= 0x80;
+                if (timerCtrl_ & 0x20) { pending_ |= INT_TIMER; waiting_ = false; }
+            }
         }
         // One-second timer (seconds_tick): flag bit 6, CPI int if bit 4.
-        // cyclesPerSecond = pllClock/2; PLL rate 0 (524288 Hz) until the
-        // firmware programs it.
-        static const int64_t kPllHz[4] = { 524288, 1048576, 2097152, 4194304 };
-        const int64_t cps = kPllHz[pllCtrl_ & 3] / 2;
-        onesecAcc_ += cyc;
-        if (onesecAcc_ >= cps) {
-            onesecAcc_ -= cps;
-            onesec_ |= 0x40;
-            if (onesec_ & 0x10) { pending_ |= INT_CPI; waiting_ = false; }
+        // Armed by the first onesec_w; cyclesPerSecond = pllClock/2.
+        if (onesecArmed_) {
+            static const int64_t kPllHz[4] = { 524288, 1048576, 2097152, 4194304 };
+            const int64_t cps = kPllHz[pllCtrl_ & 3] / 2;
+            onesecAcc_ += cyc;
+            if (onesecAcc_ >= cps) {
+                onesecAcc_ -= cps;
+                onesec_ |= 0x40;
+                if (onesec_ & 0x10) { pending_ |= INT_CPI; waiting_ = false; }
+            }
         }
     }
     return used;

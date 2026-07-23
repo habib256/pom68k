@@ -58,6 +58,12 @@ int main() {
     check(mem.cudaLle().mcu().instructions > i0, "MCU keeps executing after release");
     check(!mem.cudaLle().mcu().illegal(), "no undefined opcode throughout");
 
+    // PFW (PA0) must stay an input whatever the firmware's DDRA says — the
+    // real Cuda is a customized E1 (MAME "cudapfw" tap, cuda.cpp:146-152).
+    // A stock E1 drives PFW low and the boot parks in the shutdown wait.
+    check((mem.cudaLle().mcu().ddr(0) & 0x01) == 0,
+          "PFW (PA0) stays an input despite the firmware's DDRA write");
+
     if (gFails) { std::printf("FAILED (%d)\n", gFails); return 1; }
     std::printf("PASS\n");
     return 0;

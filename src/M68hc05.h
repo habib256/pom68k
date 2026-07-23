@@ -29,6 +29,12 @@ public:
     std::function<uint8_t(int)> readPort;
     std::function<void(int, uint8_t)> writePort;
     void setPullups(int port, uint8_t mask) { pullups_[port & 3] = mask; }
+    // Bits forced to stay INPUTS whatever the firmware writes to the DDR.
+    // The real Cuda is a lightly customized E1: PFW (PA0) is always an
+    // input — MAME installs a write tap for it (cuda.cpp:146-152); without
+    // it the firmware drives PFW low, reads "power failing" back and parks
+    // the machine in its shutdown path.
+    void setForcedInputs(int port, uint8_t mask) { forcedIn_[port & 3] = mask; }
 
     bool loadRom(const std::vector<uint8_t>& data);  // 0x1100 bytes @ $0F00
     void reset();                                    // PC ← [$1FFE]
@@ -97,11 +103,16 @@ private:
     bool romLoaded_ = false;
 
     // On-chip peripherals (m68hc05e1.cpp).
-    uint8_t ports_[4] = {}, ddrs_[4] = {}, pullups_[4] = {};
+    uint8_t ports_[4] = {}, ddrs_[4] = {}, pullups_[4] = {}, forcedIn_[4] = {};
     uint8_t pllCtrl_ = 0;
     uint8_t timerCtrl_ = 0;
     uint8_t onesec_ = 0;
     int64_t cycles_ = 0;                             // total cycles (timer ctr)
+    // MAME arms the programmable timer only in pll_w (m68hc05e1.cpp:158)
+    // and the one-second timer only in onesec_w (:200) — neither free-runs
+    // from reset. Letting them free-run skewed the firmware's timekeeping
+    // into a catch-up freeze ~4.7 s into the Q605 boot.
+    bool progArmed_ = false, onesecArmed_ = false;
     int64_t progTimerAcc_ = 0;                       // → overflow per 512 cyc
     int64_t onesecAcc_ = 0;
 

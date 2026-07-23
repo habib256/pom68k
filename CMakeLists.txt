@@ -397,6 +397,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME cuda_lle_test COMMAND cuda_lle_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # Blueprint step 3: Mac OS 8.1 boots to the Finder with the ADB/PRAM/
+    # clock side on the REAL Cuda firmware (soft-skips).
+    add_executable(q605_cudalle_boot_etalon tests/q605_cudalle_boot_etalon.cpp)
+    target_link_libraries(q605_cudalle_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_cudalle_boot_etalon COMMAND q605_cudalle_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # O6.5 gate: SCSI pseudo-DMA windows + DRQ-gated BERR timeout
     # (soft-skips without the disk image).
     add_executable(scsi_pdma_test tests/scsi_pdma_test.cpp)

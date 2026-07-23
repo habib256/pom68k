@@ -116,13 +116,17 @@ Next milestones:
      its own PC3 write (+280.8 ms), PRAM installs at $0100-$01FF,
      /TREQ on VIA1 PB3, via_clock/data on the VIA SR via
      `extShiftCB1`, `AdbLine` on PA7/PA6. Egret HLE stays default.
-  3. ADB side: reuse `AdbLine` (already bit-serial, MAME `macadb.cpp`
-     lineage) as the wire under the MCU's PA bit-bang — this is what
-     unblocks retiring `AdbBus` **and** the Mac II HLE `AdbVia`
-     byte-model + the §1.9 ORB hack (LLE_VS_HLE §2).
-  4. Flip the default machine by machine (LC II Egret flavor first,
-     Cuda/Q605 second), each behind its boot etalon, exactly like the
-     `POM68K_ADB_LLE` rollout.
+  3. ~~Host↔Cuda transactions against the ROM/System~~ **DONE
+     2026-07-23** (CHANGELOG "Mac OS 8.1 boots to the Finder on the
+     REAL Cuda firmware"; gate `q605_cudalle_boot_etalon`): all three
+     Q605 boot etalons reach the Finder on the firmware path. The
+     blocker was the customized-E1 PFW pin (MAME's "cudapfw" tap,
+     now `M68hc05::setForcedInputs`).
+  4. Flip the default: FIRST route host input into
+     `CudaLle::adbLine()` (UI feeds `AdbBus` today) + a firmware-path
+     mouse etalon, then default-on with `POM68K_CUDA_LLE=0` fallback,
+     machine by machine — exactly like the `POM68K_ADB_LLE` rollout.
+     The LC II Egret flavor needs its own dump (341S0850) fetched.
 - [ ] **SCC LLE backlog — 2026-07-22 MAME `z80scc.cpp` audit** (source
   in `refs/mame/src/devices/machine/`; summary in
   `docs/LLE_VS_HLE.md` §3). Caveat everywhere: MAME's own SDLC side is

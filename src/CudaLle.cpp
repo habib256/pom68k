@@ -15,6 +15,11 @@ CudaLle::CudaLle(Via6522& via, int64_t cpuHz)
     mcu_.writePort = [this](int p, uint8_t v) { mcuPortWrite(p, v); };
     mcu_.setPullups(1, 0xC0);            // PB6/7 I2C pull-ups (cuda.cpp:88)
     mcu_.setPullups(2, 0x04);            // PC2 NMI pull-up (cuda.cpp:89)
+    // The real Cuda's PA0 (PFW) is hard-wired as an input — the firmware
+    // sets its DDR bit as output, which on a stock E1 would drive PFW low
+    // and read back "power failing" (the boot then parks in the shutdown
+    // wait, ADB line low). MAME's "cudapfw" write tap, cuda.cpp:146-152.
+    mcu_.setForcedInputs(0, 0x01);
 }
 
 bool CudaLle::loadFirmware(const std::vector<uint8_t>& rom) {
@@ -64,6 +69,7 @@ uint8_t CudaLle::mcuPortRead(int p) {
 }
 
 void CudaLle::mcuPortWrite(int p, uint8_t v) {
+    if (onMcuPortWrite) onMcuPortWrite(p, v);
     switch (p) {
         case 0:                          // PA7 = ADB drive (pa_w :96-121)
             adb_.setHostDrive((v & 0x80) != 0);

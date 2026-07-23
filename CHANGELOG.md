@@ -1,5 +1,41 @@
 # CHANGELOG
 
+## 2026-07-23 — Mac OS 8.1 boots to the Finder on the REAL Cuda firmware (blueprint step 3)
+
+`POM68K_CUDA_LLE=1` now takes the Quadra all the way: the ROM's Cuda
+device manager and the Mac OS 8.1 System talk to the actual 341S0788
+firmware over the VIA SR wire — packet sync, the 86-command early PRAM
+sweep, GET_REAL_TIME, autopoll config, the lot — and the three Q605
+boot etalons (8.1, no-FPU, bare-FPU) reach the Finder. New gate
+`q605_cudalle_boot_etalon` pins it.
+
+The debugging (wire probe, `cuda_wire.log` methodology):
+
+- **The transactions were already correct**: byte-level probing showed
+  the READ_PRAM sweep responses from the firmware exactly matching the
+  Egret HLE's (`[$01 $00 $07 data]`), the attention byte as a real
+  dummy-SHIFT wire event, per-byte BYTEACK toggles, TREQ release on
+  close — the step-7 HLE wire model was vindicated bit for bit.
+- **The boot wedged ~4.7 s in**: the MCU parked the ADB line low and
+  span in a delay loop at $1181-$118B polling PB0 (+5 V sense) —
+  the firmware's power-fail shutdown path. Root cause: the firmware
+  sets DDRA bit 0 (PFW) as an OUTPUT; on a stock 68HC05E1 that drives
+  PFW low, and reading it back says "power failing". **The real Cuda
+  is a lightly customized E1 whose PFW pin stays an input** — MAME
+  installs a "cudapfw" write tap for exactly this (cuda.cpp:146-152).
+  `M68hc05::setForcedInputs` now replicates it, `cuda_lle_test` pins
+  the DDRA behaviour.
+- Timer fidelity tightened along the way: the programmable timer and
+  the one-second timer are armed by `pll_w`/`onesec_w` like MAME's
+  (`m_prog_timer->adjust`/`m_timer->adjust`) instead of free-running
+  from reset.
+
+Remaining before the default flip (blueprint step 4): route host input
+events into `CudaLle::adbLine()` (the UI feeds `AdbBus` today), a mouse
+etalon on the firmware path, then per-machine default with the HLE as
+`POM68K_CUDA_LLE=0` fallback — and the same rollout for the LC II's
+Egret once its 341S0850 dump is on hand.
+
 ## 2026-07-23 — M68HC05E1 core: the real Cuda firmware executes (step 10 groundwork)
 
 Blueprint step 1 of the Egret/Cuda **firmware** LLE (TODO; oracles
