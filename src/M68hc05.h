@@ -28,6 +28,13 @@ public:
     // ports_r/ports_w. Unset callbacks read as all-ones (pulled up).
     std::function<uint8_t(int)> readPort;
     std::function<void(int, uint8_t)> writePort;
+    // Fires inside run() after every instruction (and every WAIT idle
+    // step) with the cycles just consumed. This is the event-driven-wire
+    // hook (TODO step 6): the integrator slaves a wire time domain (the
+    // ADB line) to the MCU's own cycle counter, so the firmware's
+    // bit-banged receive loop sees line edges at exact instruction
+    // boundaries instead of a wire frozen for the whole run() batch.
+    std::function<void(int)> onCycles;
     void setPullups(int port, uint8_t mask) { pullups_[port & 3] = mask; }
     // Bits forced to stay INPUTS whatever the firmware writes to the DDR.
     // The real Cuda is a lightly customized E1: PFW (PA0) is always an

@@ -51,8 +51,10 @@ int main() {
     for (long f = 0; f < 9000 && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
     std::printf("post-boot: Ticks=%u\n", rd32(0x016A));
 
-    // "8.8.8.8" — Mac virtual/ADB codes: '8' = $1C, '.' = $2F.
-    static const uint8_t kSeq[] = { 0x1C, 0x2F, 0x1C, 0x2F, 0x1C, 0x2F, 0x1C };
+    // "8.8.8.8" — main row ('8' = $1C, '.' = $2F) then the NUMERIC KEYPAD
+    // ($5B = KP-8, $41 = KP-. — the 2026-07-23 field freeze was keypad-8).
+    static const uint8_t kSeq[] = { 0x1C, 0x2F, 0x1C, 0x2F, 0x1C, 0x2F, 0x1C,
+                                    0x5B, 0x41, 0x5B, 0x41, 0x5B, 0x41, 0x5B };
     bool keymapSeen = false;
     const uint32_t ticks0 = rd32(0x016A);
     for (uint8_t code : kSeq) {
@@ -67,9 +69,33 @@ int main() {
         for (int f = 0; f < 6 && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
         std::printf("  key %02X done, Ticks=%u\n", code, rd32(0x016A));
     }
-    const uint32_t ticks1 = rd32(0x016A);
+    uint32_t ticks1 = rd32(0x016A);
 
-    const bool alive = ticks1 > ticks0;
+    // Stress phase: 500 tight press/release pairs (2 frames apart) to
+    // hunt the host-command x autopoll collision (2026-07-23 field
+    // freeze: OT panel PRAM writes + keypad typing wedged the ADB
+    // manager in a spin loop at ~$D1F04 while the emulator ran fine).
+    const uint32_t sTicks0 = rd32(0x016A);
+    for (int i = 0; i < 500 && !cpu.isHalted(); i++) {
+        const uint8_t code = kSeq[size_t(i) % (sizeof kSeq)];
+        mem.keyEvent(code, true);
+        cpu.runCycles(kFrame * 2);
+        mem.keyEvent(code, false);
+        cpu.runCycles(kFrame * 2);
+        if (i % 100 == 99) {
+            const uint32_t t = rd32(0x016A);
+            std::printf("  stress %d/500 Ticks=%u\n", i + 1, t);
+            if (t == sTicks0) break;                 // wedged early
+        }
+    }
+    cpu.runCycles(kFrame * 120);
+    const uint32_t sTicks1 = rd32(0x016A);
+    const bool stressAlive = sTicks1 > sTicks0 + 100;
+    std::printf("stress: Ticks %u -> %u %s\n", sTicks0, sTicks1,
+                stressAlive ? "(alive)" : "(WEDGED)");
+    ticks1 = sTicks1;
+
+    const bool alive = ticks1 > ticks0 && stressAlive;
     std::printf("Ticks %u -> %u; KeyMap %s\n", ticks0, ticks1,
                 keymapSeen ? "saw keys" : "SILENT");
     const bool ok = alive && keymapSeen && !cpu.isHalted();

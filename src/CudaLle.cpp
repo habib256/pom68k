@@ -15,6 +15,23 @@ CudaLle::CudaLle(Via6522& via, int64_t cpuHz, Flavor flavor)
 {
     mcu_.readPort = [this](int p) { return mcuPortRead(p); };
     mcu_.writePort = [this](int p, uint8_t v) { mcuPortWrite(p, v); };
+    // Event-driven wire (TODO step 6): AdbLine's clock is SLAVED to the
+    // MCU's instruction stream — every instruction advances the wire by
+    // the equivalent ADB-domain cycles, so the firmware's bit-banged
+    // receive loop samples device edges at exact instruction boundaries.
+    // The batch-frozen wire quantized the 35/65 µs cells to the machine
+    // tick (~8 µs); the Cuda ROM's receive tolerated the skew, the Egret
+    // ROM's mis-heard device bytes as zeros (~1.5% mouse delivery).
+    // Crucially the MCU's own scheduling vs the host VIA is UNCHANGED —
+    // the boot-time PC3/VIA lockstep phase proved load-bearing when the
+    // two slicing experiments (uniform 2 µs interleave, busy-gated)
+    // moved it and crashed the guest / silenced the mouse.
+    mcu_.onCycles = [this](int cyc) {
+        adbAcc_ += int64_t(cyc) * kAdbHz;
+        const int adbCyc = int(adbAcc_ / kMcuHz);
+        adbAcc_ -= int64_t(adbCyc) * kMcuHz;
+        if (adbCyc) adb_.tick(adbCyc);
+    };
     if (flavor_ == Flavor::Cuda) {
         mcu_.setPullups(1, 0xC0);        // PB6/7 I2C pull-ups (cuda.cpp:88)
         mcu_.setPullups(2, 0x04);        // PC2 NMI pull-up (cuda.cpp:89)
@@ -168,25 +185,13 @@ void CudaLle::portBChanged(uint8_t pb) {
 }
 
 void CudaLle::tick(int cpuCycles) {
-    // NOTE (2026-07-23, TODO step 6): this batch order — the MCU runs its
-    // whole slice against a FROZEN wire, then the wire advances — is why
-    // the Egret ROM's ADB receive mis-hears device bytes as zeros (the
-    // SR-byte diagnostics show well-formed [00 40 00 00] autopoll packets
-    // whose data the firmware never heard; the Cuda ROM's receive loop
-    // tolerates the same skew). Two slicing experiments failed: uniform
-    // 2 µs interleave breaks the boot-time PC3/VIA dance (guest crash),
-    // busy-gated slicing kills the mouse entirely — the lockstep phase is
-    // load-bearing in both directions. The fix is an event-driven wire
-    // (MAME attotime-style: the MCU consumes line-edge timestamps), not a
-    // slicing heuristic.
-    // Machine cycles → the E1's 2.097 MHz cycle domain.
+    // Machine cycles → the E1's 2.097 MHz cycle domain. The ADB wire is
+    // slaved to the MCU's instruction stream via mcu_.onCycles (see the
+    // constructor) — it advances INSIDE run(), not here, so the firmware
+    // hears device edges at instruction resolution while the MCU/machine
+    // lockstep phase stays exactly as before.
     mcuAcc_ += int64_t(cpuCycles) * kMcuHz;
     int mcuCyc = int(mcuAcc_ / cpuHz_);
     mcuAcc_ -= int64_t(mcuCyc) * cpuHz_;
     if (mcuCyc) mcu_.run(mcuCyc);
-    // AdbLine's timers run in the Mac II 15.6672 MHz cycle domain.
-    adbAcc_ += int64_t(cpuCycles) * kAdbHz;
-    int adbCyc = int(adbAcc_ / cpuHz_);
-    adbAcc_ -= int64_t(adbCyc) * cpuHz_;
-    if (adbCyc) adb_.tick(adbCyc);
 }

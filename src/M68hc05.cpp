@@ -415,6 +415,7 @@ int M68hc05::run(int budget) {
         }
         used += cyc;
         cycles_ += cyc;
+        if (onCycles) onCycles(cyc);     // slaved wire advances per instr
 
         // Programmable timer: overflow flag every 512 cycles (clock/1024 Hz
         // at 2 clocks per cycle — m68hc05e1.cpp pll_w/timer_tick). TOF sets
