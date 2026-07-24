@@ -117,7 +117,8 @@ void Q605Memory::reset() {
     scc_.setClocks(kCpuHz, 7833600);   // SCC async-baud LLE: SCC85C30 @ C7M
                                        // (macquadra605.cpp:171)
     scc_.setCtsHigh(false);        // no serial debugger attached (POST check)
-    scc_.setAbortIdle(true);       // no *hardwired* LocalTalk peer: on a bare
+    scc_.setAbortIdle(std::getenv("POM68K_SCC_CLEANLINE") == nullptr);
+                                   // no *hardwired* LocalTalk peer: on a bare
                                    // line the SDLC hunt streams the standing
                                    // Break/Abort as a level-4 ext/status so OS
                                    // 8.1's .MPP LAP carrier-sense sees "wire

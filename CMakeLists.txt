@@ -478,6 +478,20 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME lcii_sys7_boot_etalon COMMAND lcii_sys7_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # Phase C gate: Macintosh LC (68020 on the same V8 board, 2 MB
+    # soldered) boots to the Finder (soft-skips without ROM + image).
+    add_executable(lc_boot_etalon tests/lc_boot_etalon.cpp)
+    target_link_libraries(lc_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME lc_boot_etalon COMMAND lc_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: Macintosh Classic II (Eagle — mono 512×342 out of
+    # main RAM, ROM boxflag patch) boots to the Finder (soft-skips).
+    add_executable(classic2_boot_etalon tests/classic2_boot_etalon.cpp)
+    target_link_libraries(classic2_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME classic2_boot_etalon COMMAND classic2_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # O6 slice 1 gate: external /BERR + RTE $A/$B on the 68030 (the LC II
     # ROM's address-map probe and the SCSI pseudo-DMA timeout rely on it).
     add_executable(berr030_test tests/berr030_test.cpp)

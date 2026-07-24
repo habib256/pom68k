@@ -8,29 +8,38 @@
 #include <fstream>
 #include <iterator>
 
-V8Memory::V8Memory(uint32_t totalRam)
+V8Memory::V8Memory(uint32_t totalRam, Model model)
     : ram_(totalRam, 0), rom_(kRomSize, 0), vram_(kVramSize, 0),
-      totalRam_(totalRam) {
+      totalRam_(totalRam), model_(model),
+      mbRam_(model == Model::Lc ? 0x200000 : kMbRamSize) {
     // Pseudo-VIA machine hooks (v8.cpp:328-352): reg 1 = RAM config
     // (reads back config | 0x04), reg $10 read = monitor sense on bits
-    // 3-5, port B bit 3 = HMMU enable (68020 LC only — ignored here).
+    // 3-5, port B bit 3 = HMMU enable (68020 LC only, see addrMask_).
     pvia_.onConfigRead = [this] { return uint8_t(config_ | 0x04); };
     pvia_.onConfigWrite = [this](uint8_t v) { config_ = v; applyRamConfig(v); };
-    pvia_.onVideoRead = [this] { return uint8_t((montype_ << 3) & 0x38); };
+    if (model_ == Model::Lc)                 // PB3 LOW = HMMU 24-bit mode
+        pvia_.onPortB = [this](uint8_t v) {
+            addrMask_ = (v & 0x08) ? 0x80FFFFFF : 0x00FFFFFF;
+        };
+    // Eagle has no monitor sense — the Classic II display is built in
+    // (v8.cpp:662-665 via2_video_config_r returns 0).
+    if (model_ == Model::ClassicII)
+        pvia_.onVideoRead = [] { return uint8_t(0); };
+    else
+        pvia_.onVideoRead = [this] { return uint8_t((montype_ << 3) & 0x38); };
     pvia_.onVideoWrite = [this](uint8_t v) { videoConfig_ = v; };
     egret_.setAdbBus(&adb_);
     // ASC IRQ is LEVEL-triggered into pseudo-VIA IFR bit 4 (v8.cpp:119-122)
     asc_.onIrq = [this](bool s) { pvia_.ascIrq(s); updateIrq(); };
-    // Egret firmware LLE (real 341S0850, MAME egret.cpp:74) — OPT-IN via
-    // POM68K_EGRET_LLE=1 since 2026-07-23: the firmware boots and moves
-    // the mouse, but the VIA per-byte dance desyncs under autopoll load
-    // (~1.5% of mouse packets reach the System; the driver only resyncs
-    // on the one-second packet). The HLE is the default again until the
-    // wire diff against MAME closes the gap — measured in
-    // lcii_mouse_trace, diagnostics behind POM68K_ADB_LLE_TRACE.
+    // Egret firmware LLE (real 341S0850, MAME egret.cpp:74) — the DEFAULT
+    // since 2026-07-24 (TODO step 6 closed): the instruction-slaved ADB
+    // wire (CudaLle::mcu_.onCycles) fixed the batch-frozen receive that
+    // starved the mouse to ~1.5% delivery; lcii_mouse_trace now saturates
+    // the screen exactly like the HLE. POM68K_EGRET_LLE=0 forces the HLE,
+    // a missing dump falls back silently (the Cuda rollout pattern).
     {
         const char* e = std::getenv("POM68K_EGRET_LLE");
-        const bool want = e && std::atoi(e) != 0;
+        const bool want = !e || std::atoi(e) != 0;
         if (want) {
             for (const char* p : { "roms/egret/341s0850.bin",
                                    "../roms/egret/341s0850.bin" }) {
@@ -55,6 +64,16 @@ bool V8Memory::loadRom(const std::vector<uint8_t>& data) {
     if (data.size() != kRomSize) return false;
     rom_ = data;
 
+    // Classic II ROM ($3193670E): genuine ROM bug — a JMP through a
+    // boxflag table indexes PAST the table and lands mid-instruction in
+    // 32-bit mode. MAME patches the bad JMP to an RTS (the IIvx/IIvi ROM
+    // shows the intended entry is a no-op) and fixes the checksum to
+    // match (maclc.cpp:614-630 ROM_FILL). Same patch here.
+    if (rom_[0] == 0x31 && rom_[1] == 0x93 && rom_[2] == 0x67 && rom_[3] == 0x0E) {
+        rom_[0x43B6E] = 0x4E; rom_[0x43B6F] = 0x75;  // JMP (table) → RTS
+        rom_[0x00002] = 0x66; rom_[0x00003] = 0x88;  // checksum compensation
+    }
+
     uint32_t stored = uint32_t(rom_[0]) << 24 | uint32_t(rom_[1]) << 16
                     | uint32_t(rom_[2]) << 8 | rom_[3];
     uint32_t sum = 0;
@@ -74,12 +93,15 @@ void V8Memory::reset() {
     scc_.reset();
     scc_.setClocks(kCpuHz, 7833600);         // SCC async-baud LLE: PCLK =
                                              // C7M (LCII_HARDWARE.md:44)
-    scc_.setAbortIdle(true);                 // no hardwired LocalTalk peer
+    scc_.setAbortIdle(std::getenv("POM68K_SCC_CLEANLINE") == nullptr);
+                                             // no hardwired LocalTalk peer
                                              // (O6.10); a real LToUDP peer
                                              // drops the standing abort —
                                              // Scc8530::openLine (LLE step 8)
     viaPhase_ = 0;
     tickAcc_ = 0;
+    addrMask_ = 0x80FFFFFF;                  // HMMU disabled at reset (MAME
+                                             // m68kcpu.cpp:1147; PB3 rewrites)
     simmMapped_ = mbMapped_ = false;         // no RAM until the overlay drops
     via_.reset();
     pvia_.reset();
@@ -98,8 +120,9 @@ void V8Memory::reset() {
     drive_.setSpinClockHz(15667200);         // machineTick unit (LC II 68030)
     framePos_ = 0;
     vblState_ = false;
-    // VIA1 port A input = V8-family machine ID $D4 | diag bit
-    // (v8.cpp:249-252); PB3 = Egret XCVR_SESSION, idle high. PB0-PB2
+    // VIA1 port A input = V8-family machine ID | diag bit: $D4 for the
+    // V8 proper (LC/LC II, v8.cpp:249-252), $92 for the Classic II's
+    // Eagle (v8.cpp:657-660); PB3 = Egret XCVR_SESSION, idle high. PB0-PB2
     // (legacy RTC lines) and PB6-PB7 keep the 6522 pull-up default 1
     // (review 2026-07-16: they read 0 before, incl. to the ROM's
     // old-clock probe). PB4/PB5 (VIA_FULL/SYS_SESSION) are HOST-driven
@@ -108,7 +131,7 @@ void V8Memory::reset() {
     // while DDRB is still 0 at reset read as a phantom session rise and
     // wedge the transport (validated: pull-ups on PB4/PB5 black-screen
     // the boot etalon).
-    via_.setInA(0xD5);
+    via_.setInA(model_ == Model::ClassicII ? 0x93 : 0xD5);
     via_.setInB(uint8_t(0xC7 | (xcvrSession_() << 3)));
 }
 
@@ -122,8 +145,8 @@ void V8Memory::reset() {
 void V8Memory::applyRamConfig(uint8_t config) {
     if (overlay_) return;
 
-    simmPhys_ = totalRam_ > kMbRamSize ? totalRam_ - kMbRamSize : 0;
-    simmOff_ = kMbRamSize;
+    simmPhys_ = totalRam_ > mbRam_ ? totalRam_ - mbRam_ : 0;
+    simmOff_ = mbRam_;
     if (totalRam_ == 0xA00000) { simmPhys_ = 0x800000; simmOff_ = 0x200000; }
 
     simmMapped_ = simmPhys_ > 0 && (config & 0xC0) != 0;
@@ -132,7 +155,7 @@ void V8Memory::applyRamConfig(uint8_t config) {
     mbLoc_ = simmMapped_ ? kSimmCfg[(config >> 6) & 3] : 0;
 
     mbMapped_ = (config & 0xC0) != 0xC0;     // 8 MB SIMM ⇒ only the $800000 alias
-    mbSize_ = (config & 0x20) ? 0x200000 : kMbRamSize;
+    mbSize_ = (config & 0x20) ? 0x200000 : mbRam_;
 }
 
 
@@ -188,8 +211,11 @@ uint8_t V8Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
 }
 
 uint8_t V8Memory::read8(uint32_t addr) {
-    addr &= 0x80FFFFFF;                      // A31 + A23-A0 (maclc.cpp:181)
-    if (addr & 0x80000000) busError();       // PDS slot $E: no card
+    addr &= addrMask_;                       // A31 + A23-A0 (maclc.cpp:181)
+    if (addr & 0x80000000) {                 // PDS slot $E: no card
+        if (model_ == Model::ClassicII) return 0xFF;  // no PDS, open bus
+        busError();
+    }
 
     if (addr < 0xA00000) {                   // RAM space (ROM under overlay)
         if (overlay_) {
@@ -254,12 +280,22 @@ uint8_t V8Memory::read8(uint32_t addr) {
         return d;
     }
 
+    // Unmapped I/O: BERR on the V8 proper — the LC/LC II ROM map probes
+    // rely on it (AddrMapFlags $773F, LCII_HARDWARE.md:78). The Classic
+    // II's Eagle bus is FORGIVING instead (MAME macclas2: only the SCSI
+    // helper timeout raises /BERR; every map hole is open bus): its ROM
+    // dereferences $50F18038 and pokes through wild pointers with no
+    // catcher installed — any BERR there lands on a zero vector → DS 1.
+    if (model_ == Model::ClassicII) return 0xFF;
     busError();                              // unmapped I/O: ROM map probe
 }
 
 void V8Memory::write8(uint32_t addr, uint8_t v) {
-    addr &= 0x80FFFFFF;
-    if (addr & 0x80000000) busError();
+    addr &= addrMask_;
+    if (addr & 0x80000000) {                 // PDS slot $E: no card
+        if (model_ == Model::ClassicII) return;       // no PDS, open bus
+        busError();
+    }
 
     if (addr < 0xA00000) {
         if (overlay_) return;                // ROM overlay: writes unmapped
@@ -305,11 +341,12 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
         return;
     }
 
+    if (model_ == Model::ClassicII) return;  // Eagle: forgiving bus (read8)
     busError();
 }
 
 uint16_t V8Memory::read16(uint32_t addr) {
-    addr &= 0x80FFFFFF;
+    addr &= addrMask_;
     // POM68K perf (2026-07-17): word fast paths for RAM / ROM / VRAM —
     // the profile showed every 16-bit access splitting into two full
     // read8 decode cascades (1.8G calls at the Finder). Side-effect-free
@@ -352,7 +389,7 @@ uint16_t V8Memory::read16(uint32_t addr) {
 }
 
 void V8Memory::write16(uint32_t addr, uint16_t v) {
-    addr &= 0x80FFFFFF;
+    addr &= addrMask_;
     // POM68K perf (2026-07-17): word fast paths for RAM / VRAM (see
     // read16) — side-effect-free regions only.
     if (addr < 0xA00000) [[likely]] {                    // RAM space
@@ -392,7 +429,7 @@ void V8Memory::write16(uint32_t addr, uint16_t v) {
 }
 
 uint8_t V8Memory::peek8(uint32_t addr) const {
-    addr &= 0x80FFFFFF;
+    addr &= addrMask_;
     if (addr & 0x80000000) return 0xFF;
     if (addr < 0xA00000) {
         if (overlay_) return addr < kRomSize ? rom_[addr] : 0xFF;

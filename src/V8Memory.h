@@ -42,9 +42,21 @@ public:
     static constexpr uint32_t kMbRamSize = 0x400000; // 4 MB soldered (baseIs4M)
     static constexpr int64_t  kCpuHz = 15667200;     // C32M/2
 
-    // totalRam: 4, 6, 8 or 10 MB (motherboard 4 MB + SIMM pair);
+    // V8-family machine profile (MAME maclc.cpp): the LC II is the
+    // reference; the LC is the same board with a 68020 and 2 MB soldered
+    // (set_baseram_is_4M(false), maclc.cpp:451); the Classic II swaps
+    // the V8 for its EAGLE derivative — mono 512×342 scanned out of MAIN
+    // RAM at $1F9A80 (v8.cpp:667-691), no monitor sense, PA id $92.
+    enum class Model { LcII, Lc, ClassicII };
+
+    // totalRam: 4, 6, 8 or 10 MB (motherboard + SIMM pair);
     // 10 MB is the V8 hard limit (12 MB installed, 2 MB wasted).
-    explicit V8Memory(uint32_t totalRam = 0xA00000);
+    explicit V8Memory(uint32_t totalRam = 0xA00000, Model model = Model::LcII);
+    Model model() const { return model_; }
+    // Eagle framebuffer (Classic II): fixed RAM-device offset, MAME
+    // v8.cpp:670 m_ram_ptr[0x1f9a80/4] — our ram_ mirrors MAME's device
+    // layout, so the same flat offset applies in every RAM config.
+    const uint8_t* eagleFrame() const { return ram_.data() + 0x1F9A80; }
 
     bool loadRom(const std::vector<uint8_t>& data);  // 512 KB flat image
     void reset();                                    // overlay on, V8 regs cleared
@@ -211,6 +223,15 @@ private:
     Cpu030* cpu_ = nullptr;
 
     uint32_t totalRam_;
+    Model model_ = Model::LcII;
+    uint32_t mbRam_ = kMbRamSize;            // soldered bank: 4 MB, LC = 2 MB
+    // Bus decode mask. V8 sees A31 + A23-A0 (maclc.cpp:181). On the LC
+    // the 68020's Apple HMMU additionally blanks A31 in 24-bit mode
+    // (MAME m68kmmu.h:1357-1361 M68K_HMMU_ENABLE_LC = addr & $FFFFFF),
+    // driven by pseudo-VIA PB3 — LOW = 24-bit (maclc.cpp:155-158
+    // inverted polarity, v8.cpp:349-352 via2_pb_w). The 030/Eagle models
+    // keep the plain V8 mask; their ROMs map 24-bit mode via the PMMU.
+    uint32_t addrMask_ = 0x80FFFFFF;
     // RAM banks per config (MAME v8.cpp ram_size, byte offsets into ram_):
     // SIMM at $000000 when enabled, motherboard after it; alias fixed.
     bool simmMapped_ = false;

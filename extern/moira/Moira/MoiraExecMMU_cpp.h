@@ -958,7 +958,10 @@ Moira::mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc)
 void
 Moira::extBusError()
 {
-    assert(cpuModel == Model::M68030);
+    // POM68K Phase C: also valid for the plain 68020/EC020 core — the
+    // read<>/write<> paths record the in-flight sub-access (MoiraDataflow)
+    // so the $B frame carries the true fault address (the Mac LC ROM's
+    // 32-bit probe catcher compares it before resuming).
     mmuPageFault(mmuAccAddr, !mmuAccWrite, mmuAccSsw, mmuAccFc);
 }
 

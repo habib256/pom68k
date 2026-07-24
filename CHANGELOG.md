@@ -1,6 +1,71 @@
 # CHANGELOG
 
-## 2026-07-23 — SWIM1 ISM: 1.44 MB media on the LC II
+## 2026-07-24 — Phase C: Macintosh LC (68020) and Classic II (Eagle) boot to the Finder
+
+Two new machine profiles on the V8 platform (MAME `maclc.cpp` oracle),
+both running the **Egret firmware LLE** ADB path by default — the
+2-machines-in-LLE goal. A 512 KB ROM now dispatches by header checksum:
+`$350EACF0` → LC, `$3193670E` → Classic II, anything else → LC II.
+
+**Macintosh LC** (`V8Memory::Model::Lc`): the LC II board with a 68020
+(`Cpu030(..., as020)` → Moira `Model::M68020`) and 2 MB soldered
+(`mbRam_`, MAME `set_baseram_is_4M(false)`). The Apple HMMU is modelled
+as the address-mask switch it is (MAME `m68kmmu.h` HMMU_ENABLE_LC =
+`addr & $FFFFFF`), driven by pseudo-VIA PB3 (LOW = 24-bit). Getting it
+to boot exposed **two real Moira gaps in the plain-68020 bus-error
+path** (the LC ROM is the first guest to take an external /BERR on the
+020 core and RESUME): the prefetch queue was never refilled after the
+$B frame (the faulted instruction re-ran forever → the ROM's
+AddrMapFlags probe died), and the frame carried a stale fault address
+(the ROM's 32-bit probe catcher compares it → forwarded every expected
+fault to SysError DS 1 → Sad Mac + death chime + the LC ROM's
+factory-test serial monitor, which is where the "black screen, polls
+RR0 forever" symptom came from). Fixes + rationale in
+`extern/moira/POM68K_VENDOR.md` § External /BERR on the plain 68020.
+
+**Macintosh Classic II** (`Model::ClassicII`): the Eagle flavor — VIA1
+PA id $92, no monitor sense (`via2_video_config_r` = 0), built-in
+512×342 1bpp scanned out of MAIN RAM at device offset $1F9A80
+(v8.cpp:667-691; `V8Video` Eagle branch, 64-byte pitch), no PDS, MAME's
+ROM patch applied at load (boxflag table JMP → RTS + checksum fix,
+maclc.cpp:614-630). Key machine behavior: the Eagle bus is FORGIVING —
+the ROM dereferences a pointer read from unmapped $50F18038 and pokes
+through it with NO bus-error catcher installed, so unmapped I/O and the
+absent-PDS space answer open-bus on this model (MAME parity: macclas2
+raises /BERR only from the SCSI helper timeout). The V8/LC II keep
+their pinned BERR-on-unmapped behavior (AddrMapFlags $773F).
+
+Also new: **SCC WR14 bit 4 Local Loopback** (`Scc8530` — a completed Tx
+character re-enters the same channel's receiver; async only), found
+while chasing the LC's serial POST. Gates: `lc_boot_etalon`,
+`classic2_boot_etalon` (63 total); GUI menu gains both machines.
+
+## 2026-07-24 — Event-driven ADB wire: the Egret firmware LLE is the LC II DEFAULT
+
+TODO step 6 closed. The root cause pinned on 2026-07-23 — `CudaLle::tick`
+ran the 68HC05's whole batch against a FROZEN wire, quantizing AdbLine's
+35/65 µs bit cells to the ~8 µs machine tick, so the Egret ROM's
+bit-banged ADB receive mis-heard device bytes as zeros (~1.5% mouse
+delivery, resync only on the 1 Hz packet) — is fixed by SLAVING the wire
+to the MCU's instruction stream: a new `M68hc05::onCycles` hook fires
+after every instruction (and WAIT idle step) with the cycles consumed,
+and `CudaLle` converts them to the AdbLine 15.6672 MHz domain
+(`adbAcc_`, constructor lambda). The firmware now samples line edges at
+instruction resolution (~1-5 µs), while the MCU-vs-host-VIA scheduling
+is UNTOUCHED — the property both failed slicing experiments (CHANGELOG
+2026-07-23) lacked: the boot-time PC3/VIA lockstep phase stays
+bit-identical, only the wire's clock moved inside `mcu_.run`.
+
+Result: `POM68K_EGRET_LLE=1 lcii_mouse_trace` saturates the screen with
+the exact same delta as the Egret HLE — the re-flip criterion (within
+10% of HLE) is met with margin, so `V8Memory` now defaults to the
+firmware LLE (`POM68K_EGRET_LLE=0` keeps the HLE, missing dump falls
+back silently — the Cuda rollout pattern). The Quadra face of the same
+root cause (2026-07-24 field freeze: host Cuda command × autopoll TREQ
+collision wedging the ADB manager at ~$D1F04) is covered by a new
+stress phase in `q605_cudalle_key_etalon`: 500 tight press/release
+pairs including the NUMERIC KEYPAD codes from the field session — green
+on the slaved wire. All Cuda LLE etalons (boot/mouse/key) stay green.
 
 The LC II's floppy controller grows its second personality (`Swim1.*`,
 new): the chip comes up IWM-compatible (the proven `Iwm` embedded — GCR

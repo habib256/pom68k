@@ -548,9 +548,21 @@ Moira::read(u32 addr)
         didReachWatchpoint(addr & addrMask<C>());
     }
 
+    // POM68K Phase C (Mac LC/Mac II, 2026-07-24): record the in-flight
+    // sub-access on the PLAIN 68020/EC020 path too, so a device raising
+    // /BERR (extBusError) stacks a $B frame with the RIGHT fault address.
+    // The LC ROM's 32-bit probe installs a temp vector-2 catcher that
+    // compares the frame's fault address with the probed one — a stale
+    // mmuAccAddr made it forward every probe fault to SysError (DS 1).
+    constexpr bool kPlain020 = (C == Core::C68020);
+
     if constexpr (S == Byte) {
 
         if (F & POLL) POLL_IPL;
+        if constexpr (kPlain020) {
+            mmuAccAddr = addr; mmuAccSsw = 0x10;
+            mmuAccFc = readFC(); mmuAccWrite = false;
+        }
         result = read8(addr & addrMask<C>());
         SYNC(2);
     }
@@ -558,15 +570,24 @@ Moira::read(u32 addr)
     if constexpr (S == Word) {
 
         if (F & POLL) POLL_IPL;
+        if constexpr (kPlain020) {
+            mmuAccAddr = addr; mmuAccSsw = 0x20;
+            mmuAccFc = readFC(); mmuAccWrite = false;
+        }
         result = read16(addr & addrMask<C>());
         SYNC(2);
     }
 
     if constexpr (S == Long) {
 
+        if constexpr (kPlain020) {
+            mmuAccAddr = addr; mmuAccSsw = 0x00;
+            mmuAccFc = readFC(); mmuAccWrite = false;
+        }
         result = read16(addr & addrMask<C>()) << 16;
         SYNC(4);
         if (F & POLL) POLL_IPL;
+        if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
         result |= read16((addr + 2) & addrMask<C>());
         SYNC(2);
     }
@@ -617,9 +638,17 @@ Moira::write(u32 addr, u32 val)
         didReachWatchpoint(addr & addrMask<C>());
     }
 
+    // POM68K Phase C: in-flight sub-access recording on the plain
+    // 68020/EC020 path — see the read<> counterpart above.
+    constexpr bool kPlain020 = (C == Core::C68020);
+
     if constexpr (S == Byte) {
 
         if (F & POLL) POLL_IPL;
+        if constexpr (kPlain020) {
+            mmuAccAddr = addr; mmuAccSsw = 0x10;
+            mmuAccFc = readFC(); mmuAccWrite = true;
+        }
         write8(addr & addrMask<C>(), (u8)val);
         SYNC(2);
     }
@@ -627,17 +656,27 @@ Moira::write(u32 addr, u32 val)
     if constexpr (S == Word) {
 
         if (F & POLL) POLL_IPL;
+        if constexpr (kPlain020) {
+            mmuAccAddr = addr; mmuAccSsw = 0x20;
+            mmuAccFc = readFC(); mmuAccWrite = true;
+        }
         write16(addr & addrMask<C>(), (u16)val);
         SYNC(2);
     }
 
     if constexpr (S == Long) {
 
+        if constexpr (kPlain020) {
+            mmuAccAddr = addr; mmuAccSsw = 0x00;
+            mmuAccFc = readFC(); mmuAccWrite = true;
+        }
         if (F & REVERSE) {
 
+            if constexpr (kPlain020) mmuAccAddr = addr + 2;
             write16((addr + 2) & addrMask<C>(), u16(val & 0xFFFF));
             SYNC(4);
             if (F & POLL) POLL_IPL;
+            if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
             write16(addr & addrMask<C>(), u16(val >> 16));
             SYNC(2);
 
@@ -646,6 +685,7 @@ Moira::write(u32 addr, u32 val)
             write16(addr & addrMask<C>(), u16(val >> 16));
             SYNC(4);
             if (F & POLL) POLL_IPL;
+            if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
             write16((addr + 2) & addrMask<C>(), u16(val & 0xFFFF));
             SYNC(2);
         }

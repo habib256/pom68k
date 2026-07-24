@@ -23,7 +23,10 @@ class V8Memory;
 
 class Cpu030 : public moira::Moira {
 public:
-    explicit Cpu030(V8Memory& mem, bool withFpu = false);
+    // as020 = Macintosh LC profile: same V8 bus, Moira Model::M68020
+    // (MAME maclc.cpp:342 M68020HMMU — the HMMU 24-bit remap is subsumed
+    // by the V8's own A31+A23-A0 decode).
+    explicit Cpu030(V8Memory& mem, bool withFpu = false, bool as020 = false);
 
     void hardReset();                       // V8 overlay + CPU reset
     void runCycles(moira::i64 n);

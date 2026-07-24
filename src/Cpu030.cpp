@@ -6,8 +6,12 @@
 #include <cstdio>
 #include <cstdlib>
 
-Cpu030::Cpu030(V8Memory& mem, bool withFpu) : mem_(mem) {
-    setModel(moira::Model::M68030);
+Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020) : mem_(mem) {
+    // as020: the Macintosh LC profile — MAME maclc.cpp:342 runs the same
+    // V8 machine on a 68020 (Apple HMMU part; the V8's $80FFFFFF decode
+    // makes the HMMU translation a no-op for us). FPU socket empty by
+    // default on both (maclc.cpp:325-330 config port).
+    setModel(as020 ? moira::Model::M68020 : moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     if (const char* b = getenv("POM68K_CACHE_BOOST")) {
         int v = atoi(b);

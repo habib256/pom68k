@@ -375,6 +375,7 @@ bool Scc8530::txLoad(Chan& c, int rem) {
     // Send Abort (discard). The chip appends the FCS itself, so txBuf is
     // the raw LLAP frame.
     if (sdlcMode(c)) c.txBuf.push_back(c.txBufData);
+    c.txShiftData = c.txBufData;
     c.txBufFull = false;
     c.txShiftIn = paceOf(c) + rem;
     if (c.txShiftIn <= 0) c.txShiftIn = 1;
@@ -706,17 +707,28 @@ bool Scc8530::tick(int cycles) {
                     }
                     if (!txLoad(c, rem)) break;   // a late byte may reload
                     if (c.txIp) changed = true;
-                } else if (txLoad(c, rem)) {
-                    if (c.txIp) changed = true;   // next byte on the wire
                 } else {
-                    c.txShiftIn = 0;
-                    if (sdlcMode(c) && !c.txUnderrun) {
-                        c.txFlushing = true;      // open frame underruns:
-                        c.txShiftIn = kTailBytes * paceOf(c) + rem;
-                        // ≤ 0: the tail fits in this tick too — the while
-                        // loop re-enters and completes the EOM now.
+                    // WR14 bit 4 Local Loopback (Zilog UM §5.4): the
+                    // character that just finished shifting re-enters the
+                    // SAME channel's receiver. The LC ROM's SCC POST sends
+                    // through loopback and spins on RR0 bit 0 for its own
+                    // bytes (async only — LLAP never uses loopback).
+                    if ((c.wr[14] & 0x10) && !sdlcMode(c)) {
+                        injectRxByte(i, c.txShiftData, false, false);
+                        changed = true;
+                    }
+                    if (txLoad(c, rem)) {
+                        if (c.txIp) changed = true;   // next byte on the wire
                     } else {
-                        break;                    // transmitter idles
+                        c.txShiftIn = 0;
+                        if (sdlcMode(c) && !c.txUnderrun) {
+                            c.txFlushing = true;  // open frame underruns:
+                            c.txShiftIn = kTailBytes * paceOf(c) + rem;
+                            // ≤ 0: the tail fits in this tick too — the
+                            // while loop re-enters and completes the EOM.
+                        } else {
+                            break;                // transmitter idles
+                        }
                     }
                 }
             }

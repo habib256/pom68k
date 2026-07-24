@@ -33,8 +33,19 @@ Remaining Phase A odds and ends:
 
 Phase C — new profiles, order from `docs/68K_FAMILY_SCOPE.md`; each profile
 gets at least one Finder cell before the next:
-- [ ] Macintosh LC (68020) — V8 reuse; ROM `350EACF0`.
-- [ ] Classic II → Color Classic → LC III → IIsi (030 / Egret cluster).
+- [x] ~~Macintosh LC (68020)~~ **DONE 2026-07-24** (CHANGELOG "Phase C"):
+  `V8Memory::Model::Lc` (2 MB soldered, HMMU mask on pseudo-VIA PB3),
+  Moira plain-020 /BERR path fixed (POM68K_VENDOR.md), Egret firmware
+  LLE ADB. Gate `lc_boot_etalon`; System 7.5 Finder.
+- [x] ~~Classic II~~ **DONE 2026-07-24** (same entry): `Model::ClassicII`
+  Eagle — PA $92, 512×342 mono out of RAM @$1F9A80, MAME ROM patch,
+  forgiving bus (open-bus unmapped/PDS). Gate `classic2_boot_etalon`;
+  System 7.5 Finder on the Egret firmware LLE.
+  **Follow-ups**: add both to `finder_boot_matrix` cells; identify the
+  Eagle's real $F18000 block (the ROM writes $1E then reads a pointer
+  at +$38 — served as open bus today, gated on UnivROMFlags bit 7).
+- [ ] Color Classic → LC III → IIsi (030 / Egret-Cuda cluster; the
+  Color Classic runs the CudaLle Cuda flavor + Spice video).
 - [ ] SE / Classic (68000 + ADB) for 256/512 KB compact ROMs.
 - [ ] Nearby 040 (LC 475 identity, then Centris/Q610…) for other 1 MB ROMs.
 - [ ] Explicitly **out of Phase C**: PowerBook PMU, IIfx IOPs, AV DSP, all
@@ -135,23 +146,30 @@ Next milestones:
      clocks the real packet after the close; only the one-second
      packet resyncs (~1.5% of mouse reports land). `POM68K_EGRET_LLE=1`
      opts in; gate `egret_lle_test` still forces + pins the path.
-  6. **Fix the Egret LLE ADB receive, then re-flip the default.**
-     Diagnosis SHARPENED 2026-07-23 (second pass, SR-byte + BYTEACK
-     diagnostics): the VIA dance is FINE — the System reads well-formed
-     acked [00 40 dy dx] autopoll packets; the corruption is UPSTREAM:
-     the 68HC05's ADB receive mis-hears AdbLine's device bytes as
-     zeros because `CudaLle::tick` runs the MCU's whole batch against
-     a FROZEN wire (~8 µs quantization of 35/65 µs cells; the Cuda
-     ROM's receive loop tolerates it, the Egret ROM's does not — only
-     ~50/3982 reports land, and only around the 1 Hz resync). Slicing
-     experiments both failed (see the note in `CudaLle::tick`): the
-     lockstep phase is load-bearing for the boot PC3/VIA dance AND the
-     wire. Proper fix: an event-driven wire — AdbLine exposes edge
-     TIMESTAMPS and `M68hc05` consumes them at exact instruction
-     boundaries (MAME attotime pattern), replacing the batch-frozen
-     `adb_.line()` port read. Repro: `POM68K_EGRET_LLE=1
-     POM68K_ADB_LLE_TRACE=1 ./lcii_mouse_trace`. Re-flip criterion:
-     delivery within 10% of the HLE's (which saturates the screen).
+  6. ~~Fix the Egret LLE ADB receive, then re-flip the default~~
+     **DONE 2026-07-24** (CHANGELOG "Event-driven ADB wire"): the wire
+     is SLAVED to the MCU's instruction stream (`M68hc05::onCycles` →
+     `CudaLle` adbAcc_ lambda) — device edges land at instruction
+     resolution while the MCU/host-VIA lockstep phase (the thing both
+     slicing experiments broke) stays bit-identical. LC II mouse
+     delivery went from ~1.5% to HLE parity (`lcii_mouse_trace`
+     saturates identically); the Egret firmware LLE is the LC II
+     DEFAULT (`POM68K_EGRET_LLE=0` = HLE fallback). The Quadra
+     collision face (2026-07-24 field freeze: host command × autopoll
+     TREQ wedge at ~$D1F04) is pinned by the new 500-pair keypad
+     stress phase in `q605_cudalle_key_etalon` — green on the slaved
+     wire.
+  7. **SCC: OS 8.1/OT hangs on the standing no-peer abort.** OT's LLAP
+     driver (unlike Sys 7's) waits forever for the §1.8 standing
+     Break/Abort to clear before binding .MPP (spin at $D1F04; last
+     SCC access reads RR0=$D4 with bit 7 set, then silence — SCCDBG
+     capture 2026-07-24). Test env `POM68K_SCC_CLEANLINE=1` (idle
+     line = clean flags) unblocks it: with it, Netscape resolved and
+     contacted www.apple.com through MacIP/NAT — the first real
+     internet access from a POM68K guest. Turn the env into the real
+     LLE fix: present the abort only while a genuine abort condition
+     exists (line state, not machine config), keep the Sys 7 no-peer
+     etalons green, add an OT-flavored gate. Then retire the env.
      **Remaining after that**: retire the `Egret.*`/`AdbBus` HLE (and
      the Mac II §1.9 leftover) once the no-dump fallbacks feel
      redundant.

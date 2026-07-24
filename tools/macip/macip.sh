@@ -103,7 +103,9 @@ fi
 # ── 2. macipgw (root: it creates the tun dev and configures it) ──
 # -d keeps it in the foreground (nohup'd) and logging to run/macipgw.log;
 # 0x0111 = macip+route+tunnel events, 0x1111 adds per-packet/lease detail.
-nohup "$BIN" -d "$MACIP_DEBUG" -z "$MACIP_ZONE" -n "$MACIP_DNS" \
+# setsid: survive the launching terminal's process group (a Ctrl-C in the
+# sudo shell killed the first field run with SIGTERM — 2026-07-24).
+setsid nohup "$BIN" -d "$MACIP_DEBUG" -z "$MACIP_ZONE" -n "$MACIP_DNS" \
       "$MACIP_NET" "$MACIP_MASK" > "$RUN/macipgw.log" 2>&1 &
 echo $! > "$RUN/macipgw.pid"
 echo "macipgw started: gateway $GW, clients $(int2ip $((NETI+2)))-$(int2ip $(( (NETI | ~MASKI & 0xFFFFFFFF) - 1 ))), DNS $MACIP_DNS, zone $MACIP_ZONE (run/macipgw.log)"

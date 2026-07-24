@@ -251,6 +251,14 @@ private:
 // for the SCSI hard disks (POM2 SmartPort precedent: spin loop kept
 // alive by per-access step events, auto-retired when the bus goes
 // idle). POM68K_DRIVE_SFX=0 starts muted; the Machine menu toggles.
+// POM68K_KEY_TRACE=1 — stderr log of every GUI key event at PUSH (UI
+// thread) and APPLY (machine thread). A freeze where pushes continue but
+// applies stop = machine-thread wedge; both stopping = GUI-side.
+static void keyTrace(const char* where, uint8_t adb, bool down) {
+    static const bool on = std::getenv("POM68K_KEY_TRACE") != nullptr;
+    if (on) std::fprintf(stderr, "[key] %s adb=%02X %s\n", where, adb, down ? "dn" : "up");
+}
+
 static FloppySound gFloppySfx;
 static FloppySound gHddSfx;
 
@@ -283,7 +291,7 @@ static void initDriveSfx(MacAudioHost& host) {
 // Selecting another machine relaunches the process on its ROM — clean
 // state, since each machine is built once at startup (ROM size alone
 // selects the machine in main()).
-enum class MachineKind { Plus, MacII, LcII, Quadra };
+enum class MachineKind { Plus, MacII, Lc, LcII, ClassicII, Quadra };
 static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 
 static void machineMenu(MachineKind cur, GLFWwindow* window,
@@ -297,6 +305,8 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         const Profile kProfiles[] = {
             { "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr },
             { "Macintosh II", MachineKind::MacII, "roms/macii.rom", "9779D2C4" },
+            { "Macintosh Classic II", MachineKind::ClassicII, "roms/classic2.rom", "3193670E" },
+            { "Macintosh LC", MachineKind::Lc, "roms/maclc.rom", "350EACF0" },
             { "Macintosh LC II", MachineKind::LcII, "roms/maclcii.rom", "35C28F5F" },
             { "Quadra 605 / LC 475", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE" },
         };
@@ -507,7 +517,8 @@ private:
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
             case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
-            case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
+            case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
+                               mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
         }
         cmdsApply_.clear();
@@ -689,10 +700,14 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Escape,0x6B},
             };
             for (const auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false))
+                if (ImGui::IsKeyPressed(e.k, false)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
                     c.m.push({MacIiMachine::Cmd::Key, e.m0110 >> 1, 1});
-                if (ImGui::IsKeyReleased(e.k))
+                }
+                if (ImGui::IsKeyReleased(e.k)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
                     c.m.push({MacIiMachine::Cmd::Key, e.m0110 >> 1, 0});
+                }
             }
         }
 
@@ -877,7 +892,8 @@ struct LcMachine {
             now - lastPub_ < std::chrono::milliseconds(16)) return;
         lastPub_ = now; framesRun_ = 0;
         int hres, vres;
-        V8Video::resolution(mem.monitorSense(), hres, vres);
+        if (mem.model() == V8Memory::Model::ClassicII) { hres = 512; vres = 342; }
+        else V8Video::resolution(mem.monitorSense(), hres, vres);
         video.decode(fb_);
         // decode() packs 00RRGGBB — alpha 0. ImGui renders textures with
         // alpha blending on, so a 0 alpha draws fully transparent (black
@@ -923,7 +939,8 @@ private:
             // is active (POM68K_EGRET_LLE), else to the HLE's AdbBus.
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
             case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
-            case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
+            case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
+                               mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
             case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
         }
@@ -949,20 +966,43 @@ private:
 };
 
 // ── Mac LC II (O6): V8 + 68030, selected by a 512 KB ROM ────────────────
-// Pre-Ui-class shape like the Plus loop below; the shared boilerplate
-// folds into a Ui class with the backlog item.
+// Also drives the two V8-family siblings (Phase C, MAME maclc.cpp): the
+// Macintosh LC (same board, 68020 + 2 MB soldered) and the Classic II
+// (Eagle = V8 with built-in 512×342 mono video). Pre-Ui-class shape like
+// the Plus loop below; the shared boilerplate folds into a Ui class with
+// the backlog item.
+struct V8Profile { const char* name; const char* cpu; const char* shortName;
+                   MachineKind kind; };
+static const V8Profile& v8Profile(V8Memory::Model model) {
+    static const V8Profile kLcII{"Macintosh LC II", "68030", "lcii",
+                                 MachineKind::LcII};
+    static const V8Profile kLc{"Macintosh LC", "68020", "lc",
+                               MachineKind::Lc};
+    static const V8Profile kClas2{"Macintosh Classic II", "68030", "classic2",
+                                  MachineKind::ClassicII};
+    switch (model) {
+        case V8Memory::Model::Lc:        return kLc;
+        case V8Memory::Model::ClassicII: return kClas2;
+        default:                         return kLcII;
+    }
+}
 static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
-                   int argc, char** argv) {
-    std::printf("Machine: Macintosh LC II (68030 @ 15.6672 MHz, V8%s)\n",
+                   int argc, char** argv,
+                   V8Memory::Model model = V8Memory::Model::LcII) {
+    const V8Profile& prof = v8Profile(model);
+    std::printf("Machine: %s (%s @ 15.6672 MHz, %s%s)\n", prof.name, prof.cpu,
+                model == V8Memory::Model::ClassicII ? "Eagle" : "V8",
                 getenv("POM68K_NOFPU") ? "" : ", 68882");
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
 
-    static V8Memory mem;
+    static V8Memory mem{0xA00000, model};
     // The LC II's 68882 is a PDS option; this build defaults it ON —
     // the target disks (and much LC II-era software) issue FPU ops and
     // fault with "system error 10" (Line-F) on a no-FPU machine. Set
-    // POM68K_NOFPU to model a bare LC II.
-    static Cpu030 cpu(mem, getenv("POM68K_NOFPU") == nullptr);
+    // POM68K_NOFPU to model a bare machine. The LC profile runs the
+    // 68020 core (maclc.cpp:342).
+    static Cpu030 cpu(mem, getenv("POM68K_NOFPU") == nullptr,
+                      model == V8Memory::Model::Lc);
     static V8Video video(mem);
     static MacAudioHost audioHost;
     mem.loadRom(rom);
@@ -975,7 +1015,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     // built-in video can't do more (512KB VRAM, V8 bandwidth); the 640×870
     // portrait needs a wider framebuffer than the V8 provides. (Tests keep
     // V8Memory's own 512×384 default; only this GUI path picks 640.)
-    {
+    if (model != V8Memory::Model::ClassicII) {   // Eagle: display built in
         const char* m = getenv("POM68K_MONITOR");
         mem.setMonitorSense((m && atoi(m) < 640) ? 2 : 6);
     }
@@ -990,8 +1030,12 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     cpu.hardReset();
 
     // GISTPERSO-boot.vhd = the user's real LC II volume. Bare HFS `.dsk`
-    // images get an in-memory DDM façade in ScsiDisk::open.
-    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/GISTPERSO-boot.vhd");
+    // images get an in-memory DDM façade in ScsiDisk::open. The sibling
+    // profiles look for their own image first (hdv/lc-boot.vhd /
+    // hdv/classic2-boot.vhd), then share the LC II's.
+    std::string hddPath = (argc > 2) ? argv[2]
+        : findPath(("hdv/" + std::string(prof.shortName) + "-boot.vhd").c_str());
+    if (hddPath.empty()) hddPath = findPath("hdv/GISTPERSO-boot.vhd");
     if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
     if (hddPath.empty()) hddPath = findPath("hdv/HD20SC.vhd");
     // Write-back ON in the GUI: the machine is a daily driver — saves made
@@ -1016,7 +1060,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     // Battery-backed PRAM+clock: a cold PRAM triggers the ROM's long
     // full-RAM burn-in on every boot — persist it like a real battery.
     static std::string pramPath =
-        (hddPath.empty() ? std::string("lcii") : hddPath) + ".pram";
+        (hddPath.empty() ? std::string(prof.shortName) : hddPath) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // The battery file's clock froze while the emulator was off; a real
     // RTC keeps counting. Wall time always comes from the host (GUI only).
@@ -1032,7 +1076,8 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     // Sized so the largest mode (640×480 shown at 2×) fits with the menu
     // bar and the CPU window; the smaller 512×384 leaves margin.
-    GLFWwindow* window = glfwCreateWindow(1320, 1040, "POM68K — Macintosh LC II", nullptr, nullptr);
+    const std::string winTitle = std::string("POM68K — ") + prof.name;
+    GLFWwindow* window = glfwCreateWindow(1320, 1040, winTitle.c_str(), nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
@@ -1061,8 +1106,10 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
         std::vector<uint32_t> fb;                // GUI-side framebuffer copy
         std::string romName, hddPath;            // for the "Disques" relaunch
         std::vector<std::string>& extraDisks;
+        const V8Profile& prof; V8Memory::Model model;
     };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks};
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks,
+                   prof, model};
 
     auto frame = [](void* p) {
         Ctx& c = *static_cast<Ctx*>(p);
@@ -1080,7 +1127,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
                          GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
         }
 
-        machineMenu(MachineKind::LcII, c.window, [&c] {
+        machineMenu(c.prof.kind, c.window, [&c] {
             // ── "Disques" menu: pick the boot + secondary SCSI volumes.
             // Any change relaunches the emulator with the new argv list —
             // the ROM only scans the SCSI bus at boot, and the .pram file
@@ -1138,7 +1185,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Macintosh LC II", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Begin(c.prof.name, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({LcMachine::Cmd::MouseMove, dx, dy}); },
@@ -1178,10 +1225,14 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false))
+                if (ImGui::IsKeyPressed(e.k, false)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
                     c.m.push({LcMachine::Cmd::Key, e.m0110 >> 1, 1});
-                if (ImGui::IsKeyReleased(e.k))
+                }
+                if (ImGui::IsKeyReleased(e.k)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
                     c.m.push({LcMachine::Cmd::Key, e.m0110 >> 1, 0});
+                }
             }
         }
 
@@ -1189,7 +1240,9 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
         ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         // Display-only snapshot published by the machine thread.
         LcMachine::Status st = c.m.status();
-        ImGui::Text("68030 @ 15.6672 MHz (Moira + PMMU)  PC=%08X  clock=%lld",
+        ImGui::Text("%s @ 15.6672 MHz (Moira%s)  PC=%08X  clock=%lld",
+                    c.prof.cpu,
+                    c.model == V8Memory::Model::Lc ? "" : " + PMMU",
                     st.pc, st.clock);
         ImGui::Text("overlay=%d  config=$%02X  MMU=%s  held=%d",
                     st.overlay ? 1 : 0, st.config,
@@ -1209,20 +1262,22 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
         // LC II's built-in V8 video only drives these two color modes (512KB
         // VRAM + V8 bandwidth); depth is per-monitor, so a fresh mode may
         // come up B&W until you set "256 couleurs" in Moniteurs + restart.
-        int sense = c.m.mem.monitorSense();      // byte read; only the GUI changes it
-        ImGui::Text("Moniteur:");
-        ImGui::SameLine();
-        auto monoBtn = [&](const char* label, int s) {
-            bool cur = sense == s;
-            if (cur) ImGui::PushStyleColor(ImGuiCol_Button,
-                                           ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-            if (ImGui::Button(label) && !cur) c.m.push({LcMachine::Cmd::Sense, s});
-            if (cur) ImGui::PopStyleColor();
+        if (c.model != V8Memory::Model::ClassicII) {  // Eagle: built-in display
+            int sense = c.m.mem.monitorSense();  // byte read; only the GUI changes it
+            ImGui::Text("Moniteur:");
             ImGui::SameLine();
-        };
-        monoBtn("512x384", 2);
-        monoBtn("640x480", 6);
-        ImGui::TextDisabled("(redemarre le Mac)");
+            auto monoBtn = [&](const char* label, int s) {
+                bool cur = sense == s;
+                if (cur) ImGui::PushStyleColor(ImGuiCol_Button,
+                                               ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+                if (ImGui::Button(label) && !cur) c.m.push({LcMachine::Cmd::Sense, s});
+                if (cur) ImGui::PopStyleColor();
+                ImGui::SameLine();
+            };
+            monoBtn("512x384", 2);
+            monoBtn("640x480", 6);
+            ImGui::TextDisabled("(redemarre le Mac)");
+        }
         ImGui::End();
 
         ImGui::Render();
@@ -1477,6 +1532,33 @@ private:
         if (mem.cpuHeld()) mem.tick(kFrame);
         else runQuantumWithWire(mem, cpu, kFrame);
         framesRun_++;
+        // POM68K_KEY_TRACE heartbeat: proves the machine thread and the
+        // guest are still advancing (~1 s of emulated time per line).
+        static const bool hb = std::getenv("POM68K_KEY_TRACE") != nullptr;
+        if (hb) {
+            static long n = 0;
+            static uint32_t lastPc = 0, stable = 0;
+            static bool dumped = false;
+            if (++n % 60 == 0) {
+                const uint32_t pc = cpu.getPC();
+                std::fprintf(stderr, "[hb] frames=%ld clock=%lld pc=%08X\n",
+                             n, (long long)cpu.getClock(), pc);
+                // Same 64-byte window for 5 consecutive beats (~5 s) in RAM:
+                // dump the spin loop once so it can be disassembled.
+                if (pc < 0x40000000 && (pc >> 6) == (lastPc >> 6)) {
+                    if (++stable == 5 && !dumped) {
+                        dumped = true;
+                        const uint32_t base = (pc & ~15u) - 16;
+                        std::fprintf(stderr, "[hb] spin dump @%08X:", base);
+                        for (uint32_t i = 0; i < 48; i++)
+                            std::fprintf(stderr, "%s%02X", (i % 16) ? " " :
+                                         "\n[hb]   ", mem.peek8(base + i));
+                        std::fprintf(stderr, "\n");
+                    }
+                } else { stable = 0; }
+                lastPc = pc;
+            }
+        }
     }
     // Drain interleaved IOSB ASC stereo frames and report real AC content.
     bool drain() {
@@ -1497,7 +1579,8 @@ private:
             // is active (POM68K_CUDA_LLE), else to the Egret HLE's AdbBus.
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
             case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
-            case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
+            case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
+                               mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
             case Cmd::InsertFloppy:
                 if (!floppyPending_.empty() && mem.insertDisk(floppyPending_))
@@ -1757,10 +1840,14 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false))
+                if (ImGui::IsKeyPressed(e.k, false)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
                     c.m.push({QuadraMachine::Cmd::Key, e.m0110 >> 1, 1});
-                if (ImGui::IsKeyReleased(e.k))
+                }
+                if (ImGui::IsKeyReleased(e.k)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
                     c.m.push({QuadraMachine::Cmd::Key, e.m0110 >> 1, 0});
+                }
             }
         }
 
@@ -1845,9 +1932,20 @@ int main(int argc, char** argv) {
     }
 
     // ROM size alone selects the machine: 1 MB = LC 475/Quadra 605 (Q6),
-    // 512 KB = Mac LC II (O6), 256 KB = Macintosh II, 128 KB = Mac Plus.
+    // 512 KB = V8 family (checksum picks LC / LC II / Classic II),
+    // 256 KB = Macintosh II, 128 KB = Mac Plus.
     if (rom.size() == Q605Memory::kRomSize) return runQuadra(std::move(rom), matched, argc, argv);
-    if (rom.size() == V8Memory::kRomSize) return runLcII(std::move(rom), matched, argc, argv);
+    if (rom.size() == V8Memory::kRomSize) {
+        // The header checksum (first 4 bytes, big-endian) is the model ID:
+        // $350EACF0 = LC, $3193670E = Classic II, $35C28F5F = LC II. Any
+        // other 512 KB dump gets the LC II profile (the reference V8).
+        const uint32_t ck = uint32_t(rom[0]) << 24 | uint32_t(rom[1]) << 16
+                          | uint32_t(rom[2]) << 8 | rom[3];
+        V8Memory::Model model = V8Memory::Model::LcII;
+        if (ck == 0x350EACF0) model = V8Memory::Model::Lc;
+        else if (ck == 0x3193670E) model = V8Memory::Model::ClassicII;
+        return runLcII(std::move(rom), matched, argc, argv, model);
+    }
     if (rom.size() == MacIIMemory::kRomSize) return runMacII(std::move(rom), matched, argc, argv);
 
     static bool demoMode = rom.empty() || !mem.loadRom(rom);

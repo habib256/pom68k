@@ -32,6 +32,21 @@ public:
 
     // Decode the current frame to packed 00RRGGBB (row-major, hres×vres).
     void decode(std::vector<uint32_t>& out) const {
+        // Classic II (Eagle): fixed 512×342 1bpp scanned out of MAIN RAM
+        // at device offset $1F9A80, 64-byte pitch, no Ariel involvement
+        // (v8.cpp:667-691 eagle_device::screen_update).
+        if (mem_.model() == V8Memory::Model::ClassicII) {
+            out.resize(512 * 342);
+            const uint8_t* fb = mem_.eagleFrame();
+            uint32_t* dst = out.data();
+            for (int y = 0; y < 342; y++)
+                for (int x = 0; x < 512 / 8; x++) {
+                    uint8_t px = fb[y * 64 + x];
+                    for (int b = 7; b >= 0; b--)
+                        *dst++ = ((px >> b) & 1) ? 0x000000 : 0xFFFFFF;
+                }
+            return;
+        }
         int hres, vres;
         resolution(mem_.monitorSense(), hres, vres);
         out.resize(size_t(hres) * vres);

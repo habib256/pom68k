@@ -142,6 +142,10 @@ private:
         // TRANSITION is the TxIP source and sets RR0 bit 2 again.
         bool txBufFull = false;      // a byte waits in the Tx buffer
         uint8_t txBufData = 0;
+        uint8_t txShiftData = 0;     // the character IN the shifter — the
+                                     // WR14 local-loopback tap reads it as
+                                     // it completes (LC ROM POST relies on
+                                     // hearing its own bytes back)
         int txShiftIn = 0;           // cycles left in the shifter (0 = idle)
         bool txFlushing = false;     // shifter is draining the SDLC tail
                                      // (CRC + closing flag, 24 bit times);

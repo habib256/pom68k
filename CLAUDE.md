@@ -3,12 +3,13 @@
 Orientation **always-loaded index** — keep terse, defer detail to other docs.
 
 POM68K is a **Macintosh 68k** emulator: **Mac Plus** (68000, cycle-exact),
-**Mac II** (68020 + Toby NuBus, functional accuracy), **Mac LC II** (68030 +
-MMU + 68882, functional accuracy), and **Quadra 605 / LC 475 profile**
-(68040/68LC040 + 040 MMU, functional accuracy). It is the 68k
-sibling of [POMIIGS](../POMIIGS/) and reuses its architecture, conventions and
-milestone discipline; the CPU integration pattern comes from
-[NeoST](../neost/) (Moira wrapper, see below).
+**Mac II** (68020 + Toby NuBus, functional accuracy), the **V8 family** —
+**Mac LC** (68020 + HMMU), **Mac LC II** (68030 + MMU + 68882) and
+**Classic II** (68030 + Eagle, Phase C 2026-07-24) — and a **Quadra 605 /
+LC 475 profile** (68040/68LC040 + 040 MMU, functional accuracy). It is the
+68k sibling of [POMIIGS](../POMIIGS/) and reuses its architecture,
+conventions and milestone discipline; the CPU integration pattern comes
+from [NeoST](../neost/) (Moira wrapper, see below).
 
 - `README.md` — user walkthrough (build, ROM placement, keys, CLI).
 - `DEV.md` — implementation deep-dives (references, internals, pinned tests).
@@ -64,7 +65,8 @@ copyback/snooping yet.
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
 ctest                        # 61 gates (asset-dependent gates may soft-skip)
-./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=LC II, 1MB=Quadra
+./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 1MB=Quadra,
+                             # 512K=V8 family (checksum: LC/LC II/Classic II)
 ```
 
 Mac Plus: CPU **7.8336 MHz**, frame **60.15 Hz** (130 240 cycles/frame), video
@@ -98,7 +100,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ | MC68881/882UM; WinUAE fpp.c |
 | **68040 oracle + core + MMU** | `oracle/`, `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; 7 200 pinned vectors | MC68040UM + WinUAE oracle |
 | **Mac II machine** (GLUE/Toby/ADB modem) | `MacIIMemory.*`, `Cpu020.*`, `AdbVia.*`, `Pic1654s.*`, `AdbLine.*`, `NuBus.*`, `DeclRom.*`, `TobyVideo.*` | ✓; Sys 6 + 7 Finder; LLE ADB (real PIC1654S) default, mouse live | MAME `macii.cpp` + Mac II ROM |
-| **LC II machine** (V8/Egret/ASC/Ariel) | `V8Memory.*`, `Cpu030.*`, `Egret.*`, `AdbBus.*`, `Asc.*`, `V8Video.h`, `Swim1.*` | O6 ✓; Finder; SWIM1 IWM+ISM (`swim1_test`) | MAME `maclc.cpp` + LC II ROM |
+| **V8 family** (LC II + LC 68020/HMMU + Classic II Eagle) | `V8Memory.*` (Model enum), `Cpu030.*`, `Egret.*`, `AdbBus.*`, `Asc.*`, `V8Video.h`, `Swim1.*` | O6 ✓ + Phase C ✓; Finder ×3; SWIM1 IWM+ISM (`swim1_test`) | MAME `maclc.cpp` + LC/LC II/Classic II ROMs |
 | **Quadra 605 machine** (MEMCjr/PrimeTime/Cuda/DAFB) | `Q605Memory.*`, `Cpu040.*`, Cuda via `Egret` flavor | Q5-Q7 ✓; Mac OS 8.1 Finder | MAME `macquadra605.cpp` |
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` + ROM/OS 8 |
 | **DAFB/Antelope video** | `Dafb.*` (Swatch CRTC/Gazelle/CLUT/sense; MEMCjr holding in `Q605Memory`) | Q8.1 ✓ + MAME-parity pass; 640×480×8 Finder gated | MAME `dafb.cpp` |
@@ -142,8 +144,9 @@ instrs + bus/ATC/fault frames + 68882 FPU, rulings D1-D22). Musashi was
 retired 2026-07-15 (0 arbitrations won) — the loop is **WinUAE-solo with
 manual arbitration** (`oracle/fuzz/disputes/NOTES.md`).
 **O6 boots classic Mac OS to the Finder** off real disk images (GISTPERSO /
-System 7.5): V8 gate array (`V8Memory`), Egret HLE (firmware LLE built,
-**opt-in** `POM68K_EGRET_LLE=1` — VIA dance fix pending, TODO),
+System 7.5): V8 gate array (`V8Memory`), Egret **firmware LLE (default
+since 2026-07-24**, instruction-slaved ADB wire; `POM68K_EGRET_LLE=0` =
+HLE fallback),
 ASC-V8 sound (`Asc`), V8 video + Ariel (`V8Video`), SCSI pseudo-DMA over
 the reused `Ncr5380`, SWIM1 IWM+ISM (`Swim1`, 1.44 MB MFM), 68030+PMMU+68882
 via the O1-O5 core. Remaining LC II gaps in `TODO.md` (no-FPU SANE, 1.44 MB
@@ -155,7 +158,8 @@ SWIM, DFAC audio polish, bus/timing).
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
-GUI exposes the machine alongside Plus/Mac II/LC II. **61 CTest gates**,
+GUI exposes the machine alongside Plus/Mac II/LC/LC II/Classic II.
+**63 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
 (LLE ADB mouse — default path since 2026-07-22), `sst68040`,
@@ -166,9 +170,14 @@ firmware-LLE gates `m68hc05_test`, `cuda_lle_test`,
 `q605_cudalle_boot_etalon`, `q605_cudalle_mouse_etalon`,
 `egret_lle_test`, `swim1_test`, `iwm_write_test`,
 `q605_cudalle_key_etalon` (Cuda firmware default
-since 2026-07-23; the LC II Egret flavor is opt-in pending its VIA fix).
+since 2026-07-23; the LC II Egret flavor default since 2026-07-24 —
+instruction-slaved ADB wire, `M68hc05::onCycles`).
 
 **The Finder boot matrix (Phase A/B) is green** on all four machines ×
 System 4.1–8.1 era images (`tests/finder_boot_matrix.cpp`; CHANGELOG
-2026-07-21). Next: Phase C machine profiles (`TODO.md`) and the LLE
-fidelity pass (`docs/LLE_VS_HLE.md`).
+2026-07-21). **Phase C opened 2026-07-24**: the **Macintosh LC** (68020 —
+plain-020 /BERR path fixed in Moira, POM68K_VENDOR.md) and **Classic II**
+(Eagle, mono 512×342 from RAM, forgiving bus) boot System 7.5 to the
+Finder on the Egret firmware LLE — gates `lc_boot_etalon`,
+`classic2_boot_etalon` (63 total). Next: Color Classic (Cuda LLE + Spice)
+and the LLE fidelity pass (`docs/LLE_VS_HLE.md`).

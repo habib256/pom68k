@@ -901,6 +901,38 @@ translation. Found (and used) while tracing who binds `_FP68K` ($15AC)
 during the Quadra bare no-FPU boot; debug-only, `flags & CHECK_WP` is
 clear unless a watchpoint is armed.
 
+## External /BERR on the plain 68020 core (2026-07-24, Phase C — Mac LC)
+
+Three linked fixes let a device raise `extBusError()` correctly on the
+**plain 68020/EC020 core** (previously "M68030-only" by `assert` — the
+Mac II shim soft-failed around it, and the Mac LC died in a DS-1 Sad
+Mac the first time its ROM's 32-bit probe faulted):
+
+1. **`execMmuBusError` refills the prefetch queue** for non-mode-5
+   models (`MoiraExceptions_cpp.h`). The 030/040 loops refetch the
+   opcode at the loop head, but the plain-queue models kept executing
+   the STALE `queue.ird` — the faulted instruction re-ran at the
+   handler PC and re-faulted until HALT (the LC ROM's AddrMapFlags
+   MOVEM probe from `$50FC0000`). Same `fullPrefetch<C, POLL>` as
+   `execAddressError040`; a nested fault propagates to the caller's
+   catch → `halt()` = true double fault.
+2. **The plain `read<>`/`write<>` paths record the in-flight
+   sub-access** (`MoiraDataflow_cpp.h`, `if constexpr (C == C68020)`
+   after the 030/040 branches): `mmuAccAddr/Ssw/Fc/Write` per size,
+   per sub-word on Longs. `extBusError()` drops its assert and stacks
+   a $B frame with the TRUE fault address — the LC ROM's probe catcher
+   compares that field before resuming; a stale address made it
+   forward every expected fault to SysError (DS 1).
+3. **`execMmuBusError` guards its mode-5 state restores** — on the
+   plain core `mmuCcrSave`/`mmuFixup*`/`mmuState`/`mmuOpcodeV` are
+   stale; restoring them corrupted live CCR/An. Plain core: frame $B
+   at `pc0`, no fixups, no CCR restore.
+
+Gates: `lc_boot_etalon` (68020 + V8), `classic2_boot_etalon`; the SST
+68000 corpus and the 030/040 fuzzer pins are unaffected (68000/010
+paths untouched; 030/040 take the mode-5 branches before the new
+code).
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)

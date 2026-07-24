@@ -454,7 +454,16 @@ Moira::execMmuBusError()
 
     u32 currpc;
 
-    if (mmuOpcodeV == 0xFFFFFFFF) {             // fault on the opcode fetch
+    // POM68K Phase C: on the plain 68020/EC020 core (no mode-5 loop) the
+    // mmuOpcodeV/mmuState/mmuCcrSave/fixup latches are stale — restoring
+    // them would corrupt live registers. Stack a $B frame at pc0 as-is.
+    const bool mode5 = (cpuModel == Model::M68030);
+
+    if (!mode5) {
+
+        currpc = reg.pc0;
+
+    } else if (mmuOpcodeV == 0xFFFFFFFF) {      // fault on the opcode fetch
 
         currpc = reg.pc0;
 
@@ -484,7 +493,7 @@ Moira::execMmuBusError()
     u32 vectorAddr = (reg.vbr & ~u32(0x1)) + 4 * 2;
     u32 newpc = read<C, AddrSpace::DATA, Long>(vectorAddr);
 
-    if (mmuState[1] & 0x0100) {
+    if (mode5 && (mmuState[1] & 0x0100)) {      // stale latch on plain core
         writeStackFrameShortBusFault<C>(status, currpc);
     } else {
         writeStackFrameLongBusFault<C>(status, currpc);
@@ -493,6 +502,19 @@ Moira::execMmuBusError()
     if (newpc & 1) { halt(); return; }          // double fault (vector 2)
 
     reg.pc = reg.pc0 = newpc;
+
+    // POM68K Phase C (Mac LC, 2026-07-24): the mode-5 loops (M68030 via
+    // mmuExecuteStart, ≥M68EC040 via mmu040InstrStart) refetch the opcode
+    // from reg.pc at every instruction, so the handler jump lands there.
+    // The plain-queue models (68020/EC020/EC030) kept executing the STALE
+    // queue.ird — the faulted instruction re-ran at the handler PC and
+    // re-faulted forever (the LC ROM's AddrMapFlags probe: MOVEM.L from
+    // $50FC0000 looped its own bus-error frame until HALT). Refill the
+    // queue like execAddressError040 does; a fault during this prefetch
+    // propagates to the caller's catch → halt() = a true double fault.
+    if (cpuModel != Model::M68030 && cpuModel < Model::M68EC040) {
+        fullPrefetch<C, POLL>();
+    }
 
     if (debugger.catchpointMatches(2)) didReachCatchpoint(u8(2));
     didJumpToVector(2, reg.pc);
