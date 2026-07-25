@@ -552,9 +552,11 @@ Driven by **Phase C** of the Finder matrix above; detail and effort tiers in
 - [x] ~~**Nearby 68040**: LC/Performa 475 identity, LC 575~~ **DONE
   2026-07-24** (`lc475_`, `lc575_boot_etalon`), plus the **Centris 610/650
   + Quadra 610/650** djMEMC+IOSB machine the same day. **Remaining 040:**
-  Quadra 800 (SONIC + NuBus, same F1ACAD13 ROM), Quadra 630 / LC 630,
   Quadra 900/950 (IOPs), 660AV/840AV. **Quadra 700 DONE 2026-07-25**
-  (`q700_boot_etalon` — discrete 040 + DAFB TurboSCSI cell).
+  (`q700_boot_etalon` — discrete 040 + DAFB TurboSCSI cell); **Quadra 630 /
+  LC 580 DONE 2026-07-25** (`q630_`/`lc580_boot_etalon` — F108 + PrimeTime II
+  + Valkyrie; the ATA/IDE port is mapped but has no drive, so boot is SCSI —
+  modelling an ATA target is the remaining gap on that machine).
 
 - [ ] **NuBus + slot video** beyond Mac II Toby: IIx/IIcx/IIci and NuBus
   Quadras. (VASP/IIvx currently reads its three slots as empty — real

@@ -128,9 +128,22 @@ public:
         long nbpLookups = 0;                // LkUp/BrRq answered or relayed
         long atpReqIn = 0;                  // transactions served
         long atpDupReqs = 0;                // XO-cache hits = the client
-                                            // RETRANSMITTED (wire lost a
-                                            // reply) — the copy-stall
-                                            // health indicator: 0 = clean
+                                            // RETRANSMITTED after we had
+                                            // already answered — the
+                                            // copy-stall health indicator:
+                                            // 0 = clean
+        long atpDupPending = 0;             // retransmits that arrived while
+                                            // the ORIGINAL transaction was
+                                            // still being served (no reply
+                                            // sent yet) = server too slow,
+                                            // not a wire loss
+        long atpDupLagLastMs = 0;           // guest-clock delay between our
+        long atpDupLagMaxMs = 0;            // reply and the retransmit that
+                                            // asked for it again. ~1-2 s =
+                                            // the client's ATP timer fired
+                                            // (reply lost or never played);
+                                            // tens of ms = the guest gave up
+                                            // early / the reply was mangled
         uint8_t guestNode = 0;              // last node heard on the wire
         int64_t lastGuestCycles = -1;       // emuCycles of that frame
         long enqSeen = 0;                   // guest address probes observed
@@ -157,6 +170,9 @@ private:
         Addr src;
         uint8_t sock;
         int64_t expires;
+        int64_t sentAt = 0;          // emuCycles the reply was handed to the
+                                     // wire — a retransmit's lag is measured
+                                     // from here (late vs. lost diagnosis)
     };
 
     void handleDdp(const Addr& src, uint8_t dstSock, uint8_t type,

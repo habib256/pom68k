@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #ifndef _WIN32
@@ -56,6 +57,39 @@ uint16_t l4sum(uint32_t src, uint32_t dst, uint8_t proto, const uint8_t* seg,
     return csum(seg, n, acc);
 }
 bool seqLt(uint32_t a, uint32_t b) { return int32_t(a - b) < 0; }
+
+// Opt-in datagram tracer: POM68K_MACIP_DEBUG=1 logs every IP datagram
+// crossing the gateway, both directions, to stderr. When the guest's
+// MacTCP/OT bombs, the LAST line before the bomb is the datagram that did
+// it — which is the only way to tell "we sent something malformed" from
+// "the era stack fell over on its own".
+bool macipDbg() {
+    static int on = -1;
+    if (on < 0) on = std::getenv("POM68K_MACIP_DEBUG") ? 1 : 0;
+    return on == 1;
+}
+
+// One line per datagram: direction, proto, endpoints, length, and — for
+// TCP — the flags/seq/ack that let a capture be replayed by eye.
+void traceIp(const char* dir, const uint8_t* p, size_t n) {
+    if (!macipDbg() || n < 20) return;
+    const size_t ihl = size_t(p[0] & 0x0F) * 4;
+    const uint16_t frag = (n >= 8) ? rd16(p + 6) : 0;
+    char tail[96] = "";
+    if (p[9] == 6 && n >= ihl + 20 && !(frag & 0x1FFF)) {
+        const uint8_t* t = p + ihl;
+        std::snprintf(tail, sizeof tail,
+                      " %u->%u flags$%02X seq=%u ack=%u win=%u payload=%zu",
+                      rd16(t), rd16(t + 2), t[13], rd32(t + 4), rd32(t + 8),
+                      rd16(t + 14), n - ihl - size_t(t[12] >> 4) * 4);
+    } else if (p[9] == 17 && n >= ihl + 8 && !(frag & 0x1FFF)) {
+        std::snprintf(tail, sizeof tail, " %u->%u", rd16(p + ihl),
+                      rd16(p + ihl + 2));
+    }
+    std::fprintf(stderr, "[macip] %s %s -> %s proto=%u len=%zu%s%s\n", dir,
+                 iptoa(rd32(p + 12)).c_str(), iptoa(rd32(p + 16)).c_str(),
+                 p[9], n, (frag & 0x3FFF) ? " FRAG" : "", tail);
+}
 
 #ifndef _WIN32
 void setNonBlock(int fd) { ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL, 0) | O_NONBLOCK); }
@@ -176,6 +210,7 @@ void MacIpGateway::sendIpToGuest(uint32_t dstIp, const std::vector<uint8_t>& pkt
     auto it = leases_.find(dstIp);
     if (it == leases_.end()) return;
     stat_.ipToGuest++;
+    traceIp("->guest", pkt.data(), pkt.size());
     if (pkt.size() <= kMtu) {
         st_.sendDdp(it->second.at, kMacIpSock, kDdpMacIp, pkt.data(), pkt.size());
         return;
@@ -208,6 +243,7 @@ void MacIpGateway::handleIp(const AtalkStack::Addr& src, const uint8_t* p,
     uint8_t proto = p[9];
     stat_.ipFromGuest++;
     stat_.lastActivity = st_.now();
+    traceIp("guest->", p, n);
 
     // Learn/refresh the mapping from traffic too (macipgw does the same).
     if ((sip & mask_) == (gw_ & mask_) && sip != gw_) {

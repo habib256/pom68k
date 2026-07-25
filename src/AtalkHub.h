@@ -56,8 +56,17 @@ public:
         // Relay BrRq to the segment only when a real cable carries external
         // peers; solo, the relay + our reply collide in the guest Rx FIFO.
         stack_.setBridgeRelay(cable && cable->active());
+        cpuHz_ = cpuHz;
         inject_ = [&scc](const uint8_t* d, size_t n) {
             scc.injectRxFrame(0, d, n, false);
+        };
+        // The lossless wire never drops — it DELAYS. Surface that delay:
+        // a retransmit whose lag matches a deep backlog / long hold is
+        // congestion, not loss (and then lowering the boost is the wrong
+        // knob — the guest's Rx drain rate is the cap).
+        wire_ = [&scc] {
+            return WireMeter{ scc.rxBacklog(0), scc.rxBacklogMax(0),
+                              scc.rxHoldMaxCycles(0), scc.rxOverflowDrops(0) };
         };
         stack_.sendFrame = [this](const uint8_t* d, size_t n) {
             // DEFER delivery: the node's replies are generated inside the
@@ -113,9 +122,13 @@ public:
     }
 
     // ── GUI ──
+    struct WireMeter { size_t backlog = 0, backlogMax = 0; int64_t holdMax = 0;
+                       long drops = 0; };
     struct Snapshot {
         bool attached = false;
         AtalkStack::Stats net;
+        WireMeter wire;                 // injection backlog / worst hold
+        long wireHoldMaxMs = 0;         // holdMax converted with cpuHz
         std::string zone;
         uint8_t node = 0;
         AfpServer::Status afp;
@@ -136,6 +149,10 @@ public:
         s.macip = macip_.status();
         s.cfg = cfg_;
         s.cableUp = cable_ && cable_->active();
+        if (wire_) {
+            s.wire = wire_();
+            if (cpuHz_) s.wireHoldMaxMs = long(s.wire.holdMax * 1000 / cpuHz_);
+        }
         return s;
     }
 
@@ -179,6 +196,8 @@ private:
     MacIpGateway macip_;
     LtoUdp* cable_ = nullptr;
     std::function<void(const uint8_t*, size_t)> inject_;
+    std::function<WireMeter()> wire_;
+    int64_t cpuHz_ = 0;
     std::vector<std::vector<uint8_t>> pending_;   // frames awaiting Rx re-arm
     Config cfg_;
     std::string defaultShareDir_;

@@ -37,6 +37,32 @@ SE/30. MAME's `mac128.cpp` shows the SE driving **`adbmodem`** — the very
 PIC1654S POM68K already runs as firmware LLE (`m_adbmodem->set_via_state
 ((data & 0x30) >> 4)` on VIA PB4/PB5). See the next entry.
 
+## 2026-07-25 — Macintosh Quadra 630 / LC 580: F108 + Valkyrie, the last 68k desktop board
+
+"Show and Tell" (MAME `macquadra630.cpp`) is the Quadra 605 board cost-reduced
+twice more: **DAFB replaced by "Valkyrie"**, a framebuffer with no CRTC to
+program — you write a *video timing number* and it picks one of a handful of
+hardwired modes — the SCSI hard disk replaced by **ATA/IDE**, and MEMCjr by
+the **F108** memory controller (ROM/RAM switch + ATA + SCC + a cell "just like
+a 53C96"). The I/O block is otherwise PrimeTime, so the machine is
+`Q605Memory` with the video cell swapped: the VASP recombination pattern
+again, and again it **booted Mac OS 8.1 to the 640×480×8 Finder on the first
+run** (5299 SCSI commands).
+
+New: `Valkyrie` (registers at PrimeTime +$2A000, RAMDAC at +$24000 with the
+payload in the TOP byte, VRAM frame buffer at +$1000, stride = mode stride
+<< depth index, VBL through `via2_irq_w<0x40>`), `Q630Memory`, `Q630Cpu`
+(full 68040 @ 33 MHz; `POM68K_Q630_LC040` for the LC/Performa siblings).
+The **ATA port is mapped but empty** — the ROM's IDE probe finds no device
+and falls through to SCSI, where POM68K's disks live; PrimeTime II's
+$5001A100 special-status register reports the VBL and ATA lines as MAME
+does. The Cuda is the **341S0060** the LC 520 family already runs.
+
+Gates `q630_boot_etalon` and `lc580_boot_etalon` (the $A55A225A identity on
+the later $064DC91D ROM — it boots the same desktop, just slower, so the
+gate gives it 30 000 frames). GUI group "F108 + PrimeTime II + Valkyrie",
+CLI dispatch on the `$06684214` / `$064DC91D` checksums.
+
 ## 2026-07-25 — Macintosh SE, SE FDHD and Classic: three machines for one enum
 
 The 28th, 29th and 30th profiles cost a `Model` enum on `MacMemory`, not a

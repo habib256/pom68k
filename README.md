@@ -13,7 +13,7 @@ modem + discrete RTC, 68030 @ 25 MHz), the
 (djMEMC + IOSB), the **Quadra 700** (discrete 040 + DAFB TurboSCSI),
 the **Quadra 605**
 (68040 + FPU) and **LC 475 / LC 575 / Performa 475-575** (68LC040), both
-+ 040 MMU — **30 machine profiles, every one boots the Finder**.
++ 040 MMU — **32 machine profiles, every one boots the Finder**.
 Sibling of [POMIIGS](../POMIIGS/) (Apple IIgs) and
 [POM2](../POM2/) (Apple II), sharing their architecture and conventions. CPU
 core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — see
@@ -39,7 +39,8 @@ ROM size selects the machine: **128 KB** = Mac Plus, **256 KB** = Mac II
 **512 KB** = V8 family (header checksum picks LC `350EACF0` / LC II
 `35C28F5F` / Classic II `3193670E` / IIsi `36B7FB6C` / IIci `368CADFE`),
 **1 MB** = Color
-Classic (`ECD99DC0`), Mac TV (`EAF1678D`), LC III (`ECBBC41C`), else
+Classic (`ECD99DC0`), Mac TV (`EAF1678D`), LC III (`ECBBC41C`), Quadra 700
+(`420DBFF3`), Quadra 630 / LC 580 (`06684214` / `064DC91D`), else
 Quadra 605 / LC 475. Without a
 ROM argument the app probes `roms/macplus.rom`, `roms/macii.rom`,
 `roms/maclcii.rom`, `roms/quadra605.rom`, then scans `roms/` for CRC

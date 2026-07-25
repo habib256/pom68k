@@ -295,7 +295,23 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
     // not a property of the wire.
     const int pace = paceCycles(ch);
     const int delay = express ? kCtsGapBytes * realPaceOf(c) : 0;
-    c.rxQueue.push_back({std::move(f), pace, delay, express});
+    // Safety valve: the lossless queue is UNBOUNDED by construction — it
+    // holds a frame until the guest re-arms Rx, and nothing guarantees the
+    // guest ever does. A guest that stops servicing its LAP driver (a modal
+    // tracking loop, a wedged stack) therefore turns backpressure into
+    // unbounded growth: the sender keeps producing, the queue keeps
+    // swallowing, latency and memory climb without limit and every frame in
+    // it is already too old to be useful. A real wire cannot do this — it
+    // has NO buffer, so congestion self-limits by dropping. Past the cap we
+    // do the same (tail drop, counted): the peer falls back to its normal
+    // retransmit, which is a stall, not a runaway. Express frames are never
+    // dropped — the CTS is the handshake itself.
+    if (losslessRx_ && !express && c.rxQueue.size() >= kLosslessQueueMax) {
+        c.rxDropped++;
+        return;
+    }
+    c.rxQueue.push_back({std::move(f), pace, delay, express, c.wireClk});
+    if (c.rxQueue.size() > c.rxQueueMax) c.rxQueueMax = c.rxQueue.size();
 }
 
 uint8_t Scc8530::readCtl(int channel) {
@@ -774,6 +790,7 @@ bool Scc8530::tick(int cycles) {
         if (sdlcMode(c)) {
             // Line-idle clock for the IDG deferral (injectRxFrame): busy
             // while a frame is playing, accumulating (capped) otherwise.
+            c.wireClk += cycles;
             if (!c.rxCur.empty()) c.rxIdle = 0;
             else if (c.rxIdle < (1 << 24)) c.rxIdle += cycles;
             if (c.rxCur.empty() && !c.rxQueue.empty()) {
@@ -808,6 +825,8 @@ bool Scc8530::tick(int cycles) {
                     (!rxEnabled(c) || !c.fifo.empty()))
                     ready = false;
                 if (ready) {
+                    const int64_t held = c.wireClk - f.queuedAt;
+                    if (held > c.rxHoldMax) c.rxHoldMax = held;
                     bool wasIrq = c.rxIp || c.specialIp || c.extPending;
                     rxStartFrame(c, i);
                     changed = changed || (!wasIrq && (c.extPending));

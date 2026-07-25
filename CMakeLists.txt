@@ -88,6 +88,9 @@ add_library(pom68k_core STATIC
     src/RbvCpu.cpp        # Phase C — Moira 68030 wrapper (IIsi, 20 MHz)
     src/CentrisMemory.cpp # Phase C — Centris 610/650 map (djMEMC + IOSB)
     src/CentrisCpu.cpp    # Phase C — Moira 68LC040 wrapper (Centris)
+    src/Q630Memory.cpp    # Quadra 630 / LC 580 — F108 + PrimeTime II + Valkyrie
+    src/Q630Cpu.cpp       # Quadra 630 — Moira 68040 wrapper (33 MHz)
+    src/Valkyrie.cpp      # Quadra 630 video cell (fixed-mode framebuffer)
     src/Q700Memory.cpp    # Quadra 700 — discrete "Spike" map (DAFB TurboSCSI)
     src/Q700Cpu.cpp       # Quadra 700 — Moira 68040 wrapper (25 MHz)
     src/Q605Memory.cpp    # Q5 — LC 475/Quadra 605 map (MEMCjr + PrimeTime)
@@ -651,6 +654,18 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                          ENVIRONMENT "POM68K_CENTRIS_MODEL=q650" TIMEOUT 1800)
     set_tests_properties(quadra610_boot_etalon PROPERTIES
                          ENVIRONMENT "POM68K_CENTRIS_MODEL=q610" TIMEOUT 1800)
+    # Quadra 630 / LC 580: F108 + PrimeTime II + Valkyrie, 68040 @ 33 MHz.
+    add_executable(q630_boot_etalon tests/q630_boot_etalon.cpp)
+    target_link_libraries(q630_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME q630_boot_etalon COMMAND q630_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME lc580_boot_etalon COMMAND q630_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(q630_boot_etalon PROPERTIES TIMEOUT 3600)
+    set_tests_properties(lc580_boot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_Q630_ID=A55A225A;POM68K_Q630_ROM=lc580"
+                         TIMEOUT 3600)
+
     # Compact 68000 family (Mac SE / SE FDHD / Classic): the Plus machine with
     # a bigger ROM and the PIC1654S ADB transceiver instead of the M0110.
     # One binary, POM68K_COMPACT_MODEL picks the sibling.

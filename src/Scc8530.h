@@ -126,6 +126,13 @@ public:
     // hardware semantics).
     void setWirePace(int cyclesPerByte) { wirePace_ = cyclesPerByte > 0 ? cyclesPerByte : 0; }
     void setLosslessRx(bool on) { losslessRx_ = on; }
+    // Backpressure meters (the lossless wire trades drops for delay — these
+    // say how much delay). Backlog = frames injected but not yet played;
+    // hold = the longest injection→wire wait any frame suffered.
+    size_t rxBacklog(int ch) const { return ch_[ch & 1].rxQueue.size(); }
+    size_t rxBacklogMax(int ch) const { return ch_[ch & 1].rxQueueMax; }
+    int64_t rxHoldMaxCycles(int ch) const { return ch_[ch & 1].rxHoldMax; }
+    long rxOverflowDrops(int ch) const { return ch_[ch & 1].rxDropped; }
 
     // ── Guest-derived pacing (SCC async-baud LLE, MAME z80scc oracle) ──
     // With the machine's CPU clock and the SCC's PCLK provided, the per-
@@ -190,7 +197,7 @@ private:
         // ── LLAP Rx/Tx wire state ──
         std::vector<uint8_t> txBuf;  // SDLC frame being written (no FCS)
         struct RxFrame { std::vector<uint8_t> bytes; int pace; int delay;
-                         bool express; };
+                         bool express; int64_t queuedAt = 0; };
         std::deque<RxFrame> rxQueue; // injected frames (FCS added) + pace.
                                      // express: countdown `delay` = CTS
                                      // inter-frame gap. non-express: gated
@@ -201,6 +208,14 @@ private:
         int rxPace = 0;              // cycles/byte for the current frame
         size_t rxPos = 0;
         int rxTimer = 0;             // cycles to the next FIFO byte
+        // Lossless-wire observability: the backpressure that replaces a
+        // drop is a DELAY, and a long enough delay is an ATP retransmit
+        // all the same. wireClk stamps each queued frame so the hold time
+        // (injection → first byte on the wire) can be measured.
+        int64_t wireClk = 0;         // monotonic SDLC line clock (cycles)
+        int64_t rxHoldMax = 0;       // longest hold a queued frame suffered
+        size_t rxQueueMax = 0;       // deepest the injection backlog got
+        long rxDropped = 0;          // frames refused at the queue cap
         int rxIdle = 1 << 24;        // cycles since the wire last carried a
                                      // byte (starts "long idle"; capped) —
                                      // injectRxFrame fills the LLAP IDG
@@ -270,4 +285,12 @@ private:
                                                  // minimum 400 µs inter-dialog
                                                  // gap (~417 µs) so the driver
                                                  // re-arms on an idle line
+    static constexpr size_t kLosslessQueueMax = 64;  // lossless-wire backlog
+                                                 // ceiling (~38 KB of frames,
+                                                 // several seconds of guest
+                                                 // drain): past it the wire
+                                                 // drops like a real one
+                                                 // rather than growing without
+                                                 // bound behind a guest that
+                                                 // stopped listening
 };

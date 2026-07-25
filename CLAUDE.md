@@ -17,7 +17,8 @@ Cuda 341S0060 LLE, EDE66CBD ROM) — the **Mac IIvx / IIvi** (VASP =
 "V8 video on Sonora addressing", Egret LLE) — the **Centris 610 / 650** and **Quadra 610 / 650 / 800**
 (djMEMC + IOSB, discrete RTC + PIC1654S LLE; the 800 adds SONIC + NuBus) — the
 **Quadra 605** (68040 + FPU) and **LC 475 / LC 575 / Performa 475-575**
-(68LC040) — both 040 + 040 MMU, functional accuracy. **30 machine
+(68LC040), and the **Quadra 630 / LC 580** (F108 + PrimeTime II +
+Valkyrie, 68040 @ 33 MHz) — all 040 + 040 MMU, functional accuracy. **32 machine
 profiles, all booting the Finder.** It is the
 68k sibling of [POMIIGS](../POMIIGS/) and reuses its architecture,
 conventions and milestone discipline; the CPU integration pattern comes
@@ -76,7 +77,7 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 95 gates (asset-dependent gates may soft-skip)
+ctest                        # 97 gates (asset-dependent gates may soft-skip)
 ./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=V8 family
                              # (B2E362A8/B306E171/A49F9914 = SE/SE FDHD/Classic)
                              # (checksum: LC/LC II/Classic II); 1 MB by
@@ -125,6 +126,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | **Centris 610/650 machine** (djMEMC + IOSB; discrete RTC + PIC1654S ADB LLE) | `CentrisMemory.*`, `CentrisCpu.*` (reuse Q605 DAFB/53C96/SWIM2/AscIosb/PseudoVia + Rtc + AdbVia) | Phase C ✓; Mac OS 8.1 Finder ×4 (`centris650/610`, `quadra650/610_boot_etalon`) | MAME `macquadra800.cpp`/`djmemc.cpp`/`iosb.cpp` |
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` + ROM/OS 8 |
 | **DAFB/Antelope video** | `Dafb.*` (Swatch CRTC/Gazelle/CLUT/sense; MEMCjr holding in `Q605Memory`) | Q8.1 ✓ + MAME-parity pass; 640×480×8 Finder gated | MAME `dafb.cpp` |
+| **Valkyrie video** (fixed-mode framebuffer, Quadra 630) | `Valkyrie.*` | ✓; 640×480×8 Finder gated (`q630_boot_etalon`) | MAME `valkyrie.cpp` |
 | **IOSB ASC stereo** | `Asc.*` (`AscIosb`) | Q8 ✓; `$BB` FIFO/IRQ gated | MAME IOSB / ASC |
 | **SWIM2 + SuperDrive** | `Swim2.*`, `SonyDrive.*` | ✓; LLE cell engines (MFM CRC, rotation) gated | MAME SWIM2 |
 | **Pseudo-VIA2** | `PseudoVia.*` | ✓ | MAME IOSB VIA2 layout |
@@ -180,7 +182,7 @@ DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
 GUI exposes the machine alongside the other 24 profiles (Machine menu).
-**95 CTest gates**,
+**97 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
 (LLE ADB mouse — default path since 2026-07-22), `sst68040`,
@@ -256,8 +258,12 @@ enum, not a machine: `macse_map` is the Plus map with a bigger ROM, the
 overlay clearing on the first ROM access, and **ADB on the same PIC1654S
 firmware LLE** the Mac II uses (PB4/PB5 = ST) in place of the M0110 — gates
 `se_boot_etalon`, `sefdhd_boot_etalon`, `classic_boot_etalon`.
-**Next (ROMs already on hand):** Quadra 630 / LC 630 (06684214, Valkyrie +
-F108 + IDE) on the 040 side, IIfx (OSS + IOPs), Quadra 900/950 (the same
-IOPs); **SE/30 needs a dump** (it is a IIx on a compact board) — and the
-LLE fidelity pass
+Then (same day) the **Quadra 630 / LC 580** — the last 68k desktop board
+(`Q630Memory`/`Q630Cpu`/`Valkyrie`: F108 + PrimeTime II + the fixed-mode
+Valkyrie framebuffer + Cuda 341S0060, 68040 @ 33 MHz; the ATA port is
+mapped but empty, so boot goes through SCSI) — gates `q630_boot_etalon`,
+`lc580_boot_etalon`.
+**Next (ROMs already on hand):** IIfx (OSS + IOPs) and Quadra 900/950 (the
+same IOPs); **SE/30 needs a dump** (it is a IIx on a compact board) — and
+the LLE fidelity pass
 (`docs/LLE_VS_HLE.md`) + the beyond-boot test depth pass (`TODO.md`).

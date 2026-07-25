@@ -412,7 +412,7 @@ void AtalkStack::AtpTxn::respond(std::vector<std::vector<uint8_t>> pkts) {
         // Exactly-once: cache the reply under the release timer so a
         // retransmitted TReq is answered from here, not re-executed.
         st_->xoCache_[key] = { std::move(pkts), src, sock_,
-                              st_->now_ + 30 * st_->cpuHz_ };
+                              st_->now_ + 30 * st_->cpuHz_, st_->now_ };
     }
     st_->pendingTxns_.erase(key);
 }
@@ -446,11 +446,32 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
         uint64_t key = txnKey(src, tid);
         auto cached = xoCache_.find(key);
         if (cached != xoCache_.end()) {
-            stats_.atpDupReqs++;             // a reply was lost on the wire
+            // The client asked again for a transaction we HAVE answered.
+            // How long after our reply tells which failure it is: ~1-2 s =
+            // its ATP timer expired (the reply never reached the driver);
+            // much less = the reply reached it damaged or incomplete.
+            stats_.atpDupReqs++;
+            const int64_t lag = now_ - cached->second.sentAt;
+            const long lagMs = cpuHz_ ? long(lag * 1000 / cpuHz_) : 0;
+            stats_.atpDupLagLastMs = lagMs;
+            if (lagMs > stats_.atpDupLagMaxMs) stats_.atpDupLagMaxMs = lagMs;
+            if (atalkDbg())
+                std::fprintf(stderr, "[atalk] ATP RETRANS tid=%u sock=%u from "
+                             "%u.%u:%u  %ld ms after our reply  (bitmap asked "
+                             "$%02X, %zu pkt cached)\n", tid, dstSock,
+                             src.net, src.node, src.sock, lagMs, bs,
+                             cached->second.pkts.size());
             sendAtpResponses(src, dstSock, tid, cached->second.pkts, bs);
             return;
         }
-        if (pendingTxns_.count(key)) return;    // reply in flight (deferred)
+        if (pendingTxns_.count(key)) {          // reply in flight (deferred)
+            stats_.atpDupPending++;             // = we are the slow one
+            if (atalkDbg())
+                std::fprintf(stderr, "[atalk] ATP RETRANS tid=%u sock=%u while "
+                             "still serving the original (server too slow)\n",
+                             tid, dstSock);
+            return;
+        }
         auto txn = std::make_shared<AtpTxn>();
         txn->src = src;
         txn->req.assign(p + 4, p + n);          // user bytes + data
