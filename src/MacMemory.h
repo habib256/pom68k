@@ -17,6 +17,8 @@
 #include "SonyDrive.h"
 #include "Scc8530.h"
 #include "MacInput.h"
+#include "AdbVia.h"
+#include "AdbBus.h"
 #include "Ncr5380.h"
 #include "ScsiDisk.h"
 #include <cstdint>
@@ -29,9 +31,31 @@ class Cpu68k;
 class MacMemory {
 public:
     static constexpr uint32_t kRamSize = 0x400000;   // 4 MB (Mac Plus max)
-    static constexpr uint32_t kRomSize = 0x20000;    // 128 KB
+    static constexpr uint32_t kRomSize = 0x20000;    // 128 KB (Plus)
 
-    MacMemory();
+    // The compact 68000 family shares this map (MAME mac128.cpp macse_map is
+    // the Plus map verbatim). What changes on the SE and the Classic:
+    //  * a bigger ROM (256 KB SE / SE FDHD, 512 KB Classic) and the overlay
+    //    clearing itself on the first ROM access instead of on VIA PA4
+    //    (mac128.cpp ram_w_se) — the Plus needs the explicit PA4 clear;
+    //  * ADB instead of the M0110: the SAME PIC1654S transceiver the Mac II
+    //    uses (mac128.cpp `m_adbmodem->set_via_state((data & 0x30) >> 4)`),
+    //    so `AdbVia` + `AdbLine` run their real firmware here too — VIA PB5/
+    //    PB4 = ST, PB3 = /ADB IRQ, CB1/CB2 = the shifter;
+    //  * no mouse quadrature on PB4/PB5 (the mouse is an ADB device).
+    enum class Model { Plus, SE, SEFDHD, Classic };
+
+    explicit MacMemory(Model model = Model::Plus);
+    Model model() const { return model_; }
+    bool isAdb() const { return model_ != Model::Plus; }
+    uint32_t romSize() const { return romSize_; }
+    AdbVia& adbVia() { return adbVia_; }
+    AdbBus& adb() { return adb_; }
+    bool adbLleActive() const { return adbVia_.lle(); }
+    void keyEvent(uint8_t code, bool down) { adbVia_.keyEvent(code, down); }
+    void adbMouseMove(int dx, int dy) { adbVia_.mouseMove(dx, dy); }
+    void adbMouseButton(bool down) { adbVia_.mouseButton(down); }
+
     bool loadRom(const std::vector<uint8_t>& data);
     void installRom(const uint8_t* data, size_t n);  // built-in demo/test ROM
     void reset();                                    // asserts the boot overlay
@@ -89,7 +113,11 @@ private:
     void refreshPortBInputs();
 
     std::vector<uint8_t> ram_, rom_;
+    Model model_ = Model::Plus;
+    uint32_t romSize_ = kRomSize;
     Via6522 via_;
+    AdbBus adb_;
+    AdbVia adbVia_;
     Rtc rtc_;
     Iwm iwm_;
     SonyDrive drive_;                // internal drive; external = M5.1

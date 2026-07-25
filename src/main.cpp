@@ -33,6 +33,8 @@
 #include "Q605Memory.h"
 #include "CentrisMemory.h"
 #include "CentrisCpu.h"
+#include "Q700Memory.h"
+#include "Q700Cpu.h"
 #include "Cpu020.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
@@ -383,7 +385,7 @@ static void initDriveSfx(MacAudioHost& host) {
 // Selecting another machine relaunches the process on its ROM — clean
 // state, since each machine is built once at startup (ROM size alone
 // selects the machine in main()).
-enum class MachineKind { Plus, MacII, Lc, LcII, ClassicII, ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Quadra };
+enum class MachineKind { Plus, MacII, Lc, LcII, ClassicII, ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Quadra };
 static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 
 // ── AppleTalk window (in-process stack visibility + toggles) ────────────
@@ -515,6 +517,7 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         const char* kVasp = "VASP (Sonora + peripheriques V8)";
         const char* kMemc = "MEMCjr + PrimeTime";
         const char* kDjmemc = "djMEMC + IOSB";
+        const char* kSpike = "Discret 040 (Quadra 700)";
         const Profile kProfiles[] = {
             { "68000", "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr, nullptr, nullptr, true },
             { kGlue, "Macintosh II", MachineKind::MacII, "roms/macii.rom", "9779D2C4", nullptr, nullptr, true },
@@ -542,6 +545,7 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
             { kDjmemc, "Macintosh Quadra 610", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q610", false },
             { kDjmemc, "Macintosh Quadra 650 (33 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q650", false },
             { kDjmemc, "Macintosh Quadra 800 (33 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q800", false },
+            { kSpike, "Macintosh Quadra 700", MachineKind::Q700, "roms/quadra700.rom", "420DBFF3", nullptr, nullptr, true },
         };
         const char* lastGroup = nullptr;
         for (const Profile& pr : kProfiles) {
@@ -2846,6 +2850,7 @@ private:
 
 using QuadraMachine  = DafbMachine<Q605Memory, Cpu040>;
 using CentrisMachine = DafbMachine<CentrisMemory, CentrisCpu>;
+using Q700Machine    = DafbMachine<Q700Memory, Q700Cpu>;
 
 // ── LC 475 / Quadra 605 (Q6): MEMCjr/PrimeTime + 68LC040, selected by a
 // 1 MB ROM. Structure mirrors runLcII; the Q605 has no ASC yet (silent).
@@ -3456,6 +3461,295 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     return 0;
 }
 
+static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
+                     int argc, char** argv) {
+    // Macintosh Quadra 700 ("Spike", MAME macquadra700.cpp): the first
+    // Quadra — a full 68040 @ 25 MHz on discrete chips. Mac II VIA1/VIA2 +
+    // 343-0042 RTC + PIC1654S ADB in front, Quadra DAFB/53C96/SWIM1/EASC
+    // behind, SCSI through DAFB's own TurboSCSI cell. $420DBFF3 ROM.
+    std::printf("Machine: Macintosh Quadra 700 (68040 @ 25 MHz, discrete)\n");
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
+
+    static Q700Memory mem(32u << 20, Q700Memory::kCpuHz);
+    static Q700Cpu cpu(mem);
+    static MacAudioHost audioHost;
+    mem.loadRom(rom);
+    mem.setCpu(&cpu);
+    cpu.hardReset();
+    wireLocalTalk(mem, 868);                     // 230.4 kbit/s @ 25 MHz
+
+    // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
+    // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
+    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/MacOS-8.1-boot.vhd");
+    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
+    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
+    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
+    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
+    // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
+    // SCSI remains the default boot path; a floppy is just media presence for the GUI.
+    std::string floppyPath;
+    if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
+    if (floppyPath.empty()) floppyPath = findPath("disks35/Disk605.dsk");
+    if (floppyPath.empty()) floppyPath = findPath("disks35/quadra.img");
+    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
+    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
+    // Secondary volumes (argv[3..] → SCSI IDs 1..6).
+    static std::vector<std::string> extraDisks;
+    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
+        if (argv[i] == hddPath) continue;
+        // Treat .dsk / raw SuperDrive images as floppy inserts, not SCSI.
+        std::string arg = argv[i];
+        auto ext = std::filesystem::path(arg).extension().string();
+        for (char& c : ext) c = char(std::tolower(c));
+        if (ext == ".dsk" || ext == ".image") {
+            if (mem.insertDisk(arg)) {
+                floppyPath = arg;
+                floppyOk = true;
+                std::printf("Floppy: %s\n", arg.c_str());
+            }
+            continue;
+        }
+        int id = int(extraDisks.size()) + 1;
+        if (mem.attachScsi(argv[i], true, id)) {
+            extraDisks.push_back(argv[i]);
+            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
+        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
+    }
+
+    // Battery-backed PRAM+clock (discrete RTC XPRAM) — persist it so a cold
+    // PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
+    static std::string pramPath =
+        (hddPath.empty() ? std::string("quadra700") : hddPath) + ".q700.pram";
+    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
+    // Discrete RTC: the file's clock froze while powered off — wall time
+    // comes from the host at every launch (GUI only).
+    mem.rtc().setSeconds(hostMacSeconds());
+
+    glfwSetErrorCallback(glfwErrorCallback);
+    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    // 640×480 shown at 2× fits with the menu bar and the CPU window.
+    GLFWwindow* window = glfwCreateWindow(1320, 1080, "POM68K — Quadra 700", nullptr, nullptr);
+    if (!window) { glfwTerminate(); return 1; }
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(1);
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 130");
+
+    static GLuint screenTex = 0;
+    glGenTextures(1, &screenTex);
+    glBindTexture(GL_TEXTURE_2D, screenTex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    initDriveSfx(audioHost);
+    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
+    // GUI floppies persist committed writes back to the image file on
+    // eject and on exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable.
+    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
+    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
+
+    static Q700Machine machine{mem, cpu, audioHost};
+    machine.setFloppyInserted(floppyOk);
+    machine.publish(true);
+
+    struct Ctx {
+        GLFWwindow* window; Q700Machine& m; GLuint tex;
+        std::vector<uint32_t> fb;
+        std::string romName, hddPath, floppyPath;
+        std::vector<std::string>& extraDisks;
+        bool& floppyOk;
+    };
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
+                   extraDisks, floppyOk};
+
+    auto frame = [](void* p) {
+        Ctx& c = *static_cast<Ctx*>(p);
+        glfwPollEvents();
+        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
+
+#ifdef __EMSCRIPTEN__
+        c.m.stepTick();
+#endif
+
+        int hres = 0, vres = 0;
+        if (c.m.latchFrame(c.fb, hres, vres)) {
+            glBindTexture(GL_TEXTURE_2D, c.tex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
+                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
+        }
+
+        machineMenu(MachineKind::Q700, c.window, [&c] {
+            namespace fs = std::filesystem;
+            auto samePath = [](const std::string& a, const std::string& b) {
+                std::error_code ec;
+                return a == b || fs::equivalent(a, b, ec);
+            };
+            auto relaunch = [&c](const std::string& boot,
+                                 const std::vector<std::string>& extras) {
+                gSwitchArgs = { c.romName, boot };
+                for (const std::string& e : extras)
+                    if (e != boot) gSwitchArgs.push_back(e);
+                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+            };
+            if (ImGui::BeginMenu("Disques")) {
+                const auto disks = listDiskImages(c.hddPath);
+                ImGui::TextDisabled("Démarrage (SCSI 0)");
+                // Same filename shows up in several sections — scope the IDs.
+                ImGui::PushID("boot");
+                for (const std::string& d : disks) {
+                    bool cur = samePath(d, c.hddPath);
+                    std::string name = fs::path(d).filename().string();
+                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
+                        relaunch(d, c.extraDisks);
+                }
+                ImGui::PopID();
+                ImGui::Separator();
+                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
+                ImGui::PushID("secondary");
+                for (const std::string& d : disks) {
+                    if (samePath(d, c.hddPath)) continue;
+                    bool on = false;
+                    for (const std::string& e : c.extraDisks)
+                        if (samePath(d, e)) { on = true; break; }
+                    std::string name = fs::path(d).filename().string();
+                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
+                        std::vector<std::string> extras;
+                        for (const std::string& e : c.extraDisks)
+                            if (!samePath(d, e)) extras.push_back(e);
+                        if (!on) extras.push_back(d);
+                        relaunch(c.hddPath, extras);
+                    }
+                }
+                ImGui::PopID();
+                ImGui::Separator();
+                ImGui::TextDisabled("Floppy (SWIM2)");
+                ImGui::PushID("floppy");
+                if (ImGui::MenuItem("Éjecter", nullptr, false, c.m.floppyInserted())) {
+                    c.m.requestEjectFloppy();
+                    c.floppyOk = false;
+                    c.floppyPath.clear();
+                }
+                for (const std::string& d : listFloppyImages()) {
+                    bool cur = !c.floppyPath.empty() && samePath(d, c.floppyPath);
+                    std::string name = fs::path(d).filename().string();
+                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur) {
+                        c.m.requestInsertFloppy(d);
+                        c.floppyPath = d;
+                        c.floppyOk = true;
+                    }
+                }
+                ImGui::PopID();
+                ImGui::Separator();
+                ImGui::TextDisabled("Changer un disque SCSI relance l'émulateur");
+                ImGui::EndMenu();
+            }
+            if (ImGui::MenuItem("Redémarrer"))
+                c.m.push({Q700Machine::Cmd::HardReset});
+        });
+
+        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Quadra 605", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        static ScreenInput input;
+        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
+                    [&](int dx, int dy) { c.m.push({Q700Machine::Cmd::MouseMove, dx, dy}); },
+                    [&](bool down) { c.m.push({Q700Machine::Cmd::MouseButton, down ? 1 : 0}); });
+        ImGuiIO& io = ImGui::GetIO();
+        ImGui::End();
+
+        // Keyboard → ADB key codes (= M0110 transition code >> 1); same table
+        // as the LC II loop.
+        if (!io.WantTextInput) {
+            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
+                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
+                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
+                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
+                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
+                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
+                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
+                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
+                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
+                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
+                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
+                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
+                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
+                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
+                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
+                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
+                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
+                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
+                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
+                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
+                {ImGuiKey_Keypad9,0xB8},
+            };
+            for (auto& e : kKeys) {
+                if (ImGui::IsKeyPressed(e.k, false)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
+                    c.m.push({Q700Machine::Cmd::Key, e.m0110 >> 1, 1});
+                }
+                if (ImGui::IsKeyReleased(e.k)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
+                    c.m.push({Q700Machine::Cmd::Key, e.m0110 >> 1, 0});
+                }
+            }
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
+        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        Q700Machine::Status st = c.m.status();
+        ImGui::Text("68LC040 @ 25 MHz (Moira + 040 MMU)  PC=%08X  clock=%lld",
+                    st.pc, st.clock);
+        ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
+                    st.overlay ? 1 : 0, st.w, st.h, st.depth,
+                    st.mmu ? "on" : "off", st.held ? 1 : 0);
+        ImGui::Text("floppy=%s", c.m.floppyInserted()
+                    ? (c.floppyPath.empty() ? "inserted" : c.floppyPath.c_str())
+                    : "none");
+        bool running = c.m.running.load(std::memory_order_relaxed);
+        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
+        ImGui::SameLine();
+        if (ImGui::Button("Reset")) c.m.push({Q700Machine::Cmd::HardReset});
+        ImGui::SameLine();
+        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Turbo", &turbo)) c.m.turbo.store(turbo);
+        ImGui::End();
+
+        ImGui::Render();
+        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
+        glViewport(0, 0, w, h);
+        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        glfwSwapBuffers(c.window);
+    };
+
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
+#else
+    machine.start();
+    while (!glfwWindowShouldClose(window)) frame(&ctx);
+    machine.stop();
+    mem.savePram(pramPath);
+    mem.internalDrive().flushToFile();   // persist floppy writes on exit
+    audioHost.stop();
+    glDeleteTextures(1, &screenTex);
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    relaunchIfSwitched(argv[0]);
+#endif
+    return 0;
+}
+
 int main(int argc, char** argv) {
     std::printf("POM68K — Macintosh 68k emulator (Mac Plus)\n");
 
@@ -3535,6 +3829,9 @@ int main(int argc, char** argv) {
         // — POM68K_CENTRIS610 picks the 610 (the GUI menu sets it).
         if (ck == 0xF1A6F343 || ck == 0xF1ACAD13)
             return runCentris(std::move(rom), matched, argc, argv);
+        // $420DBFF3 = Quadra 700 / 900 (+ PB140/170); POM68K supports the 700.
+        if (ck == 0x420DBFF3)
+            return runQ700(std::move(rom), matched, argc, argv);
         return runQuadra(std::move(rom), matched, argc, argv);
     }
     if (rom.size() == V8Memory::kRomSize) {

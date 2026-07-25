@@ -10,9 +10,10 @@ modem + discrete RTC, 68030 @ 25 MHz), the
 **LC III / LC III+** (68030 @ 25 / 33 MHz + Sonora), the all-in-one
 **LC 520 / LC 550 / Color Classic II** (Sonora + Cuda), the
 **Mac IIvx / IIvi** (VASP + Egret), the **Centris 610 / 650** and **Quadra 610 / 650 / 800**
-(djMEMC + IOSB), the **Quadra 605**
+(djMEMC + IOSB), the **Quadra 700** (discrete 040 + DAFB TurboSCSI),
+the **Quadra 605**
 (68040 + FPU) and **LC 475 / LC 575 / Performa 475-575** (68LC040), both
-+ 040 MMU — **26 machine profiles, every one boots the Finder**.
++ 040 MMU — **27 machine profiles, every one boots the Finder**.
 Sibling of [POMIIGS](../POMIIGS/) (Apple IIgs) and
 [POM2](../POM2/) (Apple II), sharing their architecture and conventions. CPU
 core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — see
@@ -23,7 +24,7 @@ core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — se
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 91 milestone gates (asset-dependent may soft-skip)
+ctest                             # 92 milestone gates (asset-dependent may soft-skip)
 ```
 
 Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
@@ -132,7 +133,7 @@ The mouse drives the Mac while hovering the screen; a drag started on the
 screen (Finder drag-and-drop) keeps tracking outside it and never moves
 the host window (title bar still does). **Delete** toggles full mouse
 capture (cursor grabbed, raw motion). The **Machine** menu switches
-between the 26 profiles (needs the matching ROM; the app
+between the 27 profiles (needs the matching ROM; the app
 relaunches). On
 LC II and Quadra, **Disques** picks the boot volume and toggles secondary
 SCSI images next to the current one (relaunches — the ROM only scans the

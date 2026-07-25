@@ -12,7 +12,8 @@ identity/clock variants of it and are listed inside that section:
 | RBV (RAM-based video) | **Mac IIsi** | IIci (PIC ADB modem + discrete RTC) |
 | Sonora gate array | **Mac LC III** | LC III+, LC 520/550, Color Classic II, and the VASP recombination (IIvx / IIvi) |
 | MEMCjr + PrimeTime | **Quadra 605** | LC 475, LC 575 |
-| djMEMC + IOSB | **Centris 650** | Centris 610, Quadra 610, Quadra 650 |
+| djMEMC + IOSB | **Centris 650** | Centris 610, Quadra 610, Quadra 650, Quadra 800 |
+| Discrete 040 + DAFB | **Quadra 700** | (Quadra 900/950 once the IOPs exist) |
 
 The per-machine bring-up narratives (what broke and why) stay in
 `CHANGELOG.md`; the machine roster is in `CLAUDE.md`.
@@ -527,6 +528,29 @@ full 68040 @ 33/25 MHz (`POM68K_CENTRIS_FPU`).
 mirrored across it or the ROM's VRAM sizer bus-errors at `$F91FFFFC` and
 drops into the ROM serial monitor. Gates: `centris610/650_`,
 `quadra610/650_boot_etalon`.
+
+## Discrete-040 platform — Quadra 700 (`Q700Memory`/`Q700Cpu`)
+
+The first Quadra, and the machine that shows the family seam: a full 68040
+@ 25 MHz whose front end is the **Mac II's** (VIA1 + a real VIA2 6522,
+discrete 343-0042 RTC, PIC1654S ADB transceiver — firmware LLE) and whose
+back end is the **Quadra's** (DAFB video, 53C96, SWIM1, EASC, SCC, SONIC),
+at the `$5000xxxx` layout the Centris/Q800 share. ROM `$420DBFF3`; VIA1 PA
+reads `$C1` (diagnostic disabled — the IIci lesson); 2 MB VRAM; no
+machine-ID longword.
+
+- **SCSI hangs off DAFB, not IOSB.** DAFB register `$24` latches four
+  wait-state selections (`dafb.cpp:480-530`) and reads back the **live DRQ
+  in bit 9**; registers at `+$0F000`, pseudo-DMA at `+$0F100` with the
+  bit-18 waitstated alias. This is the cell `docs/LLE_VS_HLE.md` §3 had
+  parked as "only matters for a future Q700/Q950-class profile".
+- **VIA2 is a real 6522** with the Mac II interrupt fan-in: slot/DAFB IRQs
+  on CA1 + port A (active low, DAFB = slot $F → bit 6), ASC on CB1, SCSI on
+  CB2, SONIC on PA0.
+- *Simplification*: the 60.15 Hz tick is generated directly into VIA1 CA1;
+  real hardware routes VIA2's T1 out of PB7 into VIA1 CA1
+  (`via2_out_b` "chain 60.15 Hz to VIA1").
+- Gate: `q700_boot_etalon` (Mac OS 8.1, 640×480 DAFB).
 
 ## CPU integration notes
 

@@ -5,7 +5,7 @@ takes, assessed against what the emulator already has. Written 2026-07-17;
 updated 2026-07-20 (Quadra 605), 2026-07-24 (Phase C fan-out) and
 **2026-07-25 (RBV + Tinker Bell + 68030 Mac II — this pass)**.
 
-POM68K today covers **26 machine profiles** across every 68k generation, and
+POM68K today covers **27 machine profiles** across every 68k generation, and
 **every one boots to the Finder**:
 
 - **68000, cycle-exact**: **Mac Plus** ✅
@@ -18,7 +18,8 @@ POM68K today covers **26 machine profiles** across every 68k generation, and
 - **68040 / 68LC040 + 040 MMU**: **Quadra 605** ✅, **LC 475** ✅,
   **LC 575** ✅ (MEMCjr/PrimeTime/DAFB), **Centris 610** ✅ /
   **Centris 650** ✅ and **Quadra 610** ✅ / **Quadra 650** ✅ /
-  **Quadra 800** ✅ (djMEMC + IOSB)
+  **Quadra 800** ✅ (djMEMC + IOSB), **Quadra 700** ✅ (discrete + DAFB
+  TurboSCSI)
 
 Every ADB machine now runs its MCU as **firmware LLE** (real 68HC05 —
 Egret / Cuda images) by default. See `CLAUDE.md`, `TODO.md` and
@@ -76,7 +77,7 @@ desktop/compact family. Each unlocks a cluster:
 
 | Missing brick | Unlocks | Difficulty |
 |---|---|---|
-| **ADB-over-VIA compact MCU** (not Egret — the SE/Classic shift-register transcoder) | SE, SE FDHD, Classic, SE/30 | 🟢/🟡 |
+| ~~**ADB-over-VIA compact MCU**~~ ✅ **IT IS THE PIC1654S WE ALREADY RUN** — MAME `mac128.cpp` drives the SE's ADB through `adbmodem`, the same transceiver as the Mac II/IIci/Centris. `MacMemory::Model {Plus,SE,SEFDHD,Classic}` wires it; the SE ROM executes but the bring-up (POST → disk) is unfinished | SE, SE FDHD, Classic, SE/30 | 🟢/🟡 |
 | ~~**RBV** (RAM-Based Video controller)~~ ✅ **DONE** (`RbvMemory` — IIsi + IIci) | — | 🟡 |
 | **Generalized NuBus + slot video** (the Mac II Toby/DeclRom port, made reusable) | NuBus Quadras (700/800/900/950); real cards on IIci/IIsi/VASP. *IIx/IIcx no longer need it — they ride the Mac II board itself* | 🟡 |
 | ~~**040 I/O-controller variants**~~ ✅ **DONE for djMEMC + IOSB** (`CentrisMemory` — Centris/Quadra 610 + 650 + **800**) | still to do: Quadra 630/LC 630, 700, 900, 950 | 🟡 |
@@ -112,7 +113,8 @@ transcendentals (`FSIN`/`FTAN`) trap to the software **FPSP**. The current
 | **IIx / IIcx** ✅ **DONE** | `MacIIMemory::Model {IIx,IIcx}` + `Cpu020` `is030` — 68030 on the Mac II board, Toby NuBus reused, VIA machine-ID pins. Wall: skip the GLUE 24-bit remap once the 030 PMMU is on. Gates `iix/iicx_boot_etalon`. |
 | **Centris/Quadra 610, 650, 800** ✅ **DONE** | `CentrisMemory`/`CentrisCpu` (djMEMC + IOSB), Q605 devices + discrete RTC + PIC1654S ADB LLE. Gates `centris610/650_`, `quadra610/650/800_boot_etalon`. The **800** needed only its ID pins ($12) + the Ethernet address ROM at $50008000; SONIC and its NuBus slots stay unmapped-0 and the boot path never binds them. |
 | **Quadra 630 / LC 630** | The 630's I/O controller variant on the same 040 platform; onboard video reuses DAFB. The last 68k desktop. ROM `06684214` on hand. |
-| **Quadra 700 / 900 / 950** | The 040 platform exists, but these are **NuBus** systems — gated on the generalized NuBus/slot-video brick. (The 800 is done: it shares the Centris ROM and boots with NuBus unpopulated.) |
+| **Quadra 700** ✅ **DONE** | `Q700Memory`/`Q700Cpu` — discrete 040: Mac II VIA1/VIA2 + RTC + PIC ADB, Quadra DAFB/53C96/SWIM1/EASC, SCSI behind DAFB's TurboSCSI cell. NuBus unpopulated. Gate `q700_boot_etalon`. |
+| **Quadra 900 / 950** | The Q700 machine plus **two AppleP IC IOPs** (the SCC and SWIM run on 6502-class I/O processors) and an Egret — the same IOP brick the IIfx needs, so one core unlocks three machines. |
 
 ### 🟠 Hard (weeks–months) — co-processors
 

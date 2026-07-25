@@ -16,7 +16,7 @@ Cuda 341S0060 LLE, EDE66CBD ROM) — the **Mac IIvx / IIvi** (VASP =
 "V8 video on Sonora addressing", Egret LLE) — the **Centris 610 / 650** and **Quadra 610 / 650 / 800**
 (djMEMC + IOSB, discrete RTC + PIC1654S LLE; the 800 adds SONIC + NuBus) — the
 **Quadra 605** (68040 + FPU) and **LC 475 / LC 575 / Performa 475-575**
-(68LC040) — both 040 + 040 MMU, functional accuracy. **26 machine
+(68LC040) — both 040 + 040 MMU, functional accuracy. **27 machine
 profiles, all booting the Finder.** It is the
 68k sibling of [POMIIGS](../POMIIGS/) and reuses its architecture,
 conventions and milestone discipline; the CPU integration pattern comes
@@ -75,7 +75,7 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 91 gates (asset-dependent gates may soft-skip)
+ctest                        # 92 gates (asset-dependent gates may soft-skip)
 ./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=V8 family
                              # (checksum: LC/LC II/Classic II); 1 MB by
                              # checksum: Color Classic / LC III / AIO
@@ -178,7 +178,7 @@ DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
 GUI exposes the machine alongside the other 24 profiles (Machine menu).
-**91 CTest gates**,
+**92 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
 (LLE ADB mouse — default path since 2026-07-22), `sst68040`,
@@ -244,6 +244,10 @@ F1A6F343 ROM) plus the **LC 575** identity ($A55A222E) — gates
 `lcii_soak/persist/launch_etalon`. The **Quadra 800** followed (2026-07-25) as a fifth model of that machine —
 ID pins `$12`, full 040 @ 33 MHz, SONIC/NuBus unmapped but the Ethernet
 address ROM at `$50008000` modelled — gate `quadra800_boot_etalon`.
+The **Quadra 700** ("Spike", $420DBFF3) followed as the first *discrete*
+040 machine — Mac II VIA1/VIA2 + RTC + PIC ADB in front, Quadra
+DAFB/53C96/SWIM1/EASC behind, SCSI through **DAFB's own TurboSCSI cell**
+(`Q700Memory`/`Q700Cpu`, gate `q700_boot_etalon`).
 **Next (ROMs already on hand):** Quadra 630 / LC 630 (06684214) on the 040
 side, SE/SE FDHD/Classic (compact 68000 + ADB transcoder), SE/30 (compact
 IIx + built-in video), IIfx (OSS + IOPs) — and the LLE fidelity pass

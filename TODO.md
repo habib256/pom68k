@@ -551,7 +551,8 @@ Driven by **Phase C** of the Finder matrix above; detail and effort tiers in
   2026-07-24** (`lc475_`, `lc575_boot_etalon`), plus the **Centris 610/650
   + Quadra 610/650** djMEMC+IOSB machine the same day. **Remaining 040:**
   Quadra 800 (SONIC + NuBus, same F1ACAD13 ROM), Quadra 630 / LC 630,
-  Quadra 700/900/950 (NuBus), 660AV/840AV.
+  Quadra 900/950 (IOPs), 660AV/840AV. **Quadra 700 DONE 2026-07-25**
+  (`q700_boot_etalon` — discrete 040 + DAFB TurboSCSI cell).
 
 - [ ] **NuBus + slot video** beyond Mac II Toby: IIx/IIcx/IIci and NuBus
   Quadras. (VASP/IIvx currently reads its three slots as empty — real
@@ -567,11 +568,12 @@ Driven by **Phase C** of the Finder matrix above; detail and effort tiers in
 
 | Machine | ROM on hand | New brick |
 |---|---|---|
+| **SE / SE FDHD / Classic** — *started 2026-07-25* | `B2E362A8` / `B306E171` / `A49F9914` | **the "compact ADB MCU" brick does not exist**: MAME drives the SE's ADB through the same `adbmodem` PIC1654S we already run (`mac128.cpp` `set_via_state`). `MacMemory::Model {Plus,SE,SEFDHD,Classic}` is in (256/512 KB ROM, overlay auto-clear on first ROM access, ADB on PB3-5 + CB1/CB2 replacing the M0110 + quadrature). **State: the SE ROM executes and the PIC LLE attaches, but the POST spins at `$402A94`/`$402752` and never reaches SCSI.** Next: trace what that loop polls (VIA? RTC? sound? the SE's PB6 SCSI-IRQ mask?) with the scratchpad tracer. |
 | **Quadra 630 / LC 630** | `06684214` | the 630's I/O controller variant (last 68k desktop) |
 | **LC 580 / Performa 580** | `064DC91D` | AIO sibling of the 630 board |
 | **SE / SE FDHD / Classic** | `B2E362A8` / `B306E171` / `A49F9914` | compact ADB-over-VIA transcoder MCU (not Egret) |
 | **SE/30** | (needs a dump) | the same compact MCU + 030 + compact video |
-| **Quadra 700 / 900 / 950** | `420DBFF3` / `3DC27823` | generalized NuBus + slot video |
+| **Quadra 900 / 950** | `420DBFF3` / `3DC27823` | two **AppleP IC** IOPs (6502-class, SCC + SWIM) + Egret — the same brick the IIfx needs |
 | **Mac IIfx** | `4147DD77` | OSS + two 6502-class IOPs |
 | **Portable / PowerBook 100** | `96CA3846` / `96645F9C` | LCD framebuffer + M50753 (740/6502) Power Manager |
 | **PowerBook 140-180 / Duo** | `E33B2724` / `0024D346` / `015621D7` | LCD framebuffer + Power Manager (68HC05 on the Duos) |

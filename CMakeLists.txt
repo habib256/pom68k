@@ -88,6 +88,8 @@ add_library(pom68k_core STATIC
     src/RbvCpu.cpp        # Phase C — Moira 68030 wrapper (IIsi, 20 MHz)
     src/CentrisMemory.cpp # Phase C — Centris 610/650 map (djMEMC + IOSB)
     src/CentrisCpu.cpp    # Phase C — Moira 68LC040 wrapper (Centris)
+    src/Q700Memory.cpp    # Quadra 700 — discrete "Spike" map (DAFB TurboSCSI)
+    src/Q700Cpu.cpp       # Quadra 700 — Moira 68040 wrapper (25 MHz)
     src/Q605Memory.cpp    # Q5 — LC 475/Quadra 605 map (MEMCjr + PrimeTime)
     src/Dafb.cpp          # Q8 — DAFB II video cell (Swatch CRTC/Gazelle/RAMDAC)
     src/Cpu040.cpp        # Q5 — Moira 68LC040 wrapper
@@ -649,6 +651,15 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                          ENVIRONMENT "POM68K_CENTRIS_MODEL=q650" TIMEOUT 1800)
     set_tests_properties(quadra610_boot_etalon PROPERTIES
                          ENVIRONMENT "POM68K_CENTRIS_MODEL=q610" TIMEOUT 1800)
+    # Quadra 700 ("Spike"): the first Quadra — a full 68040 on discrete
+    # chips (Mac II VIA1/VIA2 + RTC + PIC ADB, Quadra DAFB/53C96/SWIM1/EASC),
+    # SCSI behind DAFB's own TurboSCSI cell. $420DBFF3 ROM.
+    add_executable(q700_boot_etalon tests/q700_boot_etalon.cpp)
+    target_link_libraries(q700_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME q700_boot_etalon COMMAND q700_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(q700_boot_etalon PROPERTIES TIMEOUT 1800)
+
     # Quadra 800: same board, ID pins $12 (the only one with pa6 clear), full
     # 68040 @ 33 MHz, plus SONIC Ethernet (address ROM at $50008000; the SONIC
     # registers stay unmapped-0) and three NuBus slots.

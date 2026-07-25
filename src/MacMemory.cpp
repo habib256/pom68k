@@ -4,17 +4,30 @@
 #include "MacMemory.h"
 #include "Cpu68k.h"
 
-MacMemory::MacMemory() : ram_(kRamSize, 0), rom_(kRomSize, 0xFF) {}
+static uint32_t romSizeFor(MacMemory::Model m) {
+    switch (m) {
+        case MacMemory::Model::SE:
+        case MacMemory::Model::SEFDHD: return 0x40000;    // 256 KB
+        case MacMemory::Model::Classic: return 0x80000;   // 512 KB
+        default: return MacMemory::kRomSize;              // 128 KB (Plus)
+    }
+}
+
+MacMemory::MacMemory(Model model)
+    : ram_(kRamSize, 0), rom_(romSizeFor(model), 0xFF), model_(model),
+      romSize_(romSizeFor(model)) {
+    if (isAdb()) adbVia_.attach(via_, adb_);
+}
 
 bool MacMemory::loadRom(const std::vector<uint8_t>& data) {
-    if (data.empty() || data.size() > kRomSize) return false;
+    if (data.empty() || data.size() > romSize_) return false;
     installRom(data.data(), data.size());
     return true;
 }
 
 void MacMemory::installRom(const uint8_t* data, size_t n) {
-    rom_.assign(kRomSize, 0xFF);
-    for (size_t i = 0; i < kRomSize; i++) rom_[i] = data[i % n];  // mirror
+    rom_.assign(romSize_, 0xFF);
+    for (size_t i = 0; i < romSize_; i++) rom_[i] = data[i % n];  // mirror
 }
 
 void MacMemory::reset() {
@@ -31,6 +44,7 @@ void MacMemory::reset() {
     if (scsiDisk_.present()) scsi_.attach(&scsiDisk_);
     kbd_.reset();
     kbdPhase_ = KBD_IDLE;
+    if (isAdb()) adbVia_.reset();
     viaPhase_ = 0;
     overlay_ = true;                 // hardware reset asserts the overlay
 }
@@ -49,6 +63,14 @@ void MacMemory::tick(int cpuCycles) {
     if (scc_.tick(cpuCycles)) updateIrq();
     iwm_.tick(cpuCycles);
     drive_.tick(cpuCycles);
+
+    if (isAdb()) {
+        adbVia_.tick(cpuCycles);
+        if (cpu_) adbVia_.syncTo(int64_t(cpu_->getClock()));
+        refreshPortBInputs();
+        updateIrq();
+        return;
+    }
 
     // M0110 transaction (DEV.md § Input): the command byte finishes
     // shifting out (SR interrupt #1); once the driver flips the ACR to
@@ -92,6 +114,14 @@ void MacMemory::tickOneSecond() {
 void MacMemory::refreshPortBInputs() {
     uint8_t in = 0xFF & uint8_t(~0x01);
     in |= rtc_.dataBit() & 1;
+    if (isAdb()) {
+        // mac128.cpp mac_via_in_b_se: RTC data on PB0, /ADB IRQ on PB3, the
+        // rest pulled up — no mouse quadrature (the mouse is an ADB device).
+        in |= 0xF6;
+        if (adbVia_.irqPending()) in &= uint8_t(~0x08);
+        via_.setInB(in);
+        return;
+    }
     if (mouse_.button()) in &= uint8_t(~0x08);     // PB3: 0 = pressed
     if (!mouse_.x2) in &= uint8_t(~0x10);          // PB4 = X2
     if (!mouse_.y2) in &= uint8_t(~0x20);          // PB5 = Y2
@@ -114,17 +144,22 @@ uint8_t MacMemory::viaAccess(uint32_t addr, bool write, uint8_t v) {
         return r;
     }
     via_.write(reg, v);
+    if (isAdb() && (reg == Via6522::ORB || reg == Via6522::DDRB
+                    || reg == Via6522::SR || reg == Via6522::ACR)) {
+        adbVia_.sync();                          // PB4/PB5 = ADB ST lines
+        refreshPortBInputs();
+    }
     if (reg == Via6522::ORA || reg == Via6522::ORA_NH || reg == Via6522::DDRA) {
-        overlay_ = (via_.portA() & 0x10) != 0;   // PA4 = ROM overlay
+        if (!isAdb()) overlay_ = (via_.portA() & 0x10) != 0;   // PA4 = overlay
         iwm_.setSel((via_.portA() & 0x20) != 0); // PA5 = drive SEL line
     }
-    if (reg == Via6522::SR && ((via_.acr() >> 2) & 7) == 7) {
+    if (!isAdb() && reg == Via6522::SR && ((via_.acr() >> 2) & 7) == 7) {
         // shift-out under external clock = keyboard command byte
         kbdCmd_ = v;
         kbdPhase_ = KBD_SHIFT_OUT;
         kbdTimer_ = 23500;                       // ~3 ms at 7.8336 MHz
     }
-    if (reg == Via6522::ACR && kbdPhase_ == KBD_AWAIT_IN && ((v >> 2) & 7) == 3) {
+    if (!isAdb() && reg == Via6522::ACR && kbdPhase_ == KBD_AWAIT_IN && ((v >> 2) & 7) == 3) {
         kbdPhase_ = KBD_SHIFT_IN;                // driver ready for the response
         kbdTimer_ = 23500;
     }
@@ -140,7 +175,7 @@ uint8_t MacMemory::read8(uint32_t addr) {
     addr &= 0xFFFFFF;
     switch (addr >> 20) {
         case 0x0: case 0x1: case 0x2: case 0x3:              // RAM (or ROM w/ overlay)
-            if (overlay_) return rom_[addr & (kRomSize - 1)];
+            if (overlay_) return rom_[addr & (romSize_ - 1)];
             return ram_[addr & (kRamSize - 1)];
         case 0x4: case 0x5:
             if (addr >= 0x580000) {                          // SCSI NCR 5380
@@ -148,8 +183,12 @@ uint8_t MacMemory::read8(uint32_t addr) {
                 if ((addr & 0x200) && scsi_.drqActive()) return scsi_.dmaRead();
                 return scsi_.read(reg);
             }
-            if (addr < 0x400000 + kRomSize)                  // 128 KB ROM ($400000-$41FFFF)
-                return rom_[addr & (kRomSize - 1)];
+            if (addr < 0x400000 + romSize_) {                // ROM window
+                // SE and later: the first ROM access clears the boot overlay
+                // (mac128.cpp ram_w_se); the Plus needs the VIA PA4 write.
+                if (isAdb()) overlay_ = false;
+                return rom_[addr & (romSize_ - 1)];
+            }
             // Above the ROM: open bus, address-dependent. The ROM probes
             // $420000 vs $440000 to detect SCSI hardware (E_SoftReset): they
             // must DIFFER or CheckSCSI ($407D40) skips the SCSI scan.

@@ -1,5 +1,48 @@
 # CHANGELOG
 
+## 2026-07-25 — Macintosh Quadra 700: the 27th machine, and the DAFB TurboSCSI cell
+
+The **first** Quadra — and the last 68040 desktop POM68K was missing that
+needed no new co-processor. MAME calls it `spike_state`
+(`macquadra700.cpp`): a full 68040 @ 25 MHz built from **discrete** chips,
+*before* djMEMC/IOSB condensed them. That makes it a recombination of two
+machines already in the tree rather than a bring-up: the **Mac II's** front
+end (VIA1 + a real VIA2 6522, discrete 343-0042 RTC, PIC1654S ADB
+transceiver — the same firmware LLE) on the **Quadra's** I/O block (DAFB
+video, 53C96, SWIM1, EASC, SCC, SONIC) at the `$5000xxxx` layout the
+Centris/Q800 already use. New: `Q700Memory`, `Q700Cpu`.
+
+**The one genuinely new cell**: on this machine SCSI hangs off **DAFB**, not
+IOSB — `docs/LLE_VS_HLE.md` §3 had recorded the DAFB TurboSCSI cell as
+"absent, N/A on the Q605, only matters for a future Q700/Q950-class
+profile". It is now modelled: DAFB register `$24` latches the four
+wait-state selections (`dafb.cpp:480-530`) and reads back the **live DRQ in
+bit 9**, with the registers at `+$0F000` and the pseudo-DMA at `+$0F100`
+(bit-18 waitstated alias).
+
+Other deltas from the Centris: a real 6522 for VIA2 with the Mac II
+interrupt fan-in (slot/DAFB IRQs on CA1 + port A, ASC on CB1, SCSI on CB2,
+SONIC on PA0, all active low), SWIM1 instead of SWIM2, EASC instead of the
+IOSB ASC, 2 MB VRAM, no machine-ID longword (VIA1 PA reads `$C1` —
+diagnostic disabled, the IIci lesson), and the 60.15 Hz tick generated
+directly rather than through VIA2's T1 → PB7 → VIA1 CA1 chain (documented
+simplification). **Boots Mac OS 8.1 to the Finder on the first run** (5063
+SCSI commands, 640×480 DAFB). Gate `q700_boot_etalon`; GUI entry under a new
+"Discret 040" group; CLI dispatch on ROM checksum `$420DBFF3`.
+
+**Also: the compact-Mac brick turned out not to exist.** `docs/68K_FAMILY_
+SCOPE.md` listed an "ADB-over-VIA compact MCU (not Egret — the SE/Classic
+shift-register transcoder)" as the blocker for SE / SE FDHD / Classic /
+SE/30. MAME's `mac128.cpp` shows the SE driving **`adbmodem`** — the very
+PIC1654S POM68K already runs as firmware LLE (`m_adbmodem->set_via_state
+((data & 0x30) >> 4)` on VIA PB4/PB5). So `MacMemory` gained a
+`Model {Plus, SE, SEFDHD, Classic}`: bigger ROM (256/512 KB), the overlay
+clearing on the first ROM access instead of on VIA PA4 (`ram_w_se`), ADB on
+VIA PB3-5 + CB1/CB2 in place of the M0110 shift-register keyboard and the
+mouse quadrature. The SE ROM **executes** on that path (PIC LLE attached,
+overlay cleared, POST running) but does not reach the disk yet — the
+bring-up is open, tracked in TODO.
+
 ## 2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted, and the PIC co-step un-boosted
 
 Three follow-ups to the bus-time fix below, in the order they were found.
