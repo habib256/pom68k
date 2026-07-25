@@ -166,8 +166,11 @@ void Cpu030::updateIpl() {
 // inside a bus access — the clock bump lands mid-instruction, like the
 // Plus contention model.
 void Cpu030::stall(int cycles) {
+    // Wait states are machine cycles (VIA E-clock, SWIM +5) — scale into
+    // Moira time so they keep their real duration under cacheBoost_ > 1
+    // (the Cpu040 convention; CHANGELOG 2026-07-25).
     if (cycles <= 0) return;
-    clock += cycles;
+    clock += moira::i64(cycles) * cacheBoost_;
     catchUp();
 }
 

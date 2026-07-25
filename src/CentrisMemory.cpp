@@ -174,7 +174,7 @@ uint8_t CentrisMemory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
     if (cpu_) cpu_->flushTicks();
     viaSync();
     // Run the PIC1654S up to this exact cycle before the ROM touches VIA1.
-    if (cpu_) adbVia_.syncTo(cpu_->getClock());
+    if (cpu_) adbVia_.syncTo(cpu_->machineClock());
     int reg = (addr >> 9) & 0x0F;
     if (write) {
         via1_.write(reg, v);
@@ -276,6 +276,20 @@ uint8_t CentrisMemory::ioRead8(uint32_t addr) {
     if (base < 0x02000) return viaAccess8(base, false, 0);
     if ((sub & ~0xF00000u) >= 0x02000 && (sub & ~0xF00000u) < 0x04000)
         return via2Access8(sub & 0x1FFF, false, 0);
+    // Ethernet address ROM (macquadra800.cpp ethernet_mac_r): six MAC bytes
+    // at +0..5, and at +7 the XOR of all six inverted — the ROM's SONIC
+    // presence/sanity probe. Present on every model of this board; the SONIC
+    // registers themselves ($5000A000) stay unmapped-0, so no driver binds.
+    if (base >= 0x08000 && base < 0x08008) {
+        int off = int(base & 7);
+        if (off < 6) return kMacAddr[off];
+        if (off == 7) {
+            uint8_t x = 0;
+            for (uint8_t b : kMacAddr) x ^= b;
+            return uint8_t(x ^ 0xFF);
+        }
+        return 0;
+    }
     if (base >= 0x0C000 && base < 0x0E000) {      // SCC
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
@@ -507,7 +521,7 @@ void CentrisMemory::tick(int cpuCycles) {
     if (viaCycles && via1_.tick(viaCycles)) updateIrq();
 
     adbVia_.tick(cpuCycles);
-    if (cpu_) adbVia_.syncTo(cpu_->getClock());
+    if (cpu_) adbVia_.syncTo(cpu_->machineClock());
 
     scc_.tick(cpuCycles);
     if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }

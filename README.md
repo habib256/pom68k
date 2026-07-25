@@ -9,9 +9,10 @@ RAM-based video + Egret, 68030 @ 20 MHz) and **IIci** (RBV + PIC ADB
 modem + discrete RTC, 68030 @ 25 MHz), the
 **LC III / LC III+** (68030 @ 25 / 33 MHz + Sonora), the all-in-one
 **LC 520 / LC 550 / Color Classic II** (Sonora + Cuda), the
-**Mac IIvx / IIvi** (VASP + Egret), the **Centris 610 / 650** and **Quadra 610 / 650**
+**Mac IIvx / IIvi** (VASP + Egret), the **Centris 610 / 650** and **Quadra 610 / 650 / 800**
 (djMEMC + IOSB), the **Quadra 605**
-(68040 + FPU) and **LC 475 / Performa 475** (68LC040), both + 040 MMU.
+(68040 + FPU) and **LC 475 / LC 575 / Performa 475-575** (68LC040), both
++ 040 MMU — **26 machine profiles, every one boots the Finder**.
 Sibling of [POMIIGS](../POMIIGS/) (Apple IIgs) and
 [POM2](../POM2/) (Apple II), sharing their architecture and conventions. CPU
 core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — see
@@ -22,7 +23,7 @@ core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — se
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 81 milestone gates (asset-dependent may soft-skip)
+ctest                             # 91 milestone gates (asset-dependent may soft-skip)
 ```
 
 Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
@@ -43,15 +44,17 @@ signatures (Mac II `9779D2C4`, LC II `35C28F5F`, Quadra `FF7439EE`).
 The **Machine** menu switches profiles the same way. Several ROMs serve
 sibling models that differ only by clock / CPU / model ID: the LC III ROM
 also boots the **LC III+** (33 MHz, `POM68K_LC3_PLUS=1`), the
-FF7439EE ROM boots either the **LC 475** (68LC040, default) or the
-**Quadra 605** (68040 + FPU, `POM68K_Q605_ID=A55A2225`), and the
+FF7439EE ROM boots the **LC 475** (68LC040, default), the
+**Quadra 605** (68040 + FPU, `POM68K_Q605_ID=A55A2225`) or the all-in-one
+**LC 575** (68LC040 @ 33 MHz, `POM68K_Q605_ID=A55A222E`), and the
 all-in-one `EDE66CBD` ROM boots the **LC 520** (25 MHz, default), the
 **LC 550** (33 MHz, `POM68K_AIO_ID=A55A0101`) or the **Color Classic II**
 (33 MHz, 512×384, `POM68K_AIO_ID=CC2`), and the `4957EB49` ROM boots the
 **Mac IIvx** (32 MHz, default) or **IIvi** (16 MHz, `POM68K_IIVI=1`), and the
 `F1A6F343`/`F1ACAD13` ROM boots the **Centris 650** (25 MHz, default) or
-**Centris 610** (20 MHz), or the **Quadra 650** (33 MHz) / **Quadra 610**
-(full 68040) via `POM68K_CENTRIS_MODEL=c610/q650/q610`. The Color
+**Centris 610** (20 MHz), or the **Quadra 650** (33 MHz) / **Quadra 610** /
+**Quadra 800** (33 MHz, + SONIC Ethernet and NuBus) — all full 68040 — via
+`POM68K_CENTRIS_MODEL=c610/q650/q610/q800`. The Color
 Classic runs its Cuda MCU as firmware LLE off `roms/cuda/341s0788.bin`,
 the LC 520/550 theirs off `roms/cuda/341s0060.bin` (Cuda 2.40 — 2.37
 livelocks this ROM), the LC III / LC III+ their Egret off
@@ -105,19 +108,21 @@ automatically; otherwise use a DDM-wrapped image (`tools/wrap_hfs.py`).
 PRAM + clock persist next to the boot image (`<disk>.pram`) — the first
 cold boot runs the ROM's full-RAM burn-in; later boots skip it.
 
-### Quadra 605 / LC 475
+### Quadra 605 / LC 475 / LC 575
 
-A **1 MB ROM** (FF7439EE) selects MEMCjr/PrimeTime. It serves two models:
+A **1 MB ROM** (FF7439EE) selects MEMCjr/PrimeTime. It serves three models:
 the **LC 475 / Performa 475** (model ID `$A55A2221`, 68LC040 + soft 68882,
-the default and the `lc475_boot_etalon` gate) and the **Quadra 605**
-(`POM68K_Q605_ID=A55A2225`, full 68040 + FPU, MAME `macqd605`).
+the default and the `lc475_boot_etalon` gate), the **Quadra 605**
+(`POM68K_Q605_ID=A55A2225`, full 68040 + FPU, MAME `macqd605`) and the
+all-in-one **LC 575 / Performa 575** (`POM68K_Q605_ID=A55A222E`, 68LC040
+@ 33 MHz, gate `lc575_boot_etalon`).
 `POM68K_Q605_NOFPU=2` forces a bare `FPUModel::NONE`. Boots System
 7.5 / 7.5.5 / 7.6 and Mac OS 8.1 to the Finder. Default boot disk
 `hdv/MacOS-8.1-boot.vhd`, then `hdv/boot.vhd`. Optional SuperDrive floppy
 (SWIM2: 800K GCR **and** 1.44 MB MFM media) via `POM68K_FLOPPY` or
 `disks35/`; `.dsk` / `.image` args insert as floppy rather than SCSI.
 Cuda XPRAM persists as `<disk>.pram`. Video is 640×480 DAFB (incl.
-256-color Finder). Tuning: `POM68K_Q605_CACHE_BOOST` (default 1) scales
+256-color Finder). Tuning: `POM68K_Q605_CACHE_BOOST` (default 4) scales
 the 040 i-cache throughput overlay; `POM68K_MMU040_WALK=1` disables the
 ATC fast path (debug).
 
@@ -127,7 +132,7 @@ The mouse drives the Mac while hovering the screen; a drag started on the
 screen (Finder drag-and-drop) keeps tracking outside it and never moves
 the host window (title bar still does). **Delete** toggles full mouse
 capture (cursor grabbed, raw motion). The **Machine** menu switches
-Plus / Mac II / LC II / Quadra (needs the matching ROM; the app
+between the 26 profiles (needs the matching ROM; the app
 relaunches). On
 LC II and Quadra, **Disques** picks the boot volume and toggles secondary
 SCSI images next to the current one (relaunches — the ROM only scans the
@@ -138,7 +143,7 @@ bus at boot), and **Redémarrer** power-cycles the machine.
 Floppy and hard-disk activity is audible: head steps and seeks, spindle
 spin-up/loop/down, insert/eject clicks (MAME's floppy sample set, ported
 via POM2 — `assets/floppy_samples/`, BSD-3-Clause). The 3.5" set voices
-the Sony drives on all four machines; the 5.25" set plays at low gain as
+the Sony drives on every machine; the 5.25" set plays at low gain as
 the SCSI hard-disk seek proxy. Toggle with **Machine ▸ Sons des
 lecteurs**, or start muted with `POM68K_DRIVE_SFX=0`.
 

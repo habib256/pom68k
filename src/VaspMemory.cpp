@@ -107,9 +107,10 @@ void VaspMemory::updateIrq() {
 
 // vasp.cpp via_sync — stall the CPU to the 783.36 kHz VIA E-clock on
 // every VIA1 access (the Sonora formula).
+// Machine cycles, not core-clock cycles (SonoraMemory::viaSync).
 void VaspMemory::viaSync() {
     if (!cpu_) return;
-    int64_t c = cpu_->getClock();
+    int64_t c = cpu_->machineClock();
     int64_t viaCycle = c * kViaHz / cpuHz_;
     int64_t target = (viaCycle * 2 + 3) * cpuHz_ / (2 * kViaHz) + 1;
     if (target > c) cpu_->stall(int(target - c));

@@ -254,17 +254,34 @@ int main() {
         // 512×384; overridable for other volumes via POM68K_MX/MY).
         int tx = getenv("POM68K_MX") ? atoi(getenv("POM68K_MX")) : 42;
         int ty = getenv("POM68K_MY") ? atoi(getenv("POM68K_MY")) : 78;
-        // ≤3-unit steps stay under System 7's mouse-tracking acceleration
-        // threshold, so device deltas land 1:1 in pixels.
-        int dx = tx - 511, dy = ty - 383;
-        while (dx || dy) {
-            int sx = std::max(-3, std::min(3, dx));
-            int sy = std::max(-3, std::min(3, dy));
-            mem.mouseMove(sx, sy);
-            dx -= sx; dy -= sy;
+        // CLOSED LOOP on the guest's own pointer (low-mem Mouse $830 = y,
+        // $832 = x). Open-loop stepping used to assume "≤3-unit steps land
+        // 1:1", which only holds while each report carries ≤3 units: under a
+        // sustained stream System 7's mouse scaling amplifies (~1.6× measured),
+        // and the run overshot the icon into the screen corner. Steering by
+        // the position the guest actually reports is immune to both the
+        // scaling curve and the ADB report rate.
+        auto ptr = [&](int& x, int& y) {
+            x = int16_t(gMem->peek8(0x832) << 8 | gMem->peek8(0x833));
+            y = int16_t(gMem->peek8(0x830) << 8 | gMem->peek8(0x831));
+        };
+        int px = 0, py = 0;
+        for (int it = 0; it < 600; it++) {
+            ptr(px, py);
+            int dx = tx - px, dy = ty - py;
+            if (!dx && !dy) break;
+            // Halve the remaining distance (capped) so the scaling curve
+            // cannot turn a step into an overshoot loop.
+            auto step = [](int d) {
+                int s = d / 2; if (!s) s = d > 0 ? 1 : (d < 0 ? -1 : 0);
+                return std::max(-8, std::min(8, s));
+            };
+            mem.mouseMove(step(dx), step(dy));
             runFrames(2);
         }
         runFrames(30);
+        ptr(px, py);
+        std::printf("pointer at (%d,%d), target (%d,%d)\n", px, py, tx, ty);
         for (int c = 0; c < 2; c++) {        // double-click
             mem.mouseButton(true);
             runFrames(6);

@@ -86,17 +86,19 @@ static Screen decodeScreen(CentrisMemory& mem) {
 
 int main() {
     // Model selector: POM68K_CENTRIS_MODEL = c650 (default) / c610 / q650 /
-    // q610. The Quadra variants are the same djMEMC+IOSB machine with a full
-    // 68040 (POM68K_CENTRIS_FPU, set here before the CPU is built) and their
-    // own VIA1 port-A ID pins + clock. POM68K_CENTRIS610 stays as a legacy
-    // alias for c610.
+    // q610 / q800. The Quadra variants are the same djMEMC+IOSB machine with
+    // a full 68040 (POM68K_CENTRIS_FPU, set here before the CPU is built) and
+    // their own VIA1 port-A ID pins + clock; the Quadra 800 adds SONIC
+    // Ethernet and NuBus, neither of which the boot path binds.
+    // POM68K_CENTRIS610 stays as a legacy alias for c610.
     std::string model = getenv("POM68K_CENTRIS_MODEL")
                       ? getenv("POM68K_CENTRIS_MODEL")
                       : (getenv("POM68K_CENTRIS610") ? "c610" : "c650");
     const bool c610 = model == "c610";
     const bool q650 = model == "q650";
     const bool q610 = model == "q610";
-    const bool isQuadra = q650 || q610;
+    const bool q800 = model == "q800";
+    const bool isQuadra = q650 || q610 || q800;
     if (isQuadra) setenv("POM68K_CENTRIS_FPU", "1", 1);   // full 68040
     std::string rom = find("roms/centris650.rom");
     if (rom.empty())
@@ -120,11 +122,12 @@ int main() {
         return 1;
     }
 
-    const int64_t cpuHz = q650 ? CentrisMemory::kCpuHzQ650
+    const int64_t cpuHz = (q650 || q800) ? CentrisMemory::kCpuHzQ650
                         : q610 ? CentrisMemory::kCpuHzQ610
                         : c610 ? CentrisMemory::kCpuHz610
                                : CentrisMemory::kCpuHz650;
-    const uint8_t pins  = q650 ? CentrisMemory::kIdQuadra650
+    const uint8_t pins  = q800 ? CentrisMemory::kIdQuadra800
+                        : q650 ? CentrisMemory::kIdQuadra650
                         : q610 ? CentrisMemory::kIdQuadra610
                         : c610 ? CentrisMemory::kIdCentris610
                                : CentrisMemory::kIdCentris650;
@@ -272,7 +275,8 @@ int main() {
 
     bool ok = W >= 512 && H >= 342 && menuBar < 0.30
            && desktop > 0.30 && desktop < 0.85 && mem.scsi().commands > 50;
-    const char* name = q650 ? "Quadra 650" : q610 ? "Quadra 610"
+    const char* name = q800 ? "Quadra 800" : q650 ? "Quadra 650"
+                     : q610 ? "Quadra 610"
                      : c610 ? "Centris 610" : "Centris 650";
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED", name,
                 ok ? "booted to the Finder" : "did not reach the Finder");

@@ -201,9 +201,11 @@ void MacIIMemory::updateIrq() {
     if (cpu_) cpu_->updateIpl();
 }
 
+// Machine cycles (identical to the core clock here — Cpu020 carries no
+// i-cache overlay — but the same idiom as every other machine).
 void MacIIMemory::viaSync() {
     if (!cpu_) return;
-    int64_t c = cpu_->getClock();
+    int64_t c = cpu_->machineClock();
     int64_t viaCycle = c / 20;
     int64_t target = (viaCycle * 2 + 3) * 10 + 1;
     if (target > c) cpu_->stall(int(target - c));
@@ -223,7 +225,7 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
     // LLE ADB: run the PIC1654S up to this exact cycle before the ROM touches
     // VIA1 (SR/ACR/ORB carry the ADB byte handshake). This gives the PIC/ROM
     // bit-level interleaving instead of a whole sequence per periph batch.
-    if (isVia1 && cpu_) adbVia_.syncTo(cpu_->getClock());
+    if (isVia1 && cpu_) adbVia_.syncTo(cpu_->machineClock());
     // MAME via_r: word_offset >> 8 ≡ byte_offset >> 9 ($200 register stride,
     // same as Mac Plus / V8). Using >> 8 on byte offsets mis-routed ORA_NH
     // ($1E00) into IER and left ROM overlay stuck on.
@@ -569,7 +571,7 @@ void MacIIMemory::tick(int cpuCycles) {
         if (via2Irq_) updateIrq();
     }
     adbVia_.tick(cpuCycles);
-    if (cpu_) adbVia_.syncTo(cpu_->getClock());   // LLE: advance the PIC (no-op in HLE)
+    if (cpu_) adbVia_.syncTo(cpu_->machineClock());  // LLE: advance the PIC (no-op in HLE)
     asc_.tick(cpuCycles);
     // Classic ASC half-empty is edge + empty-cycle (see Asc.cpp); VIA2 CB1
     // is edge-only. Re-latch IFR.CB1 while the line stays asserted so a

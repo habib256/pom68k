@@ -8,15 +8,15 @@
 RbvCpu::RbvCpu(RbvMemory& mem, bool withFpu) : mem_(mem) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
-    // The IIsi ROM's Egret transport is a tight HOST-paced bit-bang: it acks
-    // each byte with a back-to-back bclr/bset of VIA1 PB4 (via_full). The
-    // i-cache throughput boost compresses that pulse ~N× in the fixed-rate
-    // MCU's time domain, so at boost 4 the Egret firmware misses the
-    // via_full low pulse and the transport wedges after the first byte
-    // (unlike the LC II/LC III, whose exchanges are MCU-paced). Default to
-    // no boost here — correctness over the boot-time throughput hack; the
-    // env var can still raise it for experiments.
-    cacheBoost_ = 1;
+    // History (2026-07-25): this machine shipped with cacheBoost_ = 1 because
+    // the IIsi ROM's Egret transport is a tight HOST-paced bit-bang (it acks
+    // each byte with a back-to-back bclr/bset of VIA1 PB4 / via_full) and the
+    // boost wedged it after the first byte. The real cause was not the boost
+    // itself but `viaSync`/`stall` computing E-clock alignment in the BOOSTED
+    // clock domain — every VIA-paced pulse came out cacheBoost_× too short.
+    // With bus time charged in machine cycles (RbvMemory::viaSync,
+    // RbvCpu::stall) the transport is timed correctly and the IIsi boots at
+    // the shared default boost. See CHANGELOG 2026-07-25.
     if (const char* b = getenv("POM68K_CACHE_BOOST")) {
         int v = atoi(b);
         if (v >= 1 && v <= 64) cacheBoost_ = v;
@@ -57,7 +57,7 @@ void RbvCpu::updateIpl() {
 
 void RbvCpu::stall(int cycles) {
     if (cycles <= 0) return;
-    clock += cycles;
+    clock += moira::i64(cycles) * cacheBoost_;   // machine cycles → core clock
     catchUp();
 }
 

@@ -649,6 +649,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                          ENVIRONMENT "POM68K_CENTRIS_MODEL=q650" TIMEOUT 1800)
     set_tests_properties(quadra610_boot_etalon PROPERTIES
                          ENVIRONMENT "POM68K_CENTRIS_MODEL=q610" TIMEOUT 1800)
+    # Quadra 800: same board, ID pins $12 (the only one with pa6 clear), full
+    # 68040 @ 33 MHz, plus SONIC Ethernet (address ROM at $50008000; the SONIC
+    # registers stay unmapped-0) and three NuBus slots.
+    add_test(NAME quadra800_boot_etalon COMMAND centris650_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(quadra800_boot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_CENTRIS_MODEL=q800" TIMEOUT 1800)
 
     # Floppy write persistence: committed sectors reach the host .dsk /
     # DC42 file on eject/exit when write-back is opted in (GUI default).

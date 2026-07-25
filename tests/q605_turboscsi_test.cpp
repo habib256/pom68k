@@ -76,11 +76,14 @@ int main() {
     check(mem.attachScsi(img, false, 0), "synthetic target attached at ID 0");
 
     // ── 1. Register access wait states ──────────────────────────────────
+    // Wait states are MACHINE cycles: the core clock runs cacheBoost_× fast
+    // and bus time is not accelerated by the i-cache (CHANGELOG 2026-07-25),
+    // so measure with machineClock() to stay boost-invariant.
     auto delta = [&](auto&& fn) {
         cpu.flushTicks();
-        moira::i64 c0 = cpu.getClock();
+        moira::i64 c0 = cpu.machineClock();
         fn();
-        return int(cpu.getClock() - c0);
+        return int(cpu.machineClock() - c0);
     };
     check(delta([&] { (void)mem.read8(kScsiReg + 0x4 * 0x10); }) == 3,
           "register read stalls 3 cycles");

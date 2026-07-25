@@ -26,8 +26,16 @@ public:
     void runCycles(moira::i64 n);
     void runUntil(moira::i64 clockTarget);
     void updateIpl();
+    // `cycles` is REAL machine cycles (bus/wait-state time), not boosted
+    // core cycles — see the machineClock() note below.
     void stall(int cycles);
     void flushTicks();
+
+    // The core clock runs at cacheBoost_× machine rate (i-cache throughput
+    // overlay). Anything that models the BUS — E-clock alignment, device
+    // wait states — must work in machine cycles: on real silicon the
+    // i-cache accelerates instruction fetch, never a VIA bus cycle.
+    moira::i64 machineClock() const { return clock / cacheBoost_; }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;

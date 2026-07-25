@@ -152,7 +152,9 @@ int main() {
         Cpu030 cpu2(mem2);
         mem2.setCpu(&cpu2);
         mem2.read8(0xF00200);
-        check(cpu2.getClock() == 31, "VIA1: E-clock sync stalls the CPU (31 cyc @ 0)");
+        // In MACHINE cycles: the core clock runs cacheBoost_× fast, and bus
+        // time is not accelerated by the i-cache (CHANGELOG 2026-07-25).
+        check(cpu2.machineClock() == 31, "VIA1: E-clock sync stalls the CPU (31 cyc @ 0)");
     }
 
     // ── Bus errors: unmapped I/O + PDS space; VRAM/devices don't ───────
@@ -178,9 +180,9 @@ int main() {
         check(mem.read8(0xF40000) == 0x99, "VRAM readable/writable, no bus error");
         check(mem.read8(0xF14800) == 0xE8, "ASC version register reads $E8");
 
-        moira::i64 c0 = cpu.getClock();
+        moira::i64 c0 = cpu.machineClock();  // machine cycles, see above
         (void)mem.read8(0xF16000);           // IWM-compatible reg read
-        check(cpu.getClock() == c0 + 5, "SWIM access eats 5 CPU cycles");
+        check(cpu.machineClock() == c0 + 5, "SWIM access eats 5 CPU cycles");
     }
 
     // ── Ariel palette through the bus ───────────────────────────────────

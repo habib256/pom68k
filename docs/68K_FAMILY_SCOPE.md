@@ -2,21 +2,23 @@
 
 Which classic 68K Macs POM68K supports, and the effort each remaining one
 takes, assessed against what the emulator already has. Written 2026-07-17;
-updated 2026-07-20 (Quadra 605) and **2026-07-24 (Phase C fan-out — this
-pass)**.
+updated 2026-07-20 (Quadra 605), 2026-07-24 (Phase C fan-out) and
+**2026-07-25 (RBV + Tinker Bell + 68030 Mac II — this pass)**.
 
-POM68K today covers **21 machine profiles** across every 68k generation, and
+POM68K today covers **26 machine profiles** across every 68k generation, and
 **every one boots to the Finder**:
 
 - **68000, cycle-exact**: **Mac Plus** ✅
 - **68020**: **Mac II** ✅ (Toby NuBus), **Mac LC** ✅ (V8/HMMU)
-- **68030 + PMMU (+ 68882)**: **LC II** ✅, **Classic II** ✅ (Eagle),
+- **68030 + PMMU (+ 68882)**: **IIx** ✅ / **IIcx** ✅ (GLUE + NuBus),
+  **IIci** ✅ / **IIsi** ✅ (RBV), **LC II** ✅, **Classic II** ✅ (Eagle),
   **Color Classic** ✅ (Spice), **Color Classic II** ✅, **LC III** ✅ /
   **LC III+** ✅ (Sonora), **LC 520** ✅ / **LC 550** ✅ (Sonora AIO),
-  **IIvx** ✅ / **IIvi** ✅ (VASP), **Mac TV** ✅ (Tinker Bell),
-  **IIsi** ✅ (RBV)
+  **IIvx** ✅ / **IIvi** ✅ (VASP), **Mac TV** ✅ (Tinker Bell)
 - **68040 / 68LC040 + 040 MMU**: **Quadra 605** ✅, **LC 475** ✅,
-  **LC 575** ✅ (MEMCjr/PrimeTime/DAFB)
+  **LC 575** ✅ (MEMCjr/PrimeTime/DAFB), **Centris 610** ✅ /
+  **Centris 650** ✅ and **Quadra 610** ✅ / **Quadra 650** ✅ /
+  **Quadra 800** ✅ (djMEMC + IOSB)
 
 Every ADB machine now runs its MCU as **firmware LLE** (real 68HC05 —
 Egret / Cuda images) by default. See `CLAUDE.md`, `TODO.md` and
@@ -39,8 +41,9 @@ gate arrays, MCU protocols, video controllers, NuBus, power management.
   **IIvx** ✅, **IIvi** ✅, **Mac TV** ✅ (Tinker Bell),
   Performa 4xx/6xx rebadges, PowerBook 140–180 / Duo.
 - **68040 / 68LC040** — **Quadra 605** ✅, **LC 475** ✅, **LC 575** ✅,
-  other Quadra & Centris (610/650/630/700/800/900/950…), Quadra 660AV/840AV
-  (with DSP), PowerBook 500 / 190.
+  **Centris 610** ✅ / **650** ✅, **Quadra 610** ✅ / **650** ✅ /
+  **800** ✅, other Quadra & Centris (630/700/900/950…), 660AV/840AV (DSP),
+  PowerBook 500 / 190.
 
 ## What POM68K already has as leverage
 
@@ -74,9 +77,9 @@ desktop/compact family. Each unlocks a cluster:
 | Missing brick | Unlocks | Difficulty |
 |---|---|---|
 | **ADB-over-VIA compact MCU** (not Egret — the SE/Classic shift-register transcoder) | SE, SE FDHD, Classic, SE/30 | 🟢/🟡 |
-| ~~**RBV** (RAM-Based Video controller)~~ ✅ **DONE** (`RbvMemory`, IIsi) | IIci (twin) | 🟡 |
-| **Generalized NuBus + slot video** (the Mac II Toby/DeclRom port, made reusable) | IIx, IIcx, and every NuBus Quadra | 🟡 |
-| **040 I/O-controller variants** (reuse Q605 CPU/DAFB/Cuda/53C96/SWIM2) | Centris/Quadra 610, 650, 630/LC 630, 700, 800, 900, 950 | 🟡 |
+| ~~**RBV** (RAM-Based Video controller)~~ ✅ **DONE** (`RbvMemory` — IIsi + IIci) | — | 🟡 |
+| **Generalized NuBus + slot video** (the Mac II Toby/DeclRom port, made reusable) | NuBus Quadras (700/800/900/950); real cards on IIci/IIsi/VASP. *IIx/IIcx no longer need it — they ride the Mac II board itself* | 🟡 |
+| ~~**040 I/O-controller variants**~~ ✅ **DONE for djMEMC + IOSB** (`CentrisMemory` — Centris/Quadra 610 + 650 + **800**) | still to do: Quadra 630/LC 630, 700, 900, 950 | 🟡 |
 | **OSS + two 6502-class IOPs** | IIfx | 🟠 |
 | **LCD framebuffer + 68HC05 Power Manager wiring** | PowerBook 150 / 190 / Duo / 500 series | 🟡 (see § Portables) |
 | **LCD framebuffer + M50753 (740/6502-family) Power Manager core** | Macintosh Portable, PowerBook 100 / 140–180 | 🟡 |
@@ -107,8 +110,9 @@ transcendentals (`FSIN`/`FTAN`) trap to the software **FPSP**. The current
 | **IIsi** ✅ **DONE** | `RbvMemory`/`RbvCpu`/`RbvVideo` (030 @ 20 MHz + Egret 344S0100 LLE + RBV). Gate `iisi_boot_etalon`. |
 | **IIci** ✅ **DONE** | `RbvMemory` `iici` flavor — RBV + `AdbVia` (PIC1654S ADB modem LLE) + discrete `Rtc` + empty NuBus, 030 @ 25 MHz. Gate `iici_boot_etalon`. |
 | **IIx / IIcx** ✅ **DONE** | `MacIIMemory::Model {IIx,IIcx}` + `Cpu020` `is030` — 68030 on the Mac II board, Toby NuBus reused, VIA machine-ID pins. Wall: skip the GLUE 24-bit remap once the 030 PMMU is on. Gates `iix/iicx_boot_etalon`. |
-| **Centris/Quadra 610, 650; Quadra 630 / LC 630** | Adapt the 040 memory/I/O-controller variant; onboard video reuses DAFB. LC 630 is the last 68k desktop. |
-| **Quadra 700 / 800 / 900 / 950** | The 040 platform exists, but these are **NuBus** systems — gated on the generalized NuBus/slot-video brick. |
+| **Centris/Quadra 610, 650, 800** ✅ **DONE** | `CentrisMemory`/`CentrisCpu` (djMEMC + IOSB), Q605 devices + discrete RTC + PIC1654S ADB LLE. Gates `centris610/650_`, `quadra610/650/800_boot_etalon`. The **800** needed only its ID pins ($12) + the Ethernet address ROM at $50008000; SONIC and its NuBus slots stay unmapped-0 and the boot path never binds them. |
+| **Quadra 630 / LC 630** | The 630's I/O controller variant on the same 040 platform; onboard video reuses DAFB. The last 68k desktop. ROM `06684214` on hand. |
+| **Quadra 700 / 900 / 950** | The 040 platform exists, but these are **NuBus** systems — gated on the generalized NuBus/slot-video brick. (The 800 is done: it shares the Centris ROM and boots with NuBus unpopulated.) |
 
 ### 🟠 Hard (weeks–months) — co-processors
 
@@ -166,29 +170,40 @@ splits into two sub-families, and one lands squarely on POM68K's strengths:
 Phase A/B/C (Plus → Mac II → the V8/Sonora/VASP/040 fan-out) are **done**.
 The remaining order, cheapest-unlock-first:
 
-1. ~~**Mac TV** (Tinker Bell) + **RBV → IIsi + IIci**~~ **DONE 2026-07-25.**
-   Next in these families: Performa rebadges (AIO/Sonora) and, for real
-   NuBus cards on the IIci, the generalized NuBus/slot-video brick.
-2. **Compact ADB MCU → SE / Classic / SE/30** — one small transcoder unlocks
-   the whole compact-68000 side.
-4. **Generalize NuBus → IIx / IIcx** (reuse Toby), which also unblocks the
-   NuBus Quadras.
-5. **040 I/O variants → Centris/Quadra 610/650/630/700/800** — reuse the
-   Q605 CPU and devices.
+1. ~~**Mac TV** (Tinker Bell) + **RBV → IIsi + IIci** + **IIx / IIcx** (68030
+   on the Mac II board) + **040 I/O variants → Centris/Quadra 610/650**~~
+   **DONE 2026-07-24/25.**
+2. ~~**Quadra 800**~~ **DONE 2026-07-25** — a fifth model of the djMEMC/IOSB
+   machine (ID pins `$12`, Ethernet address ROM, SONIC/NuBus unmapped).
+3. **Quadra 630 / LC 630 (+ LC 580)** — the last 68k desktops; one more 040
+   I/O-controller variant on the proven platform.
+4. **Compact ADB MCU → SE / SE FDHD / Classic / SE/30** — one small
+   transcoder unlocks the whole compact side (three ROMs already on hand).
+5. **Generalize NuBus** → real slot cards on IIci/IIsi/VASP and the NuBus
+   Quadras (700/900/950).
 6. **IIfx (OSS + IOPs)** — the last desktop-030 architectural jump.
-7. **A 68HC05 PowerBook (Duo or 500)** — reuses the shipped `M68hc05` core +
-   030/040 CPUs; only the LCD framebuffer is genuinely new. Likely *easier*
-   than the IIfx, despite living in the "portables" bucket.
+7. **A 68HC05 PowerBook (150, Duo or 500)** — reuses the shipped `M68hc05`
+   core + 030/040 CPUs; only the LCD framebuffer is genuinely new. Likely
+   *easier* than the IIfx, despite living in the "portables" bucket.
 8. **AV boot without the DSP** — the AV I/O complex (video/Curio/MACE/codec)
    at functional accuracy, DSP stubbed.
 9. **Deferred / separate frontiers**: M50753 portables (need a 740/6502 core,
    borrowable from POMIIGS/POM2), full AV DSP fidelity, and full 68040
    cache/FPSP accuracy.
 
-**Bottom line:** with all CPU cores and three full machine platforms in hand,
-the complete **desktop + compact** family reduces to **four hardware bricks**
-(compact ADB MCU, RBV, IIfx IOPs, 040 I/O variants) plus generalizing the
-NuBus that Mac II already has. The "portables and AV" frontier is **not the
+**Caveat on "done".** Booting to the Finder is the *entry* criterion, not
+the finish line: 22 of the 25 profiles have **no gate past the boot
+signature** (only Mac II, Quadra 605 and LC II do — see TODO "Test &
+validation depth"). Adding the 26th machine is cheaper than hardening the
+25 that exist; the roadmap above should be read against that trade.
+
+**Bottom line:** with all CPU cores and five full machine platforms in hand
+(V8, Sonora/VASP, RBV, MEMCjr/PrimeTime, djMEMC/IOSB), the complete
+**desktop** family is essentially finished — what remains there is the
+**Quadra 800/630/700/900/950** cluster (SONIC + generalized NuBus + one more
+I/O variant) and the **IIfx** (OSS + IOPs). The **compact** side is still
+gated on a single brick: the **ADB-over-VIA transcoder MCU** (SE / SE FDHD /
+Classic / SE/30). The "portables and AV" frontier is **not the
 uniform wall it looks like** (feasibility research 2026-07-24): a **68HC05
 PowerBook (Duo/500)** reuses the shipped `M68hc05` core and is likely *easier*
 than the IIfx, and an **AV desktop boots without its DSP** (an offload engine,

@@ -105,7 +105,12 @@ int main() {
         return double(dark) / (double(x1 - x0) * (y1 - y0));
     };
     double menuBar = darkRatio(0, W, 2, 16);
-    double desktop = darkRatio(W - 112, W, 40, H - 44);
+    // Desktop weave: sample the BOTTOM strip, not the right-hand column the
+    // 640×480 siblings use. At 512×384 the reference volume's saved Finder
+    // layout puts an open window over the right edge, so that column measured
+    // window interior (0.32 — a hair under the band) instead of the desktop
+    // pattern; the strip below the windows is unambiguously desktop (0.79).
+    double desktop = darkRatio(0, W, H - 110, H - 10);
     if (getenv("POM68K_DUMP")) {
         FILE* fp = fopen("cclassic2_screen.ppm", "wb");
         std::fprintf(fp, "P6\n%d %d\n255\n", W, H);

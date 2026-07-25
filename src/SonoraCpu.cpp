@@ -48,7 +48,7 @@ void SonoraCpu::updateIpl() {
 
 void SonoraCpu::stall(int cycles) {
     if (cycles <= 0) return;
-    clock += cycles;
+    clock += moira::i64(cycles) * cacheBoost_;   // machine cycles → core clock
     catchUp();
 }
 

@@ -1,5 +1,174 @@
 # CHANGELOG
 
+## 2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted, and the PIC co-step un-boosted
+
+Three follow-ups to the bus-time fix below, in the order they were found.
+
+### The PIC1654S was being clocked from the boosted core clock
+
+Audit of every `getClock()` reader that models **bus or wire time** (the
+follow-up the previous entry asked for). The 040 machines were already
+boost-aware everywhere (`Q605Memory`/`CentrisMemory` `viaSync` and
+`syncSwimFromCpu` both divide by `cacheBoost()`, `Cpu040::stall` scales) —
+so the earlier suspicion that `Q605Memory::viaSync` had the same bug was
+**wrong**. But `AdbVia::syncTo(cpu_->getClock())` fed the **raw core clock**
+into a fixed divisor (`kCyclesPerPicInsn`), so under any boost the PIC1654S
+transceiver firmware ran `cacheBoost_`× fast — the same class as the
+`mcuDebt_` MCU overclock. Harmless on the Mac II (Cpu020 has no overlay) but
+**live on the IIci** the moment `RbvCpu`'s boost came back, and latent on
+the Centris/Quadra. All four sites now pass `machineClock()`, and the
+accessor exists on every CPU (`Cpu020`'s returns the clock unchanged) so
+bus/wire models read one idiom.
+
+### The Quadra's boost-1 pin was stale
+
+`POM68K_Q605_CACHE_BOOST` had defaulted to 1 since Q8.8 with the note "boost
+2+ fails SCSI bring-up". Re-measured: `q605_boot_etalon` passes at 2, 4 and
+8, and the whole 040 family (Q605, LC 475, LC 575, Centris 610/650, Quadra
+610/650, the three Cuda-LLE gates, DAFB, floppy, no-FPU and bare-FPU) is
+green at boost 4. The only casualties were two unit tests measuring wait
+states on the boosted clock — `swim2_test` ("SWIM access costs five cycles")
+and `q605_turboscsi_test` (3-cycle register stalls) — both now read
+`machineClock()` and are boost-invariant. **`Cpu040` and `CentrisCpu` now
+default to `cacheBoost_ = 4`**, matching the 030 family: ~4× emulated
+throughput on seven machine profiles.
+
+### Macintosh Quadra 800 — the 26th profile
+
+The cheapest machine left, and it landed as a fifth model of the existing
+djMEMC + IOSB machine (`POM68K_CENTRIS_MODEL=q800`): same `F1ACAD13` ROM
+already dispatched, full 68040 @ 33 MHz, VIA1 port-A ID pins **`$12`**
+(pa1|pa4 — the only model of the family with pa6 clear, MAME
+`macquadra800.cpp macqd800`). What the Q800 adds over the Centris is SONIC
+Ethernet and three NuBus slots, neither of which the boot path binds: the
+SONIC registers at `$5000A000` stay unmapped-0 like the rest of the IOSB
+map, and only the **Ethernet address ROM** at `$50008000` needed modelling
+(six MAC bytes + the inverted XOR check byte at +7, `ethernet_mac_r`).
+Boots Mac OS 8.1 to the 640×480×8 Finder on the first run (5214 SCSI
+commands). Gate `quadra800_boot_etalon`, GUI entry under djMEMC + IOSB.
+
+## 2026-07-25 — The i-cache boost was accelerating the VIA bus: LC III / LC III+ / IIvx fixed, and the IIsi's boost restored
+
+**Symptom.** A full-suite run found three red gates — `lc3_boot_etalon`,
+`lc3plus_boot_etalon`, `iivx_boot_etalon`: black screen, **`SCSI commands
+0`**, i.e. the machine never reached its disk. Reproduced serially, so not
+test contention. The set was suspiciously exact: the **Egret-LLE machines
+clocked ≥25 MHz**. The Cuda-LLE all-in-ones at the same clocks (LC 520/550/
+CC II) passed, and so did every slower Egret machine (LC II and IIvi at
+15.7 MHz, IIsi at 20 MHz — the last one only because it had already been
+given `cacheBoost_ = 1`). `POM68K_CACHE_BOOST=1` made the LC III boot,
+which pointed at the i-cache throughput overlay.
+
+**Root cause — not the boost, but what the boost was allowed to touch.**
+`Cpu030`/`SonoraCpu`/`VaspCpu`/`RbvCpu` run the core at `cacheBoost_`×
+machine rate and scale peripheral ticks back down, so the guest's cached
+code executes at a realistic 030 rate. But the **VIA E-clock alignment**
+(`viaSync`) computed its target from `cpu_->getClock()` — the *boosted*
+clock — and `stall()` charged the resulting wait in boosted cycles too. So
+the 783.36 kHz E-clock quantum was spent in 1/`cacheBoost_` of its real
+duration: every VIA-paced pulse came out **4× too short in machine time**.
+The ROM's Egret transport acks each byte with a back-to-back `bclr`/`bset`
+of VIA1 PB4 (via_full); at 15.7 MHz the compressed pulse still cleared the
+2.097 MHz MCU's sampling, at 25–33 MHz it did not, and the transport wedged
+after the first byte — no ADB, no boot. On real silicon an i-cache
+accelerates **instruction fetch**, never a VIA bus cycle; the model was
+accelerating both. (The 37 %-MCU-overclock fix of 2026-07-24, `mcuDebt_`,
+removed the slack that had been hiding this.)
+
+**Fix.** Bus time is charged in **machine cycles** on every 030 machine:
+`stall(int cycles)` now scales by `cacheBoost_` when adding to the core
+clock, and `viaSync` computes E-clock alignment from a new
+`machineClock() = clock / cacheBoost_`. This is exactly the convention
+`Cpu040` already documented and used ("wait states are specified in machine
+cycles") — the four 030 CPUs had copied the pre-boost version. Touched:
+`Cpu030.{h,cpp}` + `V8Memory`, `SonoraCpu.{h,cpp}` + `SonoraMemory`,
+`VaspCpu.{h,cpp}` + `VaspMemory`, `RbvCpu.{h,cpp}` + `RbvMemory`.
+
+**Two gates had been leaning on the wrong timing** and were fixed with it:
+- `cclassic2_boot_etalon` sampled its "desktop weave" in the right-hand
+  column, which at 512×384 is covered by an open Finder window on the
+  reference volume — it read window interior (0.32, a hair under the band)
+  and only passed before because the faster machine happened to be at a
+  different point in the desktop draw. It now samples the strip *below* the
+  windows (0.79), which is unambiguously desktop.
+- `lcii_launch_etalon` steered the mouse **open-loop**, assuming "≤3-unit
+  steps land 1:1 in pixels". That only holds while each ADB report carries
+  ≤3 units; with reports coalescing, System 7's mouse scaling amplifies
+  (~1.6× measured) and the run overshot the icon into the screen corner
+  (pointer ended at 0,0 — the new diagnostic line prints it). It now steers
+  **closed-loop** on the guest's own low-mem `Mouse` position, halving the
+  remaining distance, which is immune to both the scaling curve and the
+  report rate. Verified separately that delivery itself is healthy: a single
+  3-unit move lands within one frame, exactly 1:1.
+
+**Results.** All three gates pass at the **default** boost, with metrics
+identical to their `POM68K_CACHE_BOOST=1` runs (LC III 9591 SCSI commands,
+IIvx 1662). And the workaround the IIsi shipped with is **retired**: with
+bus time honest, the IIsi boots at the shared default boost (2065 SCSI
+commands) instead of being pinned to 1 — `RbvCpu`'s `cacheBoost_ = 1` line
+is gone, so the IIsi and IIci get the same ~4× throughput as their
+siblings. **Full suite: 90/90.** Follow-up worth trying: the Quadra's `POM68K_Q605_CACHE_BOOST`
+has defaulted to 1 since "boost 2+ fails SCSI bring-up" — `Q605Memory`'s
+`viaSync` has the same boosted-clock reading, so that ceiling may be the
+same bug.
+
+## 2026-07-25 — Doc sync + status pass: 25 machines, 90 gates, what is actually left
+
+No code changed; this entry records the state the docs were re-synced to
+after the RBV / Tinker Bell / 68030-Mac II round, and the honest reading of
+what remains.
+
+**Counted, not estimated.** `ctest -N` reports **90 gates** (CLAUDE.md and
+README said 81; the TODO audit said 73). The GUI Machine menu carries **25
+profiles** (`main.cpp kProfiles`), against "21" in
+`docs/68K_FAMILY_SCOPE.md` and "15" in the TODO audit section.
+
+**A full run on HEAD was 87/90 — three red gates, now root-caused and
+fixed** (next entry): `lc3_boot_etalon`, `lc3plus_boot_etalon`,
+`iivx_boot_etalon`.
+
+**Machine menu grouped by platform** (`main.cpp`): the `Profile` table
+gained a `group` field and the menu emits a `SeparatorText` per platform,
+in the same seven-way split DEV.md now uses.
+
+**The fan-out changed the shape of the risk.** Nine machines landed in two
+days, but the number with a gate that exercises anything *past* the boot
+signature did not move much: three — Mac II (`macii_mouse_etalon`),
+Quadra 605 (`q605_cudalle_mouse/key_etalon`) and LC II
+(`lcii_soak/persist/launch_etalon`). **22 of 25 profiles are proven only to
+reach a Finder screenshot.** That is now the project's largest gap and the
+TODO's "Test & validation depth" section was rewritten around it — adding a
+26th machine is cheaper than hardening the 25 that exist, and the roadmap
+should be read against that trade.
+
+**LLE state, re-inventoried** (`docs/LLE_VS_HLE.md`, fifth pass): every ADB
+machine POM68K ships now runs **real MCU firmware by default** — the
+Egret/Cuda 68HC05 images on one side, and the **PIC1654S ADB modem** on
+three families since this round (Mac II/IIx/IIcx, IIci, Centris/Quadra
+610/650). `Egret.*`/`AdbBus.*`/the `AdbVia` byte-model survive only as
+no-dump fallbacks. Two fidelity facts were added to the inventory: the 030
+PMMU must not double-translate against the GLUE 24-bit remap, and the
+i-cache throughput overlay is **not free** — it compresses a CPU-paced
+bit-bang in a fixed-rate MCU's time domain (why `RbvCpu` ships with the
+boost off). One new **open** entry was filed: §1.10
+`POM68K_SCC_CLEANLINE`, an env knob that lets machine configuration decide
+a wire condition — the same class §1.8 removed — needed today because Open
+Transport waits forever on the standing no-peer abort.
+
+**Docs touched**: `CLAUDE.md` (roster + counts + next machines),
+`README.md` (LC 575, 25 profiles, gate count), `TODO.md` (stale "Mac TV
+BLOCKED" and "remaining 040" entries closed; a table of remaining machines
+with the ROM already in `roms/`; test-depth audit re-counted; per-machine
+LLE scores re-scored), `DEV.md` (**restructured around seven machine platforms**, one reference
+machine each — Plus, GLUE/NuBus, V8, RBV, Sonora, MEMCjr/PrimeTime,
+djMEMC/IOSB — with every other machine folded in as a variant of its
+platform; RBV, Sonora and djMEMC were promoted from "derived" to full
+reference sections, and IIx/IIcx now sit under the Mac II, the V8 spread
+under the LC II),
+`docs/68K_FAMILY_SCOPE.md` (25 profiles, brick table re-verdicted, roadmap
+reordered — Quadra 800 is now the cheapest remaining machine, sharing the
+Centris `F1ACAD13` ROM), `docs/LLE_VS_HLE.md` (fifth pass).
+
 ## 2026-07-25 — Five more machines: Mac TV, IIsi, IIci, IIx, IIcx
 
 New gates `mactv_boot_etalon`, `iisi_boot_etalon`, `iici_boot_etalon`,
