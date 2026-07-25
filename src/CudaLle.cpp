@@ -61,6 +61,7 @@ void CudaLle::reset() {
     resetLine_ = false;
     pramInstalled_ = false;
     mcuAcc_ = adbAcc_ = 0;
+    mcuDebt_ = 0;
 }
 
 // ── PRAM staging (cuda.cpp pc_w :117-131: install on reset release) ────
@@ -193,5 +194,16 @@ void CudaLle::tick(int cpuCycles) {
     mcuAcc_ += int64_t(cpuCycles) * kMcuHz;
     int mcuCyc = int(mcuAcc_ / cpuHz_);
     mcuAcc_ -= int64_t(mcuCyc) * cpuHz_;
-    if (mcuCyc) mcu_.run(mcuCyc);
+    // run() finishes its last instruction past the budget; carry that
+    // overshoot as a debt against the next slice, or the MCU clock gains
+    // ~37% under instruction-sized quanta — the LC II soak gate caught the
+    // Mac wall clock running 247 s in 180 s of machine time (the HLE path,
+    // which is time-based, kept exact time on the same feed).
+    mcuCyc -= mcuDebt_;
+    if (mcuCyc > 0) {
+        int used = mcu_.run(mcuCyc);
+        mcuDebt_ = used > mcuCyc ? used - mcuCyc : 0;
+    } else {
+        mcuDebt_ = -mcuCyc;
+    }
 }

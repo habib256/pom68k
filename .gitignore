@@ -25,6 +25,11 @@ compile_commands.json
 # q605_trace debug artifacts (VRAM snapshot + PRAM dump)
 q605_vram.raw
 q605_trace.pram
+# Any runtime PRAM/battery dump (trace + boot-etalon artifacts)
+*.pram
+# AppleShare export dir: the AFP server's runtime share (user disks/games,
+# .AppleDouble sidecars, Network Trash Folder) — user data, never source
+AppleShare/
 
 # Sound capture artifacts (sound_test)
 *.wav

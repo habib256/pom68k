@@ -401,3 +401,154 @@ void AscIosb::tick(int cpuCycles) {
         }
     }
 }
+
+// ── Sonora / Spice ASC ($BC) ───────────────────────────────────────────
+// MAME asc_sonora_device (asc.cpp:910-1080, hardware-pinned by ASCTester
+// on a real LC III) — see Asc.h for the status-bit folding.
+
+void AscSonora::reset() {
+    clearFifos();
+    for (auto& channel : fifo_)
+        for (uint8_t& sample : channel) sample = 0;
+    for (auto& r : regs_) r = 0;
+    for (auto& r : xtraRegs_) r = 0;
+    regs_[0x01] = 1;                         // mode forced to FIFO
+    // Both FIFOs are empty at reset, so BOTH empty/full flags are set:
+    // MAME sets R_FIFOSTAT |= $0A for the "fifos A&B empty" idle state
+    // (asc.cpp:465). Only latching A ($02) hung the all-in-one LC 520 /
+    // LC 550, whose boot sound-init spins on $804 bit 3 (EMPTY_OR_FULL_B)
+    // — the LC III / Color Classic path only tests FIFO A, so it was
+    // unaffected either way.
+    fifoStat_ = STAT_EMPTY_OR_FULL_A | STAT_EMPTY_OR_FULL_B;   // $0A
+    fifoIrqEn_[0] = fifoIrqEn_[1] = 0;       // 0 = enabled (Sonora reset)
+    drainAcc_ = 0;
+    outRd_ = outWr_ = 0;
+    setIrq(false);
+}
+
+uint8_t AscSonora::read(uint32_t offset) {
+    offset &= 0xFFF;
+    uint8_t v = 0;
+    if (offset < 0x400)      v = fifo_[0][offset];
+    else if (offset < 0x800) v = fifo_[1][offset - 0x400];
+    else switch (offset) {
+    case 0x800: v = 0xBC; break;             // get_version
+    case 0x801: v = 1; break;                // MODE reads 1
+    case 0x802: case 0x803: case 0x805: case 0x807: case 0x808:
+        v = 0; break;                        // read-as-0 on Sonora
+    case 0x804:
+        // Reading clears the IRQ latch (never the status bits); the next
+        // 22 257 Hz sample re-raises it while a gated condition holds.
+        // MAME gates this clear on !(stat & HALF_B) (asc.cpp:1050-1055),
+        // but the combined half flag is PERMANENTLY set at idle — with
+        // the pseudo-VIA IER bit 4 enabled that reading makes the level
+        // continuous and the CC/LC III boot lives inside the autovector
+        // (RTE → immediate re-entry, TickCount frozen — bring-up
+        // 2026-07-24). ASCTester on the real LC III counts ~50 000
+        // DISTINCT idle IRQs (≈ one per sample), so the hardware latch
+        // does drop on read and re-arms per sample: model that.
+        setIrq(false);
+        v = fifoStat_;
+        break;
+    case 0x809: v = fifoIrqEn_[0]; break;
+    case 0x829: v = fifoIrqEn_[1]; break;
+    default:
+        v = offset >= 0xF00 ? xtraRegs_[offset - 0xF00]
+          : offset < 0x840  ? regs_[offset - 0x800] : 0;
+        break;
+    }
+    if (onRead) onRead(offset, v);
+    return v;
+}
+
+void AscSonora::write(uint32_t offset, uint8_t v) {
+    offset &= 0xFFF;
+    if (onWrite) onWrite(offset, v);
+
+    if (offset == 0xE00) {                   // test hook (asc.cpp:374-378)
+        fifoStat_ |= 0x0F;
+        setIrq(true);
+        return;
+    }
+    if (offset < 0x400) {                    // FIFO A (mode is always FIFO)
+        if (cap_[0] < 0x400) {
+            fifo_[0][wr_[0]] = v;
+            wr_[0] = (wr_[0] + 1) & 0x3FF;
+            cap_[0]++;
+        }
+        if (!(regs_[0x0A] & 1)) {            // asc_base write, PLAYRECA gate
+            if (cap_[0] >= 0x200) {
+                fifoStat_ &= uint8_t(~STAT_HALF_A);
+                if (cap_[0] >= 0x3FF) fifoStat_ |= STAT_EMPTY_OR_FULL_A;
+            } else if (cap_[0] > 0) {
+                fifoStat_ &= uint8_t(~STAT_EMPTY_OR_FULL_A);
+            }
+        }
+        return;
+    }
+    if (offset < 0x800) {                    // FIFO B
+        if (cap_[1] < 0x400) {
+            fifo_[1][wr_[1]] = v;
+            wr_[1] = (wr_[1] + 1) & 0x3FF;
+            cap_[1]++;
+        }
+        if (cap_[1] >= 0x200) {
+            fifoStat_ &= uint8_t(~STAT_HALF_B);
+            if (cap_[1] >= 0x3FF) fifoStat_ |= STAT_EMPTY_OR_FULL_B;
+        } else if (cap_[1] > 0) {
+            fifoStat_ &= uint8_t(~STAT_EMPTY_OR_FULL_B);
+        }
+        return;
+    }
+
+    switch (offset) {
+    case 0x801: case 0x802: case 0x805: case 0x807: case 0x808:
+        return;                              // read-only / no-op on Sonora
+    case 0x803:                              // FIFOMODE: bit 7 = reset
+        if (v & 0x80) {
+            clearFifos();
+            fifoStat_ |= STAT_EMPTY_OR_FULL_A | STAT_EMPTY_OR_FULL_B;
+        }
+        return;
+    case 0x809: fifoIrqEn_[0] = v; return;
+    case 0x829: fifoIrqEn_[1] = v; return;
+    default:
+        if (offset >= 0xF00)     xtraRegs_[offset - 0xF00] = v;
+        else if (offset < 0x840) regs_[offset - 0x800] = v;
+        return;
+    }
+}
+
+// sound_stream_update (asc.cpp:968-1035): stereo A/B drain, combined
+// status on the B bits, playback mode reporting FIFO A empty per sample.
+void AscSonora::tick(int cpuCycles) {
+    drainAcc_ += int64_t(cpuCycles) * kSampleRate;
+    while (drainAcc_ >= cpuHz_) {
+        drainAcc_ -= cpuHz_;
+
+        if (!(regs_[0x0A] & 1)) {            // playback: A reads empty
+            fifoStat_ |= STAT_EMPTY_OR_FULL_A;
+            if (!(fifoIrqEn_[0] & 1)) setIrq(true);
+        }
+
+        const int8_t smplL = int8_t(fifo_[0][rd_[0]] ^ 0x80);
+        const int8_t smplR = int8_t(fifo_[1][rd_[1]] ^ 0x80);
+        if (cap_[0]) { rd_[0] = (rd_[0] + 1) & 0x3FF; cap_[0]--; }
+        if (cap_[1]) { rd_[1] = (rd_[1] + 1) & 0x3FF; cap_[1]--; }
+
+        if (cap_[0] < 0x200 || cap_[1] < 0x200) {
+            fifoStat_ |= STAT_HALF_B;
+            if (!(fifoIrqEn_[1] & 1)) setIrq(true);
+        } else {
+            fifoStat_ &= uint8_t(~STAT_HALF_B);
+        }
+        if (cap_[0] == 0 || cap_[1] == 0) fifoStat_ |= STAT_EMPTY_OR_FULL_B;
+        else                              fifoStat_ &= uint8_t(~STAT_EMPTY_OR_FULL_B);
+
+        if (((outWr_ - outRd_) & (kOutSize - 1)) < kOutSize - 1) {
+            uint32_t i = outWr_++ & (kOutSize - 1);
+            outL_[i] = int16_t(int(smplL) * 256);
+            outR_[i] = int16_t(int(smplR) * 256);
+        }
+    }
+}

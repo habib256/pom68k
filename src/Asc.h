@@ -89,6 +89,78 @@ private:
     uint32_t outRd_ = 0, outWr_ = 0;
 };
 
+// Sonora/Spice EASC variant ($BC) — the ASC block shared by the Color
+// Classic (Spice, MAME v8.cpp:717 ASC_SONORA replace) and the LC III
+// (Sonora). Hardware-pinned by ASCTester on a real LC III (MAME
+// asc.cpp:916-1035): stereo FIFO pair (A = left, B = right) drained at
+// 22 257 Hz, with the COMBINED stereo status folded onto the B bits —
+// bit 2 = either FIFO below half, bit 3 = either FIFO empty — while
+// playback mode ($80A bit 0 clear) reports FIFO A "empty" (bit 1)
+// every sample. 804 idle = $0E, IRQ storm at idle with the writable
+// per-FIFO enables ($809/$829) at their reset-0 (= enabled) state.
+class AscSonora {
+public:
+    static constexpr int kSampleRate = 22257;
+
+    // cpuHz: the Spice ASC ticks at C15M (= the Color Classic CPU clock);
+    // the LC III passes Sonora's 25 MHz CPU clock.
+    explicit AscSonora(int64_t cpuHz = 15667200) : cpuHz_(cpuHz) {}
+
+    void reset();
+    uint8_t read(uint32_t offset);
+    void write(uint32_t offset, uint8_t v);
+    void tick(int cpuCycles);
+
+    bool irqAsserted() const { return irq_; }
+    std::function<void(bool)> onIrq;
+    std::function<void(uint32_t, uint8_t)> onWrite;  // diagnostic taps
+    std::function<void(uint32_t, uint8_t)> onRead;
+
+    // Audio host pull — mono L+R mix so the V8-family host path (LC II
+    // LcMachine::drain) works unchanged; popStereo for stereo hosts.
+    int available() const { return int((outWr_ - outRd_) & (kOutSize - 1)); }
+    int16_t pop() {
+        if (outRd_ == outWr_) return 0;
+        uint32_t i = outRd_++ & (kOutSize - 1);
+        return int16_t((int(outL_[i]) + int(outR_[i])) / 2);
+    }
+    bool popStereo(int16_t& left, int16_t& right) {
+        if (outRd_ == outWr_) { left = right = 0; return false; }
+        uint32_t i = outRd_++ & (kOutSize - 1);
+        left = outL_[i]; right = outR_[i];
+        return true;
+    }
+    int fifoCap(int channel) const { return cap_[channel & 1]; }
+
+private:
+    enum : uint8_t {
+        STAT_HALF_A = 0x01, STAT_EMPTY_OR_FULL_A = 0x02,
+        STAT_HALF_B = 0x04, STAT_EMPTY_OR_FULL_B = 0x08
+    };
+    void setIrq(bool s) {
+        if (s != irq_) { irq_ = s; if (onIrq) onIrq(s); }
+    }
+    void clearFifos() {
+        rd_[0] = rd_[1] = wr_[0] = wr_[1] = 0;
+        cap_[0] = cap_[1] = 0;
+    }
+
+    const int64_t cpuHz_;
+    uint8_t fifo_[2][0x400] = {};
+    uint16_t rd_[2] = {}, wr_[2] = {};
+    int cap_[2] = {};
+    uint8_t regs_[0x40] = {};                // sparse $800-$83F block
+    uint8_t xtraRegs_[0x100] = {};           // $F00-$FFF CD-XA/rate block
+    uint8_t fifoStat_ = STAT_EMPTY_OR_FULL_A | STAT_EMPTY_OR_FULL_B;  // A&B empty
+    uint8_t fifoIrqEn_[2] = { 0, 0 };        // bit 0: 0 = enabled (reset)
+    bool irq_ = false;
+    int64_t drainAcc_ = 0;
+
+    static constexpr int kOutSize = 8192;
+    int16_t outL_[kOutSize] = {}, outR_[kOutSize] = {};
+    uint32_t outRd_ = 0, outWr_ = 0;
+};
+
 // Audio cell copied into IOSB/PrimeTime (LC 475 / Quadra 605). Despite
 // MAME's historical ASC_EASC wiring in iosb.cpp, ASCTester identifies this
 // as the distinct $BB IOSB variant: two 1 KB FIFOs drained as stereo at

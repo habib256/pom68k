@@ -71,8 +71,11 @@ void Egret::factoryDefaults() {
     // SPConfig low nibble = port B use (1 = AppleTalk, 2 = async — see the
     // block comment below). POM68K_APPLETALK=1 seeds LocalTalk ACTIVE for
     // headless LLAP tests; the default stays deterministic async ($22).
+    // "=0" is the global AppleTalk-off switch (also disables the in-process
+    // stack in main.cpp), so it must NOT seed active.
     pram_[0x12] = 0x00;
-    pram_[0x13] = std::getenv("POM68K_APPLETALK") ? 0x21 : 0x22;
+    const char* atalk = std::getenv("POM68K_APPLETALK");
+    pram_[0x13] = (atalk && std::strcmp(atalk, "0") != 0) ? 0x21 : 0x22;
     pram_[0x14] = 0xCC; pram_[0x15] = 0x0A;
     pram_[0x16] = 0xCC; pram_[0x17] = 0x0A;
     pram_[0x1C] = 0x00; pram_[0x1D] = 0x02;

@@ -100,6 +100,10 @@ void SonyDrive::reset() {
 
 void SonyDrive::eject() {
     if (sound_ && hasDisk()) sound_->click();
+    flushToFile();                 // Mac OS has flushed its caches by now
+    path_.clear();
+    dc42Header_.clear();
+    dirty_ = false;
     image_.clear();
     stream_.clear();
     cells_.clear();
@@ -117,20 +121,29 @@ bool SonyDrive::insert(const std::string& path) {
     if (!in) return false;
     std::vector<uint8_t> raw((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
+    std::vector<uint8_t> header;
     // DiskCopy 4.2: magic 0x01 0x00 at 0x52, big-endian dataSize at 0x40
     if (raw.size() > 0x54 && raw[0x52] == 0x01 && raw[0x53] == 0x00) {
         uint32_t dataSize = (uint32_t(raw[0x40]) << 24) | (uint32_t(raw[0x41]) << 16)
                           | (uint32_t(raw[0x42]) << 8) | uint32_t(raw[0x43]);
         if (raw.size() < 0x54 + dataSize) return false;
+        header.assign(raw.begin(), raw.begin() + 0x54);
         raw.assign(raw.begin() + 0x54, raw.begin() + 0x54 + dataSize);
     }
-    return insertImage(std::move(raw));
+    if (!insertImage(std::move(raw))) return false;
+    path_ = path;                  // remember the source for flushToFile
+    dc42Header_ = std::move(header);
+    dirty_ = false;
+    return true;
 }
 
 bool SonyDrive::insertImage(std::vector<uint8_t> data) {
     if (data.size() != kSize800K && data.size() != kSize400K &&
         data.size() != kSize1440K)
         return false;
+    path_.clear();                 // in-memory media has no backing file
+    dc42Header_.clear();
+    dirty_ = false;
     hd_ = (data.size() == kSize1440K);
     doubleSided_ = (data.size() != kSize400K);
     // HD media forces MFM; 800K/400K stay GCR (MAME mfd75w track_changed)
@@ -626,7 +639,48 @@ bool SonyDrive::writeSector(int track, int side, int sector,
     size_t off = imageOffset(track, side, sector);
     if (off + 512 > image_.size()) return false;
     std::memcpy(&image_[off], data, 512);
+    dirty_ = true;
     if (track == track_ && (side != 0) == side1_) encodeTrack();
+    return true;
+}
+
+// DiskCopy 4.2 rolling checksum over big-endian 16-bit words: add the
+// word, then rotate the 32-bit sum right by one (DC42 spec; Mini vMac /
+// MAME dc42 writers).
+static uint32_t dc42Checksum(const uint8_t* d, size_t n) {
+    uint32_t sum = 0;
+    for (size_t i = 0; i + 1 < n; i += 2) {
+        sum += uint32_t(d[i] << 8 | d[i + 1]);
+        sum = (sum >> 1) | (sum << 31);
+    }
+    return sum;
+}
+
+bool SonyDrive::flushToFile() {
+    if (!writeBack_ || !dirty_ || path_.empty() || image_.empty()) return false;
+    const std::string tmp = path_ + ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        if (!out) return false;
+        if (!dc42Header_.empty()) {
+            // Regenerate the data checksum at header +$48 (tags stay absent).
+            uint32_t ck = dc42Checksum(image_.data(), image_.size());
+            dc42Header_[0x48] = uint8_t(ck >> 24);
+            dc42Header_[0x49] = uint8_t(ck >> 16);
+            dc42Header_[0x4A] = uint8_t(ck >> 8);
+            dc42Header_[0x4B] = uint8_t(ck);
+            out.write(reinterpret_cast<const char*>(dc42Header_.data()),
+                      std::streamsize(dc42Header_.size()));
+        }
+        out.write(reinterpret_cast<const char*>(image_.data()),
+                  std::streamsize(image_.size()));
+        if (!out) { std::remove(tmp.c_str()); return false; }
+    }
+    if (std::rename(tmp.c_str(), path_.c_str()) != 0) {
+        std::remove(tmp.c_str());
+        return false;
+    }
+    dirty_ = false;
     return true;
 }
 

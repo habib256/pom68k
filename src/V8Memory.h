@@ -25,6 +25,7 @@
 #include "Ncr5380.h"
 #include "ScsiDisk.h"
 #include "Swim1.h"
+#include "Swim2.h"
 #include "SonyDrive.h"
 #include "Scc8530.h"
 #include <cstdint>
@@ -41,24 +42,44 @@ public:
     static constexpr uint32_t kVramSize = 0x80000;   // 512 KB window, fully populated
     static constexpr uint32_t kMbRamSize = 0x400000; // 4 MB soldered (baseIs4M)
     static constexpr int64_t  kCpuHz = 15667200;     // C32M/2
+    static constexpr int64_t  kCpuHzTv = 31334400;   // C32M (Mac TV 030)
+    static constexpr int64_t  kViaHz = 783360;       // C7M / 10
 
     // V8-family machine profile (MAME maclc.cpp): the LC II is the
     // reference; the LC is the same board with a 68020 and 2 MB soldered
     // (set_baseram_is_4M(false), maclc.cpp:451); the Classic II swaps
     // the V8 for its EAGLE derivative — mono 512×342 scanned out of MAIN
-    // RAM at $1F9A80 (v8.cpp:667-691), no monitor sense, PA id $92.
-    enum class Model { LcII, Lc, ClassicII };
+    // RAM at $1F9A80 (v8.cpp:667-691), no monitor sense, PA id $92. The
+    // Color Classic runs the SPICE derivative (v8.cpp:693-929): built-in
+    // 512×384 Trinitron (fixed sense 2, 16bpp capable), SWIM2 in the gate
+    // array, Sonora-class EASC ($BC), a 1 MB ROM, PA id $82 — and a Cuda
+    // MCU instead of the Egret (maclc.cpp:471-517, firmware 341S0417).
+    // The Macintosh TV runs TINKER BELL (343S1109), a Spice evolution
+    // (v8.cpp:931-1063 + maclc.cpp:519-560 mactv): PA id $84, fixed 13"
+    // 640×480 sense ($06 << 3), 68030 @ C32M with no FPU, Cuda MCU
+    // (341s0789, Cuda 2.38), 8 MB RAM cap, its own 1 MB ROM ($EAF1678D).
+    enum class Model { LcII, Lc, ClassicII, ColorClassic, MacTv };
 
     // totalRam: 4, 6, 8 or 10 MB (motherboard + SIMM pair);
     // 10 MB is the V8 hard limit (12 MB installed, 2 MB wasted).
-    explicit V8Memory(uint32_t totalRam = 0xA00000, Model model = Model::LcII);
+    // cpuHz: C15M for everything but the Mac TV's C32M — the gate array
+    // stays in the C15M domain, ticks are rescaled (the VASP pattern).
+    explicit V8Memory(uint32_t totalRam = 0xA00000, Model model = Model::LcII,
+                      int64_t cpuHz = kCpuHz);
     Model model() const { return model_; }
+    int64_t cpuHz() const { return cpuHz_; }
+    // Spice-class gate arrays (Color Classic Spice + Mac TV Tinker Bell):
+    // integrated SWIM2, Sonora-class EASC, Cuda MCU, 1 MB ROM.
+    bool spiceClass() const {
+        return model_ == Model::ColorClassic || model_ == Model::MacTv;
+    }
     // Eagle framebuffer (Classic II): fixed RAM-device offset, MAME
     // v8.cpp:670 m_ram_ptr[0x1f9a80/4] — our ram_ mirrors MAME's device
     // layout, so the same flat offset applies in every RAM config.
     const uint8_t* eagleFrame() const { return ram_.data() + 0x1F9A80; }
 
-    bool loadRom(const std::vector<uint8_t>& data);  // 512 KB flat image
+    bool loadRom(const std::vector<uint8_t>& data);  // 512 KB (1 MB Spice) flat image
+    uint32_t romSize() const { return romSize_; }
     void reset();                                    // overlay on, V8 regs cleared
 
     uint8_t  read8(uint32_t addr);
@@ -87,6 +108,15 @@ public:
     Egret& egret() { return egret_; }
     AdbBus& adb() { return adb_; }
     AscV8& asc() { return asc_; }
+    AscSonora& ascSonora() { return ascSonora_; }
+    // Audio host facade — dispatches to the model's ASC block (Spice =
+    // Sonora EASC, others = V8 ASC) so LcMachine::drain stays model-blind.
+    int ascAvailable() const {
+        return spiceClass() ? ascSonora_.available() : asc_.available();
+    }
+    int16_t ascPop() {
+        return spiceClass() ? ascSonora_.pop() : asc_.pop();
+    }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }  // boot drive (tests poke it)
     // Attach a disk image at a SCSI ID (0 = boot drive, 1-6 = secondary
@@ -98,9 +128,14 @@ public:
     }
     // SWIM1 comes up IWM-compatible (GCR, the proven Plus Iwm inside);
     // the ISM personality (1.44 MB MFM) engages on the driver's 1-0-1-1
-    // mode-register magic (Swim1.h).
+    // mode-register magic (Swim1.h). The Spice (Color Classic) carries a
+    // SWIM2 in the gate array instead (v8.cpp:724-727).
     Swim1& swim() { return swim_; }
     Iwm& iwm() { return swim_.iwm(); }
+    Swim2& swim2() { return swim2_; }
+    // Cuda-flavored MCU (Color Classic + Mac TV): both the HLE (Egret with
+    // the PB4/PB5 polarity inverted) and the LLE firmware follow it.
+    bool hasCudaMcu() const { return spiceClass(); }
     SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
@@ -207,23 +242,31 @@ private:
     Via6522 via_;
     PseudoVia pvia_;
     Ariel ariel_;
-    Egret egret_{via_};
-    // Egret firmware LLE (the Q605 CudaLle with the Egret flavor).
-    CudaLle egretLle_{via_, kCpuHz, CudaLle::Flavor::Egret};
+    // MCU: Egret flavor on LC/LC II/Classic II, Cuda flavor (inverted
+    // PB4/PB5 polarity + Cuda firmware) on the Color Classic — both the
+    // HLE and the LLE pick the flavor from the model in the constructor.
+    Egret egret_;
+    CudaLle egretLle_;
     bool egretLleOn_ = false;
     uint8_t xcvrSession_() const {           // → VIA1 PB3 (active path)
         return egretLleOn_ ? egretLle_.xcvrSession() : egret_.xcvrSession();
     }
     AdbBus adb_;
     AscV8 asc_;
+    AscSonora ascSonora_;            // Spice/Sonora EASC (Color Classic)
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];          // by SCSI ID; [0] = boot drive
     Swim1 swim_;
+    Swim2 swim2_;                    // Spice-integrated SWIM2 (Color Classic)
     SonyDrive drive_;
     Cpu030* cpu_ = nullptr;
 
     uint32_t totalRam_;
     Model model_ = Model::LcII;
+    int64_t cpuHz_ = kCpuHz;                 // C15M; Mac TV = C32M
+    int viaDiv_ = 20;                        // cpuHz_ / 783.36 kHz (20 or 40)
+    uint32_t romSize_ = kRomSize;            // 512 KB; Spice ROMs are 1 MB
+    uint32_t romMask_ = kRomSize - 1;
     uint32_t mbRam_ = kMbRamSize;            // soldered bank: 4 MB, LC = 2 MB
     // Bus decode mask. V8 sees A31 + A23-A0 (maclc.cpp:181). On the LC
     // the 68020's Apple HMMU additionally blanks A31 in 24-bit mode
@@ -249,9 +292,13 @@ private:
     bool sccIrq_ = false;
     int viaPhase_ = 0;                       // CPU-cycle remainder for ÷20
     int64_t tickAcc_ = 0;                    // 60.15 Hz Bresenham accumulator
-    // 512×384 12" RGB frame: dot clock = CPU clock, 640×407 total dots
-    // (v8.cpp:717) — VBL asserted during lines 384-406
+    // 512×384 12" RGB frame: dot clock = C15M, 640×407 total dots
+    // (v8.cpp:717) — VBL asserted during lines 384-406. Tinker Bell scans
+    // 800×525 @ 25.175 MHz instead (v8.cpp:936 set_raw). Both reduced to
+    // CPU cycles at reset.
     int64_t framePos_ = 0;
+    int64_t frameCycles_ = 640 * 407, vblStart_ = 640 * 384;
+    int64_t c15Acc_ = 0;                     // CPU → C15M device-domain rest
     bool vblState_ = false;
     uint8_t scsiDma_();                      // DRQ-gated window byte read
     void scsiDmaW_(uint8_t v);

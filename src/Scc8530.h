@@ -104,6 +104,29 @@ public:
     // clocks or the guest has not programmed a mode we can derive.
     void setByteCycles(int c) { byteCycles_ = c > 0 ? c : 544; }
 
+    // ── Virtual-wire accelerator (in-process AppleTalk hub only) ──
+    // A real LocalTalk wire is 230.4 kbit/s and lossy; the in-process
+    // hub's wire is neither law. setWirePace(N) overrides the SDLC
+    // per-byte pace in BOTH directions (N < the derived real pace = a
+    // faster wire; 0 = off). It deliberately wins over the guest-derived
+    // 230.4 kbit/s SDLC pace — that fidelity is exactly what a
+    // several-minute Finder copy is made of. Guest-facing TIMING WINDOWS
+    // stay at the real pace regardless: the express-CTS gap and the
+    // LLAP inter-dialog gap are about the DRIVER's turnaround time, not
+    // the wire's (realPaceOf), and an open frame that underruns gets one
+    // real byte-time of grace for a late Tx byte before the tail flushes
+    // (a fast virtual wire must not truncate a frame the guest could
+    // feed fine at hardware speed).
+    // setLosslessRx(true) adds flow control: a full Rx FIFO PAUSES the
+    // frame on the wire instead of dropping the byte (RR1 overrun), and
+    // a queued frame waits for the FIFO to drain before starting — a
+    // virtual cable can exert backpressure a real one cannot, and every
+    // avoided drop is an avoided 1-2 s ATP retransmit stall. Both are
+    // off by default (LToUDP interop and all timing gates keep real
+    // hardware semantics).
+    void setWirePace(int cyclesPerByte) { wirePace_ = cyclesPerByte > 0 ? cyclesPerByte : 0; }
+    void setLosslessRx(bool on) { losslessRx_ = on; }
+
     // ── Guest-derived pacing (SCC async-baud LLE, MAME z80scc oracle) ──
     // With the machine's CPU clock and the SCC's PCLK provided, the per-
     // channel byte pace is DERIVED from the guest's WR4 (clock mode ×1/16/
@@ -141,6 +164,10 @@ private:
         // :1075 reloads only under TX_ENABLE); that buffer-empty
         // TRANSITION is the TxIP source and sets RR0 bit 2 again.
         bool txBufFull = false;      // a byte waits in the Tx buffer
+        bool txGracing = false;      // virtual-wire underrun grace window:
+                                     // the shifter drained with nothing
+                                     // buffered, but the frame stays open
+                                     // one REAL byte-time for a late byte
         uint8_t txBufData = 0;
         uint8_t txShiftData = 0;     // the character IN the shifter — the
                                      // WR14 local-loopback tap reads it as
@@ -190,7 +217,13 @@ private:
     uint8_t rr0(const Chan& c) const;
     bool sdlcMode(const Chan& c) const;  // WR4 bits 5-4 = 10
     void updateSerial(Chan& c);          // derive Chan::pace from WR4/11/12-14
-    int paceOf(const Chan& c) const { return c.pace > 0 ? c.pace : byteCycles_; }
+    // The guest-visible pace: derived (or legacy) — the REAL wire speed.
+    int realPaceOf(const Chan& c) const { return c.pace > 0 ? c.pace : byteCycles_; }
+    // The effective per-byte pace: the virtual-wire override wins on the
+    // SDLC (LocalTalk) side; async channels always keep the real baud.
+    int paceOf(const Chan& c) const {
+        return (wirePace_ > 0 && sdlcMode(c)) ? wirePace_ : realPaceOf(c);
+    }
     bool txLoad(Chan& c, int rem);       // buffer → shifter (WR5 gated)
     bool rxEnabled(const Chan& c) const { return (c.wr[3] & 0x01) != 0; }
     uint8_t readCtl_(int channel, Chan& c, int reg);
@@ -215,6 +248,8 @@ private:
     bool ctsHigh_ = true;
     bool rxStanding_ = false;        // Mac II POST: standing Rx available
     int byteCycles_ = 544;           // CPU cycles per LocalTalk byte
+    int wirePace_ = 0;               // virtual-wire SDLC pace override (0=off)
+    bool losslessRx_ = false;        // virtual-wire Rx flow control
     int64_t cpuHz_ = 0;              // machine CPU clock (0 = legacy pacing)
     int64_t pclkHz_ = 0;             // SCC PCLK (BRG source, WR14 bit 1)
     static constexpr int64_t kRtxcHz = 3'686'400;   // Mac serial crystal

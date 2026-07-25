@@ -82,6 +82,7 @@ private:
     static constexpr int64_t kMcuHz = 2097152;    // 4.194304 MHz XTAL / 2
     static constexpr int64_t kAdbHz = 15667200;   // AdbLine's cycle domain
     int64_t mcuAcc_ = 0;                 // machine cycles → MCU cycles
+    int mcuDebt_ = 0;                    // run() overshoot carried forward
     int64_t adbAcc_ = 0;                 // MCU cycles → ADB cycles (slaved
                                          // wire, mcu_.onCycles hook)
 

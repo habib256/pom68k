@@ -64,6 +64,10 @@ add_library(pom68k_core STATIC
     src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
     src/CudaLle.cpp       # step 10 — Cuda firmware ↔ VIA/ADB glue (opt-in)
     src/LtoUdp.cpp        # LLAP — LocalTalk-over-UDP multicast cable
+    src/AtalkStack.cpp    # AppleTalk in-process node (DDP/RTMP/ZIP/NBP/ATP)
+    src/AfpServer.cpp     # in-process AppleShare (ASP + AFP 2.1 subset)
+    src/PapServer.cpp     # in-process LaserWriter (PAP → CUPS/fichier)
+    src/MacIpGateway.cpp  # in-process MacIP gateway + user-mode NAT
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
     src/Ncr5380.cpp       # M7 — SCSI controller (phase engine)
@@ -76,6 +80,14 @@ add_library(pom68k_core STATIC
     src/Asc.cpp           # O6 — ASC-V8 sound (FIFO A, 22 257 Hz)
     src/Swim1.cpp         # O6.7 — LC II SWIM1 (IWM personality + ISM/MFM)
     src/Swim2.cpp         # Q8 — PrimeTime/IOSB SWIM2 register + FIFO core
+    src/SonoraMemory.cpp  # Phase C — LC III map + Sonora gate array
+    src/SonoraCpu.cpp     # Phase C — Moira 68030 wrapper (LC III, 25 MHz)
+    src/VaspMemory.cpp    # Phase C — Mac IIvx/IIvi map + VASP gate array
+    src/VaspCpu.cpp       # Phase C — Moira 68030 wrapper (IIvx 31.3 MHz)
+    src/RbvMemory.cpp     # Phase C — Mac IIsi map + RBV (RAM-based video)
+    src/RbvCpu.cpp        # Phase C — Moira 68030 wrapper (IIsi, 20 MHz)
+    src/CentrisMemory.cpp # Phase C — Centris 610/650 map (djMEMC + IOSB)
+    src/CentrisCpu.cpp    # Phase C — Moira 68LC040 wrapper (Centris)
     src/Q605Memory.cpp    # Q5 — LC 475/Quadra 605 map (MEMCjr + PrimeTime)
     src/Dafb.cpp          # Q8 — DAFB II video cell (Swatch CRTC/Gazelle/RAMDAC)
     src/Cpu040.cpp        # Q5 — Moira 68LC040 wrapper
@@ -277,6 +289,23 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(ltoudp_test PRIVATE pom68k_core)
     add_test(NAME ltoudp_test COMMAND ltoudp_test)
 
+    # In-process AppleTalk stack gates (AtalkStack + AFP/PAP/MacIP services)
+    add_executable(atalk_stack_test tests/atalk_stack_test.cpp)
+    target_link_libraries(atalk_stack_test PRIVATE pom68k_core)
+    add_test(NAME atalk_stack_test COMMAND atalk_stack_test)
+
+    add_executable(afp_server_test tests/afp_server_test.cpp)
+    target_link_libraries(afp_server_test PRIVATE pom68k_core)
+    add_test(NAME afp_server_test COMMAND afp_server_test)
+
+    add_executable(pap_server_test tests/pap_server_test.cpp)
+    target_link_libraries(pap_server_test PRIVATE pom68k_core)
+    add_test(NAME pap_server_test COMMAND pap_server_test)
+
+    add_executable(macip_gw_test tests/macip_gw_test.cpp)
+    target_link_libraries(macip_gw_test PRIVATE pom68k_core)
+    add_test(NAME macip_gw_test COMMAND macip_gw_test)
+
     # LLAP two-System etalon: two Mac II machines boot Sys 6 with AppleTalk
     # seeded active on a shared virtual cable — real LAP address acquisition
     # end-to-end (soft-skips without ROM+disk).
@@ -349,6 +378,20 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(q605_barefpu_boot_etalon tests/q605_barefpu_boot_etalon.cpp)
     target_link_libraries(q605_barefpu_boot_etalon PRIVATE pom68k_core)
     add_test(NAME q605_barefpu_boot_etalon COMMAND q605_barefpu_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: the LC 475 identity ($A55A2221, 68LC040) on the Q605
+    # machine boots Mac OS 8.1 to the 640x480x8 Finder (soft-skip).
+    add_executable(lc475_boot_etalon tests/lc475_boot_etalon.cpp)
+    target_link_libraries(lc475_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME lc475_boot_etalon COMMAND lc475_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: the LC 575 / Performa 575 identity ($A55A222E, 68LC040 @
+    # 33 MHz) on the Q605 machine boots Mac OS 8.1 to the 640x480x8 Finder.
+    add_executable(lc575_boot_etalon tests/lc575_boot_etalon.cpp)
+    target_link_libraries(lc575_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME lc575_boot_etalon COMMAND lc575_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # Q8 gate: PrimeTime SWIM2 register/FIFO core and 16-bit bus mapping.
@@ -491,6 +534,140 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(classic2_boot_etalon PRIVATE pom68k_core)
     add_test(NAME classic2_boot_etalon COMMAND classic2_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: Macintosh Color Classic (Spice — built-in 512×384
+    # color, SWIM2, 1 MB ROM, Cuda firmware LLE) boots to the Finder
+    # (soft-skips without the ROM + a bootable image).
+    add_executable(cclassic_boot_etalon tests/cclassic_boot_etalon.cpp)
+    target_link_libraries(cclassic_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME cclassic_boot_etalon COMMAND cclassic_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: Macintosh LC III (Sonora — 68030 @ 25 MHz, Sonora
+    # video, SWIM2, Egret 341S0851 firmware LLE) boots to the Finder
+    # (soft-skips without the ROM + a bootable image).
+    add_executable(lc3_boot_etalon tests/lc3_boot_etalon.cpp)
+    target_link_libraries(lc3_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME lc3_boot_etalon COMMAND lc3_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: the LC III+ (33.33 MHz, model $A55A0003) on the SAME
+    # Sonora machine boots to the Finder (soft-skips without assets).
+    add_executable(lc3plus_boot_etalon tests/lc3plus_boot_etalon.cpp)
+    target_link_libraries(lc3plus_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME lc3plus_boot_etalon COMMAND lc3plus_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: the all-in-one LC 520 (EDE66CBD universal ROM, model
+    # $A55A0100, Cuda 341S0060 firmware LLE, built-in 640×480 sense 6) boots
+    # System 7.5 to the 8-bpp color Finder — bring-up story in
+    # docs/LC520_BRINGUP.md. Debug env knobs: POM68K_BOXID / POM68K_SENSE /
+    # POM68K_PROBE / POM68K_HALT / POM68K_DIAG / POM68K_FRAMES / POM68K_DUMP.
+    add_executable(lc520_boot_etalon tests/lc520_boot_etalon.cpp)
+    target_link_libraries(lc520_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME lc520_boot_etalon COMMAND lc520_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: the LC 550 / Performa 550 — the LC 520 board at
+    # 33.33 MHz with the $A55A0101 model longword (maclc550_map).
+    add_executable(lc550_boot_etalon tests/lc550_boot_etalon.cpp)
+    target_link_libraries(lc550_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME lc550_boot_etalon COMMAND lc550_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: the Color Classic II / Performa 275 — the LC 550 board
+    # in the CC case; monitor sense 2 selects the ROM's 512×384 table entry.
+    add_executable(cclassic2_boot_etalon tests/cclassic2_boot_etalon.cpp)
+    target_link_libraries(cclassic2_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME cclassic2_boot_etalon COMMAND cclassic2_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gates: the Mac IIvx (VASP, 68030+68882 @ 31.3344 MHz, Egret
+    # 341S0851 LLE) and the IIvi (same board @ 15.6672 MHz, POM68K_IIVI=1)
+    # boot to the Finder off the shared 4957EB49 universal ROM.
+    add_executable(iivx_boot_etalon tests/iivx_boot_etalon.cpp)
+    target_link_libraries(iivx_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME iivx_boot_etalon COMMAND iivx_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME iivi_boot_etalon COMMAND iivx_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(iivi_boot_etalon PROPERTIES ENVIRONMENT "POM68K_IIVI=1")
+
+    # Phase C gate: the Mac IIsi (68030 @ 20 MHz, RBV RAM-based video,
+    # Egret 344S0100 firmware LLE, SWIM1, discrete ASC) boots to the
+    # Finder off the 512 KB $36B7FB6C ROM (soft-skips without assets).
+    add_executable(iisi_boot_etalon tests/iisi_boot_etalon.cpp)
+    target_link_libraries(iisi_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME iisi_boot_etalon COMMAND iisi_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: the Mac IIx / IIcx (68030 on the Mac II GLUE board, Toby
+    # NuBus video, mac2fdhd ROM) boot to the Finder (soft-skips without assets).
+    add_executable(iix_boot_etalon tests/iix_boot_etalon.cpp)
+    target_link_libraries(iix_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME iix_boot_etalon COMMAND iix_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME iicx_boot_etalon COMMAND iix_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(iicx_boot_etalon PROPERTIES ENVIRONMENT "POM68K_IICX=1")
+
+    # Phase C gate: the Mac IIci (RBV in its IIci flavor — 68030 @ 25 MHz,
+    # PIC1654S ADB modem LLE + discrete 343-0042 RTC, empty NuBus) boots to
+    # the Finder off the 512 KB $368CADFE ROM (soft-skips without assets).
+    add_executable(iici_boot_etalon tests/iici_boot_etalon.cpp)
+    target_link_libraries(iici_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME iici_boot_etalon COMMAND iici_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gate: the Macintosh TV (Tinker Bell V8 derivative, 68030 @
+    # 31.3344 MHz no-FPU, Cuda LLE, built-in 640×480) boots to the Finder
+    # off its own 1 MB $EAF1678D ROM (soft-skips without assets).
+    add_executable(mactv_boot_etalon tests/mactv_boot_etalon.cpp)
+    target_link_libraries(mactv_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME mactv_boot_etalon COMMAND mactv_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Phase C gates: the Mac Centris 650 (68LC040 @ 25 MHz, djMEMC + IOSB,
+    # PIC1654S firmware LLE) and Centris 610 (20 MHz, POM68K_CENTRIS610=1)
+    # boot to the DAFB Finder off the shared F1A6F343/F1ACAD13 ROM.
+    add_executable(centris650_boot_etalon tests/centris650_boot_etalon.cpp)
+    target_link_libraries(centris650_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME centris650_boot_etalon COMMAND centris650_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME centris610_boot_etalon COMMAND centris650_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(centris610_boot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_CENTRIS610=1" TIMEOUT 1800)
+    set_tests_properties(centris650_boot_etalon PROPERTIES TIMEOUT 1800)
+    # Same djMEMC+IOSB machine with a full 68040 (POM68K_CENTRIS_FPU) and the
+    # Quadra ID pins: Quadra 650 (33 MHz, $52) and Quadra 610 (25 MHz, $44).
+    add_test(NAME quadra650_boot_etalon COMMAND centris650_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME quadra610_boot_etalon COMMAND centris650_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(quadra650_boot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_CENTRIS_MODEL=q650" TIMEOUT 1800)
+    set_tests_properties(quadra610_boot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_CENTRIS_MODEL=q610" TIMEOUT 1800)
+
+    # Floppy write persistence: committed sectors reach the host .dsk /
+    # DC42 file on eject/exit when write-back is opted in (GUI default).
+    add_executable(floppy_persist_test tests/floppy_persist_test.cpp)
+    target_link_libraries(floppy_persist_test PRIVATE pom68k_core)
+    add_test(NAME floppy_persist_test COMMAND floppy_persist_test)
+
+    # Beyond-boot gates on the reference LC II: idle soak (Mac clock keeps
+    # time, no hang), Finder file creation surviving a reboot, and an app
+    # launched by mouse from the desktop (soft-skip without assets).
+    add_executable(lcii_beyond_etalon tests/lcii_beyond_etalon.cpp)
+    target_link_libraries(lcii_beyond_etalon PRIVATE pom68k_core)
+    foreach(scenario soak persist launch)
+        add_test(NAME lcii_${scenario}_etalon COMMAND lcii_beyond_etalon
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(lcii_${scenario}_etalon PROPERTIES
+                             ENVIRONMENT "POM68K_BEYOND=${scenario}"
+                             TIMEOUT 1800)
+    endforeach()
 
     # O6 slice 1 gate: external /BERR + RTE $A/$B on the 68030 (the LC II
     # ROM's address-map probe and the SCSI pseudo-DMA timeout rely on it).

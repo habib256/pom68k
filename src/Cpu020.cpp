@@ -4,9 +4,11 @@
 #include "Cpu020.h"
 #include "MacIIMemory.h"
 
-Cpu020::Cpu020(MacIIMemory& mem, bool withFpu) : mem_(mem) {
-    setModel(moira::Model::M68020);
-    setFPUModel(withFpu ? moira::FPUModel::M68881 : moira::FPUModel::NONE);
+Cpu020::Cpu020(MacIIMemory& mem, bool withFpu, bool is030) : mem_(mem) {
+    setModel(is030 ? moira::Model::M68030 : moira::Model::M68020);
+    setFPUModel(withFpu ? (is030 ? moira::FPUModel::M68882
+                                 : moira::FPUModel::M68881)
+                        : moira::FPUModel::NONE);
 }
 
 void Cpu020::hardReset() {

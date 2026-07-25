@@ -8,9 +8,16 @@
 #include <fstream>
 #include <iterator>
 
-V8Memory::V8Memory(uint32_t totalRam, Model model)
+V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
     : ram_(totalRam, 0), rom_(kRomSize, 0), vram_(kVramSize, 0),
-      totalRam_(totalRam), model_(model),
+      egret_(via_, model == Model::ColorClassic || model == Model::MacTv,
+             int(cpuHz)),
+      egretLle_(via_, cpuHz, model == Model::ColorClassic
+                                     || model == Model::MacTv
+                                 ? CudaLle::Flavor::Cuda
+                                 : CudaLle::Flavor::Egret),
+      totalRam_(totalRam), model_(model), cpuHz_(cpuHz),
+      viaDiv_(int(cpuHz / kViaHz)),
       mbRam_(model == Model::Lc ? 0x200000 : kMbRamSize) {
     // Pseudo-VIA machine hooks (v8.cpp:328-352): reg 1 = RAM config
     // (reads back config | 0x04), reg $10 read = monitor sense on bits
@@ -22,15 +29,25 @@ V8Memory::V8Memory(uint32_t totalRam, Model model)
             addrMask_ = (v & 0x08) ? 0x80FFFFFF : 0x00FFFFFF;
         };
     // Eagle has no monitor sense — the Classic II display is built in
-    // (v8.cpp:662-665 via2_video_config_r returns 0).
+    // (v8.cpp:662-665 via2_video_config_r returns 0). The Spice's
+    // Trinitron is built in too but reports the fixed 512×384 sense 2
+    // (v8.cpp:760-763 returns 0x02 << 3).
     if (model_ == Model::ClassicII)
         pvia_.onVideoRead = [] { return uint8_t(0); };
+    else if (model_ == Model::ColorClassic)
+        pvia_.onVideoRead = [] { return uint8_t(0x02 << 3); };
+    else if (model_ == Model::MacTv)         // Tinker Bell: fixed 13" 640×480
+        pvia_.onVideoRead = [] { return uint8_t(0x06 << 3); };
     else
         pvia_.onVideoRead = [this] { return uint8_t((montype_ << 3) & 0x38); };
+    if (model_ == Model::MacTv) montype_ = 6;   // built-in 640×480 CRT
     pvia_.onVideoWrite = [this](uint8_t v) { videoConfig_ = v; };
     egret_.setAdbBus(&adb_);
-    // ASC IRQ is LEVEL-triggered into pseudo-VIA IFR bit 4 (v8.cpp:119-122)
+    // ASC IRQ is LEVEL-triggered into pseudo-VIA IFR bit 4 (v8.cpp:119-122).
+    // The Spice carries the Sonora-class EASC ($BC) instead of the V8 ASC
+    // (v8.cpp:717-720 ASC_SONORA replace) — only one of the two is wired.
     asc_.onIrq = [this](bool s) { pvia_.ascIrq(s); updateIrq(); };
+    ascSonora_.onIrq = [this](bool s) { pvia_.ascIrq(s); updateIrq(); };
     // Egret firmware LLE (real 341S0850, MAME egret.cpp:74) — the DEFAULT
     // since 2026-07-24 (TODO step 6 closed): the instruction-slaved ADB
     // wire (CudaLle::mcu_.onCycles) fixed the batch-frozen receive that
@@ -38,20 +55,39 @@ V8Memory::V8Memory(uint32_t totalRam, Model model)
     // the screen exactly like the HLE. POM68K_EGRET_LLE=0 forces the HLE,
     // a missing dump falls back silently (the Cuda rollout pattern).
     {
-        const char* e = std::getenv("POM68K_EGRET_LLE");
+        // Color Classic: Cuda MCU. The factory part is 341S0417 (Cuda
+        // 2.35, maclc.cpp:480) but that image wedges on our M68hc05 —
+        // it releases the host reset then never answers the VIA
+        // transport (bring-up 2026-07-24, TODO § Color Classic) — so the
+        // LLE runs the Q605-proven 341S0788 (Cuda 2.37); the CC ROM
+        // drives it fine. Same env-gated rollout as the LC II Egret.
+        const bool cudaMcu = hasCudaMcu();
+        const char* e = std::getenv(cudaMcu ? "POM68K_CUDA_LLE"
+                                            : "POM68K_EGRET_LLE");
         const bool want = !e || std::atoi(e) != 0;
+        static constexpr const char* kEgretFw[] = {
+            "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin", nullptr };
+        static constexpr const char* kCudaFw[] = {
+            "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin", nullptr };
+        // Mac TV: the factory Cuda is 341s0789 (Cuda 2.38, cuda.cpp:48);
+        // fall back to the AIO-proven 2.40 then the CC's 2.37.
+        static constexpr const char* kTvFw[] = {
+            "roms/cuda/341s0789.bin", "../roms/cuda/341s0789.bin",
+            "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin",
+            "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin", nullptr };
         if (want) {
-            for (const char* p : { "roms/egret/341s0850.bin",
-                                   "../roms/egret/341s0850.bin" }) {
-                std::ifstream in(p, std::ios::binary);
+            for (const char* const* p = model_ == Model::MacTv ? kTvFw
+                                        : cudaMcu ? kCudaFw : kEgretFw; *p; p++) {
+                std::ifstream in(*p, std::ios::binary);
                 if (!in) continue;
                 std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
                                         std::istreambuf_iterator<char>());
                 if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
             }
             if (!egretLleOn_ && e)
-                std::fprintf(stderr, "LCII: POM68K_EGRET_LLE set but no "
-                             "roms/egret/341s0850.bin — Egret HLE fallback\n");
+                std::fprintf(stderr, "V8: %s set but no MCU firmware dump — "
+                             "HLE fallback\n",
+                             cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE");
         }
     }
     reset();
@@ -61,8 +97,10 @@ V8Memory::V8Memory(uint32_t totalRam, Model model)
 // is verified against the header — warn-only, so patched/homebrew ROMs
 // still load (the real LC II ROM is $35C28F5F, docs/LCII_HARDWARE.md).
 bool V8Memory::loadRom(const std::vector<uint8_t>& data) {
-    if (data.size() != kRomSize) return false;
+    if (data.size() != kRomSize && data.size() != 0x100000) return false;
     rom_ = data;
+    romSize_ = uint32_t(data.size());        // Spice ROMs (Color Classic
+    romMask_ = romSize_ - 1;                 // $ECD99DC0) are 1 MB
 
     // Classic II ROM ($3193670E): genuine ROM bug — a JMP through a
     // boxflag table indexes PAST the table and lands mid-instruction in
@@ -91,7 +129,7 @@ void V8Memory::reset() {
     videoConfig_ = 0;
     sccIrq_ = false;
     scc_.reset();
-    scc_.setClocks(kCpuHz, 7833600);         // SCC async-baud LLE: PCLK =
+    scc_.setClocks(cpuHz_, 7833600);         // SCC async-baud LLE: PCLK =
                                              // C7M (LCII_HARDWARE.md:44)
     scc_.setAbortIdle(std::getenv("POM68K_SCC_CLEANLINE") == nullptr);
                                              // no hardwired LocalTalk peer
@@ -114,15 +152,33 @@ void V8Memory::reset() {
             egretLle_.setPram(i, egret_.pram(i));
     adb_.reset();
     asc_.reset();
+    ascSonora_.reset();
     scsi_.reset();
-    swim_.reset();
-    swim_.attachDrive(&drive_, nullptr);
-    drive_.setSpinClockHz(15667200);         // machineTick unit (LC II 68030)
+    if (spiceClass()) {                      // Spice/Tinker Bell: SWIM2
+        swim2_.reset();
+        swim2_.attachDrive(&drive_, nullptr);
+    } else {
+        swim_.reset();
+        swim_.attachDrive(&drive_, nullptr);
+    }
+    drive_.setSpinClockHz(15667200);         // devices tick in the C15M domain
     framePos_ = 0;
+    c15Acc_ = 0;
+    // Frame/VBL geometry in CPU cycles: V8-class scans 640×407 dots at
+    // C15M (VBL = lines 384-406); Tinker Bell scans 800×525 @ 25.175 MHz
+    // with 480 active lines (v8.cpp:936 set_raw).
+    if (model_ == Model::MacTv) {
+        frameCycles_ = int64_t(800) * 525 * cpuHz_ / 25175000;
+        vblStart_ = int64_t(800) * 480 * cpuHz_ / 25175000;
+    } else {
+        frameCycles_ = int64_t(640) * 407 * cpuHz_ / kCpuHz;
+        vblStart_ = int64_t(640) * 384 * cpuHz_ / kCpuHz;
+    }
     vblState_ = false;
     // VIA1 port A input = V8-family machine ID | diag bit: $D4 for the
     // V8 proper (LC/LC II, v8.cpp:249-252), $92 for the Classic II's
-    // Eagle (v8.cpp:657-660); PB3 = Egret XCVR_SESSION, idle high. PB0-PB2
+    // Eagle (v8.cpp:657-660), $82 for the Color Classic's Spice
+    // (v8.cpp:755-758); PB3 = Egret XCVR_SESSION, idle high. PB0-PB2
     // (legacy RTC lines) and PB6-PB7 keep the 6522 pull-up default 1
     // (review 2026-07-16: they read 0 before, incl. to the ROM's
     // old-clock probe). PB4/PB5 (VIA_FULL/SYS_SESSION) are HOST-driven
@@ -131,7 +187,11 @@ void V8Memory::reset() {
     // while DDRB is still 0 at reset read as a phantom session rise and
     // wedge the transport (validated: pull-ups on PB4/PB5 black-screen
     // the boot etalon).
-    via_.setInA(model_ == Model::ClassicII ? 0x93 : 0xD5);
+    // Tinker Bell reads a plain $84 (v8.cpp:946-949, no diag bit OR).
+    via_.setInA(model_ == Model::ClassicII     ? 0x93
+                : model_ == Model::ColorClassic ? 0x83
+                : model_ == Model::MacTv        ? 0x84
+                                                : 0xD5);
     via_.setInB(uint8_t(0xC7 | (xcvrSession_() << 3)));
 }
 
@@ -179,12 +239,13 @@ void V8Memory::updateIrq() {
 
 // v8.cpp:462-483 — the CPU is stalled to the 783.36 kHz VIA E-clock on
 // every VIA1 access: start at via_cycle+1, end half a VIA cycle later.
-// With cpuClk/viaClk = 20: main = (via_cycle*2 + 3)*10 + 1.
+// With cpuClk/viaClk = viaDiv_ (20 at C15M, 40 on the Mac TV's C32M):
+// main = (via_cycle*2 + 3) * viaDiv_/2 + 1.
 void V8Memory::viaSync() {
     if (!cpu_) return;
     int64_t c = cpu_->getClock();
-    int64_t viaCycle = c / 20;
-    int64_t target = (viaCycle * 2 + 3) * 10 + 1;
+    int64_t viaCycle = c / viaDiv_;
+    int64_t target = (viaCycle * 2 + 3) * (viaDiv_ / 2) + 1;
     if (target > c) cpu_->stall(int(target - c));
 }
 
@@ -219,19 +280,19 @@ uint8_t V8Memory::read8(uint32_t addr) {
 
     if (addr < 0xA00000) {                   // RAM space (ROM under overlay)
         if (overlay_) {
-            if (addr < kRomSize) return rom_[addr];
+            if (addr < romSize_) return rom_[addr];
             return 0xFF;                     // unmapped while booting
         }
         uint32_t i = ramIndex(addr);
         return i != 0xFFFFFFFF ? ram_[i] : 0xFF;
     }
 
-    if (addr < 0xB00000) {                   // ROM, mirrored ×2 (v8.cpp:87-89)
+    if (addr < 0xB00000) {                   // ROM, 512K mirrored ×2 or 1 MB
         if (overlay_) {                      // rom_switch_r (v8.cpp:225-235):
             overlay_ = false;                // any read clears the overlay,
             applyRamConfig(0xC0);            // default "full SIMM + full MB"
         }
-        return rom_[addr & (kRomSize - 1)];
+        return rom_[addr & romMask_];
     }
 
     if (addr < 0xF00000) return 0xFF;        // $B00000-$EFFFFF: open bus
@@ -265,11 +326,17 @@ uint8_t V8Memory::read8(uint32_t addr) {
         scsiDrq(scsi_.drqActive());
         return d;
     }
-    if (addr >= 0xF14000 && addr < 0xF16000) return asc_.read(addr - 0xF14000);
+    if (addr >= 0xF14000 && addr < 0xF16000)
+        return spiceClass() ? ascSonora_.read(addr - 0xF14000)
+                            : asc_.read(addr - 0xF14000);
     if (addr >= 0xF16000 && addr < 0xF18000) {
         // SWIM1 in its IWM-compatible GCR mode (O6.7): reg = A9-A12,
-        // +5 CPU cycles per access (maclc.cpp:268-287); HDSEL = VIA1 PA5
+        // +5 CPU cycles per access (maclc.cpp:268-287); HDSEL = VIA1 PA5.
+        // Spice: the integrated SWIM2 instead (v8.cpp:699,874-882 — same
+        // reg decode + wait states, HDSEL from the SWIM2 mode register).
         if (cpu_) cpu_->stall(5);
+        if (spiceClass())
+            return swim2_.read((addr >> 9) & 0xF);
         swim_.setSel((via_.portA() & 0x20) != 0);
         return swim_.read((addr >> 9) & 0xF);
     }
@@ -327,13 +394,25 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
         scsiDrq(scsi_.drqActive());
         return;
     }
-    if (addr >= 0xF14000 && addr < 0xF16000) { asc_.write(addr - 0xF14000, v); return; }
+    if (addr >= 0xF14000 && addr < 0xF16000) {
+        if (spiceClass()) ascSonora_.write(addr - 0xF14000, v);
+        else              asc_.write(addr - 0xF14000, v);
+        return;
+    }
     if (addr >= 0xF16000 && addr < 0xF18000) {               // SWIM1 (O6.7)
         if (cpu_) cpu_->stall(5);
+        if (spiceClass()) {                                  // Spice SWIM2
+            swim2_.write((addr >> 9) & 0xF, v);
+            return;
+        }
         swim_.setSel((via_.portA() & 0x20) != 0);
         swim_.write((addr >> 9) & 0xF, v);
         return;
     }
+    // Spice brightness/contrast DAC ($F18000/1, v8.cpp:700,925-929) —
+    // accepted and dropped (the emulated CRT has no analog stage).
+    if (spiceClass() && addr >= 0xF18000 && addr < 0xF18002)
+        return;
     if (addr >= 0xF24000 && addr < 0xF26000) { ariel_.write(addr & 3, v); return; }
     if (addr >= 0xF26000 && addr < 0xF28000) {
         pvia_.write(addr - 0xF26000, v);
@@ -361,8 +440,8 @@ uint16_t V8Memory::read16(uint32_t addr) {
     } else if (addr >= 0xF40000 && addr < 0xFBFFFF) {    // VRAM window
         return uint16_t(vram_[addr - 0xF40000] << 8 | vram_[addr - 0xF3FFFF]);
     } else if (addr >= 0xA00000 && addr < 0xB00000 && !overlay_) {
-        uint32_t o = addr & (kRomSize - 1);              // ROM, mirrored
-        return uint16_t(rom_[o] << 8 | rom_[(o + 1) & (kRomSize - 1)]);
+        uint32_t o = addr & romMask_;                    // ROM, mirrored
+        return uint16_t(rom_[o] << 8 | rom_[(o + 1) & romMask_]);
     }
     // VIA1 reads mirror the byte on both lanes (v8.cpp:434-447)
     if (addr >= 0xF00000 && addr < 0xF02000 && !(addr & 0x80000000)) {
@@ -432,11 +511,11 @@ uint8_t V8Memory::peek8(uint32_t addr) const {
     addr &= addrMask_;
     if (addr & 0x80000000) return 0xFF;
     if (addr < 0xA00000) {
-        if (overlay_) return addr < kRomSize ? rom_[addr] : 0xFF;
+        if (overlay_) return addr < romSize_ ? rom_[addr] : 0xFF;
         uint32_t i = ramIndex(addr);
         return i != 0xFFFFFFFF ? ram_[i] : 0xFF;
     }
-    if (addr < 0xB00000) return rom_[addr & (kRomSize - 1)];
+    if (addr < 0xB00000) return rom_[addr & romMask_];
     if (addr >= 0xF40000 && addr < 0xFC0000) return vram_[addr - 0xF40000];
     return 0xFF;
 }
@@ -463,21 +542,21 @@ void V8Memory::scsiDmaW_(uint8_t v) {
 // Bresenham on 20 × kCpuHz / 1203.
 void V8Memory::tick(int cpuCycles) {
     viaPhase_ += cpuCycles;
-    int viaCycles = viaPhase_ / 20;
-    viaPhase_ %= 20;
+    int viaCycles = viaPhase_ / viaDiv_;
+    viaPhase_ %= viaDiv_;
     if (viaCycles && via_.tick(viaCycles)) updateIrq();
 
     tickAcc_ += int64_t(cpuCycles) * 1203;
-    if (tickAcc_ >= kCpuHz * 20) {
-        tickAcc_ -= kCpuHz * 20;
+    if (tickAcc_ >= cpuHz_ * 20) {
+        tickAcc_ -= cpuHz_ * 20;
         via_.raiseCa1();
     }
 
-    // Real video VBL → pseudo-VIA slot bit $40 (v8.cpp:106-108): 512×384
-    // frame = 640×407 dots at the CPU clock; blank = lines 384-406
+    // Real video VBL → pseudo-VIA slot bit $40 (v8.cpp:106-108); geometry
+    // reduced to CPU cycles at reset (Tinker Bell scans 800×525).
     framePos_ += cpuCycles;
-    framePos_ %= 640 * 407;
-    bool vbl = framePos_ >= 640 * 384;
+    framePos_ %= frameCycles_;
+    bool vbl = framePos_ >= vblStart_;
     if (vbl != vblState_) {
         vblState_ = vbl;
         pvia_.slotIrq(PseudoVia::VBL, vbl);
@@ -485,9 +564,21 @@ void V8Memory::tick(int cpuCycles) {
 
     if (egretLleOn_) egretLle_.tick(cpuCycles);   // firmware + AdbLine
     else             egret_.tick(cpuCycles);      // may load the SR (SHIFT IRQ)
-    asc_.tick(cpuCycles);                    // FIFO drain at 22 257 Hz
-    swim_.tick(cpuCycles);                   // IWM nibbles / ISM cell engine
-    drive_.tick(cpuCycles);                  // spindle/tach time (was frozen)
+    // ASC drain, SWIM cells and the floppy spindle live in the C15M domain
+    // (1:1 on every V8 machine but the Mac TV's C32M — the VASP pattern).
+    c15Acc_ += int64_t(cpuCycles) * kCpuHz;
+    int c15 = int(c15Acc_ / cpuHz_);
+    c15Acc_ -= int64_t(c15) * cpuHz_;
+    if (c15) {
+        if (spiceClass()) {
+            ascSonora_.tick(c15);            // Sonora EASC drain (Spice)
+            swim2_.tick(c15);                // Spice/Tinker Bell SWIM2
+        } else {
+            asc_.tick(c15);                  // FIFO drain at 22 257 Hz
+            swim_.tick(c15);                 // IWM nibbles / ISM cell engine
+        }
+        drive_.tick(c15);                    // spindle/tach time (was frozen)
+    }
     scc_.tick(cpuCycles);                    // open-line Break/Abort stream (O6.11)
     sccIrq_ = scc_.irqAsserted();            // bidirectional — a de-asserted SCC
                                              // must lower the line too (updateIrq

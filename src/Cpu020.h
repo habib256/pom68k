@@ -12,7 +12,11 @@ class MacIIMemory;
 
 class Cpu020 : public moira::Moira {
 public:
-    explicit Cpu020(MacIIMemory& mem, bool withFpu = true);
+    // is030 = the IIx/IIcx/SE-30 variant: a 68030 (built-in PMMU + 68882) on
+    // the same Mac II GLUE board, sharing the mac2fdhd ROM. The GLUE still
+    // does the 24-bit remap (MacIIMemory::physAddr via VIA2 PB3); the 030's
+    // own PMMU stays transparent until the ROM enables it.
+    explicit Cpu020(MacIIMemory& mem, bool withFpu = true, bool is030 = false);
 
     void hardReset();
     void runCycles(moira::i64 n);

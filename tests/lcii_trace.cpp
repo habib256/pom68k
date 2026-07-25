@@ -113,12 +113,19 @@ int main(int argc, char** argv) {
     }
 
     auto rom = slurp(romPath);
-    if (rom.size() != V8Memory::kRomSize) {
-        std::printf("lcii_trace: no 512 KB ROM at '%s' — nothing to do\n", romPath.c_str());
+    if (rom.size() != V8Memory::kRomSize && rom.size() != 0x100000) {
+        std::printf("lcii_trace: no 512 KB / 1 MB ROM at '%s' — nothing to do\n", romPath.c_str());
         return 0;
     }
+    // Model from the header checksum, like main(): the 1 MB $ECD99DC0
+    // dump is the Color Classic (Spice + Cuda), 512 KB dumps keep the
+    // LC II reference profile.
+    const uint32_t ck = uint32_t(rom[0]) << 24 | uint32_t(rom[1]) << 16
+                      | uint32_t(rom[2]) << 8 | rom[3];
+    V8Memory::Model model = ck == 0xECD99DC0 ? V8Memory::Model::ColorClassic
+                                             : V8Memory::Model::LcII;
 
-    V8Memory mem;                            // 10 MB
+    V8Memory mem{0xA00000, model};           // 10 MB
     mem.loadRom(rom);
     if (!scsiPath.empty())
         std::printf("SCSI disk: %s %s\n", scsiPath.c_str(),
@@ -136,6 +143,28 @@ int main(int argc, char** argv) {
     // O6.11: log XPRAM reads (esp. the $E0-$E3 network-config region)
     // to see what .MPP consults for its LocalTalk decision. Opt-in.
     long xpramLog = 0;
+    // WATCH_ASC: log ASC register traffic (FIFO data writes summarized) —
+    // the Spice/EASC bring-up microscope (boot-beep fill loop analysis).
+    long ascRegLog = 0, ascFifoWrites = 0;
+    if (getenv("WATCH_ASC")) {
+        auto tapW = [&](uint32_t off, uint8_t v) {
+            if (off < 0x800) { ascFifoWrites++; return; }
+            if (ascRegLog++ < 300)
+                std::printf("[%10lld] ASC W $%03X=$%02X (fifo writes so far %ld) PC=%08X\n",
+                            (long long)cpu.getClock(), off, v, ascFifoWrites,
+                            cpu.getPC0());
+        };
+        auto tapR = [&](uint32_t off, uint8_t v) {
+            static long stat = 0;
+            if (off == 0x804 && stat++ > 20) return;
+            if (off >= 0x800 && ascRegLog++ < 300)
+                std::printf("[%10lld] ASC R $%03X=$%02X PC=%08X\n",
+                            (long long)cpu.getClock(), off, v, cpu.getPC0());
+        };
+        mem.asc().onWrite = tapW;       mem.asc().onRead = tapR;
+        mem.ascSonora().onWrite = tapW; mem.ascSonora().onRead = tapR;
+    }
+
     if (getenv("WATCH_XPRAM"))
         mem.egret().onXPramRead = [&](int addr, int count) {
             if (xpramLog++ > 400) return;
@@ -643,6 +672,15 @@ int main(int argc, char** argv) {
     std::printf("VIA1 portA=$%02X portB=$%02X  videoCfg=$%02X  Ticks=%u\n",
                 mem.via1().portA(), mem.via1().portB(), mem.videoConfig(),
                 peek32(0x16A));
+    std::printf("VIA1 IFR=$%02X IER=$%02X ACR=$%02X | pseudo-VIA sIFR=$%02X "
+                "IFR=$%02X sIER=$%02X IER=$%02X | IPL=%d ascIrq=%d\n",
+                mem.via1().read(13), mem.via1().read(14), mem.via1().read(11),
+                mem.pseudoVia().reg(2), mem.pseudoVia().reg(3),
+                mem.pseudoVia().reg(0x12), mem.pseudoVia().reg(0x13),
+                mem.iplLevel(),
+                (mem.model() == V8Memory::Model::ColorClassic
+                     ? mem.ascSonora().irqAsserted()
+                     : mem.asc().irqAsserted()) ? 1 : 0);
 
     mem.egret().savePram("lcii_trace.pram");
     std::printf("exception vector histogram (vector: count):\n ");

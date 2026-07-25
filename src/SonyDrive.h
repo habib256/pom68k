@@ -80,6 +80,17 @@ public:
     bool writeSector(int track, int side, int sector, const uint8_t data[512]);
     bool readSector(int track, int side, int sector, uint8_t data[512]) const;
 
+    // ── Host-file write persistence (opt-in, GUI enables; tests stay
+    // in-memory) ── committed sectors mark the image dirty; flushToFile
+    // writes the image back to the inserted path (temp file + rename;
+    // DiskCopy 4.2 gets its header + data checksum regenerated). Called
+    // automatically on eject — the moment Mac OS has flushed its caches —
+    // and by the GUI on exit.
+    void setWriteBack(bool on) { writeBack_ = on; }
+    bool writeBackEnabled() const { return writeBack_; }
+    bool dirty() const { return dirty_; }
+    bool flushToFile();
+
     int currentTrack() const { return track_; }
 
     void tick(int cpuCycles);
@@ -110,6 +121,10 @@ private:
     uint64_t soundMicros() const;
 
     std::vector<uint8_t> image_;                 // raw sector data
+    std::string path_;                           // inserted file (persistence)
+    std::vector<uint8_t> dc42Header_;            // 0x54-byte DC42 prefix
+    bool writeBack_ = false;
+    bool dirty_ = false;
     std::vector<uint16_t> stream_;               // encoded current track/side
     size_t streamPos_ = 0;
     std::vector<uint8_t> cells_;                 // raw cells, one revolution

@@ -39,8 +39,10 @@ void Rtc::factoryDefaults() {
     }
     // SPConfig low nibble = printer port use: 2 = async (AppleTalk OFF,
     // the deterministic default), 1 = AppleTalk. POM68K_APPLETALK=1 seeds
-    // it ACTIVE so headless LLAP tests skip the Chooser toggle.
-    pram_[0x13] = std::getenv("POM68K_APPLETALK") ? 0x21 : 0x22;
+    // it ACTIVE so headless LLAP tests skip the Chooser toggle. "=0" is the
+    // global AppleTalk-off switch, so it must NOT seed active.
+    const char* atalk = std::getenv("POM68K_APPLETALK");
+    pram_[0x13] = (atalk && std::strcmp(atalk, "0") != 0) ? 0x21 : 0x22;
 }
 
 uint8_t Rtc::readReg(uint8_t cmd) const {

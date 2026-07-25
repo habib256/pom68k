@@ -67,6 +67,7 @@ public:
     uint8_t ddr(int p) const { return ddrs_[p & 3]; }
     uint8_t portLatch(int p) const { return ports_[p & 3]; }
     uint8_t pll() const { return pllCtrl_; }
+    int64_t cycleCount() const { return cycles_; }   // total cycles run
     uint8_t ramByte(int off) const { return ram_[off & 0x1FF]; }
     // Integrator poke (MAME cuda.cpp pc_w: PRAM is installed into the E1's
     // internal RAM once the firmware releases the host reset).

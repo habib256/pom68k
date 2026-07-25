@@ -6,9 +6,25 @@ gates and oracles), and only later layer an **opt-in, clearly-flagged HLE
 accelerator** on top (`HLE_OVERLAY.md`). That requires knowing exactly
 where the current code already deviates from hardware. This document is
 the complete inventory and the plan to shrink it. Current as of
-2026-07-22 (third pass against the live tree — see CHANGELOG). Earlier
-passes: 2026-07-21 MAME (`refs/mame-apple`, `refs/mame`) + DingusPPC
-(`refs/dingusppc`) cross-check → §3 gaps and migration steps 7–10.
+2026-07-24 (fourth pass — the **Phase C** machine fan-out, see CHANGELOG).
+Earlier passes: 2026-07-22 (third pass against the live tree); 2026-07-21
+MAME (`refs/mame-apple`, `refs/mame`) + DingusPPC (`refs/dingusppc`)
+cross-check → §3 gaps and migration steps 7–10.
+
+> **Phase C headline (2026-07-24): every machine now boots on a
+> firmware-LLE MCU by default.** The LC II Egret flavor flipped from
+> opt-in to DEFAULT (migration step 10 / TODO step 6 CLOSED — the
+> instruction-slaved ADB wire `CudaLle::mcu_.onCycles` fixed the
+> autopoll-load desync that had starved the mouse), and the eight new
+> Phase C machines each ride a real 68HC05 MCU image: the **LC** (020),
+> **Classic II** (Eagle) and **Color Classic** (Spice, Cuda 341S0788),
+> the **LC III / LC III+** (Sonora, Egret 341S0851), the all-in-one
+> **LC 520 / LC 550 / Color Classic II** (Sonora, Cuda 341S0060 — 2.40,
+> the factory AIO part) and the **Mac IIvx / IIvi** (VASP, Egret
+> 341S0851). The reused subsystems (V8/Sonora/VASP video, `AscSonora`,
+> SWIM1/SWIM2) inherit their §3 LLE-simplified classification unchanged;
+> the new pure-LLE fidelity fact is the **unmapped-I/O-reads-as-0**
+> MAME-parity rule on the Sonora and PrimeTime maps (§4).
 
 Line numbers are indicative — verify with grep before relying on them.
 
@@ -199,7 +215,7 @@ fires on the default path. Eliminate when HLE `AdbVia` is retired.
 
 | Device | Files | What is replaced | Proper LLE would be |
 |---|---|---|---|
-| **Egret / Cuda** | `Egret.*` / `CudaLle.*` | **Q605: firmware LLE is the DEFAULT** since 2026-07-23 — `M68hc05` + `CudaLle` run the real `341s0788.bin` (gates `m68hc05_test`, `cuda_lle_test`, `q605_cudalle_boot_etalon`, `q605_cudalle_mouse_etalon`). **LC II: firmware LLE built but OPT-IN** (`POM68K_EGRET_LLE=1`, gate `egret_lle_test`) — the VIA per-byte dance desyncs under autopoll load (mouse ~1.5% delivery, CHANGELOG 2026-07-23 "back to OPT-IN"); HLE `Egret.*` stays the LC II default until the wire diff vs MAME closes it (TODO step 6) | Fix the LC II VIA dance → re-flip; then retire `Egret.*`/`AdbBus` once the fallbacks feel redundant |
+| **Egret / Cuda** | `Egret.*` / `CudaLle.*` | **Firmware LLE is now the DEFAULT on every Egret/Cuda machine** (gates `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `q605_cudalle_*`). Q605 flipped 2026-07-23 (`341s0788`); **the LC II Egret flipped 2026-07-24** (`341s0850`) once the **instruction-slaved ADB wire** (`CudaLle::mcu_.onCycles`) fixed the autopoll-load desync (was mouse ~1.5% delivery — now saturates like the HLE, CHANGELOG "instruction-slaved ADB wire"). Phase C's new machines are all firmware-LLE by default: Color Classic `341s0788` (factory `341s0417`/2.35 wedges the M68hc05 — TODO), LC III/III+ + IIvx/IIvi `341s0851`, LC 520/550/CC II `341s0060` (2.40 — 2.37 livelocks that ROM on pseudo-cmd `$0E`). `POM68K_EGRET_LLE=0` / `POM68K_CUDA_LLE=0` force the HLE; a missing dump falls back silently | LC II re-flip **DONE**. Retire `Egret.*`/`AdbBus` once every machine's HLE fallback feels redundant (the last consumers are the no-dump path + `POM68K_*_LLE=0`) |
 | **ADB modem (Mac II)** | `AdbVia.*` + `Pic1654s.*` + `AdbLine.*` | **LLE default** since 2026-07-22 when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia.cpp:34-49`). HLE = NEW/EVEN/ODD/IDLE byte SM on VIA SR — only if dump missing or `POM68K_ADB_LLE=0` | Done: PIC runs real firmware; `AdbLine` is bit-serial; `Via6522::extShiftCB1` is the wire |
 | **ADB bus (Egret/Cuda machines)** | `AdbBus.*` | Bit-serial ADB → command-level Talk/Listen with clamped mouse deltas — **fallback-only since 2026-07-23** (both machines feed `AdbLine` under the firmware LLE) | Retire with the Egret HLE |
 
@@ -245,17 +261,22 @@ documents the real behavior.
   `Cpu030::kPeriphBatch=128`, `Cpu040` `kPeriphBatch=256` — ~4–16 µs
   IRQ-latency jitter); VIA E-clock synced at a fixed 32:1 ratio
   (real ≈31.91:1).
-- **Egret/Cuda wire**: the Q605 DEFAULT is the real firmware since
-  2026-07-23 (§2 — `M68hc05` + `CudaLle`), which closes every wire gap
-  on that path: framing, pacing, MCU RAM and autopoll are the 68HC05's
-  own. The LC II runs the `Egret.*` HLE by default (firmware opt-in —
-  §2). The notes below apply to the `Egret.*` HLE: real framing +
+- **Egret/Cuda wire**: **every Egret/Cuda machine now DEFAULTS to the
+  real firmware** (§2 — `M68hc05` + `CudaLle`; Q605 since 2026-07-23, the
+  LC II Egret and all Phase C machines since 2026-07-24), which closes
+  every wire gap on those paths: framing, pacing, MCU RAM and autopoll
+  are the 68HC05's own. The notes below apply only to the `Egret.*` HLE
+  **fallback** (`POM68K_EGRET_LLE=0` / no dump): real framing +
   61/71/88/13/30 µs per-byte schedule + `$1B` one-second modes since
   the §1.6b redo; autopoll obeys `$14`; boot-heartbeat shapes pinned
   against ROM readers, not firmware traces; MCU-RAM reads outside
   PRAM serve a 256-byte scratch.
-- **Video**: `MacVideo.h`, `V8Video.h`, `TobyVideo.*` — whole-frame
-  decode, no beam timing.
+- **Video**: `MacVideo.h`, `V8Video.h`, `TobyVideo.*`, and (Phase C)
+  `SonoraVideo.h` (mv_sonora modelines/CLUT/sense in vctrl) and
+  `VaspVideo.h` (the V8 framebuffer decode at VASP's 2048-byte row
+  pitch, vasp.cpp screen_update) — whole-frame decode, no beam timing.
+  Same classification as V8Video: register/CLUT/sense faithful, geometry
+  from the guest-programmed modeline, but decoded once per frame.
   Toby's frame clock is **CRTC-derived since 2026-07-23** (the Q8.1
   DAFB treatment: htotal×vtotal ticks of the 30.24 MHz crystal, MAME
   `nubus_m2video.cpp` in `refs/mame/src/devices/bus/nubus/`), and the
@@ -375,7 +396,12 @@ documents the real behavior.
   lineage) — remaining fidelity is PIC↔device timing under load, not
   the byte SM.
 - **Audio**: `Asc.*` FIFO semantics faithful (MODE mask, edge/level IRQ
-  variants); fixed 22 257 Hz drain via fractional accumulators.
+  variants); fixed 22 257 Hz drain via fractional accumulators. Three
+  flavors share the file — `AscV8` (LC II/VASP), `AscSonora` (the EASC at
+  `$BC` on the Spice/Sonora machines) and `AscIosb` (Q605 stereo). Note
+  the Sonora/Spice EASC `$804` status read must clear the IRQ
+  unconditionally — MAME's `HALF_B` gate freezes the CC/LC III boot at
+  "Bienvenue." in the autovector (pinned quirk, see CHANGELOG).
 - **Confirmed parity** (second audit, no action): pseudo-VIA register
   decode + level-triggered ASC IRQ matches MAME `pseudovia.cpp`; the
   60.15 Hz CA1 tick is an independent timer in `Q605Memory::tick` like
@@ -389,6 +415,14 @@ documents the real behavior.
   `PseudoVia.*`, `MacMemory.*` (overlay), `Rtc` serial protocol,
   `Ariel.h`, `MacFrame.h`, `Pic1654s.*` + `AdbLine.*` (when dump
   present).
+- **Bus fidelity — unmapped I/O reads back as 0 on the Sonora and
+  PrimeTime maps** (`SonoraMemory`/`VaspMemory` catch-all, `Q605Memory`
+  PrimeTime window; MAME `iosb.cpp:54-65` — no catch-all /BERR). This is
+  a correctness fact, not a shortcut: an open-bus `$FF` there hard-wedges
+  the LC III+ ProductInfo RAM-device poll at `$50F0A000` bit 3 and drops
+  the all-in-one ROM into its serial debugger. The Plus/Mac II 24-bit
+  maps keep their /BERR on truly unmapped space — this rule is specific
+  to the Sonora/PrimeTime gate arrays MAME models the same way.
 - Host convenience (guest-invisible): `MacAudioHost.h`, GUI (`main.cpp`),
   trace tools, PRAM file persistence (`<disk>.pram`), LToUDP peer
   bridging.
@@ -464,15 +498,20 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
 10. Longer term: ~~Toby CRTC-derived frame clock~~ **DONE 2026-07-23**
     (CHANGELOG "Toby: CRTC-derived frame clock" — plus the discovery
     that the TFB register file was write-dropped on the byte path);
-    ~~Egret/Cuda **firmware** LLE~~ **DONE on the Q605 (default);
-    LC II built but opt-in** (CHANGELOG "The real Cuda firmware is
-    the Quadra's DEFAULT" + "Egret firmware LLE back to OPT-IN":
-    `M68hc05` 68HC05E1 core + `CudaLle` glue run the real 341S0788 /
-    341S0850 — Finder boots, PRAM persists; silicon discoveries en
-    route: the customized-E1 PFW input pin, the inverting ADB output
-    stage, the Egret's falling-edge PC3 release. The LC II flavor's
-    VIA per-byte dance still desyncs under autopoll load — TODO
-    step 6 tracks the fix + re-flip; §2 tracks the HLE retirement).
+    ~~Egret/Cuda **firmware** LLE~~ **DONE — DEFAULT on every Egret/Cuda
+    machine** (Q605 2026-07-23, LC II Egret + all Phase C machines
+    2026-07-24; CHANGELOG "The real Cuda firmware is the Quadra's
+    DEFAULT" + "instruction-slaved ADB wire"): `M68hc05` 68HC05E1 core +
+    `CudaLle` glue run the real 341S0788 / 341S0850 / 341S0851 / 341S0060
+    — Finder boots, PRAM persists; silicon discoveries en route: the
+    customized-E1 PFW input pin, the inverting ADB output stage, the
+    Egret's falling-edge PC3 release. **The LC II re-flip is CLOSED**: the
+    autopoll-load desync (mouse ~1.5% delivery) was the receive path
+    frozen inside the peripheral-tick batch — the instruction-slaved wire
+    `CudaLle::mcu_.onCycles` clocks the MCU per instruction, and the mouse
+    now saturates (`lcii_mouse_trace`). §2 tracks the HLE retirement.
+    Follow-up: the Color Classic factory Cuda 341S0417 (2.35) still wedges
+    the M68hc05 — it runs the Q605-proven 341S0788 meanwhile (TODO).
     Still longer-term: NuBus arbitration, 040 copyback/snooping
     (~~SWIM2/SonyDrive MFM cell timing~~ → step 13).
 12. ~~**SCC async-baud machinery**~~ **DONE 2026-07-23** (CHANGELOG

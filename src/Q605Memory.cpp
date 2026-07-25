@@ -390,7 +390,14 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
         return (addr & 1) ? 0 : swim_.read((sub >> 9) & 0x0F);
     }
 
-    busError(addr, false);
+    // Unmapped PrimeTime/IOSB I/O reads back 0, not /BERR: MAME's iosb_base::map
+    // (iosb.cpp:54-65) installs only VIA1/VIA2/TurboSCSI/ASC/iosb_regs/SWIM/ID
+    // and has no catch-all, so the space's unmap value is 0 (same rule as the
+    // Sonora map — see SonoraMemory.cpp). The desktop LC 475 / Quadra 605 path
+    // tolerates a /BERR here, but the all-in-one LC 575 ($A55A222E) ProductInfo
+    // probes an un-emulated window and a /BERR drops it into the ROM serial
+    // debugger; reading 0 lets the probe fall through, as on real hardware.
+    return 0x00;
 }
 
 void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
@@ -465,7 +472,9 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
 
-    busError(addr, true);
+    // Unmapped PrimeTime/IOSB I/O writes are ignored, not /BERR (MAME
+    // iosb.cpp:54-65 — no catch-all handler); symmetric with ioRead8.
+    return;
 }
 
 // ── TurboSCSI pseudo-DMA (PrimeTime + $10100) ──
@@ -604,6 +613,8 @@ uint8_t Q605Memory::peek8(uint32_t addr) const {
     if (addr < 0x50000000) return rom_[addr & (kRomSize - 1)];
     if (addr >= 0xF9000000 && addr < 0xF9000000 + kVramSize)
         return vram_[addr - 0xF9000000];
+    if (addr >= 0x5FFFFFFC)                   // board ID (mirrors read8)
+        return uint8_t(machineId_ >> (8 * (3 - (addr & 3))));
     return 0xFF;
 }
 

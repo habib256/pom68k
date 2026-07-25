@@ -31,7 +31,15 @@ public:
     static constexpr uint32_t kRomSize = 0x40000;    // 256 KB
     static constexpr int64_t  kCpuHz   = 15667200;
 
-    explicit MacIIMemory(uint32_t ramSize = 0x800000);
+    // Same GLUE board, four ROM-sharing models (MAME macii.cpp): the plain
+    // **Mac II** / II FDHD (68020 + HMMU), and the 68030 variants **IIx** and
+    // **IIcx** — distinguished only by the VIA1 PA / VIA2 PB machine-ID pins
+    // (iix_via2_in_b $87; iicx_via_in_a $C1). All boot the mac2fdhd ROM.
+    enum class Model { MacII, IIx, IIcx };
+
+    explicit MacIIMemory(uint32_t ramSize = 0x800000, Model model = Model::MacII);
+    Model model() const { return model_; }
+    bool is030() const { return model_ != Model::MacII; }
     ~MacIIMemory();
 
     bool loadRom(const std::vector<uint8_t>& data);
@@ -135,6 +143,7 @@ private:
     Cpu020* cpu_ = nullptr;
 
     uint32_t ramSize_;
+    Model model_ = Model::MacII;
     bool overlay_ = true;
     uint8_t glueRamSize_ = 0x00;             // MAME: via2_out_a(0x3f) → 0
     uint8_t nubusIrqState_ = 0x3F;

@@ -15,8 +15,8 @@ static bool adbViaTrace() {
 
 MacIIMemory::~MacIIMemory() { delete toby_; }
 
-MacIIMemory::MacIIMemory(uint32_t ramSize)
-    : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize) {
+MacIIMemory::MacIIMemory(uint32_t ramSize, Model model)
+    : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize), model_(model) {
     adbVia_.attach(via1_, adb_);
     // MAME mac_asc_irq: VIA2 CB1 = !asc_irq (active-low into the 6522).
     asc_.onIrq = [this](bool s) {
@@ -102,9 +102,12 @@ void MacIIMemory::reset() {
     // No standing Rx: D7=$…0005 in the diagnostic console means the RAM
     // sizing probe failed first; fixing glue/mirrors exits that path.
     if (toby_) toby_->reset();
-    via1_.setInA(0x81);
+    // Machine-ID pins (MAME macii.cpp): VIA1 PA = $81 (Mac II/IIx) or $C1
+    // (IIcx, PA6 set); VIA2 PB = $CF (Mac II/IIcx) or $87 (IIx). The ROM
+    // reads these to pick the board profile.
+    via1_.setInA(model_ == Model::IIcx ? 0xC1 : 0x81);
     via1_.setInB(0xCF);
-    via2_.setInB(0xCF);                      // MAME via2_in_b
+    via2_.setInB(model_ == Model::IIx ? 0x87 : 0xCF);  // MAME via2_in_b
     via2_.setCb1(true);
     via2_.setCb2(true);
     refreshVia2PortA();
@@ -350,6 +353,13 @@ void MacIIMemory::updateHmmuFromVia2() {
 }
 
 uint32_t MacIIMemory::physAddr(uint32_t addr) const {
+    // On the 68030 IIx/IIcx, once the ROM/System turns the 030's own PMMU on
+    // (TC bit 31), Moira has already translated logical→physical here — the
+    // GLUE 24-bit remap must NOT run on top or it double-translates and the
+    // boot wedges mid-System (SCSI freezes ~351 cmds). The 020's HMMU has no
+    // such register, so the GLUE remap is always its 24-bit path. (Same split
+    // as V8Memory: LC 020 = SW HMMU mask, LC II 030 = Moira PMMU.)
+    if (is030() && cpu_ && (cpu_->getTC() & 0x80000000u)) return addr;
     // MAME m68kmmu.h hmmu_translate_addr — Mac II style (ENABLE_II).
     if (!hmmu24_) return addr;
     uint32_t out = addr & 0x00FFFFFFu;

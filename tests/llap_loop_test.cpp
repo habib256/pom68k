@@ -504,9 +504,83 @@ int main() {
               "the LkUpReply-analogue opens on its own first byte, intact");
     }
 
+    // ── Virtual-wire accelerator (in-process AppleTalk hub) ──
+    // setWirePace overrides the SDLC pace only; async keeps its baud.
+    // setLosslessRx: a full FIFO pauses the wire (no overrun, no loss)
+    // even when the reader is far slower than the boosted pace.
+    {
+        Scc8530 s;
+        s.setClocks(15667200, 7833600);      // machine clocks → derived pace
+        lapArm(s, 1);
+        CHECK(s.paceCycles(kB) == 544, "SDLC derived pace is the real wire");
+        s.setWirePace(64);
+        CHECK(s.paceCycles(kB) == 64, "wire-pace override wins in SDLC mode");
+
+        // Async channel A: 9600 8N1 via the BRG must IGNORE the override
+        // (the terminal ports live there).
+        s.writeCtl(1, 4); s.writeCtl(1, 0x44);   // ×16, 1 stop, no parity
+        s.writeCtl(1, 5); s.writeCtl(1, 0x60);   // Tx 8 bits
+        s.writeCtl(1, 12); s.writeCtl(1, 22);    // BRG 9600 @ 3.6864 MHz
+        s.writeCtl(1, 13); s.writeCtl(1, 0);
+        s.writeCtl(1, 14); s.writeCtl(1, 0x01);  // BRG enable, RTxC source
+        s.writeCtl(1, 11); s.writeCtl(1, 0x10);  // Tx clock = BRG
+        int asyncPace = s.paceCycles(1);
+        CHECK(asyncPace > 10000,
+              "async pace stays at the real 9600 baud under the override");
+
+        // Lossless Rx: 10-byte frame at pace 64, reader never drains during
+        // playback. Default hardware semantics would overrun and lose bytes;
+        // lossless must pause and deliver every byte once the reader drains.
+        s.setLosslessRx(true);
+        const uint8_t big[10] = {1, 9, 0x01, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70};
+        s.injectRxFrame(kB, big, sizeof big, false);
+        for (int t = 0; t < 400; t++) s.tick(64);   // plenty of wire time
+        std::vector<uint8_t> got;
+        uint8_t rr1 = 0;
+        for (int t = 0; t < 400 && !(rr1 & 0x80); t++) {
+            s.writeCtl(kB, 0);
+            if (s.readCtl(kB) & 0x01) {
+                s.writeCtl(kB, 1);
+                rr1 = s.readCtl(kB);
+                got.push_back(s.readData(kB));
+                CHECK(!(rr1 & 0x20), "lossless: no overrun flag ever");
+            } else {
+                s.tick(64);                          // wire resumes as we drain
+            }
+        }
+        CHECK(got.size() == sizeof big + 2, "lossless: every byte + FCS arrives");
+        bool intact = got.size() >= sizeof big;
+        for (size_t i = 0; intact && i < sizeof big; i++)
+            if (got[i] != big[i]) intact = false;
+        CHECK(intact, "lossless: bytes intact and in order despite the stall");
+    }
+
+    // ── Lossless queue-through-Rx-off: the copy-retransmit fix ──
+    // A server reply is generated while the guest is still transmitting its
+    // request (half-duplex → Rx OFF). On real hardware injectRxFrame drops
+    // it (no ear) and the client eats a 1-2 s ATP retransmit. The lossless
+    // wire must QUEUE it and open it only once the guest re-arms Rx.
+    {
+        Scc8530 s;
+        s.setClocks(15667200, 7833600);
+        lapArm(s, 1);
+        s.setWirePace(96);
+        s.setLosslessRx(true);
+        wr(s, 3, 0xD4);                      // Rx DISABLE (bit 0 = 0): "transmitting"
+        const uint8_t rep[6] = {1, 128, 0x01, 0xAA, 0xBB, 0xCC};
+        s.injectRxFrame(kB, rep, sizeof rep, false);   // reply into a deaf ear
+        uint8_t rr1 = 0;
+        CHECK(lapDrain(s, rr1).empty(),
+              "reply held while Rx off (a real wire would have dropped it)");
+        wr(s, 3, 0xD5);                      // guest re-arms Rx (its EOM ISR)
+        std::vector<uint8_t> got = lapDrain(s, rr1);
+        CHECK(got.size() == sizeof rep + 2 && got[0] == 1 && got[2] == 0x01,
+              "reply delivered intact once Rx re-armed (no drop, no retransmit)");
+    }
+
     if (failures == 0)
         std::printf("PASS: llap loop (ENQ both ways, addr filter, broadcast, "
                     "abort, RTS/CTS dialogue in-window, express CTS across "
-                    "Rx-off, carrier sense)\n");
+                    "Rx-off, carrier sense, lossless virtual wire)\n");
     return failures ? 1 : 0;
 }

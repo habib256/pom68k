@@ -258,7 +258,16 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
     // it makes the line a live, terminated network, so the open-line
     // standing abort drops for a hold window (LLE_VS_HLE §1.8 / step 8).
     if (!express) peerHold_ = kPeerHold;
-    if (!n || !sdlcMode(c) || (!express && !rxEnabled(c))) return;
+    if (!n || !sdlcMode(c)) return;
+    // Real hardware: a non-express frame that arrives while the receiver is
+    // OFF is lost (half-duplex — no ear). The lossless virtual wire instead
+    // QUEUES it and holds playback until the guest re-arms Rx, so a server
+    // reply generated during the guest's own transmit (its Rx is down until
+    // its EOM ISR re-arms it) is delivered, not dropped. This is what the
+    // AppleShare copy "saccade" was: replies flushed into a deaf receiver →
+    // 1-2 s ATP retransmit each. Express (synthesized CTS) always queues
+    // through the Rx-off window regardless (its whole purpose).
+    if (!express && !rxEnabled(c) && !losslessRx_) return;
     // SDLC Address Search Mode (WR3 bit 2): the chip only opens the FIFO
     // when the first byte matches WR6 or the $FF broadcast.
     if ((c.wr[3] & 0x04) && d[0] != c.wr[6] && d[0] != 0xFF) return;
@@ -280,8 +289,12 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
     // lookup forever and never listed the server (2026-07-22 GISTPERSO live
     // capture). Express CTS frames keep their short fixed gap: an intra-
     // dialog CTS must land inside the sender's 200 µs INTER-FRAME window.
-    const int pace = paceCycles(ch);              // guest-derived wire pace
-    const int delay = express ? kCtsGapBytes * pace : 0;
+    // Playback runs at the effective (possibly virtual-wire-boosted) pace;
+    // the express-CTS gap stays at the REAL pace — it models the SENDER's
+    // post-EOM Rx re-arm window, which is guest code running in real time,
+    // not a property of the wire.
+    const int pace = paceCycles(ch);
+    const int delay = express ? kCtsGapBytes * realPaceOf(c) : 0;
     c.rxQueue.push_back({std::move(f), pace, delay, express});
 }
 
@@ -377,6 +390,7 @@ bool Scc8530::txLoad(Chan& c, int rem) {
     if (sdlcMode(c)) c.txBuf.push_back(c.txBufData);
     c.txShiftData = c.txBufData;
     c.txBufFull = false;
+    c.txGracing = false;                        // a late byte ends the grace
     c.txShiftIn = paceOf(c) + rem;
     if (c.txShiftIn <= 0) c.txShiftIn = 1;
     c.txEmptyEvent = true;                      // buffer BECAME empty
@@ -456,6 +470,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                 c.txBufFull = false;
                 c.txShiftIn = 0;
                 c.txFlushing = false;
+                c.txGracing = false;
                 if (!c.txUnderrun) {
                     c.txUnderrun = true;
                     if ((c.wr[15] & 0x40) && (c.wr[1] & 0x01)) {
@@ -537,6 +552,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
             c2.txBufFull = false;
             c2.txShiftIn = 0;
             c2.txFlushing = false;
+            c2.txGracing = false;
             c2.extPending = false;
             c2.latched = false;
             c2.hunt = false;
@@ -722,6 +738,22 @@ bool Scc8530::tick(int cycles) {
                     } else {
                         c.txShiftIn = 0;
                         if (sdlcMode(c) && !c.txUnderrun) {
+                            // Virtual-wire grace: at a boosted pace the
+                            // guest's Tx feed loop (tuned for the real
+                            // 230.4 kbit/s cadence) may not have the next
+                            // byte in yet — that is NOT an intentional
+                            // end-of-frame. Hold the frame open one REAL
+                            // byte-time; a loop that kept up on hardware
+                            // always refills within it. An intentional end
+                            // just reaches the tail one real byte-time
+                            // later (EOM slightly deferred, harmless).
+                            if (wirePace_ > 0 && !c.txGracing) {
+                                c.txGracing = true;
+                                c.txShiftIn = realPaceOf(c) + rem;
+                                if (c.txShiftIn <= 0) c.txShiftIn = 1;
+                                continue;
+                            }
+                            c.txGracing = false;
                             c.txFlushing = true;  // open frame underruns:
                             c.txShiftIn = kTailBytes * paceOf(c) + rem;
                             // ≤ 0: the tail fits in this tick too — the
@@ -760,8 +792,21 @@ bool Scc8530::tick(int cycles) {
                     if (f.delay > 0) f.delay -= cycles;
                     ready = f.delay <= 0;
                 } else {
-                    ready = c.rxIdle >= kIdgBytes * paceCycles(i);
+                    // The IDG is DRIVER turnaround time (protocol handler +
+                    // re-arm between dialogs) — real pace even when the
+                    // virtual wire boosts the byte pace.
+                    ready = c.rxIdle >= kIdgBytes * realPaceOf(c);
                 }
+                // Lossless virtual wire: hold the frame until (a) the guest
+                // is actually LISTENING — a reply queued during the guest's
+                // half-duplex transmit opens only once its EOM ISR re-arms
+                // Rx, never into a deaf receiver — and (b) the FIFO has
+                // drained, so the stale-residue clear in rxStartFrame can't
+                // eat undelivered bytes and no frame ever overruns. Express
+                // (CTS) keeps threading the Rx-off window as before.
+                if (losslessRx_ && !f.express &&
+                    (!rxEnabled(c) || !c.fifo.empty()))
+                    ready = false;
                 if (ready) {
                     bool wasIrq = c.rxIp || c.specialIp || c.extPending;
                     rxStartFrame(c, i);
@@ -771,6 +816,17 @@ bool Scc8530::tick(int cycles) {
             if (!c.rxCur.empty()) {
                 c.rxTimer -= cycles;
                 while (c.rxTimer <= 0 && !c.rxCur.empty()) {
+                    // Lossless virtual wire: HOLD the byte on the wire —
+                    // rescheduling one pace ahead — rather than let
+                    // rxPushByte drop it, whenever the guest can't take it:
+                    // its Rx is off (mid-frame turnaround) OR its 3-byte
+                    // FIFO is full. Throughput self-limits to the guest's
+                    // ISR drain rate and no byte is ever lost, so no ATP
+                    // retransmit fires (the copy "saccade").
+                    if (losslessRx_ && (!rxEnabled(c) || c.fifo.size() >= 3)) {
+                        c.rxTimer = c.rxPace;
+                        break;
+                    }
                     c.rxTimer += c.rxPace;
                     bool was = c.rxIp || c.specialIp;
                     rxPushByte(c);

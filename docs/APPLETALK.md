@@ -662,6 +662,72 @@ from sites that never learned HTTP/1.0.
 
 ---
 
+## 6.5 The in-process stack — POM68K as its own router, server, printer and gateway
+
+Everything in §§3–6 above describes the **external** bridge: TashRouter
+routes, netatalk's `afpd`/`papd` serve, `macipgw` tunnels, and
+`appleshare.sh`/`macip.sh` wire them up (needing root). That path is
+still here and is the way to reach a **real** LocalTalk network. But as
+of 2026-07-24 POM68K also carries the **entire service side in-process**,
+on the same `Scc8530` wire the guest drives — no external processes, no
+root, on by default in the GUI. It is the practical default; the
+external chain is for interop.
+
+**What runs where (internal path):**
+
+```
+guest Mac OS                                   POM68K process
+  LLAP/DDP ── Scc8530 wire ── AtalkHub ── AtalkStack (node 2.128, zone POM68K)
+                                            ├── router-lite: RTMP/ZIP/NBP/AEP
+                                            ├── AfpServer   (NBP AFPServer,  ASP/AFP → host folder)
+                                            ├── PapServer   (NBP LaserWriter, PAP → lp/CUPS or .ps file)
+                                            └── MacIpGateway (NBP IPGATEWAY, ATP :72, DDP-22 → user-mode NAT → host sockets)
+```
+
+The internal node is a real, terminated LocalTalk peer: it answers the
+guest's ENQ address probes (defending its own node 128), so the guest
+settles on a different ID exactly as against a hardware peer. When
+`POM68K_LTOUDP=1` is *also* set, the internal node's frames are
+multicast onto the cable too — the emulator then looks like one more
+node on the shared virtual LocalTalk, and external TashRouter/netatalk
+can coexist (the guest simply sees two responders and de-dups).
+
+**Mapping the layer cake (§1.1) to the internal owners:**
+
+| AppleTalk layer | Internal owner | File |
+|---|---|---|
+| LLAP node presence, DDP short/long | `AtalkStack` | `src/AtalkStack.*` |
+| RTMP (beacon + req/resp), ZIP (GetNetInfo/ZoneList), NBP (registry + LkUp + BrRq relay), AEP echo | `AtalkStack` router-lite | `src/AtalkStack.*` |
+| ATP (responder XO cache + release timer; requester retries) | `AtalkStack::AtpTxn` / `atpRequest` | `src/AtalkStack.*` |
+| ASP sessions + AFP 2.1 file service, `.AppleDouble` sidecars | `AfpServer` | `src/AfpServer.*` |
+| PAP printer → CUPS (`lp`) or `.ps` spool | `PapServer` | `src/PapServer.*` |
+| MacIP (ATP :72 assign, IP-in-DDP-22) + user-mode NAT (TCP-lite/UDP/ICMP) | `MacIpGateway` | `src/MacIpGateway.*` |
+| Wiring to the SCC + status/toggles for the GUI | `AtalkHub` | `src/AtalkHub.h`, `src/main.cpp` |
+
+**Faithfulness vs the external stack.** The internal path is a
+pragmatic subset, not a second netatalk. It implements the transactions
+a period Finder/Chooser/MacTCP actually issues; it does **not** do ADSP,
+the Desktop database (OpenDT answers "no item"), AFP ≥ 3.0/UTF-8,
+authenticated UAMs beyond guest/cleartext, PAP status polling subtleties,
+or MacIP outbound ICMP/raw sockets. CNIDs are per-run (root = 2), so
+they are stable within a session but not persisted across restarts. For
+anything the subset misses — or to serve a real LocalTalk segment —
+run the external bridge (`POM68K_LTOUDP=1` + `appleshare.sh`), which the
+internal node coexists with. Migration notes and the gap list live in
+`docs/LLE_VS_HLE.md`.
+
+**Using it.** Nothing to start: launch the GUI, open **Réseau →
+AppleTalk**. The window shows AppleTalk on/off, the router zone + guest
+node + traffic counters, AppleShare (registered? folder writable? name,
+sessions, last user/command, bytes), the printer (idle/busy, jobs, last
+job path), and MacIP (gateway visible? a lease attributed means it
+*works*; IP counters, live flows) — each service has a live toggle.
+Guest-side setup is identical to §6 (Chooser → AppleShare / a
+LaserWriter; TCP/IP or MacTCP control panel → MacIP server, zone
+POM68K). Env: `POM68K_APPLETALK=0` disables the whole stack;
+`POM68K_SHARE_DIR=/path` sets the shared folder (default `./AppleShare`,
+created if absent).
+
 ## 7. Map back to POM68K code
 
 | AppleTalk layer | POM68K / host component | File |
@@ -680,7 +746,14 @@ from sites that never learned HTTP/1.0.
 **Gates** that exercise this stack: `llap_loop_test` (RTS/CTS, ENQ,
 address filter, express CTS, carrier sense), `llap_two_system_etalon`
 (two Macs acquire node IDs over real ENQ traffic), `ltoudp_test` (the
-multicast cable).
+multicast cable). For the **in-process stack** (§6.5):
+`atalk_stack_test` (ENQ defence, RTMP/ZIP/NBP/AEP, ATP exactly-once),
+`afp_server_test` (OpenSession→Login→OpenVol→Enumerate→Read, the ASP
+SPWrite→WriteContinue→FPWrite round-trip, resource fork →
+`.AppleDouble`), `pap_server_test` (OpenConn→SendData→PostScript→EOF→
+spool, query `*` answer), `macip_gw_test` (address assign + ICMP echo +
+a real UDP round-trip and a full TCP SYN→data→FIN both ways through the
+user-mode NAT on loopback).
 
 ---
 
