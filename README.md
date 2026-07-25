@@ -13,7 +13,7 @@ modem + discrete RTC, 68030 @ 25 MHz), the
 (djMEMC + IOSB), the **Quadra 700** (discrete 040 + DAFB TurboSCSI),
 the **Quadra 605**
 (68040 + FPU) and **LC 475 / LC 575 / Performa 475-575** (68LC040), both
-+ 040 MMU — **27 machine profiles, every one boots the Finder**.
++ 040 MMU — **30 machine profiles, every one boots the Finder**.
 Sibling of [POMIIGS](../POMIIGS/) (Apple IIgs) and
 [POM2](../POM2/) (Apple II), sharing their architecture and conventions. CPU
 core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — see
@@ -33,7 +33,9 @@ Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
 
 ROM size selects the machine: **128 KB** = Mac Plus, **256 KB** = Mac II
 (`9779D2C4`/`97851DB6`) or the 68030 IIx/IIcx (`97221136`,
-`POM68K_MACII_MODEL=iix`/`iicx`/`fdhd`),
+`POM68K_MACII_MODEL=iix`/`iicx`/`fdhd`), or — by checksum — the compact
+68000 siblings **Mac SE** (`B2E362A8`) and **SE FDHD** (`B306E171`);
+**Mac Classic** (`A49F9914`) is a 512 KB compact,
 **512 KB** = V8 family (header checksum picks LC `350EACF0` / LC II
 `35C28F5F` / Classic II `3193670E` / IIsi `36B7FB6C` / IIci `368CADFE`),
 **1 MB** = Color

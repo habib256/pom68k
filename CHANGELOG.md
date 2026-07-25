@@ -35,13 +35,35 @@ SCOPE.md` listed an "ADB-over-VIA compact MCU (not Egret — the SE/Classic
 shift-register transcoder)" as the blocker for SE / SE FDHD / Classic /
 SE/30. MAME's `mac128.cpp` shows the SE driving **`adbmodem`** — the very
 PIC1654S POM68K already runs as firmware LLE (`m_adbmodem->set_via_state
-((data & 0x30) >> 4)` on VIA PB4/PB5). So `MacMemory` gained a
-`Model {Plus, SE, SEFDHD, Classic}`: bigger ROM (256/512 KB), the overlay
-clearing on the first ROM access instead of on VIA PA4 (`ram_w_se`), ADB on
-VIA PB3-5 + CB1/CB2 in place of the M0110 shift-register keyboard and the
-mouse quadrature. The SE ROM **executes** on that path (PIC LLE attached,
-overlay cleared, POST running) but does not reach the disk yet — the
-bring-up is open, tracked in TODO.
+((data & 0x30) >> 4)` on VIA PB4/PB5). See the next entry.
+
+## 2026-07-25 — Macintosh SE, SE FDHD and Classic: three machines for one enum
+
+The 28th, 29th and 30th profiles cost a `Model` enum on `MacMemory`, not a
+new machine: `mac128.cpp`'s `macse_map` **is** the Plus map. What differs:
+
+* **ROM size** — 256 KB (SE, SE FDHD) / 512 KB (Classic) instead of 128 KB,
+  mirrored into the $400000 window and the boot overlay;
+* **the overlay** clears on the first ROM access instead of on VIA1 PA4
+  (`ram_w_se`); PA4 is the SE's *drive* select instead;
+* **ADB instead of the M0110** — and the transceiver is the PIC1654S
+  342S0440-B the Mac II / IIci / Quadra 700 already run as **firmware LLE**
+  (`AdbVia` + `Pic1654s` + `AdbLine`), on VIA1 PB4/PB5 = ST, PB3 = /IRQ,
+  CB1/CB2 = the shifter. No mouse quadrature — the mouse is an ADB device.
+
+All three boot System 6.0.5 off a floppy to the Finder desktop, on the LLE
+ADB path, through the existing IWM + Sony GCR + NCR 5380 stack. The
+bring-up had exactly one long pause: ~350 frames of ADBReInit followed by
+~500 frames of the 4 MB RAM test before the disk driver starts, which reads
+as a wedge until you let it run. Gates `se_boot_etalon`,
+`sefdhd_boot_etalon`, `classic_boot_etalon` (one binary,
+`POM68K_COMPACT_MODEL`); GUI entries under the existing "68000" group, CLI
+dispatch on the ROM checksums `$B2E362A8` / `$B306E171` / `$A49F9914`.
+`POM68K_SE_VIA_TRACE=1` dumps the VIA1 accesses with the ST lines decoded.
+
+**Still missing from the compact line: the SE/30** — no ROM dump on hand
+(it is a IIx on a compact board, so the machine work is `MacIIMemory` +
+compact video, not a new bus).
 
 ## 2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted, and the PIC co-step un-boosted
 

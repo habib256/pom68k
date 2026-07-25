@@ -46,6 +46,9 @@ public:
     enum class Model { Plus, SE, SEFDHD, Classic };
 
     explicit MacMemory(Model model = Model::Plus);
+    // Re-profile before loadRom(): main() constructs the machine before it has
+    // read the ROM, and the compact models are told apart by its checksum.
+    void setModel(Model m);
     Model model() const { return model_; }
     bool isAdb() const { return model_ != Model::Plus; }
     uint32_t romSize() const { return romSize_; }

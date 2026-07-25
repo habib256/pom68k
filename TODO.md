@@ -545,8 +545,10 @@ Driven by **Phase C** of the Finder matrix above; detail and effort tiers in
   `cclassic_`, `lc3_`, `lc3plus_boot_etalon`). Plus the AIO family
   (LC 520/550/CC II), IIvx/IIvi, **Mac TV** (Tinker Bell), **IIsi** + **IIci**
   (RBV) and **IIx** + **IIcx** (68030 Mac II) — all 2026-07-25. **Remaining
-  030:** IIfx (OSS + IOPs) and **SE/30** (compact IIx + built-in video);
-  **compact 68000: SE/Classic** (ADB).
+  030:** IIfx (OSS + IOPs) and **SE/30** (compact IIx + built-in video, no
+  ROM dump on hand). **Compact 68000: SE / SE FDHD / Classic DONE
+  2026-07-25** (`se_`, `sefdhd_`, `classic_boot_etalon` — a `MacMemory::
+  Model` enum + the PIC1654S ADB LLE, no new machine).
 - [x] ~~**Nearby 68040**: LC/Performa 475 identity, LC 575~~ **DONE
   2026-07-24** (`lc475_`, `lc575_boot_etalon`), plus the **Centris 610/650
   + Quadra 610/650** djMEMC+IOSB machine the same day. **Remaining 040:**

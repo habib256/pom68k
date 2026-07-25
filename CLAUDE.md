@@ -2,7 +2,8 @@
 
 Orientation **always-loaded index** — keep terse, defer detail to other docs.
 
-POM68K is a **Macintosh 68k** emulator: **Mac Plus** (68000, cycle-exact),
+POM68K is a **Macintosh 68k** emulator: **Mac Plus** (68000, cycle-exact)
+and its compact siblings **Mac SE / SE FDHD / Classic** (same map + ADB),
 **Mac II** (68020 + Toby NuBus, functional accuracy) and its 68030
 siblings **Mac IIx / IIcx** (same GLUE board + PMMU), the **V8 family** —
 **Mac LC** (68020 + HMMU), **Mac LC II** (68030 + MMU + 68882),
@@ -16,7 +17,7 @@ Cuda 341S0060 LLE, EDE66CBD ROM) — the **Mac IIvx / IIvi** (VASP =
 "V8 video on Sonora addressing", Egret LLE) — the **Centris 610 / 650** and **Quadra 610 / 650 / 800**
 (djMEMC + IOSB, discrete RTC + PIC1654S LLE; the 800 adds SONIC + NuBus) — the
 **Quadra 605** (68040 + FPU) and **LC 475 / LC 575 / Performa 475-575**
-(68LC040) — both 040 + 040 MMU, functional accuracy. **27 machine
+(68LC040) — both 040 + 040 MMU, functional accuracy. **30 machine
 profiles, all booting the Finder.** It is the
 68k sibling of [POMIIGS](../POMIIGS/) and reuses its architecture,
 conventions and milestone discipline; the CPU integration pattern comes
@@ -75,8 +76,9 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 92 gates (asset-dependent gates may soft-skip)
+ctest                        # 95 gates (asset-dependent gates may soft-skip)
 ./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=V8 family
+                             # (B2E362A8/B306E171/A49F9914 = SE/SE FDHD/Classic)
                              # (checksum: LC/LC II/Classic II); 1 MB by
                              # checksum: Color Classic / LC III / AIO
                              # (EDE66CBD: LC 520/550/CC II) / IIvx-IIvi
@@ -96,7 +98,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | Subsystem | Files | Status | Source |
 |---|---|---|---|
 | **68000 CPU** (Moira wrapper + contention) | `Cpu68k.h/.cpp` | M1/M4 ✓ | NeoST pattern; GttMFH timing |
-| **Memory map + overlay** | `MacMemory.h/.cpp` | M2/M4 ✓ | MAME `mac128.cpp` |
+| **Memory map + overlay** | `MacMemory.h/.cpp` (`Model {Plus,SE,SEFDHD,Classic}`) | M2/M4 ✓; compacts = same map + ADB (`se_/sefdhd_/classic_boot_etalon`) | MAME `mac128.cpp` |
 | **VIA 6522** (ports, timers, IFR/IER) | `Via6522.h/.cpp` | M4 ✓ (±1-cycle latency deferred) | MAME `via6522.cpp` |
 | **RTC 343-0042** (clock + PRAM serial) | `Rtc.h/.cpp` | M4 ✓ (no file persistence) | Mini vMac RTC.c |
 | **Video 512×342** | `MacVideo.h` | M3 ✓ (whole-frame decode) | GttMFH |
@@ -178,7 +180,7 @@ DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
 GUI exposes the machine alongside the other 24 profiles (Machine menu).
-**92 CTest gates**,
+**95 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
 (LLE ADB mouse — default path since 2026-07-22), `sst68040`,
@@ -248,7 +250,14 @@ The **Quadra 700** ("Spike", $420DBFF3) followed as the first *discrete*
 040 machine — Mac II VIA1/VIA2 + RTC + PIC ADB in front, Quadra
 DAFB/53C96/SWIM1/EASC behind, SCSI through **DAFB's own TurboSCSI cell**
 (`Q700Memory`/`Q700Cpu`, gate `q700_boot_etalon`).
-**Next (ROMs already on hand):** Quadra 630 / LC 630 (06684214) on the 040
-side, SE/SE FDHD/Classic (compact 68000 + ADB transcoder), SE/30 (compact
-IIx + built-in video), IIfx (OSS + IOPs) — and the LLE fidelity pass
+Last (2026-07-25) came the **compact 68000 family** — **Mac SE**,
+**SE FDHD** and **Classic** — which turned out to be a `MacMemory::Model`
+enum, not a machine: `macse_map` is the Plus map with a bigger ROM, the
+overlay clearing on the first ROM access, and **ADB on the same PIC1654S
+firmware LLE** the Mac II uses (PB4/PB5 = ST) in place of the M0110 — gates
+`se_boot_etalon`, `sefdhd_boot_etalon`, `classic_boot_etalon`.
+**Next (ROMs already on hand):** Quadra 630 / LC 630 (06684214, Valkyrie +
+F108 + IDE) on the 040 side, IIfx (OSS + IOPs), Quadra 900/950 (the same
+IOPs); **SE/30 needs a dump** (it is a IIx on a compact board) — and the
+LLE fidelity pass
 (`docs/LLE_VS_HLE.md`) + the beyond-boot test depth pass (`TODO.md`).

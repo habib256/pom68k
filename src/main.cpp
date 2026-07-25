@@ -385,7 +385,7 @@ static void initDriveSfx(MacAudioHost& host) {
 // Selecting another machine relaunches the process on its ROM — clean
 // state, since each machine is built once at startup (ROM size alone
 // selects the machine in main()).
-enum class MachineKind { Plus, MacII, Lc, LcII, ClassicII, ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Quadra };
+enum class MachineKind { Plus, Se, SeFdhd, MacClassic, MacII, Lc, LcII, ClassicII, ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Quadra };
 static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 
 // ── AppleTalk window (in-process stack visibility + toggles) ────────────
@@ -520,6 +520,9 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         const char* kSpike = "Discret 040 (Quadra 700)";
         const Profile kProfiles[] = {
             { "68000", "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr, nullptr, nullptr, true },
+            { "68000", "Macintosh SE", MachineKind::Se, "roms/macse.rom", "B2E362A8", nullptr, nullptr, true },
+            { "68000", "Macintosh SE FDHD", MachineKind::SeFdhd, "roms/macsefd.rom", "B306E171", nullptr, nullptr, true },
+            { "68000", "Macintosh Classic", MachineKind::MacClassic, "roms/macclassic.rom", "A49F9914", nullptr, nullptr, true },
             { kGlue, "Macintosh II", MachineKind::MacII, "roms/macii.rom", "9779D2C4", nullptr, nullptr, true },
             { kGlue, "Macintosh IIx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iix", true },
             { kGlue, "Macintosh IIcx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iicx", false },
@@ -3834,7 +3837,18 @@ int main(int argc, char** argv) {
             return runQ700(std::move(rom), matched, argc, argv);
         return runQuadra(std::move(rom), matched, argc, argv);
     }
-    if (rom.size() == V8Memory::kRomSize) {
+    // Compact 68000 family (mac128.cpp macse/macsefd/macclasc): the Plus map
+    // with a bigger ROM and ADB instead of the M0110 — same MacMemory, a
+    // different Model. Checked BEFORE the Mac II / V8 size branches, which
+    // otherwise claim these 256 KB / 512 KB dumps.
+    if (rom.size() >= MacIIMemory::kRomSize) {
+        const uint32_t ck = uint32_t(rom[0]) << 24 | uint32_t(rom[1]) << 16
+                          | uint32_t(rom[2]) << 8 | rom[3];
+        if (ck == 0xB2E362A8)      mem.setModel(MacMemory::Model::SE);
+        else if (ck == 0xB306E171) mem.setModel(MacMemory::Model::SEFDHD);
+        else if (ck == 0xA49F9914) mem.setModel(MacMemory::Model::Classic);
+    }
+    if (mem.model() == MacMemory::Model::Plus && rom.size() == V8Memory::kRomSize) {
         // The header checksum (first 4 bytes, big-endian) is the model ID:
         // $350EACF0 = LC, $3193670E = Classic II, $35C28F5F = LC II. Any
         // other 512 KB dump gets the LC II profile (the reference V8).
@@ -3852,7 +3866,7 @@ int main(int argc, char** argv) {
         else if (ck == 0x3193670E) model = V8Memory::Model::ClassicII;
         return runLcII(std::move(rom), matched, argc, argv, model);
     }
-    if (rom.size() == MacIIMemory::kRomSize) {
+    if (mem.model() == MacMemory::Model::Plus && rom.size() == MacIIMemory::kRomSize) {
         // $97221136 = the mac2fdhd ROM shared by the Mac II FDHD and the
         // 68030 IIx / IIcx. Default it to the IIx (the distinct 030 machine);
         // POM68K_MACII_MODEL=iicx / fdhd picks the siblings. The 800K Mac II
@@ -3896,12 +3910,24 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "No boot media — drop a .dsk in disks35/ or a .vhd in "
                      "hdv/ (looked relative to CWD and the executable).\n");
 
+    // The compact 68000 siblings run this very machine (Plus map + ADB).
+    const MacMemory::Model compactModel = mem.model();
+    static const char* machineName =
+        compactModel == MacMemory::Model::SE      ? "Macintosh SE" :
+        compactModel == MacMemory::Model::SEFDHD  ? "Macintosh SE FDHD" :
+        compactModel == MacMemory::Model::Classic ? "Macintosh Classic" : "Macintosh Plus";
+    static const MachineKind compactKind =
+        compactModel == MacMemory::Model::SE      ? MachineKind::Se :
+        compactModel == MacMemory::Model::SEFDHD  ? MachineKind::SeFdhd :
+        compactModel == MacMemory::Model::Classic ? MachineKind::MacClassic : MachineKind::Plus;
+    const std::string windowTitle = std::string("POM68K — ") + machineName;
+
     // ── Window / ImGui ───────────────────────────────────────────────────
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    GLFWwindow* window = glfwCreateWindow(1100, 800, "POM68K — Macintosh Plus", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1100, 800, windowTitle.c_str(), nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
@@ -3958,18 +3984,24 @@ int main(int argc, char** argv) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, c.video.width(), c.video.height(),
                      0, GL_RGBA, GL_UNSIGNED_BYTE, fb);
 
-        machineMenu(MachineKind::Plus, c.window, [&c] {
+        machineMenu(compactKind, c.window, [&c] {
             if (ImGui::MenuItem("Redémarrer")) c.cpu.hardReset();
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Macintosh Plus", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Begin(machineName, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         // Mouse → quadrature: hover/drag on the screen, or Delete-key capture
         static ScreenInput input;
         input.frame(c.window, c.tex,
                     ImVec2(float(c.video.width() * 2), float(c.video.height() * 2)),
-                    [&](int dx, int dy) { c.mem.mouse().move(dx, dy); },
-                    [&](bool down) { c.mem.mouse().setButton(down); });
+                    [&](int dx, int dy) {
+                        if (c.mem.isAdb()) c.mem.adbMouseMove(dx, dy);
+                        else c.mem.mouse().move(dx, dy);
+                    },
+                    [&](bool down) {
+                        if (c.mem.isAdb()) c.mem.adbMouseButton(down);
+                        else c.mem.mouse().setButton(down);
+                    });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -3994,6 +4026,11 @@ int main(int argc, char** argv) {
                 {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
             };
             for (auto& e : kKeys) {
+                if (c.mem.isAdb()) {          // ADB raw code = M0110 code >> 1
+                    if (ImGui::IsKeyPressed(e.k, false)) c.mem.keyEvent(uint8_t(e.code >> 1), true);
+                    if (ImGui::IsKeyReleased(e.k)) c.mem.keyEvent(uint8_t(e.code >> 1), false);
+                    continue;
+                }
                 if (ImGui::IsKeyPressed(e.k, false)) c.mem.keyboard().enqueue(e.code);
                 if (ImGui::IsKeyReleased(e.k)) c.mem.keyboard().enqueue(uint8_t(e.code | 0x80));
             }

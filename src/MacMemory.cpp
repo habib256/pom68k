@@ -3,6 +3,15 @@
 
 #include "MacMemory.h"
 #include "Cpu68k.h"
+#include <cstdio>
+#include <cstdlib>
+
+// Compact-Mac ADB bring-up tracer (POM68K_SE_VIA_TRACE=1): every VIA1
+// access on the ADB models, with the PB4/PB5 ST lines decoded.
+static bool seViaTrace() {
+    static const bool t = std::getenv("POM68K_SE_VIA_TRACE") != nullptr;
+    return t;
+}
 
 static uint32_t romSizeFor(MacMemory::Model m) {
     switch (m) {
@@ -16,6 +25,14 @@ static uint32_t romSizeFor(MacMemory::Model m) {
 MacMemory::MacMemory(Model model)
     : ram_(kRamSize, 0), rom_(romSizeFor(model), 0xFF), model_(model),
       romSize_(romSizeFor(model)) {
+    if (isAdb()) adbVia_.attach(via_, adb_);
+}
+
+void MacMemory::setModel(Model m) {
+    if (m == model_) return;
+    model_ = m;
+    romSize_ = romSizeFor(m);
+    rom_.assign(romSize_, 0xFF);
     if (isAdb()) adbVia_.attach(via_, adb_);
 }
 
@@ -137,6 +154,15 @@ void MacMemory::refreshPortBInputs() {
 // IPL line is recomputed after every one.
 uint8_t MacMemory::viaAccess(uint32_t addr, bool write, uint8_t v) {
     int reg = (addr >> 9) & 0xF;
+    if (isAdb() && seViaTrace()) {
+        static const char* rn[16] = { "ORB","ORA","DDRB","DDRA","T1CL","T1CH","T1LL",
+                                      "T1LH","T2CL","T2CH","SR","ACR","PCR","IFR","IER","ORA_NH" };
+        std::fprintf(stderr, "via %s %-4s %02X  pb=%02X ddrb=%02X st=%d acr=%02X ifr=%02X pc=%06X\n",
+                     write ? "W" : "R", rn[reg], write ? v : 0,
+                     via_.portB(), via_.ddrb(), (via_.portB() >> 4) & 3,
+                     via_.acr(), via_.ifrRaw(),
+                     cpu_ ? unsigned(cpu_->getPC()) : 0u);
+    }
     if (!write) {
         if (reg == Via6522::ORB) refreshPortBInputs();
         uint8_t r = via_.read(reg);

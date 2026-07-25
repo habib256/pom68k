@@ -651,6 +651,23 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                          ENVIRONMENT "POM68K_CENTRIS_MODEL=q650" TIMEOUT 1800)
     set_tests_properties(quadra610_boot_etalon PROPERTIES
                          ENVIRONMENT "POM68K_CENTRIS_MODEL=q610" TIMEOUT 1800)
+    # Compact 68000 family (Mac SE / SE FDHD / Classic): the Plus machine with
+    # a bigger ROM and the PIC1654S ADB transceiver instead of the M0110.
+    # One binary, POM68K_COMPACT_MODEL picks the sibling.
+    add_executable(compact_boot_etalon tests/compact_boot_etalon.cpp)
+    target_link_libraries(compact_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME se_boot_etalon COMMAND compact_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME sefdhd_boot_etalon COMMAND compact_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME classic_boot_etalon COMMAND compact_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(se_boot_etalon PROPERTIES TIMEOUT 1800)
+    set_tests_properties(sefdhd_boot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_COMPACT_MODEL=sefdhd" TIMEOUT 1800)
+    set_tests_properties(classic_boot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_COMPACT_MODEL=classic" TIMEOUT 1800)
+
     # Quadra 700 ("Spike"): the first Quadra — a full 68040 on discrete
     # chips (Mac II VIA1/VIA2 + RTC + PIC ADB, Quadra DAFB/53C96/SWIM1/EASC),
     # SCSI behind DAFB's own TurboSCSI cell. $420DBFF3 ROM.
