@@ -27,6 +27,9 @@ public:
     void stall(int cycles);                 // `cycles` are machine cycles
     void flushTicks();                      // run peripherals up to `clock`
     int cacheBoost() const { return cacheBoost_; }
+    // Bus/wire time (E-clock, wait states) must be measured here, not on the
+    // boosted core clock — see SonoraCpu.h.
+    moira::i64 machineClock() const { return clock / cacheBoost_; }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;
@@ -40,12 +43,14 @@ private:
     Q605Memory& mem_;
     moira::i64 lastPeriphClock_ = 0;
 
-    // Throughput ceiling (Cpu030 pattern). Default 1 is the only value
-    // that keeps q605_boot_etalon green (boost 2+ → SCSI=0). Stall /
-    // viaSync / syncSwimFromCpu are boost-invariant; raise via
-    // POM68K_Q605_CACHE_BOOST only after a relative-timing milestone.
-    // flushTicks() scales Moira cycles back down by cacheBoost_.
-    int cacheBoost_ = 1;
+    // Throughput ceiling (Cpu030 pattern). Was pinned at 1 for a long time
+    // because "boost 2+ → SCSI=0" on q605_boot_etalon; re-measured
+    // 2026-07-25 and that ceiling is GONE — every 040 machine etalon
+    // (Q605/LC 475/LC 575/Centris/Quadra, incl. the Cuda-LLE and floppy
+    // ones) boots at 2, 4 and 8. Default is now 4, matching the 030 family.
+    // Stall / viaSync / syncSwimFromCpu are boost-invariant; tune with
+    // POM68K_Q605_CACHE_BOOST. flushTicks() scales Moira cycles back down.
+    int cacheBoost_ = 4;
     int icacheMiss_ = 0;                    // POM68K_Q605_ICACHE_MISS
     moira::i64 periphAccum_ = 0;
 };

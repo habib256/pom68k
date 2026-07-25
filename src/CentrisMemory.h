@@ -59,6 +59,12 @@ public:
     static constexpr uint8_t kIdCentris650 = 0x46;   // pa1|pa2|pa6
     static constexpr uint8_t kIdQuadra610  = 0x44;   // pa2|pa6
     static constexpr uint8_t kIdQuadra650  = 0x52;   // pa1|pa4|pa6
+    // Quadra 800 (macquadra800.cpp macqd800): pa1=1, pa2=0, pa4=1, pa6=0 —
+    // the only model of the family with pa6 clear.
+    static constexpr uint8_t kIdQuadra800  = 0x12;   // pa1|pa4
+    // Ethernet address ROM at $50008000 (macquadra800.cpp ethernet_mac_r).
+    // Apple OUI 08:00:07 + a fixed host part; the checksum byte is derived.
+    static constexpr uint8_t kMacAddr[6] = { 0x08, 0x00, 0x07, 0x50, 0x6D, 0x68 };
 
     explicit CentrisMemory(uint32_t totalRam = 36u << 20,
                            int64_t cpuHz = kCpuHz650,

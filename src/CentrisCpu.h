@@ -27,6 +27,9 @@ public:
     void stall(int cycles);
     void flushTicks();
     int cacheBoost() const { return cacheBoost_; }
+    // Bus/wire time (E-clock, wait states, the PIC1654S co-step) must be
+    // measured here, not on the boosted core clock — see SonoraCpu.h.
+    moira::i64 machineClock() const { return clock / cacheBoost_; }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;
@@ -39,7 +42,9 @@ private:
 
     CentrisMemory& mem_;
     moira::i64 lastPeriphClock_ = 0;
-    int cacheBoost_ = 1;
+    // Same ceiling as Cpu040 (see the note there): the old boost-1 pin was
+    // a stale Q605 SCSI symptom, lifted 2026-07-25.
+    int cacheBoost_ = 4;
     int icacheMiss_ = 0;
     moira::i64 periphAccum_ = 0;
 };

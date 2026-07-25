@@ -74,10 +74,10 @@ int main() {
     Cpu040 cpu(mem);
     mem.setCpu(&cpu);
     constexpr uint32_t kSwim = 0x5001E000;
-    auto before = cpu.getClock();
+    auto before = cpu.machineClock();   // wait states are machine cycles
     check(mem.read16(kSwim + 6 * 0x200) == 0x4000,
           "PrimeTime word read returns SWIM byte on D15-D8");
-    check(cpu.getClock() - before == 5, "PrimeTime SWIM access costs five cycles");
+    check(cpu.machineClock() - before == 5, "PrimeTime SWIM access costs five cycles");
     mem.write16(kSwim + 7 * 0x200, 0x0080);
     check((mem.swim().mode() & 0x80) != 0,
           "PrimeTime word write accepts the low data byte once");

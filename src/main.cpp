@@ -498,37 +498,57 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         // ID (LC III vs LC III+; LC 475 vs Quadra 605). envKey/envVal tag the
         // variant; `dflt` marks the one selected when the env is unset. The
         // relaunch inherits the process env, so setenv() here is enough.
-        struct Profile { const char* label; MachineKind kind; const char* rom;
+        // `group` = the machine PLATFORM (gate array / bus front end), the
+        // same seven-way split DEV.md is organised around: every entry under
+        // a heading shares one memory-map + I/O implementation and differs
+        // only by clock / CPU / model ID / MCU. Entries stay grouped in
+        // declaration order — the loop emits a SeparatorText whenever `group`
+        // changes, so reordering the table reorders the menu.
+        struct Profile { const char* group; const char* label; MachineKind kind;
+                         const char* rom;
                          const char* sig; const char* envKey; const char* envVal;
                          bool dflt; };
+        const char* kGlue = "GLUE + NuBus (Mac II)";
+        const char* kV8 = "V8 / Eagle / Spice / Tinker Bell";
+        const char* kRbv = "RBV (video en RAM)";
+        const char* kSonora = "Sonora";
+        const char* kVasp = "VASP (Sonora + peripheriques V8)";
+        const char* kMemc = "MEMCjr + PrimeTime";
+        const char* kDjmemc = "djMEMC + IOSB";
         const Profile kProfiles[] = {
-            { "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr, nullptr, nullptr, true },
-            { "Macintosh II", MachineKind::MacII, "roms/macii.rom", "9779D2C4", nullptr, nullptr, true },
-            { "Macintosh IIx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iix", true },
-            { "Macintosh IIcx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iicx", false },
-            { "Macintosh Classic II", MachineKind::ClassicII, "roms/classic2.rom", "3193670E", nullptr, nullptr, true },
-            { "Macintosh LC", MachineKind::Lc, "roms/maclc.rom", "350EACF0", nullptr, nullptr, true },
-            { "Macintosh LC II", MachineKind::LcII, "roms/maclcii.rom", "35C28F5F", nullptr, nullptr, true },
-            { "Macintosh Color Classic", MachineKind::ColorClassic, "roms/cclassic.rom", "ECD99DC0", nullptr, nullptr, true },
-            { "Macintosh TV", MachineKind::MacTv, "roms/mactv.rom", "EAF1678D", nullptr, nullptr, true },
-            { "Macintosh IIsi", MachineKind::IIsi, "roms/maciisi.rom", "36B7FB6C", nullptr, nullptr, true },
-            { "Macintosh IIci", MachineKind::IIci, "roms/maciici.rom", "368CADFE", nullptr, nullptr, true },
-            { "Macintosh LC III", MachineKind::Lc3, "roms/maclc3.rom", "ECBBC41C", "POM68K_LC3_PLUS", "0", true },
-            { "Macintosh LC III+ (33 MHz)", MachineKind::Lc3, "roms/maclc3.rom", "ECBBC41C", "POM68K_LC3_PLUS", "1", false },
-            { "Macintosh LC 520", MachineKind::Aio, "roms/maclc520.rom", "EDE66CBD", "POM68K_AIO_ID", "A55A0100", true },
-            { "Macintosh LC 550 (33 MHz)", MachineKind::Aio, "roms/maclc520.rom", "EDE66CBD", "POM68K_AIO_ID", "A55A0101", false },
-            { "Macintosh Color Classic II", MachineKind::Aio, "roms/maclc520.rom", "EDE66CBD", "POM68K_AIO_ID", "CC2", false },
-            { "Macintosh IIvx", MachineKind::Vasp, "roms/maciivx.rom", "4957EB49", "POM68K_IIVI", "0", true },
-            { "Macintosh IIvi (16 MHz)", MachineKind::Vasp, "roms/maciivx.rom", "4957EB49", "POM68K_IIVI", "1", false },
-            { "Macintosh Centris 650", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "c650", true },
-            { "Macintosh Centris 610 (20 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "c610", false },
-            { "Macintosh Quadra 650 (33 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q650", false },
-            { "Macintosh Quadra 610", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q610", false },
-            { "Macintosh LC 475", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE", "POM68K_Q605_ID", "A55A2221", true },
-            { "Quadra 605", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE", "POM68K_Q605_ID", "A55A2225", false },
-            { "Macintosh LC 575", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE", "POM68K_Q605_ID", "A55A222E", false },
+            { "68000", "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr, nullptr, nullptr, true },
+            { kGlue, "Macintosh II", MachineKind::MacII, "roms/macii.rom", "9779D2C4", nullptr, nullptr, true },
+            { kGlue, "Macintosh IIx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iix", true },
+            { kGlue, "Macintosh IIcx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iicx", false },
+            { kRbv, "Macintosh IIci", MachineKind::IIci, "roms/maciici.rom", "368CADFE", nullptr, nullptr, true },
+            { kRbv, "Macintosh IIsi", MachineKind::IIsi, "roms/maciisi.rom", "36B7FB6C", nullptr, nullptr, true },
+            { kV8, "Macintosh LC", MachineKind::Lc, "roms/maclc.rom", "350EACF0", nullptr, nullptr, true },
+            { kV8, "Macintosh LC II", MachineKind::LcII, "roms/maclcii.rom", "35C28F5F", nullptr, nullptr, true },
+            { kV8, "Macintosh Classic II", MachineKind::ClassicII, "roms/classic2.rom", "3193670E", nullptr, nullptr, true },
+            { kV8, "Macintosh Color Classic", MachineKind::ColorClassic, "roms/cclassic.rom", "ECD99DC0", nullptr, nullptr, true },
+            { kV8, "Macintosh TV", MachineKind::MacTv, "roms/mactv.rom", "EAF1678D", nullptr, nullptr, true },
+            { kSonora, "Macintosh LC III", MachineKind::Lc3, "roms/maclc3.rom", "ECBBC41C", "POM68K_LC3_PLUS", "0", true },
+            { kSonora, "Macintosh LC III+ (33 MHz)", MachineKind::Lc3, "roms/maclc3.rom", "ECBBC41C", "POM68K_LC3_PLUS", "1", false },
+            { kSonora, "Macintosh LC 520", MachineKind::Aio, "roms/maclc520.rom", "EDE66CBD", "POM68K_AIO_ID", "A55A0100", true },
+            { kSonora, "Macintosh LC 550 (33 MHz)", MachineKind::Aio, "roms/maclc520.rom", "EDE66CBD", "POM68K_AIO_ID", "A55A0101", false },
+            { kSonora, "Macintosh Color Classic II", MachineKind::Aio, "roms/maclc520.rom", "EDE66CBD", "POM68K_AIO_ID", "CC2", false },
+            { kVasp, "Macintosh IIvx", MachineKind::Vasp, "roms/maciivx.rom", "4957EB49", "POM68K_IIVI", "0", true },
+            { kVasp, "Macintosh IIvi (16 MHz)", MachineKind::Vasp, "roms/maciivx.rom", "4957EB49", "POM68K_IIVI", "1", false },
+            { kMemc, "Macintosh LC 475", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE", "POM68K_Q605_ID", "A55A2221", true },
+            { kMemc, "Macintosh LC 575 (33 MHz)", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE", "POM68K_Q605_ID", "A55A222E", false },
+            { kMemc, "Quadra 605", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE", "POM68K_Q605_ID", "A55A2225", false },
+            { kDjmemc, "Macintosh Centris 610 (20 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "c610", false },
+            { kDjmemc, "Macintosh Centris 650", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "c650", true },
+            { kDjmemc, "Macintosh Quadra 610", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q610", false },
+            { kDjmemc, "Macintosh Quadra 650 (33 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q650", false },
+            { kDjmemc, "Macintosh Quadra 800 (33 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q800", false },
         };
+        const char* lastGroup = nullptr;
         for (const Profile& pr : kProfiles) {
+            if (!lastGroup || std::strcmp(lastGroup, pr.group) != 0) {
+                ImGui::SeparatorText(pr.group);
+                lastGroup = pr.group;
+            }
             bool kindCur = pr.kind == cur;
             bool variantCur = true;              // variant match within a kind
             if (pr.envKey) {
@@ -3132,25 +3152,28 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
 static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
                      int argc, char** argv) {
     // Shared F1A6F343/F1ACAD13 ROM on the djMEMC + IOSB machine (MAME
-    // macquadra800.cpp), four models by POM68K_CENTRIS_MODEL (GUI menu sets
+    // macquadra800.cpp), five models by POM68K_CENTRIS_MODEL (GUI menu sets
     // it before relaunch; default = Centris 650): Centris 650 (68LC040 @
     // 25 MHz, ID $46) / Centris 610 (20 MHz, $40) / Quadra 650 (full 68040 @
-    // 33 MHz, $52) / Quadra 610 (25 MHz, $44). POM68K_CENTRIS610 = legacy
+    // 33 MHz, $52) / Quadra 610 (25 MHz, $44) / Quadra 800 (full 68040 @
+    // 33 MHz, $12 — same board plus SONIC Ethernet and three NuBus slots,
+    // neither of which the boot path binds). POM68K_CENTRIS610 = legacy
     // alias for c610.
     std::string cmodel = getenv("POM68K_CENTRIS_MODEL")
                        ? getenv("POM68K_CENTRIS_MODEL")
                        : (getenv("POM68K_CENTRIS610") ? "c610" : "c650");
     const bool c610 = cmodel == "c610", q650 = cmodel == "q650",
-               q610 = cmodel == "q610";
-    if (q650 || q610) setenv("POM68K_CENTRIS_FPU", "1", 1);   // full 68040
+               q610 = cmodel == "q610", q800 = cmodel == "q800";
+    if (q650 || q610 || q800) setenv("POM68K_CENTRIS_FPU", "1", 1);  // full 68040
     struct CInfo { const char* name; int mhz; int64_t hz; uint8_t pins; };
     const CInfo cinfo =
-          q650 ? CInfo{"Quadra 650", 33, CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra650}
+          q800 ? CInfo{"Quadra 800", 33, CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra800}
+        : q650 ? CInfo{"Quadra 650", 33, CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra650}
         : q610 ? CInfo{"Quadra 610", 25, CentrisMemory::kCpuHzQ610, CentrisMemory::kIdQuadra610}
         : c610 ? CInfo{"Centris 610", 20, CentrisMemory::kCpuHz610, CentrisMemory::kIdCentris610}
                : CInfo{"Centris 650", 25, CentrisMemory::kCpuHz650, CentrisMemory::kIdCentris650};
     std::printf("Machine: Macintosh %s (68%s040 @ %d MHz, djMEMC+IOSB)\n",
-                cinfo.name, (q650 || q610) ? "0" : "LC", cinfo.mhz);
+                cinfo.name, (q650 || q610 || q800) ? "0" : "LC", cinfo.mhz);
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
 
     static CentrisMemory mem(36u << 20, cinfo.hz, cinfo.pins);

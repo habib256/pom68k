@@ -141,9 +141,14 @@ void SonoraMemory::updateIrq() {
 // sonora.cpp:347-368 — stall the CPU to the 783.36 kHz VIA E-clock on
 // every VIA1 access (generic two-clock formula; 25 MHz / 783 360 is not
 // an integer ratio, unlike the V8's ÷20).
+// In MACHINE cycles, not core-clock cycles: under the i-cache throughput
+// overlay the core clock runs cacheBoost_× fast, and aligning to a
+// boost-fast phantom E-clock shrinks every VIA-paced pulse by the same
+// factor — which is what starved the Egret transport on the 25/33 MHz
+// Sonora machines (CHANGELOG 2026-07-25).
 void SonoraMemory::viaSync() {
     if (!cpu_) return;
-    int64_t c = cpu_->getClock();
+    int64_t c = cpu_->machineClock();
     int64_t viaCycle = c * kViaHz / cpuHz_;
     int64_t target = (viaCycle * 2 + 3) * cpuHz_ / (2 * kViaHz) + 1;
     if (target > c) cpu_->stall(int(target - c));

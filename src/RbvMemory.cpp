@@ -192,9 +192,10 @@ void RbvMemory::updateIrq() {
 
 // maciici.cpp via_sync — stall the CPU to the 783.36 kHz VIA E-clock on
 // every VIA1 access (the Sonora formula).
+// Machine cycles, not core-clock cycles (SonoraMemory::viaSync).
 void RbvMemory::viaSync() {
     if (!cpu_) return;
-    int64_t c = cpu_->getClock();
+    int64_t c = cpu_->machineClock();
     int64_t viaCycle = c * kViaHz / cpuHz_;
     int64_t target = (viaCycle * 2 + 3) * cpuHz_ / (2 * kViaHz) + 1;
     if (target > c) cpu_->stall(int(target - c));
@@ -212,7 +213,7 @@ void RbvMemory::refreshVia1PortB() {
 uint8_t RbvMemory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
     if (cpu_) cpu_->flushTicks();
     viaSync();
-    if (iici_ && cpu_) adbVia_.syncTo(cpu_->getClock());
+    if (iici_ && cpu_) adbVia_.syncTo(cpu_->machineClock());
     int reg = (addr >> 9) & 0x0F;            // $200 stride
     if (write) {
         via_.write(reg, v);
@@ -461,7 +462,7 @@ void RbvMemory::tick(int cpuCycles) {
 
     if (iici_) {
         adbVia_.tick(cpuCycles);
-        if (cpu_) adbVia_.syncTo(cpu_->getClock());
+        if (cpu_) adbVia_.syncTo(cpu_->machineClock());
         refreshVia1PortB();                  // /ADB IRQ level → PB3
         updateIrq();
         // Discrete RTC 1 Hz (rtc3430042 cko → the ROM's one-second poll).

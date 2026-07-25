@@ -6,8 +6,9 @@ gates and oracles), and only later layer an **opt-in, clearly-flagged HLE
 accelerator** on top (`HLE_OVERLAY.md`). That requires knowing exactly
 where the current code already deviates from hardware. This document is
 the complete inventory and the plan to shrink it. Current as of
-2026-07-24 (fourth pass — the **Phase C** machine fan-out, see CHANGELOG).
-Earlier passes: 2026-07-22 (third pass against the live tree); 2026-07-21
+2026-07-25 (**fifth pass** — the RBV / Tinker Bell / 68030-Mac II round,
+26 machine profiles, 91 gates). Earlier: 2026-07-24 (fourth pass — the **Phase C** machine fan-out);
+2026-07-22 (third pass against the live tree); 2026-07-21
 MAME (`refs/mame-apple`, `refs/mame`) + DingusPPC (`refs/dingusppc`)
 cross-check → §3 gaps and migration steps 7–10.
 
@@ -25,6 +26,23 @@ cross-check → §3 gaps and migration steps 7–10.
 > SWIM1/SWIM2) inherit their §3 LLE-simplified classification unchanged;
 > the new pure-LLE fidelity fact is the **unmapped-I/O-reads-as-0**
 > MAME-parity rule on the Sonora and PrimeTime maps (§4).
+
+> **Fifth-pass headline (2026-07-25): the *second* firmware-LLE MCU family
+> spread.** The **PIC1654S ADB modem** — until now a Mac II curiosity — is
+> the default transceiver on three families: Mac II / **IIx** / **IIcx**,
+> the **Mac IIci** (`RbvMemory` `iici`) and the **Centris/Quadra 610/650**
+> (`CentrisMemory`). Together with the Egret/Cuda 68HC05 machines that means
+> **every ADB machine POM68K ships runs real MCU firmware by default**, and
+> the HLE `AdbVia` byte-model / `AdbBus` are no-dump fallbacks on every
+> path. Two new pure-LLE fidelity facts came out of the round: the **030
+> PMMU must not double-translate against the GLUE 24-bit remap** (skip
+> `MacIIMemory::physAddr` when TC bit 31 is set — the
+> 020-HMMU-vs-030-PMMU split, §4), and the **i-cache throughput overlay is
+> not free** — it used to accelerate BUS time too, which starved the ROM's
+> host-paced Egret transport (IIsi wedge, LC III/IIvx black screen). Bus
+> time is now charged in machine cycles, both workarounds (`RbvCpu` boost 1,
+> `POM68K_Q605_CACHE_BOOST` 1) are retired, and the PIC1654S co-step no
+> longer runs on the boosted clock either (§3 CPUs).
 
 Line numbers are indicative — verify with grep before relying on them.
 
@@ -211,12 +229,30 @@ raised a phantom SHIFT ~320 cycles after every ST write, collapsing the
 PIC↔VIA handshake. Gated with `!adbVia_.lle()` since 2026-07-22; never
 fires on the default path. Eliminate when HLE `AdbVia` is retired.
 
+### 1.10 `POM68K_SCC_CLEANLINE` — machine config standing in for line state — **OPEN**
+
+`scc_.setAbortIdle(getenv("POM68K_SCC_CLEANLINE") == nullptr)` in all six
+memory classes (`V8Memory.cpp:134`, `Q605Memory.cpp:120`,
+`SonoraMemory.cpp:90`, `VaspMemory.cpp:65`, `RbvMemory.cpp:130`,
+`CentrisMemory.cpp:89`). §1.8 made the standing Break/Abort a
+*transport-driven* line state, but **Open Transport's LLAP driver** (Mac
+OS 8.1, unlike System 7's) waits forever for that abort to clear before
+binding `.MPP` — spin at `$D1F04`, last SCC access reads RR0 `$D4`
+(SCCDBG capture 2026-07-24). The env is the escape hatch: with it set,
+the idle line presents clean flags and OT binds (that is how the first
+real internet access from a POM68K guest happened, via MacIP/NAT).
+**Classification: a test/`env` knob that lets machine configuration
+decide a wire condition — exactly what §1.8 removed.** The fix is to
+present the abort only while a genuine abort condition exists, keep the
+Sys 7 no-peer etalons green, add an OT-flavored gate, then delete the
+env. Tracked as TODO "LLE fidelity" step 7.
+
 ## 2. HLE replacements (whole devices at protocol level)
 
 | Device | Files | What is replaced | Proper LLE would be |
 |---|---|---|---|
 | **Egret / Cuda** | `Egret.*` / `CudaLle.*` | **Firmware LLE is now the DEFAULT on every Egret/Cuda machine** (gates `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `q605_cudalle_*`). Q605 flipped 2026-07-23 (`341s0788`); **the LC II Egret flipped 2026-07-24** (`341s0850`) once the **instruction-slaved ADB wire** (`CudaLle::mcu_.onCycles`) fixed the autopoll-load desync (was mouse ~1.5% delivery — now saturates like the HLE, CHANGELOG "instruction-slaved ADB wire"). Phase C's new machines are all firmware-LLE by default: Color Classic `341s0788` (factory `341s0417`/2.35 wedges the M68hc05 — TODO), LC III/III+ + IIvx/IIvi `341s0851`, LC 520/550/CC II `341s0060` (2.40 — 2.37 livelocks that ROM on pseudo-cmd `$0E`). `POM68K_EGRET_LLE=0` / `POM68K_CUDA_LLE=0` force the HLE; a missing dump falls back silently | LC II re-flip **DONE**. Retire `Egret.*`/`AdbBus` once every machine's HLE fallback feels redundant (the last consumers are the no-dump path + `POM68K_*_LLE=0`) |
-| **ADB modem (Mac II)** | `AdbVia.*` + `Pic1654s.*` + `AdbLine.*` | **LLE default** since 2026-07-22 when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia.cpp:34-49`). HLE = NEW/EVEN/ODD/IDLE byte SM on VIA SR — only if dump missing or `POM68K_ADB_LLE=0` | Done: PIC runs real firmware; `AdbLine` is bit-serial; `Via6522::extShiftCB1` is the wire |
+| **ADB modem (Mac II / IIx / IIcx, IIci, Centris + Quadra 610/650)** | `AdbVia.*` + `Pic1654s.*` + `AdbLine.*` | **LLE default** since 2026-07-22 when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia.cpp:34-49`); since 2026-07-25 the same firmware path serves the **IIci** (`RbvMemory` `iici`) and the **Centris/Quadra** djMEMC machines. HLE = NEW/EVEN/ODD/IDLE byte SM on VIA SR — only if dump missing or `POM68K_ADB_LLE=0` | Done: PIC runs real firmware; `AdbLine` is bit-serial; `Via6522::extShiftCB1` is the wire |
 | **ADB bus (Egret/Cuda machines)** | `AdbBus.*` | Bit-serial ADB → command-level Talk/Listen with clamped mouse deltas — **fallback-only since 2026-07-23** (both machines feed `AdbLine` under the firmware LLE) | Retire with the Egret HLE |
 
 These are pragmatic and well-gated (`egret_test`, `input_etalon`,
@@ -261,6 +297,25 @@ documents the real behavior.
   `Cpu030::kPeriphBatch=128`, `Cpu040` `kPeriphBatch=256` — ~4–16 µs
   IRQ-latency jitter); VIA E-clock synced at a fixed 32:1 ratio
   (real ≈31.91:1).
+  *The overlay must not touch bus time* (root-caused 2026-07-25): it used
+  to compress VIA-paced pulses `cacheBoost_`× because `viaSync` aligned to
+  the E-clock in the **boosted** clock domain and `stall()` charged the wait
+  in boosted cycles — which starved the ROM's host-paced Egret transport on
+  every 030 machine above ~20 MHz (LC III, LC III+, IIvx red; IIsi pinned to
+  boost 1 as a workaround). On real silicon an i-cache accelerates
+  instruction fetch, never a VIA bus cycle, so bus time is now charged in
+  **machine cycles** (`machineClock()`, `stall()` scaled) — the convention
+  `Cpu040` already had. Both workarounds are retired: `RbvCpu` runs at the
+  shared default, and `POM68K_Q605_CACHE_BOOST` — pinned to 1 since Q8.8 on
+  a "boost 2+ fails SCSI" note — was re-measured green at 2/4/8 across the
+  whole 040 family, so `Cpu040`/`CentrisCpu` default to 4 as well. The audit
+  it prompted found one more boosted-clock reader: `AdbVia::syncTo` fed the
+  PIC1654S co-step the raw core clock (the transceiver firmware ran
+  `cacheBoost_`× fast); all four call sites now pass `machineClock()`.
+  *030 + GLUE* (`MacIIMemory`, IIx/IIcx): once the CPU's own PMMU is
+  enabled (TC bit 31) the address Moira presents is already physical, so
+  the GLUE 24-bit remap must be skipped — double-translating wedges the
+  boot mid-System. Same split as `V8Memory`'s 020-HMMU-vs-030-PMMU rule.
 - **Egret/Cuda wire**: **every Egret/Cuda machine now DEFAULTS to the
   real firmware** (§2 — `M68hc05` + `CudaLle`; Q605 since 2026-07-23, the
   LC II Egret and all Phase C machines since 2026-07-24), which closes
@@ -274,7 +329,9 @@ documents the real behavior.
 - **Video**: `MacVideo.h`, `V8Video.h`, `TobyVideo.*`, and (Phase C)
   `SonoraVideo.h` (mv_sonora modelines/CLUT/sense in vctrl) and
   `VaspVideo.h` (the V8 framebuffer decode at VASP's 2048-byte row
-  pitch, vasp.cpp screen_update) — whole-frame decode, no beam timing.
+  pitch, vasp.cpp screen_update) and `RbvVideo.h` (the IIsi/IIci
+  RAM-based framebuffer through the Bt478 CLUT, MAME `rbv.cpp`) —
+  whole-frame decode, no beam timing.
   Same classification as V8Video: register/CLUT/sense faithful, geometry
   from the guest-programmed modeline, but decoded once per frame.
   Toby's frame clock is **CRTC-derived since 2026-07-23** (the Q8.1

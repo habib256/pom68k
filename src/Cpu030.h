@@ -33,7 +33,13 @@ public:
     void runUntil(moira::i64 clockTarget);
     void updateIpl();                       // from the V8 priority resolver
     void stall(int cycles);                 // E-clock sync / SWIM wait states
+                                            // — in REAL machine cycles
     void flushTicks();                      // run peripherals up to `clock`
+
+    // The core clock runs at cacheBoost_× machine rate. Bus models (E-clock
+    // alignment, wait states) must work in machine cycles: on real silicon
+    // the i-cache accelerates instruction fetch, never a VIA bus cycle.
+    moira::i64 machineClock() const { return clock / cacheBoost_; }
 
     // Diagnostic Line-F logger (SimCity-2000 "coprocesseur absent" crash,
     // TODO § O6). When enabled, runCycles single-steps and keeps a ring of

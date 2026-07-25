@@ -24,6 +24,10 @@ public:
     void updateIpl();
     void stall(int cycles);
     void flushTicks();
+    // No i-cache throughput overlay on this core, so the core clock IS
+    // machine time — the accessor exists so bus/wire models (E-clock, the
+    // PIC1654S co-step) read the same idiom on every machine (SonoraCpu.h).
+    moira::i64 machineClock() const { return clock; }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;

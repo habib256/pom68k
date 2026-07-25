@@ -24,8 +24,11 @@ public:
     void runCycles(moira::i64 n);
     void runUntil(moira::i64 clockTarget);
     void updateIpl();
-    void stall(int cycles);
+    void stall(int cycles);          // REAL machine cycles (bus time)
     void flushTicks();
+
+    // Bus time is not accelerated by the i-cache — see SonoraCpu.h.
+    moira::i64 machineClock() const { return clock / cacheBoost_; }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;

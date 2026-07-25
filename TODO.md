@@ -5,6 +5,33 @@ design rationale belong in `CHANGELOG.md` (with implementation detail in
 `DEV.md` and the vendor notes). The LLE-vs-HLE inventory and migration plan
 live in `docs/LLE_VS_HLE.md`.
 
+## i-cache boost vs bus time — RESOLVED 2026-07-25
+
+The three red gates (`lc3_`, `lc3plus_`, `iivx_boot_etalon`) were **not** an
+Egret bug: `viaSync` read the *boosted* core clock and `stall()` charged the
+E-clock wait in boosted cycles, so every VIA-paced pulse was `cacheBoost_`×
+too short in machine time and the ROM's host-paced Egret transport wedged
+above ~20 MHz. Bus time is now charged in machine cycles on all four 030
+CPUs (the convention `Cpu040` already used) — CHANGELOG 2026-07-25. The
+IIsi's `cacheBoost_ = 1` workaround is retired with it.
+- [x] ~~**Try raising `POM68K_Q605_CACHE_BOOST` again**~~ **DONE 2026-07-25**:
+  the boost-1 pin was a stale symptom — the whole 040 family is green at 2/4/8,
+  so `Cpu040`/`CentrisCpu` now default to 4 (the suspicion that
+  `Q605Memory::viaSync` had the 030 bug was wrong: it already divided by the
+  boost). Two unit tests that measured wait states on the boosted clock
+  (`swim2_test`, `q605_turboscsi_test`) were made boost-invariant.
+- [x] ~~Audit the remaining `getClock()` readers~~ **DONE 2026-07-25**: found
+  one — `AdbVia::syncTo` fed the PIC1654S co-step the raw core clock, so the
+  transceiver firmware ran `cacheBoost_`× fast (live on the IIci once its
+  boost came back). All four sites pass `machineClock()` now; `syncSwimFromCpu`
+  and the 040 `viaSync`es were already correct.
+- [ ] **ADB report rate**: the corrected timing made reports coalesce enough
+  for System 7's mouse scaling to amplify a sustained stream ~1.6×
+  (`lcii_launch_etalon` now steers closed-loop instead of assuming 1:1).
+  Single moves land within one frame, 1:1 — but it is worth measuring the
+  actual autopoll-to-guest report rate against the Egret's ~90 Hz and
+  checking we are not servicing fewer polls than real hardware.
+
 ## Usability & proof (make the machines we have actually usable)
 
 Rather than adding a machine, prove and harden the ones we have (ROI order:
@@ -133,8 +160,14 @@ gets at least one Finder cell before the next:
 - [x] **Quadra 650 / Quadra 610 — DONE** (2026-07-24): full 68040 identity
   variants of the Centris (`POM68K_CENTRIS_MODEL=q650/q610`, ID $52 @ 33 MHz
   / $44 @ 25 MHz). Both boot Mac OS 8.1 to the Finder. Gates
-  `quadra650/quadra610_boot_etalon`; GUI entries. Quadra 800 (SONIC + NuBus)
-  is the remaining macquadra800.cpp sibling.
+  `quadra650/quadra610_boot_etalon`; GUI entries.
+- [x] **Quadra 800 — DONE** (2026-07-25): the last `macquadra800.cpp` sibling,
+  a fifth model of the same machine (`POM68K_CENTRIS_MODEL=q800`) — full
+  68040 @ 33 MHz, VIA1 PA ID pins **$12** (pa1|pa4, the only one with pa6
+  clear). SONIC Ethernet and the three NuBus slots stay unmapped-0 (the boot
+  path binds neither); only the **Ethernet address ROM** at $50008000 (6 MAC
+  bytes + inverted-XOR check at +7) needed modelling. Mac OS 8.1 640×480×8
+  Finder on the first run. Gate `quadra800_boot_etalon`; GUI entry.
 - [x] **Mac IIsi — DONE** (2026-07-25): new **RBV** machine
   (`RbvMemory`/`RbvCpu`/`RbvVideo`) — the RAM-Based Video ancestor of the
   V8/VASP/Sonora line (MAME `rbv.cpp`/`maciici.cpp maciisi`): 68030 @
@@ -448,16 +481,20 @@ Next milestones:
   - Keep machine threads, command queues and Emscripten's single-thread path
     behaviourally aligned.
 
-## Test & validation depth (audit 2026-07-24)
+## Test & validation depth (audit 2026-07-24, re-counted 2026-07-25)
 
-Finding from the doc-sync + machine-matrix pass: the 73 gates prove **boot**,
-not **use**. Of the 15 machine profiles, only **Mac II** (`macii_mouse_etalon`)
-and **Quadra 605** (`q605_cudalle_mouse_etalon` / `_key_etalon`) have a gate
-that exercises anything past reaching the Finder — the other 13 (LC, LC II,
-Classic II, Color Classic, LC III/III+, LC 520/550, CC II, IIvx/IIvi,
+Finding from the doc-sync + machine-matrix pass: the gates prove **boot**,
+not **use** — and the machine fan-out made the ratio *worse*, not better.
+Of the **25 machine profiles** covered by the **90 gates**, only **three**
+have any gate past the Finder signature: **Mac II** (`macii_mouse_etalon`),
+**Quadra 605** (`q605_cudalle_mouse_etalon` / `_key_etalon`) and **LC II**
+(`lcii_soak/persist/launch_etalon`, added 2026-07-24). The other **22**
+(LC, Classic II, Color Classic, CC II, Mac TV, IIsi, IIci, IIx, IIcx,
+LC III/III+, LC 520/550, IIvx/IIvi, Centris 610/650, Quadra 610/650,
 LC 475/575) are **boot-to-Finder signature only**. A machine can pass its
 etalon and still be broken for real work; green gates read as more coverage
-than they give. Highest-ROI closers, in order:
+than they give — this is now the single biggest gap in the project.
+Highest-ROI closers, in order:
 
 - [ ] **"Real work" functional gates on one reference machine** (LC II or
   Quadra 605): drive the Finder to (a) launch an app, (b) create + save a
@@ -465,10 +502,11 @@ than they give. Highest-ROI closers, in order:
   `ScsiDisk` writeBack path — already persistent), (c) a floppy
   write→eject→reinsert→read round-trip. Catches the silent-data-loss and
   Toolbox-regression class that framebuffer signatures cannot see.
-- [ ] **Stability / soak gate**: run N minutes of emulated idle uptime at the
-  Finder on one machine and assert no hang, no runaway (PC/heat-death), no
-  IRQ storm. Cheap; catches timing/tick-batch regressions the short boot
-  etalons miss.
+- [x] ~~**Stability / soak gate**~~ **DONE 2026-07-24 on the LC II**
+  (`lcii_soak_etalon` — idle uptime + the Mac clock tracking emulated time;
+  it is what caught the 37 % MCU overclock). **Still open: a second machine**
+  — the Quadra 605 / Mac OS 8.1 soak, which also exercises the 53C96 WRITE
+  path, is the next one (blocked on nothing but the work).
 - [ ] **Input-delivery gates for the boot-only machines** (reuse the
   `macii_mouse` / `q605_cudalle_mouse` harness): at least prove the ADB
   firmware-LLE path actually delivers mouse+key on the Sonora/VASP families,
@@ -485,14 +523,16 @@ Notes / already tracked:
   regressions) — see "Implement save states" above.
 - **Floppy write persistence** now exists (GUI/Plus, `floppy_persist_test`,
   atomic temp+rename); tests stay in-memory by design.
-- **Per-machine LLE-completeness estimates** (±5 pts) from the same pass, for
-  reference: Plus ~85, Q605 ~80, LC II ~80, LC 475/575 ~79, Mac II ~78, LC /
-  LC III/III+ ~75, Classic II / LC 520 family ~73, IIvx/vi ~72, Color Classic
-  ~70. Common ceilings: whole-frame video everywhere, cycle-exact CPU only on
-  the Plus. Lowest scores are freshness (VASP/AIO booted-once, not hardened)
-  and the one known-wrong default (Color Classic runs the substitute Cuda
-  341S0788 — factory 341S0417 wedges the M68hc05, tracked under Color Classic
-  above).
+- **Per-machine LLE-completeness estimates** (±5 pts), re-scored 2026-07-25
+  for the five newest machines: Plus ~85, Q605 ~80, LC II ~80, LC 475/575
+  ~79, Mac II ~78, LC / LC III/III+ ~75, Centris/Quadra 610/650 ~74,
+  Classic II / LC 520 family ~73, IIx/IIcx ~73, IIvx/vi ~72, IIsi / IIci
+  ~70, Color Classic ~70, Mac TV ~70. Common ceilings: whole-frame video
+  everywhere, cycle-exact CPU only on the Plus, no beyond-boot gate on 22 of
+  25 profiles. Lowest scores are **freshness** (booted-once, not hardened —
+  RBV/Tinker Bell/VASP/AIO) and the one known-wrong default (Color Classic
+  runs the substitute Cuda 341S0788 — factory 341S0417 wedges the M68hc05,
+  tracked under Color Classic above).
 
 ## Future machine profiles
 
@@ -508,15 +548,33 @@ Driven by **Phase C** of the Finder matrix above; detail and effort tiers in
   030:** IIfx (OSS + IOPs) and **SE/30** (compact IIx + built-in video);
   **compact 68000: SE/Classic** (ADB).
 - [x] ~~**Nearby 68040**: LC/Performa 475 identity, LC 575~~ **DONE
-  2026-07-24** (`lc475_`, `lc575_boot_etalon`). **Remaining 040:**
-  Centris/Quadra 610/650/800.
+  2026-07-24** (`lc475_`, `lc575_boot_etalon`), plus the **Centris 610/650
+  + Quadra 610/650** djMEMC+IOSB machine the same day. **Remaining 040:**
+  Quadra 800 (SONIC + NuBus, same F1ACAD13 ROM), Quadra 630 / LC 630,
+  Quadra 700/900/950 (NuBus), 660AV/840AV.
 
 - [ ] **NuBus + slot video** beyond Mac II Toby: IIx/IIcx/IIci and NuBus
   Quadras. (VASP/IIvx currently reads its three slots as empty — real
   cards would reuse the Mac II NuBus/DeclRom port.)
 
 - [ ] **Independent majors**: PowerBook PMU, IIfx IOPs, 660AV/840AV DSP.
-- [ ] **Mac TV** — BLOCKED on the **EAF1678D** ROM / Tinker Bell ASIC
-  (not EDE66CBD). Dump on hand (`roms/mactv/eaf1678d.bin`); needs a
-  Tinker Bell map + `$EAF1678D` dispatch. The EDE66CBD `$2000-$2003`
-  probe was the wrong machine (`docs/LC520_BRINGUP.md` § Siblings).
+- [x] ~~**Mac TV** (EAF1678D / Tinker Bell)~~ **DONE 2026-07-25** —
+  `V8Memory::Model::MacTv`, gate `mactv_boot_etalon` (see the Phase C
+  entry above). The EDE66CBD `$2000-$2003` probe had been the wrong
+  machine (`docs/LC520_BRINGUP.md` § Siblings).
+
+### Remaining machines, with the ROM already in `roms/` (cheapest first)
+
+| Machine | ROM on hand | New brick |
+|---|---|---|
+| **Quadra 630 / LC 630** | `06684214` | the 630's I/O controller variant (last 68k desktop) |
+| **LC 580 / Performa 580** | `064DC91D` | AIO sibling of the 630 board |
+| **SE / SE FDHD / Classic** | `B2E362A8` / `B306E171` / `A49F9914` | compact ADB-over-VIA transcoder MCU (not Egret) |
+| **SE/30** | (needs a dump) | the same compact MCU + 030 + compact video |
+| **Quadra 700 / 900 / 950** | `420DBFF3` / `3DC27823` | generalized NuBus + slot video |
+| **Mac IIfx** | `4147DD77` | OSS + two 6502-class IOPs |
+| **Portable / PowerBook 100** | `96CA3846` / `96645F9C` | LCD framebuffer + M50753 (740/6502) Power Manager |
+| **PowerBook 140-180 / Duo** | `E33B2724` / `0024D346` / `015621D7` | LCD framebuffer + Power Manager (68HC05 on the Duos) |
+| **PowerBook 150** | `FDA22562` | LCD + 68HC05 PM — the `M68hc05` core already ships |
+
+Effort tiers and the full family map: `docs/68K_FAMILY_SCOPE.md`.

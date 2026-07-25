@@ -241,9 +241,11 @@ void V8Memory::updateIrq() {
 // every VIA1 access: start at via_cycle+1, end half a VIA cycle later.
 // With cpuClk/viaClk = viaDiv_ (20 at C15M, 40 on the Mac TV's C32M):
 // main = (via_cycle*2 + 3) * viaDiv_/2 + 1.
+// Machine cycles, not core-clock cycles — aligning to a boost-fast phantom
+// E-clock shrinks every VIA-paced pulse by cacheBoost_ (CHANGELOG 2026-07-25).
 void V8Memory::viaSync() {
     if (!cpu_) return;
-    int64_t c = cpu_->getClock();
+    int64_t c = cpu_->machineClock();
     int64_t viaCycle = c / viaDiv_;
     int64_t target = (viaCycle * 2 + 3) * (viaDiv_ / 2) + 1;
     if (target > c) cpu_->stall(int(target - c));

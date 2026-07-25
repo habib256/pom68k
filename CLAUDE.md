@@ -13,10 +13,11 @@ EAF1678D ROM) — the **Mac IIsi** (68030 @ 20 MHz + RBV + Egret LLE,
 PIC1654S ADB modem LLE + discrete RTC, 368CADFE ROM) — the **Mac LC III / LC III+** (68030 @ 25 / 33 MHz + Sonora),
 the **AIO family** — **LC 520 / LC 550 / Color Classic II** (Sonora +
 Cuda 341S0060 LLE, EDE66CBD ROM) — the **Mac IIvx / IIvi** (VASP =
-"V8 video on Sonora addressing", Egret LLE) — the **Centris 610 / 650** and **Quadra 610 / 650**
-(djMEMC + IOSB, discrete RTC + PIC1654S LLE, Phase C 2026-07-24) — the
-**Quadra 605** (68040 + FPU) and **LC 475 / Performa 475** (68LC040) —
-both 040 + 040 MMU, functional accuracy. It is the
+"V8 video on Sonora addressing", Egret LLE) — the **Centris 610 / 650** and **Quadra 610 / 650 / 800**
+(djMEMC + IOSB, discrete RTC + PIC1654S LLE; the 800 adds SONIC + NuBus) — the
+**Quadra 605** (68040 + FPU) and **LC 475 / LC 575 / Performa 475-575**
+(68LC040) — both 040 + 040 MMU, functional accuracy. **26 machine
+profiles, all booting the Finder.** It is the
 68k sibling of [POMIIGS](../POMIIGS/) and reuses its architecture,
 conventions and milestone discipline; the CPU integration pattern comes
 from [NeoST](../neost/) (Moira wrapper, see below).
@@ -48,8 +49,8 @@ MMU** functionally. The 030/040 extensions were built from the Motorola manuals
 with AI + differential fuzzing against the vendored **WinUAE/Hatari oracle**;
 Musashi was retired after losing every 030 arbitration. On spec/oracle conflict,
 **the oracle wins**. The 040 path has an ATC fast path and a throughput/i-cache
-overlay (`POM68K_Q605_CACHE_BOOST`, default 1 — boost 2+ fails SCSI
-bring-up under `q605_boot_etalon`); no architectural
+overlay (`POM68K_Q605_CACHE_BOOST`, **default 4 since 2026-07-25** — the
+old boost-1 pin was a stale SCSI symptom); no architectural
 copyback/snooping yet.
 
 ## Source of truth (ranked, cite file + line range in comments)
@@ -74,7 +75,7 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 81 gates (asset-dependent gates may soft-skip)
+ctest                        # 91 gates (asset-dependent gates may soft-skip)
 ./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=V8 family
                              # (checksum: LC/LC II/Classic II); 1 MB by
                              # checksum: Color Classic / LC III / AIO
@@ -176,8 +177,8 @@ SWIM, DFAC audio polish, bus/timing).
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
-GUI exposes the machine alongside Plus/Mac II/LC/LC II/Classic II.
-**81 CTest gates**,
+GUI exposes the machine alongside the other 24 profiles (Machine menu).
+**91 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
 (LLE ADB mouse — default path since 2026-07-22), `sst68040`,
@@ -234,8 +235,16 @@ else the ROM burns in on the VIA-T2 loop), and the **Mac IIx / IIcx** —
 shared `$97221136` ROM, Toby NuBus reused; the wall was the 030 PMMU
 double-translating against the GLUE 24-bit remap — skip `physAddr` when the
 PMMU is on) — gates `mactv_boot_etalon`, `iisi_boot_etalon`,
-`iici_boot_etalon`, `iix_boot_etalon`, `iicx_boot_etalon`. Plus usability gates
+`iici_boot_etalon`, `iix_boot_etalon`, `iicx_boot_etalon`. The 040 side of
+Phase C added the **Centris 610 / 650** and their full-040 **Quadra 610 /
+650** twins on the new djMEMC + IOSB machine (`CentrisMemory`/`CentrisCpu`,
+F1A6F343 ROM) plus the **LC 575** identity ($A55A222E) — gates
+`centris610/650_`, `quadra610/650_`, `lc575_boot_etalon`. Plus usability gates
 `floppy_persist_test` and the LC II beyond-boot trio
-`lcii_soak/persist/launch_etalon`. Next: SE/Classic (compact 68000 + ADB),
-SE/30 (compact IIx + built-in video), IIfx (OSS+IOPs), and the LLE fidelity
-pass (`docs/LLE_VS_HLE.md`).
+`lcii_soak/persist/launch_etalon`. The **Quadra 800** followed (2026-07-25) as a fifth model of that machine —
+ID pins `$12`, full 040 @ 33 MHz, SONIC/NuBus unmapped but the Ethernet
+address ROM at `$50008000` modelled — gate `quadra800_boot_etalon`.
+**Next (ROMs already on hand):** Quadra 630 / LC 630 (06684214) on the 040
+side, SE/SE FDHD/Classic (compact 68000 + ADB transcoder), SE/30 (compact
+IIx + built-in video), IIfx (OSS + IOPs) — and the LLE fidelity pass
+(`docs/LLE_VS_HLE.md`) + the beyond-boot test depth pass (`TODO.md`).
