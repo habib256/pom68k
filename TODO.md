@@ -490,6 +490,23 @@ Next milestones:
     its bookkeeping costs more than its replay saves. Gates
     `jit_backend_test`, `jit_lockstep_test`, `jit_lockstep_blocks_test` and
     the four `jit_*_boot_etalon` twins. Off by default everywhere.
+  - [ ] **J1c — a DATA window, the same trick on the data path.** Likely the
+    best remaining return per unit of work, and it is not code generation.
+    The arithmetic: the interpreter took 58.7 s, the instruction-fetch window
+    removed ~31 s of that, and a good part of the remaining 27.6 s is the
+    *same* cost on the other side — every `mmu040Read`/`mmu040Write` still
+    does an ATC probe, a virtual `read16()` and the machine's whole address
+    decode. The mechanism, the probe, the guard and the gates already exist.
+    Harder than the fetch, and honestly so: data accesses fault (protection,
+    write-protected pages, page-crossing), writes must maintain the M bit,
+    and the fault-frame shape is load-bearing. So the window would have to
+    validate per-page permissions and bail to the normal path on any doubt.
+    **Measure a prototype before committing to it.**
+  - [ ] **Extend the seam to the 020/030 machines** — probably better value
+    than J2 too: the engine is generic, only the fetch sites are 040-specific,
+    and the 030 has its own single choke point (`mmuFetchWord`) which already
+    carries `PomIcache`, so the window drops in at the same spot. That is a
+    dozen more machines at ~×2 for modest work.
   - [ ] **J2 — x86-64 code generation** behind the same `jit::BlockIr`,
     writing into `jit::CodeBuffer`. Hot integer subset first (MOVE, ALU,
     simple EAs); everything else exits to the interpreter at an instruction
@@ -497,8 +514,6 @@ Next milestones:
     Use WinUAE's JIT as a code reference, not imported generated code.
   - [ ] **aarch64 backend** — porting note already written and validated
     against the IR: `src/jit/backends/JitBackendA64.md`.
-  - [ ] Extend the seam to the 020/030 machines (it is written generically;
-    only the fetch sites are 040-specific today).
   - [ ] Fine-grained block eviction (J1 drops the whole cache on any write
     into translated code — fine while nothing but IR is cached, not once
     generated code is).
