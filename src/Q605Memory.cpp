@@ -86,12 +86,14 @@ Q605Memory::Q605Memory(uint32_t totalRam)
 bool Q605Memory::loadRom(const std::vector<uint8_t>& data) {
     if (data.size() != kRomSize) return false;
     std::memcpy(rom_.data(), data.data(), kRomSize);
+    jitMapChanged();
     return true;
 }
 
 
 void Q605Memory::reset() {
     overlay_ = true;
+    jitMapChanged();
     pvIfr_ = pvIer_ = pvPortB_ = 0;
     nubusIrqs_ = 0xFF;
     std::memset(memcjr_, 0, sizeof memcjr_);
@@ -508,6 +510,42 @@ void Q605Memory::scsiPoll_() {
     scsiIrq(scsi_.irq());
 }
 
+// POM68K JIT: the address map itself moved (overlay flip, ROM reload).
+// No byte was written, so the write guard cannot see it — say so directly.
+void Q605Memory::jitMapChanged() {
+    if (jitGuard_) jitGuard_->invalidate();
+}
+
+const uint8_t* Q605Memory::codeSpan(uint32_t phys, uint32_t& len) const {
+    // Exactly two regions may be handed out, and only with the overlay down.
+    len = 0;
+    if (phys < 0x40000000) {
+        // Under the overlay this gigabyte is the ROM mirrored modulo 1 MB,
+        // and the mapping flips out from under the caller the moment
+        // read8/read16 touches $40000000. Refuse until it has flipped: the
+        // boot ROM then runs interpreted, which costs about a second once.
+        if (overlay_) return nullptr;
+        // RAM is FLAT here, not mirrored — above the bank read8 returns
+        // open bus 0xFF, which is not memory and must never be a span.
+        if (phys >= totalRam_) return nullptr;
+        len = totalRam_ - phys;
+        return ram_.data() + phys;
+    }
+    if (phys < 0x50000000) {
+        // ROM window. Reading it clears the overlay (read8), a side effect
+        // a const probe cannot perform — so refuse while it is still set.
+        if (overlay_) return nullptr;
+        const uint32_t o = phys & (kRomSize - 1);
+        len = kRomSize - o;              // stop at the 1 MB mirror seam
+        return rom_.data() + o;
+    }
+    // $50000000-$5FFFFFFF I/O (VIA IFR clears, SCC RR0, 53C96 registers and
+    // pseudo-DMA pops that can throw), $F9xxxxxx VRAM and the video cell
+    // registers (reads clear interrupts and auto-increment the RAMDAC), and
+    // every unmapped address (those bus-error). None of them is code.
+    return nullptr;
+}
+
 uint8_t Q605Memory::read8(uint32_t addr) {
     if (addr < 0x40000000) {
         if (overlay_) return rom_[addr & (kRomSize - 1)];
@@ -518,7 +556,7 @@ uint8_t Q605Memory::read8(uint32_t addr) {
                             // burn-in self-corrupts
     }
     if (addr < 0x50000000) {                     // ROM window
-        if (overlay_) overlay_ = false;          // djmemc rom_switch_r
+        if (overlay_) { overlay_ = false; jitMapChanged(); }          // djmemc rom_switch_r
         return rom_[addr & (kRomSize - 1)];
     }
     if (addr < 0x60000000) return ioRead8(addr);
@@ -541,7 +579,7 @@ uint16_t Q605Memory::read16(uint32_t addr) {
         return 0xFFFF;
     }
     if (addr < 0x50000000) {
-        if (overlay_) overlay_ = false;
+        if (overlay_) { overlay_ = false; jitMapChanged(); }
         uint32_t o = addr & (kRomSize - 1);
         return uint16_t(rom_[o & (kRomSize - 1)] << 8 | rom_[(o + 1) & (kRomSize - 1)]);
     }
@@ -561,6 +599,7 @@ void Q605Memory::write8(uint32_t addr, uint8_t v) {
     if (addr < 0x40000000) {
         if (overlay_) return;                    // ROM mirror: writes drop
         if (ramWatch_ && onRamWrite && addr == ramWatch_) onRamWrite(addr, 1, v);
+        if (jitGuard_) jitGuard_->note(addr, 1);
         if (addr < totalRam_) ram_[addr] = v;
         return;
     }
@@ -582,6 +621,7 @@ void Q605Memory::write16(uint32_t addr, uint16_t v) {
         if (ramWatch_ && onRamWrite && (addr == ramWatch_ || addr + 1 == ramWatch_))
             onRamWrite(addr, 2, v);
         if (addr + 1 < totalRam_) {
+            if (jitGuard_) jitGuard_->note(addr, 2);
             ram_[addr] = uint8_t(v >> 8);
             ram_[addr + 1] = uint8_t(v);
         }

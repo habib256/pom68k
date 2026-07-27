@@ -7,7 +7,25 @@
 
 static constexpr moira::i64 kPeriphBatch = 256;
 
-Q700Cpu::Q700Cpu(Q700Memory& mem) : mem_(mem) {
+namespace {
+// Bound once, with captureless lambdas: they convert to plain function
+// pointers, so the engine reaches the memory map with no virtual dispatch
+// and without being templated on the machine type.
+jit::MemoryHooks jitHooksFor(Q700Memory& mem) {
+    jit::MemoryHooks h;
+    h.self = &mem;
+    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
+        return static_cast<Q700Memory*>(s)->codeSpan(phys, len);
+    };
+    h.setGuard = [](void* s, jit::CodeGuard* g) {
+        static_cast<Q700Memory*>(s)->setJitGuard(g);
+    };
+    h.ramBytes = [](void* s) { return static_cast<Q700Memory*>(s)->ramBytes(); };
+    return h;
+}
+}  // namespace
+
+Q700Cpu::Q700Cpu(Q700Memory& mem) : mem_(mem), jit_(*this, jitHooksFor(mem)) {
     // The Quadra 700 ships a FULL 68040 (macquadra700.cpp M68040 @ 50/2 MHz),
     // so unlike the Centris the default is the 040 identity + Moira's 68882.
     // POM68K_Q700_LC040 forces the LC040 (no hardware FPU) for experiments.
@@ -34,11 +52,14 @@ void Q700Cpu::hardReset() {
     lastPeriphClock_ = getClock();
     periphAccum_ = 0;
     pomIcache.reset();
+    jit_.flushAll();
     reset();
 }
 
 void Q700Cpu::runCycles(moira::i64 n) {
-    executeUntil(getClock() + n * cacheBoost_);
+    // The one and only switch point between the two engines.
+    const moira::i64 target = getClock() + n * cacheBoost_;
+    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
     flushTicks();
 }
 
@@ -54,6 +75,8 @@ void Q700Cpu::stall(int cycles) {
 
 void Q700Cpu::didChangeCACR(moira::u32 value) {
     if (value & 0x0800) pomIcache.reset();
+    // CINV/CPUSH is the guest announcing that it just wrote code.
+    jit_.flushAll();
 }
 
 moira::u8  Q700Cpu::read8(moira::u32 addr)  const { return mem_.read8(addr); }
@@ -80,4 +103,12 @@ void Q700Cpu::flushTicks() {
 void Q700Cpu::sync(int cycles) {
     clock += cycles;
     catchUp();
+}
+
+void Q700Cpu::setEngine(int e) {
+    // setEnabled() already flushes everything; the explicit disarm is belt
+    // and braces — a code window left armed while the INTERPRETER runs would
+    // have it fetching from a host pointer nobody maintains any more.
+    jit_.setEnabled(e != 0);
+    pomJitDisarm();
 }

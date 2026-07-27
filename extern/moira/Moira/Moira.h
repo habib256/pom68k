@@ -277,8 +277,129 @@ public:
     // "stopped on an IPL that never rises" (tests/lcii_trace.cpp)
     bool isStopped() const { return flags & State::STOPPED; }
 
+
+    //
+    // POM68K JIT seam (src/jit/POM68K_JIT.md)
+    //
+    // POM68K's second execution engine lives OUTSIDE this vendored core, in
+    // src/jit/, and drives this object. It needs four things Moira does not
+    // otherwise expose. They are public rather than protected on purpose:
+    // jit::Engine holds a `moira::Moira&`, not a machine wrapper, so that
+    // one engine serves every 68040 machine profile — and a public,
+    // non-virtual member call is the only shape that stays a DIRECT call.
+    // (POM68K_VENDOR.md § "willFetchInstr … Folded inline": a per-instruction
+    // indirect call once measured ~11% of the whole emulator.)
+    //
+    // Everything below is INERT until a jit::Engine arms it. Disarmed, the
+    // whole seam costs the interpreter one predictable branch per
+    // instruction — the PomIcache precedent.
+
+public:
+
+    // Instruction-fetch code window. While armed, the 68040 opcode, the
+    // lookahead at pc+2 and every extension word whose LOGICAL address falls
+    // inside [base, base+len) are served straight from `host` instead of
+    // walking the ATC and re-entering the machine's memory map.
+    //
+    // `host` points INTO the guest RAM/ROM buffer, so guest writes are
+    // visible to it immediately: self-modifying code needs no invalidation
+    // here. What can go stale is the TRANSLATION — hence `super` and `gen`.
+    struct PomJitWindow {
+        const u8 *host = nullptr;   // host bytes for logical address `base`
+        u32  base = 0;
+        u32  len  = 0;              // >= 4 whenever armed (ird + irc)
+        u32  gen  = 0;              // pomJitMmuGen at validation time
+        bool armed = false;
+        bool super = false;         // sr.s the translation was validated for
+    };
+    PomJitWindow pomJitWindow;
+
+    // Bumped by every event that can change a logical→physical mapping:
+    // ATC flushes (PFLUSH family, TC/URP/SRP writes) and TTR writes. A
+    // window whose `gen` no longer matches is refused without any further
+    // check — the one thing an address-range test cannot detect.
+    u32 pomJitMmuGen = 0;
+
+    void pomJitArm(const u8 *host, u32 base, u32 len, bool super) {
+        pomJitWindow.host  = host;
+        pomJitWindow.base  = base;
+        pomJitWindow.len   = len;
+        pomJitWindow.gen   = pomJitMmuGen;
+        pomJitWindow.super = super;
+        pomJitWindow.armed = host != nullptr && len >= 4;
+    }
+    void pomJitDisarm() { pomJitWindow.armed = false; pomJitWindow.host = nullptr; }
+
+    // True when `addr` and the three bytes after it can be fetched from the
+    // window under the CURRENT privilege level and MMU generation.
+    bool pomJitCovers(u32 addr) const {
+        const PomJitWindow &w = pomJitWindow;
+        return w.armed && w.gen == pomJitMmuGen && w.super == bool(reg.sr.s) &&
+               u32(addr - w.base) <= w.len - 4;
+    }
+
+    // Reads a word out of the window without touching the bus. The caller
+    // must have established pomJitCovers(addr).
+    u16 pomJitPeek(u32 addr) const {
+        const u8 *p = pomJitWindow.host + (addr - pomJitWindow.base);
+        return u16(u16(p[0]) << 8 | p[1]);
+    }
+
+    bool pomJitIdle()  const { return flags == 0; }
+    bool pomJitSuper() const { return bool(reg.sr.s); }
+    u16  pomJitIrd()   const { return queue.ird; }
+
+    // Runs exactly one instruction on the 68040 fast path. The CALLER must
+    // have established pomJitIdle(); everything else — the per-instruction
+    // MMU state reset, POLL_IPL, the handler dispatch, exception processing
+    // and the staged trace — happens here, in the same single copy
+    // execute() uses. Returns false when the instruction did not retire
+    // normally, which is always a "go back through execute()" signal.
+    bool pomJitExecOne();
+
+    // Side-effect-free translation probe for a CODE address. TTR match,
+    // MMU-disabled identity, then a read-only scan of the instruction ATC.
+    // It deliberately does NOT walk the page tables: a walk writes the U/M
+    // descriptor bits back into guest RAM (MoiraExecMMU_cpp.h mmu040Walk)
+    // and can throw, neither of which may happen outside an instruction.
+    // A miss simply returns false — the interpreter then fetches normally,
+    // fills the ATC, and the next probe succeeds.
+    bool pomJitProbeCode(u32 logical, bool super,
+                         u32 &phys, u32 &pageBase, u32 &pageLen) const;
+
 private:
-    
+
+    // The window read shared by the three 68040 instruction-fetch sites.
+    // `n` bytes must fit; callers pass 4 (ird + irc) or 2 (extension word).
+    bool pomJitFetch(u32 addr, u32 n, const u8 *&p) const {
+        const PomJitWindow &w = pomJitWindow;
+        if (!w.armed) return false;
+        if (u32(addr - w.base) > w.len - n) return false;
+        if (w.gen != pomJitMmuGen || w.super != bool(reg.sr.s)) return false;
+        // A watchpoint must still see every fetch (mmu040Read's CHECK_WP
+        // hook). CHECK_WP is a `flags` bit, so the engine is already out of
+        // the way — this is belt and braces on a cold branch.
+        if (flags & State::CHECK_WP) return false;
+        p = w.host + (addr - w.base);
+        return true;
+    }
+
+    // Reproduces the in-flight access context an mmu040Read<C, Word> would
+    // have left behind. Only read back by extBusError040(), and only
+    // inherited (rather than set) by MOVE16 — but skipping it would make an
+    // external bus error stack a different frame under the JIT than under
+    // the interpreter.
+    void pomJitStampAccess(u32 addr) {
+        mmu040AccBase  = addr;
+        mmu040AccAddr  = addr;
+        mmu040AccVal   = 0;
+        mmu040AccSz    = 1;                 // Word
+        mmu040AccWrite = false;
+        mmu040AccData  = false;             // instruction space
+        mmu040AccFirst = true;
+        mmu040AccSplit = false;
+    }
+
     // Processes an exception that was caught during execution
     void processException(const std::exception &exception);
     
@@ -658,6 +779,9 @@ public:
     // Setter masks mirror the oracle (WinUAE newcpu_common.c m68k_move2c,
     // 68040 rows): TC keeps E|P, ITT/DTT keep $FFFFE364, URP/SRP/MMUSR
     // store all 32 bits.
+    // POM68K JIT: the three ATC-flushing setters below reach pomJitMmuGen
+    // through mmu040AtcFlushAll(); the four TTR setters do not flush the
+    // ATC, so they bump the generation themselves.
     u32 getURP040() const { return reg.urp040; }
     void setURP040(u32 val) { reg.urp040 = val; mmu040AtcFlushAll(); }
 
@@ -676,16 +800,16 @@ public:
     bool mmu040AtcIsArmed() const { return mmu040AtcArmed; }
 
     u32 getITT0() const { return reg.itt0; }
-    void setITT0(u32 val) { reg.itt0 = val & 0xFFFFE364; }
+    void setITT0(u32 val) { reg.itt0 = val & 0xFFFFE364; pomJitMmuGen++; }
 
     u32 getITT1() const { return reg.itt1; }
-    void setITT1(u32 val) { reg.itt1 = val & 0xFFFFE364; }
+    void setITT1(u32 val) { reg.itt1 = val & 0xFFFFE364; pomJitMmuGen++; }
 
     u32 getDTT0() const { return reg.dtt0; }
-    void setDTT0(u32 val) { reg.dtt0 = val & 0xFFFFE364; }
+    void setDTT0(u32 val) { reg.dtt0 = val & 0xFFFFE364; pomJitMmuGen++; }
 
     u32 getDTT1() const { return reg.dtt1; }
-    void setDTT1(u32 val) { reg.dtt1 = val & 0xFFFFE364; }
+    void setDTT1(u32 val) { reg.dtt1 = val & 0xFFFFE364; pomJitMmuGen++; }
 
     u32 getMMUSR040() const { return reg.mmusr040; }
     void setMMUSR040(u32 val) { reg.mmusr040 = val; }

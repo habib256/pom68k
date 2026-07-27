@@ -390,6 +390,17 @@ static void initDriveSfx(MacAudioHost& host) {
 enum class MachineKind { Plus, Se, SeFdhd, MacClassic, MacII, Lc, LcII, ClassicII, ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Q630, Quadra };
 static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 
+// ── CPU engine selection (interpreter vs JIT) ───────────────────────────
+// Global, like the AppleTalk window below, so the "CPU" menu appears on
+// every machine without touching the ten machineMenu() call sites. The
+// hooks are installed only by the machines that HAVE a second engine (the
+// four 68040 profiles); everywhere else the menu shows itself disabled.
+static bool gShowJit = false;
+static std::function<void(int)> gSetCpuEngine;         // 0 = interpreter, 1 = JIT
+static std::function<int()> gGetCpuEngine;
+static std::function<jit::Stats::Snapshot()> gJitStats;
+static const char* gJitBackend = nullptr;              // backend chosen for this host
+
 // ── AppleTalk window (in-process stack visibility + toggles) ────────────
 static bool gShowAtalk = false;
 // A green/red status bullet. ImGui::Bullet() draws via the draw list (no
@@ -508,6 +519,86 @@ static void appleTalkWindow() {
     ImGui::End();
 }
 
+// ── JIT statistics window ("CPU → Statistiques JIT...") ─────────────────
+// The point of having a second engine you can switch by hand is being able
+// to SEE what it does, so this window shows the split between engines, the
+// block cache, and — the interesting one — why blocks hand control back.
+static void jitWindow() {
+    if (!gShowJit || !gJitStats) return;
+    const jit::Stats::Snapshot s = gJitStats();
+    const int eng = gGetCpuEngine ? gGetCpuEngine() : 0;
+
+    // Guest instructions per second, differentiated over the host clock.
+    // The engine itself never reads a wall clock — that stays a GUI concern.
+    static uint64_t lastTotal = 0;
+    static double rate = 0;
+    static std::chrono::steady_clock::time_point lastAt{};
+    const auto now = std::chrono::steady_clock::now();
+    const uint64_t total = s.instrs + s.interpInstrs;
+    if (lastAt.time_since_epoch().count()) {
+        const double dt = std::chrono::duration<double>(now - lastAt).count();
+        if (dt >= 0.25) {
+            rate = double(total - lastTotal) / dt;
+            lastTotal = total; lastAt = now;
+        }
+    } else {
+        lastTotal = total; lastAt = now;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(420, 0), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("JIT", &gShowJit, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::SeparatorText("Moteur");
+    dot(eng == 1, eng == 1 ? "JIT actif" : "Interpréteur Moira (défaut)");
+    ImGui::Text("Backend : %s", gJitBackend ? gJitBackend : "-");
+    // The counters below are the ENGINE's; while the interpreter drives the
+    // machine the engine sees nothing, so the rate would sit frozen at the
+    // last JIT value. Say so rather than showing a stale number.
+    if (eng == 1) ImGui::Text("Instructions/s : %.2f M", rate / 1e6);
+    else          ImGui::TextDisabled("Instructions/s : — (compteurs du moteur JIT, à l'arrêt)");
+
+    ImGui::SeparatorText("Répartition");
+    const double all = double(total ? total : 1);
+    ImGui::Text("Par le JIT          : %llu  (%.1f %%)",
+                (unsigned long long)s.instrs, 100.0 * double(s.instrs) / all);
+    ImGui::Text("Par l'interpréteur  : %llu  (%.1f %%)",
+                (unsigned long long)s.interpInstrs,
+                100.0 * double(s.interpInstrs) / all);
+
+    ImGui::SeparatorText("Blocs");
+    ImGui::Text("Compilés %llu   ·   vivants %llu   ·   rejoués %llu",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksLive,
+                (unsigned long long)s.blocksRun);
+    const double reuse = s.blocksCompiled
+                       ? double(s.blocksRun) / double(s.blocksCompiled) : 0.0;
+    ImGui::Text("Réutilisation : %.1f rejeux par bloc compilé", reuse);
+    ImGui::Text("Purges %llu   ·   invalidations %llu",
+                (unsigned long long)s.flushes,
+                (unsigned long long)s.invalidations);
+
+    ImGui::SeparatorText("Fenêtre de code");
+    const unsigned long long arms = (unsigned long long)s.windowArmed;
+    const unsigned long long fails = (unsigned long long)s.windowFailed;
+    ImGui::Text("Validations %llu   ·   refusées %llu  (%.1f %%)", arms, fails,
+                arms ? 100.0 * double(fails) / double(arms) : 0.0);
+    ImGui::TextDisabled("Refus = I/O, VRAM, overlay encore actif, ou page pas "
+                        "encore dans l'ATC.");
+
+    ImGui::SeparatorText("Sorties de bloc (par cause)");
+    for (int i = 0; i < int(jit::Exit::Count); i++) {
+        if (!s.exits[i]) continue;
+        ImGui::Text("%-16s %llu", jit::exitName(jit::Exit(i)),
+                    (unsigned long long)s.exits[i]);
+    }
+    ImGui::TextDisabled("Toute sortie se fait à une frontière d'instruction, "
+                        "état invité exact.");
+    ImGui::End();
+}
+
 static void machineMenu(MachineKind cur, GLFWwindow* window,
                         const std::function<void()>& extraMenus = {}) {
     if (!ImGui::BeginMainMenuBar()) return;
@@ -611,6 +702,29 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         }
         ImGui::EndMenu();
     }
+    // ── CPU: which execution engine drives this machine ──────────────────
+    // The interpreter is the default and the reference; the JIT sits beside
+    // it and is switched live, between two instructions, through the machine
+    // thread's command queue (DafbMachine::Cmd::CpuEngine).
+    if (ImGui::BeginMenu("CPU")) {
+        const bool hasJit = bool(gSetCpuEngine);
+        const int eng = hasJit ? gGetCpuEngine() : 0;
+        if (ImGui::MenuItem("Interpréteur (Moira)", nullptr, eng == 0, hasJit) &&
+            eng != 0) {
+            gSetCpuEngine(0);
+        }
+        char label[64];
+        std::snprintf(label, sizeof(label), "JIT — %s",
+                      gJitBackend ? gJitBackend : "?");
+        if (ImGui::MenuItem(label, nullptr, eng == 1, hasJit) && eng != 1) {
+            gSetCpuEngine(1);
+        }
+        ImGui::Separator();
+        ImGui::MenuItem("Statistiques JIT...", nullptr, &gShowJit, hasJit);
+        if (!hasJit)
+            ImGui::TextDisabled("(machines 68040 uniquement)");
+        ImGui::EndMenu();
+    }
     if (ImGui::BeginMenu("Réseau")) {
         ImGui::MenuItem("AppleTalk...", nullptr, &gShowAtalk,
                         atalkEnabled());
@@ -622,6 +736,7 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
     ImGui::TextDisabled("|  Delete: capture mouse");
     ImGui::EndMainMenuBar();
     appleTalkWindow();
+    jitWindow();
 }
 
 // Relaunch on the argument list the menu picked (no-op when none was).
@@ -2577,12 +2692,17 @@ template <class Mem, class Cpu>
 struct DafbMachine {
     Mem& mem; Cpu& cpu; MacAudioHost& audioHost;
     DafbMachine(Mem& m, Cpu& c, MacAudioHost& a)
-        : mem(m), cpu(c), audioHost(a) {}
+        : mem(m), cpu(c), audioHost(a) {
+        // POM68K_CPU_ENGINE may have started us on the JIT; mirror whatever
+        // the CPU actually built itself with so the menu tick is honest.
+        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
+    }
     ~DafbMachine() { stop(); }
 
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, InsertFloppy, EjectFloppy } t;
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, InsertFloppy,
+                          EjectFloppy, CpuEngine } t;
                  int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
     void requestInsertFloppy(std::string path) {
@@ -2618,6 +2738,17 @@ struct DafbMachine {
                  stW_.load(std::memory_order_relaxed),
                  stH_.load(std::memory_order_relaxed),
                  stDepth_.load(std::memory_order_relaxed) };
+    }
+
+    // Which engine the machine thread is actually running (the menu's tick
+    // must follow the machine, not the click — the swap happens one queue
+    // round-trip later).
+    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
+    // Lock-free copy of the JIT gauges. Published at the same ~16 ms cadence
+    // as the framebuffer, which is exactly what a statistics window wants.
+    jit::Stats::Snapshot jitStats() const {
+        std::lock_guard<std::mutex> l(jitMu_);
+        return jitSnap_;
     }
 
     // Same audio-clocked pacing as LcMachine: while the guest streams sound
@@ -2704,6 +2835,10 @@ struct DafbMachine {
         stW_.store(w, std::memory_order_relaxed);
         stH_.store(h, std::memory_order_relaxed);
         stDepth_.store(depth, std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> l(jitMu_);
+            jitSnap_ = cpu.jit().stats().snapshot();
+        }
     }
 
     // Decode the Q605 framebuffer (VRAM at $F9000000) into 00RRGGBB. Screen
@@ -2849,6 +2984,14 @@ private:
                 mem.ejectDisk();
                 floppyFlag_.store(false, std::memory_order_relaxed);
                 break;
+            // Switching execution engines. applyCmds() is the first
+            // statement of stepTick(), i.e. strictly between two calls to
+            // runCycles() — so the swap always lands on an instruction
+            // boundary and needs no lock of its own.
+            case Cmd::CpuEngine:
+                cpu.setEngine(c.a);
+                stEngine_.store(c.a, std::memory_order_relaxed);
+                break;
         }
         cmdsApply_.clear();
     }
@@ -2865,6 +3008,9 @@ private:
     std::atomic<long long> stClock_{0};
     std::atomic<uint8_t> stFlags_{0};
     std::atomic<int> stW_{0}, stH_{0}, stDepth_{0};
+    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
+    mutable std::mutex jitMu_;
+    jit::Stats::Snapshot jitSnap_{};
     int framesRun_ = 0;
     int activeHold_ = 0;           // machine frames of sound-recent state
     int starve_ = 0;               // safety against a dead DAC
@@ -2985,6 +3131,13 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static QuadraMachine machine{mem, cpu, audioHost};
+    // The "CPU" menu is global; only machines that HAVE a second engine
+    // install its hooks. `machine` is static, so a captureless lambda can
+    // reach it and the hooks stay valid for the process lifetime.
+    gSetCpuEngine = [](int e) { machine.push({QuadraMachine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
     machine.setFloppyInserted(floppyOk);
     machine.publish(true);
 
@@ -3292,6 +3445,13 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static CentrisMachine machine{mem, cpu, audioHost};
+    // The "CPU" menu is global; only machines that HAVE a second engine
+    // install its hooks. `machine` is static, so a captureless lambda can
+    // reach it and the hooks stay valid for the process lifetime.
+    gSetCpuEngine = [](int e) { machine.push({CentrisMachine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
     machine.setFloppyInserted(floppyOk);
     machine.publish(true);
 
@@ -3581,6 +3741,13 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static Q700Machine machine{mem, cpu, audioHost};
+    // The "CPU" menu is global; only machines that HAVE a second engine
+    // install its hooks. `machine` is static, so a captureless lambda can
+    // reach it and the hooks stay valid for the process lifetime.
+    gSetCpuEngine = [](int e) { machine.push({Q700Machine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
     machine.setFloppyInserted(floppyOk);
     machine.publish(true);
 
@@ -3871,6 +4038,13 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static Q630Machine machine{mem, cpu, audioHost};
+    // The "CPU" menu is global; only machines that HAVE a second engine
+    // install its hooks. `machine` is static, so a captureless lambda can
+    // reach it and the hooks stay valid for the process lifetime.
+    gSetCpuEngine = [](int e) { machine.push({Q630Machine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
     machine.setFloppyInserted(floppyOk);
     machine.publish(true);
 

@@ -7,7 +7,25 @@
 
 static constexpr moira::i64 kPeriphBatch = 256;
 
-CentrisCpu::CentrisCpu(CentrisMemory& mem) : mem_(mem) {
+namespace {
+// Bound once, with captureless lambdas: they convert to plain function
+// pointers, so the engine reaches the memory map with no virtual dispatch
+// and without being templated on the machine type.
+jit::MemoryHooks jitHooksFor(CentrisMemory& mem) {
+    jit::MemoryHooks h;
+    h.self = &mem;
+    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
+        return static_cast<CentrisMemory*>(s)->codeSpan(phys, len);
+    };
+    h.setGuard = [](void* s, jit::CodeGuard* g) {
+        static_cast<CentrisMemory*>(s)->setJitGuard(g);
+    };
+    h.ramBytes = [](void* s) { return static_cast<CentrisMemory*>(s)->ramBytes(); };
+    return h;
+}
+}  // namespace
+
+CentrisCpu::CentrisCpu(CentrisMemory& mem) : mem_(mem), jit_(*this, jitHooksFor(mem)) {
     // Centris 610/650 = 68LC040. Default to the LC040 identity + Moira's
     // soft 68882 (Finder-usable, the Q605 no-FPU precedent).
     if (getenv("POM68K_CENTRIS_FPU")) {
@@ -33,11 +51,14 @@ void CentrisCpu::hardReset() {
     lastPeriphClock_ = getClock();
     periphAccum_ = 0;
     pomIcache.reset();
+    jit_.flushAll();
     reset();
 }
 
 void CentrisCpu::runCycles(moira::i64 n) {
-    executeUntil(getClock() + n * cacheBoost_);
+    // The one and only switch point between the two engines.
+    const moira::i64 target = getClock() + n * cacheBoost_;
+    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
     flushTicks();
 }
 
@@ -53,6 +74,8 @@ void CentrisCpu::stall(int cycles) {
 
 void CentrisCpu::didChangeCACR(moira::u32 value) {
     if (value & 0x0800) pomIcache.reset();
+    // CINV/CPUSH is the guest announcing that it just wrote code.
+    jit_.flushAll();
 }
 
 moira::u8  CentrisCpu::read8(moira::u32 addr)  const { return mem_.read8(addr); }
@@ -79,4 +102,12 @@ void CentrisCpu::flushTicks() {
 void CentrisCpu::sync(int cycles) {
     clock += cycles;
     catchUp();
+}
+
+void CentrisCpu::setEngine(int e) {
+    // setEnabled() already flushes everything; the explicit disarm is belt
+    // and braces — a code window left armed while the INTERPRETER runs would
+    // have it fetching from a host pointer nobody maintains any more.
+    jit_.setEnabled(e != 0);
+    pomJitDisarm();
 }

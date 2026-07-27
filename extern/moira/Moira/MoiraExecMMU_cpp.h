@@ -1725,6 +1725,7 @@ Moira::execPTest40(u16 opcode)
 void
 Moira::mmu040AtcFlushAll()
 {
+    pomJitMmuGen++;                 // POM68K JIT: every cached mapping dies
     for (auto &e : mmu040AtcI) { e.valid = false; e.mru = false; }
     for (auto &e : mmu040AtcD) { e.valid = false; e.mru = false; }
     mmu040AtcMruI = mmu040AtcMruD = 0;
@@ -1735,6 +1736,7 @@ Moira::mmu040AtcFlushAll()
 void
 Moira::mmu040AtcFlushNonGlobal()
 {
+    pomJitMmuGen++;                 // POM68K JIT
     for (auto &e : mmu040AtcI)
         if (e.valid && !(e.status & 0x400)) e.valid = false;
     for (auto &e : mmu040AtcD)
@@ -1744,6 +1746,7 @@ Moira::mmu040AtcFlushNonGlobal()
 void
 Moira::mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly)
 {
+    pomJitMmuGen++;                 // POM68K JIT
     const u32 imask = mmu040PageMaskI();
     addr &= imask;
     auto flush = [&](Mmu040AtcEntry* arr) {
@@ -1851,6 +1854,26 @@ Moira::mmu040InstrStart()
     mmuFixupReg[0] = mmuFixupReg[1] = 0;
     mmu040CcrSave = u8(getCCR());
 
+    // POM68K JIT code window (Moira.h § PomJitWindow). Placed AFTER the
+    // POLL_IPL above and AFTER the eight per-instruction MMU resets — those
+    // feed execMmu040BusError's restart/last-write dichotomy and may never
+    // be skipped. Both words come from the window or neither does: serving
+    // only `ird` from it would change which page the `irc` lookahead
+    // touches for an instruction sitting on a page's last word, and with it
+    // the fault frame.
+    if (const u8 *p; pomJitFetch(reg.pc, 4, p)) {
+        queue.ird = u16(u16(p[0]) << 8 | p[1]);
+        queue.irc = u16(u16(p[2]) << 8 | p[3]);
+        // Leave behind exactly the in-flight access context the two skipped
+        // mmu040Read<C,Word> calls would have left. Only an EXTERNAL bus
+        // error reads it back (extBusError040), and only MOVE16 relies on
+        // inheriting it rather than setting its own — but a divergence
+        // there would be a differently-shaped fault frame under the JIT
+        // than under the interpreter, which invariant 1 does not allow.
+        pomJitStampAccess(reg.pc + 2);
+        return true;
+    }
+
     try {
 
         queue.ird = u16(mmu040Read<C, Word>(reg.pc, false));
@@ -1863,6 +1886,42 @@ Moira::mmu040InstrStart()
     }
 
     return true;
+}
+
+bool
+Moira::pomJitProbeCode(u32 logical, bool super,
+                       u32 &phys, u32 &pageBase, u32 &pageLen) const
+{
+    // POM68K JIT (src/jit/POM68K_JIT.md § 4). A PROBE, not a translation:
+    // it must not touch guest memory, must not throw, and must not disturb
+    // any CPU state, because it runs BETWEEN instructions on behalf of the
+    // engine. That rules out mmu040Walk — a walk writes the descriptor U/M
+    // bits back through mmuWrite32 (see mmu040Walk below) and faults by
+    // throwing. On a miss the engine simply does not arm the window: the
+    // interpreter then fetches normally, fills the ATC, and the next probe
+    // succeeds.
+    if (cpuModel < Model::M68EC040) return false;
+
+    const u32 maski = mmu040PageMaskI();
+    pageBase = logical & maski;
+    pageLen  = ~maski + 1;
+
+    // Transparent translation is identity and cannot fault on a read.
+    if (mmu040MatchTTR(logical, super, false)) { phys = logical; return true; }
+    if (!mmu040Enabled()) { phys = logical; return true; }
+    if (!mmu040AtcArmed) return false;      // POM68K_MMU040_WALK differential mode
+
+    // Read-only scan of the INSTRUCTION ATC. Deliberately not
+    // mmu040AtcLookup(): that one updates the pseudo-LRU, and a probe has
+    // no business reordering the cache the instruction stream is using.
+    for (const Mmu040AtcEntry &e : mmu040AtcI) {
+        if (!e.valid || (e.logical & maski) != pageBase) continue;
+        if (!(e.status & 1)) return false;                  // invalid descriptor
+        if (!super && (e.status & 0x80)) return false;      // supervisor-only page
+        phys = e.physical | (logical & ~maski);
+        return true;
+    }
+    return false;
 }
 
 int

@@ -456,12 +456,34 @@ Next milestones:
   - Include mounted-media identity and reject incompatible machine profiles.
   - Stamp active non-conformant HLE modules in the state.
 
-- [ ] **Build a 68k-to-host JIT.**
-  - Use WinUAE's JIT as a code reference, not imported generated code.
-  - Differential-test every compiled block against the oracle-converged
-    interpreter using SST030/SST040 state formats.
-  - Handle MMU faults, interrupts, self-modifying code and cache invalidation
-    before enabling it by default.
+- [ ] **Build a 68k-to-host JIT.** Staged; **J0 + J1 done 2026-07-27**
+  (`src/jit/POM68K_JIT.md`, seam in `extern/moira/POM68K_VENDOR.md`).
+  POM68K is multiplatform, so the engine is multi-target by construction:
+  a host-agnostic layer over `jit::Backend`, with a `threaded` backend that
+  generates no code and is therefore always available.
+  - ~~J0 — engine seam, backend interface + registry, portable W^X code
+    buffer, GUI **CPU** menu with live switching, gauge window, gates~~
+    **DONE**.
+  - ~~J1 — instruction-fetch code window, block discovery by tracing, block
+    cache, physical-page write guard~~ **DONE**. Measured on
+    `q605_boot_etalon`: window alone **−53 %** (58.7 s → 27.6 s, ×2.13); window
+    + blocks −18 %; window off +6 %. The block cache is consequently **off by
+    default** — blocks average 1.04 instructions on branch-dense 68k code, so
+    its bookkeeping costs more than its replay saves. Gates
+    `jit_backend_test`, `jit_lockstep_test`, `jit_lockstep_blocks_test` and
+    the four `jit_*_boot_etalon` twins. Off by default everywhere.
+  - [ ] **J2 — x86-64 code generation** behind the same `jit::BlockIr`,
+    writing into `jit::CodeBuffer`. Hot integer subset first (MOVE, ALU,
+    simple EAs); everything else exits to the interpreter at an instruction
+    boundary, which is what keeps C++ exceptions out of generated code.
+    Use WinUAE's JIT as a code reference, not imported generated code.
+  - [ ] **aarch64 backend** — porting note already written and validated
+    against the IR: `src/jit/backends/JitBackendA64.md`.
+  - [ ] Extend the seam to the 020/030 machines (it is written generically;
+    only the fetch sites are 040-specific today).
+  - [ ] Fine-grained block eviction (J1 drops the whole cache on any write
+    into translated code — fine while nothing but IR is cached, not once
+    generated code is).
 
 - [ ] **Build the optional HLE acceleration overlay described in
   `docs/HLE_OVERLAY.md`** (after the `docs/LLE_VS_HLE.md` cleanup pass).

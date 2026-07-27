@@ -131,6 +131,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | **SWIM2 + SuperDrive** | `Swim2.*`, `SonyDrive.*` | ✓; LLE cell engines (MFM CRC, rotation) gated | MAME SWIM2 |
 | **Pseudo-VIA2** | `PseudoVia.*` | ✓ | MAME IOSB VIA2 layout |
 | **Drive sounds** (floppy+HDD FX) | `FloppySound.*`, `FloppySoundSink.h` | ✓; `floppy_sound_test` | MAME floppy_sound_device via POM2 |
+| **JIT — second execution engine** (multi-target: host-agnostic engine + `jit::Backend`; `threaded` portable floor, x86-64/aarch64 slots). **Off by default**, GUI menu **CPU**, `POM68K_CPU_ENGINE=jit` | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0/J1 ✓ 2026-07-27; 040 machines only; `jit_backend_test`, `jit_lockstep_test`, `jit_*_boot_etalon` | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
 
 ## Memory map (Mac Plus, 24-bit)
 

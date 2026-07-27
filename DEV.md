@@ -552,6 +552,65 @@ machine-ID longword.
   (`via2_out_b` "chain 60.15 Hz to VIA1").
 - Gate: `q700_boot_etalon` (Mac OS 8.1, 640×480 DAFB).
 
+## JIT — the second execution engine (`src/jit/`, J0/J1)
+
+Full design, invariants and environment surface in **`src/jit/POM68K_JIT.md`**;
+the four-point extension it needs inside the vendored core is documented in
+`extern/moira/POM68K_VENDOR.md` § *JIT seam*. What matters here:
+
+- **It is a second engine, not a replacement.** Off by default in the GUI,
+  headless and CTest. The GUI **CPU** menu switches it live (through the
+  machine thread's command queue, so the swap lands between two
+  instructions); `POM68K_CPU_ENGINE=jit` selects it at startup. Wired on the
+  four 68040 profiles only: `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu`.
+- **Multi-target by construction**, because POM68K is multiplatform. Layer 1
+  (`jit::Engine`) knows nothing about the host; layer 2 (`jit::Backend`)
+  is where an architecture lives. The `threaded` backend generates no code
+  and is always compiled and always usable, so `POM68K_JIT_BACKEND=auto`
+  never fails to produce a working engine — Emscripten and hardened kernels
+  included. `jit::CodeBuffer` already implements portable W^X memory
+  (mmap/VirtualAlloc, `MAP_JIT` + per-thread write-protect on Apple silicon,
+  explicit i-cache invalidation off x86) for the code generators to come.
+- **Measured** on `q605_boot_etalon` (boot to the 256-colour Finder, same
+  host, same load): interpreter **58.7 s**, JIT with the fetch window alone
+  **27.6 s** (−53 %, ×2.13), JIT with window + block cache **47.9 s** (−18 %),
+  JIT with the window off **62.1 s** (+6 %, the engine's own dispatch overhead
+  and the honest zero point). The block cache therefore ships **off**
+  (`POM68K_JIT_BLOCKS=1` enables it): real 68k code is branch-dense, recorded
+  blocks average 1.04 instructions, and the per-branch hash lookup plus trace
+  attempt costs more than a one-instruction replay saves. It stays in the
+  tree because it is exactly the structure a code generator needs, and
+  `jit_lockstep_blocks_test` keeps that path gated.
+- **Where the win comes from.** On the 040 Moira has no prefetch queue:
+  `mmu040InstrStart` fetches the opcode and the `pc+2` lookahead *through
+  the MMU* on every instruction, and `readExt` does the same per extension
+  word — each one an ATC probe plus a virtual `read16()` plus the machine's
+  address decode. The **code window** replaces that, for instruction fetches
+  only, with a bounds check and a load from a host pointer into the guest
+  RAM/ROM buffer. On this path `SYNC(x)` is a no-op (`Core::C68020`), so the
+  window changes no cycle accounting whatsoever.
+- **Blocks are recorded by executing them**, not by decoding: the engine
+  runs instructions through `Moira::pomJitExecOne()` and notes where each
+  one started and how far the pc moved. No second 68k decoder to keep in
+  sync, and a recorded block cannot describe something that did not happen.
+  Replay re-verifies the clock budget, `flags == 0`, and that the pc is
+  where the trace said — that last check is the catch-all for an unpredicted
+  trap or a fault redirect.
+- **Three things kill a cached window/block**: a write into a physical page
+  holding translated code (`jit::CodeGuard`'s page map, hooked into the four
+  memory maps' `write8`/`write16`), a change of the address map itself
+  (boot-overlay flip — which is a *read* side effect, so it calls
+  `jitMapChanged()` directly), and a change of translation
+  (`Moira::pomJitMmuGen`, bumped by every ATC flush and TTR write). Blocks
+  additionally stop *before* any opcode that could touch the MMU, a cache or
+  the supervisor bit (`jit::classify`).
+- **Gates**: `jit_backend_test` (backend registry, W^X buffer, classifier
+  safety rules — no assets), `jit_lockstep_test` (two Quadra 605 machines
+  from one ROM, interpreter vs JIT, compared register by register at every
+  instruction boundary, and **failing if the JIT never ran a block**), plus
+  the four `jit_*_boot_etalon` twins — the same etalon executables re-run
+  with `POM68K_CPU_ENGINE=jit`.
+
 ## CPU integration notes
 
 - Moira precise-timing: `sync()` before every bus access — contention and

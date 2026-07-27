@@ -27,6 +27,7 @@
 // Unmapped I/O reads back 0 (MAME iosb has no catch-all /BERR).
 
 #pragma once
+#include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "Rtc.h"
 #include "AdbVia.h"
@@ -78,6 +79,18 @@ public:
     void     write8(uint32_t addr, uint8_t v);
     void     write16(uint32_t addr, uint16_t v);
     uint8_t  peek8(uint32_t addr) const;
+
+    // ── JIT hooks (src/jit/POM68K_JIT.md) ──────────────────────────────
+    // codeSpan() hands the JIT a raw host pointer to PLAIN memory only.
+    // Everything with a read side effect is refused, and that includes the
+    // whole map while the boot overlay is still up: clearing the overlay is
+    // itself a side effect of a read in the $4xxxxxxx window (see read8),
+    // and a const probe cannot perform it.
+    const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
+    // Attaches the JIT's write guard; nullptr detaches it. When null, every
+    // write path costs one always-predicted branch.
+    void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
+    uint32_t ramBytes() const { return totalRam_; }
 
     void setCpu(CentrisCpu* cpu) { cpu_ = cpu; }
     void updateIrq();
@@ -177,6 +190,9 @@ private:
     Ncr53c96 scsi_;
     ScsiDisk scsiDisks_[7];
     CentrisCpu* cpu_ = nullptr;
+
+    void jitMapChanged();
+    jit::CodeGuard* jitGuard_ = nullptr;   // JIT code invalidation
 
     uint32_t totalRam_;
     int64_t  cpuHz_;

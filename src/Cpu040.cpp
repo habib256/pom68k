@@ -10,7 +10,25 @@
 // isn't dominated by per-cycle peripheral bookkeeping.
 static constexpr moira::i64 kPeriphBatch = 256;
 
-Cpu040::Cpu040(Q605Memory& mem) : mem_(mem) {
+namespace {
+// Bound once, with captureless lambdas: they convert to plain function
+// pointers, so the engine reaches the memory map with no virtual dispatch
+// and without being templated on the machine type.
+jit::MemoryHooks jitHooksFor(Q605Memory& mem) {
+    jit::MemoryHooks h;
+    h.self = &mem;
+    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
+        return static_cast<Q605Memory*>(s)->codeSpan(phys, len);
+    };
+    h.setGuard = [](void* s, jit::CodeGuard* g) {
+        static_cast<Q605Memory*>(s)->setJitGuard(g);
+    };
+    h.ramBytes = [](void* s) { return static_cast<Q605Memory*>(s)->ramBytes(); };
+    return h;
+}
+}  // namespace
+
+Cpu040::Cpu040(Q605Memory& mem) : mem_(mem), jit_(*this, jitHooksFor(mem)) {
     // Q6.6: model the full 68040 with an FPU, matching the MAME golden
     // oracle `macqd605` (macquadra605.cpp:158 `M68040(...)`; only its
     // lc475/lc575 variants use M68LC040). In Moira M68040 and M68LC040 are
@@ -62,6 +80,7 @@ void Cpu040::hardReset() {
     lastPeriphClock_ = getClock();
     periphAccum_ = 0;
     pomIcache.reset();
+    jit_.flushAll();
     reset();                                 // SSP/PC from $0 (ROM overlay)
 }
 
@@ -69,7 +88,9 @@ void Cpu040::runCycles(moira::i64 n) {
     // n is a peripheral (machine) cycle budget; run cacheBoost_× more Moira
     // cycles so hot i-cache-resident code keeps up with a real 040 without
     // derailing ASC/VIA pacing (same contract as Cpu030).
-    executeUntil(getClock() + n * cacheBoost_);
+    // The one and only switch point between the two engines.
+    const moira::i64 target = getClock() + n * cacheBoost_;
+    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
     flushTicks();
 }
 
@@ -90,6 +111,8 @@ void Cpu040::didChangeCACR(moira::u32 value) {
     // 040 CACR: bit 15 = enable i-cache, bit 11 = clear i-cache (approx.
     // the strobes System uses). Flush the throughput model conservatively.
     if (value & 0x0800) pomIcache.reset();
+    // CINV/CPUSH is the guest announcing that it just wrote code.
+    jit_.flushAll();
 }
 
 moira::u8  Cpu040::read8(moira::u32 addr)  const { return mem_.read8(addr); }
@@ -117,4 +140,12 @@ void Cpu040::flushTicks() {
 void Cpu040::sync(int cycles) {
     clock += cycles;
     catchUp();
+}
+
+void Cpu040::setEngine(int e) {
+    // setEnabled() already flushes everything; the explicit disarm is belt
+    // and braces — a code window left armed while the INTERPRETER runs would
+    // have it fetching from a host pointer nobody maintains any more.
+    jit_.setEnabled(e != 0);
+    pomJitDisarm();
 }

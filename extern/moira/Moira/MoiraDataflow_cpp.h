@@ -892,6 +892,14 @@ Moira::readExt()
         // translation at consumption time (WinUAE next_iword_mmu040)
         if (cpuModel >= Model::M68EC040) [[unlikely]] {
             reg.pc += 2;
+            // POM68K JIT code window — the second and by far the busiest
+            // fetch site: every extension word past the lookahead
+            // (immediates, abs.l, 68020 extended EAs) comes through here.
+            if (const u8 *p; pomJitFetch(reg.pc, 2, p)) {
+                queue.irc = u16(u16(p[0]) << 8 | p[1]);
+                pomJitStampAccess(reg.pc);
+                return;
+            }
             queue.irc = u16(mmu040Read<C, Word>(reg.pc, false));
             return;
         }

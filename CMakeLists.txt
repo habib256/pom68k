@@ -52,8 +52,45 @@ if(NOT MSVC)
     target_compile_options(moira PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 endif()
 
+# ─── JIT (second execution engine — see src/jit/POM68K_JIT.md) ───────────
+# POM68K is multiplatform, so the JIT is multi-target by construction: the
+# `threaded` backend generates no host code and is ALWAYS built, which is
+# what makes the engine available on every host the emulator compiles for
+# (Emscripten included). Native code generators are added on top, per host
+# architecture, and never replace that floor.
+#
+# POM68K_JIT_BACKENDS: `auto` follows CMAKE_SYSTEM_PROCESSOR; set it to
+# `threaded` to build the portable-only configuration on purpose — that is
+# the control build proving a host without a code generator still works.
+set(POM68K_JIT_BACKENDS "auto" CACHE STRING
+    "JIT backends to compile: auto | threaded")
+set(POM68K_JIT_SOURCES
+    src/jit/JitEngine.cpp        # layer 1 — blocks, code window, invalidation
+    src/jit/JitBackend.cpp       # layer 2 — backend registry and selection
+    src/jit/JitCodeBuffer.cpp    # portable W^X memory for code generators
+    src/jit/backends/JitBackendThreaded.cpp   # the portable floor
+)
+set(POM68K_JIT_DEFS "")
+if(POM68K_JIT_BACKENDS STREQUAL "auto" AND NOT EMSCRIPTEN)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+        # J2 slot: add src/jit/backends/JitBackendX64.cpp here and define
+        # POM68K_JIT_BACKEND_X64 (the registry in JitBackend.cpp already has
+        # the #if). Not written yet — `auto` resolves to `threaded`.
+        set(POM68K_JIT_HOST "x86-64 (no code generator yet)")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+        # See src/jit/backends/JitBackendA64.md.
+        set(POM68K_JIT_HOST "aarch64 (no code generator yet)")
+    else()
+        set(POM68K_JIT_HOST "${CMAKE_SYSTEM_PROCESSOR} (portable only)")
+    endif()
+else()
+    set(POM68K_JIT_HOST "portable only (forced)")
+endif()
+message(STATUS "POM68K JIT: threaded backend + ${POM68K_JIT_HOST}")
+
 # ─── Core library (headless — shared by GUI, tests, future oracles) ──────
 add_library(pom68k_core STATIC
+    ${POM68K_JIT_SOURCES}
     src/Cpu68k.cpp        # M1 — Moira wrapper + contention
     src/MacMemory.cpp     # M2 — Mac Plus memory map + overlay
     src/Via6522.cpp       # M2/M4 — VIA (ports, timers)
@@ -774,6 +811,44 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # Dev harness: ROM×disk Finder matrix (not a CTest gate).
     add_executable(finder_boot_matrix EXCLUDE_FROM_ALL tests/finder_boot_matrix.cpp)
     target_link_libraries(finder_boot_matrix PRIVATE pom68k_core)
+
+    # ── JIT gates (src/jit/POM68K_JIT.md) ────────────────────────────────
+    # The portability seam: backend selection, W^X executable memory, and
+    # the block classifier's safety rules. No assets, runs everywhere.
+    add_executable(jit_backend_test tests/jit_backend_test.cpp)
+    target_link_libraries(jit_backend_test PRIVATE pom68k_core)
+    add_test(NAME jit_backend_test COMMAND jit_backend_test)
+
+    # The decisive one: two Quadra 605 machines from the same ROM, one
+    # interpreted and one JIT-driven, compared register by register at every
+    # instruction boundary. Fails if the JIT never actually ran a block, so
+    # a silent fallback cannot masquerade as a green gate.
+    add_executable(jit_lockstep_test tests/jit_lockstep_test.cpp)
+    target_link_libraries(jit_lockstep_test PRIVATE pom68k_core)
+    add_test(NAME jit_lockstep_test COMMAND jit_lockstep_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_test PROPERTIES TIMEOUT 1800)
+
+    # Same comparison with the block cache forced on. It is OFF by default
+    # (measured slower than the fetch window alone — see JitConfig.h), so
+    # without this second registration the whole block/backend path would
+    # never be exercised by a gate.
+    add_test(NAME jit_lockstep_blocks_test COMMAND jit_lockstep_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_blocks_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_BLOCKS=1" TIMEOUT 1800)
+
+    # The same boot etalons, same executables, driven by the JIT instead of
+    # the interpreter — the established "one binary, another environment"
+    # idiom used by iivi/iicx/centris610/lc580/quadra800 above. Green means
+    # the machine reached the identical Finder signature under the JIT.
+    foreach(gate q605_boot_etalon centris650_boot_etalon
+                 q630_boot_etalon q700_boot_etalon)
+        add_test(NAME jit_${gate} COMMAND ${gate}
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(jit_${gate} PROPERTIES
+                             ENVIRONMENT "POM68K_CPU_ENGINE=jit" TIMEOUT 3600)
+    endforeach()
 endif()
 
 # Dev tool (not a gate): instruction-level Sony-driver trace.

@@ -310,6 +310,45 @@ Moira::reset()
     cpuDidReset();
 }
 
+bool
+Moira::pomJitExecOne()
+{
+    // POM68K JIT seam (src/jit/POM68K_JIT.md). This IS the 68040 fast path
+    // of execute() — there is exactly ONE copy of it and execute() calls it
+    // below, so the block replayer in src/jit/ can never drift from the
+    // instruction-start contract (POLL_IPL, the eight per-instruction MMU
+    // resets, `reg.pc += 2` before the handler, exception processing, the
+    // staged trace). The caller must have established flags == 0.
+    //
+    // Returns false whenever the instruction did not retire normally — an
+    // instruction-start fault, an exception processed, or a trace taken.
+    // For the engine that always means the same thing: stop replaying and
+    // go back through execute() from a clean instruction boundary.
+    if (!mmu040InstrStart<Core::C68020>()) return false;
+
+    bool retired = true;
+
+    reg.pc += 2;
+    try {
+        (this->*exec[queue.ird])(queue.ird);
+    } catch (const std::exception &exc) {
+        processException(exc);
+        retired = false;
+    }
+
+    if (trace040Pending) [[unlikely]] {
+        trace040Pending = false;
+        try {
+            execException(M68kException::TRACE);
+        } catch (const std::exception &exc) {
+            processException(exc);
+        }
+        retired = false;
+    }
+
+    return retired;
+}
+
 void
 Moira::execute()
 {
@@ -338,7 +377,11 @@ Moira::execute()
         if (cpuModel == Model::M68030) [[unlikely]] {
             if (!mmuExecuteStart<Core::C68020>()) return;
         } else if (cpuModel >= Model::M68EC040) [[unlikely]] {
-            if (!mmu040InstrStart<Core::C68020>()) return;
+            // POM68K JIT: the 68040 fast path lives in pomJitExecOne() so
+            // that the src/jit block replayer runs the SAME code, not a
+            // hand-copied twin. Same TU, so it still inlines here.
+            pomJitExecOne();
+            return;
         }
 
         reg.pc += 2;

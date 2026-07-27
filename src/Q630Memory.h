@@ -38,6 +38,7 @@
 // boot trace demands Cuda-specific commands.
 
 #pragma once
+#include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "Egret.h"
 #include "CudaLle.h"
@@ -73,6 +74,18 @@ public:
     void     write8(uint32_t addr, uint8_t v);
     void     write16(uint32_t addr, uint16_t v);
     uint8_t  peek8(uint32_t addr) const;             // side-effect free
+
+    // ── JIT hooks (src/jit/POM68K_JIT.md) ──────────────────────────────
+    // codeSpan() hands the JIT a raw host pointer to PLAIN memory only.
+    // Everything with a read side effect is refused, and that includes the
+    // whole map while the boot overlay is still up: clearing the overlay is
+    // itself a side effect of a read in the $4xxxxxxx window (see read8),
+    // and a const probe cannot perform it.
+    const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
+    // Attaches the JIT's write guard; nullptr detaches it. When null, every
+    // write path costs one always-predicted branch.
+    void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
+    uint32_t ramBytes() const { return totalRam_; }
 
     void setCpu(Q630Cpu* cpu) { cpu_ = cpu; }
     void updateIrq();
@@ -227,6 +240,9 @@ private:
     Ncr53c96 scsi_;                // TurboSCSI 53C96 (Q6)
     ScsiDisk scsiDisks_[7];        // by SCSI ID; [0] = boot drive
     Q630Cpu* cpu_ = nullptr;
+
+    void jitMapChanged();
+    jit::CodeGuard* jitGuard_ = nullptr;   // JIT code invalidation
 
     uint32_t totalRam_;
     // $5FFFFFFC board ID (MAME macquadra630.cpp): Quadra 630 $A55A2252,

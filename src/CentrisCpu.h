@@ -13,6 +13,7 @@
 
 #pragma once
 #include "Moira.h"
+#include "jit/JitEngine.h"
 #include <cstdint>
 
 class CentrisMemory;
@@ -23,6 +24,15 @@ public:
 
     void hardReset();
     void runCycles(moira::i64 n);
+    // ── JIT engine (src/jit/POM68K_JIT.md) ─────────────────────────────
+    // The second execution engine, OFF by default. setEngine() is the only
+    // switch; the GUI routes it through the machine thread's command queue
+    // so it always lands between two instructions.
+    jit::Engine& jit() { return jit_; }
+    const jit::Engine& jit() const { return jit_; }
+    int  engine() const { return jit_.enabled() ? 1 : 0; }
+    void setEngine(int e);
+
     void updateIpl();
     void stall(int cycles);
     void flushTicks();
@@ -41,6 +51,7 @@ private:
     void catchUp();
 
     CentrisMemory& mem_;
+    jit::Engine jit_;
     moira::i64 lastPeriphClock_ = 0;
     // Same ceiling as Cpu040 (see the note there): the old boost-1 pin was
     // a stale Q605 SCSI symptom, lifted 2026-07-25.

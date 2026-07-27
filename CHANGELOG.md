@@ -1,5 +1,136 @@
 # CHANGELOG
 
+## 2026-07-27 — A second execution engine: the multi-target JIT (J0 + J1)
+
+POM68K now has **two** CPU engines. The Moira interpreter stays the default
+and the reference everywhere — GUI, headless, all CTest gates — and the JIT
+sits **beside** it, selected from a new **CPU** menu (or
+`POM68K_CPU_ENGINE=jit`). Wired on the four 68040 profiles: Quadra 605 /
+LC 475 / LC 575, Centris + Quadra 610/650/800, Quadra 630 / LC 580,
+Quadra 700. Design and invariants: `src/jit/POM68K_JIT.md`; the four-point
+extension inside the vendored core: `extern/moira/POM68K_VENDOR.md` §
+*JIT seam*.
+
+**Multi-target from the first line, not as a later refactor.** POM68K is
+multiplatform, so an x86-only JIT would make the emulator behave differently
+depending on the host and would turn every further architecture into a
+rewrite. The engine is therefore split at a hard boundary: `jit::Engine`
+(blocks, code window, invalidation, fallback policy, gauges) knows nothing
+about the host; `jit::Backend` is where an architecture lives. The
+`threaded` backend generates no code at all and is **always** compiled and
+always usable, so `POM68K_JIT_BACKEND=auto` cannot fail to produce a working
+engine — Emscripten, a hardened kernel that refuses executable pages, an
+architecture nobody has written a code generator for. `jit::CodeBuffer`
+already implements portable W^X memory (mmap/VirtualAlloc, `MAP_JIT` plus
+the per-thread write-protect toggle on Apple silicon, explicit i-cache
+invalidation off x86) for the generators to come, and
+`src/jit/backends/JitBackendA64.md` was written now, before any generator
+exists, to check the IR against a *second* architecture — which is why the
+IR spells out CCR semantics (x86 CF and AArch64 C disagree on the carry of a
+subtraction; the 68k X bit exists on neither) and byte order explicitly
+instead of leaving them to whatever the host happens to do.
+
+**Where the time actually was.** On the 040 Moira has no prefetch queue:
+`mmu040InstrStart` fetches the opcode *and* the `pc+2` lookahead through the
+MMU on **every instruction**, and `readExt` does the same for every extension
+word. Each of those is an ATC probe, a virtual `read16()`, and the machine's
+whole address decode. The **code window** replaces that, for instruction
+fetches only, with a bounds check and a load from a host pointer into the
+guest RAM/ROM buffer. Two facts made this cheap and safe: on `Core::C68020`
+Moira's `SYNC(x)` expands to nothing, so the window changes **no** cycle
+accounting whatsoever; and the window points into the live guest buffer, so
+self-modifying code stays correct with no invalidation at all.
+
+**Blocks are recorded by executing them.** No second 68k decoder: the engine
+runs instructions through `Moira::pomJitExecOne()` and notes where each one
+started and how far the pc moved, so instruction lengths fall out of pc
+deltas and a recorded block cannot describe something that did not happen.
+Replay re-checks the cycle budget, `flags == 0`, and that the pc is where the
+trace said. That last check is the one that matters: `execException` sets no
+`flags` bit, so a `TRAP`, a `CHK` or a divide-by-zero completes with
+`flags == 0` and the pc already in the handler — a replayer testing only
+`flags` would happily run the rest of the block at the wrong address.
+
+Three non-obvious rulings, each of which would have been a silent corruption:
+
+- **The translation probe must not translate.** Arming the window needs
+  logical → physical, but `mmu040Translate` writes the descriptor U/M bits
+  back into guest RAM through `mmuWrite32` and faults by throwing — neither
+  of which may happen *between* instructions. `pomJitProbeCode` is therefore
+  a read-only TTR match + MMU-disabled identity + ATC scan, and a miss simply
+  declines to arm: the interpreter then fetches normally, fills the ATC, and
+  the next probe succeeds.
+- **The overlay flip is a *read* side effect.** `Q605Memory::read8` clears the
+  boot overlay on the first `$4xxxxxxx` access, remapping a whole gigabyte —
+  no byte is written, so no write guard can see it. `codeSpan()` refuses every
+  span while the overlay is up (a `const` probe cannot perform the clear), and
+  the flip sites call `jitMapChanged()` directly.
+- **An address range cannot detect a stale translation.** `PFLUSH` and writes
+  to TC/URP/SRP/TTR change no address and set no flag. `Moira::pomJitMmuGen`
+  is bumped by every ATC flush and TTR write, recorded when the window is
+  armed, and compared on every fetch.
+
+**Gates** (`ctest`): `jit_backend_test` (backend registry, W^X buffer,
+classifier safety rules — no assets, runs anywhere) and `jit_lockstep_test`,
+the decisive one — two Quadra 605 machines built from the same ROM, one
+interpreted and one JIT-driven, compared on D0-D7/A0-A7/PC/SR/USP/ISP/MSP and
+the clock at **every instruction boundary**, and failing if the JIT never
+actually replayed a block, so a silent fallback cannot masquerade as a green
+gate. Plus four `jit_*_boot_etalon` twins: the same etalon executables re-run
+with `POM68K_CPU_ENGINE=jit`.
+
+**Measured, on `q605_boot_etalon` (same host, same load, boot to the 256-colour
+Finder):**
+
+| engine | wall clock | vs interpreter |
+|---|---|---|
+| Moira interpreter (default) | 58.7 s | — |
+| JIT, **fetch window only** (default) | **27.6 s** | **−53 %**, ×2.13 |
+| JIT, window + block cache | 47.9 s | −18 % |
+| JIT, no window (engine overhead alone) | 62.1 s | +6 % |
+
+So the window is the whole win, and **the block cache is a net loss** — it is
+therefore **off by default** (`POM68K_JIT_BLOCKS=1` turns it on). The reason is
+structural, not a tuning failure: real 68k code is branch-dense, recorded
+blocks average **1.04 instructions**, and a hash lookup plus a trace attempt at
+every branch costs more than a one-instruction replay saves. The gauges make
+it plain — over a million instructions of boot ROM, the window alone hands
+**246** instructions back to the interpreter; with blocks on, it hands back
+**633 692**, one per branch. The machinery
+stays because it is precisely what a code generator needs — block boundaries,
+an IR, `caps()`-driven fallback — and `jit_lockstep_blocks_test` keeps it
+honest. The last row is the zero point: the engine's own dispatch overhead,
+with the window switched off, is +6 %.
+
+And the same speedup on all four 68040 machines, measured inside one
+`ctest` run (each etalon against its own `jit_` twin, same disk image, same
+Finder signature):
+
+| gate | interpreter | JIT | |
+|---|---|---|---|
+| `q605_boot_etalon` | 65.3 s | 28.1 s | **×2.32** |
+| `centris650_boot_etalon` | 303.9 s | 178.2 s | ×1.71 |
+| `q630_boot_etalon` | 82.8 s | 44.4 s | ×1.87 |
+| `q700_boot_etalon` | 319.4 s | 174.3 s | ×1.83 |
+
+Full suite: **104/104 green**, the 97 pre-existing gates plus the 7 new ones,
+with the interpreter still the default everywhere.
+
+Two defects found by an adversarial review pass and fixed before the gates
+were declared green, both in the block path:
+
+- **Use-after-free, critical.** A guest `MOVEC` to CACR reaches
+  `Moira::setCACR` → `Cpu040::didChangeCACR` → `Engine::flushAll()` — from
+  *inside* a replaying block, freeing the `BlockIr` the backend was iterating.
+  `flushAll()` is now deferred while a block is in flight and serviced the
+  moment it returns. This is the exact shape that would free live host code
+  once the x86-64 backend exists.
+- **Stale blocks across a remap, major.** A recorded block is a script of
+  *logical* addresses; a `PFLUSH` or a write to TC/URP/SRP/TTR can point the
+  same logical pc at entirely different code. The window already refuses on a
+  generation mismatch, but nothing in a `(pc, super)` key could notice, so the
+  block cache now tracks `Moira::pomJitMmuGen` and drops itself when it moves.
+
 ## 2026-07-25 — Macintosh Quadra 700: the 27th machine, and the DAFB TurboSCSI cell
 
 The **first** Quadra — and the last 68040 desktop POM68K was missing that

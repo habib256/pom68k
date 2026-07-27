@@ -13,6 +13,7 @@
 
 #pragma once
 #include "Moira.h"
+#include "jit/JitEngine.h"
 #include <cstdint>
 
 class Q605Memory;
@@ -23,6 +24,15 @@ public:
 
     void hardReset();                       // overlay + CPU reset
     void runCycles(moira::i64 n);
+    // ── JIT engine (src/jit/POM68K_JIT.md) ─────────────────────────────
+    // The second execution engine, OFF by default. setEngine() is the only
+    // switch; the GUI routes it through the machine thread's command queue
+    // so it always lands between two instructions.
+    jit::Engine& jit() { return jit_; }
+    const jit::Engine& jit() const { return jit_; }
+    int  engine() const { return jit_.enabled() ? 1 : 0; }
+    void setEngine(int e);
+
     void updateIpl();                       // from the PrimeTime resolver
     void stall(int cycles);                 // `cycles` are machine cycles
     void flushTicks();                      // run peripherals up to `clock`
@@ -41,6 +51,7 @@ private:
     void catchUp();
 
     Q605Memory& mem_;
+    jit::Engine jit_;
     moira::i64 lastPeriphClock_ = 0;
 
     // Throughput ceiling (Cpu030 pattern). Was pinned at 1 for a long time
