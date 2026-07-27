@@ -160,6 +160,14 @@ public:
         else             egret_.setPram(i, v);
     }
     // Battery persistence — Egret file format, re-mirrored under the LLE.
+    // Host wall clock. MUST branch on the LLE flag like loadPram/keyEvent do:
+    // seeding only the HLE object left the firmware MCU's own seconds counter
+    // untouched, so every default (firmware-LLE) boot started at the 1904
+    // epoch and wrote that back to the battery file.
+    void setRtcSeconds(uint32_t s) {
+        egret_.setSeconds(s);
+        egretLle_.setSeconds(s);
+    }
     bool loadPram(const std::string& path) {
         bool ok = egret_.loadPram(path);
         if (egretLleOn_)

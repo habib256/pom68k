@@ -90,7 +90,7 @@ private:
     void push8(uint8_t v) { write8(0x00C0 | (sp_ & 0x3F), v); sp_--; }
     uint8_t pop8() { sp_++; return read8(0x00C0 | (sp_ & 0x3F)); }
     void pushState();                                // PCL,PCH,X,A,CC
-    void serviceInterrupts();
+    int  serviceInterrupts();                        // → cycles burned (11 / 0)
 
     void setNZ(uint8_t v) {
         cc_ = uint8_t((cc_ & ~(CC_N | CC_Z)) | (v & 0x80 ? CC_N : 0) | (v ? 0 : CC_Z));

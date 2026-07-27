@@ -181,6 +181,9 @@ void AtalkStack::tick(int64_t nowCycles) {
     // XO cache release sweep
     for (auto it = xoCache_.begin(); it != xoCache_.end();)
         it = it->second.expires <= now_ ? xoCache_.erase(it) : std::next(it);
+    // Same sweep for deferred transactions a handler never answered.
+    for (auto it = pendingTxns_.begin(); it != pendingTxns_.end();)
+        it = it->second.expires <= now_ ? pendingTxns_.erase(it) : std::next(it);
     // requester retries
     for (auto it = requests_.begin(); it != requests_.end();) {
         if (now_ < it->nextRetry) { ++it; continue; }
@@ -266,14 +269,21 @@ void AtalkStack::handleRtmpReq(const Addr& src, const uint8_t* p, size_t n) {
 // ── router-lite: ZIP ────────────────────────────────────────────────────
 
 void AtalkStack::handleZipDdp(const Addr& src, const uint8_t* p, size_t n) {
-    // GetNetInfo (function 5): [5][flags? unused][zone len][zone].
-    // Per Inside AppleTalk ch.8 the request is function + zone name.
-    if (n < 2 || p[0] != 5) return;
-    size_t zl = 0, zoff = 1;
-    // Tolerate an old-style pad byte before the zone length.
-    if (p[1] <= 32 && 1 + 1 + p[1] <= n) { zl = p[1]; zoff = 2; }
-    std::string reqZone(reinterpret_cast<const char*>(p + zoff), zl);
-    bool valid = reqZone.empty() || reqZone == "*" || ieq(reqZone, zone_);
+    // GetNetInfo (function 5) wire format, Inside AppleTalk ch.8:
+    //   [5][zh_zero][firstNet16][lastNet16][zoneLen][zone]
+    // The zone length is at offset 6, NOT 1 — reading p[1] always found the
+    // mandatory zero byte, so zl was always 0, reqZone always "" and `valid`
+    // always true: a guest holding a stale zone was told it was still good and
+    // every NBP BrRq it then sent was dropped (silent empty Chooser).
+    // Oracles: tashrouter zip/responding.py (data[7:7+data[6]]),
+    // netatalk etc/atalkd/zip.c (ziphdr + two u16, then zlen).
+    if (n < 7 || p[0] != 5) return;
+    size_t zl = p[6];
+    if (zl > 32 || 7 + zl > n) return;
+    std::string reqZone(reinterpret_cast<const char*>(p + 7), zl);
+    // An EMPTY zone is the documented "tell me the default zone" probe, so it
+    // is not valid — that is what makes the trailing default-zone string fire.
+    bool valid = !reqZone.empty() && (reqZone == "*" || ieq(reqZone, zone_));
 
     std::vector<uint8_t> r;
     r.push_back(6);                       // GetNetInfo Reply
@@ -480,7 +490,7 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
         txn->bitmap_ = bs;
         txn->sock_ = dstSock;
         txn->xo_ = (ctrl & kAtpXo) != 0;
-        pendingTxns_[key] = txn;
+        pendingTxns_[key] = { txn, now_ + 30 * cpuHz_ };
         atpHandlers_[dstSock](txn);
         // Synchronous handlers already erased the entry via respond();
         // a handler that ignored the request should not leak it.
@@ -491,6 +501,13 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
     case kAtpTResp: {
         for (auto it = requests_.begin(); it != requests_.end(); ++it) {
             if (it->tid != tid) continue;
+            // ATP requires the response to come from the node the request went
+            // to. Matching on the 16-bit TID alone lets any node on the segment
+            // forge the payload of a server-initiated transaction — i.e. supply
+            // the bytes an ASP WriteContinue writes into the shared folder.
+            if (src.net != it->dst.net || src.node != it->dst.node
+                || src.sock != it->dst.sock)
+                continue;
             uint8_t seq = bs & 0x07;
             if (it->resp.size() <= seq) it->resp.resize(seq + 1);
             it->resp[seq].assign(p + 4, p + n);
@@ -519,7 +536,11 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
         return;
     }
     case kAtpTRel:
+        // TRel retires the transaction on the client side, so any deferred
+        // server-side entry for it is dead too — release it now rather than
+        // waiting out the sweep.
         xoCache_.erase(txnKey(src, tid));
+        pendingTxns_.erase(txnKey(src, tid));
         return;
     default:
         return;

@@ -62,6 +62,9 @@ public:
     // firmware releases the host (MAME m_pram_loaded copy). Reads come
     // back from staging before release, from live MCU RAM after.
     uint8_t pram(int i) const;
+    // Host wall clock -> the firmware's own seconds counter (MCU RAM $AB-$AE,
+    // cuda.cpp:226-229). Staged like PRAM and installed on reset release.
+    void setSeconds(uint32_t s);
     void setPram(int i, uint8_t v);
 
     AdbLine& adbLine() { return adb_; }  // input events (key/mouse) land here
@@ -98,4 +101,6 @@ private:
 
     uint8_t stagedPram_[256] = {};
     bool pramInstalled_ = false;
+    uint32_t stagedSeconds_ = 0;
+    void writeRtcSeconds();
 };

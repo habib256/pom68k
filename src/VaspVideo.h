@@ -13,6 +13,7 @@
 
 #pragma once
 #include "VaspMemory.h"
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -35,6 +36,14 @@ public:
         int hres, vres;
         resolution(mem_.monitorSense(), hres, vres);
         out.resize(size_t(hres) * vres);
+
+        // setMonitorSense() applies no clamp, and sense 1 selects 640x870 —
+        // at a 2048-byte pitch that indexes ~730 KB past the 1 MB VRAM vector.
+        // Only the 16 bpp branch below bounded its reads.
+        if (size_t(vres) * 2048 > VaspMemory::kVramSize) {
+            std::fill(out.begin(), out.end(), 0u);
+            return;
+        }
 
         const uint8_t* vram = mem_.vram();
         const Ariel& pal = const_cast<VaspMemory&>(mem_).ariel();

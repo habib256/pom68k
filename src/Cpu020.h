@@ -32,6 +32,12 @@ public:
 private:
     moira::u8  read8(moira::u32 addr) const override;
     moira::u16 read16(moira::u32 addr) const override;
+    // Moira's disassembler falls back to read16() unless this is overridden,
+    // which sent every disassembly read through the LIVE bus: device registers
+    // with read side effects (SCC status latches, IWM state lines) and, on
+    // unmapped I/O, a busError() that mutates An/MMU fault state and throws.
+    // peek8() is the side-effect-free path the tracers already use.
+    moira::u16 read16Dasm(moira::u32 addr) const override;
     moira::u16 read16OnReset(moira::u32 addr) const override;
     void write8(moira::u32 addr, moira::u8 v) const override;
     void write16(moira::u32 addr, moira::u16 v) const override;

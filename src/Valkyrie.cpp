@@ -17,6 +17,8 @@ void Valkyrie::reset() {
     framePos_ = 0;
     prevLine_ = 0;
     for (auto& c : clut_) c[0] = c[1] = c[2] = 0;
+    recalcIrq();     // drop the VBL line: don't depend on the owner's reset
+                     // order to undo a latched onIrq(true)
 }
 
 // valkyrie.cpp recalc_mode: the timing number selects one of the hardwired
@@ -38,7 +40,10 @@ void Valkyrie::recalcIrq() {
 }
 
 uint8_t Valkyrie::readReg8(uint32_t off) {
-    switch (off & 0xFF) {
+    // Q630Memory hands an 8 KB offset (sub & 0x1FFF), so masking to 0xFF
+    // aliased $100/$110/... onto the timing/config/sense registers MAME leaves
+    // unmapped — an $110 write acked the VBL and dropped the frame interrupt.
+    switch (off) {
         case 0x00: return videoTiming_;
         case 0x04: return mode_;
         case 0x10: return config_;
@@ -64,7 +69,7 @@ uint8_t Valkyrie::readReg8(uint32_t off) {
 }
 
 void Valkyrie::writeReg8(uint32_t off, uint8_t v) {
-    switch (off & 0xFF) {
+    switch (off) {                               // raw offset: see readReg8
         case 0x00:                                  // video timing number
             videoTiming_ = v;
             if (!(v & 0x80)) recalcMode();
@@ -92,7 +97,9 @@ void Valkyrie::writeReg8(uint32_t off, uint8_t v) {
 }
 
 uint32_t Valkyrie::readRamdac32(uint32_t off) {
-    switch ((off >> 2) & 3) {
+    // valkyrie_device::ramdac_r decodes ONLY word offsets 0 and 1; masking to
+    // & 3 aliased $10/$14 onto the palette address/data registers.
+    switch (off >> 2) {
         case 0:
             palIdx_ = 0;
             return uint32_t(palAddress_) << 24;
@@ -107,7 +114,7 @@ uint32_t Valkyrie::readRamdac32(uint32_t off) {
 
 void Valkyrie::writeRamdac32(uint32_t off, uint32_t data) {
     const uint8_t v = uint8_t(data >> 24);
-    switch ((off >> 2) & 3) {
+    switch (off >> 2) {                          // offsets 0/1 only: see read
         case 0:
             palAddress_ = v;
             palIdx_ = 0;

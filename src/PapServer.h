@@ -54,6 +54,7 @@ private:
     void issueRead();
     void scanQueries(size_t from);
     void flushClientRead();
+    void releaseClientRead();       // answer + drop a deferred kRead (teardown)
     void finishJob();
 
     AtalkStack& st_;

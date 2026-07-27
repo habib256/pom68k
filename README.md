@@ -170,10 +170,17 @@ reports, live, whether each piece works:
   netatalk-compatible `.AppleDouble` sidecars. The volume takes the
   shared folder's own name. Copies run over a *lossless* virtual LocalTalk
   clocked ~8× above the real 28 KB/s wire — the SCC exerts backpressure
-  (a real cable can't), so nothing is dropped and there are no
-  retransmit stalls; `POM68K_ATALK_WIRE_BOOST=N` tunes it (`=1` =
-  authentic LocalTalk speed). Large files still take a while — that era's
-  file sharing was slow — but the transfer stays smooth.
+  (a real cable can't), so a frame is held rather than dropped and the
+  1-2 s retransmit stalls go away; `POM68K_ATALK_WIRE_BOOST=N` tunes it
+  (`=1` = authentic LocalTalk speed). Large files still take a while —
+  that era's file sharing was slow — but the transfer stays smooth.
+  Backpressure is bounded: a guest that stops listening long enough to
+  fill the 64-frame hold queue starts losing frames like it would on a
+  real cable, because holding them forever is worse than a retransmit
+  (they are already too old to be useful, and the queue would grow
+  without limit). The window reports it as "Débordement du fil", next to
+  the retransmission count, its lag and the queue depth — all four read
+  0 / shallow on a healthy transfer.
 - **Imprimante** — a LaserWriter in the Chooser. Print to it and the
   PostScript is spooled to CUPS (`lp`) if present, else a timestamped
   `.ps` file under `run/print`. The window shows idle/busy, the job
@@ -190,6 +197,15 @@ reports, live, whether each piece works:
 `atalk_stack_test`, `afp_server_test`, `pap_server_test`,
 `macip_gw_test`. Full protocol notes: `docs/APPLETALK.md` (§6.5 covers
 the in-process stack).
+
+When something goes wrong on the wire, two tracers write to stderr:
+`POM68K_ATALK_DEBUG=1` logs DDP/NBP/ATP traffic, and one line per client
+retransmission carrying the delay since our own reply — ~1-2 s means the
+guest's ATP timer fired (the reply never got through), much less means it
+arrived damaged. `POM68K_MACIP_DEBUG=1` logs every IP datagram crossing
+the gateway in both directions, with TCP flags/seq/ack; if the guest's
+network stack falls over, the last line before it is the datagram that
+did it.
 
 ### Reaching a real LocalTalk network (LToUDP + external bridge)
 

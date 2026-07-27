@@ -25,7 +25,7 @@ RbvMemory::RbvMemory(uint32_t totalRam, int64_t cpuHz, bool iici)
     if (iici_) {
         // IIci: PIC1654S ADB modem on VIA1 CB1/CB2 (firmware LLE loaded from
         // roms/adbmodem/342s0440-b.bin inside AdbVia::reset) + discrete RTC.
-        adbVia_.attach(via_, adb_);
+        adbVia_.attach(via_, adb_, cpuHz_);
         rtc_.factoryDefaults();
         rtc_.setXpram(0x8A, uint8_t(rtc_.xpram(0x8A) | 0x05));   // 32-bit clean
     } else {

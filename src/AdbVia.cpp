@@ -24,11 +24,19 @@ void AdbVia::reset() {
     irqPending_ = false;
     expectingListen_ = false;
     timer_ = 0;
+    // The LLE half must reset too — attach() already does exactly this, so
+    // the two entry points otherwise left the object in different states and
+    // a hard reset mid-transaction kept the PIC's PC/registers and the ADB
+    // line's frame state from the previous boot. (CudaLle::reset does both.)
+    // lastPicClock_ is deliberately untouched: the Moira clock is monotonic
+    // across hardReset(), so zeroing it would stall syncTo().
+    if (lle_) { pic_.reset(); line_.reset(); picAcc_ = 0; }
 }
 
-void AdbVia::attach(Via6522& via, AdbBus& adb) {
+void AdbVia::attach(Via6522& via, AdbBus& adb, int64_t cpuHz) {
     via_ = &via;
     adb_ = &adb;
+    cpuHz_ = cpuHz > 0 ? cpuHz : 15667200;
     reset();
 
     // LLE by DEFAULT when the firmware dump is present (2026-07-22 — the
@@ -93,8 +101,13 @@ void AdbVia::setupPicPorts() {
 }
 
 void AdbVia::tickLle(int cpuCycles) {
-    picAcc_ += cpuCycles;
-    while (picAcc_ >= kCyclesPerPicInsn) {
+    // Rational accumulator against the machine's OWN clock: picAcc_ counts
+    // machine-cycles x kPicHz, so one PIC cycle costs cpuHz_ of them. This is
+    // exact at every clock from the 7.8336 MHz compacts to the 33.33 MHz
+    // Quadras, where the old fixed /34 divisor was only right on the Mac II.
+    const int64_t cyPerPic = cpuHz_;              // in accumulator units
+    picAcc_ += int64_t(cpuCycles) * kPicHz;
+    while (picAcc_ >= cyPerPic) {
         // Cycle-exact co-stepping: charge the *real* instruction cost.
         // run(1) executes one instruction and returns its cost in PIC cycles
         // (1; branches/skips 2; computed goto 3). The old code charged every
@@ -104,8 +117,12 @@ void AdbVia::tickLle(int cpuCycles) {
         // ramp was misrouted as a command (TODO ★, DEV.md "PIC1654S LLE").
         // With true cost the measured bit cell lands on the ADB spec 100 µs.
         int cost = pic_.run(1);                    // drives the ports
-        line_.tick(cost * kCyclesPerPicInsn);      // ADB device send timers
-        picAcc_ -= cost * kCyclesPerPicInsn;       // may borrow ≤2 cycles; self-corrects
+        // AdbLine's thresholds are calibrated in PIC-cycle units scaled by
+        // kPicTick (544/1020/1564 = 16/30/46 PIC cycles), so its time base
+        // stays tied to the PIC's own fixed rate — NOT to the host machine
+        // clock, which is what the accumulator above now tracks separately.
+        line_.tick(cost * kPicTick);
+        picAcc_ -= int64_t(cost) * cyPerPic;       // may borrow; self-corrects
         pic_.setRtcc(line_.line());                // RTCC pin tracks the ADB line
     }
     applyIrqToVia();

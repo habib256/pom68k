@@ -47,7 +47,13 @@ void Cpu030::didChangeCACR(moira::u32 value) {
 
 void Cpu030::runCycles(moira::i64 n) {
     if (fpuLog_) {                 // single-step so the PC ring stays current
-        moira::i64 target = getClock() + n;
+        // runCycles(n) is a budget of n MACHINE cycles — the normal path below
+        // multiplies by cacheBoost_ and flushTicks() divides by it, so running
+        // only n core cycles here delivered a quarter of the peripheral time:
+        // VBL, VIA timers, RTC seconds and ASC output all ran at 1/4 cadence
+        // for as long as the logger was armed, perturbing the very timing the
+        // logger exists to diagnose.
+        moira::i64 target = getClock() + n * cacheBoost_;
         while (getClock() < target && !isHalted()) {
             uint32_t pc = getPC();
             pcRing_[pcRingPos_++ % pcRing_.size()] = pc;
@@ -199,4 +205,8 @@ void Cpu030::flushTicks() {
 void Cpu030::sync(int cycles) {
     clock += cycles;
     catchUp();
+}
+
+moira::u16 Cpu030::read16Dasm(moira::u32 addr) const {
+    return moira::u16(moira::u16(mem_.peek8(addr)) << 8 | mem_.peek8(addr + 1));
 }

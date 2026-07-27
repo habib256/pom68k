@@ -417,10 +417,13 @@ Gates: `lc_`, `classic2_`, `cclassic_`, `mactv_boot_etalon`.
   solved"). `q605_nofpu_boot_etalon` gates the soft path,
   `q605_barefpu_boot_etalon` the bare one.
   Q8 also adds a separate I/D ATC (32 entries) and a Cpu040 i-cache/throughput
-  overlay (`POM68K_Q605_CACHE_BOOST`, default **1** — boost 2+ fails SCSI
-  bring-up; `POM68K_MMU040_WALK` disables the ATC). Stall / VIA E-clock /
-  SWIM C15M sync are boost-invariant so a future raise only needs device-
-  relative timing work.
+  overlay (`POM68K_Q605_CACHE_BOOST`, default **4** since 2026-07-25;
+  `POM68K_MMU040_WALK` disables the ATC). The old default of 1 carried the
+  note "boost 2+ fails SCSI bring-up" — re-measured, that was a stale
+  symptom: the whole 040 family is green at 4 (CHANGELOG "The Quadra's
+  boost-1 pin was stale"). Stall / VIA E-clock / SWIM C15M sync are
+  boost-invariant, and the two unit tests that were reading the boosted
+  clock now read `machineClock()`.
 - **Memory/I/O:** `Q605Memory` models MEMCjr ROM overlay/RAM sizing and the
   PrimeTime window: VIA1, Quadra pseudo-VIA2, SCC, IOSB/MEMCjr registers,
   Cuda-flavoured `Egret`, IOSB ASC `$BB` stereo, SWIM2 (MFM/GCR SuperDrive) and
@@ -450,8 +453,19 @@ Gates: `lc_`, `classic2_`, `cclassic_`, `mactv_boot_etalon`.
   `htotal×vtotal/pclk` (OS 8.1 programs 896×525 at 30.25 MHz). Extended
   monitor sense (drive pins + ext-code read-back), Swatch display-disable
   bit, VBL/cursor interrupts, CLUT and RAMDAC-selected 1/2/4/8/16/24-bit
-  modes are all dafb.cpp semantics. `q605_dafb_test` pins
-  register/depth/reset/CRTC/Gazelle/sense. GUI and `q605_trace` render
+  modes are all dafb.cpp semantics. **The clock generator is per-flavour**
+  (`Dafb::Clockgen` ctor variant, 2026-07-27): Gazelle on MEMCjr
+  (`dafb.cpp:1322`), **DP8534** on djMEMC (`:1197` — MSB-first bitstream
+  into `$303`, committed by any write to `$313`, decoded as five
+  bit-reversed bytes → P/RCNT/NCNT), **DP8531** on the Quadra 700's
+  discrete DAFB (`:884` — nibble registers at `$3n3`, latched by register
+  15 → R/P and the A/B swallow-counter split of the N modulus). One
+  decoder for all three was not merely incomplete: the DP8531's register-12
+  nibbles land on `$3C3`, the Gazelle's own serial port, so the Q700 used
+  to latch a pixel clock out of unrelated data. Real ROM values, visible
+  with `POM68K_DAFB_CLOCK_TRACE=1`: Centris 650 → 30.26 MHz, Quadra 700 →
+  25.175 then 30.24 MHz. `q605_dafb_test` pins
+  register/depth/reset/CRTC/sense and all three clock generators. GUI and `q605_trace` render
   indexed modes from live hardware state; the 256-color Finder is proven
   live (`q605_boot_etalon`: mode 3, base `$1000`, stride 1024).
   `q605_trace --dafb-io N` gives DAFB and MEMCjr holding-port traffic its
@@ -492,6 +506,13 @@ the **start of system RAM**.
   charged in machine cycles on all four 030 CPUs (`machineClock()`,
   `stall()` scaled by the boost) and the machine runs at the shared default
   boost. See CHANGELOG 2026-07-25.
+- **The pseudo-VIA here is the *base* device, not the V8 one.** MAME's
+  `rbv.cpp:66` (and `vasp.cpp:90`) instantiates `APPLE_PSEUDOVIA`, where
+  IFR bit 4 (ASC) latches only the 0→1 edge and the guest's write-1-to-ack
+  sticks — the level flavour with its `~$10` ack mask belongs to
+  `v8_pseudovia_device` / `sonora_pseudovia_device` alone. Selected by
+  `PseudoVia::Flavour` since 2026-07-27; see CHANGELOG for why VASP in
+  particular could not survive stacking two level behaviours.
 - Gates: `iisi_boot_etalon`, `iici_boot_etalon`.
 
 ## Sonora platform — LC III / LC III+ / AIO family, + the VASP recombination

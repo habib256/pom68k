@@ -25,8 +25,14 @@ int main() {
 
     uint32_t base = bus.slotBase(9);
     bus.write32(base, 0x00000000u);          // VRAM word (inverted bus)
-    bus.write8(base + 0x90002, 0x00);      // CLUT addr
-    bus.write8(base + 0x90002, 0x80);      // CLUT data
+    // Bt453 through MAME's .umask32(0xff000000): the register index is the
+    // 32-bit WORD index & 3, so the address register is $9001C (word 7) and
+    // the palette data port $90018 (word 6) — exactly what the shipped
+    // Apple TFB driver writes. The old $90002 writes hit an unused byte lane.
+    bus.write8(base + 0x9001C, uint8_t(~0x05));   // CLUT addr 5 (bus inverts)
+    bus.write8(base + 0x90018, uint8_t(~0x12));   // R
+    bus.write8(base + 0x90018, uint8_t(~0x34));   // G
+    bus.write8(base + 0x90018, uint8_t(~0x56));   // B
     bus.write8(base + 0xA0000, 0x00);      // enable VBL
 
     bus.write32(base + 0x8003C, 0x00000030u); // MISC2 → mode nibble
@@ -39,6 +45,10 @@ int main() {
     std::vector<uint32_t> fb;
     toby.decode(fb);
     check(int(fb.size()) == toby.hres() * toby.vres(), "decode size matches mode");
+    // The CLUT write must have landed: read the address register back and the
+    // palette entry through the same (inverted) bus the driver uses.
+    check(bus.read8(base + 0x9001C) == uint8_t(~0x08),
+          "DAC address auto-incremented past the 3 palette bytes");
     check(toby.mode() <= 3, "valid depth mode");
 
     // ── CRTC-derived frame clock (MAME nubus_m2video calc_screen_params:

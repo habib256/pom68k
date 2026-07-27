@@ -24,11 +24,20 @@ bool Via6522::tick(int n) {
     bool hit = false;
     t1_ -= n;
     if (t1_ < 0) {
-        if (t1armed_) { setIfr(TIMER1); hit = true; }
         if (acr_ & 0x40) {                       // free-run: reload, stay armed
+            // MAME 6522via.cpp:536-558 t1_tick(): set_int(INT_T1) sits AFTER
+            // the if/else, so in continuous mode it is unconditional —
+            // m_t1_active is only cleared on the one-shot path. Gating it on
+            // t1armed_ meant a T1 that had already expired one-shot before
+            // the guest turned ACR6 on never flagged again: its periodic
+            // interrupt was dead for good, and a completion flag its ISR was
+            // meant to set never arrived (guest spins at IPL 0).
+            setIfr(TIMER1); hit = true;
+            t1armed_ = true;
             int period = int(t1latch_) + 2;
             t1_ = period - 1 + ((t1_ + 1) % period);
         } else {
+            if (t1armed_) { setIfr(TIMER1); hit = true; }
             t1armed_ = false;
             t1_ &= 0xFFFF;                       // wraps and keeps counting
         }
@@ -137,7 +146,13 @@ void Via6522::write(int reg, uint8_t v) {
         case DDRB:   ddrb_ = v; break;
         case DDRA:   ddra_ = v; break;
         case T1CL: case T1LL: t1latch_ = uint16_t((t1latch_ & 0xFF00) | v); break;
-        case T1LH:   t1latch_ = uint16_t((t1latch_ & 0x00FF) | (v << 8)); break;
+        case T1LH:   t1latch_ = uint16_t((t1latch_ & 0x00FF) | (v << 8));
+                     // R6522 register 7 / MAME 6522via.cpp:921-925: writing
+                     // T1L-H resets the T1 interrupt flag. Reprogramming a
+                     // free-run period through the latches alone otherwise
+                     // left a stale IFR6 to fire the ISR a period early.
+                     ifr_ &= uint8_t(~TIMER1);
+                     break;
         case T1CH:   t1latch_ = uint16_t((t1latch_ & 0x00FF) | (v << 8));
                      t1_ = t1latch_; t1armed_ = true;
                      ifr_ &= uint8_t(~TIMER1); break;

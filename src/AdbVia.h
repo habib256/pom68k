@@ -31,7 +31,8 @@ public:
     enum State : uint8_t { NEW = 0, EVEN = 1, ODD = 2, IDLE = 3 };
 
     void reset();
-    void attach(Via6522& via, AdbBus& adb);
+    // cpuHz = the owning machine's clock; the PIC's own rate is fixed.
+    void attach(Via6522& via, AdbBus& adb, int64_t cpuHz = 15667200);
 
     // Call after every VIA1 ORB/DDRB/SR/ACR write and before ORB reads.
     void sync();
@@ -81,9 +82,16 @@ private:
     bool lle_ = false;
     Pic1654s pic_;
     AdbLine  line_;
-    int      picAcc_ = 0;                       // CPU-cycle → PIC-cycle accumulator
+    int64_t  picAcc_ = 0;                      // machine-cycle → PIC-cycle accumulator
     int64_t  lastPicClock_ = -1;               // absolute CPU clock the PIC has run to
-    // CPU cycles per PIC *cycle* (15.6672 MHz / (3.6864 MHz / 8)); an
-    // instruction costs 1-3 of these — tickLle charges the real cost.
-    static constexpr int kCyclesPerPicInsn = 34;
+    // The PIC1654S runs at a FIXED 460.8 kHz (3.6864 MHz / 8) whatever the
+    // host machine's clock is, so the divisor must be derived per machine —
+    // hardcoding 34 (correct only at the Mac II's 15.6672 MHz) overclocked the
+    // transceiver 2.13x on a Quadra 650 and halved it on a Mac SE, stretching
+    // or shrinking every ADB bit cell away from the 100 us spec.
+    static constexpr int64_t kPicHz = 460800;
+    // AdbLine's pulse thresholds are expressed in this unit (1 PIC cycle =
+    // kPicTick); it is a property of the PIC domain, not of the host clock.
+    static constexpr int kPicTick = 34;
+    int64_t  cpuHz_ = 15667200;                 // set by attach()
 };

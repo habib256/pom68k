@@ -121,10 +121,13 @@ bool DeclRom::validateFormatBlock(const uint8_t* data, size_t n) {
     // MAME inverted declaration ROMs (342-0008-a.bin): reverse + invert first.
     std::vector<uint8_t> tmp(data, data + n);
     for (size_t i = 0, j = n - 1; i < j; i++, j--) std::swap(tmp[i], tmp[j]);
-    uint8_t lanes = tmp[n - 1];
-    if (tmp[n - 2] == 0xFF) lanes = uint8_t(lanes ^ 0xFF);
+    // Only invert when the image actually IS inverted: XORing unconditionally
+    // rejected reversed-but-not-inverted card ROMs that installRaw() happily
+    // accepts, so the file's validator and its installer disagreed.
+    const bool inv = (tmp[n - 2] == 0xFF);
+    uint8_t lanes = inv ? uint8_t(tmp[n - 1] ^ 0xFF) : tmp[n - 1];
     if (lanes != kByteLanes && lanes != 0xE1) return false;
-    for (auto& b : tmp) b ^= 0xFF;
+    if (inv) for (auto& b : tmp) b ^= 0xFF;
     return check(tmp.data());
 }
 
@@ -136,8 +139,13 @@ std::vector<uint8_t> DeclRom::buildSynthetic(uint32_t fbBase) {
     uint32_t boardName = b.pos();
     b.string("Toby Frame Buffer");
     uint32_t vendorInfo = b.pos();
-    b.offs(0x01, b.pos() + 16); b.string("Apple Computer");
+    // The string must live AFTER the end-of-list, else a directory walker
+    // reads its first bytes as another entry; and offs() computes the delta
+    // from the entry position, so the target is entry(4) + endOfList(4) = +8.
+    // The old "+16" pointed 12 bytes into "Apple Computer".
+    b.offs(0x01, b.pos() + 8);
     b.endOfList();
+    b.string("Apple Computer");
 
     uint32_t sRsrcBoard = b.pos();
     b.offs(0x01, boardType);
@@ -204,7 +212,9 @@ std::vector<uint8_t> DeclRom::buildSynthetic(uint32_t fbBase) {
 }
 
 std::vector<uint8_t> DeclRom::installRaw(const uint8_t* raw, size_t n) {
-    if (!raw || n == 0) return {};
+    // n < 20 has no room for a format block, and rom[n-2] below would index
+    // SIZE_MAX at n == 1 (validateFormatBlock already guards the same way).
+    if (!raw || n < 20) return {};
     std::vector<uint8_t> rom(raw, raw + n);
 
     for (size_t i = 0, j = n - 1; i < j; i++, j--)

@@ -330,8 +330,15 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
 
     if (onIoAccess) onIoAccess(addr, false, 0xFFFFFFFF);   // pre-access probe log
 
-    if (sub >= 0x0FFFFFFC)                       // machine ID (LC 475)
-        return uint8_t(machineId_ >> (8 * (3 - (sub & 3))));
+    // MAME (iosb.cpp:64-65, inherited by primetimeii) installs $A55A2BAD
+    // across the whole $0FFF0000-$0FFFFFFF window and the machine driver
+    // overrides only the final longword. Answering just the last longword left
+    // 64 KB reading 0 = "no IOSB/PrimeTime present". CentrisMemory already
+    // decodes the full window; this is the same family.
+    if (sub >= 0x0FFF0000) {
+        uint32_t id = (sub >= 0x0FFFFFFC) ? machineId_ : 0xA55A2BADu;
+        return uint8_t(id >> (8 * (3 - (sub & 3))));
+    }
 
     uint32_t base = sub & 0x0003FFFF;            // pre-mirror window
 
@@ -613,7 +620,7 @@ uint8_t Q605Memory::peek8(uint32_t addr) const {
     if (addr < 0x50000000) return rom_[addr & (kRomSize - 1)];
     if (addr >= 0xF9000000 && addr < 0xF9000000 + kVramSize)
         return vram_[addr - 0xF9000000];
-    if (addr >= 0x5FFFFFFC)                   // board ID (mirrors read8)
+    if (addr >= 0x5FFFFFFC && addr < 0x60000000)                   // board ID (mirrors read8)
         return uint8_t(machineId_ >> (8 * (3 - (addr & 3))));
     return 0xFF;
 }

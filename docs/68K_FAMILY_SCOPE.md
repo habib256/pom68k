@@ -33,7 +33,7 @@ gate arrays, MCU protocols, video controllers, NuBus, power management.
 
 ## The 68K Mac universe (by CPU) — ✅ = done
 
-- **68000** — 128K, 512K/512Ke, **Plus** ✅, SE, SE FDHD, Classic,
+- **68000** — 128K, 512K/512Ke, **Plus** ✅, **SE** ✅, **SE FDHD** ✅, **Classic** ✅,
   Portable, PowerBook 100.
 - **68020** — **II** ✅, **LC** ✅.
 - **68030** — IIfx, SE/30, **IIx** ✅, **IIcx** ✅, **IIsi** ✅ (RBV),
@@ -43,7 +43,7 @@ gate arrays, MCU protocols, video controllers, NuBus, power management.
   Performa 4xx/6xx rebadges, PowerBook 140–180 / Duo.
 - **68040 / 68LC040** — **Quadra 605** ✅, **LC 475** ✅, **LC 575** ✅,
   **Centris 610** ✅ / **650** ✅, **Quadra 610** ✅ / **650** ✅ /
-  **800** ✅, other Quadra & Centris (630/700/900/950…), 660AV/840AV (DSP),
+  **800** ✅, **700** ✅, **630 / LC 580** ✅, Quadra 900/950 (IOPs), 660AV/840AV (DSP),
   PowerBook 500 / 190.
 
 ## What POM68K already has as leverage
@@ -77,10 +77,10 @@ desktop/compact family. Each unlocks a cluster:
 
 | Missing brick | Unlocks | Difficulty |
 |---|---|---|
-| ~~**ADB-over-VIA compact MCU**~~ ✅ **IT IS THE PIC1654S WE ALREADY RUN** — MAME `mac128.cpp` drives the SE's ADB through `adbmodem`, the same transceiver as the Mac II/IIci/Centris. `MacMemory::Model {Plus,SE,SEFDHD,Classic}` wires it; the SE ROM executes but the bring-up (POST → disk) is unfinished | SE, SE FDHD, Classic, SE/30 | 🟢/🟡 |
+| ~~**ADB-over-VIA compact MCU**~~ ✅ **DONE — IT IS THE PIC1654S WE ALREADY RUN**: MAME `mac128.cpp` drives the SE's ADB through `adbmodem`, the same transceiver as the Mac II/IIci/Centris. `MacMemory::Model {Plus,SE,SEFDHD,Classic}` wires it and all three boot System 6 to the Finder (`se_`/`sefdhd_`/`classic_boot_etalon`) | SE ✅, SE FDHD ✅, Classic ✅ — SE/30 still needs a ROM dump | 🟢 |
 | ~~**RBV** (RAM-Based Video controller)~~ ✅ **DONE** (`RbvMemory` — IIsi + IIci) | — | 🟡 |
 | **Generalized NuBus + slot video** (the Mac II Toby/DeclRom port, made reusable) | NuBus Quadras (700/800/900/950); real cards on IIci/IIsi/VASP. *IIx/IIcx no longer need it — they ride the Mac II board itself* | 🟡 |
-| ~~**040 I/O-controller variants**~~ ✅ **DONE for djMEMC + IOSB** (`CentrisMemory` — Centris/Quadra 610 + 650 + **800**) | still to do: Quadra 630/LC 630, 700, 900, 950 | 🟡 |
+| ~~**040 I/O-controller variants**~~ ✅ **DONE**: djMEMC + IOSB (`CentrisMemory` — Centris/Quadra 610 + 650 + **800**), discrete "Spike" (`Q700Memory`), F108 + PrimeTime II + Valkyrie (`Q630Memory` — Quadra 630 / LC 580) | still to do: Quadra 900/950 (they need the IOP brick, not an I/O variant) | 🟢 |
 | **OSS + two 6502-class IOPs** | IIfx | 🟠 |
 | **LCD framebuffer + 68HC05 Power Manager wiring** | PowerBook 150 / 190 / Duo / 500 series | 🟡 (see § Portables) |
 | **LCD framebuffer + M50753 (740/6502-family) Power Manager core** | Macintosh Portable, PowerBook 100 / 140–180 | 🟡 |
@@ -112,7 +112,7 @@ transcendentals (`FSIN`/`FTAN`) trap to the software **FPSP**. The current
 | **IIci** ✅ **DONE** | `RbvMemory` `iici` flavor — RBV + `AdbVia` (PIC1654S ADB modem LLE) + discrete `Rtc` + empty NuBus, 030 @ 25 MHz. Gate `iici_boot_etalon`. |
 | **IIx / IIcx** ✅ **DONE** | `MacIIMemory::Model {IIx,IIcx}` + `Cpu020` `is030` — 68030 on the Mac II board, Toby NuBus reused, VIA machine-ID pins. Wall: skip the GLUE 24-bit remap once the 030 PMMU is on. Gates `iix/iicx_boot_etalon`. |
 | **Centris/Quadra 610, 650, 800** ✅ **DONE** | `CentrisMemory`/`CentrisCpu` (djMEMC + IOSB), Q605 devices + discrete RTC + PIC1654S ADB LLE. Gates `centris610/650_`, `quadra610/650/800_boot_etalon`. The **800** needed only its ID pins ($12) + the Ethernet address ROM at $50008000; SONIC and its NuBus slots stay unmapped-0 and the boot path never binds them. |
-| **Quadra 630 / LC 630** | The 630's I/O controller variant on the same 040 platform; onboard video reuses DAFB. The last 68k desktop. ROM `06684214` on hand. |
+| **Quadra 630 / LC 580** ✅ **DONE** | Not DAFB after all: **F108** + **PrimeTime II** + the fixed-mode **Valkyrie** framebuffer (`Q630Memory`/`Q630Cpu`/`Valkyrie`), Cuda 341S0060, 68040 @ 33 MHz. Mac OS 8.1 Finder at 640×480×8 on the first run; the ATA/IDE port is mapped but empty, so boot goes over SCSI. Gates `q630_`/`lc580_boot_etalon`. |
 | **Quadra 700** ✅ **DONE** | `Q700Memory`/`Q700Cpu` — discrete 040: Mac II VIA1/VIA2 + RTC + PIC ADB, Quadra DAFB/53C96/SWIM1/EASC, SCSI behind DAFB's TurboSCSI cell. NuBus unpopulated. Gate `q700_boot_etalon`. |
 | **Quadra 900 / 950** | The Q700 machine plus **two AppleP IC IOPs** (the SCC and SWIM run on 6502-class I/O processors) and an Egret — the same IOP brick the IIfx needs, so one core unlocks three machines. |
 
@@ -177,9 +177,9 @@ The remaining order, cheapest-unlock-first:
    **DONE 2026-07-24/25.**
 2. ~~**Quadra 800**~~ **DONE 2026-07-25** — a fifth model of the djMEMC/IOSB
    machine (ID pins `$12`, Ethernet address ROM, SONIC/NuBus unmapped).
-3. **Quadra 630 / LC 630 (+ LC 580)** — the last 68k desktops; one more 040
+3. ~~**Quadra 630 / LC 630 (+ LC 580)**~~ ✅ **DONE 2026-07-25** — one more 040
    I/O-controller variant on the proven platform.
-4. **Compact ADB MCU → SE / SE FDHD / Classic / SE/30** — one small
+4. ~~**Compact ADB MCU → SE / SE FDHD / Classic**~~ ✅ **DONE 2026-07-25** (SE/30 blocked on a ROM dump) — one small
    transcoder unlocks the whole compact side (three ROMs already on hand).
 5. **Generalize NuBus** → real slot cards on IIci/IIsi/VASP and the NuBus
    Quadras (700/900/950).
@@ -233,3 +233,14 @@ Portables/AV feasibility research (2026-07-24):
 - [DSP3210 programming — 68kMLA](https://68kmla.org/bb/threads/dsp3210-programming.37581/); [Motorola 68HC05 — Wikipedia](https://en.wikipedia.org/wiki/Motorola_68HC05)
 </content>
 </invoke>
+
+## After the Quadra 630 (2026-07-25): what is actually left
+
+Every remaining 68k Mac needs a **new co-processor core**, not a new bus:
+
+| Brick | Unlocks | Notes |
+|---|---|---|
+| **AppleP IC IOP** (Apple 343S1021: a 65C02 core + 2 KB shared RAM + two DMA channels + host/peripheral mailboxes + timer — MAME `machine/applepic.cpp`, 578 lines) plus the **OSS** interrupt controller | **IIfx**, **Quadra 900 / 950** | The 65C02 core is the only piece POM68K has no equivalent of — the sibling [POMIIGS](../../POMIIGS/) ships a compact `CPU65816` (825 lines) whose emulation mode is a 65C02, the natural candidate to vendor. Note the IIfx has **no built-in video**: it needs the NuBus card path (`TobyVideo`/`DeclRom` already exist). |
+| **Power Manager** (M50753 on the Portable/PB100, 68HC05 on the PB150/Duos) | Portable, PowerBook 1xx/Duo | The 68HC05 half is already in the tree (`M68hc05`, running Egret/Cuda firmware) — the PB150 is therefore the cheapest portable. |
+| **AV DSP** (AT&T DSP3210) | 660AV / 840AV | Out of scope for the foreseeable future. |
+| **ROM dump** | SE/30 | Nothing to build: it is a compact Mac IIx (`MacIIMemory` + compact video). |

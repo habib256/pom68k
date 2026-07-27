@@ -47,8 +47,11 @@ int main() {
 
     // ── ZIP GetNetInfo (DDP) ──
     {
+        // Real GetNetInfo header: [5][zh_zero][firstNet16][lastNet16][len][zone].
+        // The old fixture emitted [5][len][zone], the same wrong layout the
+        // parser assumed, so it could not catch the offset bug.
         w.clear();
-        std::vector<uint8_t> gni = { 5 };
+        std::vector<uint8_t> gni = { 5, 0, 0, 0, 0, 0 };
         putP(gni, "POM68K");
         w.sendDdp(47, 6, 6, 6, gni, 0xFF);
         bool ok = false;
@@ -59,6 +62,23 @@ int main() {
                 ok = true;
             }
         CHECK(ok, "GetNetInfo answered");
+    }
+
+    // ── ZIP GetNetInfo with a WRONG zone: must come back ZoneInvalid and
+    //    carry the default zone so the guest can re-learn it. This is the
+    //    case the old fixture's layout made unreachable.
+    {
+        w.clear();
+        std::vector<uint8_t> gni = { 5, 0, 0, 0, 0, 0 };
+        putP(gni, "OtherZone");
+        w.sendDdp(47, 6, 6, 6, gni, 0xFF);
+        bool ok = false;
+        for (auto& g : w.out)
+            if (g.ddpType == 6 && g.pay.size() > 8 && g.pay[0] == 6) {
+                CHECK(g.pay[1] & 0x80, "stale zone flagged ZoneInvalid");
+                ok = true;
+            }
+        CHECK(ok, "GetNetInfo answered for a stale zone");
     }
 
     // ── ZIP GetZoneList (ATP) ──

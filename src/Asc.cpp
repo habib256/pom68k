@@ -67,6 +67,10 @@ uint8_t AscV8::readReg(uint32_t offset) {
         return rv;
     }
     default:
+        // FIFO IRQ-control registers live at bus offsets $F09/$F29, not
+        // $809/$829 — the classic ASC returns $01 there (asc_base_device::read).
+        // The IOSB and Sonora flavors already decode them; AscV8 did not.
+        if (classic() && (offset == 0xF09 || offset == 0xF29)) return 0x01;
         if (offset - 0x800 < 0x20) return regs_[offset - 0x800];
         return 0;
     }
@@ -184,7 +188,9 @@ void AscV8::tick(int cpuCycles) {
 
             const int capA = cap_;
             const int capB = capB_;
-            const bool stereo = (regs_[0x02] & 1) != 0;
+            // CONTROL bit 1 = stereo/mono; bit 0 selects analog vs PWM output.
+            // MAME's `CONTROL_STEREO = 1` is a BIT() index, not a mask.
+            const bool stereo = (regs_[0x02] & 0x02) != 0;
 
             const int8_t smplL = int8_t(fifo_[rd_] ^ 0x80);
             const int8_t smplR = stereo ? int8_t(fifoB_[rdB_] ^ 0x80) : smplL;
@@ -283,12 +289,31 @@ uint8_t AscIosb::read(uint32_t offset) {
         case 0x802: case 0x803: case 0x805: case 0x807: case 0x808:
             v = 0; break;
         case 0x804:
+            // Reading the status register drops the IRQ latch, ALWAYS; the
+            // next 22 257 Hz sample re-raises it while the gated condition
+            // still holds. MAME gates the clear on !(stat & HALF_B)
+            // (asc.cpp:1263-1269), but tick() sets HALF_B whenever either
+            // FIFO sits below half — precisely the state the handler is in
+            // when it reads this register — so the gate makes the latch
+            // un-clearable, and the pseudo-VIA2 level re-sample
+            // (Q605Memory::via2Recalc) turns that into a permanent level-2
+            // storm. The real LC 475 clears: MAME's own ASCTester
+            // comparison (asc.cpp:1162-1166) annotates its column "still in
+            // IFR after clear" as the MAME-side artefact. Same ruling as
+            // AscSonora below (the "Bienvenue." freeze).
+            setIrq(false);
             v = fifoStat_;
-            if (!(fifoStat_ & STAT_HALF_B)) setIrq(false);
             break;
-        case 0x809: v = fifoIrqEn_[0]; break;
+        // FIFO A/B interrupt control lives at $F09/$F29, not $809/$829:
+        // MAME asc.h:52-74 (R_FIFOA_IRQCTRL = 0xf00-0x800 + 9,
+        // R_FIFOB_IRQCTRL = 0xf20-0x800 + 9) decoded via `offset - 0x800`
+        // in asc_iosb_device::read — the same block as the $F0E/$F2E pair
+        // just below. Confirmed by ASCTester on a real LC 475: "F09: 1
+        // ($01)  F29: 1 ($01)" (asc.cpp:1135). $809 is R_REG9 and $829 a
+        // plain register-file byte; both read back 0.
+        case 0xF09: v = fifoIrqEn_[0]; break;
         case 0x80A: v = playRec_; break;
-        case 0x829: v = fifoIrqEn_[1]; break;
+        case 0xF29: v = fifoIrqEn_[1]; break;
         case 0xF0E: case 0xF2E: v = 0x2C; break;
         default: v = 0; break;
         }
@@ -338,18 +363,23 @@ void AscIosb::write(uint32_t offset, uint8_t v) {
             fifoStat_ |= STAT_EMPTY_OR_FULL_A | STAT_EMPTY_OR_FULL_B;
         }
         return;
-    case 0x809:
+    case 0xF09:                              // R_FIFOA_IRQCTRL (asc.h:61)
         if (!(v & 1) && (fifoIrqEn_[0] & 1) && (fifoStat_ & STAT_HALF_A))
-            setIrq(true);
+            setIrq(true);                    // enable while A already pending
         fifoIrqEn_[0] = v & 1;
+        // Disabling the last enabled source must drop the line: otherwise
+        // Q605Memory::ascLine_ stays true and via2Recalc() re-latches IFR
+        // bit 4 forever (MAME asc.cpp:1087-1090 does the same on Sonora).
+        if ((fifoIrqEn_[0] & 1) && (fifoIrqEn_[1] & 1)) setIrq(false);
         return;
     case 0x80A:
         playRec_ = v;
         return;
-    case 0x829:
+    case 0xF29:                              // R_FIFOB_IRQCTRL (asc.h:74)
         if (!(v & 1) && (fifoIrqEn_[1] & 1) && (fifoStat_ & STAT_HALF_B))
             setIrq(true);
         fifoIrqEn_[1] = v & 1;
+        if ((fifoIrqEn_[0] & 1) && (fifoIrqEn_[1] & 1)) setIrq(false);
         return;
     case 0xE00:
         fifoStat_ |= 0x0F;
@@ -450,8 +480,13 @@ uint8_t AscSonora::read(uint32_t offset) {
         setIrq(false);
         v = fifoStat_;
         break;
-    case 0x809: v = fifoIrqEn_[0]; break;
-    case 0x829: v = fifoIrqEn_[1]; break;
+    // R_FIFOA_IRQCTRL / R_FIFOB_IRQCTRL are at $F09/$F29 (MAME asc.h:52-74,
+    // decoded as `offset - 0x800` in asc_sonora_device) — NOT $809/$829,
+    // which are register-file bytes. Not fatal here the way it is on IOSB,
+    // because Sonora resets these to 0 = enabled, but it meant guest writes
+    // landed in xtraRegs_ and the ASC interrupt could never be turned OFF.
+    case 0xF09: v = fifoIrqEn_[0]; break;
+    case 0xF29: v = fifoIrqEn_[1]; break;
     default:
         v = offset >= 0xF00 ? xtraRegs_[offset - 0xF00]
           : offset < 0x840  ? regs_[offset - 0x800] : 0;
@@ -483,6 +518,10 @@ void AscSonora::write(uint32_t offset, uint8_t v) {
             } else if (cap_[0] > 0) {
                 fifoStat_ &= uint8_t(~STAT_EMPTY_OR_FULL_A);
             }
+            // Sonora override (MAME asc.cpp:1107-1116): in playback mode FIFO A
+            // always reads back "empty" right after a write. AscIosb already
+            // forces this; AscSonora cleared the bit and never re-set it.
+            fifoStat_ |= STAT_EMPTY_OR_FULL_A;
         }
         return;
     }
@@ -510,8 +549,20 @@ void AscSonora::write(uint32_t offset, uint8_t v) {
             fifoStat_ |= STAT_EMPTY_OR_FULL_A | STAT_EMPTY_OR_FULL_B;
         }
         return;
-    case 0x809: fifoIrqEn_[0] = v; return;
-    case 0x829: fifoIrqEn_[1] = v; return;
+    // asc_sonora_device::write (asc.cpp:1082-1104): enabling with the matching
+    // half flag already up fires a dummy IRQ; disabling drops the line.
+    case 0xF09:
+        if (!(v & 1) && (fifoIrqEn_[0] & 1) && (fifoStat_ & STAT_HALF_A))
+            setIrq(true);
+        else if (v & 1) setIrq(false);
+        fifoIrqEn_[0] = v & 1;
+        return;
+    case 0xF29:
+        if (!(v & 1) && (fifoIrqEn_[1] & 1) && (fifoStat_ & STAT_HALF_B))
+            setIrq(true);
+        else if (v & 1) setIrq(false);
+        fifoIrqEn_[1] = v & 1;
+        return;
     default:
         if (offset >= 0xF00)     xtraRegs_[offset - 0xF00] = v;
         else if (offset < 0x840) regs_[offset - 0x800] = v;

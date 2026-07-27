@@ -52,6 +52,16 @@ bool CudaLle::loadFirmware(const std::vector<uint8_t>& rom) {
 }
 
 void CudaLle::reset() {
+    // PRAM is battery-backed: snapshot the LIVE window back into the staging
+    // copy BEFORE dropping the flag, else a warm reset reverted every XPRAM
+    // byte the guest wrote since boot (monitor depth, volume, startup disk,
+    // date/time) to the boot-time copy — and the next PC3 release re-installed
+    // that stale copy over the firmware's. Egret::reset() already preserves
+    // its PRAM for exactly this reason, and MAME's cuda device_reset() never
+    // touches m_pram_loaded.
+    if (pramInstalled_)
+        for (int i = 0; i < 256; i++)
+            stagedPram_[i] = mcu_.ramByte(0x100 + i);
     mcu_.reset();
     adb_.reset();
     held_ = true;
@@ -62,6 +72,18 @@ void CudaLle::reset() {
     pramInstalled_ = false;
     mcuAcc_ = adbAcc_ = 0;
     mcuDebt_ = 0;
+}
+
+void CudaLle::writeRtcSeconds() {
+    mcu_.setRamByte(0xAB, uint8_t(stagedSeconds_ >> 24));
+    mcu_.setRamByte(0xAC, uint8_t(stagedSeconds_ >> 16));
+    mcu_.setRamByte(0xAD, uint8_t(stagedSeconds_ >> 8));
+    mcu_.setRamByte(0xAE, uint8_t(stagedSeconds_));
+}
+
+void CudaLle::setSeconds(uint32_t s) {
+    stagedSeconds_ = s;
+    if (pramInstalled_) writeRtcSeconds();   // live after release, like PRAM
 }
 
 // ── PRAM staging (cuda.cpp pc_w :117-131: install on reset release) ────
@@ -153,6 +175,13 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
                 if (!pramInstalled_) {   // slap staged PRAM into live RAM
                     for (int i = 0; i < 256; i++)
                         mcu_.setRamByte(0x100 + i, stagedPram_[i]);
+                    // ...and seed the firmware's own RTC counter, exactly as
+                    // MAME does next to m_pram_loaded (cuda.cpp:226-229): the
+                    // 32-bit seconds live in MCU RAM at $AB(MSB)..$AE(LSB).
+                    // Without this the host wall clock went to the INACTIVE
+                    // HLE object and every firmware-LLE machine booted at the
+                    // 1904 epoch.
+                    writeRtcSeconds();
                     pramInstalled_ = true;
                 }
             }

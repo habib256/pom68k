@@ -135,15 +135,46 @@ void M68hc05::pushState() {
     push8(cc() /* 111HINZC */);
 }
 
-void M68hc05::serviceInterrupts() {
-    if (!pending_) return;
-    if (cc_ & CC_I) return;
+// Returns the cycles the interrupt sequence burned, 0 if none was taken.
+//
+// ── Why that is 0 and not the hardware's 11 ────────────────────────────
+// A real 6805 charges 11 cycles for the push + vector fetch (MAME
+// m6805.cpp:541-573, `m_icount -= 11`), and MAME's execute_run
+// (m6805.cpp:167-183) then falls through to fetch an opcode in the SAME
+// iteration — so the sequence PRECEDES an instruction, it does not
+// replace one. Both were tried here (2026-07-27) and both wedge the
+// **Macintosh TV**: it boots with 0, dies with 11, and the failure is
+// bit-exact either way.
+//
+// The 11 cycles are not wrong in isolation — they cost the MCU ~2 % of
+// its instruction throughput against machine time, which shifts the
+// PHASE between the MCU's instruction stream and the host VIA. That
+// phase is load-bearing, and CudaLle.cpp:20-28 already records two
+// earlier attempts to move it (uniform 2 µs interleave, busy-gated)
+// crashing the guest. The Mac TV is where it bites first: at 31.3344 MHz
+// it is the fastest 030 in the tree, so it has the tightest MCU:CPU
+// ratio. Symptom, traced end to end: the Cuda stops its clock train
+// after 7 of the 8 CB1 edges of a byte and waits for BYTEACK, while the
+// ROM spins forever on VIA1 IFR.SHIFT at $40AB3BC8 — SCSI is never
+// touched, the screen stays black (gate `mactv_boot_etalon`).
+//
+// So this is a deliberate, gated inaccuracy, not an oversight. Re-land
+// the 11 by returning it here (and nothing else — the run() loop below
+// is already shaped like MAME's) once the Cuda↔VIA transport survives a
+// phase shift; that robustness work is the real fix and is tracked in
+// TODO.md. Ruled out along the way: the one-second-timer clock model
+// (M68hc05::run) and a stale external bit counter across an ACR
+// shift-mode change (Via6522) — neither changes the outcome.
+int M68hc05::serviceInterrupts() {
+    if (!pending_) return 0;
+    if (cc_ & CC_I) return 0;
     pushState();
     cc_ |= CC_I;
     if (pending_ & INT_IRQ)        { pending_ &= ~INT_IRQ;   pc_ = read16(0x1FFA); }
     else if (pending_ & INT_TIMER) { pending_ &= ~INT_TIMER; pc_ = read16(0x1FF8); }
     else                           { pending_ &= ~INT_CPI;   pc_ = read16(0x1FF6); }
     waiting_ = false;
+    return 0;                        // hardware: 11 (m6805.cpp:570) — see above
 }
 
 // ── RMW group ($30 dir / $40 A / $50 X / $60 ix1 / $70 ix) ─────────────
@@ -405,13 +436,19 @@ int M68hc05::run(int budget) {
     if (!romLoaded_ || illegal_) return budget;
     int used = 0;
     while (used < budget) {
-        serviceInterrupts();
-        int cyc;
+        // Shaped like MAME's execute_run (m6805.cpp:167-183): the interrupt
+        // sequence PRECEDES an instruction, it never replaces one — taking a
+        // vector and then falling straight through to the next opcode fetch
+        // in the same iteration. (Letting it consume the iteration instead
+        // costs the MCU one instruction per interrupt.) What that sequence
+        // is CHARGED is the subtle part — see serviceInterrupts() above.
+        int cyc = serviceInterrupts();
         if (waiting_) {
-            cyc = 4;                                 // idle in WAIT/STOP
+            cyc += 4;                                // idle in WAIT/STOP
         } else {
-            cyc = execOne();
-            if (illegal_) { used += cyc; break; }
+            const int icyc = execOne();
+            if (illegal_) { used += cyc + icyc; break; }
+            cyc += icyc;
         }
         used += cyc;
         cycles_ += cyc;
@@ -432,8 +469,14 @@ int M68hc05::run(int budget) {
         // One-second timer (seconds_tick): flag bit 6, CPI int if bit 4.
         // Armed by the first onesec_w; cyclesPerSecond = pllClock/2.
         if (onesecArmed_) {
-            static const int64_t kPllHz[4] = { 524288, 1048576, 2097152, 4194304 };
-            const int64_t cps = kPllHz[pllCtrl_ & 3] / 2;
+            // The integrator clocks this core at a FIXED 2.097152 MHz
+            // (CudaLle::kMcuHz) and the programmable timer twelve lines above
+            // assumes the same, so deriving the one-second period from the PLL
+            // selector was the only place with a different clock model: with
+            // rate 0/1 the CPI heartbeat fired 8x/4x per second and the guest
+            // RTC ran that much fast. MAME arms this timer from wall time and
+            // scales only the prog timer.
+            const int64_t cps = 2097152;
             onesecAcc_ += cyc;
             if (onesecAcc_ >= cps) {
                 onesecAcc_ -= cps;

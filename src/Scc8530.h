@@ -216,6 +216,7 @@ private:
         int64_t rxHoldMax = 0;       // longest hold a queued frame suffered
         size_t rxQueueMax = 0;       // deepest the injection backlog got
         long rxDropped = 0;          // frames refused at the queue cap
+        int  rxOverrunHold = 0;      // byte-times a full FIFO has held the wire
         int rxIdle = 1 << 24;        // cycles since the wire last carried a
                                      // byte (starts "long idle"; capped) —
                                      // injectRxFrame fills the LLAP IDG
@@ -286,6 +287,10 @@ private:
                                                  // gap (~417 µs) so the driver
                                                  // re-arms on an idle line
     static constexpr size_t kLosslessQueueMax = 64;  // lossless-wire backlog
+    // How long a full Rx FIFO may stall the wire before the byte is lost the
+    // way real hardware loses it. Long enough for any servicing guest, short
+    // enough that an unresponsive one cannot wedge the line permanently.
+    static constexpr int kMaxOverrunHold = 256;
                                                  // ceiling (~38 KB of frames,
                                                  // several seconds of guest
                                                  // drain): past it the wire

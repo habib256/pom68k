@@ -66,7 +66,6 @@ private:
     std::array<uint8_t, 16> regs_{};
     std::array<uint32_t, 256> pens_{};
     uint8_t dacAddr_ = 0;
-    bool dacWrite_ = false;
     uint8_t mode_ = 0;
     bool vblDisable_ = true;
     int hres_ = W, vres_ = H;

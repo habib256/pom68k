@@ -1,9 +1,12 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// O6.2 gate — pseudo-VIA (V8 flavour) IFR/IER/slot semantics against the
-// table pinned in docs/LCII_HARDWARE.md § Pseudo-VIA (MAME pseudovia.cpp
-// hardware-tested on a real LC II). Exit 0 = pass, 1 = fail.
+// O6.2 gate — pseudo-VIA IFR/IER/slot semantics against the table pinned
+// in docs/LCII_HARDWARE.md § Pseudo-VIA (MAME pseudovia.cpp, hardware-
+// tested on a real LC II). Covers both flavours: Level (V8/Sonora,
+// v8_pseudovia_device) and Base (RBV/VASP, pseudovia_device), which differ
+// only in how IFR bit 4 (ASC) latches and clears.
+// Exit 0 = pass, 1 = fail.
 
 #include "PseudoVia.h"
 
@@ -16,6 +19,54 @@ void check(bool ok, const char* what) {
     if (!ok) gFails++;
 }
 } // namespace
+
+// The base device (rbv.cpp / vasp.cpp) differs from the V8 one only around
+// IFR bit 4: pseudovia.cpp:136-146 latches the 0→1 edge into a bit the
+// guest can then clear, and the write path (:268-271) carries no ~$10 mask.
+void baseFlavour() {
+    std::printf("pseudovia_test — base (RBV/VASP) ASC edge semantics\n");
+
+    PseudoVia pv{PseudoVia::Flavour::Base};
+    pv.reset();
+    pv.ascIrq(false);
+    pv.scsiIrq(false);
+    pv.scsiDrq(false);
+    pv.write(0x13, 0x80 | 0x1B);                 // enable everything
+
+    // Rising edge latches; the W1C ack sticks even with the line still high
+    pv.ascIrq(true);
+    check(pv.irqAsserted(), "base ASC: rising edge latches IFR bit 4");
+    pv.write(3, 0x10);
+    check(!pv.irqAsserted(), "base ASC: W1C ack clears it (no ~$10 mask)");
+    check((pv.reg(3) & 0x10) == 0, "base ASC: the level does not re-latch it");
+
+    // No new edge while the line stays high — the ack must stay honoured
+    pv.ascIrq(true);
+    check(!pv.irqAsserted(), "base ASC: no re-assert without a new 0→1 edge");
+
+    // Drop and re-raise: that IS a new edge
+    pv.ascIrq(false);
+    pv.ascIrq(true);
+    check(pv.irqAsserted(), "base ASC: a fresh edge latches again");
+    pv.write(3, 0x10);
+    check(!pv.irqAsserted(), "base ASC: and acks again");
+
+    // A line that falls on its own leaves the pending bit alone (edge latch)
+    pv.ascIrq(false);
+    pv.ascIrq(true);
+    pv.ascIrq(false);
+    check(pv.irqAsserted(), "base ASC: falling line does not clear the latch");
+    pv.write(3, 0x10);
+    check(!pv.irqAsserted(), "base ASC: only the ack clears the latch");
+
+    // Everything else is shared with the V8 flavour — spot-check the W1C
+    // path that the ~$10 mask must not have widened.
+    pv.scsiIrq(true);
+    check(pv.irqAsserted(), "base SCSI: line asserts IRQ");
+    pv.write(3, 0x08);
+    check(!pv.irqAsserted(), "base SCSI: W1C ack clears it");
+    pv.scsiIrq(false);
+}
 
 int main() {
     std::printf("pseudovia_test — V8 pseudo-VIA semantics (O6.2)\n");
@@ -96,6 +147,8 @@ int main() {
     // Port A write decode: (offset >> 9) == 1
     pv.write(0x200, 0x5A);
     check(portA == 0x5A, "port A: write at +$200 hits the port A hook");
+
+    baseFlavour();
 
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");
     return gFails ? 1 : 0;

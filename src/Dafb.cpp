@@ -2,6 +2,8 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Dafb.h"
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 void Dafb::reset() {
@@ -24,6 +26,8 @@ void Dafb::reset() {
     pixelClock_ = 31334400;
     gazShift_ = 0; gazBits_ = 0; gazLastClock_ = 0;
     gazMclk_ = 31334400;
+    dp8534Shift_ = 0;
+    std::memset(dp8531Regs_, 0, sizeof dp8531Regs_);
     framePos_ = 0;
     prevLine_ = 0;
 }
@@ -190,11 +194,38 @@ void Dafb::recalcMode() {
     }
 }
 
-// Gazelle clock generator (dafb_memcjr clockgen_w): a 20-bit word is
-// bit-banged into byte port $3C3 — bit 0 = data, bit 1 = clock (latch
-// on rising edge). Layout (LSB first): bit 0 = /pclk-select, bits 5-4 =
-// log2 P, bits 12-6 = N, bits 19-13 = M; clock = N/(M·P) × 31.3344 MHz.
+// Three DAFB flavours, three different clock chips behind the same +$300
+// window (dafb.cpp): the discrete DAFB of the Quadra 700 has a National
+// DP8531 (dafb_base::clockgen_w:884), djMEMC a DP8534
+// (dafb_memc_device::clockgen_w:1197) and MEMCjr Apple's "Gazelle"
+// (dafb_memcjr_device::clockgen_w:1322). They share nothing but the
+// address range, so route on the ctor variant — feeding one chip's
+// bitstream to another's decoder latches garbage (the DP8531 nibble
+// writes to register 12 land exactly on the Gazelle's $3C3 port).
 void Dafb::clockgenWrite8(uint32_t off, uint8_t v) {
+    const uint32_t before = pixelClock_;
+    switch (clockgen_) {
+    case Clockgen::Gazelle: clockgenGazelle(off, v); break;
+    case Clockgen::Dp8534:  clockgenDp8534(off, v);  break;
+    case Clockgen::Dp8531:  clockgenDp8531(off, v);  break;
+    }
+    // POM68K_DAFB_CLOCK_TRACE=1 — one line per latched clock. The frame
+    // cadence (tick()) hangs off pixelClock_, so a machine whose ROM never
+    // reaches its own decoder shows nothing here and silently keeps the
+    // legacy 60 Hz/525-line shape.
+    static const bool trace = std::getenv("POM68K_DAFB_CLOCK_TRACE") != nullptr;
+    if (trace && pixelClock_ != before) {
+        static const char* kName[] = { "Gazelle", "DP8534", "DP8531" };
+        std::fprintf(stderr, "dafb: %s latched pclk %u Hz (was %u)\n",
+                     kName[int(clockgen_)], pixelClock_, before);
+    }
+}
+
+// Gazelle (dafb_memcjr clockgen_w): a 20-bit word is bit-banged into byte
+// port $3C3 — bit 0 = data, bit 1 = clock (latch on rising edge). Layout
+// (LSB first): bit 0 = /pclk-select, bits 5-4 = log2 P, bits 12-6 = N,
+// bits 19-13 = M; clock = N/(M·P) × 31.3344 MHz.
+void Dafb::clockgenGazelle(uint32_t off, uint8_t v) {
     if ((off & 0xFF) != 0xC3) return;
     if ((v & 2) && !(gazLastClock_ & 2)) {
         gazShift_ >>= 1;
@@ -215,6 +246,77 @@ void Dafb::clockgenWrite8(uint32_t off, uint8_t v) {
         }
     }
     gazLastClock_ = v;
+}
+
+// MAME's bitswap<8>(v, 0,1,2,3,4,5,6,7) — a plain bit reversal of a byte.
+static inline uint8_t revByte(uint8_t v) {
+    uint8_t r = 0;
+    for (int i = 0; i < 8; ++i) r = uint8_t(r | (((v >> i) & 1) << (7 - i)));
+    return r;
+}
+
+// DP8534 (dafb_memc clockgen_w:1197) — djMEMC's clock chip. No datasheet
+// exists; MAME reverse-engineered it from the DT3152 parameter solver.
+// The bitstream is clocked into $303 one bit at a time (MSB first, hence
+// a left shift, unlike the Gazelle's right shift) and committed by ANY
+// write to $313 — there is no bit counter. On commit the 40-bit word is
+// shifted up by 2 and read back as five bit-REVERSED bytes; P, RCNT and
+// NCNT straddle those byte boundaries. pclk = 20 MHz × NCNT / RCNT / (P+1).
+void Dafb::clockgenDp8534(uint32_t off, uint8_t v) {
+    switch (off & 0xFF) {
+    case 3:
+        dp8534Shift_ = (dp8534Shift_ << 1) | uint64_t(v & 1);
+        break;
+    case 19: {
+        const uint64_t params = dp8534Shift_ << 2;
+        dp8534Shift_ = 0;
+
+        const uint8_t param1 = revByte(uint8_t((params >> 32) & 0xFF));
+        const uint8_t param2 = revByte(uint8_t((params >> 24) & 0xFF));
+        const uint8_t param3 = revByte(uint8_t((params >> 16) & 0xFF));
+        const uint8_t param4 = revByte(uint8_t((params >> 8) & 0xFF));
+        const uint8_t param5 = revByte(uint8_t(params & 0xFF));
+
+        const uint8_t p    = uint8_t((param1 >> 7) | (param2 << 1));
+        const uint8_t rcnt = uint8_t((param2 >> 7) | (param3 << 1));
+        const uint8_t ncnt = uint8_t((param4 >> 1) | (param5 << 7));
+
+        if (!rcnt) break;                        // MAME divides blind; don't
+        const double vco = 20000000.0 * double(ncnt) / double(rcnt);
+        pixelClock_ = uint32_t(vco / double(p + 1) + 0.5);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+// DP8531 (dafb_base clockgen_w:884) — the discrete DAFB's clock chip, and
+// the only one that is register- rather than stream-programmed: nibbles
+// land at $303, $313 … $3F3 (register = offset >> 4, only the low nibble
+// of the byte is kept) and writing register 15 latches the new clock.
+// R = regs 6:5:4, P = 1 << reg 9, the N modulus = regs 3:2:1:0 split into
+// a swallow counter A (low 5 bits, inverted) and a main counter B; then
+// N = 32(B-A) + 31(1+A) and pclk = (20 MHz / R) × N / P.
+void Dafb::clockgenDp8531(uint32_t off, uint8_t v) {
+    const uint32_t o = off & 0xFF;
+    if ((o & 3) != 3) return;
+    dp8531Regs_[(o >> 4) & 0xF] = uint8_t(v & 0x0F);
+    if ((o >> 4) != 15) return;
+
+    const int r = (dp8531Regs_[6] << 8) | (dp8531Regs_[5] << 4) | dp8531Regs_[4];
+    if (!r) return;                              // MAME divides blind; don't
+    const int p = 1 << dp8531Regs_[9];
+    const int nModulus = (dp8531Regs_[3] << 12) | (dp8531Regs_[2] << 8)
+                       | (dp8531Regs_[1] << 4)  |  dp8531Regs_[0];
+    int a = (nModulus & 0x1F) ^ 0x1F;            // inverse of the low 5 bits
+    int b = (nModulus & 0xFFE0) >> 5;            // the top 11 bits
+    a = a < b ? a : b;
+    b = b > 2 ? b : 2;
+
+    const int n = (32 * (b - a)) + (31 * (1 + a));
+    const int64_t vco = int64_t(20000000 / r) * n;   // int64: MAME's int
+    pixelClock_ = uint32_t(vco / p);                 // overflows on junk input
 }
 
 // Swatch frame clock: derived from the programmed CRTC totals and the

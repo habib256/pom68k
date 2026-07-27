@@ -11,9 +11,11 @@ TobyVideo::TobyVideo(NuBus& bus, int slot) : bus_(bus), slot_(slot) {
 
 void TobyVideo::reset() {
     std::fill(regs_.begin(), regs_.end(), 0);
+    // Bt453 entries are indexed HIGH-aligned by decode() (pens_[px & 0x80]
+    // at 1 bpp), so the old pens_[1] = black seeding no longer corresponds to
+    // "bit set" — the driver programs 0-127 black / 128-255 white itself.
     std::fill(pens_.begin(), pens_.end(), 0x00FFFFFFu);
-    pens_[0] = 0x00FFFFFFu;                      // white (00RRGGBB)
-    pens_[1] = 0x00000000u;                      // black
+    for (int i = 0; i < 128; i++) pens_[i] = 0x00000000u;   // pre-DAC default
     mode_ = 0;
     vblDisable_ = true;
     hres_ = W;
@@ -25,7 +27,6 @@ void TobyVideo::reset() {
     vblAcc_ = 0;
     vblLine_ = false;
     dacAddr_ = 0;
-    dacWrite_ = false;
 }
 
 uint32_t TobyVideo::mapOff(uint32_t slotOff) const {
@@ -37,9 +38,15 @@ uint32_t TobyVideo::mapOff(uint32_t slotOff) const {
 uint8_t TobyVideo::read8(uint32_t slotOff) {
     uint32_t r = mapOff(slotOff);
     if (r < kVramSize)
-        return uint8_t(vram_[r / 4] >> (24 - (r % 4) * 8));
+        return uint8_t(~uint8_t(vram_[r / 4] >> (24 - (r % 4) * 8)));
     if (r >= 0x90000 && r < 0x90020) {
-        int o = int(r - 0x90000) & 3;
+        // MAME maps the Bt453 with .umask32(0xff000000), so its handler's
+        // `offset & 3` is the 32-bit WORD index masked — not the byte index.
+        // Decoding (byte & 3) picked a lane the hardware does not use, so the
+        // real TFB driver's writes ($9001C address, $90018 data — both word
+        // offsets 7 and 6) fell through and the CLUT was never programmed.
+        if ((r & 3) != 0) return 0;              // only byte lane 0 is wired
+        int o = (int(r - 0x90000) >> 2) & 3;
         if (o == 2) return uint8_t(pens_[dacAddr_] ^ 0xFFFFFFFFu);
         if (o == 1 || o == 3) return uint8_t(dacAddr_ ^ 0xFF);
         return 0;
@@ -93,10 +100,11 @@ void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
         return;
     }
     if (r >= 0x90000 && r < 0x90020) {
+        if ((r & 3) != 0) return;                // only byte lane 0 is wired
         v ^= 0xFF;
-        int o = int(r - 0x90000) & 3;
-        if (o == 1 || o == 3) { dacAddr_ = v; dacWrite_ = (o == 3); }
-        else if (o == 2 && dacWrite_) {
+        int o = (int(r - 0x90000) >> 2) & 3;     // word index, per MAME's umask32
+        if (o == 1 || o == 3) dacAddr_ = v;      // palette_w is unconditional
+        else if (o == 2) {
             pens_[dacAddr_ & 0xFF] = 0xFF000000u | uint32_t(v) * 0x010101u;
             dacAddr_++;
         }
@@ -107,7 +115,10 @@ void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
             if (idx >= vram_.size()) return;
             const int sh = 24 - int(r % 4) * 8;
             uint32_t w = vram_[idx];
-            w = (w & ~uint32_t(0xFFu << sh)) | (uint32_t(v) << sh);
+            // Inverted, like write32 above and MAME's vram_w: the byte path
+            // stored raw, so pixel values and the (inverted) DAC address were
+            // in opposite polarities.
+            w = (w & ~uint32_t(0xFFu << sh)) | (uint32_t(uint8_t(~v)) << sh);
             vram_[idx] = w;
             vramWrites++;
             // Arm VBL once Primary Init starts painting — stands in for the
@@ -240,7 +251,7 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
                 for (int b = 0; b < 8; b++) {
                     int xi = x * 8 + b;
                     if (xi < hres_)
-                        out[y * hres_ + xi] = pens_[(px >> (7 - b)) & 1] | 0xFF000000u;
+                        out[y * hres_ + xi] = pens_[(px << b) & 0x80] | 0xFF000000u;
                 }
             }
         break;
@@ -251,7 +262,7 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
                 for (int b = 0; b < 4; b++) {
                     int xi = x * 4 + b;
                     if (xi < hres_)
-                        out[y * hres_ + xi] = pens_[(px >> (6 - b * 2)) & 3] | 0xFF000000u;
+                        out[y * hres_ + xi] = pens_[(px << (b * 2)) & 0xC0] | 0xFF000000u;
                 }
             }
         break;
@@ -259,8 +270,8 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
         for (int y = 0; y < vres_; y++)
             for (int x = 0; x < hres_ / 2; x++) {
                 uint8_t px = be8(kBase + uint32_t(y * 512 + x));
-                if (x * 2 < hres_) out[y * hres_ + x * 2]     = pens_[(px >> 4) & 0xF] | 0xFF000000u;
-                if (x * 2 + 1 < hres_) out[y * hres_ + x * 2 + 1] = pens_[px & 0xF] | 0xFF000000u;
+                if (x * 2 < hres_) out[y * hres_ + x * 2]     = pens_[px & 0xF0] | 0xFF000000u;
+                if (x * 2 + 1 < hres_) out[y * hres_ + x * 2 + 1] = pens_[(px & 0x0F) << 4] | 0xFF000000u;
             }
         break;
     case 3:

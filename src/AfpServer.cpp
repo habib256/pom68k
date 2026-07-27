@@ -41,6 +41,12 @@ constexpr int32_t kErrAccess = -5000, kErrBitmap = -5004, kErrDirNotEmpty = -500
 
 constexpr uint32_t kRootId = 2;
 constexpr uint16_t kVolId = 1;
+// Resource-fork ceiling. The Resource Manager itself tops out at 16 MB, and
+// every length below comes straight off the wire: unclamped, an FPWrite at
+// offset $FFFFFF00 asks std::vector for 4 GB — and POM68K installs no
+// bad_alloc handler, so that is std::terminate — then writes a 4 GB
+// .AppleDouble sidecar.
+constexpr uint64_t kMaxRsrcFork = 16ull * 1024 * 1024;
 constexpr int64_t kAfpEpoch = 946684800;      // 2000-01-01 (AFP date zero)
 
 void put16(std::vector<uint8_t>& v, uint16_t x) { v.push_back(x >> 8); v.push_back(uint8_t(x)); }
@@ -86,6 +92,14 @@ std::string adPath(const std::string& host) {
 }
 
 bool adRead(const std::string& host, AdMeta& m) {
+    // Stat before slurping: statNode() calls this once per entry of an
+    // FPEnumerate, and a sidecar the guest made huge would otherwise be read
+    // whole into memory (no bad_alloc handler is installed).
+    {
+        std::error_code ec;
+        auto sz = fs::file_size(adPath(host), ec);
+        if (ec || sz > kMaxRsrcFork + 4096) return false;
+    }
     std::ifstream in(adPath(host), std::ios::binary);
     if (!in) return false;
     std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)),
@@ -303,7 +317,11 @@ int AfpServer::resolvePath(uint32_t dirId, const uint8_t* p, size_t n,
         while (j < len && s[j] != 0) j++;
         std::string mac(reinterpret_cast<const char*>(s + i), j - i);
         std::string ux = macToUnix(mac);
-        if (ux == "." || ux == ".." || ux.empty()) return int(kErrParam);
+        // Reject every dot-leading element, not just "." and "..": the guest
+        // could otherwise name ".AppleDouble" and write straight into the
+        // sidecar directory that backs every file's resource fork.
+        if (ux.empty() || ux[0] == '.' || ux.find('/') != std::string::npos)
+            return int(kErrParam);
         rel = rel.empty() ? ux : rel + "/" + ux;
         i = j;
         lastSep = false;
@@ -325,8 +343,16 @@ void AfpServer::slsHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
     }
     case kAspOpen: {
         uint8_t wss = t->req[1];
-        uint8_t sid = nextSid_++;
-        if (!nextSid_) nextSid_ = 1;
+        // Pick an id that is not already in use: a bare wrapping counter let
+        // the 256th OpenSession overwrite a live session, taking its volOpen
+        // flag and its whole open-fork map with it.
+        uint8_t sid = 0;
+        for (int i = 0; i < 255; i++) {
+            uint8_t cand = nextSid_++;
+            if (!nextSid_) nextSid_ = 1;
+            if (cand && !sessions_.count(cand)) { sid = cand; break; }
+        }
+        if (!sid) { t->respond({ { kSss, 0, 0xFB, 0xF0 } }); return; }  // aspTooMany
         Session s;
         s.wss = t->src;
         s.wss.sock = wss;
@@ -369,6 +395,15 @@ void AfpServer::sssHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
         return;
     }
     Session& s = it->second;
+    // A session is the (SSS, WSS, sid) triple, not the sid alone (Inside
+    // AppleTalk ch.11). Without the address check, any node on the segment —
+    // including anything on the LToUDP cable — drives someone else's mounted
+    // volume by guessing one of 255 session IDs. Net+node only: the client
+    // issues commands from a different socket than its WSS.
+    if (t->src.net != s.wss.net || t->src.node != s.wss.node) {
+        aspReply(t, -1072, {});            // aspSessClosed
+        return;
+    }
     s.lastHeard = st_.now();
     stat_.lastActivity = st_.now();
     switch (func) {
@@ -523,7 +558,9 @@ static std::vector<uint8_t> packVolParams(uint16_t bitmap,
 
 void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
                             const uint8_t* c, size_t n) {
-    if (!n) return;
+    // An empty command body must still be answered: returning silently caches
+    // nothing, drops the pendingTxns_ entry, and the client retransmits forever.
+    if (!n) { aspReply(t, kErrParam, {}); return; }
     stat_.cmdCount++;
     stat_.lastCmd = afpCmdName(c[0]);
     auto err = [&](int32_t e) { aspReply(t, e, {}); };
@@ -649,7 +686,11 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
         std::vector<std::string> names;
         for (auto& de : fs::directory_iterator(host, ec)) {
             std::string nm = de.path().filename().string();
-            if (!nm.empty() && nm[0] != '.') names.push_back(nm);
+            // AFP 2.1 names cap at 31 bytes and packParams emits them through
+            // a lossy truncation, while resolvePath rebuilds the host path
+            // verbatim — so a longer entry would be displayed under a name no
+            // subsequent lookup can resolve. Don't advertise what we can't open.
+            if (!nm.empty() && nm[0] != '.' && nm.size() <= 31) names.push_back(nm);
         }
         std::sort(names.begin(), names.end(), [](const std::string& a, const std::string& b) {
             return strcasecmp(a.c_str(), b.c_str()) < 0;
@@ -731,9 +772,14 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
         std::string host = dir_ + "/" + rel;
         std::error_code ec;
         if (fs::is_directory(host, ec)) {
+            // Emptiness FIRST: dirOffspring already ignores dotfiles, so the
+            // sidecar dir never affected the count — but wiping it before the
+            // test destroyed the resource fork, Finder info and dates of every
+            // file still inside and THEN reported kFPDirNotEmpty. The user saw
+            // "folder isn't empty" and silently lost the forks within.
+            if (dirOffspring(host)) { err(kErrDirNotEmpty); return; }
             // Only the AppleDouble sidecar dir may remain inside.
             fs::remove_all(host + "/.AppleDouble", ec);
-            if (dirOffspring(host)) { err(kErrDirNotEmpty); return; }
             fs::remove(host, ec);
             if (ec) { err(kErrAccess); return; }
         } else if (fs::exists(host, ec)) {
@@ -796,7 +842,25 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
         uint32_t keep = idForPath(src);
         fs::rename(dir_ + "/" + src, dir_ + "/" + dst, ec);
         if (ec) { err(kErrNoObj); return; }
-        fs::rename(adPath(dir_ + "/" + src), adPath(dir_ + "/" + dst), ec);
+        // Cross-directory move: the destination .AppleDouble/ usually does not
+        // exist (only adWrite creates one), so a bare rename fails with ENOENT
+        // and — with ec discarded — silently orphaned the resource fork and
+        // Finder info, leaving the app typeless and unlaunchable.
+        {
+            const std::string sAd = adPath(dir_ + "/" + src);
+            const std::string dAd = adPath(dir_ + "/" + dst);
+            std::error_code ec2;
+            if (fs::exists(sAd, ec2)) {
+                fs::create_directories(fs::path(dAd).parent_path(), ec2);
+                ec2.clear();
+                fs::rename(sAd, dAd, ec2);
+                if (ec2) {                       // e.g. across filesystems
+                    ec2.clear();
+                    fs::copy_file(sAd, dAd, fs::copy_options::overwrite_existing, ec2);
+                    if (!ec2) fs::remove(sAd, ec2);
+                }
+            }
+        }
         dropId(src);
         pathToId_[dst] = keep;
         idToPath_[keep] = dst;
@@ -897,6 +961,7 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
             fs::resize_file(host, len, ec);
             if (ec) { err(kErrMisc); return; }
         } else if (bm & (1u << 10)) {                    // resource fork length
+            if (len > kMaxRsrcFork) { err(kErrParam); return; }
             AdMeta m;
             adRead(host, m);
             m.rsrc.resize(len, 0);
@@ -989,7 +1054,11 @@ void AfpServer::handleWrite(Session& s, uint8_t sid, uint16_t seq,
     stat_.lastCmd = "Write";
     bool fromEof = (c[1] & 0x80) != 0;
     uint16_t ref = rd16(c + 2);
-    uint32_t offW = rd32(c + 4), req = rd32(c + 8);
+    // AFP defines FPWrite's Offset as a SIGNED long: a from-EOF write with a
+    // negative offset (PBWrite ioPosMode=fsFromLEOF, the normal way to rewrite
+    // a fork's tail) arrived as ~4 G and seeked that far forward.
+    int64_t offW = int64_t(int32_t(rd32(c + 4)));
+    uint32_t req = rd32(c + 8);
     auto fit = s.forks.find(ref);
     if (fit == s.forks.end() || !fit->second.writable) {
         aspReply(t, kErrAccess, {});
@@ -1007,13 +1076,20 @@ void AfpServer::handleWrite(Session& s, uint8_t sid, uint16_t seq,
             std::vector<uint8_t> data;
             for (auto& p : pkts)
                 if (p.size() > 4) data.insert(data.end(), p.begin() + 4, p.end());
-            uint64_t at = offW;
+            int64_t at = offW;
             if (!fork.resource) {
                 std::fstream f(host, std::ios::binary | std::ios::in | std::ios::out);
                 if (!f) { aspReply(t, kErrAccess, {}); return; }
                 if (fromEof) {
                     f.seekp(0, std::ios::end);
-                    at = uint64_t(f.tellp()) + offW;
+                    at = int64_t(f.tellp()) + offW;
+                }
+                // The resource branch below clamps; the data branch did not, so
+                // a bogus offset made a multi-gigabyte sparse file whose length
+                // AFP then reported back as the fork size.
+                if (at < 0 || uint64_t(at) + data.size() > kMaxRsrcFork) {
+                    aspReply(t, kErrParam, {});
+                    return;
                 }
                 f.seekp(std::streamoff(at));
                 f.write(reinterpret_cast<const char*>(data.data()),
@@ -1022,8 +1098,13 @@ void AfpServer::handleWrite(Session& s, uint8_t sid, uint16_t seq,
             } else {
                 AdMeta m;
                 adRead(host, m);
-                if (fromEof) at = m.rsrc.size() + offW;
-                if (m.rsrc.size() < at + data.size()) m.rsrc.resize(at + data.size(), 0);
+                if (fromEof) at = int64_t(m.rsrc.size()) + offW;
+                if (at < 0 || uint64_t(at) + data.size() > kMaxRsrcFork) {
+                    aspReply(t, kErrParam, {});
+                    return;
+                }
+                if (m.rsrc.size() < size_t(at) + data.size())
+                    m.rsrc.resize(size_t(at) + data.size(), 0);
                 std::copy(data.begin(), data.end(), m.rsrc.begin() + long(at));
                 adWrite(host, m);
             }

@@ -28,7 +28,11 @@ uint8_t PseudoVia::read(uint32_t offset) {
     return data;
 }
 
-// v8_pseudovia_device::write (pseudovia.cpp:329-388)
+// v8_pseudovia_device::write (pseudovia.cpp:329-388). The base device's
+// write (:250-290) differs only in case 0x03 — see below. (MAME's base
+// case 0x13 falls through to a bare recalc without touching the IER; that
+// is a MAME slip, not hardware: the RBV/VASP ROMs enable their interrupts
+// through it, so both flavours keep the bit-7-selector form here.)
 void PseudoVia::write(uint32_t offset, uint8_t v) {
     if ((offset >> 9) == 1) {                // $200-$3FF: port A
         if (onPortA) onPortA(v);
@@ -48,7 +52,10 @@ void PseudoVia::write(uint32_t offset, uint8_t v) {
         recalcIrqs();
         break;
     case 0x03:                               // IFR: write 1 to ack…
-        v &= uint8_t(~0x10);                 // …except ASC, level-triggered (NOP)
+        // …except ASC on the Level flavour, where the ack is a NOP
+        // (pseudovia.cpp:341). The base device has no such mask
+        // (:268-271): there the edge-latched bit 4 clears normally.
+        if (flavour_ == Flavour::Level) v &= uint8_t(~0x10);
         regs_[3] &= uint8_t(~(v & 0x7F));
         recalcIrqs();
         break;
@@ -71,15 +78,27 @@ void PseudoVia::slotIrq(uint8_t mask, bool state) {
     recalcIrqs();
 }
 
-// V8: level-triggered (pseudovia.cpp:315-327; the base RBV device only
-// latches the rise). We remember the raw line level in ascLine_ and let
-// recalcIrqs() reflect it into IFR bit 4 every pass — so the level survives
-// being masked while disabled and re-latches when the System later enables
-// the ASC interrupt (IER bit 4) with the line already high (empty FIFO after
-// the boot chime). Without this the Sound Manager enables the ASC IRQ but
-// never sees it pending → its refill handler never runs → app sound is
-// silent (SC2K, TODO § App-compat; traced 2026-07-17).
+// Level (V8/Sonora, pseudovia.cpp:315-327 / :396-408): we remember the raw
+// line level in ascLine_ and let recalcIrqs() reflect it into IFR bit 4
+// every pass — so the level survives being masked while disabled and
+// re-latches when the System later enables the ASC interrupt (IER bit 4)
+// with the line already high (empty FIFO after the boot chime). Without
+// this the Sound Manager enables the ASC IRQ but never sees it pending →
+// its refill handler never runs → app sound is silent (SC2K, TODO §
+// App-compat; traced 2026-07-17).
+//
+// Base (RBV/VASP, pseudovia.cpp:136-146): only the 0→1 transition sets IFR
+// bit 4, ascLine_ is purely the edge detector (m_live_main_ints bit 4), and
+// nothing re-applies the level afterwards — so the guest's W1C ack sticks.
 void PseudoVia::ascIrq(bool state) {
+    if (flavour_ == Flavour::Base) {
+        if (state && !ascLine_) {
+            regs_[3] |= uint8_t(ASC);
+            recalcIrqs();
+        }
+        ascLine_ = state;
+        return;
+    }
     ascLine_ = state;
     recalcIrqs();
 }
@@ -106,10 +125,14 @@ void PseudoVia::recalcIrqs() {
     if (slotIrqs) regs_[3] |= uint8_t(ANY_SLOT);
     else          regs_[3] &= uint8_t(~ANY_SLOT);
 
-    // Re-sample the level-triggered ASC line every pass (like the slot lines
-    // above) so it can't be lost across an enable/disable of IER bit 4.
-    if (ascLine_) regs_[3] |= uint8_t(ASC);
-    else          regs_[3] &= uint8_t(~ASC);
+    // Level flavour only: re-sample the ASC line every pass (like the slot
+    // lines above) so it can't be lost across an enable/disable of IER
+    // bit 4. On the base device bit 4 is a latch owned by ascIrq() and the
+    // guest's ack — touching it here would make that ack unclearable.
+    if (flavour_ == Flavour::Level) {
+        if (ascLine_) regs_[3] |= uint8_t(ASC);
+        else          regs_[3] &= uint8_t(~ASC);
+    }
 
     const uint8_t ifr = uint8_t(regs_[3] & regs_[0x13] & 0x1B);
     if (ifr) {

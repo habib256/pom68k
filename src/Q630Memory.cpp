@@ -195,16 +195,21 @@ void Q630Memory::ascIrq(bool s) {
     via2Recalc();
 }
 
-// VIA1 E-clock sync (iosb via_sync, same arithmetic as the LC II):
-// cpuClk/viaClk = 25 MHz / 783.36 kHz ≈ 31.91 — use the same integer
-// scheme with a 32:1 approximation. Work in machine-cycle space so the
-// alignment is invariant under POM68K_Q605_CACHE_BOOST.
+// VIA1 E-clock sync (iosb via_sync, same arithmetic as the LC II). VIA1 runs
+// at a FIXED 783.36 kHz — iosb.cpp:74 is R65NC22(config, m_via1, C7M / 10)
+// with C7M = 7 833 600 — so the divider follows the MACHINE clock, it is not
+// a constant: 25 MHz / 783.36 kHz ≈ 32 (the Q605 value this file was copied
+// from), but this board runs at 33 MHz, where it is ≈ 42. Work in
+// machine-cycle space so the alignment is invariant under
+// POM68K_Q605_CACHE_BOOST.
 void Q630Memory::viaSync() {
     if (!cpu_) return;
     const int boost = std::max(1, cpu_->cacheBoost());
     int64_t c = int64_t(cpu_->getClock()) / boost;
-    int64_t viaCycle = c / 32;
-    int64_t target = (viaCycle * 2 + 3) * 16 + 1;
+    int64_t viaCycle = c / kViaDiv;
+    // Same phase grid as the 32:1 original — (viaCycle+1)*D + D/2 + 1, which
+    // is exactly (viaCycle*2+3)*16+1 when D == 32.
+    int64_t target = (viaCycle + 1) * kViaDiv + kViaDiv / 2 + 1;
     if (target > c) cpu_->stall(int(target - c));
 }
 
@@ -273,8 +278,15 @@ uint8_t Q630Memory::ioRead8(uint32_t addr) {
 
     if (onIoAccess) onIoAccess(addr, false, 0xFFFFFFFF);   // pre-access probe log
 
-    if (sub >= 0x0FFFFFFC)                       // machine ID (LC 475)
-        return uint8_t(machineId_ >> (8 * (3 - (sub & 3))));
+    // MAME (iosb.cpp:64-65, inherited by primetimeii) installs $A55A2BAD
+    // across the whole $0FFF0000-$0FFFFFFF window and the machine driver
+    // overrides only the final longword. Answering just the last longword left
+    // 64 KB reading 0 = "no IOSB/PrimeTime present". CentrisMemory already
+    // decodes the full window; this is the same family.
+    if (sub >= 0x0FFF0000) {
+        uint32_t id = (sub >= 0x0FFFFFFC) ? machineId_ : 0xA55A2BADu;
+        return uint8_t(id >> (8 * (3 - (sub & 3))));
+    }
 
     uint32_t base = sub & 0x0003FFFF;            // pre-mirror window
 
@@ -324,8 +336,12 @@ uint8_t Q630Memory::ioRead8(uint32_t addr) {
         return ((sub & ~0xF00000u) == 0x1A101) ? st : 0;
     }
     if ((sub & ~0xF00000u) >= 0x24000 && (sub & ~0xF00000u) < 0x26000) {
+        // readRamdac32 mutates state (palIdx_ advances), so it must fire once
+        // per access, not once per byte lane — a 16-bit read desynced the
+        // R/G/B read phase for good. The write path already guards this way.
+        if ((sub & 3) != 0) return 0;
         uint32_t v = video_.readRamdac32(sub & 0x1FFF);   // payload in bits 31-24
-        return uint8_t(v >> (8 * (3 - (sub & 3))));
+        return uint8_t(v >> 24);
     }
     if ((sub & ~0xF00000u) >= 0x2A000 && (sub & ~0xF00000u) < 0x2C000)
         return video_.readReg8(sub & 0x1FFF);
@@ -551,16 +567,17 @@ uint8_t Q630Memory::peek8(uint32_t addr) const {
     if (addr < 0x50000000) return rom_[addr & (kRomSize - 1)];
     if (addr >= 0xF9000000 && addr < 0xF9000000 + kVramSize)
         return vram_[addr - 0xF9000000];
-    if (addr >= 0x5FFFFFFC)                   // board ID (mirrors read8)
+    if (addr >= 0x5FFFFFFC && addr < 0x60000000)                   // board ID (mirrors read8)
         return uint8_t(machineId_ >> (8 * (3 - (addr & 3))));
     return 0xFF;
 }
 
 void Q630Memory::tick(int cpuCycles) {
-    // VIA1 φ2 = 783.36 kHz — CPU/32 approximation at 25 MHz
+    // VIA1 φ2 = 783.36 kHz, fixed (iosb.cpp:74) — see viaSync above for why
+    // the divider tracks kCpuHz instead of being the Q605's constant 32.
     viaPhase_ += cpuCycles;
-    int viaCycles = viaPhase_ / 32;
-    viaPhase_ %= 32;
+    int viaCycles = viaPhase_ / kViaDiv;
+    viaPhase_ %= kViaDiv;
     if (viaCycles && via1_.tick(viaCycles)) updateIrq();
 
     if (cudaLleOn_) cudaLle_.tick(cpuCycles);

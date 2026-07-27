@@ -188,7 +188,7 @@ private:
 
     // Engine helpers
     void startCommand(uint8_t c);
-    void selectTarget(bool withAtn);
+    void selectTarget(bool withAtn, bool stopAfterMsg = false);
     void transferInfo();                  // CI_XFER: move one phase's worth
     void raiseIrq(uint8_t istatusBits);
     // Defer per latency_: >0 flat, <0 use modelCycles (the MAME-derived cost

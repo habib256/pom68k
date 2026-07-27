@@ -9,6 +9,7 @@
 
 #include "PapServer.h"
 
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -50,8 +51,19 @@ void PapServer::setEnabled(bool on) {
     } else {
         st_.nbpUnregister(name_, "LaserWriter");
         open_ = false;
-        pendingClientRead_.reset();
+        releaseClientRead();
     }
+}
+
+// Dropping a deferred kRead without answering it leaves the entry in
+// AtalkStack::pendingTxns_, which then silently swallows every later TReq
+// reusing that (client, tid) — the guest's tid counter wraps, so the socket
+// wedges for good. Every teardown path must make the transaction terminal.
+void PapServer::releaseClientRead() {
+    if (!pendingClientRead_) return;
+    auto t = pendingClientRead_;
+    pendingClientRead_.reset();
+    t->respond({ { connId_, kData, 1, 0 } });        // EOF, no data
 }
 
 PapServer::Status PapServer::status() const {
@@ -68,7 +80,7 @@ void PapServer::tick(int64_t now) {
     if (!enabled_ || !open_) return;
     if (now - lastHeard_ > 120 * st_.cpuHz()) {     // PAP: 2 min conn timer
         open_ = false;
-        pendingClientRead_.reset();
+        releaseClientRead();
         stat_.state = "idle";
         return;
     }
@@ -110,7 +122,7 @@ void PapServer::papHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
         job_.clear();
         scanned_ = 0;
         answers_.clear();
-        pendingClientRead_.reset();
+        releaseClientRead();            // kOpen re-init: retire the old txn
         lastHeard_ = st_.now();
         nextTickle_ = st_.now() + 60 * st_.cpuHz();
         stat_.state = "receiving job";
@@ -143,7 +155,7 @@ void PapServer::papHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
         if (open_ && cid == connId_) {
             if (!job_.empty() && !eofSeen_) finishJob();  // client bailed late
             open_ = false;
-            pendingClientRead_.reset();
+            releaseClientRead();
             stat_.state = "idle";
         }
         return;
@@ -169,6 +181,7 @@ void PapServer::issueRead() {
             if (!open_) return;
             if (!ok) {                              // client vanished
                 open_ = false;
+                releaseClientRead();
                 stat_.state = "idle";
                 return;
             }
@@ -236,6 +249,14 @@ void PapServer::finishJob() {
 #ifndef _WIN32
     if (!fileOnly_) {
         // CUPS last mile: hand the PostScript to lp(1) when available.
+        // popen() succeeds even with no CUPS installed — /bin/sh exits 127 and
+        // the read end is gone before we write, so fwrite raises SIGPIPE, whose
+        // default disposition KILLS the emulator mid-print. Ignore it for the
+        // duration and let pclose's status drive the file fallback.
+        struct sigaction ign {}, prev {};
+        ign.sa_handler = SIG_IGN;
+        ::sigemptyset(&ign.sa_mask);
+        ::sigaction(SIGPIPE, &ign, &prev);
         FILE* lp = ::popen("lp -s -- - >/dev/null 2>&1", "w");
         if (lp) {
             size_t w = std::fwrite(job_.data(), 1, job_.size(), lp);
@@ -245,6 +266,7 @@ void PapServer::finishJob() {
                 stat_.lastJob = "CUPS (lp)";
             }
         }
+        ::sigaction(SIGPIPE, &prev, nullptr);
     }
 #endif
     if (!spooled) {

@@ -45,11 +45,18 @@ public:
     // Geometry the host renderer needs.
     uint32_t hres() const { return hres_; }
     uint32_t vres() const { return vres_; }
+    // valkyrie.cpp:307 stores `data & 7`, but only indices 0-4 are real modes
+    // (valkyrie.cpp:154-237 draws nothing for 5-7). Clamp at the source so a
+    // guest-programmed index can never scale the stride past the VRAM window —
+    // the renderer's own clamps are what save us today.
+    static constexpr uint8_t kModes = 5;
     uint8_t  depth() const {
-        static constexpr uint8_t d[] = { 1, 2, 4, 8, 16 };
-        return mode_ < sizeof d ? d[mode_] : 1;
+        static constexpr uint8_t d[kModes] = { 1, 2, 4, 8, 16 };
+        return mode_ < kModes ? d[mode_] : 1;
     }
-    uint32_t stride() const { return uint32_t(stride_) << mode_; }
+    uint32_t stride() const {
+        return uint32_t(stride_) << (mode_ < kModes ? mode_ : 0);
+    }
     uint32_t base() const { return kFbOffset; }     // fixed: VRAM + $1000
     bool     blanked() const { return (videoTiming_ & 0x80) != 0; }
     uint32_t pixelClock() const { return pixelClock_; }

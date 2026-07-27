@@ -36,6 +36,24 @@ IIsi's `cacheBoost_ = 1` workaround is retired with it.
 
 Rather than adding a machine, prove and harden the ones we have (ROI order:
 data-loss holes and false test-confidence first, then convenience).
+- [ ] **The Cuda↔VIA bit-bang transport is phase-fragile** (found 2026-07-27
+  by the `mactv_boot_etalon` regression, since FIXED — see CHANGELOG). The
+  6805 charges 11 cycles for its interrupt sequence (MAME `m6805.cpp:570`);
+  modelling that costs the MCU ~2 % of its instruction throughput against
+  machine time, which shifts the phase between the MCU's instruction stream
+  and the host VIA — and that is enough to deadlock the Cuda transport on
+  the **Mac TV** (31.3344 MHz, the tightest MCU:CPU ratio in the tree): the
+  Cuda stops after 7 of a byte's 8 CB1 edges waiting for BYTEACK while the
+  ROM spins forever on VIA1 IFR.SHIFT at `$40AB3BC8`, never reaching the
+  SCSI Manager. `M68hc05::serviceInterrupts` therefore still returns 0, a
+  deliberate gated inaccuracy documented at the call site.
+  **The real fix is to make the transport survive a phase shift**, then
+  re-land the 11 (a one-line change). `CudaLle.cpp:20-28` records two
+  earlier attempts to move the same phase (uniform 2 µs interleave,
+  busy-gated) crashing the guest, so treat the MCU/VIA lockstep as the
+  thing under test, not a free parameter. Already ruled out as causes: the
+  one-second-timer clock model, and a stale external bit counter across an
+  ACR shift-mode change in `Via6522`.
 - [x] **A — Floppy write persistence** DONE 2026-07-24: committed sectors
   flush back to the host `.dsk`/DC42 file on eject + GUI exit (temp+rename,
   DC42 checksum regenerated), opt-in write-back (GUI on, tests off). Gate
@@ -562,7 +580,18 @@ Driven by **Phase C** of the Finder matrix above; detail and effort tiers in
   Quadras. (VASP/IIvx currently reads its three slots as empty — real
   cards would reuse the Mac II NuBus/DeclRom port.)
 
-- [ ] **Independent majors**: PowerBook PMU, IIfx IOPs, 660AV/840AV DSP.
+- [ ] **Independent majors — the only things left that are not a ROM dump**
+  (see `docs/68K_FAMILY_SCOPE.md` § "After the Quadra 630"):
+  - [ ] **AppleP IC IOP + OSS** → unlocks **IIfx** *and* **Quadra 900/950**.
+        The IOP (Apple 343S1021, MAME `machine/applepic.cpp`) is a 65C02 core
+        + 2 KB shared RAM + 2 DMA channels + host/peripheral mailboxes + a
+        timer. POM68K has no 6502-class core; POMIIGS's `CPU65816` (825
+        lines, emulation mode = 65C02) is the candidate to vendor. The IIfx
+        also has **no built-in video** — it boots on a NuBus card, so the
+        existing `TobyVideo`/`DeclRom` path has to carry it.
+  - [ ] **Power Manager** → Portable / PowerBook 1xx / Duo. The 68HC05 half
+        already ships (`M68hc05`), so the PB150 is the cheapest entry.
+  - [ ] **AV DSP (DSP3210)** → 660AV/840AV. Not planned.
 - [x] ~~**Mac TV** (EAF1678D / Tinker Bell)~~ **DONE 2026-07-25** —
   `V8Memory::Model::MacTv`, gate `mactv_boot_etalon` (see the Phase C
   entry above). The EDE66CBD `$2000-$2003` probe had been the wrong

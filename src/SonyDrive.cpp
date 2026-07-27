@@ -117,6 +117,11 @@ void SonyDrive::eject() {
 }
 
 bool SonyDrive::insert(const std::string& path) {
+    // Insert-over-insert must honour the same write-back contract as eject():
+    // insertImage() drops path_/dirty_ wholesale, so without this the outgoing
+    // media's committed sectors are lost when the user picks a second image
+    // straight from the Disques menu (no eject in between).
+    if (hasDisk()) flushToFile();
     std::ifstream in(path, std::ios::binary);
     if (!in) return false;
     std::vector<uint8_t> raw((std::istreambuf_iterator<char>(in)),
@@ -126,9 +131,13 @@ bool SonyDrive::insert(const std::string& path) {
     if (raw.size() > 0x54 && raw[0x52] == 0x01 && raw[0x53] == 0x00) {
         uint32_t dataSize = (uint32_t(raw[0x40]) << 24) | (uint32_t(raw[0x41]) << 16)
                           | (uint32_t(raw[0x42]) << 8) | uint32_t(raw[0x43]);
-        if (raw.size() < 0x54 + dataSize) return false;
+        // 64-bit throughout: "0x54 + dataSize" as int+uint32_t wraps, but the
+        // iterator arithmetic below widens dataSize to ptrdiff_t and does NOT,
+        // so a dataSize near 2^32 slipped past the guard and copied gigabytes
+        // off the heap. Bound by the largest medium we accept as well.
+        if (dataSize > kSize1440K || raw.size() - 0x54 < size_t(dataSize)) return false;
         header.assign(raw.begin(), raw.begin() + 0x54);
-        raw.assign(raw.begin() + 0x54, raw.begin() + 0x54 + dataSize);
+        raw.assign(raw.begin() + 0x54, raw.begin() + 0x54 + size_t(dataSize));
     }
     if (!insertImage(std::move(raw))) return false;
     path_ = path;                  // remember the source for flushToFile
@@ -175,6 +184,10 @@ size_t SonyDrive::imageOffset(int track, int side, int sector) const {
 }
 
 void SonyDrive::selectSide(bool side1) {
+    // A single-sided mechanism has no side-1 head: the IWM drives SEL from VIA
+    // PA5 unconditionally, and imageOffset() would then index a whole side past
+    // a 400K image (track 79 lands exactly at image_.size()).
+    side1 = side1 && doubleSided_;
     if (side1 == side1_) return;
     side1_ = side1;
     encodeTrack();
@@ -285,8 +298,10 @@ void SonyDrive::encodeTrackGcr() {
         stream_.push_back(kGcr6[sector & 0x3F]);
 
         uint8_t buf[525] = {};                       // 12 tags + 512 data + pad
-        const uint8_t* sec = &image_[imageOffset(track_, side1_ ? 1 : 0, sector)];
-        for (int i = 0; i < 512; i++) buf[12 + i] = sec[i];
+        // readSector()/writeSector() both bound this; the encoder did not.
+        const size_t off = imageOffset(track_, side1_ ? 1 : 0, sector);
+        if (off + 512 <= image_.size())
+            for (int i = 0; i < 512; i++) buf[12 + i] = image_[off + i];
 
         // Rolling 3-way checksum, MAME build_mac_track_gcr verbatim:
         // va ^= OLD cc; vb ^= NEW ca; vc ^= NEW cb; 8-bit adds with the
@@ -349,8 +364,10 @@ void SonyDrive::encodeTrackMfm() {
         pushMarkA1(stream_);
         stream_.push_back(0xFB);
 
-        const uint8_t* sec =
-            &image_[imageOffset(track_, side1_ ? 1 : 0, sector - 1)];
+        static const uint8_t kBlank[512] = {};
+        const size_t soff = imageOffset(track_, side1_ ? 1 : 0, sector - 1);
+        const uint8_t* sec = (soff + 512 <= image_.size())
+                           ? &image_[soff] : kBlank;    // bound like readSector
         uint8_t dataBlk[4 + 512];
         dataBlk[0] = dataBlk[1] = dataBlk[2] = 0xA1;
         dataBlk[3] = 0xFB;
@@ -663,12 +680,17 @@ bool SonyDrive::flushToFile() {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
         if (!out) return false;
         if (!dc42Header_.empty()) {
-            // Regenerate the data checksum at header +$48 (tags stay absent).
+            // Regenerate the data checksum at header +$48. insert() strips the
+            // tag block, so tagSize (+$44) and tagChecksum (+$4C) must be
+            // zeroed too — leaving the originals declares N tag bytes that are
+            // not in the file, which Disk Copy / MAME / Mini vMac read past EOF.
             uint32_t ck = dc42Checksum(image_.data(), image_.size());
             dc42Header_[0x48] = uint8_t(ck >> 24);
             dc42Header_[0x49] = uint8_t(ck >> 16);
             dc42Header_[0x4A] = uint8_t(ck >> 8);
             dc42Header_[0x4B] = uint8_t(ck);
+            for (int i = 0x44; i < 0x48; i++) dc42Header_[i] = 0;   // tagSize
+            for (int i = 0x4C; i < 0x50; i++) dc42Header_[i] = 0;   // tagChecksum
             out.write(reinterpret_cast<const char*>(dc42Header_.data()),
                       std::streamsize(dc42Header_.size()));
         }
