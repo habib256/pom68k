@@ -153,7 +153,36 @@ everything else is already caught by the replay checks:
 
 ---
 
-## 5. Environment surface
+## 5. The working loop
+
+Do not iterate against a bare `ctest` — 104 gates, ~2h30, and `-j` is unsafe
+because the boot etalons are contention-sensitive. Do not iterate against a
+bare `make` either: tree-wide LTO relinks ~90 binaries after any core change.
+
+```bash
+make -j4 jitdev && ctest -L smoke     # ~2.5 min end to end
+```
+
+`jitdev` builds only the three binaries `-L smoke` needs (56 s, 4 links).
+`-L smoke` is five gates, 98 s: `jit_backend_test`, `jit_lockstep_test`,
+`jit_lockstep_blocks_test`, and the q605 boot etalon **on both engines**.
+`jit_lockstep_test` is the one that matters — it compares the JIT against the
+interpreter register by register at every instruction boundary, so anything a
+JIT change can break shows up in 1.1 s.
+
+Widen only when the smoke tier is green:
+
+| command | gates | time | when |
+|---|---|---|---|
+| `ctest -L unit` | 50 | 9 s | anything touching non-machine code |
+| `ctest -L jit` | 7 | ~8 min | before proposing a JIT change |
+| `ctest -L m040` | 26 | ~25 min | the 68040 family — the JIT's blast radius |
+| `ctest` | 104 | ~2h30 | the release gate, once |
+
+Labels are derived from test names in `CMakeLists.txt`, so a new gate is
+classified the moment it is registered.
+
+## 6. Environment surface
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -176,7 +205,7 @@ attribution knob: window on, block cache off.
 
 ---
 
-## 6. Journal
+## 7. Journal
 
 * **2026-07-27 — J0/J1 measured and hardened.** The fetch window is worth
   −55 % on the Quadra 605 boot; the block cache is a net loss and ships off.

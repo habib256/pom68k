@@ -625,6 +625,17 @@ the four-point extension it needs inside the vendored core is documented in
   (`Moira::pomJitMmuGen`, bumped by every ATC flush and TTR write). Blocks
   additionally stop *before* any opcode that could touch the MMU, a cache or
   the supervisor bit (`jit::classify`).
+- **Working loop.** A bare `ctest` runs 104 gates in ~2h30 and a bare `make`
+  relinks ~90 binaries under tree-wide LTO — useless to iterate against, and
+  `ctest -j` is out because the etalons are contention-sensitive. So gates
+  carry **labels derived from their names** (`CMakeLists.txt`, end of the test
+  block) and there is a `jitdev` build target:
+  `make -j4 jitdev && ctest -L smoke` = **~2.5 min** (56 s to relink 4
+  binaries, 98 s for 5 gates) instead of ~3 h. Tiers: `smoke` (one machine,
+  both engines — the JIT loop), `unit` (50 gates, 9 s, no assets), `jit` (all
+  7 JIT gates), `m040` (26 gates, the 68040 family = the JIT's blast radius),
+  bare `ctest` (the release gate). Labels are derived, not declared, so a gate
+  added tomorrow is classified when it is registered.
 - **Gates**: `jit_backend_test` (backend registry, W^X buffer, classifier
   safety rules — no assets), `jit_lockstep_test` (two Quadra 605 machines
   from one ROM, interpreter vs JIT, compared register by register at every

@@ -849,6 +849,53 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         set_tests_properties(jit_${gate} PROPERTIES
                              ENVIRONMENT "POM68K_CPU_ENGINE=jit" TIMEOUT 3600)
     endforeach()
+
+    # ─── Test tiers (`ctest -L <label>`) ─────────────────────────────────
+    # A bare `ctest` runs every gate and takes hours on a busy host — far too
+    # slow to develop against, and the boot etalons are contention-sensitive
+    # so `-j` is not an option either. Every gate therefore carries labels,
+    # so a working loop can pick the smallest set that actually proves the
+    # change at hand:
+    #
+    #   ctest -L smoke    ~35 s   ONE machine, BOTH engines — the JIT loop
+    #   ctest -L unit     ~1 min  everything needing no ROM or disk image
+    #   ctest -L jit      ~8 min  every JIT gate, all four 68040 machines
+    #   ctest -L m040     ~25 min the 68040 family on both engines
+    #   ctest                     everything (the release gate)
+    #
+    # Labels are DERIVED from test names rather than declared per gate, so a
+    # gate registered tomorrow is classified the moment it is added.
+    get_property(pom68k_tests DIRECTORY PROPERTY TESTS)
+    foreach(t IN LISTS pom68k_tests)
+        set(lbl "")
+        if(t MATCHES "etalon$")
+            list(APPEND lbl etalon)
+        else()
+            list(APPEND lbl unit)
+        endif()
+        if(t MATCHES "^jit_")
+            list(APPEND lbl jit)
+        endif()
+        # The 68040 family — the JIT's entire blast radius today.
+        if(t MATCHES "q605|lc475|lc575|centris|quadra6|quadra8|q630|lc580|q700|turboscsi|swim2")
+            list(APPEND lbl m040)
+        endif()
+        set_tests_properties(${t} PROPERTIES LABELS "${lbl}")
+    endforeach()
+
+    # The working loop. jit_lockstep_test is the real proof — it compares the
+    # JIT against the interpreter register by register at every instruction
+    # boundary — and the two q605 etalons show the machine still reaches the
+    # Finder on each engine. Anything a JIT change can break shows up here.
+    set_property(TEST jit_backend_test jit_lockstep_test jit_lockstep_blocks_test
+                      q605_boot_etalon jit_q605_boot_etalon
+                 APPEND PROPERTY LABELS smoke)
+
+    # `make jitdev` builds ONLY what `ctest -L smoke` needs. The tree-wide LTO
+    # makes a full `make` relink ~90 binaries after any core change; this is
+    # three. Pair them: `make -j4 jitdev && ctest -L smoke`.
+    add_custom_target(jitdev DEPENDS
+                      jit_backend_test jit_lockstep_test q605_boot_etalon)
 endif()
 
 # Dev tool (not a gate): instruction-level Sony-driver trace.

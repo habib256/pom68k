@@ -77,7 +77,11 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 97 gates (asset-dependent gates may soft-skip)
+ctest                        # 104 gates, ~2h30 (asset-dependent ones soft-skip)
+ctest -L unit                # 50 gates, 9 s — no ROM or disk image needed
+ctest -L smoke               # 5 gates, 98 s — one machine, both CPU engines
+ctest -L jit                 # every JIT gate;  -L m040 = the 68040 family
+make -j4 jitdev && ctest -L smoke   # the JIT working loop: ~2.5 min total
 ./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=V8 family
                              # (B2E362A8/B306E171/A49F9914 = SE/SE FDHD/Classic)
                              # (checksum: LC/LC II/Classic II); 1 MB by
