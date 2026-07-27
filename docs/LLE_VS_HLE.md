@@ -342,9 +342,19 @@ documents the real behavior.
   *Remaining gaps*: whole-frame decode only, no beam position.
 - **DAFB/Antelope** (`Dafb.*`; MEMCjr 6+6-bit holding split stays in
   `Q605Memory`): register-level and close to MAME `dafb.cpp` parity
-  since 2026-07-21 (Swatch CRTC timing → derived geometry, Gazelle
-  clockgen → guest-programmed frame rate — which MAME does *not*
-  model — extended monitor sense, display-disable bit).
+  since 2026-07-21 (Swatch CRTC timing → derived geometry, clockgen →
+  guest-programmed frame rate — which MAME does *not* model —
+  extended monitor sense, display-disable bit).
+  **All three clock generators** are modelled since 2026-07-27 (ctor
+  variant `Dafb::Clockgen`, gate `q605_dafb_test`): Apple's Gazelle on
+  MEMCjr (`dafb.cpp:1322`), the DP8534 on djMEMC (`:1197`, Centris/
+  Quadra 6x0/800 + LC 575) and the DP8531 on the discrete DAFB of the
+  Quadra 700 (`:884`). Until then the Gazelle decoder served all three,
+  so the djMEMC machines silently kept the 31.3344 MHz reset clock and
+  the Q700's DP8531 nibbles for register 12 landed on the Gazelle's
+  $3C3 serial port. Both now latch the real values (Centris 650 →
+  30.26 MHz; Q700 → 25.175 then 30.24 MHz — trace with
+  `POM68K_DAFB_CLOCK_TRACE=1`).
   *Gaps*: no VRAM arbitration/timing; VBL line hard-coded at 480 (as
   in MAME); the DAFB **TurboSCSI cell is absent** — real DAFB/DAFB II
   inserts configurable wait states per 5394/5396 access and can hold

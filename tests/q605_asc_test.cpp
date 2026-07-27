@@ -29,8 +29,10 @@ int main() {
     check(asc.read(0x801) == 1, "reset selects FIFO mode");
     check(asc.read(0x802) == 0 && asc.read(0x803) == 0, "control/FIFO-mode read zero");
     check(asc.read(0x804) == 0x0E, "ASCTester idle FIFO status is $0E");
-    check(asc.read(0x809) == 1 && asc.read(0x829) == 1,
-          "FIFO A/B interrupts reset disabled");
+    check(asc.read(0xF09) == 1 && asc.read(0xF29) == 1,
+          "FIFO A/B interrupts reset disabled ($F09/$F29, ASCTester LC 475)");
+    check(asc.read(0x809) == 0 && asc.read(0x829) == 0,
+          "$809/$829 are plain register-file bytes, not the IRQ enables");
 
     asc.write(0x80A, 1);                        // record bit: expose A occupancy
     for (int i = 0; i < 0x200; i++) {
@@ -41,14 +43,17 @@ int main() {
           "both 1 KB FIFOs accept independent data");
     check((asc.read(0x804) & 0x0F) == 0, "half-full stereo FIFOs clear status");
 
-    asc.write(0x829, 0);                        // enable aggregate stereo IRQ
+    asc.write(0xF29, 0);                        // enable aggregate stereo IRQ
     asc.tick(704 * 2);
     check(asc.fifoCap(0) < 0x200 && asc.fifoCap(1) < 0x200,
           "drain consumes both channels in lockstep");
-    check((asc.read(0x804) & 0x04) != 0 && irq,
-          "either FIFO below half asserts the level IRQ");
-    (void)asc.read(0x804);
-    check(irq, "status read cannot clear an active half-empty level");
+    // Order matters now: reading $804 IS the acknowledge, so sample the line
+    // before the read or the check clears what it is about to assert.
+    check(irq, "either FIFO below half asserts the level IRQ");
+    check((asc.read(0x804) & 0x04) != 0, "status reports either FIFO below half");
+    check(!irq, "status read drops the IRQ latch unconditionally");
+    asc.tick(704);
+    check(irq, "the half-empty condition re-arms the latch on the next sample");
 
     int16_t left = 0, right = 0;
     check(asc.popStereo(left, right) && left > 0 && right < 0,
@@ -69,7 +74,7 @@ int main() {
     // level, matching PrimeTime's asc_irq_w wiring.
     Q605Memory mem(1u << 20);
     mem.reset();
-    mem.asc().write(0x829, 0);
+    mem.asc().write(0xF29, 0);
     mem.asc().tick(704);
     check((mem.via2Ifr() & 0x10) != 0, "IOSB ASC raises pseudo-VIA2 bit 4");
     mem.write8(0x50003A00, 0x10);               // VIA2 IFR reg 13 acknowledge

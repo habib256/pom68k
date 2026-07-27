@@ -13,12 +13,14 @@
 // Gate: tests/input_etalon.cpp.
 
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 
 class MacKeyboard {
 public:
     void reset() { queue_.clear(); }
+    bool pending() const { return !queue_.empty(); }
     // Host key event → M0110 transition code (already encoded by caller)
     void enqueue(uint8_t transitionCode) { queue_.push_back(transitionCode); }
 
@@ -32,9 +34,24 @@ private:
 
 class MacMouse {
 public:
-    void move(int dx, int dy) { dx_ += dx; dy_ += dy; }
+    // Clamped like AdbBus::mouseMove: tick() drains at most one step per axis
+    // per kStepCycles (~32/frame), so an unclamped fast drag queued hundreds
+    // of steps that kept firing long after the gesture ended.
+    void move(int dx, int dy) {
+        dx_ = std::max(-256, std::min(256, dx_ + dx));
+        dy_ = std::max(-256, std::min(256, dy_ + dy));
+    }
     void setButton(bool down) { button_ = down; }
     bool button() const { return button_; }
+    // A hard reset must clear this: leftover steps drove SCC DCD and PB4/PB5
+    // transitions into the freshly booting ROM, and a stale button reads as
+    // "mouse held at startup" (the eject-boot-floppy path).
+    void reset() {
+        dx_ = dy_ = 0;
+        phase_ = 0;
+        button_ = false;
+        x1 = y1 = x2 = y2 = false;
+    }
 
     // Emit at most one quadrature step per axis every kStepCycles.
     // Returns bitmask: 1 = X stepped, 2 = Y stepped.

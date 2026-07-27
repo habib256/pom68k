@@ -335,7 +335,7 @@ uint8_t VaspMemory::peek8(uint32_t addr) const {
     if (addr < 0x50000000) return rom_[addr & (kRomSize - 1)];
     if (addr >= 0x60000000 && addr < 0x70000000)
         return vram_[addr & (kVramSize - 1)];
-    if (addr >= 0x5FFFFFFC)                   // model longword (mirrors read8)
+    if (addr >= 0x5FFFFFFC && addr < 0x60000000)                   // model longword (mirrors read8)
         return uint8_t(machineId_ >> ((3 - (addr & 3)) * 8));
     return 0xFF;
 }

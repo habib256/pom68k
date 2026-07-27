@@ -229,10 +229,21 @@ void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& i
 
 void ScsiDisk::setSense(uint8_t key, uint8_t asc) { senseKey_ = key; senseAsc_ = asc; }
 
-uint8_t ScsiDisk::command(const uint8_t* cdb, int /*cdbLen*/,
+uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                           std::vector<uint8_t>& dataOut,
                           const std::vector<uint8_t>& dataIn) {
     dataOut.clear();
+    // Honour cdbLen: the parameter was discarded while the body indexes
+    // cdb[4]/cdb[8] unconditionally, so a short (or empty) CDB read past the
+    // buffer. Group code (cdb[0] bits 7-5) fixes the required length.
+    if (!cdb || cdbLen <= 0) { setSense(kIllegalRequest, 0x20); return kCheck; }
+    {
+        static const int kGroupLen[8] = { 6, 10, 10, 6, 16, 12, 6, 6 };
+        if (cdbLen < kGroupLen[(cdb[0] >> 5) & 7]) {
+            setSense(kIllegalRequest, 0x20);         // INVALID COMMAND
+            return kCheck;
+        }
+    }
     switch (cdb[0]) {
         case 0x00:                                   // TEST UNIT READY
             return kGood;

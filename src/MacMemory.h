@@ -32,6 +32,8 @@ class MacMemory {
 public:
     static constexpr uint32_t kRamSize = 0x400000;   // 4 MB (Mac Plus max)
     static constexpr uint32_t kRomSize = 0x20000;    // 128 KB (Plus)
+    static constexpr int64_t  kCpuHz   = 7833600;    // 7.8336 MHz
+    int64_t cpuHz() const { return kCpuHz; }         // LocalTalk pace / RTC second
 
     // The compact 68000 family shares this map (MAME mac128.cpp macse_map is
     // the Plus map verbatim). What changes on the SE and the Classic:
@@ -135,5 +137,10 @@ private:
     int kbdTimer_ = 0;
     Cpu68k* cpu_ = nullptr;
     int viaPhase_ = 0;         // CPU-cycle remainder for the ÷10 VIA clock
+    int64_t secAcc_ = 0;       // CPU-cycle accumulator for the RTC 1 Hz tick
+    bool    kbdInquiryHold_ = false;   // Inquiry waiting out its ~1/4 s window
+    // The real M0110 answers an Inquiry only on a key transition, or with Null
+    // after roughly 250 ms; that hold is what paces the Mac's poll loop.
+    static constexpr int kInquiryHoldCycles = 1958400;   // 250 ms @ 7.8336 MHz
     bool overlay_ = true;
 };

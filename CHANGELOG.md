@@ -7,7 +7,7 @@ and the reference everywhere — GUI, headless, all CTest gates — and the JIT
 sits **beside** it, selected from a new **CPU** menu (or
 `POM68K_CPU_ENGINE=jit`). Wired on the four 68040 profiles: Quadra 605 /
 LC 475 / LC 575, Centris + Quadra 610/650/800, Quadra 630 / LC 580,
-Quadra 700. Design and invariants: `src/jit/POM68K_JIT.md`; the four-point
+Quadra 700. Design and invariants: `src/jit/POM68K_JIT.md`; the five-point
 extension inside the vendored core: `extern/moira/POM68K_VENDOR.md` §
 *JIT seam*.
 
@@ -130,6 +130,103 @@ were declared green, both in the block path:
   same logical pc at entirely different code. The window already refuses on a
   generation mismatch, but nothing in a `(pc, super)` key could notice, so the
   block cache now tracks `Moira::pomJitMmuGen` and drops itself when it moves.
+
+## 2026-07-27 — The Macintosh TV boots again: a 2 % MCU shift is a deadlock
+
+The full 97-gate run turned up exactly one red machine: `mactv_boot_etalon`,
+black screen, `SCSI commands 0` — wedged *before* the SCSI Manager. It was
+not that day's pseudo-VIA work (reverting `PseudoVia.{h,cpp}` to HEAD
+reproduced it bit for bit) but an in-flight change to the 6805 core.
+
+Traced end to end. The 68030 spins at ROM `$40AB3BC8`, which is the tail of
+the Cuda's VIA bit-bang transport: `move.b d2,SR` / `eori.b #$10,ORB`
+(toggle BYTEACK) / `btst #2,IFR` / `beq` — it has loaded a byte into VIA1's
+shift register and is waiting for the shift-register interrupt that says the
+byte went out. It never comes. A per-edge trace of `Via6522::extShiftCB1`
+shows why: on the byte that hangs, the Cuda delivers **7 of the 8 CB1 rising
+edges** and then stops, waiting for BYTEACK — while the ROM waits for
+IFR.SHIFT. Neither side moves again, and there is no timeout in that loop.
+
+The trigger was `M68hc05::serviceInterrupts` starting to charge the 11
+cycles a real 6805 burns on the push + vector fetch (`m6805.cpp:570`). That
+is *correct* — and it is still a deadlock, because it costs the MCU ~2 % of
+its instruction throughput against machine time and so shifts the **phase**
+between the MCU's instruction stream and the host VIA. The Mac TV is where
+that bites first: at 31.3344 MHz it is the fastest 030 in the tree, hence
+the tightest MCU:CPU ratio. `CudaLle.cpp:20-28` already recorded that this
+phase is load-bearing — two earlier attempts to move it crashed the guest.
+
+Bisected to the cycle, not guessed: the one-second-timer clock model in the
+same commit is innocent (reverting it alone still fails), and so is the
+control flow — MAME's `execute_run` takes the interrupt and then executes an
+instruction in the *same* iteration, and matching that shape exactly still
+fails. Charging 0 vs 11 is the whole difference. A plausible robustness fix
+(clearing the VIA's external bit counter when an ACR write changes the shift
+mode, which a trace showed leaking one stray shift from a half-counted
+shift-IN byte into the shift-OUT byte after it) did not change the outcome
+either, so it was dropped rather than kept on speculation.
+
+So the charge stays at 0: a deliberate, documented inaccuracy at the call
+site, worth ~2 % of MCU rate against a machine that otherwise does not boot.
+The run() loop keeps MAME's shape. The real fix is to make the transport
+survive a phase shift — tracked in `TODO.md`, and re-landing the 11 is then
+one line.
+
+## 2026-07-27 — Three DAFB clock generators, the pseudo-VIA's second flavour, two GUI races
+
+Fallout from an adversarial read of the tree (`.bughunt/`). Three fixes,
+each one a case of **one model standing in for several devices**.
+
+**DAFB: the +$300 window is three different chips.** `Dafb::clockgenWrite8`
+implemented only Apple's "Gazelle" (`dafb_memcjr_device::clockgen_w`,
+`dafb.cpp:1322`) and applied it to every owner. MAME has two more behind
+the same address range, sharing nothing but that range: the **DP8534** on
+djMEMC (`:1197` — a bitstream clocked into `$303` MSB-first and committed by
+any write to `$313`, then read back as five *bit-reversed* bytes) and the
+**DP8531** on the discrete DAFB of the Quadra 700 (`:884` — a nibble
+register file at `$303,$313,…,$3F3`, latched by writing register 15). So
+the Centris 610/650, Quadra 610/650/800 and LC 575 dropped their clock
+programming on the floor and kept the 31.3344 MHz reset value, while the
+Q700 was worse than silent: its DP8531 nibbles for **register 12 land
+exactly on `$3C3`**, the Gazelle's serial port, where bit 1 reads as a clock
+edge and bit 0 as data — 20 rising edges later `pixelClock_` was latched
+from unrelated nibbles. Since `tick()` derives the frame length from
+`htotal × vtotal × cpuHz / pixelClock_`, both classes had the wrong VBL
+cadence. Now a `Dafb::Clockgen` ctor variant routes to the right decoder.
+The ROMs prove the port: with `POM68K_DAFB_CLOCK_TRACE=1` the Centris 650
+latches **30.26 MHz** and the Quadra 700 **25.175 MHz then 30.24 MHz** — the
+textbook VGA and Apple 13" pixel clocks, out of two decoders that had never
+been fed a correct bitstream before. Gate: `q605_dafb_test` (all three).
+
+**PseudoVia: level was never universal.** IFR bit 4 (ASC) is
+level-triggered on the V8 — the ack is a NOP — and POM68K hardcoded that
+for every owner. MAME splits the device: `v8_pseudovia_device` (V8, Eagle,
+Spice, Tinker Bell) and `sonora_pseudovia_device` get the level flavour,
+but the **Mac IIsi/IIci** (`rbv.cpp:66`) and **Mac IIvx/IIvi**
+(`vasp.cpp:90`) wire the *base* `pseudovia_device`, where only the 0→1
+transition latches (`pseudovia.cpp:136-146`, guarded by `m_live_main_ints`)
+and the write path carries no `~$10` mask. It matters on VASP especially,
+which pairs the base pseudo-VIA with a **V8-flavour ASC** whose IRQ line is
+itself level-sticky: with both level behaviours stacked, an enabled ASC
+interrupt could never be acknowledged — the ack discarded, the level
+re-applied after every RTE, the same shape as the "Bienvenue." livelock.
+`PseudoVia::Flavour` now selects; `RbvMemory`/`VaspMemory` take Base.
+(MAME's base `write` case `0x13` falls through to a bare recalc without
+touching the IER — a MAME slip, not hardware: both flavours keep the
+bit-7-selector form, or the RBV/VASP ROMs could not arm anything.)
+Gate: `pseudovia_test` grew a base-flavour section; the four machines still
+reach the Finder.
+
+**Two GUI↔machine races.** `AtalkHub::snapshot()` ran on the GUI thread and
+reached through `wire_()` into `Scc8530::rxBacklog(0)` — a `std::deque` the
+machine thread pops from unlocked. The meters are now sampled in `tick()`
+(machine-thread bound) and served from that copy under `mu_`; the file's
+thread contract says so explicitly. And the LC II / LC III monitor-sense
+buttons read `mem.monitorSense()` straight from the GUI thread — with a
+comment claiming only the GUI writes it, when `Cmd::Sense` writes it on the
+machine thread as a multi-field update (`vidSpram_`/`vidSpramSaved_`/
+`montype_`). It now crosses as a `stSense_` atomic in `publish()`, like
+every other machine→GUI value.
 
 ## 2026-07-25 — Macintosh Quadra 700: the 27th machine, and the DAFB TurboSCSI cell
 

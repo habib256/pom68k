@@ -92,7 +92,12 @@ void AdbLine::receiveEdge(bool level, int64_t dtime) {
     // Mid-listen: an even byte can continue if another bit arrives quickly.
     if (direction_ && linestate_ == LST_TSTOP) {
         if (streamPtr_ & 1) linestate_ = LST_BIT0;
-        else if (dtime < T_SYNC) linestate_ = LST_BIT0;
+        // dtime here is the PREVIOUS bit's LOW duration, which the PIC only
+        // ever emits as kShort(544) or kLong(1020) — so a T_SYNC(450)
+        // threshold was unsatisfiable and a Listen was hard-capped at two data
+        // bytes, with byte 3+ re-decoded as a bogus command. MAME's identical
+        // test sits at the short/long midpoint, which here is T_BIT.
+        else if (dtime < T_BIT) linestate_ = LST_BIT0;
     }
 
     switch (linestate_) {
@@ -114,7 +119,10 @@ void AdbLine::receiveEdge(bool level, int64_t dtime) {
         if (!level) {
             if (dtime >= T_BIT) command_ |= 1;
             if (linestate_ != LST_BIT7) command_ <<= 1;
-            else if (direction_) { buffer_[streamPtr_++] = command_; command_ = 0; }
+            else if (direction_) {          // buffer_ is 8 bytes, unbounded
+                if (streamPtr_ < int(sizeof buffer_)) buffer_[streamPtr_++] = command_;
+                command_ = 0;
+            }
             linestate_++;
         }
         break;
@@ -287,8 +295,22 @@ void AdbLine::adbTalk() {
                 } else if (reg == 2) {
                     buffer_[0] = 0xFF; buffer_[1] = 0xFF; datasize_ = 2;   // modifiers (none held)
                 } else if (reg == 3) {
-                    buffer_[0] = uint8_t(0x60 | kbdAddr_); buffer_[1] = kbdHandler_; datasize_ = 2;
+                    // Byte 0 is the R3 flags byte, byte 1 the HANDLER ID —
+                    // kbdHandler_ carries R3-byte-0 semantics everywhere else
+                    // in this file, so returning it as the handler made
+                    // keyboard-type detection see an undefined ID ($22), and
+                    // hard-setting bits 6/5 reported SRQ enabled even after a
+                    // Listen R3 cleared it. Mouse branch above has it right.
+                    buffer_[0] = kbdHandler_; buffer_[1] = 0x01; datasize_ = 2;
                 }
+            } else {
+                // Talk to an UNCONNECTED address (ADBReInit scans 1..15, and
+                // every relocation leaves gaps): MAME raises the mouse SRQ
+                // here, which is what gets accumulated motion delivered
+                // promptly instead of waiting for a keyboard Talk.
+                buffer_[0] = buffer_[1] = 0;
+                datasize_ = 0;
+                if (mousePending() && (mouseHandler_ & 0x20)) srqFlag_ = true;
             }
             break;
         }

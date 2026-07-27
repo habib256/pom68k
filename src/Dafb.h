@@ -3,8 +3,11 @@
 //
 // ── DAFB II video cell (MEMCjr integrated, version 3) — MAME dafb.cpp ──
 // Register window map (dafb_base::map): +$000 main regs, +$100 Swatch
-// CRTC/interrupts, +$200 Antelope RAMDAC (revised AC842a), +$300 Gazelle
-// clock generator. Registers below $200 are 12-bit; the MEMCjr's 6+6-bit
+// CRTC/interrupts, +$200 Antelope RAMDAC (revised AC842a), +$300 clock
+// generator — which chip lives there depends on the DAFB flavour
+// (Gazelle on MEMCjr, DP8534 on djMEMC, DP8531 on the discrete DAFB of
+// the Quadra 700), hence the Clockgen ctor parameter. Registers below
+// $200 are 12-bit; the MEMCjr's 6+6-bit
 // bus-holding split over that window is the MEMORY CONTROLLER's concern
 // and lives in Q605Memory (djmemc.cpp dafb_holding_r/w) — this class
 // speaks full register values. The frame buffer itself also stays with
@@ -24,7 +27,14 @@
 
 class Dafb {
 public:
-    explicit Dafb(int64_t cpuHz) : cpuHz_(cpuHz) {}
+    // Which clock generator sits behind the +$300 window. MAME wires a
+    // different chip per DAFB flavour and each has its own serial protocol
+    // (dafb.cpp: dafb_base = DP8531, dafb_memc = DP8534, dafb_memcjr =
+    // Gazelle) — see clockgenWrite8.
+    enum class Clockgen { Gazelle, Dp8534, Dp8531 };
+
+    explicit Dafb(int64_t cpuHz, Clockgen clockgen = Clockgen::Gazelle)
+        : cpuHz_(cpuHz), clockgen_(clockgen) {}
 
     void reset();
 
@@ -34,7 +44,9 @@ public:
     // clears, palette index stepping).
     uint32_t read32(uint32_t off);
     void     write32(uint32_t off, uint32_t v);
-    // Gazelle serial byte port ($3C3): bit 0 = data, bit 1 = clock.
+    // Clock-generator byte port inside +$300, routed by the ctor variant:
+    // Gazelle $3C3 (bit 0 = data, bit 1 = clock), DP8534 $303/$313,
+    // DP8531 $3x3 (nibble register file).
     void     clockgenWrite8(uint32_t off, uint8_t v);
     // Raw echo file (byte-lane staging for partial u32 bus writes).
     uint32_t rawReg(uint32_t off) const { return regs_[(off >> 2) & 0xFF]; }
@@ -69,7 +81,12 @@ private:
     void recalcIrq();
     void recalcMode();
 
+    void     clockgenGazelle(uint32_t off, uint8_t v);
+    void     clockgenDp8534(uint32_t off, uint8_t v);
+    void     clockgenDp8531(uint32_t off, uint8_t v);
+
     int64_t  cpuHz_;
+    Clockgen clockgen_;
     uint32_t regs_[0x100] = {};    // raw register file (echo backing)
     uint8_t  intStatus_ = 0;       // bit 0 = VBL, bit 2 = cursor scanline
     uint32_t swatchIntEnable_ = 0; // $104: bit 0 VBL, bit 2 cursor line
@@ -93,12 +110,15 @@ private:
     uint8_t  monitorConfig_ = 6;
     uint8_t  monitorId_ = 0;
 
-    // Gazelle clock generator ($3C3).
+    // Clock generators — the pixel clock is shared, the serial state is
+    // per-chip (only the one named by clockgen_ is ever touched).
     uint32_t pixelClock_ = 31334400;
-    uint32_t gazShift_ = 0;
+    uint32_t gazShift_ = 0;        // Gazelle ($3C3), 20-bit word
     int      gazBits_ = 0;
     uint8_t  gazLastClock_ = 0;
     uint32_t gazMclk_ = 31334400;
+    uint64_t dp8534Shift_ = 0;     // DP8534 ($303 shift, $313 commit)
+    uint8_t  dp8531Regs_[16] = {}; // DP8531 nibble file ($303,$313,…,$3F3)
 
     // Frame clock.
     int64_t framePos_ = 0;

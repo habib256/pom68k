@@ -135,7 +135,11 @@ void Ncr5380::ackRising() {
 void Ncr5380::ackFalling() {
     switch (phase_) {
         case COMMAND:
-            if (int(cmd_.size()) >= cmdLen_) execute();
+            // cmdLen_ == 0 means enterCommand() has not seen a CDB opcode yet:
+            // firing execute() on an empty cmd_ passed nullptr + size 0 into
+            // ScsiDisk::command(), whose first act is switch (cdb[0]) — a null
+            // dereference reachable from three guest register writes.
+            if (cmdLen_ > 0 && int(cmd_.size()) >= cmdLen_) execute();
             else req_ = true;
             break;
         case DATA_IN:
@@ -292,7 +296,7 @@ void Ncr5380::dmaWrite(uint8_t v) {
     if (phase_ == COMMAND) {
         cmd_.push_back(v);
         if (cmd_.size() == 1) cmdLen_ = cdbLength(cmd_[0]);
-        if (int(cmd_.size()) >= cmdLen_) execute();
+        if (cmdLen_ > 0 && int(cmd_.size()) >= cmdLen_) execute();
     } else if (phase_ == DATA_OUT) {
         dataOut_.push_back(v);
         if (dataOut_.size() >= dataOutExpected_) finishWrite();

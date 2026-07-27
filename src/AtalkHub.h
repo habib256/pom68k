@@ -13,6 +13,12 @@
 // machine exposes scc()); status is mutex-guarded so the GUI thread can
 // read it while the machine thread pumps the wire. The AppleTalk window
 // in main.cpp renders status() and drives the enable flags.
+//
+// Thread contract: mu_ guards the hub's OWN state, never the machine's.
+// Anything living in the Scc8530 (the Rx queue, its high-water marks) is
+// unlocked machine-thread state, so the hub samples it in tick() — which
+// runs on the machine thread — and snapshot() serves that copy. No GUI-
+// thread path may dereference the SCC.
 
 #pragma once
 #include "AtalkStack.h"
@@ -109,6 +115,12 @@ public:
     // cycles (cpu.getClock()).
     void tick(int64_t nowCycles) {
         std::lock_guard<std::mutex> l(mu_);
+        // Sample the SCC's Rx meters HERE and nowhere else. They are plain
+        // deque/scalar members the machine thread mutates without a lock, so
+        // only the machine thread may read them — and tick() is the hub's
+        // machine-thread entry point. snapshot() (GUI thread) then serves
+        // the copy below under mu_, instead of reaching into the SCC mid-pop.
+        if (wire_) wireMeter_ = wire_();
         if (!cfg_.stack) { pending_.clear(); return; }
         stack_.tick(nowCycles);
         afp_.tick(nowCycles);
@@ -149,10 +161,8 @@ public:
         s.macip = macip_.status();
         s.cfg = cfg_;
         s.cableUp = cable_ && cable_->active();
-        if (wire_) {
-            s.wire = wire_();
-            if (cpuHz_) s.wireHoldMaxMs = long(s.wire.holdMax * 1000 / cpuHz_);
-        }
+        s.wire = wireMeter_;                 // machine-thread sample, see tick()
+        if (cpuHz_) s.wireHoldMaxMs = long(s.wire.holdMax * 1000 / cpuHz_);
         return s;
     }
 
@@ -197,6 +207,7 @@ private:
     LtoUdp* cable_ = nullptr;
     std::function<void(const uint8_t*, size_t)> inject_;
     std::function<WireMeter()> wire_;
+    WireMeter wireMeter_;            // last machine-thread sample (mu_-guarded)
     int64_t cpuHz_ = 0;
     std::vector<std::vector<uint8_t>> pending_;   // frames awaiting Rx re-arm
     Config cfg_;

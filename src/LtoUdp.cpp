@@ -94,11 +94,17 @@ void LtoUdp::poll(const std::function<void(const uint8_t*, size_t)>& cb) {
     if (fd_ < 0) return;
     uint8_t pkt[4 + kMaxFrame];
     for (;;) {
-        ssize_t n = ::recv(fd_, pkt, sizeof pkt, 0);
+        // MSG_TRUNC reports the datagram's TRUE length: an oversized packet
+        // must be dropped, not silently shortened. The SCC regenerates the FCS
+        // over whatever it is handed, so a truncation would reach the guest as
+        // a CRC-GOOD frame — the one thing a real wire can never produce.
+        ssize_t n = ::recv(fd_, pkt, sizeof pkt, MSG_TRUNC);
         if (n <= 4) {
             if (n < 0) break;            // EWOULDBLOCK: drained
             continue;                    // runt datagram
         }
+        if (size_t(n) > sizeof pkt) continue;   // oversized: drop whole
+
         uint32_t tag;
         std::memcpy(&tag, pkt, 4);
         if (tag == tag_) continue;       // our own multicast loopback

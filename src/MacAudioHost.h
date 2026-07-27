@@ -29,10 +29,26 @@ public:
         cfg.dataCallback      = &MacAudioHost::callback;
         cfg.pUserData         = this;
         if (ma_device_init(nullptr, &cfg, &device_) != MA_SUCCESS) return false;
-        started_ = ma_device_start(&device_) == MA_SUCCESS;
-        return started_;
+        // An init'd-but-not-started device still owns backend handles: without
+        // this uninit they leak for the process lifetime, since stop() is
+        // gated on started_.
+        if (ma_device_start(&device_) != MA_SUCCESS) {
+            ma_device_uninit(&device_);
+            return false;
+        }
+        started_ = true;
+        return true;
     }
-    void stop() { if (started_) ma_device_uninit(&device_); started_ = false; }
+    // The realtime callback dereferences fx_ unconditionally and the
+    // FloppySound globals are namespace-scope (destroyed AFTER this object),
+    // so an exit() that skips stop() — Xlib's error handler does exactly that —
+    // left miniaudio's thread mixing from freed sample buffers.
+    ~MacAudioHost() { stop(); }
+    void stop() {
+        if (started_) ma_device_uninit(&device_);
+        started_ = false;
+        fx_[0] = fx_[1] = nullptr;         // any in-flight callback mixes nothing
+    }
     bool started() const { return started_; }
 
     // Mechanical-sound sources (FloppySound), mixed into the callback

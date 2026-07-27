@@ -107,6 +107,42 @@ int main() {
         CHECK(!drv.dirty(), "clean after flush");
     }
 
+    {   // ── DC42 WITH a tag block: insert() strips the tags, so the written
+        //    back header must not keep claiming they are there. The old
+        //    fixture only ever built tagSize == 0, so a file declaring N tag
+        //    bytes that are not in it went unnoticed — Disk Copy / MAME /
+        //    Mini vMac then fail the tag checksum or read past EOF.
+        const uint32_t kTagSize = 800 * 12;            // 800 sectors x 12 B
+        std::vector<uint8_t> img(0x54 + SonyDrive::kSize800K + kTagSize, 0);
+        img[0x40] = uint8_t(SonyDrive::kSize800K >> 24);
+        img[0x41] = uint8_t(SonyDrive::kSize800K >> 16);
+        img[0x42] = uint8_t(SonyDrive::kSize800K >> 8);
+        img[0x43] = uint8_t(SonyDrive::kSize800K);
+        img[0x44] = uint8_t(kTagSize >> 24);           // tagSize
+        img[0x45] = uint8_t(kTagSize >> 16);
+        img[0x46] = uint8_t(kTagSize >> 8);
+        img[0x47] = uint8_t(kTagSize);
+        img[0x4C] = 0xDE; img[0x4D] = 0xAD;            // tagChecksum
+        img[0x4E] = 0xBE; img[0x4F] = 0xEF;
+        img[0x52] = 0x01; img[0x53] = 0x00;            // magic
+        writeAll(dc42, img);
+        SonyDrive drv;
+        drv.reset();
+        CHECK(drv.insert(dc42), "insert DC42 image with tags");
+        drv.setWriteBack(true);
+        CHECK(drv.writeSector(0, 0, 1, sec), "writeSector into tagged DC42");
+        CHECK(drv.flushToFile(), "explicit flush (tagged)");
+        auto file = readAll(dc42);
+        CHECK(file.size() == 0x54 + SonyDrive::kSize800K,
+              "tagged DC42 written back without the tag block");
+        const uint32_t tagSize = uint32_t(file[0x44]) << 24 | uint32_t(file[0x45]) << 16
+                               | uint32_t(file[0x46]) << 8 | file[0x47];
+        CHECK(tagSize == 0, "tagSize zeroed to match the file we actually wrote");
+        const uint32_t tagCk = uint32_t(file[0x4C]) << 24 | uint32_t(file[0x4D]) << 16
+                             | uint32_t(file[0x4E]) << 8 | file[0x4F];
+        CHECK(tagCk == 0, "tagChecksum zeroed alongside tagSize");
+    }
+
     std::remove(raw.c_str());
     std::remove(dc42.c_str());
     std::printf(fails ? "FAILED (%d)\n" : "PASSED — floppy write persistence\n",

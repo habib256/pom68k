@@ -28,6 +28,8 @@ struct MacFrameClock {
         mem.updateIrq();
         cpu.runUntil(frameBase + kCyclesPerFrame);
         frameBase += kCyclesPerFrame;
-        if (++frameNo % 60 == 0) mem.tickOneSecond();
+        // The one-second RTC tick lives in MacMemory::tick() on a CPU-cycle
+        // accumulator; frameNo stays for VBL phase only.
+        ++frameNo;
     }
 };

@@ -1,9 +1,11 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Q8 gate — MEMCjr DAFB stride and Antelope pixel-depth control.
-// Reference: MAME dafb.cpp dafb_r/dafb_w and
-// dafb_memcjr_device::ramdac_w.
+// Q8 gate — MEMCjr DAFB stride and Antelope pixel-depth control, plus the
+// three clock generators that share the +$300 window (Gazelle on MEMCjr,
+// DP8534 on djMEMC, DP8531 on the discrete DAFB of the Quadra 700).
+// Reference: MAME dafb.cpp dafb_r/dafb_w, dafb_memcjr_device::ramdac_w,
+// and clockgen_w at :884 (DP8531) / :1197 (DP8534) / :1322 (Gazelle).
 
 #include "Q605Memory.h"
 
@@ -37,6 +39,87 @@ uint16_t readDafb12(Q605Memory& mem, uint32_t offset) {
     uint16_t low = uint16_t(read32(mem, 0xF9800000 + offset) & 0x3F);
     uint16_t high = uint16_t(read32(mem, 0x5000E07C) & 0x3F);
     return uint16_t(low | (high << 6));
+}
+
+// ── The two non-MEMCjr clock generators, driven on a bare cell ─────────
+// Each machine's memory controller routes the whole +$300 window into
+// clockgenWrite8 with the offset it saw, so drive it the same way.
+
+// DP8534 (djMEMC, dafb.cpp:1197): the parameter word is clocked into $303
+// MSB first and committed by any write to $313. On commit MAME shifts it
+// up by 2 and reads five BIT-REVERSED bytes out of the 40-bit result.
+void dp8534Stream(Dafb& d, uint64_t word, int bits) {
+    for (int i = bits - 1; i >= 0; --i)
+        d.clockgenWrite8(0x303, uint8_t((word >> i) & 1));
+    d.clockgenWrite8(0x313, 0);               // commit
+}
+
+// DP8531 (discrete DAFB, dafb.cpp:884): a nibble register file. Register
+// n lives at $3n3 — only (offset & 3) == 3 is decoded — and writing
+// register 15 latches the new clock.
+void dp8531Reg(Dafb& d, int reg, uint8_t nibble) {
+    d.clockgenWrite8(0x303 + uint32_t(reg << 4), nibble);
+}
+
+void clockgens() {
+    // ── DP8534 ────────────────────────────────────────────────────────
+    // Aim for P = 0, RCNT = 20, NCNT = 31 → VCO = 20 MHz × 31/20 = 31 MHz,
+    // pclk = VCO/(P+1) = 31 MHz. Working backwards through the bit
+    // reversal: param3 = 10 gives RCNT = param3<<1 = 20, param4 = 0x3E
+    // gives NCNT = param4>>1 = 31, param1 = param2 = param5 = 0 gives
+    // P = 0. Reversing those into their bytes yields the 40-bit word
+    // $00_00_50_7C_00, i.e. a shifted-in value of $141F00.
+    {
+        Dafb d(25000000, Dafb::Clockgen::Dp8534);
+        d.reset();
+        check(d.pixelClock() == 31334400, "DP8534: reset pclk is the 31.3344 default");
+        dp8534Stream(d, 0x141F00u, 38);
+        check(d.pixelClock() == 31000000,
+              "DP8534: P=0 RCNT=20 NCNT=31 programs pclk = 31 MHz");
+        // The Gazelle port must be inert on this cell — feeding it the
+        // Gazelle's own bit-bang pattern may not move the clock.
+        const uint32_t held = d.pixelClock();
+        for (int i = 0; i < 40; i++) {
+            d.clockgenWrite8(0x3C3, 1);
+            d.clockgenWrite8(0x3C3, 3);
+        }
+        check(d.pixelClock() == held, "DP8534: the Gazelle port ($3C3) is inert");
+    }
+
+    // ── DP8531 ────────────────────────────────────────────────────────
+    // R = regs 6:5:4 = $014 = 20, P = 1 << reg 9 = 2, N modulus =
+    // regs 3:2:1:0 = $005F → A = ($1F ^ $1F) = 0, B = $5F >> 5 = 2, so
+    // N = 32(B-A) + 31(1+A) = 95 and VCO = (20 MHz / 20) × 95 = 95 MHz,
+    // pclk = VCO / P = 47.5 MHz.
+    {
+        Dafb d(25000000, Dafb::Clockgen::Dp8531);
+        d.reset();
+        dp8531Reg(d, 0, 0xF); dp8531Reg(d, 1, 0x5);   // N modulus $005F
+        dp8531Reg(d, 2, 0x0); dp8531Reg(d, 3, 0x0);
+        dp8531Reg(d, 4, 0x4); dp8531Reg(d, 5, 0x1);   // R = $014 = 20
+        dp8531Reg(d, 6, 0x0);
+        dp8531Reg(d, 9, 0x1);                         // P = 2
+        check(d.pixelClock() == 31334400,
+              "DP8531: nothing latches until register 15 is written");
+        dp8531Reg(d, 15, 0x0);                        // commit
+        check(d.pixelClock() == 47500000,
+              "DP8531: R=20 P=2 N=95 programs pclk = 47.5 MHz");
+
+        // Only the byte at (offset & 3) == 3 carries a register nibble —
+        // the other three lanes of the same longword must be ignored.
+        d.clockgenWrite8(0x340, 0xF);                 // would corrupt R…
+        d.clockgenWrite8(0x341, 0xF);
+        d.clockgenWrite8(0x342, 0xF);
+        dp8531Reg(d, 15, 0x0);                        // …re-commit
+        check(d.pixelClock() == 47500000,
+              "DP8531: lanes other than (offset & 3) == 3 are ignored");
+
+        // Register 12 sits exactly on the Gazelle's $3C3 port: writing it
+        // must be a plain register store, never a serial clock edge.
+        dp8531Reg(d, 12, 0x3);
+        check(d.pixelClock() == 47500000,
+              "DP8531: register 12 ($3C3) does not act as a Gazelle edge");
+    }
 }
 } // namespace
 
@@ -137,6 +220,9 @@ int main() {
     check(mem.dafbBlanked(), "reset: Swatch mode bit 0 blanks the display");
     writeDafb12(mem, 0x100, 0);
     check(!mem.dafbBlanked(), "clearing Swatch mode bit 0 unblanks");
+
+    // ── The djMEMC / discrete-DAFB clock generators ────────────────────
+    clockgens();
 
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");
     return gFails ? 1 : 0;

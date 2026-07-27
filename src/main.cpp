@@ -94,7 +94,13 @@ static bool atalkEnabled() {
     const char* e = std::getenv("POM68K_APPLETALK");
     return !e || std::strcmp(e, "0") != 0;   // default on; "=0" disables
 }
-template <class M> static void wireLocalTalk(M& mem, int byteCycles) {
+// The byte pace IS the machine clock divided by 230.4 kbit/s ÷ 8, and hubHz
+// below reconstructs the clock from it — so derive it here rather than letting
+// each call site pass a literal. Hardcoded 868s were feeding a 25 MHz clock to
+// the 15.67 MHz IIvi, the 31.33 MHz IIvx/Mac TV and the 33.33 MHz Quadra 650,
+// skewing every second-scale AppleTalk timer by up to 2x.
+template <class M> static void wireLocalTalk(M& mem) {
+    const int byteCycles = int(mem.cpuHz() / 28800);
     bool cable = std::getenv("POM68K_LTOUDP") && g_ltoudp.start();
     bool hub = atalkEnabled();
     if (!cable && !hub) { mem.scc().setByteCycles(byteCycles); return; }
@@ -202,7 +208,12 @@ static void runQuantumWithWire(M& mem, C& cpu, int64_t frameCycles) {
     for (int i = 0; i < kSlices; i++) {
         cpu.runCycles(frameCycles / kSlices);
         pollLocalTalk(mem);
-        if (hub) g_atalk.tick(cpu.getClock());
+        // Wire/bus time is MACHINE cycles: the hub was configured with the real
+        // machine Hz (hubHz above), but getClock() is the Moira core clock,
+        // which the i-cache boost runs cacheBoost_x faster. Feeding it here made
+        // every second-scale timer (ATP retry, RTMP, AFP tickle/session death)
+        // expire 4x early. Same class as the viaSync/stall boost fix.
+        if (hub) g_atalk.tick(cpu.machineClock());
     }
 }
 
@@ -353,6 +364,24 @@ private:
 static void keyTrace(const char* where, uint8_t adb, bool down) {
     static const bool on = std::getenv("POM68K_KEY_TRACE") != nullptr;
     if (on) std::fprintf(stderr, "[key] %s adb=%02X %s\n", where, adb, down ? "dn" : "up");
+}
+
+// Two host keys can share one Mac transition code — Left and Right Shift both
+// map to M0110 $71 (ADB $38). Count presses per code so the DOWN transition is
+// emitted only on 0->1 and the UP transition only on 1->0: without this,
+// holding Left Shift, adding Right Shift and releasing Left sent down/down/up,
+// so the System cleared the KeyMap bit while Shift was still physically held
+// and the following characters came out lowercase.
+static uint8_t g_keyHeld[128];
+static bool keyDown(uint8_t code, ImGuiKey k) {
+    if (!ImGui::IsKeyPressed(k, false)) return false;
+    return ++g_keyHeld[code & 0x7F] == 1;
+}
+static bool keyUp(uint8_t code, ImGuiKey k) {
+    if (!ImGui::IsKeyReleased(k)) return false;
+    uint8_t& n = g_keyHeld[code & 0x7F];
+    if (!n) return false;
+    return --n == 0;
 }
 
 static FloppySound gFloppySfx;
@@ -634,7 +663,11 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
             { "68000", "Macintosh SE", MachineKind::Se, "roms/macse.rom", "B2E362A8", nullptr, nullptr, true },
             { "68000", "Macintosh SE FDHD", MachineKind::SeFdhd, "roms/macsefd.rom", "B306E171", nullptr, nullptr, true },
             { "68000", "Macintosh Classic", MachineKind::MacClassic, "roms/macclassic.rom", "A49F9914", nullptr, nullptr, true },
-            { kGlue, "Macintosh II", MachineKind::MacII, "roms/macii.rom", "9779D2C4", nullptr, nullptr, true },
+            // Tagged like its siblings: with envKey == nullptr, variantCur
+            // defaulted to true, so on ANY Mac II-family machine this row
+            // computed isCur and the "&& !isCur" guard swallowed the click —
+            // the plain Mac II was unreachable from the Machine menu.
+            { kGlue, "Macintosh II", MachineKind::MacII, "roms/macii.rom", "9779D2C4", "POM68K_MACII_MODEL", "ii", false },
             { kGlue, "Macintosh IIx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iix", true },
             { kGlue, "Macintosh IIcx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iicx", false },
             { kRbv, "Macintosh IIci", MachineKind::IIci, "roms/maciici.rom", "368CADFE", nullptr, nullptr, true },
@@ -970,7 +1003,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     mem.setCpu(&cpu);
     cpu.hardReset();
     mem.rtc().setSeconds(hostMacSeconds());      // GUI: real local date/time
-    wireLocalTalk(mem, 544);                     // 230.4 kbit/s @ 15.6672 MHz
+    wireLocalTalk(mem);
 
     // Prefer Infinite Mac System 6.0.8 HD, then HD20SC / other SCSI images.
     std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/System 6.0.8 HD.dsk");
@@ -1117,11 +1150,11 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Escape,0x6B},
             };
             for (const auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false)) {
+                if (keyDown(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), true);
                     c.m.push({MacIiMachine::Cmd::Key, e.m0110 >> 1, 1});
                 }
-                if (ImGui::IsKeyReleased(e.k)) {
+                if (keyUp(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), false);
                     c.m.push({MacIiMachine::Cmd::Key, e.m0110 >> 1, 0});
                 }
@@ -1209,14 +1242,16 @@ struct LcMachine {
         return true;
     }
 
-    struct Status { uint32_t pc; long long clock; bool overlay, mmu, held; uint8_t config; };
+    struct Status { uint32_t pc; long long clock; bool overlay, mmu, held;
+                    uint8_t config, sense; };
     Status status() const {
         return { stPc_.load(std::memory_order_relaxed),
                  stClock_.load(std::memory_order_relaxed),
                  (stFlags_.load(std::memory_order_relaxed) & 1) != 0,
                  (stFlags_.load(std::memory_order_relaxed) & 2) != 0,
                  (stFlags_.load(std::memory_order_relaxed) & 4) != 0,
-                 stConfig_.load(std::memory_order_relaxed) };
+                 stConfig_.load(std::memory_order_relaxed),
+                 stSense_.load(std::memory_order_relaxed) };
     }
 
     // One pacing tick (the former GUI-frame emulation block, verbatim
@@ -1327,6 +1362,11 @@ struct LcMachine {
                                (mem.cpuHeld() ? 4 : 0)),
                        std::memory_order_relaxed);
         stConfig_.store(mem.ramConfig(), std::memory_order_relaxed);
+        // The sense byte is written on THIS thread (Cmd::Sense) and it is a
+        // multi-field update inside V8Memory (vidSpram_/vidSpramSaved_/
+        // montype_) — so it crosses to the GUI as an atomic like every other
+        // machine→GUI value, never by reaching into mem from the GUI thread.
+        stSense_.store(mem.monitorSense(), std::memory_order_relaxed);
     }
 
 private:
@@ -1378,6 +1418,7 @@ private:
     std::atomic<long long> stClock_{0};
     std::atomic<uint8_t> stFlags_{0};
     std::atomic<uint8_t> stConfig_{0};
+    std::atomic<uint8_t> stSense_{0};   // monitor sense, machine → GUI
     int activeHold_ = 0;           // machine frames of sound-recent state
     int starve_ = 0;               // safety against a dead DAC
     int framesRun_ = 0;            // frames emulated since the last publish
@@ -1447,7 +1488,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
-    wireLocalTalk(mem, 544);                     // 230.4 kbit/s @ 15.6672 MHz
+    wireLocalTalk(mem);
     // Monitor sense (resolution): the GUI defaults to 640×480 13"/14" RGB —
     // the roomiest built-in mode, and some software (Lode Runner) needs a
     // ≥640×400 screen. POM68K_MONITOR=512 forces the 512×384 12" RGB mode;
@@ -1501,12 +1542,17 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
 
     // Battery-backed PRAM+clock: a cold PRAM triggers the ROM's long
     // full-RAM burn-in on every boot — persist it like a real battery.
+    // The file is tagged with the machine: an untagged "<image>.pram" made
+    // every profile sharing one boot volume load another machine's XPRAM
+    // (loadPram validates nothing), so a Quadra's video/boot bytes landed in
+    // the LC II's Egret. The later profiles already tag theirs.
     static std::string pramPath =
-        (hddPath.empty() ? std::string(prof.shortName) : hddPath) + ".pram";
+        (hddPath.empty() ? std::string(prof.shortName)
+                         : hddPath + "." + prof.shortName) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // The battery file's clock froze while the emulator was off; a real
     // RTC keeps counting. Wall time always comes from the host (GUI only).
-    mem.egret().setSeconds(hostMacSeconds());
+    mem.setRtcSeconds(hostMacSeconds());
     // First boot / stale battery file: seed the Basilisk II known-good
     // XPRAM defaults instead of an all-zero PRAM (no-op once the system
     // software's 'NuMc' signature is present)
@@ -1670,11 +1716,11 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false)) {
+                if (keyDown(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), true);
                     c.m.push({LcMachine::Cmd::Key, e.m0110 >> 1, 1});
                 }
-                if (ImGui::IsKeyReleased(e.k)) {
+                if (keyUp(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), false);
                     c.m.push({LcMachine::Cmd::Key, e.m0110 >> 1, 0});
                 }
@@ -1709,7 +1755,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
         // come up B&W until you set "256 couleurs" in Moniteurs + restart.
         if (c.model != V8Memory::Model::ClassicII &&      // built-in displays:
             c.model != V8Memory::Model::ColorClassic) {   // Eagle mono, Spice CRT
-            int sense = c.m.mem.monitorSense();  // byte read; only the GUI changes it
+            int sense = st.sense;                // published by the machine thread
             ImGui::Text("Moniteur:");
             ImGui::SameLine();
             auto monoBtn = [&](const char* label, int s) {
@@ -1779,13 +1825,15 @@ struct SonoraStyleMachine {
         return true;
     }
 
-    struct Status { uint32_t pc; long long clock; bool overlay, mmu, held; };
+    struct Status { uint32_t pc; long long clock; bool overlay, mmu, held;
+                    uint8_t sense; };
     Status status() const {
         return { stPc_.load(std::memory_order_relaxed),
                  stClock_.load(std::memory_order_relaxed),
                  (stFlags_.load(std::memory_order_relaxed) & 1) != 0,
                  (stFlags_.load(std::memory_order_relaxed) & 2) != 0,
-                 (stFlags_.load(std::memory_order_relaxed) & 4) != 0 };
+                 (stFlags_.load(std::memory_order_relaxed) & 4) != 0,
+                 stSense_.load(std::memory_order_relaxed) };
     }
 
     int stepTick() {                    // LcMachine::stepTick, verbatim logic
@@ -1866,6 +1914,9 @@ struct SonoraStyleMachine {
                                ((cpu.getTC() & 0x80000000) ? 2 : 0) |
                                (mem.cpuHeld() ? 4 : 0)),
                        std::memory_order_relaxed);
+        // Machine-thread write (Cmd::Sense), so it must cross as an atomic —
+        // see LcMachine::publish.
+        stSense_.store(mem.monitorSense(), std::memory_order_relaxed);
     }
 
 private:
@@ -1906,6 +1957,7 @@ private:
     std::atomic<uint32_t> stPc_{0};
     std::atomic<long long> stClock_{0};
     std::atomic<uint8_t> stFlags_{0};
+    std::atomic<uint8_t> stSense_{0};   // monitor sense, machine → GUI
     int activeHold_ = 0;
     int starve_ = 0;
     int framesRun_ = 0;
@@ -1929,18 +1981,21 @@ static char gSonoraTitle[40] = "Macintosh LC III";
 
 static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
                   int argc, char** argv, SonoraModel model = SonoraModel::Lc3) {
+    // `slug` tags this profile's battery file: the Egret LC IIIs and the Cuda
+    // AIOs share one boot volume in practice, and an untagged .pram made each
+    // load the other's XPRAM.
     struct Profile { const char* name; int mhz; int64_t cpuHz; uint32_t id;
-                     bool cuda; uint8_t sense; };
+                     bool cuda; uint8_t sense; const char* slug; };
     static const Profile kP[] = {
-        { "LC III",  25, SonoraMemory::kCpuHz,     SonoraMemory::kIdLc3,     false, 6 },
-        { "LC III+", 33, SonoraMemory::kCpuHzPlus, SonoraMemory::kIdLc3Plus, false, 6 },
-        { "LC 520",  25, SonoraMemory::kCpuHz,     SonoraMemory::kIdLc520,   true,  6 },
-        { "LC 550",  33, SonoraMemory::kCpuHzPlus, SonoraMemory::kIdLc550,   true,  6 },
+        { "LC III",  25, SonoraMemory::kCpuHz,     SonoraMemory::kIdLc3,     false, 6, "lc3" },
+        { "LC III+", 33, SonoraMemory::kCpuHzPlus, SonoraMemory::kIdLc3Plus, false, 6, "lc3plus" },
+        { "LC 520",  25, SonoraMemory::kCpuHz,     SonoraMemory::kIdLc520,   true,  6, "lc520" },
+        { "LC 550",  33, SonoraMemory::kCpuHzPlus, SonoraMemory::kIdLc550,   true,  6, "lc550" },
         // Color Classic II / Performa 275: the LC 550 board in the CC case;
         // the built-in 512×384 Trinitron reports sense 2, which selects the
         // ROM machine-table entry with video type $4D.
         { "Color Classic II", 33, SonoraMemory::kCpuHzPlus,
-          SonoraMemory::kIdLc550, true, 2 },
+          SonoraMemory::kIdLc550, true, 2, "cclassic2" },
     };
     const Profile& pr = kP[int(model)];
     gSonoraKind = pr.cuda ? MachineKind::Aio : MachineKind::Lc3;
@@ -1960,7 +2015,7 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
-    wireLocalTalk(mem, 868);                     // 230.4 kbit/s @ 25 MHz
+    wireLocalTalk(mem);
     {
         const char* m = getenv("POM68K_MONITOR");
         mem.setMonitorSense(m ? (atoi(m) < 640 ? 2 : 6) : pr.sense);
@@ -1986,9 +2041,9 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     }
 
     static std::string pramPath =
-        (hddPath.empty() ? std::string("lc3") : hddPath) + ".pram";
+        (hddPath.empty() ? std::string(pr.slug) : hddPath + "." + pr.slug) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    mem.egret().setSeconds(hostMacSeconds());
+    mem.setRtcSeconds(hostMacSeconds());
     mem.egret().factoryDefaults();
 
     glfwSetErrorCallback(glfwErrorCallback);
@@ -2133,9 +2188,9 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false))
+                if (keyDown(uint8_t(e.m0110), e.k))
                     c.m.push({Lc3Machine::Cmd::Key, e.m0110 >> 1, 1});
-                if (ImGui::IsKeyReleased(e.k))
+                if (keyUp(uint8_t(e.m0110), e.k))
                     c.m.push({Lc3Machine::Cmd::Key, e.m0110 >> 1, 0});
             }
         }
@@ -2156,7 +2211,7 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
         if (ImGui::Checkbox("Turbo", &turbo))
             c.m.turbo.store(turbo);
         {
-            int sense = c.m.mem.monitorSense();
+            int sense = st.sense;                // published by the machine thread
             ImGui::Text("Moniteur:");
             ImGui::SameLine();
             auto monoBtn = [&](const char* label, int s) {
@@ -2222,7 +2277,7 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
-    wireLocalTalk(mem, 868);                     // 230.4 kbit/s
+    wireLocalTalk(mem);
     {
         const char* m = getenv("POM68K_MONITOR");
         mem.setMonitorSense((m && atoi(m) < 640) ? 2 : 6);
@@ -2250,7 +2305,7 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     static std::string pramPath =
         (hddPath.empty() ? std::string("iivx") : hddPath) + ".iivx.pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    mem.egret().setSeconds(hostMacSeconds());
+    mem.setRtcSeconds(hostMacSeconds());
     mem.egret().factoryDefaults();
 
     glfwSetErrorCallback(glfwErrorCallback);
@@ -2399,9 +2454,9 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false))
+                if (keyDown(uint8_t(e.m0110), e.k))
                     c.m.push({VaspMachine::Cmd::Key, e.m0110 >> 1, 1});
-                if (ImGui::IsKeyReleased(e.k))
+                if (keyUp(uint8_t(e.m0110), e.k))
                     c.m.push({VaspMachine::Cmd::Key, e.m0110 >> 1, 0});
             }
         }
@@ -2459,7 +2514,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
-    wireLocalTalk(mem, iici ? 868 : 694);        // 230.4 kbit/s @ 25/20 MHz
+    wireLocalTalk(mem);
     {
         const char* m = getenv("POM68K_MONITOR");
         mem.setMonitorSense((m && atoi(m) < 640) ? 2 : 6);
@@ -2494,7 +2549,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     // Real local time from the host: the IIci's discrete RTC, the IIsi's
     // Egret. factoryDefaults seeds a fresh XPRAM (Egret only).
     if (iici) mem.rtc().setSeconds(hostMacSeconds());
-    else { mem.egret().setSeconds(hostMacSeconds()); mem.egret().factoryDefaults(); }
+    else { mem.setRtcSeconds(hostMacSeconds()); mem.egret().factoryDefaults(); }
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
@@ -2640,9 +2695,9 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false))
+                if (keyDown(uint8_t(e.m0110), e.k))
                     c.m.push({RbvMachine::Cmd::Key, e.m0110 >> 1, 1});
-                if (ImGui::IsKeyReleased(e.k))
+                if (keyUp(uint8_t(e.m0110), e.k))
                     c.m.push({RbvMachine::Cmd::Key, e.m0110 >> 1, 0});
             }
         }
@@ -2815,6 +2870,92 @@ struct DafbMachine {
 #endif
     }
 
+    // ── Freeze probe (POM68K_FREEZE_PROBE=1) ──
+    // A guest that looks frozen while the CPU keeps executing is either
+    // spinning in a loop or stuck in an interrupt handler that never
+    // returns. From outside the two are identical, and telling them apart
+    // IS the diagnosis. Sample PC + SR at the publish rate and print the
+    // distribution every ~2 s: a live guest spreads over hundreds of
+    // addresses, a wedged one collapses onto one or two. SR answers the
+    // rest — supervisor bit ($2000) and the interrupt mask (bits 8-10):
+    // mask 7 in supervisor on a tight PC range means an interrupt handler
+    // that never rearmed, which no guest-side UI action can recover from.
+    void freezeProbe(uint32_t pc, uint16_t sr) {
+        static const bool on = std::getenv("POM68K_FREEZE_PROBE") != nullptr;
+        if (!on) return;
+        probeHist_[pc]++;
+        probeSr_ = sr;
+        if (++probeSamples_ < 125) return;          // ~2 s at 16 ms
+        std::vector<std::pair<uint32_t, int>> top(probeHist_.begin(),
+                                                  probeHist_.end());
+        std::sort(top.begin(), top.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+        std::fprintf(stderr, "[freeze] %d samples, %zu distinct PC  SR=$%04X "
+                     "(%s, IPL mask %u)\n", probeSamples_, probeHist_.size(),
+                     probeSr_, (probeSr_ & 0x2000) ? "supervisor" : "user",
+                     unsigned((probeSr_ >> 8) & 7));
+        for (size_t i = 0; i < top.size() && i < 4; i++)
+            std::fprintf(stderr, "[freeze]   PC=$%08X  %d× (%d%%)\n",
+                         top[i].first, top[i].second,
+                         top[i].second * 100 / probeSamples_);
+        // Collapsed onto a handful of addresses = a real spin, not a busy
+        // stretch. Dump the loop body and the register file: what the loop
+        // polls (which address, which bit) is the whole answer, and a spin
+        // waiting on a flag that never sets names the subsystem that owes
+        // it. Disassembling live RAM is the only way here — the code is a
+        // driver loaded into the system heap, absent from the ROM.
+        // Dump once per *loop*, not once per run: boot legitimately spins
+        // (ROM device polls) long before the failure under study, and a
+        // single global one-shot is always spent on the wrong one. Two
+        // dominant PCs within 64 bytes are the same loop; anything further
+        // is a new one and earns its own dump, capped at 8.
+        bool fresh = true;
+        // Signed compare: seen - 64 wraps for a spin PC below $40, which made
+        // the neighbourhood test unable to suppress a redump there.
+        for (uint32_t seen : probeDumped_) {
+            const int64_t d = int64_t(top[0].first) - int64_t(seen);
+            if (d > -64 && d < 64) fresh = false;
+        }
+        if (probeHist_.size() <= 8 && fresh && probeDumped_.size() < 8) {
+            probeDumped_.push_back(top[0].first);
+            // Window = top[0] plus only the dominant PCs that belong to the
+            // SAME loop (within 64 bytes). Spanning min..max of the whole
+            // top-4 is what turns one stray far-away sample into millions of
+            // disassembly lines.
+            uint32_t lo = top[0].first, hi = top[0].first;
+            for (size_t i = 1; i < top.size() && i < 4; i++) {
+                if (top[i].first + 64 < top[0].first ||
+                    top[i].first > top[0].first + 64) continue;
+                lo = std::min(lo, top[i].first);
+                hi = std::max(hi, top[i].first);
+            }
+            // Clamp, don't wrap: a spin PC below $18 sent lo to ~$FFFFFFE8,
+            // so the loop below never ran and the dump was silently empty —
+            // and the PC was recorded as dumped, so it was never retried.
+            lo = (lo > 24 ? lo - 24 : 0) & ~1u;
+            std::fprintf(stderr, "[freeze] spin loop at $%08X — disassembly:\n",
+                         top[0].first);
+            char line[256];
+            for (uint32_t a = lo; a < hi + 24;) {
+                int n = cpu.disassemble(line, a);
+                std::fprintf(stderr, "[freeze]   %c $%08X  %s\n",
+                             a == top[0].first ? '>' : ' ', a, line);
+                a += uint32_t(n > 0 ? n : 2);
+            }
+            for (int i = 0; i < 8; i++)
+                std::fprintf(stderr, "[freeze]   D%d=$%08X  A%d=$%08X\n", i,
+                             cpu.getD(i), i, cpu.getA(i));
+            std::fprintf(stderr, "[freeze]   SP=$%08X  ISP=$%08X\n",
+                         cpu.getSP(), cpu.getISP());
+        }
+        probeHist_.clear();
+        probeSamples_ = 0;
+    }
+    std::vector<uint32_t> probeDumped_;
+    std::map<uint32_t, int> probeHist_;
+    int probeSamples_ = 0;
+    uint16_t probeSr_ = 0;
+
     void publish(bool force = false) {
         auto now = std::chrono::steady_clock::now();
         if (!force && framesRun_ == 0 &&
@@ -2832,6 +2973,7 @@ struct DafbMachine {
                                ((cpu.getTC040() & 0x8000) ? 2 : 0) |
                                (mem.cpuHeld() ? 4 : 0)),
                        std::memory_order_relaxed);
+        freezeProbe(cpu.getPC(), cpu.getSR());
         stW_.store(w, std::memory_order_relaxed);
         stH_.store(h, std::memory_order_relaxed);
         stDepth_.store(depth, std::memory_order_relaxed);
@@ -2861,7 +3003,9 @@ struct DafbMachine {
             pmRow  = (pk32(pmap + 0x04) >> 16) & 0x3FFF;
             pmT = (pk32(pmap+0x06)>>16)&0xFFFF; pmL = pk32(pmap+0x06)&0xFFFF;
             pmB = (pk32(pmap+0x0A)>>16)&0xFFFF; pmR = pk32(pmap+0x0A)&0xFFFF;
-            pmDepth = (pk32(pmap+0x1C)>>16)&0xFFFF;
+            // PixMap.pixelSize is at +$20; +$1C is the low half of the vRes
+            // Fixed (0 at 72 dpi), which made this fallback dead code.
+            pmDepth = (pk32(pmap+0x20)>>16)&0xFFFF;
         }
         // The framebuffer pointer is either the physical VRAM window
         // ($F9000000 + off) or a MMU/alias logical view of it ($5190xxxx —
@@ -2875,11 +3019,14 @@ struct DafbMachine {
         uint32_t off = src & (Mem::kVramSize - 1);
         w = (pmR > pmL && pmR - pmL <= 1600) ? int(pmR - pmL) : 640;
         h = (pmB > pmT && pmB - pmT <= 1200) ? int(pmB - pmT) : 480;
+        // DAFB can select 16 and 24 bpp and Valkyrie 16; dropping them to 1
+        // painted 640 columns out of the first 80 bytes of a 1280-byte row.
+        auto okDepth = [](uint32_t d) {
+            return d == 1 || d == 2 || d == 4 || d == 8 || d == 16 || d == 24;
+        };
         uint32_t hwDepth = mem.dafbDepth();
-        depth = (hwDepth == 1 || hwDepth == 2 || hwDepth == 4 || hwDepth == 8)
-              ? int(hwDepth)
-              : ((pmDepth == 1 || pmDepth == 2 || pmDepth == 4 || pmDepth == 8)
-                    ? int(pmDepth) : 1);
+        depth = okDepth(hwDepth) ? int(hwDepth)
+                                 : (okDepth(pmDepth) ? int(pmDepth) : 1);
         uint32_t minStride = uint32_t((w * depth + 7) / 8);
         uint32_t hwStride = mem.dafbStride();
         uint32_t stride = (hwStride >= minStride && hwStride <= Mem::kVramSize)
@@ -2900,7 +3047,8 @@ struct DafbMachine {
                 uint32_t rgb;
                 switch (depth) {
                     case 1: { int bit = (vb(rowOff + (x >> 3)) >> (7 - (x & 7))) & 1;
-                              rgb = bit ? 0x000000u : 0xFFFFFFu; break; }
+                              const uint8_t* c = cl[bit];   // CLUT, not hardcoded B/W
+                              rgb = uint32_t(c[0])<<16 | uint32_t(c[1])<<8 | c[2]; break; }
                     case 2: { int v = (vb(rowOff + (x >> 2)) >> (6 - 2*(x & 3))) & 3;
                               const uint8_t* c = cl[v];
                               rgb = uint32_t(c[0])<<16 | uint32_t(c[1])<<8 | c[2]; break; }
@@ -2908,6 +3056,13 @@ struct DafbMachine {
                               int v = (x & 1) ? (bt & 0xF) : (bt >> 4);
                               const uint8_t* c = cl[v];
                               rgb = uint32_t(c[0])<<16 | uint32_t(c[1])<<8 | c[2]; break; }
+                    case 16: { uint16_t p = uint16_t(vb(rowOff + 2*x) << 8
+                                                   | vb(rowOff + 2*x + 1));
+                              rgb = uint32_t(((p>>10)&0x1F)<<19 | ((p>>5)&0x1F)<<11
+                                           | (p&0x1F)<<3); break; }   // xRRRRRGGGGGBBBBB
+                    case 24: { rgb = uint32_t(vb(rowOff + 4*x + 1))<<16
+                                   | uint32_t(vb(rowOff + 4*x + 2))<<8
+                                   | vb(rowOff + 4*x + 3); break; }   // xRGB
                     default: { const uint8_t* c = cl[vb(rowOff + x)];   // 8 bpp
                               rgb = uint32_t(c[0])<<16 | uint32_t(c[1])<<8 | c[2]; break; }
                 }
@@ -2919,7 +3074,11 @@ struct DafbMachine {
 private:
     // One 60 Hz emulation quantum (25 MHz / 60 ≈ 416 667 cycles). During the
     // Cuda power-on hold the CPU is parked, so just tick the peripherals.
-    static constexpr int kFrame = 416667;
+    // Derived, not hardcoded: this template is shared by Q605 (25 MHz),
+    // Centris/Quadra 6x0-800 (20/25/33.33) and Q630 (33), so a fixed 25 MHz
+    // quantum ran the 33 MHz boards ~24 % slow and the Centris 610 ~25 % fast —
+    // and fed the same wrong budget to the LLE MCU seconds counter.
+    const int kFrame = int(mem.cpuHz() / 60);
     static constexpr size_t kTarget = 2225;    // ~100 ms of 22 257 Hz sound
     void runOne() {
         if (mem.cpuHeld()) mem.tick(kFrame);
@@ -2966,7 +3125,13 @@ private:
         return !samp_.empty() && hi - lo >= 0.02f;
     }
     void applyCmds() {
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
+        // Take the pending path out UNDER the lock: the GUI thread reassigns
+        // floppyPending_ (under cmdMu_) while this thread was reading it by
+        // const& through the milliseconds of file I/O in insertDisk() — a
+        // use-after-free on the second pick from the Disques menu.
+        std::string pending;
+        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
+          pending.swap(floppyPending_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             // Q605Memory routes to the firmware AdbLine when the Cuda LLE
             // is active (POM68K_CUDA_LLE), else to the Egret HLE's AdbBus.
@@ -2976,9 +3141,8 @@ private:
                                mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
             case Cmd::InsertFloppy:
-                if (!floppyPending_.empty() && mem.insertDisk(floppyPending_))
+                if (!pending.empty() && mem.insertDisk(pending))
                     floppyFlag_.store(true, std::memory_order_relaxed);
-                floppyPending_.clear();
                 break;
             case Cmd::EjectFloppy:
                 mem.ejectDisk();
@@ -3051,7 +3215,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     mem.loadRom(rom);
     mem.setCpu(&cpu);
     cpu.hardReset();
-    wireLocalTalk(mem, 868);                     // 230.4 kbit/s @ 25 MHz
+    wireLocalTalk(mem);
 
     // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
     // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
@@ -3094,11 +3258,11 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     // Battery-backed PRAM+clock (Cuda XPRAM) — persist it like the LC II so a
     // cold PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
     static std::string pramPath =
-        (hddPath.empty() ? std::string("quadra605") : hddPath) + ".pram";
+        (hddPath.empty() ? std::string("quadra605") : hddPath + ".q605") + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // Same as LC II: the file's clock froze while powered off — wall time
     // comes from the host at every launch (GUI only).
-    mem.cuda().setSeconds(hostMacSeconds());
+    mem.setRtcSeconds(hostMacSeconds());
     mem.cuda().factoryDefaults();
 
     glfwSetErrorCallback(glfwErrorCallback);
@@ -3273,11 +3437,11 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false)) {
+                if (keyDown(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), true);
                     c.m.push({QuadraMachine::Cmd::Key, e.m0110 >> 1, 1});
                 }
-                if (ImGui::IsKeyReleased(e.k)) {
+                if (keyUp(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), false);
                     c.m.push({QuadraMachine::Cmd::Key, e.m0110 >> 1, 0});
                 }
@@ -3348,7 +3512,12 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
                        : (getenv("POM68K_CENTRIS610") ? "c610" : "c650");
     const bool c610 = cmodel == "c610", q650 = cmodel == "q650",
                q610 = cmodel == "q610", q800 = cmodel == "q800";
+    // The Machine menu relaunches through execv(), which inherits the
+    // environment, and CentrisCpu keys on mere presence of this variable — so
+    // it must be cleared for the 68LC040 models or a Quadra->Centris switch
+    // silently boots a full 68040 (mirrors the POM68K_Q605_NOFPU handling).
     if (q650 || q610 || q800) setenv("POM68K_CENTRIS_FPU", "1", 1);  // full 68040
+    else                      unsetenv("POM68K_CENTRIS_FPU");
     struct CInfo { const char* name; int mhz; int64_t hz; uint8_t pins; };
     const CInfo cinfo =
           q800 ? CInfo{"Quadra 800", 33, CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra800}
@@ -3366,7 +3535,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     mem.loadRom(rom);
     mem.setCpu(&cpu);
     cpu.hardReset();
-    wireLocalTalk(mem, 868);                     // 230.4 kbit/s @ 25 MHz
+    wireLocalTalk(mem);
 
     // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
     // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
@@ -3587,11 +3756,11 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false)) {
+                if (keyDown(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), true);
                     c.m.push({CentrisMachine::Cmd::Key, e.m0110 >> 1, 1});
                 }
-                if (ImGui::IsKeyReleased(e.k)) {
+                if (keyUp(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), false);
                     c.m.push({CentrisMachine::Cmd::Key, e.m0110 >> 1, 0});
                 }
@@ -3662,7 +3831,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     mem.loadRom(rom);
     mem.setCpu(&cpu);
     cpu.hardReset();
-    wireLocalTalk(mem, 868);                     // 230.4 kbit/s @ 25 MHz
+    wireLocalTalk(mem);
 
     // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
     // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
@@ -3883,11 +4052,11 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false)) {
+                if (keyDown(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), true);
                     c.m.push({Q700Machine::Cmd::Key, e.m0110 >> 1, 1});
                 }
-                if (ImGui::IsKeyReleased(e.k)) {
+                if (keyUp(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), false);
                     c.m.push({Q700Machine::Cmd::Key, e.m0110 >> 1, 0});
                 }
@@ -3959,7 +4128,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     mem.loadRom(rom);
     mem.setCpu(&cpu);
     cpu.hardReset();
-    wireLocalTalk(mem, 1146);                    // 230.4 kbit/s @ 33 MHz
+    wireLocalTalk(mem);
 
     // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
     // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
@@ -4006,7 +4175,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // The Cuda holds the clock on this board (no discrete RTC): its saved
     // seconds froze while powered off, so re-seed from the host (GUI only).
-    mem.cuda().setSeconds(hostMacSeconds());
+    mem.setRtcSeconds(hostMacSeconds());
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
@@ -4180,11 +4349,11 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Keypad9,0xB8},
             };
             for (auto& e : kKeys) {
-                if (ImGui::IsKeyPressed(e.k, false)) {
+                if (keyDown(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), true);
                     c.m.push({Q630Machine::Cmd::Key, e.m0110 >> 1, 1});
                 }
-                if (ImGui::IsKeyReleased(e.k)) {
+                if (keyUp(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), false);
                     c.m.push({Q630Machine::Cmd::Key, e.m0110 >> 1, 0});
                 }
@@ -4385,7 +4554,7 @@ int main(int argc, char** argv) {
     mem.setCpu(&cpu);
     cpu.hardReset();
     mem.rtc().setSeconds(hostMacSeconds());      // GUI: real local date/time
-    wireLocalTalk(mem, 272);                     // 230.4 kbit/s @ 7.8336 MHz
+    wireLocalTalk(mem);
 
     // Floppy: argv[2], else probe disks35/ (CWD, exec dir, and its parent —
     // same resolution as the ROM, so it works whatever the launch directory).
@@ -4518,12 +4687,12 @@ int main(int argc, char** argv) {
             };
             for (auto& e : kKeys) {
                 if (c.mem.isAdb()) {          // ADB raw code = M0110 code >> 1
-                    if (ImGui::IsKeyPressed(e.k, false)) c.mem.keyEvent(uint8_t(e.code >> 1), true);
-                    if (ImGui::IsKeyReleased(e.k)) c.mem.keyEvent(uint8_t(e.code >> 1), false);
+                    if (keyDown(e.code, e.k)) c.mem.keyEvent(uint8_t(e.code >> 1), true);
+                    if (keyUp(e.code, e.k)) c.mem.keyEvent(uint8_t(e.code >> 1), false);
                     continue;
                 }
-                if (ImGui::IsKeyPressed(e.k, false)) c.mem.keyboard().enqueue(e.code);
-                if (ImGui::IsKeyReleased(e.k)) c.mem.keyboard().enqueue(uint8_t(e.code | 0x80));
+                if (keyDown(e.code, e.k)) c.mem.keyboard().enqueue(e.code);
+                if (keyUp(e.code, e.k)) c.mem.keyboard().enqueue(uint8_t(e.code | 0x80));
             }
         }
 

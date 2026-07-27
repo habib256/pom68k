@@ -206,7 +206,16 @@ private:
     std::map<uint8_t, AtpHandler> atpHandlers_;
     std::vector<NbpEntry> nbp_;
     std::map<uint64_t, XoEntry> xoCache_;
-    std::map<uint64_t, std::shared_ptr<AtpTxn>> pendingTxns_;
+    // A deferred transaction (PAP's blocking kRead) that is dropped without
+    // ever calling respond() used to sit here for the process lifetime and
+    // silently swallow every later TReq reusing that (client, tid) — the
+    // guest's 16-bit tid counter wraps, so the socket wedged permanently.
+    // Give it the same release timer xoCache_ already has.
+    struct PendingTxn {
+        std::shared_ptr<AtpTxn> txn;
+        int64_t expires = 0;
+    };
+    std::map<uint64_t, PendingTxn> pendingTxns_;
     std::deque<PendingReq> requests_;
     Stats stats_;
 };

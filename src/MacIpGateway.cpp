@@ -78,10 +78,14 @@ void traceIp(const char* dir, const uint8_t* p, size_t n) {
     char tail[96] = "";
     if (p[9] == 6 && n >= ihl + 20 && !(frag & 0x1FFF)) {
         const uint8_t* t = p + ihl;
+        // Guard the subtraction: a guest-set data offset of 15 on a 20-byte
+        // segment printed a ~1.8e19 payload, exactly when you are debugging a
+        // malformed segment and least want a lie in the log.
+        const size_t th = size_t(t[12] >> 4) * 4;
         std::snprintf(tail, sizeof tail,
                       " %u->%u flags$%02X seq=%u ack=%u win=%u payload=%zu",
                       rd16(t), rd16(t + 2), t[13], rd32(t + 4), rd32(t + 8),
-                      rd16(t + 14), n - ihl - size_t(t[12] >> 4) * 4);
+                      rd16(t + 14), n >= ihl + th ? n - ihl - th : size_t(0));
     } else if (p[9] == 17 && n >= ihl + 8 && !(frag & 0x1FFF)) {
         std::snprintf(tail, sizeof tail, " %u->%u", rd16(p + ihl),
                       rd16(p + ihl + 2));
@@ -239,6 +243,14 @@ void MacIpGateway::handleIp(const AtalkStack::Addr& src, const uint8_t* p,
     if (!enabled_ || n < 20 || (p[0] >> 4) != 4) return;
     size_t ihl = (p[0] & 0x0F) * 4;
     if (ihl < 20 || n < ihl) return;
+    // The IP total-length field is the authority, not the DDP payload length:
+    // a writer that pads its datagram to an even length would otherwise splice
+    // a garbage byte onto the end of the guest's TCP stream (a 400 Bad Request
+    // on the very first HTTP request), and a truncated datagram would be
+    // forwarded as if complete.
+    const size_t totLen = rd16(p + 2);
+    if (totLen < ihl || totLen > n) return;
+    n = totLen;
     uint32_t sip = rd32(p + 12), dip = rd32(p + 16);
     uint8_t proto = p[9];
     stat_.ipFromGuest++;
@@ -266,6 +278,14 @@ void MacIpGateway::handleIp(const AtalkStack::Addr& src, const uint8_t* p,
         return;
     }
     if ((dip & mask_) == (gw_ & mask_)) return;            // guest↔guest: no
+    // A non-first fragment carries no L4 header — decoding its payload bytes
+    // as one fabricated a TCP/UDP header out of user data, opened a socket to a
+    // garbage port and leaked it until the 120 s reap. The tracer in this same
+    // file already computes and tests this field; the data path did not.
+    // (First fragments still go through: there is no reassembly buffer, but
+    // that is the pre-existing behaviour and does not fabricate headers.)
+    const uint16_t frag = rd16(p + 6);
+    if (frag & 0x1FFF) return;                             // offset != 0
     switch (proto) {
     case 6: handleTcpFromGuest(p, n); break;
     case 17: handleUdpFromGuest(p, n); break;
@@ -365,7 +385,9 @@ void MacIpGateway::handleTcpFromGuest(const uint8_t* p, size_t n) {
     uint32_t seq = rd32(t + 4), ack = rd32(t + 8);
     size_t th = (t[12] >> 4) * 4;
     uint8_t flags = t[13];
-    if (n < ihl + th) return;
+    if (th < 20 || n < ihl + th) return;   // a data offset < 5 would splice the
+                                           // guest's own TCP header into the
+                                           // byte stream sent to the host
     const uint8_t* pay = t + th;
     size_t plen = n - ihl - th;
 
@@ -485,7 +507,12 @@ void MacIpGateway::tcpPump(TcpConn& c, int64_t now) {
                                    c.toHost.begin()
                                        + long(std::min<size_t>(c.toHost.size(), 4096)));
         ssize_t w = ::send(c.fd, chunk.data(), chunk.size(), MSG_NOSIGNAL);
-        if (w <= 0) break;
+        // A bare `w <= 0` treated ECONNRESET/EPIPE as back-pressure: the bytes
+        // stayed queued forever, retried every tick until the idle reap, and
+        // the guest was never told its peer had died.
+        if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+        if (w < 0 && errno == EINTR) continue;
+        if (w <= 0) { dropTcp(c, true); return; }           // peer reset / EPIPE
         c.toHost.erase(c.toHost.begin(), c.toHost.begin() + w);
     }
     if (c.guestFin && c.toHost.empty() && !c.sockEof)
@@ -493,10 +520,17 @@ void MacIpGateway::tcpPump(TcpConn& c, int64_t now) {
 
     // host → guest, windowed
     while (c.synAcked && !c.sockEof) {
-        size_t inFlight = c.unacked.size();
-        if (inFlight >= std::min<size_t>(4 * kMss, c.guestWin)) break;
+        const size_t inFlight = c.unacked.size();
+        // Read no more than the guest can accept: recv() consumes the bytes
+        // irrevocably, so gating only the loop *entry* let us put a full MSS
+        // past the advertised window. MacTCP drops out-of-window segments
+        // without a word, and the retransmit then replays the same oversized
+        // segment until the give-up RST.
+        const size_t win = std::min<size_t>(4 * kMss, c.guestWin);
+        if (inFlight >= win) break;
+        const size_t room = std::min<size_t>(kMss, win - inFlight);
         uint8_t buf[kMss];
-        ssize_t r = ::recv(c.fd, buf, sizeof buf, 0);
+        ssize_t r = ::recv(c.fd, buf, room, 0);
         if (r > 0) {
             sendTcpSeg(c, 0x18, c.sndSeq, buf, size_t(r));  // PSH|ACK
             c.unacked.insert(c.unacked.end(), buf, buf + r);
@@ -505,7 +539,10 @@ void MacIpGateway::tcpPump(TcpConn& c, int64_t now) {
             continue;
         }
         if (r == 0) { c.sockEof = true; break; }
-        break;                                              // EAGAIN
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        dropTcp(c, true);                                   // ECONNRESET etc.
+        return;
     }
     if (c.sockEof && !c.finSent && c.synAcked) {
         sendTcpSeg(c, 0x11, c.sndSeq, nullptr, 0);          // FIN|ACK
@@ -515,8 +552,13 @@ void MacIpGateway::tcpPump(TcpConn& c, int64_t now) {
     }
 
     // retransmit
+    // Retransmit with exponential backoff (1,2,4,8,16,32,32… emulated seconds)
+    // instead of six flat 1 s retries. A 16-25 MHz guest that is busy for six
+    // seconds — disk seek, screen redraw, a Sound Manager spin — is not a dead
+    // peer, and RSTing it mid-stream is far worse for era software than
+    // stalling: MacTCP surfaces the reset into the application.
     if (c.sndUna != c.sndSeq && now >= c.rtxTimer) {
-        if (++c.rtxCount > 6) { dropTcp(c, true); return; }
+        if (++c.rtxCount > 10) { dropTcp(c, true); return; }
         if (!c.synAcked) {
             sendTcpSeg(c, 0x12, c.isn, nullptr, 0);
         } else if (!c.unacked.empty()) {
@@ -526,12 +568,14 @@ void MacIpGateway::tcpPump(TcpConn& c, int64_t now) {
         } else if (c.finSent) {
             sendTcpSeg(c, 0x11, c.sndSeq - 1, nullptr, 0);
         }
-        c.rtxTimer = now + st_.cpuHz();
+        c.rtxTimer = now + (st_.cpuHz() << std::min(c.rtxCount - 1, 5));
     }
 
-    if (c.guestFin && c.finSent && c.sndUna == c.sndSeq && c.toHost.empty())
-        dropTcp(c, false);                                  // clean close
-    if (now - c.lastAct > 300 * st_.cpuHz())
+    if (c.guestFin && c.finSent && c.sndUna == c.sndSeq && c.toHost.empty()) {
+        dropTcp(c, false);                                  // clean close…
+        return;                                             // …and never RST it
+    }
+    if (now - c.lastAct > 600 * st_.cpuHz())
         dropTcp(c, true);                                   // idle reap
 #else
     (void)c; (void)now;
@@ -550,11 +594,21 @@ void MacIpGateway::tick(int64_t now) {
                tcp_.end());
 
     for (auto it = udp_.begin(); it != udp_.end();) {
-        uint8_t buf[2048];
+        static uint8_t buf[65536];        // a UDP payload tops out at 65507
         ssize_t r;
         bool alive = true;
-        while ((r = ::recv(it->fd, buf, sizeof buf, 0)) > 0) {
-            size_t plen = std::min<size_t>(size_t(r), 1400);
+        // MSG_TRUNC reports the TRUE datagram length even when it did not fit,
+        // so an oversized reply is dropped rather than silently clipped: the
+        // old 2048-byte buffer let the kernel truncate, and the code below then
+        // re-lengthed and re-checksummed the truncation into a valid-looking
+        // short reply — exactly what the comment forbids.
+        while ((r = ::recv(it->fd, buf, sizeof buf, MSG_TRUNC)) > 0) {
+            if (size_t(r) > sizeof buf) { it->lastAct = st_.now(); continue; }
+            // Do NOT clip: rewriting the UDP length + checksum to match a
+            // truncated payload hands the guest a *valid-looking* short reply
+            // it cannot detect. sendIpToGuest already fragments past the
+            // 586-byte DDP ceiling.
+            size_t plen = size_t(r);
             std::vector<uint8_t> pkt(28 + plen);
             uint8_t* ip = pkt.data();
             ip[0] = 0x45;
@@ -583,4 +637,17 @@ void MacIpGateway::tick(int64_t now) {
 #else
     (void)now;
 #endif
+
+    // Lease reclaim: without this the ~253-address pool only ever shrinks —
+    // every node that asks, plus every in-subnet source learned from traffic,
+    // held an address for the process lifetime and MacTCP could eventually
+    // never configure again. lastSeen existed but was never read.
+    // (macipgw does the same on ARPTIMEOUT, macip.c:604-624.)
+    for (auto it2 = leases_.begin(); it2 != leases_.end();) {
+        if (now - it2->second.lastSeen > kLeaseLifetimeSec * st_.cpuHz())
+            it2 = leases_.erase(it2);
+        else
+            ++it2;
+    }
+    stat_.leases = int(leases_.size());
 }

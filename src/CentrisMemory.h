@@ -51,6 +51,7 @@ class CentrisMemory {
 public:
     static constexpr uint32_t kRomSize = 0x100000;   // 1 MB
     static constexpr uint32_t kVramSize = 0x100000;  // 1 MB window
+    int64_t cpuHz() const { return cpuHz_; }         // 60 Hz quantum for the shell
     static constexpr int64_t  kCpuHz650 = 25000000;  // 68LC040 (Centris 650)
     static constexpr int64_t  kCpuHz610 = 20000000;  // 68LC040 (Centris 610)
     static constexpr int64_t  kCpuHzQ650 = 33333333; // 68040 (Quadra 650)
@@ -196,6 +197,12 @@ private:
 
     uint32_t totalRam_;
     int64_t  cpuHz_;
+    // VIA1 φ2 is a fixed 783.36 kHz (iosb.cpp:74, R65NC22 at C7M/10), so the
+    // CPU:VIA divider is a property of THIS instance's clock, not a constant:
+    // 26 at 20 MHz (Centris 610), 32 at 25 MHz (Centris 650 / Quadra 610),
+    // 43 at 33.33 MHz (Quadra 650), 42 at 33 MHz (Quadra 800). The hardcoded
+    // 32 ran the 610's VIA timers 20 % slow and the Quadra 650's 33 % fast.
+    int viaDiv() const { return int((cpuHz_ + 391680) / 783360); }
     uint8_t  modelPins_;            // VIA1 port A ID (0x40/0x46/0x44/0x52)
     static constexpr uint32_t kBoxId = 0xA55A2BADu;   // $5FFF0000-$5FFFFFFF
     bool overlay_ = true;

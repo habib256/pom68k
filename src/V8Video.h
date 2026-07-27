@@ -14,6 +14,7 @@
 
 #pragma once
 #include "V8Memory.h"
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -50,6 +51,14 @@ public:
         int hres, vres;
         resolution(mem_.monitorSense(), hres, vres);
         out.resize(size_t(hres) * vres);
+
+        // Same guard as VaspVideo: a sense the GUI does not offer today can
+        // still be set through setMonitorSense(), and the 1/2/4/8 bpp arms
+        // index at a fixed 1024-byte pitch with no bound of their own.
+        if (size_t(vres) * 1024 > V8Memory::kVramSize) {
+            std::fill(out.begin(), out.end(), 0u);
+            return;
+        }
 
         const uint8_t* vram = mem_.vram();
         const Ariel& pal = const_cast<V8Memory&>(mem_).ariel();

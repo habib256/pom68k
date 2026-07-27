@@ -356,8 +356,16 @@ void Ncr53c96::startCommand(uint8_t c) {
             break;
 
         case CD_SELECT:      selectTarget(false); break;
-        case CD_SELECT_ATN:
-        case CD_SELECT_ATN_STOP: selectTarget(true); break;
+        case CD_SELECT_ATN:  selectTarget(true); break;
+        case CD_SELECT_ATN_STOP:
+            // Select-with-ATN-and-STOP halts after the single MSG OUT byte,
+            // leaving the CDB in the FIFO for a later Transfer Information —
+            // that is the window a driver uses to inject an SDTR before the
+            // command goes out. Routing it into plain SELECT_ATN drained the
+            // FIFO as the CDB and executed the command first, reporting
+            // seq_step 4 where the chip reports 2 (ncr53c90.cpp:535-542).
+            selectTarget(true, /*stopAfterMsg=*/true);
+            break;
 
         case CD_ENABLE_SEL:
             // Enable selection/reselection: MAME just command_pop_and_chain()
@@ -394,9 +402,25 @@ void Ncr53c96::startCommand(uint8_t c) {
             raiseIrq(I_DISCONNECT);
             break;
 
-        case CI_PAD:
+        case CI_PAD: {
+            // Transfer Pad DISCARDS bytes off the bus until TC hits 0 (MAME
+            // CI_PAD -> INIT_XFR_RECV_PAD_WAIT_REQ). A bare interrupt left the
+            // DATA-IN residue live, and the next CI_COMPLETE latches STATUS
+            // into the FIFO without clearing it — so read(R_FIFO), which keys
+            // on residue rather than phase, returned stale block data as the
+            // SCSI status byte.
+            size_t left = dataIn_.size() - dataInPos_;
+            size_t n = tcounter_ ? std::min<size_t>(tcounter_, left) : left;
+            dataInPos_ += n;
+            if (tcounter_ >= n) tcounter_ -= uint32_t(n);
+            else                tcounter_ = 0;
+            if (dataInPos_ >= dataIn_.size() && phase_ == DATA_IN) {
+                status_ |= S_TC0;
+                advanceToStatus();
+            }
             raiseIrq(I_BUS);
             break;
+        }
 
         case CI_SET_ATN:
         case CI_RESET_ATN:
@@ -413,7 +437,7 @@ void Ncr53c96::startCommand(uint8_t c) {
 // Arbitrate + select the destination (busId_). If ATN, the FIFO's first byte
 // is the IDENTIFY message (consumed as MSG OUT); the rest is the CDB, drained
 // in the COMMAND phase. Ends I_BUS|I_FUNCTION, seq_step=4 (whole CDB sent).
-void Ncr53c96::selectTarget(bool withAtn) {
+void Ncr53c96::selectTarget(bool withAtn, bool stopAfterMsg) {
     selects++;
     seq_ = 0;
     ScsiDisk* t = (busId_ >= 0 && busId_ < 7) ? targets_[busId_] : nullptr;
@@ -434,6 +458,17 @@ void Ncr53c96::selectTarget(bool withAtn) {
         (void)fifoPop();                      // IDENTIFY (LUN select) — ignored
         seq_ = 2;                             // one MSG OUT byte sent
         wireBytes++;
+    }
+    if (stopAfterMsg) {
+        // Stop here: the CDB stays in the FIFO and arrives through the normal
+        // COMMAND path (fifoPush/dmaWrite -> runTarget) once the driver has
+        // done whatever it stopped for.
+        phase_ = COMMAND;
+        seq_ = 2;
+        selCdbWait_ = true;
+        raiseIrqDeferred(I_BUS | I_FUNCTION, selectionDelayCpu_(wireBytes));
+        updateDrq();
+        return;
     }
     // Remaining FIFO bytes are the CDB.
     int expected = 0;
@@ -479,12 +514,16 @@ void Ncr53c96::selectTarget(bool withAtn) {
 void Ncr53c96::runTarget() {
     commands++;
     if (onCommand) onCommand(cmd_);
+    // Clear the PREVIOUS command's read payload up front: the WRITE branch
+    // below returns early, and read(R_FIFO)/read(R_FLAGS)/dmaRead() all key on
+    // dataInPos_ < dataIn_.size() rather than the phase, so stale bytes leaked
+    // into the next transaction and shadowed its STATUS.
+    dataIn_.clear(); dataInPos_ = 0; dataXfer_ = false;
     int wbytes = writeByteCount(cmd_);
     if (wbytes > 0) {                         // WRITE: gather DATA OUT first
         phase_ = DATA_OUT; dataOut_.clear(); dataOutExpected_ = size_t(wbytes);
         return;
     }
-    dataIn_.clear(); dataInPos_ = 0;
     std::vector<uint8_t> none;
     targetStatus_ = disk_ ? disk_->command(cmd_.data(), int(cmd_.size()), dataIn_, none) : 0x02;
     if (!dataIn_.empty()) { phase_ = DATA_IN; dataInPos_ = 0; dataXfer_ = false; }

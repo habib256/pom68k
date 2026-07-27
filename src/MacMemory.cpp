@@ -25,7 +25,7 @@ static uint32_t romSizeFor(MacMemory::Model m) {
 MacMemory::MacMemory(Model model)
     : ram_(kRamSize, 0), rom_(romSizeFor(model), 0xFF), model_(model),
       romSize_(romSizeFor(model)) {
-    if (isAdb()) adbVia_.attach(via_, adb_);
+    if (isAdb()) adbVia_.attach(via_, adb_, kCpuHz);
 }
 
 void MacMemory::setModel(Model m) {
@@ -33,7 +33,7 @@ void MacMemory::setModel(Model m) {
     model_ = m;
     romSize_ = romSizeFor(m);
     rom_.assign(romSize_, 0xFF);
-    if (isAdb()) adbVia_.attach(via_, adb_);
+    if (isAdb()) adbVia_.attach(via_, adb_, kCpuHz);
 }
 
 bool MacMemory::loadRom(const std::vector<uint8_t>& data) {
@@ -60,9 +60,11 @@ void MacMemory::reset() {
     scsi_.reset();
     if (scsiDisk_.present()) scsi_.attach(&scsiDisk_);
     kbd_.reset();
+    mouse_.reset();                  // dx/dy, button and the quadrature lines
     kbdPhase_ = KBD_IDLE;
     if (isAdb()) adbVia_.reset();
     viaPhase_ = 0;
+    secAcc_ = 0;
     overlay_ = true;                 // hardware reset asserts the overlay
 }
 
@@ -71,6 +73,15 @@ void MacMemory::updateIrq() {
 }
 
 void MacMemory::tick(int cpuCycles) {
+    // The RTC 1 Hz heartbeat comes from the 343-0042's own 32.768 kHz crystal,
+    // NOT from video: driving it off 60 video frames (60 x 130240 = 7 814 400
+    // cycles) ran the emulated clock 1.0025x fast, ~3.5 min/day. Every other
+    // machine in the tree uses a cycle accumulator like this one.
+    secAcc_ += cpuCycles;
+    while (secAcc_ >= kCpuHz) {
+        secAcc_ -= kCpuHz;
+        tickOneSecond();
+    }
     viaPhase_ += cpuCycles;
     int t = viaPhase_ / 10;          // φ2 = 7.8336 MHz / 10 = 783.36 kHz
     viaPhase_ %= 10;
@@ -92,19 +103,33 @@ void MacMemory::tick(int cpuCycles) {
     // M0110 transaction (DEV.md § Input): the command byte finishes
     // shifting out (SR interrupt #1); once the driver flips the ACR to
     // shift-in, the response byte lands (SR interrupt #2). ~3 ms per phase.
+    // A key arriving during the Inquiry hold answers it at once.
+    if (kbdPhase_ == KBD_SHIFT_IN && kbdInquiryHold_ && kbd_.pending()) {
+        kbdResp_ = kbd_.respond(kbdCmd_);
+        kbdInquiryHold_ = false;
+        kbdTimer_ = 23500;
+    }
     if (kbdPhase_ == KBD_SHIFT_OUT || kbdPhase_ == KBD_SHIFT_IN) {
         kbdTimer_ -= cpuCycles;
         if (kbdTimer_ <= 0) {
             if (kbdPhase_ == KBD_SHIFT_OUT) {
-                kbdResp_ = kbd_.respond(kbdCmd_);
+                // Inquiry ($10) answers only on a key transition, or with Null
+                // after roughly 1/4 s — that hold is what paces the Mac's
+                // keyboard poll loop. Answering it like Instant ($14) made the
+                // driver re-issue immediately, ~166 transactions and ~333
+                // level-1 SR interrupts per second where hardware idles at ~4,
+                // stealing SCC/mouse servicing through the Plus IPL glue.
+                kbdInquiryHold_ = (kbdCmd_ == 0x10) && !kbd_.pending();
+                kbdResp_ = kbdInquiryHold_ ? 0x7B : kbd_.respond(kbdCmd_);
                 kbdPhase_ = KBD_AWAIT_IN;
                 via_.raiseShift();                       // command sent
                 if (((via_.acr() >> 2) & 7) == 3) {      // already in shift-in
                     kbdPhase_ = KBD_SHIFT_IN;
-                    kbdTimer_ = 23500;
+                    kbdTimer_ = kbdInquiryHold_ ? kInquiryHoldCycles : 23500;
                 }
             } else {
                 kbdPhase_ = KBD_IDLE;
+                kbdInquiryHold_ = false;
                 via_.loadSR(kbdResp_);                   // response arrived
             }
             updateIrq();
@@ -210,9 +235,9 @@ uint8_t MacMemory::read8(uint32_t addr) {
                 return scsi_.read(reg);
             }
             if (addr < 0x400000 + romSize_) {                // ROM window
-                // SE and later: the first ROM access clears the boot overlay
-                // (mac128.cpp ram_w_se); the Plus needs the VIA PA4 write.
-                if (isAdb()) overlay_ = false;
+                // The overlay clear lives on the low-RAM WRITE path
+                // (mac128.cpp ram_w_se), not here: mac128.cpp's ram_r keeps
+                // returning ROM at low addresses until that first write.
                 return rom_[addr & (romSize_ - 1)];
             }
             // Above the ROM: open bus, address-dependent. The ROM probes
@@ -220,7 +245,12 @@ uint8_t MacMemory::read8(uint32_t addr) {
             // must DIFFER or CheckSCSI ($407D40) skips the SCSI scan.
             return uint8_t(addr >> 16);
         case 0x6: case 0x7:                                  // RAM while overlay on
-            return ram_[addr & (kRamSize - 1)];
+            // ...and ONLY while it is on: mac128.cpp's macplus_map/macse_map
+            // install nothing here. Answering RAM unconditionally made an
+            // overlay-state probe read back "still overlaid", and let a stray
+            // write at $600000 corrupt physical $200000 in the live image.
+            if (overlay_) return ram_[addr & (kRamSize - 1)];
+            return uint8_t(addr >> 16);                      // open bus
         case 0x8: case 0x9:                                  // SCC read, even bytes
             // A1 = channel (0 = B, 1 = A), A2 = ctl/data
             if (addr & 4) return scc_.readData((addr >> 1) & 1);
@@ -229,8 +259,15 @@ uint8_t MacMemory::read8(uint32_t addr) {
             return 0x00;
         case 0xC: case 0xD:                                  // IWM, odd bytes, reg = A9-A12
             return iwm_.read((addr >> 9) & 0xF);
-        case 0xE: case 0xF:                                  // VIA
+        case 0xE:                                            // VIA ($E80000-$EFFFFF)
             if (addr >= 0xE80000) return viaAccess(addr, false, 0);
+            return 0xFF;
+        case 0xF:
+            // Phase-read / autovector space — NOT the VIA. Decoding it here
+            // made the VIA answer over 8x its real window, so a stray access
+            // in $F00000-$FFFFFF selected a register by A9-A12 and could
+            // re-assert the boot overlay through ORA (mac128.cpp maps the VIA
+            // only at $E80000-$EFFFFF).
             return 0xFF;
     }
     return 0xFF;                                             // open bus
@@ -240,6 +277,10 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
     addr &= 0xFFFFFF;
     switch (addr >> 20) {
         case 0x0: case 0x1: case 0x2: case 0x3:
+            // mac128.cpp ram_w_se: on the ADB compacts the first write to low
+            // RAM clears the overlay AND stores the byte. The Plus keeps the
+            // explicit VIA PA4 clear and drops writes while overlaid.
+            if (isAdb()) overlay_ = false;
             if (!overlay_) ram_[addr & (kRamSize - 1)] = v;  // ROM under overlay: ignored
             return;
         case 0x4: case 0x5:                                  // SCSI NCR 5380
@@ -250,7 +291,7 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
             }
             return;
         case 0x6: case 0x7:
-            ram_[addr & (kRamSize - 1)] = v;
+            if (overlay_) ram_[addr & (kRamSize - 1)] = v;    // overlay only
             return;
         case 0xA: case 0xB: {                                // SCC write, odd bytes
             bool wasIrq = scc_.irqAsserted();
@@ -262,8 +303,10 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
         case 0xC: case 0xD:                                  // IWM
             iwm_.write((addr >> 9) & 0xF, v);
             return;
-        case 0xE: case 0xF:
+        case 0xE:                                            // VIA ($E80000-$EFFFFF)
             if (addr >= 0xE80000) viaAccess(addr, true, v);
+            return;
+        case 0xF:                                            // phase read: not the VIA
             return;
         default:                                             // SCC/IWM/SCSI stubs
             return;

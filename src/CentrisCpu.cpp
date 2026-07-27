@@ -104,6 +104,10 @@ void CentrisCpu::sync(int cycles) {
     catchUp();
 }
 
+moira::u16 CentrisCpu::read16Dasm(moira::u32 addr) const {
+    return moira::u16(moira::u16(mem_.peek8(addr)) << 8 | mem_.peek8(addr + 1));
+}
+
 void CentrisCpu::setEngine(int e) {
     // setEnabled() already flushes everything; the explicit disarm is belt
     // and braces — a code window left armed while the INTERPRETER runs would

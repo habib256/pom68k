@@ -30,6 +30,7 @@ class MacIIMemory {
 public:
     static constexpr uint32_t kRomSize = 0x40000;    // 256 KB
     static constexpr int64_t  kCpuHz   = 15667200;
+    int64_t cpuHz() const { return kCpuHz; }         // LocalTalk pace / 60 Hz quantum
 
     // Same GLUE board, four ROM-sharing models (MAME macii.cpp): the plain
     // **Mac II** / II FDHD (68020 + HMMU), and the 68030 variants **IIx** and

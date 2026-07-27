@@ -68,16 +68,19 @@ uint8_t NuBus::readDecl8(int slot, uint32_t off) const {
 uint8_t NuBus::read8(uint32_t addr) {
     int slot = 0;
     uint32_t off = 0;
-    if (decode(addr, slot, off, false) || decode(addr, slot, off, true)) {
+    // Slot space is tried first; only THAT space carries the declaration ROM.
+    // MAME installs it inside the 16 MB $Fs window only (mirror 0x00f00000),
+    // never in the 256 MB super-slot window — answering it there put 256
+    // copies across $s0000000 and shadowed any card using a big aperture.
+    const bool slotSpace = decode(addr, slot, off, false);
+    if (slotSpace || decode(addr, slot, off, true)) {
         if (!slots_[slot].dev) return 0xFF;
         // Toby/card registers occupy the low 1 MB window (mirrored by
         // A20-A23). Declaration ROM tiles the rest of the 16 MB slot,
         // including the canonical format block at the top (MAME
         // install_declaration_rom mirror_all_mb).
         const uint32_t low = off & 0x0FFFFFu;
-        if (low < 0xE0000u)
-            return slots_[slot].dev->read8(off);
-        if (!slots_[slot].declRom.empty())
+        if (slotSpace && low >= 0xE0000u && !slots_[slot].declRom.empty())
             return readDecl8(slot, off);
         return slots_[slot].dev->read8(off);
     }
@@ -96,8 +99,11 @@ uint32_t NuBus::read32(uint32_t addr) {
 void NuBus::write8(uint32_t addr, uint8_t v) {
     int slot = 0;
     uint32_t off = 0;
-    if (decode(addr, slot, off, false) || decode(addr, slot, off, true)) {
-        if (slots_[slot].dev && (off & 0x0FFFFFu) < 0xE0000u)
+    const bool slotSpace = decode(addr, slot, off, false);
+    if (slotSpace || decode(addr, slot, off, true)) {
+        // Only slot space reserves the top 128 KB for the (read-only) decl ROM;
+        // super-slot space is the card's own aperture all the way up.
+        if (slots_[slot].dev && (!slotSpace || (off & 0x0FFFFFu) < 0xE0000u))
             slots_[slot].dev->write8(off, v);
     }
 }

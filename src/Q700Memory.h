@@ -54,6 +54,7 @@ class Q700Memory {
 public:
     static constexpr uint32_t kRomSize = 0x100000;    // 1 MB
     static constexpr uint32_t kVramSize = 0x200000;   // 2 MB (macqd700)
+    int64_t cpuHz() const { return cpuHz_; }          // 60 Hz quantum for the shell
     static constexpr int64_t  kCpuHz = 25000000;      // 68040, 50 MHz XTAL / 2
     // Ethernet address ROM (the Q800 shape: 6 MAC bytes + inverted XOR).
     static constexpr uint8_t kMacAddr[6] = { 0x08, 0x00, 0x07, 0x70, 0x30, 0x30 };

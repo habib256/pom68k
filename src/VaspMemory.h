@@ -101,6 +101,14 @@ public:
         if (egretLleOn_) egretLle_.setPram(i, v);
         else             egret_.setPram(i, v);
     }
+    // Host wall clock. MUST branch on the LLE flag like loadPram/keyEvent do:
+    // seeding only the HLE object left the firmware MCU's own seconds counter
+    // untouched, so every default (firmware-LLE) boot started at the 1904
+    // epoch and wrote that back to the battery file.
+    void setRtcSeconds(uint32_t s) {
+        egret_.setSeconds(s);
+        egretLle_.setSeconds(s);
+    }
     bool loadPram(const std::string& path) {
         bool ok = egret_.loadPram(path);
         if (egretLleOn_)
@@ -150,7 +158,11 @@ private:
 
     std::vector<uint8_t> ram_, rom_, vram_;
     Via6522 via_;
-    PseudoVia pvia_;
+    // vasp.cpp:90 wires APPLE_PSEUDOVIA — the base device, not the V8 one,
+    // even though VASP takes the rest of its peripherals from the V8 side.
+    // Its AscV8 IRQ line is level-sticky, so the level flavour on top of it
+    // would make an enabled ASC interrupt unacknowledgeable.
+    PseudoVia pvia_{PseudoVia::Flavour::Base};
     Egret egret_;
     CudaLle egretLle_;               // Egret firmware LLE (341S0851)
     bool egretLleOn_ = false;

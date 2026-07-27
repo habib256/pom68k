@@ -80,7 +80,14 @@ execute, converged by differential fuzzing against the **Musashi oracle**
 (`tests/data/sst68030/mmu_off.json`). Address translation on the bus is a
 LATER slice; the registers round-trip (TC keeps E=1 values). Oracle-vs-
 manual conflicts are logged in `oracle/fuzz/disputes/NOTES.md` (D1-D7)
-for re-arbitration when oracle B (WinUAE) lands. Changes:
+for re-arbitration when oracle B (WinUAE) lands.
+
+> **Superseded in part** — every "no ATC modelled" below is true of this
+> slice only. O4 slice 3 (§ *68030 MMU bus layer*) makes the 22-entry ATC
+> real, and PFLUSH/PLOAD/PTEST level 0 act on it. Read this file
+> chronologically; § *Model support in this copy* is the current state.
+
+Changes:
 
 - `Moira/MoiraTypes.h Registers`: added 68030 MMU registers `crp`, `srp`
   (u64), `tc`, `tt0`, `tt1` (u32), `mmusr` (u16) — MC68030UM § 9.7.2;
@@ -814,10 +821,17 @@ fresh-seed re-verify). Every change is runtime-gated on
   (`sst68040`). Bare NONE + PACK 4 still ends in SysError 90 (dsNoFPU)
   without FPSP; Quadra NOFPU uses soft 68882 instead.
 - **Q8 — 040 I/D ATC:** 32-entry separate I/D ATC overlay on
-  `mmu040Translate` (flush PFLUSH*/TC/URP/SRP; `POM68K_MMU040_WALK=1`
-  disables). U/M/WP semantics preserved vs walk-per-access.
-  `POM68K_Q605_CACHE_BOOST` stays default 1 (boost 2+ fails SCSI
-  bring-up); machine-cycle stall / VIA sync / SWIM C15M are boost-invariant.
+  `mmu040Translate` (`Moira.h` `MMU040_ATC_ENTRIES`, pseudo-LRU, flush
+  PFLUSH*/TC/URP/SRP; `POM68K_MMU040_WALK=1` disables and restores
+  walk-per-access for oracle comparison). U/M/WP semantics preserved vs
+  walk-per-access. Page size follows TC.P (4K/8K).
+  `POM68K_Q605_CACHE_BOOST` defaulted to 1 here ("boost 2+ fails SCSI
+  bring-up"); **superseded 2026-07-25** — that pin was a stale symptom.
+  Re-measured, the whole 040 family is green at boost 4 and `Cpu040`/
+  `CentrisCpu` now default to `cacheBoost_ = 4` (CHANGELOG "The Quadra's
+  boost-1 pin was stale"). The two unit tests that were measuring wait
+  states on the boosted clock read `machineClock()` now, so machine-cycle
+  stall / VIA sync / SWIM C15M are boost-invariant.
 
 Oracle-glue fixes found by this loop (see `oracle/uae/VENDOR.md`):
 stale `regs.t1/t0` at `oracle_set_state` armed WinUAE's one-shot
@@ -840,9 +854,14 @@ are unregressed. New section at the end of `MoiraExecMMU_cpp.h`:
   supervisor-fc physical descriptor fetches, U maintenance on the upper
   levels, one indirection, U+M on the page — U only when the write will
   fault — WP accumulated over all levels). No architectural ATC is
-  modelled: the oracle flushes its ATC on every state load, so
-  walk-per-access is observably identical (idempotent U/M rewrites);
-  PFLUSH stays a no-op, PTEST reports the walk (or TTR hit) in MMUSR040.
+  modelled *in this slice*: the oracle flushes its ATC on every state
+  load, so walk-per-access is observably identical (idempotent U/M
+  rewrites); PFLUSH stays a no-op, PTEST reports the walk (or TTR hit)
+  in MMUSR040. **Superseded by Q8** (§ *68040 integer core*, bullet "Q8 —
+  040 I/D ATC"): the 32-entry I/D ATC is real, PFLUSH* flushes it, and
+  `POM68K_MMU040_WALK=1` restores this walk-per-access behaviour for
+  oracle comparison. The walk itself is unchanged — including its
+  4K/8K TC.P branch.
 - **Access model** (`mmu040Read/Write`): page-boundary splitting exactly
   like the WinUAE accessors (word straddling = byte+byte; long = word
   halves when even, four bytes when odd; each part translated with the
@@ -1028,8 +1047,31 @@ actually replayed a block.
   undefined-CCR rules), **no-FPU F-line ✓** (Q4, format $4) and the
   **040 MMU bus translation ✓** (Q3, section above: TTR + URP/SRP walk
   with U/M, page-split accesses, format $7 faults with the last-write
-  dichotomy, MOVEM restart, PTEST). Remaining: a perf ATC overlay and
-  the 8K-page (TC.P) cell, untested by the fuzzer (Mac OS uses 4K).
+  dichotomy, MOVEM restart, PTEST), with the **32-entry I/D ATC overlay
+  ✓** (Q8, section above).
+
+  Genuinely remaining on the 040, in the order that would bite:
+
+  1. **Native 040 FPU opmodes $40-$7F** — the S/D-rounded variants
+     (FSMOVE/FDMOVE/FSADD/…) are not decoded: `fpuArithmetic`'s dispatch
+     covers $00-$3F and `execFGeneric` takes Line-F above that
+     (`MoiraExecFPU_cpp.h`, "opmodes $40-$7F do not exist" — correct for
+     a 6888x, wrong for a real 040). This is THE wall for a full 68040;
+     POM68K sidesteps it with the 68LC040 model or a soft 68882.
+  2. **FRESTORE 040 BUSY frame ($41, size $60)** — skipped with WinUAE's
+     final address; the instruction resume when `CU_SAVEPC == $FE` is not
+     modelled (TODO in `execFRestore`; no planted fuzz frame reaches it).
+  3. **Architectural caches** — CINV/CPUSH execute as supervisor-checked
+     no-ops, which is *consistent*, not a shortcut: no copyback/snooping
+     model exists for them to act on. Only a real cache model would make
+     them observable. (The `POM68K_Q605_CACHE_BOOST` overlay is a
+     throughput knob, not a cache.)
+
+  Implemented but **not exercised by the fuzzer**: the 8K-page (TC.P)
+  cell — `mmu040PageMaskI()` and the walk's `if (reg.tc040 & 0x4000)`
+  branch handle it, and the ATC follows suit; no corpus generates
+  TC.P = 1 because Mac OS uses 4K throughout. A coverage gap, not a
+  missing cell — extending the generator is the work, not writing code.
 
 Do **not** re-sync from upstream blindly: diff against this file and
 `NEOST_VENDOR.md` first.

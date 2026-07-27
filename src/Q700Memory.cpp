@@ -12,12 +12,15 @@
 #include <iterator>
 
 Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz)
-    : asc_(cpuHz), totalRam_(totalRam), cpuHz_(cpuHz), dafbCell_(cpuHz) {
+    // Discrete DAFB (macquadra700.cpp:729 instantiates plain dafb_device):
+    // the DP8531 clock chip, not the MEMCjr's Gazelle (dafb.cpp:884).
+    : asc_(cpuHz), totalRam_(totalRam), cpuHz_(cpuHz),
+      dafbCell_(cpuHz, Dafb::Clockgen::Dp8531) {
     while (totalRam_ & (totalRam_ - 1)) totalRam_ &= totalRam_ - 1;   // pow2
     ram_.assign(totalRam_, 0);
     rom_.assign(kRomSize, 0xFF);
     vram_.assign(kVramSize, 0);
-    adbVia_.attach(via1_, adb_);
+    adbVia_.attach(via1_, adb_, cpuHz_);
     dafbCell_.onIrq = [this](bool s) { vblIrq(s); };
     asc_.onIrq = [this](bool s) { ascIrq(s); };
     drive0_.setSuperDrive(true);
@@ -176,6 +179,14 @@ uint8_t Q700Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
     int reg = (addr >> 9) & 0x0F;
     if (write) {
         via1_.write(reg, v);
+        // PA5 = floppy head-select (macquadra700.cpp:614-625
+        // spike_state::via_out_a → m_cur_floppy->ss_w). SWIM1's IWM
+        // personality also multiplexes half its sense registers on this line
+        // (Iwm.cpp:23 senseAddr), so leaving it undriven pinned the Quadra 700
+        // to side 0. q700_boot_etalon boots from SCSI and never saw it.
+        if (reg == Via6522::ORA || reg == Via6522::ORA_NH
+            || reg == Via6522::DDRA)
+            swim_.setSel((via1_.portA() & 0x20) != 0);
         if (reg == Via6522::ORB || reg == Via6522::DDRB || reg == Via6522::SR
             || reg == Via6522::ACR) {
             adbVia_.sync();

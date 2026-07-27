@@ -13,12 +13,13 @@
 
 CentrisMemory::CentrisMemory(uint32_t totalRam, int64_t cpuHz, uint8_t modelPins)
     : totalRam_(totalRam), cpuHz_(cpuHz), modelPins_(modelPins),
-      dafbCell_(cpuHz) {
+      // djMEMC = dafb_memc_device: DP8534 clock chip (djmemc.cpp, dafb.cpp:1197)
+      dafbCell_(cpuHz, Dafb::Clockgen::Dp8534) {
     while (totalRam_ & (totalRam_ - 1)) totalRam_ &= totalRam_ - 1;   // pow2
     ram_.assign(totalRam_, 0);
     rom_.assign(kRomSize, 0xFF);
     vram_.assign(kVramSize, 0);
-    adbVia_.attach(via1_, adb_);
+    adbVia_.attach(via1_, adb_, cpuHz_);
     dafbCell_.onIrq = [this](bool s) { vblIrq(s); };
     asc_.onIrq = [this](bool s) { ascIrq(s); };
     drive0_.setSuperDrive(true);
@@ -158,8 +159,11 @@ void CentrisMemory::viaSync() {
     if (!cpu_) return;
     const int boost = std::max(1, cpu_->cacheBoost());
     int64_t c = int64_t(cpu_->getClock()) / boost;
-    int64_t viaCycle = c / 32;
-    int64_t target = (viaCycle * 2 + 3) * 16 + 1;
+    const int D = viaDiv();
+    int64_t viaCycle = c / D;
+    // Same phase grid as the 32:1 original — (viaCycle+1)*D + D/2 + 1 is
+    // exactly (viaCycle*2+3)*16+1 when D == 32.
+    int64_t target = (viaCycle + 1) * D + D / 2 + 1;
     if (target > c) cpu_->stall(int(target - c));
 }
 
@@ -555,9 +559,10 @@ uint8_t CentrisMemory::peek8(uint32_t addr) const {
 }
 
 void CentrisMemory::tick(int cpuCycles) {
+    const int viaD = viaDiv();          // 783.36 kHz fixed — see viaDiv()
     viaPhase_ += cpuCycles;
-    int viaCycles = viaPhase_ / 32;
-    viaPhase_ %= 32;
+    int viaCycles = viaPhase_ / viaD;
+    viaPhase_ %= viaD;
     if (viaCycles && via1_.tick(viaCycles)) updateIrq();
 
     adbVia_.tick(cpuCycles);

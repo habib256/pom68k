@@ -60,6 +60,9 @@ public:
     Status status() const;
 
 private:
+    // Idle leases are reclaimed in tick(); generous enough that a quiet but
+    // live MacTCP node keeps its address (traffic refreshes lastSeen).
+    static constexpr int64_t kLeaseLifetimeSec = 3600;
     struct Lease {
         AtalkStack::Addr at;             // AppleTalk return address
         int64_t lastSeen = 0;

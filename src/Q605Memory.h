@@ -58,6 +58,7 @@ public:
     static constexpr uint32_t kRomSize = 0x100000;   // 1 MB
     static constexpr uint32_t kVramSize = 0x100000;  // 1 MB window
     static constexpr int64_t  kCpuHz = 25000000;     // 25 MHz 68LC040
+    int64_t cpuHz() const { return kCpuHz; }         // 60 Hz quantum for the shell
 
     explicit Q605Memory(uint32_t totalRam = 36u << 20);
 
@@ -127,6 +128,14 @@ public:
     // fallback stay Egret's; under the firmware LLE the live copy is the
     // MCU's internal RAM, so load re-mirrors into the staging and save
     // harvests the live bytes back first.
+    // Host wall clock. MUST branch on the LLE flag like loadPram/keyEvent do:
+    // seeding only the HLE object left the firmware MCU's own seconds counter
+    // untouched, so every default (firmware-LLE) boot started at the 1904
+    // epoch and wrote that back to the battery file.
+    void setRtcSeconds(uint32_t s) {
+        cuda_.setSeconds(s);
+        cudaLle_.setSeconds(s);
+    }
     bool loadPram(const std::string& path) {
         bool ok = cuda_.loadPram(path);
         if (cudaLleOn_)
@@ -267,7 +276,8 @@ private:
     int scsiDmaReadCycles_ = 3, scsiDmaWriteCycles_ = 3;
 
     // DAFB cell ($F9800000 window) + MEMCjr 6+6-bit holding wrappers.
-    Dafb dafbCell_{kCpuHz};
+    // MEMCjr = dafb_memcjr_device: the "Gazelle" clock chip (dafb.cpp:1322)
+    Dafb dafbCell_{kCpuHz, Dafb::Clockgen::Gazelle};
     uint32_t dafbRegRead(uint32_t off);          // holding split (read)
     void     dafbRegWrite(uint32_t off, uint32_t v);   // holding merge (write)
 

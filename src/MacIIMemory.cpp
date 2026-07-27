@@ -17,7 +17,7 @@ MacIIMemory::~MacIIMemory() { delete toby_; }
 
 MacIIMemory::MacIIMemory(uint32_t ramSize, Model model)
     : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize), model_(model) {
-    adbVia_.attach(via1_, adb_);
+    adbVia_.attach(via1_, adb_, kCpuHz);
     // MAME mac_asc_irq: VIA2 CB1 = !asc_irq (active-low into the 6522).
     asc_.onIrq = [this](bool s) {
         via2_.setCb1(!s);
@@ -60,8 +60,11 @@ bool MacIIMemory::installTobyVideo(const std::string& declRomPath) {
     }
     if (decl.empty()) {
         std::fprintf(stderr, "MacIIMemory: no Toby decl ROM — using synthetic\n");
-        auto syn = DeclRom::buildSynthetic(nubus_.slotBase(9));
-        decl = DeclRom::installRaw(syn.data(), syn.size());
+        // buildSynthetic() already emits a guest-ordered image with byteLanes
+        // $0F; installRaw() expects the REVERSED MAME file dump, so it read the
+        // lane byte off the wrong end ($00) and returned {} — the fallback
+        // installed no declaration ROM at all and the Slot Manager saw no card.
+        decl = DeclRom::buildSynthetic(nubus_.slotBase(9));
     }
     nubus_.installCard(9, toby_, decl);
     return true;
@@ -221,6 +224,11 @@ bool MacIIMemory::isIo(uint32_t addr, uint32_t& off) const {
 
 uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_t v,
                                 bool isVia1) {
+    // read8Decoded/write8Decoded flush here, but read16/write16 route straight
+    // in — so a move.w/move.l from VIA space sampled the timers and IFR up to
+    // kPeriphBatch cycles stale. V8Memory::viaAccess8 opens with the same line
+    // for exactly this reason; byte and word accesses must see one timeline.
+    if (cpu_) cpu_->flushTicks();
     viaSync();
     // LLE ADB: run the PIC1654S up to this exact cycle before the ROM touches
     // VIA1 (SR/ACR/ORB carry the ADB byte handshake). This gives the PIC/ROM

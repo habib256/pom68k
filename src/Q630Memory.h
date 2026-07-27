@@ -63,6 +63,11 @@ public:
     static constexpr uint32_t kRomSize = 0x100000;   // 1 MB
     static constexpr uint32_t kVramSize = 0x100000;  // 1 MB window
     static constexpr int64_t  kCpuHz = 33000000;     // 33 MHz 68040
+    int64_t cpuHz() const { return kCpuHz; }         // 60 Hz quantum for the shell
+    // VIA1 φ2 is a fixed 783.36 kHz (iosb.cpp:74, R65NC22 at C7M/10), so the
+    // CPU:VIA divider is a property of the machine clock — 42 here, 32 on the
+    // 25 MHz Q605 this file was derived from. Rounded, not truncated.
+    static constexpr int       kViaDiv = int((kCpuHz + 391680) / 783360);
 
     explicit Q630Memory(uint32_t totalRam = 36u << 20);
 
@@ -132,6 +137,14 @@ public:
     // fallback stay Egret's; under the firmware LLE the live copy is the
     // MCU's internal RAM, so load re-mirrors into the staging and save
     // harvests the live bytes back first.
+    // Host wall clock. MUST branch on the LLE flag like loadPram/keyEvent do:
+    // seeding only the HLE object left the firmware MCU's own seconds counter
+    // untouched, so every default (firmware-LLE) boot started at the 1904
+    // epoch and wrote that back to the battery file.
+    void setRtcSeconds(uint32_t s) {
+        cuda_.setSeconds(s);
+        cudaLle_.setSeconds(s);
+    }
     bool loadPram(const std::string& path) {
         bool ok = cuda_.loadPram(path);
         if (cudaLleOn_)

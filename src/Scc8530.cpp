@@ -185,11 +185,27 @@ void Scc8530::rxPushByte(Chan& c) {
         }
         return;
     }
-    if (c.fifo.size() >= 3) {                    // overrun: drop, flag RR1.5
+    if (c.fifo.size() >= 3) {
         if (!c.fifo.empty()) c.fifo.back().rr1 |= 0x20;
         raiseRxInt(c, true);
+        // Not advancing rxPos re-presents the byte next byte-time: that is the
+        // virtual wire's back-pressure, and the LLAP gate depends on it. But
+        // UNBOUNDED it is a wedge — a guest that stops servicing (interrupts
+        // masked, LAP torn down) held the frame forever, so rxCur never
+        // emptied, rxIdle never rose, the IDG test could never pass and every
+        // later frame stayed queued for good with carrier sense stuck on.
+        // Real hardware simply loses the byte; hold briefly, then do the same.
+        if (++c.rxOverrunHold <= kMaxOverrunHold) return;
+        c.rxOverrunHold = 0;
+        c.rxPos++;                               // byte lost, like the real chip
+        if (last) {
+            c.rxCur.clear();
+            c.rxPos = 0;
+            if (!c.hunt) c.hunt = true;          // line idles again
+        }
         return;
     }
+    c.rxOverrunHold = 0;
     // End of Frame (RR1 bit 7) rides the LAST byte (2nd FCS byte), and so
     // does the CRC verdict: the receiver re-computes the FCS over the
     // frame body and compares it to the received tail — RR1 bit 6 set =
@@ -306,7 +322,11 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
     // do the same (tail drop, counted): the peer falls back to its normal
     // retransmit, which is a stall, not a runaway. Express frames are never
     // dropped — the CTS is the handshake itself.
-    if (losslessRx_ && !express && c.rxQueue.size() >= kLosslessQueueMax) {
+    // NOT gated on losslessRx_: that flag is only set for the in-process hub
+    // WITHOUT a cable, so with POM68K_LTOUDP=1 — the one path fed by an
+    // unfiltered multicast socket — the cap was dead code and the queue could
+    // grow without limit until OOM. The reasoning above applies to every mode.
+    if (!express && c.rxQueue.size() >= kLosslessQueueMax) {
         c.rxDropped++;
         return;
     }
@@ -324,6 +344,12 @@ uint8_t Scc8530::readCtl(int channel) {
 }
 
 uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
+    // NMOS 8530 read-register aliases (MAME z80scc.cpp:1461-1467). Without the
+    // remap, RR11 — the image of RR15 — returned 0, i.e. "every ext/status
+    // source disabled": exactly the failure already fixed for RR15 itself.
+    if (reg > 3 && reg < 8) reg &= 3;
+    else if (reg == 9)  reg = 13;
+    else if (reg == 11) reg = 15;
     switch (reg) {
         case 0: {
             rr0Reads++;
@@ -386,6 +412,9 @@ uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
                                                 // ext/status look disabled and
                                                 // the LAP state machine never
                                                 // advanced past carrier sense.
+        case 8:  return readData(channel);       // RR8 = the Rx data port
+        case 12: return c.wr[12];                // baud generator, low
+        case 13: return c.wr[13];                // baud generator, high
         default: return 0;
     }
 }
@@ -574,6 +603,17 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
             c2.hunt = false;
             c2.txUnderrun = true;
             c2.relatch = 0;
+            // The write registers reset too (Zilog / MAME z80scc.cpp:984-1013).
+            // Leaving WR1/WR5/WR15 armed meant the relatch path could raise an
+            // ext/status interrupt on a channel whose driver state was torn
+            // down, and a data-port write before Tx was re-enabled went onto
+            // the wire instead of being held.
+            c2.wr[1]  &= 0x24;
+            c2.wr[3]  &= 0x01;
+            c2.wr[4]   = 0x04;
+            c2.wr[5]   = 0x00;
+            c2.wr[14]  = uint8_t((c2.wr[14] & 0xC3) | 0x20);
+            c2.wr[15]  = 0xF8;
         };
         if ((v & 0xC0) == 0x40 || (v & 0xC0) == 0xC0) resetChan(ch_[0]);
         if ((v & 0xC0) == 0x80 || (v & 0xC0) == 0xC0) resetChan(ch_[1]);
