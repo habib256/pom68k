@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## 2026-07-29 — Input-delivery gates for the 030 families; the IIsi mouse bug they caught; loud HLE fallbacks
+
+**Three beyond-boot input gates** (`family_input_etalon`, one binary —
+`lc3_input_etalon`, `lc520_input_etalon`, `iivx_input_etalon`) prove the
+firmware-LLE ADB path actually DELIVERS on the Phase C families, not
+just that it boots: System 7.5 up blind, mouse deltas injected into the
+bit-serial `AdbLine`, the low-memory Mouse globals must move and a
+KeyMap bit must land on a keypress — wire → MCU firmware autopoll →
+VIA1 SR → ADB Manager → drivers, end to end. Green on the LC III
+(Egret 341s0851), LC 520 (Cuda 341s0060 + the new DFAC2 slave) and
+IIvx (VASP @ 31.3 MHz).
+
+**The fourth machine failed, and the failure is a real find: the IIsi
+System never binds its mouse driver.** Keyboard delivered; mouse frozen.
+The wire is exonerated in full — the Egret 344S0100 enumerates both
+devices, autopolls address 3 and delivers 4000/4000 correct `82 83`
+reports, which the System ignores; RawMouse/Mouse/MBState stay virgin
+zeros on BOTH the firmware LLE and the HLE fallback, on the same image
+that works on the LC III. The discriminating trace delta: after a
+byte-identical ADBReInit enumeration, the LC III System issues ~3 extra
+Talk/Listen R3 pairs to the mouse (driver init, 200-cpi handler switch)
+— the IIsi System never does, so its device table plainly ends with no
+mouse entry. Tracked in TODO ("IIsi mouse"); the `iisi` mode ships in
+the gate binary, unregistered until the hunt lands. This is exactly what
+the test-depth pass exists for: a machine can pass its boot signature
+for four days while its mouse has never worked once.
+
+**Every HLE ADB fallback is now LOUD** (the §1.9/§2 retirement-policy
+pass, `docs/LLE_VS_HLE.md`): all eight machine classes and
+`AdbVia::attach` print a NON-CONFORMANT-substitute notice when the MCU
+dump is missing or `POM68K_*_LLE=0`/`POM68K_ADB_LLE=0` forces the HLE.
+The fallbacks are kept — dumps are user-provided and non-distributable,
+and the V8-class machines cannot boot without an Egret/Cuda — but the
+"visible non-conformant flag" principle now holds everywhere; §1.9's
+ORB→SHIFT re-arm lives only inside that announced fallback, and actually
+deleting `Egret.*`/`AdbBus`/the byte-model is recorded as a deliberate
+product decision, not a cleanup. Diag knobs added en route:
+`POM68K_INPUT_ANYPATH=1` (input gates on the HLE path), SRQ-presented +
+mouse-Listen-R3 traces under `POM68K_ADB_LLE_TRACE`.
+
 ## 2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug; both factory Cudas land
 
 **The factory Color Classic Cuda 341S0417 (2.35) is the CC's default

@@ -133,6 +133,9 @@ void AdbLine::receiveEdge(bool level, int64_t dtime) {
             srqFlag_ = false;
             adbTalk();
             if (srqFlag_) {
+                if (std::getenv("POM68K_ADB_LLE_TRACE"))
+                    std::fprintf(stderr, "adbline: SRQ presented (cmd=%02X)\n",
+                                 command_);
                 writeData(false);                 // hold line low for SRQ
                 linestate_ = LST_SRQNODATA;
                 armTimer(kSrq);
@@ -323,6 +326,10 @@ void AdbLine::adbTalk() {
     direction_ = 0;
     if (listenReg_ == 3) {
         if (listenAddr_ == mouseAddr_) {
+            if (std::getenv("POM68K_ADB_LLE_TRACE"))
+                std::fprintf(stderr, "adbline: mouse Listen R3 %02X %02X "
+                             "(handler %02X)\n", command_, buffer_[1],
+                             mouseHandler_);
             if (buffer_[1] == 0x00) { mouseHandler_ = uint8_t(command_ & 0x7F); mouseAddr_ = command_ & 0x0F; }
             else if (buffer_[1] == 0xFE) { mouseAddr_ = command_ & 0x0F;
                                            mouseHandler_ = uint8_t((mouseHandler_ & 0xF0) | mouseAddr_); }

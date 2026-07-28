@@ -35,9 +35,13 @@ VaspMemory::VaspMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
                                         std::istreambuf_iterator<char>());
                 if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
             }
-            if (!egretLleOn_ && e)
-                std::fprintf(stderr, "Vasp: POM68K_EGRET_LLE set but no "
-                             "roms/egret/341s085x.bin — Egret HLE fallback\n");
+            if (!egretLleOn_)
+                std::fprintf(stderr, "Vasp: no roms/egret/341s085x.bin — "
+                             "running the NON-CONFORMANT HLE ADB substitute "
+                             "(docs/LLE_VS_HLE.md §2)\n");
+        } else {
+            std::fprintf(stderr, "Vasp: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
+                         "HLE ADB substitute forced\n");
         }
     }
     reset();

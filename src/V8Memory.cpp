@@ -102,10 +102,18 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
                                         std::istreambuf_iterator<char>());
                 if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
             }
-            if (!egretLleOn_ && e)
-                std::fprintf(stderr, "V8: %s set but no MCU firmware dump — "
-                             "HLE fallback\n",
-                             cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE");
+            // The fallback stays (MCU dumps are user-provided and not
+            // distributable) but it is never silent: the HLE byte-model is
+            // a documented NON-CONFORMANT substitute (LLE_VS_HLE §2).
+            if (!egretLleOn_)
+                std::fprintf(stderr, "V8: no MCU firmware dump under roms/%s/ "
+                             "— running the NON-CONFORMANT HLE ADB substitute "
+                             "(docs/LLE_VS_HLE.md §2)\n",
+                             cudaMcu ? "cuda" : "egret");
+        } else {
+            std::fprintf(stderr, "V8: %s=0 — NON-CONFORMANT HLE ADB "
+                         "substitute forced\n",
+                         cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE");
         }
     }
     reset();

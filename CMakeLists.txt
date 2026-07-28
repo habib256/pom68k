@@ -439,6 +439,21 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME q605_boot_etalon COMMAND q605_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # Test-depth gates: the firmware-LLE ADB wire delivers mouse+keyboard
+    # on the Phase C 030 families (one binary, one machine per test —
+    # Sonora Egret, Sonora AIO Cuda, VASP). Soft-skip without assets.
+    # The `iisi` mode exists in the binary but is NOT registered: the IIsi
+    # System never binds its mouse driver (keyboard fine, wire proven
+    # perfect — 4000 delivered reports ignored, RawMouse/MBState virgin) —
+    # an open bug found BY this gate, tracked in TODO "IIsi mouse".
+    # Register it the day the hunt lands.
+    add_executable(family_input_etalon tests/family_input_etalon.cpp)
+    target_link_libraries(family_input_etalon PRIVATE pom68k_core)
+    foreach(fam lc3 lc520 iivx)
+        add_test(NAME ${fam}_input_etalon COMMAND family_input_etalon ${fam}
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    endforeach()
+
     # LLE step 7 gate (LLE_VS_HLE §1.10): Open Transport binds .MPP on a
     # virgin (never-driven) LocalTalk line — the guest's own lapENQ probes
     # on the wire are the proof. Same OS 8.1 assets as the boot etalon.

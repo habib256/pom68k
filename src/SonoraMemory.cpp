@@ -63,9 +63,14 @@ SonoraMemory::SonoraMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId,
                                         std::istreambuf_iterator<char>());
                 if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
             }
-            if (!egretLleOn_ && e)
-                std::fprintf(stderr, "Sonora: POM68K_EGRET_LLE set but no "
-                             "MCU firmware in roms/ — HLE fallback\n");
+            if (!egretLleOn_)
+                std::fprintf(stderr, "Sonora: no MCU firmware dump under "
+                             "roms/%s/ — running the NON-CONFORMANT HLE ADB "
+                             "substitute (docs/LLE_VS_HLE.md §2)\n",
+                             cudaAdb ? "cuda" : "egret");
+        } else {
+            std::fprintf(stderr, "Sonora: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
+                         "HLE ADB substitute forced\n");
         }
     }
     reset();

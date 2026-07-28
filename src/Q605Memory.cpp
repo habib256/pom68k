@@ -76,9 +76,13 @@ Q605Memory::Q605Memory(uint32_t totalRam)
             if (cudaLleOn_)
                 for (int i = 0; i < 256; i++)
                     cudaLle_.setPram(i, cuda_.pram(i));
-            else if (e)
-                std::fprintf(stderr, "Q605: POM68K_CUDA_LLE set but no "
-                             "roms/cuda/341s0788.bin — Egret HLE fallback\n");
+            else
+                std::fprintf(stderr, "Q605: no roms/cuda/341s0788.bin — "
+                             "running the NON-CONFORMANT HLE ADB substitute "
+                             "(docs/LLE_VS_HLE.md §2)\n");
+        } else {
+            std::fprintf(stderr, "Q605: POM68K_CUDA_LLE=0 — NON-CONFORMANT "
+                         "HLE ADB substitute forced\n");
         }
     }
 }

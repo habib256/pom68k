@@ -625,7 +625,7 @@ the four-point extension it needs inside the vendored core is documented in
   (`Moira::pomJitMmuGen`, bumped by every ATC flush and TTR write). Blocks
   additionally stop *before* any opcode that could touch the MMU, a cache or
   the supervisor bit (`jit::classify`).
-- **Working loop.** A bare `ctest` runs 105 gates in ~2h30 and a bare `make`
+- **Working loop.** A bare `ctest` runs 117 gates in ~2h30 and a bare `make`
   relinks ~90 binaries under tree-wide LTO — useless to iterate against, and
   `ctest -j` is out because the etalons are contention-sensitive. So gates
   carry **labels derived from their names** (`CMakeLists.txt`, end of the test

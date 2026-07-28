@@ -42,7 +42,10 @@ void AdbVia::attach(Via6522& via, AdbBus& adb, int64_t cpuHz) {
     // LLE by DEFAULT when the firmware dump is present (2026-07-22 — the
     // cycle-exact co-stepping + VIA ext-shift fixes made it the reference;
     // the mouse only moves on this path). POM68K_ADB_LLE=0 forces the old
-    // HLE byte-model; missing dump falls back to HLE silently.
+    // HLE byte-model. The fallback stays (dumps are user-provided, not
+    // distributable) but never silently: the byte-model is a documented
+    // NON-CONFORMANT substitute (LLE_VS_HLE §2) and §1.9's ORB→SHIFT
+    // re-arm lives only on this path.
     const char* env = std::getenv("POM68K_ADB_LLE");
     if (!env || env[0] != '0') {
         for (const char* p : { "roms/adbmodem/342s0440-b.bin",
@@ -54,6 +57,13 @@ void AdbVia::attach(Via6522& via, AdbBus& adb, int64_t cpuHz) {
             if (pic_.loadRom(rom.data(), rom.size())) { lle_ = true; break; }
         }
         if (lle_) { line_.reset(); picAcc_ = 0; setupPicPorts(); }
+        else
+            std::fprintf(stderr, "AdbVia: no roms/adbmodem/342s0440-b.bin — "
+                         "running the NON-CONFORMANT HLE ADB byte-model "
+                         "(docs/LLE_VS_HLE.md §2)\n");
+    } else {
+        std::fprintf(stderr, "AdbVia: POM68K_ADB_LLE=0 — NON-CONFORMANT HLE "
+                     "ADB byte-model forced\n");
     }
 }
 

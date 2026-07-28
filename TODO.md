@@ -295,8 +295,12 @@ Next milestones:
   2026-07-22 "Mac II LLE ADB default"). The mouse moves end-to-end over the
   real firmware (`macii_mouse_trace` PASS); `POM68K_ADB_LLE=0` keeps the
   HLE fallback. Follow-ups that remain:
-  - [ ] Retire the HLE `AdbVia` byte-model once a few more machines run
-    LLE ADB (it is still the no-dump fallback).
+  - [x] ~~Retire the HLE `AdbVia` byte-model~~ **Policy settled
+    2026-07-29** (`docs/LLE_VS_HLE.md` §2 "HLE-fallback retirement
+    policy"): kept as the no-dump fallback (dumps are non-distributable)
+    but LOUD — every HLE ADB entry prints a NON-CONFORMANT notice.
+    Actual deletion = a deliberate "POM68K requires MCU dumps" product
+    decision, not a cleanup.
   - [ ] `AdbLine` device model: second mouse button / extended-keyboard
     handler IDs, and exercise Listen R2 (LEDs) paths.
 - [ ] **Quadra 605 / LC 475** shortcuts where fidelity matters:
@@ -371,9 +375,11 @@ Next milestones:
      already un-reproducible on the 2026-07-28 tree (likely collateral
      of the 2026-07-25 bus-time pass); the fix makes the bind
      guaranteed rather than timing-dependent.
-     **Remaining**: retire the `Egret.*`/`AdbBus` HLE (and
-     the Mac II §1.9 leftover) once the no-dump fallbacks feel
-     redundant.
+     **Remaining**: ~~retire the `Egret.*`/`AdbBus` HLE (and the Mac II
+     §1.9 leftover)~~ — policy settled 2026-07-29 (`LLE_VS_HLE.md` §2):
+     fallbacks kept but LOUD (stderr NON-CONFORMANT notice at every HLE
+     ADB entry); §1.9 lives only inside them; deletion is a deliberate
+     product decision.
 - [ ] **SCC LLE backlog — 2026-07-22 MAME `z80scc.cpp` audit** (source
   in `refs/mame/src/devices/machine/`; summary in
   `docs/LLE_VS_HLE.md` §3). Caveat everywhere: MAME's own SDLC side is
@@ -664,11 +670,31 @@ Highest-ROI closers, in order:
   it is what caught the 37 % MCU overclock). **Still open: a second machine**
   — the Quadra 605 / Mac OS 8.1 soak, which also exercises the 53C96 WRITE
   path, is the next one (blocked on nothing but the work).
-- [ ] **Input-delivery gates for the boot-only machines** (reuse the
-  `macii_mouse` / `q605_cudalle_mouse` harness): at least prove the ADB
-  firmware-LLE path actually delivers mouse+key on the Sonora/VASP families,
-  not just that it boots. Ties into retiring the HLE ADB fallbacks
-  (`docs/LLE_VS_HLE.md` §2).
+- [x] ~~**Input-delivery gates for the boot-only machines**~~ **DONE
+  2026-07-29 for Sonora/VASP** (`family_input_etalon` — one binary, gates
+  `lc3_input_etalon` / `lc520_input_etalon` / `iivx_input_etalon`): boot
+  Sys 7.5 blind, inject deltas on the bit-serial AdbLine, assert the
+  low-memory Mouse ($0830) moves and a KeyMap ($0174) bit lands on a
+  keypress — the whole wire→MCU-autopoll→VIA-SR→ADB-Manager→driver chain.
+  Diag knobs: `POM68K_INPUT_ANYPATH=1` runs it on the HLE path; RawMouse
+  + MBState printed to split delivery from cursor-task failures.
+  **And it caught a real bug on its fourth machine — see "IIsi mouse"
+  below**; the `iisi` mode stays in the binary, unregistered until fixed.
+- [ ] **IIsi mouse: the System never binds its mouse driver** (found
+  2026-07-29 by `family_input_etalon iisi`; keyboard works). The wire is
+  PROVEN perfect: the Egret 344S0100 enumerates both devices, autopolls
+  addr 3 and delivers 4000/4000 correct `82 83` reports — the System
+  ignores every one; RawMouse/Mouse/MBState stay virgin zeros ($0172
+  reads $00, never initialized) on BOTH the firmware LLE and the HLE
+  fallback, same GISTPERSO image that works on the LC III. The
+  discriminating delta vs the green LC III trace: after the (identical)
+  ADBReInit enumeration, the LC III System issues ~3 extra Talk/Listen R3
+  pairs to addr 3 (the mouse-driver init / 200-cpi handler switch); the
+  IIsi System never does. Suspect: one enumeration REPLY mis-presented on
+  the IIsi's VIA path (RbvCpu host-paced transport + the 344S0100's older
+  pacing), so the ROM's table ends without a mouse entry. Next: trace the
+  guest's pass-through reply reads around the addr-3 Talk R3 during
+  ADBReInit, IIsi vs LC III.
 - [ ] **Widen per-machine System coverage.** Each profile's etalon pins one
   reference image (`GISTPERSO`, Infinite Mac 8.1…). The `finder_boot_matrix`
   helps, but functional coverage across images is thin — the exact
