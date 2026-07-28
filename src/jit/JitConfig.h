@@ -70,15 +70,44 @@ inline bool fetchWindowEnabled() { return detail::envBool("POM68K_JIT_FETCH", tr
 // saves. The machinery stays because it is exactly what a code-generating
 // backend needs (block boundaries, an IR, caps()-driven fallback); turn it
 // on with POM68K_JIT_BLOCKS=1, which is what the block-path gate does.
-inline bool blockCacheEnabled() { return detail::envBool("POM68K_JIT_BLOCKS", false); }
+// `dflt` is the ACTIVE backend's answer, not a constant: the threaded
+// backend measured slower with blocks than with the fetch window alone
+// (below), while a code generator has nothing at all to run without them.
+inline bool blockCacheEnabled(bool dflt) {
+    return detail::envBool("POM68K_JIT_BLOCKS", dflt);
+}
 
 // Straight-line instruction ceiling per block. A block also ends at the
 // first control-flow, MMU-touching or capability-missing instruction.
 inline int maxBlockInstrs() { return detail::envInt("POM68K_JIT_BLOCK_MAX", 64, 1, 256); }
 
+// Visits before a recorded block is handed to the code generator. Compiling
+// is not free — a boot executes an enormous amount of code exactly once, and
+// translating all of it measured SLOWER than simply running it through the
+// fetch window. Until a block is hot it runs on the window path, so the JIT
+// is never worse than J1a while it decides.
+// Measured on a full Mac OS 8.1 boot: at 8 the engine compiled 1.8 MILLION
+// blocks, because a boot's hot set is far larger than any sane cache and
+// every overflow threw the lot away and started again. The window path is
+// only ~1.7x slower than generated code, so a block has to be worth rather
+// more than one visit before translating it pays.
+inline int hotThreshold() { return detail::envInt("POM68K_JIT_HOT", 512, 1, 1 << 20); }
+
+// J2b — per-ACCESS fallback. When the inline data TLB cannot serve an
+// address (an I/O register, most often), the emitted instruction can either
+// hand the whole instruction back to Moira or call a thunk for the access
+// alone and stay in host code for the rest. The second is much faster on
+// hardware poll loops, which are all I/O; this switch exists so the two can
+// be compared, and so the conservative path is one environment variable
+// away if a machine ever disagrees.
+// 0 = off (hand the whole instruction back), 1 = loads only, 2 = loads and
+// stores. Split because a load that faults has committed nothing, while a
+// store that succeeds already has.
+inline int accessThunkMode() { return detail::envInt("POM68K_JIT_ACCESS_THUNK", 2, 0, 2); }
+
 // Blocks kept in the cache before a full flush (the cache is a plain map;
 // J1 does not do fine-grained eviction).
-inline int maxBlocks() { return detail::envInt("POM68K_JIT_MAX_BLOCKS", 16384, 64, 1 << 20); }
+inline int maxBlocks() { return detail::envInt("POM68K_JIT_MAX_BLOCKS", 65536, 64, 1 << 20); }
 
 // Chatter on stderr: backend selection, flushes, block statistics.
 inline bool verbose() { return detail::envBool("POM68K_JIT_VERBOSE", false); }

@@ -575,23 +575,23 @@ static void jitWindow() {
     }
 
     ImGui::SetNextWindowSize(ImVec2(420, 0), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("JIT", &gShowJit, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!ImGui::Begin("Moteur accéléré", &gShowJit, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
 
     ImGui::SeparatorText("Moteur");
-    dot(eng == 1, eng == 1 ? "JIT actif" : "Interpréteur Moira (défaut)");
+    dot(eng == 1, eng == 1 ? "Moteur accéléré actif" : "Interpréteur Moira (défaut)");
     ImGui::Text("Backend : %s", gJitBackend ? gJitBackend : "-");
     // The counters below are the ENGINE's; while the interpreter drives the
     // machine the engine sees nothing, so the rate would sit frozen at the
     // last JIT value. Say so rather than showing a stale number.
     if (eng == 1) ImGui::Text("Instructions/s : %.2f M", rate / 1e6);
-    else          ImGui::TextDisabled("Instructions/s : — (compteurs du moteur JIT, à l'arrêt)");
+    else          ImGui::TextDisabled("Instructions/s : — (compteurs du moteur accéléré, à l'arrêt)");
 
     ImGui::SeparatorText("Répartition");
     const double all = double(total ? total : 1);
-    ImGui::Text("Par le JIT          : %llu  (%.1f %%)",
+    ImGui::Text("Par le moteur       : %llu  (%.1f %%)",
                 (unsigned long long)s.instrs, 100.0 * double(s.instrs) / all);
     ImGui::Text("Par l'interpréteur  : %llu  (%.1f %%)",
                 (unsigned long long)s.interpInstrs,
@@ -746,16 +746,26 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
             eng != 0) {
             gSetCpuEngine(0);
         }
-        char label[64];
-        std::snprintf(label, sizeof(label), "JIT — %s",
+        // Honest labelling (2026-07-28): the default accelerated engine is
+        // NOT a JIT — it is the interpreter running behind a fetch window
+        // (and, per backend, a block replayer or a code generator). Only
+        // the x86-64 backend actually emits machine code. Users deserve
+        // the distinction; the internal names (src/jit/, POM68K_JIT_*)
+        // stay, because they name the subsystem, not the technique.
+        char label[80];
+        const bool codegen = gJitBackend && std::strcmp(gJitBackend, "threaded") != 0;
+        std::snprintf(label, sizeof(label),
+                      codegen ? "Moteur accéléré — JIT %s"
+                              : "Moteur accéléré — fenêtres (%s)",
                       gJitBackend ? gJitBackend : "?");
         if (ImGui::MenuItem(label, nullptr, eng == 1, hasJit) && eng != 1) {
             gSetCpuEngine(1);
         }
         ImGui::Separator();
-        ImGui::MenuItem("Statistiques JIT...", nullptr, &gShowJit, hasJit);
+        ImGui::MenuItem("Statistiques du moteur...", nullptr, &gShowJit, hasJit);
         if (!hasJit)
-            ImGui::TextDisabled("(machines 68040 uniquement)");
+            ImGui::TextDisabled("(interrupteur : machines 68040 —\n"
+                                "ailleurs, POM68K_CPU_ENGINE=jit)");
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Réseau")) {

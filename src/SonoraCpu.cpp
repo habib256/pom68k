@@ -5,7 +5,26 @@
 #include "SonoraMemory.h"
 #include <cstdlib>
 
-SonoraCpu::SonoraCpu(SonoraMemory& mem, bool withFpu) : mem_(mem) {
+namespace {
+jit::MemoryHooks sonoraJitHooks(SonoraMemory& mem) {
+    jit::MemoryHooks h;
+    h.self = &mem;
+    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
+        return static_cast<SonoraMemory*>(s)->codeSpan(phys, len);
+    };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<SonoraMemory*>(s)->dataSpan(phys, len, write != 0);
+    };
+    h.setGuard = [](void* s, jit::CodeGuard* g) {
+        static_cast<SonoraMemory*>(s)->setJitGuard(g);
+    };
+    h.ramBytes = [](void* s) { return static_cast<SonoraMemory*>(s)->ramBytes(); };
+    return h;
+}
+}  // namespace
+
+SonoraCpu::SonoraCpu(SonoraMemory& mem, bool withFpu)
+    : mem_(mem), jit_(*this, sonoraJitHooks(mem)) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     if (const char* b = getenv("POM68K_CACHE_BOOST")) {
@@ -25,15 +44,18 @@ void SonoraCpu::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
     pomIcache.reset();
+    jit_.flushAll();
     reset();                       // SSP/PC from $0 (ROM via overlay)
 }
 
 void SonoraCpu::didChangeCACR(moira::u32 value) {
     if (value & 0x0C) pomIcache.reset();   // CI/CE strobes → flush model
+    jit_.flushAll();                       // SMC hint, as on every wrapper
 }
 
 void SonoraCpu::runCycles(moira::i64 n) {
-    executeUntil(getClock() + n * cacheBoost_);
+    const moira::i64 target = getClock() + n * cacheBoost_;
+    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
     flushTicks();
 }
 

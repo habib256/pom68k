@@ -14,6 +14,7 @@
 
 #pragma once
 #include "Moira.h"
+#include "jit/JitEngine.h"
 #include <cstdint>
 
 class SonoraMemory;
@@ -23,6 +24,11 @@ public:
     explicit SonoraCpu(SonoraMemory& mem, bool withFpu = false);
 
     void hardReset();
+    // ── JIT engine (030 extension 2026-07-28, the Cpu030 pattern) ──────
+    jit::Engine& jit() { return jit_; }
+    const jit::Engine& jit() const { return jit_; }
+    int  engine() const { return jit_.enabled() ? 1 : 0; }
+    void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
     void runCycles(moira::i64 n);
     void runUntil(moira::i64 clockTarget);
     void updateIpl();
@@ -56,6 +62,7 @@ private:
     moira::i64 lastPeriphClock_ = 0;
 
     // Cpu030's i-cache throughput model (knobs + rationale there).
+    jit::Engine jit_;
     int cacheBoost_ = 4;
     int icacheMiss_ = 4;
     moira::i64 periphAccum_ = 0;

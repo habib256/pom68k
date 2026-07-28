@@ -69,6 +69,17 @@ bool same(const State& x, const State& y) {
     return std::memcmp(&x, &y, sizeof(State)) == 0;
 }
 
+// Registers are not the whole architectural state, and a JIT bug in a STORE
+// shows up in a register only much later — when something reads the byte
+// back. The 68k system globals live in the first 2 KB of RAM and are written
+// constantly during a boot, which makes them a cheap, high-yield tripwire.
+constexpr uint32_t kWatchBytes = 2048;
+uint32_t ramDiff(const Q605Memory& a, const Q605Memory& b) {
+    for (uint32_t i = 0; i < kWatchBytes; i++)
+        if (a.peek8(i) != b.peek8(i)) return i;
+    return 0xFFFFFFFF;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -101,25 +112,83 @@ int main(int argc, char** argv) {
         std::printf("[jit_lockstep] loadRom failed — soft skip\n");
         return 0;
     }
+    // The ROM alone only ever reaches the power-on self test, where every
+    // memory access is an I/O register and the JIT's inline data path is
+    // never exercised. Attach the boot disk when it is there — READ-ONLY, so
+    // both machines see identical media — and the comparison then covers the
+    // System loading, the Finder, and the whole SCSI/paging path with it.
+    const std::string diskPath = findAsset({ "hdv/MacOS-8.1-boot.vhd",
+                                             "hdv/q605-boot.vhd" });
+    if (!diskPath.empty()) {
+        memRef.attachScsi(diskPath);
+        memJit.attachScsi(diskPath);
+    }
+    std::printf("[jit_lockstep] disk=%s\n",
+                diskPath.empty() ? "(none — ROM POST only)" : diskPath.c_str());
+
     cpuRef.setEngine(0);
     cpuJit.setEngine(1);
     cpuRef.hardReset();
     cpuJit.hardReset();
+    // The Cuda holds the CPU in reset until its firmware has come up. Both
+    // machines have to be released before the comparison starts, or this
+    // gate spends its whole budget in the power-on self test and never sees
+    // an instruction the code generator cares about. (It did exactly that
+    // until 2026-07-28 — the JIT's data path was reported green by a run
+    // that had never performed a single data-TLB fill.)
+    while (memRef.cpuHeld()) memRef.tick(1000);
+    while (memJit.cpuHeld()) memJit.tick(1000);
 
     std::printf("[jit_lockstep] rom=%s backend=%s steps=%ld\n",
                 romPath.c_str(), cpuJit.jit().backendName(), steps);
 
+    // Cycles of budget per checkpoint. One means the two engines are
+    // compared after (almost) every instruction, which is the sharpest
+    // possible test but also caps a compiled block at one instruction. A
+    // larger budget lets blocks run their full length — including a loop
+    // closing on itself entirely inside generated code — and still leaves
+    // both engines stopping at the SAME boundary, because both stop at the
+    // first one past the target.
+    long budget = 1;
+    if (const char* b = std::getenv("POM68K_JIT_LOCKSTEP_BUDGET")) budget = std::atol(b);
+    if (budget < 1) budget = 1;
+    // Getting deep into a boot at one cycle per comparison takes far longer
+    // than anyone will wait, but a coarse budget only says WHICH 256 cycles
+    // diverged. So: run coarse to get there, then drop to one cycle per
+    // comparison for the last stretch, which names the instruction.
+    long fineAt = -1;
+    if (const char* f = std::getenv("POM68K_JIT_LOCKSTEP_FINE_AT")) fineAt = std::atol(f);
+    std::printf("[jit_lockstep] budget=%ld cycle(s) per comparison%s\n", budget,
+                fineAt >= 0 ? " (fine from the marked step)" : "");
+
+    // The last handful of instruction boundaries, for the report: a
+    // divergence is almost never AT the pc it is noticed at.
+    constexpr int kTrail = 8;
+    struct Step { uint32_t pc; int64_t clock; } trail[kTrail] = {};
+    int trailAt = 0;
+
     for (long i = 0; i < steps; i++) {
-        // One machine cycle of budget: both engines stop at the first
-        // instruction boundary past it, so the two stay in step.
-        cpuRef.runCycles(1);
-        cpuJit.runCycles(1);
+        const long b = (fineAt >= 0 && i >= fineAt) ? 1 : budget;
+        trail[trailAt] = { cpuJit.getPC(), cpuJit.getClock() };
+        trailAt = (trailAt + 1) % kTrail;
+        cpuRef.runCycles(b);
+        cpuJit.runCycles(b);
 
         const State r = capture(cpuRef);
         const State j = capture(cpuJit);
-        if (same(r, j)) continue;
+        const uint32_t bad = ramDiff(memRef, memJit);
+        if (same(r, j) && bad == 0xFFFFFFFF) continue;
+        if (bad != 0xFFFFFFFF)
+            std::printf("[jit_lockstep] RAM differs at $%08X: interp=%02X jit=%02X\n",
+                        bad, memRef.peek8(bad), memJit.peek8(bad));
 
         std::printf("[jit_lockstep] DIVERGED after %ld steps\n", i);
+        std::printf("  last boundaries (jit): ");
+        for (int k = 0; k < kTrail; k++) {
+            const Step& t = trail[(trailAt + k) % kTrail];
+            if (t.pc) std::printf("$%08X@%lld ", t.pc, (long long)t.clock);
+        }
+        std::printf("\n");
         std::printf("  pc    interp=%08X  jit=%08X\n", r.pc, j.pc);
         std::printf("  sr    interp=%04X      jit=%04X\n", r.sr, j.sr);
         std::printf("  clock interp=%lld      jit=%lld\n",
@@ -142,22 +211,25 @@ int main(int argc, char** argv) {
     const jit::Stats::Snapshot s = cpuJit.jit().stats().snapshot();
     std::printf("[jit_lockstep] OK — %ld steps identical\n", steps);
     std::printf("  jit instrs %llu · interp fallback %llu · blocks %llu compiled"
-                " / %llu replayed · window %llu armed (%llu refused)\n",
+                " / %llu replayed · window %llu armed (%llu refused)"
+                " · dtlb %llu filled\n",
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.interpInstrs,
                 (unsigned long long)s.blocksCompiled,
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.windowArmed,
-                (unsigned long long)s.windowFailed);
+                (unsigned long long)s.windowFailed,
+                (unsigned long long)s.dtlbFills);
     if (s.instrs == 0) {
         std::printf("[jit_lockstep] FAIL: the JIT never retired an instruction "
                     "— this gate proved nothing\n");
         return 1;
     }
-    // The block cache is off by default (see JitConfig.h — it measured
-    // slower than the window alone). When it IS on, it must have been
-    // exercised, otherwise the block path goes untested.
-    if (jit::blockCacheEnabled() && s.blocksRun == 0) {
+    // With a code-generating backend the block cache is the whole engine,
+    // and even on `threaded` the gate registers a variant that forces it on
+    // — either way, if it is on it must have been exercised, or the block
+    // path went untested behind a green light.
+    if (jit::blockCacheEnabled(cpuJit.jit().nativeBackend()) && s.blocksRun == 0) {
         std::printf("[jit_lockstep] FAIL: POM68K_JIT_BLOCKS is on but no block "
                     "was ever replayed — the block path proved nothing\n");
         return 1;

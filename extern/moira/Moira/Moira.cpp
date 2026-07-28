@@ -313,6 +313,35 @@ Moira::reset()
 bool
 Moira::pomJitExecOne()
 {
+    // POM68K 030 extension (2026-07-28): the SAME seam serves the 68030 —
+    // its mode-5 loop head (mmuExecuteStart: POLL_IPL, per-instruction MMU
+    // state reset, translated ird/irc fetch) plays the role
+    // mmu040InstrStart plays below, and the dispatch tail is shared. One
+    // copy, both cores, so the src/jit engine drives either without
+    // knowing which it holds.
+    if (cpuModel == Model::M68030) {
+        if (!mmuExecuteStart<Core::C68020>()) return false;
+
+        bool retired = true;
+        reg.pc += 2;
+        try {
+            (this->*exec[queue.ird])(queue.ird);
+        } catch (const std::exception &exc) {
+            processException(exc);
+            retired = false;
+        }
+        if (trace040Pending) [[unlikely]] {
+            trace040Pending = false;
+            try {
+                execException(M68kException::TRACE);
+            } catch (const std::exception &exc) {
+                processException(exc);
+            }
+            retired = false;
+        }
+        return retired;
+    }
+
     // POM68K JIT seam (src/jit/POM68K_JIT.md). This IS the 68040 fast path
     // of execute() — there is exactly ONE copy of it and execute() calls it
     // below, so the block replayer in src/jit/ can never drift from the
@@ -324,6 +353,34 @@ Moira::pomJitExecOne()
     // instruction-start fault, an exception processed, or a trace taken.
     // For the engine that always means the same thing: stop replaying and
     // go back through execute() from a clean instruction boundary.
+    // Plain 020 (2026-07-28): no per-instruction MMU loop head at all —
+    // the queue was refilled by the PREVIOUS instruction's prefetch (which
+    // is where its POLL_IPL lives, window or not), so the boundary
+    // contract is just the dispatch. This replicates execute()'s generic
+    // fast path; the six shared lines are accepted duplication, because
+    // routing the cycle-exact 68000/68010 through here would be wrong and
+    // gating them would cost the hottest loop in the emulator a branch.
+    if (cpuModel < Model::M68EC040) {
+        bool retired = true;
+        reg.pc += 2;
+        try {
+            (this->*exec[queue.ird])(queue.ird);
+        } catch (const std::exception &exc) {
+            processException(exc);
+            retired = false;
+        }
+        if (trace040Pending) [[unlikely]] {
+            trace040Pending = false;
+            try {
+                execException(M68kException::TRACE);
+            } catch (const std::exception &exc) {
+                processException(exc);
+            }
+            retired = false;
+        }
+        return retired;
+    }
+
     if (!mmu040InstrStart<Core::C68020>()) return false;
 
     bool retired = true;
@@ -374,12 +431,10 @@ Moira::execute()
         // per-instruction MMU state reset and a mode-5-style translated
         // opcode fetch (may fault). One predictable branch for the other
         // models; emulated 68000 cycles are unaffected.
-        if (cpuModel == Model::M68030) [[unlikely]] {
-            if (!mmuExecuteStart<Core::C68020>()) return;
-        } else if (cpuModel >= Model::M68EC040) [[unlikely]] {
-            // POM68K JIT: the 68040 fast path lives in pomJitExecOne() so
-            // that the src/jit block replayer runs the SAME code, not a
-            // hand-copied twin. Same TU, so it still inlines here.
+        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) [[unlikely]] {
+            // POM68K JIT: both MMU cores' fast paths live in
+            // pomJitExecOne() so that the src/jit block replayer runs the
+            // SAME code, not a hand-copied twin. Same TU, still inlined.
             pomJitExecOne();
             return;
         }
@@ -794,6 +849,31 @@ Moira::setCAAR(u32 val)
 {
     reg.caar = val;
     didChangeCAAR(val);
+}
+
+u8 *
+Moira::pomJitDataSlow(u32 addr, u32 want, bool w) noexcept
+{
+    // POM68K J3 (Moira.h § pomJitData): levels 1 and 2 behind the one-entry
+    // level 0. The big table absorbs page ping-pong beyond two pages; the
+    // fill is attempted once — a transient refusal (no resident ATC entry
+    // yet, an unmodified page seen by a write) leaves the tag unset, and
+    // the caller's long path both performs the access and repairs the
+    // cause. Positive AND negative answers are promoted into level 0, the
+    // negative ones deliberately: a hardware poll loop reads the same I/O
+    // register forever, and the remembered refusal keeps its cost to the
+    // level-0 compare.
+    if (!pomJitDtlbFillFn) return nullptr;
+    PomJitDtlb &t = w ? pomJitDtlbW : pomJitDtlbR;
+    PomJitDtlbEntry &e = t.e[(addr >> 12) & (PomJitDtlb::kEntries - 1)];
+    if (e.tag != want) {
+        pomJitDtlbFillFn(pomJitDtlbFillCtx, addr, w != 0);
+        if (e.tag != want) return nullptr;
+    }
+    PomJitDataPage &c = w ? pomJitDataW1 : pomJitDataR1;
+    c.tag = want;
+    c.host = e.host;
+    return e.host;
 }
 
 void

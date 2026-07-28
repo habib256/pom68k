@@ -6,7 +6,26 @@
 #include <cstdio>
 #include <cstdlib>
 
-Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020) : mem_(mem) {
+namespace {
+jit::MemoryHooks v8JitHooks(V8Memory& mem) {
+    jit::MemoryHooks h;
+    h.self = &mem;
+    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
+        return static_cast<V8Memory*>(s)->codeSpan(phys, len);
+    };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<V8Memory*>(s)->dataSpan(phys, len, write != 0);
+    };
+    h.setGuard = [](void* s, jit::CodeGuard* g) {
+        static_cast<V8Memory*>(s)->setJitGuard(g);
+    };
+    h.ramBytes = [](void* s) { return static_cast<V8Memory*>(s)->ramBytes(); };
+    return h;
+}
+}  // namespace
+
+Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020)
+    : mem_(mem), jit_(*this, v8JitHooks(mem)) {
     // as020: the Macintosh LC profile — MAME maclc.cpp:342 runs the same
     // V8 machine on a 68020 (Apple HMMU part; the V8's $80FFFFFF decode
     // makes the HMMU translation a no-op for us). FPU socket empty by
@@ -32,6 +51,7 @@ void Cpu030::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
     pomIcache.reset();
+    jit_.flushAll();
     reset();                       // SSP/PC from $0 (ROM via overlay)
 }
 
@@ -43,6 +63,9 @@ void Cpu030::hardReset() {
 // Moira.h § PomIcache.)
 void Cpu030::didChangeCACR(moira::u32 value) {
     if (value & 0x0C) pomIcache.reset();
+    // A cache clear is the guest announcing freshly written code — the same
+    // SMC hint the 040 wrapper honours.
+    jit_.flushAll();
 }
 
 void Cpu030::runCycles(moira::i64 n) {
@@ -75,7 +98,8 @@ void Cpu030::runCycles(moira::i64 n) {
         // Moira cycles so the core does a real 68030's worth of work per
         // frame (constant i-cache throughput ratio, see Cpu030.h). One fixed
         // ratio → uniform sound/timer tempo.
-        executeUntil(getClock() + n * cacheBoost_);
+        const moira::i64 target = getClock() + n * cacheBoost_;
+        if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
     }
     flushTicks();                  // callers sample ASC/VBL state after a slice
 }

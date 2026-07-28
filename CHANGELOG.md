@@ -1,5 +1,524 @@
 # CHANGELOG
 
+## 2026-07-28 (eighth pass) — O(1) probes, per-space eviction, and the 020 seam
+
+**The 030 probe is O(1) now.** `pomJitProbeCode` checks the interpreter's
+own last-hit memo (`mmuAtcLast` / `mmu040AtcLastI`) before scanning, and
+`pomJitAtcEvict` learned which SPACE the evicted entry backed: an I-side
+eviction kills the code window only, a D-side eviction kills the data TLB
+only — the first cut killed both on either, which threw the window away
+every time a data page sharing its logical page churned. Fingerprints
+unchanged by both (the eviction hook keeps window-on and window-off
+walk-identical, so engine-side tuning cannot touch the guest). Measured on
+the LC III, idle host, back to back: the JIT went from 32 % SLOWER than the
+interpreter to 9 % slower (254.7 s vs 276.8 s). The remaining gap is
+structural — a unified 22-entry ATC under System 7.5 evicts code pages
+constantly, and the window must die with them.
+
+**The 020 seam is in, and honestly measured as not worth switching on.**
+`pomJitFetch020` replicates the head of a `read<PROG,Word>` (the POLL_IPL
+riding on the prefetch, the FC pins, the /BERR access stamp) and serves the
+tail from the window, hooked at the three C68020-only fetch sites
+(`prefetch`, `fullPrefetch`, `readExt`) — the 68000/68010 cores never see a
+single added branch. The probe is identity (no MMU), and `pomJitExecOne`
+grew the generic dispatch branch. The Macintosh LC — V8 map + `as020`, so
+ZERO new machine plumbing — boots to the Finder on both engines… in 100 s
+interpreted and 156 s under the JIT. The physics: a plain 68020 makes ONE
+cheap fetch per instruction (no ATC, no translate, queue-fed), so the
+window has almost nothing to save, and the engine's per-instruction loop
+plus re-arming across far jumps costs more than the fetch tail was worth.
+`jit_lc_boot_etalon` guards the seam anyway: it exists for the day a code
+generator gives the 020 something real to win with. The Mac II family's map
+plumbing (GLUE `physAddr` remap, the IIx PMMU interaction) is deliberately
+deferred until then — plumbing a map for a configuration that loses is
+work with negative value.
+
+Where the engine is WORTH switching on, after all of today: the 68040
+machines (×2-2.5 on real work, ×4 with PGO), and the MMU-off 030s (LC II
+×1.6). Where it is not (yet): MMU-on 030s (−9 %) and plain 020s (−56 %).
+The engine is off by default everywhere, so every one of those numbers is
+an option, not a regression.
+
+## 2026-07-28 (seventh pass) — All four 030 families under the engine
+
+The remaining 030 memory maps got the V8 treatment: **Sonora** (LC III /
+LC III+ / LC 520 / LC 550 / CC II), **VASP** (IIvx / IIvi) and **RBV**
+(IIsi / IIci) each grew codeSpan/dataSpan/guard plumbing — these three are
+flat maps, so the diff per machine is small — and their wrappers
+(SonoraCpu / VaspCpu / RbvCpu) carry the same jit::Engine member as Cpu030.
+With the V8 family from the previous pass, every 68030 machine POM68K
+ships is now behind the engine; JIT gates registered for one machine per
+family (`jit_lc3`, `jit_iivx`, `jit_iisi`, plus `jit_lcii` and the
+phase-fragile `jit_mactv`).
+
+**Correctness: complete.** Seven boot etalons ran to the Finder on BOTH
+engines during this pass (LC II, Mac TV, LC III, IIvx, IIsi and the 040
+smoke set), and the bench fingerprints are unchanged by any of it — the
+ATC-eviction hook guarantees window-on and window-off execute the same
+guest, and that guarantee is what every measurement below leans on.
+
+**Performance: honest and uneven.** The LC II gains ×1.6 under the JIT.
+The Sonora and VASP machines currently LOSE under it, and the reason is
+the fifth pass's lesson operating at full force: their System 7.5 boots
+run with the 030 MMU enabled, the 22-entry ATC churns, and every eviction
+kills the code window it backed (it must — that is the bit-exactness
+contract), so the engine pays arm/probe cycles for windows that die young.
+An arm-failure backoff (32 interpreted instructions after a refused probe)
+claws back part of it — LC III 558 s -> 528 s — but the structural fix is
+cheaper probes and cheaper arming, not more retries. The JIT stays opt-in
+per machine, the interpreter stays the default, and nothing regresses when
+the engine is off.
+
+All timing in this pass was taken on a heavily loaded host (load average
+3-14); ratios within a run are meaningful, absolute numbers are not.
+
+## 2026-07-28 (sixth pass) — The JIT reaches the 68030: the V8 family
+
+The engine that drives the four 68040 machines now drives the 68030 V8
+family — LC II, Classic II, Color Classic, Mac TV (and the LC constructs it
+harmlessly: the probe refuses a 68020, so the window never arms there).
+Gate: `lcii_boot_etalon` reaches the Finder on both engines — 248 s
+interpreted, 156 s on the JIT (×1.6, measured under heavy host load; the
+ratio is the trustworthy part) — and `jit_mactv_boot_etalon` guards the
+phase-fragile Cuda transport: the window charges no guest cycles, and the
+Mac TV would deadlock long before a signature failed if that ever changed.
+
+The 030 seam is SMALLER than the 040's, because the 030 has a single fetch
+choke point: `mmuFetchWord` serves the opcode, the lookahead and every
+extension word, so ONE window hook covers what took three sites on the 040.
+The rest mirrors the 040 pattern exactly:
+
+* `pomJitExecOne` dispatches on the model — `mmuExecuteStart` plays the
+  role `mmu040InstrStart` plays, the dispatch tail is shared, and the
+  engine drives either core without knowing which it holds;
+* `pomJitProbeCode` gained the 030 branch: TT registers (OK-match only),
+  TC.E-off identity, then a read-only scan of the 22-entry fc-tagged ATC —
+  page sizes from 256 bytes to 32 KB, and the window machinery was already
+  size-agnostic;
+* the four 030 ATC flushes bump the generation, and both 030 eviction
+  sites got the `pomJitAtcEvict` hook — the U-bit lesson of the fifth pass
+  was learned once and applied everywhere;
+* `V8Memory` grew `codeSpan`/`dataSpan`/guard plumbing. Two V8-specific
+  subtleties: the fixed 2 MB alias means one RAM byte carries TWO bus
+  addresses, so the write guard notes both views; and the pseudo-VIA can
+  REWRITE the bank mapping at any time (`applyRamConfig`), which is an
+  address-map move the guard is now told about.
+
+The icache overlay keeps charging its miss penalty before the window is
+consulted, so 030 cycle accounting is untouched — same invariant as the
+040: the window is a pure host-side saving.
+
+Remaining for the other 030 families (Sonora, VASP, RBV) and the 020s: the
+Moira seam is DONE and shared; each family needs only its memory map's
+codeSpan/dataSpan/guard plumbing and the wrapper's engine member — the
+V8Memory diff is the template.
+
+## 2026-07-28 (fifth pass) — The "PGO divergence" was the U bit all along
+
+The open issue from the fourth pass — the x86-64 backend diverging under a
+PGO build — is closed, and the diagnosis is worth its length because every
+step of it pointed somewhere else first.
+
+**The hunt.** Lockstep placed the divergence at ~6.59 G cycles, fully
+developed within one 4 096-cycle window. Then the eliminations, each by
+measurement: not the generated code (block dumps identical between builds);
+not PGO (excluding the backend from profile-use *changed* the wrong
+fingerprint instead of fixing it); not the block machinery (`BLOCKS=0`,
+thunks off, `HOT=1000000` — all still diverged, each with a DIFFERENT
+fingerprint); not the JIT at all (the plain INTERPRETER diverged on the same
+binary); and not undefined behaviour (valgrind, track-origins, across the
+corruption window: 0 errors).
+
+**The actual mechanism.** The vendor doc had documented an "architecturally
+invisible" divergence: a fetch served from a window skips the ATC lookup the
+interpreter would have done. The missing half: a window or data-TLB entry
+could OUTLIVE the ATC entry it was derived from. Once the backing entry was
+evicted, the interpreter re-walks on its next access — and a walk WRITES the
+descriptor's U bit. Mac OS VM (8 KB pages, active once the System is up)
+READS those U bits for page aging. So each engine — skipping a different
+subset of walks — steered the guest's own paging decisions differently:
+three engines, three different-but-each-internally-valid executions. Every
+rebuild or env change reshuffled the pattern, which is exactly what memory
+corruption looks like from the outside.
+
+**The fix (`Moira::pomJitAtcEvict`).** Derived state dies with its ATC
+entry: both eviction sites (replacement in `mmu040AtcFill`, the write-M
+invalidate in `mmu040AtcLookup`) kill the derived TLB slices, the hot pair
+and the code window for that page, in O(slices). A window hit now implies
+the interpreter would have ATC-hit too — same walks, same U bits, same
+guest, bit for bit. Verified: interp, interp+window, `threaded` and `x86-64`
+all print fingerprint 8f26fcba22986fc6 at identical cycle counts over 20 G
+cycles. The full smoke tier is green.
+
+**The honest cost.** Capped at the ATC's 32-page coverage, the
+INTERPRETER's data window stopped paying for itself — under VM the
+eviction/refill churn exceeds what the surviving hits save — so it is now
+opt-in (`POM68K_DATA_WINDOW=1`), which also hands invariant 3 back its
+byte-identical default interpreter. The x86-64 backend keeps its inline TLB
+(same cap, but it replaces a C++ call chain rather than a hot MRU probe).
+Engine timings from the fix session are struck: the host was at load
+average 14. Re-measure idle before quoting anything.
+
+## 2026-07-28 (fourth pass) — The data window and PGO: the interpreter's turn
+
+Two changes aimed at POM68K as a whole rather than at the JIT — and between
+them they moved the needle more than everything before combined.
+
+**PGO (`-DPOM68K_PGO=generate` / `use`, see README).** An interpreter is
+dispatch and branches, which is precisely what profile-guided optimization
+predicts. Training = booting the Quadra 605 to the Finder once per engine.
+Measured alone: interpreter −33 %, JIT −18 %, bit-identical emulation.
+
+**The data window (J3).** The fetch window took instruction fetches off the
+ATC/translate/virtual-decode chain; this takes DATA accesses off it, for
+both engines at once: `mmu040Read`/`mmu040Write` consult the JIT's data TLB
+before the long path. The fill door and every refusal rule stay in
+`jit::Engine::fillDtlb` — plain RAM/ROM/VRAM only, resident and permitted
+translations only, never a page holding translated code — and the engine
+binds the callback whether or not the JIT is enabled, because the DEFAULT
+engine is exactly who benefits.
+
+Three findings along the way, each measured the hard way:
+
+* **The first cut lost 15 %.** It flushed the whole TLB on every privilege
+  change (entries carried no privilege), and several thousand interrupts a
+  second emptied it faster than it filled. The privilege now rides in tag
+  bit 31 — user and supervisor entries coexist, nothing flushes on an RTE,
+  and the generated code folds the bit in at compile time since a block's
+  privilege cannot change.
+* **The second cut still lost 15 %.** Consulting the 8 KB table from the
+  interpreter added an L1 miss to accesses the long path served out of hot
+  machine state. The interpreter now goes through a 16-byte-per-direction
+  level 0 sitting next to the fetch window in the object's hot zone, with
+  the table as level 1 — copy loops are one read page plus one write page,
+  which is exactly what two entries catch.
+* **And the real villain was neither.** `fillDtlb` refused anything but
+  4 KB pages ("the 68040 boots with 4 KB on every Mac") — false the moment
+  the System arms paging, which uses 8 KB pages on the 040. Probe results
+  are transient by design, so the refusal was never remembered: once the
+  MMU was up, EVERY data access paid a call, a probe and a refusal — a
+  constant ~7 s tax across engines. An 8 KB page now fills as two 4 KB
+  slices, and the sign flipped everywhere at once.
+
+**Measured** (fixed-cycle harness; every number bit-exact against the
+original interpreter's fingerprint):
+
+| Quadra 605 + Mac OS 8.1, 5 G cycles | wall | vs pre-everything interpreter |
+|---|---|---|
+| interpreter, before all of this | 41.9-42.6 s | — |
+| interpreter + data window | 37.6 s | ×1.13 |
+| interpreter + data window + PGO | **24.5 s** | **×1.73** |
+| JIT `threaded` + window + PGO | **10.5 s** | **×4.0** |
+| JIT `x86-64` + window + PGO | 6.8 s | ×6.2 |
+
+Boot to the 256-colour Finder, end to end: **60.0 s → 19.5 s (×3.1)** on the
+default backend. The full smoke tier is green on both the plain and the PGO
+build, and the lockstep gates pass at both comparison resolutions.
+
+**One open issue, contained:** the x86-64 backend under PGO (and only under
+PGO — plain build and `threaded`-PGO are bit-exact) diverges from the
+interpreter somewhere between 5 G and 20 G cycles, reproducibly. It still
+reaches the correct Finder signature, but it is not bit-exact, so it stays
+non-default and the hunt is logged in TODO. The ×4.0 default path does not
+depend on it.
+
+## 2026-07-28 (third pass) — The density work, and what it finally measured
+
+Three changes to the x86-64 backend, aimed at the finding of the previous
+entry (footprint, not coverage), plus the experiment that decided what the
+constraint actually is.
+
+**The experiment first.** Varying only the compilation threshold — that is,
+only how much code gets generated — over identical guest work:
+
+| `POM68K_JIT_HOT` | blocks compiled | native coverage | 20 G cycles |
+|---|---|---|---|
+| 8 | 120 648 | 77.7 % | 175.6 s |
+| 64 | 54 525 | 73.7 % | 171.7 s |
+| 512 | 17 346 | 65.8 % | 166.8 s |
+| 4096 | 1 239 | 50.0 % | 155.0 s |
+
+Monotone, and the opposite way round from the intuition: coverage falls from
+78 % to 50 % and the machine gets 12 % faster. **Compiling less is faster.**
+
+Solving for the per-path cost at two operating points puts a number on it:
+generated code costs **~60 ns per guest instruction against the interpreter's
+~44 ns through the fetch window**. It is not the footprint — at the 4096
+threshold the whole code cache is ~2 MB and the ratio does not move. The
+generated code is simply more expensive per instruction, and the reason is
+not its length but its shape.
+
+**What was done.**
+
+1. **pc and pc0 deferred to the cold exit stubs.** Nothing inside a block
+   reads them; only the exception, trace and interpreter paths downstream of
+   an exit do. −20 bytes per compiled instruction. The prefetch queue could
+   NOT follow them, and that is worth writing down: `ird` at a boundary is
+   the opcode of whatever ran last, and an instruction a backward branch
+   jumps to is reached from two different predecessors, so one cold stub
+   cannot carry both answers. Guessing cost a divergence 800 million cycles
+   into a boot. A second, subtler one came with it: the write-guard exit
+   inside a thunked store was the one path out of a block that never passed
+   through a boundary stub — it had been getting away with it only because
+   pc was already correct there.
+2. **The peripheral-sync call moved out of line.** It fires roughly once
+   every thirty-six instructions and was sitting in the hot path.
+3. **The cycle clock lives in a callee-saved register** for the whole chain
+   of linked blocks, spilled around anything that calls out. This is the one
+   that paid: the charge used to store the clock and the next instruction's
+   budget guard loaded it straight back, putting a store-to-load forward on
+   the critical path of every single emitted instruction. 17.9 s -> 16.9 s
+   on the loading phase by itself.
+
+**Where that leaves it** (fixed-cycle harness, same fingerprints throughout):
+
+| Quadra 605 + Mac OS 8.1 | 0.83 G cycles | 5 G cycles | 20 G cycles | boot -> Finder |
+|---|---|---|---|---|
+| Moira interpreter | 6.41 s | 42.45 s | 215.77 s | **60.05 s** |
+| JIT `threaded` (default) | 3.48 s x1.84 | 17.33 s x2.45 | **131.77 s x1.64** | **29.02 s x2.07** |
+| JIT `x86-64` | 3.48 s x1.84 | **16.93 s x2.51** | 150.9 s x1.43 | 32.01 s x1.88 |
+
+The default threshold moves from 64 to **512**, which is where the curve
+above says the generator should sit.
+
+**The honest verdict on the code generator.** It is correct — bit-exact
+against the interpreter on registers, stacks, clock and low RAM, over
+hundreds of millions of instructions, across five gate configurations — and
+it is worth about 3 % over the fetch window on guest code that is executing
+a program, and nothing at all on guest code that is idling. Three rounds of
+coverage work (40 % -> 66 % -> 70 % -> 74 %) and one round of density work
+moved the wall clock by single-digit percentages each time.
+
+What that says is that the remaining cost is per-instruction *shape*, and
+the shape is dominated by the contract every emitted instruction has to
+honour: two guard branches, `POLL_IPL`, the cycle charge with its pacing
+test, and — on any memory operand — an inline TLB probe with two more
+branches. Five conditional branches and a handful of dependent memory
+accesses per guest instruction, against an interpreter whose handler is a
+straight run of well-predicted, cache-resident code. Closing that needs the
+contract itself to change (block-level guards instead of per-instruction
+ones, a cheaper translation path), not more instruction coverage and not a
+register allocator — which would save about one byte per operand and attack
+a latency that is not the bottleneck.
+
+## 2026-07-28 (later) — Block linking, and LINK/UNLK/NOP out of the exclusion list
+
+Two changes aimed at the one number the J2 entry below could not explain:
+compiled blocks were running **five instructions per entry** once the Finder
+was up, so the cost of *entering* a block was being paid every five
+instructions.
+
+**Block linking.** A block exit whose target is a compile-time constant —
+branch taken, branch not taken, running off the end of the recorded line —
+now looks the target up in a direct-mapped table and jumps straight into the
+next compiled block, past its prologue. Four instructions instead of a
+return to the engine, a hash lookup and a fresh frame. A table rather than
+patched jumps on purpose: a boot evicts blocks **237 000 times**, and
+un-patching every jump INTO an evicted block means incoming/outgoing link
+lists that can dangle; invalidating one table slot is O(1), exact (a block's
+slot is a function of its pc) and cannot dangle. The tag is `pc | super` —
+pc is always even, so the privilege bit rides in bit 0 for free.
+
+**`LINK`, `UNLK` and `NOP` are no longer `Unsafe`.** The classifier excluded
+the whole `$4Exx` group with the note that "LINK/UNLK/NOP are harmless but
+rare enough that keeping this whole group out costs nothing". The census
+says 3.6 % of a real Mac OS workload, sitting at **every function entry and
+exit** — which is exactly where straight-line code begins. They transfer no
+control and touch no SR/MMU/cache state; they are now compiled.
+
+**Measured** (same fixed-cycle harness, same fingerprints):
+
+| Quadra 605 + Mac OS 8.1 | 0.83 G cycles | 5 G cycles | 20 G cycles |
+|---|---|---|---|
+| Moira interpreter | 6.41 s | 42.59 s | 215.77 s |
+| JIT `threaded` (default) | 3.48 s ×1.84 | 17.33 s ×2.46 | 131.77 s ×1.64 |
+| JIT `x86-64` | 3.48 s ×1.84 | **16.75 s ×2.54** | 180.6 s ×1.19 |
+
+Boot to the 256-colour Finder end to end: **60.05 s interpreted, 29.02 s on
+the JIT — ×2.07.**
+
+On the System-loading phase the generator now **passes the fetch window**
+for the first time (18.4 s -> 16.75 s against the window's 17.33 s): block
+entries fell 53 % there, from 2.41 M to 1.14 M, and blocks run 566
+instructions per entry instead of 268.
+
+**It still loses once the Finder is up, and the reason has moved.** Blocks
+there went from 4.9 to 6.5 instructions per entry only — linking helps less
+because those exits MISS: their targets are `JSR`/`RTS`, still `Unsafe`.
+But native coverage is 66 %, barely under the loading phase's 70 %, so
+coverage is not the explanation either. What is left is footprint: 47 000
+compiled blocks at ~1.5 KB each is 70 MB of generated code. Both engines
+slow down in that phase — the interpreter drops from 37 to 23 M instr/s —
+and generated code drops further, because an interpreter's hot handlers stay
+in L1 whatever the guest does and a code generator's do not.
+
+Opening the framebuffer to the inline data path (all four 68040 maps —
+`read8`/`write8` treat that window as bytes and nothing else) changed
+nothing measurable, and that is itself the finding: the instructions that
+draw are not compiled at all. QuickDraw's blitters are `MOVEM` and 68020
+indexed addressing modes, neither of which this backend covers.
+
+So the remaining order is: **density** (~150 bytes of host code per guest
+instruction, most of it the per-instruction contract rather than the
+operation — the boundary state is only read when a block exits, so it
+belongs in the cold stubs), then **`JSR`/`RTS`/`BSR`** (7 % of a real
+workload, and every one is both an interpreter round trip and a link that
+misses), then `MOVEM` and the indexed modes.
+
+**Follow-up the same day: `JSR`, `BSR` and `RTS` compiled too**, as block
+terminators with the link table handling their targets — `RTS` and `JSR (An)`
+compute the slot index at run time instead of folding it. Native coverage on
+a full boot went 66 % -> 73.7 %, the share still running on the fetch-window
+path 25.4 % -> 17.3 %, and blocks 6.5 -> 7.9 instructions per entry.
+
+**And the wall clock barely moved** (173.3 s against 177.3 s; the loading
+phase is a wash with the window at 17.4-18.5 s either way). That is the
+third coverage increase in a row — 40 %, 66 %, 70 %, 74 % — with no
+corresponding speed-up, and it is now the measurement rather than a
+suspicion: **the binding constraint is the footprint of the generated code,
+not which instructions it covers.** Subtracting the interpreted share, the
+native path runs at ~15.8 M instr/s, which is ~250 host cycles for a
+sequence of about thirty emitted host instructions. That ratio is only
+explicable as instruction-cache misses: 54 525 compiled blocks at ~1.5 KB
+each is 82 MB of code that the Finder's working set walks over.
+
+So the next work is density, and it is not a tweak — it is the emitter's
+calling convention. ~150 bytes per guest instruction today, of which the
+operation itself is a small part: the boundary state (pc/pc0/prefetch queue)
+belongs in the cold exit stubs because it is only read when a block exits,
+the cycle clock belongs in a callee-saved register, the inline TLB probe is
+45 bytes on its own, and — the one thing every serious JIT does that this
+one does not — the guest register file is hit in memory for **every**
+operand instead of being allocated into host registers across a block.
+
+**The disk image is clean again** — `q605_boot_etalon` and
+`jit_q605_boot_etalon` both pass, with byte-identical output. The full smoke
+tier is green: 8/8.
+
+## 2026-07-28 — The x86-64 code generator (J2), and what it measured
+
+The JIT's second backend now emits **host machine code**:
+`src/jit/backends/JitBackendX64.cpp`, with `X64Asm.h` beneath it as a pure
+encoder that knows nothing about the 68k. It is bit-exact against the
+interpreter and it is **not** what `auto` selects — the measurement below is
+why, and that is the honest headline of this entry.
+
+**What it compiles.** `MOVE`/`MOVEA`, the `ADD`/`SUB`/`AND`/`OR`/`EOR`/`CMP`
+families in both directions, `ADDA`/`SUBA`/`CMPA`, `ADDQ`/`SUBQ`, `MOVEQ`,
+the six immediates, `TST`, `CLR`, `NEG`, `NOT`, `EXT`, `SWAP`, `LEA`,
+`BTST`, and — the reason a code generator is worth having here —
+`Bcc`/`BRA` as block *terminators*: their target is a compile-time constant,
+so a backward branch into the block it belongs to becomes an internal jump
+and the loop never returns to the engine. Addressing modes `Dn`, `An`,
+`(An)`, `(An)+`, `-(An)`, `d16(An)`, `(xxx).W`, `(xxx).L`, `d16(PC)` and
+immediate. Everything else falls back per instruction. On the System-loading
+phase of a Mac OS 8.1 boot that is **70 % of executed instructions**.
+
+**Three rules the design is built on.** (1) No C++ exception may cross
+generated code — there is no unwind information for bytes we emitted
+ourselves, so every call out goes to a `noexcept` thunk reporting failure by
+return value, and every failure is taken at an instruction boundary with
+nothing committed. (2) Guest registers stay in memory: the 68k leaves the
+upper bits of a destination alone on byte and word operations and x86's 8-
+and 16-bit forms have exactly that semantics on a memory operand, so there
+is no masking and no register allocator, and no bail-out can strand a live
+guest value in a host register. (3) Cycle counts are **checked, not
+trusted** — the tables are transcribed from Moira's own `CYCLES_*` (68020
+column) and an instruction is compiled only if the table agrees with what
+the tracer measured when it actually ran it, which is also what
+automatically excludes every access whose cost depends on a device wait
+state.
+
+**The data path.** Generated code cannot call `mmu040Read` (it throws), so
+data addresses translate inline against a new 64-entry direct-mapped TLB in
+Moira, filled only through `jit::Engine::fillDtlb` — which refuses anything
+needing a page-table walk or an M-bit write-back, anything that is not plain
+RAM/ROM, and any *write* to a page holding translated code. Refusals are
+cached (a null host pointer), because a hardware poll loop would otherwise
+pay a call per iteration to be told the same thing, and such a loop turns
+out to be **71 % of all instructions executed** during this boot. What the
+TLB refuses goes through a per-access thunk rather than handing the whole
+instruction back, which is what took native coverage from 40 % to 77 %.
+
+**Measured** (`tests/jit_bench.cpp`, a new dev harness: a FIXED guest-cycle
+budget, so both engines are timed over identical work — a boot etalon stops
+when it recognises the Finder and therefore times the two engines over
+different amounts of it. All rows print the same architectural fingerprint.)
+
+| Quadra 605 + Mac OS 8.1 | 0.83 G cycles | 5 G cycles | 20 G cycles |
+|---|---|---|---|
+| Moira interpreter | 6.42 s | 42.44 s | 216.80 s |
+| JIT `threaded` (default) | **3.48 s ×1.84** | **17.89 s ×2.37** | **127.25 s ×1.70** |
+| JIT `x86-64` | 3.49 s ×1.84 | 18.52 s ×2.29 | 223.4 s ×0.97 |
+
+**Why the code generator loses, and what fixes it.** Blocks run 284
+instructions per entry while the guest is loading the System — loops closing
+on themselves inside generated code, exactly as intended — and **4.9** once
+the Finder is up. Finder-era 68k is branch-dense enough that a block is five
+instructions, so a block *entry* (hash lookup, frame, prologue, epilogue) is
+paid every five instructions. **Block linking** — a branch jumping straight
+into the next compiled block instead of returning to the engine — is the one
+thing missing, and nothing else is worth doing before it. Density is the
+other half: ~150 bytes of host code per guest instruction, most of it the
+per-instruction contract rather than the operation. `auto` therefore keeps
+`threaded`; `POM68K_JIT_BACKEND=x64` selects the generator, and
+`src/jit/JitBackend.cpp` now states in the registry that this is a *measured*
+choice and not a capability ranking.
+
+**Four bugs worth recording, because each was invisible to the gate that
+should have caught it.**
+
+* **The lockstep gate never left the power-on self test.** It did not
+  release the Cuda's reset hold, so it spent its whole budget where every
+  memory access is an I/O register: it reported the JIT's data path green
+  over 768 million cycles having never performed a single data-TLB fill. It
+  now releases the hold, attaches the boot disk read-only to both machines,
+  and compares **the first 2 KB of guest RAM** as well as the registers — a
+  JIT bug in a store shows up in a register only much later, when something
+  reads the byte back.
+* **A missing REX prefix.** Byte operations whose r/m operand is RSI/RDI
+  address AH/BH without REX and SIL/DIL with it. `cmp dil, 4` was assembling
+  as `cmp bh, 4` — a comparison against the high byte of the *Moira object
+  pointer*. It surfaced as `cmpi.b #4,CPUFlag` deciding the machine was not
+  a 68040, a hundred million instructions into the boot.
+* **`BTST` computed its bit mask before fetching the operand.** A memory
+  access is not three instructions — it is a TLB probe, possibly a call to
+  fill it and possibly a call to perform it — and it treats every
+  caller-saved register as scratch. The mask did not survive.
+* **Generated code advanced `clock` without going through `sync()`.** The
+  CPU wrapper hands out peripheral time from there, so blocks ran the guest
+  forward with the VIA, the ASC, SWIM and the Cuda MCU frozen behind them.
+  The pacing test is now inlined (the wrapper's own batching condition), so
+  the call happens only when peripheral time is actually due.
+
+**Invalidation: evict, do not flush.** A write into memory a block was
+translated from used to drop the entire cache. With generated code in it
+that is ruinous — one boot phase took **5 313** such flushes and the engine
+spent its life re-translating what it had already translated. The write
+guard went from 4 KB granularity to 256 bytes (68k code and its data share
+pages constantly), `serviceGuard()` now evicts only the blocks overlapping
+the written slices, and a `slice -> blocks` index makes that cost
+O(blocks in the slice) instead of O(cache) — without the index, servicing
+1.37 million trips on a full boot took 436 s on its own. Same phase, after:
+**27** flushes.
+
+**Gates.** `jit_backend_test` now also pins the code generator's coverage
+and the classifier's branch rules. `jit_lockstep_test` gained three
+registrations that name the x86-64 backend — one at 256 cycles per
+comparison (long blocks and internal loops), one at a single cycle (the
+sharpest check there is), one with the per-access thunk disabled — plus a
+`POM68K_JIT_LOCKSTEP_FINE_AT` mode that drops to instruction resolution near
+a known divergence and prints the last eight instruction boundaries, because
+a divergence is almost never at the pc it is noticed at. `make -j4 jitdev &&
+ctest -L smoke` covers all of it.
+
+**Known, unrelated:** `q605_boot_etalon` fails on both engines with an
+identical signature — Mac OS 8.1 puts up its "this computer may not have
+been shut down properly" alert, which is modal and blanks the menu bar the
+gate measures. The disk image needs the alert dismissed once (or a clean
+re-image); nothing in this entry changes it, and both engines produce
+byte-identical output.
+
 ## 2026-07-27 — A second execution engine: the multi-target JIT (J0 + J1)
 
 POM68K now has **two** CPU engines. The Moira interpreter stays the default

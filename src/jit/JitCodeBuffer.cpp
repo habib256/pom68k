@@ -111,7 +111,18 @@ bool CodeBuffer::reserve(std::size_t bytes) {
   #if defined(POM68K_JIT_MEM_APPLE_JIT)
     flags |= MAP_JIT;
   #endif
-    void* p = mmap(nullptr, n, PROT_READ | PROT_WRITE, flags, -1, 0);
+    // Ask for RWX first (see CodeBuffer::unified). A kernel that refuses it
+    // is the normal case this class was written for, not an error — fall
+    // back to the strict W^X mapping and the mprotect flipping.
+    void* p = MAP_FAILED;
+  #if !defined(POM68K_JIT_MEM_APPLE_JIT)
+    p = mmap(nullptr, n, PROT_READ | PROT_WRITE | PROT_EXEC, flags, -1, 0);
+    unified_ = (p != MAP_FAILED);
+  #endif
+    if (p == MAP_FAILED) {
+        unified_ = false;
+        p = mmap(nullptr, n, PROT_READ | PROT_WRITE, flags, -1, 0);
+    }
     if (p == MAP_FAILED) return false;
 #endif
 
@@ -140,6 +151,7 @@ void CodeBuffer::release() {
     size_ = 0;
     used_ = 0;
     writable_ = true;
+    unified_ = false;
 }
 
 CodeBuffer::~CodeBuffer() { release(); }
@@ -154,6 +166,7 @@ uint8_t* CodeBuffer::alloc(std::size_t n, std::size_t align) {
 
 bool CodeBuffer::makeExecutable() {
     if (!base_) return false;
+    if (unified_) { flushICache(base_, size_); return true; }
     if (!writable_) return true;
 #if defined(POM68K_JIT_MEM_APPLE_JIT)
     // MAP_JIT pages are mapped PROT_READ|PROT_WRITE|PROT_EXEC once and the
@@ -178,6 +191,7 @@ bool CodeBuffer::makeExecutable() {
 
 bool CodeBuffer::makeWritable() {
     if (!base_) return false;
+    if (unified_) return true;
     if (writable_) return true;
 #if defined(POM68K_JIT_MEM_APPLE_JIT)
     pthread_jit_write_protect_np(0);

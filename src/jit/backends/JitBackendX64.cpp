@@ -1,0 +1,1923 @@
+// POM68K — Macintosh 68k emulator
+// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+//
+// ── x86-64 code generator (J2) ──
+// The first backend that emits host machine code. It translates a traced
+// block into a single straight-line x86-64 routine, with the 68k guest
+// register file addressed in memory off one base pointer.
+//
+// Three decisions shape everything below; each is a consequence of the
+// invariants in src/jit/POM68K_JIT.md rather than a preference.
+//
+// 1. NO C++ EXCEPTION MAY CROSS GENERATED CODE. There is no unwind
+//    information for bytes we emitted ourselves, so a Moira fault thrown
+//    through a JIT frame would reach std::terminate, not a handler. Every
+//    call out of generated code therefore goes to a `noexcept` thunk that
+//    reports failure as a return value, and every failure is taken at an
+//    instruction boundary with NOTHING committed — the interpreter then
+//    re-runs that instruction and faults exactly as it always did.
+//
+// 2. GUEST REGISTERS STAY IN MEMORY. The 68k's byte and word operations
+//    leave the upper bits of the destination alone; x86's 8- and 16-bit
+//    forms have exactly that semantics on a memory operand, so operating in
+//    place on reg.d[n] gets the rule for free, with no masking and no
+//    register allocator. It also means every bail-out is trivially correct:
+//    there is never a live guest value in a host register across an exit.
+//
+// 3. CYCLE COUNTS ARE CHECKED, NOT TRUSTED. The cost tables below are
+//    transcribed from Moira's own CYCLES_* tables (the 68020 column, which
+//    is what the 68040 core uses), and every instruction is compiled only
+//    if the table agrees with what the tracer actually measured when it ran
+//    that instruction. A wrong or missing entry costs coverage, never
+//    correctness — and jit_lockstep_test compares `clock` at every single
+//    instruction boundary, so a disagreement that slipped through would
+//    fail within seconds.
+//
+// What is NOT here, on purpose: 68020 indexed addressing modes (their
+// extension-word format carries scale, base suppression and memory
+// indirection — a decoder in its own right), everything that touches the
+// SR/MMU/caches, and every instruction with more than one memory operand
+// to commit. All of them simply fall back, per instruction, to Moira.
+
+#include "JitBackendX64.h"
+
+#include "../JitCodeBuffer.h"
+#include "../JitConfig.h"
+#include "X64Asm.h"
+
+#include "Moira.h"
+
+#include <cstdio>
+#include <cstring>
+#include <functional>
+#include <vector>
+
+namespace jit {
+
+namespace {
+
+using namespace x64;
+
+using Layout = moira::Moira::PomJitLayout;
+
+// ── the runtime thunks ───────────────────────────────────────────────────
+// Everything generated code calls. All noexcept, all reporting failure by
+// return value (decision 1 above).
+
+// Runs one instruction through Moira, from a clean boundary.
+//   1 = retired normally, 0 = did not retire (fault/exception processed),
+//  -1 = the code window no longer covers this pc — leave, do not count.
+extern "C" int pom68kJitStep(moira::Moira* cpu) noexcept {
+    if (!cpu->pomJitCovers(cpu->getPC())) return -1;
+    if (!cpu->pomJitIdle()) return -1;
+    return cpu->pomJitExecOne() ? 1 : 0;
+}
+
+// Charging the clock. Generated code cannot just add to `clock`: the CPU
+// wrapper's sync() is where peripheral time is handed out, and a block that
+// only bumped the counter would run the guest forward with the VIA, the
+// ASC, SWIM and the Cuda/Egret MCU frozen behind it. The interpreter makes
+// exactly one of these calls per 68040 instruction (CYCLES_68020), so the
+// JIT makes exactly one too, in the same place — at the end.
+extern "C" void pom68kJitSync(moira::Moira* cpu, uint32_t cycles) noexcept {
+    cpu->pomJitSync(int(cycles));
+}
+
+// The slow half of the data path: a real mmu040 access, fault turned into
+// a status. `bytes` is 1, 2 or 4.
+extern "C" int pom68kJitRead(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
+                             uint32_t* out) noexcept {
+    return cpu->pomJitReadData(addr, int(bytes), *out) ? 1 : 0;
+}
+extern "C" int pom68kJitWrite(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
+                              uint32_t val) noexcept {
+    return cpu->pomJitWriteData(addr, int(bytes), val) ? 1 : 0;
+}
+
+// ── the frame generated code runs against ────────────────────────────────
+struct Frame {
+    int64_t   clockTarget;    // +0
+    uint32_t  instrs;         // +8   retired, written back on exit
+    uint32_t  exit;           // +12  jit::Exit
+    void*     dtlbSelf;       // +16
+    uint8_t*  (*dtlbFill)(void*, uint32_t, int);   // +24
+    const uint8_t* guardHit;  // +32  &CodeGuard::hit
+    uint32_t  scratch;        // +40  address, across a TLB fill call
+    uint32_t  saveA;          // +44  address, across a load in an RMW
+    uint32_t  saveV;          // +48  value, across a TLB fill call
+    uint32_t  slowInstrs;     // +52  retired through the fallback stub
+    const void* periphClock;  // +56
+    void*     linkTable;      // +64  the block-link table (Context)
+    uint32_t  value;          // +72  operand across an access thunk
+    uint32_t  pad2;
+};
+constexpr int32_t kFClockTarget = 0, kFInstrs = 8, kFExit = 12;
+constexpr int32_t kFDtlbSelf = 16, kFDtlbFill = 24, kFGuard = 32;
+constexpr int32_t kFScratch = 40, kFSaveA = 44, kFSaveV = 48;
+constexpr int32_t kFSlow = 52, kFPeriph = 56, kFLinkTab = 64, kFValue = 72;
+
+// Sizes. A 64-instruction block of memory-touching forms tops out around
+// 12 KB with its cold half; the code buffer holds thousands of blocks and
+// the engine flushes when it fills.
+constexpr size_t kMaxBlockBytes = 64u * 1024;
+constexpr size_t kCodeBufferBytes = 128u * 1024 * 1024;
+
+// What generated code reads when no guard is attached. Never non-zero.
+const uint8_t kNoGuard = 0;
+
+// Host register roles. rbx/rbp/r14/r15 are callee-saved, so they survive
+// every thunk call; everything else is scratch and is assumed clobbered.
+constexpr Reg kCpu = RBX;      // moira::Moira*
+constexpr Reg kFrm = RBP;      // Frame*
+constexpr Reg kTgt = R14;      // clock target, cached
+constexpr Reg kCnt = R15;      // instructions retired so far (32-bit half)
+constexpr Reg kPer = R12;      // &lastPeriphClock_, for the inline pacing test
+// The cycle clock, live in a register for the whole chain of linked blocks.
+// It used to live only in the Moira object, which put a store-to-load
+// forward on the critical path of EVERY emitted instruction: the cycle
+// charge stored it and the next instruction's budget guard loaded it
+// straight back. Anything that calls out spills it first and reloads after,
+// and all of those paths are cold.
+constexpr Reg kClk = R13;
+
+// ── 68020-column cycle tables (Moira MoiraExec_cpp.h) ────────────────────
+// Indexed by 68k addressing mode: 0 Dn, 1 An, 2 (An), 3 (An)+, 4 -(An),
+// 5 d16(An), 6 indexed (unsupported), 7.0 abs.w, 7.1 abs.l, 7.2 d16(PC),
+// 7.4 immediate. Index 7..11 hold the mode-7 sub-forms.
+enum : int { kM_DN = 0, kM_AN, kM_AI, kM_PI, kM_PD, kM_DI, kM_IX,
+             kM_AW, kM_AL, kM_DIPC, kM_IXPC, kM_IM, kM_COUNT };
+
+// Mode index for (mode, reg), or -1 when the backend does not support it.
+int eaIndex(int mode, int reg) {
+    if (mode < 7) return mode == 6 ? -1 : mode;
+    switch (reg) {
+        case 0: return kM_AW;
+        case 1: return kM_AL;
+        case 2: return kM_DIPC;
+        case 4: return kM_IM;
+        default: return -1;                 // 7.3 (PC indexed), 7.5+ reserved
+    }
+}
+
+// "Read an operand through <ea>" — execMove0 / execAndEaRg / execTst /
+// execCmpiRg all agree on these on the 68020.
+const int8_t kEaRead[kM_COUNT][3] = {   // [mode][0=B 1=W 2=L]
+    { 2, 2, 2 },   // Dn
+    { 2, 2, 2 },   // An
+    { 6, 6, 6 },   // (An)
+    { 6, 6, 6 },   // (An)+
+    { 7, 7, 7 },   // -(An)
+    { 7, 7, 7 },   // d16(An)
+    { -1, -1, -1 },// indexed — unsupported
+    { 6, 6, 6 },   // abs.w
+    { 6, 6, 6 },   // abs.l
+    { 7, 7, 7 },   // d16(PC)
+    { -1, -1, -1 },// PC indexed — unsupported
+    { 4, 4, 6 },   // #imm
+};
+
+// "Read-modify-write <ea>" — execAndRgEa / execAddqEa / execAndiEa /
+// execClr / execNegEa / the BTST family all agree: the read cost plus two,
+// and a plain 2 when the destination is a register.
+int eaRmwCost(int m, int szIdx) {
+    const int r = kEaRead[m][szIdx];
+    if (r < 0) return -1;
+    return (m == kM_DN || m == kM_AN) ? 2 : r + 2;
+}
+
+// MOVE's destination surcharge (execMove0/2/3/4/5/7/8, 68020 column).
+const int8_t kMoveDst[kM_COUNT] = { 0, 0, 2, 2, 3, 3, -1, 3, 4, -1, -1, -1 };
+
+// Which half of the $8/$9/$B/$C/$D space an opcode belongs to:
+//   0 = <ea> into a register (including the ADDA/SUBA/CMPA forms)
+//   1 = a register back out through <ea>
+//  -1 = one of the sub-encodings squatting in the same space, all of which
+//       the backend leaves to Moira: MULU/MULS/DIVU/DIVS (opmode 3/7 of the
+//       $8/$C lines), ABCD/SBCD/EXG (register-mode, bit 8 set), ADDX/SUBX,
+//       and CMPM.
+int aluDirection(uint16_t op) {
+    const int hi = (op >> 12) & 0xF;
+    const int opmode = (op >> 6) & 7;
+    const int mode = (op >> 3) & 7;
+
+    if (opmode == 3 || opmode == 7)
+        return (hi == 0x9 || hi == 0xB || hi == 0xD) ? 0 : -1;   // else MUL/DIV
+    if (opmode <= 2) return 0;
+
+    // opmode 4-6, the register-to-memory direction. Modes 000 and 001 are
+    // where the packed-decimal, extended-precision and CMPM encodings live;
+    // the one exception is EOR Dn,Dm, which really is a register form.
+    if (mode <= 1) return (hi == 0xB && mode == 0) ? 1 : -1;
+    return 1;
+}
+
+// ── decoded effective address ────────────────────────────────────────────
+struct Ea {
+    int  mode = 0, reg = 0;
+    int  idx = -1;                  // kM_* index
+    int32_t value = 0;              // displacement, absolute address or imm
+    int  ext = 0;                   // extension words consumed
+    bool memory = false;            // needs a real guest access
+};
+
+int sizeBytes(int szIdx) { return szIdx == 0 ? 1 : szIdx == 1 ? 2 : 4; }
+Sz  hostSz(int szIdx) { return szIdx == 0 ? Sz::B : szIdx == 1 ? Sz::W : Sz::L; }
+
+// ── the compiler ─────────────────────────────────────────────────────────
+class Emitter {
+public:
+    Emitter(Asm& a, const Layout& L, const BlockIr& ir, const Context& ctx)
+        : a_(a), L_(L), ir_(ir),
+          paced_(ctx.periphClock != nullptr && ctx.periphBatch > 0),
+          batch_(ctx.periphBatch), thunks_(accessThunkMode()),
+          linkMask_(ctx.linkTable ? ctx.linkMask : 0) {}
+
+    // Emits the whole block. False = give up; the engine keeps the IR and
+    // runs the block through the fetch-window loop instead.
+    bool emit();
+
+    int nativeCount() const { return native_; }
+    size_t linkEntryOffset() const { return linkEntry_; }
+    // For POM68K_JIT_VERBOSE: whether the block's terminating branch stayed
+    // inside generated code. A loop that closes on itself is the whole
+    // reason this backend compiles branches at all, so when it does NOT
+    // close, that is the first thing worth seeing.
+    int  loopedTo() const { return loopTo_; }
+
+private:
+    // ── per-instruction ──────────────────────────────────────────────────
+    bool emitInstr(size_t i);
+    bool emitMove(size_t i, int szIdx);
+    bool emitAluEaRg(size_t i);
+    bool emitAluRgEa(size_t i);
+    bool emitAddSubQ(size_t i);
+    bool emitMoveq(size_t i);
+    bool emitImmediate(size_t i);
+    bool emitBitOp(size_t i);
+    bool emitLine4(size_t i);        // TST / CLR / NOT / NEG / EXT / SWAP / LEA
+    bool emitBranch(size_t i);
+
+    // ── operand plumbing ─────────────────────────────────────────────────
+    bool decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea);
+    void addrOf(const Ea& ea, Reg dst, int szIdx);
+    void commitEa(const Ea& ea, int szIdx);
+    // The decoded operands must account for EXACTLY the instruction length
+    // the tracer measured. If they do not, this backend has misread the
+    // encoding and every extension word it baked in is suspect.
+    bool lengthOk(size_t i, int extWords) const {
+        return 1 + extWords == int(ir_.instrs[i].words);
+    }
+    // An auto-increment source updates its address register BEFORE the
+    // destination address is computed. Rather than model that (and lose the
+    // "nothing is committed until every access has succeeded" property that
+    // makes bail-out safe), refuse the aliasing cases outright.
+    static bool aliases(const Ea& src, const Ea& dst) {
+        if (src.idx != kM_PI && src.idx != kM_PD) return false;
+        switch (dst.idx) {
+            case kM_AN: case kM_AI: case kM_PI: case kM_PD: case kM_DI:
+                return dst.reg == src.reg;
+            default:
+                return false;
+        }
+    }
+    // Loads <ea> into `dst` (32-bit host register, value right-justified).
+    void load(const Ea& ea, int szIdx, Reg dst, bool signExtend = false,
+              bool soleAccess = true);
+    void store(const Ea& ea, int szIdx, Reg src, bool soleAccess = true);
+    // Guest memory at the address in `addr`, host pointer left in rsi.
+    // `miss` is where a translation the inline TLB cannot serve goes.
+    void memProbe(Reg addr, int szIdx, bool write, Label& miss);
+    // `soleAccess` says this is the instruction's ONLY guest access, which
+    // is what makes the access thunk usable: a thunk that faults leaves
+    // nothing committed, so the interpreter can re-run the instruction —
+    // but only if re-running cannot repeat a side effect this instruction
+    // already had.
+    void memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess = true);
+    void memStore(Reg addr, int szIdx, Reg src, bool soleAccess = true);
+
+    // ── flags ────────────────────────────────────────────────────────────
+    void flagsLogic(Sz sz);          // N,Z from the result; V=C=0
+    void flagsAddSub(bool withX);    // N,Z,V,C from EFLAGS (+X = C)
+    void clearVC();
+    void condToAl(int cc);           // 68k condition -> ZF set == taken
+
+    // ── boilerplate ──────────────────────────────────────────────────────
+    Mem D(int n) const { return mem(kCpu, int32_t(L_.d + 4u * unsigned(n))); }
+    Mem A(int n) const { return mem(kCpu, int32_t(L_.a + 4u * unsigned(n))); }
+    Mem F(int32_t off) const { return mem(kFrm, off); }
+    Mem at(uint32_t off) const { return mem(kCpu, int32_t(off)); }
+
+    void guards(size_t i);
+    // The architectural state at an instruction BOUNDARY: pc, pc0 and the
+    // prefetch queue. Nothing inside a block reads any of it — only the
+    // exception, trace and interpreter paths downstream of an exit do — so
+    // it is emitted in the COLD stubs that lead to those exits rather than
+    // after every instruction. That is 30 of the ~150 bytes a compiled
+    // instruction used to cost, and on this workload code size is the
+    // binding constraint (src/jit/POM68K_JIT.md § 7).
+    void emitBoundary(uint32_t pc, int prevIdx);
+    void call(void* fn);
+    // Leaves the block for `pc`. With a link table available this is a tag
+    // compare and an indirect jump straight into the next compiled block —
+    // no return to the engine, no hash lookup, no frame set-up. Only exits
+    // whose target is a compile-time constant can use it, which is exactly
+    // the three that matter: branch taken, branch not taken, and running
+    // off the end of the recorded straight line.
+    void leaveTo(uint32_t pc);
+    // The same, for a target only known at run time (RTS, JSR (An)). The
+    // slot index has to be computed instead of folded, which is four more
+    // instructions — still nothing against returning to the engine.
+    void leaveToDynamic(Reg pcReg);
+    bool emitSubroutine(size_t i);   // JSR / BSR / RTS
+    void chargeCycles(int cycles);
+    void spillClock() { a_.movMR(Sz::Q, at(L_.clock), kClk); }
+    void fillClock()  { a_.movRM(Sz::Q, kClk, at(L_.clock)); }
+    // The per-instruction state mmu040InstrStart maintains and generated
+    // code would otherwise skip. Both are read AFTER a block exits, by code
+    // the JIT never sees, so both have to be exactly what the interpreter
+    // would have left behind at that instruction boundary.
+    void commitQueue(uint16_t ird, uint16_t irc);
+    void pollIpl();
+
+    Asm& a_;
+    const Layout& L_;
+    const BlockIr& ir_;
+
+    std::vector<Label*> entry_;      // start of each instruction
+    std::vector<Label*> slow_;       // its "hand this one to Moira" stub
+    std::vector<Label*> budget_;     // …and the two guard exits, which have
+    std::vector<Label*> flags_;      // to commit the boundary state first
+    Label *exitBudget_ = nullptr, *exitFlags_ = nullptr, *exitFault_ = nullptr;
+    Label *exitLost_ = nullptr, *epilogue_ = nullptr;
+    int  loopTo_ = -1;
+    uint32_t linkMask_ = 0;
+    int  thunks_ = 2;
+    // Emission deferred to AFTER the block body. Everything a memory access
+    // does when the inline TLB cannot serve it — asking the engine to fill
+    // an entry, calling the access thunk — is cold, and leaving it inline
+    // was costing far more than it looked like: a block of 33 instructions
+    // came to 13 KB, and generated code that does not fit in cache is not
+    // fast however good the instruction selection is.
+    std::vector<std::function<void()>> cold_;
+    bool paced_ = false;
+    int  batch_ = 0;
+    size_t linkEntry_ = 0;
+    int native_ = 0;
+    size_t cur_ = 0;                 // instruction being emitted
+};
+
+// One call per instruction, matching the interpreter's one CYCLES_68020
+// per instruction. It is the single most expensive thing in an emitted
+// instruction, and it is not negotiable: see pom68kJitSync above.
+void Emitter::chargeCycles(int cycles) {
+    if (!paced_) {                       // no pacing information: always call
+        a_.movRR(Sz::Q, RDI, kCpu);
+        a_.movRI(RSI, uint32_t(cycles));
+        call(reinterpret_cast<void*>(&pom68kJitSync));
+        return;
+    }
+    // The wrapper's own batching test, inlined: sync() advances the clock and
+    // then only runs the machine forward once `batch_` cycles have piled up.
+    // Doing that test here rather than in the callee is what keeps an emitted
+    // instruction down to a handful of host instructions — and the decision
+    // it reaches is bit-for-bit the one sync() would have reached.
+    // Load-add-store rather than add-to-memory-then-reload: the reload
+    // would be a load of an address stored one instruction earlier, and
+    // store-to-load forwarding puts that latency directly on the dependency
+    // chain of every single emitted instruction.
+    Label& done = *a_.fresh();
+    Label& due = *a_.fresh();
+    if (cycles) a_.aluRI(Asm::Op::ADD, Sz::Q, kClk, cycles);
+    a_.movRR(Sz::Q, RAX, kClk);
+    a_.aluRM(Asm::Op::SUB, Sz::Q, RAX, mem(kPer, 0));
+    a_.aluRI(Asm::Op::CMP, Sz::Q, RAX, batch_);
+    a_.jcc(Cc::GE, due);
+    a_.bind(done);
+    // Cold: peripheral time is actually owed. sync() reads and advances the
+    // clock, so the register goes back to memory around the call — and the
+    // call sequence itself leaves the hot path with it.
+    cold_.push_back([this, &due, &done] {
+        a_.bind(due);
+        spillClock();
+        a_.movRR(Sz::Q, RDI, kCpu);
+        a_.aluRR(Asm::Op::XOR, Sz::L, RSI, RSI);    // the cycles are already in
+        call(reinterpret_cast<void*>(&pom68kJitSync));
+        fillClock();
+        a_.jmp(done);
+    });
+}
+
+// The prefetch queue. On the 68040 there is no queue refill at the end of an
+// instruction (prefetch() returns early), so at a boundary `ird` still holds
+// the instruction that just ran and `irc` the word the fetch left behind —
+// which is the word at the new pc for everything except a TAKEN Bcc, whose
+// irc is still its own displacement word. Nothing in a compiled block reads
+// either; the exception and trace paths downstream of a block exit do.
+void Emitter::commitQueue(uint16_t ird, uint16_t irc) {
+    // PrefetchQueue is { u16 irc; u16 ird; } and both halves are known at
+    // compile time, so on a little-endian host the pair is one 32-bit store
+    // rather than two 16-bit ones. Checked, not assumed.
+    if (L_.ird == L_.irc + 2) {
+        a_.movMI(Sz::L, at(L_.irc), int32_t((uint32_t(ird) << 16) | irc));
+        return;
+    }
+    a_.movMI(Sz::W, at(L_.ird), int32_t(ird));
+    a_.movMI(Sz::W, at(L_.irc), int32_t(irc));
+}
+
+// POLL_IPL, which mmu040InstrStart performs at the head of every
+// instruction: the interrupt-priority pin is sampled into the register the
+// exception logic compares against. Skipping it would let a block decide,
+// one instruction later, that an interrupt it should have taken was not
+// pending yet.
+void Emitter::pollIpl() {
+    a_.movRM(Sz::B, RAX, at(L_.iplPin));
+    a_.movMR(Sz::B, at(L_.regIpl), RAX);
+}
+
+void Emitter::leaveTo(uint32_t pc) {
+    if (linkMask_) {
+        // The slot index is a function of a CONSTANT, so it is folded here
+        // and the run-time cost is one load, one compare and one jump.
+        const int32_t off = int32_t(((pc >> 1) & linkMask_) * 16);
+        Label& miss = *a_.fresh();
+        a_.movRM(Sz::Q, RAX, F(kFLinkTab));
+        a_.aluMI(Asm::Op::CMP, Sz::L, mem(RAX, off),
+                 int32_t(pc | uint32_t(ir_.super)));
+        a_.jcc(Cc::NE, miss);
+        a_.jmpM(mem(RAX, off + 8));
+        a_.bind(miss);
+    }
+    a_.movMI(Sz::L, F(kFExit), int32_t(Exit::BlockEnd));
+    a_.jmp(*epilogue_);
+}
+
+void Emitter::leaveToDynamic(Reg pcReg) {
+    if (linkMask_) {
+        Label& miss = *a_.fresh();
+        a_.movRR(Sz::L, RCX, pcReg);
+        a_.shiftRI(Sz::L, RCX, 5, 1);                 // pc >> 1
+        a_.aluRI(Asm::Op::AND, Sz::L, RCX, int32_t(linkMask_));
+        a_.shiftRI(Sz::L, RCX, 4, 4);                 // * sizeof(slot)
+        a_.movRM(Sz::Q, RAX, F(kFLinkTab));
+        a_.aluRR(Asm::Op::ADD, Sz::Q, RAX, RCX);
+        a_.movRR(Sz::L, RDX, pcReg);
+        if (ir_.super) a_.aluRI(Asm::Op::OR, Sz::L, RDX, 1);
+        a_.aluRM(Asm::Op::CMP, Sz::L, RDX, mem(RAX, 0));
+        a_.jcc(Cc::NE, miss);
+        a_.jmpM(mem(RAX, 8));
+        a_.bind(miss);
+    }
+    a_.movMI(Sz::L, F(kFExit), int32_t(Exit::BlockEnd));
+    a_.jmp(*epilogue_);
+}
+
+// JSR <ea>, BSR and RTS. All three end the block; all three are compiled
+// rather than handed back, because together they are 7 % of a real Mac OS
+// workload and each one used to be an interpreter round trip AND a link the
+// block linker could not cross.
+//
+// The 68040 raises an address error on an odd target, BEFORE anything is
+// committed. A constant target is checked here at compile time; a computed
+// one is tested at run time and bails to the interpreter, which raises it
+// properly.
+bool Emitter::emitSubroutine(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const uint16_t op = in.opcode;
+    const uint32_t nextPc = in.pc + uint32_t(in.words) * 2;
+    // What the prefetch queue holds after any of these: the 68040 refills
+    // nothing at the end of an instruction, so `irc` is still the word
+    // mmu040InstrStart read at pc + 2.
+    const uint16_t ircAfter = ir_.word(in.pc + 2);
+
+    if (op == 0x4E75) {                              // RTS
+        if (in.cycles != 10) return false;
+        a_.movRM(Sz::L, RAX, A(7));
+        memLoad(RAX, 2, RDI);                        // the return address
+        // Odd target: the 68040 raises an address error, and it does so
+        // before the stack pointer moves. Nothing is committed yet, so
+        // handing the whole instruction over is exact.
+        a_.testRI(Sz::L, RDI, 1);
+        a_.jcc(Cc::NE, *slow_[i]);
+        a_.aluMI(Asm::Op::ADD, Sz::L, A(7), 4);
+        a_.movMR(Sz::L, at(L_.pc), RDI);
+        a_.movMR(Sz::L, at(L_.pc0), RDI);
+        commitQueue(op, ircAfter);
+        chargeCycles(10);
+        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        leaveToDynamic(RDI);
+        return true;
+    }
+
+    if ((op & 0xF000) == 0x6000) {                   // BSR
+        if (in.words > 2 || in.cycles != 7) return false;
+        const int32_t disp = in.words == 1 ? int8_t(op & 0xFF)
+                                           : int16_t(ir_.word(in.pc + 2));
+        const uint32_t target = uint32_t(in.pc + 2 + uint32_t(disp));
+        if (target & 1) return false;
+        // The return address is the next instruction, for both forms
+        // (Moira: reg.pc + 2 on the word form, and reg.pc is already past
+        // the opcode).
+        a_.movRM(Sz::L, RAX, A(7));
+        a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
+        a_.movMR(Sz::L, F(kFSaveA), RAX);
+        a_.movRI(RDI, nextPc);
+        memStore(RAX, 2, RDI);
+        a_.movRM(Sz::L, RAX, F(kFSaveA));
+        a_.movMR(Sz::L, A(7), RAX);
+        a_.movMI(Sz::L, at(L_.pc), int32_t(target));
+        a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
+        commitQueue(op, ircAfter);
+        chargeCycles(7);
+        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        leaveTo(target);
+        return true;
+    }
+
+    if ((op & 0xFFC0) != 0x4E80) return false;       // JSR <ea>
+    const int mode = (op >> 3) & 7, reg = op & 7;
+    Ea ea;
+    if (!decode(i, mode, reg, 2, 0, ea)) return false;
+    if (!ea.memory) return false;                    // JSR needs an address
+    if (ea.idx == kM_PI || ea.idx == kM_PD) return false;   // not encodable
+    if (!lengthOk(i, ea.ext)) return false;
+    static const int8_t kJsr[kM_COUNT] =
+        { -1, -1, 4, -1, -1, 5, -1, 4, 4, 5, -1, -1 };
+    if (kJsr[ea.idx] < 0 || kJsr[ea.idx] != int(in.cycles)) return false;
+
+    const bool constant = (ea.idx == kM_AW || ea.idx == kM_AL || ea.idx == kM_DIPC);
+    if (constant && (uint32_t(ea.value) & 1)) return false;
+
+    // The target first: it must be known good before the stack moves,
+    // because an odd one is an address error with nothing committed.
+    addrOf(ea, RAX, 2);
+    a_.movMR(Sz::L, F(kFValue), RAX);
+    if (!constant) {
+        a_.testRI(Sz::L, RAX, 1);
+        a_.jcc(Cc::NE, *slow_[i]);
+    }
+    // Push the return address — the next instruction, since computeEA has
+    // already consumed this one's extension words.
+    a_.movRM(Sz::L, RAX, A(7));
+    a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
+    a_.movMR(Sz::L, F(kFSaveA), RAX);
+    a_.movRI(RDI, nextPc);
+    memStore(RAX, 2, RDI);
+    a_.movRM(Sz::L, RAX, F(kFSaveA));
+    a_.movMR(Sz::L, A(7), RAX);
+
+    a_.movRM(Sz::L, RDI, F(kFValue));
+    a_.movMR(Sz::L, at(L_.pc), RDI);
+    a_.movMR(Sz::L, at(L_.pc0), RDI);
+    commitQueue(op, ircAfter);
+    chargeCycles(int(in.cycles));
+    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    if (constant) leaveTo(uint32_t(ea.value));
+    else          leaveToDynamic(RDI);
+    return true;
+}
+
+void Emitter::call(void* fn) {
+    a_.movRI64(RAX, uint64_t(uintptr_t(fn)));
+    a_.callR(RAX);
+}
+
+// Clock budget and Moira's flag word, tested before every instruction —
+// exactly the two checks the threaded backend makes, and for the same
+// reason: a peripheral that ticked inside the previous instruction may have
+// raised an interrupt, and the caller's cycle target is a hard ceiling.
+void Emitter::guards(size_t i) {
+    a_.aluRR(Asm::Op::CMP, Sz::Q, kClk, kTgt);
+    a_.jcc(Cc::GE, *budget_[i]);
+    a_.aluMI(Asm::Op::CMP, Sz::L, at(L_.flags), 0);
+    a_.jcc(Cc::NE, *flags_[i]);
+}
+
+void Emitter::emitBoundary(uint32_t pc, int prevIdx) {
+    (void)prevIdx;
+    a_.movMI(Sz::L, at(L_.pc), int32_t(pc));
+    a_.movMI(Sz::L, at(L_.pc0), int32_t(pc));
+    // The prefetch queue is NOT deferred with them, and that is not an
+    // oversight. `ird` at a boundary is the opcode of whatever ran last,
+    // and an instruction a backward branch jumps to is reached from two
+    // different predecessors — the branch, and the instruction above it.
+    // One cold stub cannot carry both answers, and guessing cost a
+    // divergence 800 million cycles into a boot. So the queue stays where
+    // it is unambiguous: written by each instruction as it retires. pc and
+    // pc0 have no such problem, and they are two thirds of the saving.
+}
+
+// ── flags ────────────────────────────────────────────────────────────────
+void Emitter::clearVC() {
+    a_.movMI(Sz::B, at(L_.srV), 0);
+    a_.movMI(Sz::B, at(L_.srC), 0);
+}
+
+// 68k logical/move operations: N and Z from the result at its own width,
+// V and C cleared, X untouched. x86 sets SF/ZF from the same width, so the
+// two setcc do the whole job.
+void Emitter::flagsLogic(Sz) {
+    a_.setccM(Cc::S, at(L_.srN));
+    a_.setccM(Cc::E, at(L_.srZ));
+    clearVC();
+}
+
+// 68k add/subtract: N,Z,V,C map one-to-one onto SF,ZF,OF,CF for operands of
+// the same width — including the carry, because x86's CF after SUB is a
+// borrow, which is what the 68k calls C. X follows C.
+void Emitter::flagsAddSub(bool withX) {
+    a_.setccM(Cc::S, at(L_.srN));
+    a_.setccM(Cc::E, at(L_.srZ));
+    a_.setccM(Cc::O, at(L_.srV));
+    a_.setccM(Cc::B, at(L_.srC));
+    if (withX) a_.setccM(Cc::B, at(L_.srX));
+}
+
+// Leaves ZF SET when the 68k condition `cc` is TRUE, so the caller can
+// branch with `je`. Condition codes are read out of Moira's per-flag bytes.
+void Emitter::condToAl(int cc) {
+    switch (cc) {
+        case 0:                                     // T
+            a_.aluRR(Asm::Op::XOR, Sz::L, RAX, RAX);
+            a_.testRR(Sz::B, RAX, RAX);
+            return;
+        case 1:                                     // F
+            a_.movRI(RAX, 1);
+            a_.testRR(Sz::B, RAX, RAX);
+            return;
+        case 2:                                     // HI: !C && !Z
+            a_.movRM(Sz::B, RAX, at(L_.srC));
+            a_.aluRM(Asm::Op::OR, Sz::B, RAX, at(L_.srZ));
+            a_.testRR(Sz::B, RAX, RAX);
+            return;
+        case 3:                                     // LS: C || Z
+            a_.movRM(Sz::B, RAX, at(L_.srC));
+            a_.aluRM(Asm::Op::OR, Sz::B, RAX, at(L_.srZ));
+            a_.aluRI(Asm::Op::XOR, Sz::B, RAX, 1);
+            a_.testRR(Sz::B, RAX, RAX);
+            return;
+        case 4: a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.srC), 0); return;    // CC: !C
+        case 5: a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.srC), 1); return;    // CS:  C
+        case 6: a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.srZ), 0); return;    // NE
+        case 7: a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.srZ), 1); return;    // EQ
+        case 8: a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.srV), 0); return;    // VC
+        case 9: a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.srV), 1); return;    // VS
+        case 10: a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.srN), 0); return;   // PL
+        case 11: a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.srN), 1); return;   // MI
+        case 12:                                    // GE: N == V
+            a_.movRM(Sz::B, RAX, at(L_.srN));
+            a_.aluRM(Asm::Op::XOR, Sz::B, RAX, at(L_.srV));
+            a_.testRR(Sz::B, RAX, RAX);
+            return;
+        case 13:                                    // LT: N != V
+            a_.movRM(Sz::B, RAX, at(L_.srN));
+            a_.aluRM(Asm::Op::XOR, Sz::B, RAX, at(L_.srV));
+            a_.aluRI(Asm::Op::XOR, Sz::B, RAX, 1);
+            a_.testRR(Sz::B, RAX, RAX);
+            return;
+        case 14:                                    // GT: !Z && N == V
+            a_.movRM(Sz::B, RAX, at(L_.srN));
+            a_.aluRM(Asm::Op::XOR, Sz::B, RAX, at(L_.srV));
+            a_.aluRM(Asm::Op::OR, Sz::B, RAX, at(L_.srZ));
+            a_.testRR(Sz::B, RAX, RAX);
+            return;
+        default:                                    // LE: Z || N != V
+            a_.movRM(Sz::B, RAX, at(L_.srN));
+            a_.aluRM(Asm::Op::XOR, Sz::B, RAX, at(L_.srV));
+            a_.aluRM(Asm::Op::OR, Sz::B, RAX, at(L_.srZ));
+            a_.aluRI(Asm::Op::XOR, Sz::B, RAX, 1);
+            a_.testRR(Sz::B, RAX, RAX);
+            return;
+    }
+}
+
+// ── effective addresses ──────────────────────────────────────────────────
+bool Emitter::decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea) {
+    ea.mode = mode; ea.reg = reg;
+    ea.idx = eaIndex(mode, reg);
+    if (ea.idx < 0) return false;
+    ea.memory = ea.idx >= kM_AI && ea.idx != kM_IM;
+
+    const uint32_t pc = ir_.instrs[i].pc;
+    const uint32_t extPc = pc + 2 + uint32_t(extAt) * 2;
+    switch (ea.idx) {
+        case kM_DN: case kM_AN: case kM_AI: case kM_PI: case kM_PD:
+            ea.ext = 0;
+            return true;
+        case kM_DI:
+            ea.value = int16_t(ir_.word(extPc));
+            ea.ext = 1;
+            return true;
+        case kM_AW:
+            ea.value = int16_t(ir_.word(extPc));
+            ea.ext = 1;
+            return true;
+        case kM_AL:
+            ea.value = int32_t(uint32_t(ir_.word(extPc)) << 16 | ir_.word(extPc + 2));
+            ea.ext = 2;
+            return true;
+        case kM_DIPC:
+            // The 68k adds the displacement to the address of the extension
+            // word itself, which is a compile-time constant here.
+            ea.value = int32_t(extPc + uint32_t(int16_t(ir_.word(extPc))));
+            ea.ext = 1;
+            return true;
+        case kM_IM:
+            if (szIdx == 2) {
+                ea.value = int32_t(uint32_t(ir_.word(extPc)) << 16 | ir_.word(extPc + 2));
+                ea.ext = 2;
+            } else if (szIdx == 1) {
+                ea.value = int16_t(ir_.word(extPc));
+                ea.ext = 1;
+            } else {
+                ea.value = int8_t(ir_.word(extPc) & 0xFF);
+                ea.ext = 1;
+            }
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Guest effective address into `dst`. For (An)+ and -(An) the register
+// update is NOT applied here: it is a guest-visible commit and must not
+// happen until the access has succeeded (see commitEa).
+void Emitter::addrOf(const Ea& ea, Reg dst, int szIdx) {
+    const int step = (ea.reg == 7 && szIdx == 0) ? 2 : sizeBytes(szIdx);
+    switch (ea.idx) {
+        case kM_AI: case kM_PI:
+            a_.movRM(Sz::L, dst, A(ea.reg));
+            return;
+        case kM_PD:
+            a_.movRM(Sz::L, dst, A(ea.reg));
+            a_.aluRI(Asm::Op::SUB, Sz::L, dst, step);
+            return;
+        case kM_DI:
+            a_.movRM(Sz::L, dst, A(ea.reg));
+            if (ea.value) a_.aluRI(Asm::Op::ADD, Sz::L, dst, ea.value);
+            return;
+        case kM_AW: case kM_AL: case kM_DIPC:
+            a_.movRI(dst, uint32_t(ea.value));
+            return;
+        default:
+            return;
+    }
+}
+
+void Emitter::commitEa(const Ea& ea, int szIdx) {
+    const int step = (ea.reg == 7 && szIdx == 0) ? 2 : sizeBytes(szIdx);
+    if (ea.idx == kM_PI) a_.aluMI(Asm::Op::ADD, Sz::L, A(ea.reg), step);
+    else if (ea.idx == kM_PD) a_.aluMI(Asm::Op::SUB, Sz::L, A(ea.reg), step);
+}
+
+// Inline address translation. On entry `addr` holds the guest address; on
+// exit RSI points at the host bytes. A tag miss goes to the fill stub (and
+// retries); anything the fill refuses, and any access straddling a page,
+// goes to this instruction's slow path with nothing committed.
+void Emitter::memProbe(Reg addr, int szIdx, bool write, Label& miss) {
+    const int n = sizeBytes(szIdx);
+    const int32_t table = int32_t(write ? L_.dtlbW : L_.dtlbR);
+    Label& have = *a_.fresh();
+    Label& fill = *a_.fresh();
+
+    // Entry address into RCX. x86 SIB scales stop at 8 and an entry is 16
+    // bytes, so the index is shifted rather than scaled.
+    auto entryPtr = [this, addr, table] {
+        a_.movRR(Sz::L, RCX, addr);
+        a_.shiftRI(Sz::L, RCX, 5, 12);                // page = addr >> 12
+        a_.movRR(Sz::L, R8, RCX);
+        // The DTLB tag carries the privilege in bit 31 (Moira.h,
+        // pomJitDataTag). A block's privilege is a compile-time constant —
+        // an SR write is Unsafe and ends the block — so the OR is emitted
+        // only for supervisor blocks and folds to nothing for user ones.
+        if (ir_.super) a_.aluRI(Asm::Op::OR, Sz::L, R8, int32_t(0x80000000u));
+        a_.aluRI(Asm::Op::AND, Sz::L, RCX,
+                 int32_t(moira::Moira::PomJitDtlb::kEntries - 1));
+        a_.shiftRI(Sz::L, RCX, 4, 4);                 // * sizeof(entry)
+        a_.leaIdx(RCX, kCpu, RCX, 1, table);
+    };
+
+    entryPtr();
+    a_.aluRM(Asm::Op::CMP, Sz::L, R8, mem(RCX, 0));
+    a_.jcc(Cc::NE, fill);              // the fill path is cold: out of rel8 range
+
+    a_.bind(have);
+    a_.movRM(Sz::Q, RSI, mem(RCX, 8));
+    // A tagged entry with a NULL host is a remembered refusal: an I/O
+    // register, the ROM window seen by a store, a page holding translated
+    // code. Asking again would cost a call per access, and a hardware poll
+    // loop asks on every iteration.
+    a_.testRR(Sz::Q, RSI, RSI);
+    a_.jcc(Cc::E, miss);               // ditto — the thunk is cold
+    a_.movRR(Sz::L, RDX, addr);
+    a_.aluRI(Asm::Op::AND, Sz::L, RDX, 4095);
+    if (n > 1) {
+        // An access straddling two pages needs two translations. Rare
+        // enough to be someone else's problem.
+        a_.aluRI(Asm::Op::CMP, Sz::L, RDX, 4096 - n);
+        a_.jcc(Cc::A, miss);
+    }
+    // `and edx, 4095` already zeroed the upper half, so this is a clean
+    // 64-bit index with no extension step.
+    a_.aluRR(Asm::Op::ADD, Sz::Q, RSI, RDX);
+
+    // Tag miss — cold. Ask the engine once; the answer is then taken on
+    // trust rather than re-probed, because fillDtlb wrote exactly the entry
+    // this address indexes. Re-probing would risk a loop that never
+    // terminates if the two ever disagreed.
+    cold_.push_back([this, &fill, &have, &miss, addr, write, entryPtr] {
+        a_.bind(fill);
+        spillClock();
+        a_.movMR(Sz::L, F(kFScratch), addr);
+        a_.movRM(Sz::Q, RDI, F(kFDtlbSelf));
+        a_.movRR(Sz::L, RSI, addr);
+        a_.movRI(RDX, uint32_t(write ? 1 : 0));
+        a_.callM(F(kFDtlbFill));
+        // Test the ANSWER before restoring the address: `addr` is RAX at
+        // every call site, so restoring first would test the address
+        // instead of the host pointer. `mov` leaves the flags alone.
+        a_.testRR(Sz::Q, RAX, RAX);
+        a_.movRM(Sz::L, addr, F(kFScratch));
+        fillClock();
+        a_.jcc(Cc::E, miss);
+        entryPtr();
+        a_.jmp(have);
+    });
+}
+
+// Big-endian guest, little-endian host: every multi-byte access byte-swaps.
+//
+// The miss path is the interesting half. An address the inline TLB cannot
+// serve is usually an I/O register — a hardware poll loop lives entirely on
+// this path — and running the WHOLE instruction through Moira to reach it
+// throws away everything the block already did. So the access alone goes
+// through a thunk, and only a FAULT falls all the way back.
+void Emitter::memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess) {
+    soleAccess = soleAccess && thunks_ >= 1;
+    Label& miss = soleAccess ? *a_.fresh() : *slow_[cur_];
+
+    memProbe(addr, szIdx, false, miss);
+    if (szIdx == 0) {
+        a_.movzx(Sz::B, dst, mem(RSI, 0));
+    } else if (szIdx == 1) {
+        a_.movzx(Sz::W, dst, mem(RSI, 0));
+        a_.rolR16(dst, 8);
+    } else {
+        a_.movRM(Sz::L, dst, mem(RSI, 0));
+        a_.bswap(dst);
+    }
+    if (!soleAccess) return;
+
+    Label& done = *a_.fresh();
+    a_.bind(done);
+    const size_t idx = cur_;
+    cold_.push_back([this, &miss, &done, addr, szIdx, dst, idx] {
+        a_.bind(miss);
+        spillClock();                    // a device access can stall the CPU
+        a_.movRR(Sz::Q, RDI, kCpu);
+        a_.movRR(Sz::L, RSI, addr);
+        a_.movRI(RDX, uint32_t(sizeBytes(szIdx)));
+        a_.leaRM(RCX, F(kFValue));
+        call(reinterpret_cast<void*>(&pom68kJitRead));
+        fillClock();
+        a_.testRR(Sz::L, RAX, RAX);
+        a_.jcc(Cc::E, *slow_[idx]);       // it faulted: nothing was committed
+        a_.movRM(Sz::L, dst, F(kFValue)); // already host-ordered
+        a_.jmp(done);
+    });
+}
+
+void Emitter::memStore(Reg addr, int szIdx, Reg src, bool soleAccess) {
+    soleAccess = soleAccess && thunks_ >= 2;
+    Label& miss = soleAccess ? *a_.fresh() : *slow_[cur_];
+
+    // The value is live across memProbe, whose miss path calls out and
+    // therefore clobbers every caller-saved register, `src` included.
+    a_.movMR(Sz::L, F(kFSaveV), src);
+    memProbe(addr, szIdx, true, miss);
+    a_.movRM(Sz::L, src, F(kFSaveV));
+    if (szIdx == 0) {
+        a_.movMR(Sz::B, mem(RSI, 0), src);
+    } else if (szIdx == 1) {
+        a_.rolR16(src, 8);
+        a_.movMR(Sz::W, mem(RSI, 0), src);
+    } else {
+        a_.bswap(src);
+        a_.movMR(Sz::L, mem(RSI, 0), src);
+    }
+    if (!soleAccess) return;
+
+    Label& done = *a_.fresh();
+    a_.bind(done);
+    const size_t idx = cur_;
+    cold_.push_back([this, &miss, &done, addr, szIdx, idx] {
+        a_.bind(miss);
+        spillClock();                    // a device access can stall the CPU
+        a_.movRR(Sz::Q, RDI, kCpu);
+        a_.movRR(Sz::L, RSI, addr);
+        a_.movRI(RDX, uint32_t(sizeBytes(szIdx)));
+        a_.movRM(Sz::L, RCX, F(kFSaveV));
+        call(reinterpret_cast<void*>(&pom68kJitWrite));
+        fillClock();
+        a_.testRR(Sz::L, RAX, RAX);
+        a_.jcc(Cc::E, *slow_[idx]);
+        // A store the memory map performed itself may have landed in a page
+        // holding translated code; the guard is the only thing that can see
+        // that, and the block must not run any further if it did.
+        //
+        // This is the ONE exit that does not pass through an instruction's
+        // boundary stub, so it commits the boundary itself. It used to get
+        // away without: before pc and pc0 were deferred to the cold stubs
+        // they were already correct here, because the PREVIOUS instruction
+        // had written them. Deferring them turned that into an exit at a pc
+        // several instructions stale, and the engine re-entered there.
+        Label& ok = *a_.fresh();
+        a_.movRM(Sz::Q, RAX, F(kFGuard));
+        a_.aluMI(Asm::Op::CMP, Sz::B, mem(RAX, 0), 0);
+        a_.jccShort(Cc::E, ok);
+        emitBoundary(ir_.instrs[idx].pc, -1);
+        a_.jmp(*exitLost_);
+        a_.bind(ok);
+        a_.jmp(done);
+    });
+}
+
+void Emitter::load(const Ea& ea, int szIdx, Reg dst, bool signExtend,
+                   bool soleAccess) {
+    switch (ea.idx) {
+        case kM_DN:
+            if (signExtend && szIdx != 2) {
+                a_.movsx(hostSz(szIdx), dst, D(ea.reg));
+            } else {
+                a_.movRM(Sz::L, dst, D(ea.reg));
+            }
+            return;
+        case kM_AN:
+            if (signExtend && szIdx == 1) a_.movsx(Sz::W, dst, A(ea.reg));
+            else a_.movRM(Sz::L, dst, A(ea.reg));
+            return;
+        case kM_IM:
+            a_.movRI(dst, uint32_t(ea.value));
+            return;
+        default:
+            addrOf(ea, RAX, szIdx);
+            memLoad(RAX, szIdx, dst, soleAccess);
+            if (signExtend && szIdx != 2) a_.movsxRR(hostSz(szIdx), dst, dst);
+            return;
+    }
+}
+
+void Emitter::store(const Ea& ea, int szIdx, Reg src, bool soleAccess) {
+    switch (ea.idx) {
+        case kM_DN: a_.movMR(hostSz(szIdx), D(ea.reg), src); return;
+        case kM_AN: a_.movMR(Sz::L, A(ea.reg), src); return;
+        default:
+            addrOf(ea, RAX, szIdx);
+            memStore(RAX, szIdx, src, soleAccess);
+            return;
+    }
+}
+
+// ── instruction families ─────────────────────────────────────────────────
+
+// MOVE / MOVEA. Source is read, destination written; MOVEA sign-extends a
+// word source to the full address register and touches no flag.
+bool Emitter::emitMove(size_t i, int szIdx) {
+    const uint16_t op = ir_.instrs[i].opcode;
+    const int srcMode = (op >> 3) & 7, srcReg = op & 7;
+    const int dstMode = (op >> 6) & 7, dstReg = (op >> 9) & 7;
+
+    Ea src, dst;
+    if (!decode(i, srcMode, srcReg, szIdx, 0, src)) return false;
+    if (!decode(i, dstMode, dstReg, szIdx, src.ext, dst)) return false;
+    if (src.idx == kM_AN && szIdx == 0) return false;     // MOVE.B An is illegal
+    // A destination has to be writable: not an immediate, not PC-relative.
+    if (dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
+    if (aliases(src, dst)) return false;
+    if (!lengthOk(i, src.ext + dst.ext)) return false;
+
+    const int rc = kEaRead[src.idx][szIdx];
+    const int dc = kMoveDst[dst.idx];
+    if (rc < 0 || dc < 0) return false;
+    const int cycles = rc + dc;
+    if (cycles != ir_.instrs[i].cycles) return false;
+
+    // Two guest accesses means neither may go through an access thunk: a
+    // bail-out on the second would re-run the instruction, and with it the
+    // first — which for an I/O register is a side effect happening twice.
+    const bool twoAccesses = src.memory && dst.memory;
+    const bool movea = (dst.idx == kM_AN);
+    load(src, szIdx, RDI, movea, !twoAccesses);
+    if (movea) {
+        a_.movMR(Sz::L, A(dst.reg), RDI);
+    } else {
+        // The flags come from the value itself; test it at its own width.
+        a_.testRR(hostSz(szIdx), RDI, RDI);
+        flagsLogic(hostSz(szIdx));
+        store(dst, szIdx, RDI, !twoAccesses);
+    }
+    commitEa(src, szIdx);
+    commitEa(dst, szIdx);
+    return true;
+}
+
+// ADD/SUB/AND/OR/CMP <ea>,Dn — the "ea to register" direction, plus the
+// ADDA/SUBA/CMPA forms that land in an address register.
+bool Emitter::emitAluEaRg(size_t i) {
+    const uint16_t op = ir_.instrs[i].opcode;
+    const int hi = (op >> 12) & 0xF;
+    const int dn = (op >> 9) & 7;
+    const int opmode = (op >> 6) & 7;
+    const int mode = (op >> 3) & 7, reg = op & 7;
+
+    Asm::Op x86op;
+    bool isCmp = false, isAddr = false;
+    int szIdx;
+
+    if (opmode == 3 || opmode == 7) {          // <ea> -> An (word / long)
+        isAddr = true;
+        szIdx = (opmode == 3) ? 1 : 2;
+        if (hi == 0xB) { isCmp = true; x86op = Asm::Op::CMP; }        // CMPA
+        else if (hi == 0xD) x86op = Asm::Op::ADD;                     // ADDA
+        else if (hi == 0x9) x86op = Asm::Op::SUB;                     // SUBA
+        else return false;
+    } else if (opmode <= 2) {
+        szIdx = opmode;
+        switch (hi) {
+            case 0x8: x86op = Asm::Op::OR;  break;
+            case 0x9: x86op = Asm::Op::SUB; break;
+            case 0xB: x86op = Asm::Op::CMP; isCmp = true; break;
+            case 0xC: x86op = Asm::Op::AND; break;
+            case 0xD: x86op = Asm::Op::ADD; break;
+            default: return false;
+        }
+    } else {
+        return false;
+    }
+
+    Ea src;
+    if (!decode(i, mode, reg, szIdx, 0, src)) return false;
+    if (src.idx == kM_AN && szIdx == 0) return false;
+    const int rc = kEaRead[src.idx][szIdx];
+    if (rc < 0) return false;
+    if (!lengthOk(i, src.ext)) return false;
+    // CMPA/ADDA/SUBA charge the same as the register forms on the 68020.
+    if (rc != ir_.instrs[i].cycles) return false;
+    if (isAddr) {
+        Ea an; an.idx = kM_AN; an.reg = dn;
+        if (aliases(src, an)) return false;
+    }
+
+    if (isAddr) {
+        // An operations are always full-width, with a word source sign
+        // extended first, and they never touch the CCR — except CMPA, which
+        // compares at 32 bits.
+        load(src, szIdx, RDI, true);
+        if (isCmp) {
+            a_.movRM(Sz::L, RDX, A(dn));
+            a_.aluRR(Asm::Op::CMP, Sz::L, RDX, RDI);
+            flagsAddSub(false);
+        } else {
+            a_.aluMR(x86op, Sz::L, A(dn), RDI);
+        }
+        commitEa(src, szIdx);
+        return true;
+    }
+
+    load(src, szIdx, RDI, false);
+    if (isCmp) {
+        a_.movRM(Sz::L, RDX, D(dn));
+        a_.aluRR(Asm::Op::CMP, hostSz(szIdx), RDX, RDI);
+        flagsAddSub(false);                     // CMP leaves X alone
+    } else {
+        a_.aluMR(x86op, hostSz(szIdx), D(dn), RDI);
+        if (x86op == Asm::Op::ADD || x86op == Asm::Op::SUB) flagsAddSub(true);
+        else flagsLogic(hostSz(szIdx));
+    }
+    commitEa(src, szIdx);
+    return true;
+}
+
+// ADD/SUB/AND/OR/EOR Dn,<ea> — the read-modify-write direction.
+bool Emitter::emitAluRgEa(size_t i) {
+    const uint16_t op = ir_.instrs[i].opcode;
+    const int hi = (op >> 12) & 0xF;
+    const int dn = (op >> 9) & 7;
+    const int szIdx = (op >> 6) & 3;
+    const int mode = (op >> 3) & 7, reg = op & 7;
+    if (szIdx > 2) return false;
+
+    Asm::Op x86op;
+    switch (hi) {
+        case 0x8: x86op = Asm::Op::OR;  break;
+        case 0x9: x86op = Asm::Op::SUB; break;
+        case 0xB: x86op = Asm::Op::XOR; break;      // EOR
+        case 0xC: x86op = Asm::Op::AND; break;
+        case 0xD: x86op = Asm::Op::ADD; break;
+        default: return false;
+    }
+
+    Ea dst;
+    if (!decode(i, mode, reg, szIdx, 0, dst)) return false;
+    if (dst.idx == kM_AN || dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
+    if (!lengthOk(i, dst.ext)) return false;
+    const int cycles = eaRmwCost(dst.idx, szIdx);
+    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+
+    if (dst.idx == kM_DN) {
+        a_.movRM(Sz::L, RDI, D(dn));
+        a_.aluMR(x86op, hostSz(szIdx), D(dst.reg), RDI);
+    } else {
+        addrOf(dst, RAX, szIdx);
+        a_.movMR(Sz::L, F(kFSaveA), RAX);           // the address, for the store
+        memLoad(RAX, szIdx, RDI, false);
+        a_.movRM(Sz::L, RDX, D(dn));
+        a_.aluRR(x86op, hostSz(szIdx), RDI, RDX);
+        // Flags first: the store byte-swaps its operand in place.
+        if (x86op == Asm::Op::ADD || x86op == Asm::Op::SUB) flagsAddSub(true);
+        else { a_.testRR(hostSz(szIdx), RDI, RDI); flagsLogic(hostSz(szIdx)); }
+        a_.movRM(Sz::L, RAX, F(kFSaveA));
+        memStore(RAX, szIdx, RDI, false);
+        commitEa(dst, szIdx);
+        return true;
+    }
+    if (x86op == Asm::Op::ADD || x86op == Asm::Op::SUB) flagsAddSub(true);
+    else flagsLogic(hostSz(szIdx));
+    return true;
+}
+
+// ADDQ / SUBQ #1..8,<ea>
+bool Emitter::emitAddSubQ(size_t i) {
+    const uint16_t op = ir_.instrs[i].opcode;
+    const int szIdx = (op >> 6) & 3;
+    if (szIdx > 2) return false;
+    int imm = (op >> 9) & 7;
+    if (imm == 0) imm = 8;
+    const bool sub = (op & 0x0100) != 0;
+    const int mode = (op >> 3) & 7, reg = op & 7;
+
+    Ea dst;
+    if (!decode(i, mode, reg, szIdx, 0, dst)) return false;
+    if (dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
+    if (!lengthOk(i, dst.ext)) return false;
+    const int cycles = eaRmwCost(dst.idx, szIdx);
+    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+
+    const Asm::Op x86op = sub ? Asm::Op::SUB : Asm::Op::ADD;
+
+    if (dst.idx == kM_AN) {
+        // Address-register form: full width whatever the size, no flags.
+        a_.aluMI(x86op, Sz::L, A(dst.reg), imm);
+        return true;
+    }
+    if (dst.idx == kM_DN) {
+        a_.aluMI(x86op, hostSz(szIdx), D(dst.reg), imm);
+        flagsAddSub(true);
+        return true;
+    }
+    addrOf(dst, RAX, szIdx);
+    a_.movMR(Sz::L, F(kFSaveA), RAX);
+    memLoad(RAX, szIdx, RDI, false);
+    a_.aluRI(x86op, hostSz(szIdx), RDI, imm);
+    flagsAddSub(true);
+    a_.movRM(Sz::L, RAX, F(kFSaveA));
+    memStore(RAX, szIdx, RDI, false);
+    commitEa(dst, szIdx);
+    return true;
+}
+
+bool Emitter::emitMoveq(size_t i) {
+    const uint16_t op = ir_.instrs[i].opcode;
+    if (op & 0x0100) return false;
+    if (ir_.instrs[i].cycles != 2) return false;
+    const int dn = (op >> 9) & 7;
+    const int32_t v = int8_t(op & 0xFF);
+    a_.movMI(Sz::L, D(dn), v);
+    a_.movMI(Sz::B, at(L_.srN), v < 0 ? 1 : 0);
+    a_.movMI(Sz::B, at(L_.srZ), v == 0 ? 1 : 0);
+    clearVC();
+    return true;
+}
+
+// ORI/ANDI/SUBI/ADDI/EORI/CMPI #imm,<ea>
+bool Emitter::emitImmediate(size_t i) {
+    const uint16_t op = ir_.instrs[i].opcode;
+    const int kind = (op >> 9) & 7;
+    const int szIdx = (op >> 6) & 3;
+    if (szIdx > 2) return false;
+    const int mode = (op >> 3) & 7, reg = op & 7;
+
+    Asm::Op x86op;
+    bool isCmp = false;
+    switch (kind) {
+        case 0: x86op = Asm::Op::OR;  break;
+        case 1: x86op = Asm::Op::AND; break;
+        case 2: x86op = Asm::Op::SUB; break;
+        case 3: x86op = Asm::Op::ADD; break;
+        case 5: x86op = Asm::Op::XOR; break;
+        case 6: x86op = Asm::Op::CMP; isCmp = true; break;
+        default: return false;                       // 4 = static bit ops
+    }
+
+    Ea imm, dst;
+    if (!decode(i, 7, 4, szIdx, 0, imm)) return false;
+    if (!decode(i, mode, reg, szIdx, imm.ext, dst)) return false;
+    if (dst.idx == kM_AN || dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
+    if (!lengthOk(i, imm.ext + dst.ext)) return false;
+
+    const int cycles = isCmp ? kEaRead[dst.idx][szIdx] : eaRmwCost(dst.idx, szIdx);
+    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+
+    if (dst.idx == kM_DN) {
+        a_.aluMI(x86op, hostSz(szIdx), D(dst.reg), imm.value);
+        if (isCmp || x86op == Asm::Op::ADD || x86op == Asm::Op::SUB)
+            flagsAddSub(!isCmp);
+        else
+            flagsLogic(hostSz(szIdx));
+        return true;
+    }
+
+    addrOf(dst, RAX, szIdx);
+    if (isCmp) {
+        memLoad(RAX, szIdx, RDI);
+        a_.aluRI(Asm::Op::CMP, hostSz(szIdx), RDI, imm.value);
+        flagsAddSub(false);
+        commitEa(dst, szIdx);
+        return true;
+    }
+    a_.movMR(Sz::L, F(kFSaveA), RAX);
+    memLoad(RAX, szIdx, RDI, false);
+    a_.aluRI(x86op, hostSz(szIdx), RDI, imm.value);
+    if (x86op == Asm::Op::ADD || x86op == Asm::Op::SUB) flagsAddSub(true);
+    else flagsLogic(hostSz(szIdx));
+    a_.movRM(Sz::L, RAX, F(kFSaveA));
+    memStore(RAX, szIdx, RDI, false);
+    commitEa(dst, szIdx);
+    return true;
+}
+
+// BTST only, static (#imm) and dynamic (Dn) forms. BSET/BCLR/BCHG write
+// back and are left out of this pass; BTST is what a Mac ROM's hardware
+// poll loops are made of, and it is read-only, which keeps the bail-out
+// argument trivial.
+bool Emitter::emitBitOp(size_t i) {
+    const uint16_t op = ir_.instrs[i].opcode;
+    const int mode = (op >> 3) & 7, reg = op & 7;
+
+    int bitReg = -1;
+    int32_t bitImm = 0;
+    int extUsed = 0;
+    bool dynamic;
+    if ((op & 0xF1C0) == 0x0100) {                   // BTST Dn,<ea>
+        // …which is also MOVEP's encoding when the mode field is 001. The
+        // An check further down rejects that, but say so here too.
+        if (mode == 1) return false;
+        dynamic = true;
+        bitReg = (op >> 9) & 7;
+    } else if ((op & 0xFFC0) == 0x0800) {            // BTST #imm,<ea>
+        dynamic = false;
+        bitImm = ir_.word(ir_.instrs[i].pc + 2) & 0xFF;
+        extUsed = 1;
+    } else {
+        return false;
+    }
+
+    // A data register is tested modulo 32, memory modulo 8 (a byte).
+    const bool toReg = (mode == 0);
+    const int szIdx = toReg ? 2 : 0;
+
+    Ea dst;
+    if (!decode(i, mode, reg, szIdx, extUsed, dst)) return false;
+    if (dst.idx == kM_AN || dst.idx == kM_IM) return false;
+    if (!lengthOk(i, extUsed + dst.ext)) return false;
+
+    const int cycles = toReg ? 4 : eaRmwCost(dst.idx, szIdx);
+    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+
+    // Z = !bit. Everything else is untouched.
+    //
+    // ORDER MATTERS: the operand is fetched FIRST. A memory access here is
+    // not three instructions — it is a TLB probe, possibly a call to fill
+    // it, possibly a call to perform the access — and it treats every
+    // caller-saved register as scratch. A bit mask computed before the
+    // fetch would not survive it. Only RDI crosses an access, and only
+    // because memLoad is what leaves it there.
+    if (toReg) {
+        a_.movRM(Sz::L, RDI, D(dst.reg));
+    } else {
+        addrOf(dst, RAX, szIdx);
+        memLoad(RAX, szIdx, RDI);
+    }
+    if (dynamic) {
+        a_.movRM(Sz::L, RCX, D(bitReg));
+        a_.aluRI(Asm::Op::AND, Sz::L, RCX, toReg ? 31 : 7);
+        a_.movRI(RDX, 1);
+        a_.shiftRCl(Sz::L, RDX, 4);                  // 1 << (bit & mask)
+    } else {
+        a_.movRI(RDX, uint32_t(1u << (uint32_t(bitImm) & (toReg ? 31u : 7u))));
+    }
+    a_.testRR(Sz::L, RDI, RDX);
+    a_.setccM(Cc::E, at(L_.srZ));
+    commitEa(dst, szIdx);
+    return true;
+}
+
+// The $4xxx group the backend can own: TST, CLR, NOT, NEG, EXT, SWAP, LEA.
+bool Emitter::emitLine4(size_t i) {
+    const uint16_t op = ir_.instrs[i].opcode;
+    const int mode = (op >> 3) & 7, reg = op & 7;
+    const int szIdx = (op >> 6) & 3;
+
+    if (op == 0x4E75 || (op & 0xFFC0) == 0x4E80) return emitSubroutine(i);
+
+    if (op == 0x4E71) {                              // NOP
+        return ir_.instrs[i].cycles == 2;
+    }
+
+    if ((op & 0xFFF8) == 0x4E50) {                   // LINK.W An,#d16
+        if (ir_.instrs[i].cycles != 5 || !lengthOk(i, 1)) return false;
+        const int an = op & 7;
+        const int32_t disp = int16_t(ir_.word(ir_.instrs[i].pc + 2));
+
+        // sp = A7 - 4 is both the address written and the value An takes.
+        // For LINK A7 the value PUSHED is that same decremented pointer,
+        // not the old one — Moira's `readA(ax) - (ax == 7 ? 4 : 0)`.
+        a_.movRM(Sz::L, RAX, A(7));
+        a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
+        if (an == 7) a_.movRR(Sz::L, RDI, RAX);
+        else         a_.movRM(Sz::L, RDI, A(an));
+        a_.movMR(Sz::L, F(kFSaveA), RAX);            // the address, past the store
+        memStore(RAX, 2, RDI);
+        // Nothing above committed guest state, so a bail-out re-runs the
+        // whole instruction cleanly. Everything below is the commit.
+        a_.movRM(Sz::L, RAX, F(kFSaveA));
+        a_.movMR(Sz::L, A(an), RAX);
+        if (an != 7) a_.movRM(Sz::L, RAX, A(7)), a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
+        if (disp) a_.aluRI(Asm::Op::ADD, Sz::L, RAX, disp);
+        a_.movMR(Sz::L, A(7), RAX);
+        return true;
+    }
+
+    if ((op & 0xFFF8) == 0x4E58) {                   // UNLK An
+        if (ir_.instrs[i].cycles != 6 || !lengthOk(i, 0)) return false;
+        const int an = op & 7;
+        a_.movRM(Sz::L, RAX, A(an));                 // the new stack pointer
+        a_.movMR(Sz::L, F(kFSaveA), RAX);
+        memLoad(RAX, 2, RDI);
+        // An takes the word read back; A7 lands just past it, except for
+        // UNLK A7 where the two are the same register and the read value
+        // wins (Moira: `if (an != 7) reg.sp += 4`).
+        a_.movMR(Sz::L, A(an), RDI);
+        if (an != 7) {
+            a_.movRM(Sz::L, RAX, F(kFSaveA));
+            a_.aluRI(Asm::Op::ADD, Sz::L, RAX, 4);
+            a_.movMR(Sz::L, A(7), RAX);
+        }
+        return true;
+    }
+
+    if ((op & 0xF1C0) == 0x41C0) {                   // LEA <ea>,An
+        const int an = (op >> 9) & 7;
+        Ea src;
+        if (!decode(i, mode, reg, 2, 0, src)) return false;
+        if (!src.memory) return false;               // LEA needs an address
+        if (src.idx == kM_PI || src.idx == kM_PD) return false;  // not encodable
+        if (!lengthOk(i, src.ext)) return false;
+        static const int8_t kLea[kM_COUNT] =
+            { -1, -1, 6, -1, -1, 7, -1, 6, 6, 7, -1, -1 };
+        const int cycles = kLea[src.idx];
+        if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+        addrOf(src, RAX, 2);
+        a_.movMR(Sz::L, A(an), RAX);
+        return true;
+    }
+
+    if ((op & 0xFFB8) == 0x4880) {                   // EXT.W / EXT.L
+        if (ir_.instrs[i].cycles != 4) return false;
+        const int dn = op & 7;
+        const bool toLong = (op & 0x0040) != 0;
+        if (toLong) {
+            a_.movsx(Sz::W, RDI, D(dn));
+            a_.movMR(Sz::L, D(dn), RDI);
+            a_.testRR(Sz::L, RDI, RDI);
+        } else {
+            a_.movsx(Sz::B, RDI, D(dn));
+            a_.movMR(Sz::W, D(dn), RDI);
+            a_.testRR(Sz::W, RDI, RDI);
+        }
+        flagsLogic(toLong ? Sz::L : Sz::W);
+        return true;
+    }
+
+    if ((op & 0xFFF8) == 0x4840) {                   // SWAP Dn
+        if (ir_.instrs[i].cycles != 4) return false;
+        const int dn = op & 7;
+        a_.movRM(Sz::L, RDI, D(dn));
+        a_.shiftRI(Sz::L, RDI, 0, 16);               // ROL 16
+        a_.movMR(Sz::L, D(dn), RDI);
+        a_.testRR(Sz::L, RDI, RDI);
+        flagsLogic(Sz::L);
+        return true;
+    }
+
+    if (szIdx > 2) return false;
+    const uint16_t family = op & 0xFF00;
+
+    if (family == 0x4A00) {                          // TST <ea>
+        Ea src;
+        if (!decode(i, mode, reg, szIdx, 0, src)) return false;
+        if (src.idx == kM_IM) return false;
+        if (src.idx == kM_AN && szIdx == 0) return false;
+        if (!lengthOk(i, src.ext)) return false;
+        const int cycles = kEaRead[src.idx][szIdx];
+        if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+        load(src, szIdx, RDI, false);
+        a_.testRR(hostSz(szIdx), RDI, RDI);
+        flagsLogic(hostSz(szIdx));
+        commitEa(src, szIdx);
+        return true;
+    }
+
+    if (family != 0x4200 && family != 0x4600 && family != 0x4400) return false;
+
+    Ea dst;
+    if (!decode(i, mode, reg, szIdx, 0, dst)) return false;
+    if (dst.idx == kM_AN || dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
+    if (!lengthOk(i, dst.ext)) return false;
+    const int cycles = eaRmwCost(dst.idx, szIdx);
+    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+
+    if (family == 0x4200) {                          // CLR: write zero
+        if (dst.idx == kM_DN) {
+            a_.movMI(hostSz(szIdx), D(dst.reg), 0);
+        } else {
+            addrOf(dst, RAX, szIdx);
+            a_.aluRR(Asm::Op::XOR, Sz::L, RDI, RDI);
+            memStore(RAX, szIdx, RDI);
+            commitEa(dst, szIdx);
+        }
+        a_.movMI(Sz::B, at(L_.srN), 0);
+        a_.movMI(Sz::B, at(L_.srZ), 1);
+        clearVC();
+        return true;
+    }
+
+    // NOT ($4600) and NEG ($4400)
+    const bool isNeg = (family == 0x4400);
+    if (dst.idx == kM_DN) {
+        if (isNeg) {
+            a_.negM(hostSz(szIdx), D(dst.reg));
+            flagsAddSub(true);
+        } else {
+            a_.notM(hostSz(szIdx), D(dst.reg));
+            a_.aluMI(Asm::Op::CMP, hostSz(szIdx), D(dst.reg), 0);
+            flagsLogic(hostSz(szIdx));
+        }
+        return true;
+    }
+    addrOf(dst, RAX, szIdx);
+    a_.movMR(Sz::L, F(kFSaveA), RAX);
+    memLoad(RAX, szIdx, RDI, false);
+    if (isNeg) {
+        a_.negR(hostSz(szIdx), RDI);
+        flagsAddSub(true);
+    } else {
+        a_.notR(hostSz(szIdx), RDI);
+        a_.testRR(hostSz(szIdx), RDI, RDI);
+        flagsLogic(hostSz(szIdx));
+    }
+    a_.movRM(Sz::L, RAX, F(kFSaveA));
+    memStore(RAX, szIdx, RDI, false);
+    commitEa(dst, szIdx);
+    return true;
+}
+
+// Bcc / BRA. The block's terminator, and the reason a code generator is
+// worth having at all here: when the target is another instruction of THIS
+// block — a loop closing on itself — the branch becomes an internal jump
+// and the loop never returns to the engine.
+bool Emitter::emitBranch(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const uint16_t op = in.opcode;
+    if ((op & 0xF000) != 0x6000) return false;       // DBcc: not this pass
+    const int cc = (op >> 8) & 0xF;
+    if (cc == 1) return false;                       // BSR (never classified here)
+
+    int32_t disp;
+    if (in.words == 1)      disp = int8_t(op & 0xFF);
+    else if (in.words == 2) disp = int16_t(ir_.word(in.pc + 2));
+    else return false;                               // .L form: rare, skipped
+
+    const uint32_t target = uint32_t(in.pc + 2 + uint32_t(disp));
+    const uint32_t fall = in.pc + uint32_t(in.words) * 2;
+    if (target & 1) return false;                    // 68040 raises before cond
+
+    const bool always = (cc == 0);
+    const int takenCycles = always ? 10 : 6;         // execBra / execBcc
+    const int fallCycles = (in.words == 1) ? 4 : 6;
+    // A branch charges different amounts on its two paths, so the tracer's
+    // single measurement can only confirm the path it took.
+    const int traced = in.cycles;
+    if (traced != takenCycles && traced != fallCycles) return false;
+
+    // Is the target inside this block? Only then can it stay in host code.
+    int targetIdx = -1;
+    for (size_t k = 0; k < ir_.instrs.size(); k++)
+        if (ir_.instrs[k].pc == target) { targetIdx = int(k); break; }
+
+    Label& notTaken = *a_.fresh();
+    if (!always) {
+        condToAl(cc);
+        a_.jcc(Cc::NE, notTaken);                    // condToAl: ZF set == taken
+    }
+
+    // Taken. fullPrefetch() does not refill the queue on the 68040, so irc
+    // still holds the word mmu040InstrStart fetched at pc + 2 — which for a
+    // word-displacement branch is the displacement itself.
+    a_.movMI(Sz::L, at(L_.pc), int32_t(target));
+    a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
+    commitQueue(op, ir_.word(in.pc + 2));
+    chargeCycles(takenCycles);
+    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    loopTo_ = targetIdx;
+    if (targetIdx >= 0) {
+        a_.jmp(*entry_[size_t(targetIdx)]);   // the loop stays in host code
+    } else {
+        leaveTo(target);
+    }
+
+    if (!always) {
+        a_.bind(notTaken);
+        a_.movMI(Sz::L, at(L_.pc), int32_t(fall));
+        a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
+        commitQueue(op, ir_.word(fall));
+        chargeCycles(fallCycles);
+        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        leaveTo(fall);
+    }
+    return true;
+}
+
+bool Emitter::emitInstr(size_t i) {
+    const uint16_t op = ir_.instrs[i].opcode;
+    switch (op & 0xF000) {
+        case 0x0000:
+            if ((op & 0xF1C0) == 0x0100 || (op & 0xFFC0) == 0x0800) return emitBitOp(i);
+            return emitImmediate(i);
+        case 0x1000: return emitMove(i, 0);
+        case 0x2000: return emitMove(i, 2);
+        case 0x3000: return emitMove(i, 1);
+        case 0x4000: return emitLine4(i);
+        case 0x5000:
+            if ((op & 0x00C0) == 0x00C0) return false;         // Scc / DBcc
+            return emitAddSubQ(i);
+        case 0x6000:
+            return (op & 0x0F00) == 0x0100 ? emitSubroutine(i) : emitBranch(i);
+        case 0x7000: return emitMoveq(i);
+        case 0x8000: case 0x9000: case 0xB000: case 0xC000: case 0xD000:
+            return aluDirection(op) == 0 ? emitAluEaRg(i)
+                 : aluDirection(op) == 1 ? emitAluRgEa(i) : false;
+        default:
+            return false;
+    }
+}
+
+bool Emitter::emit() {
+    const size_t n = ir_.instrs.size();
+    if (n == 0 || ir_.code.empty()) return false;
+
+    entry_.resize(n); slow_.resize(n); budget_.resize(n); flags_.resize(n);
+    for (size_t i = 0; i < n; i++) {
+        entry_[i] = a_.fresh(); slow_[i] = a_.fresh();
+        budget_[i] = a_.fresh(); flags_[i] = a_.fresh();
+    }
+    // Which instruction, if any, the block's own terminating branch jumps
+    // back to: its boundary is reached from two directions, so the cold
+    // stubs must not assume which instruction preceded it.
+    int loopTarget = -1;
+    if (n && ir_.instrs[n - 1].kind == Kind::Branch) {
+        const Instr& br = ir_.instrs[n - 1];
+        if ((br.opcode & 0xF000) == 0x6000 && br.words <= 2) {
+            const int32_t d = br.words == 1 ? int8_t(br.opcode & 0xFF)
+                                            : int16_t(ir_.word(br.pc + 2));
+            const uint32_t t = uint32_t(br.pc + 2 + uint32_t(d));
+            for (size_t k = 0; k < n; k++)
+                if (ir_.instrs[k].pc == t) { loopTarget = int(k); break; }
+        }
+    }
+    exitBudget_ = a_.fresh(); exitFlags_ = a_.fresh();
+    exitFault_ = a_.fresh(); exitLost_ = a_.fresh(); epilogue_ = a_.fresh();
+
+    // ── prologue ─────────────────────────────────────────────────────────
+    // Five pushes: the four callee-saved registers the block lives in, plus
+    // one more so that rsp is 16-byte aligned at every call site.
+    // Six pushes plus eight bytes of padding: the stack must be 16-byte
+    // aligned at every call site, and a LINKED block inherits this frame.
+    a_.push(RBX); a_.push(RBP); a_.push(R14); a_.push(R15);
+    a_.push(kPer); a_.push(kClk);
+    a_.aluRI(Asm::Op::SUB, Sz::Q, RSP, 8);
+    a_.movRR(Sz::Q, kCpu, RDI);
+    a_.movRR(Sz::Q, kFrm, RSI);
+    a_.movRM(Sz::Q, kTgt, F(kFClockTarget));
+    if (paced_) a_.movRM(Sz::Q, kPer, F(kFPeriph));
+    fillClock();
+    a_.aluRR(Asm::Op::XOR, Sz::L, kCnt, kCnt);
+    linkEntry_ = a_.size();
+
+    size_t emitted = 0;
+    for (size_t i = 0; i < n; i++) {
+        cur_ = i;
+        a_.bind(*entry_[i]);
+        guards(i);
+
+        const Asm::Mark mark = a_.mark();
+        pollIpl();
+        const bool native = emitInstr(i);
+        emitted = i + 1;
+
+        if (!native) {
+            // Leave no trace of a family that gave up half-way — including
+            // the IPL sample, which the fallback's own mmu040InstrStart
+            // will perform. Then send
+            // the instruction to its stub in the cold half.
+            a_.rewind(mark);
+            a_.jmp(*slow_[i]);
+            continue;
+        }
+        native_++;
+        if (ir_.instrs[i].kind == Kind::Branch) break;   // it committed its own
+
+        // No pc/pc0 here: nothing downstream reads them until the block
+        // exits, and every exit commits them on the way out. The queue does
+        // stay — see emitBoundary.
+        commitQueue(ir_.instrs[i].opcode,
+                    ir_.word(ir_.instrs[i].pc + uint32_t(ir_.instrs[i].words) * 2));
+        chargeCycles(ir_.instrs[i].cycles);
+        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    }
+
+    // Falling off the end of the recorded straight line. pc, pc0 and the
+    // clock were committed by the last instruction, so this is a plain,
+    // successful block end — and a linkable one.
+    if (emitted && ir_.instrs[emitted - 1].kind != Kind::Branch) {
+        const uint32_t endPc = ir_.instrs[emitted - 1].pc +
+                               uint32_t(ir_.instrs[emitted - 1].words) * 2;
+        emitBoundary(endPc, int(emitted) - 1);
+        leaveTo(endPc);
+    } else {
+        a_.movMI(Sz::L, F(kFExit), int32_t(Exit::BlockEnd));
+        a_.jmp(*epilogue_);
+    }
+
+    // ── the cold half ────────────────────────────────────────────────────
+    // One stub per instruction: run THIS instruction through Moira from the
+    // boundary, then rejoin the compiled stream. Reached both by forms the
+    // backend cannot emit and by the bail-outs of ones it can — a data
+    // address that turned out not to be plain memory, an access straddling
+    // two pages. Guest state is untouched at every entry into it, which is
+    // what makes handing the instruction over safe.
+    // Everything the hot path deferred: TLB fills and access thunks.
+    for (auto& fn : cold_) fn();
+    cold_.clear();
+
+    // The two guard exits and the interpreter fallback all leave from the
+    // SAME boundary — the one before instruction i — so they share the
+    // commit and differ only in what they do next.
+    for (size_t i = 0; i < emitted; i++) {
+        Label& prep = *a_.fresh();
+        a_.bind(*budget_[i]);
+        a_.movMI(Sz::L, F(kFExit), int32_t(Exit::ClockBudget));
+        a_.jmp(prep);
+        a_.bind(*flags_[i]);
+        a_.movMI(Sz::L, F(kFExit), int32_t(Exit::CpuFlags));
+        a_.bind(prep);
+        emitBoundary(ir_.instrs[i].pc, int(i) == loopTarget ? -1 : int(i) - 1);
+        a_.jmp(*epilogue_);
+    }
+
+    for (size_t i = 0; i < emitted; i++) {
+        a_.bind(*slow_[i]);
+        emitBoundary(ir_.instrs[i].pc, int(i) == loopTarget ? -1 : int(i) - 1);
+        spillClock();
+        a_.movRR(Sz::Q, RDI, kCpu);
+        call(reinterpret_cast<void*>(&pom68kJitStep));
+        fillClock();
+        a_.aluRI(Asm::Op::CMP, Sz::L, RAX, 0);
+        a_.jcc(Cc::L, *exitLost_);                   // -1: the window went away
+        a_.jcc(Cc::E, *exitFault_);                  //  0: it did not retire
+        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        a_.aluMI(Asm::Op::ADD, Sz::L, F(kFSlow), 1);
+        // Moira may have written guest memory, and a write into this very
+        // block's page leaves everything compiled after it stale. The
+        // engine's write guard is the only thing that can see that.
+        a_.movRM(Sz::Q, RAX, F(kFGuard));
+        a_.aluMI(Asm::Op::CMP, Sz::B, mem(RAX, 0), 0);
+        a_.jcc(Cc::NE, *exitLost_);
+        if (i + 1 < emitted) {
+            a_.jmp(*entry_[i + 1]);
+        } else {
+            a_.movMI(Sz::L, F(kFExit), int32_t(Exit::BlockEnd));
+            a_.jmp(*epilogue_);
+        }
+    }
+
+    // ── exits ────────────────────────────────────────────────────────────
+    a_.bind(*exitLost_);
+    a_.movMI(Sz::L, F(kFExit), int32_t(Exit::WindowLost));
+    a_.jmp(*epilogue_);
+    a_.bind(*exitFault_);
+    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);          // it ran, it just faulted
+    a_.movMI(Sz::L, F(kFExit), int32_t(Exit::Fault));
+
+    a_.bind(*epilogue_);
+    a_.movMR(Sz::L, F(kFInstrs), kCnt);
+    spillClock();
+    a_.aluRI(Asm::Op::ADD, Sz::Q, RSP, 8);
+    a_.pop(kClk); a_.pop(kPer); a_.pop(R15); a_.pop(R14); a_.pop(RBP); a_.pop(RBX);
+    a_.ret();
+
+    // Any instruction past `emitted` was never reached (a branch ended the
+    // block early), so its entry and stub labels stay unbound. Bind them on
+    // the epilogue rather than leaving finish() with a dangling reference.
+    for (size_t i = emitted; i < n; i++) {
+        if (entry_[i]->bound < 0) entry_[i]->bound = epilogue_->bound;
+        if (slow_[i]->bound < 0) slow_[i]->bound = epilogue_->bound;
+        if (budget_[i]->bound < 0) budget_[i]->bound = epilogue_->bound;
+        if (flags_[i]->bound < 0) flags_[i]->bound = epilogue_->bound;
+    }
+    if (exitBudget_->bound < 0) exitBudget_->bound = epilogue_->bound;
+    if (exitFlags_->bound < 0) exitFlags_->bound = epilogue_->bound;
+    return a_.finish() && !a_.overflowed();
+}
+
+// ── the backend ──────────────────────────────────────────────────────────
+
+class X64Compiled : public Compiled {
+public:
+    uint8_t* entry = nullptr;
+    // Past the prologue. A linked jump arrives with rbx/rbp/r14/r15/r12
+    // already holding what the chain's FIRST block put there, and with the
+    // retired-instruction count accumulated so far — which is the point.
+    uint8_t* linked = nullptr;
+};
+
+class X64Backend : public Backend {
+public:
+    const char* name() const override { return "x86-64"; }
+    const char* description() const override {
+        return "native code generation";
+    }
+
+    bool usable() const override { return CodeBuffer::supported(); }
+
+    BackendCaps caps() const override {
+        BackendCaps c;
+        c.nativeCode = true;
+        c.aluReg = c.aluMem = c.moves = c.branches = c.addrModes = true;
+        c.maxBlockInstrs = 64;
+        return c;
+    }
+
+    bool canEmit(uint16_t op) const override;
+
+    Compiled* compile(const BlockIr& ir, const Context& ctx) override;
+    void* linkEntry(Compiled* c) const override {
+        return static_cast<X64Compiled*>(c)->linked;
+    }
+    RunResult run(Compiled* c, Context& ctx) override;
+    void release(Compiled* c) override { delete c; }
+    void flushAll() override {
+        if (buf_.valid()) { buf_.makeWritable(); buf_.reset(); }
+    }
+
+private:
+    CodeBuffer buf_;
+    int diagLeft_ = 40;              // POM68K_JIT_VERBOSE block dump budget
+    Layout layout_{};
+    bool haveLayout_ = false;
+    std::vector<uint8_t> scratch_;
+};
+
+// A cheap, encoding-only answer used by the opcode census and by the
+// minimum-coverage policy in compile(). It over-reports slightly (it cannot
+// know whether the cycle cross-check will agree), which is the right
+// direction: the census is a target list, not a guarantee.
+bool X64Backend::canEmit(uint16_t op) const {
+    const int mode = (op >> 3) & 7, reg = op & 7;
+    const bool eaOk = eaIndex(mode, reg) >= 0;
+    switch (op & 0xF000) {
+        case 0x0000:
+            if ((op & 0x0F00) == 0x0E00) return false;                 // MOVES/CAS
+            if ((op & 0xF1C0) == 0x0100) return eaOk && mode != 1;      // BTST Dn (not MOVEP)
+            if ((op & 0xFFC0) == 0x0800) return eaOk;                   // BTST #imm
+            if ((op & 0x00FF) == 0x003C || (op & 0x00FF) == 0x007C) return false;
+            return eaOk && ((op >> 6) & 3) <= 2 && (((op >> 9) & 7) != 4);
+        case 0x1000: case 0x2000: case 0x3000: {
+            const int dm = (op >> 6) & 7, dr = (op >> 9) & 7;
+            return eaOk && eaIndex(dm, dr) >= 0 && kMoveDst[eaIndex(dm, dr)] >= 0;
+        }
+        case 0x4000:
+            if ((op & 0xFFF8) == 0x4E50 || (op & 0xFFF8) == 0x4E58) return true;
+            if (op == 0x4E71 || op == 0x4E75) return true;           // NOP / RTS
+            if ((op & 0xFFC0) == 0x4E80) return eaOk;                // JSR <ea>
+            if ((op & 0xF1C0) == 0x41C0) return eaOk;              // LEA
+            if ((op & 0xFFB8) == 0x4880) return true;              // EXT
+            if ((op & 0xFFF8) == 0x4840) return true;              // SWAP
+            if ((op & 0xFF00) == 0x4A00 || (op & 0xFF00) == 0x4200 ||
+                (op & 0xFF00) == 0x4400 || (op & 0xFF00) == 0x4600)
+                return eaOk && ((op >> 6) & 3) <= 2;
+            return false;
+        case 0x5000: return (op & 0x00C0) != 0x00C0 && eaOk;        // ADDQ/SUBQ
+        case 0x6000: return true;                                   // Bcc/BRA/BSR
+        case 0x7000: return (op & 0x0100) == 0;                     // MOVEQ
+        case 0x8000: case 0x9000: case 0xB000: case 0xC000: case 0xD000:
+            return eaOk && aluDirection(op) >= 0;
+        default: return false;
+    }
+}
+
+Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
+    if (!ctx.cpu) return nullptr;
+    // Generated code models POLL_IPL as a plain assignment. If the deferred
+    // IPL-recognition feature is ever armed, this backend has nothing to say.
+    if (!ctx.cpu->pomJitSimpleIpl()) return nullptr;
+    if (!haveLayout_) {
+        layout_ = ctx.cpu->pomJitLayout();
+        haveLayout_ = true;
+    }
+    if (!buf_.valid() && !buf_.reserve(kCodeBufferBytes)) return nullptr;
+    if (ir.code.empty()) return nullptr;
+
+    // Compile into a scratch buffer first: the executable page is W^X, and
+    // flipping it per block would cost an mprotect pair each time.
+    scratch_.resize(kMaxBlockBytes);
+    Asm a(scratch_.data(), scratch_.size());
+    Emitter e(a, layout_, ir, ctx);
+    const bool ok = e.emit() && !a.overflowed();
+    if (verbose() && diagLeft_ > 0) {
+        diagLeft_--;
+        std::fprintf(stderr, "[jit] block $%08X %2zu instr, %2d native, %zu bytes%s",
+                     ir.entryPc, ir.instrs.size(), e.nativeCount(), a.size(),
+                     ok ? "" : "  REFUSED(emit)");
+        if (!ir.instrs.empty() && ir.instrs.back().kind == Kind::Branch)
+            std::fprintf(stderr, "  branch->%s",
+                         e.loopedTo() >= 0 ? "INTERNAL" : "exit");
+        std::fprintf(stderr, "  [");
+        for (const Instr& in : ir.instrs)
+            std::fprintf(stderr, "%04X/%uc ", in.opcode, in.cycles);
+        std::fprintf(stderr, "]\n");
+    }
+    if (!ok) return nullptr;
+
+    // A block of nothing but fallbacks is strictly worse than the fetch
+    // window loop: same interpreter work, plus a call and a frame. Refuse
+    // it and let the engine run the window instead.
+    if (e.nativeCount() * 2 < int(ir.instrs.size())) {
+        if (verbose() && diagLeft_ > 0) std::fprintf(stderr, "[jit]   ^ REFUSED(coverage)\n");
+        return nullptr;
+    }
+
+    if (!buf_.makeWritable()) return nullptr;
+    uint8_t* dst = buf_.alloc(a.size(), 16);
+    if (!dst) return nullptr;                        // full: the engine flushes
+    // Every branch the block contains is internal and rel32-encoded, and
+    // the only absolute addresses baked in are the thunks', so the finished
+    // bytes are position independent and a plain copy is a valid move.
+    std::memcpy(dst, scratch_.data(), a.size());
+    if (!buf_.makeExecutable()) return nullptr;
+
+    X64Compiled* c = new X64Compiled();
+    c->entry = dst;
+    c->linked = dst + e.linkEntryOffset();
+    return c;
+}
+
+RunResult X64Backend::run(Compiled* c, Context& ctx) {
+    Frame f{};
+    f.clockTarget = ctx.clockTarget;
+    f.exit = uint32_t(Exit::BlockEnd);
+    f.dtlbSelf = ctx.dtlbSelf;
+    f.dtlbFill = ctx.dtlbFill;
+    f.guardHit = ctx.guard ? reinterpret_cast<const uint8_t*>(&ctx.guard->hit)
+                           : &kNoGuard;
+    f.periphClock = ctx.periphClock;
+    f.linkTable = ctx.linkTable;
+
+    using Fn = void (*)(moira::Moira*, Frame*);
+    reinterpret_cast<Fn>(static_cast<X64Compiled*>(c)->entry)(ctx.cpu, &f);
+
+    RunResult r;
+    r.instrs = f.instrs;
+    r.slowInstrs = f.slowInstrs;
+    r.exit = Exit(f.exit);
+    return r;
+}
+
+}  // namespace
+
+Backend* x64Backend() {
+    static X64Backend backend;
+    return &backend;
+}
+
+}  // namespace jit

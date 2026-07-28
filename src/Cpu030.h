@@ -15,6 +15,7 @@
 
 #pragma once
 #include "Moira.h"
+#include "jit/JitEngine.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -29,6 +30,17 @@ public:
     explicit Cpu030(V8Memory& mem, bool withFpu = false, bool as020 = false);
 
     void hardReset();                       // V8 overlay + CPU reset
+    // ── JIT engine (src/jit/POM68K_JIT.md, 030 extension 2026-07-28) ───
+    // The same engine that drives the four 68040 machines: the 030 seam is
+    // mmuFetchWord (the single choke point every instruction-stream fetch
+    // goes through) plus the read-only ATC probe, so nothing here knows
+    // more than the Cpu040 wrapper does. Off by default; the LC's as020
+    // profile constructs it too but the probe refuses a 68020, so the
+    // window simply never arms there.
+    jit::Engine& jit() { return jit_; }
+    const jit::Engine& jit() const { return jit_; }
+    int  engine() const { return jit_.enabled() ? 1 : 0; }
+    void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
     void runCycles(moira::i64 n);
     void runUntil(moira::i64 clockTarget);
     void updateIpl();                       // from the V8 priority resolver
@@ -104,6 +116,7 @@ private:
     // fit both), itself retired from an ADAPTIVE 2→24 spike (wobbled the sound
     // tempo). Both knobs tunable live: POM68K_CACHE_BOOST (ceiling),
     // POM68K_ICACHE_MISS (penalty). Long-term: a fuller Moira cache model.
+    jit::Engine jit_;
     int cacheBoost_ = 4;           // resident-code ceiling ratio
     int icacheMiss_ = 4;           // boosted cycles charged per i-cache miss
     moira::i64 periphAccum_ = 0;   // sub-ratio remainder for exact scaling

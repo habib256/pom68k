@@ -65,7 +65,7 @@ int main() {
     check(bogus != nullptr, "an unknown name still yields a backend");
     check(bogus->usable(), "the fallback is usable");
 
-    std::printf("[jit_backend] executable memory (W^X)\n");
+    std::printf("[jit_backend] executable memory\n");
     if (!jit::CodeBuffer::supported()) {
         // A legitimate outcome, not an error: this host cannot give us
         // executable pages, so `auto` must have chosen a non-generating
@@ -85,24 +85,86 @@ int main() {
         if (p) std::memset(p, 0x90, 32);
         check(buf.alloc(1u << 30) == nullptr, "over-allocation is refused");
         check(buf.makeExecutable(), "W -> X");
-        check(!buf.writable(), "no longer writable while executable");
-        check(buf.alloc(16) == nullptr, "alloc refused while executable");
+        if (buf.unified()) {
+            // The kernel granted one RWX mapping, so the transitions are
+            // no-ops by design: a code generator that flipped protection per
+            // block would pay an mprotect PAIR per block, which measured as
+            // the largest single cost in the whole backend.
+            std::printf("  (unified RWX mapping — W/X transitions are no-ops)\n");
+            check(buf.writable(), "stays writable");
+            check(buf.alloc(16) != nullptr, "alloc still served");
+        } else {
+            check(!buf.writable(), "no longer writable while executable");
+            check(buf.alloc(16) == nullptr, "alloc refused while executable");
+        }
         check(buf.makeWritable(), "X -> W");
         check(buf.writable(), "writable again");
         buf.release();
         check(!buf.valid(), "release");
     }
 
+    // What the ACTIVE backend claims it can turn into host code. On a host
+    // with no code generator every answer is false and this section simply
+    // records that — the point is that the census and the block builder
+    // agree with the backend actually selected.
+    {
+        // Name the code generator rather than taking `auto`: auto's answer
+        // is a measured performance choice (JitBackend.cpp), and this
+        // section is about what the generator CAN do, not what ships.
+        jit::Backend* b = jit::selectBackend("x64");
+        std::printf("[jit_backend] native coverage (%s)\n", b->name());
+        const bool gen = b->caps().nativeCode;
+        // The two opcodes a Mac ROM's hardware poll loops are built from.
+        check(b->canEmit(0x082B) == gen, "BTST #imm,d16(A3)");
+        check(b->canEmit(0x66F8) == gen, "BNE.S -8");
+        check(b->canEmit(0x2ADC) == gen, "MOVE.L (A4)+,(A5)+");
+        check(b->canEmit(0x7000) == gen, "MOVEQ #0,D0");
+        check(b->canEmit(0xD3C1) == gen, "ADDA.L D1,A1");
+        // …and forms no backend may claim: they are Unsafe, or they use an
+        // addressing mode this generator does not decode.
+        // LINK/UNLK/NOP are the $4Exx carve-out: no control transfer, no
+        // SR/MMU/cache state, and 3.6 % of a real workload sitting at every
+        // function entry and exit. They are compiled, and they no longer
+        // end a block.
+        check(b->canEmit(0x4E71) == gen, "NOP");
+        check(b->canEmit(0x4E56) == gen, "LINK A6,#d16");
+        check(b->canEmit(0x4E5E) == gen, "UNLK A6");
+        check(jit::classify(0x4E71) != jit::Kind::Unsafe, "NOP does not end a block");
+        check(jit::classify(0x4E56) != jit::Kind::Unsafe, "LINK does not end a block");
+        check(jit::classify(0x4E5E) != jit::Kind::Unsafe, "UNLK does not end a block");
+        // JSR/BSR/RTS are compiled as block TERMINATORS: 7 % of a real
+        // workload, and each one used to be both an interpreter round trip
+        // and a block boundary the linker could not cross.
+        check(b->canEmit(0x4E75) == gen, "RTS");
+        check(b->canEmit(0x4EB9) == gen, "JSR abs.l");
+        check(b->canEmit(0x6100) == gen, "BSR");
+        check(jit::endsBlockAfter(jit::classify(0x4E75)), "RTS terminates a block");
+        check(jit::endsBlockAfter(jit::classify(0x4EB9)), "JSR terminates a block");
+        check(jit::endsBlockAfter(jit::classify(0x6100)), "BSR terminates a block");
+        check(jit::branchWords(0x4E75) == 1, "RTS is one word");
+        check(jit::branchWords(0x4EB9) == 3, "JSR abs.l is three words");
+        check(jit::branchWords(0x4EAE) == 2, "JSR d16(A6) is two words");
+        // …while the rest of the $4Exx group still ends a block BEFORE it.
+        check(!b->canEmit(0x4E73), "RTE is never native");
+        check(!b->canEmit(0x4ED0), "JMP is not compiled");
+        check(!b->canEmit(0xF200), "F-line is never native");
+        check(!b->canEmit(0x0130), "BTST Dn,d8(A0,Xn) — indexed mode");
+        check(!b->canEmit(0x0108), "MOVEP is not BTST");
+        check(!b->canEmit(0x81C0), "DIVU is not an ALU direction");
+        check(!b->canEmit(0xC1C0), "MULS is not an ALU direction");
+        check(!b->canEmit(0xC101), "ABCD is not OR-to-ea");
+        check(!b->canEmit(0xB108), "CMPM is not EOR-to-ea");
+    }
+
     std::printf("[jit_backend] block classifier\n");
     // These MUST end a block: they can change the MMU, a cache or the
     // supervisor bit, which would silently stale the code window.
     checkUnsafe(0x4E73, "RTE");
-    checkUnsafe(0x4E75, "RTS");
+    checkUnsafe(0x4E76, "TRAPV");
     checkUnsafe(0x4E72, "STOP");
     checkUnsafe(0x4E70, "RESET");
     checkUnsafe(0x4E7A, "MOVEC from control register");
     checkUnsafe(0x4E7B, "MOVEC to control register");
-    checkUnsafe(0x4EB9, "JSR abs.l");
     checkUnsafe(0x4ED0, "JMP (A0)");
     checkUnsafe(0x46C0, "MOVE to SR");
     checkUnsafe(0x40C0, "MOVE from SR");
@@ -113,9 +175,6 @@ int main() {
     checkUnsafe(0x0E00, "MOVES");
     checkUnsafe(0x4AC0, "TAS (locked RMW)");
     checkUnsafe(0x484A, "BKPT");
-    checkUnsafe(0x6000, "BRA");
-    checkUnsafe(0x67FE, "BEQ");
-    checkUnsafe(0x51C8, "DBcc");
     checkUnsafe(0x50FA, "TRAPcc");
     checkUnsafe(0xA000, "A-line");
     checkUnsafe(0xF000, "F-line (MMU / CINV / MOVE16 / FPU)");
@@ -138,6 +197,19 @@ int main() {
     checkSafe(0xE188, "LSL.L");
     checkSafe(0x5280, "ADDQ.L");
     checkSafe(0x57C0, "Scc");
+
+    // Branches are neither: they END a block, and are part of it. A
+    // backend that can evaluate the condition and compute the target keeps
+    // a loop inside generated code instead of returning to the engine at
+    // every iteration — which is the whole reason J2 exists.
+    check(jit::endsBlockAfter(jit::classify(0x6000)), "BRA terminates a block");
+    check(jit::endsBlockAfter(jit::classify(0x67FE)), "BEQ terminates a block");
+    check(jit::endsBlockAfter(jit::classify(0x51C8)), "DBcc terminates a block");
+    check(!jit::endsBlock(jit::classify(0x6000)), "BRA is not Unsafe");
+    check(jit::branchWords(0x67FE) == 1, "BEQ.B is one word");
+    check(jit::branchWords(0x6700) == 2, "BEQ.W is two words");
+    check(jit::branchWords(0x67FF) == 3, "BEQ.L is three words");
+    check(jit::branchWords(0x51C8) == 2, "DBcc is two words");
 
     // Trap-capable but straight-line: allowed in a block, flagged for a
     // future code generator, and caught at replay by the pc check.

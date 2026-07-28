@@ -1020,6 +1020,56 @@ because that would skip `POLL_IPL` and the per-instruction MMU resets.
    error during a `MOVE16` would stack a differently-shaped frame under the
    JIT than under the interpreter, which invariant 1 does not allow.
 
+### J2 additions (2026-07-28) — what a CODE GENERATOR needs on top
+
+The x86-64 backend (`src/jit/backends/JitBackendX64.cpp`) emits host machine
+code that touches this object directly. Five more additions, same rules: all
+marked `POM68K JIT`, all inert until armed.
+
+6. **`Moira.h` — `PomJitDtlb pomJitDtlbR/W` + `pomJitDtlbFlush()`.** A
+   64-entry direct-mapped data-translation cache, the data-side twin of the
+   fetch window. Generated code cannot call `mmu040Read`: that path throws
+   on a fault, and a C++ exception may not cross a JIT frame — there is no
+   unwind information for bytes we emitted ourselves. So a data address is
+   translated *inline*, by tag compare, and a miss bails out of the compiled
+   block at an instruction boundary with nothing committed. Entries are 16
+   bytes so one `lea` reaches them. Read and write are separate caches
+   because a page can be readable and write-protected, and because a write
+   to an unmodified page has to re-walk so the table search sets M.
+
+7. **`Moira.h` — `pomJitMapMoved()`.** Every site that bumps
+   `pomJitMmuGen` now goes through this instead, because it must also empty
+   the data TLB. The generation counter alone suffices for the code window,
+   which re-checks it on every fetch; the data TLB is read by generated code
+   that checks nothing but the tag, so it has to be emptied at the source.
+
+8. **`MoiraExecMMU_cpp.h` — `bool pomJitProbeData(...) const`.** The data
+   twin of `pomJitProbeCode`, held to the same three rules (no guest memory
+   touched, no throw, no CPU state disturbed) plus the two a write adds: the
+   page must not be write-protected, and it must already be marked modified,
+   because a write to an unmodified page owes the descriptor an M-bit
+   write-back and a probe may not perform a guest store.
+
+9. **`MoiraExecMMU_cpp.h` — `pomJitReadData/pomJitWriteData`, `noexcept`.**
+   The other half of that data path: what generated code calls when the TLB
+   refuses — an I/O register, an access straddling two pages. They perform
+   the REAL access through the same `mmu040Read`/`mmu040Write` the
+   interpreter uses, and convert the one thing a JIT frame cannot survive, a
+   thrown fault, into `false`. A false answer means nothing was committed on
+   the guest side, so the caller leaves the instruction alone and the
+   interpreter re-runs it from the boundary and faults identically.
+
+10. **`Moira.h` — `pomJitLayout()`, `pomJitSync(int)`, `pomJitSimpleIpl()`.**
+    The register file stays private; `pomJitLayout()` hands back the byte
+    offsets a code generator needs, measured from a live object rather than
+    with `offsetof` on a polymorphic type. `pomJitSync` routes generated
+    cycles through the machine's virtual `sync()` — a block that merely
+    added to `clock` would run the guest forward with the VIA, the ASC,
+    SWIM and the Cuda/Egret MCU frozen behind it. `pomJitSimpleIpl()` lets
+    the backend refuse to compile at all if the deferred IPL-recognition
+    feature (`setIplDelay`) is ever armed, since generated code models
+    `POLL_IPL` as the plain assignment.
+
 **Known divergence, by design:** serving a fetch from the window skips the
 instruction ATC's pseudo-LRU update for that access, so ATC replacement
 order differs from a pure-interpreter run. Architecturally invisible (the

@@ -15,6 +15,7 @@
 // Gates: tests/v8_ramsize.cpp, tests/pseudovia_test.cpp.
 
 #pragma once
+#include "jit/JitGuard.h" 
 #include "Via6522.h"
 #include "PseudoVia.h"
 #include "Ariel.h"
@@ -94,6 +95,22 @@ public:
     // Wire-back to the CPU (POMIIGS setCpu pattern): IPL recompute on any
     // IFR/IER change, extBusError() on unmapped I/O, E-clock stalls.
     void setCpu(Cpu030* cpu) { cpu_ = cpu; }
+
+    // ── JIT hooks (src/jit/POM68K_JIT.md) ──────────────────────────────
+    // Same contract as Q605Memory's: codeSpan hands the JIT a host pointer
+    // to PLAIN memory only (RAM through the bank remap, ROM once the
+    // overlay is down); everything with a read side effect — the whole map
+    // while the overlay is up (clearing it IS a read side effect here),
+    // VRAM's pull on the video timing, all of $F00000+ — is refused.
+    // dataSpan is the write-aware twin; the 030 has no data window today,
+    // but the engine's fillDtlb probes through it and simply never fills
+    // (pomJitProbeData is 040-only), so it stays cheap and honest.
+    const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
+    uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
+    uint32_t ramBytes() const { return uint32_t(ram_.size()); }
+    void jitMapChanged();
+
     void updateIrq();
     // V8 interrupt priority resolver (v8.cpp:287-315): SCC=4 > VIA2=2 > VIA1=1
     int iplLevel() const;
@@ -246,6 +263,7 @@ private:
     [[noreturn]] void busError() const;
     void viaSync();                          // E-clock stall (v8.cpp:462-483)
 
+    jit::CodeGuard* jitGuard_ = nullptr;     // JIT code invalidation
     std::vector<uint8_t> ram_, rom_, vram_;
     Via6522 via_;
     PseudoVia pvia_;

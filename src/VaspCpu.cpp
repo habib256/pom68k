@@ -5,7 +5,26 @@
 #include "VaspMemory.h"
 #include <cstdlib>
 
-VaspCpu::VaspCpu(VaspMemory& mem, bool withFpu) : mem_(mem) {
+namespace {
+jit::MemoryHooks vaspJitHooks(VaspMemory& mem) {
+    jit::MemoryHooks h;
+    h.self = &mem;
+    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
+        return static_cast<VaspMemory*>(s)->codeSpan(phys, len);
+    };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<VaspMemory*>(s)->dataSpan(phys, len, write != 0);
+    };
+    h.setGuard = [](void* s, jit::CodeGuard* g) {
+        static_cast<VaspMemory*>(s)->setJitGuard(g);
+    };
+    h.ramBytes = [](void* s) { return static_cast<VaspMemory*>(s)->ramBytes(); };
+    return h;
+}
+}  // namespace
+
+VaspCpu::VaspCpu(VaspMemory& mem, bool withFpu)
+    : mem_(mem), jit_(*this, vaspJitHooks(mem)) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     if (const char* b = getenv("POM68K_CACHE_BOOST")) {
@@ -25,15 +44,18 @@ void VaspCpu::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
     pomIcache.reset();
+    jit_.flushAll();
     reset();                       // SSP/PC from $0 (ROM via overlay)
 }
 
 void VaspCpu::didChangeCACR(moira::u32 value) {
     if (value & 0x0C) pomIcache.reset();   // CI/CE strobes → flush model
+    jit_.flushAll();                       // SMC hint, as on every wrapper
 }
 
 void VaspCpu::runCycles(moira::i64 n) {
-    executeUntil(getClock() + n * cacheBoost_);
+    const moira::i64 target = getClock() + n * cacheBoost_;
+    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
     flushTicks();
 }
 

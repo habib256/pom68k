@@ -36,7 +36,9 @@ public:
         return c;
     }
 
-    Compiled* compile(const BlockIr&) override { return new ThreadedCompiled(); }
+    Compiled* compile(const BlockIr&, const Context&) override {
+        return new ThreadedCompiled();
+    }
     void release(Compiled* c) override { delete c; }
     void flushAll() override {}
 
@@ -66,8 +68,9 @@ public:
             // engine disarmed us): let the engine re-validate.
             if (!cpu.pomJitCovers(in.pc)) { r.exit = Exit::WindowLost; return r; }
 
-            if (!cpu.pomJitExecOne()) { r.instrs++; r.exit = Exit::Fault; return r; }
+            if (!cpu.pomJitExecOne()) { r.instrs++; r.slowInstrs++; r.exit = Exit::Fault; return r; }
             r.instrs++;
+            r.slowInstrs++;   // this backend has no other kind
         }
 
         r.exit = Exit::BlockEnd;

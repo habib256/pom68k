@@ -27,6 +27,35 @@ if(POM68K_NATIVE AND NOT MSVC)
     endif()
 endif()
 
+# ─── Profile-guided optimization (perf pass 2026-07-28) ──────────────────
+# An interpreter is dispatch and branches, which is exactly what PGO is
+# for — measured on the Quadra 605 boot: interpreter −33 %, JIT −18 %, with
+# bit-identical emulation (the state fingerprints match the plain build).
+# Three steps, in ONE build directory so the profile paths line up:
+#
+#   cmake .. -DPOM68K_PGO=generate && make -j jitdev q605_boot_etalon
+#   ./q605_boot_etalon && POM68K_CPU_ENGINE=jit ./q605_boot_etalon
+#   cmake .. -DPOM68K_PGO=use && make -j
+#
+# The training runs write *.gcda next to the objects; `use` reads them from
+# the same paths. -fprofile-correction because the GUI is two threads;
+# -Wno-missing-profile because most machine profiles never run in training
+# (only the Quadra path does) and cold code is precisely what may stay cold.
+set(POM68K_PGO "off" CACHE STRING "Profile-guided optimization: off | generate | use")
+set_property(CACHE POM68K_PGO PROPERTY STRINGS off generate use)
+if(NOT POM68K_PGO STREQUAL "off" AND NOT MSVC)
+    if(POM68K_PGO STREQUAL "generate")
+        add_compile_options(-fprofile-generate)
+        add_link_options(-fprofile-generate)
+    elseif(POM68K_PGO STREQUAL "use")
+        add_compile_options(-fprofile-use -fprofile-correction -Wno-missing-profile)
+        add_link_options(-fprofile-use)
+    else()
+        message(FATAL_ERROR "POM68K_PGO must be off, generate or use")
+    endif()
+    message(STATUS "POM68K PGO: ${POM68K_PGO}")
+endif()
+
 # ─── Optional sanitizer build (POM2/POMIIGS convention) ───────────────────
 set(POM68K_SANITIZE "" CACHE STRING "Build with -fsanitize=<value>. Empty = off.")
 if(POM68K_SANITIZE AND NOT MSVC)
@@ -73,10 +102,9 @@ set(POM68K_JIT_SOURCES
 set(POM68K_JIT_DEFS "")
 if(POM68K_JIT_BACKENDS STREQUAL "auto" AND NOT EMSCRIPTEN)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
-        # J2 slot: add src/jit/backends/JitBackendX64.cpp here and define
-        # POM68K_JIT_BACKEND_X64 (the registry in JitBackend.cpp already has
-        # the #if). Not written yet — `auto` resolves to `threaded`.
-        set(POM68K_JIT_HOST "x86-64 (no code generator yet)")
+        list(APPEND POM68K_JIT_SOURCES src/jit/backends/JitBackendX64.cpp)
+        list(APPEND POM68K_JIT_DEFS POM68K_JIT_BACKEND_X64)
+        set(POM68K_JIT_HOST "x86-64 code generator")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
         # See src/jit/backends/JitBackendA64.md.
         set(POM68K_JIT_HOST "aarch64 (no code generator yet)")
@@ -144,6 +172,9 @@ add_library(pom68k_core STATIC
 )
 target_include_directories(pom68k_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pom68k_core PUBLIC moira)
+# Which JIT backends this build actually contains (the registry in
+# src/jit/JitBackend.cpp keys its candidate list off these).
+target_compile_definitions(pom68k_core PUBLIC ${POM68K_JIT_DEFS})
 
 # ─── GUI executable (Dear ImGui, fetched by setup_imgui.sh) ──────────────
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
@@ -812,6 +843,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(finder_boot_matrix EXCLUDE_FROM_ALL tests/finder_boot_matrix.cpp)
     target_link_libraries(finder_boot_matrix PRIVATE pom68k_core)
 
+    # Dev harness: fixed guest-cycle stopwatch for the two engines (and a
+    # screen dump when a boot etalon's signature needs eyes on it). Not a
+    # gate — it measures, it does not judge. See src/jit/POM68K_JIT.md § 3.
+    add_executable(jit_bench EXCLUDE_FROM_ALL tests/jit_bench.cpp)
+    target_link_libraries(jit_bench PRIVATE pom68k_core)
+
     # ── JIT gates (src/jit/POM68K_JIT.md) ────────────────────────────────
     # The portability seam: backend selection, W^X executable memory, and
     # the block classifier's safety rules. No assets, runs everywhere.
@@ -829,21 +866,67 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(jit_lockstep_test PROPERTIES TIMEOUT 1800)
 
-    # Same comparison with the block cache forced on. It is OFF by default
-    # (measured slower than the fetch window alone — see JitConfig.h), so
-    # without this second registration the whole block/backend path would
-    # never be exercised by a gate.
+    # The portable backend with its block path forced on: `auto` runs it
+    # WITHOUT blocks (measured faster that way), so this is the only gate
+    # that exercises block discovery on the floor every platform has.
     add_test(NAME jit_lockstep_blocks_test COMMAND jit_lockstep_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(jit_lockstep_blocks_test PROPERTIES
-                         ENVIRONMENT "POM68K_JIT_BLOCKS=1" TIMEOUT 1800)
+                         ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1"
+                         TIMEOUT 1800)
+
+    # ── the x86-64 code generator ────────────────────────────────────────
+    # `auto` does not select it (see src/jit/JitBackend.cpp: it is a
+    # MEASURED choice, not a capability one), so every gate below names it.
+    # A WIDE cycle budget between checkpoints is deliberate: at one cycle a
+    # compiled block can never be more than one instruction long, and the
+    # interesting half of a code generator — long blocks, and a loop closing
+    # on itself entirely inside generated code — would go unexercised behind
+    # a green light.
+    add_test(NAME jit_lockstep_x64_test COMMAND jit_lockstep_test 400000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_x64_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_LOCKSTEP_BUDGET=256"
+                         TIMEOUT 1800)
+
+    # The same, one cycle at a time: the sharpest check there is, and the
+    # one that catches a wrong flag or a wrong cycle count immediately.
+    add_test(NAME jit_lockstep_x64_fine_test COMMAND jit_lockstep_test 200000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_x64_fine_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_BACKEND=x64" TIMEOUT 1800)
+
+    # The conservative data path: no per-access thunk, so every address the
+    # inline TLB cannot serve hands the whole instruction back to Moira.
+    # One environment variable away from being the shipping behaviour, so it
+    # has to keep working.
+    add_test(NAME jit_lockstep_noaccess_test COMMAND jit_lockstep_test 400000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_noaccess_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_JIT_ACCESS_THUNK=0"
+                         TIMEOUT 1800)
 
     # The same boot etalons, same executables, driven by the JIT instead of
     # the interpreter — the established "one binary, another environment"
     # idiom used by iivi/iicx/centris610/lc580/quadra800 above. Green means
     # the machine reached the identical Finder signature under the JIT.
     foreach(gate q605_boot_etalon centris650_boot_etalon
-                 q630_boot_etalon q700_boot_etalon)
+                 q630_boot_etalon q700_boot_etalon
+                 # 030 extension (2026-07-28): the V8 family through the same
+                 # engine — mmuFetchWord is the single 030 fetch choke point.
+                 # mactv is here because it is the phase-fragile one: if the
+                 # window ever perturbed guest cycles, Tinker Bell's Cuda
+                 # transport would deadlock long before a signature failed.
+                 lcii_boot_etalon mactv_boot_etalon
+                 # …and one gate per additional 030 family (Sonora / VASP /
+                 # RBV): same engine, each map's own span/guard plumbing.
+                 lc3_boot_etalon iivx_boot_etalon iisi_boot_etalon
+                 # The 020 seam's only guard (the LC = V8 map + as020). The
+                 # JIT is measurably NOT worth turning on for a plain 68020
+                 # (nothing to save: no MMU, one cheap fetch per instruction)
+                 # — this gate exists so the seam stays CORRECT for the day
+                 # a code generator gives it something to win with.
+                 lc_boot_etalon)
         add_test(NAME jit_${gate} COMMAND ${gate}
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_${gate} PROPERTIES
@@ -888,6 +971,8 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # boundary — and the two q605 etalons show the machine still reaches the
     # Finder on each engine. Anything a JIT change can break shows up here.
     set_property(TEST jit_backend_test jit_lockstep_test jit_lockstep_blocks_test
+                      jit_lockstep_x64_test jit_lockstep_x64_fine_test
+                      jit_lockstep_noaccess_test
                       q605_boot_etalon jit_q605_boot_etalon
                  APPEND PROPERTY LABELS smoke)
 

@@ -5,6 +5,7 @@
 
 #include "Moira.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -22,20 +23,45 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem)
     : cpu_(cpu), mem_(mem) {
     backend_ = selectBackend(backendPreference());
     useWindow_ = fetchWindowEnabled();
-    useBlocks_ = blockCacheEnabled();
+    useBlocks_ = blockCacheEnabled(backend_->caps().nativeCode);
     paranoid_ = detail::envBool("POM68K_JIT_PARANOID", false);
     maxInstrs_ = maxBlockInstrs();
     if (maxInstrs_ > backend_->caps().maxBlockInstrs)
         maxInstrs_ = backend_->caps().maxBlockInstrs;
     maxBlocks_ = maxBlocks();
+    hotAt_ = hotThreshold();
     ctx_.cpu = &cpu_;
     ctx_.stats = &stats_;
+    ctx_.dtlbFill = &Engine::fillDtlbThunk;
+    ctx_.dtlbSelf = this;
+    // J3: hand the fill door to the INTERPRETER's data window (Moira.h §
+    // pomJitData) — OPT-IN, and the story of why is worth the two lines.
+    // The window measured a real win (42 -> 37.6 s on the loading phase)
+    // until the ATC-eviction hook (pomJitAtcEvict) made it bit-exact, and
+    // bit-exactness is exactly what killed it: a TLB entry may not outlive
+    // the ATC entry it derives from, so the window's coverage is capped at
+    // the ATC's 32 pages — and under Mac OS VM the eviction/refill churn
+    // costs more than the remaining hits save (73 s: WORSE than no window).
+    // The x86-64 backend keeps its inline TLB (same cap, but it replaces a
+    // C++ call chain, not a hot MRU probe), and invariant 3 gets its
+    // interpreter back: byte-identical to the pre-JIT baseline.
+    if (detail::envBool("POM68K_DATA_WINDOW", false)) {
+        cpu_.pomJitDtlbFillFn = &Engine::fillDtlbThunk;
+        cpu_.pomJitDtlbFillCtx = this;
+    }
+    ctx_.guard = &guard_;
+    clearLinks();
+    ctx_.linkTable = linkTable_.data();
+    ctx_.linkMask = kLinkSlots - 1;
 
     const uint32_t ram = mem_.ramBytes ? mem_.ramBytes(mem_.self) : 0;
-    pageMap_.assign((ram + 4095) >> 12, 0);
+    pageMap_.assign((ram + CodeGuard::kUnit - 1) >> CodeGuard::kShift, 0);
+    codePage_.assign((ram + 4095) >> 12, 0);
     guard_.pageMap = pageMap_.empty() ? nullptr : pageMap_.data();
     guard_.pages = uint32_t(pageMap_.size());
     blocksGen_ = cpu_.pomJitMmuGen;
+
+    if (detail::envBool("POM68K_JIT_HISTO", false)) histo_.assign(1 << 16, 0);
 
     if (verbose()) {
         std::fprintf(stderr,
@@ -47,8 +73,58 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem)
 }
 
 Engine::~Engine() {
+    cpu_.pomJitDtlbFillFn = nullptr;
+    cpu_.pomJitDtlbFillCtx = nullptr;
+    cpu_.pomJitDtlbFlush();
     if (mem_.setGuard) mem_.setGuard(mem_.self, nullptr);
     for (auto& kv : blocks_) if (kv.second.code) backend_->release(kv.second.code);
+    if (!histo_.empty()) dumpHisto();
+}
+
+// POM68K_JIT_HISTO. A code generator is worth exactly the opcodes it
+// actually meets, and 68k static frequency tables are a poor guide to what
+// a Mac ROM + Mac OS 8.1 boot executes. This census is what picked the
+// forms JitBackendX64 emits natively; the `native` column is that backend's
+// own answer, so the report also doubles as its coverage gauge.
+void Engine::dumpHisto() const {
+    struct Row { uint16_t op; uint64_t n; };
+    std::vector<Row> rows;
+    uint64_t total = 0, byKind[int(Kind::Count)] = {};
+    for (uint32_t op = 0; op < histo_.size(); op++) {
+        if (!histo_[op]) continue;
+        rows.push_back({ uint16_t(op), histo_[op] });
+        total += histo_[op];
+        byKind[int(classify(uint16_t(op)))] += histo_[op];
+    }
+    std::sort(rows.begin(), rows.end(),
+              [](const Row& a, const Row& b) { return a.n > b.n; });
+
+    std::fprintf(stderr, "\n[jit] opcode census — %llu instructions, %zu distinct\n",
+                 (unsigned long long)total, rows.size());
+    static const char* kKind[] = { "move", "alu", "shift", "bitop", "muldiv",
+                                   "addr", "multi", "cond", "branch", "UNSAFE" };
+    for (int k = 0; k < int(Kind::Count); k++) {
+        if (!byKind[k]) continue;
+        std::fprintf(stderr, "  %-8s %12llu  %5.1f%%\n", kKind[k],
+                     (unsigned long long)byKind[k], 100.0 * double(byKind[k]) / double(total));
+    }
+    uint64_t nat = 0;
+    for (const Row& r : rows) if (backend_->canEmit(r.op)) nat += r.n;
+    std::fprintf(stderr, "  %-8s %12llu  %5.1f%%  (backend '%s')\n", "native",
+                 (unsigned long long)nat, 100.0 * double(nat) / double(total),
+                 backend_->name());
+
+    std::fprintf(stderr, "  ── top 60 opcodes ──\n");
+    uint64_t acc = 0;
+    for (size_t i = 0; i < rows.size() && i < 60; i++) {
+        acc += rows[i].n;
+        std::fprintf(stderr, "  %04X %-6s %c %10llu  %5.2f%%  cum %5.1f%%\n",
+                     rows[i].op, kKind[int(classify(rows[i].op))],
+                     backend_->canEmit(rows[i].op) ? '*' : ' ',
+                     (unsigned long long)rows[i].n,
+                     100.0 * double(rows[i].n) / double(total),
+                     100.0 * double(acc) / double(total));
+    }
 }
 
 void Engine::setEnabled(bool on) {
@@ -64,6 +140,7 @@ void Engine::setEnabled(bool on) {
 
 const char* Engine::backendName() const { return backend_->name(); }
 const char* Engine::backendDescription() const { return backend_->description(); }
+bool Engine::nativeBackend() const { return backend_->caps().nativeCode; }
 
 uint64_t Engine::retired() const {
     return stats_.instrs.load(std::memory_order_relaxed) +
@@ -82,8 +159,12 @@ void Engine::flushAll() {
 
     for (auto& kv : blocks_) if (kv.second.code) backend_->release(kv.second.code);
     blocks_.clear();
+    sliceIndex_.clear();
+    clearLinks();
     backend_->flushAll();
+    cpu_.pomJitDtlbFlush();
     if (!pageMap_.empty()) std::memset(pageMap_.data(), 0, pageMap_.size());
+    if (!codePage_.empty()) std::memset(codePage_.data(), 0, codePage_.size());
     disarmWindow();
     guard_.clear();
     blocksGen_ = cpu_.pomJitMmuGen;
@@ -97,21 +178,67 @@ void Engine::disarmWindow() {
     winPhys_ = winLen_ = 0;
 }
 
+// A write landed in memory some cached block was translated from. J1 dropped
+// the whole cache here, on the reasoning that writes into live code are rare
+// and a recorded IR is cheap to rebuild. Both halves of that turned out to
+// be wrong once the cache held GENERATED CODE: the writes are not rare (68k
+// code and its data share memory closely), and what gets thrown away is no
+// longer cheap. So evict precisely, and keep the flush for the two cases
+// that genuinely leave nothing to salvage.
 void Engine::serviceGuard() {
     if (!guard_.tripped()) return;
     stats_.add(stats_.invalidations);
-    // J1 drops the whole cache rather than evicting page by page. A write
-    // into live code is rare (loaders, INIT patching, a trap patch) and the
-    // recorded IR is cheap to rebuild; fine-grained eviction only starts to
-    // pay when what gets thrown away is generated code — a J2 concern.
-    flushAll();
+
+    if (guard_.mustFlush() || blocks_.empty()) { flushAll(); return; }
+
+    for (int k = 0; k < guard_.nHits; k++) {
+        const uint32_t slice = guard_.hits[k];
+        // Every block filed under this slice was translated from memory the
+        // write touched, so all of them go — and with them every index entry
+        // for the slice, which is what makes clearing its mark correct.
+        auto range = sliceIndex_.equal_range(slice);
+        for (auto it = range.first; it != range.second; ) {
+            auto b = blocks_.find(it->second);
+            if (b != blocks_.end()) {
+                if (b->second.code) {
+                    retractLink(b->second.ir.entryPc, b->second.ir.super);
+                    backend_->release(b->second.code);
+                }
+                blocks_.erase(b);
+                stats_.add(stats_.evictions);
+            }
+            it = sliceIndex_.erase(it);
+        }
+        if (slice >= pageMap_.size()) continue;
+        pageMap_[slice] = 0;
+
+        // codePage_ answers the same question at the 4 KB granularity the
+        // data TLB hands out, so it may only be cleared once no slice in the
+        // page is marked any more.
+        const uint32_t page = (slice << CodeGuard::kShift) >> 12;
+        if (page >= codePage_.size() || !codePage_[page]) continue;
+        const uint32_t first = (page << 12) >> CodeGuard::kShift;
+        const uint32_t count = 4096 >> CodeGuard::kShift;
+        bool any = false;
+        for (uint32_t i = first; i < first + count && i < pageMap_.size(); i++)
+            if (pageMap_[i]) { any = true; break; }
+        if (!any) { codePage_[page] = 0; cpu_.pomJitDtlbFlush(); }
+    }
+    guard_.clear();
+    stats_.blocksLive.store(blocks_.size(), std::memory_order_relaxed);
 }
 
-void Engine::markPages(uint32_t physBase, uint32_t physLen) {
+void Engine::markPages(uint64_t blockKey, uint32_t physBase, uint32_t physLen) {
     if (pageMap_.empty() || !physLen) return;
-    uint32_t p = physBase >> 12;
-    const uint32_t last = (physBase + physLen - 1) >> 12;
-    for (; p <= last && p < pageMap_.size(); p++) pageMap_[p] = 1;
+    uint32_t p = physBase >> CodeGuard::kShift;
+    const uint32_t last = (physBase + physLen - 1) >> CodeGuard::kShift;
+    for (; p <= last && p < pageMap_.size(); p++) {
+        pageMap_[p] = 1;
+        sliceIndex_.emplace(p, blockKey);
+    }
+    uint32_t q = physBase >> 12;
+    const uint32_t qlast = (physBase + physLen - 1) >> 12;
+    for (; q <= qlast && q < codePage_.size(); q++) codePage_[q] = 1;
 }
 
 bool Engine::armWindow(uint32_t pc, bool super) {
@@ -125,6 +252,10 @@ bool Engine::armWindow(uint32_t pc, bool super) {
 
     serviceGuard();
     stats_.add(stats_.windowArmed);
+    // Reaching here means pomJitCovers() said no, and the two things it
+    // tests beyond an address range — the MMU generation and the privilege
+    // level — are exactly the two the data TLB cannot check for itself.
+    cpu_.pomJitDtlbFlush();
 
     uint32_t phys = 0, pageBase = 0, pageLen = 0;
     if (!cpu_.pomJitProbeCode(pc, super, phys, pageBase, pageLen)) {
@@ -180,14 +311,22 @@ void Engine::runWindow(int64_t clockTarget) {
     while (cpu_.getClock() < clockTarget) {
         if (!cpu_.pomJitIdle()) { stats_.bump(Exit::CpuFlags); break; }
         if (!cpu_.pomJitCovers(cpu_.getPC())) { stats_.bump(Exit::WindowLost); break; }
+        if (!histo_.empty()) [[unlikely]] histo_[cpu_.pomJitPeek(cpu_.getPC())]++;
         if (!cpu_.pomJitExecOne()) { n++; stats_.bump(Exit::Fault); break; }
         n++;
     }
-    if (n) stats_.add(stats_.instrs, n);
+    if (n) { stats_.add(stats_.instrs, n); stats_.add(stats_.windowInstrs, n); }
 }
 
 Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
-    if (int(blocks_.size()) >= maxBlocks_) flushAll();
+    // Full cache: STOP RECORDING, do not throw the cache away. Flushing
+    // here is what a code generator cannot afford — a Mac OS 8.1 boot
+    // touches far more hot code than any cache holds, and dropping the lot
+    // on every overflow had the engine recompile 1.8 million blocks in one
+    // boot, which cost more than everything translation saved. Whatever is
+    // not cached simply runs on the fetch-window path, which is what the
+    // engine would have done anyway.
+    if (int(blocks_.size()) >= maxBlocks_) return nullptr;
 
     BlockIr ir;
     ir.entryPc = pc;
@@ -216,21 +355,46 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         const Kind kind = classify(op);
         if (endsBlock(kind)) { why = EndReason::Unsafe; break; }
 
+        // A branch ENDS the block and is part of it. Its length cannot be
+        // read off the pc delta the way every other instruction's can — it
+        // jumps — so it comes from the encoding, and the block's footprint
+        // ends after the displacement rather than where control went.
+        const bool terminator = endsBlockAfter(kind);
+        const uint32_t words = terminator ? branchWords(op) : 0;
+        if (terminator && !cpu_.pomJitCovers(at + words * 2 - 2)) {
+            why = EndReason::WindowEdge;
+            break;
+        }
+
+        // The interpreter's own cycle count for this instruction, recorded
+        // rather than modelled: a backend has to agree with it before it may
+        // emit the instruction (JitIr.h, Instr::cycles).
+        const int64_t clk0 = cpu_.getClock();
         if (!cpu_.pomJitExecOne()) { retired++; why = EndReason::Faulted; break; }
         retired++;
+        const int64_t spent = cpu_.getClock() - clk0;
+        const uint16_t cycles = uint16_t(spent >= 0 && spent < 0x10000 ? spent : 0);
+
+        if (terminator) {
+            ir.instrs.push_back(Instr{ at, op, uint16_t(words), kind,
+                                       instrFlags(op, kind), cycles });
+            at += words * 2;
+            why = EndReason::ControlFlow;
+            break;
+        }
 
         const uint32_t next = cpu_.getPC();
         // 22 bytes is the longest a 68020-family instruction can be. Landing
         // outside that window means the instruction transferred control —
         // a trap the classifier did not predict, or a fault redirect.
         if (next <= at || next - at > 22) {
-            ir.instrs.push_back(Instr{ at, op, 1, kind, instrFlags(op, kind) });
+            ir.instrs.push_back(Instr{ at, op, 1, kind, instrFlags(op, kind), cycles });
             why = EndReason::Discontinuity;
             break;
         }
 
         ir.instrs.push_back(Instr{ at, op, uint16_t((next - at) / 2),
-                                   kind, instrFlags(op, kind) });
+                                   kind, instrFlags(op, kind), cycles });
         at = next;
 
         if (guard_.tripped()) { why = EndReason::WindowEdge; break; }
@@ -253,17 +417,95 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     if (pendingFlush_) { flushAll(); return nullptr; }
 
     ir.endReason = why;
+
+    // The block's own copy of its instruction words. A code generator needs
+    // the displacements, immediates and absolute addresses embedded in the
+    // stream, and it cannot read them out of the code window: the window is
+    // engine state and may point somewhere else by the time the block runs.
+    // Strict bounds: an instruction can START inside the window and have an
+    // extension word outside it (readExt falls back to the bus there), and
+    // pomJitPeek does no checking of its own. Anything not wholly inside
+    // leaves `code` empty, which a code generator reads as "do not compile".
+    // Two words PAST the footprint as well: the prefetch queue an
+    // instruction leaves behind holds the word after it, and for the last
+    // instruction of a block that word is outside the block.
+    const auto& win = cpu_.pomJitWindow;
+    const uint32_t want = at + 4;
+    if (at > pc && win.armed && pc >= win.base && want <= win.base + win.len) {
+        ir.code.reserve((want - pc) / 2);
+        for (uint32_t w = pc; w < want; w += 2) ir.code.push_back(cpu_.pomJitPeek(w));
+    }
+
     Block b;
     b.ir = std::move(ir);
     auto [it, inserted] = blocks_.emplace(key(pc, super), std::move(b));
     if (!inserted) return &it->second;
 
-    it->second.code = backend_->compile(it->second.ir);
-    if (it->second.code) it->second.code->ir = &it->second.ir;
-    markPages(it->second.ir.physBase, it->second.ir.physLen);
-    stats_.add(stats_.blocksCompiled);
+    markPages(key(pc, super), it->second.ir.physBase, it->second.ir.physLen);
     stats_.blocksLive.store(blocks_.size(), std::memory_order_relaxed);
     return &it->second;
+}
+
+// The only door into Moira's data TLB. Everything a JIT-compiled store or
+// load may NOT quietly do is refused here, once, at fill time — after which
+// generated code can hit the entry with nothing but a tag compare:
+//
+//   * no page-table walk and no descriptor U/M write-back (pomJitProbeData
+//     refuses anything not already resident and already marked);
+//   * no I/O, no VRAM register aperture, no unmapped hole (dataSpan hands
+//     back plain RAM/ROM/VRAM bytes and nothing else);
+//   * no store into a page holding translated code — that one has to go
+//     through the memory map so the write guard sees it.
+uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
+    if (!mem_.dataSpan) return nullptr;
+
+    const bool super = cpu_.pomJitSuper();
+    uint32_t phys = 0, pageBase = 0, pageLen = 0;
+    // A failed PROBE is transient — no ATC entry yet, or a write to a page
+    // whose descriptor still owes its M bit. The interpreter's next access
+    // fixes both, so this one is not remembered.
+    if (!cpu_.pomJitProbeData(addr, super, write != 0, phys, pageBase, pageLen))
+        return nullptr;
+
+    // An entry maps a 4 KB SLICE, whatever the MMU's page size: the first
+    // cut refused anything but 4 KB pages — "the 68040 boots with 4 KB on
+    // every Mac" — and that assumption is false the moment the System arms
+    // paging, which uses 8 KB pages on the 040. The refusal was also not
+    // remembered (a probe result is transient by design), so once the MMU
+    // was up EVERY data access paid a call, a probe and a refusal: the
+    // "fast" path measured a constant ~7 s SLOWER across engines. An 8 KB
+    // page simply fills as two independent slices; translation preserves
+    // the in-page offset and pages are size-aligned, so the slice's
+    // physical base is just the translated address rounded down.
+    if (pageLen != 4096 && pageLen != 8192) return nullptr;
+    (void)pageBase;
+    const uint32_t physSlice = phys & ~4095u;
+
+    const bool codePage = write && !codePage_.empty() &&
+                          (physSlice >> 12) < codePage_.size() &&
+                          codePage_[physSlice >> 12];
+
+    uint32_t span = 0;
+    uint8_t* host = codePage ? nullptr
+                             : mem_.dataSpan(mem_.self, physSlice, span, write);
+    if (host && span < 4096) host = nullptr;
+
+    // The answer is cached either way. A REFUSAL is worth remembering — an
+    // I/O register, the ROM window seen by a store, a page holding
+    // translated code — because a hardware poll loop would otherwise ask
+    // again on every single iteration, and the ask is a call. Every reason
+    // for refusing here needs a map change or a block flush to stop being
+    // true, and both empty this cache.
+    moira::Moira::PomJitDtlb& tlb = write ? cpu_.pomJitDtlbW : cpu_.pomJitDtlbR;
+    const uint32_t page = addr >> 12;
+    moira::Moira::PomJitDtlbEntry& e = tlb.e[page & (moira::Moira::PomJitDtlb::kEntries - 1)];
+    // The privilege the entry was PROBED under rides in the tag (bit 31),
+    // so a supervisor-only page filled from supervisor mode can never be
+    // hit by user code — and nothing needs flushing on an RTE.
+    e.tag = moira::Moira::pomJitDataTag(addr, super);
+    e.host = host;
+    stats_.add(host ? stats_.dtlbFills : stats_.dtlbRefused);
+    return host;
 }
 
 void Engine::executeUntil(int64_t clockTarget) {
@@ -285,13 +527,25 @@ void Engine::executeUntil(int64_t clockTarget) {
         const uint32_t pc = cpu_.getPC();
         const bool super = cpu_.pomJitSuper();
 
-        if (!armWindow(pc, super)) {
-            // Code outside plain memory, or a translation the probe cannot
-            // confirm. The interpreter runs it and stacks any fault itself.
+        // Backoff after a failed arm: probing on every instruction is what
+        // made the 030 machines SLOWER under the JIT than interpreted.
+        if (armBackoff_ > 0 && !cpu_.pomJitCovers(pc)) {
+            armBackoff_--;
             cpu_.execute();
             stats_.add(stats_.interpInstrs);
             continue;
         }
+
+        if (!armWindow(pc, super)) {
+            // Code outside plain memory, or a translation the probe cannot
+            // confirm. The interpreter runs it and stacks any fault itself
+            // — and the next probes wait their turn.
+            armBackoff_ = 32;
+            cpu_.execute();
+            stats_.add(stats_.interpInstrs);
+            continue;
+        }
+        armBackoff_ = 0;
 
         if (!useBlocks_) { runWindow(clockTarget); continue; }
 
@@ -323,7 +577,29 @@ void Engine::executeUntil(int64_t clockTarget) {
         }
 
         Block& b = it->second;
-        if (!b.code) { runWindow(clockTarget); continue; }
+        if (!b.code) {
+            // Not (yet) translated. Run the window path — which is what the
+            // engine would do anyway — and let the block earn its code by
+            // coming back. Marking its pages before compiling is required:
+            // fillDtlb refuses write access to a page holding translated
+            // code, and a block that modified its own page through the
+            // inline store path would leave the guard none the wiser.
+            if (!b.rejected && ++b.visits >= uint32_t(hotAt_)) {
+                markPages(key(pc, super), b.ir.physBase, b.ir.physLen);
+                cpu_.pomJitDtlbFlush();
+                b.code = backend_->compile(b.ir, ctx_);
+                if (b.code) {
+                    b.code->ir = &b.ir;
+                    stats_.add(stats_.blocksCompiled);
+                    // From here on another block may jump straight into it
+                    // instead of coming back through the engine.
+                    if (void* e = backend_->linkEntry(b.code)) publishLink(pc, super, e);
+                } else {
+                    b.rejected = true;
+                }
+            }
+            if (!b.code) { runWindow(clockTarget); continue; }
+        }
 
         running_ = true;
         RunResult r = backend_->run(b.code, ctx_);
@@ -331,6 +607,7 @@ void Engine::executeUntil(int64_t clockTarget) {
 
         stats_.add(stats_.blocksRun);
         if (r.instrs) stats_.add(stats_.instrs, r.instrs);
+        if (r.slowInstrs) stats_.add(stats_.slowInstrs, r.slowInstrs);
         stats_.bump(r.exit);
         // Any flush the block itself asked for was deferred; honour it now,
         // with nothing of the cache in flight.

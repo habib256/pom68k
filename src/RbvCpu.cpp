@@ -5,7 +5,26 @@
 #include "RbvMemory.h"
 #include <cstdlib>
 
-RbvCpu::RbvCpu(RbvMemory& mem, bool withFpu) : mem_(mem) {
+namespace {
+jit::MemoryHooks rbvJitHooks(RbvMemory& mem) {
+    jit::MemoryHooks h;
+    h.self = &mem;
+    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
+        return static_cast<RbvMemory*>(s)->codeSpan(phys, len);
+    };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<RbvMemory*>(s)->dataSpan(phys, len, write != 0);
+    };
+    h.setGuard = [](void* s, jit::CodeGuard* g) {
+        static_cast<RbvMemory*>(s)->setJitGuard(g);
+    };
+    h.ramBytes = [](void* s) { return static_cast<RbvMemory*>(s)->ramBytes(); };
+    return h;
+}
+}  // namespace
+
+RbvCpu::RbvCpu(RbvMemory& mem, bool withFpu)
+    : mem_(mem), jit_(*this, rbvJitHooks(mem)) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     // History (2026-07-25): this machine shipped with cacheBoost_ = 1 because
@@ -34,15 +53,18 @@ void RbvCpu::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
     pomIcache.reset();
+    jit_.flushAll();
     reset();                       // SSP/PC from $0 (ROM via overlay)
 }
 
 void RbvCpu::didChangeCACR(moira::u32 value) {
     if (value & 0x0C) pomIcache.reset();   // CI/CE strobes → flush model
+    jit_.flushAll();                       // SMC hint, as on every wrapper
 }
 
 void RbvCpu::runCycles(moira::i64 n) {
-    executeUntil(getClock() + n * cacheBoost_);
+    const moira::i64 target = getClock() + n * cacheBoost_;
+    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
     flushTicks();
 }
 

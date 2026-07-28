@@ -87,6 +87,11 @@ public:
     // itself a side effect of a read in the $4xxxxxxx window (see read8),
     // and a const probe cannot perform it.
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
+    // dataSpan() is codeSpan's write-aware twin, for the JIT data TLB: a
+    // host pointer to bytes a generated load or store may touch directly.
+    // Same refusals, plus everything a STORE cannot simply land in — the
+    // ROM window, and any map with a diagnostic write-watch armed.
+    uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
     // Attaches the JIT's write guard; nullptr detaches it. When null, every
     // write path costs one always-predicted branch.
     void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }

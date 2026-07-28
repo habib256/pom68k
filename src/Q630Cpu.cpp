@@ -17,6 +17,9 @@ jit::MemoryHooks jitHooksFor(Q630Memory& mem) {
     h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
         return static_cast<Q630Memory*>(s)->codeSpan(phys, len);
     };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<Q630Memory*>(s)->dataSpan(phys, len, write != 0);
+    };
     h.setGuard = [](void* s, jit::CodeGuard* g) {
         static_cast<Q630Memory*>(s)->setJitGuard(g);
     };
@@ -26,6 +29,10 @@ jit::MemoryHooks jitHooksFor(Q630Memory& mem) {
 }  // namespace
 
 Q630Cpu::Q630Cpu(Q630Memory& mem) : mem_(mem), jit_(*this, jitHooksFor(mem)) {
+    // The JIT's generated code makes the peripheral catch-up test inline
+    // rather than calling sync() on every instruction.
+    jit_.setPeriphPacing(&lastPeriphClock_, int(kPeriphBatch));
+
     // The Quadra 630 ships a FULL 68040 (macquadra630.cpp M68040 @ 33 MHz);
     // POM68K_Q630_LC040 forces the 68LC040 of the LC/Performa 630 and 580.
     if (getenv("POM68K_Q630_LC040")) {

@@ -17,6 +17,9 @@ jit::MemoryHooks jitHooksFor(Q700Memory& mem) {
     h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
         return static_cast<Q700Memory*>(s)->codeSpan(phys, len);
     };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<Q700Memory*>(s)->dataSpan(phys, len, write != 0);
+    };
     h.setGuard = [](void* s, jit::CodeGuard* g) {
         static_cast<Q700Memory*>(s)->setJitGuard(g);
     };
@@ -26,6 +29,10 @@ jit::MemoryHooks jitHooksFor(Q700Memory& mem) {
 }  // namespace
 
 Q700Cpu::Q700Cpu(Q700Memory& mem) : mem_(mem), jit_(*this, jitHooksFor(mem)) {
+    // The JIT's generated code makes the peripheral catch-up test inline
+    // rather than calling sync() on every instruction.
+    jit_.setPeriphPacing(&lastPeriphClock_, int(kPeriphBatch));
+
     // The Quadra 700 ships a FULL 68040 (macquadra700.cpp M68040 @ 50/2 MHz),
     // so unlike the Centris the default is the 040 identity + Moira's 68882.
     // POM68K_Q700_LC040 forces the LC040 (no hardware FPU) for experiments.

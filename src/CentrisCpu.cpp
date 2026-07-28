@@ -17,6 +17,9 @@ jit::MemoryHooks jitHooksFor(CentrisMemory& mem) {
     h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
         return static_cast<CentrisMemory*>(s)->codeSpan(phys, len);
     };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<CentrisMemory*>(s)->dataSpan(phys, len, write != 0);
+    };
     h.setGuard = [](void* s, jit::CodeGuard* g) {
         static_cast<CentrisMemory*>(s)->setJitGuard(g);
     };
@@ -26,6 +29,10 @@ jit::MemoryHooks jitHooksFor(CentrisMemory& mem) {
 }  // namespace
 
 CentrisCpu::CentrisCpu(CentrisMemory& mem) : mem_(mem), jit_(*this, jitHooksFor(mem)) {
+    // The JIT's generated code makes the peripheral catch-up test inline
+    // rather than calling sync() on every instruction.
+    jit_.setPeriphPacing(&lastPeriphClock_, int(kPeriphBatch));
+
     // Centris 610/650 = 68LC040. Default to the LC040 identity + Moira's
     // soft 68882 (Finder-usable, the Q605 no-FPU precedent).
     if (getenv("POM68K_CENTRIS_FPU")) {

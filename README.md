@@ -29,6 +29,16 @@ ctest                             # 92 milestone gates (asset-dependent may soft
 
 Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
 
+Optional but worth it — a profile-guided build makes the interpreter ~33 %
+faster (an interpreter is dispatch and branches, exactly what PGO predicts),
+with bit-identical emulation:
+
+```bash
+cmake .. -DPOM68K_PGO=generate && make -j jitdev q605_boot_etalon
+./q605_boot_etalon && POM68K_CPU_ENGINE=jit ./q605_boot_etalon   # training
+cmake .. -DPOM68K_PGO=use && make -j
+```
+
 ## Run
 
 ROM size selects the machine: **128 KB** = Mac Plus, **256 KB** = Mac II

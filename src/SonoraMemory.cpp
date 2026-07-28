@@ -281,13 +281,52 @@ void SonoraMemory::scsiDmaW_(uint8_t v) {
     scsiDrq(scsi_.drqActive());
 }
 
+const uint8_t* SonoraMemory::codeSpan(uint32_t phys, uint32_t& len) const {
+    len = 0;
+    if (phys < 0x40000000) {
+        if (overlay_) return nullptr;        // ROM mirror until first ROM read
+        if (phys >= totalRam_) return nullptr;   // open bus, not memory
+        len = totalRam_ - phys;
+        return ram_.data() + phys;
+    }
+    if (phys < 0x50000000) {
+        if (overlay_) return nullptr;        // reading here would clear it
+        const uint32_t o = phys & (kRomSize - 1);
+        len = kRomSize - o;                  // stop at the mirror seam
+        return rom_.data() + o;
+    }
+    return nullptr;                          // I/O, VRAM, machine ID
+}
+
+uint8_t* SonoraMemory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
+    len = 0;
+    if (phys < 0x40000000) {
+        if (overlay_) return nullptr;
+        if (phys >= totalRam_) return nullptr;
+        len = totalRam_ - phys;
+        return ram_.data() + phys;
+    }
+    if (!write && phys < 0x50000000) {
+        if (overlay_) return nullptr;
+        const uint32_t o = phys & (kRomSize - 1);
+        len = kRomSize - o;
+        return rom_.data() + o;
+    }
+    return nullptr;
+}
+
+void SonoraMemory::jitMapChanged() {
+    if (jitGuard_) jitGuard_->invalidate();
+    if (cpu_) cpu_->pomJitDtlbFlush();
+}
+
 uint8_t SonoraMemory::read8(uint32_t addr) {
     if (addr < 0x40000000) {                 // RAM (ROM mirror under overlay)
         if (overlay_) return addr < kRomSize ? rom_[addr] : 0xFF;
         return addr < totalRam_ ? ram_[addr] : 0xFF;
     }
     if (addr < 0x50000000) {                 // ROM ×16 (sonora.cpp:51)
-        if (overlay_) overlay_ = false;      // rom_switch_r: any read clears
+        if (overlay_) { overlay_ = false; jitMapChanged(); }      // rom_switch_r: any read clears
         return rom_[addr & (kRomSize - 1)];
     }
     if (addr >= 0x60000000) {
@@ -346,6 +385,7 @@ uint8_t SonoraMemory::read8(uint32_t addr) {
 void SonoraMemory::write8(uint32_t addr, uint8_t v) {
     if (addr < 0x40000000) {
         if (overlay_) return;
+        if (jitGuard_) jitGuard_->note(addr, 1);
         if (addr < totalRam_) ram_[addr] = v;
         return;
     }
@@ -437,6 +477,7 @@ uint16_t SonoraMemory::read16(uint32_t addr) {
 void SonoraMemory::write16(uint32_t addr, uint16_t v) {
     if (addr < 0x40000000) [[likely]] {
         if (overlay_) return;
+        if (jitGuard_) jitGuard_->note(addr, 2);
         if (addr + 1 < totalRam_) {
             ram_[addr] = uint8_t(v >> 8);
             ram_[addr + 1] = uint8_t(v);

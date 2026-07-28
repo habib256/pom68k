@@ -49,6 +49,11 @@ struct Stats {
     std::atomic<uint64_t> invalidations{0}; // writes that hit a live code window
     std::atomic<uint64_t> windowArmed{0};   // code-window arm attempts
     std::atomic<uint64_t> windowFailed{0};  // …that could not be validated
+    std::atomic<uint64_t> dtlbFills{0};     // data-TLB entries created
+    std::atomic<uint64_t> dtlbRefused{0};   // …refused: not plain memory
+    std::atomic<uint64_t> slowInstrs{0};    // ran through a block's fallback
+    std::atomic<uint64_t> windowInstrs{0};  // ran on the fetch-window path
+    std::atomic<uint64_t> evictions{0};     // blocks dropped by a precise evict
     std::atomic<uint64_t> exits[int(Exit::Count)] = {};
 
     void bump(Exit e) { exits[int(e)].fetch_add(1, std::memory_order_relaxed); }
@@ -60,6 +65,8 @@ struct Stats {
         instrs = 0; interpInstrs = 0;
         blocksCompiled = 0; blocksRun = 0; blocksLive = 0;
         flushes = 0; invalidations = 0; windowArmed = 0; windowFailed = 0;
+        dtlbFills = 0; dtlbRefused = 0; slowInstrs = 0; windowInstrs = 0;
+        evictions = 0;
         for (auto& e : exits) e = 0;
     }
 
@@ -67,6 +74,7 @@ struct Stats {
     struct Snapshot {
         uint64_t instrs, interpInstrs, blocksCompiled, blocksRun, blocksLive;
         uint64_t flushes, invalidations, windowArmed, windowFailed;
+        uint64_t dtlbFills, dtlbRefused, slowInstrs, windowInstrs, evictions;
         uint64_t exits[int(Exit::Count)];
     };
     Snapshot snapshot() const {
@@ -80,6 +88,11 @@ struct Stats {
         s.invalidations = invalidations.load(std::memory_order_relaxed);
         s.windowArmed = windowArmed.load(std::memory_order_relaxed);
         s.windowFailed = windowFailed.load(std::memory_order_relaxed);
+        s.dtlbFills = dtlbFills.load(std::memory_order_relaxed);
+        s.dtlbRefused = dtlbRefused.load(std::memory_order_relaxed);
+        s.slowInstrs = slowInstrs.load(std::memory_order_relaxed);
+        s.windowInstrs = windowInstrs.load(std::memory_order_relaxed);
+        s.evictions = evictions.load(std::memory_order_relaxed);
         for (int i = 0; i < int(Exit::Count); i++)
             s.exits[i] = exits[i].load(std::memory_order_relaxed);
         return s;

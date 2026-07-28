@@ -1,11 +1,19 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Backend registry. The ORDER of kEntries is the policy: most capable
-// first, `threaded` last and unconditional. `auto` walks the list and takes
-// the first entry that is both compiled in and usable() on this machine, so
-// a host with no code generator — or a hardened kernel that refuses
-// executable pages — still gets a working JIT instead of an error.
+// Backend registry. Two separate questions live here, and conflating them
+// is how a JIT ends up slower than the interpreter it was meant to beat:
+//
+//   * WHAT IS AVAILABLE — the order of kEntries, most capable first. This
+//     is what `POM68K_JIT_BACKEND=<name>` selects from and what the GUI
+//     lists.
+//   * WHAT `auto` PICKS — `dflt`, which is a MEASURED choice, not a
+//     capability ranking. See src/jit/POM68K_JIT.md § 7: on a full Mac OS
+//     8.1 boot the x86-64 code generator is slower than the portable
+//     backend, because Finder-era 68k code is branch-dense enough that
+//     blocks average five instructions and per-entry cost dominates. It
+//     wins on compute-bound guest code and it is bit-exact either way, so
+//     it ships selectable rather than default until block linking lands.
 
 #include "JitBackend.h"
 #include "JitConfig.h"
@@ -28,16 +36,17 @@ namespace {
 struct Entry {
     const char* key;
     Backend* (*get)();
+    bool dflt;                         // may `auto` choose this one?
 };
 
 const Entry kEntries[] = {
 #if defined(POM68K_JIT_BACKEND_X64)
-    { "x64", x64Backend },
+    { "x64", x64Backend, false },
 #endif
 #if defined(POM68K_JIT_BACKEND_A64)
-    { "a64", a64Backend },
+    { "a64", a64Backend, false },
 #endif
-    { "threaded", threadedBackend },   // always present, always usable
+    { "threaded", threadedBackend, true },   // always present, always usable
 };
 
 constexpr int kCount = int(sizeof(kEntries) / sizeof(kEntries[0]));
@@ -64,6 +73,7 @@ Backend* selectBackend(const char* pref) {
     }
 
     for (const Entry& e : kEntries) {
+        if (!e.dflt) continue;
         Backend* b = e.get();
         if (b->usable()) return b;
     }

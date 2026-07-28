@@ -20,6 +20,9 @@ jit::MemoryHooks jitHooksFor(Q605Memory& mem) {
     h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
         return static_cast<Q605Memory*>(s)->codeSpan(phys, len);
     };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<Q605Memory*>(s)->dataSpan(phys, len, write != 0);
+    };
     h.setGuard = [](void* s, jit::CodeGuard* g) {
         static_cast<Q605Memory*>(s)->setJitGuard(g);
     };
@@ -29,6 +32,10 @@ jit::MemoryHooks jitHooksFor(Q605Memory& mem) {
 }  // namespace
 
 Cpu040::Cpu040(Q605Memory& mem) : mem_(mem), jit_(*this, jitHooksFor(mem)) {
+    // The JIT's generated code makes the peripheral catch-up test inline
+    // rather than calling sync() on every instruction.
+    jit_.setPeriphPacing(&lastPeriphClock_, int(kPeriphBatch));
+
     // Q6.6: model the full 68040 with an FPU, matching the MAME golden
     // oracle `macqd605` (macquadra605.cpp:158 `M68040(...)`; only its
     // lc475/lc575 variants use M68LC040). In Moira M68040 and M68LC040 are

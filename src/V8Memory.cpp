@@ -216,6 +216,11 @@ void V8Memory::applyRamConfig(uint8_t config) {
 
     mbMapped_ = (config & 0xC0) != 0xC0;     // 8 MB SIMM ⇒ only the $800000 alias
     mbSize_ = (config & 0x20) ? 0x200000 : mbRam_;
+
+    // The pseudo-VIA can rewrite this mapping at ANY time (onConfigWrite),
+    // and a bank remap is exactly the "address map moved" case the JIT
+    // window cannot detect from a write. Rare enough to be unconditional.
+    jitMapChanged();
 }
 
 
@@ -293,6 +298,7 @@ uint8_t V8Memory::read8(uint32_t addr) {
         if (overlay_) {                      // rom_switch_r (v8.cpp:225-235):
             overlay_ = false;                // any read clears the overlay,
             applyRamConfig(0xC0);            // default "full SIMM + full MB"
+            jitMapChanged();                 // the whole map just moved
         }
         return rom_[addr & romMask_];
     }
@@ -359,6 +365,64 @@ uint8_t V8Memory::read8(uint32_t addr) {
     busError();                              // unmapped I/O: ROM map probe
 }
 
+const uint8_t* V8Memory::codeSpan(uint32_t phys, uint32_t& len) const {
+    len = 0;
+    phys &= addrMask_;
+    if (phys & 0x80000000) return nullptr;       // PDS: open bus / BERR
+    if (overlay_) return nullptr;                // any ROM-space read flips it
+    if (phys < 0xA00000) {
+        // RAM through the bank remap. The remap is piecewise linear, so the
+        // span stops at the current piece's edge: the fixed 2 MB alias, the
+        // motherboard bank, or the SIMM bank (ramIndex's three cases).
+        const uint32_t i = ramIndex(phys);
+        if (i == 0xFFFFFFFF) return nullptr;
+        uint32_t edge;
+        if (phys >= 0x800000)                    edge = 0xA00000;
+        else if (mbMapped_ && phys >= mbLoc_ && phys < mbLoc_ + mbSize_)
+                                                 edge = mbLoc_ + mbSize_;
+        else                                     edge = simmPhys_;
+        len = edge - phys;
+        if (uint64_t(i) + len > ram_.size()) len = uint32_t(ram_.size() - i);
+        return ram_.data() + i;
+    }
+    if (phys < 0xB00000) {                       // ROM, mirrored
+        const uint32_t o = phys & romMask_;
+        len = romMask_ + 1 - o;
+        return rom_.data() + o;
+    }
+    return nullptr;                              // open bus, VRAM, I/O
+}
+
+uint8_t* V8Memory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
+    len = 0;
+    phys &= addrMask_;
+    if (phys & 0x80000000) return nullptr;
+    if (overlay_) return nullptr;
+    if (phys < 0xA00000) {
+        const uint32_t i = ramIndex(phys);
+        if (i == 0xFFFFFFFF) return nullptr;
+        uint32_t edge;
+        if (phys >= 0x800000)                    edge = 0xA00000;
+        else if (mbMapped_ && phys >= mbLoc_ && phys < mbLoc_ + mbSize_)
+                                                 edge = mbLoc_ + mbSize_;
+        else                                     edge = simmPhys_;
+        len = edge - phys;
+        if (uint64_t(i) + len > ram_.size()) len = uint32_t(ram_.size() - i);
+        return ram_.data() + i;
+    }
+    if (!write && phys < 0xB00000) {
+        const uint32_t o = phys & romMask_;
+        len = romMask_ + 1 - o;
+        return rom_.data() + o;
+    }
+    return nullptr;
+}
+
+void V8Memory::jitMapChanged() {
+    if (jitGuard_) jitGuard_->invalidate();
+    if (cpu_) cpu_->pomJitDtlbFlush();
+}
+
 void V8Memory::write8(uint32_t addr, uint8_t v) {
     addr &= addrMask_;
     if (addr & 0x80000000) {                 // PDS slot $E: no card
@@ -369,7 +433,20 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
     if (addr < 0xA00000) {
         if (overlay_) return;                // ROM overlay: writes unmapped
         uint32_t i = ramIndex(addr);
-        if (i != 0xFFFFFFFF) ram_[i] = v;
+        if (i != 0xFFFFFFFF) {
+            // The guard is keyed on the BUS address — the same key space the
+            // window probe reports — and the fixed 2 MB alias means one RAM
+            // byte can carry TWO bus addresses. Note BOTH: a write through
+            // either view must kill a block recorded through the other.
+            if (jitGuard_) {
+                jitGuard_->note(addr, 1);
+                if (addr >= 0x800000 && mbMapped_ && (addr & 0x1FFFFF) < mbSize_)
+                    jitGuard_->note(mbLoc_ + (addr & 0x1FFFFF), 1);
+                else if (addr < 0x800000 && i < 0x200000)
+                    jitGuard_->note(0x800000 | i, 1);
+            }
+            ram_[i] = v;
+        }
         return;
     }
 
@@ -476,6 +553,15 @@ void V8Memory::write16(uint32_t addr, uint16_t v) {
     if (addr < 0xA00000) [[likely]] {                    // RAM space
         if (!overlay_) {
             uint32_t i0 = ramIndex(addr), i1 = ramIndex(addr + 1);
+            if (jitGuard_) {
+                // Both bus views of the byte pair, as in write8: the fixed
+                // 2 MB alias means one RAM byte carries two bus addresses.
+                jitGuard_->note(addr, 2);
+                if (addr >= 0x800000 && mbMapped_ && (addr & 0x1FFFFF) < mbSize_)
+                    jitGuard_->note(mbLoc_ + (addr & 0x1FFFFF), 2);
+                else if (addr < 0x800000 && i0 != 0xFFFFFFFF && i0 < 0x200000)
+                    jitGuard_->note(0x800000 | i0, 2);
+            }
             if (i0 != 0xFFFFFFFF) ram_[i0] = uint8_t(v >> 8);
             if (i1 != 0xFFFFFFFF) ram_[i1] = uint8_t(v);
             return;

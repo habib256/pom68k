@@ -59,6 +59,15 @@ public:
     // X -> W, for appending more code.
     bool makeWritable();
 
+    // True when the mapping is writable AND executable at the same time, so
+    // the two calls above are no-ops. A backend that compiles one block at a
+    // time cares a great deal: the alternative is an mprotect PAIR per
+    // block, which measured as the single largest cost in the whole code
+    // generator — more than the code generation. POM68K asks for RWX first
+    // and keeps the strict W^X path as the fallback for the platforms and
+    // kernels that refuse it (macOS/arm64, SELinux, PaX, OpenBSD).
+    bool unified() const { return unified_; }
+
     // Rewinds the bump pointer. Callers must be certain no compiled block
     // is still reachable — the engine only does this from a full flush.
     void reset() { used_ = 0; }
@@ -68,6 +77,7 @@ private:
     std::size_t size_ = 0;
     std::size_t used_ = 0;
     bool        writable_ = true;
+    bool        unified_ = false;
 };
 
 }  // namespace jit

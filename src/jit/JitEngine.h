@@ -44,6 +44,11 @@ struct MemoryHooks {
     // is not plain RAM or plain ROM — I/O, VRAM, anything with a read side
     // effect, and the whole map while the boot overlay is still up.
     const uint8_t* (*codeSpan)(void* self, uint32_t phys, uint32_t& len) = nullptr;
+    // Host pointer to DATA bytes at PHYSICAL `phys`, for the JIT data TLB.
+    // Same contract as codeSpan and one more: with `write` set it must also
+    // refuse anything a store cannot simply land in — ROM, a region with a
+    // write side effect, or a map with a debug write-watch armed.
+    uint8_t* (*dataSpan)(void* self, uint32_t phys, uint32_t& len, int write) = nullptr;
     // Attaches (or detaches, with nullptr) the write guard.
     void (*setGuard)(void* self, CodeGuard* guard) = nullptr;
     // Physical RAM size, for sizing the guard's page map.
@@ -63,8 +68,19 @@ public:
     // drops every cached artefact.
     void setEnabled(bool on);
 
+    // Told once by the CPU wrapper: where its peripheral-catch-up baseline
+    // lives and how many cycles it batches. See Context::periphClock.
+    void setPeriphPacing(const void* clock, int batch) {
+        ctx_.periphClock = clock;
+        ctx_.periphBatch = batch;
+    }
+
     const char* backendName() const;
     const char* backendDescription() const;
+    // True when the active backend generates host code. Gates and the GUI
+    // use it to know which defaults are in force (the block cache follows
+    // this, see JitConfig.h).
+    bool nativeBackend() const;
 
     // The single entry point the CPU wrappers call instead of
     // Moira::executeUntil() when the engine is on.
@@ -86,6 +102,12 @@ private:
     struct Block {
         BlockIr   ir;
         Compiled* code = nullptr;
+        // Visits before this block is worth generating code for. A boot
+        // touches a very large amount of code exactly once — compiling all
+        // of it costs more than it can ever return, so a block earns its
+        // translation by being executed (see POM68K_JIT_HOT).
+        uint32_t  visits = 0;
+        bool      rejected = false;      // the backend declined it; do not retry
     };
 
     // Runs instructions with the window armed but without recording or
@@ -111,7 +133,47 @@ private:
 
     // Marks the physical pages a freshly recorded block occupies, so a
     // later write into them trips the guard.
-    void markPages(uint32_t physBase, uint32_t physLen);
+    void markPages(uint64_t key, uint32_t physBase, uint32_t physLen);
+
+    // Fills Moira's data TLB for `addr` and hands generated code the host
+    // page behind it, or nullptr when the access must go the long way. This
+    // is the ONLY door into that TLB, and the refusals are the safety
+    // argument for the whole inline data path (src/jit/POM68K_JIT.md § 8).
+    uint8_t* fillDtlb(uint32_t addr, int write);
+    static uint8_t* fillDtlbThunk(void* self, uint32_t addr, int write) {
+        return static_cast<Engine*>(self)->fillDtlb(addr, write);
+    }
+
+    // ── the block-link table (Context::linkTable) ────────────────────────
+    // Direct-mapped on the guest pc, tagged with pc|super — pc is always
+    // even, so the privilege bit rides in bit 0 for free and a user-mode
+    // and a supervisor block at one address cannot be confused.
+    struct LinkSlot {
+        uint32_t tag;                  // pc | super, or kNoLink
+        uint32_t pad;
+        void*    entry;
+    };
+    static constexpr uint32_t kLinkSlots = 4096;
+    static constexpr uint32_t kNoLink = 0xFFFFFFFF;
+    static uint32_t linkIndex(uint32_t pc) { return (pc >> 1) & (kLinkSlots - 1); }
+
+    void publishLink(uint32_t pc, bool super, void* entry) {
+        LinkSlot& s = linkTable_[linkIndex(pc)];
+        s.tag = pc | uint32_t(super);
+        s.entry = entry;
+    }
+    // A block that is going away must stop being a jump target. Exact,
+    // because a block's slot is a function of its pc: if the slot still
+    // carries this block's tag it is this block, and if it does not then
+    // some other block took the slot and this one was already unreachable.
+    void retractLink(uint32_t pc, bool super) {
+        LinkSlot& s = linkTable_[linkIndex(pc)];
+        if (s.tag == (pc | uint32_t(super))) { s.tag = kNoLink; s.entry = nullptr; }
+    }
+    void clearLinks() {
+        for (LinkSlot& s : linkTable_) { s.tag = kNoLink; s.entry = nullptr; }
+    }
+    std::vector<LinkSlot> linkTable_{ kLinkSlots };
 
     static uint64_t key(uint32_t pc, bool super) {
         return uint64_t(pc) | (super ? (uint64_t(1) << 32) : 0);
@@ -123,12 +185,34 @@ private:
     Context       ctx_{};
     Stats         stats_;
     CodeGuard     guard_;
-    std::vector<uint8_t> pageMap_;   // one byte per 4 KB of physical RAM
+    // One byte per CodeGuard::kUnit of physical RAM: does any cached block
+    // have code here? Fine enough that ordinary data writes do not trip it.
+    std::vector<uint8_t> pageMap_;
+    // …and the same question at 4 KB, which is the granularity the data TLB
+    // hands out. A store through a TLB entry can land anywhere in its page,
+    // so a page holding ANY translated code must never become a TLB write
+    // entry — the write guard would never see the store.
+    std::vector<uint8_t> codePage_;
 
     std::unordered_map<uint64_t, Block> blocks_;
+    // slice -> the blocks translated from it. Servicing a guard trip by
+    // scanning the whole cache is O(blocks) per write, and the writes are
+    // frequent: on a full boot that cost more than everything the code
+    // generator saved (436 s against the fetch window's 127 s). This makes
+    // it O(blocks in the slice that was actually written).
+    std::unordered_multimap<uint32_t, uint64_t> sliceIndex_;
 
     // Physical footprint of the currently armed code window.
     uint32_t winPhys_ = 0, winLen_ = 0;
+    // Arm-failure backoff. When the window cannot be armed — code in a
+    // region codeSpan refuses, or a translation the probe cannot confirm —
+    // retrying on the VERY NEXT instruction charges a probe per
+    // instruction, and on the 030 machines (22-entry ATC, working sets
+    // that churn it) that measured the JIT at HALF the interpreter's
+    // speed. After a failure the engine runs this many instructions
+    // interpreted before probing again; the guest is untouched either way
+    // (the ATC-eviction hook makes window and no-window walk-identical).
+    int armBackoff_ = 0;
     // Instructions the last trace actually retired (it executes as it
     // records, so the caller must not run one more on top).
     uint32_t traceRetired_ = 0;
@@ -149,6 +233,15 @@ private:
     bool paranoid_ = false;      // POM68K_JIT_PARANOID: revalidate every step
     int  maxInstrs_ = 64;
     int  maxBlocks_ = 16384;
+    int  hotAt_ = 8;             // POM68K_JIT_HOT: visits before compiling
+
+    // POM68K_JIT_HISTO=1 — dynamic opcode census, dumped on destruction.
+    // A code generator is only worth the opcodes it actually meets: this is
+    // what decided which forms JitBackendX64 emits natively and which it
+    // hands back to Moira (src/jit/POM68K_JIT.md § 7). Null when off, so
+    // the hot loop pays one always-predicted branch.
+    std::vector<uint64_t> histo_;
+    void dumpHisto() const;
 };
 
 }  // namespace jit

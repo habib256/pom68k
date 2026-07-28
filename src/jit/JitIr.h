@@ -40,6 +40,7 @@ enum class Kind : uint8_t {
     AddrCalc,    // LEA / PEA / EXT / SWAP / LINK / UNLK
     Multi,       // MOVEM / MOVEP
     Cond,        // Scc (sets a byte, does not branch)
+    Branch,      // Bcc/BRA/DBcc — may end a block, never appear inside one
     Unsafe,      // must end a block BEFORE it: control flow, SR/MMU/cache
     Count
 };
@@ -73,6 +74,12 @@ struct Instr {
     uint16_t words   = 1;      // instruction length in 16-bit words
     Kind     kind    = Kind::Alu;
     uint8_t  flags   = FlagNone;
+    // Cycles this instruction charged the clock when the TRACER ran it —
+    // the interpreter's own answer, not a second timing model. A code
+    // generator computes what it believes the cost to be and refuses to
+    // emit unless the two agree, so a wrong or missing table entry costs
+    // coverage rather than correctness (src/jit/POM68K_JIT.md § 9).
+    uint16_t cycles  = 0;
 };
 
 // Why a block stopped growing. Recorded for the gauges: the mix tells us
@@ -96,6 +103,18 @@ struct BlockIr {
     uint32_t physLen  = 0;
     EndReason endReason = EndReason::LengthLimit;
     std::vector<Instr> instrs;
+    // Every 16-bit word of the block's footprint, [entryPc, exitPc), copied
+    // out of the code window while tracing. A code generator needs the
+    // extension words (displacements, immediates, absolute addresses) and
+    // cannot reach the window itself — the window is engine state and can
+    // be re-armed elsewhere between compiling and running.
+    std::vector<uint16_t> code;
+
+    // Word at logical address `pc`, or 0 outside the block's footprint.
+    uint16_t word(uint32_t pc) const {
+        const uint32_t i = (pc - entryPc) / 2;
+        return (pc >= entryPc && i < code.size()) ? code[i] : 0;
+    }
 
     uint32_t exitPc() const {
         return instrs.empty() ? entryPc
@@ -140,9 +159,25 @@ inline Kind classify(uint16_t op) {
         case 0x4000: {
             if ((op & 0xFF00) == 0x4E00) {
                 // $4Exx: TRAP/LINK/UNLK/MOVE USP/RESET/NOP/STOP/RTE/RTD/
-                // RTS/TRAPV/RTR/MOVEC/JSR/JMP. LINK/UNLK/NOP are harmless
-                // but rare enough that keeping this whole group out costs
-                // nothing and keeps the rule readable.
+                // RTS/TRAPV/RTR/MOVEC/JSR/JMP.
+                //
+                // LINK, UNLK and NOP are carved out, and that is a measured
+                // decision rather than a tidy one. They transfer no control
+                // and touch no SR/MMU/cache state, so the only reason to
+                // exclude them was that the whole group was easier to
+                // write — but they are 3.6 % of a real Mac OS workload and
+                // they sit at EVERY function entry and exit, which is
+                // exactly where straight-line code begins. Ending a block
+                // on them cost far more than the rule saved.
+                if ((op & 0xFFF8) == 0x4E50) return Kind::AddrCalc;   // LINK.W
+                if ((op & 0xFFF8) == 0x4E58) return Kind::AddrCalc;   // UNLK
+                if (op == 0x4E71) return Kind::AddrCalc;              // NOP
+                // JSR and RTS terminate a block rather than being kept out
+                // of one. They are 7 % of a real Mac OS workload, and every
+                // one of them was both an interpreter round trip AND a
+                // block boundary the linker could not cross.
+                if ((op & 0xFFC0) == 0x4E80) return Kind::Branch;      // JSR <ea>
+                if (op == 0x4E75) return Kind::Branch;                // RTS
                 return Kind::Unsafe;
             }
             if ((op & 0xFFC0) == 0x40C0 || (op & 0xFFC0) == 0x42C0 ||
@@ -163,14 +198,20 @@ inline Kind classify(uint16_t op) {
         }
 
         case 0x5000: {
-            if ((op & 0xF0F8) == 0x50C8) return Kind::Unsafe;        // DBcc
+            if ((op & 0xF0F8) == 0x50C8) return Kind::Branch;        // DBcc
             if ((op & 0xF0F8) == 0x50F8) return Kind::Unsafe;        // TRAPcc
             if ((op & 0x00C0) == 0x00C0) return Kind::Cond;          // Scc
             return Kind::Alu;                                        // ADDQ / SUBQ
         }
 
-        case 0x6000:                                                 // Bcc / BRA / BSR
-            return Kind::Unsafe;
+        case 0x6000:
+            // Bcc/BRA are the one control transfer a backend can own: the
+            // target is a compile-time constant, so a backward branch into
+            // the same block becomes an internal jump and the loop never
+            // leaves generated code. BSR ($61xx) stacks a return address —
+            // a memory write the block builder would have to model — and
+            // stays out.
+            return Kind::Branch;                     // Bcc / BRA / BSR
 
         case 0x7000:
             return Kind::Move;                                       // MOVEQ
@@ -197,7 +238,33 @@ inline Kind classify(uint16_t op) {
     }
 }
 
+// A block must stop BEFORE an Unsafe instruction, and AFTER a Branch: the
+// branch is the block's terminator, not something that follows it.
 inline bool endsBlock(Kind k) { return k == Kind::Unsafe; }
+inline bool endsBlockAfter(Kind k) { return k == Kind::Branch; }
+
+// Encoded length of a Kind::Branch, in 16-bit words. A branch is the one
+// instruction whose length the tracer cannot deduce from the pc delta,
+// because the pc went somewhere else entirely.
+inline uint32_t branchWords(uint16_t op) {
+    if ((op & 0xF000) == 0x6000) {                 // Bcc / BRA / BSR
+        const uint8_t d = uint8_t(op & 0xFF);
+        return d == 0x00 ? 2 : d == 0xFF ? 3 : 1;  // .W : .L (68020) : .B
+    }
+    if (op == 0x4E75) return 1;                    // RTS
+    if ((op & 0xFFC0) == 0x4E80) {                 // JSR <ea>
+        const int mode = (op >> 3) & 7, reg = op & 7;
+        if (mode == 2) return 1;                   // (An)
+        if (mode == 5 || mode == 6) return 2;      // d16(An) / indexed
+        if (mode == 7) {
+            if (reg == 0) return 2;                // (xxx).W
+            if (reg == 1) return 3;                // (xxx).L
+            return 2;                              // d16(PC) / PC-indexed
+        }
+        return 1;
+    }
+    return 2;                                      // DBcc: opcode + disp16
+}
 
 // The only flag the tracer can honestly know without a decoder. Kind::Muldiv
 // collects everything that can take an exception while looking like ordinary

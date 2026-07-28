@@ -354,6 +354,11 @@ void Q700Memory::scsiPoll_() {
 // No byte was written, so the write guard cannot see it — say so directly.
 void Q700Memory::jitMapChanged() {
     if (jitGuard_) jitGuard_->invalidate();
+    // J3: the interpreter's data window bypasses this map entirely, so a
+    // remap the MMU cannot see (the boot overlay flip writes no ATC) has
+    // to reach the CPU's DTLB directly — the guard above is only serviced
+    // by the JIT engine's own loop, which the interpreter never enters.
+    if (cpu_) cpu_->pomJitDtlbFlush();
 }
 
 const uint8_t* Q700Memory::codeSpan(uint32_t phys, uint32_t& len) const {
@@ -383,6 +388,44 @@ const uint8_t* Q700Memory::codeSpan(uint32_t phys, uint32_t& len) const {
     // pseudo-DMA pops that can throw), $F9xxxxxx VRAM and the video cell
     // registers (reads clear interrupts and auto-increment the RAMDAC), and
     // every unmapped address (those bus-error). None of them is code.
+    return nullptr;
+}
+
+uint8_t* Q700Memory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
+    len = 0;
+    if (phys < 0x40000000) {
+        if (overlay_) return nullptr;          // this gigabyte is ROM for now
+        if (phys >= totalRam_) return nullptr; // open bus, not memory
+        len = totalRam_ - phys;
+        return ram_.data() + phys;
+    }
+    if (phys < 0x50000000) {
+        // The ROM window: readable, and a store there is dropped by the
+        // hardware rather than stored, which an inline store cannot model.
+        if (write || overlay_) return nullptr;
+        const uint32_t o = phys & (kRomSize - 1);
+        len = kRomSize - o;
+        return rom_.data() + o;
+    }
+    // The framebuffer. QuickDraw drawing a 640x480x8 desktop is a very
+    // large number of stores, and leaving them on the slow path made the
+    // code generator SLOWER than the interpreter for the whole Finder
+    // phase — each store paid a TLB probe, a remembered refusal and a call,
+    // to reach what is a plain array write. read8/read16/write8/write16 all
+    // treat this window as bytes and nothing else: no latch, no
+    // auto-increment, no dirty tracking. (The video CELL registers at
+    // $F98000xx are a different window and stay out.)
+    //
+    // The offset is taken modulo the framebuffer size and the span stops at
+    // that seam, because two of the four maps mirror this window.
+    if (phys >= 0xF9000000 && phys < 0xF9000000 + kVramSize) {
+        const uint32_t o = (phys - 0xF9000000) & (kVramSize - 1);
+        len = kVramSize - o;
+        return vram_.data() + o;
+    }
+
+    // I/O and the video cell registers stay on the slow path: reads there
+    // latch and auto-increment.
     return nullptr;
 }
 

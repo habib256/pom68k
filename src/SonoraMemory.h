@@ -16,6 +16,7 @@
 // Gate: tests/lc3_boot_etalon.cpp.
 
 #pragma once
+#include "jit/JitGuard.h"
 #include "Via6522.h"
 #include "PseudoVia.h"
 #include "Egret.h"
@@ -84,6 +85,18 @@ public:
     uint8_t  peek8(uint32_t addr) const;             // side-effect-free
 
     void setCpu(SonoraCpu* cpu) { cpu_ = cpu; }
+
+    // ── JIT hooks (src/jit/POM68K_JIT.md, 030 extension 2026-07-28) ────
+    // Same contract as Q605Memory's: codeSpan/dataSpan hand the JIT host
+    // pointers to PLAIN memory only — flat RAM below the bank top, ROM once
+    // the overlay is down (reading the ROM window clears it, a side effect
+    // a const probe cannot perform). I/O and the machine-ID longword are
+    // refused; a store to ROM is refused.
+    const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
+    uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
+    uint32_t ramBytes() const { return totalRam_; }
+    void jitMapChanged();
     void updateIrq();
     int iplLevel() const;            // SCC=4 > pseudo-VIA=2 > VIA1=1
 
@@ -204,6 +217,7 @@ private:
     uint32_t totalRam_;
     int64_t  cpuHz_ = kCpuHz;         // 25 MHz LC III / 33.33 MHz LC III+
     uint32_t machineId_ = kIdLc3;     // $5FFFFFFC model longword
+    jit::CodeGuard* jitGuard_ = nullptr;   // JIT code invalidation
     bool overlay_ = true;
     bool sccIrq_ = false;
 

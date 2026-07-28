@@ -502,21 +502,113 @@ Next milestones:
     and the fault-frame shape is load-bearing. So the window would have to
     validate per-page permissions and bail to the normal path on any doubt.
     **Measure a prototype before committing to it.**
-  - [ ] **Extend the seam to the 020/030 machines** — probably better value
+  - [x] **x64 × PGO divergence — RESOLVED 2026-07-28 (same day).** It was
+    never PGO, never the code generator, and never UB (valgrind: 0 errors).
+    It was the documented "ATC pseudo-LRU divergence" class turning
+    guest-visible: a window/TLB entry could outlive the ATC entry it derived
+    from, so each engine skipped a different subset of table walks — and
+    walks write the descriptor U bit, which Mac OS VM READS for page aging
+    once the System is up. Three engines, three different-but-each-valid
+    futures; every binary/config perturbation reshuffled the pattern, which
+    mimicked memory corruption. Fix: `pomJitAtcEvict` — derived state dies
+    with its ATC entry (both eviction sites), so a window hit now implies
+    the interpreter would have ATC-hit too, and all engines are bit-exact
+    over 20 G cycles (fp 8f26fcba22986fc6 × interp/interp+window/threaded/
+    x64). Fallout: capped at ATC coverage, the INTERPRETER's data window
+    stopped paying and is now opt-in (POM68K_DATA_WINDOW=1); the x64 keeps
+    its inline TLB. Re-measure engine timings on an idle host (the fix-day
+    numbers were taken at load average 14 and are meaningless).
+  - [x] **Extend the seam to the 030 machines — ALL FOUR FAMILIES DONE
+    2026-07-28** (V8, then Sonora/VASP/RBV in the seventh pass; every 68030
+    machine is behind the engine, gates registered one per family).
+    Follow-ups that MEASURE, in order: (1) O(1) 030 code probe — the
+    22-entry scan runs on every re-arm and the MMU-on machines re-arm
+    constantly because ATC evictions kill their windows (the bit-exactness
+    contract); an mmuAtcLast-style memo would cut most of it. (2) The 020
+    machines (MacIIMemory + LC): different fetch seam — prefetch queue, no
+    mode-5 loop — worth doing only after (1) proves the 030 families can
+    actually WIN with the MMU on. UPDATE same day: (1) DONE — O(1) memo
+    probes + per-space eviction took the LC III from −32 % to −9 % under
+    the JIT; the residue is the unified 22-entry ATC evicting code pages,
+    which the exactness contract forbids the window to survive. (2) DONE
+    as a SEAM (pomJitFetch020 + identity probe + generic pomJitExecOne;
+    the LC boots on both engines, gate jit_lc_boot_etalon) and measured
+    honestly: −56 % on the LC, because a no-MMU fetch is too cheap for a
+    fetch window to beat. Mac II map plumbing (GLUE physAddr, IIx PMMU)
+    deferred until a code generator gives the 020 something to win with.
+  - [x] (superseded) V8 family first pass
+    (LC II/Classic II/CC/Mac TV through the same engine; `mmuFetchWord` is
+    the single 030 fetch choke point, so the seam is smaller than the
+    040's). Remaining: replicate the V8Memory plumbing (codeSpan/dataSpan/
+    guard + wrapper engine member — mechanical, use the V8 diff as the
+    template) for SonoraMemory, VaspMemory, RbvMemory; then the 020s
+    (MacIIMemory + the LC), which need a different fetch seam (prefetch
+    queue, no mode-5 loop).
+ — probably better value
     than J2 too: the engine is generic, only the fetch sites are 040-specific,
     and the 030 has its own single choke point (`mmuFetchWord`) which already
     carries `PomIcache`, so the window drops in at the same spot. That is a
     dozen more machines at ~×2 for modest work.
-  - [ ] **J2 — x86-64 code generation** behind the same `jit::BlockIr`,
-    writing into `jit::CodeBuffer`. Hot integer subset first (MOVE, ALU,
-    simple EAs); everything else exits to the interpreter at an instruction
-    boundary, which is what keeps C++ exceptions out of generated code.
-    Use WinUAE's JIT as a code reference, not imported generated code.
+  - [x] **J2 — x86-64 code generation** — DONE 2026-07-28, and it is
+    correct but not yet a win. `src/jit/backends/JitBackendX64.cpp` reaches
+    70 % native coverage on a Mac OS 8.1 load phase and is bit-exact against
+    the interpreter (registers, stacks, clock and low RAM, every boundary),
+    but it is 2.3x SLOWER than the fetch window once the Finder is idle, so
+    `auto` keeps `threaded` and it ships as `POM68K_JIT_BACKEND=x64`. The
+    two follow-ups, in order, are below.
+  - [ ] **The LLE-conformant performance backlog** (2026-07-28, ranked by
+    yield; the measured conformant ceiling is ~×2.5-3 on the 040s — anything
+    beyond that lives in the non-conformant fast mode, docs/HLE_OVERLAY.md):
+    1. **Extend PGO training to the 030/020 machines.** The shipped recipe
+       trains on the Quadra boot only, so the profile optimizes the 040
+       paths; one LC II + one LC III boot in the `generate` phase would
+       cover mmuFetchWord/mmuTranslateAccess and the V8/Sonora decode
+       cascades. Zero risk, measured-class gain (PGO alone was interp −33 %
+       on the 040).
+    2. **Lazy condition codes in the x64 backend** (own entry below) — the
+       one big conformant codegen lever left.
+    3. **Page-granular dispatch tables for the memory maps.** read8/write16
+       re-run a cascade of range compares on EVERY access on all 32
+       machines; a 4 KB-granular table of handler+base pairs turns that
+       into one indexed load. Benefits both engines and every machine;
+       guard/overlay/remap sites must rebuild the table (same invalidation
+       discipline as the JIT windows, already catalogued per map).
+    4. **Compact mmu040InstrStart.** Eight per-instruction field resets +
+       a getCCR() pack; adjacent fields could collapse into one or two wide
+       stores. Small, but it sits on every single 040 instruction.
+  - [ ] **Wire the GUI engine switch for the 030 machines** — the CPU menu
+    only binds gSetCpuEngine on the four 040 machine loops; the V8/Sonora/
+    VASP/RBV loops have the engine but only the env var reaches it. Worth
+    it for the LC II (×1.6); copy the QuadraMachine Cmd::CpuEngine pattern.
+  - [ ] **Lazy condition codes in the x86-64 backend** — the one big
+    CONFORMANT codegen lever left. Materialising N/Z/V/C/X per instruction
+    (4-5 setcc + stores) is waste: most flags are overwritten before ever
+    being read. Deferring them is bit-exact PROVIDED every exit stub
+    materialises the pending flags — the same mechanism already built for
+    pc/pc0. Expected to shrink the per-instruction contract by a third.
+  - [ ] **Block linking — the one thing that would make J2 pay.** Blocks run
+    284 instructions per entry while the guest loads the System and **4.9**
+    once the Finder is up: Finder-era 68k is branch-dense enough that a
+    block entry (hash lookup, frame, prologue, epilogue) is paid every five
+    instructions. A branch whose target is another compiled block must jump
+    straight into it. Everything it needs already exists — the target is a
+    compile-time constant and the block cache is keyed on (pc, super) — what
+    is missing is a patchable exit and an unlink-on-evict list.
+  - [ ] **Generated-code density.** ~150 bytes of host code per guest
+    instruction, most of it the per-instruction contract (budget and flag
+    guards, POLL_IPL, pc/pc0, the prefetch queue, the cycle charge) rather
+    than the operation. The boundary state is only read when a block exits,
+    so it belongs in the cold exit stubs; the guards' two `rel32` jumps
+    belong in `rel8`. An interpreter's footprint is bounded by the
+    instruction set, a code generator's by the guest program — this is what
+    decides whether generated code fits in cache at all.
   - [ ] **aarch64 backend** — porting note already written and validated
     against the IR: `src/jit/backends/JitBackendA64.md`.
-  - [ ] Fine-grained block eviction (J1 drops the whole cache on any write
-    into translated code — fine while nothing but IR is cached, not once
-    generated code is).
+  - [x] Fine-grained block eviction — DONE 2026-07-28. The guard went from
+    4 KB to 256-byte granularity, `serviceGuard()` evicts only the blocks
+    overlapping the written slices, and a `slice -> blocks` index makes that
+    O(blocks in the slice). One boot phase went from 5 313 whole-cache
+    flushes to 27.
 
 - [ ] **Build the optional HLE acceleration overlay described in
   `docs/HLE_OVERLAY.md`** (after the `docs/LLE_VS_HLE.md` cleanup pass).

@@ -320,6 +320,54 @@ public:
     // check — the one thing an address-range test cannot detect.
     u32 pomJitMmuGen = 0;
 
+    // Every site that can change a logical→physical mapping goes through
+    // here. The generation counter alone is enough for the code window,
+    // which re-checks it on every fetch; the data TLB is read by GENERATED
+    // code that checks nothing but the tag, so it has to be emptied at the
+    // source instead.
+    void pomJitMapMoved() { pomJitMmuGen++; pomJitDtlbFlush(); }
+
+    // ── J3b: derived state dies WITH the ATC entry it derives from ──────
+    // The windows and the data TLB serve accesses without re-walking, which
+    // is exactly what an ATC hit does — so a hit through them is bit-exact
+    // as long as the backing ATC entry is still resident. Once that entry
+    // is EVICTED, the interpreter's next access re-walks and re-sets the
+    // descriptor's U bit; an entry that outlived the eviction would skip
+    // that guest-visible write. Invisible for weeks — until Mac OS VM
+    // started READING the U bits for page aging (it does, on 8 KB pages,
+    // once the System is up), at which point each engine's different
+    // survival pattern turned into a different guest EXECUTION: three
+    // engines, three futures, all "correct" and none comparable. Called on
+    // both eviction sites (replacement in mmu040AtcFill, the write-M
+    // invalidate in mmu040AtcLookup): kills the derived slices, the hot
+    // pair and the code window for THAT page only, in O(slices).
+    // `code` says WHICH derived state the evicted entry backed: the fetch
+    // window derives from instruction-space residency and the data TLB from
+    // data-space residency, and killing both on either eviction (the first
+    // cut) threw the code window away every time a DATA page sharing its
+    // logical page churned — pure waste, since the I-side entry that
+    // justifies the window was still resident. The exactness argument is
+    // per-space: a window hit skips a FETCH walk, so it must die with the
+    // I-entry; a TLB hit skips a DATA walk, so it dies with the D-entry.
+    void pomJitAtcEvict(u32 logicalPage, u32 pageLen, bool code) {
+        if (code) {
+            if (pomJitWindow.armed &&
+                pomJitWindow.base >= logicalPage &&
+                pomJitWindow.base < logicalPage + pageLen)
+                pomJitDisarm();
+            return;
+        }
+        for (u32 off = 0; off < pageLen; off += 4096) {
+            const u32 slice = (logicalPage + off) >> 12;
+            for (PomJitDtlb *t : { &pomJitDtlbR, &pomJitDtlbW }) {
+                PomJitDtlbEntry &e = t->e[slice & (PomJitDtlb::kEntries - 1)];
+                if ((e.tag & 0x7FFFFFFFu) == slice) { e.tag = PomJitDtlb::kEmpty; e.host = nullptr; }
+            }
+            if ((pomJitDataR1.tag & 0x7FFFFFFFu) == slice) pomJitDataR1 = {};
+            if ((pomJitDataW1.tag & 0x7FFFFFFFu) == slice) pomJitDataW1 = {};
+        }
+    }
+
     void pomJitArm(const u8 *host, u32 base, u32 len, bool super) {
         pomJitWindow.host  = host;
         pomJitWindow.base  = base;
@@ -366,6 +414,183 @@ public:
     // fills the ATC, and the next probe succeeds.
     bool pomJitProbeCode(u32 logical, bool super,
                          u32 &phys, u32 &pageBase, u32 &pageLen) const;
+
+    // ── J2: the data-side twin of the code window ────────────────────────
+    // Generated host code cannot call mmu040Read: that path throws on a
+    // fault, and a C++ exception may not cross a JIT frame (there is no
+    // unwind information for machine code we emitted ourselves). So the
+    // x86-64 backend translates data addresses through this direct-mapped
+    // cache instead, entirely inline, and BAILS OUT of the compiled block —
+    // at an instruction boundary, before committing anything — whenever the
+    // lookup misses. The interpreter then runs that one instruction and
+    // takes the fault, fills the ATC, or touches the I/O register, exactly
+    // as it always did.
+    //
+    // An entry is only ever created for an address the engine has PROVEN
+    // (jit::Engine::fillDtlb) to be plain guest memory with the access
+    // already permitted by a resident ATC entry — no page-table walk, no
+    // descriptor U/M write-back, no I/O side effect can hide behind a hit.
+    // Read and write are separate caches because a page can be readable and
+    // write-protected, and because a write to an unmodified page has to
+    // re-walk so the table search sets M (mmu040AtcLookup).
+    // 16 bytes so that generated code reaches an entry with a single
+    // lea reg, [cpu + index*16 + table] — the tag and the host pointer then
+    // sit at +0 and +8 of one cache line's worth of addressing.
+    struct PomJitDtlbEntry {
+        u32 tag;                        // logical page number (addr >> 12)
+        u32 pad;
+        u8* host;                       // host bytes for that page, byte 0
+    };
+    struct PomJitDtlb {
+        static constexpr u32 kEntries = 256;     // direct-mapped, 4 KB/table
+        static constexpr u32 kEmpty = 0xFFFFFFFF;  // no logical page is ~0
+
+        PomJitDtlbEntry e[kEntries];
+
+        PomJitDtlb() { clear(); }
+        void clear() {
+            for (u32 i = 0; i < kEntries; i++) { e[i].tag = kEmpty; e[i].host = nullptr; }
+        }
+    };
+    PomJitDtlb pomJitDtlbR, pomJitDtlbW;
+
+    // Level 0 of the data window: ONE entry per direction, sitting in the
+    // hot part of the object next to the fetch window. The 256-entry table
+    // below is level 1. This split is measured, not aesthetic: consulting
+    // the 8 KB table directly from the interpreter LOST ~10 % — streaming
+    // guest data kept evicting the table's own cache lines, so every probe
+    // added an L1 miss to an access the long path would have served out of
+    // hot machine state. One 16-byte entry per direction stays resident by
+    // construction, and real 68k data traffic is page-local enough (a copy
+    // loop is one read page + one write page) that it catches most of what
+    // the big table would have.
+    struct PomJitDataPage { u32 tag = 0xFFFFFFFF; u8 *host = nullptr; };
+    PomJitDataPage pomJitDataR1, pomJitDataW1;
+
+    void pomJitDtlbFlush() {
+        pomJitDtlbR.clear(); pomJitDtlbW.clear();
+        pomJitDataR1 = {}; pomJitDataW1 = {};
+    }
+
+    // ── J3: the data window — the same DTLB, consulted by the INTERPRETER ──
+    // The fetch window took instruction fetches off the long path; this
+    // takes DATA accesses off it, for both engines at once: mmu040Read and
+    // mmu040Write try the DTLB before the ATC/translate/decode chain. The
+    // fill callback is bound by jit::Engine (which owns the refusal rules —
+    // plain RAM/ROM only, resident+permitted ATC entries only, never a page
+    // holding translated code); when no engine exists the pointer is null
+    // and the whole path is one dead branch.
+    //
+    // Invalidation, exhaustively: MMU/TTR changes (pomJitMapMoved), the
+    // machine's own remaps (each map's jitMapChanged flushes the CPU DTLB
+    // directly — the overlay flip writes no ATC), privilege changes
+    // (setSupervisorFlags — entries are probed under the CURRENT privilege
+    // and carry no super bit), and every engine flush/evict.
+    uint8_t *(*pomJitDtlbFillFn)(void *, u32, int) = nullptr;
+    void *pomJitDtlbFillCtx = nullptr;
+
+    // The privilege level rides in TAG BIT 31 (a page number is 20 bits),
+    // so user and supervisor entries coexist and NOTHING is flushed on an
+    // exception or an RTE. The first cut flushed the whole table from
+    // setSupervisorFlags instead — correct, and a disaster: several
+    // thousand interrupts a second each emptied the cache, the hit rate
+    // collapsed, and the "fast" path measured 15 % SLOWER than no path.
+    static u32 pomJitDataTag(u32 addr, bool super) {
+        return (addr >> 12) | (super ? 0x80000000u : 0u);
+    }
+
+    // The fill half, out of line on purpose: pomJitData is inlined into
+    // every mmu040Read/Write instantiation, and the interpreter's hot loop
+    // pays for those bytes whether the path hits or not.
+    u8 *pomJitDataSlow(u32 addr, u32 want, bool w) noexcept;
+
+    template <int N, bool W> u8 *pomJitData(u32 addr) {
+        if (flags & State::CHECK_WP) return nullptr;    // watchpoints see all
+        if (mmu040Moves >= 0) return nullptr;           // alternate FC space
+        if (!W && mmu040Lrmw) return nullptr;           // locked reads = writes
+        const u32 off = addr & 4095;
+        if (off > 4096u - N) return nullptr;            // page straddle
+        const u32 want = pomJitDataTag(addr, bool(reg.sr.s));
+        PomJitDataPage &c = W ? pomJitDataW1 : pomJitDataR1;
+        if (c.tag == want) [[likely]]
+            return c.host ? c.host + off : nullptr;     // null = remembered refusal
+        // Levels 1 and 2 (the table, then the engine's fill) out of line —
+        // and the no-engine case falls out for free: with the callback null
+        // nothing ever fills, so the level-0 tag never matches.
+        u8 *base = pomJitDataSlow(addr, want, W);
+        return base ? base + off : nullptr;
+    }
+
+    // The other half of the data path: what generated code calls when the
+    // TLB refuses — an I/O register, a page the probe could not confirm, an
+    // access that straddles two pages. It performs the REAL access, through
+    // the same mmu040 path the interpreter uses, and converts the one thing
+    // a JIT frame cannot survive — a thrown fault — into `false`.
+    //
+    // A false answer means NOTHING was committed on the guest side, so the
+    // caller's contract is simply to leave the instruction alone and let the
+    // interpreter re-run it from the boundary; it will fault identically and
+    // stack the frame properly.
+    bool pomJitReadData(u32 addr, int bytes, u32 &out) noexcept;
+    bool pomJitWriteData(u32 addr, int bytes, u32 val) noexcept;
+
+    // Charges `cycles` to the clock THROUGH the machine's sync(), which is
+    // where peripheral catch-up hangs. Generated code must not simply add
+    // to `clock`: the CPU wrapper batches VIA/ASC/SWIM/MCU time off this
+    // call, and a block that skipped it would run the guest forward while
+    // the machine around it stood still.
+    void pomJitSync(int cycles) { sync(cycles); }
+
+    // True when POLL_IPL is the plain `reg.ipl = ipl` assignment, which is
+    // the only form generated code models. The deferred-recognition feature
+    // (NEOST_IPLFETCH, setIplDelay) is off on every Mac profile; a backend
+    // must refuse to compile if it is ever turned on.
+    bool pomJitSimpleIpl() const { return iplDelay4 == 0; }
+
+    // Side-effect-free translation probe for a DATA address, the twin of
+    // pomJitProbeCode. `write` applies the two rules a read does not have:
+    // the page must not be write-protected, and it must already be marked
+    // modified — a write to an unmodified page owes the descriptor an M-bit
+    // write-back, which is a guest-memory store a probe may not perform.
+    bool pomJitProbeData(u32 logical, bool super, bool write,
+                         u32 &phys, u32 &pageBase, u32 &pageLen) const;
+
+    // ── the 020 fetch seam (2026-07-28) ─────────────────────────────────
+    // A plain 68020 has no MMU: fetches go read<PROG> → the machine's
+    // decode. The window replaces exactly that tail, but the HEAD of a
+    // read<PROG,Word> is behavioural state that must be replicated, not
+    // skipped: the POLL_IPL that rides on the prefetch (interrupt
+    // recognition), the FC pins, and the in-flight access stamp an
+    // external /BERR would read back (the Mac LC ROM's 32-bit probe pins
+    // that contract — MoiraDataflow read<> kPlain020 block). Returns false
+    // when the window cannot serve the address; the caller then takes the
+    // ordinary path, which performs those same steps itself.
+    template <bool P> bool pomJitFetch020(u32 addr, u16 &out) {
+        const u8 *p;
+        if (!pomJitFetch(addr, 2, p)) return false;
+        if constexpr (P) pollIpl();
+        setFC(FC::USER_PROG);
+        mmuAccAddr = addr; mmuAccSsw = 0x20;
+        mmuAccFc = readFC(); mmuAccWrite = false;
+        out = u16(u16(p[0]) << 8 | p[1]);
+        return true;
+    }
+
+    // Byte offsets, measured from this object's address, of every field a
+    // code generator has to touch. Returned as a struct rather than exposed
+    // as public members so the register file stays private, and computed
+    // from a live object so no offsetof() on a polymorphic type is needed.
+    // src/jit/backends/JitBackendX64.cpp is the only consumer.
+    struct PomJitLayout {
+        u32 d, a;                       // reg.d[0], reg.a[0]
+        u32 pc, pc0;
+        u32 srX, srN, srZ, srV, srC, srS;
+        u32 regIpl, iplPin;
+        u32 clock, flags;
+        u32 ird, irc;
+        u32 dtlbR, dtlbW;               // base of each PomJitDtlb::e[]
+    };
+    PomJitLayout pomJitLayout() const;
 
 private:
 
@@ -800,16 +1025,16 @@ public:
     bool mmu040AtcIsArmed() const { return mmu040AtcArmed; }
 
     u32 getITT0() const { return reg.itt0; }
-    void setITT0(u32 val) { reg.itt0 = val & 0xFFFFE364; pomJitMmuGen++; }
+    void setITT0(u32 val) { reg.itt0 = val & 0xFFFFE364; pomJitMapMoved(); }
 
     u32 getITT1() const { return reg.itt1; }
-    void setITT1(u32 val) { reg.itt1 = val & 0xFFFFE364; pomJitMmuGen++; }
+    void setITT1(u32 val) { reg.itt1 = val & 0xFFFFE364; pomJitMapMoved(); }
 
     u32 getDTT0() const { return reg.dtt0; }
-    void setDTT0(u32 val) { reg.dtt0 = val & 0xFFFFE364; pomJitMmuGen++; }
+    void setDTT0(u32 val) { reg.dtt0 = val & 0xFFFFE364; pomJitMapMoved(); }
 
     u32 getDTT1() const { return reg.dtt1; }
-    void setDTT1(u32 val) { reg.dtt1 = val & 0xFFFFE364; pomJitMmuGen++; }
+    void setDTT1(u32 val) { reg.dtt1 = val & 0xFFFFE364; pomJitMapMoved(); }
 
     u32 getMMUSR040() const { return reg.mmusr040; }
     void setMMUSR040(u32 val) { reg.mmusr040 = val; }

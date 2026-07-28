@@ -442,6 +442,17 @@ Moira::mmuFetchWord(u32 addr)
     // bypassed, but an unmapped fetch must still be extBusError()-able
     mmuAccAddr = addr; mmuAccSsw = 0x0020; mmuAccFc = fc; mmuAccWrite = false;
 
+    // POM68K JIT code window, 030 flavor (2026-07-28). ONE hook site covers
+    // every instruction-stream fetch — mmuExecuteStart's ird/irc AND the
+    // readExt 030 branch all come through here. Placed AFTER the icache
+    // overlay (its miss penalty is cycle-visible and must keep charging)
+    // and after the acc stamp (extBusError readback). pomJitCovers vets
+    // generation and privilege; the eviction hook keeps a hit implying
+    // "the interpreter's own ATC would have hit too".
+    if (const u8 *p; pomJitFetch(addr, 2, p)) {
+        return u16(u16(p[0]) << 8 | p[1]);
+    }
+
     if (reg.tc & 0x80000000) {
 
         addr = mmuTranslateAccess(addr, fc, false, 0x0020);
@@ -781,6 +792,7 @@ Moira::mmuAtcLookup(u32 addr, u8 fc, bool write)
                 return mmuAtcLast[fc & 7][write];
             }
             e.valid = false;
+            pomJitAtcEvict(e.logical & imask, ~imask + 1, (fc & 3) == 2);   // POM68K J3b
         }
     }
 
@@ -796,6 +808,7 @@ Moira::mmuAtcLookup(u32 addr, u8 fc, bool write)
             return i;
         }
         e.valid = false;
+        pomJitAtcEvict(e.logical & imask, ~imask + 1, (fc & 3) == 2);       // POM68K J3b
     }
     return -1;
 }
@@ -818,6 +831,11 @@ Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
     const u32 imask = ~mmuPageMask();
     auto &e = mmuAtcArr[i];
 
+    // POM68K J3b (Moira.h § pomJitAtcEvict): whatever the JIT derived from
+    // the replaced entry dies with it — same U-bit argument as the 040.
+    if (e.valid && (e.logical != (addr & imask) || e.fc != fc))
+        pomJitAtcEvict(e.logical, ~imask + 1, (e.fc & 3) == 2);
+
     e.logical = addr & imask;
     e.fc = fc;
     e.valid = true;
@@ -832,12 +850,14 @@ Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
 void
 Moira::mmuAtcFlushAll()
 {
+    pomJitMapMoved();               // POM68K JIT (030 window)
     for (auto &e : mmuAtcArr) e.valid = false;
 }
 
 void
 Moira::mmuAtcFlushFc(u32 fcBase, u32 fcMask)
 {
+    pomJitMapMoved();               // POM68K JIT (030 window)
     for (auto &e : mmuAtcArr)
         if (e.valid && (fcBase & fcMask) == (e.fc & fcMask)) e.valid = false;
 }
@@ -845,6 +865,7 @@ Moira::mmuAtcFlushFc(u32 fcBase, u32 fcMask)
 void
 Moira::mmuAtcFlushPage(u32 addr)
 {
+    pomJitMapMoved();               // POM68K JIT (030 window)
     addr &= ~mmuPageMask();
     for (auto &e : mmuAtcArr)
         if (e.valid && e.logical == addr) e.valid = false;
@@ -853,6 +874,7 @@ Moira::mmuAtcFlushPage(u32 addr)
 void
 Moira::mmuAtcFlushPageFc(u32 addr, u32 fcBase, u32 fcMask)
 {
+    pomJitMapMoved();               // POM68K JIT (030 window)
     addr &= ~mmuPageMask();
     for (auto &e : mmuAtcArr)
         if (e.valid && (fcBase & fcMask) == (e.fc & fcMask) && e.logical == addr)
@@ -1725,7 +1747,7 @@ Moira::execPTest40(u16 opcode)
 void
 Moira::mmu040AtcFlushAll()
 {
-    pomJitMmuGen++;                 // POM68K JIT: every cached mapping dies
+    pomJitMapMoved();                 // POM68K JIT: every cached mapping dies
     for (auto &e : mmu040AtcI) { e.valid = false; e.mru = false; }
     for (auto &e : mmu040AtcD) { e.valid = false; e.mru = false; }
     mmu040AtcMruI = mmu040AtcMruD = 0;
@@ -1736,7 +1758,7 @@ Moira::mmu040AtcFlushAll()
 void
 Moira::mmu040AtcFlushNonGlobal()
 {
-    pomJitMmuGen++;                 // POM68K JIT
+    pomJitMapMoved();                 // POM68K JIT
     for (auto &e : mmu040AtcI)
         if (e.valid && !(e.status & 0x400)) e.valid = false;
     for (auto &e : mmu040AtcD)
@@ -1746,7 +1768,7 @@ Moira::mmu040AtcFlushNonGlobal()
 void
 Moira::mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly)
 {
-    pomJitMmuGen++;                 // POM68K JIT
+    pomJitMapMoved();                 // POM68K JIT
     const u32 imask = mmu040PageMaskI();
     addr &= imask;
     auto flush = [&](Mmu040AtcEntry* arr) {
@@ -1793,6 +1815,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write)
                 return last[write];
             }
             e.valid = false;
+            pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);   // POM68K J3b
         }
     }
 
@@ -1805,6 +1828,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write)
             return i;
         }
         e.valid = false;
+        pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);       // POM68K J3b
     }
     return -1;
 }
@@ -1826,6 +1850,12 @@ Moira::mmu040AtcFill(bool data, u32 addr, u32 status)
     mmu040AtcTouch(arr, mruCount, i);
 
     auto &e = arr[i];
+    // POM68K J3b (Moira.h § pomJitAtcEvict): whatever the JIT derived from
+    // the entry being REPLACED dies with it, so a window/TLB hit implies a
+    // resident ATC entry and the walk/U-bit pattern stays bit-identical to
+    // an engine with no windows at all.
+    if (e.valid && (e.logical & imask) != (addr & imask))
+        pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);
     e.logical = addr & imask;
     e.physical = status & imask;
     e.status = status;
@@ -1900,6 +1930,57 @@ Moira::pomJitProbeCode(u32 logical, bool super,
     // throwing. On a miss the engine simply does not arm the window: the
     // interpreter then fetches normally, fills the ATC, and the next probe
     // succeeds.
+    //
+    // Plain-020 branch (2026-07-28): no MMU at all, so translation is
+    // identity and the only question is the machine's — codeSpan decides
+    // what is plain memory. Any page granularity works for a window bound;
+    // 4 KB matches the rest of the machinery. No supervisor-only pages
+    // without an MMU, so privilege never refuses (the window still re-arms
+    // on privilege change via pomJitCovers' super check, harmlessly).
+    if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) {
+        pageBase = logical & ~4095u;
+        pageLen  = 4096;
+        phys     = logical;
+        return true;
+    }
+
+    // 030 branch (2026-07-28): same three rules against the 030's own
+    // translation model — TT registers (OK-match only), TC.E-off identity,
+    // then a read-only scan of the 22-entry fc-tagged ATC. The page size
+    // comes from TC and can be anything from 256 bytes to 32 KB; the window
+    // machinery is size-agnostic as long as pageBase/pageLen are honest.
+    if (cpuModel == Model::M68030) {
+        const u8 fc = u8((super ? 4 : 0) | 2);          // program space
+        const u32 mask = mmuPageMask();                  // low bits of a page
+        pageBase = logical & ~mask;
+        pageLen  = mask + 1;
+
+        if (mmuMatchTTAccess(logical, fc, false)) { phys = logical; return true; }
+        if (!(reg.tc & 0x80000000)) { phys = logical; return true; }
+
+        // O(1) first: the interpreter's own last-hit memo. mmuAtcFill sets
+        // it to the slot it just filled, so the page whose eviction killed
+        // the window is right here by the time the engine re-probes — which
+        // is exactly the churn that made the MMU-on 030 machines SLOWER
+        // under the JIT than interpreted (the 22-entry scan ran on every
+        // re-arm, and evictions forced a re-arm every few dozen
+        // instructions).
+        {
+            const MmuAtcEntry &e = mmuAtcArr[mmuAtcLast[fc & 7][0]];
+            if (e.valid && e.fc == fc && e.logical == pageBase) {
+                if (e.busError) return false;
+                phys = e.physical | (logical & mask);
+                return true;
+            }
+        }
+        for (const MmuAtcEntry &e : mmuAtcArr) {
+            if (!e.valid || e.fc != fc || e.logical != pageBase) continue;
+            if (e.busError) return false;                // invalid / S-only page
+            phys = e.physical | (logical & mask);
+            return true;
+        }
+        return false;
+    }
     if (cpuModel < Model::M68EC040) return false;
 
     const u32 maski = mmu040PageMaskI();
@@ -1914,6 +1995,16 @@ Moira::pomJitProbeCode(u32 logical, bool super,
     // Read-only scan of the INSTRUCTION ATC. Deliberately not
     // mmu040AtcLookup(): that one updates the pseudo-LRU, and a probe has
     // no business reordering the cache the instruction stream is using.
+    // O(1) first, same memo trick as the 030 branch above.
+    {
+        const Mmu040AtcEntry &e = mmu040AtcI[mmu040AtcLastI[0]];
+        if (e.valid && (e.logical & maski) == pageBase) {
+            if (!(e.status & 1)) return false;
+            if (!super && (e.status & 0x80)) return false;
+            phys = e.physical | (logical & ~maski);
+            return true;
+        }
+    }
     for (const Mmu040AtcEntry &e : mmu040AtcI) {
         if (!e.valid || (e.logical & maski) != pageBase) continue;
         if (!(e.status & 1)) return false;                  // invalid descriptor
@@ -1922,6 +2013,107 @@ Moira::pomJitProbeCode(u32 logical, bool super,
         return true;
     }
     return false;
+}
+
+bool
+Moira::pomJitProbeData(u32 logical, bool super, bool write,
+                       u32 &phys, u32 &pageBase, u32 &pageLen) const
+{
+    // POM68K J2 (src/jit/POM68K_JIT.md § 8). The data twin of
+    // pomJitProbeCode, and held to the same three rules: it must not touch
+    // guest memory, must not throw, and must not disturb any CPU state —
+    // it runs on behalf of GENERATED code that has no exception frame and
+    // no way to undo a side effect.
+    //
+    // Everything mmu040Translate would do that a probe may not do is a
+    // refusal here instead: no page-table walk (mmu040Walk writes the U/M
+    // descriptor bits back through mmuWrite32), no ATC pseudo-LRU update,
+    // and no fault. A refusal costs nothing but a bail-out to the
+    // interpreter, which then does the real thing.
+    if (cpuModel < Model::M68EC040) return false;
+
+    const u32 maski = mmu040PageMaskI();
+    pageBase = logical & maski;
+    pageLen  = ~maski + 1;
+
+    // Transparent translation is identity. A TTR match of 2 means the
+    // region is write-protected — a write there must fault, so refuse it.
+    if (const int ttr = mmu040MatchTTR(logical, super, true)) {
+        if (write && ttr == 2) return false;
+        phys = logical;
+        return true;
+    }
+    if (!mmu040Enabled()) { phys = logical; return true; }
+    if (!mmu040AtcArmed) return false;      // POM68K_MMU040_WALK differential mode
+
+    for (const Mmu040AtcEntry &e : mmu040AtcD) {
+        if (!e.valid || (e.logical & maski) != pageBase) continue;
+        if (!(e.status & 1)) return false;                  // invalid descriptor
+        if (!super && (e.status & 0x80)) return false;      // supervisor-only page
+        if (write) {
+            if (e.status & 4) return false;                 // write-protected
+            // An unmodified page owes the descriptor an M-bit write-back on
+            // the first write (mmu040AtcLookup invalidates the entry and
+            // re-walks for exactly this). That write-back is a guest-memory
+            // store; refuse and let the interpreter perform it.
+            if (!(e.status & 0x10)) return false;
+        }
+        phys = e.physical | (logical & ~maski);
+        return true;
+    }
+    return false;
+}
+
+Moira::PomJitLayout
+Moira::pomJitLayout() const
+{
+    // Offsets are taken from a LIVE object rather than with offsetof(),
+    // which is only conditionally supported on a polymorphic type. The
+    // backend addresses everything off the `Moira*` it is handed, so these
+    // are the offsets it needs — not the ones a derived machine class
+    // would compute.
+    const auto at = [this](const void *p) {
+        return u32(uintptr_t(p) - uintptr_t(this));
+    };
+    PomJitLayout l{};
+    l.d = at(&reg.d[0]);      l.a = at(&reg.a[0]);
+    l.pc = at(&reg.pc);       l.pc0 = at(&reg.pc0);
+    l.srX = at(&reg.sr.x);    l.srN = at(&reg.sr.n);
+    l.srZ = at(&reg.sr.z);    l.srV = at(&reg.sr.v);
+    l.srC = at(&reg.sr.c);    l.srS = at(&reg.sr.s);
+    l.regIpl = at(&reg.ipl);  l.iplPin = at(&ipl);
+    l.clock = at(&clock);     l.flags = at(&flags);
+    l.ird = at(&queue.ird);   l.irc = at(&queue.irc);
+    l.dtlbR = at(&pomJitDtlbR.e[0]);       l.dtlbW = at(&pomJitDtlbW.e[0]);
+    return l;
+}
+
+bool
+Moira::pomJitReadData(u32 addr, int bytes, u32 &out) noexcept
+{
+    try {
+        switch (bytes) {
+            case 1: out = mmu040Read<Core::C68020, Byte>(addr, true); return true;
+            case 2: out = mmu040Read<Core::C68020, Word>(addr, true); return true;
+            default: out = mmu040Read<Core::C68020, Long>(addr, true); return true;
+        }
+    } catch (...) {
+        return false;
+    }
+}
+
+bool
+Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
+{
+    try {
+        switch (bytes) {
+            case 1: mmu040Write<Core::C68020, Byte>(addr, val, true); return true;
+            case 2: mmu040Write<Core::C68020, Word>(addr, val, true); return true;
+            default: mmu040Write<Core::C68020, Long>(addr, val, true); return true;
+        }
+    } catch (...) {
+        return false;
+    }
 }
 
 int
@@ -2123,6 +2315,22 @@ Moira::mmu040Read(u32 addr, bool data)
         didReachWatchpoint(addr & addrMask<C>());
     }
 
+    // POM68K J3 — the data window (Moira.h § pomJitData). A hit is plain
+    // guest memory behind a resident, permitted translation: no fault is
+    // possible, so the in-flight access context is not stamped — the same
+    // contract as the fetch window and the JIT's inline loads, and the
+    // next slow access stamps its own before anything can read it. The
+    // SYNC(2)s skipped with the long path expand to nothing on the 040.
+    if (data) [[likely]] {
+        constexpr int n = S == Byte ? 1 : S == Word ? 2 : 4;
+        if (const u8 *p = pomJitData<n, false>(addr)) {
+            if constexpr (S == Byte) return p[0];
+            else if constexpr (S == Word) return u16(u16(p[0]) << 8 | p[1]);
+            else return u32(p[0]) << 24 | u32(p[1]) << 16 |
+                        u32(p[2]) << 8 | p[3];
+        }
+    }
+
     const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0
                                         : bool(reg.sr.s);
     const u32 pageMask = ~mmu040PageMaskI();
@@ -2206,6 +2414,26 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
     if ((flags & State::CHECK_WP)
         && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
         didReachWatchpoint(addr & addrMask<C>());
+    }
+
+    // POM68K J3 — the data window, write side. The last-write marker is
+    // replicated bit for bit from the long path below: a LATER access in
+    // the SAME instruction can still fault, and the format $7 frame stacks
+    // this dichotomy — a fast path that skipped it would change which pc a
+    // two-write instruction's second fault reports.
+    if (data) [[likely]] {
+        constexpr int n = S == Byte ? 1 : S == Word ? 2 : 4;
+        if (u8 *p = pomJitData<n, true>(addr)) {
+            if (!mmu040MovemArmed && !mmu040LastWrite) {
+                mmu040LastWrite = true;
+                mmu040LastWritePc = reg.pc;
+            }
+            if constexpr (S == Byte) { p[0] = u8(val); }
+            else if constexpr (S == Word) { p[0] = u8(val >> 8); p[1] = u8(val); }
+            else { p[0] = u8(val >> 24); p[1] = u8(val >> 16);
+                   p[2] = u8(val >> 8); p[3] = u8(val); }
+            return;
+        }
     }
 
     const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0
