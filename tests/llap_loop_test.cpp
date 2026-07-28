@@ -338,20 +338,32 @@ int main() {
     }
 
     // ── The open-line standing abort is transport-driven, not a constant ──
-    // setAbortIdle(true) marks a machine with no hardwired peer: its idle
-    // SDLC line reads a standing Break/Abort (RR0 bit 7), the carrier-sense
-    // signal the LAP times out on when solo. But the instant a REAL peer
-    // transmits (a non-express injected frame — an LToUDP multicast frame,
-    // not the cable's own synthesized CTS) the line becomes a live,
-    // terminated network and the abort drops for a hold window; it returns
-    // only once the peer goes quiet (LLE_VS_HLE §1.8 / step 8).
+    // setAbortIdle(true) marks a machine with no hardwired peer: once the
+    // line has CARRIED a frame, its idle reads a standing Break/Abort
+    // (RR0 bit 7), the carrier-sense signal the LAP times out on when
+    // solo. A VIRGIN line — never driven since reset — reads clean (no
+    // FM0 edge, no recovered clock, no abort: what OT's .MPP bind waits
+    // for, §1.10 / step 7). And the instant a REAL peer transmits (a
+    // non-express injected frame — an LToUDP multicast frame, not the
+    // cable's own synthesized CTS) the line becomes a live, terminated
+    // network and the abort drops for a hold window; it returns only once
+    // the peer goes quiet (LLE_VS_HLE §1.8 / step 8).
     {
         Scc8530 s;
         s.reset();
         s.setAbortIdle(true);              // LC II/Q605: no hardwired peer
         lapArm(s, 1);
         s.writeCtl(kB, 0);
-        CHECK(s.readCtl(kB) & 0x80, "solo open line shows the standing abort");
+        CHECK(!(s.readCtl(kB) & 0x80),
+              "a VIRGIN open line reads clean (no abort before first frame)");
+        // First frame on the wire (the guest's ENQ probe would be it):
+        // WR0 $C0 opens an SDLC frame, the idle shifter underruns, the
+        // tail drains — from its trailer abort on, the no-peer idle is a
+        // genuine standing abort.
+        s.writeCtl(kB, 0xC0);
+        s.tick(3 * 544 + 100);
+        s.writeCtl(kB, 0);
+        CHECK(s.readCtl(kB) & 0x80, "solo DRIVEN line shows the standing abort");
 
         // A real peer's frame (express=false) → line live, abort drops.
         // Drain it so rxCur is empty: the drop is then the peer state, not

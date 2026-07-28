@@ -1,5 +1,49 @@
 # CHANGELOG
 
+## 2026-07-28 — LLE step 7: the virgin line reads clean; `POM68K_SCC_CLEANLINE` retired
+
+**The standing no-peer SDLC abort is now fully a LINE state** — the last
+place where machine configuration decided a wire condition is gone
+(`docs/LLE_VS_HLE.md` §1.10 RESOLVED). The LLE story: LocalTalk is FM0,
+so the SCC recovers its receive clock from the line's own transitions —
+a **virgin line that has never carried a frame has never given the DPLL
+an edge**, hence no recovered clock, no sampled 1s, **no abort**; RR0
+bit 7 reads clean. The abort condition genuinely begins with the first
+frame the line carries (an LLAP trailer ends in a real abort sequence,
+then the driver releases the line mid-mark — the receiver's last
+recovered state IS the abort): `Scc8530` latches `lineDriven_` at local
+SDLC frame completion (EOM), at Send Abort, and at any transport frame
+(`injectRxFrame`), and `openLine()` requires it alongside the §1.8
+peer-hold suppression. The EOM path also presents the trailer's abort
+as the ext/status event when only WR15 bit 7 is armed — on a
+previously-virgin line the guest's own first ENQ probe is what starts
+the LAP's abort stream, which keeps the System 7 no-peer timeout
+mechanics intact (`lcii_boot_etalon` / `q605_boot_etalon` timing
+unchanged, measured 137.9→137.3 s / 64.1→62.6 s — within noise).
+
+This is what Open Transport waits for: OS 8.1's `.MPP` bind spins until
+RR0 bit 7 clears (the §1.10 wedge, SCCDBG capture 2026-07-24), and a
+virgin-clean line satisfies it by construction. Notably, **the wedge
+itself is no longer reproducible on today's tree** — the new gate's
+configuration (in-process AppleTalk hub attached, boosted lossless
+wire, exactly the `main.cpp` wiring) boots OS 8.1 to a bound `.MPP`
+with the old standing-abort-at-reset code too, bit-identical traffic
+(352 lapENQ + 3 DDP) with and without the env; the 2026-07-25 bus-time
+pass (i-cache boost no longer compressing SCC-visible pacing) most
+plausibly unwedged it in passing. The virgin-line semantics is landed
+as the honest model that *guarantees* the bind regardless of timing,
+and `POM68K_SCC_CLEANLINE` is deleted from all eight memory classes
+(`setAbortIdle(true)` everywhere — the flag is again purely "this
+connector has no hardwired peer").
+
+Gates: **`q605_ot_bind_etalon`** (new — OS 8.1 + the in-process hub;
+proof of bind is the guest's DDP conversation with the stack after its
+lapENQ dance, since a wedged OT probes its node ID and then never
+speaks DDP), `scc_ext_test` + `llap_loop_test` re-pinned (virgin line
+clean → drive the line → standing abort; peer-drop/return/express pins
+unchanged), smoke + the SCC/LLAP/boot etalons of every touched family
+green.
+
 ## 2026-07-28 (eighth pass) — O(1) probes, per-space eviction, and the 020 seam
 
 **The 030 probe is O(1) now.** `pomJitProbeCode` checks the interpreter's

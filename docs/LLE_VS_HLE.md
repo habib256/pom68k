@@ -229,23 +229,32 @@ raised a phantom SHIFT ~320 cycles after every ST write, collapsing the
 PIC↔VIA handshake. Gated with `!adbVia_.lle()` since 2026-07-22; never
 fires on the default path. Eliminate when HLE `AdbVia` is retired.
 
-### 1.10 `POM68K_SCC_CLEANLINE` — machine config standing in for line state — **OPEN**
+### 1.10 `POM68K_SCC_CLEANLINE` — machine config standing in for line state — **RESOLVED 2026-07-28**
 
-`scc_.setAbortIdle(getenv("POM68K_SCC_CLEANLINE") == nullptr)` in all six
-memory classes (`V8Memory.cpp:134`, `Q605Memory.cpp:120`,
-`SonoraMemory.cpp:90`, `VaspMemory.cpp:65`, `RbvMemory.cpp:130`,
-`CentrisMemory.cpp:89`). §1.8 made the standing Break/Abort a
-*transport-driven* line state, but **Open Transport's LLAP driver** (Mac
-OS 8.1, unlike System 7's) waits forever for that abort to clear before
-binding `.MPP` — spin at `$D1F04`, last SCC access reads RR0 `$D4`
-(SCCDBG capture 2026-07-24). The env is the escape hatch: with it set,
-the idle line presents clean flags and OT binds (that is how the first
-real internet access from a POM68K guest happened, via MacIP/NAT).
-**Classification: a test/`env` knob that lets machine configuration
-decide a wire condition — exactly what §1.8 removed.** The fix is to
-present the abort only while a genuine abort condition exists, keep the
-Sys 7 no-peer etalons green, add an OT-flavored gate, then delete the
-env. Tracked as TODO "LLE fidelity" step 7.
+The env is deleted; all eight memory classes call `setAbortIdle(true)`
+unconditionally and the abort is presented only under a **genuine abort
+condition** (CHANGELOG "LLE step 7"). The LLE model: LocalTalk is FM0 —
+the SCC recovers its receive clock from the line's own transitions, so a
+**virgin line (never driven since reset) reads clean**: no edge, no
+recovered clock, no sampled 1s, no abort. That clean line is exactly
+what Open Transport's `.MPP` bind spins on (RR0 bit 7, `$D1F04` —
+SCCDBG capture 2026-07-24; System 7's LAP never waited on it). The
+abort condition begins with the first frame the line carries — an LLAP
+trailer ends in a real abort sequence and the driver then releases the
+line mid-mark, so the receiver's last recovered state IS a standing
+abort: `Scc8530::lineDriven_` latches at local SDLC EOM / Send Abort /
+any `injectRxFrame`, `openLine()` requires it alongside the §1.8
+peer-hold, and the EOM path presents the trailer's abort as the
+ext/status event when only WR15 bit 7 is armed (the guest's own first
+ENQ probe starts the Sys 7 LAP abort stream — no-peer timeout
+mechanics and etalon timings unchanged). Note: the OT wedge itself was
+no longer reproducible on the 2026-07-28 tree even before the fix
+(most plausibly unwedged by the 2026-07-25 bus-time pass); the
+virgin-line semantics guarantees the bind by construction. Gates:
+`q605_ot_bind_etalon` (OS 8.1 + the in-process hub in the exact
+`main.cpp` wiring; bind proven by the guest's post-ENQ DDP
+conversation with the stack), `scc_ext_test` / `llap_loop_test`
+re-pinned.
 
 ## 2. HLE replacements (whole devices at protocol level)
 

@@ -131,11 +131,14 @@ void V8Memory::reset() {
     scc_.reset();
     scc_.setClocks(cpuHz_, 7833600);         // SCC async-baud LLE: PCLK =
                                              // C7M (LCII_HARDWARE.md:44)
-    scc_.setAbortIdle(std::getenv("POM68K_SCC_CLEANLINE") == nullptr);
-                                             // no hardwired LocalTalk peer
-                                             // (O6.10); a real LToUDP peer
-                                             // drops the standing abort —
-                                             // Scc8530::openLine (LLE step 8)
+    scc_.setAbortIdle(true);                 // no hardwired LocalTalk peer
+                                             // (O6.10). The abort is a LINE
+                                             // state: a virgin line reads
+                                             // clean (OT binds .MPP), the
+                                             // abort exists once the line has
+                                             // carried a frame, a live peer
+                                             // suppresses it —
+                                             // Scc8530::openLine (steps 7+8)
     viaPhase_ = 0;
     tickAcc_ = 0;
     addrMask_ = 0x80FFFFFF;                  // HMMU disabled at reset (MAME

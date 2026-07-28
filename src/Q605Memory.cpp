@@ -119,15 +119,14 @@ void Q605Memory::reset() {
     scc_.setClocks(kCpuHz, 7833600);   // SCC async-baud LLE: SCC85C30 @ C7M
                                        // (macquadra605.cpp:171)
     scc_.setCtsHigh(false);        // no serial debugger attached (POST check)
-    scc_.setAbortIdle(std::getenv("POM68K_SCC_CLEANLINE") == nullptr);
-                                   // no *hardwired* LocalTalk peer: on a bare
-                                   // line the SDLC hunt streams the standing
-                                   // Break/Abort as a level-4 ext/status so OS
-                                   // 8.1's .MPP LAP carrier-sense sees "wire
-                                   // dead" and times out instead of wedging
-                                   // (Q6.6; O6.10 on LC II). A real peer on the
-                                   // LToUDP cable drops it — Scc8530::openLine
-                                   // (LLE step 8, docs/LLE_VS_HLE.md §1.8).
+    scc_.setAbortIdle(true);       // no *hardwired* LocalTalk peer. The abort
+                                   // is a LINE state, not machine config: a
+                                   // virgin line reads clean (OT binds .MPP —
+                                   // it spins on RR0 bit 7 before bind, the
+                                   // §1.10 wedge), the standing abort exists
+                                   // once the line has carried a frame, and a
+                                   // live peer suppresses it —
+                                   // Scc8530::openLine (LLE steps 7+8).
     viaPhase_ = 0;
     tickAcc_ = 0;
     sccIrq_ = false;

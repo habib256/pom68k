@@ -350,18 +350,23 @@ Next milestones:
      TREQ wedge at ~$D1F04) is pinned by the new 500-pair keypad
      stress phase in `q605_cudalle_key_etalon` — green on the slaved
      wire.
-  7. **SCC: OS 8.1/OT hangs on the standing no-peer abort.** OT's LLAP
-     driver (unlike Sys 7's) waits forever for the §1.8 standing
-     Break/Abort to clear before binding .MPP (spin at $D1F04; last
-     SCC access reads RR0=$D4 with bit 7 set, then silence — SCCDBG
-     capture 2026-07-24). Test env `POM68K_SCC_CLEANLINE=1` (idle
-     line = clean flags) unblocks it: with it, Netscape resolved and
-     contacted www.apple.com through MacIP/NAT — the first real
-     internet access from a POM68K guest. Turn the env into the real
-     LLE fix: present the abort only while a genuine abort condition
-     exists (line state, not machine config), keep the Sys 7 no-peer
-     etalons green, add an OT-flavored gate. Then retire the env.
-     **Remaining after that**: retire the `Egret.*`/`AdbBus` HLE (and
+  7. ~~**SCC: OS 8.1/OT hangs on the standing no-peer abort**~~ **DONE
+     2026-07-28** (CHANGELOG "LLE step 7"; `docs/LLE_VS_HLE.md` §1.10
+     RESOLVED): the abort is presented only under a genuine abort
+     condition — a VIRGIN line (never driven since reset) reads clean
+     (FM0: no edge → no recovered clock → no abort), which is what
+     OT's .MPP bind spins on; the standing abort begins with the first
+     frame the line carries (`Scc8530::lineDriven_`, LLAP trailer
+     abort) and the EOM path presents it, so the Sys 7 no-peer stream
+     starts at the guest's own first ENQ probe (etalon timings
+     unchanged). `POM68K_SCC_CLEANLINE` is deleted from all eight
+     memory classes. New gate `q605_ot_bind_etalon` (OS 8.1 + the
+     in-process hub, main.cpp wiring — bind proven by post-ENQ DDP);
+     `scc_ext_test` / `llap_loop_test` re-pinned. Note: the wedge was
+     already un-reproducible on the 2026-07-28 tree (likely collateral
+     of the 2026-07-25 bus-time pass); the fix makes the bind
+     guaranteed rather than timing-dependent.
+     **Remaining**: retire the `Egret.*`/`AdbBus` HLE (and
      the Mac II §1.9 leftover) once the no-dump fallbacks feel
      redundant.
 - [ ] **SCC LLE backlog — 2026-07-22 MAME `z80scc.cpp` audit** (source

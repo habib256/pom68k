@@ -439,6 +439,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME q605_boot_etalon COMMAND q605_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # LLE step 7 gate (LLE_VS_HLE §1.10): Open Transport binds .MPP on a
+    # virgin (never-driven) LocalTalk line — the guest's own lapENQ probes
+    # on the wire are the proof. Same OS 8.1 assets as the boot etalon.
+    add_executable(q605_ot_bind_etalon tests/q605_ot_bind_etalon.cpp)
+    target_link_libraries(q605_ot_bind_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_ot_bind_etalon COMMAND q605_ot_bind_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # Q8 gate: same Finder boot under POM68K_Q605_NOFPU (real 68LC040, no
     # 68882) — UniversalInfo FPU bit cleared so System installs PACK 4.
     add_executable(q605_nofpu_boot_etalon tests/q605_nofpu_boot_etalon.cpp)

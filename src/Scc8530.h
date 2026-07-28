@@ -48,8 +48,11 @@ public:
     // Mouse quadrature inputs (X1 → channel A DCD, Y1 → channel B DCD)
     void setDcd(int channel, bool level);
 
-    // LC II: the machine has no LocalTalk peer — SDLC hunt sees a
-    // standing abort (see header comment)
+    // Machine marker: no hardwired LocalTalk peer. The SDLC hunt sees a
+    // standing abort only under a genuine abort condition — once the line
+    // has actually carried a frame and no live peer holds it (see
+    // openLine() below; a virgin line reads clean, which is what OT's
+    // .MPP bind waits for).
     void setAbortIdle(bool on) { abortIdle_ = on; }
 
     // Periodic tick (CPU cycles). On an open LocalTalk line the SDLC
@@ -248,18 +251,31 @@ private:
     void raiseRxInt(Chan& c, bool special);
     // The open-line standing Break/Abort is a LINE state, not a machine
     // constant: setAbortIdle(true) marks a connector with no hardwired
-    // peer, but the moment a REAL peer transmits on the transport (a
-    // non-express injectRxFrame — an LToUDP multicast frame, not the
-    // cable's own synthesized CTS) the line becomes a live, terminated
-    // network whose idle is clean flags, not aborts. peerHold_ counts
-    // down the "peer present" window from the last real peer frame; while
-    // it is positive the standing abort is suppressed (openLine() false).
-    // A solo boot (no cable, no peer traffic) never refreshes it, so the
-    // no-peer LAP timeout is unchanged — LLE_VS_HLE §1.8 / step 8.
-    bool openLine() const { return abortIdle_ && peerHold_ <= 0; }
+    // peer, but the abort exists only under a genuine abort condition —
+    // LLE_VS_HLE §1.8 + §1.10 / steps 8 and 7:
+    //  • A VIRGIN line (never driven since reset) reads CLEAN. LocalTalk
+    //    is FM0: the SCC recovers its receive clock from the line's own
+    //    transitions, and a line that has never carried a frame has never
+    //    given the DPLL an edge — no recovered clock, no sampled 1s, no
+    //    abort. This is what Open Transport's LLAP driver waits on before
+    //    binding .MPP (it spins until RR0 bit 7 clears; System 7's LAP
+    //    never did). lineDriven_ latches at the first frame the line
+    //    carries: a local SDLC frame completion (the LLAP trailer ends in
+    //    a real abort sequence, then the driver releases the line
+    //    mid-mark — the receiver's last recovered state IS the abort),
+    //    a Send Abort, or any transport frame (injectRxFrame).
+    //  • A live peer suppresses it: the moment a REAL peer transmits
+    //    (a non-express injectRxFrame — an LToUDP multicast frame, not
+    //    the cable's own synthesized CTS) the line is a live, terminated
+    //    network. peerHold_ counts down the "peer present" window from
+    //    the last real peer frame; while positive the standing abort is
+    //    suppressed. A solo boot (no cable, no peer traffic) never
+    //    refreshes it, so the no-peer LAP timeout is unchanged.
+    bool openLine() const { return abortIdle_ && lineDriven_ && peerHold_ <= 0; }
     Chan ch_[2];                     // [0] = B, [1] = A
     int ptr_ = 0;                    // register pointer (WR0 low bits)
     bool abortIdle_ = false;         // no hardwired LocalTalk peer (LC II/Q605)
+    bool lineDriven_ = false;        // the line has carried a frame since reset
     int peerHold_ = 0;               // cycles a real peer stays "present"
     bool ctsHigh_ = true;
     bool rxStanding_ = false;        // Mac II POST: standing Rx available

@@ -86,7 +86,10 @@ void Q700Memory::reset() {
     swimCycAcc_ = 0;
     scc_.setClocks(cpuHz_, 7833600);
     scc_.setCtsHigh(false);
-    scc_.setAbortIdle(std::getenv("POM68K_SCC_CLEANLINE") == nullptr);
+    scc_.setAbortIdle(true);       // no hardwired LocalTalk peer — the
+                                   // standing abort is a line state, not
+                                   // machine config (Scc8530::openLine,
+                                   // LLE steps 7+8: virgin line = clean)
     viaPhase_ = 0;
     tickAcc_ = 0;
     secAcc_ = 0;

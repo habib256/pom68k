@@ -18,6 +18,7 @@ void Scc8530::reset() {
     ptr_ = 0;
     peerHold_ = 0;                    // no peer seen yet (line state, not
                                      // machine config — abortIdle_ persists)
+    lineDriven_ = false;              // virgin line: never driven, reads clean
 }
 
 void Scc8530::setClocks(int64_t cpuHz, int64_t pclkHz) {
@@ -273,6 +274,9 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, bool express,
     // (an LToUDP multicast frame, not the cable's own synthesized CTS):
     // it makes the line a live, terminated network, so the open-line
     // standing abort drops for a hold window (LLE_VS_HLE §1.8 / step 8).
+    // Either way the line has now carried a frame — a previously-virgin
+    // line is no longer clean once the transport goes quiet (§1.10).
+    lineDriven_ = true;
     if (!express) peerHold_ = kPeerHold;
     if (!n || !sdlcMode(c)) return;
     // Real hardware: a non-express frame that arrives while the receiver is
@@ -510,7 +514,9 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
             case 0x18:                          // Send Abort (SDLC)
                 // Aborting ends the frame at once: latch sets, ext/status
                 // interrupt if armed (WR15 bit 6 + WR1 bit 0). The aborted
-                // frame never reaches the wire.
+                // frame never reaches the wire — but the abort sequence
+                // itself does: the line has been driven (openLine).
+                if (sdlcMode(c)) lineDriven_ = true;
                 c.txBuf.clear();
                 c.txBufFull = false;
                 c.txShiftIn = 0;
@@ -764,7 +770,14 @@ bool Scc8530::tick(int cycles) {
             while (c.txShiftIn <= 0) {
                 const int rem = c.txShiftIn;
                 if (c.txFlushing) {
-                    // CRC + closing flag drained: underrun/EOM.
+                    // CRC + closing flag drained: underrun/EOM. The frame
+                    // just DROVE the line: the LLAP trailer ends in a real
+                    // abort sequence and the driver then releases the line
+                    // mid-mark — from here on the no-peer idle genuinely
+                    // reads as a standing abort (openLine). Latch it
+                    // BEFORE the ext/status capture so the RR0 latch
+                    // carries bit 7 along with the EOM bit.
+                    if (sdlcMode(c)) lineDriven_ = true;
                     c.txFlushing = false;
                     c.txShiftIn = 0;
                     c.txUnderrun = true;
@@ -772,7 +785,15 @@ bool Scc8530::tick(int cycles) {
                         if (onTxFrame) onTxFrame(i, c.txBuf.data(), c.txBuf.size());
                         c.txBuf.clear();
                     }
-                    if ((c.wr[15] & 0x40) && (c.wr[1] & 0x01)) {
+                    // EOM interrupt (WR15 bit 6) — and, now that the line
+                    // has been driven, the trailer's own abort presents too
+                    // when only Break/Abort IE (WR15 bit 7) is armed: the
+                    // first ENQ probe is what starts the LAP's abort stream
+                    // on a previously-virgin line.
+                    const bool eomInt = (c.wr[15] & 0x40) != 0;
+                    const bool abortInt =
+                        openLine() && sdlcMode(c) && (c.wr[15] & 0x80) != 0;
+                    if ((eomInt || abortInt) && (c.wr[1] & 0x01)) {
                         if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
                         c.extPending = true;
                         changed = true;

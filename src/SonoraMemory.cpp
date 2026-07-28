@@ -87,7 +87,10 @@ void SonoraMemory::reset() {
     sccIrq_ = false;
     scc_.reset();
     scc_.setClocks(cpuHz_, 7833600);         // SCC85C30 @ C7M (maclc3.cpp:297)
-    scc_.setAbortIdle(std::getenv("POM68K_SCC_CLEANLINE") == nullptr);
+    scc_.setAbortIdle(true);       // no hardwired LocalTalk peer — the
+                                   // standing abort is a line state, not
+                                   // machine config (Scc8530::openLine,
+                                   // LLE steps 7+8: virgin line = clean)
     via_.reset();
     pvia_.reset();
     egret_.reset();

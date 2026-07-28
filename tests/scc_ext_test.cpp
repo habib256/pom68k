@@ -50,7 +50,18 @@ int main() {
         // (WR4 bits 5-4 = 10), which is what the LAP programs.
         check(!(scc.readCtl(B) & 0x80), "open line, async mode: no Break/Abort");
         writeReg(scc, B, 4, 0x20);              // WR4: SDLC mode (LAP init)
-        check((scc.readCtl(B) & 0x80) != 0, "open line: RR0 bit 7 (Break/Abort) set");
+        // LLE step 7 (§1.10): a VIRGIN line — never driven since reset —
+        // reads CLEAN even on the open no-peer connector: FM0 gives the
+        // DPLL no edge, so there is no recovered clock to sample an abort
+        // with. This is the line state OT's .MPP bind waits for.
+        check(!(scc.readCtl(B) & 0x80), "virgin open line: still no Break/Abort");
+        // The first transmitted frame drives the line (the LLAP trailer
+        // ends in a real abort, then the driver releases it mid-mark) —
+        // WR0 $C0 opens an SDLC frame, the idle shifter underruns and the
+        // tail (CRC+flag) drains in 3 byte times: EOM = line driven.
+        scc.writeCtl(B, 0xC0);                  // Reset Tx Underrun/EOM latch
+        scc.tick(3 * 544 + 100);                // drain the SDLC tail
+        check((scc.readCtl(B) & 0x80) != 0, "driven open line: RR0 bit 7 (Break/Abort) set");
     }
 
     // ── 2. arm WR15 bit 7 → ext int latched; WR9 MIE gates IRQ ─────────
@@ -60,6 +71,12 @@ int main() {
         writeReg(scc, B, 4, 0x20);              // WR4: SDLC mode (LAP init)
         writeReg(scc, B, 1, 0x01);              // WR1: ext int enable
         writeReg(scc, B, 15, 0x80);             // WR15: Break/Abort IE
+        check(!scc.irqAsserted(), "armed on a virgin line: nothing to latch");
+        // Drive the line: the first frame's trailer abort is what starts
+        // the LAP's abort stream on a previously-virgin line (EOM latch
+        // presents Break/Abort when only WR15 bit 7 is armed).
+        scc.writeCtl(B, 0xC0);
+        scc.tick(3 * 544 + 100);
         check(!scc.irqAsserted(), "ext latched but WR9 MIE off: no IRQ yet");
         writeReg(scc, B, 9, 0x08);              // WR9: master int enable
         check(scc.irqAsserted(), "WR9 MIE on: IRQ asserted");
@@ -83,8 +100,11 @@ int main() {
     {
         Scc8530 scc; scc.reset();
         scc.setAbortIdle(true);
+        writeReg(scc, B, 4, 0x20);              // SDLC mode
         writeReg(scc, B, 15, 0x80);             // Break/Abort IE, WR1.0 off
         writeReg(scc, B, 9, 0x08);
+        scc.writeCtl(B, 0xC0);                  // drive the line (EOM tail)
+        scc.tick(3 * 544 + 100);
         check(!scc.irqAsserted(), "WR15 bit 7 without WR1 bit 0: no IRQ");
     }
 
