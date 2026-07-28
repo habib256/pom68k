@@ -5,9 +5,10 @@
 // machine is the SPICE V8 derivative (MAME v8.cpp:693-929 + maclc.cpp
 // maccclas): 68030 @ 15.6672 MHz, built-in 512×384 Trinitron (fixed
 // sense 2), SWIM2 in the gate array, a 1 MB ROM ($ECD99DC0) — and a
-// Cuda MCU instead of the Egret, running the firmware LLE off
-// roms/cuda/341s0788.bin (the factory 341s0417 wedges the M68hc05 —
-// TODO § Color Classic). Same Finder signature as
+// Cuda MCU instead of the Egret, running the FACTORY 341s0417 firmware
+// (Cuda 2.35, default since 2026-07-29 — it needs the DFAC2 I2C ACK,
+// CudaLle::setI2cDfac; 341s0788 is the no-0417 fallback). Same Finder
+// signature as
 // lc_boot_etalon: white menu bar with glyphs, 50% dithered desktop,
 // non-trivial SCSI traffic. Soft-skips without the ROM or a bootable
 // hdv/ image.

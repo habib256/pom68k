@@ -260,7 +260,7 @@ re-pinned.
 
 | Device | Files | What is replaced | Proper LLE would be |
 |---|---|---|---|
-| **Egret / Cuda** | `Egret.*` / `CudaLle.*` | **Firmware LLE is now the DEFAULT on every Egret/Cuda machine** (gates `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `q605_cudalle_*`). Q605 flipped 2026-07-23 (`341s0788`); **the LC II Egret flipped 2026-07-24** (`341s0850`) once the **instruction-slaved ADB wire** (`CudaLle::mcu_.onCycles`) fixed the autopoll-load desync (was mouse ~1.5% delivery — now saturates like the HLE, CHANGELOG "instruction-slaved ADB wire"). Phase C's new machines are all firmware-LLE by default: Color Classic `341s0788` (factory `341s0417`/2.35 wedges the M68hc05 — TODO), LC III/III+ + IIvx/IIvi `341s0851`, LC 520/550/CC II `341s0060` (2.40 — 2.37 livelocks that ROM on pseudo-cmd `$0E`). `POM68K_EGRET_LLE=0` / `POM68K_CUDA_LLE=0` force the HLE; a missing dump falls back silently | LC II re-flip **DONE**. Retire `Egret.*`/`AdbBus` once every machine's HLE fallback feels redundant (the last consumers are the no-dump path + `POM68K_*_LLE=0`) |
+| **Egret / Cuda** | `Egret.*` / `CudaLle.*` | **Firmware LLE is now the DEFAULT on every Egret/Cuda machine** (gates `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `q605_cudalle_*`). Q605 flipped 2026-07-23 (`341s0788`); **the LC II Egret flipped 2026-07-24** (`341s0850`) once the **instruction-slaved ADB wire** (`CudaLle::mcu_.onCycles`) fixed the autopoll-load desync (was mouse ~1.5% delivery — now saturates like the HLE, CHANGELOG "instruction-slaved ADB wire"). Phase C's new machines are all firmware-LLE by default: Color Classic **factory `341s0417`** (2.35 — since 2026-07-29; the old "wedge" was the missing DFAC2 I2C ACK, `CudaLle::setI2cDfac`), Mac TV **factory `341s0789`** (2.38), LC III/III+ + IIvx/IIvi `341s0851`, LC 520/550/CC II `341s0060` (2.40 — 2.37 livelocks that ROM on pseudo-cmd `$0E`). `POM68K_EGRET_LLE=0` / `POM68K_CUDA_LLE=0` force the HLE; a missing dump falls back silently | LC II re-flip **DONE**. Retire `Egret.*`/`AdbBus` once every machine's HLE fallback feels redundant (the last consumers are the no-dump path + `POM68K_*_LLE=0`) |
 | **ADB modem (Mac II / IIx / IIcx, IIci, Centris + Quadra 610/650)** | `AdbVia.*` + `Pic1654s.*` + `AdbLine.*` | **LLE default** since 2026-07-22 when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia.cpp:34-49`); since 2026-07-25 the same firmware path serves the **IIci** (`RbvMemory` `iici`) and the **Centris/Quadra** djMEMC machines. HLE = NEW/EVEN/ODD/IDLE byte SM on VIA SR — only if dump missing or `POM68K_ADB_LLE=0` | Done: PIC runs real firmware; `AdbLine` is bit-serial; `Via6522::extShiftCB1` is the wire |
 | **ADB bus (Egret/Cuda machines)** | `AdbBus.*` | Bit-serial ADB → command-level Talk/Listen with clamped mouse deltas — **fallback-only since 2026-07-23** (both machines feed `AdbLine` under the firmware LLE) | Retire with the Egret HLE |
 
@@ -586,8 +586,11 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
     frozen inside the peripheral-tick batch — the instruction-slaved wire
     `CudaLle::mcu_.onCycles` clocks the MCU per instruction, and the mouse
     now saturates (`lcii_mouse_trace`). §2 tracks the HLE retirement.
-    Follow-up: the Color Classic factory Cuda 341S0417 (2.35) still wedges
-    the M68hc05 — it runs the Q605-proven 341S0788 meanwhile (TODO).
+    Follow-up CLOSED 2026-07-29: the Color Classic "0417 wedge" was a
+    missing DEVICE, not a core bug — the CC carries a DFAC2 on the Cuda's
+    I2C and the 2.35 requires its ACK (`CudaLle::setI2cDfac`, minimal $6F
+    slave). Factory 341S0417 is the CC default; the Mac TV runs its
+    factory 341S0789 (2.38).
     Still longer-term: NuBus arbitration, 040 copyback/snooping
     (~~SWIM2/SonyDrive MFM cell timing~~ → step 13).
 12. ~~**SCC async-baud machinery**~~ **DONE 2026-07-23** (CHANGELOG

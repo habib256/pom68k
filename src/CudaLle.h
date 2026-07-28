@@ -67,6 +67,20 @@ public:
     void setSeconds(uint32_t s);
     void setPram(int i, uint8_t v);
 
+    // Minimal I2C slave on the Cuda's PB7 (SCL) / PB6 (SDA): the DFAC2
+    // audio chip at address $6F (MAME dfac2.cpp i2c_hle_interface). Enable
+    // per machine — MAME wires one on the Color Classic (maclc.cpp:505),
+    // the Sonora AIOs (maclc3.cpp:403) and the Quadra 630
+    // (macquadra630.cpp:196); the Q605 bus is empty and the Mac TV has no
+    // DFAC at all. Without the ACK the factory Color Classic Cuda 2.35
+    // (341S0417) takes its DFAC-error path after ONE aborted probe and
+    // never completes the next host VIA session — the "0417 wedge" was
+    // this missing device, not an M68hc05 core bug (2026-07-29). Write
+    // bytes are accepted and discarded (register semantics are still
+    // being reverse-engineered upstream); a data READ from the device is
+    // not modeled and returns all-ones.
+    void setI2cDfac(bool on) { i2cDfac_ = on; }
+
     AdbLine& adbLine() { return adb_; }  // input events (key/mouse) land here
     M68hc05& mcu() { return mcu_; }      // gate/debug access
     // Debug hook (cuda_lle wire tracing): fires on every MCU port write
@@ -76,6 +90,7 @@ public:
 private:
     uint8_t mcuPortRead(int p);
     void mcuPortWrite(int p, uint8_t v);
+    void i2cWire(bool scl, bool sda);    // DFAC2 slave bus tracking
 
     Via6522& via_;
     M68hc05 mcu_;
@@ -97,6 +112,14 @@ private:
     int traceBits_ = 0;
     bool byteack_ = true, tip_ = true;   // host levels as the MCU reads them
     bool lastViaClock_ = true;
+    // ── DFAC2 I2C slave state (setI2cDfac) ──
+    bool i2cDfac_ = false;
+    bool i2cScl_ = true, i2cSda_ = true; // last pin levels the MCU drove
+    bool i2cActive_ = false;             // between START and STOP
+    bool i2cAddressed_ = false;          // transfer opened at address $6F
+    int i2cBit_ = 0;                     // SCL rising edges in current byte
+    uint8_t i2cShift_ = 0;
+    bool i2cDriveLow_ = false;           // slave holds SDA low (ACK slot)
     bool resetLine_ = false;             // PC3 latch (rising edge releases)
 
     uint8_t stagedPram_[256] = {};

@@ -34,6 +34,9 @@ SonoraMemory::SonoraMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId,
       asc_(cpuHz),
       totalRam_(totalRam), cpuHz_(cpuHz), machineId_(machineId) {
     egret_.setAdbBus(&adb_);
+    // The Cuda AIOs (LC 520/550/CC II) carry a DFAC2 on the Cuda's I2C
+    // (maclc3.cpp:403) — the slave ACK lives in CudaLle (setI2cDfac).
+    if (cudaAdb) egretLle_.setI2cDfac(true);
     // Sonora EASC IRQ is level-triggered into pseudo-VIA IFR bit 4
     // (sonora.cpp:86 irqf → pseudovia asc_irq_w).
     asc_.onIrq = [this](bool s) { pvia_.ascIrq(s); updateIrq(); };

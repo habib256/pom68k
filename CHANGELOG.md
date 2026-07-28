@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug; both factory Cudas land
+
+**The factory Color Classic Cuda 341S0417 (2.35) is the CC's default
+firmware.** The 2026-07-24 bring-up note said it "wedges the M68hc05 —
+releases the host reset then never answers the VIA transport" and parked
+the CC on the Q605's 341S0788 (2.37). The differential trace (new diag
+knob `POM68K_CUDA_FW=<path>` forces a dump; scratchpad tracer, PC
+histogram + I2C edge log) showed the truth: the 2.35 was never stuck —
+after the first host VIA session it idled in its normal main loop,
+having decided the transaction was over WITHOUT clocking the final ack
+shift the host waits on. The real divergence happened earlier: right
+after reset release, both firmwares bit-bang an I2C probe on PB7/PB6
+(same routine, 4 bytes apart in the two ROMs) — and MAME's `maccclas`
+shows what's on that bus: an **Apple DFAC2 audio chip at I2C address
+$6F** (`maclc.cpp:505`, `dfac2.cpp` `i2c_hle_interface(…, 0x6f)`). Our
+`CudaLle` hardcoded SDA=1 — an eternal NACK. The 2.37 shrugs (retries
+once, moves on); the 2.35 takes a DFAC error path after ONE aborted
+probe and mutes the next host session. With the ACK, the factory 2.35
+boots System 7.5 to the Finder.
+
+The fix is a **minimal I2C slave in `CudaLle`** (`setI2cDfac`):
+START/STOP detection, 9-pulse byte cadence, SDA held low through the
+ACK clock whenever the transfer opened at $6F; payload discarded —
+oracle parity, since MAME's `dfac2_device::write_data` only logs (its
+registers are still being reverse-engineered upstream). Enabled
+per machine, following MAME's wiring exactly: Color Classic
+(`maclc.cpp:505`), the Cuda AIOs LC 520/550/CC II (`maclc3.cpp:403`),
+Quadra 630/LC 580 (`macquadra630.cpp:196`, bus shared with Valkyrie).
+NOT the Q605 (empty bus) and NOT the Mac TV (`device_remove("dfac")`,
+nothing re-added).
+
+**The Mac TV's factory Cuda 341S0789 (2.38) landed the same day**
+(dump CRC `682d2ace` = MAME's) — the `kTvFw` list already preferred it,
+so the TV now boots on its factory firmware too. With that, **every
+Egret/Cuda machine runs its exact factory MCU part**. Gates:
+`m68hc05_test` extended to all four Cuda dumps (0417/0788/0789/0060
+execute clean); `cclassic_boot_etalon` now exercises the factory 2.35 +
+DFAC2 path by default; `mactv_boot_etalon` (the phase-fragile one)
+green on the factory 2.38; `lc520_boot_etalon` / `q630_boot_etalon`
+green with their new DFAC2 ACKs; `cuda_lle_test` / `egret_lle_test`
+unchanged green.
+
 ## 2026-07-28 — LLE step 7: the virgin line reads clean; `POM68K_SCC_CLEANLINE` retired
 
 **The standing no-peer SDLC abort is now fully a LINE state** — the last

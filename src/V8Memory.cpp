@@ -55,19 +55,24 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
     // the screen exactly like the HLE. POM68K_EGRET_LLE=0 forces the HLE,
     // a missing dump falls back silently (the Cuda rollout pattern).
     {
-        // Color Classic: Cuda MCU. The factory part is 341S0417 (Cuda
-        // 2.35, maclc.cpp:480) but that image wedges on our M68hc05 —
-        // it releases the host reset then never answers the VIA
-        // transport (bring-up 2026-07-24, TODO § Color Classic) — so the
-        // LLE runs the Q605-proven 341S0788 (Cuda 2.37); the CC ROM
-        // drives it fine. Same env-gated rollout as the LC II Egret.
+        // Color Classic: Cuda MCU, factory part 341S0417 (Cuda 2.35,
+        // maclc.cpp:480) — the DEFAULT since 2026-07-29. The old "0417
+        // wedges the M68hc05" note was a missing DEVICE, not a core bug:
+        // the CC carries a DFAC2 on the Cuda's I2C (maclc.cpp:505) and
+        // the 2.35 requires its ACK (CudaLle::setI2cDfac); un-ACKed it
+        // took a DFAC error path that muted the next host VIA session.
+        // 341S0788 (2.37) stays as the no-0417 fallback.
         const bool cudaMcu = hasCudaMcu();
+        if (model_ == Model::ColorClassic) egretLle_.setI2cDfac(true);
+        // (Mac TV: no DFAC at all — maclc.cpp mactv device_remove("dfac"),
+        // nothing re-added — so its Cuda I2C bus stays empty.)
         const char* e = std::getenv(cudaMcu ? "POM68K_CUDA_LLE"
                                             : "POM68K_EGRET_LLE");
         const bool want = !e || std::atoi(e) != 0;
         static constexpr const char* kEgretFw[] = {
             "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin", nullptr };
         static constexpr const char* kCudaFw[] = {
+            "roms/cuda/341s0417.bin", "../roms/cuda/341s0417.bin",
             "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin", nullptr };
         // Mac TV: the factory Cuda is 341s0789 (Cuda 2.38, cuda.cpp:48);
         // fall back to the AIO-proven 2.40 then the CC's 2.37.
@@ -75,9 +80,22 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
             "roms/cuda/341s0789.bin", "../roms/cuda/341s0789.bin",
             "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin",
             "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin", nullptr };
+        // Diag/bring-up override: POM68K_CUDA_FW=<path> forces a specific
+        // MCU dump ahead of the per-model list (how the factory 341S0417
+        // is exercised against the M68hc05 without rebuilding).
+        const char* fwOverride = std::getenv("POM68K_CUDA_FW");
         if (want) {
+            if (fwOverride && *fwOverride) {
+                std::ifstream in(fwOverride, std::ios::binary);
+                std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
+                                        std::istreambuf_iterator<char>());
+                if (in && egretLle_.loadFirmware(fw)) egretLleOn_ = true;
+                else std::fprintf(stderr, "V8: POM68K_CUDA_FW=%s unusable\n",
+                                  fwOverride);
+            }
             for (const char* const* p = model_ == Model::MacTv ? kTvFw
-                                        : cudaMcu ? kCudaFw : kEgretFw; *p; p++) {
+                                        : cudaMcu ? kCudaFw : kEgretFw;
+                 !egretLleOn_ && *p; p++) {
                 std::ifstream in(*p, std::ios::binary);
                 if (!in) continue;
                 std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),

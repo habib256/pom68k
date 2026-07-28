@@ -77,6 +77,7 @@ int main() {
 
     // The other firmware revisions on hand must run clean too.
     for (const char* rel : { "roms/cuda/341s0417.bin",     // Cuda 2.35
+                             "roms/cuda/341s0789.bin",     // Cuda 2.38 (Mac TV)
                              "roms/cuda/341s0060.bin" }) { // Cuda 2.40
         std::string p2 = findAsset(rel);
         if (p2.empty()) continue;

@@ -208,8 +208,9 @@ firmware-LLE MCU paths: the **Macintosh LC** (68020 — plain-020 /BERR
 path fixed in Moira, POM68K_VENDOR.md) and **Classic II** (Eagle, mono
 512×342 from RAM, forgiving bus) — gates `lc_boot_etalon`,
 `classic2_boot_etalon`; then the **Color Classic** (Spice + `AscSonora`
-$BC + SWIM2, **Cuda firmware LLE** 341S0788 — the factory 341S0417
-wedges the M68hc05, TODO) and the **Mac LC III** (Sonora machine:
+$BC + SWIM2, **factory Cuda 341S0417 firmware LLE** — default since
+2026-07-29; the old "wedge" was the missing DFAC2 I2C ACK,
+`CudaLle::setI2cDfac`) and the **Mac LC III** (Sonora machine:
 `SonoraMemory`/`SonoraCpu`/`SonoraVideo`, Egret LLE 341S0851) — gates
 `cclassic_boot_etalon`, `lc3_boot_etalon`. A later round added two more
 identity-variant siblings, each reusing a Finder-booting machine unchanged

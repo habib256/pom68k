@@ -62,6 +62,9 @@ Q630Memory::Q630Memory(uint32_t totalRam)
     // POM68K_CUDA_LLE=0 forces the Egret HLE, a missing dump falls back
     // silently. The staged PRAM mirrors the Egret HLE's factory seed so
     // both paths boot from the same battery contents.
+    // The F108 board carries a DFAC2 on the Cuda's I2C (macquadra630.cpp:196,
+    // shared bus with Valkyrie) — the slave ACK lives in CudaLle.
+    cudaLle_.setI2cDfac(true);
     {
         const char* e = std::getenv("POM68K_CUDA_LLE");
         const bool want = !e || std::atoi(e) != 0;

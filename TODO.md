@@ -115,9 +115,14 @@ gets at least one Finder cell before the next:
   `V8Memory::Model::ColorClassic` — Spice (PA $82, fixed sense 2,
   SWIM2 in the gate array, 1 MB ROM), `AscSonora` EASC $BC, Cuda
   firmware LLE (341S0788). Gate `cclassic_boot_etalon`.
-  **Follow-up**: the factory 341S0417 (Cuda 2.35) wedges on the
-  M68hc05 — releases the host reset, never answers the VIA transport;
-  diagnose the 2.35 firmware path and switch the default back.
+  ~~**Follow-up**: the factory 341S0417 (Cuda 2.35) wedges on the
+  M68hc05~~ **RESOLVED 2026-07-29** (CHANGELOG "The 0417 wedge was a
+  missing DFAC2"): not a core bug — the CC carries a DFAC2 on the
+  Cuda's I2C (maclc.cpp:505) and the 2.35 requires its ACK; un-ACKed
+  it took a DFAC error path that muted the next host VIA session.
+  `CudaLle::setI2cDfac` (minimal $6F slave) + factory 0417 is the CC
+  default; the Mac TV runs its factory 341S0789 (2.38, dump landed
+  the same day). `POM68K_CUDA_FW=<path>` = diag firmware override.
 - [x] ~~LC III~~ **DONE 2026-07-24** (same entry): `SonoraMemory` +
   `SonoraCpu` (030 @ 25 MHz) + `SonoraVideo` (mv_sonora modelines,
   CLUT, sense in vctrl), Egret LLE 341S0851. Gate `lc3_boot_etalon`.
@@ -682,9 +687,9 @@ Notes / already tracked:
   ~70, Color Classic ~70, Mac TV ~70. Common ceilings: whole-frame video
   everywhere, cycle-exact CPU only on the Plus, no beyond-boot gate on 22 of
   25 profiles. Lowest scores are **freshness** (booted-once, not hardened —
-  RBV/Tinker Bell/VASP/AIO) and the one known-wrong default (Color Classic
-  runs the substitute Cuda 341S0788 — factory 341S0417 wedges the M68hc05,
-  tracked under Color Classic above).
+  RBV/Tinker Bell/VASP/AIO). The last known-wrong MCU default fell
+  2026-07-29: the Color Classic runs its factory 341S0417 (the "wedge" was
+  the missing DFAC2 I2C ACK) and the Mac TV its factory 341S0789.
 
 ## Future machine profiles
 

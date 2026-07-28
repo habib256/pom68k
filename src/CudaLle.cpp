@@ -72,6 +72,10 @@ void CudaLle::reset() {
     pramInstalled_ = false;
     mcuAcc_ = adbAcc_ = 0;
     mcuDebt_ = 0;
+    i2cScl_ = i2cSda_ = true;            // I2C bus idles released
+    i2cActive_ = i2cAddressed_ = i2cDriveLow_ = false;
+    i2cBit_ = 0;
+    i2cShift_ = 0;
 }
 
 void CudaLle::writeRtcSeconds() {
@@ -109,14 +113,68 @@ uint8_t CudaLle::mcuPortRead(int p) {
             return uint8_t((cuda ? 0x07 : 0x00) | (adb_.line() ? 0x40 : 0));
         case 1:                          // PB: +5v | BYTEACK/VIA_FULL |
                                          // TIP/SYS_SESSION | via_data
+            // PB6 = IIC SDA: pulled up unless the DFAC2 slave holds the
+            // ACK slot low (MAME pb_r :271 m_iic_sda). Egret keeps its
+            // bare PB6 pull-up (no I2C on that flavor).
             return uint8_t(0x01
                            | (byteack_ ? 0x04 : 0)
                            | (tip_ ? 0x08 : 0)
                            | (via_.extShiftCB2Out() ? 0x20 : 0)
-                           | 0x40 | (cuda ? 0x80 : 0x00));
+                           | ((i2cDfac_ && i2cDriveLow_) ? 0x00 : 0x40)
+                           | (cuda ? 0x80 : 0x00));
         default:                         // PC: power sense (Cuda only)
             return cuda ? 0x03 : 0x00;
     }
+}
+
+// ── DFAC2 I2C slave (setI2cDfac) ───────────────────────────────────────
+// The bus master is the Cuda firmware bit-banging PB7 (SCL) / PB6 (SDA);
+// pin levels arrive through the port/DDR mixing (open-drain release reads
+// back 1 via the PB6/PB7 pull-ups, M68hc05::sendPort). The slave only
+// needs the protocol frame: START/STOP detection, a 9-pulse byte cadence,
+// and the ACK — SDA held low from the 8th data bit until the ACK clock
+// completes — whenever the transfer opened at address $6F (MAME
+// dfac2.cpp: i2c_hle_interface(…, 0x6f); its write_data only logs, so
+// discarding the payload IS oracle parity). The factory Color Classic
+// Cuda 2.35 requires this ACK: one NACKed probe sends it down a DFAC
+// error path that leaves the next host VIA session unanswered.
+void CudaLle::i2cWire(bool scl, bool sda) {
+    if (scl && i2cScl_) {                // SCL high steady: START / STOP
+        if (i2cSda_ && !sda) {           // START (repeated START re-opens)
+            i2cActive_ = true;
+            i2cAddressed_ = false;
+            i2cBit_ = 0;
+            i2cShift_ = 0;
+            i2cDriveLow_ = false;
+        } else if (!i2cSda_ && sda) {    // STOP
+            i2cActive_ = false;
+            i2cDriveLow_ = false;
+        }
+    } else if (scl && !i2cScl_ && i2cActive_) {      // SCL rising edge
+        if (i2cBit_ < 8) {
+            i2cShift_ = uint8_t((i2cShift_ << 1) | (sda ? 1 : 0));
+            if (++i2cBit_ == 8) {
+                // First byte = address + R/W. The HLE interface ACKs its
+                // address for both directions; data bytes ACK while the
+                // transfer stays addressed.
+                if (!i2cAddressed_) i2cAddressed_ = (i2cShift_ >> 1) == 0x6F;
+                i2cDriveLow_ = i2cAddressed_;
+                static const bool trace =
+                    std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
+                if (trace)
+                    std::fprintf(stderr, "cudalle: i2c byte %02X %s\n",
+                                 i2cShift_, i2cAddressed_ ? "ACK" : "NACK");
+            }
+        } else {
+            i2cBit_ = 9;                 // ACK clock high phase
+        }
+    } else if (!scl && i2cScl_ && i2cActive_ && i2cBit_ == 9) {
+        i2cDriveLow_ = false;            // ACK clock done: release SDA
+        i2cBit_ = 0;
+        i2cShift_ = 0;
+    }
+    i2cScl_ = scl;
+    i2cSda_ = sda;
 }
 
 void CudaLle::mcuPortWrite(int p, uint8_t v) {
@@ -160,6 +218,9 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
                 }
                 lastViaClock_ = clock;
             }
+            // PB7 = IIC SCL, PB6 = IIC SDA (cuda.cpp pb_w :198-199) — the
+            // DFAC2 slave listens when the machine carries one.
+            if (i2cDfac_) i2cWire((v & 0x80) != 0, (v & 0x40) != 0);
             break;
         }
         case 2: {                        // PC3 = host reset
