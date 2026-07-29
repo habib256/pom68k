@@ -58,6 +58,10 @@ public:
     // A CD-ROM target exists even with no disc in it; a hard disk does not.
     bool present() const { return kind_ == Kind::Cdrom ? attached_ : blocks_ > 0; }
     uint32_t blocks() const { return blocks_; }
+    // Per-target traffic. A gate that asserts on the CONTROLLER's total
+    // cannot tell a mounted CD from an ignored one — the boot volume's
+    // traffic drowns it (measured: 9619 vs 9618).
+    long readCommands = 0, readBlocks = 0;
 
     // True when open() applied the in-memory HFS-flat → SCSI façade.
     bool flatHfsFacade() const { return hfsPrefixBlocks_ != 0; }

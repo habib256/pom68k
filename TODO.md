@@ -492,9 +492,26 @@ Next milestones:
   Remaining CD work, in rough order of value:
   - [ ] **Boot from CD** (the ROM's SCSI scan already covers ID 3; needs
     a bootable Apple CD image to pin it).
-  - [ ] **A guest-level mount gate**: today's gate is device-level only.
-    Same shape as `lcii_floppy_etalon` — insert an ISO, require the
-    System to mount it and open its window.
+  - [ ] **CD: the guest reads the disc but does not MOUNT it.** Bring-up
+    2026-07-29 got the target through the whole Apple dialogue — three
+    real bugs found and fixed against MAME on the way: MODE SENSE was
+    omitting the **block descriptor** (Mac OS 8.1 asked for the Apple
+    page once and then went silent — that descriptor is how the driver
+    learns the disc is 2048 bytes/block), READ TOC lacked **format 1**
+    (session info) and the SFF8020 legacy format field in cdb[9], and
+    **mode page $0E** (CD audio control) was missing, which the driver
+    asks for immediately after accepting a disc. The driver now runs
+    INQUIRY → page $30 → MODE SELECT → TEST UNIT READY → READ TOC
+    (0 and 1) → READ CAPACITY → READ(10) LBA 0 and 16 → PREVENT/ALLOW →
+    page $0E, and stops: 4 READ commands, 8 KB, no catalog traffic.
+    Same result on a bare-HFS .toast and an Apple-partitioned hybrid
+    .iso, so it is not the disc layout. Next: dump what the driver does
+    after page $0E (a "disc unreadable" dialog would explain the ~2900
+    extra HD commands that appear once the page is answered), and
+    re-test with the Mac OS 8.6 install CD — a real Apple bootable disc
+    is the definitive case. Reproducer: `POM68K_BEYOND=cdrom
+    ./lcii_beyond_etalon`, and `POM68K_CD_TRACE=1` logs every CDB.
+  - [ ] **A guest-level mount gate**, once the above lands.
   - [ ] **CD audio** (READ TOC already reports the data track; CDDA
     playback, PLAY AUDIO/PAUSE and the audio-through-ASC path are
     absent — no consumer yet).

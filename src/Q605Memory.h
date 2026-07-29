@@ -107,7 +107,8 @@ public:
     bool insertDisk(const std::string& path) { return drive0_.insert(path); }
     void ejectDisk() { drive0_.eject(); }
     Ncr53c96& scsi() { return scsi_; }
-    ScsiDisk& scsiDisk() { return scsiDisks_[0]; }  // boot drive (tests poke it)
+    ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    ScsiDisk& scsiDiskAt(int id) { return scsiDisks_[id & 7]; }  // boot drive (tests poke it)
 
     // Attach a SCSI target from a backing image (boot drive = ID 0).
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {

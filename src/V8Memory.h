@@ -135,7 +135,8 @@ public:
         return spiceClass() ? ascSonora_.pop() : asc_.pop();
     }
     Ncr5380& scsi() { return scsi_; }
-    ScsiDisk& scsiDisk() { return scsiDisks_[0]; }  // boot drive (tests poke it)
+    ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    ScsiDisk& scsiDiskAt(int id) { return scsiDisks_[id & 7]; }
     // Attach a disk image at a SCSI ID (0 = boot drive, 1-6 = secondary
     // volumes picked up by the System's boot-time bus scan).
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {

@@ -82,6 +82,29 @@ int main() {
     check(magic, "MODE SENSE $30 carries 'APPLE COMPUTER, INC'");
     check(out.size() > 2 && (out[2] & 0x80), "MODE SENSE reports write-protected");
 
+    // MODE SENSE must carry a BLOCK DESCRIPTOR unless DBD is set. This is
+    // how the driver learns the disc is 2048 bytes/block; omitting it made
+    // Mac OS 8.1 ask for the Apple page once and never speak again
+    // (MAME cd.cpp:527-538).
+    const uint8_t ms3f[6] = { 0x1A, 0, 0x3F, 0, 60, 0 };
+    check(cd.command(ms3f, 6, out, in) == 0, "MODE SENSE page $3F succeeds");
+    check(out.size() > 3 && out[3] == 0x08, "block descriptor present (8 bytes)");
+    check(out.size() > 11 && out[9] == 0x00 && out[10] == 0x08 && out[11] == 0x00,
+          "block descriptor block length = 2048");
+    const uint8_t msDbd[6] = { 0x1A, 0x08, 0x3F, 0, 60, 0 };   // DBD set
+    check(cd.command(msDbd, 6, out, in) == 0 && out.size() > 3 && out[3] == 0,
+          "DBD set → no block descriptor");
+    // The CD audio control page: Mac OS asks for it right after accepting
+    // the disc and stalls if it does not come back (cd.cpp:587-604).
+    const uint8_t ms0e[6] = { 0x1A, 0, 0x0E, 0, 28, 0 };
+    check(cd.command(ms0e, 6, out, in) == 0, "MODE SENSE page $0E succeeds");
+    {
+        bool found = false;
+        for (size_t i = 0; i + 1 < out.size(); i++)
+            if ((out[i] & 0x3F) == 0x0E && out[i + 1] == 0x0E) found = true;
+        check(found, "page $0E returned with length $0E");
+    }
+
     // READ TOC: one data track + lead-out, in LBA and in MSF.
     const uint8_t toc[10] = { 0x43, 0, 0, 0, 0, 0, 0, 0, 20, 0 };
     check(cd.command(toc, 10, out, in) == 0 && out.size() == 20, "READ TOC replies");
@@ -95,6 +118,17 @@ int main() {
     check(cd.command(tocMsf, 10, out, in) == 0, "READ TOC (MSF) replies");
     // LBA 0 in MSF is 00:02:00 — the 150-frame pre-gap.
     check(out[9] == 0 && out[10] == 2 && out[11] == 0, "MSF track 1 = 00:02:00");
+
+    // Session-info format (1): Mac OS asks for it during the mount.
+    const uint8_t tocSess[10] = { 0x43, 0x02, 0x01, 0, 0, 0, 0, 0, 12, 0 };
+    check(cd.command(tocSess, 10, out, in) == 0 && out.size() == 12,
+          "READ TOC format 1 (session info) replies");
+    check(out[2] == 1 && out[3] == 1, "one session, first = last = 1");
+    // Full TOC (2) is unhandled in MAME too, and answering honestly beats
+    // inventing a reply (cd.cpp:890-900).
+    const uint8_t tocFull[10] = { 0x43, 0x02, 0x02, 0, 0, 0, 0, 0, 48, 0 };
+    check(cd.command(tocFull, 10, out, in) == 2,
+          "READ TOC format 2 (full TOC) → CHECK CONDITION, as MAME does");
 
     // A CD is read-only, and must say so the way drivers expect.
     const uint8_t wr[10] = { 0x2A, 0, 0, 0, 0, 0, 0, 0, 1, 0 };

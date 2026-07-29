@@ -210,6 +210,8 @@ void ScsiDisk::eject() {
 }
 
 void ScsiDisk::read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out) {
+    readCommands++;
+    readBlocks += count;
     if (kind_ == Kind::Cdrom) {
         out.assign(size_t(count) * 2048, 0);
         uint64_t off = uint64_t(lba) * 2048;
@@ -296,6 +298,14 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             return kCheck;
         }
     }
+    if (kind_ == Kind::Cdrom && std::getenv("POM68K_CD_TRACE"))
+        std::fprintf(stderr, "[cd] cdb %02X %02X %02X %02X %02X %02X"
+                     " %02X %02X %02X %02X\n", cdb[0],
+                     cdbLen > 1 ? cdb[1] : 0, cdbLen > 2 ? cdb[2] : 0,
+                     cdbLen > 3 ? cdb[3] : 0, cdbLen > 4 ? cdb[4] : 0,
+                     cdbLen > 5 ? cdb[5] : 0, cdbLen > 6 ? cdb[6] : 0,
+                     cdbLen > 7 ? cdb[7] : 0, cdbLen > 8 ? cdb[8] : 0,
+                     cdbLen > 9 ? cdb[9] : 0);
     // ── CD-ROM personality: the commands that differ, then fall through
     // to the shared ones (REQUEST SENSE, READ(6)/(10)). Everything a Mac
     // needs to see a disc; audio playback is deliberately absent (no
@@ -336,12 +346,22 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
 
             case 0x1A: {                             // MODE SENSE(6)
                 const uint8_t page = cdb[2] & 0x3F;
-                uint8_t alloc = cdb[4] ? cdb[4] : 4;
+                const uint8_t alloc = cdb[4] ? cdb[4] : 4;
+                const bool noBlockDesc = (cdb[1] & 0x08) != 0;   // DBD
                 std::vector<uint8_t> body;
                 // The magic Apple page: "APPLE COMPUTER, INC" is what the
                 // Apple CD-ROM driver reads to decide a drive is genuine
                 // (MAME cd.cpp:604-618). Without it the disc never mounts,
                 // however correct the rest of the target is.
+                // CD audio control page — Mac OS asks for it right after it
+                // accepts the disc (1A 00 0E 00 1C), and stops there if it
+                // does not come back (MAME cd.cpp:587-604).
+                if (page == 0x0E || page == 0x3F) {
+                    static const uint8_t audio[16] = {
+                        0x8E, 0x0E, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x01, 0xFF, 0x02, 0xFF, 0x04, 0xFF, 0x08, 0xFF };
+                    body.insert(body.end(), audio, audio + sizeof audio);
+                }
                 if (page == 0x30 || page == 0x3F) {
                     static const uint8_t magic[0x17] = {
                         0x00, 'A','P','P','L','E',' ','C','O','M','P','U',
@@ -349,12 +369,28 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                     body.push_back(0x30);
                     body.insert(body.end(), magic, magic + sizeof magic);
                 }
-                dataOut.assign(4 + body.size(), 0);
-                dataOut[0] = uint8_t(dataOut.size() - 1);    // mode data length
-                dataOut[1] = 0x01;                           // medium type
-                dataOut[2] = 0x80;                           // write protected
-                dataOut[3] = 0;                              // no block descriptor
-                for (size_t i = 0; i < body.size(); i++) dataOut[4 + i] = body[i];
+                dataOut.clear();
+                dataOut.push_back(0);                    // length, filled below
+                dataOut.push_back(0x00);                 // medium type
+                dataOut.push_back(0x80);                 // write protected
+                dataOut.push_back(noBlockDesc ? 0x00 : 0x08);
+                // The block descriptor is how the driver learns the disc is
+                // 2048 bytes/block. Omitting it (DBD clear) is what made Mac
+                // OS 8.1 probe the Apple page and then give up: it asked
+                // 1A 00 30 00 24 and never spoke to the target again.
+                if (!noBlockDesc) {
+                    uint32_t last = blocks_ ? blocks_ - 1 : 0;
+                    dataOut.push_back(0x00);             // density code
+                    dataOut.push_back(uint8_t(last >> 16));
+                    dataOut.push_back(uint8_t(last >> 8));
+                    dataOut.push_back(uint8_t(last));
+                    dataOut.push_back(0x00);
+                    dataOut.push_back(0x00);             // block length = 2048
+                    dataOut.push_back(0x08);
+                    dataOut.push_back(0x00);
+                }
+                dataOut.insert(dataOut.end(), body.begin(), body.end());
+                dataOut[0] = uint8_t(dataOut.size() - 1);
                 if (dataOut.size() > alloc) dataOut.resize(alloc);
                 return kGood;
             }
@@ -362,8 +398,11 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             case 0x43: {                             // READ TOC
                 if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
                 const bool msf = (cdb[1] & 0x02) != 0;
-                // One MODE1 data track plus the lead-out — a data CD as the
-                // Mac sees it (MAME cd.cpp:773 format 0).
+                // Format lives in cdb[2] low nibble; when zero, the SFF8020
+                // legacy field in cdb[9] bits 7-6 (MAME cd.cpp:803). Mac OS
+                // asks for BOTH the session-info and full-TOC forms.
+                uint8_t format = cdb[2] & 0x0F;
+                if (!format) format = (cdb[9] >> 6) & 3;
                 auto addr = [&](uint32_t lba, uint8_t* p) {
                     if (!msf) { p[0] = uint8_t(lba >> 24); p[1] = uint8_t(lba >> 16);
                                 p[2] = uint8_t(lba >> 8);  p[3] = uint8_t(lba); return; }
@@ -371,16 +410,36 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                     p[0] = 0; p[1] = uint8_t(f / (60 * 75));
                     p[2] = uint8_t((f / 75) % 60); p[3] = uint8_t(f % 75);
                 };
-                dataOut.assign(20, 0);
-                dataOut[0] = 0; dataOut[1] = 18;     // TOC data length
-                dataOut[2] = 1; dataOut[3] = 1;      // first / last track
-                dataOut[5] = 0x14;                   // ADR 1, data track
-                dataOut[6] = 1;                      // track number
-                addr(0, &dataOut[8]);
-                dataOut[13] = 0x14;
-                dataOut[14] = 0xAA;                  // lead-out
-                addr(blocks_, &dataOut[16]);
                 uint16_t alloc = uint16_t(cdb[7] << 8 | cdb[8]);
+                if (format == 0) {
+                    // One MODE1 data track plus the lead-out — a data CD as
+                    // the Mac sees it (MAME cd.cpp:773 format 0).
+                    dataOut.assign(20, 0);
+                    dataOut[0] = 0; dataOut[1] = 18; // TOC data length
+                    dataOut[2] = 1; dataOut[3] = 1;  // first / last track
+                    dataOut[5] = 0x14;               // ADR 1, data track
+                    dataOut[6] = 1;                  // track number
+                    addr(0, &dataOut[8]);
+                    dataOut[13] = 0x14;
+                    dataOut[14] = 0xAA;              // lead-out
+                    addr(blocks_, &dataOut[16]);
+                } else if (format == 1) {
+                    // Session info: one session holding that one track
+                    // (MAME cd.cpp:866).
+                    dataOut.assign(12, 0);
+                    dataOut[0] = 0; dataOut[1] = 10; // length
+                    dataOut[2] = 1; dataOut[3] = 1;  // first / last session
+                    dataOut[5] = 0x14;               // ADR 1, data
+                    dataOut[6] = 1;                  // first track of session
+                    addr(0, &dataOut[8]);
+                } else {
+                    // Full TOC / PMA / ATIP: MAME leaves these unhandled and
+                    // answers CHECK CONDITION (cd.cpp:890-900). Matching that
+                    // matters — a made-up reply is worse than an honest
+                    // refusal, which real drives also give on old discs.
+                    setSense(kIllegalRequest, 0x24);
+                    return kCheck;
+                }
                 if (alloc && dataOut.size() > alloc) dataOut.resize(alloc);
                 return kGood;
             }

@@ -16,6 +16,16 @@
 //   launch  — double-click the desktop application icon (top-right):
 //             launching changes the screen and pulls a burst of SCSI
 //             reads (app + resources loading).
+//   cdrom   — NOT registered as a CTest yet: the guest reads the disc but
+//             does not mount it (4 READ commands = 8 KB of probes, no
+//             catalog). Kept as the reproducer — see TODO "CD: the guest
+//             does not mount the disc". Guest-level CD-ROM mount: attach
+//             an ISO/.toast at SCSI 3
+//             (the Apple CD address) and require the System to notice the
+//             disc, read it, and put its volume on the desktop. Proves
+//             the whole target — INQUIRY $05, the Apple magic MODE SENSE
+//             page $30, READ TOC, 2048-byte READ(10) — against a real
+//             guest driver rather than a unit-test CDB.
 //   floppy  — guest-level 800K floppy MOUNT + READ over the real IWM:
 //             insert after the Finder is up, and the System must poll the
 //             drive, read the medium (~1.7 M nibbles), mount the volume
@@ -133,6 +143,16 @@ static long countNeedle(const std::vector<uint8_t>& hay, const char* needle) {
     return c;
 }
 
+// The menu bar stays visible whatever windows are open — so this is the
+// liveness check to use once the guest has been made to open something.
+// `finderUp()` also samples the DESKTOP, which a new window covers: that
+// is a signature of "idle Finder", not of "Finder alive".
+static bool menuBarUp() {
+    std::vector<uint32_t> fb;
+    screen(fb);
+    return blackRatio(fb, 0, 512, 2, 16) < 0.30;
+}
+
 static bool finderUp() {
     std::vector<uint32_t> fb;
     screen(fb);
@@ -177,6 +197,25 @@ int main() {
     // changes. The insert itself happens after the Finder is up (below) —
     // an insert EVENT is what makes the System poll and mount, and it is
     // also the real user gesture.
+    // A CD is attached BEFORE the boot: that is how a disc is actually
+    // present (and the only way an install CD can be), and a SCSI target
+    // appearing mid-run wedges the guest to a black screen — worth
+    // knowing, and noted in TODO rather than papered over.
+    if (mode == "cdrom") {
+        std::string iso = find("hdv/Apeiron_1_0_3.toast");
+        if (iso.empty()) iso = find("hdv/GliderPRO_1_1_2.toast");
+        if (iso.empty()) iso = find("hdv/TIM_3.iso");
+        if (iso.empty()) {
+            std::printf("SKIP: needs a CD image in hdv/ (.iso/.toast)\n");
+            return 0;
+        }
+        if (!mem.attachCdrom(iso)) {
+            std::fprintf(stderr, "FAIL: could not mount %s as a CD\n", iso.c_str());
+            return 1;
+        }
+        std::printf("cdrom: %s at SCSI 3 (present at power-on)\n", iso.c_str());
+    }
+
     std::string floppyCopy, floppySrc;
     std::vector<uint8_t> floppyOrig;
     if (mode == "floppy") {
@@ -346,6 +385,27 @@ int main() {
                     "(want >0), halted=%d\n", changed, scsiDelta,
                     cpu.isHalted());
         ok = !cpu.isHalted() && changed > 0.10 && scsiDelta > 0;
+    } else if (mode == "cdrom") {
+        // The disc was in the drive at power-on, so by the time the Finder
+        // is up the System has already read it through the real 2048-byte
+        // CD path (INQUIRY $05, the Apple magic page $30, READ TOC,
+        // READ(10)) and put its volume on the desktop.
+        long cdReads = mem.scsiDiskAt(3).readCommands;
+        std::vector<uint32_t> fb;
+        screen(fb);
+        dump("lcii_beyond_cdrom.ppm", fb);
+        // Reading the disc's catalog costs real traffic on top of a
+        // hard-disk-only boot; the desktop keeps its Finder signature
+        // because a mounted CD adds an icon, not a full-screen window.
+        std::printf("cdrom: %ld READs served BY THE CD, menu bar %s, "
+                    "Finder %s\n", cdReads, menuBarUp() ? "up" : "GONE",
+                    finderUp() ? "up" : "desktop covered");
+        // Count reads at the CD TARGET, never the controller total: the
+        // boot volume's ~9600 commands drown the difference between a
+        // mounted disc and an ignored one (9619 vs 9618 — measured).
+        // Mounting a volume costs its MDB, catalog and desktop database:
+        // dozens of reads, not a handful of probes.
+        ok = !cpu.isHalted() && menuBarUp() && cdReads > 30;
     } else if (mode == "floppy") {
         // Guest-level write → eject → re-insert → read round-trip. The
         // device-level half already has a gate (`floppy_persist_test`
