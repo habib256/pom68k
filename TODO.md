@@ -622,10 +622,12 @@ Next milestones:
        2026-07-29** (`tools/pgo_train.sh`): one boot per CPU family —
        Quadra 605 (040+MMU), LC II (030, MMU off), LC III (030, MMU on),
        LC (020+HMMU) — on BOTH engines, instead of the Quadra boot alone.
-       **Measured on the LC II boot: 145.0 / 144.2 s → 107.0 / 107.6 s,
-       a 26 % cut (×1.35)**, same Release flags on both sides and the
-       gate passing with an identical Finder signature. The old
-       Quadra-only profile had left every 030/020 path cold.
+       **Measured: LC II boot 145.0 / 144.2 s → 107.0 / 107.6 s (−26 %,
+       ×1.35); LC 68020 boot 96.2 s → 84.3 s (−12 %, ×1.14)** — one
+       sample each on the 020, two on the LC II. Same Release flags on
+       both sides, gates passing with identical signatures. The old
+       Quadra-only profile had left every 030/020 path cold, and the
+       gain lands on the DEFAULT engine, which is the one users run.
     2. **Lazy condition codes in the x64 backend** (own entry below) — the
        one big conformant codegen lever left.
     3. ~~**Page-granular dispatch tables for the memory maps.**~~

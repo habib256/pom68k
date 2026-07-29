@@ -8,9 +8,11 @@ the LC (020 + HMMU), on BOTH execution engines. The shipped recipe
 trained on the Quadra boot alone, so the profile optimized the 68040
 paths and left every 030/020 path cold — `mmuFetchWord`,
 `mmuTranslateAccess` and the V8/Sonora decode cascades never appeared in
-it. **Measured on the LC II boot: 145.0 / 144.2 s → 107.0 / 107.6 s, a
-26 % cut (×1.35)**, with the same Release flags on both sides and the
-gate passing with a bit-identical Finder signature. PGO changes code
+it. **Measured on two families: the LC II boot 145.0 / 144.2 s → 107.0 /
+107.6 s (−26 %, ×1.35), and the 68020 LC boot 96.2 s → 84.3 s (−12 %,
+×1.14)** — same Release flags on both sides, gates passing with
+bit-identical signatures. The gain lands on the DEFAULT engine, which is
+the one users actually run. PGO changes code
 layout, never semantics.
 
 **The page-granular dispatch-table item is dropped, and the measurement
