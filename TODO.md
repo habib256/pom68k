@@ -692,9 +692,32 @@ Highest-ROI closers, in order:
   pairs to addr 3 (the mouse-driver init / 200-cpi handler switch); the
   IIsi System never does. Suspect: one enumeration REPLY mis-presented on
   the IIsi's VIA path (RbvCpu host-paced transport + the 344S0100's older
-  pacing), so the ROM's table ends without a mouse entry. Next: trace the
-  guest's pass-through reply reads around the addr-3 Talk R3 during
-  ADBReInit, IIsi vs LC III.
+  pacing), so the ROM's table ends without a mouse entry.
+  **Hunt round 1 (2026-07-29) — two hypotheses ELIMINATED, don't repeat:**
+  - *Not the MCU model.* The failure is bit-identical under the Egret
+    **firmware LLE** and the **HLE** byte-model (`POM68K_EGRET_LLE=0`
+    with the gate's `POM68K_INPUT_ANYPATH=1`). Whatever breaks sits
+    ABOVE the MCU — machine/VIA/ROM interaction, not firmware.
+  - *Not the VIA1 port-B composition.* Tried MAME parity exactly
+    (`via_in_b_iisi` returns the BARE `xcvr_session << 3`, all other
+    bits 0, vs our `$C7 |`): mouse still frozen. Reverted unbuilt-on —
+    the `$C7` comment's own warning (transport wedges after byte 1)
+    was never re-tested, so a future attempt must run
+    `iisi_boot_etalon` before keeping it.
+  - *New evidence.* During the ADB window the guest spins at ROM
+    `$4080A8E6`: `btst.b #$5,$15D(a3)` / `bne.b` — i.e. **ADBBase+$15D
+    bit 5**, the very "command pending" soft flag §1.9 documents for
+    the Mac II Slot-Manager hack. The Egret HLE command log ends on
+    repeated pseudo-`$02` (READ_MCU_MEM) polls of `$7C/$7E/$7F/$82`
+    then a `$08` (WRITE_MCU_MEM) — the LC III issues the same `$08`
+    once and moves on. And `MBState` ($0172) reads `$00` on the IIsi
+    where the working LC III reads `$80` (idle-up): the byte was never
+    initialized, confirming the driver never installed.
+  Next: single-step the ROM's ADB completion path around `$4080A8E6` —
+  who is expected to clear ADBBase+$15D bit 5, and which reply byte /
+  VIA event the IIsi ROM is waiting on that never arrives. Diag tools
+  are in the scratchpad pattern (dual guest+MCU PC histogram, the
+  `POM68K_ADB_LLE_TRACE` SRQ / mouse-Listen-R3 lines added this round).
 - [ ] **Widen per-machine System coverage.** Each profile's etalon pins one
   reference image (`GISTPERSO`, Infinite Mac 8.1…). The `finder_boot_matrix`
   helps, but functional coverage across images is thin — the exact
