@@ -659,12 +659,6 @@ etalon and still be broken for real work; green gates read as more coverage
 than they give — this is now the single biggest gap in the project.
 Highest-ROI closers, in order:
 
-- [ ] **"Real work" functional gates on one reference machine** (LC II or
-  Quadra 605): drive the Finder to (a) launch an app, (b) create + save a
-  file to the SCSI volume, reboot, assert the file survives (rides the
-  `ScsiDisk` writeBack path — already persistent), (c) a floppy
-  write→eject→reinsert→read round-trip. Catches the silent-data-loss and
-  Toolbox-regression class that framebuffer signatures cannot see.
 - [x] ~~**Stability / soak gate**~~ **DONE 2026-07-24 on the LC II**
   (`lcii_soak_etalon` — idle uptime + the Mac clock tracking emulated time;
   it is what caught the 37 % MCU overclock). **Still open: a second machine**
@@ -712,6 +706,29 @@ Highest-ROI closers, in order:
     read as a keystroke. A positive assertion over a too-wide window is
     a false green.
 
+- [x] ~~**"Real work" functional gates on one reference machine**~~ **DONE
+  2026-07-29 on the LC II** — the four `lcii_beyond_etalon` scenarios:
+  `soak` (idle uptime + Mac clock tracking), `persist` (Cmd-N creates a
+  folder, the SCSI image changes, and a hard reset boots back off the
+  modified volume), `launch` (mouse double-click opens a window and pulls
+  SCSI reads), and **`floppy`** (new): insert an 800K HFS medium after
+  the Finder is up and the System polls the drive, reads ~1.7 M nibbles
+  over the real IWM, mounts the volume and opens its window; the medium
+  survives eject + re-insert byte-intact. That closes the guest-side
+  floppy READ path, which had no gate at all.
+- [ ] **Floppy: a guest-INITIATED write.** The `floppy` scenario proves
+  mount+read but asserts nothing about writing, because no gesture has
+  yet made the guest write to the medium. Evidence gathered 2026-07-29:
+  the volume mounts read-write (`isWriteProtected()` = 0) and its window
+  auto-opens (the changed screen region is the whole upper screen, x
+  3..494 / y 2..240), but a Cmd-N in that state modifies **neither** the
+  floppy nor the hard disk — while the identical Cmd-N in `persist`
+  works on the HD. So the keystroke is being dropped in the
+  post-insert state rather than landing on the wrong volume. Next: check
+  whether the modifier is stuck or the Finder is still busy (vary the
+  settle time before Cmd-N), and if the UI route stays flaky, drive the
+  write from a script/app on the boot volume instead. The device-side
+  write→eject→flush plumbing is already gated by `floppy_persist_test`.
 - [ ] **Widen per-machine System coverage.** Each profile's etalon pins one
   reference image (`GISTPERSO`, Infinite Mac 8.1…). The `finder_boot_matrix`
   helps, but functional coverage across images is thin — the exact

@@ -800,7 +800,7 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # launched by mouse from the desktop (soft-skip without assets).
     add_executable(lcii_beyond_etalon tests/lcii_beyond_etalon.cpp)
     target_link_libraries(lcii_beyond_etalon PRIVATE pom68k_core)
-    foreach(scenario soak persist launch)
+    foreach(scenario soak persist launch floppy)
         add_test(NAME lcii_${scenario}_etalon COMMAND lcii_beyond_etalon
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(lcii_${scenario}_etalon PROPERTIES

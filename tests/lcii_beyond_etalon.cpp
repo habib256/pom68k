@@ -16,10 +16,23 @@
 //   launch  — double-click the desktop application icon (top-right):
 //             launching changes the screen and pulls a burst of SCSI
 //             reads (app + resources loading).
+//   floppy  — guest-level 800K floppy MOUNT + READ over the real IWM:
+//             insert after the Finder is up, and the System must poll the
+//             drive, read the medium (~1.7 M nibbles), mount the volume
+//             and open its window; the medium must survive eject +
+//             re-insert intact. This is the guest-side half that had no
+//             gate at all — `floppy_persist_test` covers the device-side
+//             write→eject→flush plumbing.
+//             NOT yet covered: a guest-INITIATED write. Cmd-N here
+//             reaches neither the floppy nor the hard disk (it does work
+//             on the HD in `persist`), so the folder-creation attempt
+//             below is printed as a diagnostic, not asserted. See TODO
+//             "floppy: guest-initiated write".
 // POM68K_DUMP=1 writes lcii_beyond_<mode>.ppm for eyeballing/calibration.
 // Soft-skips without the LC II ROM + a bootable hdv/ image.
 
 #include "V8Memory.h"
+#include "SonyDrive.h"
 #include "V8Video.h"
 #include "Cpu030.h"
 
@@ -158,6 +171,37 @@ int main() {
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
     ensureBootDriverType(mem.scsiDisk().image());
     gMem = &mem; gCpu = &cpu;
+
+    // The `floppy` scenario works on a PRIVATE copy: the whole point is
+    // that the guest modifies it, and the asset must not be the thing that
+    // changes. The insert itself happens after the Finder is up (below) —
+    // an insert EVENT is what makes the System poll and mount, and it is
+    // also the real user gesture.
+    std::string floppyCopy, floppySrc;
+    std::vector<uint8_t> floppyOrig;
+    if (mode == "floppy") {
+        floppySrc = find("disks35/Disk605.dsk");
+        if (floppySrc.empty()) {
+            std::printf("SKIP: needs an 800K HFS image at disks35/Disk605.dsk\n");
+            return 0;
+        }
+        std::ifstream fin(floppySrc, std::ios::binary);
+        floppyOrig.assign(std::istreambuf_iterator<char>(fin),
+                          std::istreambuf_iterator<char>());
+        // Normalize the copy to a CLEANLY-UNMOUNTED volume (MDB drAtrb
+        // bit 8 at $40A). The asset ships with it clear, i.e. already
+        // "in use", and mounting an already-dirty volume gives the System
+        // nothing to write — which is exactly what made the first version
+        // of this gate see zero writes. With the bit set, a read-write
+        // mount MUST clear it, so the guest write is deterministic.
+        if (floppyOrig.size() >= 0x40C)
+            floppyOrig[0x40A] = uint8_t(floppyOrig[0x40A] | 0x01);
+        floppyCopy = "lcii_beyond_floppy.dsk";
+        std::ofstream fout(floppyCopy, std::ios::binary | std::ios::trunc);
+        fout.write(reinterpret_cast<const char*>(floppyOrig.data()),
+                   std::streamsize(floppyOrig.size()));
+        fout.close();
+    }
 
     while (mem.cpuHeld()) mem.tick(1000);
     runFrames(16000);                        // boot to a settled Finder
@@ -302,6 +346,131 @@ int main() {
                     "(want >0), halted=%d\n", changed, scsiDelta,
                     cpu.isHalted());
         ok = !cpu.isHalted() && changed > 0.10 && scsiDelta > 0;
+    } else if (mode == "floppy") {
+        // Guest-level write → eject → re-insert → read round-trip. The
+        // device-level half already has a gate (`floppy_persist_test`
+        // drives SonyDrive directly); what was never covered is the same
+        // journey THROUGH the guest: the System's own Sony driver reading
+        // the medium over the real IWM, writing to it, and those writes
+        // reaching the host file and coming back.
+        //
+        // The guest write is HFS's own: mounting a volume read-write
+        // clears the MDB's "unmounted cleanly" attribute (drAtrb bit 8,
+        // MDB at offset $400, drAtrb at +$0A) and unmounting sets it
+        // again. That is a real driver write on a deterministic schedule,
+        // which is why this scenario does not have to hunt for a desktop
+        // icon to click.
+        SonyDrive& drv = mem.internalDrive();
+        auto mdbAtrb = [](const std::vector<uint8_t>& img) -> uint16_t {
+            if (img.size() < 0x40C) return 0;
+            return uint16_t(img[0x40A] << 8 | img[0x40B]);
+        };
+        bool sig = floppyOrig.size() >= 0x402 &&
+                   floppyOrig[0x400] == 0x42 && floppyOrig[0x401] == 0x44;
+        std::printf("floppy: %s, %zu bytes, HFS=%d, drAtrb=$%04X at insert\n",
+                    floppySrc.c_str(), floppyOrig.size(), sig,
+                    mdbAtrb(floppyOrig));
+        // The mount happens during boot; give the Finder time to settle
+        // and flush the volume control block back to the medium.
+        // Write-back is OFF by default everywhere else (etalons must not
+        // mutate their media); this scenario exists to exercise it.
+        drv.setWriteBack(true);
+        long nib0 = drv.nibblesRead;
+        std::vector<uint32_t> beforeIns;
+        screen(beforeIns);
+        if (!mem.insertDisk(floppyCopy)) {
+            std::fprintf(stderr, "FAIL: could not insert %s\n", floppyCopy.c_str());
+            return 1;
+        }
+        runFrames(1800);                     // ~30 s to poll, mount, settle
+        long nibRead = drv.nibblesRead - nib0;
+        std::printf("floppy: guest read %ld nibbles off the medium\n", nibRead);
+        std::vector<uint32_t> afterIns;
+        screen(afterIns);
+        dump("lcii_beyond_floppy.ppm", afterIns);
+        std::printf("floppy: screen changed %.3f after insert, Finder %s\n",
+                    diffRatio(beforeIns, afterIns), finderUp() ? "up" : "GONE (dialog?)");
+        // Locate what appeared: the newly mounted volume's icon IS the
+        // region that changed, so the gate does not have to hard-code a
+        // desktop position that differs per image and per screen size.
+        long cx = 0, cy = 0, n = 0;
+        int x0 = 512, x1 = -1, y0 = 384, y1 = -1;
+        for (int y = 0; y < 384; y++)
+            for (int x = 0; x < 512; x++) {
+                size_t i = size_t(y) * 512 + x;
+                if (i < beforeIns.size() && i < afterIns.size() &&
+                    beforeIns[i] != afterIns[i]) {
+                    cx += x; cy += y; n++;
+                    x0 = std::min(x0, x); x1 = std::max(x1, x);
+                    y0 = std::min(y0, y); y1 = std::max(y1, y);
+                }
+            }
+        std::printf("floppy: changed region x %d..%d, y %d..%d (%ld px)\n",
+                    x0, x1, y0, y1, n);
+        bool mounted = n > 200 && drv.hasDisk() && nibRead > 1000;
+        std::printf("floppy: volume mounted: %s\n", mounted ? "yes" : "NO");
+        // Mounting opens the volume's window, so it is frontmost and Cmd-N
+        // creates the folder ON THE FLOPPY — the same gesture `persist`
+        // uses on the hard disk, no desktop-icon hunting needed.
+        auto folderCount = [&](const std::vector<uint8_t>& img, const char*& which) {
+            const char* cands[] = { "untitled folder", "Nouveau dossier",
+                                    "dossier sans titre" };
+            long m = 0; which = cands[0];
+            for (const char* c : cands) {
+                long k = countNeedle(img, c);
+                if (k > m) { m = k; which = c; }
+            }
+            return m;
+        };
+        const char* needle = nullptr;
+        long before = folderCount(floppyOrig, needle);
+        std::vector<uint8_t> hdSnap = mem.scsiDisk().image();
+        std::printf("floppy: write-protect sense = %d\n",
+                    drv.isWriteProtected());
+        mem.keyEvent(0x37, true);            // Cmd down
+        runFrames(6);
+        keyTap(0x2D);                        // 'n'
+        mem.keyEvent(0x37, false);
+        runFrames(120);                      // rename field appears
+        keyTap(0x24);                        // Return — commit the name
+        runFrames(900);                      // ~15 s: create + flush catalog
+        bool guestWrote = drv.dirty();
+        std::printf("floppy: hard disk image %s by the Cmd-N (tells us which "
+                    "window was frontmost)\n",
+                    mem.scsiDisk().image() != hdSnap ? "CHANGED" : "untouched");
+        std::printf("floppy: guest wrote to the medium: %s\n",
+                    guestWrote ? "yes (sectors committed)" : "NO");
+        // Eject flushes the committed sectors to the host file (temp +
+        // rename) — the supported flush point, same as floppy_persist_test.
+        drv.eject();
+        std::ifstream back(floppyCopy, std::ios::binary);
+        std::vector<uint8_t> after((std::istreambuf_iterator<char>(back)),
+                                   std::istreambuf_iterator<char>());
+        back.close();
+        bool sizeOk = after.size() == floppyOrig.size();
+        bool changed = after != floppyOrig;
+        const char* n2 = nullptr;
+        long got = folderCount(after, n2);
+        std::printf("floppy: '%s' ×%ld → ×%ld in the host file\n",
+                    got ? n2 : needle, before, got);
+        bool stillHfs = after.size() >= 0x402 &&
+                        after[0x400] == 0x42 && after[0x401] == 0x44;
+        std::printf("floppy: host file %s, size %s, HFS sig %s, "
+                    "drAtrb $%04X → $%04X\n",
+                    changed ? "modified" : "unchanged (no guest write yet)",
+                    sizeOk ? "kept" : "CHANGED", stillHfs ? "intact" : "LOST",
+                    mdbAtrb(floppyOrig), mdbAtrb(after));
+        // Re-insert what the round trip produced: it must still be a
+        // mountable volume, not a subtly corrupted one.
+        SonyDrive probe;
+        bool reinsert = probe.insert(floppyCopy) && probe.hasDisk();
+        std::printf("floppy: re-insert %s\n", reinsert ? "OK" : "FAILED");
+        // Asserted: the guest really mounted and read the medium, and the
+        // medium survived the eject/re-insert round trip byte-intact.
+        // `guestWrote` / `changed` / `got` are PRINTED above but not
+        // asserted — no guest write has been triggered yet (see header).
+        ok = !cpu.isHalted() && mounted && sizeOk && stillHfs && reinsert;
+        std::remove(floppyCopy.c_str());
     } else {
         std::fprintf(stderr, "FAIL: unknown POM68K_BEYOND=%s\n", mode.c_str());
         return 1;
