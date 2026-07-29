@@ -6,11 +6,34 @@ gates and oracles), and only later layer an **opt-in, clearly-flagged HLE
 accelerator** on top (`HLE_OVERLAY.md`). That requires knowing exactly
 where the current code already deviates from hardware. This document is
 the complete inventory and the plan to shrink it. Current as of
-2026-07-25 (**fifth pass** — the RBV / Tinker Bell / 68030-Mac II round,
-26 machine profiles, 91 gates). Earlier: 2026-07-24 (fourth pass — the **Phase C** machine fan-out);
+2026-07-29 (**sixth pass** — the SCC line-state / factory-MCU /
+test-depth round, **32 machine profiles, 118 gates**). Earlier:
+2026-07-25 (fifth pass — RBV / Tinker Bell / 68030-Mac II);
+2026-07-24 (fourth pass — the **Phase C** machine fan-out);
 2026-07-22 (third pass against the live tree); 2026-07-21
 MAME (`refs/mame-apple`, `refs/mame`) + DingusPPC (`refs/dingusppc`)
 cross-check → §3 gaps and migration steps 7–10.
+
+> **Sixth-pass headline (2026-07-29): the hack list is empty on every
+> default path, and every machine runs its EXACT factory MCU part.** Three
+> things closed this round. (a) **§1.10 is resolved**: the standing
+> no-peer SDLC abort became a genuine line state — a virgin line that has
+> never carried a frame reads clean (FM0 gives the DPLL no edge), which
+> is what Open Transport's `.MPP` bind waits for — and
+> `POM68K_SCC_CLEANLINE`, the last env that let machine configuration
+> decide a wire condition, is deleted from all eight memory classes.
+> (b) **The last two substitute firmwares fell**: the Color Classic's
+> "341S0417 wedges the M68hc05" was never a core bug but a *missing
+> device* — the CC carries a DFAC2 on the Cuda's I2C at address `$6F`
+> (`maclc.cpp:505`) and the 2.35 firmware requires its ACK; with a
+> minimal I2C slave (`CudaLle::setI2cDfac`) the factory part boots, and
+> the Mac TV's factory 341S0789 landed the same day. (c) **The HLE
+> fallbacks are now LOUD** — see the retirement policy in §2: they stay
+> (dumps are user-provided and non-distributable) but every entry
+> announces itself as a non-conformant substitute, which is what the
+> §Principle rule actually demands. New pure-LLE facts in §4: the Cuda
+> I2C bus and its per-machine DFAC2 population, and the RBV
+> physical-vs-logical low-memory split.
 
 > **Phase C headline (2026-07-24): every machine now boots on a
 > firmware-LLE MCU by default.** The LC II Egret flavor flipped from
@@ -520,6 +543,29 @@ documents the real behavior.
   the all-in-one ROM into its serial debugger. The Plus/Mac II 24-bit
   maps keep their /BERR on truly unmapped space — this rule is specific
   to the Sonora/PrimeTime gate arrays MAME models the same way.
+- **The Cuda's I2C bus and its DFAC2** (`CudaLle::setI2cDfac`, added
+  2026-07-29): PB7 = SCL, PB6 = SDA (`cuda.cpp` `pb_w` :198-199) with a
+  minimal slave answering at address `$6F` — START/STOP, the 9-pulse byte
+  cadence, and the ACK. The payload is discarded, which IS oracle parity:
+  MAME's `dfac2_device::write_data` only logs (its registers are still
+  being reverse-engineered upstream). Populated exactly where MAME wires
+  a DFAC2 — Color Classic (`maclc.cpp:505`), the Cuda AIOs LC 520/550/
+  CC II (`maclc3.cpp:403`), Quadra 630 / LC 580 (`macquadra630.cpp:196`,
+  bus shared with Valkyrie) — and left EMPTY on the Q605 and the Mac TV
+  (`device_remove("dfac")`, nothing re-added). This is a fidelity fact,
+  not a shortcut: without the ACK the factory Color Classic Cuda 2.35
+  takes a DFAC error path and stops answering the host VIA session, which
+  is what the old "341S0417 wedges the M68hc05" note actually was.
+- **RBV: physical low RAM is the FRAMEBUFFER, and the guest's low memory
+  is elsewhere** (IIsi / IIci). RAM-Based Video displays from the start of
+  physical RAM (MAME `rbv.cpp` `update_screen` reads `m_ram_ptr` with no
+  offset), and the ROM enables the PMMU (IIsi `TC = $80F84500`) to
+  relocate the System's logical low memory. Consequence for anyone
+  writing a test or a probe: **`peek8()` is physical**, so reading
+  "ADBBase" / "Mouse" / "ScrnBase" on these machines returns desktop
+  pixels, not globals. That mistake cost three rounds of a nonexistent
+  "IIsi has no ADB" bug (2026-07-29); `iisi_input_etalon` therefore
+  asserts on screen pixels (cursor motion), which the MMU cannot move.
 - Host convenience (guest-invisible): `MacAudioHost.h`, GUI (`main.cpp`),
   trace tools, PRAM file persistence (`<disk>.pram`), LToUDP peer
   bridging.
@@ -645,6 +691,51 @@ Steps 7-10 come from the second audit (MAME + DingusPPC cross-check):
     2026-07-22 "Mac II LLE ADB default"). HLE `AdbVia` remains only as
     the no-dump / `POM68K_ADB_LLE=0` fallback — retire it once more
     machines run LLE ADB. Precedent for Egret/Cuda 68HC05 LLE (step 10).
+
+Steps added by the sixth pass (2026-07-29):
+
+14. ~~**SCC no-peer abort → a genuine line state**~~ **DONE 2026-07-28**
+    (§1.10): a virgin line reads clean, the standing abort begins with the
+    first frame the line carries (`Scc8530::lineDriven_`), and
+    `POM68K_SCC_CLEANLINE` is deleted from all eight memory classes. Gate
+    `q605_ot_bind_etalon`. Note recorded honestly: the OT wedge that
+    motivated the env was already un-reproducible on the 2026-07-28 tree,
+    so the change makes the `.MPP` bind *guaranteed* rather than
+    timing-dependent.
+15. ~~**Factory MCU parts everywhere**~~ **DONE 2026-07-29**: the Color
+    Classic runs its factory Cuda 341S0417 once the DFAC2 I2C slave
+    answers (§4), and the Mac TV its factory 341S0789. No machine now
+    substitutes another machine's firmware.
+16. ~~**HLE-fallback policy**~~ **SETTLED 2026-07-29** (§2 "HLE-fallback
+    retirement policy"): kept but loud; deletion is a deliberate product
+    decision, not a cleanup.
+
+**The remaining LLE distance is now §3, not §1.** With the hack list
+empty on default paths, what is left is the *accepted simplifications*
+list, in rough order of how much correctness it buys:
+
+- **Whole-frame video on every machine** (no beam position). The one gap
+  that makes a whole class of software wrong rather than approximate.
+- **Peripheral-tick batching** (`kPeriphBatch` 64/128/256) — 4-16 µs of
+  IRQ-latency jitter; and the VIA E-clock at a fixed 32:1 (real ≈31.91:1).
+- **No 040 copyback/snooping**; the i-cache overlays are throughput
+  models, not architectural caches.
+- **SCC**: no true bit-serial sampling, WR5 RTS pin untracked, DPLL
+  unmodelled (MAME stubs it too) — only worth it with a real async
+  transport to talk to.
+- **Floppy**: the `Iwm` READ path stays byte-granular, no flux-level
+  jitter or PLL, and floppy writes are in-memory only (no host-file
+  persistence).
+- **NuBus** arbitration/timeout cycles; **DAFB** VRAM arbitration and a
+  VBL line hard-coded at 480 (as in MAME).
+
+**Caveat on all of the above, learned the hard way on 2026-07-29**: this
+inventory is only worth what its gates are worth, and 22 of 32 profiles
+still have no beyond-boot gate at all. In one day the test suite produced
+a false green (a positive assertion over a too-wide window) and a false
+bug (three rounds chasing a physical-vs-logical memory artifact). Adding
+fidelity on top of unverifiable coverage is work with no way to know it
+landed — the test-depth pass in `TODO.md` outranks every item above.
 
 Every remaining hack must be: (a) behind an env flag or module toggle,
 (b) logged when it fires, (c) listed here, and (d) eventually migrated
