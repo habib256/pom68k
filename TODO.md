@@ -618,20 +618,30 @@ Next milestones:
   - [ ] **The LLE-conformant performance backlog** (2026-07-28, ranked by
     yield; the measured conformant ceiling is ~×2.5-3 on the 040s — anything
     beyond that lives in the non-conformant fast mode, docs/HLE_OVERLAY.md):
-    1. **Extend PGO training to the 030/020 machines.** The shipped recipe
-       trains on the Quadra boot only, so the profile optimizes the 040
-       paths; one LC II + one LC III boot in the `generate` phase would
-       cover mmuFetchWord/mmuTranslateAccess and the V8/Sonora decode
-       cascades. Zero risk, measured-class gain (PGO alone was interp −33 %
-       on the 040).
+    1. ~~**Extend PGO training to the 030/020 machines.**~~ **DONE
+       2026-07-29** (`tools/pgo_train.sh`): one boot per CPU family —
+       Quadra 605 (040+MMU), LC II (030, MMU off), LC III (030, MMU on),
+       LC (020+HMMU) — on BOTH engines, instead of the Quadra boot alone.
+       **Measured on the LC II boot: 145.0 / 144.2 s → 107.0 / 107.6 s,
+       a 26 % cut (×1.35)**, same Release flags on both sides and the
+       gate passing with an identical Finder signature. The old
+       Quadra-only profile had left every 030/020 path cold.
     2. **Lazy condition codes in the x64 backend** (own entry below) — the
        one big conformant codegen lever left.
-    3. **Page-granular dispatch tables for the memory maps.** read8/write16
-       re-run a cascade of range compares on EVERY access on all 32
-       machines; a 4 KB-granular table of handler+base pairs turns that
-       into one indexed load. Benefits both engines and every machine;
-       guard/overlay/remap sites must rebuild the table (same invalidation
-       discipline as the JIT windows, already catalogued per map).
+    3. ~~**Page-granular dispatch tables for the memory maps.**~~
+       **DROPPED 2026-07-29 — measured, and the premise was wrong.** The
+       item assumed a deep range-compare cascade on every access. Counting
+       accesses by destination over an LC II boot (1 475 M accesses):
+       **RAM 69.6 %, ROM 29.3 %, I/O 0.33 %, other 0.80 %**. So 99 % of
+       accesses land on RAM or ROM, whose paths are already 2-4 *perfectly
+       predicted* compares (and `V8Memory::ramIndex` was inlined for this
+       in 2026-07-17), while the long cascades a table would shorten are
+       the I/O ones — a third of one percent of traffic. A 4 KB table
+       would put a **dependent load** in front of the 99 % case to save
+       branches that cost nothing, and is a near-certain net loss.
+       Re-open only with a profile showing decode as a real share; the
+       honest lever for I/O-heavy code would be per-device caching, not a
+       global table.
     4. **Compact mmu040InstrStart.** Eight per-instruction field resets +
        a getCCR() pack; adjacent fields could collapse into one or two wide
        stores. Small, but it sits on every single 040 instruction.

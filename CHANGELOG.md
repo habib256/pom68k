@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 2026-07-29 (late) — PGO across all four CPU families (−26 % on the LC II); the dispatch-table item measured and dropped
+
+**PGO now trains on one machine per CPU family** (`tools/pgo_train.sh`):
+Quadra 605 (040 + MMU), LC II (030, MMU off), LC III (030, MMU on) and
+the LC (020 + HMMU), on BOTH execution engines. The shipped recipe
+trained on the Quadra boot alone, so the profile optimized the 68040
+paths and left every 030/020 path cold — `mmuFetchWord`,
+`mmuTranslateAccess` and the V8/Sonora decode cascades never appeared in
+it. **Measured on the LC II boot: 145.0 / 144.2 s → 107.0 / 107.6 s, a
+26 % cut (×1.35)**, with the same Release flags on both sides and the
+gate passing with a bit-identical Finder signature. PGO changes code
+layout, never semantics.
+
+**The page-granular dispatch-table item is dropped, and the measurement
+is why.** It assumed `read8`/`write16` re-run a deep range-compare
+cascade on every access. Counting accesses by destination over an LC II
+boot — 1 475 M of them — gives **RAM 69.6 %, ROM 29.3 %, I/O 0.33 %,
+other 0.80 %**. Ninety-nine percent land on RAM or ROM, whose paths are
+already two to four *perfectly predicted* compares (`V8Memory::ramIndex`
+was inlined for exactly this in 2026-07-17), while the long cascades a
+table would shorten carry a third of one percent of the traffic. A 4 KB
+table would put a dependent load in front of the 99 % case to save
+branches that cost nothing. Recorded in TODO as dropped-with-evidence
+rather than deferred: re-opening it needs a profile showing decode as a
+real share, and the honest lever for I/O-heavy code would be per-device
+caching, not a global table.
+
+
 ## 2026-07-29 (evening) — A CD mounts in the guest; .cue/.bin; and why 8.6 cannot boot
 
 **The guest mounts a CD.** `q605_cdrom_etalon`: Mac OS 8.1 boots off the
