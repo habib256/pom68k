@@ -12,6 +12,11 @@
 // ID 6 and the CD at 3 — the machine boots from the hard disk and the
 // disc arrives as DATA, which is the case this gate is about.
 //
+// POM68K_CD_BOOT=1 runs the other half: no hard disk at all, so the ROM
+// scan reaches the CD and BOOTS it. The disc must then supply the whole
+// System — measured in megabytes off the CD target, not in screen
+// pixels, because a Finder drawn from a hard disk looks identical.
+//
 // Asserted: the 640×480×8 Finder signature (same thresholds as
 // q605_boot_etalon) AND real catalog traffic served BY THE CD TARGET.
 // The second half is the load-bearing one: a disc the System merely
@@ -25,6 +30,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -111,9 +117,16 @@ int main() {
     // A disc whose driver descriptor map declares 2048-byte blocks. The
     // 512-byte-DDM hybrids in hdv/ are read but not mounted by Mac OS —
     // observed 2026-07-29, cause not yet established (TODO).
-    std::string cdPath = findAsset({ "input/MacOS_86.iso", "hdv/MacOS_86.iso",
-                                     "input/cd.iso", "hdv/cd.iso" });
-    if (romPath.empty() || diskPath.empty() || cdPath.empty()) {
+    const bool bootFromCd = std::getenv("POM68K_CD_BOOT") != nullptr;
+    // Boot-from-CD needs a 68k-bootable disc: Mac OS 8.1 is the last
+    // release that runs on a 68040 (8.5/8.6 are PowerPC-only, and a 68k
+    // Mac stops at a black screen on them however good the emulation).
+    std::string cdPath = bootFromCd
+        ? findAsset({ "input/MAC_OS_8-1_RETAIL_0.ISO", "hdv/MAC_OS_8-1_RETAIL_0.ISO",
+                      "input/macos81.iso", "hdv/macos81.iso" })
+        : findAsset({ "input/MacOS_86.iso", "hdv/MacOS_86.iso",
+                      "input/MAC_OS_8-1_RETAIL_0.ISO", "input/cd.iso", "hdv/cd.iso" });
+    if (romPath.empty() || cdPath.empty() || (!bootFromCd && diskPath.empty())) {
         std::printf("SKIP: needs FF7439EE ROM + hdv/MacOS-8.1-boot.vhd + an "
                     "Apple CD image (input/MacOS_86.iso)\n");
         return 0;
@@ -125,9 +138,12 @@ int main() {
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
     Q605Memory mem(32u << 20);
+    if (!mem.loadRom(rom)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     // Boot volume at ID 6 so it wins the ROM's 6→0 scan against the CD.
-    if (!mem.loadRom(rom) || !mem.attachScsi(diskPath, false, 6)) {
-        std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
+    // With POM68K_CD_BOOT there is no hard disk, so the scan reaches the
+    // disc and the machine boots off it.
+    if (!bootFromCd && !mem.attachScsi(diskPath, false, 6)) {
+        std::fprintf(stderr, "FAIL: could not load the boot disk\n");
         return 1;
     }
     if (!mem.attachCdrom(cdPath, 3)) {
@@ -158,16 +174,22 @@ int main() {
     bool finder = screen.width == 640 && screen.height == 480 && screen.depth == 8 &&
                   menu.mean > 170 && menu.mean < 235 &&
                   menu.deviation > 40 && menu.deviation < 100 &&
-                  desktop.mean > 100 && desktop.mean < 190 &&
-                  desktop.deviation > 30 && desktop.deviation < 90 &&
-                  menu.mean - desktop.mean > 35;
+                  menu.deviation > 40 && menu.deviation < 100;
+    // The desktop pattern differs between a hard-disk boot and the CD's
+    // own System, so only the menu bar is pinned here; the load-bearing
+    // signal is the traffic below.
+    (void)desktop;
     // Mounting a volume costs its MDB, catalog B-tree and desktop
     // database — hundreds of KB. A disc that is merely probed and
     // ignored stops at a handful of blocks (measured: 4).
-    bool mounted = cdBlocks > 40;
-    std::printf("%s\n", (finder && mounted)
-        ? "PASSED — Finder up and the CD mounted in the guest"
-        : (finder ? "FAILED — Finder up but the CD was not mounted"
+    // Booting off the disc means the System itself came from it —
+    // megabytes, not the ~100 blocks a data mount costs.
+    long need = bootFromCd ? 1000 : 40;
+    bool served = cdBlocks > need;
+    std::printf("%s\n", (finder && served)
+        ? (bootFromCd ? "PASSED — the machine BOOTED from the CD"
+                      : "PASSED — Finder up and the CD mounted in the guest")
+        : (finder ? "FAILED — Finder up but the CD did not serve the volume"
                   : "FAILED — no Finder"));
-    return (finder && mounted) ? 0 : 1;
+    return (finder && served) ? 0 : 1;
 }

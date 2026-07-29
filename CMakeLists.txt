@@ -799,6 +799,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(q605_cdrom_etalon PRIVATE pom68k_core)
     add_test(NAME q605_cdrom_etalon COMMAND q605_cdrom_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    # The other half: no hard disk, so the ROM scan reaches the CD and
+    # boots it. Needs a 68k-bootable disc (Mac OS 8.1 — 8.5/8.6 are
+    # PowerPC-only).
+    add_test(NAME q605_cdboot_etalon COMMAND q605_cdrom_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(q605_cdboot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_CD_BOOT=1" TIMEOUT 1800)
 
     add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
     target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)

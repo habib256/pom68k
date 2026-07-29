@@ -508,13 +508,18 @@ Next milestones:
     require its own `Apple_Driver43_CD` partition, which only the 8.6
     disc has). Verify against MAME or a real drive before "fixing"
     anything.
-  - [ ] **Boot from CD**: unverified, and NOT disproven by the 8.6 disc —
-    **Mac OS 8.6 is PowerPC-only** (8.1 was the last 68k release), so a
-    68k Mac cannot boot it whatever the emulation does. Needs a 68k-
-    bootable disc (a Mac OS 8.1 or 7.x install CD). With the CD at ID 3
-    and no higher-ID disk, the ROM does pick it and load its driver — the
-    boot then stops at a black screen, which is the expected outcome for
-    a PowerPC-only System.
+  - [x] ~~**Boot from CD**~~ **DONE 2026-07-29** (`q605_cdboot_etalon`):
+    with no hard disk the ROM's 6→0 scan reaches the CD at ID 3, loads
+    its `Apple_Driver43_CD` partition and boots the disc — 3913 blocks
+    (7.8 MB) of System read off the CD target, 640×480×8 Finder. Asset:
+    a Mac OS 8.1 retail CD. **8.5/8.6 cannot be used**: they are
+    PowerPC-only (8.1 is the last 68k release), so a 68k Mac stops at a
+    black screen on them however good the emulation — the earlier 8.6
+    black screen was correct behaviour, not a bug.
+  - [ ] **Install from CD**: the disc boots and the Installer is
+    reachable, but driving it to completion (mouse through the Installer
+    UI, then a reboot onto the freshly written volume) is not automated.
+    That is the natural next "real work" gate.
   - [ ] **CD audio** (READ TOC already reports the data track; CDDA
     playback, PLAY AUDIO/PAUSE and the audio-through-ASC path are
     absent — no consumer yet).

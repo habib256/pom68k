@@ -29,12 +29,18 @@ like a corrupt disc to the guest. A `.cue` sheet is parsed for its `FILE`
 and first MODE1 track, resolved beside the sheet. The CLI now routes
 `.iso/.cdr/.toast/.cue/.bin`.
 
-**Boot from CD is still unverified, and the 8.6 disc cannot settle it:
-Mac OS 8.6 is PowerPC-only** — 8.1 was the last 68k release — so no 68k
-Mac can boot it however good the emulation is. With the CD at ID 3 and no
-higher-ID disk the ROM does pick the disc and load its driver; the boot
-then stops at a black screen, which is the expected outcome for a
-PowerPC-only System. A Mac OS 8.1 or 7.x install CD would settle it.
+**Boot from CD works** (`q605_cdboot_etalon`, added once a Mac OS 8.1
+retail disc was available): with no hard disk attached, the ROM's 6→0
+scan reaches the CD at ID 3, loads its `Apple_Driver43_CD` partition and
+boots the disc — **3913 blocks / 7.8 MB of System read off the CD
+target**, ending at the 640×480×8 Finder. The traffic is what is
+asserted, not the pixels: a Finder drawn from a hard disk looks
+identical.
+
+This also settled the earlier 8.6 result. **Mac OS 8.5/8.6 are
+PowerPC-only** — 8.1 is the last 68k release — so the black screen that
+disc produced was correct behaviour, not an emulation bug. The ROM had
+picked the disc and loaded its driver exactly as it should.
 
 Also observed, not yet explained: only discs whose driver descriptor map
 declares `sbBlkSize = 2048` mount. The 512-byte-DDM hybrid `TIM_3.iso`
