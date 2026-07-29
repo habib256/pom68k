@@ -652,20 +652,40 @@ Next milestones:
     VASP/RBV loops have the engine but only the env var reaches it. Worth
     it for the LC II (×1.6); copy the QuadraMachine Cmd::CpuEngine pattern.
   - [x] ~~**Lazy condition codes in the x86-64 backend**~~ **DROPPED
-  2026-07-29 — measured, ceiling ≈2.5 %.** The item expected "a third off
-  the per-instruction contract", which is true of contract SIZE but not
-  of time. Measured by DUPLICATING the flag emission (storing the same
-  byte twice is semantically a no-op, so the guest is unaffected and the
-  delta is the marginal cost of one full materialisation set): Q605 JIT
-  boot 32.6 / 32.6 s → 33.6 / 33.2 s, i.e. **+2.5 % for a whole extra
-  set**. Removing a full set therefore saves at most ~2.5 %, and lazy
-  CC can only remove the DEAD subset — realistically 1-2 %. That is not
-  worth an intricate codegen change that silently breaks bit-exactness
-  when wrong, next to the 26 % the PGO retraining gave at zero risk.
-  Caveat on the method: duplicate stores hit the same hot L1 lines, so
-  this may under-read the true cost somewhat — but not by an order of
-  magnitude. Re-open only with a profile attributing real time to
-  `flagsLogic`/`flagsAddSub`.
+  2026-07-29 — measured ceiling ≈0.8 %.** Method: DUPLICATE the flag
+  emission (storing the same byte twice is semantically a no-op, so the
+  guest is unaffected and the delta is the marginal cost of one full
+  materialisation set). Q605 boot on the **x64 backend**: 26.13 / 26.15 s
+  → 26.37 / 26.30 s, i.e. **+0.8 % for a whole extra set**. Lazy CC can
+  only remove the DEAD subset of that, so well under 1 % — not worth an
+  intricate codegen change that silently breaks bit-exactness when wrong.
+  The backlog's "a third off the per-instruction contract" holds for
+  contract SIZE, not for time.
+  **Correction**: the first published figure (2.5 %) was measured with
+  `POM68K_CPU_ENGINE=jit` alone, which selects the **threaded** backend —
+  so the modified x64 code never ran and the delta was pure noise. Any
+  x64-backend measurement must set `POM68K_JIT_BACKEND=x64` explicitly
+  (see the `auto` item below).
+- [ ] **`selectBackend("auto")` can never pick x64 — code contradicts its
+  own contract.** `JitConfig.h:51` documents "auto picks the best backend
+  compiled in AND usable on this host, always falling back to threaded",
+  but `JitBackend.cpp:76` filters the candidate loop with
+  `if (!e.dflt) continue;` and only the `threaded` entry carries
+  `dflt = true`. So `auto` — the default — always lands on threaded.
+  Consequences, all measured 2026-07-29 on the Q605 boot:
+  - interpreter ~62 s, **threaded 32.6 s**, **x64 26.1 s**. Anyone who
+    opts into the JIT today gets threaded and leaves **20 %** on the
+    table.
+  - Every `jit_*_boot_etalon` runs the THREADED backend, so the x86-64
+    code generator has **no end-to-end boot coverage**. Its only gates
+    are the lockstep tests that name it explicitly
+    (`jit_lockstep_x64_test` and friends) — strong on semantics
+    (register-by-register at every instruction boundary) but they never
+    run a machine to the Finder.
+  - x64 does pass `q605_boot_etalon` when named explicitly (verified).
+  Fix: make the auto pass try entries in order and use `dflt` only as the
+  final fallback — but flip it only behind boot-etalon coverage on the
+  x64 backend, since it changes what every JIT user executes.
 - [ ] **Block linking — the one thing that would make J2 pay.** Blocks run
     284 instructions per entry while the guest loads the System and **4.9**
     once the Finder is up: Finder-era 68k is branch-dense enough that a
