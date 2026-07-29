@@ -8,23 +8,33 @@
 //   lc3    — Sonora, Egret 341s0851 (the LC III wire)
 //   lc520  — Sonora AIO, Cuda 341s0060 + the DFAC2 I2C slave
 //   iivx   — VASP, Egret 341s0851 @ 31.3 MHz
-//   iisi   — RBV, Egret 344s0100 @ 20 MHz. NOT registered as a CTest:
-//            this machine's ADB Manager never initializes (ADBBase stays
-//            0, no globals, no device table), so neither mouse nor
-//            keyboard works — an open bug this gate found, tracked in
-//            TODO "IIsi: the ADB Manager never initializes". Keep the
-//            mode: it is the reproducer. Register it once fixed.
+//   iisi   — RBV, Egret 344s0100 @ 20 MHz (screen-observed, see below)
 // Method = q605_cudalle_mouse/key_etalon: boot System 7.5, inject deltas
-// into the bit-serial AdbLine, require the low-memory mouse globals
-// (Mouse $0830) to move; press a key, require a KeyMap ($0174-$0183)
-// bit. The whole chain runs: AdbLine wire → MCU firmware autopoll →
-// VIA1 SR → ADB Manager → drivers. Soft-skips without the assets, and
-// SKIPs (not fails) when the machine fell back to the HLE (no dump) —
-// the gate exists to pin the FIRMWARE path.
+// into the bit-serial AdbLine and require the input to arrive. The whole
+// chain runs: AdbLine wire → MCU firmware autopoll → VIA1 SR → ADB
+// Manager → drivers. Soft-skips without the assets, and SKIPs (not
+// fails) when the machine fell back to the HLE (no dump) — the gate
+// exists to pin the FIRMWARE path.
+//
+// TWO ways to observe the arrival, because one does not fit every machine:
+//  • **Low-memory globals** (Mouse $0830, KeyMap $0174-$017B) — precise,
+//    and they prove the driver chain right down to jCrsrTask. Valid only
+//    where the System's logical low memory IS the physical low memory our
+//    peek8() reads.
+//  • **On-screen pixels** — the only honest option on a RAM-BASED-VIDEO
+//    machine (RBV: IIsi/IIci). There, physical low RAM *is* the
+//    framebuffer and the ROM uses the PMMU to put the System's logical
+//    low memory elsewhere, so peeking "$0830" returns screen pixels.
+//    Reading globals there is how this gate spent two rounds "finding" a
+//    dead ADB stack that was never dead: the $55555555 in "ADBBase" was
+//    the 50%-gray desktop pattern (2026-07-29). The cursor-motion check
+//    below is MMU-independent: idle frames must be identical, and
+//    injected motion must change pixels.
 
 #include "Cpu030.h"
 #include "RbvCpu.h"
 #include "RbvMemory.h"
+#include "RbvVideo.h"
 #include "SonoraCpu.h"
 #include "SonoraMemory.h"
 #include "VaspCpu.h"
@@ -33,6 +43,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -79,10 +90,13 @@ std::vector<uint8_t> loadRomFile(const std::string& p) {
                                 std::istreambuf_iterator<char>());
 }
 
-// The machine-generic phase: boot blind, then drive the wire and watch
-// the low-memory globals. Returns the exit code.
+// Boot blind, then drive the wire. `snapshot` is non-null only on
+// RAM-based-video machines, where low-memory peeks read the framebuffer
+// instead of the System's globals (see the header): there the mouse is
+// asserted on SCREEN PIXELS instead. Returns the exit code.
 template <class M, class C>
-int runInput(M& mem, C& cpu, int64_t kFrame, const char* name) {
+int runInput(M& mem, C& cpu, int64_t kFrame, const char* name,
+             std::function<void(std::vector<uint32_t>&)> snapshot = nullptr) {
     while (mem.cpuHeld()) mem.tick(1000);
     const long kBootFrames = 12000;          // Finder well before this on
                                              // every family boot etalon
@@ -90,20 +104,42 @@ int runInput(M& mem, C& cpu, int64_t kFrame, const char* name) {
         cpu.runCycles(kFrame);
     if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: CPU halted during boot\n"); return 1; }
 
+    if (snapshot) {
+        // Cursor-motion check: an idle Finder must be pixel-stable, and
+        // injected motion must repaint the cursor. MMU-independent, so it
+        // is the only sound observation on this machine class.
+        std::vector<uint32_t> a, b, c;
+        snapshot(a);
+        for (int f = 0; f < 90 && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
+        snapshot(b);
+        long idle = 0;
+        for (size_t i = 0; i < a.size() && i < b.size(); i++) if (a[i] != b[i]) idle++;
+        for (int f = 0; f < 300 && !cpu.isHalted(); f++) {
+            mem.mouseMove(4, 3);
+            cpu.runCycles(kFrame);
+        }
+        snapshot(c);
+        long moved = 0;
+        for (size_t i = 0; i < b.size() && i < c.size(); i++) if (b[i] != c[i]) moved++;
+        std::printf("cursor: idle diff %ld px, after motion %ld px\n", idle, moved);
+        bool ok = moved > idle + 20 && !cpu.isHalted();
+        std::printf("%s — %s mouse on the MCU firmware wire (screen-observed)\n",
+                    ok ? "PASSED" : "FAILED", name);
+        return ok ? 0 : 1;
+    }
+
     auto rd16 = [&](uint32_t a) {
         return int16_t(uint16_t(mem.peek8(a) << 8 | mem.peek8(a + 1)));
     };
     // ADBBase ($0CF8) is the ADB Manager's globals pointer — non-zero and
-    // in RAM once the System has initialized ADB at all. Reported first
-    // because it separates "input path broken" from "ADB never came up":
-    // the IIsi leaves it at 0 (see TODO "IIsi ADB"), so neither device
-    // can possibly work, while a healthy machine shows a System-heap ptr.
+    // in RAM once the System has initialized ADB. Only meaningful on the
+    // machines reached by this path (see the header note on RBV).
     uint32_t adbBase = uint32_t(mem.peek8(0x0CF8)) << 24
                      | uint32_t(mem.peek8(0x0CF9)) << 16
                      | uint32_t(mem.peek8(0x0CFA)) << 8 | mem.peek8(0x0CFB);
     std::printf("ADBBase=$%08X %s\n", adbBase,
                 (adbBase && adbBase < 0x800000) ? "(ADB Manager up)"
-                                                : "(ADB NEVER INITIALIZED)");
+                                                : "(ADB NOT INITIALIZED)");
 
     // ── Mouse: inject deltas, require Mouse ($0830 v / $0832 h) to move ──
     // RawMouse ($082C) is printed too: RawMouse moving with Mouse frozen
@@ -222,8 +258,11 @@ int main(int argc, char** argv) {
         cpu.hardReset();
         if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
         ensureBootDriverType(mem.scsiDisk().image());
+        // RAM-based video: assert on the screen, not on low memory.
+        RbvVideo video(mem);
         return runInput(mem, cpu, RbvMemory::kCpuHz / 60,
-                        "Mac IIsi (Egret 344s0100, RBV)");
+                        "Mac IIsi (Egret 344s0100, RBV)",
+                        [&video](std::vector<uint32_t>& fb) { video.decode(fb); });
     }
     std::fprintf(stderr, "usage: %s lc3|lc520|iivx|iisi\n", argv[0]);
     return 2;

@@ -1,44 +1,48 @@
 # CHANGELOG
 
-## 2026-07-29 — Input-delivery gates for the 030 families; the IIsi mouse bug they caught; loud HLE fallbacks
+## 2026-07-29 — Input-delivery gates for the 030 families; loud HLE fallbacks (and a retracted "bug")
 
-**Three beyond-boot input gates** (`family_input_etalon`, one binary —
-`lc3_input_etalon`, `lc520_input_etalon`, `iivx_input_etalon`) prove the
-firmware-LLE ADB path actually DELIVERS on the Phase C families, not
-just that it boots: System 7.5 up blind, mouse deltas injected into the
-bit-serial `AdbLine`, the low-memory Mouse globals must move and a
-KeyMap bit must land on a keypress — wire → MCU firmware autopoll →
-VIA1 SR → ADB Manager → drivers, end to end. Green on the LC III
-(Egret 341s0851), LC 520 (Cuda 341s0060 + the new DFAC2 slave) and
-IIvx (VASP @ 31.3 MHz).
+**Four beyond-boot input gates** (`family_input_etalon`, one binary —
+`lc3_input_etalon`, `lc520_input_etalon`, `iivx_input_etalon`,
+`iisi_input_etalon`) prove the firmware-LLE ADB path actually DELIVERS
+on the Phase C families, not just that it boots: System 7.5 up blind,
+mouse deltas injected into the bit-serial `AdbLine`, the input must
+arrive — wire → MCU firmware autopoll → VIA1 SR → ADB Manager →
+drivers, end to end. Green on the LC III (Egret 341s0851), LC 520
+(Cuda 341s0060 + the new DFAC2 slave), IIvx (VASP @ 31.3 MHz) and the
+IIsi (Egret 344s0100, RBV).
 
-**The fourth machine failed, and the failure is a real find: the IIsi's
-ADB Manager never initializes at all — no mouse and no keyboard.**
-`ADBBase` ($0CF8) stays 0 for the entire boot, so there are no ADB
-globals and no device table; the LC III shows `$5158` with a correct
-2-entry table (kbd@2, mouse@3), `MBState $80`, while the IIsi has
-`MBState $00` and an all-zero `KeyMap`. The wire is exonerated in full —
-the Egret 344S0100 enumerates, autopolls address 3 and delivers
-4000/4000 correct `82 83` reports that nothing host-side consumes — and
-the failure is bit-identical under the firmware LLE and the HLE
-byte-model, so it sits above the MCU entirely. Sampling `$0CF8` across
-the boot shows it holding only RAM-test patterns before settling to 0:
-nobody ever writes it. The ROM's own boot-time ADBReInit runs (that is
-the captured wire traffic); the System-era init that allocates the
-globals never does. Tracked in TODO with the ROM entry points and two
-already-eliminated hypotheses; the `iisi` mode ships in the gate binary,
-unregistered until the hunt lands.
+**Retraction, same day: the "IIsi has no working ADB" finding was
+wrong — three times over — and the machine was fine all along.** The
+gate and every follow-up probe read low memory through `peek8()`, which
+is PHYSICAL. The IIsi is a **RAM-based-video** machine: physical low RAM
+*is* the framebuffer, and the ROM uses the PMMU (TC = `$80F84500`,
+translation on) to put the System's logical low memory elsewhere. So
+every "global" I read was a screen pixel — `$55555555` in "ADBBase" is
+the 50%-gray desktop pattern, `$FFE7C7FF` is dithered content, the
+zeros are black, and the "QuickDraw fill loop zeroing the globals" at
+`$4082D01A` was QuickDraw painting the desktop, exactly as it should.
+An MMU-independent check settles it: capture the framebuffer, inject
+motion, capture again — idle diff **0 px**, after motion **46 px**. The
+cursor moves. `iisi_input_etalon` now asserts that and is registered.
 
-**The first version of this entry said "mouse frozen, keyboard fine" —
-that was a bug in the new gate**, and it is worth recording as such: the
-keyboard check scanned 16 bytes at `$0174` when KeyMap is exactly 8, so
-an unrelated neighbour ($017D = $41) read as a keystroke and hid half
-the failure for a full round. Fixed (the three green machines still
-pass, so a real keypress does land in KeyMap); the gate now prints
-ADBBase and labels it "ADB NEVER INITIALIZED". A positive assertion over
-a too-wide window is a false green. This is exactly what the test-depth
-pass exists for: a machine can pass its boot signature for four days
-while no input device has ever worked.
+Two things worth keeping from the wrong turn. First, **`peek8()` is
+physical**: on any machine whose ROM relocates low memory behind the
+MMU, guest-global assertions are meaningless — check `TC` bit 31 before
+trusting one, or assert on something the MMU cannot move. Second,
+**corroborate before concluding**: each round produced a coherent story
+(a spin at `$4080A8E6`, 51 relocation passes, "nobody ever writes
+ADBBase") and every one of them was consistent with the artifact, so
+internal coherence proved nothing. One cheap end-to-end observation —
+does the cursor move? — would have killed all three at the outset.
+Prefer the observation closest to the user's experience over the one
+closest to the code.
+
+**A real gate defect was found and fixed en route**: the keyboard check
+scanned 16 bytes at `$0174` when KeyMap is exactly 8, so the neighbour
+`$017D = $41` read as a keystroke. Narrowed to 8; the globals-based
+machines still pass, so a real keypress does land in KeyMap. A positive
+assertion over a too-wide window is a false green.
 
 **Every HLE ADB fallback is now LOUD** (the §1.9/§2 retirement-policy
 pass, `docs/LLE_VS_HLE.md`): all eight machine classes and

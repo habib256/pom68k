@@ -671,75 +671,47 @@ Highest-ROI closers, in order:
   — the Quadra 605 / Mac OS 8.1 soak, which also exercises the 53C96 WRITE
   path, is the next one (blocked on nothing but the work).
 - [x] ~~**Input-delivery gates for the boot-only machines**~~ **DONE
-  2026-07-29 for Sonora/VASP** (`family_input_etalon` — one binary, gates
-  `lc3_input_etalon` / `lc520_input_etalon` / `iivx_input_etalon`): boot
-  Sys 7.5 blind, inject deltas on the bit-serial AdbLine, assert the
-  low-memory Mouse ($0830) moves and a KeyMap ($0174) bit lands on a
-  keypress — the whole wire→MCU-autopoll→VIA-SR→ADB-Manager→driver chain.
-  Diag knobs: `POM68K_INPUT_ANYPATH=1` runs it on the HLE path; RawMouse
-  + MBState printed to split delivery from cursor-task failures.
-  **And it caught a real bug on its fourth machine — see "IIsi: the ADB
-  Manager never initializes" below**; the `iisi` mode stays in the
-  binary, unregistered until fixed.
-- [ ] **IIsi: the ADB Manager never initializes AT ALL — no mouse AND no
-  keyboard** (found 2026-07-29 by `family_input_etalon iisi`; scope
-  corrected in round 2, see below). `ADBBase` ($0CF8) stays **0** for the
-  whole boot, so there are no ADB globals and no device table — where the
-  LC III shows `$5158` with a correct 2-entry table (kbd@2 handler $01
-  driver $0000AB42, mouse@3 handler $01 driver $408B6582), `$14C` bitmap
-  `$000C`, `MBState $80`. On the IIsi `MBState` reads `$00` and
-  `KeyMap $0174-$017B` is all zeros. Neither device can work; the machine
-  still reaches the Finder, which is why the boot etalon never noticed.
-  The wire itself is PROVEN healthy: the Egret 344S0100 enumerates,
-  autopolls addr 3 and delivers 4000/4000 correct `82 83` reports that
-  nothing on the host side consumes.
-  **Hunt round 2 (2026-07-29) — the scope was WRONG, and a gate bug hid
-  half of it.** "Mouse frozen, keyboard fine" came from
-  `family_input_etalon` scanning **16** bytes at `$0174` when KeyMap is
-  exactly **8** — the stray `$017D = $41` read as a keystroke. Fixed
-  (the three green machines still pass, so the keystroke genuinely lands
-  in KeyMap on a healthy machine); the gate now also prints ADBBase and
-  labels it "ADB NEVER INITIALIZED". Lesson worth keeping: a positive
-  assertion over a too-wide window is a false green, and it masked the
-  bigger half of this bug for a full round.
-  Also from round 2: sampling `$0CF8` across the boot shows ADBBase
-  holding only **RAM-test patterns** (`$DB6DB6DB`, `$B6DB6DB6`,
-  `$6DB6DB6D`, `$55555555`, `$FFE7C7FF`) before settling to 0 at
-  ~frame 596 — i.e. it is never *written* by anyone, just left as
-  whatever the memory test wrote. The ROM's own boot-time ADBReInit runs
-  (that is the wire traffic we captured) but the System-era ADB
-  initialization, the step that allocates the globals in the System heap,
-  never happens. Next: find why System 7.5 skips it on this machine —
-  the ROM ADB path is `$4080A8B0` (ADBReInit: clears 76 longs through
-  a3, sets `$15D = $24`, enumerates, waits bit 5, then `$4080AA96` +
-  `$4080AD10`); check what a3 actually is on each call and which
-  machine/ROM property (UniversalInfo ADB type, `$4080A42C`) the System
-  consults before setting ADBBase.
-  **Hunt round 1 (2026-07-29) — two hypotheses ELIMINATED, don't repeat:**
-  - *Not the MCU model.* The failure is bit-identical under the Egret
-    **firmware LLE** and the **HLE** byte-model (`POM68K_EGRET_LLE=0`
-    with the gate's `POM68K_INPUT_ANYPATH=1`). Whatever breaks sits
-    ABOVE the MCU — machine/VIA/ROM interaction, not firmware.
-  - *Not the VIA1 port-B composition.* Tried MAME parity exactly
-    (`via_in_b_iisi` returns the BARE `xcvr_session << 3`, all other
-    bits 0, vs our `$C7 |`): mouse still frozen. Reverted unbuilt-on —
-    the `$C7` comment's own warning (transport wedges after byte 1)
-    was never re-tested, so a future attempt must run
-    `iisi_boot_etalon` before keeping it.
-  - *New evidence.* During the ADB window the guest spins at ROM
-    `$4080A8E6`: `btst.b #$5,$15D(a3)` / `bne.b` — i.e. **ADBBase+$15D
-    bit 5**, the very "command pending" soft flag §1.9 documents for
-    the Mac II Slot-Manager hack. The Egret HLE command log ends on
-    repeated pseudo-`$02` (READ_MCU_MEM) polls of `$7C/$7E/$7F/$82`
-    then a `$08` (WRITE_MCU_MEM) — the LC III issues the same `$08`
-    once and moves on. And `MBState` ($0172) reads `$00` on the IIsi
-    where the working LC III reads `$80` (idle-up): the byte was never
-    initialized, confirming the driver never installed.
-  Next: single-step the ROM's ADB completion path around `$4080A8E6` —
-  who is expected to clear ADBBase+$15D bit 5, and which reply byte /
-  VIA event the IIsi ROM is waiting on that never arrives. Diag tools
-  are in the scratchpad pattern (dual guest+MCU PC histogram, the
-  `POM68K_ADB_LLE_TRACE` SRQ / mouse-Listen-R3 lines added this round).
+  2026-07-29** (`family_input_etalon` — one binary, gates
+  `lc3_input_etalon` / `lc520_input_etalon` / `iivx_input_etalon` /
+  `iisi_input_etalon`): boot Sys 7.5 blind, inject deltas on the
+  bit-serial AdbLine, and require the input to arrive — the whole
+  wire→MCU-autopoll→VIA-SR→ADB-Manager→driver chain. Sonora/VASP assert
+  the low-memory Mouse ($0830) + a KeyMap ($0174-$017B) bit; the **IIsi
+  asserts on SCREEN PIXELS** (idle frames identical, injected motion
+  repaints the cursor) because on a RAM-based-video machine physical low
+  RAM *is* the framebuffer — see the retraction below. Diag knob:
+  `POM68K_INPUT_ANYPATH=1` runs any of them on the HLE path.
+- [x] ~~**IIsi: the ADB Manager never initializes**~~ **RETRACTED
+  2026-07-29 — there was never a bug. The IIsi mouse works.** Three
+  rounds of "findings" (mouse driver not binding → no ADB at all →
+  ADBBase never written) were all one measurement artifact: the gate and
+  every probe read low memory with `peek8()`, which is PHYSICAL, and the
+  IIsi is a **RAM-based-video** machine — physical low RAM *is* the
+  framebuffer, and the ROM uses the PMMU (TC=$80F84500, translation on)
+  to put the System's logical low memory somewhere else. So "ADBBase"
+  was screen pixels all along: the `$55555555` is the 50%-gray desktop
+  pattern, `$FFE7C7FF` is dithered content, the zeros are black, and the
+  "QuickDraw fill loop writing zeros over the globals" at `$4082D01A`
+  was QuickDraw painting the screen — exactly as it should.
+  Settled by an MMU-independent check: capture the framebuffer, inject
+  motion, capture again. Idle diff **0 px**, after motion **46 px** —
+  the cursor moves. `iisi_input_etalon` now asserts that, and is
+  registered. Keep the lesson, not the bug:
+  - **`peek8()` is physical.** On any machine whose ROM relocates low
+    memory behind the MMU, guest-global assertions are meaningless.
+    Check `TC` bit 31 before trusting a low-memory read, or assert on
+    something the MMU cannot move — pixels, wire traffic, device state.
+  - **Corroborate before concluding.** Every round produced a coherent
+    story (spin at `$4080A8E6`, 51 relocation passes, "nobody writes
+    ADBBase") and each was consistent with the artifact. A single cheap
+    end-to-end check — does the cursor move? — would have killed all
+    three at the start. Prefer the observation closest to the user's
+    experience before the one closest to the code.
+  - A real gate bug WAS found en route and fixed: the keyboard check
+    scanned 16 bytes at `$0174` when KeyMap is exactly 8, so `$017D=$41`
+    read as a keystroke. A positive assertion over a too-wide window is
+    a false green.
+
 - [ ] **Widen per-machine System coverage.** Each profile's etalon pins one
   reference image (`GISTPERSO`, Infinite Mac 8.1…). The `finder_boot_matrix`
   helps, but functional coverage across images is thin — the exact

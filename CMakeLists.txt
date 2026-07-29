@@ -441,15 +441,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
 
     # Test-depth gates: the firmware-LLE ADB wire delivers mouse+keyboard
     # on the Phase C 030 families (one binary, one machine per test —
-    # Sonora Egret, Sonora AIO Cuda, VASP). Soft-skip without assets.
-    # The `iisi` mode exists in the binary but is NOT registered: the IIsi
-    # System never binds its mouse driver (keyboard fine, wire proven
-    # perfect — 4000 delivered reports ignored, RawMouse/MBState virgin) —
-    # an open bug found BY this gate, tracked in TODO "IIsi mouse".
-    # Register it the day the hunt lands.
+    # Sonora Egret, Sonora AIO Cuda, VASP, RBV). Soft-skip without assets.
+    # `iisi` asserts on SCREEN PIXELS (cursor motion) rather than the
+    # low-memory globals: on a RAM-based-video machine physical low RAM is
+    # the framebuffer, so peeking the globals reads the desktop pattern.
     add_executable(family_input_etalon tests/family_input_etalon.cpp)
     target_link_libraries(family_input_etalon PRIVATE pom68k_core)
-    foreach(fam lc3 lc520 iivx)
+    foreach(fam lc3 lc520 iivx iisi)
         add_test(NAME ${fam}_input_etalon COMMAND family_input_etalon ${fam}
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     endforeach()
