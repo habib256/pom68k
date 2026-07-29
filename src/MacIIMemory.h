@@ -67,6 +67,14 @@ public:
     AscV8& asc() { return asc_; }
     Ncr5380& scsi() { return scsi_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
+    // Mount a CD image at a SCSI ID. Call AFTER attachScsi: the disk is
+    // mirrored across every ID below (a boot-scan workaround), so the CD
+    // must overwrite its own slot afterwards to be seen as a CD.
+    bool attachCdrom(const std::string& path, int id = 3) {
+        if (id < 0 || id > 6 || !scsiDisks_[id].openCdrom(path)) return false;
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
         // Mirror on every ID so StartBoot's 7→0 scan does not burn multi-

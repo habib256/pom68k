@@ -1,5 +1,54 @@
 # CHANGELOG
 
+## 2026-07-29 (later) — SCSI CD-ROM support, a guest-level floppy gate, and the LLE inventory re-synced
+
+**CD-ROM targets are in.** `ScsiDisk` gained a second personality
+(`openCdrom`) rather than a new class, because both SCSI controllers and
+all 32 machines already route to `ScsiDisk*` — MAME derives its cdrom
+from a shared base for the same reason. A CD differs in its INQUIRY type
+($05, removable), 2048-byte blocks, being read-only, and a handful of
+commands: READ TOC (one MODE1 data track + lead-out, LBA and MSF),
+START/STOP UNIT with eject, PREVENT/ALLOW REMOVAL, MODE SELECT, and
+WRITE refused as DATA PROTECT. The load-bearing piece is the **Apple
+magic MODE SENSE page $30** carrying "APPLE COMPUTER, INC" (MAME
+`bus/nscsi/cd.cpp:604-618`) — Apple's CD-ROM driver reads it to decide a
+drive is genuine, and without it a disc never mounts however correct the
+rest of the target is. Ejecting empties the medium but keeps the target
+present, so the guest sees an empty drive rather than a missing device,
+and reads then fail NOT READY instead of silently returning zeros.
+Raw 2352-byte rips are refused outright rather than mis-read as MODE1 —
+a wrong block size looks exactly like a corrupt volume from the guest.
+
+Wiring: `attachCdrom(path, id = 3)` on all nine multi-target machines
+(MAME puts the Mac's CD at SCSI 3, `maciivx.cpp:323`), and the CLI now
+routes `.iso`/`.cdr`/`.toast` there automatically — name-based on
+purpose, since a `.dsk` that happens to be 2048-aligned is still a hard
+disk. Gate `scsi_cdrom_test` (31 checks, self-contained — it builds its
+own image, no assets needed).
+
+**A guest-level floppy gate** (`lcii_floppy_etalon`): the guest side of
+the floppy path had no coverage at all — `floppy_persist_test` drives
+`SonyDrive` directly. The new scenario inserts an 800K HFS medium after
+the Finder is up (an insert EVENT is what makes the System poll, and it
+is the real user gesture) and requires it to read ~1.7 M nibbles over the
+real IWM, mount the volume, open its window, and survive eject +
+re-insert byte-intact. A guest-INITIATED write is deliberately NOT
+asserted: Cmd-N in the post-insert state modifies neither the floppy nor
+the hard disk while the identical gesture works on the HD in `persist`,
+so the keystroke is dropped rather than misrouted. That gap is written up
+in TODO with the evidence instead of the assertion being quietly
+weakened to look like coverage it does not have.
+
+**`docs/LLE_VS_HLE.md` sixth pass**: the header was two rounds stale (26
+profiles / 91 gates, now 32 / 120). The hack list is empty on every
+default path; §4 gained the Cuda I2C/DFAC2 fact and the RBV
+physical-vs-logical low-memory split; §5 now states plainly that the
+remaining LLE distance is §3 (whole-frame video, tick batching, no 040
+copyback, SCC bit-serial, floppy flux, NuBus/DAFB timing) — with the
+caveat that 22 of 32 profiles still have no beyond-boot gate, so the
+test-depth pass outranks every fidelity item on that list.
+
+
 ## 2026-07-29 — Input-delivery gates for the 030 families; loud HLE fallbacks (and a retracted "bug")
 
 **Four beyond-boot input gates** (`family_input_etalon`, one binary —

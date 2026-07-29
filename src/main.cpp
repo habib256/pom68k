@@ -798,6 +798,20 @@ static void relaunchIfSwitched(char* argv0) {
 #endif
 }
 
+// A CD image by extension: raw MODE1 (.iso/.cdr/.toast). Kept name-based
+// on purpose — a .dsk that happens to be 2048-aligned is still a hard
+// disk, and guessing from content would mount it as a CD.
+static bool isCdImage(const std::string& p) {
+    auto ends = [&](const char* e) {
+        size_t n = std::strlen(e);
+        if (p.size() < n) return false;
+        for (size_t i = 0; i < n; i++)
+            if (std::tolower(p[p.size() - n + i]) != e[i]) return false;
+        return true;
+    };
+    return ends(".iso") || ends(".cdr") || ends(".toast");
+}
+
 // List floppy images under disks35/ (raw .dsk / .img SuperDrive media).
 static std::vector<std::string> listFloppyImages() {
     namespace fs = std::filesystem;
@@ -1027,6 +1041,15 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     static std::vector<std::string> extraDisks;
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;
+        // A CD image goes to the CD-ROM target (MAME puts the Mac's at
+        // SCSI 3), everything else is another hard disk.
+        if (isCdImage(argv[i])) {
+            if (mem.attachCdrom(argv[i]))
+                std::printf("SCSI CD 3: %s (read-only)\n", argv[i]);
+            else
+                std::fprintf(stderr, "SCSI CD 3: %s FAILED\n", argv[i]);
+            continue;
+        }
         int id = int(extraDisks.size()) + 1;
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);

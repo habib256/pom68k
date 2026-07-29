@@ -143,6 +143,14 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
+    // Mount a CD image (.iso/.cdr/.toast) at a SCSI ID. MAME puts the
+    // Mac's CD-ROM at ID 3 (maciivx.cpp:323); the target stays present
+    // across an eject so the guest sees an empty drive, not a gap.
+    bool attachCdrom(const std::string& path, int id = 3) {
+        if (id < 0 || id > 6 || !scsiDisks_[id].openCdrom(path)) return false;
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
     // SWIM1 comes up IWM-compatible (GCR, the proven Plus Iwm inside);
     // the ISM personality (1.44 MB MFM) engages on the driver's 1-0-1-1
     // mode-register magic (Swim1.h). The Spice (Color Classic) carries a

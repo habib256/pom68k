@@ -112,6 +112,14 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
+    // Mount a CD image (.iso/.cdr/.toast) at a SCSI ID. MAME puts the
+    // Mac's CD-ROM at ID 3 (maciivx.cpp:323); the target stays present
+    // across an eject so the guest sees an empty drive, not a gap.
+    bool attachCdrom(const std::string& path, int id = 3) {
+        if (id < 0 || id > 6 || !scsiDisks_[id].openCdrom(path)) return false;
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
     Swim1& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }

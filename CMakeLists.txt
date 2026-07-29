@@ -791,6 +791,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
 
     # Floppy write persistence: committed sectors reach the host .dsk /
     # DC42 file on eject/exit when write-back is opted in (GUI default).
+    # Gate: the SCSI CD-ROM personality (type $05, 2048-byte blocks, READ
+    # TOC, and the Apple magic MODE SENSE page $30). Self-contained.
+    add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
+    target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)
+    add_test(NAME scsi_cdrom_test COMMAND scsi_cdrom_test)
+
     add_executable(floppy_persist_test tests/floppy_persist_test.cpp)
     target_link_libraries(floppy_persist_test PRIVATE pom68k_core)
     add_test(NAME floppy_persist_test COMMAND floppy_persist_test)

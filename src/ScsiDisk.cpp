@@ -12,7 +12,8 @@ constexpr int kBlockSize = 512;
 // SCSI status bytes
 constexpr uint8_t kGood = 0x00, kCheck = 0x02;
 // Sense keys
-constexpr uint8_t kNoSense = 0x00, kIllegalRequest = 0x05;
+constexpr uint8_t kNoSense = 0x00, kNotReady = 0x02, kIllegalRequest = 0x05,
+                  kDataProtect = 0x07, kUnitAttention = 0x06;
 
 // wrap_hfs.py layout: 96-block head (DDM + map + Apple_Driver43) then HFS.
 constexpr uint32_t kFacadePrefixBlocks = 96;
@@ -168,7 +169,58 @@ bool ScsiDisk::open(const std::string& path, bool writeBack) {
     return blocks_ > 0;
 }
 
+// ── CD-ROM personality ────────────────────────────────────────────────
+// Raw MODE1 images only (.iso/.cdr/.toast): 2048-byte user data per
+// sector, which is what every Mac CD carries and what READ(10) returns.
+// 2352-byte raw-with-subchannel rips are rejected rather than silently
+// mis-read — a wrong block size looks like a corrupt volume to the guest,
+// and that is exactly the kind of silent failure this project keeps
+// finding the hard way.
+bool ScsiDisk::openCdrom(const std::string& path) {
+    kind_ = Kind::Cdrom;
+    attached_ = true;
+    if (file_.is_open()) file_.close();
+    writeBack_ = false;
+    hfsPrefixBlocks_ = 0;
+    image_.clear();
+    blocks_ = 0;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    image_.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    if (image_.size() % 2048) {
+        std::fprintf(stderr, "CD-ROM: %s is %zu bytes, not a multiple of 2048 "
+                     "— raw 2352-byte rips are not supported\n",
+                     path.c_str(), image_.size());
+        image_.clear();
+        return false;
+    }
+    blocks_ = uint32_t(image_.size() / 2048);
+    return blocks_ > 0;
+}
+
+void ScsiDisk::eject() {
+    image_.clear();
+    blocks_ = 0;
+    hfsPrefixBlocks_ = 0;
+    if (file_.is_open()) file_.close();
+    writeBack_ = false;
+    // A CD drive with no disc is still a target; a disk image that is
+    // closed is simply gone.
+    setSense(kNotReady, 0x3A);                   // MEDIUM NOT PRESENT
+}
+
 void ScsiDisk::read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out) {
+    if (kind_ == Kind::Cdrom) {
+        out.assign(size_t(count) * 2048, 0);
+        uint64_t off = uint64_t(lba) * 2048;
+        if (off < image_.size()) {
+            uint64_t n = uint64_t(count) * 2048;
+            uint64_t avail = image_.size() - off;
+            std::memcpy(out.data(), image_.data() + off,
+                        size_t(n < avail ? n : avail));
+        }
+        return;
+    }
     if (sound_) {
         sound_->motor(true, true);
         sound_->step(int(lba >> 11), FloppySoundSink::kNoStamp);
@@ -244,6 +296,118 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             return kCheck;
         }
     }
+    // ── CD-ROM personality: the commands that differ, then fall through
+    // to the shared ones (REQUEST SENSE, READ(6)/(10)). Everything a Mac
+    // needs to see a disc; audio playback is deliberately absent (no
+    // consumer yet — see ScsiDisk.h).
+    if (kind_ == Kind::Cdrom) {
+        switch (cdb[0]) {
+            case 0x00:                               // TEST UNIT READY
+                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                return kGood;
+
+            case 0x12: {                             // INQUIRY
+                uint8_t alloc = cdb[4] ? cdb[4] : 36;
+                dataOut.assign(alloc, 0);
+                if (dataOut.size() > 0) dataOut[0] = 0x05;   // CD-ROM device
+                if (dataOut.size() > 1) dataOut[1] = 0x80;   // removable
+                if (dataOut.size() > 2) dataOut[2] = 0x02;   // SCSI-2
+                if (dataOut.size() > 3) dataOut[3] = 0x02;   // response format
+                if (dataOut.size() > 4) dataOut[4] = 0x20;   // additional length
+                // The Apple CDSC identifies as a Sony mechanism with Apple
+                // firmware (MAME cd.cpp:99). The driver's real gate is the
+                // MODE SENSE page $30 below, not these strings.
+                static const char id[] = "SONY    CD-ROM CDU-8003A1.0i";
+                for (size_t i = 8; i < dataOut.size() && i - 8 < sizeof(id) - 1; i++)
+                    dataOut[i] = uint8_t(id[i - 8]);
+                for (size_t i = 8; i < dataOut.size() && i < 36; i++)
+                    if (!dataOut[i]) dataOut[i] = ' ';       // space-padded
+                return kGood;
+            }
+
+            case 0x25: {                             // READ CAPACITY (10)
+                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                uint32_t last = blocks_ - 1;
+                dataOut = { uint8_t(last >> 24), uint8_t(last >> 16),
+                            uint8_t(last >> 8), uint8_t(last),
+                            0, 0, 0x08, 0x00 };      // 2048-byte blocks
+                return kGood;
+            }
+
+            case 0x1A: {                             // MODE SENSE(6)
+                const uint8_t page = cdb[2] & 0x3F;
+                uint8_t alloc = cdb[4] ? cdb[4] : 4;
+                std::vector<uint8_t> body;
+                // The magic Apple page: "APPLE COMPUTER, INC" is what the
+                // Apple CD-ROM driver reads to decide a drive is genuine
+                // (MAME cd.cpp:604-618). Without it the disc never mounts,
+                // however correct the rest of the target is.
+                if (page == 0x30 || page == 0x3F) {
+                    static const uint8_t magic[0x17] = {
+                        0x00, 'A','P','P','L','E',' ','C','O','M','P','U',
+                        'T','E','R',',',' ','I','N','C',' ',' ',' ' };
+                    body.push_back(0x30);
+                    body.insert(body.end(), magic, magic + sizeof magic);
+                }
+                dataOut.assign(4 + body.size(), 0);
+                dataOut[0] = uint8_t(dataOut.size() - 1);    // mode data length
+                dataOut[1] = 0x01;                           // medium type
+                dataOut[2] = 0x80;                           // write protected
+                dataOut[3] = 0;                              // no block descriptor
+                for (size_t i = 0; i < body.size(); i++) dataOut[4 + i] = body[i];
+                if (dataOut.size() > alloc) dataOut.resize(alloc);
+                return kGood;
+            }
+
+            case 0x43: {                             // READ TOC
+                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                const bool msf = (cdb[1] & 0x02) != 0;
+                // One MODE1 data track plus the lead-out — a data CD as the
+                // Mac sees it (MAME cd.cpp:773 format 0).
+                auto addr = [&](uint32_t lba, uint8_t* p) {
+                    if (!msf) { p[0] = uint8_t(lba >> 24); p[1] = uint8_t(lba >> 16);
+                                p[2] = uint8_t(lba >> 8);  p[3] = uint8_t(lba); return; }
+                    uint32_t f = lba + 150;          // MSF is offset by 2 s
+                    p[0] = 0; p[1] = uint8_t(f / (60 * 75));
+                    p[2] = uint8_t((f / 75) % 60); p[3] = uint8_t(f % 75);
+                };
+                dataOut.assign(20, 0);
+                dataOut[0] = 0; dataOut[1] = 18;     // TOC data length
+                dataOut[2] = 1; dataOut[3] = 1;      // first / last track
+                dataOut[5] = 0x14;                   // ADR 1, data track
+                dataOut[6] = 1;                      // track number
+                addr(0, &dataOut[8]);
+                dataOut[13] = 0x14;
+                dataOut[14] = 0xAA;                  // lead-out
+                addr(blocks_, &dataOut[16]);
+                uint16_t alloc = uint16_t(cdb[7] << 8 | cdb[8]);
+                if (alloc && dataOut.size() > alloc) dataOut.resize(alloc);
+                return kGood;
+            }
+
+            case 0x1B:                               // START/STOP UNIT
+                // bit 1 of byte 4 = LoEj: a "stop + eject" empties the drive.
+                if ((cdb[4] & 0x02) && !(cdb[4] & 0x01)) eject();
+                return kGood;
+
+            case 0x1E:                               // PREVENT/ALLOW REMOVAL
+            case 0x15:                               // MODE SELECT(6)
+            case 0x2B:                               // SEEK(10)
+                return kGood;
+
+            case 0x0A: case 0x2A:                    // WRITE(6)/(10)
+                setSense(kDataProtect, 0x27);        // WRITE PROTECTED
+                return kCheck;
+
+            case 0x08: case 0x28:                    // READ(6)/(10)
+                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                break;                               // shared path below
+
+            default:
+                break;                               // shared path below
+        }
+    }
+
     switch (cdb[0]) {
         case 0x00:                                   // TEST UNIT READY
             return kGood;

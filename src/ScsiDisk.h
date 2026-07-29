@@ -17,9 +17,16 @@
 // onto the original file. Template search: $POM68K_SCSI_DDM_TEMPLATE, then
 // HD20SC.vhd / boot.vhd beside the image or under hdv/. Offline alternative:
 // tools/wrap_hfs.py.
-// Source of truth: MAME nscsi_hd.cpp; SCSI-1 (SASI) spec; DEV.md § SCSI.
+// The same class also serves a **CD-ROM** target (`openCdrom`): SCSI type
+// $05, removable, read-only, 2048-byte blocks, plus READ TOC, START/STOP
+// UNIT, PREVENT/ALLOW REMOVAL and — the load-bearing one — the Apple
+// magic MODE SENSE page $30 carrying "APPLE COMPUTER, INC", which is what
+// Apple's CD-ROM driver checks before it will bind to a drive
+// (MAME bus/nscsi/cd.cpp:604-618).
+// Source of truth: MAME nscsi_hd.cpp + bus/nscsi/cd.cpp; SCSI-1 (SASI)
+// spec; DEV.md § SCSI.
 // Gate: tests/scsi_boot_etalon.cpp, tests/scsi_pdma_test.cpp,
-//       tests/scsi_hfs_facade_test.cpp.
+//       tests/scsi_hfs_facade_test.cpp, tests/scsi_cdrom_test.cpp.
 
 #pragma once
 #include "FloppySoundSink.h"
@@ -30,8 +37,26 @@
 
 class ScsiDisk {
 public:
+    // Two personalities on one target, because both SCSI controllers
+    // (`Ncr5380`, `Ncr53c96`) and all 32 machines route to `ScsiDisk*`:
+    // a CD-ROM differs from a hard disk in its INQUIRY type, its 2048-byte
+    // blocks, being removable and read-only, and a handful of extra
+    // commands — not in how it is wired. MAME derives its cdrom from a
+    // shared base for the same reason (`bus/nscsi/cd.cpp`).
+    enum class Kind { Disk, Cdrom };
+
     bool open(const std::string& path, bool writeBack = false);
-    bool present() const { return blocks_ > 0; }
+    // Mount a CD image (.iso/.cdr/.toast — raw 2048-byte MODE1 sectors).
+    // Always read-only; `eject()` empties the drive but keeps the target
+    // present, so the guest sees an empty drive rather than no device.
+    bool openCdrom(const std::string& path);
+    void eject();
+    bool cdrom() const { return kind_ == Kind::Cdrom; }
+    bool mediumPresent() const { return blocks_ > 0; }
+    uint32_t blockSize() const { return kind_ == Kind::Cdrom ? 2048u : 512u; }
+
+    // A CD-ROM target exists even with no disc in it; a hard disk does not.
+    bool present() const { return kind_ == Kind::Cdrom ? attached_ : blocks_ > 0; }
     uint32_t blocks() const { return blocks_; }
 
     // True when open() applied the in-memory HFS-flat → SCSI façade.
@@ -65,6 +90,8 @@ private:
     std::vector<uint8_t> image_;     // raw sectors (possibly façade-prefixed)
     std::fstream file_;              // write-back stream (open iff writeBack_)
     bool writeBack_ = false;
+    Kind kind_ = Kind::Disk;
+    bool attached_ = false;          // CD drive exists (disc may be absent)
     uint32_t blocks_ = 0;
     // Non-zero when image_ has a synthetic DDM/PM/driver prefix; HFS file
     // bytes begin at this LBA and write-back subtracts it from the LBA.

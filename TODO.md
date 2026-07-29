@@ -483,6 +483,24 @@ Next milestones:
   - Create a screenshot regression runner for the Plus boot/Finder paths.
   - Keep asset-dependent tests soft-skippable.
 
+- [x] ~~**CD-ROM support**~~ **DONE 2026-07-29**: `ScsiDisk::openCdrom`
+  adds a CD personality (INQUIRY type $05 + removable, 2048-byte blocks,
+  READ TOC, START/STOP eject, read-only) with the **Apple magic MODE
+  SENSE page $30** that Apple's CD driver gates on. `attachCdrom(path,
+  id = 3)` on all nine multi-target machines; the CLI routes
+  `.iso`/`.cdr`/`.toast`. Gate `scsi_cdrom_test` (31 checks).
+  Remaining CD work, in rough order of value:
+  - [ ] **Boot from CD** (the ROM's SCSI scan already covers ID 3; needs
+    a bootable Apple CD image to pin it).
+  - [ ] **A guest-level mount gate**: today's gate is device-level only.
+    Same shape as `lcii_floppy_etalon` — insert an ISO, require the
+    System to mount it and open its window.
+  - [ ] **CD audio** (READ TOC already reports the data track; CDDA
+    playback, PLAY AUDIO/PAUSE and the audio-through-ASC path are
+    absent — no consumer yet).
+  - [ ] 2352-byte raw rips + .cue/.bin multi-track (refused today rather
+    than mis-read).
+
 ## Cross-machine architecture
 
 - [ ] **Implement save states.**
