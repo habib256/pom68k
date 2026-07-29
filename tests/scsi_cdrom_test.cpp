@@ -158,6 +158,44 @@ int main() {
         std::remove(raw.c_str());
     }
 
+    // MODE1/2352 raw rips: de-framed to user data, not served raw.
+    {
+        const std::string rawPath = "scsi_cdrom_test_2352.bin";
+        std::vector<uint8_t> raw(2352 * 4, 0);
+        for (int s2 = 0; s2 < 4; s2++) {
+            uint8_t* sec = &raw[size_t(s2) * 2352];
+            sec[0] = 0x00;
+            for (int i = 1; i <= 10; i++) sec[i] = 0xFF;
+            sec[11] = 0x00;                       // 12-byte sync
+            sec[15] = 0x01;                       // MODE1
+            for (int i = 0; i < 2048; i++) sec[16 + i] = uint8_t(s2 * 7 + i);
+        }
+        { std::ofstream o(rawPath, std::ios::binary | std::ios::trunc);
+          o.write(reinterpret_cast<const char*>(raw.data()),
+                  std::streamsize(raw.size())); }
+        ScsiDisk r;
+        check(r.openCdrom(rawPath), "MODE1/2352 rip accepted");
+        check(r.blocks() == 4, "2352 rip -> 4 user-data blocks");
+        const uint8_t rd2[10] = { 0x28, 0, 0, 0, 0, 2, 0, 0, 1, 0 };
+        std::vector<uint8_t> o2, i2;
+        check(r.command(rd2, 10, o2, i2) == 0 && o2.size() == 2048,
+              "READ(10) on a de-framed rip");
+        bool same = true;
+        for (int i = 0; i < 2048; i++)
+            if (o2[i] != uint8_t(2 * 7 + i)) same = false;
+        check(same, "de-framed data is the payload, not the frame");
+
+        const std::string cuePath = "scsi_cdrom_test.cue";
+        { std::ofstream o(cuePath);
+          o << "FILE \"" << rawPath << "\" BINARY\n"
+            << "  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n"; }
+        ScsiDisk c2;
+        check(c2.openCdrom(cuePath), ".cue sheet resolves its FILE");
+        check(c2.blocks() == 4, ".cue disc has the data track blocks");
+        std::remove(cuePath.c_str());
+        std::remove(rawPath.c_str());
+    }
+
     std::remove(path.c_str());
     if (fails) { std::printf("FAILED (%d)\n", fails); return 1; }
     std::printf("PASS\n");

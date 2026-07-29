@@ -492,26 +492,29 @@ Next milestones:
   Remaining CD work, in rough order of value:
   - [ ] **Boot from CD** (the ROM's SCSI scan already covers ID 3; needs
     a bootable Apple CD image to pin it).
-  - [ ] **CD: the guest reads the disc but does not MOUNT it.** Bring-up
-    2026-07-29 got the target through the whole Apple dialogue — three
-    real bugs found and fixed against MAME on the way: MODE SENSE was
-    omitting the **block descriptor** (Mac OS 8.1 asked for the Apple
-    page once and then went silent — that descriptor is how the driver
-    learns the disc is 2048 bytes/block), READ TOC lacked **format 1**
-    (session info) and the SFF8020 legacy format field in cdb[9], and
-    **mode page $0E** (CD audio control) was missing, which the driver
-    asks for immediately after accepting a disc. The driver now runs
-    INQUIRY → page $30 → MODE SELECT → TEST UNIT READY → READ TOC
-    (0 and 1) → READ CAPACITY → READ(10) LBA 0 and 16 → PREVENT/ALLOW →
-    page $0E, and stops: 4 READ commands, 8 KB, no catalog traffic.
-    Same result on a bare-HFS .toast and an Apple-partitioned hybrid
-    .iso, so it is not the disc layout. Next: dump what the driver does
-    after page $0E (a "disc unreadable" dialog would explain the ~2900
-    extra HD commands that appear once the page is answered), and
-    re-test with the Mac OS 8.6 install CD — a real Apple bootable disc
-    is the definitive case. Reproducer: `POM68K_BEYOND=cdrom
-    ./lcii_beyond_etalon`, and `POM68K_CD_TRACE=1` logs every CDB.
-  - [ ] **A guest-level mount gate**, once the above lands.
+  - [x] ~~**A guest-level mount gate**~~ **DONE 2026-07-29**
+    (`q605_cdrom_etalon`): Mac OS 8.1 boots from the hard disk and the
+    Mac OS 8.6 CD mounts as data — 640×480×8 Finder plus ~100 blocks of
+    catalog traffic served BY THE CD TARGET. Layout matters: the ROM's
+    SCSI scan runs 6→0, so the boot volume goes to ID 6 and the CD to 3,
+    or a bootable disc wins the scan. Three real bugs were found getting
+    there (block descriptor, READ TOC format 1, mode page $0E — see
+    CHANGELOG).
+  - [ ] **Only 2048-byte-DDM discs mount.** `MacOS_86.iso` (driver
+    descriptor map declaring `sbBlkSize = 2048`) mounts; the hybrid
+    `TIM_3.iso` (`sbBlkSize = 512`) and the bare-HFS `.toast` images are
+    read (4 blocks of probes) and then ignored. Observed, cause not
+    established — it may well be correct (a real Apple CD driver may
+    require its own `Apple_Driver43_CD` partition, which only the 8.6
+    disc has). Verify against MAME or a real drive before "fixing"
+    anything.
+  - [ ] **Boot from CD**: unverified, and NOT disproven by the 8.6 disc —
+    **Mac OS 8.6 is PowerPC-only** (8.1 was the last 68k release), so a
+    68k Mac cannot boot it whatever the emulation does. Needs a 68k-
+    bootable disc (a Mac OS 8.1 or 7.x install CD). With the CD at ID 3
+    and no higher-ID disk, the ROM does pick it and load its driver — the
+    boot then stops at a black screen, which is the expected outcome for
+    a PowerPC-only System.
   - [ ] **CD audio** (READ TOC already reports the data track; CDDA
     playback, PLAY AUDIO/PAUSE and the audio-through-ASC path are
     absent — no consumer yet).

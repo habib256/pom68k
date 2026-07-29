@@ -793,6 +793,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # DC42 file on eject/exit when write-back is opted in (GUI default).
     # Gate: the SCSI CD-ROM personality (type $05, 2048-byte blocks, READ
     # TOC, and the Apple magic MODE SENSE page $30). Self-contained.
+    # Gate: a CD mounts IN THE GUEST (boot volume at SCSI 6 so the 6→0
+    # scan does not boot off the disc). Soft-skips without a CD image.
+    add_executable(q605_cdrom_etalon tests/q605_cdrom_etalon.cpp)
+    target_link_libraries(q605_cdrom_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_cdrom_etalon COMMAND q605_cdrom_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
     target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)
     add_test(NAME scsi_cdrom_test COMMAND scsi_cdrom_test)

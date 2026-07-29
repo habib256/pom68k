@@ -809,7 +809,8 @@ static bool isCdImage(const std::string& p) {
             if (std::tolower(p[p.size() - n + i]) != e[i]) return false;
         return true;
     };
-    return ends(".iso") || ends(".cdr") || ends(".toast");
+    return ends(".iso") || ends(".cdr") || ends(".toast")
+        || ends(".cue") || ends(".bin");
 }
 
 // List floppy images under disks35/ (raw .dsk / .img SuperDrive media).

@@ -1,5 +1,49 @@
 # CHANGELOG
 
+## 2026-07-29 (evening) — A CD mounts in the guest; .cue/.bin; and why 8.6 cannot boot
+
+**The guest mounts a CD.** `q605_cdrom_etalon`: Mac OS 8.1 boots off the
+hard disk and the Mac OS 8.6 disc arrives as data — the 640×480×8 Finder
+signature plus ~100 blocks of catalog traffic served by the CD target.
+Layout is part of the result: the ROM's SCSI scan runs 6→0, so the boot
+volume sits at ID 6 and the CD at 3, otherwise a bootable disc wins the
+scan and the hard disk never boots.
+
+Getting there took three real fixes that hand-written CDBs had not
+caught — a live Mac OS driver found them (new `POM68K_CD_TRACE` logs
+every CDB), all against MAME `bus/nscsi/cd.cpp`: MODE SENSE was omitting
+the **block descriptor** (how the driver learns the disc is 2048
+bytes/block — without it OS 8.1 asked for the Apple magic page once and
+went silent), READ TOC handled only **format 0** (the driver also wants
+format 1 session info, and reads the format from the SFF8020 legacy
+field in `cdb[9]` when `cdb[2]` is zero), and **mode page $0E** (CD audio
+control) was missing, which the driver requests the moment it accepts a
+disc. Format 2 now answers CHECK CONDITION exactly as MAME does — an
+honest refusal beats an invented reply.
+
+**`.cue`/`.bin` and raw MODE1/2352.** A 2352-byte rip is de-framed to its
+2048-byte user data (12-byte sync + 4-byte header + data + ECC), and only
+when the sync pattern actually says so — a 2352-multiple without it is
+refused rather than mis-framed, because a mis-framed volume looks exactly
+like a corrupt disc to the guest. A `.cue` sheet is parsed for its `FILE`
+and first MODE1 track, resolved beside the sheet. The CLI now routes
+`.iso/.cdr/.toast/.cue/.bin`.
+
+**Boot from CD is still unverified, and the 8.6 disc cannot settle it:
+Mac OS 8.6 is PowerPC-only** — 8.1 was the last 68k release — so no 68k
+Mac can boot it however good the emulation is. With the CD at ID 3 and no
+higher-ID disk the ROM does pick the disc and load its driver; the boot
+then stops at a black screen, which is the expected outcome for a
+PowerPC-only System. A Mac OS 8.1 or 7.x install CD would settle it.
+
+Also observed, not yet explained: only discs whose driver descriptor map
+declares `sbBlkSize = 2048` mount. The 512-byte-DDM hybrid `TIM_3.iso`
+and the bare-HFS `.toast` images are probed (4 blocks) and ignored. That
+may well be correct — the 8.6 disc is the only one carrying an
+`Apple_Driver43_CD` partition — so it is recorded in TODO as an
+observation to verify, not a bug to chase.
+
+
 ## 2026-07-29 (later) — SCSI CD-ROM support, a guest-level floppy gate, and the LLE inventory re-synced
 
 **CD-ROM targets are in.** `ScsiDisk` gained a second personality

@@ -176,6 +176,53 @@ bool ScsiDisk::open(const std::string& path, bool writeBack) {
 // mis-read — a wrong block size looks like a corrupt volume to the guest,
 // and that is exactly the kind of silent failure this project keeps
 // finding the hard way.
+// MODE1/2352 sectors carry 12 sync bytes, a 4-byte header, 2048 bytes of
+// user data, then EDC/ECC. Drives hand the initiator the 2048 only, so a
+// raw rip has to be de-framed rather than served as-is.
+static bool deframeMode1_2352(std::vector<uint8_t>& img) {
+    static const uint8_t sync[12] = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                                      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00 };
+    if (img.size() < 2352 || img.size() % 2352) return false;
+    if (std::memcmp(img.data(), sync, sizeof sync) != 0) return false;
+    const size_t n = img.size() / 2352;
+    std::vector<uint8_t> out(n * 2048);
+    for (size_t i = 0; i < n; i++)
+        std::memcpy(&out[i * 2048], &img[i * 2352 + 16], 2048);
+    img.swap(out);
+    return true;
+}
+
+// A .cue sheet: find the FILE it names (resolved beside the sheet) and
+// the first MODE1 track. Multi-track audio discs load their data track;
+// the audio tracks have no consumer yet.
+static std::string cueDataFile(const std::string& cuePath, bool& mode1_2352) {
+    std::ifstream in(cuePath);
+    if (!in) return {};
+    std::string line, file;
+    mode1_2352 = false;
+    while (std::getline(in, line)) {
+        size_t a = line.find_first_not_of(" \t\r");
+        if (a == std::string::npos) continue;
+        std::string t = line.substr(a);
+        if (t.rfind("FILE", 0) == 0) {
+            size_t q1 = t.find('"');
+            size_t q2 = q1 == std::string::npos ? q1 : t.find('"', q1 + 1);
+            if (q1 != std::string::npos && q2 != std::string::npos)
+                file = t.substr(q1 + 1, q2 - q1 - 1);
+        } else if (t.rfind("TRACK", 0) == 0) {
+            if (t.find("MODE1/2352") != std::string::npos) mode1_2352 = true;
+            else if (t.find("MODE1/2048") != std::string::npos) mode1_2352 = false;
+            if (t.find("MODE1") != std::string::npos) break;   // first data track
+        }
+    }
+    if (file.empty()) return {};
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path p = fs::path(cuePath).parent_path() / file;
+    if (std::ifstream(p.string(), std::ios::binary)) return p.string();
+    return file;
+}
+
 bool ScsiDisk::openCdrom(const std::string& path) {
     kind_ = Kind::Cdrom;
     attached_ = true;
@@ -184,15 +231,46 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     hfsPrefixBlocks_ = 0;
     image_.clear();
     blocks_ = 0;
-    std::ifstream in(path, std::ios::binary);
+
+    std::string data = path;
+    auto endsWith = [](const std::string& s, const char* e) {
+        size_t n = std::strlen(e);
+        if (s.size() < n) return false;
+        for (size_t i = 0; i < n; i++)
+            if (std::tolower(s[s.size() - n + i]) != e[i]) return false;
+        return true;
+    };
+    if (endsWith(path, ".cue")) {
+        bool raw = false;
+        data = cueDataFile(path, raw);
+        if (data.empty()) {
+            std::fprintf(stderr, "CD-ROM: %s names no usable FILE/TRACK\n",
+                         path.c_str());
+            return false;
+        }
+        std::fprintf(stderr, "CD-ROM: %s → %s\n", path.c_str(), data.c_str());
+    }
+
+    std::ifstream in(data, std::ios::binary);
     if (!in) return false;
     image_.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+
+    // A 2352-multiple that starts with the MODE1 sync pattern is a raw rip:
+    // de-frame it. Anything else must already be 2048-byte user data —
+    // guessing would mount a mis-framed volume, which looks to the guest
+    // exactly like a corrupt disc.
     if (image_.size() % 2048) {
-        std::fprintf(stderr, "CD-ROM: %s is %zu bytes, not a multiple of 2048 "
-                     "— raw 2352-byte rips are not supported\n",
-                     path.c_str(), image_.size());
-        image_.clear();
-        return false;
+        if (!deframeMode1_2352(image_)) {
+            std::fprintf(stderr, "CD-ROM: %s is %zu bytes — neither 2048-byte "
+                         "user data nor a MODE1/2352 raw rip\n",
+                         data.c_str(), image_.size());
+            image_.clear();
+            return false;
+        }
+    } else if (image_.size() % 2352 == 0) {
+        deframeMode1_2352(image_);           // 2352-multiple that is ALSO a
+                                             // 2048-multiple: only de-frame
+                                             // when the sync says so
     }
     blocks_ = uint32_t(image_.size() / 2048);
     return blocks_ > 0;

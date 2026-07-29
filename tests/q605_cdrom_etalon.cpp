@@ -1,0 +1,173 @@
+// POM68K — Macintosh 68k emulator
+// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+//
+// Gate: a CD-ROM mounts IN THE GUEST. `scsi_cdrom_test` pins the target
+// against hand-written CDBs; this one puts a real Apple disc in front of
+// a real Mac OS driver, which is what found the three bring-up bugs
+// (missing MODE SENSE block descriptor, no READ TOC format 1, no mode
+// page $0E — CHANGELOG 2026-07-29).
+//
+// Layout matters: the ROM's SCSI scan runs 6→0, so a bootable CD at ID 3
+// would win over a hard disk at ID 0. The boot volume therefore sits at
+// ID 6 and the CD at 3 — the machine boots from the hard disk and the
+// disc arrives as DATA, which is the case this gate is about.
+//
+// Asserted: the 640×480×8 Finder signature (same thresholds as
+// q605_boot_etalon) AND real catalog traffic served BY THE CD TARGET.
+// The second half is the load-bearing one: a disc the System merely
+// probes and ignores still leaves a perfect Finder on screen, and reads
+// counted on the CONTROLLER cannot tell the two apart (9619 vs 9618
+// measured). Soft-skips without the assets.
+
+#include "Cpu040.h"
+#include "Q605Memory.h"
+
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <fstream>
+#include <string>
+#include <vector>
+
+namespace {
+std::string findAsset(std::initializer_list<const char*> names) {
+    for (const char* name : names)
+        for (const std::string& base : { std::string(), std::string("../") }) {
+            std::string path = base + name;
+            if (std::ifstream(path, std::ios::binary)) return path;
+        }
+    return {};
+}
+
+uint32_t peek32(const Q605Memory& mem, uint32_t addr) {
+    return uint32_t(mem.peek8(addr)) << 24 | uint32_t(mem.peek8(addr + 1)) << 16 |
+           uint32_t(mem.peek8(addr + 2)) << 8 | mem.peek8(addr + 3);
+}
+
+struct Screen { int width = 0, height = 0, depth = 0; uint32_t stride = 0, offset = 0;
+                std::vector<uint32_t> pixels; };
+
+Screen decodeScreen(const Q605Memory& mem) {
+    Screen s;
+    uint32_t scrnBase = peek32(mem, 0x0824);
+    uint32_t mainDevH = peek32(mem, 0x08A4);
+    uint32_t mainDev = mainDevH ? peek32(mem, mainDevH) : 0;
+    uint32_t pmapH = mainDev ? peek32(mem, mainDev + 0x16) : 0;
+    uint32_t pmap = pmapH ? peek32(mem, pmapH) : 0;
+    if (!pmap) return s;
+    uint32_t pmBase = peek32(mem, pmap);
+    uint32_t boundsA = peek32(mem, pmap + 0x06), boundsB = peek32(mem, pmap + 0x0A);
+    int top = int(boundsA >> 16), left = int(boundsA & 0xFFFF);
+    int bottom = int(boundsB >> 16), right = int(boundsB & 0xFFFF);
+    s.width = right - left; s.height = bottom - top;
+    s.depth = mem.dafbDepth(); s.stride = mem.dafbStride();
+    s.offset = (pmBase ? pmBase : scrnBase) & (Q605Memory::kVramSize - 1);
+    if (s.width <= 0 || s.width > 1600 || s.height <= 0 || s.height > 1200 ||
+        (s.depth != 1 && s.depth != 2 && s.depth != 4 && s.depth != 8) ||
+        uint64_t(s.offset) + uint64_t(s.height) * s.stride > Q605Memory::kVramSize)
+        return Screen{};
+    const uint8_t* vram = mem.vram();
+    const uint8_t (*clut)[3] = mem.clut();
+    s.pixels.resize(size_t(s.width) * s.height);
+    for (int y = 0; y < s.height; y++) {
+        uint32_t row = s.offset + uint32_t(y) * s.stride;
+        for (int x = 0; x < s.width; x++) {
+            uint8_t packed = vram[row + uint32_t(x * s.depth / 8)], pen;
+            if (s.depth == 1) pen = (packed >> (7 - (x & 7))) & 1;
+            else if (s.depth == 2) pen = (packed >> (6 - 2 * (x & 3))) & 3;
+            else if (s.depth == 4) pen = (x & 1) ? packed & 0x0F : packed >> 4;
+            else pen = packed;
+            const uint8_t* c = clut[pen];
+            s.pixels[size_t(y) * s.width + x] =
+                uint32_t(c[0]) << 16 | uint32_t(c[1]) << 8 | c[2];
+        }
+    }
+    return s;
+}
+
+struct Stats { double mean = 0, deviation = 0; };
+Stats luminance(const Screen& s, int x0, int x1, int y0, int y1) {
+    if (x1 > s.width) x1 = s.width;
+    if (y1 > s.height) y1 = s.height;
+    if (x0 >= x1 || y0 >= y1) return {};
+    double sum = 0, sum2 = 0; long n = 0;
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++) {
+            uint32_t p = s.pixels[size_t(y) * s.width + x];
+            double l = ((p >> 16) * 54 + ((p >> 8) & 0xFF) * 183 + (p & 0xFF) * 19) / 256.0;
+            sum += l; sum2 += l * l; n++;
+        }
+    Stats r;
+    if (n) { r.mean = sum / n; r.deviation = std::sqrt(sum2 / n - r.mean * r.mean); }
+    return r;
+}
+} // namespace
+
+int main() {
+    std::string romPath = findAsset({
+        "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM",
+        "roms/mame/macqd605/ff7439ee.bin", "roms/quadra605.rom" });
+    std::string diskPath = findAsset({ "hdv/MacOS-8.1-boot.vhd", "hdv/q605-boot.vhd" });
+    // A disc whose driver descriptor map declares 2048-byte blocks. The
+    // 512-byte-DDM hybrids in hdv/ are read but not mounted by Mac OS —
+    // observed 2026-07-29, cause not yet established (TODO).
+    std::string cdPath = findAsset({ "input/MacOS_86.iso", "hdv/MacOS_86.iso",
+                                     "input/cd.iso", "hdv/cd.iso" });
+    if (romPath.empty() || diskPath.empty() || cdPath.empty()) {
+        std::printf("SKIP: needs FF7439EE ROM + hdv/MacOS-8.1-boot.vhd + an "
+                    "Apple CD image (input/MacOS_86.iso)\n");
+        return 0;
+    }
+    std::printf("assets: ROM=%s disk=%s cd=%s\n", romPath.c_str(),
+                diskPath.c_str(), cdPath.c_str());
+
+    std::ifstream in(romPath, std::ios::binary);
+    std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
+                             std::istreambuf_iterator<char>());
+    Q605Memory mem(32u << 20);
+    // Boot volume at ID 6 so it wins the ROM's 6→0 scan against the CD.
+    if (!mem.loadRom(rom) || !mem.attachScsi(diskPath, false, 6)) {
+        std::fprintf(stderr, "FAIL: could not load ROM/disk\n");
+        return 1;
+    }
+    if (!mem.attachCdrom(cdPath, 3)) {
+        std::fprintf(stderr, "FAIL: could not attach the CD\n");
+        return 1;
+    }
+    Cpu040 cpu(mem);
+    mem.setCpu(&cpu);
+    cpu.hardReset();
+    while (mem.cpuHeld()) mem.tick(1000);
+
+    constexpr int kFrameCycles = 416667;      // 25 MHz / ~60 Hz
+    for (long f = 0; f < 9000 && !cpu.isHalted(); f++) cpu.runCycles(kFrameCycles);
+    if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: CPU halted\n"); return 1; }
+
+    Screen screen = decodeScreen(mem);
+    if (screen.pixels.empty()) { std::fprintf(stderr, "FAIL: no PixMap\n"); return 1; }
+    Stats menu = luminance(screen, 0, screen.width, 2, 16);
+    Stats desktop = luminance(screen, 520, 630, 40, 430);
+    long cdCmds = mem.scsiDiskAt(3).readCommands;
+    long cdBlocks = mem.scsiDiskAt(3).readBlocks;
+    std::printf("%dx%d@%dbpp; menu %.1f/%.1f desktop %.1f/%.1f; "
+                "CD served %ld READs / %ld blocks (%ld KB)\n",
+                screen.width, screen.height, screen.depth, menu.mean,
+                menu.deviation, desktop.mean, desktop.deviation,
+                cdCmds, cdBlocks, cdBlocks * 2);
+
+    bool finder = screen.width == 640 && screen.height == 480 && screen.depth == 8 &&
+                  menu.mean > 170 && menu.mean < 235 &&
+                  menu.deviation > 40 && menu.deviation < 100 &&
+                  desktop.mean > 100 && desktop.mean < 190 &&
+                  desktop.deviation > 30 && desktop.deviation < 90 &&
+                  menu.mean - desktop.mean > 35;
+    // Mounting a volume costs its MDB, catalog B-tree and desktop
+    // database — hundreds of KB. A disc that is merely probed and
+    // ignored stops at a handful of blocks (measured: 4).
+    bool mounted = cdBlocks > 40;
+    std::printf("%s\n", (finder && mounted)
+        ? "PASSED — Finder up and the CD mounted in the guest"
+        : (finder ? "FAILED — Finder up but the CD was not mounted"
+                  : "FAILED — no Finder"));
+    return (finder && mounted) ? 0 : 1;
+}

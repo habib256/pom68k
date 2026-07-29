@@ -77,7 +77,7 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 120 gates, ~2h30 (asset-dependent ones soft-skip)
+ctest                        # 122 gates, ~2h30 (asset-dependent ones soft-skip)
 ctest -L unit                # 50 gates, 9 s — no ROM or disk image needed
 ctest -L smoke               # 5 gates, 98 s — one machine, both CPU engines
 ctest -L jit                 # every JIT gate;  -L m040 = the 68040 family

@@ -49,6 +49,10 @@ public:
     // Mount a CD image (.iso/.cdr/.toast — raw 2048-byte MODE1 sectors).
     // Always read-only; `eject()` empties the drive but keeps the target
     // present, so the guest sees an empty drive rather than no device.
+    // Accepts: raw MODE1 (.iso/.cdr/.toast, 2048-byte sectors), raw
+    // MODE1/2352 (.bin — sync+header+data+ECC, user data extracted), and
+    // a .cue sheet naming a .bin (first data track only; audio tracks are
+    // catalogued for READ TOC but not played — see the CDDA TODO).
     bool openCdrom(const std::string& path);
     void eject();
     bool cdrom() const { return kind_ == Kind::Cdrom; }
