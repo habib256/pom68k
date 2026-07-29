@@ -15,6 +15,16 @@ bit-identical signatures. The gain lands on the DEFAULT engine, which is
 the one users actually run. PGO changes code
 layout, never semantics.
 
+**Two more backlog items dropped on measurement.** *Lazy condition
+codes*: measured by duplicating the flag emission (storing the same byte
+twice is semantically a no-op, so the guest is unaffected and the delta
+is the marginal cost of one full materialisation set) — Q605 JIT boot
+32.6 s → 33.4 s, **+2.5 % for a whole extra set**. So removing a set
+saves at most ~2.5 %, and lazy CC can only remove the dead subset:
+1-2 % for an intricate codegen change that silently breaks
+bit-exactness when wrong. The backlog's "a third off the
+per-instruction contract" was true of contract SIZE, not of time.
+
 **The page-granular dispatch-table item is dropped, and the measurement
 is why.** It assumed `read8`/`write16` re-run a deep range-compare
 cascade on every access. Counting accesses by destination over an LC II

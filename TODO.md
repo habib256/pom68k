@@ -651,13 +651,22 @@ Next milestones:
     only binds gSetCpuEngine on the four 040 machine loops; the V8/Sonora/
     VASP/RBV loops have the engine but only the env var reaches it. Worth
     it for the LC II (×1.6); copy the QuadraMachine Cmd::CpuEngine pattern.
-  - [ ] **Lazy condition codes in the x86-64 backend** — the one big
-    CONFORMANT codegen lever left. Materialising N/Z/V/C/X per instruction
-    (4-5 setcc + stores) is waste: most flags are overwritten before ever
-    being read. Deferring them is bit-exact PROVIDED every exit stub
-    materialises the pending flags — the same mechanism already built for
-    pc/pc0. Expected to shrink the per-instruction contract by a third.
-  - [ ] **Block linking — the one thing that would make J2 pay.** Blocks run
+  - [x] ~~**Lazy condition codes in the x86-64 backend**~~ **DROPPED
+  2026-07-29 — measured, ceiling ≈2.5 %.** The item expected "a third off
+  the per-instruction contract", which is true of contract SIZE but not
+  of time. Measured by DUPLICATING the flag emission (storing the same
+  byte twice is semantically a no-op, so the guest is unaffected and the
+  delta is the marginal cost of one full materialisation set): Q605 JIT
+  boot 32.6 / 32.6 s → 33.6 / 33.2 s, i.e. **+2.5 % for a whole extra
+  set**. Removing a full set therefore saves at most ~2.5 %, and lazy
+  CC can only remove the DEAD subset — realistically 1-2 %. That is not
+  worth an intricate codegen change that silently breaks bit-exactness
+  when wrong, next to the 26 % the PGO retraining gave at zero risk.
+  Caveat on the method: duplicate stores hit the same hot L1 lines, so
+  this may under-read the true cost somewhat — but not by an order of
+  magnitude. Re-open only with a profile attributing real time to
+  `flagsLogic`/`flagsAddSub`.
+- [ ] **Block linking — the one thing that would make J2 pay.** Blocks run
     284 instructions per entry while the guest loads the System and **4.9**
     once the Finder is up: Finder-era 68k is branch-dense enough that a
     block entry (hash lookup, frame, prologue, epilogue) is paid every five
