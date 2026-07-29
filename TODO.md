@@ -678,21 +678,43 @@ Highest-ROI closers, in order:
   keypress — the whole wire→MCU-autopoll→VIA-SR→ADB-Manager→driver chain.
   Diag knobs: `POM68K_INPUT_ANYPATH=1` runs it on the HLE path; RawMouse
   + MBState printed to split delivery from cursor-task failures.
-  **And it caught a real bug on its fourth machine — see "IIsi mouse"
-  below**; the `iisi` mode stays in the binary, unregistered until fixed.
-- [ ] **IIsi mouse: the System never binds its mouse driver** (found
-  2026-07-29 by `family_input_etalon iisi`; keyboard works). The wire is
-  PROVEN perfect: the Egret 344S0100 enumerates both devices, autopolls
-  addr 3 and delivers 4000/4000 correct `82 83` reports — the System
-  ignores every one; RawMouse/Mouse/MBState stay virgin zeros ($0172
-  reads $00, never initialized) on BOTH the firmware LLE and the HLE
-  fallback, same GISTPERSO image that works on the LC III. The
-  discriminating delta vs the green LC III trace: after the (identical)
-  ADBReInit enumeration, the LC III System issues ~3 extra Talk/Listen R3
-  pairs to addr 3 (the mouse-driver init / 200-cpi handler switch); the
-  IIsi System never does. Suspect: one enumeration REPLY mis-presented on
-  the IIsi's VIA path (RbvCpu host-paced transport + the 344S0100's older
-  pacing), so the ROM's table ends without a mouse entry.
+  **And it caught a real bug on its fourth machine — see "IIsi: the ADB
+  Manager never initializes" below**; the `iisi` mode stays in the
+  binary, unregistered until fixed.
+- [ ] **IIsi: the ADB Manager never initializes AT ALL — no mouse AND no
+  keyboard** (found 2026-07-29 by `family_input_etalon iisi`; scope
+  corrected in round 2, see below). `ADBBase` ($0CF8) stays **0** for the
+  whole boot, so there are no ADB globals and no device table — where the
+  LC III shows `$5158` with a correct 2-entry table (kbd@2 handler $01
+  driver $0000AB42, mouse@3 handler $01 driver $408B6582), `$14C` bitmap
+  `$000C`, `MBState $80`. On the IIsi `MBState` reads `$00` and
+  `KeyMap $0174-$017B` is all zeros. Neither device can work; the machine
+  still reaches the Finder, which is why the boot etalon never noticed.
+  The wire itself is PROVEN healthy: the Egret 344S0100 enumerates,
+  autopolls addr 3 and delivers 4000/4000 correct `82 83` reports that
+  nothing on the host side consumes.
+  **Hunt round 2 (2026-07-29) — the scope was WRONG, and a gate bug hid
+  half of it.** "Mouse frozen, keyboard fine" came from
+  `family_input_etalon` scanning **16** bytes at `$0174` when KeyMap is
+  exactly **8** — the stray `$017D = $41` read as a keystroke. Fixed
+  (the three green machines still pass, so the keystroke genuinely lands
+  in KeyMap on a healthy machine); the gate now also prints ADBBase and
+  labels it "ADB NEVER INITIALIZED". Lesson worth keeping: a positive
+  assertion over a too-wide window is a false green, and it masked the
+  bigger half of this bug for a full round.
+  Also from round 2: sampling `$0CF8` across the boot shows ADBBase
+  holding only **RAM-test patterns** (`$DB6DB6DB`, `$B6DB6DB6`,
+  `$6DB6DB6D`, `$55555555`, `$FFE7C7FF`) before settling to 0 at
+  ~frame 596 — i.e. it is never *written* by anyone, just left as
+  whatever the memory test wrote. The ROM's own boot-time ADBReInit runs
+  (that is the wire traffic we captured) but the System-era ADB
+  initialization, the step that allocates the globals in the System heap,
+  never happens. Next: find why System 7.5 skips it on this machine —
+  the ROM ADB path is `$4080A8B0` (ADBReInit: clears 76 longs through
+  a3, sets `$15D = $24`, enumerates, waits bit 5, then `$4080AA96` +
+  `$4080AD10`); check what a3 actually is on each call and which
+  machine/ROM property (UniversalInfo ADB type, `$4080A42C`) the System
+  consults before setting ADBBase.
   **Hunt round 1 (2026-07-29) — two hypotheses ELIMINATED, don't repeat:**
   - *Not the MCU model.* The failure is bit-identical under the Egret
     **firmware LLE** and the **HLE** byte-model (`POM68K_EGRET_LLE=0`

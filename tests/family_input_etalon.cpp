@@ -8,7 +8,12 @@
 //   lc3    — Sonora, Egret 341s0851 (the LC III wire)
 //   lc520  — Sonora AIO, Cuda 341s0060 + the DFAC2 I2C slave
 //   iivx   — VASP, Egret 341s0851 @ 31.3 MHz
-//   iisi   — RBV, Egret 344s0100 @ 20 MHz (unexercised for input so far)
+//   iisi   — RBV, Egret 344s0100 @ 20 MHz. NOT registered as a CTest:
+//            this machine's ADB Manager never initializes (ADBBase stays
+//            0, no globals, no device table), so neither mouse nor
+//            keyboard works — an open bug this gate found, tracked in
+//            TODO "IIsi: the ADB Manager never initializes". Keep the
+//            mode: it is the reproducer. Register it once fixed.
 // Method = q605_cudalle_mouse/key_etalon: boot System 7.5, inject deltas
 // into the bit-serial AdbLine, require the low-memory mouse globals
 // (Mouse $0830) to move; press a key, require a KeyMap ($0174-$0183)
@@ -88,6 +93,17 @@ int runInput(M& mem, C& cpu, int64_t kFrame, const char* name) {
     auto rd16 = [&](uint32_t a) {
         return int16_t(uint16_t(mem.peek8(a) << 8 | mem.peek8(a + 1)));
     };
+    // ADBBase ($0CF8) is the ADB Manager's globals pointer — non-zero and
+    // in RAM once the System has initialized ADB at all. Reported first
+    // because it separates "input path broken" from "ADB never came up":
+    // the IIsi leaves it at 0 (see TODO "IIsi ADB"), so neither device
+    // can possibly work, while a healthy machine shows a System-heap ptr.
+    uint32_t adbBase = uint32_t(mem.peek8(0x0CF8)) << 24
+                     | uint32_t(mem.peek8(0x0CF9)) << 16
+                     | uint32_t(mem.peek8(0x0CFA)) << 8 | mem.peek8(0x0CFB);
+    std::printf("ADBBase=$%08X %s\n", adbBase,
+                (adbBase && adbBase < 0x800000) ? "(ADB Manager up)"
+                                                : "(ADB NEVER INITIALIZED)");
 
     // ── Mouse: inject deltas, require Mouse ($0830 v / $0832 h) to move ──
     // RawMouse ($082C) is printed too: RawMouse moving with Mouse frozen
@@ -126,11 +142,15 @@ int runInput(M& mem, C& cpu, int64_t kFrame, const char* name) {
                 mbDown != mb0 ? "(click seen)" : "(dead)");
 
     // ── Keyboard: press 'a' (code $00), require a KeyMap bit ────────────
+    // KeyMap is EXACTLY 8 bytes ($0174-$017B). Scanning 16 reached into
+    // KeypadMap and its neighbours, where an unrelated non-zero byte
+    // ($017D = $41) read as a keystroke — that false positive is what
+    // masked the IIsi having no working keyboard either (2026-07-29).
     bool keySeen = false;
     mem.keyEvent(0x00, true);
     for (int f = 0; f < 120 && !keySeen && !cpu.isHalted(); f++) {
         cpu.runCycles(kFrame);
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < 8; i++)
             if (mem.peek8(0x0174 + uint32_t(i)) != 0) { keySeen = true; break; }
     }
     mem.keyEvent(0x00, false);

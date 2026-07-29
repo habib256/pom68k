@@ -12,20 +12,33 @@ VIA1 SR → ADB Manager → drivers, end to end. Green on the LC III
 (Egret 341s0851), LC 520 (Cuda 341s0060 + the new DFAC2 slave) and
 IIvx (VASP @ 31.3 MHz).
 
-**The fourth machine failed, and the failure is a real find: the IIsi
-System never binds its mouse driver.** Keyboard delivered; mouse frozen.
-The wire is exonerated in full — the Egret 344S0100 enumerates both
-devices, autopolls address 3 and delivers 4000/4000 correct `82 83`
-reports, which the System ignores; RawMouse/Mouse/MBState stay virgin
-zeros on BOTH the firmware LLE and the HLE fallback, on the same image
-that works on the LC III. The discriminating trace delta: after a
-byte-identical ADBReInit enumeration, the LC III System issues ~3 extra
-Talk/Listen R3 pairs to the mouse (driver init, 200-cpi handler switch)
-— the IIsi System never does, so its device table plainly ends with no
-mouse entry. Tracked in TODO ("IIsi mouse"); the `iisi` mode ships in
-the gate binary, unregistered until the hunt lands. This is exactly what
-the test-depth pass exists for: a machine can pass its boot signature
-for four days while its mouse has never worked once.
+**The fourth machine failed, and the failure is a real find: the IIsi's
+ADB Manager never initializes at all — no mouse and no keyboard.**
+`ADBBase` ($0CF8) stays 0 for the entire boot, so there are no ADB
+globals and no device table; the LC III shows `$5158` with a correct
+2-entry table (kbd@2, mouse@3), `MBState $80`, while the IIsi has
+`MBState $00` and an all-zero `KeyMap`. The wire is exonerated in full —
+the Egret 344S0100 enumerates, autopolls address 3 and delivers
+4000/4000 correct `82 83` reports that nothing host-side consumes — and
+the failure is bit-identical under the firmware LLE and the HLE
+byte-model, so it sits above the MCU entirely. Sampling `$0CF8` across
+the boot shows it holding only RAM-test patterns before settling to 0:
+nobody ever writes it. The ROM's own boot-time ADBReInit runs (that is
+the captured wire traffic); the System-era init that allocates the
+globals never does. Tracked in TODO with the ROM entry points and two
+already-eliminated hypotheses; the `iisi` mode ships in the gate binary,
+unregistered until the hunt lands.
+
+**The first version of this entry said "mouse frozen, keyboard fine" —
+that was a bug in the new gate**, and it is worth recording as such: the
+keyboard check scanned 16 bytes at `$0174` when KeyMap is exactly 8, so
+an unrelated neighbour ($017D = $41) read as a keystroke and hid half
+the failure for a full round. Fixed (the three green machines still
+pass, so a real keypress does land in KeyMap); the gate now prints
+ADBBase and labels it "ADB NEVER INITIALIZED". A positive assertion over
+a too-wide window is a false green. This is exactly what the test-depth
+pass exists for: a machine can pass its boot signature for four days
+while no input device has ever worked.
 
 **Every HLE ADB fallback is now LOUD** (the §1.9/§2 retirement-policy
 pass, `docs/LLE_VS_HLE.md`): all eight machine classes and
