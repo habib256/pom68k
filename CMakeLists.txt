@@ -662,6 +662,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME lcii_savestate_etalon COMMAND lcii_savestate_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # The 040-side twin: Mac OS 8.1 on the Q605 machine — real-OS restore
+    # determinism over the DAFB/AscIosb/53C96/Cuda-LLE chunks.
+    add_executable(q605_savestate_etalon tests/q605_savestate_etalon.cpp)
+    target_link_libraries(q605_savestate_etalon PRIVATE pom68k_core)
+    add_test(NAME q605_savestate_etalon COMMAND q605_savestate_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # Phase C gate: Macintosh LC (68020 on the same V8 board, 2 MB
     # soldered) boots to the Finder (soft-skips without ROM + image).
     add_executable(lc_boot_etalon tests/lc_boot_etalon.cpp)

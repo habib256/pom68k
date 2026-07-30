@@ -99,8 +99,12 @@ data-loss holes and false test-confidence first, then convenience).
       Traps hit en route: the Mac II enters via Cpu020's hardcoded
       Basilisk vector (PC=ROMBase+$2A, not the ROM header) in 32-bit mode
       (hmmu24_ off at reset), and the Plus overlay clear samples portA(),
-      so DDRA must be set first. Real-OS savestate etalons for these
-      machines remain future work (the LC II one is the template).
+      so DDRA must be set first. Real-OS savestate etalons: **LC II and
+      Q605 exist** (`lcii_savestate_etalon`, `q605_savestate_etalon` —
+      the latter DONE 2026-07-30, first try: Mac OS 8.1 Finder, 1200
+      mouse frames, bit-identical restore, covering DAFB/AscIosb/53C96/
+      Cuda-LLE under a real OS). The other families follow the same
+      template as needed.
     - [x] ~~GUI/CLI wiring~~ **DONE 2026-07-30** (`main.cpp SaveStateSlot`):
       every machine window's **Machine** menu gains « Sauver l'état » /
       « Restaurer l'état » (Mac II: buttons in its CPU panel). The GUI only

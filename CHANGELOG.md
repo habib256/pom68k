@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-07-30 — `q605_savestate_etalon`: real-OS restore determinism on the 040 side
+
+The lcii_savestate_etalon pattern applied to the other device-rich tree:
+boot Mac OS 8.1 to the 640×480×8 Finder on the Q605 machine (default
+LC 475 identity), snapshot, run 1200 frames of deterministic mouse
+activity, hash; restore, run the same 1200 frames — byte-identical
+re-save, identical machine hash, Finder signature still live at the end.
+Passed first try (108.8 s). That takes the 040-wave chunks — DAFB
+mid-frame, the AscIosb FIFOs, the Ncr53c96 session including its
+deferred-IRQ countdown, the Cuda LLE MCU mid-transaction — from
+unit-ROM-verified to real-OS-verified. With the LC II etalon this covers
+both ends of the device spectrum; the remaining families reuse the
+template as needed.
+
 ## 2026-07-30 — Engine re-baseline (idle host) + the CPU menu reaches the 030s
 
 Two small items from the performance review, one real finding.
