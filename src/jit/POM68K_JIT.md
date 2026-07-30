@@ -138,6 +138,31 @@ The x86-64 column crosses over: it is the fastest engine while the guest is
 executing System code, and loses once the Finder is up. § 7 says why, and
 the second half of that section is now a measurement rather than a guess.
 
+> **STALE TABLE — re-baselined 2026-07-30.** The rows above predate the
+> ATC-eviction bit-exactness capping (`pomJitAtcEvict`, 2026-07-28) and are
+> kept only for the shape of the argument. Current idle-host numbers:
+>
+> * `q605_boot_etalon`: interp 61.4 s → threaded 32.3 s (×1.90) → **x64
+>   25.6 s (×2.40)**; `auto` = x64, confirmed.
+> * `jit_bench` 12 000 frames (~5 G): threaded 167.8 s, **x64 151.6 s**;
+>   48 000 frames (~20 G): threaded 788.3 s, **x64 709.5 s**. The §7
+>   crossover has FLIPPED: with JSR/BSR/RTS compiled, the link table and
+>   the deferred boundaries, **x64 now beats threaded on both regimes**
+>   (~−10 %).
+> * Both engines are ~10× slower on this bench than the stale rows, and
+>   the exit counters name the cause: 794 M window-lost exits on threaded
+>   over 12.2 G instructions — one window death every ~15 instructions.
+>   Mac OS 8.1's VM page-aging writes descriptor U bits, every ATC
+>   eviction kills the derived window/TLB state (the exactness contract),
+>   and the idle Finder lives under that regime. This — not code density —
+>   is the measured conformant ceiling at the idle Finder.
+> * Dynamic census (`POM68K_JIT_HISTO=1`, blocks off, x64 coverage
+>   column): **89.6 % native** over 12.2 G instructions (not the 66-70 %
+>   quoted below). The uncovered top of the idle phase is five opcodes:
+>   MOVEM push/pop/load ($48E7/$4CDF/$4CEE, 3.3 %), **DBRA ($51C8,
+>   1.26 % — classified Branch but REFUSED by canEmit, so every DBRA loop
+>   iteration exits the block**), and JMP abs.L ($4EF9, 0.66 %).
+
 ### Why the block cache is OFF for the portable backend
 
 Because it measured **slower** than the window alone there, and the reason is

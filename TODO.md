@@ -767,22 +767,37 @@ Next milestones:
   - **an `lcii`/x64 lockstep gate first.** `jit_lockstep_test` and friends run
     two **Quadra 605** machines, so an 030 code generator would have no
     differential coverage at all — and this bug is exactly what that costs.
-- [ ] **Block linking — the one thing that would make J2 pay.** Blocks run
-    284 instructions per entry while the guest loads the System and **4.9**
-    once the Finder is up: Finder-era 68k is branch-dense enough that a
-    block entry (hash lookup, frame, prologue, epilogue) is paid every five
-    instructions. A branch whose target is another compiled block must jump
-    straight into it. Everything it needs already exists — the target is a
-    compile-time constant and the block cache is keyed on (pc, super) — what
-    is missing is a patchable exit and an unlink-on-evict list.
-  - [ ] **Generated-code density.** ~150 bytes of host code per guest
-    instruction, most of it the per-instruction contract (budget and flag
-    guards, POLL_IPL, pc/pc0, the prefetch queue, the cycle charge) rather
-    than the operation. The boundary state is only read when a block exits,
-    so it belongs in the cold exit stubs; the guards' two `rel32` jumps
-    belong in `rel8`. An interpreter's footprint is bounded by the
-    instruction set, a code generator's by the guest program — this is what
-    decides whether generated code fits in cache at all.
+- [x] ~~**Block linking**~~ **ALREADY LANDED** (commit b2c4e19, doc
+    `POM68K_JIT.md` §9 — this entry had gone stale and misdirected a
+    planning round on 2026-07-30). It is a link TABLE (O(1) slot
+    invalidation, no patched jumps to unlink), and it did what it promised
+    on the loading phase (block entries −53 %, 268 → 566 instr/entry,
+    18.4 → 16.75 s). At the idle Finder it helped less (4.9 → 6.5
+    instr/entry) because the hot exits are `JSR`/`RTS` — still `Unsafe`,
+    so both an interpreter round trip AND a missed link. The measured
+    Finder-idle loss is now attributed to FOOTPRINT (§7): ~70 MB of
+    generated code walked by the Finder's working set. Remaining levers,
+    in the doc's order: density (below), then JSR/BSR/RTS + MOVEM + the
+    68020 indexed modes.
+  - [ ] **Coverage: MOVEM + DBcc + JMP `<ea>` in the x64 generator** —
+    re-ranked ABOVE density by the 2026-07-30 census (12.2 G instructions,
+    89.6 % native already; `POM68K_JIT.md` §3 addendum). The idle Finder's
+    uncovered top is exactly five opcodes: MOVEM push/pop/load
+    ($48E7/$4CDF/$4CEE, 3.3 %), DBRA ($51C8, 1.26 % — **classified Branch
+    but refused by canEmit, so every DBRA loop iteration exits the
+    block**), JMP abs.L ($4EF9, 0.66 %). DBcc and JMP are terminators
+    (simpler than the JSR already shipped); MOVEM is a loop over a
+    register mask. Beyond the ~5 % Amdahl, the win is block SHAPE: DBRA
+    loops close internally and MOVEM stops truncating function bodies the
+    way LINK/UNLK did before they were carved out.
+  - [ ] **Generated-code density** — deprioritized 2026-07-30: the stale
+    150 B/instr figure was measured before the boundary-deferral and cold
+    emission landed, and the re-baseline shows x64 already beating
+    threaded on BOTH regimes (−10 %). The remaining idle-Finder gap is
+    dominated by the ATC-eviction exactness contract (one window death
+    per ~15 instructions under Mac OS 8.1's VM page-aging), which density
+    cannot touch. Micro-wins (local rel8, shared stubs) remain available
+    but are third-order now.
   - [ ] **aarch64 backend** — porting note already written and validated
     against the IR: `src/jit/backends/JitBackendA64.md`.
   - [x] Fine-grained block eviction — DONE 2026-07-28. The guard went from

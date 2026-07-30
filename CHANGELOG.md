@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## 2026-07-30 — JIT measured honestly: x64 wins both regimes; the next lever is 5 opcodes
+
+Three measurements that rewrote the performance backlog (details in
+`POM68K_JIT.md` §3 addendum):
+
+1. **The doc's bench table was stale** (pre-ATC-fix). Re-run on an idle
+   host: `jit_bench` 5 G — threaded 167.8 s, x64 151.6 s; 20 G — threaded
+   788.3 s, x64 709.5 s. **The Finder-idle crossover has flipped**: with
+   JSR/BSR/RTS compiled, the link table and deferred boundaries all landed,
+   x64 now beats threaded on BOTH regimes (~−10 %), validating `auto`.
+2. **The idle-Finder ceiling is the exactness contract, not code size**:
+   794 M window-lost exits over 12.2 G instructions = one window death per
+   ~15 instructions. Mac OS 8.1's VM page-aging writes U bits, every ATC
+   eviction kills the derived window/TLB state, and no conformant backend
+   escapes that. The old "density" item is deprioritized accordingly.
+3. **Coverage is 89.6 % native, and the uncovered idle top is FIVE
+   opcodes** (dynamic census, 12.2 G instructions): MOVEM push/pop/load
+   3.3 %, DBRA 1.26 %, JMP abs.L 0.66 %. DBRA is the sharp one — it is
+   classified as a Branch terminator but `canEmit` refuses it, so every
+   iteration of every DBRA loop in the System exits its block. Compiling
+   these five (MOVEM + DBcc + JMP — two terminators simpler than the JSR
+   already shipped, one register-mask loop) is the next conformant lever,
+   worth ~5 % Amdahl plus the block-shape effect on tight loops.
+
 ## 2026-07-30 — `q605_savestate_etalon`: real-OS restore determinism on the 040 side
 
 The lcii_savestate_etalon pattern applied to the other device-rich tree:
