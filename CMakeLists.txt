@@ -634,6 +634,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME lcii_sys7_boot_etalon COMMAND lcii_sys7_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # Save-state gate under a real OS: boot the LC II to the Finder,
+    # snapshot, run N frames, hash; restore, run the same N frames,
+    # require the identical hash (soft-skips without ROM + image).
+    add_executable(lcii_savestate_etalon tests/lcii_savestate_etalon.cpp)
+    target_link_libraries(lcii_savestate_etalon PRIVATE pom68k_core)
+    add_test(NAME lcii_savestate_etalon COMMAND lcii_savestate_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # Phase C gate: Macintosh LC (68020 on the same V8 board, 2 MB
     # soldered) boots to the Finder (soft-skips without ROM + image).
     add_executable(lc_boot_etalon tests/lc_boot_etalon.cpp)

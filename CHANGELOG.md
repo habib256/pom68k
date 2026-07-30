@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## 2026-07-30 — Save states survive the real Finder: `lcii_savestate_etalon`
+
+The archive core's second gate, and the one that mattered: `savestate_v8_test`
+proved determinism over a synthetic counter-loop ROM, which exercises the
+plumbing but not the devices. The new etalon boots the LC II to the System 7
+Finder off the SCSI image, snapshots the live machine (10.9 MB, 3 dirty SCSI
+blocks), runs **1200 frames of deterministic mouse activity** (wiggle +
+desktop click, injected at frame boundaries so both runs see identical
+machine times), and hashes the whole machine; then restores the snapshot and
+runs the same 1200 frames. Result, first try: `load→save` byte-identical, and
+the direct and restored runs converge on the **same 10 874 549-byte machine
+hash** (`b06e3c57…`), with the menu bar still live at the end (guarding
+against a "deterministic corpse" pass where both runs wedged identically).
+
+That upgrades every LC II device chunk — the ScsiDisk copy-on-write log
+replayed over the pristine image, SWIM1, both ASCs, the SCC, and the Egret
+LLE MCU snapshotted mid-transaction — from compile-verified to
+behaviour-verified, which is what the TODO said was the gap. The mouse
+scenario is load-bearing, not decoration: an idle Finder barely touches the
+autopoll→MCU→VIA-SR→ADB chain, and a field omitted from a `visit()`
+round-trips silently until that path runs on it.
+
 ## 2026-07-30 — A JIT backend is valid per GUEST family, not just per host
 
 `jit_lcii_boot_etalon` was timing out at its full hour. It was not a save-state

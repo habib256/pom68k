@@ -77,12 +77,14 @@ data-loss holes and false test-confidence first, then convenience).
     (version / profile / ROM checksum / RAM size). Gates `savestate_test`
     and `savestate_v8_test`, both `unit` (no assets).
   - **Remaining, in ROI order:**
-    - [ ] **An LC II boot etalon.** `savestate_v8_test` proves determinism
-      only over what a synthetic counter-loop ROM exercises (CPU, RAM, VIA
-      timers, MCU ticks). It says nothing about SCSI, floppy, the ASC FIFOs
-      or the SCC **under a real OS** — boot to the Finder, snapshot, run N,
-      hash; restore, run N, require the same hash. Until that exists, treat
-      the device chunks as compile-verified, not behaviour-verified.
+    - [x] ~~**An LC II boot etalon.**~~ **DONE 2026-07-30**
+      (`lcii_savestate_etalon`): boot System 7 to the Finder off the SCSI
+      image, snapshot, run 1200 frames of deterministic mouse activity,
+      hash; restore, run the same 1200 frames — bit-identical machine
+      hash both ways, load→save byte-identical, Finder alive at the end.
+      Passed first try, which upgrades the LC II device chunks (SCSI COW
+      log, SWIM, ASC, SCC, Egret-LLE MCU mid-transaction) from
+      compile-verified to behaviour-verified.
     - [ ] Fan out: 9 more CPU wrappers (one word each — derive from
       `MoiraSnapshot`) + 9 more machines and their unique devices (Dafb,
       Valkyrie, Rtc, AdbVia, Pic1654s, Ncr53c96, AscIosb, TobyVideo, NuBus,
