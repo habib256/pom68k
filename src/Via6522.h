@@ -11,6 +11,7 @@
 // Gate: tests/cpu_smoke.cpp (overlay switch via ORA write).
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 
 class Via6522 {
@@ -74,6 +75,18 @@ public:
     // Side-effect-free peeks (read(IFR/IER) ORs ANY / forces IER bit7).
     uint8_t ifrRaw() const { return ifr_; }
     uint8_t ierRaw() const { return ier_; }
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // The whole register file plus the latched pin levels and both timers.
+    // inA_/inB_ are inputs the machine refreshes before every read, but they
+    // are latched here between refreshes, so they travel too: a VIA restored
+    // with idle-high inputs would misread the RTC/ADB lines for one access.
+    template <class Ar> void visit(Ar& ar) {
+        ar(ora_, orb_, ddra_, ddrb_, inA_, inB_,
+           acr_, pcr_, sr_, ifr_, ier_,
+           srHostWritten_, shiftCount_, extBits_, extCb1_, cb1_, cb2_,
+           t1_, t2_, t1latch_, t2ll_, t1armed_, t2armed_, ca1Cleared);
+    }
 
 private:
     void setIfr(uint8_t bits) { ifr_ |= bits; }

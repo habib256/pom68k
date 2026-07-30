@@ -14,7 +14,7 @@
 // Gate: tests/v8_ramsize.cpp (BERR through the map), lcii boot etalon (O6.8).
 
 #pragma once
-#include "Moira.h"
+#include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
 #include <string>
@@ -22,7 +22,7 @@
 
 class V8Memory;
 
-class Cpu030 : public moira::Moira {
+class Cpu030 : public MoiraSnapshot {
 public:
     // as020 = Macintosh LC profile: same V8 bus, Moira Model::M68020
     // (MAME maclc.cpp:342 M68020HMMU — the HMMU 24-bit remap is subsumed
@@ -71,6 +71,19 @@ public:
         pomIcache.fetches = pomIcache.hits = pomIcache.misses = 0;
     }
     bool icacheEnabled() const { return (getCACR() & 0x1) != 0; }
+
+    // ── Save states (chunk "CPU ") ──────────────────────────────────────
+    // The architectural half comes from MoiraSnapshot; what is added here is
+    // the wrapper's own bus bookkeeping — how much peripheral time this CPU
+    // has already accounted for. Getting that wrong would not corrupt the
+    // guest, it would silently shift the VIA/ASC/SWIM cadence after every
+    // restore, which is the failure the LC II soak gate exists to catch.
+    // cacheBoost_ / icacheMiss_ are tuning knobs owned by the environment,
+    // not guest state, so they stay out.
+    template <class Ar> void visit(Ar& ar) {
+        visitCpuCommon(ar);
+        ar(lastPeriphClock_, periphAccum_);
+    }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;

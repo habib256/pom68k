@@ -1083,6 +1083,35 @@ interpreted and one JIT-driven, and compares D0-D7/A0-A7/PC/SR/USP/ISP/MSP
 and the clock at every instruction boundary — and fails if the JIT never
 actually replayed a block.
 
+## Save-state seam: `pomFlushAtcs()` (2026-07-29)
+
+`Moira.h`, one protected one-liner beside the 030 ATC declarations:
+
+```cpp
+protected:
+    void pomFlushAtcs() { mmuAtcFlushAll(); mmu040AtcFlushAll(); }
+private:
+```
+
+**Why.** Restoring a save state replaces RAM — and therefore the page
+tables — underneath a CPU whose ATCs still hold the *previous* machine's
+translations. Both have to be dropped or the first post-restore access
+translates through a stale entry, which surfaces as rare corruption rather
+than a clean failure. `mmuAtcFlushAll()` (030) and `mmu040AtcFlushAll()`
+(040) are both **private**, and while `setURP040()`/`setSRP040()`/
+`setTC040()` reach the 040 one as a side effect, **nothing public flushes
+the 030 ATC**. Rather than serialize the ATCs (they are pure caches,
+re-derivable from RAM) or widen the private section, this adds the single
+protected entry point `src/MoiraSnapshot.h` needs.
+
+Everything else about save states is on the POM68K side of the seam: the
+whole CPU chunk lives in `MoiraSnapshot::visitCpuCommon()`, which works
+only because Moira's execution state (`clock`, `reg`, `queue`, the IPL
+history, `flags`, `fpu`) is already `protected` — the CPU wrappers derive
+from it.
+
+Nothing else in the vendored tree changed for save states.
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)

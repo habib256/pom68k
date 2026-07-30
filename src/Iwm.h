@@ -11,6 +11,7 @@
 // Gate: tests/gcr_test.cpp, tests/disk_boot_etalon.cpp.
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 
 class SonyDrive;
@@ -39,6 +40,18 @@ public:
     int consumedPos = 0;
     long overwritten = 0;                 // nibbles replaced before being read
     long written = 0;                     // bytes shipped to the drive
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Register/phase state plus the byte-granular write engine. `drive_[2]`
+    // are machine-owned pointers, re-attached on restore (see Ncr5380's
+    // note on why pointers never travel).
+    template <class Ar> void visit(Ar& ar) {
+        ar(ph_, enable_, driveSel_, q6_, q7_, sel_, mode_, dataReg_,
+           cellPhase_, clearCountdown_,
+           writing_, wrPending_, wrUnderrun_, wrData_, wrPhase_);
+        ar(readCount, dataReads, dataHits, senseCount,
+           consumed, consumedPos, overwritten, written);
+    }
 
 private:
     uint8_t access(int reg);

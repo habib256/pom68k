@@ -15,6 +15,7 @@
 // Gate: tests/egret_test.cpp (talk reg 0 + SRQ under autopoll).
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 #include <deque>
 #include <vector>
@@ -36,6 +37,15 @@ public:
     void keyEvent(uint8_t adbCode, bool down);
     void mouseMove(int dx, int dy);
     void mouseButton(bool down);
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Includes the pending-event queue and the un-sent mouse delta: those
+    // are input the guest has not consumed yet, so dropping them would lose
+    // a keystroke or a mouse move across a restore. The device addresses
+    // travel too — the guest may have reassigned them at Listen r3 time.
+    template <class Ar> void visit(Ar& ar) {
+        ar(keyQueue_, mdx_, mdy_, mbtn_, mbtnSent_, kbdAddr_, mouseAddr_);
+    }
 
 private:
     std::deque<uint8_t> keyQueue_;       // raw ADB key transitions

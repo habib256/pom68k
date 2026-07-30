@@ -57,6 +57,23 @@ public:
     int fifoCap() const { return cap_; }
     int fifoCapB() const { return capB_; }
 
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Both FIFOs with their pointers and fill levels, the register block and
+    // the drain accumulator — the Sound Manager polls the half/empty status
+    // bits, so a restore that changed the fill level would confuse it.
+    //
+    // NOT carried: the `out_` ring and its pointers. That is the HOST audio
+    // output queue (a few hundred ms of already-produced samples), not
+    // something the guest can observe, and it would add 16 KB to every
+    // snapshot. A restore drops the queued audio instead — the audible cost
+    // is one gap, the alternative is a bigger file and no fidelity gain.
+    // `version_` is board identity, set at construction.
+    template <class Ar> void visit(Ar& ar) {
+        ar(fifo_, fifoB_, rd_, wr_, rdB_, wrB_, cap_, capB_,
+           regs_, fifoStat_, irq_, drainAcc_, emptyCycleSamples_);
+        if constexpr (Ar::loading) outRd_ = outWr_ = 0;
+    }
+
 private:
     uint8_t readReg(uint32_t offset);        // read logic (onRead tap wraps it)
     enum {
@@ -131,6 +148,15 @@ public:
         return true;
     }
     int fifoCap(int channel) const { return cap_[channel & 1]; }
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Stereo FIFO pair, register blocks and drain accumulator. As in AscV8,
+    // the host output ring is dropped rather than carried.
+    template <class Ar> void visit(Ar& ar) {
+        ar(fifo_, rd_, wr_, cap_, regs_, xtraRegs_,
+           fifoStat_, fifoIrqEn_, irq_, drainAcc_);
+        if constexpr (Ar::loading) outRd_ = outWr_ = 0;
+    }
 
 private:
     enum : uint8_t {

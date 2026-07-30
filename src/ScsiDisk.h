@@ -30,6 +30,7 @@
 
 #pragma once
 #include "FloppySoundSink.h"
+#include "SaveState.h"
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -89,7 +90,59 @@ public:
     // retires the spin loop once the disk goes idle.
     void setSoundSink(FloppySoundSink* s) { sound_ = s; }
 
+    // ── Save states ─────────────────────────────────────────────────────
+    // A snapshot must not carry the image: it is hundreds of megabytes and
+    // it already exists on the host. It carries what the GUEST has changed
+    // since open() — otherwise a restore hands the guest a disk that
+    // disagrees with the HFS structures cached in its RAM, a corruption no
+    // boot-signature gate can see.
+    //
+    // Restoring needs more than the modified blocks, though. A block the
+    // guest wrote AFTER the snapshot is not in the snapshot's set, and its
+    // pristine content is no longer anywhere in memory — so writes are
+    // logged copy-on-first-write: `pristine_` keeps the original bytes of
+    // every block written since open(). Restore reverts the whole log, then
+    // replays the snapshot's blocks. Exact, and it costs only what the
+    // guest actually wrote (typically a few MB), not the image size.
+    //
+    // Caveat, deliberate: with write-back on, the HOST FILE has already
+    // received those writes and a restore does not un-write it. The file
+    // lives outside the snapshot by design (tests run write-back off).
+    template <class Ar> void visit(Ar& ar) {
+        ar(blocks_, hfsPrefixBlocks_, senseKey_, senseAsc_, readCommands, readBlocks);
+        // Attachment properties (path, kind, write-back, the backing
+        // stream) belong to the machine's setup, not to guest state, and
+        // are deliberately NOT restored from a snapshot.
+        const std::uint32_t bs = blockSize();
+        if constexpr (Ar::loading) {
+            revertToPristine();                    // back to the on-open image
+            const std::uint64_t n = ar.varint();
+            if (!ar.ok() || n > blocks_ + 1ull) { ar.fail(); return; }
+            std::vector<uint8_t> buf(bs);
+            for (std::uint64_t i = 0; i < n && ar.ok(); ++i) {
+                std::uint32_t blk = 0;
+                ar(blk);
+                ar.bytes(buf.data(), bs);
+                if (ar.ok()) applySnapshotBlock(blk, buf.data());
+            }
+        } else {
+            ar.varint(dirtyList_.size());
+            for (std::uint32_t blk : dirtyList_) {
+                ar(blk);
+                ar.bytes(image_.data() + std::uint64_t(blk) * bs, bs);
+            }
+        }
+    }
+
+    // Blocks the guest has written since open() — the snapshot's payload.
+    std::size_t dirtyBlocks() const { return dirtyList_.size(); }
+
 private:
+    // Copy-on-first-write log (see visit()).
+    void resetWriteLog();
+    void markDirty(uint32_t lba, uint32_t count);
+    void revertToPristine();
+    void applySnapshotBlock(uint32_t blk, const uint8_t* data);
     void read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out);
     void write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& in);
     void setSense(uint8_t key, uint8_t asc);
@@ -106,4 +159,11 @@ private:
     uint32_t hfsPrefixBlocks_ = 0;
     uint8_t senseKey_ = 0, senseAsc_ = 0;
     FloppySoundSink* sound_ = nullptr;
+
+    // Save-state write log. `dirtyBits_` answers "already logged?" in O(1);
+    // `dirtyList_` keeps the block indices in first-write order; `pristine_`
+    // holds their pre-write contents, one blockSize() slot per list entry.
+    std::vector<uint64_t> dirtyBits_;
+    std::vector<uint32_t> dirtyList_;
+    std::vector<uint8_t>  pristine_;
 };

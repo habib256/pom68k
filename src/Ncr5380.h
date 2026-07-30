@@ -20,6 +20,7 @@
 // idle/no-device, so the ROM falls through to the floppy — no regression.
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 #include <functional>
 #include <vector>
@@ -85,6 +86,32 @@ public:
         BSR_ACK = 0x01, BSR_ATN = 0x02, BSR_BUSERR = 0x04, BSR_PHASE = 0x08,
         BSR_IRQ = 0x10, BSR_PARITY = 0x20, BSR_DRQ = 0x40, BSR_ENDDMA = 0x80,
     };
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Register file, bus phase and the in-flight command buffers — a
+    // snapshot can be taken with a READ half-handshaked, and the ROM's
+    // polled loop resumes expecting the same byte position.
+    //
+    // `disk_` is a POINTER into `targets_[]`, which the machine owns and
+    // re-attaches on restore, so it is carried as an ID and re-resolved.
+    // That is the general rule for this codebase: cross-device pointers
+    // become indices, never raw addresses — a restored pointer would either
+    // dangle or, worse, silently address the previous session's object.
+    template <class Ar> void visit(Ar& ar) {
+        ar(odr_, icr_, mode_, tcr_, selEnable_,
+           phase_, req_, reqGap_, irq_,
+           cmd_, dataIn_, dataOut_, dataPos_, dataOutExpected_, cmdLen_,
+           status_, reads, writes, selects, commands, dmaBytes, lastCmd);
+
+        std::int8_t sel = -1;
+        if constexpr (!Ar::loading) {
+            for (int i = 0; i < 7; i++)
+                if (disk_ && targets_[i] == disk_) { sel = std::int8_t(i); break; }
+        }
+        ar(sel);
+        if constexpr (Ar::loading)
+            disk_ = (sel >= 0 && sel < 7) ? targets_[sel] : nullptr;
+    }
 
 private:
     ScsiDisk* targets_[7] = {};      // by SCSI ID (7 = initiator, never used)

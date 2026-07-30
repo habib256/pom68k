@@ -93,6 +93,24 @@ public:
     // XPRAM/PRAM write hook (offset, value) — Q6.4 restart-loop trace
     std::function<void(int, uint8_t)> onXPramWrite;
 
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Battery-backed store (`pram_`, `mcuRam_`, `seconds_`) plus the whole
+    // wire state machine. The in-flight packet buffers and every pacing
+    // countdown travel: a snapshot can land between two bytes of a session
+    // the ROM's handshake code is already committed to, and resuming with a
+    // cleared `delay_`/`ackDelay_`/`treqDelay_` would drop or duplicate a
+    // wire event the driver is counting.
+    //
+    // Out: `via_` (reference), `adb_` (pointer, re-bound by the machine),
+    // `cudaPolarity_`/`clockHz_` (board identity), the four debug hooks.
+    template <class Ar> void visit(Ar& ar) {
+        ar(phase_, held_, xcvr_, lastPb_, delay_, respIdx_,
+           cmd_, resp_, pending_, streamSrc_, streamAddr_);
+        ar(seconds_, secAcc_, pollAcc_, pram_, mcuRam_,
+           autopoll_, pollRate_, deviceMap_, oneSecMode_, oneSecFirst_);
+        ar(holdTimer_, quiet_, syncDelay_, ackDelay_, treqDelay_);
+    }
+
 private:
     enum StreamSrc { NO_STREAM, STREAM_PRAM, STREAM_MCU, STREAM_ZERO };
 

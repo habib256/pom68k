@@ -119,6 +119,8 @@ message(STATUS "POM68K JIT: threaded backend + ${POM68K_JIT_HOST}")
 # ─── Core library (headless — shared by GUI, tests, future oracles) ──────
 add_library(pom68k_core STATIC
     ${POM68K_JIT_SOURCES}
+    src/SaveState.cpp     # save states — archive core (visitor, chunks, RLE)
+    src/SaveStateMachines.cpp  # save states — machine assembly + instantiations
     src/Cpu68k.cpp        # M1 — Moira wrapper + contention
     src/MacMemory.cpp     # M2 — Mac Plus memory map + overlay
     src/Via6522.cpp       # M2/M4 — VIA (ports, timers)
@@ -268,6 +270,23 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(swim1_test tests/swim1_test.cpp)
     target_link_libraries(swim1_test PRIVATE pom68k_core)
     add_test(NAME swim1_test COMMAND swim1_test)
+
+    # Save states — the archive core every device chunk is built on:
+    # visit() round-trip, the pinned little-endian/LEB128 wire format, the
+    # zero-run codec (exactness AND the compression that keeps a 10 MB
+    # snapshot small), chunk walking, and clean refusal of truncated or
+    # corrupt input. No ROM or disk image needed.
+    add_executable(savestate_test tests/savestate_test.cpp)
+    target_link_libraries(savestate_test PRIVATE pom68k_core)
+    add_test(NAME savestate_test COMMAND savestate_test)
+
+    # Save states end to end on a live LC II (synthetic ROM, no assets): the
+    # re-save byte-identity AND the determinism property — same start, same
+    # cycle count, same snapshot — which is what detects state a visit()
+    # forgot. Also pins that a refused snapshot leaves the machine untouched.
+    add_executable(savestate_v8_test tests/savestate_v8_test.cpp)
+    target_link_libraries(savestate_v8_test PRIVATE pom68k_core)
+    add_test(NAME savestate_v8_test COMMAND savestate_v8_test)
 
     # Keyboard through the real Cuda firmware (SRQ path — the 2026-07-23
     # freeze repro). Soft-skips without assets.

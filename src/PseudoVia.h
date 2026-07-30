@@ -26,6 +26,7 @@
 // Gate: tests/pseudovia_test.cpp.
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 #include <functional>
 
@@ -63,6 +64,13 @@ public:
     std::function<uint8_t()> onVideoRead;    // monitor sense bits 3-5
     std::function<void(uint8_t)> onVideoWrite;
     std::function<void(uint8_t)> onPortA;
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // The register file, the resolved IRQ output and the ASC line/edge
+    // detector. The six std::function hooks above are re-bound by the
+    // machine on restore and must never be serialized; `flavour_` is set at
+    // construction by the machine profile, so it is identity, not state.
+    template <class Ar> void visit(Ar& ar) { ar(regs_, irq_, ascLine_); }
 
 private:
     void recalcIrqs();                       // pseudovia.cpp:190-218

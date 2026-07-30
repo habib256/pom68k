@@ -21,6 +21,7 @@
 // tests/swim1_media_test.cpp.
 
 #pragma once
+#include "SaveState.h"
 #include "Iwm.h"
 #include <cstdint>
 #include <vector>
@@ -44,6 +45,22 @@ public:
     uint8_t ismModeReg() const { return mode_; }
     int fifoCount() const { return fifoPos_; }
     Iwm& iwm() { return iwm_; }
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // The IWM personality nests in, then the ISM half: mode/setup/phases,
+    // the 16-byte parameter RAM, the 2-entry FIFO and the whole bit engine
+    // (CRC, shift register, TSS, half-cell position). The in-flight write
+    // transition list travels too — a snapshot taken mid-sector must resume
+    // writing the same cells or the medium ends up with a torn field.
+    template <class Ar> void visit(Ar& ar) {
+        ar(iwm_);
+        ar(ismMode_, iwmToIsm_, driveSel_, lstrb_,
+           mode_, setup_, phases_, params_, paramIdx_,
+           fifo_, fifoPos_, error_, cellPhase_);
+        ar(crc_, sr_, tssSr_, tssOutput_, mfmSyncCounter_, currentBit_,
+           halfWait_, writeHalfPos_, writeStartCell_, writeActive_,
+           writeTransitions_);
+    }
 
 private:
     // FIFO entry tags — MAME swim1.h M_MARK/M_CRC/M_CRC0

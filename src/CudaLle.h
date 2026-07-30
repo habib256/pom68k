@@ -83,6 +83,30 @@ public:
 
     AdbLine& adbLine() { return adb_; }  // input events (key/mouse) land here
     M68hc05& mcu() { return mcu_; }      // gate/debug access
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // The MCU and the ADB wire nest in (each has its own visit()), then the
+    // glue: the two clock-domain accumulators plus `mcuDebt_`. That debt is
+    // the run() overshoot carried between ticks, and it is not cosmetic —
+    // dropping it is what once overclocked the MCU ~37 % and drifted the Mac
+    // clock (CHANGELOG, `lcii_soak_etalon`). A restore must resume mid-debt.
+    //
+    // The half-transferred host handshake travels too (`treq_`, `byteack_`,
+    // `tip_`, `lastViaClock_`, the I2C shift state): a snapshot can land in
+    // the middle of a byte, and the transport does not tolerate being
+    // re-synchronized underneath the firmware.
+    //
+    // Out: `via_` (reference), `cpuHz_`/`flavor_`/`i2cDfac_`/`fwLoaded_`
+    // (board identity, set at construction), `onMcuPortWrite` (re-bound).
+    template <class Ar> void visit(Ar& ar) {
+        ar(mcu_, adb_);
+        ar(mcuAcc_, mcuDebt_, adbAcc_,
+           held_, treq_, byteack_, tip_, lastViaClock_, resetLine_,
+           i2cScl_, i2cSda_, i2cActive_, i2cAddressed_, i2cBit_,
+           i2cShift_, i2cDriveLow_,
+           stagedPram_, pramInstalled_, stagedSeconds_,
+           traceSessionClocks_, traceByte_, traceBits_);
+    }
     // Debug hook (cuda_lle wire tracing): fires on every MCU port write
     // (port, value) — the Egret::onEdge equivalent for the firmware path.
     std::function<void(int, uint8_t)> onMcuPortWrite;

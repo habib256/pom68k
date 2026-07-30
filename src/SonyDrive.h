@@ -10,6 +10,7 @@
 // ap_dsk35.cpp; DEV.md. Gate: tests/gcr_test.cpp, swim2_media_test.
 
 #pragma once
+#include "SaveState.h"
 #include "FloppySoundSink.h"
 #include <cstdint>
 #include <string>
@@ -100,6 +101,31 @@ public:
 
     bool debug = false;
     long nibblesRead = 0;
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Unlike a SCSI image, a floppy medium is at most 1.44 MB, so the whole
+    // thing travels through the zero-run codec rather than needing ScsiDisk's
+    // copy-on-first-write log. That matters for correctness the same way: the
+    // guest's writes live in `image_` (write-back is off in tests), so a
+    // snapshot that only recorded the path would restore a volume that
+    // disagrees with the HFS structures cached in guest RAM.
+    //
+    // The encoded track (`stream_`) and the raw cell ring (`cells_`) are
+    // derived from `image_` + head position and could be rebuilt — they are
+    // carried anyway because the read/write engines index into them live, and
+    // rebuilding mid-sector would move the head under the controller.
+    template <class Ar> void visit(Ar& ar) {
+        ar.blob(image_);
+        ar(path_, dc42Header_, writeBack_, dirty_);
+        ar(stream_, streamPos_);
+        ar.blob(cells_);
+        ar(cellPos_, spinClockHz_, track_, side1_, doubleSided_,
+           hd_, superDrive_, mfmMode_, writeProtected_,
+           motorOn_, dirToZero_, switched_, spin_, cycles_, nibblesRead);
+        ar(wrState_, wrSync_, wrAddrPos_, wrDataPos_,
+           wrTrack_, wrHead_, wrSector_, wrData_);
+        ar.blob(gcrWrBuf_);
+    }
 
 private:
     void encodeTrack();

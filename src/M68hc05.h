@@ -17,6 +17,7 @@
 // Gate: tests/m68hc05_test.cpp — executes the real reset vector.
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 #include <functional>
 #include <vector>
@@ -74,6 +75,32 @@ public:
     void setRamByte(int off, uint8_t v) { ram_[off & 0x1FF] = v; }
     long portWrites = 0, ddrWrites = 0, pllWrites = 0;   // gate counters
     long instructions = 0;
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Two things here are load-bearing beyond the obvious registers.
+    //
+    // `ram_` holds the PRAM: MAME's cuda.cpp pc_w installs it into the E1's
+    // internal RAM, so the guest's parameter RAM lives inside this MCU. Lose
+    // it and a restored machine forgets its clock, its startup disk and its
+    // monitor settings.
+    //
+    // `cycles_` and the two timer accumulators fix the MCU's PHASE against
+    // the host VIA. That phase is not a free parameter: a ~2 % shift in MCU
+    // instruction rate is enough to deadlock the Cuda↔VIA bit-bang transport
+    // (the Mac TV regression, CHANGELOG 2026-07-27 / CudaLle.cpp:20-28). A
+    // restore that re-based the MCU clock would reproduce that class of hang
+    // at random, so the counters travel verbatim.
+    //
+    // Out of the chunk: `rom_`/`romLoaded_` (the firmware dump is identity,
+    // reloaded by the machine) and `pullups_`/`forcedIn_` (board wiring the
+    // integrator installs at construction).
+    template <class Ar> void visit(Ar& ar) {
+        ar(pc_, a_, x_, sp_, cc_, ram_,
+           ports_, ddrs_, pllCtrl_, timerCtrl_, onesec_,
+           cycles_, progArmed_, onesecArmed_, progTimerAcc_, onesecAcc_,
+           pending_, irqLine_, waiting_, illegal_, illegalPc_, illegalOp_,
+           portWrites, ddrWrites, pllWrites, instructions);
+    }
 
 private:
     // CCR bits (M6805: CC = 111HINZC).

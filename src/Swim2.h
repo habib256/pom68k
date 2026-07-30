@@ -14,6 +14,7 @@
 // Gate: tests/swim2_test.cpp, tests/swim2_media_test.cpp.
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 #include <vector>
 
@@ -35,6 +36,18 @@ public:
 
     SonyDrive* selectedDrive() const;
     bool isWriteProtected() const;
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Same shape as Swim1's ISM half (registers, 4-byte parameter RAM,
+    // 2-entry FIFO, serial CRC/TSS bit engine, in-flight write transitions);
+    // `drive_[2]` are machine-owned pointers, re-attached on restore.
+    template <class Ar> void visit(Ar& ar) {
+        ar(driveSel_, lstrb_, mode_, setup_, phases_, params_, paramIdx_,
+           fifo_, fifoPos_, error_, cellPhase_);
+        ar(crc_, sr_, tssSr_, tssOutput_, mfmSyncCounter_, currentBit_,
+           halfWait_, writeHalfPos_, writeStartCell_, writeActive_,
+           writeTransitions_);
+    }
 
 private:
     // FIFO entry tags — MAME swim2.h:41-45 (M_MARK/M_CRC/M_CRC0)

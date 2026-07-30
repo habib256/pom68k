@@ -11,6 +11,7 @@
 // Gate: tests/v8_video_test.cpp (O6.4).
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 
 class Ariel {
@@ -44,6 +45,12 @@ public:
         default: key_ = v; break;
         }
     }
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // The CLUT plus the RGB write phase: a snapshot can land between the R
+    // and G bytes of a palette entry, and the guest's next write expects to
+    // continue that triple.
+    template <class Ar> void visit(Ar& ar) { ar(pal_, addr_, phase_, ctrl_, key_); }
 
     // Pen n as packed 00RRGGBB
     uint32_t pen(int n) const {

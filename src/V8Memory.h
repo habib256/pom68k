@@ -249,6 +249,59 @@ public:
     void sccIrqLine(bool s) { sccIrq_ = s; updateIrq(); }
     Scc8530& scc() { return scc_; }
 
+    // A Mac ROM's first longword IS its checksum, so this is the cheapest
+    // honest identity for a snapshot to pin: restoring against a different
+    // ROM would put the guest's cached ROM addresses somewhere else.
+    uint32_t romChecksum() const {
+        if (rom_.size() < 4) return 0;
+        return uint32_t(rom_[0]) << 24 | uint32_t(rom_[1]) << 16
+             | uint32_t(rom_[2]) << 8  | uint32_t(rom_[3]);
+    }
+
+    // ── Save states: the machine chunk (SaveState.h) ─────────────────────
+    // RAM and VRAM go through the zero-run codec; the ROM does not travel at
+    // all (it is on disk, and the snapshot header pins its checksum instead).
+    //
+    // Then every device in a FIXED order — reordering this list silently
+    // invalidates existing snapshots, which is why the container is chunked
+    // and version-stamped.
+    //
+    // The gate-array fields at the end are the ones easiest to mistake for
+    // configuration. `overlay_` decides whether low memory reads as ROM or
+    // RAM, so losing it makes a restored machine boot instead of resume; the
+    // SIMM/motherboard window fields are DERIVED from the guest's writes to
+    // `config_`, not from the profile, so they are guest state too; and the
+    // frame/VIA phase accumulators keep the 60.15 Hz VBL and the 783.36 kHz
+    // VIA cadence continuous across the restore.
+    //
+    // Out: `rom_` and the geometry that describes it, `model_`/`cpuHz_`/
+    // `viaDiv_`/`addrMask_`/`mbRam_` (profile identity), `cpu_` and
+    // `jitGuard_` (pointers the machine owns), `egretLleOn_` (which MCU path
+    // the machine wired up). `totalRam_` IS carried so a size mismatch is
+    // detectable rather than silently corrupting the map.
+    template <class Ar> void visit(Ar& ar) {
+        ar.blob(ram_);
+        ar.blob(vram_);
+
+        ar(via_, pvia_, ariel_, egret_, egretLle_, adb_,
+           asc_, ascSonora_, scsi_, swim_, swim2_, drive_, scc_);
+        for (auto& d : scsiDisks_) ar(d);
+
+        ar(totalRam_, config_, videoConfig_, montype_,
+           vidSpram_, vidSpramSaved_, overlay_, sccIrq_);
+        ar(simmMapped_, simmOff_, simmPhys_, mbLoc_, mbSize_, mbMapped_);
+        ar(viaPhase_, tickAcc_, framePos_, frameCycles_, vblStart_,
+           c15Acc_, vblState_);
+
+        if constexpr (Ar::loading) {
+            // RAM and the whole address map just changed wholesale. A write
+            // cannot express that, so the JIT has to be told explicitly
+            // (JitGuard.h § invalidate) or it would replay blocks recorded
+            // against the previous session's memory.
+            if (jitGuard_) jitGuard_->invalidate();
+        }
+    }
+
     // Debug hook (lcii_trace): (address, isWrite, value) per SCC access
     std::function<void(uint32_t, bool, uint8_t)> onSccAccess;
 

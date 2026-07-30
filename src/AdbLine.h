@@ -15,6 +15,7 @@
 // combined line = hostDrive AND deviceDrive (open collector).
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 #include <deque>
 
@@ -47,6 +48,20 @@ public:
     int     dbgLinestate() const { return linestate_; }
     uint8_t dbgBuffer(int i) const { return buffer_[i & 7]; }
     bool    dbgTransmitting() const { return linestate_ >= LST_TSTOPSTART; }
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // All of it, including mid-transaction state: `linestate_`, the decode
+    // buffer and `sendTimer_` can be captured with a command half-clocked on
+    // the wire, and the MCU on the other end will resume expecting exactly
+    // the bit it was on. Device handlers and addresses travel because the
+    // guest reassigns them (Listen r3) during ADB enumeration.
+    template <class Ar> void visit(Ar& ar) {
+        ar(hostDrive_, deviceDrive_, linestate_, now_, lastEdge_, sendTimer_,
+           command_, waitingCmd_, direction_, buffer_, datasize_, streamPtr_,
+           srqFlag_, srqSwitch_, listenAddr_, listenReg_,
+           kbdAddr_, kbdHandler_, mouseAddr_, mouseHandler_,
+           keyBuf_, mdx_, mdy_, mbtn_, mbtnSent_);
+    }
 
 private:
     // ADB line states (MAME macadb ordering: receive then send).

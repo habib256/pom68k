@@ -1476,6 +1476,17 @@ private:
     void mmuAtcFlushPage(u32 addr);
     void mmuAtcFlushPageFc(u32 addr, u32 fcBase, u32 fcMask);
 
+protected:
+    // POM68K save states: restoring a snapshot replaces RAM (and therefore
+    // the page tables) underneath a CPU whose ATCs still cache the OLD
+    // translations, so both have to be dropped. The flushes are private and
+    // no public setter reaches the 030 one (setURP040 covers only the 040),
+    // hence this one-line seam for src/MoiraSnapshot.h. Flushing the set the
+    // current model does not use is free — it is already empty.
+    void pomFlushAtcs() { mmuAtcFlushAll(); mmu040AtcFlushAll(); }
+
+private:
+
     // Logical → physical for one bus (sub-)access; throws MmuBusError
     MOIRA_HOT_INLINE u32 mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags);
 

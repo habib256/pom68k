@@ -24,6 +24,7 @@
 // Gates: tests/input_etalon.cpp (Plus), tests/scc_ext_test.cpp (LAP arm).
 
 #pragma once
+#include "SaveState.h"
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -156,6 +157,18 @@ public:
     long dcdEdges = 0, ctlWrites = 0;   // debug counters
     long rr0Reads = 0, rr3Reads = 0, rr2Reads = 0;
 
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Both channels plus the shared register pointer and line state. The
+    // wire CONFIGURATION (`abortIdle_`, `byteCycles_`, `wirePace_`,
+    // `losslessRx_`, `cpuHz_`, `pclkHz_`) is installed by the machine and
+    // the LToUDP/AppleTalk wiring, so it stays out — but `lineDriven_` and
+    // `peerHold_` are observed history, not configuration, and they decide
+    // whether the guest sees a standing abort. Restoring them wrong would
+    // change whether Open Transport's LLAP driver ever binds .MPP.
+    template <class Ar> void visit(Ar& ar) {
+        ar(ch_, ptr_, lineDriven_, peerHold_, ctsHigh_, rxStanding_);
+    }
+
 private:
     struct Chan {
         uint8_t wr[16] = {};
@@ -200,7 +213,10 @@ private:
         // ── LLAP Rx/Tx wire state ──
         std::vector<uint8_t> txBuf;  // SDLC frame being written (no FCS)
         struct RxFrame { std::vector<uint8_t> bytes; int pace; int delay;
-                         bool express; int64_t queuedAt = 0; };
+                         bool express; int64_t queuedAt = 0;
+            template <class Ar> void visit(Ar& ar) {
+                ar(bytes, pace, delay, express, queuedAt);
+            } };
         std::deque<RxFrame> rxQueue; // injected frames (FCS added) + pace.
                                      // express: countdown `delay` = CTS
                                      // inter-frame gap. non-express: gated
@@ -224,7 +240,8 @@ private:
                                      // byte (starts "long idle"; capped) —
                                      // injectRxFrame fills the LLAP IDG
                                      // remainder from it
-        struct RxByte { uint8_t d; uint8_t rr1; };
+        struct RxByte { uint8_t d; uint8_t rr1;
+            template <class Ar> void visit(Ar& ar) { ar(d, rr1); } };
         std::deque<RxByte> fifo;     // 3-deep Rx FIFO, per-byte RR1 status
         bool rxIp = false;           // Rx-char-available interrupt pending
         bool specialIp = false;      // special receive condition (EOF/ovr)
@@ -232,6 +249,24 @@ private:
         uint8_t rr1Rd = 0x07;        // RR1 of the last byte read (all-sent)
         int pace = 0;                // guest-derived CPU cycles per byte
                                      // (0 = not derivable → byteCycles_)
+
+        // ── Save states (SaveState.h) ───────────────────────────────────
+        // The full channel: WR file, the interrupt latches (RR0 freeze, the
+        // edge-triggered TxIP and its txEmptyEvent), the modelled Tx shifter
+        // mid-character, and the whole LLAP Rx side — injected frame queue,
+        // the frame being paced onto the FIFO, and the 3-deep Rx FIFO with
+        // its per-byte RR1. Interrupt latches are the load-bearing part: an
+        // 8530 driver acknowledges edges, so a restore that cleared a
+        // pending TxIP loses an interrupt the guest is blocked on.
+        template <class Ar> void visit(Ar& ar) {
+            ar(wr, dcd, extPending, rr0Latch, latched, txIp, txEmptyEvent);
+            ar(txBufFull, txGracing, txBufData, txShiftData, txShiftIn,
+               txFlushing, relatch, txUnderrun, hunt);
+            ar(txBuf, rxQueue, rxCur, rxPace, rxPos, rxTimer);
+            ar(wireClk, rxHoldMax, rxQueueMax, rxDropped, rxOverrunHold,
+               rxIdle);
+            ar(fifo, rxIp, specialIp, firstCharSeen, rr1Rd, pace);
+        }
     };
     uint8_t rr0(const Chan& c) const;
     bool sdlcMode(const Chan& c) const;  // WR4 bits 5-4 = 10
