@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## 2026-07-30 — Save states in the GUI: « Sauver / Restaurer l'état »
+
+The last structural piece of TODO § C: every machine's **Machine** menu now
+carries « Sauver l'état » / « Restaurer l'état » (the Mac II gets buttons in
+its CPU panel), backed by one shared `SaveStateSlot` embedded in each
+machine-thread struct. The threading contract is the `Cmd::CpuEngine`
+precedent taken seriously: the GUI thread only queues a request; the
+machine thread performs the actual save/load inside `applyCmds()`, between
+two quanta — a restore replaces the entire device tree, so it must never
+run mid-quantum from another thread. The outcome comes back as a one-line
+message the menu displays (and stdout logs).
+
+Decisions worth keeping:
+* **State files pair with the boot volume**, like the `.pram` files and for
+  the same reason: `<image>.<profile>.pomss`, derived from the pramPath at
+  every site. Written temp+rename (the floppy write-back convention) so a
+  crash never leaves a truncated state.
+* **A refused snapshot is a message, not a crash**: `load()`'s identity
+  refusal (wrong profile, ROM, RAM size, corruption) reaches the user as
+  the menu line, and the running machine is untouched.
+* **The Plus/compact loop is single-threaded**, so it applies the slot
+  inline between frames and calls `MacFrameClock::resync()` after a
+  restore — `frameBase` is derived from the CPU clock, which the restore
+  just moved.
+* Profile tags are re-derived at each run site (env `POM68K_Q605_ID` /
+  `POM68K_CENTRIS_MODEL` / `POM68K_Q630_ID` for the identity twins), so a
+  Quadra 605 state cannot be restored into an LC 475 sharing the same ROM.
+
+The machine-level save/load is behaviour-gated (`savestate_*_test`,
+`lcii_savestate_etalon`); the GUI layer itself is compile-verified — a
+hands-on click-through on a booted machine is the remaining validation.
+
 ## 2026-07-30 — Save-state fan-out: all 10 machine families serialize
 
 The LC II foundation generalized to the whole tree in one pass, three waves:

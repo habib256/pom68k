@@ -42,6 +42,7 @@
 #include "TobyVideo.h"
 #include "LtoUdp.h"
 #include "AtalkHub.h"
+#include "SaveStateMachines.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -429,6 +430,117 @@ static std::function<void(int)> gSetCpuEngine;         // 0 = interpreter, 1 = J
 static std::function<int()> gGetCpuEngine;
 static std::function<jit::Stats::Snapshot()> gJitStats;
 static const char* gJitBackend = nullptr;              // backend chosen for this host
+
+// ── Save states (TODO § C GUI wiring) ───────────────────────────────────
+// Shared plumbing embedded in each machine-thread struct: the GUI queues a
+// request; the MACHINE thread performs the save/load between two quanta
+// (the Cmd::CpuEngine precedent — a restore replaces the whole tree, so it
+// must land between two instructions, never mid-quantum from the GUI
+// thread) and posts a one-line outcome the machine window displays. The
+// run function fills in the profile tag and the state-file path (tagged
+// like the .pram file, so states pair with their boot volume).
+struct SaveStateSlot {
+    pom68k::SnapMachine kind{};        // 0 = profile not wired
+    std::string path;
+
+    void request(bool load) {
+        std::lock_guard<std::mutex> l(mu_);
+        pending_ |= load ? 2 : 1;
+    }
+    std::string message() {
+        std::lock_guard<std::mutex> l(mu_);
+        return message_;
+    }
+
+    // Machine-thread side, called from applyCmds() (between quanta).
+    // Returns what actually happened (bit 0 = saved, bit 1 = restored) so
+    // single-threaded callers (the Plus loop) can resync their frame clock
+    // after a restore.
+    template <class Mem, class Cpu>
+    int apply(Mem& mem, Cpu& cpu) {
+        int p;
+        { std::lock_guard<std::mutex> l(mu_); p = pending_; pending_ = 0; }
+        if (!p) return 0;
+        int done = 0;
+        if (kind == pom68k::SnapMachine{} || path.empty()) {
+            post("Save states: profil non câblé");
+            return 0;
+        }
+        if (p & 1) {
+            std::vector<uint8_t> blob;
+            pom68k::save(mem, cpu, kind, blob);
+            // Atomic temp+rename, the floppy write-back convention: a crash
+            // mid-write must never leave a truncated state file behind.
+            const std::string tmp = path + ".tmp";
+            std::FILE* f = std::fopen(tmp.c_str(), "wb");
+            if (!f || std::fwrite(blob.data(), 1, blob.size(), f) != blob.size()) {
+                if (f) std::fclose(f);
+                std::remove(tmp.c_str());
+                post("État NON sauvé: écriture impossible (" + tmp + ")");
+            } else {
+                std::fclose(f);
+                if (std::rename(tmp.c_str(), path.c_str()) != 0) {
+                    std::remove(tmp.c_str());
+                    post("État NON sauvé: rename impossible (" + path + ")");
+                } else {
+                    post("État sauvé → " + path + " ("
+                         + std::to_string((blob.size() + 512) / 1024) + " Ko)");
+                    done |= 1;
+                }
+            }
+        }
+        if (p & 2) {
+            std::vector<uint8_t> blob;
+            std::FILE* f = std::fopen(path.c_str(), "rb");
+            if (!f) {
+                post("Aucun état à restaurer (" + path + ")");
+            } else {
+                std::fseek(f, 0, SEEK_END);
+                long n = std::ftell(f);
+                std::fseek(f, 0, SEEK_SET);
+                blob.resize(n > 0 ? size_t(n) : 0);
+                size_t got = blob.empty() ? 0
+                           : std::fread(blob.data(), 1, blob.size(), f);
+                std::fclose(f);
+                std::string err;
+                if (got != blob.size()) {
+                    post("État NON restauré: lecture tronquée (" + path + ")");
+                } else if (!pom68k::load(mem, cpu, kind,
+                                         blob.data(), blob.size(), err)) {
+                    // A refused snapshot leaves the machine untouched — the
+                    // reason (profile/ROM/RAM mismatch, corruption) is
+                    // load()'s own explanation.
+                    post("État NON restauré: " + err);
+                } else {
+                    post(err.empty() ? "État restauré ← " + path
+                                     : "État restauré (" + err + ")");
+                    done |= 2;
+                }
+            }
+        }
+        return done;
+    }
+
+private:
+    void post(std::string m) {
+        std::lock_guard<std::mutex> l(mu_);
+        message_ = std::move(m);
+        std::printf("SaveState: %s\n", message_.c_str());
+    }
+    std::mutex mu_;
+    int pending_ = 0;                  // bit 0 = save, bit 1 = load
+    std::string message_;
+};
+
+// The "État" row every machine window shows: Sauver / Restaurer + the last
+// outcome. One helper so the ten windows stay in step.
+static void saveStateUi(SaveStateSlot& slot) {
+    if (ImGui::Button("Sauver l'état")) slot.request(false);
+    ImGui::SameLine();
+    if (ImGui::Button("Restaurer l'état")) slot.request(true);
+    const std::string msg = slot.message();
+    if (!msg.empty()) ImGui::TextWrapped("%s", msg.c_str());
+}
 
 // ── AppleTalk window (in-process stack visibility + toggles) ────────────
 static bool gShowAtalk = false;
@@ -863,6 +975,9 @@ struct MacIiMachine {
     struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset } t; int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
+    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
+    SaveStateSlot state;
+
     bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
         std::lock_guard<std::mutex> l(fbMu_);
         if (fbShared_.empty()) return false;
@@ -985,6 +1100,7 @@ private:
             case Cmd::HardReset:   cpu.hardReset(); break;
         }
         cmdsApply_.clear();
+        state.apply(mem, cpu);         // save/load between two quanta
     }
 
     std::thread th_;
@@ -1090,6 +1206,11 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static MacIiMachine machine{mem, cpu, audioHost};
+    machine.state.kind = model == MacIIMemory::Model::IIx  ? pom68k::SnapMachine::IIx
+                       : model == MacIIMemory::Model::IIcx ? pom68k::SnapMachine::IIcx
+                                                           : pom68k::SnapMachine::MacII;
+    machine.state.path = (hddPath.empty() ? std::string(name)
+                                          : hddPath + "." + name) + ".pomss";
     machine.publish(true);
 
     struct Ctx {
@@ -1211,6 +1332,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
         bool turbo = c.m.turbo.load(std::memory_order_relaxed);
         if (ImGui::Checkbox("Turbo", &turbo))
             c.m.turbo.store(turbo);
+        saveStateUi(c.m.state);
         ImGui::End();
 
         ImGui::Render();
@@ -1266,6 +1388,9 @@ struct LcMachine {
 
     struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense } t; int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
+
+    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
+    SaveStateSlot state;
 
     // Latest decoded frame (00RRGGBB, alpha forced — see the decode note).
     // Returns false until the first publish.
@@ -1440,6 +1565,7 @@ private:
             case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
         }
         cmdsApply_.clear();
+        state.apply(mem, cpu);         // save/load between two quanta
     }
 
     std::thread th_;
@@ -1624,6 +1750,12 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static LcMachine machine{mem, cpu, video, audioHost};
+    machine.state.kind = model == V8Memory::Model::Lc           ? pom68k::SnapMachine::Lc
+                       : model == V8Memory::Model::ClassicII    ? pom68k::SnapMachine::ClassicII
+                       : model == V8Memory::Model::ColorClassic ? pom68k::SnapMachine::ColorClassic
+                       : model == V8Memory::Model::MacTv        ? pom68k::SnapMachine::MacTv
+                                                                : pom68k::SnapMachine::LcII;
+    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     machine.publish(true);              // first frame before the GUI shows
 
     struct Ctx {
@@ -1707,6 +1839,13 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
             // the ROM rescans the SCSI bus, so hot-attached media appear).
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({LcMachine::Cmd::HardReset});
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
+            {
+                const std::string ssMsg = c.m.state.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
@@ -1852,6 +1991,9 @@ struct SonoraStyleMachine {
     struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense } t; int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
+    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
+    SaveStateSlot state;
+
     bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
         std::lock_guard<std::mutex> l(fbMu_);
         if (fbShared_.empty()) return false;
@@ -1980,6 +2122,7 @@ private:
             case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
         }
         cmdsApply_.clear();
+        state.apply(mem, cpu);         // save/load between two quanta
     }
 
     std::thread th_;
@@ -2111,6 +2254,12 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static Lc3Machine machine{mem, cpu, video, audioHost};
+    machine.state.kind = model == SonoraModel::Lc3Plus   ? pom68k::SnapMachine::Lc3Plus
+                       : model == SonoraModel::Lc520     ? pom68k::SnapMachine::Lc520
+                       : model == SonoraModel::Lc550     ? pom68k::SnapMachine::Lc550
+                       : model == SonoraModel::CClassic2 ? pom68k::SnapMachine::CClassic2
+                                                         : pom68k::SnapMachine::Lc3;
+    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     machine.publish(true);
 
     struct Ctx {
@@ -2185,6 +2334,13 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
             }
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({Lc3Machine::Cmd::HardReset});
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
+            {
+                const std::string ssMsg = c.m.state.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
@@ -2374,6 +2530,8 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static VaspMachine machine{mem, cpu, video, audioHost};
+    machine.state.kind = vi ? pom68k::SnapMachine::IIvi : pom68k::SnapMachine::IIvx;
+    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     machine.publish(true);
 
     struct Ctx {
@@ -2450,6 +2608,13 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
             }
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({VaspMachine::Cmd::HardReset});
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
+            {
+                const std::string ssMsg = c.m.state.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
@@ -2615,6 +2780,8 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static RbvMachine machine{mem, cpu, video, audioHost};
+    machine.state.kind = iici ? pom68k::SnapMachine::IIci : pom68k::SnapMachine::IIsi;
+    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     machine.publish(true);
 
     struct Ctx {
@@ -2691,6 +2858,13 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
             }
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({RbvMachine::Cmd::HardReset});
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
+            {
+                const std::string ssMsg = c.m.state.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
@@ -2794,6 +2968,9 @@ struct DafbMachine {
                           EjectFloppy, CpuEngine } t;
                  int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
+
+    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
+    SaveStateSlot state;
     void requestInsertFloppy(std::string path) {
         std::lock_guard<std::mutex> l(cmdMu_);
         floppyPending_ = std::move(path);
@@ -3192,6 +3369,7 @@ private:
                 break;
         }
         cmdsApply_.clear();
+        state.apply(mem, cpu);         // save/load between two quanta
     }
 
     std::thread th_;
@@ -3329,6 +3507,14 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static QuadraMachine machine{mem, cpu, audioHost};
+    {
+        const char* qid = getenv("POM68K_Q605_ID");
+        machine.state.kind = qid && strstr(qid, "2225") ? pom68k::SnapMachine::Q605
+                           : qid && (strstr(qid, "222e") || strstr(qid, "222E"))
+                                 ? pom68k::SnapMachine::Lc575
+                                 : pom68k::SnapMachine::Lc475;
+    }
+    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     // The "CPU" menu is global; only machines that HAVE a second engine
     // install its hooks. `machine` is static, so a captureless lambda can
     // reach it and the hooks stay valid for the process lifetime.
@@ -3432,6 +3618,13 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
             }
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({QuadraMachine::Cmd::HardReset});
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
+            {
+                const std::string ssMsg = c.m.state.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
@@ -3648,6 +3841,12 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static CentrisMachine machine{mem, cpu, audioHost};
+    machine.state.kind = q800 ? pom68k::SnapMachine::Quadra800
+                       : q650 ? pom68k::SnapMachine::Quadra650
+                       : q610 ? pom68k::SnapMachine::Quadra610
+                       : c610 ? pom68k::SnapMachine::Centris610
+                              : pom68k::SnapMachine::Centris650;
+    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     // The "CPU" menu is global; only machines that HAVE a second engine
     // install its hooks. `machine` is static, so a captureless lambda can
     // reach it and the hooks stay valid for the process lifetime.
@@ -3751,6 +3950,13 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
             }
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({CentrisMachine::Cmd::HardReset});
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
+            {
+                const std::string ssMsg = c.m.state.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
@@ -3944,6 +4150,8 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static Q700Machine machine{mem, cpu, audioHost};
+    machine.state.kind = pom68k::SnapMachine::Q700;
+    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     // The "CPU" menu is global; only machines that HAVE a second engine
     // install its hooks. `machine` is static, so a captureless lambda can
     // reach it and the hooks stay valid for the process lifetime.
@@ -4047,6 +4255,13 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
             }
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({Q700Machine::Cmd::HardReset});
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
+            {
+                const std::string ssMsg = c.m.state.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
@@ -4241,6 +4456,13 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static Q630Machine machine{mem, cpu, audioHost};
+    {
+        const char* qid = getenv("POM68K_Q630_ID");
+        machine.state.kind = qid && (strstr(qid, "225a") || strstr(qid, "225A"))
+                                 ? pom68k::SnapMachine::Lc580
+                                 : pom68k::SnapMachine::Q630;
+    }
+    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     // The "CPU" menu is global; only machines that HAVE a second engine
     // install its hooks. `machine` is static, so a captureless lambda can
     // reach it and the hooks stay valid for the process lifetime.
@@ -4344,6 +4566,13 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
             }
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({Q630Machine::Cmd::HardReset});
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
+            {
+                const std::string ssMsg = c.m.state.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
@@ -4616,6 +4845,22 @@ int main(int argc, char** argv) {
         compactModel == MacMemory::Model::Classic ? MachineKind::MacClassic : MachineKind::Plus;
     const std::string windowTitle = std::string("POM68K — ") + machineName;
 
+    // Save states (single-threaded machine: applied inline between frames).
+    static SaveStateSlot ssSlot;
+    ssSlot.kind =
+        compactModel == MacMemory::Model::SE      ? pom68k::SnapMachine::SE :
+        compactModel == MacMemory::Model::SEFDHD  ? pom68k::SnapMachine::SEFDHD :
+        compactModel == MacMemory::Model::Classic ? pom68k::SnapMachine::Classic
+                                                  : pom68k::SnapMachine::Plus;
+    {
+        const char* tag =
+            compactModel == MacMemory::Model::SE      ? "se" :
+            compactModel == MacMemory::Model::SEFDHD  ? "sefdhd" :
+            compactModel == MacMemory::Model::Classic ? "classic" : "plus";
+        ssSlot.path = (hddPath.empty() ? std::string(tag)
+                                       : hddPath + "." + tag) + ".pomss";
+    }
+
     // ── Window / ImGui ───────────────────────────────────────────────────
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
@@ -4660,6 +4905,8 @@ int main(int argc, char** argv) {
         glfwPollEvents();
         ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
 
+        if (ssSlot.apply(c.mem, c.cpu) & 2)
+            c.clock.resync(c.cpu);              // restored: re-derive frameBase
         if (c.running) {
             int n = c.turbo ? 8 : 1;            // turbo: 8 machine frames per host frame
             std::vector<float> samp;
@@ -4680,6 +4927,13 @@ int main(int argc, char** argv) {
 
         machineMenu(compactKind, c.window, [&c] {
             if (ImGui::MenuItem("Redémarrer")) c.cpu.hardReset();
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) ssSlot.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) ssSlot.request(true);
+            {
+                const std::string ssMsg = ssSlot.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);

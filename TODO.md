@@ -101,8 +101,21 @@ data-loss holes and false test-confidence first, then convenience).
       (hmmu24_ off at reset), and the Plus overlay clear samples portA(),
       so DDRA must be set first. Real-OS savestate etalons for these
       machines remain future work (the LC II one is the template).
-    - [ ] GUI/CLI wiring — route through the machine thread's command queue
-      (like the CPU-engine switch) so it lands between two instructions.
+    - [x] ~~GUI/CLI wiring~~ **DONE 2026-07-30** (`main.cpp SaveStateSlot`):
+      every machine window's **Machine** menu gains « Sauver l'état » /
+      « Restaurer l'état » (Mac II: buttons in its CPU panel). The GUI only
+      queues a request; the MACHINE thread performs the save/load inside
+      `applyCmds()` between two quanta (the `Cmd::CpuEngine` precedent) and
+      posts a one-line outcome (also printed to stdout). The state file is
+      tagged like the `.pram` (`<image>.<profile>.pomss`), written
+      temp+rename; a refused snapshot leaves the machine untouched and the
+      menu shows `load()`'s own explanation. The single-threaded
+      Plus/compact loop applies inline and `MacFrameClock::resync()`s after
+      a restore (frameBase is derived from the CPU clock). All 10 families
+      wired, one `SnapMachine` tag per profile at each run site.
+      **Pending: a hands-on GUI pass** (click both items on a booted
+      machine) — the machine-level save/load is gated, the GUI layer is
+      compile-verified only.
   - Conventions the chunks follow, worth keeping: callbacks and cross-device
     pointers are **re-bound, never serialized** (a pointer becomes an index —
     `Ncr5380::disk_`); pure caches are **flushed** on restore (ATC via the
