@@ -15,22 +15,48 @@
 
 #include "AdbBus.h"
 #include "AdbLine.h"
+#include "AdbVia.h"
 #include "Asc.h"
+#include "CentrisCpu.h"
+#include "CentrisMemory.h"
+#include "Cpu020.h"
 #include "Cpu030.h"
+#include "Cpu040.h"
+#include "Cpu68k.h"
 #include "CudaLle.h"
+#include "Dafb.h"
 #include "Egret.h"
 #include "Iwm.h"
 #include "M68hc05.h"
+#include "MacIIMemory.h"
+#include "MacInput.h"
+#include "MacMemory.h"
 #include "Ncr5380.h"
+#include "Ncr53c96.h"
+#include "Pic1654s.h"
 #include "PseudoVia.h"
+#include "Q605Memory.h"
+#include "Q630Cpu.h"
+#include "Q630Memory.h"
+#include "Q700Cpu.h"
+#include "Q700Memory.h"
+#include "RbvCpu.h"
+#include "RbvMemory.h"
+#include "Rtc.h"
 #include "SaveState.h"
 #include "ScsiDisk.h"
 #include "SaveStateMachines.h"
 #include "Scc8530.h"
+#include "SonoraCpu.h"
+#include "SonoraMemory.h"
 #include "SonyDrive.h"
 #include "Swim1.h"
 #include "Swim2.h"
+#include "TobyVideo.h"
 #include "V8Memory.h"
+#include "Valkyrie.h"
+#include "VaspCpu.h"
+#include "VaspMemory.h"
 #include "Via6522.h"
 #include <cstring>
 
@@ -44,6 +70,26 @@
     template void Klass::visit<sav::Reader>(sav::Reader&)
 
 POM68K_SAV_CHECK(Cpu030);
+POM68K_SAV_CHECK(SonoraCpu);
+POM68K_SAV_CHECK(VaspCpu);
+POM68K_SAV_CHECK(RbvCpu);
+POM68K_SAV_CHECK(Cpu040);
+POM68K_SAV_CHECK(CentrisCpu);
+POM68K_SAV_CHECK(Q700Cpu);
+POM68K_SAV_CHECK(Q630Cpu);
+POM68K_SAV_CHECK(Cpu020);
+POM68K_SAV_CHECK(Cpu68k);
+POM68K_SAV_CHECK(MacKeyboard);
+POM68K_SAV_CHECK(MacMouse);
+POM68K_SAV_CHECK(NuBus);
+POM68K_SAV_CHECK(TobyVideo);
+POM68K_SAV_CHECK(Rtc);
+POM68K_SAV_CHECK(Pic1654s);
+POM68K_SAV_CHECK(AdbVia);
+POM68K_SAV_CHECK(Dafb);
+POM68K_SAV_CHECK(Valkyrie);
+POM68K_SAV_CHECK(AscIosb);
+POM68K_SAV_CHECK(Ncr53c96);
 POM68K_SAV_CHECK(Via6522);
 POM68K_SAV_CHECK(PseudoVia);
 POM68K_SAV_CHECK(AdbBus);
@@ -62,6 +108,15 @@ POM68K_SAV_CHECK(SonyDrive);
 POM68K_SAV_CHECK(Ariel);
 POM68K_SAV_CHECK(Scc8530);
 POM68K_SAV_CHECK(V8Memory);       // the LC II machine chunk (nests all of the above)
+POM68K_SAV_CHECK(SonoraMemory);   // LC III / III+ / 520 / 550 / CC II
+POM68K_SAV_CHECK(VaspMemory);     // IIvx / IIvi
+POM68K_SAV_CHECK(RbvMemory);      // IIsi / IIci (nests AdbVia + Rtc too)
+POM68K_SAV_CHECK(Q605Memory);     // Q605 / LC 475 / LC 575
+POM68K_SAV_CHECK(CentrisMemory);  // Centris 610/650, Quadra 610/650/800
+POM68K_SAV_CHECK(Q700Memory);     // Quadra 700
+POM68K_SAV_CHECK(Q630Memory);     // Quadra 630 / LC 580
+POM68K_SAV_CHECK(MacIIMemory);    // Mac II / IIx / IIcx (nests NuBus + Toby)
+POM68K_SAV_CHECK(MacMemory);      // Plus / SE / SE FDHD / Classic
 
 // ── Container assembly ──────────────────────────────────────────────────
 namespace pom68k {
@@ -72,10 +127,14 @@ constexpr char kHead[4] = {'H','E','A','D'};
 constexpr char kCpu [4] = {'C','P','U',' '};
 constexpr char kMach[4] = {'M','A','C','H'};
 
-}  // namespace
-
-void save(V8Memory& mem, Cpu030& cpu, SnapMachine kind,
-          std::vector<std::uint8_t>& out) {
+// The container body is machine-shape-independent: any (Mem, Cpu) pair
+// exposing romChecksum()/ramBytes()/machineClock() and a visit() each goes
+// through the same header + chunk assembly. The public overloads below are
+// one-line forwards, so adding a machine costs a declaration, not a copy of
+// the validation logic.
+template <class Mem, class Cpu>
+void saveT(Mem& mem, Cpu& cpu, SnapMachine kind,
+           std::vector<std::uint8_t>& out) {
     out.clear();
     out.insert(out.end(), sav::kMagic, sav::kMagic + sizeof sav::kMagic);
 
@@ -89,8 +148,9 @@ void save(V8Memory& mem, Cpu030& cpu, SnapMachine kind,
     { sav::Chunk c(out, kMach); sav::Writer w(out); w(mem); }
 }
 
-bool load(V8Memory& mem, Cpu030& cpu, SnapMachine kind,
-          const std::uint8_t* data, std::size_t len, std::string& err) {
+template <class Mem, class Cpu>
+bool loadT(Mem& mem, Cpu& cpu, SnapMachine kind,
+           const std::uint8_t* data, std::size_t len, std::string& err) {
     err.clear();
     if (len < sizeof sav::kMagic
         || std::memcmp(data, sav::kMagic, sizeof sav::kMagic) != 0) {
@@ -157,5 +217,29 @@ bool load(V8Memory& mem, Cpu030& cpu, SnapMachine kind,
             + " unknown chunk(s) written by a newer build";
     return true;
 }
+
+}  // namespace
+
+// ── Public per-machine entry points (declared in SaveStateMachines.h) ───
+#define POM68K_SAV_MACHINE(Mem, Cpu)                                        \
+    void save(Mem& mem, Cpu& cpu, SnapMachine kind,                         \
+              std::vector<std::uint8_t>& out) {                             \
+        saveT(mem, cpu, kind, out);                                         \
+    }                                                                       \
+    bool load(Mem& mem, Cpu& cpu, SnapMachine kind,                         \
+              const std::uint8_t* data, std::size_t len, std::string& err) {\
+        return loadT(mem, cpu, kind, data, len, err);                       \
+    }
+
+POM68K_SAV_MACHINE(V8Memory, Cpu030)
+POM68K_SAV_MACHINE(SonoraMemory, SonoraCpu)
+POM68K_SAV_MACHINE(VaspMemory, VaspCpu)
+POM68K_SAV_MACHINE(RbvMemory, RbvCpu)
+POM68K_SAV_MACHINE(Q605Memory, Cpu040)
+POM68K_SAV_MACHINE(CentrisMemory, CentrisCpu)
+POM68K_SAV_MACHINE(Q700Memory, Q700Cpu)
+POM68K_SAV_MACHINE(Q630Memory, Q630Cpu)
+POM68K_SAV_MACHINE(MacIIMemory, Cpu020)
+POM68K_SAV_MACHINE(MacMemory, Cpu68k)
 
 }  // namespace pom68k

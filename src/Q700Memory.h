@@ -156,6 +156,33 @@ public:
     std::function<void(uint32_t, bool, uint32_t)> onIoAccess;
     std::function<void(uint32_t, bool)> onBusError;
 
+    // A Mac ROM's first longword IS its checksum (V8Memory pattern).
+    uint32_t romChecksum() const {
+        if (rom_.size() < 4) return 0;
+        return uint32_t(rom_[0]) << 24 | uint32_t(rom_[1]) << 16
+             | uint32_t(rom_[2]) << 8  | uint32_t(rom_[3]);
+    }
+
+    // ── Save states: the machine chunk (V8Memory pattern) ───────────────
+    // Two real VIAs (the discrete-040 front end) + RTC + PIC ADB + the
+    // DAFB cell with its TurboSCSI control latch. Out: rom_, cpuHz_
+    // (profile), cpu_/jitGuard_.
+    template <class Ar> void visit(Ar& ar) {
+        ar.blob(ram_);
+        ar.blob(vram_);
+        ar(via1_, via2_, rtc_, adb_, adbVia_, scc_, asc_, swim_,
+           drive0_, drive1_, scsi_, dafbCell_);
+        for (auto& d : scsiDisks_) ar(d);
+        ar(totalRam_, overlay_, sccIrq_, nubusIrqs_, scsiCtrl_,
+           scsiReadCycles_, scsiWriteCycles_,
+           scsiDmaReadCycles_, scsiDmaWriteCycles_,
+           ascCycAcc_, swimLastCpu_, swimCycAcc_,
+           viaPhase_, tickAcc_, secAcc_);
+        if constexpr (Ar::loading) {
+            if (jitGuard_) jitGuard_->invalidate();
+        }
+    }
+
 private:
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     uint8_t via2Access8(uint32_t addr, bool write, uint8_t v);

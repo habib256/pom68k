@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 2026-07-30 — Save-state fan-out: all 10 machine families serialize
+
+The LC II foundation generalized to the whole tree in one pass, three waves:
+
+* **030 wave** — `SonoraMemory`, `VaspMemory`, `RbvMemory` (+ the IIci
+  flavor, which pulls `AdbVia` + `Pic1654s` + `Rtc` into the format), CPU
+  wrappers `SonoraCpu`/`VaspCpu`/`RbvCpu` rebased onto `MoiraSnapshot`.
+  The Sonora modeline pointer is derived state: `mode_ = modeline(vidMode_)`
+  is an invariant of `vctrlWrite`, so load re-resolves it instead of
+  serializing a pointer.
+* **040 wave** — `Q605Memory`, `CentrisMemory`, `Q700Memory`, `Q630Memory`
+  with the family's own cells: `Dafb` (all three clock generators' serial
+  state), `Valkyrie`, `AscIosb`, `Ncr53c96` (whose `disk_` travels as a
+  target ID and is re-resolved, the Ncr5380 rule).
+* **68k wave** — `MacIIMemory` (NuBus IRQ lines; `TobyVideo` serialized by
+  the machine that owns it, presence recorded and refused on mismatch) and
+  `MacMemory` (M0110 keyboard transaction engine, `MacKeyboard`/`MacMouse`),
+  `Cpu020`/`Cpu68k` on `MoiraSnapshot`.
+
+The container is now machine-shape-generic (`saveT`/`loadT` templates +
+one-line public forwards), `SnapMachine` carries one tag per profile (32 —
+identity twins share a ROM, so the checksum alone cannot tell an LC III from
+an LC III+), and `SaveStateMachines.cpp` names every archive instantiation
+so a chunk that stops compiling fails the build, not the eventual user.
+
+Gates (all `unit`, synthetic counter-loop ROMs, no assets):
+`savestate_030_test` (Sonora/VASP/RBV/RBV-iici), `savestate_040_test`
+(Q605/Centris/Q700/Q630), `savestate_68k_test` (Plus/SE/Mac II+Toby) —
+re-save byte-identity AND run-N-vs-restore-run-N determinism per family.
+Blast-radius pass: `ctest -L smoke` + the lc3/iisi/iivx/se/macii boot
+etalons, all green.
+
+Two machine-entry quirks found writing the synthetic ROMs, worth keeping:
+the Mac II does not enter through the ROM header vectors — `Cpu020::
+hardReset` hardcodes the Basilisk entry (SSP=$2000, PC=ROMBase+$2A) and
+starts in 32-bit mode (`hmmu24_` off until VIA2 PB3), so overlay code must
+poke VIA1 at `$50F01E00`, not a 24-bit alias; and the Plus overlay latch
+samples `portA()`, so DDRA must be written before ORA_NH for PA4 to stick.
+
+Not yet: real-OS savestate etalons for the nine new families (the LC II
+`lcii_savestate_etalon` is the template) and the GUI/CLI hook.
+
 ## 2026-07-30 — Save states survive the real Finder: `lcii_savestate_etalon`
 
 The archive core's second gate, and the one that mattered: `savestate_v8_test`

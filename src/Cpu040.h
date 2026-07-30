@@ -12,13 +12,13 @@
 // Q605Memory::stall().
 
 #pragma once
-#include "Moira.h"
+#include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
 
 class Q605Memory;
 
-class Cpu040 : public moira::Moira {
+class Cpu040 : public MoiraSnapshot {
 public:
     explicit Cpu040(Q605Memory& mem);
 
@@ -40,6 +40,13 @@ public:
     // Bus/wire time (E-clock, wait states) must be measured here, not on the
     // boosted core clock — see SonoraCpu.h.
     moira::i64 machineClock() const { return clock / cacheBoost_; }
+
+    // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
+    // cacheBoost_/icacheMiss_ are environment tuning, not guest state.
+    template <class Ar> void visit(Ar& ar) {
+        visitCpuCommon(ar);
+        ar(lastPeriphClock_, periphAccum_);
+    }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;

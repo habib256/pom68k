@@ -13,13 +13,13 @@
 // Gate: tests/lc3_boot_etalon.cpp.
 
 #pragma once
-#include "Moira.h"
+#include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
 
 class SonoraMemory;
 
-class SonoraCpu : public moira::Moira {
+class SonoraCpu : public MoiraSnapshot {
 public:
     explicit SonoraCpu(SonoraMemory& mem, bool withFpu = false);
 
@@ -42,6 +42,13 @@ public:
     // wait states — must work in machine cycles: on real silicon the
     // i-cache accelerates instruction fetch, never a VIA bus cycle.
     moira::i64 machineClock() const { return clock / cacheBoost_; }
+
+    // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
+    // cacheBoost_/icacheMiss_ are environment tuning, not guest state.
+    template <class Ar> void visit(Ar& ar) {
+        visitCpuCommon(ar);
+        ar(lastPeriphClock_, periphAccum_);
+    }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;

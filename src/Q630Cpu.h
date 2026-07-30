@@ -9,13 +9,13 @@
 // Gate: tests/q630_boot_etalon.cpp.
 
 #pragma once
-#include "Moira.h"
+#include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
 
 class Q630Memory;
 
-class Q630Cpu : public moira::Moira {
+class Q630Cpu : public MoiraSnapshot {
 public:
     explicit Q630Cpu(Q630Memory& mem);
 
@@ -37,6 +37,13 @@ public:
     // Bus/wire time (E-clock, wait states, the PIC1654S co-step) must be
     // measured here, not on the boosted core clock — see SonoraCpu.h.
     moira::i64 machineClock() const { return clock / cacheBoost_; }
+
+    // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
+    // cacheBoost_/icacheMiss_ are environment tuning, not guest state.
+    template <class Ar> void visit(Ar& ar) {
+        visitCpuCommon(ar);
+        ar(lastPeriphClock_, periphAccum_);
+    }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;

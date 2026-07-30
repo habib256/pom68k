@@ -37,6 +37,15 @@ public:
     uint8_t xpram(uint8_t addr) const { return pram_[addr]; }
     void setXpram(uint8_t addr, uint8_t v) { pram_[addr] = v; }
 
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    // The whole chip travels: clock, unified XPRAM, and the bit-serial
+    // command engine mid-transaction — a snapshot taken between two PB1
+    // clock edges must resume the byte where it stood.
+    template <class Ar> void visit(Ar& ar) {
+        ar(seconds_, pram_, writeProtect_, phase_, bitCnt_,
+           shift_, cmd_, outData_, out_, xpAddr_, enabled_, lastClk_);
+    }
+
 private:
     uint8_t readReg(uint8_t cmd) const;
     void writeReg(uint8_t cmd, uint8_t v);

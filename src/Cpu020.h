@@ -4,13 +4,13 @@
 // Moira M68020 @ 15.6672 MHz on the Mac II GLUE map (functional accuracy).
 
 #pragma once
-#include "Moira.h"
+#include "MoiraSnapshot.h"
 #include <cstdint>
 #include <string>
 
 class MacIIMemory;
 
-class Cpu020 : public moira::Moira {
+class Cpu020 : public MoiraSnapshot {
 public:
     // is030 = the IIx/IIcx/SE-30 variant: a 68030 (built-in PMMU + 68882) on
     // the same Mac II GLUE board, sharing the mac2fdhd ROM. The GLUE still
@@ -28,6 +28,12 @@ public:
     // machine time — the accessor exists so bus/wire models (E-clock, the
     // PIC1654S co-step) read the same idiom on every machine (SonoraCpu.h).
     moira::i64 machineClock() const { return clock; }
+
+    // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
+    template <class Ar> void visit(Ar& ar) {
+        visitCpuCommon(ar);
+        ar(lastPeriphClock_);
+    }
 
 private:
     moira::u8  read8(moira::u32 addr) const override;

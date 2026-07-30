@@ -77,6 +77,21 @@ public:
     const uint32_t* regs() const { return regs_; }
     const uint8_t (*clut() const)[3] { return clut_; }
 
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    // The whole cell travels: register echo file, Swatch CRTC + derived
+    // geometry, RAMDAC/CLUT, the three clock generators' serial state and
+    // the frame clock phase. cpuHz_/clockgen_ are construction; onIrq is
+    // re-bound by the machine.
+    template <class Ar> void visit(Ar& ar) {
+        ar(regs_, intStatus_, swatchIntEnable_, cursorLine_,
+           palAddress_, palIdx_, ac842Pbctrl_, pcbr1_,
+           base_, stride_, config_, mode_, clut_,
+           hParams_, vParams_, swatchMode_, hres_, vres_, htotal_, vtotal_,
+           monitorConfig_, monitorId_,
+           pixelClock_, gazShift_, gazBits_, gazLastClock_, gazMclk_,
+           dp8534Shift_, dp8531Regs_, framePos_, prevLine_);
+    }
+
 private:
     void recalcIrq();
     void recalcMode();

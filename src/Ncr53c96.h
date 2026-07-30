@@ -139,6 +139,31 @@ public:
     std::function<void(const std::vector<uint8_t>&)> onCommand;
     std::function<void(int, bool, uint8_t)> onAccess;
 
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    // The whole session travels: register file, deferred-IRQ countdown,
+    // 24-bit counter, FIFO, phase and the per-session transfer buffers.
+    // `disk_` is a pointer into `targets_[]` (machine-owned, re-attached on
+    // restore), so it is carried as an ID and re-resolved — the Ncr5380
+    // rule. `latency_` is a behaviour knob owned by the environment.
+    template <class Ar> void visit(Ar& ar) {
+        ar(config1_, config2_, config3_, clockConv_, syncPeriod_,
+           syncOffset_, busId_, selectTimeout_, seq_, status_, istatus_,
+           scsiId_, irq_, drq_, pendDelay_, pendBits_, selCdbWait_,
+           testMode_, tcount_, tcounter_, dmaCommand_, fifo_, fifoPos_,
+           dataXfer_, phase_, cmd_, dataIn_, dataInPos_, dataOut_,
+           dataOutExpected_, targetStatus_, msgInLeft_,
+           reads, writes, selects, commands, dmaBytes, lastCmd);
+
+        std::int8_t sel = -1;
+        if constexpr (!Ar::loading) {
+            for (int i = 0; i < 7; i++)
+                if (disk_ && targets_[i] == disk_) { sel = std::int8_t(i); break; }
+        }
+        ar(sel);
+        if constexpr (Ar::loading)
+            disk_ = (sel >= 0 && sel < 7) ? targets_[sel] : nullptr;
+    }
+
 private:
     ScsiDisk* targets_[7] = {};
     ScsiDisk* disk_ = nullptr;           // target selected this session

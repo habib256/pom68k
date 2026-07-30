@@ -28,6 +28,9 @@ public:
     // the two SR interrupts, 3 ms apart — is MacMemory's job).
     uint8_t respond(uint8_t cmd);
 
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    template <class Ar> void visit(Ar& ar) { ar(queue_); }
+
 private:
     std::deque<uint8_t> queue_;
 };
@@ -59,6 +62,13 @@ public:
 
     bool x1 = false, y1 = false;     // → SCC DCD A / B
     bool x2 = false, y2 = false;     // → VIA PB4 / PB5
+
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    // Queued deltas, quadrature phase and the live line levels all travel:
+    // a restore mid-gesture must not step the wrong direction.
+    template <class Ar> void visit(Ar& ar) {
+        ar(dx_, dy_, phase_, button_, x1, y1, x2, y2);
+    }
 
 private:
     static constexpr int kStepCycles = 4000;   // ~2 kHz max step rate

@@ -56,6 +56,20 @@ public:
         if (lle_) line_.mouseButton(down); else if (adb_) adb_->mouseButton(down);
     }
 
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    // Both paths travel: the HLE byte machine (cmd_/resp_/timer_) and the
+    // LLE transceiver (the PIC core mid-instruction + the bit-serial ADB
+    // line + the clock accumulators that phase it against the CPU). The
+    // via_/adb_ pointers and lle_/cpuHz_ are attach()-time wiring.
+    template <class Ar> void visit(Ar& ar) {
+        ar(state_, lastState_, cmd_, resp_);
+        std::uint64_t pos = respPos_;
+        ar(pos);
+        if constexpr (Ar::loading) respPos_ = static_cast<size_t>(pos);
+        ar(irqPending_, expectingListen_, timer_);
+        ar(pic_, line_, picAcc_, lastPicClock_);
+    }
+
 private:
     void setupPicPorts();
     void tickLle(int cpuCycles);

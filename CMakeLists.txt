@@ -288,6 +288,26 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(savestate_v8_test PRIVATE pom68k_core)
     add_test(NAME savestate_v8_test COMMAND savestate_v8_test)
 
+    # Save-state fan-out: the three 030 families (Sonora / VASP / RBV,
+    # incl. the IIci's AdbVia + Pic1654s + Rtc chunks) — re-save
+    # byte-identity + determinism across a restore, synthetic ROM.
+    add_executable(savestate_030_test tests/savestate_030_test.cpp)
+    target_link_libraries(savestate_030_test PRIVATE pom68k_core)
+    add_test(NAME savestate_030_test COMMAND savestate_030_test)
+
+    # Save-state fan-out: the four 040 families (Q605 / Centris / Q700 /
+    # Q630 — Dafb, Valkyrie, AscIosb, Ncr53c96 chunks), same properties.
+    add_executable(savestate_040_test tests/savestate_040_test.cpp)
+    target_link_libraries(savestate_040_test PRIVATE pom68k_core)
+    add_test(NAME savestate_040_test COMMAND savestate_040_test)
+
+    # Save-state fan-out: Mac II (NuBus/Toby/Cpu020) + compact 68000
+    # (Plus M0110 engine, SE ADB, Cpu68k), same properties.
+    add_executable(savestate_68k_test tests/savestate_68k_test.cpp)
+    target_link_libraries(savestate_68k_test PRIVATE pom68k_core)
+    add_test(NAME savestate_68k_test COMMAND savestate_68k_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # Keyboard through the real Cuda firmware (SRQ path — the 2026-07-23
     # freeze repro). Soft-skips without assets.
     add_executable(q605_cudalle_key_etalon tests/q605_cudalle_key_etalon.cpp)

@@ -10,11 +10,11 @@
 // Gate: tests/cpu_smoke.cpp.
 
 #pragma once
-#include "Moira.h"
+#include "MoiraSnapshot.h"
 
 class MacMemory;
 
-class Cpu68k : public moira::Moira {
+class Cpu68k : public MoiraSnapshot {
 public:
     explicit Cpu68k(MacMemory& mem);
 
@@ -59,6 +59,15 @@ private:
 
 public:
     long irqServed[8] = {};                 // debug: interrupts taken per level
+
+    // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
+    // irqServed is a debug counter, not guest state. No cache boost on the
+    // 68000: the core clock IS machine time.
+    moira::i64 machineClock() const { return clock; }
+    template <class Ar> void visit(Ar& ar) {
+        visitCpuCommon(ar);
+        ar(lastPeriphClock_);
+    }
 
 private:
 

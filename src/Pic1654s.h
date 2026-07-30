@@ -59,6 +59,15 @@ public:
     uint8_t  status() const { return status_; }
     uint8_t  reg(uint8_t f) const { return f < ram_.size() ? ram_[f] : 0; }
 
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    // Execution state only. The firmware (prog_/progMask_) is identity —
+    // loaded by the owner, never serialized — and option_ is fixed on this
+    // mask-ROM part. The port hooks are std::function: re-bound, not saved.
+    template <class Ar> void visit(Ar& ar) {
+        ar(ram_, w_, pc_, status_, fsr_, portA_, portB_,
+           stack_, pclWritten_, rtcc_);
+    }
+
 private:
     enum : uint8_t {                         // file-register indices
         F_INDF = 0x00, F_TMR0 = 0x01, F_PCL = 0x02, F_STATUS = 0x03,

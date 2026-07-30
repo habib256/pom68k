@@ -171,6 +171,34 @@ public:
 
     bool via2IrqAsserted() const { return (pvIfr_ & pvIer_ & 0x1B) != 0; }
 
+    // A Mac ROM's first longword IS its checksum (V8Memory pattern).
+    uint32_t romChecksum() const {
+        if (rom_.size() < 4) return 0;
+        return uint32_t(rom_[0]) << 24 | uint32_t(rom_[1]) << 16
+             | uint32_t(rom_[2]) << 8  | uint32_t(rom_[3]);
+    }
+
+    // ── Save states: the machine chunk (V8Memory pattern) ───────────────
+    // The discrete RTC and the PIC1654S ADB transceiver travel with the
+    // machine. Out: rom_, cpuHz_/modelPins_ (profile), cpu_/jitGuard_.
+    template <class Ar> void visit(Ar& ar) {
+        ar.blob(ram_);
+        ar.blob(vram_);
+        ar(via1_, rtc_, adb_, adbVia_, scc_, asc_, swim_,
+           drive0_, drive1_, scsi_, dafbCell_);
+        for (auto& d : scsiDisks_) ar(d);
+        ar(totalRam_, overlay_, sccIrq_,
+           pvIfr_, pvIer_, pvPortB_, nubusIrqs_, ascLine_,
+           memcjr_, dafbHolding_, iosbRegs_,
+           scsiReadCycles_, scsiWriteCycles_,
+           scsiDmaReadCycles_, scsiDmaWriteCycles_,
+           ascCycAcc_, swimLastCpu_, swimCycAcc_,
+           viaPhase_, tickAcc_, secAcc_);
+        if constexpr (Ar::loading) {
+            if (jitGuard_) jitGuard_->invalidate();
+        }
+    }
+
 private:
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     uint8_t via2Access8(uint32_t addr, bool write, uint8_t v);

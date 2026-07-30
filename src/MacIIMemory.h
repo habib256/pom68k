@@ -109,6 +109,33 @@ public:
     // clear Sys7 AppleTalk CautionAlerts when EtherTalk is selected but no
     // NuBus ethernet is present.
 
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    uint32_t ramBytes() const { return ramSize_; }
+    // A Mac ROM's first longword IS its checksum (V8Memory pattern).
+    uint32_t romChecksum() const {
+        if (rom_.size() < 4) return 0;
+        return uint32_t(rom_[0]) << 24 | uint32_t(rom_[1]) << 16
+             | uint32_t(rom_[2]) << 8  | uint32_t(rom_[3]);
+    }
+    // The machine chunk. The Toby card is optional wiring (installTobyVideo),
+    // so its presence is recorded and must match on restore — a snapshot
+    // taken with a card cannot load into a machine without one. Out:
+    // rom_/model_ (profile identity), cpu_ (pointer), the vbl debug longs.
+    template <class Ar> void visit(Ar& ar) {
+        ar.blob(ram_);
+        ar(via1_, via2_, rtc_, nubus_, adbVia_, adb_, asc_,
+           scsi_, iwm_, drive_, scc_, mouse_);
+        for (auto& d : scsiDisks_) ar(d);
+        std::uint8_t hasToby = toby_ != nullptr;
+        ar(hasToby);
+        if constexpr (Ar::loading) {
+            if ((toby_ != nullptr) != (hasToby != 0)) { ar.fail(); return; }
+        }
+        if (toby_) ar(*toby_);
+        ar(ramSize_, overlay_, glueRamSize_, nubusIrqState_, sccIrq_,
+           via2Irq_, via2Pb7_, hmmu24_, viaPhase_, tickAcc_, secAcc_);
+    }
+
 private:
     bool isIo(uint32_t addr, uint32_t& off) const;
     void viaSync();

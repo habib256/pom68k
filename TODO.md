@@ -85,10 +85,22 @@ data-loss holes and false test-confidence first, then convenience).
       Passed first try, which upgrades the LC II device chunks (SCSI COW
       log, SWIM, ASC, SCC, Egret-LLE MCU mid-transaction) from
       compile-verified to behaviour-verified.
-    - [ ] Fan out: 9 more CPU wrappers (one word each — derive from
-      `MoiraSnapshot`) + 9 more machines and their unique devices (Dafb,
-      Valkyrie, Rtc, AdbVia, Pic1654s, Ncr53c96, AscIosb, TobyVideo, NuBus,
-      MacInput), one `SnapMachine` tag per profile.
+    - [x] ~~Fan out: 9 more CPU wrappers + 9 more machines~~ **DONE
+      2026-07-30**: every machine class serializes — Sonora/VASP/RBV
+      (030), Q605/Centris/Q700/Q630 (040), Mac II + MacMemory compacts —
+      with all their unique devices (Dafb, Valkyrie, Rtc, AdbVia +
+      Pic1654s, Ncr53c96, AscIosb, TobyVideo + NuBus, MacKeyboard/
+      MacMouse), all 10 CPU wrappers on `MoiraSnapshot`, one `SnapMachine`
+      tag per profile (32), and the container genericized (`saveT`/`loadT`
+      + one-line forwards). Gates `savestate_030_test`, `savestate_040_
+      test`, `savestate_68k_test` (all `unit`, synthetic ROMs): re-save
+      byte-identity + determinism across a restore per family, incl. the
+      IIci flavor (AdbVia/Rtc wiring) and a Toby-equipped Mac II.
+      Traps hit en route: the Mac II enters via Cpu020's hardcoded
+      Basilisk vector (PC=ROMBase+$2A, not the ROM header) in 32-bit mode
+      (hmmu24_ off at reset), and the Plus overlay clear samples portA(),
+      so DDRA must be set first. Real-OS savestate etalons for these
+      machines remain future work (the LC II one is the template).
     - [ ] GUI/CLI wiring — route through the machine thread's command queue
       (like the CPU-engine switch) so it lands between two instructions.
   - Conventions the chunks follow, worth keeping: callbacks and cross-device

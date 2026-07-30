@@ -67,6 +67,16 @@ public:
 
     static constexpr uint32_t kFbOffset = 0x1000;
 
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    // Registers, RAMDAC/CLUT and the frame clock phase. cpuHz_ is
+    // construction; onIrq is re-bound by the machine.
+    template <class Ar> void visit(Ar& ar) {
+        ar(videoTiming_, mode_, config_, intStatus_,
+           monitorConfig_, monitorId_, palAddress_, palIdx_, clut_,
+           hres_, vres_, htotal_, vtotal_, stride_, pixelClock_,
+           enabled_, framePos_, prevLine_);
+    }
+
 private:
     void recalcMode();
     void recalcIrq();

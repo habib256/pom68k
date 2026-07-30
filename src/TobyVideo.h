@@ -47,6 +47,16 @@ public:
     // Host decode: 00RRGGBB pixels, W×H.
     void decode(std::vector<uint32_t>& out) const;
 
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    // The whole card travels — VRAM (u32 words, no zero-run codec; half a
+    // megabyte, dwarfed by the machine RAM blob), TFB registers, Bt453
+    // CLUT and the CRTC-derived frame clock. bus_/slot_/irqCb_ are wiring.
+    template <class Ar> void visit(Ar& ar) {
+        ar(vram_, regs_, pens_, dacAddr_, mode_, vblDisable_,
+           hres_, vres_, htotal_, vtotal_,
+           frameCycles_, framePos_, vblAcc_, vblLine_);
+    }
+
 private:
     enum Reg {
         LENGTH = 0, MISC, BASEHI, BASELO, SYNCINTERVAL = 4,

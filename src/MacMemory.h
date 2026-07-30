@@ -113,6 +113,25 @@ public:
         scsiDisk_.setSoundSink(hdd);
     }
 
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    uint32_t ramBytes() const { return uint32_t(ram_.size()); }
+    // A Mac ROM's first longword IS its checksum (V8Memory pattern).
+    uint32_t romChecksum() const {
+        if (rom_.size() < 4) return 0;
+        return uint32_t(rom_[0]) << 24 | uint32_t(rom_[1]) << 16
+             | uint32_t(rom_[2]) << 8  | uint32_t(rom_[3]);
+    }
+    // The machine chunk: RAM + every device + the M0110 keyboard
+    // transaction engine. Out: rom_/romSize_/model_ (profile identity),
+    // cpu_ (pointer). No JIT guard on the 68000 machine.
+    template <class Ar> void visit(Ar& ar) {
+        ar.blob(ram_);
+        ar(via_, adb_, adbVia_, rtc_, iwm_, drive_, scc_,
+           scsi_, scsiDisk_, kbd_, mouse_);
+        ar(kbdPhase_, kbdCmd_, kbdResp_, kbdTimer_, kbdInquiryHold_,
+           viaPhase_, secAcc_, overlay_);
+    }
+
 private:
     uint8_t viaAccess(uint32_t addr, bool write, uint8_t v);
     void refreshPortBInputs();

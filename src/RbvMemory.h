@@ -189,6 +189,31 @@ public:
     // the pseudo-VIA video hook as montype << 3.
     void setMonitorSense(uint8_t m) { montype_ = m; recalcFrame(); }
 
+    // A Mac ROM's first longword IS its checksum (V8Memory pattern).
+    uint32_t romChecksum() const {
+        if (rom_.size() < 4) return 0;
+        return uint32_t(rom_[0]) << 24 | uint32_t(rom_[1]) << 16
+             | uint32_t(rom_[2]) << 8  | uint32_t(rom_[3]);
+    }
+
+    // ── Save states: the machine chunk (V8Memory pattern) ───────────────
+    // No VRAM chunk: on RBV the framebuffer IS system RAM. Both ADB front
+    // ends travel (Egret HLE+LLE and the IIci's AdbVia/PIC + discrete RTC)
+    // — the unused set is idle and costs bytes, not correctness. Out:
+    // rom_, cpuHz_/iici_/egretLleOn_ (construction), cpu_/jitGuard_.
+    template <class Ar> void visit(Ar& ar) {
+        ar.blob(ram_);
+        ar(via_, pvia_, egret_, egretLle_, adbVia_, rtc_, adb_, dac_,
+           asc_, scsi_, swim_, drive_, scc_);
+        for (auto& d : scsiDisks_) ar(d);
+        ar(totalRam_, overlay_, sccIrq_, videoConfig_, montype_);
+        ar(viaAcc_, tickAcc_, c15Acc_, secAcc_, framePos_, frameCycles_,
+           vblStart_, vblState_);
+        if constexpr (Ar::loading) {
+            if (jitGuard_) jitGuard_->invalidate();
+        }
+    }
+
 private:
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     void viaSync();                  // E-clock stall (maciici.cpp via_sync)

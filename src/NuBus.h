@@ -54,6 +54,14 @@ public:
     void tick(int cpuCycles);
     const std::vector<uint8_t>& declRom(int slot) const;
 
+    // ── Save states (SaveState.h contract) ──────────────────────────────
+    // Only the live IRQ lines travel. The cards themselves (device
+    // pointers) and their declaration ROMs are machine construction; each
+    // stateful card (TobyVideo) is serialized by the machine that owns it.
+    template <class Ar> void visit(Ar& ar) {
+        for (auto& s : slots_) ar(s.irq);
+    }
+
 private:
     struct Slot {
         NuBusDevice* dev = nullptr;

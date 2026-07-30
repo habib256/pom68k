@@ -215,6 +215,15 @@ public:
     }
     int fifoCap(int channel) const { return cap_[channel & 1]; }
 
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // Stereo FIFO pair + registers + drain phase; the host output ring is
+    // dropped on restore, as in the other ASC flavours.
+    template <class Ar> void visit(Ar& ar) {
+        ar(fifo_, rd_, wr_, cap_, mode_, fifoStat_, playRec_,
+           fifoIrqEn_, irq_, lastL_, lastR_, drainAcc_);
+        if constexpr (Ar::loading) outRd_ = outWr_ = 0;
+    }
+
 private:
     enum : uint8_t {
         STAT_HALF_A = 0x01, STAT_EMPTY_OR_FULL_A = 0x02,
