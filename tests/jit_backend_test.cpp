@@ -50,20 +50,73 @@ int main() {
     }
     check(hasThreaded, "the portable 'threaded' backend is always compiled in");
 
-    jit::Backend* autoPick = jit::selectBackend("auto");
+    // Selection is per GUEST family as well as per host: a code generator
+    // written against one 68k family is wrong on another, not merely slower
+    // (JitBackend.h § GuestFamily). These calls therefore name the guest.
+    jit::Backend* autoPick = jit::selectBackend("auto", jit::kGuest68040);
     check(autoPick != nullptr, "auto selection never returns null");
     check(autoPick->usable(), "the selected backend reports itself usable");
-    std::printf("  auto -> %s (%s)\n", autoPick->name(), autoPick->description());
+    std::printf("  auto (68040) -> %s (%s)\n",
+                autoPick->name(), autoPick->description());
 
-    jit::Backend* threaded = jit::selectBackend("threaded");
+    jit::Backend* threaded = jit::selectBackend("threaded", jit::kGuest68040);
     check(threaded != nullptr && !std::strcmp(threaded->name(), "threaded"),
           "explicit 'threaded' resolves");
     check(threaded->usable(), "'threaded' is usable everywhere — it is the floor");
     check(!threaded->caps().nativeCode, "'threaded' generates no host code");
 
-    jit::Backend* bogus = jit::selectBackend("no-such-backend");
+    jit::Backend* bogus = jit::selectBackend("no-such-backend", jit::kGuest68040);
     check(bogus != nullptr, "an unknown name still yields a backend");
     check(bogus->usable(), "the fallback is usable");
+
+    // ── Guest-family scope (the jit_lcii_boot_etalon timeout, 2026-07-30) ──
+    // The x86-64 generator is written against the 68040's instruction-boundary
+    // contract; handed the 68030 LC II it wedged the guest in the ROM's Egret
+    // handshake loop for a full hour. Selection must refuse that combination
+    // instead of shipping it, and `threaded` must remain valid for every
+    // family so `auto` always has a correct floor.
+    std::printf("[jit_backend] guest-family scope\n");
+    check((threaded->caps().guestFamilies & jit::kGuestAny) == jit::kGuestAny,
+          "'threaded' declares every guest family — it replays Moira's handlers");
+    for (uint32_t fam : { jit::kGuest68000, jit::kGuest68020,
+                          jit::kGuest68030, jit::kGuest68040 }) {
+        jit::Backend* b = jit::selectBackend("auto", fam);
+        check(b != nullptr && (b->caps().guestFamilies & fam) != 0,
+              "auto never returns a backend invalid for the guest it was asked about");
+    }
+    // The concrete regression: the x86-64 generator is 68040-only, so asking
+    // for it on a 68030 must NOT come back as x64. Before 2026-07-30 it did,
+    // and jit_lcii_boot_etalon spent an hour wedged proving it.
+    if (jit::CodeBuffer::supported()) {
+        jit::Backend* on030 = jit::selectBackend("x64", jit::kGuest68030);
+        check(std::strcmp(on030->name(), "x86-64") != 0,
+              "x64 requested for a 68030 guest is refused, not honoured");
+        jit::Backend* on040 = jit::selectBackend("x64", jit::kGuest68040);
+        check(!std::strcmp(on040->name(), "x86-64"),
+              "…and it is still served for the 68040 it was written for");
+    }
+
+    // Every backend compiled in must DECLARE a scope: the caps field defaults
+    // to 0 = undeclared so a new backend cannot inherit a silent "works
+    // everywhere", and an undeclared one resolves to `threaded` on every
+    // family. NOTE the keys, not the display names — selectBackend() matches
+    // on "x64", never on "x86-64", and using the wrong list here made this
+    // very check a no-op on its first outing.
+    int keyCount = 0;
+    const char* const* keys = jit::backendKeys(keyCount);
+    check(keyCount == count, "one registry key per compiled backend");
+    for (int i = 0; i < keyCount; i++) {
+        bool anyFamily = false;
+        for (uint32_t fam : { jit::kGuest68000, jit::kGuest68020,
+                              jit::kGuest68030, jit::kGuest68040 }) {
+            jit::Backend* b = jit::selectBackend(keys[i], fam);
+            if (!std::strcmp(b->name(), names[i])) anyFamily = true;
+        }
+        char msg[128];
+        std::snprintf(msg, sizeof msg,
+                      "backend '%s' declares at least one guest family", keys[i]);
+        check(anyFamily, msg);
+    }
 
     std::printf("[jit_backend] executable memory\n");
     if (!jit::CodeBuffer::supported()) {
@@ -111,7 +164,7 @@ int main() {
         // Name the code generator rather than taking `auto`: auto's answer
         // is a measured performance choice (JitBackend.cpp), and this
         // section is about what the generator CAN do, not what ships.
-        jit::Backend* b = jit::selectBackend("x64");
+        jit::Backend* b = jit::selectBackend("x64", jit::kGuest68040);
         std::printf("[jit_backend] native coverage (%s)\n", b->name());
         const bool gen = b->caps().nativeCode;
         // The two opcodes a Mac ROM's hardware poll loops are built from.

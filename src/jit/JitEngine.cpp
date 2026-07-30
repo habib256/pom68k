@@ -19,9 +19,11 @@ namespace {
 constexpr uint32_t kMinWindow = 4;
 }  // namespace
 
-Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem)
+Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     : cpu_(cpu), mem_(mem) {
-    backend_ = selectBackend(backendPreference());
+    // The family comes from the wrapper, not from cpu.getModel(): see the
+    // ordering note on the declaration in JitEngine.h.
+    backend_ = selectBackend(backendPreference(), guestFamily);
     useWindow_ = fetchWindowEnabled();
     useBlocks_ = blockCacheEnabled(backend_->caps().nativeCode);
     paranoid_ = detail::envBool("POM68K_JIT_PARANOID", false);

@@ -28,7 +28,8 @@ jit::MemoryHooks jitHooksFor(CentrisMemory& mem) {
 }
 }  // namespace
 
-CentrisCpu::CentrisCpu(CentrisMemory& mem) : mem_(mem), jit_(*this, jitHooksFor(mem)) {
+CentrisCpu::CentrisCpu(CentrisMemory& mem)
+    : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
     jit_.setPeriphPacing(&lastPeriphClock_, int(kPeriphBatch));

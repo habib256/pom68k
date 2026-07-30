@@ -65,9 +65,37 @@ data-loss holes and false test-confidence first, then convenience).
   (`M68hc05::run` budget overshoot) → the Mac RTC drifted; fixed with
   `CudaLle mcuDebt_` (CHANGELOG). These catch stability/corruption/drift
   the boot signatures structurally miss.
-- [ ] **C — Save states**: CPU (Moira has a serialization format) + RAM +
-  device state. User-expected; turns any manual setup into an instant
-  regression. Next up.
+- [~] **C — Save states**: FOUNDATION LANDED 2026-07-30, fan-out pending.
+  (Correction to this item's old wording: Moira has **no** serialization
+  format — `StrWriter` is the disassembler's string writer. All of the CPU
+  state is `protected`, though, which is what lets `MoiraSnapshot` carry the
+  chunk on the POM68K side of the vendor seam.)
+  - Done: archive core (`src/SaveState.h/.cpp`) — one `visit<Ar>()` per class
+    driving save AND load, chunked container, zero-run codec, bounds-checked
+    reader; `visit()` on the whole **LC II** tree (20 classes) and the
+    container assembly (`SaveStateMachines.h/.cpp`) with identity refusal
+    (version / profile / ROM checksum / RAM size). Gates `savestate_test`
+    and `savestate_v8_test`, both `unit` (no assets).
+  - **Remaining, in ROI order:**
+    - [ ] **An LC II boot etalon.** `savestate_v8_test` proves determinism
+      only over what a synthetic counter-loop ROM exercises (CPU, RAM, VIA
+      timers, MCU ticks). It says nothing about SCSI, floppy, the ASC FIFOs
+      or the SCC **under a real OS** — boot to the Finder, snapshot, run N,
+      hash; restore, run N, require the same hash. Until that exists, treat
+      the device chunks as compile-verified, not behaviour-verified.
+    - [ ] Fan out: 9 more CPU wrappers (one word each — derive from
+      `MoiraSnapshot`) + 9 more machines and their unique devices (Dafb,
+      Valkyrie, Rtc, AdbVia, Pic1654s, Ncr53c96, AscIosb, TobyVideo, NuBus,
+      MacInput), one `SnapMachine` tag per profile.
+    - [ ] GUI/CLI wiring — route through the machine thread's command queue
+      (like the CPU-engine switch) so it lands between two instructions.
+  - Conventions the chunks follow, worth keeping: callbacks and cross-device
+    pointers are **re-bound, never serialized** (a pointer becomes an index —
+    `Ncr5380::disk_`); pure caches are **flushed** on restore (ATC via the
+    one vendored line `Moira::pomFlushAtcs()`, the 030 i-cache, the JIT
+    guard) rather than carried; host-backed bulk data stays on the host
+    (`ScsiDisk` ships a copy-on-first-write log of what the guest changed,
+    not the image).
 - [ ] Extend the beyond-boot gates to a second machine (Quadra 605 / Mac
   OS 8.1) once save states land — reboot-survival there exercises the
   53C96 WRITE path end to end.
@@ -666,26 +694,36 @@ Next milestones:
   so the modified x64 code never ran and the delta was pure noise. Any
   x64-backend measurement must set `POM68K_JIT_BACKEND=x64` explicitly
   (see the `auto` item below).
-- [ ] **`selectBackend("auto")` can never pick x64 — code contradicts its
-  own contract.** `JitConfig.h:51` documents "auto picks the best backend
-  compiled in AND usable on this host, always falling back to threaded",
-  but `JitBackend.cpp:76` filters the candidate loop with
-  `if (!e.dflt) continue;` and only the `threaded` entry carries
-  `dflt = true`. So `auto` — the default — always lands on threaded.
-  Consequences, all measured 2026-07-29 on the Q605 boot:
-  - interpreter ~62 s, **threaded 32.6 s**, **x64 26.1 s**. Anyone who
-    opts into the JIT today gets threaded and leaves **20 %** on the
-    table.
-  - Every `jit_*_boot_etalon` runs the THREADED backend, so the x86-64
-    code generator has **no end-to-end boot coverage**. Its only gates
-    are the lockstep tests that name it explicitly
-    (`jit_lockstep_x64_test` and friends) — strong on semantics
-    (register-by-register at every instruction boundary) but they never
-    run a machine to the Finder.
-  - x64 does pass `q605_boot_etalon` when named explicitly (verified).
-  Fix: make the auto pass try entries in order and use `dflt` only as the
-  final fallback — but flip it only behind boot-etalon coverage on the
-  x64 backend, since it changes what every JIT user executes.
+- [x] ~~**`selectBackend("auto")` can never pick x64**~~ **DONE 2026-07-30.**
+  The `dflt` filter is gone, so `auto` now tries entries in order — the Q605
+  gains its measured 32.6 s → 26.1 s, and `jit_*_boot_etalon` finally gives
+  the x86-64 generator end-to-end boot coverage.
+  **This item's own caution ("flip it only behind boot-etalon coverage")
+  earned its keep immediately:** with the filter lifted, `auto` also handed
+  x64 the **68030** machines, which it was never written for, and
+  `jit_lcii_boot_etalon` wedged in the ROM's Egret handshake loop and timed
+  out at an hour. So the flip needed a second half — backend validity is now
+  declared per GUEST family (`BackendCaps::guestFamilies`, `JitBackend.h §
+  GuestFamily`): `threaded` = every family (it replays Moira's own handlers),
+  x64 = 68040 only. Selection tests guest validity before host ranking.
+  Full story + the wrong turn in CHANGELOG 2026-07-30.
+- [ ] **Widen the x86-64 backend to the 68030 family** (currently
+  `kGuest68040`, so every 030 machine runs `threaded` under `auto`). The
+  divergence is **localized**: with `POM68K_JIT_ACCESS_THUNK=0` — which hands
+  every memory-touching instruction back to the interpreter — x64 boots the
+  LC II to the Finder, so what breaks is the natively-compiled memory-access
+  path, not the rest of the emitters. Work items, in order:
+  - a 68030 branch in `pomJitProbeData` (it returns false below `M68EC040`
+    today, so the inline DTLB never fills on an 030 at all);
+  - model-correct access thunks: `pomJitReadData`/`pomJitWriteData` call
+    `mmu040Read`/`mmu040Write` unconditionally;
+  - the 030's `(An)+` update order (before the access, not after —
+    `MoiraDataflow_cpp.h:326-332`), its restartable last write (`:355-361`),
+    and the end-of-instruction prefetch refill that makes `queue.irc` mean
+    something different at a block exit;
+  - **an `lcii`/x64 lockstep gate first.** `jit_lockstep_test` and friends run
+    two **Quadra 605** machines, so an 030 code generator would have no
+    differential coverage at all — and this bug is exactly what that costs.
 - [ ] **Block linking — the one thing that would make J2 pay.** Blocks run
     284 instructions per entry while the guest loads the System and **4.9**
     once the Finder is up: Finder-era 68k is branch-dense enough that a

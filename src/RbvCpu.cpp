@@ -24,7 +24,7 @@ jit::MemoryHooks rbvJitHooks(RbvMemory& mem) {
 }  // namespace
 
 RbvCpu::RbvCpu(RbvMemory& mem, bool withFpu)
-    : mem_(mem), jit_(*this, rbvJitHooks(mem)) {
+    : mem_(mem), jit_(*this, rbvJitHooks(mem), jit::kGuest68030) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     // History (2026-07-25): this machine shipped with cacheBoost_ = 1 because

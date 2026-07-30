@@ -31,6 +31,36 @@ namespace moira { class Moira; }
 
 namespace jit {
 
+// Which GUEST CPU families a backend's compiled form is semantically valid
+// for. This is not a performance hint and not a capability ranking: Moira's
+// own dataflow branches on the model, so a generator that bakes in one
+// family's conventions is WRONG on another, not merely slower.
+//
+//   * `(An)+` updates the register BEFORE the access on a 68030 and AFTER it
+//     on a 68040 (MoiraDataflow_cpp.h:326-332);
+//   * the 68030 marks its last write restartable and stacks a format $A
+//     frame (:355-361), the 68040 does not;
+//   * the prefetch queue is refilled at the end of an instruction on one and
+//     not the other, so `queue.irc` means different things at a block exit.
+//
+// A backend that REPLAYS through Moira's own handlers inherits whatever the
+// model does and therefore covers everything; a code generator has to
+// declare, honestly, the families it was written and measured against.
+//
+// History: the x86-64 generator was written entirely against the 68040 (its
+// cost tables are the 68020 column "which is what the 68040 core uses") and
+// carried no such declaration. The moment `auto` started choosing it
+// (2026-07-29) it was handed the 68030 LC II, where it wedged the guest in
+// the ROM's Egret handshake loop — `jit_lcii_boot_etalon` timed out at an
+// hour while the same machine booted in 2 min 21 s on `threaded`.
+enum GuestFamily : uint32_t {
+    kGuest68000 = 1u << 0,      // 68000 / 68010
+    kGuest68020 = 1u << 1,      // 68020 / 68EC020
+    kGuest68030 = 1u << 2,
+    kGuest68040 = 1u << 3,      // 68040 / 68LC040
+    kGuestAny   = kGuest68000 | kGuest68020 | kGuest68030 | kGuest68040,
+};
+
 // What a backend is able to turn into its own executable form. Anything not
 // covered here is left to the interpreter — never emulated approximately.
 struct BackendCaps {
@@ -41,6 +71,13 @@ struct BackendCaps {
     bool branches     = false;  // internal branches (block-local)
     bool addrModes    = false;  // indexed / displacement modes
     int  maxBlockInstrs = 64;
+
+    // Bitmask of GuestFamily. Deliberately defaults to 0 = "not declared",
+    // which selection treats as "do not use": a new backend that forgets to
+    // state its scope gets a diagnostic, not a silent wedge on the first
+    // machine nobody tested it against. That is the failure this field
+    // exists to prevent.
+    uint32_t guestFamilies = 0;
 };
 
 // A backend's compiled artefact. Opaque above this header: the threaded
@@ -147,12 +184,22 @@ public:
     virtual void flushAll() = 0;
 };
 
-// Picks a backend for `pref` ("auto", "threaded", "x64", "a64", …).
-// Never returns nullptr: `threaded` is always compiled in and always usable.
-Backend* selectBackend(const char* pref);
+// Picks a backend for `pref` ("auto", "threaded", "x64", "a64", …) that is
+// usable on this host AND valid for `guestFamily` (one GuestFamily bit — the
+// CPU model the engine is attached to). Never returns nullptr: `threaded` is
+// always compiled in, always usable and valid for every guest.
+Backend* selectBackend(const char* pref, uint32_t guestFamily);
 
 // Names of every backend compiled into this binary, most capable first.
 // `count` receives the number of entries. For the GUI and for diagnostics.
 const char* const* backendNames(int& count);
+
+// The registry KEYS, in the same order — what POM68K_JIT_BACKEND accepts and
+// what selectBackend() matches on. Deliberately separate from
+// backendNames(): the key is "x64" while the display name is "x86-64", and
+// feeding a display name to selectBackend() silently resolves to "unknown
+// name -> auto". A scope check written that way tested nothing at all
+// (caught 2026-07-30 by its own stderr).
+const char* const* backendKeys(int& count);
 
 }  // namespace jit

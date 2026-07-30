@@ -1,5 +1,126 @@
 # CHANGELOG
 
+## 2026-07-30 — A JIT backend is valid per GUEST family, not just per host
+
+`jit_lcii_boot_etalon` was timing out at its full hour. It was not a save-state
+regression (the same tree boots the LC II in 2 min 21 s on `threaded`): letting
+`auto` reach the x86-64 generator also handed it the **68030** machines, and
+that generator is written entirely against the 68040.
+
+**The mechanism, measured rather than assumed.** With `POM68K_JIT_VERBOSE=1`
+the engine compiles eight blocks — all `BTST`/`TST` + branch around
+`$40A148xx-$40A149xx` and `$40A0A8E6`, which is the ROM's Egret handshake
+poll loop (`Egret.h` pins that code at `$A14CE0-$A14E9C`) — and then prints
+nothing more. Not a slowdown and not a recompilation storm: the guest is
+wedged *inside* the compiled blocks. The discriminator was
+`POM68K_JIT_ACCESS_THUNK=0`, which hands any memory-touching instruction back
+to the interpreter: with it, **x64 boots the LC II to the Finder**. So the
+divergence lives in the natively-compiled memory-access path, where
+`pomJitReadData`/`pomJitWriteData` reach `mmu040Read`/`mmu040Write` with no
+model test and `pomJitProbeData` refuses everything below `M68EC040`
+outright. That localization is the starting point for widening the backend;
+it does *not* exonerate the other 040 assumptions baked in around it
+(`(An)+` updates before the access on an 030 and after it on an 040,
+`MoiraDataflow_cpp.h:326-332`; the 030's restartable last write, `:355-361`;
+the prefetch queue refilled on one core and not the other, so `queue.irc`
+means different things at a block exit).
+
+**The fix makes validity a declared capability, not a scattered test.**
+`BackendCaps::guestFamilies` (`JitBackend.h § GuestFamily`): `threaded` is
+`kGuestAny` — structurally, because it replays Moira's own handlers and
+therefore inherits whatever the model does — and x64 is `kGuest68040`.
+Selection now tests guest validity *before* ranking by host capability, so
+`auto` lands on `threaded` for the 68000/020/030 machines and keeps x64 on
+the 040s, which is exactly where its 26.1 s vs 32.6 s was measured. An
+explicit `POM68K_JIT_BACKEND=x64` on an 030 is refused with an explanation
+rather than honoured into a silent wedge; `POM68K_JIT_UNSAFE_BACKEND=1`
+forces it for whoever is working on that family. The field defaults to
+`0 = undeclared`, which selection treats as unusable — a new backend (a64 is
+planned) that forgets to state its scope gets a diagnostic, not a wedge on
+the first machine nobody tested.
+
+**One wrong turn, worth recording because the fix was self-diagnosing.** The
+first version read the family from `cpu.getModel()` inside the Engine
+constructor. An Engine is a MEMBER of every CPU wrapper, so it is built
+before the wrapper's body reaches `setModel()` — the diagnostic printed
+"not valid for a 68000/68010 guest" for the 68030 LC II, and the Quadra
+quietly lost x64 to the same mistake. `Engine`'s `guestFamily` is now a
+REQUIRED constructor parameter supplied by each of the eight wrappers
+(`Cpu030` derives it from its `as020` flag), so a new wrapper that forgets it
+fails to compile instead of silently falling back.
+
+## 2026-07-30 — Save states: the archive core + the whole LC II tree
+
+**One `visit<Ar>()` per class drives both save and load.** `src/SaveState.h`
+holds two archives (`Writer`, `Reader`) that instantiate the same visit body,
+so a field added to a device is live on both paths at once. Hand-written
+save/load pairs are the classic source of save-state corruption — a field
+added to one and forgotten in the other restores as garbage months later —
+and the visitor removes that failure mode by construction rather than by
+review. Container: magic + version + a sequence of `tag`/`length` chunks, so
+an unknown chunk is skipped and *reported*, never silently dropped.
+
+**Covered:** the LC II tree, 20 classes — `Via6522`, `PseudoVia`, `Ariel`,
+`Egret` (HLE), `CudaLle` + `M68hc05` + `AdbLine` (LLE), `AdbBus`, `AscV8`,
+`AscSonora`, `Ncr5380`, `ScsiDisk`, `Iwm`, `Swim1`, `Swim2`, `SonyDrive`,
+`Scc8530` (+ its three nested structs), `V8Memory`, `Cpu030`. `V8Video` is
+stateless. Gates `savestate_test` (archive core) and `savestate_v8_test`
+(end to end on a live machine), both in the `unit` tier — no ROM, no image.
+
+**Four rulings worth keeping.**
+
+*Callbacks and cross-device pointers are re-bound, never serialized.* The
+device tree is full of `std::function` hooks and raw pointers; a restored
+pointer either dangles or, worse, addresses the previous session's object.
+`Ncr5380::disk_` shows the rule: it travels as a target ID and is
+re-resolved against `targets_[]` on load.
+
+*Pure caches are flushed, not carried.* A restore replaces RAM — and
+therefore the page tables — underneath a CPU whose ATCs still hold the old
+translations. Carrying a stale ATC is a bug; an empty one costs a refill.
+Same for the 030 i-cache and the JIT guard (`JitGuard.h § invalidate` — a
+wholesale RAM change is exactly the thing a *write* cannot express). This
+needed **one line in the vendored tree**, `Moira::pomFlushAtcs()`, because
+both flushes are private and no public setter reaches the 030 one
+(`setURP040` covers only the 040) — recorded in `POM68K_VENDOR.md`.
+Everything else stays on the POM68K side of the seam: the CPU chunk lives in
+`MoiraSnapshot::visitCpuCommon()`, which works only because Moira's
+execution state is already `protected` and the wrappers derive from it.
+
+*The disk plan "path + checksum" was wrong, and the reasoning matters.* The
+obvious design records the image path and the blocks the guest modified. But
+a block written **after** the snapshot is not in the snapshot's set, and its
+pristine content is no longer anywhere in memory — so re-reading the host
+file restores post-write bytes with nothing to correct them. `ScsiDisk` now
+keeps a **copy-on-first-write log**: the pre-write bytes of every block
+touched since `open()`. Restore reverts the log, then replays the snapshot's
+blocks. Exact, and it costs only what the guest actually wrote. `SonyDrive`
+needs none of it — a floppy medium is ≤ 1.44 MB, so the whole image travels
+through the zero-run codec.
+
+*A compression guard must not be a ratio.* The first zero-run decoder capped
+the decoded size at `encoded << 12`, which `savestate_test` immediately
+failed on 64 KB of zeros: a zero run costs a varint whatever its length, so
+that buffer encodes in 7 bytes (~9000:1) and the ratio bound rejected
+precisely the best-compressed input. The cap is now absolute (1 GiB, above
+any emulated machine's RAM), so it constrains only corrupt files.
+
+**Method note.** `visit()` bodies are templates, so a successful build proves
+nothing about them — they are not compiled until instantiated. The explicit
+instantiations in `SaveStateMachines.cpp` are that check, one line per class
+per archive, and they caught the private-ATC problem above on the first run.
+The strong gate is likewise not round-tripping but **determinism**: run N
+cycles from a state and snapshot; restore the state, run the same N, snapshot
+again; require identical bytes. Omitted state round-trips fine (nobody wrote
+it, nobody read it) and only diverges once the machine runs.
+
+**Not yet true:** nothing in the GUI or CLI can take a snapshot, the other
+nine machines are untouched, and there is **no boot etalon** — determinism is
+currently proven only over what a synthetic counter-loop ROM exercises
+(CPU, RAM, VIA timers, MCU), not over SCSI/floppy/ASC/SCC under a real OS.
+The device chunks are compile-verified, not behaviour-verified. `TODO.md § C`
+carries the remaining work in ROI order.
+
 ## 2026-07-29 (late) — PGO across all four CPU families (−26 % on the LC II); the dispatch-table item measured and dropped
 
 **PGO now trains on one machine per CPU family** (`tools/pgo_train.sh`):

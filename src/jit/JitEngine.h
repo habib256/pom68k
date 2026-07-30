@@ -57,7 +57,17 @@ struct MemoryHooks {
 
 class Engine {
 public:
-    Engine(moira::Moira& cpu, const MemoryHooks& mem);
+    // `guestFamily` is one GuestFamily bit and is REQUIRED — no default, on
+    // purpose. Backend selection needs the guest CPU family (a code
+    // generator written for one family is wrong on another, not slow), and
+    // it cannot read it off `cpu`: an Engine is a MEMBER of every CPU
+    // wrapper, so it is constructed before the wrapper's body reaches
+    // setModel() and `cpu.getModel()` still answers the Moira default here.
+    // That is not a theoretical ordering worry — it was measured: sampling
+    // the model in this constructor reported "68000/68010" for the 68030
+    // LC II and quietly cost the Quadra its x86-64 backend. A required
+    // parameter makes a new wrapper that forgets it a COMPILE error instead.
+    Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily);
     ~Engine();
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;

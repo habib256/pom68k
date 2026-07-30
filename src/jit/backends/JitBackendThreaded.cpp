@@ -33,6 +33,13 @@ public:
         c.aluReg = c.aluMem = c.moves = c.addrModes = true;
         c.branches = false;              // blocks are straight lines here
         c.maxBlockInstrs = 64;
+        // Every guest, and for a structural reason rather than by testing:
+        // the replay runs Moira's OWN handlers, so whatever the model does
+        // ((An)+ ordering, restartable writes, prefetch refill) it does here
+        // too. This is the backend that "cannot possibly be wrong about
+        // semantics" this file's header claims — and the reason `auto` has a
+        // correct floor for the 68000/020/030 machines.
+        c.guestFamilies = kGuestAny;
         return c;
     }
 

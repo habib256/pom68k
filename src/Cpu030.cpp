@@ -25,7 +25,11 @@ jit::MemoryHooks v8JitHooks(V8Memory& mem) {
 }  // namespace
 
 Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020)
-    : mem_(mem), jit_(*this, v8JitHooks(mem)) {
+      // The LC profile is a plain 68020 on the same V8 bus; every other V8
+      // model is a 68030. Declared here rather than read from getModel(),
+      // which is not set yet at member-init time (JitEngine.h).
+    : mem_(mem), jit_(*this, v8JitHooks(mem),
+                      as020 ? jit::kGuest68020 : jit::kGuest68030) {
     // as020: the Macintosh LC profile — MAME maclc.cpp:342 runs the same
     // V8 machine on a 68020 (Apple HMMU part; the V8's $80FFFFFF decode
     // makes the HMMU translation a no-op for us). FPU socket empty by

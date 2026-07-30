@@ -24,7 +24,7 @@ jit::MemoryHooks sonoraJitHooks(SonoraMemory& mem) {
 }  // namespace
 
 SonoraCpu::SonoraCpu(SonoraMemory& mem, bool withFpu)
-    : mem_(mem), jit_(*this, sonoraJitHooks(mem)) {
+    : mem_(mem), jit_(*this, sonoraJitHooks(mem), jit::kGuest68030) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
     if (const char* b = getenv("POM68K_CACHE_BOOST")) {

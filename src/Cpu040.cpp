@@ -31,7 +31,8 @@ jit::MemoryHooks jitHooksFor(Q605Memory& mem) {
 }
 }  // namespace
 
-Cpu040::Cpu040(Q605Memory& mem) : mem_(mem), jit_(*this, jitHooksFor(mem)) {
+Cpu040::Cpu040(Q605Memory& mem)
+    : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
     jit_.setPeriphPacing(&lastPeriphClock_, int(kPeriphBatch));

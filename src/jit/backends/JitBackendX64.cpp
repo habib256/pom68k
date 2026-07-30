@@ -1775,6 +1775,28 @@ public:
         c.nativeCode = true;
         c.aluReg = c.aluMem = c.moves = c.branches = c.addrModes = true;
         c.maxBlockInstrs = 64;
+        // 68040 FAMILY ONLY, and this is a correctness statement, not a
+        // measurement. Everything in this file is written against the 040's
+        // instruction-boundary contract: the cost tables are CYCLES_68020
+        // "which is what the 68040 core uses", `fullPrefetch()` does not
+        // refill the queue on the 040 so `irc` is assumed to still hold the
+        // word fetched at pc+2, the odd-target address error is raised
+        // before the condition is evaluated, and `(An)+` follows the 040's
+        // update-after-access order. Each of those differs on the 68030
+        // (MoiraDataflow_cpp.h:326-332, :355-361), and the data thunks
+        // reach mmu040Read/mmu040Write unconditionally.
+        //
+        // Measured consequence of pretending otherwise (2026-07-30): given
+        // the 68030 LC II, generated code wedged the guest in the ROM's
+        // Egret handshake poll loop around $40A148xx-$40A149xx and
+        // `jit_lcii_boot_etalon` timed out at an hour, where the same
+        // machine boots in 2 min 21 s on `threaded`.
+        //
+        // Widening this is real work, not a flag flip: it means the 030's
+        // update order and prefetch semantics in the emitters, a 030 branch
+        // in pomJitProbeData, model-correct access thunks, and an
+        // lcii/x64 lockstep gate to prove it. See POM68K_JIT.md § 7.
+        c.guestFamilies = kGuest68040;
         return c;
     }
 

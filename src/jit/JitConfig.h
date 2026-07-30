@@ -49,9 +49,16 @@ inline EngineKind defaultEngine() {
 }
 
 // POM68K_JIT_BACKEND=auto|threaded|x64|a64. `auto` picks the best backend
-// compiled in AND usable on this host, always falling back to `threaded`
-// (which needs no code generation and therefore works everywhere POM68K
-// builds, WASM included).
+// that is compiled in, usable on this host, AND valid for the guest CPU
+// family (JitBackend.h § GuestFamily — a code generator written against one
+// 68k family is wrong on another, not merely slower). It always falls back to
+// `threaded`, which needs no code generation and is valid for every guest, so
+// it works everywhere POM68K builds, WASM included.
+//
+// Naming a backend explicitly does NOT bypass the guest check: an invalid
+// combination is refused with an explanation rather than honoured into a
+// wedged machine. POM68K_JIT_UNSAFE_BACKEND=1 forces it anyway, which is for
+// developing support for a family the backend does not claim yet.
 inline const char* backendPreference() {
     const char* v = detail::env("POM68K_JIT_BACKEND");
     return v ? v : "auto";

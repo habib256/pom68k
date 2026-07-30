@@ -274,6 +274,36 @@ attribution knob: window on, block cache off.
 
 ## 7. The x86-64 backend (J2)
 
+> **Scope: the 68040 family only** (`caps().guestFamilies = kGuest68040`).
+> Everything below is written against the 040's instruction-boundary
+> contract, and the differences from the 68030 are semantic, not cosmetic:
+> `(An)+` updates the register *before* the access on an 030 and *after* it
+> on an 040 (`MoiraDataflow_cpp.h:326-332`), the 030 marks its last write
+> restartable and stacks a format $A frame (`:355-361`), the prefetch queue
+> is refilled at the end of an instruction on one and not the other (so
+> `queue.irc` means different things at a block exit), and the data thunks
+> `pomJitReadData`/`pomJitWriteData` reach `mmu040Read`/`mmu040Write`
+> unconditionally while `pomJitProbeData` refuses everything below
+> `M68EC040` outright.
+>
+> This was learned the expensive way. On 2026-07-29 `auto` stopped filtering
+> on `dflt` — correctly, since that filter meant `auto` could never reach
+> x64 at all — and the generator was thereby handed every JIT machine,
+> including the 68030 ones. `jit_lcii_boot_etalon` then **timed out at one
+> hour**: generated code wedged the guest in the ROM's Egret handshake poll
+> loop (blocks around `$40A148xx-$40A149xx` and `$40A0A8E6`, `BTST`/`TST` +
+> branch), eight blocks compiled and then nothing at all, while the same
+> machine boots in **2 min 21 s** on `threaded`. Selection now tests guest
+> validity before host usability ranking (`JitBackend.h § GuestFamily`), so
+> `auto` lands on `threaded` for the 68000/020/030 machines and on x64 for
+> the 040s — which is exactly where its 26.1 s vs 32.6 s was measured.
+>
+> Widening the scope is a project, not a flag: the 030's update order and
+> prefetch semantics in the emitters, a 030 branch in `pomJitProbeData`,
+> model-correct access thunks, and an `lcii`/x64 lockstep gate to prove it —
+> the lockstep gates today run **two Quadra 605 machines**, so the 030 code
+> generator would have no differential coverage at all until one exists.
+
 `src/jit/backends/JitBackendX64.cpp` is the first backend that emits host
 machine code; `X64Asm.h` beneath it turns method calls into bytes and knows
 nothing about the 68k. Three decisions shape all of it, and each is a
