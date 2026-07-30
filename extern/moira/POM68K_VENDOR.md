@@ -1069,6 +1069,12 @@ marked `POM68K JIT`, all inert until armed.
     the backend refuse to compile at all if the deferred IPL-recognition
     feature (`setIplDelay`) is ever armed, since generated code models
     `POLL_IPL` as the plain assignment.
+    2026-07-30: `PomJitLayout` gained `movemArmed` — the offset of
+    `mmu040MovemArmed`, the 68040 MOVEM restart latch. A compiled MOVEM
+    tests it and bails to the interpreter while it is set: a restart after
+    a fault must resume from the SAVED ea (`mmu040MovemEa`), which a
+    recomputation would silently ignore if the fault handler changed the
+    base register.
 
 **Known divergence, by design:** serving a fetch from the window skips the
 instruction ATC's pseudo-LRU update for that access, so ATC replacement

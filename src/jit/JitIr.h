@@ -178,6 +178,16 @@ inline Kind classify(uint16_t op) {
                 // block boundary the linker could not cross.
                 if ((op & 0xFFC0) == 0x4E80) return Kind::Branch;      // JSR <ea>
                 if (op == 0x4E75) return Kind::Branch;                // RTS
+                // JMP <ea> — a terminator SIMPLER than the JSR above (no
+                // stack push), 0.7 % of the idle Finder in the 2026-07-30
+                // census. The 68020 indexed modes keep their own decoder
+                // problem, so only the plain EAs graduate from Unsafe.
+                if ((op & 0xFFC0) == 0x4EC0) {
+                    const int m = (op >> 3) & 7, r = op & 7;
+                    if (m == 2 || m == 5 ||
+                        (m == 7 && (r == 0 || r == 1 || r == 2)))
+                        return Kind::Branch;
+                }
                 return Kind::Unsafe;
             }
             if ((op & 0xFFC0) == 0x40C0 || (op & 0xFFC0) == 0x42C0 ||
@@ -252,7 +262,7 @@ inline uint32_t branchWords(uint16_t op) {
         return d == 0x00 ? 2 : d == 0xFF ? 3 : 1;  // .W : .L (68020) : .B
     }
     if (op == 0x4E75) return 1;                    // RTS
-    if ((op & 0xFFC0) == 0x4E80) {                 // JSR <ea>
+    if ((op & 0xFF80) == 0x4E80) {                 // JSR / JMP <ea>
         const int mode = (op >> 3) & 7, reg = op & 7;
         if (mode == 2) return 1;                   // (An)
         if (mode == 5 || mode == 6) return 2;      // d16(An) / indexed

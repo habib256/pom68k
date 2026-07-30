@@ -199,7 +199,11 @@ int main() {
         check(jit::branchWords(0x4EAE) == 2, "JSR d16(A6) is two words");
         // …while the rest of the $4Exx group still ends a block BEFORE it.
         check(!b->canEmit(0x4E73), "RTE is never native");
-        check(!b->canEmit(0x4ED0), "JMP is not compiled");
+        check(b->canEmit(0x4ED0), "JMP (A0) is compiled (census 2026-07-30)");
+        check(jit::branchWords(0x4EF9) == 3, "JMP abs.l is three words");
+        check(b->canEmit(0x48E7), "MOVEM.L regs,-(SP) is compiled");
+        check(b->canEmit(0x4CDF), "MOVEM.L (SP)+,regs is compiled");
+        check(b->canEmit(0x51C8), "DBRA is compiled");
         check(!b->canEmit(0xF200), "F-line is never native");
         check(!b->canEmit(0x0130), "BTST Dn,d8(A0,Xn) — indexed mode");
         check(!b->canEmit(0x0108), "MOVEP is not BTST");
@@ -218,7 +222,14 @@ int main() {
     checkUnsafe(0x4E70, "RESET");
     checkUnsafe(0x4E7A, "MOVEC from control register");
     checkUnsafe(0x4E7B, "MOVEC to control register");
-    checkUnsafe(0x4ED0, "JMP (A0)");
+    // JMP graduated from Unsafe to a Branch TERMINATOR (census 2026-07-30:
+    // 0.7 % of the idle Finder) — for the plain EA modes only; the 68020
+    // indexed modes keep their own decoder problem and stay Unsafe.
+    check(jit::endsBlockAfter(jit::classify(0x4ED0)), "JMP (A0) terminates a block");
+    check(jit::endsBlockAfter(jit::classify(0x4EF9)), "JMP (xxx).L terminates a block");
+    checkUnsafe(0x4EF0, "JMP indexed stays Unsafe");
+    // DBcc was already a terminator; the census pass made it EMITTABLE.
+    check(jit::endsBlockAfter(jit::classify(0x51C8)), "DBRA terminates a block");
     checkUnsafe(0x46C0, "MOVE to SR");
     checkUnsafe(0x40C0, "MOVE from SR");
     checkUnsafe(0x44C0, "MOVE to CCR");

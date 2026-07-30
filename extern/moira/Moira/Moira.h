@@ -589,6 +589,11 @@ public:
         u32 clock, flags;
         u32 ird, irc;
         u32 dtlbR, dtlbW;               // base of each PomJitDtlb::e[]
+        // POM68K JIT: the 68040 MOVEM restart latch. Armed between a
+        // faulted MOVEM and its RTE-restarted completion; a compiled MOVEM
+        // must bail to the interpreter while it is set, because the
+        // restart must resume from the SAVED ea, not a recomputed one.
+        u32 movemArmed;
     };
     PomJitLayout pomJitLayout() const;
 

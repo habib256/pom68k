@@ -256,6 +256,9 @@ private:
     bool emitBitOp(size_t i);
     bool emitLine4(size_t i);        // TST / CLR / NOT / NEG / EXT / SWAP / LEA
     bool emitBranch(size_t i);
+    bool emitDbcc(size_t i);         // DBcc — terminator (census 2026-07-30)
+    bool emitJmp(size_t i);          // JMP <ea> — terminator, JSR minus the push
+    bool emitMovem(size_t i);        // MOVEM — straight-line, one span probe
 
     // ── operand plumbing ─────────────────────────────────────────────────
     bool decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea);
@@ -286,7 +289,10 @@ private:
     void store(const Ea& ea, int szIdx, Reg src, bool soleAccess = true);
     // Guest memory at the address in `addr`, host pointer left in rsi.
     // `miss` is where a translation the inline TLB cannot serve goes.
-    void memProbe(Reg addr, int szIdx, bool write, Label& miss);
+    // `bytes` is the SPAN the caller will touch through the pointer — a
+    // size for a plain access, n×size for a MOVEM burst; a span crossing
+    // the page boundary misses (two translations, someone else's problem).
+    void memProbe(Reg addr, int bytes, bool write, Label& miss);
     // `soleAccess` says this is the instruction's ONLY guest access, which
     // is what makes the access thunk usable: a thunk that faults leaves
     // nothing committed, so the interpreter can re-run the instruction —
@@ -304,6 +310,8 @@ private:
     // ── boilerplate ──────────────────────────────────────────────────────
     Mem D(int n) const { return mem(kCpu, int32_t(L_.d + 4u * unsigned(n))); }
     Mem A(int n) const { return mem(kCpu, int32_t(L_.a + 4u * unsigned(n))); }
+    // MOVEM's flat view: r[0-7] = D0-D7, r[8-15] = A0-A7 (Moira reg.r).
+    Mem R(int n) const { return n < 8 ? D(n) : A(n - 8); }
     Mem F(int32_t off) const { return mem(kFrm, off); }
     Mem at(uint32_t off) const { return mem(kCpu, int32_t(off)); }
 
@@ -774,8 +782,8 @@ void Emitter::commitEa(const Ea& ea, int szIdx) {
 // exit RSI points at the host bytes. A tag miss goes to the fill stub (and
 // retries); anything the fill refuses, and any access straddling a page,
 // goes to this instruction's slow path with nothing committed.
-void Emitter::memProbe(Reg addr, int szIdx, bool write, Label& miss) {
-    const int n = sizeBytes(szIdx);
+void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss) {
+    const int n = bytes;
     const int32_t table = int32_t(write ? L_.dtlbW : L_.dtlbR);
     Label& have = *a_.fresh();
     Label& fill = *a_.fresh();
@@ -856,7 +864,7 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess) {
     soleAccess = soleAccess && thunks_ >= 1;
     Label& miss = soleAccess ? *a_.fresh() : *slow_[cur_];
 
-    memProbe(addr, szIdx, false, miss);
+    memProbe(addr, sizeBytes(szIdx), false, miss);
     if (szIdx == 0) {
         a_.movzx(Sz::B, dst, mem(RSI, 0));
     } else if (szIdx == 1) {
@@ -894,7 +902,7 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src, bool soleAccess) {
     // The value is live across memProbe, whose miss path calls out and
     // therefore clobbers every caller-saved register, `src` included.
     a_.movMR(Sz::L, F(kFSaveV), src);
-    memProbe(addr, szIdx, true, miss);
+    memProbe(addr, sizeBytes(szIdx), true, miss);
     a_.movRM(Sz::L, src, F(kFSaveV));
     if (szIdx == 0) {
         a_.movMR(Sz::B, mem(RSI, 0), src);
@@ -1558,6 +1566,239 @@ bool Emitter::emitBranch(size_t i) {
     return true;
 }
 
+// DBcc — the census's sharp edge (2026-07-30): 1.26 % of the idle Finder,
+// and every iteration of every DBRA loop used to leave the block. The 040
+// order (execDbcc + WinUAE op_51c8_31): odd-target address error FIRST
+// (before the condition and the decrement — compile-time here), then the
+// condition; a TRUE condition falls through without touching Dn; a false
+// one tests Dn.w BEFORE decrementing it. fullPrefetch refills nothing on
+// the 040, so irc stays the displacement word on every path.
+bool Emitter::emitDbcc(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const uint16_t op = in.opcode;
+    if (in.words != 2 || (op & 0xF0F8) != 0x50C8) return false;
+    const int cc = (op >> 8) & 0xF;
+    const int dn = op & 7;
+    const int32_t disp = int16_t(ir_.word(in.pc + 2));
+    const uint32_t target = uint32_t(in.pc + 2 + uint32_t(disp));
+    const uint32_t fall = in.pc + 4;
+    if (target & 1) return false;
+    // execDbcc, 68020 column: taken 6, expired 10, condition-true 6. The
+    // tracer's one measurement can only confirm the path it took.
+    if (in.cycles != 6 && in.cycles != 10) return false;
+    const uint16_t ircAfter = ir_.word(in.pc + 2);
+
+    int targetIdx = -1;
+    for (size_t k = 0; k < ir_.instrs.size(); k++)
+        if (ir_.instrs[k].pc == target) { targetIdx = int(k); break; }
+
+    Label& condTrue = *a_.fresh();
+    Label& expired = *a_.fresh();
+    if (cc != 1) {                       // DBF/DBRA: the condition never holds
+        condToAl(cc);
+        a_.jcc(Cc::E, condTrue);         // condToAl: ZF set == condition TRUE
+    }
+    a_.movzx(Sz::W, RAX, D(dn));         // takeBranch = Dn.w != 0, PRE-decrement
+    a_.aluMI(Asm::Op::SUB, Sz::W, D(dn), 1);
+    a_.testRR(Sz::W, RAX, RAX);
+    a_.jcc(Cc::E, expired);
+
+    // Taken: the loop closes. Jumping to entry_[target] keeps it in host
+    // code with the guards re-run every iteration (budget + interrupts).
+    a_.movMI(Sz::L, at(L_.pc), int32_t(target));
+    a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
+    commitQueue(op, ircAfter);
+    chargeCycles(6);
+    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    loopTo_ = targetIdx;
+    if (targetIdx >= 0) a_.jmp(*entry_[size_t(targetIdx)]);
+    else                leaveTo(target);
+
+    a_.bind(expired);                    // Dn hit -1: fall through, 10 cycles
+    a_.movMI(Sz::L, at(L_.pc), int32_t(fall));
+    a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
+    commitQueue(op, ircAfter);
+    chargeCycles(10);
+    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    leaveTo(fall);
+
+    if (cc != 1) {                       // condition true: no decrement, 6
+        a_.bind(condTrue);
+        a_.movMI(Sz::L, at(L_.pc), int32_t(fall));
+        a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
+        commitQueue(op, ircAfter);
+        chargeCycles(6);
+        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        leaveTo(fall);
+    }
+    return true;
+}
+
+// JMP <ea> — the JSR emitter minus the push. execJmp's 68020 column:
+// (An) 4, d16(An) 5, abs.w 4, abs.l 4, d16(PC) 5.
+bool Emitter::emitJmp(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const uint16_t op = in.opcode;
+    if ((op & 0xFFC0) != 0x4EC0) return false;
+    const int mode = (op >> 3) & 7, reg = op & 7;
+    Ea ea;
+    if (!decode(i, mode, reg, 2, 0, ea)) return false;
+    if (!ea.memory) return false;
+    if (ea.idx == kM_PI || ea.idx == kM_PD) return false;    // not encodable
+    if (!lengthOk(i, ea.ext)) return false;
+    static const int8_t kJmp[kM_COUNT] =
+        { -1, -1, 4, -1, -1, 5, -1, 4, 4, 5, -1, -1 };
+    if (kJmp[ea.idx] < 0 || kJmp[ea.idx] != int(in.cycles)) return false;
+    const uint16_t ircAfter = ir_.word(in.pc + 2);
+
+    const bool constant = (ea.idx == kM_AW || ea.idx == kM_AL || ea.idx == kM_DIPC);
+    if (constant && (uint32_t(ea.value) & 1)) return false;
+
+    addrOf(ea, RDI, 2);
+    if (!constant) {                     // odd target: 040 address error
+        a_.testRI(Sz::L, RDI, 1);
+        a_.jcc(Cc::NE, *slow_[i]);
+    }
+    a_.movMR(Sz::L, at(L_.pc), RDI);
+    a_.movMR(Sz::L, at(L_.pc0), RDI);
+    commitQueue(op, ircAfter);
+    chargeCycles(int(in.cycles));
+    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    if (constant) leaveTo(uint32_t(ea.value));
+    else          leaveToDynamic(RDI);
+    return true;
+}
+
+// MOVEM — 3.3 % of the idle Finder across its push/pop/load forms, and a
+// block-truncator besides (it sat at every function entry/exit the way
+// LINK/UNLK did before they were carved out). Straight-line, not a
+// terminator: the main loop charges the cycles and commits the queue.
+//
+// The whole burst is ONE span probe: n registers × size bytes are
+// contiguous, so a single DTLB entry either serves all of them or the
+// instruction bails to Moira with NOTHING committed — which is also what
+// makes multi-access safety trivial (no thunk, no partial commit).
+//
+// Two 040-specific rules, both from execMovem*: a compiled MOVEM must
+// bail while the RESTART LATCH is armed (a fault handler may have changed
+// the base register, and the restart must resume from the SAVED ea); and
+// the -(An) form with the base register in the mask stores INITIAL - size,
+// with An written once at the end.
+bool Emitter::emitMovem(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const uint16_t op = in.opcode;
+    if ((op & 0xFB80) != 0x4880) return false;
+    const bool toRegs = (op & 0x0400) != 0;          // $4C80 = M→R
+    const int szIdx = (op & 0x0040) ? 2 : 1;         // .L / .W
+    const int size = sizeBytes(szIdx);
+    const int mode = (op >> 3) & 7, reg = op & 7;
+    const uint16_t mask = ir_.word(in.pc + 2);
+    if (mask == 0) return false;                     // legal, rare, not worth it
+
+    Ea ea;
+    if (!decode(i, mode, reg, szIdx, /*extAt=*/1, ea)) return false;
+    if (!ea.memory) return false;
+    if (!lengthOk(i, 1 + ea.ext)) return false;
+    if (toRegs) {
+        if (ea.idx == kM_PD) return false;           // not encodable
+    } else {
+        if (ea.idx == kM_PI || ea.idx == kM_DIPC) return false;
+    }
+
+    int n = 0;
+    for (int b = 0; b < 16; b++) if (mask & (1 << b)) n++;
+
+    // execMovem{EaRg,RgEa}, 68020 column: base[mode] + 4 per transfer.
+    static const int8_t kBaseToRegs[kM_COUNT] =
+        { -1, -1, 12, 8, -1, 13, -1, 12, 12, 9, -1, -1 };
+    static const int8_t kBaseToMem[kM_COUNT] =
+        { -1, -1, 8, -1, 4, 9, -1, 8, 8, -1, -1, -1 };
+    const int base = toRegs ? kBaseToRegs[ea.idx] : kBaseToMem[ea.idx];
+    if (base < 0 || base + 4 * n != int(in.cycles)) return false;
+
+    // The restart latch: armed between a faulted MOVEM and its completed
+    // re-run. Cold in every normal execution, so one byte test.
+    a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.movemArmed), 0);
+    a_.jcc(Cc::NE, *slow_[i]);
+
+    if (ea.idx == kM_PD) {
+        // -(An): descending stores from An-size down to An-n*size, which
+        // is also the span base and the final An.
+        a_.movRM(Sz::L, RAX, A(ea.reg));
+        a_.aluRI(Asm::Op::SUB, Sz::L, RAX, n * size);
+        memProbe(RAX, n * size, /*write=*/true, *slow_[i]);
+        // The probe's fill path clobbers caller-saved registers; the base
+        // register itself is unchanged until the end, so re-read it.
+        a_.movRM(Sz::L, RDI, A(ea.reg));             // initial
+        // Moira stores DESCENDING register indices at DESCENDING addresses
+        // (A7 at initial−S first, down to the lowest masked register at the
+        // span base) — so ascending register order lands at ascending span
+        // offsets: masked register number j sits at spanBase + j·size.
+        int j = 0;                                   // transfer number
+        for (int b = 0; b < 16; b++) {
+            if (!(mask & (0x8000 >> b))) continue;   // predec: reversed mask
+            const int32_t off = j * size;
+            if (b == 8 + ea.reg) {                   // base-in-list rule
+                a_.movRR(Sz::L, RDX, RDI);
+                a_.aluRI(Asm::Op::SUB, Sz::L, RDX, size);
+            } else {
+                a_.movRM(Sz::L, RDX, R(b));
+            }
+            if (szIdx == 1) {
+                a_.rolR16(RDX, 8);
+                a_.movMR(Sz::W, mem(RSI, off), RDX);
+            } else {
+                a_.bswap(RDX);
+                a_.movMR(Sz::L, mem(RSI, off), RDX);
+            }
+            j++;
+        }
+        a_.aluMI(Asm::Op::SUB, Sz::L, A(ea.reg), n * size);   // An last
+        return true;
+    }
+
+    // Ascending forms, both directions: base address into RAX.
+    addrOf(ea, RAX, szIdx);
+    memProbe(RAX, n * size, toRegs ? false : true, *slow_[i]);
+    int j = 0;
+    for (int b = 0; b < 16; b++) {
+        if (!(mask & (1 << b))) continue;
+        const int32_t off = j * size;
+        if (toRegs) {
+            // MOVEM.W sign-extends into the FULL register, D and A alike.
+            if (szIdx == 1) {
+                a_.movzx(Sz::W, RDX, mem(RSI, off));
+                a_.rolR16(RDX, 8);
+                a_.movsxRR(Sz::W, RDX, RDX);
+            } else {
+                a_.movRM(Sz::L, RDX, mem(RSI, off));
+                a_.bswap(RDX);
+            }
+            a_.movMR(Sz::L, R(b), RDX);
+        } else {
+            a_.movRM(Sz::L, RDX, R(b));
+            if (szIdx == 1) {
+                a_.rolR16(RDX, 8);
+                a_.movMR(Sz::W, mem(RSI, off), RDX);
+            } else {
+                a_.bswap(RDX);
+                a_.movMR(Sz::L, mem(RSI, off), RDX);
+            }
+        }
+        j++;
+    }
+    if (ea.idx == kM_PI) {
+        // (An)+ writes the FINAL address into An after the loop — even
+        // when An itself was in the mask (execMovemEaRg's writeA order).
+        // RAX survived the probe (the fill path saves it in kFScratch),
+        // but a mask load may have clobbered... RAX is not a load target
+        // (RDX is), so base + n*size off RAX is the value Moira writes.
+        a_.aluRI(Asm::Op::ADD, Sz::L, RAX, n * size);
+        a_.movMR(Sz::L, A(ea.reg), RAX);
+    }
+    return true;
+}
+
 bool Emitter::emitInstr(size_t i) {
     const uint16_t op = ir_.instrs[i].opcode;
     switch (op & 0xF000) {
@@ -1567,9 +1808,15 @@ bool Emitter::emitInstr(size_t i) {
         case 0x1000: return emitMove(i, 0);
         case 0x2000: return emitMove(i, 2);
         case 0x3000: return emitMove(i, 1);
-        case 0x4000: return emitLine4(i);
+        case 0x4000:
+            if ((op & 0xFFC0) == 0x4EC0) return emitJmp(i);
+            // MOVEM's memory modes only — mode 000 is EXT/SWAP territory.
+            if ((op & 0xFB80) == 0x4880 && ((op >> 3) & 7) >= 2)
+                return emitMovem(i);
+            return emitLine4(i);
         case 0x5000:
-            if ((op & 0x00C0) == 0x00C0) return false;         // Scc / DBcc
+            if ((op & 0xF0F8) == 0x50C8) return emitDbcc(i);
+            if ((op & 0x00C0) == 0x00C0) return false;         // Scc
             return emitAddSubQ(i);
         case 0x6000:
             return (op & 0x0F00) == 0x0100 ? emitSubroutine(i) : emitBranch(i);
@@ -1841,15 +2088,18 @@ bool X64Backend::canEmit(uint16_t op) const {
         case 0x4000:
             if ((op & 0xFFF8) == 0x4E50 || (op & 0xFFF8) == 0x4E58) return true;
             if (op == 0x4E71 || op == 0x4E75) return true;           // NOP / RTS
-            if ((op & 0xFFC0) == 0x4E80) return eaOk;                // JSR <ea>
+            if ((op & 0xFF80) == 0x4E80) return eaOk;              // JSR / JMP <ea>
             if ((op & 0xF1C0) == 0x41C0) return eaOk;              // LEA
             if ((op & 0xFFB8) == 0x4880) return true;              // EXT
             if ((op & 0xFFF8) == 0x4840) return true;              // SWAP
+            if ((op & 0xFB80) == 0x4880 && mode >= 2) return true; // MOVEM
             if ((op & 0xFF00) == 0x4A00 || (op & 0xFF00) == 0x4200 ||
                 (op & 0xFF00) == 0x4400 || (op & 0xFF00) == 0x4600)
                 return eaOk && ((op >> 6) & 3) <= 2;
             return false;
-        case 0x5000: return (op & 0x00C0) != 0x00C0 && eaOk;        // ADDQ/SUBQ
+        case 0x5000:
+            if ((op & 0xF0F8) == 0x50C8) return true;               // DBcc
+            return (op & 0x00C0) != 0x00C0 && eaOk;                 // ADDQ/SUBQ
         case 0x6000: return true;                                   // Bcc/BRA/BSR
         case 0x7000: return (op & 0x0100) == 0;                     // MOVEQ
         case 0x8000: case 0x9000: case 0xB000: case 0xC000: case 0xD000:

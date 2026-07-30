@@ -2085,6 +2085,7 @@ Moira::pomJitLayout() const
     l.clock = at(&clock);     l.flags = at(&flags);
     l.ird = at(&queue.ird);   l.irc = at(&queue.irc);
     l.dtlbR = at(&pomJitDtlbR.e[0]);       l.dtlbW = at(&pomJitDtlbW.e[0]);
+    l.movemArmed = at(&mmu040MovemArmed);
     return l;
 }
 

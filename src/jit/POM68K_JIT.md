@@ -361,10 +361,16 @@ excludes every access whose cost depends on a device wait state.
 What it emits natively: `MOVE`/`MOVEA`, the `ADD`/`SUB`/`AND`/`OR`/`EOR`/
 `CMP` families in both directions, `ADDA`/`SUBA`/`CMPA`, `ADDQ`/`SUBQ`,
 `MOVEQ`, the `ADDI`/`SUBI`/`ANDI`/`ORI`/`EORI`/`CMPI` immediates, `TST`,
-`CLR`, `NEG`, `NOT`, `EXT`, `SWAP`, `LEA`, `BTST`, and `Bcc`/`BRA` as block
-terminators — over addressing modes `Dn`, `An`, `(An)`, `(An)+`, `-(An)`,
-`d16(An)`, `(xxx).W`, `(xxx).L`, `d16(PC)` and immediate. Everything else,
-including every 68020 indexed mode, falls back per instruction.
+`CLR`, `NEG`, `NOT`, `EXT`, `SWAP`, `LEA`, `BTST`, `LINK`/`UNLK`/`NOP`,
+**`MOVEM`** (both directions, both sizes, one span probe per burst, the
+040 restart latch checked), and as block terminators `Bcc`/`BRA`,
+`JSR`/`BSR`/`RTS`, **`DBcc`** (loops close internally like Bcc) and
+**`JMP <ea>`** — over addressing modes `Dn`, `An`, `(An)`, `(An)+`,
+`-(An)`, `d16(An)`, `(xxx).W`, `(xxx).L`, `d16(PC)` and immediate. The
+2026-07-30 census pass added the last four names (five opcodes carried
+~5 % of the idle Finder; measured −3.0 % / −1.7 % on the 5 G / 20 G
+regimes, boot etalon 25.6 → 24.7 s). Everything else, including every
+68020 indexed mode, falls back per instruction.
 
 ### What it is worth, and what it is not
 

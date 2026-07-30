@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 2026-07-30 — The five opcodes, same day: MOVEM + DBcc + JMP compiled
+
+The census named them at 18h, they were emitting by 19h30. `MOVEM` in both
+directions and sizes over the plain modes, as ONE span probe per burst — n
+contiguous registers either all served by a single DTLB entry or the whole
+instruction bails to Moira with nothing committed, which is also what makes
+multi-access safety trivial. Two 040 rules carried over from `execMovem*`:
+a compiled MOVEM bails while the RESTART LATCH is armed (a fault handler
+may have moved the base register, and the restart must resume from the
+saved ea — `PomJitLayout` gained `movemArmed` for the test, one byte
+compare), and the `-(An)` base-in-list form stores initial−size with An
+written once at the end. `DBcc` became an emitted terminator (its loops
+close internally like Bcc's; taken 6 / expired 10 / condition-true 6, the
+test-before-decrement order, the 040 odd-target error resolved at compile
+time). `JMP <ea>` is the JSR emitter minus the push.
+
+The harness earned its keep twice. The 5 M-step lockstep gates passed over
+a MOVEM bug that the boot etalon then caught (a wedge in ROM): the
+`-(An)` form stored the registers REVERSED in memory — Moira walks
+descending registers at descending addresses, so ascending register order
+must land at ascending span offsets. And the fix was then held to a
+60 M-step lockstep (9 G JIT instructions, bit-identical), `ctest -L jit`
+16/16 and the smoke tier.
+
+Measured: boot etalon 25.6 → 24.7 s; `jit_bench` −3.0 % (5 G regime) /
+−1.7 % (20 G) — the census's ~5 % Amdahl share, delivered. The idle
+residue stays owned by the ATC window churn, now its own TODO item (an
+investigation under the exactness contract, not a patch).
+
 ## 2026-07-30 — JIT measured honestly: x64 wins both regimes; the next lever is 5 opcodes
 
 Three measurements that rewrote the performance backlog (details in

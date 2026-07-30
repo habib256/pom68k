@@ -779,17 +779,33 @@ Next milestones:
     generated code walked by the Finder's working set. Remaining levers,
     in the doc's order: density (below), then JSR/BSR/RTS + MOVEM + the
     68020 indexed modes.
-  - [ ] **Coverage: MOVEM + DBcc + JMP `<ea>` in the x64 generator** —
-    re-ranked ABOVE density by the 2026-07-30 census (12.2 G instructions,
-    89.6 % native already; `POM68K_JIT.md` §3 addendum). The idle Finder's
-    uncovered top is exactly five opcodes: MOVEM push/pop/load
-    ($48E7/$4CDF/$4CEE, 3.3 %), DBRA ($51C8, 1.26 % — **classified Branch
-    but refused by canEmit, so every DBRA loop iteration exits the
-    block**), JMP abs.L ($4EF9, 0.66 %). DBcc and JMP are terminators
-    (simpler than the JSR already shipped); MOVEM is a loop over a
-    register mask. Beyond the ~5 % Amdahl, the win is block SHAPE: DBRA
-    loops close internally and MOVEM stops truncating function bodies the
-    way LINK/UNLK did before they were carved out.
+  - [x] ~~**Coverage: MOVEM + DBcc + JMP `<ea>`**~~ **DONE 2026-07-30**
+    (same day as the census that named them): MOVEM both directions/sizes
+    over the plain modes (ONE span probe per burst — n contiguous
+    registers, a single DTLB entry serves all or the instruction bails
+    with nothing committed; the 040 restart latch is exposed via
+    `PomJitLayout.movemArmed` and checked), DBcc as an emitted terminator
+    (loops close internally; taken 6 / expired 10 / cond-true 6, the 040
+    odd-target error checked at compile time), JMP `<ea>` as the JSR
+    emitter minus the push. One real bug caught by the boot etalon after
+    the 5 M-step lockstep gates passed: the `-(An)` MOVEM stored the
+    registers REVERSED in memory (descending registers go at descending
+    addresses, so ascending register order = ascending span offsets).
+    Validated: 60 M-step lockstep bit-identical, `-L jit` 16/16, smoke
+    8/8. Measured: boot etalon 25.6 → 24.7 s, jit_bench −3.0 % (5 G) /
+    −1.7 % (20 G) — the Amdahl share, with the idle residue still owned
+    by the ATC window churn (the item below).
+  - [ ] **Window survival under VM page-aging** — the measured idle-Finder
+    ceiling (one window death per ~15 instructions, 794 M lost exits over
+    12.2 G instructions): verify only the eviction of the ENTRY BACKING
+    the window kills it, and make the re-arm O(1) (the LC III memo
+    precedent). An investigation with the exactness contract untouched,
+    not a patch.
+  - [ ] **Coverage tail** (after the five): line $E shifts/rotates
+    (0.9 %), Scc, PEA; the 68020 indexed modes are the big block (a brief
+    extension-word decoder — QuickDraw's blitters). MULU/DIVU stay
+    fallback (data-dependent cycles, the cross-check refuses them
+    honestly).
   - [ ] **Generated-code density** — deprioritized 2026-07-30: the stale
     150 B/instr figure was measured before the boundary-deferral and cold
     emission landed, and the re-baseline shows x64 already beating
