@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## 2026-07-30 — Engine re-baseline (idle host) + the CPU menu reaches the 030s
+
+Two small items from the performance review, one real finding.
+
+**Re-baseline** (the fix-day numbers were taken at load 14; these at ~1.3,
+two runs per config): Q605 boot — interpreter 61.3-61.6 s, threaded fetch
+window 32.3 s (×1.90), x64 generator 25.3-26.0 s (×2.40); `auto` lands on
+25.2 s, confirming it now selects x64 on the 040s. LC II boot —
+interpreter 137.8-152.3 s, window 141.1-143.8 s.
+
+**The finding: the fetch window is now NEUTRAL on the LC II boot.** The
+"×1.6 on the LC II" figure that motivated wiring the 030 engine menu
+predates the ATC bit-exactness capping (2026-07-28): the LC II boots with
+the PMMU on, so ATC evictions kill its windows exactly as they do on the
+LC III (where the same pass had already shrunk the win to −9 %). Filed in
+TODO where the stale figure lived. Consequence for the backlog: the 030
+fleet's next conformant lever is widening the x64 backend (+ block
+linking), not the window.
+
+**CPU menu on the 030s** (`main.cpp`): `Cmd::CpuEngine` + engine/gauge
+hooks on `LcMachine` and `SonoraStyleMachine` — V8, Sonora, VASP and RBV
+run sites all bind `gSetCpuEngine`/`gGetCpuEngine`/`gJitStats`, the exact
+QuadraMachine pattern (swap on the machine thread, between two quanta).
+Shipped despite the finding above: it is the honest control surface, and
+the day the x64 backend covers the 030s the menu is already in place.
+
 ## 2026-07-30 — Save states in the GUI: « Sauver / Restaurer l'état »
 
 The last structural piece of TODO § C: every machine's **Machine** menu now

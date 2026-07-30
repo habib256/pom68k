@@ -630,8 +630,15 @@ Next milestones:
     over 20 G cycles (fp 8f26fcba22986fc6 × interp/interp+window/threaded/
     x64). Fallout: capped at ATC coverage, the INTERPRETER's data window
     stopped paying and is now opt-in (POM68K_DATA_WINDOW=1); the x64 keeps
-    its inline TLB. Re-measure engine timings on an idle host (the fix-day
-    numbers were taken at load average 14 and are meaningless).
+    its inline TLB. ~~Re-measure engine timings on an idle host~~ **DONE
+    2026-07-30** (idle host, 2 runs each): Q605 boot interp 61.3-61.6 s →
+    threaded window 32.3 s (×1.90) → x64 25.3-26.0 s (×2.40); `auto`
+    25.2 s (picks x64, as designed). **LC II boot: interp 137.8-152.3 s,
+    window 141.1-143.8 s — the window is now NEUTRAL-to-slightly-negative
+    on the LC II**, retiring the old "×1.6" figure: the LC II boots with
+    the PMMU on, and the bit-exactness ATC capping evicts its windows
+    exactly as on the LC III (−9 % there). The 030 fleet's next lever is
+    the x64 widening + block linking, not the fetch window.
   - [x] **Extend the seam to the 030 machines — ALL FOUR FAMILIES DONE
     2026-07-28** (V8, then Sonora/VASP/RBV in the seventh pass; every 68030
     machine is behind the engine, gates registered one per family).
@@ -702,10 +709,15 @@ Next milestones:
     4. **Compact mmu040InstrStart.** Eight per-instruction field resets +
        a getCCR() pack; adjacent fields could collapse into one or two wide
        stores. Small, but it sits on every single 040 instruction.
-  - [ ] **Wire the GUI engine switch for the 030 machines** — the CPU menu
-    only binds gSetCpuEngine on the four 040 machine loops; the V8/Sonora/
-    VASP/RBV loops have the engine but only the env var reaches it. Worth
-    it for the LC II (×1.6); copy the QuadraMachine Cmd::CpuEngine pattern.
+  - [x] ~~**Wire the GUI engine switch for the 030 machines**~~ **DONE
+    2026-07-30**: `Cmd::CpuEngine` + engine/gauge hooks on `LcMachine` and
+    `SonoraStyleMachine` (V8 + Sonora/VASP/RBV run sites), the exact
+    QuadraMachine pattern; the menu hint now says 68030/68040. Honesty
+    note: the motivating "×1.6 on the LC II" turned out STALE — the same
+    day's idle-host re-baseline measures the window neutral on the LC II
+    boot (PMMU on → ATC evictions kill windows, the bit-exactness cap).
+    The switch ships anyway: it is the honest control surface, and the
+    day the x64 backend covers the 030s the menu is already there.
   - [x] ~~**Lazy condition codes in the x86-64 backend**~~ **DROPPED
   2026-07-29 — measured ceiling ≈0.8 %.** Method: DUPLICATE the flag
   emission (storing the same byte twice is semantically a no-op, so the

@@ -876,8 +876,8 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         ImGui::Separator();
         ImGui::MenuItem("Statistiques du moteur...", nullptr, &gShowJit, hasJit);
         if (!hasJit)
-            ImGui::TextDisabled("(interrupteur : machines 68040 —\n"
-                                "ailleurs, POM68K_CPU_ENGINE=jit)");
+            ImGui::TextDisabled("(interrupteur : machines 68030/68040 —\n"
+                                "Mac II / compacts : interpréteur seul)");
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Réseau")) {
@@ -1378,15 +1378,27 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
 struct LcMachine {
     V8Memory& mem; Cpu030& cpu; V8Video& video; MacAudioHost& audioHost;
     LcMachine(V8Memory& m, Cpu030& c, V8Video& v, MacAudioHost& a)
-        : mem(m), cpu(c), video(v), audioHost(a) {}
+        : mem(m), cpu(c), video(v), audioHost(a) {
+        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
+    }
     // Any exit() while the thread runs (Xlib's default error handler exits
     // behind GLFW's back) would otherwise destroy a joinable std::thread —
     // an instant std::terminate. Joining here turns that into a clean stop.
     ~LcMachine() { stop(); }
 
+    // Engine state + JIT gauges for the CPU menu (DafbMachine contract:
+    // the menu tick follows the MACHINE; the swap lands one queue trip
+    // later, on the machine thread).
+    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
+    jit::Stats::Snapshot jitStats() const {
+        std::lock_guard<std::mutex> l(jitMu_);
+        return jitSnap_;
+    }
+
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense } t; int a = 0, b = 0; };
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense,
+                          CpuEngine } t; int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
     // Save-state requests (GUI → machine thread; see SaveStateSlot above).
@@ -1526,6 +1538,10 @@ struct LcMachine {
         // montype_) — so it crosses to the GUI as an atomic like every other
         // machine→GUI value, never by reaching into mem from the GUI thread.
         stSense_.store(mem.monitorSense(), std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> l(jitMu_);
+            jitSnap_ = cpu.jit().stats().snapshot();
+        }
     }
 
 private:
@@ -1563,6 +1579,12 @@ private:
                                mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
             case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
+            // Engine swap between two runCycles() — an instruction
+            // boundary (the DafbMachine precedent).
+            case Cmd::CpuEngine:
+                cpu.setEngine(c.a);
+                stEngine_.store(c.a, std::memory_order_relaxed);
+                break;
         }
         cmdsApply_.clear();
         state.apply(mem, cpu);         // save/load between two quanta
@@ -1579,6 +1601,9 @@ private:
     std::atomic<uint8_t> stFlags_{0};
     std::atomic<uint8_t> stConfig_{0};
     std::atomic<uint8_t> stSense_{0};   // monitor sense, machine → GUI
+    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
+    mutable std::mutex jitMu_;
+    jit::Stats::Snapshot jitSnap_{};
     int activeHold_ = 0;           // machine frames of sound-recent state
     int starve_ = 0;               // safety against a dead DAC
     int framesRun_ = 0;            // frames emulated since the last publish
@@ -1750,6 +1775,10 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static LcMachine machine{mem, cpu, video, audioHost};
+    gSetCpuEngine = [](int e) { machine.push({LcMachine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
     machine.state.kind = model == V8Memory::Model::Lc           ? pom68k::SnapMachine::Lc
                        : model == V8Memory::Model::ClassicII    ? pom68k::SnapMachine::ClassicII
                        : model == V8Memory::Model::ColorClassic ? pom68k::SnapMachine::ColorClassic
@@ -1983,12 +2012,24 @@ template <class Mem, class Cpu, class Video>
 struct SonoraStyleMachine {
     Mem& mem; Cpu& cpu; Video& video; MacAudioHost& audioHost;
     SonoraStyleMachine(Mem& m, Cpu& c, Video& v, MacAudioHost& a)
-        : mem(m), cpu(c), video(v), audioHost(a) {}
+        : mem(m), cpu(c), video(v), audioHost(a) {
+        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
+    }
     ~SonoraStyleMachine() { stop(); }
+
+    // Engine state + JIT gauges for the CPU menu (DafbMachine contract:
+    // the menu tick follows the MACHINE; the swap lands one queue trip
+    // later, on the machine thread).
+    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
+    jit::Stats::Snapshot jitStats() const {
+        std::lock_guard<std::mutex> l(jitMu_);
+        return jitSnap_;
+    }
 
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense } t; int a = 0, b = 0; };
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense,
+                          CpuEngine } t; int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
     // Save-state requests (GUI → machine thread; see SaveStateSlot above).
@@ -2093,6 +2134,10 @@ struct SonoraStyleMachine {
         // Machine-thread write (Cmd::Sense), so it must cross as an atomic —
         // see LcMachine::publish.
         stSense_.store(mem.monitorSense(), std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> l(jitMu_);
+            jitSnap_ = cpu.jit().stats().snapshot();
+        }
     }
 
 private:
@@ -2120,6 +2165,12 @@ private:
             case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
             case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
+            // Engine swap between two runCycles() — an instruction
+            // boundary (the DafbMachine precedent).
+            case Cmd::CpuEngine:
+                cpu.setEngine(c.a);
+                stEngine_.store(c.a, std::memory_order_relaxed);
+                break;
         }
         cmdsApply_.clear();
         state.apply(mem, cpu);         // save/load between two quanta
@@ -2135,6 +2186,9 @@ private:
     std::atomic<long long> stClock_{0};
     std::atomic<uint8_t> stFlags_{0};
     std::atomic<uint8_t> stSense_{0};   // monitor sense, machine → GUI
+    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
+    mutable std::mutex jitMu_;
+    jit::Stats::Snapshot jitSnap_{};
     int activeHold_ = 0;
     int starve_ = 0;
     int framesRun_ = 0;
@@ -2254,6 +2308,10 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static Lc3Machine machine{mem, cpu, video, audioHost};
+    gSetCpuEngine = [](int e) { machine.push({Lc3Machine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
     machine.state.kind = model == SonoraModel::Lc3Plus   ? pom68k::SnapMachine::Lc3Plus
                        : model == SonoraModel::Lc520     ? pom68k::SnapMachine::Lc520
                        : model == SonoraModel::Lc550     ? pom68k::SnapMachine::Lc550
@@ -2530,6 +2588,10 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static VaspMachine machine{mem, cpu, video, audioHost};
+    gSetCpuEngine = [](int e) { machine.push({VaspMachine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
     machine.state.kind = vi ? pom68k::SnapMachine::IIvi : pom68k::SnapMachine::IIvx;
     machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     machine.publish(true);
@@ -2780,6 +2842,10 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static RbvMachine machine{mem, cpu, video, audioHost};
+    gSetCpuEngine = [](int e) { machine.push({RbvMachine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
     machine.state.kind = iici ? pom68k::SnapMachine::IIci : pom68k::SnapMachine::IIsi;
     machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     machine.publish(true);
