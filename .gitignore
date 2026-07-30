@@ -53,3 +53,7 @@ tools/netatalk2/run/
 extern/tashrouter/**/__pycache__/
 # SCC wire-debug log (SCCDBG); regenerated at runtime
 scc.log
+
+# Old agent debug artefacts and the PGO build tree (regenerable)
+debug/
+build-pgo/

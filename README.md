@@ -88,6 +88,14 @@ ROMs are copyrighted and **never** part of the repository. Without one,
 POM68K boots a built-in hand-assembled 68000 demo that clears the boot
 overlay through the VIA and animates a pattern in the 512×342 framebuffer.
 
+Local working copies live under `roms/` (system ROMs by size, plus
+`roms/cuda/`, `roms/egret/`, `roms/adbmodem/`, and convenience symlinks
+like `roms/macplus.rom`). See [`roms/README.md`](roms/README.md).
+`roms/archive/macroms/` is the unpacked
+[Mac ROMs](https://archive.org/details/macroms) collection (deduped
+against the active trees) — reference inventory only, not shipped with
+the repo.
+
 ### Mac Plus
 
 Arguments: `[ROM] [floppy] [SCSI]`. Defaults probe `disks35/Disk605.dsk`
