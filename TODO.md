@@ -479,8 +479,17 @@ bake `tools/wrap_hfs.py`).
   address hook and an HLE-forbidden accuracy-test mode; then signature-matched
   modules, per-module A/B gates and a visible non-conformant-mode indicator.
   **Prioritize disk HLE**; defer timing-loop elision until its overlap with the
-  JIT is understood. (The measured LLE-conformant ceiling is ~×2.5-3 on the
-  040s — anything beyond lives here.)
+  JIT is understood. **The premise moved 2026-07-31**: the conformant JIT
+  now measures **×2.68** on `q605_boot_etalon` (61.3 s → 22.9 s), i.e.
+  THROUGH the "~×2.5-3 conformant ceiling" this item used to invoke as its
+  justification — so the overlay can no longer be sold as the way to make
+  POM68K fast. Its surviving argument is narrower and sharper: the residual
+  idle-Finder cost is the ATC-exactness contract itself (794 M window-lost
+  exits over 12.2 G instructions), and a non-conformant mode is exactly
+  where the five relaxations the JIT refuses become legal. `docs/
+  HLE_OVERLAY.md` § 0 dates every premise; read it before building anything.
+  Note also that the JIT reaches only eight CPU wrappers — on the Plus/SE/
+  Classic and the Mac II family, HLE is the ONLY accelerator that exists.
 - [ ] **Retro68 as a guest-level differential oracle**: build small Toolbox /
   Device Manager / XPRAM probes, run identical binaries under MAME and POM68K,
   compare. Known friction: no `Lists.h`/`AppleTalk.h` shims in multiversal

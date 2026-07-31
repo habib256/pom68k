@@ -599,7 +599,9 @@ public:
 
 private:
 
-    // The window read shared by the three 68040 instruction-fetch sites.
+    // The window read shared by the three instruction-fetch sites: two on
+    // the 68040 (mmu040InstrStart, readExt) and one on the 68030
+    // (mmuFetchWord) — the seam stopped being 040-only in 2026-07-28.
     // `n` bytes must fit; callers pass 4 (ird + irc) or 2 (extension word).
     bool pomJitFetch(u32 addr, u32 n, const u8 *&p) const {
         const PomJitWindow &w = pomJitWindow;

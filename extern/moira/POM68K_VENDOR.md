@@ -8,17 +8,69 @@ included: deferred IPL recognition (`setIplDelay`/`pollIpl`), STOP
 level-sensitive IRQ re-check, exception-handling robustness, watchpoint
 24-bit address masking.
 
-## POM68K local changes
+## How to read this file
 
-Unlike NeoST (which patches `MoiraConfig.h` at build time), POM68K edits the
-vendored files directly — every divergence from the NeoST copy is listed here:
+Unlike NeoST (which patches `MoiraConfig.h` at build time), POM68K **edits the
+vendored files directly**. This file is therefore the patch set: without it an
+upstream re-sync silently deletes work that took a differential fuzz loop to
+find.
 
-- `Moira/MoiraConfig.h`
-  - `MOIRA_PRECISE_TIMING` → **true** (cycle-exact Mac Plus: `sync()` before
-    each bus access, required for video/RAM contention later)
-  - `MOIRA_EMULATE_ADDRESS_ERROR` → **true** (Mac software relies on address
-    errors; also needed for oracle parity)
-  - `MOIRA_MIMIC_MUSASHI` → **false** (accuracy over Musashi compatibility)
+- **§ Inventory** below is the scannable index — one row per patch group, with
+  the files it touches and the gate that would catch its loss. Start here.
+- The sections after it are the **journal**, in chronological order. They carry
+  the *why*: the oracle ruling, the ROM behaviour, the guest bug. A rationale
+  lost here cannot be recovered from the code.
+- Every local change is marked `POM68K` (often `POM68K <slice>:`) in the source,
+  so `grep -rn POM68K extern/moira/Moira/` is the machine-checkable inventory —
+  336 marked lines across 12 of the 24 source files, as of 2026-07-31.
+- Sections are never rewritten when superseded, only annotated. § *Model support
+  in this copy* (last section) is the current state; the journal is history.
+
+**Before re-syncing from upstream:** diff against this file and
+`NEOST_VENDOR.md` first, then re-apply patch group by patch group, running the
+gate in the last column of each row.
+
+## Inventory of local patches
+
+| # | Patch | Vendored files | Why | Gate |
+|---|---|---|---|---|
+| 1 | Build configuration: 3 macros | `MoiraConfig.h` | cycle-exact Mac Plus + oracle parity | `sst68000` |
+| 2 | **SST 680x0 convergence** — address-error machinery, DIV/CHK/ASR/LINK rules | `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h`, `MoiraALU_cpp.h` | 1 000 058/1 000 060 vectors; the oracle wins over the manual | `sst68000` |
+| 3 | **68030 MMU instructions** PMOVE/PTEST/PFLUSH(A)/PLOAD (stubs → real) | `MoiraExecMMU_cpp.h`, `Moira.h`, `MoiraTypes.h` | LC II ROM enables the PMMU at `$A416AA` | `sst68030` |
+| 4 | 68030 MMU **two-oracle arbitration** D1-D6b (decode, EA order, Line-F, vector 56) | `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h` | WinUAE won every dispute; Musashi retired | `sst68030` |
+| 5 | **68030 MMU bus layer** — translation, 22-entry ATC, $A/$B frames, mode-5 fetch model | `MoiraExecMMU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h`, `MoiraALU_cpp.h`, `Moira.cpp`, `MoiraTypes.h` | every LC II access is translated | `sst68030` |
+| 6 | 68030 **integer arbitration** D11-D17 (CHK/DIV CCR, format $2, odd-PC AE) | `MoiraExec_cpp.h`, `MoiraALU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h` | WinUAE rulings; all `C == C68020`-gated | `sst68030` |
+| 7 | **68882 FPU execution** (empty stubs → full), `setFPUModel()` | `MoiraExecFPU_cpp.h`, `Moira.h`, `Moira.cpp`, `MoiraTypes.h`, `MoiraInit_cpp.h` | LC II PDS FPU; softfloat-backed | `fpu_sanity`, `sst68030` |
+| 8 | FPU **timing tables + FRESTORE acceptance matrix** | `MoiraExecFPU_cpp.h` | MC68881/882UM § 8; placeholders billed a 570-cycle FTWOTOX as 20 | `fpu_sanity` |
+| 9 | **External /BERR (030)** `extBusError()` + RTE of format $A | `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h`, `Moira.h` | V8 unmapped I/O + SCSI pseudo-DMA timeout | `berr030_test` |
+| 10 | RTE $B honours a **software-cleared SSW.DF** (one-shot completion latch) | `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h`, `Moira.h` | Mac OS slot-probe recovery, else a 6.8M-deep vector-2 storm | `berr030_test`, `lcii_boot_etalon` |
+| 11 | **Prefetch-pipe carry** across a translation switch + mode-5 **IPL polling** | `MoiraExecMMU_cpp.h`, `Moira.h`, `Moira.cpp` | the LC II ROM banks on the real 030's 3-word pipe; TimeDBRA needs prompt IRQs | `lcii_boot_etalon` |
+| 12 | `isStopped()` accessor | `Moira.h` | debug-only; STOP vs spin loop | — |
+| 13 | **IRQ-recognition delay** after a mask-lowering SR write (`irqDelay`) | `Moira.cpp`, `Moira.h` | SimCity 2000 re-entered its VBL task with a clobbered A5 | `lcii_boot_etalon` |
+| 14 | **68030 i-cache timing overlay** `PomIcache` (folded inline from a virtual hook) | `Moira.h`, `MoiraExecMMU_cpp.h` | 020 cycle model over-charges cached 030 code; the virtual hook cost ~11% | `lcii_boot_etalon` |
+| 15 | **Odd-SP interrupt frames**: no A0 masking on 010/020, single vector scaling | `MoiraExceptions_cpp.h` | Lode Runner launch freeze (spurious FORMAT ERROR) | `lcii_launch_etalon`, `sst68000` |
+| 16 | **ATC performance**: O(1) pseudo-LRU, last-hit probe, `MOIRA_HOT_INLINE` | `MoiraExecMMU_cpp.h`, `Moira.h`, `Moira.cpp` | 38% of LC II machine time was in two 22-entry scans | `sst68030` |
+| 17 | **68040 integer core** + 040 MMU registers, MOVEC/MOVE16/CINV/CPUSH, 040 trace, no-FPU format $4 | `MoiraExec_cpp.h`, `MoiraALU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraTypes.h`, `Moira.h`, `Moira.cpp`, `MoiraInit_cpp.h` | Quadra/Centris/LC 475 family | `sst68040` |
+| 18 | **68040 MMU bus translation** (Q3) + **32-entry I/D ATC** (Q8) | `MoiraExecMMU_cpp.h`, `Moira.h`, `Moira.cpp` | 7 200/7 200 pinned; format $7 last-write dichotomy | `sst68040`, `q605_boot_etalon` |
+| 19 | **External /BERR (040)** `extBusError040()` | `Moira.h`, `MoiraExecMMU_cpp.h` | the O6 twin for MEMCjr/djMEMC/F108 unmapped I/O | `q605_boot_etalon` |
+| 20 | **Watchpoints under the MMU** — logical-address hooks on the 4 translated paths | `MoiraExecMMU_cpp.h` | `readM`/`writeM` are bypassed on the 030/040 | — (debug) |
+| 21 | **External /BERR on the plain 68020** (queue refill, access capture, guarded restores) | `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h` | the Mac LC ROM's 32-bit probe died in a DS-1 Sad Mac | `lc_boot_etalon` |
+| 22 | **JIT seam** — fetch window, data TLB, probes, `pomJitExecOne`, layout, ATC-eviction hook | `Moira.h`, `Moira.cpp`, `MoiraExecMMU_cpp.h`, `MoiraDataflow_cpp.h` | the second execution engine drives this object from `src/jit/` | `jit_lockstep_test` |
+| 23 | **Save-state seam** `pomFlushAtcs()` | `Moira.h` | a restored snapshot replaces the page tables under live ATCs | `savestate_030_test`, `savestate_040_test` |
+
+Rows 2-21 are the accuracy work; rows 22-23 are pure seams (inert when nothing
+arms them). The twelve files carrying no `POM68K` marker at all —
+`MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.*` (2), `MoiraMacros.h`,
+`MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are the cheap half of a
+re-sync: nothing local to re-apply there.
+
+## Build configuration (`Moira/MoiraConfig.h`)
+
+- `MOIRA_PRECISE_TIMING` → **true** (cycle-exact Mac Plus: `sync()` before
+  each bus access, required for video/RAM contention later)
+- `MOIRA_EMULATE_ADDRESS_ERROR` → **true** (Mac software relies on address
+  errors; also needed for oracle parity)
+- `MOIRA_MIMIC_MUSASHI` → **false** (accuracy over Musashi compatibility)
 
 ## SingleStepTests/680x0 convergence patches (2026-07-14)
 
@@ -685,8 +737,7 @@ one predictable branch, nothing else). `Cpu030` arms it in its constructor
 Behaviour byte-identical (lcii_boot_etalon: same 0.09/0.48 metrics, same
 9583 SCSI commands); boot etalon wall time 143 s → 122 s (-15%).
 
-## Odd-SP interrupt frames: no A0 masking on 010/020, single vector
-## scaling (2026-07-17, Lode Runner launch freeze)
+## Odd-SP interrupt frames: no A0 masking on 010/020, single vector scaling (2026-07-17, Lode Runner launch freeze)
 
 `MoiraExceptions_cpp.h`, two related fixes on the interrupt-frame path:
 
@@ -822,13 +873,17 @@ fresh-seed re-verify). Every change is runtime-gated on
   without FPSP; Quadra NOFPU uses soft 68882 instead.
 - **Q8 — 040 I/D ATC:** 32-entry separate I/D ATC overlay on
   `mmu040Translate` (`Moira.h` `MMU040_ATC_ENTRIES`, pseudo-LRU, flush
-  PFLUSH*/TC/URP/SRP; `POM68K_MMU040_WALK=1` disables and restores
+  PFLUSH*/TC/URP/SRP; `POM68K_MMU040_WALK` — set to anything, the
+  wrappers test only its presence — disables it via `setMmu040AtcArmed(false)`
+  and restores
   walk-per-access for oracle comparison). U/M/WP semantics preserved vs
   walk-per-access. Page size follows TC.P (4K/8K).
   `POM68K_Q605_CACHE_BOOST` defaulted to 1 here ("boost 2+ fails SCSI
   bring-up"); **superseded 2026-07-25** — that pin was a stale symptom.
-  Re-measured, the whole 040 family is green at boost 4 and `Cpu040`/
-  `CentrisCpu` now default to `cacheBoost_ = 4` (CHANGELOG "The Quadra's
+  Re-measured, the whole 040 family is green at boost 4 and every wrapper
+  that carries the overlay (`Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu`,
+  `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu030`) now defaults to
+  `cacheBoost_ = 4` (CHANGELOG "The Quadra's
   boost-1 pin was stale"). The two unit tests that were measuring wait
   states on the boosted clock read `machineClock()` now, so machine-cycle
   stall / VIA sync / SWIM C15M are boost-invariant.
@@ -859,7 +914,7 @@ are unregressed. New section at the end of `MoiraExecMMU_cpp.h`:
   rewrites); PFLUSH stays a no-op, PTEST reports the walk (or TTR hit)
   in MMUSR040. **Superseded by Q8** (§ *68040 integer core*, bullet "Q8 —
   040 I/D ATC"): the 32-entry I/D ATC is real, PFLUSH* flushes it, and
-  `POM68K_MMU040_WALK=1` restores this walk-per-access behaviour for
+  `POM68K_MMU040_WALK` restores this walk-per-access behaviour for
   oracle comparison. The walk itself is unchanged — including its
   4K/8K TC.P branch.
 - **Access model** (`mmu040Read/Write`): page-boundary splitting exactly
@@ -906,6 +961,25 @@ are unregressed. New section at the end of `MoiraExecMMU_cpp.h`:
   `mmu040_move16[]` across vectors — ordinary faults stacked the
   PREVIOUS vector's values in the frame's EA and PD0-3 fields;
   `oracle_set_state` zeroes them (with `wb2_address`/`wb3_data`).
+
+## External /BERR on the 68040: `extBusError040()` (Q5)
+
+The 040 twin of § *External /BERR + RTE $A*, needed for the same reason on the
+Quadra/Centris/Q630 boards: the ROM probes an address map by faulting on
+unmapped I/O, and translation alone cannot see that coming.
+
+- `Moira.h` (public, `[[noreturn]]`) — called from *inside* a `read8/16` /
+  `write8/16` bus callback when the machine asserts /BERR.
+- `MoiraExecMMU_cpp.h extBusError040` — replays the captured in-flight access
+  (`mmu040AccAddr/Val/Sz/Write/Data`, stamped by `mmu040Read`/`mmu040Write`
+  before every physical access) into `mmu040Fault`, so the frame is identical
+  to a translation fault at the same point **except** that SSW.ATC is clear
+  (WinUAE `mmu_hardware_bus_error`, `nonmmu = true`). MOVES supplies the
+  privilege from `mmu040Moves` rather than `sr.s`.
+
+The access stamp is what the JIT seam's `pomJitStampAccess` has to reproduce
+(§ *JIT seam*, point 5): a fetch served from the window performs no
+`mmu040Read`, so nothing else would leave the context this function reads back.
 
 ## Watchpoints under the MMU: logical-address hooks (2026-07-21, Q8.2)
 
@@ -955,14 +1029,28 @@ code).
 ## JIT seam (2026-07-27, J0/J1)
 
 POM68K's **second execution engine** lives outside this vendored core, in
-`src/jit/` (design: `src/jit/POM68K_JIT.md`). It drives a `moira::Moira`
-object; it never replaces it and it is off by default. Five additions here,
-all marked `POM68K JIT`, all inert until a `jit::Engine` arms them.
+`src/jit/` (design: `src/jit/POM68K_JIT.md`, which owns everything above the
+seam — backends, block discovery, invalidation policy, measurements). It
+drives a `moira::Moira` object; it never replaces it and it is off by default.
+Five additions in this first slice, all marked `POM68K JIT`, all inert until a
+`jit::Engine` arms them.
+
+> **Read the three sub-sections below as one patch group.** J0/J1 was 68040-
+> only; J2 (2026-07-28) added the code-generator surface *and* extended the
+> seam to the 68030 and the plain 68020; J3/J3b (2026-07-28) added the
+> data path and the ATC-eviction contract that makes every derived cache
+> exact (all three in commit `b2c4e19`; the 2026-07-30 `movemArmed` addition
+> came with the compiled MOVEM). `grep -rn "POM68K JIT\|POM68K J3" extern/moira/Moira/` is
+> the authoritative site list: `Moira.h`, `Moira.cpp`, `MoiraExecMMU_cpp.h`,
+> `MoiraDataflow_cpp.h`.
 
 **Why public rather than protected.** `jit::Engine` holds a `moira::Moira&`,
-not a machine wrapper, so one engine serves every 68040 machine profile
-(`Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu`). A public non-virtual member
-is the only shape that stays a **direct** call from another translation
+not a machine wrapper, so one engine serves every machine profile that carries
+one — eight CPU wrappers today: `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu`
+(68040) and `Cpu030`, `RbvCpu`, `SonoraCpu`, `VaspCpu` (68030, plus the
+Macintosh LC's 68020 flavour of `Cpu030`). `Cpu68k` and `Cpu020` carry none.
+A public non-virtual member is the only shape that stays a **direct** call
+from another translation
 unit — and this file already records what an indirect call on the
 per-instruction path costs (§ *willFetchInstr … Folded inline*: ~11% of the
 whole emulator). No `friend` was added, and the instruction handler table
@@ -970,38 +1058,69 @@ whole emulator). No `friend` was added, and the instruction handler table
 because that would skip `POLL_IPL` and the per-instruction MMU resets.
 
 1. **`Moira.h` — `PomJitWindow pomJitWindow` + `u32 pomJitMmuGen`.**
-   An instruction-fetch window: while armed, 68040 opcode, lookahead and
+   An instruction-fetch window: while armed, opcode, lookahead and
    extension-word fetches inside `[base, base+len)` are served from a host
    pointer instead of walking the ATC and re-entering the machine's memory
-   map. Same shape as `PomIcache` — a plain struct, checked inline, one
-   predictable branch when disarmed. `pomJitMmuGen` is bumped by
-   `mmu040AtcFlushAll/FlushNonGlobal/FlushPage` and by the four TTR setters
-   (the ATC-flushing TC/URP/SRP setters reach it through `FlushAll`); a
-   window whose generation no longer matches is refused, which is the one
-   staleness an address-range test cannot see.
+   map. (68040-only in this slice; J2 extended it to the 030 and the plain
+   020 — point 3.) Same shape as `PomIcache` — a plain struct, checked inline, one
+   predictable branch when disarmed. `pomJitMmuGen` is bumped — through
+   `pomJitMapMoved()`, see point 7 — at **eleven** sites, which is the whole
+   set of things that can move a logical→physical mapping: the four 030 ATC
+   flushes (`mmuAtcFlushAll/FlushFc/FlushPage/FlushPageFc`), the three 040
+   ones (`mmu040AtcFlushAll/FlushNonGlobal/FlushPage`) and the four TTR
+   setters (`setITT0/ITT1/DTT0/DTT1`); `setTC040`/`setURP040`/`setSRP040`
+   reach it through `mmu040AtcFlushAll`, and `pomFlushAtcs()` (§ *Save-state
+   seam*) through both flush-alls. A window whose generation no longer
+   matches is refused, which is the one staleness an address-range test
+   cannot see.
 
    Note the window points **into the guest RAM/ROM buffer**, so guest writes
    are visible to it immediately: self-modifying code needs no invalidation
    here. What can go stale is the *translation*, hence `super` + `gen`.
 
-2. **`Moira.cpp` — `bool pomJitExecOne()`.** The 68040 fast path of
+2. **`Moira.cpp` — `bool pomJitExecOne()`.** The MMU cores' fast path of
    `execute()`, factored out so there is exactly **one** copy of it:
-   `execute()` now calls it for `cpuModel >= M68EC040` (same TU, still
-   inlined) and the block replayer calls the same function. A hand-copied
-   twin in `src/jit/` would have rotted against the instruction-start
-   contract — `POLL_IPL`, the eight per-instruction MMU resets,
-   `reg.pc += 2` before the handler, `processException`, the staged
+   `execute()` calls it for `cpuModel == M68030 || cpuModel >= M68EC040`
+   (same TU, still inlined) and the block replayer calls the same function.
+   A hand-copied twin in `src/jit/` would have rotted against the
+   instruction-start contract — `POLL_IPL`, the eight per-instruction MMU
+   resets, `reg.pc += 2` before the handler, `processException`, the staged
    `trace040Pending`. Returns false whenever the instruction did not retire
    normally, which the engine always reads as "go back through `execute()`".
 
+   *2026-07-28, three branches now:* `M68030` runs `mmuExecuteStart` as its
+   loop head (the 030's mode-5 equivalent of `mmu040InstrStart`), `>=
+   M68EC040` runs `mmu040InstrStart`, and **plain 020** has no per-instruction
+   MMU loop head at all — its queue was refilled by the previous
+   instruction's prefetch, where its `POLL_IPL` lives, so the boundary
+   contract is just the dispatch. That third branch is reached only from the
+   engine (`execute()` keeps its own generic fast path for pre-030 models);
+   the six duplicated lines are deliberate, because gating the hottest loop
+   in the emulator — cycle-exact 68000/68010 — on a model test would cost
+   more than the duplication.
+
 3. **`MoiraExecMMU_cpp.h` + `MoiraDataflow_cpp.h` — the window fast path**
-   at the three 68040 fetch sites: `mmu040InstrStart` (`ird` at `pc` and
-   `irc` at `pc+2` — **both or neither**, because serving only `ird` would
-   change which page the lookahead touches for an instruction on a page's
-   last word, and with it the fault frame) and the 040 branch of `readExt`
-   (every extension word past the lookahead — where multi-word instructions
-   actually spend their fetch budget). Both sit **after** `POLL_IPL` and
-   after the per-instruction MMU resets, never before.
+   at every instruction-fetch site, per core:
+   - **68040**, two sites: `mmu040InstrStart` (`ird` at `pc` and `irc` at
+     `pc+2` — **both or neither**, because serving only `ird` would change
+     which page the lookahead touches for an instruction on a page's last
+     word, and with it the fault frame) and the 040 branch of `readExt`
+     (every extension word past the lookahead — where multi-word
+     instructions actually spend their fetch budget).
+   - **68030**, one site: `mmuFetchWord`, which the mode-5 loop funnels
+     `ird`, `irc` and every extension word through. Placed **after** the
+     `PomIcache` overlay (its miss penalty is cycle-visible and must keep
+     charging) and after the `mmuAccAddr` stamp that `extBusError()` reads
+     back.
+   - **plain 68020**, three sites in `MoiraDataflow_cpp.h` (`prefetch`,
+     `fullPrefetch`, `readExt`) through `pomJitFetch020`, which replaces
+     only the *tail* of a `read<PROG,Word>`: the head is behavioural state
+     that must be replicated, not skipped — the `POLL_IPL` riding on the
+     prefetch, the FC pins, and the in-flight access stamp an external
+     /BERR reads back (§ *External /BERR on the plain 68020 core*).
+
+   All of them sit **after** `POLL_IPL` and after the per-instruction MMU
+   resets, never before.
 
 4. **`MoiraExecMMU_cpp.h` — `bool pomJitProbeCode(...) const`.** A
    side-effect-free translation probe: TTR match, MMU-disabled identity,
@@ -1077,18 +1196,86 @@ marked `POM68K JIT`, all inert until armed.
     recomputation would silently ignore if the fault handler changed the
     base register.
 
+### J3 (2026-07-28) — the interpreter reads the data TLB too
+
+11. **`Moira.h` — `pomJitData<N,W>()` + `pomJitDataR1/W1` +
+    `Moira.cpp pomJitDataSlow()` + the fill callback
+    `pomJitDtlbFillFn/Ctx`.** The same two tables of point 6, now consulted
+    by the **interpreter**: `mmu040Read` and `mmu040Write` try them before
+    the ATC/translate/split chain. Three levels, because the shape is
+    measured, not aesthetic — level 0 is **one entry per direction**
+    (`pomJitDataR1/W1`) checked inline in the hot part of the object; levels
+    1 (the 256-entry table) and 2 (the engine's fill callback) both live
+    behind `pomJitDataSlow`, deliberately out of line, because level 0 is
+    inlined into every `mmu040Read/Write` instantiation and the
+    interpreter's hot loop pays for those bytes hit or miss. Consulting the
+    big tables directly from the interpreter measured **~10 % slower**:
+    streaming guest data evicted their own cache lines, adding an L1 miss to
+    an access the long path served from hot machine state.
+
+    `pomJitData` refuses up front for correctness, not speed: an armed
+    watchpoint (`CHECK_WP` must see every access), MOVES' alternate FC
+    space (`mmu040Moves`), a locked-RMW read (`mmu040Lrmw` — it translates
+    as a write), and any access straddling a 4 KB boundary. The write side
+    replicates the last-write marker (`mmu040LastWrite/Pc`) bit for bit,
+    because the format $7 frame stacks that dichotomy and a fast path that
+    skipped it would change which PC a two-write instruction's second fault
+    reports.
+
+    `pomJitDtlbFillFn` is null unless a `jit::Engine` binds it, so the whole
+    path is one dead branch by default — and the engine binds it **only**
+    under `POM68K_DATA_WINDOW=1` (`JitEngine.cpp`). It is opt-in because
+    J3b made it exact and exactness is what killed it: a TLB entry may not
+    outlive the ATC entry it derives from, so its coverage is capped at the
+    040 ATC's 32 pages, and under Mac OS VM the eviction/refill churn costs
+    more than the remaining hits save. The x86-64 backend keeps its inline
+    use of the same tables (same cap, but there it replaces a C++ call
+    chain, not a hot MRU probe).
+
+### J3b (2026-07-28) — derived state dies with the ATC entry it derives from
+
+12. **`Moira.h` — `pomJitAtcEvict(logicalPage, pageLen, code)`**, called from
+    every ATC eviction site on **both** cores: the write-M invalidation in
+    `mmuAtcLookup` (030, last-hit probe *and* full scan) and
+    `mmu040AtcLookup`, plus the replacement in `mmuAtcFill` /
+    `mmu040AtcFill`. **This is the exactness contract for the whole seam**,
+    and it is worth being explicit about why, because it was invisible for
+    weeks.
+
+    A window or TLB hit skips a walk — which is exactly what an ATC hit
+    does, so it is bit-exact *while the backing ATC entry is resident*. Once
+    that entry is evicted, the interpreter's next access re-walks and
+    re-sets the descriptor's **U bit** in guest RAM. A derived entry that
+    outlived the eviction would skip that guest-visible write. Harmless
+    until Mac OS VM started *reading* the U bits for page aging (it does,
+    once the System is up), at which point each engine's different survival
+    pattern became a different guest **execution**: three engines, three
+    futures, all "correct" and none comparable.
+
+    The eviction is **per space**: `code` says whether the evicted entry
+    backed the fetch window (instruction-space residency) or the data TLB
+    (data-space residency). Killing both on either eviction — the first cut
+    — threw the code window away every time an unrelated data page sharing
+    its logical page churned.
+
 **Known divergence, by design:** serving a fetch from the window skips the
-instruction ATC's pseudo-LRU update for that access, so ATC replacement
-order differs from a pure-interpreter run. Architecturally invisible (the
-same class as the `PomIcache` timing overlay), and the JIT is off by default
-everywhere. On the 040 path `SYNC(x)` expands to nothing (`MoiraMacros.h`:
-`if constexpr (C != Core::C68020)`), so the window changes **no** cycle
+instruction ATC's pseudo-LRU update for that access, so ATC *replacement
+order* still differs from a pure-interpreter run — but with J3b a hit can
+only happen while the interpreter's own ATC would also have hit, so no
+guest-visible descriptor write is ever skipped. Architecturally invisible
+(the same class as the `PomIcache` timing overlay), and the JIT is off by
+default everywhere. On every core that runs through the seam `SYNC(x)`
+expands to nothing (`MoiraMacros.h:19`: `if constexpr (C != Core::C68020)`,
+and 020/030/040 all *are* `Core::C68020`), so the window changes **no** cycle
 accounting at all.
 
-Gate: `jit_lockstep_test` runs two Quadra 605 machines from one ROM, one
-interpreted and one JIT-driven, and compares D0-D7/A0-A7/PC/SR/USP/ISP/MSP
-and the clock at every instruction boundary — and fails if the JIT never
-actually replayed a block.
+Gate: `jit_lockstep_test` runs two machines from one ROM, one interpreted and
+one JIT-driven, and compares D0-D7/A0-A7/PC/SR/USP/ISP/MSP, the clock and the
+low 2 KB of guest RAM at every instruction boundary — and fails if the JIT
+never actually replayed a block. It has **five** CTest registrations
+(`jit_lockstep_test`, `_blocks_`, `_x64_`, `_x64_fine_`, `_noaccess_`) that
+vary backend, block cache and comparison granularity; `ctest -L jit` runs
+them with the `jit_*_boot_etalon` re-registrations.
 
 ## Save-state seam: `pomFlushAtcs()` (2026-07-29)
 
@@ -1112,10 +1299,15 @@ re-derivable from RAM) or widen the private section, this adds the single
 protected entry point `src/MoiraSnapshot.h` needs.
 
 Everything else about save states is on the POM68K side of the seam: the
-whole CPU chunk lives in `MoiraSnapshot::visitCpuCommon()`, which works
-only because Moira's execution state (`clock`, `reg`, `queue`, the IPL
-history, `flags`, `fpu`) is already `protected` — the CPU wrappers derive
-from it.
+whole CPU chunk lives in `MoiraSnapshot::visitCpuCommon()` (`src/MoiraSnapshot.h`,
+which calls `pomFlushAtcs()` after the reload), and it works only because
+Moira's execution state (`clock`, `reg`, `queue`, the IPL history, `flags`,
+`fpu`) is already `protected` — the CPU wrappers derive from it.
+
+Free side effect worth knowing: both flush-alls route through
+`pomJitMapMoved()` (§ *JIT seam*, points 1 and 7), so a restore also
+invalidates the JIT code window and data TLB. Restoring under an armed
+engine needs no extra call.
 
 Nothing else in the vendored tree changed for save states.
 

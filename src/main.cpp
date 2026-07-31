@@ -4980,7 +4980,12 @@ int main(int argc, char** argv) {
             for (int i = 0; i < n; i++) {
                 c.clock.runFrame(c.cpu, c.mem);
                 pollLocalTalk(c.mem);
-                if (atalkEnabled()) g_atalk.tick(c.cpu.getClock());
+                // machineClock(), not getClock(): identical on the 68000
+                // (no i-cache boost) but the boosted machines expire every
+                // second-scale AppleTalk timer 4x early on the raw clock,
+                // and the two tick sites must not disagree about which
+                // clock the hub runs on (see the other site above).
+                if (atalkEnabled()) g_atalk.tick(c.cpu.machineClock());
                 samp.clear();
                 c.audio.renderFrame(c.mem, samp);   // 370 PWM samples
                 c.audioHost.pushFrame(samp, 0);     // plays only non-silent frames

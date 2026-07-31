@@ -1,110 +1,195 @@
 # AppleTalk, LocalTalk, printing, and the bridge to CUPS
 
-A reference for continuing POM68K's networking work. It is written from
-**two points of view at once** and keeps switching between them, because
-that is the fastest way to actually understand AppleTalk:
+Index for POM68K's networking: the protocol facts, each mapped to the
+class and gate that implement it — plus the short operating guide for
+someone who just wants a shared folder.
 
-- **Top-down (the service):** what a person at the Mac sees — "a server
-  named *POM68K* appeared in the Chooser", "the *Input* volume mounted",
-  "the LaserWriter is printing".
-- **Bottom-up (the wire):** the bytes POM68K's `Scc8530` actually clocks
-  onto the SDLC line and the `LtoUdp` cable actually multicasts. This is
-  the angle the 1980s Apple manuals never take, and it is the one that
-  matters when you are debugging an emulator.
+**Since 2026-07-24 POM68K carries the whole service side in-process**
+(`AtalkHub` → `AtalkStack` + `AfpServer` + `PapServer` + `MacIpGateway`),
+on by default in the GUI, no root and no external daemons. The netatalk /
+TashRouter / macipgw chain is still here (§6.1-§6.4) and remains the way
+onto a **real** LocalTalk network; the two coexist on the same wire.
 
-Everything here is cross-checked against *Inside AppleTalk* (2nd ed.,
-Sidhu/Andrews/Oppenheimer — the definitive spec), Apple's *Inside
-Macintosh: Networking*, and the **netatalk 2.4.9** source vendored in
-`extern/netatalk2/` (cited as `file:line`, verified 2026-07-22). Sources
-are listed at the end.
+| You want to… | Go to |
+|---|---|
+| share a folder, print, put the guest on the web | **§0 Operating it** |
+| debug LLAP framing, ENQ, RTS/CTS, the IDG | §2 |
+| debug DDP/RTMP/ZIP/NBP/ATP (empty Chooser, retransmits) | §3 |
+| debug a mount that drops, or a print job | §4 |
+| reach a real LocalTalk network / real netatalk | §6.1-§6.4 |
+| know what the in-process subset does **not** do | §6.5 |
+| find the file or gate for a layer | §7 |
+| look up a constant | §8 |
 
-> **Why this doc exists.** POM68K already puts an emulated Mac on a real
-> AppleTalk network: `Scc8530` speaks the LocalTalk link layer, `LtoUdp`
-> is the cable, TashRouter routes, and netatalk's `afpd` serves files
-> (`tools/netatalk2/appleshare.sh`). To push that further — reliable AFP
-> sessions, printing to CUPS — you have to know the whole stack, not just
-> the link layer we implement. The last section maps every protocol back
-> to the POM68K file that touches it.
+Protocol facts are cross-checked against *Inside AppleTalk* (2nd ed.,
+Sidhu/Andrews/Oppenheimer) and the vendored **netatalk 2.4.9**
+(`extern/netatalk2/`, `file:line` verified 2026-07-22). Full source list
+in §9. Section numbers §2.4, §3.3, §4.4, §6.4 and §6.5 are cited from
+code comments and other docs — **do not renumber them.**
+
+---
+
+## 0. Operating it
+
+### 0.1 Knobs
+
+`DEV.md` §5 is the complete environment-variable list; only the ones that
+change AppleTalk behaviour are repeated here.
+
+| Knob | Default | Effect |
+|---|---|---|
+| `POM68K_APPLETALK=0` | (unset = on) | kills the in-process stack; the **Réseau → AppleTalk** menu item greys out (`src/main.cpp:94`) |
+| `POM68K_APPLETALK=1` | — | *different job*: seeds PRAM SPConfig `$21` = LocalTalk **active at boot** (`src/Egret.cpp:77`, `src/Rtc.cpp:44`). Unset seeds `$22` (async) — a fresh PRAM then needs the Chooser's AppleTalk radio button, or an image whose prefs already have it on |
+| `POM68K_SHARE_DIR=/path` | `<repo>/AppleShare`, created if absent (`src/main.cpp:147`) | host folder served as the AFP volume. **The volume takes the folder's own name**, netatalk-style (`AtalkHub.h:93`) |
+| `POM68K_ATALK_WIRE_BOOST=N` | `8` | virtual-wire speed-up (`src/main.cpp:128-138`); `=1` restores authentic 230.4 kbit/s. See §0.4 |
+| `POM68K_LTOUDP=1` | off | also join the real LToUDP cable (§6.1). Suppresses the boost — external peers are real wires |
+| `POM68K_ATALK_DEBUG=1` | off | DDP/NBP/ATP tracer + one line per client retransmit with its lag (`src/AtalkStack.cpp:16`) |
+| `POM68K_MACIP_DEBUG=1` | off | every IP datagram both ways, with TCP flags/seq/ack |
+
+### 0.2 Guest side
+
+Nothing to start on the host. Launch the GUI, then in the guest:
+
+| Service | Guest steps |
+|---|---|
+| **File sharing** | Chooser → **AppleShare** → server *POM68K* → log in as **Guest** → the volume (named after the share folder) mounts |
+| **Printing** | Chooser → **LaserWriter 8** → printer *POM68K* → a generic/plain LaserWriter PPD. The job is spooled to CUPS via `lp` when the host has it, else to a timestamped `.ps` in `run/print` (`PapServer.h:63-64`) |
+| **Internet** | TCP/IP (Open Transport) or MacTCP control panel → *Connect via* **AppleTalk (MacIP)**, server zone **POM68K** — full steps and per-OS quirks in §6.4 |
+
+The internal node is a real terminated peer at **net 2, node 128**, zone
+**POM68K** (`AtalkHub.h:60`): it defends its own address against the
+guest's lapENQ probes, so the guest settles on a different ID exactly as
+it would against hardware.
+
+### 0.3 The GUI window (`Réseau → AppleTalk`, `src/main.cpp:559`)
+
+Four blocks, each with a live enable checkbox and a green/red bullet:
+
+- **Nœud / routeur** — net/node/zone, guest node seen, frames in/out,
+  NBP lookups served, ATP transactions, and the retransmission
+  diagnostic (see §0.4).
+- **Partage de fichiers** — registered in NBP? share folder writable?
+  server/volume/host path, sessions, last user, last AFP command, bytes
+  read/written.
+- **Imprimante** — registered? state, completed jobs, where the last job
+  went, spool target.
+- **Internet (MacIP)** — gateway registered? **a lease attributed is the
+  proof it works**; gateway/DNS addresses, leases, live UDP/TCP flows,
+  IP datagram counters.
+
+### 0.4 When it misbehaves
+
+The in-process wire is **lossless by design** — `setLosslessRx(true)`
+makes a full Rx FIFO *pause* the wire instead of dropping (`src/main.cpp:116`).
+So it never loses a reply; it can only **delay** one. That turns the
+window's counters into a diagnosis rather than a score:
+
+| Reading | Means |
+|---|---|
+| retransmissions 0 | clean |
+| retransmit lag ~1-2 s | the guest's own ATP timer fired — the reply played late |
+| retransmit lag tens of ms | the guest gave up early / the reply was mangled |
+| "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:136-146`) |
+| "débordement du fil" > 0 | the guest stopped listening long enough to blow the 64-frame lossless backlog (`Scc8530.h:339`) |
+
+Lowering `POM68K_ATALK_WIRE_BOOST` is the wrong reflex for a backlog: the
+cap is the guest's Rx drain rate, not the pace. Tracers: `POM68K_ATALK_DEBUG=1`,
+`POM68K_MACIP_DEBUG=1`. Passive wire capture (throughput / gap / RTT
+distributions, LLAP header decode): `scratchpad/ltoudp_measure.py`, and it
+only sees traffic when the LToUDP cable is up.
+
+### 0.5 Gates
+
+`ctest -L unit` runs the first six in seconds; the last two need ROM +
+disk assets and soft-skip without them.
+
+| Gate | Covers |
+|---|---|
+| `llap_loop_test` | RTS/CTS, ENQ, address filter, express CTS, carrier sense |
+| `ltoudp_test` | the multicast cable |
+| `atalk_stack_test` | ENQ defence, RTMP/ZIP/NBP/AEP, ATP exactly-once |
+| `afp_server_test` | OpenSession→Login→OpenVol→Enumerate→Read; ASP SPWrite→WriteContinue→FPWrite; resource fork → `.AppleDouble` |
+| `pap_server_test` | OpenConn→SendData→PostScript→EOF→spool; `%%?Query` answered `*` |
+| `macip_gw_test` | address assign, ICMP echo, a real UDP round-trip and a full TCP SYN→data→FIN both ways through the user-mode NAT on loopback |
+| `llap_two_system_etalon` | two Macs acquire node IDs over real ENQ traffic |
+| `q605_ot_bind_etalon` | Open Transport's `.MPP` binds against the in-process stack (§2.5) |
 
 ---
 
 ## 1. The shape of the whole thing
 
-AppleTalk is a full protocol suite, designed 1983-85 to be **zero-config
-on a physical layer nobody else wanted** (a daisy-chained serial cable).
-Its defining traits, and why they surprise people used to TCP/IP:
+AppleTalk (1983-85) is zero-config on a physical layer nobody else
+wanted. Four traits explain most of the surprises:
 
-1. **Addresses are dynamic and cheap.** A node picks its own address at
-   power-on by guessing and checking (no DHCP, no admin). Names, not
-   numbers, are the user-facing identifier — *Name Binding Protocol* is
-   as fundamental here as DNS is optional in IP.
-2. **The unit of work is the transaction, not the stream.** The workhorse
-   transport (*ATP*) is request/response with exactly-once semantics, not
-   a byte stream. File sharing and printing are both built on transaction
-   round-trips, not sockets-as-pipes.
-3. **Everything rides on one connectionless datagram (*DDP*)**, the way
-   everything in the IP world rides on IP. DDP's "port" is the *socket*.
-4. **Zones are a naming/broadcast-scoping concept, not a subnet.** A zone
-   is a human-readable group ("Marketing", "POM68K") that can span
-   networks; it exists to make the Chooser's lists manageable.
+1. **Addresses are dynamic and cheap** — a node guesses its own address
+   at power-on and checks (§2.3). Names, not numbers, are the
+   user-facing identifier: NBP is as fundamental here as DNS is optional
+   in IP.
+2. **The unit of work is the transaction, not the stream** — ATP is
+   request/response with exactly-once semantics (§3.4). File sharing and
+   printing are both round-trip conversations, not pipes.
+3. **Everything rides one connectionless datagram, DDP** (§3.1); DDP's
+   "port" is the *socket*.
+4. **Zones are naming/broadcast scope, not subnets** — a human-readable
+   group that can span networks, existing to keep the Chooser's lists
+   manageable.
 
-### 1.1 The layer cake (OSI mapping, sockets, and DDP types)
+### 1.1 The layer cake, and who owns it here
 
-| OSI layer | AppleTalk protocol(s) | POM68K owner |
-|---|---|---|
-| Application | **AFP** (file sharing / AppleShare), print drivers | netatalk `afpd` (host side) |
-| Presentation | AFP (also does data representation) | — |
-| Session | **ASP** (sessions for AFP), **ADSP** (streams), **PAP** (printing), **ZIP** (zone names) | netatalk / guest ROM |
-| Transport | **ATP** (transactions), **NBP** (naming), **AEP** (echo/ping), **RTMP** (routing) | netatalk / TashRouter |
-| Network | **DDP** (datagram delivery, the socket layer) | TashRouter / guest |
-| Data link | **LLAP** (LocalTalk), **ELAP**+**AARP** (EtherTalk), TLAP (TokenTalk) | **`Scc8530` (LLAP)** |
-| Physical | LocalTalk (RS-422, 230.4 kbps), Ethernet, … | **`Scc8530` SDLC + `LtoUdp` cable** |
+| OSI layer | AppleTalk protocol(s) | In-process owner | External (§6.1) |
+|---|---|---|---|
+| Application / Presentation | **AFP**, print drivers | `AfpServer` | netatalk `afpd` |
+| Session | **ASP**, **PAP**, **ZIP**; **ADSP** (not implemented) | `AfpServer` / `PapServer` / `AtalkStack` | netatalk / guest ROM |
+| Transport | **ATP**, **NBP**, **AEP**, **RTMP** | `AtalkStack` | netatalk / TashRouter |
+| Network | **DDP** | `AtalkStack` | TashRouter |
+| Data link | **LLAP**; ELAP+AARP, TLAP (n/a) | **`Scc8530`** + `AtalkStack` node | `Scc8530` |
+| Physical | LocalTalk RS-422 230.4 kbps | **`Scc8530` SDLC** | + `LtoUdp` cable |
 
-Two numbering spaces trip everyone up; keep them separate:
+Two numbering spaces trip everyone up; keep them separate.
 
-- **DDP socket numbers** identify a *process/endpoint* on a node (like a
-  TCP port). Well-known "statically assigned sockets" (SAS): **1 = RTMP,
-  2 = NBP, 4 = AEP (echo), 6 = ZIP**. SAS = 1-127 (Apple reserves 1-63,
-  64-127 "experimental"); **dynamically assigned sockets** (DAS) =
-  128-254; 0 and 255 reserved. (`extern/netatalk2/include/atalk/`
-  headers; DDP chapter of *Inside AppleTalk*.)
-- **DDP protocol type** is a byte *inside* the DDP header that says which
-  upper protocol owns the payload, independent of socket:
-  **1 = RTMP-response/data, 2 = NBP, 3 = ATP, 4 = AEP, 5 = RTMP-request,
-  6 = ZIP, 7 = ADSP** (`include/atalk/ddp.h:29-35`).
+- **DDP socket numbers** identify an endpoint on a node (like a TCP
+  port). Statically assigned (SAS) 1-127, Apple reserving 1-63;
+  dynamically assigned (DAS) 128-254; 0 and 255 reserved. Well-known:
+  **1 RTMP, 2 NBP, 4 AEP, 6 ZIP** (`src/AtalkStack.cpp:37-40`), plus
+  **72 = MacIP config** by convention.
+- **DDP protocol type** is a byte *inside* the DDP header naming the
+  upper protocol, independent of socket: **1 RTMP-data, 2 NBP, 3 ATP,
+  4 AEP, 5 RTMP-request, 6 ZIP, 7 ADSP** (`include/atalk/ddp.h:29-35`,
+  mirrored `src/AtalkStack.cpp:30-35`), **22 = IP-in-DDP (MacIP)**.
 
-So an ATP transaction (used by ASP/AFP and by PAP) is **DDP type 3**,
-delivered to whatever *socket* the two endpoints negotiated.
-
-A full AppleTalk address is three numbers: **network (16-bit) . node
-(8-bit) : socket (8-bit)** — e.g. `2.145:253`. On the wire you saw this
-directly in the LToUDP capture: `DDP 2.145:2->1.1:254 NBP-LkUpReply`.
+So an ATP transaction — ASP/AFP and PAP alike — is **DDP type 3**
+delivered to whatever *socket* the endpoints negotiated. A full address
+is **network(16) . node(8) : socket(8)**, e.g. `2.145:253`.
 
 ---
 
-## 2. LocalTalk / LLAP — the layer POM68K actually implements
+## 2. LocalTalk / LLAP — the layer POM68K really implements
 
-This is the layer `Scc8530` *is*. Everything above it is (for now) done
-by netatalk and the guest ROM; this is the one where our bytes are the
-real bytes, so it gets the most detail.
+This is what `Scc8530` *is*: our bytes are the real bytes, so it gets the
+most detail. `AtalkStack` sits directly on it as a second node.
 
 ### 2.1 Physical: RS-422, 230.4 kbps, FM0, SDLC
 
-- **Electrically**: RS-422 differential pair, daisy-chained, self-
-  terminating, passive. No hub. Max ~32 nodes, ~300 m.
-- **Bit rate: 230.4 kbit/s.** In POM68K this is `byteCycles_` in
-  `Scc8530` — 544 CPU cycles/byte at 15.6672 MHz (LC II / Mac II),
-  272 at 7.8336 (Plus), 868 at 25 MHz (Q605). One LocalTalk byte-time
-  ≈ 34.7 µs.
-- **Encoding: FM0** (differential Manchester) — self-clocking, DC-
-  balanced. The real SCC's DPLL recovers the clock from FM0; POM68K
-  does not model the DPLL (we deliver whole bytes at wire pace instead —
-  see `docs/LLE_VS_HLE.md` §3).
-- **Framing: SDLC** (IBM's bit-oriented HDLC variant). Frames are
-  delimited by the **flag byte `0x7E`**; the transmitter does **zero-bit
-  insertion** (a 0 after five 1s) so `0x7E` never appears inside data;
-  an **abort** is 7+ consecutive 1s. `Scc8530` runs the SCC's SDLC mode;
-  the flag/zero-insertion is handled by the (modeled) SCC hardware.
+- **Electrically** — RS-422 differential pair, daisy-chained, passive,
+  self-terminating. No hub, ~32 nodes, ~300 m.
+- **Bit rate 230.4 kbit/s** → one byte ≈ 34.7 µs. In POM68K the pace is
+  **derived, never hardcoded**: `byteCycles = cpuHz / 28800`
+  (`src/main.cpp:104`) — 272 cycles/byte at 7.8336 MHz (Plus), 544 at
+  15.6672 (LC II), 868 at 25 MHz (Q605). Hardcoded 868s once fed a
+  25 MHz clock to 15.67 and 33.33 MHz machines and skewed every
+  second-scale AppleTalk timer by up to 2×.
+- **The in-process wire is boosted.** A real 230 kbit/s cable makes a
+  multi-MB Finder copy take minutes. With the hub up and no external
+  cable, `setWirePace(byteCycles / 8)` (floor 64) plus `setLosslessRx`
+  give a fast lossless virtual wire (`src/main.cpp:128-138`). What stays
+  at **real** pace: the express-CTS gap, the LLAP IDG and the Tx-underrun
+  grace — those are guest-code turnaround windows, not wire properties.
+  Async serial is untouched (the override applies in SDLC mode only).
+- **Encoding FM0** (differential Manchester), self-clocking and
+  DC-balanced. The real SCC's DPLL recovers the clock; POM68K does not
+  model it — whole bytes are delivered at wire pace (`docs/LLE_VS_HLE.md` §3).
+- **Framing SDLC**: flag `0x7E`, zero-bit insertion after five 1s, abort
+  = 7+ consecutive 1s.
 
 ### 2.2 The LLAP frame
 
@@ -114,385 +199,394 @@ real bytes, so it gets the most detail.
         └─ 3-byte LLAP header ─┘
 ```
 
-- **Destination node**, **source node** (1 byte each), **LLAP type**
-  (1 byte). Header is 3 bytes; total frame 5–603 bytes.
-- **FCS** = CRC-CCITT / CRC-16 (X.25 polynomial, computed over dst+src+
-  type+data). POM68K computes it in `Scc8530::crc16x25` and appends it
-  low-byte-first when it synthesizes a received frame.
-- **Node IDs**: `0` invalid, **1-127 = user/workstation**, **128-254 =
-  server**, **255 = broadcast**. The split lets a server (which answers
-  more, so is busier) use a slower, more thorough address probe.
-
-**LLAP type values** — POM68K refers to these by these exact names in
-`Scc8530`/`LtoUdp`/`main.cpp`:
+- 3-byte header, total frame 5-603 bytes.
+- **FCS** = CRC-16/X.25 (poly `$1021` reflected, init/xorout `$FFFF`)
+  over dst+src+type+data, appended **low byte first** —
+  `crc16x25()` at `src/Scc8530.cpp:88`, applied in `injectRxFrame`
+  (`src/Scc8530.cpp:297-299`, which can also inject a deliberately bad
+  FCS to model wire damage).
+- **Node IDs**: `0` invalid, **1-127 user/workstation**, **128-254
+  server**, **255 broadcast**. The split lets a busier server use a
+  slower, more thorough address probe.
 
 | Type | Name | Meaning |
 |---|---|---|
-| `0x01` | (short DDP) | DDP datagram, short header, same network |
-| `0x02` | (long DDP) | DDP datagram, long header, routed |
+| `0x01` | short DDP | datagram, short header, same network |
+| `0x02` | long DDP | datagram, long header, routed |
 | `0x81` | **lapENQ** | node-ID enquiry ("is this address taken?") |
 | `0x82` | **lapACK** | reply to ENQ ("yes, it's mine") |
-| `0x84` | **lapRTS** | request-to-send (directed data handshake) |
-| `0x85` | **lapCTS** | clear-to-send (the answer) |
+| `0x84` | **lapRTS** | request-to-send |
+| `0x85` | **lapCTS** | clear-to-send |
 
-Control frames (`0x81`-`0x85`) are exactly 3 bytes (header only, no
-data, no FCS in the payload sense) — the "high bit of the type byte set"
-rule. Data frames (`0x01`/`0x02`) carry the length in the DDP header.
+Control frames `0x81`-`0x85` are exactly 3 bytes — header only, the
+"high bit of the type byte set" rule; POM68K dispatches on exactly that
+(`src/main.cpp:175-182`, `src/AtalkStack.cpp:100`). Data frames carry
+their length in the DDP header.
 
 ### 2.3 Dynamic node-ID acquisition (the ENQ dance)
 
-At startup a node has no address. It:
+A node with no address picks a tentative ID (PRAM's last value, or
+random in its range), broadcasts **lapENQ** to it repeatedly, and takes
+it if nobody answers **lapACK**. `llap_two_system_etalon` shows two Macs
+sending ~650 probes each and settling on distinct IDs.
+`AtalkStack::onGuestFrame` answers ENQ for node 128 through the *express*
+path, for the same reason the CTS uses it (`src/AtalkStack.cpp:91-99`).
 
-1. Picks a tentative ID (from PRAM's last value, or the user/server
-   range at random).
-2. Broadcasts **lapENQ** to that ID, repeatedly.
-3. If anyone answers **lapACK**, the ID is taken → pick another, goto 2.
-4. If silence after enough tries → the ID is ours.
-
-You see exactly this in POM68K's two-System etalon
-(`llap_two_system_etalon`): each Mac sends ~650 ENQ probes and they
-settle on distinct IDs. On the LToUDP capture it is the burst of
-`LLAP 1->1 type=$81 lapENQ` lines.
-
-### 2.4 Media access: CSMA/CA with RTS/CTS
+### 2.4 Media access: CSMA/CA with RTS/CTS — and the IDG
 
 LocalTalk has **no collision detection** (you cannot listen while you
-drive an RS-422 pair hard). Instead it *avoids* collisions:
+drive an RS-422 pair). It avoids collisions instead:
 
-- **Carrier sense**: before sending, the line must be idle for the
-  **Inter-Dialog Gap (IDG) = 400 µs minimum**, plus a random extra
-  based on recent collision/defer history.
-- **Directed frames use an RTS/CTS handshake.** Sender → **lapRTS**;
-  destination must answer **lapCTS** within the **Inter-Frame Gap
-  (IFG) = 200 µs maximum**; then the sender sends the data frame. Up to
-  **32 retries** before failure.
-- **Broadcast frames**: sender → lapRTS to node 255, waits one IFG with
-  the line idle, then sends the data (nobody CTSes a broadcast).
-- A "dialog" is the whole RTS/CTS/data exchange; **frames within one
-  dialog are separated by ≤ IFG (200 µs); separate dialogs by
-  ≥ IDG (400 µs)**.
+- **Carrier sense** — the line must be idle for the **Inter-Dialog Gap
+  (IDG) ≥ 400 µs** plus a random extra before sending.
+- **Directed frames handshake**: lapRTS → the destination must answer
+  **lapCTS within the Inter-Frame Gap (IFG) ≤ 200 µs** → data frame.
+  Up to **32 retries**.
+- **Broadcast**: lapRTS to node 255, one idle IFG, then the data
+  (nobody CTSes a broadcast).
+- Frames *within* a dialog are separated by ≤ IFG; separate dialogs by
+  ≥ IDG.
 
-**This is not academic for POM68K — it is the thing that broke and got
-fixed twice this month:**
+**This is not academic — it is what broke twice and what §6.5's stack
+still lives by:**
 
-- The synthesized **lapCTS** the LToUDP cable answers to a directed
-  lapRTS must land *inside the sender's IFG window* — hence the "express"
-  path in `Scc8530::injectRxFrame` (short 4-byte-time gap, `kCtsGapBytes`).
-- Every *other* injected frame must instead wait a full **IDG** so it
-  starts on an idle line the driver has finished re-arming for — the
-  `kIdgBytes = 12` byte-times (~417 µs) deferral, filled from the
-  `rxIdle` line-idle counter (commit "incoming frames defer until the
-  line has idled the LLAP IDG"). Getting this wrong is what left the
-  Chooser's server list empty: afpd's `LkUpReply` arrived back-to-back
-  with the router's broadcast and played into a closing FIFO.
+- The synthesized **lapCTS** must land *inside the sender's IFG window*,
+  so it takes the express path with a short fixed gap —
+  `kCtsGapBytes = 4` byte-times ≈ 139 µs (`src/Scc8530.h:332`), and
+  express frames bypass the "Rx is off during my own transmit" drop
+  (`src/Scc8530.cpp:290`).
+- Every *other* injected frame defers a full **IDG** — `kIdgBytes = 12`
+  byte-times ≈ 417 µs (`src/Scc8530.h:336`) — and that idle is evaluated
+  **at dequeue** from the `rxIdle` counter, never baked in at injection.
+  When two frames are injected in one poll (the router's LkUp broadcast,
+  then afpd's LkUpReply), the second's gap must be measured from the
+  first's *end*. Baking it in made the reply start the instant the
+  broadcast finished, its head landing in a still-closing FIFO and its
+  tail playing into hunt — **the Chooser re-sent the AFPServer lookup
+  forever and never listed the server** (2026-07-22 live capture,
+  `src/Scc8530.cpp:300-310`).
+- Same failure mode, second cause: with only the internal registry
+  answering, relaying a BrRq as a segment LkUp put our broadcast and our
+  own LkUpReply back-to-back in the guest's Rx FIFO. Hence
+  `setBridgeRelay` — **off unless the LToUDP cable is up**
+  (`AtalkStack.h:90-96`, `AtalkHub.h:64`).
+- Replies generated inside the guest's TX callback would hit a deaf
+  receiver, so `AtalkHub::sendFrame` **queues** and flushes from `tick()`,
+  after the guest's EOM ISR has re-armed Rx (`AtalkHub.h:77-88`). This
+  is why finer quantum slicing matters: 64 slices/frame ≈ 260 µs of
+  latency per AFP round-trip (`src/main.cpp:208`).
 
 ### 2.5 Where POM68K is faithful and where it isn't
 
-`Scc8530` models the SDLC **frame** level well (hunt/carrier-sense,
-CRC-16, address search, RTS/CTS, ENQ, Tx-underrun = end-of-frame), and
+`Scc8530` models the SDLC **frame** level well — hunt/carrier-sense,
+CRC-16, address search, RTS/CTS, ENQ, Tx-underrun = end-of-frame — and
 per the 2026-07-22 MAME `z80scc.cpp` audit it models *more* of SDLC than
-MAME does (MAME's SCC is async-serial-centric; its Send Abort, CRC
-resets and hunt/sync are stubbed). What we do **not** model: the FM0 bit
-clock / DPLL, per-bit timing, and the baud-rate generator (fine for
-LocalTalk's fixed rate; a blocker only for async serial). See
-`docs/LLE_VS_HLE.md` §3 for the gap list and the MAME line references.
+MAME does (MAME's SCC is async-centric; Send Abort, CRC resets and
+hunt/sync are stubbed there). Not modelled: the FM0 bit clock / DPLL,
+per-bit timing, and the baud-rate generator (harmless at LocalTalk's
+fixed rate).
+
+One line-state subtlety, because Open Transport depends on it: a
+**virgin line reads clean**. No FM0 edges → no recovered clock → no
+sampled 1s → no abort condition; the standing abort only begins once the
+line has carried a frame (`Scc8530::lineDriven_`, `src/Scc8530.h:309-313`).
+System 7's LAP does not care, but OT waits for the abort to *clear*
+before binding `.MPP` — gate `q605_ot_bind_etalon`, and the env hatch
+that used to paper over it (`POM68K_SCC_CLEANLINE`) is retired
+(`docs/LLE_VS_HLE.md` §10, CHANGELOG 2026-07-28).
+
+Gap list and MAME line references: `docs/LLE_VS_HLE.md` §3.
 
 ---
 
 ## 3. The network and transport core
 
+Implemented in-process by `AtalkStack` (`src/AtalkStack.cpp`), whose
+router behaviour mirrors `extern/tashrouter` for a single LocalTalk
+segment with one zone. Gate: `atalk_stack_test`.
+
 ### 3.1 DDP — the datagram everything rides on
 
-DDP is connectionless best-effort delivery — AppleTalk's IP. Two header
-forms:
+Connectionless best-effort delivery. Two header forms, and replies
+**mirror the requester's form** (`AtalkStack.h:50-51`):
 
-- **Short header (5 bytes)** — LLAP type `0x01`, used when source and
-  destination are on the same network (no routing needed): length(10
-  bits) + dest socket + source socket + DDP type.
-- **Long/extended header (13 bytes)** — LLAP type `0x02`, used when
-  routed: hop count + length + optional **DDP checksum** + dest net +
-  src net + dest node + src node + dest socket + src socket + DDP type.
+- **Short (5 bytes)** — LLAP type `0x01`, same network: length(10 bits)
+  + dest socket + source socket + DDP type.
+- **Long (13 bytes)** — LLAP type `0x02`, routed: hop count + length +
+  optional checksum + dest/src net + dest/src node + dest/src socket +
+  DDP type.
 
-Max DDP data payload ≈ **586 bytes**. The optional checksum is a
-rotate-and-add over the bytes after the checksum field (0 means "not
-checksummed"; a computed 0 is stored as `0xFFFF`). POM68K never has to
-build these — TashRouter and the guest do — but you read them constantly
-when sniffing the cable.
+Max payload **586 bytes** (`kMaxDdpData`, `src/AtalkStack.cpp:42`). The
+optional checksum is a rotate-and-add over the bytes after the checksum
+field (0 = not checksummed; a computed 0 is stored `0xFFFF`); POM68K
+sends 0 (`src/AtalkStack.cpp:160`).
 
-### 3.2 RTMP and ZIP — routing and zones (what TashRouter does)
+### 3.2 RTMP and ZIP — routing and zones
 
-- **RTMP (Routing Table Maintenance Protocol)** — distance-vector
-  routing between AppleTalk routers, split-horizon, **max 15 hops**,
-  **31 = "poison"/unreachable** (`include/atalk/rtmp.h`). Routers
-  broadcast their tables every 10 s; a Mac learns "who is my router" and
-  its own network number from these. In the capture: `sDDP 1->1 RTMPreq`
-  / `RTMP` exchanges right after the ENQ burst.
-- **ZIP (Zone Information Protocol)** — maps network numbers ↔ zone
-  names. `GetNetInfo`/`GetZoneList`/`GetMyZone` ops
-  (`include/atalk/zip.h`: QUERY=1, REPLY=2, GNI=5, GNIREPLY=6,
-  GETMYZONE=7, GETZONELIST=8, GETLOCALZONES=9). This is how the Chooser's
-  zone list is populated. TashRouter answers ZIP so the guest learns it
-  is in zone **"POM68K"**.
+- **RTMP** — distance-vector routing between routers, split-horizon,
+  **max 15 hops**, **31 = poison** (`include/atalk/rtmp.h`). Routers
+  broadcast their tables every 10 s; a Mac learns its network number and
+  "who is my router" from them. `AtalkStack` beacons RTMP Data every
+  **10 s** and answers RTMP Requests with the header alone
+  (`src/AtalkStack.cpp:179, 243-266`).
+- **ZIP** — maps network numbers ↔ zone names: `QUERY=1, REPLY=2,
+  GNI=5, GNIREPLY=6, GETMYZONE=7, GETZONELIST=8, GETLOCALZONES=9`
+  (`include/atalk/zip.h`). GetNetInfo rides DDP; GetMyZone/GetZoneList
+  ride ATP on socket 6 (`src/AtalkStack.cpp:81, 302`).
 
-For POM68K's single-segment bridge, TashRouter is the router: it owns
-RTMP/ZIP, hands the guest a network number and the "POM68K" zone, and
-forwards NBP.
+**The ZIP bug worth remembering** (`src/AtalkStack.cpp:272-298`): in a
+GetNetInfo request the **zone length is at offset 6, not 1**. Reading
+`p[1]` always found the mandatory zero byte, so the requested zone was
+always `""` and always judged *valid* — a guest holding a stale zone was
+told it was still good, and every NBP BrRq it then sent was dropped:
+another silent empty Chooser. Oracles: tashrouter
+`zip/responding.py` (`data[7:7+data[6]]`), netatalk `etc/atalkd/zip.c`.
+An *empty* zone is the documented "tell me the default zone" probe, so it
+must be judged invalid — that is what makes the trailing default-zone
+string fire.
 
 ### 3.3 NBP — names, and therefore the Chooser
 
-**NBP is the protocol that makes AppleTalk feel magic.** Every service
-registers a **name tuple**:
+Every service registers a **name tuple**, each field ≤ 32 chars:
 
 ```
-Object : Type @ Zone           e.g.  POM68K : AFPServer @ POM68K
-                                     Front Office : LaserWriter @ *
+Object : Type @ Zone      e.g.  POM68K : AFPServer @ POM68K
+                                Front Office : LaserWriter @ *
 ```
 
-Each field ≤ 32 chars. NBP runs on **DDP socket 2 / DDP type 2**. Ops
-(`include/atalk/nbp.h:81-91`): **BrRq=1** (broadcast request), **LkUp=2**
-(lookup), **LkUpReply=3**, **FwdReq=4**, plus register/confirm.
+NBP runs on **DDP socket 2 / DDP type 2**. Ops
+(`include/atalk/nbp.h:81-91`): **BrRq=1, LkUp=2, LkUpReply=3, FwdReq=4**,
+plus register/confirm. Wildcards `=` and the `≈` byte `$C5` match
+anything (`src/AtalkStack.cpp:66`).
 
-The Chooser is *just an NBP client*:
-- Click "AppleShare" → the Chooser does an NBP lookup for
-  `=:AFPServer@<zone>` (`=` = wildcard object).
-- Click "LaserWriter" → lookup for `=:LaserWriter@<zone>`.
-- Each responder returns its tuple → its DDP address → the Chooser lists
-  the *Object* names.
-
-On the wire it is a broadcast request the router turns into per-network
-lookups, and unicast replies:
+The Chooser is *just an NBP client*: "AppleShare" is a lookup for
+`=:AFPServer@<zone>`, "LaserWriter" for `=:LaserWriter@<zone>`; each
+responder returns its tuple → its DDP address → the Chooser lists the
+*Object* names.
 
 ```
-1->254  NBP-BrRq  '='                 (guest asks the router)
-254->255 NBP-LkUp '='                 (router broadcasts the lookup)
-254->1  NBP-LkUpReply 'POM68K'        (afpd answers with its tuple)
+1->254   NBP-BrRq  '='            (guest asks the router)
+254->255 NBP-LkUp  '='            (router broadcasts the lookup)
+254->1   NBP-LkUpReply 'POM68K'   (the server answers with its tuple)
 ```
 
-That is literally the trace POM68K produced when the Chooser found the
-server. `getzones`/`nbplkup` in `appleshare.sh`'s self-check are the
-host-side NBP tools.
+In-process, the registry is `AtalkStack::nbpRegister` and the middle line
+happens **only when a real cable carries external peers** (§2.4). Three
+services register: `AFPServer`, `LaserWriter`, `IPGATEWAY`.
 
 ### 3.4 ATP — the reliable transaction (foundation of ASP and PAP)
 
-**ATP (DDP type 3)** turns DDP's best-effort datagrams into reliable
+**ATP (DDP type 3)** turns best-effort datagrams into reliable
 request/response:
 
-- **TReq** (request) → **TResp** (up to **8 response packets**, tracked
-  by an 8-bit **bitmap/sequence** so lost ones are re-requested
-  individually) → optional **TRel** (release).
-- Two service levels: **ALO (At-Least-Once)** — retransmit until a
-  response arrives, duplicates possible; **XO (Exactly-Once)** — the
-  responder holds the result under the transaction ID and the **release
-  timer** (`ATP_RELTIME = 30 s`, `include/atalk/atp.h`) so a retransmit
-  gets the cached reply, not a re-execution. AFP writes need XO.
-- Header: control-info byte (function TReq/TResp/TRel + XO + EOM + STS
-  flags) + bitmap/sequence + 16-bit **transaction ID**
-  (`struct atphdr`, `include/atalk/atp.h:59-63`). Max data 578 + 4 user
-  bytes = **582** (`ATP_MAXDATA`).
+- **TReq** → **TResp** (up to **8 packets**, tracked by an 8-bit
+  bitmap/sequence so lost ones are re-requested individually) →
+  optional **TRel**.
+- Two service levels: **ALO** (retransmit until answered, duplicates
+  possible) and **XO** (exactly-once — the responder caches the result
+  under the transaction ID and a **release timer**, `ATP_RELTIME = 30 s`,
+  so a retransmit gets the cached reply instead of a re-execution).
+  AFP writes need XO.
+- Header: control-info byte (function + XO + EOM + STS) + bitmap/sequence
+  + 16-bit transaction ID (`struct atphdr`, `include/atalk/atp.h:59-63`).
+  Max data 578 + 4 user bytes = **582** (`ATP_MAXDATA`).
 
-Both file sharing (via ASP) and printing (via PAP) are just structured
-conversations of ATP transactions.
+`AtalkStack` implements **both roles** — responder (XO cache with the
+same 30 s release timer, `src/AtalkStack.cpp:421-425`; deferred replies
+for ASP FPWrite) and requester (5 tries, 1 s apart,
+`src/AtalkStack.cpp:187-203`), because ASP tickle, ASP WriteContinue and
+PAP SendData are all *server*-initiated. Buffers follow the netatalk
+convention: 4 ATP user bytes then the data.
+
+Two hard-won responder details:
+
+- A deferred transaction (PAP's blocking `kRead`) dropped without ever
+  calling `respond()` used to sit forever and swallow every later TReq
+  reusing that (client, tid) — the guest's 16-bit tid counter wraps, so
+  the socket wedged permanently. `pendingTxns_` now carries the same
+  30 s release timer as the XO cache (`AtalkStack.h:210-218`).
+- MacIP needs ATP *and* a raw DDP handler on the same socket 72, so ATP
+  only claims type 3 where a transaction handler is bound
+  (`src/AtalkStack.cpp:212-215`).
 
 ---
 
 ## 4. The session and application protocols
 
-### 4.1 ASP — sessions, and the tickle that explains the dropped mount
+### 4.1 ASP — sessions, tickles, and the mount that dropped
 
-**ASP (AppleTalk Session Protocol)** sits on ATP and gives AFP a
-long-lived, ordered session. It is asymmetric: the **workstation opens
-the session and sends commands**, the server replies. Function codes
-(`include/atalk/asp.h:71-78`): `CLOSE=1, CMD=2, STAT=3, OPEN=4,
-TICKLE=5, WRITE=6, WRTCONT=7, ATTN=8` (ATTN = server→client attention,
-e.g. "server shutting down").
+**ASP** sits on ATP and gives AFP a long-lived, ordered, asymmetric
+session: the workstation opens it and sends commands, the server replies.
+Functions (`include/atalk/asp.h:71-78`): `CLOSE=1, CMD=2, STAT=3, OPEN=4,
+TICKLE=5, WRITE=6, WRTCONT=7, ATTN=8`.
 
-**The tickle keep-alive is the key to the "connection unexpectedly
-closed down" alert you hit.** In netatalk:
+**Tickle keep-alive, in-process** (`AfpServer.cpp:208-216`): the server
+sends SPTickle every **30 s** and declares a session dead after **120 s**
+of silence (4 missed tickles). **External netatalk**: `afpd` increments
+`ac_state` each `tickleval` and sends a best-effort tickle
+(`sreqtries = 1`, `libatalk/asp/asp_tickle.c`); a client tickle resets it
+to `ACSTATE_OK` (1); at `ACSTATE_BAD = 7` — **6 consecutive misses**,
+`libatalk/asp/asp_child.h:33-35` — the parent SIGTERMs the session child
+and the Mac shows *"the file server's connection has unexpectedly closed
+down."*
 
-- The server (`afpd`) runs a tickle timer every `tickleval` seconds
-  (`libatalk/asp/asp_getsess.c`). Each interval it **increments each
-  session's `ac_state`** and sends an `asp_tickle()`
-  (`libatalk/asp/asp_tickle.c` — a best-effort ATP request, `sreqtries
-  = 1`).
-- Receiving a tickle from the client **resets `ac_state` to
-  `ACSTATE_OK` (1)** (`asp_getsess.c`).
-- If `ac_state` reaches **`ACSTATE_BAD = 7`** — i.e. **6 consecutive
-  missed tickles** (`libatalk/asp/asp_child.h:33-35`) — the parent
-  **SIGTERMs the session child** → the client sees exactly *"the file
-  server's connection has unexpectedly closed down."*
-
-A tickle timeout is a real risk on a lossy cable and looks *exactly*
-like this alert — so it was the first suspect for the 2026-07-22
-"Input mounted then dropped" screenshot. **It was not the cause here.**
-The live LToUDP capture showed the wire working perfectly (NBP lookups
-answered, the reply reaching the guest node every time), and the afpd
-syslog gave the real reason:
+**Keep the alert and the cause separate.** The 2026-07-22 "Input mounted
+then dropped" screenshot looked exactly like a tickle timeout. It was
+not. The LToUDP capture showed the wire working perfectly; the afpd
+syslog gave the real answer:
 
 ```
 afpd: AFPVersion 2.1 Login by gistarcade          ← login OK
 afpd: no suitable network config from CNID server (localhost:4700)
 afpd: get_id: Connection to the CNID backend DB failed ... fatal error.
-      Is the cnid_metad process running?
 ```
 
-**The real cause was the CNID backend, not ASP.** afpd's default CNID
-scheme (`dbd`) asks a **`cnid_metad`** daemon on `localhost:4700` to
-spawn a per-volume `cnid_dbd` that hands out Catalog Node IDs. Our
-`appleshare.sh` never started `cnid_metad`, so the instant afpd needed a
-CNID (right after the volume mounted) it hit a *fatal* error and killed
-the session child — which the Mac reports with the same
-"unexpectedly closed down" string. The master afpd stayed up (still
-NBP-registered), which is why the server kept appearing in the Chooser
-and the wire looked healthy. **Fix:** `appleshare.sh` now starts
-`cnid_metad` between `atalkd` and `afpd` (commit 2026-07-22). Moral: on
-a "connection closed" alert, read the **afpd syslog first** — the
-network path is usually fine.
+**The cause was the CNID backend.** afpd's default scheme (`dbd`) asks a
+**`cnid_metad`** daemon on `localhost:4700` to spawn a per-volume
+`cnid_dbd` handing out Catalog Node IDs. `appleshare.sh` never started
+it, so the first CNID request after the mount hit a *fatal* error and
+killed the session child — same user-visible string. The master afpd
+stayed up and NBP-registered, which is why the server kept appearing in
+the Chooser. Fixed by starting `cnid_metad` between `atalkd` and `afpd`.
+**Moral: on "connection closed", read the afpd syslog before the wire.**
 
-**If you ever *do* hit a genuine tickle timeout** (long idle mount that
-dies on a busy/lossy cable), the levers are: capture with the LToUDP
-sniffer (`scratchpad/ltoudp_sniff.py`) and watch for the periodic ATP
-tickle (DDP type 3) each `tickleval` s and the guest's reply — a
-one-sided exchange localizes it to our Rx or Tx; a best-effort tickle
-(`sreqtries=1`) that is lost in the half-duplex Rx-off window or a
-FIFO-close race just goes missing, and 6 in a row drops the session.
-Mitigations: keep `runQuantumWithWire`'s 1 ms slicing active while the
-cable is up, ensure the IDG deferral (417 µs ≪ tickleval) never queues
-the reply behind another frame, or raise `tickleval`.
+For a *genuine* tickle timeout the levers are: watch the periodic ATP
+tickle and its reply (a one-sided exchange localizes it to Rx or Tx),
+keep the 1 ms-class slicing active, make sure the IDG deferral (417 µs ≪
+tickleval) never queues the reply behind another frame, or raise
+`tickleval`.
 
 ### 4.2 ADSP — the full-duplex stream
 
-**ADSP (AppleTalk Data Stream Protocol, DDP type 7)** is the one
-connection-oriented *byte stream* in the suite (think TCP): full-duplex,
-reliable, flow-controlled, with its own connection setup and keep-alive.
-Used by things that want a pipe rather than transactions (some databases,
-`ADSP`-based apps, the old AppleTalk Remote Access). AFP uses ASP, not
-ADSP, so POM68K does not need it for AppleShare; noted for completeness.
+**ADSP (DDP type 7)** is the one connection-oriented byte stream in the
+suite: full-duplex, reliable, flow-controlled, own setup and keep-alive.
+AFP uses ASP, not ADSP, so nothing here needs it. **Not implemented** in
+POM68K, in-process or otherwise.
 
 ### 4.3 AFP — the file service (AppleShare)
 
-**AFP (AppleTalk Filing Protocol)** is the application protocol behind
-AppleShare — the volume that mounted as *Input*. It rides ASP: login
-(with a User Authentication Method — guest, cleartext, or DES random-
-number exchange), then a large call vocabulary (`FPOpenVol`,
-`FPGetSrvrParms`, `FPEnumerate`, `FPRead`, `FPWrite`, resource/data
-fork ops, Desktop database…). The classic **empty-volume-list bug** you
-hit earlier was AFP-level authorization: `FPGetSrvrParms` returned zero
-volumes because the guest UNIX account could not traverse to the share —
-fixed by `-guestname "$REAL_USER"` in `appleshare.sh`.
+**AFP** rides ASP: login with a User Authentication Method, then a large
+call vocabulary (`FPOpenVol`, `FPGetSrvrParms`, `FPEnumerate`, `FPRead`,
+`FPWrite`, fork ops, Desktop database…).
+
+`AfpServer` offers **AFPVersion 1.1 / 2.0 / 2.1** and the UAMs **"No User
+Authent"** and **"Cleartxt Passwrd"** (`src/AfpServer.cpp:253-259`). It
+covers what System 6-8 Finders actually issue for browsing and copying
+both ways; resource forks and Finder info live in netatalk-style
+**`.AppleDouble/<name>` sidecars (AppleDouble v2)**, so a folder
+previously served by the external `afpd` keeps its metadata. CNIDs are
+per-run with **root = 2** (`src/AfpServer.cpp:42`), i.e. stable within a
+session, not across restarts.
+
+Historical trap, external path: an **empty volume list** in the Chooser
+was AFP-level authorization — `FPGetSrvrParms` returned zero volumes
+because the guest UNIX account could not traverse to the share; fixed
+with `-guestname "$REAL_USER"` in `appleshare.sh`.
 
 ### 4.4 PAP — the printer service (the LaserWriter path)
 
-**PAP (Printer Access Protocol)** is to printers what ASP+AFP is to
-files. It rides **ATP** (DDP type 3) and finds the printer via **NBP
-type "LaserWriter"**. Function codes (`include/atalk/pap.h:29-41`):
-`OPEN=1, OPENREPLY=2, READ=3 (SendData), DATA=4, TICKLE=5, CLOSE=6,
-CLOSEREPLY=7, SENDSTATUS=8, STATUS=9`; `PAP_MAXDATA=512`,
-`PAP_MAXQUANTUM=8`.
+**PAP** is to printers what ASP+AFP is to files: it rides **ATP** and is
+found by **NBP type "LaserWriter"**. Functions
+(`include/atalk/pap.h:29-41`): `OPEN=1, OPENREPLY=2, READ=3 (SendData),
+DATA=4, TICKLE=5, CLOSE=6, CLOSEREPLY=7, SENDSTATUS=8, STATUS=9`;
+`PAP_MAXDATA=512`, `PAP_MAXQUANTUM=8`.
 
-How a print job actually flows (top-down then bottom-up):
+A job, top-down then bottom-up:
 
-1. **Chooser → NBP** lookup for `=:LaserWriter@zone`; user picks a
-   printer; the LaserWriter driver gets its DDP address.
-2. **Open**: client sends `OpenConn` (ATP) with a **connection ID**, its
-   responding socket, and a **flow quantum** (how many 512-byte buffers
-   it can receive — the LaserWriter uses **8**). Server replies
-   `OpenConnReply` or "busy".
-3. **Read-driven data pull**: PAP is *pull*, not push. Whichever side
-   wants data issues a **SendData** (`READ`) credit; the other side then
-   sends up to `quantum × 512` bytes as ATP `DATA` responses. To print,
-   the *printer* issues SendData and the Mac streams **PostScript** back;
-   the last packet carries **EOF**.
-4. **Status**: `SendStatus`/`Status` returns a Pascal string ("status:
-   idle" / "busy" / "%%[ PrinterError… ]%%") — that is the text the
-   Chooser and PrintMonitor display, retrievable *without* opening a
-   full connection.
-5. **Tickle**: each side runs a **2-minute connection timer** and sends
-   a **Tickle every 60 s** (ALO ATP) to prove liveness — the same
-   pattern as ASP, so the same class of drop can bite printing on a
-   lossy cable.
-6. **Close**: `CloseConn`/`CloseConnReply`; the printer accepts the next
-   job.
+1. **NBP** lookup `=:LaserWriter@zone`; the driver gets a DDP address.
+2. **Open** — `OpenConn` (ATP) carrying a connection ID, the responding
+   socket and a **flow quantum** (512-byte buffers the sender may use;
+   the LaserWriter uses **8**). Server answers `OpenConnReply` or busy.
+3. **Read-driven pull** — PAP is *pull*, not push. To print, the
+   *printer* issues `SendData` credits and the Mac streams **PostScript**
+   back as ATP `DATA`; the last packet carries **EOF**.
+4. **Status** — `SendStatus`/`Status` returns a Pascal string ("status:
+   idle", "%%[ PrinterError… ]%%") readable *without* opening a
+   connection; that is the text the Chooser and PrintMonitor show.
+5. **Tickle** — each side runs a **2-minute connection timer** and
+   tickles every **60 s**. `PapServer` implements exactly that
+   (`src/PapServer.cpp:81-90`).
+6. **Close** — `CloseConn`/`CloseConnReply`; next job.
 
-Note the two authentication conventions ride *inside the PostScript
-stream* as `%%?BeginQuery` comments (`NoUserAuthent`, `CleartxtPasswrd`,
-`RandnumExchange`) — a spooler answers them to impersonate a real
-LaserWriter; a real LaserWriter passes them through.
+The driver's authentication conventions ride *inside the PostScript
+stream* as `%%?Begin…Query` comments (`NoUserAuthent`, `CleartxtPasswrd`,
+`RandnumExchange`). `PapServer` answers every query with the "unknown"
+reply **`*`**, so the driver downloads its own proc sets — a printer with
+no spooler smarts, which is exactly what we want since CUPS owns the last
+mile (`src/PapServer.h:8-13`).
 
 ---
 
 ## 5. End-to-end walkthroughs
 
-### 5.1 Mounting AppleShare (what POM68K does today)
+### 5.1 Mounting AppleShare
 
 ```
-Chooser (guest)                 TashRouter            afpd (host)
-  │  NBP BrRq =:AFPServer@POM68K ──► broadcast LkUp ──►
-  │                                             ◄── LkUpReply "POM68K" (2.145)
+Chooser (guest)                    router            file server
+  │  NBP BrRq =:AFPServer@POM68K ──►  (LkUp) ──►
+  │                                        ◄── LkUpReply "POM68K"
   │  (user double-clicks POM68K, logs in as Guest)
-  │  ASP OpenSession ───────── ATP TReq ─────────────►
-  │                                             ◄── OpenSessionReply (session id)
-  │  AFP FPLogin(Guest)/FPGetSrvrParms/FPOpenVol "Input" (ASP CMD on ATP)
-  │                                             ◄── volume "Input" → mounts
-  │  ⟳ ASP Tickle every tickleval s  ◄────────►  ⟳   (must keep completing!)
+  │  ASP OpenSession ───────── ATP TReq ────────►
+  │                                        ◄── OpenSessionReply (session id)
+  │  AFP FPLogin/FPGetSrvrParms/FPOpenVol (ASP CMD on ATP)
+  │                                        ◄── volume mounts
+  │  ⟳ ASP Tickle (30 s in-process)  ◄────────►  ⟳
 ```
 
-Every arrow above is DDP datagrams, in LLAP frames, over the SDLC line
-`Scc8530` drives, over the `LtoUdp` multicast, through TashRouter's TAP,
-into `afpd`. The mount working proves the whole path is bidirectional;
-the tickle (§4.1) is the part still to harden.
+Every arrow is DDP in LLAP frames over the SDLC line `Scc8530` drives —
+then either straight into `AtalkStack` (default) or out through `LtoUdp`
+→ TashRouter → `afpd` (§6.1).
 
-### 5.2 Printing to a (CUPS-backed) LaserWriter
+### 5.2 Printing
 
 ```
-App "Print" → LaserWriter driver → Chooser's NBP-chosen printer
+App "Print" → LaserWriter driver → the NBP-chosen printer
   → PAP OpenConn (ATP) → printer SendData → Mac streams PostScript
-  → EOF → CloseConn.   The "printer" is netatalk papd, which spools the
-  PostScript to CUPS (§6.2).
+  → EOF → CloseConn
 ```
+
+The "printer" is `PapServer` (→ `lp`/CUPS, else a `.ps` file) or, on the
+external path, netatalk `papd` (§6.2).
 
 ---
 
-## 6. Bridging AppleTalk to the modern host — and to CUPS
+## 6. Bridging to the modern host — and to CUPS
 
-This is the practical payoff. POM68K's guest speaks AppleTalk; the host
-speaks IP/CUPS. Three pieces bridge them, and **yes, printing to CUPS
-works** (both directions), via netatalk.
+§§6.1-6.4 describe the **external** chain: TashRouter routes, netatalk's
+`afpd`/`papd` serve, `macipgw` tunnels, `appleshare.sh`/`macip.sh` wire
+it up (needing root). Use it to reach a **real** LocalTalk network or
+anything the in-process subset skips. §6.5 is the in-process default.
 
-### 6.1 The transport bridge (already built)
+### 6.1 The transport bridge
 
-- **`LtoUdp`** (`src/LtoUdp.*`, `POM68K_LTOUDP=1`) carries raw LLAP
-  frames over UDP **multicast 239.192.76.84:1954** with a 4-byte sender
-  tag — the Mini vMac / TashTalk "LToUDP" format. This *is* the
-  LocalTalk cable, just made of UDP. `Scc8530`'s Tx frames go out as
-  multicast; inbound multicast is injected as SDLC Rx frames.
-- **TashRouter** (`extern/tashrouter`) is the DDP **router**: its
-  `LtoudpPort` speaks our exact format, its `LinuxTapPort` bridges to a
-  host TAP. It runs RTMP/ZIP/NBP so the guest gets a network number and
-  the "POM68K" zone and can find host services.
-- **netatalk 2.4.9** (`extern/netatalk2`) on the host TAP: `atalkd`
-  (the host's AppleTalk stack/interface), `afpd` (AFP file server),
-  and — for printing — **`papd`**.
+- **`LtoUdp`** (`src/LtoUdp.cpp:24-25`, `POM68K_LTOUDP=1`) carries raw
+  LLAP frames over UDP **multicast 239.192.76.84:1954** with a 4-byte
+  sender tag (pid⊕clock, filters self-reception) — the Mini vMac /
+  TashTalk "LToUDP" format. This *is* the LocalTalk cable, made of UDP.
+- **TashRouter** (`extern/tashrouter`) is the DDP router: `LtoudpPort`
+  speaks our exact format, `LinuxTapPort` bridges to a host TAP; it runs
+  RTMP/ZIP/NBP so the guest gets a network number and the zone.
+- **netatalk 2.4.9** (`extern/netatalk2`) on the TAP: `atalkd`, `afpd`,
+  and for printing `papd`.
 
-`tools/netatalk2/appleshare.sh` wires all three up in order (module +
-TAP, router, then `atalkd`+`afpd`).
+`tools/netatalk2/appleshare.sh` wires all three in order (module + TAP,
+router, then `atalkd` + `cnid_metad` + `afpd`).
 
 ### 6.2 Mac → CUPS: sharing a modern printer to the vintage Mac (papd)
 
-`papd` is netatalk's **PAP server**: it registers an NBP `LaserWriter`
-entity, accepts the PAP job (PostScript) from the Mac, and **spools it
-to a UNIX print system — CUPS included** (`etc/papd/print_cups.c`). This
-is the direction the user guessed, and it works cleanly.
-
-Minimal `papd.conf` to export **all** CUPS queues to the Chooser:
+`papd` registers an NBP `LaserWriter` entity, accepts the PostScript job,
+and spools it to a UNIX print system — **CUPS included**
+(`etc/papd/print_cups.c`). Minimal `papd.conf` exporting *all* CUPS
+queues to the Chooser:
 
 ```
 cupsautoadd:op=root:
 ```
 
-`cupsautoadd` (`etc/papd/main.c:767-775`) triggers
-`cups_autoadd_printers()` — every CUPS queue becomes a `LaserWriter`
-NBP entity, using this stanza's parameters as defaults; later stanzas
-can override a single queue. Per-printer form and the useful options:
+`cupsautoadd` (`etc/papd/main.c:767-775`) calls
+`cups_autoadd_printers()`: every CUPS queue becomes a `LaserWriter` NBP
+entity using this stanza's parameters as defaults; later stanzas override
+a single queue. Per-printer form:
 
 ```
 "Front Office":\
@@ -502,98 +596,71 @@ can override a single queue. Per-printer form and the useful options:
     :co=media=A4 sides=two-sided:   # CUPS options passed through
 ```
 
-Option keys (`etc/papd/main.c` `getprinters()`): `pr=` queue-or-pipe,
-`pd=` PPD, `op=` operator, `pa=` AppleTalk address, `co=` CUPS options,
-`ca=` authenticated-capture dir, `am=` UAM list. Printer flags
+Keys (`etc/papd/main.c` `getprinters()`): `pr=` queue-or-pipe, `pd=` PPD,
+`op=` operator, `pa=` AppleTalk address, `co=` CUPS options, `ca=`
+authenticated-capture dir, `am=` UAM list. Flags
 (`etc/papd/printer.h:55-66`): `P_PIPED`, `P_SPOOLED`, `P_CUPS`,
 `P_CUPS_PPD`, `P_CUPS_AUTOADDED`.
 
-Guest side: **LaserWriter 8** driver → pick the printer in the Chooser →
-select a **Generic/plain LaserWriter PPD** (LaserWriter 7 auto-detects).
-The Mac generates PostScript; `papd` hands it to CUPS; CUPS rasterizes
-to whatever the real printer is (or a PDF). A vintage Mac thus prints to
-a USB inkjet it has no driver for, because CUPS owns the last mile.
+Guest side is §0.2's printing row. **Why this is the interesting
+direction:** a vintage Mac prints to a USB inkjet it has no driver for,
+because it only ever emits PostScript and CUPS owns the last mile.
 
-> **papd's own tickle/timeout:** `papd` sessions
-> (`etc/papd/session.c:101-144`) use a **60 s select timeout, 3 misses =
-> close**, and send `PAP_TICKLE` when idle — the same lossy-cable
-> caveat as AFP applies to long print jobs.
+> `papd` sessions (`etc/papd/session.c:101-144`) use a 60 s select
+> timeout, **3 misses = close**, and send `PAP_TICKLE` when idle — the
+> same lossy-cable caveat as AFP applies to long jobs.
 
-### 6.3 CUPS → AppleTalk: printing from the host to a real LaserWriter
+### 6.3 CUPS → AppleTalk: printing to a real LaserWriter
 
-The reverse direction — a modern host sending to a vintage AppleTalk
-LaserWriter — uses netatalk's **`pap` client** (`bin/pap/pap.c`):
+The reverse uses netatalk's **`pap` client** (`bin/pap/pap.c`):
 
 ```
 pap -A 'PrinterName:LaserWriter@ZoneName' document.ps
 ```
 
-`pap` does the NBP lookup, opens the PAP connection, and streams the
-file, tracking printer status (`-s statusfile`, `-w/-W` wait-for-idle).
-To make CUPS drive it, wrap `pap` in a **CUPS backend** script under
-`/usr/lib/cups/backend/` (e.g. `appletalk`) that reads the job on stdin
-and execs `pap` to the target NBP name; add the printer with
-`device-uri appletalk://Zone/PrinterName`. (Modern CUPS ships no
-AppleTalk backend — Apple removed it when it deprecated AppleTalk in
-Mac OS X 10.6/10.7 — so the `pap`-wrapper backend is the route.) This is
-mostly relevant if POM68K ever emulates *toward* real LocalTalk
-hardware; for the emulator's own use, §6.2 (Mac→CUPS) is the interesting
-half.
+It does the NBP lookup, opens the connection, streams the file and tracks
+status (`-s statusfile`, `-w/-W` wait-for-idle). To drive it from CUPS,
+wrap `pap` in a **CUPS backend** script under `/usr/lib/cups/backend/`
+(e.g. `appletalk`) reading the job on stdin, and add the printer with
+`device-uri appletalk://Zone/PrinterName`. Modern CUPS ships no AppleTalk
+backend — Apple removed it when it deprecated AppleTalk in Mac OS X
+10.6/10.7 — so the wrapper is the route. Relevant only if POM68K ever
+drives *real* LocalTalk hardware.
 
 ### 6.4 MacIP — real TCP/IP for the guest, tunneled in DDP
 
-This is the layer that puts the emulated Mac **on the internet**: IP
-datagrams ride *inside* AppleTalk (IP-in-DDP), the inverse of §6.1's
-LLAP-over-UDP. Historically this is **KIP** (Kinetics IP, for the
-FastPath LocalTalk↔Ethernet gateways), later standardized as **MacIP**;
-Open Transport calls it "AppleTalk (MacIP)". It exists precisely for our
-situation: a Mac whose only network is LocalTalk, wanting TCP/IP.
+IP datagrams ride *inside* AppleTalk (IP-in-DDP), the inverse of §6.1's
+LLAP-over-UDP. Historically **KIP** (Kinetics IP, for the FastPath
+LocalTalk↔Ethernet gateways), later **MacIP**; Open Transport calls it
+"AppleTalk (MacIP)". It exists for exactly our situation: a Mac whose
+only network is LocalTalk, wanting TCP/IP.
 
-**Top-down:** the user opens the TCP/IP control panel, picks "Connect
-via: AppleTalk (MacIP)" in zone POM68K, and Netscape loads
-http://frogfind.com. **Bottom-up:** each IP packet is the payload of one
-DDP datagram of **type 22**, unicast between the guest and a *MacIP
-gateway* node; the gateway moves them to a host `tun` device where
-Linux routes and NATs them.
+**The protocol** (`extern/macipgw/macip.c`, verified 2026-07-23 — it *is*
+the wire spec in practice; `MacIpGateway` implements the same):
 
-The gateway is the vendored **macipgw** (`extern/macipgw`, Stefan
-Bethke 1997 / Jason King's Linux port — see `POM68K_VENDOR.md` there),
-built against the vendored netatalk 2.4.9 libatalk
-(`tools/macip/build_macipgw.sh`) and run next to `afpd` on the host
-AppleTalk stack. The protocol, all of it (`extern/macipgw/macip.c`,
-verified 2026-07-23):
+- **Finding the gateway — NBP.** The gateway registers
+  `<gw-ip>:IPGATEWAY@<zone>` (`macip.c:71-72,654-670`); the client looks
+  up type `IPGATEWAY` in its zone. Same LkUp/LkUpReply frames as the
+  Chooser — that is the whole discovery story.
+- **Getting an address — one ATP transaction** to the gateway's **DDP
+  socket 72**: function **1** = assign me an address (reply carries IP,
+  name server, broadcast, netmask — `struct macip_req`,
+  `macip.c:87-104,398-415`), function **3** = are you a MacIP server.
+  DHCP in one round-trip, years before DHCP.
+- **"ARP" — NBP a third time.** Each addressed client registers
+  `<client-ip>:IPADDRESS@<zone>`; the gateway resolves IP→AppleTalk by
+  looking the dotted-quad up as an NBP *object* of type `IPADDRESS`
+  (`arp_lookup`, `macip.c:224-244`), and also learns from inbound
+  packets. External macipgw probes idle leases with ICMP echo every 30 s
+  and reclaims after 10 misses (`macip.c:79-81,604-626`); `MacIpGateway`
+  instead expires a lease after **3600 s** of silence, so a quiet but
+  live MacTCP node keeps its address (`MacIpGateway.h:65`).
+- **Data — DDP type 22**, ≤586 bytes of IP per datagram.
 
-- **Finding the gateway — NBP again.** The gateway registers
-  `<gw-ip>:IPGATEWAY@<zone>` (`macip.c:71-72,654-670`); the client's
-  MacIP stack does an NBP lookup for type `IPGATEWAY` in its zone.
-  That is the *whole* discovery story — no magic, same LkUp/LkUpReply
-  frames as the Chooser.
-- **Getting an address — one ATP transaction.** The client sends an ATP
-  request to the gateway's **DDP socket 72**: function 1 = *assign me
-  an address* (the reply carries IP, name server, broadcast, netmask —
-  `struct macip_req`, `macip.c:87-104,398-415`), function 3 = *are you
-  a MacIP server* (probe). DHCP in one round-trip, years before DHCP.
-- **"ARP" — NBP a third time.** Each client with an address registers
-  `<client-ip>:IPADDRESS@<zone>`; the gateway resolves IP→AppleTalk
-  address by looking up the dotted-quad *as an NBP object name* of type
-  `IPADDRESS` (`arp_lookup`, `macip.c:224-244`) and also learns
-  mappings from inbound packets. Idle leases are probed with ICMP echo
-  every 30 s and reclaimed after 10 misses (`macip.c:79-81,604-626`).
-- **Data — DDP type 22**, max 586 bytes of IP per datagram, so the tun
-  MTU is 586 (`tunnel_linux.c`). TCP MSS adapts; nothing fragments.
-
-**What runs where:**
-
-```
-guest Mac OS (OT or MacTCP + AppleTalk on)          host
-  IP in DDP-22 ── LLAP/Scc8530 ── LtoUdp ── TashRouter ── pomtap0
-                                                            │ kernel DDP
-                                             macipgw (NBP IPGATEWAY, ATP :72)
-                                                            │ tunX  192.168.151.1/24, MTU 586
-                                             Linux ip_forward + MASQUERADE → internet
-```
-
-**Bring-up** (extends §6.1's bridge):
+**Two ways to run it.** In-process (default, no root): `MacIpGateway`
+answers on socket 72 and NATs in user mode — see §6.5 for the subset.
+External (`extern/macipgw`, Stefan Bethke 1997 / Jason King's Linux port,
+built by `tools/macip/build_macipgw.sh` against the vendored libatalk):
 
 ```bash
 sudo tools/netatalk2/appleshare.sh --macip     # bridge + MacIP in one go
@@ -602,191 +669,183 @@ tools/macip/build_macipgw.sh                   # once, no sudo
 sudo tools/macip/macip.sh                      # start · stop to undo
 ```
 
-`macip.sh` makes exactly three host changes, echoes each, and reverses
-all of them on `stop`: `net.ipv4.ip_forward=1` (previous value saved),
-three `iptables` rules tagged `pom68k-macip` (MASQUERADE for the MacIP
-subnet + two FORWARD accepts), and the `macipgw` process itself (its
-tun device disappears with it). Tunables: `MACIP_NET`/`MACIP_MASK`
-(default 192.168.151.0/24 — gateway .1, clients .2-.254; must not
-collide with a real host network), `MACIP_DNS` (default 8.8.8.8 —
-must be a resolver reachable *through the NAT*, so never the systemd
-stub 127.0.0.53), `MACIP_ZONE` (POM68K), `MACIP_DEBUG`.
+`macip.sh` makes exactly three host changes, echoes each and reverses all
+of them on `stop`: `net.ipv4.ip_forward=1` (previous value saved), three
+`iptables` rules tagged `pom68k-macip`, and the `macipgw` process (its
+tun device dies with it). Tunables: `MACIP_NET`/`MACIP_MASK` (default
+192.168.151.0/24 — gateway .1, clients .2-.254; must not collide with a
+real host network), `MACIP_DNS` (default 8.8.8.8 — must be reachable
+*through the NAT*, so never the systemd stub 127.0.0.53), `MACIP_ZONE`,
+`MACIP_DEBUG`. `MacIpGateway` defaults mirror these
+(`AtalkHub.h:50`, `MacIpGateway.h:111-113`).
 
-**Guest configuration — Mac OS 8.1 / Open Transport (Quadra 605):**
+```
+guest Mac OS (OT or MacTCP, AppleTalk on)              host
+  IP in DDP-22 ── LLAP/Scc8530 ──┬── AtalkStack ── MacIpGateway ── user-mode NAT ── sockets
+                                 └── LtoUdp ── TashRouter ── pomtap0 ── macipgw ── tunX ── MASQUERADE
+```
 
-1. AppleTalk must already be up (boot with `POM68K_LTOUDP=1
-   POM68K_APPLETALK=1`, the §6.1 bridge running).
-2. **TCP/IP control panel** → *Connect via:* **AppleTalk (MacIP)** →
+**Guest configuration — Mac OS 8.1 / Open Transport:**
+
+1. AppleTalk must already be up (§0.1's PRAM seed, or the Chooser).
+2. **TCP/IP** control panel → *Connect via:* **AppleTalk (MacIP)** →
    *Configure:* **Using MacIP Server**.
-3. *MacIP server zone:* **Select Zone…** → **POM68K** (the gateway is
-   found by NBP in that zone).
-4. *Name server addr:* type the DNS the gateway advertises (default
-   **8.8.8.8**) — the assignment reply carries it too, but filling it
-   in removes one variable. *Search domains* can stay empty.
-5. Close, save. The first TCP/IP user (e.g. Netscape) triggers the
-   NBP lookup + ATP assign; `run/macipgw.log` shows the lease
-   (`MACIP_DEBUG=0x1111` logs `assigned 192.168.151.2`).
+3. *MacIP server zone:* **Select Zone…** → **POM68K**.
+4. *Name server addr:* the DNS the gateway advertises (default
+   **8.8.8.8**) — the assignment reply carries it, but filling it in
+   removes a variable. Search domains can stay empty.
+5. Close and save. The first TCP/IP user triggers the NBP lookup + ATP
+   assign; the GUI's MacIP block (or `run/macipgw.log` externally) shows
+   the lease.
 
-**Guest configuration — System 7.5 / classic MacTCP (LC II, Plus,
-Mac II):** MacTCP ships on the System 7.5 install media (Networking
-extras).
+**Guest configuration — System 7.5 / classic MacTCP** (ships on the 7.5
+install media, Networking extras):
 
-1. **MacTCP control panel** → click the **LocalTalk** icon; in the
-   zone list under the icons pick **POM68K**.
+1. **MacTCP** control panel → click the **LocalTalk** icon; pick zone
+   **POM68K** in the list under the icons.
 2. **More…** → *Obtain Address:* **Server** (that is MacIP
    server-assigned mode; leave Gateway Address alone).
 3. *Domain Name Server Information:* domain `.`, IP **8.8.8.8**,
    *Default* checked.
-4. OK, close, **reboot** (classic MacTCP only reads its config at
-   startup).
+4. OK, close, **reboot** — classic MacTCP reads its config only at
+   startup.
 
-**Era caveats — the web side.** The stack is genuine TCP/IP, but a 1996
-browser cannot shake hands with 2026 TLS: **plain HTTP only**. Practical
-destinations: <http://frogfind.com> (search + readability proxy, made
-for this), <http://theoldnet.com> (archived-web proxy, can serve
-year-matched pages), or a self-hosted down-converting proxy (WebOne,
-macproxy) on the host as a follow-up. Netscape 2-4 on OS 8.1 and
-Netscape 2/MacWeb on 7.5 all work against these. Expect the odd 4xx
-from sites that never learned HTTP/1.0.
+**Era caveat.** The stack is genuine TCP/IP, but a 1996 browser cannot
+shake hands with 2026 TLS: **plain HTTP only**. Practical destinations:
+<http://frogfind.com> (search + readability proxy, made for this),
+<http://theoldnet.com> (archived-web proxy), or a self-hosted
+down-converting proxy (WebOne, macproxy). Netscape 2-4 on OS 8.1 and
+Netscape 2 / MacWeb on 7.5 all work against these.
 
-**Troubleshooting** (host side unless noted):
+**Troubleshooting:**
 
 | Symptom | Check |
 |---|---|
-| Guest OT/MacTCP "can't find MacIP server" | `nbplkup "=:IPGATEWAY@POM68K"` must list the gateway. Empty → `run/macipgw.log` (NBP registration retries 5×5 s; `atalkd` running? started *after* the router?) |
-| Gateway registered but no address assigned | `MACIP_DEBUG=0x1111`, restart `macip.sh`, watch for `MacIP req`/`assigned` in `run/macipgw.log`; sniff the LToUDP cable (`scratchpad/ltoudp_sniff.py`) for ATP to socket 72 |
-| Guest has an IP but nothing loads | `ping 192.168.151.2` from the host (works once the guest holds the lease); `tcpdump -i tunX -n` (guest packets must appear); `iptables -t nat -S \| grep pom68k`; `sysctl net.ipv4.ip_forward` |
-| Sites fail by name, work by IP | DNS: advertised server must be a real resolver reachable through NAT (never 127.0.0.53); try `MACIP_DNS=1.1.1.1` and re-enter it guest-side |
-| `https://` anything | Expected failure — TLS era gap, use FrogFind / theoldnet (above) |
-| Large transfers stall | Check tun MTU is 586 (`ip link show tunX`) — DDP's payload ceiling |
+| Guest "can't find MacIP server" | In-process: the GUI's *Passerelle visible (NBP IPGATEWAY)* bullet, and that the guest's zone is POM68K. External: `nbplkup "=:IPGATEWAY@POM68K"` must list it; empty → `run/macipgw.log` (NBP registration retries 5×5 s; `atalkd` running, started *after* the router?) |
+| Gateway visible, no address assigned | `POM68K_MACIP_DEBUG=1` (external: `MACIP_DEBUG=0x1111`) and watch for the ATP request on socket 72 |
+| Guest has an IP, nothing loads | In-process: the IP counters must move both ways. External: `ping` the guest, `tcpdump -i tunX -n`, `iptables -t nat -S \| grep pom68k`, `sysctl net.ipv4.ip_forward` |
+| Names fail, IPs work | DNS must be a real resolver reachable through NAT (never 127.0.0.53); try 1.1.1.1 and re-enter it guest-side |
+| `https://` anything | Expected — TLS era gap, use FrogFind / theoldnet |
+| Large transfers stall | External only: tun MTU must be 586 (`ip link show tunX`) — DDP's payload ceiling |
 
----
+### 6.5 The in-process stack — POM68K as its own router, server, printer and gateway
 
-## 6.5 The in-process stack — POM68K as its own router, server, printer and gateway
-
-Everything in §§3–6 above describes the **external** bridge: TashRouter
-routes, netatalk's `afpd`/`papd` serve, `macipgw` tunnels, and
-`appleshare.sh`/`macip.sh` wire them up (needing root). That path is
-still here and is the way to reach a **real** LocalTalk network. But as
-of 2026-07-24 POM68K also carries the **entire service side in-process**,
-on the same `Scc8530` wire the guest drives — no external processes, no
-root, on by default in the GUI. It is the practical default; the
-external chain is for interop.
-
-**What runs where (internal path):**
+The default path since 2026-07-24: no external processes, no root, on
+unless `POM68K_APPLETALK=0`. Operating it is §0; this section is what it
+*is* and what it is *not*.
 
 ```
 guest Mac OS                                   POM68K process
-  LLAP/DDP ── Scc8530 wire ── AtalkHub ── AtalkStack (node 2.128, zone POM68K)
+  LLAP/DDP ── Scc8530 wire ── AtalkHub ── AtalkStack (2.128, zone POM68K)
                                             ├── router-lite: RTMP/ZIP/NBP/AEP
-                                            ├── AfpServer   (NBP AFPServer,  ASP/AFP → host folder)
-                                            ├── PapServer   (NBP LaserWriter, PAP → lp/CUPS or .ps file)
-                                            └── MacIpGateway (NBP IPGATEWAY, ATP :72, DDP-22 → user-mode NAT → host sockets)
+                                            ├── AfpServer   (NBP AFPServer,   ASP/AFP → host folder)
+                                            ├── PapServer   (NBP LaserWriter, PAP → lp/CUPS or .ps)
+                                            └── MacIpGateway (NBP IPGATEWAY, ATP :72, DDP-22 → user-mode NAT)
 ```
 
-The internal node is a real, terminated LocalTalk peer: it answers the
-guest's ENQ address probes (defending its own node 128), so the guest
-settles on a different ID exactly as against a hardware peer. When
-`POM68K_LTOUDP=1` is *also* set, the internal node's frames are
-multicast onto the cable too — the emulator then looks like one more
-node on the shared virtual LocalTalk, and external TashRouter/netatalk
-can coexist (the guest simply sees two responders and de-dups).
-
-**Mapping the layer cake (§1.1) to the internal owners:**
-
-| AppleTalk layer | Internal owner | File |
+| AppleTalk layer | Owner | File |
 |---|---|---|
-| LLAP node presence, DDP short/long | `AtalkStack` | `src/AtalkStack.*` |
-| RTMP (beacon + req/resp), ZIP (GetNetInfo/ZoneList), NBP (registry + LkUp + BrRq relay), AEP echo | `AtalkStack` router-lite | `src/AtalkStack.*` |
-| ATP (responder XO cache + release timer; requester retries) | `AtalkStack::AtpTxn` / `atpRequest` | `src/AtalkStack.*` |
-| ASP sessions + AFP 2.1 file service, `.AppleDouble` sidecars | `AfpServer` | `src/AfpServer.*` |
-| PAP printer → CUPS (`lp`) or `.ps` spool | `PapServer` | `src/PapServer.*` |
-| MacIP (ATP :72 assign, IP-in-DDP-22) + user-mode NAT (TCP-lite/UDP/ICMP) | `MacIpGateway` | `src/MacIpGateway.*` |
-| Wiring to the SCC + status/toggles for the GUI | `AtalkHub` | `src/AtalkHub.h`, `src/main.cpp` |
+| LLAP node presence (ENQ defence), DDP short/long | `AtalkStack` | `src/AtalkStack.cpp:84-206` |
+| RTMP beacon + req/resp, ZIP GetNetInfo/ZoneList, NBP registry + LkUp + BrRq relay, AEP echo | `AtalkStack` router-lite | `src/AtalkStack.cpp:208-410` |
+| ATP responder (XO cache, release timer, deferred replies) + requester (retries, bitmap fill) | `AtalkStack::AtpTxn` / `atpRequest` | `src/AtalkStack.cpp:414-580` |
+| ASP sessions + AFP 2.1 file service, `.AppleDouble` sidecars | `AfpServer` | `src/AfpServer.{h,cpp}` |
+| PAP printer → CUPS (`lp`) or `.ps` spool | `PapServer` | `src/PapServer.{h,cpp}` |
+| MacIP (ATP :72 assign, IP-in-DDP-22) + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
+| SCC wiring, service toggles, GUI status snapshot | `AtalkHub` | `src/AtalkHub.h`, `src/main.cpp:79-219, 546-662` |
 
-**Faithfulness vs the external stack.** The internal path is a
-pragmatic subset, not a second netatalk. It implements the transactions
-a period Finder/Chooser/MacTCP actually issues; it does **not** do ADSP,
-the Desktop database (OpenDT answers "no item"), AFP ≥ 3.0/UTF-8,
-authenticated UAMs beyond guest/cleartext, PAP status polling subtleties,
-or MacIP outbound ICMP/raw sockets. CNIDs are per-run (root = 2), so
-they are stable within a session but not persisted across restarts. For
-anything the subset misses — or to serve a real LocalTalk segment —
-run the external bridge (`POM68K_LTOUDP=1` + `appleshare.sh`), which the
-internal node coexists with. Migration notes and the gap list live in
+**Threading contract** (`AtalkHub.h:16-21`): the hub's mutex guards the
+hub's own state, never the machine's. The SCC's Rx meters are unlocked
+machine-thread state, so they are sampled in `tick()` (machine thread)
+and served from that copy by `snapshot()` (GUI thread). No GUI-thread
+path may dereference the SCC.
+
+**Coexistence.** With `POM68K_LTOUDP=1` the internal node's frames are
+multicast onto the cable too: the emulator looks like one more node on
+the shared virtual LocalTalk, external TashRouter/netatalk can run
+alongside, and the guest simply sees two responders and de-dups.
+
+**The NAT** (`MacIpGateway.h:13-26`) is slirp-style: one connected host
+socket per UDP flow (DNS is just UDP 53 through it); a miniature TCP
+endpoint facing the guest (SYN-ACK, ordered delivery,
+retransmit-on-timeout, FIN both ways, MSS 536, in-order only) proxied
+onto a non-blocking host socket; ICMP echo answered for the gateway
+address itself only — raw sockets need privileges, and TCP/UDP is what
+era software uses.
+
+**What the subset does not do** — for any of it, run the external bridge
+(§6.1-§6.4), which the internal node coexists with:
+
+- **ADSP** (§4.2).
+- The **Desktop database** — `OpenDT` and friends answer "no item".
+- **AFP ≥ 3.0 / UTF-8** names; UAMs beyond guest/cleartext (§4.3).
+- **CNID persistence** — per-run, root = 2; stable within a session only.
+- PAP status-polling subtleties; MacIP outbound ICMP / raw sockets.
+
+Backlog: `TODO.md` §6. Migration notes and the HLE/LLE gap list:
 `docs/LLE_VS_HLE.md`.
-
-**Using it.** Nothing to start: launch the GUI, open **Réseau →
-AppleTalk**. The window shows AppleTalk on/off, the router zone + guest
-node + traffic counters, AppleShare (registered? folder writable? name,
-sessions, last user/command, bytes), the printer (idle/busy, jobs, last
-job path), and MacIP (gateway visible? a lease attributed means it
-*works*; IP counters, live flows) — each service has a live toggle.
-Guest-side setup is identical to §6 (Chooser → AppleShare / a
-LaserWriter; TCP/IP or MacTCP control panel → MacIP server, zone
-POM68K). Env: `POM68K_APPLETALK=0` disables the whole stack;
-`POM68K_SHARE_DIR=/path` sets the shared folder (default `./AppleShare`,
-created if absent).
-
-## 7. Map back to POM68K code
-
-| AppleTalk layer | POM68K / host component | File |
-|---|---|---|
-| LocalTalk physical + SDLC framing | `Scc8530` SDLC engine, CRC-16, hunt/RTS/CTS/ENQ, IDG/IFG pacing | `src/Scc8530.{h,cpp}` |
-| LocalTalk "cable" | LToUDP multicast, 4-byte tag | `src/LtoUdp.{h,cpp}`, `POM68K_LTOUDP=1` |
-| LLAP dialogue glue (RTS→CTS synth, per-frame poll) | GUI wire pump, sub-frame slicing | `src/main.cpp` (`wireLocalTalk`, `runQuantumWithWire`) |
-| PRAM AppleTalk-active seed (SPConfig `$21`) | `POM68K_APPLETALK=1` | `src/Egret.cpp`, `src/Rtc.cpp` |
-| DDP / RTMP / ZIP / NBP routing | TashRouter | `extern/tashrouter` |
-| ATP / ASP / AFP file service | netatalk `afpd` | `extern/netatalk2` |
-| PAP print service → CUPS | netatalk `papd` (`cupsautoadd`) | `extern/netatalk2/etc/papd` |
-| MacIP (IP-in-DDP → tun + NAT) | vendored `macipgw` gateway | `extern/macipgw`, `tools/macip/{build_macipgw,macip}.sh` |
-| Bring-up / teardown | one-command bridge (`--macip` adds TCP/IP) | `tools/netatalk2/appleshare.sh` |
-| Wire debugging | LToUDP sniffer (DDP/NBP decoder) | `scratchpad/ltoudp_sniff.py` |
-
-**Gates** that exercise this stack: `llap_loop_test` (RTS/CTS, ENQ,
-address filter, express CTS, carrier sense), `llap_two_system_etalon`
-(two Macs acquire node IDs over real ENQ traffic), `ltoudp_test` (the
-multicast cable). For the **in-process stack** (§6.5):
-`atalk_stack_test` (ENQ defence, RTMP/ZIP/NBP/AEP, ATP exactly-once),
-`afp_server_test` (OpenSession→Login→OpenVol→Enumerate→Read, the ASP
-SPWrite→WriteContinue→FPWrite round-trip, resource fork →
-`.AppleDouble`), `pap_server_test` (OpenConn→SendData→PostScript→EOF→
-spool, query `*` answer), `macip_gw_test` (address assign + ICMP echo +
-a real UDP round-trip and a full TCP SYN→data→FIN both ways through the
-user-mode NAT on loopback).
 
 ---
 
-## 8. Quick reference tables
+## 7. Map back to POM68K code
+
+| Layer | Component | File |
+|---|---|---|
+| LocalTalk physical + SDLC framing | `Scc8530` SDLC engine, CRC-16, hunt/RTS/CTS/ENQ, IDG/IFG pacing, lossless wire | `src/Scc8530.{h,cpp}` |
+| LLAP dialogue glue (RTS→CTS synth, per-frame poll, quantum slicing) | `wireLocalTalk`, `pollLocalTalk`, `runQuantumWithWire` | `src/main.cpp:103-219` |
+| LocalTalk "cable" | LToUDP multicast + 4-byte tag | `src/LtoUdp.{h,cpp}`, `POM68K_LTOUDP=1` |
+| PRAM AppleTalk-active seed (SPConfig `$21`) | `POM68K_APPLETALK=1` | `src/Egret.cpp:77`, `src/Rtc.cpp:44` |
+| **In-process** DDP/RTMP/ZIP/NBP/AEP/ATP | `AtalkStack` | `src/AtalkStack.{h,cpp}` |
+| **In-process** ASP + AFP 2.1 | `AfpServer` | `src/AfpServer.{h,cpp}` |
+| **In-process** PAP → `lp`/CUPS or `.ps` | `PapServer` | `src/PapServer.{h,cpp}` |
+| **In-process** MacIP + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
+| Wiring + GUI window + toggles | `AtalkHub`, `appleTalkWindow` | `src/AtalkHub.h`, `src/main.cpp:546-662` |
+| External DDP/RTMP/ZIP/NBP routing | TashRouter | `extern/tashrouter` |
+| External ATP/ASP/AFP | netatalk `afpd` | `extern/netatalk2` |
+| External PAP → CUPS | netatalk `papd` (`cupsautoadd`) | `extern/netatalk2/etc/papd` |
+| External MacIP (IP-in-DDP → tun + NAT) | vendored `macipgw` | `extern/macipgw`, `tools/macip/{build_macipgw,macip}.sh` |
+| External bring-up / teardown | one-command bridge (`--macip` adds TCP/IP) | `tools/netatalk2/appleshare.sh` |
+| Wire capture (throughput / gaps / RTT, LLAP headers) | passive LToUDP probe | `scratchpad/ltoudp_measure.py` |
+
+Gates: §0.5.
+
+---
+
+## 8. Quick reference
 
 **LLAP types:** `01` short DDP · `02` long DDP · `81` ENQ · `82` ACK ·
 `84` RTS · `85` CTS.
 **Node IDs:** `0` invalid · `1-127` user · `128-254` server · `255`
 broadcast.
-**LLAP timing:** bit rate 230.4 kbit/s · IDG ≥ 400 µs · IFG ≤ 200 µs ·
-32 retries.
+**LLAP timing:** 230.4 kbit/s (≈34.7 µs/byte) · IDG ≥ 400 µs · IFG
+≤ 200 µs · 32 retries. POM68K: `kCtsGapBytes` 4 · `kIdgBytes` 12 ·
+`byteCycles = cpuHz / 28800`.
 
-**DDP well-known sockets:** `1` RTMP · `2` NBP · `4` AEP(echo) · `6` ZIP ·
-`72` MacIP config (ATP).
-**DDP protocol types:** `1` RTMP-RD · `2` NBP · `3` ATP · `4` AEP ·
-`5` RTMP-R · `6` ZIP · `7` ADSP · `22` MacIP (IP-in-DDP).
-**MacIP NBP types:** gateway = `IPGATEWAY` · client = `IPADDRESS`
-(object = the dotted-quad IP). Assign = ATP func 1, server probe = 3.
-**DDP:** short hdr 5 B · long hdr 13 B · max data ~586 B · address =
+**DDP sockets:** `1` RTMP · `2` NBP · `4` AEP · `6` ZIP · `72` MacIP
+config (ATP). SAS 1-127 · DAS 128-254.
+**DDP protocol types:** `1` RTMP-data · `2` NBP · `3` ATP · `4` AEP ·
+`5` RTMP-request · `6` ZIP · `7` ADSP · `22` MacIP.
+**DDP:** short hdr 5 B · long hdr 13 B · max data 586 B · address =
 net(16)·node(8)·socket(8).
 
-**ATP:** DDP type 3 · TReq/TResp/TRel · ≤8 response pkts (bitmap) ·
-ALO/XO · release timer 30 s · max data 582 B.
+**ATP:** DDP type 3 · TReq/TResp/TRel · ≤8 response packets (bitmap) ·
+ALO/XO · release timer 30 s · max data 582 B (4 user + 578).
+POM68K requester: 5 tries, 1 s apart.
 **ASP funcs:** CLOSE 1 · CMD 2 · STAT 3 · OPEN 4 · TICKLE 5 · WRITE 6 ·
-WRTCONT 7 · ATTN 8. **Timeout: 6 missed tickles → session killed.**
+WRTCONT 7 · ATTN 8. Session death: **netatalk 6 missed tickles**;
+**`AfpServer` 30 s tickle, 120 s idle**.
 **NBP ops:** BrRq 1 · LkUp 2 · LkUpReply 3 · FwdReq 4. Name
-`Object:Type@Zone`, ≤32 ch each.
+`Object:Type@Zone`, ≤32 ch each; wildcards `=` and `$C5`.
 **PAP funcs:** OPEN 1 · OPENREPLY 2 · READ/SendData 3 · DATA 4 ·
 TICKLE 5 · CLOSE 6 · CLOSEREPLY 7 · SENDSTATUS 8 · STATUS 9 · quantum 8 ·
-512 B/pkt · NBP type "LaserWriter".
+512 B/pkt · NBP type "LaserWriter" · tickle 60 s, 2 min timer.
 **ZIP ops:** QUERY 1 · REPLY 2 · GNI 5 · GNIREPLY 6 · GETMYZONE 7 ·
-GETZONELIST 8. **RTMP:** max 15 hops · 31 poison. **AARP:** REQUEST 1 ·
+GETZONELIST 8 · GETLOCALZONES 9. GetNetInfo zone length is at **offset 6**.
+**RTMP:** max 15 hops · 31 poison · 10 s beacon. **AARP:** REQUEST 1 ·
 RESPONSE 2 · PROBE 3.
+**MacIP:** gateway NBP type `IPGATEWAY` · client `IPADDRESS` (object =
+dotted quad) · assign = ATP func 1 · probe = 3 · default
+192.168.151.0/24, gateway .1, DNS 8.8.8.8.
+**In-process node:** net 2 · node 128 · zone POM68K · wire boost ×8.
 
 ---
 
@@ -814,17 +873,17 @@ RESPONSE 2 · PROBE 3.
 - netatalk manual — papd (PAP↔CUPS), pap, AppleTalk:
   <https://netatalk.io/manual/en/papd.8>,
   <https://netatalk.io/docs/PAP-Print-Server>.
-- **netatalk 2.4.9 source vendored in `extern/netatalk2/`** (verified
-  `file:line` 2026-07-22): `include/atalk/{ddp,atp,asp,nbp,zip,rtmp,pap}.h`,
+- **netatalk 2.4.9 vendored in `extern/netatalk2/`** (`file:line`
+  verified 2026-07-22): `include/atalk/{ddp,atp,asp,nbp,zip,rtmp,pap}.h`,
   `libatalk/asp/{asp_getsess.c,asp_tickle.c,asp_child.h}` (tickle/timeout),
-  `etc/papd/{main.c,session.c,print_cups.c,printer.h}` (papd + CUPS),
-  `bin/pap/pap.c` (pap client).
-- MacIP: **macipgw source vendored in `extern/macipgw/`** (Stefan Bethke
-  1997, Linux port <https://github.com/zero2sixd/macipgw>, provenance in
-  `POM68K_VENDOR.md` there — `macip.c` *is* the MacIP wire spec in
-  practice); the macip.net appliance (same code) for cross-checking;
-  FrogFind <http://frogfind.com> / theoldnet <http://theoldnet.com> for
-  the HTTP-only era gap.
-- POM68K itself: `docs/LLE_VS_HLE.md` §3 (SCC gaps + MAME `z80scc.cpp`
-  audit), `CHANGELOG.md` (LLAP milestone 1, SCC IDG fix, AppleShare
-  bridge), `src/Scc8530.*`, `src/LtoUdp.*`.
+  `etc/papd/{main.c,session.c,print_cups.c,printer.h}`, `bin/pap/pap.c`,
+  `etc/atalkd/zip.c`.
+- MacIP: **macipgw vendored in `extern/macipgw/`** (Stefan Bethke 1997,
+  Linux port <https://github.com/zero2sixd/macipgw>, provenance in its
+  `POM68K_VENDOR.md` — `macip.c` *is* the MacIP wire spec in practice).
+- **TashRouter** (`extern/tashrouter`) — router behaviour oracle,
+  notably `zip/responding.py`.
+- POM68K itself: `DEV.md` §5 (every environment knob),
+  `docs/LLE_VS_HLE.md` §3 + §10 (SCC gaps, MAME `z80scc.cpp` audit, the
+  virgin-line ruling), `CHANGELOG.md` (LLAP milestone 1, the SCC IDG fix,
+  the AppleShare bridge, the in-process stack), `TODO.md` §6 (backlog).
