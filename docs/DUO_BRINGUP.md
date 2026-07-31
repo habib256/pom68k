@@ -138,10 +138,14 @@ came out:
   third call never reaches it.
 - Inside, the ADB dispatch `jsr ($5F0)` at `$4080AA48` is entered 835
   times and returns 835 times, so nothing is stuck *in* the dispatch.
-- **ADBBase moves between calls**: A3 = `$5894` at the spinning wait,
-  `$57BC` at the third entry. So the wait and the third ADBReInit are
-  looking at *different* flag bytes — re-entrancy, with the System having
-  relocated its ADB globals in between.
+- **ADBBase does NOT go stale — an earlier claim here was wrong.** A3 was
+  `$5894` at one observation and `$57BC` at another, which looked like the
+  waiter holding a relocated pointer. It was an artefact of comparing two
+  different stop points: `--stop-at` with a small skip catches the *early*
+  ROM-era ADBReInit, which legitimately runs at the older ADBBase. Measured
+  at the real hang, `ADBBase ($0CF8) == A3 == $57BC` — they match. The
+  re-entrancy theory is dead; `duo_trace` now prints both so the question
+  cannot be fudged again.
 
 **The 80 µs host stall is load-bearing.** MAME's `via2_out_b` spins the
 68030 80 µs on a /PMU_REQ edge; it looked like optional pacing, so it was

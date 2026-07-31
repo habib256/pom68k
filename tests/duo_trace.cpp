@@ -240,7 +240,12 @@ int main(int argc, char** argv) {
         std::printf("  D%d=$%08X  A%d=$%08X\n", r, cpu.getD(r), r,
                     r == 7 ? cpu.getSP() : cpu.getA(r));
     {   // The PMU wait flag the ROM spins on: ($15D,A3) bit 5 — dump the
-        // ADB/PMU globals block around it.
+        // ADB/PMU globals block around it, and the CURRENT ADBBase, so a
+        // waiter holding a stale globals pointer is visible.
+        std::printf("-- ADBBase($0CF8)=$%08X  A3=$%08X  %s\n",
+                    peek32(0x0CF8), cpu.getA(3),
+                    peek32(0x0CF8) == cpu.getA(3) ? "(match)"
+                                                  : "(A3 IS STALE)");
         const uint32_t a3 = cpu.getA(3);
         std::printf("-- [A3+$150..$17F] (PMU globals):");
         for (int i = 0x150; i < 0x180; i++) {
