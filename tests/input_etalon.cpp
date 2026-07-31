@@ -5,7 +5,9 @@
 // the Finder, injects quadrature mouse steps / button / M0110 key codes,
 // and reads back what the System understood through its low-memory
 // globals: RawMouse ($82C: v,h words), MBState ($172: $80 = up), KeyMap
-// ($174: 16 bytes, one bit per virtual key code). Soft-skips without
+// ($174: EIGHT bytes, one bit per virtual key code — a wider window
+// reads $017C+ which is NOT KeyMap, and a positive assertion over it is
+// a false green: that cost a debug round on 2026-07-29). Soft-skips without
 // roms/macplus.rom + disks35/Disk605.dsk.
 
 #include "Cpu68k.h"
@@ -87,16 +89,16 @@ int main() {
     // ── Keyboard: press 'a' (M0110 transition code = keycode*2+1... wire
     // code $01 for virtual key 0) and expect a KeyMap bit to appear ──────
     uint8_t keymap0[16];
-    for (int i = 0; i < 16; i++) keymap0[i] = ram[0x174 + i];
+    for (int i = 0; i < 8; i++) keymap0[i] = ram[0x174 + i];
     mem.keyboard().enqueue(0x01);                // 'a' down
     for (long f = 0; f < 60; f++) fc.runFrame(cpu, mem);
     int changedDown = -1;
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < 8; i++)
         if (ram[0x174 + i] != keymap0[i]) changedDown = i;
     mem.keyboard().enqueue(0x81);                // 'a' up
     for (long f = 0; f < 60; f++) fc.runFrame(cpu, mem);
     bool backToIdle = true;
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < 8; i++)
         if (ram[0x174 + i] != keymap0[i]) backToIdle = false;
     std::printf("KeyMap: down changed byte %d, released back to idle: %d\n",
                 changedDown, backToIdle ? 1 : 0);
