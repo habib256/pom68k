@@ -582,8 +582,12 @@ the four-point extension it needs inside the vendored core is documented in
 - **It is a second engine, not a replacement.** Off by default in the GUI,
   headless and CTest. The GUI **CPU** menu switches it live (through the
   machine thread's command queue, so the swap lands between two
-  instructions); `POM68K_CPU_ENGINE=jit` selects it at startup. Wired on the
-  four 68040 profiles only: `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu`.
+  instructions); `POM68K_CPU_ENGINE=jit` selects it at startup. The engine
+  is wired on every 020/030/040 machine (`Cpu040`, `CentrisCpu`, `Q630Cpu`,
+  `Q700Cpu`, `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, and the LC's
+  020 seam); the GUI menu binds on the 040 and 030 loops (2026-07-30).
+  The **x86-64 code generator** is 68040-only by declared capability
+  (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`.
 - **Multi-target by construction**, because POM68K is multiplatform. Layer 1
   (`jit::Engine`) knows nothing about the host; layer 2 (`jit::Backend`)
   is where an architecture lives. The `threaded` backend generates no code
@@ -625,15 +629,15 @@ the four-point extension it needs inside the vendored core is documented in
   (`Moira::pomJitMmuGen`, bumped by every ATC flush and TTR write). Blocks
   additionally stop *before* any opcode that could touch the MMU, a cache or
   the supervisor bit (`jit::classify`).
-- **Working loop.** A bare `ctest` runs 123 gates in ~2h30 and a bare `make`
+- **Working loop.** A bare `ctest` runs 129 gates in ~2h30 and a bare `make`
   relinks ~90 binaries under tree-wide LTO — useless to iterate against, and
   `ctest -j` is out because the etalons are contention-sensitive. So gates
   carry **labels derived from their names** (`CMakeLists.txt`, end of the test
   block) and there is a `jitdev` build target:
-  `make -j4 jitdev && ctest -L smoke` = **~2.5 min** (56 s to relink 4
-  binaries, 98 s for 5 gates) instead of ~3 h. Tiers: `smoke` (one machine,
-  both engines — the JIT loop), `unit` (50 gates, 9 s, no assets), `jit` (all
-  7 JIT gates), `m040` (26 gates, the 68040 family = the JIT's blast radius),
+  `make -j4 jitdev && ctest -L smoke` = **~2.5 min** (three binaries to
+  relink, 8 gates) instead of ~3 h. Tiers: `smoke` (8 — one machine, both
+  engines, the JIT loop), `unit` (59, ~40 s, no assets), `jit` (16),
+  `m040` (30, the 68040 family = the JIT's blast radius),
   bare `ctest` (the release gate). Labels are derived, not declared, so a gate
   added tomorrow is classified when it is registered.
 - **Gates**: `jit_backend_test` (backend registry, W^X buffer, classifier

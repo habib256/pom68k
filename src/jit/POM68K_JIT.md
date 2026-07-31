@@ -229,7 +229,7 @@ instead.
 
 ## 5. The working loop
 
-Do not iterate against a bare `ctest` — 104 gates, ~2h30, and `-j` is unsafe
+Do not iterate against a bare `ctest` — 129 gates, ~2h30, and `-j` is unsafe
 because the boot etalons are contention-sensitive. Do not iterate against a
 bare `make` either: tree-wide LTO relinks ~90 binaries after any core change.
 
@@ -237,9 +237,11 @@ bare `make` either: tree-wide LTO relinks ~90 binaries after any core change.
 make -j4 jitdev && ctest -L smoke     # ~2.5 min end to end
 ```
 
-`jitdev` builds only the binaries `-L smoke` needs. `-L smoke` is seven
-gates: `jit_backend_test`, four flavours of `jit_lockstep_test`, and the q605
-boot etalon **on both engines**.
+`jitdev` builds the three binaries `-L smoke` needs (`jit_backend_test`,
+`jit_lockstep_test`, `q605_boot_etalon`) — the other five registrations
+re-run those same binaries under different environments. `-L smoke` is
+**eight** gates: `jit_backend_test`, five flavours of `jit_lockstep_test`,
+and the q605 boot etalon **on both engines**.
 
 `jit_lockstep_test` is the one that matters: two Quadra 605 machines from one
 ROM and one read-only disk image, one interpreted and one JIT-driven,
@@ -248,15 +250,16 @@ stacks, the cycle clock — **and the first 2 KB of guest RAM**. That last one
 is not decoration. A JIT bug in a STORE shows up in a register only much
 later, when something reads the byte back; the 68k system globals live in low
 RAM and are written constantly during a boot, which makes them a cheap, high
-yield tripwire. Its four registrations exist because each covers something
+yield tripwire. Its FIVE registrations exist because each covers something
 the others cannot:
 
 | gate | what it pins |
 |---|---|
-| `jit_lockstep_test` | one cycle per comparison — the sharpest possible check, but a block can never be more than one instruction long |
-| `jit_lockstep_blocks_test` | 256 cycles per comparison — long blocks, and a loop closing on itself entirely inside generated code |
-| `jit_lockstep_threaded_test` | the portable floor, which `auto` no longer selects on this host |
-| `jit_lockstep_noaccess_test` | the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
+| `jit_lockstep_test` | the default backend at one cycle per comparison — the sharpest possible check, but a block can never be more than one instruction long |
+| `jit_lockstep_blocks_test` | `threaded` + `POM68K_JIT_BLOCKS=1` — the portable floor with its block path forced on |
+| `jit_lockstep_x64_test` | the code generator at 256 cycles per comparison — long blocks, and a loop closing on itself entirely inside generated code |
+| `jit_lockstep_x64_fine_test` | the code generator at one cycle per comparison |
+| `jit_lockstep_noaccess_test` | x64 + the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
 
 Two things this gate learned the hard way, both worth keeping in mind when
 extending it:
@@ -275,10 +278,14 @@ Widen only when the smoke tier is green:
 
 | command | gates | time | when |
 |---|---|---|---|
-| `ctest -L unit` | 50 | 9 s | anything touching non-machine code |
-| `ctest -L jit` | 7 | ~8 min | before proposing a JIT change |
-| `ctest -L m040` | 26 | ~25 min | the 68040 family — the JIT's blast radius |
-| `ctest` | 104 | ~2h30 | the release gate, once |
+| `ctest -L unit` | 59 | ~40 s | anything touching non-machine code |
+| `ctest -L jit` | 16 | ~30 min | before proposing a JIT change |
+| `ctest -L m040` | 30 | ~1h30 | the 68040 family — the JIT's blast radius |
+| `ctest` | 129 | ~2h30 | the release gate, once |
+
+(Counts and timings verified against `ctest -N` and a real run on
+2026-07-31. They drift every time a gate lands — re-derive rather than
+trust them.)
 
 Labels are derived from test names in `CMakeLists.txt`, so a new gate is
 classified the moment it is registered.
@@ -290,22 +297,25 @@ classified the moment it is registered.
 | `POM68K_CPU_ENGINE` | `interp` | `jit` starts on the JIT (the GUI menu still switches live) |
 | `POM68K_JIT_BACKEND` | `auto` | `auto` \| `threaded` \| `x64` \| `a64` |
 | `POM68K_JIT_FETCH` | `1` | the instruction-fetch code window (J1a) |
-| `POM68K_JIT_BLOCKS` | `0` | block discovery and replay (J1b) — measured slower, see above |
-
-The two are not independent, and that is deliberate: block discovery reads
-opcodes out of the code window, so `POM68K_JIT_FETCH=0` disables both and
-leaves the engine measuring nothing but its own dispatch overhead — useful
-exactly once, as the zero point. `POM68K_JIT_BLOCKS=0` is the interesting
-attribution knob: window on, block cache off.
-
+| `POM68K_JIT_BLOCKS` | *backend* | block discovery and replay (J1b). The default is the ACTIVE BACKEND's answer, not a constant (`JitConfig.h blockCacheEnabled(dflt)`): OFF for `threaded`, which measured slower with blocks than with the window alone, ON for a code generator, which has nothing to run without them |
 | `POM68K_JIT_BLOCK_MAX` | `64` | straight-line instruction ceiling per block |
-| `POM68K_JIT_HOT` | `64` | visits before a recorded block is translated |
-| `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine stops recording |
+| `POM68K_JIT_HOT` | `512` | visits before a recorded block is translated |
+| `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
+| `POM68K_DATA_WINDOW` | `0` | the INTERPRETER's data window (§8) — opt-in since the ATC-exactness capping made it a net loss |
+| `POM68K_JIT_PARANOID` | `0` | re-validate the translation at every arm — for differential testing |
+| `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr |
 | `POM68K_JIT_ACCESS_THUNK` | `2` | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores |
 | `POM68K_JIT_HISTO` | `0` | dynamic opcode census, dumped at exit, with the backend's coverage |
 | `POM68K_JIT_LOCKSTEP_N` | `5000000` | instructions compared by `jit_lockstep_test` |
 | `POM68K_JIT_LOCKSTEP_BUDGET` | `1` | cycles between comparisons (higher = longer blocks) |
 | `POM68K_JIT_LOCKSTEP_FINE_AT` | — | step after which the comparison drops to one cycle |
+
+The first two are not independent, and that is deliberate: block discovery
+reads opcodes out of the code window, so `POM68K_JIT_FETCH=0` disables both
+and leaves the engine measuring nothing but its own dispatch overhead —
+useful exactly once, as the zero point. `POM68K_JIT_BLOCKS=0` is the
+interesting attribution knob on a code-generating backend: window on, no
+generated code at all.
 
 ---
 
@@ -384,59 +394,50 @@ What it emits natively: `MOVE`/`MOVEA`, the `ADD`/`SUB`/`AND`/`OR`/`EOR`/
 regimes, boot etalon 25.6 → 24.7 s). Everything else, including every
 68020 indexed mode, falls back per instruction.
 
-### What it is worth, and what it is not
+### What it is worth (re-measured 2026-07-31, idle host)
 
-It reaches **70 % native** on the loading phase and stays within ~3 % of the
-fetch window there — and it is **2.3× worse than the window on the idle
-Finder**, which is why `auto` does not choose it. Both halves of that have
-the same explanation, and it is structural rather than a tuning failure.
+**The generator now wins on both regimes**, which retires the old
+"crossover" story in this section. Against the fetch window on
+`jit_bench`: 5 G cycles 97.6 s vs 126.1 s, 20 G cycles 432.3 s vs 565.7 s
+— and against the interpreter, ×2.18 and ×2.09. The user-facing
+`q605_boot_etalon` reads 61.3 s interpreted → **22.9 s (×2.68)**, through
+what this file used to call a ~×2.5 conformant ceiling.
 
-**Block linking is in** (§ 9), and it did what it was supposed to: block
-entries on the loading phase fell by 53 % (2.41 M -> 1.14 M) and blocks now
-run 566 instructions per entry instead of 268. Compiling `LINK`/`UNLK`/`NOP`
-came with it — they transfer no control, they are 3.6 % of a real workload,
-and they sat at every function entry and exit truncating blocks. Together:
-18.4 s -> 16.75 s on that phase, which is where the generator passes the
-fetch window.
+Three landed changes produced that, in order of size:
 
-**Once the Finder is up it still loses, and the reason has moved.** Blocks
-there run 6.5 instructions per entry (up from 4.9 — linking helped less,
-because the exits miss: their targets are `JSR`/`RTS`, which are still
-`Unsafe`). But coverage is 66 %, barely below the 70 % of the loading phase,
-so poor coverage is not the explanation either. What is left is FOOTPRINT:
-47 000 compiled blocks at ~1.5 KB each is 70 MB of generated code, and the
-Finder's working set walks over all of it. Both engines slow down in that
-phase — the interpreter drops from 37 to 23 M instr/s — but generated code
-drops further, because an interpreter's hot handlers stay in L1 whatever the
-guest does while a code generator's do not.
+1. **The arm-time DTLB flush is gone** (2026-07-31). Every window re-arm
+   used to `pomJitDtlbFlush()` unconditionally — a 2 KB memset once per
+   ~15 idle instructions. Deleting it is conformance-neutral (every
+   invalidation it stood in for has an exact owner: MMU-generation bumps,
+   `pomJitAtcEvict`, the privilege bit in each tag, code-page mark/unmark)
+   and worth −23 to −33 % depending on backend and regime. DTLB fills over
+   one 60 M-step lockstep: 942 M → 7.8 M.
+2. **Block linking** (§ 9) plus `LINK`/`UNLK`/`NOP`: block entries on the
+   loading phase fell 53 % (2.41 M → 1.14 M), 268 → 566 instructions per
+   entry.
+3. **The census five** (2026-07-30): `MOVEM`, `DBcc`, `JMP <ea>` — ~5 % of
+   idle-Finder instructions, −3.0 % / −1.7 % on the two regimes.
 
-So the two remaining levers, in order:
+**Coverage is 89.6 % native** over 12.2 G instructions (`POM68K_JIT_HISTO`,
+2026-07-30) — the "70 % / 66 %" figures this section used to quote
+predate `JSR`/`RTS`/`LINK`/`MOVEM`/`DBcc`/`JMP`. The uncovered remainder
+is led by line-$E shifts (0.9 %), `Scc`, `PEA`, and the 68020 indexed
+modes, which are a brief-extension-word decoder in their own right and
+are what QuickDraw's blitters are built from.
 
-1. **Density.** ~150 bytes of host code per guest instruction, most of it
-   the per-instruction contract (budget and flag guards, `POLL_IPL`, pc/pc0,
-   the prefetch queue, the cycle charge) rather than the operation. The
-   boundary state is only read when a block EXITS, so it belongs in the cold
-   exit stubs; the guards' two `rel32` jumps belong in `rel8`.
-2. **`JSR`/`RTS`/`BSR`, and `MOVEM` + the 68020 indexed modes.** The first
-   three are 7 % of a real workload and every one of them is both an
-   interpreter round trip and a link that misses. The last two are what
-   QuickDraw's blitters are built from — opening VRAM to the inline data
-   path changed nothing measurable precisely because the instructions that
-   write it are not compiled at all.
+**What still costs at the idle Finder is the exactness contract itself**,
+not code size: 794 M window-lost exits over 12.2 G instructions is one
+window death per ~15 instructions, because Mac OS 8.1's VM ages pages by
+writing descriptor U bits and every ATC eviction kills the derived
+window. No conformant backend escapes that. The old FOOTPRINT theory
+(47 000 blocks × ~1.5 KB) is not disproved but is no longer the leading
+term, and the DENSITY item it motivated (~150 B of host code per guest
+instruction, mostly the per-instruction contract) is now third-order:
+worth doing (local `rel8`, shared cold stubs) but not the lever.
 
-**Density is the other half.** Roughly 150 bytes of host code per guest
-instruction today, most of it the per-instruction contract — budget and flag
-guards, `POLL_IPL`, pc/pc0, the prefetch queue, the cycle charge — rather
-than the operation itself. An interpreter's footprint is bounded by the
-INSTRUCTION SET and Moira's hot handlers stay in L1 whatever the guest does;
-a code generator's is bounded by the GUEST PROGRAM, and the hot code of a
-Mac OS boot is far larger than any cache. Deferring the boundary state into
-the cold exit stubs (it is only read when the block exits) and shortening
-branches to `rel8` are the two obvious steps.
-
-What is already right, and should not be traded away for either: the block
-cache no longer flushes on a write into translated code (§ 8), the data path
-never takes a C++ exception through a JIT frame, and every cycle count is
+What is already right, and should not be traded away: the block cache no
+longer flushes on a write into translated code (§ 8), the data path never
+takes a C++ exception through a JIT frame, and every cycle count is
 cross-checked against the interpreter's own measurement before an
 instruction is compiled at all.
 
@@ -473,30 +474,6 @@ had already translated. Two changes fixed it — the guard's granularity went
 from 4 KB to 256 bytes (68k code and its data share pages constantly), and
 `serviceGuard()` now evicts only the blocks that overlap the written slices.
 Same phase, after: **27** flushes.
-| `POM68K_JIT_MAX_BLOCKS` | `16384` | cache size before a full flush |
-| `POM68K_JIT_PARANOID` | `0` | re-validate the translation at every arm — for differential testing |
-| `POM68K_JIT_VERBOSE` | `0` | backend selection and flush chatter on stderr |
-
----
-
-## 7. Journal
-
-* **2026-07-27 — J0/J1 measured and hardened.** The fetch window is worth
-  −55 % on the Quadra 605 boot; the block cache is a net loss and ships off.
-  An adversarial review pass found and closed two real defects in the block
-  path before the gates were called green: `flushAll()` was reachable
-  re-entrantly from inside a replaying block (a guest `MOVEC` to CACR →
-  `didChangeCACR`), freeing the `BlockIr` under the backend's own loop; and
-  the block cache had no notion of `pomJitMmuGen`, so a `PFLUSH` or a TC/URP/
-  SRP write could point a cached script at unrelated code. Flushes are now
-  deferred while a block is in flight, and the cache tracks the MMU
-  generation.
-* **2026-07-27 — J0/J1.** Engine, host-neutral IR, backend interface,
-  portable W^X code buffer, `threaded` backend, code window, block tracing,
-  write guard, GUI **CPU** menu with live switching and a gauge window.
-  Machines wired: Quadra 605 / LC 475 / LC 575 (`Cpu040`), Centris and Quadra
-  610/650/800 (`CentrisCpu`), Quadra 630 / LC 580 (`Q630Cpu`), Quadra 700
-  (`Q700Cpu`).
 
 ---
 
@@ -535,3 +512,25 @@ Three things make jumping straight into another block safe:
 
 Every block's first instruction still runs the budget and flag guards, so a
 chain cannot outrun the caller's cycle target or ignore a pending interrupt.
+
+## 10. Journal
+
+* **2026-07-27 — J0/J1 measured and hardened.** The fetch window is worth
+  −55 % on the Quadra 605 boot; the block cache is a net loss and ships off.
+  An adversarial review pass found and closed two real defects in the block
+  path before the gates were called green: `flushAll()` was reachable
+  re-entrantly from inside a replaying block (a guest `MOVEC` to CACR →
+  `didChangeCACR`), freeing the `BlockIr` under the backend's own loop; and
+  the block cache had no notion of `pomJitMmuGen`, so a `PFLUSH` or a TC/URP/
+  SRP write could point a cached script at unrelated code. Flushes are now
+  deferred while a block is in flight, and the cache tracks the MMU
+  generation.
+* **2026-07-27 — J0/J1.** Engine, host-neutral IR, backend interface,
+  portable W^X code buffer, `threaded` backend, code window, block tracing,
+  write guard, GUI **CPU** menu with live switching and a gauge window.
+  Machines wired: Quadra 605 / LC 475 / LC 575 (`Cpu040`), Centris and Quadra
+  610/650/800 (`CentrisCpu`), Quadra 630 / LC 580 (`Q630Cpu`), Quadra 700
+  (`Q700Cpu`).
+
+---
+

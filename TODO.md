@@ -107,8 +107,43 @@ is a SECOND, independent suspicion: the ASC rendering the beep from
 stale FIFO residue. Worth its own check — `q605_asc_test` covers
 registers/IRQ, not audible output.)
 
-**Next — the clean 2×2 experiment**, which separates machine from System
-in two runs: boot the **Quadra on a System 7.5 image** and the **LC II on
+### 2026-07-31, the experiment ran — and found a real oracle divergence
+
+`tests/adb_key_probe.cpp` (dev tool, `POM68K_PROBE_MACHINE/_IMG/_FRAMES`)
+runs one keystroke scenario on any (machine, image) pair and reports which
+stage of the guest pipeline moved. Three cells (the fourth is impossible —
+Mac OS 8.1 needs a 68040, so no LC II + 8.1):
+
+| cell | KeyMap | Cmd-N repaints |
+|---|---|---|
+| LC II + System 7.5 (control) | live | **yes** |
+| Quadra 605 + System 7.6 | live | no |
+| Quadra 605 + Mac OS 8.1 | dead | no |
+
+**The Quadra hardware path is exonerated**: same machine, same Cuda, same
+`AdbLine` — keys reach KeyMap under 7.6 and not under 8.1, so the 8.1
+failure is System-coupled, not machine-coupled.
+
+**But the Cmd-N column found something else**, and it is a genuine
+divergence from the oracle: `AdbLine`'s keyboard **register 2 is
+hardcoded** (`AdbLine.cpp:299` — `buffer_[0] = buffer_[1] = 0xFF`,
+"modifiers, none held") where MAME maintains a live modifier bitmap and
+returns it (`macadb.cpp:694-700` — `m_buffer[0] = m_modifiers`, refreshed
+by `adb_pollkbd(1)` on the read). A System that reads R2 for modifier
+state therefore sees Command/Shift/Option/Control as never pressed. That
+fits Cmd-N failing on the Quadra even where plain keys land, and it is the
+first real defect this investigation has turned up. **Fix R2 first** — it
+is small, oracle-pinned, and independently verifiable.
+
+Two methodology notes worth keeping, both paid for twice today: `KeyLast`
+($0184) moves in NO cell, including working ones — it is not a usable
+observable; and the first pixel probe (hash 256 KB of VRAM, type a-b-c-d-e)
+reported "keys lost" on a cell where KeyMap proves they arrive, because
+letters select nothing on a bare desktop. Only the control cell caught
+both. Believe an observable after it has demonstrated sensitivity, not
+before.
+
+**The original 2×2 rationale**, kept for the record: boot the **Quadra on a System 7.5 image** and the **LC II on
 the 8.1 image**, and type. The LC II on 7.5 already works
 (`lcii_beyond_etalon`'s Cmd-N creates a folder), so:
   * keys work on Quadra+7.5 → the fault is 8.1-specific (its ADB stack
@@ -955,13 +990,15 @@ Next milestones:
 
 Finding from the doc-sync + machine-matrix pass: the gates prove **boot**,
 not **use** — and the machine fan-out made the ratio *worse*, not better.
-Of the **25 machine profiles** covered by the **90 gates**, only **three**
-have any gate past the Finder signature: **Mac II** (`macii_mouse_etalon`),
-**Quadra 605** (`q605_cudalle_mouse_etalon` / `_key_etalon`) and **LC II**
-(`lcii_soak/persist/launch_etalon`, added 2026-07-24). The other **22**
-(LC, Classic II, Color Classic, CC II, Mac TV, IIsi, IIci, IIx, IIcx,
-LC III/III+, LC 520/550, IIvx/IIvi, Centris 610/650, Quadra 610/650,
-LC 475/575) are **boot-to-Finder signature only**. A machine can pass its
+Of the **32 machine profiles** covered by the **129 gates**, only a handful
+have any gate past the Finder signature: **LC II** (`lcii_beyond_etalon`'s
+four scenarios + `lcii_savestate_etalon`), **Quadra 605**
+(`q605_cudalle_mouse_etalon`, `q605_cudalle_key_etalon` — RED, see the
+section above — `q605_cdrom/cdboot_etalon`, `q605_savestate_etalon`),
+**Mac II** (`macii_mouse_etalon`), and the four machines with an input
+gate from the 2026-07-29 pass (`lc3_`, `lc520_`, `iivx_`,
+`iisi_input_etalon`). Everything else — roughly twenty profiles — is
+**boot-to-Finder signature only**. A machine can pass its
 etalon and still be broken for real work; green gates read as more coverage
 than they give — this is now the single biggest gap in the project.
 Highest-ROI closers, in order:

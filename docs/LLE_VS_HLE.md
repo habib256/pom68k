@@ -6,8 +6,12 @@ gates and oracles), and only later layer an **opt-in, clearly-flagged HLE
 accelerator** on top (`HLE_OVERLAY.md`). That requires knowing exactly
 where the current code already deviates from hardware. This document is
 the complete inventory and the plan to shrink it. Current as of
-2026-07-29 (**sixth pass** — the SCC line-state / factory-MCU /
-test-depth round, **32 machine profiles, 118 gates**). Earlier:
+2026-07-31 (**seventh pass** — save states across the whole tree, the
+JIT re-measure, and one genuine ADB divergence found: `AdbLine`'s
+keyboard register 2 is hardcoded where MAME keeps a live modifier
+bitmap — see § 3 ADB and TODO. **32 machine profiles, 129 gates**).
+Earlier: 2026-07-29 (sixth pass — SCC line-state / factory-MCU /
+test-depth round);
 2026-07-25 (fifth pass — RBV / Tinker Bell / 68030-Mac II);
 2026-07-24 (fourth pass — the **Phase C** machine fan-out);
 2026-07-22 (third pass against the live tree); 2026-07-21
@@ -312,6 +316,18 @@ the rest should follow:
 - Blockers that delayed default (PIC instruction cost, phantom SHIFT,
   VIA mode-111 first-falling-edge bit7 drop) are fixed — CHANGELOG
   2026-07-22 "Mac II LLE ADB default".
+
+**Open device-model gap, found 2026-07-31** (the `q605_cudalle_key_etalon`
+investigation): the shared `AdbLine` device answers keyboard **register 2
+with a constant** `FF FF` — "no modifier held" — where MAME maintains a
+live modifier bitmap and returns it, refreshing it on the read
+(`macadb.cpp:694-700`, `m_buffer[0] = m_modifiers` after
+`adb_pollkbd(1)`). A guest that reads R2 for modifier state therefore
+never sees Command, Shift, Option or Control. Symptom that exposed it:
+Cmd-N repaints on the LC II but not on the Quadra, even under System 7.6
+where plain keystrokes demonstrably reach KeyMap. This is a genuine
+divergence from the oracle, small and independently testable — the next
+ADB item, ahead of the `AdbLine` handler-ID work already listed in TODO.
 
 ### HLE-fallback retirement policy (settled 2026-07-29)
 

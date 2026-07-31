@@ -1103,6 +1103,11 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(lcii_mouse_trace EXCLUDE_FROM_ALL tests/lcii_mouse_trace.cpp)
     target_link_libraries(lcii_mouse_trace PRIVATE pom68k_core)
 
+    # Dev tool (not a gate): where an ADB keystroke dies, on any
+    # (machine, image) pair — POM68K_PROBE_MACHINE/_IMG/_FRAMES.
+    add_executable(adb_key_probe EXCLUDE_FROM_ALL tests/adb_key_probe.cpp)
+    target_link_libraries(adb_key_probe PRIVATE pom68k_core)
+
     add_executable(macii_hmmu_trace EXCLUDE_FROM_ALL tests/macii_hmmu_trace.cpp)
     target_link_libraries(macii_hmmu_trace PRIVATE pom68k_core)
 

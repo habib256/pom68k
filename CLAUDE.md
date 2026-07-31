@@ -77,10 +77,10 @@ copyback/snooping yet.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 123 gates, ~2h30 (asset-dependent ones soft-skip)
-ctest -L unit                # 50 gates, 9 s — no ROM or disk image needed
-ctest -L smoke               # 5 gates, 98 s — one machine, both CPU engines
-ctest -L jit                 # every JIT gate;  -L m040 = the 68040 family
+ctest                        # 129 gates, ~2h30 (asset-dependent ones soft-skip)
+ctest -L unit                # 59 gates, ~40 s — no ROM or disk image needed
+ctest -L smoke               # 8 gates, ~2.5 min — one machine, both CPU engines
+ctest -L jit                 # 16 JIT gates;  -L m040 = 30, the 68040 family
 make -j4 jitdev && ctest -L smoke   # the JIT working loop: ~2.5 min total
 ./POM68K [ROM] [media...]    # 128K=Plus, 256K=Mac II, 512K=V8 family
                              # (B2E362A8/B306E171/A49F9914 = SE/SE FDHD/Classic)
@@ -136,7 +136,7 @@ Finder (integer PACK 4 via the XPRAM `$AE` ROM-resource combo).
 | **Pseudo-VIA2** | `PseudoVia.*` | ✓ | MAME IOSB VIA2 layout |
 | **Drive sounds** (floppy+HDD FX) | `FloppySound.*`, `FloppySoundSink.h` | ✓; `floppy_sound_test` | MAME floppy_sound_device via POM2 |
 | **Save states** (archive core: one `visit<Ar>()` per class drives save AND load; chunked container, zero-run codec). Callbacks/pointers **re-bound not serialized**, caches **flushed**, disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*`, `MoiraSnapshot.h`, `visit()` in each device | ALL 10 machine families ✓ 2026-07-30 (LC II tree + Sonora/VASP/RBV + Q605/Centris/Q700/Q630 + Mac II/compacts; 32 `SnapMachine` tags); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test` (all `unit`), `lcii_savestate_etalon` + `q605_savestate_etalon` (real-OS restore determinism, 030 + 040). GUI ✓ (menu Machine « Sauver/Restaurer l'état », `main.cpp SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`) — `TODO.md § C` | — |
-| **JIT — second execution engine** (multi-target: host-agnostic engine + `jit::Backend`; `threaded` portable floor, x86-64/aarch64 slots). **Off by default**, GUI menu **CPU**, `POM68K_CPU_ENGINE=jit` | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0/J1 ✓ 2026-07-27; 040 machines only; `jit_backend_test`, `jit_lockstep_test`, `jit_*_boot_etalon` | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
+| **JIT — second execution engine** (host-agnostic engine + `jit::Backend`; `threaded` portable floor, **x86-64 code generator**, aarch64 slot planned). **Off by default**, GUI menu **CPU** (68030 + 68040 machines), `POM68K_CPU_ENGINE=jit` | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓; engine on ALL 020/030/040 machines, x64 codegen **68040 only** (`BackendCaps::guestFamilies`); block linking, inline DTLB, 89.6 % native. Q605 boot 61.3 s interp → 22.9 s (×2.68) | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
 
 ## Memory map (Mac Plus, 24-bit)
 
@@ -187,8 +187,9 @@ SWIM, DFAC audio polish, bus/timing).
 DAFB/Antelope (Q8.1 stride/depth/CLUT), IOSB ASC stereo (`AscIosb`),
 SWIM2 SuperDrive, and NCR 53C96 SCSI; Mac OS 8.1 boots at 640×480×8 and
 System 7.5 / 7.5.5 / 7.6 reach the Finder too (53C96 polled-WRITE path).
-GUI exposes the machine alongside the other 24 profiles (Machine menu).
-**97 CTest gates**,
+GUI exposes the machine alongside the other 31 profiles (Machine menu,
+19 entries — several cover an identity family).
+**129 CTest gates**,
 including `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `macii_post_etalon`,
 `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_mouse_etalon`
 (LLE ADB mouse — default path since 2026-07-22), `sst68040`,

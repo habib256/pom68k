@@ -423,8 +423,9 @@ static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 // ── CPU engine selection (interpreter vs JIT) ───────────────────────────
 // Global, like the AppleTalk window below, so the "CPU" menu appears on
 // every machine without touching the ten machineMenu() call sites. The
-// hooks are installed only by the machines that HAVE a second engine (the
-// four 68040 profiles); everywhere else the menu shows itself disabled.
+// hooks are installed by the machines that HAVE a second engine — the four
+// 68040 loops and, since 2026-07-30, the 68030 ones (V8, Sonora, VASP,
+// RBV); on the Mac II and the compacts the menu shows itself disabled.
 static bool gShowJit = false;
 static std::function<void(int)> gSetCpuEngine;         // 0 = interpreter, 1 = JIT
 static std::function<int()> gGetCpuEngine;
