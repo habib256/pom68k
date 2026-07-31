@@ -128,10 +128,29 @@ disk activity goes from 555 to **895 SCSI commands**.
 Also disproved along the way, kept as a signpost: raising RDRF
 unconditionally on transmit-done (`POM68K_PGE_ADBRX=1`) — 0 selects.
 
+**Narrowed further**: ADBReInit now completes **twice** (at ~1.4 G and
+~2.2 G cycles) and hangs on the **third** call. So the mechanism works;
+something about the state it is left in after two rounds does not. Inside
+`$4080A8F0`, the exit that clears the flag is `$4080A958`, reached either
+when the device map `($14C,A3)` is empty or when the relocation dance at
+`$4080A97A`-`$4080A982` finishes. The third call never gets there. Tried
+and did NOT fix it (kept anyway, it is a real fidelity gap): honouring the
+Listen R3 activator byte in `AdbBus` so a device only moves on `$00`/`$FE`.
+
 Next steps, in order:
-1. Follow the boot past ADBReInit; the PMU command stream is visible with
+1. Instrument the **third** ADBReInit specifically. What the ADB cell
+   shows at that moment is *steady-state autopoll* — `$2C` → `$FF $FF`,
+   the keyboard being polled with no key down — i.e. the PG&E considers
+   ADB fully initialised and is not doing anything the host asked for. So
+   the host's third "re-init ADB" request never reaches the PMU: the host
+   has stopped asserting /PMU_REQ, its transport is interrupt-driven, and
+   the PMU (with nothing to report) has stopped interrupting. That
+   chicken-and-egg is the thing to break — find what lets the host start a
+   transaction outside its ISR, or what the PMU should still be reporting.
+   The PMU command stream is visible with
    `DUO_PMLOG=408898CA` (`$3A $38 $21 $68 $6B $32 $78 $71 $DC $11 $20
-   $10`, settling to `$D9`/`$DC`).
+   $10`, settling to `$D9`/`$DC`); the ADB cell with
+   `POM68K_PGE_ADBTRACE=1`.
 2. Feed the matrix keyboard and trackball (milestone 4) — the PG&E is the
    input controller, so `PgePmu::keyEvent/mouseMove/mouseButton` already
    exist and reach the guest through the ADB devices above.
