@@ -32,29 +32,52 @@ IIsi's `cacheBoost_ = 1` workaround is retired with it.
   actual autopoll-to-guest report rate against the Egret's ~90 Hz and
   checking we are not servicing fewer polls than real hardware.
 
-## `q605_cudalle_key_etalon` is RED — pre-existing, found 2026-07-31
+## `q605_cudalle_key_etalon` is RED — a REAL keyboard bug, not a regression
 
-Found by the first full `ctest -L m040` in a while (29/30 green). **Not a
-regression from the JIT or save-state work**: bisected to the session's
-starting commit `cda7bc2` in a clean worktree and it fails there with
-byte-identical numbers (`Ticks 8905 -> 11031, KeyMap SILENT`). It is in
-neither `-L smoke` nor `-L jit`, which is why weeks of green working-loop
-runs never exercised it.
+Found by the first full `ctest -L m040` in a while (29/30 green), then
+run to ground 2026-07-31. **Not a regression from any recent work**: it
+fails at the session's starting commit `cda7bc2` AND at `b472a7b`, the
+commit that introduced the gate itself, with byte-identical numbers
+(`Ticks 8905 -> 11031, KeyMap SILENT`). It sits in neither `-L smoke` nor
+`-L jit`, which is why the working loop never exercised it.
 
-Symptom: the machine is ALIVE (Ticks advance 8737 → 11031 across the
-500-pair keypad stress) but no KeyMap bit is ever set — the keyboard path
-is silent, not wedged. Suspects, in order: (1) the Cuda↔VIA transport
-phase-fragility already documented in CHANGELOG (a 2 % MCU
-instruction-rate shift deadlocks the Mac TV; this gate pins the Quadra
-"collision face" — host command × autopoll TREQ); (2) something in the
-2026-07-25 bus-time pass (`machineClock()` everywhere) that this gate
-alone would notice; (3) a dirty boot volume, the trap recorded in
-`pom68k-dirty-boot-image-gate-failures`.
+What the evidence rules OUT (each measured, not assumed):
+- **Not a wedge.** Ticks advance 8737 → 11031 across the 500-pair keypad
+  stress; the machine is alive and the boot completes (SCSI plateaus at
+  5236 commands by frame 4500, the same figure the passing gates reach).
+- **Not the Cuda wire.** The scenario is KeyMap-silent on the firmware
+  LLE *and* on the HLE substitute (`POM68K_CUDA_LLE=0`) — so it is
+  downstream of both ADB transports, not in either.
+- **Not the `peek8`-is-physical trap** (`pom68k-peek-is-physical-rbv`):
+  `TC = $00000000` at the assertion point, so translation is off and the
+  physical read IS the guest's view. Ticks read through the same window
+  and advance.
+- **Not a missing device.** `AdbLine::keyboardAddr()` is **2** throughout,
+  and `ADBBase` ($0CF8) reads $00006DD0 — the ADB Manager is up.
+- **Not a dirty volume** (`pom68k-dirty-boot-image-gate-failures`):
+  `drVolAtrb = $0100`, bit 8 set = unmounted cleanly.
+- **Not the too-wide-window false green** (`pom68k-false-green-wide-assert`
+  — this gate does scan 16 bytes where KeyMap is 8): today ALL sixteen
+  read `00` at every keystroke, so the extra bytes are not masking
+  anything either.
 
-Next: bisect it properly (it is ~200 s per run, so a `git bisect run`
-over the last ~2 weeks is affordable), and once the culprit is known,
-decide whether the gate or the model is wrong. **Add it to a tier that
-actually runs** either way — a gate nobody executes is not a gate.
+So: our model registers a keyboard at ADB address 2, the guest's ADB
+Manager is initialized, and no keystroke reaches KeyMap on any path. That
+is a real keyboard-delivery bug on the Quadra under Mac OS 8.1, and the
+gate has been honestly red since it landed. Note the boot image was last
+written 2026-07-29 14:27 (a GUI write-back session — its `.q605.pram`
+carries the same timestamp), and no pristine copy survives to A/B against,
+so an asset-coupled trigger cannot be excluded — but the code side is
+identical across the whole range tested.
+
+**Next**, in order: trace whether the guest ever issues Talk R0 to device
+2 after boot (if it never polls, the fault is in the driver's device
+table, not our device); if it does poll, dump what our keyboard answers
+against MAME's `macadb`. Compare with the LC II, where
+`lcii_beyond_etalon`'s Cmd-N proves keystrokes DO land — the two machines
+differ in ADB stack (Cuda vs Egret) and System version. Fix the 16-byte
+window to 8 while there. And **register it in a tier that runs** — a gate
+nobody executes is not a gate.
 
 ## Usability & proof (make the machines we have actually usable)
 
