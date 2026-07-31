@@ -149,7 +149,18 @@ bisected (`POM68K_PGE_SPINUS=0`): without it the machine does not boot at
 all — ADBReInit #1 never completes, 0 SCSI selects. Same lesson as the
 Cuda transport (`pom68k-mactv-gate-broken`): the MCU/host interleave is
 not a free parameter. `POM68K_PGE_SPINUS=<µs>` is left in for phase
-experiments.
+experiments, and the sweep says the window is **sharp**:
+
+| host stall | ADBReInit clears | SCSI commands |
+|---|---|---|
+| 0 µs | 0 | 0 |
+| 40 µs | 2 | 895 |
+| **80 µs (MAME, default)** | **2** | **895** |
+| 160 µs | 0 | 0 |
+
+40-80 µs boots, 160 µs does not boot at all. That knife edge is itself a
+hint about the third ADBReInit: it may be the same phase fragility biting
+one layer further in, rather than a missing feature.
 
 **Narrowed further**: ADBReInit now completes **twice** (at ~1.4 G and
 ~2.2 G cycles) and hangs on the **third** call. So the mechanism works;
