@@ -110,6 +110,32 @@ void M68hc05Pge::spiEdge() {
     if (spiBit_ <= 0) {
         spiRing_[spiRingPos_] = uint16_t((spiOutLatch_ << 8) | spiIn_);
         spiRingPos_ = (spiRingPos_ + 1) & 63;
+        // POM68K_PGE_TRAP=<hexbyte>: when the PMU RECEIVES that byte over
+        // SPI, dump what the firmware was doing at that instant — its PC
+        // ring, the interrupt mask and the pending set. The question this
+        // exists for: does a host command land while the firmware has
+        // interrupts masked or is busy inside another handler, and get
+        // dropped?
+        static const char* trapEnv = std::getenv("POM68K_PGE_TRAP");
+        if (trapEnv) {
+            static const unsigned trapByte =
+                unsigned(strtoul(trapEnv, nullptr, 16)) & 0xFF;
+            if (spiIn_ == trapByte) {
+                static long tn = 0;
+                if (tn++ < 4000) {
+                    std::fprintf(stderr,
+                                 "pge TRAP $%02X #%ld cyc=%lld pc=$%04X cc=$%02X"
+                                 " pending=$%02X adbcr=$%02X adbsr=$%02X"
+                                 " spcr=$%02X waiting=%d\n",
+                                 spiIn_, tn, (long long)cycles_, pc_, cc_,
+                                 pending_, adbcr_, adbsr_, spcr_, waiting_);
+                    std::fprintf(stderr, "  mcu PCs:");
+                    for (int i = 0; i < 24; i++)
+                        std::fprintf(stderr, " %04X", pcHistory(i));
+                    std::fprintf(stderr, "\n");
+                }
+            }
+        }
         // POM68K_PGE_SPIBYTES=1: every completed exchange. The question it
         // exists to answer is whether a host PmgrOp actually reaches the
         // PMU over the wire, or dies in the transport.

@@ -218,14 +218,32 @@ ADB transaction on the cell afterwards (the cell only ever shows its own
 The transport is fine — the idle `$D9` polls flow through the same path
 before and after.
 
-**The next concrete step** is the PG&E firmware's own handling of
-selector `$20`: single-step the MCU from the moment that byte lands
-(cycle 74 893 563 above) and find where it decides not to act. Everything
-needed is in place — `POM68K_PGE_SPIBYTES` for the wire, `_ADBTRACE` for
-the cell, `pcHistory()` on the MCU for its PC ring. What is missing is the
-Power Manager protocol document; without it, what selector `$20`'s three
-payload bytes are supposed to contain is guesswork, and the firmware
-disassembly is the only oracle left.
+**Two more measurements, and the lead they leave.**
+`POM68K_PGE_TRAP=<hexbyte>` dumps the firmware's state the instant it
+receives a given byte over SPI:
+
+- The command is **not** dropped by a masked-interrupt window. At the
+  failing `$20` the PG&E is at PC `$96B1` inside an active handler
+  (`pending=$00`), having come through `$9706/$9707 → $970A → $8200 →
+  $81F5 → $82A3 → $96A9`. It is awake and listening.
+- **The payload is `$00 $00 $00` — an empty ADB request.** That is the
+  suspicious part, and it points back at the *guest*, not the PMU. The
+  bridge at `$408B2E76` builds its three bytes as `D3, D0, D2`, and its
+  normal path computes `D3 = (addr << 4) | $0C` (`$408B2EC6-$408B2ECA`),
+  which cannot be `$00`. So the ROM took one of the other branches. The
+  early exit it guards with `move.b ($16C,A3),D3 / bmi` is NOT the one —
+  measured at the hang, `($16C,A3) = $02`, positive.
+
+**The next concrete step**, therefore: single-step `$408B2E76` on the
+third ADBReInit and find which branch produces the all-zero request. That
+is a guest-ROM question with an answerable shape, unlike the firmware
+side. What is still missing for the firmware side is the Power Manager
+protocol document; without it, what selector `$20`'s payload is supposed
+to contain is guesswork, and the PG&E disassembly is the only oracle.
+
+For reference, the ADB globals at the hang (`ADBBase = $57BC`):
+`$15C=$21 $15D=$20 $15E=$02 $16C=$02 $16D=$0F $16E=$21 $16F=$FF`,
+retry counter `$162=$00`.
 
 **The 80 µs host stall is load-bearing.** MAME's `via2_out_b` spins the
 68030 80 µs on a /PMU_REQ edge; it looked like optional pacing, so it was
