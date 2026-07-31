@@ -95,29 +95,47 @@ painted. The ROM's own early ADBReInit completed; it is the **System's**
 that hangs. Meanwhile the host stops issuing /PMU_REQ and only re-polls
 `$D9` every ~0.66 s — a timeout retry, not progress.
 
-Cause: the PG&E's **ADB modem cell is a stub**. `ADBCR/ADBSR/ADBDR`
-($18-$1A) model TDRE and TC on timers but never RDRF or SRQ — and MAME's
-`m68hc05pge` does not either (verified: `m_adbsr |=` only ever sets TDRE
-and TC), which is a strong hint that MAME's `macpd230` does not reach the
-Finder either, whatever its lack of a NOT_WORKING flag suggests.
+Cause was the PG&E's **ADB modem cell**: `ADBCR/ADBSR/ADBDR` ($18-$1A)
+modelled TDRE and TC on timers but never RDRF — and MAME's `m68hc05pge`
+does not either (verified: `m_adbsr |=` only ever sets TDRE and TC), which
+is a strong hint that MAME's `macpd230` does not reach the Finder either,
+whatever its lack of a NOT_WORKING flag suggests.
 
-Disproved on the way: raising RDRF unconditionally when the transmit
-timer expires (`POM68K_PGE_ADBRX=1`, left in as a signpost) makes things
-strictly worse — 0 SCSI selects instead of 1122. The cell needs real
-device semantics, not a blanket "a byte arrived".
+**The cell now answers** (`AdbBus` behind it — command level is honest
+here: the cell IS a hardware transceiver, so the wire lives inside the
+PG&E's silicon and the firmware only exchanges bytes with it). Three
+framing bugs had to be fixed in a row, each one found by
+`POM68K_PGE_ADBTRACE=1`:
+
+1. **A reply must be its own event.** Folding RDRF into the same timer
+   expiry that raises TDRE also clobbered ADBDR while the firmware still
+   held the transmitted byte there: the boot regressed from 1122 SCSI
+   selects to 0. TX-done and RX-arrived are separate now.
+2. **The TC timer overwrote the scheduled reply.** The firmware acks TDRE
+   by writing ADBCR, which arms the 50 µs TC timer — wiping a reply
+   scheduled off the TDRE expiry. Every reply was silently dropped and
+   the cell looked inert. Both expiries chain into the reply now.
+3. **Listen data bytes must reach the bus.** Running a Listen R3 with an
+   empty payload means the relocation never happens, so the firmware
+   re-finds the device at its old address and relocates it again —
+   forever. The cell now buffers a Listen's two data bytes and only then
+   drives the command.
+
+Result: enumeration converges (Talk R3 → `$62 $05` keyboard, `$63 $01`
+mouse) and settles into steady-state autopoll (`$2C` → `$FF $FF`), and
+disk activity goes from 555 to **895 SCSI commands**.
+
+Also disproved along the way, kept as a signpost: raising RDRF
+unconditionally on transmit-done (`POM68K_PGE_ADBRX=1`) — 0 selects.
 
 Next steps, in order:
-1. **Model the ADB cell properly**: the Duo's built-in keyboard and
-   trackball must appear to the System as ADB devices, which the PG&E
-   firmware synthesizes from the matrix scanner and the quadrature
-   counters. Work out from the firmware what it drives on the cell for a
-   Talk R3 poll of an absent address vs a present one, then decide
-   whether to reuse `AdbBus` (command level) or `AdbLine` (bit level)
-   behind it.
-2. The command stream is visible with `DUO_PMLOG=408898CA` (the
-   dispatcher): `$3A $38 $21 $68 $6B $32 $78 $71 $DC $11 $20 $10`,
-   settling to `$D9`/`$DC` retries.
-3. Only then: GSC decode gate, input, and the sleep/wake gate.
+1. Follow the boot past ADBReInit; the PMU command stream is visible with
+   `DUO_PMLOG=408898CA` (`$3A $38 $21 $68 $6B $32 $78 $71 $DC $11 $20
+   $10`, settling to `$D9`/`$DC`).
+2. Feed the matrix keyboard and trackball (milestone 4) — the PG&E is the
+   input controller, so `PgePmu::keyEvent/mouseMove/mouseButton` already
+   exist and reach the guest through the ADB devices above.
+3. GSC decode gate, then the sleep/wake gate.
 
 ## Why this order
 

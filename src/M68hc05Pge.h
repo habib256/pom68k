@@ -51,7 +51,8 @@ public:
     // response (empty = ADB timeout, i.e. nothing at that address).
     // MAME's m68hc05pge leaves this unmodelled — it only ever sets TDRE
     // and TC — which is why its ADBReInit can never enumerate anything.
-    std::function<std::vector<uint8_t>(uint8_t cmd)> adbCommand;
+    std::function<std::vector<uint8_t>(uint8_t cmd,
+                                      const std::vector<uint8_t>& data)> adbCommand;
     // Same instruction-slaved hook as M68hc05::onCycles.
     std::function<void(int)> onCycles;
 
@@ -110,7 +111,7 @@ public:
         ar(pllCtrl_, option_, cscr_, cpicsr_, kcsr_, adcsr_, tbcs_);
         ar(spcr_, spsr_, spiIn_, spiOut_, spiBit_, spiClk_, spiMiso_, spiEdgeAcc_);
         ar(adbcr_, adbsr_, adbdr_, adbTimerAcc_, adbTimerMode_);
-        ar(adbRx_, adbRxPos_, adbListen_);
+        ar(adbRx_, adbRxPos_, adbCmdPending_, adbData_);
         ar(pwmacr_, pwma0_, pwma1_, pwmbcr_, pwmb0_, pwmb1_);
         ar(plmcr_, plmt1_, plmt2_);
         ar(rtc_, cycles_, secAcc_, cpiAcc_, keyscanAcc_, keyscanPeriod_);
@@ -178,7 +179,8 @@ private:
     int adbTimerMode_ = -1;                          // -1 idle, 0 TDRE, 1 TC
     std::vector<uint8_t> adbRx_;                     // reply bytes pending
     size_t adbRxPos_ = 0;
-    bool adbListen_ = false;                         // data bytes follow
+    int adbCmdPending_ = -1;                         // Listen awaiting data
+    std::vector<uint8_t> adbData_;                   // its data bytes
     uint8_t pwmacr_ = 0, pwma0_ = 0, pwma1_ = 0;
     uint8_t pwmbcr_ = 0, pwmb0_ = 0, pwmb1_ = 0;
     uint8_t plmcr_ = 0, plmt1_ = 0, plmt2_ = 0;
