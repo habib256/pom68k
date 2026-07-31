@@ -1027,7 +1027,8 @@ code that touches this object directly. Five more additions, same rules: all
 marked `POM68K JIT`, all inert until armed.
 
 6. **`Moira.h` — `PomJitDtlb pomJitDtlbR/W` + `pomJitDtlbFlush()`.** A
-   64-entry direct-mapped data-translation cache, the data-side twin of the
+   256-entry direct-mapped data-translation cache (`PomJitDtlb::kEntries`,
+   16 bytes/entry = 4 KB per table, two tables), the data-side twin of the
    fetch window. Generated code cannot call `mmu040Read`: that path throws
    on a fault, and a C++ exception may not cross a JIT frame — there is no
    unwind information for bytes we emitted ourselves. So a data address is

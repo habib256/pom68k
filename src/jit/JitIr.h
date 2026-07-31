@@ -218,9 +218,12 @@ inline Kind classify(uint16_t op) {
             // Bcc/BRA are the one control transfer a backend can own: the
             // target is a compile-time constant, so a backward branch into
             // the same block becomes an internal jump and the loop never
-            // leaves generated code. BSR ($61xx) stacks a return address —
-            // a memory write the block builder would have to model — and
-            // stays out.
+            // leaves generated code. BSR ($61xx) also lands here: it stacks
+            // a return address, which the x64 backend does model
+            // (emitSubroutine), and it is 7 % of a real workload together
+            // with JSR/RTS — an earlier version of this comment said it
+            // "stays out", which the return below has contradicted since
+            // the subroutine emitters landed.
             return Kind::Branch;                     // Bcc / BRA / BSR
 
         case 0x7000:

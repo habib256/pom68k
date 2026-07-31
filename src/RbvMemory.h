@@ -24,7 +24,10 @@
 // it carries the **ADB modem** — a PIC1654S transceiver (`AdbVia`, firmware
 // `roms/adbmodem/342s0440-b.bin`) on VIA1 CB1/CB2 + PB4/PB5 — and a
 // **discrete RTC** (343-0042) on VIA1 PB0-2/CA2, exactly the Centris/Mac II
-// wiring. VIA1 PA reads `$C6`, PB reads the RTC serial data (PB0) + /ADB-IRQ
+// wiring. VIA1 PA reads `$C7` — MAME's `0xC6 | BIT(config,1)` with the
+// diagnostic disabled, so PA0 = 1; reading back `$C6` puts the ROM in its
+// VIA-T2 burn-in loop forever (RbvMemory.cpp:168). PB reads the RTC
+// serial data (PB0) + /ADB-IRQ
 // (PB3); there is no MCU reset-hold, so the 68030 runs from power-on. Its
 // three NuBus slots read 0 (empty, MAME-unmapped parity). 68030 @ 25 MHz,
 // ROM `$368CADFE`.

@@ -1,5 +1,447 @@
 # CHANGELOG
 
+POM68K's memory of **why**. Every entry is a dated snapshot of what was
+believed, measured and changed on that day — root causes, wrong turns,
+numbers. **Nothing here is deleted when it turns out to be wrong**: a later
+entry corrects it, and the two are cross-linked under
+[Retractions, reversals and corrections](#retractions-reversals-and-corrections).
+Read an old entry as history, not as current truth — for the current state of
+the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
+
+**Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
+`grep -n '^## 20' CHANGELOG.md` lists all 157 entries in order. The hook
+states the *finding*, not the files touched. Several entries on one day carry
+a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
+first. A `> **Superseded:**` blockquote under a heading points at the entry
+that overturned it (`grep -n '^> \*\*Superseded' CHANGELOG.md`).
+
+**Adding an entry:** prepend the section, add ONE line to
+[Index by date](#index-by-date), and add a pointer to
+[Index by topic](#index-by-topic) if it answers a question a future reader
+will ask.
+
+---
+
+## Index by topic
+
+Each line is a **question a reader arrives with**, pointing at the entry that
+answers it. Not exhaustive — the complete list is [by date](#index-by-date).
+
+### Retractions, reversals and corrections
+
+- **a belief held for a whole day and overturned three times: Q6.4 "not a Cuda framing bug" … then it was** → [2026-07-19 — Q6.4 re-localized: it is a System-launch HANDOFF failure, NOT a Cuda…](#2026-07-19--q64-re-localized-it-is-a-system-launch-handoff-failure-not-a-cuda-reply-framing-bug-the-prior-completion-isr-buffer-smash-lead-is-disproven-no-fix-landed-yet)
+- **…and the entry that closed it** → [2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the block-0 loop…](#2026-07-19--q64--q62-both-resolved-the-boot-restart-loop-and-the-block-0-loop-were-one-coupled-cuda-reply-framing-bug-the-system-now-loads)
+- **the Q605 `CACHE_BOOST` default of 1 ("boost 2+ fails SCSI bring-up") was stale — it is 4 now** → [2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
+- **…the measurement that originally pinned it at 1** → [2026-07-20 — Q8.8: CACHE_BOOST calibration (default stays 1)](#2026-07-20--q88-cache_boost-calibration-default-stays-1)
+- **the Egret LLE went default → opt-in → default again on the LC II** → [2026-07-23 — LC II: Egret firmware LLE back to OPT-IN (mouse starvation)](#2026-07-23--lc-ii-egret-firmware-lle-back-to-opt-in-mouse-starvation)
+- **…and what made it a safe default (event-driven ADB wire)** → [2026-07-24 — Event-driven ADB wire: the Egret firmware LLE is the LC II DEFAULT](#2026-07-24--event-driven-adb-wire-the-egret-firmware-lle-is-the-lc-ii-default)
+- **the Color Classic "Cuda 0417 wedge" was never a core bug** → [2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug…](#2026-07-29--the-color-classic-0417-wedge-was-a-missing-dfac2-not-a-core-bug-both-factory-cudas-land)
+- **"the IIsi has no working ADB" was wrong three times over — `peek8()` is PHYSICAL** → [2026-07-29 — Input-delivery gates for the 030 families…](#2026-07-29--input-delivery-gates-for-the-030-families-loud-hle-fallbacks-and-a-retracted-bug)
+- **the "PGO divergence" in the JIT was the U bit, not the optimizer** → [2026-07-28 (fifth pass) — The "PGO divergence" was the U bit all along](#2026-07-28-fifth-pass--the-pgo-divergence-was-the-u-bit-all-along)
+- **the "DAFB sense" theory for the Slot-Manager blocker is disproven** → [2026-07-18 — Q5.1a: the Slot-Manager blocker re-localized…](#2026-07-18--q51a-the-slot-manager-blocker-re-localized--the-dafb-sense-theory-is-disproven-the-fault-is-a-decl-rom-parse)
+- **the "×1.6 on the LC II" fetch-window figure went stale when ATC capping landed** → [2026-07-30 — Engine re-baseline (idle host)…](#2026-07-30--engine-re-baseline-idle-host--the-cpu-menu-reaches-the-030s)
+- **the JIT "density" item was deprioritized once the idle ceiling was measured** → [2026-07-30 — JIT measured honestly: x64 wins both regimes…](#2026-07-30--jit-measured-honestly-x64-wins-both-regimes-the-next-lever-is-5-opcodes)
+- **a boot hang that was NOT the pending changes and NOT the disk** → [2026-07-18 — GISTPERSO (7.5) boot hang: heap corruption racing an app launch at…](#2026-07-18--gistperso-75-boot-hang-heap-corruption-racing-an-app-launch-at-finder-startup--not-the-pending-changes-not-the-disk)
+- **"dead arrow keys" that were not a bug at all** → [2026-07-17 — Lode Runner "dead arrow keys"…](#2026-07-17--lode-runner-dead-arrow-keys-not-a-bug--the-game-binds-the-numeric-keypad-by-default)
+- **the adaptive cache boost, introduced then retired the same day** → [2026-07-17 — retire the adaptive cache boost for a constant ratio](#2026-07-17--retire-the-adaptive-cache-boost-for-a-constant-ratio)
+
+### Timing — what an emulated cycle is charged against
+
+- **why bus/peripheral time is charged in MACHINE cycles, never the boosted core clock** → [2026-07-25 — The i-cache boost was accelerating the VIA bus…](#2026-07-25--the-i-cache-boost-was-accelerating-the-via-bus-lc-iii--lc-iii--iivx-fixed-and-the-iisis-boost-restored)
+- **why the PIC1654S must be co-stepped off the un-boosted clock** → [2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
+- **why the MCU must carry `run()` overshoot as debt (RTC drift)** → [2026-07-24 — Beyond-boot gates on the LC II…](#2026-07-24--beyond-boot-gates-on-the-lc-ii--a-clock-drift-bug-they-caught)
+- **why a 2 % shift in MCU instruction rate is a deadlock, not a slowdown** → [2026-07-27 — The Macintosh TV boots again…](#2026-07-27--the-macintosh-tv-boots-again-a-2--mcu-shift-is-a-deadlock)
+- **the 68030 i-cache throughput model that replaced the flat boost** → [2026-07-17 — 68030 instruction-cache timing overlay (replaces the flat boost)](#2026-07-17--68030-instruction-cache-timing-overlay-replaces-the-flat-boost)
+- **…folded into Moira's fetch path** → [2026-07-17 — i-cache overlay folded into Moira's fetch path (-15%)](#2026-07-17--i-cache-overlay-folded-into-moiras-fetch-path--15)
+- **the 040 I/D ATC + throughput overlay** → [2026-07-20 — Q8.7: 040 I/D ATC + Cpu040 throughput overlay](#2026-07-20--q87-040-id-atc--cpu040-throughput-overlay)
+- **sound tempo locked to the host DAC; odd-SP interrupt frames** → [2026-07-17 — Lode Runner launch freeze: odd-SP interrupt frames were corrupt…](#2026-07-17--lode-runner-launch-freeze-odd-sp-interrupt-frames-were-corrupt-vendored-moira-fix--sound-tempo-locked-to-the-host-dac)
+
+### Execution engines — the interpreter, the JIT, PGO
+
+- **the JIT design: host-agnostic engine + `jit::Backend`** → [2026-07-27 — A second execution engine: the multi-target JIT (J0 + J1)](#2026-07-27--a-second-execution-engine-the-multi-target-jit-j0--j1)
+- **the x86-64 code generator and what it measured** → [2026-07-28 — The x86-64 code generator (J2), and what it measured](#2026-07-28--the-x86-64-code-generator-j2-and-what-it-measured)
+- **why the fetch WINDOW is the win, not the block cache** → [2026-07-28 (fourth pass) — The data window and PGO: the interpreter's turn](#2026-07-28-fourth-pass--the-data-window-and-pgo-the-interpreters-turn)
+- **block linking, and why LINK/UNLK/NOP left the exclusion list** → [2026-07-28 (later) — Block linking, and LINK/UNLK/NOP out of the exclusion list](#2026-07-28-later--block-linking-and-linkunlknop-out-of-the-exclusion-list)
+- **the density experiment and its honest result** → [2026-07-28 (third pass) — The density work, and what it finally measured](#2026-07-28-third-pass--the-density-work-and-what-it-finally-measured)
+- **O(1) probes, per-space eviction, and the 020 seam** → [2026-07-28 (eighth pass) — O(1) probes, per-space eviction, and the 020 seam](#2026-07-28-eighth-pass--o1-probes-per-space-eviction-and-the-020-seam)
+- **why the JIT reached the 68030 (V8) and then all four 030 families** → [2026-07-28 (sixth pass) — The JIT reaches the 68030: the V8 family](#2026-07-28-sixth-pass--the-jit-reaches-the-68030-the-v8-family)
+- **…all four 030 families** → [2026-07-28 (seventh pass) — All four 030 families under the engine](#2026-07-28-seventh-pass--all-four-030-families-under-the-engine)
+- **why a backend is valid per GUEST family, not just per host** → [2026-07-30 — A JIT backend is valid per GUEST family, not just per host](#2026-07-30--a-jit-backend-is-valid-per-guest-family-not-just-per-host)
+- **the honest re-measure: x64 wins both regimes; the idle ceiling is the exactness contract** → [2026-07-30 — JIT measured honestly: x64 wins both regimes…](#2026-07-30--jit-measured-honestly-x64-wins-both-regimes-the-next-lever-is-5-opcodes)
+- **MOVEM + DBcc + JMP compiled (the five census opcodes)** → [2026-07-30 — The five opcodes, same day: MOVEM + DBcc + JMP compiled](#2026-07-30--the-five-opcodes-same-day-movem--dbcc--jmp-compiled)
+- **the biggest JIT win since the fetch window: one deleted arm-time DTLB flush** → [2026-07-31 — The window-churn investigation ends on one deleted line…](#2026-07-31-window-churn-dtlb-flush)
+- **PGO trained per CPU family (−26 % on the LC II); why the page-granular dispatch table was dropped** → [2026-07-29 (late) — PGO across all four CPU families (−26 % on the LC II)…](#2026-07-29-pgo-four-cpu-families)
+- **the first performance pass: 0.40× → 1.91× realtime** → [2026-07-17 — Performance pass: 0.40× → 1.91× realtime at the Finder (the sound…](#2026-07-17-performance-pass-realtime)
+
+### CPU cores, MMU/FPU, and the WinUAE oracle
+
+- **68000: 1 000 058 SingleStepTests vectors** → [2026-07-14 — M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
+- **the two-oracle arbitration loop starts** → [2026-07-15 — Phase 2 live: two 68030 oracles + arbitration turn 1](#2026-07-15--phase-2-live-two-68030-oracles--arbitration-turn-1)
+- **Moira executes the 68030 MMU instructions** → [2026-07-15 — O4 slice 1: Moira executes the 68030 MMU instructions](#2026-07-15--o4-slice-1-moira-executes-the-68030-mmu-instructions)
+- **the 68030 MMU bus layer** → [2026-07-15 — O4 slice 3: the 68030 MMU bus layer (Moira translates)](#2026-07-15--o4-slice-3-the-68030-mmu-bus-layer-moira-translates)
+- **integer-family arbitration (O4 complete)** → [2026-07-15 — O4 slice 4: integer-family arbitration (O4 complete)](#2026-07-15--o4-slice-4-integer-family-arbitration-o4-complete)
+- **why Musashi was retired and the loop went WinUAE-solo** → [2026-07-15 — Musashi oracle retired: the loop is WinUAE-solo](#2026-07-15--musashi-oracle-retired-the-loop-is-winuae-solo)
+- **68882 FPU execution** → [2026-07-15 — O5 slice 2: 68882 FPU execution in Moira](#2026-07-15--o5-slice-2-68882-fpu-execution-in-moira)
+- **68882 timing + FRESTORE frame acceptance** → [2026-07-15 — O5 follow-ups: 68882 timing + FRESTORE frame acceptance](#2026-07-15--o5-follow-ups-68882-timing--frestore-frame-acceptance)
+- **the 68LC040 integer core, WinUAE-differential** → [2026-07-18 — Q2+Q4: the 68LC040 integer core executes in Moira…](#2026-07-18--q2q4-the-68lc040-integer-core-executes-in-moira-winuae-differential-5-4005-400-no-fpu-f-line-included)
+- **the 68040 MMU: 7 200/7 200 pinned** → [2026-07-18 — Q3: the 68040 MMU translates in Moira…](#2026-07-18--q3-the-68040-mmu-translates-in-moira--full-grid-7-2007-200-pinned-the-lc-475-cpu-side-is-complete)
+- **RTE must honor a cleared SSW.DF (the vector-2 storm)** → [2026-07-15 — O6.9 resolved: GISTPERSO's vector-2 storm…](#2026-07-15--o69-resolved-gistpersos-vector-2-storm--rte-honors-a-cleared-sswdf)
+- **bare no-FPU: _FP68K binds the integer PACK 4** → [2026-07-21 — Bare no-FPU solved: _FP68K binds the integer PACK 4 (Cuda XPRAM echo…](#2026-07-21--bare-no-fpu-solved-_fp68k-binds-the-integer-pack-4-cuda-xpram-echo-bug)
+- **…and the UniversalInfo FPU masking that was deleted to get there** → [2026-07-21 — LLE step 5: UniversalInfo FPU masking deleted…](#2026-07-21--lle-step-5-universalinfo-fpu-masking-deleted-bare-no-fpu-fully-mapped)
+
+### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
+
+- **the M68HC05E1 core: real Cuda firmware executes** → [2026-07-23 — M68HC05E1 core: the real Cuda firmware executes (step 10 groundwork)](#2026-07-23--m68hc05e1-core-the-real-cuda-firmware-executes-step-10-groundwork)
+- **Mac OS 8.1 boots on the REAL Cuda firmware** → [2026-07-23 — Mac OS 8.1 boots to the Finder on the REAL Cuda firmware (blueprint…](#2026-07-23--mac-os-81-boots-to-the-finder-on-the-real-cuda-firmware-blueprint-step-3)
+- **…and becomes the Quadra default** → [2026-07-23 — The real Cuda firmware is the Quadra's DEFAULT (blueprint step 4)](#2026-07-23--the-real-cuda-firmware-is-the-quadras-default-blueprint-step-4)
+- **the LC II gets the real Egret firmware** → [2026-07-23 — The LC II runs the real Egret firmware too (same day, same glue)](#2026-07-23--the-lc-ii-runs-the-real-egret-firmware-too-same-day-same-glue)
+- **ADB Talk R0 answers on PENDING data, not on changed bytes** → [2026-07-23 — ADB Talk R0 answers on PENDING data, not on changed bytes](#2026-07-23--adb-talk-r0-answers-on-pending-data-not-on-changed-bytes)
+- **the Cuda/Egret wire model redone (per-reader hacks deleted)** → [2026-07-22 — LLE step 7: Cuda/Egret wire-model redo (the per-reader hacks are gone)](#2026-07-22--lle-step-7-cudaegret-wire-model-redo-the-per-reader-hacks-are-gone)
+- **Mac II ADB over a real PIC1654S transceiver** → [2026-07-22 — Mac II ADB goes LLE: real PIC1654S transceiver (opt-in)](#2026-07-22--mac-ii-adb-goes-lle-real-pic1654s-transceiver-opt-in)
+- **…and the three bugs that made the mouse move** → [2026-07-22 — Mac II LLE ADB default: mouse moves…](#2026-07-22--mac-ii-lle-adb-default-mouse-moves-three-bugs-none-where-predicted)
+- **the missing DFAC2 I2C ACK (both factory Cudas land)** → [2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug…](#2026-07-29--the-color-classic-0417-wedge-was-a-missing-dfac2-not-a-core-bug-both-factory-cudas-land)
+- **Egret mid-flight packet retraction manufactured ghost ADB sessions** → [2026-07-17 — SC2K "coprocesseur absent" ROOT-CAUSED AND FIXED…](#2026-07-17--sc2k-coprocesseur-absent-root-caused-and-fixed-egret-mid-flight-packet-retraction-manufactured-ghost-adb-sessions)
+- **input-delivery gates for the 030 families; every HLE fallback is now LOUD** → [2026-07-29 — Input-delivery gates for the 030 families…](#2026-07-29--input-delivery-gates-for-the-030-families-loud-hle-fallbacks-and-a-retracted-bug)
+
+### Save states
+
+- **the archive core: one `visit<Ar>()` drives both save and load** → [2026-07-30 — Save states: the archive core + the whole LC II tree](#2026-07-30--save-states-the-archive-core--the-whole-lc-ii-tree)
+- **restore determinism under the real Finder (LC II)** → [2026-07-30 — Save states survive the real Finder…](#2026-07-30--save-states-survive-the-real-finder-lcii_savestate_etalon)
+- **…and on the 040 side** → [2026-07-30 — `q605_savestate_etalon`: real-OS restore determinism on the 040 side](#2026-07-30--q605_savestate_etalon-real-os-restore-determinism-on-the-040-side)
+- **all 10 machine families serialize** → [2026-07-30 — Save-state fan-out: all 10 machine families serialize](#2026-07-30--save-state-fan-out-all-10-machine-families-serialize)
+- **the GUI hook** → [2026-07-30 — Save states in the GUI: « Sauver / Restaurer l'état »](#2026-07-30-save-states-gui)
+
+### Storage — SCSI, IWM/SWIM, media
+
+- **53C96 pseudo-DMA reads** → [2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work…](#2026-07-18--q61-53c96-pseudo-dma-reads-work--the-mac-os-81-scsi-driver-now-transfers-full-512-byte-blocks-off-the-disk)
+- **the block-0 re-read loop was a Cuda ReadXPram framing divergence** → [2026-07-19 — Q6.2 RESOLVED: the block-0 re-read loop was a Cuda ReadXPram…](#2026-07-19--q62-resolved-the-block-0-re-read-loop-was-a-cuda-readxpram-reply-framing-divergence--the-boot-now-loads-the-driver-partition-map-and-system-progresses-to-a-new-scsi-blocker)
+- **multi-block read needed the DATA IN bus-service interrupt** → [2026-07-19 — Q6.3 RESOLVED: SCSI multi-block read…](#2026-07-19--q63-resolved-scsi-multi-block-read--the-polled-10-transfer-info-needed-the-data-in-bus-service-interrupt)
+- **a THIRD Cuda framing for the POST XPRAM validity read** → [2026-07-19 — Q6.5: the boot restart loop is ACTUALLY resolved…](#2026-07-19--q65-the-boot-restart-loop-is-actually-resolved--the-roms-post-xpram-validity-read-uses-a-third-cuda-framing-direct-driver-getpram)
+- **the async SIM crash + the SCC/reselection spin** → [2026-07-19 — Q6.5b/c: the async SCSI SIM crash…](#2026-07-19--q65bc-the-async-scsi-sim-crash--the-sccreselection-spin-are-both-fixed--the-boot-loads-system-applies-patches-stops-at-dsbadpatch)
+- **dsBadPatch(99) was a 53C96 FIFO-count lie** → [2026-07-19 — Q6.5d RESOLVED: dsBadPatch(99) was a 53C96 FIFO-count lie that sent…](#2026-07-19--q65d-resolved-dsbadpatch99-was-a-53c96-fifo-count-lie-that-sent-the-os-scsi-managers-resource-read-into-its-discard-engine)
+- **the FPU trap and the DMA-final-chunk STATUS race (8.1 reaches the desktop)** → [2026-07-20 — Q6.6 RESOLVED: Mac OS 8.1 boots the Quadra 605 (68LC040) to the…](#2026-07-20--q66-resolved-mac-os-81-boots-the-quadra-605-68lc040-to-the-finder-desktop--two-blockers-the-fpu-trap-and-a-dma-final-chunk-status-race)
+- **the polled WRITE path (7.5.5 / 7.6)** → [2026-07-21 — Q605 Sys 7.5.5 / 7.6 → Finder (53C96 polled WRITE)](#2026-07-21-q605-sys755-76-finder)
+- **the TurboSCSI wait-state cell + scheduled 53C96 delays** → [2026-07-23 — LLE step 9 (partial): TurboSCSI wait-state cell…](#2026-07-23--lle-step-9-partial-turboscsi-wait-state-cell--53c96-scheduled-delays)
+- **SWIM2 register/FIFO core** → [2026-07-20 — Q8.4: SWIM2 register/FIFO core replaces the zero stub](#2026-07-20--q84-swim2-registerfifo-core-replaces-the-zero-stub)
+- **SWIM2 SuperDrive media (MFM 1.44 + GCR)** → [2026-07-20 — Q8.6: SWIM2 SuperDrive media (MFM 1.44 + GCR)](#2026-07-20--q86-swim2-superdrive-media-mfm-144--gcr)
+- **SWIM2 real cell engines (MFM cell timing + CRC)** → [2026-07-23 — SWIM2: the real cell engines (MFM cell timing + CRC)](#2026-07-23--swim2-the-real-cell-engines-mfm-cell-timing--crc)
+- **IWM write engine + GCR write-back** → [2026-07-23 — IWM write engine + GCR write-back: floppies are writable](#2026-07-23--iwm-write-engine--gcr-write-back-floppies-are-writable)
+- **floppy writes reach the host image file** → [2026-07-24 — Floppy write persistence (gate `floppy_persist_test`)](#2026-07-24--floppy-write-persistence-gate-floppy_persist_test)
+- **guest disk writes persist (SCSI)** → [2026-07-16 — SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
+- **the flat-HFS façade, and `dir2hfs`** → [2026-07-20 — SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
+- **…the host-folder volume** → [2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **CD-ROM: the target, then a disc mounting in the guest (and why 8.6 cannot boot)** → [2026-07-29 (evening) — A CD mounts in the guest; .cue/.bin; and why 8.6 cannot boot](#2026-07-29-evening--a-cd-mounts-in-the-guest-cuebin-and-why-86-cannot-boot)
+- **…the SCSI CD-ROM target itself** → [2026-07-29 (later) — SCSI CD-ROM support, a guest-level floppy gate…](#2026-07-29-later--scsi-cd-rom-support-a-guest-level-floppy-gate-and-the-lle-inventory-re-synced)
+
+### Video
+
+- **DAFB stride/depth and 256-color host rendering** → [2026-07-20 — Q8.1: DAFB stride/depth model and 256-color host rendering](#2026-07-20--q81-dafb-stridedepth-model-and-256-color-host-rendering)
+- **DAFB toward MAME parity (Swatch CRTC, Gazelle, sense)** → [2026-07-21 — LLE step 6: DAFB toward MAME parity (Swatch CRTC, Gazelle, sense)](#2026-07-21--lle-step-6-dafb-toward-mame-parity-swatch-crtc-gazelle-sense)
+- **DAFB extracted to its own file** → [2026-07-21 — DAFB extracted into Dafb.h/.cpp (one concern per file)](#2026-07-21--dafb-extracted-into-dafbhcpp-one-concern-per-file)
+- **there are THREE DAFB clock generators behind one window** → [2026-07-27 — Three DAFB clock generators, the pseudo-VIA's second flavour, two GUI…](#2026-07-27--three-dafb-clock-generators-the-pseudo-vias-second-flavour-two-gui-races)
+- **the MEMCjr/DAFB bus-holding split that unblocked the Slot Manager** → [2026-07-18 — Q5.1d: Q5 Slot-Manager blocker RESOLVED…](#2026-07-18--q51d-q5-slot-manager-blocker-resolved--the-missing-memcjr-dafb-bus-holding-split-boot-now-drives-the-scsi-bus)
+- **…the decl-ROM parse that was actually at fault** → [2026-07-18 — Q5.1a: the Slot-Manager blocker re-localized…](#2026-07-18--q51a-the-slot-manager-blocker-re-localized--the-dafb-sense-theory-is-disproven-the-fault-is-a-decl-rom-parse)
+- **…fully anatomised** → [2026-07-18 — Q5.1c: the fatal `_sReadStruct` fully anatomised…](#2026-07-18--q51c-the-fatal-_sreadstruct-fully-anatomised-drhw-pick-proven-correct-full-machine-oracle-blocked-round-2)
+- **Toby: CRTC-derived frame clock** → [2026-07-23 — Toby: CRTC-derived frame clock…](#2026-07-23--toby-crtc-derived-frame-clock--the-register-file-actually-writes)
+- **the LC II black screen (texture alpha)** → [2026-07-16 — LC II GUI showed a black screen (texture alpha)](#2026-07-16--lc-ii-gui-showed-a-black-screen-texture-alpha)
+- **selectable resolution and per-monitor depth** → [2026-07-16 — Selectable resolution (512×384 / 640×480)…](#2026-07-16-selectable-resolution)
+- **LC II color at 8 bpp** → [2026-07-16 — LC II color (8 bpp by default) + peripheral-tick batching](#2026-07-16--lc-ii-color-8-bpp-by-default--peripheral-tick-batching)
+
+### Sound
+
+- **the startup chime** → [2026-07-15 — M6: the startup chime plays](#2026-07-15--m6-the-startup-chime-plays)
+- **IOSB ASC stereo** → [2026-07-20 — Q8.2: Quadra 605 PrimeTime/IOSB ASC stereo](#2026-07-20--q82-quadra-605-primetimeiosb-asc-stereo)
+- **the Mac II classic-ASC idle IRQ** → [2026-07-20 — Classic ASC idle IRQ (Mac II)](#2026-07-20--classic-asc-idle-irq-mac-ii)
+- **app sound: the pseudo-VIA ASC IRQ was edge-only** → [2026-07-17 — app sound reaches the ASC (pseudo-VIA ASC IRQ was edge-only)](#2026-07-17--app-sound-reaches-the-asc-pseudo-via-asc-irq-was-edge-only)
+- **mechanical floppy + hard-disk drive sounds** → [2026-07-23 — Mechanical drive sounds (floppy + SCSI hard disk)](#2026-07-23--mechanical-drive-sounds-floppy--scsi-hard-disk)
+
+### Serial, LocalTalk and AppleTalk
+
+- **SCC receive path + the LToUDP virtual cable** → [2026-07-22 — LLAP milestone 1: SCC receive path + LToUDP virtual cable](#2026-07-22--llap-milestone-1-scc-receive-path--ltoudp-virtual-cable)
+- **two Systems acquiring LLAP addresses across the cable** → [2026-07-22 — LLAP two-System etalon: real address acquisition between two Systems](#2026-07-22--llap-two-system-etalon-real-address-acquisition-between-two-systems)
+- **the guest programs the wire pace (async baud)** → [2026-07-23 — SCC async-baud machinery: the guest programs the wire pace now](#2026-07-23--scc-async-baud-machinery-the-guest-programs-the-wire-pace-now)
+- **a real transmitter on the wire** → [2026-07-23 — SCC Tx/Rx engine: the wire gets a real transmitter (Medium tier)](#2026-07-23--scc-txrx-engine-the-wire-gets-a-real-transmitter-medium-tier)
+- **the virgin line reads clean; `POM68K_SCC_CLEANLINE` retired** → [2026-07-28 — LLE step 7: the virgin line reads clean…](#2026-07-28--lle-step-7-the-virgin-line-reads-clean-pom68k_scc_cleanline-retired)
+- **real LLAP carrier sense — the LocalTalk watchdogs deleted** → [2026-07-21 — LLE step 3: real LLAP carrier sense…](#2026-07-21--lle-step-3-real-llap-carrier-sense--localtalk-watchdogs-deleted)
+- **the whole AppleTalk stack moves in-process** → [2026-07-24 — AppleTalk moves in-process…](#2026-07-24--appletalk-moves-in-process-noderouter--appleshare--laserwriter--macip-one-gui-window)
+- **the netatalk 2.4.9 + TashRouter bridge it replaced** → [2026-07-22 — AppleShare bridge vendored: netatalk 2.4.9 + TashRouter](#2026-07-22--appleshare-bridge-vendored-netatalk-249--tashrouter)
+- **the Egret XPRAM protocol fix that makes AppleTalk genuinely inactive** → [2026-07-16 — O6.11 RESOLVED: GISTPERSO boots to the Finder…](#2026-07-16--o611-resolved-gistperso-boots-to-the-finder--egret-xpram-protocol-fix-makes-appletalk-genuinely-inactive)
+- **LocalTalk LAP: SCC abort stream + HLE watchdog** → [2026-07-16 — O6.11: LocalTalk LAP — SCC abort stream + HLE watchdog](#2026-07-16--o611-localtalk-lap--scc-abort-stream--hle-watchdog)
+- **SCC word fast path** → [2026-07-20 — O6.13: SCC word fast path + LC II NOFPU diagnosis](#2026-07-20--o613-scc-word-fast-path--lc-ii-nofpu-diagnosis)
+
+### LLE-vs-HLE migration (the numbered series)
+
+- **step 1 — Mac II boots an UNMODIFIED ROM** → [2026-07-21 — LLE step 1: Mac II boots an UNMODIFIED ROM (RTC was mute, then…](#2026-07-21--lle-step-1-mac-ii-boots-an-unmodified-rom-rtc-was-mute-then-bit-shifted)
+- **step 2 — per-tick SPConfig clamps removed** → [2026-07-21 — LLE step 2: per-tick SPConfig clamps removed (all three machines)](#2026-07-21--lle-step-2-per-tick-spconfig-clamps-removed-all-three-machines)
+- **step 3 — real LLAP carrier sense** → [2026-07-21 — LLE step 3: real LLAP carrier sense…](#2026-07-21--lle-step-3-real-llap-carrier-sense--localtalk-watchdogs-deleted)
+- **step 4 — Mac II EvQ soft-post deleted** → [2026-07-21 — LLE step 4: Mac II EvQ soft-post deleted…](#2026-07-21--lle-step-4-mac-ii-evq-soft-post-deleted--alerts-dismissed-over-real-adb)
+- **step 5 — UniversalInfo FPU masking deleted** → [2026-07-21 — LLE step 5: UniversalInfo FPU masking deleted…](#2026-07-21--lle-step-5-universalinfo-fpu-masking-deleted-bare-no-fpu-fully-mapped)
+- **step 6 — DAFB toward MAME parity** → [2026-07-21 — LLE step 6: DAFB toward MAME parity (Swatch CRTC, Gazelle, sense)](#2026-07-21--lle-step-6-dafb-toward-mame-parity-swatch-crtc-gazelle-sense)
+- **step 7 — Cuda/Egret wire-model redo** → [2026-07-22 — LLE step 7: Cuda/Egret wire-model redo (the per-reader hacks are gone)](#2026-07-22--lle-step-7-cudaegret-wire-model-redo-the-per-reader-hacks-are-gone)
+- **step 7 — the virgin SCC line** → [2026-07-28 — LLE step 7: the virgin line reads clean…](#2026-07-28--lle-step-7-the-virgin-line-reads-clean-pom68k_scc_cleanline-retired)
+- **step 9 — TurboSCSI wait states** → [2026-07-23 — LLE step 9 (partial): TurboSCSI wait-state cell…](#2026-07-23--lle-step-9-partial-turboscsi-wait-state-cell--53c96-scheduled-delays)
+- **step 9 closed; the quick wins are exhausted** → [2026-07-23 — LLE audit: step 9 closed, the quick wins are exhausted](#2026-07-23--lle-audit-step-9-closed-the-quick-wins-are-exhausted)
+- **inventory re-synced to the live tree** → [2026-07-22 — `docs/LLE_VS_HLE.md` third pass…](#2026-07-22--docslle_vs_hlemd-third-pass-inventory-re-synced-to-the-live-tree)
+- **…and again, with the CD/floppy work** → [2026-07-29 (later) — SCSI CD-ROM support, a guest-level floppy gate…](#2026-07-29-later--scsi-cd-rom-support-a-guest-level-floppy-gate-and-the-lle-inventory-re-synced)
+
+### Machine bring-ups, in the order they landed
+
+- **Macintosh Plus — first real-ROM boot** → [2026-07-14 — M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+- **Plus — cycle-accurate boot hardware** → [2026-07-14 — M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
+- **Plus — System 6.0.5 from floppy** → [2026-07-14 — M5: System 6.0.5 boots to the Finder from floppy](#2026-07-14--m5-system-605-boots-to-the-finder-from-floppy)
+- **Plus — keyboard + mouse** → [2026-07-14 — M5.5: the Finder is drivable (keyboard + mouse)](#2026-07-14--m55-the-finder-is-drivable-keyboard--mouse)
+- **Plus — SCSI hard disk** → [2026-07-15 — M7: System 6 boots from a SCSI hard disk](#2026-07-15--m7-system-6-boots-from-a-scsi-hard-disk)
+- **Mac LC II — first six slices** → [2026-07-15 — O6 (LC II machine): first six slices](#2026-07-15--o6-lc-ii-machine-first-six-slices)
+- **LC II — the blinking-? screen** → [2026-07-15 — O6: the LC II ROM boots to the blinking-? screen](#2026-07-15--o6-the-lc-ii-rom-boots-to-the-blinking--screen)
+- **LC II — the Finder desktop** → [2026-07-15 — O6: **Mac LC II boots to the Finder desktop**](#2026-07-15--o6-mac-lc-ii-boots-to-the-finder-desktop)
+- **Macintosh II — System 6** → [2026-07-20 — Mac II boots System 6 to the Finder](#2026-07-20--mac-ii-boots-system-6-to-the-finder)
+- **Mac II — System 7** → [2026-07-20 — Mac II Sys7 → Finder (AppleTalk alert dismiss)](#2026-07-20-macii-sys7-finder)
+- **Quadra 605 — Mac OS 8.1 desktop** → [2026-07-20 — Q6.6 RESOLVED: Mac OS 8.1 boots the Quadra 605 (68LC040) to the…](#2026-07-20--q66-resolved-mac-os-81-boots-the-quadra-605-68lc040-to-the-finder-desktop--two-blockers-the-fpu-trap-and-a-dma-final-chunk-status-race)
+- **Quadra 605 — GUI profile, audio, ROM discovery** → [2026-07-20 — Q7: Quadra 605 GUI profile, audio and ROM discovery](#2026-07-20--q7-quadra-605-gui-profile-audio-and-rom-discovery)
+- **Macintosh LC (68020) and Classic II (Eagle)** → [2026-07-24 — Phase C: Macintosh LC (68020) and Classic II (Eagle) boot to the Finder](#2026-07-24--phase-c-macintosh-lc-68020-and-classic-ii-eagle-boot-to-the-finder)
+- **Color Classic (Spice + Cuda) and LC III (Sonora + Egret)** → [2026-07-24 — Phase C: Color Classic (Spice…](#2026-07-24--phase-c-color-classic-spice--cuda-lle-and-lc-iii-sonora--egret-lle)
+- **LC 475 (68LC040) and LC III+ (33 MHz Sonora)** → [2026-07-24 — Phase C: LC 475 (68LC040 + Cuda LLE) and LC III+ (33 MHz Sonora +…](#2026-07-24--phase-c-lc-475-68lc040--cuda-lle-and-lc-iii-33-mhz-sonora--egret-lle)
+- **LC 520 — the EDE66CBD all-in-one family, cracked from the ROM** → [2026-07-24 — Phase C: Macintosh LC 520 — the EDE66CBD all-in-one family boots…](#2026-07-24--phase-c-macintosh-lc-520--the-ede66cbd-all-in-one-family-boots-cuda-341s0060-lle)
+- **LC 550 and Color Classic II** → [2026-07-24 — Phase C: LC 550 and Color Classic II…](#2026-07-24--phase-c-lc-550-and-color-classic-ii--the-aio-family-fans-out)
+- **Mac IIvx / IIvi (VASP) — *inside* the floppy-persistence entry** → [2026-07-24 — Floppy write persistence (gate `floppy_persist_test`)](#2026-07-24--floppy-write-persistence-gate-floppy_persist_test)
+- **Centris 650 / 610 (djMEMC + IOSB)** → [2026-07-24 — Phase C: Mac Centris 650 + Centris 610 (djMEMC + IOSB, PIC1654S LLE)](#2026-07-24--phase-c-mac-centris-650--centris-610-djmemc--iosb-pic1654s-lle)
+- **Quadra 650 / 610** → [2026-07-24 — Phase C: Quadra 650 + Quadra 610 (full 68040 on the djMEMC+IOSB machine)](#2026-07-24--phase-c-quadra-650--quadra-610-full-68040-on-the-djmemciosb-machine)
+- **Mac TV, IIsi, IIci, IIx, IIcx** → [2026-07-25 — Five more machines: Mac TV, IIsi, IIci, IIx, IIcx](#2026-07-25--five-more-machines-mac-tv-iisi-iici-iix-iicx)
+- **Quadra 800** → [2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
+- **Macintosh SE, SE FDHD, Classic (one enum, not a machine)** → [2026-07-25 — Macintosh SE, SE FDHD and Classic…](#2026-07-25--macintosh-se-se-fdhd-and-classic-three-machines-for-one-enum)
+- **Quadra 630 / LC 580 (F108 + Valkyrie)** → [2026-07-25 — Macintosh Quadra 630 / LC 580…](#2026-07-25--macintosh-quadra-630--lc-580-f108--valkyrie-the-last-68k-desktop-board)
+- **Quadra 700 (the first discrete-040 board)** → [2026-07-25 — Macintosh Quadra 700: the 27th machine…](#2026-07-25--macintosh-quadra-700-the-27th-machine-and-the-dafb-turboscsi-cell)
+
+### Audits, doc syncs and cross-cutting reviews
+
+- **adversarial subsystem audit — 3 fixes** → [2026-07-17 — adversarial subsystem audit: 3 correctness fixes](#2026-07-17--adversarial-subsystem-audit-3-correctness-fixes)
+- **adversarial subsystem audit #2 — 9 fixes** → [2026-07-17 — adversarial subsystem audit #2: 9 correctness fixes](#2026-07-17--adversarial-subsystem-audit-2-9-correctness-fixes)
+- **8-angle bug hunt + UI work** → [2026-07-16 — review fixes (8-angle bug hunt) + UI…](#2026-07-16--review-fixes-8-angle-bug-hunt--ui-mouse-capture-drag-fix-machine-menu)
+- **Basilisk II knowledge applied (rominfo, XPRAM defaults)** → [2026-07-15 — Basilisk II knowledge applied: rominfo, XPRAM defaults](#2026-07-15--basilisk-ii-knowledge-applied-rominfo-xpram-defaults)
+- **the Finder boot matrix, Phase A** → [2026-07-21 — Finder matrix Phase A complete (all four machines)](#2026-07-21--finder-matrix-phase-a-complete-all-four-machines)
+- **status pass: what is actually left** → [2026-07-25 — Doc sync + status pass: 25 machines, 90 gates, what is actually left](#2026-07-25--doc-sync--status-pass-25-machines-90-gates-what-is-actually-left)
+
+---
+
+## Index by date
+
+All 157 entries, newest first.
+
+- **2026-07-31** — [The window-churn investigation ends on one deleted line: −23 to −33 %](#2026-07-31-window-churn-dtlb-flush)
+- **2026-07-30** — [The five opcodes, same day: MOVEM + DBcc + JMP compiled](#2026-07-30--the-five-opcodes-same-day-movem--dbcc--jmp-compiled)
+- **2026-07-30** — [JIT measured honestly: x64 wins both regimes; the next lever is 5 opcodes](#2026-07-30--jit-measured-honestly-x64-wins-both-regimes-the-next-lever-is-5-opcodes)
+- **2026-07-30** — [`q605_savestate_etalon`: real-OS restore determinism on the 040 side](#2026-07-30--q605_savestate_etalon-real-os-restore-determinism-on-the-040-side)
+- **2026-07-30** — [Engine re-baseline (idle host) + the CPU menu reaches the 030s](#2026-07-30--engine-re-baseline-idle-host--the-cpu-menu-reaches-the-030s)
+- **2026-07-30** — [Save states in the GUI: « Sauver / Restaurer l'état »](#2026-07-30-save-states-gui)
+- **2026-07-30** — [Save-state fan-out: all 10 machine families serialize](#2026-07-30--save-state-fan-out-all-10-machine-families-serialize)
+- **2026-07-30** — [Save states survive the real Finder: `lcii_savestate_etalon`](#2026-07-30--save-states-survive-the-real-finder-lcii_savestate_etalon)
+- **2026-07-30** — [A JIT backend is valid per GUEST family, not just per host](#2026-07-30--a-jit-backend-is-valid-per-guest-family-not-just-per-host)
+- **2026-07-30** — [Save states: the archive core + the whole LC II tree](#2026-07-30--save-states-the-archive-core--the-whole-lc-ii-tree)
+- **2026-07-29 (late)** — [PGO across all four CPU families (−26 % on the LC II); the dispatch-table item measured and dropped](#2026-07-29-pgo-four-cpu-families)
+- **2026-07-29 (evening)** — [A CD mounts in the guest; .cue/.bin; and why 8.6 cannot boot](#2026-07-29-evening--a-cd-mounts-in-the-guest-cuebin-and-why-86-cannot-boot)
+- **2026-07-29 (later)** — [SCSI CD-ROM support, a guest-level floppy gate, and the LLE inventory re-synced](#2026-07-29-later--scsi-cd-rom-support-a-guest-level-floppy-gate-and-the-lle-inventory-re-synced)
+- **2026-07-29** — [Input-delivery gates for the 030 families; loud HLE fallbacks (and a retracted "bug")](#2026-07-29--input-delivery-gates-for-the-030-families-loud-hle-fallbacks-and-a-retracted-bug)
+- **2026-07-29** — [The Color Classic "0417 wedge" was a missing DFAC2, not a core bug; both factory Cudas land](#2026-07-29--the-color-classic-0417-wedge-was-a-missing-dfac2-not-a-core-bug-both-factory-cudas-land)
+- **2026-07-28** — [LLE step 7: the virgin line reads clean; `POM68K_SCC_CLEANLINE` retired](#2026-07-28--lle-step-7-the-virgin-line-reads-clean-pom68k_scc_cleanline-retired)
+- **2026-07-28 (eighth pass)** — [O(1) probes, per-space eviction, and the 020 seam](#2026-07-28-eighth-pass--o1-probes-per-space-eviction-and-the-020-seam)
+- **2026-07-28 (seventh pass)** — [All four 030 families under the engine](#2026-07-28-seventh-pass--all-four-030-families-under-the-engine)
+- **2026-07-28 (sixth pass)** — [The JIT reaches the 68030: the V8 family](#2026-07-28-sixth-pass--the-jit-reaches-the-68030-the-v8-family)
+- **2026-07-28 (fifth pass)** — [The "PGO divergence" was the U bit all along](#2026-07-28-fifth-pass--the-pgo-divergence-was-the-u-bit-all-along)
+- **2026-07-28 (fourth pass)** — [The data window and PGO: the interpreter's turn](#2026-07-28-fourth-pass--the-data-window-and-pgo-the-interpreters-turn)
+- **2026-07-28 (third pass)** — [The density work, and what it finally measured](#2026-07-28-third-pass--the-density-work-and-what-it-finally-measured)
+- **2026-07-28 (later)** — [Block linking, and LINK/UNLK/NOP out of the exclusion list](#2026-07-28-later--block-linking-and-linkunlknop-out-of-the-exclusion-list)
+- **2026-07-28** — [The x86-64 code generator (J2), and what it measured](#2026-07-28--the-x86-64-code-generator-j2-and-what-it-measured)
+- **2026-07-27** — [A second execution engine: the multi-target JIT (J0 + J1)](#2026-07-27--a-second-execution-engine-the-multi-target-jit-j0--j1)
+- **2026-07-27** — [The Macintosh TV boots again: a 2 % MCU shift is a deadlock](#2026-07-27--the-macintosh-tv-boots-again-a-2--mcu-shift-is-a-deadlock)
+- **2026-07-27** — [Three DAFB clock generators, the pseudo-VIA's second flavour, two GUI races](#2026-07-27--three-dafb-clock-generators-the-pseudo-vias-second-flavour-two-gui-races)
+- **2026-07-25** — [Macintosh Quadra 700: the 27th machine, and the DAFB TurboSCSI cell](#2026-07-25--macintosh-quadra-700-the-27th-machine-and-the-dafb-turboscsi-cell)
+- **2026-07-25** — [Macintosh Quadra 630 / LC 580: F108 + Valkyrie, the last 68k desktop board](#2026-07-25--macintosh-quadra-630--lc-580-f108--valkyrie-the-last-68k-desktop-board)
+- **2026-07-25** — [Macintosh SE, SE FDHD and Classic: three machines for one enum](#2026-07-25--macintosh-se-se-fdhd-and-classic-three-machines-for-one-enum)
+- **2026-07-25** — [Quadra 800 (26th machine), the 040 boost ceiling lifted, and the PIC co-step un-boosted](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
+- **2026-07-25** — [The i-cache boost was accelerating the VIA bus: LC III / LC III+ / IIvx fixed, and the IIsi's boost restored](#2026-07-25--the-i-cache-boost-was-accelerating-the-via-bus-lc-iii--lc-iii--iivx-fixed-and-the-iisis-boost-restored)
+- **2026-07-25** — [Doc sync + status pass: 25 machines, 90 gates, what is actually left](#2026-07-25--doc-sync--status-pass-25-machines-90-gates-what-is-actually-left)
+- **2026-07-25** — [Five more machines: Mac TV, IIsi, IIci, IIx, IIcx](#2026-07-25--five-more-machines-mac-tv-iisi-iici-iix-iicx)
+- **2026-07-24** — [Phase C: Quadra 650 + Quadra 610 (full 68040 on the djMEMC+IOSB machine)](#2026-07-24--phase-c-quadra-650--quadra-610-full-68040-on-the-djmemciosb-machine)
+- **2026-07-24** — [Phase C: Mac Centris 650 + Centris 610 (djMEMC + IOSB, PIC1654S LLE)](#2026-07-24--phase-c-mac-centris-650--centris-610-djmemc--iosb-pic1654s-lle)
+- **2026-07-24** — [AppleTalk moves in-process: node/router + AppleShare + LaserWriter + MacIP, one GUI window](#2026-07-24--appletalk-moves-in-process-noderouter--appleshare--laserwriter--macip-one-gui-window)
+- **2026-07-24** — [Beyond-boot gates on the LC II + a clock-drift bug they caught](#2026-07-24--beyond-boot-gates-on-the-lc-ii--a-clock-drift-bug-they-caught)
+- **2026-07-24** — [Floppy write persistence (gate `floppy_persist_test`)](#2026-07-24--floppy-write-persistence-gate-floppy_persist_test)
+- **2026-07-24** — [Phase C: LC 550 and Color Classic II — the AIO family fans out](#2026-07-24--phase-c-lc-550-and-color-classic-ii--the-aio-family-fans-out)
+- **2026-07-24** — [Phase C: Macintosh LC 520 — the EDE66CBD all-in-one family boots (Cuda 341S0060 LLE)](#2026-07-24--phase-c-macintosh-lc-520--the-ede66cbd-all-in-one-family-boots-cuda-341s0060-lle)
+- **2026-07-24** — [Phase C: LC 475 (68LC040 + Cuda LLE) and LC III+ (33 MHz Sonora + Egret LLE)](#2026-07-24--phase-c-lc-475-68lc040--cuda-lle-and-lc-iii-33-mhz-sonora--egret-lle)
+- **2026-07-24** — [Phase C: Color Classic (Spice + Cuda LLE) and LC III (Sonora + Egret LLE)](#2026-07-24--phase-c-color-classic-spice--cuda-lle-and-lc-iii-sonora--egret-lle)
+- **2026-07-24** — [Phase C: Macintosh LC (68020) and Classic II (Eagle) boot to the Finder](#2026-07-24--phase-c-macintosh-lc-68020-and-classic-ii-eagle-boot-to-the-finder)
+- **2026-07-24** — [Event-driven ADB wire: the Egret firmware LLE is the LC II DEFAULT](#2026-07-24--event-driven-adb-wire-the-egret-firmware-lle-is-the-lc-ii-default)
+- **2026-07-23** — [ADB Talk R0 answers on PENDING data, not on changed bytes](#2026-07-23--adb-talk-r0-answers-on-pending-data-not-on-changed-bytes)
+- **2026-07-23** — [LC II: Egret firmware LLE back to OPT-IN (mouse starvation)](#2026-07-23--lc-ii-egret-firmware-lle-back-to-opt-in-mouse-starvation)
+- **2026-07-23** — [IWM write engine + GCR write-back: floppies are writable](#2026-07-23--iwm-write-engine--gcr-write-back-floppies-are-writable)
+- **2026-07-23** — [Mechanical drive sounds (floppy + SCSI hard disk)](#2026-07-23--mechanical-drive-sounds-floppy--scsi-hard-disk)
+- **2026-07-23** — [SWIM2: the real cell engines (MFM cell timing + CRC)](#2026-07-23--swim2-the-real-cell-engines-mfm-cell-timing--crc)
+- **2026-07-23** — [LLE audit: step 9 closed, the quick wins are exhausted](#2026-07-23--lle-audit-step-9-closed-the-quick-wins-are-exhausted)
+- **2026-07-23** — [SCC Tx/Rx engine: the wire gets a real transmitter (Medium tier)](#2026-07-23--scc-txrx-engine-the-wire-gets-a-real-transmitter-medium-tier)
+- **2026-07-23** — [The LC II runs the real Egret firmware too (same day, same glue)](#2026-07-23--the-lc-ii-runs-the-real-egret-firmware-too-same-day-same-glue)
+- **2026-07-23** — [The real Cuda firmware is the Quadra's DEFAULT (blueprint step 4)](#2026-07-23--the-real-cuda-firmware-is-the-quadras-default-blueprint-step-4)
+- **2026-07-23** — [Mac OS 8.1 boots to the Finder on the REAL Cuda firmware (blueprint step 3)](#2026-07-23--mac-os-81-boots-to-the-finder-on-the-real-cuda-firmware-blueprint-step-3)
+- **2026-07-23** — [M68HC05E1 core: the real Cuda firmware executes (step 10 groundwork)](#2026-07-23--m68hc05e1-core-the-real-cuda-firmware-executes-step-10-groundwork)
+- **2026-07-23** — [SCC async-baud machinery: the guest programs the wire pace now](#2026-07-23--scc-async-baud-machinery-the-guest-programs-the-wire-pace-now)
+- **2026-07-23** — [Toby: CRTC-derived frame clock + the register file actually writes](#2026-07-23--toby-crtc-derived-frame-clock--the-register-file-actually-writes)
+- **2026-07-23** — [LLE step 9 (partial): TurboSCSI wait-state cell + 53C96 scheduled delays](#2026-07-23--lle-step-9-partial-turboscsi-wait-state-cell--53c96-scheduled-delays)
+- **2026-07-22** — [`docs/LLE_VS_HLE.md` third pass: inventory re-synced to the live tree](#2026-07-22--docslle_vs_hlemd-third-pass-inventory-re-synced-to-the-live-tree)
+- **2026-07-22** — [LLE step 7: Cuda/Egret wire-model redo (the per-reader hacks are gone)](#2026-07-22--lle-step-7-cudaegret-wire-model-redo-the-per-reader-hacks-are-gone)
+- **2026-07-22** — [AppleShare bridge vendored: netatalk 2.4.9 + TashRouter](#2026-07-22--appleshare-bridge-vendored-netatalk-249--tashrouter)
+- **2026-07-22** — [LLAP two-System etalon: real address acquisition between two Systems](#2026-07-22--llap-two-system-etalon-real-address-acquisition-between-two-systems)
+- **2026-07-22** — [LLAP milestone 1: SCC receive path + LToUDP virtual cable](#2026-07-22--llap-milestone-1-scc-receive-path--ltoudp-virtual-cable)
+- **2026-07-22** — [dir2hfs: host folder → desktop volume (data-only flat-HFS façade)](#2026-07-22-dir2hfs)
+- **2026-07-22** — [Mac II LLE ADB default: mouse moves; three bugs, none where predicted](#2026-07-22--mac-ii-lle-adb-default-mouse-moves-three-bugs-none-where-predicted)
+- **2026-07-22** — [Mac II ADB goes LLE: real PIC1654S transceiver (opt-in)](#2026-07-22--mac-ii-adb-goes-lle-real-pic1654s-transceiver-opt-in)
+- **2026-07-21** — [Bare no-FPU solved: _FP68K binds the integer PACK 4 (Cuda XPRAM echo bug)](#2026-07-21--bare-no-fpu-solved-_fp68k-binds-the-integer-pack-4-cuda-xpram-echo-bug)
+- **2026-07-21** — [DAFB extracted into Dafb.h/.cpp (one concern per file)](#2026-07-21--dafb-extracted-into-dafbhcpp-one-concern-per-file)
+- **2026-07-21** — [LLE step 6: DAFB toward MAME parity (Swatch CRTC, Gazelle, sense)](#2026-07-21--lle-step-6-dafb-toward-mame-parity-swatch-crtc-gazelle-sense)
+- **2026-07-21** — [LLE step 5: UniversalInfo FPU masking deleted; bare no-FPU fully mapped](#2026-07-21--lle-step-5-universalinfo-fpu-masking-deleted-bare-no-fpu-fully-mapped)
+- **2026-07-21** — [LLE step 4: Mac II EvQ soft-post deleted — alerts dismissed over real ADB](#2026-07-21--lle-step-4-mac-ii-evq-soft-post-deleted--alerts-dismissed-over-real-adb)
+- **2026-07-21** — [LLE step 3: real LLAP carrier sense — LocalTalk watchdogs deleted](#2026-07-21--lle-step-3-real-llap-carrier-sense--localtalk-watchdogs-deleted)
+- **2026-07-21** — [LLE step 2: per-tick SPConfig clamps removed (all three machines)](#2026-07-21--lle-step-2-per-tick-spconfig-clamps-removed-all-three-machines)
+- **2026-07-21** — [LLE step 1: Mac II boots an UNMODIFIED ROM (RTC was mute, then bit-shifted)](#2026-07-21--lle-step-1-mac-ii-boots-an-unmodified-rom-rtc-was-mute-then-bit-shifted)
+- **2026-07-21** — [Plus keyboard regression (6522 SR auto-shift) + nofpu gate floor](#2026-07-21--plus-keyboard-regression-6522-sr-auto-shift--nofpu-gate-floor)
+- **2026-07-21** — [Finder matrix Phase A complete (all four machines)](#2026-07-21--finder-matrix-phase-a-complete-all-four-machines)
+- **2026-07-21** — [Q605 Sys 7.5.5 / 7.6 → Finder (53C96 polled WRITE)](#2026-07-21-q605-sys755-76-finder)
+- **2026-07-21** — [Q605 Sys 7.5 / GISTPERSO Finder at 1bpp; 7.5.5/7.6 hang](#2026-07-21--q605-sys-75--gistperso-finder-at-1bpp-75576-hang)
+- **2026-07-20** — [LC II Sys 7.1 / 7.5.5 → Finder (SPConfig clamp)](#2026-07-20-lcii-sys71-755-finder)
+- **2026-07-20** — [Mac II Sys7 → Finder (AppleTalk alert dismiss)](#2026-07-20-macii-sys7-finder)
+- **2026-07-20** — [Classic ASC idle IRQ (Mac II)](#2026-07-20--classic-asc-idle-irq-mac-ii)
+- **2026-07-20** — [SCSI flat-HFS façade](#2026-07-20--scsi-flat-hfs-façade)
+- **2026-07-20** — [Mac II boots System 6 to the Finder](#2026-07-20--mac-ii-boots-system-6-to-the-finder)
+- **2026-07-20** — [Mac II: overlay is a one-way latch](#2026-07-20--mac-ii-overlay-is-a-one-way-latch)
+- **2026-07-20** — [Mac II: PDMA $50F060xx must decode A0..A1](#2026-07-20--mac-ii-pdma-50f060xx-must-decode-a0a1)
+- **2026-07-20** — [Mac II: prefer SCSI boot over empty floppy](#2026-07-20--mac-ii-prefer-scsi-boot-over-empty-floppy)
+- **2026-07-20** — [Mac II: StartBoot wantType=$FF was skipping Apple_HFS](#2026-07-20--mac-ii-startboot-wanttypeff-was-skipping-apple_hfs)
+- **2026-07-20** — [O6.13: SCC word fast path + LC II NOFPU diagnosis](#2026-07-20--o613-scc-word-fast-path--lc-ii-nofpu-diagnosis)
+- **2026-07-20** — [Q8.8: CACHE_BOOST calibration (default stays 1)](#2026-07-20--q88-cache_boost-calibration-default-stays-1)
+- **2026-07-20** — [Q8.6: SWIM2 SuperDrive media (MFM 1.44 + GCR)](#2026-07-20--q86-swim2-superdrive-media-mfm-144--gcr)
+- **2026-07-20** — [Q8.7: 040 I/D ATC + Cpu040 throughput overlay](#2026-07-20--q87-040-id-atc--cpu040-throughput-overlay)
+- **2026-07-20** — [Q8.5: 68LC040 NOFPU path (soft FPU; bare NONE = dsNoFPU 90)](#2026-07-20--q85-68lc040-nofpu-path-soft-fpu-bare-none--dsnofpu-90)
+- **2026-07-20** — [Q8.4: SWIM2 register/FIFO core replaces the zero stub](#2026-07-20--q84-swim2-registerfifo-core-replaces-the-zero-stub)
+- **2026-07-20** — [Q8.3: Quadra 605 whole-machine boot gate](#2026-07-20--q83-quadra-605-whole-machine-boot-gate)
+- **2026-07-20** — [Q8.2: Quadra 605 PrimeTime/IOSB ASC stereo](#2026-07-20--q82-quadra-605-primetimeiosb-asc-stereo)
+- **2026-07-20** — [Q8.1: DAFB stride/depth model and 256-color host rendering](#2026-07-20--q81-dafb-stridedepth-model-and-256-color-host-rendering)
+- **2026-07-20** — [Q7: Quadra 605 GUI profile, audio and ROM discovery](#2026-07-20--q7-quadra-605-gui-profile-audio-and-rom-discovery)
+- **2026-07-20** — [Q6.6 RESOLVED: Mac OS 8.1 boots the Quadra 605 (68LC040) to the Finder desktop — two blockers, the FPU trap and a DMA-final-chunk STATUS race](#2026-07-20--q66-resolved-mac-os-81-boots-the-quadra-605-68lc040-to-the-finder-desktop--two-blockers-the-fpu-trap-and-a-dma-final-chunk-status-race)
+- **2026-07-19** — [Q6.5d RESOLVED: dsBadPatch(99) was a 53C96 FIFO-count lie that sent the OS SCSI Manager's resource read into its DISCARD engine](#2026-07-19--q65d-resolved-dsbadpatch99-was-a-53c96-fifo-count-lie-that-sent-the-os-scsi-managers-resource-read-into-its-discard-engine)
+- **2026-07-19** — [Q6.5b/c: the async SCSI SIM crash + the SCC/reselection spin are BOTH fixed — the boot loads System, applies patches, stops at dsBadPatch](#2026-07-19--q65bc-the-async-scsi-sim-crash--the-sccreselection-spin-are-both-fixed--the-boot-loads-system-applies-patches-stops-at-dsbadpatch)
+- **2026-07-19** — [Q6.5: the boot restart loop is ACTUALLY resolved — the ROM's POST XPRAM validity read uses a THIRD Cuda framing (direct-driver GetPram)](#2026-07-19--q65-the-boot-restart-loop-is-actually-resolved--the-roms-post-xpram-validity-read-uses-a-third-cuda-framing-direct-driver-getpram)
+- **2026-07-19** — [Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the block-0 loop were one coupled Cuda-reply-framing bug; the System now loads](#2026-07-19--q64--q62-both-resolved-the-boot-restart-loop-and-the-block-0-loop-were-one-coupled-cuda-reply-framing-bug-the-system-now-loads)
+- **2026-07-19** — [[superseded within the day] Q6.4 root-caused, un-masking Q6.2](#2026-07-19--superseded-within-the-day-q64-root-caused-un-masking-q62)
+- **2026-07-19** — [Q6.4 re-localized: it is a System-launch HANDOFF failure, NOT a Cuda reply-framing bug (the prior "completion ISR buffer-smash" lead is disproven; no fix landed yet)](#2026-07-19--q64-re-localized-it-is-a-system-launch-handoff-failure-not-a-cuda-reply-framing-bug-the-prior-completion-isr-buffer-smash-lead-is-disproven-no-fix-landed-yet)
+- **2026-07-19** — [Q6.4 deeply localized: the console divert is a periodic boot-RESTART loop, not a fault — several candidates ruled out (no fix yet)](#2026-07-19--q64-deeply-localized-the-console-divert-is-a-periodic-boot-restart-loop-not-a-fault--several-candidates-ruled-out-no-fix-yet)
+- **2026-07-19** — [Q6.3 RESOLVED: SCSI multi-block read — the polled ($10) Transfer Info needed the DATA IN bus-service interrupt](#2026-07-19--q63-resolved-scsi-multi-block-read--the-polled-10-transfer-info-needed-the-data-in-bus-service-interrupt)
+- **2026-07-19** — [Q6.2 RESOLVED: the block-0 re-read loop was a Cuda ReadXPram reply-framing divergence — the boot now loads the driver, partition map and System (progresses to a new SCSI blocker)](#2026-07-19--q62-resolved-the-block-0-re-read-loop-was-a-cuda-readxpram-reply-framing-divergence--the-boot-now-loads-the-driver-partition-map-and-system-progresses-to-a-new-scsi-blocker)
+- **2026-07-18** — [Q6.1: 53C96 pseudo-DMA reads work — the Mac OS 8.1 SCSI driver now transfers full 512-byte blocks off the disk](#2026-07-18--q61-53c96-pseudo-dma-reads-work--the-mac-os-81-scsi-driver-now-transfers-full-512-byte-blocks-off-the-disk)
+- **2026-07-18** — [Q5.1d: Q5 Slot-Manager blocker RESOLVED — the missing MEMCjr DAFB bus-holding split; boot now drives the SCSI bus](#2026-07-18--q51d-q5-slot-manager-blocker-resolved--the-missing-memcjr-dafb-bus-holding-split-boot-now-drives-the-scsi-bus)
+- **2026-07-18** — [Q5.1c: the fatal `_sReadStruct` fully anatomised; DrHW pick proven correct; full-machine oracle blocked (round 2)](#2026-07-18--q51c-the-fatal-_sreadstruct-fully-anatomised-drhw-pick-proven-correct-full-machine-oracle-blocked-round-2)
+- **2026-07-18** — [Q6: NCR 53C96 wired into the Quadra 605 + the sReadWord producer chain pinned (boot-integration round 1)](#2026-07-18--q6-ncr-53c96-wired-into-the-quadra-605--the-sreadword-producer-chain-pinned-boot-integration-round-1)
+- **2026-07-18** — [Q5.1a: the Slot-Manager blocker re-localized — the DAFB-sense theory is disproven, the fault is a decl-ROM parse](#2026-07-18--q51a-the-slot-manager-blocker-re-localized--the-dafb-sense-theory-is-disproven-the-fault-is-a-decl-rom-parse)
+- **2026-07-18** — [Q3: the 68040 MMU translates in Moira — full grid 7 200/7 200 pinned, the LC 475 CPU side is complete](#2026-07-18--q3-the-68040-mmu-translates-in-moira--full-grid-7-2007-200-pinned-the-lc-475-cpu-side-is-complete)
+- **2026-07-18** — [Q2+Q4: the 68LC040 integer core executes in Moira, WinUAE-differential (5 400/5 400), no-FPU F-line included](#2026-07-18--q2q4-the-68lc040-integer-core-executes-in-moira-winuae-differential-5-4005-400-no-fpu-f-line-included)
+- **2026-07-18** — [GISTPERSO (7.5) boot hang: heap corruption racing an app launch at Finder startup — NOT the pending changes, NOT the disk](#2026-07-18--gistperso-75-boot-hang-heap-corruption-racing-an-app-launch-at-finder-startup--not-the-pending-changes-not-the-disk)
+- **2026-07-17** — [LC II runs on a dedicated machine thread; boot & secondary SCSI volumes selectable from a "Disques" menu](#2026-07-17--lc-ii-runs-on-a-dedicated-machine-thread-boot--secondary-scsi-volumes-selectable-from-a-disques-menu)
+- **2026-07-17** — [i-cache overlay folded into Moira's fetch path (-15%)](#2026-07-17--i-cache-overlay-folded-into-moiras-fetch-path--15)
+- **2026-07-17** — [Lode Runner "dead arrow keys": not a bug — the game binds the numeric keypad by default](#2026-07-17--lode-runner-dead-arrow-keys-not-a-bug--the-game-binds-the-numeric-keypad-by-default)
+- **2026-07-17** — [Performance pass: 0.40× → 1.91× realtime at the Finder (the sound stutter was the emulator falling behind real time)](#2026-07-17-performance-pass-realtime)
+- **2026-07-17** — [Lode Runner launch freeze: odd-SP interrupt frames were corrupt (vendored Moira fix) + sound tempo locked to the host DAC](#2026-07-17--lode-runner-launch-freeze-odd-sp-interrupt-frames-were-corrupt-vendored-moira-fix--sound-tempo-locked-to-the-host-dac)
+- **2026-07-17** — [SC2K "coprocesseur absent" ROOT-CAUSED AND FIXED: Egret mid-flight packet retraction manufactured ghost ADB sessions](#2026-07-17--sc2k-coprocesseur-absent-root-caused-and-fixed-egret-mid-flight-packet-retraction-manufactured-ghost-adb-sessions)
+- **2026-07-17** — [68030 instruction-cache timing overlay (replaces the flat boost)](#2026-07-17--68030-instruction-cache-timing-overlay-replaces-the-flat-boost)
+- **2026-07-17** — [retire the adaptive cache boost for a constant ratio](#2026-07-17--retire-the-adaptive-cache-boost-for-a-constant-ratio)
+- **2026-07-17** — [app sound reaches the ASC (pseudo-VIA ASC IRQ was edge-only)](#2026-07-17--app-sound-reaches-the-asc-pseudo-via-asc-irq-was-edge-only)
+- **2026-07-17** — [adaptive cache boost (fixes big-city SimCity crash)](#2026-07-17--adaptive-cache-boost-fixes-big-city-simcity-crash)
+- **2026-07-17** — [adversarial subsystem audit #2: 9 correctness fixes](#2026-07-17--adversarial-subsystem-audit-2-9-correctness-fixes)
+- **2026-07-17** — [adversarial subsystem audit: 3 correctness fixes](#2026-07-17--adversarial-subsystem-audit-3-correctness-fixes)
+- **2026-07-17** — [LC II GUI defaults to 640×480](#2026-07-17-lcii-gui-640x480)
+- **2026-07-16** — [LC II keyboard: arrow keys + numeric keypad](#2026-07-16--lc-ii-keyboard-arrow-keys--numeric-keypad)
+- **2026-07-16** — [SimCity 2000 crash fixed: 68030 i-cache throughput model](#2026-07-16--simcity-2000-crash-fixed-68030-i-cache-throughput-model)
+- **2026-07-16** — [Selectable resolution (512×384 / 640×480) + per-monitor depth](#2026-07-16-selectable-resolution)
+- **2026-07-16** — [SCSI write-back (persist guest disk writes)](#2026-07-16--scsi-write-back-persist-guest-disk-writes)
+- **2026-07-16** — [LC II color (8 bpp by default) + peripheral-tick batching](#2026-07-16--lc-ii-color-8-bpp-by-default--peripheral-tick-batching)
+- **2026-07-16** — [LC II GUI showed a black screen (texture alpha)](#2026-07-16--lc-ii-gui-showed-a-black-screen-texture-alpha)
+- **2026-07-16** — [review fixes (8-angle bug hunt) + UI: mouse capture, drag fix, machine menu](#2026-07-16--review-fixes-8-angle-bug-hunt--ui-mouse-capture-drag-fix-machine-menu)
+- **2026-07-16** — [O6.11 RESOLVED: GISTPERSO boots to the Finder — Egret XPRAM protocol fix makes AppleTalk genuinely inactive](#2026-07-16--o611-resolved-gistperso-boots-to-the-finder--egret-xpram-protocol-fix-makes-appletalk-genuinely-inactive)
+- **2026-07-16** — [O6.11: LocalTalk LAP — SCC abort stream + HLE watchdog](#2026-07-16--o611-localtalk-lap--scc-abort-stream--hle-watchdog)
+- **2026-07-15** — [O6.9 resolved: GISTPERSO's vector-2 storm — RTE honors a cleared SSW.DF](#2026-07-15--o69-resolved-gistpersos-vector-2-storm--rte-honors-a-cleared-sswdf)
+- **2026-07-15** — [Basilisk II knowledge applied: rominfo, XPRAM defaults](#2026-07-15--basilisk-ii-knowledge-applied-rominfo-xpram-defaults)
+- **2026-07-15** — [O6: **Mac LC II boots to the Finder desktop**](#2026-07-15--o6-mac-lc-ii-boots-to-the-finder-desktop)
+- **2026-07-15** — [O6: the LC II ROM boots to the blinking-? screen](#2026-07-15--o6-the-lc-ii-rom-boots-to-the-blinking--screen)
+- **2026-07-15** — [O6 (LC II machine): first six slices](#2026-07-15--o6-lc-ii-machine-first-six-slices)
+- **2026-07-15** — [O5 follow-ups: 68882 timing + FRESTORE frame acceptance](#2026-07-15--o5-follow-ups-68882-timing--frestore-frame-acceptance)
+- **2026-07-15** — [Musashi oracle retired: the loop is WinUAE-solo](#2026-07-15--musashi-oracle-retired-the-loop-is-winuae-solo)
+- **2026-07-15** — [O5 slice 2: 68882 FPU execution in Moira](#2026-07-15--o5-slice-2-68882-fpu-execution-in-moira)
+- **2026-07-15** — [O4 slice 4: integer-family arbitration (O4 complete)](#2026-07-15--o4-slice-4-integer-family-arbitration-o4-complete)
+- **2026-07-15** — [O4 slice 3: the 68030 MMU bus layer (Moira translates)](#2026-07-15--o4-slice-3-the-68030-mmu-bus-layer-moira-translates)
+- **2026-07-15** — [Phase 2 live: two 68030 oracles + arbitration turn 1](#2026-07-15--phase-2-live-two-68030-oracles--arbitration-turn-1)
+- **2026-07-15** — [O4 slice 1: Moira executes the 68030 MMU instructions](#2026-07-15--o4-slice-1-moira-executes-the-68030-mmu-instructions)
+- **2026-07-15** — [M6: the startup chime plays](#2026-07-15--m6-the-startup-chime-plays)
+- **2026-07-15** — [M7: System 6 boots from a SCSI hard disk](#2026-07-15--m7-system-6-boots-from-a-scsi-hard-disk)
+- **2026-07-14** — [M5.5: the Finder is drivable (keyboard + mouse)](#2026-07-14--m55-the-finder-is-drivable-keyboard--mouse)
+- **2026-07-14** — [M5: System 6.0.5 boots to the Finder from floppy](#2026-07-14--m5-system-605-boots-to-the-finder-from-floppy)
+- **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
+- **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
+- **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-07-31-window-churn-dtlb-flush"></a>
+## 2026-07-31 — Two negative results, recorded on purpose
+
+Neither shipped anything; both are here because the next person will
+otherwise pay for them again.
+
+**An O(1) ATC lookup: correct, and worth nothing.** callgrind put
+`mmu040Translate` at **38.6 %** of the whole interpreter, so a 256-entry
+direct-mapped page→entry hint table went in front of the 32-entry linear
+scan. It was bit-exact by construction (each hint is validated against the
+live entry before use, so a stale one costs a failed compare) and green
+everywhere — `sst68040`, the smoke tier, a 60 M-step lockstep. Measured:
+interpreter 213.2 s vs 213.2 s on the 5 G regime, 906.7 s vs 903.9 s on
+20 G; x64 98.9 s vs 97.6 s. **Flat, or marginally negative.** The existing
+single-entry `last[write]` memo already catches the hot case and the
+residual scans are too short to beat. Reverted. The 38.6 % is real but it
+is the WALK and the per-access bookkeeping, not the lookup — re-open only
+with a profile that separates them.
+
+**`q605_cudalle_key_etalon` is red, and it is not a regression.** Found by
+the first full `ctest -L m040` in a while (29/30). Bisected in a clean
+worktree: it fails at `b472a7b`, the commit that INTRODUCED it, with
+byte-identical numbers. Ruled out by measurement rather than argument —
+not a wedge (Ticks advance, boot completes at the usual 5236 SCSI
+commands); not the Cuda wire (silent on the firmware LLE *and* on the HLE
+substitute); not the `peek8`-is-physical trap (`TC = 0`, translation off);
+not a missing device (`keyboardAddr` = 2, `ADBBase` = $00006DD0); not a
+dirty volume (`drVolAtrb` bit 8 set); not the too-wide-window false green
+(all sixteen bytes read 00).
+
+A full `POM68K_ADB_LLE_TRACE` run then showed the transport is CLEAN end
+to end: the guest polls Talk R0 to device 2 (2906×), our device queues
+1028 key events and emits 829 reports, the Cuda relays each one
+(TREQ → session → VIA SR), and the model matches `macadb.cpp` at every
+checked point. The guest even stamps `KeyTime` in cadence — but `KeyLast`
+stays 0 and KeyMap stays empty. **The break is inside the guest**, between
+its ADB keyboard driver and its Event Manager.
+
+A three-cell experiment (`tests/adb_key_probe.cpp`, the fourth cell is
+impossible — 8.1 needs a 68040) then exonerated the machine:
+
+| cell | KeyMap | Cmd-N repaints |
+|---|---|---|
+| LC II + System 7.5 (control) | live | yes |
+| Quadra 605 + System 7.6 | live | no |
+| Quadra 605 + Mac OS 8.1 | dead | no |
+
+Same machine, same Cuda, same `AdbLine`: keys land under 7.6 and not
+under 8.1. Two methodology notes, both paid for twice: `KeyLast` moves in
+NO cell including working ones, so it is not a usable observable; and a
+first pixel probe (256 KB of VRAM, typing a-b-c-d-e) reported "keys lost"
+on a cell where KeyMap proves they arrive, because letters select nothing
+on a bare desktop. Only the control cell caught both — believe an
+observable after it has demonstrated sensitivity, not before.
+
 ## 2026-07-31 — The window-churn investigation ends on one deleted line: −23 to −33 %
 
 The idle-Finder ceiling item ("one window death per ~15 instructions")
@@ -131,6 +573,7 @@ QuadraMachine pattern (swap on the machine thread, between two quanta).
 Shipped despite the finding above: it is the honest control surface, and
 the day the x64 backend covers the 030s the menu is already in place.
 
+<a id="2026-07-30-save-states-gui"></a>
 ## 2026-07-30 — Save states in the GUI: « Sauver / Restaurer l'état »
 
 The last structural piece of TODO § C: every machine's **Machine** menu now
@@ -348,7 +791,19 @@ currently proven only over what a synthetic counter-loop ROM exercises
 The device chunks are compile-verified, not behaviour-verified. `TODO.md § C`
 carries the remaining work in ROI order.
 
+<a id="2026-07-29-pgo-four-cpu-families"></a>
 ## 2026-07-29 (late) — PGO across all four CPU families (−26 % on the LC II); the dispatch-table item measured and dropped
+
+> **Corrected the same evening (commit `b4ef0a6`, recorded in `TODO.md` — this
+> entry is the only place the old number survives).** The lazy-condition-codes
+> figure below, **+2.5 % for a whole duplicated flag set**, was measured with
+> `POM68K_CPU_ENGINE=jit`, which selected the *threaded* backend — so the
+> modified `JitBackendX64.cpp` never ran and the delta was noise. Re-measured
+> with `POM68K_JIT_BACKEND=x64`: 26.13/26.15 s → 26.37/26.30 s = **+0.8 %**.
+> The conclusion (lazy CC is not worth the bit-exactness risk) stands; the
+> number that supported it did not. The same mis-measurement exposed
+> `selectBackend("auto")` filtering its loop on `dflt`, so `auto` always landed
+> on `threaded` — fixed in the 2026-07-30 JIT entries.
 
 **PGO now trains on one machine per CPU family** (`tools/pgo_train.sh`):
 Quadra 605 (040 + MMU), LC II (030, MMU off), LC III (030, MMU on) and
@@ -369,6 +824,7 @@ twice is semantically a no-op, so the guest is unaffected and the delta
 is the marginal cost of one full materialisation set) — Q605 JIT boot
 32.6 s → 33.4 s, **+2.5 % for a whole extra set**. So removing a set
 saves at most ~2.5 %, and lazy CC can only remove the dead subset:
+
 1-2 % for an intricate codegen change that silently breaks
 bit-exactness when wrong. The backlog's "a third off the
 per-instruction contract" was true of contract SIZE, not of time.
@@ -2229,6 +2685,11 @@ the low-mem KeyMap with Ticks advancing.
 
 ## 2026-07-23 — LC II: Egret firmware LLE back to OPT-IN (mouse starvation)
 
+> **Superseded** by [2026-07-24 — Event-driven ADB wire: the Egret firmware
+> LLE is the LC II DEFAULT](#2026-07-24--event-driven-adb-wire-the-egret-firmware-lle-is-the-lc-ii-default):
+> the instruction-slaved wire removed the starvation and the LLE went back to
+> being the default.
+
 Second layer: even with the AdbLine fix the LC II LLE mouse delivers only
 ~1.5% — one packet per second. Instrumentation (new `POM68K_ADB_LLE_TRACE`
 diagnostics in `CudaLle`: TREQ falls, TIP sessions with clock-edge counts,
@@ -2821,6 +3282,7 @@ hunt-exit IRQ as carrier sense); `ltoudp_test` — the real multicast
 cable end-to-end (soft-skips where multicast is unavailable). Remaining
 milestones (two-System etalon, RTS/CTS timing, netatalk bridge) in TODO.
 
+<a id="2026-07-22-dir2hfs"></a>
 ## 2026-07-22 — dir2hfs: host folder → desktop volume (data-only flat-HFS façade)
 
 `tools/dir2hfs.py` (machfs, repo venv `.venv-tools`) bakes a host folder
@@ -3225,6 +3687,7 @@ No FAIL cell remains, so Phase B ("fix emulator bugs before adding
 machines") is closed too; the matrix's next phase is new machine profiles
 (TODO Phase C). Remaining optional cell: Plus floppy System 4.1.
 
+<a id="2026-07-21-q605-sys755-76-finder"></a>
 ## 2026-07-21 — Q605 Sys 7.5.5 / 7.6 → Finder (53C96 polled WRITE)
 
 System 7.5.5 / 7.6 hung pre-Finder on the Quadra 605 (SCSI≈1838,
@@ -3256,6 +3719,7 @@ does not (likely OT/extension path). Matrix 1bpp metrics accept dark
 custom desktops (GISTPERSO); `q605_boot_etalon` SCSI floor eased 5000→4000
 (variance under SPConfig clamp).
 
+<a id="2026-07-20-lcii-sys71-755-finder"></a>
 ## 2026-07-20 — LC II Sys 7.1 / 7.5.5 → Finder (SPConfig clamp)
 
 Infinite Mac LC II images self-heal SysParam SPConfig to `$01` (AppleTalk
@@ -3270,6 +3734,7 @@ Gates: `finder_boot_matrix lcii` × 7.1 (SCSI≈746) / 7.5.5 (SCSI≈3231)
 PASS; Sys 7.5 + `lcii_boot_etalon` still green. `Egret::factoryDefaults`
 now always reseeds SPConfig even when `'NuMc'` is present.
 
+<a id="2026-07-20-macii-sys7-finder"></a>
 ## 2026-07-20 — Mac II Sys7 → Finder (AppleTalk alert dismiss)
 
 Infinite Mac System 7 selects EtherTalk with no NuBus ethernet, so boot
@@ -3383,6 +3848,11 @@ a VIA-ID→UniversalInfo path that takes the FD/`$CC00` entry without
 entering the bit-16 gate.
 
 ## 2026-07-20 — Q8.8: CACHE_BOOST calibration (default stays 1)
+
+> **Superseded** by [2026-07-25 — Quadra 800 (26th machine), the 040 boost
+> ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted):
+> the "boost 2+ fails SCSI bring-up" note below was a stale symptom.
+> `Cpu040`/`CentrisCpu` default to `cacheBoost_ = 4` since then.
 
 Measured `POM68K_Q605_CACHE_BOOST` against `q605_boot_etalon` with the
 FF7439EE + Mac OS 8.1 assets. Boost **1** remains the only value that
@@ -3523,8 +3993,7 @@ rendered from VRAM scratch row zero. Development-only trace/disassembly tools
 are also `EXCLUDE_FROM_ALL`, avoiding unnecessary LTO relinks during a normal
 build.
 
-## 2026-07-20 — Q6.6 RESOLVED: Mac OS 8.1 boots the Quadra 605 (68LC040) to the
-## Finder desktop — two blockers, the FPU trap and a DMA-final-chunk STATUS race
+## 2026-07-20 — Q6.6 RESOLVED: Mac OS 8.1 boots the Quadra 605 (68LC040) to the Finder desktop — two blockers, the FPU trap and a DMA-final-chunk STATUS race
 
 The Quadra 605 now boots Mac OS 8.1 all the way to the Finder: `q605_trace`
 renders the full desktop (🍎/File/Edit/View/Special/Help menu bar, the
@@ -3580,8 +4049,7 @@ the data-transfer-complete flag `($5e,A3)` bit 4, which never set.
 PixMap (baseAddr/rowBytes/bounds) and emits a correct 640×480 1bpp screenshot
 (`q605_boot_1bpp.pbm`).
 
-## 2026-07-19 — Q6.5d RESOLVED: dsBadPatch(99) was a 53C96 FIFO-count lie that
-## sent the OS SCSI Manager's resource read into its DISCARD engine
+## 2026-07-19 — Q6.5d RESOLVED: dsBadPatch(99) was a 53C96 FIFO-count lie that sent the OS SCSI Manager's resource read into its DISCARD engine
 
 The Quadra 605 boot reached the ROM-patch stage then drew a `dsBadPatch`
 (System error 99) alert — the last step before the Finder. The whole cause was
@@ -3624,8 +4092,7 @@ a single wrong register value in our 53C96 model.
   now spins in the SCSI Manager completion loop (`$00123BA8`/`$0011CD2C`, IPL +
   device-record `$0C0C` check) — the new frontier Q6.6, Finder not yet reached.
 
-## 2026-07-19 — Q6.5b/c: the async SCSI SIM crash + the SCC/reselection spin
-## are BOTH fixed — the boot loads System, applies patches, stops at dsBadPatch
+## 2026-07-19 — Q6.5b/c: the async SCSI SIM crash + the SCC/reselection spin are BOTH fixed — the boot loads System, applies patches, stops at dsBadPatch
 
 Two MAME-source-driven 53C96 fixes (ncr53c90.cpp FSM, read via scrapling +
 local clone) took the boot from the "illegal instruction" crash all the way to
@@ -3661,8 +4128,7 @@ FINAL startup stage before the Finder launches. 26/26 CTest green throughout;
 ncr53c96_test unchanged. New frontier (Q6.5d): why the patch validation fails —
 trace the patch-resource load / the `$4080F244` ROM return-address flow vs MAME.
 
-## 2026-07-19 — Q6.5: the boot restart loop is ACTUALLY resolved — the ROM's
-## POST XPRAM validity read uses a THIRD Cuda framing (direct-driver GetPram)
+## 2026-07-19 — Q6.5: the boot restart loop is ACTUALLY resolved — the ROM's POST XPRAM validity read uses a THIRD Cuda framing (direct-driver GetPram)
 
 The previous entry's `_ReadXPRam $76` echo fix let the System *load* but did
 NOT stop the restart loop: instrumenting the ROvr boot flag (`q605_trace`
@@ -3744,8 +4210,7 @@ buffer reuse — diff the allocation/queue ordering against MAME. A speculative
 Cuda byte log, `Q605_STRTAP` dialog-text tap, vec-4/11 exception logging,
 `q605_boot.ppm` screen dump.
 
-## 2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the
-## block-0 loop were one coupled Cuda-reply-framing bug; the System now loads
+## 2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the block-0 loop were one coupled Cuda-reply-framing bug; the System now loads
 
 Unified fix for two loops that a single blunt setting could not satisfy. The
 Quadra's `_ReadXPRam` replies are consumed by TWO different ROM readers with
@@ -3810,9 +4275,12 @@ keeping the echo, and discovered that doing so un-masked the Q6.2 block-0 loop
 fix above (keep the echo for all reads except the $76 OSDefault read). See the
 top entry for the full story.
 
-## 2026-07-19 — Q6.4 re-localized: it is a System-launch HANDOFF failure,
-## NOT a Cuda reply-framing bug (the prior "completion ISR buffer-smash"
-## lead is disproven; no fix landed yet)
+## 2026-07-19 — Q6.4 re-localized: it is a System-launch HANDOFF failure, NOT a Cuda reply-framing bug (the prior "completion ISR buffer-smash" lead is disproven; no fix landed yet)
+
+> **Superseded, same day**, by [2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED…](#2026-07-19--q64--q62-both-resolved-the-boot-restart-loop-and-the-block-0-loop-were-one-coupled-cuda-reply-framing-bug-the-system-now-loads):
+> it *was* a Cuda reply-framing bug after all — the "NOT a Cuda reply-framing
+> bug" ruling below is the wrong turn, kept because the elimination work in it
+> is what localised the real one.
 
 Followed the Q6.4 "diff the Cuda completion reply framing against MAME"
 lead to its conclusion and DISPROVED it as the fix, then re-localized the
@@ -3861,8 +4329,7 @@ element + handler). `src/Egret.cpp` gained an env-gated (`EGRET_CMD_LOG`)
 command/reply logger — off by default, no behaviour change. `egret_test`
 and `lcii_boot_etalon` stay green (shared Egret path untouched).
 
-## 2026-07-19 — Q6.4 deeply localized: the console divert is a periodic
-## boot-RESTART loop, not a fault — several candidates ruled out (no fix yet)
+## 2026-07-19 — Q6.4 deeply localized: the console divert is a periodic boot-RESTART loop, not a fault — several candidates ruled out (no fix yet)
 
 The Q6.4 blocker (System loads off SCSI, then the boot diverts to the ROM
 serial-console loop at $408B9928) was traced end-to-end and materially
@@ -3896,8 +4363,7 @@ IRQ-by-level histogram. Next: instruction-diff the $4080EE94 task-walk /
 $408B7716 restart-check against MAME to find why our path takes the restart
 selector where MAME returns normally.
 
-## 2026-07-19 — Q6.3 RESOLVED: SCSI multi-block read — the polled ($10)
-## Transfer Info needed the DATA IN bus-service interrupt
+## 2026-07-19 — Q6.3 RESOLVED: SCSI multi-block read — the polled ($10) Transfer Info needed the DATA IN bus-service interrupt
 
 With Q6.2 letting the boot load the driver/partition-map/System, it then
 spun forever at `$40899704` (`btst #7,($40,A3)`, R_STATUS bit 7 =
@@ -3916,9 +4382,7 @@ and `ncr53c96_test` stay green. The boot now reads 1 281 SCSI commands
 it diverts to the POST serial console during System startup —
 $408B9928/$408BA0EA — instead of continuing to the Finder).
 
-## 2026-07-19 — Q6.2 RESOLVED: the block-0 re-read loop was a Cuda
-## ReadXPram reply-framing divergence — the boot now loads the driver,
-## partition map and System (progresses to a new SCSI blocker)
+## 2026-07-19 — Q6.2 RESOLVED: the block-0 re-read loop was a Cuda ReadXPram reply-framing divergence — the boot now loads the driver, partition map and System (progresses to a new SCSI blocker)
 
 The Start Manager's boot-driver scan (`$40807224`) matches a DDM driver
 descriptor by a **wanted ddType** = low byte of the `_GetOSDefault`
@@ -3962,8 +4426,7 @@ in a bp/wp action WORKS; `save`-expressions and bp/wp *conditions* are
 unreliable — drive everything through `trace <file>,maincpu,,{ tracelog
 "" }` + taps.
 
-## 2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work — the Mac OS 8.1 SCSI
-## driver now transfers full 512-byte blocks off the disk
+## 2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work — the Mac OS 8.1 SCSI driver now transfers full 512-byte blocks off the disk
 
 With the Q5 Slot-Manager fix letting the boot reach SCSI target
 selection, three gaps in the `Ncr53c96` model blocked the driver's
@@ -3999,8 +4462,7 @@ Known next blocker (Q6.2): the boot re-reads block 0 in a loop and never
 advances to the partition map or the SCSI driver — a boot-logic issue
 above the SCSI A-trap, not a controller fault (see TODO § Q6.2).
 
-## 2026-07-18 — Q5.1d: Q5 Slot-Manager blocker RESOLVED — the missing
-## MEMCjr DAFB bus-holding split; boot now drives the SCSI bus
+## 2026-07-18 — Q5.1d: Q5 Slot-Manager blocker RESOLVED — the missing MEMCjr DAFB bus-holding split; boot now drives the SCSI bus
 
 Root-caused via a newly-unblocked full-machine MAME oracle, then fixed
 in `Q605Memory`. The MEMCjr accesses the DAFB register file at
@@ -4084,8 +4546,7 @@ debug harness and co-simulated our exact ROM against it. Results:
   to pin the caller of $000094E0 to the $40809A0A sExec trampoline and to
   confirm MemTop matches MAME.
 
-## 2026-07-18 — Q5.1c: the fatal `_sReadStruct` fully anatomised;
-## DrHW pick proven correct; full-machine oracle blocked (round 2)
+## 2026-07-18 — Q5.1c: the fatal `_sReadStruct` fully anatomised; DrHW pick proven correct; full-machine oracle blocked (round 2)
 
 Chased the Q5 Slot-Manager overrun end to end with per-field `--wwatch`
 and `--stop-at` on the RAM orchestrator. New, proven facts:
@@ -4116,8 +4577,7 @@ and `--stop-at` on the RAM orchestrator. New, proven facts:
   re-attack plan in TODO § Q5.1c. No speculative size-clamp applied (it
   would mask the divergence and risks the passing POST).
 
-## 2026-07-18 — Q6: NCR 53C96 wired into the Quadra 605 + the
-## sReadWord producer chain pinned (boot-integration round 1)
+## 2026-07-18 — Q6: NCR 53C96 wired into the Quadra 605 + the sReadWord producer chain pinned (boot-integration round 1)
 
 Merged the standalone `Ncr53c96` controller (MAME `ncr53c90.cpp`
 reference: command-driven 16-byte FIFO, 24-bit transfer counter,
@@ -4158,8 +4618,7 @@ file at pc=$00006C5E and does 93k+ reads during video/Slot init); whether
 a DAFB read steers the DrHW pick ($1C = High-Res 13" was selected) is the
 next thing to instrument, then WinUAE-co-simulate the walk window.
 
-## 2026-07-18 — Q5.1a: the Slot-Manager blocker re-localized —
-## the DAFB-sense theory is disproven, the fault is a decl-ROM parse
+## 2026-07-18 — Q5.1a: the Slot-Manager blocker re-localized — the DAFB-sense theory is disproven, the fault is a decl-ROM parse
 
 Chased the Q5 boot blocker (VEC2 #14 sReadStruct overrun at $40900000 →
 POST serial console) instead of guessing. The prior working hypothesis —
@@ -4201,8 +4660,7 @@ header were an sBlock size. DrHW=$1C (High-Res 13") was picked.
   ruling those two out as the producer). No machine/CPU code changed;
   CTest 25/25 unchanged. Full analysis in `TODO.md § Q5.1a`.
 
-## 2026-07-18 — Q3: the 68040 MMU translates in Moira — full grid
-## 7 200/7 200 pinned, the LC 475 CPU side is complete
+## 2026-07-18 — Q3: the 68040 MMU translates in Moira — full grid 7 200/7 200 pinned, the LC 475 CPU side is complete
 
 Bus-level 040 translation (WinUAE cpummu.c model): ITT/DTT transparent
 windows (WP faults even with TC.E off), URP/SRP 3-level walk with U/M
@@ -4230,8 +4688,7 @@ the 030). Full details in `extern/moira/POM68K_VENDOR.md § Q3`.
   re-verify (301-308); sst68030 3 082, sst68000, both boot etalons —
   CTest 25/25. Not fuzzed: 8K pages (TC.P; Mac OS uses 4K).
 
-## 2026-07-18 — Q2+Q4: the 68LC040 integer core executes in Moira,
-## WinUAE-differential (5 400/5 400), no-FPU F-line included
+## 2026-07-18 — Q2+Q4: the 68LC040 integer core executes in Moira, WinUAE-differential (5 400/5 400), no-FPU F-line included
 
 Phase 3 (Mac OS 8.1 on an LC 475 / Quadra 605) CPU side, first two
 milestones, converged by the established loop (fuzz040.py WinUAE-solo →
@@ -4265,8 +4722,7 @@ executes on Moira's shared C68020 core; every change is runtime-gated on
   3 000/3 000 fresh-seed re-verify; full CTest 25/25 including both
   boot etalons.
 
-## 2026-07-18 — GISTPERSO (7.5) boot hang: heap corruption racing an
-## app launch at Finder startup — NOT the pending changes, NOT the disk
+## 2026-07-18 — GISTPERSO (7.5) boot hang: heap corruption racing an app launch at Finder startup — NOT the pending changes, NOT the disk
 
 User report after the host-machine crash: on the LC II, GISTPERSO-boot
 (System 7.5) draws the Finder menu bar + desktop pattern, the clock
@@ -4294,8 +4750,7 @@ launch; manual launch is unaffected. The deterministic headless repro
 is pinned in TODO for the differential hunt for the real corruption
 site. `hdv/GISTPERSO-boot.vhd.avant-reparation` backs up the image.
 
-## 2026-07-17 — LC II runs on a dedicated machine thread; boot &
-## secondary SCSI volumes selectable from a "Disques" menu
+## 2026-07-17 — LC II runs on a dedicated machine thread; boot & secondary SCSI volumes selectable from a "Disques" menu
 
 Interrupted by the host crash, finished and verified 07-18 (24/24
 gates, long GUI sessions). Two changes from the perf/UX queue:
@@ -4332,8 +4787,7 @@ model, same numbers: lcii_boot_etalon metrics byte-identical
 (0.09/0.48/9583 SCSI commands), wall time **143 s → 122 s**, 24/24
 green. Next in the queue: the dedicated machine thread.
 
-## 2026-07-17 — Lode Runner "dead arrow keys": not a bug — the game
-## binds the numeric keypad by default
+## 2026-07-17 — Lode Runner "dead arrow keys": not a bug — the game binds the numeric keypad by default
 
 User report: in Lode Runner (LC II) the arrows do nothing although the
 game is otherwise perfect. Two-sided verification concluded the input
@@ -4359,8 +4813,8 @@ chain is correct and the behaviour matches real hardware:
 Conclusion: play with the numeric keypad (4← 6→ 8↑ 5↓, 7/9 = dig) or
 rebind inside the game's options. No emulator change.
 
-## 2026-07-17 — Performance pass: 0.40× → 1.91× realtime at the Finder
-## (the sound stutter was the emulator falling behind real time)
+<a id="2026-07-17-performance-pass-realtime"></a>
+## 2026-07-17 — Performance pass: 0.40× → 1.91× realtime at the Finder (the sound stutter was the emulator falling behind real time)
 
 The audio-clocked pacing needs ≥1× realtime to hold tempo; a gprof
 profile (i7-10700F, headless Finder workload at cache-boost 4) showed
@@ -4399,8 +4853,7 @@ today), trimming the per-fetch i-cache overlay cost (~11%), and only
 then a 68k→x86 JIT (weeks of work, and it would obsolete the fuzzed
 Moira interpreter's exactness guarantees — last resort).
 
-## 2026-07-17 — Lode Runner launch freeze: odd-SP interrupt frames were
-## corrupt (vendored Moira fix) + sound tempo locked to the host DAC
+## 2026-07-17 — Lode Runner launch freeze: odd-SP interrupt frames were corrupt (vendored Moira fix) + sound tempo locked to the host DAC
 
 **Lode Runner froze the machine at launch** (hard halt, no bomb). Chain,
 established with a headless keyboard-nav repro (`scratchpad/lrtest*`):
@@ -4432,8 +4885,7 @@ with no resampler; a starvation guard keeps the machine alive if the
 audio device disappears. `src/main.cpp` LC II frame lambda +
 `MacAudioHost::{buffered,pushRaw,started}`.
 
-## 2026-07-17 — SC2K "coprocesseur absent" ROOT-CAUSED AND FIXED: Egret
-## mid-flight packet retraction manufactured ghost ADB sessions
+## 2026-07-17 — SC2K "coprocesseur absent" ROOT-CAUSED AND FIXED: Egret mid-flight packet retraction manufactured ghost ADB sessions
 
 The crash that survived every timing fix (the ★ TODO item) was never the
 VBL/A5 phase race — measurement killed that theory (`racecheck.cpp`:
@@ -4677,6 +5129,7 @@ per SBC, not 65536); MMU hardcoded page mask (harmless — re-masked
 downstream at :782 and oracle-matched, not worth risking the 3082-vector
 sst68030 gate).
 
+<a id="2026-07-17-lcii-gui-640x480"></a>
 ## 2026-07-17 — LC II GUI defaults to 640×480
 
 The GUI now boots the LC II at 640×480 (13"/14" RGB) instead of 512×384:
@@ -4739,6 +5192,7 @@ a mask-lowering SR write (M68000 PRM, which guarantees forward progress) —
 was tried and REVERTED: it perturbed IRQ timing elsewhere and actually
 reintroduced the crash. The throughput model is the shipping fix.
 
+<a id="2026-07-16-selectable-resolution"></a>
 ## 2026-07-16 — Selectable resolution (512×384 / 640×480) + per-monitor depth
 
 The LC II built-in V8 video drives two color modes; which one is picked
@@ -5535,6 +5989,7 @@ watchdog never arms without Break/Abort IE).
 - GUI: Turbo ×8 checkbox (default on with a real ROM — the 4 MB RAM test
   takes 45 s of machine time).
 
+<a id="2026-07-14-m0-m35-first-rom-boot"></a>
 ## 2026-07-14 — M0–M3.5 + first real-ROM boot
 
 - Project scaffolded on the POMIIGS blueprint; Moira vendored from NeoST

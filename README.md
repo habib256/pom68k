@@ -1,37 +1,39 @@
 # POM68K — Macintosh 68k emulator
 
-Macintosh **Plus** (68000, cycle-exact), Macintosh **II** (68020 + Toby NuBus)
-and its 68030 siblings **IIx / IIcx**,
-the **V8 family** — **LC** (68020), **LC II** (68030 + PMMU + 68882),
-**Classic II** (Eagle), **Color Classic** (Spice + Cuda) and the
-**Mac TV** (Tinker Bell + Cuda, 68030 @ 31.3 MHz) — the **IIsi** (RBV
-RAM-based video + Egret, 68030 @ 20 MHz) and **IIci** (RBV + PIC ADB
-modem + discrete RTC, 68030 @ 25 MHz), the
-**LC III / LC III+** (68030 @ 25 / 33 MHz + Sonora), the all-in-one
-**LC 520 / LC 550 / Color Classic II** (Sonora + Cuda), the
-**Mac IIvx / IIvi** (VASP + Egret), the **Centris 610 / 650** and **Quadra 610 / 650 / 800**
-(djMEMC + IOSB), the **Quadra 700** (discrete 040 + DAFB TurboSCSI),
-the **Quadra 605**
-(68040 + FPU) and **LC 475 / LC 575 / Performa 475-575** (68LC040), both
-+ 040 MMU — **32 machine profiles, every one boots the Finder**.
-Sibling of [POMIIGS](../POMIIGS/) (Apple IIgs) and
-[POM2](../POM2/) (Apple II), sharing their architecture and conventions. CPU
-core: [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST — see
+**32 machine profiles, every one boots the Finder** — from the Macintosh
+Plus (68000, cycle-exact) to the Quadra 630 (68040). Sibling of
+[POMIIGS](../POMIIGS/) (Apple IIgs) and [POM2](../POM2/) (Apple II),
+sharing their architecture and conventions. CPU core:
+[Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST —
 `extern/moira/POM68K_VENDOR.md`).
+
+The full machine list is the **ROM → machine** table below, which is also
+the Machine menu, in the same order and the same grouping
+(`src/main.cpp:774` `kProfiles[]` — one row per profile, no exceptions).
+
+| Document | For |
+|---|---|
+| this file | build, ROMs, launch, keys, CLI |
+| `DEV.md` | internals, pinned tests, **the complete environment-knob list** |
+| `TODO.md` / `CHANGELOG.md` | backlog / resolved items and the *why* |
+| `docs/` | per-subsystem deep dives (`APPLETALK.md`, `LLE_VS_HLE.md`, …) |
+| `roms/README.md` | what goes where under `roms/` |
 
 ## Build
 
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 92 milestone gates (asset-dependent may soft-skip)
+ctest                             # 129 gates (asset-dependent ones soft-skip)
+ctest -L unit                     # 59 gates, no ROM or disk image needed
+ctest -L smoke                    # 8 gates, one machine, both CPU engines
 ```
 
 Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
 
-Optional but worth it — a profile-guided build makes the interpreter ~33 %
-faster (an interpreter is dispatch and branches, exactly what PGO predicts),
-with bit-identical emulation:
+Optional: a profile-guided build measured **−33 % on the interpreter** and
+−18 % on the JIT (Quadra 605 boot), bit-identical emulation. Three steps in
+**one** build directory (rationale + flags: `CMakeLists.txt:30`):
 
 ```bash
 cmake .. -DPOM68K_PGO=generate && make -j jitdev q605_boot_etalon
@@ -41,206 +43,198 @@ cmake .. -DPOM68K_PGO=use && make -j
 
 ## Run
 
-ROM size selects the machine: **128 KB** = Mac Plus, **256 KB** = Mac II
-(`9779D2C4`/`97851DB6`) or the 68030 IIx/IIcx (`97221136`,
-`POM68K_MACII_MODEL=iix`/`iicx`/`fdhd`), or — by checksum — the compact
-68000 siblings **Mac SE** (`B2E362A8`) and **SE FDHD** (`B306E171`);
-**Mac Classic** (`A49F9914`) is a 512 KB compact,
-**512 KB** = V8 family (header checksum picks LC `350EACF0` / LC II
-`35C28F5F` / Classic II `3193670E` / IIsi `36B7FB6C` / IIci `368CADFE`),
-**1 MB** = Color
-Classic (`ECD99DC0`), Mac TV (`EAF1678D`), LC III (`ECBBC41C`), Quadra 700
-(`420DBFF3`), Quadra 630 / LC 580 (`06684214` / `064DC91D`), else
-Quadra 605 / LC 475. Without a
-ROM argument the app probes `roms/macplus.rom`, `roms/macii.rom`,
-`roms/maclcii.rom`, `roms/quadra605.rom`, then scans `roms/` for CRC
-signatures (Mac II `9779D2C4`, LC II `35C28F5F`, Quadra `FF7439EE`).
-The **Machine** menu switches profiles the same way. Several ROMs serve
-sibling models that differ only by clock / CPU / model ID: the LC III ROM
-also boots the **LC III+** (33 MHz, `POM68K_LC3_PLUS=1`), the
-FF7439EE ROM boots the **LC 475** (68LC040, default), the
-**Quadra 605** (68040 + FPU, `POM68K_Q605_ID=A55A2225`) or the all-in-one
-**LC 575** (68LC040 @ 33 MHz, `POM68K_Q605_ID=A55A222E`), and the
-all-in-one `EDE66CBD` ROM boots the **LC 520** (25 MHz, default), the
-**LC 550** (33 MHz, `POM68K_AIO_ID=A55A0101`) or the **Color Classic II**
-(33 MHz, 512×384, `POM68K_AIO_ID=CC2`), and the `4957EB49` ROM boots the
-**Mac IIvx** (32 MHz, default) or **IIvi** (16 MHz, `POM68K_IIVI=1`), and the
-`F1A6F343`/`F1ACAD13` ROM boots the **Centris 650** (25 MHz, default) or
-**Centris 610** (20 MHz), or the **Quadra 650** (33 MHz) / **Quadra 610** /
-**Quadra 800** (33 MHz, + SONIC Ethernet and NuBus) — all full 68040 — via
-`POM68K_CENTRIS_MODEL=c610/q650/q610/q800`. The Color
-Classic runs its Cuda MCU as firmware LLE off `roms/cuda/341s0788.bin`,
-the LC 520/550 theirs off `roms/cuda/341s0060.bin` (Cuda 2.40 — 2.37
-livelocks this ROM), the LC III / LC III+ their Egret off
-`roms/egret/341s0851.bin` (HLE fallback without).
-
 ```bash
-./build/POM68K                                    # no ROM → built-in 68000 demo
-./build/POM68K roms/macplus.rom                   # Mac Plus (128 KB)
-./build/POM68K roms/macplus.rom disks35/Disk605.dsk hdv/HD20SC.vhd
-./build/POM68K "roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM" hdv/HD20SC.vhd
-./build/POM68K roms/maclcii.rom hdv/GISTPERSO-boot.vhd
-./build/POM68K roms/maclcii.rom hdv/boot.vhd hdv/data.vhd   # + SCSI IDs 1–6
-./build/POM68K roms/quadra605.rom hdv/MacOS-8.1-boot.vhd
+./build/POM68K [ROM] [boot disk] [extra disks…]
 ```
 
-ROMs are copyrighted and **never** part of the repository. Without one,
-POM68K boots a built-in hand-assembled 68000 demo that clears the boot
-overlay through the VIA and animates a pattern in the 512×342 framebuffer.
+ROMs are copyrighted and **never** part of the repository. Put yours under
+`roms/` (see `roms/README.md`); with none at all, POM68K runs a built-in
+hand-assembled 68000 demo that clears the boot overlay through the VIA and
+animates the 512×342 framebuffer.
 
-Local working copies live under `roms/` (system ROMs by size, plus
-`roms/cuda/`, `roms/egret/`, `roms/adbmodem/`, and convenience symlinks
-like `roms/macplus.rom`). See [`roms/README.md`](roms/README.md).
-`roms/archive/macroms/` is the unpacked
-[Mac ROMs](https://archive.org/details/macroms) collection (deduped
-against the active trees) — reference inventory only, not shipped with
-the repo.
+**Without a ROM argument** the app looks for, in order: `roms/maclcii.rom`,
+a `35C28F5F` CRC scan of `roms/`, `roms/macplus.rom`, `roms/macii.rom`,
+`roms/quadra605.rom`, then CRC `9779D2C4` and `FF7439EE`
+(`src/main.cpp:4755`). The default machine is therefore the **Mac LC II**.
 
-### Mac Plus
+### ROM → machine
 
-Arguments: `[ROM] [floppy] [SCSI]`. Defaults probe `disks35/Disk605.dsk`
-then `hdv/HD20SC.vhd`. Boots System 6 from floppy or SCSI to the Finder.
-Floppies are writable (real IWM write engine + GCR sector commit) and the
-GUI **persists writes back to the image file** on eject and on exit
-(raw `.dsk` and DiskCopy 4.2, checksum regenerated; atomic temp+rename;
-opt out with `POM68K_FLOPPY_RO=1`). Tests stay in-memory.
+Dispatch is by ROM **size**, then by the header checksum (the first four
+bytes, big-endian), then by an environment variable for models that share a
+ROM and differ only by clock / CPU / model ID. `src/main.cpp:4774` is the
+code; the **Machine** menu sets the same variables and relaunches.
 
-### Mac II
+| Size | Checksum | Machine(s) | Selector |
+|---|---|---|---|
+| 128 KB | — | Macintosh Plus | |
+| 256 KB | `B2E362A8` | Macintosh SE | |
+| 256 KB | `B306E171` | Macintosh SE FDHD | |
+| 512 KB | `A49F9914` | Macintosh Classic | |
+| 256 KB | `9779D2C4` `97851DB6` | Macintosh II (68020) | |
+| 256 KB | `97221136` | **IIx** (default) / IIcx / II FDHD | `POM68K_MACII_MODEL=iix\|iicx\|fdhd` |
+| 512 KB | `368CADFE` | Macintosh IIci | |
+| 512 KB | `36B7FB6C` | Macintosh IIsi | |
+| 512 KB | `350EACF0` | Macintosh LC | |
+| 512 KB | `35C28F5F` | Macintosh LC II *(also the fallback for any other 512 KB dump)* | |
+| 512 KB | `3193670E` | Macintosh Classic II | |
+| 1 MB | `ECD99DC0` | Macintosh Color Classic | |
+| 1 MB | `EAF1678D` | Macintosh TV | |
+| 1 MB | `ECBBC41C` `EC904829` | **LC III** (default) / LC III+ (33 MHz) | `POM68K_LC3_PLUS=1` |
+| 1 MB | `EDE66CBD` | **LC 520** (default) / LC 550 / Color Classic II | `POM68K_AIO_ID=A55A0101\|CC2` |
+| 1 MB | `4957EB49` | **IIvx** (default) / IIvi (16 MHz) | `POM68K_IIVI=1` |
+| 1 MB | `FF7439EE` *(and any other 1 MB dump)* | **LC 475** (default) / LC 575 / Quadra 605 | `POM68K_Q605_ID=A55A222E\|A55A2225` |
+| 1 MB | `F1A6F343` `F1ACAD13` | **Centris 650** (default) / Centris 610 / Quadra 610 / 650 / 800 | `POM68K_CENTRIS_MODEL=c610\|c650\|q610\|q650\|q800` |
+| 1 MB | `420DBFF3` | Quadra 700 | |
+| 1 MB | `06684214` `064DC91D` | **Quadra 630** (default) / LC 580 | `POM68K_Q630_ID=A55A225A` |
 
-A **256 KB ROM** selects the 68020 + Toby NuBus video machine; it boots
-System 6 and 7 to the Finder. ADB (keyboard/mouse) runs the real
-PIC1654S transceiver firmware as a **firmware LLE** — the **default since
-2026-07-22** when the dump is present at `roms/adbmodem/342s0440-b.bin`
-(1024 B, CRC `cffb33eb`, user-provided); the mouse moves live on this path
-(`macii_mouse_etalon`). `POM68K_ADB_LLE=0`, or a missing dump, falls back
-to the HLE byte-model transceiver (see `DEV.md` "Mac II ADB: PIC1654S
-LLE").
+Several profiles run their MCU as **firmware LLE** off a user-provided dump
+and fall back to an HLE model without it: `roms/cuda/341s0417.bin` (Color
+Classic, then `341s0788.bin`), `roms/cuda/341s0060.bin` (LC 520/550/CC II,
+Quadra 630 — Cuda 2.40; 2.37 livelocks these ROMs),
+`roms/cuda/341s0788.bin` (Quadra 605 family), `roms/egret/341s0851.bin`
+(LC III, IIvx), `roms/egret/344s0100.bin` (IIsi),
+`roms/adbmodem/342s0440-b.bin` (Mac II, IIci, Centris/Quadra ADB).
 
-### Mac LC II
+### Command line
 
-A **512 KB ROM** selects V8 + 68030 (+ 68882 by default; `POM68K_NOFPU=1`
-for a bare LC II). Default video is 640×480 13" RGB; `POM68K_MONITOR=512`
-forces the 512×384 12" mode (also switchable live in the CPU window).
+`argv[1]` = ROM. `argv[2]` = the boot volume; `argv[3..8]` attach as
+secondary SCSI volumes at IDs 1–6. On the Mac Plus only, the layout is
+`[ROM] [floppy] [SCSI]`.
 
-The second argument is the boot SCSI image (default
-`hdv/GISTPERSO-boot.vhd`, then `hdv/boot.vhd`, `hdv/HD20SC.vhd`); further
-arguments attach as secondary volumes at SCSI IDs 1–6. Bare HFS `.dsk`
-files (Infinite Mac style, `'LK'` at LBA 0) get an in-memory SCSI façade
-automatically; otherwise use a DDM-wrapped image (`tools/wrap_hfs.py`).
-PRAM + clock persist next to the boot image (`<disk>.pram`) — the first
-cold boot runs the ROM's full-RAM burn-in; later boots skip it.
+| Machine | Default boot volume (probed in order) |
+|---|---|
+| Plus / SE / Classic | floppy `disks35/Disk605.dsk`, SCSI `hdv/HD20SC.vhd` |
+| Mac II family | `hdv/System 6.0.8 HD.dsk`, `HD20SC.vhd`, `GISTPERSO-boot.vhd`, `boot.vhd` |
+| V8 / RBV family | `hdv/GISTPERSO-boot.vhd`, `boot.vhd`, `HD20SC.vhd` |
+| Sonora / VASP | `hdv/lc3-boot.vhd`, then the V8 list |
+| 040 machines | `hdv/MacOS-8.1-boot.vhd`, `boot.vhd` |
 
-### Quadra 605 / LC 475 / LC 575
+Bare HFS `.dsk` images (Infinite Mac style, `'LK'` at LBA 0) get an
+in-memory SCSI façade automatically; otherwise wrap them with
+`tools/wrap_hfs.py`. `.toast`/`.cdr`/`.iso` attach as a SCSI CD on the Mac
+II. On the four 68040 machines a `.dsk`/`.image` argument is **inserted as
+a floppy** instead (SWIM2: 800K GCR and 1.44 MB MFM), as is
+`POM68K_FLOPPY=<path>`.
 
-A **1 MB ROM** (FF7439EE) selects MEMCjr/PrimeTime. It serves three models:
-the **LC 475 / Performa 475** (model ID `$A55A2221`, 68LC040 + soft 68882,
-the default and the `lc475_boot_etalon` gate), the **Quadra 605**
-(`POM68K_Q605_ID=A55A2225`, full 68040 + FPU, MAME `macqd605`) and the
-all-in-one **LC 575 / Performa 575** (`POM68K_Q605_ID=A55A222E`, 68LC040
-@ 33 MHz, gate `lc575_boot_etalon`).
-`POM68K_Q605_NOFPU=2` forces a bare `FPUModel::NONE`. Boots System
-7.5 / 7.5.5 / 7.6 and Mac OS 8.1 to the Finder. Default boot disk
-`hdv/MacOS-8.1-boot.vhd`, then `hdv/boot.vhd`. Optional SuperDrive floppy
-(SWIM2: 800K GCR **and** 1.44 MB MFM media) via `POM68K_FLOPPY` or
-`disks35/`; `.dsk` / `.image` args insert as floppy rather than SCSI.
-Cuda XPRAM persists as `<disk>.pram`. Video is 640×480 DAFB (incl.
-256-color Finder). Tuning: `POM68K_Q605_CACHE_BOOST` (default 4) scales
-the 040 i-cache throughput overlay; `POM68K_MMU040_WALK=1` disables the
-ATC fast path (debug).
+```bash
+./build/POM68K roms/macplus.rom disks35/Disk605.dsk hdv/HD20SC.vhd
+./build/POM68K roms/maclcii.rom hdv/boot.vhd hdv/data.vhd     # + SCSI ID 1
+./build/POM68K roms/quadra605.rom hdv/MacOS-8.1-boot.vhd
+POM68K_Q605_ID=A55A2225 ./build/POM68K roms/quadra605.rom     # Quadra 605
+```
 
-### Controls
+PRAM + clock persist next to the boot volume as
+`<disk>.<profile>.pram` — the first cold boot runs the ROM's full-RAM
+burn-in, later boots skip it.
 
-The mouse drives the Mac while hovering the screen; a drag started on the
-screen (Finder drag-and-drop) keeps tracking outside it and never moves
-the host window (title bar still does). **Delete** toggles full mouse
-capture (cursor grabbed, raw motion). The **Machine** menu switches
-between the 27 profiles (needs the matching ROM; the app
-relaunches). On
-LC II and Quadra, **Disques** picks the boot volume and toggles secondary
-SCSI images next to the current one (relaunches — the ROM only scans the
-bus at boot), and **Redémarrer** power-cycles the machine.
+### Environment variables
 
-### Mechanical drive sounds
+`DEV.md` § *Environment knobs — the complete list* is the single list, and
+is re-derived from the code rather than maintained by hand. The ones that
+select a machine are in the table above; the rest cover CPU options,
+firmware-LLE toggles, the JIT (`src/jit/POM68K_JIT.md` § 6) and stderr
+tracers. Frequently useful:
 
-Floppy and hard-disk activity is audible: head steps and seeks, spindle
-spin-up/loop/down, insert/eject clicks (MAME's floppy sample set, ported
-via POM2 — `assets/floppy_samples/`, BSD-3-Clause). The 3.5" set voices
-the Sony drives on every machine; the 5.25" set plays at low gain as
-the SCSI hard-disk seek proxy. Toggle with **Machine ▸ Sons des
-lecteurs**, or start muted with `POM68K_DRIVE_SFX=0`.
+| Knob | Effect |
+|---|---|
+| `POM68K_MONITOR=512` | LC II: 512×384 12" mode instead of 640×480 (also live in the CPU window) |
+| `POM68K_NOFPU=1` | drop the FPU (Mac II, LC II, Sonora) |
+| `POM68K_FLOPPY_RO=1` | never write floppy changes back to the image file |
+| `POM68K_DRIVE_SFX=0` | start with drive sounds muted |
+| `POM68K_APPLETALK=0` | disable the whole built-in AppleTalk stack |
+
+## Using the machine
+
+**Mouse** drives the Mac while hovering the screen; a drag started on the
+screen (Finder drag-and-drop) keeps tracking outside it and never moves the
+host window — the title bar still does. **Delete** toggles full capture
+(cursor grabbed, raw motion). The host keyboard maps to M0110 codes on the
+Plus and to raw ADB codes elsewhere (table: `src/main.cpp:5025`, notes in
+`DEV.md` § *Input key table*).
+
+Menus:
+
+- **Machine** — switch profile (needs the matching ROM present; the app
+  relaunches itself), and **Sauver / Restaurer l'état** (save states). A
+  state file sits next to the boot volume as `<disk>.<profile>.pomss`,
+  written atomically; a snapshot that does not match the running profile,
+  ROM or RAM size is refused and the machine is left untouched. All 32
+  profiles are wired (`src/SaveStateMachines.h:47`). Also **Sons des
+  lecteurs** (drive sounds).
+- **CPU** — pick the execution engine. The Moira **interpreter** is the
+  default and the reference for every accuracy claim. Beside it sits an
+  accelerated engine, switchable live between two instructions, available
+  on the 68030/68040 machines (the Mac II family and the compacts are
+  interpreter-only). It is honestly labelled: with the portable `threaded`
+  backend it is the interpreter behind a fetch window, and only the x86-64
+  backend actually emits host code. `POM68K_CPU_ENGINE=jit` starts on it;
+  design and measurements in `src/jit/POM68K_JIT.md`.
+- **Disques** — pick the boot volume and toggle secondary SCSI images next
+  to the current one (relaunches: the ROM only scans the bus at boot).
+  Every machine but the compact 68000 family has it.
+- **Réseau → AppleTalk** — see below.
+- Per-machine window: **Redémarrer** power-cycles.
+
+Floppies are writable (real IWM/SWIM write engines) and the GUI **persists
+writes back to the image file** on eject and on exit — raw `.dsk` and
+DiskCopy 4.2, checksum regenerated, atomic temp+rename. Tests stay
+in-memory.
+
+Drive activity is audible: head steps and seeks, spindle spin-up/loop/down,
+insert/eject clicks (MAME's sample set ported via POM2 —
+`assets/floppy_samples/`, BSD-3-Clause). The 3.5" set voices the Sony
+drives; the 5.25" set plays at low gain as the SCSI hard-disk seek proxy.
 
 ## AppleTalk: file sharing, printing and the internet (built in)
 
 POM68K carries the whole AppleTalk service side **in-process** — no
-external router, server or gateway, no root. It is **on by default in
-the GUI**; open **Réseau → AppleTalk** to see and toggle it. The window
-reports, live, whether each piece works:
+external router, server or gateway, no root. **On by default in the GUI**;
+open **Réseau → AppleTalk**, which reports live whether each piece works.
 
-- **Réseau (nœud/routeur)** — zone "POM68K", the guest's node, and
-  frame / NBP / ATP counters.
-- **AppleShare** — a host folder shared as an AFP volume. Pick it in
-  the guest's **Chooser → AppleShare** (log in as Guest). The window
-  shows the server name, whether the folder is writable, live sessions,
-  the last user/command and bytes moved. The shared folder defaults to
-  **`AppleShare/` at the repo root** (created if absent — the window's
-  "Dossier hôte" line shows the exact path); override with
-  `POM68K_SHARE_DIR=/path`. Resource forks + Finder info are kept in
-  netatalk-compatible `.AppleDouble` sidecars. The volume takes the
-  shared folder's own name. Copies run over a *lossless* virtual LocalTalk
-  clocked ~8× above the real 28 KB/s wire — the SCC exerts backpressure
-  (a real cable can't), so a frame is held rather than dropped and the
-  1-2 s retransmit stalls go away; `POM68K_ATALK_WIRE_BOOST=N` tunes it
-  (`=1` = authentic LocalTalk speed). Large files still take a while —
-  that era's file sharing was slow — but the transfer stays smooth.
-  Backpressure is bounded: a guest that stops listening long enough to
-  fill the 64-frame hold queue starts losing frames like it would on a
-  real cable, because holding them forever is worse than a retransmit
-  (they are already too old to be useful, and the queue would grow
-  without limit). The window reports it as "Débordement du fil", next to
-  the retransmission count, its lag and the queue depth — all four read
+- **Réseau (nœud/routeur)** — zone "POM68K", the guest's node, frame / NBP
+  / ATP counters.
+- **AppleShare** — a host folder as an AFP volume, picked in the guest's
+  **Chooser → AppleShare** (log in as Guest). Defaults to `AppleShare/` at
+  the repo root, created if absent; override with `POM68K_SHARE_DIR=/path`.
+  Resource forks and Finder info live in netatalk-compatible
+  `.AppleDouble` sidecars. Transfers run over a lossless virtual LocalTalk
+  clocked ~8× the real 28 KB/s wire (`POM68K_ATALK_WIRE_BOOST=N`, `=1` is
+  authentic speed): the SCC exerts backpressure, so a frame is held rather
+  than dropped and the 1–2 s retransmit stalls go away. The hold queue is
+  bounded at 64 frames — past that, frames are dropped like a real cable
+  would, and the window reports it as "Débordement du fil" beside the
+  retransmission count, its lag and the queue depth. All four read
   0 / shallow on a healthy transfer.
-- **Imprimante** — a LaserWriter in the Chooser. Print to it and the
-  PostScript is spooled to CUPS (`lp`) if present, else a timestamped
-  `.ps` file under `run/print`. The window shows idle/busy, the job
-  count and where the last job went.
-- **Internet (MacIP)** — real TCP/IP for the guest tunneled in DDP. In
-  the **TCP/IP** (Open Transport) or **MacTCP** control panel choose
-  *AppleTalk (MacIP)*, server zone POM68K. A user-mode NAT proxies it
-  onto the host — no `tun`, no `iptables`. The window shows the
-  gateway, the DNS it advertises, and each guest's lease (a lease means
-  it works). **Plain HTTP only** (1990s TLS can't reach 2026 sites) —
+- **Imprimante** — a LaserWriter in the Chooser. PostScript is spooled to
+  CUPS (`lp`) if present, else a timestamped `.ps` under `run/print`.
+- **Internet (MacIP)** — real TCP/IP tunneled in DDP. In the **TCP/IP**
+  (Open Transport) or **MacTCP** control panel choose *AppleTalk (MacIP)*,
+  server zone POM68K; a user-mode NAT proxies it onto the host (no `tun`,
+  no `iptables`). **Plain HTTP only** — 1990s TLS cannot reach 2026 sites;
   try <http://frogfind.com> or <http://theoldnet.com>.
 
-`POM68K_APPLETALK=0` disables the whole stack. Gated:
-`atalk_stack_test`, `afp_server_test`, `pap_server_test`,
-`macip_gw_test`. Full protocol notes: `docs/APPLETALK.md` (§6.5 covers
-the in-process stack).
+Tracers when the wire misbehaves: `POM68K_ATALK_DEBUG=1` logs DDP/NBP/ATP
+plus one line per client retransmission with the delay since our own reply
+(~1–2 s means the guest's ATP timer fired, much less means the reply
+arrived damaged); `POM68K_MACIP_DEBUG=1` logs every IP datagram both ways
+with TCP flags/seq/ack, so the last line before a guest stack collapse is
+the datagram that did it. Protocol notes: `docs/APPLETALK.md` (§ 6.5 = the
+in-process stack).
 
-When something goes wrong on the wire, two tracers write to stderr:
-`POM68K_ATALK_DEBUG=1` logs DDP/NBP/ATP traffic, and one line per client
-retransmission carrying the delay since our own reply — ~1-2 s means the
-guest's ATP timer fired (the reply never got through), much less means it
-arrived damaged. `POM68K_MACIP_DEBUG=1` logs every IP datagram crossing
-the gateway in both directions, with TCP flags/seq/ack; if the guest's
-network stack falls over, the last line before it is the datagram that
-did it.
+### Reaching a real LocalTalk network
 
-### Reaching a real LocalTalk network (LToUDP + external bridge)
-
-To interoperate with **other** machines instead of POM68K's own stack,
-add `POM68K_LTOUDP=1`: the SCC printer port joins a virtual LLAP cable
-over UDP multicast (`239.192.76.84:1954`, the Mini vMac / TashRouter
-LToUDP format). The internal node is multicast alongside, so both
-coexist. `POM68K_APPLETALK=1` additionally seeds AppleTalk active in
-PRAM (System 7 opens LocalTalk at boot; System 6 opens it from the
-Chooser). Gated: `llap_loop_test`, `ltoudp_test`,
-`llap_two_system_etalon`.
+`POM68K_LTOUDP=1` joins the SCC printer port to a virtual LLAP cable over
+UDP multicast (`239.192.76.84:1954`, the Mini vMac / TashRouter format), so
+POM68K can talk to **other** machines; the internal node is multicast
+alongside, and both coexist. `POM68K_APPLETALK=1` additionally seeds
+AppleTalk active in PRAM (System 7 opens LocalTalk at boot; System 6 opens
+it from the Chooser).
 
 For AppleShare/printing served by the **real** netatalk over a routed
-segment, the repo still vendors the full external bridge: TashRouter
-(`extern/tashrouter`) and netatalk **2.4.9** (`extern/netatalk2`) —
-build with `tools/netatalk2/build_netatalk2.sh`, then follow
-`tools/netatalk2/README.md`; MacIP toward a host `tun` uses
+segment, the repo vendors the external bridge: TashRouter
+(`extern/tashrouter`) and netatalk 2.4.9 (`extern/netatalk2`) — build with
+`tools/netatalk2/build_netatalk2.sh`, then follow
+`tools/netatalk2/README.md`. MacIP toward a host `tun` uses
 `extern/macipgw` + `tools/macip/`.
 
 ## Sharing host files with the Mac (baked HFS volume)
@@ -255,11 +249,11 @@ python3 -m venv .venv-tools && .venv-tools/bin/pip install machfs   # once
 ```
 
 (or pick the volume from the **Disques** menu). MacBinary `.bin` files are
-decoded to native forks (usable immediately); `.zip` archives are expanded
-host-side; `.sit`/`.hqx` keep their StuffIt types (unstuff in the guest);
-CD images (`.toast`/`.cdr`/`.iso`) are extracted next to the output and
-attach directly as SCSI disks. The volume is writable (write-back); split
-past 1.9 GB (`--max-mb`), filter with `--only 'glob'`.
+decoded to native forks; `.zip` archives are expanded host-side;
+`.sit`/`.hqx` keep their StuffIt types (unstuff in the guest); CD images
+are extracted next to the output and attach directly as SCSI disks. The
+volume is writable; split past 1.9 GB with `--max-mb`, filter with
+`--only 'glob'`.
 
 ## Headless tools
 
@@ -271,4 +265,4 @@ past 1.9 GB (`--max-mb`), filter with `--only 'glob'`.
 ## License
 
 GPLv3. Moira is MIT (Dirk W. Hoffmann); Dear ImGui is MIT (fetched, not
-vendored).
+vendored). ROMs are user-provided and never committed.
