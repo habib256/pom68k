@@ -34,7 +34,7 @@ void AdbLine::reset() {
     sendTimer_ = -1;
     command_ = 0; waitingCmd_ = false; direction_ = 0;
     datasize_ = 0; streamPtr_ = 0; srqFlag_ = srqSwitch_ = false;
-    kbdAddr_ = 2; kbdHandler_ = 0x22;
+    kbdAddr_ = 2; kbdHandler_ = 0x22; modifiers_ = 0xFF;
     mouseAddr_ = 3; mouseHandler_ = 0x23;
     keyBuf_.clear();
     mdx_ = mdy_ = 0; mbtn_ = mbtnSent_ = false;
@@ -42,6 +42,20 @@ void AdbLine::reset() {
 
 void AdbLine::keyEvent(uint8_t adbCode, bool down) {
     keyBuf_.push_back(uint8_t((down ? 0x00 : 0x80) | (adbCode & 0x7F)));
+    // Modifiers also live in register 2 as a bitmap the guest can poll
+    // independently of the key stream (MAME macadb.cpp:355-415 tracks the
+    // same five). Active low: clear on press, set on release.
+    uint8_t bit = 0;
+    switch (adbCode & 0x7F) {
+        case 0x39: bit = 0x20; break;      // Caps Lock
+        case 0x36: bit = 0x08; break;      // Control
+        case 0x38: bit = 0x04; break;      // Shift
+        case 0x3A: bit = 0x02; break;      // Option
+        case 0x37: bit = 0x01; break;      // Command
+        default: return;
+    }
+    if (down) modifiers_ = uint8_t(modifiers_ & ~bit);
+    else      modifiers_ = uint8_t(modifiers_ | bit);
 }
 void AdbLine::mouseMove(int dx, int dy) {
     mdx_ = std::clamp(mdx_ + dx, -256, 256);
@@ -296,7 +310,7 @@ void AdbLine::adbTalk() {
                     if (pending) datasize_ = 2;
                     else if (mousePending() && (mouseHandler_ & 0x20)) srqFlag_ = true;
                 } else if (reg == 2) {
-                    buffer_[0] = 0xFF; buffer_[1] = 0xFF; datasize_ = 2;   // modifiers (none held)
+                    buffer_[0] = modifiers_; buffer_[1] = 0xFF; datasize_ = 2;
                 } else if (reg == 3) {
                     // Byte 0 is the R3 flags byte, byte 1 the HANDLER ID —
                     // kbdHandler_ carries R3-byte-0 semantics everywhere else

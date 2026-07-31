@@ -60,7 +60,7 @@ public:
            command_, waitingCmd_, direction_, buffer_, datasize_, streamPtr_,
            srqFlag_, srqSwitch_, listenAddr_, listenReg_,
            kbdAddr_, kbdHandler_, mouseAddr_, mouseHandler_,
-           keyBuf_, mdx_, mdy_, mbtn_, mbtnSent_);
+           keyBuf_, mdx_, mdy_, mbtn_, mbtnSent_, modifiers_);
     }
 
 private:
@@ -107,6 +107,12 @@ private:
 
     // Devices.
     uint8_t  kbdAddr_ = 2, kbdHandler_ = 0x22;
+    // Keyboard register 2: the modifier bitmap, ACTIVE LOW (a 0 bit means
+    // held). MAME keeps the same byte (macadb.cpp:694-700) and resets it to
+    // $FF; ours was a hardcoded $FF forever, so a guest reading R2 never saw
+    // Command/Shift/Option/Control (found 2026-07-31 — Cmd-N repainted on
+    // the LC II but not on the Quadra).
+    uint8_t  modifiers_ = 0xFF;
     uint8_t  mouseAddr_ = 3, mouseHandler_ = 0x23;
     std::deque<uint8_t> keyBuf_;                   // ADB key transition bytes
     int      mdx_ = 0, mdy_ = 0;
