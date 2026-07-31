@@ -190,7 +190,7 @@ new bus. Backlog entries: `TODO.md` § 7 *Independent majors*.
 | **Power Manager + LCD framebuffer** — 68HC05 flavour (PB 150 / 190 / Duo / 500) or **M50753** (Mitsubishi 740 = 6502 superset; Portable, PB 100 / 140-180) | the whole portable line | PB150 `FDA22562`; PB160-180 `E33B2724`; Duos `ECFA989B` / `0024D346` / `015621D7`; PB520/540 `B6909089`; PB190 `4D27039C`; Portable `96CA3846`; PB100 `96645F9C` | 🟡 (68HC05) / 🟡 (M50753) |
 | **AV I/O complex** — advanced video + S-Video digitizer, **Curio** combo SCC/SCSI/Ethernet, **MACE**, sound codec, AV memory/DMA controller | Quadra/Centris **660AV**, **840AV** — boot **without** the DSP | `5BF10FD1` | 🟠 |
 | **AT&T DSP3210 core + VCOS/ARTA** | full 660AV / 840AV DSP fidelity | — | 🔴 |
-| **A ROM dump** | **SE/30** — nothing to build, it is a compact Mac IIx (`MacIIMemory` + compact video) | **missing** | 🟢 once dumped |
+| **Wiring only** | **SE/30** — compact Mac IIx (`MacIIMemory` + compact video); system ROM is the shared `97221136` (already on hand for IIx/IIcx), plus DeclROM `roms/se30/se30vrom.uk6` | `97221136` + `se30vrom.uk6` | 🟢 |
 
 The three things worth knowing about that table:
 
@@ -284,8 +284,8 @@ Phase A/B/C — Plus → Mac II → the V8/Sonora/VASP/RBV/040 fan-out — are *
    reusable core; MAME itself doesn't run it), and full 68040 cache/FPSP
    accuracy.
 
-Free whenever someone drops the file in: **SE/30** (a ROM dump away), the
-**128K/512K** configs, and any Performa rebadge (§ 4).
+Free (ROM already on hand): **SE/30** (`97221136` + `se30vrom.uk6` — wiring
+only), the **128K/512K** configs, and any Performa rebadge (§ 4).
 
 ---
 

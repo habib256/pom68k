@@ -33,7 +33,11 @@
 class PseudoVia {
 public:
     // Which MAME device this instance impersonates (see the block above).
-    enum class Flavour { Level, Base };
+    // Msc = msc_pseudovia_device (PowerBook Duo): full 256-byte decode
+    // (no port-A window), a port-B INPUT (the PMU /ACK //REQ lines), MSC
+    // block handlers at $20-$2F, ASC level-triggered like Level
+    // (pseudovia.cpp:503-620).
+    enum class Flavour { Level, Base, Msc };
 
     explicit PseudoVia(Flavour flavour = Flavour::Level) : flavour_(flavour) {}
     // IFR (reg 3) bits — enabled mask is $1B (pseudovia.cpp:205)
@@ -64,6 +68,11 @@ public:
     std::function<uint8_t()> onVideoRead;    // monitor sense bits 3-5
     std::function<void(uint8_t)> onVideoWrite;
     std::function<void(uint8_t)> onPortA;
+    // Msc flavour only: port B input (PMU handshake lines) and the MSC
+    // register block at $20-$2F (clock/sound control in msc.cpp:225-262).
+    std::function<uint8_t()> onPortBRead;
+    std::function<uint8_t(int)> onMscRead;
+    std::function<void(int, uint8_t)> onMscWrite;
 
     // ── Save states (SaveState.h) ───────────────────────────────────────
     // The register file, the resolved IRQ output and the ASC line/edge

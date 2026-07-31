@@ -60,6 +60,21 @@ public:
     // modes (ACR 011 = shift in, 111 = shift out); after 8 bits raise SHIFT.
     // extShiftCB2Out() is the SR MSB presented to the PIC during shift-out.
     void extShiftCB1(bool level, bool cb2FromPic);
+    // Duo MSC (msc.h write_cb1_noint + 6522via.cpp:1199): with an external
+    // shift clock, SR mode 000 ("disabled") shifts IN — stock MAME 6522
+    // behaviour, not an MSC invention; the Mac II PIC path predates the
+    // finding and keeps the narrow decode, so this stays opt-in.
+    void setMscShiftQuirk(bool on) { mscShiftQuirk_ = on; }
+    // The CB1 INTERRUPT half of stock write_cb1 (6522via.cpp:1177-1191),
+    // which extShiftCB1 deliberately omits for the Mac II PIC wire. The
+    // Duo's PMU driver runs on exactly this: every SPI clock edge of the
+    // PCR-selected polarity raises IFR.CB1, and its ISR is what clears the
+    // ADBBase+$15D busy flag the ROM spins on.
+    void extCb1Int(bool level) {
+        const bool rise = !extIntCb1_ && level, fall = extIntCb1_ && !level;
+        extIntCb1_ = level;
+        if ((rise && (pcr_ & 0x10)) || (fall && !(pcr_ & 0x10))) setIfr(CB1);
+    }
     bool extShiftCB2Out() const { return (sr_ >> 7) & 1; }
     void loadSRDevice(uint8_t v) { sr_ = v; }   // device presents a byte, no IFR
     uint8_t acr() const { return acr_; }
@@ -106,6 +121,8 @@ private:
     bool srHostWritten_ = false;                // Q6: host wrote SR (see .h)
     int shiftCount_ = 0;                        // φ2 clocks until IFR.SHIFT
     int extBits_ = 0;                           // Mac II ADB: external-clock shift count
+    bool mscShiftQuirk_ = false;                // Duo MSC: ACR mode 0 = ext shift-in
+    bool extIntCb1_ = true;                     // extCb1Int edge detector
     bool extCb1_ = true;                        // last CB1 level from the PIC
     bool cb1_ = true, cb2_ = true;              // input pin levels (idle high)
     int32_t t1_ = 0, t2_ = 0;

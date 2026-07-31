@@ -403,7 +403,16 @@ Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
   is the candidate to vendor. The IIfx also has **no built-in video** — it boots
   on a NuBus card, so `TobyVideo`/`DeclRom` has to carry it.
 - [ ] **Power Manager** → Portable / PowerBook 1xx / Duo. The 68HC05 half
-  already ships (`M68hc05`), so the **PB150 is the cheapest entry**.
+  already ships (`M68hc05`). **STARTED 2026-07-31 — platform #11 (MSC)**:
+  blueprint + milestone 1 in `docs/DUO_BRINGUP.md` (`MscMemory`/`MscCpu`
+  skeleton boots ECFA989B to the PG&E handshake spin; `make duo_trace`).
+  Corrected scoping: the PB150 is MSC/PG&E (Duo lineage, 68HC05+SPI) but is
+  unsupported even by MAME — the **Duo 230 goes first** (full MAME oracle),
+  PB150 follows as the no-oracle variant. Milestone 2 (PG&E LLE): dumps
+  on hand under `roms/pge/` (`pge_boot.bin` CRC `62d4dfed`,
+  `duobatid.bin` CRC `7545c341`).
+  The 140-180 line is a different PMU (Mitsubishi M50753, 6502-class —
+  POMIIGS `CPU65816` candidate) — same brick as Portable/PB100.
 - [ ] **AV DSP (DSP3210)** → 660AV/840AV. Not planned.
 - [ ] **NuBus + slot video** beyond Mac II Toby: IIx / IIcx / IIci and the NuBus
   Quadras. VASP/IIvx currently reads its three slots as empty; real cards would
@@ -415,7 +424,7 @@ Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
 
 | Machine | ROM on hand | New brick |
 |---|---|---|
-| **SE/30** | *(needs a dump)* | compact 030 + compact video; otherwise a IIx on a compact board |
+| **SE/30** | `97221136` (+ `roms/se30/se30vrom.uk6`) | compact 030 + compact video; otherwise a IIx on a compact board |
 | **Quadra 900 / 950** | `420DBFF3` / `3DC27823` | two **AppleP IC** IOPs (6502-class, SCC + SWIM) + Egret — the same brick the IIfx needs |
 | **Mac IIfx** | `4147DD77` | OSS + two 6502-class IOPs + NuBus-only video |
 | **PowerBook 150** | `FDA22562` | LCD framebuffer + 68HC05 PM — the `M68hc05` core already ships |

@@ -13,6 +13,20 @@ void PseudoVia::reset() {
 
 // pseudovia.cpp:220-248 (base read — the V8 flavour only overrides write)
 uint8_t PseudoVia::read(uint32_t offset) {
+    if (flavour_ == Flavour::Msc) {          // msc_pseudovia_device::read
+        offset &= 0xFF;                      // full decode, 256-byte mirror
+        if (offset >= 0x20 && offset <= 0x2F)
+            return onMscRead ? onMscRead(int(offset & 0xF)) : 0;
+        uint8_t data = offset < 0x20 ? regs_[offset] : 0;
+        if (offset == 0x00) data = onPortBRead ? onPortBRead() : 0;
+        if (offset == 0x01 && onConfigRead) data = onConfigRead();
+        if (offset == 0x10) {
+            data &= uint8_t(~0x38);
+            if (onVideoRead) data |= onVideoRead();
+        }
+        if (offset == 0x12 || offset == 0x13) data &= uint8_t(~0x80);
+        return data;
+    }
     offset &= 0x13;                          // A0, A1, A4 decoded
     uint8_t data = regs_[offset];
 
@@ -34,7 +48,16 @@ uint8_t PseudoVia::read(uint32_t offset) {
 // is a MAME slip, not hardware: the RBV/VASP ROMs enable their interrupts
 // through it, so both flavours keep the bit-7-selector form here.)
 void PseudoVia::write(uint32_t offset, uint8_t v) {
-    if ((offset >> 9) == 1) {                // $200-$3FF: port A
+    if (flavour_ == Flavour::Msc) {
+        // msc_pseudovia_device::write — no port-A window, full decode,
+        // MSC block at $20-$2F; ASC ack is a NOP (level-triggered) like
+        // the Level flavour, everything else matches the base cases.
+        offset &= 0xFF;
+        if (offset >= 0x20 && offset <= 0x2F) {
+            if (onMscWrite) onMscWrite(int(offset & 0xF), v);
+            return;
+        }
+    } else if ((offset >> 9) == 1) {         // $200-$3FF: port A
         if (onPortA) onPortA(v);
         return;
     }
@@ -52,10 +75,10 @@ void PseudoVia::write(uint32_t offset, uint8_t v) {
         recalcIrqs();
         break;
     case 0x03:                               // IFR: write 1 to ack…
-        // …except ASC on the Level flavour, where the ack is a NOP
-        // (pseudovia.cpp:341). The base device has no such mask
+        // …except ASC on the Level and Msc flavours, where the ack is a
+        // NOP (pseudovia.cpp:341/:576). The base device has no such mask
         // (:268-271): there the edge-latched bit 4 clears normally.
-        if (flavour_ == Flavour::Level) v &= uint8_t(~0x10);
+        if (flavour_ != Flavour::Base) v &= uint8_t(~0x10);
         regs_[3] &= uint8_t(~(v & 0x7F));
         recalcIrqs();
         break;
@@ -125,11 +148,11 @@ void PseudoVia::recalcIrqs() {
     if (slotIrqs) regs_[3] |= uint8_t(ANY_SLOT);
     else          regs_[3] &= uint8_t(~ANY_SLOT);
 
-    // Level flavour only: re-sample the ASC line every pass (like the slot
+    // Level/Msc flavours: re-sample the ASC line every pass (like the slot
     // lines above) so it can't be lost across an enable/disable of IER
     // bit 4. On the base device bit 4 is a latch owned by ascIrq() and the
     // guest's ack — touching it here would make that ack unclearable.
-    if (flavour_ == Flavour::Level) {
+    if (flavour_ != Flavour::Base) {
         if (ascLine_) regs_[3] |= uint8_t(ASC);
         else          regs_[3] &= uint8_t(~ASC);
     }

@@ -151,6 +151,10 @@ add_library(pom68k_core STATIC
     src/SonoraCpu.cpp     # Phase C — Moira 68030 wrapper (LC III, 25 MHz)
     src/VaspMemory.cpp    # Phase C — Mac IIvx/IIvi map + VASP gate array
     src/VaspCpu.cpp       # Phase C — Moira 68030 wrapper (IIvx 31.3 MHz)
+    src/MscMemory.cpp     # Platform #11 — PowerBook Duo MSC (docs/DUO_BRINGUP.md)
+    src/MscCpu.cpp        # Platform #11 — Moira 68030 wrapper (Duo 230 33 MHz)
+    src/M68hc05Pge.cpp    # Platform #11 — PG&E power manager 68HC05 core
+    src/PgePmu.cpp        # Platform #11 — PG&E board integration (SPI on VIA1)
     src/RbvMemory.cpp     # Phase C — Mac IIsi map + RBV (RAM-based video)
     src/RbvCpu.cpp        # Phase C — Moira 68030 wrapper (IIsi, 20 MHz)
     src/CentrisMemory.cpp # Phase C — Centris 610/650 map (djMEMC + IOSB)
@@ -1092,6 +1096,11 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # Dev tool (not a gate): LC 475 / Quadra 605 ROM boot trace (Q5).
     add_executable(q605_trace EXCLUDE_FROM_ALL tests/q605_trace.cpp)
     target_link_libraries(q605_trace PRIVATE pom68k_core)
+
+    # Dev tool (not a gate): PowerBook Duo ROM boot trace (platform #11
+    # milestone 1, docs/DUO_BRINGUP.md).
+    add_executable(duo_trace EXCLUDE_FROM_ALL tests/duo_trace.cpp)
+    target_link_libraries(duo_trace PRIVATE pom68k_core)
     target_link_libraries(lcii_trace PRIVATE pom68k_core)
 
     add_executable(macii_trace EXCLUDE_FROM_ALL tests/macii_trace.cpp)

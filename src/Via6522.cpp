@@ -75,7 +75,12 @@ void Via6522::extShiftCB1(bool level, bool cb2FromPic) {
     const bool fell = extCb1_ && !level;
     extCb1_ = level;
     const uint8_t m = uint8_t((acr_ >> 2) & 7);
-    if (m == 3) {                                // shift in (PIC→VIA), sample on rising
+    // MSC quirk (mscvia_device::write_cb1_noint, msc.h:34-48): the Duo's
+    // VIA1 treats SR mode 000 — "disabled" on a stock 6522 — as external
+    // shift-IN, and the System's PMU driver receives reply bytes in that
+    // mode. Fits the leaked System 7.1 source per MAME's comment. Gated by
+    // the integrator so the Mac II PIC path keeps stock decode.
+    if (m == 3 || (mscShiftQuirk_ && m == 0)) {  // shift in, sample on rising
         if (!rose) return;
         sr_ = uint8_t((sr_ << 1) | (cb2FromPic ? 1 : 0));
     } else if (m == 7) {                         // shift out (VIA→PIC)

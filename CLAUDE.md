@@ -54,7 +54,8 @@ the matching 32 tags.
 - **Save states**: all 10 machine families, GUI-wired.
 - **JIT**: second engine, off by default (see the table below).
 - Next: `TODO.md` § *Future machine profiles* (ROMs on hand: IIfx, Quadra
-  900/950; SE/30 needs a dump), § *LLE fidelity*, § *Test & validation depth*.
+  900/950; SE/30 ROM on hand — `97221136` + `se30vrom.uk6`), § *LLE fidelity*,
+  § *Test & validation depth*.
 
 ## Conventions (inherited from POMIIGS/POM2)
 
