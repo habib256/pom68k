@@ -170,9 +170,31 @@ wait loop. The third ADBReInit therefore lands in its wait **without ever
 running the 16-way device probe or reaching the only `bclr #5` in the
 ROM**. The flag can never clear. That is the whole deadlock.
 
-So the question is now sharp and guest-side: **what did the ADB Manager
-proc at `($5F0)` object to on that one call?** Whatever our PMU answered
-(or failed to answer) put it on its error path.
+Caveat on that reading: the two-level return may well be the ROM's own
+idiom rather than damage — ADBReInit's wait loop sits exactly at the
+return target, which is suspiciously convenient. What is certain is the
+*measured* fact: on the third call control reaches the wait without the
+device probe having run.
+
+Following the thread one layer deeper (all measured, `DUO_PCCOUNT`):
+
+- `jADBProc ($05F0) = $4080A3DC`, the queue driver. It **never** takes its
+  error exit (`$4080A428`: 0 hits); it enqueues 846 times and kicks
+  processing 846 times. So nothing is failing to queue.
+- `$4080A42C` has the interesting guard: if the queue is idle **and**
+  ADBReInit is running (bit 5), it returns doing nothing — during a
+  reinit, ADBReInit is supposed to drive the bus itself.
+- The send path `$4080A458` jumps through a machine-specific vector
+  `($130,ADBBase)`, which on the Duo is **`$408B2E76`** — the ADB→PMU
+  bridge. It masks VIA1 CB1 (`move.b #$10,($1C00,A1)`), builds a command
+  block on the stack and issues **PmgrOp selector `$20`** — the `$20`
+  commands already visible in the `DUO_PMLOG` stream. At the hang VIA1
+  IER is `$B3`, so CB1 has been re-enabled; the mask is not the leak.
+
+**The next concrete step** is therefore to trace one PmgrOp `$20`
+end to end — host request, PMU reply bytes, completion interrupt — and
+find which half never happens. `$408B2E76` is the guest end,
+`POM68K_PGE_ADBTRACE=1` the PMU end.
 
 **The 80 µs host stall is load-bearing.** MAME's `via2_out_b` spins the
 68030 80 µs on a /PMU_REQ edge; it looked like optional pacing, so it was

@@ -242,6 +242,15 @@ int main(int argc, char** argv) {
     {   // The PMU wait flag the ROM spins on: ($15D,A3) bit 5 — dump the
         // ADB/PMU globals block around it, and the CURRENT ADBBase, so a
         // waiter holding a stale globals pointer is visible.
+        {   // ($130,A3) is the machine-specific ADB transmit vector the
+            // queue driver jmp's through at $4080A458.
+            const uint32_t base = peek32(0x0CF8);
+            std::printf("-- ADB xmit vector ($130,ADBBase)=$%08X  "
+                        "flags($15D)=$%02X\n",
+                        peek32(base + 0x130), mem.peek8(base + 0x15D));
+        }
+        std::printf("-- jADBProc($05F0)=$%08X  jADBOp($05FC)=$%08X\n",
+                    peek32(0x05F0), peek32(0x05FC));
         std::printf("-- ADBBase($0CF8)=$%08X  A3=$%08X  %s\n",
                     peek32(0x0CF8), cpu.getA(3),
                     peek32(0x0CF8) == cpu.getA(3) ? "(match)"
