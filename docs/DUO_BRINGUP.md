@@ -33,14 +33,10 @@ into page-zero garbage (`M68hc05Pge.cpp` write8 comment).
 
 **Three more findings, each a real divergence closed:**
 
-- **The PMU interrupt rides the SPI clock.** MAME wires the PG&E's SCK to
-  `msc_device::cb1_w` → stock `via6522::write_cb1`, which does BOTH halves:
-  shift the SR *and* raise `IFR.CB1` on the PCR-selected edge
-  (`6522via.cpp:1177-1203`). Our `extShiftCB1` (written for the Mac II PIC
-  wire) only ever shifts, so the Duo's PMU driver never got an interrupt
-  and the ROM spun forever on `ADBBase+$15D` bit 5 — the PMU-busy flag its
-  ISR clears. `Via6522::extCb1Int()` adds the interrupt half, opt-in per
-  machine. Result: 54 k IPL-1 interrupts served and the host walks on.
+*(An earlier revision of this file claimed the opposite of the third
+bullet below — that the PMU interrupt should ride the SPI clock. It was
+written before the measurement and is deleted, not softened.)*
+
 - **SR mode 000 shifts IN under an external clock** — stock 6522 behaviour
   (`SR_DISABLED(m_acr)` → `shift_in()`, `:1199`), not an MSC invention, and
   the mode the PMU reply path actually uses. Opt-in (`setMscShiftQuirk`)
