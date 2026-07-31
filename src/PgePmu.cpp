@@ -128,8 +128,18 @@ void PgePmu::setPmuReq(bool level) {
                          level ? 1 : 0, ackLevel_ ? 1 : 0, mcu_->pc(),
                          (long long)mcu_->cycleCount());
     }
-    if (level != reqLevel_)                          // 80 µs of machine time
-        hostSpin_ = int(cpuHz_ * 80 / 1000000);
+    // POM68K_PGE_NOSPIN=1: drop MAME's 80 µs host stall (via2_out_b) —
+    // bisect knob, since a stall that long could equally make the host
+    // sleep straight through the PMU's ACK window.
+    // Measured 2026-07-31: WITHOUT it the machine does not boot at all
+    // (ADBReInit #1 never completes, 0 SCSI selects) — MAME's stall is
+    // load-bearing, exactly as the Cuda transport experience predicts.
+    // POM68K_PGE_SPINUS overrides the length for phase experiments; 0
+    // disables it.
+    static const int spinUs = std::getenv("POM68K_PGE_SPINUS")
+                            ? atoi(std::getenv("POM68K_PGE_SPINUS")) : 80;
+    if (level != reqLevel_ && spinUs > 0)
+        hostSpin_ = int(cpuHz_ * spinUs / 1000000);
     reqLevel_ = level;
 }
 

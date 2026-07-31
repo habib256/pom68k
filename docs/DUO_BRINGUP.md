@@ -124,6 +124,33 @@ disk activity goes from 555 to **895 SCSI commands**.
 Also disproved along the way, kept as a signpost: raising RDRF
 unconditionally on transmit-done (`POM68K_PGE_ADBRX=1`) — 0 selects.
 
+**Narrowed hard.** Instrumented with `DUO_PCCOUNT="pc,pc,…"` (execution
+counts + the first hits with a clock stamp), which is how the following
+came out:
+
+- ADBReInit runs **three** times and the flag-clear at `$4080A958` fires
+  only **twice**. `$4080A958` is the **only `bclr #5,($15D,A3)` in the
+  whole 1 MB ROM** (verified by pattern search), so nothing else can end
+  the wait.
+- The third call dies in the FIRST thing `$4080A8F0` does: `$4080AA1A`
+  is entered 3 times but its return point `$4080A8F4` only 2. The 16-way
+  device-probe loop after it (`$4080A902`) runs 32 = 16×2 times — the
+  third call never reaches it.
+- Inside, the ADB dispatch `jsr ($5F0)` at `$4080AA48` is entered 835
+  times and returns 835 times, so nothing is stuck *in* the dispatch.
+- **ADBBase moves between calls**: A3 = `$5894` at the spinning wait,
+  `$57BC` at the third entry. So the wait and the third ADBReInit are
+  looking at *different* flag bytes — re-entrancy, with the System having
+  relocated its ADB globals in between.
+
+**The 80 µs host stall is load-bearing.** MAME's `via2_out_b` spins the
+68030 80 µs on a /PMU_REQ edge; it looked like optional pacing, so it was
+bisected (`POM68K_PGE_SPINUS=0`): without it the machine does not boot at
+all — ADBReInit #1 never completes, 0 SCSI selects. Same lesson as the
+Cuda transport (`pom68k-mactv-gate-broken`): the MCU/host interleave is
+not a free parameter. `POM68K_PGE_SPINUS=<µs>` is left in for phase
+experiments.
+
 **Narrowed further**: ADBReInit now completes **twice** (at ~1.4 G and
 ~2.2 G cycles) and hangs on the **third** call. So the mechanism works;
 something about the state it is left in after two rounds does not. Inside

@@ -146,6 +146,20 @@ int main(int argc, char** argv) {
     uint32_t pmlog = 0;
     if (const char* e = std::getenv("DUO_PMLOG"))
         pmlog = uint32_t(strtoul(e, nullptr, 16));
+    // DUO_PCCOUNT="hex,hex,…": how many times each PC is executed. Cheap
+    // way to ask "does this branch ever run" without stopping the machine.
+    std::vector<uint32_t> countPc;
+    std::vector<long> countHits;
+    if (const char* e = std::getenv("DUO_PCCOUNT")) {
+        const char* p2 = e;
+        while (*p2) {
+            countPc.push_back(uint32_t(strtoul(p2, nullptr, 16)));
+            countHits.push_back(0);
+            const char* comma = strchr(p2, ',');
+            if (!comma) break;
+            p2 = comma + 1;
+        }
+    }
     auto peek32 = [&](uint32_t a) {
         return uint32_t(mem.peek8(a)) << 24 | uint32_t(mem.peek8(a + 1)) << 16
              | uint32_t(mem.peek8(a + 2)) << 8 | mem.peek8(a + 3);
@@ -169,6 +183,14 @@ int main(int argc, char** argv) {
             pcCov[pc >> 16]++;
             // DUO_PMLOG=<hexPC>: log D0/A0 each time the PMU command
             // dispatcher is entered — the command stream the ROM issues.
+            for (size_t ci = 0; ci < countPc.size(); ci++)
+                if (pc == countPc[ci]) {
+                    countHits[ci]++;
+                    if (countHits[ci] <= 8)
+                        std::printf("  PCHIT $%08X #%ld clk=%lld sr=$%04X\n",
+                                    pc, countHits[ci], (long long)cpu.getClock(),
+                                    cpu.getSR());
+                }
             if (pmlog && pc == pmlog) {
                 static long n = 0;
                 if (n++ < 4000) {
@@ -209,6 +231,9 @@ int main(int argc, char** argv) {
         }
         std::printf("\n");
     }
+
+    for (size_t ci = 0; ci < countPc.size(); ci++)
+        std::printf("-- PCCOUNT $%08X: %ld hits --\n", countPc[ci], countHits[ci]);
 
     std::printf("-- registers at stop --\n");
     for (int r = 0; r < 8; r++)
