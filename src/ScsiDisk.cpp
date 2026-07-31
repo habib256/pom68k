@@ -147,7 +147,16 @@ bool ScsiDisk::applyFlatHfsFacade(const std::string& imagePath) {
 bool ScsiDisk::open(const std::string& path, bool writeBack) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return false;
-    image_.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    // Block read, not istreambuf_iterator: byte-wise iteration measured
+    // 1.6 % of a whole bench run in callgrind (2026-07-31) — ~10 G host
+    // instructions to load a disk image before the guest ran at all.
+    in.seekg(0, std::ios::end);
+    const std::streamoff n = in.tellg();
+    in.seekg(0, std::ios::beg);
+    image_.resize(n > 0 ? size_t(n) : 0);
+    if (!image_.empty() &&
+        !in.read(reinterpret_cast<char*>(image_.data()), image_.size()))
+        return false;
     hfsPrefixBlocks_ = 0;
     blocks_ = uint32_t(image_.size() / kBlockSize);
     if (file_.is_open()) file_.close();
@@ -256,7 +265,13 @@ bool ScsiDisk::openCdrom(const std::string& path) {
 
     std::ifstream in(data, std::ios::binary);
     if (!in) return false;
-    image_.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    in.seekg(0, std::ios::end);
+    const std::streamoff n = in.tellg();
+    in.seekg(0, std::ios::beg);
+    image_.resize(n > 0 ? size_t(n) : 0);
+    if (!image_.empty() &&
+        !in.read(reinterpret_cast<char*>(image_.data()), image_.size()))
+        return false;
 
     // A 2352-multiple that starts with the MODE1 sync pattern is a raw rip:
     // de-frame it. Anything else must already be 2048-byte user data —
