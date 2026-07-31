@@ -52,6 +52,7 @@ void M68hc05Pge::reset() {
     spiClk_ = spiMiso_ = false; spiEdgeAcc_ = 0;
     adbcr_ = 0; adbsr_ = 0x80; adbdr_ = 0;           // transmitter empty
     adbTimerAcc_ = 0; adbTimerMode_ = -1;
+    adbRx_.clear(); adbRxPos_ = 0; adbListen_ = false;
     pwmacr_ = pwma0_ = pwma1_ = pwmbcr_ = pwmb0_ = pwmb1_ = 0;
     plmcr_ = plmt1_ = plmt2_ = 0;
     pending_ = 0; waiting_ = false; spin_ = 0;
@@ -274,12 +275,33 @@ void M68hc05Pge::write8(uint16_t addr, uint8_t v) {
         updateAdbIrq();
         return;
     case 0x19: adbsr_ = v; updateAdbIrq(); return;
-    case 0x1A:                                       // ADBDR: send byte
+    case 0x1A: {                                     // ADBDR: send byte
+        static const bool t = std::getenv("POM68K_PGE_ADBTRACE") != nullptr;
+        if (t) {
+            static long n = 0;
+            if (n++ < 300)
+                std::fprintf(stderr, "adbcell: TX $%02X (cr=$%02X sr=$%02X) "
+                             "pc=$%04X cyc=%lld\n", v, adbcr_, adbsr_, pc_,
+                             (long long)cycles_);
+        }
         adbdr_ = v;
         adbsr_ &= uint8_t(~0xC0);                    // clear TDRE+TC
         adbTimerMode_ = 0;
         adbTimerAcc_ = 1200 * kHz / 1000000;         // byte time 1.2 ms
+        // Drive the wire. A command byte (addr<<4 | op) may bring back a
+        // device response; Listen data bytes follow their command and are
+        // not commands themselves.
+        adbRx_.clear();
+        adbRxPos_ = 0;
+        if (adbListen_) {
+            adbListen_ = false;                      // consumed one data byte
+        } else if (adbCommand) {
+            const uint8_t op = (v >> 2) & 3;
+            adbListen_ = (op == 2);                  // Listen: data follows
+            adbRx_ = adbCommand(v);
+        }
         return;
+    }
     case 0x1C: {                                     // OPTION (banks boot ROM)
         static const bool t = std::getenv("POM68K_PGE_TRACE") != nullptr;
         if (t && ((v ^ option_) & 0x80))
@@ -651,6 +673,17 @@ int M68hc05Pge::run(int budget) {
             if (adbTimerAcc_ <= 0) {
                 adbsr_ |= adbTimerMode_ == 0 ? 0x80 : 0x40;
                 adbTimerMode_ = -1;
+                // A device answered: hand the firmware one reply byte per
+                // TDRE, flagging RDRF. Nothing pending = ADB timeout, the
+                // firmware's "no device at this address" outcome.
+                if (adbTimerMode_ < 0 && adbRxPos_ < adbRx_.size()) {
+                    adbdr_ = adbRx_[adbRxPos_++];
+                    adbsr_ |= 0x08;                  // RDRF
+                    if (adbRxPos_ < adbRx_.size()) { // pace the next byte
+                        adbTimerMode_ = 0;
+                        adbTimerAcc_ = 800 * kHz / 1000000;
+                    }
+                }
                 // POM68K_PGE_ADBRX=1: DISPROVED probe, kept as a signpost.
                 // The Duo hang is inside the SYSTEM's ADBReInit
                 // ($4080A846 sets ADBBase+$15D bit 5, $4080A870 waits for

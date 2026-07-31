@@ -110,6 +110,7 @@ void PgePmu::reset() {
     ackLevel_ = true;
     reqLevel_ = true;
     lastPortE_ = lastPortF_ = lastPortG_ = lastPortC_ = 0xFF;
+    adb_.reset();
     lastMosi_ = false;
 }
 
@@ -177,6 +178,19 @@ void PgePmu::wirePorts() {
         if (((via_.acr() >> 2) & 7) == 7)
             mcu_->spiMisoIn(via_.extShiftCB2Out());
     };
+
+    // ADB modem cell → the command-level bus (keyboard $2, mouse $3).
+    // OFF by default, POM68K_PGE_ADB=1 to arm. The System's ADBReInit
+    // cannot enumerate anything with an inert cell (that is where the boot
+    // currently stops, docs/DUO_BRINGUP.md), but this first attempt at
+    // answering is WORSE, not better: it regresses the boot from 1122 SCSI
+    // selects to zero, i.e. the ROM's own early ADBReInit now goes wrong
+    // too. The byte framing between ADBDR/RDRF and a command-level bus is
+    // the thing to get right — how many reply bytes the firmware expects
+    // per Talk, and how Listen data bytes are sequenced — so the knob
+    // stays here as the experiment's handle rather than a default.
+    if (std::getenv("POM68K_PGE_ADB"))
+        m.adbCommand = [this](uint8_t cmd) { return adb_.command(cmd, {}); };
 
     m.adcIn = [](int ch) -> uint8_t {
         // Fixed board values (macpwrbkmsc.cpp:473-496): healthy battery,

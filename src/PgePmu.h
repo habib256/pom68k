@@ -28,6 +28,7 @@
 // Gate: tests/m68hc05pge_test.cpp; blueprint docs/DUO_BRINGUP.md.
 
 #pragma once
+#include "AdbBus.h"
 #include "M68hc05Pge.h"
 #include "SaveState.h"
 #include <cstdint>
@@ -66,6 +67,10 @@ public:
     void setSeconds(uint32_t s) { if (mcu_) mcu_->setRtc(s); }
 
     M68hc05Pge& mcu() { return *mcu_; }
+    AdbBus& adb() { return adb_; }
+    void keyEvent(uint8_t code, bool down) { adb_.keyEvent(code, down); }
+    void mouseMove(int dx, int dy) { adb_.mouseMove(dx, dy); }
+    void mouseButton(bool down) { adb_.mouseButton(down); }
     long pmuIntEdges = 0;                            // port F bit 2 falls
     long pmuAckEdges = 0;                            // port H bit 6 changes
 
@@ -74,7 +79,7 @@ public:
         if (mcu_) ar(*mcu_);
         ar(mcuAcc_, mcuDebt_, held_, porteBit2_, ackLevel_, reqLevel_,
            lastPortE_, lastPortF_, lastPortG_, lastPortC_, lastMosi_);
-        ar(ds2400_);
+        ar(ds2400_, adb_);
     }
 
 private:
@@ -98,6 +103,10 @@ private:
     uint8_t lastPortC_ = 0xFF;                       // matrix row select
     bool lastMosi_ = false;
     int hostSpin_ = 0;                               // machine cycles owed
+    // The ADB bus behind the PG&E's modem cell. Command-level is honest
+    // here: the cell IS a hardware transceiver, so the wire lives inside
+    // the PG&E's silicon and the firmware only ever sees bytes.
+    AdbBus adb_;
 
     // ── DS2400 battery serial, 1-Wire slave on port E bit 7 ─────────────
     // MAME machine/ds2401.cpp state machine on the MCU cycle clock
