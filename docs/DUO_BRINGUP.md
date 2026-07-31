@@ -147,6 +147,33 @@ came out:
   re-entrancy theory is dead; `duo_trace` now prints both so the question
   cannot be fudged again.
 
+**The deadlock, caught red-handed.** `$4080AA1A`/`$4080AA22`/`$4080AA28`
+are three entry points converging on one dispatch:
+
+```
+$4080AA3E  pea     ($163,A3)     ; push a parameter pointer (4)
+$4080AA42  movea.l A7,A0
+$4080AA44  movea.l $5f0.w,A1     ; the ADB Manager proc
+$4080AA48  jsr     (A1)
+$4080AA4A  addq.w  #$8,A7        ; pop EIGHT
+$4080AA4C  rts
+```
+
+It pops **8** bytes having pushed only 4, so the healthy path depends on
+the callee at `($5F0)` leaving a 4-byte result behind: `addq` then eats
+result+pointer, and the `rts` finds its own return address. Stopped at the
+835th (last) `rts`, `[sp+0] = $4080A86C` — **not** `$4080A8F4`. The callee
+took an early exit without pushing its result, `addq` swallowed the
+routine's own return address, and the `rts` went two levels up: straight
+to `$4080A86C`, which is `andi.w #-$701,SR` immediately followed by the
+wait loop. The third ADBReInit therefore lands in its wait **without ever
+running the 16-way device probe or reaching the only `bclr #5` in the
+ROM**. The flag can never clear. That is the whole deadlock.
+
+So the question is now sharp and guest-side: **what did the ADB Manager
+proc at `($5F0)` object to on that one call?** Whatever our PMU answered
+(or failed to answer) put it on its error path.
+
 **The 80 µs host stall is load-bearing.** MAME's `via2_out_b` spins the
 68030 80 µs on a /PMU_REQ edge; it looked like optional pacing, so it was
 bisected (`POM68K_PGE_SPINUS=0`): without it the machine does not boot at
