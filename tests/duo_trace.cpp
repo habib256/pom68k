@@ -171,7 +171,7 @@ int main(int argc, char** argv) {
             // dispatcher is entered — the command stream the ROM issues.
             if (pmlog && pc == pmlog) {
                 static long n = 0;
-                if (n++ < 200) {
+                if (n++ < 4000) {
                     const uint32_t a0 = cpu.getA(0);
                     std::printf("  PMCMD #%ld clk=%lld cmd=$%04X buf:", n,
                                 (long long)cpu.getClock(),
@@ -248,6 +248,22 @@ int main(int argc, char** argv) {
             if (vr[i]) { if (i < lo) lo = i; hi = i; }
         if (hi) std::printf("-- VRAM nonzero span $%05X-$%05X --\n", lo, hi);
         else std::printf("-- VRAM all zero --\n");
+
+        // Where does QuickDraw think the screen is? ScrnBase ($0824) and the
+        // main GDevice's PixMap — if the guest is drawing somewhere other
+        // than VRAM offset 0, a blank-looking dump means nothing.
+        const uint32_t scrnBase = peek32(0x0824);
+        const uint32_t mainDevH = peek32(0x08A4);
+        const uint32_t mainDev = mainDevH ? peek32(mainDevH) : 0;
+        const uint32_t pmapH = mainDev ? peek32(mainDev + 0x16) : 0;
+        const uint32_t pmap = pmapH ? peek32(pmapH) : 0;
+        std::printf("-- ScrnBase($824)=$%08X MainDevice=$%08X PixMap=$%08X",
+                    scrnBase, mainDev, pmap);
+        if (pmap)
+            std::printf(" base=$%08X rowBytes=%u depth=%u",
+                        peek32(pmap), (peek32(pmap + 4) >> 16) & 0x3FFF,
+                        (peek32(pmap + 0x1C) >> 16) & 0xFFFF);
+        std::printf("\n");
 
         // Screen render through the GSC mode (gsc.cpp screen_update_gsc):
         // reg 4 bits 0-1 = 0 → 1bpp, 1 → 2bpp, 2 → 4bpp; 640×400 DBLite.

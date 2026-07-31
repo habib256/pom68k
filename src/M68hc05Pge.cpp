@@ -651,6 +651,15 @@ int M68hc05Pge::run(int budget) {
             if (adbTimerAcc_ <= 0) {
                 adbsr_ |= adbTimerMode_ == 0 ? 0x80 : 0x40;
                 adbTimerMode_ = -1;
+                // POM68K_PGE_ADBRX=1: DISPROVED probe, kept as a signpost.
+                // The Duo hang is inside the SYSTEM's ADBReInit
+                // ($4080A846 sets ADBBase+$15D bit 5, $4080A870 waits for
+                // it to clear), so raising RDRF unconditionally here looks
+                // tempting. It is wrong: with it the machine regresses to
+                // ZERO SCSI selects (vs 1122 without). The ADB cell needs
+                // real device semantics, not a blanket "byte received".
+                static const bool adbRx = std::getenv("POM68K_PGE_ADBRX") != nullptr;
+                if (adbRx) adbsr_ |= 0x08;
                 updateAdbIrq();
             }
         }

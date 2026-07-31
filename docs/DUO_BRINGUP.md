@@ -50,11 +50,74 @@ into page-zero garbage (`M68hc05Pge.cpp` write8 comment).
   `shift_out`). Feeding the SR MSB back in shift-IN mode made the PMU read
   its own bytes one exchange later.
 
+- **The PMU interrupt must NOT ride the SPI clock** — and this one is a
+  deliberate, measured departure from MAME's literal wiring. MAME binds
+  the PG&E's SCK to `msc_device::cb1_w` → the *interrupting* `write_cb1`.
+  With that, every shift edge sets `IFR.CB1`; the driver re-enables IER at
+  the end of each transaction with the flag still pending; its ISR issues
+  readINT (`$78`) again; repeat. Same build, 5 G cycles: **interrupt half
+  ON → 176 back-to-back `$78`, 0 SCSI selects; OFF → 1122 selects, 555
+  commands, the System loads off disk.** `msc.h` models
+  `write_cb1_noint` + a separate `pmu_int` (port F bit 2) for exactly this
+  reason, and that is what we implement. `POM68K_PGE_CB1INT=1` restores
+  the MAME-literal wiring for A/B.
+
 DS2400 battery serial is now a real 1-Wire slave (`PgePmu::Ds2400`, MAME
 `ds2401.cpp` state machine on the MCU cycle clock) fed from
-`duobatid.bin`.
+`duobatid.bin`. MAME's two transport spins (80 µs host after a REQ edge,
+20 µs PMU after an ACK edge) are reproduced.
 
-Next: reach the Finder, then GSC decode / input / sleep-wake gates.
+**Disproved, kept so nobody re-tries it**: port A bit 5 is the power key
+when no matrix row is selected, and `macpwrbkmsc.cpp` returns the literal
+`0xdf` (bit 5 clear) for "not pressed". Implementing that hangs the boot
+dead at `$408B98F2` with Ticks frozen at 0 — the firmware reads it as
+"power key held". Bit 5 must read **1** for released, so a blanket `$FF`
+is correct.
+
+## Where it stops today: **ADBReInit**, and the next thread
+
+Identified, not guessed. The stall PC `$4080A870` is the tail of
+**ADBReInit**:
+
+```
+$4080A846  move.b #$24,($15d,A3)   ; ADBBase flags: bit 5 = init running
+$4080A868  bsr    $4080a8f0        ; kick the ADB reset off
+$4080A86C  andi.w #-$701,SR        ; interrupts on
+$4080A870  btst   #$5,($15d,A3)    ; …and wait for bit 5 to clear
+$4080A876  bne    $4080a870
+$4080A878  bsr    $4080aa96        ; (never reached)
+```
+
+Boot state at that point: the System has loaded off disk (1122 SCSI
+selects, 555 commands), QuickDraw is up (`ScrnBase = $60000000`, a live
+MainDevice/PixMap at 4 bpp, rowBytes 320) and the desktop pattern is
+painted. The ROM's own early ADBReInit completed; it is the **System's**
+that hangs. Meanwhile the host stops issuing /PMU_REQ and only re-polls
+`$D9` every ~0.66 s — a timeout retry, not progress.
+
+Cause: the PG&E's **ADB modem cell is a stub**. `ADBCR/ADBSR/ADBDR`
+($18-$1A) model TDRE and TC on timers but never RDRF or SRQ — and MAME's
+`m68hc05pge` does not either (verified: `m_adbsr |=` only ever sets TDRE
+and TC), which is a strong hint that MAME's `macpd230` does not reach the
+Finder either, whatever its lack of a NOT_WORKING flag suggests.
+
+Disproved on the way: raising RDRF unconditionally when the transmit
+timer expires (`POM68K_PGE_ADBRX=1`, left in as a signpost) makes things
+strictly worse — 0 SCSI selects instead of 1122. The cell needs real
+device semantics, not a blanket "a byte arrived".
+
+Next steps, in order:
+1. **Model the ADB cell properly**: the Duo's built-in keyboard and
+   trackball must appear to the System as ADB devices, which the PG&E
+   firmware synthesizes from the matrix scanner and the quadrature
+   counters. Work out from the firmware what it drives on the cell for a
+   Talk R3 poll of an absent address vs a present one, then decide
+   whether to reuse `AdbBus` (command level) or `AdbLine` (bit level)
+   behind it.
+2. The command stream is visible with `DUO_PMLOG=408898CA` (the
+   dispatcher): `$3A $38 $21 $68 $6B $32 $78 $71 $DC $11 $20 $10`,
+   settling to `$D9`/`$DC` retries.
+3. Only then: GSC decode gate, input, and the sleep/wake gate.
 
 ## Why this order
 
