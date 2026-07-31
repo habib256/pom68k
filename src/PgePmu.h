@@ -73,7 +73,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         if (mcu_) ar(*mcu_);
         ar(mcuAcc_, mcuDebt_, held_, porteBit2_, ackLevel_, reqLevel_,
-           lastPortE_, lastPortF_, lastPortG_, lastMosi_);
+           lastPortE_, lastPortF_, lastPortG_, lastPortC_, lastMosi_);
         ar(ds2400_);
     }
 
@@ -95,6 +95,7 @@ private:
     bool ackLevel_ = true;                           // /PMU_ACK idle
     bool reqLevel_ = true;                           // /PMU_REQ idle
     uint8_t lastPortE_ = 0xFF, lastPortF_ = 0xFF, lastPortG_ = 0xFF;
+    uint8_t lastPortC_ = 0xFF;                       // matrix row select
     bool lastMosi_ = false;
     int hostSpin_ = 0;                               // machine cycles owed
 

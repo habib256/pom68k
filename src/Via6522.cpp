@@ -103,6 +103,7 @@ void Via6522::extShiftCB1(bool level, bool cb2FromPic) {
         extBits_ = 0;
         static const bool trace = std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
         if (trace) std::fprintf(stderr, "via: SR byte %02X (SHIFT)\n", sr_);
+        extByteDone_ = true;
         setIfr(SHIFT);
     }
 }

@@ -70,6 +70,8 @@ public:
     // Duo's PMU driver runs on exactly this: every SPI clock edge of the
     // PCR-selected polarity raises IFR.CB1, and its ISR is what clears the
     // ADBBase+$15D busy flag the ROM spins on.
+    // True once per completed external-clock byte (consumed on read).
+    bool takeShiftDone() { bool d = extByteDone_; extByteDone_ = false; return d; }
     void extCb1Int(bool level) {
         const bool rise = !extIntCb1_ && level, fall = extIntCb1_ && !level;
         extIntCb1_ = level;
@@ -123,6 +125,7 @@ private:
     int extBits_ = 0;                           // Mac II ADB: external-clock shift count
     bool mscShiftQuirk_ = false;                // Duo MSC: ACR mode 0 = ext shift-in
     bool extIntCb1_ = true;                     // extCb1Int edge detector
+    bool extByteDone_ = false;                  // ext-clock byte completed
     bool extCb1_ = true;                        // last CB1 level from the PIC
     bool cb1_ = true, cb2_ = true;              // input pin levels (idle high)
     int32_t t1_ = 0, t2_ = 0;

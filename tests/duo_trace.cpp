@@ -143,6 +143,9 @@ int main(int argc, char** argv) {
     // from one that is spinning.
     long long ckpt = 0, nextCkpt = 0;
     if (const char* e = std::getenv("DUO_CKPT")) { ckpt = atoll(e); nextCkpt = ckpt; }
+    uint32_t pmlog = 0;
+    if (const char* e = std::getenv("DUO_PMLOG"))
+        pmlog = uint32_t(strtoul(e, nullptr, 16));
     auto peek32 = [&](uint32_t a) {
         return uint32_t(mem.peek8(a)) << 24 | uint32_t(mem.peek8(a + 1)) << 16
              | uint32_t(mem.peek8(a + 2)) << 8 | mem.peek8(a + 3);
@@ -164,6 +167,19 @@ int main(int argc, char** argv) {
             uint32_t pc = cpu.getPC0();
             ring[rp++ % ring.size()] = pc;
             pcCov[pc >> 16]++;
+            // DUO_PMLOG=<hexPC>: log D0/A0 each time the PMU command
+            // dispatcher is entered — the command stream the ROM issues.
+            if (pmlog && pc == pmlog) {
+                static long n = 0;
+                if (n++ < 200) {
+                    const uint32_t a0 = cpu.getA(0);
+                    std::printf("  PMCMD #%ld clk=%lld cmd=$%04X buf:", n,
+                                (long long)cpu.getClock(),
+                                uint16_t(mem.peek8(a0) << 8 | mem.peek8(a0 + 1)));
+                    for (int i = 0; i < 10; i++) std::printf(" %02X", mem.peek8(a0 + uint32_t(i)));
+                    std::printf("\n");
+                }
+            }
             if (stopAt && pc == stopAt) {
                 if (stopSkip > 0) stopSkip--;
                 else { stop = true; break; }
@@ -281,8 +297,9 @@ int main(int argc, char** argv) {
                     mem.via1().read(14), mem.via1().read(11), 0,
                     mem.pseudoVia().reg(3), mem.pseudoVia().reg(0x13),
                     mem.pseudoVia().reg(2), mem.pseudoVia().reg(0x12));
-        std::printf("-- PGE: intEdges=%ld ackEdges=%ld --\n",
-                    mem.pmu().pmuIntEdges, mem.pmu().pmuAckEdges);
+        std::printf("-- PGE: intEdges=%ld ackEdges=%ld ack=%d --\n",
+                    mem.pmu().pmuIntEdges, mem.pmu().pmuAckEdges,
+                    mem.pmu().pmuAck());
         std::printf("-- PGE: pc=$%04X (%s) instr=%ld spi=%ld option=$%02X "
                     "illegal=%d portE=$%02X portG=$%02X portH=$%02X --\n",
                     p.pc(), p.pc() >= 0x8000 && !(p.option() & 0x80 && p.pc() >= 0xFE00)

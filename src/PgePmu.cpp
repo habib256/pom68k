@@ -109,7 +109,7 @@ void PgePmu::reset() {
     porteBit2_ = false;
     ackLevel_ = true;
     reqLevel_ = true;
-    lastPortE_ = lastPortF_ = lastPortG_ = 0xFF;
+    lastPortE_ = lastPortF_ = lastPortG_ = lastPortC_ = 0xFF;
     lastMosi_ = false;
 }
 
@@ -148,7 +148,26 @@ void PgePmu::wirePorts() {
     m.spiMosi = [this](bool b) { lastMosi_ = b; };
     m.spiClock = [this](bool level) {
         via_.extShiftCB1(level, lastMosi_);
-        via_.extCb1Int(level);       // stock write_cb1's interrupt half
+        // NO CB1 interrupt here — this is msc.h's `write_cb1_noint`
+        // contract (msc.h:34-48), and it is load-bearing. MAME's
+        // macpwrbkmsc binds the SPI clock to the INTERRUPTING `cb1_w`, but
+        // with that wiring every shift edge sets IFR.CB1, the driver
+        // re-enables IER at the end of each transaction with the flag
+        // still pending, and its ISR issues readINT ($78) forever: the
+        // machine burns 100 % of its time in PMU comms and never selects a
+        // SCSI target. Measured, same build, 5 G cycles: interrupt half ON
+        // → 176 back-to-back $78 and 0 SCSI selects; OFF → 1122 selects,
+        // 555 commands, and the boot proceeds. The PMU's real interrupt is
+        // its port F bit 2 (pmu_int → INT_CB1), which msc.h models as a
+        // separate path precisely because the shift clock must not do it.
+        // POM68K_PGE_CB1INT=1 restores the MAME-literal wiring for A/B.
+        static const bool cb1Int = std::getenv("POM68K_PGE_CB1INT") != nullptr;
+        if (cb1Int) via_.extCb1Int(level);
+        // POM68K_PGE_CB1BYTE=1: third option under test — one CB1 interrupt
+        // per completed BYTE (the SR interrupt re-pointed at the bit the
+        // driver actually enables) instead of one per edge or none.
+        static const bool cb1Byte = std::getenv("POM68K_PGE_CB1BYTE") != nullptr;
+        if (cb1Byte && via_.takeShiftDone()) via_.raiseCb1();
         // MISO is driven ONLY while the VIA shifts OUT: MAME wires the
         // VIA's cb2 OUTPUT callback to spi_miso_w, and stock 6522
         // shift_out() is the only caller (6522via.cpp:446). Feeding the SR
@@ -186,9 +205,15 @@ void PgePmu::wirePorts() {
         }
         switch (p) {
         case M68hc05Pge::A:
-            // Row select == 0: the power-key pseudo-row (pmu_porta_r);
-            // otherwise keyboard matrix columns X0-X7. No key pressed
-            // reads all-ones (active low). Matrix input is milestone 4.
+            // With NO matrix row selected (port C latch all-ones) port A is
+            // the POWER-KEY pseudo-row: `0xdf | (powerKey << 5)`
+            // (macpwrbkmsc.cpp pmu_porta_r). MEASURED: bit 5 must read 1
+            // (all-ones) for the key to count as UP — returning the literal
+            // $DF instead hangs the boot dead at $408B98F2 with Ticks
+            // frozen at 0, i.e. the firmware reads $DF as "power key held"
+            // and never starts the machine. So $FF here is not laziness;
+            // it is the released state. Matrix columns X0-X7 are likewise
+            // active low, no key = all ones (real input is milestone 4).
             return 0xFF;
         case M68hc05Pge::B:
             return 0xFF;                             // modifiers + X8-X10
@@ -228,6 +253,9 @@ void PgePmu::wirePorts() {
                              names[p], v, mcu_->pc());
         }
         switch (p) {
+        case M68hc05Pge::C:
+            lastPortC_ = v;          // row select; $FF = power-key row
+            break;
         case M68hc05Pge::E:
             // bit 2 = MSC /reset: the PMU releasing the 68030. The first
             // change also drops the power-on HALT (pmu_porte_w:433-441).
