@@ -63,7 +63,14 @@ std::vector<uint8_t> AdbBus::command(uint8_t cmd, const std::vector<uint8_t>& da
     }
 
     if (op == 2) {                       // listen: address moves (reg 3)
-        if (reg == 3 && data.size() >= 2) {
+        // The ACTIVATOR (data[1]) decides, exactly as in macadb.cpp:735-777
+        // and our own AdbLine: $00 = set handler AND address, $FE =
+        // unconditional address change. Any other value (a plain handler
+        // write, say) must leave the address alone. Moving the device on
+        // every Listen R3 makes ADBReInit's relocation dance never
+        // converge — the Duo's third ADBReInit hangs on exactly that.
+        if (reg == 3 && data.size() >= 2 &&
+            (data[1] == 0x00 || data[1] == 0xFE)) {
             const uint8_t newAddr = data[0] & 0x0F;
             if (addr == kbdAddr_) kbdAddr_ = newAddr;
             else if (addr == mouseAddr_) mouseAddr_ = newAddr;
