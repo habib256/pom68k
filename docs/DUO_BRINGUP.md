@@ -191,10 +191,41 @@ Following the thread one layer deeper (all measured, `DUO_PCCOUNT`):
   commands already visible in the `DUO_PMLOG` stream. At the hang VIA1
   IER is `$B3`, so CB1 has been re-enabled; the mask is not the leak.
 
-**The next concrete step** is therefore to trace one PmgrOp `$20`
-end to end — host request, PMU reply bytes, completion interrupt — and
-find which half never happens. `$408B2E76` is the guest end,
-`POM68K_PGE_ADBTRACE=1` the PMU end.
+**That trace is now done** (`POM68K_PGE_SPIBYTES=1` logs every completed
+SPI exchange). The third ADBReInit starts at host clk 4 620 607 926 and
+**1 729 clocks later issues exactly one PmgrOp `$20`** (`DUO_PMLOG`:
+`cmd=$0020 … 00 20 00 03`, i.e. selector $20, length 3). On the wire, at
+MCU cycle 74 893 563:
+
+```
+out=$00 in=$E2      ; host: $E2
+out=$62 in=$00
+out=$00 in=$20      ; host: $20   ← the ADB PmgrOp
+out=$20 in=$03      ; host: $03   ← length
+out=$03 in=$00
+out=$00 in=$00
+out=$00 in=$00
+…then nothing but the idle $D9/$DC poll, for ever
+```
+
+(`out` is the PMU, `in` is the host. The PMU echoes each received byte on
+the next exchange — the protocol's per-byte ack. An idle poll is three
+exchanges: host `$D9`, two zeros, PMU answers `$80`.)
+
+So **the command reaches the PMU and the PMU does nothing with it**: no
+ADB transaction on the cell afterwards (the cell only ever shows its own
+`$2C` autopoll), no completion, no interrupt (`intEdges` frozen at 859).
+The transport is fine — the idle `$D9` polls flow through the same path
+before and after.
+
+**The next concrete step** is the PG&E firmware's own handling of
+selector `$20`: single-step the MCU from the moment that byte lands
+(cycle 74 893 563 above) and find where it decides not to act. Everything
+needed is in place — `POM68K_PGE_SPIBYTES` for the wire, `_ADBTRACE` for
+the cell, `pcHistory()` on the MCU for its PC ring. What is missing is the
+Power Manager protocol document; without it, what selector `$20`'s three
+payload bytes are supposed to contain is guesswork, and the firmware
+disassembly is the only oracle left.
 
 **The 80 µs host stall is load-bearing.** MAME's `via2_out_b` spins the
 68030 80 µs on a /PMU_REQ edge; it looked like optional pacing, so it was

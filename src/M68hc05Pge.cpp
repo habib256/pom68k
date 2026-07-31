@@ -110,6 +110,16 @@ void M68hc05Pge::spiEdge() {
     if (spiBit_ <= 0) {
         spiRing_[spiRingPos_] = uint16_t((spiOutLatch_ << 8) | spiIn_);
         spiRingPos_ = (spiRingPos_ + 1) & 63;
+        // POM68K_PGE_SPIBYTES=1: every completed exchange. The question it
+        // exists to answer is whether a host PmgrOp actually reaches the
+        // PMU over the wire, or dies in the transport.
+        static const bool sb = std::getenv("POM68K_PGE_SPIBYTES") != nullptr;
+        if (sb) {
+            static long n = 0;
+            if (n++ < 400000)
+                std::fprintf(stderr, "spi: out=$%02X in=$%02X cyc=%lld\n",
+                             spiOutLatch_, spiIn_, (long long)cycles_);
+        }
         spsr_ |= 0x80;                               // SPSR_IRQ_FLAG
         if (spcr_ & 0x80) { pending_ |= INT_SPI; waiting_ = false; }
     }
