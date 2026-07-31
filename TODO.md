@@ -70,14 +70,57 @@ carries the same timestamp), and no pristine copy survives to A/B against,
 so an asset-coupled trigger cannot be excluded — but the code side is
 identical across the whole range tested.
 
-**Next**, in order: trace whether the guest ever issues Talk R0 to device
-2 after boot (if it never polls, the fault is in the driver's device
-table, not our device); if it does poll, dump what our keyboard answers
-against MAME's `macadb`. Compare with the LC II, where
-`lcii_beyond_etalon`'s Cmd-N proves keystrokes DO land — the two machines
-differ in ADB stack (Cuda vs Egret) and System version. Fix the 16-byte
-window to 8 while there. And **register it in a tier that runs** — a gate
-nobody executes is not a gate.
+### Traced 2026-07-31: the ADB side is CLEAN — the break is in the guest
+
+`POM68K_ADB_LLE_TRACE=1` over a whole gate run (397 k lines), plus two
+temporary probes. Every link of the chain was verified working:
+
+1. **The guest polls the keyboard.** Talk R0 to address 2 (`cmd=2C`)
+   **2906 times**, alongside 13 022 mouse polls (`cmd=3C`); it also
+   queries Talk R3 (51×) and issues Listen R3 (50×).
+2. **Our device answers.** 1028 key events queued, **829 keyboard reports
+   emitted** (`adbline: KEY report FF 1C` = the '8' keydown).
+3. **The Cuda relays them.** Each report is immediately followed by
+   `TREQ fall` → session start → `via: SR byte` — the packet reaches the
+   host VIA.
+4. **The model is MAME-faithful at every checked point**: the R0 byte
+   order (`buffer_[1]` = first key, `buffer_[0]` = `$FF`) matches
+   `macadb.cpp:656-673` exactly; the Talk R3 identity (`$22`, handler ID
+   1) matches `:705-707`; the Listen R3 set-handler/set-address rules
+   match `:757-777`.
+5. **The guest sees keyboard activity**: `KeyTime` ($0186) advances in
+   lockstep with the keystroke cadence (0x222D → 0x2239 → 0x2245…, +12
+   ticks = the gate's 12 frames per key).
+6. **But no key event is ever produced**: `KeyLast` ($0184) stays `0000`
+   and KeyMap stays all-zero. `KbdType` ($021E) reads 01, `KbdLast`
+   ($0218) reads 02.
+
+So the ADB transport, our device model and the Cuda are all doing their
+job; the break is INSIDE the guest, between the ADB keyboard driver
+(which stamps KeyTime) and the Event Manager (which never fills KeyLast).
+
+**This matches a field symptom**: on the GUI Quadra, typing into a text
+field in Netscape produces a sound per letter instead of characters —
+i.e. a system beep per REJECTED key, which is exactly "the key arrives
+but never translates". (That the beeps sound wrong and differ per letter
+is a SECOND, independent suspicion: the ASC rendering the beep from
+stale FIFO residue. Worth its own check — `q605_asc_test` covers
+registers/IRQ, not audible output.)
+
+**Next — the clean 2×2 experiment**, which separates machine from System
+in two runs: boot the **Quadra on a System 7.5 image** and the **LC II on
+the 8.1 image**, and type. The LC II on 7.5 already works
+(`lcii_beyond_etalon`'s Cmd-N creates a folder), so:
+  * keys work on Quadra+7.5 → the fault is 8.1-specific (its ADB stack
+    may not maintain KeyMap/KeyLast the way System 7 does, in which case
+    the GATE's observable is wrong, not the emulator);
+  * keys fail on LC II+8.1 too → same conclusion, machine-independent;
+  * keys work on LC II+8.1 but fail on Quadra+7.5 → a genuine
+    Quadra/Cuda-side defect after all.
+Then: fix the gate's 16-byte KeyMap window to 8 (`pom68k-false-green-
+wide-assert`), consider asserting on `KeyLast`/pixels instead, and
+**register it in a tier that runs** — a gate nobody executes is not a
+gate.
 
 ## Usability & proof (make the machines we have actually usable)
 
