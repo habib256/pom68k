@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## 2026-07-31 — The window-churn investigation ends on one deleted line: −23 to −33 %
+
+The idle-Finder ceiling item ("one window death per ~15 instructions")
+opened as an eviction-selectivity investigation and closed somewhere else
+entirely. The eviction hook was already exact — per page, per space. What
+every window re-arm ALSO did, on a path hit once per ~15 idle
+instructions, was an unconditional `pomJitDtlbFlush()`: a 2 KB memset,
+≈1.3 TB of memory traffic over a long run, and paid by BOTH backends —
+including `threaded`, which never uses the data TLB at all.
+
+The deletion argument is that every invalidation the flush stood in for
+already has an exact owner: an MMU-generation bump flushes at the source
+(`pomJitMapMoved`), an ATC eviction kills its derived entries per page and
+per space (`pomJitAtcEvict`), privilege rides in each entry's tag, a page
+gaining translated code flushes when it is marked and one losing its last
+block flushes when it is unmarked. What survives between two arms is
+exactly the set of entries whose backing ATC rows are still resident —
+the exactness contract itself. Proven: two 60 M-step locksteps (x64 and
+threaded) bit-identical, `ctest -L jit` 16/16.
+
+Measured the honest way after an evening of desktop-load contamination
+(the first bench cells read +5 % and were meaningless — load 10 on the
+host): a NIGHT A/B on an idle machine, reference and fixed binaries in
+adjacent pairs, three repetitions, load 1.00 on every cell. Result:
+threaded −22.8 % / −26.7 %, x64 −28.5 % / −33.0 % (5 G / 20 G regimes);
+DTLB fills 942 M → 7.8 M; the full matrix now reads interp 213.1/903.9 s,
+threaded 126.1/565.7 s, x64 97.6/432.3 s — and the user-facing boot
+etalon 61.3 s interpreted → **22.9 s on the JIT, ×2.68**, through the old
+"~×2.5 conformant ceiling". One deleted call, the biggest JIT win since
+the fetch window.
+
+Also from the same evening's callgrind pass (the non-JIT profile the
+churn numbers motivated): the interpreter spends **38.6 %** of all host
+instructions in `mmu040Translate` and ~60 % in the translate/fetch chain
+— the next conformant interpreter lever, ahead of everything else — and
+1.6 % in `istreambuf_iterator` byte-wise asset loading at startup (a
+trivial fread fix).
+
 ## 2026-07-30 — The five opcodes, same day: MOVEM + DBcc + JMP compiled
 
 The census named them at 18h, they were emitting by 19h30. `MOVEM` in both

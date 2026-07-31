@@ -144,11 +144,23 @@ the second half of that section is now a measurement rather than a guess.
 >
 > * `q605_boot_etalon`: interp 61.4 s → threaded 32.3 s (×1.90) → **x64
 >   25.6 s (×2.40)**; `auto` = x64, confirmed.
-> * `jit_bench` 12 000 frames (~5 G): threaded 167.8 s, **x64 151.6 s**;
->   48 000 frames (~20 G): threaded 788.3 s, **x64 709.5 s**. The §7
->   crossover has FLIPPED: with JSR/BSR/RTS compiled, the link table and
->   the deferred boundaries, **x64 now beats threaded on both regimes**
->   (~−10 %).
+> * `jit_bench` (2026-07-31 night matrix — idle host, adjacent A/B pairs
+>   ×3, load 1.00): interp 213.1 / 903.9 s; threaded 126.1 / 565.7 s;
+>   **x64 97.6 / 432.3 s** on the 5 G / 20 G regimes — x64 is ×2.18 /
+>   ×2.09 over the interpreter, and the boot etalon reads 61.3 s interp
+>   → **22.9 s JIT (×2.68)**. Includes the five census opcodes AND the
+>   arm-time DTLB-flush removal (below). The §7 crossover has FLIPPED:
+>   x64 beats threaded on both regimes.
+> * **The churn finding (2026-07-31):** every window re-arm performed an
+>   unconditional `pomJitDtlbFlush()` — a 2 KB memset, once per ~15 idle
+>   instructions, ≈1.3 TB of traffic per long run, paid even by threaded
+>   which never uses the DTLB. Every invalidation it stood in for has an
+>   exact owner (gen bumps flush at the source, ATC evictions kill per
+>   entry and per space, privilege rides in the entry tag, code-page
+>   mark/unmark flush themselves), so deleting it is conformance-neutral
+>   (2×60 M-step locksteps bit-identical) and worth −23 to −33 % wall
+>   clock depending on backend and regime. DTLB fills: 942 M → 7.8 M
+>   over one 60 M-step lockstep.
 > * Both engines are ~10× slower on this bench than the stale rows, and
 >   the exit counters name the cause: 794 M window-lost exits on threaded
 >   over 12.2 G instructions — one window death every ~15 instructions.

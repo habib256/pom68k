@@ -795,12 +795,20 @@ Next milestones:
     8/8. Measured: boot etalon 25.6 → 24.7 s, jit_bench −3.0 % (5 G) /
     −1.7 % (20 G) — the Amdahl share, with the idle residue still owned
     by the ATC window churn (the item below).
-  - [ ] **Window survival under VM page-aging** — the measured idle-Finder
-    ceiling (one window death per ~15 instructions, 794 M lost exits over
-    12.2 G instructions): verify only the eviction of the ENTRY BACKING
-    the window kills it, and make the re-arm O(1) (the LC III memo
-    precedent). An investigation with the exactness contract untouched,
-    not a patch.
+  - [x] ~~**Window survival under VM page-aging**~~ **RESOLVED 2026-07-31
+    — and the culprit was not eviction selectivity.** The investigation
+    found the eviction hook already per-page and per-space; what every
+    window re-arm ALSO did was an unconditional `pomJitDtlbFlush()` — a
+    2 KB memset — at one re-arm per ~15 idle instructions, ≈1.3 TB of
+    memset traffic per long run, paid by BOTH backends (threaded never
+    even uses the DTLB). Every invalidation it stood in for already has
+    an exact owner (gen bump flushes at the source, ATC eviction kills
+    per entry, privilege rides in the tag, code-page mark/unmark flush
+    themselves), so the deletion is conformance-neutral: 2×60 M-step
+    locksteps bit-identical, `-L jit` 16/16. Idle-host A/B, adjacent
+    pairs ×3: threaded −22.8 %/−26.7 %, x64 −28.5 %/−33.0 % (5 G/20 G);
+    DTLB fills 942 M → 7.8 M; boot etalon 61.3 s interp → **22.9 s JIT
+    (×2.68)**. The single biggest JIT win since the fetch window.
   - [ ] **Coverage tail** (after the five): line $E shifts/rotates
     (0.9 %), Scc, PEA; the 68020 indexed modes are the big block (a brief
     extension-word decoder — QuickDraw's blitters). MULU/DIVU stay

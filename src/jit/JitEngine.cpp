@@ -254,10 +254,20 @@ bool Engine::armWindow(uint32_t pc, bool super) {
 
     serviceGuard();
     stats_.add(stats_.windowArmed);
-    // Reaching here means pomJitCovers() said no, and the two things it
-    // tests beyond an address range — the MMU generation and the privilege
-    // level — are exactly the two the data TLB cannot check for itself.
-    cpu_.pomJitDtlbFlush();
+    // NO DTLB flush here (churn fix, 2026-07-30). Re-arming used to flush
+    // the data TLB every time, and at the idle Finder the window dies every
+    // ~15 instructions (cross-page control transfers under a one-page
+    // window), so the TLB was rebuilt from nothing about 30 M times per
+    // boot — 942 M fills measured over one 60 M-step lockstep. Every
+    // invalidation the flush was standing in for already has its own exact
+    // owner: an MMU-generation bump flushes at the source
+    // (Moira::pomJitMapMoved), an ATC eviction kills its derived entries
+    // per page and per space (pomJitAtcEvict), privilege rides in each
+    // entry's tag (bit 31), a page gaining translated code flushes when it
+    // is marked (the hot path below), and one losing its last block
+    // flushes when it is unmarked (evictBlocksInSlices). What remains
+    // between two arms is exactly the set of entries whose backing ATC
+    // rows are still resident — which is the exactness contract itself.
 
     uint32_t phys = 0, pageBase = 0, pageLen = 0;
     if (!cpu_.pomJitProbeCode(pc, super, phys, pageBase, pageLen)) {
