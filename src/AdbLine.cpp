@@ -307,7 +307,13 @@ void AdbLine::adbTalk() {
                         if (!keyBuf_.empty()) { buffer_[0] = keyBuf_.front(); keyBuf_.pop_front(); }
                         else buffer_[0] = 0xFF;
                     }
-                    if (pending) datasize_ = 2;
+                    if (pending) {
+                        datasize_ = 2;
+                        if (trace)
+                            std::fprintf(stderr,
+                                         "adbline: kbd report %02X %02X (queue %zu)\n",
+                                         buffer_[0], buffer_[1], keyBuf_.size());
+                    }
                     else if (mousePending() && (mouseHandler_ & 0x20)) srqFlag_ = true;
                 } else if (reg == 2) {
                     buffer_[0] = modifiers_; buffer_[1] = 0xFF; datasize_ = 2;

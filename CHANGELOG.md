@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 157 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 159 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first. A `> **Superseded:**` blockquote under a heading points at the entry
@@ -38,6 +38,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **the Color Classic "Cuda 0417 wedge" was never a core bug** → [2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug…](#2026-07-29--the-color-classic-0417-wedge-was-a-missing-dfac2-not-a-core-bug-both-factory-cudas-land)
 - **"the IIsi has no working ADB" was wrong three times over — `peek8()` is PHYSICAL** → [2026-07-29 — Input-delivery gates for the 030 families…](#2026-07-29--input-delivery-gates-for-the-030-families-loud-hle-fallbacks-and-a-retracted-bug)
 - **the "PGO divergence" in the JIT was the U bit, not the optimizer** → [2026-07-28 (fifth pass) — The "PGO divergence" was the U bit all along](#2026-07-28-fifth-pass--the-pgo-divergence-was-the-u-bit-all-along)
+- **"the break is between the ADB driver and the Event Manager" was wrong — KeyTime was a false observable, the cause was Slow Keys in the image** → [2026-07-31 — The ten-month red gate was Slow Keys](#2026-07-31-slow-keys)
 - **the "DAFB sense" theory for the Slot-Manager blocker is disproven** → [2026-07-18 — Q5.1a: the Slot-Manager blocker re-localized…](#2026-07-18--q51a-the-slot-manager-blocker-re-localized--the-dafb-sense-theory-is-disproven-the-fault-is-a-decl-rom-parse)
 - **the "×1.6 on the LC II" fetch-window figure went stale when ATC capping landed** → [2026-07-30 — Engine re-baseline (idle host)…](#2026-07-30--engine-re-baseline-idle-host--the-cpu-menu-reaches-the-030s)
 - **the JIT "density" item was deprioritized once the idle ceiling was measured** → [2026-07-30 — JIT measured honestly: x64 wins both regimes…](#2026-07-30--jit-measured-honestly-x64-wins-both-regimes-the-next-lever-is-5-opcodes)
@@ -225,8 +226,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
-All 157 entries, newest first.
+All 159 entries, newest first.
 
+- **2026-07-31** — [The ten-month red gate was Slow Keys: the GUEST was rejecting the keys](#2026-07-31-slow-keys)
 - **2026-07-31** — [The window-churn investigation ends on one deleted line: −23 to −33 %](#2026-07-31-window-churn-dtlb-flush)
 - **2026-07-30** — [The five opcodes, same day: MOVEM + DBcc + JMP compiled](#2026-07-30--the-five-opcodes-same-day-movem--dbcc--jmp-compiled)
 - **2026-07-30** — [JIT measured honestly: x64 wins both regimes; the next lever is 5 opcodes](#2026-07-30--jit-measured-honestly-x64-wins-both-regimes-the-next-lever-is-5-opcodes)
@@ -386,6 +388,70 @@ All 157 entries, newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-07-31-slow-keys"></a>
+## 2026-07-31 — The ten-month red gate was Slow Keys: the GUEST was rejecting the keys
+
+`q605_cudalle_key_etalon` (RED since the commit that added it) is green, and
+no emulator code changed to make it so. The keyboard path was never broken:
+**the Mac OS 8.1 disk image has Easy Access Slow Keys enabled**, and a
+Slow-Keys guest *correctly* rejects any key-down held shorter than the
+acceptance delay. The gate typed 6-frame (~100 ms) taps; the guest dropped
+every one, exactly as a real Quadra with that setting would.
+
+**The instrument that cracked it** — `adb_key_probe` grew a RAM write-watch
+(`POM68K_PROBE_WWATCH=<hex>`: writer PC + regs + one-shot disasm of each new
+writer site). Walking the guest's own pipeline stage by stage:
+
+1. *KeyTime ($0186) is a lie.* Its writer under 8.1 is a **periodic task**
+   (`move.l $16A.w,D0; move.l D0,$186.w` every ~8 ticks, from boot minute
+   one, zero keys involved). The prior session's "KeyTime advances in
+   lockstep with keystrokes" was sampling-cadence coincidence. That retracts
+   the old conclusion "the driver hears ADB" — it never heard anything.
+2. *The classic ADB keyboard driver is present and healthy* (RAM `$D5xx`,
+   same code under 7.6 and 8.1, loaded $10 apart). Under 7.6 its service
+   head fires per report: press → `BSET` shadow (pc `$D59E`), release →
+   `BCLR` (pc `$D5A4`), shadow `movem`-copied to KeyMap $174-$183.
+3. *Under 8.1 only the release path ever fired* (`BCLR` ×4 for the four '8'
+   releases; not one `BSET`). Presses vanished; releases landed. The wire
+   trace shows every press AND release delivered as its own clean
+   single-event report (`kbd report FF 1C` / `FF 9C`, queue 0) — transport
+   exonerated end to end, again.
+4. *The ADB device table (ADBBase $0CF8) names the culprit*: the keyboard's
+   registered service routine is not the classic driver but a **system
+   wrapper at `$00484A54`** — an acceptance-delay engine (globals `$484184`:
+   `+$01` active flag, `+$22` press pending, `+$26` deferred keycode, `+$28`
+   deadline in Ticks). Key-downs are buffered against the deadline and
+   cancelled by the release if it comes first; key-ups pass through. That is
+   Slow Keys, and the 2026-07-23 field report's "beep per letter in
+   Netscape" is its rejection beep — same cause, now explained.
+
+**Proof, both directions**: `POM68K_PROBE_HOLD=150` (2.5 s holds) → the
+missing `BSET` appears, KeyMap live, on the exact cell that was dead. And
+`POM68K_PROBE_RETURN_TOGGLE=600` (the Easy Access hold-Return gesture,
+headless) flips the engine flag `$484185` `$FF→$00`, after which **6-frame
+taps land AND Cmd-N repaints the screen** — pipeline proven end to end,
+Command modifier included.
+
+**Gate change, deliberately state-agnostic**: the timed phase now holds each
+key 150 frames — accepted by a Slow-Keys guest *and* a normal one, so the
+gate stays green if/when the image is cleaned. The Return-toggle was
+rejected for gate use on purpose: it is a *toggle*, and would re-enable Slow
+Keys the day the image is fixed. Also per the false-green memory: KeyMap
+assert window narrowed 16→8 bytes. The image itself still has Slow Keys ON —
+GUI cleanup is a TODO follow-up (toggle once + clean Shut Down).
+
+Exonerated along the way, each measured: the ×50 boot-time R3 enumeration
+dance (7.6 does the identical 50 rounds and works); Talk R2 (never polled by
+this ROM — the `f1278ba` R2 bitmap is moot on the Quadra); the R0 byte-order
+question (our MAME-inherited `[filler, event]` singles are accepted fine by
+both drivers); both transports (LLE firmware and HLE byte model fail/succeed
+identically — the discriminator was always the image).
+
+**Methodology, the expensive lesson twice-paid now written down**: an
+observable earns trust only after demonstrating BOTH sensitivity (it moves
+with the stimulus) and silence (it does not move without it). KeyTime passed
+the first test and was never given the second.
 
 <a id="2026-07-31-window-churn-dtlb-flush"></a>
 ## 2026-07-31 — Two negative results, recorded on purpose

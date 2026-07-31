@@ -18,61 +18,40 @@ line here. **Every unchecked box below was re-verified against the code on
 
 ## 1. Red now
 
-### `q605_cudalle_key_etalon` — RED, real bug, not a regression
+*(nothing — `q605_cudalle_key_etalon` went green 2026-07-31: the cause was
+Easy Access **Slow Keys enabled inside `MacOS-8.1-boot.vhd`**, not the
+emulator. Full diagnosis in `CHANGELOG.md` § 2026-07-31; the gate now holds
+each key 150 frames, which both a Slow-Keys guest and a normal one accept.)*
 
-Not in `-L smoke` nor `-L jit`, which is why the working loop never caught it.
-Fails identically at `cda7bc2` **and** at `b472a7b` (the commit that introduced
-the gate): `Ticks 8905 -> 11031, KeyMap SILENT`.
+### Follow-ups from that hunt
 
-Ruled out, each measured: not a wedge (Ticks advance, SCSI plateaus at the same
-5236 commands as the passing gates); not the Cuda wire (silent on firmware LLE
-*and* on `POM68K_CUDA_LLE=0`); not the `peek8`-is-physical trap (`TC = 0`, so
-the physical read *is* the guest view); not a missing device
-(`AdbLine::keyboardAddr() == 2`, `ADBBase` `$0CF8` = `$00006DD0`); not a dirty
-volume (`drVolAtrb = $0100`); not the too-wide window (all 16 bytes read `00`).
+- [ ] **Clean the 8.1 image once**: Slow Keys is still ON inside
+  `hdv/MacOS-8.1-boot.vhd`, so GUI sessions still reject fast typing with a
+  beep per letter (the 2026-07-23 "Netscape beeps" report). One-time fix in
+  the GUI: hold **Return ~10 s** (Easy Access toggle — verified headless:
+  flag `$484185` flips `$FF→$00` and 6-frame taps then land), or Easy Access
+  control panel, then **clean Shut Down** so the volume isn't left dirty
+  (`pom68k-dirty-boot-image-gate-failures`). Do NOT script the Return toggle
+  into any gate — it is a toggle and would re-enable Slow Keys on a clean
+  image. After cleaning, re-run `ctest -L m040` (every 8.1-booting etalon).
+- [ ] **"Beeps sound wrong / differ per letter"** (field report): the beep
+  itself was the Slow Keys rejection beep — expected. Whether ASC renders it
+  *correctly* is still untested (`q605_asc_test` covers registers/IRQ, not
+  audible output). Keep as a low-priority ASC fidelity item.
+- [ ] **7.6 pixel anomaly**: on Q605 + System 7.6, KeyMap sees keys but the
+  Cmd-N screen-hash probe reports no repaint (`tests/adb_key_probe.cpp`);
+  on the Slow-Keys-disabled 8.1 cell the same probe DOES see the repaint, so
+  the pipeline (incl. Command) is proven end to end. Likely a probe artifact
+  of that 7.6 image (window/desktop state), not an emulator bug — verify once
+  in the GUI, then drop.
 
-ADB side traced CLEAN (`POM68K_ADB_LLE_TRACE=1`, 397 k lines): 2906 Talk R0 to
-address 2, 829 keyboard reports emitted, every one followed by TREQ fall →
-session → `via: SR byte`. R0 byte order, Talk R3 identity and Listen R3 rules
-all match `macadb.cpp:656-777`. Guest side: `KeyTime` ($0186) advances in
-lockstep with the keystrokes, but `KeyLast` ($0184) stays 0 and KeyMap stays
-zero. **The break is inside the guest, between the ADB keyboard driver and the
-Event Manager.**
-
-2×2 probe (`tests/adb_key_probe.cpp`, `POM68K_PROBE_MACHINE/_IMG/_FRAMES`):
-
-| cell | KeyMap | Cmd-N repaints |
-|---|---|---|
-| LC II + System 7.5 (control) | live | yes |
-| Quadra 605 + System 7.6 | live | no |
-| Quadra 605 + Mac OS 8.1 | dead | no |
-
-So the **Quadra hardware path is exonerated** — same machine, same Cuda, same
-`AdbLine`, keys land under 7.6 and not under 8.1. The 8.1 failure is
-System-coupled.
-
-- [ ] **Next: trace whether the guest reads keyboard R2 at all on the Quadra**
-  (`cmd=2A` in the ADB trace). Talk R2 modifiers are now implemented
-  (`AdbLine.cpp:37,45-58,313` — live bitmap, active low, in the save-state
-  chunk), closing a genuine oracle divergence against `macadb.cpp:694-700`, but
-  Cmd-N on the Quadra still does not repaint. If R2 is never polled, the
-  modifier state comes from the R0 key stream and the bug is in how we report
-  the Command keydown itself.
-- [ ] **Fix the gate's own defects** once the bug is understood: narrow the
-  KeyMap window from 16 bytes to 8 (`pom68k-false-green-wide-assert`), consider
-  asserting on pixels instead, and **register it in a tier that runs** — a gate
-  nobody executes is not a gate.
-- [ ] **Second, independent suspicion**: on the GUI Quadra, typing in a Netscape
-  text field beeps per letter (a beep per *rejected* key — consistent with the
-  above) but the beeps sound wrong and differ per letter. Suspect the ASC
-  rendering from stale FIFO residue; `q605_asc_test` covers registers/IRQ, not
-  audible output.
-
-Methodology notes, both paid for twice: `KeyLast` ($0184) moves in **no** cell,
-including working ones — it is not a usable observable; and a VRAM-hash probe
-reported "keys lost" on a cell where KeyMap proves they arrive, because letters
-select nothing on a bare desktop. **Believe an observable only after it has
-demonstrated sensitivity.**
+Methodology notes, now paid for three times: `KeyLast` ($0184) moves in **no**
+cell, including working ones; **`KeyTime` ($0186) is stamped continuously by
+the Slow Keys periodic task, keystrokes or not** — its "lockstep with typing"
+was a coincidence of sampling cadence; and a VRAM-hash probe reported "keys
+lost" on a cell where KeyMap proves they arrive. **Believe an observable only
+after it has demonstrated sensitivity** — and only after it has demonstrated
+*silence without stimulus*.
 
 ### The Cuda↔VIA bit-bang transport is phase-fragile
 

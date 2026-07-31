@@ -47,10 +47,10 @@ the matching 32 tags.
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **129 CTest gates**; one is **RED**: `q605_cudalle_key_etalon` (keyboard
-  under Mac OS 8.1 — the ADB transport traces clean, the break is inside the
-  guest; **not a regression**, red since the commit that added it).
-  Diagnosis in `TODO.md` § *`q605_cudalle_key_etalon` is RED*.
+- **129 CTest gates, all green.** The long-red `q605_cudalle_key_etalon`
+  resolved 2026-07-31: the 8.1 image has Easy Access **Slow Keys** enabled —
+  the guest was rejecting fast taps, the emulator was never at fault
+  (`CHANGELOG.md` § 2026-07-31; image cleanup follow-up in `TODO.md` § 1).
 - **Save states**: all 10 machine families, GUI-wired.
 - **JIT**: second engine, off by default (see the table below).
 - Next: `TODO.md` § *Future machine profiles* (ROMs on hand: IIfx, Quadra

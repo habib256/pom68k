@@ -9,6 +9,20 @@
 // press/release pairs, and requires (a) the emulation to keep advancing
 // (Ticks $016A — a host hang shows up as the CTest timeout), and (b) the
 // keystrokes to reach the low-memory KeyMap ($0174).
+//
+// The 2026-07-31 diagnosis of ten months of RED: this disk image has Easy
+// Access SLOW KEYS enabled, and Mac OS 8.1 registers its acceptance-delay
+// wrapper as the ADB service routine for the keyboard — a key-DOWN held
+// shorter than the acceptance delay is deliberately rejected by the guest
+// (the field report's beep-per-letter IS the Slow Keys rejection beep);
+// key-UPs pass straight through to the classic driver. The transport was
+// never at fault. The timed phase therefore HOLDS each key 150 frames
+// (~2.5 s) — accepted by Slow Keys and by a normal keyboard alike, so the
+// gate stays green whether or not the image's setting is ever cleaned up.
+// Do NOT "fix" this with the hold-Return Easy Access gesture: it is a
+// toggle, and would turn Slow Keys back ON the day the image is fixed.
+// KeyTime ($0186) is NOT a usable observable here: a Slow Keys periodic
+// task copies Ticks into it continuously, keystrokes or not.
 
 #include "Q605Memory.h"
 #include "Cpu040.h"
@@ -59,10 +73,13 @@ int main() {
     const uint32_t ticks0 = rd32(0x016A);
     for (uint8_t code : kSeq) {
         mem.keyEvent(code, true);                    // press
-        for (int f = 0; f < 6 && !cpu.isHalted(); f++) {
+        // 150-frame hold: longer than the Slow Keys acceptance delay.
+        for (int f = 0; f < 150 && !cpu.isHalted(); f++) {
             cpu.runCycles(kFrame);
-            // KeyMap $0174-$0183: bit set while the key is down
-            for (int i = 0; i < 16 && !keymapSeen; i++)
+            // KeyMap proper is EIGHT bytes ($0174-$017B) — $017C on is
+            // KeypadMap territory, and scanning it once made a dead ADB
+            // stack look half-alive. The main-row '8'/'.' land in it.
+            for (int i = 0; i < 8 && !keymapSeen; i++)
                 if (mem.peek8(0x0174 + uint32_t(i)) != 0) keymapSeen = true;
         }
         mem.keyEvent(code, false);                   // release

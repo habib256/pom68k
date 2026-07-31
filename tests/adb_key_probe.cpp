@@ -24,6 +24,26 @@
 //   POM68K_PROBE_MACHINE  q605 (default) | lcii
 //   POM68K_PROBE_IMG      disk image path (default: the machine's usual)
 //   POM68K_PROBE_FRAMES   boot frames before typing (default 9000)
+//   POM68K_PROBE_WWATCH   hex RAM address: print PC + regs on every guest
+//                         write covering it (Q605 only), from first keystroke
+//                         on — the tool that answers "WHO stamps KeyTime yet
+//                         never touches KeyMap" on Mac OS 8.1
+//   POM68K_PROBE_HOLD     frames each key is held (default 6) — the knob
+//                         that unmasked Slow Keys: 6-frame taps rejected,
+//                         150-frame holds accepted
+//   POM68K_PROBE_RETURN_TOGGLE  hold Return N frames post-boot (the Easy
+//                         Access gesture, toggles Slow Keys) and report the
+//                         engine flag before/after
+//   POM68K_PROBE_DUMPADB  hexdump the ADB Manager device table (ADBBase
+//                         $0CF8) after boot: addr → (service, data) map
+//
+// Where the 2026-07-31 hunt ended: the Q605+8.1 cell was dead because the
+// IMAGE has Easy Access Slow Keys enabled — Mac OS 8.1 registers its
+// acceptance-delay wrapper ($00484A54, globals $00484184) as the keyboard's
+// ADB service routine; taps shorter than the delay are rejected (with the
+// beep the 2026-07-23 field report describes), releases pass through to the
+// classic driver (RAM $D5xx). KeyTime is stamped by the wrapper's periodic
+// task with or without keystrokes — never trust it as a delivery observable.
 
 #include "Cpu030.h"
 #include "Cpu040.h"
@@ -95,15 +115,51 @@ int probe(Mem& mem, Cpu& cpu, const char* what, int64_t frameCycles,
     std::printf("%s: booted, Ticks=%u KbdType=%02X\n",
                 what, peek32(0x016A), mem.peek8(0x021E));
 
+    // POM68K_PROBE_DUMPADB=1: hexdump the ADB Manager's device table
+    // (ADBBase $0CF8) right after boot, so the addr→(service, data) map the
+    // dispatcher actually uses can be read — the question the 8.1 cell poses
+    // is whether keyboard packets are routed to the driver at all.
+    if (std::getenv("POM68K_PROBE_DUMPADB")) {
+        const uint32_t adbBase = peek32(0x0CF8);
+        std::printf("%s: ADBBase($0CF8)=$%08X\n", what, adbBase);
+        for (int i = 0; i < 0xC0; i++) {
+            if (i % 16 == 0) std::printf("  $%08X:", adbBase + uint32_t(i));
+            std::printf(" %02X", mem.peek8(adbBase + uint32_t(i)));
+            if (i % 16 == 15) std::printf("\n");
+        }
+    }
+
     const uint32_t keyTime0 = peek32(0x0186);
     const uint16_t keyLast0 = peek16(0x0184);
     int keymapSeen = 0, keyTimeMoves = 0, keyLastMoves = 0;
     uint32_t keyTimePrev = keyTime0;
     uint16_t keyLastPrev = keyLast0;
 
+    // POM68K_PROBE_RETURN_TOGGLE: hold the Return key ($24) this many frames
+    // before the sequence — the Easy Access keyboard gesture that toggles
+    // Slow Keys — then report the engine flag so the flip is observable.
+    if (const char* rt = std::getenv("POM68K_PROBE_RETURN_TOGGLE")) {
+        const int rf = std::atoi(rt);
+        std::printf("%s: holding Return %d frames (Slow Keys toggle), flag($484185)=%02X\n",
+                    what, rf, mem.peek8(0x484185));
+        mem.keyEvent(0x24, true);
+        for (int f = 0; f < rf && !cpu.isHalted(); f++) cpu.runCycles(frameCycles);
+        mem.keyEvent(0x24, false);
+        for (int f = 0; f < 120 && !cpu.isHalted(); f++) cpu.runCycles(frameCycles);
+        std::printf("%s: after Return hold, flag($484185)=%02X\n",
+                    what, mem.peek8(0x484185));
+    }
+
+    // POM68K_PROBE_HOLD: frames each key is held (default 6). The Slow Keys
+    // test: an acceptance-delay engine rejects a 6-frame tap but must accept
+    // a 150-frame hold.
+    const int holdFrames = [&] {
+        const char* h = std::getenv("POM68K_PROBE_HOLD");
+        return h ? std::atoi(h) : 6;
+    }();
     for (uint8_t code : kSeq) {
         mem.keyEvent(code, true);
-        for (int f = 0; f < 6 && !cpu.isHalted(); f++) {
+        for (int f = 0; f < holdFrames && !cpu.isHalted(); f++) {
             cpu.runCycles(frameCycles);
             if (int n = keymapBits(); n > keymapSeen) keymapSeen = n;
         }
@@ -182,6 +238,38 @@ int runQ605(const std::string& img, long bootFrames) {
     }
     static Cpu040 cpu(mem);
     mem.setCpu(&cpu);
+
+    // POM68K_PROBE_WWATCH=<hex>: catch every guest write covering that RAM
+    // address and print the writer's PC — then disassemble each new writer
+    // site once, so the guest routine can be read without a second run.
+    if (const char* ww = std::getenv("POM68K_PROBE_WWATCH")) {
+        const uint32_t addr = uint32_t(std::strtoul(ww, nullptr, 16));
+        mem.ramWatch_ = addr;
+        mem.onRamWrite = [&](uint32_t a, int sz, uint32_t v) {
+            static long n = 0;
+            static std::vector<uint32_t> seenPc;
+            if (n++ > 300) return;
+            std::printf("  WWATCH $%08X sz%d = $%0*X pc=$%08X D0=$%08X D1=$%08X "
+                        "A0=$%08X A1=$%08X A2=$%08X clk=%lld\n",
+                        a, sz, sz * 2, v, cpu.getPC0(), cpu.getD(0), cpu.getD(1),
+                        cpu.getA(0), cpu.getA(1), cpu.getA(2),
+                        (long long)cpu.getClock());
+            const uint32_t pc = cpu.getPC0();
+            for (uint32_t s : seenPc) if (s == pc) return;
+            if (seenPc.size() >= 8) return;
+            seenPc.push_back(pc);
+            char da[128];
+            uint32_t dpc = pc - 32;
+            for (int i = 0; i < 24; i++) {
+                int len = 2;
+                try { len = cpu.disassemble(da, dpc); }
+                catch (...) { std::snprintf(da, sizeof da, "<fault>"); }
+                std::printf("   %c $%08X  %s\n", dpc == pc ? '>' : ' ', dpc, da);
+                dpc += len;
+            }
+        };
+    }
+
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);
     return probe(mem, cpu, "q605", 416667, bootFrames, Q605Memory::kVramSize);
