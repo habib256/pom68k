@@ -32,6 +32,30 @@ IIsi's `cacheBoost_ = 1` workaround is retired with it.
   actual autopoll-to-guest report rate against the Egret's ~90 Hz and
   checking we are not servicing fewer polls than real hardware.
 
+## `q605_cudalle_key_etalon` is RED — pre-existing, found 2026-07-31
+
+Found by the first full `ctest -L m040` in a while (29/30 green). **Not a
+regression from the JIT or save-state work**: bisected to the session's
+starting commit `cda7bc2` in a clean worktree and it fails there with
+byte-identical numbers (`Ticks 8905 -> 11031, KeyMap SILENT`). It is in
+neither `-L smoke` nor `-L jit`, which is why weeks of green working-loop
+runs never exercised it.
+
+Symptom: the machine is ALIVE (Ticks advance 8737 → 11031 across the
+500-pair keypad stress) but no KeyMap bit is ever set — the keyboard path
+is silent, not wedged. Suspects, in order: (1) the Cuda↔VIA transport
+phase-fragility already documented in CHANGELOG (a 2 % MCU
+instruction-rate shift deadlocks the Mac TV; this gate pins the Quadra
+"collision face" — host command × autopoll TREQ); (2) something in the
+2026-07-25 bus-time pass (`machineClock()` everywhere) that this gate
+alone would notice; (3) a dirty boot volume, the trap recorded in
+`pom68k-dirty-boot-image-gate-failures`.
+
+Next: bisect it properly (it is ~200 s per run, so a `git bisect run`
+over the last ~2 weeks is affordable), and once the culprit is known,
+decide whether the gate or the model is wrong. **Add it to a tier that
+actually runs** either way — a gate nobody executes is not a gate.
+
 ## Usability & proof (make the machines we have actually usable)
 
 Rather than adding a machine, prove and harden the ones we have (ROI order:
@@ -809,6 +833,19 @@ Next milestones:
     pairs ×3: threaded −22.8 %/−26.7 %, x64 −28.5 %/−33.0 % (5 G/20 G);
     DTLB fills 942 M → 7.8 M; boot etalon 61.3 s interp → **22.9 s JIT
     (×2.68)**. The single biggest JIT win since the fetch window.
+  - [x] ~~**O(1) ATC lookup for `mmu040Translate`**~~ **TRIED AND
+    REVERTED 2026-07-31 — measured flat.** callgrind put
+    `mmu040Translate` at 38.6 % of the interpreter, so a 256-entry
+    direct-mapped page→entry hint table was added in front of the
+    32-entry linear scan (validated against the live entry, so
+    bit-identical by construction — `sst68040`, smoke and a 60 M-step
+    lockstep all green). Measured: interpreter 213.2 s vs 213.2 s (5 G)
+    and 906.7 s vs 903.9 s (20 G), x64 98.9 s vs 97.6 s — **zero, or
+    marginally negative**. The existing single-entry `last[write]` memo
+    already catches the hot case, and the residual scans are short
+    enough that a table lookup buys nothing. Reverted. The 38.6 % is
+    real but it is the WALK and the per-access bookkeeping, not the
+    lookup — re-open only with a profile that separates them.
   - [ ] **Coverage tail** (after the five): line $E shifts/rotates
     (0.9 %), Scc, PEA; the 68020 indexed modes are the big block (a brief
     extension-word decoder — QuickDraw's blitters). MULU/DIVU stay
