@@ -46,8 +46,41 @@ cœur 65C02 vide un anneau de 256 PC au premier `$00` :
 table d'état `$4E87`-`$4E9F` : le firmware tourne dans la machine à états
 `$5418`-`$5436`, dont la routine interne compare `$4E87,x` à `$4E87,y` et
 n'atteint jamais sa condition de sortie. Suspects, dans l'ordre :
-1. le mapping des registres SWIM derrière `readPeriph`/`writePeriph` ;
-2. la sémantique de rechargement du timer d'`ApplePic` ;
+
+0. **La ligne SEL du SWIM n'a AUCUN pilote sur l'Eclipse** — ajouté
+   2026-08-01 par relecture statique, **non testé** (ni ROM ni image dans
+   l'environnement où il a été trouvé ; à vérifier en premier, c'est deux
+   minutes). Les faits, tous lisibles dans le code :
+   - `Q700Memory::viaAccess8` sort tôt sur `eclipse()` (`Q700Memory.cpp:307`)
+     et le commentaire le dit lui-même : « the SWIM's head-select is the
+     IOP's business (`eclipse_state::via_out_a` is empty) ». Sur le Q700 la
+     même fonction appelle `swim_.setSel((via1_.portA() & 0x20) != 0)`.
+   - Côté IOP, **rien ne reprend le relais** : `swimPic_.gpOut` commence par
+     `if (pin != 0) return;` (`Q700Memory.cpp:55`, idem `IIfxMemory.cpp:49`),
+     donc **gpout1 — le seul sortant d'IOP non câblé — est jeté**.
+     `ApplePic` l'émet pourtant bien (`$F030` bit 7, `ApplePic.cpp:229`).
+   - Donc `Iwm::sel_` reste `false` à vie sur l'Eclipse, et `senseAddr`
+     (`Iwm.cpp:23`) multiplexe la moitié des registres de sense dessus.
+     Une machine à états qui interroge cette moitié-là lit une constante et
+     boucle — exactement « n'atteint jamais sa condition de sortie ».
+   - Le précédent est écrit noir sur blanc dans le commentaire du Q700 :
+     laisser SEL non piloté « pinned the Quadra 700 to side 0 », et
+     `q700_boot_etalon` ne l'a jamais vu **parce qu'il démarre en SCSI**.
+     Le IIfx boote lui aussi en SCSI : son firmware SWIM ne sert que l'ADB
+     (gpout0), ce qui explique qu'il passe malgré le même trou.
+   **Ce qui reste à établir** avant de câbler quoi que ce soit : que gpout1
+   soit bien le fil SEL de la carte (vérifier `maciifx.cpp:479-486` et
+   `macquadra700.cpp` — indisponibles ici), et que le firmware l'écrive.
+   Test le moins cher : tracer les écritures `$F030` bit 7 du firmware SWIM
+   avant de toucher au modèle.
+1. le mapping des registres SWIM derrière `readPeriph`/`writePeriph` —
+   *partiellement dédouané* : c'est un passe-plat 1:1 (`a & 0x0F` →
+   `Swim1::read/write`, `ApplePic.cpp:179,264`), même plage 0-15 que le bus
+   hôte (`(base>>9)&0x0F`, `Q700Memory.cpp:450`), et le registre 15 qui
+   déclenche `iwmModeWatch` reste atteignable ;
+2. la sémantique de rechargement du timer d'`ApplePic` — *idem, relu et
+   conforme à l'oracle cité* : armement `latch*8+12`, période continue
+   `(latch+2)*8`, lecture `(restant-4)/8` (`ApplePic.cpp:56-80,196`) ;
 3. `dat1byte` → `reqa_w`/`reqb_w` (MAME le câble sur **les deux** canaux
    DMA ici, `macquadra700.cpp:879-880`) — attention, **`Swim1` n'a aucun
    callback `dat1byte`** : c'est une extension du contrôleur, pas un fil.
