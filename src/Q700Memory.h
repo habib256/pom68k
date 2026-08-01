@@ -20,6 +20,26 @@
 //               pseudo-DMA, +$14000 EASC, +$1E000 SWIM1
 //   $F9000000-  VRAM (2 MB), $F9800000- DAFB register cell
 //
+// ── Quadra 900 "Eclipse" / 950 "Zydeco" (Model::Q900 / Q950) ──
+// The tower siblings are this very board with the IIfx's I/O front end
+// grafted on (MAME `eclipse_state`, `quadra900_map`) — which is why they
+// live here rather than in a platform of their own:
+//   * SCC and SWIM move BEHIND the two Apple PIC IOPs: the SCC PIC host
+//     window replaces the SCC at +$0C000 (now $1000 wide) and the SWIM PIC
+//     replaces the SWIM at +$1E000. The IOP firmware is downloaded by the
+//     ROM, exactly as on the IIfx (`docs/IOP_BRINGUP.md`).
+//   * **ADB is bit-banged by the SWIM IOP** (gpout0 → the wire, inverted;
+//     gpin reads it back) against `AdbLine` — no PIC1654S transceiver.
+//   * The discrete 343-0042 RTC is gone: an **Egret** (341S0851) on VIA1
+//     CB1/CB2 owns clock, PRAM and power ("The Quadra 900 replaced the
+//     real-time clock with a compatible variant of Egret").
+//   * A **second** 53C96 SCSI bus at +$0F400 (registers) / +$0F502 (DMA).
+//   * VIA1 PA identity: $D0|bit0 (Q900) or $90|bit0 (Q950) vs the Q700's
+//     $C0|bit0; VIA2 port B carries no DFAC on these boards.
+//   * 5 NuBus slots instead of 2; Q950 runs at 33.333 MHz (Q900 at 25).
+// The Q950's DAFB II wants `m_dafb_version = 3` — which POM68K's `Dafb`
+// already reports unconditionally (`Dafb.cpp:69`), so no video delta.
+//
 // Two things differ from the Centris beyond the layout:
 //  * SCSI lives behind **DAFB's** TurboSCSI cell, not IOSB's — DAFB register
 //    $24 carries the wait-state bits and reads back the DRQ status in bit 9
@@ -36,6 +56,9 @@
 #include "Rtc.h"
 #include "AdbVia.h"
 #include "AdbBus.h"
+#include "AdbLine.h"
+#include "ApplePic.h"
+#include "Egret.h"
 #include "Scc8530.h"
 #include "Ncr53c96.h"
 #include "ScsiDisk.h"
@@ -56,10 +79,19 @@ public:
     static constexpr uint32_t kVramSize = 0x200000;   // 2 MB (macqd700)
     int64_t cpuHz() const { return cpuHz_; }          // 60 Hz quantum for the shell
     static constexpr int64_t  kCpuHz = 25000000;      // 68040, 50 MHz XTAL / 2
+    static constexpr int64_t  kCpuHzQ950 = 33333333;  // Zydeco (33.333 MHz XTAL)
     // Ethernet address ROM (the Q800 shape: 6 MAC bytes + inverted XOR).
     static constexpr uint8_t kMacAddr[6] = { 0x08, 0x00, 0x07, 0x70, 0x30, 0x30 };
 
-    explicit Q700Memory(uint32_t totalRam = 32u << 20, int64_t cpuHz = kCpuHz);
+    // Spike = the Quadra 700; Q900/Q950 = the "Eclipse"/"Zydeco" towers,
+    // the same board with the IIfx's IOP + Egret front end (see the
+    // header note). `eclipse()` is the one predicate the code branches on.
+    enum class Model { Spike, Q900, Q950 };
+
+    explicit Q700Memory(uint32_t totalRam = 32u << 20, int64_t cpuHz = kCpuHz,
+                        Model model = Model::Spike);
+    Model model() const { return model_; }
+    bool eclipse() const { return model_ != Model::Spike; }
 
     bool loadRom(const std::vector<uint8_t>& data);
     void reset();
@@ -101,6 +133,13 @@ public:
     Scc8530& scc() { return scc_; }
     AscSonora& asc() { return asc_; }
     Swim1& swim() { return swim_; }
+    // Eclipse-only front end (unused on the Spike; see the header note).
+    ApplePic& sccPic() { return sccPic_; }
+    ApplePic& swimPic() { return swimPic_; }
+    AdbLine& adbLine() { return adbLine_; }
+    Egret& egret() { return egret_; }
+    Ncr53c96& scsi2() { return scsi2_; }
+    long adbHostEdges() const { return adbHostEdges_; }
     SonyDrive& internalDrive() { return drive0_; }
     SonyDrive& externalDrive() { return drive1_; }
     bool insertDisk(const std::string& path) { return drive0_.insert(path); }
@@ -125,15 +164,31 @@ public:
         drive1_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
-    bool cpuHeld() const { return false; }        // no reset-holding MCU
-    bool adbLleActive() const { return adbVia_.lle(); }
+    // The Spike has no reset-holding MCU; the Eclipse's Egret does hold it.
+    bool cpuHeld() const { return eclipse() ? egret_.cpuHeld() : false; }
+    bool adbLleActive() const { return !eclipse() && adbVia_.lle(); }
 
     bool loadPram(const std::string& path);
     void savePram(const std::string& path);
 
-    void keyEvent(uint8_t code, bool down) { adbVia_.keyEvent(code, down); }
-    void mouseMove(int dx, int dy) { adbVia_.mouseMove(dx, dy); }
-    void mouseButton(bool down) { adbVia_.mouseButton(down); }
+    // Input reaches the guest over whichever ADB transport this board has:
+    // the PIC1654S transceiver (Spike) or the SWIM IOP's bit-banged wire
+    // (Eclipse — the IIfx path).
+    void keyEvent(uint8_t code, bool down) {
+        if (!eclipse()) { adbVia_.keyEvent(code, down); return; }
+        if (egretAdb_) adb_.keyEvent(code, down);
+        else adbLine_.keyEvent(code, down);
+    }
+    void mouseMove(int dx, int dy) {
+        if (!eclipse()) { adbVia_.mouseMove(dx, dy); return; }
+        if (egretAdb_) adb_.mouseMove(dx, dy);
+        else adbLine_.mouseMove(dx, dy);
+    }
+    void mouseButton(bool down) {
+        if (!eclipse()) { adbVia_.mouseButton(down); return; }
+        if (egretAdb_) adb_.mouseButton(down);
+        else adbLine_.mouseButton(down);
+    }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
 
@@ -178,12 +233,20 @@ public:
            scsiDmaReadCycles_, scsiDmaWriteCycles_,
            ascCycAcc_, swimLastCpu_, swimCycAcc_,
            viaPhase_, tickAcc_, secAcc_);
+        // Eclipse-only tail: the header pins the profile, so the Quadra
+        // 700's chunk layout (and its existing snapshots) is untouched.
+        // Each ApplePic carries its 32 KB of host-uploaded firmware — a
+        // restore that dropped it would wake IOPs with no program.
+        if (eclipse()) {
+            ar(sccPic_, swimPic_, adbLine_, egret_, scsi2_);
+        }
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
     }
 
 private:
+    void iopTrace(bool write, char which, uint32_t base, uint8_t v);
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     uint8_t via2Access8(uint32_t addr, bool write, uint8_t v);
     void viaSync();
@@ -213,6 +276,13 @@ private:
     int64_t swimCycAcc_ = 0;
     Ncr53c96 scsi_;
     ScsiDisk scsiDisks_[7];
+    // Eclipse front end (constructed always, wired only when eclipse()).
+    ApplePic sccPic_, swimPic_;
+    AdbLine adbLine_;
+    Egret egret_;
+    Ncr53c96 scsi2_;                   // the tower's second SCSI bus
+    bool egretAdb_ = false;            // Egret serves ADB (vs the IOP wire)
+    long adbHostEdges_ = 0;
     Q700Cpu* cpu_ = nullptr;
 
     void jitMapChanged();
@@ -220,6 +290,7 @@ private:
 
     uint32_t totalRam_;
     int64_t  cpuHz_;
+    Model model_ = Model::Spike;
     bool overlay_ = true;
     bool sccIrq_ = false;
     uint8_t nubusIrqs_ = 0xFF;         // active low, bit 6 = DAFB (slot $F)

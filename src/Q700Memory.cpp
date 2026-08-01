@@ -10,17 +10,91 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <string>
 
-Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz)
+Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
     // Discrete DAFB (macquadra700.cpp:729 instantiates plain dafb_device):
     // the DP8531 clock chip, not the MEMCjr's Gazelle (dafb.cpp:884).
-    : asc_(cpuHz), totalRam_(totalRam), cpuHz_(cpuHz),
+    : asc_(cpuHz), egret_(via1_, /*cudaPolarity=*/false, int(cpuHz)),
+      totalRam_(totalRam), cpuHz_(cpuHz), model_(model),
       dafbCell_(cpuHz, Dafb::Clockgen::Dp8531) {
     while (totalRam_ & (totalRam_ - 1)) totalRam_ &= totalRam_ - 1;   // pow2
     ram_.assign(totalRam_, 0);
     rom_.assign(kRomSize, 0xFF);
     vram_.assign(kVramSize, 0);
     adbVia_.attach(via1_, adb_, cpuHz_);
+    if (eclipse()) {
+        // The IIfx front end (docs/IOP_BRINGUP.md), grafted on the Spike
+        // board. SCC behind its IOP: the z80scc "universal bus" decode —
+        // offset bit0 = channel (1 = A), bit1 = data/control.
+        sccPic_.readPeriph = [this](int r) -> uint8_t {
+            const int ch = r & 1;
+            return (r & 2) ? scc_.readData(ch) : scc_.readCtl(ch);
+        };
+        sccPic_.writePeriph = [this](int r, uint8_t v) {
+            const int ch = r & 1;
+            if (r & 2) scc_.writeData(ch, v);
+            else scc_.writeCtl(ch, v);
+            sccPic_.pintW(scc_.irqAsserted());
+        };
+        // The SCC IOP's host interrupt IS the board's SCC interrupt line
+        // (macquadra700.cpp:867 hint → scc_irq_w).
+        sccPic_.hostInt = [this](bool s) { sccIrqLine(s); };
+        swimPic_.readPeriph = [this](int r) -> uint8_t { return swim_.read(r); };
+        swimPic_.writePeriph = [this](int r, uint8_t v) { swim_.write(r, v); };
+        // The SWIM IOP's host interrupt lands on VIA2 CA2, INVERTED
+        // (macquadra700.cpp:877). The 6522 latches that line on its edge,
+        // so an assertion (line → 0) is the flag-setting transition;
+        // `raiseCa2` is that edge (`Via6522` models CA2 edge-only).
+        swimPic_.hostInt = [this](bool s) {
+            if (s) { via2_.raiseCa2(); updateIrq(); }
+        };
+        // ADB on the SWIM IOP's GPIO: gpout0 drives the wire (inverted on
+        // the board), gpin reads the wired-AND level back.
+        swimPic_.gpOut = [this](int pin, bool level) {
+            if (pin != 0) return;
+            adbHostEdges_++;
+            adbLine_.setHostDrive(!level);
+        };
+        swimPic_.gpIn = [this]() -> uint8_t {
+            return adbLine_.line() ? 0x01 : 0x00;
+        };
+        // MAME wires the ADB devices' data line to BOTH the IOP's gpin and
+        // the Egret (`macadb->adb_data_callback().append(m_egret,
+        // set_adb_line)`), so which side actually serves the guest is a
+        // question of what the ROM drives — measured, not assumed
+        // (POM68K_Q900_ADB=iop forces the IIfx-style IOP-only wire).
+        const char* who = std::getenv("POM68K_Q900_ADB");
+        egretAdb_ = !(who && std::string(who) == "iop");
+        if (egretAdb_) egret_.setAdbBus(&adb_);
+
+        // POM68K_Q900_IOPBRK=1: both IOP firmwares end in a BRK panic
+        // handler when they lose their way, and the only useful evidence
+        // is where they came FROM — dump the 65C02 PC trail on the first
+        // `$00` executed (docs/IOP_BRINGUP.md § M7).
+        if (std::getenv("POM68K_Q900_IOPBRK")) {
+            sccPic_.cpu().setTrace(true);
+            swimPic_.cpu().setTrace(true);
+            auto trap = [](const char* who2, R65c02& c) {
+                return [who2, &c](uint16_t pc) {
+                    static int once = 0;
+                    if (once++) return;
+                    std::fprintf(stderr, "[IOP-BRK] %s executed $00 at $%04X; trail:",
+                                 who2, pc);
+                    const std::vector<uint16_t> t = c.pcTrail();
+                    int k = 0;
+                    for (uint16_t p : t)
+                        std::fprintf(stderr, "%s$%04X", (k++ % 12) ? " " : "\n  ", p);
+                    std::fprintf(stderr, "\n  A=%02X X=%02X Y=%02X SP=%02X P=%02X\n",
+                                 c.getAccumulator(), c.getXRegister(),
+                                 c.getYRegister(), c.getStackPointer(),
+                                 c.getStatusRegister());
+                };
+            };
+            sccPic_.cpu().onBrk = trap("sccPIC", sccPic_.cpu());
+            swimPic_.cpu().onBrk = trap("swimPIC", swimPic_.cpu());
+        }
+    }
     dafbCell_.onIrq = [this](bool s) { vblIrq(s); };
     asc_.onIrq = [this](bool s) { ascIrq(s); };
     drive0_.setSuperDrive(true);
@@ -30,6 +104,12 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz)
     swim_.attachDrive(&drive0_, &drive1_);
     rtc_.factoryDefaults();
     rtc_.setXpram(0x8A, uint8_t(rtc_.xpram(0x8A) | 0x05));   // 32-bit clean
+    // Eclipse: same seeding, in the Egret's PRAM — a cold (all-zero) store
+    // sends the ROM down its long full-RAM burn-in on every boot.
+    if (eclipse()) {
+        egret_.factoryDefaults();
+        egret_.setPram(0x8A, uint8_t(egret_.pram(0x8A) | 0x05));
+    }
     {
         const char* e = std::getenv("POM68K_SCSI_LAT");
         scsi_.setLatency(e ? std::atoi(e) : -1);
@@ -43,7 +123,10 @@ bool Q700Memory::loadRom(const std::vector<uint8_t>& data) {
     return true;
 }
 
+// On the Eclipse the battery-backed store lives in the Egret, not in a
+// discrete RTC — route there so a tower keeps its clock and startup disk.
 bool Q700Memory::loadPram(const std::string& path) {
+    if (eclipse()) return egret_.loadPram(path);
     std::ifstream in(path, std::ios::binary);
     if (!in) return false;
     std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)),
@@ -54,6 +137,7 @@ bool Q700Memory::loadPram(const std::string& path) {
 }
 
 void Q700Memory::savePram(const std::string& path) {
+    if (eclipse()) { egret_.savePram(path); return; }
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out) return;
     for (int i = 0; i < 256; i++) {
@@ -74,6 +158,14 @@ void Q700Memory::reset() {
     via2_.reset();
     rtc_.reset();
     adbVia_.reset();
+    if (eclipse()) {
+        sccPic_.reset();
+        swimPic_.reset();
+        adbLine_.reset();
+        egret_.reset();          // holds the 68040 until the MCU releases it
+        scsi2_.reset();
+        adbHostEdges_ = 0;
+    }
     scc_.reset();
     scsi_.reset();
     asc_.reset();
@@ -94,9 +186,12 @@ void Q700Memory::reset() {
     tickAcc_ = 0;
     secAcc_ = 0;
     sccIrq_ = false;
-    // VIA1 PA = $C0 | diagnostic-disabled bit 0 (spike_state::via_in_a) — the
-    // IIci lesson: feeding PA0 = 0 sends the ROM down the burn-in path.
-    via1_.setInA(0xC1);
+    // VIA1 PA identity | diagnostic-disabled bit 0 — the IIci lesson:
+    // feeding PA0 = 0 sends the ROM down the burn-in path. $C0 = Spike
+    // (`spike_state::via_in_a`), $D0 = Q900, $90 = Q950
+    // (`eclipse_state::via_in_a` / `via_in_a_q950`).
+    via1_.setInA(model_ == Model::Q900 ? 0xD1
+               : model_ == Model::Q950 ? 0x91 : 0xC1);
     refreshVia1PortB();
     // VIA2 PB = $CF (via2_in_b: "no NuBus transaction error").
     via2_.setInB(0xCF);
@@ -157,6 +252,26 @@ void Q700Memory::syncSwimFromCpu() {
     if (cyc) swim_.tick(cyc);
 }
 
+// Eclipse bring-up eyes (POM68K_Q900_IOP_TRACE=1): every host-window touch
+// on either IOP, with the decoded 5-bit offset and the CPU's PC.
+void Q700Memory::iopTrace(bool write, char which, uint32_t base, uint8_t v) {
+    // POM68K_Q900_IOP_TRACE=<max lines> (1 = the default 600). The data
+    // port floods, so a bare `=1` is useless past the first upload —
+    // raise it, or grep the control writes (off=02) that gate /RSTPIC.
+    static const long cap = [] {
+        const char* e = std::getenv("POM68K_Q900_IOP_TRACE");
+        if (!e) return 0L;
+        long n = std::atol(e);
+        return n > 1 ? n : 600L;
+    }();
+    if (!cap) return;
+    static long n = 0;
+    if (n++ >= cap) return;
+    std::fprintf(stderr, "iop-%c: %s base=%05X off=%02X v=%02X pc=%08X\n",
+                 which, write ? "wr" : "rd", base, (base >> 1) & 0x1F, v,
+                 cpu_ ? unsigned(cpu_->getPC()) : 0u);
+}
+
 // VIA E-clock alignment, in MACHINE cycles (CHANGELOG 2026-07-25): the
 // 25 MHz / 783.36 kHz ratio is the Centris's 32:1 approximation.
 void Q700Memory::viaSync() {
@@ -167,8 +282,15 @@ void Q700Memory::viaSync() {
     if (target > c) cpu_->stall(int(target - c));
 }
 
-// VIA1 PB (spike_state::via_in_b): PB0 = RTC serial data, PB3 = /ADB IRQ.
+// VIA1 PB. Spike (`spike_state::via_in_b`): PB0 = RTC serial data,
+// PB3 = /ADB IRQ. Eclipse (`eclipse_state::via_in_b`): the discrete RTC is
+// gone — the Egret owns clock/PRAM/power and the only input is its
+// XCVR_SESSION on PB3.
 void Q700Memory::refreshVia1PortB() {
+    if (eclipse()) {
+        via1_.setInB(uint8_t(egret_.xcvrSession() << 3));
+        return;
+    }
     uint8_t in = rtc_.dataBit() & 1;
     in |= 0xC6;
     if (!adbVia_.irqPending()) in |= 0x08;
@@ -178,10 +300,21 @@ void Q700Memory::refreshVia1PortB() {
 uint8_t Q700Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
     if (cpu_) cpu_->flushTicks();
     viaSync();
-    if (cpu_) adbVia_.syncTo(cpu_->machineClock());
+    if (!eclipse() && cpu_) adbVia_.syncTo(cpu_->machineClock());
     int reg = (addr >> 9) & 0x0F;
     if (write) {
         via1_.write(reg, v);
+        if (eclipse()) {
+            // The Egret transport: port B carries VIA_FULL (PB4) and
+            // SYS_SESSION (PB5); no RTC lines, and the SWIM's head-select
+            // is the IOP's business (`eclipse_state::via_out_a` is empty).
+            if (reg == Via6522::ORB || reg == Via6522::DDRB) {
+                egret_.portBChanged(via1_.portB());
+                refreshVia1PortB();
+            }
+            updateIrq();
+            return 0;
+        }
         // PA5 = floppy head-select (macquadra700.cpp:614-625
         // spike_state::via_out_a → m_cur_floppy->ss_w). SWIM1's IWM
         // personality also multiplexes half its sense registers on this line
@@ -277,12 +410,23 @@ uint8_t Q700Memory::ioRead8(uint32_t addr) {
         }
         return 0;
     }
-    if (base >= 0x0C000 && base < 0x0E000) {      // SCC
+    if (base >= 0x0C000 && base < 0x0E000) {
+        // Eclipse: the SCC IOP's host window ($1000 wide) replaces the SCC.
+        if (eclipse()) {
+            uint8_t d = sccPic_.hostRead((base >> 1) & 0x1F);
+            iopTrace(false, 's', base, d);
+            return d;
+        }
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
         sccIrqLine(scc_.irqAsserted());
         return d;
     }
+    // Eclipse only: the tower's SECOND 53C96 bus (registers + pseudo-DMA).
+    if (eclipse() && base >= 0x0F400 && base < 0x0F500)
+        return scsi2_.read((base >> 4) & 0xF);
+    if (eclipse() && base >= 0x0F500 && base < 0x0F504)
+        return scsi2_.drq() ? scsi2_.dmaRead() : 0xFF;
     if (base >= 0x0F000 && base < 0x0F100) {      // TurboSCSI 53C96 registers
         if (cpu_) cpu_->stall(scsiReadCycles_);
         uint8_t d = scsi_.read((base >> 4) & 0xF);
@@ -295,6 +439,12 @@ uint8_t Q700Memory::ioRead8(uint32_t addr) {
     }
     if (base >= 0x14000 && base < 0x16000) return asc_.read(addr & 0xFFF);
     if (base >= 0x1E000 && base < 0x20000) {
+        // Eclipse: the SWIM IOP's host window replaces the SWIM.
+        if (eclipse()) {
+            uint8_t d = swimPic_.hostRead((base >> 1) & 0x1F);
+            iopTrace(false, 'w', base, d);
+            return d;
+        }
         if (cpu_) cpu_->stall(5);
         syncSwimFromCpu();
         return (addr & 1) ? 0 : swim_.read((base >> 9) & 0x0F);
@@ -310,10 +460,23 @@ void Q700Memory::ioWrite8(uint32_t addr, uint8_t v) {
     if (base < 0x02000) { viaAccess8(base, true, v); return; }
     if (base >= 0x02000 && base < 0x04000) { via2Access8(base, true, v); return; }
     if (base >= 0x0C000 && base < 0x0E000) {
+        if (eclipse()) {
+            iopTrace(true, 's', base, v);
+            sccPic_.hostWrite((base >> 1) & 0x1F, v);
+            return;
+        }
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
         sccIrqLine(scc_.irqAsserted());
+        return;
+    }
+    if (eclipse() && base >= 0x0F400 && base < 0x0F500) {
+        scsi2_.write((base >> 4) & 0xF, v);
+        return;
+    }
+    if (eclipse() && base >= 0x0F500 && base < 0x0F504) {
+        if (scsi2_.drq()) scsi2_.dmaWrite(v);
         return;
     }
     if (base >= 0x0F000 && base < 0x0F100) {
@@ -329,6 +492,11 @@ void Q700Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if (base >= 0x14000 && base < 0x16000) { asc_.write(addr & 0xFFF, v); return; }
     if (base >= 0x1E000 && base < 0x20000) {
+        if (eclipse()) {
+            iopTrace(true, 'w', base, v);
+            swimPic_.hostWrite((base >> 1) & 0x1F, v);
+            return;
+        }
         if (cpu_) cpu_->stall(5);
         syncSwimFromCpu();
         swim_.write((base >> 9) & 0x0F, v);
@@ -514,7 +682,19 @@ void Q700Memory::write16(uint32_t addr, uint16_t v) {
     }
     if (addr >= 0x50000000 && addr < 0x60000000) {
         uint32_t base = (addr & 0x00FFFFFF) & 0x0003FFFF;
-        if (base >= 0x1E000 && base < 0x20000) { write8(addr + 1, uint8_t(v)); return; }
+        // The Quadra 700's SWIM1 hangs off the ODD byte lane, so a word
+        // write there delivers only its low half. On the Eclipse that same
+        // window is the SWIM IOP's HOST window, whose 16-bit RAM-address
+        // register the ROM writes with a single `move.w d0,(a2)`
+        // (a2 = $5001E001, ROM $40804D38): high half → offset 0, low half →
+        // offset 1. Applying the Spike quirk there dropped the high byte,
+        // so every upload landed in the low 256 bytes, the ROM's 32 KB RAM
+        // test failed, and the IOP was never released from /RSTPIC —
+        // the boot then waited forever for ADB.
+        if (!eclipse() && base >= 0x1E000 && base < 0x20000) {
+            write8(addr + 1, uint8_t(v));
+            return;
+        }
     }
     write8(addr, uint8_t(v >> 8));
     write8(addr + 1, uint8_t(v));
@@ -542,11 +722,34 @@ void Q700Memory::tick(int cpuCycles) {
         if (irq) updateIrq();
     }
 
-    adbVia_.tick(cpuCycles);
-    if (cpu_) adbVia_.syncTo(cpu_->machineClock());
+    if (eclipse()) {
+        // Both IOPs run on C15M; AdbLine's device timers were rebased onto
+        // that same domain. The Egret keeps the CPU clock (µs pacing).
+        const int c15 = int(int64_t(cpuCycles) * 15667200 / cpuHz_);
+        sccPic_.tick(c15);
+        swimPic_.tick(c15);
+        adbLine_.tick(c15);
+        egret_.tick(cpuCycles);
+        refreshVia1PortB();
+    } else {
+        adbVia_.tick(cpuCycles);
+        if (cpu_) adbVia_.syncTo(cpu_->machineClock());
+    }
 
     scc_.tick(cpuCycles);
-    if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }
+    if (eclipse()) {
+        // On the Eclipse the board's SCC interrupt line belongs to the SCC
+        // IOP's HOST interrupt, not to the SCC chip: the chip's /INT is a
+        // PERIPHERAL interrupt into the IOP (macquadra700.cpp:867-870).
+        // Letting the Q700's line survive here re-derived `sccIrq_` from
+        // the raw chip every tick and wiped the IOP's interrupt the moment
+        // it was raised — the boot then waited forever on an
+        // `_IOPMsgRequest` that had, in fact, been answered.
+        sccPic_.pintW(scc_.irqAsserted());
+    } else if (sccIrq_ != scc_.irqAsserted()) {
+        sccIrq_ = scc_.irqAsserted();
+        updateIrq();
+    }
 
     asc_.tick(cpuCycles);
     syncSwimFromCpu();
@@ -570,9 +773,13 @@ void Q700Memory::tick(int cpuCycles) {
     secAcc_ += cpuCycles;
     if (secAcc_ >= cpuHz_) {
         secAcc_ -= cpuHz_;
-        rtc_.tickSecond();
-        via1_.raiseCa2();
-        updateIrq();
+        // Eclipse has no discrete RTC — the Egret keeps time (it runs its
+        // own second counter in tick()) and there is no CA2 tick to chain.
+        if (!eclipse()) {
+            rtc_.tickSecond();
+            via1_.raiseCa2();
+            updateIrq();
+        }
     }
 
     dafbCell_.tick(cpuCycles);

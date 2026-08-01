@@ -38,7 +38,7 @@ inside that section.
 | Platform | Reference machine | Variants in the same section | § |
 |---|---|---|---|
 | 68000 + PAL glue | **Mac Plus** | SE, SE FDHD, Classic (`MacMemory::Model`) | [2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic) |
-| GLUE + NuBus | **Mac II** | IIx, IIcx (68030 on the same board) | [2.2](#22-glue--nubus--mac-ii-iix-iicx) |
+| GLUE + NuBus | **Mac II** | IIx, IIcx, SE/30 (68030 on the same board; the SE/30 is the compact IIx) | [2.2](#22-glue--nubus--mac-ii-iix-iicx) |
 | V8 gate array | **Mac LC II** | LC, Classic II (Eagle), Color Classic (Spice), Mac TV (Tinker Bell) | [2.3](#23-v8-gate-array--mac-lc-ii-lc-classic-ii-color-classic-mac-tv) |
 | RBV (RAM-based video) | **Mac IIsi** | IIci (PIC ADB modem + discrete RTC) | [2.4](#24-rbv-ram-based-video--mac-iisi-iici) |
 | Sonora gate array | **Mac LC III** | LC III+, LC 520/550, Color Classic II; **VASP** = IIvx / IIvi | [2.5](#25-sonora-gate-array--lc-iii-lc-iii-aio-family--the-vasp-recombination) |
@@ -46,6 +46,7 @@ inside that section.
 | djMEMC + IOSB | **Centris 650** | Centris 610, Quadra 610/650/800 | [2.7](#27-djmemc--iosb--centris-650-centris-610-quadra-610650800) |
 | Discrete 040 + DAFB | **Quadra 700** | (Quadra 900/950 once the IOPs exist) | [2.8](#28-discrete-040--dafb--quadra-700) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
+| OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
 
 ---
 
@@ -152,8 +153,8 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **32** profiles are enumerated
-  (`SaveStateMachines.h:47-68`) and every machine family has a
+  append, never renumber. All **33** profiles are enumerated
+  (`SaveStateMachines.h`) and every machine family has a
   `save`/`load` pair.
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
   `savestate_040_test`, `savestate_68k_test` (all `unit`), plus the
@@ -278,9 +279,9 @@ emulators just mirror via a mask and let the ROM discover it.
 - PB6 H4 is derived from the true beam position (`clock % 352 < 256`),
   unlike MAME's constant.
 
-### 2.2 GLUE + NuBus — Mac II (IIx, IIcx)
+### 2.2 GLUE + NuBus — Mac II (IIx, IIcx, SE/30)
 
-`MacIIMemory` (`Model {MacII, IIx, IIcx}`) + `Cpu020` (`is030` flag).
+`MacIIMemory` (`Model {MacII, IIx, IIcx, SE30}`) + `Cpu020` (`is030` flag).
 Functional accuracy.
 
 - **CPU:** Moira's 68020 at 15.6672 MHz; no PMMU (HMMU translation only
@@ -313,9 +314,21 @@ Functional accuracy.
   only (IIx VIA2 PB `$87`, IIcx VIA1 PA `$C1`). **The wall** was the PMMU
   double-translation described in [§1.3](#13-cpu-integration-seam) — the
   boot wedged mid-System, SCSI freezing ~351 commands in.
+- **Variant SE/30** (2026-07-31): the compact IIx — MAME `macse30` is
+  "IIx with no slots and built-in video". Identity is the *combination*
+  of both siblings' pins (VIA1 PA `$C1` + VIA2 PB `$87`). The internal
+  512×342×1 video is `Se30Video.h`, an ordinary `NuBusDevice` on
+  pseudo-slot $E: 64 KB VRAM served across the slot (MAME `$FE000000` +
+  the `$FEE00000` 24-bit mirror), the linear 8 KB `se30vrom.uk6` dump as
+  its declaration ROM at the top of the $FE window, page select on VIA1
+  PA6 (from the written byte — PA6-as-input is the machine-ID pull-up).
+  VBL is a slot-$E interrupt gated by VIA1 PB6=0 (`se30_via_out_b`),
+  kept at MAME's every-other-frame phase toggle; flipping PB6 is the
+  driver's ISR ack. No new brick — Finder on the gate's first run.
 - **Gates:** `macii_post_etalon`, `macii_boot_etalon` (Sys 6),
   `macii_sys7_boot_etalon`, `macii_mouse_etalon`, `iix_boot_etalon`,
-  `iicx_boot_etalon`, `declrom_test`, `nubus_test`, `toby_test`.
+  `iicx_boot_etalon`, `se30_boot_etalon`, `declrom_test`, `nubus_test`,
+  `toby_test`.
 
 ### 2.3 V8 gate array — Mac LC II (LC, Classic II, Color Classic, Mac TV)
 
@@ -559,6 +572,50 @@ does not model that bus, so the clock stays at the 31.3344 MHz default —
 which only affects the refresh rate the frame clock derives.
 
 Gates: `q630_boot_etalon`, `lc580_boot_etalon` (640×480×8 Finder).
+
+### 2.10 OSS + two Apple PIC IOPs — Mac IIfx
+
+`IIfxMemory` + `IIfxCpu` (Moira 68030 @ **40 MHz**, functional). Blueprint
+and milestone history: `docs/IOP_BRINGUP.md`. What makes this board unlike
+every other one in the tree: **three processors**, and the other two run
+firmware the host uploads at boot.
+
+- **No VIA2.** The **OSS** (`$5001A000`) replaces it: a flat `$400`-byte
+  register file where `regs[0..15]` hold each input's requested IPL and
+  `regs[$202]/[$203]` are the pending flags; the highest pending priority
+  is driven into the CPU. Inputs: 0-5 = NuBus slots 9-E, 6 = SWIM IOP,
+  7 = SCC IOP, 8 = ASC, 9 = SCSIDMA, 10 = the 60.15 Hz tick (also pulses
+  VIA1 CA1; acked by writing OSS `$207`), 11 = VIA1.
+- **No built-in video.** The IIfx boots on a NuBus card — `TobyVideo` on
+  slot 9, the same port the Mac II uses ([§2.2](#22-glue--nubus--mac-ii-iix-iicx)).
+- **Two Apple PIC IOPs** (`ApplePic`, one per SCC and SWIM), each an
+  `R65c02` at C15M/8 with 32 KB of RAM, a timer, two DMA channels and a
+  host mailbox window. **There is no IOP ROM**: the internal map is all
+  RAM + registers, so the system ROM downloads the firmware through the
+  shared-RAM window and then releases `/RSTPIC` — the Duo BORG pattern,
+  and `iifx_post_etalon` verifies both images byte-for-byte against the
+  ROM (SCC vector `$040E` at ROM+`$5F471`, SWIM vector `$5000` at
+  ROM+`$5A7EE`).
+- **ADB is bit-banged by the SWIM IOP.** Its GPIO pair drives the wire
+  (gpout0 **inverted** on the board) and `AdbLine`'s LLE keyboard+mouse
+  answer — no HLE anywhere on that path, unlike every MCU-based family.
+- **SCSIDMA** (`$50008000`): an NCR 53C80 cell plus Apple handshake logic
+  over `Ncr5380`. **`$00-$03` is both the handshake data port and 5380
+  reg 0** — with no DRQ active it must fall through to the register
+  (`scsidma.cpp:262-310`); swallowing it means selection never puts the
+  target ID on the bus. True DMA + the restartable handshake stall are
+  A/UX-only and deliberately absent.
+- **The FMC probe**: `$50024000-$50027FFF` must **bus error** — that is
+  how the ROM recognises the board (`maciifx.cpp:204`).
+- **Clocks**: the CPU is 40 MHz, every peripheral is on C15M (15.6672 MHz)
+  or C15M/20 for the VIA; `tick()` converts with integer accumulators and
+  carries the remainder ([§1.2](#12-family-wide-invariants)).
+- **System ceiling**: the ROM is 32-bit dirty, so 7.6 is the practical
+  top (8.x needs a 32-bit-clean ROM).
+
+Gates: `r65c02_test`, `applepic_test`, `iifx_post_etalon`,
+`iifx_boot_etalon` (Finder on 7.6), `iifx_input_etalon` (mouse repaint +
+KeyMap through the IOP firmware), save states in `savestate_030_test`.
 
 ---
 
@@ -953,13 +1010,29 @@ documented before 2026-07-31:
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
 | `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the 030 CPUs (`Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
-| `POM68K_NOFPU` | Mac II: no 68881/68882 |
+| `POM68K_NOFPU` | Mac II **and IIfx**: no 68881/68882 |
 
 **Devices and subsystems**: `POM68K_EGRET_LLE`, `POM68K_CUDA_LLE`,
 `POM68K_CUDA_FW`, `POM68K_ADB_LLE`, `POM68K_APPLETALK`,
 `POM68K_SHARE_DIR`, `POM68K_ATALK_WIRE_BOOST`, `POM68K_LTOUDP`,
 `POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_DRIVE_SFX`
 (`0` = silence the drive FX), `POM68K_SCSI_DDM_TEMPLATE`.
+
+**Duo / PG&E (platform #11, in bring-up)** — behavioural:
+`POM68K_PGE_ADB` (`0` = detach the ADB bus from the modem cell),
+`POM68K_PGE_SPINUS` (host stall per /PMU_REQ edge, µs, default 80, `0` =
+off), `POM68K_PGE_CB1INT` / `POM68K_PGE_CB1BYTE` (alternate SPI-clock →
+CB1 wirings, MAME-literal A/B), `POM68K_PGE_ADBRX` (disproved RDRF
+experiment, kept as signpost), `POM68K_PGE_CHARGER` (`0` = unplug the
+charger — boots WORSE, see `docs/DUO_BRINGUP.md`). Diagnostics:
+`POM68K_PGE_TRACE`, `POM68K_PGE_HSHAKE` (REQ/ACK + INT-line
+transitions), `POM68K_PGE_SPIBYTES`, `POM68K_PGE_TRAP=<hexbyte>`,
+`POM68K_PGE_ADBTRACE`, `POM68K_PGE_PCCOUNT="hex,…"` /
+`POM68K_PGE_PCWIN="lo,hi[;…]"` / `POM68K_PGE_PCHIST="lo,hi"` (MCU-side
+PC counters / windowed hit log / 256-byte-bucket histogram). The
+`duo_trace` harness adds `DUO_CKPT`, `DUO_PMLOG`, `DUO_PCCOUNT`,
+`DUO_DUMPAT`, `DUO_KEYAT`, `DUO_PGEWATCH`, `DUO_SRAMDUMP` (its header
+documents them).
 
 **JIT**: `POM68K_CPU_ENGINE`, `POM68K_DATA_WINDOW` and the whole
 `POM68K_JIT_*` family — see `src/jit/POM68K_JIT.md` § 6. **That table is
@@ -970,7 +1043,9 @@ authoritative** and was itself corrected on 2026-07-31.
 (machine-thread heartbeat + a one-shot spin dump), `POM68K_FPU_LOG`,
 `POM68K_FREEZE_PROBE`, `POM68K_DAFB_CLOCK_TRACE`, `POM68K_SCSI_LAT`,
 `POM68K_CD_TRACE`, `POM68K_SE_VIA_TRACE`, `POM68K_ATALK_DEBUG`,
-`POM68K_MACIP_DEBUG`.
+`POM68K_MACIP_DEBUG`, and the IIfx trio `POM68K_IIFX_IO_TRACE` (unknown
+I/O touches), `POM68K_IIFX_SCSI_TRACE` (5380/SCSIDMA registers with PC),
+`POM68K_IIFX_ADB_TRACE` (ADB line-state transitions + decoded commands).
 
 **Test-only knobs** — read by a gate, never by the emulator; listed so the
 next person greps once instead of twice: `POM68K_AIO_EGRET`,

@@ -72,6 +72,20 @@ public:
     // ADBBase+$15D busy flag the ROM spins on.
     // True once per completed external-clock byte (consumed on read).
     bool takeShiftDone() { bool d = extByteDone_; extByteDone_ = false; return d; }
+    // Duo MSC /PMU_INT: a LEVEL into the customized CB1 (msc.h pmu_int
+    // asserts AND clears INT_CB1). While the PMU holds the line low,
+    // IFR.CB1 reads set and survives the guest's clears — the PMU driver
+    // masks IER.CB1 and acks stale flags around every PmgrOp, and a cause
+    // posted inside that window must still interrupt when IER comes back
+    // (measured: the System-era deadlock where the CPI second-tick cause
+    // lands during the ADB SendReset's masked send, the ack eats the
+    // edge-latched flag, and no edge ever comes again). Deassert clears
+    // the flag like MAME's clear_int. Only the PG&E drives this.
+    void pmuIntLevel(bool asserted) {
+        pmuIntAsserted_ = asserted;
+        if (asserted) setIfr(CB1);
+        else ifr_ &= uint8_t(~CB1);
+    }
     void extCb1Int(bool level) {
         const bool rise = !extIntCb1_ && level, fall = extIntCb1_ && !level;
         extIntCb1_ = level;
@@ -102,7 +116,8 @@ public:
         ar(ora_, orb_, ddra_, ddrb_, inA_, inB_,
            acr_, pcr_, sr_, ifr_, ier_,
            srHostWritten_, shiftCount_, extBits_, extCb1_, cb1_, cb2_,
-           t1_, t2_, t1latch_, t2ll_, t1armed_, t2armed_, ca1Cleared);
+           t1_, t2_, t1latch_, t2ll_, t1armed_, t2armed_, ca1Cleared,
+           pmuIntAsserted_);
     }
 
 private:
@@ -116,7 +131,11 @@ private:
         ifr_ &= uint8_t(~CA1);
         if ((pcr_ & 0x0A) != 0x02) ifr_ &= uint8_t(~CA2);
     }
-    void clearCbFlags() { ifr_ &= uint8_t(~CB1); if ((pcr_ & 0xA0) != 0x20) ifr_ &= uint8_t(~CB2); }
+    void clearCbFlags() {
+        ifr_ &= uint8_t(~CB1);
+        if (pmuIntAsserted_) ifr_ |= CB1;   // MSC /PMU_INT level holds it
+        if ((pcr_ & 0xA0) != 0x20) ifr_ &= uint8_t(~CB2);
+    }
     uint8_t ora_ = 0, orb_ = 0, ddra_ = 0, ddrb_ = 0;
     uint8_t inA_ = 0xFF, inB_ = 0xFF;
     uint8_t acr_ = 0, pcr_ = 0, sr_ = 0, ifr_ = 0, ier_ = 0;
@@ -126,6 +145,7 @@ private:
     bool mscShiftQuirk_ = false;                // Duo MSC: ACR mode 0 = ext shift-in
     bool extIntCb1_ = true;                     // extCb1Int edge detector
     bool extByteDone_ = false;                  // ext-clock byte completed
+    bool pmuIntAsserted_ = false;               // MSC /PMU_INT level (Duo)
     bool extCb1_ = true;                        // last CB1 level from the PIC
     bool cb1_ = true, cb2_ = true;              // input pin levels (idle high)
     int32_t t1_ = 0, t2_ = 0;

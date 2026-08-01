@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 159 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 160 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first. A `> **Superseded:**` blockquote under a heading points at the entry
@@ -226,8 +226,17 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
-All 159 entries, newest first.
+All 168 entries, newest first.
 
+- **2026-08-01** — [Quadra 900: the Eclipse platform lands and both IOPs run — the wall is a BRK inside byte-perfect firmware](#2026-08-01-q900)
+- **2026-08-01** — [The IIfx is the 34th profile: GUI, save states, and an input gate whose thresholds were measured, not invented](#2026-08-01-iifx-profile)
+- **2026-08-01** — [The Mac IIfx boots the Finder — ADB bit-banged by the IOP's own 65C02 firmware against AdbLine](#2026-08-01-iifx-finder)
+- **2026-08-01** — [IOP M3: the IIfx POSTs — both IOP firmwares upload byte-perfect, and the boot scan reads the disk](#2026-08-01-iifx-post)
+- **2026-08-01** — [IOP M2: the Apple PIC device lands — a window-uploaded 65C02 program talks both mailbox directions](#2026-08-01-applepic)
+- **2026-08-01** — [The IIfx/Quadra-900 IOP brick opens: the R65C02 core lands, and it needed no dump](#2026-08-01-r65c02)
+- **2026-07-31** — [`duo230_boot_etalon` GREEN: milestone 3 gated, the GSC decoder lands](#2026-07-31-duo-gate)
+- **2026-07-31** — [The SE/30 lands as the 33rd profile: wiring only, Finder on the first run](#2026-07-31-se30)
+- **2026-07-31** — [The Duo 230 boots the Finder: /PMU_INT is a LEVEL, and $E1 re-uploads the PMU firmware](#2026-07-31-duo-finder)
 - **2026-07-31** — [The ten-month red gate was Slow Keys: the GUEST was rejecting the keys](#2026-07-31-slow-keys)
 - **2026-07-31** — [The window-churn investigation ends on one deleted line: −23 to −33 %](#2026-07-31-window-churn-dtlb-flush)
 - **2026-07-30** — [The five opcodes, same day: MOVEM + DBcc + JMP compiled](#2026-07-30--the-five-opcodes-same-day-movem--dbcc--jmp-compiled)
@@ -388,6 +397,380 @@ All 159 entries, newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-01-q900"></a>
+## 2026-08-01 (M7) — Quadra 900: the Eclipse platform lands and both IOPs run — the wall is a BRK inside byte-perfect firmware
+
+IOP milestone 7, **honestly incomplete**: the Quadra 900/950 platform is in
+and deeply exercised, but neither reaches the Finder yet, so **no profile
+was registered** — the house rule is that a `kProfiles` row is earned by a
+Finder cell, not by a memory map.
+
+The towers are the Quadra 700 board with the IIfx's front end grafted on,
+so they live in `Q700Memory` behind `Model {Spike, Q900, Q950}` rather
+than in a platform of their own: two `ApplePic` IOPs replacing the direct
+SCC and SWIM decode (host windows at +$0C000 / +$1E000), `AdbLine` on the
+SWIM IOP's GPIO, an `Egret` on VIA1 CB1/CB2 replacing the discrete RTC, a
+second 53C96 bus, the `$D0`/`$90` VIA1 PA identities, no DFAC on VIA2 port
+B, and 33.333 MHz for the Q950. `q700_boot_etalon <q700|q900|q950>` picks
+the machine.
+
+**What works, measured**: the Q900 ROM POSTs, paints 640×480 DAFB video,
+uploads both IOP firmwares and releases them, and the SCC IOP runs its
+real firmware (2484 B) through the ROM's bypass-mode walking test on the
+SCC's WR2/RR2.
+
+**Three bugs found, and they were all the same bug**: a Quadra 700 rule
+silently inherited by a board that does not have it (see
+`docs/IOP_BRINGUP.md` § 5b for the full list and the debugging order).
+The two that cost real time:
+
+- **`tick()` re-derived the SCC interrupt line from the SCC chip.** On the
+  Eclipse that line is the SCC IOP's *host* interrupt; the chip's `/INT`
+  is a *peripheral* interrupt into the IOP. The inherited line wiped the
+  IOP's interrupt the instant it was raised, so the boot waited forever on
+  an `_IOPMsgRequest` ($A087) that had already been answered.
+- **The SWIM odd-byte-lane word-write quirk.** The Q700's SWIM1 takes only
+  the low half of a word write. On the Eclipse that window is the SWIM
+  IOP's host window, whose 16-bit RAM-address register the ROM writes with
+  a single `move.w d0,(a2)` (a2 = `$5001E001`, ROM `$40804D38`). The quirk
+  dropped the address's high byte, every upload landed in the low 256
+  bytes, the ROM's 32 KB IOP RAM test failed, and the IOP was never
+  released from `/RSTPIC`.
+
+**The wall, characterised so the next session starts here.** The SWIM IOP
+now runs, and its firmware is **byte-perfect**: the ROM's upload script at
+`$5A7EB` is `[len][addr:2][data…]`, and all **54 chunks / 11516 bytes**
+compare equal against the live IOP RAM. Despite that, the 65C02 ends in
+the firmware's own **BRK panic handler** (`$5060`, which tests the pushed
+B flag and then hangs walking the stack at `$5069`). So it executed a
+`$00`: a control-flow divergence inside POM68K's device model, not a
+corrupt upload. The host meanwhile sits at ROM `$4080A8E6` with VIA2
+`IER=$01` — it has armed the SWIM IOP's host interrupt (VIA2 CA2) and
+waits for a reply that never comes.
+
+**Traced to the instruction**, with tooling that stays in the tree:
+`R65c02::setTrace()/onBrk/pcTrail()` keeps a 256-deep ring of executed PCs
+and dumps it on the first `$00` (`POM68K_Q900_IOPBRK=1`). The firmware
+reaches the BRK at **`$0042`** through an ordinary epilogue — `$53FC PLY;
+PLX; PLA; $53FF RTS` — whose `RTS` read a garbage return address
+(`A=41 X=FF Y=59 SP=FF P=30`). That measurement **kills two hypotheses**,
+and both are worth not re-opening: it is **not a stack-discipline
+underflow** (SP was `$FA` entering the epilogue and `$FF` after its five
+pulls — exactly right; the bad address was simply what sat at
+`$01FE/$01FF`, so the routine returned one frame past its own top level),
+and it is **not an interrupt storm** (no `$504E`, the firmware's IRQ
+vector, anywhere in the last 256 executed PCs). What it was doing instead
+is spinning in the state machine at `$5418`-`$5436`, whose inner routine
+compares `$4E87,x` against `$4E87,y` — a table at `$4E87`-`$4E9F` that
+never reaches its end condition.
+
+Next suspects, refined by that trace: the SWIM device-register mapping
+behind `readPeriph`/`writePeriph`; the `ApplePic` timer's reload
+semantics; and `dat1byte` → `reqa_w`/`reqb_w`, which MAME wires to **both**
+DMA channels here (`macquadra700.cpp:879-880`) — note POM68K's `Swim1` has
+no `dat1byte` callback at all, so that one is a real extension of the
+floppy controller, not a wiring line.
+
+**The Quadra 700 is verified non-regressed** (`q700_boot_etalon` 531 s and
+`jit_q700_boot_etalon`, both green after the shared-code surgery) — the
+check that mattered, since `Q700Memory` now serves three machines.
+
+Method note worth keeping: the cheap-to-expensive ladder that localised
+this — IOP held/released → its cycle counter moving → how many firmware
+bytes it holds → VIA IFR/IER (who is armed, who never fires) → the IOP's
+own flags/mask → disassemble the IOP RAM at its stuck PC — is now written
+down in the blueprint, because every step of it paid.
+
+<a id="2026-08-01-iifx-profile"></a>
+## 2026-08-01 (late night) — The IIfx is the 34th profile: GUI, save states, and an input gate whose thresholds were measured, not invented
+
+IOP milestone 6. The IIfx stops being a test rig and becomes a machine:
+`MachineKind::IIfx` + a `kProfiles` row under a new **"OSS + IOP (IIfx)"**
+group, `SnapMachine::IIfx = 34` with its save/load pair, an `IIfxMachine`
+GUI loop (the `MacIiMachine` contract — queued input, decoded framebuffer,
+relaxed-atomic status), and ROM dispatch on the 512 KB `$4147DD77` — the
+only 512 KB ROM in the tree that is neither RBV nor V8. **34 profiles, 20
+`MachineKind` values, 11 platform implementations, 136 gates.**
+
+Two things specific to this machine were worth the extra wiring:
+
+- **The CPU window shows both IOP cycle counters.** The IIfx has three
+  processors; "is the SWIM IOP still executing?" is the first question
+  every IIfx bug asks (no ADB, no floppy), and it is now one glance.
+- **Save states carry the IOP RAM.** Each `ApplePic` chunk nests an
+  `R65c02` plus its 32 KB — which IS the firmware, host-uploaded with no
+  ROM to reload. A restore that dropped it would resurrect a machine whose
+  I/O processors have no program. Covered in `savestate_030_test`
+  (byte-identical re-save + 150 k-cycle determinism across a restore, both
+  green first run; the rig's stub sits at ROM+$2A because the IIfx wrapper
+  hardcodes the Basilisk-style reset frame).
+
+**`iifx_input_etalon`** proves ADB *delivery* through the IOP firmware, and
+its first run is the entry's real lesson. Two observables, both held to the
+TODO §1 standard — an observable is believed only after demonstrating
+sensitivity **and** silence without stimulus:
+
+- **Mouse → pixels.** Idle 0 px, after motion 43 px. My first threshold
+  (`moved > 200`) was **invented and failed the gate on a working
+  machine** — the RBV family's measured figure is 46 px, the same class.
+  Fixed to `family_input_etalon`'s `moved > idle + 20`. Inventing a
+  threshold is the same error as trusting an unmeasured observable.
+- **Keyboard → KeyMap ($0174, exactly 8 bytes** — never wider, see the
+  2026-07-29 false green). The 030's PMMU is **on** here (TC=$80F05750),
+  which on an RBV machine would make the read meaningless. It is sound on
+  the IIfx for a structural reason — no built-in video, so physical low
+  RAM is ordinary RAM — and, more to the point, the measured signature is
+  **0 → 1 → 0 bits** across press/hold/release. The gate asserts it, with
+  the reasoning recorded at the assertion rather than a silent skip.
+
+<a id="2026-08-01-iifx-finder"></a>
+## 2026-08-01 (night) — The Mac IIfx boots the Finder — ADB bit-banged by the IOP's own 65C02 firmware against AdbLine
+
+Gate `iifx_boot_etalon` (**135 gates**): the IIfx ROM + System 7.6 FR to
+a verified Finder — menu bar 0.06 black, desktop 0.83, 6648 SCSI
+commands, screenshot eyeballed before any threshold moved (menu bar,
+clock, Corbeille, the volume mounted; seven copies of it, in fact — the
+multi-ID mirror workaround inherited from `MacIIMemory::attachScsi` is
+guest-visible on 7.6, kept for scan-speed parity and noted in the
+etalon). Finder at frame 1559 (~26 guest-seconds at 40 MHz).
+
+The ADB chain that makes this the milestone it is: **no HLE anywhere on
+the wire.** The System's ADBReInit sends IOP-mailbox commands to the SWIM
+PIC; the PIC's real firmware (uploaded by the ROM, M3) bit-bangs the ADB
+line through its GPIO pair (gpout0 inverted, `maciifx.cpp:483`); and
+`AdbLine`'s LLE keyboard+mouse decode the wire traffic and answer.
+Measured on the wire: 8-bit commands in ~70 µs cells, the full Talk-R3
+enumeration sweep ($0F→$FF), devices replying (dsz=2 sends), then the
+Listen-R3 address shuffle — textbook ADB, served end to end by two
+emulated processors talking over one emulated wire.
+
+The hunt, for the record: after M3 the boot stalled spinning on **bit 5
+of $15D(A3)** at ROM $4080A8EC — the same ADB-driver soft-flag byte the
+Mac II family uses, here waiting for an IOP command completion. Wiring
+`AdbLine` to the SWIM PIC's GPIO (12 lines in `IIfxMemory`) dissolved it:
+the polarity guesses held on first try (MAME's `macadb` "push model echo"
+comment confirms state 1 = line high on both callbacks). Two lesser
+traps: a stale `iifx_trace` binary measured one whole run of the OLD core
+after the ODR fix (`pom68k-no-edits-during-bg-build`, paid again), and
+the etalon's frame constant `40000000 * 100` overflowed int and froze the
+CPU at the reset vector for 18 000 silent frames — `LL` suffix, and the
+diag line that exposed it stays in the gate.
+
+Remaining before the IIfx is a *profile*: `kProfiles` + `SnapMachine` +
+save-state wiring + the GUI machine loop (M6), then the Quadra 900/950
+(M7). The SCSIDMA's real DMA + restartable handshake (A/UX-only per
+`scsidma.cpp:12`) stays deferred as M4 with a LOUD gap note in
+`docs/IOP_BRINGUP.md`.
+
+<a id="2026-08-01-iifx-post"></a>
+## 2026-08-01 (evening) — IOP M3: the IIfx POSTs — both IOP firmwares upload byte-perfect, and the boot scan reads the disk
+
+Platform #12 exists: `src/IIfxMemory.*` (the map, the OSS, the SCSIDMA
+subset, the clock plumbing) + `src/IIfxCpu.*` (Moira 030 @ 40 MHz, the
+Cpu020 wrapper pattern with the same reset-vector frame — the IIfx ROM's
+header is checksum-then-entry `$4080002A` like the Mac II's). Gate
+`iifx_post_etalon` (**134 gates**): on the real `4147DD77` ROM,
+
+- **both IOP firmwares upload and run.** The ROM downloads the SCC PIC's
+  65C02 image (reset vector $040E — found byte-perfect at ROM+$5F471) and
+  the SWIM PIC's (vector $5000 — ROM+$5A7EE), releases /RSTPIC on each,
+  and the two `ApplePic` instances execute them for millions of cycles.
+  The Duo BORG-upload verification pattern, paid off a third time.
+- **the OSS priority file gets programmed** exactly as the blueprint
+  guessed from MAME: NuBus inputs at level 2, SCC IOP at 4, tick + VIA1
+  at 1 — and the POST's VIA T1/T2 interrupt test passes through the OSS.
+- **the SCSI boot scan reads the System**: textbook 5380 arbitration →
+  selection 6→0 through the SCSIDMA's register window, 323 commands in
+  the gate's 4.5 guest-seconds.
+
+Two findings worth their line:
+
+- **The SCSIDMA handshake-data window swallowed the ODR.** The ROM puts
+  the target ID on the bus by writing SCSIDMA+$00 — which is BOTH the
+  handshake data port and 5380 reg 0. MAME's `handshake_w` falls through
+  to `ncr->write(0, …)` when no DRQ is active (`scsidma.cpp:300-310`);
+  the first POM68K decode returned early instead, so arbitration ran,
+  selection fired, and no target ever heard its ID. Symptom: an eternal
+  wait-for-BSY at ROM $40807860 with `selects` climbing and `commands`
+  stuck at 0. Fixed for reads too (CSD, `scsidma.cpp:262-269`).
+- **The M2 WAI/STP question is closed.** With the firmware located, a
+  65C02 disassembly sweep over both blobs (capstone MOS65XX, ~8 K
+  instructions) finds **zero** WAI/STP — every $CB/$DB byte is operand
+  data. The vendored core's WDC-halt behaviour is unreachable on this
+  firmware; no Rockwell-NOP personality flag needed.
+
+Not yet claimed: the Finder. ADB is still a stubbed line (the SWIM PIC's
+GPIO floats high), so the boot's ADBReInit has no transceiver to talk to
+— that is milestone 5 by design (`docs/IOP_BRINGUP.md` §5), with the
+long-run behaviour past the System load still to be measured.
+
+<a id="2026-08-01-applepic"></a>
+## 2026-08-01 (later) — IOP M2: the Apple PIC device lands — a window-uploaded 65C02 program talks both mailbox directions
+
+`src/ApplePic.*` — the 343S1021 modelled from MAME `applepic.cpp`, register
+for register: the 32-byte host window (offset-bit decode; the shared-RAM
+data port goes through the full internal 65C02 space, registers included),
+auto-increment, /RSTPIC hold-and-release (the release edge runs the
+65C02's reset sequence through the vectors the host just uploaded), the
+timer (one-shot `latch*8+12` clocks, continuous `(latch+2)*8`), the
+two-channel DMA engine (1 byte/channel per 8 input clocks, DREQ wires,
+`DENxONx` alternating-buffer chaining, completion IRQs), the 6502-side
+interrupt unit (masked flag reads — MAME's own warning about firmware
+confusion), the GPIO pair (gpout0 = the future ADB out on the IIfx's SWIM
+PIC) and the host-bypass mode (the boot path talks to the SCC straight
+through the idle PIC).
+
+The one structural departure from MAME is the clock plumbing: no attotime
+schedulers — `tick(clocks)` counts input clocks slaved to the 65C02's own
+instruction stream with debt carry, the `pom68k-mcu-lle-clock-drift`
+pattern, and the continuous timer re-arms **from the scheduled expiry**,
+not from "now", so instruction-granular firing cannot accumulate cadence
+drift. Save states carry the RAM (the firmware is host-uploaded — there
+is no ROM to reload) and the clock counters (IOP↔host phase is
+load-bearing; the Cuda↔VIA lesson).
+
+Gate `applepic_test` (unit, green first run): a hand-assembled 65C02
+program is uploaded through the window — reset hold, upload/readback with
+auto-increment on and off, INTHST0 out to the host line + ack, host
+INTPIC in to the program's ISR, the timer one-shot then 100 measured
+continuous periods, DMA in both directions with completion flags and
+DMAEN auto-clear, and bypass reads reaching the fake peripheral. **133
+gates.** Next: M3, `IIfxMemory` + OSS — where the real ROM's firmware
+upload replaces the hand-assembled one.
+
+<a id="2026-08-01-r65c02"></a>
+## 2026-08-01 — The IIfx/Quadra-900 IOP brick opens: the R65C02 core lands, and it needed no dump
+
+The Apple PIC IOP + OSS chantier (`TODO.md` §7, the one brick that unlocks
+the **Mac IIfx** and the **Quadra 900/950**) opened today with a recon pass
+and milestone 1. Blueprint: `docs/IOP_BRINGUP.md`. Three findings moved the
+cost of the whole brick down:
+
+- **The IOP firmware needs no dump.** MAME's `applepic.cpp:63-77` maps the
+  PIC's entire 64 KB internal space as RAM + registers — the host ROM
+  *downloads* the 65C02 firmware through the shared-RAM window at boot,
+  exactly the Duo BORG pattern. Unlike Egret/Cuda there is no
+  non-distributable MCU ROM; the IIfx system ROM already in `roms/`
+  (`4147DD77`) is the firmware source.
+- **The Q900/950 keep the Egret** (`macquadra700.cpp:190-216`) — their two
+  IOPs carry only SCC and SWIM. The towers are the Q700 platform POM68K
+  already ships plus `ApplePic` and map deltas; the new ADB work (IOP
+  GPIO bit-bang ↔ `AdbLine`) is IIfx-only.
+- **The right 65C02 to vendor was POM2's, not POMIIGS's.**
+  `68K_FAMILY_SCOPE.md` §3 designated POMIIGS `CPU65816` (emulation mode);
+  recon showed MAME's PIC core is an **R65C02** with the Rockwell bit ops
+  `RMB/SMB/BBR/BBS` — which 65816 emulation mode does *not* have (those
+  columns are `ORA [dp]` etc. on a 65816). POM2's `M6502` has a complete
+  CMOS mode *including* the Rockwell set, already validated against MAME
+  `ow65c02.lst` and Tom Harte `wdc65c02`.
+
+**Milestone 1 landed**: `src/R65c02.*` vendored from POM2 `M6502` with two
+reductions (CMOS-only — the NMOS runtime mode and its opcode remap are
+POM68K-dead-weight; bus by `read8`/`write8` callbacks, the `M68hc05`
+pattern) and the Apple II diagnostics stripped — those held process-global
+trace state that the IIfx's *two* PIC instances would have raced on. Gate
+`r65c02_test` (label `unit`): Klaus Dormann's 6502 functional image to its
+$3469 success trap in **96 561 327 cycles** (Klaus documents ~96 M — the
+cycle accounting agrees) and the 65C02 extended-opcodes image (full
+Rockwell set, WAI/STP, CMOS decimal flags) to $24F1. The images are
+committed under `tests/assets/` — GPL test code, not ROMs.
+
+One decision deliberately deferred to M2: POM2's WDC halts WAI/STP
+($CB/$DB) are kept, but MAME's `r65c02` decodes those as NOPs — scan the
+uploaded IOP firmware for $CB/$DB before choosing the PIC personality
+(`docs/IOP_BRINGUP.md` §6).
+
+<a id="2026-07-31-duo-gate"></a>
+## 2026-07-31 (late night, later) — `duo230_boot_etalon` GREEN: milestone 3 gated, the GSC decoder lands
+
+The Duo 230's Finder boot (previous entry but one) is now a registered
+CTest gate — the house rule ("each milestone gated before the next
+depends on it") is paid before input/sleep work starts. New:
+`MscMemory::decodeScreen()` (the milestone-3 GSC decoder — 1/2/4 bpp per
+MAME `gsc.cpp`, the P5 gray ramp the trace's PGM dump used) and
+`tests/duo230_boot_etalon.cpp` (PG&E release wait → 12 000 frames →
+menu-bar/desktop probe on the decoded 640×400 panel). Measured: menu bar
+0.04 dark, desktop 0.43, SCSI 3448 commands — the same 3448 plateau the
+night's fix produced, now pinned. 131 gates. `DUO_BRINGUP.md` milestones
+1-3 are checked off; next per §*Milestones*: PMU input (4), then the
+platform's whole reason to exist, sleep/wake (6).
+
+<a id="2026-07-31-se30"></a>
+## 2026-07-31 (late night) — The SE/30 lands as the 33rd profile: wiring only, Finder on the first run
+
+`docs/68K_FAMILY_SCOPE.md` scored the SE/30 as "free — wiring only: a
+compact Mac IIx", and the estimate held exactly: **the machine booted to
+the Finder on the first execution of its gate** (`se30_boot_etalon`,
+menu bar 0.07 black / desktop 0.48 / 1155 SCSI commands, System 6.0.8 HD).
+No new brick was written — the new code is one 80-line `Se30Video.h`.
+
+What the SE/30 actually is (MAME `macii.cpp` `macse30`, "IIx with no
+slots and built-in video"), mapped onto what already existed:
+
+- **`MacIIMemory::Model::SE30`** on the shared mac2fdhd ROM ($97221136).
+  Machine-ID pins are the *combination* of both 030 siblings: VIA1 PA
+  $C1 (like the IIcx) + VIA2 PB $87 (like the IIx).
+- **Internal 512×342×1 video = a NuBus card on pseudo-slot $E.** The
+  existing `NuBus` HLE already did everything needed: the 8 KB
+  `se30vrom.uk6` dump is a *linear* Apple declaration ROM (byteLanes
+  $0F, no Toby descrambling) installed at the top of the $FE window;
+  the 64 KB VRAM is served across the slot (MAME maps it at $FE000000
+  + the $FEE00000 24-bit mirror). Page select is VIA1 PA6, from the
+  written byte — PA6-as-input carries the machine-ID pull-up.
+- **VBL is a slot-$E interrupt gated by VIA1 PB6=0** (MAME
+  `se30_via_out_b` / `vblank_irq`, kept at MAME's every-other-frame
+  phase toggle on purpose); disabling PB6 *is* the driver's ISR ack.
+  The existing `via2Ca1SlotTaskArmed` guard (slot 9's SysError(51)
+  lesson) covers slot $E unchanged.
+- **Save states:** `SnapMachine::SE30 = 33`; the SE/30-only chunk tail
+  is gated on the model, so existing II/IIx/IIcx snapshots stay valid
+  without a format bump.
+
+Also observed while gating: `q605_savestate_etalon` red with a
+**byte-identical** save/load round trip and direct==restored hashes —
+the guest continuation itself loses the Finder signature because
+`MacOS-8.1-boot.vhd` is dirty again (drVolAtrb bit 8 = 0, image mtime
+21:23 tonight). The known false-failure class (2026-07-25 entry;
+`TODO.md` § 1 one-time GUI cleanup), not a regression.
+
+<a id="2026-07-31-duo-finder"></a>
+## 2026-07-31 (night) — The Duo 230 boots the Finder: /PMU_INT is a LEVEL, and $E1 re-uploads the PMU firmware
+
+The PowerBook Duo 230 (platform #11, MSC + PG&E) **boots System 7.5.5 to
+the Finder** — menu bar, battery icon, Control Strip, mounted volume,
+all three ADBReInits completing. The "third ADBReInit hang" resolved
+into a chain of three findings, each overturning the previous session's
+frame (full narrative + instrumentation list:
+`docs/DUO_BRINGUP.md` § *The deadlock, solved*):
+
+- **The "empty" ADB request was legitimate.** `$4080AA1A` builds
+  D0=D1=D2=0 → command `$00` = SendReset, ADBReInit's normal kick-off.
+  Byte-identical requests succeed at reinit #1 and die later — the
+  guest-ROM lead of the previous commit was a dead end.
+- **PmgrOp `$E1` is a full PMU firmware upload.** System 7.5.x streams a
+  second ~32 KB BORG image over SPI mid-boot ("BORG" magic on the wire)
+  and the PG&E switches to it. Every PC-based firmware measurement after
+  that point had been reading v1 addresses inside v2 code — the day's
+  costliest detour. The v2 image handles the failing SendReset
+  *correctly*: armed, tick-timed complete, cause posted, /PMU_INT
+  asserted. The PMU was innocent too.
+- **The deadlock was a lost interrupt edge.** The line's last falling
+  transition (v2's once-per-second battery cause) landed inside the
+  guest driver's masked-IER PmgrOp window; the driver's stale-flag ack
+  ate the edge-latched IFR.CB1, and since the PMU never deasserts before
+  a readINT drain, no edge could ever come again. MAME's
+  `mscvia::pmu_int` (per the leaked System 7.1 source) asserts AND
+  clears INT_CB1: **/PMU_INT is a level.** `Via6522::pmuIntLevel()` now
+  holds IFR.CB1 while the line is low (survives IFR/ORB clears); only
+  the PG&E drives it. 430 frozen int edges → 1326; SCSI 281 → 3448
+  commands; Finder.
+
+Also pinned: System 7.1 vanilla refuses Duos with a fully-rendered
+gearing alert (an unplanned proof of dialog rendering + GSC 4 bpp);
+unplugging the charger makes boot strictly worse (battery state machine
+is load-bearing); capstone's 6805 disassembler prints bset/bclr
+inverted. Next: `duo230_boot_etalon`, input, sleep/wake.
 
 <a id="2026-07-31-slow-keys"></a>
 ## 2026-07-31 — The ten-month red gate was Slow Keys: the GUEST was rejecting the keys

@@ -28,6 +28,8 @@
 #include "Egret.h"
 #include "Iwm.h"
 #include "M68hc05.h"
+#include "IIfxCpu.h"
+#include "IIfxMemory.h"
 #include "MacIIMemory.h"
 #include "MacInput.h"
 #include "MacMemory.h"
@@ -117,6 +119,10 @@ POM68K_SAV_CHECK(Q700Memory);     // Quadra 700
 POM68K_SAV_CHECK(Q630Memory);     // Quadra 630 / LC 580
 POM68K_SAV_CHECK(MacIIMemory);    // Mac II / IIx / IIcx (nests NuBus + Toby)
 POM68K_SAV_CHECK(MacMemory);      // Plus / SE / SE FDHD / Classic
+POM68K_SAV_CHECK(R65c02);         // Apple PIC 65C02 core
+POM68K_SAV_CHECK(ApplePic);       // IOP (nests R65c02 + its 32 KB RAM)
+POM68K_SAV_CHECK(IIfxCpu);
+POM68K_SAV_CHECK(IIfxMemory);     // Mac IIfx (nests both IOPs + AdbLine)
 
 // ── Container assembly ──────────────────────────────────────────────────
 namespace pom68k {
@@ -241,5 +247,6 @@ POM68K_SAV_MACHINE(Q700Memory, Q700Cpu)
 POM68K_SAV_MACHINE(Q630Memory, Q630Cpu)
 POM68K_SAV_MACHINE(MacIIMemory, Cpu020)
 POM68K_SAV_MACHINE(MacMemory, Cpu68k)
+POM68K_SAV_MACHINE(IIfxMemory, IIfxCpu)
 
 }  // namespace pom68k

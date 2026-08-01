@@ -190,15 +190,17 @@ new bus. Backlog entries: `TODO.md` § 7 *Independent majors*.
 | **Power Manager + LCD framebuffer** — 68HC05 flavour (PB 150 / 190 / Duo / 500) or **M50753** (Mitsubishi 740 = 6502 superset; Portable, PB 100 / 140-180) | the whole portable line | PB150 `FDA22562`; PB160-180 `E33B2724`; Duos `ECFA989B` / `0024D346` / `015621D7`; PB520/540 `B6909089`; PB190 `4D27039C`; Portable `96CA3846`; PB100 `96645F9C` | 🟡 (68HC05) / 🟡 (M50753) |
 | **AV I/O complex** — advanced video + S-Video digitizer, **Curio** combo SCC/SCSI/Ethernet, **MACE**, sound codec, AV memory/DMA controller | Quadra/Centris **660AV**, **840AV** — boot **without** the DSP | `5BF10FD1` | 🟠 |
 | **AT&T DSP3210 core + VCOS/ARTA** | full 660AV / 840AV DSP fidelity | — | 🔴 |
-| **Wiring only** | **SE/30** — compact Mac IIx (`MacIIMemory` + compact video); system ROM is the shared `97221136` (already on hand for IIx/IIcx), plus DeclROM `roms/se30/se30vrom.uk6` | `97221136` + `se30vrom.uk6` | 🟢 |
+| **Wiring only** | **SE/30** — compact Mac IIx (`MacIIMemory` + compact video) — **LANDED 2026-07-31** as the 33rd profile (`Se30Video.h`, gate `se30_boot_etalon`; the estimate held: Finder on the first run) | `97221136` + `se30vrom.uk6` | ✅ |
 
 The three things worth knowing about that table:
 
-- **The IOP is one brick that unlocks three machines.** The 65C02 core is the
-  only piece POM68K has no equivalent of; the sibling [POMIIGS](../../POMIIGS/)
-  ships a compact `CPU65816` (825 lines) whose emulation mode *is* a 65C02 —
-  the natural candidate to vendor rather than write. Note the IIfx has **no
-  built-in video**: it boots on a NuBus card, so `TobyVideo`/`DeclRom` has to
+- **The IOP is one brick that unlocks three machines.** The 65C02 core
+  **landed 2026-08-01** as `src/R65c02.*` — vendored from **POM2's `M6502`**
+  (CMOS mode + full Rockwell RMB/SMB/BBR/BBS), *not* the POMIIGS `CPU65816`
+  this doc first designated: 65816 emulation mode lacks the Rockwell bit ops
+  MAME's R65C02 PIC core has (`applepic.h:9`). Plan and remaining
+  milestones: `docs/IOP_BRINGUP.md`. Note the IIfx has **no built-in
+  video**: it boots on a NuBus card, so `TobyVideo`/`DeclRom` has to
   carry it (§ 4).
 - **A 68HC05 PowerBook is probably easier than the IIfx**, despite living in
   the "portables" bucket. The PM is the *same 68HC05 core POM68K already
@@ -284,8 +286,9 @@ Phase A/B/C — Plus → Mac II → the V8/Sonora/VASP/RBV/040 fan-out — are *
    reusable core; MAME itself doesn't run it), and full 68040 cache/FPSP
    accuracy.
 
-Free (ROM already on hand): **SE/30** (`97221136` + `se30vrom.uk6` — wiring
-only), the **128K/512K** configs, and any Performa rebadge (§ 4).
+Free (ROM already on hand): the **128K/512K** configs and any Performa
+rebadge (§ 4). The **SE/30** cashed this tier in on 2026-07-31 — wiring only,
+Finder on the first run.
 
 ---
 

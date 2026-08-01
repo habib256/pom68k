@@ -160,6 +160,30 @@ int main(int argc, char** argv) {
             p2 = comma + 1;
         }
     }
+    long long keyAt = 0;
+    bool keyDone = false;
+    if (const char* e = std::getenv("DUO_KEYAT")) keyAt = atoll(e);
+    // DUO_PGEWATCH="start,end,step[;…]": sample the PG&E firmware's ADB
+    // engine state (zero-page flags + cell registers) inside host-clock
+    // windows — to diff a SendReset that completes against one that never
+    // does. Addresses are the BORG firmware's, from the $8A7D ISR and the
+    // $885F reset path: $6B engine flags, $9F scheduler flags, $BE/$BF/$C0
+    // reset countdown, $64 tick prescaler, $69/$6A TX index/count.
+    struct Win { long long a, b, step, next; };
+    std::vector<Win> wins;
+    if (const char* e = std::getenv("DUO_PGEWATCH")) {
+        const char* p2 = e;
+        while (*p2) {
+            Win w{};
+            w.a = atoll(p2);
+            if ((p2 = strchr(p2, ','))) w.b = atoll(++p2);
+            if (p2 && (p2 = strchr(p2, ','))) w.step = atoll(++p2);
+            w.next = w.a;
+            if (w.step > 0) wins.push_back(w);
+            if (!p2 || !(p2 = strchr(p2, ';'))) break;
+            p2++;
+        }
+    }
     auto peek32 = [&](uint32_t a) {
         return uint32_t(mem.peek8(a)) << 24 | uint32_t(mem.peek8(a + 1)) << 16
              | uint32_t(mem.peek8(a + 2)) << 8 | mem.peek8(a + 3);
@@ -176,6 +200,36 @@ int main(int argc, char** argv) {
                         mem.gscReg(4));
             std::fflush(stdout);
         }
+        // DUO_KEYAT=<clk>: press-and-release a key once past that clock.
+        // The question: is the guest waiting for the PMU to REPORT
+        // something (an autopoll result) rather than to answer a command?
+        if (keyAt && !keyDone && cpu.getClock() >= keyAt) {
+            keyDone = true;
+            std::printf("  [inject] key down/up at clk=%lld\n",
+                        (long long)cpu.getClock());
+            std::fflush(stdout);
+            mem.keyEvent(0x24, true);      // Return
+            for (int f = 0; f < 8; f++) cpu.runCycles(416667);
+            mem.keyEvent(0x24, false);
+            mem.mouseMove(6, 4);
+        }
+        for (auto& w : wins)
+            if (done >= w.next && done <= w.b) {
+                w.next = done + w.step;
+                M68hc05Pge& p = mem.pmu().mcu();
+                auto z = [&](int a) { return p.ramByte(a - 0x40); };
+                std::printf("  PGEW clk=%lld pc=$%04X cr=$%02X sr=$%02X "
+                            "64=%02X 66=%02X 69=%02X 6A=%02X 6B=%02X 8F=%02X "
+                            "94=%02X 9F=%02X BE=%02X BF=%02X C0=%02X "
+                            "195=%02X 1B8=%02X C6C7=%02X%02X\n",
+                            done, p.pc(), p.adbcr(), p.adbsr(),
+                            z(0x64), z(0x66), z(0x69), z(0x6A), z(0x6B),
+                            z(0x8F), z(0x94), z(0x9F), z(0xBE), z(0xBF),
+                            z(0xC0), p.ramByte(0x195 - 0x40),
+                            p.ramByte(0x1B8 - 0x40), p.ramByte(0x1C6 - 0x40),
+                            p.ramByte(0x1C7 - 0x40));
+                std::fflush(stdout);
+            }
         moira::i64 t = cpu.getClock() + slice;
         while (cpu.getClock() < t && !cpu.isHalted()) {
             uint32_t pc = cpu.getPC0();
@@ -195,10 +249,21 @@ int main(int argc, char** argv) {
                 static long n = 0;
                 if (n++ < 4000) {
                     const uint32_t a0 = cpu.getA(0);
+                    const uint16_t cmd =
+                        uint16_t(mem.peek8(a0) << 8 | mem.peek8(a0 + 1));
                     std::printf("  PMCMD #%ld clk=%lld cmd=$%04X buf:", n,
-                                (long long)cpu.getClock(),
-                                uint16_t(mem.peek8(a0) << 8 | mem.peek8(a0 + 1)));
+                                (long long)cpu.getClock(), cmd);
                     for (int i = 0; i < 10; i++) std::printf(" %02X", mem.peek8(a0 + uint32_t(i)));
+                    // The ADB PmgrOp ($20) carries its request behind the
+                    // buffer pointer at +4 — dump it, so the failing
+                    // all-zero request can be compared against the ones
+                    // the two successful ADBReInits sent.
+                    if (cmd == 0x0020) {
+                        const uint32_t bp = peek32(a0 + 4);
+                        std::printf("  pay@%08X:", bp);
+                        for (int i = 0; i < 4; i++)
+                            std::printf(" %02X", mem.peek8(bp + uint32_t(i)));
+                    }
                     std::printf("\n");
                 }
             }
@@ -362,6 +427,18 @@ int main(int argc, char** argv) {
                     p.instructions, p.spiTransfers, p.option(), p.illegal(),
                     p.portLatch(M68hc05Pge::E), p.portLatch(M68hc05Pge::G),
                     p.portLatch(M68hc05Pge::H));
+        // DUO_SRAMDUMP=<path>: write the PG&E's 32 K SRAM — i.e. the
+        // uploaded BORG firmware plus its variables — for offline 68HC05
+        // disassembly (the SRAM maps at MCU $8000).
+        if (const char* sd = std::getenv("DUO_SRAMDUMP")) {
+            FILE* sf = std::fopen(sd, "wb");
+            if (sf) {
+                for (int i = 0; i < 0x8000; i++)
+                    std::fputc(p.sramByte(i), sf);
+                std::fclose(sf);
+                std::printf("-- wrote PGE SRAM to %s --\n", sd);
+            }
+        }
         std::printf("-- PGE SRAM head:");
         for (int i = 0; i < 16; i++) std::printf(" %02X", p.sramByte(i));
         std::printf("\n-- PGE SRAM $7E00:");

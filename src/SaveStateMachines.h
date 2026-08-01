@@ -37,6 +37,8 @@ class MacIIMemory;
 class Cpu020;
 class MacMemory;
 class Cpu68k;
+class IIfxMemory;
+class IIfxCpu;
 
 namespace pom68k {
 
@@ -65,6 +67,10 @@ enum class SnapMachine : std::uint32_t {
     MacII = 26, IIx = 27, IIcx = 28,
     // Compact 68000 family
     Plus = 29, SE = 30, SEFDHD = 31, Classic = 32,
+    // Appended 2026-07-31 (values are file format): the compact IIx
+    SE30 = 33,
+    // Appended 2026-08-01: platform #12 (OSS + dual Apple PIC IOPs)
+    IIfx = 34,
 };
 
 // One save/load pair per machine family; `kind` pins the profile inside
@@ -115,6 +121,11 @@ bool load(Q630Memory& mem, Q630Cpu& cpu, SnapMachine kind,
 void save(MacIIMemory& mem, Cpu020& cpu, SnapMachine kind,
           std::vector<std::uint8_t>& out);
 bool load(MacIIMemory& mem, Cpu020& cpu, SnapMachine kind,
+          const std::uint8_t* data, std::size_t len, std::string& err);
+
+void save(IIfxMemory& mem, IIfxCpu& cpu, SnapMachine kind,
+          std::vector<std::uint8_t>& out);
+bool load(IIfxMemory& mem, IIfxCpu& cpu, SnapMachine kind,
           const std::uint8_t* data, std::size_t len, std::string& err);
 
 void save(MacMemory& mem, Cpu68k& cpu, SnapMachine kind,

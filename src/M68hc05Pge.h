@@ -95,6 +95,8 @@ public:
     uint8_t ddr(int p) const { return ddrs_[p]; }
     uint8_t sramByte(int off) const { return sram_[off & 0x7FFF]; }
     uint8_t ramByte(int off) const { return ram_[off & 0x3FF]; }
+    uint8_t adbcr() const { return adbcr_; }
+    uint8_t adbsr() const { return adbsr_; }
     void setRtc(uint32_t s) { rtc_ = s; }
     uint32_t rtc() const { return rtc_; }
 

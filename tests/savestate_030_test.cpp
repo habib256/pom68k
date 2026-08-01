@@ -1,8 +1,12 @@
-// POM68K — save/load determinism on the three 030 machine families that
-// fan out from the LC II foundation: Sonora (LC III), VASP (IIvx) and RBV
+// POM68K — save/load determinism on the 030 machine families that fan out
+// from the LC II foundation: Sonora (LC III), VASP (IIvx) and RBV
 // (IIsi + the IIci flavor, which swaps the Egret for the PIC1654S ADB
 // modem + discrete 343-0042 RTC — so this gate is also what compiles and
-// behaviour-checks the AdbVia/Pic1654s/Rtc chunks).
+// behaviour-checks the AdbVia/Pic1654s/Rtc chunks), plus the IIfx
+// (platform #12), whose chunk nests something no other machine has: two
+// Apple PIC IOPs, each a full R65c02 + 32 KB of host-uploaded firmware.
+// Losing that RAM on restore would resurrect a machine whose I/O
+// processors have no program — hence the coverage here.
 //
 // Same two properties as savestate_v8_test, per family:
 //   1. save → mutate → load → save is byte-identical;
@@ -13,6 +17,8 @@
 // coverage belongs to the machine's savestate etalon (lcii_savestate_
 // etalon is the template).
 
+#include "IIfxCpu.h"
+#include "IIfxMemory.h"
 #include "RbvCpu.h"
 #include "RbvMemory.h"
 #include "SaveState.h"
@@ -33,10 +39,13 @@ void check(bool ok, const char* family, const char* what) {
     if (!ok) gFails++;
 }
 
-// ROM of the family's size: reset PC → $40000010 (the ROM window all three
-// machines decode; the first fetch there clears the boot overlay), where an
-// ADDQ/BRA pair increments a longword at $2000 forever.
-std::vector<uint8_t> makeRom(uint32_t size) {
+// ROM of the family's size: reset PC → the ROM window the machine decodes
+// (the first fetch there clears the boot overlay), where an ADDQ/BRA pair
+// increments a longword at $2000 forever. `entry` is the ROM offset of the
+// stub: $10 for the families whose reset vector comes from the ROM image,
+// $2A for the IIfx, whose wrapper hardcodes the Basilisk-style reset frame
+// (SSP=$2000, PC=ROMBase+$2A) exactly like the Mac II's.
+std::vector<uint8_t> makeRom(uint32_t size, uint32_t entry = 0x10) {
     std::vector<uint8_t> rom(size, 0);
     auto w16 = [&](uint32_t a, uint16_t v) {
         rom[a] = uint8_t(v >> 8); rom[a + 1] = uint8_t(v);
@@ -44,10 +53,10 @@ std::vector<uint8_t> makeRom(uint32_t size) {
     auto w32 = [&](uint32_t a, uint32_t v) {
         w16(a, uint16_t(v >> 16)); w16(a + 2, uint16_t(v));
     };
-    w32(4, 0x40000010);                 // reset PC
-    w16(0x10, 0x5279); w32(0x12, 0x00002000);   // ADDQ.W #1,($2000).L
-    w16(0x16, 0x60F8);                          // BRA.S -8
-    for (uint32_t i = 0x20; i < rom.size(); i++) rom[i] = uint8_t(i * 7);
+    w32(4, 0x40000000 + entry);          // reset PC
+    w16(entry, 0x5279); w32(entry + 2, 0x00002000);   // ADDQ.W #1,($2000).L
+    w16(entry + 6, 0x60F8);                           // BRA.S -8
+    for (uint32_t i = entry + 0x10; i < rom.size(); i++) rom[i] = uint8_t(i * 7);
     uint32_t sum = 0;                   // stored checksum (bytes 4…end)
     for (size_t i = 4; i + 1 < rom.size(); i += 2)
         sum += uint32_t(rom[i] << 8 | rom[i + 1]);
@@ -80,6 +89,18 @@ struct RbvRig {
     RbvCpu cpu;
     static constexpr auto kKind = pom68k::SnapMachine::IIsi;
     explicit RbvRig(const std::vector<uint8_t>& rom) : mem(), cpu(mem) {
+        mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
+    }
+};
+// Platform #12. Its chunk is the only one in the tree carrying two extra
+// CPUs: each ApplePic nests an R65c02 plus 32 KB of RAM that IS the IOP
+// firmware (host-uploaded, no ROM to reload) — the whole point of the
+// coverage here.
+struct IIfxRig {
+    IIfxMemory mem;
+    IIfxCpu cpu;
+    static constexpr auto kKind = pom68k::SnapMachine::IIfx;
+    explicit IIfxRig(const std::vector<uint8_t>& rom) : mem(), cpu(mem) {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
@@ -166,6 +187,8 @@ int main() {
     testFamily<VaspRig>("vasp", rom1M);
     testFamily<RbvRig>("rbv", rom512K);
     testFamily<RbvIiciRig>("rbv-iici", rom512K);
+    // The IIfx wrapper hardcodes PC = ROMBase+$2A, so its stub lives there.
+    testFamily<IIfxRig>("iifx", makeRom(0x80000, 0x2A));
 
     if (gFails) {
         std::printf("savestate_030_test: %d failure(s)\n", gFails);

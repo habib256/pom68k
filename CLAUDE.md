@@ -5,7 +5,7 @@ is the documentation; this file is the table of contents. Keep it scannable in
 under a minute — anything that grows a paragraph belongs in `DEV.md` (how) or
 `CHANGELOG.md` (why, dated).
 
-POM68K is a **Macintosh 68k emulator**: **32 machine profiles**, from the Mac
+POM68K is a **Macintosh 68k emulator**: **34 machine profiles**, from the Mac
 Plus (68000, cycle-exact) to the Quadra 630 (68040, functional), **every one
 booting the Finder**. 68k sibling of [POMIIGS](../POMIIGS/) — same
 architecture, conventions and milestone discipline; the CPU integration
@@ -13,9 +13,9 @@ pattern (Moira wrapper) comes from [NeoST](../neost/).
 
 The profile list lives in **one** place: the `kProfiles` table in
 `src/main.cpp` (the GUI **Machine** menu), grouped by platform board.
-32 profiles → 19 `MachineKind` values → **10 platform implementations**
+34 profiles → 20 `MachineKind` values → **11 platform implementations**
 (the machine table below). `SnapMachine` in `src/SaveStateMachines.h` carries
-the matching 32 tags.
+the matching 34 tags.
 
 ## Where to look
 
@@ -40,21 +40,22 @@ the matching 32 tags.
 | `LLE_VS_HLE.md` | **Inventory** of every HLE shortcut vs pure-LLE code + migration plan |
 | `HLE_OVERLAY.md` | Design study: opt-in HLE accelerator over the LLE core (non-conformant mode) |
 | `APPLETALK.md` | AppleTalk / LocalTalk / LLAP reference + netatalk/CUPS bridge — read before touching `Scc8530`/`LtoUdp` |
+| `IOP_BRINGUP.md` | Mac IIfx / Quadra 900-950 blueprint — the Apple PIC IOP (R65C02) + OSS brick, milestone plan |
 
 ## Status (2026-07-31)
 
-- All **32 profiles boot the Finder**, each covered by a boot-etalon gate
+- All **34 profiles boot the Finder**, each covered by a boot-etalon gate
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **129 CTest gates, all green.** The long-red `q605_cudalle_key_etalon`
+- **136 CTest gates, all green.** The long-red `q605_cudalle_key_etalon`
   resolved 2026-07-31: the 8.1 image has Easy Access **Slow Keys** enabled —
   the guest was rejecting fast taps, the emulator was never at fault
   (`CHANGELOG.md` § 2026-07-31; image cleanup follow-up in `TODO.md` § 1).
 - **Save states**: all 10 machine families, GUI-wired.
 - **JIT**: second engine, off by default (see the table below).
 - Next: `TODO.md` § *Future machine profiles* (ROMs on hand: IIfx, Quadra
-  900/950; SE/30 ROM on hand — `97221136` + `se30vrom.uk6`), § *LLE fidelity*,
+  900/950; the SE/30 landed 2026-07-31 as the 33rd profile), § *LLE fidelity*,
   § *Test & validation depth*.
 
 ## Conventions (inherited from POMIIGS/POM2)
@@ -79,7 +80,7 @@ the matching 32 tags.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 129 gates, ~2h30 (asset-dependent ones soft-skip)
+ctest                        # 131 gates, ~2h30 (asset-dependent ones soft-skip)
 ctest -L unit                # 59 gates — no ROM or disk image needed
 ctest -L smoke               # 8 gates — one machine, both CPU engines
 ctest -L jit                 # 16 gates;  -L m040 = 30, the 68040 family
@@ -103,15 +104,16 @@ Mac Plus 24-bit address map, boot overlay, framebuffer/sound-buffer offsets
 and the contention model: `DEV.md` § *Mac Plus platform*. Every other map is
 in its `*Memory.h`.
 
-## Machines — 10 platform implementations
+## Machines — 11 platform implementations
 
 Each row is one memory-map + I/O implementation; the profiles differ only by
 clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 
-| Platform | Profiles (32) | Files | Gates | Source |
+| Platform | Profiles (33) | Files | Gates | Source |
 |---|---|---|---|---|
 | **68000 compacts** | Plus, SE, SE FDHD, Classic | `MacMemory.*` (`Model`), `Cpu68k.*`, `MacVideo.h`, `MacFrame.h`, `MacAudio.h`/`MacAudioHost.h`, `MacInput.*` (M0110; SE+ = ADB via `Pic1654s`) | `rom_/disk_/system_boot_etalon`, `se_/sefdhd_/classic_boot_etalon` | MAME `mac128.cpp` |
-| **GLUE + NuBus** | Mac II, IIx, IIcx | `MacIIMemory.*` (`Model`), `Cpu020.*` (`is030`), `AdbVia.*`, `Pic1654s.*`, `AdbLine.*`, `NuBus.*`, `DeclRom.*`, `TobyVideo.*` | `macii_post/boot/sys7_boot/mouse_etalon`, `iix_/iicx_boot_etalon` | MAME `macii.cpp` |
+| **GLUE + NuBus** | Mac II, IIx, IIcx, SE/30 (compact IIx, `Se30Video.h`) | `MacIIMemory.*` (`Model`), `Cpu020.*` (`is030`), `AdbVia.*`, `Pic1654s.*`, `AdbLine.*`, `NuBus.*`, `DeclRom.*`, `TobyVideo.*` | `macii_post/boot/sys7_boot/mouse_etalon`, `iix_/iicx_/se30_boot_etalon` | MAME `macii.cpp` |
+| **OSS + 2 Apple PIC IOPs** (no VIA2, no built-in video) | Mac IIfx (68030 @ 40 MHz) | `IIfxMemory.*`, `IIfxCpu.*`, `ApplePic.*` (IOP), `R65c02.*` (its CPU); video = `TobyVideo` on slot 9, ADB = IOP firmware ↔ `AdbLine` | `iifx_post/boot/input_etalon`, `applepic_test`, `r65c02_test` | MAME `maciifx.cpp`/`applepic.cpp`; `docs/IOP_BRINGUP.md` |
 | **RBV** (RAM-based video — ancestor of V8/VASP/Sonora) | IIsi (Egret LLE), IIci (PIC ADB modem + discrete RTC) | `RbvMemory.*` (`iici`), `RbvCpu.*`, `RbvVideo.h` | `iisi_/iici_boot_etalon`, `iisi_input_etalon` | MAME `rbv.cpp`/`maciici.cpp`/`adbmodem.cpp` |
 | **V8 / Eagle / Spice / Tinker Bell** | LC (68020+HMMU), LC II, Classic II, Color Classic, Mac TV | `V8Memory.*` (`Model`, `spiceClass()`, `cpuHz`), `Cpu030.*`, `V8Video.h` | `lc_/lcii_/classic2_/cclassic_/mactv_boot_etalon`, `lcii_sys7_/soak/persist/launch/floppy_etalon` | MAME `maclc.cpp`/`v8.cpp` |
 | **Sonora** | LC III, LC III+, LC 520, LC 550, Color Classic II | `SonoraMemory.*` (`cpuHz`/`machineId`/`cudaAdb`), `SonoraCpu.*`, `SonoraVideo.h` | `lc3_/lc3plus_/lc520_/lc550_/cclassic2_boot_etalon`, `lc3_/lc520_input_etalon` | MAME `sonora.cpp`/`maclc3.cpp`/`mv_sonora.cpp`; `docs/LC520_BRINGUP.md` |
@@ -137,6 +139,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **Keyboard (M0110) + mouse** | `MacInput.h/.cpp`, `Scc8530.h/.cpp` | M5.5 ✓ | MAME/Mini vMac/Snow |
 | **ADB** (bus + line + LLE transceivers) | `AdbBus.*`, `AdbLine.*`, `AdbVia.*`, `Pic1654s.*` | ✓ `adbline_test`, `pic1654s_test` | MAME |
 | **MCU firmware LLE** (Egret / Cuda on a real 6805) | `M68hc05.*`, `CudaLle.*`, `Egret.*` | ✓ default where `roms/` has the dump; HLE fallback (`POM68K_EGRET_LLE=0`) — `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `q605_cudalle_*` | MAME + factory firmware |
+| **Apple PIC IOP + IIfx** (→ Quadra 900/950 next) | `R65c02.*` (core), `ApplePic.*` (device), `IIfxMemory.*`/`IIfxCpu.*` (the platform) | M1-M3, M5-M6 ✓ — **the IIfx is the 34th profile**: `iifx_boot_etalon` (Finder on 7.6), `iifx_input_etalon` (mouse + KeyMap through the IOP firmware), `iifx_post_etalon`, `applepic_test`, `r65c02_test`, save states in `savestate_030_test`; next: Q900/950 — `docs/IOP_BRINGUP.md` | POM2 `M6502` vendored; MAME `applepic.cpp`/`maciifx.cpp` |
 | **SCSI NCR 5380 + disks** | `Ncr5380.h/.cpp`, `ScsiDisk.h/.cpp` | M7 ✓; + pseudo-DMA (`scsi_pdma_test`) | MAME `ncr5380.cpp`, pce |
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` |
 | **CD-ROM target** (`ScsiDisk::Kind::Cdrom`, `.cue`/`.bin`, 2048-B blocks) | `ScsiDisk.*` | ✓ `scsi_cdrom_test`, `q605_cdrom_etalon`, `q605_cdboot_etalon` | MAME cdrom |
@@ -151,7 +154,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **68030 core + PMMU** | `extern/moira` extension, `tests/sst68030.cpp` | O4 ✓; **3 082 pinned vectors**, rulings D1-D22 | MC68030UM + WinUAE oracle |
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ `fpu_sanity` | MC68881/882UM; WinUAE fpp.c |
 | **68040 core + MMU** | `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; **7 200/7 200 pinned vectors** | MC68040UM + WinUAE oracle |
-| **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (10 save/load pairs, 32 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 10 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
+| **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (10 save/load pairs, 33 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 10 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
 | **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** code generator, aarch64 slot `backends/JitBackendA64.md`). **Off by default everywhere** — the interpreter is what every accuracy claim rests on | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓. Engine wired in 8 machine loops: `Cpu030` (V8, incl. the 68020 LC), `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu` — **`Cpu020` (Mac II family) and `Cpu68k` have none**. x64 codegen is **68040-only by declared capability** (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`. `q605_boot_etalon` 61.3 s interp → 22.9 s (×2.68), 89.6 % native | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
 
 ## CPU core: Moira (vendored)
