@@ -7,7 +7,9 @@ silicon references, gate- and oracle-verified), and only later layer an
 **opt-in, clearly-flagged HLE accelerator** on top (`HLE_OVERLAY.md`). That
 requires knowing exactly where the code deviates today.
 
-Current as of 2026-07-31 (**seventh pass** — 32 machine profiles, 129 gates).
+Current as of 2026-08-01 (**seventh pass**, counts re-derived — 34 machine
+profiles, 136 gates). The two profiles added since the pass (SE/30, IIfx) and
+the gated-but-unregistered Duo 230 were not themselves audited here.
 Line numbers are indicative — grep before relying on them.
 
 **Read § 1 first.** §§ 2–3 are the smaller live surface (HLE fallbacks, pure-LLE
@@ -480,7 +482,7 @@ part — the prose lives in the CHANGELOG entries named below.
 
 | # | Hack that used to exist | Resolved | Root cause / where the story is |
 |---|---|---|---|
-| 1 | **Mac II ROM patched at load** — 3 code patches (forced StartBoot `wantType`, retargeted boot-drive matcher, `$B0E` `btst` bypass + checksum repair) | 2026-07-21 | Two wire bugs in `Rtc`: inverted /enable polarity at the Mac II call site + a one-edge-early read phase (every byte read `(v<<1)|1`), so the ROM saw virgin PRAM every boot. `Rtc` now implements MAME macrtc semantics; the **unmodified ROM boots SCSI unaided**. CHANGELOG "LLE step 1" |
+| 1 | **Mac II ROM patched at load** — 3 code patches (forced StartBoot `wantType`, retargeted boot-drive matcher, `$B0E` `btst` bypass + checksum repair) | 2026-07-21 | Two wire bugs in `Rtc`: inverted /enable polarity at the Mac II call site + a one-edge-early read phase (every byte read `(v<<1)\|1`), so the ROM saw virgin PRAM every boot. `Rtc` now implements MAME macrtc semantics; the **unmodified ROM boots SCSI unaided**. CHANGELOG "LLE step 1" |
 | 2 | **EvQ synthetic Return keypresses** (`postKeyReturn`, `maybeDismissBootAlerts`) | 2026-07-21 | The ADB path could always deliver keystrokes during modals (ST=EVEN wedge covered by `AdbVia::tick`'s dead-timer re-arm). Alert dismissal moved into the *tests* as real host-side ADB presses. CHANGELOG "LLE step 4" |
 | 3 | **SPConfig / AppleTalk clamp re-applied every tick** (Q605/V8/MacII memory) | 2026-07-21 | Only the reset-time seed remains (§ 3). The guest may now turn AppleTalk on and the LLE SCC no-peer path handles it. CHANGELOG "LLE step 2" |
 | 4 | **LocalTalk LAP watchdogs** (×2) | 2026-07-21 | Three SCC LLE gaps: RR15 reading 0, standing abort presented in async modes, no RR0 bit 4 Sync/Hunt (the LLAP carrier sense). With those + the Tx Underrun/EOM latch the LAP times out by itself. CHANGELOG "LLE step 3" |
@@ -545,12 +547,14 @@ correctness it buys:
    hard-coded at 480; **Valkyrie's I2C pixel clock** (§ 1.1).
 
 **Caveat, learned the hard way on 2026-07-29: this inventory is only worth what
-its gates are worth.** Only 8 of the 32 profiles have any beyond-boot gate at
+its gates are worth.** Only 9 of the 34 profiles have any beyond-boot gate at
 all — Plus (`input_etalon`), Mac II (`macii_mouse_etalon`, `macii_post_etalon`),
 LC II (`lcii_soak/persist/launch/floppy/savestate_etalon`), Q605 (`q605_asc/
-cdrom/dafb/turboscsi/ot_bind/savestate/cudalle_*`), and the four
-`family_input_etalon` machines (LC III, LC 520, IIvx, IIsi). The other **24
-profiles are pinned only by "it reached the Finder"**.
+cdrom/dafb/turboscsi/ot_bind/savestate/cudalle_*`), the four machines the
+`family_input_etalon` binary serves (`lc3_`/`lc520_`/`iivx_`/`iisi_input_etalon`)
+and the IIfx
+(`iifx_input_etalon`). The other **25 profiles are pinned only by "it reached
+the Finder"**.
 
 In one day the suite produced a **false green** (a positive assertion over a
 too-wide window — KeyMap is 8 bytes, the scan was 16, so a dead ADB stack read
