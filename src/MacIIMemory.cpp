@@ -13,7 +13,7 @@ static bool adbViaTrace() {
     return t;
 }
 
-MacIIMemory::~MacIIMemory() { delete toby_; }
+MacIIMemory::~MacIIMemory() { delete toby_; delete se30_; }
 
 MacIIMemory::MacIIMemory(uint32_t ramSize, Model model)
     : ram_(ramSize, 0), rom_(kRomSize, 0xFF), ramSize_(ramSize), model_(model) {
@@ -70,6 +70,40 @@ bool MacIIMemory::installTobyVideo(const std::string& declRomPath) {
     return true;
 }
 
+bool MacIIMemory::installSe30Video(const std::string& vromPath) {
+    if (se30_) return true;
+    // se30vrom.uk6 is a plain linear 8 KB image with the Apple format block
+    // (test pattern $5A932BC7, byteLanes $0F) in its last 16 bytes — MAME
+    // maps it as-is at $FEFFE000, so no Toby-style lane descrambling.
+    std::vector<uint8_t> vrom;
+    std::vector<std::string> paths;
+    if (!vromPath.empty()) paths.push_back(vromPath);
+    paths.insert(paths.end(), { "roms/se30/se30vrom.uk6",
+                                "../roms/se30/se30vrom.uk6" });
+    for (const std::string& p : paths) {
+        if (FILE* f = std::fopen(p.c_str(), "rb")) {
+            std::fseek(f, 0, SEEK_END);
+            long sz = std::ftell(f);
+            std::fseek(f, 0, SEEK_SET);
+            if (sz > 0 && sz <= 0x10000) {
+                vrom.resize(size_t(sz));
+                if (std::fread(vrom.data(), 1, vrom.size(), f) != vrom.size())
+                    vrom.clear();
+            }
+            std::fclose(f);
+            if (!vrom.empty()) break;
+        }
+    }
+    if (vrom.empty()) {
+        std::fprintf(stderr,
+                     "MacIIMemory: no se30vrom.uk6 — SE/30 has no video ROM\n");
+        return false;
+    }
+    se30_ = new Se30Video();
+    nubus_.installCard(14, se30_, vrom);     // pseudo-slot $E
+    return true;
+}
+
 void MacIIMemory::reset() {
     overlay_ = true;
     // MAME m_glue_ram_size starts 0; overlay-clear calls via2_out_a(0x3f)
@@ -106,11 +140,14 @@ void MacIIMemory::reset() {
     // sizing probe failed first; fixing glue/mirrors exits that path.
     if (toby_) toby_->reset();
     // Machine-ID pins (MAME macii.cpp): VIA1 PA = $81 (Mac II/IIx) or $C1
-    // (IIcx, PA6 set); VIA2 PB = $CF (Mac II/IIcx) or $87 (IIx). The ROM
-    // reads these to pick the board profile.
-    via1_.setInA(model_ == Model::IIcx ? 0xC1 : 0x81);
+    // (IIcx and SE/30, PA6 set — iicx_via_in_a); VIA2 PB = $CF (Mac II/IIcx)
+    // or $87 (IIx and SE/30 — the macse30 config wires iix_via2_in_b). The
+    // ROM reads the combination to pick the board profile.
+    via1_.setInA(model_ == Model::IIcx || model_ == Model::SE30 ? 0xC1 : 0x81);
     via1_.setInB(0xCF);
-    via2_.setInB(model_ == Model::IIx ? 0x87 : 0xCF);  // MAME via2_in_b
+    via2_.setInB(model_ == Model::IIx || model_ == Model::SE30 ? 0x87 : 0xCF);
+    se30VblEnable_ = false;
+    se30VblPhase_ = false;
     via2_.setCb1(true);
     via2_.setCb2(true);
     refreshVia2PortA();
@@ -264,6 +301,11 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
                 iwm_.setSel((reg == Via6522::ORA || reg == Via6522::ORA_NH)
                             ? (v & 0x20) != 0
                             : (via.portA() & 0x20) != 0);
+                // SE/30: PA6 selects the video page (MAME via_out_a
+                // m_screen_buffer — from the written byte, PA6-as-input
+                // carries the IIcx/SE30 machine-ID pull-up).
+                if (se30_ && (reg == Via6522::ORA || reg == Via6522::ORA_NH))
+                    se30_->setPage((v & 0x40) != 0);
                 // MAME set_memory_overlay(0): via2_out_a(0x3f) → glue &= $C0 == 0.
                 if (!overlay_) {
                     glueRamSize_ = 0x00;
@@ -313,6 +355,15 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
             rtc_.setLines(!(via.portB() & 0x04),
                           (via.portB() & 0x02) != 0,
                           (via.portB() & 0x01) != 0);
+            // SE/30: VIA1 PB6=0 enables the slot-$E VBL (MAME
+            // se30_via_out_b); disabling clears the pending slot interrupt —
+            // that IS the video driver's ISR acknowledge.
+            if (model_ == Model::SE30
+                && (reg == Via6522::ORB || reg == Via6522::DDRB)) {
+                const bool en = (via.portB() & 0x40) == 0;
+                if (!en) nubus_.setSlotIrq(14, false);
+                se30VblEnable_ = en;
+            }
         } else if (reg == Via6522::ORB || reg == Via6522::DDRB) {
             // MAME via2_out_b: PB7 level chains into VIA1 CA1 (60.15 Hz).
             const bool pb7 = (via.portB() & 0x80) != 0;
@@ -612,6 +663,13 @@ void MacIIMemory::tick(int cpuCycles) {
     tickAcc_ += cpuCycles;
     if (tickAcc_ >= kCpuHz / 60) {
         tickAcc_ -= kCpuHz / 60;
+        // SE/30 internal-video VBL → slot $E (MAME vblank_irq): the phase
+        // toggle asserts every other frame; the driver acknowledges by
+        // flipping VIA1 PB6. MAME parity — do not "fix" to 60 Hz here.
+        if (model_ == Model::SE30 && se30VblEnable_) {
+            se30VblPhase_ = !se30VblPhase_;
+            if (!se30VblPhase_) nubus_.setSlotIrq(14, true);
+        }
         // Prefer VIA2 PB7→VIA1 CA1 when the ROM has armed that path; otherwise
         // pulse CA1 directly so VBL still arrives (MAME scanline / via2_out_b).
         via1_.raiseCa1();

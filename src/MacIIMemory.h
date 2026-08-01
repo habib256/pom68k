@@ -9,6 +9,7 @@
 #include "Rtc.h"
 #include "NuBus.h"
 #include "TobyVideo.h"
+#include "Se30Video.h"
 #include "DeclRom.h"
 #include "AdbVia.h"
 #include "AdbBus.h"
@@ -32,11 +33,13 @@ public:
     static constexpr int64_t  kCpuHz   = 15667200;
     int64_t cpuHz() const { return kCpuHz; }         // LocalTalk pace / 60 Hz quantum
 
-    // Same GLUE board, four ROM-sharing models (MAME macii.cpp): the plain
-    // **Mac II** / II FDHD (68020 + HMMU), and the 68030 variants **IIx** and
-    // **IIcx** — distinguished only by the VIA1 PA / VIA2 PB machine-ID pins
-    // (iix_via2_in_b $87; iicx_via_in_a $C1). All boot the mac2fdhd ROM.
-    enum class Model { MacII, IIx, IIcx };
+    // Same GLUE board, ROM-sharing models (MAME macii.cpp): the plain
+    // **Mac II** / II FDHD (68020 + HMMU), and the 68030 variants **IIx**,
+    // **IIcx** and **SE/30** — distinguished only by the VIA1 PA / VIA2 PB
+    // machine-ID pins (iix_via2_in_b $87; iicx_via_in_a $C1; the SE/30 shows
+    // both). All boot the mac2fdhd ROM. The SE/30 is the compact IIx: no
+    // NuBus slots, internal 512×342 video on pseudo-slot $E (Se30Video).
+    enum class Model { MacII, IIx, IIcx, SE30 };
 
     explicit MacIIMemory(uint32_t ramSize = 0x800000, Model model = Model::MacII);
     Model model() const { return model_; }
@@ -46,6 +49,9 @@ public:
     bool loadRom(const std::vector<uint8_t>& data);
     void reset();
     bool installTobyVideo(const std::string& declRomPath = {});
+    // SE/30 internal video on pseudo-slot $E; the 8 KB se30vrom.uk6 dump is
+    // its declaration ROM (linear, byteLanes $0F — no Toby descrambling).
+    bool installSe30Video(const std::string& vromPath = {});
 
     uint8_t  read8(uint32_t addr);
     uint16_t read16(uint32_t addr);
@@ -62,6 +68,7 @@ public:
     Via6522& via2() { return via2_; }
     NuBus& nubus() { return nubus_; }
     TobyVideo* toby() { return toby_; }
+    Se30Video* se30() { return se30_; }
     AdbBus& adb() { return adb_; }
     AdbVia& adbVia() { return adbVia_; }
     AscV8& asc() { return asc_; }
@@ -134,6 +141,15 @@ public:
         if (toby_) ar(*toby_);
         ar(ramSize_, overlay_, glueRamSize_, nubusIrqState_, sccIrq_,
            via2Irq_, via2Pb7_, hmmu24_, viaPhase_, tickAcc_, secAcc_);
+        // SE/30-only tail: the header pins the profile, so the II/IIx/IIcx
+        // chunk layout (and their existing snapshots) is untouched.
+        if (model_ == Model::SE30) {
+            if constexpr (Ar::loading) {
+                if (!se30_) { ar.fail(); return; }
+            }
+            if (se30_) ar(*se30_);
+            ar(se30VblEnable_, se30VblPhase_);
+        }
     }
 
 private:
@@ -167,6 +183,7 @@ private:
     Rtc rtc_;
     NuBus nubus_;
     TobyVideo* toby_ = nullptr;
+    Se30Video* se30_ = nullptr;
     AdbVia adbVia_;
     AdbBus adb_;
     AscV8 asc_{0x00};   // Mac II discrete ASC (version $00), not V8
@@ -187,6 +204,11 @@ private:
     bool via2Irq_ = false;
     bool via2Pb7_ = true;                    // last VIA2 PB7 level (→ VIA1 CA1)
     bool hmmu24_ = false;                    // VIA2 PB3=0 → M68K_HMMU_ENABLE_II
+    // SE/30 VBL as pseudo-slot $E (MAME se30_via_out_b / vblank_irq): VIA1
+    // PB6=0 enables; the phase toggle asserts every other frame, the driver
+    // clears by flipping PB6.
+    bool se30VblEnable_ = false;
+    bool se30VblPhase_ = false;
     int viaPhase_ = 0;
     int64_t tickAcc_ = 0;
     int64_t secAcc_ = 0;

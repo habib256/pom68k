@@ -82,16 +82,34 @@ static Screen decodeScreen(Q700Memory& mem) {
     return s;
 }
 
-int main() {
-    std::string rom = find("roms/quadra700.rom");
-    if (rom.empty())
-        rom = find("roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
+int main(int argc, char** argv) {
+    // One binary, three machines (the compact_boot_etalon pattern): the
+    // "Eclipse" towers are the same board with the IIfx's IOP + Egret
+    // front end (Q700Memory::Model, docs/IOP_BRINGUP.md M7).
+    const std::string which = argc > 1 ? argv[1] : "q700";
+    const bool q900 = which == "q900", q950 = which == "q950";
+    const auto model = q950 ? Q700Memory::Model::Q950
+                    : q900 ? Q700Memory::Model::Q900
+                           : Q700Memory::Model::Spike;
+    const char* name = q950 ? "Quadra 950" : q900 ? "Quadra 900" : "Quadra 700";
+
+    // The Q900 shares the Quadra 700's ROM; the Q950 has its own.
+    std::string rom;
+    if (q950) {
+        rom = find("roms/quadra950.rom");
+        if (rom.empty())
+            rom = find("roms/1MB ROMs/1992-03 - 3DC27823 - Quadra 950.ROM");
+    } else {
+        rom = find("roms/quadra700.rom");
+        if (rom.empty())
+            rom = find("roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
+    }
     std::string img = find("hdv/MacOS-8.1-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/MacOS-7.6-boot.vhd");
     if (rom.empty() || img.empty()) {
-        std::printf("SKIP: needs the $420DBFF3 ROM + a bootable hdv/ image\n");
+        std::printf("SKIP: %s needs its 1 MB ROM + a bootable hdv/ image\n", name);
         return 0;
     }
 
@@ -103,10 +121,12 @@ int main() {
         return 1;
     }
 
-    const int64_t cpuHz = Q700Memory::kCpuHz;
-    Q700Memory mem(32u << 20, cpuHz);
+    const int64_t cpuHz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
+    Q700Memory mem(32u << 20, cpuHz, model);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    std::printf("ADB: %s\n", mem.adbLleActive() ? "PIC1654S firmware LLE" : "HLE");
+    std::printf("Machine: %s (%lld MHz), ADB: %s\n", name, (long long)(cpuHz / 1000000),
+                mem.eclipse() ? "SWIM IOP firmware ↔ AdbLine"
+                              : (mem.adbLleActive() ? "PIC1654S firmware LLE" : "HLE"));
     if (getenv("POM68K_BERR")) {
         static long n = 0;
         mem.onBusError = [](uint32_t a, bool w) {
@@ -118,6 +138,9 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
+    // On the Eclipse the Egret holds the 68040 in reset until its firmware
+    // releases it — advance the MCU alone until it does.
+    for (long g = 0; mem.cpuHeld() && g < 200000; g++) mem.tick(1000);
 
     const int64_t kFrame = cpuHz / 60;
     long limit = 16000;
@@ -174,13 +197,60 @@ int main() {
                          cpu.getA(0), cpu.getA(1), cpu.getA(2), cpu.getD(0), cpu.getD(1));
         }
         cpu.runCycles(kFrame);
-        if (diag && (f < 400 ? !(f % 20) : !(f % 400)))
+        if (diag && (f < 400 ? !(f % 20) : !(f % 400))) {
             std::fprintf(stderr, "[diag] f=%ld pc=$%08X SCSI=%ld ipl=%d hres=%u "
                          "vres=%u depth=%u blank=%d\n", f, cpu.getPC(),
                          mem.scsi().commands, mem.iplLevel(), mem.dafbHres(),
                          mem.dafbVres(), mem.dafbDepth(), mem.dafbBlanked());
+            // Eclipse: the IOPs are processors of their own — a held or
+            // idle one is the first suspect for any stall (the IIfx lesson).
+            if (mem.eclipse()) {
+                // How much firmware each IOP actually holds: a stub is a
+                // handful of bytes, real firmware is thousands.
+                auto loaded = [](ApplePic& p) {
+                    long n = 0;
+                    for (int i = 0; i < 0x8000; i++) if (p.ramByte(uint16_t(i))) n++;
+                    return n;
+                };
+                std::fprintf(stderr, "       VIA1 ifr=%02X ier=%02X | VIA2 ifr=%02X ier=%02X"
+                             " | swimPIC int flags=%02X mask=%02X st=%02X\n",
+                             mem.via1().ifrRaw(), mem.via1().ierRaw(),
+                             mem.via2().ifrRaw(), mem.via2().ierRaw(),
+                             mem.swimPic().intFlags(), mem.swimPic().intMask(),
+                             mem.swimPic().statusReg());
+                std::fprintf(stderr, "       IOP scc held=%d cyc=%lld pc=$%04X ram=%ld | "
+                             "swim held=%d cyc=%lld pc=$%04X ram=%ld | adbEdges=%ld\n",
+                             mem.sccPic().cpuHeld(),
+                             (long long)mem.sccPic().cpu().cycleCount(),
+                             mem.sccPic().cpu().getProgramCounter(),
+                             loaded(mem.sccPic()),
+                             mem.swimPic().cpuHeld(),
+                             (long long)mem.swimPic().cpu().cycleCount(),
+                             mem.swimPic().cpu().getProgramCounter(),
+                             loaded(mem.swimPic()),
+                             mem.adbHostEdges());
+            }
+        }
     }
     if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: CPU halted (double fault)\n"); return 1; }
+
+    // Eclipse bring-up: dump both IOP RAMs so the 65C02 firmware the ROM
+    // uploaded can be disassembled where it stopped.
+    if (mem.eclipse() && getenv("POM68K_Q900_IOPDUMP")) {
+        for (int p = 0; p < 2; p++) {
+            ApplePic& pic = p ? mem.swimPic() : mem.sccPic();
+            std::string path = std::string("q900_") + (p ? "swim" : "scc") + "pic.ram";
+            if (FILE* fp = fopen(path.c_str(), "wb")) {
+                for (int i = 0; i < 0x8000; i++) {
+                    uint8_t b = pic.ramByte(uint16_t(i));
+                    fwrite(&b, 1, 1, fp);
+                }
+                fclose(fp);
+                std::fprintf(stderr, "[dump] %s (65C02 PC=$%04X)\n", path.c_str(),
+                             pic.cpu().getProgramCounter());
+            }
+        }
+    }
 
     // Decode the DAFB framebuffer from the live GDevice (q605 path).
     Screen sc = decodeScreen(mem);
@@ -248,7 +318,6 @@ int main() {
 
     bool ok = W >= 512 && H >= 342 && menuBar < 0.30
            && desktop > 0.30 && desktop < 0.85 && mem.scsi().commands > 50;
-    const char* name = "Quadra 700";
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED", name,
                 ok ? "booted to the Finder" : "did not reach the Finder");
     return ok ? 0 : 1;

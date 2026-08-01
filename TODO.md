@@ -5,14 +5,60 @@ live in `CHANGELOG.md` (implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`).
 
-**Counts verified 2026-07-31** — re-verify before quoting them anywhere:
-- **129 CTest gates** (`ctest -N`): 59 `unit`, 8 `smoke`, 16 `jit`, 30 `m040`.
-- **32 machine profiles** = 32 tags in `SnapMachine`, `src/SaveStateMachines.h:47-68`.
+**Counts verified 2026-08-01 (night)** — re-verify before quoting them anywhere:
+- **136 CTest gates** (`ctest -N`): 61 `unit`, 8 `smoke`, 16 `jit`, 30 `m040`.
+- **34 machine profiles** = 34 tags in `SnapMachine`, `src/SaveStateMachines.h`.
 
 House rule for this file: an item earns its place by saying **what to do next**,
 concretely. When it lands, it moves to `CHANGELOG.md` and leaves at most one
 line here. **Every unchecked box below was re-verified against the code on
 2026-07-31.**
+
+---
+
+## 0. REPRENDRE ICI — Quadra 900, le BRK de l'IOP SWIM (2026-08-01)
+
+Le chantier IOP (`docs/IOP_BRINGUP.md`) est arrêté **en pleine
+investigation M7**, à un point précis. Tout le reste du chantier est
+terminé et gaté ; seul ce fil est ouvert.
+
+**Où en est la machine.** Le Quadra 900 (`./build/q700_boot_etalon q900`)
+fait son POST, peint 640×480, téléverse et relâche **les deux** IOP.
+L'IOP SCC exécute son vrai firmware et passe le test de bit tournant de la
+ROM sur WR2/RR2. Le firmware de l'IOP SWIM est vérifié **au bit près**
+(54 blocs / 11516 octets du script `[len][addr:2][data…]` en ROM `$5A7EB`).
+Il finit malgré tout dans son propre gestionnaire de panique BRK.
+
+**Le fait mesuré, à ne pas re-mesurer.** Avec `POM68K_Q900_IOPBRK=1` le
+cœur 65C02 vide un anneau de 256 PC au premier `$00` :
+
+- le BRK est en **`$0042`**, atteint par l'épilogue ordinaire
+  `$53FC PLY; PLX; PLA; $53FF RTS`, dont le `RTS` lit une adresse de
+  retour bidon (`A=41 X=FF Y=59 SP=FF P=30`) ;
+- **ce n'est PAS un déséquilibre de pile** — SP valait `$FA` en entrant et
+  `$FF` après les cinq dépilages, la profondeur était juste ; l'adresse
+  fautive est ce qui traînait en `$01FE/$01FF`, donc la routine est
+  retournée **une trame au-delà de son niveau supérieur** ;
+- **ce n'est PAS une tempête d'interruptions** — aucun `$504E` (vecteur
+  IRQ du firmware) dans les 256 dernières instructions.
+
+**La prochaine action.** Trouver quelle lecture de registre alimente la
+table d'état `$4E87`-`$4E9F` : le firmware tourne dans la machine à états
+`$5418`-`$5436`, dont la routine interne compare `$4E87,x` à `$4E87,y` et
+n'atteint jamais sa condition de sortie. Suspects, dans l'ordre :
+1. le mapping des registres SWIM derrière `readPeriph`/`writePeriph` ;
+2. la sémantique de rechargement du timer d'`ApplePic` ;
+3. `dat1byte` → `reqa_w`/`reqb_w` (MAME le câble sur **les deux** canaux
+   DMA ici, `macquadra700.cpp:879-880`) — attention, **`Swim1` n'a aucun
+   callback `dat1byte`** : c'est une extension du contrôleur, pas un fil.
+
+**Garde-fou.** `Q700Memory` sert maintenant trois machines : après toute
+retouche, relancer `ctest -R q700_boot_etalon` (le Quadra 700 était vert à
+531 s au moment de l'arrêt). Les profils 35/36 ne sont **pas** enregistrés
+— règle de la maison : une ligne dans `kProfiles` se gagne avec une
+cellule Finder derrière. Détail complet : `docs/IOP_BRINGUP.md` § M7 et
+§ 5b (le motif « règle héritée du Q700 » qui a produit les trois bugs
+déjà corrigés).
 
 ---
 
@@ -75,7 +121,7 @@ after it has demonstrated sensitivity** — and only after it has demonstrated
 ## 2. Test & validation depth — the single biggest gap
 
 The gates prove **boot**, not **use**, and the machine fan-out made the ratio
-worse. Of the **32 profiles** covered by the **129 gates**, only **7** have any
+worse. Of the **33 profiles** covered by the **130 gates**, only **7** have any
 gate past the Finder signature: LC II (`lcii_soak/persist/launch/floppy_etalon`
 + `lcii_savestate_etalon`), Quadra 605 (`q605_cudalle_mouse/key_etalon`,
 `q605_cdrom/cdboot_etalon`, `q605_savestate_etalon`, `q605_ot_bind_etalon`),
@@ -387,7 +433,7 @@ Sys 7.
 
 ## 7. New machine profiles
 
-Phase A/B/C are done — 32 profiles, all booting the Finder (per-machine detail
+Phase A/B/C are done — 33 profiles, all booting the Finder (per-machine detail
 in `CLAUDE.md` § Status and `CHANGELOG.md` 2026-07-21 → 2026-07-25). Effort
 tiers and the full family map: `docs/68K_FAMILY_SCOPE.md`. Rule kept: **each new
 profile gets at least one Finder cell before the next.**
@@ -396,21 +442,62 @@ Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
 
 ### Independent majors — the only things left that are not just a ROM dump
 
-- [ ] **AppleP IC IOP + OSS** → unlocks **IIfx** *and* **Quadra 900/950**. The
-  IOP (Apple 343S1021, MAME `machine/applepic.cpp`) is a 65C02 core + 2 KB
-  shared RAM + 2 DMA channels + host/peripheral mailboxes + a timer. POM68K has
-  no 6502-class core; POMIIGS's `CPU65816` (825 lines, emulation mode = 65C02)
-  is the candidate to vendor. The IIfx also has **no built-in video** — it boots
-  on a NuBus card, so `TobyVideo`/`DeclRom` has to carry it.
-- [ ] **Power Manager** → Portable / PowerBook 1xx / Duo. The 68HC05 half
-  already ships (`M68hc05`). **STARTED 2026-07-31 — platform #11 (MSC)**:
-  blueprint + milestone 1 in `docs/DUO_BRINGUP.md` (`MscMemory`/`MscCpu`
-  skeleton boots ECFA989B to the PG&E handshake spin; `make duo_trace`).
-  Corrected scoping: the PB150 is MSC/PG&E (Duo lineage, 68HC05+SPI) but is
-  unsupported even by MAME — the **Duo 230 goes first** (full MAME oracle),
-  PB150 follows as the no-oracle variant. Milestone 2 (PG&E LLE): dumps
-  on hand under `roms/pge/` (`pge_boot.bin` CRC `62d4dfed`,
-  `duobatid.bin` CRC `7545c341`).
+- [~] **AppleP IC IOP + OSS** → unlocks **IIfx** *and* **Quadra 900/950**.
+  **Opened 2026-08-01** — blueprint + milestone plan: `docs/IOP_BRINGUP.md`;
+  recon findings in `CHANGELOG.md` § 2026-08-01 (headline: the IOP firmware
+  is *downloaded by the host ROM*, no dump needed; the Q900/950 keep the
+  Egret — their IOPs carry only SCC/SWIM). **M1 DONE**: `src/R65c02.*`
+  vendored from POM2's `M6502` (CMOS + full Rockwell set — NOT the
+  POMIIGS `CPU65816`, whose emulation mode lacks RMB/SMB/BBR/BBS), gate
+  `r65c02_test` green on Klaus's two images. **M2 DONE**: `src/ApplePic.*`
+  (host window / shared RAM / timer / 2-ch DMA / ints / GPIO / bypass),
+  gate `applepic_test` — a 65C02 program uploaded through the window
+  proves both mailbox directions, the timer cadences and DMA both ways.
+  **M3 DONE (2026-08-01 evening)**: platform #12
+  (`IIfxMemory.*`/`IIfxCpu.*`), gate `iifx_post_etalon` — both IOP
+  firmwares upload byte-perfect, OSS programmed, boot scan reads the
+  disk; WAI/STP CLOSED (zero in either firmware). **M5 DONE (2026-08-01
+  night)**: gate `iifx_boot_etalon` — **the IIfx boots System 7.6 to the
+  Finder**, ADB served end to end by the SWIM IOP's real firmware
+  bit-banging `AdbLine` (screenshot-verified thresholds; video =
+  `TobyVideo` on slot 9, the IIfx has no built-in video). Remaining, in
+  **M6 DONE (2026-08-01 night)**: **the IIfx is the 34th profile** —
+  `kProfiles` row (group "OSS + IOP"), `MachineKind::IIfx`,
+  `SnapMachine::IIfx = 34`, `IIfxMachine` GUI loop with the two IOP
+  cycle counters in the CPU window, save/load pair + coverage in
+  `savestate_030_test`, ROM dispatch on the 512 KB `$4147DD77`, and
+  gate `iifx_input_etalon` (mouse repaint 43 px vs 0 idle; KeyMap
+  0→1→0). **M7 — Quadra 900/950: platform IN, boot NOT yet reached**
+  (2026-08-01). `Q700Memory::Model {Spike,Q900,Q950}` carries the whole
+  Eclipse front end (two `ApplePic`, `AdbLine`, `Egret` on VIA1, the 2nd
+  53C96, VIA1 PA identities, the $1000-wide IOP windows); the selector is
+  `q700_boot_etalon <q700|q900|q950>`. Measured: the Q900 POSTs, paints
+  640×480, uploads and releases BOTH IOPs, and the SCC IOP passes the
+  ROM's bypass walking test; the SWIM IOP's firmware is verified
+  **byte-perfect** (54 chunks / 11516 bytes from the ROM's upload script
+  at `$5A7EB`). **The wall**: that firmware ends in its own BRK panic
+  handler (`$5069`), so it executed a `$00` — a control-flow divergence
+  in POM68K's device model, NOT a bad upload. Full diagnosis, the
+  debugging order that got there, and the next three suspects (SWIM
+  device-register mapping, `ApplePic` timer reload, the unwired
+  `dat1byte` → `reqa_w`/`reqb_w` MAME gives BOTH channels here) are in
+  `docs/IOP_BRINGUP.md` § M7 + § 5b. Profiles 35/36 are deliberately
+  **not** registered until a Finder cell exists — house rule.
+  **M4 (deferred, LOUD)** SCSIDMA true DMA + restartable handshake —
+  A/UX-only per `scsidma.cpp:12`, nothing in the Mac OS path needs it;
+  also dedupe the multi-ID mirror (7.6 mounts all seven copies of the
+  boot volume — cosmetic, guest-visible).
+- [ ] **Power Manager** → Portable / PowerBook 1xx / Duo. **Platform #11
+  (MSC + PG&E): the Duo 230 BOOTS THE FINDER, gated 2026-07-31** —
+  milestones 1-3 of `docs/DUO_BRINGUP.md` are done (`MscMemory`/`MscCpu`,
+  `M68hc05Pge`/`PgePmu` LLE incl. the mid-boot BORG v2 upload and the
+  /PMU_INT level, `MscMemory::decodeScreen`; gate `duo230_boot_etalon`,
+  System 7.5.5, SCSI 3448 cmds). Remaining, in milestone order:
+  **input through the PMU** (trackball + matrix keyboard →
+  `duo230_input_etalon`), GUI machine loop + `kProfiles` registration +
+  save states, variants (210/250 trivial, 270c CSC, 280 040, then PB150
+  as the no-oracle MSC variant), and **the actual point — a sleep/wake
+  gate** (`duo230_sleep_etalon`), which no other machine can test.
   The 140-180 line is a different PMU (Mitsubishi M50753, 6502-class —
   POMIIGS `CPU65816` candidate) — same brick as Portable/PB100.
 - [ ] **AV DSP (DSP3210)** → 660AV/840AV. Not planned.
@@ -424,7 +511,6 @@ Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
 
 | Machine | ROM on hand | New brick |
 |---|---|---|
-| **SE/30** | `97221136` (+ `roms/se30/se30vrom.uk6`) | compact 030 + compact video; otherwise a IIx on a compact board |
 | **Quadra 900 / 950** | `420DBFF3` / `3DC27823` | two **AppleP IC** IOPs (6502-class, SCC + SWIM) + Egret — the same brick the IIfx needs |
 | **Mac IIfx** | `4147DD77` | OSS + two 6502-class IOPs + NuBus-only video |
 | **PowerBook 150** | `FDA22562` | LCD framebuffer + 68HC05 PM — the `M68hc05` core already ships |

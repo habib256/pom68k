@@ -1,6 +1,6 @@
 # POM68K — Macintosh 68k emulator
 
-**32 machine profiles, every one boots the Finder** — from the Macintosh
+**34 machine profiles, every one boots the Finder** — from the Macintosh
 Plus (68000, cycle-exact) to the Quadra 630 (68040). Sibling of
 [POMIIGS](../POMIIGS/) (Apple IIgs) and [POM2](../POM2/) (Apple II),
 sharing their architecture and conventions. CPU core:
@@ -24,7 +24,7 @@ the Machine menu, in the same order and the same grouping
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 129 gates (asset-dependent ones soft-skip)
+ctest                             # 131 gates (asset-dependent ones soft-skip)
 ctest -L unit                     # 59 gates, no ROM or disk image needed
 ctest -L smoke                    # 8 gates, one machine, both CPU engines
 ```
@@ -71,7 +71,8 @@ code; the **Machine** menu sets the same variables and relaunches.
 | 256 KB | `B306E171` | Macintosh SE FDHD | |
 | 512 KB | `A49F9914` | Macintosh Classic | |
 | 256 KB | `9779D2C4` `97851DB6` | Macintosh II (68020) | |
-| 256 KB | `97221136` | **IIx** (default) / IIcx / II FDHD | `POM68K_MACII_MODEL=iix\|iicx\|fdhd` |
+| 256 KB | `97221136` | **IIx** (default) / IIcx / SE/30 / II FDHD | `POM68K_MACII_MODEL=iix\|iicx\|se30\|fdhd` — the SE/30 also needs `roms/se30/se30vrom.uk6` (video decl ROM) |
+| 512 KB | `4147DD77` | **Macintosh IIfx** (68030 @ 40 MHz) | OSS + two Apple PIC IOPs; no built-in video — boots on the slot-9 Toby card. System ≤ 7.6 (32-bit-dirty ROM) |
 | 512 KB | `368CADFE` | Macintosh IIci | |
 | 512 KB | `36B7FB6C` | Macintosh IIsi | |
 | 512 KB | `350EACF0` | Macintosh LC | |
@@ -158,7 +159,7 @@ Menus:
   relaunches itself), and **Sauver / Restaurer l'état** (save states). A
   state file sits next to the boot volume as `<disk>.<profile>.pomss`,
   written atomically; a snapshot that does not match the running profile,
-  ROM or RAM size is refused and the machine is left untouched. All 32
+  ROM or RAM size is refused and the machine is left untouched. All 34
   profiles are wired (`src/SaveStateMachines.h:47`). Also **Sons des
   lecteurs** (drive sounds).
 - **CPU** — pick the execution engine. The Moira **interpreter** is the

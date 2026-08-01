@@ -193,7 +193,9 @@ void Via6522::write(int reg, uint8_t v) {
                      break;
         case PCR:    pcr_ = v; break;
         case IFR:    if (v & CA1) ++ca1Cleared;
-                     ifr_ &= uint8_t(~(v & 0x7F)); break;   // write-1-to-clear
+                     ifr_ &= uint8_t(~(v & 0x7F));          // write-1-to-clear
+                     if (pmuIntAsserted_) ifr_ |= CB1;      // MSC level holds
+                     break;
         case IER:    if (v & 0x80) ier_ |= (v & 0x7F); else ier_ &= uint8_t(~(v & 0x7F)); break;
     }
 }

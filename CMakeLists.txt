@@ -129,6 +129,10 @@ add_library(pom68k_core STATIC
     src/SonyDrive.cpp     # M5 — 800K GCR drive
     src/Scc8530.cpp       # M5.5 — SCC (mouse DCD interrupts)
     src/M68hc05.cpp       # step 10 — 68HC05E1 core (Egret/Cuda firmware LLE)
+    src/R65c02.cpp        # IOP M1 — R65C02 core (Apple PIC, docs/IOP_BRINGUP.md)
+    src/ApplePic.cpp      # IOP M2 — Apple 343S1021 PIC (host window/DMA/timer)
+    src/IIfxMemory.cpp    # IOP M3 — Mac IIfx map (OSS + 2 IOPs + SCSIDMA)
+    src/IIfxCpu.cpp       # IOP M3 — Moira 68030 wrapper (IIfx, 40 MHz)
     src/CudaLle.cpp       # step 10 — Cuda firmware ↔ VIA/ADB glue (opt-in)
     src/LtoUdp.cpp        # LLAP — LocalTalk-over-UDP multicast cable
     src/AtalkStack.cpp    # AppleTalk in-process node (DDP/RTMP/ZIP/NBP/ATP)
@@ -603,6 +607,23 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(scc_engine_test PRIVATE pom68k_core)
     add_test(NAME scc_engine_test COMMAND scc_engine_test)
 
+    # R65C02 core gate (docs/IOP_BRINGUP.md M1): Klaus Dormann's 6502
+    # functional + 65C02 extended-opcodes images (committed under
+    # tests/assets/) run to their success traps on the vendored core.
+    add_executable(r65c02_test tests/r65c02_test.cpp)
+    target_link_libraries(r65c02_test PRIVATE pom68k_core)
+    add_test(NAME r65c02_test COMMAND r65c02_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Apple PIC IOP gate (docs/IOP_BRINGUP.md M2): a 65C02 program uploaded
+    # through the host window proves reset-release, both mailbox interrupt
+    # directions, timer one-shot + continuous cadence, 2-channel DMA and
+    # the bypass path.
+    add_executable(applepic_test tests/applepic_test.cpp)
+    target_link_libraries(applepic_test PRIVATE pom68k_core)
+    add_test(NAME applepic_test COMMAND applepic_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # Egret/Cuda firmware-LLE gate (blueprint step 1): the M68HC05E1 core
     # runs the real Cuda 2.37 dump from its reset vector (soft-skips).
     add_executable(m68hc05_test tests/m68hc05_test.cpp)
@@ -762,6 +783,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME iicx_boot_etalon COMMAND iix_boot_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(iicx_boot_etalon PROPERTIES ENVIRONMENT "POM68K_IICX=1")
+
+    # The SE/30 — the compact IIx: same GLUE board and mac2fdhd ROM, internal
+    # 512×342 video on pseudo-slot $E (se30vrom.uk6 decl ROM), VIA1 PB6-gated
+    # slot VBL (soft-skips without assets).
+    add_executable(se30_boot_etalon tests/se30_boot_etalon.cpp)
+    target_link_libraries(se30_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME se30_boot_etalon COMMAND se30_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # Phase C gate: the Mac IIci (RBV in its IIci flavor — 68030 @ 25 MHz,
     # PIC1654S ADB modem LLE + discrete 343-0042 RTC, empty NuBus) boots to
@@ -1101,6 +1130,48 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # milestone 1, docs/DUO_BRINGUP.md).
     add_executable(duo_trace EXCLUDE_FROM_ALL tests/duo_trace.cpp)
     target_link_libraries(duo_trace PRIVATE pom68k_core)
+
+    # Dev tool (not a gate): Mac IIfx ROM POST trace (platform #12
+    # milestone 3, docs/IOP_BRINGUP.md).
+    add_executable(iifx_trace EXCLUDE_FROM_ALL tests/iifx_trace.cpp)
+    target_link_libraries(iifx_trace PRIVATE pom68k_core)
+
+    # Platform #12 gate (docs/IOP_BRINGUP.md milestone 3): the IIfx ROM's
+    # POST on the OSS + dual-IOP board — both IOP firmwares uploaded
+    # byte-perfect and running, OSS priorities programmed, SCSI boot scan
+    # reached (soft-skips without the IIfx ROM).
+    add_executable(iifx_post_etalon tests/iifx_post_etalon.cpp)
+    target_link_libraries(iifx_post_etalon PRIVATE pom68k_core)
+    add_test(NAME iifx_post_etalon COMMAND iifx_post_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Platform #12 gate (docs/IOP_BRINGUP.md milestone 5): the IIfx boots
+    # a real System to the Finder — ADB served by the SWIM IOP's own
+    # firmware bit-banging the AdbLine devices (soft-skips without the
+    # ROM or a bootable image).
+    add_executable(iifx_boot_etalon tests/iifx_boot_etalon.cpp)
+    target_link_libraries(iifx_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME iifx_boot_etalon COMMAND iifx_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(iifx_boot_etalon PROPERTIES TIMEOUT 1800)
+
+    # Platform #12 gate (docs/IOP_BRINGUP.md milestone 6): ADB input is
+    # DELIVERED — mouse motion repaints the cursor and a held key reaches
+    # KeyMap, through the SWIM IOP's firmware and the AdbLine devices.
+    add_executable(iifx_input_etalon tests/iifx_input_etalon.cpp)
+    target_link_libraries(iifx_input_etalon PRIVATE pom68k_core)
+    add_test(NAME iifx_input_etalon COMMAND iifx_input_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(iifx_input_etalon PROPERTIES TIMEOUT 1800)
+
+    # Platform #11 gate (docs/DUO_BRINGUP.md milestone 3): the Duo 230 —
+    # MSC + PG&E LLE (BORG v2 mid-boot upload, /PMU_INT level) — boots
+    # System 7.5.5 to the Finder on the GSC 640×400 grayscale panel
+    # (soft-skips without the ROM, the PG&E dump or the 7.5.5 image).
+    add_executable(duo230_boot_etalon tests/duo230_boot_etalon.cpp)
+    target_link_libraries(duo230_boot_etalon PRIVATE pom68k_core)
+    add_test(NAME duo230_boot_etalon COMMAND duo230_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(lcii_trace PRIVATE pom68k_core)
 
     add_executable(macii_trace EXCLUDE_FROM_ALL tests/macii_trace.cpp)

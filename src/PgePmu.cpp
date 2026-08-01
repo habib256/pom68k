@@ -255,8 +255,15 @@ void PgePmu::wirePorts() {
             // +5V present (bit 2), PFW ok (bit 1), clamshell open
             // (bit 3), /PMU_REQ mirrored on bit 6 (pmu_portf_r).
             return uint8_t(0x0E | (reqLevel_ ? 0x40 : 0x00));
-        case M68hc05Pge::G:
-            return 0x40 | 0x08;                      // charger + dock power
+        case M68hc05Pge::G: {
+            // bit 6 = charger present (MAME pmu_portg_r returns 1). The
+            // BORG firmware's charge-management pass against our CONSTANT
+            // ADC readings is under investigation as the ADB-starvation
+            // culprit; POM68K_PGE_CHARGER=0 unplugs the charger for A/B.
+            static const bool charger = !std::getenv("POM68K_PGE_CHARGER")
+                || std::getenv("POM68K_PGE_CHARGER")[0] != '0';
+            return uint8_t((charger ? 0x40 : 0x00) | 0x08);
+        }
         case M68hc05Pge::H:
         case M68hc05Pge::J:
         case M68hc05Pge::K:
@@ -292,11 +299,28 @@ void PgePmu::wirePorts() {
             lastPortE_ = v;
             break;
         case M68hc05Pge::F:
-            // bit 2 falling = PMU interrupt to the host: the MSC VIA1's
-            // customized INT_CB1 (msc.h:19-26 pmu_int).
-            if ((lastPortF_ & 0x04) && !(v & 0x04)) {
-                pmuIntEdges++;
-                via_.raiseCb1();
+            // bit 2 = /PMU_INT to the host — a LEVEL into the MSC VIA1's
+            // customized INT_CB1 (msc.h:19-26 pmu_int), not just a falling
+            // edge. The PMU driver masks IER.CB1 and acks stale flags
+            // around every PmgrOp; a cause asserted inside that window
+            // must still be pending when IER returns, which only level
+            // semantics provide (the edge-only model deadlocked the
+            // System-era ADB SendReset against the CPI second-tick).
+            if (((lastPortF_ ^ v) & 0x04) != 0) {
+                if (!(v & 0x04)) pmuIntEdges++;
+                via_.pmuIntLevel(!(v & 0x04));
+            }
+            {
+                static const bool ht =
+                    std::getenv("POM68K_PGE_HSHAKE") != nullptr;
+                if (ht && ((lastPortF_ ^ v) & 0x04)) {
+                    static long n = 0;
+                    if (n++ < 100000)
+                        std::fprintf(stderr, "hs: INT line -> %d cyc=%lld "
+                                     "pc=$%04X\n", (v >> 2) & 1,
+                                     (long long)mcu_->cycleCount(),
+                                     mcu_->pc());
+                }
             }
             lastPortF_ = v;
             break;

@@ -112,11 +112,13 @@ public:
     bool cpuHeld() const { return pmu_.active() && pmu_.cpuHeld(); }
     PgePmu& pmu() { return pmu_; }
     bool pgeActive() const { return pmu_.active(); }
-    // Input goes through the PG&E (matrix keyboard + trackball counters,
-    // macpwrbkmsc.cpp:373-434) — no-ops until milestone 4.
-    void keyEvent(uint8_t, bool) {}
-    void mouseMove(int, int) {}
-    void mouseButton(bool) {}
+    // Input goes through the PG&E. The matrix keyboard and the trackball
+    // quadrature counters are milestone 4; until then host events ride the
+    // ADB devices behind the PMU's modem cell, which is how an external
+    // Duo keyboard/mouse would reach the guest anyway.
+    void keyEvent(uint8_t code, bool down) { pmu_.keyEvent(code, down); }
+    void mouseMove(int dx, int dy) { pmu_.mouseMove(dx, dy); }
+    void mouseButton(bool down) { pmu_.mouseButton(down); }
     bool overlay() const { return overlay_; }
     Scc8530& scc() { return scc_; }
     void sccIrqLine(bool s) { sccIrq_ = s; updateIrq(); }
@@ -124,10 +126,35 @@ public:
     void scsiIrq(bool s) { pvia_.scsiIrq(s); updateIrq(); }
     void scsiDrq(bool s) { pvia_.scsiDrq(s); updateIrq(); }
 
-    // ── GSC video state (fixed-mode 640×400×4bpp gray on the Duo 2x0;
-    // decoder lands with milestone 3) ──
+    // ── GSC video state (fixed-mode 640×400 DBLite panel on the Duo 2x0) ──
     const uint8_t* vram() const { return vram_.data(); }
     uint8_t gscReg(int i) const { return gscRegs_[i & 0x1F]; }
+    static constexpr int kScreenW = 640;
+    static constexpr int kScreenH = 400;
+    // Host decode (milestone 3): 00RRGGBB gray, W×H. Mode = GSC reg 4 bits
+    // 0-1 (MAME gsc.cpp screen_update_gsc): 0 → 1 bpp, 1 → 2 bpp, 2 → 4 bpp;
+    // pen p of 16 renders as the P2/P5 gray ((15-p)<<4 | $F).
+    void decodeScreen(std::vector<uint32_t>& out) const {
+        out.resize(size_t(kScreenW) * size_t(kScreenH));
+        const int mode = gscRegs_[4] & 3;
+        for (int y = 0; y < kScreenH; y++)
+            for (int x = 0; x < kScreenW; x++) {
+                uint8_t pen;
+                if (mode == 0) {
+                    uint8_t b = vram_[size_t(y) * 80 + size_t(x) / 8];
+                    pen = uint8_t(((b >> (7 - (x & 7))) & 1) ? 15 : 0);
+                } else if (mode == 1) {
+                    uint8_t b = vram_[size_t(y) * 160 + size_t(x) / 4];
+                    pen = uint8_t(((b >> (6 - 2 * (x & 3))) & 3) << 2);
+                } else {
+                    uint8_t b = vram_[size_t(y) * 320 + size_t(x) / 2];
+                    pen = (x & 1) ? uint8_t(b & 0xF) : uint8_t(b >> 4);
+                }
+                const uint8_t g = uint8_t(((15 - pen) << 4) | 0xF);
+                out[size_t(y) * kScreenW + x] =
+                    uint32_t(g) << 16 | uint32_t(g) << 8 | g;
+            }
+    }
 
     uint32_t romChecksum() const {
         if (rom_.size() < 4) return 0;
@@ -186,7 +213,7 @@ private:
     uint8_t mscConfig_ = 0;          // msc_config_w (bit 1 halves CPU clock)
     uint8_t mscClockCtrl_ = 0;       // MSC block reg 1
     uint8_t mscSoundCtrl_ = 0;       // reg 2; bit 0 SOUND_BUSY read-clears
-    uint8_t gscRegs_[0x20] = {};     // latched; decode = milestone 3
+    uint8_t gscRegs_[0x20] = {};     // latched; decodeScreen() reads reg 4
     bool wakeReset_ = false;         // PMU wake → CPU reset at run boundary
     bool pmuReq_ = true;             // /PMU_REQ latch (host-written PB2)
 

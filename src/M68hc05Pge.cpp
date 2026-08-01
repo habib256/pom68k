@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
+#include <vector>
 
 // MAME m6805.cpp s_hc_cycles — 0 marks an undefined opcode.
 const uint8_t M68hc05Pge::kCycles[256] = {
@@ -552,6 +554,73 @@ void M68hc05Pge::aluOp(int op, uint16_t ea, bool imm) {
 int M68hc05Pge::execOne() {
     pcRing_[pcRingPos_] = pc_;
     pcRingPos_ = (pcRingPos_ + 1) & 63;
+    // POM68K_PGE_PCCOUNT="hex,hex,…": execution counts + first hits for
+    // firmware PCs — the DUO_PCCOUNT idea, MCU side. Diagnostic only.
+    {
+        static std::vector<std::pair<uint16_t, long>>* watch = [] {
+            auto* v = new std::vector<std::pair<uint16_t, long>>;
+            if (const char* e = std::getenv("POM68K_PGE_PCCOUNT"))
+                while (*e) {
+                    v->push_back({uint16_t(strtoul(e, nullptr, 16)), 0});
+                    const char* c = strchr(e, ',');
+                    if (!c) break;
+                    e = c + 1;
+                }
+            return v;
+        }();
+        // POM68K_PGE_PCWIN="lo,hi[;lo,hi…]": inside those MCU-cycle
+        // windows, print EVERY hit — the interleave is the point there,
+        // not the count.
+        static const auto wins = [] {
+            auto* v = new std::vector<std::pair<long long, long long>>;
+            if (const char* e = std::getenv("POM68K_PGE_PCWIN"))
+                while (*e) {
+                    long long lo = atoll(e), hi = -1;
+                    if (const char* c = strchr(e, ',')) hi = atoll(c + 1);
+                    v->push_back({lo, hi});
+                    if (!(e = strchr(e, ';'))) break;
+                    e++;
+                }
+            return v;
+        }();
+        bool inWin = false;
+        for (auto& [lo, hi] : *wins)
+            if (cycles_ >= lo && cycles_ <= hi) { inWin = true; break; }
+        // POM68K_PGE_PCHIST="lo,hi": 256-byte-bucket histogram of executed
+        // PCs inside that MCU-cycle window, dumped at destruction — where
+        // does a starved stretch actually spend its cycles?
+        static const auto hist = [] {
+            struct H {
+                long long lo = -1, hi = -1;
+                std::vector<long> buckets = std::vector<long>(256, 0);
+                ~H() {
+                    if (lo < 0) return;
+                    std::fprintf(stderr, "-- PGE pc histogram [%lld,%lld] --\n",
+                                 lo, hi);
+                    for (int i = 0; i < 256; i++)
+                        if (buckets[size_t(i)])
+                            std::fprintf(stderr, "  $%02XXX: %ld\n", i,
+                                         buckets[size_t(i)]);
+                }
+            };
+            static H h;
+            if (const char* e = std::getenv("POM68K_PGE_PCHIST")) {
+                h.lo = atoll(e);
+                if (const char* c = strchr(e, ',')) h.hi = atoll(c + 1);
+            }
+            return &h;
+        }();
+        if (hist->lo >= 0 && cycles_ >= hist->lo && cycles_ <= hist->hi)
+            hist->buckets[pc_ >> 8]++;
+        for (auto& [wpc, n] : *watch)
+            if (pc_ == wpc) {
+                n++;
+                if (inWin || n <= 12 || (n & (n - 1)) == 0)
+                    std::fprintf(stderr, "pgepc $%04X #%ld cyc=%lld cc=$%02X"
+                                 " a=$%02X x=$%02X\n",
+                                 wpc, n, (long long)cycles_, cc_, a_, x_);
+            }
+    }
     uint8_t op = fetch8();
     int cyc = kCycles[op];
     if (cyc == 0) {
