@@ -194,7 +194,7 @@ choosing the PIC's personality.
 ## 5. Milestones — each gated before the next (house rule)
 
 - **M1 — `src/R65c02.*`** vendored from POM2 `M6502` (CMOS default, bus
-  callbacks, no Apple II couplings). Gate: `r65c02_klaus_test` — Klaus's
+  callbacks, no Apple II couplings). Gate: `r65c02_test` — Klaus's
   65C02 extended image (checked into `tests/assets/`; it is GPL test code,
   not a ROM) run to the `$24F1` success trap, plus the base 6502 functional
   image. Label `unit`, no machine assets needed.
