@@ -29,6 +29,7 @@
 #pragma once
 #include "jit/JitGuard.h"
 #include "Via6522.h"
+#include "ViaEClock.h"
 #include "Rtc.h"
 #include "AdbVia.h"
 #include "AdbBus.h"
@@ -153,6 +154,16 @@ public:
     Dafb& dafb() { return dafbCell_; }
     const uint8_t (*clut() const)[3] { return dafbCell_.clut(); }
     uint32_t dafbStride() const { return dafbCell_.stride(); }
+
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // Forwarded from the DAFB cell's own frame accumulator — the one that
+    // drives its Swatch VBL. One clock, never two.
+    int64_t framePos() const { return dafbCell_.framePos(); }
+    int64_t frameCycles() const { return dafbCell_.frameCycles(); }
+    int64_t frameActiveCycles() const { return dafbCell_.frameActiveCycles(); }
+    int     frameTotalLines() const { return dafbCell_.frameTotalLines(); }
+    uint64_t frameCount() const { return dafbCell_.frameCount(); }
+
     uint32_t dafbBase() const { return dafbCell_.base(); }
     uint8_t dafbMode() const { return dafbCell_.mode(); }
     uint8_t dafbDepth() const { return dafbCell_.depth(); }
@@ -193,7 +204,7 @@ public:
            scsiReadCycles_, scsiWriteCycles_,
            scsiDmaReadCycles_, scsiDmaWriteCycles_,
            ascCycAcc_, swimLastCpu_, swimCycAcc_,
-           viaPhase_, tickAcc_, secAcc_);
+           viaEClock_, tickAcc_, secAcc_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -243,7 +254,6 @@ private:
     // 26 at 20 MHz (Centris 610), 32 at 25 MHz (Centris 650 / Quadra 610),
     // 43 at 33.33 MHz (Quadra 650), 42 at 33 MHz (Quadra 800). The hardcoded
     // 32 ran the 610's VIA timers 20 % slow and the Quadra 650's 33 % fast.
-    int viaDiv() const { return int((cpuHz_ + 391680) / 783360); }
     uint8_t  modelPins_;            // VIA1 port A ID (0x40/0x46/0x44/0x52)
     static constexpr uint32_t kBoxId = 0xA55A2BADu;   // $5FFF0000-$5FFFFFFF
     bool overlay_ = true;
@@ -262,7 +272,7 @@ private:
 
     Dafb dafbCell_;
 
-    int viaPhase_ = 0;
+    via_eclock::Ticker viaEClock_;   // exact 783.36 kHz (ViaEClock.h)
     int64_t tickAcc_ = 0;
     int64_t secAcc_ = 0;
 };

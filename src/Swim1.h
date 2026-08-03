@@ -16,14 +16,14 @@
 // LS-pair cell state machine + correction factors (swim1.cpp:965-1140)
 // discriminate real-world flux jitter, which our ideal discrete cells
 // do not have — the read engine therefore reduces to the SWIM2 shifter
-// (accepted simplification, LLE_VS_HLE §3). DAT1BYTE is not wired (the
-// LC II polls the FIFO). Gate: tests/swim1_test.cpp,
+// (accepted simplification, LLE_VS_HLE §3). Gate: tests/swim1_test.cpp,
 // tests/swim1_media_test.cpp.
 
 #pragma once
 #include "SaveState.h"
 #include "Iwm.h"
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 class SonyDrive;
@@ -40,6 +40,16 @@ public:
 
     // VIA PA5 → IWM-personality SEL (ISM ignores it: HDSEL = mode bit 5)
     void setSel(bool sel) { iwm_.setSel(sel); }
+
+    // DAT1BYTE (swim1.cpp:1226-1238) — the controller's "the ISM FIFO can
+    // take/give a byte NOW" line: in write mode it asserts while the 2-deep
+    // FIFO has room, in read mode while it is not empty. On the LC II
+    // nothing is wired to it (the guest polls the FIFO through the register
+    // file), but the Quadra 900/950 route it to BOTH DMA request channels
+    // of the SWIM IOP (`macquadra700.cpp:879-880`), which is how the IOP
+    // firmware can move a sector without the 65C02 polling for each byte.
+    // Level, not edge: re-evaluated on every FIFO movement and mode write.
+    std::function<void(bool)> onDat1Byte;
 
     bool ism() const { return ismMode_; }
     uint8_t ismModeReg() const { return mode_; }
@@ -69,6 +79,7 @@ private:
     enum { P_MINCT, P_MULT, P_SSL, P_SSS, P_SLL, P_SLS, P_RPT, P_CSLS,
            P_LSL, P_LSS, P_LLL, P_LLS, P_LATE, P_TIME0, P_EARLY, P_TIME1 };
 
+    void updateDat1Byte();
     bool fifoPush(uint16_t value);
     uint16_t fifoPop();
     void fifoClear();

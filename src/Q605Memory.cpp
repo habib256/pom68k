@@ -131,7 +131,7 @@ void Q605Memory::reset() {
                                    // once the line has carried a frame, and a
                                    // live peer suppresses it —
                                    // Scc8530::openLine (LLE steps 7+8).
-    viaPhase_ = 0;
+    viaEClock_ = {};
     tickAcc_ = 0;
     sccIrq_ = false;
 }
@@ -207,8 +207,7 @@ void Q605Memory::viaSync() {
     if (!cpu_) return;
     const int boost = std::max(1, cpu_->cacheBoost());
     int64_t c = int64_t(cpu_->getClock()) / boost;
-    int64_t viaCycle = c / 32;
-    int64_t target = (viaCycle * 2 + 3) * 16 + 1;
+    const int64_t target = via_eclock::syncTarget(c, kCpuHz);
     if (target > c) cpu_->stall(int(target - c));
 }
 
@@ -714,10 +713,10 @@ uint8_t Q605Memory::peek8(uint32_t addr) const {
 }
 
 void Q605Memory::tick(int cpuCycles) {
-    // VIA1 φ2 = 783.36 kHz — CPU/32 approximation at 25 MHz
-    viaPhase_ += cpuCycles;
-    int viaCycles = viaPhase_ / 32;
-    viaPhase_ %= 32;
+    // VIA1 φ2 = the board's 783.36 kHz E clock, NOT a divisor of the CPU:
+    // 25 MHz / 783 360 = 31.914, and the old /32 ran it 0.27 % slow
+    // (ViaEClock.h).
+    const int viaCycles = viaEClock_.advance(cpuCycles, kCpuHz);
     if (viaCycles && via1_.tick(viaCycles)) updateIrq();
 
     if (cudaLleOn_) cudaLle_.tick(cpuCycles);

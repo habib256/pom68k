@@ -62,9 +62,15 @@ Q630Memory::Q630Memory(uint32_t totalRam)
     // POM68K_CUDA_LLE=0 forces the Egret HLE, a missing dump falls back
     // silently. The staged PRAM mirrors the Egret HLE's factory seed so
     // both paths boot from the same battery contents.
-    // The F108 board carries a DFAC2 on the Cuda's I2C (macquadra630.cpp:196,
-    // shared bus with Valkyrie) — the slave ACK lives in CudaLle.
+    // The F108 board hangs TWO slaves on the Cuda's I2C, on one wired-AND
+    // SDA (macquadra630.cpp:187-199): the DFAC2 at $6F (ACK only — its
+    // payload is oracle-discarded) and the **Valkyrie clock generator at
+    // $28**, whose payload sets the video pixel clock. Framing lives in
+    // `CudaLle::i2cWire`; only the second one carries data worth keeping.
     cudaLle_.setI2cDfac(true);
+    cudaLle_.onI2cValkyrie = [this](uint8_t reg, uint8_t v) {
+        video_.i2cWrite(reg, v);
+    };
     {
         const char* e = std::getenv("POM68K_CUDA_LLE");
         const bool want = !e || std::atoi(e) != 0;
@@ -134,7 +140,7 @@ void Q630Memory::reset() {
                                    // has carried a frame, and a live peer
                                    // suppresses it — Scc8530::openLine
                                    // (LLE steps 7+8, docs/LLE_VS_HLE.md §1.10).
-    viaPhase_ = 0;
+    viaEClock_ = {};
     tickAcc_ = 0;
     sccIrq_ = false;
 }
@@ -213,10 +219,7 @@ void Q630Memory::viaSync() {
     if (!cpu_) return;
     const int boost = std::max(1, cpu_->cacheBoost());
     int64_t c = int64_t(cpu_->getClock()) / boost;
-    int64_t viaCycle = c / kViaDiv;
-    // Same phase grid as the 32:1 original — (viaCycle+1)*D + D/2 + 1, which
-    // is exactly (viaCycle*2+3)*16+1 when D == 32.
-    int64_t target = (viaCycle + 1) * kViaDiv + kViaDiv / 2 + 1;
+    const int64_t target = via_eclock::syncTarget(c, kCpuHz);
     if (target > c) cpu_->stall(int(target - c));
 }
 
@@ -665,9 +668,9 @@ uint8_t Q630Memory::peek8(uint32_t addr) const {
 void Q630Memory::tick(int cpuCycles) {
     // VIA1 φ2 = 783.36 kHz, fixed (iosb.cpp:74) — see viaSync above for why
     // the divider tracks kCpuHz instead of being the Q605's constant 32.
-    viaPhase_ += cpuCycles;
-    int viaCycles = viaPhase_ / kViaDiv;
-    viaPhase_ %= kViaDiv;
+    // VIA1 φ2 is the board's fixed 783.36 kHz E clock, not a divisor of
+    // the CPU — an integer ratio is an approximation here (ViaEClock.h).
+    const int viaCycles = viaEClock_.advance(cpuCycles, kCpuHz);
     if (viaCycles && via1_.tick(viaCycles)) updateIrq();
 
     if (cudaLleOn_) cudaLle_.tick(cpuCycles);

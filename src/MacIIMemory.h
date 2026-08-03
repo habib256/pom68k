@@ -69,6 +69,15 @@ public:
     NuBus& nubus() { return nubus_; }
     TobyVideo* toby() { return toby_; }
     Se30Video* se30() { return se30_; }
+
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // The SE/30's internal video has no CRTC of its own, so its beam rides
+    // the SAME 60 Hz accumulator that raises VIA1 CA1 and the slot-$E VBL —
+    // one source of frame time, never a second clock. (The Toby card on the
+    // Mac II proper owns its own CRTC clock and does not use these.)
+    int64_t framePos() const { return tickAcc_; }
+    int64_t frameCycles() const { return kCpuHz / 60; }
+    uint64_t frameCount() const { return frameCount_; }
     AdbBus& adb() { return adb_; }
     AdbVia& adbVia() { return adbVia_; }
     AscV8& asc() { return asc_; }
@@ -140,7 +149,8 @@ public:
         }
         if (toby_) ar(*toby_);
         ar(ramSize_, overlay_, glueRamSize_, nubusIrqState_, sccIrq_,
-           via2Irq_, via2Pb7_, hmmu24_, viaPhase_, tickAcc_, secAcc_);
+           via2Irq_, via2Pb7_, hmmu24_, viaPhase_, tickAcc_, secAcc_,
+           frameCount_);
         // SE/30-only tail: the header pins the profile, so the II/IIx/IIcx
         // chunk layout (and their existing snapshots) is untouched.
         if (model_ == Model::SE30) {
@@ -211,6 +221,7 @@ private:
     bool se30VblPhase_ = false;
     int viaPhase_ = 0;
     int64_t tickAcc_ = 0;
+    uint64_t frameCount_ = 0;        // completed 60 Hz frames (raster seq)
     int64_t secAcc_ = 0;
     long vblPulses_ = 0;
     long tickCalls_ = 0;

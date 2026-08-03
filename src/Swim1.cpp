@@ -36,6 +36,7 @@ void Swim1::reset() {
     writeStartCell_ = 0;
     writeActive_ = false;
     writeTransitions_.clear();
+    if (onDat1Byte) onDat1Byte(false);           // swim1.cpp:109
     if (drive_[0]) drive_[0]->reset();
     if (drive_[1]) drive_[1]->reset();
 }
@@ -81,14 +82,22 @@ void Swim1::applyPhases(uint8_t value) {
     }
 }
 
+// swim1.cpp:1226 ism_update_dat1byte — mode bit 4 is the write direction.
+void Swim1::updateDat1Byte() {
+    if (!onDat1Byte) return;
+    onDat1Byte((mode_ & 0x10) ? fifoPos_ < 2 : fifoPos_ > 0);
+}
+
 void Swim1::fifoClear() {
     fifoPos_ = 0;
+    updateDat1Byte();
     crcClear();
 }
 
 bool Swim1::fifoPush(uint16_t value) {
     if (fifoPos_ == 2) return true;
     fifo_[fifoPos_++] = value;
+    updateDat1Byte();
     return false;
 }
 
@@ -97,6 +106,7 @@ uint16_t Swim1::fifoPop() {
     uint16_t value = fifo_[0];
     fifo_[0] = fifo_[1];
     fifoPos_--;
+    updateDat1Byte();
     return value;
 }
 
@@ -229,9 +239,11 @@ void Swim1::ismWrite(int reg, uint8_t value) {
     case 6:                                     // mode clear — bit 6 exits ISM
         mode_ &= uint8_t(~value);
         paramIdx_ = 0;
+        updateDat1Byte();                       // the direction bit moved
         break;
     case 7:                                     // mode set
         mode_ |= value;
+        updateDat1Byte();
         break;
     }
     if (mode_ & 0x01) fifoClear();

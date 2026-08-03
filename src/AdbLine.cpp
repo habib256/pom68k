@@ -27,6 +27,23 @@ static constexpr int64_t T_ATTEN = 6000;   // attention (between bit-cell 1564 a
 static constexpr int64_t T_RESET = 30000;  // reset (between 12410 and ~62000)
 static constexpr int64_t T_T1T   = 1800;
 
+// Power-on device state. Reached three ways: emulator reset, the ADB
+// SendReset command ($00) and the line-reset pulse — all of which return a
+// real device to its default address AND its default handler/protocol.
+// (MAME restores only the addresses, `macadb.cpp:742`; the ADB spec is
+// explicit that reset re-selects the default handler, and that matters the
+// moment a handler is switchable at all.)
+void AdbLine::resetDevices() {
+    kbdAddr_ = 2; kbdHandler_ = 0x22; modifiers_ = 0xFF; kbdLeds_ = 0x07;
+    mouseAddr_ = 3; mouseHandler_ = 0x23;
+    static const uint8_t kbdId = [] {
+        const char* e = std::getenv("POM68K_ADB_KBD_ID");
+        const int id = e ? std::atoi(e) : 1;
+        return uint8_t(id >= 1 && id <= 3 ? id : 1);
+    }();
+    kbdHandlerId_ = kbdId; mouseHandlerId_ = 1;
+}
+
 void AdbLine::reset() {
     hostDrive_ = deviceDrive_ = true;
     linestate_ = LST_IDLE;
@@ -34,19 +51,32 @@ void AdbLine::reset() {
     sendTimer_ = -1;
     command_ = 0; waitingCmd_ = false; direction_ = 0;
     datasize_ = 0; streamPtr_ = 0; srqFlag_ = srqSwitch_ = false;
-    kbdAddr_ = 2; kbdHandler_ = 0x22; modifiers_ = 0xFF;
-    mouseAddr_ = 3; mouseHandler_ = 0x23;
+    resetDevices();
     keyBuf_.clear();
-    mdx_ = mdy_ = 0; mbtn_ = mbtnSent_ = false;
+    mdx_ = mdy_ = 0; mbtn_ = mbtnSent_ = false; mbtn2_ = mbtn2Sent_ = false;
 }
 
 void AdbLine::keyEvent(uint8_t adbCode, bool down) {
-    keyBuf_.push_back(uint8_t((down ? 0x00 : 0x80) | (adbCode & 0x7F)));
+    // Only the extended protocol (handler 3) reports the right-hand
+    // modifiers under their own key codes; every other handler folds them
+    // onto the left-hand ones, because the keyboard it is pretending to be
+    // physically has one of each (DingusPPC `adbkeyboard.cpp:81-87`).
+    uint8_t folded = adbCode & 0x7F;
+    switch (folded) {
+        case 0x7D: folded = 0x36; break;           // right Control → Control
+        case 0x7B: folded = 0x38; break;           // right Shift   → Shift
+        case 0x7C: folded = 0x3A; break;           // right Option  → Option
+        default: break;
+    }
+    keyBuf_.push_back(uint8_t((down ? 0x00 : 0x80) |
+                              (kbdHandlerId_ == 3 ? (adbCode & 0x7F) : folded)));
     // Modifiers also live in register 2 as a bitmap the guest can poll
     // independently of the key stream (MAME macadb.cpp:355-415 tracks the
-    // same five). Active low: clear on press, set on release.
+    // same five). Active low: clear on press, set on release. The bitmap
+    // has ONE bit per modifier whatever the handler, so it is always the
+    // folded code that drives it — right Shift lights the Shift bit.
     uint8_t bit = 0;
-    switch (adbCode & 0x7F) {
+    switch (folded) {
         case 0x39: bit = 0x20; break;      // Caps Lock
         case 0x36: bit = 0x08; break;      // Control
         case 0x38: bit = 0x04; break;      // Shift
@@ -61,9 +91,19 @@ void AdbLine::mouseMove(int dx, int dy) {
     mdx_ = std::clamp(mdx_ + dx, -256, 256);
     mdy_ = std::clamp(mdy_ + dy, -256, 256);
 }
-void AdbLine::mouseButton(bool down) { mbtn_ = down; }
+void AdbLine::mouseButton(bool down, int button) {
+    if (button == 0) mbtn_ = down;
+    else if (button == 1) mbtn2_ = down;
+}
 
-bool AdbLine::mousePending() const { return mdx_ || mdy_ || mbtn_ != mbtnSent_; }
+// A button-2 change is only *reportable* under the Extended Mouse Protocol,
+// so it only counts as pending there; otherwise a host that clicked the
+// right button on a one-button mouse would leave a change the device can
+// never clear, and every autopoll would answer with an empty report.
+bool AdbLine::mousePending() const {
+    return mdx_ || mdy_ || mbtn_ != mbtnSent_ ||
+           (mouseHandlerId_ == 4 && mbtn2_ != mbtn2Sent_);
+}
 
 void AdbLine::writeData(bool level) {
     if (deviceDrive_ == level) return;
@@ -117,7 +157,7 @@ void AdbLine::receiveEdge(bool level, int64_t dtime) {
     switch (linestate_) {
     case LST_IDLE:
         if (level && dtime >= T_RESET) {          // reset pulse (host held low long)
-            kbdAddr_ = 2; mouseAddr_ = 3;
+            resetDevices();
         } else if (level && dtime >= T_ATTEN) {   // attention
             waitingCmd_ = true; direction_ = 0;
             linestate_ = LST_ATTENTION;
@@ -239,7 +279,7 @@ void AdbLine::adbTalk() {
         case 0:
         case 1:                               // reset / flush
             direction_ = 0;
-            if (command_ == 0) { kbdAddr_ = 2; mouseAddr_ = 3; }   // SendReset
+            if (command_ == 0) resetDevices();                     // SendReset
             break;
 
         case 2:                               // listen — data bytes follow
@@ -282,9 +322,16 @@ void AdbLine::adbTalk() {
                         };
                         dy = clamp7(mdy_); dx = clamp7(mdx_);
                     }
+                    // Both buttons are ACTIVE LOW. Bit 7 of the second byte
+                    // is a constant 1 on a one-button mouse; under the
+                    // Extended Mouse Protocol (handler 4) it carries button
+                    // 2, which is the whole of two-button support on this
+                    // bus (DingusPPC `adbmouse.cpp:70-118` packs exactly
+                    // this for num_buttons=2, num_bits=7 — a 2-byte report).
+                    const bool b2 = mouseHandlerId_ == 4 && mbtn2_;
                     buffer_[0] = uint8_t((mbtn_ ? 0x00 : 0x80) | dy);
-                    buffer_[1] = uint8_t(0x80 | dx);
-                    mbtnSent_ = mbtn_;
+                    buffer_[1] = uint8_t((b2 ? 0x00 : 0x80) | dx);
+                    mbtnSent_ = mbtn_; mbtn2Sent_ = mbtn2_;
                     if (pending) {
                         datasize_ = 2;
                         if (trace)
@@ -292,8 +339,20 @@ void AdbLine::adbTalk() {
                                          buffer_[0], buffer_[1]);
                     }
                     else if (keyPending() && (kbdHandler_ & 0x20)) srqFlag_ = true;
+                } else if (reg == 1 && mouseHandlerId_ == 4) {
+                    // Register 1 exists only under the extended protocol: the
+                    // device identifier block a driver reads to size the
+                    // report — 'appl', resolution in dpi, device class,
+                    // button count (`adbmouse.cpp:127-140`).
+                    buffer_[0] = 'a'; buffer_[1] = 'p';
+                    buffer_[2] = 'p'; buffer_[3] = 'l';
+                    buffer_[4] = 0x01; buffer_[5] = 0x2C;   // 300 dpi
+                    buffer_[6] = 0x01;                      // class: mouse
+                    buffer_[7] = 0x02;                      // buttons
+                    datasize_ = 8;
                 } else if (reg == 3) {
-                    buffer_[0] = mouseHandler_; buffer_[1] = 0x01; datasize_ = 2;
+                    buffer_[0] = mouseHandler_; buffer_[1] = mouseHandlerId_;
+                    datasize_ = 2;
                 }
             } else if (addr == kbdAddr_) {
                 if (reg == 0) {
@@ -316,7 +375,13 @@ void AdbLine::adbTalk() {
                     }
                     else if (mousePending() && (mouseHandler_ & 0x20)) srqFlag_ = true;
                 } else if (reg == 2) {
-                    buffer_[0] = modifiers_; buffer_[1] = 0xFF; datasize_ = 2;
+                    // Byte 0 = the modifier bitmap; byte 1's low three bits
+                    // are the LED latches the guest wrote with Listen R2,
+                    // the rest being released keys — so an untouched R2
+                    // still reads $FF, MAME's constant (`macadb.cpp:696`).
+                    buffer_[0] = modifiers_;
+                    buffer_[1] = uint8_t(0xF8 | (kbdLeds_ & 0x07));
+                    datasize_ = 2;
                 } else if (reg == 3) {
                     // Byte 0 is the R3 flags byte, byte 1 the HANDLER ID —
                     // kbdHandler_ carries R3-byte-0 semantics everywhere else
@@ -324,7 +389,8 @@ void AdbLine::adbTalk() {
                     // keyboard-type detection see an undefined ID ($22), and
                     // hard-setting bits 6/5 reported SRQ enabled even after a
                     // Listen R3 cleared it. Mouse branch above has it right.
-                    buffer_[0] = kbdHandler_; buffer_[1] = 0x01; datasize_ = 2;
+                    buffer_[0] = kbdHandler_; buffer_[1] = kbdHandlerId_;
+                    datasize_ = 2;
                 }
             } else {
                 // Talk to an UNCONNECTED address (ADBReInit scans 1..15, and
@@ -342,21 +408,55 @@ void AdbLine::adbTalk() {
     }
 
     // Listen data phase: command_ = buffer_[0] (first data byte), buffer_[1]
-    // = second (the activator). Register 3 relocates the device.
+    // = second (the activator). Register 3 relocates the device or selects
+    // its protocol; register 2 drives the keyboard LEDs.
     direction_ = 0;
+    if (listenReg_ == 2) {
+        if (listenAddr_ == kbdAddr_) {
+            // The only writable part of R2: the three LED latches, active
+            // low (DingusPPC `adbkeyboard.cpp:100-110`). A real Extended
+            // Keyboard II lights Num/Caps/Scroll Lock from them; POM68K has
+            // no indicators to light, so the value is stored and exposed
+            // through keyboardLeds() for a front end that grows some.
+            kbdLeds_ = uint8_t(buffer_[1] & 0x07);
+            if (std::getenv("POM68K_ADB_LLE_TRACE"))
+                std::fprintf(stderr, "adbline: kbd Listen R2 LEDs %02X\n", kbdLeds_);
+        }
+        return;
+    }
     if (listenReg_ == 3) {
+        // The activator byte selects what the write means. $00 sets address
+        // + flags unconditionally, $FE moves the address only if there was
+        // no collision, and a small handler number selects a PROTOCOL: the
+        // device accepts it when it implements it and ignores it otherwise,
+        // which is precisely how a driver discovers what it is talking to
+        // (Guide to the Macintosh Family Hardware ch. 8; DingusPPC
+        // `adbkeyboard.cpp:118-140`, `adbmouse.cpp:143-160`).
         if (listenAddr_ == mouseAddr_) {
             if (std::getenv("POM68K_ADB_LLE_TRACE"))
                 std::fprintf(stderr, "adbline: mouse Listen R3 %02X %02X "
-                             "(handler %02X)\n", command_, buffer_[1],
-                             mouseHandler_);
+                             "(handler %02X id %02X)\n", command_, buffer_[1],
+                             mouseHandler_, mouseHandlerId_);
             if (buffer_[1] == 0x00) { mouseHandler_ = uint8_t(command_ & 0x7F); mouseAddr_ = command_ & 0x0F; }
             else if (buffer_[1] == 0xFE) { mouseAddr_ = command_ & 0x0F;
                                            mouseHandler_ = uint8_t((mouseHandler_ & 0xF0) | mouseAddr_); }
+            // 1 = 100 cpi, 2 = 200 cpi, 4 = Extended Mouse Protocol. Any
+            // other ID is a device we are not, so it is refused by silence:
+            // the driver reads R3 back, sees the old ID and moves on.
+            else if (buffer_[1] == 0x01 || buffer_[1] == 0x02 || buffer_[1] == 0x04)
+                mouseHandlerId_ = buffer_[1];
         } else if (listenAddr_ == kbdAddr_) {
             if (buffer_[1] == 0x00) { kbdHandler_ = uint8_t(command_ & 0x7F); kbdAddr_ = command_ & 0x0F; }
             else if (buffer_[1] == 0xFE) { kbdAddr_ = command_ & 0x0F;
                                            kbdHandler_ = uint8_t((kbdHandler_ & 0xF0) | kbdAddr_); }
+            // 1 = Apple Standard Keyboard, 2 = Apple Extended Keyboard II,
+            // 3 = the extended protocol with distinct right-hand modifiers.
+            // A standard keyboard (ID 1) must NOT accept 3 — that is the
+            // whole test a driver uses to decide it has an extended one.
+            else if (buffer_[1] == 0x01 || buffer_[1] == 0x02)
+                kbdHandlerId_ = buffer_[1];
+            else if (buffer_[1] == 0x03 && kbdHandlerId_ != 1)
+                kbdHandlerId_ = 3;
         }
     }
 }

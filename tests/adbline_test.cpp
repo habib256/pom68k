@@ -15,8 +15,17 @@ static int failures = 0;
 static constexpr int64_t kShort = 544, kLong = 1020;
 static constexpr int64_t kAtten = 9000, kSync = 600, kGap = 544, kStopHigh = 600;
 
+// Let the device finish transmitting whatever the previous command asked
+// for and fall back to idle — the real host waits for the reply before the
+// next Attention, and the receive machine only decodes from LST_IDLE.
+static void settle(AdbLine& a) {
+    a.setHostDrive(true);
+    for (int i = 0; i < 20000 && a.busy(); i++) a.tick(64);
+}
+
 // Drive one ADB command byte (Attention + sync + 8 bits, MSB first + stop).
 static void sendCommand(AdbLine& a, uint8_t cmd) {
+    settle(a);
     a.setHostDrive(false); a.tick(kAtten);        // attention: long low
     a.setHostDrive(true);  a.tick(kSync);         // rise (attn) + sync high
     a.setHostDrive(false);                        // sync fall -> BIT0
@@ -112,6 +121,115 @@ int main() {
         CHECK(a.mouseAddr() == 8, "mouse relocated to addr 8");
         sendCommand(a, 0x8F);                      // addr8, talk, reg3
         CHECK(a.dbgDatasize() == 2, "relocated mouse answers R3 at addr 8");
+    }
+
+    // ── Extended Mouse Protocol (handler 4): the SECOND BUTTON ──────────
+    // A one-button Apple mouse holds bit 7 of the second report byte at 1
+    // forever; button 2 only exists once a driver switches the device to
+    // handler 4 with a Listen R3.
+    {
+        AdbLine a; a.reset();
+        CHECK(a.mouseHandlerId() == 1, "mouse resets to handler 1");
+
+        a.mouseMove(1, 1); a.mouseButton(true, 1);   // right button down
+        sendCommand(a, 0x3C);                        // Talk R0, still handler 1
+        CHECK(a.dbgDatasize() == 2, "handler 1 R0 -> 2 bytes");
+        CHECK((a.dbgBuffer(1) & 0x80) != 0, "handler 1 hides button 2 (bit7=1)");
+
+        sendListen(a, 0x3B, 0x63, 0x04);             // Listen R3, activator 4
+        CHECK(a.mouseHandlerId() == 4, "Listen R3 activator 4 -> handler 4");
+        CHECK(a.mouseAddr() == 3, "handler switch leaves the address alone");
+
+        a.mouseMove(1, 1);
+        sendCommand(a, 0x3C);
+        CHECK(a.dbgDatasize() == 2, "handler 4 R0 -> 2 bytes");
+        CHECK((a.dbgBuffer(1) & 0x80) == 0, "handler 4 reports button 2 (bit7=0)");
+        CHECK((a.dbgBuffer(0) & 0x80) != 0, "button 1 still up");
+
+        a.mouseButton(false, 1);
+        a.mouseMove(1, 1);
+        sendCommand(a, 0x3C);
+        CHECK((a.dbgBuffer(1) & 0x80) != 0, "button 2 release reported");
+
+        // Register 1 is the extended identifier block: 'appl' + 300 dpi +
+        // class 1 (mouse) + 2 buttons.
+        sendCommand(a, 0x3D);                        // Talk R1
+        CHECK(a.dbgDatasize() == 8, "handler 4 R1 -> 8-byte identifier");
+        CHECK(a.dbgBuffer(0) == 'a' && a.dbgBuffer(3) == 'l', "R1 says 'appl'");
+        CHECK(a.dbgBuffer(4) == 0x01 && a.dbgBuffer(5) == 0x2C, "R1 300 dpi");
+        CHECK(a.dbgBuffer(7) == 0x02, "R1 declares 2 buttons");
+
+        sendCommand(a, 0x3F);                        // Talk R3
+        CHECK(a.dbgBuffer(1) == 0x04, "R3 reports the live handler ID");
+
+        // SendReset returns the device to its power-on protocol.
+        sendCommand(a, 0x00);
+        CHECK(a.mouseHandlerId() == 1, "SendReset restores handler 1");
+    }
+
+    // --- A standard mouse has no register 1 (timeout, not a stale reply) ---
+    {
+        AdbLine a; a.reset();
+        sendCommand(a, 0x3D);                        // Talk R1, handler 1
+        CHECK(a.dbgDatasize() == 0, "handler 1 R1 -> timeout");
+    }
+
+    // ── Keyboard handler IDs ────────────────────────────────────────────
+    {
+        AdbLine a; a.reset();
+        sendCommand(a, 0x2F);                        // Talk R3
+        CHECK(a.dbgBuffer(1) == 0x01, "kbd resets to handler 1 (standard)");
+
+        // A STANDARD keyboard must refuse the extended protocol — that
+        // refusal is how a driver tells the two apart.
+        sendListen(a, 0x2B, 0x62, 0x03);
+        CHECK(a.keyboardHandlerId() == 1, "handler 1 refuses activator 3");
+
+        sendListen(a, 0x2B, 0x62, 0x02);             // become an Extended II
+        CHECK(a.keyboardHandlerId() == 2, "activator 2 -> Extended Keyboard II");
+        sendListen(a, 0x2B, 0x62, 0x03);             // now 3 is accepted
+        CHECK(a.keyboardHandlerId() == 3, "handler 2 accepts activator 3");
+        sendCommand(a, 0x2F);
+        CHECK(a.dbgBuffer(1) == 0x03, "R3 reports handler 3");
+
+        // Under handler 3 the right-hand modifiers keep their own key
+        // codes; under any other handler they fold onto the left ones.
+        a.keyEvent(0x7B, true);                      // right Shift down
+        sendCommand(a, 0x2C);
+        CHECK(a.dbgBuffer(1) == 0x7B, "handler 3 reports right Shift as $7B");
+        sendListen(a, 0x2B, 0x62, 0x01);             // back to standard
+        CHECK(a.keyboardHandlerId() == 1, "activator 1 -> standard keyboard");
+        a.keyEvent(0x7B, true);
+        sendCommand(a, 0x2C);
+        CHECK(a.dbgBuffer(1) == 0x38, "handler 1 folds right Shift onto $38");
+    }
+
+    // --- The R2 modifier bitmap sees the right-hand keys too ---
+    {
+        AdbLine a; a.reset();
+        a.keyEvent(0x7B, true);                      // right Shift down
+        sendCommand(a, 0x2E);                        // Talk R2
+        CHECK((a.dbgBuffer(0) & 0x04) == 0, "right Shift clears the Shift bit");
+        a.keyEvent(0x7B, false);
+        sendCommand(a, 0x2E);
+        CHECK((a.dbgBuffer(0) & 0x04) != 0, "right Shift release sets it back");
+    }
+
+    // ── Keyboard LEDs: Listen R2 latches them, Talk R2 reads them back ──
+    {
+        AdbLine a; a.reset();
+        sendCommand(a, 0x2E);                        // Talk R2, untouched
+        CHECK(a.dbgBuffer(1) == 0xFF, "virgin R2 second byte is $FF");
+        CHECK(a.keyboardLeds() == 0x07, "virgin LEDs all dark (active low)");
+
+        sendListen(a, 0x2A, 0x00, 0x05);             // Listen R2: LEDs %101
+        CHECK(a.keyboardLeds() == 0x05, "Listen R2 latches the LED bits");
+        sendCommand(a, 0x2E);
+        CHECK(a.dbgBuffer(1) == 0xFD, "Talk R2 reports LEDs, keys still released");
+        CHECK(a.dbgBuffer(0) == 0xFF, "Listen R2 leaves the modifier bitmap alone");
+
+        sendCommand(a, 0x00);                        // SendReset
+        CHECK(a.keyboardLeds() == 0x07, "SendReset darkens the LEDs");
     }
 
     // --- The device actually transmits after a Talk-with-data ---

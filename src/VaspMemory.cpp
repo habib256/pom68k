@@ -406,7 +406,11 @@ void VaspMemory::tick(int cpuCycles) {
     // 25.175 MHz; VBL covers the last 45 of 525 lines).
     framePos_ += cpuCycles;
     const int64_t frame = cpuHz_ / 60;
-    framePos_ %= frame;
+    // Completed frames, for the raster beam (VideoBeam::setPos).
+    if (framePos_ >= frame) {
+        frameCount_ += uint64_t(framePos_ / frame);
+        framePos_ %= frame;
+    }
     bool vbl = framePos_ >= frame * 480 / 525;
     if (vbl != vblState_) {
         vblState_ = vbl;

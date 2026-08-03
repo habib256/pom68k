@@ -7,7 +7,8 @@ silicon references, gate- and oracle-verified), and only later layer an
 **opt-in, clearly-flagged HLE accelerator** on top (`HLE_OVERLAY.md`). That
 requires knowing exactly where the code deviates today.
 
-Current as of 2026-07-31 (**seventh pass** — 32 machine profiles, 129 gates).
+Current as of 2026-08-03 (**ninth pass** — 36 machine profiles, 143 gates,
+full suite green).
 Line numbers are indicative — grep before relying on them.
 
 **Read § 1 first.** §§ 2–3 are the smaller live surface (HLE fallbacks, pure-LLE
@@ -55,30 +56,129 @@ simplified, why it was accepted, and **→ what would close it**.
 
 Rough priority order is the § 5 summary at the end.
 
-## 1.1 Video — whole-frame decode everywhere, no beam position
+## 1.1 Video — raster decode on every decoder
 
 `MacVideo.h` (Plus/compacts), `V8Video.h` (V8 family), `TobyVideo.*` (Mac II
 NuBus), `SonoraVideo.h`, `VaspVideo.h` (2048-byte row pitch), `RbvVideo.h`
-(IIsi/IIci through the Bt478 CLUT), `Dafb.*` (Quadra), `Valkyrie.*` (Q630/
-LC 580).
+(IIsi/IIci through the Bt478 CLUT), `Se30Video.h`, `Dafb.*` (Quadra),
+`Valkyrie.*` (Q630/LC 580).
 
-Registers, CLUT, monitor sense and the guest-programmed modeline are faithful;
-the framebuffer is decoded **once per frame** (`V8Video.h:10`, "no beam").
-Toby's frame clock is CRTC-derived (htotal×vtotal of the 30.24 MHz crystal,
-MAME `nubus_m2video.cpp`); DAFB derives geometry from the Swatch CRTC and the
-frame rate from the clockgen — which MAME does *not* model.
+Registers, CLUT, monitor sense and the guest-programmed modeline have always
+been faithful. What was not: **the whole framebuffer was decoded at publish
+time**, against whatever the registers said at that instant.
 
-*Gaps*: no beam position, so raster-timed effects and mid-frame register
-changes are wrong rather than approximate. No VRAM arbitration/timing. DAFB's
-VBL line is hard-coded at 480 (`Dafb.cpp:325-346` — as in MAME). Valkyrie's
-pixel clock is programmed over I2C by the Cuda (Valkyrie is slave `$28`);
-**that bus is not modelled**, so the clock stays at the 31.3344 MHz default and
-only the derived refresh rate is affected (`Valkyrie.h:20-23`).
+### The beam landed 2026-08-02 — `src/VideoBeam.h`
 
-→ **Closing it**: a scanline-granular decode driven by the existing CRTC
-geometry, plus a beam-position read for the registers that expose one. The
-Valkyrie clock is much smaller — extend `CudaLle`'s I2C master (already there
-for the DFAC2, § 3) with the `$28` slave and its M/N/P divisors.
+Every platform already accumulates CPU cycles into the current frame to
+generate its VBL (`framePos_` in `V8Memory`, `SonoraMemory`, `VaspMemory`,
+`RbvMemory`, `MacIIMemory`, `TobyVideo`, `Dafb`, `Valkyrie`). `VideoBeam`
+turns that **one** accumulator into a scan position and a row schedule. It
+deliberately **owns no clock**: `setPos()` adopts the platform's own
+accumulator, so there is exactly one source of frame time and the VBL edges —
+load-bearing, and the cause of more than one entry in `CHANGELOG.md` — are
+untouched by anything in the raster path.
+
+Decoders gained `decodeRows(out, y0, y1)` and a `raster(out)` that renders
+each visible row **once, at the moment the beam scans it**. Total work per
+frame is unchanged — the same rows, decoded once each — only correctly
+placed. `decode()` (whole frame, state as of now) stays for stills and tests.
+
+**Converted — all nine**: `V8Video`, `SonoraVideo`, `VaspVideo`, `RbvVideo`,
+`TobyVideo` (its own CRTC clock), `Se30Video` (no CRTC of its own — it rides
+`MacIIMemory`'s 60 Hz accumulator), `Dafb` and `Valkyrie` (both through the
+one `DafbMachine` template, so twelve profiles at once), and `MacVideo`.
+
+Two per-platform notes worth keeping. On the DAFB/Valkyrie side the geometry
+is resolved **once per frame**, not per row: walking the guest's
+GDevice → PixMap through `peek8` costs more than the pixels, and holding it
+for the frame is also what a real CRTC does. On the Plus the beam was
+**already modelled** — the VIA PB6 "beam in display portion" bit reads
+`cpu.getClock() % 130240` — so the decoder reuses that exact position rather
+than inventing a second one.
+
+Machine loops hook the catch-up onto the slicing `runQuantumWithWire`
+**already** does when the wire is active (the GUI default), so a network-off
+machine keeps its exact CPU timing and simply gets one whole-frame repaint per
+frame as before. The Plus loop slices `MacFrameClock::runFrame` 16× over the
+display period instead, which cannot move the vblank edge: `runUntil(t)` is
+"execute while clock < t", the last target is still
+`frameBase + kVblankStart`, and the cycle-exact contention model reads the
+absolute clock.
+
+**One trap worth keeping.** A caller that samples once per frame at a fixed
+phase cannot be served by the position alone — it is modulo, so a whole frame
+is indistinguishable from no time at all, and the screen would never update
+again. Hence `frameCount_` on every memory class: real machine state, and
+serialized. The `v8_raster_test` "one raster() per frame" check is what
+caught it.
+
+*Gaps still open*:
+
+- **No VRAM arbitration/timing — audited 2026-08-03 and ACCEPTED**, with the
+  verdict recorded so nobody re-opens it blind (the § 1.5 treatment). On a
+  real machine the CRTC and the CPU contend for the framebuffer, so a CPU
+  access lands late when the beam is fetching. POM68K charges nothing.
+  **There is no oracle to port**: `vram_r`/`vram_w` are a plain bounds check
+  plus `COMBINE_DATA` in **all four** of MAME's relevant devices — `v8.cpp`
+  (V8/Eagle/Spice), `sonora.cpp`, `valkyrie.cpp` and `dafb.cpp:915-933` —
+  with no wait state, no beam dependency and no comment claiming otherwise.
+  Neither the Guide nor our own notes carry a bandwidth figure for these
+  boards, and no guest symptom has ever been attributed to it.
+  Implementing it would therefore mean **inventing timing numbers**, which
+  the project's source ranking exists to prevent. Contrast the Mac Plus,
+  where contention IS modelled cycle-exactly — because GttMFH Table 5-3
+  gives a validation target (2.56 MB/s) and `contention_test` reproduces it.
+  → **Reopen when** either (a) a documented figure surfaces for one of these
+  boards, or (b) a guest is observed to depend on it. The most tractable
+  sub-case if that day comes is **RBV** (IIsi/IIci), where the display
+  fetches from *main* RAM — the same physics as the Plus, on machinery
+  POM68K already has.
+- DAFB's VBL line is hard-coded at 480 (`Dafb.cpp:325-346` — as in MAME).
+- ~~Valkyrie's pixel clock over I2C~~ — **closed 2026-08-02**. The Cuda's
+  I2C bus is modelled end to end now: `CudaLle::i2cWire` carries the full
+  `i2c_hle` frame (address → sub-address → auto-incrementing data,
+  `i2chle.cpp:108-200`) and **two** slaves, as MAME merges them onto one
+  wired-AND SDA (`macquadra630.cpp:187-199`) — the DFAC2 at `$6F` (ACK
+  only; its payload is oracle-discarded) and the **Valkyrie clock
+  generator at `$28`**, whose payload is load-bearing.
+  It is not a theoretical gap: a traced Q630 boot writes M/N/P =
+  `$0E`/`$1B`/`$02`, i.e. `3986400 × 2² × 27 / 14` = **30.752 MHz**, so
+  640×480 refreshes at **67.80 Hz** instead of the 69.08 Hz the frozen
+  31.3344 MHz produced.
+  Two honest notes. MAME's guard at `valkyrie.cpp:566` is a **typo** —
+  `(m_P = 98)`, an assignment — so it fires on `M == N == 0` alone and
+  clobbers `P`; we implement its *effect* (`M == 0` is a divide by zero
+  anyway) without corrupting a register. And the result still lands
+  **1.7 % above** Apple's nominal 66.67 Hz / 30.24 MHz for that mode; a
+  reference of `31.3344/8 = 3.9168 MHz` would give 66.70 Hz exactly, which
+  suggests MAME's `3986400` is slightly off — recorded as a *suspicion*,
+  not acted on. Gate `valkyrie_i2c_test` (asserts the frame cadence, not
+  the setter).
+- ~~No beam-position register is exposed to a guest~~ — **resolved
+  2026-08-02, and it was smaller than it looked** (this bullet was stale
+  against `TODO.md` § 4bis until 2026-08-02). Valkyrie's `$14` blanking bit
+  was the only real position register in the tree and it now answers from
+  the LIVE scanline (`Valkyrie.cpp:57` → `currentLine()`); it used to read
+  `prevLine_`, which only advances inside `tick()`, i.e. quantised to the
+  peripheral batch. **DAFB has no position register at all** — not in
+  `Dafb.cpp` and not in MAME's — and the Plus's VIA PB6 already read the
+  same `cpu.getClock() % 130240` the decoder uses. One scan position per
+  machine, everywhere.
+
+→ **Closing it**: point the registers that expose a scan position at
+`VideoBeam::line()` instead of their private copies, so a machine has one
+scan position rather than two that can disagree — worth doing only once a
+guest consumer is shown to exist. (The Valkyrie clock was the other half of
+this note and is done.) What is left is VRAM arbitration, which needs a
+contention model nobody has an oracle for yet.
+
+Gates: `video_beam_test` (the row schedule: every visible row exactly once
+per frame, in order, tail flushed on the wrap), `v8_raster_test` (a mid-frame
+palette change splits the picture AT the beam; VRAM written behind the beam
+does not reach rows already scanned), `raster_equiv_test` (chunked decode ≡
+one pass, four decoders × every depth — and its harness **refuses a uniform
+frame as a pass**, after three false greens; see `CHANGELOG.md`
+§ 2026-08-02 (later) for what each one hid).
 
 ## 1.2 CPUs — cycle-exact only on the Plus
 
@@ -91,10 +191,75 @@ for the DFAC2, § 3) with the `$28` slave and its M/N/P divisors.
 - **Peripheral-tick batching**: peripherals advance in blocks of
   `kPeriphBatch` core cycles — 64 on `Cpu020.h:55`, 128 on the 030s
   (`Cpu030.h:167`, `SonoraCpu.h:76`, `VaspCpu.h:69`, `RbvCpu.h:69`), 256 on
-  the 040s (`Cpu040.cpp:11` and siblings). ~4–16 µs of IRQ-latency jitter.
-- **VIA E-clock at a fixed 32:1** (real ≈31.91:1) — `V8Memory::viaSync`
-  (`V8Memory.cpp:280`) and its per-machine twins align to `viaDiv_`
-  (`V8Memory.h:355`, 20 at C15M / 40 on the Mac TV's C32M).
+  the 040s (`Cpu040.cpp` and siblings). ~4–16 µs of IRQ-latency jitter.
+  **Measured 2026-08-02** — this entry's own closing note was "drop it toward
+  1 and re-measure the cost", so: `POM68K_PERIPH_BATCH` now overrides it on
+  the 040, and `q605_boot_etalon` reaches the Finder at **every** setting.
+
+  | batch | wall | vs default | max IRQ jitter @ 25 MHz |
+  |---|---|---|---|
+  | 256 (default) | 61.3 s | — | ≤ 10.2 µs |
+  | 64 | 67.3 s | +10 % | ≤ 2.6 µs |
+  | 16 | 79.3 s | +29 % | ≤ 0.64 µs |
+  | **1 (exact)** | 107.9 s | **+76 %** | 0 |
+
+  So this is not a gap needing an implementation — it is a **priced, exact-on-
+  demand** trade, and the exact setting works. Moving the *default* is a
+  separate product decision and wants its own measured reason; the honest
+  statement today is that conformance costs ~70 % here and is one env var away.
+
+  **2026-08-03 — where that cost actually IS** (`POM68K_PERIPH_STATS=1`
+  counts the path; 1200 frames of `q605_boot_etalon` on one host):
+
+  | batch | wall | `mem.tick()` calls | machine cycles ticked | cycles/call |
+  |---|---|---|---|---|
+  | 256 (default) | 60.1 s | 25.6 M | 1.650 G | 64.5 |
+  | 1 (exact) | 103.3 s | **833.2 M** | 1.650 G | 2.0 |
+
+  The **work is identical** — the same 1.650 G machine cycles reach the
+  devices either way. What changes is that the ~15-device fan-out is entered
+  **32.5× more often**. `catchUp()` itself is called 879 M times in both
+  cases and is not the cost. So the fix is not "make the devices cheaper",
+  it is **stop entering the fan-out when nothing is due**.
+
+  → **The design that makes exactness affordable** is MAME's: a *deadline*
+  instead of a batch. `catchUp()` becomes `if (clock < deadline) return;`,
+  where the deadline is the minimum over the devices of "cycles until I can
+  next change observable state". Skipping is then never an approximation —
+  we only skip time in which nothing could have happened. Per-device bounds
+  at 25 MHz, in the order they bind:
+  `CudaLle`'s 6805 (~12 cycles — the binding one, **and phase-fragile**:
+  `pom68k-mactv-gate-broken`), the VIA E clock (783.36 kHz → ~32), ASC drain
+  (22.257 kHz → ~1123), DAFB VBL and the 60.15 Hz CA1 (~416 000), and
+  SWIM/drives/SCSI (only while a transfer is live). A device that does not
+  know its bound returns 1 and simply keeps today's behaviour, so the
+  migration is device-by-device and each step is separately measurable.
+  Bounded by the Cuda alone that is ~6× fewer fan-outs than today's exact
+  setting — i.e. exactness at roughly the cost of `batch=16`.
+
+  *Landed 2026-08-03, small and free*: `catchUp()` also refuses to run when
+  fewer than `cacheBoost_` Moira cycles have accumulated. Below that
+  `flushTicks` computes **m == 0** and ticks nothing, so it was pure call
+  overhead — and peripheral time is machine time (the 2026-07-25 pinned
+  lesson), so one machine cycle is the finest granularity anything can
+  observe. At the default batch it changes nothing; at `batch=1` it makes
+  "exact" mean exact-in-machine-time. Worth 2 % (103.3 → 101.2 s) — recorded
+  because the hypothesis behind it was that this WAS the cost, and the
+  measurement said no.
+- ~~**VIA E-clock at a fixed integer ratio**~~ — **closed 2026-08-02**
+  (`src/ViaEClock.h`). The 6522's φ2 is the board's fixed **783.36 kHz**
+  (C7M ÷ 10), asynchronous to the CPU. Where the CPU clock is an integer
+  multiple the old divisor was already exact (Plus ÷ 10, Mac II/IIfx ÷ 20,
+  and the V8/Sonora/RBV/VASP classes already used a fractional accumulator);
+  where it is not, rounding was a real error — 25 MHz ÷ 32 = 781.25 kHz
+  (0.27 % slow) on Q605/Q700/Centris, 33 MHz ÷ 42 = 785.7 kHz on the Q630.
+  Both the **rate** (a fractional accumulator) and the **phase grid** that
+  `viaSync()` stalls the CPU against are now exact rational arithmetic, and
+  they live in one header **precisely because they must not drift apart** —
+  mis-scaling that grid is what wedged the IIsi and blacked out the LC III
+  in 2026-07-25. The now-orphaned `viaDiv()`/`kViaDiv` helpers were deleted.
+  Verified: all four 040 boards boot (`q605_`, `centris650_`,
+  `quadra800_`, `q700_`, `q630_boot_etalon`), `ctest -L unit` 64/64.
 - **i-cache is a throughput overlay, not an architectural cache**:
   `cacheBoost_` scales Moira cycles in `flushTicks` (`Cpu040.h:77`, default
   **4**; `POM68K_Q605_CACHE_BOOST` overrides 1–64). No 040 copyback or
@@ -151,9 +316,36 @@ decoder.
   recovered tag bytes are dropped (flat images have no tag space).
 - **Tach is a sampled bit, not a waveform.**
 
-→ **Closing it**: a flux/PLL layer under `SonyDrive`'s cell store would close
-the first three at once — it is the same change MAME made, and `Swim1`'s
-correction factors then become live rather than dead code.
+*Closed 2026-08-02*: **`Swim1`'s DAT1BYTE line is wired.** It was listed
+here as "not wired (the LC II polls the FIFO)", which was true of the LC II
+and false of every IOP machine: `swim1.cpp:1226` asserts it while the 2-deep
+ISM FIFO has room (write) or holds data (read), and it is what lets an
+Apple PIC move a sector without its 65C02 polling per byte. The two
+consumers do **not** wire it the same way — the Quadra 900/950 feed BOTH DMA
+channels (`macquadra700.cpp:879-880`), the Mac IIfx only channel A
+(`maciifx.cpp:486`) — so it is per-machine wiring, not a shared rule. The LC
+II leaves the callback unset and is unchanged. Verified by re-running every
+boot etalon that owns a `Swim1`.
+
+→ **Closing it**: a flux/PLL layer under `SonyDrive`'s cell store closes the
+first three at once — the same change MAME made, and `Swim1`'s correction
+factors then become live rather than dead code.
+
+*Step 1 landed 2026-08-02 — the separator exists, and nothing reads it yet.*
+`src/FluxPll.h` is an integer port of MAME's `fdc_pll_t`
+(`machine/fdc_pll.cpp`): phase feedback, the `freq_hist` period trim with
+its ±25 % clamps, the `limit` protocol and the write side. Time is in
+**flux ticks**, `kSubCell = 1024` subdivisions of a nominal cell, int64
+throughout so a snapshot restores bit-identically. Gate `flux_pll_test`
+proves the properties an ideal cell array cannot have: ±12 % jitter
+recovered exactly, and a track written 8 % slow or fast recovered while the
+loop pulls its period — where a fixed-window separator slips inside 32
+cells. **Be precise about what this is**: the class is not wired to
+anything. `SonyDrive` still stores discrete cells and `Swim1`/`Swim2`/`Iwm`
+still read them directly, so no machine behaves differently yet.
+Remaining steps: (2) give `SonyDrive` a flux representation beside its cell
+ring, (3) move `Swim2` (best-gated: `swim2_test`, `swim2_media_test`, the
+q605 floppy gates) onto the PLL, (4) then `Swim1` and `Iwm`.
 
 *Not a gap (corrected 2026-07-31)*: **host-file persistence exists.**
 `SonyDrive::flushToFile` (`SonyDrive.cpp:676`) writes committed sectors back on
@@ -184,15 +376,37 @@ reset (`:1592`) are marked "not implemented", and it has no Tx Underrun/EOM
 latch or hunt/sync machine at all (MAME is async-serial-centric). MAME is
 therefore a weak oracle here.
 
-*Gaps*: no true **bit-serial sampling** (byte-granular engines, unlike MAME's
-`device_serial`); **WR5 RTS pin not tracked**; **TRxC-pin and DPLL-async clock
-sources unmodelled**.
+**Closed 2026-08-02** — the two items that did not need a new transport:
 
-→ **Closing it**: only worth doing against a real async transport to talk to —
-a host serial port or modem emulation would give the bit engine a consumer.
-Until then the byte engines are observationally equivalent for LLAP.
+- **The `/RTS` and `/DTR` output pins are tracked** (`Scc8530::updateRts`).
+  `/RTS` is not a view of WR5 bit 1: with Auto Enables (WR3 bit 5) the chip
+  holds it asserted after the bit is cleared **until the transmitter is
+  completely empty**, so the last character is not truncated by the line
+  driver going away — the release therefore happens in `tick()` as the
+  shifter drains, matching MAME's deferral in `tra_complete:1090`
+  (`update_rts:1184-1206`). `/DTR` follows WR5 bit 7 unless WR14 bit 2 hands
+  the pin to the DMA request function. Both are readable as *asserted*
+  (`rtsAsserted`/`dtrAsserted`) so no caller has to remember that the
+  package pins are active low, and both travel in the save state.
+- **SDLC Rx residue codes** (RR1 bits 3-1). They say how much of the last
+  character of the I-field is valid; a byte-granular wire only ever produces
+  the **byte-aligned code 011**, which is also the chip's reset value — which
+  is why `rr1Rd` already started at `$07`. Frame bytes were reporting `000`,
+  a code that means a *partial* character on real silicon, so an idle RR1 and
+  a received frame byte disagreed. Both now read 011.
 
-Gates: `scc_baud_test`, `scc_engine_test`, `scc_ext_test`, `llap_loop_test`.
+*Gaps still open, both deliberately*: no true **bit-serial sampling**
+(byte-granular engines, unlike MAME's `device_serial`); **TRxC-pin and
+DPLL-async clock sources unmodelled** (MAME stubs the DPLL too, `:305-318`).
+
+→ **Closing them**: only worth doing against a real async transport to talk
+to — a host serial port or modem emulation would give the bit engine a
+consumer. Until then the byte engines are observationally equivalent for
+LLAP. The same applies to the RTS pin's *consumer*: it is now modelled
+correctly, but nothing on the emulated side of the wire reads it yet.
+
+Gates: `scc_baud_test`, `scc_engine_test` (+ the residue and RTS/DTR blocks
+since 2026-08-02), `scc_ext_test`, `llap_loop_test`.
 
 ## 1.5 SCSI — phase-faithful, with four audited omissions
 
@@ -245,18 +459,98 @@ against first.
 Every ADB machine POM68K ships runs **real MCU firmware by default** (§ 2), so
 `AdbLine` is bit-serial (MAME `macadb.cpp` lineage) on every conformant path.
 
+**The device model is complete as of 2026-08-02** — the three holes listed
+here since the first pass are closed, against DingusPPC's `adbkeyboard.cpp` /
+`adbmouse.cpp` as the design oracle (MAME models **none** of them: it
+hardcodes the handler ID to 1 at `macadb.cpp:628,705`, has no LED register
+and no second button):
+
+- **Handler IDs are a register, not a constant.** `*Handler_` is the R3
+  *flags* byte (address + SRQ-enable + exceptional-event); the **device
+  handler ID** is now its own field, reported as R3's second byte and
+  selectable by a Listen R3 whose activator is a handler number. The
+  keyboard takes 1 (Apple Standard), 2 (Extended Keyboard II) and 3 (the
+  extended protocol) — and a **standard keyboard refuses 3**, which is
+  exactly the probe a driver uses to tell the two apart. Under handler 3 the
+  right-hand modifiers keep their own key codes (`$7B`/`$7C`/`$7D`) instead
+  of folding onto the left ones; the R2 bitmap has one bit per modifier
+  whatever the handler, so right Shift lights the Shift bit either way.
+  Reset value stays **1** and `POM68K_ADB_KBD_ID` overrides it — the GUI key
+  map emits neither the function keys nor distinct right modifiers, so
+  nothing observable rides on 2 yet.
+- **The second mouse button** exists under the **Extended Mouse Protocol**
+  (Listen R3 activator 4). It rides bit 7 of the second report byte, which a
+  one-button Apple mouse holds at a constant 1; register 1 then answers the
+  8-byte identifier block (`'appl'`, 300 dpi, class 1, 2 buttons). A
+  button-2 change only counts as *pending* under handler 4 — otherwise a
+  right click on a one-button mouse would leave a change the device can never
+  report and every autopoll would answer empty.
+- **Listen R2 latches the keyboard LEDs** (bits 2-0, active low), read back
+  in Talk R2's second byte and exposed as `keyboardLeds()` for a front end
+  that grows indicators. An untouched R2 still reads `$FF`, MAME's constant.
+
+Also corrected while there: **SendReset (`$00`) and the line reset pulse now
+restore the default handler/protocol**, not just the default address. MAME
+resets only the addresses (`macadb.cpp:742`) — harmless while a handler is a
+constant, wrong the moment it is switchable.
+
+Gate: `adbline_test` (the three blocks added 2026-08-02 — and verified to
+*bite*: forcing `POM68K_ADB_KBD_ID=2` fails exactly the two handler-1
+assertions and nothing else).
+
+*Poll cadence — measured 2026-08-02, no gap.* Traced over a full LC III run
+(199 s emulated, 17 850 ADB commands): aggregate autopoll interval **11.18 ms,
+p10 = p90 = median**, against the Egret's nominal 11.1 ms — **89.5 Hz vs 90**.
+Exact by construction: the cadence is the firmware's own timer. The mouse is
+polled at ~67 Hz while it has data (SRQ-driven bursts). POM68K is *not*
+servicing fewer polls than hardware.
+
 *Gaps*: remaining LLE fidelity is **PIC↔device timing under load**, not the
 byte state machine. On the HLE fallback only: `AdbVia` assumes 2-byte Listen
 payloads (real ADB is 2–8; DingusPPC `adbbus.cpp` validates against 8), and
-mouse deltas are clamped.
+mouse deltas are clamped. Host-side, the GUI does not yet *send* a second
+button (`main.cpp` reads `MouseDown[0]` only) or the extended key codes, so
+both new device capabilities are reachable but unexercised by the front end.
 
-*Still open — the Quadra modifier symptom.* A genuine device-model divergence
-was found and closed 2026-07-31 (§ 2), but **it did not fix the symptom that
-exposed it**: Cmd-N still fails to repaint on the Quadra under System 7.6
-(measured, `tests/adb_key_probe.cpp`), while the LC II control is unaffected.
-→ The Quadra's modifier path has a **second, unidentified cause**. Next step is
-to trace where the modifier is lost between `AdbLine` R2 and the guest's
-KeyMap on the Cuda path specifically.
+*The "Quadra modifier symptom" was RETRACTED 2026-08-02 — there is no
+modifier bug.* This entry used to claim that Cmd-N failed to repaint on the
+Quadra while the LC II control was unaffected, and concluded "the Quadra's
+modifier path has a second, unidentified cause". Both halves were wrong, and
+a controlled experiment settled it in three runs of `tests/adb_key_probe.cpp`:
+
+| machine | image | hold | Easy Access `$484185` | Cmd + N both live in KeyMap | screen repaints |
+|---|---|---|---|---|---|
+| Quadra 605 | `MacOS-8.1-boot.vhd` | 150 fr | `$FF` (Slow Keys ON) | **yes** | no |
+| Quadra 605 | `MacOS-8.1-boot.vhd` | 6 fr | `$FF` | no | no |
+| Quadra 605 | `GISTPERSO-boot.vhd` | **6 fr** | `$B6` (no such engine) | **yes** | **yes** |
+| LC II | `GISTPERSO-boot.vhd` | 150 fr | — | yes | yes |
+
+The decisive row is the third: the **same machine**, with the **same
+6-frame taps** that the 8.1 image discards, delivers every key and repaints
+on another image. Nothing about the Quadra changed between rows 2 and 3.
+
+**Same machine, different image, works** — so the variable was never the
+Quadra. And on *every* cell, including the failing one, the guest's own
+KeyMap holds Command and N **simultaneously**, which is the deepest
+guest-side observable the input pipeline owns: the modifier reaches the
+guest. The failing cell is the 8.1 image that still has Easy Access **Slow
+Keys** enabled — the same dirty image that produced the ten-month red gate
+(`CHANGELOG.md` § 2026-07-31).
+
+Two tooling defects were fixed to get there, and both are the *same* defect
+the Slow Keys hunt already paid for once: the probe's Cmd-N block **hardcoded
+3- and 6-frame taps** — exactly the length Slow Keys rejects — so every
+"Cmd-N fails" measurement had been taken with a gesture the guest was
+entitled to discard; and it never sampled KeyMap *during* the gesture, so it
+could not say which half was lost. Both now honour `POM68K_PROBE_HOLD` and
+report Command / N / both-at-once separately. The probe also reads the Easy
+Access flag `$484185` **non-destructively** at every boot — until now the
+only way to check it was the hold-Return gesture, which is a *toggle*, i.e.
+an instrument that answers the question by changing the answer. It reports
+`$FF` = on, `$00` = off and **anything else as "not this engine"**: on an
+image without 8.1's Easy Access loaded that address is ordinary RAM (it
+reads `$B6` on `GISTPERSO-boot.vhd`), and a binary verdict over noise would
+be the same class of mistake as the observables above.
 
 ## 1.7 Audio — fixed drain rate
 
@@ -269,8 +563,26 @@ and `AscIosb` (Q605 stereo).
 **unconditionally** — MAME's `HALF_B` gate freezes the CC / LC III boot at
 "Bienvenue." inside the autovector.
 
-→ **Closing it**: derive the drain from the programmed sample rate rather than
-pinning 22 257 Hz. Low value — no known guest depends on it.
+**Closed 2026-08-02** — the drain follows the **$807 CLOCK RATE** register
+(`AscV8::drainHz`): 0 = the Mac's 22 257 Hz, 2 = 22 050, 3 = 44 100; code 1 is
+undefined and keeps the Mac rate rather than inventing one. MAME *documents*
+the register (`asc.cpp:30`) and does not implement it, so here the manual is
+the reference, not the oracle.
+
+It is free on every machine that boots today, and that is a property of the
+hardware rather than luck: only the **classic** (Mac II discrete) ASC accepts
+a write to `$807` — on the V8/Sonora/IOSB integrations it is read-only and
+reads back 0, which the gate asserts alongside the rates.
+
+*Host caveat, deliberate*: the output ring is consumed by a fixed-rate host
+DAC, so a guest that really programmed 44.1 kHz would get its FIFO interrupts
+at the correct cadence while the emulator paced to half speed. Resampling is
+out of scope and no known guest writes the register.
+
+Gate: `asc_test` — measured through the observable the register changes (CPU
+cycles to drain a fixed sample count), not by asserting on `drainHz()`, which
+would only prove the switch compiles. Verified to bite: pinning the rate back
+fails the two rate assertions and neither control one.
 
 ## 1.8 NuBus / DeclRom
 
@@ -528,24 +840,38 @@ boot etalons proceed is unchanged. `Scc8530::openLine()` (`Scc8530.h:309`) =
 **The remaining LLE distance is § 1, not § 4.** In rough order of how much
 correctness it buys:
 
-1. **Whole-frame video on every machine** (§ 1.1) — no beam position. The one
-   gap that makes a whole class of software *wrong* rather than approximate.
+1. **Video** (§ 1.1) — the beam landed 2026-08-02, **all nine** decoders
+   render row-by-row against it, the guest-visible scan register (Valkyrie
+   `$14`) reads the live line, and the Valkyrie's I2C pixel clock is
+   programmed by the Cuda. What is left is **VRAM arbitration/timing**, and
+   DAFB's VBL line hard-coded at 480 (as in MAME).
 2. **Peripheral-tick batching** (§ 1.2), 64/128/256 → 4–16 µs of IRQ-latency
    jitter; and the VIA E-clock pinned at 32:1 (real ≈31.91:1).
 3. **No 040 copyback/snooping** (§ 1.2); the i-cache overlays are throughput
    models, not architectural caches.
-4. **The Quadra Cmd-N modifier symptom** (§ 1.6) — a known-live divergence with
-   an unidentified second cause, and the only entry here that is a *bug* rather
-   than a simplification.
-5. **Floppy flux/PLL** (§ 1.3) — ideal cells; closing it also activates
-   `Swim1`'s dead LS-pair correction machinery.
-6. **SCC bit-serial sampling**, RTS pin, DPLL (§ 1.4) — only worth it with a
-   real async transport to talk to.
-7. **NuBus arbitration** (§ 1.8); **DAFB** VRAM arbitration and the VBL line
-   hard-coded at 480; **Valkyrie's I2C pixel clock** (§ 1.1).
+4. ~~The Quadra Cmd-N modifier symptom~~ — **retracted 2026-08-02** (§ 1.6).
+   It was the dirty 8.1 image, not the Quadra: the same machine on another
+   image repaints, and Command + N are simultaneously live in the guest's
+   KeyMap on every cell including the failing one. **There is no known live
+   bug in this inventory any more** — everything below is a simplification.
+5. **Floppy flux/PLL** (§ 1.3) — ideal cells. **Step 1 of 4 done
+   2026-08-02**: the separator itself (`src/FluxPll.h`, `flux_pll_test`)
+   exists and is gated, but nothing reads it. The remaining three steps are
+   the flux store in `SonyDrive` and moving the three controllers onto it;
+   closing them also activates `Swim1`'s dead LS-pair correction machinery.
+6. **SCC bit-serial sampling** and the DPLL (§ 1.4) — only worth it with a
+   real async transport to talk to. *(The RTS/DTR pins and the SDLC residue
+   codes came off this list on 2026-08-02; the ADB device-model holes at
+   item 4's old neighbour came off the same day — see § 1.6.)*
+7. **NuBus arbitration** (§ 1.8) — needs a second card to contend.
+   *(VRAM arbitration came off this list on 2026-08-03: audited and
+   accepted, no oracle in any of MAME's four video devices and no guest
+   symptom — § 1.1. Valkyrie's I2C pixel clock and `Swim1`'s DAT1BYTE line
+   came off on 2026-08-02. What remains under § 1.1 is DAFB's VBL line
+   hard-coded at 480, which is MAME parity.)*
 
 **Caveat, learned the hard way on 2026-07-29: this inventory is only worth what
-its gates are worth.** Only 8 of the 32 profiles have any beyond-boot gate at
+its gates are worth.** Only 8 of the 36 profiles have any beyond-boot gate at
 all — Plus (`input_etalon`), Mac II (`macii_mouse_etalon`, `macii_post_etalon`),
 LC II (`lcii_soak/persist/launch/floppy/savestate_etalon`), Q605 (`q605_asc/
 cdrom/dafb/turboscsi/ot_bind/savestate/cudalle_*`), and the four

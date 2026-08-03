@@ -199,9 +199,11 @@ void V8Memory::reset() {
     if (model_ == Model::MacTv) {
         frameCycles_ = int64_t(800) * 525 * cpuHz_ / 25175000;
         vblStart_ = int64_t(800) * 480 * cpuHz_ / 25175000;
+        frameTotalLines_ = 525;
     } else {
         frameCycles_ = int64_t(640) * 407 * cpuHz_ / kCpuHz;
         vblStart_ = int64_t(640) * 384 * cpuHz_ / kCpuHz;
+        frameTotalLines_ = 407;
     }
     vblState_ = false;
     // VIA1 port A input = V8-family machine ID | diag bit: $D4 for the
@@ -307,6 +309,34 @@ uint8_t V8Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
     return d;
 }
 
+
+// Bring-up (POM68K_V8_IOHOLE): name the code touching a map hole. On the
+// FIRST access from each PC, dump the low-memory globals the ROM's
+// DecoderInfo copies its hardware bases into, plus a window of code around
+// that PC — the accessing routine can then be disassembled offline instead
+// of guessed at (the Classic II $F18000 question, TODO § 4).
+void V8Memory::holeDump(uint32_t addr) const {
+    if ((addr & 0xFFF000) != 0xF18000) return;
+    static std::vector<uint32_t> seen;
+    const uint32_t pc = cpu_ ? uint32_t(cpu_->getPC()) : 0u;
+    for (uint32_t p : seen) if (p == pc) return;
+    seen.push_back(pc);
+    auto lmg = [&](uint32_t a) {
+        return uint32_t(peek8(a)) << 24 | uint32_t(peek8(a + 1)) << 16
+             | uint32_t(peek8(a + 2)) << 8 | peek8(a + 3);
+    };
+    std::fprintf(stderr, "[iohole] NEW PC $%08X (hole $%06X); "
+                 "LMG $0B0A=$%08X $0312=$%08X $01E0=$%08X $0C00=$%08X\n",
+                 pc, addr, lmg(0x0B0A), lmg(0x0312), lmg(0x01E0), lmg(0x0C00));
+    const uint32_t base = (pc & ~1u) - 48;
+    std::fprintf(stderr, "[iohole]   code $%08X:", base);
+    for (int i = 0; i < 96; i++) {
+        if (i && !(i % 16)) std::fprintf(stderr, "\n[iohole]   +%02X       ", i);
+        std::fprintf(stderr, " %02X", peek8(base + uint32_t(i)));
+    }
+    std::fprintf(stderr, "\n");
+}
+
 uint8_t V8Memory::read8(uint32_t addr) {
     addr &= addrMask_;                       // A31 + A23-A0 (maclc.cpp:181)
     if (addr & 0x80000000) {                 // PDS slot $E: no card
@@ -390,7 +420,30 @@ uint8_t V8Memory::read8(uint32_t addr) {
     // helper timeout raises /BERR; every map hole is open bus): its ROM
     // dereferences $50F18038 and pokes through wild pointers with no
     // catcher installed — any BERR there lands on a zero vector → DS 1.
-    if (model_ == Model::ClassicII) return 0xFF;
+    // Bring-up eyes (POM68K_V8_IOHOLE=1): what does the guest actually DO
+    // in the map holes? The Classic II's ROM is known to dereference
+    // $50F18038; the block behind it has never been identified, and the
+    // only way to name it is to watch the access pattern (TODO § 4).
+    if (const char* e = std::getenv("POM68K_V8_IOHOLE")) {
+        static const long cap = std::atol(e) > 1 ? std::atol(e) : 200;
+        static long n = 0;
+        if (n++ < cap)
+            std::fprintf(stderr, "[iohole] rd $%06X pc=$%08X\n", addr,
+                         cpu_ ? unsigned(cpu_->getPC()) : 0u);
+        holeDump(addr);
+    }
+    if (model_ == Model::ClassicII) {
+        // POM68K_V8_HOLEVAL=<hex>: what a map hole reads back on the
+        // Eagle's forgiving bus. MAME answers 0 here, but that is its
+        // address_space DEFAULT, not a modelled decision (the Sonora's 0
+        // IS modelled — `iosb.cpp:54-65` says so in a comment). Until an
+        // observable separates them, the value is a knob, not a fact.
+        static const int hv = [] {
+            const char* h = std::getenv("POM68K_V8_HOLEVAL");
+            return h ? int(std::strtoul(h, nullptr, 16)) : 0xFF;
+        }();
+        return uint8_t(hv);
+    }
     busError();                              // unmapped I/O: ROM map probe
 }
 
@@ -517,9 +570,28 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
         swim_.write((addr >> 9) & 0xF, v);
         return;
     }
-    // Spice brightness/contrast DAC ($F18000/1, v8.cpp:700,925-929) —
-    // accepted and dropped (the emulated CRT has no analog stage).
-    if (spiceClass() && addr >= 0xF18000 && addr < 0xF18002)
+    // Analogue CRT brightness/contrast DAC ($F18000, v8.cpp:700,925-929).
+    // Accepted and dropped: the emulated CRT has no analogue stage.
+    //
+    // **Also on the Classic II** — identified 2026-08-02, and it had been
+    // sitting in `TODO.md` as "identify the real block" since the machine
+    // landed. Three pieces of evidence, none of them a guess:
+    //   * `rominfo --universal` on the $3193670E ROM: the Classic II record
+    //     ($003D14, Gestalt 23) has its own DecoderInfo $04C7A6 whose
+    //     **decoder[6] = $50F18000**. That entry is ZERO on every LC / LC II
+    //     record in the same table — the Classic II is the only machine here
+    //     that declares a device at this base.
+    //   * the ROM routine at $A51350 disassembles as a DAC feed: a 0-255
+    //     setting scaled `×$2B >> 8` to 0-42, de-scrambled through a 43-entry
+    //     table, then shifted out **370 times at stride 2** from $50F18000 —
+    //     the write burst POM68K_V8_IOHOLE traces at PC $A51374.
+    //   * MAME maps exactly this address as `bright_contrast_w` on Spice.
+    // The Classic II is an all-in-one with a CRT, so it carries the same
+    // cell. Behaviour is unchanged (the writes were already discarded by the
+    // Eagle's forgiving-bus tail); what changes is that they are now a NAMED
+    // device rather than an unexplained map hole.
+    if ((spiceClass() || model_ == Model::ClassicII) &&
+        addr >= 0xF18000 && addr < 0xF18400)
         return;
     if (addr >= 0xF24000 && addr < 0xF26000) { ariel_.write(addr & 3, v); return; }
     if (addr >= 0xF26000 && addr < 0xF28000) {
@@ -528,6 +600,14 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
         return;
     }
 
+    if (const char* e = std::getenv("POM68K_V8_IOHOLE")) {
+        static const long cap = std::atol(e) > 1 ? std::atol(e) : 200;
+        static long n = 0;
+        if (n++ < cap)
+            std::fprintf(stderr, "[iohole] wr $%06X = $%02X pc=$%08X\n", addr, v,
+                         cpu_ ? unsigned(cpu_->getPC()) : 0u);
+        holeDump(addr);
+    }
     if (model_ == Model::ClassicII) return;  // Eagle: forgiving bus (read8)
     busError();
 }
@@ -672,7 +752,14 @@ void V8Memory::tick(int cpuCycles) {
     // Real video VBL → pseudo-VIA slot bit $40 (v8.cpp:106-108); geometry
     // reduced to CPU cycles at reset (Tinker Bell scans 800×525).
     framePos_ += cpuCycles;
-    framePos_ %= frameCycles_;
+    // Count completed frames as they roll over: the position alone is
+    // modulo, so a raster decoder sampling once per frame at a fixed phase
+    // could not otherwise tell a whole frame from no time at all
+    // (VideoBeam::setPos).
+    if (framePos_ >= frameCycles_) {
+        frameCount_ += uint64_t(framePos_ / frameCycles_);
+        framePos_ %= frameCycles_;
+    }
     bool vbl = framePos_ >= vblStart_;
     if (vbl != vblState_) {
         vblState_ = vbl;

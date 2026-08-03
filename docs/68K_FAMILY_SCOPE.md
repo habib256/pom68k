@@ -20,7 +20,7 @@ in `docs/LLE_VS_HLE.md`; the backlog in `TODO.md` § 7.
 
 ---
 
-## 1. Done — the 32 profiles and the gate that proves each
+## 1. Done — the 36 profiles and the gate that proves each
 
 Grouped by machine family (= one `*Memory`/`*Cpu` pair in `src/`, and one
 save/load overload in `src/SaveStateMachines.h`). Every gate below is a

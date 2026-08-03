@@ -162,6 +162,68 @@ int main() {
         check(!(rr(s, kB, 1) & 0x10), "no parity bit when WR4 parity is off");
     }
 
+    {   // ── SDLC residue code: RR1 bits 3-1 on a byte-aligned frame ──
+        // 011 is the code for "the I-field ended on a character boundary",
+        // which is every frame a byte-granular wire can carry — and the
+        // chip's own reset value, so an idle RR1 and a frame byte must
+        // agree. They did not: frame bytes reported 000, a partial
+        // character.
+        Scc8530 s; s.reset();
+        wrReg(s, kB, 9, 0x08);
+        check((rr(s, kB, 1) & 0x0E) == 0x06, "idle RR1: residue code 011");
+        wrReg(s, kB, 4, 0x20);          // SDLC
+        wrReg(s, kB, 3, 0xD1);          // Rx 8-bit + hunt + RxEN
+        wrReg(s, kB, 1, 0x10);
+        const uint8_t f[3] = {1, 2, 0x81};
+        s.injectRxFrame(kB, f, 3);
+        uint8_t seen = 0, eof = 0;
+        for (int t = 0; t < 32; t++) {
+            s.tick(kPace);
+            while (rr(s, kB, 0) & 0x01) {
+                const uint8_t st = rr(s, kB, 1);
+                if (st & 0x80) eof = st; else seen = st;
+                (void)s.readData(kB);
+            }
+        }
+        check((seen & 0x0E) == 0x06, "frame byte: residue code 011");
+        check((eof & 0x0E) == 0x06, "EOF byte: residue code 011");
+        check((eof & 0xC0) == 0x80, "EOF byte still says EOF, CRC good");
+    }
+
+    {   // ── The /RTS pin: Auto Enables defers its release ──────────────
+        // WR5 bit 1 asserts immediately; clearing it releases at once
+        // WITHOUT Auto Enables, but with WR3 bit 5 the chip holds the line
+        // until the transmitter has completely emptied, so the last
+        // character is not cut off by the driver going away.
+        Scc8530 s; s.reset();           // no setClocks: the legacy kPace
+        wrReg(s, kB, 4, 0x44);          // async x16
+        check(!s.rtsAsserted(kB), "reset: /RTS released");
+        wrReg(s, kB, 5, 0x6A);          // Tx 8-bit + Tx Enable + RTS
+        check(s.rtsAsserted(kB), "WR5 bit 1 asserts /RTS");
+        wrReg(s, kB, 5, 0x68);          // RTS off, no Auto Enables
+        check(!s.rtsAsserted(kB), "no Auto Enables: /RTS releases at once");
+
+        wrReg(s, kB, 3, 0xE1);          // Rx 8-bit + Auto Enables + RxEN
+        wrReg(s, kB, 5, 0x6A);          // RTS on again
+        check(s.rtsAsserted(kB), "/RTS asserted before the transmission");
+        s.writeData(kB, 0x55);          // into the shifter
+        s.writeData(kB, 0x56);          // parked behind it
+        wrReg(s, kB, 5, 0x68);          // driver drops RTS mid-transmission
+        check(s.rtsAsserted(kB), "Auto Enables holds /RTS while bytes remain");
+        s.tick(kPace);
+        check(s.rtsAsserted(kB), "still held with the second byte shifting");
+        s.tick(2 * kPace);
+        check(!s.rtsAsserted(kB), "/RTS releases once the transmitter is empty");
+
+        // /DTR follows WR5 bit 7 — unless WR14 bit 2 gives the pin to DMA.
+        check(!s.dtrAsserted(kB), "/DTR released with WR5 bit 7 clear");
+        wrReg(s, kB, 5, 0xE8);
+        check(s.dtrAsserted(kB), "WR5 bit 7 asserts /DTR");
+        wrReg(s, kB, 14, 0x04);         // DTR/REQ: the pin is no longer DTR
+        wrReg(s, kB, 5, 0x68);          // clearing the bit must not move it
+        check(s.dtrAsserted(kB), "DTR/REQ mode freezes the pin");
+    }
+
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");
     return gFails ? 1 : 0;
 }

@@ -5,60 +5,66 @@ live in `CHANGELOG.md` (implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`).
 
-**Counts verified 2026-08-01 (night)** — re-verify before quoting them anywhere:
-- **136 CTest gates** (`ctest -N`): 61 `unit`, 8 `smoke`, 16 `jit`, 30 `m040`.
-- **34 machine profiles** = 34 tags in `SnapMachine`, `src/SaveStateMachines.h`.
+**Counts verified 2026-08-03** — re-verify before quoting them anywhere:
+- **143 CTest gates** (`ctest -N`): 66 `unit`, 8 `smoke`, 16 `jit`, 32 `m040`,
+  73 `etalon`. Full suite **143/143 green**, 2026-08-03, 3 h 01.
+- **36 machine profiles** = 36 tags in `SnapMachine`, `src/SaveStateMachines.h`.
 
 House rule for this file: an item earns its place by saying **what to do next**,
 concretely. When it lands, it moves to `CHANGELOG.md` and leaves at most one
 line here. **Every unchecked box below was re-verified against the code on
-2026-07-31.**
+2026-07-31**, and § 0/§ 1/§ 4 again on **2026-08-03**.
 
 ---
 
-## 0. REPRENDRE ICI — Quadra 900, le BRK de l'IOP SWIM (2026-08-01)
+## 0. État au 2026-08-03 — la suite complète est verte, le chantier IOP est clos
 
-Le chantier IOP (`docs/IOP_BRINGUP.md`) est arrêté **en pleine
-investigation M7**, à un point précis. Tout le reste du chantier est
-terminé et gaté ; seul ce fil est ouvert.
+**`ctest` complet : 143/143, 3 h 03, aucun échec — sur arbre entièrement
+reconstruit** (`make` d'abord, 150 objets et binaires relinkés).
 
-**Où en est la machine.** Le Quadra 900 (`./build/q700_boot_etalon q900`)
-fait son POST, peint 640×480, téléverse et relâche **les deux** IOP.
-L'IOP SCC exécute son vrai firmware et passe le test de bit tournant de la
-ROM sur WR2/RR2. Le firmware de l'IOP SWIM est vérifié **au bit près**
-(54 blocs / 11516 octets du script `[len][addr:2][data…]` en ROM `$5A7EB`).
-Il finit malgré tout dans son propre gestionnaire de panique BRK.
+**Le `make` fait partie de l'affirmation, pas du décor.** Un premier run le
+même jour avait rendu 143/143 sur des binaires liés à des moments
+différents — 102 sur ~110 étaient plus anciens que `libpom68k_core.a` — et
+ne prouvait rien : **`ctest` ne compile pas.** Le piège est asymétrique :
+un échec fantôme se fait enquêter, un succès fantôme se fait citer. Il
+avait déjà été écrit dans `CLAUDE.md` avant qu'on ne vérifie.
+**Un `ctest` vert ne vaut que la fraîcheur de ses binaires.**
 
-**Le fait mesuré, à ne pas re-mesurer.** Avec `POM68K_Q900_IOPBRK=1` le
-cœur 65C02 vide un anneau de 256 PC au premier `$00` :
+**36 profils, tous bootant le Finder.** Les deux derniers sont les tours
+Eclipse (Quadra 900 et 950), arrivées le 2026-08-02 avec le chantier IOP :
 
-- le BRK est en **`$0042`**, atteint par l'épilogue ordinaire
-  `$53FC PLY; PLX; PLA; $53FF RTS`, dont le `RTS` lit une adresse de
-  retour bidon (`A=41 X=FF Y=59 SP=FF P=30`) ;
-- **ce n'est PAS un déséquilibre de pile** — SP valait `$FA` en entrant et
-  `$FF` après les cinq dépilages, la profondeur était juste ; l'adresse
-  fautive est ce qui traînait en `$01FE/$01FF`, donc la routine est
-  retournée **une trame au-delà de son niveau supérieur** ;
-- **ce n'est PAS une tempête d'interruptions** — aucun `$504E` (vecteur
-  IRQ du firmware) dans les 256 dernières instructions.
+| Run | Résultat |
+|---|---|
+| `q900_boot_etalon` | 640×480×1, 5830 cmd SCSI |
+| `q950_boot_etalon` | 640×480×**8**, 33,333 MHz, ROM `$3DC27823` |
+| `q700_boot_etalon` (garde-fou) | 5838 cmd SCSI, aucune régression |
 
-**La prochaine action.** Trouver quelle lecture de registre alimente la
-table d'état `$4E87`-`$4E9F` : le firmware tourne dans la machine à états
-`$5418`-`$5436`, dont la routine interne compare `$4E87,x` à `$4E87,y` et
-n'atteint jamais sa condition de sortie. Suspects, dans l'ordre :
-1. le mapping des registres SWIM derrière `readPeriph`/`writePeriph` ;
-2. la sémantique de rechargement du timer d'`ApplePic` ;
-3. `dat1byte` → `reqa_w`/`reqb_w` (MAME le câble sur **les deux** canaux
-   DMA ici, `macquadra700.cpp:879-880`) — attention, **`Swim1` n'a aucun
-   callback `dat1byte`** : c'est une extension du contrôleur, pas un fil.
+Le mur M7 n'était **pas dans l'IOP** : `read16` appliquait encore la règle de
+voie d'octets du Quadra 700 à la fenêtre hôte de l'IOP SWIM, la ROM lisait le
+registre d'adresse partagée `$0203` comme `$0200`, décrémentait et écrivait
+sur la pile du 65C02. Un `!eclipse()`. C'est le **quatrième** bug du motif
+« règle héritée du Q700 » (`docs/IOP_BRINGUP.md` § 5b) — et la moitié non
+corrigée du #2. Détail : `CHANGELOG.md` § 2026-08-02 (quatrième).
 
-**Garde-fou.** `Q700Memory` sert maintenant trois machines : après toute
-retouche, relancer `ctest -R q700_boot_etalon` (le Quadra 700 était vert à
-531 s au moment de l'arrêt). Les profils 35/36 ne sont **pas** enregistrés
-— règle de la maison : une ligne dans `kProfiles` se gagne avec une
-cellule Finder derrière. Détail complet : `docs/IOP_BRINGUP.md` § M7 et
-§ 5b (le motif « règle héritée du Q700 » qui a produit les trois bugs
-déjà corrigés).
+**`docs/LLE_VS_HLE.md` ne porte plus aucun bug vivant.** Le seul qui restait,
+le « symptôme des modificateurs du Quadra », a été rétracté par expérience le
+2026-08-02 : même machine, autre image, tout arrive. Tout ce qui subsiste
+en § 1 est une simplification, avec sa raison et sa condition de réouverture.
+
+**La prochaine action, par ordre de trou architectural décroissant :**
+
+1. **Le mécanisme d'échéance périphérique** (§ 4 de ce fichier) — chiffré et
+   prêt à écrire : huit bornes dérivées du code, ordre de migration établi,
+   l'exactitude passerait de ~72 % à **~12 %** de surcoût.
+2. **Copyback / snooping 040** — la plus grosse inexactitude CPU restante,
+   sur les huit machines 040. Chantier côté `extern/moira`.
+3. **§ 2, profondeur de test** — 8 profils sur 36 ont un gate au-delà de la
+   signature Finder. Décision produit prise le 2026-08-02 : on implémente le
+   LLE d'abord, on construira les gates longs ensuite.
+
+**Garde-fou permanent.** `Q700Memory` sert trois machines : après toute
+retouche, relancer `q700` **et** `q900`, jamais en parallèle
+(`pom68k-no-concurrent-ctest`).
 
 ---
 
@@ -71,25 +77,33 @@ each key 150 frames, which both a Slow-Keys guest and a normal one accept.)*
 
 ### Follow-ups from that hunt
 
-- [ ] **Clean the 8.1 image once**: Slow Keys is still ON inside
-  `hdv/MacOS-8.1-boot.vhd`, so GUI sessions still reject fast typing with a
-  beep per letter (the 2026-07-23 "Netscape beeps" report). One-time fix in
-  the GUI: hold **Return ~10 s** (Easy Access toggle — verified headless:
-  flag `$484185` flips `$FF→$00` and 6-frame taps then land), or Easy Access
-  control panel, then **clean Shut Down** so the volume isn't left dirty
-  (`pom68k-dirty-boot-image-gate-failures`). Do NOT script the Return toggle
-  into any gate — it is a toggle and would re-enable Slow Keys on a clean
-  image. After cleaning, re-run `ctest -L m040` (every 8.1-booting etalon).
+- [x] **The 8.1 image is CLEAN — done 2026-08-02, verified.** Easy Access is
+  gone from `hdv/MacOS-8.1-boot.vhd`: the non-destructive read of `$484185`
+  now reports **no Easy Access engine at all** (`$FA` = ordinary RAM, not
+  `$00`), **6-frame taps land**, and Cmd-N repaints the screen — the same
+  behaviour the GISTPERSO image always had. Re-ran `ctest -L m040`
+  afterwards as this entry required: **32/32 green**, no dirty-volume
+  signature. It had cost two investigations (the ten-month red gate, then
+  the phantom "Quadra modifier bug").
+  Note for whoever checks this again: read `$484185` with
+  `adb_key_probe` — do NOT use the hold-Return gesture, which is a toggle
+  and answers the question by changing the answer. And expect three
+  outcomes, not two: `$FF` on, `$00` off, **anything else = the engine is
+  not loaded**, which is what a properly cleaned image looks like.
 - [ ] **"Beeps sound wrong / differ per letter"** (field report): the beep
-  itself was the Slow Keys rejection beep — expected. Whether ASC renders it
-  *correctly* is still untested (`q605_asc_test` covers registers/IRQ, not
-  audible output). Keep as a low-priority ASC fidelity item.
-- [ ] **7.6 pixel anomaly**: on Q605 + System 7.6, KeyMap sees keys but the
-  Cmd-N screen-hash probe reports no repaint (`tests/adb_key_probe.cpp`);
-  on the Slow-Keys-disabled 8.1 cell the same probe DOES see the repaint, so
-  the pipeline (incl. Command) is proven end to end. Likely a probe artifact
-  of that 7.6 image (window/desktop state), not an emulator bug — verify once
-  in the GUI, then drop.
+  itself was the Slow Keys rejection beep — expected, and it stops now that
+  the image is clean (2026-08-02). What remains is the unrelated half:
+  whether ASC renders audible output *correctly* is still untested
+  (`q605_asc_test` covers registers/IRQ, not sound). Low-priority ASC item.
+- [x] **Cmd-N "Quadra modifier bug" — RETRACTED 2026-08-02.** Crossed
+  machine against image instead of arguing: Q605 + 8.1 does not repaint,
+  **Q605 + GISTPERSO does**, LC II + GISTPERSO does — and on all three the
+  guest's KeyMap holds Command and N *simultaneously*. The variable was the
+  image, never the Quadra, and the modifier reaches the guest everywhere.
+  `LLE_VS_HLE.md` § 5 has **no live bug left**. Root cause of the false
+  lead: the probe's Cmd-N block hardcoded 3/6-frame taps — the exact length
+  Slow Keys rejects — and never sampled KeyMap during the gesture. Both
+  fixed. Full story: `CHANGELOG.md` § 2026-08-02 (sixth).
 
 Methodology notes, now paid for three times: `KeyLast` ($0184) moves in **no**
 cell, including working ones; **`KeyTime` ($0186) is stamped continuously by
@@ -121,7 +135,7 @@ after it has demonstrated sensitivity** — and only after it has demonstrated
 ## 2. Test & validation depth — the single biggest gap
 
 The gates prove **boot**, not **use**, and the machine fan-out made the ratio
-worse. Of the **33 profiles** covered by the **130 gates**, only **7** have any
+worse. Of the **36 profiles** covered by the **143 gates**, only **7** have any
 gate past the Finder signature: LC II (`lcii_soak/persist/launch/floppy_etalon`
 + `lcii_savestate_etalon`), Quadra 605 (`q605_cudalle_mouse/key_etalon`,
 `q605_cdrom/cdboot_etalon`, `q605_savestate_etalon`, `q605_ot_bind_etalon`),
@@ -130,7 +144,7 @@ quadrature + M0110 keys), and the four input gates from 2026-07-29
 (`lc3_`, `lc520_`, `iivx_`, `iisi_input_etalon`). That is EIGHT profiles
 with any gate past the Finder signature; enumerate them with
 `ctest -N | grep -E 'input_etalon|beyond|mouse_etalon|key_etalon|savestate_etalon'`
-rather than trusting this sentence. **The other 24 profiles are
+rather than trusting this sentence. **The other 28 profiles are
 boot-to-Finder signature only.** A machine can pass its etalon and still be
 useless for real work.
 
@@ -171,6 +185,8 @@ IIvx/vi ~72, IIsi / IIci ~70, Color Classic ~70, Mac TV ~70. Common ceilings:
 whole-frame video everywhere, cycle-exact CPU only on the Plus, and the
 beyond-boot gap above. Lowest scores are **freshness** (booted-once, not
 hardened — RBV / Tinker Bell / VASP / AIO).
+*(The "whole-frame video everywhere" ceiling lifted on six of nine decoders
+2026-08-02 — see § 4bis; these scores predate it.)*
 
 ---
 
@@ -267,33 +283,226 @@ Inventory and migration plan: `docs/LLE_VS_HLE.md`. Policy settled 2026-07-29
 HLE ADB entry) because MCU dumps are non-distributable; deletion would be a
 deliberate "POM68K requires MCU dumps" product decision, not a cleanup.
 
-- [ ] **`AdbLine` device model gaps**: second mouse button, extended-keyboard
-  handler IDs, and Listen R2 (LEDs). *(Talk R2 modifiers landed 2026-07-31 —
-  see §1.)*
+- [x] **`AdbLine` device model gaps** — CLOSED 2026-08-02. Second mouse button
+  (Extended Mouse Protocol, handler 4, + the R1 identifier block),
+  extended-keyboard handler IDs (1/2/3 as a real register, with a standard
+  keyboard *refusing* 3), and Listen R2 LEDs. Also: SendReset now restores the
+  default handler, not just the default address. `docs/LLE_VS_HLE.md` § 1.6;
+  gate `adbline_test`. *(Talk R2 modifiers had landed 2026-07-31.)*
+  - [ ] **Follow-up, host side**: the GUI never *sends* what the device can now
+    report — `main.cpp` reads `io.MouseDown[0]` only and its key table maps
+    `ImGuiKey_RightShift` onto the left code. Wiring the second button means a
+    button index through `Cmd::MouseButton` → each machine's `mouseButton`
+    (12 call sites, all defaulted so the change is mechanical), and the guest
+    only sees it with a driver that switches the mouse to handler 4.
+- [~] **Peripheral-tick batching: the cost is LOCATED (2026-08-03).**
+  `POM68K_PERIPH_STATS=1` counts the path. Over 1200 frames of
+  `q605_boot_etalon`: batch 256 → 25.6 M `mem.tick()` calls / 60.1 s;
+  batch 1 → **833.2 M calls** / 103.3 s. **Same 1.650 G machine cycles
+  delivered either way**, and `catchUp()` is called 879 M times in both —
+  so the cost is neither the devices nor the hook, it is entering the
+  ~15-device fan-out **32.5× more often**.
+  → Next: replace the batch with a **deadline** (MAME's model).
+  `catchUp()` → `if (clock < deadline) return;` with the deadline = min over
+  devices of "cycles until I can next change observable state". Skipping is
+  then not an approximation. Bounds at 25 MHz, in binding order: `CudaLle`'s
+  6805 **~12 cycles** (binding, and phase-fragile —
+  `pom68k-mactv-gate-broken`, always re-run `mactv_boot_etalon`), VIA E clock
+  ~32, ASC drain ~1123, DAFB VBL + 60.15 Hz CA1 ~416 000, SWIM/drives/SCSI
+  only while a transfer is live. A device with no bound returns 1 and keeps
+  today's behaviour, so the migration is per-device and each step is
+  separately measurable. Cuda-bounded alone ≈ 6× fewer fan-outs — exactness
+  at about the cost of `batch=16`.
+  Already landed: `catchUp()` refuses to run below `cacheBoost_` Moira
+  cycles, where `flushTicks` computes m == 0 and ticks nothing. Free at the
+  default, and it makes `batch=1` mean exact-in-MACHINE-time (the right
+  unit). Worth 2 % — noted because the hypothesis was that this *was* the
+  cost, and the measurement disagreed.
+
+  **The bounds, derived from the code 2026-08-03 — the hard part is done.**
+  Every device in `Q605Memory::tick` can state a bound; **none has to fall
+  back to 1**, which is what makes the refactor worth doing at all:
+
+  | device | bound | value @ 25 MHz |
+  |---|---|---|
+  | `CudaLle` 6805 | `ceil(((mcuDebt_+1)*cpuHz - mcuAcc_) / kMcuHz)` | **~12 — binding** |
+  | VIA E clock | `ceil((cpuHz - viaEClock_.acc) / 783360)` | ~32 |
+  | `AscIosb` drain | `ceil((kCpuHz - drainAcc_) / drainHz())`, scaled C15M→CPU | ~1123 |
+  | `Scc8530` | min of the live countdowns (`peerHold_`, `txShiftIn`, …) | **∞ when idle** |
+  | `Swim*` / `SonyDrive` | cell/spin clock — only while the motor runs | ∞ when parked |
+  | `Ncr53c96` | service-latency countdown — only during a transfer | ∞ when idle |
+  | 60.15 Hz CA1 | `ceil((kCpuHz*100 - tickAcc_) / 6015)` | ~416 000 |
+  | `Dafb` VBL | from `framePos_` | ~416 000 |
+
+  So the deadline sits at **~12 machine cycles** essentially always, pinned
+  by the Cuda's MCU. Today's exact setting averages **2.0** machine cycles
+  per fan-out entry (measured), so that is **~6× fewer entries**.
+  Interpolating the measured curve (4 machine cycles → 76.8 s, 16 → 64.7 s),
+  12 machine cycles lands near **~67 s against 60.1 s at the default**:
+  **exactness for ~12 % instead of ~72 %.**
+
+  Implementation notes for whoever writes it:
+  - `catchUp()` → `if (clock < periphDeadline_) return;` then
+    `flushTicks(); periphDeadline_ = clock + mem_.cyclesToNextEvent()*cacheBoost_;`
+  - A bound that is too SMALL is merely slow; too LARGE is a **silent
+    fidelity bug**. Write each one as `≤` the true value, and prefer the
+    trivially-checkable form even when a tighter one exists.
+  - The Cuda is **phase-fragile** (`pom68k-mactv-gate-broken`): a 2 % shift
+    in its instruction rate deadlocks the Mac TV. Skipping time in which it
+    provably does nothing does not move its phase — but prove it, and run
+    `mactv_boot_etalon` after.
+  - Do it per device, measuring each step: the min() means no gain appears
+    until the last one lands, so the ORDER to migrate is the table's, top
+    down, and the check is that `POM68K_PERIPH_STATS` call counts fall while
+    the etalons stay green.
 - [ ] **Quadra 605 / LC 475**: expand Cuda commands only from ROM/driver traces;
   accurate 040 timing, cache copyback/snooping and on-chip-FPU/FPSP behaviour as
   separate oracle-gated milestones.
 - [ ] **SCC LLE, Low tier** (2026-07-22 MAME `z80scc.cpp` audit,
-  `docs/LLE_VS_HLE.md` §3): true bit-serial Tx/Rx sampling (only worth it with a
-  real async transport to talk to); WR5 RTS output tracking (auto-RTS deassert
-  on all-sent, `tra_complete :1100`); SDLC Rx residue codes (RR1 bits 3-1);
-  chip-variant gating (NMOS 8530 / 85C30 / ESCC — FIFO depth 3/8, WR7', status
-  FIFO `:1363`, needed the day a machine wants the ESCC); WR9 VIS/NV options
-  (hardcoded VIS=1, correct for every Mac target); DPLL (MAME stubs it too,
-  `:305-318`).
+  `docs/LLE_VS_HLE.md` §1.4). **The two items that did not need a new
+  transport landed 2026-08-02**: ~~WR5 RTS output tracking (auto-RTS deassert
+  on all-sent, `tra_complete:1090`)~~ — `/RTS` **and** `/DTR` are now pins,
+  with the Auto-Enables deferral released from `tick()` as the shifter drains;
+  ~~SDLC Rx residue codes (RR1 bits 3-1)~~ — byte-aligned code 011, which the
+  idle RR1 already reported while frame bytes said 000. Both gated in
+  `scc_engine_test`. What is left is deliberately deferred, each for a stated
+  reason: true bit-serial Tx/Rx sampling (only worth it with a real async
+  transport to talk to); chip-variant gating (NMOS 8530 / 85C30 / ESCC — FIFO
+  depth 3/8, WR7', status FIFO `:1363`, needed the day a machine wants the
+  ESCC); WR9 VIS/NV options (hardcoded VIS=1, correct for every Mac target);
+  DPLL (MAME stubs it too, `:305-318`). **Also missing: a consumer** — nothing
+  on the emulated side of the wire reads `rtsAsserted()` yet.
   **Caveat that applies to the whole SCC backlog**: MAME's SDLC side is partial
   (Send Abort / CRC resets `:1602/:1635` "not implemented", no EOM latch, no
   hunt/sync) — for LLAP behaviours **we are the more complete model**. Use MAME
   as oracle for the ASYNC side only; do not regress LLAP chasing parity.
-- [ ] **Classic II Eagle `$F18000`**: identify the real block. The ROM writes
-  `$1E` then reads a pointer at +$38 — served as open bus today, gated on
-  UnivROMFlags bit 7.
-- [ ] **ADB report rate.** The 2026-07-25 bus-time correction made reports
-  coalesce enough for System 7's mouse scaling to amplify a sustained stream
-  ~1.6× (`lcii_launch_etalon` now steers closed-loop instead of assuming 1:1).
-  Single moves land within one frame, 1:1 — but measure the actual
-  autopoll-to-guest report rate against the Egret's ~90 Hz and check we are not
-  servicing fewer polls than real hardware.
+- [x] **Valkyrie I2C pixel clock — CLOSED 2026-08-02.** The Cuda's I2C bus
+  now carries the full `i2c_hle` frame and **two** slaves (DFAC2 `$6F`,
+  ACK-only; Valkyrie `$28`, payload load-bearing). Measured, not assumed: a
+  traced Q630 boot programs M/N/P = `$0E`/`$1B`/`$02` → 30.752 MHz, so
+  640×480 refreshes at 67.80 Hz instead of the frozen 69.08 Hz. Gate
+  `valkyrie_i2c_test` (asserts frame cadence, not the setter).
+  **Left open on purpose**: the result is 1.7 % above Apple's nominal
+  66.67 Hz; a `31.3344/8` reference would be exact, which suggests MAME's
+  `3986400` is off. Needs a real observable before anyone touches it.
+- [x] **`Swim1` DAT1BYTE — CLOSED 2026-08-02.** Level line, `swim1.cpp:1226`
+  semantics, wired per machine: Q900/950 → both IOP DMA channels, IIfx →
+  channel A only, LC II → unwired (unchanged). Every etalon owning a `Swim1`
+  re-run green.
+- [~] **Floppy flux + PLL layer (§ 1.3) — step 1 of 4 landed 2026-08-02.**
+  `src/FluxPll.h` is the integer port of MAME's `fdc_pll_t` (phase
+  feedback, `freq_hist` period trim, ±25 % clamps, `limit` protocol, write
+  side); time unit = **flux ticks**, `kSubCell = 1024` per nominal cell,
+  int64 so snapshots are bit-identical. Gate `flux_pll_test` (17 checks)
+  shows ±12 % jitter and ±8 % rate error both recovered, where a
+  fixed-window separator slips inside 32 cells.
+  **Nothing reads it yet** — `SonyDrive` still stores discrete cells.
+  Next, in order:
+  1. a flux representation in `SonyDrive` beside `cells_`, plus
+     `nextTransition(after)` (MAME's `get_next_transition`) and an opt-in
+     jitter model;
+  2. move **`Swim2`** onto the PLL first — it is the best-gated controller
+     (`swim2_test`, `swim2_media_test`, `q605` floppy etalons);
+  3. then `Swim1` (its LS-pair correction machinery, `swim1.cpp:965-1140`,
+     stops being dead code at that point) and the `Iwm` READ path.
+  Test-first note that already paid: the obvious "prove a dumb decoder
+  fails" case (jitter) does NOT bite — ±12 % never pushes a transition out
+  of its own fixed window. The off-rate track is the case that does.
+- [x] **Classic II Eagle `$F18000` — NAMED 2026-08-02.** It is the analogue
+  **CRT brightness/contrast DAC**, the same cell MAME maps as
+  `spice_device::bright_contrast_w` on the Color Classic. Three independent
+  pieces of evidence, no guessing:
+  1. `rominfo --universal` on the `$3193670E` ROM — the Classic II record
+     (`$003D14`, Gestalt 23, `UnivROMFlags $1A6`) has its own DecoderInfo
+     `$04C7A6` whose **`decoder[6] = $50F18000`** (→ LMG `$0B0A`/`$0312`).
+     That entry is **zero on every LC / LC II / IIci / IIfx / IIsi record**
+     in the same table: the Classic II is the only machine here that
+     declares a device at this base.
+  2. The ROM routine at `$A51350` disassembles as a DAC feed — a 0-255
+     setting scaled `×$2B >> 8` to 0-42, de-scrambled through a 43-entry
+     table, then shifted out **370 times at stride 2** from `$50F18000`.
+     The other two sites are its presence test (write / read back / compare,
+     `$A48D12`) and a 768-byte ramp init (`$A03CE2`).
+  3. Same address, same purpose, in MAME's Spice.
+
+  POM68K now names it instead of dropping it in the map hole. **Behaviour is
+  unchanged** — the Eagle's forgiving-bus tail already discarded the writes —
+  but a named device that is deliberately ignored (our CRT has no analogue
+  stage) is not the same thing as an unexplained hole. `classic2_boot_etalon`
+  and `cclassic_boot_etalon` re-run green.
+
+  Deliberately NOT done: the presence test fails here because reads return
+  `$FF` and never echo the written value. That is probably right — the DAC is
+  likely write-only — but "probably" is not a measurement, so no read-back
+  value was invented to make the ROM's probe succeed.
+
+  Also settled while there: the **hole value does not matter to this guest**.
+  `POM68K_V8_HOLEVAL=00` (MAME's default-unmapped 0) and `$FF` both reach the
+  Finder with 9619 SCSI commands, identical. And MAME's 0 here is its
+  `address_space` DEFAULT, not a modelled decision — unlike the Sonora's 0,
+  which `iosb.cpp:54-65` states in a comment. Do NOT align to 0 "for parity":
+  there is no oracle statement to be parallel to.
+- [x] **ADB report rate — MEASURED 2026-08-02, and it is right.** The open
+  question was whether the ~1.6× amplification of a sustained stream came from
+  POM68K servicing *fewer* polls than real hardware. It does not. Trace of a
+  full LC III run (`POM68K_ADB_LLE_TRACE=1 ./build/family_input_etalon lc3`,
+  199 s emulated, 17 850 ADB commands): the aggregate autopoll interval is
+  **11.18 ms — p10 = p90 = median**, i.e. dead steady, against the Egret's
+  nominal 11.1 ms / 90 Hz. That is **89.5 Hz vs 90**, a 0.6 % deficit, and it
+  is exact by construction because the cadence is the firmware's own timer.
+  The mouse is polled at ~67 Hz *while it has data* (SRQ-driven bursts, the
+  keyboard holding the poll otherwise) — more than one report per 60 Hz frame.
+  → The amplification is therefore System 7's mouse scaling acting on
+  coalesced deltas, exactly as this entry already suspected; the poll rate is
+  not a suspect any more. Anyone re-opening it needs a *new* observable.
+
+---
+
+## 4ter. Closed 2026-08-02 — two rounded rates
+
+- [x] **VIA E clock** (§ 1.2). Was an integer divisor on the four 040 boards
+  (25 MHz ÷ 32 = 781.25 kHz, 33 MHz ÷ 42 = 785.7 kHz); now exact rational
+  arithmetic for BOTH the rate and `viaSync()`'s phase grid, in one header
+  (`src/ViaEClock.h`) because the two must not drift apart — mis-scaling that
+  grid is the 2026-07-25 IIsi/LC III bug. All five 040 boot etalons green.
+- [x] **ASC drain rate** (§ 1.7). Follows `$807` CLOCK RATE now (0 = 22 257,
+  2 = 22 050, 3 = 44 100; 1 undefined → Mac rate). Free on every booting
+  machine because only the classic Mac II ASC accepts the write — asserted,
+  not assumed. Gate `asc_test`, measured on cycles-to-drain, verified to bite.
+
+---
+
+## 4bis. Video — the raster beam (LLE_VS_HLE § 1.1, the #1-ranked gap)
+
+**Landed 2026-08-02**: `src/VideoBeam.h` + row-granular decode on **all nine**
+decoders (`V8Video`, `SonoraVideo`, `VaspVideo`, `RbvVideo`, `TobyVideo`,
+`Se30Video`, `Dafb`, `Valkyrie`, `MacVideo`), wired into every GUI loop on the
+slicing `runQuantumWithWire` already does when the wire is active — and, on
+the Plus, on a 16× slicing of `MacFrameClock::runFrame` that cannot move the
+vblank edge. Gates `video_beam_test`, `v8_raster_test`, `raster_equiv_test`.
+Design note that matters to anyone touching it: **the beam owns no clock** —
+it adopts the platform's existing `framePos_`, so the VBL edges are untouched.
+Full story in `CHANGELOG.md` § 2026-08-02 (later).
+
+- [x] **Expose the beam to the guest — resolved 2026-08-02, and smaller than
+  it looked.** Valkyrie's `$14` blanking bit was the only real position
+  register in the tree and now reads the LIVE line (it answered from
+  `prevLine_`, which only advances inside `tick()`, i.e. quantised to the
+  peripheral batch). **DAFB has no position register at all** — not in
+  `Dafb.cpp` ($000 regs / $100 Swatch / $200 RAMDAC / $300 clockgen) and not
+  in MAME's either. And the Plus's VIA PB6 already read the same
+  `cpu.getClock() % 130240` the decoder now uses. One scan position per
+  machine, everywhere.
+- [x] **A raster gate beyond the V8** — `raster_equiv_test` (2026-08-02)
+  covers V8/VASP/RBV/Sonora at every depth. Read its header before extending
+  it: the equivalence invariant **cannot** catch a pitch that is wrong but
+  consistent (both sides share the arithmetic), and its harness had to be
+  taught to refuse a uniform frame as a pass after three false greens.
+- [x] **The two unverified JIT boot etalons — CLOSED 2026-08-02.**
+  `jit_q630_boot_etalon` (31.9 s) and `jit_q700_boot_etalon` (153.9 s) both
+  PASSED in the post-image-cleanup `ctest -L m040` run (32/32). They had
+  been *killed* mid-run after the raster work, never failed — a coverage
+  gap, now a result.
 
 ---
 
@@ -433,7 +642,7 @@ Sys 7.
 
 ## 7. New machine profiles
 
-Phase A/B/C are done — 33 profiles, all booting the Finder (per-machine detail
+Phase A/B/C are done — 36 profiles, all booting the Finder (per-machine detail
 in `CLAUDE.md` § Status and `CHANGELOG.md` 2026-07-21 → 2026-07-25). Effort
 tiers and the full family map: `docs/68K_FAMILY_SCOPE.md`. Rule kept: **each new
 profile gets at least one Finder cell before the next.**
@@ -442,7 +651,7 @@ Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
 
 ### Independent majors — the only things left that are not just a ROM dump
 
-- [~] **AppleP IC IOP + OSS** → unlocks **IIfx** *and* **Quadra 900/950**.
+- [x] **Apple PIC IOP + OSS** → unlocked **IIfx** *and* **Quadra 900/950**.
   **Opened 2026-08-01** — blueprint + milestone plan: `docs/IOP_BRINGUP.md`;
   recon findings in `CHANGELOG.md` § 2026-08-01 (headline: the IOP firmware
   is *downloaded by the host ROM*, no dump needed; the Q900/950 keep the
@@ -467,22 +676,18 @@ Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
   cycle counters in the CPU window, save/load pair + coverage in
   `savestate_030_test`, ROM dispatch on the 512 KB `$4147DD77`, and
   gate `iifx_input_etalon` (mouse repaint 43 px vs 0 idle; KeyMap
-  0→1→0). **M7 — Quadra 900/950: platform IN, boot NOT yet reached**
-  (2026-08-01). `Q700Memory::Model {Spike,Q900,Q950}` carries the whole
-  Eclipse front end (two `ApplePic`, `AdbLine`, `Egret` on VIA1, the 2nd
-  53C96, VIA1 PA identities, the $1000-wide IOP windows); the selector is
-  `q700_boot_etalon <q700|q900|q950>`. Measured: the Q900 POSTs, paints
-  640×480, uploads and releases BOTH IOPs, and the SCC IOP passes the
-  ROM's bypass walking test; the SWIM IOP's firmware is verified
-  **byte-perfect** (54 chunks / 11516 bytes from the ROM's upload script
-  at `$5A7EB`). **The wall**: that firmware ends in its own BRK panic
-  handler (`$5069`), so it executed a `$00` — a control-flow divergence
-  in POM68K's device model, NOT a bad upload. Full diagnosis, the
-  debugging order that got there, and the next three suspects (SWIM
-  device-register mapping, `ApplePic` timer reload, the unwired
-  `dat1byte` → `reqa_w`/`reqb_w` MAME gives BOTH channels here) are in
-  `docs/IOP_BRINGUP.md` § M7 + § 5b. Profiles 35/36 are deliberately
-  **not** registered until a Finder cell exists — house rule.
+  0→1→0). **M7 DONE (2026-08-02): both Eclipse towers boot the Finder and
+  are the 35th/36th profiles.** `Q700Memory::Model {Spike,Q900,Q950}`
+  carries the front end (two `ApplePic`, `AdbLine`, `Egret` on VIA1, the
+  2nd 53C96, VIA1 PA identities, the $1000-wide IOP windows); gates
+  `q900_boot_etalon` (640×480×1, 5830 SCSI cmds) and `q950_boot_etalon`
+  (640×480×**8** at 33.333 MHz, its own `$3DC27823` ROM), Q700 guard rail
+  re-run green. The BRK that walled M7 for a day was **not in the IOP**:
+  `read16` still applied the Spike's odd-byte-lane SWIM rule to the SWIM
+  IOP's host window, so the ROM read the shared-RAM address register as
+  `hi<<8` and wrote a byte onto the 65C02's stack — one `!eclipse()`
+  guard. Story, and the bring-up watchpoints that found it, in
+  `CHANGELOG.md` § 2026-08-02 (fourth) and `docs/IOP_BRINGUP.md` § M7/§ 5b.
   **M4 (deferred, LOUD)** SCSIDMA true DMA + restartable handshake —
   A/UX-only per `scsidma.cpp:12`, nothing in the Mac OS path needs it;
   also dedupe the multi-ID mirror (7.6 mounts all seven copies of the
@@ -534,7 +739,7 @@ bake `tools/wrap_hfs.py`).
 ## 8. Cross-machine architecture
 
 - [ ] **Save states — one residual.** The feature shipped 2026-07-30 across all
-  10 machine families and 32 profiles (archive core `src/SaveState.h/.cpp`,
+  10 machine families and 36 profiles (archive core `src/SaveState.h/.cpp`,
   container `SaveStateMachines.h/.cpp`, `MoiraSnapshot.h`, GUI/CLI wiring in
   `main.cpp` `SaveStateSlot`). Gates: `savestate_test`, `savestate_v8_test`,
   `savestate_030/040/68k_test` (all `unit`), plus the real-OS

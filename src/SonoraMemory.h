@@ -188,6 +188,16 @@ public:
     uint8_t videoMode() const { return vidMode_; }   // $9F = blanked/off
     uint8_t videoDepth() const { return vidDepth_; } // 0..4 = 1..16 bpp
     const Modeline* currentModeline() const { return mode_; }
+
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // The SAME accumulator that generates the modeline-driven VBL — the
+    // beam is a pure function of it, never a second clock.
+    int64_t framePos() const { return framePos_; }
+    int64_t frameCycles() const { return frameCycles_; }
+    int64_t frameActiveCycles() const { return vblStart_; }
+    int     frameTotalLines() const { return frameTotalLines_; }
+    uint64_t frameCount() const { return frameCount_; }
+
     uint8_t monitorSense() const { return montype_; }
     // Plug a different monitor (2 = 512×384 12", 6 = 640×480 13"); read
     // by the ROM through video control register 2 at boot.
@@ -215,7 +225,7 @@ public:
         ar(pens_, palAddr_, palIdx_, palControl_, palColkey_, palRgb_,
            vidMode_, vidDepth_, vidMonId_, vidVtest_, montype_);
         ar(viaAcc_, tickAcc_, swimAcc_, framePos_, frameCycles_,
-           vblStart_, vblState_);
+           vblStart_, vblState_, frameTotalLines_, frameCount_);
         if constexpr (Ar::loading) {
             mode_ = modeline(vidMode_);
             if (jitGuard_) jitGuard_->invalidate();
@@ -273,5 +283,7 @@ private:
     int64_t swimAcc_ = 0;
     int64_t framePos_ = 0;           // CPU cycles into the current frame
     int64_t frameCycles_ = 0, vblStart_ = 0;   // from the active modeline
+    int     frameTotalLines_ = 0;    // modeline vtot (blanking included)
+    uint64_t frameCount_ = 0;        // completed frames (raster beam seq)
     bool vblState_ = false;
 };

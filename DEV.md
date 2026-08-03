@@ -44,7 +44,7 @@ inside that section.
 | Sonora gate array | **Mac LC III** | LC III+, LC 520/550, Color Classic II; **VASP** = IIvx / IIvi | [2.5](#25-sonora-gate-array--lc-iii-lc-iii-aio-family--the-vasp-recombination) |
 | MEMCjr + PrimeTime | **Quadra 605** | LC 475, LC 575 | [2.6](#26-memcjr--primetime--quadra-605-lc-475-lc-575) |
 | djMEMC + IOSB | **Centris 650** | Centris 610, Quadra 610/650/800 | [2.7](#27-djmemc--iosb--centris-650-centris-610-quadra-610650800) |
-| Discrete 040 + DAFB | **Quadra 700** | (Quadra 900/950 once the IOPs exist) | [2.8](#28-discrete-040--dafb--quadra-700) |
+| Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
 
@@ -520,7 +520,7 @@ Gates: `centris610/650_boot_etalon`, `quadra610/650_boot_etalon`,
 `quadra800_boot_etalon`, `lc575_boot_etalon` (the `$A55A222E` identity on
 the Q605 board).
 
-### 2.8 Discrete 040 + DAFB — Quadra 700
+### 2.8 Discrete 040 + DAFB — Quadra 700 / 900 / 950
 
 `Q700Memory` / `Q700Cpu`. The **first** Quadra, and the machine that shows
 the family seam: a full 68040 @ 25 MHz (50 MHz XTAL / 2) whose front end is
@@ -542,6 +542,34 @@ layout the Centris/Q800 share. ROM `$420DBFF3`; VIA1 PA reads `$C1`
   real hardware routes VIA2's T1 out of PB7 into VIA1 CA1
   (`via2_out_b`, "chain 60.15 Hz to VIA1").
 - Gate: `q700_boot_etalon` (Mac OS 8.1, 640×480 DAFB).
+
+**The "Eclipse" towers — Quadra 900 and 950** (`Model {Spike, Q900, Q950}`,
+`eclipse()` is the one predicate the code branches on; full blueprint and
+bring-up history in `docs/IOP_BRINGUP.md` § M7). Same board, with the **Mac
+IIfx's front end** grafted on:
+
+- The SCC and SWIM decodes are replaced by two **Apple PIC IOP** host
+  windows (`$5000C000` and `$5001E000`, `$1000` wide, register offset
+  `(addr >> 1) & $1F` on **both** byte lanes). Each IOP runs a 65C02 on
+  firmware the host ROM uploads at boot — there is no dump.
+- **ADB is bit-banged by the SWIM IOP's firmware** through its GPIO onto
+  `AdbLine`; the **Egret** on VIA1 CB1/CB2 replaces the discrete RTC (clock,
+  PRAM, and it holds the 68040 in reset until its own firmware releases it).
+  A **second 53C96** bus sits at `+$0F400`.
+- VIA1 PA identity `$D0` (Q900) / `$90` (Q950); the Q950 runs at
+  **33.333 MHz** on its own `$3DC27823` ROM, the Q900 shares the Quadra
+  700's `$420DBFF3` (so `POM68K_Q700_MODEL` is the only thing that tells
+  those two apart).
+- **The rule that cost a day**: a Quadra 700 quirk is not automatically an
+  Eclipse quirk. The Spike's SWIM1 hangs off the odd byte lane, so `read16`
+  and `write16` truncate a word there — on the towers that same window is an
+  IOP host window answering on both lanes, and applying the Spike rule made
+  the ROM write over the IOP's stack. Both directions now carry
+  `!eclipse()`. Four M7 bugs were this same shape; `docs/IOP_BRINGUP.md`
+  § 5b lists them.
+- Gates: `q900_boot_etalon` (640×480×1), `q950_boot_etalon` (640×480×8),
+  Eclipse save states in `savestate_040_test` (`Q900Rig` — the only rig that
+  reaches the `eclipse()` tail of `Q700Memory::visit`).
 
 ### 2.9 F108 + PrimeTime II + Valkyrie — Quadra 630 (LC 580)
 
@@ -777,6 +805,16 @@ firmware, so they are exact by construction.
   co-stepping — bit cell 1564 cyc ≈ 99.8 µs, attention 12410 ≈ 792 µs, i.e.
   the ADB spec values, because the firmware's delay loops **are** the
   reference. Gate: `adbline_test`.
+  The **device registers** are completed against DingusPPC's
+  `adbkeyboard.cpp`/`adbmouse.cpp` (2026-08-02), MAME modelling none of
+  them: the handler ID is a real register selected by a Listen R3 activator
+  (keyboard 1/2/3 — and a standard keyboard **refuses** 3, which is the
+  probe that identifies an Extended Keyboard II; mouse 1/2/4, where 4 is the
+  Extended Mouse Protocol that puts the **second button** in bit 7 of the
+  second report byte and answers R1 with the 8-byte identifier block),
+  Listen R2 latches the keyboard LEDs (active low, read back via
+  `keyboardLeds()`), and SendReset restores the default handler as well as
+  the default address. Reset ID stays 1; `POM68K_ADB_KBD_ID` moves it.
 - **`Via6522::extShiftCB1`** — external-clock (CB1) shift-register support
   for the ADB modes (011 shift-in, 111 shift-out), rising-edge clocked to
   match the firmware's shift routines (`0x065` send, `0x077` receive).
@@ -884,6 +922,18 @@ Only the SCC-side facts live here.
      on a real 8530); RR0 bit 2 (Tx empty) stays asserted.
 - **O6.13**: V8 *word* accesses on `$F04000` take one ctl/data side effect
   (mirrored lanes) so they cannot double-advance `ptr_`.
+- **The `/RTS` and `/DTR` pins** (2026-08-02, `updateRts`). `/RTS` is *not*
+  a view of WR5 bit 1: with Auto Enables (WR3 bit 5) the chip holds it
+  asserted after the bit is cleared until the transmitter is completely
+  empty, so its release lives in `tick()` as the shifter drains, not at the
+  register write (MAME `tra_complete:1090`). `/DTR` follows WR5 bit 7 unless
+  WR14 bit 2 repurposes the pin for DMA request. Read them as *asserted*
+  (`rtsAsserted`/`dtrAsserted`) — the package pins are active low, and no
+  caller should have to remember that. **No consumer yet.**
+- **SDLC residue codes** (RR1 bits 3-1): a byte-granular wire only produces
+  the byte-aligned code **011**, which is also the chip's reset value — hence
+  `rr1Rd = $07`. Frame bytes used to report `000` (a *partial* character),
+  so the idle register and a live frame byte disagreed. Both read 011 now.
 - **AppleTalk is off in the factory PRAM.** Since O6.11 the path above only
   runs when the user turns AppleTalk on in the Chooser: the default is
   **inactive** via classic-PRAM SPConfig (XPRAM `$13` = `$22`, port B
@@ -895,6 +945,43 @@ Only the SCC-side facts live here.
   `llap_loop_test`, `ltoudp_test`, `llap_two_system_etalon`,
   `atalk_stack_test`, `afp_server_test`, `pap_server_test`,
   `macip_gw_test`.
+
+### 3.8bis The raster beam (`VideoBeam.h`)
+
+The scan position and the row schedule every converted decoder renders
+against (`docs/LLE_VS_HLE.md` § 1.1, landed 2026-08-02).
+
+**It owns no clock.** Each platform already accumulates CPU cycles into the
+current frame to generate its VBL — `framePos_` in `V8Memory`,
+`SonoraMemory`, `VaspMemory`, `RbvMemory`, `MacIIMemory`, `TobyVideo`,
+`Dafb`, `Valkyrie`. `VideoBeam::setPos()` adopts that accumulator, so there
+is exactly one source of frame time and the VBL edges stay untouched. Adding
+a second clock here would be the easy version and the wrong one.
+
+Geometry is `(frameCycles, activeCycles, totalLines, visibleLines)`.
+`line()` is derived from `totalLines` (blanking included, for registers that
+expose a position); the **row schedule** is derived from `activeCycles`
+instead — deliberately independent, so a decode height that does not match
+the modeline's line count (a 640×480 surface on the V8's 407-line modeline)
+still emits every row exactly once per frame.
+
+Decoder contract: `decodeRows(out, y0, y1)` renders half-open row runs into
+a persistent surface; `raster(out)` sets the geometry, calls `setPos()`, and
+pumps. `decode()` (whole frame, state as of now) stays for stills and tests.
+
+**`frameCount_` is required, not decorative.** A caller that samples once per
+frame at a fixed phase — which the machine loops are — cannot be served by
+the position alone: it is modulo, so a whole elapsed frame reads identically
+to no time at all and the row cursor never advances. Every memory class that
+owns a frame accumulator therefore carries a completed-frame counter, and it
+is real machine state (serialized). The beam treats a position decrease *or*
+a sequence change as a wrap.
+
+The row cursor inside `VideoBeam` is **not** serialized — a pure cache,
+re-derivable from the accumulator and the surface (`SaveState.h`'s rule); a
+restore self-heals on the first sequence mismatch.
+
+Gates: `video_beam_test` (schedule), `v8_raster_test` (behaviour).
 
 ### 3.9 DAFB / Antelope
 
@@ -929,7 +1016,9 @@ Real ROM values, visible with `POM68K_DAFB_CLOCK_TRACE=1`: Centris 650 →
 generators**; the 256-colour Finder is proven live by `q605_boot_etalon`
 (mode 3, base `$1000`, stride 1024). `q605_trace --dafb-io N` gives DAFB and
 MEMCjr holding-port traffic its own trace budget. Remaining gaps: no VRAM
-arbitration, VBL line hard-coded at 480 (as in MAME).
+arbitration (audited 2026-08-03: no oracle — MAME's four video devices
+model none either; `docs/LLE_VS_HLE.md` § 1.1), VBL line hard-coded at 480
+(as in MAME).
 
 ---
 
@@ -1010,10 +1099,15 @@ documented before 2026-07-31:
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
 | `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the 030 CPUs (`Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
+| `POM68K_PERIPH_BATCH` | 040 peripheral catch-up granularity in CPU cycles (default 256, range 1-4096). **Smaller is more accurate**: 1 = exact, no IRQ-latency jitter, +76 % boot time — measured table in `docs/LLE_VS_HLE.md` § 1.2 |
 | `POM68K_NOFPU` | Mac II **and IIfx**: no 68881/68882 |
 
 **Devices and subsystems**: `POM68K_EGRET_LLE`, `POM68K_CUDA_LLE`,
-`POM68K_CUDA_FW`, `POM68K_ADB_LLE`, `POM68K_APPLETALK`,
+`POM68K_CUDA_FW`, `POM68K_ADB_LLE`, `POM68K_ADB_KBD_ID` (`AdbLine`'s
+power-on keyboard handler ID: 1 = Apple Standard, the default, 2 = Extended
+Keyboard II, 3 = the extended protocol with distinct right-hand modifier
+codes — a guest can select any of them itself with a Listen R3, this only
+moves the reset value), `POM68K_APPLETALK`,
 `POM68K_SHARE_DIR`, `POM68K_ATALK_WIRE_BOOST`, `POM68K_LTOUDP`,
 `POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_DRIVE_SFX`
 (`0` = silence the drive FX), `POM68K_SCSI_DDM_TEMPLATE`.

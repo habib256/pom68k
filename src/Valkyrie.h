@@ -60,12 +60,31 @@ public:
     uint32_t base() const { return kFbOffset; }     // fixed: VRAM + $1000
     bool     blanked() const { return (videoTiming_ & 0x80) != 0; }
     uint32_t pixelClock() const { return pixelClock_; }
+
+    // ── I2C clock generator (slave $28, valkyrie.cpp:542-573) ───────────
+    // The Cuda is the bus master; `CudaLle` decodes the i2c_hle framing and
+    // hands us (register, value). Registers 1/2/3 are the M/N/P divisors of
+    // a 3.9864 MHz reference: pixelClock = 3986400 × 2^P × N / M. Register 0
+    // is written but ignored, exactly as MAME does.
+    void i2cWrite(uint8_t reg, uint8_t value);
     const uint8_t (*clut() const)[3] { return clut_; }
     // Monitor on the sense pins: plain codes 0-7 or ext(bc,ac,ab) =
     // $40|bc<<4|ac<<2|ab. Default 6 = Mac Hi-Res 640×480 (MAME's default).
     void setMonitor(uint8_t code) { monitorConfig_ = code; }
 
     static constexpr uint32_t kFbOffset = 0x1000;
+
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // The SAME accumulator that fires the VBL in tick(). Note the unit: it
+    // counts pixel-clock × CPU cycles, not CPU cycles — the beam only needs
+    // position and frame length to agree with each other, which they do.
+    int64_t framePos() const { return framePos_; }
+    int64_t frameCycles() const { return int64_t(htotal_) * vtotal_ * cpuHz_; }
+    // The live scanline — what the $14 blanking register answers from.
+    int currentLine() const;
+    int64_t frameActiveCycles() const { return int64_t(htotal_) * vres_ * cpuHz_; }
+    int     frameTotalLines() const { return int(vtotal_); }
+    uint64_t frameCount() const { return frameCount_; }
 
     // ── Save states (SaveState.h contract) ──────────────────────────────
     // Registers, RAMDAC/CLUT and the frame clock phase. cpuHz_ is
@@ -74,7 +93,8 @@ public:
         ar(videoTiming_, mode_, config_, intStatus_,
            monitorConfig_, monitorId_, palAddress_, palIdx_, clut_,
            hres_, vres_, htotal_, vtotal_, stride_, pixelClock_,
-           enabled_, framePos_, prevLine_);
+           enabled_, framePos_, prevLine_, frameCount_,
+           clkM_, clkN_, clkP_);
     }
 
 private:
@@ -92,8 +112,10 @@ private:
     uint32_t hres_ = 0, vres_ = 0, htotal_ = 0, vtotal_ = 0;
     uint16_t stride_ = 1024;
     uint32_t pixelClock_ = 31334400;
+    uint8_t  clkM_ = 0, clkN_ = 0, clkP_ = 0;   // I2C clock-gen divisors
     bool     enabled_ = false;      // reg $18 screen enable
 
     int64_t  framePos_ = 0;         // pixel-clock position in the frame
+    uint64_t frameCount_ = 0;       // completed frames (raster beam seq)
     int      prevLine_ = 0;
 };

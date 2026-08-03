@@ -243,8 +243,10 @@ void SonoraMemory::vctrlWrite(int reg, uint8_t v) {
             if (m) {
                 frameCycles_ = int64_t(m->htot) * m->vtot * cpuHz_ / m->dot;
                 vblStart_ = int64_t(m->htot) * m->vres() * cpuHz_ / m->dot;
+                frameTotalLines_ = int(m->vtot);
             } else {
                 frameCycles_ = vblStart_ = 0;
+                frameTotalLines_ = 0;
             }
         }
         break;
@@ -553,7 +555,13 @@ void SonoraMemory::tick(int cpuCycles) {
     // Modeline-driven VBL → pseudo-VIA slot bit $40 (sonora.cpp:70).
     if (frameCycles_) {
         framePos_ += cpuCycles;
-        framePos_ %= frameCycles_;
+        // Completed frames, for the raster beam (VideoBeam::setPos): the
+        // position alone is modulo, so a decoder sampling once per frame at
+        // a fixed phase could not tell a whole frame from no time at all.
+        if (framePos_ >= frameCycles_) {
+            frameCount_ += uint64_t(framePos_ / frameCycles_);
+            framePos_ %= frameCycles_;
+        }
         bool vbl = framePos_ >= vblStart_;
         if (vbl != vblState_) {
             vblState_ = vbl;

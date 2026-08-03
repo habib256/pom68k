@@ -1,9 +1,12 @@
-// POM68K — save/load determinism on the four 040 machine families:
+// POM68K — save/load determinism on the 040 machine families:
 // Q605 (MEMCjr + DAFB + AscIosb + 53C96), Centris (djMEMC + IOSB, discrete
-// RTC + PIC1654S ADB), Q700 (discrete 040: two real VIAs + DAFB TurboSCSI)
-// and Q630 (F108 + PrimeTime II + Valkyrie). Between them these compile
-// and behaviour-check every 040-side device chunk: Dafb, Valkyrie,
-// AscIosb, Ncr53c96, plus the Rtc/AdbVia pair on their 040 wiring.
+// RTC + PIC1654S ADB), Q700 (discrete 040: two real VIAs + DAFB TurboSCSI),
+// its Eclipse tower variant (the same pair plus two Apple PIC IOPs, AdbLine,
+// the Egret and a second 53C96 — the `eclipse()` tail of `Q700Memory::visit`,
+// which no other rig reaches) and Q630 (F108 + PrimeTime II + Valkyrie).
+// Between them these compile and behaviour-check every 040-side device
+// chunk: Dafb, Valkyrie, AscIosb, Ncr53c96, ApplePic/R65c02, plus the
+// Rtc/AdbVia pair on their 040 wiring.
 //
 // Same two properties as savestate_v8_test / savestate_030_test:
 //   1. save → mutate → load → save is byte-identical;
@@ -83,6 +86,21 @@ struct Q700Rig {
         mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
     }
 };
+// The Eclipse tower: the SAME Q700Memory/Q700Cpu save/load pair, but the
+// `eclipse()` branch of `Q700Memory::visit` adds a whole tail nothing else
+// serializes — two ApplePic (each carrying 32 KB of host-uploaded 65C02
+// firmware plus its CPU, timer and DMA phase), AdbLine, the Egret and the
+// second 53C96. A Spike rig exercises none of it, which is exactly how a
+// dropped chunk would ship unnoticed.
+struct Q900Rig {
+    Q700Memory mem;
+    Q700Cpu cpu;
+    static constexpr auto kKind = pom68k::SnapMachine::Quadra900;
+    explicit Q900Rig(const std::vector<uint8_t>& rom)
+        : mem(8u << 20, Q700Memory::kCpuHz, Q700Memory::Model::Q900), cpu(mem) {
+        mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
+    }
+};
 struct Q630Rig {
     Q630Memory mem;
     Q630Cpu cpu;
@@ -158,12 +176,13 @@ void testFamily(const char* family, const std::vector<uint8_t>& rom) {
 }  // namespace
 
 int main() {
-    std::printf("savestate_040_test — Q605 / Centris / Q700 / Q630 fan-out\n");
+    std::printf("savestate_040_test — Q605 / Centris / Q700 / Q900 / Q630 fan-out\n");
     const auto rom = makeRom(0x100000);
 
     testFamily<Q605Rig>("q605", rom);
     testFamily<CentrisRig>("centris", rom);
     testFamily<Q700Rig>("q700", rom);
+    testFamily<Q900Rig>("q900", rom);
     testFamily<Q630Rig>("q630", rom);
 
     if (gFails) {

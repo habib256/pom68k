@@ -93,7 +93,7 @@ void CentrisMemory::reset() {
                                    // standing abort is a line state, not
                                    // machine config (Scc8530::openLine,
                                    // LLE steps 7+8: virgin line = clean)
-    viaPhase_ = 0;
+    viaEClock_ = {};
     tickAcc_ = 0;
     secAcc_ = 0;
     sccIrq_ = false;
@@ -162,11 +162,7 @@ void CentrisMemory::viaSync() {
     if (!cpu_) return;
     const int boost = std::max(1, cpu_->cacheBoost());
     int64_t c = int64_t(cpu_->getClock()) / boost;
-    const int D = viaDiv();
-    int64_t viaCycle = c / D;
-    // Same phase grid as the 32:1 original — (viaCycle+1)*D + D/2 + 1 is
-    // exactly (viaCycle*2+3)*16+1 when D == 32.
-    int64_t target = (viaCycle + 1) * D + D / 2 + 1;
+    const int64_t target = via_eclock::syncTarget(c, cpuHz_);
     if (target > c) cpu_->stall(int(target - c));
 }
 
@@ -605,10 +601,9 @@ uint8_t CentrisMemory::peek8(uint32_t addr) const {
 }
 
 void CentrisMemory::tick(int cpuCycles) {
-    const int viaD = viaDiv();          // 783.36 kHz fixed — see viaDiv()
-    viaPhase_ += cpuCycles;
-    int viaCycles = viaPhase_ / viaD;
-    viaPhase_ %= viaD;
+    // VIA1 φ2 is the board's fixed 783.36 kHz E clock, not a divisor of
+    // the CPU — an integer ratio is an approximation here (ViaEClock.h).
+    const int viaCycles = viaEClock_.advance(cpuCycles, cpuHz_);
     if (viaCycles && via1_.tick(viaCycles)) updateIrq();
 
     adbVia_.tick(cpuCycles);

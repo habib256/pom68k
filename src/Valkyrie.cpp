@@ -14,6 +14,7 @@ void Valkyrie::reset() {
     hres_ = vres_ = htotal_ = vtotal_ = 0;
     stride_ = 1024;
     pixelClock_ = 31334400;
+    clkM_ = clkN_ = clkP_ = 0;
     framePos_ = 0;
     prevLine_ = 0;
     for (auto& c : clut_) c[0] = c[1] = c[2] = 0;
@@ -35,6 +36,34 @@ void Valkyrie::recalcMode() {
     }
 }
 
+// I2C clock generator (valkyrie.cpp write_data:542-573). Register 0 is
+// written and ignored; 1/2/3 latch M/N/P and every write recomputes
+//     pixelClock = 3986400 × 2^P × N / M
+// then re-derives the mode (the refresh rate the frame clock uses).
+//
+// **Deliberate divergence from the oracle, in its favour.** MAME's guard
+// for the 512×384 monitor reads `if ((m_M == 0) && (m_N == 0) && (m_P = 98))`
+// — an ASSIGNMENT, so it fires on M==N==0 alone and clobbers P as a side
+// effect. We implement its *effect* (M==0 is a division by zero anyway, and
+// that is the configuration Apple's own note programs) without the typo:
+// no register is corrupted by reading it. If a guest is ever seen to depend
+// on P becoming 98, this is the line to revisit.
+void Valkyrie::i2cWrite(uint8_t reg, uint8_t value) {
+    switch (reg) {
+        case 1: clkM_ = value; break;
+        case 2: clkN_ = value; break;
+        case 3: clkP_ = value; break;
+        default: return;                 // reg 0: written, ignored
+    }
+    if (clkM_ == 0 && clkN_ == 0) {
+        pixelClock_ = 15670000;          // the 512×384 "garbage" program
+    } else if (clkM_ != 0) {
+        pixelClock_ = uint32_t(3986400.0 * double(1u << (clkP_ & 31))
+                               * double(clkN_) / double(clkM_));
+    }
+    recalcMode();
+}
+
 void Valkyrie::recalcIrq() {
     if (onIrq) onIrq(intStatus_ != 0);
 }
@@ -48,7 +77,13 @@ uint8_t Valkyrie::readReg8(uint32_t off) {
         case 0x04: return mode_;
         case 0x10: return config_;
         case 0x14:                                  // live vblank level
-            return (vtotal_ && prevLine_ >= int(vres_)) ? 1 : 0;
+            // LIVE, not the last ticked line. `prevLine_` only advances
+            // inside tick(), i.e. at peripheral-batch granularity, so a
+            // guest polling this register in a tight loop used to see the
+            // beam move in steps of a whole batch. currentLine() is the
+            // same arithmetic tick() uses — one formula, one scan position
+            // (LLE_VS_HLE §1.1).
+            return (vtotal_ && currentLine() >= int(vres_)) ? 1 : 0;
         case 0x1C: {
             // Monitor sense (valkyrie.cpp regs_r case 0x1c): the three sense
             // pins, in the upper nibble. Extended codes ($40 | bc<<4 | ac<<2
@@ -131,12 +166,24 @@ void Valkyrie::writeRamdac32(uint32_t off, uint32_t data) {
 // Frame clock: MAME arms a timer at line `m_vres` and re-arms it at 480 —
 // POM68K keeps a free-running pixel-clock position instead (the Dafb cell
 // pattern) and raises the VBL as the beam crosses the end of the display.
+// The scanline the beam is on, straight from the frame accumulator. The
+// ONE place this arithmetic lives: tick() drives the VBL from it and the
+// $14 blanking register reads it, so the two cannot drift apart.
+int Valkyrie::currentLine() const {
+    if (!vtotal_ || !htotal_) return 0;
+    return int(framePos_ / (int64_t(htotal_) * cpuHz_));
+}
+
 void Valkyrie::tick(int cpuCycles) {
     if (!vtotal_ || !htotal_ || !enabled_) return;
     framePos_ += int64_t(cpuCycles) * pixelClock_;
     const int64_t frameCycles = int64_t(htotal_) * vtotal_ * cpuHz_;
-    while (framePos_ >= frameCycles) framePos_ -= frameCycles;
-    const int line = int(framePos_ / (int64_t(htotal_) * cpuHz_));
+    while (framePos_ >= frameCycles) {
+        framePos_ -= frameCycles;
+        // Completed frames, for the raster beam (VideoBeam::setPos).
+        frameCount_++;
+    }
+    const int line = currentLine();
     if (line != prevLine_) {
         const int vbl = int(vres_);
         // crossed the display end (wrapping included)

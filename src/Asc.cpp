@@ -172,7 +172,7 @@ void AscV8::write(uint32_t offset, uint8_t v) {
 // sound_stream_update (asc.cpp): one sample every 704 CPU cycles
 // (22 257 Hz nominal — Bresenham keeps the exact ratio)
 void AscV8::tick(int cpuCycles) {
-    drainAcc_ += int64_t(cpuCycles) * kSampleRate;
+    drainAcc_ += int64_t(cpuCycles) * drainHz();   // $807, see Asc.h
     while (drainAcc_ >= kCpuHz) {
         drainAcc_ -= kCpuHz;
 

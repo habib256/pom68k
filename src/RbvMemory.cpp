@@ -118,6 +118,7 @@ void RbvMemory::recalcFrame() {
     }
     frameCycles_ = int64_t(htot) * vtot * cpuHz_ / dot;
     vblStart_ = int64_t(htot) * vres * cpuHz_ / dot;
+    frameTotalLines_ = int(vtot);
     framePos_ = 0;
     if (vblState_) {
         vblState_ = false;
@@ -500,7 +501,11 @@ void RbvMemory::tick(int cpuCycles) {
     // Monitor-driven VBL → pseudo-VIA slot bit $40 (rbv.cpp screen_vblank).
     if (frameCycles_) {
         framePos_ += cpuCycles;
-        framePos_ %= frameCycles_;
+        // Completed frames, for the raster beam (VideoBeam::setPos).
+        if (framePos_ >= frameCycles_) {
+            frameCount_ += uint64_t(framePos_ / frameCycles_);
+            framePos_ %= frameCycles_;
+        }
         bool vbl = framePos_ >= vblStart_;
         if (vbl != vblState_) {
             vblState_ = vbl;

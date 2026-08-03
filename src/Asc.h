@@ -54,6 +54,29 @@ public:
         if (outRd_ == outWr_) return 0;
         return out_[outRd_++ & (kOutSize - 1)];
     }
+
+    // $807 CLOCK RATE (asc.cpp:30 — "0 = Mac 22257 Hz, 1 = undefined,
+    // 2 = 22050 Hz, 3 = 44100 Hz"). MAME documents the register and does
+    // NOT implement it, so the manual is the reference here, not the
+    // oracle. Only the classic (Mac II discrete) ASC accepts a write to it
+    // — on the V8/Sonora/IOSB integrations the register is read-only and
+    // reads back 0, which is exactly why honouring it costs nothing on
+    // every machine that boots today. Code 1 is undefined: keep the Mac
+    // rate rather than invent one.
+    //
+    // Host caveat, deliberate: the output ring is consumed by a fixed-rate
+    // host DAC, so a guest that actually programmed 44.1 kHz would get its
+    // FIFO IRQs at the right cadence but the emulator would pace to half
+    // speed. Resampling is out of scope; no known guest writes this.
+    int drainHz() const {
+        if (!classic()) return kSampleRate;
+        switch (regs_[0x07] & 3) {
+        case 2:  return 22050;
+        case 3:  return 44100;
+        default: return kSampleRate;
+        }
+    }
+
     int fifoCap() const { return cap_; }
     int fifoCapB() const { return capB_; }
 

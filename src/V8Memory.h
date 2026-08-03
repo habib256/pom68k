@@ -241,6 +241,16 @@ public:
         // set it up (it comes up B&W until "256 couleurs" + restart).
     }
 
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // The SAME accumulator that generates the VBL above — the beam is a
+    // pure function of it, never a second clock. `frameActiveCycles` is
+    // `vblStart_`: the part of the frame the beam spends on visible lines.
+    int64_t framePos() const { return framePos_; }
+    int64_t frameCycles() const { return frameCycles_; }
+    int64_t frameActiveCycles() const { return vblStart_; }
+    int     frameTotalLines() const { return frameTotalLines_; }
+    uint64_t frameCount() const { return frameCount_; }
+
     // Device lines into the pseudo-VIA (SCSI lands in O6.5, ASC in O6.6)
     void ascIrq(bool s)  { pvia_.ascIrq(s);  updateIrq(); }
     void scsiIrq(bool s) { pvia_.scsiIrq(s); updateIrq(); }
@@ -291,7 +301,7 @@ public:
            vidSpram_, vidSpramSaved_, overlay_, sccIrq_);
         ar(simmMapped_, simmOff_, simmPhys_, mbLoc_, mbSize_, mbMapped_);
         ar(viaPhase_, tickAcc_, framePos_, frameCycles_, vblStart_,
-           c15Acc_, vblState_);
+           c15Acc_, vblState_, frameCount_);
 
         if constexpr (Ar::loading) {
             // RAM and the whole address map just changed wholesale. A write
@@ -323,6 +333,7 @@ private:
     }
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     [[noreturn]] void busError() const;
+    void holeDump(uint32_t addr) const;   // POM68K_V8_IOHOLE, see .cpp
     void viaSync();                          // E-clock stall (v8.cpp:462-483)
 
     jit::CodeGuard* jitGuard_ = nullptr;     // JIT code invalidation
@@ -386,6 +397,8 @@ private:
     // CPU cycles at reset.
     int64_t framePos_ = 0;
     int64_t frameCycles_ = 640 * 407, vblStart_ = 640 * 384;
+    int     frameTotalLines_ = 407;          // blanking included
+    uint64_t frameCount_ = 0;                // completed frames (raster seq)
     int64_t c15Acc_ = 0;                     // CPU → C15M device-domain rest
     bool vblState_ = false;
     uint8_t scsiDma_();                      // DRQ-gated window byte read

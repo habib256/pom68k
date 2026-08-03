@@ -221,7 +221,7 @@ choosing the PIC's personality.
   states (`ApplePic::visit` carries the 64 KB RAM, R65C02 registers, DMA
   and timer phase — the Cuda lesson: MCU↔host phase is load-bearing,
   `pom68k-mactv-gate-broken`). The 34th profile.
-- **M7 — Quadra 900/950**: platform landed, **boot not yet reached**.
+- **M7 — Quadra 900/950**: **both towers boot the Finder** (2026-08-02).
   `Q700Memory::Model {Spike, Q900, Q950}` carries the whole Eclipse front
   end (two `ApplePic`, `AdbLine`, `Egret` on VIA1 CB1/CB2, the second
   53C96 bus, VIA1 PA identities `$D0`/`$90`, no DFAC on VIA2 PB, the
@@ -237,52 +237,62 @@ choosing the PIC's personality.
   11516 bytes** land exactly (`q900_swimpic.ram` vs the ROM — the check
   is in this file's history, redo it before suspecting the upload).
 
-  **The wall**: the SWIM IOP's 65C02 ends in its own **BRK panic handler**
-  (`$5060`: `tsx; lda $0106,x; bit #$10; bne $5069` — it tests the pushed
-  B flag and hangs at `$5069` walking the stack). So the firmware executed
-  a `$00` — a control-flow divergence, not a bad upload. Its interrupt
-  unit reads `flags=$30 mask=$3E` (HOST + TIMER pending and unmasked), and
-  the host side sits at ROM `$4080A8E6` (`btst #5,$15d(a3)`) with VIA2
-  `IER=$01` — i.e. the ROM has armed the SWIM IOP's host interrupt (VIA2
-  CA2) and is waiting for a reply the firmware never sends.
+  **The wall, and what it actually was (resolved 2026-08-02).** The SWIM
+  IOP's 65C02 used to end in its own **BRK panic handler** (`$5060`:
+  `tsx; lda $0106,x; bit #$10; bne $5069`), reached at **`$0042`** through
+  the ordinary epilogue `$53FC PLY; PLX; PLA; $53FF RTS` — a `RTS` onto a
+  return address whose HIGH BYTE had been overwritten with `$00`.
 
-  **Traced to the instruction (2026-08-01, `POM68K_Q900_IOPBRK=1`)** — the
-  tooling is now in-tree: `R65c02::setTrace()/onBrk/pcTrail()` keeps a
-  256-deep ring of executed PCs and dumps it on the first `$00`.
-  The firmware reaches the BRK at **`$0042`** (page zero) through a normal
-  epilogue: `$53FC PLY; PLX; PLA; $53FF RTS`, whose `RTS` read a garbage
-  return address. Registers there: `A=41 X=FF Y=59 SP=FF P=30`.
+  The cause was **not in the IOP**. `Q700Memory::read16` still applied the
+  Spike's odd-byte-lane SWIM1 rule to the `$5001E000` window, where on the
+  Eclipse that window is the SWIM IOP's host window — and MAME installs the
+  handler on **both** lanes (`macquadra700.cpp:590-591`, the range mapped
+  twice with umask `$FF00FF00` **and** `$00FF00FF`). So ROM `$408050CA`
+  `move.w (a2),d3` re-read the IOP's 16-bit shared-RAM address register as
+  `hi<<8` (`$0203` → `$0200`); `subq.w #1` then aimed the following byte
+  write at **`$01FF`**, the top of the 65C02's stack, straight through the
+  return address `jsr $53ED` had just pushed. One `!eclipse()` guard, and
+  the tower boots. This is § 5b bug #4 — and the unfixed half of #2.
 
-  **Two hypotheses this KILLS — do not re-open them without new data:**
-  - *Not a stack-discipline underflow.* SP was `$FA` entering the
-    epilogue and `$FF` after its five pulls — the depth was exactly
-    right. The bad return address was simply what sat at `$01FE/$01FF`,
-    the very bottom of the stack, i.e. the routine returned one frame
-    PAST its own top level.
-  - *Not an interrupt storm.* The last 256 executed PCs contain no
-    `$504E` (the firmware's IRQ vector) at all.
+  **Two hypotheses the 2026-08-01 trace killed, both correct:** not a stack
+  imbalance (SP was `$FA` entering the epilogue and `$FF` after five pulls —
+  exactly right), and not an interrupt storm (no `$504E` in 256 PCs). The
+  *lead* it drew from them was wrong: the state machine at `$5418`-`$5436`
+  comparing `$4E87,x` to `$4E87,y` was running fine, and no SWIM register
+  fed it anything bad — it was killed on the way out. Recorded because the
+  next reader will otherwise re-open `$4E87`.
 
-  What it was doing instead: spinning in the state machine at
-  `$5418`-`$5436` (`jsr $54B0` / `jsr $54BF` / `jsr $54E7`, then
-  `beq $5418`), whose inner routine compares `$4E87,x` against `$4E87,y`
-  — a table/buffer at `$4E87`-`$4E9F` that never reaches its end
-  condition, so the loop eventually falls out the wrong way.
-  **Next step**: find which `ApplePic`/SWIM register read feeds that
-  `$4E87` state. Suspects, refined:
-  1. the SWIM device-register mapping behind `readPeriph`/`writePeriph`;
-  2. the `ApplePic` timer's reload semantics;
-  3. `dat1byte` → `reqa_w`/`reqb_w`, which MAME wires to **both** DMA
-     channels here (`macquadra700.cpp:879-880`). **POM68K's `Swim1` has
-     no `dat1byte` callback at all**, so this one is a real extension of
-     the floppy controller, not a wiring line.
+  **The bring-up tooling that closed it** (all in-tree, all env-gated):
+  `R65c02::spTrail()` prints the SP beside every PC in the trail — that is
+  what proved the depth exact and moved the suspicion to the bytes;
+  `ApplePic::watch` / `POM68K_Q900_IOPWATCH=<hex>` names the *writer* of an
+  IOP RAM byte (`cpu` / `host` / `dma`) and printed
+  `[IOP-WATCH] $01FF <- $00 by host`; and the BRK trap dumps a 64-deep ring
+  of host-window touches with the decoded offset, the shared-RAM pointer at
+  that instant and the 68k PC — which showed the ROM setting the pointer to
+  `$01FF` and firing.
 
-  Also still open once it boots: profiles 35/36 (`kProfiles`,
-  `SnapMachine`, GUI loop) — **not registered yet, by the house rule that
-  a profile earns its row only with a Finder cell behind it**.
+  Still open: `dat1byte` → `reqa_w`/`reqb_w` (MAME wires it to **both** DMA
+  channels, `macquadra700.cpp:879-880`; POM68K's `Swim1` has no such
+  callback) — a real extension of the floppy controller, not a wiring line.
+  Not needed for the boot; needed the day a disk transfer goes through the
+  IOP's DMA rather than its polled path.
 
-## 5b. The Eclipse's three inherited-rule bugs (M7, all the same class)
+  **The Quadra 950 came up the same day, off the same one-line fix** —
+  `q700_boot_etalon q950` PASSED at 33.333 MHz on its own `$3DC27823` ROM,
+  and at 640×480×**8** where the Q900 lands at 1 bpp, so it is also the
+  tower gate that exercises a colour DAFB path. Nothing Zydeco-specific
+  had to be touched: `via_in_a_q950`, the DAFB_Q950 flavour and the clock
+  were already in place from the platform work.
 
-Every Q900 bug so far was a **Quadra 700 rule that must not apply to the
+  Next: profiles 35/36 (`kProfiles`, `SnapMachine`, GUI loop, save states)
+  — **both** towers have now earned their row under the house rule.
+  Gates `q900_boot_etalon` / `q950_boot_etalon` are registered (same
+  binary, selected by argv).
+
+## 5b. The Eclipse's four inherited-rule bugs (M7, all the same class)
+
+Every Q900 bug was a **Quadra 700 rule that must not apply to the
 tower**. Worth stating as a pattern before the next one:
 
 1. **The SCC interrupt line.** `tick()` re-derived `sccIrq_` from the SCC
@@ -300,6 +310,13 @@ tower**. Worth stating as a pattern before the next one:
    failed, and the IOP was never released from `/RSTPIC`.
 3. **The discrete RTC and the DFAC.** Gone on the Eclipse — the Egret owns
    clock/PRAM/power on VIA1 CB1/CB2, and VIA2 port B carries no DFAC.
+4. **The SWIM word-write quirk again — on the READ side.** #2 guarded
+   `write16` with `!eclipse()` and left `read16` (three dozen lines away)
+   applying the Spike rule. The ROM's `move.w (a2),d3` then read the IOP's
+   shared-RAM address register as `hi<<8`, and the byte it wrote next
+   landed on the 65C02's stack. Cost: the whole M7 wall. **A byte-lane
+   quirk is a property of a WINDOW, not of a direction — fix both halves in
+   the same edit, and grep for the other one before closing the entry.**
 
 The debugging order that found them, cheapest first, is worth reusing:
 IOP held/released → IOP cycle counter moving → how many bytes of firmware

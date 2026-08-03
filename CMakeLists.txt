@@ -470,6 +470,20 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(v8_ramsize PRIVATE pom68k_core)
     add_test(NAME v8_ramsize COMMAND v8_ramsize)
 
+    # The Valkyrie's pixel clock, programmed by the Cuda over I2C (slave
+    # $28) — the last "bus not modelled" entry of LLE_VS_HLE.md § 1.1,
+    # closed 2026-08-02. Asserts through the frame cadence, not the setter.
+    # The floppy data-separator PLL (src/FluxPll.h, MAME fdc_pll_t) — the
+    # first step of the flux layer, LLE_VS_HLE.md § 1.3. Header-only, so it
+    # links against nothing but itself.
+    add_executable(flux_pll_test tests/flux_pll_test.cpp)
+    target_link_libraries(flux_pll_test PRIVATE pom68k_core)
+    add_test(NAME flux_pll_test COMMAND flux_pll_test)
+
+    add_executable(valkyrie_i2c_test tests/valkyrie_i2c_test.cpp)
+    target_link_libraries(valkyrie_i2c_test PRIVATE pom68k_core)
+    add_test(NAME valkyrie_i2c_test COMMAND valkyrie_i2c_test)
+
     # O6.6 gate: ASC-V8 FIFO/level-IRQ semantics (boot beep depends on it).
     add_executable(asc_test tests/asc_test.cpp)
     target_link_libraries(asc_test PRIVATE pom68k_core)
@@ -577,10 +591,33 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(adbline_test PRIVATE pom68k_core)
     add_test(NAME adbline_test COMMAND adbline_test)
 
+    # LLE_VS_HLE §1.1 gate, step 1: the raster beam — scan position + the
+    # row schedule the decoders render against (every visible row exactly
+    # once per frame, in order, tail flushed on the wrap).
+    add_executable(video_beam_test tests/video_beam_test.cpp)
+    target_link_libraries(video_beam_test PRIVATE pom68k_core)
+    add_test(NAME video_beam_test COMMAND video_beam_test)
+
     # O6.4 gate: V8 video decode + Ariel palette + VBL cadence.
     add_executable(v8_video_test tests/v8_video_test.cpp)
     target_link_libraries(v8_video_test PRIVATE pom68k_core)
     add_test(NAME v8_video_test COMMAND v8_video_test)
+
+    # LLE_VS_HLE §1.1 gate, step 3: the row-range invariant — decoding a
+    # frame in arbitrary row chunks must be bit-identical to one pass, on
+    # every decoder and at every depth. Catches the row-offset arithmetic
+    # the whole-frame → decodeRows conversion introduced (fixed 1024/2048
+    # pitches, modeline-derived ones), which a boot etalon cannot see.
+    add_executable(raster_equiv_test tests/raster_equiv_test.cpp)
+    target_link_libraries(raster_equiv_test PRIVATE pom68k_core)
+    add_test(NAME raster_equiv_test COMMAND raster_equiv_test)
+
+    # LLE_VS_HLE §1.1 gate, step 2: beam-placed decode on the V8 — a
+    # mid-frame palette change splits the picture AT the beam, and VRAM
+    # written behind the beam does not reach rows already scanned out.
+    add_executable(v8_raster_test tests/v8_raster_test.cpp)
+    target_link_libraries(v8_raster_test PRIVATE pom68k_core)
+    add_test(NAME v8_raster_test COMMAND v8_raster_test)
 
     # Q8 gate: MEMCjr DAFB stride register + Antelope RAMDAC depth modes.
     add_executable(q605_dafb_test tests/q605_dafb_test.cpp)
@@ -868,6 +905,24 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(q700_boot_etalon PROPERTIES TIMEOUT 1800)
 
+    # Quadra 900 ("Eclipse"): the same board with the Mac IIfx's front end —
+    # two Apple PIC IOPs (SCC + SWIM/ADB) running host-uploaded 65C02
+    # firmware, the Egret in place of the discrete RTC, a second 53C96 bus.
+    # Same binary, same $420DBFF3 ROM, selected by argv (docs/IOP_BRINGUP.md
+    # § M7). Gated the day it reached the Finder — 2026-08-02.
+    add_test(NAME q900_boot_etalon COMMAND q700_boot_etalon q900
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(q900_boot_etalon PROPERTIES TIMEOUT 1800)
+
+    # Quadra 950 ("Zydeco"): the Eclipse at 33.333 MHz with its own
+    # $3DC27823 ROM, `via_in_a_q950` identity and the DAFB_Q950 flavour. It
+    # came up on the same day as the Q900 and off the same fix — and it
+    # lands at 640×480×**8**, so it is also the tower gate that exercises a
+    # colour DAFB path rather than the Q900's 1 bpp.
+    add_test(NAME q950_boot_etalon COMMAND q700_boot_etalon q950
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(q950_boot_etalon PROPERTIES TIMEOUT 1800)
+
     # Quadra 800: same board, ID pins $12 (the only one with pa6 clear), full
     # 68040 @ 33 MHz, plus SONIC Ethernet (address ROM at $50008000; the SONIC
     # registers stay unmapped-0) and three NuBus slots.
@@ -1088,7 +1143,7 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
             list(APPEND lbl jit)
         endif()
         # The 68040 family — the JIT's entire blast radius today.
-        if(t MATCHES "q605|lc475|lc575|centris|quadra6|quadra8|q630|lc580|q700|turboscsi|swim2")
+        if(t MATCHES "q605|lc475|lc575|centris|quadra6|quadra8|q630|lc580|q700|q900|q950|turboscsi|swim2")
             list(APPEND lbl m040)
         endif()
         set_tests_properties(${t} PROPERTIES LABELS "${lbl}")

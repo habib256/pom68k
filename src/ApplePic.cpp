@@ -8,6 +8,7 @@
 // 65C02's instruction stream (debt-carried, `pom68k-mcu-lle-clock-drift`).
 
 #include "ApplePic.h"
+#include <cstdio>
 
 ApplePic::ApplePic()
 {
@@ -46,6 +47,9 @@ void ApplePic::write8(uint16_t a, uint8_t v)
         regWrite(a, v);
         return;
     }
+    if (watch >= 0 && (a & 0x7FFF) == (watch & 0x7FFF))
+        std::fprintf(stderr, "[IOP-WATCH] $%04X <- $%02X by %s (65C02 pc=$%04X sp=$%02X)\n",
+                     a, v, writer_, cpu_.getProgramCounter(), cpu_.getStackPointer());
     ram_[a & 0x7FFF] = v;
 }
 
@@ -94,7 +98,9 @@ void ApplePic::dmaTick()
             const int ioReg = channel.control >> 4;
             if (channel.control & kDmaDir) {
                 const uint8_t xfer = readPeriph ? readPeriph(ioReg) : 0xFF;
+                writer_ = "dma";
                 write8(channel.map, xfer);
+                writer_ = "cpu";
             } else {
                 const uint8_t xfer = read8(channel.map);
                 if (writePeriph) writePeriph(ioReg, xfer);
@@ -304,7 +310,9 @@ void ApplePic::hostWrite(uint32_t offset, uint8_t data)
         return;
     }
     if (offset & 0x04) {
+        writer_ = "host";
         write8(ramAddr_, data);
+        writer_ = "cpu";
         if (statusReg_ & 0x02)
             ++ramAddr_;
         return;

@@ -127,22 +127,37 @@ uint8_t CudaLle::mcuPortRead(int p) {
     }
 }
 
-// ── DFAC2 I2C slave (setI2cDfac) ───────────────────────────────────────
+// ── I2C bus (setI2cDfac / onI2cValkyrie) ───────────────────────────────
 // The bus master is the Cuda firmware bit-banging PB7 (SCL) / PB6 (SDA);
 // pin levels arrive through the port/DDR mixing (open-drain release reads
-// back 1 via the PB6/PB7 pull-ups, M68hc05::sendPort). The slave only
-// needs the protocol frame: START/STOP detection, a 9-pulse byte cadence,
-// and the ACK — SDA held low from the 8th data bit until the ACK clock
-// completes — whenever the transfer opened at address $6F (MAME
-// dfac2.cpp: i2c_hle_interface(…, 0x6f); its write_data only logs, so
-// discarding the payload IS oracle parity). The factory Color Classic
-// Cuda 2.35 requires this ACK: one NACKed probe sends it down a DFAC
-// error path that leaves the next host VIA session unanswered.
+// back 1 via the PB6/PB7 pull-ups, M68hc05::sendPort). The frame is MAME's
+// i2c_hle_interface (`i2chle.cpp:108-200`): START, an address byte
+// (7 bits + R/W), then a **sub-address** that seeds an auto-incrementing
+// register pointer, then data bytes — each acknowledged by the slave
+// holding SDA low from the 8th data bit until the ACK clock completes.
+//
+// Two slaves live here, and they are NOT symmetric:
+//   * **DFAC2 at $6F** (`dfac2.cpp`) — payload accepted and DISCARDED,
+//     which is oracle parity: MAME's own `write_data` only logs, its
+//     registers still being reverse-engineered upstream. What matters is
+//     the ACK. The factory Color Classic Cuda 2.35 (341S0417) takes its
+//     DFAC-error path after ONE aborted probe and never completes the next
+//     host VIA session — the "0417 wedge" was this missing device, not an
+//     M68hc05 core bug (2026-07-29).
+//   * **Valkyrie at $28** (`valkyrie.cpp:542-573`, Q630/LC 580 only) —
+//     payload LOAD-BEARING: registers 1/2/3 are the M/N/P divisors of the
+//     video pixel clock. Present only when `onI2cValkyrie` is installed.
+//
+// A data READ from either device is not modeled (no Mac firmware reads
+// them back); the bus would float to all-ones.
 void CudaLle::i2cWire(bool scl, bool sda) {
     if (scl && i2cScl_) {                // SCL high steady: START / STOP
         if (i2cSda_ && !sda) {           // START (repeated START re-opens)
             i2cActive_ = true;
             i2cAddressed_ = false;
+            i2cSlave_ = 0;
+            i2cByteIdx_ = 0;
+            i2cOffset_ = 0;
             i2cBit_ = 0;
             i2cShift_ = 0;
             i2cDriveLow_ = false;
@@ -154,16 +169,32 @@ void CudaLle::i2cWire(bool scl, bool sda) {
         if (i2cBit_ < 8) {
             i2cShift_ = uint8_t((i2cShift_ << 1) | (sda ? 1 : 0));
             if (++i2cBit_ == 8) {
-                // First byte = address + R/W. The HLE interface ACKs its
-                // address for both directions; data bytes ACK while the
-                // transfer stays addressed.
-                if (!i2cAddressed_) i2cAddressed_ = (i2cShift_ >> 1) == 0x6F;
+                if (i2cByteIdx_ == 0) {
+                    // Address + R/W. A slave answers for both directions;
+                    // an address nobody carries is NACKed and the rest of
+                    // the transfer is ignored (i2cAddressed_ stays false).
+                    const uint8_t addr = uint8_t(i2cShift_ >> 1);
+                    if (i2cDfac_ && addr == 0x6F) i2cSlave_ = 0x6F;
+                    else if (onI2cValkyrie && addr == 0x28) i2cSlave_ = 0x28;
+                    else i2cSlave_ = 0;
+                    i2cAddressed_ = i2cSlave_ != 0;
+                } else if (i2cAddressed_) {
+                    if (i2cByteIdx_ == 1) {
+                        i2cOffset_ = i2cShift_;       // register pointer
+                    } else {
+                        if (i2cSlave_ == 0x28 && onI2cValkyrie)
+                            onI2cValkyrie(i2cOffset_, i2cShift_);
+                        i2cOffset_++;                 // auto-increment
+                    }
+                }
+                if (i2cByteIdx_ < 255) i2cByteIdx_++;
                 i2cDriveLow_ = i2cAddressed_;
                 static const bool trace =
                     std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;
                 if (trace)
-                    std::fprintf(stderr, "cudalle: i2c byte %02X %s\n",
-                                 i2cShift_, i2cAddressed_ ? "ACK" : "NACK");
+                    std::fprintf(stderr, "cudalle: i2c byte %02X %s (slave %02X)\n",
+                                 i2cShift_, i2cAddressed_ ? "ACK" : "NACK",
+                                 i2cSlave_);
             }
         } else {
             i2cBit_ = 9;                 // ACK clock high phase
