@@ -8,6 +8,8 @@
 // ROM selects the LC 475 / Quadra 605 machine (MEMCjr/PrimeTime + 68LC040).
 
 #include "imgui.h"
+#include "DiskBays.h"
+#include "DockLayout.h"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "Cpu68k.h"
@@ -323,13 +325,28 @@ static void glfwErrorCallback(int e, const char* d) { std::fprintf(stderr, "GLFW
 // ImGui mouse off so clicks can't leak into widgets; Delete releases.
 struct ScreenInput {
     bool captured = false;
-    float accX = 0, accY = 0;            // sub-pixel remainder (2x zoom)
+    float accX = 0, accY = 0;            // sub-pixel remainder
+    float zoom = 2.0f;                   // host px per guest px, live
     double lastX = 0, lastY = 0;         // virtual cursor while captured
 
     template <typename MoveFn, typename ButtonFn>
     void frame(GLFWwindow* win, GLuint tex, ImVec2 size,
                MoveFn move, ButtonFn button) {
         ImGuiIO& io = ImGui::GetIO();
+        // `size` arrives as the guest framebuffer at 2x, which was the whole
+        // story while the screen lived in an auto-resizing window. Docked, the
+        // node is whatever the user dragged it to, so fit inside it and keep
+        // the aspect ratio — then record the zoom actually used, because the
+        // pointer deltas below must divide by that and not by a hardcoded 2.
+        const ImVec2 native(size.x * 0.5f, size.y * 0.5f);
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        if (size.x > 0 && size.y > 0 && avail.x > 32 && avail.y > 32) {
+            float s = avail.x / size.x;
+            if (avail.y / size.y < s) s = avail.y / size.y;
+            size = ImVec2(size.x * s, size.y * s);
+        }
+        zoom = native.x > 0 ? size.x / native.x : 2.0f;
+        if (zoom < 0.05f) zoom = 0.05f;
         ImVec2 p = ImGui::GetCursorScreenPos();
         ImGui::InvisibleButton("screen", size);
         ImGui::GetWindowDrawList()->AddImage(
@@ -363,8 +380,8 @@ struct ScreenInput {
 private:
     template <typename MoveFn>
     void feed(float hx, float hy, MoveFn move) {
-        accX += hx / 2.0f;               // screen shown at 2x
-        accY += hy / 2.0f;
+        accX += hx / zoom;               // host px -> guest px, live zoom
+        accY += hy / zoom;
         int dx = int(accX), dy = int(accY);
         if (dx || dy) { move(dx, dy); accX -= dx; accY -= dy; }
     }
@@ -916,9 +933,14 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
             ImGui::TextDisabled("(POM68K_APPLETALK=0)");
         ImGui::EndMenu();
     }
+    pom68k::dockLayoutMenu();
     if (extraMenus) extraMenus();
     ImGui::TextDisabled("|  Delete: capture mouse");
     ImGui::EndMainMenuBar();
+    // Every runner goes through machineMenu, so the docked shell is
+    // installed in exactly one place. Must follow EndMainMenuBar: the
+    // viewport work area only excludes the bar once it has been drawn.
+    pom68k::dockLayoutFrame();
     appleTalkWindow();
     jitWindow();
 }
@@ -954,40 +976,7 @@ static bool isCdImage(const std::string& p) {
         || ends(".cue") || ends(".bin");
 }
 
-// List floppy images under disks35/ (raw .dsk / .img SuperDrive media).
-static std::vector<std::string> listFloppyImages() {
-    namespace fs = std::filesystem;
-    std::string dir = findPath("disks35");
-    std::vector<std::string> out;
-    if (dir.empty()) return out;
-    std::error_code ec;
-    for (const auto& e : fs::directory_iterator(dir, ec)) {
-        std::string ext = e.path().extension().string();
-        for (char& ch : ext) ch = char(tolower(ch));
-        if (ext == ".dsk" || ext == ".img" || ext == ".image")
-            out.push_back(e.path().string());
-    }
-    std::sort(out.begin(), out.end());
-    return out;
-}
 
-// List the disk images next to the current one (or under hdv/) — the pool
-// the "Disques" menu offers. Sorted for a stable menu order.
-static std::vector<std::string> listDiskImages(const std::string& nearPath) {
-    namespace fs = std::filesystem;
-    std::string dir = nearPath.empty()
-        ? findPath("hdv") : fs::path(nearPath).parent_path().string();
-    std::vector<std::string> out;
-    std::error_code ec;
-    for (const auto& e : fs::directory_iterator(dir.empty() ? "hdv" : dir, ec)) {
-        std::string ext = e.path().extension().string();
-        for (char& ch : ext) ch = char(tolower(ch));
-        if (ext == ".vhd" || ext == ".hda" || ext == ".img")
-            out.push_back(e.path().string());
-    }
-    std::sort(out.begin(), out.end());
-    return out;
-}
 
 // ── Mac II machine thread ───────────────────────────────────────────────
 // Same GUI ↔ machine contract as LcMachine: queued commands, published
@@ -1238,6 +1227,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -1279,45 +1269,34 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
         ImGui::NewFrame();
 
         machineMenu(MachineKind::MacII, c.window, [&c] {
-            if (!ImGui::BeginMenu("Disques")) return;
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            ImGui::TextDisabled("Boot SCSI");
-            // Same filename shows up in both sections — scope the ImGui IDs.
-            ImGui::PushID("boot");
-            for (const std::string& d : listDiskImages(c.hddPath)) {
-                bool cur = (d == c.hddPath);
-                std::string name = std::filesystem::path(d).filename().string();
-                if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                    relaunch(d, c.extraDisks);
-            }
-            ImGui::PopID();
-            ImGui::Separator();
-            ImGui::TextDisabled("Volumes secondaires");
-            ImGui::PushID("secondary");
-            for (const std::string& d : listDiskImages(c.hddPath)) {
-                if (d == c.hddPath) continue;
-                bool on = std::find(c.extraDisks.begin(), c.extraDisks.end(), d)
-                          != c.extraDisks.end();
-                std::string name = std::filesystem::path(d).filename().string();
-                if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                    std::vector<std::string> extras = c.extraDisks;
-                    if (on) extras.erase(std::remove(extras.begin(), extras.end(), d),
-                                         extras.end());
-                    else extras.push_back(d);
-                    relaunch(c.hddPath, extras);
-                }
-            }
-            ImGui::PopID();
-            ImGui::EndMenu();
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
         });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({MacIiMachine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            pom68k::diskBaysWindow(host);
+        }
 
-        ImGui::Begin("Macintosh II", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+
+                pom68k::dockLayoutScreenWindow("Macintosh II");
+        ImGui::Begin("Macintosh II");
         std::vector<uint32_t> fb;
         int fw = 0, fh = 0;
         if (c.m.latchFrame(fb, fw, fh) && fw > 0 && fh > 0) {
@@ -1644,6 +1623,7 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -1680,44 +1660,34 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
         ImGui::NewFrame();
 
         machineMenu(MachineKind::IIfx, c.window, [&c] {
-            if (!ImGui::BeginMenu("Disques")) return;
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            ImGui::TextDisabled("Boot SCSI");
-            ImGui::PushID("boot");
-            for (const std::string& d : listDiskImages(c.hddPath)) {
-                bool cur = (d == c.hddPath);
-                std::string name = std::filesystem::path(d).filename().string();
-                if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                    relaunch(d, c.extraDisks);
-            }
-            ImGui::PopID();
-            ImGui::Separator();
-            ImGui::TextDisabled("Volumes secondaires");
-            ImGui::PushID("secondary");
-            for (const std::string& d : listDiskImages(c.hddPath)) {
-                if (d == c.hddPath) continue;
-                bool on = std::find(c.extraDisks.begin(), c.extraDisks.end(), d)
-                          != c.extraDisks.end();
-                std::string name = std::filesystem::path(d).filename().string();
-                if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                    std::vector<std::string> extras = c.extraDisks;
-                    if (on) extras.erase(std::remove(extras.begin(), extras.end(), d),
-                                         extras.end());
-                    else extras.push_back(d);
-                    relaunch(c.hddPath, extras);
-                }
-            }
-            ImGui::PopID();
-            ImGui::EndMenu();
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
         });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({IIfxMachine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            pom68k::diskBaysWindow(host);
+        }
 
-        ImGui::Begin("Macintosh IIfx", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+
+                pom68k::dockLayoutScreenWindow("Macintosh IIfx");
+        ImGui::Begin("Macintosh IIfx");
         std::vector<uint32_t> fb;
         int fw = 0, fh = 0;
         if (c.m.latchFrame(fb, fw, fh) && fw > 0 && fh > 0) {
@@ -2220,6 +2190,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -2276,56 +2247,13 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
         }
 
         machineMenu(c.prof.kind, c.window, [&c] {
-            // ── "Disques" menu: pick the boot + secondary SCSI volumes.
-            // Any change relaunches the emulator with the new argv list —
-            // the ROM only scans the SCSI bus at boot, and the .pram file
-            // follows the boot disk (same mechanism as the machine switch).
-            namespace fs = std::filesystem;
-            auto samePath = [](const std::string& a, const std::string& b) {
-                std::error_code ec;
-                return a == b || fs::equivalent(a, b, ec);
-            };
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            if (ImGui::BeginMenu("Disques")) {
-                const auto disks = listDiskImages(c.hddPath);
-                ImGui::TextDisabled("Démarrage (SCSI 0)");
-                // Same filename shows up in both sections — scope the IDs.
-                ImGui::PushID("boot");
-                for (const std::string& d : disks) {
-                    bool cur = samePath(d, c.hddPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                        relaunch(d, c.extraDisks);
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
-                ImGui::PushID("secondary");
-                for (const std::string& d : disks) {
-                    if (samePath(d, c.hddPath)) continue;
-                    bool on = false;
-                    for (const std::string& e : c.extraDisks)
-                        if (samePath(d, e)) { on = true; break; }
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                        std::vector<std::string> extras;
-                        for (const std::string& e : c.extraDisks)
-                            if (!samePath(d, e)) extras.push_back(e);
-                        if (!on) extras.push_back(d);
-                        relaunch(c.hddPath, extras);
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Changer un disque relance l'émulateur");
-                ImGui::EndMenu();
-            }
+            // Disk selection lives in its own window (src/DiskBays.*), shared
+            // by every platform. It used to be ten copies of an ImGui menu
+            // whose MenuItems relaunched the emulator on the click — one
+            // mis-aimed click cold-started the machine, and a series of them
+            // walked the user through several boot volumes, leaving each one
+            // dirty. A window with explicit buttons cannot do that.
+            pom68k::diskBaysMenuItem();
             // One-click machine reset (= power cycle: overlay + chips + CPU;
             // the ROM rescans the SCSI bus, so hot-attached media appear).
             if (ImGui::MenuItem("Redémarrer"))
@@ -2339,8 +2267,30 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
             }
         });
 
+        // The shared "Disques" window. Built once: the hooks capture the
+        // static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({LcMachine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                return h;
+            }();
+            host.romName  = c.romName;      // cheap, and follows a relaunch
+            host.bootPath = c.hddPath;
+            pom68k::diskBaysWindow(host);
+        }
+
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin(c.prof.name, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+                pom68k::dockLayoutScreenWindow(c.prof.name);
+        ImGui::Begin(c.prof.name);
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({LcMachine::Cmd::MouseMove, dx, dy}); },
@@ -2764,6 +2714,7 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -2830,39 +2781,9 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
                     if (e != boot) gSwitchArgs.push_back(e);
                 glfwSetWindowShouldClose(c.window, GLFW_TRUE);
             };
-            if (ImGui::BeginMenu("Disques")) {
-                const auto disks = listDiskImages(c.hddPath);
-                ImGui::TextDisabled("Démarrage (SCSI 0)");
-                ImGui::PushID("boot");
-                for (const std::string& d : disks) {
-                    bool cur = samePath(d, c.hddPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                        relaunch(d, c.extraDisks);
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
-                ImGui::PushID("secondary");
-                for (const std::string& d : disks) {
-                    if (samePath(d, c.hddPath)) continue;
-                    bool on = false;
-                    for (const std::string& e : c.extraDisks)
-                        if (samePath(d, e)) { on = true; break; }
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                        std::vector<std::string> extras;
-                        for (const std::string& e : c.extraDisks)
-                            if (!samePath(d, e)) extras.push_back(e);
-                        if (!on) extras.push_back(d);
-                        relaunch(c.hddPath, extras);
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Changer un disque relance l'émulateur");
-                ImGui::EndMenu();
-            }
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({Lc3Machine::Cmd::HardReset});
             ImGui::Separator();
@@ -2873,9 +2794,31 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
                 if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
             }
         });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({Lc3Machine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            pom68k::diskBaysWindow(host);
+        }
+
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin(gSonoraTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+                pom68k::dockLayoutScreenWindow(gSonoraTitle);
+        ImGui::Begin(gSonoraTitle);
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({Lc3Machine::Cmd::MouseMove, dx, dy}); },
@@ -3044,6 +2987,7 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -3108,39 +3052,9 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
                     if (e != boot) gSwitchArgs.push_back(e);
                 glfwSetWindowShouldClose(c.window, GLFW_TRUE);
             };
-            if (ImGui::BeginMenu("Disques")) {
-                const auto disks = listDiskImages(c.hddPath);
-                ImGui::TextDisabled("Démarrage (SCSI 0)");
-                ImGui::PushID("boot");
-                for (const std::string& d : disks) {
-                    bool cur = samePath(d, c.hddPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                        relaunch(d, c.extraDisks);
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
-                ImGui::PushID("secondary");
-                for (const std::string& d : disks) {
-                    if (samePath(d, c.hddPath)) continue;
-                    bool on = false;
-                    for (const std::string& e : c.extraDisks)
-                        if (samePath(d, e)) { on = true; break; }
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                        std::vector<std::string> extras;
-                        for (const std::string& e : c.extraDisks)
-                            if (!samePath(d, e)) extras.push_back(e);
-                        if (!on) extras.push_back(d);
-                        relaunch(c.hddPath, extras);
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Changer un disque relance l'émulateur");
-                ImGui::EndMenu();
-            }
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({VaspMachine::Cmd::HardReset});
             ImGui::Separator();
@@ -3151,10 +3065,31 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
                 if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
             }
         });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({VaspMachine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            pom68k::diskBaysWindow(host);
+        }
+
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin(c.vi ? "Macintosh IIvi" : "Macintosh IIvx", nullptr,
-                     ImGuiWindowFlags_AlwaysAutoResize);
+                pom68k::dockLayoutScreenWindow(c.vi ? "Macintosh IIvi" : "Macintosh IIvx");
+        ImGui::Begin(c.vi ? "Macintosh IIvi" : "Macintosh IIvx");
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({VaspMachine::Cmd::MouseMove, dx, dy}); },
@@ -3300,6 +3235,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -3362,39 +3298,9 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
                     if (e != boot) gSwitchArgs.push_back(e);
                 glfwSetWindowShouldClose(c.window, GLFW_TRUE);
             };
-            if (ImGui::BeginMenu("Disques")) {
-                const auto disks = listDiskImages(c.hddPath);
-                ImGui::TextDisabled("Démarrage (SCSI 0)");
-                ImGui::PushID("boot");
-                for (const std::string& d : disks) {
-                    bool cur = samePath(d, c.hddPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                        relaunch(d, c.extraDisks);
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
-                ImGui::PushID("secondary");
-                for (const std::string& d : disks) {
-                    if (samePath(d, c.hddPath)) continue;
-                    bool on = false;
-                    for (const std::string& e : c.extraDisks)
-                        if (samePath(d, e)) { on = true; break; }
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                        std::vector<std::string> extras;
-                        for (const std::string& e : c.extraDisks)
-                            if (!samePath(d, e)) extras.push_back(e);
-                        if (!on) extras.push_back(d);
-                        relaunch(c.hddPath, extras);
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Changer un disque relance l'émulateur");
-                ImGui::EndMenu();
-            }
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({RbvMachine::Cmd::HardReset});
             ImGui::Separator();
@@ -3405,10 +3311,31 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
                 if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
             }
         });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({RbvMachine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            pom68k::diskBaysWindow(host);
+        }
+
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin(c.iici ? "Macintosh IIci" : "Macintosh IIsi", nullptr,
-                     ImGuiWindowFlags_AlwaysAutoResize);
+                pom68k::dockLayoutScreenWindow(c.iici ? "Macintosh IIci" : "Macintosh IIsi");
+        ImGui::Begin(c.iici ? "Macintosh IIci" : "Macintosh IIsi");
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({RbvMachine::Cmd::MouseMove, dx, dy}); },
@@ -4103,6 +4030,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -4177,58 +4105,9 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                     if (e != boot) gSwitchArgs.push_back(e);
                 glfwSetWindowShouldClose(c.window, GLFW_TRUE);
             };
-            if (ImGui::BeginMenu("Disques")) {
-                const auto disks = listDiskImages(c.hddPath);
-                ImGui::TextDisabled("Démarrage (SCSI 0)");
-                // Same filename shows up in several sections — scope the IDs.
-                ImGui::PushID("boot");
-                for (const std::string& d : disks) {
-                    bool cur = samePath(d, c.hddPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                        relaunch(d, c.extraDisks);
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
-                ImGui::PushID("secondary");
-                for (const std::string& d : disks) {
-                    if (samePath(d, c.hddPath)) continue;
-                    bool on = false;
-                    for (const std::string& e : c.extraDisks)
-                        if (samePath(d, e)) { on = true; break; }
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                        std::vector<std::string> extras;
-                        for (const std::string& e : c.extraDisks)
-                            if (!samePath(d, e)) extras.push_back(e);
-                        if (!on) extras.push_back(d);
-                        relaunch(c.hddPath, extras);
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Floppy (SWIM2)");
-                ImGui::PushID("floppy");
-                if (ImGui::MenuItem("Éjecter", nullptr, false, c.m.floppyInserted())) {
-                    c.m.requestEjectFloppy();
-                    c.floppyOk = false;
-                    c.floppyPath.clear();
-                }
-                for (const std::string& d : listFloppyImages()) {
-                    bool cur = !c.floppyPath.empty() && samePath(d, c.floppyPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur) {
-                        c.m.requestInsertFloppy(d);
-                        c.floppyPath = d;
-                        c.floppyOk = true;
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Changer un disque SCSI relance l'émulateur");
-                ImGui::EndMenu();
-            }
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({QuadraMachine::Cmd::HardReset});
             ImGui::Separator();
@@ -4239,9 +4118,40 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                 if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
             }
         });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({QuadraMachine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
+            pom68k::diskBaysWindow(host);
+        }
+
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Quadra 605", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+                pom68k::dockLayoutScreenWindow("Quadra 605");
+        ImGui::Begin("Quadra 605");
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({QuadraMachine::Cmd::MouseMove, dx, dy}); },
@@ -4437,6 +4347,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -4509,58 +4420,9 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
                     if (e != boot) gSwitchArgs.push_back(e);
                 glfwSetWindowShouldClose(c.window, GLFW_TRUE);
             };
-            if (ImGui::BeginMenu("Disques")) {
-                const auto disks = listDiskImages(c.hddPath);
-                ImGui::TextDisabled("Démarrage (SCSI 0)");
-                // Same filename shows up in several sections — scope the IDs.
-                ImGui::PushID("boot");
-                for (const std::string& d : disks) {
-                    bool cur = samePath(d, c.hddPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                        relaunch(d, c.extraDisks);
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
-                ImGui::PushID("secondary");
-                for (const std::string& d : disks) {
-                    if (samePath(d, c.hddPath)) continue;
-                    bool on = false;
-                    for (const std::string& e : c.extraDisks)
-                        if (samePath(d, e)) { on = true; break; }
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                        std::vector<std::string> extras;
-                        for (const std::string& e : c.extraDisks)
-                            if (!samePath(d, e)) extras.push_back(e);
-                        if (!on) extras.push_back(d);
-                        relaunch(c.hddPath, extras);
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Floppy (SWIM2)");
-                ImGui::PushID("floppy");
-                if (ImGui::MenuItem("Éjecter", nullptr, false, c.m.floppyInserted())) {
-                    c.m.requestEjectFloppy();
-                    c.floppyOk = false;
-                    c.floppyPath.clear();
-                }
-                for (const std::string& d : listFloppyImages()) {
-                    bool cur = !c.floppyPath.empty() && samePath(d, c.floppyPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur) {
-                        c.m.requestInsertFloppy(d);
-                        c.floppyPath = d;
-                        c.floppyOk = true;
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Changer un disque SCSI relance l'émulateur");
-                ImGui::EndMenu();
-            }
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({CentrisMachine::Cmd::HardReset});
             ImGui::Separator();
@@ -4571,9 +4433,40 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
                 if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
             }
         });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({CentrisMachine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
+            pom68k::diskBaysWindow(host);
+        }
+
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Quadra 605", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+                pom68k::dockLayoutScreenWindow("Quadra 605");
+        ImGui::Begin("Quadra 605");
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({CentrisMachine::Cmd::MouseMove, dx, dy}); },
@@ -4777,6 +4670,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -4847,58 +4741,9 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
                     if (e != boot) gSwitchArgs.push_back(e);
                 glfwSetWindowShouldClose(c.window, GLFW_TRUE);
             };
-            if (ImGui::BeginMenu("Disques")) {
-                const auto disks = listDiskImages(c.hddPath);
-                ImGui::TextDisabled("Démarrage (SCSI 0)");
-                // Same filename shows up in several sections — scope the IDs.
-                ImGui::PushID("boot");
-                for (const std::string& d : disks) {
-                    bool cur = samePath(d, c.hddPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                        relaunch(d, c.extraDisks);
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
-                ImGui::PushID("secondary");
-                for (const std::string& d : disks) {
-                    if (samePath(d, c.hddPath)) continue;
-                    bool on = false;
-                    for (const std::string& e : c.extraDisks)
-                        if (samePath(d, e)) { on = true; break; }
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                        std::vector<std::string> extras;
-                        for (const std::string& e : c.extraDisks)
-                            if (!samePath(d, e)) extras.push_back(e);
-                        if (!on) extras.push_back(d);
-                        relaunch(c.hddPath, extras);
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Floppy (SWIM2)");
-                ImGui::PushID("floppy");
-                if (ImGui::MenuItem("Éjecter", nullptr, false, c.m.floppyInserted())) {
-                    c.m.requestEjectFloppy();
-                    c.floppyOk = false;
-                    c.floppyPath.clear();
-                }
-                for (const std::string& d : listFloppyImages()) {
-                    bool cur = !c.floppyPath.empty() && samePath(d, c.floppyPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur) {
-                        c.m.requestInsertFloppy(d);
-                        c.floppyPath = d;
-                        c.floppyOk = true;
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Changer un disque SCSI relance l'émulateur");
-                ImGui::EndMenu();
-            }
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({Q700Machine::Cmd::HardReset});
             ImGui::Separator();
@@ -4909,9 +4754,40 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
                 if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
             }
         });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({Q700Machine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
+            pom68k::diskBaysWindow(host);
+        }
+
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Quadra 605", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+                pom68k::dockLayoutScreenWindow("Quadra 605");
+        ImGui::Begin("Quadra 605");
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({Q700Machine::Cmd::MouseMove, dx, dy}); },
@@ -5085,6 +4961,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::CreateContext();
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -5158,58 +5035,9 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
                     if (e != boot) gSwitchArgs.push_back(e);
                 glfwSetWindowShouldClose(c.window, GLFW_TRUE);
             };
-            if (ImGui::BeginMenu("Disques")) {
-                const auto disks = listDiskImages(c.hddPath);
-                ImGui::TextDisabled("Démarrage (SCSI 0)");
-                // Same filename shows up in several sections — scope the IDs.
-                ImGui::PushID("boot");
-                for (const std::string& d : disks) {
-                    bool cur = samePath(d, c.hddPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur)
-                        relaunch(d, c.extraDisks);
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Secondaires (SCSI 1-6)");
-                ImGui::PushID("secondary");
-                for (const std::string& d : disks) {
-                    if (samePath(d, c.hddPath)) continue;
-                    bool on = false;
-                    for (const std::string& e : c.extraDisks)
-                        if (samePath(d, e)) { on = true; break; }
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, on)) {
-                        std::vector<std::string> extras;
-                        for (const std::string& e : c.extraDisks)
-                            if (!samePath(d, e)) extras.push_back(e);
-                        if (!on) extras.push_back(d);
-                        relaunch(c.hddPath, extras);
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Floppy (SWIM2)");
-                ImGui::PushID("floppy");
-                if (ImGui::MenuItem("Éjecter", nullptr, false, c.m.floppyInserted())) {
-                    c.m.requestEjectFloppy();
-                    c.floppyOk = false;
-                    c.floppyPath.clear();
-                }
-                for (const std::string& d : listFloppyImages()) {
-                    bool cur = !c.floppyPath.empty() && samePath(d, c.floppyPath);
-                    std::string name = fs::path(d).filename().string();
-                    if (ImGui::MenuItem(name.c_str(), nullptr, cur) && !cur) {
-                        c.m.requestInsertFloppy(d);
-                        c.floppyPath = d;
-                        c.floppyOk = true;
-                    }
-                }
-                ImGui::PopID();
-                ImGui::Separator();
-                ImGui::TextDisabled("Changer un disque SCSI relance l'émulateur");
-                ImGui::EndMenu();
-            }
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
             if (ImGui::MenuItem("Redémarrer"))
                 c.m.push({Q630Machine::Cmd::HardReset});
             ImGui::Separator();
@@ -5220,9 +5048,40 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
                 if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
             }
         });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({Q630Machine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
+            pom68k::diskBaysWindow(host);
+        }
+
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Quadra 630", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+                pom68k::dockLayoutScreenWindow("Quadra 630");
+        ImGui::Begin("Quadra 630");
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({Q630Machine::Cmd::MouseMove, dx, dy}); },
@@ -5530,6 +5389,7 @@ int main(int argc, char** argv) {
     // screen (Finder drag-and-drop) doesn't drag the host window.
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
     ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
@@ -5601,7 +5461,8 @@ int main(int argc, char** argv) {
         });
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-        ImGui::Begin(machineName, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+                pom68k::dockLayoutScreenWindow(machineName);
+        ImGui::Begin(machineName);
         // Mouse → quadrature: hover/drag on the screen, or Delete-key capture
         static ScreenInput input;
         input.frame(c.window, c.tex,

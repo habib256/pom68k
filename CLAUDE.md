@@ -101,9 +101,9 @@ The profile list lives in **one** place: the `kProfiles` table in
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
 ctest                        # 143 gates, ~3h (asset-dependent ones soft-skip)
-ctest -L unit                # 61 gates — no ROM or disk image needed
+ctest -L unit                # 66 gates — no ROM or disk image needed
 ctest -L smoke               # 8 gates — one machine, both CPU engines
-ctest -L jit                 # 16 gates;  -L m040 = 30, the 68040 family
+ctest -L jit                 # 16 gates;  -L m040 = 32, the 68040 family
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
 ./POM68K [ROM] [media...]    # profile picked by ROM size + checksum; the
                              # mapping is `kProfiles` in src/main.cpp
@@ -177,7 +177,7 @@ carries no `kProfiles` entry yet — it is gated, not GUI-wired.
 | **68030 core + PMMU** | `extern/moira` extension, `tests/sst68030.cpp` | O4 ✓; **3 082 pinned vectors**, rulings D1-D22 | MC68030UM + WinUAE oracle |
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ `fpu_sanity` | MC68881/882UM; WinUAE fpp.c |
 | **68040 core + MMU** | `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; **7 200/7 200 pinned vectors** | MC68040UM + WinUAE oracle |
-| **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (11 save/load pairs, 34 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 11 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
+| **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (11 save/load pairs, 36 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 11 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
 | **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** code generator, aarch64 slot `backends/JitBackendA64.md`). **Off by default everywhere** — the interpreter is what every accuracy claim rests on | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓. Engine wired in 9 machine loops: `Cpu030` (V8, incl. the 68020 LC), `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, `MscCpu` — **`Cpu020` (Mac II family), `Cpu68k` (compacts) and `IIfxCpu` have none**. x64 codegen is **68040-only by declared capability** (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`. `q605_boot_etalon` 61.3 s interp → 22.9 s (×2.68), 89.6 % native | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
 
 ## CPU core: Moira (vendored)

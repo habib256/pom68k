@@ -241,7 +241,7 @@ instead.
 
 ## 5. The working loop
 
-Do not iterate against a bare `ctest` — 136 gates, ~2h30, and `-j` is unsafe
+Do not iterate against a bare `ctest` — 143 gates, ~3h, and `-j` is unsafe
 because the boot etalons are contention-sensitive. Do not iterate against a
 bare `make` either: tree-wide LTO relinks ~90 binaries after any core change.
 

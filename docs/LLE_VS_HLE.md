@@ -189,9 +189,14 @@ frame as a pass**, after three false greens; see `CHANGELOG.md`
 *Gaps*:
 
 - **Peripheral-tick batching**: peripherals advance in blocks of
-  `kPeriphBatch` core cycles — 64 on `Cpu020.h:55`, 128 on the 030s
-  (`Cpu030.h:167`, `SonoraCpu.h:76`, `VaspCpu.h:69`, `RbvCpu.h:69`), 256 on
-  the 040s (`Cpu040.cpp` and siblings). ~4–16 µs of IRQ-latency jitter.
+  `kPeriphBatch` core cycles — 64 on `Cpu020.h:55` and `IIfxCpu.h:46`, 128 on
+  the 030s (`Cpu030.h:167`, `SonoraCpu.h:76`, `VaspCpu.h:69`, `RbvCpu.h:69`,
+  `MscCpu.h:59`), 256 on the 040s (`Cpu040.cpp:16`, `CentrisCpu.cpp:8`,
+  `Q700Cpu.cpp:8`, `Q630Cpu.cpp:8`). ~4–16 µs of IRQ-latency jitter.
+  **Only `Cpu040` reads the env knob** — there the batch is the function
+  `periphBatch()` (default 256, clamped 1–4096); the three 040 siblings and
+  every 020/030 pin a `constexpr`, so the measurement below reproduces on the
+  Q605 family and nowhere else without a code change.
   **Measured 2026-08-02** — this entry's own closing note was "drop it toward
   1 and re-measure the cost", so: `POM68K_PERIPH_BATCH` now overrides it on
   the 040, and `q605_boot_etalon` reaches the Finder at **every** setting.
@@ -623,9 +628,10 @@ Neither is a hardware deviation, but both make choices a reader should know.
   snapshot carrying an identity checksum plus whatever the guest modified.
   Snapshots are same-version artifacts (header pins format version + machine
   profile; mismatch is refused). Coverage is the whole tree: `save`/`load`
-  overloads for all ten machine families (`SaveStateMachines.h:75-122`), gated
-  by `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`,
-  `lcii_savestate_etalon`, `q605_savestate_etalon`.
+  overloads for all eleven machine families (`SaveStateMachines.h:87-140`, the
+  36 `SnapMachine` tags at `:49`), gated by `savestate_test`,
+  `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`,
+  `q605_savestate_etalon`.
 - **JIT** (`src/jit/`, `POM68K_JIT.md`): a second execution engine, **off by
   default everywhere** — the interpreter is what every accuracy claim rests
   on. Both backends are bit-exact against it (registers, supervisor stacks,

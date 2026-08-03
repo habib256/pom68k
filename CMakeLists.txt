@@ -198,7 +198,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
         ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
     add_executable(${PROJECT_NAME} src/main.cpp src/miniaudio_impl.cpp
-        src/FloppySound.cpp ${IMGUI_SOURCES})
+        src/FloppySound.cpp src/DiskBays.cpp src/DockLayout.cpp ${IMGUI_SOURCES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
     target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core)
     if(EMSCRIPTEN)

@@ -226,7 +226,7 @@ never a hardcoded address** (the Basilisk lesson that survives ROM revisions,
 
 ### 5.4 Per-machine applicability
 
-The 34 shipping profiles span 11 machine families with different ROMs and
+The 36 shipping profiles span 11 machine families with different ROMs and
 different drivers (IWM vs SWIM1 vs SWIM2, NCR 5380 vs 53C96, M0110 vs PIC1654S
 vs Egret vs Cuda — inventory in `docs/68K_FAMILY_SCOPE.md`). `machines` gates a
 module to the families it understands; `RomMatch` further gates it to the

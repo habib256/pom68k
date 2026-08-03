@@ -6,8 +6,8 @@ and this pass (**2026-08-01**) re-derived every line from the code.
 
 **POM68K ships 36 machine profiles across 11 machine families. Every one boots
 to the Finder and every one has a gate that proves it.** Sources of truth for
-that count: `SnapMachine` (`src/SaveStateMachines.h:49`, 34 tags) and
-`kProfiles[]` (`src/main.cpp:777`, one row per profile, which is also the
+that count: `SnapMachine` (`src/SaveStateMachines.h:49`, 36 tags) and
+`kProfiles[]` (`src/main.cpp:792`, one row per profile, which is also the
 **Machine** menu).
 
 Two platforms exist in `src/` **without** a profile row, by the house rule
