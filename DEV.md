@@ -33,12 +33,14 @@ and the LC 520 bring-up → `docs/`.
 
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
-inside that section.
+inside that section. The last row has no § here yet: the Duo boots
+(`duo230_boot_etalon`) but is still a bring-up, so its blueprint lives in
+`docs/DUO_BRINGUP.md` until the platform earns a GUI profile.
 
 | Platform | Reference machine | Variants in the same section | § |
 |---|---|---|---|
 | 68000 + PAL glue | **Mac Plus** | SE, SE FDHD, Classic (`MacMemory::Model`) | [2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic) |
-| GLUE + NuBus | **Mac II** | IIx, IIcx, SE/30 (68030 on the same board; the SE/30 is the compact IIx) | [2.2](#22-glue--nubus--mac-ii-iix-iicx) |
+| GLUE + NuBus | **Mac II** | IIx, IIcx, SE/30 (68030 on the same board; the SE/30 is the compact IIx) | [2.2](#22-glue--nubus--mac-ii-iix-iicx-se30) |
 | V8 gate array | **Mac LC II** | LC, Classic II (Eagle), Color Classic (Spice), Mac TV (Tinker Bell) | [2.3](#23-v8-gate-array--mac-lc-ii-lc-classic-ii-color-classic-mac-tv) |
 | RBV (RAM-based video) | **Mac IIsi** | IIci (PIC ADB modem + discrete RTC) | [2.4](#24-rbv-ram-based-video--mac-iisi-iici) |
 | Sonora gate array | **Mac LC III** | LC III+, LC 520/550, Color Classic II; **VASP** = IIvx / IIvi | [2.5](#25-sonora-gate-array--lc-iii-lc-iii-aio-family--the-vasp-recombination) |
@@ -47,6 +49,7 @@ inside that section.
 | Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
+| MSC + PG&E Power Manager | **PowerBook Duo 230** | (210/250/270c/280, then PB150 — none wired) | `MscMemory`/`MscCpu`/`PgePmu`/`M68hc05Pge`; blueprint `docs/DUO_BRINGUP.md` |
 
 ---
 
@@ -123,7 +126,7 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **030 PMMU vs 020 HMMU**: once the 030's own PMMU is on (TC bit 31),
   Moira hands the bus a *physical* address, so a machine's own 24-bit
   remap must be **skipped**. `V8Memory` had this first; `MacIIMemory::physAddr`
-  needed it for the IIx/IIcx ([§2.2](#22-glue--nubus--mac-ii-iix-iicx)).
+  needed it for the IIx/IIcx ([§2.2](#22-glue--nubus--mac-ii-iix-iicx-se30)).
 - `DemoRom.h` mimics the real boot for gate purposes: DDRA=`$7F`, then
   ORA=`$40` (overlay off + main screen buffer).
 - JIT seam inside the vendored core: `extern/moira/POM68K_VENDOR.md`
@@ -153,13 +156,14 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **33** profiles are enumerated
-  (`SaveStateMachines.h`) and every machine family has a
+  append, never renumber. All **34** profiles are enumerated
+  (`SaveStateMachines.h`) and each of the **11** machine families has a
   `save`/`load` pair.
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
   `savestate_040_test`, `savestate_68k_test` (all `unit`), plus the
   whole-machine `lcii_savestate_etalon` and `q605_savestate_etalon`.
-  Remaining work (GUI hook, coverage) in `TODO.md § C`.
+  The GUI hook shipped 2026-07-30; the remaining item (a hands-on GUI
+  pass) is in `TODO.md` § 8.
 
 ---
 
@@ -542,6 +546,15 @@ layout the Centris/Q800 share. ROM `$420DBFF3`; VIA1 PA reads `$C1`
   real hardware routes VIA2's T1 out of PB7 into VIA1 CA1
   (`via2_out_b`, "chain 60.15 Hz to VIA1").
 - Gate: `q700_boot_etalon` (Mac OS 8.1, 640×480 DAFB).
+- **The Quadra 900/950 grow out of this same class.** `Q700Memory::Model
+  {Spike, Q900, Q950}` carries the Eclipse front end — two `ApplePic` IOPs
+  (§ 2.10's device), `AdbLine`, `Egret` on VIA1, a second 53C96, the VIA1 PA
+  identities and the `$1000`-wide IOP windows — selected by
+  `./q700_boot_etalon <q700|q900|q950>`. The Q900 POSTs, paints 640×480 and
+  releases both IOPs; the SWIM IOP's byte-perfect firmware then falls into
+  its own BRK handler. That is the one open thread — `TODO.md` § 0 and
+  `docs/IOP_BRINGUP.md` § M7 — and profiles 35/36 stay unregistered until it
+  closes.
 
 **The "Eclipse" towers — Quadra 900 and 950** (`Model {Spike, Q900, Q950}`,
 `eclipse()` is the one predicate the code branches on; full blueprint and
@@ -615,7 +628,7 @@ firmware the host uploads at boot.
   7 = SCC IOP, 8 = ASC, 9 = SCSIDMA, 10 = the 60.15 Hz tick (also pulses
   VIA1 CA1; acked by writing OSS `$207`), 11 = VIA1.
 - **No built-in video.** The IIfx boots on a NuBus card — `TobyVideo` on
-  slot 9, the same port the Mac II uses ([§2.2](#22-glue--nubus--mac-ii-iix-iicx)).
+  slot 9, the same port the Mac II uses ([§2.2](#22-glue--nubus--mac-ii-iix-iicx-se30)).
 - **Two Apple PIC IOPs** (`ApplePic`, one per SCC and SWIM), each an
   `R65c02` at C15M/8 with 32 KB of RAM, a timer, two DMA channels and a
   host mailbox window. **There is no IOP ROM**: the internal map is all
@@ -1075,11 +1088,18 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
 
 ## 5. Environment knobs — the complete list
 
-Derived from the code — `grep -rn getenv src/ extern/moira/` — on
-2026-07-31, after a cross-check found **22 knobs the code reads that no
-document mentioned**. **Re-derive rather than extend by hand**: the check is
-one command, and it is how this list was found to be missing in the first
-place.
+Derived from the code — re-derived 2026-08-01 with
+
+```bash
+grep -rhoP '(?:getenv|env|envBool|envInt)\(\s*"\KPOM68K_[A-Z0-9_]+' \
+     src/ tests/ oracle/ extern/moira/ | sort -u
+```
+
+after a cross-check found **22 knobs the code reads that no document
+mentioned**. Note the `getenv`-only form misses the JIT knobs, which go
+through `jit::detail::env()` (`src/jit/JitConfig.h:22`). **Re-derive rather
+than extend by hand**: the check is one command, and it is how this list was
+found to be missing in the first place.
 
 **Machine selection** (README documents these in prose):
 `POM68K_MACII_MODEL`, `POM68K_LC3_PLUS`, `POM68K_AIO_ID`, `POM68K_IIVI`,
@@ -1132,6 +1152,13 @@ documents them).
 `POM68K_JIT_*` family — see `src/jit/POM68K_JIT.md` § 6. **That table is
 authoritative** and was itself corrected on 2026-07-31.
 
+**Quadra 900/950 ("Eclipse", in bring-up on the Q700 board)**:
+`POM68K_Q900_ADB` (`iop` forces the IIfx-style IOP-only ADB wire),
+`POM68K_Q900_IOPBRK` (dump the SWIM IOP's last 256 PCs at its first `$00`
+— the open M7 lead, `TODO.md` § 0), `POM68K_Q900_IOP_TRACE=<max lines>`
+(every host-window touch), and the test-side `POM68K_Q900_IOPDUMP`
+(`q700_boot_etalon`).
+
 **Diagnostics** (stderr traces, no behavioural change unless stated):
 `POM68K_ADB_LLE_TRACE`, `POM68K_ADB_PIC_TRACE`, `POM68K_KEY_TRACE`
 (machine-thread heartbeat + a one-shot spin dump), `POM68K_FPU_LOG`,
@@ -1148,15 +1175,16 @@ next person greps once instead of twice: `POM68K_AIO_EGRET`,
 Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
 `POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_HALT`, `POM68K_DUMP`,
 `POM68K_FRAMES`, `POM68K_BENCH_*`, `POM68K_PROBE*`,
-`POM68K_INPUT_ANYPATH`, `POM68K_JIT_LOCKSTEP_*`) are documented in their
-own file headers.
+`POM68K_INPUT_ANYPATH`, `POM68K_JIT_LOCKSTEP_*`, `POM68K_IIFX_SHOT`
+(debug PPM out of `iifx_boot_etalon`), `POM68K_IIFX_POST_CYCLES`) are
+documented in their own file headers.
 
 ---
 
 ## 6. Test tiers and gates
 
 **Never iterate against a bare `ctest` or a bare `make`.** A full run is
-129 gates / ~2h30, and `ctest -j` is unsafe because the boot etalons are
+143 gates / ~3h, and `ctest -j` is unsafe because the boot etalons are
 contention-sensitive; a bare `make` relinks ~90 binaries under tree-wide
 LTO. Labels are **derived from test names** at registration time
 (`CMakeLists.txt`, end of the test block), so a gate added tomorrow is
@@ -1166,7 +1194,7 @@ classified the moment it exists.
 make -j4 jitdev && ctest -L smoke     # ~2.5 min end to end
 ```
 
-`jitdev` (`CMakeLists.txt:1077`) builds exactly the **three** binaries
+`jitdev` (`CMakeLists.txt:1110`) builds exactly the **three** binaries
 `-L smoke` needs — `jit_backend_test`, `jit_lockstep_test`,
 `q605_boot_etalon`; the other five smoke registrations re-run those same
 binaries under different environments.
@@ -1174,12 +1202,12 @@ binaries under different environments.
 | command | gates | when |
 |---|---|---|
 | `ctest -L smoke` | 8 | the working loop — one machine, both engines |
-| `ctest -L unit` | 59 (~40 s) | anything touching non-machine code; no ROM or disk image needed |
+| `ctest -L unit` | 61 (~40 s) | anything touching non-machine code; no ROM or disk image needed |
 | `ctest -L jit` | 16 | before proposing a JIT change |
 | `ctest -L m040` | 30 | the 68040 family — the JIT's blast radius |
-| `ctest` | 129 (~2h30) | the release gate, once |
+| `ctest` | 136 (~2h30) | the release gate, once |
 
-Counts verified against `ctest -N` on 2026-07-31; they drift every time a
+Counts verified against `ctest -N` on 2026-08-01; they drift every time a
 gate lands, so **re-derive rather than trust them**. (`src/jit/POM68K_JIT.md`
 § 5 carries the same tiers with the per-lockstep-flavour breakdown and the
 timings — it is the authority on the JIT side of this loop.) Asset-dependent gates
@@ -1201,7 +1229,9 @@ WinUAE/Hatari oracle; rulings D1-D22 in `oracle/fuzz/disputes/NOTES.md`),
 
 MAME `src/mame/apple/mac128.cpp`, `macii.cpp`, `maclc.cpp`, `maclc3.cpp`,
 `maciivx.cpp`, `maciici.cpp`, `macquadra605.cpp`, `macquadra630.cpp`,
-`macquadra700.cpp`, `macquadra800.cpp`, `machine/djmemc.cpp`,
+`macquadra700.cpp`, `macquadra800.cpp`, `maciifx.cpp`,
+`macpwrbkmsc.cpp`, `machine/applepic.cpp`, `machine/msc.cpp`,
+`machine/m68hc05pge.cpp`, `machine/djmemc.cpp`,
 `machine/iosb.cpp`, `machine/f108.cpp`, `machine/rbv.cpp`,
 `machine/v8.cpp`, `machine/vasp.cpp`, `machine/sonora.cpp`,
 `machine/adbmodem.cpp`, `machine/macadb.cpp`, `machine/swim2.cpp`,

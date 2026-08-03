@@ -135,23 +135,24 @@ after it has demonstrated sensitivity** — and only after it has demonstrated
 ## 2. Test & validation depth — the single biggest gap
 
 The gates prove **boot**, not **use**, and the machine fan-out made the ratio
-worse. Of the **36 profiles** covered by the **143 gates**, only **7** have any
+worse. Of the **36 profiles** covered by the **143 gates**, only **9** have any
 gate past the Finder signature: LC II (`lcii_soak/persist/launch/floppy_etalon`
 + `lcii_savestate_etalon`), Quadra 605 (`q605_cudalle_mouse/key_etalon`,
 `q605_cdrom/cdboot_etalon`, `q605_savestate_etalon`, `q605_ot_bind_etalon`),
 Mac II (`macii_mouse_etalon`), **Mac Plus** (`input_etalon` — mouse
-quadrature + M0110 keys), and the four input gates from 2026-07-29
-(`lc3_`, `lc520_`, `iivx_`, `iisi_input_etalon`). That is EIGHT profiles
+quadrature + M0110 keys), the four input gates from 2026-07-29
+(`lc3_`, `lc520_`, `iivx_`, `iisi_input_etalon`) and the IIfx
+(`iifx_input_etalon`, 2026-08-01). That is NINE profiles
 with any gate past the Finder signature; enumerate them with
 `ctest -N | grep -E 'input_etalon|beyond|mouse_etalon|key_etalon|savestate_etalon'`
-rather than trusting this sentence. **The other 28 profiles are
+rather than trusting this sentence. **The other 27 profiles are
 boot-to-Finder signature only.** A machine can pass its etalon and still be
 useless for real work.
 
 Highest-ROI closers, in order:
 
 - [ ] **Soak + persist on a second machine (Quadra 605 / Mac OS 8.1).** The LC
-  II template is `tests/lcii_beyond_etalon.cpp` (`CMakeLists.txt:875-878`, one
+  II template is `tests/lcii_beyond_etalon.cpp` (`CMakeLists.txt:908-916`, one
   gate per scenario). A Q605 persist run also exercises the 53C96 **WRITE**
   path end to end, which nothing else does. Blocked on nothing but the work —
   the old "once save states land" blocker is gone (save states shipped
@@ -529,7 +530,7 @@ Full story in `CHANGELOG.md` § 2026-08-02 (later).
   solved: _FP68K binds the integer PACK 4"; gate `q605_barefpu_boot_etalon`
   reaches the Finder under a true `FPUModel::NONE`). **Unverified whether the
   030/LC II path still needs the same UniversalInfo / defaultRSRCs selection**
-  (`POM68K_NOFPU` at `main.cpp:1657,1670`, `Cpu030.cpp:38`) — re-test before
+  (`POM68K_NOFPU` at `main.cpp:2070,2083`, `Cpu030.cpp:38`) — re-test before
   spending effort here; the original O6.13 diagnosis may already be obsolete.
 
 ### 68030 / MMU / FPU oracle gaps
@@ -544,14 +545,16 @@ Full story in `CHANGELOG.md` § 2026-08-02 (later).
 - [ ] **VIA/RTC accuracy**: model 6522 T1/T2 ±1-cycle reload/IFR latency; VIA
   E-clock access alignment and IACK E-cycles; persist PRAM and seed the GUI RTC
   from the host while keeping tests deterministic. *(PRAM file persistence
-  exists on the later machines — `main.cpp:1735-1738,1993` — but `MacMemory` has
-  no `loadPram`/`savePram`, so the Plus/compact family is the gap.)*
+  exists on the later machines — `main.cpp:2151,2406` for the LC II, one such
+  pair per machine loop — but `MacMemory` has no `loadPram`/`savePram`, so the
+  Plus/compact family is the gap; `MacIIMemory`, `IIfxMemory` and `MscMemory`
+  lack it too.)*
 - [ ] **Floppy**: external-drive selection (`Iwm.h:23,63` takes a second
   `SonyDrive*`; `MacMemory.h:147` still passes only the internal one). *(Write
   support, GCR write-back and host file persistence are DONE — CHANGELOG
   2026-07-23 / 2026-07-24, `SonyDrive::setWriteBack`/`flushToFile`, gates
   `iwm_write_test`, `floppy_persist_test`; the eject/insert GUI exists,
-  `main.cpp:3422,3667`.)*
+  `main.cpp:3936,4080`.)*
 - [ ] Keypad/arrow `$79`-prefix handling where required by M0110 input.
 - [ ] **Sound accuracy**: fetch the sound buffer per scanline instead of once
   per frame; model the disk-PWM byte and the analog volume curve.
@@ -567,8 +570,8 @@ Full story in `CHANGELOG.md` § 2026-08-02 (later).
 
 Base support DONE 2026-07-29 (`ScsiDisk::openCdrom` — INQUIRY type $05 +
 removable, 2048-byte blocks, READ TOC, START/STOP eject, read-only, the Apple
-magic MODE SENSE page $30; `attachCdrom(path, id=3)` on all nine multi-target
-machines; CLI routes `.iso`/`.cdr`/`.toast`). Gates `scsi_cdrom_test`,
+magic MODE SENSE page $30; `attachCdrom(path, id=3)` on all eleven
+multi-target machines; CLI routes `.iso`/`.cdr`/`.toast`). Gates `scsi_cdrom_test`,
 `q605_cdrom_etalon` (8.1 boots from HD, an 8.6 CD mounts as data),
 `q605_cdboot_etalon` (no HD → the ROM's 6→0 scan boots the disc, 3913 blocks).
 **Layout matters**: the ROM scans 6→0, so the boot volume goes to ID 6 and the
@@ -643,7 +646,7 @@ Sys 7.
 ## 7. New machine profiles
 
 Phase A/B/C are done — 36 profiles, all booting the Finder (per-machine detail
-in `CLAUDE.md` § Status and `CHANGELOG.md` 2026-07-21 → 2026-07-25). Effort
+in `CLAUDE.md` § Status and `CHANGELOG.md` 2026-07-21 → 2026-08-02). Effort
 tiers and the full family map: `docs/68K_FAMILY_SCOPE.md`. Rule kept: **each new
 profile gets at least one Finder cell before the next.**
 
@@ -714,12 +717,15 @@ Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
 
 ### Remaining machines with the ROM already in `roms/`
 
+*(The Mac IIfx shipped 2026-08-01 as the 34th profile and left this table;
+the Duo 230 boots but is not a profile yet — see the two majors above.)*
+
 | Machine | ROM on hand | New brick |
 |---|---|---|
-| **Quadra 900 / 950** | `420DBFF3` / `3DC27823` | two **AppleP IC** IOPs (6502-class, SCC + SWIM) + Egret — the same brick the IIfx needs |
-| **Mac IIfx** | `4147DD77` | OSS + two 6502-class IOPs + NuBus-only video |
+| **Quadra 900 / 950** | `420DBFF3` / `3DC27823` | none left — the IOP brick landed with the IIfx and the Eclipse front end is in `Q700Memory`; what remains is the SWIM IOP's BRK (§ 0) |
 | **PowerBook 150** | `FDA22562` | LCD framebuffer + 68HC05 PM — the `M68hc05` core already ships |
-| **PowerBook 140-180 / Duo** | `E33B2724` / `0024D346` / `015621D7` | LCD framebuffer + Power Manager (68HC05 on the Duos) |
+| **PowerBook 140-180** | `E33B2724` | LCD framebuffer + the M50753 Power Manager (a different MCU from the Duos') |
+| **PowerBook Duo 210/250/270c/280** | `0024D346` / `015621D7` | none left — `MscMemory` + `PgePmu` ship; identity/clock variants of the gated Duo 230 |
 | **Portable / PowerBook 100** | `96CA3846` / `96645F9C` | LCD framebuffer + M50753 (740/6502) Power Manager |
 
 ### Assets for new profiles
@@ -739,7 +745,7 @@ bake `tools/wrap_hfs.py`).
 ## 8. Cross-machine architecture
 
 - [ ] **Save states — one residual.** The feature shipped 2026-07-30 across all
-  10 machine families and 36 profiles (archive core `src/SaveState.h/.cpp`,
+  11 machine families and 36 profiles (archive core `src/SaveState.h/.cpp`,
   container `SaveStateMachines.h/.cpp`, `MoiraSnapshot.h`, GUI/CLI wiring in
   `main.cpp` `SaveStateSlot`). Gates: `savestate_test`, `savestate_v8_test`,
   `savestate_030/040/68k_test` (all `unit`), plus the real-OS
@@ -767,8 +773,9 @@ bake `tools/wrap_hfs.py`).
   exits over 12.2 G instructions), and a non-conformant mode is exactly
   where the five relaxations the JIT refuses become legal. `docs/
   HLE_OVERLAY.md` § 0 dates every premise; read it before building anything.
-  Note also that the JIT reaches only eight CPU wrappers — on the Plus/SE/
-  Classic and the Mac II family, HLE is the ONLY accelerator that exists.
+  Note also that the JIT reaches only nine CPU wrappers — on the Plus/SE/
+  Classic, the Mac II family and the IIfx, HLE is the ONLY accelerator that
+  exists.
 - [ ] **Retro68 as a guest-level differential oracle**: build small Toolbox /
   Device Manager / XPRAM probes, run identical binaries under MAME and POM68K,
   compare. Known friction: no `Lists.h`/`AppleTalk.h` shims in multiversal

@@ -9,7 +9,7 @@ sharing their architecture and conventions. CPU core:
 
 The full machine list is the **ROM → machine** table below, which is also
 the Machine menu, in the same order and the same grouping
-(`src/main.cpp:774` `kProfiles[]` — one row per profile, no exceptions).
+(`src/main.cpp:777` `kProfiles[]` — one row per profile, no exceptions).
 
 | Document | For |
 |---|---|
@@ -17,15 +17,15 @@ the Machine menu, in the same order and the same grouping
 | `DEV.md` | internals, pinned tests, **the complete environment-knob list** |
 | `TODO.md` / `CHANGELOG.md` | backlog / resolved items and the *why* |
 | `docs/` | per-subsystem deep dives (`APPLETALK.md`, `LLE_VS_HLE.md`, …) |
-| `roms/README.md` | what goes where under `roms/` |
+| the **ROM → machine** table below | what goes where under `roms/` (the directory itself is gitignored) |
 
 ## Build
 
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 131 gates (asset-dependent ones soft-skip)
-ctest -L unit                     # 59 gates, no ROM or disk image needed
+ctest                             # 143 gates (asset-dependent ones soft-skip)
+ctest -L unit                     # 61 gates, no ROM or disk image needed
 ctest -L smoke                    # 8 gates, one machine, both CPU engines
 ```
 
@@ -48,20 +48,21 @@ cmake .. -DPOM68K_PGO=use && make -j
 ```
 
 ROMs are copyrighted and **never** part of the repository. Put yours under
-`roms/` (see `roms/README.md`); with none at all, POM68K runs a built-in
+`roms/` (names and checksums in the **ROM → machine** table below; the
+directory is gitignored); with none at all, POM68K runs a built-in
 hand-assembled 68000 demo that clears the boot overlay through the VIA and
 animates the 512×342 framebuffer.
 
 **Without a ROM argument** the app looks for, in order: `roms/maclcii.rom`,
 a `35C28F5F` CRC scan of `roms/`, `roms/macplus.rom`, `roms/macii.rom`,
 `roms/quadra605.rom`, then CRC `9779D2C4` and `FF7439EE`
-(`src/main.cpp:4755`). The default machine is therefore the **Mac LC II**.
+(`src/main.cpp:5169`). The default machine is therefore the **Mac LC II**.
 
 ### ROM → machine
 
 Dispatch is by ROM **size**, then by the header checksum (the first four
 bytes, big-endian), then by an environment variable for models that share a
-ROM and differ only by clock / CPU / model ID. `src/main.cpp:4774` is the
+ROM and differ only by clock / CPU / model ID. `src/main.cpp:5187` is the
 code; the **Machine** menu sets the same variables and relaunches.
 
 | Size | Checksum | Machine(s) | Selector |
@@ -151,8 +152,9 @@ tracers. Frequently useful:
 screen (Finder drag-and-drop) keeps tracking outside it and never moves the
 host window — the title bar still does. **Delete** toggles full capture
 (cursor grabbed, raw motion). The host keyboard maps to M0110 codes on the
-Plus and to raw ADB codes elsewhere (table: `src/main.cpp:5025`, notes in
-`DEV.md` § *Input key table*).
+Plus and to raw ADB codes elsewhere (M0110 table: `src/main.cpp:5446`; the
+ADB tables are one per machine loop, e.g. `src/main.cpp:1301` — notes in
+`DEV.md` § *Input: M0110 keyboard + quadrature mouse*).
 
 Menus:
 
@@ -161,13 +163,13 @@ Menus:
   state file sits next to the boot volume as `<disk>.<profile>.pomss`,
   written atomically; a snapshot that does not match the running profile,
   ROM or RAM size is refused and the machine is left untouched. All 34
-  profiles are wired (`src/SaveStateMachines.h:47`). Also **Sons des
+  profiles are wired (`src/SaveStateMachines.h:49`). Also **Sons des
   lecteurs** (drive sounds).
 - **CPU** — pick the execution engine. The Moira **interpreter** is the
   default and the reference for every accuracy claim. Beside it sits an
   accelerated engine, switchable live between two instructions, available
-  on the 68030/68040 machines (the Mac II family and the compacts are
-  interpreter-only). It is honestly labelled: with the portable `threaded`
+  on the 68030/68040 machines (the Mac II family, the compacts and the IIfx
+  are interpreter-only). It is honestly labelled: with the portable `threaded`
   backend it is the interpreter behind a fetch window, and only the x86-64
   backend actually emits host code. `POM68K_CPU_ENGINE=jit` starts on it;
   design and measurements in `src/jit/POM68K_JIT.md`.

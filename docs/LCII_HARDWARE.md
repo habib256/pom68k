@@ -91,10 +91,10 @@ Constants as built: `V8Memory::kRomSize` `$80000`, `kVramSize` `$80000`,
 | VIA1 | 783.36 kHz | CPU/20 = C7M/10 — **same E-clock as the Plus** (`kViaHz`, `viaDiv_`) | v8.cpp:111 |
 | "VBL" tick | 60.15 Hz | free-running timer → VIA1 CA1 (not the real video VBL) | v8.cpp:198-199,243-247 |
 | Real video VBL | 60.0 Hz (VGA) / monitor-dependent | screen vblank → pseudo-VIA slot bit `$40` | v8.cpp:106-108 |
-| Dot clock 640×480 | 25.175 MHz, 800×525 total (VGA timing) | v8.cpp:106 |
-| Dot clock 512×384 | 15.6672 MHz, 640×407 total (Spice values; V8 12" RGB assumed same family) | v8.cpp:717 |
-| ASC sample rate | 22 257 Hz (= 15.6672 MHz/704, the Plus horizontal rate) | v8.cpp:177; asc.cpp:31 |
-| Egret MCU | 32.768 kHz crystal ×128 PLL ≈ 4.19 MHz (MAME note: ADB timings run 2× spec) | egret.cpp:83; maclc.cpp:418 |
+| Dot clock 640×480 | 25.175 MHz | 800×525 total (VGA timing) | v8.cpp:106 |
+| Dot clock 512×384 | 15.6672 MHz | 640×407 total (Spice values; V8 12" RGB assumed same family) | v8.cpp:717 |
+| ASC sample rate | 22 257 Hz | = 15.6672 MHz/704, the Plus horizontal rate | v8.cpp:177; asc.cpp:31 |
+| Egret MCU | ≈ 4.19 MHz | 32.768 kHz crystal ×128 PLL (MAME note: ADB timings run 2× spec) | egret.cpp:83; maclc.cpp:418 |
 
 → `V8Memory::reset` derives `frameCycles_`/`vblStart_` from the modeline, and
 `V8Memory::tick` runs the VIA φ2 divider + the 60.15 Hz Bresenham tick.
@@ -117,17 +117,17 @@ comment down) is the decode, in this order.
 | `$800000-$9FFFFF` | RAM — **first 2 MB of motherboard RAM, always here** | fixed alias regardless of config (`V8Memory::ramIndex`) | v8.cpp:33-35,373-374 |
 | `$A00000-$AFFFFF` | ROM 512 KB, mirrored ×2 | any read clears overlay (`rom_switch_r`) | v8.cpp:87-89,225-235 |
 | `$B00000-$EFFFFF` | — | open bus, reads `$FF` | — |
-| `$F00000-$F01FFF` | **VIA1**, regs every `$200` (A9-A12), 16-bit lanes (byte mirrored on both) | v8.cpp:91,434-460 |
-| `$F04000-$F05FFF` | **SCC** 85C30: **A1 = channel, A2 = ctl/data**; read mirrors byte on D0-7 and D8-15, write uses D8-15 | maclc.cpp:114-122,186 |
-| `$F06000-$F07FFF` | SCSI **pseudo-DMA window** (DRQ-handshaked, 8/16/32-bit) | maclc.cpp:187,222-266 |
-| `$F10000-$F11FFF` | SCSI **53C80 registers**, reg = A4-A6 (`$10` stride); pdma read = reg 6 @ `+$260`, pdma write = reg 0 @ `+$200` | maclc.cpp:188,206-220 |
-| `$F12000-$F13FFF` | SCSI pseudo-DMA window (alias) | maclc.cpp:189 |
-| `$F14000-$F15FFF` | **ASC** (V8 audio), byte regs (`$800`-reg model, see § Sound) | v8.cpp:92 |
-| `$F16000-$F17FFF` | **SWIM1**, reg = A9-A12 (`$200` stride), data on either byte lane; +5 CPU cycles per access | maclc.cpp:190,268-287 |
-| `$F24000-$F25FFF` | **Ariel RAMDAC**: +0 address, +1 palette (RGB auto-inc), +2 control, +3 key color | v8.cpp:93; ariel.cpp:62-93 |
-| `$F26000-$F27FFF` | **pseudo-VIA** ("VIA2"): decodes A0, A1, A4 only (regs 0,1,2,3,$10,$12,$13); port A write at `(offset>>9)==1` | v8.cpp:94; pseudovia.cpp:15-20,329-335 |
-| `$F40000-$FBFFFF` | **VRAM 512 KB** (32-bit access OK; physical path is 16-bit) | v8.cpp:96,175 |
-| slot `$E` (A31 set) | LC PDS pseudo-slot; **BERR (no card)**; IRQ would land on pseudo-VIA slot bit `$20` | maclc.cpp:408-414 |
+| `$F00000-$F01FFF` | **VIA1** | regs every `$200` (A9-A12), 16-bit lanes (byte mirrored on both) | v8.cpp:91,434-460 |
+| `$F04000-$F05FFF` | **SCC** 85C30 | **A1 = channel, A2 = ctl/data**; read mirrors byte on D0-7 and D8-15, write uses D8-15 | maclc.cpp:114-122,186 |
+| `$F06000-$F07FFF` | SCSI **pseudo-DMA window** | DRQ-handshaked, 8/16/32-bit | maclc.cpp:187,222-266 |
+| `$F10000-$F11FFF` | SCSI **53C80 registers** | reg = A4-A6 (`$10` stride); pdma read = reg 6 @ `+$260`, pdma write = reg 0 @ `+$200` | maclc.cpp:188,206-220 |
+| `$F12000-$F13FFF` | SCSI pseudo-DMA window | alias | maclc.cpp:189 |
+| `$F14000-$F15FFF` | **ASC** (V8 audio) | byte regs (`$800`-reg model, see § Sound) | v8.cpp:92 |
+| `$F16000-$F17FFF` | **SWIM1** | reg = A9-A12 (`$200` stride), data on either byte lane; +5 CPU cycles per access | maclc.cpp:190,268-287 |
+| `$F24000-$F25FFF` | **Ariel RAMDAC** | +0 address, +1 palette (RGB auto-inc), +2 control, +3 key color | v8.cpp:93; ariel.cpp:62-93 |
+| `$F26000-$F27FFF` | **pseudo-VIA** ("VIA2") | decodes A0, A1, A4 only (regs 0,1,2,3,`$10`,`$12`,`$13`); port A write at `(offset>>9)==1` | v8.cpp:94; pseudovia.cpp:15-20,329-335 |
+| `$F40000-$FBFFFF` | **VRAM 512 KB** | 32-bit access OK; physical path is 16-bit | v8.cpp:96,175 |
+| slot `$E` (A31 set) | LC PDS pseudo-slot | **BERR (no card)**; IRQ would land on pseudo-VIA slot bit `$20` | maclc.cpp:408-414 |
 
 Unmapped I/O in `$F00000+` **bus-errors** — the ROM's address-map probe relies
 on BERR to build `AddrMapFlags` (ASCTester on a real LC reports
@@ -257,7 +257,7 @@ unacknowledgeable). Gate `pseudovia_test`.
 | Reg | Name | Semantics | Source |
 |---|---|---|---|
 | 0 | Port B | in: PB3 state etc.; out: **bit 3 = HMMU enable** (LC) | pseudovia.cpp:225-228,255-257; v8.cpp:349-352 |
-| 1 | RAM config | see § RAM controller; reads `config | 0x04` | pseudovia.cpp:230-233; v8.cpp:328-337 |
+| 1 | RAM config | see § RAM controller; reads `config \| 0x04` | pseudovia.cpp:230-233; v8.cpp:328-337 |
 | 2 | Slot IFR (active-low latches) | bit 6 = internal video VBL, bit 5 = PDS slot $E, bit 4 = slot $C (unused on LC II); write 1 to bit 6 to arm/ack VBL | pseudovia.cpp:99-134,263-266; v8.cpp:106-108,323-326; maclc.cpp:412-414 |
 | 3 | IFR | bit 7 = any, bit 4 = ASC, bit 3 = SCSI IRQ, bit 1 = any-slot, bit 0 = SCSI DRQ; write-1-to-clear except ASC (level) | pseudovia.cpp:136-174,190-218,353-357 |
 | $10 | video config | write: bits 0-2 = pixel depth (0=1bpp…4=16bpp); read: **bits 3-5 = monitor sense** (`montype << 3`, 3 bits) | pseudovia.cpp:235-238,273-276; v8.cpp:339-347,519 |

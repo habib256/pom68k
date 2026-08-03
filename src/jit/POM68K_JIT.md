@@ -33,12 +33,13 @@ measured (§ 3). Both are bit-exact against the interpreter — registers,
 supervisor stacks, cycle clock and the low 2 KB of guest RAM, compared at
 every instruction boundary.
 
-**Where the engine is wired.** Eight CPU wrappers hold a `jit::Engine`:
+**Where the engine is wired.** Nine CPU wrappers hold a `jit::Engine`:
 `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu` (68040) and `Cpu030`,
-`RbvCpu`, `SonoraCpu`, `VaspCpu` (68030, plus the Macintosh LC's 68020
-flavour of `Cpu030`). The 68000 machines (`Cpu68k`) and the Mac II /
-IIx / IIcx (`Cpu020`) have none. The **x86-64 code generator** is narrower
-still: 68040 guests only, by declared capability (§ 7).
+`RbvCpu`, `SonoraCpu`, `VaspCpu`, `MscCpu` (68030, plus the Macintosh LC's
+68020 flavour of `Cpu030`). The 68000 machines (`Cpu68k`), the Mac II /
+IIx / IIcx / SE-30 (`Cpu020`) and the IIfx (`IIfxCpu`) have none. The
+**x86-64 code generator** is narrower still: 68040 guests only, by declared
+capability (§ 7).
 
 ---
 
@@ -240,7 +241,7 @@ instead.
 
 ## 5. The working loop
 
-Do not iterate against a bare `ctest` — 129 gates, ~2h30, and `-j` is unsafe
+Do not iterate against a bare `ctest` — 136 gates, ~2h30, and `-j` is unsafe
 because the boot etalons are contention-sensitive. Do not iterate against a
 bare `make` either: tree-wide LTO relinks ~90 binaries after any core change.
 

@@ -13,9 +13,9 @@ pattern (Moira wrapper) comes from [NeoST](../neost/).
 
 The profile list lives in **one** place: the `kProfiles` table in
 `src/main.cpp` (the GUI **Machine** menu), grouped by platform board.
-36 profiles → 20 `MachineKind` values → **11 platform implementations**
-(the machine table below). `SnapMachine` in `src/SaveStateMachines.h` carries
-the matching 36 tags.
+36 profiles → 20 `MachineKind` values → **12 platform implementations**
+(the machine table below; the 12th, MSC, has no GUI profile yet).
+`SnapMachine` in `src/SaveStateMachines.h` carries the matching 36 tags.
 
 ## Where to look
 
@@ -41,6 +41,7 @@ the matching 36 tags.
 | `HLE_OVERLAY.md` | Design study: opt-in HLE accelerator over the LLE core (non-conformant mode) |
 | `APPLETALK.md` | AppleTalk / LocalTalk / LLAP reference + netatalk/CUPS bridge — read before touching `Scc8530`/`LtoUdp` |
 | `IOP_BRINGUP.md` | Mac IIfx / Quadra 900-950 blueprint — the Apple PIC IOP (R65C02) + OSS brick, milestone plan |
+| `DUO_BRINGUP.md` | PowerBook Duo 230 blueprint — the MSC + PG&E (68HC05 Power Manager) brick, milestone plan |
 
 ## Status (2026-08-03)
 
@@ -65,10 +66,14 @@ the matching 36 tags.
   entry that claimed to be one — the "Quadra Cmd-N modifier symptom" — was
   retracted by experiment. Everything remaining in § 1 is a *simplification*,
   each with its reason and its reopening condition.
-- **Save states**: all 10 machine families, GUI-wired; the Eclipse tail
+- **Save states**: all 11 machine families, GUI-wired; the Eclipse tail
   (two `ApplePic` + `AdbLine` + `Egret` + 2nd 53C96) is gated in
   `savestate_040_test`.
 - **JIT**: second engine, off by default (see the table below).
+- The **PowerBook Duo 230** (MSC + PG&E) boots the Finder under
+  `duo230_boot_etalon` but is **not** a `kProfiles` row yet — house rule: a
+  GUI profile is earned by a Finder cell *plus* the GUI/save-state wiring
+  (`docs/DUO_BRINGUP.md`, `TODO.md` § 7).
 - Next, in order: the peripheral **deadline** refactor (`TODO.md` § 4 — the
   per-device bounds are derived, exactness costs ~12 % instead of ~72 %),
   **040 copyback/snooping**, then `TODO.md` § *Test & validation depth*.
@@ -95,8 +100,8 @@ the matching 36 tags.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 131 gates, ~2h30 (asset-dependent ones soft-skip)
-ctest -L unit                # 59 gates — no ROM or disk image needed
+ctest                        # 143 gates, ~3h (asset-dependent ones soft-skip)
+ctest -L unit                # 61 gates — no ROM or disk image needed
 ctest -L smoke               # 8 gates — one machine, both CPU engines
 ctest -L jit                 # 16 gates;  -L m040 = 30, the 68040 family
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
@@ -119,10 +124,11 @@ Mac Plus 24-bit address map, boot overlay, framebuffer/sound-buffer offsets
 and the contention model: `DEV.md` § *Mac Plus platform*. Every other map is
 in its `*Memory.h`.
 
-## Machines — 11 platform implementations
+## Machines — 12 platform implementations
 
 Each row is one memory-map + I/O implementation; the profiles differ only by
-clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
+clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`. The last row
+carries no `kProfiles` entry yet — it is gated, not GUI-wired.
 
 | Platform | Profiles (36) | Files | Gates | Source |
 |---|---|---|---|---|
@@ -137,6 +143,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **djMEMC + IOSB** | Centris 610/650, Quadra 610/650/800 | `CentrisMemory.*`, `CentrisCpu.*` (reuse `Dafb`/`Ncr53c96`/`Swim2`/`AscIosb`/`PseudoVia` + `Rtc` + `AdbVia`) | `centris610/650_`, `quadra610/650/800_boot_etalon` | MAME `macquadra800.cpp`/`djmemc.cpp`/`iosb.cpp` |
 | **Discrete 040** (Mac II front end + Quadra back end) | Quadra 700; **Quadra 900 / 950** = the same board with the IIfx's front end (two `ApplePic` IOPs, `Egret` instead of the discrete RTC, a 2nd 53C96) | `Q700Memory.*` (`Model {Spike,Q900,Q950}`), `Q700Cpu.*`; SCSI through DAFB's own TurboSCSI cell | `q700_/q900_/q950_boot_etalon` | `DEV.md` § *Discrete-040 platform*; `docs/IOP_BRINGUP.md` § M7 |
 | **F108 + PrimeTime II + Valkyrie** | Quadra 630, LC 580 | `Q630Memory.*`, `Q630Cpu.*`, `Valkyrie.*` (fixed-mode framebuffer) | `q630_/lc580_boot_etalon` | MAME `valkyrie.cpp` |
+| **MSC + PG&E** (PowerBook Duo — **no `kProfiles` row yet**) | Duo 230 (68030 @ 33 MHz, LCD via `MscMemory::decodeScreen`) | `MscMemory.*`, `MscCpu.*`, `PgePmu.*`, `M68hc05Pge.*` (the PMU's own 68HC05, BORG v2 uploaded mid-boot) | `duo230_boot_etalon` | MAME `macpwrbkmsc.cpp`/`msc.cpp`/`m68hc05pge.cpp`; `docs/DUO_BRINGUP.md` |
 
 ## Subsystems
 
@@ -144,7 +151,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 |---|---|---|---|
 | **68000 CPU** (Moira wrapper + contention) | `Cpu68k.h/.cpp` | M1/M4 ✓ | NeoST pattern; GttMFH timing |
 | **VIA 6522** (ports, timers, IFR/IER) | `Via6522.h/.cpp` | M4 ✓ (±1-cycle latency deferred) | MAME `via6522.cpp` |
-| **RTC 343-0042** (clock + PRAM serial) | `Rtc.h/.cpp` | M4 ✓; PRAM file persistence belongs to the owning machine (`loadPram`/`savePram` on `*Memory`) — **absent on `MacMemory` and `MacIIMemory`**, i.e. the compacts and the Mac II family | Mini vMac RTC.c |
+| **RTC 343-0042** (clock + PRAM serial) | `Rtc.h/.cpp` | M4 ✓; PRAM file persistence belongs to the owning machine (`loadPram`/`savePram` on `*Memory`) — **absent on `MacMemory`, `MacIIMemory`, `IIfxMemory` and `MscMemory`**, i.e. the compacts, the Mac II family, the IIfx and the Duo | Mini vMac RTC.c |
 | Built-in demo ROM | `DemoRom.h` | ✓ (gate vehicle) | — |
 | UI (ImGui/GLFW, turbo, Machine/Disques/CPU/Réseau menus) | `main.cpp` | ✓ | POMIIGS main.cpp |
 | **SST 68000 harness** | `tests/sst68000.cpp` | M4.5 ✓; 1 000 058 vectors | SingleStepTests/680x0 |
@@ -155,6 +162,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **ADB** (bus + line + LLE transceivers) | `AdbBus.*`, `AdbLine.*`, `AdbVia.*`, `Pic1654s.*` | ✓ `adbline_test`, `pic1654s_test` | MAME |
 | **MCU firmware LLE** (Egret / Cuda on a real 6805) | `M68hc05.*`, `CudaLle.*`, `Egret.*` | ✓ default where `roms/` has the dump; HLE fallback (`POM68K_EGRET_LLE=0`) — `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `q605_cudalle_*` | MAME + factory firmware |
 | **Apple PIC IOP** (IIfx + the Eclipse towers) | `R65c02.*` (core), `ApplePic.*` (device), `IIfxMemory.*`/`IIfxCpu.*` (the platform) | M1-M3, M5-M6 ✓ — **the IIfx is the 34th profile**: `iifx_boot_etalon` (Finder on 7.6), `iifx_input_etalon` (mouse + KeyMap through the IOP firmware), `iifx_post_etalon`, `applepic_test`, `r65c02_test`, save states in `savestate_030_test`. **M7 closed 2026-08-02**: the Quadra 900/950 are the 35th/36th profiles — the same IOP brick on the Quadra 700 board (`q900_/q950_boot_etalon`, Eclipse save states in `savestate_040_test`) — `docs/IOP_BRINGUP.md` | POM2 `M6502` vendored; MAME `applepic.cpp`/`maciifx.cpp` |
+| **PG&E Power Manager + MSC** (PowerBook Duo) | `M68hc05Pge.*` (the PMU's own 68HC05 variant), `PgePmu.*` (SPI/REQ-ACK wire + /PMU_INT level), `MscMemory.*`/`MscCpu.*` (the platform) | M1-M3 ✓ — **the Duo 230 boots the Finder** (`duo230_boot_etalon`, System 7.5.5) but is **not** a GUI profile: no `kProfiles` row, no save states. Next: input through the PMU, then sleep/wake — `docs/DUO_BRINGUP.md` | MAME `macpwrbkmsc.cpp`/`msc.cpp`/`m68hc05pge.cpp` |
 | **SCSI NCR 5380 + disks** | `Ncr5380.h/.cpp`, `ScsiDisk.h/.cpp` | M7 ✓; + pseudo-DMA (`scsi_pdma_test`) | MAME `ncr5380.cpp`, pce |
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` |
 | **CD-ROM target** (`ScsiDisk::Kind::Cdrom`, `.cue`/`.bin`, 2048-B blocks) | `ScsiDisk.*` | ✓ `scsi_cdrom_test`, `q605_cdrom_etalon`, `q605_cdboot_etalon` | MAME cdrom |
@@ -169,8 +177,8 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **68030 core + PMMU** | `extern/moira` extension, `tests/sst68030.cpp` | O4 ✓; **3 082 pinned vectors**, rulings D1-D22 | MC68030UM + WinUAE oracle |
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ `fpu_sanity` | MC68881/882UM; WinUAE fpp.c |
 | **68040 core + MMU** | `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; **7 200/7 200 pinned vectors** | MC68040UM + WinUAE oracle |
-| **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (10 save/load pairs, 33 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 10 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
-| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** code generator, aarch64 slot `backends/JitBackendA64.md`). **Off by default everywhere** — the interpreter is what every accuracy claim rests on | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓. Engine wired in 8 machine loops: `Cpu030` (V8, incl. the 68020 LC), `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu` — **`Cpu020` (Mac II family) and `Cpu68k` have none**. x64 codegen is **68040-only by declared capability** (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`. `q605_boot_etalon` 61.3 s interp → 22.9 s (×2.68), 89.6 % native | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
+| **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (11 save/load pairs, 34 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 11 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
+| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** code generator, aarch64 slot `backends/JitBackendA64.md`). **Off by default everywhere** — the interpreter is what every accuracy claim rests on | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓. Engine wired in 9 machine loops: `Cpu030` (V8, incl. the 68020 LC), `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, `MscCpu` — **`Cpu020` (Mac II family), `Cpu68k` (compacts) and `IIfxCpu` have none**. x64 codegen is **68040-only by declared capability** (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`. `q605_boot_etalon` 61.3 s interp → 22.9 s (×2.68), 89.6 % native | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
 
 ## CPU core: Moira (vendored)
 

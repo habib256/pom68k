@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 171 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 175 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first. A `> **Superseded:**` blockquote under a heading points at the entry
@@ -256,6 +256,7 @@ All 171 entries, newest first.
 - **2026-07-31** — [The SE/30 lands as the 33rd profile: wiring only, Finder on the first run](#2026-07-31-se30)
 - **2026-07-31** — [The Duo 230 boots the Finder: /PMU_INT is a LEVEL, and $E1 re-uploads the PMU firmware](#2026-07-31-duo-finder)
 - **2026-07-31** — [The ten-month red gate was Slow Keys: the GUEST was rejecting the keys](#2026-07-31-slow-keys)
+- **2026-07-31** — [Two negative results, recorded on purpose](#2026-07-31-two-negative-results)
 - **2026-07-31** — [The window-churn investigation ends on one deleted line: −23 to −33 %](#2026-07-31-window-churn-dtlb-flush)
 - **2026-07-30** — [The five opcodes, same day: MOVEM + DBcc + JMP compiled](#2026-07-30--the-five-opcodes-same-day-movem--dbcc--jmp-compiled)
 - **2026-07-30** — [JIT measured honestly: x64 wins both regimes; the next lever is 5 opcodes](#2026-07-30--jit-measured-honestly-x64-wins-both-regimes-the-next-lever-is-5-opcodes)
@@ -1152,6 +1153,10 @@ GUI loop (the `MacIiMachine` contract — queued input, decoded framebuffer,
 relaxed-atomic status), and ROM dispatch on the 512 KB `$4147DD77` — the
 only 512 KB ROM in the tree that is neither RBV nor V8. **34 profiles, 20
 `MachineKind` values, 11 platform implementations, 136 gates.**
+*(Correction, 2026-08-01 doc pass: **12** platform implementations. The count
+above forgot the MSC + PG&E board the Duo 230 booted on the day before — it
+has no `kProfiles` row, which is exactly why it was easy to miss. The 34 / 20
+/ 136 figures are right.)*
 
 Two things specific to this machine were worth the extra wiring:
 
@@ -1496,7 +1501,7 @@ observable earns trust only after demonstrating BOTH sensitivity (it moves
 with the stimulus) and silence (it does not move without it). KeyTime passed
 the first test and was never given the second.
 
-<a id="2026-07-31-window-churn-dtlb-flush"></a>
+<a id="2026-07-31-two-negative-results"></a>
 ## 2026-07-31 — Two negative results, recorded on purpose
 
 Neither shipped anything; both are here because the next person will
@@ -1551,6 +1556,7 @@ on a cell where KeyMap proves they arrive, because letters select nothing
 on a bare desktop. Only the control cell caught both — believe an
 observable after it has demonstrated sensitivity, not before.
 
+<a id="2026-07-31-window-churn-dtlb-flush"></a>
 ## 2026-07-31 — The window-churn investigation ends on one deleted line: −23 to −33 %
 
 The idle-Finder ceiling item ("one window death per ~15 instructions")

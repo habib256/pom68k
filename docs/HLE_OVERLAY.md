@@ -34,7 +34,7 @@ design below survives; its motivating arithmetic does not. What changed:
 Two secondary premises also moved, in the overlay's favour:
 
 - **Save states shipped** 2026-07-30 (`src/SaveState.h/.cpp`,
-  `SaveStateMachines.h/.cpp`, 10 machine families / 36 profiles). § 3's
+  `SaveStateMachines.h/.cpp`, 11 machine families / 36 profiles). § 3's
   "stamp the active module set" guardrail is no longer hypothetical: the
   container already carries a format version and a `SnapMachine` profile tag
   to hang a module-set stamp beside.
@@ -226,11 +226,11 @@ never a hardcoded address** (the Basilisk lesson that survives ROM revisions,
 
 ### 5.4 Per-machine applicability
 
-The 32 shipping profiles span 10 machine families with different ROMs and
+The 34 shipping profiles span 11 machine families with different ROMs and
 different drivers (IWM vs SWIM1 vs SWIM2, NCR 5380 vs 53C96, M0110 vs PIC1654S
 vs Egret vs Cuda — inventory in `docs/68K_FAMILY_SCOPE.md`). `machines` gates a
 module to the families it understands; `RomMatch` further gates it to the
-specific ROM the scan recognises. `SnapMachine` (`src/SaveStateMachines.h:47`)
+specific ROM the scan recognises. `SnapMachine` (`src/SaveStateMachines.h:49`)
 already enumerates the 36 profiles and is the natural basis for `MachineMask`.
 A module with no signature hit on the loaded ROM is inert and greyed, not a
 hazard.
