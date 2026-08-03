@@ -22,14 +22,36 @@ struct MacFrameClock {
         frameBase = cpu.getClock() - (cpu.getClock() % kCyclesPerFrame);
     }
 
-    void runFrame(Cpu68k& cpu, MacMemory& mem) {
-        cpu.runUntil(frameBase + kVblankStart);
+    // `onSlice` runs at each subdivision of the DISPLAY portion, so a
+    // raster decoder can catch the beam up mid-frame (VideoBeam.h).
+    //
+    // Subdividing is safe by construction: `runUntil(t)` is "execute while
+    // clock < t", so a chain of increasing targets ending at the same value
+    // executes exactly the instructions one call would, and the last target
+    // IS `frameBase + kVblankStart` — the vblank edge cannot move. The
+    // cycle-exact contention model reads the ABSOLUTE clock
+    // (Cpu68k::contentionDelay), not a slice-relative one, so it is
+    // unaffected too. This machine's timing is the reference every accuracy
+    // claim rests on; nothing here is allowed to perturb it.
+    template <class F>
+    void runFrame(Cpu68k& cpu, MacMemory& mem, F&& onSlice) {
+        constexpr int kSlices = 16;
+        for (int i = 1; i <= kSlices; i++) {
+            cpu.runUntil(frameBase + kVblankStart * i / kSlices);
+            onSlice();
+        }
         mem.via().raiseCa1();                        // vblank
         mem.updateIrq();
         cpu.runUntil(frameBase + kCyclesPerFrame);
+        onSlice();                                   // the blanking tail
         frameBase += kCyclesPerFrame;
         // The one-second RTC tick lives in MacMemory::tick() on a CPU-cycle
         // accumulator; frameNo stays for VBL phase only.
         ++frameNo;
+    }
+
+    // Headless tools and gates that have no decoder to feed.
+    void runFrame(Cpu68k& cpu, MacMemory& mem) {
+        runFrame(cpu, mem, [] {});
     }
 };

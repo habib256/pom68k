@@ -663,6 +663,7 @@ void MacIIMemory::tick(int cpuCycles) {
     tickAcc_ += cpuCycles;
     if (tickAcc_ >= kCpuHz / 60) {
         tickAcc_ -= kCpuHz / 60;
+        frameCount_++;               // raster beam sequence (VideoBeam)
         // SE/30 internal-video VBL → slot $E (MAME vblank_irq): the phase
         // toggle asserts every other frame; the driver acknowledges by
         // flipping VIA1 PB6. MAME parity — do not "fix" to 60 Hz here.

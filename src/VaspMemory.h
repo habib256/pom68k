@@ -164,6 +164,17 @@ public:
     const uint8_t* vram() const { return vram_.data(); }
     uint8_t videoConfig() const { return videoConfig_; }
     uint8_t videoDepth() const { return uint8_t(videoConfig_ & 7); }
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // The SAME accumulator that generates the VBL below — the beam is a
+    // pure function of it, never a second clock. The VASP screen is a
+    // fixed 800×525 @ 25.175 MHz with 480 active lines (vasp.cpp), which
+    // reduces to a flat 60 Hz here.
+    int64_t framePos() const { return framePos_; }
+    int64_t frameCycles() const { return cpuHz_ / 60; }
+    int64_t frameActiveCycles() const { return cpuHz_ / 60 * 480 / 525; }
+    int     frameTotalLines() const { return 525; }
+    uint64_t frameCount() const { return frameCount_; }
+
     uint8_t monitorSense() const { return montype_; }
     // Plug a different monitor (1 = 640×870 portrait, 2 = 512×384 12",
     // 6 = 640×480 13"); read back through the pseudo-VIA video-config
@@ -187,7 +198,7 @@ public:
            swim_, drive_, scc_);
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_, videoConfig_, montype_);
-        ar(viaAcc_, tickAcc_, c15Acc_, framePos_, vblState_);
+        ar(viaAcc_, tickAcc_, c15Acc_, framePos_, vblState_, frameCount_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -238,5 +249,6 @@ private:
     int64_t tickAcc_ = 0;
     int64_t c15Acc_ = 0;
     int64_t framePos_ = 0;
+    uint64_t frameCount_ = 0;        // completed frames (raster beam seq)
     bool vblState_ = false;
 };

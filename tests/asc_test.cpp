@@ -104,6 +104,47 @@ int main() {
     check((st & 0x03) == 0x03, "empty-cycle status has A half+empty");
     check(!cIrq, "status read clears the empty-cycle IRQ");
 
+    // ── $807 CLOCK RATE drives the drain cadence (LLE_VS_HLE §1.7) ──
+    // The rate was pinned at 22 257 Hz whatever the guest programmed.
+    // Measured through the OBSERVABLE the register changes: how many CPU
+    // cycles it takes to drain a fixed number of FIFO bytes. Asserting on
+    // `drainHz()` directly would only prove the switch statement compiles.
+    {
+        auto cyclesToDrain = [](uint8_t clockReg, int samples) {
+            AscV8 a(0x00);                   // classic: $807 is writable here
+            a.reset();
+            a.write(0x807, clockReg);
+            a.write(0x801, 1);               // FIFO mode
+            for (int i = 0; i < 0x400; i++) a.write(0, 0x80);
+            int cyc = 0;
+            while (a.available() < samples && cyc < 40'000'000) {
+                a.tick(64);
+                cyc += 64;
+            }
+            return cyc;
+        };
+        const int base = cyclesToDrain(0, 400);      // 22 257 Hz
+        const int r22050 = cyclesToDrain(2, 400);
+        const int r44100 = cyclesToDrain(3, 400);
+        // 22 050 is 0.93 % slower than 22 257 → very slightly more cycles.
+        check(r22050 > base, "$807 = 2 (22 050 Hz) drains slower than the Mac rate");
+        // 44 100 is very nearly double → about half the cycles.
+        const double ratio = double(base) / double(r44100);
+        check(ratio > 1.9 && ratio < 2.1,
+              "$807 = 3 (44 100 Hz) drains at ~2x the Mac rate");
+        // Code 1 is undefined; MAME leaves it so and we keep the Mac rate
+        // rather than inventing one.
+        check(cyclesToDrain(1, 400) == base, "$807 = 1 (undefined) keeps the Mac rate");
+
+        // On the integrated flavours the register is not writable — reads
+        // back 0 and the cadence must not move. That is what makes this
+        // change free on every machine that boots today.
+        AscV8 v8(0xE8);
+        v8.reset();
+        v8.write(0x807, 3);
+        check(v8.read(0x807) == 0x00, "V8 integration: $807 not writable, reads 0");
+    }
+
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");
     return gFails ? 1 : 0;
 }

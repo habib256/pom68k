@@ -81,6 +81,18 @@ public:
     // not modeled and returns all-ones.
     void setI2cDfac(bool on) { i2cDfac_ = on; }
 
+    // The bus is a BUS: MAME merges the Cuda, the Valkyrie and the DFAC2
+    // onto one wired-AND SDA on the Quadra 630 / LC 580
+    // (`macquadra630.cpp:187-199`). Installing this callback adds the
+    // **Valkyrie clock generator at address $28** as a second slave, and
+    // unlike the DFAC2 its payload is load-bearing: the i2c_hle framing is
+    // address → sub-address (a register pointer) → data bytes at an
+    // auto-incrementing offset (`i2chle.cpp:176-196`), and registers 1/2/3
+    // are the M/N/P divisors of the pixel clock. Left unset, address $28
+    // is simply absent from the bus and NACKs, which is what every other
+    // Cuda machine wants.
+    std::function<void(uint8_t /*reg*/, uint8_t /*val*/)> onI2cValkyrie;
+
     AdbLine& adbLine() { return adb_; }  // input events (key/mouse) land here
     M68hc05& mcu() { return mcu_; }      // gate/debug access
 
@@ -103,7 +115,7 @@ public:
         ar(mcuAcc_, mcuDebt_, adbAcc_,
            held_, treq_, byteack_, tip_, lastViaClock_, resetLine_,
            i2cScl_, i2cSda_, i2cActive_, i2cAddressed_, i2cBit_,
-           i2cShift_, i2cDriveLow_,
+           i2cShift_, i2cDriveLow_, i2cSlave_, i2cByteIdx_, i2cOffset_,
            stagedPram_, pramInstalled_, stagedSeconds_,
            traceSessionClocks_, traceByte_, traceBits_);
     }
@@ -136,14 +148,17 @@ private:
     int traceBits_ = 0;
     bool byteack_ = true, tip_ = true;   // host levels as the MCU reads them
     bool lastViaClock_ = true;
-    // ── DFAC2 I2C slave state (setI2cDfac) ──
+    // ── I2C bus state (setI2cDfac / onI2cValkyrie) ──
     bool i2cDfac_ = false;
     bool i2cScl_ = true, i2cSda_ = true; // last pin levels the MCU drove
     bool i2cActive_ = false;             // between START and STOP
-    bool i2cAddressed_ = false;          // transfer opened at address $6F
+    bool i2cAddressed_ = false;          // a slave on the bus answered
     int i2cBit_ = 0;                     // SCL rising edges in current byte
     uint8_t i2cShift_ = 0;
     bool i2cDriveLow_ = false;           // slave holds SDA low (ACK slot)
+    uint8_t i2cSlave_ = 0;               // 7-bit address the transfer opened at
+    uint8_t i2cByteIdx_ = 0;             // 0 = address, 1 = sub-address, 2+ = data
+    uint8_t i2cOffset_ = 0;              // auto-incrementing register pointer
     bool resetLine_ = false;             // PC3 latch (rising edge releases)
 
     uint8_t stagedPram_[256] = {};

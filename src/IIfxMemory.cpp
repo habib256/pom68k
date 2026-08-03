@@ -40,6 +40,10 @@ IIfxMemory::IIfxMemory(uint32_t ramSize)
     // SWIM behind the SWIM PIC (`maciifx.cpp:479-486`).
     swimPic_.readPeriph = [this](int r) -> uint8_t { return swim_.read(r); };
     swimPic_.writePeriph = [this](int r, uint8_t v) { swim_.write(r, v); };
+    // DAT1BYTE → the IOP's DMA channel A only (maciifx.cpp:486; the Quadra
+    // 900/950 append channel B, this board does not). The line is level:
+    // "the ISM FIFO can take/give a byte now".
+    swim_.onDat1Byte = [this](bool s) { swimPic_.reqaW(s); };
     // ADB on the SWIM PIC's GPIO (M5): the IOP firmware bit-bangs the
     // wire, `AdbLine` answers as keyboard+mouse — LLE on both ends.
     // gpout0 is inverted on the board (MAME `maciifx.cpp:483` .invert()):

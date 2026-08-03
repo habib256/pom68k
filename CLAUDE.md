@@ -5,17 +5,17 @@ is the documentation; this file is the table of contents. Keep it scannable in
 under a minute — anything that grows a paragraph belongs in `DEV.md` (how) or
 `CHANGELOG.md` (why, dated).
 
-POM68K is a **Macintosh 68k emulator**: **34 machine profiles**, from the Mac
-Plus (68000, cycle-exact) to the Quadra 630 (68040, functional), **every one
-booting the Finder**. 68k sibling of [POMIIGS](../POMIIGS/) — same
+POM68K is a **Macintosh 68k emulator**: **36 machine profiles**, from the Mac
+Plus (68000, cycle-exact) to the Quadra 950 tower (68040, functional), **every
+one booting the Finder**. 68k sibling of [POMIIGS](../POMIIGS/) — same
 architecture, conventions and milestone discipline; the CPU integration
 pattern (Moira wrapper) comes from [NeoST](../neost/).
 
 The profile list lives in **one** place: the `kProfiles` table in
 `src/main.cpp` (the GUI **Machine** menu), grouped by platform board.
-34 profiles → 20 `MachineKind` values → **11 platform implementations**
+36 profiles → 20 `MachineKind` values → **11 platform implementations**
 (the machine table below). `SnapMachine` in `src/SaveStateMachines.h` carries
-the matching 34 tags.
+the matching 36 tags.
 
 ## Where to look
 
@@ -42,21 +42,36 @@ the matching 34 tags.
 | `APPLETALK.md` | AppleTalk / LocalTalk / LLAP reference + netatalk/CUPS bridge — read before touching `Scc8530`/`LtoUdp` |
 | `IOP_BRINGUP.md` | Mac IIfx / Quadra 900-950 blueprint — the Apple PIC IOP (R65C02) + OSS brick, milestone plan |
 
-## Status (2026-07-31)
+## Status (2026-08-03)
 
-- All **34 profiles boot the Finder**, each covered by a boot-etalon gate
+- All **36 profiles boot the Finder**, each covered by a boot-etalon gate
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **136 CTest gates, all green.** The long-red `q605_cudalle_key_etalon`
-  resolved 2026-07-31: the 8.1 image has Easy Access **Slow Keys** enabled —
-  the guest was rejecting fast taps, the emulator was never at fault
-  (`CHANGELOG.md` § 2026-07-31; image cleanup follow-up in `TODO.md` § 1).
-- **Save states**: all 10 machine families, GUI-wired.
+- **143 CTest gates, 143/143 green** — full run 2026-08-03 on a **fully
+  rebuilt tree** (`make` first, 150 objects/binaries relinked), 3 h 03.
+  `ctest -N`: 66 `unit`, 8 `smoke`, 16 `jit`, 32 `m040`, 73 `etalon`.
+  **The `make` is part of the claim, not a detail.** An earlier run the
+  same day returned 143/143 over binaries linked at *different times* —
+  102 of ~110 were older than `libpom68k_core.a` — and proved nothing:
+  `ctest` does not build. A phantom failure gets investigated; a phantom
+  pass gets quoted. **A green `ctest` is only worth the freshness of its
+  binaries.**
+- **The IOP brick is finished.** Platform #12 (OSS + dual Apple PIC IOPs)
+  carries the Mac IIfx, and the same IOP front end on the Quadra 700 board
+  carries the **Eclipse towers** — Quadra 900 and 950, the 35th and 36th
+  profiles (2026-08-02, `docs/IOP_BRINGUP.md` § M7).
+- **`docs/LLE_VS_HLE.md` lists no live BUG any more** (2026-08-02): the one
+  entry that claimed to be one — the "Quadra Cmd-N modifier symptom" — was
+  retracted by experiment. Everything remaining in § 1 is a *simplification*,
+  each with its reason and its reopening condition.
+- **Save states**: all 10 machine families, GUI-wired; the Eclipse tail
+  (two `ApplePic` + `AdbLine` + `Egret` + 2nd 53C96) is gated in
+  `savestate_040_test`.
 - **JIT**: second engine, off by default (see the table below).
-- Next: `TODO.md` § *Future machine profiles* (ROMs on hand: IIfx, Quadra
-  900/950; the SE/30 landed 2026-07-31 as the 33rd profile), § *LLE fidelity*,
-  § *Test & validation depth*.
+- Next, in order: the peripheral **deadline** refactor (`TODO.md` § 4 — the
+  per-device bounds are derived, exactness costs ~12 % instead of ~72 %),
+  **040 copyback/snooping**, then `TODO.md` § *Test & validation depth*.
 
 ## Conventions (inherited from POMIIGS/POM2)
 
@@ -109,7 +124,7 @@ in its `*Memory.h`.
 Each row is one memory-map + I/O implementation; the profiles differ only by
 clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 
-| Platform | Profiles (33) | Files | Gates | Source |
+| Platform | Profiles (36) | Files | Gates | Source |
 |---|---|---|---|---|
 | **68000 compacts** | Plus, SE, SE FDHD, Classic | `MacMemory.*` (`Model`), `Cpu68k.*`, `MacVideo.h`, `MacFrame.h`, `MacAudio.h`/`MacAudioHost.h`, `MacInput.*` (M0110; SE+ = ADB via `Pic1654s`) | `rom_/disk_/system_boot_etalon`, `se_/sefdhd_/classic_boot_etalon` | MAME `mac128.cpp` |
 | **GLUE + NuBus** | Mac II, IIx, IIcx, SE/30 (compact IIx, `Se30Video.h`) | `MacIIMemory.*` (`Model`), `Cpu020.*` (`is030`), `AdbVia.*`, `Pic1654s.*`, `AdbLine.*`, `NuBus.*`, `DeclRom.*`, `TobyVideo.*` | `macii_post/boot/sys7_boot/mouse_etalon`, `iix_/iicx_/se30_boot_etalon` | MAME `macii.cpp` |
@@ -120,7 +135,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **VASP** (V8 peripherals on Sonora addressing) | IIvx, IIvi | `VaspMemory.*`, `VaspCpu.*`, `VaspVideo.h` | `iivx_/iivi_boot_etalon`, `iivx_input_etalon` | MAME `vasp.cpp`/`maciivx.cpp` |
 | **MEMCjr + PrimeTime** | LC 475, LC 575, Quadra 605 | `Q605Memory.*`, `Cpu040.*` | `q605_boot/floppy_boot/nofpu_boot/barefpu_boot/ot_bind_etalon`, `lc475_/lc575_boot_etalon` | MAME `macquadra605.cpp` |
 | **djMEMC + IOSB** | Centris 610/650, Quadra 610/650/800 | `CentrisMemory.*`, `CentrisCpu.*` (reuse `Dafb`/`Ncr53c96`/`Swim2`/`AscIosb`/`PseudoVia` + `Rtc` + `AdbVia`) | `centris610/650_`, `quadra610/650/800_boot_etalon` | MAME `macquadra800.cpp`/`djmemc.cpp`/`iosb.cpp` |
-| **Discrete 040** (Mac II front end + Quadra back end) | Quadra 700 | `Q700Memory.*`, `Q700Cpu.*`; SCSI through DAFB's own TurboSCSI cell | `q700_boot_etalon` | `DEV.md` § *Discrete-040 platform* |
+| **Discrete 040** (Mac II front end + Quadra back end) | Quadra 700; **Quadra 900 / 950** = the same board with the IIfx's front end (two `ApplePic` IOPs, `Egret` instead of the discrete RTC, a 2nd 53C96) | `Q700Memory.*` (`Model {Spike,Q900,Q950}`), `Q700Cpu.*`; SCSI through DAFB's own TurboSCSI cell | `q700_/q900_/q950_boot_etalon` | `DEV.md` § *Discrete-040 platform*; `docs/IOP_BRINGUP.md` § M7 |
 | **F108 + PrimeTime II + Valkyrie** | Quadra 630, LC 580 | `Q630Memory.*`, `Q630Cpu.*`, `Valkyrie.*` (fixed-mode framebuffer) | `q630_/lc580_boot_etalon` | MAME `valkyrie.cpp` |
 
 ## Subsystems
@@ -139,13 +154,13 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **Keyboard (M0110) + mouse** | `MacInput.h/.cpp`, `Scc8530.h/.cpp` | M5.5 ✓ | MAME/Mini vMac/Snow |
 | **ADB** (bus + line + LLE transceivers) | `AdbBus.*`, `AdbLine.*`, `AdbVia.*`, `Pic1654s.*` | ✓ `adbline_test`, `pic1654s_test` | MAME |
 | **MCU firmware LLE** (Egret / Cuda on a real 6805) | `M68hc05.*`, `CudaLle.*`, `Egret.*` | ✓ default where `roms/` has the dump; HLE fallback (`POM68K_EGRET_LLE=0`) — `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `q605_cudalle_*` | MAME + factory firmware |
-| **Apple PIC IOP + IIfx** (→ Quadra 900/950 next) | `R65c02.*` (core), `ApplePic.*` (device), `IIfxMemory.*`/`IIfxCpu.*` (the platform) | M1-M3, M5-M6 ✓ — **the IIfx is the 34th profile**: `iifx_boot_etalon` (Finder on 7.6), `iifx_input_etalon` (mouse + KeyMap through the IOP firmware), `iifx_post_etalon`, `applepic_test`, `r65c02_test`, save states in `savestate_030_test`; next: Q900/950 — `docs/IOP_BRINGUP.md` | POM2 `M6502` vendored; MAME `applepic.cpp`/`maciifx.cpp` |
+| **Apple PIC IOP** (IIfx + the Eclipse towers) | `R65c02.*` (core), `ApplePic.*` (device), `IIfxMemory.*`/`IIfxCpu.*` (the platform) | M1-M3, M5-M6 ✓ — **the IIfx is the 34th profile**: `iifx_boot_etalon` (Finder on 7.6), `iifx_input_etalon` (mouse + KeyMap through the IOP firmware), `iifx_post_etalon`, `applepic_test`, `r65c02_test`, save states in `savestate_030_test`. **M7 closed 2026-08-02**: the Quadra 900/950 are the 35th/36th profiles — the same IOP brick on the Quadra 700 board (`q900_/q950_boot_etalon`, Eclipse save states in `savestate_040_test`) — `docs/IOP_BRINGUP.md` | POM2 `M6502` vendored; MAME `applepic.cpp`/`maciifx.cpp` |
 | **SCSI NCR 5380 + disks** | `Ncr5380.h/.cpp`, `ScsiDisk.h/.cpp` | M7 ✓; + pseudo-DMA (`scsi_pdma_test`) | MAME `ncr5380.cpp`, pce |
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` |
 | **CD-ROM target** (`ScsiDisk::Kind::Cdrom`, `.cue`/`.bin`, 2048-B blocks) | `ScsiDisk.*` | ✓ `scsi_cdrom_test`, `q605_cdrom_etalon`, `q605_cdboot_etalon` | MAME cdrom |
 | **Sound** — Plus PWM + chime; ASC flavours `AscV8` / `AscSonora` ($BC) / `AscIosb` ($BB) | `MacAudio.h`, `MacAudioHost.h`, `Asc.*` | ✓ `sound_test`, `asc_test`, `q605_asc_test` | GttMFH; MAME ASC/IOSB |
 | **Drive sounds** (floppy + HDD FX) | `FloppySound.*`, `FloppySoundSink.h` | ✓ `floppy_sound_test` | MAME floppy_sound_device via POM2 |
-| **Video decoders** | `MacVideo.h`, `TobyVideo.*`, `V8Video.h`, `RbvVideo.h`, `SonoraVideo.h`, `VaspVideo.h`, `Dafb.*`, `Valkyrie.*`, `Ariel.h` | ✓ per platform | per-platform MAME |
+| **Video decoders** + **raster beam** | `VideoBeam.h` (scan position + row schedule; owns no clock — it adopts each platform's own `framePos_`), `MacVideo.h`, `TobyVideo.*`, `V8Video.h`, `RbvVideo.h`, `SonoraVideo.h`, `VaspVideo.h`, `Se30Video.h`, `Dafb.*`, `Valkyrie.*`, `Ariel.h` | ✓ per platform; **row-granular decode on all 9** since 2026-08-02 — the beam owns no clock, it adopts each platform's own `framePos_`. `video_beam_test`, `v8_raster_test`, `raster_equiv_test` | per-platform MAME; `docs/LLE_VS_HLE.md` § 1.1 |
 | **DAFB/Antelope** (Swatch CRTC, three clock generators, CLUT, sense) | `Dafb.*` | Q8.1 ✓ + MAME-parity pass | MAME `dafb.cpp` |
 | **Pseudo-VIA2** | `PseudoVia.*` | ✓ `pseudovia_test` | MAME IOSB VIA2 layout |
 | **SCC 8530 serial** (mouse DCD, LAP ext ints, SDLC LLAP wire, derived baud, paced Tx/FCS) + LToUDP cable (`POM68K_LTOUDP=1`) | `Scc8530.*`, `LtoUdp.*` | M7.1 / O6.10 / LLAP-1 ✓ | Zilog UM + MAME z80scc; Mini vMac LToUDP |

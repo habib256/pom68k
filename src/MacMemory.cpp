@@ -174,6 +174,15 @@ void MacMemory::refreshPortBInputs() {
     via_.setInB(in);
 }
 
+// Raster beam position — the SAME clock-derived position PB6 reports above,
+// exposed for the video decoder (VideoBeam.h). No second accumulator.
+int64_t MacMemory::framePos() const {
+    return cpu_ ? int64_t(cpu_->getClock() % 130240) : 0;
+}
+uint64_t MacMemory::frameCount() const {
+    return cpu_ ? uint64_t(cpu_->getClock() / 130240) : 0;
+}
+
 // VIA registers are selected by address bits 12..9 ($EFE1FE + reg*$200).
 // Any access may change IFR/IER (reads clear flags), so the level-sensitive
 // IPL line is recomputed after every one.

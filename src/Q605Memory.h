@@ -35,6 +35,7 @@
 #pragma once
 #include "jit/JitGuard.h"
 #include "Via6522.h"
+#include "ViaEClock.h"
 #include "Egret.h"
 #include "CudaLle.h"
 #include "AdbBus.h"
@@ -184,6 +185,16 @@ public:
     const uint32_t* dafbRegs() const { return dafbCell_.regs(); }
     const uint8_t (*clut() const)[3] { return dafbCell_.clut(); }
     uint32_t dafbStride() const { return dafbCell_.stride(); }
+
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // Forwarded from the DAFB cell's own frame accumulator — the one that
+    // drives its Swatch VBL. One clock, never two.
+    int64_t framePos() const { return dafbCell_.framePos(); }
+    int64_t frameCycles() const { return dafbCell_.frameCycles(); }
+    int64_t frameActiveCycles() const { return dafbCell_.frameActiveCycles(); }
+    int     frameTotalLines() const { return dafbCell_.frameTotalLines(); }
+    uint64_t frameCount() const { return dafbCell_.frameCount(); }
+
     uint32_t dafbBase() const { return dafbCell_.base(); }
     uint8_t dafbMode() const { return dafbCell_.mode(); }
     uint8_t dafbDepth() const { return dafbCell_.depth(); }
@@ -237,7 +248,7 @@ public:
            memcjr_, dafbHolding_, iosbRegs_,
            scsiReadCycles_, scsiWriteCycles_,
            scsiDmaReadCycles_, scsiDmaWriteCycles_,
-           ascCycAcc_, swimLastCpu_, swimCycAcc_, viaPhase_, tickAcc_);
+           ascCycAcc_, swimLastCpu_, swimCycAcc_, viaEClock_, tickAcc_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -323,6 +334,6 @@ private:
     void     dafbRegWrite(uint32_t off, uint32_t v);   // holding merge (write)
 
     // 60.15 Hz CA1 tick, derived from CPU cycles
-    int viaPhase_ = 0;
+    via_eclock::Ticker viaEClock_;   // exact 783.36 kHz (ViaEClock.h)
     int64_t tickAcc_ = 0;
 };

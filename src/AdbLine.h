@@ -26,7 +26,11 @@ public:
     // Host input events (UI thread → machine, MacInput conventions).
     void keyEvent(uint8_t adbCode, bool down);
     void mouseMove(int dx, int dy);
-    void mouseButton(bool down);
+    // button 0 = primary, 1 = secondary. The secondary is only ever visible
+    // to a guest that switched the mouse to the Extended Mouse Protocol
+    // (Listen R3 handler 4); under handler 1/2 bit 7 of the second report
+    // byte is a constant 1, as on a one-button Apple mouse.
+    void mouseButton(bool down, int button = 0);
 
     // Wired-AND line interface with the transceiver (PIC RA2 out / RA3 in).
     void setHostDrive(bool high);                 // PIC's contribution to the line
@@ -43,6 +47,12 @@ public:
     // Debug accessors.
     uint8_t mouseAddr() const { return mouseAddr_; }
     uint8_t keyboardAddr() const { return kbdAddr_; }
+    uint8_t mouseHandlerId() const { return mouseHandlerId_; }
+    uint8_t keyboardHandlerId() const { return kbdHandlerId_; }
+    // Keyboard LEDs as the guest set them (Listen R2 byte 1, bits 2-0,
+    // ACTIVE LOW: 0 = lit). Num Lock = bit 0, Caps Lock = bit 1,
+    // Scroll Lock = bit 2. A host front end can light real indicators.
+    uint8_t keyboardLeds() const { return kbdLeds_; }
     uint8_t dbgCommand() const { return command_; }
     int     dbgDatasize() const { return datasize_; }
     int     dbgLinestate() const { return linestate_; }
@@ -60,7 +70,8 @@ public:
            command_, waitingCmd_, direction_, buffer_, datasize_, streamPtr_,
            srqFlag_, srqSwitch_, listenAddr_, listenReg_,
            kbdAddr_, kbdHandler_, mouseAddr_, mouseHandler_,
-           keyBuf_, mdx_, mdy_, mbtn_, mbtnSent_, modifiers_);
+           keyBuf_, mdx_, mdy_, mbtn_, mbtnSent_, modifiers_,
+           kbdHandlerId_, mouseHandlerId_, kbdLeds_, mbtn2_, mbtn2Sent_);
     }
 
 private:
@@ -82,6 +93,7 @@ private:
     void adbTalk();                               // decode m_command, fill buffer
     void writeData(bool level);                   // device drives the line
     void armTimer(int64_t cyc) { sendTimer_ = cyc; }
+    void resetDevices();                          // SendReset / line reset pulse
 
     bool  mousePending() const;
     bool  keyPending() const { return !keyBuf_.empty(); }
@@ -106,6 +118,11 @@ private:
     uint8_t  listenAddr_ = 0, listenReg_ = 0;      // pending Listen target
 
     // Devices.
+    // `*Handler_` is the register-3 FLAGS byte (address + SRQ-enable bit 5 +
+    // exceptional-event bit 6), `*HandlerId_` the DEVICE HANDLER ID that R3
+    // returns as its second byte. MAME conflates neither but hardcodes the
+    // ID to 1 (`macadb.cpp:628,705`); the two are genuinely separate
+    // registers and the ID is what a Listen R3 selects a protocol with.
     uint8_t  kbdAddr_ = 2, kbdHandler_ = 0x22;
     // Keyboard register 2: the modifier bitmap, ACTIVE LOW (a 0 bit means
     // held). MAME keeps the same byte (macadb.cpp:694-700) and resets it to
@@ -113,8 +130,28 @@ private:
     // Command/Shift/Option/Control (found 2026-07-31 — Cmd-N repainted on
     // the LC II but not on the Quadra).
     uint8_t  modifiers_ = 0xFF;
+    // Keyboard handler ID. 1 = Apple Standard Keyboard (the reset value, and
+    // what POM68K reported unconditionally before), 2 = Apple Extended
+    // Keyboard II, 3 = the extended protocol in which the right-hand
+    // modifiers report their own key codes ($7B/$7C/$7D) instead of
+    // collapsing onto the left ones. The guest selects one with Listen R3;
+    // `POM68K_ADB_KBD_ID` overrides the reset value for a host that wants an
+    // extended keyboard from cold (the GUI key map currently emits neither
+    // the function keys nor distinct right modifiers, so 1 stays the
+    // default — nothing observable rides on 2 yet).
+    uint8_t  kbdHandlerId_ = 1;
+    // Register 2 low byte, LED bits 2-0, ACTIVE LOW (1 = dark). The upper
+    // bits are the Num/Scroll-Lock keys and reserved ones, all released, so
+    // an untouched R2 second byte still reads $FF exactly as before.
+    uint8_t  kbdLeds_ = 0x07;
     uint8_t  mouseAddr_ = 3, mouseHandler_ = 0x23;
+    // Mouse handler ID. 1 = 100 cpi Apple mouse (reset), 2 = 200 cpi, and 4 =
+    // the Extended Mouse Protocol, which adds register 1 (the device
+    // identifier block) and puts the SECOND button in bit 7 of the second
+    // report byte. A guest only ever sees button 2 after switching to 4.
+    uint8_t  mouseHandlerId_ = 1;
     std::deque<uint8_t> keyBuf_;                   // ADB key transition bytes
     int      mdx_ = 0, mdy_ = 0;
     bool     mbtn_ = false, mbtnSent_ = false;
+    bool     mbtn2_ = false, mbtn2Sent_ = false;
 };

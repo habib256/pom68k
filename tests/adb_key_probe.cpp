@@ -115,6 +115,22 @@ int probe(Mem& mem, Cpu& cpu, const char* what, int64_t frameCycles,
     std::printf("%s: booted, Ticks=%u KbdType=%02X\n",
                 what, peek32(0x016A), mem.peek8(0x021E));
 
+    // Easy Access / Slow Keys, read NON-DESTRUCTIVELY (2026-08-02). The
+    // only way to check this before was the hold-Return gesture, which is a
+    // TOGGLE — it answers the question by changing the answer. Mac OS 8.1's
+    // acceptance-delay engine keeps its globals at $00484184; $484185 is
+    // the enable flag, $FF = Slow Keys ON. On an image or System that has
+    // no Easy Access loaded the address is ordinary RAM and reads as
+    // whatever lives there, so treat anything but $FF/$00 as "not this
+    // engine" rather than as a verdict.
+    {
+        const uint8_t f = mem.peek8(0x484185);
+        std::printf("%s: EasyAccess flag($484185)=$%02X — %s\n", what, f,
+                    f == 0xFF ? "SLOW KEYS ON (short taps will be rejected)"
+                  : f == 0x00 ? "Slow Keys off"
+                              : "not the 8.1 Easy Access engine (plain RAM here)");
+    }
+
     // POM68K_PROBE_DUMPADB=1: hexdump the ADB Manager's device table
     // (ADBBase $0CF8) right after boot, so the addr→(service, data) map the
     // dispatcher actually uses can be read — the question the 8.1 cell poses
@@ -202,16 +218,43 @@ int probe(Mem& mem, Cpu& cpu, const char* what, int64_t frameCycles,
     // the Finder opens a new folder, which repaints a large region. Typing
     // letters is not: with no matching icon on the desktop, a working
     // keyboard changes nothing at all.
+    // The hold length is POM68K_PROBE_HOLD here TOO (corrected 2026-08-02).
+    // It used to be hardcoded at 3/6 frames — i.e. the exact tap length the
+    // 2026-07-31 Slow Keys diagnosis proved the guest REJECTS on this image.
+    // Every "Cmd-N does not repaint on the Quadra" measurement was therefore
+    // taken with a gesture the guest was entitled to throw away, and the
+    // conclusion drawn from it ("the modifier path has a second, unidentified
+    // cause") rested on it. Same lesson as KeyTime: an observable is worth
+    // nothing until it has demonstrated sensitivity.
+    // Sample the KeyMap DURING the gesture, per key, so a failure says
+    // WHICH half was lost. The Mac KeyMap bit for virtual code k is
+    // bit (k & 7) of the byte at $0174 + (k >> 3) — Command is $37
+    // (byte 6, bit 7), N is $2D (byte 5, bit 5).
+    auto keyDown = [&](uint8_t k) {
+        return (mem.peek8(0x0174 + uint32_t(k >> 3)) >> (k & 7)) & 1;
+    };
     const uint8_t kCmd = 0x37, kN = 0x2D;
+    bool sawCmd = false, sawN = false, sawBoth = false;
     for (int rep = 0; rep < 2; rep++) {
         mem.keyEvent(kCmd, true);
-        for (int f = 0; f < 3 && !cpu.isHalted(); f++) cpu.runCycles(frameCycles);
+        for (int f = 0; f < holdFrames / 2 + 1 && !cpu.isHalted(); f++) {
+            cpu.runCycles(frameCycles);
+            if (keyDown(kCmd)) sawCmd = true;
+        }
         mem.keyEvent(kN, true);
-        for (int f = 0; f < 6 && !cpu.isHalted(); f++) cpu.runCycles(frameCycles);
+        for (int f = 0; f < holdFrames && !cpu.isHalted(); f++) {
+            cpu.runCycles(frameCycles);
+            if (keyDown(kCmd)) sawCmd = true;
+            if (keyDown(kN)) sawN = true;
+            if (keyDown(kCmd) && keyDown(kN)) sawBoth = true;
+        }
         mem.keyEvent(kN, false);
         mem.keyEvent(kCmd, false);
         for (int f = 0; f < 45 && !cpu.isHalted(); f++) cpu.runCycles(frameCycles);
     }
+    std::printf("%s: Cmd-N in KeyMap — Command %s, N %s, BOTH AT ONCE %s\n",
+                what, sawCmd ? "seen" : "NEVER", sawN ? "seen" : "NEVER",
+                sawBoth ? "seen" : "NEVER");
     const uint64_t hTyped = screenHash(mem, kVramProbe);
     std::printf("%s: screen idle-span %s, typing-span %s\n", what,
                 hIdle == h0 ? "UNCHANGED" : "changed",

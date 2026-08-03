@@ -40,6 +40,7 @@
 #pragma once
 #include "jit/JitGuard.h"
 #include "Via6522.h"
+#include "ViaEClock.h"
 #include "Egret.h"
 #include "CudaLle.h"
 #include "AdbBus.h"
@@ -67,7 +68,6 @@ public:
     // VIA1 φ2 is a fixed 783.36 kHz (iosb.cpp:74, R65NC22 at C7M/10), so the
     // CPU:VIA divider is a property of the machine clock — 42 here, 32 on the
     // 25 MHz Q605 this file was derived from. Rounded, not truncated.
-    static constexpr int       kViaDiv = int((kCpuHz + 391680) / 783360);
 
     explicit Q630Memory(uint32_t totalRam = 36u << 20);
 
@@ -201,6 +201,17 @@ public:
     // frame buffer through these names on every Quadra-class machine.
     uint8_t dafbDepth() const { return video_.depth(); }
     uint32_t dafbStride() const { return video_.stride(); }
+
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // Forwarded from Valkyrie's own frame accumulator (the one that fires
+    // its VBL). Its unit is pixel-clock × CPU cycles, which is fine: the
+    // beam only needs position and frame length to agree with each other.
+    int64_t framePos() const { return video_.framePos(); }
+    int64_t frameCycles() const { return video_.frameCycles(); }
+    int64_t frameActiveCycles() const { return video_.frameActiveCycles(); }
+    int     frameTotalLines() const { return video_.frameTotalLines(); }
+    uint64_t frameCount() const { return video_.frameCount(); }
+
     uint32_t dafbBase() const { return video_.base(); }
     void setVideoMonitor(uint8_t code) { video_.setMonitor(code); }
 
@@ -248,7 +259,7 @@ public:
            iosbRegs_, ataIrq_,
            scsiReadCycles_, scsiWriteCycles_,
            scsiDmaReadCycles_, scsiDmaWriteCycles_,
-           ascCycAcc_, swimLastCpu_, swimCycAcc_, viaPhase_, tickAcc_);
+           ascCycAcc_, swimLastCpu_, swimCycAcc_, viaEClock_, tickAcc_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -326,6 +337,6 @@ private:
     Valkyrie video_{kCpuHz};
 
     // 60.15 Hz CA1 tick, derived from CPU cycles
-    int viaPhase_ = 0;
+    via_eclock::Ticker viaEClock_;   // exact 783.36 kHz (ViaEClock.h)
     int64_t tickAcc_ = 0;
 };

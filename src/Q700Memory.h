@@ -53,6 +53,7 @@
 #pragma once
 #include "jit/JitGuard.h"
 #include "Via6522.h"
+#include "ViaEClock.h"
 #include "Rtc.h"
 #include "AdbVia.h"
 #include "AdbBus.h"
@@ -195,6 +196,16 @@ public:
     Dafb& dafb() { return dafbCell_; }
     const uint8_t (*clut() const)[3] { return dafbCell_.clut(); }
     uint32_t dafbStride() const { return dafbCell_.stride(); }
+
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // Forwarded from the DAFB cell's own frame accumulator — the one that
+    // drives its Swatch VBL. One clock, never two.
+    int64_t framePos() const { return dafbCell_.framePos(); }
+    int64_t frameCycles() const { return dafbCell_.frameCycles(); }
+    int64_t frameActiveCycles() const { return dafbCell_.frameActiveCycles(); }
+    int     frameTotalLines() const { return dafbCell_.frameTotalLines(); }
+    uint64_t frameCount() const { return dafbCell_.frameCount(); }
+
     uint32_t dafbBase() const { return dafbCell_.base(); }
     uint8_t dafbMode() const { return dafbCell_.mode(); }
     uint8_t dafbDepth() const { return dafbCell_.depth(); }
@@ -232,7 +243,7 @@ public:
            scsiReadCycles_, scsiWriteCycles_,
            scsiDmaReadCycles_, scsiDmaWriteCycles_,
            ascCycAcc_, swimLastCpu_, swimCycAcc_,
-           viaPhase_, tickAcc_, secAcc_);
+           viaEClock_, tickAcc_, secAcc_);
         // Eclipse-only tail: the header pins the profile, so the Quadra
         // 700's chunk layout (and its existing snapshots) is untouched.
         // Each ApplePic carries its 32 KB of host-uploaded firmware — a
@@ -247,6 +258,14 @@ public:
 
 private:
     void iopTrace(bool write, char which, uint32_t base, uint8_t v);
+    // Bring-up: the last host-window touches, dumped when an IOP panics.
+    // A 65C02 that returned through a smashed stack frame was smashed by
+    // SOMEONE, and the host writes the same RAM the IOP runs from.
+    struct IopEvent { uint32_t pc; uint16_t base, ramAddr; uint8_t off, v; char which, rw; };
+    static constexpr int kIopRing = 64;
+    IopEvent iopRing_[kIopRing] = {};
+    int iopRingIdx_ = 0;
+    void dumpIopRing();
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
     uint8_t via2Access8(uint32_t addr, bool write, uint8_t v);
     void viaSync();
@@ -303,7 +322,7 @@ private:
 
     Dafb dafbCell_;
 
-    int viaPhase_ = 0;
+    via_eclock::Ticker viaEClock_;   // exact 783.36 kHz (ViaEClock.h)
     int64_t tickAcc_ = 0;
     int64_t secAcc_ = 0;
 };

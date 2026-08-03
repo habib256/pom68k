@@ -334,7 +334,17 @@ void Dafb::tick(int cpuCycles) {
         frameLen = int64_t(htotal_) * vtotal_ * cpuHz_ / pixelClock_;
         totalLines = int(vtotal_);
     }
-    if (framePos_ >= frameLen) framePos_ -= frameLen;
+    // Published for the raster beam (VideoBeam.h) — one geometry, derived
+    // here, rather than a second copy of the same arithmetic elsewhere.
+    frameLen_ = frameLen;
+    totalLines_ = totalLines;
+    if (framePos_ >= frameLen) {
+        framePos_ -= frameLen;
+        // Completed frames: the position alone is modulo, so a decoder
+        // sampling once per frame at a fixed phase could not tell a whole
+        // frame from no time at all (VideoBeam::setPos).
+        frameCount_++;
+    }
     int line = int(framePos_ * totalLines / frameLen);
     if (line != prevLine_) {
         bool wrap = line < prevLine_;

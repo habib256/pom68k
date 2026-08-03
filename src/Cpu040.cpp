@@ -3,12 +3,24 @@
 
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include <cstdio>
 #include <cstdlib>
 
 // Peripheral catch-up batching (the Cpu030 pattern): run the machine's
 // tick() at most once per this many CPU cycles from sync(), so hot code
-// isn't dominated by per-cycle peripheral bookkeeping.
-static constexpr moira::i64 kPeriphBatch = 256;
+// isn't dominated by per-cycle peripheral bookkeeping. The cost is IRQ
+// latency jitter of up to one batch (~10 µs at 25 MHz) — `LLE_VS_HLE.md`
+// § 1.2, whose closing note is "drop it toward 1 and re-measure the cost".
+// `POM68K_PERIPH_BATCH` is that measurement knob, and it is a fidelity
+// knob in the honest direction: SMALLER is more accurate, never less.
+static moira::i64 periphBatch() {
+    static const moira::i64 n = [] {
+        const char* e = std::getenv("POM68K_PERIPH_BATCH");
+        const long v = e ? std::atol(e) : 256;
+        return moira::i64(v >= 1 && v <= 4096 ? v : 256);
+    }();
+    return n;
+}
 
 namespace {
 // Bound once, with captureless lambdas: they convert to plain function
@@ -35,7 +47,7 @@ Cpu040::Cpu040(Q605Memory& mem)
     : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
-    jit_.setPeriphPacing(&lastPeriphClock_, int(kPeriphBatch));
+    jit_.setPeriphPacing(&lastPeriphClock_, int(periphBatch()));
 
     // Q6.6: model the full 68040 with an FPU, matching the MAME golden
     // oracle `macqd605` (macquadra605.cpp:158 `M68040(...)`; only its
@@ -128,8 +140,45 @@ moira::u16 Cpu040::read16(moira::u32 addr) const { return mem_.read16(addr); }
 void Cpu040::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v); }
 void Cpu040::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
+// POM68K_PERIPH_STATS=1: how many times does the peripheral path actually
+// run? The batching cost is either CALL COUNT or per-device WORK, and only
+// counting separates them. Printed once at exit.
+namespace {
+struct PeriphStats {
+    long long catchUps = 0, flushes = 0, ticks = 0, cycles = 0;
+    bool on = std::getenv("POM68K_PERIPH_STATS") != nullptr;
+    ~PeriphStats() {
+        if (!on) return;
+        std::fprintf(stderr,
+            "[periph] catchUp=%lld flushTicks=%lld mem.tick=%lld "
+            "machine-cycles=%lld (%.2f cycles per tick call)\n",
+            catchUps, flushes, ticks, cycles,
+            ticks ? double(cycles) / double(ticks) : 0.0);
+    }
+};
+PeriphStats gPeriphStats;
+}  // namespace
+
 void Cpu040::catchUp() {
-    if (clock - lastPeriphClock_ < kPeriphBatch) return;
+    if (gPeriphStats.on) gPeriphStats.catchUps++;
+    const moira::i64 d = clock - lastPeriphClock_;
+    // Two floors, and the second one is not a cost/accuracy trade at all.
+    //
+    // `periphBatch()` is the fidelity knob, counted in MOIRA cycles.
+    // `cacheBoost_` is the throughput overlay's scale factor: `flushTicks`
+    // converts Moira cycles to MACHINE cycles by dividing by it, so any
+    // catch-up that has accumulated fewer than `cacheBoost_` Moira cycles
+    // yields **m == 0** and ticks nothing — it is pure call overhead.
+    //
+    // Peripheral time is machine time (the 2026-07-25 pinned lesson: bus
+    // cycles are charged on `machineClock()`, never on the boosted clock),
+    // so one machine cycle IS the finest granularity anything can observe.
+    // Below it we were paying `cacheBoost_`× the bookkeeping to be more
+    // "exact" than the machine can represent. Added 2026-08-03: at the
+    // default batch (256 ≫ boost 4) this changes nothing; at
+    // POM68K_PERIPH_BATCH=1 it makes "exact" mean exact-in-machine-time and
+    // costs 4× less to say so.
+    if (d < periphBatch() || d < cacheBoost_) return;
     flushTicks();
 }
 
@@ -141,6 +190,10 @@ void Cpu040::flushTicks() {
         periphAccum_ += d;
         int m = int(periphAccum_ / cacheBoost_);
         periphAccum_ -= moira::i64(m) * cacheBoost_;
+        if (gPeriphStats.on) {
+            gPeriphStats.flushes++;
+            if (m) { gPeriphStats.ticks++; gPeriphStats.cycles += m; }
+        }
         if (m) mem_.tick(m);
     }
 }

@@ -221,6 +221,10 @@ void TobyVideo::tick(int cpuCycles) {
     framePos_ += cpuCycles;
     while (framePos_ >= frameCycles_) {
         framePos_ -= frameCycles_;
+        // Completed frames, for the raster beam (VideoBeam::setPos): the
+        // position alone is modulo, so a decoder sampling once per frame at
+        // a fixed phase could not tell a whole frame from no time at all.
+        frameCount_++;
         vblPulse();
     }
     // Active-display vs blanking for the $D0000 sense port: active for the
@@ -233,6 +237,33 @@ void TobyVideo::tick(int cpuCycles) {
 
 void TobyVideo::decode(std::vector<uint32_t>& out) const {
     out.assign(size_t(hres_) * size_t(vres_), 0xFFFFFFFFu);
+    decodeRows(out, 0, vres_);
+}
+
+// Advance the beam off the card's own CRTC frame clock and decode the rows
+// it has crossed. `active` is the visible fraction of the frame, the same
+// ratio tick() uses for the $D0000 blanking sense — one geometry, not two.
+void TobyVideo::raster(std::vector<uint32_t>& out) {
+    const size_t need = size_t(hres_) * size_t(vres_);
+    if (out.size() != need) {
+        out.assign(need, 0xFFFFFFFFu);
+        beam_.restartFrame();
+    }
+    const int64_t active = vtotal_
+        ? frameCycles_ * vres_ / int(vtotal_)
+        : frameCycles_ * 480 / 525;
+    beam_.setGeometry(frameCycles_, active,
+                      vtotal_ ? int(vtotal_) : 525, vres_);
+    if (!beam_.valid()) { decodeRows(out, 0, vres_); return; }
+    beam_.setPos(framePos_, frameCount_);
+    beam_.pumpRows([&](int a, int b) { decodeRows(out, a, b); });
+}
+
+void TobyVideo::decodeRows(std::vector<uint32_t>& out, int y0, int y1) const {
+    if (out.size() < size_t(hres_) * size_t(vres_)) return;
+    y0 = y0 < 0 ? 0 : y0;
+    y1 = y1 > vres_ ? vres_ : y1;
+    if (y0 >= y1) return;
     // VRAM is stored as big-endian lanes inside uint32_t words (write8 uses
     // shift 24-(off%4)*8). Reading via host uint8_t* on LE reverses each
     // longword and splits 1-bpp glyphs (Sad Mac halves). Match write8.
@@ -245,7 +276,7 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
 
     switch (mode_) {
     case 0:
-        for (int y = 0; y < vres_; y++)
+        for (int y = y0; y < y1; y++)
             for (int x = 0; x < hres_ / 8; x++) {
                 uint8_t px = be8(kBase + uint32_t(y * 128 + x));
                 for (int b = 0; b < 8; b++) {
@@ -256,7 +287,7 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
             }
         break;
     case 1:
-        for (int y = 0; y < vres_; y++)
+        for (int y = y0; y < y1; y++)
             for (int x = 0; x < hres_ / 4; x++) {
                 uint8_t px = be8(kBase + uint32_t(y * 256 + x));
                 for (int b = 0; b < 4; b++) {
@@ -267,7 +298,7 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
             }
         break;
     case 2:
-        for (int y = 0; y < vres_; y++)
+        for (int y = y0; y < y1; y++)
             for (int x = 0; x < hres_ / 2; x++) {
                 uint8_t px = be8(kBase + uint32_t(y * 512 + x));
                 if (x * 2 < hres_) out[y * hres_ + x * 2]     = pens_[px & 0xF0] | 0xFF000000u;
@@ -275,7 +306,7 @@ void TobyVideo::decode(std::vector<uint32_t>& out) const {
             }
         break;
     case 3:
-        for (int y = 0; y < vres_; y++)
+        for (int y = y0; y < y1; y++)
             for (int x = 0; x < hres_; x++)
                 out[y * hres_ + x] = pens_[be8(kBase + uint32_t(y * 1024 + x))] | 0xFF000000u;
         break;

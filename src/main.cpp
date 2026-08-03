@@ -199,10 +199,19 @@ template <class M> static void pollLocalTalk(M& mem) {
 // push every handshake past the retry limit; ~1 ms keeps it within a few
 // retries (Mini vMac's LToUDP takes the same approach). The internal
 // AppleTalk hub's timers are advanced on cumulative CPU cycles here too.
-template <class M, class C>
-static void runQuantumWithWire(M& mem, C& cpu, int64_t frameCycles) {
+// `onSlice` runs at every slice boundary — the raster decoders hook it to
+// catch the beam up mid-frame (VideoBeam.h). It is deliberately NOT allowed
+// to change the slicing: the no-wire fast path still runs the quantum in one
+// `runCycles`, so a machine with the network off keeps exactly the timing it
+// had, and gets one whole-frame repaint per frame as before.
+template <class M, class C, class F>
+static void runQuantumWithWire(M& mem, C& cpu, int64_t frameCycles, F&& onSlice) {
     bool hub = atalkEnabled();
-    if (!g_ltoudp.active() && !hub) { cpu.runCycles(frameCycles); return; }
+    if (!g_ltoudp.active() && !hub) {
+        cpu.runCycles(frameCycles);
+        onSlice();
+        return;
+    }
     // The hub flushes its queued replies from the tick() at each slice end,
     // so every AFP/ATP round-trip costs at least one slice of latency.
     // Finer slicing (64 vs 16) cuts that to ~260 µs — worth it for the
@@ -217,7 +226,13 @@ static void runQuantumWithWire(M& mem, C& cpu, int64_t frameCycles) {
         // every second-scale timer (ATP retry, RTMP, AFP tickle/session death)
         // expire 4x early. Same class as the viaSync/stall boost fix.
         if (hub) g_atalk.tick(cpu.machineClock());
+        onSlice();
     }
+}
+
+template <class M, class C>
+static void runQuantumWithWire(M& mem, C& cpu, int64_t frameCycles) {
+    runQuantumWithWire(mem, cpu, frameCycles, [] {});
 }
 
 // Host wall clock → Mac epoch (seconds since 1904-01-01, LOCAL time — the
@@ -772,7 +787,7 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         const char* kVasp = "VASP (Sonora + peripheriques V8)";
         const char* kMemc = "MEMCjr + PrimeTime";
         const char* kDjmemc = "djMEMC + IOSB";
-        const char* kSpike = "Discret 040 (Quadra 700)";
+        const char* kSpike = "Discret 040 (Quadra 700/900/950)";
         const char* kF108 = "F108 + PrimeTime II + Valkyrie";
         const Profile kProfiles[] = {
             { "68000", "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr, nullptr, nullptr, true },
@@ -810,7 +825,15 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
             { kDjmemc, "Macintosh Quadra 610", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q610", false },
             { kDjmemc, "Macintosh Quadra 650 (33 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q650", false },
             { kDjmemc, "Macintosh Quadra 800 (33 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q800", false },
-            { kSpike, "Macintosh Quadra 700", MachineKind::Q700, "roms/quadra700.rom", "420DBFF3", nullptr, nullptr, true },
+            { kSpike, "Macintosh Quadra 700", MachineKind::Q700, "roms/quadra700.rom", "420DBFF3", "POM68K_Q700_MODEL", "q700", true },
+            // The "Eclipse" towers: the same board plus the Mac IIfx's front
+            // end (two Apple PIC IOPs for SCC and SWIM/ADB, the Egret in
+            // place of the discrete RTC, a second 53C96 bus). The Q900
+            // shares the Quadra 700's ROM — only the env tells them apart —
+            // while the Q950 has its own $3DC27823 dump and is therefore
+            // also reachable by dropping that ROM in.
+            { kSpike, "Macintosh Quadra 900 (IOP)", MachineKind::Q700, "roms/quadra700.rom", "420DBFF3", "POM68K_Q700_MODEL", "q900", false },
+            { kSpike, "Macintosh Quadra 950 (33 MHz, IOP)", MachineKind::Q700, "roms/quadra950.rom", "3DC27823", "POM68K_Q700_MODEL", "q950", false },
             { kF108, "Macintosh Quadra 630 (33 MHz)", MachineKind::Q630, "roms/quadra630.rom", "06684214", "POM68K_Q630_ID", "A55A2252", true },
             { kF108, "Macintosh LC / Performa 580", MachineKind::Q630, "roms/quadra630.rom", "06684214", "POM68K_Q630_ID", "A55A225A", false },
         };
@@ -1067,8 +1090,10 @@ struct MacIiMachine {
         Se30Video* sv = mem.se30();
         int hres = tv ? tv->hres() : sv ? Se30Video::W : TobyVideo::W;
         int vres = tv ? tv->vres() : sv ? Se30Video::H : TobyVideo::H;
-        if (tv) tv->decode(fb_);
-        else if (sv) sv->decode(fb_);
+        // `fb_` is the RASTER SURFACE — runOne() decoded each row as the
+        // beam scanned it. Catch up once more so a paused machine still
+        // publishes a complete frame.
+        if (tv || sv) rasterBeam();
         else fb_.assign(size_t(hres) * size_t(vres), 0xFFFFFFFFu);
         for (uint32_t& px : fb_) px |= 0xFF000000u;
         {
@@ -1087,8 +1112,16 @@ private:
     static constexpr size_t kTarget = 2225;
 
     void runOne() {
-        runQuantumWithWire(mem, cpu, kFrame);
+        // Raster catch-up rides the wire slicing (LLE_VS_HLE §1.1): the
+        // Toby card runs its own CRTC frame clock, while the SE/30's
+        // pseudo-slot video has none and rides the machine's 60 Hz one.
+        runQuantumWithWire(mem, cpu, kFrame, [this] { rasterBeam(); });
         framesRun_++;
+    }
+    void rasterBeam() {
+        if (TobyVideo* tv = mem.toby()) tv->raster(fb_);
+        else if (Se30Video* sv = mem.se30())
+            sv->raster(fb_, mem.framePos(), mem.frameCycles(), mem.frameCount());
     }
     bool drain() {
         samp_.clear();
@@ -1482,7 +1515,7 @@ struct IIfxMachine {
         TobyVideo* tv = mem.toby();
         int hres = tv ? tv->hres() : TobyVideo::W;
         int vres = tv ? tv->vres() : TobyVideo::H;
-        if (tv) tv->decode(fb_);
+        if (tv) tv->raster(fb_);          // raster surface, see runOne()
         else fb_.assign(size_t(hres) * size_t(vres), 0xFFFFFFFFu);
         for (uint32_t& px : fb_) px |= 0xFF000000u;
         {
@@ -1502,7 +1535,11 @@ private:
     static constexpr size_t kTarget = 2225;
 
     void runOne() {
-        runQuantumWithWire(mem, cpu, kFrame);
+        // Raster catch-up on the Toby card's own CRTC frame clock
+        // (LLE_VS_HLE §1.1) — the IIfx has no built-in video.
+        runQuantumWithWire(mem, cpu, kFrame, [this] {
+            if (TobyVideo* tv = mem.toby()) tv->raster(fb_);
+        });
         framesRun_++;
     }
     bool drain() {
@@ -1929,16 +1966,21 @@ struct LcMachine {
             now - lastPub_ < std::chrono::milliseconds(16)) return;
         lastPub_ = now; framesRun_ = 0;
         int hres, vres;
-        if (mem.model() == V8Memory::Model::ClassicII) { hres = 512; vres = 342; }
-        else V8Video::resolution(mem.monitorSense(), hres, vres);
-        video.decode(fb_);
-        // decode() packs 00RRGGBB — alpha 0. ImGui renders textures with
+        video.size(hres, vres);
+        // `fb_` is the RASTER SURFACE: runOne() has already decoded each row
+        // at the moment the beam scanned it. Catch up once more here so a
+        // paused or held machine still publishes a complete frame, then copy
+        // out — the surface itself must stay alpha-free, since the next
+        // frame overwrites only the rows the beam repaints.
+        video.raster(fb_, /*full=*/true);
+        // The decoders pack 00RRGGBB — alpha 0. ImGui renders textures with
         // alpha blending on, so a 0 alpha draws fully transparent (black
         // window background); force A=$FF before the BGRA upload.
-        for (uint32_t& px : fb_) px |= 0xFF000000u;
+        fbPub_.assign(fb_.begin(), fb_.end());
+        for (uint32_t& px : fbPub_) px |= 0xFF000000u;
         {
             std::lock_guard<std::mutex> l(fbMu_);
-            fbShared_ = fb_; fbW_ = hres; fbH_ = vres;
+            fbShared_.swap(fbPub_); fbW_ = hres; fbH_ = vres;
         }
         stPc_.store(cpu.getPC(), std::memory_order_relaxed);
         stClock_.store(cpu.getClock(), std::memory_order_relaxed);
@@ -1966,8 +2008,13 @@ private:
     static constexpr size_t kTarget = 2225;    // ~100 ms of 22 257 Hz sound
 
     void runOne() {
-        if (mem.cpuHeld()) mem.tick(kFrame);   // Egret power-on hold
-        else runQuantumWithWire(mem, cpu, kFrame);
+        // The raster catch-up rides the wire slicing: each row is decoded
+        // once, when the beam scans it (LLE_VS_HLE §1.1, gate
+        // v8_raster_test). Total work per frame is unchanged — it is the
+        // same rows, placed correctly instead of all at publish time.
+        auto beam = [this] { video.raster(fb_); };
+        if (mem.cpuHeld()) { mem.tick(kFrame); beam(); }   // Egret power-on hold
+        else runQuantumWithWire(mem, cpu, kFrame, beam);
         framesRun_++;
     }
     // Drain the ASC samples produced by the last slice (22 257 Hz mono,
@@ -2022,7 +2069,8 @@ private:
     int starve_ = 0;               // safety against a dead DAC
     int framesRun_ = 0;            // frames emulated since the last publish
     std::chrono::steady_clock::time_point lastPub_{};
-    std::vector<uint32_t> fb_;
+    std::vector<uint32_t> fb_;     // raster surface (no alpha — see publish)
+    std::vector<uint32_t> fbPub_;  // alpha'd copy handed to the GUI
     std::vector<float> samp_;
 };
 
@@ -2533,11 +2581,17 @@ struct SonoraStyleMachine {
         lastPub_ = now; framesRun_ = 0;
         int hres, vres;
         video.size(hres, vres);
-        video.decode(fb_);
-        for (uint32_t& px : fb_) px |= 0xFF000000u;
+        // `fb_` is the RASTER SURFACE — runOne() already decoded each row as
+        // the beam scanned it. Catch up once more so a paused or held
+        // machine still publishes a complete frame, then copy out: the
+        // surface itself stays alpha-free, since the next frame overwrites
+        // only the rows the beam repaints.
+        video.raster(fb_, /*full=*/true);
+        fbPub_.assign(fb_.begin(), fb_.end());
+        for (uint32_t& px : fbPub_) px |= 0xFF000000u;
         {
             std::lock_guard<std::mutex> l(fbMu_);
-            fbShared_ = fb_; fbW_ = hres; fbH_ = vres;
+            fbShared_.swap(fbPub_); fbW_ = hres; fbH_ = vres;
         }
         stPc_.store(cpu.getPC(), std::memory_order_relaxed);
         stClock_.store(cpu.getClock(), std::memory_order_relaxed);
@@ -2559,8 +2613,12 @@ private:
     static constexpr size_t kTarget = 2225;
 
     void runOne() {
-        if (mem.cpuHeld()) mem.tick(int(kFrame));  // Egret power-on hold
-        else runQuantumWithWire(mem, cpu, kFrame);
+        // Raster catch-up rides the wire slicing: each row is decoded once,
+        // when the beam scans it (LLE_VS_HLE §1.1, VideoBeam.h). Same total
+        // work per frame as the old whole-frame decode, correctly placed.
+        auto beam = [this] { video.raster(fb_); };
+        if (mem.cpuHeld()) { mem.tick(int(kFrame)); beam(); }  // Egret hold
+        else runQuantumWithWire(mem, cpu, kFrame, beam);
         framesRun_++;
     }
     bool drain() {
@@ -2607,7 +2665,8 @@ private:
     int starve_ = 0;
     int framesRun_ = 0;
     std::chrono::steady_clock::time_point lastPub_{};
-    std::vector<uint32_t> fb_;
+    std::vector<uint32_t> fb_;     // raster surface (no alpha — see publish)
+    std::vector<uint32_t> fbPub_;  // alpha'd copy handed to the GUI
     std::vector<float> samp_;
 };
 
@@ -3652,8 +3711,12 @@ struct DafbMachine {
         if (!force && framesRun_ == 0 &&
             now - lastPub_ < std::chrono::milliseconds(16)) return;
         lastPub_ = now; framesRun_ = 0;
-        int w = 0, h = 0, depth = 0;
-        decode(fb_, w, h, depth);
+        // `fb_` is the RASTER SURFACE — runOne() decoded each row as the
+        // beam scanned it. Catch up once more so a paused or held machine
+        // still publishes a complete frame.
+        newFrameGeom();
+        rasterBeam(true);
+        const int w = geom_.w, h = geom_.h, depth = geom_.depth;
         {
             std::lock_guard<std::mutex> l(fbMu_);
             fbShared_ = fb_; fbW_ = w; fbH_ = h;
@@ -3678,7 +3741,28 @@ struct DafbMachine {
     // base and bounds are read live from the main GDevice → PixMap. Pixel
     // depth and stride come from the DAFB hardware registers; the PixMap is
     // only a fallback while the video driver is publishing a new mode.
-    void decode(std::vector<uint32_t>& out, int& w, int& h, int& depth) {
+    // The geometry a frame is scanned with. Resolved ONCE per frame (it
+    // costs a walk of the guest's GDevice → PixMap through peek8, far more
+    // than the pixels themselves) and then held for every row of that
+    // frame — which is also more correct than re-reading it per row: on
+    // real hardware the CRTC latches its parameters for the frame.
+    struct Geom {
+        int w = 0, h = 0, depth = 0;
+        uint32_t off = 0, stride = 0;
+        bool operator!=(const Geom& o) const {
+            return w != o.w || h != o.h || depth != o.depth ||
+                   off != o.off || stride != o.stride;
+        }
+    };
+
+    // (There is no whole-frame `decode()` here on purpose. The other eight
+    // decoders keep one because tests and screenshot paths call it; this
+    // one lived only inside publish(), which now goes through the raster
+    // surface, so a `decode()` would be dead code. A still is
+    // `newFrameGeom(); rasterBeam(true);`.)
+
+    Geom resolveGeom() {
+        int w = 0, h = 0, depth = 0;
         auto pk32 = [&](uint32_t a) {
             return uint32_t(mem.peek8(a)) << 24 | uint32_t(mem.peek8(a+1)) << 16 |
                    uint32_t(mem.peek8(a+2)) << 8 | mem.peek8(a+3);
@@ -3726,13 +3810,23 @@ struct DafbMachine {
         // screen must fit within VRAM, else fall back to offset 0.
         if (uint64_t(off) + uint64_t(h) * stride > Mem::kVramSize) off = 0;
 
+        return Geom{w, h, depth, off, stride};
+    }
+
+    // Render visible rows [y0, y1) of `g` into an existing g.w×g.h surface.
+    void decodeRows(std::vector<uint32_t>& out, const Geom& g, int y0, int y1) {
+        const int w = g.w, depth = g.depth;
+        const uint32_t off = g.off, stride = g.stride;
+        if (out.size() < size_t(g.w) * g.h) return;
+        y0 = y0 < 0 ? 0 : y0;
+        y1 = y1 > g.h ? g.h : y1;
+        if (y0 >= y1) return;
         const uint8_t* vr = mem.vram();
         const uint8_t (*cl)[3] = mem.clut();
         auto vb = [&](uint32_t o) -> uint8_t {
             return o < Mem::kVramSize ? vr[o] : 0;
         };
-        out.assign(size_t(w) * h, 0xFF000000u);
-        for (int y = 0; y < h; y++) {
+        for (int y = y0; y < y1; y++) {
             uint32_t rowOff = off + uint32_t(y) * stride;
             for (int x = 0; x < w; x++) {
                 uint32_t rgb;
@@ -3771,9 +3865,46 @@ private:
     // and fed the same wrong budget to the LLE MCU seconds counter.
     const int kFrame = int(mem.cpuHz() / 60);
     static constexpr size_t kTarget = 2225;    // ~100 ms of 22 257 Hz sound
+    // Advance the beam off the video cell's own frame accumulator (DAFB's
+    // Swatch clock, or Valkyrie's) and decode the rows it has crossed —
+    // each visible row rendered once, when it is scanned out (LLE_VS_HLE
+    // §1.1, VideoBeam.h). The geometry is resolved once per frame, at the
+    // wrap, because walking the guest's PixMap costs more than the pixels.
+    // `full` = this is the once-per-publish call, so a machine whose CRTC
+    // is not programmed yet (Valkyrie before the guest sets a mode, DAFB
+    // before its first tick) still gets a picture. Without that flag the
+    // fallback would run a whole-frame decode on EVERY slice — 64 of them
+    // per frame throughout the POST.
+    void rasterBeam(bool full = false) {
+        const size_t need = size_t(geom_.w) * geom_.h;
+        beam_.setGeometry(mem.frameCycles(), mem.frameActiveCycles(),
+                          mem.frameTotalLines(), geom_.h);
+        if (!beam_.valid() || need == 0) {
+            if (full && need) decodeRows(fb_, geom_, 0, geom_.h);
+            beam_.restartFrame();
+            return;
+        }
+        beam_.setPos(mem.framePos(), mem.frameCount());
+        beam_.pumpRows([&](int a, int b) { decodeRows(fb_, geom_, a, b); });
+    }
+
+    // Re-resolve the frame geometry and, if it moved, restart the frame so
+    // no surface is left half-rendered under two different modes.
+    void newFrameGeom() {
+        const Geom g = resolveGeom();
+        const size_t need = size_t(g.w) * g.h;
+        if (g != geom_ || fb_.size() != need) {
+            geom_ = g;
+            fb_.assign(need, 0xFF000000u);
+            beam_.restartFrame();
+        }
+    }
+
     void runOne() {
-        if (mem.cpuHeld()) mem.tick(kFrame);
-        else runQuantumWithWire(mem, cpu, kFrame);
+        newFrameGeom();
+        auto beam = [this] { rasterBeam(); };
+        if (mem.cpuHeld()) { mem.tick(kFrame); beam(); }
+        else runQuantumWithWire(mem, cpu, kFrame, beam);
         framesRun_++;
         // POM68K_KEY_TRACE heartbeat: proves the machine thread and the
         // guest are still advancing (~1 s of emulated time per line).
@@ -3871,7 +4002,9 @@ private:
     int activeHold_ = 0;           // machine frames of sound-recent state
     int starve_ = 0;               // safety against a dead DAC
     std::chrono::steady_clock::time_point lastPub_{};
-    std::vector<uint32_t> fb_;
+    std::vector<uint32_t> fb_;     // raster surface (alpha already forced)
+    Geom geom_;                    // geometry the current frame is scanned with
+    VideoBeam beam_;               // not serialized: pure cache
     std::vector<float> samp_;
 };
 
@@ -4542,10 +4675,33 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     // Quadra — a full 68040 @ 25 MHz on discrete chips. Mac II VIA1/VIA2 +
     // 343-0042 RTC + PIC1654S ADB in front, Quadra DAFB/53C96/SWIM1/EASC
     // behind, SCSI through DAFB's own TurboSCSI cell. $420DBFF3 ROM.
-    std::printf("Machine: Macintosh Quadra 700 (68040 @ 25 MHz, discrete)\n");
+    //
+    // The same board carries the "Eclipse"/"Zydeco" towers (Quadra 900/950,
+    // docs/IOP_BRINGUP.md § M7): the Mac IIfx front end grafted on — two
+    // Apple PIC IOPs, the Egret instead of the discrete RTC, a second 53C96
+    // bus. POM68K_Q700_MODEL picks the variant (the GUI menu sets it before
+    // relaunch); the Q950 ROM forces its own model, because a $3DC27823 dump
+    // IS a Quadra 950 whatever the environment inherited from the last run.
+    const uint32_t romCk = rom.size() >= 4
+        ? uint32_t(rom[0]) << 24 | uint32_t(rom[1]) << 16
+          | uint32_t(rom[2]) << 8 | rom[3]
+        : 0u;
+    std::string qmodel = getenv("POM68K_Q700_MODEL") ? getenv("POM68K_Q700_MODEL")
+                                                     : "q700";
+    if (romCk == 0x3DC27823) qmodel = "q950";
+    else if (qmodel == "q950") qmodel = "q700";   // Zydeco ROM absent
+    const bool q900 = qmodel == "q900", q950 = qmodel == "q950";
+    const auto qkind = q950 ? Q700Memory::Model::Q950
+                     : q900 ? Q700Memory::Model::Q900
+                            : Q700Memory::Model::Spike;
+    const int64_t qhz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
+    const char* qname = q950 ? "Quadra 950" : q900 ? "Quadra 900" : "Quadra 700";
+    std::printf("Machine: Macintosh %s (68040 @ %lld MHz, %s)\n", qname,
+                (long long)(qhz / 1000000),
+                q900 || q950 ? "discret + IOP Apple PIC" : "discret");
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
 
-    static Q700Memory mem(32u << 20, Q700Memory::kCpuHz);
+    static Q700Memory mem(32u << 20, qhz, qkind);
     static Q700Cpu cpu(mem);
     static MacAudioHost audioHost;
     mem.loadRom(rom);
@@ -4591,21 +4747,29 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
 
-    // Battery-backed PRAM+clock (discrete RTC XPRAM) — persist it so a cold
-    // PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
+    // Battery-backed PRAM+clock — persist it so a cold PRAM doesn't
+    // retrigger the ROM's full-RAM burn-in every boot. The suffix carries
+    // the PROFILE, not the family: on the Spike this store is the discrete
+    // RTC's XPRAM and on the towers it is the Egret's, so one file must
+    // never serve two of them (the save-state path is derived from it).
+    static std::string pramSuffix =
+        std::string(".") + (q950 ? "q950" : q900 ? "q900" : "q700") + ".pram";
     static std::string pramPath =
-        (hddPath.empty() ? std::string("quadra700") : hddPath) + ".q700.pram";
+        (hddPath.empty() ? std::string(qname) : hddPath) + pramSuffix;
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    // Discrete RTC: the file's clock froze while powered off — wall time
-    // comes from the host at every launch (GUI only).
-    mem.rtc().setSeconds(hostMacSeconds());
+    // The file's clock froze while powered off — wall time comes from the
+    // host at every launch (GUI only). On the Eclipse there is no discrete
+    // RTC in the loop: the Egret keeps time and runs its own second counter.
+    if (mem.eclipse()) mem.egret().setSeconds(hostMacSeconds());
+    else               mem.rtc().setSeconds(hostMacSeconds());
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     // 640×480 shown at 2× fits with the menu bar and the CPU window.
-    GLFWwindow* window = glfwCreateWindow(1320, 1080, "POM68K — Quadra 700", nullptr, nullptr);
+    static std::string winTitle = std::string("POM68K — ") + qname;
+    GLFWwindow* window = glfwCreateWindow(1320, 1080, winTitle.c_str(), nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
@@ -4630,7 +4794,9 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static Q700Machine machine{mem, cpu, audioHost};
-    machine.state.kind = pom68k::SnapMachine::Q700;
+    machine.state.kind = q950 ? pom68k::SnapMachine::Quadra950
+                       : q900 ? pom68k::SnapMachine::Quadra900
+                              : pom68k::SnapMachine::Q700;
     machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     // The "CPU" menu is global; only machines that HAVE a second engine
     // install its hooks. `machine` is static, so a captureless lambda can
@@ -5231,8 +5397,11 @@ int main(int argc, char** argv) {
         // — POM68K_CENTRIS610 picks the 610 (the GUI menu sets it).
         if (ck == 0xF1A6F343 || ck == 0xF1ACAD13)
             return runCentris(std::move(rom), matched, argc, argv);
-        // $420DBFF3 = Quadra 700 / 900 (+ PB140/170); POM68K supports the 700.
-        if (ck == 0x420DBFF3)
+        // $420DBFF3 = Quadra 700 / 900 (+ PB140/170) — the two share a dump,
+        // so POM68K_Q700_MODEL is the only thing that tells them apart;
+        // $3DC27823 = the Quadra 950's own ROM, which pins its model by
+        // itself. All three are the same board (docs/IOP_BRINGUP.md § M7).
+        if (ck == 0x420DBFF3 || ck == 0x3DC27823)
             return runQ700(std::move(rom), matched, argc, argv);
         // $06684214 = Quadra 630 / LC 630 / Performa 630, $064DC91D = the
         // later LC 580 ROM — both the F108 + Valkyrie board.
@@ -5396,7 +5565,9 @@ int main(int argc, char** argv) {
             int n = c.turbo ? 8 : 1;            // turbo: 8 machine frames per host frame
             std::vector<float> samp;
             for (int i = 0; i < n; i++) {
-                c.clock.runFrame(c.cpu, c.mem);
+                // Raster catch-up 16× per display period: each row is
+                // decoded once, when the beam scans it (LLE_VS_HLE §1.1).
+                c.clock.runFrame(c.cpu, c.mem, [&c] { c.video.raster(c.mem); });
                 pollLocalTalk(c.mem);
                 // machineClock(), not getClock(): identical on the 68000
                 // (no i-cache boost) but the boosted machines expire every
@@ -5410,7 +5581,10 @@ int main(int argc, char** argv) {
             }
         }
 
-        const uint32_t* fb = c.video.render(c.mem);
+        // `fb_` inside MacVideo is the raster surface — the frame loop
+        // already decoded each row as the beam scanned it. One more
+        // catch-up so a paused machine still shows a complete frame.
+        const uint32_t* fb = c.video.raster(c.mem);
         glBindTexture(GL_TEXTURE_2D, c.tex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, c.video.width(), c.video.height(),
                      0, GL_RGBA, GL_UNSIGNED_BYTE, fb);

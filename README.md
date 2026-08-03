@@ -1,7 +1,7 @@
 # POM68K — Macintosh 68k emulator
 
-**34 machine profiles, every one boots the Finder** — from the Macintosh
-Plus (68000, cycle-exact) to the Quadra 630 (68040). Sibling of
+**36 machine profiles, every one boots the Finder** — from the Macintosh
+Plus (68000, cycle-exact) to the Quadra 950 tower (68040). Sibling of
 [POMIIGS](../POMIIGS/) (Apple IIgs) and [POM2](../POM2/) (Apple II),
 sharing their architecture and conventions. CPU core:
 [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST —
@@ -85,7 +85,8 @@ code; the **Machine** menu sets the same variables and relaunches.
 | 1 MB | `4957EB49` | **IIvx** (default) / IIvi (16 MHz) | `POM68K_IIVI=1` |
 | 1 MB | `FF7439EE` *(and any other 1 MB dump)* | **LC 475** (default) / LC 575 / Quadra 605 | `POM68K_Q605_ID=A55A222E\|A55A2225` |
 | 1 MB | `F1A6F343` `F1ACAD13` | **Centris 650** (default) / Centris 610 / Quadra 610 / 650 / 800 | `POM68K_CENTRIS_MODEL=c610\|c650\|q610\|q650\|q800` |
-| 1 MB | `420DBFF3` | Quadra 700 | |
+| 1 MB | `420DBFF3` | **Quadra 700** (default) / Quadra 900 — the Eclipse tower: same board + the IIfx's two Apple PIC IOPs, Egret, 2nd 53C96 | `POM68K_Q700_MODEL=q900` |
+| 1 MB | `3DC27823` | Macintosh Quadra 950 (33.3 MHz, Eclipse) — pins its own model | |
 | 1 MB | `06684214` `064DC91D` | **Quadra 630** (default) / LC 580 | `POM68K_Q630_ID=A55A225A` |
 
 Several profiles run their MCU as **firmware LLE** off a user-provided dump

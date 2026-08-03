@@ -71,6 +71,12 @@ enum class SnapMachine : std::uint32_t {
     SE30 = 33,
     // Appended 2026-08-01: platform #12 (OSS + dual Apple PIC IOPs)
     IIfx = 34,
+    // Appended 2026-08-02: the Eclipse towers — the Quadra 700 board with
+    // the IIfx's IOP front end. Same `Q700Memory`/`Q700Cpu` save/load pair;
+    // the tag is what tells a Spike snapshot from a tower one, since all
+    // three share the $420DBFF3 ROM (the Q950 has its own, but the tag must
+    // discriminate the 900 from the 700 regardless).
+    Quadra900 = 35, Quadra950 = 36,
 };
 
 // One save/load pair per machine family; `kind` pins the profile inside

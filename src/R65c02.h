@@ -117,6 +117,19 @@ public:
         }
         return out;
     }
+    /// The stack pointer AT each of those PCs, same order/length. A
+    /// firmware that walked off its own return address did so because a
+    /// push went missing — the PC alone cannot show that, the SP can.
+    std::vector<uint8_t> spTrail() const {
+        std::vector<uint8_t> out;
+        if (!trace_) return out;
+        bool started = false;
+        for (int i = 0; i < kTrail; i++) {
+            int k = (pcRingIdx_ + i) % kTrail;
+            if (pcRing_[k] || started) { started = true; out.push_back(spRing_[k]); }
+        }
+        return out;
+    }
 
     /// Cycles consumed by the current/last instruction.
     int getCurrentInstructionCycles() const { return cycles; }
@@ -159,6 +172,7 @@ private:
     static constexpr int kTrail = 256;
     bool trace_ = false;
     uint16_t pcRing_[kTrail] = {};
+    uint8_t spRing_[kTrail] = {};
     int pcRingIdx_ = 0;
 
     uint16_t memReadAbsolute(uint16_t adr);

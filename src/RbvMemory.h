@@ -186,6 +186,15 @@ public:
     const uint8_t* framebuffer() const { return ram_.data(); }
     uint8_t videoConfig() const { return videoConfig_; }    // bit 6 = off
     uint8_t videoDepth() const { return uint8_t(videoConfig_ & 7); }
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // The SAME accumulator that generates the VBL — the beam is a pure
+    // function of it, never a second clock.
+    int64_t framePos() const { return framePos_; }
+    int64_t frameCycles() const { return frameCycles_; }
+    int64_t frameActiveCycles() const { return vblStart_; }
+    int     frameTotalLines() const { return frameTotalLines_; }
+    uint64_t frameCount() const { return frameCount_; }
+
     uint8_t monitorSense() const { return montype_; }
     // Plug a different monitor (1 = 640×870 portrait mono, 2 = 512×384
     // 12" RGB, 6 = 640×480 13" RGB — rbv.cpp MONTYPE); read back through
@@ -211,7 +220,7 @@ public:
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_, videoConfig_, montype_);
         ar(viaAcc_, tickAcc_, c15Acc_, secAcc_, framePos_, frameCycles_,
-           vblStart_, vblState_);
+           vblStart_, vblState_, frameTotalLines_, frameCount_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -266,5 +275,7 @@ private:
     int64_t secAcc_ = 0;             // IIci RTC 1 Hz accumulator
     int64_t framePos_ = 0;
     int64_t frameCycles_ = 0, vblStart_ = 0;
+    int     frameTotalLines_ = 0;    // vtot of the sensed monitor
+    uint64_t frameCount_ = 0;        // completed frames (raster beam seq)
     bool vblState_ = false;
 };

@@ -86,12 +86,18 @@ public:
     void tick(int clocks);
 
     // ── Gate / debug accessors ───────────────────────────────────────────
+    // Bring-up watchpoint: a firmware that returns to a bogus address had
+    // its stack frame overwritten by SOMEONE, and the IOP's RAM has three
+    // writers (the 65C02, the host window, the DMA engine). `watch` names
+    // which one touched a byte — set it to a negative value to disarm.
+    int watch = -1;
     R65c02& cpu() { return cpu_; }
     bool cpuHeld() const { return !(statusReg_ & 0x04); }
     uint8_t ramByte(uint16_t a) const { return ram_[a & 0x7FFF]; }
     uint8_t intFlags() const { return intReg_; }      // unmasked (the 6502
     uint8_t intMask() const { return intMask_; }      //  reads flags & mask)
     uint8_t statusReg() const { return statusReg_; }
+    uint16_t ramAddr() const { return ramAddr_; }
     int64_t clockNow() const { return clockNow_; }
 
     // ── Save states ──────────────────────────────────────────────────────
@@ -161,6 +167,7 @@ private:
 
     DmaChannel dma_[2];
 
+    const char* writer_ = "cpu";     // watchpoint tag, see `watch`
     int64_t clockNow_ = 0;           // input clocks elapsed
     int budget_ = 0;                 // tick() debt carry
     int dmaPhase_ = 0;               // clocks toward the next 8-clock DMA slot

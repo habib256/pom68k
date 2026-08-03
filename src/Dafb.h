@@ -77,6 +77,20 @@ public:
     const uint32_t* regs() const { return regs_; }
     const uint8_t (*clut() const)[3] { return clut_; }
 
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // The SAME frame accumulator that drives the Swatch VBL/cursor
+    // interrupts in tick() — the beam is a pure function of it, never a
+    // second clock. `frameLen_`/`totalLines_` are what tick() derived from
+    // the programmed CRTC totals and the clockgen pixel clock.
+    int64_t framePos() const { return framePos_; }
+    int64_t frameCycles() const { return frameLen_; }
+    int64_t frameActiveCycles() const {
+        return totalLines_ > 0 ? frameLen_ * vresOrDefault() / totalLines_
+                               : frameLen_;
+    }
+    int     frameTotalLines() const { return totalLines_; }
+    uint64_t frameCount() const { return frameCount_; }
+
     // ── Save states (SaveState.h contract) ──────────────────────────────
     // The whole cell travels: register echo file, Swatch CRTC + derived
     // geometry, RAMDAC/CLUT, the three clock generators' serial state and
@@ -89,10 +103,16 @@ public:
            hParams_, vParams_, swatchMode_, hres_, vres_, htotal_, vtotal_,
            monitorConfig_, monitorId_,
            pixelClock_, gazShift_, gazBits_, gazLastClock_, gazMclk_,
-           dp8534Shift_, dp8531Regs_, framePos_, prevLine_);
+           dp8534Shift_, dp8531Regs_, framePos_, prevLine_,
+           frameLen_, totalLines_, frameCount_);
     }
 
 private:
+    // Visible lines the beam spends on active display: the Swatch vres once
+    // the CRTC is programmed, else the 480 of the legacy 60 Hz / 525-line
+    // shape tick() falls back to.
+    int vresOrDefault() const { return vres_ ? int(vres_) : 480; }
+
     void recalcIrq();
     void recalcMode();
 
@@ -137,5 +157,8 @@ private:
 
     // Frame clock.
     int64_t framePos_ = 0;
+    int64_t frameLen_ = 0;           // frame length in CPU cycles (tick())
+    int     totalLines_ = 0;         // blanking included (tick())
+    uint64_t frameCount_ = 0;        // completed frames (raster beam seq)
     int     prevLine_ = 0;
 };

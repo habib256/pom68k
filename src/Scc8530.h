@@ -49,6 +49,19 @@ public:
     // Mouse quadrature inputs (X1 → channel A DCD, Y1 → channel B DCD)
     void setDcd(int channel, bool level);
 
+    // Modem-control OUTPUT pins, as levels a transport can read. /RTS and
+    // /DTR are active low on the package; these say ASSERTED, so the caller
+    // never has to remember which way the pin runs.
+    //
+    // /RTS is not simply WR5 bit 1: with Auto Enables (WR3 bit 5) the chip
+    // holds it asserted after the bit is cleared until the transmitter is
+    // completely empty, so the last character is not truncated by the line
+    // driver going away (Zilog SCC UM §4.2; MAME z80scc.cpp:1184-1199 and
+    // the deferred release in `tra_complete:1090`). /DTR follows WR5 bit 7
+    // unless WR14 bit 2 hands the pin to the DMA request function.
+    bool rtsAsserted(int channel) const { return !ch_[channel & 1].rtsPin; }
+    bool dtrAsserted(int channel) const { return !ch_[channel & 1].dtrPin; }
+
     // Machine marker: no hardwired LocalTalk peer. The SDLC hunt sees a
     // standing abort only under a genuine abort condition — once the line
     // has actually carried a frame and no live peer holds it (see
@@ -205,6 +218,12 @@ private:
         bool txUnderrun = true;      // RR0 bit 6 Tx Underrun/EOM latch —
                                      // SET while the transmitter idles;
                                      // WR0 $C0 clears it at frame start
+        // Modem-control output pins, stored at PIN level (true = high =
+        // deasserted, both being active low). rtsPin is a latch rather than
+        // a view of WR5 because Auto Enables defers its release to the end
+        // of the last character — see rtsAsserted() above.
+        bool rtsPin = true;
+        bool dtrPin = true;
         bool hunt = false;           // RR0 bit 4 Sync/Hunt — set by WR3
                                      // bit 4 (Enter Hunt); clears when a
                                      // frame arrives (opening flag), sets
@@ -261,7 +280,7 @@ private:
         template <class Ar> void visit(Ar& ar) {
             ar(wr, dcd, extPending, rr0Latch, latched, txIp, txEmptyEvent);
             ar(txBufFull, txGracing, txBufData, txShiftData, txShiftIn,
-               txFlushing, relatch, txUnderrun, hunt);
+               txFlushing, relatch, txUnderrun, hunt, rtsPin, dtrPin);
             ar(txBuf, rxQueue, rxCur, rxPace, rxPos, rxTimer);
             ar(wireClk, rxHoldMax, rxQueueMax, rxDropped, rxOverrunHold,
                rxIdle);
@@ -270,6 +289,8 @@ private:
     };
     uint8_t rr0(const Chan& c) const;
     bool sdlcMode(const Chan& c) const;  // WR4 bits 5-4 = 10
+    bool allSent(const Chan& c) const;   // RR1 bit 0: buffer AND shifter empty
+    void updateRts(Chan& c);             // WR3/WR5/WR14 → the /RTS, /DTR pins
     void updateSerial(Chan& c);          // derive Chan::pace from WR4/11/12-14
     // The guest-visible pace: derived (or legacy) — the REAL wire speed.
     int realPaceOf(const Chan& c) const { return c.pace > 0 ? c.pace : byteCycles_; }
@@ -320,6 +341,14 @@ private:
     int64_t cpuHz_ = 0;              // machine CPU clock (0 = legacy pacing)
     int64_t pclkHz_ = 0;             // SCC PCLK (BRG source, WR14 bit 1)
     static constexpr int64_t kRtxcHz = 3'686'400;   // Mac serial crystal
+    // RR1 bits 3-1 are the SDLC RESIDUE CODE: how much of the I-field's
+    // last character is valid when a frame does not end on a character
+    // boundary. With 8 bits/character the byte-aligned case — every frame
+    // this model can carry, since the wire is byte-granular (LLE_VS_HLE
+    // §1.4) — is code 011, which is also the chip's own reset value and
+    // why `rr1Rd` starts at $07. Frame bytes used to report 000, a code
+    // that means a partial character on real silicon.
+    static constexpr uint8_t kResidueAligned = 0x06;
     static constexpr int kAbortRelatch = 2000;   // ≈130 µs @ 15.67 MHz
     static constexpr int kPeerHold = 30000000;   // ≈2 s: a peer that has
                                                  // transmitted holds the line

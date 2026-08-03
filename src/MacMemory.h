@@ -85,6 +85,18 @@ public:
     // Wire-back to the CPU: the IPL line is level-sensitive, so it must be
     // recomputed whenever a VIA access changes IFR/IER (POMIIGS setCpu pattern).
     void setCpu(Cpu68k* cpu) { cpu_ = cpu; }
+
+    // ── Raster geometry (VideoBeam.h) ───────────────────────────────────
+    // The Plus's beam is NOT modelled a second time here: this is the same
+    // position the VIA PB6 "beam in display portion" bit already reads in
+    // readB(), derived from the CPU clock. 370 lines × 352 cycles = 130 240
+    // per frame; 342 lines are visible (MacFrame.h). Out of line because
+    // Cpu68k is only forward-declared in this header.
+    int64_t framePos() const;
+    uint64_t frameCount() const;
+    static constexpr int64_t frameCycles() { return 130240; }
+    static constexpr int64_t frameActiveCycles() { return 342 * 352; }
+    static constexpr int frameTotalLines() { return 370; }
     void updateIrq();          // raise/lower IPL from VIA state
 
     // Called from Cpu68k::sync with elapsed CPU cycles: advances the VIA

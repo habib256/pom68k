@@ -1333,6 +1333,7 @@ void R65c02::executeOpcode()
     cycles = 1;
     if (trace_) {
         pcRing_[pcRingIdx_] = programCounter;
+        spRing_[pcRingIdx_] = stackPointer;
         pcRingIdx_ = (pcRingIdx_ + 1) % kTrail;
     }
     const uint8_t opcode = read8(programCounter++);

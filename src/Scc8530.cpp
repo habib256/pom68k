@@ -107,6 +107,25 @@ bool Scc8530::sdlcMode(const Chan& c) const {
     return (c.wr[4] & 0x30) == 0x20;
 }
 
+// RR1 bit 0 All Sent: the buffer AND the shifter are empty. Always set in
+// the synchronous modes, where the transmitter idles on flags rather than
+// on marks and there is no "still shifting a character" to report.
+bool Scc8530::allSent(const Chan& c) const {
+    return (c.wr[4] & 0x0C) == 0 || (!c.txBufFull && c.txShiftIn <= 0);
+}
+
+// The /RTS and /DTR output pins (MAME z80scc.cpp `update_rts:1184-1206`).
+// Setting WR5 bit 1 asserts /RTS at once; CLEARING it releases the pin
+// immediately only without Auto Enables — with WR3 bit 5 set the chip holds
+// the line until the transmitter has completely emptied, so this is also
+// called from tick() as the shifter drains. /DTR follows WR5 bit 7 unless
+// WR14 bit 2 has repurposed the pin as the DMA request output.
+void Scc8530::updateRts(Chan& c) {
+    if (c.wr[5] & 0x02) c.rtsPin = false;                 // asserted (low)
+    else if (!(c.wr[3] & 0x20) || allSent(c)) c.rtsPin = true;
+    if (!(c.wr[14] & 0x04)) c.dtrPin = !(c.wr[5] & 0x80);
+}
+
 uint8_t Scc8530::rr0(const Chan& c) const {
     // bit 0 Rx Character Available: real (FIFO) or the legacy standing flag.
     // Break/Abort (bit 7): the LINE state — masked only while a frame is
@@ -211,7 +230,7 @@ void Scc8530::rxPushByte(Chan& c) {
     // does the CRC verdict: the receiver re-computes the FCS over the
     // frame body and compares it to the received tail — RR1 bit 6 set =
     // CRC error (a corrupted/truncated wire frame), clear = good frame.
-    uint8_t st = uint8_t(last ? 0x81 : 0x01);
+    uint8_t st = uint8_t((last ? 0x81 : 0x01) | kResidueAligned);
     if (last && c.rxCur.size() >= 2) {
         const size_t n = c.rxCur.size();
         const uint16_t want = crc16x25(c.rxCur.data(), n - 2);
@@ -250,7 +269,10 @@ void Scc8530::injectRxByte(int ch, uint8_t d, bool parityError, bool framingErro
         raiseRxInt(c, true);
         return;
     }
-    uint8_t st = 0x01;
+    // The residue field is only ever LOADED by the receiver in SDLC mode;
+    // in async it keeps its previous value, which for a channel that never
+    // ran SDLC is the reset code — the same one the aligned frames carry.
+    uint8_t st = uint8_t(0x01 | kResidueAligned);
     if (parityError && (c.wr[4] & 0x01)) st |= 0x10;
     if (framingError) st |= 0x40;
     c.fifo.push_back({d, st});
@@ -369,10 +391,8 @@ uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
             // Bit 0 All Sent is LIVE: set when both the buffer and the
             // shifter are empty (Zilog UM — and always set in sync modes,
             // where the transmitter idles on flags, not marks).
-            const bool allSent = (c.wr[4] & 0x0C) == 0
-                              || (!c.txBufFull && c.txShiftIn <= 0);
             const uint8_t base = c.fifo.empty() ? c.rr1Rd : c.fifo.front().rr1;
-            return uint8_t((base & ~0x01) | (allSent ? 0x01 : 0x00));
+            return uint8_t((base & ~0x01) | (allSent(c) ? 0x01 : 0x00));
         }
         case 2: {
             rr2Reads++;
@@ -580,6 +600,10 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
         ptr_ == 14)
         updateSerial(c);
 
+    // WR5 carries RTS/DTR, WR3 the Auto Enables bit that defers the RTS
+    // release, WR14 the DTR/REQ repurposing — all three move the pins.
+    if (ptr_ == 3 || ptr_ == 5 || ptr_ == 14) updateRts(c);
+
     // WR5 bit 3 Tx Enable coming up flushes a byte parked in the buffer
     // while the transmitter was disabled (txLoad no-ops when still off).
     if (ptr_ == 5 && c.txShiftIn <= 0 && !c.txFlushing) txLoad(c, 0);
@@ -620,6 +644,9 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
             c2.wr[5]   = 0x00;
             c2.wr[14]  = uint8_t((c2.wr[14] & 0xC3) | 0x20);
             c2.wr[15]  = 0xF8;
+            // WR5 is now clear, so both pins release (Zilog: a channel
+            // reset drives /RTS and /DTR high).
+            c2.rtsPin = c2.dtrPin = true;
         };
         if ((v & 0xC0) == 0x40 || (v & 0xC0) == 0xC0) resetChan(ch_[0]);
         if ((v & 0xC0) == 0x80 || (v & 0xC0) == 0xC0) resetChan(ch_[1]);
@@ -842,6 +869,12 @@ bool Scc8530::tick(int cycles) {
                 }
             }
         }
+        // Auto Enables holds /RTS asserted past the WR5 write that cleared
+        // it, until the last character has left the shifter — so the
+        // release lands HERE, as the transmitter drains, not at the write
+        // (MAME z80scc.cpp `tra_complete:1090`). Idempotent, and only ever
+        // moves the pin on that one transition.
+        if (!c.rtsPin && !(c.wr[5] & 0x02)) updateRts(c);
         // ── Rx pacing: one byte per LocalTalk byte-time into the FIFO ──
         // The LINE runs regardless of the receiver: LLAP senders wait for
         // the CTS with Rx disabled, watching RR0 bit 7 for the carrier

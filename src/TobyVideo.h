@@ -6,6 +6,7 @@
 
 #pragma once
 #include "NuBus.h"
+#include "VideoBeam.h"
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -44,8 +45,15 @@ public:
     const std::array<uint32_t, 256>& palette() const { return pens_; }
     const std::vector<uint32_t>& vram() const { return vram_; }
 
-    // Host decode: 00RRGGBB pixels, W×H.
+    // Host decode: 00RRGGBB pixels, W×H (alpha forced — this card's
+    // consumers upload straight from the surface).
     void decode(std::vector<uint32_t>& out) const;
+    // Render visible rows [y0, y1) into an existing hres×vres surface.
+    void decodeRows(std::vector<uint32_t>& out, int y0, int y1) const;
+    // Advance the beam off the card's OWN CRTC-derived frame clock and
+    // decode the rows it has crossed (LLE_VS_HLE §1.1, VideoBeam.h).
+    void raster(std::vector<uint32_t>& out);
+    const VideoBeam& beam() const { return beam_; }
 
     // ── Save states (SaveState.h contract) ──────────────────────────────
     // The whole card travels — VRAM (u32 words, no zero-run codec; half a
@@ -54,7 +62,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         ar(vram_, regs_, pens_, dacAddr_, mode_, vblDisable_,
            hres_, vres_, htotal_, vtotal_,
-           frameCycles_, framePos_, vblAcc_, vblLine_);
+           frameCycles_, framePos_, vblAcc_, vblLine_, frameCount_);
     }
 
 private:
@@ -87,6 +95,8 @@ private:
     uint32_t htotal_ = 896, vtotal_ = 525;   // MAME power-on defaults
     int64_t frameCycles_ = kCpuHz / 60;      // until the CRTC is programmed
     int64_t framePos_ = 0;
+    uint64_t frameCount_ = 0;                // completed frames (raster seq)
+    VideoBeam beam_;                         // not serialized: pure cache
     int64_t vblAcc_ = 0;
     bool vblLine_ = false;
     std::function<void(bool)> irqCb_;

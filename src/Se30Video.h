@@ -9,6 +9,7 @@
 
 #pragma once
 #include "NuBus.h"
+#include "VideoBeam.h"
 #include <cstdint>
 #include <vector>
 
@@ -52,8 +53,17 @@ public:
     // u32-backed share, not hardware — byte order here is the guest's own.)
     void decode(std::vector<uint32_t>& out) const {
         out.resize(size_t(W) * size_t(H));
+        decodeRows(out, 0, H);
+    }
+
+    // Render visible rows [y0, y1) into an existing W×H surface.
+    void decodeRows(std::vector<uint32_t>& out, int y0, int y1) const {
+        if (out.size() < size_t(W) * size_t(H)) return;
+        y0 = y0 < 0 ? 0 : y0;
+        y1 = y1 > H ? H : y1;
+        if (y0 >= y1) return;
         const uint32_t base = (page_ ? 0x8000u : 0u) + W / 8;
-        for (int y = 0; y < H; y++) {
+        for (int y = y0; y < y1; y++) {
             for (int x = 0; x < W; x += 8) {
                 uint8_t b = vram_[(base + uint32_t(y) * (W / 8) + uint32_t(x) / 8)
                                   & 0xFFFF];
@@ -62,6 +72,24 @@ public:
                         (b & (0x80u >> i)) ? 0x00000000u : 0x00FFFFFFu;
             }
         }
+    }
+
+    // Advance the beam and decode the rows it has crossed (LLE_VS_HLE
+    // §1.1, VideoBeam.h). The compact PANEL is fixed — 704×370 dots,
+    // 512×342 visible — but this pseudo-slot card has no CRTC of its own,
+    // so the frame CLOCK is the machine's (MacIIMemory's 60 Hz
+    // accumulator, passed in rather than duplicated here).
+    void raster(std::vector<uint32_t>& out, int64_t framePos,
+                int64_t frameCycles, uint64_t frameSeq) {
+        const size_t need = size_t(W) * size_t(H);
+        if (out.size() != need) {
+            out.assign(need, 0u);
+            beam_.restartFrame();
+        }
+        beam_.setGeometry(frameCycles, frameCycles * H / 370, 370, H);
+        if (!beam_.valid()) { decodeRows(out, 0, H); return; }
+        beam_.setPos(framePos, frameSeq);
+        beam_.pumpRows([&](int a, int b) { decodeRows(out, a, b); });
     }
 
     // ── Save states (SaveState.h contract) ──────────────────────────────
@@ -73,4 +101,5 @@ public:
 private:
     std::vector<uint8_t> vram_;
     bool page_ = false;
+    VideoBeam beam_;                 // not serialized: pure cache
 };

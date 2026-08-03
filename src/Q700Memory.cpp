@@ -42,6 +42,14 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         sccPic_.hostInt = [this](bool s) { sccIrqLine(s); };
         swimPic_.readPeriph = [this](int r) -> uint8_t { return swim_.read(r); };
         swimPic_.writePeriph = [this](int r, uint8_t v) { swim_.write(r, v); };
+        // DAT1BYTE → BOTH of the IOP's DMA request channels
+        // (macquadra700.cpp:879-880 sets reqa and appends reqb). The line
+        // says "the ISM FIFO can take/give a byte now"; whichever channel
+        // the firmware has enabled is the one that moves.
+        swim_.onDat1Byte = [this](bool s) {
+            swimPic_.reqaW(s);
+            swimPic_.reqbW(s);
+        };
         // The SWIM IOP's host interrupt lands on VIA2 CA2, INVERTED
         // (macquadra700.cpp:877). The 6522 latches that line on its edge,
         // so an assertion (line → 0) is the flag-setting transition;
@@ -75,25 +83,35 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         if (std::getenv("POM68K_Q900_IOPBRK")) {
             sccPic_.cpu().setTrace(true);
             swimPic_.cpu().setTrace(true);
-            auto trap = [](const char* who2, R65c02& c) {
-                return [who2, &c](uint16_t pc) {
+            auto trap = [this](const char* who2, R65c02& c) {
+                return [this, who2, &c](uint16_t pc) {
                     static int once = 0;
                     if (once++) return;
                     std::fprintf(stderr, "[IOP-BRK] %s executed $00 at $%04X; trail:",
                                  who2, pc);
                     const std::vector<uint16_t> t = c.pcTrail();
+                    const std::vector<uint8_t> s = c.spTrail();
                     int k = 0;
-                    for (uint16_t p : t)
-                        std::fprintf(stderr, "%s$%04X", (k++ % 12) ? " " : "\n  ", p);
+                    for (uint16_t p : t) {
+                        std::fprintf(stderr, "%s$%04X/%02X", (k % 8) ? " " : "\n  ",
+                                     p, k < int(s.size()) ? s[k] : 0);
+                        k++;
+                    }
                     std::fprintf(stderr, "\n  A=%02X X=%02X Y=%02X SP=%02X P=%02X\n",
                                  c.getAccumulator(), c.getXRegister(),
                                  c.getYRegister(), c.getStackPointer(),
                                  c.getStatusRegister());
+                    dumpIopRing();
                 };
             };
             sccPic_.cpu().onBrk = trap("sccPIC", sccPic_.cpu());
             swimPic_.cpu().onBrk = trap("swimPIC", swimPic_.cpu());
         }
+        // POM68K_Q900_IOPWATCH=<hex>: name every writer of one IOP RAM byte
+        // (65C02 / host window / DMA). The SWIM IOP returned through a
+        // corrupted stack frame, and only three things can corrupt it.
+        if (const char* w = std::getenv("POM68K_Q900_IOPWATCH"))
+            swimPic_.watch = int(strtoul(w, nullptr, 16));
     }
     dafbCell_.onIrq = [this](bool s) { vblIrq(s); };
     asc_.onIrq = [this](bool s) { ascIrq(s); };
@@ -182,7 +200,7 @@ void Q700Memory::reset() {
                                    // standing abort is a line state, not
                                    // machine config (Scc8530::openLine,
                                    // LLE steps 7+8: virgin line = clean)
-    viaPhase_ = 0;
+    viaEClock_ = {};
     tickAcc_ = 0;
     secAcc_ = 0;
     sccIrq_ = false;
@@ -264,6 +282,14 @@ void Q700Memory::iopTrace(bool write, char which, uint32_t base, uint8_t v) {
         long n = std::atol(e);
         return n > 1 ? n : 600L;
     }();
+    // Ring first (always armed on the Eclipse — it is what a panic dump
+    // reads), then the streaming form if the env asked for it.
+    ApplePic& pic = (which == 'w') ? swimPic_ : sccPic_;
+    iopRing_[iopRingIdx_] = { cpu_ ? unsigned(cpu_->getPC()) : 0u,
+                              uint16_t(base), pic.ramAddr(),
+                              uint8_t((base >> 1) & 0x1F), v, which,
+                              char(write ? 'W' : 'R') };
+    iopRingIdx_ = (iopRingIdx_ + 1) % kIopRing;
     if (!cap) return;
     static long n = 0;
     if (n++ >= cap) return;
@@ -272,13 +298,25 @@ void Q700Memory::iopTrace(bool write, char which, uint32_t base, uint8_t v) {
                  cpu_ ? unsigned(cpu_->getPC()) : 0u);
 }
 
+// The last kIopRing host-window touches, oldest first: which IOP, the
+// decoded 5-bit register offset, the shared-RAM pointer AT that moment and
+// the 68k PC that issued it.
+void Q700Memory::dumpIopRing() {
+    std::fprintf(stderr, "  host-window trail (oldest first):\n");
+    for (int i = 0; i < kIopRing; i++) {
+        const IopEvent& e = iopRing_[(iopRingIdx_ + i) % kIopRing];
+        if (!e.pc && !e.base) continue;
+        std::fprintf(stderr, "    iop-%c %c off=%02X v=%02X ramAddr=$%04X pc=$%08X\n",
+                     e.which, e.rw, e.off, e.v, e.ramAddr, e.pc);
+    }
+}
+
 // VIA E-clock alignment, in MACHINE cycles (CHANGELOG 2026-07-25): the
 // 25 MHz / 783.36 kHz ratio is the Centris's 32:1 approximation.
 void Q700Memory::viaSync() {
     if (!cpu_) return;
     int64_t c = int64_t(cpu_->machineClock());
-    int64_t viaCycle = c / 32;
-    int64_t target = (viaCycle * 2 + 3) * 16 + 1;
+    const int64_t target = via_eclock::syncTarget(c, cpuHz_);
     if (target > c) cpu_->stall(int(target - c));
 }
 
@@ -639,7 +677,17 @@ uint16_t Q700Memory::read16(uint32_t addr) {
     }
     if (addr >= 0x50000000 && addr < 0x60000000) {
         uint32_t base = (addr & 0x00FFFFFF) & 0x0003FFFF;
-        if (base >= 0x1E000 && base < 0x20000)    // SWIM1 on the odd lane
+        // The Spike's SWIM1 hangs off the ODD byte lane, so a word read
+        // there yields only its high half. On the Eclipse that window is
+        // the SWIM IOP's host window, and MAME installs its handler on
+        // BOTH lanes (`macquadra700.cpp:590-591`, umask $FF00FF00 AND
+        // $00FF00FF) — the mirror of the write-side rule below. Keeping
+        // the Spike rule here made `move.w (a2),d3` at ROM $408050CA read
+        // the IOP's 16-bit shared-RAM address register as `hi<<8`: the ROM
+        // read $0203 as $0200, decremented to $01FF and wrote its byte
+        // into the IOP's STACK page, smashing the return address of the
+        // routine at $53ED. The 65C02 then RTS'd to $0042 and BRK'd.
+        if (!eclipse() && base >= 0x1E000 && base < 0x20000)
             return uint16_t(read8(addr) << 8);
     }
     return uint16_t(read8(addr) << 8 | read8(addr + 1));
@@ -713,9 +761,9 @@ uint8_t Q700Memory::peek8(uint32_t addr) const {
 }
 
 void Q700Memory::tick(int cpuCycles) {
-    viaPhase_ += cpuCycles;
-    int viaCycles = viaPhase_ / 32;
-    viaPhase_ %= 32;
+    // VIA1 φ2 is the board's fixed 783.36 kHz E clock, not a divisor of
+    // the CPU — an integer ratio is an approximation here (ViaEClock.h).
+    const int viaCycles = viaEClock_.advance(cpuCycles, cpuHz_);
     if (viaCycles) {
         bool irq = via1_.tick(viaCycles);
         irq |= via2_.tick(viaCycles);
