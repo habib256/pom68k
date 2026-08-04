@@ -1311,6 +1311,43 @@ engine needs no extra call.
 
 Nothing else in the vendored tree changed for save states.
 
+## 68040 cache-TAG model — M1 (2026-08-05, docs/CACHE_040.md)
+
+`POM68K_040_DCACHE` (env, read once in the constructor, default off;
+`setPomCache040()` overrides for tests) arms an **architectural tag
+model of the two on-chip caches** — 4 KB, 4-way, 64 sets, 16-byte
+lines, physically indexed/tagged (M68040UM § 4). **Tags only: every
+access is still served by the bus**, so the model can observe but
+never interfere; that is the whole point of the milestone.
+
+- `MoiraCache040.h` (new) — the self-contained `Cache040` store:
+  per-longword dirty bits (UM Fig. 4-4), invalid-ways-first + 2-bit
+  counter replacement, CINV (discard) vs CPUSH (push-count +
+  invalidate) scopes, MOVE16 no-allocate / write-hit-invalidate.
+- `mmu040Translate` touches the model on its three return paths; the
+  CM mode comes from the matched TTR (`mmu040MatchTTR` gained an
+  optional `u32 *cm` out-param — all existing callers unchanged), the
+  descriptor status (bits 6-5, as the M0 probe read), or the MMU-off
+  default (cachable/writethrough, UM § 3.5.1). CACR DE/IE gate lookup
+  and allocation at touch time (UM § 4.4 — a disabled cache keeps its
+  contents).
+- `execCinv`/`execCpush` (previously supervisor-checked no-ops, § Q2)
+  call `pomCacheOp040` when armed: cache field bits 7-6, push bit 5,
+  scope bits 4-3, An bits 2-0. Line/page operands resolve via
+  `pomCache040Phys` — TTR, then a side-effect-free ATC scan, then
+  `mmu040PeekWalk`, a **read-only** twin of `mmu040Walk` (no U/M
+  descriptor write-back, no fault): flag ON must not disturb guest
+  state flag OFF would not have touched. Unmapped operand = skip.
+- `pomFlushAtcs()` (save-state seam above) also invalidates both tag
+  stores — caches are flushed on restore, never serialized.
+
+Known M1 approximations (documented in `docs/CACHE_040.md` § M1, both
+M2 work): split sub-accesses reuse the full access's SSW size so a
+page-crossing misaligned write can over-mark one longword dirty; the
+JIT's inline DTLB bypasses `mmu040Translate`, so tag state under the
+JIT is approximate. Gated by `tests/cache040_test.cpp`; `sst68040`
+and the JIT lockstep suite run green with the flag armed.
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)

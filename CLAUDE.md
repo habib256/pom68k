@@ -50,9 +50,10 @@ The profile list lives in **one** place: the `kProfiles` table in
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **143 CTest gates, 143/143 green** — full run 2026-08-03 on a **fully
-  rebuilt tree** (`make` first, 150 objects/binaries relinked), 3 h 03.
-  `ctest -N`: 66 `unit`, 8 `smoke`, 16 `jit`, 32 `m040`, 73 `etalon`.
+- **145 CTest gates** (`ctest -N` 2026-08-05: 67 `unit`, 8 `smoke`,
+  16 `jit`, 33 `m040`, 74 `etalon`); last FULL run **143/143 green**,
+  2026-08-03, on a **fully rebuilt tree** (`make` first, 150
+  objects/binaries relinked), 3 h 03.
   **The `make` is part of the claim, not a detail.** An earlier run the
   same day returned 143/143 over binaries linked at *different times* —
   102 of ~110 were older than `libpom68k_core.a` — and proved nothing:
@@ -80,9 +81,12 @@ The profile list lives in **one** place: the `kProfiles` table in
   bound = min(MCU LLE, historical batch), 27 serial gates green). Compacts,
   Mac II, IIfx and MSC stay on fixed batches, each for a stated reason
   (`TODO.md` § 4).
-- **Next: the 040 copyback/snooping chantier, M1** — blueprint + M0 landed
-  2026-08-04 (`docs/CACHE_040.md`: no oracle, no DMA client, Mac OS maps
-  98.9 % of data copyback). Then `TODO.md` § *Test & validation depth*.
+- **040 caches: M1 landed 2026-08-05** (`docs/CACHE_040.md`): architectural
+  TAG state behind `POM68K_040_DCACHE` (default off), CINV/CPUSH/CACR act
+  on it, data still served by the bus. `cache040_test` + sst68040 +
+  lockstep green flag ON; the flag-ON `m040` sweep waits on the dirty-8.1
+  GUI cleanup (`TODO.md` § 1). Next: the M2 decision point, then
+  `TODO.md` § *Test & validation depth*.
 - **Release CI** ships four artifacts on tag (Linux x86_64/aarch64
   AppImage glibc-2.27 — the aarch64 one is the Pi 400 package —, macOS
   Universal 2 dmg, Windows x64 zip); `--version` is the headless smoke.

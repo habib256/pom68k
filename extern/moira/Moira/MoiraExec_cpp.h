@@ -6638,11 +6638,13 @@ Moira::execUnpkPd(u16 opcode)
 }
 
 // POM68K Q2: CINV/CPUSH execute on the 040 models (M68040UM § 4.5/4.6).
-// Caches are not modelled architecturally, so a valid encoding has no
-// state effect beyond the privilege check. Scope 00 is not a valid
-// encoding (WinUAE cpudefs registers only the $F408/$F410/$F418 rows,
-// mask $FF38) and falls to Line-F even in supervisor mode; the cache
-// field (bits 7-6) is a don't-care, including 00.
+// Since M1 (docs/CACHE_040.md) they act on the architectural cache-TAG
+// model when it is armed (POM68K_040_DCACHE); data is still served by
+// the bus, so the push half of CPUSH stays a data no-op. Scope 00 is
+// not a valid encoding (WinUAE cpudefs registers only the
+// $F408/$F410/$F418 rows, mask $FF38) and falls to Line-F even in
+// supervisor mode; the cache field (bits 7-6) is a don't-care for the
+// DECODE, including 00 — it selects which caches the op reaches.
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execCinv(u16 opcode)
 {
@@ -6655,6 +6657,8 @@ Moira::execCinv(u16 opcode)
     }
 
     SUPERVISOR_MODE_ONLY
+
+    if (pomCache040On) pomCacheOp040(opcode);
 
     prefetch<C, POLL>();
 
@@ -6675,6 +6679,8 @@ Moira::execCpush(u16 opcode)
     }
 
     SUPERVISOR_MODE_ONLY
+
+    if (pomCache040On) pomCacheOp040(opcode);
 
     prefetch<C, POLL>();
 

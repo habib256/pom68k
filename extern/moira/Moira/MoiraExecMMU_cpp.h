@@ -2137,7 +2137,7 @@ Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
 }
 
 int
-Moira::mmu040MatchTTR(u32 addr, bool super, bool data) const
+Moira::mmu040MatchTTR(u32 addr, bool super, bool data, u32 *cm) const
 {
     // WinUAE mmu_do_match_ttr over the dtt/itt pair (mmu_match_ttr)
     const u32 ttrs[2] = { data ? reg.dtt0 : reg.itt0,
@@ -2154,9 +2154,114 @@ Moira::mmu040MatchTTR(u32 addr, bool super, bool data) const
         if (!(ttr & 0x4000)) {                          // S-field != both
             if ((((ttr >> 13) & 1) != 0) != super) continue;
         }
+        if (cm) *cm = (ttr >> 5) & 3;                   // M1: TTR CM field
         return (ttr & 4) ? 2 : 1;                       // W -> match + WP
     }
     return 0;
+}
+
+void
+Moira::pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode)
+{
+    // POM68K M1 (docs/CACHE_040.md § M1). CACR gates lookup AND
+    // allocation (M68040UM § 4.4: a disabled cache is not searched; its
+    // contents survive until CINV — DE = bit 31, IE = bit 15). szCode is
+    // the access's SSW size, reused by split sub-accesses: on a
+    // page-crossing misaligned access the dirty span can over-reach by
+    // one longword. Tags carry no data in M1; M2 must split exactly.
+    Cache040 &c = data ? pomCache040D : pomCache040I;
+    if (!(reg.cacr & (data ? 0x80000000 : 0x8000))) return;
+    const int bytes = szCode == 0 ? 1 : szCode == 1 ? 2 : szCode == 2 ? 4 : 16;
+    c.touch(pa, write, cm, bytes, szCode == 3);
+}
+
+u32
+Moira::mmu040PeekWalk(u32 addr, bool super) const
+{
+    // mmu040Walk minus every side effect: no U/M descriptor write-back,
+    // no fault — the CINV/CPUSH operand resolver (M1) may not disturb
+    // MMU state the interpreter would not have disturbed. Reads guest
+    // RAM only (page tables), like the real walk does.
+    u32 wp = 0;
+
+    u32 desc = super ? reg.srp040 : reg.urp040;
+    u32 descAddr = (desc & 0xFFFFFE00) | ((addr >> 23) & 0x1FC);
+    desc = mmuRead32(descAddr);
+    if (!(desc & 2)) return 0;                          // invalid root
+    wp |= desc;
+
+    descAddr = (desc & 0xFFFFFE00) | ((addr >> 16) & 0x1FC);
+    desc = mmuRead32(descAddr);
+    if (!(desc & 2)) return 0;                          // invalid pointer
+    wp |= desc;
+
+    if (reg.tc040 & 0x4000) {                           // 8K pages
+        descAddr = (desc & 0xFFFFFF80) + ((addr >> 11) & 0x7C);
+    } else {                                            // 4K pages
+        descAddr = (desc & 0xFFFFFF00) + ((addr >> 10) & 0xFC);
+    }
+    desc = mmuRead32(descAddr);
+    if ((desc & 3) == 2) {                              // indirect (once)
+        descAddr = desc & 0xFFFFFFFC;
+        desc = mmuRead32(descAddr);
+    }
+    if (!(desc & 1)) return 0;                          // invalid page
+    desc |= wp & 4;                                     // accumulated WP
+    return desc;
+}
+
+bool
+Moira::pomCache040Phys(u32 addr, u32 &pa) const
+{
+    // Non-faulting logical → physical for a CINV/CPUSH operand. The
+    // caches are physically indexed/tagged, so line/page scopes need the
+    // operand translated — through the DATA side (UM § 4.5: the operand
+    // is a data reference). ATC scan without MRU/M side effects, then
+    // the read-only walk; an unmapped operand skips the op (M1: nothing
+    // to lose — memory is current).
+    const bool super = reg.sr.s;
+    if (mmu040MatchTTR(addr, super, true)) { pa = addr; return true; }
+    if (!mmu040Enabled()) { pa = addr; return true; }
+
+    const u32 maski = mmu040PageMaskI();
+    for (const Mmu040AtcEntry &e : mmu040AtcD) {
+        if (e.valid && (e.logical & maski) == (addr & maski) &&
+            (e.status & 1)) {
+            pa = e.physical | (addr & ~maski);
+            return true;
+        }
+    }
+    const u32 status = mmu040PeekWalk(addr, super);
+    if (!(status & 1)) return false;
+    pa = (status & maski) | (addr & ~maski);
+    return true;
+}
+
+void
+Moira::pomCacheOp040(u16 opcode)
+{
+    // CINV/CPUSH acting on the M1 tag model (M68040UM § 4.5/4.6).
+    // Bits 7-6 = caches (01 DC, 10 IC, 11 both, 00 none), bit 5 = push,
+    // bits 4-3 = scope (01 line, 10 page, 11 all), bits 2-0 = An.
+    // CPUSH's push is a data no-op in M1 (memory is already current);
+    // both act with the caches DISABLED too (UM § 4.4).
+    const bool push = opcode & 0x20;
+    const int scope = (opcode >> 3) & 3;
+
+    u32 pa = 0;
+    if (scope != 3 && !pomCache040Phys(reg.a[opcode & 7], pa)) return;
+    const u32 pmask = mmu040PageMaskI();
+
+    auto apply = [&](Cache040 &c) {
+        switch (scope) {
+            case 1: push ? void(c.pushLine(pa)) : c.invalidateLine(pa); break;
+            case 2: push ? void(c.pushPage(pa, pmask))
+                         : c.invalidatePage(pa, pmask); break;
+            default: push ? void(c.pushAll()) : c.invalidateAll(); break;
+        }
+    };
+    if (opcode & 0x40) apply(pomCache040D);
+    if (opcode & 0x80) apply(pomCache040I);
 }
 
 template <Core C> u32
@@ -2223,12 +2328,20 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
     // (WinUAE wraps only the get_lrmw_* data accessors)
     bool asWrite = write || (mmu040Lrmw && data);
 
-    int ttr = mmu040MatchTTR(addr, super, data);
+    u32 ttrCm = 0;
+    int ttr = mmu040MatchTTR(addr, super, data, &ttrCm);
     if (ttr) {
         if (asWrite && ttr == 2) mmu040Fault<C>(addr, val, fc, asWrite, szCode);
+        // POM68K M1: transparent regions cache per the TTR's CM field
+        if (pomCache040On) pomCache040Touch(data, addr, asWrite, int(ttrCm), szCode);
         return addr;
     }
-    if (!mmu040Enabled()) return addr;
+    if (!mmu040Enabled()) {
+        // POM68K M1: translation disabled → default attributes, CM =
+        // cachable/writethrough (M68040UM § 3.5.1, default TTR)
+        if (pomCache040On) pomCache040Touch(data, addr, asWrite, 0, szCode);
+        return addr;
+    }
 
     u32 maski = mmu040PageMaskI();
     u32 status;
@@ -2242,7 +2355,11 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
                 !(status & 1)) {
                 mmu040Fault<C>(addr, val, fc, asWrite, szCode);
             }
-            return e.physical | (addr & ~maski);
+            const u32 hpa = e.physical | (addr & ~maski);
+            if (pomCache040On)
+                pomCache040Touch(data, hpa, asWrite, int((status >> 5) & 3),
+                                 szCode);
+            return hpa;
         }
     }
 
@@ -2255,7 +2372,10 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
         mmu040Fault<C>(addr, val, fc, asWrite, szCode);
     }
     if (mmu040AtcArmed) mmu040AtcFill(data, addr, status);
-    return (status & maski) | (addr & ~maski);
+    const u32 wpa = (status & maski) | (addr & ~maski);
+    if (pomCache040On)
+        pomCache040Touch(data, wpa, asWrite, int((status >> 5) & 3), szCode);
+    return wpa;
 }
 
 template <Core C> void

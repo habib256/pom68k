@@ -9,6 +9,7 @@
 
 #include "MoiraConfig.h"
 #include "MoiraTypes.h"
+#include "MoiraCache040.h"
 #include "MoiraDebugger.h"
 
 namespace moira {
@@ -1031,6 +1032,15 @@ public:
     void setMmu040AtcArmed(bool on) { mmu040AtcArmed = on; }
     bool mmu040AtcIsArmed() const { return mmu040AtcArmed; }
 
+    // POM68K M1 (docs/CACHE_040.md § M1): 68040 cache-TAG model, default
+    // off (POM68K_040_DCACHE, read in the constructor). Tags only — data
+    // is still served by the bus. The accessors are cache040_test's
+    // observables.
+    void setPomCache040(bool on) { pomCache040On = on; }
+    bool pomCache040Armed() const { return pomCache040On; }
+    Cache040 &pomCache040Data() { return pomCache040D; }
+    Cache040 &pomCache040Inst() { return pomCache040I; }
+
     u32 getITT0() const { return reg.itt0; }
     void setITT0(u32 val) { reg.itt0 = val & 0xFFFFE364; pomJitMapMoved(); }
 
@@ -1489,8 +1499,13 @@ protected:
     // translations, so both have to be dropped. The flushes are private and
     // no public setter reaches the 030 one (setURP040 covers only the 040),
     // hence this one-line seam for src/MoiraSnapshot.h. Flushing the set the
-    // current model does not use is free — it is already empty.
-    void pomFlushAtcs() { mmuAtcFlushAll(); mmu040AtcFlushAll(); }
+    // current model does not use is free — it is already empty. The M1
+    // cache-tag model follows the same save-state convention (CLAUDE.md
+    // § save states: caches are FLUSHED, never serialized).
+    void pomFlushAtcs() {
+        mmuAtcFlushAll(); mmu040AtcFlushAll();
+        pomCache040I.invalidateAll(); pomCache040D.invalidateAll();
+    }
 
 private:
 
@@ -1620,8 +1635,25 @@ private:
     // pattern); returns false when the fetch faulted
     template <Core C> bool mmu040InstrStart();
 
-    // Transparent translation: 0 = no match, 1 = match, 2 = match + WP
-    int mmu040MatchTTR(u32 addr, bool super, bool data) const;
+    // Transparent translation: 0 = no match, 1 = match, 2 = match + WP;
+    // cm (optional out) = the matched TTR's CM field (M1 cache model)
+    int mmu040MatchTTR(u32 addr, bool super, bool data,
+                       u32 *cm = nullptr) const;
+
+    // POM68K M1 (docs/CACHE_040.md § M1) — cache-TAG model plumbing.
+    // pomCache040Touch: per-translated-(sub-)access tag update, gated on
+    // the CACR enable bit of the touched cache. pomCache040Phys resolves
+    // a CINV/CPUSH operand without faulting and without the U/M
+    // descriptor write-back a real table search would do (the read-only
+    // mmu040PeekWalk); an unmapped operand skips the op — M1 has no data
+    // to lose, M2 revisits. pomCacheOp040 decodes the CINV/CPUSH
+    // cache/scope/register fields (bit 5 = push).
+    bool pomCache040On {false};
+    Cache040 pomCache040I, pomCache040D;
+    void pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode);
+    bool pomCache040Phys(u32 addr, u32 &pa) const;
+    u32  mmu040PeekWalk(u32 addr, bool super) const;
+    void pomCacheOp040(u16 opcode);
 
     // 3-level table walk with U/M maintenance (WinUAE mmu_fill_atc);
     // returns the page descriptor with accumulated WP, or 0 if invalid

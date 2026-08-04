@@ -1,9 +1,9 @@
-# 68040 copyback / snooping — blueprint (M0)
+# 68040 copyback / snooping — blueprint (M0-M1)
 
-*Opened 2026-08-04. Pattern: `IOP_BRINGUP.md` / `DUO_BRINGUP.md` — recon
-first, milestones gated, nothing implemented before its observable is
-named. Everything asserted below was verified in-tree on 2026-08-04;
-citations inline.*
+*Opened 2026-08-04; M1 landed 2026-08-05. Pattern: `IOP_BRINGUP.md` /
+`DUO_BRINGUP.md` — recon first, milestones gated, nothing implemented
+before its observable is named. Everything asserted below was verified
+in-tree on 2026-08-04; citations inline.*
 
 ## 0. What the recon changed about this chantier
 
@@ -53,8 +53,8 @@ Consequences, stated plainly:
 
 | Seam | Where | State |
 |---|---|---|
-| CINV/CPUSH | `MoiraExec_cpp.h:6647/6667` (`execCinv/execCpush`) | supervisor-checked no-ops — *consistent*, per `POM68K_VENDOR.md`: no cache exists for them to act on |
-| CACR | `Cpu040::didChangeCACR` (`src/Cpu040.cpp`) | bit 15/11 drive the **throughput** i-cache overlay + JIT flushAll; no architectural cache |
+| CINV/CPUSH | `MoiraExec_cpp.h` (`execCinv/execCpush`) | **since M1**: act on the modelled tags when `POM68K_040_DCACHE` is armed (`pomCacheOp040`); no-ops otherwise |
+| CACR | `Cpu040::didChangeCACR` (`src/Cpu040.cpp`) | bit 15/11 drive the **throughput** i-cache overlay + JIT flushAll; **since M1** DE/IE also gate the tag model (read at touch time, no hook needed) |
 | CM bits | `Moira::Mmu040AtcEntry.status` (`Moira.h:1597` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
 | TTR cache fields | `mmu040MatchTTR` | TTR CM bits reachable the same way |
 | JIT contract | `src/jit/POM68K_JIT.md` § derived state; `pomJitAtcEvict` | "derived state dies with the ATC entry" — a data cache is a THIRD state layer the JIT's inline DTLB must never bypass; M2 gates the JIT OFF or excludes cached pages from the DTLB |
@@ -80,17 +80,47 @@ working-set sizes — the 32-entry ATC recycles; the MODE distribution is
 what the probe was for.)
 
 **M1 — architectural cache STATE, no data effect** (`POM68K_040_DCACHE`,
-default off). Model the two caches' tag stores (4 KB, 4-way, 64 sets,
-16-byte lines — UM § 4): loads/stores allocate/touch tags per CM mode,
-stores mark dirty in copyback pages, CINV/CPUSH invalidate/push
-*the modelled tags* (CPUSH "push" is a no-op data-wise — memory is
-already current, which is exactly why this milestone is safe), CACR
-enable bits gate allocation. **Data is still served by the bus** —
-coherent by construction, zero risk to every green gate. Observable:
-a synthetic unit gate (`cache040_test`) asserting UM semantics — line
-allocation, set indexing, dirty marking, CINV vs CPUSH scope (line/
-page/all), the DC/IC enable bits — plus the boot etalons unchanged
-with the flag ON.
+default off) — **DONE 2026-08-05.** Model the two caches' tag stores
+(4 KB, 4-way, 64 sets, 16-byte lines — UM § 4): loads/stores
+allocate/touch tags per CM mode, stores mark dirty in copyback pages,
+CINV/CPUSH invalidate/push *the modelled tags* (CPUSH "push" is a no-op
+data-wise — memory is already current, which is exactly why this
+milestone is safe), CACR enable bits gate allocation. **Data is still
+served by the bus** — coherent by construction, zero risk to every
+green gate.
+
+As landed:
+
+- `extern/moira/Moira/MoiraCache040.h` — the self-contained tag store
+  (`Cache040`), per-longword dirty bits, invalid-ways-first + 2-bit
+  counter replacement, push/invalidate scopes. Pure logic, no clock,
+  no registers: `cache040_test` part 1 drives it bare.
+- The touch rides the three `mmu040Translate` return paths: TTR match
+  (CM lifted from the matched TTR — `mmu040MatchTTR` grew an optional
+  out-param), MMU-off (default = cachable/writethrough, UM § 3.5.1),
+  and ATC/walk (CM from descriptor status bits 6-5, same field the M0
+  probe read). CACR DE (bit 31) / IE (bit 15) gate lookup AND
+  allocation; a disabled cache keeps its contents (UM § 4.4).
+- `execCinv`/`execCpush` decode cache/scope/register and act on the
+  tags. Line/page operands resolve through a **non-faulting** data-side
+  translation (`pomCache040Phys`: TTR → ATC scan → `mmu040PeekWalk`, a
+  read-only walk with no U/M descriptor write-back) — flag ON may not
+  disturb state flag OFF would not have touched. An unmapped operand
+  skips the op: nothing to lose while memory is current; M2 revisits.
+- Save states keep the house convention (caches flushed, never
+  serialized): `pomFlushAtcs` — the restore seam — now also empties
+  both tag stores.
+- Two accepted M1 approximations, both to revisit in M2: split
+  sub-accesses reuse the full access's SSW size, so a page-crossing
+  misaligned write can over-mark one longword dirty; and the JIT's
+  inline DTLB fast path bypasses `mmu040Translate`, so under the JIT
+  the tag state is approximate. Zero data effect either way — M2 must
+  fence the DTLB before serving data (see the seam table).
+
+Gates: `cache040_test` (32 checks — struct semantics + CACR/TTR/
+CINV/CPUSH through a bare 68040 Moira on a flat bus), `sst68040`
+(7 200 pinned vectors) and the 5 JIT lockstep gates green with the
+flag ON, 2026-08-05.
 
 **M2 — copyback data path** (same flag, opt-in). Stores to copyback
 pages land in the modelled line; reads hit dirty lines; eviction and
@@ -117,7 +147,11 @@ correctness milestones above.
 ## 3. Order of work and the exit condition
 
 M0 (one sitting: probe + numbers into this doc) → M1 (`cache040_test`
-green + all `m040` etalons green with the flag on) → decision point:
+green + all `m040` etalons green with the flag on — the full flag-ON
+`m040` sweep waits on the one-time GUI cleanup of the dirty 8.1 image,
+2026-08-05; the flag-ON evidence so far is `sst68040`, the 5 lockstep
+gates, and a flag-ON/flag-OFF signature-identical q605 boot pair) →
+decision point:
 M2 only if M0's numbers and a concrete motivation (a guest, a
 diagnostic, a timing goal) justify the exposure. The chantier's honest
 exit may well be "M1 + documented decision not to serve data from the

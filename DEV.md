@@ -1119,6 +1119,7 @@ documented before 2026-07-31:
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
 | `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the 030 CPUs (`Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
+| `POM68K_040_DCACHE` | arm the M1 architectural cache-TAG model on the 040s (`docs/CACHE_040.md` § M1) — tags, dirty bits and CINV/CPUSH scopes become real state; **data is still served by the bus**, default off |
 | `POM68K_PERIPH_STATS` | count the peripheral catch-up path (Cpu040 only): catchUp/flushTicks/mem.tick calls + cycles per call, printed at exit. The old `POM68K_PERIPH_BATCH` knob is GONE — fixed batching was replaced by event deadlines on eight platforms (2026-08-03/04, `CHANGELOG.md` § *Event deadlines*); the remaining fixed-batch machines (compacts, Mac II, IIfx, MSC) have no knob |
 | `POM68K_NOFPU` | Mac II **and IIfx**: no 68881/68882 |
 

@@ -45,6 +45,11 @@ Moira::Moira()
 
     createJumpTable(cpuModel, dasmModel);
 
+    // POM68K M1 (docs/CACHE_040.md § M1): the 040 cache-TAG model,
+    // default off. Tags only, no data effect — see MoiraCache040.h.
+    if (const char *e = std::getenv("POM68K_040_DCACHE"))
+        pomCache040On = e[0] != '\0' && e[0] != '0';
+
     instrStyle = DasmStyle {
 
         .syntax         = Syntax::MOIRA,
