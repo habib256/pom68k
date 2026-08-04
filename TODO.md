@@ -5,12 +5,13 @@ live in `CHANGELOG.md` (implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`).
 
-**Counts verified 2026-08-04** — re-verify before quoting them anywhere:
-- **144 CTest gates** (`ctest -N`): 66 `unit`, 8 `smoke`, 16 `jit`, 33 `m040`,
-  74 `etalon` (the 144th: the CD-bay hot-swap gate, 2026-08-04). Last FULL
-  suite 143/143 on 2026-08-03, 3 h 01; since then the touched tiers ran
-  green (27 deadline gates + smoke 8/8 + q605_cdrom, 2026-08-04) but a
-  full rebuilt-tree `ctest` has not — schedule one before quoting 144/144.
+**Counts verified 2026-08-05** — re-verify before quoting them anywhere:
+- **145 CTest gates** (`ctest -N`): 67 `unit`, 8 `smoke`, 16 `jit`, 33 `m040`,
+  74 `etalon` (144th: the CD-bay hot-swap gate, 2026-08-04; 145th:
+  `cache040_test`, 2026-08-05). Last FULL suite 143/143 on 2026-08-03,
+  3 h 01; since then the touched tiers ran green but a full rebuilt-tree
+  `ctest` has not — schedule one before quoting 145/145 (blocked anyway
+  on the dirty 8.1 image, § 1).
 - **36 machine profiles** = 36 tags in `SnapMachine`, `src/SaveStateMachines.h`.
 
 House rule for this file: an item earns its place by saying **what to do next**,
@@ -56,18 +57,16 @@ en § 1 est une simplification, avec sa raison et sa condition de réouverture.
 
 **La prochaine action, par ordre de trou architectural décroissant :**
 
-1. **Copyback / snooping 040 — M1** (`docs/CACHE_040.md`, blueprint + M0
-   faits le 2026-08-04). La reconnaissance a recadré le chantier : pas
-   d'oracle WinUAE (le MC68040UM est la spec), pas de maître de bus
-   alternatif sur la flotte actuelle (le snooping attend le SCSIDMA
-   IIfx), et Mac OS mappe 98,9 % des données en copyback avec les modes
-   non-cacheables exactement sur les E/S et la VRAM (sonde
-   `POM68K_040_CM_STATS`). M1 = l'état architectural des tags (4 KB,
-   4 voies, lignes 16 o) derrière `POM68K_040_DCACHE`, CINV/CPUSH/CACR
+1. **Copyback / snooping 040 — M1 FAIT le 2026-08-05** (`docs/CACHE_040.md`
+   § M1) : l'état architectural des tags (4 KB, 4 voies, lignes 16 o,
+   dirty par longword) derrière `POM68K_040_DCACHE`, CINV/CPUSH/CACR
    agissant enfin sur du vrai état, **données toujours servies par le
-   bus** — gates : `cache040_test` + `ctest -L m040` flag ON. Décisions
-   d'ouverture notées au § 2 du doc (placement du hook, fenêtre DTLB du
-   JIT).
+   bus**. Gates verts flag ON : `cache040_test` (32 checks), `sst68040`
+   (7 200 vecteurs), les 5 lockstep JIT. **Reste de M1 : le balayage
+   `ctest -L m040` flag ON**, bloqué par l'image 8.1 sale (§ 1) — à
+   lancer après le nettoyage GUI ponctuel. Ensuite : point de décision
+   M2 (§ 3 du doc) — n'ouvrir le chemin données que sur motivation
+   concrète.
 2. **§ 2, profondeur de test** — 9 profils sur 36 ont un gate au-delà de la
    signature Finder. Décision produit prise le 2026-08-02 : on implémente le
    LLE d'abord, on construira les gates longs ensuite.
@@ -84,7 +83,34 @@ retouche, relancer `q700` **et** `q900`, jamais en parallèle
 
 ## 1. Red now
 
-*(nothing — `jit_q605_boot_etalon` went red on 2026-08-04 after the
+- **`hdv/MacOS-8.1-boot.vhd` is dirty again** (drVolAtrb bit 8 = 0,
+  image mtime 2026-08-04 23:46 — a GUI session left it attached): the
+  Quadra-class boot etalons fail with the documented phantom signature
+  (menu 230.6/8.3, `pom68k-dirty-boot-image-gate-failures`), verified
+  2026-08-05 with the M1 cache flag OFF **and** ON (identical numbers —
+  the image, not the code). Needs the one-time GUI cleanup (boot + Menu
+  Special ▸ Éteindre), then `ctest -L m040` and the flag-ON sweep M1
+  still owes (§ 0).
+- **The IIfx etalons** (`iifx_boot/input/post_etalon`): red since
+  2026-08-04 because `hdv/MacOS-7.6-boot.vhd` was corrupted by the
+  all-ID SCSI mirror era (seven concurrent mounts of one volume — see
+  `CHANGELOG.md` § 2026-08-04 (soir)). The emulator-side fix is in
+  (single-ID attach, boots `boot.vhd` to the Finder); the gates need the
+  7.6 image restored from a source. One open lead from the same hunt:
+  GISTPERSO (7.5.5) on the IIfx wedges at ROM `$4081B66E` under
+  single-ID — never a supported combo, parked in memory.
+- **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
+  ("unreadable — format?"; 8.1 mounts the same disk, LC II/IWM + 7.5.5
+  mounts it too). Three MAME-faithful sense fixes landed on the way
+  (index/tach on the drive clock + per-cylinder RPM; GCR reg 4/C = raw
+  read line at flux rate) and the refusal SURVIVES them: the driver
+  reads ~4 revolutions, steps to track 4, motor off. Suspect: the ISM
+  read path's error/CRC latches as the 7.5 driver consumes them. Next:
+  register-level diff against MAME `swim2.cpp` on the post-insert read
+  sequence. No CTest covers this combo yet — the future gate is
+  "Q605 + 7.5.5 boot volume + hot GCR insert mounts".
+
+*(nothing else — `jit_q605_boot_etalon` went red on 2026-08-04 after the
 A64/pacing merge and green again the same day: the x64 emitter handed the
 dynamic link target across `chargeCycles` in RDI, which the pacing
 callout clobbers; a garbage tag that matched a populated slot jumped

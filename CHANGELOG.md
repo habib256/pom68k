@@ -242,6 +242,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-05** — [Cache 040 M1: CINV and CPUSH finally act on real state, and the tags cost nothing](#2026-08-05-cache040-m1)
 - **2026-08-04** — [The IIfx SCSI mirror mounted one volume seven times; CDs hot-mount under 8.1; the MacIP window opens up](#2026-08-04-iifx-mirror-cd-hot)
 - **2026-08-04** — [Event deadlines reach six more platforms: min(MCU bound, historical batch)](#2026-08-04-deadlines-six)
 - **2026-08-04** — [Hot floppy swap reaches every runner; release CI for four OS targets; the x64 dynamic-link regression found and fixed](#2026-08-04-floppy-ci)
@@ -427,6 +428,50 @@ Newest first.
 
 <a id="2026-08-04-iifx-mirror-cd-hot"></a>
 
+<a id="2026-08-05-cache040-m1"></a>
+## 2026-08-05 — Cache 040 M1: CINV and CPUSH finally act on real state, and the tags cost nothing
+
+M1 of the copyback/snooping chantier (`docs/CACHE_040.md`) landed in one
+sitting: **the two 68040 on-chip caches exist as architectural TAG state**
+— 4 KB, 4-way, 64 sets, 16-byte lines, per-longword dirty bits, the UM § 4
+geometry — behind `POM68K_040_DCACHE` (default off). Loads and stores
+allocate and dirty tags per the page's CM mode, CINV discards, CPUSH
+pushes-and-invalidates with line/page/all scope, CACR DE/IE gate
+allocation. **Data is still served by the bus**: the model observes, never
+interferes, which is why the milestone was safe to land whole.
+
+Design points worth remembering (detail: `POM68K_VENDOR.md` § *68040
+cache-TAG model*):
+
+- The touch rides `mmu040Translate`'s three return paths, so the CM mode
+  is always the one the access really used — TTR field, descriptor
+  status, or the MMU-off writethrough default (UM § 3.5.1). No new
+  walk, no new state source: the same bits the M0 probe histogrammed.
+- CINV/CPUSH line/page operands translate through a **non-faulting,
+  side-effect-free** resolver (ATC scan + a read-only twin of
+  `mmu040Walk`): the flag must never make the guest observe MMU state
+  it would not have observed flag OFF. An unmapped operand skips the op
+  — defensible only while memory is current, i.e. only in M1.
+- The caches are flushed on save-state restore (`pomFlushAtcs`), never
+  serialized — the ATC convention, unchanged.
+- Two accepted approximations, both M2 work: SSW-size reuse on split
+  sub-accesses can over-mark one dirty longword; the JIT DTLB fast path
+  bypasses the touch, so tag state under the JIT is approximate.
+
+Gates: `cache040_test` (new, 32 checks — the struct bare, then
+CACR/DTT0/CINV/CPUSH through a bare 68040 Moira), and flag ON:
+`sst68040` 7 200/7 200, the 5 JIT lockstep gates, and
+`q605_boot_etalon` (interpreter, serial rerun) printing the
+**byte-identical** signature to flag OFF — `menu 230.6/8.3, desktop
+128.3/33.5, SCSI=5780`. Which is the *dirty-image* phantom signature:
+`hdv/MacOS-8.1-boot.vhd` was left dirty by a GUI session (mtime 23:46
+the night before, drVolAtrb bit 8 = 0), so the Quadra etalons prove
+image, not code, flag ON and OFF alike. The full flag-ON
+`ctest -L m040` sweep is **owed** after the one-time GUI cleanup
+(`TODO.md` § 1). Same-night hazard worth naming: a second session's
+concurrent `ctest` clobbered `LastTest.log` mid-read — the serial
+rerun captured the binary's stdout directly instead.
+
 ## 2026-08-04 (soir) — The IIfx SCSI mirror mounted one volume seven times; CDs hot-mount under 8.1; the MacIP window opens up
 
 **Seven icons, one disk.** On the IIfx desktop the boot volume appeared
@@ -463,6 +508,32 @@ CD bays swap media live through the same command-queue path as the floppy.
 (~2 KB in flight) since the gateway's first commit — throughput was 2 KB
 per guest ACK round-trip, tens of KB/s against a ~230 KB/s boosted wire.
 Now `min(32×MSS, guestWin)`; the advertised window stays the hard bound.
+
+**The 7.5.5 hot-floppy refusal, first layer.** A GCR floppy hot-inserted
+on a Quadra mounts under Mac OS 8.1 but comes up "unreadable — format?"
+under System 7.5.5 (reproduced headless: the driver spins up, selects GCR,
+steps to track 4, motor off, gives up). The 7.5 Sony driver times the
+drive's INDEX pulses after an insert; `senseSwim` reg 4/C generated them
+from `spin_ % (7833600/5)` — the Mac Plus clock and 300 RPM hardcoded,
+while `spin_` counts machine cycles (25 MHz on the Q605) and a GCR
+cylinder spins at 394-590 RPM. The measured speed came out ~2.4× off and
+the driver refused the medium. Reg B (tach) carried the same wrong-clock
+constant. Both now derive from `spinCyclesPerRev()` (drive clock ×
+per-cylinder speed group, MAME `!m_idx` semantics); and since the
+driver's post-insert burst polls that sense for only a few ms (~2000
+polls inside <1 % of a revolution — no once-per-rev pulse could ever be
+seen there), GCR media now presents it as the raw read line toggling at
+flux rate, MFM/HD keeping the slow index. All three corrections are
+MAME-faithful and retained — and the 7.5.5 driver STILL refuses (it
+reads ~4 revolutions of cells, steps to track 4, motor off). What is
+known: LC II (IWM path) + 7.5.5 mounts, Q605 (SWIM2/ISM) + 8.1 mounts,
+Q605 + 7.5.5 does not; a non-System floppy present at power-on is
+probed and ejected by the ROM exactly as a real Quadra does. The open
+suspect is the ISM read path as the 7.5 driver consumes it — error/CRC
+latches that 8.1 ignores. Next session: register-level comparison
+against MAME `swim2.cpp` on the post-insert read sequence (the traced
+`Swim2.cpp` harness lives in the session scratchpad, linked
+object-before-archive over `libpom68k_core`).
 
 Also: the Disques window lists the floppy (the always-hot bay) above the
 cold boot/SCSI choices; `disks35/Stuffit_Expander_5.5.dsk` was 1440K plus

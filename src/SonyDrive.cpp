@@ -830,13 +830,33 @@ bool SonyDrive::senseSwim(int reg) const {
     case 0x1: return true;                       // step complete
     case 0x2: return !motorOn_;                  // motor is active low
     case 0x3: return !hasDisk();                 // !m_dskchg (unload = high)
-    case 0x4: case 0xC:                          // index/read-data
+    case 0x4: case 0xC: {                        // index/read-data
         // MAME reports high for a SuperDrive while stopped/no media, which
         // forms the documented initial capability signature x011 (2M,
-        // ready, MFM, RD1). Once spinning, approximate the narrow index pulse.
+        // ready, MFM, RD1). Once spinning, one narrow active-low index
+        // pulse per revolution — on the DRIVE'S clock and speed. The old
+        // `spin_ % (7833600/5)` hardcoded the Plus clock and 300 RPM: on a
+        // 25 MHz Quadra the System 7.5 Sony driver, timing these pulses
+        // after a hot insert, measured ~956 RPM on a GCR disk and refused
+        // the medium ("unreadable — format?"); the 8.1 driver does not run
+        // that check, which is why only 7.5.x ever saw it (2026-08-04).
         if (!superDrive_) return false;
         if (!hasDisk() || !motorOn_) return true;
-        return (spin_ % (7833600LL / 5)) > 2000; // 300 RPM, active-low index
+        // A once-per-rev pulse cannot be what that check reads, though: the
+        // driver polls this sense for only a few ms right after spin-up
+        // (traced 2026-08-04: ~2000 polls inside <1 % of a revolution), and
+        // on real hardware such a burst can only see a line that toggles at
+        // FLUX rate. So GCR media presents the raw read line (~2 µs cells,
+        // the "read-data" half of MAME's "index/read-data" naming); MFM/HD
+        // keeps the slow per-revolution index pulse.
+        if (mfmMode_ && hd_) {
+            const int64_t rev = spinCyclesPerRev();
+            return (spin_ % rev) > spinClockHz_ / 500;   // ~2 ms low pulse
+        }
+        const int64_t half = spinClockHz_ >= 2000000 ? spinClockHz_ / 1000000
+                                                     : 8;   // ~1 µs halves
+        return (spin_ / half) & 1;
+    }
     case 0x5: return superDrive_;                // MFD-75W capability
     case 0x6: return doubleSided_;
     case 0x7: return false;                      // drive exists
@@ -844,9 +864,11 @@ bool SonyDrive::senseSwim(int reg) const {
     case 0x9: return !writeProtected_;
     case 0xA: return track_ != 0;
     case 0xB: {                                  // 120 tach inversions/rev
+        // Same wrong-clock bug as the index pulse above: 7833600 was the
+        // Plus clock, spin_ counts machine cycles. spinCyclesPerRev() also
+        // tracks the GCR speed group of the current cylinder (rpmNow).
         if (!hasDisk() || !motorOn_) return false;
-        const int rpm = hd_ ? 300 : 394;
-        const int64_t cyclesPerRev = 7833600LL * 60 / rpm;
+        const int64_t cyclesPerRev = spinCyclesPerRev();
         return ((spin_ % cyclesPerRev) * 120 / cyclesPerRev) & 1;
     }
     case 0xD: return mfmMode_;
