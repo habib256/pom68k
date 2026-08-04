@@ -335,7 +335,7 @@ private:
     // The same, for a target only known at run time (RTS, JSR (An)). The
     // slot index has to be computed instead of folded, which is four more
     // instructions — still nothing against returning to the engine.
-    void leaveToDynamic(Reg pcReg);
+    void leaveToDynamic();
     bool emitSubroutine(size_t i);   // JSR / BSR / RTS
     void chargeCycles(int cycles);
     void spillClock() { a_.movMR(Sz::Q, at(L_.clock), kClk); }
@@ -464,16 +464,22 @@ void Emitter::leaveTo(uint32_t pc) {
     a_.jmp(*epilogue_);
 }
 
-void Emitter::leaveToDynamic(Reg pcReg) {
+// The dynamic target is read back from MEMORY (at(L_.pc), which every
+// caller stores before charging cycles), never trusted in a register:
+// chargeCycles' pacing callout clobbers all caller-saved registers, and a
+// garbage tag that happens to match a populated slot jumps into an
+// UNRELATED block — with the deadline pacing calling out on nearly every
+// RTS in a device-poll loop, that was the 2026-08-04 red gate (TODO § 1).
+void Emitter::leaveToDynamic() {
     if (linkMask_) {
         Label& miss = *a_.fresh();
-        a_.movRR(Sz::L, RCX, pcReg);
+        a_.movRM(Sz::L, RDX, at(L_.pc));
+        a_.movRR(Sz::L, RCX, RDX);
         a_.shiftRI(Sz::L, RCX, 5, 1);                 // pc >> 1
         a_.aluRI(Asm::Op::AND, Sz::L, RCX, int32_t(linkMask_));
         a_.shiftRI(Sz::L, RCX, 4, 4);                 // * sizeof(slot)
         a_.movRM(Sz::Q, RAX, F(kFLinkTab));
         a_.aluRR(Asm::Op::ADD, Sz::Q, RAX, RCX);
-        a_.movRR(Sz::L, RDX, pcReg);
         if (ir_.super) a_.aluRI(Asm::Op::OR, Sz::L, RDX, 1);
         a_.aluRM(Asm::Op::CMP, Sz::L, RDX, mem(RAX, 0));
         a_.jcc(Cc::NE, miss);
@@ -517,7 +523,7 @@ bool Emitter::emitSubroutine(size_t i) {
         commitQueue(op, ircAfter);
         chargeCycles(10);
         a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
-        leaveToDynamic(RDI);
+        leaveToDynamic();
         return true;
     }
 
@@ -585,7 +591,7 @@ bool Emitter::emitSubroutine(size_t i) {
     chargeCycles(int(in.cycles));
     a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     if (constant) leaveTo(uint32_t(ea.value));
-    else          leaveToDynamic(RDI);
+    else          leaveToDynamic();
     return true;
 }
 
@@ -1669,7 +1675,7 @@ bool Emitter::emitJmp(size_t i) {
     chargeCycles(int(in.cycles));
     a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     if (constant) leaveTo(uint32_t(ea.value));
-    else          leaveToDynamic(RDI);
+    else          leaveToDynamic();
     return true;
 }
 
