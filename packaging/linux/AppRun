@@ -1,0 +1,39 @@
+#!/bin/bash
+# AppRun for POM68K — run the emulator from a per-user data directory.
+#
+# POM68K resolves its assets (roms/, hdv/, disks35/) relative to the current
+# working directory, the executable directory and its parent. Inside an
+# AppImage the executable directory is a read-only squashfs, and ROMs are
+# user-provided (never shipped — see README/LICENSE), so every asset dir
+# lives in $XDG_DATA_HOME/POM68K and we chdir there before exec.
+#
+# First launch seeds the empty directory skeleton plus a README telling the
+# user where to drop their ROM dumps and disk images.
+
+set -e
+
+HERE="$(dirname "$(readlink -f "${0}")")"
+
+XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+DATADIR="${XDG_DATA_HOME}/POM68K"
+mkdir -p "${DATADIR}/roms" "${DATADIR}/hdv" "${DATADIR}/disks35"
+
+if [ ! -f "${DATADIR}/README.txt" ]; then
+    cat > "${DATADIR}/README.txt" <<'EOF'
+POM68K data directory
+=====================
+
+  roms/     — your Macintosh ROM dumps (user-provided, never distributed).
+              The machine profile is picked by ROM size + checksum.
+  hdv/      — hard-disk images (.vhd/.dsk/.img — raw HFS or DDM-partitioned).
+  disks35/  — 3.5" floppy images (.dsk 400K/800K/1440K, DiskCopy 4.2).
+
+Launch with no arguments to boot the first ROM found, or:
+  POM68K <rom> [disk images...]
+EOF
+fi
+
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+
+cd "${DATADIR}"
+exec "${HERE}/usr/bin/POM68K" "$@"

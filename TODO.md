@@ -53,12 +53,14 @@ en § 1 est une simplification, avec sa raison et sa condition de réouverture.
 
 **La prochaine action, par ordre de trou architectural décroissant :**
 
-1. **Le mécanisme d'échéance périphérique** (§ 4 de ce fichier) — chiffré et
-   prêt à écrire : huit bornes dérivées du code, ordre de migration établi,
-   l'exactitude passerait de ~72 % à **~12 %** de surcoût.
+1. **Étendre le mécanisme d'échéance périphérique aux dix plateformes
+   restantes.** Il a atterri le 2026-08-03 sur **Q605 + V8 seulement**
+   (§ 4 : 86,65 M `mem.tick()` au lieu de 833 M, timing exact préservé) ;
+   Sonora, RBV, VASP, Centris, Q700/Eclipse, Q630, MSC, IIfx, Mac II et
+   les compacts tournent toujours en batch fixe dans leur `catchUp()`.
 2. **Copyback / snooping 040** — la plus grosse inexactitude CPU restante,
    sur les huit machines 040. Chantier côté `extern/moira`.
-3. **§ 2, profondeur de test** — 8 profils sur 36 ont un gate au-delà de la
+3. **§ 2, profondeur de test** — 9 profils sur 36 ont un gate au-delà de la
    signature Finder. Décision produit prise le 2026-08-02 : on implémente le
    LLE d'abord, on construira les gates longs ensuite.
 
@@ -70,7 +72,18 @@ retouche, relancer `q700` **et** `q900`, jamais en parallèle
 
 ## 1. Red now
 
-*(nothing — `q605_cudalle_key_etalon` went green 2026-07-31: the cause was
+*(nothing — `jit_q605_boot_etalon` went red on 2026-08-04 after the
+A64/pacing merge and green again the same day: the x64 emitter handed the
+dynamic link target across `chargeCycles` in RDI, which the pacing
+callout clobbers; a garbage tag that matched a populated slot jumped
+into an unrelated block. `leaveToDynamic` now reloads the target from
+`at(L_.pc)` — the exact shape the A64 backend already had, which is why
+only x64 failed. Full hunt: `CHANGELOG.md` § 2026-08-04. Reproducer kept
+for regressions: the coarse x64 lockstep,
+`POM68K_JIT_BACKEND=x64 POM68K_JIT_HOT=1 POM68K_JIT_LOCKSTEP_BUDGET=50
+./build/jit_lockstep_test 5000000`.)*
+
+*(previously: `q605_cudalle_key_etalon` went green 2026-07-31: the cause was
 Easy Access **Slow Keys enabled inside `MacOS-8.1-boot.vhd`**, not the
 emulator. Full diagnosis in `CHANGELOG.md` § 2026-07-31; the gate now holds
 each key 150 frames, which both a Slow-Keys guest and a normal one accept.)*
@@ -336,6 +349,43 @@ deliberate "POM68K requires MCU dumps" product decision, not a cleanup.
   That is 9.6× fewer full fan-outs than the old exact batch-1 measurement
   (833.2 M), while preserving exact event timing. Gates: the Q605 boot plus
   all three firmware boot/input etalons, Mac TV, unit and save-state suites.
+- [ ] **Extend the event deadlines to the six 030/040 platforms still on a
+  fixed batch** (inventoried 2026-08-04; §0 item 1). The contract carries
+  over unchanged: only a device that can raise an interrupt or flip an
+  externally visible line *spontaneously* needs a bound; pure state
+  (SonyDrive spin, rotation angle) is covered by the access-forced
+  `flushTicks()`. Mechanical wrapper change per CPU (copy
+  `Cpu030::catchUp`/`schedulePeriphDeadline`): add `periphDeadline_`,
+  early-return in catchUp, schedule after tick — **and add the new member
+  to the wrapper's `visit()`** (savestate_030/040 gates will catch an
+  omission). Per-platform bound terms, from each `tick()`:
+  - **Sonora** (5 profiles, 25/33 MHz): Egret/Cuda LLE (HLE → historical
+    batch), VIA Bresenham `ceil((cpuHz_−viaAcc_)/kViaHz)`, CA1
+    `ceil((cpuHz_·20−tickAcc_)/1203)`, modeline VBL
+    (`vblStart_`/`frameCycles_` − `framePos_`), AscSonora (check it has a
+    deadline API — AscIosb does, the Sonora flavour may not), SWIM2
+    through `swimAcc_` C15M bridge, SCC.
+  - **VASP** (31.3344/16 MHz): same shape; fixed 60 Hz VBL (480/525);
+    ASC+SWIM1+spin share the `c15Acc_` C15M domain — SWIM1 has no
+    `cyclesToNextEvent` yet (add one, ∞ when parked).
+  - **RBV**: IIsi = Egret LLE like V8; **IIci is the delicate one** —
+    `adbVia_.tick` + `syncTo(machineClock())` every tick (host-paced PIC
+    transport) plus the discrete RTC 1 Hz (`secAcc_`); derive the AdbVia
+    bound from its live countdowns before touching anything
+    (`pom68k-mcu-lle-clock-drift` applies).
+  - **Centris** (20/25/33 MHz): Q605 mix (AscIosb, SWIM2, 53C96, DAFB)
+    plus the Mac II front end — AdbVia/PIC1654S is the binding transport.
+  - **Q700** (Spike/Q900/Q950): Q605 mix + Eclipse tail — two `ApplePic`
+    (65C02 always running: bound = the C15M bridge, small but > 1) +
+    `Egret`. Guard rail: q700 **and** q900, never in parallel.
+  - **Q630**: Q605 mix + Valkyrie VBL + the Cuda I2C slaves.
+  Deliberately NOT in this batch: the compacts (cycle-exact by
+  construction — a deadline there risks the Plus's whole accuracy claim
+  for the cheapest machine to emulate), Mac II family, IIfx (two IOPs
+  always executing → the fan-out is intrinsic) and MSC — each needs its
+  own analysis. Gates per platform: its boot etalons + the input etalons
+  it owns (`iisi_input`, `lc3_`/`lc520_input`) + the save-state suites,
+  serially.
 - [ ] **Quadra 605 / LC 475**: expand Cuda commands only from ROM/driver traces;
   accurate 040 timing, cache copyback/snooping and on-chip-FPU/FPSP behaviour as
   separate oracle-gated milestones.

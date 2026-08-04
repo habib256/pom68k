@@ -91,6 +91,26 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
+    // An empty CD drive on the bus at boot: the ROM's probe sees it, the
+    // driver polls it, and media hot-inserted later mounts without a
+    // reboot (ScsiDisk raises UNIT ATTENTION / $28 on the change).
+    bool attachCdromEmpty(int id) {
+        if (id < 1 || id > 6) return false;
+        scsiDisks_[id].attachCdromEmpty();
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
+    bool bayIsCdrom(int id) const {
+        return id >= 1 && id <= 6 && scsiDisks_[id].cdrom()
+            && scsiDisks_[id].present();
+    }
+    // Media in/out of an existing CD bay, mid-run (machine thread only).
+    bool insertBayMedia(int id, const std::string& path) {
+        return bayIsCdrom(id) && scsiDisks_[id].openCdrom(path);
+    }
+    void ejectBayMedia(int id) {
+        if (bayIsCdrom(id)) scsiDisks_[id].eject();
+    }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
         // Mirror on every ID so StartBoot's 7→0 scan does not burn multi-
@@ -110,6 +130,7 @@ public:
     Scc8530& scc() { return scc_; }
     Rtc& rtc() { return rtc_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
+    void ejectDisk() { drive_.eject(); }
     bool overlay() const { return overlay_; }
     bool hmmu24() const { return hmmu24_; }
     uint8_t nubusIrqState() const { return nubusIrqState_; }

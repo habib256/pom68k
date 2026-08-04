@@ -242,6 +242,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-04** — [Hot floppy swap reaches every runner; release CI for four OS targets; the x64 dynamic-link regression found and fixed](#2026-08-04-floppy-ci)
 - **2026-08-04** — [AArch64 Finder gate green and fast: hidden-state lockstep plus two host-side bottlenecks removed](#2026-08-04-a64-green-fast)
 - **2026-08-03** — [Event deadlines close the Cuda phase accommodation; extended ADB input reaches every GUI runner](#2026-08-03-event-deadlines)
 - **2026-08-03** — [Three items closed by measurement — and a GREEN ctest that proved nothing](#2026-08-03-three-items)
@@ -423,6 +424,77 @@ Newest first.
 ---
 
 <a id="2026-08-03-event-deadlines"></a>
+<a id="2026-08-04-floppy-ci"></a>
+
+## 2026-08-04 — Hot floppy swap reaches every runner; release CI for four OS targets; the x64 dynamic-link regression found and fixed
+
+**Floppy hot-swap is now universal.** The Disques window's floppy bay
+existed but was wired into only the four 040 runners. The same command
+pair (`Cmd::InsertFloppy`/`EjectFloppy`, pending path swapped under the
+queue mutex, an atomic inserted flag) now lives in `MacIiMachine`,
+`IIfxMachine`, `LcMachine` and `SonoraStyleMachine` — which carries
+Sonora, VASP and RBV at once — and the single-threaded compacts loop
+calls `mem.insertDisk/ejectDisk` directly between frames. The seven
+platform memories that lacked it gained a one-line `ejectDisk()`
+(SonyDrive flushes write-back on eject by itself). Two adjacent gaps
+closed in the same pass: `diskBaysInstallDrop` had **zero callers** — the
+window advertised drag-and-drop that could never fire; it is installed
+after ImGui init in all 11 GUI loops now — and `POM68K_FLOPPY` seeds a
+startup floppy on the runners that had no CLI floppy path. Guard rails
+re-run green on fresh binaries: `lcii_floppy_etalon` (the hot-insert
+proof) and 7/8 `ctest -L smoke`. The eighth is the red gate below.
+
+**Release CI, adapted from POM1's battle-tested workflows.** Three
+workflows (`ci.yml` — build + the ROM-free `unit` tier on every push;
+`build-bionic-image.yml` — the frozen glibc-2.27 toolchain image, one
+native job per arch; `release.yml` — tag-triggered artifacts + GitHub
+Release) and the packaging tree they drive. Four artifacts: Linux
+x86_64 **and aarch64** AppImages with a **glibc 2.27 floor** (bionic
+builder image, g++-11 for C++20, ET_EXEC runtime — the aarch64 one IS
+the Raspberry Pi 400 package: Pi OS ships glibc 2.36 and POM68K's GL 3.0
+request fits V3D's desktop GL 3.1), a macOS **Universal 2** .dmg
+(static universal GLFW, no Homebrew prefix ever baked in), and a
+Windows x64 zip (vcpkg `x64-windows-static`, /MT, zero app-local DLL).
+POM1's hard-won invariants are asserted, not assumed: ET_EXEC + magic +
+glibc-floor checks, lipo both-slices, no-stray-DLL, and a
+`--version` smoke-launch — a new flag that prints and exits before any
+window, stamped from the new repo-root `VERSION` file
+(`-DPOM68K_VERSION` overrides; target-scoped so a bump recompiles one
+TU). ROMs ship in **no** artifact; every package provisions a writable
+user data dir (`roms/`, `hdv/`, `disks35/`) and says so in a README.
+Bootstrap order: run build-bionic-image once, pin the digests it prints
+into release.yml, then tag.
+
+**`jit_q605_boot_etalon` went red and green again the same day — the x64
+dynamic-link target rode a caller-saved register across the pacing
+callout.** The smoke run caught it red after the A64/pacing merge
+`93ae352` (default x64 wedged with zero SCSI in 20 G cycles). The hunt,
+in order: env bisection (`POM68K_JIT_LINKS=0` and `threaded` both PASS →
+the deadline pacing itself exonerated); the merge's own coarse
+hidden-state lockstep turned against x64 → a deterministic 100 s
+reproducer diverging at step 3 785 392 in a 4-block linked poll loop,
+the jit suddenly at pc `$00008D22`; emitter probes (link lookup emitted
+but jump suppressed → PASS; static links only → PASS) pinning the defect
+to **`leaveToDynamic`**, the RTS/JSR/JMP-`<ea>` dispatch. Root cause:
+those emitters computed the target into **RDI**, stored it to `pc`, then
+ran `chargeCycles` — whose deadline callout (`pom68kJitSync`) clobbers
+every caller-saved register — and only then did the link lookup **from
+RDI**. With the new ~12-cycle Cuda deadline firing on nearly every RTS
+in a device-poll loop, garbage RDI hit the table millions of times until
+one leftover value matched a populated slot's tag and the chain jumped
+into an unrelated compiled block (`$8D22` was a *real* block — a handler
+entered without its interrupt). This also explains the eeriest symptom:
+installing a pure, never-invoked lockstep hook made 5 M steps pass,
+because the deeper C++ callee left different garbage in RDI. The fix is
+the shape the **A64 backend already had** (its `leaveToDynamic` does
+`ldrW(11, 0, L.pc)` — why only x64 ever failed): reload the target from
+`at(L_.pc)` inside `leaveToDynamic`, registers not trusted across the
+callout. Latent since block linking landed; detonated by exact pacing.
+Green after fix: the coarse x64 lockstep (5 M identical, links active),
+`jit_q605_boot_etalon` (Finder, 256 colors), `ctest -L smoke` **8/8** —
+and the tier dropped 193 s → 114 s, the wedge no longer burning its
+whole cycle budget.
+
 <a id="2026-08-04-a64-green-fast"></a>
 
 ## 2026-08-04 — AArch64 Finder gate green and fast: hidden-state lockstep plus two host-side bottlenecks removed

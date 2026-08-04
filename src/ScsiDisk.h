@@ -55,6 +55,11 @@ public:
     // a .cue sheet naming a .bin (first data track only; audio tracks are
     // catalogued for READ TOC but not played — see the CDDA TODO).
     bool openCdrom(const std::string& path);
+    // An empty CD drive on the bus: the target answers INQUIRY and reports
+    // NOT READY, so the guest's driver polls it — exactly what a real drive
+    // with no disc does. Media arriving later (openCdrom on this target)
+    // raises UNIT ATTENTION / $28 and the Finder mounts it, no reboot.
+    void attachCdromEmpty();
     void eject();
     bool cdrom() const { return kind_ == Kind::Cdrom; }
     bool mediumPresent() const { return blocks_ > 0; }
@@ -153,6 +158,10 @@ private:
     bool writeBack_ = false;
     Kind kind_ = Kind::Disk;
     bool attached_ = false;          // CD drive exists (disc may be absent)
+    // One CHECK CONDITION / $28 owed on the next command after a medium
+    // change (not serialized: a pending attention is a mount edge, not
+    // guest state — re-inserting after a restore re-arms it).
+    bool unitAttention_ = false;
     uint32_t blocks_ = 0;
     // Non-zero when image_ has a synthetic DDM/PM/driver prefix; HFS file
     // bytes begin at this LBA and write-back subtracts it from the LBA.

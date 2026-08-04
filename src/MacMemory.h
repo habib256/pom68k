@@ -108,6 +108,7 @@ public:
     Iwm& iwm() { return iwm_; }
     SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
+    void ejectDisk() { drive_.eject(); }
     Scc8530& scc() { return scc_; }
     MacMouse& mouse() { return mouse_; }
     MacKeyboard& keyboard() { return kbd_; }

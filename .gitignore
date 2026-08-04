@@ -57,3 +57,9 @@ scc.log
 # Old agent debug artefacts and the PGO build tree (regenerable)
 debug/
 build-pgo/
+
+# Release packaging outputs (regenerable; see .github/workflows/release.yml)
+dist/
+build-release/
+build-appimage/
+build-universal-deps/

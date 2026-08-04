@@ -65,6 +65,10 @@ struct DiskBaysHost {
     // insertBay returns false when the bay exists but refused the image.
     std::function<bool(int id, const std::string& path)> insertBay;
     std::function<void(int id)>                          ejectBay;
+    // True when SCSI id holds a CD-ROM target (the removable kind — the
+    // only kind whose medium can change without a reboot). Null = the
+    // runner cannot tell, and no bay swaps live.
+    std::function<bool(int id)>                          bayIsCd;
 
     // --- Floppy hooks (already live on every machine that has a drive) ---
     std::function<void(const std::string&)> insertFloppy;
@@ -92,5 +96,14 @@ void diskBaysInstallDrop(GLFWwindow* window);
 // own directory) plus anything the user has dropped or typed this session.
 // Accepts every extension the command line accepts.
 std::vector<std::string> diskBaysKnownImages(const std::string& nearPath);
+
+// CD image by extension (.iso/.cdr/.toast/.cue/.bin) — the ONE list, shared
+// by the window and every runner's argv loop. Name-based on purpose: a .dsk
+// that happens to be 2048-aligned is still a hard disk.
+bool diskBaysPathIsCd(const std::string& path);
+
+// The reserved-bay placeholder: an extras entry equal to this names an empty
+// CD drive that must exist on the bus at boot (runners attachCdromEmpty it).
+inline const char* kCdBayToken = "cdbay";
 
 } // namespace pom68k

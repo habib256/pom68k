@@ -131,6 +131,26 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
+    // An empty CD drive on the bus at boot: the ROM's probe sees it, the
+    // driver polls it, and media hot-inserted later mounts without a
+    // reboot (ScsiDisk raises UNIT ATTENTION / $28 on the change).
+    bool attachCdromEmpty(int id) {
+        if (id < 1 || id > 6) return false;
+        scsiDisks_[id].attachCdromEmpty();
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
+    bool bayIsCdrom(int id) const {
+        return id >= 1 && id <= 6 && scsiDisks_[id].cdrom()
+            && scsiDisks_[id].present();
+    }
+    // Media in/out of an existing CD bay, mid-run (machine thread only).
+    bool insertBayMedia(int id, const std::string& path) {
+        return bayIsCdrom(id) && scsiDisks_[id].openCdrom(path);
+    }
+    void ejectBayMedia(int id) {
+        if (bayIsCdrom(id)) scsiDisks_[id].eject();
+    }
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive0_.setSoundSink(floppy);
         drive1_.setSoundSink(floppy);

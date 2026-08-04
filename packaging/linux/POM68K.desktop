@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=POM68K
+GenericName=Macintosh 68k Emulator
+Comment=Dear ImGui emulator of the 68k Macintosh line — 36 profiles from the Mac Plus to the Quadra 950, every one booting the Finder.
+Exec=POM68K
+Icon=POM68K
+Terminal=false
+Categories=Game;Emulator;
+Keywords=macintosh;68k;68000;68030;68040;emulator;retro;system7;
+StartupNotify=true
+StartupWMClass=POM68K

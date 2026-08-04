@@ -147,6 +147,39 @@ int main() {
     check(cd.command(rs, 6, out, in) == 0 && out.size() > 2 &&
           (out[2] & 0x0F) == 0x02, "sense key = NOT READY");
 
+    // Hot insert: an EMPTY drive attached at boot (attachCdromEmpty), media
+    // arriving mid-run (openCdrom on the same target). The driver's view:
+    // NOT READY while empty; after the change, exactly one CHECK CONDITION
+    // with UNIT ATTENTION / $28 (not-ready-to-ready) — that is the edge the
+    // Mac CD extension mounts on — then business as usual.
+    {
+        ScsiDisk hot;
+        hot.attachCdromEmpty();
+        check(hot.cdrom() && hot.present() && !hot.mediumPresent(),
+              "empty drive: target present, no medium");
+        const uint8_t tur[6] = { 0x00, 0, 0, 0, 0, 0 };
+        std::vector<uint8_t> o3, i3;
+        check(hot.command(tur, 6, o3, i3) == 2, "TUR on empty drive → CHECK");
+        check(hot.command(rs, 6, o3, i3) == 0 && (o3[2] & 0x0F) == 0x02,
+              "empty drive sense = NOT READY");
+        check(hot.openCdrom(path), "media hot-inserted into the drive");
+        check(hot.command(tur, 6, o3, i3) == 2,
+              "first TUR after insert → CHECK (unit attention)");
+        check(hot.command(rs, 6, o3, i3) == 0 && (o3[2] & 0x0F) == 0x06 &&
+              o3.size() > 12 && o3[12] == 0x28,
+              "sense = UNIT ATTENTION, ASC $28 (medium changed)");
+        check(hot.command(tur, 6, o3, i3) == 0, "second TUR → GOOD");
+        // INQUIRY must never be blocked by a pending attention (SCSI-2):
+        ScsiDisk hot2;
+        hot2.attachCdromEmpty();
+        check(hot2.openCdrom(path), "second drive, media inserted");
+        const uint8_t inq2[6] = { 0x12, 0, 0, 0, 36, 0 };
+        check(hot2.command(inq2, 6, o3, i3) == 0,
+              "INQUIRY passes through a pending attention");
+        check(hot2.command(tur, 6, o3, i3) == 2,
+              "…which stays pending for the next command");
+    }
+
     // A raw 2352-byte rip must be refused, not mis-read as MODE1.
     {
         const std::string raw = "scsi_cdrom_test_raw.bin";

@@ -1,0 +1,41 @@
+# Minimal CI: build POM68K on Linux and run the `unit` test tier — the 66
+# gates that need no ROM and no disk image (CLAUDE.md § Build & run). The
+# etalon tiers are asset-dependent (user-provided ROMs, never committed) and
+# cannot run here.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev
+
+      - name: Fetch Dear ImGui (pinned to the tested docking release)
+        run: git clone --depth 1 --branch v1.92.8-docking https://github.com/ocornut/imgui.git
+
+      - name: Build POM68K + tests
+        # POM68K_NATIVE=OFF: -march=native on a CI runner proves nothing and
+        # LTO roughly doubles the link time for 100+ test binaries.
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPOM68K_NATIVE=OFF
+          cmake --build build -j"$(nproc)"
+
+      - name: Smoke-launch (--version exits before any window)
+        run: |
+          OUT=$(./build/POM68K --version)
+          echo "$OUT"
+          grep -q "Macintosh 68k emulator" <<<"$OUT"
+
+      - name: Run the unit tier (no ROM or disk image needed)
+        run: ctest --test-dir build -L unit --output-on-failure

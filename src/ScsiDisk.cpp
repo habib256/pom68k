@@ -236,8 +236,14 @@ static std::string cueDataFile(const std::string& cuePath, bool& mode1_2352) {
 }
 
 bool ScsiDisk::openCdrom(const std::string& path) {
+    // Loading media into a drive that already existed on the bus is a
+    // medium change: the guest's driver must see UNIT ATTENTION ($28,
+    // not-ready-to-ready) or it will never mount the new disc. The first
+    // attach (boot-time bus population) owes nothing.
+    const bool mediumChange = attached_ && kind_ == Kind::Cdrom;
     kind_ = Kind::Cdrom;
     attached_ = true;
+    unitAttention_ = false;
     if (file_.is_open()) file_.close();
     writeBack_ = false;
     hfsPrefixBlocks_ = 0;
@@ -291,7 +297,20 @@ bool ScsiDisk::openCdrom(const std::string& path) {
                                              // when the sync says so
     }
     blocks_ = uint32_t(image_.size() / 2048);
+    unitAttention_ = mediumChange && blocks_ > 0;
     return blocks_ > 0;
+}
+
+void ScsiDisk::attachCdromEmpty() {
+    kind_ = Kind::Cdrom;
+    attached_ = true;
+    unitAttention_ = false;
+    if (file_.is_open()) file_.close();
+    writeBack_ = false;
+    hfsPrefixBlocks_ = 0;
+    image_.clear();
+    blocks_ = 0;
+    setSense(kNotReady, 0x3A);                   // MEDIUM NOT PRESENT
 }
 
 void ScsiDisk::eject() {
@@ -302,6 +321,7 @@ void ScsiDisk::eject() {
     writeBack_ = false;
     // A CD drive with no disc is still a target; a disk image that is
     // closed is simply gone.
+    unitAttention_ = false;
     setSense(kNotReady, 0x3A);                   // MEDIUM NOT PRESENT
 }
 
@@ -456,6 +476,15 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                      cdbLen > 5 ? cdb[5] : 0, cdbLen > 6 ? cdb[6] : 0,
                      cdbLen > 7 ? cdb[7] : 0, cdbLen > 8 ? cdb[8] : 0,
                      cdbLen > 9 ? cdb[9] : 0);
+    // A medium change owes exactly one CHECK CONDITION / UNIT ATTENTION
+    // before anything else executes (SCSI-2 §7.9); INQUIRY and REQUEST
+    // SENSE are the two commands that must not be blocked by it.
+    if (kind_ == Kind::Cdrom && unitAttention_
+        && cdb[0] != 0x03 && cdb[0] != 0x12) {
+        unitAttention_ = false;
+        setSense(kUnitAttention, 0x28);          // NOT READY TO READY
+        return kCheck;
+    }
     // ── CD-ROM personality: the commands that differ, then fall through
     // to the shared ones (REQUEST SENSE, READ(6)/(10)). Everything a Mac
     // needs to see a disc; audio playback is deliberately absent (no

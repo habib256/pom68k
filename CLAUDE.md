@@ -43,7 +43,7 @@ The profile list lives in **one** place: the `kProfiles` table in
 | `IOP_BRINGUP.md` | Mac IIfx / Quadra 900-950 blueprint — the Apple PIC IOP (R65C02) + OSS brick, milestone plan |
 | `DUO_BRINGUP.md` | PowerBook Duo 230 blueprint — the MSC + PG&E (68HC05 Power Manager) brick, milestone plan |
 
-## Status (2026-08-03)
+## Status (2026-08-04)
 
 - All **36 profiles boot the Finder**, each covered by a boot-etalon gate
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
@@ -74,8 +74,10 @@ The profile list lives in **one** place: the `kProfiles` table in
   `duo230_boot_etalon` but is **not** a `kProfiles` row yet — house rule: a
   GUI profile is earned by a Finder cell *plus* the GUI/save-state wiring
   (`docs/DUO_BRINGUP.md`, `TODO.md` § 7).
-- Next, in order: the peripheral **deadline** refactor (`TODO.md` § 4 — the
-  per-device bounds are derived, exactness costs ~12 % instead of ~72 %),
+- The peripheral **deadline** mechanism landed 2026-08-03 (Q605 + V8:
+  86.65 M `mem.tick()` calls instead of 833 M, exact timing preserved —
+  `CHANGELOG.md` § *Event deadlines*). The other ten platforms still run
+  fixed batches. Next, in order: extend the deadlines to those platforms,
   **040 copyback/snooping**, then `TODO.md` § *Test & validation depth*.
 
 ## Conventions (inherited from POMIIGS/POM2)
@@ -178,7 +180,7 @@ carries no `kProfiles` entry yet — it is gated, not GUI-wired.
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ `fpu_sanity` | MC68881/882UM; WinUAE fpp.c |
 | **68040 core + MMU** | `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; **7 200/7 200 pinned vectors** | MC68040UM + WinUAE oracle |
 | **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (11 save/load pairs, 36 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 11 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
-| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** code generator, aarch64 slot `backends/JitBackendA64.md`). **Off by default everywhere** — the interpreter is what every accuracy claim rests on | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓. Engine wired in 9 machine loops: `Cpu030` (V8, incl. the 68020 LC), `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, `MscCpu` — **`Cpu020` (Mac II family), `Cpu68k` (compacts) and `IIfxCpu` have none**. x64 codegen is **68040-only by declared capability** (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`. `q605_boot_etalon` 61.3 s interp → 22.9 s (×2.68), 89.6 % native | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
+| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** and **AArch64** code generators — A64 full-boot-gated, `auto` on arm64 since 2026-08-04). **Off by default everywhere** — the interpreter is what every accuracy claim rests on | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓. Engine wired in 9 machine loops: `Cpu030` (V8, incl. the 68020 LC), `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, `MscCpu` — **`Cpu020` (Mac II family), `Cpu68k` (compacts) and `IIfxCpu` have none**. x64 codegen is **68040-only by declared capability** (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`. `q605_boot_etalon` 61.3 s interp → 22.9 s (×2.68), 89.6 % native | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
 
 ## CPU core: Moira (vendored)
 

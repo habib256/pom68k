@@ -228,6 +228,13 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/FloppySound.cpp src/DiskBays.cpp src/DockLayout.cpp ${IMGUI_SOURCES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
     target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core)
+    # Version stamp for `POM68K --version` (release smoke gates). Single
+    # source of truth: the repo-root VERSION file; packagers override with
+    # -DPOM68K_VERSION=<tag>. Target-scoped so bumping it recompiles one TU.
+    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" POM68K_VERSION_DEFAULT LIMIT_COUNT 1)
+    set(POM68K_VERSION "${POM68K_VERSION_DEFAULT}" CACHE STRING "Package version string")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        POM68K_VERSION_STRING="${POM68K_VERSION}")
     # OpenGL remains the intentional portable GUI backend. Apple deprecated
     # the API at the SDK level in 10.14, which otherwise emits the same warning
     # for every GL call and hides actionable AppleClang diagnostics.

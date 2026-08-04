@@ -157,6 +157,26 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
+    // An empty CD drive on the bus at boot: the ROM's probe sees it, the
+    // driver polls it, and media hot-inserted later mounts without a
+    // reboot (ScsiDisk raises UNIT ATTENTION / $28 on the change).
+    bool attachCdromEmpty(int id) {
+        if (id < 1 || id > 6) return false;
+        scsiDisks_[id].attachCdromEmpty();
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
+    bool bayIsCdrom(int id) const {
+        return id >= 1 && id <= 6 && scsiDisks_[id].cdrom()
+            && scsiDisks_[id].present();
+    }
+    // Media in/out of an existing CD bay, mid-run (machine thread only).
+    bool insertBayMedia(int id, const std::string& path) {
+        return bayIsCdrom(id) && scsiDisks_[id].openCdrom(path);
+    }
+    void ejectBayMedia(int id) {
+        if (bayIsCdrom(id)) scsiDisks_[id].eject();
+    }
     // SWIM1 comes up IWM-compatible (GCR, the proven Plus Iwm inside);
     // the ISM personality (1.44 MB MFM) engages on the driver's 1-0-1-1
     // mode-register magic (Swim1.h). The Spice (Color Classic) carries a
@@ -169,6 +189,7 @@ public:
     bool hasCudaMcu() const { return spiceClass(); }
     SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
+    void ejectDisk() { drive_.eject(); }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);

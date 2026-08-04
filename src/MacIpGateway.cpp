@@ -526,7 +526,14 @@ void MacIpGateway::tcpPump(TcpConn& c, int64_t now) {
         // past the advertised window. MacTCP drops out-of-window segments
         // without a word, and the retransmit then replays the same oversized
         // segment until the give-up RST.
-        const size_t win = std::min<size_t>(4 * kMss, c.guestWin);
+        // The pipe depth IS the throughput: with N bytes in flight the flow
+        // moves N per guest ACK round-trip, and 4×MSS (~2 KB) capped page
+        // loads at tens of KB/s while the boosted wire can carry ~230 KB/s.
+        // The guest's advertised window stays the hard bound (out-of-window
+        // segments are silently dropped, see above); the deeper cap only
+        // lets a guest that advertises 8-64 KB actually use it. The wire is
+        // lossless, so the sole cost of depth is queueing delay on the wire.
+        const size_t win = std::min<size_t>(32 * kMss, c.guestWin);
         if (inFlight >= win) break;
         const size_t room = std::min<size_t>(kMss, win - inFlight);
         uint8_t buf[kMss];

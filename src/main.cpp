@@ -980,21 +980,6 @@ static void relaunchIfSwitched(char* argv0) {
 #endif
 }
 
-// A CD image by extension: raw MODE1 (.iso/.cdr/.toast). Kept name-based
-// on purpose — a .dsk that happens to be 2048-aligned is still a hard
-// disk, and guessing from content would mount it as a CD.
-static bool isCdImage(const std::string& p) {
-    auto ends = [&](const char* e) {
-        size_t n = std::strlen(e);
-        if (p.size() < n) return false;
-        for (size_t i = 0; i < n; i++)
-            if (std::tolower(p[p.size() - n + i]) != e[i]) return false;
-        return true;
-    };
-    return ends(".iso") || ends(".cdr") || ends(".toast")
-        || ends(".cue") || ends(".bin");
-}
-
 
 
 // ── Mac II machine thread ───────────────────────────────────────────────
@@ -1009,11 +994,31 @@ struct MacIiMachine {
 
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset } t; int a = 0, b = 0; };
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, InsertFloppy,
+                          EjectFloppy } t; int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
     // Save-state requests (GUI → machine thread; see SaveStateSlot above).
     SaveStateSlot state;
+
+    // Floppy hot-swap (GUI → machine thread; the DafbMachine contract).
+    void requestInsertFloppy(std::string path) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        floppyPending_ = std::move(path);
+        cmds_.push_back({Cmd::InsertFloppy});
+    }
+    void requestEjectFloppy() {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::EjectFloppy});
+    }
+    bool floppyInserted() const {
+        return floppyFlag_.load(std::memory_order_relaxed);
+    }
+    void setFloppyInserted(bool on) {
+        floppyFlag_.store(on, std::memory_order_relaxed);
+    }
+    std::string floppyPending_;              // guarded by cmdMu_
+    std::atomic<bool> floppyFlag_{false};
 
     bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
         std::lock_guard<std::mutex> l(fbMu_);
@@ -1140,13 +1145,23 @@ private:
         return !samp_.empty() && hi - lo >= 0.02f;
     }
     void applyCmds() {
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
+        std::string pending;
+        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
+          pending.swap(floppyPending_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
             case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
             case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
                                mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
+            case Cmd::InsertFloppy:
+                if (!pending.empty() && mem.insertDisk(pending))
+                    floppyFlag_.store(true, std::memory_order_relaxed);
+                break;
+            case Cmd::EjectFloppy:
+                mem.ejectDisk();
+                floppyFlag_.store(false, std::memory_order_relaxed);
+                break;
         }
         cmdsApply_.clear();
         state.apply(mem, cpu);         // save/load between two quanta
@@ -1215,16 +1230,24 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     static std::vector<std::string> extraDisks;
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;
-        // A CD image goes to the CD-ROM target (MAME puts the Mac's at
-        // SCSI 3), everything else is another hard disk.
-        if (isCdImage(argv[i])) {
-            if (mem.attachCdrom(argv[i]))
-                std::printf("SCSI CD 3: %s (read-only)\n", argv[i]);
-            else
-                std::fprintf(stderr, "SCSI CD 3: %s FAILED\n", argv[i]);
+        int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
             continue;
         }
-        int id = int(extraDisks.size()) + 1;
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -1248,6 +1271,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -1271,13 +1295,22 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                                           : hddPath + "." + name) + ".pomss";
     machine.publish(true);
 
+    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
+    static std::string floppyPath =
+        std::getenv("POM68K_FLOPPY") ? std::getenv("POM68K_FLOPPY") : "";
+    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
+    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
+    machine.setFloppyInserted(floppyOk);
+
     struct Ctx {
         GLFWwindow* window; MacIiMachine& m; GLuint tex;
         ScreenInput input;
-        std::string romName, hddPath;
+        std::string romName, hddPath, floppyPath;
         std::vector<std::string> extraDisks;
+        bool& floppyOk;
     };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks};
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
+                   extraDisks, floppyOk};
 
     auto frame = [](void* arg) {
         Ctx& c = *static_cast<Ctx*>(arg);
@@ -1305,10 +1338,19 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
                 return h;
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
             pom68k::diskBaysWindow(host);
         }
 
@@ -1427,10 +1469,30 @@ struct IIfxMachine {
 
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset } t; int a = 0, b = 0; };
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, InsertFloppy,
+                          EjectFloppy } t; int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
     SaveStateSlot state;
+
+    // Floppy hot-swap (GUI → machine thread; the DafbMachine contract).
+    void requestInsertFloppy(std::string path) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        floppyPending_ = std::move(path);
+        cmds_.push_back({Cmd::InsertFloppy});
+    }
+    void requestEjectFloppy() {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::EjectFloppy});
+    }
+    bool floppyInserted() const {
+        return floppyFlag_.load(std::memory_order_relaxed);
+    }
+    void setFloppyInserted(bool on) {
+        floppyFlag_.store(on, std::memory_order_relaxed);
+    }
+    std::string floppyPending_;              // guarded by cmdMu_
+    std::atomic<bool> floppyFlag_{false};
 
     bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
         std::lock_guard<std::mutex> l(fbMu_);
@@ -1552,12 +1614,22 @@ private:
         return !samp_.empty() && hi - lo >= 0.02f;
     }
     void applyCmds() {
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
+        std::string pending;
+        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
+          pending.swap(floppyPending_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
             case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
             case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
+            case Cmd::InsertFloppy:
+                if (!pending.empty() && mem.insertDisk(pending))
+                    floppyFlag_.store(true, std::memory_order_relaxed);
+                break;
+            case Cmd::EjectFloppy:
+                mem.ejectDisk();
+                floppyFlag_.store(false, std::memory_order_relaxed);
+                break;
         }
         cmdsApply_.clear();
         state.apply(mem, cpu);         // save/load between two quanta
@@ -1618,14 +1690,24 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
     static std::vector<std::string> extraDisks;
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;
-        if (isCdImage(argv[i])) {
-            if (mem.attachCdrom(argv[i]))
-                std::printf("SCSI CD 3: %s (read-only)\n", argv[i]);
-            else
-                std::fprintf(stderr, "SCSI CD 3: %s FAILED\n", argv[i]);
+        int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
             continue;
         }
-        int id = int(extraDisks.size()) + 1;
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -1647,6 +1729,7 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -1665,13 +1748,22 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
                                           : hddPath + ".IIfx") + ".pomss";
     machine.publish(true);
 
+    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
+    static std::string floppyPath =
+        std::getenv("POM68K_FLOPPY") ? std::getenv("POM68K_FLOPPY") : "";
+    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
+    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
+    machine.setFloppyInserted(floppyOk);
+
     struct Ctx {
         GLFWwindow* window; IIfxMachine& m; GLuint tex;
         ScreenInput input;
-        std::string romName, hddPath;
+        std::string romName, hddPath, floppyPath;
         std::vector<std::string> extraDisks;
+        bool& floppyOk;
     };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks};
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
+                   extraDisks, floppyOk};
 
     auto frame = [](void* arg) {
         Ctx& c = *static_cast<Ctx*>(arg);
@@ -1699,10 +1791,19 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
                 return h;
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
             pom68k::diskBaysWindow(host);
         }
 
@@ -1844,11 +1945,31 @@ struct LcMachine {
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
     struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense,
-                          CpuEngine } t; int a = 0, b = 0; };
+                          CpuEngine, InsertFloppy, EjectFloppy } t;
+                 int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
     // Save-state requests (GUI → machine thread; see SaveStateSlot above).
     SaveStateSlot state;
+
+    // Floppy hot-swap (GUI → machine thread; the DafbMachine contract).
+    void requestInsertFloppy(std::string path) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        floppyPending_ = std::move(path);
+        cmds_.push_back({Cmd::InsertFloppy});
+    }
+    void requestEjectFloppy() {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::EjectFloppy});
+    }
+    bool floppyInserted() const {
+        return floppyFlag_.load(std::memory_order_relaxed);
+    }
+    void setFloppyInserted(bool on) {
+        floppyFlag_.store(on, std::memory_order_relaxed);
+    }
+    std::string floppyPending_;              // guarded by cmdMu_
+    std::atomic<bool> floppyFlag_{false};
 
     // Latest decoded frame (00RRGGBB, alpha forced — see the decode note).
     // Returns false until the first publish.
@@ -2025,7 +2146,9 @@ private:
         return !samp_.empty() && hi - lo >= 0.02f;
     }
     void applyCmds() {
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
+        std::string pending;
+        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
+          pending.swap(floppyPending_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             // V8Memory routes to the firmware AdbLine when the Egret LLE
             // is active (POM68K_EGRET_LLE), else to the HLE's AdbBus.
@@ -2034,6 +2157,14 @@ private:
             case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
                                mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
+            case Cmd::InsertFloppy:
+                if (!pending.empty() && mem.insertDisk(pending))
+                    floppyFlag_.store(true, std::memory_order_relaxed);
+                break;
+            case Cmd::EjectFloppy:
+                mem.ejectDisk();
+                floppyFlag_.store(false, std::memory_order_relaxed);
+                break;
             case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
             // Engine swap between two runCycles() — an instruction
             // boundary (the DafbMachine precedent).
@@ -2176,6 +2307,23 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;            // never double-attach
         int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
+            continue;
+        }
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -2217,6 +2365,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -2248,11 +2397,21 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
         GLFWwindow* window; LcMachine& m; GLuint tex;
         std::vector<uint32_t> fb;                // GUI-side framebuffer copy
         std::string romName, hddPath;            // for the "Disques" relaunch
+        std::string floppyPath;
+        bool floppyOk = false;
         std::vector<std::string>& extraDisks;
         const V8Profile& prof; V8Memory::Model model;
     };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks,
-                   prof, model};
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, {}, false,
+                   extraDisks, prof, model};
+    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
+    if (const char* env = std::getenv("POM68K_FLOPPY")) {
+        if (mem.insertDisk(env)) {
+            ctx.floppyPath = env; ctx.floppyOk = true;
+            machine.setFloppyInserted(true);
+            std::printf("Floppy: %s\n", env);
+        }
+    }
 
     auto frame = [](void* p) {
         Ctx& c = *static_cast<Ctx*>(p);
@@ -2305,10 +2464,19 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
                 return h;
             }();
             host.romName  = c.romName;      // cheap, and follows a relaunch
             host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
             pom68k::diskBaysWindow(host);
         }
 
@@ -2469,11 +2637,31 @@ struct SonoraStyleMachine {
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
     struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense,
-                          CpuEngine } t; int a = 0, b = 0; };
+                          CpuEngine, InsertFloppy, EjectFloppy } t;
+                 int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
     // Save-state requests (GUI → machine thread; see SaveStateSlot above).
     SaveStateSlot state;
+
+    // Floppy hot-swap (GUI → machine thread; the DafbMachine contract).
+    void requestInsertFloppy(std::string path) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        floppyPending_ = std::move(path);
+        cmds_.push_back({Cmd::InsertFloppy});
+    }
+    void requestEjectFloppy() {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::EjectFloppy});
+    }
+    bool floppyInserted() const {
+        return floppyFlag_.load(std::memory_order_relaxed);
+    }
+    void setFloppyInserted(bool on) {
+        floppyFlag_.store(on, std::memory_order_relaxed);
+    }
+    std::string floppyPending_;              // guarded by cmdMu_
+    std::atomic<bool> floppyFlag_{false};
 
     bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
         std::lock_guard<std::mutex> l(fbMu_);
@@ -2608,12 +2796,22 @@ private:
         return !samp_.empty() && hi - lo >= 0.02f;
     }
     void applyCmds() {
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
+        std::string pending;
+        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
+          pending.swap(floppyPending_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
             case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
             case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
+            case Cmd::InsertFloppy:
+                if (!pending.empty() && mem.insertDisk(pending))
+                    floppyFlag_.store(true, std::memory_order_relaxed);
+                break;
+            case Cmd::EjectFloppy:
+                mem.ejectDisk();
+                floppyFlag_.store(false, std::memory_order_relaxed);
+                break;
             case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
             // Engine swap between two runCycles() — an instruction
             // boundary (the DafbMachine precedent).
@@ -2716,6 +2914,23 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;
         int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
+            continue;
+        }
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -2744,6 +2959,7 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -2775,9 +2991,20 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
         GLFWwindow* window; Lc3Machine& m; GLuint tex;
         std::vector<uint32_t> fb;
         std::string romName, hddPath;
+        std::string floppyPath;
+        bool floppyOk = false;
         std::vector<std::string>& extraDisks;
     };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks};
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, {}, false,
+                   extraDisks};
+    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
+    if (const char* env = std::getenv("POM68K_FLOPPY")) {
+        if (mem.insertDisk(env)) {
+            ctx.floppyPath = env; ctx.floppyOk = true;
+            machine.setFloppyInserted(true);
+            std::printf("Floppy: %s\n", env);
+        }
+    }
 
     auto frame = [](void* p) {
         Ctx& c = *static_cast<Ctx*>(p);
@@ -2835,10 +3062,19 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
                 return h;
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
             pom68k::diskBaysWindow(host);
         }
 
@@ -2991,6 +3227,23 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;
         int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
+            continue;
+        }
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -3020,6 +3273,7 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -3047,11 +3301,21 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
         GLFWwindow* window; VaspMachine& m; GLuint tex;
         std::vector<uint32_t> fb;
         std::string romName, hddPath;
+        std::string floppyPath;
+        bool floppyOk = false;
         std::vector<std::string>& extraDisks;
         bool vi;
     };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath,
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, {}, false,
                    extraDisks, vi};
+    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
+    if (const char* env = std::getenv("POM68K_FLOPPY")) {
+        if (mem.insertDisk(env)) {
+            ctx.floppyPath = env; ctx.floppyOk = true;
+            machine.setFloppyInserted(true);
+            std::printf("Floppy: %s\n", env);
+        }
+    }
 
     auto frame = [](void* p) {
         Ctx& c = *static_cast<Ctx*>(p);
@@ -3109,10 +3373,19 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
                 return h;
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
             pom68k::diskBaysWindow(host);
         }
 
@@ -3238,6 +3511,23 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;
         int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
+            continue;
+        }
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -3271,6 +3561,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -3296,11 +3587,21 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
         GLFWwindow* window; RbvMachine& m; GLuint tex;
         std::vector<uint32_t> fb;
         std::string romName, hddPath;
+        std::string floppyPath;
+        bool floppyOk = false;
         std::vector<std::string>& extraDisks;
         bool iici;
     };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks,
-                   iici};
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, {}, false,
+                   extraDisks, iici};
+    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
+    if (const char* env = std::getenv("POM68K_FLOPPY")) {
+        if (mem.insertDisk(env)) {
+            ctx.floppyPath = env; ctx.floppyOk = true;
+            machine.setFloppyInserted(true);
+            std::printf("Floppy: %s\n", env);
+        }
+    }
 
     auto frame = [](void* p) {
         Ctx& c = *static_cast<Ctx*>(p);
@@ -3358,10 +3659,19 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
+                };
+                h.ejectFloppy = [&c] {
+                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
+                };
                 return h;
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
             pom68k::diskBaysWindow(host);
         }
 
@@ -3468,7 +3778,7 @@ struct DafbMachine {
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
     struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, InsertFloppy,
-                          EjectFloppy, CpuEngine } t;
+                          EjectFloppy, InsertBay, EjectBay, CpuEngine } t;
                  int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
@@ -3482,6 +3792,17 @@ struct DafbMachine {
     void requestEjectFloppy() {
         std::lock_guard<std::mutex> l(cmdMu_);
         cmds_.push_back({Cmd::EjectFloppy});
+    }
+    // CD-bay media in/out (same queue discipline as the floppy: the path
+    // travels under cmdMu_, the machine thread applies between quanta).
+    void requestInsertBay(int id, std::string path) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        bayPending_ = std::move(path);
+        cmds_.push_back({Cmd::InsertBay, id});
+    }
+    void requestEjectBay(int id) {
+        std::lock_guard<std::mutex> l(cmdMu_);
+        cmds_.push_back({Cmd::EjectBay, id});
     }
     bool floppyInserted() const {
         return floppyFlag_.load(std::memory_order_relaxed);
@@ -3915,9 +4236,9 @@ private:
         // floppyPending_ (under cmdMu_) while this thread was reading it by
         // const& through the milliseconds of file I/O in insertDisk() — a
         // use-after-free on the second pick from the Disques menu.
-        std::string pending;
+        std::string pending, bayPending;
         { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
-          pending.swap(floppyPending_); }
+          pending.swap(floppyPending_); bayPending.swap(bayPending_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             // Q605Memory routes to the firmware AdbLine when the Cuda LLE
             // is active (POM68K_CUDA_LLE), else to the Egret HLE's AdbBus.
@@ -3933,6 +4254,17 @@ private:
             case Cmd::EjectFloppy:
                 mem.ejectDisk();
                 floppyFlag_.store(false, std::memory_order_relaxed);
+                break;
+            // Only Q605Memory carries the CD-bay hooks so far; the other
+            // 040 memories compile this template too, hence the requires.
+            case Cmd::InsertBay:
+                if constexpr (requires { mem.insertBayMedia(1, bayPending); }) {
+                    if (!bayPending.empty()) mem.insertBayMedia(c.a, bayPending);
+                }
+                break;
+            case Cmd::EjectBay:
+                if constexpr (requires { mem.ejectBayMedia(1); })
+                    mem.ejectBayMedia(c.a);
                 break;
             // Switching execution engines. applyCmds() is the first
             // statement of stepTick(), i.e. strictly between two calls to
@@ -3951,6 +4283,7 @@ private:
     std::mutex cmdMu_;
     std::vector<Cmd> cmds_, cmdsApply_;
     std::string floppyPending_;
+    std::string bayPending_;                 // CD-bay path, guarded by cmdMu_
     std::atomic<bool> floppyFlag_{false};
     std::mutex fbMu_;
     std::vector<uint32_t> fbShared_;
@@ -4038,6 +4371,23 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
             continue;
         }
         int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
+            continue;
+        }
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -4069,6 +4419,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -4161,6 +4512,15 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                 pom68k::DiskBaysHost h;
                 h.extras = &c.extraDisks;
                 h.hardReset = [&c] { c.m.push({QuadraMachine::Cmd::HardReset}); };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                h.bayIsCd  = [](int id) { return mem.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!mem.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.relaunch  = [&c](const std::string& boot,
                                    const std::vector<std::string>& extras) {
                     gSwitchArgs = { c.romName, boot };
@@ -4359,6 +4719,23 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
             continue;
         }
         int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
+            continue;
+        }
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -4389,6 +4766,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -4479,6 +4857,15 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
                 pom68k::DiskBaysHost h;
                 h.extras = &c.extraDisks;
                 h.hardReset = [&c] { c.m.push({CentrisMachine::Cmd::HardReset}); };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                h.bayIsCd  = [](int id) { return mem.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!mem.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.relaunch  = [&c](const std::string& boot,
                                    const std::vector<std::string>& extras) {
                     gSwitchArgs = { c.romName, boot };
@@ -4677,6 +5064,23 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
             continue;
         }
         int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
+            continue;
+        }
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -4715,6 +5119,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -4803,6 +5208,15 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
                 pom68k::DiskBaysHost h;
                 h.extras = &c.extraDisks;
                 h.hardReset = [&c] { c.m.push({Q700Machine::Cmd::HardReset}); };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                h.bayIsCd  = [](int id) { return mem.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!mem.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.relaunch  = [&c](const std::string& boot,
                                    const std::vector<std::string>& extras) {
                     gSwitchArgs = { c.romName, boot };
@@ -4979,6 +5393,23 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
             continue;
         }
         int id = int(extraDisks.size()) + 1;
+        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
+        // on the bus; a CD image = the same drive with the disc already in.
+        // Both make the bay hot-swappable forever (DiskBays.h contract).
+        if (std::string(argv[i]) == "cdbay") {
+            if (mem.attachCdromEmpty(id)) {
+                extraDisks.push_back("cdbay");
+                std::printf("SCSI CD %d: <vide>\n", id);
+            }
+            continue;
+        }
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
         if (mem.attachScsi(argv[i], true, id)) {
             extraDisks.push_back(argv[i]);
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
@@ -5009,6 +5440,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -5100,6 +5532,15 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
                 pom68k::DiskBaysHost h;
                 h.extras = &c.extraDisks;
                 h.hardReset = [&c] { c.m.push({Q630Machine::Cmd::HardReset}); };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                h.bayIsCd  = [](int id) { return mem.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!mem.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.relaunch  = [&c](const std::string& boot,
                                    const std::vector<std::string>& extras) {
                     gSwitchArgs = { c.romName, boot };
@@ -5227,6 +5668,19 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
 }
 
 int main(int argc, char** argv) {
+#ifndef POM68K_VERSION_STRING
+#define POM68K_VERSION_STRING "dev"
+#endif
+    // Release smoke gates run this on display-less CI runners: it must
+    // print and exit before glfwInit or any window is created.
+    for (int i = 1; i < argc; i++) {
+        if (!std::strcmp(argv[i], "--version")) {
+            std::printf("POM68K %s — Macintosh 68k emulator "
+                        "(36 profiles, Mac Plus to Quadra 950)\n",
+                        POM68K_VERSION_STRING);
+            return 0;
+        }
+    }
     std::printf("POM68K — Macintosh 68k emulator (Mac Plus)\n");
 
     // ── Emulator (static: outlives main() under Emscripten) ─────────────
@@ -5440,6 +5894,7 @@ int main(int argc, char** argv) {
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -5458,8 +5913,10 @@ int main(int argc, char** argv) {
         GLFWwindow* window; MacMemory& mem; Cpu68k& cpu; MacVideo& video;
         MacAudio& audio; MacAudioHost& audioHost;
         GLuint tex; bool running; bool turbo; MacFrameClock clock;
+        std::string romName, hddPath, floppyPath;
     };
-    static Ctx ctx{window, mem, cpu, video, audio, audioHost, screenTex, true, !demoMode, {}};
+    static Ctx ctx{window, mem, cpu, video, audio, audioHost, screenTex, true, !demoMode, {},
+                   matched, hddPath, diskOk ? diskPath : std::string()};
     ctx.clock.resync(cpu);
 
     auto frame = [](void* p) {
@@ -5498,6 +5955,8 @@ int main(int argc, char** argv) {
                      0, GL_RGBA, GL_UNSIGNED_BYTE, fb);
 
         machineMenu(compactKind, c.window, [&c] {
+            // Disk selection lives in its own window (src/DiskBays.*).
+            pom68k::diskBaysMenuItem();
             if (ImGui::MenuItem("Redémarrer")) c.cpu.hardReset();
             ImGui::Separator();
             if (ImGui::MenuItem("Sauver l'état")) ssSlot.request(false);
@@ -5507,6 +5966,37 @@ int main(int argc, char** argv) {
                 if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
             }
         });
+        // The shared "Disques" window (src/DiskBays.*). The compact machine
+        // runs single-threaded, so the hooks call straight into mem between
+        // two emulated frames — no command queue needed.
+        {
+            static pom68k::DiskBaysHost host = [] {
+                pom68k::DiskBaysHost h;
+                Ctx& c = ctx;
+                h.hardReset = [&c] { c.cpu.hardReset(); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    (void)extras;                    // one SCSI bay on argv
+                    // Compact CLI order: argv[2] = floppy, argv[3] = SCSI 0.
+                    // An empty argv[2] skips the insert cleanly.
+                    gSwitchArgs = { c.romName, c.floppyPath, boot };
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                h.hasFloppyDrive = true;
+                h.floppyInserted = [&c] { return c.mem.internalDrive().hasDisk(); };
+                h.insertFloppy = [&c](const std::string& d) {
+                    if (c.mem.insertDisk(d)) c.floppyPath = d;
+                };
+                h.ejectFloppy = [&c] {
+                    c.mem.ejectDisk(); c.floppyPath.clear();
+                };
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            host.floppyPath = c.floppyPath;
+            pom68k::diskBaysWindow(host);
+        }
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
                 pom68k::dockLayoutScreenWindow(machineName);

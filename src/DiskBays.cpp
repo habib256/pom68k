@@ -127,13 +127,16 @@ const std::vector<std::string>& activeExtras(const DiskBaysHost& host) {
     return host.extras ? *host.extras : kEmpty;
 }
 
-// A bay is hot-swappable when the runner gave us the hooks AND the bay was
-// occupied at boot (its SCSI target existed when the ROM probed the bus).
-// See the header for why an empty bay is not.
+// A bay is hot-swappable when the runner gave us the hooks AND a removable
+// (CD) target existed there when the ROM probed the bus — either a CD image
+// attached at boot or the reserved empty drive (kCdBayToken). Fixed disks
+// never swap live: Classic Mac OS only re-reads a medium it saw change.
 bool bayIsLive(const DiskBaysHost& host, int index) {
-    if (!host.insertBay || !host.ejectBay) return false;
+    if (!host.insertBay || !host.ejectBay || !host.bayIsCd) return false;
     if (!host.extras) return false;
-    return index < int(host.extras->size()) && !(*host.extras)[index].empty();
+    if (index >= int(host.extras->size())) return false;
+    if ((*host.extras)[index].empty()) return false;
+    return host.bayIsCd(index + 1);
 }
 
 // A SuperDrive holds 400 K, 800 K or 1.44 MB. Anything larger in the list is
@@ -156,6 +159,8 @@ bool imageCombo(const char* label, const std::string& current,
     bool picked = false;
     std::string preview = current.empty()
                               ? std::string("<vide>")
+                              : current == kCdBayToken
+                              ? std::string("<lecteur CD vide>")
                               : fileName(current) + "  " + sizeLabel(current);
     if (ImGui::BeginCombo(label, preview.c_str())) {
         if (ImGui::Selectable("<vide>", current.empty())) {
@@ -210,6 +215,8 @@ std::vector<std::string> diskBaysKnownImages(const std::string& nearPath) {
     return uniq;
 }
 
+bool diskBaysPathIsCd(const std::string& path) { return isCd(path); }
+
 // ── Drag and drop ──────────────────────────────────────────────────────────
 
 void diskBaysInstallDrop(GLFWwindow* window) {
@@ -244,6 +251,27 @@ void diskBaysWindow(DiskBaysHost& host) {
     }
 
     const std::string& boot = gStaged ? gStagedBoot : host.bootPath;
+
+    // ── Floppy first: it is the one bay that always swaps live, so it sits
+    //    above the cold (reboot-requiring) hard-disk choices.
+    if (host.hasFloppyDrive) {
+        ImGui::TextDisabled("Disquette (SWIM)");
+        bool in = host.floppyInserted && host.floppyInserted();
+        ImGui::Text("%s", in && !host.floppyPath.empty()
+                              ? fileName(host.floppyPath).c_str() : "<vide>");
+        ImGui::SameLine(280);
+        if (in) {
+            if (ImGui::SmallButton("Éjecter##fd") && host.ejectFloppy)
+                host.ejectFloppy();
+        } else {
+            ImGui::SetNextItemWidth(200);
+            std::string fd;
+            if (imageCombo("##fdpick", std::string(), host.bootPath, fd, true)
+                && !fd.empty() && host.insertFloppy)
+                host.insertFloppy(fd);
+        }
+        ImGui::Separator();
+    }
 
     // ── Boot disk. Never hot-swappable: the .pram file follows the boot
     //    volume and the ROM picks its startup device once, at power-on.
@@ -283,6 +311,11 @@ void diskBaysWindow(DiskBaysHost& host) {
         if (imageCombo("##img", cur, host.bootPath, pick)) {
             if (samePath(pick, boot) && !pick.empty()) {
                 gLastError = "Ce volume est déjà le disque de démarrage.";
+            } else if (live && !pick.empty() && !diskBaysPathIsCd(pick)) {
+                // A live bay is a CD drive; a hard-disk image in it would
+                // mount garbage. Staging it wouldn't help either — tell.
+                gLastError = "Baie " + std::to_string(i + 1)
+                           + ": lecteur CD — image .iso/.toast/.cdr attendue.";
             } else if (live && host.insertBay && !pick.empty()) {
                 // Occupied bay, hooks present: swap the medium on the spot.
                 if (host.insertBay(i + 1, pick)) {
@@ -293,9 +326,11 @@ void diskBaysWindow(DiskBaysHost& host) {
                     gLastError = "Image refusée par la baie " + std::to_string(i + 1);
                 }
             } else if (live && host.ejectBay && pick.empty()) {
+                // The disc leaves; the DRIVE stays on the bus (that is what
+                // makes the next insert hot too), so remember the token.
                 host.ejectBay(i + 1);
                 if (host.extras && i < int(host.extras->size()))
-                    (*host.extras)[i].clear();
+                    (*host.extras)[i] = kCdBayToken;
                 gLastError.clear();
             } else {
                 // Empty bay, or no hot-swap on this machine: stage it.
@@ -305,13 +340,13 @@ void diskBaysWindow(DiskBaysHost& host) {
             }
         }
 
-        if (!cur.empty()) {
+        if (!cur.empty() && cur != kCdBayToken) {
             ImGui::SameLine();
             if (live) {
                 if (ImGui::SmallButton("Éjecter")) {
                     host.ejectBay(i + 1);
                     if (host.extras && i < int(host.extras->size()))
-                        (*host.extras)[i].clear();
+                        (*host.extras)[i] = kCdBayToken;
                 }
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Éjection immédiate, sans redémarrage");
@@ -333,33 +368,16 @@ void diskBaysWindow(DiskBaysHost& host) {
                        "Une baie vide au démarrage demande un redémarrage: "
                        "le ROM ne sonde le bus SCSI qu'une fois, au boot.");
     ImGui::PopStyleColor();
-    ImGui::Checkbox("Réserver les baies vides au démarrage",
+    ImGui::Checkbox("Réserver un lecteur CD vide au démarrage",
                     &gReserveEmpty);
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Ajoute des cibles SCSI amovibles vides sur le bus.\n"
-                          "Désactivé par défaut: cela modifie le bus de\n"
-                          "toutes les machines, et les gates de boot sont\n"
-                          "chronométrés sur le bus actuel.");
-
-    // ── Floppy. Already live on every machine that has a drive.
-    if (host.hasFloppyDrive) {
-        ImGui::Separator();
-        ImGui::TextDisabled("Disquette (SWIM)");
-        bool in = host.floppyInserted && host.floppyInserted();
-        ImGui::Text("%s", in && !host.floppyPath.empty()
-                              ? fileName(host.floppyPath).c_str() : "<vide>");
-        ImGui::SameLine(280);
-        if (in) {
-            if (ImGui::SmallButton("Éjecter##fd") && host.ejectFloppy)
-                host.ejectFloppy();
-        } else {
-            ImGui::SetNextItemWidth(200);
-            std::string fd;
-            if (imageCombo("##fdpick", std::string(), host.bootPath, fd, true)
-                && !fd.empty() && host.insertFloppy)
-                host.insertFloppy(fd);
-        }
-    }
+        ImGui::SetTooltip("Ajoute un lecteur CD sans disque sur le bus au\n"
+                          "prochain « Appliquer et redémarrer ». Le System le\n"
+                          "sonde comme un vrai lecteur: un .iso/.toast inséré\n"
+                          "ensuite monte à chaud, sans redémarrage.\n"
+                          "Désactivé par défaut: cela modifie le bus, et les\n"
+                          "gates de boot sont chronométrés sur le bus actuel.");
+    if (gReserveEmpty && !gStaged) beginStaging(host);
 
     // ── Add an image the scan cannot see.
     ImGui::Separator();
@@ -398,6 +416,16 @@ void diskBaysWindow(DiskBaysHost& host) {
             std::vector<std::string> extrasOut;
             for (const std::string& e : gStagedExtras)
                 if (!e.empty()) extrasOut.push_back(e);
+            // The reserved CD drive: one empty removable target, added only
+            // when no CD (with or without disc) is on the bus already.
+            if (gReserveEmpty) {
+                bool haveCd = false;
+                for (const std::string& e : extrasOut)
+                    if (e == kCdBayToken || diskBaysPathIsCd(e)) haveCd = true;
+                if (!haveCd && int(extrasOut.size()) < kMaxBays)
+                    extrasOut.push_back(kCdBayToken);
+                gReserveEmpty = false;             // consumed by this apply
+            }
             std::string bootOut = gStagedBoot;
             discardStaging();
             host.relaunch(bootOut, extrasOut);

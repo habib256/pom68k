@@ -1,0 +1,373 @@
+# Release packaging — build POM68K on each native OS and attach the packages
+# to the GitHub Release. Adapted from POM1's release workflow; the lessons it
+# encodes (glibc floor = build image, ET_EXEC AppImage runtime, universal
+# static GLFW on macOS, static CRT on Windows) are inherited, minus POM1's
+# cc65 layer — POM68K bundles no toolchain and NO ROMs (user-provided,
+# never distributed).
+#
+# Artifacts:
+#   POM68K-<v>-x86_64.AppImage    Linux x86_64, glibc floor 2.27
+#   POM68K-<v>-aarch64.AppImage   Linux aarch64, glibc floor 2.27 — this IS
+#                                 the Raspberry Pi 400/4/5 package (Pi OS
+#                                 bookworm ships glibc 2.36 ≥ 2.27, and the
+#                                 GL 3.0 context POM68K requests is within
+#                                 Mesa V3D's desktop GL 3.1)
+#   POM68K-macOS-v<v>.dmg         Universal 2 (arm64 + x86_64)
+#   POM68K-Windows-v<v>.zip       x64, static CRT + static GLFW, no DLL
+#
+# Triggers: push a version tag (v-prefixed or bare numeric — both fire);
+# "Run workflow" for a dry run (artifacts only, no Release).
+name: Release packages
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+      - '[0-9]*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  IMGUI_TAG: v1.92.8-docking     # matches setup_imgui.sh and ci.yml
+
+jobs:
+  # ---------------------------------------------------- normalize version ----
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      pom68k_version: ${{ steps.v.outputs.pom68k_version }}
+    steps:
+      - id: v
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -eu
+          if [ "$REF_TYPE" = "tag" ]; then
+              echo "pom68k_version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+              echo "pom68k_version=" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ------------------------------------------------------- Linux x86_64 ------
+  # Built INSIDE the pinned bionic (glibc 2.27) builder image so the AppImage
+  # runs on Mint 19.x-era distros and everything newer. Build the image first
+  # via the build-bionic-image workflow if it is missing, then pin its digest
+  # here (the `:bionic` tag is the bootstrap fallback).
+  linux:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: read
+    env:
+      BUILDER_IMAGE: ghcr.io/habib256/pom68k-bionic-builder:bionic
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to GHCR (pull the builder image)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build POM68K + AppImage in the pinned bionic builder
+        env:
+          POM68K_VERSION: ${{ needs.version.outputs.pom68k_version }}
+        run: |
+          IMAGE="$(echo "$BUILDER_IMAGE" | tr '[:upper:]' '[:lower:]')"
+          docker pull "$IMAGE"
+          docker run --rm \
+            -v "$PWD":/work -w /work \
+            -e POM68K_VERSION -e IMGUI_TAG \
+            "$IMAGE" \
+            bash /work/packaging/linux/build_in_bionic.sh
+
+      - name: Verify the AppImage — glibc floor <= 2.27 AND ET_EXEC runtime
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*.AppImage | head -1)
+          # ET_EXEC or AppImageLauncher rejects it as "type -1".
+          TYPE=$(readelf -h "$APP" | awk -F'[ :]+' '/^ *Type:/ {print $3; exit}')
+          echo "AppImage runtime ELF type: ${TYPE}"
+          test "$TYPE" = "EXEC" \
+            || { echo "ERROR: AppImage runtime is $TYPE, not EXEC"; exit 1; }
+          MAGIC=$(xxd -s 8 -l 3 -p "$APP")
+          test "$MAGIC" = "414902" \
+            || { echo "ERROR: bad AppImage magic $MAGIC (expected 414902)"; exit 1; }
+          "$APP" --appimage-extract >/dev/null
+          BIN=squashfs-root/usr/bin/POM68K
+          MAX=$(objdump -T "$BIN" 2>/dev/null \
+                | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
+                | sort -V | tail -1)
+          echo "Highest glibc symbol required by POM68K: ${MAX:-none}"
+          test "$(printf '%s\nGLIBC_2.27\n' "$MAX" | sort -V | tail -1)" = "GLIBC_2.27" \
+            || { echo "ERROR: AppImage requires ${MAX} > GLIBC_2.27"; exit 1; }
+          echo "OK: ET_EXEC + magic + glibc floor <= 2.27"
+
+      - name: Install runtime GL/X libs for the launch smoke
+        # DT_NEEDED libs resolve at exec, before --version prints; graphics
+        # libs come from the HOST by AppImage rule, and the headless runner
+        # lacks them. No display or GPU is needed — --version exits first.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libopengl0 libglx0 libgl1 \
+            libx11-6 libxext6 libxrandr2 libxinerama1 libxcursor1 libxi6
+
+      - name: Smoke-launch the packaged AppImage (--version)
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*.AppImage | head -1)
+          OUT=$("$APP" --appimage-extract-and-run --version)
+          echo "$OUT"
+          grep -q "Macintosh 68k emulator" <<<"$OUT" \
+            || { echo "ERROR: AppImage did not print the version banner"; exit 1; }
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: POM68K-linux-x86_64-AppImage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  # ------------------------------------------- Linux aarch64 / Raspberry Pi --
+  # Same pinned-bionic recipe on GitHub's NATIVE arm64 runner (no QEMU). The
+  # glibc 2.27 floor covers every aarch64 distro in the field, Raspberry Pi
+  # OS bookworm (2.36) included — this artifact IS the Pi 400 package.
+  linux-arm64:
+    needs: version
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: read
+    env:
+      BUILDER_IMAGE: ghcr.io/habib256/pom68k-bionic-builder:bionic-aarch64
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to GHCR (pull the builder image)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build POM68K + AppImage in the pinned bionic builder (aarch64)
+        env:
+          POM68K_VERSION: ${{ needs.version.outputs.pom68k_version }}
+        run: |
+          IMAGE="$(echo "$BUILDER_IMAGE" | tr '[:upper:]' '[:lower:]')"
+          docker pull "$IMAGE"
+          docker run --rm \
+            -v "$PWD":/work -w /work \
+            -e POM68K_VERSION -e IMGUI_TAG \
+            "$IMAGE" \
+            bash /work/packaging/linux/build_in_bionic.sh
+
+      - name: Verify the AppImage — aarch64, ET_EXEC, glibc floor <= 2.27
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*.AppImage | head -1)
+          echo "Package: $APP"
+          # The name must carry the arch — the publish job flattens every
+          # artifact into one directory.
+          case "$APP" in
+            *-aarch64.AppImage) ;;
+            *) echo "ERROR: $APP is not named -aarch64.AppImage"; exit 1 ;;
+          esac
+          TYPE=$(readelf -h "$APP" | awk -F'[ :]+' '/^ *Type:/ {print $3; exit}')
+          test "$TYPE" = "EXEC" \
+            || { echo "ERROR: AppImage runtime is $TYPE, not EXEC"; exit 1; }
+          MAGIC=$(xxd -s 8 -l 3 -p "$APP")
+          test "$MAGIC" = "414902" \
+            || { echo "ERROR: bad AppImage magic $MAGIC"; exit 1; }
+          "$APP" --appimage-extract >/dev/null
+          BIN=squashfs-root/usr/bin/POM68K
+          MACH=$(readelf -h "$BIN" | awk -F': +' '/Machine:/ {print $2; exit}')
+          echo "POM68K ELF machine: $MACH"
+          grep -q AArch64 <<<"$MACH" \
+            || { echo "ERROR: POM68K is not an AArch64 binary"; exit 1; }
+          MAX=$(objdump -T "$BIN" 2>/dev/null \
+                | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
+                | sort -V | tail -1)
+          echo "Highest glibc symbol required by POM68K: ${MAX:-none}"
+          test "$(printf '%s\nGLIBC_2.27\n' "$MAX" | sort -V | tail -1)" = "GLIBC_2.27" \
+            || { echo "ERROR: AppImage requires ${MAX} > GLIBC_2.27"; exit 1; }
+          echo "OK: aarch64 + ET_EXEC + magic + glibc floor <= 2.27"
+
+      - name: Install runtime GL/X libs for the launch smoke
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libopengl0 libglx0 libgl1 \
+            libx11-6 libxext6 libxrandr2 libxinerama1 libxcursor1 libxi6
+
+      - name: Smoke-launch the packaged AppImage (--version)
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*.AppImage | head -1)
+          OUT=$("$APP" --appimage-extract-and-run --version)
+          echo "$OUT"
+          grep -q "Macintosh 68k emulator" <<<"$OUT" \
+            || { echo "ERROR: AppImage did not print the version banner"; exit 1; }
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: POM68K-linux-aarch64-AppImage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- macOS ----
+  # ONE Universal 2 (arm64 + x86_64) .dmg. GLFW is built from source as a
+  # universal STATIC archive (packaging/macos/build_universal_deps.sh) so no
+  # Homebrew prefix is ever baked into the binary — the POM1 dyld lesson.
+  macos:
+    needs: version
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build universal static GLFW (arm64 + x86_64)
+        run: packaging/macos/build_universal_deps.sh --out build-universal-deps
+
+      - name: Package universal .app + .dmg
+        env:
+          POM68K_VERSION: ${{ needs.version.outputs.pom68k_version }}
+          POM68K_MACOS_ARCHS: arm64;x86_64
+          CMAKE_PREFIX_PATH: ${{ github.workspace }}/build-universal-deps/glfw
+        run: ./package_macos_release.sh
+
+      - name: Smoke-launch the packaged .app binary (--version)
+        # Exercises the arm64 slice (the runner's arch); the x86_64 slice is
+        # verified structurally by the packager's lipo gate — GitHub's arm64
+        # macOS images ship without Rosetta.
+        run: |
+          set -euo pipefail
+          OUT=$(dist/POM68K.app/Contents/MacOS/POM68K-bin --version)
+          echo "$OUT"
+          grep -q "Macintosh 68k emulator" <<<"$OUT" \
+            || { echo "ERROR: .app binary did not print the version banner"; exit 1; }
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: POM68K-macOS-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  # -------------------------------------------------------------- Windows ----
+  # x64-windows-static triplet: GLFW compiled /MT to match POM68K's static
+  # CRT — one self-contained POM68K.exe, no DLL beside it (the POM1 issue-34
+  # lesson: an app-local msvcp140.dll breaks vendor OpenGL ICDs).
+  windows:
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fetch Dear ImGui (pinned)
+        run: git clone --depth 1 --branch ${{ env.IMGUI_TAG }} https://github.com/ocornut/imgui.git
+
+      - name: Install GLFW via vcpkg (manifest mode, static triplet)
+        # No package argument: the dependency + exact version live in the
+        # repo-root vcpkg.json, pinned by builtin-baseline.
+        run: vcpkg install --triplet x64-windows-static
+
+      - name: Configure + build (Release, vcpkg toolchain, static CRT)
+        shell: pwsh
+        env:
+          POM68K_VERSION: ${{ needs.version.outputs.pom68k_version }}
+        run: |
+          $cfg = @('-S', '.', '-B', 'build',
+                   "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake",
+                   '-DVCPKG_TARGET_TRIPLET=x64-windows-static',
+                   '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+                   '-DPOM68K_NATIVE=OFF', '-DPOM68K_TESTS=OFF')
+          if ($env:POM68K_VERSION) { $cfg += "-DPOM68K_VERSION=$env:POM68K_VERSION" }
+          cmake @cfg
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          cmake --build build --config Release -j --target POM68K
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Package ZIP
+        shell: pwsh
+        env:
+          POM68K_VERSION: ${{ needs.version.outputs.pom68k_version }}
+        run: |
+          $v = if ($env:POM68K_VERSION) { $env:POM68K_VERSION } else { (Get-Content VERSION -First 1).Trim() }
+          $stage = "dist/POM68K-Windows"
+          New-Item -ItemType Directory -Force -Path $stage, "$stage/roms", "$stage/hdv", "$stage/disks35" | Out-Null
+          Copy-Item build/Release/POM68K.exe $stage/
+          # An array of lines, not a here-string: the @" terminator must sit
+          # in column 1, which a YAML block scalar cannot contain.
+          @(
+            "POM68K $v - Macintosh 68k emulator (Windows x64)",
+            "",
+            "  roms\     - your Macintosh ROM dumps (user-provided, never distributed)",
+            "  hdv\      - hard-disk images (.vhd/.dsk/.img)",
+            "  disks35\  - 3.5`" floppy images (.dsk, DiskCopy 4.2)",
+            "",
+            "Run POM68K.exe; the machine profile is picked by ROM size + checksum."
+          ) | Set-Content "$stage/README.txt"
+          "drop your ROM dumps here" | Set-Content "$stage/roms/README.txt"
+          "hard-disk images here"    | Set-Content "$stage/hdv/README.txt"
+          "floppy images here"       | Set-Content "$stage/disks35/README.txt"
+          Compress-Archive -Path $stage -DestinationPath "dist/POM68K-Windows-v$v.zip" -Force
+
+      - name: Verify POM68K.exe is self-contained (no DLL beside it)
+        shell: bash
+        run: |
+          set -euo pipefail
+          STRAY=$(find dist/POM68K-Windows -maxdepth 1 -iname '*.dll' -printf '%f\n' || true)
+          if [ -n "$STRAY" ]; then
+            echo "ERROR: DLLs found next to POM68K.exe:"; echo "$STRAY"; exit 1
+          fi
+          echo "OK: no app-local DLL"
+
+      - name: Smoke-launch the packaged POM68K.exe (--version)
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=$(dist/POM68K-Windows/POM68K.exe --version)
+          echo "$OUT"
+          grep -q "Macintosh 68k emulator" <<<"$OUT" \
+            || { echo "ERROR: POM68K.exe did not print the version banner"; exit 1; }
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: POM68K-Windows-zip
+          path: dist/*.zip
+          if-no-files-found: error
+
+  # ------------------------------------------------ attach to the Release ----
+  publish:
+    needs: [linux, linux-arm64, macos, windows]
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+
+      - name: Attach packages + checksums to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          # No checkout in this job — GH_REPO tells gh the repository
+          # explicitly (the POM1 1.9.4 lesson: without it, gh dies on
+          # "not a git repository" AFTER all four packages built green).
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          mkdir -p staging
+          find artifacts -type f \( -name '*.AppImage' -o -name '*.dmg' -o -name '*.zip' \) \
+               -exec cp -v {} staging/ \;
+          shopt -s nullglob
+          FILES=(staging/*.AppImage staging/*.dmg staging/*.zip)
+          if [ "${#FILES[@]}" -eq 0 ]; then echo "No packages found to publish."; exit 1; fi
+          ( cd staging && sha256sum -- "${FILES[@]#staging/}" > SHA256SUMS.txt )
+          cat staging/SHA256SUMS.txt
+          FILES+=(staging/SHA256SUMS.txt)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+              gh release create "$TAG" "${FILES[@]}" --generate-notes --title "POM68K $TAG"
+          fi

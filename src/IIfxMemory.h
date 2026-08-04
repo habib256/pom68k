@@ -101,6 +101,7 @@ public:
     void mouseMove(int dx, int dy) { adbLine_.mouseMove(dx, dy); }
     void mouseButton(bool down, int button = 0) { adbLine_.mouseButton(down, button); }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
+    void ejectDisk() { drive_.eject(); }
     // Mechanical drive sounds (GUI only; headless leaves the sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {
         drive_.setSoundSink(floppy);
@@ -116,11 +117,36 @@ public:
         scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
+    // An empty CD drive on the bus at boot: the ROM's probe sees it, the
+    // driver polls it, and media hot-inserted later mounts without a
+    // reboot (ScsiDisk raises UNIT ATTENTION / $28 on the change).
+    bool attachCdromEmpty(int id) {
+        if (id < 1 || id > 6) return false;
+        scsiDisks_[id].attachCdromEmpty();
+        scsi_.attach(&scsiDisks_[id], id);
+        return true;
+    }
+    bool bayIsCdrom(int id) const {
+        return id >= 1 && id <= 6 && scsiDisks_[id].cdrom()
+            && scsiDisks_[id].present();
+    }
+    // Media in/out of an existing CD bay, mid-run (machine thread only).
+    bool insertBayMedia(int id, const std::string& path) {
+        return bayIsCdrom(id) && scsiDisks_[id].openCdrom(path);
+    }
+    void ejectBayMedia(int id) {
+        if (bayIsCdrom(id)) scsiDisks_[id].eject();
+    }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
-        // Mirror on every ID (the MacIIMemory boot-scan workaround).
-        for (int i = 0; i < 7; i++)
-            scsi_.attach(&scsiDisks_[id], i);
+        // One ID, one target. The MacIIMemory all-ID mirror was copied here
+        // during bring-up, but the IIfx path does NOT dedupe the way the
+        // Mac II ROM does ($B2E): System 7.6.1 installed seven drivers
+        // (refNums -33..-39) and mounted the SAME volume seven times —
+        // seven VCBs writing one store corrupted it (POM68KProber report,
+        // 2026-08-04). The empty-ID selection timeouts the mirror avoided
+        // are the price of a truthful bus.
+        scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
 
