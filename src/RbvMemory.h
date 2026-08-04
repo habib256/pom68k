@@ -97,6 +97,12 @@ public:
     int iplLevel() const;            // SCC=4 > RBV pseudo-VIA=2 > VIA1=1
 
     void tick(int cpuCycles);        // VIA timers, 60.15 Hz CA1, VBL, MCU…
+    // Firmware-MCU deadline on the IIsi; the IIci's PIC ADB modem has no
+    // deadline API yet, so the wrapper's batch cap is its bound.
+    int cyclesToNextEvent() const {
+        return (!iici_ && egretLleOn_) ? egretLle_.cyclesToNextEvent()
+                                       : 0x7fffffff;
+    }
 
     Via6522& via1() { return via_; }
     PseudoVia& pseudoVia() { return pvia_; }

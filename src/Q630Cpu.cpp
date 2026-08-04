@@ -32,7 +32,7 @@ Q630Cpu::Q630Cpu(Q630Memory& mem)
     : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
-    jit_.setPeriphPacing(&lastPeriphClock_, int(kPeriphBatch));
+    jit_.setPeriphDeadline(&periphDeadline_);
 
     // The Quadra 630 ships a FULL 68040 (macquadra630.cpp M68040 @ 33 MHz);
     // POM68K_Q630_LC040 forces the 68LC040 of the LC/Performa 630 and 580.
@@ -92,7 +92,7 @@ void Q630Cpu::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v
 void Q630Cpu::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
 void Q630Cpu::catchUp() {
-    if (clock - lastPeriphClock_ < kPeriphBatch) return;
+    if (clock < periphDeadline_) return;
     flushTicks();
 }
 
@@ -104,8 +104,22 @@ void Q630Cpu::flushTicks() {
         int m = int(periphAccum_ / cacheBoost_);
         periphAccum_ -= moira::i64(m) * cacheBoost_;
         if (m) mem_.tick(m);
+        schedulePeriphDeadline();
     }
 }
+void Q630Cpu::schedulePeriphDeadline() {
+    // min(next observable machine-cycle bound, the historical batch): the
+    // cap keeps every transport without a deadline API (ADB PIC, IOPs) at
+    // exactly its former cadence, so exactness can only refine, never
+    // coarsen (TODO § 4, extension inventory 2026-08-04).
+    moira::i64 machine = mem_.cyclesToNextEvent();
+    if (machine < 1) machine = 1;
+    moira::i64 d = machine * cacheBoost_ - periphAccum_;
+    if (d > kPeriphBatch) d = kPeriphBatch;
+    if (d < 1) d = 1;
+    periphDeadline_ = clock + d;
+}
+
 
 void Q630Cpu::sync(int cycles) {
     clock += cycles;

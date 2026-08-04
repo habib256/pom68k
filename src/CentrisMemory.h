@@ -104,6 +104,9 @@ public:
     int iplLevel() const;    // SCC=4 > VIA2=2 > VIA1=1 (iosb field_interrupts)
 
     void tick(int cpuCycles);
+    // No MCU LLE on this board (PIC ADB + discrete RTC): the wrapper's
+    // historical batch cap IS the bound until those transports state one.
+    int cyclesToNextEvent() const { return 0x7fffffff; }
 
     Via6522& via1() { return via1_; }
     Rtc& rtc() { return rtc_; }

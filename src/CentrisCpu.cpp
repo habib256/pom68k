@@ -32,7 +32,7 @@ CentrisCpu::CentrisCpu(CentrisMemory& mem)
     : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
-    jit_.setPeriphPacing(&lastPeriphClock_, int(kPeriphBatch));
+    jit_.setPeriphDeadline(&periphDeadline_);
 
     // Centris 610/650 = 68LC040. Default to the LC040 identity + Moira's
     // soft 68882 (Finder-usable, the Q605 no-FPU precedent).
@@ -92,7 +92,7 @@ void CentrisCpu::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr
 void CentrisCpu::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
 void CentrisCpu::catchUp() {
-    if (clock - lastPeriphClock_ < kPeriphBatch) return;
+    if (clock < periphDeadline_) return;
     flushTicks();
 }
 
@@ -104,8 +104,22 @@ void CentrisCpu::flushTicks() {
         int m = int(periphAccum_ / cacheBoost_);
         periphAccum_ -= moira::i64(m) * cacheBoost_;
         if (m) mem_.tick(m);
+        schedulePeriphDeadline();
     }
 }
+void CentrisCpu::schedulePeriphDeadline() {
+    // min(next observable machine-cycle bound, the historical batch): the
+    // cap keeps every transport without a deadline API (ADB PIC, IOPs) at
+    // exactly its former cadence, so exactness can only refine, never
+    // coarsen (TODO § 4, extension inventory 2026-08-04).
+    moira::i64 machine = mem_.cyclesToNextEvent();
+    if (machine < 1) machine = 1;
+    moira::i64 d = machine * cacheBoost_ - periphAccum_;
+    if (d > kPeriphBatch) d = kPeriphBatch;
+    if (d < 1) d = 1;
+    periphDeadline_ = clock + d;
+}
+
 
 void CentrisCpu::sync(int cycles) {
     clock += cycles;

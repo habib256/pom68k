@@ -104,6 +104,10 @@ public:
     // Called from Q630Cpu::sync with elapsed CPU cycles: VIA1 timers
     // (783.36 kHz) + the 60.15 Hz CA1 tick + the DAFB VBL.
     void tick(int cpuCycles);
+    // Firmware-MCU deadline (SonoraMemory note); wrapper-capped.
+    int cyclesToNextEvent() const {
+        return cudaLleOn_ ? cudaLle_.cyclesToNextEvent() : 0x7fffffff;
+    }
 
     Via6522& via1() { return via1_; }
     Egret& cuda() { return cuda_; }

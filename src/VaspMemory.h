@@ -79,6 +79,10 @@ public:
     int iplLevel() const;            // SCC=4 > pseudo-VIA=2 > VIA1=1
 
     void tick(int cpuCycles);        // VIA timers, 60.15 Hz CA1, VBL, MCU…
+    // Firmware-MCU deadline; wrapper-capped (SonoraMemory note).
+    int cyclesToNextEvent() const {
+        return egretLleOn_ ? egretLle_.cyclesToNextEvent() : 0x7fffffff;
+    }
 
     Via6522& via1() { return via_; }
     PseudoVia& pseudoVia() { return pvia_; }

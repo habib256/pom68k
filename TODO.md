@@ -53,11 +53,12 @@ en § 1 est une simplification, avec sa raison et sa condition de réouverture.
 
 **La prochaine action, par ordre de trou architectural décroissant :**
 
-1. **Étendre le mécanisme d'échéance périphérique aux dix plateformes
-   restantes.** Il a atterri le 2026-08-03 sur **Q605 + V8 seulement**
-   (§ 4 : 86,65 M `mem.tick()` au lieu de 833 M, timing exact préservé) ;
-   Sonora, RBV, VASP, Centris, Q700/Eclipse, Q630, MSC, IIfx, Mac II et
-   les compacts tournent toujours en batch fixe dans leur `catchUp()`.
+1. **Échéances périphériques : huit plateformes converties** (Q605 + V8
+   le 2026-08-03 ; Sonora, VASP, RBV, Centris, Q700/Eclipse et Q630 le
+   2026-08-04 — 27 gates sériels verts, borne = min(MCU LLE, batch
+   historique), détail `CHANGELOG.md`). Restent en batch fixe, chacun
+   pour une raison dite : compacts (cycle-exact par construction),
+   Mac II, IIfx (IOP toujours actifs), MSC — § 4.
 2. **Copyback / snooping 040** — la plus grosse inexactitude CPU restante,
    sur les huit machines 040. Chantier côté `extern/moira`.
 3. **§ 2, profondeur de test** — 9 profils sur 36 ont un gate au-delà de la
@@ -349,8 +350,10 @@ deliberate "POM68K requires MCU dumps" product decision, not a cleanup.
   That is 9.6× fewer full fan-outs than the old exact batch-1 measurement
   (833.2 M), while preserving exact event timing. Gates: the Q605 boot plus
   all three firmware boot/input etalons, Mac TV, unit and save-state suites.
-- [ ] **Extend the event deadlines to the six 030/040 platforms still on a
-  fixed batch** (inventoried 2026-08-04; §0 item 1). The contract carries
+- [x] **Extend the event deadlines to the six 030/040 platforms — LANDED
+  2026-08-04** (same day as the inventory below; 27 serial gates green,
+  incl. both jit cousins on `setPeriphDeadline` and the save-state
+  suites with the new serialized field). The contract carries
   over unchanged: only a device that can raise an interrupt or flip an
   externally visible line *spontaneously* needs a bound; pure state
   (SonyDrive spin, rotation angle) is covered by the access-forced

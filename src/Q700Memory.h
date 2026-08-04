@@ -125,6 +125,9 @@ public:
     int iplLevel() const;      // SCC=4 > VIA2=2 > VIA1=1 (field_interrupts)
 
     void tick(int cpuCycles);
+    // Spike: PIC ADB, no MCU LLE; Eclipse: Egret HLE + two IOPs — none
+    // states a deadline yet, so the wrapper's batch cap is the bound.
+    int cyclesToNextEvent() const { return 0x7fffffff; }
 
     Via6522& via1() { return via1_; }
     Via6522& via2() { return via2_; }

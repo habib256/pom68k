@@ -42,7 +42,7 @@ public:
     // cacheBoost_/icacheMiss_ are environment tuning, not guest state.
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
-        ar(lastPeriphClock_, periphAccum_);
+        ar(lastPeriphClock_, periphAccum_, periphDeadline_);
     }
 
 private:
@@ -59,6 +59,7 @@ private:
     void sync(int cycles) override;
     void didChangeCACR(moira::u32 value) override;
     void catchUp();
+    void schedulePeriphDeadline();
 
     Q630Memory& mem_;
     jit::Engine jit_;
@@ -68,4 +69,5 @@ private:
     int cacheBoost_ = 4;
     int icacheMiss_ = 0;
     moira::i64 periphAccum_ = 0;
+    moira::i64 periphDeadline_ = 0;
 };

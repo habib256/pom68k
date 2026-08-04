@@ -80,7 +80,7 @@ void VaspCpu::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v
 void VaspCpu::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
 void VaspCpu::catchUp() {
-    if (clock - lastPeriphClock_ < kPeriphBatch) return;
+    if (clock < periphDeadline_) return;
     flushTicks();
 }
 
@@ -92,7 +92,21 @@ void VaspCpu::flushTicks() {
     int m = int(periphAccum_ / cacheBoost_);
     periphAccum_ -= moira::i64(m) * cacheBoost_;
     if (m) mem_.tick(m);
+    schedulePeriphDeadline();
 }
+void VaspCpu::schedulePeriphDeadline() {
+    // min(next observable machine-cycle bound, the historical batch): the
+    // cap keeps every transport without a deadline API (ADB PIC, IOPs) at
+    // exactly its former cadence, so exactness can only refine, never
+    // coarsen (TODO § 4, extension inventory 2026-08-04).
+    moira::i64 machine = mem_.cyclesToNextEvent();
+    if (machine < 1) machine = 1;
+    moira::i64 d = machine * cacheBoost_ - periphAccum_;
+    if (d > kPeriphBatch) d = kPeriphBatch;
+    if (d < 1) d = 1;
+    periphDeadline_ = clock + d;
+}
+
 
 void VaspCpu::sync(int cycles) {
     clock += cycles;

@@ -101,6 +101,13 @@ public:
     int iplLevel() const;            // SCC=4 > pseudo-VIA=2 > VIA1=1
 
     void tick(int cpuCycles);        // VIA timers, 60.15 Hz CA1, VBL, MCU…
+    // Conservative machine-cycle bound on the next observable transition
+    // (the V8Memory pattern): the firmware MCU is the tightest clock; the
+    // wrapper caps the result at its historical batch, so anything not
+    // bounded here keeps exactly its former cadence.
+    int cyclesToNextEvent() const {
+        return egretLleOn_ ? egretLle_.cyclesToNextEvent() : 0x7fffffff;
+    }
 
     Via6522& via1() { return via_; }
     PseudoVia& pseudoVia() { return pvia_; }

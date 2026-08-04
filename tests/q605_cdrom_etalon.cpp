@@ -118,6 +118,12 @@ int main() {
     // 512-byte-DDM hybrids in hdv/ are read but not mounted by Mac OS —
     // observed 2026-07-29, cause not yet established (TODO).
     const bool bootFromCd = std::getenv("POM68K_CD_BOOT") != nullptr;
+    // Hot insert: the drive is EMPTY through the whole boot; the disc goes
+    // in only once the Finder is up, the way the Disques window does it.
+    // What makes it mount is ScsiDisk's UNIT ATTENTION / $28 on the medium
+    // change plus READ SUB-CHANNEL answering (the 8.1 CD extension sends
+    // 42 02 40 01 right after the change and aborts on a CHECK).
+    const bool hotInsert = !bootFromCd && std::getenv("POM68K_CD_HOT") != nullptr;
     // Boot-from-CD needs a 68k-bootable disc: Mac OS 8.1 is the last
     // release that runs on a 68040 (8.5/8.6 are PowerPC-only, and a 68k
     // Mac stops at a black screen on them however good the emulation).
@@ -146,7 +152,12 @@ int main() {
         std::fprintf(stderr, "FAIL: could not load the boot disk\n");
         return 1;
     }
-    if (!mem.attachCdrom(cdPath, 3)) {
+    if (hotInsert) {
+        if (!mem.attachCdromEmpty(3)) {
+            std::fprintf(stderr, "FAIL: could not attach the empty CD drive\n");
+            return 1;
+        }
+    } else if (!mem.attachCdrom(cdPath, 3)) {
         std::fprintf(stderr, "FAIL: could not attach the CD\n");
         return 1;
     }
@@ -158,6 +169,19 @@ int main() {
     constexpr int kFrameCycles = 416667;      // 25 MHz / ~60 Hz
     for (long f = 0; f < 9000 && !cpu.isHalted(); f++) cpu.runCycles(kFrameCycles);
     if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: CPU halted\n"); return 1; }
+
+    if (hotInsert) {
+        if (!mem.insertBayMedia(3, cdPath)) {
+            std::fprintf(stderr, "FAIL: hot insert refused\n");
+            return 1;
+        }
+        std::printf("hot insert after boot\n");
+        // The CD extension polls the drive about once a second; the mount
+        // (catalog + desktop DB) lands well inside this window (measured
+        // ~39 READs, desktop icon + window open on the dumped screen).
+        for (long f = 0; f < 8000 && !cpu.isHalted(); f++) cpu.runCycles(kFrameCycles);
+        if (cpu.isHalted()) { std::fprintf(stderr, "FAIL: halted after insert\n"); return 1; }
+    }
 
     Screen screen = decodeScreen(mem);
     if (screen.pixels.empty()) { std::fprintf(stderr, "FAIL: no PixMap\n"); return 1; }
@@ -184,7 +208,9 @@ int main() {
     // ignored stops at a handful of blocks (measured: 4).
     // Booting off the disc means the System itself came from it —
     // megabytes, not the ~100 blocks a data mount costs.
-    long need = bootFromCd ? 1000 : 40;
+    // The hot-insert mount is leaner than the boot-time one (no boot-scan
+    // re-probing): 39 READs measured for a full mount with the window open.
+    long need = bootFromCd ? 1000 : hotInsert ? 30 : 40;
     bool served = cdBlocks > need;
     std::printf("%s\n", (finder && served)
         ? (bootFromCd ? "PASSED — the machine BOOTED from the CD"

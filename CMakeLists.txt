@@ -988,6 +988,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(q605_cdboot_etalon PROPERTIES
                          ENVIRONMENT "POM68K_CD_BOOT=1" TIMEOUT 1800)
+    # The third half :-) — the drive is empty through the boot and the disc
+    # is hot-inserted at the Finder (UNIT ATTENTION $28 + READ SUB-CHANNEL).
+    add_test(NAME q605_cdhot_etalon COMMAND q605_cdrom_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(q605_cdhot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_CD_HOT=1" TIMEOUT 1800)
 
     add_executable(scsi_cdrom_test tests/scsi_cdrom_test.cpp)
     target_link_libraries(scsi_cdrom_test PRIVATE pom68k_core)

@@ -623,6 +623,32 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                 return kGood;
             }
 
+            case 0x42: {                             // READ SUB-CHANNEL
+                // The Apple CD extension sends this right after a hot
+                // insert (42 02 40 01 — MSF, SubQ, current position); a
+                // CHECK CONDITION here aborts the mount it had already
+                // started. MAME cd.cpp:709-770; no CDDA yet, so the
+                // answer is always "no audio, position = start of disc".
+                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                const bool msf  = (cdb[1] & 0x02) != 0;
+                const bool subq = (cdb[2] & 0x40) != 0;
+                const uint8_t param = cdb[3];
+                uint16_t alloc = uint16_t(cdb[7] << 8 | cdb[8]);
+                dataOut.assign(alloc ? alloc : 4, 0);
+                if (dataOut.size() > 1)
+                    dataOut[1] = 0x15;               // no audio status to return
+                if (subq && param == 0x01 && dataOut.size() >= 16) {
+                    dataOut[3] = 12;                 // sub-channel data length
+                    dataOut[4] = 0x01;               // format: current position
+                    dataOut[5] = 0x14;               // Q: data track, position
+                    dataOut[6] = 1;                  // track
+                    dataOut[7] = 0;                  // index (MAME puts 0)
+                    if (msf) dataOut[10] = 2;        // LBA 0 = 00:00:02:00 MSF
+                    // relative address stays 0 either way
+                }
+                return kGood;
+            }
+
             case 0x1B:                               // START/STOP UNIT
                 // bit 1 of byte 4 = LoEj: a "stop + eject" empties the drive.
                 if ((cdb[4] & 0x02) && !(cdb[4] & 0x01)) eject();

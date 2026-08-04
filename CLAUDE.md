@@ -74,11 +74,12 @@ The profile list lives in **one** place: the `kProfiles` table in
   `duo230_boot_etalon` but is **not** a `kProfiles` row yet — house rule: a
   GUI profile is earned by a Finder cell *plus* the GUI/save-state wiring
   (`docs/DUO_BRINGUP.md`, `TODO.md` § 7).
-- The peripheral **deadline** mechanism landed 2026-08-03 (Q605 + V8:
-  86.65 M `mem.tick()` calls instead of 833 M, exact timing preserved —
-  `CHANGELOG.md` § *Event deadlines*). The other ten platforms still run
-  fixed batches. Next, in order: extend the deadlines to those platforms,
-  **040 copyback/snooping**, then `TODO.md` § *Test & validation depth*.
+- The peripheral **deadline** mechanism covers eight platforms (Q605 + V8
+  2026-08-03; Sonora, VASP, RBV, Centris, Q700/Eclipse, Q630 2026-08-04 —
+  bound = min(MCU LLE, historical batch), 27 serial gates green). Compacts,
+  Mac II, IIfx and MSC stay on fixed batches, each for a stated reason
+  (`TODO.md` § 4). Next, in order: **040 copyback/snooping**, then
+  `TODO.md` § *Test & validation depth*.
 
 ## Conventions (inherited from POMIIGS/POM2)
 

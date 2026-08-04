@@ -169,6 +169,13 @@ int main() {
               o3.size() > 12 && o3[12] == 0x28,
               "sense = UNIT ATTENTION, ASC $28 (medium changed)");
         check(hot.command(tur, 6, o3, i3) == 0, "second TUR → GOOD");
+        // The exact post-insert probe Mac OS 8.1 sends (traced 2026-08-04):
+        // READ SUB-CHANNEL, MSF, SubQ, current position. A CHECK here
+        // aborts the mount the driver had already started.
+        const uint8_t subch[10] = { 0x42, 0x02, 0x40, 0x01, 0, 0, 0, 0, 0x10, 0 };
+        check(hot.command(subch, 10, o3, i3) == 0 && o3.size() == 16 &&
+              o3[1] == 0x15 && o3[4] == 0x01,
+              "READ SUB-CHANNEL answers, no audio status");
         // INQUIRY must never be blocked by a pending attention (SCSI-2):
         ScsiDisk hot2;
         hot2.attachCdromEmpty();

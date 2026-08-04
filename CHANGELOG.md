@@ -242,6 +242,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-04** — [The IIfx SCSI mirror mounted one volume seven times; CDs hot-mount under 8.1; the MacIP window opens up](#2026-08-04-iifx-mirror-cd-hot)
+- **2026-08-04** — [Event deadlines reach six more platforms: min(MCU bound, historical batch)](#2026-08-04-deadlines-six)
 - **2026-08-04** — [Hot floppy swap reaches every runner; release CI for four OS targets; the x64 dynamic-link regression found and fixed](#2026-08-04-floppy-ci)
 - **2026-08-04** — [AArch64 Finder gate green and fast: hidden-state lockstep plus two host-side bottlenecks removed](#2026-08-04-a64-green-fast)
 - **2026-08-03** — [Event deadlines close the Cuda phase accommodation; extended ADB input reaches every GUI runner](#2026-08-03-event-deadlines)
@@ -423,7 +425,82 @@ Newest first.
 
 ---
 
+<a id="2026-08-04-iifx-mirror-cd-hot"></a>
+
+## 2026-08-04 (soir) — The IIfx SCSI mirror mounted one volume seven times; CDs hot-mount under 8.1; the MacIP window opens up
+
+**Seven icons, one disk.** On the IIfx desktop the boot volume appeared
+seven times, and a POM68KProber report read straight out of the flushed
+floppy image (block-diff against the pristine build, then strings) showed
+why: seven drive-queue entries, driver refNums -33..-39 — one per SCSI ID.
+`IIfxMemory::attachScsi` mirrored the one `ScsiDisk` on **all seven IDs**,
+a bring-up workaround copied from `MacIIMemory`, whose ROM dedupes the scan
+($B2E). The IIfx path does not: System 7.6.1 installed seven drivers and
+mounted the same HFS volume seven times, and seven write-mode VCBs over one
+store eventually **corrupted `hdv/MacOS-7.6-boot.vhd`** (it now halts at
+the extension parade; the IIfx etalons stay red until the image is
+restored). Fix: attach at the requested ID only — `boot.vhd` reaches the
+Finder. One open case: GISTPERSO (7.5.5, never an IIfx volume) wedges
+under single-ID at ROM `$4081B66E`, a list-search that only exits by
+finding the searched id; the mirror masked it because every id existed.
+The Mac II keeps its mirror (its ROM dedupes — same reasoning as before).
+
+**CDs hot-mount under Mac OS 8.1.** The missing physics: an empty drive
+that is *present* at boot (`ScsiDisk::attachCdromEmpty` — INQUIRY answers,
+TEST UNIT READY says NOT READY), then, on media arrival, exactly one CHECK
+CONDITION / UNIT ATTENTION `$28` (not-ready-to-ready), and — the piece the
+trace surfaced — **READ SUB-CHANNEL ($42)** answered instead of rejected:
+the 8.1 CD extension sends `42 02 40 01` right after the change and aborts
+the mount it had already started on a CHECK. With both in place the
+hot-inserted disc mounts and opens its window (~39 READs). Gated:
+`q605_cdhot_etalon` (third mode of `q605_cdrom_etalon`, `POM68K_CD_HOT=1`)
+plus the UA/$42 pins in `scsi_cdrom_test`. The Disques window's «Réserver
+un lecteur CD vide» checkbox — previously wired to nothing — now stages a
+`cdbay` extras token every runner turns into an empty drive at boot, and
+CD bays swap media live through the same command-queue path as the floppy.
+
+**MacIP throughput.** The host→guest TCP window was capped at 4×MSS
+(~2 KB in flight) since the gateway's first commit — throughput was 2 KB
+per guest ACK round-trip, tens of KB/s against a ~230 KB/s boosted wire.
+Now `min(32×MSS, guestWin)`; the advertised window stays the hard bound.
+
+Also: the Disques window lists the floppy (the always-hot bay) above the
+cold boot/SCSI choices; `disks35/Stuffit_Expander_5.5.dsk` was 1440K plus
+84 bytes of $F6 tail padding, which `insertImage`'s exact-size check
+rejected — trimmed, it inserts.
+
 <a id="2026-08-03-event-deadlines"></a>
+<a id="2026-08-04-deadlines-six"></a>
+
+## 2026-08-04 — Event deadlines reach six more platforms: min(MCU bound, historical batch)
+
+Sonora, VASP, RBV, Centris, Q700/Eclipse and Q630 leave their fixed
+peripheral batches for the deadline mechanism, with one uniform and
+provably safe bound: **min(the machine-cycle bound the memory can state,
+the wrapper's historical batch)**. The cap is the load-bearing half of
+the design — every transport without a deadline API (the IIci's PIC ADB
+modem, the Centris/Spike AdbVia, the Eclipse IOPs and Egret HLE) keeps
+exactly its former cadence, so exactness can only refine, never coarsen.
+Where a firmware MCU LLE runs (Sonora and VASP Egret/Cuda, the IIsi, the
+Q630 Cuda), the memory states `egretLle_.cyclesToNextEvent()` and the
+guest now sees MCU transitions on their true cycle instead of quantized
+to a 128-Moira-cycle batch — the same exactness trade the V8 conversion
+made on 2026-08-03. The three 040 cousins (Centris, Q700, Q630) also
+switch their JIT pacing from `setPeriphPacing` to `setPeriphDeadline`,
+the mode the leaveToDynamic fix (previous entry) made trustworthy, and
+every converted wrapper serializes its new `periphDeadline_`.
+
+Gated the expensive way: **27 serial gates, 95 minutes, all green** — the
+five Sonora boots + two input etalons, three VASP, three RBV (IIsi Egret
+and IIci PIC both), the five djMEMC/IOSB boots, both F108 boots, the
+three Q700-board boots (q700 AND q900 AND q950, per the guard rail),
+both jit cousins' full boots on the new deadline mode, and the 030/040
+save-state suites covering the serialized field. Still on a fixed batch,
+each for a stated reason (TODO § 4): the compacts (cycle-exact by
+construction — nothing to buy on the cheapest machine to emulate), the
+Mac II family, the IIfx (two always-executing IOPs make the fan-out
+intrinsic) and the MSC.
+
 <a id="2026-08-04-floppy-ci"></a>
 
 ## 2026-08-04 — Hot floppy swap reaches every runner; release CI for four OS targets; the x64 dynamic-link regression found and fixed
