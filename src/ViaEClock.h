@@ -57,6 +57,12 @@ struct Ticker {
         return n;
     }
 
+    int cyclesToNext(int64_t cpuHz) const {
+        if (cpuHz <= 0) return 1;
+        const int64_t need = cpuHz - acc;
+        return int((need + kHz - 1) / kHz);
+    }
+
     template <class Ar> void visit(Ar& ar) { ar(acc); }
 };
 

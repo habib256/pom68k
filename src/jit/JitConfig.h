@@ -88,17 +88,15 @@ inline bool blockCacheEnabled(bool dflt) {
 // first control-flow, MMU-touching or capability-missing instruction.
 inline int maxBlockInstrs() { return detail::envInt("POM68K_JIT_BLOCK_MAX", 64, 1, 256); }
 
-// Visits before a recorded block is handed to the code generator. Compiling
-// is not free — a boot executes an enormous amount of code exactly once, and
-// translating all of it measured SLOWER than simply running it through the
-// fetch window. Until a block is hot it runs on the window path, so the JIT
-// is never worse than J1a while it decides.
-// Measured on a full Mac OS 8.1 boot: at 8 the engine compiled 1.8 MILLION
-// blocks, because a boot's hot set is far larger than any sane cache and
-// every overflow threw the lot away and started again. The window path is
-// only ~1.7x slower than generated code, so a block has to be worth rather
-// more than one visit before translating it pays.
-inline int hotThreshold() { return detail::envInt("POM68K_JIT_HOT", 512, 1, 1 << 20); }
+// Visits before a recorded block is handed to the backend. Native generators
+// default to immediate compilation: after incremental I-cache invalidation,
+// AArch64 measures 3.73x faster at 1, while 512 leaves 94% of the fixed Q605
+// workload interpreted and loses the entire gain. Portable replay retains
+// the conservative threshold when its block path is explicitly enabled.
+// POM68K_JIT_HOT overrides both defaults for experiments.
+inline int hotThreshold(bool nativeCode) {
+    return detail::envInt("POM68K_JIT_HOT", nativeCode ? 1 : 512, 1, 1 << 20);
+}
 
 // J2b — per-ACCESS fallback. When the inline data TLB cannot serve an
 // address (an I/O register, most often), the emitted instruction can either

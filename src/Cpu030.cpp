@@ -3,6 +3,7 @@
 
 #include "Cpu030.h"
 #include "V8Memory.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 
@@ -54,6 +55,8 @@ Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020)
 void Cpu030::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
+    periphAccum_ = 0;
+    schedulePeriphDeadline();
     pomIcache.reset();
     jit_.flushAll();
     reset();                       // SSP/PC from $0 (ROM via overlay)
@@ -214,8 +217,15 @@ void Cpu030::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v)
 void Cpu030::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
 void Cpu030::catchUp() {
-    if (clock - lastPeriphClock_ < kPeriphBatch) return;
+    if (clock < periphDeadline_) return;
     flushTicks();
+}
+
+void Cpu030::schedulePeriphDeadline() {
+    const moira::i64 machine = std::max(1, mem_.cyclesToNextEvent());
+    moira::i64 d = machine * cacheBoost_ - periphAccum_;
+    if (d < 1) d = 1;
+    periphDeadline_ = clock + d;
 }
 
 void Cpu030::flushTicks() {
@@ -228,6 +238,7 @@ void Cpu030::flushTicks() {
     int m = int(periphAccum_ / cacheBoost_);    // scale elapsed Moira cycles back
     periphAccum_ -= moira::i64(m) * cacheBoost_; // to real machine cycles
     if (m) mem_.tick(m);           // VIA1 timers (φ2 = CPU/20) + 60.15 Hz
+    schedulePeriphDeadline();
 }
 
 void Cpu030::sync(int cycles) {

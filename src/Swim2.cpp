@@ -273,6 +273,16 @@ void Swim2::tick(int controllerCycles) {
     else              tickRead(controllerCycles);
 }
 
+int Swim2::cyclesToNextEvent() const {
+    if (!(mode_ & 0x08)) return 0x7fffffff;       // ACTION off
+    if (mode_ & 0x10) {
+        if (halfWait_) return int((halfWait_ + 1) / 2);
+        return currentBit_ >= 0 ? 1 : 0x7fffffff;
+    }
+    const int left = cellCycles() - cellPhase_;
+    return left > 0 ? left : 1;
+}
+
 // Read engine — swim2.cpp:482-547 verbatim, cells instead of PLL flux.
 void Swim2::tickRead(int cycles) {
     const int cell = cellCycles();

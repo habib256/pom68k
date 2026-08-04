@@ -223,6 +223,10 @@ public:
     uint8_t read(uint32_t offset);
     void write(uint32_t offset, uint8_t v);
     void tick(int cpuCycles);
+    int cyclesToNextEvent() const {
+        const int64_t need = kCpuHz - drainAcc_;
+        return int((need + kSampleRate - 1) / kSampleRate);
+    }
 
     bool irqAsserted() const { return irq_; }
     std::function<void(bool)> onIrq;

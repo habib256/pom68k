@@ -23,13 +23,23 @@ soft TLB instead of exact ATC semantics, lazy flags (legal here, still to
 do), long traces — are catalogued in the CHANGELOG's 2026-07-28 eighth-pass
 entry and in `TODO.md`.
 
-**State.** Two backends. `threaded` replays a recorded block through Moira's
+**State.** Three backends. `threaded` replays a recorded block through Moira's
 own handlers with the fetch window armed, and is valid for every guest.
 `x86-64` (§ 7) generates host code for a real subset of the ISA, with an
 inline data TLB (§ 8) and control transfers compiled as block terminators,
 so a loop closing on itself never returns to the engine. On the 68040
 machines `auto` picks x64 and it is the faster of the two on every regime
-measured (§ 3). Both are bit-exact against the interpreter — registers,
+measured (§ 3). `aarch64` now implements the same 68040 families as x86-64:
+register and memory ALU, MOVE/MOVEA, effective addresses, bit tests, internal
+branches, calls/returns, LINK/UNLK and MOVEM, backed by an inline big-endian
+DTLB and exact per-instruction fallback. Five-million-step fine/coarse
+locksteps and the complete Q605 Finder boot are
+green, so `auto` selects it on Apple Silicon. Release/native/LTO measures
+1.22 s against 4.55 s for threaded on the fixed 1,000-frame Q605 workload
+(3.73x, identical fingerprint); LLVM PGO measures 1.01 s against 3.41 s.
+The complete Finder gate is 9.19 s native against 21.14 s threaded (2.30x),
+or 7.86 s against 15.28 s under PGO (1.94x).
+All are bit-exact against the interpreter — registers,
 supervisor stacks, cycle clock and the low 2 KB of guest RAM, compared at
 every instruction boundary.
 
@@ -56,7 +66,7 @@ layers with a hard boundary:
                                     │  jit::BlockIr  (host-neutral)
   layer 2  jit::Backend       compile(IR) → Compiled ; run(Compiled, Context)
                                     │
-        threaded  ─────  x86-64 (J2)  ─────  aarch64 (planned)
+        threaded  ─────  x86-64 (J2)  ─────  aarch64
         portable        native code          native code
 ```
 
@@ -317,7 +327,9 @@ Everything in `JitConfig.h` unless noted.
 | `POM68K_JIT_FETCH` | `1` | the instruction-fetch code window (J1a) |
 | `POM68K_JIT_BLOCKS` | *backend* | block discovery and replay (J1b). The default is the ACTIVE BACKEND's answer, not a constant (`blockCacheEnabled(dflt)`): OFF for `threaded`, which measured slower with blocks than with the window alone, ON for a code generator, which has nothing to run without them |
 | `POM68K_JIT_BLOCK_MAX` | `64` | straight-line instruction ceiling per block, itself capped by `caps().maxBlockInstrs` |
-| `POM68K_JIT_HOT` | `512` | visits before a recorded block is translated |
+| `POM68K_JIT_HOT` | native `1`, threaded `512` | visits before a recorded block is translated |
+| `POM68K_JIT_LINKS` | `1` | direct block-to-block linking for native backends; `0` is the attribution/debug path |
+| `POM68K_JIT_A64_PACING` | `1` | AArch64 inline peripheral deadline/batch test; `0` calls `sync(cycles)` after every emitted instruction for attribution |
 | `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
 | `POM68K_DATA_WINDOW` | `0` | the INTERPRETER's data window (§ 8) — opt-in since the ATC-exactness capping made it a net loss (`JitEngine.cpp:39-53`) |
 | `POM68K_JIT_PARANOID` | `0` | re-validate the translation at every arm — for differential testing (`JitEngine.cpp`) |
@@ -362,7 +374,8 @@ code-generating backend: window on, no generated code at all.
 > while the same machine boots in **2 min 21 s** on `threaded`. Selection
 > now tests guest validity before host usability ranking (`JitBackend.h`
 > § *GuestFamily*), so `auto` lands on `threaded` for the 68000/020/030
-> machines and on x64 for the 040s.
+> machines and on x64 for 040s where available; Apple Silicon stays threaded
+> until the AArch64 full-boot gate is green.
 >
 > Widening the scope is a project, not a flag: the 030's update order and
 > prefetch semantics in the emitters, a 030 branch in `pomJitProbeData`,

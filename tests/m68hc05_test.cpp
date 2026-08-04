@@ -71,6 +71,25 @@ int main() {
     check(pbWrites >= 1, "firmware drives port B (VIA handshake side)");
     check(mcu.pc() >= 0x0F00, "PC still executing from ROM");
 
+    // Interrupt entry is 11 cycles on the silicon, followed by the first
+    // handler opcode in the same run() iteration. A two-cycle NOP therefore
+    // consumes exactly 13 cycles after an asserted IRQ. This catches the old
+    // zero-cycle timing accommodation independently of any firmware phase.
+    {
+        std::vector<uint8_t> irqRom(0x1100, 0x9D); // NOP-filled $0F00-$1FFF
+        irqRom[0x0000] = 0x9A;                     // reset: CLI
+        irqRom[0x10FA] = 0x0F; irqRom[0x10FB] = 0x10; // IRQ -> $0F10
+        irqRom[0x10FE] = 0x0F; irqRom[0x10FF] = 0x00; // RESET -> $0F00
+        M68hc05 irqMcu;
+        check(irqMcu.loadRom(irqRom), "synthetic interrupt timing ROM loads");
+        irqMcu.reset();
+        irqMcu.run(1);                              // CLI = 2 cycles
+        irqMcu.setIrqLine(true);
+        const int used = irqMcu.run(1);             // entry 11 + NOP 2
+        check(used == 13 && irqMcu.pc() == 0x0F11,
+              "IRQ entry charges 11 cycles before handler opcode");
+    }
+
     std::printf("  [%ld instructions, %ld port writes, PC=$%04X%s]\n",
                 mcu.instructions, mcu.portWrites, mcu.pc(),
                 mcu.waiting() ? " (WAIT)" : "");

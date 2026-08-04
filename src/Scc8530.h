@@ -80,6 +80,10 @@ public:
     // ext/status users don't get an interrupt storm. Returns true if
     // the IRQ line may have changed (caller recomputes IPL).
     bool tick(int cycles);
+    // Earliest countdown-driven state transition. Purely accumulated clocks
+    // (wireClk/rxIdle) are omitted unless a queued frame is waiting on them;
+    // register reads flush elapsed time explicitly.
+    int cyclesToNextEvent() const;
 
     bool irqAsserted() const;
 

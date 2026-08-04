@@ -315,6 +315,23 @@ static std::string findRomBySignature(const std::string& sig) {
 
 static void glfwErrorCallback(int e, const char* d) { std::fprintf(stderr, "GLFW error %d: %s\n", e, d); }
 
+// macOS only exposes OpenGL 3.2+ core contexts through NSGL. Other hosts keep
+// the long-standing 3.0 request, which is also what the Emscripten path uses.
+// Return the matching GLSL preamble expected by ImGui's OpenGL3 backend.
+static const char* configureGlfwOpenGl() {
+#ifdef __APPLE__
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    return "#version 150";
+#else
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    return "#version 130";
+#endif
+}
+
 // ── Emulated-screen input (shared by the Plus and LC II loops) ──────────
 // The screen is an InvisibleButton (the image is drawn over it): a drag
 // STARTED on the Mac screen owns the mouse until release, so Finder
@@ -360,10 +377,12 @@ struct ScreenInput {
             glfwGetCursorPos(win, &x, &y);
             feed(float(x - lastX), float(y - lastY), move);
             lastX = x; lastY = y;
-            button(glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+            button(0, glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+            button(1, glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
         } else if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
             feed(io.MouseDelta.x, io.MouseDelta.y, move);
-            button(io.MouseDown[0]);     // release seen while still active
+            button(0, io.MouseDown[0]);  // releases seen while still active
+            button(1, io.MouseDown[1]);
         }
     }
 
@@ -401,8 +420,8 @@ static void keyTrace(const char* where, uint8_t adb, bool down) {
     if (on) std::fprintf(stderr, "[key] %s adb=%02X %s\n", where, adb, down ? "dn" : "up");
 }
 
-// Two host keys can share one Mac transition code — Left and Right Shift both
-// map to M0110 $71 (ADB $38). Count presses per code so the DOWN transition is
+// Two host keys can share one Mac transition code (for example the two
+// Command keys). Count presses per code so the DOWN transition is
 // emitted only on 0->1 and the UP transition only on 1->0: without this,
 // holding Left Shift, adding Right Shift and releasing Left sent down/down/up,
 // so the System cleared the KeyMap bit while Shift was still physically held
@@ -1124,7 +1143,7 @@ private:
         { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
+            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
             case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
                                mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
@@ -1214,8 +1233,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     static const std::string maciiTitle =
         std::string("POM68K — Macintosh ") + name;
     GLFWwindow* window = glfwCreateWindow(1320, 1040, maciiTitle.c_str(),
@@ -1229,7 +1247,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -1305,7 +1323,9 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                          GL_BGRA, GL_UNSIGNED_BYTE, fb.data());
             c.input.frame(c.window, c.tex, ImVec2(float(fw * 2), float(fh * 2)),
                     [&](int dx, int dy) { c.m.push({MacIiMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({MacIiMachine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({MacIiMachine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         }
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
@@ -1327,8 +1347,10 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
                 {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
                 {ImGuiKey_Escape,0x6B},
@@ -1533,7 +1555,7 @@ private:
         { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
+            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
             case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
         }
@@ -1612,8 +1634,7 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     GLFWwindow* window = glfwCreateWindow(1320, 1040, "POM68K — Macintosh IIfx",
                                           nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
@@ -1625,7 +1646,7 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -1696,7 +1717,9 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
                          GL_BGRA, GL_UNSIGNED_BYTE, fb.data());
             c.input.frame(c.window, c.tex, ImVec2(float(fw * 2), float(fh * 2)),
                     [&](int dx, int dy) { c.m.push({IIfxMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({IIfxMachine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({IIfxMachine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         }
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
@@ -1718,8 +1741,10 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
                 {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
                 {ImGuiKey_Escape,0x6B},
@@ -2005,7 +2030,7 @@ private:
             // V8Memory routes to the firmware AdbLine when the Egret LLE
             // is active (POM68K_EGRET_LLE), else to the HLE's AdbBus.
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
+            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
             case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
                                mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
@@ -2177,8 +2202,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     // Sized so the largest mode (640×480 shown at 2×) fits with the menu
     // bar and the CPU window; the smaller 512×384 leaves margin.
     const std::string winTitle = std::string("POM68K — ") + prof.name;
@@ -2192,7 +2216,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -2294,7 +2318,9 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({LcMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({LcMachine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({LcMachine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -2316,8 +2342,10 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 // Arrow keys (ADB raw $3B-$3E → m0110 = code<<1) — games like
                 // Lode Runner drive the character with these; absent before.
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
@@ -2583,7 +2611,7 @@ private:
         { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
+            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
             case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
             case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
@@ -2702,8 +2730,7 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     static const std::string title = std::string("POM68K — Macintosh ") + pr.name;
     GLFWwindow* window = glfwCreateWindow(1320, 1040, title.c_str(),
                                           nullptr, nullptr);
@@ -2716,7 +2743,7 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -2822,7 +2849,9 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({Lc3Machine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({Lc3Machine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({Lc3Machine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -2842,8 +2871,10 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
                 {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
                 {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
@@ -2974,8 +3005,7 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     GLFWwindow* window = glfwCreateWindow(1320, 1040,
                                           vi ? "POM68K — Macintosh IIvi"
                                              : "POM68K — Macintosh IIvx",
@@ -2989,7 +3019,7 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -3093,7 +3123,9 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({VaspMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({VaspMachine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({VaspMachine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -3113,8 +3145,10 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
                 {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
                 {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
@@ -3222,8 +3256,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     GLFWwindow* window = glfwCreateWindow(1320, 1040,
                                           iici ? "POM68K — Macintosh IIci"
                                                : "POM68K — Macintosh IIsi",
@@ -3237,7 +3270,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -3339,7 +3372,9 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({RbvMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({RbvMachine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({RbvMachine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -3359,8 +3394,10 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
                 {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
                 {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
@@ -3885,7 +3922,7 @@ private:
             // Q605Memory routes to the firmware AdbLine when the Cuda LLE
             // is active (POM68K_CUDA_LLE), else to the Egret HLE's AdbBus.
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.a != 0); break;
+            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
             case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
                                mem.keyEvent(uint8_t(c.a), c.b != 0); break;
             case Cmd::HardReset:   cpu.hardReset(); break;
@@ -4019,8 +4056,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     // 640×480 shown at 2× fits with the menu bar and the CPU window.
     GLFWwindow* window = glfwCreateWindow(1320, 1080, "POM68K — Quadra 605", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
@@ -4032,7 +4068,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -4155,7 +4191,9 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({QuadraMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({QuadraMachine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({QuadraMachine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -4177,8 +4215,10 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
                 {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
                 {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
@@ -4336,8 +4376,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     // 640×480 shown at 2× fits with the menu bar and the CPU window.
     GLFWwindow* window = glfwCreateWindow(1320, 1080, "POM68K — Quadra 605", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
@@ -4349,7 +4388,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -4470,7 +4509,9 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({CentrisMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({CentrisMachine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({CentrisMachine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -4492,8 +4533,10 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
                 {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
                 {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
@@ -4658,8 +4701,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     // 640×480 shown at 2× fits with the menu bar and the CPU window.
     static std::string winTitle = std::string("POM68K — ") + qname;
     GLFWwindow* window = glfwCreateWindow(1320, 1080, winTitle.c_str(), nullptr, nullptr);
@@ -4672,7 +4714,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -4791,7 +4833,9 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({Q700Machine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({Q700Machine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({Q700Machine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -4813,8 +4857,10 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
                 {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
                 {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
@@ -4950,8 +4996,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     // 640×480 shown at 2× fits with the menu bar and the CPU window.
     GLFWwindow* window = glfwCreateWindow(1320, 1080, "POM68K — Quadra 630", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
@@ -4963,7 +5008,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -5085,7 +5130,9 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
                     [&](int dx, int dy) { c.m.push({Q630Machine::Cmd::MouseMove, dx, dy}); },
-                    [&](bool down) { c.m.push({Q630Machine::Cmd::MouseButton, down ? 1 : 0}); });
+                    [&](int button, bool down) {
+                        c.m.push({Q630Machine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
 
@@ -5107,8 +5154,10 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
                 {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
                 {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
                 {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_LeftShift,0x71},
-                {ImGuiKey_RightShift,0x71},{ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
                 {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
                 {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
                 {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
@@ -5377,8 +5426,7 @@ int main(int argc, char** argv) {
     // ── Window / ImGui ───────────────────────────────────────────────────
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glslVersion = configureGlfwOpenGl();
     GLFWwindow* window = glfwCreateWindow(1100, 800, windowTitle.c_str(), nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
@@ -5391,7 +5439,7 @@ int main(int argc, char** argv) {
     ImGui::StyleColorsDark();
     pom68k::dockLayoutInit();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glslVersion);
 
     static GLuint screenTex = 0;
     glGenTextures(1, &screenTex);
@@ -5471,9 +5519,9 @@ int main(int argc, char** argv) {
                         if (c.mem.isAdb()) c.mem.adbMouseMove(dx, dy);
                         else c.mem.mouse().move(dx, dy);
                     },
-                    [&](bool down) {
-                        if (c.mem.isAdb()) c.mem.adbMouseButton(down);
-                        else c.mem.mouse().setButton(down);
+                    [&](int button, bool down) {
+                        if (c.mem.isAdb()) c.mem.adbMouseButton(down, button);
+                        else if (button == 0) c.mem.mouse().setButton(down);
                     });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();

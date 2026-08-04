@@ -136,35 +136,12 @@ void M68hc05::pushState() {
 }
 
 // Returns the cycles the interrupt sequence burned, 0 if none was taken.
-//
-// ── Why that is 0 and not the hardware's 11 ────────────────────────────
 // A real 6805 charges 11 cycles for the push + vector fetch (MAME
-// m6805.cpp:541-573, `m_icount -= 11`), and MAME's execute_run
-// (m6805.cpp:167-183) then falls through to fetch an opcode in the SAME
-// iteration — so the sequence PRECEDES an instruction, it does not
-// replace one. Both were tried here (2026-07-27) and both wedge the
-// **Macintosh TV**: it boots with 0, dies with 11, and the failure is
-// bit-exact either way.
-//
-// The 11 cycles are not wrong in isolation — they cost the MCU ~2 % of
-// its instruction throughput against machine time, which shifts the
-// PHASE between the MCU's instruction stream and the host VIA. That
-// phase is load-bearing, and CudaLle.cpp:20-28 already records two
-// earlier attempts to move it (uniform 2 µs interleave, busy-gated)
-// crashing the guest. The Mac TV is where it bites first: at 31.3344 MHz
-// it is the fastest 030 in the tree, so it has the tightest MCU:CPU
-// ratio. Symptom, traced end to end: the Cuda stops its clock train
-// after 7 of the 8 CB1 edges of a byte and waits for BYTEACK, while the
-// ROM spins forever on VIA1 IFR.SHIFT at $40AB3BC8 — SCSI is never
-// touched, the screen stays black (gate `mactv_boot_etalon`).
-//
-// So this is a deliberate, gated inaccuracy, not an oversight. Re-land
-// the 11 by returning it here (and nothing else — the run() loop below
-// is already shaped like MAME's) once the Cuda↔VIA transport survives a
-// phase shift; that robustness work is the real fix and is tracked in
-// TODO.md. Ruled out along the way: the one-second-timer clock model
-// (M68hc05::run) and a stale external bit counter across an ACR
-// shift-mode change (Via6522) — neither changes the outcome.
+// m6805.cpp:541-573, `m_icount -= 11`) and then fetches the handler's first
+// opcode in the same execute_run iteration. This cost used to be suppressed
+// after it exposed a Cuda/VIA scheduling-phase bug on the Macintosh TV. The
+// transport now advances from event deadlines instead of a coarse fixed
+// peripheral batch, so the hardware cost is both affordable and stable.
 int M68hc05::serviceInterrupts() {
     if (!pending_) return 0;
     if (cc_ & CC_I) return 0;
@@ -174,7 +151,7 @@ int M68hc05::serviceInterrupts() {
     else if (pending_ & INT_TIMER) { pending_ &= ~INT_TIMER; pc_ = read16(0x1FF8); }
     else                           { pending_ &= ~INT_CPI;   pc_ = read16(0x1FF6); }
     waiting_ = false;
-    return 0;                        // hardware: 11 (m6805.cpp:570) — see above
+    return 11;                       // M6805 interrupt entry cost (m6805.cpp:570)
 }
 
 // ── RMW group ($30 dir / $40 A / $50 X / $60 ix1 / $70 ix) ─────────────
@@ -440,8 +417,7 @@ int M68hc05::run(int budget) {
         // sequence PRECEDES an instruction, it never replaces one — taking a
         // vector and then falling straight through to the next opcode fetch
         // in the same iteration. (Letting it consume the iteration instead
-        // costs the MCU one instruction per interrupt.) What that sequence
-        // is CHARGED is the subtle part — see serviceInterrupts() above.
+        // costs the MCU one instruction per interrupt.)
         int cyc = serviceInterrupts();
         if (waiting_) {
             cyc += 4;                                // idle in WAIT/STOP

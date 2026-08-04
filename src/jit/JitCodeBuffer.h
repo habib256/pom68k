@@ -70,14 +70,22 @@ public:
 
     // Rewinds the bump pointer. Callers must be certain no compiled block
     // is still reachable — the engine only does this from a full flush.
-    void reset() { used_ = 0; }
+    void reset() { used_ = 0; icacheSynced_ = 0; }
 
 private:
     uint8_t*    base_ = nullptr;
     std::size_t size_ = 0;
     std::size_t used_ = 0;
+    // Bytes below this bump offset have already been made visible to the
+    // instruction cache. Compilation only appends, so W -> X needs to
+    // invalidate the newly written tail, not the whole reservation.
+    std::size_t icacheSynced_ = 0;
     bool        writable_ = true;
     bool        unified_ = false;
+    // MAP_JIT needs one initial RW -> RWX promotion; later transitions are
+    // per-thread pthread_jit_write_protect_np toggles. Repeating mprotect on
+    // an already promoted mapping is rejected by current macOS.
+    bool        execMapped_ = false;
 };
 
 }  // namespace jit

@@ -13,7 +13,8 @@
 //               Emscripten. This is the floor: `auto` always lands here when
 //               nothing better is available.
 //   x86-64    — native code generation (J2).
-//   aarch64   — planned; see src/jit/backends/JitBackendA64.md.
+//   aarch64   — native 68040 generator and the automatic arm64 choice; see
+//               src/jit/backends/JitBackendA64.md.
 //
 // A backend advertises what it can do through caps(); the block builder
 // consults that and simply stops a block before anything the backend cannot
@@ -125,9 +126,9 @@ struct Context {
     const CodeGuard* guard = nullptr;
 
     // ── peripheral pacing ────────────────────────────────────────────────
-    // The CPU wrapper batches VIA/ASC/SWIM/MCU time: sync() advances the
-    // clock and only runs the machine forward once `periphBatch` cycles
-    // have piled up since `periphClock`. Generated code is given both so it
+    // The CPU wrapper either batches VIA/ASC/SWIM/MCU time (`periphBatch`
+    // positive, `periphClock` is the baseline) or exposes an absolute next
+    // event deadline (`periphBatch == -1`). Generated code is given both so it
     // can make that test INLINE and call out only when it is actually due —
     // a call on every instruction costs more than most instructions do.
     // Null pointer = no pacing information, call out every time. Typed as
@@ -136,7 +137,14 @@ struct Context {
     // moira::i64, which is not the same TYPE as int64_t on every platform
     // even when it is the same width.
     const void* periphClock = nullptr;
-    int         periphBatch = 0;
+    int         periphBatch = 0;       // -1 = periphClock is an absolute deadline
+
+    // Optional dynamic fallback census. Native backends increment the
+    // opcode slot that led to a cold interpreter stub. Keeping the two
+    // causes separate tells unsupported ISA coverage from an otherwise
+    // native instruction whose runtime access/guard could not be inlined.
+    uint64_t* slowStaticHisto = nullptr;
+    uint64_t* slowRuntimeHisto = nullptr;
 };
 
 struct RunResult {
@@ -151,6 +159,12 @@ struct RunResult {
 class Backend {
 public:
     virtual ~Backend() = default;
+
+    // Native backends own mutable code buffers and therefore cannot be
+    // shared by two emulated CPUs in one process. Registry entries are
+    // prototypes; returning a clone gives each Engine an independent code
+    // cache. Stateless backends keep the default nullptr and stay shared.
+    virtual Backend* clone() const { return nullptr; }
 
     virtual const char* name() const = 0;          // "threaded" | "x86-64" | …
     virtual const char* description() const = 0;   // shown in the GUI

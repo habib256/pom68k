@@ -50,6 +50,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Timing — what an emulated cycle is charged against
 
+- **why Q605/V8 wake peripherals from conservative event deadlines, and why the 6805 IRQ costs 11 again** → [2026-08-03 — Event deadlines close the Cuda phase accommodation](#2026-08-03-event-deadlines)
 - **why the VIA E clock is 783.36 kHz and not a divisor of the CPU** → [2026-08-02 (third) — Two rates that were rounded…](#2026-08-02-eclock-asc)
 - **why bus/peripheral time is charged in MACHINE cycles, never the boosted core clock** → [2026-07-25 — The i-cache boost was accelerating the VIA bus…](#2026-07-25--the-i-cache-boost-was-accelerating-the-via-bus-lc-iii--lc-iii--iivx-fixed-and-the-iisis-boost-restored)
 - **why the PIC1654S must be co-stepped off the un-boosted clock** → [2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
@@ -62,6 +63,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **AArch64 becomes automatic; two quadratic/128-MiB publication costs removed** → [2026-08-04 — AArch64 Finder gate green and fast](#2026-08-04-a64-green-fast)
 - **the JIT design: host-agnostic engine + `jit::Backend`** → [2026-07-27 — A second execution engine: the multi-target JIT (J0 + J1)](#2026-07-27--a-second-execution-engine-the-multi-target-jit-j0--j1)
 - **the x86-64 code generator and what it measured** → [2026-07-28 — The x86-64 code generator (J2), and what it measured](#2026-07-28--the-x86-64-code-generator-j2-and-what-it-measured)
 - **why the fetch WINDOW is the win, not the block cache** → [2026-07-28 (fourth pass) — The data window and PGO: the interpreter's turn](#2026-07-28-fourth-pass--the-data-window-and-pgo-the-interpreters-turn)
@@ -95,6 +97,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
+- **the 11-cycle 6805 IRQ restored; second mouse button and right modifiers reach the GUI path** → [2026-08-03 — Event deadlines close the Cuda phase accommodation](#2026-08-03-event-deadlines)
 - **the M68HC05E1 core: real Cuda firmware executes** → [2026-07-23 — M68HC05E1 core: the real Cuda firmware executes (step 10 groundwork)](#2026-07-23--m68hc05e1-core-the-real-cuda-firmware-executes-step-10-groundwork)
 - **Mac OS 8.1 boots on the REAL Cuda firmware** → [2026-07-23 — Mac OS 8.1 boots to the Finder on the REAL Cuda firmware (blueprint…](#2026-07-23--mac-os-81-boots-to-the-finder-on-the-real-cuda-firmware-blueprint-step-3)
 - **…and becomes the Quadra default** → [2026-07-23 — The real Cuda firmware is the Quadra's DEFAULT (blueprint step 4)](#2026-07-23--the-real-cuda-firmware-is-the-quadras-default-blueprint-step-4)
@@ -237,8 +240,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
-All 171 entries, newest first.
+Newest first.
 
+- **2026-08-04** — [AArch64 Finder gate green and fast: hidden-state lockstep plus two host-side bottlenecks removed](#2026-08-04-a64-green-fast)
+- **2026-08-03** — [Event deadlines close the Cuda phase accommodation; extended ADB input reaches every GUI runner](#2026-08-03-event-deadlines)
 - **2026-08-03** — [Three items closed by measurement — and a GREEN ctest that proved nothing](#2026-08-03-three-items)
 - **2026-08-02** — [The "Quadra modifier bug" retracted: same machine, other image, works](#2026-08-02-cmdn-retracted)
 - **2026-08-02** — [Two LLE gaps closed: the Cuda's I2C bus gets a second slave, and SWIM1 gets its DMA request line](#2026-08-02-i2c-dat1byte)
@@ -416,6 +421,66 @@ All 171 entries, newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-03-event-deadlines"></a>
+<a id="2026-08-04-a64-green-fast"></a>
+
+## 2026-08-04 — AArch64 Finder gate green and fast: hidden-state lockstep plus two host-side bottlenecks removed
+
+The coarse AArch64 failure was not peripheral drift. Lockstep now snapshots
+CPU pacing and serialized VIA/Cuda/ADB/SCC/ASC/SWIM/SCSI/DAFB state and can
+trace the exact coarse slice. That localized four emitter defects: NEG moved
+an immediate instead of a register, EA commit reused a live ALU scratch,
+MOVE.B/W immediates were not masked after signed decode, and BFINS lost its
+mask while updating Z. Five-million-step fine/coarse locksteps and the complete
+Q605 Finder gate pass, so arm64 `auto` now selects AArch64.
+
+Two macOS `sample` runs found the real host costs. `CodeBuffer` invalidated its
+entire 128 MiB reservation after every compiled block; it now flushes only the
+newly appended tail. Later, 766/767 samples in a long boot landed in
+`Engine::markPages`: libc++'s `unordered_multimap` linearly scanned thousands
+of equivalent slice keys and compilation inserted every block a second time.
+The replacement `slice -> vector<block key>` index appends in amortized O(1),
+and compilation only performs the required DTLB flush.
+
+Release/native/LTO, identical assets and signatures: the fixed 1,000-frame
+workload is 1.22 s A64 versus 4.55 s threaded (3.73x); the full Finder gate is
+9.19 s versus 21.14 s (2.30x). Existing LLVM PGO gives 1.01 s versus 3.41 s
+(3.38x), and the full gate 7.86 s versus 15.28 s (1.94x). The cache-tail and
+slice-index fixes are host-neutral and also benefit Linux AArch64/Raspberry Pi.
+
+## 2026-08-03 — Event deadlines close the Cuda phase accommodation; extended ADB input reaches every GUI runner
+
+The M68HC05 interrupt entry again costs the silicon's **11 cycles**. The old
+zero-cycle return was not an instruction-core interpretation: it was a timing
+accommodation after the Mac TV's Cuda/VIA byte handshake stopped at seven CB1
+edges when that 2 % throughput cost moved the MCU phase. A synthetic ROM in
+`m68hc05_test` now pins the oracle shape directly: 11 cycles of entry followed
+by the handler's two-cycle NOP in the same `run()` iteration = 13.
+
+The fixed Q605/V8 peripheral batches were replaced by absolute deadlines.
+`CudaLle` derives the first machine cycle able to pay its fractional clock
+bridge plus carried instruction-overshoot debt. Q605 takes the conservative
+minimum over Cuda, the VIA E clock, SCC live countdowns, ASC drain, active SWIM
+cells, 53C96 service latency, 60.15 Hz CA1 and DAFB interrupts. Device accesses
+still force a flush, so continuously accumulated state is current when read.
+The HLE V8 fallback deliberately keeps its historical 128-cycle batch.
+
+The contract has its own bite: `cuda_lle_test` proves no MCU cycle occurs
+before the reported deadline and that progress occurs exactly on it. A Q605
+boot with `POM68K_PERIPH_STATS=1` delivered 1.675 G machine cycles through
+86.65 M full `mem.tick()` fan-outs (**19.34 cycles/call**), versus 833.2 M
+under the former exact batch-1 mode — **9.6× fewer entries** without timing
+approximation. The former phase reproducer is green with the real cost:
+`mactv_boot_etalon` reaches the Finder. So do all three longer firmware gates:
+`q605_cudalle_key_etalon` (including 500 fast transitions), boot and mouse.
+
+The host-side ADB follow-up closed in the same pass. `ScreenInput` sends left
+and right mouse state with a button index through every threaded machine
+command; `AdbLine` receives button 1, while HLE and quadrature one-button paths
+discard it. All ten ADB GUI key maps now emit distinct right Shift, Option and
+Control codes (plus both Command keys). Handler 3 preserves the right-hand
+codes; handlers 1/2 retain their intentional fold onto the left modifiers.
 
 <a id="2026-08-03-three-items"></a>
 ## 2026-08-03 — Three items closed by measurement — and a GREEN ctest that proved nothing

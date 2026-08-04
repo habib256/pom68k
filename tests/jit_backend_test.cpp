@@ -5,8 +5,8 @@
 // checks the things that decide whether the JIT exists at all on a given
 // host (src/jit/POM68K_JIT.md invariants 6 and 7):
 //
-//   * backend selection, including that `auto` and an unknown name both
-//     land on the portable `threaded` floor;
+//   * backend selection, including that `auto` chooses a usable native
+//     generator when eligible and an unknown name lands on `threaded`;
 //   * the W^X executable-memory allocator, or a clean refusal on a platform
 //     that has none (Emscripten, iOS, a hardened kernel);
 //   * the block classifier's safety rules — the ones that keep MMU, cache
@@ -15,6 +15,11 @@
 #include "jit/JitBackend.h"
 #include "jit/JitCodeBuffer.h"
 #include "jit/JitIr.h"
+
+#if defined(POM68K_JIT_BACKEND_A64)
+#include "Cpu040.h"
+#include "Q605Memory.h"
+#endif
 
 #include <cstdio>
 #include <cstring>
@@ -44,9 +49,11 @@ int main() {
     const char* const* names = jit::backendNames(count);
     check(count >= 1, "at least one backend is compiled in");
     bool hasThreaded = false;
+    bool hasX64 = false;
     for (int i = 0; i < count; i++) {
         std::printf("  compiled: %s\n", names[i]);
         if (!std::strcmp(names[i], "threaded")) hasThreaded = true;
+        if (!std::strcmp(names[i], "x86-64")) hasX64 = true;
     }
     check(hasThreaded, "the portable 'threaded' backend is always compiled in");
 
@@ -87,7 +94,7 @@ int main() {
     // The concrete regression: the x86-64 generator is 68040-only, so asking
     // for it on a 68030 must NOT come back as x64. Before 2026-07-30 it did,
     // and jit_lcii_boot_etalon spent an hour wedged proving it.
-    if (jit::CodeBuffer::supported()) {
+    if (hasX64) {
         jit::Backend* on030 = jit::selectBackend("x64", jit::kGuest68030);
         check(std::strcmp(on030->name(), "x86-64") != 0,
               "x64 requested for a 68030 guest is refused, not honoured");
@@ -152,19 +159,76 @@ int main() {
         }
         check(buf.makeWritable(), "X -> W");
         check(buf.writable(), "writable again");
+        check(buf.alloc(16) != nullptr, "append after first W/X cycle");
+        check(buf.makeExecutable(), "second W -> X on the same mapping");
+        check(buf.makeWritable(), "second X -> W on the same mapping");
         buf.release();
         check(!buf.valid(), "release");
     }
+
+#if defined(POM68K_JIT_BACKEND_A64)
+    // Execute a hand-built all-native block. This catches emitter encodings,
+    // the Darwin AAPCS frame, MAP_JIT W^X transitions, I-cache invalidation,
+    // MOVEQ flags and cycle charging without needing a user ROM.
+    {
+        std::printf("[jit_backend] aarch64 native smoke\n");
+        check(!std::strcmp(autoPick->name(), "aarch64"),
+              "auto selects the validated AArch64 backend on arm64");
+        static Q605Memory mem;
+        static Cpu040 cpu(mem);
+        mem.setCpu(&cpu);
+        cpu.setClock(0);
+        cpu.setPC(0x1000);
+        cpu.setSR(0x2010);                  // supervisor + X (must survive MOVEQ)
+        cpu.setD(0, 0);
+        const auto layout = cpu.pomJitLayout();
+        *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&cpu) +
+                                     layout.flags) = 0;
+
+        jit::BlockIr ir;
+        ir.entryPc = ir.codeBase = 0x1000;
+        ir.super = true;
+        ir.code = {0x70FF, 0x4E71, 0, 0};   // MOVEQ #-1,D0; NOP; lookahead
+        ir.instrs.push_back({0x1000, 0x70FF, 1, jit::Kind::Move,
+                             jit::FlagSetsCcr, 2});
+        ir.instrs.push_back({0x1002, 0x4E71, 1, jit::Kind::AddrCalc,
+                             jit::FlagNone, 2});
+
+        jit::Context ctx;
+        ctx.cpu = &cpu;
+        ctx.clockTarget = 100;
+        jit::Backend* a64 = jit::selectBackend("a64", jit::kGuest68040);
+        check(!std::strcmp(a64->name(), "aarch64"), "explicit a64 resolves");
+        jit::Compiled* code = a64->compile(ir, ctx);
+        check(code != nullptr, "MOVEQ/NOP block compiles to AArch64");
+        if (code) {
+            jit::RunResult rr = a64->run(code, ctx);
+            std::printf("  result: retired=%u exit=%s D0=$%08X SR=$%04X "
+                        "PC=$%08X clock=%lld\n",
+                        rr.instrs, jit::exitName(rr.exit), cpu.getD(0), cpu.getSR(),
+                        cpu.getPC(), (long long)cpu.getClock());
+            check(rr.instrs == 2 && rr.slowInstrs == 0,
+                  "two instructions retire natively");
+            check(rr.exit == jit::Exit::BlockEnd, "native block exits cleanly");
+            check(cpu.getD(0) == 0xFFFFFFFFu, "MOVEQ sign-extends into D0");
+            check((cpu.getSR() & 0x1F) == 0x18,
+                  "MOVEQ sets N, clears Z/V/C and preserves X");
+            check(cpu.getPC() == 0x1004, "native block commits its exit PC");
+            check(cpu.getClock() == 4, "native block charges exact cycles");
+            a64->release(code);
+        }
+        a64->flushAll();
+    }
+#endif
 
     // What the ACTIVE backend claims it can turn into host code. On a host
     // with no code generator every answer is false and this section simply
     // records that — the point is that the census and the block builder
     // agree with the backend actually selected.
     {
-        // Name the code generator rather than taking `auto`: auto's answer
-        // is a measured performance choice (JitBackend.cpp), and this
-        // section is about what the generator CAN do, not what ships.
-        jit::Backend* b = jit::selectBackend("x64", jit::kGuest68040);
+        // `auto` is the validated native generator on x86-64/AArch64 and the
+        // portable floor elsewhere, so this remains a host-independent gate.
+        jit::Backend* b = jit::selectBackend("auto", jit::kGuest68040);
         std::printf("[jit_backend] native coverage (%s)\n", b->name());
         const bool gen = b->caps().nativeCode;
         // The two opcodes a Mac ROM's hardware poll loops are built from.
@@ -173,8 +237,9 @@ int main() {
         check(b->canEmit(0x2ADC) == gen, "MOVE.L (A4)+,(A5)+");
         check(b->canEmit(0x7000) == gen, "MOVEQ #0,D0");
         check(b->canEmit(0xD3C1) == gen, "ADDA.L D1,A1");
-        // …and forms no backend may claim: they are Unsafe, or they use an
-        // addressing mode this generator does not decode.
+        // …and forms no backend may claim because they are Unsafe or opcode
+        // overlaps. AArch64 does implement the brief indexed bit-test mode;
+        // x86-64 still refuses it.
         // LINK/UNLK/NOP are the $4Exx carve-out: no control transfer, no
         // SR/MMU/cache state, and 3.6 % of a real workload sitting at every
         // function entry and exit. They are compiled, and they no longer
@@ -199,13 +264,19 @@ int main() {
         check(jit::branchWords(0x4EAE) == 2, "JSR d16(A6) is two words");
         // …while the rest of the $4Exx group still ends a block BEFORE it.
         check(!b->canEmit(0x4E73), "RTE is never native");
-        check(b->canEmit(0x4ED0), "JMP (A0) is compiled (census 2026-07-30)");
+        check(b->canEmit(0x4ED0) == gen,
+              "JMP (A0) follows the active generator's coverage");
         check(jit::branchWords(0x4EF9) == 3, "JMP abs.l is three words");
-        check(b->canEmit(0x48E7), "MOVEM.L regs,-(SP) is compiled");
-        check(b->canEmit(0x4CDF), "MOVEM.L (SP)+,regs is compiled");
-        check(b->canEmit(0x51C8), "DBRA is compiled");
+        check(b->canEmit(0x48E7) == gen,
+              "MOVEM.L regs,-(SP) follows the active generator's coverage");
+        check(b->canEmit(0x4CDF) == gen,
+              "MOVEM.L (SP)+,regs follows the active generator's coverage");
+        check(b->canEmit(0x51C8) == gen,
+              "DBRA follows the active generator's coverage");
         check(!b->canEmit(0xF200), "F-line is never native");
-        check(!b->canEmit(0x0130), "BTST Dn,d8(A0,Xn) — indexed mode");
+        const bool a64 = !std::strcmp(b->name(), "aarch64");
+        check(b->canEmit(0x0130) == a64,
+              "BTST Dn,d8(A0,Xn) follows active generator coverage");
         check(!b->canEmit(0x0108), "MOVEP is not BTST");
         check(!b->canEmit(0x81C0), "DIVU is not an ALU direction");
         check(!b->canEmit(0xC1C0), "MULS is not an ALU direction");

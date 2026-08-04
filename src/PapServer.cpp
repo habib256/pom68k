@@ -255,7 +255,9 @@ void PapServer::finishJob() {
         // duration and let pclose's status drive the file fallback.
         struct sigaction ign {}, prev {};
         ign.sa_handler = SIG_IGN;
-        ::sigemptyset(&ign.sa_mask);
+        // macOS exposes sigemptyset as a function-like macro, so qualifying
+        // it with the global namespace makes AppleClang expand invalid code.
+        sigemptyset(&ign.sa_mask);
         ::sigaction(SIGPIPE, &ign, &prev);
         FILE* lp = ::popen("lp -s -- - >/dev/null 2>&1", "w");
         if (lp) {

@@ -181,9 +181,9 @@ public:
         if (cudaLleOn_) cudaLle_.adbLine().mouseMove(dx, dy);
         else            adb_.mouseMove(dx, dy);
     }
-    void mouseButton(bool down) {
-        if (cudaLleOn_) cudaLle_.adbLine().mouseButton(down);
-        else            adb_.mouseButton(down);
+    void mouseButton(bool down, int button = 0) {
+        if (cudaLleOn_) cudaLle_.adbLine().mouseButton(down, button);
+        else if (button == 0) adb_.mouseButton(down);
     }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }

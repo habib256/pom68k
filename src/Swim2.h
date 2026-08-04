@@ -28,6 +28,7 @@ public:
     uint8_t read(int reg);
     void write(int reg, uint8_t value);
     void tick(int controllerCycles);
+    int cyclesToNextEvent() const;
 
     uint8_t mode() const { return mode_; }
     uint8_t setup() const { return setup_; }

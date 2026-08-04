@@ -99,7 +99,7 @@ public:
     // SWIM PIC's bit-banged line, LLE on both ends of the wire.
     void keyEvent(uint8_t code, bool down) { adbLine_.keyEvent(code, down); }
     void mouseMove(int dx, int dy) { adbLine_.mouseMove(dx, dy); }
-    void mouseButton(bool down) { adbLine_.mouseButton(down); }
+    void mouseButton(bool down, int button = 0) { adbLine_.mouseButton(down, button); }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     // Mechanical drive sounds (GUI only; headless leaves the sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {

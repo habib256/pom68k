@@ -27,6 +27,7 @@
 #include "JitStats.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 #include <unordered_map>
 
@@ -83,6 +84,12 @@ public:
     void setPeriphPacing(const void* clock, int batch) {
         ctx_.periphClock = clock;
         ctx_.periphBatch = batch;
+    }
+    // Event-driven wrappers expose their absolute next deadline instead of
+    // a fixed batch. A negative batch is the backend-neutral discriminator.
+    void setPeriphDeadline(const void* deadline) {
+        ctx_.periphClock = deadline;
+        ctx_.periphBatch = -1;
     }
 
     const char* backendName() const;
@@ -191,6 +198,7 @@ private:
 
     moira::Moira& cpu_;
     MemoryHooks   mem_;
+    std::unique_ptr<Backend> ownedBackend_;
     Backend*      backend_ = nullptr;
     Context       ctx_{};
     Stats         stats_;
@@ -210,7 +218,12 @@ private:
     // frequent: on a full boot that cost more than everything the code
     // generator saved (436 s against the fetch window's 127 s). This makes
     // it O(blocks in the slice that was actually written).
-    std::unordered_multimap<uint32_t, uint64_t> sliceIndex_;
+    // Do not use unordered_multimap here. Thousands of blocks can share one
+    // 4 KB code page (and therefore the same 256-byte slice); libc++ keeps
+    // equivalent keys contiguous by scanning that whole group on insertion,
+    // turning a long boot into quadratic work. One hash lookup followed by
+    // append-only storage is amortized O(1).
+    std::unordered_map<uint32_t, std::vector<uint64_t>> sliceIndex_;
 
     // Physical footprint of the currently armed code window.
     uint32_t winPhys_ = 0, winLen_ = 0;
@@ -251,6 +264,8 @@ private:
     // hands back to Moira (src/jit/POM68K_JIT.md § 7). Null when off, so
     // the hot loop pays one always-predicted branch.
     std::vector<uint64_t> histo_;
+    std::vector<uint64_t> slowStaticHisto_;
+    std::vector<uint64_t> slowRuntimeHisto_;
     void dumpHisto() const;
 };
 

@@ -119,7 +119,7 @@ public:
 
     void keyEvent(uint8_t code, bool down) { adbVia_.keyEvent(code, down); }
     void mouseMove(int dx, int dy) { adbVia_.mouseMove(dx, dy); }
-    void mouseButton(bool down) { adbVia_.mouseButton(down); }
+    void mouseButton(bool down, int button = 0) { adbVia_.mouseButton(down, button); }
 
     // Soft-post keyDown Return into EvQ (ADB modem may be wedged). Used to
     // clear Sys7 AppleTalk CautionAlerts when EtherTalk is selected but no

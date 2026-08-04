@@ -58,6 +58,20 @@ int main() {
     check(mem.cudaLle().mcu().instructions > i0, "MCU keeps executing after release");
     check(!mem.cudaLle().mcu().illegal(), "no undefined opcode throughout");
 
+    // Deadline contract: no MCU cycle can land before the reported machine
+    // cycle, and one does land exactly at it. This is what lets Cpu030/040
+    // skip the old fixed peripheral batch without moving Cuda/VIA phase.
+    {
+        const int due = mem.cudaLle().cyclesToNextEvent();
+        const int64_t c0 = mem.cudaLle().mcu().cycleCount();
+        if (due > 1) mem.cudaLle().tick(due - 1);
+        check(mem.cudaLle().mcu().cycleCount() == c0,
+              "Cuda deadline never wakes after an unreported MCU event");
+        mem.cudaLle().tick(1);
+        check(mem.cudaLle().mcu().cycleCount() > c0,
+              "Cuda deadline wakes on the first executable MCU cycle");
+    }
+
     // PFW (PA0) must stay an input whatever the firmware's DDRA says — the
     // real Cuda is a customized E1 (MAME "cudapfw" tap, cuda.cpp:146-152).
     // A stock E1 drives PFW low and the boot parks in the shutdown wait.
