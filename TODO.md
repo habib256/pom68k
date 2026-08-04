@@ -5,9 +5,12 @@ live in `CHANGELOG.md` (implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`).
 
-**Counts verified 2026-08-03** — re-verify before quoting them anywhere:
-- **143 CTest gates** (`ctest -N`): 66 `unit`, 8 `smoke`, 16 `jit`, 32 `m040`,
-  73 `etalon`. Full suite **143/143 green**, 2026-08-03, 3 h 01.
+**Counts verified 2026-08-04** — re-verify before quoting them anywhere:
+- **144 CTest gates** (`ctest -N`): 66 `unit`, 8 `smoke`, 16 `jit`, 33 `m040`,
+  74 `etalon` (the 144th: the CD-bay hot-swap gate, 2026-08-04). Last FULL
+  suite 143/143 on 2026-08-03, 3 h 01; since then the touched tiers ran
+  green (27 deadline gates + smoke 8/8 + q605_cdrom, 2026-08-04) but a
+  full rebuilt-tree `ctest` has not — schedule one before quoting 144/144.
 - **36 machine profiles** = 36 tags in `SnapMachine`, `src/SaveStateMachines.h`.
 
 House rule for this file: an item earns its place by saying **what to do next**,

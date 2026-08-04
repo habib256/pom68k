@@ -1836,6 +1836,25 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write)
 void
 Moira::mmu040AtcFill(bool data, u32 addr, u32 status)
 {
+    // POM68K M0 probe (docs/CACHE_040.md): histogram the descriptor CM
+    // bits Mac OS actually maps, per ATC fill. Diagnostic only, env-gated,
+    // prints at process exit; recorded in POM68K_VENDOR.md.
+    if (std::getenv("POM68K_040_CM_STATS")) {
+        struct CmStats {
+            unsigned long long n[2][4] {};
+            ~CmStats() {
+                static const char* kCm[4] =
+                    { "writethrough", "copyback", "serial-nc", "nonserial-nc" };
+                for (int d = 0; d < 2; d++)
+                    for (int c = 0; c < 4; c++)
+                        if (n[d][c])
+                            std::fprintf(stderr, "[cm040] %s %-12s %llu fills\n",
+                                         d ? "data" : "inst", kCm[c], n[d][c]);
+            }
+        };
+        static CmStats s;
+        s.n[data ? 1 : 0][(status >> 5) & 3]++;
+    }
     Mmu040AtcEntry* arr = data ? mmu040AtcD : mmu040AtcI;
     int& mruCount = data ? mmu040AtcMruD : mmu040AtcMruI;
     i8* last = data ? mmu040AtcLastD : mmu040AtcLastI;

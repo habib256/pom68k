@@ -1343,7 +1343,11 @@ Nothing else in the vendored tree changed for save states.
      no-ops, which is *consistent*, not a shortcut: no copyback/snooping
      model exists for them to act on. Only a real cache model would make
      them observable. (The `POM68K_Q605_CACHE_BOOST` overlay is a
-     throughput knob, not a cache.)
+     throughput knob, not a cache.) Blueprint + milestones:
+     `docs/CACHE_040.md` (2026-08-04). Local patch for its M0 probe:
+     `mmu040AtcFill` carries an env-gated CM-bit histogram
+     (`POM68K_040_CM_STATS=1`, stderr at exit) — diagnostic only, no
+     behavioural change.
 
   Implemented but **not exercised by the fuzzer**: the 8K-page (TC.P)
   cell — `mmu040PageMaskI()` and the walk's `if (reg.tc040 & 0x4000)`
