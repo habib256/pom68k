@@ -31,29 +31,55 @@ endif()
 # An interpreter is dispatch and branches, which is exactly what PGO is
 # for — measured on the Quadra 605 boot: interpreter −33 %, JIT −18 %, with
 # bit-identical emulation (the state fingerprints match the plain build).
-# Three steps, in ONE build directory so the profile paths line up:
+# Three steps, in ONE build directory so the profile paths line up. The
+# helper handles both GCC's gcda files and Clang/AppleClang's profraw ->
+# profdata merge:
 #
-#   cmake .. -DPOM68K_PGO=generate && make -j jitdev q605_boot_etalon
-#   ./q605_boot_etalon && POM68K_CPU_ENGINE=jit ./q605_boot_etalon
-#   cmake .. -DPOM68K_PGO=use && make -j
+#   tools/pgo_train.sh build-pgo
 #
-# The training runs write *.gcda next to the objects; `use` reads them from
-# the same paths. -fprofile-correction because the GUI is two threads;
-# -Wno-missing-profile because most machine profiles never run in training
-# (only the Quadra path does) and cold code is precisely what may stay cold.
+# GCC writes *.gcda next to the objects. Clang writes *.profraw at runtime;
+# the helper merges those with llvm-profdata and passes the resulting file
+# back through POM68K_PGO_PROFILE. Keep the compiler-specific flags separate:
+# AppleClang silently ignores GCC's correction flag and does not understand
+# its missing-profile warning switch.
 set(POM68K_PGO "off" CACHE STRING "Profile-guided optimization: off | generate | use")
 set_property(CACHE POM68K_PGO PROPERTY STRINGS off generate use)
+set(POM68K_PGO_PROFILE "${CMAKE_BINARY_DIR}/pom68k.profdata" CACHE FILEPATH
+    "Merged LLVM profile used when POM68K_PGO=use with Clang/AppleClang")
 if(NOT POM68K_PGO STREQUAL "off" AND NOT MSVC)
-    if(POM68K_PGO STREQUAL "generate")
-        add_compile_options(-fprofile-generate)
-        add_link_options(-fprofile-generate)
-    elseif(POM68K_PGO STREQUAL "use")
-        add_compile_options(-fprofile-use -fprofile-correction -Wno-missing-profile)
-        add_link_options(-fprofile-use)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang)$")
+        if(POM68K_PGO STREQUAL "generate")
+            add_compile_options(-fprofile-instr-generate)
+            add_link_options(-fprofile-instr-generate)
+        elseif(POM68K_PGO STREQUAL "use")
+            if(NOT EXISTS "${POM68K_PGO_PROFILE}")
+                message(FATAL_ERROR
+                    "LLVM PGO profile not found: ${POM68K_PGO_PROFILE}. "
+                    "Run tools/pgo_train.sh <build-dir> first.")
+            endif()
+            # Most machine/device translation units are intentionally cold in
+            # a four-machine training set. Clang diagnoses each one by
+            # default; that is expected coverage information, not a broken
+            # profile (llvm-profdata already rejects malformed input).
+            add_compile_options(-fprofile-instr-use=${POM68K_PGO_PROFILE}
+                                -Wno-profile-instr-unprofiled
+                                -Wno-profile-instr-out-of-date)
+            add_link_options(-fprofile-instr-use=${POM68K_PGO_PROFILE})
+        else()
+            message(FATAL_ERROR "POM68K_PGO must be off, generate or use")
+        endif()
     else()
-        message(FATAL_ERROR "POM68K_PGO must be off, generate or use")
+        if(POM68K_PGO STREQUAL "generate")
+            add_compile_options(-fprofile-generate)
+            add_link_options(-fprofile-generate)
+        elseif(POM68K_PGO STREQUAL "use")
+            add_compile_options(-fprofile-use -fprofile-correction -Wno-missing-profile)
+            add_link_options(-fprofile-use)
+        else()
+            message(FATAL_ERROR "POM68K_PGO must be off, generate or use")
+        endif()
     endif()
-    message(STATUS "POM68K PGO: ${POM68K_PGO}")
+    message(STATUS "POM68K PGO: ${POM68K_PGO} (${CMAKE_CXX_COMPILER_ID})")
 endif()
 
 # ─── Optional sanitizer build (POM2/POMIIGS convention) ───────────────────
@@ -106,8 +132,9 @@ if(POM68K_JIT_BACKENDS STREQUAL "auto" AND NOT EMSCRIPTEN)
         list(APPEND POM68K_JIT_DEFS POM68K_JIT_BACKEND_X64)
         set(POM68K_JIT_HOST "x86-64 code generator")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
-        # See src/jit/backends/JitBackendA64.md.
-        set(POM68K_JIT_HOST "aarch64 (no code generator yet)")
+        list(APPEND POM68K_JIT_SOURCES src/jit/backends/JitBackendA64.cpp)
+        list(APPEND POM68K_JIT_DEFS POM68K_JIT_BACKEND_A64)
+        set(POM68K_JIT_HOST "aarch64 code generator")
     else()
         set(POM68K_JIT_HOST "${CMAKE_SYSTEM_PROCESSOR} (portable only)")
     endif()
@@ -201,6 +228,12 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/FloppySound.cpp src/DiskBays.cpp src/DockLayout.cpp ${IMGUI_SOURCES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
     target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core)
+    # OpenGL remains the intentional portable GUI backend. Apple deprecated
+    # the API at the SDK level in 10.14, which otherwise emits the same warning
+    # for every GL call and hides actionable AppleClang diagnostics.
+    if(APPLE)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE GL_SILENCE_DEPRECATION)
+    endif()
     if(EMSCRIPTEN)
         set(EM_LINK "-sUSE_GLFW=3 -sUSE_WEBGL2=1 -sFULL_ES3=1 \
 -sINITIAL_MEMORY=134217728 -sALLOW_MEMORY_GROWTH=1")
@@ -1058,9 +1091,21 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                          ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1"
                          TIMEOUT 1800)
 
+    # Apple-Silicon release gate. A coarse budget exercises complete native
+    # blocks, linked exits and peripheral synchronization; five million
+    # comparisons cover every late-boot A64 regression found during bring-up.
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$" AND
+       POM68K_JIT_BACKENDS STREQUAL "auto")
+        add_test(NAME jit_lockstep_a64_coarse_test COMMAND jit_lockstep_test 5000000
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(jit_lockstep_a64_coarse_test PROPERTIES
+                             ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=50"
+                             TIMEOUT 1800)
+    endif()
+
     # ── the x86-64 code generator ────────────────────────────────────────
-    # `auto` does not select it (see src/jit/JitBackend.cpp: it is a
-    # MEASURED choice, not a capability one), so every gate below names it.
+    # Every gate below names x64 so the generator remains covered even when
+    # the build or host changes its automatic backend choice.
     # A WIDE cycle budget between checkpoints is deliberate: at one cycle a
     # compiled block can never be more than one instruction long, and the
     # interesting half of a code generator — long blocks, and a loop closing
@@ -1158,6 +1203,9 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                       jit_lockstep_noaccess_test
                       q605_boot_etalon jit_q605_boot_etalon
                  APPEND PROPERTY LABELS smoke)
+    if(TEST jit_lockstep_a64_coarse_test)
+        set_property(TEST jit_lockstep_a64_coarse_test APPEND PROPERTY LABELS smoke)
+    endif()
 
     # `make jitdev` builds ONLY what `ctest -L smoke` needs. The tree-wide LTO
     # makes a full `make` relink ~90 binaries after any core change; this is

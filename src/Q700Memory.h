@@ -185,10 +185,10 @@ public:
         if (egretAdb_) adb_.mouseMove(dx, dy);
         else adbLine_.mouseMove(dx, dy);
     }
-    void mouseButton(bool down) {
-        if (!eclipse()) { adbVia_.mouseButton(down); return; }
-        if (egretAdb_) adb_.mouseButton(down);
-        else adbLine_.mouseButton(down);
+    void mouseButton(bool down, int button = 0) {
+        if (!eclipse()) { adbVia_.mouseButton(down, button); return; }
+        if (egretAdb_) { if (button == 0) adb_.mouseButton(down); }
+        else adbLine_.mouseButton(down, button);
     }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }

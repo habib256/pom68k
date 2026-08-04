@@ -24,6 +24,10 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     // The family comes from the wrapper, not from cpu.getModel(): see the
     // ordering note on the declaration in JitEngine.h.
     backend_ = selectBackend(backendPreference(), guestFamily);
+    if (Backend* instance = backend_->clone()) {
+        ownedBackend_.reset(instance);
+        backend_ = instance;
+    }
     useWindow_ = fetchWindowEnabled();
     useBlocks_ = blockCacheEnabled(backend_->caps().nativeCode);
     paranoid_ = detail::envBool("POM68K_JIT_PARANOID", false);
@@ -31,7 +35,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     if (maxInstrs_ > backend_->caps().maxBlockInstrs)
         maxInstrs_ = backend_->caps().maxBlockInstrs;
     maxBlocks_ = maxBlocks();
-    hotAt_ = hotThreshold();
+    hotAt_ = hotThreshold(backend_->caps().nativeCode);
     ctx_.cpu = &cpu_;
     ctx_.stats = &stats_;
     ctx_.dtlbFill = &Engine::fillDtlbThunk;
@@ -53,8 +57,10 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     }
     ctx_.guard = &guard_;
     clearLinks();
-    ctx_.linkTable = linkTable_.data();
-    ctx_.linkMask = kLinkSlots - 1;
+    if (detail::envBool("POM68K_JIT_LINKS", true)) {
+        ctx_.linkTable = linkTable_.data();
+        ctx_.linkMask = kLinkSlots - 1;
+    }
 
     const uint32_t ram = mem_.ramBytes ? mem_.ramBytes(mem_.self) : 0;
     pageMap_.assign((ram + CodeGuard::kUnit - 1) >> CodeGuard::kShift, 0);
@@ -63,7 +69,13 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     guard_.pages = uint32_t(pageMap_.size());
     blocksGen_ = cpu_.pomJitMmuGen;
 
-    if (detail::envBool("POM68K_JIT_HISTO", false)) histo_.assign(1 << 16, 0);
+    if (detail::envBool("POM68K_JIT_HISTO", false)) {
+        histo_.assign(1 << 16, 0);
+        slowStaticHisto_.assign(1 << 16, 0);
+        slowRuntimeHisto_.assign(1 << 16, 0);
+        ctx_.slowStaticHisto = slowStaticHisto_.data();
+        ctx_.slowRuntimeHisto = slowRuntimeHisto_.data();
+    }
 
     if (verbose()) {
         std::fprintf(stderr,
@@ -126,6 +138,35 @@ void Engine::dumpHisto() const {
                      (unsigned long long)rows[i].n,
                      100.0 * double(rows[i].n) / double(total),
                      100.0 * double(acc) / double(total));
+    }
+
+    struct SlowRow { uint16_t op; uint64_t unsupported, runtime; };
+    std::vector<SlowRow> slow;
+    uint64_t staticTotal = 0, runtimeTotal = 0;
+    for (uint32_t op = 0; op < slowStaticHisto_.size(); op++) {
+        const uint64_t s = slowStaticHisto_[op];
+        const uint64_t r = slowRuntimeHisto_[op];
+        if (s || r) slow.push_back({uint16_t(op), s, r});
+        staticTotal += s;
+        runtimeTotal += r;
+    }
+    std::sort(slow.begin(), slow.end(), [](const SlowRow& a, const SlowRow& b) {
+        return a.unsupported + a.runtime > b.unsupported + b.runtime;
+    });
+    const uint64_t slowTotal = staticTotal + runtimeTotal;
+    std::fprintf(stderr,
+                 "\n[jit] block fallback census — %llu unsupported + %llu "
+                 "runtime guard/access = %llu\n",
+                 (unsigned long long)staticTotal,
+                 (unsigned long long)runtimeTotal,
+                 (unsigned long long)slowTotal);
+    for (size_t i = 0; i < slow.size() && i < 60; i++) {
+        const uint64_t n = slow[i].unsupported + slow[i].runtime;
+        std::fprintf(stderr, "  %04X %-8s %10llu unsupported %10llu runtime  %5.2f%%\n",
+                     slow[i].op, kKind[int(classify(slow[i].op))],
+                     (unsigned long long)slow[i].unsupported,
+                     (unsigned long long)slow[i].runtime,
+                     slowTotal ? 100.0 * double(n) / double(slowTotal) : 0.0);
     }
 }
 
@@ -198,9 +239,9 @@ void Engine::serviceGuard() {
         // Every block filed under this slice was translated from memory the
         // write touched, so all of them go — and with them every index entry
         // for the slice, which is what makes clearing its mark correct.
-        auto range = sliceIndex_.equal_range(slice);
-        for (auto it = range.first; it != range.second; ) {
-            auto b = blocks_.find(it->second);
+        auto indexed = sliceIndex_.find(slice);
+        if (indexed != sliceIndex_.end()) for (uint64_t blockKey : indexed->second) {
+            auto b = blocks_.find(blockKey);
             if (b != blocks_.end()) {
                 if (b->second.code) {
                     retractLink(b->second.ir.entryPc, b->second.ir.super);
@@ -209,8 +250,8 @@ void Engine::serviceGuard() {
                 blocks_.erase(b);
                 stats_.add(stats_.evictions);
             }
-            it = sliceIndex_.erase(it);
         }
+        if (indexed != sliceIndex_.end()) sliceIndex_.erase(indexed);
         if (slice >= pageMap_.size()) continue;
         pageMap_[slice] = 0;
 
@@ -236,7 +277,7 @@ void Engine::markPages(uint64_t blockKey, uint32_t physBase, uint32_t physLen) {
     const uint32_t last = (physBase + physLen - 1) >> CodeGuard::kShift;
     for (; p <= last && p < pageMap_.size(); p++) {
         pageMap_[p] = 1;
-        sliceIndex_.emplace(p, blockKey);
+        sliceIndex_[p].push_back(blockKey);
     }
     uint32_t q = physBase >> 12;
     const uint32_t qlast = (physBase + physLen - 1) >> 12;
@@ -597,7 +638,9 @@ void Engine::executeUntil(int64_t clockTarget) {
             // code, and a block that modified its own page through the
             // inline store path would leave the guard none the wiser.
             if (!b.rejected && ++b.visits >= uint32_t(hotAt_)) {
-                markPages(key(pc, super), b.ir.physBase, b.ir.physLen);
+                // record() already indexed and marked this block's physical
+                // footprint. Only the TLB flush is needed now so a writable
+                // entry filled before that mark cannot survive compilation.
                 cpu_.pomJitDtlbFlush();
                 b.code = backend_->compile(b.ir, ctx_);
                 if (b.code) {

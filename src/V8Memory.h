@@ -82,6 +82,11 @@ public:
     bool loadRom(const std::vector<uint8_t>& data);  // 512 KB (1 MB Spice) flat image
     uint32_t romSize() const { return romSize_; }
     void reset();                                    // overlay on, V8 regs cleared
+    int cyclesToNextEvent() const {
+        // Firmware LLE is the tightest clock on these boards. Preserve the
+        // historical batching only for the explicit HLE fallback.
+        return egretLleOn_ ? egretLle_.cyclesToNextEvent() : 128;
+    }
 
     uint8_t  read8(uint32_t addr);
     uint16_t read16(uint32_t addr);
@@ -214,9 +219,9 @@ public:
         if (egretLleOn_) egretLle_.adbLine().mouseMove(dx, dy);
         else             adb_.mouseMove(dx, dy);
     }
-    void mouseButton(bool down) {
-        if (egretLleOn_) egretLle_.adbLine().mouseButton(down);
-        else             adb_.mouseButton(down);
+    void mouseButton(bool down, int button = 0) {
+        if (egretLleOn_) egretLle_.adbLine().mouseButton(down, button);
+        else if (button == 0) adb_.mouseButton(down);
     }
     bool overlay() const { return overlay_; }
     uint8_t ramConfig() const { return config_; }

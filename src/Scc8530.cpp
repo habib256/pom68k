@@ -961,3 +961,23 @@ bool Scc8530::tick(int cycles) {
     }
     return changed;
 }
+
+int Scc8530::cyclesToNextEvent() const {
+    int best = peerHold_ > 0 ? peerHold_ : 0x7fffffff;
+    auto take = [&](int n) { if (n > 0 && n < best) best = n; };
+    for (const Chan& c : ch_) {
+        take(c.txShiftIn);
+        take(c.relatch);
+        if (!c.rxCur.empty()) take(c.rxTimer > 0 ? c.rxTimer : 1);
+        if (c.rxCur.empty() && !c.rxQueue.empty()) {
+            const Chan::RxFrame& f = c.rxQueue.front();
+            if (f.express) {
+                take(f.delay > 0 ? f.delay : 1);
+            } else if (!losslessRx_ || (rxEnabled(c) && c.fifo.empty())) {
+                const int left = kIdgBytes * realPaceOf(c) - c.rxIdle;
+                take(left > 0 ? left : 1);
+            }
+        }
+    }
+    return best;
+}

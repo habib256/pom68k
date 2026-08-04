@@ -56,6 +56,17 @@ class Cpu040;
 
 class Q605Memory {
 public:
+    struct LockstepDebug {
+        uint64_t via1 = 0, cuda = 0, cudaLle = 0, adb = 0;
+        uint64_t scc = 0, asc = 0, swim = 0, scsi = 0, dafb = 0;
+        uint64_t machine = 0;
+        int nextEvent = 0;
+        int ipl = 0;
+        int64_t ascCycAcc = 0, swimLastCpu = 0, swimCycAcc = 0, tickAcc = 0;
+        uint8_t pvIfr = 0, pvIer = 0;
+        bool sccIrq = false, ascLine = false;
+    };
+
     static constexpr uint32_t kRomSize = 0x100000;   // 1 MB
     static constexpr uint32_t kVramSize = 0x100000;  // 1 MB window
     static constexpr int64_t  kCpuHz = 25000000;     // 25 MHz 68LC040
@@ -96,6 +107,8 @@ public:
     // Called from Cpu040::sync with elapsed CPU cycles: VIA1 timers
     // (783.36 kHz) + the 60.15 Hz CA1 tick + the DAFB VBL.
     void tick(int cpuCycles);
+    int cyclesToNextEvent() const;
+    LockstepDebug lockstepDebug() const;
 
     Via6522& via1() { return via1_; }
     Egret& cuda() { return cuda_; }
@@ -174,9 +187,9 @@ public:
         if (cudaLleOn_) cudaLle_.adbLine().mouseMove(dx, dy);
         else            adb_.mouseMove(dx, dy);
     }
-    void mouseButton(bool down) {
-        if (cudaLleOn_) cudaLle_.adbLine().mouseButton(down);
-        else            adb_.mouseButton(down);
+    void mouseButton(bool down, int button = 0) {
+        if (cudaLleOn_) cudaLle_.adbLine().mouseButton(down, button);
+        else if (button == 0) adb_.mouseButton(down);
     }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
@@ -273,7 +286,7 @@ private:
     // Cuda flavor: TIP/BYTEACK active low; 25 MHz machine clock for the
     // µs per-byte pacing and the RTC seconds heartbeat
     Egret cuda_{via1_, true, 25000000};
-    CudaLle cudaLle_{via1_, kCpuHz};     // real-firmware path (opt-in)
+    CudaLle cudaLle_{via1_, kCpuHz};     // real-firmware path (default with dump)
     bool cudaLleOn_ = false;
     AdbBus adb_;
     Scc8530 scc_;

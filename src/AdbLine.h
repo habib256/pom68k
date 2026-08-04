@@ -136,9 +136,8 @@ private:
     // modifiers report their own key codes ($7B/$7C/$7D) instead of
     // collapsing onto the left ones. The guest selects one with Listen R3;
     // `POM68K_ADB_KBD_ID` overrides the reset value for a host that wants an
-    // extended keyboard from cold (the GUI key map currently emits neither
-    // the function keys nor distinct right modifiers, so 1 stays the
-    // default — nothing observable rides on 2 yet).
+    // extended keyboard from cold. The GUI emits distinct right modifiers;
+    // handler 3 preserves them while handlers 1/2 fold them onto the left.
     uint8_t  kbdHandlerId_ = 1;
     // Register 2 low byte, LED bits 2-0, ACTIVE LOW (1 = dark). The upper
     // bits are the Num/Scroll-Lock keys and reserved ones, all released, so

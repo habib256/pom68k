@@ -57,6 +57,10 @@ public:
     uint8_t xcvrSession() const { return treq_; }
 
     void tick(int cpuCycles);            // machine cycles → MCU + ADB clocks
+    // Earliest machine-cycle distance at which the MCU can execute another
+    // cycle after accounting for the fractional clock bridge and run()
+    // overshoot debt. Used by event-deadline peripheral scheduling.
+    int cyclesToNextEvent() const;
 
     // PRAM staging: contents installed into MCU RAM $0100-$01FF when the
     // firmware releases the host (MAME m_pram_loaded copy). Reads come

@@ -57,6 +57,7 @@ public:
     // programmed them); fires VBL (line 480, as MAME) and cursor-line
     // interrupts through onIrq.
     void tick(int cpuCycles);
+    int cyclesToNextEvent() const;
     std::function<void(bool)> onIrq;     // interrupt summary line (level)
 
     uint32_t base() const { return base_; }

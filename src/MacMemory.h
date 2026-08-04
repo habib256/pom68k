@@ -59,7 +59,7 @@ public:
     bool adbLleActive() const { return adbVia_.lle(); }
     void keyEvent(uint8_t code, bool down) { adbVia_.keyEvent(code, down); }
     void adbMouseMove(int dx, int dy) { adbVia_.mouseMove(dx, dy); }
-    void adbMouseButton(bool down) { adbVia_.mouseButton(down); }
+    void adbMouseButton(bool down, int button = 0) { adbVia_.mouseButton(down, button); }
 
     bool loadRom(const std::vector<uint8_t>& data);
     void installRom(const uint8_t* data, size_t n);  // built-in demo/test ROM

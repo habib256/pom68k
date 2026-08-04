@@ -3,24 +3,9 @@
 
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
-
-// Peripheral catch-up batching (the Cpu030 pattern): run the machine's
-// tick() at most once per this many CPU cycles from sync(), so hot code
-// isn't dominated by per-cycle peripheral bookkeeping. The cost is IRQ
-// latency jitter of up to one batch (~10 µs at 25 MHz) — `LLE_VS_HLE.md`
-// § 1.2, whose closing note is "drop it toward 1 and re-measure the cost".
-// `POM68K_PERIPH_BATCH` is that measurement knob, and it is a fidelity
-// knob in the honest direction: SMALLER is more accurate, never less.
-static moira::i64 periphBatch() {
-    static const moira::i64 n = [] {
-        const char* e = std::getenv("POM68K_PERIPH_BATCH");
-        const long v = e ? std::atol(e) : 256;
-        return moira::i64(v >= 1 && v <= 4096 ? v : 256);
-    }();
-    return n;
-}
 
 namespace {
 // Bound once, with captureless lambdas: they convert to plain function
@@ -47,7 +32,7 @@ Cpu040::Cpu040(Q605Memory& mem)
     : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
-    jit_.setPeriphPacing(&lastPeriphClock_, int(periphBatch()));
+    jit_.setPeriphDeadline(&periphDeadline_);
 
     // Q6.6: model the full 68040 with an FPU, matching the MAME golden
     // oracle `macqd605` (macquadra605.cpp:158 `M68040(...)`; only its
@@ -99,6 +84,7 @@ void Cpu040::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
     periphAccum_ = 0;
+    schedulePeriphDeadline();
     pomIcache.reset();
     jit_.flushAll();
     reset();                                 // SSP/PC from $0 (ROM overlay)
@@ -116,6 +102,24 @@ void Cpu040::runCycles(moira::i64 n) {
 
 void Cpu040::updateIpl() {
     setIPL(moira::u8(mem_.iplLevel()));
+    if (onLockstepEvent) onLockstepEvent("ipl", lockstepDebug());
+}
+
+Cpu040::LockstepDebug Cpu040::lockstepDebug() const {
+    LockstepDebug d;
+    d.clock = clock;
+    d.lastPeriphClock = lastPeriphClock_;
+    d.periphAccum = periphAccum_;
+    d.periphDeadline = periphDeadline_;
+    d.iplChangeClock = iplChangeClock;
+    d.iplChangeClockPrev = iplChangeClockPrev;
+    d.flags = flags;
+    d.iplDeferred = iplDeferred;
+    d.irqDelay = irqDelay;
+    d.iplPin = ipl;
+    d.iplSampled = reg.ipl;
+    d.iplPrev = iplPrev;
+    return d;
 }
 
 void Cpu040::stall(int cycles) {
@@ -161,25 +165,15 @@ PeriphStats gPeriphStats;
 
 void Cpu040::catchUp() {
     if (gPeriphStats.on) gPeriphStats.catchUps++;
-    const moira::i64 d = clock - lastPeriphClock_;
-    // Two floors, and the second one is not a cost/accuracy trade at all.
-    //
-    // `periphBatch()` is the fidelity knob, counted in MOIRA cycles.
-    // `cacheBoost_` is the throughput overlay's scale factor: `flushTicks`
-    // converts Moira cycles to MACHINE cycles by dividing by it, so any
-    // catch-up that has accumulated fewer than `cacheBoost_` Moira cycles
-    // yields **m == 0** and ticks nothing — it is pure call overhead.
-    //
-    // Peripheral time is machine time (the 2026-07-25 pinned lesson: bus
-    // cycles are charged on `machineClock()`, never on the boosted clock),
-    // so one machine cycle IS the finest granularity anything can observe.
-    // Below it we were paying `cacheBoost_`× the bookkeeping to be more
-    // "exact" than the machine can represent. Added 2026-08-03: at the
-    // default batch (256 ≫ boost 4) this changes nothing; at
-    // POM68K_PERIPH_BATCH=1 it makes "exact" mean exact-in-machine-time and
-    // costs 4× less to say so.
-    if (d < periphBatch() || d < cacheBoost_) return;
+    if (clock < periphDeadline_) return;
     flushTicks();
+}
+
+void Cpu040::schedulePeriphDeadline() {
+    const moira::i64 machine = std::max(1, mem_.cyclesToNextEvent());
+    moira::i64 d = machine * cacheBoost_ - periphAccum_;
+    if (d < 1) d = 1;
+    periphDeadline_ = clock + d;
 }
 
 void Cpu040::flushTicks() {
@@ -195,11 +189,14 @@ void Cpu040::flushTicks() {
             if (m) { gPeriphStats.ticks++; gPeriphStats.cycles += m; }
         }
         if (m) mem_.tick(m);
+        schedulePeriphDeadline();
+        if (onLockstepEvent) onLockstepEvent("flush", lockstepDebug());
     }
 }
 
 void Cpu040::sync(int cycles) {
     clock += cycles;
+    if (onLockstepEvent) onLockstepEvent("sync", lockstepDebug());
     catchUp();
 }
 

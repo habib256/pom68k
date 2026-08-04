@@ -80,6 +80,78 @@ uint32_t ramDiff(const Q605Memory& a, const Q605Memory& b) {
     return 0xFFFFFFFF;
 }
 
+bool same(const Cpu040::LockstepDebug& a, const Cpu040::LockstepDebug& b) {
+    return a.clock == b.clock &&
+           a.lastPeriphClock == b.lastPeriphClock &&
+           a.periphAccum == b.periphAccum &&
+           a.periphDeadline == b.periphDeadline &&
+           a.iplChangeClock == b.iplChangeClock &&
+           a.iplChangeClockPrev == b.iplChangeClockPrev &&
+           a.flags == b.flags && a.iplDeferred == b.iplDeferred &&
+           a.irqDelay == b.irqDelay && a.iplPin == b.iplPin &&
+           a.iplSampled == b.iplSampled && a.iplPrev == b.iplPrev;
+}
+
+bool same(const Q605Memory::LockstepDebug& a,
+          const Q605Memory::LockstepDebug& b) {
+    return a.via1 == b.via1 && a.cuda == b.cuda &&
+           a.cudaLle == b.cudaLle && a.adb == b.adb &&
+           a.scc == b.scc && a.asc == b.asc && a.swim == b.swim &&
+           a.scsi == b.scsi && a.dafb == b.dafb &&
+           a.machine == b.machine && a.nextEvent == b.nextEvent &&
+           a.ipl == b.ipl;
+}
+
+void printHiddenDiff(const Cpu040::LockstepDebug& r,
+                     const Cpu040::LockstepDebug& j,
+                     const Q605Memory::LockstepDebug& mr,
+                     const Q605Memory::LockstepDebug& mj) {
+    auto cpu64 = [](const char* name, int64_t a, int64_t b) {
+        if (a != b) std::printf("  %-18s interp=%lld jit=%lld\n", name,
+                                (long long)a, (long long)b);
+    };
+    auto cpu32 = [](const char* name, int a, int b) {
+        if (a != b) std::printf("  %-18s interp=%d jit=%d\n", name, a, b);
+    };
+    cpu64("clock", r.clock, j.clock);
+    cpu64("lastPeriphClock", r.lastPeriphClock, j.lastPeriphClock);
+    cpu64("periphAccum", r.periphAccum, j.periphAccum);
+    cpu64("periphDeadline", r.periphDeadline, j.periphDeadline);
+    cpu64("iplChangeClock", r.iplChangeClock, j.iplChangeClock);
+    cpu64("iplChangePrev", r.iplChangeClockPrev, j.iplChangeClockPrev);
+    cpu32("flags", r.flags, j.flags);
+    cpu32("iplDeferred", r.iplDeferred, j.iplDeferred);
+    cpu32("irqDelay", r.irqDelay, j.irqDelay);
+    cpu32("iplPin", r.iplPin, j.iplPin);
+    cpu32("iplSampled", r.iplSampled, j.iplSampled);
+    cpu32("iplPrev", r.iplPrev, j.iplPrev);
+    cpu32("memory IPL", mr.ipl, mj.ipl);
+    cpu32("next event", mr.nextEvent, mj.nextEvent);
+    cpu32("VIA2 IFR", mr.pvIfr, mj.pvIfr);
+    cpu32("VIA2 IER", mr.pvIer, mj.pvIer);
+
+    auto hash = [](const char* name, uint64_t a, uint64_t b) {
+        if (a != b) std::printf("  %-18s interp=%016llX jit=%016llX\n", name,
+                                (unsigned long long)a, (unsigned long long)b);
+    };
+    hash("VIA1 state", mr.via1, mj.via1);
+    hash("Cuda HLE state", mr.cuda, mj.cuda);
+    hash("Cuda LLE state", mr.cudaLle, mj.cudaLle);
+    hash("ADB state", mr.adb, mj.adb);
+    hash("SCC state", mr.scc, mj.scc);
+    hash("ASC state", mr.asc, mj.asc);
+    hash("SWIM state", mr.swim, mj.swim);
+    hash("SCSI state", mr.scsi, mj.scsi);
+    hash("DAFB state", mr.dafb, mj.dafb);
+    hash("machine pacing", mr.machine, mj.machine);
+    cpu64("ASC accumulator", mr.ascCycAcc, mj.ascCycAcc);
+    cpu64("SWIM last CPU", mr.swimLastCpu, mj.swimLastCpu);
+    cpu64("SWIM accumulator", mr.swimCycAcc, mj.swimCycAcc);
+    cpu64("CA1 accumulator", mr.tickAcc, mj.tickAcc);
+    cpu32("SCC IRQ latch", mr.sccIrq, mj.sccIrq);
+    cpu32("ASC IRQ line", mr.ascLine, mj.ascLine);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -160,6 +232,33 @@ int main(int argc, char** argv) {
     if (const char* f = std::getenv("POM68K_JIT_LOCKSTEP_FINE_AT")) fineAt = std::atol(f);
     std::printf("[jit_lockstep] budget=%ld cycle(s) per comparison%s\n", budget,
                 fineAt >= 0 ? " (fine from the marked step)" : "");
+    const bool hidden = std::getenv("POM68K_JIT_LOCKSTEP_HIDDEN") != nullptr;
+    if (hidden) std::printf("[jit_lockstep] hidden CPU/device state comparison enabled\n");
+    long traceAt = -1;
+    if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_TRACE_AT")) traceAt = std::atol(t);
+    long activeStep = -1;
+    auto trace = [&](const char* who) {
+        return [&, who](const char* event, const Cpu040::LockstepDebug& d) {
+            if (activeStep != traceAt) return;
+            const Cpu040& cpu = std::strcmp(who, "interp") == 0 ? cpuRef : cpuJit;
+            std::printf("[jit_lockstep] trace step=%ld %-6s %-5s "
+                        "pc=$%08X clk=%lld last=%lld acc=%lld deadline=%lld "
+                        "D3=$%08X SR=$%04X flags=$%X pin=%u sampled=%u "
+                        "memIpl=%d next=%d\n",
+                        activeStep, who, event,
+                        cpu.getPC(),
+                        (long long)d.clock, (long long)d.lastPeriphClock,
+                        (long long)d.periphAccum, (long long)d.periphDeadline,
+                        cpu.getD(3), cpu.getSR(), d.flags, d.iplPin, d.iplSampled,
+                        std::strcmp(who, "interp") == 0 ? memRef.iplLevel() : memJit.iplLevel(),
+                        std::strcmp(who, "interp") == 0 ? memRef.cyclesToNextEvent()
+                                                        : memJit.cyclesToNextEvent());
+        };
+    };
+    if (traceAt >= 0) {
+        cpuRef.onLockstepEvent = trace("interp");
+        cpuJit.onLockstepEvent = trace("jit");
+    }
 
     // The last handful of instruction boundaries, for the report: a
     // divergence is almost never AT the pc it is noticed at.
@@ -168,6 +267,20 @@ int main(int argc, char** argv) {
     int trailAt = 0;
 
     for (long i = 0; i < steps; i++) {
+        activeStep = i;
+        if (i == traceAt) {
+            uint32_t fullBad = 0xFFFFFFFF;
+            for (uint32_t p = 0; p < memRef.ramBytes(); ++p) {
+                if (memRef.peek8(p) != memJit.peek8(p)) { fullBad = p; break; }
+            }
+            if (fullBad == 0xFFFFFFFF) {
+                std::printf("[jit_lockstep] full RAM identical before traced step %ld\n", i);
+            } else {
+                std::printf("[jit_lockstep] full RAM already differs before step %ld "
+                            "at $%08X: interp=%02X jit=%02X\n", i, fullBad,
+                            memRef.peek8(fullBad), memJit.peek8(fullBad));
+            }
+        }
         const long b = (fineAt >= 0 && i >= fineAt) ? 1 : budget;
         trail[trailAt] = { cpuJit.getPC(), cpuJit.getClock() };
         trailAt = (trailAt + 1) % kTrail;
@@ -177,7 +290,21 @@ int main(int argc, char** argv) {
         const State r = capture(cpuRef);
         const State j = capture(cpuJit);
         const uint32_t bad = ramDiff(memRef, memJit);
-        if (same(r, j) && bad == 0xFFFFFFFF) continue;
+        Cpu040::LockstepDebug cr{}, cj{};
+        Q605Memory::LockstepDebug mr{}, mj{};
+        bool hiddenSame = true;
+        if (hidden) {
+            cr = cpuRef.lockstepDebug();
+            cj = cpuJit.lockstepDebug();
+            mr = memRef.lockstepDebug();
+            mj = memJit.lockstepDebug();
+            hiddenSame = same(cr, cj) && same(mr, mj);
+        }
+        if (same(r, j) && bad == 0xFFFFFFFF && hiddenSame) continue;
+        if (!hiddenSame) {
+            std::printf("[jit_lockstep] first hidden CPU/device divergence\n");
+            printHiddenDiff(cr, cj, mr, mj);
+        }
         if (bad != 0xFFFFFFFF)
             std::printf("[jit_lockstep] RAM differs at $%08X: interp=%02X jit=%02X\n",
                         bad, memRef.peek8(bad), memJit.peek8(bad));

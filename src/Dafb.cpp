@@ -360,3 +360,19 @@ void Dafb::tick(int cpuCycles) {
         if (st != intStatus_) { intStatus_ = st; recalcIrq(); }
     }
 }
+
+int Dafb::cyclesToNextEvent() const {
+    if (frameLen_ <= 0 || totalLines_ <= 0 || !(swatchIntEnable_ & 5))
+        return 0x7fffffff;
+    int64_t best = 0x7fffffff;
+    auto consider = [&](int line) {
+        line %= totalLines_;
+        int64_t at = (int64_t(line) * frameLen_ + totalLines_ - 1) / totalLines_;
+        int64_t d = at - framePos_;
+        if (d <= 0) d += frameLen_;
+        if (d < best) best = d;
+    };
+    if (swatchIntEnable_ & 1) consider(480);
+    if (swatchIntEnable_ & 4) consider(int(cursorLine_));
+    return int(best > 0 ? best : 1);
+}

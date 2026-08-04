@@ -7,8 +7,8 @@
 //   * WHAT IS AVAILABLE — the order of kEntries, most capable first. This
 //     is what `POM68K_JIT_BACKEND=<name>` selects from and what the GUI
 //     lists.
-//   * WHAT `auto` PICKS — the first entry that is usable on this host and
-//     VALID FOR THE GUEST. Validity comes before speed: a backend is only
+//   * WHAT `auto` PICKS — the first auto-eligible entry that is usable on
+//     this host and VALID FOR THE GUEST. Validity comes before speed: a backend is only
 //     a candidate for the CPU families it declares in
 //     caps().guestFamilies (see JitBackend.h § GuestFamily), because a code
 //     generator that bakes in one family's instruction-boundary conventions
@@ -36,15 +36,18 @@ namespace {
 struct Entry {
     const char* key;
     Backend* (*get)();
-    bool dflt;                         // may `auto` choose this one?
+    bool autoEligible;                 // may `auto` choose this one?
 };
 
 const Entry kEntries[] = {
 #if defined(POM68K_JIT_BACKEND_X64)
-    { "x64", x64Backend, false },
+    { "x64", x64Backend, true },
 #endif
 #if defined(POM68K_JIT_BACKEND_A64)
-    { "a64", a64Backend, false },
+    // Five-million-step fine/coarse lockstep and the complete Q605 Finder
+    // boot are green. On Apple Silicon this is also substantially faster
+    // than portable replay, so it is the correct automatic 68040 choice.
+    { "a64", a64Backend, true },
 #endif
     { "threaded", threadedBackend, true },   // always present, always usable
 };
@@ -113,8 +116,9 @@ Backend* selectBackend(const char* pref, uint32_t guestFamily) {
     }
 
     // `kEntries` is ordered best-first (native code generators, then the
-    // portable replay), so trying it in order IS "pick the best backend
-    // compiled in, usable on this host, and valid for this guest". The
+    // portable replay), so trying its auto-eligible entries in order IS
+    // "pick the best measured backend compiled in, usable on this host,
+    // and valid for this guest". The
     // original loop filtered on `dflt`, which only `threaded` carries — so
     // `auto` could never reach x64 however capable the host was. Measured
     // cost of that on the Q605 boot (2026-07-29): interpreter ~62 s,
@@ -131,7 +135,7 @@ Backend* selectBackend(const char* pref, uint32_t guestFamily) {
     // only documents that.
     for (const Entry& e : kEntries) {
         Backend* b = e.get();
-        if (b->usable() && validForGuest(b, guestFamily)) return b;
+        if (e.autoEligible && b->usable() && validForGuest(b, guestFamily)) return b;
     }
     return threadedBackend();          // threaded is always usable and valid
 }

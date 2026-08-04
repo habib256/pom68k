@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Q605Memory.h"
+#include "SaveState.h"
 #include "Cpu040.h"
 #include "Moira.h"
 #include <algorithm>
@@ -758,4 +759,85 @@ void Q605Memory::tick(int cpuCycles) {
 
     // DAFB frame clock (VBL/cursor interrupts) — Dafb::tick.
     dafbCell_.tick(cpuCycles);
+}
+
+int Q605Memory::cyclesToNextEvent() const {
+    // Conservative lower bounds: waking early only costs time; waking late
+    // changes emulated time. The factory Cuda normally binds at ~12 cycles.
+    int best = cudaLleOn_ ? cudaLle_.cyclesToNextEvent() : 1;
+    best = std::min(best, viaEClock_.cyclesToNext(kCpuHz));
+    best = std::min(best, scc_.cyclesToNextEvent());
+    best = std::min(best, scsi_.cyclesToNextEvent());
+
+    auto bridge = [](int deviceCycles, int64_t acc, int64_t deviceHz,
+                     int64_t machineHz) {
+        if (deviceCycles == 0x7fffffff) return deviceCycles;
+        const int64_t need = int64_t(deviceCycles) * machineHz - acc;
+        if (need <= 0) return 1;
+        return int((need + deviceHz - 1) / deviceHz);
+    };
+    best = std::min(best, bridge(asc_.cyclesToNextEvent(), ascCycAcc_,
+                                 AscIosb::kCpuHz, kCpuHz));
+    best = std::min(best, bridge(swim_.cyclesToNextEvent(), swimCycAcc_,
+                                 AscIosb::kCpuHz, kCpuHz));
+
+    const int64_t caNeed = kCpuHz * 100 - tickAcc_;
+    best = std::min(best, int((caNeed + 6015 - 1) / 6015));
+    best = std::min(best, dafbCell_.cyclesToNextEvent());
+    return std::max(best, 1);
+}
+
+namespace {
+template <class T> uint64_t lockstepHash(const T& state) {
+    std::vector<sav::u8> bytes;
+    bytes.reserve(4096);
+    sav::Writer ar(bytes);
+    // Writer never mutates visited state.  The save-state visitor contract
+    // predates const visitors, hence this narrow diagnostic const_cast.
+    auto& writable = const_cast<T&>(state);
+    ar(writable);
+    return sav::hash(bytes.data(), bytes.size());
+}
+}
+
+Q605Memory::LockstepDebug Q605Memory::lockstepDebug() const {
+    LockstepDebug d;
+    d.via1 = lockstepHash(via1_);
+    d.cuda = lockstepHash(cuda_);
+    d.cudaLle = lockstepHash(cudaLle_);
+    d.adb = lockstepHash(adb_);
+    d.scc = lockstepHash(scc_);
+    d.asc = lockstepHash(asc_);
+    d.swim = lockstepHash(swim_);
+    d.scsi = lockstepHash(scsi_);
+    d.dafb = lockstepHash(dafbCell_);
+
+    std::vector<sav::u8> machineBytes;
+    sav::Writer machineAr(machineBytes);
+    auto overlay = overlay_;
+    auto sccIrq = sccIrq_;
+    auto ascLine = ascLine_;
+    auto pvIfr = pvIfr_, pvIer = pvIer_, pvPortB = pvPortB_, nubusIrqs = nubusIrqs_;
+    auto scsiReadCycles = scsiReadCycles_, scsiWriteCycles = scsiWriteCycles_;
+    auto scsiDmaReadCycles = scsiDmaReadCycles_;
+    auto scsiDmaWriteCycles = scsiDmaWriteCycles_;
+    auto ascCycAcc = ascCycAcc_, swimLastCpu = swimLastCpu_;
+    auto swimCycAcc = swimCycAcc_, tickAcc = tickAcc_;
+    auto viaEClock = viaEClock_;
+    machineAr(overlay, sccIrq, ascLine, pvIfr, pvIer, pvPortB, nubusIrqs,
+              scsiReadCycles, scsiWriteCycles,
+              scsiDmaReadCycles, scsiDmaWriteCycles,
+              ascCycAcc, swimLastCpu, swimCycAcc, tickAcc, viaEClock);
+    d.machine = sav::hash(machineBytes.data(), machineBytes.size());
+    d.nextEvent = cyclesToNextEvent();
+    d.ipl = iplLevel();
+    d.ascCycAcc = ascCycAcc_;
+    d.swimLastCpu = swimLastCpu_;
+    d.swimCycAcc = swimCycAcc_;
+    d.tickAcc = tickAcc_;
+    d.pvIfr = pvIfr_;
+    d.pvIer = pvIer_;
+    d.sccIrq = sccIrq_;
+    d.ascLine = ascLine_;
+    return d;
 }

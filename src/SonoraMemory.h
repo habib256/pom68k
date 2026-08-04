@@ -170,9 +170,9 @@ public:
         if (egretLleOn_) egretLle_.adbLine().mouseMove(dx, dy);
         else             adb_.mouseMove(dx, dy);
     }
-    void mouseButton(bool down) {
-        if (egretLleOn_) egretLle_.adbLine().mouseButton(down);
-        else             adb_.mouseButton(down);
+    void mouseButton(bool down, int button = 0) {
+        if (egretLleOn_) egretLle_.adbLine().mouseButton(down, button);
+        else if (button == 0) adb_.mouseButton(down);
     }
     bool overlay() const { return overlay_; }
     uint8_t ramConfig() const { return 0; }          // no V8 config register

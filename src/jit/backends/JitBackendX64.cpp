@@ -228,7 +228,7 @@ class Emitter {
 public:
     Emitter(Asm& a, const Layout& L, const BlockIr& ir, const Context& ctx)
         : a_(a), L_(L), ir_(ir),
-          paced_(ctx.periphClock != nullptr && ctx.periphBatch > 0),
+          paced_(ctx.periphClock != nullptr && ctx.periphBatch != 0),
           batch_(ctx.periphBatch), thunks_(accessThunkMode()),
           linkMask_(ctx.linkTable ? ctx.linkMask : 0) {}
 
@@ -397,8 +397,12 @@ void Emitter::chargeCycles(int cycles) {
     Label& due = *a_.fresh();
     if (cycles) a_.aluRI(Asm::Op::ADD, Sz::Q, kClk, cycles);
     a_.movRR(Sz::Q, RAX, kClk);
-    a_.aluRM(Asm::Op::SUB, Sz::Q, RAX, mem(kPer, 0));
-    a_.aluRI(Asm::Op::CMP, Sz::Q, RAX, batch_);
+    if (batch_ < 0) {
+        a_.aluRM(Asm::Op::CMP, Sz::Q, RAX, mem(kPer, 0));
+    } else {
+        a_.aluRM(Asm::Op::SUB, Sz::Q, RAX, mem(kPer, 0));
+        a_.aluRI(Asm::Op::CMP, Sz::Q, RAX, batch_);
+    }
     a_.jcc(Cc::GE, due);
     a_.bind(done);
     // Cold: peripheral time is actually owed. sync() reads and advances the
@@ -2010,6 +2014,7 @@ public:
 
 class X64Backend : public Backend {
 public:
+    Backend* clone() const override { return new X64Backend; }
     const char* name() const override { return "x86-64"; }
     const char* description() const override {
         return "native code generation";

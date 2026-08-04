@@ -328,3 +328,10 @@ void CudaLle::tick(int cpuCycles) {
         mcuDebt_ = -mcuCyc;
     }
 }
+
+int CudaLle::cyclesToNextEvent() const {
+    const int64_t need = (int64_t(mcuDebt_) + 1) * cpuHz_ - mcuAcc_;
+    if (need <= 0) return 1;
+    const int64_t cycles = (need + kMcuHz - 1) / kMcuHz;
+    return int(cycles > 0 ? cycles : 1);
+}

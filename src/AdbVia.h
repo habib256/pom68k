@@ -52,8 +52,9 @@ public:
     void mouseMove(int dx, int dy) {
         if (lle_) line_.mouseMove(dx, dy); else if (adb_) adb_->mouseMove(dx, dy);
     }
-    void mouseButton(bool down) {
-        if (lle_) line_.mouseButton(down); else if (adb_) adb_->mouseButton(down);
+    void mouseButton(bool down, int button = 0) {
+        if (lle_) line_.mouseButton(down, button);
+        else if (adb_ && button == 0) adb_->mouseButton(down);
     }
 
     // ── Save states (SaveState.h contract) ──────────────────────────────

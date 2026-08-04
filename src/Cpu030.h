@@ -82,7 +82,7 @@ public:
     // not guest state, so they stay out.
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
-        ar(lastPeriphClock_, periphAccum_);
+        ar(lastPeriphClock_, periphAccum_, periphDeadline_);
     }
 
 private:
@@ -133,6 +133,8 @@ private:
     int cacheBoost_ = 4;           // resident-code ceiling ratio
     int icacheMiss_ = 4;           // boosted cycles charged per i-cache miss
     moira::i64 periphAccum_ = 0;   // sub-ratio remainder for exact scaling
+    moira::i64 periphDeadline_ = 0;
+    void schedulePeriphDeadline();
 
     // The 68030 on-chip i-cache model itself (MC68030UM §6: 256 bytes = 16
     // lines × 4 longwords, logical, direct-mapped, non-burst fill) lives
@@ -157,12 +159,7 @@ private:
     long flineSeen_ = 0;
     bool fpuDumped_ = false;
 
-    // Peripheral-tick batching: sync() fires on every bus access, but a
-    // full V8Memory::tick sweep (VIA + Egret + ASC + SWIM + SCC + IRQ
-    // resolve) every few cycles dominated the profile (~0.7× real time at
-    // the Finder). Peripherals only need to be current at a device-space
-    // access (V8Memory flushes first) — between those, batch up to this
-    // many cycles (8 µs; IRQ latency jitter stays far below anything the
-    // System's Time Manager can observe).
-    static constexpr moira::i64 kPeriphBatch = 128;
+    // Fixed batching was replaced on V8 by a device-derived deadline. With
+    // firmware LLE the 68HC05 clock bridge binds; the HLE fallback retains
+    // the historical 128-cycle cadence because it is explicitly non-conformant.
 };

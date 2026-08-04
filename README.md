@@ -32,13 +32,31 @@ ctest -L smoke                    # 8 gates, one machine, both CPU engines
 Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
 
 Optional: a profile-guided build measured **−33 % on the interpreter** and
-−18 % on the JIT (Quadra 605 boot), bit-identical emulation. Three steps in
-**one** build directory (rationale + flags: `CMakeLists.txt:30`):
+−18 % on the JIT (Quadra 605 boot), bit-identical emulation. The helper keeps
+the three steps in one directory and, on Clang/AppleClang, merges the runtime
+profiles with `llvm-profdata` (rationale + flags: `CMakeLists.txt:30`):
 
 ```bash
-cmake .. -DPOM68K_PGO=generate && make -j jitdev q605_boot_etalon
-./q605_boot_etalon && POM68K_CPU_ENGINE=jit ./q605_boot_etalon   # training
-cmake .. -DPOM68K_PGO=use && make -j
+tools/pgo_train.sh build-pgo
+cmake --build build-pgo -j4
+```
+
+On Apple Silicon, `auto` selects the native AArch64 generator. Its linked
+exits, per-access MMIO thunk and expanded opcode coverage reach 97.3 % native
+retirement in the fixed 1,000-frame Q605 benchmark. Five-million-step fine and
+coarse locksteps and the complete Q605 Finder boot pass. On an Apple M-class
+host, Release/native/LTO measured 1.22 s versus 4.55 s for `threaded` (3.73x);
+the existing LLVM PGO profile measured 1.01 s versus 3.41 s (3.38x), with the
+same guest fingerprint. The complete Finder gate takes 9.19 s natively versus
+21.14 s with `threaded` (2.30x); under PGO it takes 7.86 s versus 15.28 s
+(1.94x), with identical video and SCSI signatures:
+
+```bash
+POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=auto ./build-pgo/POM68K
+# Portable comparison/fallback:
+POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=threaded ./build-pgo/POM68K
+# Explicit native selection remains accepted:
+POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=a64 ./build-pgo/POM68K
 ```
 
 ## Run

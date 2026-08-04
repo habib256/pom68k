@@ -82,6 +82,9 @@ public:
             if (pendDelay_ <= 0 && pendBits_) { raiseIrq(pendBits_); pendBits_ = 0; }
         }
     }
+    int cyclesToNextEvent() const {
+        return pendDelay_ > 0 ? pendDelay_ : 0x7fffffff;
+    }
 
     // ── 53C96 register indices (ncr53c90.cpp:29-42, +c94/c96 extensions) ──
     enum Reg {

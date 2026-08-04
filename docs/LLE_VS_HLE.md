@@ -188,18 +188,17 @@ frame as a pass**, after three false greens; see `CHANGELOG.md`
 
 *Gaps*:
 
-- **Peripheral-tick batching**: peripherals advance in blocks of
-  `kPeriphBatch` core cycles — 64 on `Cpu020.h:55` and `IIfxCpu.h:46`, 128 on
-  the 030s (`Cpu030.h:167`, `SonoraCpu.h:76`, `VaspCpu.h:69`, `RbvCpu.h:69`,
-  `MscCpu.h:59`), 256 on the 040s (`Cpu040.cpp:16`, `CentrisCpu.cpp:8`,
-  `Q700Cpu.cpp:8`, `Q630Cpu.cpp:8`). ~4–16 µs of IRQ-latency jitter.
-  **Only `Cpu040` reads the env knob** — there the batch is the function
-  `periphBatch()` (default 256, clamped 1–4096); the three 040 siblings and
-  every 020/030 pin a `constexpr`, so the measurement below reproduces on the
-  Q605 family and nowhere else without a code change.
+- **Peripheral event timing**: Q605 and V8 now use an absolute
+  device-derived deadline instead of a fixed batch. The remaining CPU wrappers
+  still advance peripherals in blocks: 64 on `Cpu020`/`IIfxCpu`, 128 on
+  Sonora/VASP/RBV/MSC, and 256 on Centris/Q630/Q700. Their residual
+  IRQ-latency jitter remains ~4–16 µs and is still open work.
+
+  The Q605 history below explains why its deadline exists. The old
+  `POM68K_PERIPH_BATCH` measurements are retained as the before-state:
   **Measured 2026-08-02** — this entry's own closing note was "drop it toward
-  1 and re-measure the cost", so: `POM68K_PERIPH_BATCH` now overrides it on
-  the 040, and `q605_boot_etalon` reaches the Finder at **every** setting.
+  1 and re-measure the cost". At that point `POM68K_PERIPH_BATCH` overrode the
+  040 batch, and `q605_boot_etalon` reached the Finder at **every** setting.
 
   | batch | wall | vs default | max IRQ jitter @ 25 MHz |
   |---|---|---|---|
@@ -208,10 +207,8 @@ frame as a pass**, after three false greens; see `CHANGELOG.md`
   | 16 | 79.3 s | +29 % | ≤ 0.64 µs |
   | **1 (exact)** | 107.9 s | **+76 %** | 0 |
 
-  So this is not a gap needing an implementation — it is a **priced, exact-on-
-  demand** trade, and the exact setting works. Moving the *default* is a
-  separate product decision and wants its own measured reason; the honest
-  statement today is that conformance costs ~70 % here and is one env var away.
+  That exact-on-demand knob has now been superseded on Q605 by the deadline;
+  exact timing is the default there rather than a product-mode choice.
 
   **2026-08-03 — where that cost actually IS** (`POM68K_PERIPH_STATS=1`
   counts the path; 1200 frames of `q605_boot_etalon` on one host):
@@ -227,30 +224,24 @@ frame as a pass**, after three false greens; see `CHANGELOG.md`
   cases and is not the cost. So the fix is not "make the devices cheaper",
   it is **stop entering the fan-out when nothing is due**.
 
-  → **The design that makes exactness affordable** is MAME's: a *deadline*
-  instead of a batch. `catchUp()` becomes `if (clock < deadline) return;`,
+  **Landed 2026-08-03:** the implementation uses MAME's *deadline* model
+  instead of a batch. `catchUp()` is `if (clock < deadline) return;`,
   where the deadline is the minimum over the devices of "cycles until I can
   next change observable state". Skipping is then never an approximation —
   we only skip time in which nothing could have happened. Per-device bounds
   at 25 MHz, in the order they bind:
-  `CudaLle`'s 6805 (~12 cycles — the binding one, **and phase-fragile**:
-  `pom68k-mactv-gate-broken`), the VIA E clock (783.36 kHz → ~32), ASC drain
+  `CudaLle`'s 6805 (~12 cycles — the binding one), the VIA E clock
+  (783.36 kHz → ~32), ASC drain
   (22.257 kHz → ~1123), DAFB VBL and the 60.15 Hz CA1 (~416 000), and
-  SWIM/drives/SCSI (only while a transfer is live). A device that does not
-  know its bound returns 1 and simply keeps today's behaviour, so the
-  migration is device-by-device and each step is separately measurable.
-  Bounded by the Cuda alone that is ~6× fewer fan-outs than today's exact
-  setting — i.e. exactness at roughly the cost of `batch=16`.
+  SWIM/drives/SCSI (only while a transfer is live). Every Q605 source now
+  supplies a conservative bound. V8 uses its firmware MCU as the binding
+  source and retains 128 only for the explicit HLE fallback.
 
-  *Landed 2026-08-03, small and free*: `catchUp()` also refuses to run when
-  fewer than `cacheBoost_` Moira cycles have accumulated. Below that
-  `flushTicks` computes **m == 0** and ticks nothing, so it was pure call
-  overhead — and peripheral time is machine time (the 2026-07-25 pinned
-  lesson), so one machine cycle is the finest granularity anything can
-  observe. At the default batch it changes nothing; at `batch=1` it makes
-  "exact" mean exact-in-machine-time. Worth 2 % (103.3 → 101.2 s) — recorded
-  because the hypothesis behind it was that this WAS the cost, and the
-  measurement said no.
+  Measured after landing: `q605_boot_etalon` delivered 1.675 G machine cycles
+  through **86.65 M** `mem.tick()` entries = **19.34 cycles/call**, 9.6× fewer
+  full fan-outs than exact batch 1's 833.2 M. The bound contract itself is
+  gated in `cuda_lle_test`: no MCU progress before the advertised deadline,
+  progress exactly on it.
 - ~~**VIA E-clock at a fixed integer ratio**~~ — **closed 2026-08-02**
   (`src/ViaEClock.h`). The 6522's φ2 is the board's fixed **783.36 kHz**
   (C7M ÷ 10), asynchronous to the CPU. Where the CPU clock is an integer
@@ -270,10 +261,9 @@ frame as a pass**, after three false greens; see `CHANGELOG.md`
   **4**; `POM68K_Q605_CACHE_BOOST` overrides 1–64). No 040 copyback or
   snooping.
 
-→ **Closing it**: batching is a tick-granularity knob — drop `kPeriphBatch`
-toward 1 and re-measure the boot etalons for the cost. The E-clock ratio wants
-a fractional accumulator like the ASC drain. Real caches are a Moira-side
-project (`extern/moira`), not a wrapper change.
+→ **Closing the remainder**: transpose the deadline interface from
+Q605/V8 to Sonora, VASP, RBV, MSC, Centris, Q630, Q700, IIfx and Cpu020.
+Real caches remain a Moira-side project (`extern/moira`), not a wrapper change.
 
 **Pinned lesson — the overlay must not touch bus time** (root-caused
 2026-07-25). It used to compress VIA-paced pulses `cacheBoost_`× because
@@ -480,9 +470,9 @@ and no second button):
   right-hand modifiers keep their own key codes (`$7B`/`$7C`/`$7D`) instead
   of folding onto the left ones; the R2 bitmap has one bit per modifier
   whatever the handler, so right Shift lights the Shift bit either way.
-  Reset value stays **1** and `POM68K_ADB_KBD_ID` overrides it — the GUI key
-  map emits neither the function keys nor distinct right modifiers, so
-  nothing observable rides on 2 yet.
+  Reset value stays **1** and `POM68K_ADB_KBD_ID` overrides it. The GUI now
+  emits distinct right Shift/Option/Control codes; handler 3 preserves them,
+  while handlers 1/2 fold them onto their left equivalents.
 - **The second mouse button** exists under the **Extended Mouse Protocol**
   (Listen R3 activator 4). It rides bit 7 of the second report byte, which a
   one-button Apple mouse holds at a constant 1; register 1 then answers the
@@ -513,9 +503,10 @@ servicing fewer polls than hardware.
 *Gaps*: remaining LLE fidelity is **PIC↔device timing under load**, not the
 byte state machine. On the HLE fallback only: `AdbVia` assumes 2-byte Listen
 payloads (real ADB is 2–8; DingusPPC `adbbus.cpp` validates against 8), and
-mouse deltas are clamped. Host-side, the GUI does not yet *send* a second
-button (`main.cpp` reads `MouseDown[0]` only) or the extended key codes, so
-both new device capabilities are reachable but unexercised by the front end.
+mouse deltas are clamped. Host-side closure 2026-08-03: both ImGui mouse
+buttons travel with an index through every machine command queue; LLE consumers
+receive the secondary button, while HLE/one-button paths deliberately ignore
+it. Distinct right modifiers travel through all ten ADB GUI maps.
 
 *The "Quadra modifier symptom" was RETRACTED 2026-08-02 — there is no
 modifier bug.* This entry used to claim that Cmd-N failed to repaint on the

@@ -135,7 +135,9 @@ bool CodeBuffer::reserve(std::size_t bytes) {
     base_ = static_cast<uint8_t*>(p);
     size_ = n;
     used_ = 0;
+    icacheSynced_ = 0;
     writable_ = true;
+    execMapped_ = false;
     return true;
 #endif
 }
@@ -150,8 +152,10 @@ void CodeBuffer::release() {
     base_ = nullptr;
     size_ = 0;
     used_ = 0;
+    icacheSynced_ = 0;
     writable_ = true;
     unified_ = false;
+    execMapped_ = false;
 }
 
 CodeBuffer::~CodeBuffer() { release(); }
@@ -166,7 +170,12 @@ uint8_t* CodeBuffer::alloc(std::size_t n, std::size_t align) {
 
 bool CodeBuffer::makeExecutable() {
     if (!base_) return false;
-    if (unified_) { flushICache(base_, size_); return true; }
+    const auto syncNewCode = [this] {
+        if (used_ > icacheSynced_)
+            flushICache(base_ + icacheSynced_, used_ - icacheSynced_);
+        icacheSynced_ = used_;
+    };
+    if (unified_) { syncNewCode(); return true; }
     if (!writable_) return true;
 #if defined(POM68K_JIT_MEM_APPLE_JIT)
     // MAP_JIT pages are mapped PROT_READ|PROT_WRITE|PROT_EXEC once and the
@@ -174,7 +183,11 @@ bool CodeBuffer::makeExecutable() {
     // mprotect — but the mapping above only asked for READ|WRITE, so the
     // pages would never actually be executable. Ask for EXEC too, then flip
     // the thread out of write mode.
-    if (mprotect(base_, size_, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) return false;
+    if (!execMapped_) {
+        if (mprotect(base_, size_, PROT_READ | PROT_WRITE | PROT_EXEC) != 0)
+            return false;
+        execMapped_ = true;
+    }
     pthread_jit_write_protect_np(1);
 #elif defined(POM68K_JIT_MEM_WIN32)
     DWORD old = 0;
@@ -184,7 +197,7 @@ bool CodeBuffer::makeExecutable() {
 #else
     return false;
 #endif
-    flushICache(base_, size_);
+    syncNewCode();
     writable_ = false;
     return true;
 }

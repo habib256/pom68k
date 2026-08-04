@@ -113,22 +113,17 @@ lost" on a cell where KeyMap proves they arrive. **Believe an observable only
 after it has demonstrated sensitivity** — and only after it has demonstrated
 *silence without stimulus*.
 
-### The Cuda↔VIA bit-bang transport is phase-fragile
+### Cuda↔VIA phase robustness — CLOSED 2026-08-03
 
-- [ ] `M68hc05::serviceInterrupts` still returns **0** where hardware charges 11
-  cycles (`m6805.cpp:570`) — a deliberate, gated inaccuracy documented at
-  `src/M68hc05.cpp:160-177`. Charging the 11 costs the MCU ~2 % of its
-  instruction throughput against machine time; that phase shift deadlocks the
-  **Mac TV** (31.3344 MHz, tightest MCU:CPU ratio in the tree): the Cuda stops
-  after 7 of a byte's 8 CB1 edges waiting for BYTEACK while the ROM spins on
-  VIA1 IFR.SHIFT at `$40AB3BC8`.
-  **The real fix is to make the transport survive a phase shift**, then re-land
-  the 11 (a one-line change: `return 11`). `CudaLle.cpp:20-28` records two
-  earlier attempts to move the same phase (uniform 2 µs interleave, busy-gated)
-  crashing the guest — treat the MCU/VIA lockstep as the thing under test, not
-  a free parameter. Already ruled out: the one-second-timer clock model, and a
-  stale external bit counter across an ACR shift-mode change in `Via6522`.
-  Always run `mactv_boot_etalon` after any MCU timing change.
+- [x] `M68hc05::serviceInterrupts` now charges the hardware's **11 cycles**
+  (`m6805.cpp:570`). The former zero-cycle accommodation is pinned by a
+  synthetic IRQ gate (`11 + 2` cycles for entry plus the first NOP).
+  `CudaLle::cyclesToNextEvent()` derives the first machine cycle on which the
+  MCU can execute after its fractional-clock remainder and overshoot debt;
+  `cuda_lle_test` proves both halves of that contract (silence before, progress
+  exactly at the deadline). The historical seven-of-eight-CB1 Mac TV wedge no
+  longer reproduces: `mactv_boot_etalon` reaches the Finder with the 11-cycle
+  cost, and all three `q605_cudalle_{boot,mouse,key}_etalon` gates are green.
 
 ---
 
@@ -222,16 +217,28 @@ Open, in ROI order:
     `MoiraDataflow_cpp.h:326-332`), its restartable last write (`:355-361`), and
     the end-of-instruction prefetch refill that makes `queue.irc` mean something
     different at a block exit.
-- [ ] **Coverage tail** (after MOVEM/DBcc/JMP): line $E shifts/rotates (0.9 %),
-  Scc (`JitBackendX64.cpp:1819` refuses it), PEA; **the 68020 indexed modes are
+- [ ] **Coverage tail** (after MOVEM/DBcc/JMP): register-count and memory
+  shifts/rotates, Scc (`JitBackendX64.cpp:1819` refuses it), PEA; **the 68020 indexed modes are
   the big block** (a brief extension-word decoder — QuickDraw's blitters;
   currently refused at `JitBackendX64.cpp:36,171,175`). MULU/DIVU stay fallback
   (data-dependent cycles — the cross-check refuses them honestly).
 - [ ] **Compact `mmu040InstrStart`.** Eight per-instruction field resets + a
   `getCCR()` pack; adjacent fields could collapse into one or two wide stores.
   Small, but it sits on every single 040 instruction.
-- [ ] **aarch64 backend.** Porting note already written and validated against
-  the IR: `src/jit/backends/JitBackendA64.md`.
+- [x] **Bring aarch64 to x86-64's opcode-family level.** Register/memory ALU,
+  branches, calls/returns, MOVE, BTST, LINK/UNLK and MOVEM now use native
+  AArch64 plus the same exact fallback policy; 5 M-step lockstep passes.
+- [x] **Close the AArch64 full-boot gate and enable `auto`.** Hidden peripheral
+  lockstep localized four emitter defects: NEG used an immediate instead of a
+  register, EA commit clobbered an ALU operand, short MOVE immediates were not
+  masked, and BFINS lost its mask while setting flags. Five-million-step fine
+  and coarse locksteps plus the complete Q605 Finder boot now pass. Flushing
+  only newly emitted code instead of the entire 128 MiB code reservation also
+  removes the dominant Apple-Silicon compile cost. Replacing the slice
+  invalidation `unordered_multimap` with an O(1)-append index removes a second,
+  quadratic long-boot cost (and duplicate indexing). The fixed Release
+  benchmark is 1.22 s A64 versus 4.55 s threaded (3.73x); the full Finder gate
+  is 9.19 s versus 21.14 s (2.30x), with identical signatures.
 - [ ] **Generated-code density** — deprioritized 2026-07-30. The stale
   150 B/instr figure predates boundary-deferral + cold emission; the re-baseline
   shows x64 already beating threaded on both regimes (−10 %). The residual
@@ -290,35 +297,24 @@ deliberate "POM68K requires MCU dumps" product decision, not a cleanup.
   keyboard *refusing* 3), and Listen R2 LEDs. Also: SendReset now restores the
   default handler, not just the default address. `docs/LLE_VS_HLE.md` § 1.6;
   gate `adbline_test`. *(Talk R2 modifiers had landed 2026-07-31.)*
-  - [ ] **Follow-up, host side**: the GUI never *sends* what the device can now
-    report — `main.cpp` reads `io.MouseDown[0]` only and its key table maps
-    `ImGuiKey_RightShift` onto the left code. Wiring the second button means a
-    button index through `Cmd::MouseButton` → each machine's `mouseButton`
-    (12 call sites, all defaulted so the change is mechanical), and the guest
-    only sees it with a driver that switches the mouse to handler 4.
-- [~] **Peripheral-tick batching: the cost is LOCATED (2026-08-03).**
+  - [x] **Host side — CLOSED 2026-08-03**: `ScreenInput` sends both mouse
+    buttons with an index through every `Cmd::MouseButton` route; conformant
+    `AdbLine` consumers receive button 1 while HLE/one-button paths ignore it.
+    The ten ADB GUI maps also send distinct right Shift/Option/Control codes
+    (and both Command keys); handler 3 preserves them, handlers 1/2 fold them.
+- [x] **Peripheral event deadlines — LANDED 2026-08-03.**
   `POM68K_PERIPH_STATS=1` counts the path. Over 1200 frames of
   `q605_boot_etalon`: batch 256 → 25.6 M `mem.tick()` calls / 60.1 s;
   batch 1 → **833.2 M calls** / 103.3 s. **Same 1.650 G machine cycles
   delivered either way**, and `catchUp()` is called 879 M times in both —
   so the cost is neither the devices nor the hook, it is entering the
   ~15-device fan-out **32.5× more often**.
-  → Next: replace the batch with a **deadline** (MAME's model).
-  `catchUp()` → `if (clock < deadline) return;` with the deadline = min over
-  devices of "cycles until I can next change observable state". Skipping is
-  then not an approximation. Bounds at 25 MHz, in binding order: `CudaLle`'s
-  6805 **~12 cycles** (binding, and phase-fragile —
-  `pom68k-mactv-gate-broken`, always re-run `mactv_boot_etalon`), VIA E clock
-  ~32, ASC drain ~1123, DAFB VBL + 60.15 Hz CA1 ~416 000, SWIM/drives/SCSI
-  only while a transfer is live. A device with no bound returns 1 and keeps
-  today's behaviour, so the migration is per-device and each step is
-  separately measurable. Cuda-bounded alone ≈ 6× fewer fan-outs — exactness
-  at about the cost of `batch=16`.
-  Already landed: `catchUp()` refuses to run below `cacheBoost_` Moira
-  cycles, where `flushTicks` computes m == 0 and ticks nothing. Free at the
-  default, and it makes `batch=1` mean exact-in-MACHINE-time (the right
-  unit). Worth 2 % — noted because the hypothesis was that this *was* the
-  cost, and the measurement disagreed.
+  Fixed batching is now replaced by the minimum conservative deadline over
+  Cuda, VIA, SCC, ASC, SWIM, 53C96, CA1 and DAFB on Q605, and by the binding
+  firmware-MCU deadline on V8. `catchUp()` returns until that absolute clock;
+  device-space accesses still force `flushTicks()`. A too-small bound remains
+  merely slow; no bound is allowed to be larger than the next observable
+  transition. The explicit HLE fallback retains its historical batch.
 
   **The bounds, derived from the code 2026-08-03 — the hard part is done.**
   Every device in `Q605Memory::tick` can state a bound; **none has to fall
@@ -326,7 +322,7 @@ deliberate "POM68K requires MCU dumps" product decision, not a cleanup.
 
   | device | bound | value @ 25 MHz |
   |---|---|---|
-  | `CudaLle` 6805 | `ceil(((mcuDebt_+1)*cpuHz - mcuAcc_) / kMcuHz)` | **~12 — binding** |
+  | `CudaLle` 6805 | `ceil(((mcuDebt_+1)*cpuHz - mcuAcc_) / kMcuHz)` | **~12 — binding, gated** |
   | VIA E clock | `ceil((cpuHz - viaEClock_.acc) / 783360)` | ~32 |
   | `AscIosb` drain | `ceil((kCpuHz - drainAcc_) / drainHz())`, scaled C15M→CPU | ~1123 |
   | `Scc8530` | min of the live countdowns (`peerHold_`, `txShiftIn`, …) | **∞ when idle** |
@@ -335,27 +331,11 @@ deliberate "POM68K requires MCU dumps" product decision, not a cleanup.
   | 60.15 Hz CA1 | `ceil((kCpuHz*100 - tickAcc_) / 6015)` | ~416 000 |
   | `Dafb` VBL | from `framePos_` | ~416 000 |
 
-  So the deadline sits at **~12 machine cycles** essentially always, pinned
-  by the Cuda's MCU. Today's exact setting averages **2.0** machine cycles
-  per fan-out entry (measured), so that is **~6× fewer entries**.
-  Interpolating the measured curve (4 machine cycles → 76.8 s, 16 → 64.7 s),
-  12 machine cycles lands near **~67 s against 60.1 s at the default**:
-  **exactness for ~12 % instead of ~72 %.**
-
-  Implementation notes for whoever writes it:
-  - `catchUp()` → `if (clock < periphDeadline_) return;` then
-    `flushTicks(); periphDeadline_ = clock + mem_.cyclesToNextEvent()*cacheBoost_;`
-  - A bound that is too SMALL is merely slow; too LARGE is a **silent
-    fidelity bug**. Write each one as `≤` the true value, and prefer the
-    trivially-checkable form even when a tighter one exists.
-  - The Cuda is **phase-fragile** (`pom68k-mactv-gate-broken`): a 2 % shift
-    in its instruction rate deadlocks the Mac TV. Skipping time in which it
-    provably does nothing does not move its phase — but prove it, and run
-    `mactv_boot_etalon` after.
-  - Do it per device, measuring each step: the min() means no gain appears
-    until the last one lands, so the ORDER to migrate is the table's, top
-    down, and the check is that `POM68K_PERIPH_STATS` call counts fall while
-    the etalons stay green.
+  Measured on `q605_boot_etalon` with `POM68K_PERIPH_STATS=1`: **86.65 M**
+  `mem.tick()` calls for 1.675 G machine cycles, or **19.34 cycles/call**.
+  That is 9.6× fewer full fan-outs than the old exact batch-1 measurement
+  (833.2 M), while preserving exact event timing. Gates: the Q605 boot plus
+  all three firmware boot/input etalons, Mac TV, unit and save-state suites.
 - [ ] **Quadra 605 / LC 475**: expand Cuda commands only from ROM/driver traces;
   accurate 040 timing, cache copyback/snooping and on-chip-FPU/FPSP behaviour as
   separate oracle-gated milestones.

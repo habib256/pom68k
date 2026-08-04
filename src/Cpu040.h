@@ -15,11 +15,30 @@
 #include "MoiraSnapshot.h"
 #include "jit/JitEngine.h"
 #include <cstdint>
+#include <functional>
 
 class Q605Memory;
 
 class Cpu040 : public MoiraSnapshot {
 public:
+    // Diagnostic state deliberately kept separate from save states.  The
+    // lockstep gate uses it to catch an IRQ/pacing divergence before it is
+    // reflected in architectural registers or RAM.
+    struct LockstepDebug {
+        moira::i64 clock = 0;
+        moira::i64 lastPeriphClock = 0;
+        moira::i64 periphAccum = 0;
+        moira::i64 periphDeadline = 0;
+        moira::i64 iplChangeClock = 0;
+        moira::i64 iplChangeClockPrev = 0;
+        int flags = 0;
+        int iplDeferred = 0;
+        int irqDelay = 0;
+        moira::u8 iplPin = 0;
+        moira::u8 iplSampled = 0;
+        moira::u8 iplPrev = 0;
+    };
+
     explicit Cpu040(Q605Memory& mem);
 
     void hardReset();                       // overlay + CPU reset
@@ -40,12 +59,16 @@ public:
     // Bus/wire time (E-clock, wait states) must be measured here, not on the
     // boosted core clock — see SonoraCpu.h.
     moira::i64 machineClock() const { return clock / cacheBoost_; }
+    LockstepDebug lockstepDebug() const;
+    // Optional lockstep-only event tap. It observes boundaries but does not
+    // alter peripheral scheduling or force an extra flush.
+    std::function<void(const char*, const LockstepDebug&)> onLockstepEvent;
 
     // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
     // cacheBoost_/icacheMiss_ are environment tuning, not guest state.
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
-        ar(lastPeriphClock_, periphAccum_);
+        ar(lastPeriphClock_, periphAccum_, periphDeadline_);
     }
 
 private:
@@ -77,4 +100,6 @@ private:
     int cacheBoost_ = 4;
     int icacheMiss_ = 0;                    // POM68K_Q605_ICACHE_MISS
     moira::i64 periphAccum_ = 0;
+    moira::i64 periphDeadline_ = 0;
+    void schedulePeriphDeadline();
 };

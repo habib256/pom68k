@@ -147,7 +147,7 @@ public:
 
     void keyEvent(uint8_t code, bool down) { adbVia_.keyEvent(code, down); }
     void mouseMove(int dx, int dy) { adbVia_.mouseMove(dx, dy); }
-    void mouseButton(bool down) { adbVia_.mouseButton(down); }
+    void mouseButton(bool down, int button = 0) { adbVia_.mouseButton(down, button); }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
 
