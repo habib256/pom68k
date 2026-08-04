@@ -61,8 +61,11 @@ en § 1 est une simplification, avec sa raison et sa condition de réouverture.
    § M1) : l'état architectural des tags (4 KB, 4 voies, lignes 16 o,
    dirty par longword) derrière `POM68K_040_DCACHE`, CINV/CPUSH/CACR
    agissant enfin sur du vrai état, **données toujours servies par le
-   bus**. Gates verts flag ON : `cache040_test` (32 checks), `sst68040`
-   (7 200 vecteurs), les 5 lockstep JIT. **Reste de M1 : le balayage
+   bus**. Durci le même jour par une chasse aux bugs adversariale
+   (3 défauts réels corrigés, 4 trous de gate épinglés —
+   `CHANGELOG.md` § 2026-08-05 (later)). Gates verts flag ON :
+   `cache040_test` (44 checks), `sst68040` (7 200 vecteurs), les 5
+   lockstep JIT. **Reste de M1 : le balayage
    `ctest -L m040` flag ON**, bloqué par l'image 8.1 sale (§ 1) — à
    lancer après le nettoyage GUI ponctuel. Ensuite : point de décision
    M2 (§ 3 du doc) — n'ouvrir le chemin données que sur motivation
@@ -100,15 +103,19 @@ retouche, relancer `q700` **et** `q900`, jamais en parallèle
   GISTPERSO (7.5.5) on the IIfx wedges at ROM `$4081B66E` under
   single-ID — never a supported combo, parked in memory.
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
-  ("unreadable — format?"; 8.1 mounts the same disk, LC II/IWM + 7.5.5
-  mounts it too). Three MAME-faithful sense fixes landed on the way
-  (index/tach on the drive clock + per-cylinder RPM; GCR reg 4/C = raw
-  read line at flux rate) and the refusal SURVIVES them: the driver
-  reads ~4 revolutions, steps to track 4, motor off. Suspect: the ISM
-  read path's error/CRC latches as the 7.5 driver consumes them. Next:
-  register-level diff against MAME `swim2.cpp` on the post-insert read
-  sequence. No CTest covers this combo yet — the future gate is
-  "Q605 + 7.5.5 boot volume + hot GCR insert mounts".
+  — reported in the GUI, and **NOT reproduced headless**: judged on the
+  desktop (the mounted volume's icon, screen-diff) rather than on
+  `nibblesRead` (an IWM-only counter that reads 0 on SWIM2 and produced
+  a night of false negatives — `CHANGELOG.md` § 2026-08-04 (soir),
+  retraction), the plain tree mounts the disk under 7.5.5 on the Quadra.
+  So the difference lives in the GUI path, not the SWIM2 model: a
+  machine-thread insert against a running emulation, the live PRAM/Finder
+  state, the actual image on the actual profile. Next: reproduce IN THE
+  GUI with `POM68K_FLOPPY` unset, insert from the Disques window, and
+  compare that Swim2 dialogue against the headless one (traced harness in
+  the session scratchpad, linked object-before-archive). Only then a gate
+  — "Q605 + 7.5.5 boot volume + hot GCR insert mounts" — which must fail
+  on today's tree before it is worth anything.
 
 *(nothing else — `jit_q605_boot_etalon` went red on 2026-08-04 after the
 A64/pacing merge and green again the same day: the x64 emitter handed the

@@ -835,27 +835,17 @@ bool SonyDrive::senseSwim(int reg) const {
         // forms the documented initial capability signature x011 (2M,
         // ready, MFM, RD1). Once spinning, one narrow active-low index
         // pulse per revolution — on the DRIVE'S clock and speed. The old
-        // `spin_ % (7833600/5)` hardcoded the Plus clock and 300 RPM: on a
-        // 25 MHz Quadra the System 7.5 Sony driver, timing these pulses
-        // after a hot insert, measured ~956 RPM on a GCR disk and refused
-        // the medium ("unreadable — format?"); the 8.1 driver does not run
-        // that check, which is why only 7.5.x ever saw it (2026-08-04).
+        // `spin_ % (7833600/5)` hardcoded the Plus clock and 300 RPM while
+        // spin_ counts MACHINE cycles, so every speed a guest measured off
+        // this line on a 15.7/25/33 MHz host was off by that clock ratio.
+        // (A flux-rate variant was tried here on 2026-08-05 and REVERTED:
+        // the symptom that motivated it — 7.5.5 refusing a hot-inserted
+        // floppy — turned out to be a false observable in the probe, not
+        // emulator behaviour. MAME's per-rev pulse stands.)
         if (!superDrive_) return false;
         if (!hasDisk() || !motorOn_) return true;
-        // A once-per-rev pulse cannot be what that check reads, though: the
-        // driver polls this sense for only a few ms right after spin-up
-        // (traced 2026-08-04: ~2000 polls inside <1 % of a revolution), and
-        // on real hardware such a burst can only see a line that toggles at
-        // FLUX rate. So GCR media presents the raw read line (~2 µs cells,
-        // the "read-data" half of MAME's "index/read-data" naming); MFM/HD
-        // keeps the slow per-revolution index pulse.
-        if (mfmMode_ && hd_) {
-            const int64_t rev = spinCyclesPerRev();
-            return (spin_ % rev) > spinClockHz_ / 500;   // ~2 ms low pulse
-        }
-        const int64_t half = spinClockHz_ >= 2000000 ? spinClockHz_ / 1000000
-                                                     : 8;   // ~1 µs halves
-        return (spin_ / half) & 1;
+        const int64_t rev = spinCyclesPerRev();
+        return (spin_ % rev) > spinClockHz_ / 500;   // ~2 ms low pulse
     }
     case 0x5: return superDrive_;                // MFD-75W capability
     case 0x6: return doubleSided_;

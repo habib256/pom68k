@@ -242,6 +242,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-05** — [The M1 bughunt: three real defects the gates were green over](#2026-08-05-cache040-bughunt)
 - **2026-08-05** — [Cache 040 M1: CINV and CPUSH finally act on real state, and the tags cost nothing](#2026-08-05-cache040-m1)
 - **2026-08-04** — [The IIfx SCSI mirror mounted one volume seven times; CDs hot-mount under 8.1; the MacIP window opens up](#2026-08-04-iifx-mirror-cd-hot)
 - **2026-08-04** — [Event deadlines reach six more platforms: min(MCU bound, historical batch)](#2026-08-04-deadlines-six)
@@ -428,6 +429,55 @@ Newest first.
 
 <a id="2026-08-04-iifx-mirror-cd-hot"></a>
 
+<a id="2026-08-05-cache040-bughunt"></a>
+## 2026-08-05 (later) — The M1 bughunt: three real defects the gates were green over
+
+An adversarial multi-agent hunt over the fresh M1 diff (4 finders with
+distinct lenses, every finding re-verified by a refuter told to walk the
+trigger through the code line by line; 10 found, 9 confirmed, 1 refuted)
+caught three real code defects and four gate holes — all fixed the same
+sitting, `cache040_test` grown 32 → 44 checks:
+
+- **An infinite loop at the top of the address space.** `Cache040::
+  touch`'s span walk compared `a <= hi` in u32 — a tautology when the
+  access's last byte is PA `$FFFFFFFF`, so one cacheable access there
+  (trivially reachable MMU-off, where the default CM is cachable) hung
+  the CPU thread. Two finders caught it independently; both refuters
+  reproduced it standalone. The walk now runs in u64 with an exclusive
+  end. *Lesson: the model was tested at the addresses Mac OS uses, not
+  at the edges the type system makes dangerous.*
+- **The "non-faulting" peek walk could fault.** `mmu040PeekWalk`'s
+  descriptor fetches ride the machine bus; a garbage-but-resident
+  chain landing in unmapped space raised `extBusError040` — flag ON
+  delivering a format $7 access error (with the *previous* access's
+  stale fault context) where flag OFF's CINV was a silent no-op.
+  `pomCache040Phys` now catches `MmuBusError` and treats the chain as
+  unmapped. The refuter's caveat is honest: a correctly running guest
+  never builds such a chain — but M1's contract is absolute, and a
+  cache-less model's forgiveness of *buggy* guests is exactly what
+  this chantier is about.
+- **Phantom lines after /BERR.** The touch runs at translate time; if
+  the bus access it describes then /BERRs, the model kept a valid —
+  even dirty — line no real 040 would hold (TEA-terminated fills leave
+  no line, UM § 7). `extBusError040` now rolls back the stamped span;
+  the stamp is cleared by non-allocating touches and by the peek walk
+  so it can never invalidate an older, legitimate line.
+- **Gate holes**, each now pinned: the CINV/CPUSH resolver's MMU-on
+  paths had zero coverage (part 2 now builds real page tables, enables
+  the MMU mid-program, and exercises ATC-hit, peek-walk-after-flush,
+  unmapped-skip and a /BERR descriptor chain through a bus hole);
+  disabled-cache retention and CINV/CPUSH-on-disabled (UM § 4.4) were
+  unpinned; the replacement check couldn't tell invalid-first+counter
+  from any other policy (victims now asserted way by way); and PA[9]
+  wasn't proven an index bit — a 32-set cache passed every geometry
+  check (the house too-wide-assert failure mode, again).
+
+One finding was refuted and stays refuted: the "flag ON == flag OFF has
+no real check" report — non-interference is structural (the model
+stores no data), and the OFF/ON evidence lives at whole-boot scale in
+the § M1 gate list. Re-validated after the fixes: `cache040_test`
+44/44, `sst68040` 7 200/7 200, the 5 JIT lockstep gates — all flag ON.
+
 <a id="2026-08-05-cache040-m1"></a>
 ## 2026-08-05 — Cache 040 M1: CINV and CPUSH finally act on real state, and the tags cost nothing
 
@@ -519,21 +569,27 @@ while `spin_` counts machine cycles (25 MHz on the Q605) and a GCR
 cylinder spins at 394-590 RPM. The measured speed came out ~2.4× off and
 the driver refused the medium. Reg B (tach) carried the same wrong-clock
 constant. Both now derive from `spinCyclesPerRev()` (drive clock ×
-per-cylinder speed group, MAME `!m_idx` semantics); and since the
-driver's post-insert burst polls that sense for only a few ms (~2000
-polls inside <1 % of a revolution — no once-per-rev pulse could ever be
-seen there), GCR media now presents it as the raw read line toggling at
-flux rate, MFM/HD keeping the slow index. All three corrections are
-MAME-faithful and retained — and the 7.5.5 driver STILL refuses (it
-reads ~4 revolutions of cells, steps to track 4, motor off). What is
-known: LC II (IWM path) + 7.5.5 mounts, Q605 (SWIM2/ISM) + 8.1 mounts,
-Q605 + 7.5.5 does not; a non-System floppy present at power-on is
-probed and ejected by the ROM exactly as a real Quadra does. The open
-suspect is the ISM read path as the 7.5 driver consumes it — error/CRC
-latches that 8.1 ignores. Next session: register-level comparison
-against MAME `swim2.cpp` on the post-insert read sequence (the traced
-`Swim2.cpp` harness lives in the session scratchpad, linked
-object-before-archive over `libpom68k_core`).
+per-cylinder speed group, MAME `!m_idx` semantics) — a real bug on every
+non-Plus host, kept.
+
+> **Retracted the next morning (2026-08-05):** the *motivating symptom*
+> was never reproduced. The headless probe judged "mounted" from
+> `SonyDrive::nibblesRead`, which only the IWM path increments — on a
+> SWIM2 machine it reads 0 whatever happens, so every run printed "NOT
+> MOUNTED", including the 8.1 arm the user reports as working. Re-judged
+> on the DESKTOP (a mounted volume paints its icon; screen-diff on the
+> icon strip), the *unmodified* tree mounts a hot-inserted Rogue.dsk
+> under 7.5.5 on the Quadra — verified by dumping the framebuffer: the
+> volume icon is there, no dialog. Two changes built on that false
+> reading were dropped before they reached a commit (a hot-insert
+> spin-up delay in `SonyDrive`, a write-mode gate on SWIM2 register 2),
+> and the flux-rate variant of reg 4/C was reverted to MAME's per-rev
+> pulse. **The user's GUI symptom is real but is NOT reproduced by the
+> headless path** — the difference to chase next is the GUI itself
+> (machine-thread insert against a running emulation, PRAM/Finder state,
+> the actual image on the actual profile), not the SWIM2 model.
+> Lesson, again: a "0" observable that cannot rise is not evidence
+> ([[pom68k-false-green-wide-assert]] in memory, now joined by this).
 
 Also: the Disques window lists the floppy (the always-hot bay) above the
 cold boot/SCSI choices; `disks35/Stuffit_Expander_5.5.dsk` was 1440K plus
