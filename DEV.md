@@ -1119,7 +1119,7 @@ documented before 2026-07-31:
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
 | `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the 030 CPUs (`Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
-| `POM68K_PERIPH_BATCH` | 040 peripheral catch-up granularity in CPU cycles (default 256, range 1-4096). **Smaller is more accurate**: 1 = exact, no IRQ-latency jitter, +76 % boot time — measured table in `docs/LLE_VS_HLE.md` § 1.2 |
+| `POM68K_PERIPH_STATS` | count the peripheral catch-up path (Cpu040 only): catchUp/flushTicks/mem.tick calls + cycles per call, printed at exit. The old `POM68K_PERIPH_BATCH` knob is GONE — fixed batching was replaced by event deadlines on eight platforms (2026-08-03/04, `CHANGELOG.md` § *Event deadlines*); the remaining fixed-batch machines (compacts, Mac II, IIfx, MSC) have no knob |
 | `POM68K_NOFPU` | Mac II **and IIfx**: no 68881/68882 |
 
 **Devices and subsystems**: `POM68K_EGRET_LLE`, `POM68K_CUDA_LLE`,
@@ -1164,6 +1164,8 @@ authoritative** and was itself corrected on 2026-07-31.
 (machine-thread heartbeat + a one-shot spin dump), `POM68K_FPU_LOG`,
 `POM68K_FREEZE_PROBE`, `POM68K_DAFB_CLOCK_TRACE`, `POM68K_SCSI_LAT`,
 `POM68K_CD_TRACE`, `POM68K_SE_VIA_TRACE`, `POM68K_ATALK_DEBUG`,
+`POM68K_040_CM_STATS` (68040 ATC fills by descriptor cache-mode —
+the `docs/CACHE_040.md` M0 probe),
 `POM68K_MACIP_DEBUG`, and the IIfx trio `POM68K_IIFX_IO_TRACE` (unknown
 I/O touches), `POM68K_IIFX_SCSI_TRACE` (5380/SCSIDMA registers with PC),
 `POM68K_IIFX_ADB_TRACE` (ADB line-state transitions + decoded commands).

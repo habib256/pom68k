@@ -24,7 +24,7 @@ the Machine menu, in the same order and the same grouping
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 143 gates (asset-dependent ones soft-skip)
+ctest                             # 144 gates (asset-dependent ones soft-skip)
 ctest -L unit                     # 66 gates, no ROM or disk image needed
 ctest -L smoke                    # 8 gates, one machine, both CPU engines
 ```
@@ -58,6 +58,25 @@ POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=threaded ./build-pgo/POM68K
 # Explicit native selection remains accepted:
 POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=a64 ./build-pgo/POM68K
 ```
+
+## Releases (prebuilt packages)
+
+Tagged releases build four artifacts in CI (`.github/workflows/release.yml`,
+adapted from POM1's battle-tested workflows):
+
+| Package | Target |
+|---|---|
+| `POM68K-<v>-x86_64.AppImage` | any Linux with glibc ≥ 2.27 (Mint 19.x and newer) |
+| `POM68K-<v>-aarch64.AppImage` | aarch64 Linux, **Raspberry Pi 400/4/5 included** (Pi OS bookworm) |
+| `POM68K-macOS-v<v>.dmg` | macOS 11+, Universal 2 (Apple Silicon + Intel) |
+| `POM68K-Windows-v<v>.zip` | Windows x64, self-contained (no DLL beside the exe) |
+
+No ROM ships in any package — drop your own dumps into the data directory
+each package provisions on first launch (`roms/`, `hdv/`, `disks35/`; the
+in-package README says where). `POM68K --version` prints the banner and
+exits before any window — that is the CI smoke and a quick install check.
+Maintainers: run the *Build bionic builder image* workflow once, pin the
+digests it prints into `release.yml`, then push a version tag.
 
 ## Run
 

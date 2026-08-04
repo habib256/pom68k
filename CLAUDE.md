@@ -42,6 +42,7 @@ The profile list lives in **one** place: the `kProfiles` table in
 | `APPLETALK.md` | AppleTalk / LocalTalk / LLAP reference + netatalk/CUPS bridge — read before touching `Scc8530`/`LtoUdp` |
 | `IOP_BRINGUP.md` | Mac IIfx / Quadra 900-950 blueprint — the Apple PIC IOP (R65C02) + OSS brick, milestone plan |
 | `DUO_BRINGUP.md` | PowerBook Duo 230 blueprint — the MSC + PG&E (68HC05 Power Manager) brick, milestone plan |
+| `CACHE_040.md` | 68040 copyback/snooping blueprint — no oracle, no DMA client yet, M0 CM-bit numbers, milestones M1-M3 |
 
 ## Status (2026-08-04)
 
@@ -78,8 +79,15 @@ The profile list lives in **one** place: the `kProfiles` table in
   2026-08-03; Sonora, VASP, RBV, Centris, Q700/Eclipse, Q630 2026-08-04 —
   bound = min(MCU LLE, historical batch), 27 serial gates green). Compacts,
   Mac II, IIfx and MSC stay on fixed batches, each for a stated reason
-  (`TODO.md` § 4). Next, in order: **040 copyback/snooping**, then
-  `TODO.md` § *Test & validation depth*.
+  (`TODO.md` § 4).
+- **Next: the 040 copyback/snooping chantier, M1** — blueprint + M0 landed
+  2026-08-04 (`docs/CACHE_040.md`: no oracle, no DMA client, Mac OS maps
+  98.9 % of data copyback). Then `TODO.md` § *Test & validation depth*.
+- **Release CI** ships four artifacts on tag (Linux x86_64/aarch64
+  AppImage glibc-2.27 — the aarch64 one is the Pi 400 package —, macOS
+  Universal 2 dmg, Windows x64 zip); `--version` is the headless smoke.
+  Bootstrap: run *Build bionic builder image* once, pin its digests in
+  `release.yml`.
 
 ## Conventions (inherited from POMIIGS/POM2)
 

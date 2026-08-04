@@ -56,17 +56,25 @@ en § 1 est une simplification, avec sa raison et sa condition de réouverture.
 
 **La prochaine action, par ordre de trou architectural décroissant :**
 
-1. **Échéances périphériques : huit plateformes converties** (Q605 + V8
-   le 2026-08-03 ; Sonora, VASP, RBV, Centris, Q700/Eclipse et Q630 le
-   2026-08-04 — 27 gates sériels verts, borne = min(MCU LLE, batch
-   historique), détail `CHANGELOG.md`). Restent en batch fixe, chacun
-   pour une raison dite : compacts (cycle-exact par construction),
-   Mac II, IIfx (IOP toujours actifs), MSC — § 4.
-2. **Copyback / snooping 040** — la plus grosse inexactitude CPU restante,
-   sur les huit machines 040. Chantier côté `extern/moira`.
-3. **§ 2, profondeur de test** — 9 profils sur 36 ont un gate au-delà de la
+1. **Copyback / snooping 040 — M1** (`docs/CACHE_040.md`, blueprint + M0
+   faits le 2026-08-04). La reconnaissance a recadré le chantier : pas
+   d'oracle WinUAE (le MC68040UM est la spec), pas de maître de bus
+   alternatif sur la flotte actuelle (le snooping attend le SCSIDMA
+   IIfx), et Mac OS mappe 98,9 % des données en copyback avec les modes
+   non-cacheables exactement sur les E/S et la VRAM (sonde
+   `POM68K_040_CM_STATS`). M1 = l'état architectural des tags (4 KB,
+   4 voies, lignes 16 o) derrière `POM68K_040_DCACHE`, CINV/CPUSH/CACR
+   agissant enfin sur du vrai état, **données toujours servies par le
+   bus** — gates : `cache040_test` + `ctest -L m040` flag ON. Décisions
+   d'ouverture notées au § 2 du doc (placement du hook, fenêtre DTLB du
+   JIT).
+2. **§ 2, profondeur de test** — 9 profils sur 36 ont un gate au-delà de la
    signature Finder. Décision produit prise le 2026-08-02 : on implémente le
    LLE d'abord, on construira les gates longs ensuite.
+
+*(Échéances périphériques : huit plateformes converties les 2026-08-03/04,
+27 gates sériels verts — les quatre restantes ont chacune leur raison,
+`TODO.md` § 4 / `CHANGELOG.md`.)*
 
 **Garde-fou permanent.** `Q700Memory` sert trois machines : après toute
 retouche, relancer `q700` **et** `q900`, jamais en parallèle
