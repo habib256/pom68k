@@ -127,6 +127,7 @@ void MacIIMemory::reset() {
     scsi_.reset();
     iwm_.reset();
     iwm_.attachDrive(&drive_, nullptr);
+    iwm_.setClockHz(15667200);               // ticked in machine cycles, 2x C7M
     drive_.reset();
     drive_.setSpinClockHz(15667200);         // machineTick unit (Mac II 68020)
     scc_.reset();

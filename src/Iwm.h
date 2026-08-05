@@ -30,6 +30,13 @@ public:
     // VIA PA5 — SEL bit of the drive sense/command address + head select.
     void setSel(bool sel) { sel_ = sel; }
 
+    // Clock domain of tick(). The Plus feeds CPU cycles at 7.8336 MHz (the
+    // IWM's own C7M — scale 1); the Mac II family and the SWIM1 IWM
+    // personality feed C15M cycles, where every bit window doubles (MAME
+    // swim1.cpp iwm_half_window_size = 2x iwm.cpp's). Wiring, not state —
+    // re-set at construction, never serialized (like drive_).
+    void setClockHz(int64_t hz) { clockScale_ = hz >= 15667200 ? 2 : 1; }
+
     // Advance internal time (CPU cycles) — paces the nibble stream.
     void tick(int cpuCycles);
 
@@ -64,6 +71,7 @@ private:
     bool ph_[4] = { false, false, false, false };
     bool enable_ = false, driveSel_ = false, q6_ = false, q7_ = false;
     bool sel_ = false;
+    int clockScale_ = 1;                  // tick() cycles per C7M clock
     uint8_t mode_ = 0, dataReg_ = 0;
     int cellPhase_ = 0;
     int clearCountdown_ = 0;              // delayed clear after a data read

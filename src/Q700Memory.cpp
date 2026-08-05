@@ -117,8 +117,13 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
     asc_.onIrq = [this](bool s) { ascIrq(s); };
     drive0_.setSuperDrive(true);
     drive1_.setSuperDrive(true);
-    drive0_.setSpinClockHz(15667200);        // SWIM1 cell domain = C15M
-    drive1_.setSpinClockHz(15667200);
+    // drive_.tick unit = CPU cycles (Centris/Q605 contract): spin_ and
+    // spinCyclesPerRev() must share one clock or every sense the guest
+    // times off the drive (index, tach, rotation angle) runs cpuHz/C15M
+    // too fast. The SWIM1 cell engines still run at C15M — that domain
+    // is syncSwimFromCpu's, not the spindle's.
+    drive0_.setSpinClockHz(cpuHz_);
+    drive1_.setSpinClockHz(cpuHz_);
     swim_.attachDrive(&drive0_, &drive1_);
     rtc_.factoryDefaults();
     rtc_.setXpram(0x8A, uint8_t(rtc_.xpram(0x8A) | 0x05));   // 32-bit clean

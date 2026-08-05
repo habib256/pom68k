@@ -95,6 +95,13 @@ void SonyDrive::reset() {
     dirToZero_ = false;
     switched_ = false;
     wrState_ = wrSync_ = wrAddrPos_ = wrDataPos_ = 0;
+    // A machine reset mid-write must not leave stale nibbles for the next
+    // flushWrite to commit as a half-sector (insert/eject already clear it).
+    gcrWrBuf_.clear();
+    // MAME mac_floppy device_reset: m_mfm = m_has_mfm — a SuperDrive powers
+    // up in MFM mode (capability signature x011); the driver strobes GCR-on
+    // before touching GCR media. HD media stays MFM regardless.
+    mfmMode_ = superDrive_ || hd_;
     if (hasDisk()) encodeTrack();
 }
 
@@ -155,9 +162,11 @@ bool SonyDrive::insertImage(std::vector<uint8_t> data) {
     dirty_ = false;
     hd_ = (data.size() == kSize1440K);
     doubleSided_ = (data.size() != kSize400K);
-    // HD media forces MFM; 800K/400K stay GCR (MAME mfd75w track_changed)
+    // HD media forces MFM; 800K/400K stay GCR (MAME mfd75w track_changed).
+    // The mechanism is NOT promoted to SuperDrive by the media: an HD image
+    // in a plain 800K drive is unreadable, exactly like the real thing —
+    // SWIM platforms all setSuperDrive(true) at attach.
     mfmMode_ = hd_;
-    if (hd_) superDrive_ = true;
     image_ = std::move(data);
     track_ = 0;
     side1_ = false;
@@ -611,6 +620,11 @@ int SonyDrive::decodeGcrBytes(const uint8_t* nib, size_t n, bool side1) {
             cb != uint8_t((w2 & 0x3F) | ((h0 << 4) & 0xC0)) ||
             cc != uint8_t((w3 & 0x3F) | ((h0 << 6) & 0xC0)))
             continue;                            // checksum reject
+        // First occurrence wins — deliberately. A splice that landed at the
+        // live rotation angle can leave the sector's OLD field intact
+        // elsewhere on the track; the first field under the head from the
+        // scan origin is the one a read would return (pinned by
+        // swim2_media_test "inverse of the read path").
         bool dup = false;
         for (int s : done)
             if (s == sector) dup = true;
@@ -797,17 +811,13 @@ bool SonyDrive::sense(int addr) const {
         case 0x5: return track_ != 0;                // TKO (0 = track 0)
         case 0x6: return switched_;                  // SWITCHED / disk changed
         case 0x7: {                                  // TACH: 120 edges/rev
-            int rpm;
-            if (mfmMode_ && hd_) rpm = 300;          // SuperDrive HD (mfd75w)
-            else {
-                static const int kRpm[5] = { 394, 429, 472, 525, 590 };
-                rpm = kRpm[track_ >> 4];
-            }
-            // Plus IWM tach is measured at 7.8336 MHz; SWIM2 hosts use the
-            // same spin_ counter in CPU cycles of the attached machine —
-            // relative edge rate is what the driver compares.
-            int64_t cyclesPerRev = 7833600LL * 60 / rpm;
-            int64_t phase = (spin_ % cyclesPerRev) * 120 / cyclesPerRev;
+            // Same machine-clock rule as senseSwim reg B (2026-08-05):
+            // spin_ counts whatever cycles the platform ticks, and
+            // spinCyclesPerRev() knows both the drive clock and the
+            // per-cylinder GCR speed group. The old hardcoded 7833600
+            // read 2x fast on every C15M host of the IWM personality.
+            const int64_t cyclesPerRev = spinCyclesPerRev();
+            const int64_t phase = (spin_ % cyclesPerRev) * 120 / cyclesPerRev;
             return phase & 1;
         }
         case 0x8: return false;                      // RDDATA0

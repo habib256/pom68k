@@ -72,7 +72,9 @@ uint8_t Iwm::read(int reg) {
 
 void Iwm::write(int reg, uint8_t v) {
     access(reg);
-    if (q6_ && q7_) {
+    // MAME iwm.cpp control(): mode/data writes reach the chip only through
+    // the odd (line-set) addresses — an even access just toggles its line.
+    if ((reg & 1) && q6_ && q7_) {
         if (!enable_) mode_ = v & 0x1F;           // mode register ($1F on Mac)
         else if (writing_) {                      // write-data register
             wrData_ = v;
@@ -109,14 +111,14 @@ uint8_t Iwm::readRegister() {
 }
 
 // Nibble pacing: mode $1F = 2 µs bit cells → one GCR byte every 16 µs
-// ≈ 128 CPU cycles at 7.8336 MHz.
+// ≈ 128 C7M clocks — clockScale_ maps that onto the platform's tick unit.
 void Iwm::tick(int cpuCycles) {
     if (clearCountdown_ > 0) {
         clearCountdown_ -= cpuCycles;
         if (clearCountdown_ <= 0) { clearCountdown_ = 0; dataReg_ = 0; }
     }
     if (!enable_ || !selectedDrive() || !selectedDrive()->hasDisk()) return;
-    constexpr int kCyclesPerNibble = 128;
+    const int kCyclesPerNibble = 128 * clockScale_;
     if (writing_) {
         // Write shifter (MAME MODE_WRITE): consume the pending byte every
         // 8 bit windows; loading with nothing pending is an underrun that

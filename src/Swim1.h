@@ -30,6 +30,10 @@ class SonyDrive;
 
 class Swim1 {
 public:
+    // Every SWIM1 host ticks the chip in the C15M domain; the nested IWM
+    // personality doubles its bit windows there (MAME iwm_half_window_size).
+    Swim1() { iwm_.setClockHz(15667200); }
+
     void reset();
     void attachDrive(SonyDrive* internal, SonyDrive* external);
 
