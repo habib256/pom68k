@@ -12,6 +12,15 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+# COFF caps an object file at 65 279 sections; Moira.cpp's dispatch-table
+# instantiation blows past it (C1128, first Windows release build). /bigobj
+# lifts the cap to 2^32 and costs nothing elsewhere — tree-wide, because
+# every big translation unit here is one template pass away from the same
+# wall.
+if(MSVC)
+    add_compile_options(/bigobj)
+endif()
+
 # ─── Host-tuned optimization (perf pass 2026-07-17) ──────────────────────
 # The LC II at cache-boost 4 needs every cycle the host can give; -march=
 # native + LTO buy ~15-25% on the Moira hot loop. ON by default (POM68K is
