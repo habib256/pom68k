@@ -12,6 +12,7 @@
 #include "AfpServer.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
@@ -692,8 +693,16 @@ void AfpServer::dispatchAfp(Session& s, std::shared_ptr<AtalkStack::AtpTxn> t,
             // subsequent lookup can resolve. Don't advertise what we can't open.
             if (!nm.empty() && nm[0] != '.' && nm.size() <= 31) names.push_back(nm);
         }
+        // HFS catalogs sort case-insensitively. Fold ASCII inline rather
+        // than call strcasecmp: it is POSIX-only and MSVC spells it
+        // _stricmp. Byte-wise folding matches what strcasecmp did in the C
+        // locale, high-bit MacRoman bytes included (neither folds those).
         std::sort(names.begin(), names.end(), [](const std::string& a, const std::string& b) {
-            return strcasecmp(a.c_str(), b.c_str()) < 0;
+            return std::lexicographical_compare(
+                a.begin(), a.end(), b.begin(), b.end(),
+                [](unsigned char x, unsigned char y) {
+                    return std::tolower(x) < std::tolower(y);
+                });
         });
 
         std::vector<uint8_t> d;
