@@ -479,6 +479,8 @@ int main() {
                     (iwm.consumed[(j + 2) & 511] == 0x96 ||
                      iwm.consumed[(j + 2) & 511] == 0xAD)) marks++;
             }
+            std::printf("floppy: IWM re-reads of a latched byte: %ld\n",
+                        iwm.reReads);
             std::printf("floppy: IWM polls %ld, hits %ld (%.1f%%), "
                         "overwritten %ld; last 512 consumed: %ld sync $FF, "
                         "%ld address/data marks\n",

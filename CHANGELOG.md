@@ -56,7 +56,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **why Q605/V8 wake peripherals from conservative event deadlines, and why the 6805 IRQ costs 11 again** → [2026-08-03 — Event deadlines close the Cuda phase accommodation](#2026-08-03-event-deadlines)
 - **why the VIA E clock is 783.36 kHz and not a divisor of the CPU** → [2026-08-02 (third) — Two rates that were rounded…](#2026-08-02-eclock-asc)
 - **why bus/peripheral time is charged in MACHINE cycles, never the boosted core clock** → [2026-07-25 — The i-cache boost was accelerating the VIA bus…](#2026-07-25--the-i-cache-boost-was-accelerating-the-via-bus-lc-iii--lc-iii--iivx-fixed-and-the-iisis-boost-restored)
-- **…and the mirror image: why a correctly machine-timed drive still starves an instruction-counted guest driver at boost 4** → [2026-08-05 (seventh) — ROOT CAUSE: the i-cache boost starves the Sony driver](#2026-08-05-boost-floppy)
+- **…and the open case: why guest instruction density (the boost) decides whether a floppy mounts, when silicon says it cannot** → [2026-08-05 (seventh) — The floppy refusal is boost-triggered](#2026-08-05-boost-floppy)
 - **why the PIC1654S must be co-stepped off the un-boosted clock** → [2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
 - **why the MCU must carry `run()` overshoot as debt (RTC drift)** → [2026-07-24 — Beyond-boot gates on the LC II…](#2026-07-24--beyond-boot-gates-on-the-lc-ii--a-clock-drift-bug-they-caught)
 - **why a 2 % shift in MCU instruction rate is a deadlock, not a slowdown** → [2026-07-27 — The Macintosh TV boots again…](#2026-07-27--the-macintosh-tv-boots-again-a-2--mcu-shift-is-a-deadlock)
@@ -246,7 +246,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
-- **2026-08-05** — [ROOT CAUSE: the i-cache boost starves the Sony driver — at boost 1-2 the LC II mounts the floppy, at 4 it calls it unreadable](#2026-08-05-boost-floppy)
+- **2026-08-05** — [The floppy refusal is boost-triggered: at boost 1-2 the LC II mounts, at 3-4 it calls the disk unreadable (mechanism still open)](#2026-08-05-boost-floppy)
 - **2026-08-05** — [The LC II floppy "mount" was the init dialog all along; SWIM1-IWM never mounts, and Cmd-N was pressing \[Eject\]](#2026-08-05-lcii-floppy-dialog)
 - **2026-08-05** — [Beyond-boot reaches a second machine: Quadra 605 soak + persist, and the 53C96 finally takes a real guest WRITE](#2026-08-05-q605-beyond)
 - **2026-08-05** — [IWM/SWIM bughunt: the Q700 spindle ran 1.6x fast, and the IWM personality was half-speed-blind on C15M hosts](#2026-08-05-iwm-swim-bughunt)
@@ -437,7 +437,7 @@ Newest first.
 ---
 
 <a id="2026-08-05-boost-floppy"></a>
-## 2026-08-05 (seventh) — ROOT CAUSE: the i-cache boost starves the Sony driver — at boost 1-2 the LC II mounts the floppy, at 4 it calls it unreadable
+## 2026-08-05 (seventh) — The floppy refusal is boost-triggered: at boost 1-2 the LC II mounts, at 3-4 it calls the disk unreadable (mechanism still open)
 
 The SWIM1-IWM mount bug opened four hours earlier is **the i-cache
 boost**, and one environment variable proves it: with
@@ -469,17 +469,46 @@ How the hunt got there, in the order the evidence arrived:
   often per poll** — the signature of a guest running fast against a
   peripheral that is, in guest-instruction terms, slow.
 
-**Why it happens.** `Cpu030::cacheBoost_` (default **4**) executes four
-Moira cycles per machine cycle for cache-resident code, while the IWM
-nibble pacing is charged in *machine* cycles — correctly, per the
-2026-07-25 rule that bus time is machine time. The two are consistent
-for hardware, but System 7.5's Sony driver measures the drive with an
-**instruction-counted** retry loop: at boost 4 it exhausts its retries
-before enough nibbles arrive and declares the medium unreadable. This
-is the mirror image of the 2026-07-25 bug (which made VIA pulses 4×
-too *short* by reading the boosted clock): there the peripheral was
-sped up, here the CPU is — and only timing-calibrated guest code can
-tell.
+**What the mechanism is NOT — two hypotheses, both killed the same
+evening, before either reached a claim.**
+
+The first draft of this entry said the Sony driver uses an
+*instruction-counted retry loop* that a 4× CPU exhausts. **That was an
+inference, not a measurement, and the silicon argues against it**: on a
+real IWM the byte-ready latch clears 14 ticks of the IWM's OWN clock
+after the read (MAME `m_async_update = m_last_sync + 14`,
+`iwm.cpp:285`, `last_sync` counting `clock()` = C7M) — continuous time,
+independent of the CPU. Polling *early* costs nothing on real hardware;
+only polling *late* loses a byte. And Apple shipped this driver family
+from the 8 MHz Plus to the 40 MHz IIfx, so a 4× CPU cannot be what
+makes a real machine refuse a disk. Retracted before it hardened.
+
+Two concrete suspects were then tested:
+
+- **The hold window was mis-scaled — a real defect, fixed, and NOT the
+  cause.** `clearCountdown_ = 14` was decremented in the tick unit,
+  which is C15M on every `Swim1` host, so the byte was held ~0.89 µs
+  instead of silicon's ~1.79 µs. This is the exact "half-speed-blind on
+  C15M hosts" class the 2026-08-05 (fourth) hunt fixed for
+  `kCyclesPerNibble` and missed one line away. Now `14 * clockScale_`.
+  Boost 4 still shows the dialog, so the conformance fix stands on its
+  own merits and buys nothing here.
+- **Duplicate reads of a latched byte: refuted by counter.** Our clear
+  is quantized to `tick()` while silicon's runs in continuous time, so
+  a boosted CPU could in principle re-read one valid byte many times
+  and decode duplicates. Measured (`Iwm::reReads`): **17 614 re-reads
+  against 190 450 MSB-set reads — 9 %**, and unchanged in shape across
+  the cliff. Not the mechanism.
+
+**So the boost is a reliable TRIGGER whose mechanism is not located
+yet.** What is established: the pacing is right in machine cycles
+(2026-07-25 rule), the medium, GCR encoder and IWM model are exonerated
+by the Plus control, the stream reaching the guest contains valid marks,
+and the driver dies without ever leaving track 0. What is not
+established is why guest instruction density changes that outcome —
+and until it is, no fix should be chosen, because "lower the default
+boost" would be papering over an unidentified defect rather than
+correcting one.
 
 **The cliff is sharp and sits between 2 and 3** — swept, not guessed:
 
@@ -498,11 +527,12 @@ failure is so binary. Blast radius: every `Swim1` platform on a boosted 030 — 
 VASP (IIvx, IIvi). Sonora carries a `Swim2` and the Quadras a
 different driver, which is why `q605_floppy_boot_etalon` never noticed.
 
-**No fix landed** — the choice is a product decision with a measured
-price on both sides (drop the default boost and pay it on every 030
-boot; suspend the boost while the drive motor runs; or keep it and
-document floppy work as a boost-1 activity), and the honest next step
-is measuring that price rather than picking now. Reproducer:
+**No fix landed, and deliberately so** — the mechanism is unlocated, so
+every candidate (drop the 030 default, gate the boost while the motor
+runs, keep 4 and document floppy work as boost-1) would be a
+symptom-level patch. The honest next step is to find out what the
+guest actually gives up on: trace the ROM's Sony driver at the point it
+returns its error, the way `sony_trace` does for the Plus. Reproducer:
 `POM68K_BEYOND=floppy POM68K_CACHE_BOOST=1 ./build/lcii_beyond_etalon`
 (drop the boost var to see it fail; `POM68K_DUMP=1` for the dialog).
 

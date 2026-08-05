@@ -89,30 +89,34 @@ retouche, relancer `q700` **et** `q900`, jamais en parallèle
   7.6 image restored from a source. One open lead from the same hunt:
   GISTPERSO (7.5.5) on the IIfx wedges at ROM `$4081B66E` under
   single-ID — never a supported combo, parked in memory.
-- **The i-cache boost starves the Sony driver: no 800K GCR floppy mounts
-  on a boosted 030** — DIAGNOSED 2026-08-05, fix is a product decision,
-  nothing landed (`CHANGELOG.md` § 2026-08-05 (seventh)). System 7.5
-  answers every insert with "unreadable — Initialize?" at the default
-  `cacheBoost_ = 4`; at **boost 1 or 2 the volume mounts** (desktop icon,
-  head reaches track 10, real 6-and-2 nibbles consumed). The driver's
-  retry loop is instruction-counted while the IWM is correctly paced in
-  machine cycles, so a 4× CPU makes the drive 4× too slow *in guest
-  terms* — the mirror of the 2026-07-25 boosted-bus bug. Cliff swept:
-  1 ✓, 2 ✓, 3 ✗, 4 ✗ (hit rate 9.8/5.9/4.8/4.5 % — it is the retry
-  budget, not bandwidth). Control that exonerates medium and encoder:
+- **No 800K GCR floppy mounts on a boosted 030 — boost-TRIGGERED, root
+  cause NOT located** (2026-08-05, `CHANGELOG.md` § 2026-08-05
+  (seventh)). System 7.5 answers every insert with "unreadable —
+  Initialize?" at the default `cacheBoost_ = 4`; at **boost 1 or 2 the
+  volume mounts** (desktop icon, head reaches track 10, real 6-and-2
+  nibbles consumed). Cliff swept: 1 ✓, 2 ✓, 3 ✗, 4 ✗ (hit rate
+  9.8/5.9/4.8/4.5 % — the rate barely moves across it).
+  **Silicon says this should be impossible**: the IWM's byte-ready
+  latch clears 14 ticks of its OWN clock after a read (continuous time,
+  CPU-independent), polling early is free, and Apple shipped this
+  driver from the 8 MHz Plus to the 40 MHz IIfx. So the trigger is ours,
+  and two mechanisms are already ruled out by measurement: the
+  mis-scaled hold window (a real conformance defect, FIXED —
+  `14 * clockScale_`, it was half-length on every C15M host — but boost
+  4 still fails) and duplicate reads of a latched byte (`Iwm::reReads`
+  = 17 614 vs 190 450 MSB-set reads, 9 %, flat across the cliff).
+  **Next: trace what the driver gives up ON** — `sony_trace` is the
+  Plus-side precedent (instruction trace once nibbles flow); the LC II
+  needs the equivalent at the point the ROM returns its error, not more
+  black-box counters. Do NOT lower the boost as a "fix" until then.
+  Control that exonerates medium and encoder:
   `system_boot_etalon` boots the **Mac Plus** off the same
   `Disk605.dsk` at 26.6 % hit rate. Affects every `Swim1` platform on a
   boosted 030 — V8 (LC, LC II, Classic II, Color Classic, Mac TV), RBV
   (IIsi, IIci), VASP (IIvx, IIvi); Sonora has a `Swim2`, the Quadras a
   different driver.
-  **Next, in order:** (1) measure what boost 1 and 2 cost on
-  `lcii_boot_etalon` wall time — the price of the simple fix; (2) decide
-  among: lower the 030 default, gate the boost while the drive motor
-  runs (note the adaptive boost was retired 2026-07-17 for a constant
-  ratio — reintroducing conditionality needs that entry read first), or
-  keep 4 and document floppy work as boost-1; (3) only then a MOUNT
-  gate, which must fail on today's default before it is worth anything.
-  Reproducer: `POM68K_BEYOND=floppy POM68K_CACHE_BOOST=1
+  A MOUNT gate comes only after the mechanism is found — it must fail
+  on today's default before it is worth anything. Reproducer: `POM68K_BEYOND=floppy POM68K_CACHE_BOOST=1
   ./build/lcii_beyond_etalon` (drop the var to see it fail;
   `POM68K_DUMP=1` for the dialog screenshot).
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**

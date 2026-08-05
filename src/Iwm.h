@@ -46,6 +46,7 @@ public:
     uint8_t consumed[512] = {};           // ring of nibbles the CPU consumed
     int consumedPos = 0;
     long overwritten = 0;                 // nibbles replaced before being read
+    long reReads = 0;                     // MSB-set reads of an already-latched byte
     long written = 0;                     // bytes shipped to the drive
 
     // ── Save states (SaveState.h) ───────────────────────────────────────
@@ -57,7 +58,7 @@ public:
            cellPhase_, clearCountdown_,
            writing_, wrPending_, wrUnderrun_, wrData_, wrPhase_);
         ar(readCount, dataReads, dataHits, senseCount,
-           consumed, consumedPos, overwritten, written);
+           consumed, consumedPos, overwritten, written, reReads);
     }
 
 private:

@@ -91,8 +91,21 @@ uint8_t Iwm::readRegister() {
         // read (MAME m_last_sync + 14). The ROM relies on it: `tst.b` polls
         // the MSB, then `move.b` re-reads the same nibble an instant later.
         if ((v & 0x80) && clearCountdown_ == 0) {
-            clearCountdown_ = 14;
+            // 14 ticks of the IWM'S OWN clock (MAME `m_last_sync + 14`,
+            // iwm.cpp:285, where last_sync counts clock() ticks) — so the
+            // hold is ~1.79 us of wall time whatever the host. It must be
+            // scaled onto the tick unit exactly like kCyclesPerNibble is,
+            // or a C15M host holds the byte for half as long as silicon.
+            clearCountdown_ = 14 * clockScale_;
             consumed[consumedPos] = v; consumedPos = (consumedPos + 1) & 511;
+        } else if (v & 0x80) {
+            // Re-read of a byte already latched: on silicon the clear runs
+            // in continuous time, so a faster CPU simply sees the same
+            // valid byte for the rest of the 1.79 us. Counted because our
+            // clear is quantized to tick() — a driver that takes each
+            // MSB-set read as a NEW nibble would decode duplicates, and
+            // the count is how a boosted CPU could change decode outcomes.
+            reReads++;
         }
         return v;
     }
