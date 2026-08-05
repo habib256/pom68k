@@ -72,6 +72,25 @@
 #include <emscripten.h>
 #endif
 
+// ─── Windows shims (first MSVC build, 2026-08-05) ────────────────────────
+// MSVC ships none of the POSIX env/time calls, and its <GL/gl.h> — dragged
+// in by glfw3.h — stops at OpenGL 1.1, so the 1.2 constant GL_BGRA is
+// missing from the HEADER only: the 3.x core context requested below
+// supplies the format at runtime on every target. Everything here is a
+// spelling difference, not a behaviour change.
+#ifdef _WIN32
+#ifndef GL_BGRA
+#define GL_BGRA 0x80E1
+#endif
+#define timegm _mkgmtime
+static inline void setenv(const char* k, const char* v, int) { _putenv_s(k, v); }
+static inline void unsetenv(const char* k) { _putenv_s(k, ""); }
+// localtime_s takes its two arguments in the opposite order to localtime_r.
+static inline std::tm* localtime_r(const std::time_t* t, std::tm* out) {
+    return localtime_s(out, t) == 0 ? out : nullptr;
+}
+#endif
+
 static std::vector<uint8_t> readFile(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return {};
@@ -246,7 +265,11 @@ static uint32_t hostMacSeconds() {
     std::time_t now = std::time(nullptr);
     std::tm lt{};
     localtime_r(&now, &lt);
-    return uint32_t(uint64_t(now) + uint64_t(int64_t(lt.tm_gmtoff)) + 2082844800ULL);
+    // Re-read the LOCAL broken-down time as if it were UTC — that IS the
+    // wall clock the RTC keeps. Equivalent to the old now + tm_gmtoff (DST
+    // included, since localtime_r already folded it into the fields), and
+    // it needs no tm_gmtoff, which MSVC's struct tm does not have.
+    return uint32_t(uint64_t(int64_t(timegm(&lt))) + 2082844800ULL);
 }
 
 static std::string execDir() {
