@@ -63,3 +63,10 @@ dist/
 build-release/
 build-appimage/
 build-universal-deps/
+
+# Guest-side dev apps (dev/): SOURCES are committed — the Retro68
+# toolchain (user-built, ~11 GB, see dev/README.md) and the app build
+# trees are not (dev/*/build/ is already caught by the global build/
+# rule; the two toolchain trees need naming)
+dev/Retro68/
+dev/Retro68-build/

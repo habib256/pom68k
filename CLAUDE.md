@@ -28,6 +28,7 @@ The profile list lives in **one** place: the `kProfiles` table in
 | Moira provenance + every local patch (incl. the JIT seam) | `extern/moira/POM68K_VENDOR.md` |
 | JIT design, invariants, measurements | `src/jit/POM68K_JIT.md` |
 | Host-side tools (`dir2hfs.py`, `rominfo`, `pgo_train.sh`, netatalk/macip bridges) | `tools/` |
+| Guest-side apps (Retro68): **prober** (in-guest conformance + JSONL report over AFP), **mac-rogue**, toolchain bootstrap | `dev/` (`dev/README.md`) |
 
 `docs/` — research notes, one topic each:
 
