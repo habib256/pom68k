@@ -56,7 +56,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **why Q605/V8 wake peripherals from conservative event deadlines, and why the 6805 IRQ costs 11 again** → [2026-08-03 — Event deadlines close the Cuda phase accommodation](#2026-08-03-event-deadlines)
 - **why the VIA E clock is 783.36 kHz and not a divisor of the CPU** → [2026-08-02 (third) — Two rates that were rounded…](#2026-08-02-eclock-asc)
 - **why bus/peripheral time is charged in MACHINE cycles, never the boosted core clock** → [2026-07-25 — The i-cache boost was accelerating the VIA bus…](#2026-07-25--the-i-cache-boost-was-accelerating-the-via-bus-lc-iii--lc-iii--iivx-fixed-and-the-iisis-boost-restored)
-- **…and the open case: why guest instruction density (the boost) decides whether a floppy mounts, when silicon says it cannot** → [2026-08-05 (seventh) — The floppy refusal is boost-triggered](#2026-08-05-boost-floppy)
+- **…and the open case: why guest instruction density (the boost) decides whether a floppy mounts, when silicon says it cannot** → [2026-08-05 (seventh) — The floppy refusal is boost-triggered](#2026-08-05-boost-floppy), **answered by** [2026-08-05 (eighth) — the denibble path compressed below the IWM's 14-tick hold duplicates nibbles](#2026-08-05-sony-giveup)
 - **why the PIC1654S must be co-stepped off the un-boosted clock** → [2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
 - **why the MCU must carry `run()` overshoot as debt (RTC drift)** → [2026-07-24 — Beyond-boot gates on the LC II…](#2026-07-24--beyond-boot-gates-on-the-lc-ii--a-clock-drift-bug-they-caught)
 - **why a 2 % shift in MCU instruction rate is a deadlock, not a slowdown** → [2026-07-27 — The Macintosh TV boots again…](#2026-07-27--the-macintosh-tv-boots-again-a-2--mcu-shift-is-a-deadlock)
@@ -246,6 +246,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-05** — [The floppy boost gate: freeze the boost to 1 while the motor runs — first LC II GCR mount ever, `lcii_floppy_etalon` asserts it](#2026-08-05-floppy-boost-gate)
+- **2026-08-05** — [What the driver gives up ON: badDCksum on the MDB — the boost compresses the denibble path below the IWM's 14-tick hold, the poll re-reads the same nibble](#2026-08-05-sony-giveup)
 - **2026-08-05** — [The floppy refusal is boost-triggered: at boost 1-2 the LC II mounts, at 3-4 it calls the disk unreadable (mechanism still open)](#2026-08-05-boost-floppy)
 - **2026-08-05** — [The LC II floppy "mount" was the init dialog all along; SWIM1-IWM never mounts, and Cmd-N was pressing \[Eject\]](#2026-08-05-lcii-floppy-dialog)
 - **2026-08-05** — [Beyond-boot reaches a second machine: Quadra 605 soak + persist, and the 53C96 finally takes a real guest WRITE](#2026-08-05-q605-beyond)
@@ -436,8 +438,147 @@ Newest first.
 
 ---
 
+<a id="2026-08-05-floppy-boost-gate"></a>
+## 2026-08-05 (ninth) — The floppy boost gate: freeze the i-cache boost to 1 while the motor runs, and the LC II mounts its first GCR floppy ever
+
+The fix the (eighth) entry's mechanism dictates, landed the same
+evening. Since the IWM model is conformant (MAME parity, and the
+driver's own `tst.b`-then-`move.b` capture DEPENDS on the 14-tick
+hold), the correction lives on the CPU side: **while the floppy motor
+runs, the effective boost is 1** — which IS the real machine clock, so
+Apple's hand-timed denibble path clears the hold exactly as it does on
+silicon. `POM68K_FLOPPY_BOOST_GATE=0` disables the gate and reproduces
+the refusal (the negative control every claim below was run against).
+
+Mechanics, in the three 030 wrappers that carry a `Swim1`
+(`Cpu030`/V8 — including the 68020 LC —, `RbvCpu`, `VaspCpu`):
+
+- `boost_` (effective) replaces `cacheBoost_` in every clock
+  conversion — `stall`, `flushTicks`, `schedulePeriphDeadline`,
+  `machineClock()`. The gate is re-evaluated in `flushTicks()` at a
+  settled point (`mem_.floppyStreaming()` = the drive's motor line).
+- **`machineClock()` must never jump**: a switch rebases
+  `machineBase_/clockBase_` so machine time stays continuous and
+  monotonic (every device `syncTo()` depends on it). The bases are run
+  state — each gated epoch leaves a permanent offset against the old
+  `clock/cacheBoost_` formula — so they join the `"CPU "` save-state
+  chunk (old snapshots of these three families refuse cleanly; the
+  format gained 16 bytes).
+- **`runCycles` delivers its budget in MACHINE terms** through 4096-
+  cycle chunks: a single core-clock target computed with the old ratio
+  would mis-deliver a whole slice's machine time when the gate flips
+  mid-slice — the sound-tempo-wobble class. The `periphAccum_`
+  remainder is rescaled at the switch, so no tick fraction is lost.
+
+Results, all on fresh binaries, serial:
+
+- `lcii_sony_trace` at default boost 4: **`_MountVol` returns 0**, 21
+  Primes all noErr, reReads 342 (boost-1 profile exactly, none in the
+  data loops), hit rate 9.8 %. With the gate off: -72 ×3 → -36, as
+  before.
+- `lcii_floppy_etalon` now asserts the MOUNT — desktop icon strip
+  Δ1388 px, **guest write committed** (MDB drAtrb $0100 → $0000, the
+  read-write mount clearing "cleanly unmounted"), flushed to the host
+  file, HFS intact, re-insert OK. This is the TODO §1 gate, and it
+  fails on the pre-fix defect via the kill switch. **First GCR mount
+  on the LC II/SWIM1 path ever** — the (sixth) entry established it
+  had never worked.
+- Non-regression, 8 gates green: `savestate_v8_test`,
+  `savestate_030_test` (both formats round-trip), `lcii_boot_etalon`,
+  `lcii_savestate_etalon`, `iisi_boot_etalon` (RBV),
+  `iivx_boot_etalon` (VASP), `mactv_boot_etalon` (the phase-fragile
+  Cuda transport), `jit_lcii_boot_etalon` (the chunked `runCycles`
+  under the JIT engine).
+
+Residual, printed-not-asserted in the gate: Cmd-N on the mounted
+floppy repaints the window (3069 px) but no "untitled folder" reaches
+the floppy's catalog — the hard disk stays untouched, so the gesture
+went to the right window; the catalog write is a separate question
+(TODO §2). The Sonora/`Swim2` machines never needed the gate;
+the Quadras keep their own driver.
+
+<a id="2026-08-05-sony-giveup"></a>
+## 2026-08-05 (eighth) — What the driver gives up ON: badDCksum on the MDB, because the boost compresses Apple's denibble path below the IWM's 14-tick hold and the mid-group poll re-reads the same nibble
+
+The (seventh) entry ended with a prescription — trace the ROM's Sony
+driver at the point it returns its error, the way `sony_trace` does for
+the Plus — and following it located the mechanism in one session.
+`tests/lcii_sony_trace` (dev tool, `EXCLUDE_FROM_ALL`) boots the LC II
+to the Finder, resolves the .Sony driver through the unit table
+(UTableBase `$11C`; on this machine `dCtlDriver` is a plain ROM pointer
+to `$A6C3E0` even though the DCE flags word has `$4000` set — read it
+pointer-first, name-validated), inserts the 800K image, then
+single-steps the 030 journaling every Prime/Control call with its param
+block and the `ioResult` it completes with, plus trap-level `_MountVol`
+and the diskEvt `_PostEvent`.
+
+**What the journal says at boost 4** (default, refuses):
+
+- The File Manager asks for one thing over and over: sector 2, the MDB
+  (`PRIME READ off=$400 req=$200`). The driver burns 54-69 M machine
+  cycles per call (~34 disk revolutions of internal retries) and returns
+  **-72 badDCksum, three times**; `_MountVol` turns that into **-36
+  ioErr**, and the Finder shows the init dialog. The head never leaves
+  track 0 because the driver never gets PAST the volume's first sector.
+- **Zero nibbles are lost mid-data-field** (per-PC loss attribution: of
+  664 312 overwritten nibbles, 99.3 % die while the CPU spins in the
+  Device Manager's sync-wait `move.w ($10,A0),D0 / bgt` at `$A0BB8C` —
+  between attempts, by design). The stream is consumed complete and on
+  time.
+- Yet the buffer diverges from the image **from byte 0**, different
+  garbage each attempt: the driver denibbled a full field of wrong
+  VALUES, not a truncated one.
+
+**The wrong values are duplicates.** Per-PC attribution of
+`Iwm::reReads` (a poll landing back inside the 14-tick post-read hold
+gets the SAME latched nibble, MSB set) across the boost sweep:
+
+| boost | reReads total | at `$A6E332` (mid-group data poll) | outcome |
+|---|---|---|---|
+| 1 | 345 | 0 | MOUNTED, `_MountVol` 0 |
+| 2 | 13 248 | 11 448 | badDCksum ×3 (stepped harness; the batch-paced etalon still mounts — the margin is that thin) |
+| 3 | 13 460 | 11 230 | badDCksum ×3 |
+| 4 | 15 365 | 9 487 (+2 378 at `$A6E34C`) | badDCksum ×3 |
+
+`$A6E332` is the poll with only **four instructions** of work since the
+previous consume at `$A6E324` — `or.b (0,A3,D3.w),D1; rol.b #2,D1;
+move.b D1,D2; and.b D0,D2`, the 6-and-2 denibble inner path. At the real
+15.6672 MHz that path takes ~2 µs, JUST above the hold (14 IWM clocks ≈
+1.79 µs ≈ 28 machine cycles): Apple timed it to clear the window. The
+boost divides the instruction time by 4 while the hold stays in machine
+time, the poll comes back inside the window, and every data field gets
+~46 duplicated nibbles — which is why the checksum fails EVERY attempt
+and the failure is binary, exactly the (seventh) entry's observation
+that it behaves like a retry budget running out rather than bandwidth.
+
+**One claim of (seventh) corrected**: "polling early is free" is only
+true when waiting for the NEXT byte. Polling early after a CONSUME
+re-delivers the same byte — on silicon too (MAME `iwm.cpp:284` re-arms
+the hold on *every* access while a byte is latched; our model is the
+conservative variant, first-read-armed, and still duplicates). The hold
+is not a modelling artifact to remove: the driver's own
+`tst.b`-then-`move.b` capture pattern (DEV.md § 3.1) DEPENDS on it —
+the benign duplicates at boost 1 are exactly those `tst.b` sites.
+
+**No fix landed yet — but now the candidates can be judged against a
+mechanism.** The IWM model is conformant (MAME-parity plus the LC II
+driver's own dependence on the hold), so the fix belongs on the CPU
+side: the boost must not compress guest code below silicon pacing while
+it talks to the IWM — e.g. gate the boost to 1 while the floppy is
+streaming (boost 1 IS the real 15.6672 MHz, Apple's timing restored), or
+charge the data-side bus reads their real machine time under boost.
+Blast radius unchanged: every Swim1 platform on a boosted 030 (V8, RBV,
+VASP). Reproducer: `./build/lcii_sony_trace --frames 2400` at
+`POM68K_CACHE_BOOST=4` vs `=1`, diff the journals.
+
 <a id="2026-08-05-boost-floppy"></a>
 ## 2026-08-05 (seventh) — The floppy refusal is boost-triggered: at boost 1-2 the LC II mounts, at 3-4 it calls the disk unreadable (mechanism still open)
+
+> **Superseded:** the mechanism is located —
+> [2026-08-05 (eighth)](#2026-08-05-sony-giveup): the boost compresses
+> the denibble inner path below the IWM's 14-tick hold and the driver
+> consumes duplicated nibbles; "polling early is free" was the flawed
+> step in this entry's silicon argument.
 
 The SWIM1-IWM mount bug opened four hours earlier is **the i-cache
 boost**, and one environment variable proves it: with

@@ -678,7 +678,13 @@ implementation actually depends on, several found the hard way with
 - **Data register**: nibble MSB-set when ready; it clears **~14 IWM clocks
   AFTER a read**, not immediately — the ROM does `tst.b` (poll) then
   `move.b` (capture) and both must see the same nibble. Modelled with a
-  14-cycle countdown re-armed only on the first read.
+  14-cycle countdown re-armed only on the first read. The flip side: a
+  poll landing back inside the hold after a CONSUME re-reads the SAME
+  nibble (silicon does too — MAME `iwm.cpp:284`), and Apple's denibble
+  inner path is hand-timed to JUST clear the window at real speed — which
+  is why the 030 i-cache boost must freeze to 1 while the motor runs (the
+  floppy boost gate, `Cpu030::pollBoostGate`; CHANGELOG 2026-08-05
+  (eighth)/(ninth)).
 - **TACH (sense 7) must be time-based** (spin counter × zone RPM
   394/429/472/525/590, 120 edges/rev): the ROM measures spindle speed by
   timing tach edges against VIA T2 *before* reading data. A
@@ -695,7 +701,11 @@ implementation actually depends on, several found the hard way with
   +6 (`$4418`), then jumps to bbEntry at +2 (a `BRA.W` in real blocks).
   Code placed directly at +2 is rejected by the version check → eject.
 - Debug tooling: `sony_trace` (instruction-level driver trace with
-  idle-loop filtering), IWM per-reg/sense counters, consumed-nibble ring.
+  idle-loop filtering), `lcii_sony_trace` (the V8/030 sibling: Prime/
+  Control journal off the unit table, `_MountVol` at trap level, per-PC
+  loss/duplicate attribution — the tool that located the boost-vs-hold
+  mechanism, CHANGELOG 2026-08-05 (eighth)), IWM per-reg/sense counters,
+  consumed-nibble ring.
 - Gates: `gcr_test`, `iwm_write_test`, `floppy_persist_test`,
   `floppy_sound_test`.
 
@@ -1118,6 +1128,7 @@ documented before 2026-07-31:
 | `POM68K_Q700_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q700Cpu` |
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
 | `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the 030 CPUs (`Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`) |
+| `POM68K_FLOPPY_BOOST_GATE` | `=0` disables the floppy boost gate on the `Swim1` 030s (`Cpu030`, `RbvCpu`, `VaspCpu`) — the boost then compresses the Sony denibble path below the IWM's 14-tick hold and GCR mounts fail with badDCksum (the pre-2026-08-05 defect, kept reproducible for `lcii_sony_trace`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
 | `POM68K_040_DCACHE` | arm the M1 architectural cache-TAG model on the 040s (`docs/CACHE_040.md` § M1) — tags, dirty bits and CINV/CPUSH scopes become real state; **data is still served by the bus**, default off |
 | `POM68K_PERIPH_STATS` | count the peripheral catch-up path (Cpu040 only): catchUp/flushTicks/mem.tick calls + cycles per call, printed at exit. The old `POM68K_PERIPH_BATCH` knob is GONE — fixed batching was replaced by event deadlines on eight platforms (2026-08-03/04, `CHANGELOG.md` § *Event deadlines*); the remaining fixed-batch machines (compacts, Mac II, IIfx, MSC) have no knob |
@@ -1215,8 +1226,8 @@ gate lands, so **re-derive rather than trust them**. (`src/jit/POM68K_JIT.md`
 § 5 carries the same tiers with the per-lockstep-flavour breakdown and the
 timings — it is the authority on the JIT side of this loop.) Asset-dependent gates
 soft-skip when the user-provided ROM/disk images are absent. The
-whole-machine `*_trace` binaries (`sony_trace`, `q605_trace`,
-`macii_mouse_trace`, …) are `EXCLUDE_FROM_ALL` dev tools, not gates — the
+whole-machine `*_trace` binaries (`sony_trace`, `lcii_sony_trace`,
+`q605_trace`, `macii_mouse_trace`, …) are `EXCLUDE_FROM_ALL` dev tools, not gates — the
 gate is the `add_test` NAME, which is not always the binary name
 (`macii_mouse_trace` registers as `macii_mouse_etalon`).
 

@@ -45,6 +45,9 @@ Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020)
         int v = atoi(p);
         if (v >= 0 && v <= 64) icacheMiss_ = v;   // boosted cycles charged per miss
     }
+    boost_ = cacheBoost_;
+    if (const char* g = getenv("POM68K_FLOPPY_BOOST_GATE"))
+        floppyGate_ = atoi(g) != 0;
     // Arm the i-cache timing overlay folded into Moira's fetch path
     // (Moira.h § PomIcache; model rationale in Cpu030.h).
     pomIcache.armed = true;
@@ -83,7 +86,7 @@ void Cpu030::runCycles(moira::i64 n) {
         // VBL, VIA timers, RTC seconds and ASC output all ran at 1/4 cadence
         // for as long as the logger was armed, perturbing the very timing the
         // logger exists to diagnose.
-        moira::i64 target = getClock() + n * cacheBoost_;
+        moira::i64 target = getClock() + n * boost_;
         while (getClock() < target && !isHalted()) {
             uint32_t pc = getPC();
             pcRing_[pcRingPos_++ % pcRing_.size()] = pc;
@@ -101,12 +104,24 @@ void Cpu030::runCycles(moira::i64 n) {
             }
         }
     } else {
-        // n is a peripheral (machine) cycle budget; run cacheBoost_× more
-        // Moira cycles so the core does a real 68030's worth of work per
-        // frame (constant i-cache throughput ratio, see Cpu030.h). One fixed
-        // ratio → uniform sound/timer tempo.
-        const moira::i64 target = getClock() + n * cacheBoost_;
-        if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
+        // n is a peripheral (machine) cycle budget; run boost_× more Moira
+        // cycles so the core does a real 68030's worth of work per frame
+        // (constant i-cache throughput ratio, see Cpu030.h). One fixed
+        // ratio → uniform sound/timer tempo. The budget is delivered in
+        // MACHINE terms through bounded chunks: the floppy gate can flip
+        // boost_ mid-slice (inside a flushTicks at a peripheral deadline),
+        // and a single core-clock target computed with the old ratio would
+        // then over- or under-deliver machine time for the whole slice —
+        // the sound-tempo wobble failure class.
+        const moira::i64 end = machineClock() + n;
+        while (machineClock() < end && !isHalted()) {
+            const moira::i64 chunk =
+                std::min<moira::i64>(end - machineClock(), 4096);
+            const moira::i64 target = getClock() + chunk * boost_;
+            if (jit_.enabled()) jit_.executeUntil(target);
+            else executeUntil(target);
+            flushTicks();
+        }
     }
     flushTicks();                  // callers sample ASC/VBL state after a slice
 }
@@ -204,10 +219,10 @@ void Cpu030::updateIpl() {
 // Plus contention model.
 void Cpu030::stall(int cycles) {
     // Wait states are machine cycles (VIA E-clock, SWIM +5) — scale into
-    // Moira time so they keep their real duration under cacheBoost_ > 1
+    // Moira time so they keep their real duration under boost_ > 1
     // (the Cpu040 convention; CHANGELOG 2026-07-25).
     if (cycles <= 0) return;
-    clock += moira::i64(cycles) * cacheBoost_;
+    clock += moira::i64(cycles) * boost_;
     catchUp();
 }
 
@@ -223,9 +238,23 @@ void Cpu030::catchUp() {
 
 void Cpu030::schedulePeriphDeadline() {
     const moira::i64 machine = std::max(1, mem_.cyclesToNextEvent());
-    moira::i64 d = machine * cacheBoost_ - periphAccum_;
+    moira::i64 d = machine * boost_ - periphAccum_;
     if (d < 1) d = 1;
     periphDeadline_ = clock + d;
+}
+
+// Re-evaluate the floppy boost gate at a settled point (peripherals just
+// ticked, so motorOn() is current). Rebasing keeps machineClock()
+// continuous; the sub-boost remainder dropped at clockBase_ is < 1 machine
+// cycle per switch, and switches happen twice per floppy session.
+void Cpu030::pollBoostGate() {
+    const int want =
+        (floppyGate_ && mem_.floppyStreaming()) ? 1 : cacheBoost_;
+    if (want == boost_) return;
+    machineBase_ += (clock - clockBase_) / boost_;
+    clockBase_ = clock;
+    periphAccum_ = periphAccum_ * want / boost_;   // keep the tick fraction
+    boost_ = want;
 }
 
 void Cpu030::flushTicks() {
@@ -233,11 +262,12 @@ void Cpu030::flushTicks() {
     if (d <= 0) return;
     lastPeriphClock_ = clock;
     // Scale elapsed Moira cycles down to machine cycles so peripherals keep
-    // their real cadence while the core runs kCacheBoost× more instructions.
+    // their real cadence while the core runs boost_× more instructions.
     periphAccum_ += d;
-    int m = int(periphAccum_ / cacheBoost_);    // scale elapsed Moira cycles back
-    periphAccum_ -= moira::i64(m) * cacheBoost_; // to real machine cycles
+    int m = int(periphAccum_ / boost_);         // scale elapsed Moira cycles back
+    periphAccum_ -= moira::i64(m) * boost_;     // to real machine cycles
     if (m) mem_.tick(m);           // VIA1 timers (φ2 = CPU/20) + 60.15 Hz
+    pollBoostGate();
     schedulePeriphDeadline();
 }
 

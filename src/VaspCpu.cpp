@@ -3,6 +3,7 @@
 
 #include "VaspCpu.h"
 #include "VaspMemory.h"
+#include <algorithm>
 #include <cstdlib>
 
 namespace {
@@ -35,6 +36,9 @@ VaspCpu::VaspCpu(VaspMemory& mem, bool withFpu)
         int v = atoi(p);
         if (v >= 0 && v <= 64) icacheMiss_ = v;
     }
+    boost_ = cacheBoost_;
+    if (const char* g = getenv("POM68K_FLOPPY_BOOST_GATE"))
+        floppyGate_ = atoi(g) != 0;
     pomIcache.armed = true;
     pomIcache.missPenalty = icacheMiss_;
     pomIcache.reset();
@@ -54,8 +58,17 @@ void VaspCpu::didChangeCACR(moira::u32 value) {
 }
 
 void VaspCpu::runCycles(moira::i64 n) {
-    const moira::i64 target = getClock() + n * cacheBoost_;
-    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
+    // Deliver the machine-cycle budget in bounded chunks: the floppy gate
+    // can flip boost_ mid-slice, and a single core-clock target computed
+    // with the old ratio would mis-deliver machine time (Cpu030 pattern).
+    const moira::i64 end = machineClock() + n;
+    while (machineClock() < end && !isHalted()) {
+        const moira::i64 chunk =
+            std::min<moira::i64>(end - machineClock(), 4096);
+        const moira::i64 target = getClock() + chunk * boost_;
+        if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
+        flushTicks();
+    }
     flushTicks();
 }
 
@@ -70,7 +83,7 @@ void VaspCpu::updateIpl() {
 
 void VaspCpu::stall(int cycles) {
     if (cycles <= 0) return;
-    clock += moira::i64(cycles) * cacheBoost_;   // machine cycles → core clock
+    clock += moira::i64(cycles) * boost_;        // machine cycles → core clock
     catchUp();
 }
 
@@ -89,10 +102,23 @@ void VaspCpu::flushTicks() {
     if (d <= 0) return;
     lastPeriphClock_ = clock;
     periphAccum_ += d;
-    int m = int(periphAccum_ / cacheBoost_);
-    periphAccum_ -= moira::i64(m) * cacheBoost_;
+    int m = int(periphAccum_ / boost_);
+    periphAccum_ -= moira::i64(m) * boost_;
     if (m) mem_.tick(m);
+    pollBoostGate();
     schedulePeriphDeadline();
+}
+
+// The Cpu030 floppy boost gate: re-evaluated at a settled point, rebased
+// so machineClock() never jumps (rationale in Cpu030.h/.cpp).
+void VaspCpu::pollBoostGate() {
+    const int want =
+        (floppyGate_ && mem_.floppyStreaming()) ? 1 : cacheBoost_;
+    if (want == boost_) return;
+    machineBase_ += (clock - clockBase_) / boost_;
+    clockBase_ = clock;
+    periphAccum_ = periphAccum_ * want / boost_;
+    boost_ = want;
 }
 void VaspCpu::schedulePeriphDeadline() {
     // min(next observable machine-cycle bound, the historical batch): the
@@ -101,7 +127,7 @@ void VaspCpu::schedulePeriphDeadline() {
     // coarsen (TODO § 4, extension inventory 2026-08-04).
     moira::i64 machine = mem_.cyclesToNextEvent();
     if (machine < 1) machine = 1;
-    moira::i64 d = machine * cacheBoost_ - periphAccum_;
+    moira::i64 d = machine * boost_ - periphAccum_;
     if (d > kPeriphBatch) d = kPeriphBatch;
     if (d < 1) d = 1;
     periphDeadline_ = clock + d;

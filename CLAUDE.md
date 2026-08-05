@@ -212,3 +212,7 @@ spec/oracle conflict, the oracle wins.** The 040 path has an ATC fast path and
 a throughput/i-cache overlay (`POM68K_Q605_CACHE_BOOST`, default **4**; the
 old boost-1 pin was a stale SCSI symptom); no architectural copyback/snooping
 yet. Bus timing is counted on **machine** cycles, never on the boosted clock.
+On the `Swim1` 030s the boost **freezes to 1 while the floppy motor runs**
+(Apple's denibble path is hand-timed to the IWM's 14-tick hold;
+`POM68K_FLOPPY_BOOST_GATE=0` reproduces the old GCR-mount refusal —
+`CHANGELOG.md` 2026-08-05 (eighth)/(ninth)).

@@ -26,20 +26,22 @@
 //             the whole target — INQUIRY $05, the Apple magic MODE SENSE
 //             page $30, READ TOC, 2048-byte READ(10) — against a real
 //             guest driver rather than a unit-test CDB.
-//   floppy  — guest-level 800K floppy insert + READ over the real SWIM1:
-//             insert after the Finder is up; the System must poll the
-//             drive and read the medium, and the medium must survive
-//             eject + re-insert intact. What it does NOT prove — and for
-//             ten months pretended to — is a MOUNT: System 7.5 answers
-//             this insert with the "unreadable — Initialize?" dialog
-//             (whose box IS the changed-region "window" the 2026-07-29
-//             claim was built on; retraction in CHANGELOG 2026-08-05).
-//             The dialog also explains the old "Cmd-N reaches neither
-//             volume" mystery: it is modal, and the gesture's Return
-//             pressed its default button [Eject]. The mount itself is
-//             the open SWIM1-IWM bug in TODO §1; the same images mount
-//             on the Q605/SWIM2. `floppy_persist_test` covers the
-//             device-side write→eject→flush plumbing.
+//   floppy  — guest-level 800K floppy insert + MOUNT + guest write over
+//             the real SWIM1: insert after the Finder is up; the System
+//             must poll the drive, read the medium, put the volume's
+//             icon on the desktop (asserted on the icon strip), clear
+//             the MDB's "cleanly unmounted" bit (the deterministic
+//             read-write-mount write), and the medium must survive
+//             eject + re-insert intact. The mount is the 2026-08-05
+//             floppy-boost-gate fix (CHANGELOG (eighth)/(ninth)): the
+//             CPU wrappers freeze the i-cache boost to 1 while the
+//             motor runs, restoring Apple's hand-tuned denibble timing
+//             against the IWM's 14-tick hold. Negative control:
+//             POM68K_FLOPPY_BOOST_GATE=0 brings back the "unreadable —
+//             Initialize?" dialog (which is what this gate saw — and
+//             mistook for a window — for ten months; retraction in
+//             CHANGELOG 2026-08-05 (sixth)). `floppy_persist_test`
+//             covers the device-side write→eject→flush plumbing.
 // POM68K_DUMP=1 writes lcii_beyond_<mode>.ppm for eyeballing/calibration.
 // Soft-skips without the LC II ROM + a bootable hdv/ image.
 
@@ -650,16 +652,17 @@ int main() {
         SonyDrive probe;
         bool reinsert = probe.insert(floppyCopy) && probe.hasDisk();
         std::printf("floppy: re-insert %s\n", reinsert ? "OK" : "FAILED");
-        // Asserted: the System REACTED to the insert (polled the drive and
-        // read the medium — today that ends in the init dialog, see above),
-        // and the medium survived the round trip byte-intact. A MOUNT is
-        // deliberately NOT asserted: it does not happen on this machine
-        // (TODO §1), and asserting it on the changed-region signature is
-        // exactly the false green this gate carried for ten months.
-        // `guestWrote` / `changed` / `got` are PRINTED above but not
-        // asserted — no guest write can happen while the volume never
-        // mounts.
-        ok = !cpu.isHalted() && responded && sizeOk && stillHfs && reinsert;
+        // Asserted since the boost-gate fix: the volume MOUNTS (desktop
+        // icon strip — the judge a user would use, never a changed-region
+        // diff), the guest WRITES to the medium (drAtrb, committed
+        // sectors), the write reaches the host file, and the medium
+        // survives the round trip. This is the TODO §1 mount gate: it was
+        // run against the pre-fix defect (POM68K_FLOPPY_BOOST_GATE=0
+        // reproduces it) and fails there — init dialog, no icon, no write.
+        // `got` (the Cmd-N folder ON the floppy) stays printed-not-asserted:
+        // the catalog write is a separate open question (TODO §2).
+        ok = !cpu.isHalted() && responded && stripDelta >= 50 && guestWrote
+             && changed && sizeOk && stillHfs && reinsert;
         std::remove(floppyCopy.c_str());
     } else {
         std::fprintf(stderr, "FAIL: unknown POM68K_BEYOND=%s\n", mode.c_str());

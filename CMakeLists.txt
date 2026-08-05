@@ -1261,6 +1261,11 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # Dev tool (not a gate): real LC II ROM boot trace on the O6 machine.
     add_executable(lcii_trace EXCLUDE_FROM_ALL tests/lcii_trace.cpp)
 
+    # Dev tool (not a gate): .Sony driver give-up trace on the LC II —
+    # the sony_trace pattern aimed at the TODO §1 boosted-030 mount bug.
+    add_executable(lcii_sony_trace EXCLUDE_FROM_ALL tests/lcii_sony_trace.cpp)
+    target_link_libraries(lcii_sony_trace PRIVATE pom68k_core)
+
     # Dev tool (not a gate): LC 475 / Quadra 605 ROM boot trace (Q5).
     add_executable(q605_trace EXCLUDE_FROM_ALL tests/q605_trace.cpp)
     target_link_libraries(q605_trace PRIVATE pom68k_core)

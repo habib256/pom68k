@@ -48,10 +48,15 @@ public:
                                             // — in REAL machine cycles
     void flushTicks();                      // run peripherals up to `clock`
 
-    // The core clock runs at cacheBoost_× machine rate. Bus models (E-clock
-    // alignment, wait states) must work in machine cycles: on real silicon
-    // the i-cache accelerates instruction fetch, never a VIA bus cycle.
-    moira::i64 machineClock() const { return clock / cacheBoost_; }
+    // The core clock runs at boost_× machine rate — boost_ is cacheBoost_
+    // normally and 1 while the floppy motor runs (the gate below). Bus
+    // models (E-clock alignment, wait states) must work in machine cycles:
+    // on real silicon the i-cache accelerates instruction fetch, never a
+    // VIA bus cycle. machineBase_/clockBase_ keep this continuous and
+    // monotonic across gate switches.
+    moira::i64 machineClock() const {
+        return machineBase_ + (clock - clockBase_) / boost_;
+    }
 
     // Diagnostic Line-F logger (SimCity-2000 "coprocesseur absent" crash,
     // TODO § O6). When enabled, runCycles single-steps and keeps a ring of
@@ -83,6 +88,14 @@ public:
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
         ar(lastPeriphClock_, periphAccum_, periphDeadline_);
+        // The machineClock() continuity bases ARE run state: every gate
+        // epoch (floppy streaming at boost 1) leaves a permanent offset
+        // between clock/cacheBoost_ and true machine time; dropping it on
+        // restore would shift every device syncTo() stamp by the total
+        // gated time. boost_ itself is re-derived (env knob + motor state
+        // at the first flushTicks after the restore).
+        ar(machineBase_, clockBase_);
+        if constexpr (Ar::loading) boost_ = cacheBoost_;
     }
 
 private:
@@ -135,6 +148,23 @@ private:
     moira::i64 periphAccum_ = 0;   // sub-ratio remainder for exact scaling
     moira::i64 periphDeadline_ = 0;
     void schedulePeriphDeadline();
+
+    // ── Floppy boost gate (CHANGELOG 2026-08-05 (eighth)) ───────────────
+    // Apple's 6-and-2 denibble inner path is hand-timed to JUST clear the
+    // IWM's 14-tick post-read hold (~1.79 µs) at the real clock; the boost
+    // compresses it below the window, the next poll re-reads the SAME
+    // latched nibble (silicon-conformant — MAME iwm.cpp:284 re-arms the
+    // hold on every access), and every 512-byte field checksums wrong
+    // (badDCksum → "unreadable — Initialize?"). While the floppy motor
+    // runs, boost_ freezes to 1: boost 1 IS the real machine clock, i.e.
+    // Apple's timing restored. Switched only in flushTicks(), rebasing
+    // machineBase_/clockBase_ so machineClock() never jumps.
+    // POM68K_FLOPPY_BOOST_GATE=0 disables (reproduces the refusal for
+    // lcii_sony_trace).
+    int boost_ = 4;                // effective ratio (== cacheBoost_ or 1)
+    bool floppyGate_ = true;
+    moira::i64 machineBase_ = 0, clockBase_ = 0;
+    void pollBoostGate();
 
     // The 68030 on-chip i-cache model itself (MC68030UM §6: 256 bytes = 16
     // lines × 4 longwords, logical, direct-mapped, non-burst fill) lives

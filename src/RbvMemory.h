@@ -151,6 +151,9 @@ public:
     }
     Swim1& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive_; }
+    // Floppy boost gate input (RbvCpu::pollBoostGate) — the Cpu030/V8
+    // pattern, CHANGELOG 2026-08-05 (eighth).
+    bool floppyStreaming() const { return drive_.motorOn(); }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {

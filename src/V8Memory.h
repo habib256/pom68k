@@ -189,6 +189,10 @@ public:
     bool hasCudaMcu() const { return spiceClass(); }
     SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
+    // Floppy boost gate input (Cpu030::pollBoostGate): while the motor
+    // runs, the Sony denibble path must keep Apple's real timing against
+    // the IWM's 14-tick hold — CHANGELOG 2026-08-05 (eighth).
+    bool floppyStreaming() const { return drive_.motorOn(); }
     void ejectDisk() { drive_.eject(); }
     // Mechanical drive sounds (GUI only; headless leaves sinks null).
     void attachDriveSounds(FloppySoundSink* floppy, FloppySoundSink* hdd) {

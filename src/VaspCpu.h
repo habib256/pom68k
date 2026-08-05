@@ -34,13 +34,20 @@ public:
     void flushTicks();
 
     // Bus time is not accelerated by the i-cache — see SonoraCpu.h.
-    moira::i64 machineClock() const { return clock / cacheBoost_; }
+    // boost_ is cacheBoost_ normally, 1 while the floppy motor runs (the
+    // Cpu030 floppy boost gate); the bases keep this continuous.
+    moira::i64 machineClock() const {
+        return machineBase_ + (clock - clockBase_) / boost_;
+    }
 
     // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
-    // cacheBoost_/icacheMiss_ are environment tuning, not guest state.
+    // cacheBoost_/icacheMiss_ are environment tuning, not guest state; the
+    // machineClock() bases ARE run state (see Cpu030.h).
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
         ar(lastPeriphClock_, periphAccum_, periphDeadline_);
+        ar(machineBase_, clockBase_);
+        if constexpr (Ar::loading) boost_ = cacheBoost_;
     }
 
 private:
@@ -69,4 +76,11 @@ private:
     moira::i64 periphAccum_ = 0;
     moira::i64 periphDeadline_ = 0;
     static constexpr moira::i64 kPeriphBatch = 128;
+
+    // Floppy boost gate — the Cpu030 pattern (rationale + invariants in
+    // Cpu030.h; CHANGELOG 2026-08-05 (eighth)).
+    int boost_ = 4;
+    bool floppyGate_ = true;
+    moira::i64 machineBase_ = 0, clockBase_ = 0;
+    void pollBoostGate();
 };
