@@ -244,6 +244,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-05** — [Beyond-boot reaches a second machine: Quadra 605 soak + persist, and the 53C96 finally takes a real guest WRITE](#2026-08-05-q605-beyond)
 - **2026-08-05** — [IWM/SWIM bughunt: the Q700 spindle ran 1.6x fast, and the IWM personality was half-speed-blind on C15M hosts](#2026-08-05-iwm-swim-bughunt)
 - **2026-08-05** — [The m040 sweep is paid and the cache chantier closes at M1](#2026-08-05-cache040-closed)
 - **2026-08-05** — [The M1 bughunt: three real defects the gates were green over](#2026-08-05-cache040-bughunt)
@@ -430,6 +431,45 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-05-q605-beyond"></a>
+## 2026-08-05 (fifth) — Beyond-boot reaches a second machine: Quadra 605 soak + persist, and the 53C96 finally takes a real guest WRITE
+
+TODO § 2's first closer, on the LC II template
+(`lcii_beyond_etalon.cpp`): `tests/q605_beyond_etalon.cpp`, one CTest
+entry per scenario — `q605_soak_etalon` and `q605_persist_etalon`
+(labels auto-derive to `etalon` + `m040`; 145 → 147 gates). The Q605
+side reuses the boot etalon's own plumbing — GDevice-PixMap decode
+through the DAFB CLUT and the full menu+desktop luminance signature —
+rather than a hardcoded mode, and holds every key 150 frames per the
+`q605_cudalle_key_etalon` convention, so the gates stay green whether
+or not the image's Easy Access state ever regresses.
+
+- **soak** — 180 emulated seconds idle after the Finder: the Mac clock
+  advanced **exactly 180 s** (window 135-225), no halt, Finder
+  signature intact, Cuda LLE active. This is the gate class that
+  catches the MCU-overclock drift family (CHANGELOG 2026-07-29) which
+  boot gates are blind to — now armed on a Cuda machine, not just the
+  LC II's Egret.
+- **persist** — Cmd-N in the 8.1 Finder, catalog needle
+  `untitled folder` ×14 → ×16, image bytes modified, and **+145 838
+  DMA bytes through the 53C96 during the gesture** — the first gate to
+  drive the TurboSCSI WRITE path end to end from a real guest
+  (every other 53C96 gate boots read-only). After a deliberate hard
+  reset with no clean unmount, the machine boots back to the Finder
+  off the modified volume and the folder is still in the catalog.
+- One calibration finding, measured not assumed: the **post-reset
+  reboot needs more than 12 000 frames** (the clean-boot budget that
+  walled the first run) and fits in 24 000. Plausibly 8.1's
+  consistency pass over the dirty volume (drVolAtrb bit 8 clear — the
+  reset skips the unmount by design; surviving that is part of what
+  "persist" claims), but the attribution is a hypothesis; the budget
+  is the measurement. The LC II template's 16 000 on System 7.5 hid
+  the same headroom question.
+
+Also verified en route: `Ncr53c96::reset()` keeps its attached targets
+and stat counters (only the transaction state clears), so a mid-run
+`hardReset()` needs no re-attach — the reboot leg rests on that.
 
 <a id="2026-08-04-iifx-mirror-cd-hot"></a>
 

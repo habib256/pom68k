@@ -51,8 +51,8 @@ The profile list lives in **one** place: the `kProfiles` table in
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **145 CTest gates** (`ctest -N` 2026-08-05: 67 `unit`, 8 `smoke`,
-  16 `jit`, 33 `m040`, 74 `etalon`); last FULL run **143/143 green**,
+- **147 CTest gates** (`ctest -N` 2026-08-05: 67 `unit`, 8 `smoke`,
+  16 `jit`, 35 `m040`, 76 `etalon`); last FULL run **143/143 green**,
   2026-08-03, on a **fully rebuilt tree** (`make` first, 150
   objects/binaries relinked), 3 h 03.
   **The `make` is part of the claim, not a detail.** An earlier run the
@@ -156,7 +156,7 @@ carries no `kProfiles` entry yet — it is gated, not GUI-wired.
 | **V8 / Eagle / Spice / Tinker Bell** | LC (68020+HMMU), LC II, Classic II, Color Classic, Mac TV | `V8Memory.*` (`Model`, `spiceClass()`, `cpuHz`), `Cpu030.*`, `V8Video.h` | `lc_/lcii_/classic2_/cclassic_/mactv_boot_etalon`, `lcii_sys7_/soak/persist/launch/floppy_etalon` | MAME `maclc.cpp`/`v8.cpp` |
 | **Sonora** | LC III, LC III+, LC 520, LC 550, Color Classic II | `SonoraMemory.*` (`cpuHz`/`machineId`/`cudaAdb`), `SonoraCpu.*`, `SonoraVideo.h` | `lc3_/lc3plus_/lc520_/lc550_/cclassic2_boot_etalon`, `lc3_/lc520_input_etalon` | MAME `sonora.cpp`/`maclc3.cpp`/`mv_sonora.cpp`; `docs/LC520_BRINGUP.md` |
 | **VASP** (V8 peripherals on Sonora addressing) | IIvx, IIvi | `VaspMemory.*`, `VaspCpu.*`, `VaspVideo.h` | `iivx_/iivi_boot_etalon`, `iivx_input_etalon` | MAME `vasp.cpp`/`maciivx.cpp` |
-| **MEMCjr + PrimeTime** | LC 475, LC 575, Quadra 605 | `Q605Memory.*`, `Cpu040.*` | `q605_boot/floppy_boot/nofpu_boot/barefpu_boot/ot_bind_etalon`, `lc475_/lc575_boot_etalon` | MAME `macquadra605.cpp` |
+| **MEMCjr + PrimeTime** | LC 475, LC 575, Quadra 605 | `Q605Memory.*`, `Cpu040.*` | `q605_boot/floppy_boot/nofpu_boot/barefpu_boot/ot_bind_etalon`, `q605_soak/persist_etalon`, `lc475_/lc575_boot_etalon` | MAME `macquadra605.cpp` |
 | **djMEMC + IOSB** | Centris 610/650, Quadra 610/650/800 | `CentrisMemory.*`, `CentrisCpu.*` (reuse `Dafb`/`Ncr53c96`/`Swim2`/`AscIosb`/`PseudoVia` + `Rtc` + `AdbVia`) | `centris610/650_`, `quadra610/650/800_boot_etalon` | MAME `macquadra800.cpp`/`djmemc.cpp`/`iosb.cpp` |
 | **Discrete 040** (Mac II front end + Quadra back end) | Quadra 700; **Quadra 900 / 950** = the same board with the IIfx's front end (two `ApplePic` IOPs, `Egret` instead of the discrete RTC, a 2nd 53C96) | `Q700Memory.*` (`Model {Spike,Q900,Q950}`), `Q700Cpu.*`; SCSI through DAFB's own TurboSCSI cell | `q700_/q900_/q950_boot_etalon` | `DEV.md` § *Discrete-040 platform*; `docs/IOP_BRINGUP.md` § M7 |
 | **F108 + PrimeTime II + Valkyrie** | Quadra 630, LC 580 | `Q630Memory.*`, `Q630Cpu.*`, `Valkyrie.*` (fixed-mode framebuffer) | `q630_/lc580_boot_etalon` | MAME `valkyrie.cpp` |

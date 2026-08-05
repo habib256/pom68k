@@ -6,12 +6,14 @@ live in `CHANGELOG.md` (implementation detail in `DEV.md`, vendor notes in
 in `src/jit/POM68K_JIT.md`).
 
 **Counts verified 2026-08-05** — re-verify before quoting them anywhere:
-- **145 CTest gates** (`ctest -N`): 67 `unit`, 8 `smoke`, 16 `jit`, 33 `m040`,
-  74 `etalon` (144th: the CD-bay hot-swap gate, 2026-08-04; 145th:
-  `cache040_test`, 2026-08-05). Last FULL suite 143/143 on 2026-08-03,
+- **147 CTest gates** (`ctest -N`): 67 `unit`, 8 `smoke`, 16 `jit`, 35 `m040`,
+  76 `etalon` (144th: the CD-bay hot-swap gate, 2026-08-04; 145th:
+  `cache040_test`, 2026-08-05; 146th/147th: `q605_soak/persist_etalon`,
+  2026-08-05). Last FULL suite 143/143 on 2026-08-03,
   3 h 01; since then the touched tiers ran green (incl. the full `m040`
-  tier 33/33 on fresh binaries, flag ON, 2026-08-05) but a full
-  rebuilt-tree `ctest` has not — schedule one before quoting 145/145.
+  tier 33/33 on fresh binaries, flag ON, 2026-08-05, and the two new
+  Q605 beyond-boot gates on fresh binaries the same day) but a full
+  rebuilt-tree `ctest` has not — schedule one before quoting 147/147.
   The 8.1 image was GUI-cleaned 2026-08-05 (drVolAtrb back to $0100).
 - **36 machine profiles** = 36 tags in `SnapMachine`, `src/SaveStateMachines.h`.
 
@@ -173,9 +175,10 @@ after it has demonstrated sensitivity** — and only after it has demonstrated
 ## 2. Test & validation depth — the single biggest gap
 
 The gates prove **boot**, not **use**, and the machine fan-out made the ratio
-worse. Of the **36 profiles** covered by the **143 gates**, only **9** have any
+worse. Of the **36 profiles** covered by the **147 gates**, only **9** have any
 gate past the Finder signature: LC II (`lcii_soak/persist/launch/floppy_etalon`
-+ `lcii_savestate_etalon`), Quadra 605 (`q605_cudalle_mouse/key_etalon`,
++ `lcii_savestate_etalon`), Quadra 605 (`q605_soak/persist_etalon` —
+2026-08-05, the second beyond-boot machine —, `q605_cudalle_mouse/key_etalon`,
 `q605_cdrom/cdboot_etalon`, `q605_savestate_etalon`, `q605_ot_bind_etalon`),
 Mac II (`macii_mouse_etalon`), **Mac Plus** (`input_etalon` — mouse
 quadrature + M0110 keys), the four input gates from 2026-07-29
@@ -189,12 +192,11 @@ useless for real work.
 
 Highest-ROI closers, in order:
 
-- [ ] **Soak + persist on a second machine (Quadra 605 / Mac OS 8.1).** The LC
-  II template is `tests/lcii_beyond_etalon.cpp` (`CMakeLists.txt:908-916`, one
-  gate per scenario). A Q605 persist run also exercises the 53C96 **WRITE**
-  path end to end, which nothing else does. Blocked on nothing but the work —
-  the old "once save states land" blocker is gone (save states shipped
-  2026-07-30).
+- [x] **Soak + persist on the Quadra 605 — LANDED 2026-08-05**
+  (`q605_soak_etalon`, `q605_persist_etalon`; the persist run drives the
+  53C96 WRITE end to end — `CHANGELOG.md` § 2026-08-05 (fifth)). Natural
+  next second machines: a `launch`/`floppy` pair on the Q605, or soak on a
+  boot-only profile (RBV / VASP / AIO — the freshness tail).
 - [ ] **Floppy: a guest-INITIATED write.** `lcii_floppy_etalon` proves
   mount+read but asserts nothing about writing, because no gesture has yet made
   the guest write to the medium. Evidence 2026-07-29: the volume mounts

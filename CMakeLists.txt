@@ -771,6 +771,21 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME q605_savestate_etalon COMMAND q605_savestate_etalon
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # Beyond-boot gates on the Quadra 605 (second machine after the LC II,
+    # TODO §2): idle soak (Mac clock keeps time — catches the MCU-overclock
+    # class), and Finder file creation surviving a reboot — the one gate
+    # that drives the 53C96 WRITE path end to end from a real guest
+    # (soft-skips without assets).
+    add_executable(q605_beyond_etalon tests/q605_beyond_etalon.cpp)
+    target_link_libraries(q605_beyond_etalon PRIVATE pom68k_core)
+    foreach(scenario soak persist)
+        add_test(NAME q605_${scenario}_etalon COMMAND q605_beyond_etalon
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(q605_${scenario}_etalon PROPERTIES
+                             ENVIRONMENT "POM68K_BEYOND=${scenario}"
+                             TIMEOUT 1800)
+    endforeach()
+
     # Phase C gate: Macintosh LC (68020 on the same V8 board, 2 MB
     # soldered) boots to the Finder (soft-skips without ROM + image).
     add_executable(lc_boot_etalon tests/lc_boot_etalon.cpp)
