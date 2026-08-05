@@ -9,9 +9,10 @@ in `src/jit/POM68K_JIT.md`).
 - **145 CTest gates** (`ctest -N`): 67 `unit`, 8 `smoke`, 16 `jit`, 33 `m040`,
   74 `etalon` (144th: the CD-bay hot-swap gate, 2026-08-04; 145th:
   `cache040_test`, 2026-08-05). Last FULL suite 143/143 on 2026-08-03,
-  3 h 01; since then the touched tiers ran green but a full rebuilt-tree
-  `ctest` has not — schedule one before quoting 145/145 (blocked anyway
-  on the dirty 8.1 image, § 1).
+  3 h 01; since then the touched tiers ran green (incl. the full `m040`
+  tier 33/33 on fresh binaries, flag ON, 2026-08-05) but a full
+  rebuilt-tree `ctest` has not — schedule one before quoting 145/145.
+  The 8.1 image was GUI-cleaned 2026-08-05 (drVolAtrb back to $0100).
 - **36 machine profiles** = 36 tags in `SnapMachine`, `src/SaveStateMachines.h`.
 
 House rule for this file: an item earns its place by saying **what to do next**,
@@ -57,22 +58,14 @@ en § 1 est une simplification, avec sa raison et sa condition de réouverture.
 
 **La prochaine action, par ordre de trou architectural décroissant :**
 
-1. **Copyback / snooping 040 — M1 FAIT le 2026-08-05** (`docs/CACHE_040.md`
-   § M1) : l'état architectural des tags (4 KB, 4 voies, lignes 16 o,
-   dirty par longword) derrière `POM68K_040_DCACHE`, CINV/CPUSH/CACR
-   agissant enfin sur du vrai état, **données toujours servies par le
-   bus**. Durci le même jour par une chasse aux bugs adversariale
-   (3 défauts réels corrigés, 4 trous de gate épinglés —
-   `CHANGELOG.md` § 2026-08-05 (later)). Gates verts flag ON :
-   `cache040_test` (44 checks), `sst68040` (7 200 vecteurs), les 5
-   lockstep JIT. **Reste de M1 : le balayage
-   `ctest -L m040` flag ON**, bloqué par l'image 8.1 sale (§ 1) — à
-   lancer après le nettoyage GUI ponctuel. Ensuite : point de décision
-   M2 (§ 3 du doc) — n'ouvrir le chemin données que sur motivation
-   concrète.
-2. **§ 2, profondeur de test** — 9 profils sur 36 ont un gate au-delà de la
+1. **§ 2, profondeur de test** — 9 profils sur 36 ont un gate au-delà de la
    signature Finder. Décision produit prise le 2026-08-02 : on implémente le
    LLE d'abord, on construira les gates longs ensuite.
+
+*(Copyback/snooping 040 : chantier **CLOS à M1** le 2026-08-05 —
+balayage `m040` 33/33 flag ON sur binaires frais, décision M2
+documentée avec ses conditions de réouverture, `docs/CACHE_040.md`
+§ 3 / `CHANGELOG.md` § 2026-08-05 (third).)*
 
 *(Échéances périphériques : huit plateformes converties les 2026-08-03/04,
 27 gates sériels verts — les quatre restantes ont chacune leur raison,
@@ -86,14 +79,6 @@ retouche, relancer `q700` **et** `q900`, jamais en parallèle
 
 ## 1. Red now
 
-- **`hdv/MacOS-8.1-boot.vhd` is dirty again** (drVolAtrb bit 8 = 0,
-  image mtime 2026-08-04 23:46 — a GUI session left it attached): the
-  Quadra-class boot etalons fail with the documented phantom signature
-  (menu 230.6/8.3, `pom68k-dirty-boot-image-gate-failures`), verified
-  2026-08-05 with the M1 cache flag OFF **and** ON (identical numbers —
-  the image, not the code). Needs the one-time GUI cleanup (boot + Menu
-  Special ▸ Éteindre), then `ctest -L m040` and the flag-ON sweep M1
-  still owes (§ 0).
 - **The IIfx etalons** (`iifx_boot/input/post_etalon`): red since
   2026-08-04 because `hdv/MacOS-7.6-boot.vhd` was corrupted by the
   all-ID SCSI mirror era (seven concurrent mounts of one volume — see

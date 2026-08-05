@@ -29,6 +29,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
+
 - **a belief held for a whole day and overturned three times: Q6.4 "not a Cuda framing bug" … then it was** → [2026-07-19 — Q6.4 re-localized: it is a System-launch HANDOFF failure, NOT a Cuda…](#2026-07-19--q64-re-localized-it-is-a-system-launch-handoff-failure-not-a-cuda-reply-framing-bug-the-prior-completion-isr-buffer-smash-lead-is-disproven-no-fix-landed-yet)
 - **…and the entry that closed it** → [2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the block-0 loop…](#2026-07-19--q64--q62-both-resolved-the-boot-restart-loop-and-the-block-0-loop-were-one-coupled-cuda-reply-framing-bug-the-system-now-loads)
 - **the Q605 `CACHE_BOOST` default of 1 ("boost 2+ fails SCSI bring-up") was stale — it is 4 now** → [2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
@@ -242,6 +244,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-05** — [IWM/SWIM bughunt: the Q700 spindle ran 1.6x fast, and the IWM personality was half-speed-blind on C15M hosts](#2026-08-05-iwm-swim-bughunt)
+- **2026-08-05** — [The m040 sweep is paid and the cache chantier closes at M1](#2026-08-05-cache040-closed)
 - **2026-08-05** — [The M1 bughunt: three real defects the gates were green over](#2026-08-05-cache040-bughunt)
 - **2026-08-05** — [Cache 040 M1: CINV and CPUSH finally act on real state, and the tags cost nothing](#2026-08-05-cache040-m1)
 - **2026-08-04** — [The IIfx SCSI mirror mounted one volume seven times; CDs hot-mount under 8.1; the MacIP window opens up](#2026-08-04-iifx-mirror-cd-hot)
@@ -428,6 +432,99 @@ Newest first.
 ---
 
 <a id="2026-08-04-iifx-mirror-cd-hot"></a>
+
+<a id="2026-08-05-iwm-swim-bughunt"></a>
+## 2026-08-05 (fourth) — IWM/SWIM bughunt: the Q700 spindle ran 1.6x fast, and the IWM personality was half-speed-blind on C15M hosts
+
+A line-by-line hunt over `Iwm`/`Swim1`/`Swim2`/`SonyDrive` against the
+MAME oracles (`iwm.cpp`, `swim1.cpp`, `swim2.cpp`, plus `floppy.cpp`
+fetched for `mac_floppy`). Two real defects, three conformance fixes,
+one wrong turn, two exonerations:
+
+- **Q700/Q900/Q950 spindle clock mismatch** (the find of the hunt).
+  `Q700Memory` set `setSpinClockHz(15667200)` — a leftover from the
+  original Spike bring-up (a663b76) — while ticking the drives in
+  machine cycles at 25/33 MHz. Every observable derived from `spin_`
+  (senseSwim index reg 4/C, tach reg B, the rotation angle
+  `syncCellsToRotation` lands on) ran cpuHz/C15M ≈ 1.6x (2.1x on the
+  Q950) too fast. This is exactly the class a11c29c fixed *inside*
+  `SonyDrive` the day before; the Q700 platform contract predated it
+  and was never migrated — and no Eclipse floppy gate existed to
+  notice. Now `setSpinClockHz(cpuHz_)`, the Centris/Q605 contract.
+  The SWIM1 *cell* engines stay in C15M via `syncSwimFromCpu` — that
+  domain is the controller's, not the spindle's.
+- **The IWM personality ran the disk 2x fast on every C15M host**
+  (Mac II family ticking `Iwm` in 15.6672 MHz machine cycles; the
+  SWIM1 IWM personality on V8/RBV/IIfx/Q700). `kCyclesPerNibble = 128`
+  assumed C7M ticks, and `SonyDrive::sense()` case 7 (TACH) hardcoded
+  7833600 against a machine-cycle `spin_` — two errors that agreed
+  with each other (nibbles AND tach both 2x), which is why floppy
+  boots never noticed. MAME settles the intent: `swim1.cpp
+  iwm_half_window_size()` returns exactly 2x `iwm.cpp`'s values —
+  the real chip doubles its bit windows at C15M. `Iwm::setClockHz()`
+  now scales the nibble window (Swim1 hardwires it, `MacIIMemory`
+  sets it), and the IWM tach shares `spinCyclesPerRev()` with the
+  SWIM senses — one clock rule everywhere, per-cylinder speed groups
+  included.
+- **IWM mode/data writes latched on even accesses**: MAME's
+  `control()` only routes a write through `(offset & 1)`; POM
+  applied it whenever Q6·Q7 ended up set, so a write to an even
+  clear-line address in (1,1) state could clobber the mode register.
+  Now gated on the odd address.
+- **`SonyDrive::reset()` hardening**: clears `gcrWrBuf_` (a machine
+  reset mid-write could commit a stale half-sector on the next
+  flush) and adopts MAME's `m_mfm = m_has_mfm` — a SuperDrive powers
+  up in MFM mode, giving the documented x011 capability signature
+  before any media lands. And `insertImage()` no longer promotes the
+  mechanism to SuperDrive on an HD image: an HD disk in a plain 800K
+  drive is unreadable, exactly like the real thing.
+- **The wrong turn, kept for the record**: the hunt flagged
+  `decodeGcrBytes`' first-wins sector dedup as a defect ("a rewrite
+  in the same window should last-win") and the fix promptly broke
+  `swim2_media_test`. First-wins is load-bearing: a splice landing at
+  the live rotation angle can leave the sector's OLD field intact
+  elsewhere on the track, and the first field under the head is what
+  a read returns. Reverted, and the comment now says why.
+- **Exonerated, worth recording**: `Swim1`'s write timing
+  `params_[P_TIME1] + 2*2` is verbatim MAME (not a precedence bug);
+  and senseSwim reg 3 returning `!hasDisk()` is *equivalent* to
+  MAME's dskchg because `mac_floppy` sets `m_dskchg_writable = true`
+  (insertion re-arms the flag by itself) — the open 7.5.5 hot-insert
+  refusal (TODO § 1) does **not** hide there.
+
+Gates: `gcr/iwm_write/swim1/swim2/swim2_media_test`, unit 67/67,
+smoke 8/8, and serially `disk_boot`, `system_boot`, `lcii_boot`,
+`lcii_floppy` (the max-risk one: SWIM1 host, 2x window + MFM reset),
+`q605_floppy_boot`, `q700_boot` (the fixed platform), `macii_boot` —
+all green on freshly built binaries.
+
+<a id="2026-08-05-cache040-closed"></a>
+## 2026-08-05 (third) — The m040 sweep is paid and the cache chantier closes at M1
+
+The 8.1 boot volume got its one-time GUI cleanup in the morning
+(drVolAtrb back to $0100 at 10:08 — it had been left attached by a GUI
+session the night before), which unblocked the sweep M1 still owed:
+**`ctest -L m040`, 33/33 green with `POM68K_040_DCACHE=1`, on freshly
+relinked binaries** (29 targets rebuilt first — the m040 tier shares
+binaries: centris610/quadra610/650/800 ride `centris650_boot_etalon`,
+q900/q950 ride `q700_boot_etalon`, lc580 rides `q630_boot_etalon`,
+cdboot/cdhot ride `q605_cdrom_etalon`). 2 h 00 wall, partly alongside
+another session's ctest — passes stand; only failures would have
+required serial reruns, and there were none.
+
+With that, the § 3 decision point resolves and **the chantier closes
+at M1** — its named honest exit. No concrete motivation exists for
+M2's data path: no guest or diagnostic in the roster observes cache
+*content* (tags already give CINV/CPUSH real state), timing needs the
+throughput overlay rather than a data path, and the first snoop
+client (IIfx SCSIDMA) is itself deferred. Against zero observable
+gain stood the JIT DTLB fence across the whole 040 fleet, the display
+seam, MOVE16 and staleness gates. Three reopening conditions are
+named in `docs/CACHE_040.md` § 3 (a content-dependent guest, the
+SCSIDMA client, an overlay-breaking timing goal); until one lands,
+the largest remaining wall for a *full 68040* claim stays the native
+FPU opmodes $40-$7F, and the next action moves to test depth
+(`TODO.md` § 2).
 
 <a id="2026-08-05-cache040-bughunt"></a>
 ## 2026-08-05 (later) — The M1 bughunt: three real defects the gates were green over

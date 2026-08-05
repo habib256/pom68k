@@ -81,11 +81,12 @@ The profile list lives in **one** place: the `kProfiles` table in
   bound = min(MCU LLE, historical batch), 27 serial gates green). Compacts,
   Mac II, IIfx and MSC stay on fixed batches, each for a stated reason
   (`TODO.md` § 4).
-- **040 caches: M1 landed 2026-08-05** (`docs/CACHE_040.md`): architectural
-  TAG state behind `POM68K_040_DCACHE` (default off), CINV/CPUSH/CACR act
-  on it, data still served by the bus. `cache040_test` + sst68040 +
-  lockstep green flag ON; the flag-ON `m040` sweep waits on the dirty-8.1
-  GUI cleanup (`TODO.md` § 1). Next: the M2 decision point, then
+- **040 caches: chantier CLOSED at M1, 2026-08-05** (`docs/CACHE_040.md`
+  § 3): architectural TAG state behind `POM68K_040_DCACHE` (default off),
+  CINV/CPUSH/CACR act on it, data served by the bus; hardened the same
+  day by an adversarial bughunt (3 fixes, gate 32 → 44 checks); `m040`
+  sweep **33/33 flag ON on fresh binaries**. M2's data path stays shut
+  until a named client (three reopening conditions in § 3). Next:
   `TODO.md` § *Test & validation depth*.
 - **Release CI** ships four artifacts on tag (Linux x86_64/aarch64
   AppImage glibc-2.27 — the aarch64 one is the Pi 400 package —, macOS

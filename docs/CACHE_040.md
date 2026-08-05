@@ -1,9 +1,10 @@
-# 68040 copyback / snooping — blueprint (M0-M1)
+# 68040 copyback / snooping — blueprint (M0-M1, chantier CLOSED at M1)
 
-*Opened 2026-08-04; M1 landed 2026-08-05. Pattern: `IOP_BRINGUP.md` /
-`DUO_BRINGUP.md` — recon first, milestones gated, nothing implemented
-before its observable is named. Everything asserted below was verified
-in-tree on 2026-08-04; citations inline.*
+*Opened 2026-08-04; M1 landed, was hardened, and the chantier closed
+at M1 on 2026-08-05 (§ 3 — the decision and its reopening conditions).
+Pattern: `IOP_BRINGUP.md` / `DUO_BRINGUP.md` — recon first, milestones
+gated, nothing implemented before its observable is named. Everything
+asserted below was verified in-tree on 2026-08-04; citations inline.*
 
 ## 0. What the recon changed about this chantier
 
@@ -139,7 +140,8 @@ found and fixed three real defects — an infinite touch loop at
 0xFFFFFFFF, the faultable peek walk, phantom lines after /BERR — and
 four gate holes, all pinned by the checks above.
 
-**M2 — copyback data path** (same flag, opt-in). Stores to copyback
+**M2 — copyback data path** (same flag, opt-in) — **NOT OPENED,
+decision § 3.** Stores to copyback
 pages land in the modelled line; reads hit dirty lines; eviction and
 CPUSH write back. Requirements proven before merge: CM honoured from
 the ATC entry status (non-cacheable/serial bypass — the display seam),
@@ -164,14 +166,44 @@ correctness milestones above.
 ## 3. Order of work and the exit condition
 
 M0 (one sitting: probe + numbers into this doc) → M1 (`cache040_test`
-green + all `m040` etalons green with the flag on — the full flag-ON
-`m040` sweep waits on the one-time GUI cleanup of the dirty 8.1 image,
-2026-08-05; the flag-ON evidence so far is `sst68040`, the 5 lockstep
-gates, and a flag-ON/flag-OFF signature-identical q605 boot pair) →
-decision point:
+green + all `m040` etalons green with the flag on) → decision point:
 M2 only if M0's numbers and a concrete motivation (a guest, a
 diagnostic, a timing goal) justify the exposure. The chantier's honest
 exit may well be "M1 + documented decision not to serve data from the
 model until a client demands it" — that would still close the
 `TODO.md` § 4 line, because CINV/CPUSH would finally act on real
 architectural state instead of nothing.
+
+**Decision — 2026-08-05: the chantier CLOSES at M1.** The sweep M1
+owed is paid: after the one-time GUI cleanup of the 8.1 volume
+(drVolAtrb back to $0100), `ctest -L m040` ran **33/33 green with the
+flag ON on freshly relinked binaries** (2 h 00 wall, partly under a
+concurrent session's load — passes stand, only failures would have
+needed serial reruns). The decision point then asks for a concrete
+motivation to open M2's data path, and none exists:
+
+- **No guest, no diagnostic.** Every profile boots and runs on the
+  cache-less model; nothing in the roster observes cache CONTENT —
+  M1's tags already give CINV/CPUSH real state to act on.
+- **Not timing.** Timing is a separate thread feeding the existing
+  throughput overlay (§ 2, last paragraph); it needs cycle numbers,
+  not a data path.
+- **Not coherency.** M3's first snoop client (IIfx SCSIDMA true DMA)
+  is itself deferred and A/UX-only.
+
+Against that stands M2's full exposure: the JIT DTLB fence across the
+entire 040 fleet, the display seam, MOVE16, staleness gates. So the
+chantier takes its named honest exit — **M1 plus this decision**.
+
+Reopen M2 when one of these lands, and not before:
+
+1. a real guest or diagnostic observed to depend on cache **content**
+   (not tags) — the observable must be named first, per the house
+   pattern;
+2. the IIfx SCSIDMA true-DMA client (which reopens M3, and with it
+   the whole coherency question);
+3. a timing-accuracy goal the throughput overlay cannot meet without
+   real line state.
+
+For a *full 68040* claim, the wall ranked above caches is unchanged:
+the native FPU opmodes $40-$7F (`extern/moira/POM68K_VENDOR.md`).
