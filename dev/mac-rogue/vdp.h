@@ -31,6 +31,21 @@
  * silhouette -- the cell fills with ink and the sprite is punched out of
  * it. Reads as a flash, costs one bit of state. */
 #define SPR_INVERT    0x01
+/* Idle animation, driven by gVdpPhase (the shell advances it ~4x a second
+ * while the game waits for a key). BOB floats the sprite up to 2 px above
+ * its anchor -- position moves, so it reads on a 1-bit screen too. FLICKER
+ * cycles the colour through flame shades; every shade is ink, so monochrome
+ * sees no change and nothing needs a special case. */
+#define SPR_BOB       0x02
+#define SPR_FLICKER   0x04
+/* SHAKE trembles the silhouette 1 px left/right on alternate phases -- the
+ * body language of a fresh wound. It rides the same SAT entry as the hurt
+ * colour/invert, so it starts and stops exactly with the flash. */
+#define SPR_SHAKE     0x08
+
+/* Big-text fg sentinel: cycle warm shades on the idle clock instead of a
+ * fixed palette index. All shades are ink -- invisible-identical in mono. */
+#define VDP_FG_PULSE  0xFF
 
 typedef struct {
     unsigned char y, x;             /* pixel position of the top-left corner */
@@ -42,6 +57,11 @@ typedef struct {
 extern unsigned char gName[VDP_ROWS * VDP_COLS];
 extern SatEntry      gSat[VDP_SAT_MAX];
 extern short         gSatCount;
+
+/* The idle-animation clock. The shell owns the cadence (it ticks this from
+ * the event pump); the compositor only ever reads it. Wrapping is free --
+ * every consumer masks it down to a small cycle. */
+extern unsigned char gVdpPhase;
 
 /* The composited frame, one TMS palette index per pixel. This is the real
  * output of the chip; the two presenters below are just ways of getting it
@@ -63,6 +83,19 @@ void VdpSetName(short row, short col, unsigned char ch);
 void VdpPutString(short row, short col, const char *s);
 void VdpFillRow(short row, short col, short count, unsigned char ch);
 
+/* Same as VdpPutString, but the cells take `fg` instead of the char's group
+ * colour (fg 0 = keep the default). Real hardware could not do this -- one
+ * colour per eight chars -- but the UI cards are not the dungeon, and on a
+ * 1-bit screen the ink rule makes any fg >= 2 invisible-identical anyway. */
+void VdpPutStringColor(short row, short col, const char *s, unsigned char fg);
+
+/* Double-size text: each glyph is pixel-doubled to 16x16, so a string takes
+ * two cell rows and two cell columns per char. Composited over the tiles,
+ * under the sprites; only set pixels paint (the background shows through).
+ * The pointer is kept, not copied -- pass string literals. The overlay list
+ * is cleared by VdpClearNames along with the name table. */
+void VdpPutStringBig(short row, short col, const char *s, unsigned char fg);
+
 void VdpSatReset(void);
 void VdpSatAdd(unsigned char y, unsigned char x,
                unsigned char name, unsigned char color, unsigned char flags);
@@ -74,5 +107,10 @@ void VdpComposite(int monoFlash);
 
 /* Pack gPix down to the 1-bit gFrame using the ink rule. */
 void VdpPackMono(void);
+
+/* 1 if the current scene carries any phase-driven element (a BOB/FLICKER
+ * sprite or a pulsing headline). The shell asks before spending a whole
+ * composite-and-blit on an idle frame -- a static scene costs nothing. */
+int VdpAnimated(void);
 
 #endif /* VDP_H */

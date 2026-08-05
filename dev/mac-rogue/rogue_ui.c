@@ -16,28 +16,39 @@
 #include "snd.h"
 #include "vdp.h"
 
-typedef struct { short row, col; const char *text; } TextLine;
+/* fg is a TMS palette index; 0 keeps the char-group default. Every value
+ * used below is >= 2, so the monochrome ink rule renders these screens
+ * exactly as before -- the colour is free on a 1-bit Mac. */
+typedef struct { short row, col; unsigned char fg; const char *text; } TextLine;
 
 static void PaintLines(const TextLine *t, short n)
 {
     short i;
     for (i = 0; i < n; i++)
-        VdpPutString(t[i].row, t[i].col, t[i].text);
+        VdpPutStringColor(t[i].row, t[i].col, t[i].text, t[i].fg);
 }
 
 /* --- Title ---------------------------------------------------------------- */
 
 static const TextLine kTitle[] = {
-    {  4, 13, "ROGUE" },
-    {  7,  4, "MACINTOSH 68K ROGUELIKE" },
-    {  9,  7, "BY VERHILLE ARNAUD" },
-    { 13,  8, "MOVE IJKL OR ARROWS" },
-    { 15,  8, "ANY KEY TO START" },
-    { 20,  6, "[H] FOR HELP IN GAME" }
+    {  5,  9,  6, "--------------" },
+    {  7,  4,  7, "MACINTOSH 68K ROGUELIKE" },
+    {  9,  7, 14, "BY VERHILLE ARNAUD" },
+    { 13,  8,  3, "MOVE IJKL OR ARROWS" },
+    { 15,  8, 15, "ANY KEY TO START" },
+    { 20,  6, 10, "[H] FOR HELP IN GAME" }
 };
 
 void DrawTitle(void)
 {
+    /* VDP_FG_PULSE: the headline breathes through warm shades on the idle
+     * clock while the title waits for its key. Mono sees a steady title.
+     * Two lit torches flank it -- flickering AND hovering, so the 1-bit
+     * Macs get motion at the title too, not just a recolour they cannot
+     * see. (DrawBriefing resets the SAT, so they never outlive the card.) */
+    VdpPutStringBig(2, 11, "ROGUE", VDP_FG_PULSE);
+    VdpSatAdd(16,  56, SPRITE_NAME_TORCH, COL_TORCH, SPR_FLICKER | SPR_BOB);
+    VdpSatAdd(16, 184, SPRITE_NAME_TORCH, COL_TORCH, SPR_FLICKER | SPR_BOB);
     PaintLines(kTitle, (short)(sizeof kTitle / sizeof kTitle[0]));
     ShellPresent();
     SfxPlay(SFX_TITLE);
@@ -46,20 +57,22 @@ void DrawTitle(void)
 /* --- Briefing -------------------------------------------------------------- */
 
 static const TextLine kBriefing[] = {
-    {  2, 13, "MISSION" },
-    {  4,  4, "[AMULET] FIND IT" },
-    {  7,  4, "[STAIRS] GO DOWN 12 FLOORS" },
-    { 10,  4, "[SWORD] BUMP MONSTERS" },
-    { 12,  4, "[BAG] PICK UP ITEMS" },
-    { 14,  4, "[TORCH] LIGHT THE DARK" },
-    { 16,  4, "[PIT] WATCH YOUR STEP" },
-    { 18,  4, "[SKULL] ONE LIFE" },
-    { 20,  4, "DEPTH 13 = ESCAPE" },
-    { 22,  9, "PRESS ANY KEY" }
+    {  5,  4, 10, "[AMULET] FIND IT" },
+    {  7,  4, 11, "[STAIRS] GO DOWN 12 FLOORS" },
+    {  9,  4, 15, "[SWORD] BUMP MONSTERS" },
+    { 11,  4,  3, "[BAG] PICK UP ITEMS" },
+    { 13,  4,  9, "[TORCH] LIGHT THE DARK" },
+    { 15,  4,  6, "[PIT] WATCH YOUR STEP" },
+    { 17,  4, 14, "[SKULL] ONE LIFE" },
+    /* ':' not '=': the font has no '=' glyph and it printed as a blank. */
+    { 19,  4,  3, "DEPTH 13: ESCAPE" },
+    { 22,  9, 14, "PRESS ANY KEY" }
 };
 
 void DrawBriefing(void)
 {
+    VdpSatReset();              /* retire the title torches */
+    VdpPutStringBig(1, 9, "MISSION", 11);
     PaintLines(kBriefing, (short)(sizeof kBriefing / sizeof kBriefing[0]));
     ShellPresent();
 }
@@ -67,22 +80,21 @@ void DrawBriefing(void)
 /* --- Help ------------------------------------------------------------------ */
 
 static const TextLine kHelp[] = {
-    {  1, 14, "HELP" },
-    {  3,  2, "MOVEMENT KEYS" },
-    {  4,  4, "I UP J LEFT K DOWN L RIGHT" },
-    {  5,  4, "OR THE ARROW KEYS" },
-    {  7,  2, "COMMANDS" },
-    {  8,  4, "B  BAG OPEN/USE ITEMS" },
-    {  9,  4, "T  THROW DAGGER" },
-    { 10,  4, "H/?  THIS HELP SCREEN" },
-    { 11,  4, ".  REST ONE TURN" },
-    { 14,  2, "TIPS" },
-    { 15,  4, "BUMP MONSTER TO ATTACK" },
-    { 16,  4, "PICKUP IS AUTOMATIC" },
-    { 17,  4, "STAIRS DOWN: DESCEND" },
-    { 18,  4, "EDGE DOOR: WARP LEVEL" },
-    { 19,  4, "REACH DEPTH 13 TO WIN" },
-    { 22,  9, "PRESS ANY KEY" }
+    {  4,  2, 11, "MOVEMENT KEYS" },
+    {  5,  4,  0, "I UP J LEFT K DOWN L RIGHT" },
+    {  6,  4,  0, "OR THE ARROW KEYS" },
+    {  8,  2, 11, "COMMANDS" },
+    {  9,  4,  0, "B  BAG OPEN/USE ITEMS" },
+    { 10,  4,  0, "T  THROW DAGGER" },
+    { 11,  4,  0, "H/?  THIS HELP SCREEN" },
+    { 12,  4,  0, ".  REST ONE TURN" },
+    { 14,  2, 11, "TIPS" },
+    { 15,  4,  0, "BUMP MONSTER TO ATTACK" },
+    { 16,  4,  0, "PICKUP IS AUTOMATIC" },
+    { 17,  4,  0, "STAIRS DOWN: DESCEND" },
+    { 18,  4,  0, "EDGE DOOR: WARP LEVEL" },
+    { 19,  4,  0, "REACH DEPTH 13 TO WIN" },
+    { 22,  9, 14, "PRESS ANY KEY" }
 };
 
 /* Always a free action: the caller does not tick monsters afterwards. */
@@ -90,6 +102,7 @@ void ShowHelp(void)
 {
     VdpSatReset();              /* hide every gameplay sprite under the card */
     VdpClearNames();
+    VdpPutStringBig(1, 12, "HELP", 7);
     PaintLines(kHelp, (short)(sizeof kHelp / sizeof kHelp[0]));
     ShellPresent();
     ShellDrainKeys();
@@ -213,7 +226,7 @@ int ShowInventory(void)
     }
 
     VdpClearNames();
-    VdpPutString(1, 11, "INVENTORY");
+    VdpPutStringBig(0, 7, "INVENTORY", 10);
 
     row = 3;
     for (i = 0; i < INV_COUNT; i++) {
@@ -228,7 +241,7 @@ int ShowInventory(void)
     if (drawn == 0)
         VdpPutString(4, 11, "-NOTHING-");
 
-    VdpPutString(22, 9, "PRESS ANY KEY");
+    VdpPutStringColor(22, 9, "PRESS ANY KEY", 14);
     ShellPresent();
 
     ShellDrainKeys();
@@ -260,17 +273,17 @@ static const char *kAttackerName[8] = {
  * buff timers are long gone by the time an ending paints. */
 static void PaintScores(void)
 {
-    VdpPutString(9, 10, "DEPTH: ");
+    VdpPutStringColor(9, 10, "DEPTH: ", 14);
     PutByte3(9, 17, gDepth);
-    VdpPutString(10, 10, "KILLS: ");
+    VdpPutStringColor(10, 10, "KILLS: ", 14);
     PutByte3(10, 17, gPlayerXp);
-    VdpPutString(11, 10, "HP MAX: ");
+    VdpPutStringColor(11, 10, "HP MAX: ", 14);
     PutByte2(11, 18, gHpMax);
-    VdpPutString(12, 10, "ATK BASE: ");
+    VdpPutStringColor(12, 10, "ATK BASE: ", 14);
     PutByte2(12, 20, (u8)(gXpAtkBonus + 1));    /* +1 bare-handed base */
-    VdpPutString(13, 10, "DEF BASE: ");
+    VdpPutStringColor(13, 10, "DEF BASE: ", 14);
     PutByte2(13, 20, gXpDefBonus);
-    VdpPutString(16, 9, "PRESS ANY KEY");
+    VdpPutStringColor(16, 9, "PRESS ANY KEY", 14);
 }
 
 /* ~1.3 s of deaf time, so a movement key still held from the killing turn
@@ -293,11 +306,11 @@ void DeathScreen(void)
     SfxPlay(SFX_DEATH);
     VdpSatReset();
     VdpClearNames();
-    VdpPutString(3, 11, "GAME OVER");
+    VdpPutStringBig(2, 7, "GAME OVER", VDP_FG_PULSE);
     VdpPutString(6, 5, "YOU DIED ON LEVEL ");
     PutByte3(6, 23, gDepth);
     VdpPutString(7, 7, "KILLED BY ");
-    VdpPutString(7, 17, kAttackerName[who]);
+    VdpPutStringColor(7, 17, kAttackerName[who], 8);
     PaintScores();
     WaitForRestart();
 }
@@ -307,8 +320,11 @@ void WinScreen(void)
     SfxPlay(SFX_WIN);
     VdpSatReset();
     VdpClearNames();
-    VdpPutString(3, 8, "CONGRATULATIONS");
-    VdpPutString(6, 7, "DUNGEON CONQUERED");
+    /* 15 chars * 2 cells = 30 cols: the widest string the big face fits. */
+    VdpPutStringBig(2, 1, "CONGRATULATIONS", VDP_FG_PULSE);
+    VdpPutStringColor(6, 7, "DUNGEON CONQUERED", 3);
+    /* The amulet you came for, hovering under the scores. */
+    VdpSatAdd(148, 120, SPRITE_NAME_RING, COL_RING, SPR_BOB);
     PaintScores();
     WaitForRestart();
 }

@@ -16,6 +16,15 @@ SatEntry      gSat[VDP_SAT_MAX];
 short         gSatCount;
 unsigned char gPix[VDP_HEIGHT * VDP_WIDTH];
 unsigned char gFrame[VDP_HEIGHT * VDP_ROWBYTES];
+unsigned char gVdpPhase;
+
+/* The three idle-animation cycles, all indexed by (gVdpPhase + column) & 3
+ * so neighbours drift out of step instead of marching in unison. Every
+ * flame and pulse shade is ink, so monochrome renders them all the same. */
+static const signed char   kBobDy[4]  = { 0, -1, -2, -1 };   /* hover      */
+static const unsigned char kFlame[4]  = { 9, 10, 11, 10 };   /* torch fire */
+static const unsigned char kPulse[4]  = { 8,  9, 10,  9 };   /* headlines  */
+static const unsigned char kGlint[4]  = { 11, 15, 11, 10 };  /* stairs down */
 
 /* The TMS9918A's fixed 16-entry palette. Index 0 is transparent: on real
  * silicon the backdrop (register 7) showed through, and this game's backdrop
@@ -52,11 +61,24 @@ const unsigned char kTmsPaletteRGB[16][3] = {
  * -------------------------------------------------------------------------- */
 #define IS_INK(c)  ((c) != 0 && (c) != 1)
 
+/* Per-cell colour override for the UI cards (0 = use the char's group
+ * colour) and the big-text overlay list. Both share the name table's
+ * lifecycle: VdpClearNames wipes them, so every screen starts neutral. */
+static unsigned char gCellFg[VDP_ROWS * VDP_COLS];
+
+#define VDP_BIG_MAX 4
+typedef struct { short row, col; unsigned char fg; const char *text; } BigText;
+static BigText gBigText[VDP_BIG_MAX];
+static short   gBigCount;
+
 void VdpClearNames(void)
 {
     short i;
-    for (i = 0; i < VDP_ROWS * VDP_COLS; i++)
+    for (i = 0; i < VDP_ROWS * VDP_COLS; i++) {
         gName[i] = 0;
+        gCellFg[i] = 0;
+    }
+    gBigCount = 0;
 }
 
 void VdpSetName(short row, short col, unsigned char ch)
@@ -79,6 +101,30 @@ void VdpFillRow(short row, short col, short count, unsigned char ch)
 {
     while (count-- > 0)
         VdpSetName(row, col++, ch);
+}
+
+void VdpPutStringColor(short row, short col, const char *s, unsigned char fg)
+{
+    while (*s) {
+        if (row >= 0 && row < VDP_ROWS && col >= 0 && col < VDP_COLS) {
+            gName[row * VDP_COLS + col] = (unsigned char)*s;
+            gCellFg[row * VDP_COLS + col] = fg;
+        }
+        col++;
+        s++;
+    }
+}
+
+void VdpPutStringBig(short row, short col, const char *s, unsigned char fg)
+{
+    BigText *t;
+    if (gBigCount >= VDP_BIG_MAX)
+        return;
+    t = &gBigText[gBigCount++];
+    t->row = row;
+    t->col = col;
+    t->fg = fg;
+    t->text = s;
 }
 
 void VdpSatReset(void)
@@ -151,8 +197,15 @@ static void CompositeTiles(void)
         for (col = 0; col < VDP_COLS; col++) {
             unsigned char ch = gName[row * VDP_COLS + col];
             const unsigned char *pat = &kTileset[(short)ch * 8];
-            unsigned char fg = gCharFg[ch];
+            unsigned char ov = gCellFg[row * VDP_COLS + col];
+            unsigned char fg = ov ? ov : gCharFg[ch];
             unsigned char bg = gCharBg[ch];
+
+            /* The way down glints on the idle clock (half rate -- a glimmer,
+             * not a strobe), pulling the eye to the level's one exit. Every
+             * shade is ink, so monochrome stairs hold still. */
+            if (ch >= CHAR_STAIRS_DOWN && ch < CHAR_STAIRS_DOWN + 4 && !ov)
+                fg = kGlint[(gVdpPhase >> 1) & 3];
             unsigned char *dst = &gPix[(row * 8) * VDP_WIDTH + col * 8];
 
             for (y = 0; y < 8; y++) {
@@ -160,6 +213,48 @@ static void CompositeTiles(void)
                 for (b = 0; b < 8; b++)
                     dst[b] = (bits & (0x80 >> b)) ? fg : bg;
                 dst += VDP_WIDTH;
+            }
+        }
+    }
+}
+
+/* --- Big-text pass ----------------------------------------------------------
+ * Each glyph is fetched from the same pattern table the tiles use and every
+ * pixel becomes a 2x2 block, so a string covers two cell rows. Only set
+ * pixels paint -- the tile background stays visible -- and the fg is a plain
+ * palette index, so the mono ink rule needs no special case. */
+static void CompositeBigText(void)
+{
+    short i, y, b;
+
+    for (i = 0; i < gBigCount; i++) {
+        const BigText *t = &gBigText[i];
+        const char *s = t->text;
+        short px = t->col * 8;
+        short py = t->row * 8;
+        unsigned char fg = (t->fg == VDP_FG_PULSE)
+                             ? kPulse[gVdpPhase & 3] : t->fg;
+
+        for (; *s; s++, px += 16) {
+            const unsigned char *pat =
+                &kTileset[(short)(unsigned char)*s * 8];
+            for (y = 0; y < 8; y++) {
+                short dy = (short)(py + y * 2);
+                unsigned char bits = pat[y];
+                if (dy < 0 || dy + 1 >= VDP_HEIGHT)
+                    continue;
+                for (b = 0; b < 8; b++) {
+                    short dx;
+                    unsigned char *d;
+                    if (!(bits & (0x80 >> b)))
+                        continue;
+                    dx = (short)(px + b * 2);
+                    if (dx < 0 || dx + 1 >= VDP_WIDTH)
+                        continue;
+                    d = &gPix[dy * VDP_WIDTH + dx];
+                    d[0] = d[1] = fg;
+                    d[VDP_WIDTH] = d[VDP_WIDTH + 1] = fg;
+                }
             }
         }
     }
@@ -176,6 +271,15 @@ static void CompositeSprite(const SatEntry *e, int monoFlash)
     short slot = e->name;
     short y, b;
     int negative = monoFlash && (e->flags & SPR_INVERT);
+    /* Idle animation: the phase is offset by the sprite's cell column so a
+     * row of loot shimmers instead of pumping in lockstep. */
+    unsigned char step = (unsigned char)((gVdpPhase + (e->x >> 4)) & 3);
+    short dy = (e->flags & SPR_BOB) ? kBobDy[step] : 0;
+    /* Shake keys off the raw phase, NOT the column-desynced step: the boss
+     * is four SAT entries in two columns, and a per-column parity would
+     * tear its halves 2 px apart instead of jolting it as one body. */
+    short dx = (e->flags & SPR_SHAKE) ? ((gVdpPhase & 1) ? 1 : -1) : 0;
+    unsigned char color = (e->flags & SPR_FLICKER) ? kFlame[step] : e->color;
 
     if (slot >= 56) {
         if (slot > 68)
@@ -188,7 +292,7 @@ static void CompositeSprite(const SatEntry *e, int monoFlash)
     }
 
     for (y = 0; y < 16; y++) {
-        short sy = (short)e->y + y;
+        short sy = (short)e->y + dy + y;
         unsigned short bits;
         unsigned char *dst;
 
@@ -198,7 +302,7 @@ static void CompositeSprite(const SatEntry *e, int monoFlash)
         dst = &gPix[sy * VDP_WIDTH];
 
         for (b = 0; b < 16; b++) {
-            short sx = (short)e->x + b;
+            short sx = (short)e->x + dx + b;
             int on;
             if (sx < 0 || sx >= VDP_WIDTH)
                 continue;
@@ -209,7 +313,7 @@ static void CompositeSprite(const SatEntry *e, int monoFlash)
                  * it. White reads as ink, black as paper -- see IS_INK. */
                 dst[sx] = on ? 1 : 15;
             } else if (on) {
-                dst[sx] = e->color;
+                dst[sx] = color;
             }
         }
     }
@@ -219,8 +323,26 @@ void VdpComposite(int monoFlash)
 {
     short i;
     CompositeTiles();
+    CompositeBigText();
     for (i = 0; i < gSatCount; i++)
         CompositeSprite(&gSat[i], monoFlash);
+}
+
+int VdpAnimated(void)
+{
+    short i;
+    for (i = 0; i < gBigCount; i++)
+        if (gBigText[i].fg == VDP_FG_PULSE)
+            return 1;
+    for (i = 0; i < gSatCount; i++)
+        if (gSat[i].flags & (SPR_BOB | SPR_FLICKER | SPR_SHAKE))
+            return 1;
+    /* The stairs-down glint animates through the name table, not the SAT.
+     * Chars 8..11 only ever come from RenderMap -- UI text is ASCII. */
+    for (i = 0; i < VDP_ROWS * VDP_COLS; i++)
+        if (gName[i] >= CHAR_STAIRS_DOWN && gName[i] < CHAR_STAIRS_DOWN + 4)
+            return 1;
+    return 0;
 }
 
 void VdpPackMono(void)

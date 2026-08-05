@@ -259,6 +259,8 @@ void  ClearMsgRow23(void);
 void  PrintMsgRow(short row, const char *s);
 void  PutByte3(short row, short col, u8 v);
 void  PutByte2(short row, short col, u8 v);
+void  LevelWipe(void);
+void  LevelReveal(void);
 void  RedrawGame(void);
 
 /* ===================== rogue_msg.c ====================================== */

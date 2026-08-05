@@ -48,6 +48,7 @@
 #define kZoom1Item   3
 #define kZoom2Item   4
 #define kSoundItem   6
+#define kMusicItem   7
 
 /* Multiversal types Pascal strings as `const unsigned char *`, but a PSTR("\p...")
  * literal is a plain char array, so every Toolbox call site needs the cast. */
@@ -102,6 +103,26 @@ void ShellDelayTicks(short ticks)
 void ShellDrainKeys(void)
 {
     FlushEvents(keyDownMask | autoKeyMask, 0);
+}
+
+/* --- Idle animation ---------------------------------------------------------
+ * The game blocks in ShellWaitKey, so the wait IS the animation loop: every
+ * 15 ticks (4 Hz) the phase advances and, if the scene actually carries an
+ * animated element, the frame is recomposited. The gate matters on a Mac
+ * Plus -- a static scene costs nothing while a loot-strewn room shimmers.
+ * A full cycle is 4 steps, so bob and flicker breathe at 1 Hz. */
+#define kAnimPeriod 15
+static unsigned long gAnimLast;
+
+static void AnimIdle(void)
+{
+    unsigned long now = (unsigned long)TickCount();
+    if (now - gAnimLast < kAnimPeriod)
+        return;
+    gAnimLast = now;
+    gVdpPhase++;
+    if (!gAboutUp && VdpAnimated())
+        ShellPresent();
 }
 
 /* --- Colour detection -------------------------------------------------------
@@ -277,11 +298,14 @@ static void SetUpMenus(void)
     InsertMenu(gFileMenu, 0);
 
     gDisplayMenu = NewMenu(kMenuDisplay, PSTR("\pDisplay"));
-    AppendMenu(gDisplayMenu, PSTR("\pColor;(-;Actual Size/1;Double Size/2;(-;Sound"));
+    AppendMenu(gDisplayMenu,
+               PSTR("\pColor;(-;Actual Size/1;Double Size/2;(-;Sound;Music"));
     if (!gColorOk)                      /* nothing to toggle on a 1-bit Mac */
         DisableItem(gDisplayMenu, kColorItem);
     if (!SfxAvailable())                /* no Sound Manager on this System */
         DisableItem(gDisplayMenu, kSoundItem);
+    if (!MusicAvailable())              /* second channel did not open */
+        DisableItem(gDisplayMenu, kMusicItem);
     InsertMenu(gDisplayMenu, 0);
 
     DrawMenuBar();
@@ -308,6 +332,7 @@ static void SyncDisplayMenu(void)
     CheckItem(gDisplayMenu, kZoom1Item, gZoom == 1);
     CheckItem(gDisplayMenu, kZoom2Item, gZoom == 2);
     CheckItem(gDisplayMenu, kSoundItem, SfxEnabled());
+    CheckItem(gDisplayMenu, kMusicItem, MusicEnabled());
 }
 
 static void DoMenu(long choice)
@@ -346,6 +371,9 @@ static void DoMenu(long choice)
         } else if (item == kSoundItem && SfxAvailable()) {
             SfxSetEnabled(!SfxEnabled());
             SyncDisplayMenu();
+        } else if (item == kMusicItem && MusicAvailable()) {
+            MusicSetEnabled(!MusicEnabled());
+            SyncDisplayMenu();
         }
         break;
     default:
@@ -380,6 +408,12 @@ char ShellWaitKey(void)
 
     for (;;) {
         Boolean got;
+
+        /* The music refill and the idle animation ride the event pump:
+         * every wait for a key is also a chance to keep the loop's queue
+         * topped up and the torches flickering. */
+        MusicIdle();
+        AnimIdle();
 
         if (gHasWNE)
             got = WaitNextEvent(everyEvent, &ev, 15L, NULL);
@@ -532,6 +566,7 @@ int main(void)
     /* Before InitToolbox: SetUpMenus (inside it) reads SfxAvailable() to
      * enable the Sound item, and the Sound Manager needs no QuickDraw. */
     SfxInit();
+    MusicInit();                /* second channel; effects keep priority */
     InitToolbox();
 
     for (;;) {
@@ -542,6 +577,7 @@ int main(void)
          * COLD_RESTART from a death or a win, or COLD_QUIT from the menu. */
         RogueRun();
     }
+    MusicShutdown();
     SfxShutdown();
     return 0;
 }

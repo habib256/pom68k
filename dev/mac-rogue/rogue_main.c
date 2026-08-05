@@ -39,6 +39,11 @@ void NewLevel(void)
 {
     int boss = 0;
 
+    /* The curtain falls over the floor being left before the next one is
+     * carved. Also runs under the boss cheat, where it wipes the briefing --
+     * which reads as intended. */
+    LevelWipe();
+
     if (gTransMode == 1) {
         gDepth++;
         if (gDepth >= 13)
@@ -69,8 +74,9 @@ void NewLevel(void)
     ClearVisBuffer();
     ComputeFov();
     RenderMap();
-    PlaceAllSprites();
     UpdateHud();
+    LevelReveal();              /* map rises row by row, SAT still empty */
+    PlaceAllSprites();
     ShellPresent();
 }
 

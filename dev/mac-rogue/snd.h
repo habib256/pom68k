@@ -46,4 +46,18 @@ int  SfxEnabled(void);       /* 1 = playing (channel open AND user wants it) */
 int  SfxAvailable(void);     /* 1 = the channel opened (menu item enabler)   */
 void SfxSetEnabled(int on);  /* menu toggle; 0 also silences immediately     */
 
+/* --- Background music -------------------------------------------------------
+ * A SECOND channel carrying a slow, low-register loop, so effects and music
+ * mix instead of flushing each other. No interrupt-time callback: the loop's
+ * duration is known, so MusicIdle -- called from the event pump -- watches
+ * TickCount and queues the next pass while the current one still plays.
+ * Same degrade rule as the effects: no Sound Manager, or the second channel
+ * refused to open, means silence, never SysBeep. */
+void MusicInit(void);        /* open the channel and start the loop         */
+void MusicShutdown(void);    /* dispose the channel (quiet immediately)     */
+void MusicIdle(void);        /* keep the loop fed; cheap, call every event  */
+int  MusicAvailable(void);   /* 1 = the channel opened (menu item enabler)  */
+int  MusicEnabled(void);     /* 1 = playing (channel open AND user wants it)*/
+void MusicSetEnabled(int on);/* menu toggle; 0 silences immediately         */
+
 #endif /* SND_H */

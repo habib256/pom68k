@@ -85,7 +85,7 @@ void PlaceAllSprites(void)
     VdpSatAdd((u8)(gPlayerRow * 16), (u8)(gPlayerCol * 16),
               SPRITE_NAME_PLAYER,
               (u8)(gPlayerHurt ? COL_HURT : COL_PLAYER),
-              (u8)(gPlayerHurt ? SPR_INVERT : 0));
+              (u8)(gPlayerHurt ? (SPR_INVERT | SPR_SHAKE) : 0));
 
     /* The dagger quiver icon used to sit on rows 20-21 at the right edge;
      * row 21 is the message line now, so it joins the buff icons on the
@@ -103,8 +103,12 @@ void PlaceAllSprites(void)
         if (!gVis[(short)m->row * LOGICAL_COLS + m->col])
             continue;           /* dark anchor -> drop the whole thing */
 
-        flags = (u8)(m->hurt ? SPR_INVERT : 0);
+        flags = (u8)(m->hurt ? (SPR_INVERT | SPR_SHAKE) : 0);
         color = (u8)(m->hurt ? COL_HURT : m->color);
+        /* The ghost is the one monster that floats -- give it the idle bob
+         * the loot uses. The grounded ones hold still until they act. */
+        if (m->type == MON_TYPE_GHOST)
+            flags |= SPR_BOB;
 
         if (m->type == MON_TYPE_BOSS) {
             u8 top  = (u8)(m->row * 16);
@@ -120,23 +124,29 @@ void PlaceAllSprites(void)
         }
     }
 
-    /* Floor items, same FOV gate. */
+    /* Floor items, same FOV gate. Loot hovers over its cell -- the bob is
+     * what says "this one you can take" -- and a dropped torch burns. */
     for (i = 0; i < ITEM_COUNT; i++) {
         WorldItem *w = &gItem[i];
+        u8 flags;
         if (w->type == 0)
             continue;
         if (!gVis[(short)w->row * LOGICAL_COLS + w->col])
             continue;
+        flags = (u8)(w->type == ITEM_T_TORCH ? (SPR_BOB | SPR_FLICKER)
+                                             : SPR_BOB);
         VdpSatAdd((u8)(w->row * 16), (u8)(w->col * 16),
-                  kItemSprite[w->type], kItemColor[w->type], 0);
+                  kItemSprite[w->type], kItemColor[w->type], flags);
     }
 
     /* Active buff icons along the bottom, left-packed; the matching
-     * countdowns are painted to the cells just right of each one. */
+     * countdowns are painted to the cells just right of each one. The HUD
+     * holds still -- except the torch, which flickers in place while lit. */
     if (gWeaponTimer) VdpSatAdd(176,  0, SPRITE_NAME_WEAPON, COL_WEAPON, 0);
     if (gArmorTimer)  VdpSatAdd(176, 32, SPRITE_NAME_ARMOR,  COL_ARMOR,  0);
     if (gRingTimer)   VdpSatAdd(176, 64, SPRITE_NAME_RING,   COL_RING,   0);
-    if (gTorchTimer)  VdpSatAdd(176, 96, SPRITE_NAME_TORCH,  COL_TORCH,  0);
+    if (gTorchTimer)  VdpSatAdd(176, 96, SPRITE_NAME_TORCH,  COL_TORCH,
+                                SPR_FLICKER);
 
     /* A dagger in mid-flight. */
     if (gThrowActive)
@@ -224,6 +234,47 @@ void PrintMsgRow(short row, const char *s)
 {
     VdpPutString(row, 0, s);
     ShellPresent();
+}
+
+/* --- Level transition -------------------------------------------------------
+ * A curtain wipe: the sprites vanish, then the playfield goes dark four char
+ * rows at a time, top to bottom, before the next floor is generated. Five
+ * composited frames -- cheap enough for a Mac Plus, and it turns an
+ * instantaneous map swap into a descent. The HUD rows are left standing. */
+void LevelWipe(void)
+{
+    short r;
+
+    VdpSatReset();
+    for (r = 0; r < 20; r += 4) {
+        VdpFillRow(r,     0, VDP_COLS, 0);
+        VdpFillRow(r + 1, 0, VDP_COLS, 0);
+        VdpFillRow(r + 2, 0, VDP_COLS, 0);
+        VdpFillRow(r + 3, 0, VDP_COLS, 0);
+        ShellPresent();
+        ShellDelayTicks(3);
+    }
+}
+
+/* The rise: the new floor's name table is already painted; stash it, blank
+ * the playfield, and give the rows back four at a time. Called with the SAT
+ * still empty, so the map appears first and its inhabitants pop in after --
+ * the torch lights the room, then you see what lives there. */
+void LevelReveal(void)
+{
+    static u8 saved[20 * VDP_COLS];
+    short r, i;
+
+    for (i = 0; i < 20 * VDP_COLS; i++) {
+        saved[i] = gName[i];
+        gName[i] = 0;
+    }
+    for (r = 0; r < 20; r += 4) {
+        for (i = r * VDP_COLS; i < (r + 4) * VDP_COLS; i++)
+            gName[i] = saved[i];
+        ShellPresent();
+        ShellDelayTicks(3);
+    }
 }
 
 /* Full repaint used on every modal exit. compute_fov is NOT re-run: nothing

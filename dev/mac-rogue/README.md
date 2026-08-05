@@ -59,6 +59,7 @@ instead of rendering garbage.
 | Display → Color | force monochrome / colour (greyed out on a 1-bit Mac) |
 | Display → Actual / Double Size | 1× (256×192) or 2× (512×384) |
 | Display → Sound | toggle effects (greyed out below System 6.0.4) |
+| Display → Music | toggle the background music (greyed out when the second channel cannot open) |
 | `B` **at the title screen** | hidden code: start in the depth-13 boss arena |
 
 Pickup is automatic. Stairs down descend; walking into a door on the screen
@@ -160,7 +161,36 @@ transcribed unchanged. These are the exceptions, all deliberate:
   128-deep queue is the sequencer; a new effect flushes the last), bright
   timbre for good news and buzzy for violence, Display → Sound to mute,
   silent degrade below System 6.0.4. The Apple-1 original stays silent;
-  this is the Macintosh talking.
+  this is the Macintosh talking. **2026-08-05:** the short percussive
+  effects dropped ~30-40 % in amplitude (a square wave has no envelope, so
+  every note edge is a click whose loudness *is* the amp), and a **second
+  channel now carries background music** — a calm A-minor bass loop
+  (E2..E3, near-sine timbre, well under the effects), refilled from the
+  event pump by deadline rather than by interrupt-time callback, with its
+  own Display → Music toggle. The UI cards got the same-day facelift:
+  double-size colour headlines (`VdpPutStringBig`) and per-cell text
+  colour (`VdpPutStringColor`), both invisible-identical in monochrome
+  under the ink rule.
+- ~~Animation. Everything held still between keypresses.~~ **Done
+  (2026-08-05):** an idle clock (`gVdpPhase`, 4 Hz) rides the event pump —
+  the game blocks in `ShellWaitKey`, so the wait *is* the animation loop.
+  Floor loot hovers (`SPR_BOB`, ±2 px, desynced per column), torches
+  flicker through flame shades (`SPR_FLICKER`) both on the floor and in
+  the HUD, the ghost floats, and the big headlines (title, GAME OVER,
+  CONGRATULATIONS) pulse warm (`VDP_FG_PULSE`). Level transitions are a
+  fall-and-rise curtain: `LevelWipe` darkens the floor being left
+  top-to-bottom, `LevelReveal` gives the new one back four rows at a
+  time with the SAT still empty, so the map appears first and its
+  inhabitants pop in after. Fresh wounds tremble: `SPR_SHAKE` jolts the
+  silhouette 1 px left/right for exactly as long as the hurt flash (keyed
+  off the raw phase, not the column-desynced step, so the 2x2 boss jolts
+  as one body). The stairs-down glints through the *tile* pass — the one
+  animated name-table element, pulling the eye to the exit. Two torches
+  flank the title and the win screen hovers the amulet. The shell only
+  recomposites when the scene actually carries an animated element
+  (`VdpAnimated`), so a static screen still costs a Mac Plus nothing. Bob
+  and shake read in monochrome (position moves); flicker, glint and pulse
+  shades are all ink, so the 1-bit picture is unchanged by them.
 - The font's `/` glyph is drawn as a backslash, so the HUD reads `HP 11\15`.
   That comes from `tileset_rogue.inc` (char 47, sliced from Quale's
   `font_quale_punct_plus`) and the Apple-1 build has it too — an upstream
