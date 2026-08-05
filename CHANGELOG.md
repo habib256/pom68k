@@ -30,6 +30,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ### Retractions, reversals and corrections
 
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
+- **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
 
 - **a belief held for a whole day and overturned three times: Q6.4 "not a Cuda framing bug" … then it was** → [2026-07-19 — Q6.4 re-localized: it is a System-launch HANDOFF failure, NOT a Cuda…](#2026-07-19--q64-re-localized-it-is-a-system-launch-handoff-failure-not-a-cuda-reply-framing-bug-the-prior-completion-isr-buffer-smash-lead-is-disproven-no-fix-landed-yet)
 - **…and the entry that closed it** → [2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the block-0 loop…](#2026-07-19--q64--q62-both-resolved-the-boot-restart-loop-and-the-block-0-loop-were-one-coupled-cuda-reply-framing-bug-the-system-now-loads)
@@ -244,6 +245,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-05** — [The LC II floppy "mount" was the init dialog all along; SWIM1-IWM never mounts, and Cmd-N was pressing \[Eject\]](#2026-08-05-lcii-floppy-dialog)
 - **2026-08-05** — [Beyond-boot reaches a second machine: Quadra 605 soak + persist, and the 53C96 finally takes a real guest WRITE](#2026-08-05-q605-beyond)
 - **2026-08-05** — [IWM/SWIM bughunt: the Q700 spindle ran 1.6x fast, and the IWM personality was half-speed-blind on C15M hosts](#2026-08-05-iwm-swim-bughunt)
 - **2026-08-05** — [The m040 sweep is paid and the cache chantier closes at M1](#2026-08-05-cache040-closed)
@@ -431,6 +433,53 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-05-lcii-floppy-dialog"></a>
+## 2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along; SWIM1-IWM never mounts, and Cmd-N was pressing [Eject]
+
+The TODO §2 "guest-INITIATED floppy write" hunt dissolved its own
+premise. The prescribed experiment (vary the settle before Cmd-N,
+sample KeyMap during the gesture) showed **KeyMap sees the gesture at
+every settle (+0/+30 s/+60 s) and nothing is ever written** — so the
+keystroke was never dropped. The observation that broke the case open
+was the one closest to the user: **a screenshot after the gesture**.
+The post-insert screen is not a volume window, it is System 7.5's
+**"This disk is unreadable by this Macintosh — Initialize?" dialog**
+(Format: Macintosh 800K), pixel-for-pixel the changed region
+x 3..494 / y 2..240 that 2026-07-29 recorded as "its window
+auto-opens". Every mystery collapses at once: the dialog is modal, so
+Cmd-N did nothing, and the gesture's Return pressed its default button
+**[Eject]** — which is why the screen "responded", why the drive
+emptied, and why neither volume ever changed.
+
+Differential evidence, both directions:
+
+- **Not a regression.** A worktree at `dde9db1` (before the IWM/SWIM
+  bughunt) shows the *same dialog* — 1 709 237 nibbles read there
+  vs 1 038 770 today, i.e. the C15M window doubling halved the read
+  rate and changed nothing else. The LC II/SWIM1 GCR mount has never
+  worked; the gate was green over the dialog from its first day.
+- **Not the image.** `Rogue.dsk` — which the 2026-08-04 retraction
+  proved mounts on the Q605/SWIM2, desktop-icon judge — gets the same
+  dialog on the LC II, and the nibble count is **byte-identical across
+  images** (1 038 770 for both): the driver reads a fixed,
+  content-independent amount and gives up. The defect is the
+  **SWIM1-IWM guest read path on V8**, now an open bug in TODO §1.
+
+The gate now tells the truth: a dialog detector (centre-white box +
+desktop icon-strip judge) replaces the "changed region > 200 px =
+mounted" claim, the assertions cover what actually holds (the System
+reacts to the insert; the medium survives the round trip byte-intact),
+and the header says MOUNT is the open bug, not the proven feature.
+Reproducer: `POM68K_BEYOND=floppy ./build/lcii_beyond_etalon`
+(`POM68K_FLOPPY_IMG=` to cross images, `POM68K_DUMP=1` for the
+screenshot).
+
+Lesson, third member of the false-green family
+(`pom68k-false-green-wide-assert`): **a changed-region diff cannot
+tell a dialog from a window** — judge a mount on the desktop icon
+strip, or on the dialog's own signature, never on "the screen
+changed a lot".
 
 <a id="2026-08-05-q605-beyond"></a>
 ## 2026-08-05 (fifth) — Beyond-boot reaches a second machine: Quadra 605 soak + persist, and the 53C96 finally takes a real guest WRITE
@@ -2488,6 +2537,12 @@ observation to verify, not a bug to chase.
 
 
 ## 2026-07-29 (later) — SCSI CD-ROM support, a guest-level floppy gate, and the LLE inventory re-synced
+
+> **Corrected 2026-08-05 (sixth):** the floppy gate's "mount the volume,
+> open its window" never happened — the changed region it judged on was
+> System 7.5's INIT DIALOG, and the "Cmd-N is dropped" evidence below
+> was the modal dialog eating the keystroke (Return pressed its default
+> [Eject]). See [the retraction](#2026-08-05-lcii-floppy-dialog).
 
 **CD-ROM targets are in.** `ScsiDisk` gained a second personality
 (`openCdrom`) rather than a new class, because both SCSI controllers and

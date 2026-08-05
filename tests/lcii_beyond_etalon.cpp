@@ -26,18 +26,20 @@
 //             the whole target — INQUIRY $05, the Apple magic MODE SENSE
 //             page $30, READ TOC, 2048-byte READ(10) — against a real
 //             guest driver rather than a unit-test CDB.
-//   floppy  — guest-level 800K floppy MOUNT + READ over the real IWM:
-//             insert after the Finder is up, and the System must poll the
-//             drive, read the medium (~1.7 M nibbles), mount the volume
-//             and open its window; the medium must survive eject +
-//             re-insert intact. This is the guest-side half that had no
-//             gate at all — `floppy_persist_test` covers the device-side
-//             write→eject→flush plumbing.
-//             NOT yet covered: a guest-INITIATED write. Cmd-N here
-//             reaches neither the floppy nor the hard disk (it does work
-//             on the HD in `persist`), so the folder-creation attempt
-//             below is printed as a diagnostic, not asserted. See TODO
-//             "floppy: guest-initiated write".
+//   floppy  — guest-level 800K floppy insert + READ over the real SWIM1:
+//             insert after the Finder is up; the System must poll the
+//             drive and read the medium, and the medium must survive
+//             eject + re-insert intact. What it does NOT prove — and for
+//             ten months pretended to — is a MOUNT: System 7.5 answers
+//             this insert with the "unreadable — Initialize?" dialog
+//             (whose box IS the changed-region "window" the 2026-07-29
+//             claim was built on; retraction in CHANGELOG 2026-08-05).
+//             The dialog also explains the old "Cmd-N reaches neither
+//             volume" mystery: it is modal, and the gesture's Return
+//             pressed its default button [Eject]. The mount itself is
+//             the open SWIM1-IWM bug in TODO §1; the same images mount
+//             on the Q605/SWIM2. `floppy_persist_test` covers the
+//             device-side write→eject→flush plumbing.
 // POM68K_DUMP=1 writes lcii_beyond_<mode>.ppm for eyeballing/calibration.
 // Soft-skips without the LC II ROM + a bootable hdv/ image.
 
@@ -219,7 +221,12 @@ int main() {
     std::string floppyCopy, floppySrc;
     std::vector<uint8_t> floppyOrig;
     if (mode == "floppy") {
-        floppySrc = find("disks35/Disk605.dsk");
+        // POM68K_FLOPPY_IMG crosses image against machine (the 2026-08-02
+        // lesson): Rogue.dsk mounts on the Q605/SWIM2, so running it here
+        // separates "bad image" from "bad SWIM1-IWM read path".
+        if (const char* img = getenv("POM68K_FLOPPY_IMG"))
+            floppySrc = find(img);
+        if (floppySrc.empty()) floppySrc = find("disks35/Disk605.dsk");
         if (floppySrc.empty()) {
             std::printf("SKIP: needs an 800K HFS image at disks35/Disk605.dsk\n");
             return 0;
@@ -467,8 +474,33 @@ int main() {
             }
         std::printf("floppy: changed region x %d..%d, y %d..%d (%ld px)\n",
                     x0, x1, y0, y1, n);
-        bool mounted = n > 200 && drv.hasDisk() && nibRead > 1000;
-        std::printf("floppy: volume mounted: %s\n", mounted ? "yes" : "NO");
+        // "Screen changed + disk in drive + nibbles read" is NOT a mount:
+        // for ten months that exact signature was the System 7.5 INIT
+        // DIALOG ("This disk is unreadable — Initialize?"), whose box
+        // fills the same changed region a volume window would (retraction
+        // 2026-08-05; the 2026-07-29 "mounts and opens its window" claim
+        // was this dialog). Tell the two apart the way a user would:
+        // the dialog is a solid white box dead centre; a mounted volume
+        // paints its icon on the desktop strip instead.
+        bool responded = n > 200 && drv.hasDisk() && nibRead > 1000;
+        double centreWhite = 1.0 - blackRatio(afterIns, 120, 380, 90, 200);
+        long stripDelta = 0;
+        for (int y = 50; y < 115; y++)
+            for (int x = 445; x < 510; x++)
+                if (beforeIns[size_t(y) * 512 + x] != afterIns[size_t(y) * 512 + x])
+                    stripDelta++;
+        // The strip is the primary judge (an icon = a mount, whatever the
+        // centre shows); the centre-white cue names the dialog. 0.80, not
+        // higher: the dialog's inverted "Name:" edit field pulls its own
+        // box down to ~0.85 white (measured).
+        const char* verdict =
+            stripDelta >= 50  ? "volume icon appeared (MOUNTED)"
+            : centreWhite > 0.80 ? "INIT DIALOG (volume NOT mounted — the "
+                                   "open SWIM1-IWM mount bug, TODO §1)"
+                                 : "no window and no dialog";
+        std::printf("floppy: System responded: %s — centre white %.2f, icon "
+                    "strip Δ%ld px → %s\n", responded ? "yes" : "NO",
+                    centreWhite, stripDelta, verdict);
         // Mounting opens the volume's window, so it is frontmost and Cmd-N
         // creates the folder ON THE FLOPPY — the same gesture `persist`
         // uses on the hard disk, no desktop-icon hunting needed.
@@ -487,13 +519,65 @@ int main() {
         std::vector<uint8_t> hdSnap = mem.scsiDisk().image();
         std::printf("floppy: write-protect sense = %d\n",
                     drv.isWriteProtected());
+        // Diagnosis knobs for the "Cmd-N reaches neither volume" symptom
+        // (TODO §2 "guest-INITIATED write", unchanged since 2026-07-29):
+        // POM68K_FLOPPY_SETTLE adds frames between the mount and the
+        // gesture (Finder-still-busy hypothesis), and the gesture itself
+        // samples the 8-byte KeyMap ($0174) every frame — KeyMap silent
+        // means the keystroke never reached the guest; KeyMap set with no
+        // catalog write means the Finder saw it and did nothing.
+        if (const char* s = getenv("POM68K_FLOPPY_SETTLE")) {
+            int extra = atoi(s);
+            std::printf("floppy: +%d settle frames before Cmd-N\n", extra);
+            runFrames(extra);
+        }
+        bool keymapSaw = false;
+        auto runWatched = [&](long n) {
+            for (long f = 0; f < n && !gCpu->isHalted(); f++) {
+                gCpu->runCycles(kFrame);
+                for (int i = 0; i < 8 && !keymapSaw; i++)
+                    if (gMem->peek8(0x0174 + uint32_t(i)) != 0) keymapSaw = true;
+            }
+        };
+        std::vector<uint32_t> preGesture;
+        screen(preGesture);
         mem.keyEvent(0x37, true);            // Cmd down
-        runFrames(6);
-        keyTap(0x2D);                        // 'n'
+        runWatched(6);
+        mem.keyEvent(0x2D, true);            // 'n'
+        runWatched(4);
+        mem.keyEvent(0x2D, false);
+        runWatched(4);
         mem.keyEvent(0x37, false);
-        runFrames(120);                      // rename field appears
-        keyTap(0x24);                        // Return — commit the name
+        runWatched(120);                     // rename field appears
+        mem.keyEvent(0x24, true);            // Return — commit the name
+        runWatched(4);
+        mem.keyEvent(0x24, false);
+        runWatched(4);
         runFrames(900);                      // ~15 s: create + flush catalog
+        std::printf("floppy: KeyMap %s the gesture\n",
+                    keymapSaw ? "saw" : "NEVER saw");
+        // The observation closest to the user: what did the SCREEN do in
+        // response to Cmd-N? A new folder icon is a small change inside
+        // the window; an alert ("volume is locked"?) is a large centered
+        // box; zero change means the Finder swallowed the keystroke.
+        {
+            std::vector<uint32_t> postGesture;
+            screen(postGesture);
+            long cgx = 0, cgy = 0, ng = 0;
+            int gx0 = 512, gx1 = -1, gy0 = 384, gy1 = -1;
+            for (int y = 0; y < 384; y++)
+                for (int x = 0; x < 512; x++) {
+                    size_t i = size_t(y) * 512 + x;
+                    if (preGesture[i] != postGesture[i]) {
+                        cgx += x; cgy += y; ng++;
+                        gx0 = std::min(gx0, x); gx1 = std::max(gx1, x);
+                        gy0 = std::min(gy0, y); gy1 = std::max(gy1, y);
+                    }
+                }
+            std::printf("floppy: Cmd-N changed the screen by %ld px "
+                        "(region x %d..%d, y %d..%d)\n", ng, gx0, gx1, gy0, gy1);
+            dump("lcii_beyond_floppy_cmdn.ppm", postGesture);
+        }
         bool guestWrote = drv.dirty();
         std::printf("floppy: hard disk image %s by the Cmd-N (tells us which "
                     "window was frontmost)\n",
@@ -525,11 +609,16 @@ int main() {
         SonyDrive probe;
         bool reinsert = probe.insert(floppyCopy) && probe.hasDisk();
         std::printf("floppy: re-insert %s\n", reinsert ? "OK" : "FAILED");
-        // Asserted: the guest really mounted and read the medium, and the
-        // medium survived the eject/re-insert round trip byte-intact.
+        // Asserted: the System REACTED to the insert (polled the drive and
+        // read the medium — today that ends in the init dialog, see above),
+        // and the medium survived the round trip byte-intact. A MOUNT is
+        // deliberately NOT asserted: it does not happen on this machine
+        // (TODO §1), and asserting it on the changed-region signature is
+        // exactly the false green this gate carried for ten months.
         // `guestWrote` / `changed` / `got` are PRINTED above but not
-        // asserted — no guest write has been triggered yet (see header).
-        ok = !cpu.isHalted() && mounted && sizeOk && stillHfs && reinsert;
+        // asserted — no guest write can happen while the volume never
+        // mounts.
+        ok = !cpu.isHalted() && responded && sizeOk && stillHfs && reinsert;
         std::remove(floppyCopy.c_str());
     } else {
         std::fprintf(stderr, "FAIL: unknown POM68K_BEYOND=%s\n", mode.c_str());

@@ -89,6 +89,21 @@ retouche, relancer `q700` **et** `q900`, jamais en parallèle
   7.6 image restored from a source. One open lead from the same hunt:
   GISTPERSO (7.5.5) on the IIfx wedges at ROM `$4081B66E` under
   single-ID — never a supported combo, parked in memory.
+- **SWIM1-IWM guest mount: System 7.5 declares every 800K GCR floppy
+  "unreadable — Initialize?" on the LC II** (2026-08-05, and since the
+  gate's first day — the `lcii_floppy_etalon` "mount" was this dialog for
+  ten months, `CHANGELOG.md` § 2026-08-05 (sixth)). Facts that bound the
+  bug: the guest polls and reads a **byte-identical 1 038 770 nibbles
+  whatever the image** (fixed, content-independent read, then give-up);
+  the same images mount on the Q605/SWIM2; the pre-IWM-hunt tree
+  (`dde9db1`, 1.7 M nibbles) shows the same dialog, so the C15M window
+  doubling is innocent. Suspect surface: `Swim1`'s IWM personality as the
+  7.5 Sony driver sees it on V8 (sense codes / TACH-INDEX timing /
+  nibble stream framing). Next: instrument which sense registers the
+  driver polls post-insert and what it reads (`mem.swim().ism()` tells
+  the personality; no MOUNT gate until a fix makes one fail-first).
+  Reproducer: `POM68K_BEYOND=floppy ./build/lcii_beyond_etalon`
+  (`POM68K_DUMP=1` for the dialog screenshot).
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
   — reported in the GUI, and **NOT reproduced headless**: judged on the
   desktop (the mounted volume's icon, screen-diff) rather than on
@@ -197,17 +212,17 @@ Highest-ROI closers, in order:
   53C96 WRITE end to end — `CHANGELOG.md` § 2026-08-05 (fifth)). Natural
   next second machines: a `launch`/`floppy` pair on the Q605, or soak on a
   boot-only profile (RBV / VASP / AIO — the freshness tail).
-- [ ] **Floppy: a guest-INITIATED write.** `lcii_floppy_etalon` proves
-  mount+read but asserts nothing about writing, because no gesture has yet made
-  the guest write to the medium. Evidence 2026-07-29: the volume mounts
-  read-write (`isWriteProtected() == 0`) and its window auto-opens (changed
-  region x 3..494 / y 2..240), but a Cmd-N in that state modifies **neither**
-  the floppy nor the hard disk — while the identical Cmd-N in the `persist`
-  scenario works on the HD. So the keystroke is dropped in the post-insert
-  state, not landing on the wrong volume. Next: vary the settle time before
-  Cmd-N (stuck modifier vs Finder still busy); if the UI route stays flaky,
-  drive the write from a script/app on the boot volume. Device-side
-  write→eject→flush is already gated by `floppy_persist_test`.
+- [ ] **Floppy: a guest-INITIATED write — BLOCKED on the §1 SWIM1-IWM
+  mount bug, and its 2026-07-29 evidence is RETRACTED** (2026-08-05).
+  The "volume mounts, window auto-opens, Cmd-N dropped" story was the
+  System 7.5 INIT DIALOG end to end: the changed region x 3..494 /
+  y 2..240 *was the dialog box*, the modal dialog ate Cmd-N, and the
+  gesture's Return pressed its default [Eject]. KeyMap sampling proves
+  the keystrokes arrive at every settle time; nothing was ever dropped.
+  `lcii_floppy_etalon` now detects the dialog instead of calling it a
+  mount. The write gesture becomes trivial the day the volume actually
+  mounts — fix §1 first. Device-side write→eject→flush stays gated by
+  `floppy_persist_test`. Full story: `CHANGELOG.md` § 2026-08-05 (sixth).
 - [ ] **Widen per-machine System coverage.** Each profile's etalon pins one
   reference image (`GISTPERSO`, Infinite Mac 8.1…). `finder_boot_matrix`
   currently accepts only four machines (`tests/finder_boot_matrix.cpp:328-333`
