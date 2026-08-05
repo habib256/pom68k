@@ -54,6 +54,18 @@ void testStruct() {
         check(Cache040::setOf(0x1000) == Cache040::setOf(0x1400) &&
               Cache040::tagOf(0x1000) != Cache040::tagOf(0x1400),
               "1 KB apart = same set, different tag");
+        // PA[9] must reach the index — a 32-set cache passes the two
+        // checks above (bughunt 2026-08-05: half-pinned geometry)
+        check(Cache040::setOf(0x1000) != Cache040::setOf(0x1200),
+              "PA[9] is an index bit (64 sets, not 32)");
+    }
+    {   // Top-of-address-space spans must terminate (bughunt 2026-08-05:
+        // the u32 span loop was a tautology at 0xFFFFFFFF and hung)
+        Cache040 c;
+        c.touch(0xFFFFFFFC, false, WT, 4);
+        c.touch(0xFFFFFFFF, true, CB, 1);
+        check(c.lookup(0xFFFFFFF0) && (c.lookup(0xFFFFFFF0)->dirty & 0x8),
+              "access ending at $FFFFFFFF terminates and allocates");
     }
     {   // Read allocation, both cachable modes
         Cache040 c;
@@ -100,7 +112,10 @@ void testStruct() {
         c.touch(0x1000, true, CB, 16, true);
         check(c.validCount() == 0, "MOVE16 line write invalidates a hit");
     }
-    {   // Replacement: invalid ways first, then the 2-bit counter
+    {   // Replacement: invalid ways first, then the 2-bit counter.
+        // The VICTIM is pinned (bughunt 2026-08-05: validCount alone let
+        // a rotation-only or never-rotating policy pass): the fifth tag
+        // must evict way 0 (counter at 0), the sixth way 1.
         Cache040 c;
         c.touch(0x1000, false, CB, 4);
         c.touch(0x1400, false, CB, 4);
@@ -108,8 +123,14 @@ void testStruct() {
         c.touch(0x1C00, false, CB, 4);
         check(c.validCount() == 4, "four tags fill the four ways of a set");
         c.touch(0x2400, true, CB, 4);       // 5th: evicts (dirty drop = M1)
-        check(c.validCount() == 4 && c.lookup(0x2400),
-              "a fifth tag replaces a resident way");
+        check(c.validCount() == 4 && c.lookup(0x2400) &&
+              !c.lookup(0x1000) && c.lookup(0x1400) && c.lookup(0x1800) &&
+              c.lookup(0x1C00),
+              "the fifth tag evicts way 0, the counter's pick");
+        c.touch(0x2800, false, CB, 4);      // 6th: counter advanced
+        check(!c.lookup(0x1400) && c.lookup(0x2400) && c.lookup(0x2800) &&
+              c.lookup(0x1800) && c.lookup(0x1C00),
+              "the sixth tag evicts way 1: the 2-bit counter rotates");
     }
     {   // CINV vs CPUSH scopes
         Cache040 c;
@@ -138,6 +159,9 @@ void testStruct() {
 
 // ---------------------------------------------------------------- part 2
 
+// Flat 16 MB bus with a /BERR hole at $F00000-$F0FFFF (the BerrCpu
+// pattern): phase L steers a page-table walk into it to prove a
+// bus-erroring descriptor chain is swallowed, not delivered.
 class Cpu : public moira::Moira {
 public:
     Cpu() : mem(1 << 24, 0) {
@@ -146,15 +170,25 @@ public:
     }
     std::vector<uint8_t> mem;
 
+    static bool inHole(moira::u32 a) {
+        return (a & 0xFFFFFF) >= 0xF00000 && (a & 0xFFFFFF) < 0xF10000;
+    }
+
 private:
-    moira::u8 read8(moira::u32 a) const override { return mem[a & 0xFFFFFF]; }
+    moira::u8 read8(moira::u32 a) const override {
+        if (inHole(a)) const_cast<Cpu*>(this)->extBusError040();
+        return mem[a & 0xFFFFFF];
+    }
     moira::u16 read16(moira::u32 a) const override {
+        if (inHole(a)) const_cast<Cpu*>(this)->extBusError040();
         return moira::u16((mem[a & 0xFFFFFF] << 8) | mem[(a + 1) & 0xFFFFFF]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
+        if (inHole(a)) const_cast<Cpu*>(this)->extBusError040();
         const_cast<Cpu*>(this)->mem[a & 0xFFFFFF] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
+        if (inHole(a)) const_cast<Cpu*>(this)->extBusError040();
         write8(a, moira::u8(v >> 8));
         write8(a + 1, moira::u8(v));
     }
@@ -212,6 +246,48 @@ void testCpu() {
     m.w16(0x4E7B); m.w16(0x0002);               // MOVEC D0,CACR
     m.w16(0x2410);                              // MOVE.L (A0),D2
     m.w16(0x4E71);                              // NOP
+    // J: retention while disabled + CINV/CPUSH on a disabled cache
+    m.w16(0x203C); m.w32(0x80008000);           // MOVE.L #DE|IE,D0
+    m.w16(0x4E7B); m.w16(0x0002);               // MOVEC D0,CACR
+    m.w16(0x2410);                              // MOVE.L (A0),D2  WT alloc
+    m.w16(0x2281);                              // MOVE.L D1,(A1)  CB dirty
+    m.w16(0x203C); m.w32(0x00008000);           // MOVE.L #IE,D0
+    m.w16(0x4E7B); m.w16(0x0002);               // MOVEC D0,CACR   DC off
+    m.w16(0x2410);                              // MOVE.L (A0),D2  no alloc
+    m.w16(0xF469);                              // CPUSH DC,(A1)   disabled
+    m.w16(0xF448);                              // CINV DC,(A0)    disabled
+    // K: MMU on — ATC-hit, peek-walk and unmapped-skip resolver paths
+    m.w16(0x203C); m.w32(0x0000C000);           // MOVE.L #tt,D0
+    m.w16(0x4E7B); m.w16(0x0004);               // MOVEC D0,ITT0  ($00xxxxxx)
+    m.w16(0x4E7B); m.w16(0x0007);               // MOVEC D0,DTT1  ($00xxxxxx)
+    m.w16(0x203C); m.w32(0x80008000);           // MOVE.L #DE|IE,D0
+    m.w16(0x4E7B); m.w16(0x0002);               // MOVEC D0,CACR  both on
+    m.w16(0x203C); m.w32(0x00004000);           // MOVE.L #root,D0
+    m.w16(0x4E7B); m.w16(0x0807);               // MOVEC D0,SRP
+    m.w16(0x203C); m.w32(0x00008000);           // MOVE.L #E|4K,D0
+    m.w16(0x4E7B); m.w16(0x0003);               // MOVEC D0,TC    MMU ON
+    m.w16(0x47F9); m.w32(0x01000000);           // LEA $01000000.L,A3
+    m.w16(0x2681);                              // MOVE.L D1,(A3) walk+fill
+    m.w16(0xF46B);                              // CPUSH DC,(A3)  ATC hit
+    m.w16(0x2681);                              // MOVE.L D1,(A3) re-dirty
+    m.w16(0x4E7B); m.w16(0x0003);               // MOVEC D0,TC    ATC flush
+    m.w16(0xF44B);                              // CINV DC,(A3)   peek walk
+    m.w16(0x49F9); m.w32(0x01800000);           // LEA $01800000.L,A4
+    m.w16(0xF44C);                              // CINV DC,(A4)   unmapped
+    // L: a resident descriptor chain into the /BERR hole must be
+    // swallowed (treated as unmapped), never delivered to the guest
+    m.w16(0x4BF9); m.w32(0x02000000);           // LEA $02000000.L,A5
+    m.w16(0xF44D);                              // CINV DC,(A5)   berr chain
+    m.w16(0x7E2A);                              // MOVEQ #42,D7
+
+    // Phase K page tables (4K pages, SRP = $4000): logical $01000000 →
+    // phys $9000, copyback (CM = 01); $01800000 hits an invalid pointer
+    // entry; $02000000's ROOT descriptor is resident but points into
+    // the /BERR hole (phase L)
+    m.at(0x4000); m.w32(0x00004202);            // root[0] → pointer table
+    m.w32(0x00F00002);                          // root[1] → the hole
+    m.at(0x4300); m.w32(0x00004402);            // pointer[$01xxxxxx] → page
+    m.at(0x4400); m.w32(0x00009021);            // page[0] = $9000 | CB | R
 
     auto& dc = m.cpu.pomCache040Data();
     auto& ic = m.cpu.pomCache040Inst();
@@ -263,6 +339,37 @@ void testCpu() {
     m.step(1);
     check(m.cpu.getD(2) == 0x11223344,
           "data is served by the bus, model observes only");
+
+    m.step(4);                                  // J: re-enable, alloc 2 lines
+    check(dc.validCount() == 2 && dc.lookup(0x8000) &&
+              dc.lookup(0x40008000) && (dc.lookup(0x40008000)->dirty & 1),
+          "two lines resident before the disable");
+    m.step(3);                                  //    DC off + a read
+    check(dc.validCount() == 2,
+          "UM 4.4: a disabled cache RETAINS its contents");
+    m.step(1);                                  //    CPUSH while disabled
+    check(!dc.lookup(0x40008000) && dc.validCount() == 1 && dc.pushes == 4,
+          "CPUSH acts on a disabled cache (no CACR gate)");
+    m.step(1);                                  //    CINV while disabled
+    check(dc.validCount() == 0 && dc.pushes == 4,
+          "CINV acts on a disabled cache too");
+
+    m.step(11);                                 // K: MMU on, walked write
+    check(dc.lookup(0x9000) && (dc.lookup(0x9000)->dirty & 1),
+          "MMU on: the walk feeds copyback CM into the model");
+    m.step(1);                                  //    CPUSH via ATC hit
+    check(!dc.lookup(0x9000) && dc.pushes == 5,
+          "CPUSH resolves its operand through the ATC");
+    m.step(3);                                  //    re-dirty, flush, CINV
+    check(!dc.lookup(0x9000) && dc.pushes == 5,
+          "CINV resolves through the read-only peek walk after a flush");
+    m.step(2);                                  //    unmapped operand
+    check(dc.validCount() == 0,
+          "an unmapped CINV operand is skipped, not faulted");
+
+    m.step(3);                                  // L: berr chain + marker
+    check(m.cpu.getD(7) == 42,
+          "a bus-erroring descriptor chain is swallowed (no exception)");
 }
 
 } // namespace

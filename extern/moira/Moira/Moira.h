@@ -1650,8 +1650,14 @@ private:
     // cache/scope/register fields (bit 5 = push).
     bool pomCache040On {false};
     Cache040 pomCache040I, pomCache040D;
+    // /BERR rollback stamp: the span the LAST touch may have allocated
+    // (cleared by non-allocating touches and by the peek walk) — see
+    // pomCache040Touch / extBusError040
+    u32 pomCacheLastPa {};
+    int pomCacheLastBytes {};
+    bool pomCacheLastData {};
     void pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode);
-    bool pomCache040Phys(u32 addr, u32 &pa) const;
+    bool pomCache040Phys(u32 addr, u32 &pa);
     u32  mmu040PeekWalk(u32 addr, bool super) const;
     void pomCacheOp040(u16 opcode);
 

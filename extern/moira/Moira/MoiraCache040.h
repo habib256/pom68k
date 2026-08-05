@@ -66,18 +66,18 @@ struct Cache040 {
             return;
         }
 
-        // Segment by line, then mark the longwords the span covers
-        u32 first = pa & ~u32(15);
-        u32 last  = (pa + u32(bytes) - 1) & ~u32(15);
-        for (u32 la = first; ; la += 16) {
-            u32 lo = la < pa ? pa : la;
-            u32 hi = la + 15 < pa + u32(bytes) - 1 ? la + 15
-                                                   : pa + u32(bytes) - 1;
+        // Segment by line, then mark the longwords the span covers. The
+        // walk runs in u64 with an EXCLUSIVE end: at the top of the
+        // address space (pa+bytes-1 == 0xFFFFFFFF) a u32 `a <= hi` loop
+        // is a tautology and never terminates (bughunt 2026-08-05).
+        const u64 end = u64(pa) + u64(bytes);
+        for (u64 la = pa & ~u32(15); la < end; la += 16) {
+            u64 lo = la < pa ? pa : la;
+            u64 hi = (la + 16 < end ? la + 16 : end) - 1;
             u8 lw = 0;
-            for (u32 a = lo & ~u32(3); a <= hi; a += 4)
+            for (u64 a = lo & ~u64(3); a <= hi; a += 4)
                 lw |= u8(1 << ((a >> 2) & 3));
-            touchLine(la, write, cm, lw);
-            if (la == last) break;
+            touchLine(u32(la), write, cm, lw);
         }
     }
 

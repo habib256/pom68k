@@ -1341,12 +1341,27 @@ never interfere; that is the whole point of the milestone.
 - `pomFlushAtcs()` (save-state seam above) also invalidates both tag
   stores — caches are flushed on restore, never serialized.
 
+Hardened the same day by an adversarial bughunt (three fixes, detail
+in `CHANGELOG.md` § 2026-08-05 (later)): the touch's span walk runs in
+u64 with an exclusive end (u32 `a <= hi` was a tautology — an infinite
+loop — for accesses ending at PA $FFFFFFFF); `pomCache040Phys` catches
+`MmuBusError` from the peek walk, so a garbage-but-resident descriptor
+chain landing in unmapped space is "unmapped, skip" instead of a
+guest-visible format $7 with stale fault context; and `extBusError040`
+rolls back the last stamped touch span (`pomCacheLastPa/Bytes/Data`),
+because the touch runs at translate time and a TEA-terminated fill
+must leave no valid line (UM § 7) — the stamp is cleared by
+non-allocating touches and by the peek walk so the rollback can never
+hit an older span.
+
 Known M1 approximations (documented in `docs/CACHE_040.md` § M1, both
 M2 work): split sub-accesses reuse the full access's SSW size so a
 page-crossing misaligned write can over-mark one longword dirty; the
 JIT's inline DTLB bypasses `mmu040Translate`, so tag state under the
-JIT is approximate. Gated by `tests/cache040_test.cpp`; `sst68040`
-and the JIT lockstep suite run green with the flag armed.
+JIT is approximate. Gated by `tests/cache040_test.cpp` (44 checks,
+incl. MMU-on resolver paths against real page tables and a /BERR
+descriptor chain); `sst68040` and the JIT lockstep suite run green
+with the flag armed.
 
 ## Model support in this copy (`MoiraTypes.h`)
 

@@ -2169,9 +2169,22 @@ Moira::pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode)
     // the access's SSW size, reused by split sub-accesses: on a
     // page-crossing misaligned access the dirty span can over-reach by
     // one longword. Tags carry no data in M1; M2 must split exactly.
+    //
+    // The touch happens at TRANSLATE time, before the bus access it
+    // describes — if that access then /BERRs, a real 040 line fill
+    // terminated by TEA leaves no valid line (UM § 7), so the span is
+    // stamped here and rolled back in extBusError040. The stamp is
+    // cleared first so a non-allocating access (cache disabled, NC
+    // page) never lets a later /BERR roll back an OLDER span.
+    pomCacheLastBytes = 0;
     Cache040 &c = data ? pomCache040D : pomCache040I;
     if (!(reg.cacr & (data ? 0x80000000 : 0x8000))) return;
     const int bytes = szCode == 0 ? 1 : szCode == 1 ? 2 : szCode == 2 ? 4 : 16;
+    if (cm < Cache040::CM_SERIAL_NC) {
+        pomCacheLastPa = pa;
+        pomCacheLastBytes = bytes;
+        pomCacheLastData = data;
+    }
     c.touch(pa, write, cm, bytes, szCode == 3);
 }
 
@@ -2211,7 +2224,7 @@ Moira::mmu040PeekWalk(u32 addr, bool super) const
 }
 
 bool
-Moira::pomCache040Phys(u32 addr, u32 &pa) const
+Moira::pomCache040Phys(u32 addr, u32 &pa)
 {
     // Non-faulting logical → physical for a CINV/CPUSH operand. The
     // caches are physically indexed/tagged, so line/page scopes need the
@@ -2231,7 +2244,20 @@ Moira::pomCache040Phys(u32 addr, u32 &pa) const
             return true;
         }
     }
-    const u32 status = mmu040PeekWalk(addr, super);
+    // The peek walk's descriptor fetches ride the bus like a real table
+    // search — a garbage-but-resident chain can land them in unmapped
+    // space, where the machine raises extBusError040 (bughunt
+    // 2026-08-05). Flag ON may not surface a fault flag OFF's no-op
+    // never produced: a bus-erroring chain is UNMAPPED here, full stop.
+    // The stamp is cleared first so the /BERR rollback path cannot
+    // invalidate the previous access's legitimately touched span.
+    pomCacheLastBytes = 0;
+    u32 status = 0;
+    try {
+        status = mmu040PeekWalk(addr, super);
+    } catch (MmuBusError &) {
+        return false;
+    }
     if (!(status & 1)) return false;
     pa = (status & maski) | (addr & ~maski);
     return true;
@@ -2711,6 +2737,18 @@ Moira::extBusError040()
     // a bus callback; the captured access context builds the same
     // format $7 frame as a translation fault, with SSW.ATC clear
     // (WinUAE mmu_hardware_bus_error -> mmu_bus_error nonmmu = true).
+    //
+    // POM68K M1 (bughunt 2026-08-05): the failing access's cache-tag
+    // touch already ran at translate time — a real 040 line fill
+    // terminated by TEA leaves no valid line (UM § 7), so the stamped
+    // span is rolled back before the fault is raised.
+    if (pomCache040On && pomCacheLastBytes) {
+        Cache040 &c = pomCacheLastData ? pomCache040D : pomCache040I;
+        const u64 end = u64(pomCacheLastPa) + u64(pomCacheLastBytes);
+        for (u64 la = pomCacheLastPa & ~u32(15); la < end; la += 16)
+            c.invalidateLine(u32(la));
+        pomCacheLastBytes = 0;
+    }
     bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0 : bool(reg.sr.s);
     int fc = (super ? 4 : 0) | (mmu040AccData ? 1 : 2);
     mmu040Fault<Core::C68020>(mmu040AccAddr, mmu040AccVal, fc,

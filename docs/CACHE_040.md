@@ -106,7 +106,18 @@ As landed:
   translation (`pomCache040Phys`: TTR → ATC scan → `mmu040PeekWalk`, a
   read-only walk with no U/M descriptor write-back) — flag ON may not
   disturb state flag OFF would not have touched. An unmapped operand
-  skips the op: nothing to lose while memory is current; M2 revisits.
+  skips the op — and since the 2026-08-05 bughunt, so does a
+  **bus-erroring descriptor chain**: the walk's fetches ride the bus
+  like a real table search, and a garbage-but-resident chain landing in
+  unmapped space is caught (`MmuBusError`) and treated as unmapped,
+  never surfaced to the guest. Nothing to lose while memory is
+  current; M2 revisits.
+- **/BERR rollback** (bughunt 2026-08-05): the tag touch runs at
+  translate time, before the bus access it describes — on an external
+  bus error the stamped span is invalidated in `extBusError040`, since
+  a real 040 line fill terminated by TEA leaves no valid line
+  (UM § 7). The stamp is cleared by non-allocating touches and by the
+  peek walk, so a /BERR can never roll back an older, legitimate span.
 - Save states keep the house convention (caches flushed, never
   serialized): `pomFlushAtcs` — the restore seam — now also empties
   both tag stores.
@@ -117,10 +128,16 @@ As landed:
   the tag state is approximate. Zero data effect either way — M2 must
   fence the DTLB before serving data (see the seam table).
 
-Gates: `cache040_test` (32 checks — struct semantics + CACR/TTR/
-CINV/CPUSH through a bare 68040 Moira on a flat bus), `sst68040`
-(7 200 pinned vectors) and the 5 JIT lockstep gates green with the
-flag ON, 2026-08-05.
+Gates: `cache040_test` (44 checks — struct semantics incl. the pinned
+replacement victims, PA[9] indexing and top-of-address-space spans;
+then CACR/TTR/CINV/CPUSH, MMU-on ATC/peek-walk/unmapped-skip resolver
+paths, disabled-cache retention, and a /BERR descriptor chain through
+a bare 68040 Moira with a bus hole), `sst68040` (7 200 pinned vectors)
+and the 5 JIT lockstep gates green with the flag ON, 2026-08-05. The
+same day's adversarial bughunt (4 finders + per-finding refuters)
+found and fixed three real defects — an infinite touch loop at
+0xFFFFFFFF, the faultable peek walk, phantom lines after /BERR — and
+four gate holes, all pinned by the checks above.
 
 **M2 — copyback data path** (same flag, opt-in). Stores to copyback
 pages land in the modelled line; reads hit dirty lines; eviction and
