@@ -56,6 +56,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **why Q605/V8 wake peripherals from conservative event deadlines, and why the 6805 IRQ costs 11 again** → [2026-08-03 — Event deadlines close the Cuda phase accommodation](#2026-08-03-event-deadlines)
 - **why the VIA E clock is 783.36 kHz and not a divisor of the CPU** → [2026-08-02 (third) — Two rates that were rounded…](#2026-08-02-eclock-asc)
 - **why bus/peripheral time is charged in MACHINE cycles, never the boosted core clock** → [2026-07-25 — The i-cache boost was accelerating the VIA bus…](#2026-07-25--the-i-cache-boost-was-accelerating-the-via-bus-lc-iii--lc-iii--iivx-fixed-and-the-iisis-boost-restored)
+- **…and the mirror image: why a correctly machine-timed drive still starves an instruction-counted guest driver at boost 4** → [2026-08-05 (seventh) — ROOT CAUSE: the i-cache boost starves the Sony driver](#2026-08-05-boost-floppy)
 - **why the PIC1654S must be co-stepped off the un-boosted clock** → [2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
 - **why the MCU must carry `run()` overshoot as debt (RTC drift)** → [2026-07-24 — Beyond-boot gates on the LC II…](#2026-07-24--beyond-boot-gates-on-the-lc-ii--a-clock-drift-bug-they-caught)
 - **why a 2 % shift in MCU instruction rate is a deadlock, not a slowdown** → [2026-07-27 — The Macintosh TV boots again…](#2026-07-27--the-macintosh-tv-boots-again-a-2--mcu-shift-is-a-deadlock)
@@ -245,6 +246,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-05** — [ROOT CAUSE: the i-cache boost starves the Sony driver — at boost 1-2 the LC II mounts the floppy, at 4 it calls it unreadable](#2026-08-05-boost-floppy)
 - **2026-08-05** — [The LC II floppy "mount" was the init dialog all along; SWIM1-IWM never mounts, and Cmd-N was pressing \[Eject\]](#2026-08-05-lcii-floppy-dialog)
 - **2026-08-05** — [Beyond-boot reaches a second machine: Quadra 605 soak + persist, and the 53C96 finally takes a real guest WRITE](#2026-08-05-q605-beyond)
 - **2026-08-05** — [IWM/SWIM bughunt: the Q700 spindle ran 1.6x fast, and the IWM personality was half-speed-blind on C15M hosts](#2026-08-05-iwm-swim-bughunt)
@@ -433,6 +435,76 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-05-boost-floppy"></a>
+## 2026-08-05 (seventh) — ROOT CAUSE: the i-cache boost starves the Sony driver — at boost 1-2 the LC II mounts the floppy, at 4 it calls it unreadable
+
+The SWIM1-IWM mount bug opened four hours earlier is **the i-cache
+boost**, and one environment variable proves it: with
+`POM68K_CACHE_BOOST=1` the LC II **mounts the 800K GCR floppy** — the
+volume icon appears on the desktop (icon strip Δ1388 px, no dialog,
+screen delta 0.012 = an icon, not a box), the head reaches **track 10**
+instead of dying on track 0, and the consumed nibbles are real 6-and-2
+data (`E9 B4 AD E9 F6 F3 F7 9B…`) instead of a stale register.
+
+How the hunt got there, in the order the evidence arrived:
+
+- **The driver never left track 0** and the motor ended off: it never
+  decoded one sector, in a fixed content-independent read
+  (byte-identical nibble counts across images).
+- **The personality was right** (`Swim1` in IWM mode, mode reg $00) —
+  not an ISM mis-entry.
+- **The stream was right**: the `Iwm::consumed` ring holds real sync
+  runs and a `D5 AA AD` data-field prologue. The medium and the GCR
+  encoder are fine — proven independently by `system_boot_etalon`,
+  which **boots the Mac Plus off the very same `Disk605.dsk`**.
+- **The health counters localized it.** Same image, same encoder:
+
+  | machine | polls | hits | hit rate | nibbles | outcome |
+  |---|---|---|---|---|---|
+  | Mac Plus (raw IWM, C7M, no boost) | 2 268 019 | 603 912 | **26.6 %** | 1 326 993 | boots, seeks to track 28 |
+  | LC II (SWIM1-IWM, boost 4) | 4 175 401 | 185 964 | **4.5 %** | 1 038 770 | init dialog, stuck at track 0 |
+
+  The LC II polls **2.3× more often per nibble** and hits **6× less
+  often per poll** — the signature of a guest running fast against a
+  peripheral that is, in guest-instruction terms, slow.
+
+**Why it happens.** `Cpu030::cacheBoost_` (default **4**) executes four
+Moira cycles per machine cycle for cache-resident code, while the IWM
+nibble pacing is charged in *machine* cycles — correctly, per the
+2026-07-25 rule that bus time is machine time. The two are consistent
+for hardware, but System 7.5's Sony driver measures the drive with an
+**instruction-counted** retry loop: at boost 4 it exhausts its retries
+before enough nibbles arrive and declares the medium unreadable. This
+is the mirror image of the 2026-07-25 bug (which made VIA pulses 4×
+too *short* by reading the boosted clock): there the peripheral was
+sped up, here the CPU is — and only timing-calibrated guest code can
+tell.
+
+**The cliff is sharp and sits between 2 and 3** — swept, not guessed:
+
+| boost | hit rate | head ends at | outcome |
+|---|---|---|---|
+| 1 | 9.8 % | track 10 | **MOUNTED** |
+| 2 | 5.9 % | track 10 | **MOUNTED** |
+| 3 | 4.8 % | track 0 | init dialog |
+| 4 (default) | 4.5 % | track 0 | init dialog |
+
+Note what the table does *not* say: the hit rate barely moves across
+the cliff (5.9 % passes, 4.8 % fails). It is not a bandwidth threshold
+— it is the driver's retry budget running out, which is why the
+failure is so binary. Blast radius: every `Swim1` platform on a boosted 030 — V8
+(LC, LC II, Classic II, Color Classic, Mac TV), RBV (IIsi, IIci) and
+VASP (IIvx, IIvi). Sonora carries a `Swim2` and the Quadras a
+different driver, which is why `q605_floppy_boot_etalon` never noticed.
+
+**No fix landed** — the choice is a product decision with a measured
+price on both sides (drop the default boost and pay it on every 030
+boot; suspend the boost while the drive motor runs; or keep it and
+document floppy work as a boost-1 activity), and the honest next step
+is measuring that price rather than picking now. Reproducer:
+`POM68K_BEYOND=floppy POM68K_CACHE_BOOST=1 ./build/lcii_beyond_etalon`
+(drop the boost var to see it fail; `POM68K_DUMP=1` for the dialog).
 
 <a id="2026-08-05-lcii-floppy-dialog"></a>
 ## 2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along; SWIM1-IWM never mounts, and Cmd-N was pressing [Eject]

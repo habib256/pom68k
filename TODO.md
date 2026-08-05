@@ -89,21 +89,32 @@ retouche, relancer `q700` **et** `q900`, jamais en parallèle
   7.6 image restored from a source. One open lead from the same hunt:
   GISTPERSO (7.5.5) on the IIfx wedges at ROM `$4081B66E` under
   single-ID — never a supported combo, parked in memory.
-- **SWIM1-IWM guest mount: System 7.5 declares every 800K GCR floppy
-  "unreadable — Initialize?" on the LC II** (2026-08-05, and since the
-  gate's first day — the `lcii_floppy_etalon` "mount" was this dialog for
-  ten months, `CHANGELOG.md` § 2026-08-05 (sixth)). Facts that bound the
-  bug: the guest polls and reads a **byte-identical 1 038 770 nibbles
-  whatever the image** (fixed, content-independent read, then give-up);
-  the same images mount on the Q605/SWIM2; the pre-IWM-hunt tree
-  (`dde9db1`, 1.7 M nibbles) shows the same dialog, so the C15M window
-  doubling is innocent. Suspect surface: `Swim1`'s IWM personality as the
-  7.5 Sony driver sees it on V8 (sense codes / TACH-INDEX timing /
-  nibble stream framing). Next: instrument which sense registers the
-  driver polls post-insert and what it reads (`mem.swim().ism()` tells
-  the personality; no MOUNT gate until a fix makes one fail-first).
-  Reproducer: `POM68K_BEYOND=floppy ./build/lcii_beyond_etalon`
-  (`POM68K_DUMP=1` for the dialog screenshot).
+- **The i-cache boost starves the Sony driver: no 800K GCR floppy mounts
+  on a boosted 030** — DIAGNOSED 2026-08-05, fix is a product decision,
+  nothing landed (`CHANGELOG.md` § 2026-08-05 (seventh)). System 7.5
+  answers every insert with "unreadable — Initialize?" at the default
+  `cacheBoost_ = 4`; at **boost 1 or 2 the volume mounts** (desktop icon,
+  head reaches track 10, real 6-and-2 nibbles consumed). The driver's
+  retry loop is instruction-counted while the IWM is correctly paced in
+  machine cycles, so a 4× CPU makes the drive 4× too slow *in guest
+  terms* — the mirror of the 2026-07-25 boosted-bus bug. Cliff swept:
+  1 ✓, 2 ✓, 3 ✗, 4 ✗ (hit rate 9.8/5.9/4.8/4.5 % — it is the retry
+  budget, not bandwidth). Control that exonerates medium and encoder:
+  `system_boot_etalon` boots the **Mac Plus** off the same
+  `Disk605.dsk` at 26.6 % hit rate. Affects every `Swim1` platform on a
+  boosted 030 — V8 (LC, LC II, Classic II, Color Classic, Mac TV), RBV
+  (IIsi, IIci), VASP (IIvx, IIvi); Sonora has a `Swim2`, the Quadras a
+  different driver.
+  **Next, in order:** (1) measure what boost 1 and 2 cost on
+  `lcii_boot_etalon` wall time — the price of the simple fix; (2) decide
+  among: lower the 030 default, gate the boost while the drive motor
+  runs (note the adaptive boost was retired 2026-07-17 for a constant
+  ratio — reintroducing conditionality needs that entry read first), or
+  keep 4 and document floppy work as boost-1; (3) only then a MOUNT
+  gate, which must fail on today's default before it is worth anything.
+  Reproducer: `POM68K_BEYOND=floppy POM68K_CACHE_BOOST=1
+  ./build/lcii_beyond_etalon` (drop the var to see it fail;
+  `POM68K_DUMP=1` for the dialog screenshot).
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
   — reported in the GUI, and **NOT reproduced headless**: judged on the
   desktop (the mounted volume's icon, screen-diff) rather than on

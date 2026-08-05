@@ -452,6 +452,45 @@ int main() {
         runFrames(1800);                     // ~30 s to poll, mount, settle
         long nibRead = drv.nibblesRead - nib0;
         std::printf("floppy: guest read %ld nibbles off the medium\n", nibRead);
+        // Which personality served that read, and where the head ended up.
+        // A driver that never finds an address mark gives up at a fixed
+        // track; one that mis-selects the chip half reads garbage from
+        // the ISM registers instead (TODO §1 hunt).
+        std::printf("floppy: SWIM1 personality=%s mode=$%02X, head at track "
+                    "%d, motor %s, sense CSTIN=%d TKO=%d\n",
+                    mem.swim().ism() ? "ISM" : "IWM", mem.swim().ismModeReg(),
+                    drv.currentTrack(), drv.motorOn() ? "on" : "off",
+                    drv.sense(0x1), drv.sense(0x5));
+        // Did the driver actually GET the stream? `overwritten` counts
+        // nibbles replaced before the CPU read them (polling too slow for
+        // the pacing), dataHits/dataReads is the poll success rate, and
+        // the `consumed` ring holds the last 512 nibbles the CPU took —
+        // a healthy GCR read shows sync $FF runs and the $D5 $AA $96
+        // address mark. No marks in 512 nibbles = the driver is being fed
+        // a stream it cannot frame.
+        {
+            const Iwm& iwm = mem.iwm();
+            long marks = 0, syncs = 0;
+            for (int i = 0; i < 512; i++) {
+                int j = (iwm.consumedPos + i) & 511;
+                if (iwm.consumed[j] == 0xFF) syncs++;
+                if (iwm.consumed[j] == 0xD5 &&
+                    iwm.consumed[(j + 1) & 511] == 0xAA &&
+                    (iwm.consumed[(j + 2) & 511] == 0x96 ||
+                     iwm.consumed[(j + 2) & 511] == 0xAD)) marks++;
+            }
+            std::printf("floppy: IWM polls %ld, hits %ld (%.1f%%), "
+                        "overwritten %ld; last 512 consumed: %ld sync $FF, "
+                        "%ld address/data marks\n",
+                        iwm.dataReads, iwm.dataHits,
+                        iwm.dataReads ? 100.0 * double(iwm.dataHits)
+                                      / double(iwm.dataReads) : 0.0,
+                        iwm.overwritten, syncs, marks);
+            std::printf("floppy: consumed tail:");
+            for (int i = 512 - 24; i < 512; i++)
+                std::printf(" %02X", iwm.consumed[(iwm.consumedPos + i) & 511]);
+            std::printf("\n");
+        }
         std::vector<uint32_t> afterIns;
         screen(afterIns);
         dump("lcii_beyond_floppy.ppm", afterIns);

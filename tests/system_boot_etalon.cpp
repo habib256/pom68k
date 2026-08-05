@@ -58,6 +58,19 @@ int main() {
     double desktop = blackRatio(120, 240);   // 50% gray dither
     std::printf("menu bar black %.2f (want <0.30), desktop %.2f (want ~0.50), track %d\n",
                 menuBar, desktop, mem.internalDrive().currentTrack());
+    // Reference numbers for the SWIM1-IWM mount hunt (TODO §1): this is the
+    // SAME image the LC II declares unreadable, read here by the raw IWM at
+    // C7M by a driver that succeeds. The poll/hit/overwritten ratio is what
+    // a HEALTHY guest read looks like — compare against lcii_beyond_etalon's
+    // floppy scenario before blaming the medium or the GCR encoder.
+    {
+        const Iwm& iwm = mem.iwm();
+        std::printf("IWM health: polls %ld, hits %ld (%.1f%%), overwritten %ld, "
+                    "nibbles %ld\n", iwm.dataReads, iwm.dataHits,
+                    iwm.dataReads ? 100.0 * double(iwm.dataHits)
+                                  / double(iwm.dataReads) : 0.0,
+                    iwm.overwritten, mem.internalDrive().nibblesRead);
+    }
     if (menuBar > 0.30 || desktop < 0.45 || desktop > 0.55) {
         std::fprintf(stderr, "FAIL: not the Finder desktop\n");
         return 1;
