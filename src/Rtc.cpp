@@ -5,6 +5,9 @@
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
+#include <vector>
 
 void Rtc::reset() {
     phase_ = CMD; bitCnt_ = 0; shift_ = 0; cmd_ = 0; out_ = 1;
@@ -54,6 +57,24 @@ void Rtc::factoryDefaults() {
     // global AppleTalk-off switch, so it must NOT seed active.
     const char* atalk = std::getenv("POM68K_APPLETALK");
     pram_[0x13] = (atalk && std::strcmp(atalk, "0") != 0) ? 0x21 : 0x22;
+}
+
+// The battery file. Short or missing → false, and the caller keeps the
+// factory image it already seeded; a partial file is never half-applied.
+bool Rtc::loadPram(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+    if (b.size() < sizeof pram_) return false;
+    std::memcpy(pram_, b.data(), sizeof pram_);
+    return true;
+}
+
+void Rtc::savePram(const std::string& path) const {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    out.write(reinterpret_cast<const char*>(pram_), sizeof pram_);
 }
 
 uint8_t Rtc::readReg(uint8_t cmd) const {

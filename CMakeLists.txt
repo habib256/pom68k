@@ -550,6 +550,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(via6522_parity_test PRIVATE pom68k_core)
     add_test(NAME via6522_parity_test COMMAND via6522_parity_test)
 
+    # The RTC battery file on the four platforms that gained it 2026-08-06
+    # (compacts, Mac II family, IIfx; the Duo's is in msc_parity_test).
+    add_executable(rtc_pram_test tests/rtc_pram_test.cpp)
+    target_link_libraries(rtc_pram_test PRIVATE pom68k_core)
+    add_test(NAME rtc_pram_test COMMAND rtc_pram_test)
+
     add_executable(ncr53c96_queue_test tests/ncr53c96_queue_test.cpp)
     target_link_libraries(ncr53c96_queue_test PRIVATE pom68k_core)
     add_test(NAME ncr53c96_queue_test COMMAND ncr53c96_queue_test

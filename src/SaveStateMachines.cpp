@@ -28,13 +28,17 @@
 #include "Egret.h"
 #include "Iwm.h"
 #include "M68hc05.h"
+#include "M68hc05Pge.h"
 #include "IIfxCpu.h"
 #include "IIfxMemory.h"
 #include "MacIIMemory.h"
 #include "MacInput.h"
 #include "MacMemory.h"
+#include "MscCpu.h"
+#include "MscMemory.h"
 #include "Ncr5380.h"
 #include "Ncr53c96.h"
+#include "PgePmu.h"
 #include "Pic1654s.h"
 #include "PseudoVia.h"
 #include "Q605Memory.h"
@@ -124,6 +128,10 @@ POM68K_SAV_CHECK(R65c02);         // Apple PIC 65C02 core
 POM68K_SAV_CHECK(ApplePic);       // IOP (nests R65c02 + its 32 KB RAM)
 POM68K_SAV_CHECK(IIfxCpu);
 POM68K_SAV_CHECK(IIfxMemory);     // Mac IIfx (nests both IOPs + AdbLine)
+POM68K_SAV_CHECK(M68hc05Pge);     // PG&E core: 960 B RAM + 32 KB SRAM
+POM68K_SAV_CHECK(PgePmu);         // the PMU board wiring (nests the above)
+POM68K_SAV_CHECK(MscCpu);
+POM68K_SAV_CHECK(MscMemory);      // PowerBook Duo 230 (nests the PG&E)
 
 // ── Container assembly ──────────────────────────────────────────────────
 namespace pom68k {
@@ -249,5 +257,6 @@ POM68K_SAV_MACHINE(Q630Memory, Q630Cpu)
 POM68K_SAV_MACHINE(MacIIMemory, Cpu020)
 POM68K_SAV_MACHINE(MacMemory, Cpu68k)
 POM68K_SAV_MACHINE(IIfxMemory, IIfxCpu)
+POM68K_SAV_MACHINE(MscMemory, MscCpu)
 
 }  // namespace pom68k

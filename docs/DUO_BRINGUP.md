@@ -352,10 +352,9 @@ and did NOT fix it (kept anyway, it is a real fidelity gap): honouring the
 Listen R3 activator byte in `AdbBus` so a device only moves on `$00`/`$FE`.
 
 Next steps, in order (post-fix):
-1. **`duo230_boot_etalon`** — the Finder boot is reproducible
-   (`duo_trace … --cycles 6000000000 --disk "System 7.5.5 HD.dsk"`,
-   three ADBReInits, menu bar + Control Strip on screen); pin it as a
-   gate on the etalon pattern, and wire the profile into `kProfiles`.
+1. ✅ **`duo230_boot_etalon`** (2026-07-31) — the Finder boot is
+   reproducible; ✅ the profile is wired into `kProfiles` (2026-08-06,
+   milestone 3b below).
 2. Input (milestone 4): `MscMemory::keyEvent/mouseMove/mouseButton`
    already forward to the PMU's ADB devices (this session); verify a
    click lands in the booted Finder, then `duo230_input_etalon`.
@@ -462,6 +461,27 @@ Port wiring (from `macpwrbkmsc.cpp:773-789`): pullups port C `$FF`, port E
 3. ✅ **GSC video decode** (`MscMemory::decodeScreen`, modes 1/2/4 bpp per
    MAME gsc.cpp) → Finder frames; **`duo230_boot_etalon` GREEN 2026-07-31**
    (menu bar 0.04 dark, desktop 0.43, SCSI 3448 commands, GSC mode 2).
+3b. ✅ **The 37th profile, 2026-08-06** — the house rule (a GUI profile =
+   a Finder cell *plus* the GUI/save-state wiring) is paid: `runDuo` +
+   `MscMachine` in `main.cpp` (PG&E hold honoured — the loop ticks the
+   machine while `cpuHeld()`, like the Egret loops), the `kProfiles` row
+   (`ECFA989B`, group *MSC + PG&E*), `MachineKind::Duo`, the JIT engine
+   menu (`MscCpu` exposes the same `jit()/engine()/setEngine()` trio as
+   the other 030s), `SnapMachine::Duo230 = 37` + the save/load pair
+   (gated in `savestate_030_test`: the 32 KB PG&E SRAM carrying the
+   mid-boot BORG v2 upload round-trips, plus a 3 M-cycle determinism
+   check), and the battery file `<image>.duo230.pram` — the PG&E's own
+   RAM+SRAM in MAME's layout, with its `$91` power-flag scrub
+   (`msc_parity_test` § F).
+   Found by the save-state walk and fixed the same day: `MscMemory::pmuReq_`
+   was not serialized while `PgePmu::reqLevel_` — the PMU's view of the
+   *same wire* — was, so a restore desynced the two ends. It never failed a
+   test (REQ is idle-high at most sample points), which is the whole reason
+   it is written down here.
+   **Not wired, machine-side API absences, not shell gaps:** no floppy
+   (the drive lives in the Dock; `MscMemory` has no SWIM), no drive sounds,
+   no live CD-bay swap (`attachCdromEmpty` absent), and `mouseButton(bool)`
+   takes no index so button 1 is dropped.
 4. Input through the PMU (trackball + matrix keyboard) → `duo230_input_etalon`.
 5. Variants: Duo 210/250 (trivial), 270c (CSC), 280 (040), then **PB150**
    (GSC-480 + IDE `$A55A` probing from its own ROM, no oracle).

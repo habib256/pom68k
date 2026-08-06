@@ -129,6 +129,10 @@ public:
     }
     Scc8530& scc() { return scc_; }
     Rtc& rtc() { return rtc_; }
+    // Battery file (Rtc.h) — the extended XPRAM the Mac II ROM actually
+    // uses, so monitor depth, startup disk and AppleTalk state survive.
+    bool loadPram(const std::string& path) { return rtc_.loadPram(path); }
+    void savePram(const std::string& path) { rtc_.savePram(path); }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }
     void ejectDisk() { drive_.eject(); }
     bool overlay() const { return overlay_; }

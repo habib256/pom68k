@@ -24,12 +24,17 @@
 //     and its latch rule does not transfer — and STOP ($8E) approximated
 //     as WAIT, where MAME fatalerrors. Pinned so a parity diff cannot flip
 //     them silently; see src/PgePmu.cpp and src/M68hc05Pge.cpp.
+//  F. PG&E NVRAM persistence: MscMemory::loadPram/savePram round trip in
+//     MAME's layout, including the $91 power-flag scrub on load
+//     (m68hc05pge.cpp:955-975). The pair is machine-side only — the Duo
+//     has no kProfiles row, so nothing in main.cpp calls it yet.
 // Registered in CMakeLists.txt (msc_parity_test, links pom68k_core).
 
 #include "MscCpu.h"
 #include "MscMemory.h"
 #include "PgePmu.h"
 #include "Via6522.h"
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -243,6 +248,112 @@ static void testPortDefaultsAndStop() {
     std::filesystem::remove(path);
 }
 
+// ── F. PG&E NVRAM persistence round trip (MscMemory::load/savePram) ─────
+// The Duo's PRAM is the PG&E's internal RAM + SRAM; the battery file is
+// MAME's layout (m68hc05pge.cpp:966-974: $3C0 internal RAM then $8000
+// SRAM) plus POM68K's 4-byte big-endian RTC-seconds tail (the Egret
+// battery-file convention). What this pins:
+//   - the bytes survive a save → mutate → load cycle, at both ends of
+//     both ranges;
+//   - the power flag at MCU $91 reads 0 AFTER a load even though it was
+//     non-zero when saved (m68hc05pge.cpp:959 "clear power flag so the
+//     boot ROM does a cold boot") — and the scrub is on LOAD, not save:
+//     the saved file still carries the non-zero byte;
+//   - a missing or short file returns false and leaves the live PG&E
+//     untouched (CentrisMemory::loadPram's `b.size() < N` rule).
+static void testPramRoundTrip() {
+    MscMemory mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+    M68hc05Pge& mcu = mem.pmu().mcu();
+    const int kFlag = M68hc05Pge::kPowerFlagAddr - 0x40;   // $91 → ram_ index
+
+    // Recognisable pattern at both ends of both ranges + the power flag.
+    mcu.setRamByte(0, 0xA5);
+    mcu.setRamByte(M68hc05Pge::kRamSize - 1, 0x5A);
+    mcu.setRamByte(kFlag, 0xC3);                     // non-zero at save time
+    mcu.setSramByte(0, 0x11);
+    mcu.setSramByte(0x1234, 0x77);
+    mcu.setSramByte(M68hc05Pge::kSramSize - 1, 0xEE);
+    mem.setRtcSeconds(0x0BADF00D);
+
+    const auto path = std::filesystem::temp_directory_path()
+                    / "pom68k_msc_parity.pram";
+    std::filesystem::remove(path);
+    mem.savePram(path.string());
+    const auto sz = std::filesystem::file_size(path);
+    check(sz == std::uintmax_t(M68hc05Pge::kRamSize)
+               + std::uintmax_t(M68hc05Pge::kSramSize) + 4,
+          "PRAM file = MAME layout ($3C0 + $8000) + 4-byte seconds tail");
+
+    // The scrub is a LOAD-side rule: the file keeps the live power flag.
+    {
+        std::ifstream f(path, std::ios::binary);
+        f.seekg(kFlag);
+        char c = 0; f.read(&c, 1);
+        check(uint8_t(c) == 0xC3, "saved image keeps the power flag as-is");
+    }
+
+    // Mutate everything the load must put back.
+    mcu.setRamByte(0, 0x00);
+    mcu.setRamByte(M68hc05Pge::kRamSize - 1, 0x00);
+    mcu.setRamByte(kFlag, 0xFF);
+    mcu.setSramByte(0, 0x00);
+    mcu.setSramByte(0x1234, 0x00);
+    mcu.setSramByte(M68hc05Pge::kSramSize - 1, 0x00);
+    mem.setRtcSeconds(1);
+
+    check(mem.loadPram(path.string()), "loadPram accepts the saved image");
+    check(mcu.ramByte(0) == 0xA5, "internal RAM first byte restored");
+    check(mcu.ramByte(M68hc05Pge::kRamSize - 1) == 0x5A,
+          "internal RAM last byte ($3FF) restored");
+    check(mcu.sramByte(0) == 0x11, "SRAM first byte restored");
+    check(mcu.sramByte(0x1234) == 0x77, "SRAM interior byte restored");
+    check(mcu.sramByte(M68hc05Pge::kSramSize - 1) == 0xEE,
+          "SRAM last byte ($FFFF) restored");
+    check(mcu.ramByte(kFlag) == 0x00,
+          "power flag $91 scrubbed to 0 on load (MAME m68hc05pge.cpp:959)");
+    check(mcu.rtc() == 0x0BADF00D, "RTC seconds tail restored over the seed");
+
+    // A MAME-written image stops at $83C0: it must still load, and leave
+    // the clock alone (the tail is POM68K's optional extension).
+    const auto mamePath = std::filesystem::temp_directory_path()
+                        / "pom68k_msc_parity_mame.pram";
+    std::filesystem::copy_file(path, mamePath,
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::resize_file(mamePath,
+                                 std::uintmax_t(M68hc05Pge::kRamSize)
+                               + std::uintmax_t(M68hc05Pge::kSramSize));
+    mem.setRtcSeconds(0x12345678);
+    check(mem.loadPram(mamePath.string()), "tail-less (MAME) image loads");
+    check(mcu.ramByte(0) == 0xA5 && mcu.sramByte(M68hc05Pge::kSramSize - 1) == 0xEE,
+          "tail-less image restores both ranges");
+    check(mcu.rtc() == 0x12345678, "no tail → the clock is left as it was");
+    std::filesystem::remove(mamePath);
+    mem.setRtcSeconds(0x0BADF00D);                   // back to the pinned value
+
+    // Missing file → false, live state untouched.
+    const auto absent = std::filesystem::temp_directory_path()
+                      / "pom68k_msc_parity_absent.pram";
+    std::filesystem::remove(absent);
+    check(!mem.loadPram(absent.string()), "loadPram(missing) returns false");
+    check(mcu.ramByte(0) == 0xA5 && mcu.sramByte(0x1234) == 0x77
+          && mcu.rtc() == 0x0BADF00D,
+          "loadPram(missing) left the PG&E untouched");
+
+    // Short file → false, live state untouched (the `b.size() < N` rule).
+    const auto shortPath = std::filesystem::temp_directory_path()
+                         / "pom68k_msc_parity_short.pram";
+    { std::ofstream out(shortPath, std::ios::binary | std::ios::trunc);
+      std::vector<char> junk(100, 0x7E);
+      out.write(junk.data(), std::streamsize(junk.size())); }
+    check(!mem.loadPram(shortPath.string()), "loadPram(short file) returns false");
+    check(mcu.ramByte(0) == 0xA5 && mcu.sramByte(0) == 0x11
+          && mcu.rtc() == 0x0BADF00D,
+          "loadPram(short file) left the PG&E untouched");
+
+    std::filesystem::remove(path);
+    std::filesystem::remove(shortPath);
+}
+
 int main() {
     testSoundBusy();
     testPorteReset();
@@ -250,6 +361,7 @@ int main() {
     testPortHLatch();
     testRtcSeed();
     testPortDefaultsAndStop();
+    testPramRoundTrip();
     std::printf("%s\n", failures ? "FAILED" : "PASSED");
     return failures ? 1 : 0;
 }

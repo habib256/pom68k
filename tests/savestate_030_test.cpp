@@ -6,7 +6,11 @@
 // (platform #12), whose chunk nests something no other machine has: two
 // Apple PIC IOPs, each a full R65c02 + 32 KB of host-uploaded firmware.
 // Losing that RAM on restore would resurrect a machine whose I/O
-// processors have no program — hence the coverage here.
+// processors have no program — hence the coverage here. The PowerBook Duo
+// 230 (platform #11, MSC + PG&E) closes the file for the same reason, one
+// notch worse: its power manager's 32 KB SRAM holds the firmware the
+// system ROM uploads over SPI *and* the machine's PRAM, and unlike a NuBus
+// declaration ROM nothing on the host can put it back.
 //
 // Same two properties as savestate_v8_test, per family:
 //   1. save → mutate → load → save is byte-identical;
@@ -19,6 +23,10 @@
 
 #include "IIfxCpu.h"
 #include "IIfxMemory.h"
+#include "M68hc05Pge.h"
+#include "MscCpu.h"
+#include "MscMemory.h"
+#include "PgePmu.h"
 #include "RbvCpu.h"
 #include "RbvMemory.h"
 #include "SaveState.h"
@@ -27,8 +35,11 @@
 #include "SonoraMemory.h"
 #include "VaspCpu.h"
 #include "VaspMemory.h"
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -176,10 +187,165 @@ void testFamily(const char* family, const std::vector<uint8_t>& rom) {
         std::printf("    first divergence at byte %zu of %zu\n", i, n);
     }
 }
+
+// ── Platform #11: the PowerBook Duo 230 (MSC + PG&E) ────────────────────
+// The Duo cannot ride makeRom()/testFamily(): its 68030 is HELD at reset
+// until the PG&E power manager has run its own 512 B mask ROM and raised
+// port E bit 2 (msc.cpp:151, docs/DUO_BRINGUP.md), so the rig needs the
+// real roms/pge/pge_boot.bin — and the state this entry exists to protect
+// only appears under the real system ROM: the PMU firmware it uploads over
+// SPI into the PG&E's 32 KB SRAM. That SRAM is the one store in the tree
+// with no reload path — no ROM file backs it, so it either travels in the
+// snapshot or the restored machine owns a power manager with no program
+// (and, in the same 32 KB, no PRAM). No disk image is needed: the system
+// ROM is already streaming SPI to the PMU long before it looks for a boot
+// volume. Soft-skips without the two ROM files, like every asset-dependent
+// gate in the tree.
+std::string findAsset(const char* rel) {
+    for (const std::string& base : { std::string(), std::string("../") }) {
+        std::string p = base + rel;
+        if (std::ifstream(p, std::ios::binary)) return p;
+    }
+    return {};
+}
+
+// FNV-1a over a PG&E memory range, through the core's own byte accessors
+// (M68hc05Pge hands no bulk pointer out — the same narrow contract
+// MscMemory::savePram uses).
+uint64_t pgeDigest(M68hc05Pge& mcu, bool sram) {
+    uint64_t h = 1469598103934665603ull;
+    const int n = sram ? M68hc05Pge::kSramSize : M68hc05Pge::kRamSize;
+    for (int i = 0; i < n; i++) {
+        h ^= sram ? mcu.sramByte(i) : mcu.ramByte(i);
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
+struct DuoRig {
+    MscMemory mem;
+    MscCpu cpu;
+    static constexpr auto kKind = pom68k::SnapMachine::Duo230;
+    explicit DuoRig(const std::vector<uint8_t>& rom)
+        : mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230), cpu(mem) {
+        mem.loadRom(rom); mem.setCpu(&cpu); cpu.hardReset();
+    }
+    // The PMU boots FIRST; the 68030 may not be stepped while it is held.
+    // Capped so a wedged PG&E fails loudly instead of spinning.
+    bool release() {
+        for (long i = 0; i < 400000 && mem.cpuHeld(); i++) mem.tick(1000);
+        return !mem.cpuHeld();
+    }
+};
+
+void testDuo() {
+    const char* kRomRel =
+        "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM";
+    const std::string romPath = findAsset(kRomRel);
+    // MscMemory's ctor finds the PG&E dump itself (both cwd spellings); this
+    // is only the presence probe that decides skip vs run.
+    const std::string pgePath = findAsset("roms/pge/pge_boot.bin");
+    if (romPath.empty() || pgePath.empty()) {
+        std::printf("  %-8s SKIP: needs the ECFA989B ROM and "
+                    "roms/pge/pge_boot.bin\n", "duo230");
+        return;
+    }
+    std::ifstream rin(romPath, std::ios::binary);
+    const std::vector<uint8_t> rom((std::istreambuf_iterator<char>(rin)),
+                                   std::istreambuf_iterator<char>());
+    if (rom.size() != MscMemory::kRomSize) {
+        check(false, "duo230", "setup: ROM is 1 MB");
+        return;
+    }
+
+    // ── 1. Re-save byte-identity, with the PG&E as the payload ──────────
+    DuoRig m(rom);
+    // Both are hard prerequisites, not assertions to soldier past: without a
+    // PG&E there is no mcu() to dereference, and a held 68030 never runs.
+    check(m.mem.pgeActive(), "duo230", "setup: the PG&E boot ROM loaded");
+    if (!m.mem.pgeActive()) return;
+    check(m.release(), "duo230", "setup: the PG&E released the 68030");
+    if (m.mem.cpuHeld()) return;
+    m.cpu.runCycles(8000000);
+    check(!m.mem.overlay(), "duo230", "setup: the ROM cleared the boot overlay");
+    M68hc05Pge& mcu = m.mem.pmu().mcu();
+    check(mcu.spiTransfers > 100, "duo230",
+          "setup: the system ROM is uploading firmware over SPI");
+    const uint64_t sram0 = pgeDigest(mcu, true);
+    const uint64_t ram0  = pgeDigest(mcu, false);
+    const uint16_t mcuPc0 = mcu.pc();
+    const uint32_t rtc0 = mcu.rtc();
+    long sramLive = 0;
+    for (int i = 0; i < M68hc05Pge::kSramSize; i++)
+        if (mcu.sramByte(i)) sramLive++;
+    check(sramLive > 100, "duo230",
+          "setup: real firmware bytes landed in the PG&E SRAM");
+
+    const Blob snapshot = saveOf(m);
+    check(snapshot.size() > 64, "duo230", "save: produced a container");
+
+    // Mutate BOTH clocks of Duo-specific state: let the machine run on, then
+    // scribble the PG&E's own memories directly (setRamByte/setSramByte are
+    // the same narrow setters MscMemory::loadPram uses). A restore that
+    // forgot the PG&E would leave the scribble in place.
+    m.cpu.runCycles(3000000);
+    for (int i = 0; i < 256; i++) {
+        mcu.setSramByte(i * 71, uint8_t(0xA5 ^ i));
+        mcu.setRamByte(i, uint8_t(0x5A ^ i));
+    }
+    check(pgeDigest(mcu, true) != sram0, "duo230",
+          "mutate: the PG&E SRAM moved on");
+    check(pgeDigest(mcu, false) != ram0, "duo230",
+          "mutate: the PG&E internal RAM moved on");
+
+    std::string err;
+    check(pom68k::load(m.mem, m.cpu, DuoRig::kKind,
+                       snapshot.data(), snapshot.size(), err),
+          "duo230", "load: accepted its own snapshot");
+    check(err.empty(), "duo230", "load: no warning on a same-build snapshot");
+    check(pgeDigest(mcu, true) == sram0, "duo230",
+          "load: the uploaded PG&E firmware/PRAM is back (32 KB SRAM)");
+    check(pgeDigest(mcu, false) == ram0, "duo230",
+          "load: the PG&E internal RAM is back (960 B)");
+    check(mcu.pc() == mcuPc0, "duo230", "load: the PG&E resumes at its own PC");
+    check(mcu.rtc() == rtc0, "duo230", "load: the PMU-side clock is back");
+    check(saveOf(m) == snapshot, "duo230", "load→save is byte-identical");
+
+    // ── 2. Determinism across a restore ─────────────────────────────────
+    // Both 68030 and PG&E must resume in lockstep: the MCU runs off the
+    // machine clock through MscCpu::flushTicks → MscMemory::tick, so a lost
+    // accumulator shows up here as a diverging snapshot, not as a hang.
+    DuoRig a(rom);
+    if (!a.release()) { check(false, "duo230", "determinism: rig a released"); return; }
+    a.cpu.runCycles(8000000);
+    const Blob start = saveOf(a);
+    a.cpu.runCycles(3000000);
+    const Blob direct = saveOf(a);
+
+    DuoRig b(rom);
+    if (!b.release()) { check(false, "duo230", "determinism: rig b released"); return; }
+    b.cpu.runCycles(8000000);           // any state; the restore overwrites it
+    std::string e2;
+    check(pom68k::load(b.mem, b.cpu, DuoRig::kKind,
+                       start.data(), start.size(), e2),
+          "duo230", "determinism: restored into a second machine");
+    b.cpu.runCycles(3000000);
+    const Blob restored = saveOf(b);
+
+    check(sav::hash(restored) == sav::hash(direct), "duo230",
+          "determinism: 3 M cycles after a restore match");
+    if (restored != direct) {
+        size_t i = 0;
+        const size_t n = std::min(restored.size(), direct.size());
+        while (i < n && restored[i] == direct[i]) i++;
+        std::printf("    first divergence at byte %zu of %zu\n", i, n);
+    }
+}
 }  // namespace
 
 int main() {
-    std::printf("savestate_030_test — Sonora / VASP / RBV save-state fan-out\n");
+    std::printf("savestate_030_test — Sonora / VASP / RBV / IIfx / Duo 230 "
+                "save-state fan-out\n");
     const auto rom1M   = makeRom(0x100000);   // Sonora + VASP
     const auto rom512K = makeRom(0x80000);    // RBV
 
@@ -189,6 +355,9 @@ int main() {
     testFamily<RbvIiciRig>("rbv-iici", rom512K);
     // The IIfx wrapper hardcodes PC = ROMBase+$2A, so its stub lives there.
     testFamily<IIfxRig>("iifx", makeRom(0x80000, 0x2A));
+    // The Duo needs its real ROM pair (the PG&E holds the 68030 in reset
+    // until its own mask ROM says otherwise) — soft-skips without them.
+    testDuo();
 
     if (gFails) {
         std::printf("savestate_030_test: %d failure(s)\n", gFails);

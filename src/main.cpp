@@ -42,6 +42,8 @@
 #include "Cpu020.h"
 #include "IIfxCpu.h"
 #include "IIfxMemory.h"
+#include "MscCpu.h"
+#include "MscMemory.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "LtoUdp.h"
@@ -493,7 +495,10 @@ static void initDriveSfx(MacAudioHost& host) {
 // Selecting another machine relaunches the process on its ROM — clean
 // state, since each machine is built once at startup (ROM size alone
 // selects the machine in main()).
-enum class MachineKind { Plus, Se, SeFdhd, MacClassic, MacII, IIfx, Lc, LcII, ClassicII, ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Q630, Quadra };
+// Appended, never inserted: the order is the Machine menu's, and an
+// insertion would silently renumber every kind a running relaunch compares.
+// `Duo` = platform #12 (MSC + PG&E), the first PowerBook (2026-08-06).
+enum class MachineKind { Plus, Se, SeFdhd, MacClassic, MacII, IIfx, Lc, LcII, ClassicII, ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Q630, Quadra, Duo };
 static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 
 // ── CPU engine selection (interpreter vs JIT) ───────────────────────────
@@ -848,6 +853,7 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         const char* kDjmemc = "djMEMC + IOSB";
         const char* kSpike = "Discret 040 (Quadra 700/900/950)";
         const char* kF108 = "F108 + PrimeTime II + Valkyrie";
+        const char* kMsc = "MSC + PG&E (PowerBook Duo)";
         const Profile kProfiles[] = {
             { "68000", "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr, nullptr, nullptr, true },
             { "68000", "Macintosh SE", MachineKind::Se, "roms/macse.rom", "B2E362A8", nullptr, nullptr, true },
@@ -895,6 +901,14 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
             { kSpike, "Macintosh Quadra 950 (33 MHz, IOP)", MachineKind::Q700, "roms/quadra950.rom", "3DC27823", "POM68K_Q700_MODEL", "q950", false },
             { kF108, "Macintosh Quadra 630 (33 MHz)", MachineKind::Q630, "roms/quadra630.rom", "06684214", "POM68K_Q630_ID", "A55A2252", true },
             { kF108, "Macintosh LC / Performa 580", MachineKind::Q630, "roms/quadra630.rom", "06684214", "POM68K_Q630_ID", "A55A225A", false },
+            // The 37th profile (2026-08-06): platform #12's first GUI
+            // citizen. envKey stays null the way the IIfx's does — that is
+            // only safe because MachineKind::Duo has exactly ONE row, so
+            // `kindCur` alone decides `isCur`. The Mac II bug above happened
+            // because FOUR rows shared one kind: add a Duo 210/250 row here
+            // and it must carry an envKey/envVal pair, or both rows will
+            // claim to be current and neither will be clickable.
+            { kMsc, "PowerBook Duo 230 (33 MHz)", MachineKind::Duo, "roms/macduo230.rom", "ECFA989B", nullptr, nullptr, true },
         };
         const char* lastGroup = nullptr;
         for (const Profile& pr : kProfiles) {
@@ -1250,6 +1264,20 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     if (hddOk) std::printf("SCSI HD: %s (write-back)\n", hddPath.c_str());
     else std::fprintf(stderr, "No SCSI image — drop a .dsk/.vhd in hdv/.\n");
 
+    // Battery-backed PRAM (discrete RTC XPRAM). Tagged with the machine
+    // like every later profile: an untagged "<image>.pram" would let the
+    // four Mac II-family boards trade XPRAM through a shared boot volume.
+    // The clock is NOT in the file — a real RTC's battery kept counting,
+    // so wall time comes from the host at each launch (seeded above).
+    // "SE/30" would put a directory separator in the filename.
+    const std::string pramTag = se30 ? "se30"
+                              : model == MacIIMemory::Model::IIx  ? "iix"
+                              : model == MacIIMemory::Model::IIcx ? "iicx"
+                                                                  : "macii";
+    static std::string pramPath =
+        (hddPath.empty() ? pramTag : hddPath + "." + pramTag) + ".pram";
+    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
+
     static std::vector<std::string> extraDisks;
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;
@@ -1465,7 +1493,8 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
 #else
     machine.start();
     while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();
+    machine.stop();                     // join before touching machine state
+    mem.savePram(pramPath);
     audioHost.stop();
     glDeleteTextures(1, &screenTex);
     ImGui_ImplOpenGL3_Shutdown();
@@ -1710,6 +1739,13 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
     if (hddOk) std::printf("SCSI HD: %s (write-back)\n", hddPath.c_str());
     else std::fprintf(stderr, "No SCSI image — drop a .dsk/.vhd in hdv/.\n");
 
+    // Battery-backed PRAM (Rtc.h). The IIfx keeps a discrete RTC despite
+    // its two IOPs — the PICs carry firmware, not the PRAM. Host wall time
+    // was seeded above; only the XPRAM is in the file.
+    static std::string pramPath =
+        (hddPath.empty() ? std::string("iifx") : hddPath + ".iifx") + ".pram";
+    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
+
     static std::vector<std::string> extraDisks;
     for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
         if (argv[i] == hddPath) continue;
@@ -1919,7 +1955,8 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
 #else
     machine.start();
     while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();
+    machine.stop();                     // join before touching machine state
+    mem.savePram(pramPath);
     audioHost.stop();
     glDeleteTextures(1, &screenTex);
     ImGui_ImplOpenGL3_Shutdown();
@@ -5690,6 +5727,483 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     return 0;
 }
 
+// ── PowerBook Duo machine thread ────────────────────────────────────────
+// The IIfxMachine shape (no Video class — MscMemory decodes its own GSC
+// panel) plus the SonoraStyleMachine engine hooks, since MscCpu carries a
+// jit::Engine. Two things are specific to this platform:
+//   - the PG&E boots FIRST and holds the 68030 in reset (msc.cpp:151,
+//     port E bit 2). runOne() therefore has to tick the peripherals with
+//     the CPU stopped, exactly like the Egret hold on the V8/Sonora
+//     boards — tests/duo230_boot_etalon.cpp:52 does the same warm-up;
+//   - there is no floppy drive at all (the Duo's is in the dock), so no
+//     insert/eject plumbing and no drive-sound wiring — MscMemory has
+//     neither API.
+struct MscMachine {
+    MscMemory& mem; MscCpu& cpu; MacAudioHost& audioHost;
+    MscMachine(MscMemory& m, MscCpu& c, MacAudioHost& a)
+        : mem(m), cpu(c), audioHost(a) {
+        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
+    }
+    ~MscMachine() { stop(); }
+
+    // Engine state + JIT gauges for the CPU menu (DafbMachine contract:
+    // the menu tick follows the MACHINE; the swap lands one queue trip
+    // later, on the machine thread).
+    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
+    jit::Stats::Snapshot jitStats() const {
+        std::lock_guard<std::mutex> l(jitMu_);
+        return jitSnap_;
+    }
+
+    std::atomic<bool> running{true}, turbo{true}, quit{false};
+
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset,
+                          CpuEngine } t; int a = 0, b = 0; };
+    void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
+
+    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
+    SaveStateSlot state;
+
+    bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
+        std::lock_guard<std::mutex> l(fbMu_);
+        if (fbShared_.empty()) return false;
+        out = fbShared_; w = fbW_; h = fbH_;
+        return true;
+    }
+
+    struct Status { uint32_t pc; long long clock; bool overlay, mmu, held;
+                    uint8_t gscMode; };
+    Status status() const {
+        const uint8_t f = stFlags_.load(std::memory_order_relaxed);
+        return { stPc_.load(std::memory_order_relaxed),
+                 stClock_.load(std::memory_order_relaxed),
+                 (f & 1) != 0, (f & 2) != 0, (f & 4) != 0,
+                 stGsc_.load(std::memory_order_relaxed) };
+    }
+
+    int stepTick() {                    // LcMachine::stepTick, verbatim logic
+        applyCmds();
+        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
+        int sleepUs = 0;
+        if (activeHold_ > 0 && audioHost.started()) {
+            int n = 0;
+            while (audioHost.buffered() < kTarget && n < 8) {
+                runOne();
+                if (drain()) activeHold_ = 90; else activeHold_--;
+                audioHost.pushRaw(samp_, 0);
+                n++;
+            }
+            if (n == 0) {
+                if (++starve_ > 80) {
+                    runOne();
+                    if (drain()) activeHold_ = 90; else activeHold_--;
+                    starve_ = 0;
+                }
+                sleepUs = 2000;
+            } else starve_ = 0;
+        } else {
+            auto t0 = std::chrono::steady_clock::now();
+            int n = 0;
+            do {
+                runOne();
+            } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
+                     std::chrono::steady_clock::now() - t0 <
+                         std::chrono::milliseconds(10));
+            if (drain()) {
+                activeHold_ = 90;
+                audioHost.pushFrame(samp_, 0);
+            }
+            if (!turbo.load(std::memory_order_relaxed)) {
+                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - t0).count();
+                sleepUs = int(std::max<long long>(0, 16625 - spent));
+            }
+        }
+        publish();
+        return sleepUs;
+    }
+
+    void start() {
+#ifndef __EMSCRIPTEN__
+        th_ = std::thread([this] {
+            while (!quit.load(std::memory_order_relaxed)) {
+                int us = stepTick();
+                if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
+            }
+        });
+#endif
+    }
+    void stop() {
+#ifndef __EMSCRIPTEN__
+        quit.store(true);
+        if (th_.joinable()) th_.join();
+#endif
+    }
+
+    void publish(bool force = false) {
+        auto now = std::chrono::steady_clock::now();
+        if (!force && framesRun_ == 0 &&
+            now - lastPub_ < std::chrono::milliseconds(16)) return;
+        lastPub_ = now; framesRun_ = 0;
+        // Fixed-mode LCD: 640x400, one GSC layout per frame, no beam and no
+        // mode change — decodeScreen() reads VRAM whole (MscMemory.h:152).
+        mem.decodeScreen(fb_);
+        for (uint32_t& px : fb_) px |= 0xFF000000u;
+        {
+            std::lock_guard<std::mutex> l(fbMu_);
+            fbShared_ = fb_;
+            fbW_ = MscMemory::kScreenW; fbH_ = MscMemory::kScreenH;
+        }
+        stPc_.store(cpu.getPC(), std::memory_order_relaxed);
+        stClock_.store(cpu.getClock(), std::memory_order_relaxed);
+        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
+                               ((cpu.getTC() & 0x80000000) ? 2 : 0) |
+                               (mem.cpuHeld() ? 4 : 0)),
+                       std::memory_order_relaxed);
+        stGsc_.store(mem.gscReg(4), std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> l(jitMu_);
+            jitSnap_ = cpu.jit().stats().snapshot();
+        }
+    }
+
+private:
+    const int64_t kFrame = mem.cpuHz() / 60;   // 33 MHz on the Duo 230
+    static constexpr size_t kTarget = 2225;
+
+    void runOne() {
+        // PG&E hold: the PMU releases the 68030 through its port E, so
+        // until it does the peripherals must still be clocked or the MCU
+        // never gets there (duo230_boot_etalon.cpp:52). Same shape as the
+        // Egret power-on hold on the V8/Sonora boards.
+        if (mem.cpuHeld()) mem.tick(int(kFrame));
+        else runQuantumWithWire(mem, cpu, kFrame);
+        framesRun_++;
+    }
+    bool drain() {
+        samp_.clear();
+        while (mem.ascAvailable() > 0)
+            samp_.push_back(float(mem.ascPop()) / 32768.0f);
+        float lo = 1.f, hi = -1.f;
+        for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
+        return !samp_.empty() && hi - lo >= 0.02f;
+    }
+    void applyCmds() {
+        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
+        for (const Cmd& c : cmdsApply_) switch (c.t) {
+            case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
+            // The trackball has ONE button and MscMemory::mouseButton takes
+            // no index (PgePmu → AdbBus), so the right button is dropped
+            // rather than mapped onto the left.
+            case Cmd::MouseButton: if (c.a == 0) mem.mouseButton(c.b != 0); break;
+            case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
+            case Cmd::HardReset:   cpu.hardReset(); break;
+            // Engine swap between two runCycles() — an instruction
+            // boundary (the DafbMachine precedent).
+            case Cmd::CpuEngine:
+                cpu.setEngine(c.a);
+                stEngine_.store(c.a, std::memory_order_relaxed);
+                break;
+        }
+        cmdsApply_.clear();
+        state.apply(mem, cpu);         // save/load between two quanta
+    }
+
+    std::thread th_;
+    std::mutex cmdMu_;
+    std::vector<Cmd> cmds_, cmdsApply_;
+    std::mutex fbMu_;
+    std::vector<uint32_t> fbShared_;
+    int fbW_ = 0, fbH_ = 0;
+    std::atomic<uint32_t> stPc_{0};
+    std::atomic<long long> stClock_{0};
+    std::atomic<uint8_t> stFlags_{0};
+    std::atomic<uint8_t> stGsc_{0};          // GSC reg 4 = panel depth mode
+    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
+    mutable std::mutex jitMu_;
+    jit::Stats::Snapshot jitSnap_{};
+    int activeHold_ = 0;
+    int starve_ = 0;
+    int framesRun_ = 0;
+    std::chrono::steady_clock::time_point lastPub_{};
+    std::vector<uint32_t> fb_;
+    std::vector<float> samp_;
+};
+
+// ── PowerBook Duo 230: MSC + PG&E, 68030 @ 33 MHz ───────────────────────
+// The 37th profile and platform #12's first GUI citizen (2026-08-06;
+// docs/DUO_BRINGUP.md, gate tests/duo230_boot_etalon.cpp). Selected by the
+// 1 MB ROM whose header checksum is $ECFA989B — the dump shared by the
+// Duo 210 / 230 / 250; only the 230 is wired (kCpuHz230 / kIdDuo230).
+// No floppy drive, no NuBus, no discrete RTC: the PG&E power manager runs
+// its own 68HC05 and owns the clock, the PRAM and the whole input path.
+static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
+                  int argc, char** argv) {
+    std::printf("Machine: PowerBook Duo 230 (68030 @ 33 MHz, MSC + PG&E, "
+                "GSC 640x400)\n");
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
+
+    // Built exactly as the gate builds it (duo230_boot_etalon.cpp:43-56).
+    static MscMemory mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+    static MscCpu cpu(mem);
+    static MacAudioHost audioHost;
+    if (!mem.loadRom(rom)) {
+        std::fprintf(stderr, "FAIL: bad PowerBook Duo ROM\n");
+        return 1;
+    }
+    // Without roms/pge/pge_boot.bin there is no PMU: the CPU runs free and
+    // the ROM stalls at the power-manager handshake. Say so once, loudly,
+    // instead of letting the user watch a dead panel.
+    if (!mem.pgeActive())
+        std::fprintf(stderr, "PG&E firmware missing (roms/pge/pge_boot.bin) — "
+                             "the ROM will stall at the PMU handshake.\n");
+    mem.setCpu(&cpu);
+    cpu.hardReset();
+    wireLocalTalk(mem);
+
+    // Boot volume: argv[2], else the gate's 7.5.5 image (7.5.x is what
+    // uploads the BORG v2 PMU firmware mid-boot — docs/DUO_BRINGUP.md).
+    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/System 7.5.5 HD.dsk");
+    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
+    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
+    if (hddOk) std::printf("SCSI HD: %s (write-back)\n", hddPath.c_str());
+    else std::fprintf(stderr, "No SCSI image — drop a .dsk/.vhd in hdv/.\n");
+
+    // Secondary volumes (argv[3..] → SCSI IDs 1..6). No "cdbay" reservation
+    // and no live bay swap: MscMemory has attachCdrom() but neither
+    // attachCdromEmpty() nor bayIsCdrom(), so the Disques window stages
+    // those changes and applies them on the reboot it offers.
+    static std::vector<std::string> extraDisks;
+    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
+        if (argv[i] == hddPath) continue;
+        int id = int(extraDisks.size()) + 1;
+        if (pom68k::diskBaysPathIsCd(argv[i])) {
+            if (mem.attachCdrom(argv[i], id)) {
+                extraDisks.push_back(argv[i]);
+                std::printf("SCSI CD %d: %s\n", id, argv[i]);
+            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
+            continue;
+        }
+        if (mem.attachScsi(argv[i], true, id)) {
+            extraDisks.push_back(argv[i]);
+            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
+        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
+    }
+
+    // Battery-backed PRAM. The Duo keeps it in the PG&E's own RAM+SRAM, not
+    // in a discrete Rtc or an Egret/Cuda (MscMemory.cpp:138) — but the file
+    // plays the same role, so it is tagged and paired with the boot volume
+    // like everywhere else. The PMU also holds the clock, and its saved
+    // seconds froze while powered off: re-seed from the host afterwards,
+    // the ordering MscMemory.cpp:132 asks main.cpp for.
+    static std::string pramPath =
+        (hddPath.empty() ? std::string("duo230") : hddPath) + ".duo230.pram";
+    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
+    mem.setRtcSeconds(hostMacSeconds());
+
+    glfwSetErrorCallback(glfwErrorCallback);
+    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
+    const char* glslVersion = configureGlfwOpenGl();
+    // 640x400 shown at 2x, plus the menu bar and the CPU window.
+    GLFWwindow* window = glfwCreateWindow(1320, 1000, "POM68K — PowerBook Duo 230",
+                                          nullptr, nullptr);
+    if (!window) { glfwTerminate(); return 1; }
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(1);
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
+    ImGui::StyleColorsDark();
+    pom68k::dockLayoutInit();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init(glslVersion);
+    pom68k::diskBaysInstallDrop(window);
+
+    static GLuint screenTex = 0;
+    glGenTextures(1, &screenTex);
+    glBindTexture(GL_TEXTURE_2D, screenTex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // Drive sounds are wired to the FLOPPY/HDD hooks the other platforms
+    // expose; MscMemory has no attachDriveSounds() (no floppy at all), so
+    // the Duo runs silent-mechanically. The Machine menu toggle still
+    // shows, greyed by gFloppySfx.isLoaded() as everywhere else.
+    initDriveSfx(audioHost);
+    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
+
+    static MscMachine machine{mem, cpu, audioHost};
+    machine.state.kind = pom68k::SnapMachine::Duo230;
+    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
+    // The "CPU" menu is global; only machines that HAVE a second engine
+    // install its hooks. MscCpu owns a jit::Engine (MscCpu.h:24), so the
+    // Duo gets the live interpreter/accelerated switch like the other 030s.
+    gSetCpuEngine = [](int e) { machine.push({MscMachine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
+    machine.publish(true);
+
+    struct Ctx {
+        GLFWwindow* window; MscMachine& m; GLuint tex;
+        ScreenInput input;
+        std::string romName, hddPath;
+        std::vector<std::string>& extraDisks;
+    };
+    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks};
+
+    auto frame = [](void* arg) {
+        Ctx& c = *static_cast<Ctx*>(arg);
+        glfwPollEvents();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+#ifdef __EMSCRIPTEN__
+        c.m.stepTick();
+#endif
+
+        machineMenu(MachineKind::Duo, c.window, [&c] {
+            // Disk selection lives in its own window
+            // (src/DiskBays.*) -- see the note in runLcII.
+            pom68k::diskBaysMenuItem();
+            if (ImGui::MenuItem("Redémarrer"))
+                c.m.push({MscMachine::Cmd::HardReset});
+            ImGui::Separator();
+            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
+            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
+            {
+                const std::string ssMsg = c.m.state.message();
+                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
+            }
+        });
+        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
+        // capture the static Ctx, which outlives every frame. No floppy hooks
+        // and no live bay hooks — see the argv loop above.
+        {
+            static pom68k::DiskBaysHost host = [&c] {
+                pom68k::DiskBaysHost h;
+                h.extras = &c.extraDisks;
+                h.hardReset = [&c] { c.m.push({MscMachine::Cmd::HardReset}); };
+                h.relaunch  = [&c](const std::string& boot,
+                                   const std::vector<std::string>& extras) {
+                    gSwitchArgs = { c.romName, boot };
+                    for (const std::string& e : extras)
+                        if (e != boot) gSwitchArgs.push_back(e);
+                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
+                };
+                h.hasFloppyDrive = false;   // the Duo's floppy is in the dock
+                return h;
+            }();
+            host.romName  = c.romName;
+            host.bootPath = c.hddPath;
+            pom68k::diskBaysWindow(host);
+        }
+
+        pom68k::dockLayoutScreenWindow("PowerBook Duo 230");
+        ImGui::Begin("PowerBook Duo 230");
+        std::vector<uint32_t> fb;
+        int fw = 0, fh = 0;
+        if (c.m.latchFrame(fb, fw, fh) && fw > 0 && fh > 0) {
+            glBindTexture(GL_TEXTURE_2D, c.tex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fw, fh, 0,
+                         GL_BGRA, GL_UNSIGNED_BYTE, fb.data());
+            c.input.frame(c.window, c.tex, ImVec2(float(fw * 2), float(fh * 2)),
+                    [&](int dx, int dy) { c.m.push({MscMachine::Cmd::MouseMove, dx, dy}); },
+                    [&](int button, bool down) {
+                        c.m.push({MscMachine::Cmd::MouseButton, button, down ? 1 : 0});
+                    });
+        }
+        ImGuiIO& io = ImGui::GetIO();
+        ImGui::End();
+
+        // Keyboard → ADB key codes (= M0110 transition code >> 1); the same
+        // table as every other ADB machine — the Duo's matrix keyboard is
+        // scanned by the PG&E and presented to the guest as an ADB device.
+        if (!io.WantTextInput) {
+            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
+                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
+                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
+                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
+                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
+                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
+                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
+                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
+                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
+                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
+                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
+                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
+                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
+                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
+                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
+                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
+                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
+                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
+                {ImGuiKey_RightCtrl,0xFB},
+                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
+                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
+                {ImGuiKey_Escape,0x6B},
+            };
+            for (const auto& e : kKeys) {
+                if (keyDown(uint8_t(e.m0110), e.k)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
+                    c.m.push({MscMachine::Cmd::Key, e.m0110 >> 1, 1});
+                }
+                if (keyUp(uint8_t(e.m0110), e.k)) {
+                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
+                    c.m.push({MscMachine::Cmd::Key, e.m0110 >> 1, 0});
+                }
+            }
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
+        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        MscMachine::Status st = c.m.status();
+        ImGui::Text("68030 @ 33 MHz (Moira + PMMU)  PC=%08X  clock=%lld",
+                    st.pc, st.clock);
+        // `held` is the first thing to look at on this platform: a Duo that
+        // never leaves the hold has a PG&E that never released port E bit 2.
+        ImGui::Text("overlay=%d  MMU=%s  PG&E hold=%d  GSC mode=$%02X",
+                    st.overlay ? 1 : 0, st.mmu ? "on" : "off",
+                    st.held ? 1 : 0, st.gscMode);
+        bool running = c.m.running.load(std::memory_order_relaxed);
+        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
+        ImGui::SameLine();
+        if (ImGui::Button("Reset")) c.m.push({MscMachine::Cmd::HardReset});
+        ImGui::SameLine();
+        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
+        if (ImGui::Checkbox("Turbo", &turbo)) c.m.turbo.store(turbo);
+        saveStateUi(c.m.state);
+        ImGui::End();
+
+        ImGui::Render();
+        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
+        glViewport(0, 0, w, h);
+        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        glfwSwapBuffers(c.window);
+    };
+
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
+#else
+    machine.start();
+    while (!glfwWindowShouldClose(window)) frame(&ctx);
+    machine.stop();                     // join before touching machine state
+    mem.savePram(pramPath);
+    audioHost.stop();
+    glDeleteTextures(1, &screenTex);
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    relaunchIfSwitched(argv[0]);
+#endif
+    return 0;
+}
+
 int main(int argc, char** argv) {
 #ifndef POM68K_VERSION_STRING
 #define POM68K_VERSION_STRING "dev"
@@ -5699,7 +6213,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (!std::strcmp(argv[i], "--version")) {
             std::printf("POM68K %s — Macintosh 68k emulator "
-                        "(36 profiles, Mac Plus to Quadra 950)\n",
+                        "(37 profiles, Mac Plus to Quadra 950)\n",
                         POM68K_VERSION_STRING);
             return 0;
         }
@@ -5792,6 +6306,13 @@ int main(int argc, char** argv) {
         // later LC 580 ROM — both the F108 + Valkyrie board.
         if (ck == 0x06684214 || ck == 0x064DC91D)
             return runQ630(std::move(rom), matched, argc, argv);
+        // $ECFA989B = PowerBook Duo 210 / 230 / 250 (MSC + PG&E) — the only
+        // PowerBook ROM wired today, and the only one of the 1 MB dumps that
+        // is not a desktop. The 230 is the gated model; the 210 (25 MHz) and
+        // the 250 share this checksum and would need an env tag here, the
+        // way POM68K_Q700_MODEL splits the $420DBFF3 dump.
+        if (ck == 0xECFA989B)
+            return runDuo(std::move(rom), matched, argc, argv);
         return runQuadra(std::move(rom), matched, argc, argv);
     }
     // Compact 68000 family (mac128.cpp macse/macsefd/macclasc): the Plus map
@@ -5882,6 +6403,20 @@ int main(int argc, char** argv) {
         compactModel == MacMemory::Model::SE      ? MachineKind::Se :
         compactModel == MacMemory::Model::SEFDHD  ? MachineKind::SeFdhd :
         compactModel == MacMemory::Model::Classic ? MachineKind::MacClassic : MachineKind::Plus;
+
+    // Battery-backed PRAM (Rtc.h). The compacts were the last platform
+    // family without it: the Control Panel's settings — and the ROM's
+    // startup-disk choice — died with the process. Tagged per model like
+    // every other profile, since the four boards share one boot volume.
+    // The clock is not in the file; host wall time was seeded above.
+    static const char* compactTag =
+        compactModel == MacMemory::Model::SE      ? "se" :
+        compactModel == MacMemory::Model::SEFDHD  ? "sefdhd" :
+        compactModel == MacMemory::Model::Classic ? "classic" : "plus";
+    static std::string pramPath =
+        (hddPath.empty() ? std::string(compactTag)
+                         : hddPath + "." + compactTag) + ".pram";
+    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     const std::string windowTitle = std::string("POM68K — ") + machineName;
 
     // Save states (single-threaded machine: applied inline between frames).
@@ -6096,6 +6631,7 @@ int main(int argc, char** argv) {
     emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
 #else
     while (!glfwWindowShouldClose(window)) frame(&ctx);
+    mem.savePram(pramPath);
     mem.internalDrive().flushToFile();   // persist floppy writes on exit
     audioHost.stop();
     glDeleteTextures(1, &screenTex);

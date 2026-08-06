@@ -33,6 +33,15 @@ class M68hc05Pge {
 public:
     enum Port { A = 0, B, C, D, E, F, G, H, J, K, L, kPorts };
 
+    // The two non-volatile ranges (MAME m68hc05pge.cpp:966-974: the NVRAM
+    // image is m_internal_ram then m_sram, in that order).
+    static constexpr int kRamSize = 0x3C0;           // $40-$3FF internal RAM
+    static constexpr int kSramSize = 0x8000;         // $8000-$FFFF SRAM
+    // MCU address of the power flag the boot ROM tests; MAME zeroes it on
+    // every NVRAM load so the ROM takes the cold-boot path
+    // (m68hc05pge.cpp:959).
+    static constexpr int kPowerFlagAddr = 0x91;
+
     // Port callbacks: read returns pin INPUT levels, core applies
     // DDR/pullup mixing (MAME ports_r/ports_w). Unset reads = all-ones.
     std::function<uint8_t(int)> readPort;
@@ -93,8 +102,19 @@ public:
     }
     uint8_t portLatch(int p) const { return ports_[p]; }
     uint8_t ddr(int p) const { return ddrs_[p]; }
-    uint8_t sramByte(int off) const { return sram_[off & 0x7FFF]; }
-    uint8_t ramByte(int off) const { return ram_[off & 0x3FF]; }
+    // Memory views, array-relative: ramByte(0) = MCU $40, sramByte(0) =
+    // MCU $8000. (ram_ is 0x3C0 long, so the index folds modulo that size —
+    // the old & 0x3FF mask ran 64 bytes past the array for off ≥ 0x3C0.)
+    uint8_t sramByte(int off) const { return sram_[off & (kSramSize - 1)]; }
+    uint8_t ramByte(int off) const { return ram_[unsigned(off) % kRamSize]; }
+    // NVRAM restore path, used by MscMemory::loadPram. On a Duo the PG&E's
+    // internal RAM + SRAM ARE the machine's non-volatile store: MAME
+    // persists exactly these two ranges and nothing else
+    // (m68hc05pge.cpp:955-975 nvram_read/nvram_write). Kept deliberately
+    // narrow — byte setters with the same indexing as the getters above,
+    // no bulk pointer handed out of the core.
+    void setRamByte(int off, uint8_t v) { ram_[unsigned(off) % kRamSize] = v; }
+    void setSramByte(int off, uint8_t v) { sram_[off & (kSramSize - 1)] = v; }
     uint8_t adbcr() const { return adbcr_; }
     uint8_t adbsr() const { return adbsr_; }
     void setRtc(uint32_t s) { rtc_ = s; }
@@ -157,8 +177,8 @@ private:
     uint8_t a_ = 0, x_ = 0, sp_ = 0xFF, cc_ = CC_I;
 
     // Memory.
-    uint8_t ram_[0x3C0] = {};                        // $40-$3FF
-    uint8_t sram_[0x8000] = {};                      // $8000-$FFFF (CSCR-gated)
+    uint8_t ram_[kRamSize] = {};                     // $40-$3FF
+    uint8_t sram_[kSramSize] = {};                   // $8000-$FFFF (CSCR-gated)
     uint8_t bootRom_[0x200] = {};                    // $FE00 when OPTION bit 7
     bool romLoaded_ = false;
 

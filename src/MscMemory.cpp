@@ -5,6 +5,8 @@
 #include "MscCpu.h"
 #include <cstdio>
 #include <ctime>
+#include <fstream>
+#include <iterator>
 
 #ifdef _WIN32
 #define timegm _mkgmtime
@@ -101,6 +103,70 @@ MscMemory::MscMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
     // MAME's device_reset keeps m_rtc.
     pmu_.setSeconds(hostMacSecondsMsc());
     reset();
+}
+
+// ── PRAM / NVRAM persistence ───────────────────────────────────────────
+// On a Duo there is no discrete RTC chip and no Egret/Cuda: the clock and
+// the parameter RAM live inside the PG&E power manager, so the battery
+// file is the PG&E's non-volatile store. Layout, byte for byte MAME's
+// (m68hc05pge.cpp:966-974 nvram_read/nvram_write):
+//   $0000  $03C0  PGE internal RAM  (MCU $40-$3FF)
+//   $03C0  $8000  PGE SRAM          (MCU $8000-$FFFF)
+//   $83C0  4      RTC seconds, big-endian — POM68K's own tail, the same
+//                 convention as the Egret battery file (Egret.cpp:38-45).
+//                 Optional on read, so a MAME-written .nv loads here and a
+//                 file written here loads in MAME (which stops at $83C0).
+// The SRAM half is not dead weight: it holds the MAIN firmware the system
+// ROM uploads over SPI *and* the PMU-side PRAM the protocol reads/writes.
+//
+// The $91 scrub is the whole reason a naive restore would wedge: MAME
+// clears the power flag on every load (m68hc05pge.cpp:959, "clear power
+// flag so the boot ROM does a cold boot"). Restored non-zero, the PG&E
+// mask ROM resumes a warm/sleep path against an SRAM firmware image that
+// the host has not re-uploaded yet. Copied exactly.
+//
+// RTC policy: a restored tail OVERRIDES the ctor's host-time seed — a
+// restored clock is the point of the file, and the seed is what applies
+// when there is no file (loadPram returns false without touching a byte).
+// `runDuo` follows main.cpp's per-platform pattern — loadPram, then
+// setRtcSeconds(hostMacSeconds()) — so the host wall clock lands back on
+// top, exactly as on every other machine; that ordering is main.cpp's
+// call, not this file's, and it is why the tail is harmless there.
+//
+// Gate: tests/msc_parity_test.cpp § F.
+bool MscMemory::loadPram(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+    constexpr size_t kRam = size_t(M68hc05Pge::kRamSize);
+    constexpr size_t kSram = size_t(M68hc05Pge::kSramSize);
+    if (b.size() < kRam + kSram) return false;       // CentrisMemory rule
+    M68hc05Pge& mcu = pmu_.mcu();
+    for (size_t i = 0; i < kRam; i++) mcu.setRamByte(int(i), b[i]);
+    for (size_t i = 0; i < kSram; i++) mcu.setSramByte(int(i), b[kRam + i]);
+    // Cold boot, always (m68hc05pge.cpp:959).
+    mcu.setRamByte(M68hc05Pge::kPowerFlagAddr - 0x40, 0);
+    if (b.size() >= kRam + kSram + 4) {
+        const uint8_t* s = &b[kRam + kSram];
+        mcu.setRtc(uint32_t(s[0]) << 24 | uint32_t(s[1]) << 16
+                 | uint32_t(s[2]) << 8 | uint32_t(s[3]));
+    }
+    return true;
+}
+
+void MscMemory::savePram(const std::string& path) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    M68hc05Pge& mcu = pmu_.mcu();
+    std::vector<uint8_t> b;
+    b.reserve(size_t(M68hc05Pge::kRamSize) + size_t(M68hc05Pge::kSramSize) + 4);
+    for (int i = 0; i < M68hc05Pge::kRamSize; i++) b.push_back(mcu.ramByte(i));
+    for (int i = 0; i < M68hc05Pge::kSramSize; i++) b.push_back(mcu.sramByte(i));
+    const uint32_t s = mcu.rtc();                    // the PMU keeps the clock
+    b.push_back(uint8_t(s >> 24)); b.push_back(uint8_t(s >> 16));
+    b.push_back(uint8_t(s >> 8));  b.push_back(uint8_t(s));
+    out.write(reinterpret_cast<const char*>(b.data()), std::streamsize(b.size()));
 }
 
 bool MscMemory::loadRom(const std::vector<uint8_t>& data) {
