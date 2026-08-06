@@ -53,8 +53,9 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **147 CTest gates** (`ctest -N` 2026-08-05: 67 `unit`, 8 `smoke`,
-  16 `jit`, 35 `m040`, 76 `etalon`); last FULL run **143/143 green**,
+- **159 CTest gates** (`ctest -N` 2026-08-06: 75 `unit`, 8 `smoke`,
+  20 `jit`, 36 `m040`, 80 `etalon` — `jit` grew by the four 020/000 gates
+  of 2026-08-06); last FULL run **143/143 green**,
   2026-08-03, on a **fully rebuilt tree** (`make` first, 150
   objects/binaries relinked), 3 h 03.
   **The `make` is part of the claim, not a detail.** An earlier run the
@@ -201,7 +202,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ `fpu_sanity` | MC68881/882UM; WinUAE fpp.c |
 | **68040 core + MMU** | `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; **7 200/7 200 pinned vectors** | MC68040UM + WinUAE oracle |
 | **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (12 save/load pairs, 37 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 12 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
-| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** and **AArch64** code generators — A64 full-boot-gated, `auto` on arm64 since 2026-08-04). **Off by default everywhere** — the interpreter is what every accuracy claim rests on | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓. Engine wired in 9 machine loops: `Cpu030` (V8, incl. the 68020 LC), `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, `MscCpu` — **`Cpu020` (Mac II family), `Cpu68k` (compacts) and `IIfxCpu` have none**. x64 codegen is **68040-only by declared capability** (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`. `q605_boot_etalon` 61.3 s interp → 22.9 s (×2.68), 89.6 % native | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
+| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** and **AArch64** code generators — A64 full-boot-gated, `auto` on arm64 since 2026-08-04). **Off by default everywhere** — the interpreter is what every accuracy claim rests on | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓. Engine wired in **11** machine loops: `Cpu030` (V8, incl. the 68020 LC), `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, `MscCpu`, and since 2026-08-06 `Cpu020` (Mac II family) + `Cpu68k` (compacts) — **only `IIfxCpu` has none**. Worth per guest: 68040 ×2.1-2.7, 68030 ×1.4-1.7, 68020 ×1.0-1.2, 68000 ×1.03-1.08 — the window skips an ATC walk, and the last two guests have none. The compacts are the ONE family where the window is not free of cycle accounting (`SYNC` is a no-op only on `Core::C68020`): `pomJitFetch000` replaces the bus read alone and keeps contention. x64 codegen is **68040-only by declared capability** (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`. `q605_boot_etalon` 61.3 s interp → 22.9 s (×2.68), 89.6 % native | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
 
 ## CPU core: Moira (vendored)
 

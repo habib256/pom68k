@@ -41,6 +41,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **the Color Classic "Cuda 0417 wedge" was never a core bug** → [2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug…](#2026-07-29--the-color-classic-0417-wedge-was-a-missing-dfac2-not-a-core-bug-both-factory-cudas-land)
 - **"the IIsi has no working ADB" was wrong three times over — `peek8()` is PHYSICAL** → [2026-07-29 — Input-delivery gates for the 030 families…](#2026-07-29--input-delivery-gates-for-the-030-families-loud-hle-fallbacks-and-a-retracted-bug)
 - **the "PGO divergence" in the JIT was the U bit, not the optimizer** → [2026-07-28 (fifth pass) — The "PGO divergence" was the U bit all along](#2026-07-28-fifth-pass--the-pgo-divergence-was-the-u-bit-all-along)
+- **"the JIT probe refuses a 68020, so the window never arms on the LC" (`Cpu030.h`) was stale the day it was written — and "routing the cycle-exact 68000 through `pomJitExecOne` would be wrong" was never demonstrated** → [2026-08-06 (evening) — The JIT reaches the last two families…](#2026-08-06-jit-020-000)
 - **"the break is between the ADB driver and the Event Manager" was wrong — KeyTime was a false observable, the cause was Slow Keys in the image** → [2026-07-31 — The ten-month red gate was Slow Keys](#2026-07-31-slow-keys)
 - **…and the "Quadra modifier path has a second cause" that survived it was ALSO the image** → [2026-08-02 — The "Quadra modifier bug" retracted](#2026-08-02-cmdn-retracted)
 - **a 143/143 ctest that was quoted in `CLAUDE.md` before anyone checked the binaries were fresh** → [2026-08-03 — Three items closed by measurement](#2026-08-03-three-items)
@@ -75,6 +76,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **the density experiment and its honest result** → [2026-07-28 (third pass) — The density work, and what it finally measured](#2026-07-28-third-pass--the-density-work-and-what-it-finally-measured)
 - **O(1) probes, per-space eviction, and the 020 seam** → [2026-07-28 (eighth pass) — O(1) probes, per-space eviction, and the 020 seam](#2026-07-28-eighth-pass--o1-probes-per-space-eviction-and-the-020-seam)
 - **why the JIT reached the 68030 (V8) and then all four 030 families** → [2026-07-28 (sixth pass) — The JIT reaches the 68030: the V8 family](#2026-07-28-sixth-pass--the-jit-reaches-the-68030-the-v8-family)
+- **what the JIT is worth per guest family — and why the 68020/68000 seams were last** → [2026-08-06 (evening) — The JIT reaches the last two families…](#2026-08-06-jit-020-000)
+- **why a fetch window on a CYCLE-EXACT core cannot skip what one on the 030/040 can** → [2026-08-06 (evening) — The JIT reaches the last two families…](#2026-08-06-jit-020-000)
 - **…all four 030 families** → [2026-07-28 (seventh pass) — All four 030 families under the engine](#2026-07-28-seventh-pass--all-four-030-families-under-the-engine)
 - **why a backend is valid per GUEST family, not just per host** → [2026-07-30 — A JIT backend is valid per GUEST family, not just per host](#2026-07-30--a-jit-backend-is-valid-per-guest-family-not-just-per-host)
 - **the honest re-measure: x64 wins both regimes; the idle ceiling is the exactness contract** → [2026-07-30 — JIT measured honestly: x64 wins both regimes…](#2026-07-30--jit-measured-honestly-x64-wins-both-regimes-the-next-lever-is-5-opcodes)
@@ -246,6 +249,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-06** — [The JIT reaches the last two families, and the compacts are the first guest where the window is not free](#2026-08-06-jit-020-000)
 - **2026-08-06** — [The PRAM finally survives the session on all eleven boards, and the Duo becomes the 37th profile — the first laptop](#2026-08-06-duo-profile)
 - **2026-08-06** — [A chip-by-chip parity sweep against MAME master: 94 findings worked, and the three bugs it found were the ones nobody wrote down](#2026-08-06-mame-parity-sweep)
 - **2026-08-05** — [The floppy boost gate: freeze the boost to 1 while the motor runs — first LC II GCR mount ever, `lcii_floppy_etalon` asserts it](#2026-08-05-floppy-boost-gate)
@@ -437,6 +441,93 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-06-jit-020-000"></a>
+## 2026-08-06 (evening) — The JIT reaches the last two families, and the compacts are the first guest where the window is not free
+
+`Cpu68k` (the compacts) and `Cpu020` (Mac II / IIx / IIcx / SE-30) were the
+two CPU wrappers still running interpreter-only. Both now carry a
+`jit::Engine`. Only `IIfxCpu` is left.
+
+**The Mac II half needed no core work at all**, which was the surprise. The
+plain-020 fetch window (`pomJitFetch020`) and the identity branch of
+`pomJitProbeCode` have been in the vendored Moira since the 030 extension
+of 2026-07-28 — what was missing was entirely on the POM68K side:
+`MacIIMemory::codeSpan`/`dataSpan`, the write-guard notes, and the member.
+`Cpu030.h` still claimed "the probe refuses a 68020, so the window simply
+never arms there"; that was already stale when it was written, and
+`jit_lc_boot_etalon` had been proving it stale ever since.
+
+**The compact half needed a new seam, for one reason.** Moira's `SYNC(x)`
+macro is `if constexpr (C != Core::C68020) sync(x)`. `Core::C68020` covers
+the 68020, 030 and 040 — every guest the engine had reached — so on all of
+them a windowed fetch changes *no cycle accounting whatsoever*, and the
+window is a pure host-side saving. On `Core::C68000` `SYNC` is real,
+`MOIRA_PRECISE_TIMING` is on, and the Mac Plus is the one family in this
+tree whose timing claim is cycle-exact. A window that skipped the
+accounting there would not be an optimisation; it would be a second,
+faster machine.
+
+So `pomJitFetch000` replaces the **bus read and nothing else** —
+reproducing `read<C,PROG,Word,F>` step for step in that function's own
+order (leading `SYNC(2)`, address-error bail-out that charges nothing, FC
+pins, `POLL_IPL`, the machine's bus model, trailing `SYNC(2)`), skipping
+only the `read16()` virtual and the map decode. The Mac Plus charges its
+video/RAM contention from *inside* `read16()`, so that charge is handed
+back to the fetch path through a new `pomJitSetBusStall` hook — a plain
+function pointer, because a per-fetch virtual is the ~11 % the i-cache
+overlay was folded inline to avoid.
+
+**Measured**, same guest work both sides:
+
+| gate | interpreter | JIT | ratio |
+|---|---|---|---|
+| `se30_boot_etalon` (68030) | 104.1 s | 75.8 s | **×1.37** |
+| `macii_boot_etalon` (68020) | 57.4 s | 47.6 s | **×1.21** |
+| `system_boot_etalon` (Mac Plus, 68000) | 4222/4231 ms | 3903/3911 ms | **×1.08** |
+| `classic_boot_etalon` (Classic, 68000) | 8558 ms | 8326 ms | **×1.03** |
+
+The equivalence evidence is better than the speed evidence, and that is the
+point: the Mac II pair reach the Finder having issued the *same* SCSI
+command count (1155 / 1159), and the compacts print the *same* IWM health
+line — polls 2332067, hits 627914, overwritten 756519, nibbles 1380885 —
+which are cycle-sensitive counters. `sst68000` is 1 000 058/1 000 058 with
+cycles on. Same cycles, same guest, less wall clock.
+
+The ranking now in `src/jit/POM68K_JIT.md` reads 68040 ×2.1-2.7, 68030
+×1.4-1.7, 68020 ×1.0-1.2, 68000 ×1.03-1.08, and the shape of it is the
+honest answer to "why did these two take until August": the window's job is
+to skip an ATC walk, and neither of these guests has one.
+
+**Three things fell out of the work rather than being the point of it.**
+
+1. **A `PMOVE` to the 68030's `TC`, `SRP` or `CRP` did not bump
+   `pomJitMmuGen`.** `TC.E` is the switch between identity and a page-table
+   walk and `SRP`/`CRP` are the roots — but none of them touches the ATC, and
+   only the ATC flushers bumped. So on *every* 030 machine the window and
+   the block cache could survive a change of translation root. Masked in
+   practice by the `PFLUSHA` Apple's ROMs issue right after; found here
+   because `MacIIMemory::physAddr` switches remap mode on `TC` bit 31, which
+   makes the gap reachable with no flush in between. Three bumps added.
+2. **The compacts' main loop is `runUntil()`, not `runCycles()`.**
+   `MacFrameClock` subdivides a frame into 16 absolute targets. The engine
+   was wired to `runCycles()` like everywhere else, so the first
+   measurement showed no gain at all — because it retired **exactly zero
+   instructions** while reporting itself ON.
+3. **Nothing in the tree could have told you that.** `POM68K_JIT_VERBOSE=1`
+   printed the backend and "engine ON" and stopped there. It now prints a
+   retired / window-covered / arms / failed line at teardown, which is what
+   turned a puzzling non-result into a two-line fix. "The engine is on" and
+   "the engine is doing something" were the same claim; they are not any
+   more.
+
+Gates: `jit_macii_boot_etalon`, `jit_se30_boot_etalon`,
+`jit_system_boot_etalon`, `jit_classic_boot_etalon` (four new, all under
+`-L jit`). The compact pair is the one that matters, because it is the only
+place where a drifting fetch cycle would show up not as a wrong pixel but
+as a sound tempo or an IWM hold.
 
 ---
 

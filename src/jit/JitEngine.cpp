@@ -87,6 +87,25 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
 }
 
 Engine::~Engine() {
+    // The one number that says whether the engine did anything at all:
+    // how much of the run was actually fetched through the window, and how
+    // often it had to be re-armed to keep that up. A family whose window
+    // arms constantly and covers little is paying bookkeeping for nothing,
+    // which is exactly what the compacts' numbers show (POM68K_JIT.md § 7).
+    if (verbose()) {
+        const Stats::Snapshot s = stats_.snapshot();
+        const double pct = s.instrs ? 100.0 * double(s.windowInstrs) / double(s.instrs) : 0.0;
+        std::fprintf(stderr,
+                     "[jit] retired=%llu window=%llu (%.1f%%) arms=%llu "
+                     "failed=%llu blocks run=%llu compiled=%llu flushes=%llu\n",
+                     (unsigned long long)s.instrs,
+                     (unsigned long long)s.windowInstrs, pct,
+                     (unsigned long long)s.windowArmed,
+                     (unsigned long long)s.windowFailed,
+                     (unsigned long long)s.blocksRun,
+                     (unsigned long long)s.blocksCompiled,
+                     (unsigned long long)s.flushes);
+    }
     cpu_.pomJitDtlbFillFn = nullptr;
     cpu_.pomJitDtlbFillCtx = nullptr;
     cpu_.pomJitDtlbFlush();

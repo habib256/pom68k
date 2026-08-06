@@ -21,6 +21,7 @@
 #include "AdbBus.h"
 #include "Ncr5380.h"
 #include "ScsiDisk.h"
+#include "jit/JitGuard.h"
 #include <cstdint>
 #include <cstddef>
 #include <vector>
@@ -133,6 +134,24 @@ public:
         scsiDisk_.setSoundSink(hdd);
     }
 
+    // ── JIT memory hooks (src/jit/POM68K_JIT.md § 4) ────────────────────
+    // The compacts' map is flat and 24-bit, so the address the window probe
+    // reports IS the bus address (pomJitProbeCode refuses anything above
+    // $FFFFFF for exactly that reason) — no remap to reconcile, unlike the
+    // GLUE and V8 boards.
+    //
+    // Handed out: RAM and the ROM window. Refused: every I/O quarter, the
+    // $600000 RAM alias (it exists only while the overlay is up, and it is
+    // a SECOND name for bytes the window already reaches at $000000 — one
+    // alias the guard would have to mirror for nothing), and the whole map
+    // while the overlay is up on the ADB compacts, where the overlay drops
+    // on the first low-RAM WRITE (mac128.cpp ram_w_se) and the window has
+    // no way to see it coming.
+    const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
+    uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
+    void jitMapChanged();
+
     // ── Save states (SaveState.h) ───────────────────────────────────────
     uint32_t ramBytes() const { return uint32_t(ram_.size()); }
     // A Mac ROM's first longword IS its checksum (V8Memory pattern).
@@ -143,13 +162,18 @@ public:
     }
     // The machine chunk: RAM + every device + the M0110 keyboard
     // transaction engine. Out: rom_/romSize_/model_ (profile identity),
-    // cpu_ (pointer). No JIT guard on the 68000 machine.
+    // cpu_ and jitGuard_ (pointers the machine owns).
     template <class Ar> void visit(Ar& ar) {
         ar.blob(ram_);
         ar(via_, adb_, adbVia_, rtc_, iwm_, drive_, scc_,
            scsi_, scsiDisk_, kbd_, mouse_);
         ar(kbdPhase_, kbdCmd_, kbdResp_, kbdTimer_, kbdInquiryHold_,
            viaPhase_, secAcc_, overlay_);
+        if constexpr (Ar::loading) {
+            // RAM and the overlay state just changed wholesale — no write
+            // can express that (JitGuard.h § invalidate).
+            if (jitGuard_) jitGuard_->invalidate();
+        }
     }
 
 private:
@@ -175,6 +199,7 @@ private:
     uint8_t kbdCmd_ = 0, kbdResp_ = 0;
     int kbdTimer_ = 0;
     Cpu68k* cpu_ = nullptr;
+    jit::CodeGuard* jitGuard_ = nullptr;   // not serialized: machine wiring
     int viaPhase_ = 0;         // CPU-cycle remainder for the ÷10 VIA clock
     int64_t secAcc_ = 0;       // CPU-cycle accumulator for the RTC 1 Hz tick
     bool    kbdInquiryHold_ = false;   // Inquiry waiting out its ~1/4 s window

@@ -5,6 +5,7 @@
 
 #pragma once
 #include "MoiraSnapshot.h"
+#include "jit/JitEngine.h"
 #include <cstdint>
 #include <string>
 
@@ -19,6 +20,23 @@ public:
     explicit Cpu020(MacIIMemory& mem, bool withFpu = true, bool is030 = false);
 
     void hardReset();
+
+    // ── JIT engine (src/jit/POM68K_JIT.md) ──────────────────────────────
+    // The Mac II family was the last Core::C68020 machine still running
+    // interpreter-only, and it needed no new seam: Moira's plain-020 fetch
+    // window (pomJitFetch020) and the identity branch of pomJitProbeCode
+    // have been there since the 030 extension landed. What was missing was
+    // on this side — the memory hooks (MacIIMemory::codeSpan) and this
+    // member. Off by default, like everywhere else.
+    //
+    // Both models of this wrapper are served: the plain 68020 takes the
+    // identity probe, the IIx/IIcx/SE-30 68030 takes the ATC probe and
+    // mmuFetchWord — the same two paths the LC/LC II pair already uses.
+    jit::Engine& jit() { return jit_; }
+    const jit::Engine& jit() const { return jit_; }
+    int  engine() const { return jit_.enabled() ? 1 : 0; }
+    void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
+
     void runCycles(moira::i64 n);
     void runUntil(moira::i64 clockTarget);
     void updateIpl();
@@ -48,9 +66,11 @@ private:
     void write8(moira::u32 addr, moira::u8 v) const override;
     void write16(moira::u32 addr, moira::u16 v) const override;
     void sync(int cycles) override;
+    void didChangeCACR(moira::u32 value) override;
     void catchUp();
 
     MacIIMemory& mem_;
+    jit::Engine jit_;
     moira::i64 lastPeriphClock_ = 0;
     static constexpr int kPeriphBatch = 64;
 };

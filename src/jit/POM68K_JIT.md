@@ -43,13 +43,28 @@ All are bit-exact against the interpreter — registers,
 supervisor stacks, cycle clock and the low 2 KB of guest RAM, compared at
 every instruction boundary.
 
-**Where the engine is wired.** Nine CPU wrappers hold a `jit::Engine`:
-`Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu` (68040) and `Cpu030`,
-`RbvCpu`, `SonoraCpu`, `VaspCpu`, `MscCpu` (68030, plus the Macintosh LC's
-68020 flavour of `Cpu030`). The 68000 machines (`Cpu68k`), the Mac II /
-IIx / IIcx / SE-30 (`Cpu020`) and the IIfx (`IIfxCpu`) have none. The
+**Where the engine is wired.** Eleven CPU wrappers hold a `jit::Engine`:
+`Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu` (68040), `Cpu030`, `RbvCpu`,
+`SonoraCpu`, `VaspCpu`, `MscCpu` (68030, plus the Macintosh LC's 68020
+flavour of `Cpu030`), and since 2026-08-06 `Cpu020` (the Mac II family) and
+`Cpu68k` (the compacts). Only the IIfx (`IIfxCpu`) still has none. The
 **x86-64 code generator** is narrower still: 68040 guests only, by declared
 capability (§ 7).
+
+**And what each is worth.** The engine being wired is not the same as the
+engine being worth switching on. Ranked by measured end-to-end gain
+(§ 3, § 7.3):
+
+| Guest | Machines | Window buys | Because |
+|---|---|---|---|
+| 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | ×2.1-2.7 (x64) | an ATC walk per fetch, replaced by a bounds check |
+| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, Duo | ×1.4-1.7 | same, through `mmuFetchWord` |
+| 68020 | Macintosh LC, **Mac II** | ×1.0-1.2 | no MMU to skip — only the map decode |
+| 68000 | **Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
+
+The last two rows are the honest reason the 020/000 seams took until
+2026-08-06 to exist: they were never going to pay much, and saying so is
+worth more than a number that flatters the subsystem.
 
 ---
 
@@ -141,6 +156,57 @@ Two consequences worth stating explicitly:
   (`MoiraMacros.h`: `if constexpr (C != Core::C68020)`), so serving a fetch
   from the window changes **no** cycle accounting whatsoever. The window is a
   pure host-side saving.
+
+### 3.1 …except on the compacts, where SYNC is real (2026-08-06)
+
+The bullet above is a statement about `Core::C68020`, and that core covers
+the 68020, the 68030 and the 68040 — every machine the engine reached until
+2026-08-06. It does **not** cover `Core::C68000`. There `SYNC(x)` really
+calls `sync(x)`, `MOIRA_PRECISE_TIMING` is on, and the Mac Plus is the one
+family in POM68K whose timing claim is *cycle-exact* (`sst68000`, 1 000 058
+vectors **with cycles**). A window that skipped the accounting there would
+not be an optimisation, it would be a second, faster machine.
+
+So `Moira::pomJitFetch000` replaces the **bus read and nothing else**. It
+reproduces `read<C,PROG,Word,F>` step for step, in that function's own
+order: the leading `SYNC(2)`, the address-error bail-out, the FC pins,
+`POLL_IPL`, the machine's own bus model, the trailing `SYNC(2)`. Only the
+`read16()` virtual and the machine's address decode are skipped.
+
+That last item is why the seam is worth anything at all here:
+`MacMemory::read16` is **two `read8()` switch dispatches** per opcode word.
+It is also why it is not worth much — there is no ATC walk to skip, which
+is where the 030/040 gains come from.
+
+One thing had to be routed back in by hand. The Mac Plus charges
+video/RAM contention wait states from *inside* `read16()`
+(`Cpu68k::applyContention`), so a windowed fetch would silently stop paying
+them. `Moira::pomJitSetBusStall` hands the wrapper's charge back to the
+fetch path as a plain function pointer — not a virtual, because this sits
+in the fetch path and a per-fetch virtual is the ~11 % the i-cache overlay
+was folded inline to avoid.
+
+**Measured** (`system_boot_etalon`, Mac Plus, System booting to the Finder;
+adjacent A/B pairs ×2):
+
+| | interpreter | JIT (`threaded`) |
+|---|---|---|
+| Mac Plus, System boot | 4222 / 4231 ms | 3903 / 3911 ms — **×1.08** |
+| Macintosh Classic (ADB compact) | 8558 ms | 8326 ms — **×1.03** |
+
+Small, and reproducible. The equivalence evidence is better than the speed
+evidence: both engines print the **same** IWM health line — `polls 2332067,
+hits 627914, overwritten 756519, nibbles 1380885` — and those counters are
+cycle-sensitive. Same cycles, same guest, less wall clock.
+
+**A footgun this seam found.** The first measurement of the compacts showed
+*no* gain at all, and the reason was not the seam: the engine retired
+**exactly 0 instructions**. Every other family drives its CPU through
+`runCycles()`, but `MacFrameClock` subdivides a frame into 16 absolute
+targets and calls `runUntil()` — which was still the plain interpreter path.
+`POM68K_JIT_VERBOSE=1` now prints a retired/window/arms line at teardown so
+"the engine is on" and "the engine is doing something" stop being the same
+claim.
 
 ### Measured
 
@@ -333,7 +399,7 @@ Everything in `JitConfig.h` unless noted.
 | `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
 | `POM68K_DATA_WINDOW` | `0` | the INTERPRETER's data window (§ 8) — opt-in since the ATC-exactness capping made it a net loss (`JitEngine.cpp:39-53`) |
 | `POM68K_JIT_PARANOID` | `0` | re-validate the translation at every arm — for differential testing (`JitEngine.cpp`) |
-| `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr |
+| `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr — **plus a retired / window-covered / arms / failed line at teardown**, which is how you tell "the engine is on" from "the engine is doing something" (§ 3.1) |
 | `POM68K_JIT_ACCESS_THUNK` | `2` | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores |
 | `POM68K_JIT_HISTO` | `0` | dynamic opcode census, dumped at exit, with the backend's `canEmit()` coverage (`JitEngine.cpp dumpHisto()`) |
 | `POM68K_JIT_LOCKSTEP_N` | `5000000` | instructions compared by `jit_lockstep_test` |
@@ -604,6 +670,23 @@ chain cannot outrun the caller's cycle target or ignore a pending interrupt.
 
 ## 10. Journal
 
+* **2026-08-06 — the last two families, and one of them needed a new
+  seam.** `Cpu020` (Mac II / IIx / IIcx / SE-30) needed no Moira work at
+  all: the plain-020 fetch window and the identity probe have been there
+  since the 030 extension, and what was missing was `MacIIMemory::codeSpan`
+  and the member. `Cpu68k` (the compacts) is the first guest where the
+  window is NOT free of cycle accounting, and § 3.1 is the whole argument.
+  Measured: SE/30 ×1.37, Mac II ×1.21, Mac Plus ×1.08, Classic ×1.03 —
+  which is why the ranking table at the top of this file now exists. Only
+  the IIfx is left without an engine.
+  Three things fell out of the work rather than being the point of it: a
+  `PMOVE` to the 68030's `TC`/`SRP`/`CRP` did not bump `pomJitMmuGen`
+  (every 030 machine's window and block cache could survive a change of
+  translation root — masked in practice by the ROM's following `PFLUSHA`);
+  the compacts' main loop is `runUntil()`, not `runCycles()`, so the engine
+  sat switched on and idle until it was routed there; and
+  `POM68K_JIT_VERBOSE=1` printed nothing that could have told you either.
+  It now prints a retired/window/arms line at teardown.
 * **2026-07-31 — the arm-time DTLB flush deleted, and everything
   re-measured.** § 8 has the argument, § 3 the current table. This is also
   where the crossover story died: until this pass the x86-64 backend was

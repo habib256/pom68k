@@ -1235,17 +1235,45 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                  # …and one gate per additional 030 family (Sonora / VASP /
                  # RBV): same engine, each map's own span/guard plumbing.
                  lc3_boot_etalon iivx_boot_etalon iisi_boot_etalon
-                 # The 020 seam's only guard (the LC = V8 map + as020). The
-                 # JIT is measurably NOT worth turning on for a plain 68020
-                 # (nothing to save: no MMU, one cheap fetch per instruction)
-                 # — this gate exists so the seam stays CORRECT for the day
-                 # a code generator gives it something to win with.
-                 lc_boot_etalon)
+                 # The 020 seam's guards. The JIT is measurably NOT worth
+                 # turning on for a plain 68020 (nothing to save: no MMU,
+                 # one cheap fetch per instruction) — the LC (V8 map +
+                 # as020) and the Mac II (GLUE map) are here so the seam
+                 # stays CORRECT for the day a code generator gives it
+                 # something to win with.
+                 lc_boot_etalon macii_boot_etalon
+                 # …and the Mac II family's 030 half, which is the case
+                 # that DOES pay: same ATC probe and mmuFetchWord choke
+                 # point as the V8/Sonora/VASP/RBV 030s, on the GLUE map.
+                 # se30 rather than iix because it also exercises the
+                 # pseudo-slot video path while the window is armed.
+                 se30_boot_etalon
+                 # The compacts (2026-08-06). These are the gates that
+                 # matter most of the whole list, because this is the one
+                 # family where the window is NOT free of cycle accounting:
+                 # Moira::pomJitFetch000 has to charge what read<> would,
+                 # contention included. A Mac Plus whose fetch cycles drifted
+                 # would not fail with a wrong pixel, it would fail with a
+                 # sound tempo or an IWM hold — hence both models: the Plus
+                 # (VIA PA4 overlay, M0110) and — just below, because it is
+                 # the one gate whose binary is shared — the Classic (ADB,
+                 # and the overlay drops on the first low-RAM WRITE).
+                 system_boot_etalon)
         add_test(NAME jit_${gate} COMMAND ${gate}
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_${gate} PROPERTIES
                              ENVIRONMENT "POM68K_CPU_ENGINE=jit" TIMEOUT 3600)
     endforeach()
+
+    # The ADB compact under the JIT. Out of the loop above because the
+    # compact family is "one binary, POM68K_COMPACT_MODEL picks the
+    # sibling" — the test NAME is not an executable name here, and the
+    # model variable has to ride along with the engine one.
+    add_test(NAME jit_classic_boot_etalon COMMAND compact_boot_etalon
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_classic_boot_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_COMPACT_MODEL=classic;POM68K_CPU_ENGINE=jit"
+                         TIMEOUT 3600)
 
     # ─── Test tiers (`ctest -L <label>`) ─────────────────────────────────
     # A bare `ctest` runs every gate and takes hours on a busy host — far too

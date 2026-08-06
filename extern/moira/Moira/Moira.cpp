@@ -358,13 +358,17 @@ Moira::pomJitExecOne()
     // instruction-start fault, an exception processed, or a trace taken.
     // For the engine that always means the same thing: stop replaying and
     // go back through execute() from a clean instruction boundary.
-    // Plain 020 (2026-07-28): no per-instruction MMU loop head at all —
-    // the queue was refilled by the PREVIOUS instruction's prefetch (which
-    // is where its POLL_IPL lives, window or not), so the boundary
-    // contract is just the dispatch. This replicates execute()'s generic
-    // fast path; the six shared lines are accepted duplication, because
-    // routing the cycle-exact 68000/68010 through here would be wrong and
-    // gating them would cost the hottest loop in the emulator a branch.
+    // Plain 020 (2026-07-28), and the cycle-exact 68000/68010 since
+    // 2026-08-06: no per-instruction MMU loop head at all — the queue was
+    // refilled by the PREVIOUS instruction's prefetch (which is where its
+    // POLL_IPL lives, window or not), so the boundary contract is just the
+    // dispatch. These six lines are byte-for-byte execute()'s own generic
+    // fast path, and that duplication is accepted rather than removed:
+    // making execute() delegate would put a model test in the hottest loop
+    // in the emulator, for no behavioural gain. The engine reaches this
+    // branch for every non-030, non-040 guest — what makes it correct for a
+    // cycle-exact core is not here but in the FETCH (pomJitFetch000), which
+    // charges the same cycles read<> would have.
     if (cpuModel < Model::M68EC040) {
         bool retired = true;
         reg.pc += 2;

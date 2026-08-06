@@ -11,6 +11,7 @@
 
 #pragma once
 #include "MoiraSnapshot.h"
+#include "jit/JitEngine.h"
 
 class MacMemory;
 
@@ -19,6 +20,27 @@ public:
     explicit Cpu68k(MacMemory& mem);
 
     void hardReset();                       // memory overlay + CPU reset
+
+    // ── JIT engine (src/jit/POM68K_JIT.md) ──────────────────────────────
+    // The compacts are the LAST family to get the second engine, and the
+    // only one where the fetch window had to be written rather than reused:
+    // on Core::C68020 the SYNC(x) macro expands to nothing, so the 020/030/
+    // 040 window is free of cycle accounting, while here SYNC is real and
+    // MOIRA_PRECISE_TIMING is what the whole Mac Plus timing claim rests
+    // on. Moira::pomJitFetch000 therefore replaces the BUS READ only, and
+    // charges the same cycles — including this wrapper's video/RAM
+    // contention, routed back in through pomJitSetBusStall (below).
+    //
+    // Expect little: the window's job is to skip an ATC walk and a virtual
+    // read, and a 68000 has no MMU to walk. What it does save is the map
+    // decode — MacMemory::read16 is two read8() switch dispatches per
+    // opcode word. Measured numbers live in src/jit/POM68K_JIT.md § 7.
+    // Off by default, like every other machine.
+    jit::Engine& jit() { return jit_; }
+    const jit::Engine& jit() const { return jit_; }
+    int  engine() const { return jit_.enabled() ? 1 : 0; }
+    void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
+
     void runCycles(moira::i64 n);           // execute ≥ n CPU cycles
     void runUntil(moira::i64 clockTarget);  // execute until clock ≥ target
     void updateIpl();                       // recompute IPL from VIA/SCC lines
@@ -54,6 +76,12 @@ private:
     void sync(int cycles) override;
 
     void applyContention(moira::u32 addr) const;
+    // The contention charge as Moira's fetch window can call it: a windowed
+    // fetch performs no read16(), so the wait states it carries have to be
+    // handed back explicitly (Moira.h § pomJitFetch000). Static so the hook
+    // stays a plain function pointer in the fetch path — a virtual there is
+    // the ~11 % the i-cache overlay was folded inline to avoid.
+    static void jitBusStall(void* self, moira::u32 addr);
     void catchUp();                         // feed elapsed cycles to peripherals
     void willInterrupt(moira::u8 level) override { irqServed[level & 7]++; }
 
@@ -72,5 +100,6 @@ public:
 private:
 
     MacMemory& mem_;
+    jit::Engine jit_;
     moira::i64 lastPeriphClock_ = 0;
 };
