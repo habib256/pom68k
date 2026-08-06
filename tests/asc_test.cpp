@@ -104,6 +104,75 @@ int main() {
     check((st & 0x03) == 0x03, "empty-cycle status has A half+empty");
     check(!cIrq, "status read clears the empty-cycle IRQ");
 
+    // ── Audit #42: F09/F29 FIFO IRQ-control reads ──
+    // Classic reads 0 (MAME master asc_device::read asc.cpp:657-667, the
+    // real-IIci dump asc.cpp:621); V8 reads 0 per the real-LC dump
+    // (asc.cpp:767) — deliberately NOT MAME's V8 value of 1 (asc.cpp:867-869).
+    {
+        AscV8 c(0x00), v8(0xE8);
+        c.reset(); v8.reset();
+        check(c.read(0xF09) == 0 && c.read(0xF29) == 0,
+              "classic F09/F29 read 0 (IIci dump / MAME master fix)");
+        check(v8.read(0xF09) == 0 && v8.read(0xF29) == 0,
+              "V8 F09/F29 read 0 (real-LC dump; MAME's 1 is wrong)");
+    }
+
+    // ── Audit #43: classic FIFO B write obeys the CONTROL stereo gate ──
+    // (MAME asc_device::write asc.cpp:704-739)
+    {
+        AscV8 c(0x00);
+        bool irq = false;
+        c.onIrq = [&](bool s) { irq = s; };
+        c.reset();
+        c.write(0x801, 1);                   // FIFO mode, CONTROL still 0
+        for (int i = 0; i < 0x400; i++) c.write(0x400, 0x80);
+        check(c.fifoCapB() == 0 && !irq,
+              "classic mono: FIFO B writes dropped, no data, no IRQ");
+        check((c.read(0x804) & 0x0C) == 0,
+              "classic mono: FIFO B status bits untouched");
+        c.write(0x802, 0x02);                // CONTROL_STEREO (bit 1) on
+        for (int i = 0; i < 0x3FF; i++) c.write(0x400, 0x80);
+        check(c.fifoCapB() == 0x3FF, "classic stereo: FIFO B accepts data");
+        const bool irqAtFull = irq;          // $804 read clears it (classic)
+        check((c.read(0x804) & 0x08) == 0x08 && irqAtFull,
+              "classic stereo: FIFO B full sets bit 3 + IRQ");
+        // Wavetable/idle addressed poke (mode != 1) is not stereo-gated.
+        AscV8 wt(0x00);
+        wt.reset();
+        wt.write(0x400 + 5, 0xAA);
+        check(wt.read(0x400 + 5) == 0xAA,
+              "classic mode 0: addressed FIFO B poke still lands");
+    }
+
+    // ── Audit #44: V8 record mode (R_PLAYRECA $80A bit 0) freezes the ──
+    // FIFO A status bits on write (asc_base_device::write asc.cpp:386-404
+    // via asc_v8_device::write asc.cpp:878-902). The classic override
+    // (asc.cpp:669-703) has no such gate: its status still moves.
+    {
+        AscV8 v8(0xE8);
+        v8.reset();
+        v8.write(0x80A, 1);                  // record mode
+        v8.write(0, 0x80);                   // 1 byte: ungated would clear bit 1
+        check(v8.fifoCap() == 1, "V8 record mode: data still enters FIFO A");
+        check(v8.read(0x804) == 0x02,
+              "V8 record mode: status frozen (empty bit stays despite data)");
+        v8.write(0x80A, 0);                  // back to playback
+        v8.write(0, 0x80);                   // cap 2 < $200: gate open, bit 1 clears
+        check(v8.read(0x804) == 0x00,
+              "V8 playback restored: write clears the stale empty bit");
+
+        AscV8 c(0x00);
+        bool cIrq2 = false;
+        c.onIrq = [&](bool s) { cIrq2 = s; };
+        c.reset();
+        c.write(0x801, 1);                   // FIFO mode
+        c.write(0x80A, 1);                   // record mode: NO gate on classic
+        for (int i = 0; i < 0x3FF; i++) c.write(0, 0x80);
+        const bool cIrqAtFull = cIrq2;       // $804 read clears it (classic)
+        check((c.read(0x804) & 0x02) == 0x02 && cIrqAtFull,
+              "classic ignores $80A: FIFO A full still edges status + IRQ");
+    }
+
     // ── $807 CLOCK RATE drives the drain cadence (LLE_VS_HLE §1.7) ──
     // The rate was pinned at 22 257 Hz whatever the guest programmed.
     // Measured through the OBSERVABLE the register changes: how many CPU

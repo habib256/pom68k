@@ -55,7 +55,7 @@ public:
     // note on why pointers never travel).
     template <class Ar> void visit(Ar& ar) {
         ar(ph_, enable_, driveSel_, q6_, q7_, sel_, mode_, dataReg_,
-           cellPhase_, clearCountdown_,
+           cellPhase_, clearCountdown_, selDelay_,
            writing_, wrPending_, wrUnderrun_, wrData_, wrPhase_);
         ar(readCount, dataReads, dataHits, senseCount,
            consumed, consumedPos, overwritten, written, reReads);
@@ -66,6 +66,11 @@ private:
     uint8_t readRegister();
     void updateRw();
     SonyDrive* selectedDrive() const { return drive_[driveSel_ ? 1 : 0]; }
+    // MAME iwm.cpp:243-247 devsel: sense/commands reach a drive only while
+    // one is selected — ENABLE set, or the ~1 s motor-off delay window when
+    // mode bit 2 is clear (MODE_DELAY, iwm.cpp:236-239; the Mac's mode $1F
+    // sets bit 2, making deselect immediate).
+    bool driveSelected() const { return enable_ || selDelay_ > 0; }
     int senseAddr() const;
 
     SonyDrive* drive_[2] = { nullptr, nullptr };
@@ -76,6 +81,8 @@ private:
     uint8_t mode_ = 0, dataReg_ = 0;
     int cellPhase_ = 0;
     int clearCountdown_ = 0;              // delayed clear after a data read
+    int64_t selDelay_ = 0;                // devsel hold after ENABLE drops
+                                          // (MODE_DELAY, mode bit 2 clear)
 
     // Write engine (MAME iwm.cpp MODE_WRITE, byte-granular): q7 while
     // enabled = write mode; the data register holds one pending byte the

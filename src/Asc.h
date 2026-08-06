@@ -115,6 +115,26 @@ private:
     uint16_t rdB_ = 0, wrB_ = 0;
     int cap_ = 0;
     int capB_ = 0;
+    // Audit § 2.8(b), DOCUMENT-SKIP — register-file WIDTH. MAME's
+    // asc_base_device carries one flat `u8 m_regs[0x800]` (sound/asc.h:100)
+    // covering the whole $800-$FFF window: every byte written there is stored
+    // and reads back, and reads only fall to $FF past $1000
+    // (asc.cpp:359-365). We keep sparse blocks instead — $20 here, $40 +
+    // $100 ($F00-$FFF) on Sonora/EASC, none on IOSB — and unmodelled offsets
+    // read 0. Not aligned, on three counts: (1) no producer/consumer pair
+    // exists — a guest reading back a byte it wrote into dead register space
+    // would be reading a value the chip's logic never touches, and none does;
+    // (2) `regs_`/`xtraRegs_` are in visit<Ar>(), so widening them changes
+    // the save-state chunk layout and invalidates every existing .pomss for
+    // eleven machine families — a real cost against a zero-benefit parity
+    // gain; (3) a flat backing store would have to carry explicit exceptions
+    // for the two hardware-pinned read-back quirks below ($F09/$F29 = 0 on
+    // V8, $F0E/$F2E = $2C on IOSB), i.e. it would put the pins at risk to buy
+    // nothing. The *wavetable* register loss ($810-$82F, MAME rebuilds
+    // phase/incr from live copies at asc.cpp:344-357) is a separate, larger
+    // item — the wavetable-mode stub, inventoried in docs/LLE_VS_HLE.md — and
+    // is not what this note excuses. Reopening condition: the wavetable
+    // engine lands, or a guest is caught reading back register space.
     uint8_t regs_[0x20] = {};                // sparse classic regs ($800+)
     uint8_t fifoStat_ = STAT_EMPTY_OR_FULL_A;
     bool irq_ = false;
@@ -210,10 +230,134 @@ private:
     uint32_t outRd_ = 0, outWr_ = 0;
 };
 
+// Discrete EASC 343S1063 — the Enhanced ASC on the Quadra 700 and the
+// Eclipse towers (Quadra 900/950). Distinct from the Sonora/IOSB cells:
+// version $B0, output clock 44.1 kHz (22.5792 MHz XTAL / 512), a per-channel
+// 16.16 sample-rate converter (SRC) and CD-XA ADPCM decoder on BOTH FIFOs,
+// and FIFO IRQ enables that reset to 1 = DISABLED (Sonora resets 0 =
+// enabled). Source of truth: MAME master asc_easc_device (sound/asc.cpp:
+// 1419-1771), hardware-pinned by the in-file ASCTester dump from a real
+// Quadra 700 (asc.cpp:1428-1456: version $B0, 804Idle $0F, F09/F29 = $01);
+// hookup macquadra700.cpp:805 (ASC_EASC @ 22.5792 MHz).
+class AscEasc {
+public:
+    // asc.cpp:1739 — device_start sets m_sample_rate = 44100.
+    static constexpr int kSampleRate = 44100;
+
+    explicit AscEasc(int64_t cpuHz = 25000000) : cpuHz_(cpuHz) {}
+
+    void reset();
+    uint8_t read(uint32_t offset);
+    void write(uint32_t offset, uint8_t v);
+    void tick(int cpuCycles);
+
+    bool irqAsserted() const { return irq_; }
+    std::function<void(bool)> onIrq;
+    std::function<void(uint32_t, uint8_t)> onWrite;  // diagnostic taps
+    std::function<void(uint32_t, uint8_t)> onRead;
+
+    // Audio host pull. The chip drains its FIFOs at 44.1 kHz — that rate is
+    // guest-visible (FIFO IRQ cadence) and must not bend — but the host DAC
+    // side of POM68K runs at the Mac rate, so the output ring keeps every
+    // SECOND sample: 22 050 Hz, the same "no resampler" stance documented
+    // at AscV8::drainHz.
+    int available() const { return int((outWr_ - outRd_) & (kOutSize - 1)); }
+    int16_t pop() {
+        if (outRd_ == outWr_) return 0;
+        uint32_t i = outRd_++ & (kOutSize - 1);
+        return int16_t((int(outL_[i]) + int(outR_[i])) / 2);
+    }
+    bool popStereo(int16_t& left, int16_t& right) {
+        if (outRd_ == outWr_) { left = right = 0; return false; }
+        uint32_t i = outRd_++ & (kOutSize - 1);
+        left = outL_[i]; right = outR_[i];
+        return true;
+    }
+    int fifoCap(int channel) const { return cap_[channel & 1]; }
+
+    // ── Save states (SaveState.h) ───────────────────────────────────────
+    // FIFO pair + register blocks + the SRC phase and CD-XA predictor state
+    // (both feed samples the guest hears and pace the FIFO drain). As in the
+    // other flavours the host output ring is dropped on restore.
+    template <class Ar> void visit(Ar& ar) {
+        ar(fifo_, rd_, wr_, cap_, regs_, xtraRegs_, fifoStat_, fifoIrqEn_,
+           irq_, srcStep_, srcAccum_, xaS0_, xaS1_, xaParam_, xaPos_,
+           xaByte_, xaSubpos_, lastL_, lastR_, drainAcc_, outPhase_);
+        if constexpr (Ar::loading) outRd_ = outWr_ = 0;
+    }
+
+private:
+    enum : uint8_t {
+        STAT_HALF_A = 0x01, STAT_EMPTY_OR_FULL_A = 0x02,
+        STAT_HALF_B = 0x04, STAT_EMPTY_OR_FULL_B = 0x08
+    };
+    void setIrq(bool s) {
+        if (s != irq_) { irq_ = s; if (onIrq) onIrq(s); }
+    }
+    void clearFifos() {
+        rd_[0] = rd_[1] = wr_[0] = wr_[1] = 0;
+        cap_[0] = cap_[1] = 0;
+    }
+    void pushFifo(int channel, uint8_t v);
+    uint8_t popFifo(int channel);            // asc.cpp:1537-1587
+    int16_t decodeCdxa(int channel, uint8_t mode);   // asc.cpp:1589-1648
+
+    const int64_t cpuHz_;
+    uint8_t fifo_[2][0x400] = {};
+    uint16_t rd_[2] = {}, wr_[2] = {};
+    int cap_[2] = {};
+    uint8_t regs_[0x40] = {};                // sparse $800-$83F block
+    uint8_t xtraRegs_[0x100] = {};           // $F00-$FFF EASC block:
+                                             // WRPTR/RDPTR/SRC/VOL/CTRL/CD-XA
+    uint8_t fifoStat_ = 0;                   // base device_reset zeroes it;
+                                             // ASCTester's $0F idle emerges
+                                             // from the running FIFO drain
+    uint8_t fifoIrqEn_[2] = { 1, 1 };        // bit 0: 1 = disabled (EASC reset)
+    bool irq_ = false;
+    uint32_t srcStep_[2] = {}, srcAccum_[2] = {};   // 16.16 SRC phase
+    // CD-XA ADPCM predictor, per channel (asc.h:209-224)
+    int16_t xaS0_[2] = {}, xaS1_[2] = {};    // two previous decoded samples
+    uint8_t xaParam_[2] = {};                // block header (filter/shift)
+    int32_t xaPos_[2] = {};                  // 0..27 within a block
+    uint8_t xaByte_[2] = {};                 // packed byte (4:1 / 8:1 modes)
+    int32_t xaSubpos_[2] = {};               // sub-sample within that byte
+    int16_t lastL_ = 0, lastR_ = 0;          // 16-bit: CD-XA output is s16
+    int64_t drainAcc_ = 0;
+    uint8_t outPhase_ = 0;                   // 2:1 host decimation phase
+
+    static constexpr int kOutSize = 8192;
+    int16_t outL_[kOutSize] = {}, outR_[kOutSize] = {};
+    uint32_t outRd_ = 0, outWr_ = 0;
+};
+
 // Audio cell copied into IOSB/PrimeTime (LC 475 / Quadra 605). Despite
 // MAME's historical ASC_EASC wiring in iosb.cpp, ASCTester identifies this
 // as the distinct $BB IOSB variant: two 1 KB FIFOs drained as stereo at
 // 22.257 kHz, with writable FIFO interrupt enables.
+//
+// PIN — reset state comes from the REAL LC 475, not from MAME. `reset()`
+// sets fifoStat_ = $0E and both FIFO IRQ enables to 1 (= disabled), which is
+// the in-file ASCTester dump of a real Mac LC 475 (sound/asc.cpp:1130-1136:
+// "ASC Version: $BB / F09: 1 ($01) F29: 1 ($01) / 804Idle: $0E"). MAME's own
+// `asc_iosb_device` is *unreachable in MAME*: iosb.cpp:89 instantiates
+// ASC_EASC instead ("TODO: should use unique IOSB variant, but that needs
+// more reverse-engineering"), so a parity diff against a RUNNING MAME LC 475
+// / Quadra 605 compares us against the EASC's reset state ($B0, F09/F29 = 1,
+// 44.1 kHz) and will look like a divergence. It is not. Do not "fix" toward
+// what the running driver reports; the dump is the oracle.
+//
+// Audit § 2.8(a), DOCUMENT-SKIP — the 16-bit FIFO ports are not modelled.
+// The real IOSB audio cell has them (sound/asc.cpp:73: "The IOSB variant has
+// some surprising differences that aren't yet understood, including 16-bit
+// wide FIFO ports"), and MAME even defines the handlers —
+// `asc_iosb_device::read_w` / `write_w` (asc.cpp:1346-1371), which sign-flip
+// each byte with ^ $80 and, on the write side, drop the high half entirely.
+// NOTHING CALLS THEM: iosb.cpp:60 maps only the byte-wide $14000-$14FFF
+// window, and no MAME driver references read_w/write_w. Our decode matches
+// that map exactly (`Q605Memory.cpp:390`/`:463`, `addr & 0xFFF` byte-wide).
+// Implementing a port with an admittedly-not-understood semantic, no caller
+// and no guest would be inventing behaviour. Reopening condition: a guest
+// (or MAME driver update) actually issuing 16-bit accesses to the cell.
 class AscIosb {
 public:
     static constexpr int kSampleRate = 22257;

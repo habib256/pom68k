@@ -85,6 +85,28 @@ int main() {
         return 1;
     }
 
+    // Out-of-range READ(10) — first invalid LBA = blocks(): CHECK CONDITION
+    // and REQUEST SENSE = ILLEGAL REQUEST / INVALID FIELD IN CDB $24 (MAME
+    // hd.cpp:567-580), never the old zero-fill + GOOD (audit #39).
+    {
+        uint32_t bad = disk.blocks();
+        uint8_t rd10[10] = { 0x28, 0, uint8_t(bad >> 24), uint8_t(bad >> 16),
+                             uint8_t(bad >> 8), uint8_t(bad), 0, 0, 1, 0 };
+        if (disk.command(rd10, 10, out, in) != 2 || !out.empty()) {
+            std::fprintf(stderr, "FAIL: out-of-range READ(10) must CHECK, no data\n");
+            return 1;
+        }
+        uint8_t rqs[6] = { 0x03, 0, 0, 0, 14, 0 };
+        if (disk.command(rqs, 6, out, in) != 0 || out.size() < 13 ||
+            (out[2] & 0x0F) != 0x05 || out[12] != 0x24) {
+            std::fprintf(stderr, "FAIL: sense after out-of-range READ "
+                         "(key %02X asc %02X)\n",
+                         out.size() > 2 ? out[2] : 0xFF,
+                         out.size() > 12 ? out[12] : 0xFF);
+            return 1;
+        }
+    }
+
     // ER image must remain untouched (no façade).
     ScsiDisk er;
     if (!er.open(tpl) || er.flatHfsFacade()) {

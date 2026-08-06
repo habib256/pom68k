@@ -4,6 +4,25 @@
 #include "MscMemory.h"
 #include "MscCpu.h"
 #include <cstdio>
+#include <ctime>
+
+#ifdef _WIN32
+#define timegm _mkgmtime
+// localtime_s takes its two arguments in the opposite order to localtime_r.
+static inline std::tm* localtime_r(const std::time_t* t, std::tm* out) {
+    return localtime_s(out, t) == 0 ? out : nullptr;
+}
+#endif
+
+// Host local wall time as Mac-epoch seconds (1904→1970 = 2 082 844 800 s) —
+// the main.cpp hostMacSeconds() convention: re-read the LOCAL broken-down
+// time as if it were UTC, which IS the wall clock the RTC keeps.
+static uint32_t hostMacSecondsMsc() {
+    std::time_t now = std::time(nullptr);
+    std::tm lt{};
+    localtime_r(&now, &lt);
+    return uint32_t(uint64_t(int64_t(timegm(&lt))) + 2082844800ULL);
+}
 
 MscMemory::MscMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
     : ram_(totalRam, 0), rom_(kRomSize, 0xFF), vram_(kVramSize, 0),
@@ -37,13 +56,13 @@ MscMemory::MscMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
         if (cpu_) if (int s = pmu_.takeHostSpin()) cpu_->stall(s);
     };
     // MSC block ($20-$2F inside the pseudo-VIA window): reg 1 clock ctrl,
-    // reg 2 sound ctrl with a read-clearing SOUND_BUSY bit (msc.cpp
-    // msc_pseudovia_r/w:225-262).
+    // reg 2 sound ctrl with a read-clearing SOUND_BUSY bit 6 (msc.cpp:24
+    // SOUND_BUSY=6, msc_pseudovia_r/w:225-262).
     pvia_.onMscRead = [this](int off) -> uint8_t {
         if (off == 1) return mscClockCtrl_;
         if (off == 2) {
             const uint8_t r = mscSoundCtrl_;
-            mscSoundCtrl_ &= uint8_t(~0x01);
+            mscSoundCtrl_ &= uint8_t(~0x40);
             return r;
         }
         return 0;
@@ -59,6 +78,12 @@ MscMemory::MscMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
         jitMapChanged();
         wakeReset_ = true;
     };
+    // pmu_porte_w:431-441 → msc.cpp pmu_reset_w:363-378: raising port E
+    // bit 2 releases /RESET with the overlay re-armed — the same machine
+    // action as wake, so a BORG-commanded reboot restarts from the ROM.
+    // (At the power-on release the CPU has not run yet: the extra reset()
+    // re-fetches the same vectors, a no-op.)
+    pmu_.onCpuReset = pmu_.onWake;
     // PG&E boot mask ROM — user-provided, never committed (roms/README).
     for (const char* p : { "roms/pge/pge_boot.bin", "../roms/pge/pge_boot.bin" })
         if (pmu_.loadBootRom(p)) break;
@@ -68,6 +93,13 @@ MscMemory::MscMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
         std::fprintf(stderr, "Msc: no roms/pge/pge_boot.bin — NO power "
                      "manager; the ROM will stall at the PMU handshake "
                      "(docs/DUO_BRINGUP.md milestone 2)\n");
+    // The Duo's clock/PRAM live inside the PMU, and MAME seeds the PGE's
+    // RTC from host time at device_start (m68hc05pge.cpp:185-187) — so the
+    // seed belongs here, at machine construction, not in the GUI like the
+    // platforms with a discrete Rtc. Unseeded, the guest clock sits at the
+    // 1904 epoch. Survives reset(): M68hc05Pge::reset() keeps rtc_, as
+    // MAME's device_reset keeps m_rtc.
+    pmu_.setSeconds(hostMacSecondsMsc());
     reset();
 }
 
@@ -290,8 +322,8 @@ void MscMemory::write8(uint32_t addr, uint8_t v) {
     }
     if (low >= 0x14000 && low < 0x16000) {
         // Any ASC write marks sound busy for the sleep logic
-        // (msc.cpp:130-134 install_write_tap).
-        mscSoundCtrl_ |= 0x01;               // TODO: confirm SOUND_BUSY bit
+        // (msc.cpp:130-134 install_write_tap sets bit 6, SOUND_BUSY=6).
+        mscSoundCtrl_ |= 0x40;
         asc_.write(low - 0x14000, v);
         return;
     }

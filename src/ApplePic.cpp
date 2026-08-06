@@ -111,7 +111,18 @@ void ApplePic::dmaTick()
 
             if (channel.tc == 0) {
                 channel.control &= ~kDmaEnable;
-                // DEN1ON2/DEN2ON1 alternating-buffer chaining.
+                // DEN1ON2/DEN2ON1 alternating-buffer chaining. POM68K is
+                // FUNCTIONAL here and MAME is not — PIN (MAME-parity audit
+                // §2.11, 2026-08-06). `dma_timer_callback` opens with
+                //     auto other_channel = m_dma_channel[ch ^ 1];
+                // (applepic.cpp:391) — no `&`. The DMAEN it then sets at
+                // :413 lands in a stack COPY that is discarded when the
+                // loop iteration ends, so the alternating-buffer chain
+                // never actually arms on master. `other` above is a real
+                // reference (declared at the top of this loop) and the
+                // chain works. A future parity diff must NOT "restore" the
+                // by-value form: that would be importing the bug.
+                // Gate: tests/applepic_test.cpp step 7 (DENxONx chaining).
                 if (other.control & kDmaChain)
                     other.control |= kDmaEnable;
                 setInterrupt(kIrqDma1 + ch);
@@ -124,6 +135,15 @@ void ApplePic::dmaTick()
 
 void ApplePic::updateIrqLine()
 {
+    // MAME-parity audit §2.11 (cosmetic, DOCUMENT-SKIP 2026-08-06): MAME
+    // never recomputes the level — set_interrupt (applepic.cpp:520-535)
+    // asserts only when the new flag is the FIRST unmasked one,
+    // reset_interrupt (:537-551) clears only when it was the LAST, and
+    // int_mask_w / int_reg_w each drive the line from their own local test
+    // (:487-489, :510-513). Every one of those branches evaluates to the
+    // same predicate this line computes — `(int_reg & int_mask) != 0` — so
+    // the wire carries an identical level at every instant. Recomputing is
+    // the same result reached without four call sites that can drift apart.
     cpu_.setIrqLine(0, (intReg_ & intMask_) != 0);
 }
 
@@ -184,7 +204,11 @@ uint8_t ApplePic::regRead(uint16_t a)
             if (sccCtl_ & 0x01) return 0;
             return readPeriph ? readPeriph(a & 0x0F) : 0xFF;
         }
-        return 0xFF;   // open bus in the unmapped register hole
+        // Unmapped register hole: MAME's internal_map (`applepic.cpp:63-77`)
+        // leaves it unmapped and the space's unmap value is the default 0 —
+        // same rule as the DMA-register holes (`applepic.cpp:345-351`), and
+        // the same house rule the Sonora ProductInfo wedge established.
+        return 0x00;
     }
 }
 
@@ -370,6 +394,19 @@ void ApplePic::reqbW(bool state)
 
 // ── Clock ─────────────────────────────────────────────────────────────────
 
+// MAME-parity audit §2.11 (cosmetic, DOCUMENT-SKIP 2026-08-06): MAME runs
+// the timer and the DMA engine off their own attotime timers — a one-shot
+// of (latch*8 + 12) input clocks and a periodic 8-clock DMA tick — so both
+// fire at exact clock boundaries. POM68K slaves them to the 65C02's
+// instruction stream: `used` is the instruction's real cycle cost times 8,
+// `clockNow_` is the running input-clock count, `dmaPhase_` carries the
+// remainder of the 8-clock DMA period across instructions and runTimer()
+// re-arms from the SCHEDULED expiry rather than from "now". The FORMULAS
+// are MAME's, verbatim; only the sampling instant moves, and it moves by at
+// most one instruction. Aligning would mean a scheduler this device does
+// not have — and the debt carry exists precisely because dropping it is
+// what drifts an MCU clock (`pom68k-mcu-lle-clock-drift`, where the
+// missing overshoot carry overclocked the Egret/Cuda by ~37 %).
 void ApplePic::tick(int clocks)
 {
     budget_ += clocks;

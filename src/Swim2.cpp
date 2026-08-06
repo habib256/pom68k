@@ -17,10 +17,26 @@ void Swim2::reset() {
     cellPhase_ = 0;
     driveSel_ = 0;
     lstrb_ = false;
-    crc_ = 0xCDB4;
+    // MAME swim2.cpp:61 seeds the CRC register to $FFFF at device_reset —
+    // NOT to the $CDB4 crc_clear() value (parity audit § 2.4, cosmetic).
+    // Aligned 2026-08-06: it is provably unobservable (every path that
+    // *reads* crc_ is preceded by a crcClear() — the write engine reseeds on
+    // the MARK byte that opens any field, and the MFM read engine only
+    // reaches its CRC0 test at mfmSyncCounter_ 96, which is unreachable
+    // without the mark at 80). The only sequence that could tell the two
+    // apart is a CRC token pushed as the very first FIFO entry after reset,
+    // and there $FF is the MAME-correct byte. Swim1 differs on purpose —
+    // see Swim1::reset().
+    crc_ = 0xFFFF;
     sr_ = 0;
     tssSr_ = tssOutput_ = 0;
     mfmSyncCounter_ = 0;
+    // MAME swim2.cpp:65 resets m_current_bit to 0 ("load the next FIFO byte"),
+    // not to its own 0xff idle sentinel — kept at idle here (parity audit
+    // § 2.4, cosmetic, DOCUMENT-SKIP). Inert either way: ACTION is off at
+    // reset (mode_ $40) and every entry into read or write mode goes through
+    // the mode edge below, which sets currentBit_ explicitly. Idle is the
+    // safer of the two if a future caller ever ticks outside that edge.
     currentBit_ = -1;
     halfWait_ = 0;
     writeHalfPos_ = 0;
@@ -240,6 +256,27 @@ void Swim2::finishWrite() {
     if (!writeActive_) return;
     writeActive_ = false;
     SonyDrive* d = selectedDrive();
+    // KNOWN MAME DIVERGENCE, deliberately kept (parity audit § 2.4, cosmetic).
+    // MAME's flush_write (swim2.cpp:100-126, same code at swim1.cpp:426) calls
+    // floppy->write_flux(start, end, 0, nullptr) whenever `when >
+    // m_flux_write_start` — a span with ZERO transitions therefore ERASES that
+    // arc of the track. Here an empty span is a no-op and the old cells stand.
+    // Not aligned: the benefit is nil (no shipped driver opens write ACTION
+    // over an arc it does not intend to fill — a format pass writes its gap
+    // bytes, it does not erase) and the cost is real, though not the obvious
+    // one. The erase itself does not survive: commitCells() would zero
+    // `totalCells` cells and then run the whole-track decoder, and either
+    // nothing verifies (decodeGcrCells/decodeMfmCells re-encode canonically)
+    // or something does (writeSector() re-encodes) — measured both ways.
+    // What survives is the side effects: a full decode + re-encode of the
+    // live track on the GCR path repaired 2026-08-05, and `dirty_` set by
+    // those re-commits, so a write that wrote NOTHING marks the medium dirty
+    // and has flushToFile() rewrite the user's host image on eject. A
+    // spurious write-mode edge (a mode-register glitch, a save-state restore
+    // landing mid-ACTION) is precisely how that would fire. Gated by "empty
+    // write span does not dirty the medium" in tests/swim2_media_test.cpp,
+    // which fails if this early-out is removed. Reopen if a real formatter
+    // is observed relying on erase-by-silence.
     if (!d || writeTransitions_.empty()) { writeTransitions_.clear(); return; }
 
     const uint64_t div = uint64_t(cellCycles()) * 2;   // half-cycles per cell
@@ -380,6 +417,18 @@ void Swim2::tickWrite(int cycles) {
                 sr_ = uint16_t(crc_ >> 8);       // 2nd CRC byte (shifted low)
             else {
                 uint16_t r = fifoPop();
+                // KNOWN MAME DIVERGENCE, deliberately kept (parity audit
+                // § 2.4, cosmetic). MAME gates the WHOLE termination block on
+                // `r == 0xffff && !m_error` (swim2.cpp:449-457, same shape at
+                // swim1.cpp:944-952): with an error already latched, an empty
+                // FIFO falls through to `m_sr = r & (M_MARK|M_CRC|0xff)` =
+                // $3FF, i.e. a MARK byte of $FF — and the engine then keeps
+                // serialising $FF mark bytes onto the medium forever, until
+                // the driver happens to drop ACTION. That is a fall-through,
+                // not a modelled behaviour, and here it would spray a live
+                // track with garbage the write-back decoder must then reject.
+                // We end the ACTION on any underrun; the error bit the guest
+                // reads back is $01 in both cases when none was pending.
                 if (r == 0xFFFF) {
                     if (!error_) error_ |= 0x01; // underrun ends ACTION
                     finishWrite();

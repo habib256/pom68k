@@ -188,6 +188,22 @@ void CudaLle::i2cWire(bool scl, bool sda) {
                     }
                 }
                 if (i2cByteIdx_ < 255) i2cByteIdx_++;
+                // MAME-parity audit §2.10 (cosmetic, DOCUMENT-SKIP
+                // 2026-08-06): a real I2C slave pulls SDA down during the
+                // LOW phase that follows the 8th clock, i.e. half a clock
+                // after this point; the ACK is asserted here, on the 8th
+                // RISING edge. That is early, never late — the master
+                // samples the ACK on the 9th rising edge and we release on
+                // the falling edge after it (see the i2cBit_ == 9 arm
+                // below), so the sampled phase is fully covered and no
+                // master can tell. Not aligned: the only consumer is the
+                // PB6 read-back at line 123, this wire is the DFAC2 ACK
+                // whose ABSENCE is what wedged the factory Cuda 2.35 on the
+                // Color Classic (`pom68k-cuda-0417-wedge`), and the
+                // Cuda↔VIA transport is phase-fragile by measurement
+                // (`pom68k-mactv-gate-broken`). Moving an ACK edge on this
+                // MCU for a change no master can observe is not a trade
+                // worth making.
                 i2cDriveLow_ = i2cAddressed_;
                 static const bool trace =
                     std::getenv("POM68K_ADB_LLE_TRACE") != nullptr;

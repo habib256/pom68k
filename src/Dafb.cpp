@@ -66,7 +66,11 @@ uint32_t Dafb::read32(uint32_t off) {
         case 0x24: return regs_[0x24 >> 2];       // SCSI ctrl (vestigial on
         case 0x28: return regs_[0x28 >> 2];       // MEMCjr — TurboSCSI moved
                                                   // into PrimeTime)
-        case 0x2C: return (regs_[0x2C >> 2] & 0x1FF) | (3u << 9);  // version 3
+        case 0x2C:
+            // test/version (dafb.cpp:426-427): the flavour's version in
+            // bits 11-9 — 1 on the discrete DAFB (Q700/Q900), 3 on every
+            // DAFB II (Q950/djMEMC/MEMCjr device_start).
+            return (regs_[0x2C >> 2] & 0x1FF) | (uint32_t(version_) << 9);
         // Swatch ($100): swatch_r
         case 0x108: return intStatus_;
         case 0x10C: intStatus_ &= ~4u; recalcIrq(); return 0;
@@ -80,12 +84,27 @@ uint32_t Dafb::read32(uint32_t off) {
         // RAMDAC ($200): ramdac_r (Antelope PCBR1 dance)
         case 0x200: palIdx_ = 0; return palAddress_;
         case 0x210: {
+            // ── Deliberate divergence, in POM68K's favour ───────────────
+            // The read phase cycles R→G→B→R here, as the AC842/Antelope
+            // silicon does. MAME lets m_pal_idx run UNBOUNDED
+            // (dafb.cpp:726-731): a 4th consecutive read falls off the end
+            // of its switch and answers 0, and the counter it leaves
+            // behind (3, 4, …) then poisons the WRITE path — ramdac_w's
+            // switch has no case above 2, so every subsequent palette
+            // write stores nothing and the `== 3` re-sync never triggers
+            // again (dafb.cpp:772-790). Nothing on the shipped profiles
+            // reads the CLUT four times in a row, so this costs no parity;
+            // adopting MAME's form would import a latent state trap.
             uint8_t c = clut_[palAddress_][palIdx_ % 3];
             if (++palIdx_ == 3) palIdx_ = 0;
             return c;
         }
         case 0x220:
-            if (palAddress_ == 1 && (ac842Pbctrl_ & 0x06) == 0x06)
+            // The PCBR1 dance exists only on the AC842a/Antelope flavours
+            // (dafb_q950/memc/memcjr ramdac_r overrides); the plain AC842
+            // of the Q700/Q900 always answers PCBR0 (dafb.cpp:743-745).
+            if (ramdac_ != Ramdac::Ac842
+                && palAddress_ == 1 && (ac842Pbctrl_ & 0x06) == 0x06)
                 return pcbr1_;
             return ac842Pbctrl_;
         default:
@@ -118,6 +137,13 @@ void Dafb::write32(uint32_t off, uint32_t v) {
             swatchMode_ = v;
             break;
         case 0x104:                               // Swatch int enable
+            // Bit 1 = aux-scanline interrupt. MAME calls fatalerror() on it
+            // (dafb.cpp:646-649); POM68K takes the write and stays silent.
+            // Aligning would mean aborting the emulator on a register
+            // write — an unhelpful observable, and one no guest on the
+            // shipped profiles produces (the Apple driver arms bits 0 and 2
+            // only). If a guest is ever seen to set bit 1, its timer
+            // belongs right here next to the VBL and cursor ones.
             swatchIntEnable_ = v;
             if (!(v & 1)) intStatus_ &= ~1u;
             if (!(v & 4)) intStatus_ &= ~4u;
@@ -138,16 +164,37 @@ void Dafb::write32(uint32_t off, uint32_t v) {
             break;
         case 0x200: palAddress_ = uint8_t(v); palIdx_ = 0; break;
         case 0x210:
-            clut_[palAddress_][palIdx_] = uint8_t(v);
+            // A monochrome monitor (sense 1 = 15" Portrait, 3 = 21"
+            // Two-Page) wires only the blue DAC to the video amplifier, so
+            // the R and G bytes are dropped on the floor and the blue one
+            // drives all three primaries (dafb.cpp:758-770). Same rule the
+            // RBV's portrait display gets (RbvVideo.h pen()) and Sonora's
+            // mono modeline (SonoraMemory::dacWrite) — applied at the
+            // write here, as MAME does, because the DAFB's renderers live
+            // in three different memory maps and would each need the sense.
+            if (monitorConfig_ == 1 || monitorConfig_ == 3) {
+                if (palIdx_ == 2)
+                    clut_[palAddress_][0] = clut_[palAddress_][1] =
+                        clut_[palAddress_][2] = uint8_t(v);
+            } else {
+                clut_[palAddress_][palIdx_] = uint8_t(v);
+            }
             if (++palIdx_ == 3) { palIdx_ = 0; palAddress_++; }
             break;
-        case 0x220:                               // Antelope PCBR0/PCBR1
-            if (palAddress_ == 1 && (ac842Pbctrl_ & 0x06) == 0x06)
-                pcbr1_ = uint8_t(v & 0xF0) | 0x02;   // Antelope version ID
+        case 0x220:                               // PCBR0 (+ PCBR1 on DAFB II)
+            // AC842a/Antelope only (see the read side): the plain AC842
+            // takes every $220 write as PCBR0 (dafb_base::ramdac_w:792-820)
+            // and has no x555 mode. PCBR1 version ID: $01 = AC842a (Q950,
+            // dafb.cpp:1131), $02 = Antelope (djMEMC/MEMCjr, :1258/:1400).
+            if (ramdac_ != Ramdac::Ac842
+                && palAddress_ == 1 && (ac842Pbctrl_ & 0x06) == 0x06)
+                pcbr1_ = uint8_t(v & 0xF0)
+                       | (ramdac_ == Ramdac::Ac842a ? 0x01 : 0x02);
             else {
                 ac842Pbctrl_ = uint8_t(v);
-                if ((pcbr1_ & 0xC0) == 0xC0 && (ac842Pbctrl_ & 0x06) == 0x06) {
-                    mode_ = 5;                    // Antelope x555
+                if (ramdac_ != Ramdac::Ac842
+                    && (pcbr1_ & 0xC0) == 0xC0 && (ac842Pbctrl_ & 0x06) == 0x06) {
+                    mode_ = 5;                    // AC842a/Antelope x555
                 } else {
                     switch (ac842Pbctrl_ & 0x1C) {
                         case 0x00: mode_ = 0; break; // 1 bpp
@@ -180,9 +227,26 @@ void Dafb::recalcMode() {
     hres_ = uint32_t(hParams_[HFP]) - hParams_[HAL];
     vres_ = uint32_t(vParams_[VFP] >> 1) - (vParams_[VAL] >> 1);
 
+    // dafb.cpp:833-839 — the Quadra 700 programs the wrong base for the
+    // 512×384 mode and is off-by-1 on the vertical res; MAME patches both
+    // on version 1 only (the Q800/Q605 drivers program it correctly).
+    if (hres_ == 512 && version_ == 1) {
+        base_ = 0x1000;
+        vres_ = 384;
+    }
+
     const uint32_t clockdiv = 1u << ((ac842Pbctrl_ & 0x60) >> 5);
     if (config_ & 0x08) {                        // convolution (see above)
         hres_ /= clockdiv;
+        // MAME also runs `m_stride /= clockdiv` here (dafb.cpp:847). We
+        // deliberately do not. It is a DESTRUCTIVE edit of the stride
+        // register echo — clear convolution again and MAME's $008 readback
+        // stays permanently divided, and a second recalc divides it once
+        // more — while being unobservable in MAME itself, since
+        // screen_update pins the pitch at 1024 for the whole time
+        // convolution is on (dafb.cpp:267, mirrored by Dafb::stride()).
+        // Gate: "clearing convolution restores programmed stride" in
+        // tests/q605_dafb_test.cpp.
         hres_ -= 23;                             // dafb.cpp Q700 quirk
     } else {
         hres_ *= clockdiv;
@@ -236,6 +300,13 @@ void Dafb::clockgenGazelle(uint32_t off, uint8_t v) {
             const uint32_t P = 1u << ((gazShift_ >> 4) & 3);
             const uint32_t N = (gazShift_ >> 6) & 0x7F;
             const uint32_t M = (gazShift_ >> 13) & 0x7F;
+            // MAME divides blind: `(double)m_N / ((double)m_M * m_P)` with
+            // M = 0 yields inf, and the u32 cast of that is UB
+            // (dafb.cpp:1350-1352). The same blind divide is guarded in
+            // clockgenDp8534 (RCNT) and clockgenDp8531 (R). All three
+            // guards are POM68K-only and stay: a junk bitstream must leave
+            // the pixel clock alone, never freeze or explode the frame
+            // cadence that hangs off it.
             if (M && P) {
                 const uint32_t clk =
                     uint32_t(31334400.0 * double(N) / (double(M) * double(P)));
@@ -330,9 +401,16 @@ void Dafb::tick(int cpuCycles) {
     framePos_ += cpuCycles;
     int64_t frameLen = cpuHz_ / 60;
     int totalLines = 525;
-    if (htotal_ && vtotal_ > 480 && pixelClock_ >= 1000000) {
-        frameLen = int64_t(htotal_) * vtotal_ * cpuHz_ / pixelClock_;
-        totalLines = int(vtotal_);
+    // dafb.cpp:869-875 — MAME reconfigures the screen whenever recalc_mode
+    // leaves a nonzero active area; there is no 480-line floor. (An old
+    // `vtotal_ > 480` guard here silently pinned sub-480 modes — the
+    // Q700's 512×384, vtotal 407 — to the legacy 60 Hz / 525-line shape.)
+    if (htotal_ && vtotal_ && hres_ && vres_ && pixelClock_ >= 1000000) {
+        int64_t programmed = int64_t(htotal_) * vtotal_ * cpuHz_ / pixelClock_;
+        if (programmed > 0) {
+            frameLen = programmed;
+            totalLines = int(vtotal_);
+        }
     }
     // Published for the raster beam (VideoBeam.h) — one geometry, derived
     // here, rather than a second copy of the same arithmetic elsewhere.
@@ -353,7 +431,11 @@ void Dafb::tick(int cpuCycles) {
                         : (target > prevLine_ && target <= line);
         };
         uint8_t st = intStatus_;
-        if ((swatchIntEnable_ & 1) && crossed(480)) st |= 1;
+        // MAME hardcodes the VBL at screen line 480 (vbl_tick re-arms
+        // time_until_pos(480)); screen_device::time_until_pos wraps vpos
+        // modulo the frame height, so on a sub-480-line frame the timer
+        // still fires once per frame — keep that wrap here.
+        if ((swatchIntEnable_ & 1) && crossed(480 % totalLines)) st |= 1;
         if ((swatchIntEnable_ & 4) && crossed(int(cursorLine_ % totalLines)))
             st |= 4;
         prevLine_ = line;

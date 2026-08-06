@@ -97,6 +97,12 @@ int main() {
     }
 
     // --- Talk R0 keyboard after a keypress: 2 bytes ---
+    // The event lands in buffer[1], NOT buffer[0]: that is MAME's
+    // macadb.cpp:660-672 order, reproduced verbatim (oldest event to
+    // buffer[1], the next one to buffer[0]). The HLE fallback AdbBus uses
+    // the opposite order and is knowingly left alone — MAME-parity audit
+    // §2.9, reasoning pinned in src/AdbBus.cpp's keyboard Talk R0 branch.
+    // This check is what makes that cross-reference enforceable.
     {
         AdbLine a; a.reset();
         a.keyEvent(0x24, true);                    // Return down

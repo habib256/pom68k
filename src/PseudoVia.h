@@ -19,9 +19,10 @@
 //     level-sticky: with the Level flavour on top, an enabled ASC
 //     interrupt could never be acknowledged.
 //
-// Source of truth: MAME pseudovia.cpp (master 2026-07-15) — base read
-// :185-218/:220-248, base write :250-290, base asc_irq_w :136-146, V8
-// write :329-388, V8 asc_irq_w :315-327, recalc :190-218, reset :93-97.
+// Source of truth: MAME pseudovia.cpp (master 2026-08-05) — base read
+// :185-218/:220-248, base write :250-307 (IER $FF⇒$1F quirk :290-305),
+// base asc_irq_w :136-146, V8 write :329-388, V8 asc_irq_w :315-327,
+// recalc :190-218, reset :93-97.
 // Pinned in docs/LCII_HARDWARE.md § Pseudo-VIA.
 // Gate: tests/pseudovia_test.cpp.
 
@@ -37,7 +38,10 @@ public:
     // (no port-A window), a port-B INPUT (the PMU /ACK //REQ lines), MSC
     // block handlers at $20-$2F, ASC level-triggered like Level
     // (pseudovia.cpp:503-620).
-    enum class Flavour { Level, Base, Msc };
+    // Sonora = sonora_pseudovia_device: Level ASC semantics but the full
+    // $00-$1F decode on READS too (pseudovia.cpp:413 vs :222 — regs 4/5
+    // are real backing store, not port-B mirrors).
+    enum class Flavour { Level, Base, Msc, Sonora };
 
     explicit PseudoVia(Flavour flavour = Flavour::Level) : flavour_(flavour) {}
     // IFR (reg 3) bits — enabled mask is $1B (pseudovia.cpp:205)

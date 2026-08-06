@@ -72,6 +72,11 @@ static void readDma(R& s, int n, std::vector<uint8_t>& out) {
 
 // Collect STATUS + COMMAND-COMPLETE message and return to BUS FREE.
 static int finish(R& s, uint8_t& status, uint8_t& msg) {
+    // Clear the pending transfer interrupt first: with the 2-deep command
+    // queue (ncr53c90.cpp:886-903) a CI_COMPLETE written on top of an unread
+    // I_BUS queues behind the finished Transfer Info and only starts at the
+    // interrupt-status read — exactly as on the real chip.
+    (void)s.read(R::R_ISTAT);
     s.write(R::R_COMMAND, R::CI_COMPLETE);     // latch STATUS + message into FIFO
     uint8_t ist = s.read(R::R_ISTAT);
     if (!(ist & R::I_FUNCTION)) return 1;
@@ -177,6 +182,15 @@ int main() {
         CHECK(ist & R::I_DISCONNECT, "selection timeout raises I_DISCONNECT (got %02X)", ist);
     }
 
+    // ── Disconnected initiator command → I_ILLEGAL (#40: check_valid_command,
+    //    ncr53c90.cpp:930-935 + :1298-1308 — not a deferred I_BUS) ──
+    {
+        scsi.write(R::R_COMMAND, R::CI_XFER);     // no session: MODE_D
+        CHECK(scsi.irq(), "disconnected CI_XFER latches its interrupt at once");
+        uint8_t ist = scsi.read(R::R_ISTAT);
+        CHECK(ist == R::I_ILLEGAL, "disconnected CI_XFER = I_ILLEGAL, got %02X", ist);
+    }
+
     // ── WRITE(10) 1 block, polled R_FIFO (System 7.5.5 SCSI HAL path) ──
     {
         std::vector<uint8_t> orig;
@@ -192,6 +206,13 @@ int main() {
         for (int i = 0; i < 512; i++)
             scsi.write(R::R_FIFO, uint8_t(orig[i] ^ 0xA5));
         CHECK(scsi.irq(), "polled WRITE raises I_BUS after 512 FIFO bytes");
+        // #41: the non-DMA gather must not forge S_TC0 — that flag is strictly
+        // DMA-counter-zero (MAME decrement_tcounter, ncr53c90.cpp:1234-1251).
+        // (The 7.5.5 reload deviation, docs/LLE_VS_HLE.md §1.5, also clears
+        // the stale S_TC0 left by the seed DMA read above; this check pins
+        // both halves: cleared at CI_XFER $10, never re-raised by the drain.)
+        CHECK(!(scsi.read(R::R_STATUS) & R::S_TC0),
+              "polled (non-DMA) WRITE completes without S_TC0");
         uint8_t ist = scsi.read(R::R_ISTAT);
         CHECK(ist & R::I_BUS, "I_BUS after polled WRITE (got %02X)", ist);
         uint8_t status = 0xFF, msg = 0xFF;

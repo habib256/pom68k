@@ -94,7 +94,7 @@ public:
            monitorConfig_, monitorId_, palAddress_, palIdx_, clut_,
            hres_, vres_, htotal_, vtotal_, stride_, pixelClock_,
            enabled_, framePos_, prevLine_, frameCount_,
-           clkM_, clkN_, clkP_);
+           clkM_, clkN_, clkP_, vblArmed_);
     }
 
 private:
@@ -114,6 +114,10 @@ private:
     uint32_t pixelClock_ = 31334400;
     uint8_t  clkM_ = 0, clkN_ = 0, clkP_ = 0;   // I2C clock-gen divisors
     bool     enabled_ = false;      // reg $18 screen enable
+    // VBL timer armed — set by any $10 write (valkyrie.cpp:323) or a $18
+    // enable, cleared by a $18 disable (valkyrie.cpp:326-336). Gates ONLY
+    // the interrupt: the frame counter free-runs.
+    bool     vblArmed_ = false;
 
     int64_t  framePos_ = 0;         // pixel-clock position in the frame
     uint64_t frameCount_ = 0;       // completed frames (raster beam seq)

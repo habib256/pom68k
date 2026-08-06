@@ -66,6 +66,59 @@ void baseFlavour() {
     pv.write(3, 0x08);
     check(!pv.irqAsserted(), "base SCSI: W1C ack clears it");
     pv.scsiIrq(false);
+
+    // Base-only IER quirk (pseudovia.cpp:290-305): a set-write of exactly
+    // $FF stores $1F — "the IIci ROM's POST demands it" (:295-298).
+    pv.write(0x13, 0xFF);
+    check(pv.read(0x13) == 0x1F, "base IER: write $FF stores $1F (IIci POST quirk)");
+    pv.write(0x13, 0x80 | 0x7E);             // any other set-write is plain
+    check(pv.read(0x13) == 0x7F, "base IER: $FE set-write stays a plain selector");
+}
+
+// Decode widths per flavour (pseudovia.cpp:222/:252 base, :337 V8 write,
+// :413/:449 Sonora, :560 Msc): the narrow base decode creates mirrors, the
+// Sonora read decode un-aliases regs 4/5, Msc NOPs outside its cases.
+void decodeWidths() {
+    std::printf("pseudovia_test — per-flavour decode widths\n");
+
+    // Base: A0/A1/A4 decode on WRITES too — $0B mirrors the IFR ack ($03)
+    PseudoVia base{PseudoVia::Flavour::Base};
+    base.reset();
+    base.write(0x13, 0x80 | 0x1B);
+    base.scsiIrq(true);
+    check(base.irqAsserted(), "decode base: SCSI IRQ pending");
+    base.write(0x0B, 0x08);                  // $0B & $13 = $03 → IFR ack
+    check(!base.irqAsserted(), "decode base: write at $0B mirrors the IFR ack");
+    base.scsiIrq(false);
+
+    // V8 (Level): writes decode $00-$1F — $0B is NOT an IFR mirror
+    PseudoVia v8{PseudoVia::Flavour::Level};
+    v8.reset();
+    v8.write(0x13, 0x80 | 0x1B);
+    v8.scsiIrq(true);
+    v8.write(0x0B, 0x08);                    // falls out of the switch: NOP
+    check(v8.irqAsserted(), "decode V8: write at $0B is a NOP, IRQ survives");
+    v8.scsiIrq(false);
+    v8.write(3, 0x08);
+
+    // Sonora: reads decode $00-$1F — reg 4 is backing store, not port B
+    PseudoVia son{PseudoVia::Flavour::Sonora};
+    son.reset();
+    check(son.read(0x04) == 0, "decode Sonora: reg 4 reads backing store (0)");
+    son.write(0x13, 0x80 | 0x1B);            // IER = $1B
+    check(son.read(0x17) == 0, "decode Sonora: $17 is its own reg, not an IER mirror");
+    // and the Level ASC semantics are shared (ack is a NOP)
+    son.write(0x13, 0x80 | 0x1B);
+    son.ascIrq(true);
+    son.write(3, 0x10);
+    check(son.irqAsserted(), "decode Sonora: ASC ack stays a NOP (level)");
+    son.ascIrq(false);
+
+    // Msc: full decode, $30-$FF are NOPs — $33 must not alias onto IER $13
+    PseudoVia msc{PseudoVia::Flavour::Msc};
+    msc.reset();
+    msc.write(0x33, 0x80 | 0x7F);            // master :560-617 has no case $33
+    check(msc.read(0x13) == 0, "decode Msc: write at $33 NOPs (no IER alias)");
 }
 
 int main() {
@@ -147,6 +200,11 @@ int main() {
     // Port A write decode: (offset >> 9) == 1
     pv.write(0x200, 0x5A);
     check(portA == 0x5A, "port A: write at +$200 hits the port A hook");
+
+    // The IER $FF⇒$1F quirk is base-only: V8's case 0x13
+    // (pseudovia.cpp:376-386) keeps the plain bit-7 selector.
+    pv.write(0x13, 0xFF);
+    check(pv.read(0x13) == 0x7F, "IER: $FF stays a plain set on V8 (no $1F quirk)");
 
     baseFlavour();
 

@@ -33,9 +33,20 @@ public:
     // Effective pin levels: outputs from OR latch, inputs from inA_/inB_
     // (updated by MacMemory before reads; default high — pull-ups).
     uint8_t portA() const { return uint8_t((ora_ & ddra_) | (inA_ & ~ddra_)); }
-    uint8_t portB() const { return uint8_t((orb_ & ddrb_) | (inB_ & ~ddrb_)); }
+    // MAME 6522via.cpp:607-620 (input_pb/read_pb): with ACR bit 7 set, PB7
+    // is the T1 square-wave output, overriding ORB/DDRB/input on that pin.
+    uint8_t portB() const {
+        uint8_t pb = uint8_t((orb_ & ddrb_) | (inB_ & ~ddrb_));
+        if (acr_ & 0x80) pb = uint8_t((pb & 0x7F) | (t1Pb7_ ? 0x80 : 0));
+        return pb;
+    }
     void setInA(uint8_t v) { inA_ = v; }
-    void setInB(uint8_t v) { inB_ = v; }
+    // MAME 6522via.cpp:1146-1165 (set_pb_line/write_pb): a PB6 falling edge
+    // decrements T2 in pulse-count mode (ACR bit 5).
+    void setInB(uint8_t v) {
+        if ((acr_ & 0x20) && (inB_ & 0x40) && !(v & 0x40)) countPb6Pulse();
+        inB_ = v;
+    }
     uint8_t ddrb() const { return ddrb_; }
 
     // Advance T1/T2 by n VIA cycles (φ2 = CPU clock / 10 = 783.36 kHz).
@@ -117,11 +128,12 @@ public:
            acr_, pcr_, sr_, ifr_, ier_,
            srHostWritten_, shiftCount_, extBits_, extCb1_, cb1_, cb2_,
            t1_, t2_, t1latch_, t2ll_, t1armed_, t2armed_, ca1Cleared,
-           pmuIntAsserted_);
+           pmuIntAsserted_, t1Pb7_);
     }
 
 private:
     void setIfr(uint8_t bits) { ifr_ |= bits; }
+    void countPb6Pulse();                       // T2 pulse-count mode (ACR5)
     // An ORA/ORB access clears CA1/CB1 always, but CA2/CB2 only when NOT in
     // the "independent interrupt" PCR mode (001/011) — R6522 §3.2.3. The Mac
     // ROM runs CA2 in independent mode (PCR=$22) so the RTC 1-second flag
@@ -149,6 +161,7 @@ private:
     bool extCb1_ = true;                        // last CB1 level from the PIC
     bool cb1_ = true, cb2_ = true;              // input pin levels (idle high)
     int32_t t1_ = 0, t2_ = 0;
+    bool t1Pb7_ = true;                         // T1-driven PB7 level (ACR7)
     uint16_t t1latch_ = 0;
     uint8_t t2ll_ = 0;                          // T2 low-latch (staged by T2CL)
     bool t1armed_ = false, t2armed_ = false;   // one-shot IFR arming

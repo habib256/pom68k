@@ -60,6 +60,20 @@ void Pic1654s::writeReg(uint8_t f, uint8_t v) {
     f &= 0x1F;
     switch (f) {
     case F_INDF: { uint8_t a = uint8_t(fsr_ & 0x1F); if (a) writeReg(a, v); return; }
+    // MAME-parity audit §2.9 (cosmetic, DOCUMENT-SKIP 2026-08-06): MAME's
+    // tmr0_w (pic16c5x.cpp:436-441) sets m_delay_timer = 2 so the counter
+    // is inhibited for two instruction cycles after a write, and
+    // update_timer (:1230-1235) subtracts that debt from the pending count.
+    // That machinery only exists because MAME accumulates edges into
+    // m_count_cycles and applies them in bulk at instruction boundaries.
+    // Here TMR0 is incremented directly by setRtcc() at the instant the ADB
+    // line moves, so there is no batch to inhibit — modelling the window
+    // would mean tracking "cycles since the TMR0 write" inside an
+    // asynchronous pin callback, and any edge that landed in it would be
+    // DROPPED. The ADB bit cell is ~100 µs against 2 PIC cycles ≈ 4.3 µs at
+    // 460.8 kHz, so the window can only ever cost us a real transceiver
+    // edge, never gain accuracy. Reopen only if a firmware is found that
+    // writes TMR0 inside a bit cell.
     case F_TMR0:   ram_[F_TMR0] = v; return;
     case F_PCL:    pc_ = uint16_t((((status_ & ST_PA) << 4) | v) & progMask_);
                    pclWritten_ = true; return;
@@ -126,6 +140,19 @@ int Pic1654s::run(int cycles) {
             case 0x00:                           // 0x000-0x00F NOP / 0x010-0x01F illegal / MOVWF
                 if (d) writeReg(f, w_);          // MOVWF (0x020-0x03F). Else: NOP/illegal —
                 break;                           // OPTION/SLEEP/CLRWDT/TRIS do not exist here.
+            // CLRF (0x060-0x07F, d=1) / CLRW (0x040-0x05F, d=0).
+            // MAME-parity audit §2.9 (cosmetic, DOCUMENT-SKIP 2026-08-06):
+            // MAME's 256-entry main table is indexed by op>>4, and entry
+            // 0x05 — opcodes 0x050-0x05F, i.e. CLRW with a non-zero f field
+            // — is `illegal` (pic16c5x.cpp:882), a logerror-only stub. The
+            // datasheet encodes CLRW as `0000 0100 0000` with d=0 selecting
+            // W as the destination; the f field is simply not consulted by
+            // the datapath, so silicon clears W for the whole 0x040-0x05F
+            // block. POM68K keeps the silicon reading: it is the more
+            // faithful of the two, and both are no-ops in practice — the
+            // 342s0440-b mask ROM contains no 0x05x word and unprogrammed
+            // words read 0x0FFF (XORLW), so the block is unreachable.
+            // Gate: tests/pic1654s_test.cpp "undefined 0x05x = CLRW".
             case 0x01: if (d) writeReg(f, 0); else w_ = 0; status_ |= ST_Z; break; // CLRF/CLRW
             case 0x02: {                                       // SUBWF
                 uint8_t fv = readReg(f), r = uint8_t(fv - w_); dest(r);

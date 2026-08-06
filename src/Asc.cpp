@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Asc.h"
+#include <algorithm>
 #include <cstring>
 
 void AscV8::classicResetFifos() {
@@ -68,9 +69,19 @@ uint8_t AscV8::readReg(uint32_t offset) {
     }
     default:
         // FIFO IRQ-control registers live at bus offsets $F09/$F29, not
-        // $809/$829 — the classic ASC returns $01 there (asc_base_device::read).
-        // The IOSB and Sonora flavors already decode them; AscV8 did not.
-        if (classic() && (offset == 0xF09 || offset == 0xF29)) return 0x01;
+        // $809/$829. Classic reads them as 0: MAME master asc_device::read
+        // (asc.cpp:657-667) overrides the base $01 (asc.cpp:335-337) to
+        // match the real-IIci ASCTester dump "F09: 0 ($00)  F29: 0 ($00)"
+        // (asc.cpp:621) — a recent MAME fix, adopted here (audit #42).
+        // PIN — V8 reads 0 too: DELIBERATE divergence from MAME master, whose
+        // asc_v8_device::read returns 1 (asc.cpp:867-869) against its own
+        // in-file real-LC dump: hardware "F09: 0 ($00)" (asc.cpp:767) vs
+        // MAME "F09: 0 ($01)" (asc.cpp:786). Do not "fix" toward MAME.
+        if (offset == 0xF09 || offset == 0xF29) return 0;
+        // Sparse register file: anything outside the $800-$81F block reads 0
+        // where MAME's flat m_regs[0x800] echoes the written byte. Kept —
+        // reasoning and reopening condition at `AscV8::regs_` in Asc.h
+        // (audit § 2.8(b)).
         if (offset - 0x800 < 0x20) return regs_[offset - 0x800];
         return 0;
     }
@@ -85,6 +96,11 @@ void AscV8::write(uint32_t offset, uint8_t v) {
         // FIFO B: V8 mono ignores; classic ASC is stereo / wavetable RAM.
         if (!classic()) return;
         if ((regs_[0x01] & 3) == 1) {
+            // CONTROL bit 1 (CONTROL_STEREO, a BIT() index) gates FIFO B in
+            // FIFO mode: in mono the write is dropped entirely — no data, no
+            // status edge, no full IRQ (MAME asc_device::write,
+            // asc.cpp:704-739; audit #43).
+            if (!(regs_[0x02] & 0x02)) return;
             fifoB_[wrB_ & 0x3FF] = v;
             wrB_ = (wrB_ + 1) & 0x3FF;
             if (capB_ < 0x400) capB_++;
@@ -114,14 +130,21 @@ void AscV8::write(uint32_t offset, uint8_t v) {
             wr_ = (wr_ + 1) & 0x3FF;
             cap_++;
         }
-        if (cap_ >= 0x200) {
-            fifoStat_ &= uint8_t(~STAT_HALF_A);
-            if (cap_ >= 0x3FF) {
-                fifoStat_ |= STAT_EMPTY_OR_FULL_A;
-                if (classic()) setIrq(true);
+        // R_PLAYRECA ($80A) bit 0 = record mode freezes the FIFO A status
+        // bits on V8: asc_base_device::write (asc.cpp:386-404), reached via
+        // asc_v8_device::write (asc.cpp:878-902). The classic override
+        // (asc_device::write, asc.cpp:669-703) carries NO such gate — the
+        // audit #44 wording "V8/classic" over-reaches; only V8 is gated.
+        if (classic() || !(regs_[0x0A] & 1)) {
+            if (cap_ >= 0x200) {
+                fifoStat_ &= uint8_t(~STAT_HALF_A);
+                if (cap_ >= 0x3FF) {
+                    fifoStat_ |= STAT_EMPTY_OR_FULL_A;
+                    if (classic()) setIrq(true);
+                }
+            } else if (cap_ > 0) {
+                fifoStat_ &= uint8_t(~STAT_EMPTY_OR_FULL_A);
             }
-        } else if (cap_ > 0) {
-            fifoStat_ &= uint8_t(~STAT_EMPTY_OR_FULL_A);
         }
         if (!classic() && fifoStat_ == 0) setIrq(false);   // V8 quirk
         emptyCycleSamples_ = 0;
@@ -155,6 +178,14 @@ void AscV8::write(uint32_t offset, uint8_t v) {
         regs_[0x03] = v;
         return;
     case 0x05: case 0x07: case 0x08:
+        // PIN — $807 CLOCK RATE is HONOURED here (classic ASC only): the
+        // stored byte feeds drainHz(), which paces tick(). MAME documents the
+        // register (sound/asc.cpp:30 "0 = Mac 22257 Hz, 1 = undefined,
+        // 2 = 22050 Hz, 3 = 44100 Hz") and implements NOTHING — its
+        // sound_stream_update always runs at the device clock. A parity diff
+        // will therefore show POM68K "diverging"; it is the manual that is the
+        // oracle for this register, not MAME. Do not drop the store. Rationale
+        // and the host-DAC caveat: AscV8::drainHz in Asc.h.
         if (!classic()) return;
         if (reg < 0x20) regs_[reg] = v;
         return;
@@ -270,6 +301,12 @@ void AscIosb::reset() {
     for (auto& channel : fifo_)
         for (uint8_t& sample : channel) sample = 0;
     mode_ = 1;
+    // PIN — hardware reset state, from the real LC 475 ASCTester dump MAME
+    // carries in-file (sound/asc.cpp:1130-1136: "804Idle: $0E", "F09: 1 ($01)
+    // F29: 1 ($01)"), NOT from a running MAME session: iosb.cpp:89 wires
+    // ASC_EASC in place of asc_iosb, so MAME never executes its own $BB reset
+    // path. A parity diff against MAME's LC 475 / Q605 will report the EASC's
+    // values instead — do not adopt them. See the class comment in Asc.h.
     fifoStat_ = 0x0E;                 // ASCTester LC 475 idle value
     playRec_ = 0;
     fifoIrqEn_[0] = fifoIrqEn_[1] = 1;
@@ -443,6 +480,7 @@ void AscSonora::reset() {
     for (auto& r : regs_) r = 0;
     for (auto& r : xtraRegs_) r = 0;
     regs_[0x01] = 1;                         // mode forced to FIFO
+    // PIN — reset FIFOSTAT is $0A, both empty flags, not $02.
     // Both FIFOs are empty at reset, so BOTH empty/full flags are set:
     // MAME sets R_FIFOSTAT |= $0A for the "fifos A&B empty" idle state
     // (asc.cpp:465). Only latching A ($02) hung the all-in-one LC 520 /
@@ -467,6 +505,8 @@ uint8_t AscSonora::read(uint32_t offset) {
     case 0x802: case 0x803: case 0x805: case 0x807: case 0x808:
         v = 0; break;                        // read-as-0 on Sonora
     case 0x804:
+        // PIN — UNCONDITIONAL read-clear; MAME's `!(stat & HALF_B)` gate must
+        // NOT be restored here (nor in AscIosb::read above, same ruling).
         // Reading clears the IRQ latch (never the status bits); the next
         // 22 257 Hz sample re-raises it while a gated condition holds.
         // MAME gates this clear on !(stat & HALF_B) (asc.cpp:1050-1055),
@@ -600,6 +640,260 @@ void AscSonora::tick(int cpuCycles) {
             uint32_t i = outWr_++ & (kOutSize - 1);
             outL_[i] = int16_t(int(smplL) * 256);
             outR_[i] = int16_t(int(smplR) * 256);
+        }
+    }
+}
+
+// ── Discrete EASC ($B0) — Quadra 700/900/950 ───────────────────────────
+// MAME master asc_easc_device (sound/asc.cpp:1419-1771) — see Asc.h for
+// the ASCTester hardware pin and the 44.1 kHz / host-decimation note.
+
+void AscEasc::reset() {
+    clearFifos();
+    for (auto& channel : fifo_)
+        for (uint8_t& sample : channel) sample = 0;
+    for (auto& r : regs_) r = 0;
+    for (auto& r : xtraRegs_) r = 0;
+    // Base device_reset zeroes the register file (asc.cpp:148-160), FIFOSTAT
+    // included: the ASCTester "804Idle: $0F" is produced by the running
+    // drain, not latched at reset.
+    fifoStat_ = 0;
+    // asc.cpp:1753-1766 — EASC resets both FIFO IRQ enables to 1 = DISABLED
+    // (the Sonora cell resets them enabled) and clears the CD-XA predictors.
+    fifoIrqEn_[0] = fifoIrqEn_[1] = 1;
+    srcStep_[0] = srcStep_[1] = 0;           // ctor state (asc.cpp:1420-1425)
+    srcAccum_[0] = srcAccum_[1] = 0;
+    for (int ch = 0; ch < 2; ch++) {
+        xaS0_[ch] = xaS1_[ch] = 0;
+        xaParam_[ch] = xaByte_[ch] = 0;
+        xaPos_[ch] = xaSubpos_[ch] = 0;
+    }
+    lastL_ = lastR_ = 0;
+    drainAcc_ = 0;
+    outPhase_ = 0;
+    outRd_ = outWr_ = 0;
+    setIrq(false);
+}
+
+// asc_easc_device::read (asc.cpp:1650-1677) + asc_base_device::read defaults
+uint8_t AscEasc::read(uint32_t offset) {
+    offset &= 0xFFF;
+    uint8_t v = 0;
+    if (offset < 0x400)      v = fifo_[0][offset];
+    else if (offset < 0x800) v = fifo_[1][offset - 0x400];
+    else switch (offset) {
+    case 0x800: v = 0xB0; break;             // get_version (asc.cpp:1768-1771)
+    case 0x804:
+        // asc.cpp:1653-1659: reading clears the IRQ latch (never the status
+        // bits) only while FIFO B is NOT below half. The Sonora ruling that
+        // forced an unconditional clear (the "Bienvenue." freeze) does not
+        // transfer here: EASC's HALF_B is genuinely channel B (no combined
+        // fold), the enables reset to DISABLED, and drivers re-edge the line
+        // through the $F09/$F29 enables — the real-Q700 ASCTester dump and
+        // MAME's agree line for line (asc.cpp:1428-1456).
+        if (!(fifoStat_ & STAT_HALF_B)) setIrq(false);
+        v = fifoStat_;
+        break;
+    case 0x807: v = 3; break;                // R_CLOCK: read-only, "44.1 kHz"
+                                             // (asc.cpp:1661-1663)
+    case 0xF09: v = fifoIrqEn_[0]; break;    // R_FIFOA_IRQCTRL (asc.h:60)
+    case 0xF29: v = fifoIrqEn_[1]; break;    // R_FIFOB_IRQCTRL (asc.h:73)
+    default:
+        // asc_base_device::read fallthrough: the register backing store
+        // (mode reads back its stored bit, SRC/VOL/CTRL/CD-XA bytes echo).
+        v = offset >= 0xF00 ? xtraRegs_[offset - 0xF00]
+          : offset < 0x840  ? regs_[offset - 0x800] : 0;
+        break;
+    }
+    if (onRead) onRead(offset, v);
+    return v;
+}
+
+// FIFO write, asc_base_device::write semantics (asc.cpp:474-527): channel A
+// status updates gated on R_PLAYRECA bit 0, channel B ungated.
+void AscEasc::pushFifo(int channel, uint8_t v) {
+    if (cap_[channel] < 0x400) {
+        fifo_[channel][wr_[channel]] = v;
+        wr_[channel] = (wr_[channel] + 1) & 0x3FF;
+        cap_[channel]++;
+    }
+    if (channel == 0 && (regs_[0x0A] & 1)) return;   // record mode: A frozen
+    const uint8_t half = channel ? STAT_HALF_B : STAT_HALF_A;
+    const uint8_t edge = channel ? STAT_EMPTY_OR_FULL_B : STAT_EMPTY_OR_FULL_A;
+    if (cap_[channel] >= 0x200) {
+        fifoStat_ &= uint8_t(~half);
+        if (cap_[channel] >= 0x3FF) fifoStat_ |= edge;
+    } else if (cap_[channel] > 0) {
+        fifoStat_ &= uint8_t(~edge);
+    }
+}
+
+// asc_easc_device::write (asc.cpp:1679-1735) + base defaults
+void AscEasc::write(uint32_t offset, uint8_t v) {
+    offset &= 0xFFF;
+    if (onWrite) onWrite(offset, v);
+
+    if (offset == 0xE00) {                   // test hook (asc.cpp:471-475)
+        fifoStat_ |= 0x0F;
+        setIrq(true);
+        return;
+    }
+    if (offset < 0x400) { pushFifo(0, v); return; }
+    if (offset < 0x800) { pushFifo(1, v); return; }
+
+    switch (offset) {
+    case 0x801:                              // R_MODE (asc.cpp:1683-1692)
+        if ((v & 1) != regs_[0x01]) clearFifos();
+        regs_[0x01] = v & 1;                 // only bit 0 can be written
+        fifoStat_ |= STAT_EMPTY_OR_FULL_B;   // "signal playback FIFO empty"
+        return;
+    case 0x802:                              // R_CONTROL is a no-op on EASC
+        return;
+    case 0x803:                              // R_FIFOMODE (base, asc.cpp:543-551)
+        if (v & 0x80) {
+            clearFifos();
+            fifoStat_ |= STAT_EMPTY_OR_FULL_A | STAT_EMPTY_OR_FULL_B;
+        }
+        regs_[0x03] = v;
+        return;
+    // asc.cpp:1697-1719 — enabling with the matching half flag already up
+    // fires a dummy IRQ; disabling drops the line.
+    case 0xF09:
+        if (!(v & 1) && (fifoIrqEn_[0] & 1) && (fifoStat_ & STAT_HALF_A))
+            setIrq(true);
+        else if (v & 1) setIrq(false);
+        fifoIrqEn_[0] = v & 1;
+        return;
+    case 0xF29:
+        if (!(v & 1) && (fifoIrqEn_[1] & 1) && (fifoStat_ & STAT_HALF_B))
+            setIrq(true);
+        else if (v & 1) setIrq(false);
+        fifoIrqEn_[1] = v & 1;
+        return;
+    // SRC step registers (asc.cpp:1721-1732): step = 16.16 phase increment,
+    // programmed value + 1 (so $FFFF = 1:1 passthrough).
+    case 0xF04: case 0xF05:                  // R_SRCA_H / R_SRCA_L
+        xtraRegs_[offset - 0xF00] = v;
+        srcStep_[0] = (uint32_t(xtraRegs_[0x04]) << 8 | xtraRegs_[0x05]) + 1;
+        return;
+    case 0xF24: case 0xF25:                  // R_SRCB_H / R_SRCB_L
+        xtraRegs_[offset - 0xF00] = v;
+        srcStep_[1] = (uint32_t(xtraRegs_[0x24]) << 8 | xtraRegs_[0x25]) + 1;
+        return;
+    default:                                 // base backing store (asc.cpp:594-597)
+        if (offset >= 0xF00)     xtraRegs_[offset - 0xF00] = v;
+        else if (offset < 0x840) regs_[offset - 0x800] = v;
+        return;
+    }
+}
+
+// asc_easc_device::pop_fifo (asc.cpp:1537-1587). The half/empty edges use
+// the capacity from BEFORE the decrement, and an enabled channel below half
+// asserts the IRQ. (MAME's m_fifo_clrptr bookkeeping is omitted: nothing
+// reads it back.)
+uint8_t AscEasc::popFifo(int channel) {
+    const uint8_t half  = channel ? STAT_HALF_B : STAT_HALF_A;
+    const uint8_t empty = channel ? STAT_EMPTY_OR_FULL_B : STAT_EMPTY_OR_FULL_A;
+    const uint8_t sample = fifo_[channel][rd_[channel]];
+    const int cap = cap_[channel];
+    if (cap_[channel]) {
+        rd_[channel] = (rd_[channel] + 1) & 0x3FF;
+        cap_[channel]--;
+    }
+    if (cap <= 0x1FF) {
+        fifoStat_ |= half;
+        if (!(fifoIrqEn_[channel] & 1)) setIrq(true);
+    } else {
+        fifoStat_ &= uint8_t(~half);
+    }
+    if (cap == 0) fifoStat_ |= empty;
+    else          fifoStat_ &= uint8_t(~empty);
+    return sample;
+}
+
+// asc_easc_device::decode_cdxa (asc.cpp:1589-1648) — CD-XA ADPCM, 2/4/8-bit
+// samples with a per-28-sample block header (filter[5:4], shift[3:0]) and
+// the two-tap predictor whose K0/K1 coefficients the driver programs in the
+// $F10 (A) / $F30 (B) register blocks.
+int16_t AscEasc::decodeCdxa(int channel, uint8_t mode) {
+    const int regBase = channel ? 0x30 : 0x10;       // R_CDXA_B / R_CDXA_A
+    if (xaPos_[channel] == 0) {
+        xaParam_[channel] = popFifo(channel);
+        xaSubpos_[channel] = 0;
+    }
+    const int filterIdx = (xaParam_[channel] >> 4) & 3;
+    const int shift = std::min<int>(xaParam_[channel] & 0xF, 12);
+    const int8_t k0 = int8_t(xtraRegs_[regBase + filterIdx * 2 + 1]);
+    const int8_t k1 = int8_t(xtraRegs_[regBase + filterIdx * 2]);
+
+    int16_t raw = 0;
+    switch (mode) {
+    case 1:                                  // 8-bit ADPCM (2:1)
+        raw = int16_t(uint16_t(popFifo(channel)) << 8);
+        break;
+    case 2:                                  // 4-bit ADPCM (4:1), low nibble first
+        if (xaSubpos_[channel] == 0) {
+            xaByte_[channel] = popFifo(channel);
+            raw = int16_t(uint16_t(xaByte_[channel] & 0xF) << 12);
+            xaSubpos_[channel] = 1;
+        } else {
+            raw = int16_t(uint16_t((xaByte_[channel] >> 4) & 0xF) << 12);
+            xaSubpos_[channel] = 0;
+        }
+        break;
+    case 3:                                  // 2-bit ADPCM (8:1), LSB first
+        if (xaSubpos_[channel] == 0) xaByte_[channel] = popFifo(channel);
+        raw = int16_t(uint16_t((xaByte_[channel] >> (xaSubpos_[channel] * 2)) & 0x3) << 14);
+        xaSubpos_[channel] = (xaSubpos_[channel] + 1) & 3;
+        break;
+    }
+
+    int32_t sample32 = int32_t(raw) >> shift;
+    sample32 += (int32_t(k0) * xaS0_[channel] + int32_t(k1) * xaS1_[channel] + 32) >> 6;
+    const int16_t sample = int16_t(std::clamp<int32_t>(sample32, -32768, 32767));
+    xaS1_[channel] = xaS0_[channel];
+    xaS0_[channel] = sample;
+    if (++xaPos_[channel] >= 28) xaPos_[channel] = 0;
+    return sample;
+}
+
+// asc_easc_device::sound_stream_update (asc.cpp:1457-1535): a 44.1 kHz
+// drain; per channel the SRC accumulator decides how many source samples
+// feed this output slot (0 = hold the previous one), each either a linear
+// FIFO byte or a CD-XA decode. Host ring keeps every second sample (Asc.h).
+void AscEasc::tick(int cpuCycles) {
+    drainAcc_ += int64_t(cpuCycles) * kSampleRate;
+    while (drainAcc_ >= cpuHz_) {
+        drainAcc_ -= cpuHz_;
+
+        if ((regs_[0x01] & 3) == 1) {        // FIFO mode
+            for (int ch = 0; ch < 2; ch++) {
+                const uint8_t ctrl = xtraRegs_[ch ? 0x28 : 0x08];  // R_FIFOx_CTRL
+                int skip = 1;
+                if (ctrl & 0x80) {           // SRC enabled
+                    srcAccum_[ch] += srcStep_[ch];
+                    skip = int(srcAccum_[ch] >> 16);
+                    if (skip > 0) srcAccum_[ch] -= uint32_t(skip) << 16;
+                }
+                int16_t s = ch ? lastR_ : lastL_;
+                for (int n = 0; n < skip; n++) {
+                    s = (ctrl & 3) == 0
+                      ? int16_t(int16_t(int8_t(popFifo(ch) ^ 0x80)) << 8)
+                      : decodeCdxa(ch, ctrl & 3);
+                }
+                if (ch) lastR_ = s; else lastL_ = s;
+            }
+        } else {
+            // Chip off: hold the last samples, signal half-empty B
+            // (asc.cpp:1459-1469).
+            fifoStat_ |= STAT_HALF_B;
+        }
+
+        outPhase_ ^= 1;
+        if (outPhase_ && ((outWr_ - outRd_) & (kOutSize - 1)) < kOutSize - 1) {
+            uint32_t i = outWr_++ & (kOutSize - 1);
+            outL_[i] = lastL_;
+            outR_[i] = lastR_;
         }
     }
 }

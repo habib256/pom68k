@@ -12,6 +12,7 @@
 
 #include "Iwm.h"
 #include "SonyDrive.h"
+#include "Swim1.h"
 
 #include <cstdio>
 #include <cstring>
@@ -62,7 +63,7 @@ std::vector<uint8_t> harvestDataField(SonyDrive& drive, int sector) {
 }
 
 // IWM register lines (reg = line*2 + set): ENABLE=4, Q6=6, Q7=7.
-constexpr int kEnableOn = 9;
+constexpr int kEnableOn = 9, kEnableOff = 8;
 constexpr int kQ6On = 13, kQ6Off = 12;
 constexpr int kQ7On = 15, kQ7Off = 14;
 
@@ -174,6 +175,178 @@ int main() {
         for (int i = 0; i < 512 && untouched; i++)
             if (got[i] != 0) untouched = false;
         check(untouched, "write-protected image is untouched");
+    }
+
+    // ── Classic-IWM command/sense tables (MAME floppy.cpp parity) ─────
+    // sense()/command() addr packing is (CA2<<3)|(CA1<<2)|(CA0<<1)|SEL;
+    // MAME's reg is (SEL<<3)|(CA2<<2)|(CA1<<1)|CA0. The capability
+    // signature f..c (2M, ready, MFM, rd1 — floppy.cpp:3229-3235) reads
+    // here as sense(0xF), sense(0xD), sense(0xB), sense(0x9).
+    {
+        SonyDrive sd;                            // empty SuperDrive
+        sd.setSuperDrive(true);
+        sd.reset();
+        check(sd.sense(0x9), "empty SuperDrive: RDDATA1 idles high (rd1=1)");
+        check(sd.sense(0x8), "empty SuperDrive: RDDATA0 idles high");
+        check(!sd.sense(0xF), "empty SuperDrive: 2M reads 0 (no media)");
+        check(sd.sense(0xB), "empty SuperDrive: resets in MFM mode");
+        const int hd20 = (sd.sense(0xF) << 3) | (sd.sense(0xD) << 2)
+                       | (sd.sense(0xB) << 1) | sd.sense(0x9);
+        check(hd20 != 0b1110, "empty SuperDrive signature is not HD-20");
+
+        check(sd.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0)),
+              "insert DD media into SuperDrive");
+        check(sd.sense(0xF), "SuperDrive + DD media: 2M reads 1");
+        // Disk-change latch (MAME m_dskchg on dskchg_writable drives):
+        // INSERT clears it (floppy.cpp:672-673), only eject raises it
+        // (:723); the DskchgClear strobe clears it unconditionally
+        // (:3377-3379), media present or not.
+        check(!sd.sense(0x6), "insert clears disk-switched (master :672)");
+        check(!sd.mfmMode(), "DD insert derives GCR mode");
+        sd.eject();
+        check(sd.sense(0x6), "eject raises disk-switched");
+        // DskchgClear = CA2=1,(CA1,CA0,SEL)=001 → addr 0x9 (MAME reg 0xC,
+        // floppy.cpp:3377-3379): acks the change WITHOUT entering MFM.
+        sd.command(0x9);
+        check(!sd.sense(0x6), "DskchgClear clears the latch, even empty");
+        check(sd.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0)),
+              "re-insert DD media");
+        sd.command(0x9);
+        check(!sd.mfmMode(), "DskchgClear does not flip MFM on");
+        // MFMModeOn = CA2=0,(0,1,1) → addr 0x3 (MAME reg 0x9); GCRModeOn
+        // = CA2=1,(0,1,1) → addr 0xB (MAME reg 0xD, floppy.cpp:3369-3386).
+        sd.command(0x3);
+        check(sd.mfmMode(), "MFMModeOn strobe enters MFM");
+        sd.command(0xD);                         // old (wrong) GCR-on slot
+        check(sd.mfmMode(), "MAME reg 0xE stays unassigned (no GCR-on)");
+        sd.command(0xB);
+        check(!sd.mfmMode(), "GCRModeOn strobe returns to GCR");
+
+        SonyDrive dd;                            // plain 800K mechanism
+        dd.reset();
+        dd.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0));
+        check(!dd.sense(0x9), "800K drive: RDDATA1 reads 0 (no MFM)");
+        check(dd.sense(0xF), "800K drive: 2M always 1 (mfd51w)");
+        dd.command(0x3);
+        check(!dd.mfmMode(), "800K drive ignores MFMModeOn");
+
+        SonyDrive hd;                            // SuperDrive + HD media
+        hd.setSuperDrive(true);
+        hd.reset();
+        hd.insertImage(std::vector<uint8_t>(SonyDrive::kSize1440K, 0));
+        check(!hd.sense(0xF), "SuperDrive + HD media: 2M reads 0");
+        // GCR-on has NO media guard in MAME (floppy.cpp:3382-3386): the
+        // strobe switches even on HD media — the GCR framer then reads
+        // the MFM cells as garbage, like hardware. The setup-register
+        // reflection (setMfmMode) keeps its guard: in MAME a setup write
+        // never touches the drive's m_mfm at all.
+        hd.command(0xB);
+        check(!hd.mfmMode(), "GCRModeOn switches even on HD media (:3382)");
+        hd.command(0x3);
+        check(hd.mfmMode(), "MFMModeOn returns HD media to MFM");
+        hd.setMfmMode(false);
+        check(hd.mfmMode(), "setup reflection keeps the HD guard");
+    }
+
+    // ── Mechanism-vs-media senses + tach gate (floppy.cpp parity) ─────
+    {
+        SonyDrive ss;                            // 400K media, 800K mechanism
+        ss.reset();
+        check(ss.insertImage(std::vector<uint8_t>(SonyDrive::kSize400K, 0)),
+              "insert 400K media");
+        check(!ss.doubleSided(), "400K media derives single-sided geometry");
+        check(ss.sense(0xC), "SIDES sense is the mechanism, not the media");
+        check(ss.senseSwim(0x6), "SWIM DoubleSide sense likewise");
+
+        // TACH runs only with media in and the spindle on (floppy.cpp:
+        // 3293-3301); 15000 cycles is an odd tach phase if ungated.
+        SonyDrive tach;
+        tach.reset();
+        tach.setMotor(true);
+        tach.tick(15000);
+        check(!tach.sense(0x7), "empty drive: classic TACH line low");
+        check(!tach.senseSwim(0xB), "empty drive: SWIM tach low too");
+    }
+
+    // ── ENABLE (devsel) gating + motor gating through the IWM ─────────
+    // MAME iwm.cpp:243-247: sense/commands only reach a SELECTED drive;
+    // iwm.cpp:398-405 + floppy.cpp:1175-1178: no flux (nibbles) while the
+    // spindle is stopped — Mac drives motor by command, not by ENABLE.
+    {
+        SonyDrive d;
+        d.reset();
+        d.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0));
+        Iwm iwm;
+        iwm.reset();
+        iwm.attachDrive(&d, nullptr);
+        // Program mode $1F like the ROM: bit 2 set = no motor-off timer,
+        // so dropping ENABLE deselects immediately.
+        iwm.read(kQ6On);
+        iwm.write(kQ7On, 0x1F);
+        iwm.read(kQ7Off);
+        iwm.setSel(true);                        // sense addr 0x1 = CSTIN
+        check(iwm.read(kQ6On) & 0x80,
+              "ENABLE off: sense reads high (drive deselected)");
+        iwm.read(kEnableOn);
+        check(!(iwm.read(kQ6On) & 0x80), "ENABLE on: CSTIN low (disk in)");
+
+        // LSTRB command with ENABLE off is ignored (devsel = none):
+        // STEP = CA2=0, addr&7 = 010 → ph0 set, ph1/ph2 clear, SEL low.
+        iwm.setSel(false);
+        iwm.read(kQ6Off);
+        iwm.read(kEnableOff);
+        iwm.read(1);                             // ph0 set (CA0 = 1)
+        iwm.read(2);                             // ph1 clear
+        iwm.read(4);                             // ph2 clear
+        iwm.read(7); iwm.read(6);                // LSTRB pulse
+        check(d.currentTrack() == 0, "ENABLE off: STEP strobe ignored");
+        iwm.read(kEnableOn);
+        iwm.read(7); iwm.read(6);
+        check(d.currentTrack() == 1, "ENABLE on: STEP strobe steps");
+
+        // Nibble stream needs the spindle, not just ENABLE.
+        const long before = d.nibblesRead;
+        iwm.tick(4096);
+        check(d.nibblesRead == before, "motor off: no nibble stream");
+        // MOTORON = CA2=0, addr&7 = 100 → ph1 set, ph0/ph2 clear.
+        iwm.read(0);                             // ph0 clear
+        iwm.read(3);                             // ph1 set
+        iwm.read(7); iwm.read(6);                // strobe
+        check(d.motorOn(), "MOTORON strobe reaches the enabled drive");
+        iwm.tick(4096);
+        check(d.nibblesRead > before, "motor on: nibbles flow");
+    }
+
+    // ── SWIM1 IWM→ISM magic counter + ISM write decode ────────────────
+    // MAME swim1.cpp:554-581: the 1-0-1-1 bit-6 pattern on offset 0xf is
+    // checked on EVERY IWM access; any other access resets the counter,
+    // and reads reach the hook with data 0x00. swim1.cpp:269-337: the ISM
+    // WRITE decode uses the full offset — 8-15 are ignored, not aliased.
+    {
+        Swim1 sw;
+        SonyDrive d;
+        sw.attachDrive(&d, nullptr);
+        sw.reset();
+        sw.write(15, 0x57);                      // 1
+        sw.write(15, 0x17);                      // 0
+        sw.write(15, 0x57);                      // 1
+        sw.read(0);                              // foreign access: reset
+        sw.write(15, 0x57);
+        check(!sw.ism(), "interleaved access resets the IWM->ISM counter");
+        // ...that last write restarted the pattern (counter = 1); a READ
+        // of offset 0xf carries data 0x00 and stands in for the 0 step.
+        sw.read(15);
+        sw.write(15, 0x57);
+        sw.write(15, 0x57);
+        check(sw.ism(), "a read of offset 0xf advances the pattern's 0 step");
+
+        check(sw.fifoCount() == 0, "ISM entry: FIFO empty");
+        sw.write(8, 0xAA);                       // would alias to data (0)
+        check(sw.fifoCount() == 0, "ISM write to offset 8 is ignored");
+        sw.write(0, 0xAA);
+        check(sw.fifoCount() == 1, "ISM write to offset 0 pushes the FIFO");
+        sw.write(6, 0x40);                       // mode-clear bit 6
+        check(!sw.ism(), "mode-clear returns to IWM");
     }
 
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");

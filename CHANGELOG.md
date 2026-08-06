@@ -246,6 +246,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-06** — [A chip-by-chip parity sweep against MAME master: 94 findings worked, and the three bugs it found were the ones nobody wrote down](#2026-08-06-mame-parity-sweep)
 - **2026-08-05** — [The floppy boost gate: freeze the boost to 1 while the motor runs — first LC II GCR mount ever, `lcii_floppy_etalon` asserts it](#2026-08-05-floppy-boost-gate)
 - **2026-08-05** — [What the driver gives up ON: badDCksum on the MDB — the boost compresses the denibble path below the IWM's 14-tick hold, the poll re-reads the same nibble](#2026-08-05-sony-giveup)
 - **2026-08-05** — [The floppy refusal is boost-triggered: at boost 1-2 the LC II mounts, at 3-4 it calls the disk unreadable (mechanism still open)](#2026-08-05-boost-floppy)
@@ -437,6 +438,72 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-06-mame-parity-sweep"></a>
+## 2026-08-06 — A chip-by-chip parity sweep against MAME master: 94 findings worked, and the three bugs it found were the ones nobody wrote down
+
+A multi-agent audit compared **every** POM68K device to the **current
+online mamedev/mame master** (fresh fetch per reference file; the local
+`~/src/refs` mirror demoted to fallback), then three waves worked the
+result: 19 medium, 40 low, 35 cosmetic. Reports: `docs/MAME_PARITY_AUDIT.md`
+(the inventory) and `docs/SIMPLIFICATIONS_REVIEW.md` (the keep/close
+decision on the 40 deliberate simplifications).
+
+**Gates: 74/74 `unit` and 22/22 targeted etalons green on a freshly built
+tree** (three full `make` passes, one per wave — the house rule that a green
+`ctest` is worth only the freshness of its binaries).
+
+**The audit's own findings were the least valuable part.** Three real bugs
+surfaced that no report contained, each found by the act of writing a test
+to *pin* something else:
+
+- **`Valkyrie::tick` raised two VBLs per frame, in every mode.** The wrap
+  arm (`|| line < prevLine_`) re-fired after the `vres` crossing had already
+  been served, so an acking guest on the Q630/LC 580 saw double the
+  interrupt rate. Pre-existing (present at HEAD, not a wave-1 regression);
+  fixed with the form `Dafb::tick`'s `crossed()` lambda already had.
+- **`scsi_pdma_test` was a false green.** A double `read16` consumed 6 bytes
+  while pushing 4, so the gate's own loop ate STATUS+MSG as "data" and its
+  "GOOD status" check was reading `odr_` leftovers that happen to be 0.
+- **The SCC's `rr1Rd` survived a hardware reset** — a parity/overrun/CRC bit
+  readable from an emptied FIFO.
+
+**One finding changed class mid-sweep.** The 53C96 `status_r` side effect was
+filed cosmetic *because* `S_GROSS_ERROR` had no producer — and wave 1 had
+just given it one (the third command onto the new 2-deep queue). Two STATUS
+reads before an ISTAT read would disagree. Caught only because every agent
+was required to re-verify its finding against both sources before editing.
+
+**Where POM68K is right and MAME is wrong, it is now pinned in-source** so a
+future parity diff cannot "fix" it backwards: the VIA T1 period (MAME's N+3
+is an interrupt-latency fudge it subtracts back out on counter reads), the
+5380 parity bits (a false divergence — neither model raises them), the
+ApplePic DENxONx DMA chaining (MAME's `auto other_channel = …[ch^1]` is a
+by-value copy, so its chain never arms — now guarded by a test *with a
+negative control*), Ariel's key-colour register (master aliases it onto
+control, clobbering the depth byte — worth reporting upstream), the stacked
+68HC05 CC bits 7-5, and the ADB CB2 anti-race guard, which is unnecessary
+here by construction (MAME latches CB2 push-style; POM68K pulls it at the
+exact machine cycle) and whose import would *break* shift-out mode.
+
+**Two conflicts were reported, not resolved** — the right outcome when
+parity and a measured fix disagree. The IWM's 14-tick hold re-arm
+(MAME re-arms per access; we anchor at the first MSB-set read) would shrink
+the anti-duplicate margin of Apple's denibble loop, i.e. the exact failure
+the (eighth)/(ninth) entries below repaired: the measurement to run first is
+recorded in-source. And the 5380's `enterCommand` IRQ-latch clear stays,
+because it compensates a documented Mac II wedge — with its reopening
+condition written down.
+
+Biggest single addition: a real **EASC** flavour for the Quadra 700/900/950
+(they were running the Sonora `$BC` cell), SRC and CD-XA ADPCM included,
+pinned to the real-Q700 ASCTester dump MAME embeds.
+
+Four gates stayed red throughout and are **not** regressions: `q605_boot`,
+`q605_savestate`, `iifx_boot`, `iifx_input`. All four ride volumes left dirty
+by a GUI session (`drVolAtrb` bit 8 clear) — the IIfx pair was proven
+pre-existing by re-running it on a fully stashed tree, where it fails to the
+byte (0 px diff, 137680 ADB edges). Same remedy as 2026-08-05 (third).
 
 <a id="2026-08-05-floppy-boost-gate"></a>
 ## 2026-08-05 (ninth) — The floppy boost gate: freeze the i-cache boost to 1 while the motor runs, and the LC II mounts its first GCR floppy ever

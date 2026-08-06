@@ -713,6 +713,14 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
         case 0x08: {                                 // READ(6)
             uint32_t lba = (uint32_t(cdb[1] & 0x1F) << 16) | (uint32_t(cdb[2]) << 8) | cdb[3];
             uint32_t cnt = cdb[4] ? cdb[4] : 256;
+            // Out-of-range: CHECK CONDITION + ILLEGAL REQUEST / INVALID
+            // FIELD IN CDB $24 (MAME hd.cpp:216-222), never a silent
+            // zero-fill + GOOD — a driver probing past the end must see
+            // the error, not a phantom block of zeroes.
+            if (uint64_t(lba) + cnt > blocks_) {
+                setSense(kIllegalRequest, 0x24);
+                return kCheck;
+            }
             read(lba, cnt, dataOut);
             return kGood;
         }
@@ -721,6 +729,10 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                          | (uint32_t(cdb[4]) << 8) | cdb[5];
             uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
+            if (uint64_t(lba) + cnt > blocks_) {     // MAME hd.cpp:567-580
+                setSense(kIllegalRequest, 0x24);
+                return kCheck;
+            }
             read(lba, cnt, dataOut);
             return kGood;
         }
@@ -742,6 +754,14 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
         case 0x0A: {                                 // WRITE(6)
             uint32_t lba = (uint32_t(cdb[1] & 0x1F) << 16) | (uint32_t(cdb[2]) << 8) | cdb[3];
             uint32_t cnt = cdb[4] ? cdb[4] : 256;
+            // Out-of-range: CHECK CONDITION instead of the old silent clamp
+            // (MAME hd.cpp:225-241). The 5380 has already collected the
+            // DATA OUT bytes by the time this runs — the status byte is
+            // where the initiator learns the write never landed.
+            if (uint64_t(lba) + cnt > blocks_) {
+                setSense(kIllegalRequest, 0x24);
+                return kCheck;
+            }
             write(lba, cnt, dataIn);
             return kGood;
         }
@@ -749,9 +769,32 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                          | (uint32_t(cdb[4]) << 8) | cdb[5];
             uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
+            if (uint64_t(lba) + cnt > blocks_) {     // MAME hd.cpp:584-600
+                setSense(kIllegalRequest, 0x24);
+                return kCheck;
+            }
             write(lba, cnt, dataIn);
             return kGood;
         }
+
+        case 0x15:                                   // MODE SELECT(6)
+            // Parameter list (delivered via `dataIn` by the controller's
+            // DATA OUT phase) is accepted and ignored, status GOOD — MAME's
+            // target does exactly this (hd.cpp:622-631). The old default
+            // answered CHECK CONDITION, which desynchronized drivers that
+            // set error-recovery pages before their first READ.
+            return kGood;
+
+        case 0x04:                                   // FORMAT UNIT
+            // MAME answers GOOD (hd.cpp:601-620; its zero-fill loop indexes
+            // cyl*head*sector — degenerate — so no data expectation exists).
+            // Media is left untouched; a FmtData defect list (`dataIn`) is
+            // discarded. A CD-ROM is read-only and refuses.
+            if (kind_ == Kind::Cdrom) {
+                setSense(kIllegalRequest, 0x20);
+                return kCheck;
+            }
+            return kGood;
 
         default:
             setSense(kIllegalRequest, 0x20);         // invalid command

@@ -109,6 +109,22 @@ int main() {
     v.i2cWrite(2, 0x00);                  // N = 0
     check(v.pixelClock() == 15670000, "M = N = 0 falls back to 15.67 MHz, not a divide by zero");
 
+    // …and it does so WITHOUT MAME's side effect. valkyrie.cpp:568 reads
+    // `if ((m_M == 0) && (m_N == 0) && (m_P = 98))` — an ASSIGNMENT, so
+    // testing the condition overwrites P with 98. POM68K implements the
+    // effect (the fallback clock) and not the typo, so a P programmed
+    // before the garbage transaction is still the P used after it. Pin it
+    // with P = 1: MAME's 98, shifted through our `1u << (clkP_ & 31)`
+    // bound, would land on 2 and double the clock.
+    bringUp(v);
+    v.i2cWrite(3, 0x01);                  // P = 1
+    v.i2cWrite(1, 0x00);                  // M = 0  → garbage program
+    v.i2cWrite(2, 0x00);                  // N = 0
+    v.i2cWrite(2, 0x1B);                  // N = 27
+    v.i2cWrite(1, 0x0E);                  // M = 14 → clock recomputed
+    check(v.pixelClock() == uint32_t(3986400.0 * 2.0 * 27.0 / 14.0),
+          "the garbage program does not clobber P (MAME's `m_P = 98` typo)");
+
     // ── 5. Only registers 1-3 are divisors ──────────────────────────────
     bringUp(v);
     v.i2cWrite(2, 0x1B);

@@ -15,6 +15,7 @@ void Iwm::reset() {
     cellPhase_ = 0;
     writing_ = wrPending_ = wrUnderrun_ = false;
     wrPhase_ = 0;
+    selDelay_ = 0;
 }
 
 // Sense/command address presented to the drive: CA2 CA1 CA0 = ph2 ph1 ph0,
@@ -34,10 +35,23 @@ uint8_t Iwm::access(int reg) {
         case 3: {                                 // ph3 = LSTRB
             bool rising = set && !ph_[3];
             ph_[3] = set;
-            if (rising && selectedDrive()) selectedDrive()->command(senseAddr());
+            // Commands only reach a SELECTED drive (MAME iwm.cpp:243-247:
+            // devsel drops to "none" when the controller is idle).
+            if (rising && driveSelected() && selectedDrive())
+                selectedDrive()->command(senseAddr());
             break;
         }
-        case 4: enable_ = set; break;             // drive ENABLE
+        case 4: {                                 // drive ENABLE
+            const bool was = enable_;
+            enable_ = set;
+            // MAME iwm.cpp:224-239: dropping ENABLE with mode bit 2 set
+            // ($1F on every Mac) deselects immediately; with the motor-off
+            // timer enabled (bit 2 clear, the reset default) the selection
+            // lingers MODE_DELAY = cycles_to_time(8388608) ≈ 1 s.
+            if (set) selDelay_ = 0;
+            else if (was && !(mode_ & 0x04)) selDelay_ = 8388608LL * clockScale_;
+            break;
+        }
         case 5: driveSel_ = set; break;           // 0 = internal, 1 = external
         case 6: q6_ = set; break;
         case 7: q7_ = set; break;
@@ -96,6 +110,15 @@ uint8_t Iwm::readRegister() {
             // hold is ~1.79 us of wall time whatever the host. It must be
             // scaled onto the tick unit exactly like kCyclesPerNibble is,
             // or a C15M host holds the byte for half as long as silicon.
+            // KNOWN MAME DIVERGENCE, deliberately pinned (parity audit
+            // #24): MAME re-arms the clear on EVERY access (iwm.cpp:284-285
+            // runs in control(); expiry applied lazily at :461-465), so the
+            // byte dies 14 ticks after the LAST access, not the first read.
+            // Re-arming here would move the clear later and shrink the
+            // anti-duplicate margin of Apple's denibble loop (tst.b poll +
+            // move.b consume) by the tst->move gap — the exact badDCksum
+            // failure mode fixed 2026-08-05. Do not align without first
+            // measuring reReads under lcii_sony_trace at boost 1.
             clearCountdown_ = 14 * clockScale_;
             consumed[consumedPos] = v; consumedPos = (consumedPos + 1) & 511;
         } else if (v & 0x80) {
@@ -111,7 +134,10 @@ uint8_t Iwm::readRegister() {
     }
     if (q6_ && !q7_) {                            // STATUS register
         const_cast<Iwm*>(this)->senseCount[senseAddr()]++;
-        bool sense = selectedDrive() ? selectedDrive()->sense(senseAddr()) : true;
+        // Deselected drive = pull-up on the sense line (MAME iwm.cpp:129
+        // reads high when m_floppy is null, i.e. devsel none).
+        bool sense = (driveSelected() && selectedDrive())
+                         ? selectedDrive()->sense(senseAddr()) : true;
         return uint8_t((sense ? 0x80 : 0x00) | (enable_ ? 0x20 : 0x00) | (mode_ & 0x1F));
     }
     if (!q6_ && q7_) {                            // write HANDSHAKE (m_whd)
@@ -129,6 +155,10 @@ void Iwm::tick(int cpuCycles) {
     if (clearCountdown_ > 0) {
         clearCountdown_ -= cpuCycles;
         if (clearCountdown_ <= 0) { clearCountdown_ = 0; dataReg_ = 0; }
+    }
+    if (selDelay_ > 0) {                          // MODE_DELAY deselect timer
+        selDelay_ -= cpuCycles;
+        if (selDelay_ < 0) selDelay_ = 0;
     }
     if (!enable_ || !selectedDrive() || !selectedDrive()->hasDisk()) return;
     const int kCyclesPerNibble = 128 * clockScale_;
@@ -152,6 +182,13 @@ void Iwm::tick(int cpuCycles) {
         }
         return;
     }
+    // MAME iwm.cpp:398-405: the read shifter advances on flux transitions,
+    // and floppy.cpp:1175-1178 get_next_transition() returns `never` while
+    // the spindle is stopped (m_mon) — Mac drives gate the motor by command,
+    // not by ENABLE (mon_w override, floppy.cpp:3417-3420). No spin, no
+    // nibbles. (The write engine above stays ungated: the Sony driver never
+    // writes motor-off, and iwm_write_test drives it without a motor.)
+    if (!selectedDrive()->motorOn()) { cellPhase_ = 0; return; }
     cellPhase_ += cpuCycles;
     while (cellPhase_ >= kCyclesPerNibble) {
         cellPhase_ -= kCyclesPerNibble;

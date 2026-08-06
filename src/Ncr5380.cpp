@@ -55,6 +55,13 @@ void Ncr5380::enterCommand() {
     // polls BSR.IRQ to end blind PDMA; a latch left set from the previous
     // command aborts the next READ after one block and spins on PHASE_MATCH
     // (seen at cmds=235, PC=$1E090, 512 of 1536 bytes).
+    // DELIBERATE HLE DIVERGENCE (audit #38): on silicon only an RPI read
+    // clears the latch (MAME rpi_r, machine/ncr5380.cpp:511-518; sdir_w
+    // and selection never touch it). Our phase engine completes a whole
+    // transfer inside the guest's polled loop, so the DATA→STATUS mismatch
+    // IRQ is latched before the guest's own clearing read lands where it
+    // would on real timing. Reopening condition: macii_boot_etalon green
+    // with both this line and the write(R_RPI) clear removed.
     irq_ = false;
     phase_ = COMMAND; cmd_.clear(); cmdLen_ = 0; req_ = true;
 }
@@ -72,14 +79,31 @@ void Ncr5380::enterMsgIn()   {
     phase_ = MSG_IN;  req_ = true;
 }
 
-// Expected DATA OUT byte count for WRITE(6)/WRITE(10), else 0.
+// Expected DATA OUT byte count for the commands that carry one, else 0.
+// Dropping a parameter phase and jumping straight to STATUS desynchronizes
+// the initiator's handshake (it keeps ACKing bytes the target never takes).
 int Ncr5380::writeByteCount(const std::vector<uint8_t>& cdb) {
     if (cdb.empty()) return 0;
     if (cdb[0] == 0x0A && cdb.size() >= 5)                     // WRITE(6)
         return (cdb[4] ? cdb[4] : 256) * 512;
     if (cdb[0] == 0x2A && cdb.size() >= 9)                     // WRITE(10)
         return ((cdb[7] << 8) | cdb[8]) * 512;
+    if (cdb[0] == 0x15 && cdb.size() >= 5)                     // MODE SELECT(6):
+        return cdb[4];                     // parameter list (MAME hd.cpp:622-631)
+    if (cdb[0] == 0x04 && cdb.size() >= 2 && (cdb[1] & 0x10))  // FORMAT UNIT,
+        return 4;                          // FmtData: header first (extendDataOut)
     return 0;
+}
+
+// FORMAT UNIT FmtData: the CDB carries no length — the 4-byte defect-list
+// header does (bytes 2-3, SCSI-1). Extend the expected DATA OUT once the
+// header is in; a zero defect-list length completes right away. MAME's
+// target (hd.cpp:601-620) formats with no list at all, so the bytes are
+// accepted for the handshake and handed to ScsiDisk, which discards them.
+void Ncr5380::extendDataOut() {
+    if (!cmd_.empty() && cmd_[0] == 0x04 &&
+        dataOutExpected_ == 4 && dataOut_.size() == 4)
+        dataOutExpected_ += size_t((dataOut_[2] << 8) | dataOut_[3]);
 }
 
 void Ncr5380::execute() {
@@ -147,6 +171,7 @@ void Ncr5380::ackFalling() {
             else req_ = true;
             break;
         case DATA_OUT:
+            extendDataOut();
             if (dataOut_.size() >= dataOutExpected_) finishWrite();
             else req_ = true;
             break;
@@ -158,9 +183,11 @@ void Ncr5380::ackFalling() {
 
 // ── Register interface ──────────────────────────────────────────────────
 uint8_t Ncr5380::liveBusStatus() const {
-    if (phase_ == BUS_FREE) return 0;
-    if (phase_ == ARBITRATION || phase_ == SELECTION) return CBS_BSY;
-    uint8_t v = CBS_BSY | phaseSignals();         // target holds BSY
+    // Our own RST assertion reads back on the live bus (MAME csstat_r).
+    const uint8_t rst = (icr_ & ICR_RST) ? CBS_RST : 0;
+    if (phase_ == BUS_FREE) return rst;
+    if (phase_ == ARBITRATION || phase_ == SELECTION) return rst | CBS_BSY;
+    uint8_t v = rst | CBS_BSY | phaseSignals();   // target holds BSY
     if (req_) v |= CBS_REQ;
     return v;
 }
@@ -177,6 +204,23 @@ uint8_t Ncr5380::busAndStatus() const {
 
 // TCR-programmed phase vs the live bus phase (5380 datasheet: DMA
 // requests stop and the IRQ latch sets when the target changes phase)
+//
+// Audit § 2.6(c), DOCUMENT-SKIP — deliberate divergence at BUS FREE. MAME
+// compares the raw signal lines with no phase-validity guard: `bas_r`
+// (machine/ncr5380.cpp:475-486) returns BAS_PHASEMATCH whenever
+// `(ctrl & S_PHASE_MASK) == (m_tcmd & TC_PHASE)`, so with the bus idle (all
+// of MSG/C-D/I-O deasserted) and a TCR programmed to 0 = DATA OUT, PHASE
+// MATCH reads SET even though no target is on the bus. That is faithful to
+// the silicon comparator — and it is exactly why we do not copy it: this
+// engine reports PHASE MATCH only while a target actually holds the bus
+// (`targetPhase()`). The bit is polled on the hot path of every SCSI machine
+// we ship (the SCSI Manager's scLoop wait and the Plus's blind PDMA loops
+// both spin on BSR bit 3), so flipping its bus-free reading from 0 to 1
+// changes an observable on the boot path of eleven platforms to satisfy a
+// case no driver programs — TCR is written to the expected transfer phase
+// immediately before MODE_DMA, never left at 0 across a bus-free window.
+// Zero benefit, non-zero blast radius: kept. Reopening condition: a guest
+// found waiting for PHASE MATCH *before* selecting a target.
 bool Ncr5380::phaseMatch() const {
     return targetPhase()
         && (phaseSignals() & 0x1C) == ((tcr_ & 0x07) << 2 & 0x1C);
@@ -195,9 +239,12 @@ uint8_t Ncr5380::read(int reg) {
     }
     switch (reg) {
         case R_DATA:
-            // Mac II blind DMA reads the Current SCSI Data register (R0),
-            // not only IDR — same auto-ACK as dmaRead when MODE_DMA is on.
-            if (mode_ & MODE_DMA) return dmaRead();
+            // Current SCSI Data is a transparent bus latch: reading it has
+            // NO side effect, MODE_DMA or not (MAME csdata_r, machine/
+            // ncr5380.cpp:273-279 — only a DACK access advances a transfer).
+            // Every platform decodes the pseudo-DMA aliases in its memory
+            // map (e.g. macii.cpp:306-333 word offsets $130/$100) and routes
+            // them to dmaRead/dmaWrite, exactly like MAME's scsi_helper.
             return (phase_ == DATA_IN && dataPos_ < dataIn_.size()) ? dataIn_[dataPos_]
                  : (phase_ == STATUS) ? status_
                  : (phase_ == MSG_IN) ? 0x00 : odr_;
@@ -219,10 +266,16 @@ uint8_t Ncr5380::read(int reg) {
         }
         case R_BSR:  return busAndStatus();
         case R_IDR:
-            // Also used as DMA data port on some paths (IDR @$60).
-            if (mode_ & MODE_DMA) return dmaRead();
+            // Input Data reads back side-effect-free (MAME idata_r,
+            // machine/ncr5380.cpp:501-506); DACK is the only consuming
+            // access and the platform maps route it to dmaRead. The byte
+            // currently on the bus stands in for MAME's latched m_idata.
             return (phase_ == DATA_IN && dataPos_ < dataIn_.size()) ? dataIn_[dataPos_] : 0;
-        case R_RPI:  irq_ = false; return 0;       // reset parity/interrupt
+        // Reset Parity/Interrupt. MAME's rpi_r also drops BAS_PARITYERROR and
+        // BAS_BUSYERROR (machine/ncr5380.cpp:521-529); neither has a producer
+        // in either model — no parity line on the bus (§ 2.6(b), Ncr5380.h)
+        // and no MONBSY busy-error path (LLE_VS_HLE § 1.5).
+        case R_RPI:  irq_ = false; return 0;
     }
     return 0xFF;
 }
@@ -232,14 +285,31 @@ void Ncr5380::write(int reg, uint8_t v) {
     if (onAccess) onAccess(reg, true, v);
     switch (reg) {
         case R_DATA:
-            // Mac II may also write DATA under DMA for DATA OUT; treat like
-            // the DACK path when MODE_DMA is armed.
-            if (mode_ & MODE_DMA) { dmaWrite(v); break; }
+            // ODR is a plain latch on write, MODE_DMA or not (MAME odata_w,
+            // machine/ncr5380.cpp:281-290) — the pseudo-DMA write aliases
+            // are decoded by the platform maps (macii.cpp scsi_w offset
+            // $100 / scsi_drq_w) and routed to dmaWrite.
             odr_ = v;
             break;
         case R_ICR: {
+            // Only the low 0x9F is a latch: bits 6/5 are the read-only
+            // AIP / LOST-ARBITRATION status, and the write-side bit 6 is the
+            // chip's TEST mode (MAME icmd_w, machine/ncr5380.cpp:355 —
+            // `m_icmd = (m_icmd & ~IC_WRITE) | (data & IC_WRITE)`, IC_WRITE =
+            // 0x9f). Without the mask a guest that wrote 0x40/0x20 read its
+            // own bit back as a phantom "arbitration in progress".
+            v &= ICR_WRITE;
             uint8_t old = icr_; icr_ = v; uint8_t dif = old ^ v;
-            if (v & ICR_RST) { reset(); break; }
+            if (v & ICR_RST) {
+                // Bus reset is EDGE-triggered and interrupts the initiator
+                // itself (MAME machine/ncr5380.cpp:330-355, 449-463): chip
+                // reset + IRQ latch on the rising edge only; RST stays
+                // readable in ICR and CSR until the initiator releases the
+                // bit. The Mac II SCSIReset needs that IRQ edge on VIA2.
+                if (!(old & ICR_RST)) { reset(); irq_ = true; }
+                icr_ = v;                 // reset() cleared icr_ — re-latch
+                break;
+            }
             // Selection: SEL asserted + BSY released while the bus is idle.
             if ((v & ICR_SEL) && !(v & ICR_BSY) &&
                 (phase_ == BUS_FREE || phase_ == ARBITRATION))
@@ -250,10 +320,18 @@ void Ncr5380::write(int reg, uint8_t v) {
             }
             break;
         }
-        case R_MODE:
+        case R_MODE: {
+            uint8_t old = mode_;
             mode_ = v;
             if ((v & MODE_ARBITRATE) && phase_ == BUS_FREE) phase_ = ARBITRATION;
+            // Clearing MODE_ARBITRATE cancels a pending arbitration (MAME
+            // machine/ncr5380.cpp:389-405: stop arbitration → IDLE, AIP/LA
+            // drop) — without it CSR reads BSY forever and the bus is
+            // wedged. AIP is synthesized from phase_ in read(R_ICR).
+            if ((old & ~v & MODE_ARBITRATE) && phase_ == ARBITRATION)
+                phase_ = BUS_FREE;
             break;
+        }
         case R_TCR:  tcr_ = v; break;
         case R_CSR:  selEnable_ = v; break;
         case R_BSR:  // Start DMA Send (initiator DATA OUT) — polled PDMA
@@ -287,8 +365,17 @@ uint8_t Ncr5380::dmaRead() {
         }
         return b;
     }
-    if (phase_ == STATUS) { uint8_t s = status_; enterMsgIn(); return s; }
-    if (phase_ == MSG_IN) { enterBusFree(); return 0x00; }
+    if (phase_ == STATUS) {
+        // No DRQ (receive mismatch, MAME machine/ncr5380.cpp:227-245): a
+        // stray DACK read must not eat the status byte — return the bus
+        // latch without handshaking.
+        if (!drqActive()) return status_;
+        uint8_t s = status_; enterMsgIn(); return s;
+    }
+    if (phase_ == MSG_IN) {
+        if (!drqActive()) return 0x00;
+        enterBusFree(); return 0x00;
+    }
     return 0;
 }
 
@@ -299,6 +386,7 @@ void Ncr5380::dmaWrite(uint8_t v) {
         if (cmdLen_ > 0 && int(cmd_.size()) >= cmdLen_) execute();
     } else if (phase_ == DATA_OUT) {
         dataOut_.push_back(v);
+        extendDataOut();
         if (dataOut_.size() >= dataOutExpected_) finishWrite();
         else { req_ = false; reqGap_ = true; }
     }
@@ -306,10 +394,17 @@ void Ncr5380::dmaWrite(uint8_t v) {
 
 // DRQ: asserted while MODE_DMA and a byte remains to move. Independent of
 // the CSR.REQ gap so blind PDMA can still see BSR.DRQ after ACK.
-// STATUS/MSG still use req_ (single-byte phases).
+// Outside the data phases, a phase mismatch is DIRECTIONAL (MAME
+// machine/ncr5380.cpp:227-245): after a SEND the already-requested byte
+// survives the mismatch — the host cycles DACK once more so ACK can
+// release; after a RECEIVE the last byte was already DACKed, so DRQ stays
+// low (a spurious raise feeds pseudo-DMA read loops the status byte as
+// data). TCR bit 0 = expected I/O, set = receive. A TCR match (programmed
+// STATUS/MSG/COMMAND transfer) keeps the normal per-REQ DRQ.
 bool Ncr5380::drqActive() const {
     if (!(mode_ & MODE_DMA)) return false;
     if (phase_ == DATA_IN) return dataPos_ < dataIn_.size();
     if (phase_ == DATA_OUT) return dataOut_.size() < dataOutExpected_;
-    return req_ && (phase_ == STATUS || phase_ == MSG_IN || phase_ == COMMAND);
+    if (phase_ != STATUS && phase_ != MSG_IN && phase_ != COMMAND) return false;
+    return req_ && (phaseMatch() || !(tcr_ & 0x01));
 }

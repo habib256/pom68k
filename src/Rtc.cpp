@@ -9,10 +9,21 @@
 void Rtc::reset() {
     phase_ = CMD; bitCnt_ = 0; shift_ = 0; cmd_ = 0; out_ = 1;
     enabled_ = false; lastClk_ = false;
-    // seconds_ / pram_ survive reset (battery-backed)
+    // seconds_ / pram_ survive reset (battery-backed) — and so does
+    // writeProtect_. RICHER THAN MAME (audit § 2.2): device_reset() clears
+    // m_write_protect (macrtc.cpp:113-121), but the WP latch lives on the
+    // same battery domain as the clock and the PRAM it guards; a /RESET
+    // pulse to the host cannot unlock the chip on silicon. Do not "fix"
+    // this back to MAME — a reset that dropped WP would let a crashing
+    // guest scribble over locked PRAM.
 }
 
 void Rtc::factoryDefaults() {
+    // RICHER THAN MAME (audit § 2.2): MAME's nvram_default() is a bare
+    // memset(m_pram, 0, 0x100) (macrtc.cpp:397-400) — a cold MAME Mac boots
+    // on an invalid PRAM and lets the ROM re-initialize whatever it feels
+    // like. POM68K seeds a known-good, byte-for-byte deterministic image so
+    // every etalon starts from the same guest configuration. Keep.
     // Basilisk II XPRAMInit (main.cpp) verbatim. Always (re)seed
     // AppleTalk-inactive SPConfig ($13) even when 'NuMc' is already
     // present — AppleTalk 57.x self-heals 0/$F → active, and a prior boot
@@ -49,13 +60,28 @@ uint8_t Rtc::readReg(uint8_t cmd) const {
     uint8_t addr = (cmd >> 2) & 0x1F;
     if (addr < 8)   return uint8_t(seconds_ >> (8 * (addr & 3)));
     if (addr < 12)  return pram_[addr];        // XPRAM $08-$0B
-    if (addr < 16)  return 0xFF;               // test / write-protect: write-only
+    // Regs 12 (test) / 13 (write-protect) / 14-15 (reserved) are write-only:
+    // the read decoder selects nothing. Aligned on MAME (audit § 2.2), whose
+    // read switch has no case for them and falls through to
+    // `m_data_byte = 0` (macrtc.cpp:380-383) — same class as the
+    // undecoded-read findings #45/#59, where the house answer is 0 and not
+    // open-bus $FF. Cold path either way: no shipped ROM reads these, and
+    // only 12/13 can even arrive — a read of 14/15 would be command $B8/$BC,
+    // which (cmd & $78) == $38 claims for the extended-XPRAM sequence in
+    // setLines() before this decode ever runs (same overlap in MAME).
+    if (addr < 16)  return 0x00;
     return pram_[addr];                        // XPRAM $10-$1F
 }
 
 void Rtc::writeReg(uint8_t cmd, uint8_t v) {
     uint8_t addr = (cmd >> 2) & 0x1F;
     if (addr == 13) { writeProtect_ = (v & 0x80) != 0; return; }
+    // Test register: the chip would reset the seconds counter and clock it
+    // at the raw 32768 Hz. MAME latches bit 7 into m_test_mode and admits
+    // "(not implemented)" (macrtc.cpp:298-303) — a saved field no code ever
+    // reads. NOT ALIGNED (audit § 2.2, inert on both sides): mirroring it
+    // would add a member to visit<Ar>(), i.e. a save-state layout change,
+    // to model exactly nothing. Reopen with the 32768 Hz behaviour itself.
     if (addr == 12) return;                    // test register: ignored
     if (writeProtect_) return;
     if (addr < 8)       seconds_ = (seconds_ & ~(0xFFu << (8 * (addr & 3))))
@@ -123,6 +149,12 @@ void Rtc::setLines(bool enable, bool clock, bool dataOut) {
                     phase_ = XP_WRITE;
             } else if (phase_ == XP_WRITE) {
                 if (getenv("RTCDBG")) fprintf(stderr, "[rtc] xpwrite $%02X <- %02X%s\n", xpAddr_, shift_, writeProtect_ ? " (WP!)" : "");
+                // RICHER THAN MAME (audit § 2.2): the WP gate covers the
+                // EXTENDED write too. MAME checks m_write_protect only on
+                // the classic register path (macrtc.cpp:279-283) and its
+                // RTC_STATE_XPWRITE arm stores unconditionally (:267-272) —
+                // so a MAME guest can write locked XPRAM through the
+                // extended command. Keep the gate on both doors.
                 if (!writeProtect_) pram_[xpAddr_] = shift_;
                 shift_ = 0; phase_ = DONE;
             } else {                           // WRITE_DATA (classic)
@@ -130,6 +162,12 @@ void Rtc::setLines(bool enable, bool clock, bool dataOut) {
             }
             break;
         case READ_DATA:                        // one bit per falling edge, MSB first
+            // RICHER THAN MAME (audit § 2.2): the 9th and later clocks of a
+            // read end the transaction cleanly. MAME shifts unguarded —
+            // `m_data_out = (m_data_byte >> --m_bit_count) & 0x01` with
+            // m_bit_count a u8 (macrtc.cpp:223, macrtc.h:73) — so a host
+            // that overclocks the byte underflows the counter to 255 and
+            // shifts by 255. Keep the guard.
             if (bitCnt_ > 0) out_ = (outData_ >> --bitCnt_) & 1;
             else { phase_ = DONE; out_ = 1; }
             break;

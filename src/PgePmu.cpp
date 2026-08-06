@@ -110,6 +110,7 @@ void PgePmu::reset() {
     ackLevel_ = true;
     reqLevel_ = true;
     lastPortE_ = lastPortF_ = lastPortG_ = lastPortC_ = 0xFF;
+    lastPortH_ = 0x00;       // DFAC-reset bit must start low (mac...:129)
     adb_.reset();
     lastMosi_ = false;
 }
@@ -265,10 +266,49 @@ void PgePmu::wirePorts() {
             return uint8_t((charger ? 0x40 : 0x00) | 0x08);
         }
         case M68hc05Pge::H:
+            // Read-back of the write latch, NOT open-bus: MAME pmu_porth_r
+            // returns m_last_porth (macpwrbkmsc.cpp:543-546), and its $00
+            // start value is a precondition for the boot ROM's DFAC config
+            // (bit 0 = DFAC reset, :129). $FF here reads as "DFAC already
+            // out of reset" and the config pass is skipped.
+            return lastPortH_;
         case M68hc05Pge::J:
         case M68hc05Pge::K:
         case M68hc05Pge::L:
         default:
+            // MAME-parity audit §2.12 (cosmetic, DOCUMENT-SKIP 2026-08-06;
+            // this is the RESIDUE of "unwired inputs read $FF vs 0" after
+            // the port-H fix). MAME reads these as 0, not $FF: the PG&E's
+            // port callbacks default to `m_read_p(*this, 0)`
+            // (m68hc05pge.cpp:115) and macpwrbkmsc.cpp binds NO pmu_portj_r
+            // / pmu_portk_r / pmu_portl_r — only the J and L writes
+            // (:557-567). ports_r then keeps the latch for output bits and
+            // takes the callback's 0 for input bits (:251-260).
+            //
+            // Not aligned, but NOT because it is unreachable — measured on
+            // roms/pge/pge_boot.bin, the boot ROM writes DDRJ = $D0 (at
+            // $051-$054) and DDRL = $07 (at $055-$058), leaving port J bits
+            // 5 and 3-0 and port L bits 7-3 configured as INPUTS, and it
+            // then does BSET/BCLR 7,$28 and 6,$28 ($15B-$172), which are
+            // read-modify-writes that read those input bits back. The
+            // difference stays inside `ports_[J]` (sendPort masks with the
+            // DDR, so no pin output changes) unless the uploaded BORG
+            // firmware branches on a port J/K/L input bit — which is
+            // exactly the shape of the port-H bug that wave 2 fixed.
+            //
+            // It is left open because the only coverage of this path is
+            // `duo230_boot_etalon` (a full cold boot), the port-H incident
+            // proved these defaults are load-bearing and cheap to get
+            // wrong, and $FF is the value the Duo currently boots on. Note
+            // that the port-H RULE does not transfer: port H reads back its
+            // write latch because MAME binds pmu_porth_r to m_last_porth;
+            // J/K/L have no read handler at all, so aligning means literal
+            // 0x00 for input bits, not a latch.
+            // Reopening condition: flip these to 0x00, run
+            // duo230_boot_etalon, and keep it only if it stays green — do
+            // it when the keyboard matrix / power key wiring lands
+            // (docs/DUO_BRINGUP.md, "Next: input through the PMU"), since
+            // that pass touches these ports anyway.
             return 0xFF;
         }
         (void)mc;
@@ -289,7 +329,14 @@ void PgePmu::wirePorts() {
         case M68hc05Pge::E:
             // bit 2 = MSC /reset: the PMU releasing the 68030. The first
             // change also drops the power-on HALT (pmu_porte_w:433-441).
-            if (((v ^ lastPortE_) & 0x04) != 0) held_ = false;
+            if (((v ^ lastPortE_) & 0x04) != 0) {
+                held_ = false;
+                // Rising edge = /RESET released: MAME calls pmu_reset_w(0)
+                // which re-arms the ROM overlay and restarts the CPU from
+                // the reset vector (msc.cpp pmu_reset_w:363-378) — without
+                // it a BORG-commanded reboot resumes stale state.
+                if ((v & 0x04) && onCpuReset) onCpuReset();
+            }
             porteBit2_ = (v & 0x04) != 0;
             if (((v ^ lastPortE_) & 0x02) != 0 && onDisplayBlank)
                 onDisplayBlank((v & 0x02) != 0);
@@ -346,6 +393,7 @@ void PgePmu::wirePorts() {
                 }
             }
             ackLevel_ = (v & 0x40) != 0;
+            lastPortH_ = v;                          // pmu_porth_w:548-553
             break;
         default:
             break;                                   // J/L: DFAC + rails

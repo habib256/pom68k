@@ -54,11 +54,15 @@ public:
     static constexpr uint32_t kIdLc550 = 0xA55A0101;
 
     // Sonora video modelines (MAME mv_sonora.cpp:20-26): sense id,
-    // dot clock, horizontal total/front/sync/back, vertical ditto.
+    // dot clock, horizontal total/front/sync/back, vertical ditto, then
+    // the two trailing flags of MAME's own table — 16 bpp support and
+    // `monochrome` (the 15" Portrait is the one mono modeline; its CLUT
+    // writes go through the blue gun, see dacWrite).
     struct Modeline {
         uint8_t id; int64_t dot;
         int htot, hfp, hs, hbp, vtot, vfp, vs, vbp;
         bool supports16bpp;
+        bool monochrome;
         int hres() const { return htot - hfp - hs - hbp; }
         int vres() const { return vtot - vfp - vs - vbp; }
     };
@@ -273,7 +277,9 @@ private:
 
     std::vector<uint8_t> ram_, rom_, vram_;
     Via6522 via_;
-    PseudoVia pvia_;
+    // Sonora flavour: full $00-$1F read decode (pseudovia.cpp:413) — the
+    // Level flavour keeps the V8's narrow base read (:222).
+    PseudoVia pvia_{PseudoVia::Flavour::Sonora};
     Egret egret_;
     CudaLle egretLle_;               // Egret firmware LLE (341S0851)
     bool egretLleOn_ = false;
