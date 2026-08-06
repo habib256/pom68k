@@ -297,6 +297,28 @@ void MacMemory::jitMapChanged() {
     if (cpu_) cpu_->pomJitDtlbFlush();
 }
 
+// Mirrors read8()'s decode for the plain-memory quarters and refuses the
+// rest. read8() cannot be used for inspection on this map: it clears VIA
+// interrupt flags, advances the IWM state machine and hands the SCC a
+// status latch.
+uint8_t MacMemory::peek8(uint32_t addr) const {
+    addr &= 0xFFFFFF;
+    switch (addr >> 20) {
+    case 0x0: case 0x1: case 0x2: case 0x3:
+        if (overlay_) return rom_[addr & (romSize_ - 1)];
+        return ram_[addr & (kRamSize - 1)];
+    case 0x4: case 0x5:
+        // The ROM window only; $580000 is the 5380 and reading it latches.
+        if (addr < 0x400000 + romSize_) return rom_[addr & (romSize_ - 1)];
+        return 0xFF;
+    case 0x6: case 0x7:
+        if (overlay_) return ram_[addr & (kRamSize - 1)];
+        return 0xFF;                     // open bus once the overlay is down
+    default:
+        return 0xFF;                     // SCC, IWM, VIA, SCSI — all latch
+    }
+}
+
 uint8_t MacMemory::read8(uint32_t addr) {
     addr &= 0xFFFFFF;
     switch (addr >> 20) {

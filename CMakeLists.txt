@@ -1177,6 +1177,44 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                          ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1"
                          TIMEOUT 1800)
 
+    # ── the cycle-exact lockstep (2026-08-06) ────────────────────────────
+    # The 68000 twin, and it asks a different question. On Core::C68020 —
+    # every other guest the engine reaches — SYNC(x) expands to nothing, so
+    # a windowed fetch cannot move the clock and the gates above compare
+    # architectural state. On Core::C68000 SYNC is real, and
+    # Moira::pomJitFetch000 has to re-charge two SYNC(2)s, POLL_IPL and the
+    # Mac Plus bus contention by hand. `clock` is therefore compared at
+    # every instruction boundary, alongside the VIA/IWM/drive/SCC state a
+    # cycle drift would move first.
+    #
+    # Coarse-then-fine, because the two halves cover different things. At
+    # one cycle per comparison the machine only reaches 26 M guest cycles in
+    # a couple of seconds — still inside the ROM's RAM test, where the
+    # window arms FOUR times and never dies. A 256-cycle budget covers 666 M
+    # cycles in eleven seconds: the whole POST, the GCR floppy read, the
+    # System load and the Finder, with 83 000 window arms. FINE_AT then
+    # drops the last 100 000 checkpoints to one cycle each, so the sharpest
+    # comparison happens in live Finder code rather than in a boot loop.
+    add_executable(jit_lockstep_68000_test tests/jit_lockstep_68000_test.cpp)
+    target_link_libraries(jit_lockstep_68000_test PRIVATE pom68k_core)
+    add_test(NAME jit_lockstep_68000_test COMMAND jit_lockstep_68000_test 2500000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_68000_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_JIT_LOCKSTEP_FINE_AT=2400000"
+                         TIMEOUT 1800)
+
+    # …and with the block path forced on. Recorded blocks are safe on a
+    # cycle-exact core only because the `threaded` backend replays through
+    # pomJitExecOne() — Moira's own handlers, charging Moira's own cycles —
+    # and never replays the recorded Instr::cycles. That is a property worth
+    # a gate, because a code generator doing the arithmetic itself would be
+    # wrong here in a way no architectural comparison would catch.
+    add_test(NAME jit_lockstep_68000_blocks_test COMMAND jit_lockstep_68000_test 2500000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_68000_blocks_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_JIT_LOCKSTEP_FINE_AT=2400000"
+                         TIMEOUT 1800)
+
     # Apple-Silicon release gate. A coarse budget exercises complete native
     # blocks, linked exits and peripheral synchronization; five million
     # comparisons cover every late-boot A64 regression found during bring-up.

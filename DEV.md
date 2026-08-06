@@ -1084,7 +1084,21 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   replaces the bus read and nothing else, and the video/RAM contention
   `Cpu68k::applyContention` charges from inside `read16()` is handed back
   to the fetch path through `Moira::pomJitSetBusStall`. Gates:
-  `jit_system_boot_etalon`, `jit_classic_boot_etalon`.
+  `jit_system_boot_etalon`, `jit_classic_boot_etalon`, and the decisive
+  `jit_lockstep_68000_test` pair — two Mac Plus machines stepped together
+  with **`clock`** compared at every checkpoint (2.5 M of them over ~646 M
+  guest cycles, one per instruction for the last 100 000). Deleting the
+  contention charge makes it red at step 982 402; deleting a `SYNC(2)` at
+  step 0.
+- **A harness on this family must raise the VBL itself.** `MacMemory::tick()`
+  does not generate it — `MacFrameClock::runFrame()` raises VIA CA1 between
+  two `runUntil()` calls (`MacFrame.h`). A stepping loop built on
+  `runCycles()` alone delivers no vertical blank, and the machine spins in
+  early boot with the overlay still up: hundreds of millions of cycles that
+  look like a boot and execute nothing but ROM. `jit_lockstep_68000_test`
+  shipped that way for one round and passed its own negative controls; it
+  now reproduces `runFrame()`'s shape and asserts its reach (overlay down,
+  IWM polled) before reporting success.
 - **Check that it is doing something, not just switched on.**
   `POM68K_JIT_VERBOSE=1` prints a retired / window-covered / arms / failed
   line at teardown. It exists because the compacts' first wiring reported

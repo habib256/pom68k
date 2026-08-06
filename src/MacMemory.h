@@ -71,6 +71,15 @@ public:
     void     write8(uint32_t addr, uint8_t v);
     void     write16(uint32_t addr, uint16_t v);
 
+    // Side-effect-free read, the counterpart every other machine map already
+    // carries (V8Memory, MacIIMemory, …). read8() cannot be used for
+    // inspection: on this map it clears VIA interrupt flags, advances the
+    // IWM state machine and hands the SCC a status latch. Plain memory only;
+    // everything with a read side effect answers $FF rather than being
+    // touched. Used by `jit_lockstep_68000_test` to diff guest RAM between
+    // two machines without perturbing either.
+    uint8_t  peek8(uint32_t addr) const;
+
     // Screen buffer bases, selected by VIA PA6 (1 = main, 0 = alternate).
     // GttMFH; MAME MAC_MAIN_SCREEN_BUF_OFFSET; Mini vMac kMain_Offset.
     uint32_t mainScreenBase() const { return kRamSize - 0x5900; }

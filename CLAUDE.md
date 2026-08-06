@@ -53,9 +53,10 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **159 CTest gates** (`ctest -N` 2026-08-06: 75 `unit`, 8 `smoke`,
-  20 `jit`, 36 `m040`, 80 `etalon` — `jit` grew by the four 020/000 gates
-  of 2026-08-06); last FULL run **143/143 green**,
+- **161 CTest gates** (`ctest -N` 2026-08-06: 77 `unit`, 8 `smoke`,
+  22 `jit`, 36 `m040`, 80 `etalon` — `jit` grew by the four 020/000 boot
+  gates plus the cycle-exact `jit_lockstep_68000_test` pair, 2026-08-06);
+  last FULL run **143/143 green**,
   2026-08-03, on a **fully rebuilt tree** (`make` first, 150
   objects/binaries relinked), 3 h 03.
   **The `make` is part of the claim, not a detail.** An earlier run the
