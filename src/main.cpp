@@ -505,8 +505,9 @@ static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 // Global, like the AppleTalk window below, so the "CPU" menu appears on
 // every machine without touching the ten machineMenu() call sites. The
 // hooks are installed by the machines that HAVE a second engine — the four
-// 68040 loops and, since 2026-07-30, the 68030 ones (V8, Sonora, VASP,
-// RBV); on the Mac II and the compacts the menu shows itself disabled.
+// 68040 loops, the 68030 ones (V8, Sonora, VASP, RBV) since 2026-07-30, and
+// the Mac II family + the compacts since 2026-08-06 — every loop but the
+// IIfx's, which has no engine wired yet.
 static bool gShowJit = false;
 static std::function<void(int)> gSetCpuEngine;         // 0 = interpreter, 1 = JIT
 static std::function<int()> gGetCpuEngine;
@@ -1026,13 +1027,24 @@ static void relaunchIfSwitched(char* argv0) {
 struct MacIiMachine {
     MacIIMemory& mem; Cpu020& cpu; MacAudioHost& audioHost;
     MacIiMachine(MacIIMemory& m, Cpu020& c, MacAudioHost& a)
-        : mem(m), cpu(c), audioHost(a) {}
+        : mem(m), cpu(c), audioHost(a) {
+        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
+    }
     ~MacIiMachine() { stop(); }
+
+    // Engine state + JIT gauges for the CPU menu (the LcMachine contract:
+    // the menu tick follows the MACHINE; the swap lands one queue trip
+    // later, on the machine thread).
+    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
+    jit::Stats::Snapshot jitStats() const {
+        std::lock_guard<std::mutex> l(jitMu_);
+        return jitSnap_;
+    }
 
     std::atomic<bool> running{true}, turbo{true}, quit{false};
 
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, InsertFloppy,
-                          EjectFloppy } t; int a = 0, b = 0; };
+    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, CpuEngine,
+                          InsertFloppy, EjectFloppy } t; int a = 0, b = 0; };
     void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
 
     // Save-state requests (GUI → machine thread; see SaveStateSlot above).
@@ -1155,6 +1167,10 @@ struct MacIiMachine {
         stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
                                (mem.hmmu24() ? 2 : 0)),
                        std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> l(jitMu_);
+            jitSnap_ = cpu.jit().stats().snapshot();
+        }
     }
 
 private:
@@ -1199,6 +1215,12 @@ private:
                 mem.ejectDisk();
                 floppyFlag_.store(false, std::memory_order_relaxed);
                 break;
+            // Engine swap between two runCycles() — an instruction
+            // boundary (the LcMachine precedent).
+            case Cmd::CpuEngine:
+                cpu.setEngine(c.a);
+                stEngine_.store(c.a, std::memory_order_relaxed);
+                break;
         }
         cmdsApply_.clear();
         state.apply(mem, cpu);         // save/load between two quanta
@@ -1213,6 +1235,9 @@ private:
     std::atomic<uint32_t> stPc_{0};
     std::atomic<long long> stClock_{0};
     std::atomic<uint8_t> stFlags_{0};
+    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
+    mutable std::mutex jitMu_;
+    jit::Stats::Snapshot jitSnap_{};
     int activeHold_ = 0;
     int starve_ = 0;
     int framesRun_ = 0;
@@ -1338,6 +1363,10 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static MacIiMachine machine{mem, cpu, audioHost};
+    gSetCpuEngine = [](int e) { machine.push({MacIiMachine::Cmd::CpuEngine, e}); };
+    gGetCpuEngine = [] { return machine.cpuEngine(); };
+    gJitStats     = [] { return machine.jitStats(); };
+    gJitBackend   = cpu.jit().backendName();
     machine.state.kind = model == MacIIMemory::Model::IIx  ? pom68k::SnapMachine::IIx
                        : model == MacIIMemory::Model::IIcx ? pom68k::SnapMachine::IIcx
                        : model == MacIIMemory::Model::SE30 ? pom68k::SnapMachine::SE30
@@ -6476,6 +6505,14 @@ int main(int argc, char** argv) {
     static Ctx ctx{window, mem, cpu, video, audio, audioHost, screenTex, true, !demoMode, {},
                    matched, hddPath, diskOk ? diskPath : std::string()};
     ctx.clock.resync(cpu);
+    // The compacts run the machine INLINE on the GUI thread, so the engine
+    // swap needs no command queue: the menu is drawn after this frame's
+    // quantum has already finished, which is the instruction boundary the
+    // threaded machines reach through Cmd::CpuEngine.
+    gSetCpuEngine = [](int e) { ctx.cpu.setEngine(e); };
+    gGetCpuEngine = [] { return ctx.cpu.engine(); };
+    gJitStats     = [] { return ctx.cpu.jit().stats().snapshot(); };
+    gJitBackend   = cpu.jit().backendName();
 
     auto frame = [](void* p) {
         Ctx& c = *static_cast<Ctx*>(p);

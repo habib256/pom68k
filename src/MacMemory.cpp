@@ -210,7 +210,13 @@ uint8_t MacMemory::viaAccess(uint32_t addr, bool write, uint8_t v) {
         refreshPortBInputs();
     }
     if (reg == Via6522::ORA || reg == Via6522::ORA_NH || reg == Via6522::DDRA) {
-        if (!isAdb()) overlay_ = (via_.portA() & 0x10) != 0;   // PA4 = overlay
+        if (!isAdb()) {
+            const bool was = overlay_;
+            overlay_ = (via_.portA() & 0x10) != 0;             // PA4 = overlay
+            // Low memory just changed between ROM and RAM: the map moved,
+            // and only this write knows it (JitGuard.h § invalidate).
+            if (was != overlay_) jitMapChanged();
+        }
         iwm_.setSel((via_.portA() & 0x20) != 0); // PA5 = drive SEL line
     }
     if (!isAdb() && reg == Via6522::SR && ((via_.acr() >> 2) & 7) == 7) {
@@ -229,6 +235,88 @@ uint8_t MacMemory::viaAccess(uint32_t addr, bool write, uint8_t v) {
     }
     updateIrq();
     return 0;
+}
+
+// ── JIT memory hooks (src/jit/POM68K_JIT.md § 4) ────────────────────────
+// Mirrors read8()'s decode for the two plain-memory quarters only. The
+// address arrives already inside the 24-bit bus (pomJitProbeCode refuses
+// anything above $FFFFFF on this core), so there is no mask to reconcile
+// and the guard shares this exact address space.
+const uint8_t* MacMemory::codeSpan(uint32_t phys, uint32_t& len) const {
+    len = 0;
+    if (phys > 0x00FFFFFFu) return nullptr;
+    if (phys < 0x400000) {
+        // Overlay up: low memory reads ROM, mirrored every romSize_.
+        if (overlay_) {
+            // …but on the ADB compacts the overlay drops on the first WRITE
+            // to low RAM (mac128.cpp ram_w_se), and a write is exactly what
+            // the window cannot be told about in time — the guard fires on
+            // the byte, not on the map. The Plus drops it from an explicit
+            // VIA PA4 write, which jitMapChanged() does catch, so only the
+            // Plus gets a window over its overlay.
+            if (isAdb()) return nullptr;
+            const uint32_t o = phys & (romSize_ - 1);
+            len = romSize_ - o;
+            return rom_.data() + o;
+        }
+        len = 0x400000 - phys;
+        return ram_.data() + (phys & (kRamSize - 1));
+    }
+    if (phys >= 0x400000 && phys < 0x400000 + romSize_) {   // ROM window
+        const uint32_t o = phys - 0x400000;
+        len = romSize_ - o;
+        return rom_.data() + o;
+    }
+    // $580000 SCSI, the $600000 overlay RAM alias, and every I/O quarter.
+    return nullptr;
+}
+
+uint8_t* MacMemory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
+    len = 0;
+    if (phys > 0x00FFFFFFu) return nullptr;
+    if (phys < 0x400000) {
+        if (overlay_) {
+            if (write || isAdb()) return nullptr;
+            const uint32_t o = phys & (romSize_ - 1);
+            len = romSize_ - o;
+            return rom_.data() + o;
+        }
+        len = 0x400000 - phys;
+        return ram_.data() + (phys & (kRamSize - 1));
+    }
+    if (!write && phys >= 0x400000 && phys < 0x400000 + romSize_) {
+        const uint32_t o = phys - 0x400000;
+        len = romSize_ - o;
+        return rom_.data() + o;
+    }
+    return nullptr;
+}
+
+void MacMemory::jitMapChanged() {
+    if (jitGuard_) jitGuard_->invalidate();
+    if (cpu_) cpu_->pomJitDtlbFlush();
+}
+
+// Mirrors read8()'s decode for the plain-memory quarters and refuses the
+// rest. read8() cannot be used for inspection on this map: it clears VIA
+// interrupt flags, advances the IWM state machine and hands the SCC a
+// status latch.
+uint8_t MacMemory::peek8(uint32_t addr) const {
+    addr &= 0xFFFFFF;
+    switch (addr >> 20) {
+    case 0x0: case 0x1: case 0x2: case 0x3:
+        if (overlay_) return rom_[addr & (romSize_ - 1)];
+        return ram_[addr & (kRamSize - 1)];
+    case 0x4: case 0x5:
+        // The ROM window only; $580000 is the 5380 and reading it latches.
+        if (addr < 0x400000 + romSize_) return rom_[addr & (romSize_ - 1)];
+        return 0xFF;
+    case 0x6: case 0x7:
+        if (overlay_) return ram_[addr & (kRamSize - 1)];
+        return 0xFF;                     // open bus once the overlay is down
+    default:
+        return 0xFF;                     // SCC, IWM, VIA, SCSI — all latch
+    }
 }
 
 uint8_t MacMemory::read8(uint32_t addr) {
@@ -289,8 +377,13 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
             // mac128.cpp ram_w_se: on the ADB compacts the first write to low
             // RAM clears the overlay AND stores the byte. The Plus keeps the
             // explicit VIA PA4 clear and drops writes while overlaid.
-            if (isAdb()) overlay_ = false;
-            if (!overlay_) ram_[addr & (kRamSize - 1)] = v;  // ROM under overlay: ignored
+            // The overlay drop moves the whole map, which no write guard
+            // can express — say it before the byte lands.
+            if (isAdb() && overlay_) { overlay_ = false; jitMapChanged(); }
+            if (!overlay_) {
+                if (jitGuard_) jitGuard_->note(addr, 1);
+                ram_[addr & (kRamSize - 1)] = v;  // ROM under overlay: ignored
+            }
             return;
         case 0x4: case 0x5:                                  // SCSI NCR 5380
             if (addr >= 0x580000) {
@@ -300,7 +393,15 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
             }
             return;
         case 0x6: case 0x7:
-            if (overlay_) ram_[addr & (kRamSize - 1)] = v;    // overlay only
+            if (overlay_) {                                   // overlay only
+                // A SECOND name for a byte the window can reach at
+                // $000000 once the overlay is down. It cannot be windowed
+                // right now (low memory reads ROM while overlaid) and the
+                // drop invalidates everything anyway — noted so the rule
+                // "every RAM write is noted" holds without a caveat.
+                if (jitGuard_) jitGuard_->note(addr & (kRamSize - 1), 1);
+                ram_[addr & (kRamSize - 1)] = v;
+            }
             return;
         case 0xA: case 0xB: {                                // SCC write, odd bytes
             bool wasIrq = scc_.irqAsserted();

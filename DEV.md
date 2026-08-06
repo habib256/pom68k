@@ -1061,19 +1061,50 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   headless and CTest. The GUI **CPU** menu switches it live (through the
   machine thread's command queue, so the swap lands between two
   instructions); `POM68K_CPU_ENGINE=jit` selects it at startup.
-- **Where it is wired.** Exactly **eight** CPU wrappers carry a
-  `jit::Engine`: the 030s `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu` and
-  the 040s `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`. **`Cpu68k`
-  (Plus/SE/Classic) and `Cpu020` (Mac II / IIx / IIcx) carry none** — the
-  only 68020 *guest* that runs under the JIT is the Macintosh LC, and it
-  does so because it runs on `Cpu030` with the `as020` profile flag
-  (`Cpu030.h:27-30`), not on `Cpu020`. The GUI menu binds on the 040 and
-  030 loops (2026-07-30). The **x86-64 code generator** is
-  **68040-only by declared capability**
-  (`BackendCaps::guestFamilies`), so `auto` gives the 030s the `threaded`
-  backend. That is a guest-family constraint, not a host one: the 030's
-  `(An)+` timing, restartable-write/format-$A framing and prefetch refill
-  differ semantically from the 040's.
+- **Where it is wired.** **Eleven** CPU wrappers carry a `jit::Engine`: the
+  030s `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`, the 040s
+  `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, and — since 2026-08-06 —
+  `Cpu020` (Mac II / IIx / IIcx / SE-30) and `Cpu68k` (Plus / SE / SE FDHD
+  / Classic). **Only `IIfxCpu` carries none.** The GUI menu binds on every
+  one of them. The **x86-64 code generator** is **68040-only by declared
+  capability** (`BackendCaps::guestFamilies`), so `auto` gives everything
+  else the `threaded` backend. That is a guest-family constraint, not a
+  host one: the 030's `(An)+` timing, restartable-write/format-$A framing
+  and prefetch refill differ semantically from the 040's.
+- **…and what it is worth there**, because "wired" and "worth switching on"
+  are not the same claim. The window's job is to skip an ATC walk, so the
+  gain tracks the MMU: 68040 ×2.1-2.7, 68030 ×1.4-1.7, **68020 ×1.0-1.2,
+  68000 ×1.03-1.08**. On the last two there is no walk to skip and only the
+  machine's address decode is saved.
+- **The compacts are the one family where the window is not free.** Moira's
+  `SYNC(x)` macro is a no-op on `Core::C68020` only — which covers the
+  68020, 030 and 040. On `Core::C68000` it is real, `MOIRA_PRECISE_TIMING`
+  is on, and the Mac Plus carries the tree's only cycle-exact timing claim
+  (`sst68000`, 1 000 058 vectors *with cycles*). So `pomJitFetch000`
+  replaces the bus read and nothing else, and the video/RAM contention
+  `Cpu68k::applyContention` charges from inside `read16()` is handed back
+  to the fetch path through `Moira::pomJitSetBusStall`. Gates:
+  `jit_system_boot_etalon`, `jit_classic_boot_etalon`, and the decisive
+  `jit_lockstep_68000_test` pair — two Mac Plus machines stepped together
+  with **`clock`** compared at every checkpoint (2.5 M of them over ~646 M
+  guest cycles, one per instruction for the last 100 000). Deleting the
+  contention charge makes it red at step 982 402; deleting a `SYNC(2)` at
+  step 0.
+- **A harness on this family must raise the VBL itself.** `MacMemory::tick()`
+  does not generate it — `MacFrameClock::runFrame()` raises VIA CA1 between
+  two `runUntil()` calls (`MacFrame.h`). A stepping loop built on
+  `runCycles()` alone delivers no vertical blank, and the machine spins in
+  early boot with the overlay still up: hundreds of millions of cycles that
+  look like a boot and execute nothing but ROM. `jit_lockstep_68000_test`
+  shipped that way for one round and passed its own negative controls; it
+  now reproduces `runFrame()`'s shape and asserts its reach (overlay down,
+  IWM polled) before reporting success.
+- **Check that it is doing something, not just switched on.**
+  `POM68K_JIT_VERBOSE=1` prints a retired / window-covered / arms / failed
+  line at teardown. It exists because the compacts' first wiring reported
+  itself ON while retiring **zero** instructions: their main loop is
+  `runUntil()` (`MacFrameClock` subdivides a frame into 16 absolute
+  targets), not the `runCycles()` every other family uses.
 - **The `threaded` backend generates no code and is always compiled and
   always usable**, so `POM68K_JIT_BACKEND=auto` never fails to produce a
   working engine — Emscripten and hardened kernels included.

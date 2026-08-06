@@ -55,7 +55,7 @@ gate in the last column of each row.
 | 19 | **External /BERR (040)** `extBusError040()` | `Moira.h`, `MoiraExecMMU_cpp.h` | the O6 twin for MEMCjr/djMEMC/F108 unmapped I/O | `q605_boot_etalon` |
 | 20 | **Watchpoints under the MMU** — logical-address hooks on the 4 translated paths | `MoiraExecMMU_cpp.h` | `readM`/`writeM` are bypassed on the 030/040 | — (debug) |
 | 21 | **External /BERR on the plain 68020** (queue refill, access capture, guarded restores) | `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h` | the Mac LC ROM's 32-bit probe died in a DS-1 Sad Mac | `lc_boot_etalon` |
-| 22 | **JIT seam** — fetch window, data TLB, probes, `pomJitExecOne`, layout, ATC-eviction hook | `Moira.h`, `Moira.cpp`, `MoiraExecMMU_cpp.h`, `MoiraDataflow_cpp.h` | the second execution engine drives this object from `src/jit/` | `jit_lockstep_test` |
+| 22 | **JIT seam** — fetch window (040/030/020 + the cycle-exact 68000 flavour), data TLB, probes, `pomJitExecOne`, layout, ATC-eviction hook, bus-stall hook | `Moira.h`, `Moira.cpp`, `MoiraExecMMU_cpp.h`, `MoiraDataflow_cpp.h` | the second execution engine drives this object from `src/jit/` | `jit_lockstep_test`, `jit_system_boot_etalon` |
 | 23 | **Save-state seam** `pomFlushAtcs()` | `Moira.h` | a restored snapshot replaces the page tables under live ATCs | `savestate_030_test`, `savestate_040_test` |
 
 Rows 2-21 are the accuracy work; rows 22-23 are pure seams (inert when nothing
@@ -1046,9 +1046,11 @@ Five additions in this first slice, all marked `POM68K JIT`, all inert until a
 
 **Why public rather than protected.** `jit::Engine` holds a `moira::Moira&`,
 not a machine wrapper, so one engine serves every machine profile that carries
-one — eight CPU wrappers today: `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu`
-(68040) and `Cpu030`, `RbvCpu`, `SonoraCpu`, `VaspCpu` (68030, plus the
-Macintosh LC's 68020 flavour of `Cpu030`). `Cpu68k` and `Cpu020` carry none.
+one — eleven CPU wrappers today: `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu`
+(68040), `Cpu030`, `RbvCpu`, `SonoraCpu`, `VaspCpu`, `MscCpu` (68030, plus
+the Macintosh LC's 68020 flavour of `Cpu030`), and since 2026-08-06
+`Cpu020` (Mac II family) and `Cpu68k` (the compacts). Only `IIfxCpu` carries
+none.
 A public non-virtual member is the only shape that stays a **direct** call
 from another translation
 unit — and this file already records what an indirect call on the
@@ -1064,15 +1066,26 @@ because that would skip `POLL_IPL` and the per-instruction MMU resets.
    map. (68040-only in this slice; J2 extended it to the 030 and the plain
    020 — point 3.) Same shape as `PomIcache` — a plain struct, checked inline, one
    predictable branch when disarmed. `pomJitMmuGen` is bumped — through
-   `pomJitMapMoved()`, see point 7 — at **eleven** sites, which is the whole
-   set of things that can move a logical→physical mapping: the four 030 ATC
-   flushes (`mmuAtcFlushAll/FlushFc/FlushPage/FlushPageFc`), the three 040
-   ones (`mmu040AtcFlushAll/FlushNonGlobal/FlushPage`) and the four TTR
-   setters (`setITT0/ITT1/DTT0/DTT1`); `setTC040`/`setURP040`/`setSRP040`
-   reach it through `mmu040AtcFlushAll`, and `pomFlushAtcs()` (§ *Save-state
-   seam*) through both flush-alls. A window whose generation no longer
-   matches is refused, which is the one staleness an address-range test
-   cannot see.
+   `pomJitMapMoved()`, see point 7 — at **fourteen** sites, which is the
+   whole set of things that can move a logical→physical mapping: the four
+   030 ATC flushes (`mmuAtcFlushAll/FlushFc/FlushPage/FlushPageFc`), the
+   three 040 ones (`mmu040AtcFlushAll/FlushNonGlobal/FlushPage`), the four
+   TTR setters (`setITT0/ITT1/DTT0/DTT1`) and — since 2026-08-06 — the
+   three **030 `PMOVE` register writes** (`TC`, `SRP`, `CRP` in
+   `execPMove`); `setTC040`/`setURP040`/`setSRP040` reach it through
+   `mmu040AtcFlushAll`, and `pomFlushAtcs()` (§ *Save-state seam*) through
+   both flush-alls. A window whose generation no longer matches is refused,
+   which is the one staleness an address-range test cannot see.
+
+   *The three `PMOVE` sites were missing until 2026-08-06.* `TC.E` is the
+   switch between "translation off, logical == physical" and a page-table
+   walk, and `SRP`/`CRP` are the roots the walk starts from — but none of
+   them touches the ATC, so none of them reached a bump. Every 030 machine's
+   window and block cache could therefore survive a change of translation
+   root. Masked in practice because Apple's ROMs issue a `PFLUSHA` right
+   after, which does bump; found while wiring the Mac II family, whose
+   `MacIIMemory::physAddr` switches remap mode on `TC` bit 31 and so made
+   the gap reachable without a flush.
 
    Note the window points **into the guest RAM/ROM buffer**, so guest writes
    are visible to it immediately: self-modifying code needs no invalidation
@@ -1090,14 +1103,23 @@ because that would skip `POLL_IPL` and the per-instruction MMU resets.
 
    *2026-07-28, three branches now:* `M68030` runs `mmuExecuteStart` as its
    loop head (the 030's mode-5 equivalent of `mmu040InstrStart`), `>=
-   M68EC040` runs `mmu040InstrStart`, and **plain 020** has no per-instruction
-   MMU loop head at all — its queue was refilled by the previous
-   instruction's prefetch, where its `POLL_IPL` lives, so the boundary
-   contract is just the dispatch. That third branch is reached only from the
-   engine (`execute()` keeps its own generic fast path for pre-030 models);
-   the six duplicated lines are deliberate, because gating the hottest loop
-   in the emulator — cycle-exact 68000/68010 — on a model test would cost
-   more than the duplication.
+   M68EC040` runs `mmu040InstrStart`, and the **pre-030 models** have no
+   per-instruction MMU loop head at all — the queue was refilled by the
+   previous instruction's prefetch, where its `POLL_IPL` lives, so the
+   boundary contract is just the dispatch. That third branch is reached only
+   from the engine (`execute()` keeps its own generic fast path); the six
+   duplicated lines are deliberate, because making `execute()` delegate
+   would put a model test in the hottest loop in the emulator for no
+   behavioural gain.
+
+   *2026-08-06:* the same third branch now also carries the **cycle-exact
+   68000/68010**, and it needed no change to do so — it is byte-for-byte
+   `execute()`'s generic fast path, and `exec[]` is already the per-model
+   table. What makes it correct for a cycle-exact core is not here but in
+   the fetch (point 3, `pomJitFetch000`), which charges the cycles `read<>`
+   would have. The earlier wording claimed routing these models through here
+   "would be wrong"; that was never demonstrated and is not true of this
+   branch.
 
 3. **`MoiraExecMMU_cpp.h` + `MoiraDataflow_cpp.h` — the window fast path**
    at every instruction-fetch site, per core:
@@ -1118,9 +1140,31 @@ because that would skip `POLL_IPL` and the per-instruction MMU resets.
      that must be replicated, not skipped — the `POLL_IPL` riding on the
      prefetch, the FC pins, and the in-flight access stamp an external
      /BERR reads back (§ *External /BERR on the plain 68020 core*).
+   - **68000/68010** (2026-08-06), the same three sites through
+     `pomJitFetch000` — and the one flavour that replaces *neither* head
+     nor tail but only the **bus read**. On `Core::C68020` the `SYNC(x)`
+     macro expands to nothing, which is why the three flavours above cost
+     no cycle accounting; on `Core::C68000` it really calls `sync(x)`, and
+     the compacts are the one POM68K family whose timing claim is
+     cycle-exact. So this one reproduces `read<>` step for step in
+     `read<>`'s own order — leading `SYNC(2)`, address-error bail-out (it
+     returns false and charges *nothing*, letting the ordinary path both
+     charge and throw), FC pins, `POLL_IPL`, the machine's bus model,
+     trailing `SYNC(2)` — and skips only the `read16()` virtual and the
+     machine's address decode.
 
    All of them sit **after** `POLL_IPL` and after the per-instruction MMU
    resets, never before.
+
+3b. **`Moira.h` — `pomJitSetBusStall(fn, ctx)`** (2026-08-06). The Mac Plus
+   charges video/RAM contention wait states from *inside* its `read16()`
+   (`Cpu68k::applyContention`), so a windowed fetch — which performs no
+   `read16()` — would silently stop paying them and run the JIT on a
+   different clock than the interpreter. This hands the wrapper's charge
+   back to `pomJitFetch000`, at exactly the point `read16()` would have
+   applied it. A plain function pointer, not a virtual, for the reason this
+   file already documents twice: it sits on the per-fetch path.
+   Null by default, which is every non-compact board.
 
 4. **`MoiraExecMMU_cpp.h` — `bool pomJitProbeCode(...) const`.** A
    side-effect-free translation probe: TTR match, MMU-disabled identity,
@@ -1130,6 +1174,14 @@ because that would skip `POLL_IPL` and the per-instruction MMU resets.
    of which may happen between instructions. A miss simply returns false;
    the interpreter then fetches normally, fills the ATC, and the next probe
    succeeds.
+
+   Four branches: 040 (above), 030 (ATC scan), plain 020 (identity), and
+   **68000/68010** (2026-08-06, identity **with a refusal**). These cores
+   drive a 24-bit bus and `read<>` masks every access with `addrMask<C>()`,
+   while the window is keyed on the *unmasked* pc — so a pc above `$FFFFFF`
+   would name one byte to the interpreter and another to the window. It is
+   refused rather than masked. Real Mac code never leaves the low 24 bits,
+   so nothing that was going to be hot is lost.
 
 5. **`Moira.h` — `pomJitStampAccess(u32)`.** The window fast path leaves
    behind exactly the in-flight access context (`mmu040AccAddr/Val/Sz/Write/

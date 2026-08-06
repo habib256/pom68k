@@ -4,22 +4,58 @@
 #include "Cpu68k.h"
 #include "MacMemory.h"
 
-Cpu68k::Cpu68k(MacMemory& mem) : mem_(mem) {
+namespace {
+jit::MemoryHooks macJitHooks(MacMemory& mem) {
+    jit::MemoryHooks h;
+    h.self = &mem;
+    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
+        return static_cast<MacMemory*>(s)->codeSpan(phys, len);
+    };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<MacMemory*>(s)->dataSpan(phys, len, write != 0);
+    };
+    h.setGuard = [](void* s, jit::CodeGuard* g) {
+        static_cast<MacMemory*>(s)->setJitGuard(g);
+    };
+    h.ramBytes = [](void* s) { return static_cast<MacMemory*>(s)->ramBytes(); };
+    return h;
+}
+}  // namespace
+
+Cpu68k::Cpu68k(MacMemory& mem)
+    : mem_(mem), jit_(*this, macJitHooks(mem), jit::kGuest68000) {
     setModel(moira::Model::M68000);
+    // Hand the window this machine's bus model. Without it a windowed fetch
+    // would skip the video/RAM contention read16() carries, and the Mac
+    // Plus would run the JIT on a different clock than the interpreter —
+    // which on the one cycle-exact family in the tree is not a speed-up,
+    // it is a different machine.
+    pomJitSetBusStall(&Cpu68k::jitBusStall, this);
 }
 
 void Cpu68k::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
+    jit_.flushAll();
     reset();                       // fetches SSP/PC from $0 (ROM via overlay)
 }
 
 void Cpu68k::runCycles(moira::i64 n) {
-    executeUntil(getClock() + n);
+    const moira::i64 target = getClock() + n;
+    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
 }
 
+// The compacts' MAIN loop, unlike every other family's: MacFrameClock
+// subdivides a frame into 16 absolute targets and calls this, so routing
+// the engine through runCycles() alone left it switched on and idle (the
+// first measurement of this seam retired exactly 0 instructions). The
+// clock-target contract is the same one runCycles honours — a block chain
+// never runs past `clockTarget` (POM68K_JIT.md invariant 4) — so the
+// subdivision the frame clock relies on is preserved.
 void Cpu68k::runUntil(moira::i64 clockTarget) {
-    if (getClock() < clockTarget) executeUntil(clockTarget);
+    if (getClock() >= clockTarget) return;
+    if (jit_.enabled()) jit_.executeUntil(clockTarget);
+    else executeUntil(clockTarget);
 }
 
 // Mac Plus IPL: VIA → 1, SCC → 2 — but the glue DISCONNECTS the VIA's
@@ -45,6 +81,10 @@ void Cpu68k::applyContention(moira::u32 addr) const {
         self->clock += d;
         self->catchUp();
     }
+}
+
+void Cpu68k::jitBusStall(void* self, moira::u32 addr) {
+    static_cast<const Cpu68k*>(self)->applyContention(addr);
 }
 
 moira::u8  Cpu68k::read8(moira::u32 addr)  const { applyContention(addr); return mem_.read8(addr); }

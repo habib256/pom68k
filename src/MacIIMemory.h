@@ -20,6 +20,7 @@
 #include "SonyDrive.h"
 #include "Scc8530.h"
 #include "MacInput.h"
+#include "jit/JitGuard.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -60,6 +61,29 @@ public:
     uint8_t  peek8(uint32_t addr) const;
 
     void setCpu(Cpu020* cpu) { cpu_ = cpu; }
+
+    // ── JIT memory hooks (src/jit/POM68K_JIT.md § 4) ────────────────────
+    // Both take a CPU-side address and run it through physAddr() exactly
+    // as read8()/write8() do, because that is what the engine hands us:
+    // pomJitProbeCode reports identity for the plain 020 (no MMU) and for
+    // the 030 with TC.E clear, and a translated address once the 030's own
+    // PMMU is on — which is precisely the split physAddr() already makes
+    // (the GLUE 24-bit remap must not run on top of a PMMU translation).
+    //
+    // Only plain memory is handed out: RAM through the GLUE bank window
+    // and ROM. Refused, and each for its own reason: the whole map while
+    // the overlay is up (dropping it is a VIA side effect, and low memory
+    // means ROM until then), all of $50xxxxxx I/O, and NuBus — a slot read
+    // reaches a card's declaration ROM or a frame buffer, never a byte the
+    // window may cache.
+    const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
+    uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
+    // The address map itself moved — the one invalidation a write guard
+    // cannot see. Three callers: the overlay latch dropping, the GLUE
+    // HMMU bit (VIA2 PB3) flipping, and a restore.
+    void jitMapChanged();
+
     void updateIrq();
     int  iplLevel() const;
     void tick(int cpuCycles);
@@ -185,6 +209,13 @@ public:
             if (se30_) ar(*se30_);
             ar(se30VblEnable_, se30VblPhase_);
         }
+        if constexpr (Ar::loading) {
+            // RAM and the whole address map just changed wholesale, which
+            // no write guard can express (V8Memory pattern) — say so, or
+            // the engine replays blocks recorded against the previous
+            // session's memory.
+            if (jitGuard_) jitGuard_->invalidate();
+        }
     }
 
 private:
@@ -209,6 +240,9 @@ private:
     void applyRamBank();
     uint8_t* ramAt(uint32_t addr);
     const uint8_t* ramAt(uint32_t addr) const;
+    // ramAt() with the span the GLUE window stays linear for — the shared
+    // half of codeSpan/dataSpan (MacIIMemory.cpp).
+    const uint8_t* ramSpan(uint32_t addr, uint32_t& len) const;
     [[noreturn]] void busError() const;
     uint8_t scsiDma(bool berIfNoDrq = true);
     void scsiDmaW(uint8_t v, bool berIfNoDrq = true);
@@ -229,6 +263,7 @@ private:
     Scc8530 scc_;
     MacMouse mouse_;
     Cpu020* cpu_ = nullptr;
+    jit::CodeGuard* jitGuard_ = nullptr;     // not serialized: machine wiring
 
     uint32_t ramSize_;
     Model model_ = Model::MacII;

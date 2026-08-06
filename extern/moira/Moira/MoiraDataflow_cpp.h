@@ -840,11 +840,18 @@ Moira::prefetch()
     }
 
     queue.ird = queue.irc;
-    // POM68K JIT code window, 020 flavor (Moira.h § pomJitFetch020): only
-    // instantiated for the C68020 core, and pomJitFetch refuses unless a
-    // jit::Engine armed the window — the 68000/68010 cores never see this.
+    // POM68K JIT code window, 020 flavor (Moira.h § pomJitFetch020); the
+    // cycle-exact 68000/68010 cores take the pomJitFetch000 flavor instead,
+    // which reproduces read<>'s SYNCs and bus model. Either way pomJitFetch
+    // refuses unless a jit::Engine armed the window.
     if constexpr (C == Core::C68020) {
         if (u16 w; pomJitFetch020<(F & POLL) != 0>(reg.pc + 2, w)) {
+            queue.irc = w;
+            readBuffer = w;
+            return;
+        }
+    } else {
+        if (u16 w; pomJitFetch000<C, (F & POLL) != 0>(reg.pc + 2, w)) {
             queue.irc = w;
             readBuffer = w;
             return;
@@ -871,6 +878,13 @@ Moira::fullPrefetch()
 
     if constexpr (C == Core::C68020) {           // POM68K 020 window
         if (u16 w; pomJitFetch020<false>(reg.pc, w)) {
+            queue.irc = w;
+            if (delay) SYNC(delay);
+            prefetch<C, F>();
+            return;
+        }
+    } else {                                     // POM68K cycle-exact window
+        if (u16 w; pomJitFetch000<C, false>(reg.pc, w)) {
             queue.irc = w;
             if (delay) SYNC(delay);
             prefetch<C, F>();
@@ -928,6 +942,11 @@ Moira::readExt()
     reg.pc += 2;
     if constexpr (C == Core::C68020) {           // POM68K 020 window
         if (u16 w; pomJitFetch020<false>(reg.pc, w)) {
+            queue.irc = w;
+            return;
+        }
+    } else {                                     // POM68K cycle-exact window
+        if (u16 w; pomJitFetch000<C, false>(reg.pc, w)) {
             queue.irc = w;
             return;
         }

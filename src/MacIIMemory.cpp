@@ -293,12 +293,17 @@ uint16_t MacIIMemory::viaAccess(Via6522& via, uint32_t addr, bool write, uint16_
                 // that as overlay-on maps low mem back to ROM/open-bus,
                 // discards RAM writes, and the CPU dies at $640000 (FFFF).
                 // Overlay is a one-way latch: once clear, stay clear.
+                const bool wasOverlay = overlay_;
                 if (reg == Via6522::ORA || reg == Via6522::ORA_NH) {
                     if (overlay_ && !(v & 0x10))
                         overlay_ = false;
                 } else if (overlay_ && !(via.portA() & 0x10)) {
                     overlay_ = false;
                 }
+                // Low memory just stopped being the ROM: the whole map
+                // moved, which is the one invalidation a write guard is
+                // blind to (JitGuard.h § invalidate).
+                if (wasOverlay && !overlay_) jitMapChanged();
                 iwm_.setSel((reg == Via6522::ORA || reg == Via6522::ORA_NH)
                             ? (v & 0x20) != 0
                             : (via.portA() & 0x20) != 0);
@@ -411,7 +416,12 @@ void MacIIMemory::scsiDmaW(uint8_t v, bool /*berIfNoDrq*/) {
 
 void MacIIMemory::updateHmmuFromVia2() {
     // MAME macii.cpp hmmu_via2_out_b: (data & 0x8) ? DISABLE : ENABLE_II.
+    const bool was = hmmu24_;
     hmmu24_ = (via2_.portB() & 0x08) == 0;
+    // 24-bit ↔ 32-bit is a different address map for the same program
+    // counter (physAddr above), and nothing in a cached window or block
+    // could notice — the System flips this once, during startup.
+    if (was != hmmu24_) jitMapChanged();
 }
 
 uint32_t MacIIMemory::physAddr(uint32_t addr) const {
@@ -434,6 +444,75 @@ uint32_t MacIIMemory::physAddr(uint32_t addr) const {
     } else if (out >= 0xF00000u)
         out |= 0x50000000u;                  // I/O
     return out;
+}
+
+// ── JIT memory hooks (src/jit/POM68K_JIT.md § 4) ────────────────────────
+// The RAM half of both spans, factored out because codeSpan and dataSpan
+// answer it identically: an index into ram_ plus how far the GLUE window
+// stays linear from there. Mirrors ramAt() case for case — the two must
+// never disagree, or the window would serve bytes read8Decoded does not.
+const uint8_t* MacIIMemory::ramSpan(uint32_t addr, uint32_t& len) const {
+    if (addr < ramSize_) {
+        len = ramSize_ - addr;
+        return &ram_[addr];
+    }
+    // MAME via2_out_a for 8 MiB: bank A mirrored at [8 MiB, 12 MiB).
+    if (ramSize_ == 0x800000 && addr < 0x00C00000u) {
+        len = 0x00C00000u - addr;
+        return &ram_[addr - 0x800000];
+    }
+    len = 0;
+    return nullptr;
+}
+
+const uint8_t* MacIIMemory::codeSpan(uint32_t phys, uint32_t& len) const {
+    len = 0;
+    const uint32_t a = physAddr(phys);
+    if (a < 0x40000000u) {
+        // Overlay up: low memory IS the ROM, but only until the next VIA1
+        // PA4 write moves the whole map. Refused rather than tracked — the
+        // overlay lives for a few hundred milliseconds of a boot, and one
+        // less transient alias is worth more than the window over it.
+        if (overlay_) return nullptr;
+        // RAM only through a name the WRITE GUARD also uses. The guard is
+        // keyed on what the probe reported (JitEngine::markPages takes the
+        // address handed to this function), while write8Decoded notes the
+        // physAddr'd one — so a RAM address the GLUE remaps must not be
+        // served, or a store through the canonical name would never trip a
+        // block recorded through the mirrored one. In 32-bit mode physAddr
+        // is identity; in 24-bit mode it is identity for everything below
+        // $800000, which is all the RAM there is down there. What this
+        // refuses is exactly the high-byte aliases ($01000400 for $400).
+        if (a != phys) return nullptr;
+        return ramSpan(a, len);
+    }
+    if (a < 0x50000000u) {                       // ROM, mirrored every 256 KB
+        const uint32_t o = (a - 0x40000000u) & (kRomSize - 1);
+        len = kRomSize - o;
+        return rom_.data() + o;
+    }
+    return nullptr;                              // I/O, NuBus, open bus
+}
+
+uint8_t* MacIIMemory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
+    len = 0;
+    const uint32_t a = physAddr(phys);
+    if (a < 0x40000000u) {
+        if (overlay_) return nullptr;
+        if (a != phys) return nullptr;           // see codeSpan
+        return const_cast<uint8_t*>(ramSpan(a, len));
+    }
+    if (!write && a < 0x50000000u) {
+        const uint32_t o = (a - 0x40000000u) & (kRomSize - 1);
+        len = kRomSize - o;
+        return rom_.data() + o;
+    }
+    return nullptr;
+}
+
+void MacIIMemory::jitMapChanged() {
+    if (jitGuard_) jitGuard_->invalidate();
+    if (cpu_) cpu_->pomJitDtlbFlush();
 }
 
 uint8_t MacIIMemory::read8(uint32_t addr) {
@@ -526,7 +605,21 @@ void MacIIMemory::write8(uint32_t addr, uint8_t v) {
 void MacIIMemory::write8Decoded(uint32_t addr, uint8_t v) {
     if (addr < 0x40000000u) {
         if (overlay_) return;
-        if (uint8_t* p = ramAt(addr)) *p = v;
+        if (uint8_t* p = ramAt(addr)) {
+            // The guard is keyed on the address the window probe reported,
+            // which codeSpan pins to this same space. On an 8 MiB board one
+            // RAM byte carries TWO bus addresses (bank A is mirrored at
+            // [8 MiB, 12 MiB)), so note BOTH: a write through either view
+            // has to kill a block recorded through the other.
+            if (jitGuard_) {
+                jitGuard_->note(addr, 1);
+                if (ramSize_ == 0x800000) {
+                    if (addr < 0x400000)      jitGuard_->note(addr + 0x800000, 1);
+                    else if (addr >= 0x800000) jitGuard_->note(addr - 0x800000, 1);
+                }
+            }
+            *p = v;
+        }
         return;
     }
     if (addr >= 0x40000000u && addr < 0x50000000u) return;

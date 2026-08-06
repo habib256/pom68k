@@ -1540,6 +1540,14 @@ Moira::execPMove(u16 opcode)
                 // before the switch (LC II ROM "pmove tc; nop; bne; jmp")
                 mmuCapturePipe();
                 reg.tc = readM<C, M, Long>(ea);
+                // POM68K JIT: TC.E is the switch between "translation off,
+                // logical == physical" and a page-table walk, so every
+                // cached mapping — the code window, the data TLB and every
+                // recorded block — describes the wrong machine the instant
+                // it moves. The ATC flushers bump the generation but a
+                // PMOVE to TC does not touch the ATC, so it bumps its own.
+                // (The 040 twin is covered: setTC040 flushes the ATC.)
+                pomJitMapMoved();
 
                 if (reg.tc & 0x80000000) {
 
@@ -1571,6 +1579,7 @@ Moira::execPMove(u16 opcode)
                 mmuCapturePipe();       // POM68K O6: see the TC case
                 reg.srp = u64(readM<C, M, Long>(ea)) << 32;
                 reg.srp |= readM<C, M, Long>(ea + 4);
+                pomJitMapMoved();       // POM68K JIT: see the TC case
                 if ((reg.srp >> 32 & 3) == 0) {
                     execMmuConfigError<C>();
                     trapped = true;
@@ -1590,6 +1599,7 @@ Moira::execPMove(u16 opcode)
                 mmuCapturePipe();       // POM68K O6: see the TC case
                 reg.crp = u64(readM<C, M, Long>(ea)) << 32;
                 reg.crp |= readM<C, M, Long>(ea + 4);
+                pomJitMapMoved();       // POM68K JIT: see the TC case
                 if ((reg.crp >> 32 & 3) == 0) {
                     execMmuConfigError<C>();
                     trapped = true;
@@ -1957,6 +1967,23 @@ Moira::pomJitProbeCode(u32 logical, bool super,
     // without an MMU, so privilege never refuses (the window still re-arms
     // on privilege change via pomJitCovers' super check, harmlessly).
     if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) {
+        pageBase = logical & ~4095u;
+        pageLen  = 4096;
+        phys     = logical;
+        return true;
+    }
+
+    // 68000/68010 branch (2026-08-06): no MMU either, so translation is
+    // identity — with one thing the 020 does not have to say. These cores
+    // drive a 24-bit bus, and read<> masks every access with addrMask<C>()
+    // while the window is keyed on the UNMASKED pc. A pc above $FFFFFF
+    // would therefore name one byte to the interpreter and another to the
+    // window, so it is refused outright rather than masked: the window
+    // covers only addresses that are already their own bus address. Real
+    // Mac code never leaves the low 24 bits, so this refuses nothing that
+    // was going to be hot.
+    if (cpuModel == Model::M68000 || cpuModel == Model::M68010) {
+        if (logical > 0x00FFFFFFu) return false;
         pageBase = logical & ~4095u;
         pageLen  = 4096;
         phys     = logical;

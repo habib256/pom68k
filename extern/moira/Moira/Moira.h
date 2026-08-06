@@ -490,6 +490,14 @@ public:
     uint8_t *(*pomJitDtlbFillFn)(void *, u32, int) = nullptr;
     void *pomJitDtlbFillCtx = nullptr;
 
+    // POM68K JIT: the per-access bus charge a cycle-exact wrapper applies
+    // from inside read16() (pomJitFetch000 above). A plain function pointer
+    // rather than a virtual: it sits in the fetch path, and the per-fetch
+    // virtual is exactly the cost the i-cache overlay was folded inline to
+    // avoid (Moira.h § PomIcache, ~11 % of the emulator).
+    void (*pomJitBusStallFn)(void *, u32) = nullptr;
+    void *pomJitBusStallCtx = nullptr;
+
     // The privilege level rides in TAG BIT 31 (a page number is 20 bits),
     // so user and supervisor entries coexist and NOTHING is flushed on an
     // exception or an RTE. The first cut flushed the whole table from
@@ -575,6 +583,51 @@ public:
         mmuAccFc = readFC(); mmuAccWrite = false;
         out = u16(u16(p[0]) << 8 | p[1]);
         return true;
+    }
+
+    // POM68K JIT, cycle-exact flavour — 68000/68010 (2026-08-06).
+    //
+    // The 020 twin above can skip the whole of read<C,PROG,Word,F> because
+    // on Core::C68020 the SYNC(x) macro expands to nothing (MoiraMacros.h:
+    // `if constexpr (C != Core::C68020)`), so a windowed fetch changes NO
+    // cycle accounting. That argument does not survive on this core: SYNC
+    // is real, MOIRA_PRECISE_TIMING is on, and the compacts are the one
+    // family in POM68K whose timing claim is cycle-exact.
+    //
+    // So the window here replaces the BUS READ and nothing else. Everything
+    // read<> does around that read is cycle- or state-visible and is
+    // reproduced in read<>'s own order: the leading SYNC(2), the address
+    // error, the FC pins, POLL_IPL, the machine's own bus model, and the
+    // trailing SYNC(2). What is actually saved is one virtual read16() and
+    // the machine's address decode — on a Mac Plus that is two read8()
+    // switch dispatches per opcode word, which is the whole point.
+    //
+    // The watchpoint hook needs no line here: pomJitFetch() already refuses
+    // outright while State::CHECK_WP is set.
+    template <Core C, bool P> bool pomJitFetch000(u32 addr, u16 &out) {
+        const u8 *p;
+        if (!pomJitFetch(addr, 2, p)) return false;
+        // read<> SYNCs before it throws on an odd address, so bail out
+        // having charged NOTHING and let the ordinary path do both.
+        if (misaligned<C, Word>(addr)) return false;
+        setFC(FC::USER_PROG);
+        sync(2);
+        if constexpr (P) pollIpl();
+        // The machine's bus model rides inside read16() on this core (the
+        // Mac Plus video/RAM contention — Cpu68k::applyContention). No
+        // read16, no contention, unless the wrapper asks for it here.
+        if (pomJitBusStallFn) pomJitBusStallFn(pomJitBusStallCtx, addr & addrMask<C>());
+        out = u16(u16(p[0]) << 8 | p[1]);
+        sync(2);
+        return true;
+    }
+
+    // Installed by a cycle-exact wrapper whose read16() carries a bus model
+    // the window would otherwise skip. Null (the default) means the machine
+    // charges nothing per access, which is every non-compact board.
+    void pomJitSetBusStall(void (*fn)(void *, u32), void *ctx) {
+        pomJitBusStallFn = fn;
+        pomJitBusStallCtx = ctx;
     }
 
     // Byte offsets, measured from this object's address, of every field a
