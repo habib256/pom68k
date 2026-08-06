@@ -12,6 +12,21 @@
 
 #include <algorithm>
 
+// KNOWN MAME DIVERGENCE, deliberately kept (parity audit § 2.4, cosmetic).
+// MAME's swim1_device::device_reset (swim1.cpp:95-126) clears only the ISM
+// *register* file — m_ism_mode/m_ism_setup/m_ism_param_idx/m_ism_param — plus
+// the whole IWM half; it leaves the ISM *engine* alone: m_ism_fifo,
+// m_ism_fifo_pos, m_ism_error, m_ism_crc, m_ism_sr, m_ism_current_bit,
+// m_ism_tss_*, m_ism_mfm_sync_counter all survive a reset. (Contrast
+// swim2.cpp:52-80, which does clear them and seeds m_crc = $FFFF.) That is an
+// omission in the master, not modelled behaviour: nothing can observe stale
+// ISM state on real silicon's power-up path, and replicating it here would
+// leak a half-decoded byte, a latched error bit and a live FIFO across a
+// machine reset — and make a post-reset save state non-deterministic. So we
+// clear everything, and crc_ starts at the crcClear() seed rather than at
+// Swim2's MAME-exact $FFFF, because SWIM1 has no MAME reset constant to match.
+// Reopen only if a driver is found that reads the ISM FIFO before its first
+// write to the ISM register file.
 void Swim1::reset() {
     iwm_.reset();
     ismMode_ = false;
@@ -110,21 +125,25 @@ uint16_t Swim1::fifoPop() {
     return value;
 }
 
-// IWM mode-register write watcher (swim1.cpp:555-579): four writes to the
-// q7-set odd address whose bit 6 goes 1,0,1,1 switch the chip to ISM. Any
-// break in the pattern resets the counter.
-void Swim1::iwmModeWatch(uint8_t v) {
+// IWM-personality access watcher (MAME swim1.cpp:554-581): four writes to
+// offset 0xf whose bit 6 goes 1,0,1,1 switch the chip to ISM. The check
+// runs on EVERY IWM access — any access that is not the expected next
+// pattern step resets the counter (:578-579). Reads reach iwm_control with
+// data 0x00 (:153-154), so a READ of offset 0xf stands in for a 0 step.
+void Swim1::iwmModeWatch(int reg, uint8_t v) {
     const int prev = iwmToIsm_;
-    switch (iwmToIsm_) {
-        case 0: case 2:
-            if (v & 0x40) iwmToIsm_++;
-            break;
-        case 1:
-            if (!(v & 0x40)) iwmToIsm_++;
-            break;
-        case 3:
-            if (v & 0x40) enterIsm();
-            break;
+    if (reg == 15) {
+        switch (iwmToIsm_) {
+            case 0: case 2:
+                if (v & 0x40) iwmToIsm_++;
+                break;
+            case 1:
+                if (!(v & 0x40)) iwmToIsm_++;
+                break;
+            case 3:
+                if (v & 0x40) enterIsm();
+                break;
+        }
     }
     if (iwmToIsm_ != prev + 1) iwmToIsm_ = 0;
 }
@@ -143,19 +162,24 @@ void Swim1::leaveIsm() {
 }
 
 uint8_t Swim1::read(int reg) {
-    if (!ismMode_) return iwm_.read(reg);
-    return ismRead(reg & 7);
+    if (!ismMode_) {
+        iwmModeWatch(reg, 0x00);                 // reads carry data 0
+        return iwm_.read(reg);
+    }
+    return ismRead(reg & 7);                     // reads alias &7 (swim1.cpp:184)
 }
 
 void Swim1::write(int reg, uint8_t v) {
     if (!ismMode_) {
-        // The watcher sees every write to the mode/data address, exactly
-        // like MAME's offset-0xf hook (before the IWM consumes it).
-        if (reg == 15) iwmModeWatch(v);
+        // The watcher sees every IWM access, exactly like MAME's hook in
+        // iwm_control (before the IWM consumes it).
+        iwmModeWatch(reg, v);
         iwm_.write(reg, v);
         return;
     }
-    ismWrite(reg & 7, v);
+    // MAME swim1.cpp:269-337: the ISM WRITE decode uses the full offset —
+    // 8-15 fall to the logerror default and are ignored, never aliased.
+    if (reg < 8) ismWrite(reg, v);
 }
 
 uint8_t Swim1::ismRead(int reg) {
@@ -298,6 +322,9 @@ void Swim1::finishWrite() {
     if (!writeActive_) return;
     writeActive_ = false;
     SonyDrive* d = selectedDrive();
+    // Same deliberate divergence as Swim2::finishWrite: MAME's flush_write
+    // erases a transition-less span (write_flux with count 0), we leave the
+    // cells alone. See the long note there.
     if (!d || writeTransitions_.empty()) { writeTransitions_.clear(); return; }
 
     const uint64_t div = uint64_t(cellCycles()) * 2;   // half-cycles per cell
@@ -431,6 +458,10 @@ void Swim1::tickWrite(int cycles) {
                 sr_ = uint16_t(crc_ >> 8);       // 2nd CRC byte
             else {
                 uint16_t r = fifoPop();
+                // Same deliberate divergence as Swim2::tickWrite: MAME's
+                // swim1.cpp:944 gates the termination on `&& !m_ism_error`, so
+                // an underrun with an error already latched writes endless $FF
+                // mark bytes instead of stopping. See the long note there.
                 if (r == 0xFFFF) {
                     if (!error_) error_ |= 0x01; // underrun ends ACTION
                     finishWrite();

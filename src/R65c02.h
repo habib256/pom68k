@@ -22,9 +22,16 @@
 // have raced on.
 //
 // WAI/STP ($CB/$DB) are kept from POM2 (WDC behaviour, Klaus-gated).
-// MAME's r65c02 decodes them as NOPs; whether the NCR 65CX02 cell has
-// them is settled in M2 by scanning the uploaded IOP firmware — see
-// docs/IOP_BRINGUP.md §6.
+// MAME's r65c02 decodes them as 1-cycle NOPs. The M2 personality question
+// is CLOSED (docs/IOP_BRINGUP.md §4, "§6 WAI/STP question is CLOSED"): a
+// capstone sweep over BOTH shipped IOP firmware blobs finds zero $CB/$DB,
+// so the divergence is unreachable on every profile — and the richer
+// decode is what lets the Klaus 65C02 extended-opcodes image reach its
+// success trap, since that image tests WAI/STP. PIN (MAME-parity audit
+// §2.11, 2026-08-06): a future parity diff must NOT demote them to MAME's
+// NOPs — that would break r65c02_test. Reopening condition: a firmware
+// blob that does contain $CB/$DB, which would make the NCR 65CX02 cell's
+// real personality observable and worth settling on hardware evidence.
 //
 // Timing: architectural cycle counts (MAME om6502/ow65c02 lists). The
 // integrator owns the clock ratio (PIC core = host clock / 8).

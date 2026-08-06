@@ -32,6 +32,8 @@ public:
     bool isSuperDrive() const { return superDrive_; }
     void setSuperDrive(bool on) { superDrive_ = on; }
     bool mfmMode() const { return mfmMode_; }
+    // Setup-register reflection path (guarded); the seek strobes use the
+    // private commandMfmMode() — see the .cpp for the MAME split.
     void setMfmMode(bool on);
     bool isWriteProtected() const { return writeProtected_; }
     void setWriteProtected(bool on) { writeProtected_ = on; }
@@ -144,6 +146,7 @@ private:
     void selectSide(bool side1);
     int sectorsOnCurrentTrack() const;
     void setMotorState(bool on);
+    void commandMfmMode(bool on);                // seek-strobe MFM/GCR switch
     uint64_t soundMicros() const;
 
     std::vector<uint8_t> image_;                 // raw sector data
@@ -163,7 +166,10 @@ private:
     bool superDrive_ = false;                    // MFD-75W capability
     bool mfmMode_ = false;
     bool writeProtected_ = false;
-    bool motorOn_ = false, dirToZero_ = false, switched_ = false;
+    // switched_ = the DSKCHG latch, MAME's !m_dskchg: high after eject (or
+    // while empty since power-on), cleared by insert and by the DskchgClear
+    // strobe (floppy.cpp:560,672-673,723,3377-3379).
+    bool motorOn_ = false, dirToZero_ = false, switched_ = true;
     int64_t spin_ = 0;                           // motor-on time, CPU cycles
     int64_t cycles_ = 0;                         // free-running tick time
     FloppySoundSink* sound_ = nullptr;

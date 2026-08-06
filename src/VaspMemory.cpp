@@ -213,6 +213,10 @@ uint8_t VaspMemory::read8(uint32_t addr) {
     }
     if (addr >= 0x5FFFFFFC)                  // machine ID (maciivx.cpp:171)
         return uint8_t(machineId_ >> ((3 - (addr & 3)) * 8));
+    // $51000000-$5FFFFFFB: unmapped in MAME — every device window mirrors
+    // only $00F00000, i.e. stays inside $50xxxxxx (vasp.cpp:54-64,
+    // maciivx.cpp:156-166); no unmap_value_high, so reads return 0.
+    if (addr >= 0x51000000) return 0x00;
 
     // ── VASP I/O page $50xxxxxx (device windows mirror $F00000) ──
     const uint32_t low = addr & 0xFFFFF;
@@ -240,7 +244,21 @@ uint8_t VaspMemory::read8(uint32_t addr) {
         swim_.setSel((via_.portA() & 0x20) != 0);
         return swim_.read((low >> 9) & 0xF);
     }
-    if (low >= 0x24000 && low < 0x26000)     // Ariel-style DAC (vasp dac_r)
+    // ── Ariel-style DAC (vasp.cpp dac_r/dac_w) ─────────────────────────
+    // MAME maps the full 8 KB (vasp.cpp:60, map(0x10024000,0x10025fff))
+    // but its dac_r/dac_w switch on the RAW window offset and only decode
+    // 0-3 (vasp.cpp:389-432), so on master everything from +4 to +$1FFF
+    // reads 0 and swallows writes. POM68K decodes A0-A1 and mirrors the
+    // four registers over the window instead — a deliberate divergence:
+    // an 8 KB chip select feeding a 4-register RAMDAC is partial decode,
+    // which mirrors on real silicon; MAME's zero band is an artifact of
+    // reusing the map's offset as a register index, not a modelled
+    // behaviour (v8.cpp:93 has the identical shape for the LC/LC II
+    // Ariel, and V8Memory.cpp mirrors it the same way). Cosmetic either
+    // way — no ROM or driver on the shipped profiles touches +4 and up —
+    // so the more-faithful form is kept. If an oracle ever shows the real
+    // VASP answering 0 above +3, this is the line to narrow.
+    if (low >= 0x24000 && low < 0x26000)
         return ariel_.read(low & 3);
     if (low >= 0x26000 && low < 0x28000) {
         uint8_t d = pvia_.read(low - 0x26000);
@@ -262,6 +280,7 @@ void VaspMemory::write8(uint32_t addr, uint8_t v) {
         if (addr < 0x70000000) vram_[addr & (kVramSize - 1)] = v;
         return;
     }
+    if (addr >= 0x51000000) return;          // unmapped (see read8)
     const uint32_t low = addr & 0xFFFFF;
     if (low < 0x2000) { viaAccess8(low, true, v); return; }
     if (cpu_) cpu_->flushTicks();
@@ -288,6 +307,8 @@ void VaspMemory::write8(uint32_t addr, uint8_t v) {
         swim_.write((low >> 9) & 0xF, v);
         return;
     }
+    // DAC: A0-A1 only, mirrored over the 8 KB select — see read8 for why
+    // this deliberately diverges from vasp.cpp:401-432.
     if (low >= 0x24000 && low < 0x26000) { ariel_.write(low & 3, v); return; }
     if (low >= 0x26000 && low < 0x28000) {
         pvia_.write(low - 0x26000, v);
@@ -319,7 +340,8 @@ uint16_t VaspMemory::read16(uint32_t addr) {
         return uint16_t(vram_[o] << 8 | vram_[(o + 1) & (kVramSize - 1)]);
     }
     // VIA1 word reads mirror the byte on both lanes (vasp mac_via_r).
-    if (addr >= 0x50000000 && addr < 0x60000000) {
+    // $51000000+ is unmapped (see read8), so the fast paths stop there.
+    if (addr >= 0x50000000 && addr < 0x51000000) {
         const uint32_t low = addr & 0xFFFFF;
         if (low < 0x2000) {
             uint16_t d = viaAccess8(low, false, 0);
@@ -353,7 +375,7 @@ void VaspMemory::write16(uint32_t addr, uint16_t v) {
         vram_[(o + 1) & (kVramSize - 1)] = uint8_t(v);
         return;
     }
-    if (addr >= 0x50000000 && addr < 0x60000000) {
+    if (addr >= 0x50000000 && addr < 0x51000000) {
         const uint32_t low = addr & 0xFFFFF;
         if (low < 0x2000) {
             // VIA1 word writes: low lane first (vasp mac_via_w)

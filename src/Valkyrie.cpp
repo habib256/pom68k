@@ -11,6 +11,7 @@ void Valkyrie::reset() {
     monitorId_ = 0;
     palAddress_ = palIdx_ = 0;
     enabled_ = false;
+    vblArmed_ = false;              // valkyrie.cpp:75 — timer starts at never
     hres_ = vres_ = htotal_ = vtotal_ = 0;
     stride_ = 1024;
     pixelClock_ = 31334400;
@@ -47,7 +48,11 @@ void Valkyrie::recalcMode() {
 // effect. We implement its *effect* (M==0 is a division by zero anyway, and
 // that is the configuration Apple's own note programs) without the typo:
 // no register is corrupted by reading it. If a guest is ever seen to depend
-// on P becoming 98, this is the line to revisit.
+// on P becoming 98, this is the line to revisit. (P is also what our own
+// shift `1u << (clkP_ & 31)` is bounded by — MAME's `1 << m_P` with an
+// unclamped u8 is UB for P ≥ 32, which its own typo can produce.)
+// Pinned 2026-08-06: a future parity diff must not "restore" the typo.
+// Gate: tests/valkyrie_i2c_test.cpp.
 void Valkyrie::i2cWrite(uint8_t reg, uint8_t value) {
     switch (reg) {
         case 1: clkM_ = value; break;
@@ -119,9 +124,17 @@ void Valkyrie::writeReg8(uint32_t off, uint8_t v) {
             config_ = v;
             intStatus_ &= uint8_t(~1);
             recalcIrq();
+            // Every $10 write also (re)arms the VBL timer at line vres
+            // (valkyrie.cpp:323) — a guest may ack + arm here before it
+            // ever touches the screen enable.
+            vblArmed_ = true;
             break;
         case 0x18:                                  // screen enable
             enabled_ = (v & 0x80) || v == 0x02;
+            // ...which also arms ($81/$02) or cancels (anything else) the
+            // VBL timer (valkyrie.cpp:326-336). It does NOT stop the frame
+            // counter: MAME's screen device free-runs regardless.
+            vblArmed_ = enabled_;
             break;
         case 0x1C:                                  // drive the sense pins
             monitorId_ = uint8_t(v & 7);
@@ -163,9 +176,18 @@ void Valkyrie::writeRamdac32(uint32_t off, uint32_t data) {
     }
 }
 
-// Frame clock: MAME arms a timer at line `m_vres` and re-arms it at 480 —
-// POM68K keeps a free-running pixel-clock position instead (the Dafb cell
-// pattern) and raises the VBL as the beam crosses the end of the display.
+// Frame clock. **Deliberate divergence from the oracle, in its favour —
+// do not "fix" this back.** MAME arms the first VBL at line `m_vres`
+// (valkyrie.cpp:323/331) and then re-arms every later one at a hard-coded
+// line 480 (vbl_tick, valkyrie.cpp:534-540) — so on the 512×384 mode
+// (vres 384, vtotal 407) and on the 832×624 mode (vres 624) the steady
+// state fires at the wrong line, and for 832×624 MAME is saved only by
+// screen_device wrapping vpos. POM68K keeps a free-running pixel-clock
+// position instead (the Dafb cell pattern) and raises the VBL as the beam
+// crosses the end of the display, every frame, at the mode's own `vres`.
+// Every mode in the table is then consistent, and the $14 blanking
+// register — which answers from the same accumulator — can never disagree
+// with the interrupt. Gate: tests/valkyrie_test.cpp.
 // The scanline the beam is on, straight from the frame accumulator. The
 // ONE place this arithmetic lives: tick() drives the VBL from it and the
 // $14 blanking register reads it, so the two cannot drift apart.
@@ -175,7 +197,13 @@ int Valkyrie::currentLine() const {
 }
 
 void Valkyrie::tick(int cpuCycles) {
-    if (!vtotal_ || !htotal_ || !enabled_) return;
+    // The beam free-runs from the moment a mode is programmed: screen
+    // enable ($18) and the $10 write only arm/cancel the VBL *timer*
+    // (valkyrie.cpp:317-337), and the $14 blanking register answers the
+    // live screen position (valkyrie.cpp:255-256) — it must oscillate
+    // before $18 is ever written, or a guest that waits for VBL before
+    // enabling the screen wedges.
+    if (!vtotal_ || !htotal_) return;
     framePos_ += int64_t(cpuCycles) * pixelClock_;
     const int64_t frameCycles = int64_t(htotal_) * vtotal_ * cpuHz_;
     while (framePos_ >= frameCycles) {
@@ -186,8 +214,16 @@ void Valkyrie::tick(int cpuCycles) {
     const int line = currentLine();
     if (line != prevLine_) {
         const int vbl = int(vres_);
-        // crossed the display end (wrapping included)
-        if ((prevLine_ < vbl && line >= vbl) || line < prevLine_) {
+        // Crossed the display end — ONCE per frame, wrap included. The
+        // wrap arm must require prevLine_ < vbl: without that guard the
+        // frame rollover re-fired an interrupt the vres crossing had
+        // already served, doubling the VBL rate seen by an acking guest
+        // (found 2026-08-06 by the parity pass; Dafb::tick's crossed()
+        // lambda has the correct form). Armed-only, like valkyrie.cpp's
+        // vbl_tick.
+        if (vblArmed_ &&
+            ((prevLine_ < vbl && line >= vbl) ||
+             (line < prevLine_ && prevLine_ < vbl))) {
             intStatus_ |= 1;
             recalcIrq();
         }

@@ -155,7 +155,8 @@ public:
            testMode_, tcount_, tcounter_, dmaCommand_, fifo_, fifoPos_,
            dataXfer_, phase_, cmd_, dataIn_, dataInPos_, dataOut_,
            dataOutExpected_, targetStatus_, msgInLeft_,
-           reads, writes, selects, commands, dmaBytes, lastCmd);
+           reads, writes, selects, commands, dmaBytes, lastCmd,
+           cmdQueue_, cmdQueuePos_);
 
         std::int8_t sel = -1;
         if constexpr (!Ar::loading) {
@@ -186,6 +187,14 @@ private:
                                          // DISC_SEL_ARBITRATION empty-FIFO path)
     bool testMode_ = false;
 
+    // 2-deep command queue (ncr53c90.cpp:886-916 command[2]/command_pos):
+    // slot 0 = executing command, slot 1 = one queued behind it; a third
+    // write sets S_GROSS_ERROR and is dropped. The queued command starts
+    // when the interrupt-status read pops the finished one
+    // (istatus_r → command_pop_and_chain, ncr53c90.cpp:1116-1117).
+    uint8_t cmdQueue_[2] = {};
+    int cmdQueuePos_ = 0;
+
     // 24-bit transfer counter (reload latch `tcount_`, live `tcounter_`).
     uint32_t tcount_ = 0, tcounter_ = 0;
     bool dmaCommand_ = false;            // last command was a DMA variant
@@ -215,7 +224,10 @@ private:
     int msgInLeft_ = 0;                   // MESSAGE IN bytes still to deliver
 
     // Engine helpers
+    void commandWrite(uint8_t c);         // R_COMMAND: queue + gross error
+    void commandPopAndChain();            // ISTAT read pops + starts queued
     void startCommand(uint8_t c);
+    bool checkValidCommand_(uint8_t op) const;  // #40: mode/command validation
     void selectTarget(bool withAtn, bool stopAfterMsg = false);
     void transferInfo();                  // CI_XFER: move one phase's worth
     void raiseIrq(uint8_t istatusBits);

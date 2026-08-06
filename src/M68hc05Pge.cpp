@@ -64,6 +64,21 @@ void M68hc05Pge::reset() {
     pc_ = read16(0xFFFE);                            // reset vector
 }
 
+// MAME-parity audit §2.12 (cosmetic, DOCUMENT-SKIP 2026-08-06 — and the
+// claim shrank on re-check). The audit flagged "external /IRQ latch not
+// cancelled on deassert". Verified against master: MAME does exactly the
+// same. m6805_base_device::execute_set_input (m6805.cpp:576-587) only ever
+// ORs the pending bit in on a transition to non-CLEAR and never clears it
+// on the way down — the latch is released when the vector is TAKEN, in
+// both models. So there is no divergence left to align, only an
+// unmodelled release path shared with MAME. It is moot on this platform
+// regardless: nothing in src/ calls setIrqLine() on the PG&E — the Duo's
+// /IRQ pin is not wired to anything yet (the BORG causes we do model
+// arrive as INT_ADB / INT_RTI / INT_CPI / INT_SPI).
+// Reopening condition: whoever wires the /IRQ pin (sleep/wake, milestone
+// per docs/DUO_BRINGUP.md) owns deciding whether the shipped firmware
+// needs a level-sensitive release; the answer is not MAME's, since MAME
+// leaves the pin unwired too (macpwrbkmsc.cpp binds no IRQ source).
 void M68hc05Pge::setIrqLine(bool asserted) {
     if (asserted && !irqLine_) pending_ |= INT_IRQ;
     irqLine_ = asserted;
@@ -725,6 +740,19 @@ int M68hc05Pge::execOne() {
                     cc_ |= CC_I;
                     pc_ = read16(0xFFFC);
                     break;
+                // MAME-parity audit §2.12 (cosmetic, DOCUMENT-SKIP
+                // 2026-08-06): STOP is approximated as WAIT — I cleared,
+                // core idle, on-chip timers (RTI, CPI, SPI, the ADB cell)
+                // still counting; a true STOP gates the oscillator and
+                // freezes them. There is nothing to align to: MAME's
+                // handlers for both opcodes are
+                // `fatalerror("unimplemented STOP/WAIT")`
+                // (6805ops.hxx:527-539), so any Duo firmware reaching $8E
+                // kills MAME outright. WAIT is the conservative
+                // approximation — a STOPped PMU still wakes on its own
+                // timer instead of hanging the machine. Reopen with the
+                // sleep/wake milestone (docs/DUO_BRINGUP.md), where "the
+                // timers must stop" becomes an actual requirement.
                 case 0x8E:                           // STOP
                 case 0x8F:                           // WAIT
                     cc_ &= uint8_t(~CC_I);

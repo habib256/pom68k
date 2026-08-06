@@ -97,7 +97,9 @@ private:
 
     uint8_t ismRead(int reg);
     void ismWrite(int reg, uint8_t v);
-    void iwmModeWatch(uint8_t v);                // 1-0-1-1 bit-6 pattern
+    // 1-0-1-1 bit-6 pattern on offset 0xf; runs on EVERY IWM access —
+    // anything that is not the expected next step resets the counter.
+    void iwmModeWatch(int reg, uint8_t v);
     void enterIsm();
     void leaveIsm();
 

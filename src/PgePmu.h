@@ -18,7 +18,10 @@
 //               write bit 2 = PMU interrupt to the host (VIA1 CB1 IFR)
 //   Port G      read: charger present, dock powered; write bit 5 =
 //               sleep (1 = master clock off; 1→0 = wake + CPU reset)
-//   Port H      write bit 6 = /PMU_ACK (pseudo-VIA2 PB1)
+//   Port H      write bit 6 = /PMU_ACK (pseudo-VIA2 PB1); reads return
+//               the write latch, which STARTS AT $00 — bit 0 (DFAC reset)
+//               must read 0 for the boot ROM to configure the DFAC
+//               (macpwrbkmsc.cpp:129, pmu_porth_r:543-546)
 //   Port J/L    DFAC / power rails — latched, logged
 //   ADC         ch0 bat-low $FF, ch1 bat-high $7F, ch2 current $40,
 //               ch3/4 temps 131 (~24 °C) — the MAME fixed board values
@@ -61,6 +64,11 @@ public:
     // pulse the CPU reset and re-arm the ROM overlay (pmu_portg_w +
     // msc.cpp pmu_reset_w).
     std::function<void()> onWake;
+    // port E bit 2 rising edge = the PMU releasing the 68030's /RESET:
+    // the machine re-arms the ROM overlay and resets the CPU
+    // (pmu_porte_w:431-441 → msc.cpp pmu_reset_w:363-378). The low LEVEL
+    // is the hold, reported by cpuHeld().
+    std::function<void()> onCpuReset;
     std::function<void(bool)> onDisplayBlank;        // port E bit 1
 
     // RTC seed (Mac epoch) — PRAM/clock live inside the PMU on Duos.
@@ -78,7 +86,8 @@ public:
     template <class Ar> void visit(Ar& ar) {
         if (mcu_) ar(*mcu_);
         ar(mcuAcc_, mcuDebt_, held_, porteBit2_, ackLevel_, reqLevel_,
-           lastPortE_, lastPortF_, lastPortG_, lastPortC_, lastMosi_);
+           lastPortE_, lastPortF_, lastPortG_, lastPortC_, lastPortH_,
+           lastMosi_);
         ar(ds2400_, adb_);
     }
 
@@ -101,6 +110,10 @@ private:
     bool reqLevel_ = true;                           // /PMU_REQ idle
     uint8_t lastPortE_ = 0xFF, lastPortF_ = 0xFF, lastPortG_ = 0xFF;
     uint8_t lastPortC_ = 0xFF;                       // matrix row select
+    // Port H read-back latch. $00 at power-on is load-bearing: bit 0 is
+    // the DFAC reset and the PG&E boot ROM only configures the DFAC when
+    // it starts low (MAME macpwrbkmsc.cpp:129 m_last_porth, :543-546).
+    uint8_t lastPortH_ = 0x00;
     bool lastMosi_ = false;
     int hostSpin_ = 0;                               // machine cycles owed
     // The ADB bus behind the PG&E's modem cell. Command-level is honest

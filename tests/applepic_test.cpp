@@ -209,6 +209,74 @@ int main()
     CHECK((pic.intFlags() & 0x04) != 0, "DMA2 completion flag must be set");
     pic.reqbW(false);
 
+    // 8. Unmapped register-hole reads return 0, not open-bus $FF: MAME's
+    // internal_map (applepic.cpp:63-77) leaves $F000-$F00F, $F014-$F01F,
+    // $F036-$F03F and $F050-$F7FF unmapped (default unmap value 0), and the
+    // in-range DMA holes return 0 explicitly (applepic.cpp:345-351). Read
+    // through the shared-RAM window, which decodes the full 65C02 space.
+    bool holeOk = true;
+    for (int a : {0xF000, 0xF014, 0xF027, 0xF02F, 0xF036, 0xF050, 0xF7FF}) {
+        setAddr(pic, static_cast<uint16_t>(a));
+        holeOk = holeOk && (pic.hostRead(4) == 0x00);
+    }
+    CHECK(holeOk, "register-hole reads must return 0 (MAME unmapped default)");
+
+    // 9. DEN1ON2 / DEN2ON1 alternating-buffer chaining — POM68K is
+    // FUNCTIONAL here and MAME is not (MAME-parity audit §2.11, pinned
+    // 2026-08-06). `dma_timer_callback` opens with
+    //     auto other_channel = m_dma_channel[ch ^ 1];       // applepic.cpp:391
+    // — by VALUE — so the DMAEN it sets at :413 lands in a stack copy that
+    // is thrown away, and the chain never arms on master. This gate exists
+    // so a future parity diff cannot import that bug: channel B is armed
+    // with DENxONx but WITHOUT DMAEN and must start only when A completes.
+    // A fresh device keeps the state above out of it.
+    {
+        ApplePic chain;
+        chain.readPeriph = [](int) -> uint8_t { return 0x5A; };
+        auto sa = [&](uint16_t a) {
+            chain.hostWrite(0, static_cast<uint8_t>(a >> 8));
+            chain.hostWrite(1, static_cast<uint8_t>(a));
+        };
+        // Auto-increment on; /RSTPIC stays low so the 65C02 never runs and
+        // only the DMA engine touches RAM.
+        chain.hostWrite(2, 0x02);
+        sa(0xF028);
+        for (uint8_t b : { 0x5C, 0x00, 0x11, 0x04, 0x00 })   // B: io5, DIR, CHAIN, !EN
+            chain.hostWrite(4, b);
+        sa(0xF020);
+        for (uint8_t b : { 0x35, 0x00, 0x10, 0x04, 0x00 })   // A: io3, DIR, EN
+            chain.hostWrite(4, b);
+        chain.reqaW(true);
+        chain.reqbW(true);
+        chain.tick(400);
+        sa(0xF02B);
+        const uint8_t tcB = chain.hostRead(4);
+        CHECK(tcB == 0x00, "DENxONx must run channel B to tc=0 (got $%02X)", tcB);
+        CHECK((chain.intFlags() & 0x06) == 0x06,
+              "both DMA completion flags must be set (got $%02X)", chain.intFlags());
+
+        // Negative control: no DENxONx, B must stay parked.
+        ApplePic noChain;
+        noChain.readPeriph = [](int) -> uint8_t { return 0x5A; };
+        auto sa2 = [&](uint16_t a) {
+            noChain.hostWrite(0, static_cast<uint8_t>(a >> 8));
+            noChain.hostWrite(1, static_cast<uint8_t>(a));
+        };
+        noChain.hostWrite(2, 0x02);
+        sa2(0xF028);
+        for (uint8_t b : { 0x54, 0x00, 0x11, 0x04, 0x00 })   // B: no CHAIN bit
+            noChain.hostWrite(4, b);
+        sa2(0xF020);
+        for (uint8_t b : { 0x35, 0x00, 0x10, 0x04, 0x00 })
+            noChain.hostWrite(4, b);
+        noChain.reqaW(true);
+        noChain.reqbW(true);
+        noChain.tick(400);
+        sa2(0xF02B);
+        CHECK(noChain.hostRead(4) == 0x04 && (noChain.intFlags() & 0x04) == 0,
+              "without DENxONx channel B must stay parked");
+    }
+
     if (failures == 0) {
         std::printf("OK\n");
         return 0;

@@ -93,6 +93,31 @@ void AdbVia::setupPicPorts() {
         line_.setHostDrive(!(v & 0x04));           // RA2=1 pulls the line low
     };
     pic_.readB = [this]() -> uint8_t {
+        // ── MAME's CB2 anti-race guard is DELIBERATELY not ported ──
+        // MAME-parity audit §2.9 (cosmetic, DOCUMENT-SKIP 2026-08-06,
+        // claim re-verified). `adbmodem_device::set_via_data`
+        // (adbmodem.cpp:195-217) accepts a new CB2 level only while the
+        // last CB1 clock it wrote was 0, because MAME's wiring is a PUSH
+        // model: the VIA calls set_via_data whenever CB2 moves, the value
+        // sits in m_via_data, and the PIC reads that LATCH whenever it next
+        // runs. On a fast guest (MAME's own example is the IIci) the 68k
+        // writes the ACR — driving CB2 high — before the PIC has sampled
+        // the last bit, and the stale latch is overwritten; MAME's symptom
+        // was Talk R0 decoded as R1 and the mouse button going berserk.
+        // POM68K has no latch to clobber. This is a PULL model: the line
+        // below reads sr_ bit 7 live (`Via6522::extShiftCB2Out`, a pure
+        // accessor) at the instant the PIC executes its port-B read, and
+        // AdbVia::syncTo runs the PIC forward to the exact machine cycle
+        // before ANY guest VIA1 access is decoded (MacIIMemory.cpp:274,
+        // and the equivalent hook on every other AdbVia platform). The
+        // 68k therefore cannot write the ACR "before the PIC sampled" —
+        // the PIC has already been stepped to that cycle. Porting the
+        // guard would ADD a failure mode: it would reject legitimate CB2
+        // levels during the shift-out phase, where the PIC reads CB2
+        // AFTER raising CB1 (see Via6522::extShiftCB1's mode-7 comment).
+        // Reopening condition: only if the co-stepping is ever relaxed to
+        // batch the PIC against a peripheral deadline instead of the CPU
+        // clock, i.e. if syncTo stops being called per VIA1 access.
         return uint8_t(0xF7 | (via_->extShiftCB2Out() ? 0x08 : 0));   // RB3 = CB2 in
     };
     pic_.writeB = [this](uint8_t v) {

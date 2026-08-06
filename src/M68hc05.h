@@ -144,9 +144,10 @@ private:
     uint8_t onesec_ = 0;
     int64_t cycles_ = 0;                             // total cycles (timer ctr)
     // MAME arms the programmable timer only in pll_w (m68hc05e1.cpp:158)
-    // and the one-second timer only in onesec_w (:200) — neither free-runs
-    // from reset. Letting them free-run skewed the firmware's timekeeping
-    // into a catch-up freeze ~4.7 s into the Q605 boot.
+    // and the one-second timer only in onesec_w (:201, which re-arms the
+    // 1 Hz phase on EVERY write) — neither free-runs from reset. Letting
+    // them free-run skewed the firmware's timekeeping into a catch-up
+    // freeze ~4.7 s into the Q605 boot.
     bool progArmed_ = false, onesecArmed_ = false;
     int64_t progTimerAcc_ = 0;                       // → overflow per 512 cyc
     int64_t onesecAcc_ = 0;

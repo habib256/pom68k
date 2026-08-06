@@ -122,6 +122,34 @@ int main() {
               "$20 on 4 MB: MB truncated to 2 MB, hole reads open bus");
     }
 
+    // ── Tinker Bell (Mac TV) RAM override ──────────────────────────────
+    // MAME v8.cpp:1066-1101 tinkerbell_device::ram_size: motherboard 4 MB
+    // ALWAYS at 0, SIMM ALWAYS at $400000, and NO $800000 motherboard
+    // image — the $C0 config ("8 MB SIMM, alias only" on V8) means
+    // 4 MB motherboard + 4 MB SIMM here. Pure address decode, no CPU.
+    {
+        V8Memory mem(0x800000, V8Memory::Model::MacTv, V8Memory::kCpuHzTv);
+        mem.loadRom(rom);
+        (void)mem.read8(0xA00000);           // clear overlay → config $C0
+
+        mem.write8(0x000000, 0x11);          // motherboard byte 0
+        mem.write8(0x400000, 0x22);          // SIMM byte 0
+        check(mem.read8(0x000000) == 0x11 && mem.read8(0x400000) == 0x22,
+              "MacTv $C0: MB at 0 and SIMM at $400000, distinct banks");
+        mem.write8(0x7FFFFF, 0x33);
+        check(mem.read8(0x7FFFFF) == 0x33,
+              "MacTv $C0: full 8 MB usable up to $7FFFFF");
+        check(mem.read8(0x800000) == 0xFF && mem.read8(0x9FFFFF) == 0xFF,
+              "MacTv: no $800000 motherboard image (open bus)");
+        mem.write8(0x800000, 0x44);          // must land nowhere
+        check(mem.read8(0x000000) == 0x11,
+              "MacTv: a $800000 write does not hit motherboard RAM");
+
+        mem.write8(0xF26001, 0x00);          // SIMM bits clear → unmapped
+        check(mem.read8(0x000000) == 0x11 && mem.read8(0x400000) == 0xFF,
+              "MacTv $00: MB stays at 0, SIMM hole reads open bus");
+    }
+
     // ── ROM window ───────────────────────────────────────────────────
     {
         V8Memory mem;
@@ -194,6 +222,25 @@ int main() {
         mem.write8(0xF24001, 0x20);          // G
         mem.write8(0xF24001, 0x30);          // B, then auto-increment
         check(mem.ariel().pen(1) == 0x102030, "Ariel: palette write RGB auto-inc");
+
+        // Reading the address register resets the RGB write phase
+        // (Brooktree behaviour, MAME ariel.cpp:96-106).
+        mem.write8(0xF24000, 2);             // address = 2, phase 0
+        mem.write8(0xF24001, 0x40);          // R (phase → 1)
+        (void)mem.read8(0xF24000);           // address read → phase back to 0
+        mem.write8(0xF24001, 0x50);          // overwrites R, not G
+        mem.write8(0xF24001, 0x60);          // G
+        mem.write8(0xF24001, 0x70);          // B
+        check(mem.ariel().pen(2) == 0x506070,
+              "Ariel: address-register read resets the RGB phase");
+    }
+
+    // ── Spice VIA1 port A id ────────────────────────────────────────────
+    // The Color Classic reads a plain $82 — no diag-bit OR, spice has no
+    // config input port at all (MAME v8.cpp:703-704, 755-758).
+    {
+        V8Memory cc(0xA00000, V8Memory::Model::ColorClassic);
+        check(cc.via1().portA() == 0x82, "Spice: VIA1 PA reads plain $82");
     }
 
     // ── Interrupt priority resolver ─────────────────────────────────────
@@ -234,6 +281,46 @@ int main() {
             }
         }
         check(ticks == 60, "tick timer: 60 CA1 pulses in one second (60.15 Hz)");
+    }
+
+    // ── Ariel register file: two pins against a future parity diff ──────
+    // Audit docs/MAME_PARITY_AUDIT.md § 2.13/§ 2.14, both "POM68K plus
+    // riche". The V8 maps the RAMDAC at $F24000 over an 8 KB window
+    // (v8.cpp:93, map(0x524000,0x525fff)).
+    {
+        V8Memory mem;
+        mem.loadRom(rom);
+
+        // 1. The key-color register at +3 is REAL here. MAME declares
+        // m_key_color, saves it, and then aliases both accessors onto
+        // m_control (ariel.cpp:169-177) — so on master a +3 write silently
+        // rewrites the depth / master-slave control byte. A plain bug: the
+        // file's own header (:13-25) describes +3 as the overlay key.
+        mem.write8(0xF24002, 0x0B);          // control: 8 bpp, master
+        mem.write8(0xF24003, 0x5A);          // key colour
+        check(mem.read8(0xF24002) == 0x0B,
+              "Ariel: a key-colour write leaves control alone (MAME aliases)");
+        check(mem.read8(0xF24003) == 0x5A,
+              "Ariel: the key-colour register reads back its own value");
+
+        // 2. Only A0-A1 are decoded — the four registers mirror over the
+        // whole 8 KB select. MAME's device switches on the raw map offset
+        // and answers 0 from +4 up (ariel.cpp:62-94); an 8 KB chip select
+        // on a 4-register RAMDAC is partial decode on real silicon. Dead
+        // path either way (nothing shipped touches +4 and up).
+        check(mem.read8(0xF24006) == 0x0B && mem.read8(0xF25FFE) == 0x0B,
+              "Ariel: control mirrors across the 8 KB window (partial decode)");
+        mem.write8(0xF25FFF, 0xA5);          // write through the mirror…
+        check(mem.read8(0xF24003) == 0xA5,   // …lands on the key register
+              "Ariel: writes through the mirror reach the same register");
+
+        // The palette phase itself: address, R, G, B, auto-increment.
+        mem.write8(0xF24000, 0x20);
+        mem.write8(0xF24001, 0x11);
+        mem.write8(0xF24001, 0x22);
+        mem.write8(0xF24001, 0x33);
+        check(mem.read8(0xF24000) == 0x21,
+              "Ariel: the address auto-increments after a full RGB triple");
     }
 
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");

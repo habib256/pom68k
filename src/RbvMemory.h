@@ -269,6 +269,33 @@ private:
     Via6522 via_;
     // rbv.cpp:66 wires APPLE_PSEUDOVIA — the base device: the ASC IRQ is
     // edge-latched and the guest's IFR ack sticks.
+    // The MDU's pseudo-VIA — the original one, ancestor of the V8/Sonora/
+    // VASP variants (pseudovia.cpp:14-21).
+    //
+    // ── A documented hardware quirk BOTH emulators decline to model ────
+    // MAME's own header states it (pseudovia.cpp:17-20, from Doug Brown's
+    // tests on a real IIci): on the MDU ASIC — i.e. the IIci and IIsi, this
+    // machine and no other — "bit 7 of 0x13 (IER) reads back as '1'
+    // instead of the expected '0'"; V8 and everything after it read 0.
+    // MAME then hardwires bit 7 = 0 for every flavour (pseudovia.cpp:241,
+    // :432, :544) — the quirk is described and not implemented.
+    //
+    // POM68K keeps MAME parity here, deliberately, on three grounds:
+    //   1. Modelling it would make POM68K the ONLY implementation with a
+    //      bit set that no ROM was ever observed to require, on a register
+    //      the oracle has no reading for — a divergence with no arbiter.
+    //   2. The write side treats bit 7 as the set/clear selector, so a
+    //      guest doing read-modify-write on the IER would have its "clear
+    //      these sources" turned into "enable these sources" the moment
+    //      bit 7 came back 1. That is a live regression risk on the IIci
+    //      and IIsi boot paths, in exchange for zero observable gain.
+    //   3. The gating would have to live in PseudoVia's Base flavour,
+    //      which is shared with the V8-era chips where bit 7 genuinely
+    //      reads 0 — and whose Base flavour already carries an open
+    //      medium finding (the IER `$FF` → `$1F` store, audit table #19).
+    // Reopening condition: a IIci/IIsi ROM path or a hardware trace that
+    // actually depends on bit 7 reading 1. Then it becomes a new
+    // PseudoVia::Flavour::Mdu, not a tweak to Base.
     PseudoVia pvia_{PseudoVia::Flavour::Base};
     Egret egret_;
     CudaLle egretLle_;               // Egret firmware LLE (344S0100) — IIsi

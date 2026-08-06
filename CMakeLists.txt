@@ -533,6 +533,41 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(valkyrie_i2c_test PRIVATE pom68k_core)
     add_test(NAME valkyrie_i2c_test COMMAND valkyrie_i2c_test)
 
+    # MAME-parity gates (2026-08-05 audit, medium wave): free-running Valkyrie
+    # frame clock, SCC interrupt trio, 53C96 command queue, MSC SOUND_BUSY +
+    # PMU-driven CPU reset, EASC flavour, DAFB TurboSCSI hold-off.
+    add_executable(valkyrie_test tests/valkyrie_test.cpp)
+    target_link_libraries(valkyrie_test PRIVATE pom68k_core)
+    add_test(NAME valkyrie_test COMMAND valkyrie_test)
+
+    add_executable(scc_int_test tests/scc_int_test.cpp)
+    target_link_libraries(scc_int_test PRIVATE pom68k_core)
+    add_test(NAME scc_int_test COMMAND scc_int_test)
+
+    # MAME-parity gate (low wave): T2 PB6 pulse counting, SR recirculation,
+    # T1-driven PB7 square wave.
+    add_executable(via6522_parity_test tests/via6522_parity_test.cpp)
+    target_link_libraries(via6522_parity_test PRIVATE pom68k_core)
+    add_test(NAME via6522_parity_test COMMAND via6522_parity_test)
+
+    add_executable(ncr53c96_queue_test tests/ncr53c96_queue_test.cpp)
+    target_link_libraries(ncr53c96_queue_test PRIVATE pom68k_core)
+    add_test(NAME ncr53c96_queue_test COMMAND ncr53c96_queue_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    add_executable(msc_parity_test tests/msc_parity_test.cpp)
+    target_link_libraries(msc_parity_test PRIVATE pom68k_core)
+    add_test(NAME msc_parity_test COMMAND msc_parity_test)
+
+    add_executable(asc_easc_test tests/asc_easc_test.cpp)
+    target_link_libraries(asc_easc_test PRIVATE pom68k_core)
+    add_test(NAME asc_easc_test COMMAND asc_easc_test)
+
+    add_executable(q700_turboscsi_test tests/q700_turboscsi_test.cpp)
+    target_link_libraries(q700_turboscsi_test PRIVATE pom68k_core)
+    add_test(NAME q700_turboscsi_test COMMAND q700_turboscsi_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # O6.6 gate: ASC-V8 FIFO/level-IRQ semantics (boot beep depends on it).
     add_executable(asc_test tests/asc_test.cpp)
     target_link_libraries(asc_test PRIVATE pom68k_core)

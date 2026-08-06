@@ -36,9 +36,16 @@ void Ncr53c96::acceptDataOutByte_(uint8_t v) {
     // programmed count drains or the whole write payload is gathered
     // (ncr53c90.cpp:686 bus_complete / INIT_XFR_BUS_COMPLETE).
     dataOut_.push_back(v);
-    if (tcounter_) tcounter_--;
+    if (tcounter_) {
+        tcounter_--;
+        // #41 — S_TC0 is strictly "DMA transfer counter reached zero": MAME's
+        // decrement_tcounter early-outs on !dma_command and latches S_TC0
+        // only at tcounter==0 (ncr53c90.cpp:1234-1251). The non-DMA tcounter
+        // reload (7.5.5 HAL deviation, docs/LLE_VS_HLE.md §1.5) keeps the
+        // I_BUS completion trigger below but must not forge the flag.
+        if (dmaCommand_ && tcounter_ == 0) status_ |= S_TC0;
+    }
     if (tcounter_ == 0 || dataOut_.size() >= dataOutExpected_) {
-        status_ |= S_TC0;
         if (dataOut_.size() >= dataOutExpected_)
             advanceToStatus();
         raiseIrq(I_BUS);
@@ -231,6 +238,8 @@ void Ncr53c96::reset() {
     targetStatus_ = 0; msgInLeft_ = 0; dmaCommand_ = false;
     pendDelay_ = 0; pendBits_ = 0;       // latency_ itself survives (wiring)
     selCdbWait_ = false; dataXfer_ = false;
+    // reset_disconnect (ncr53c90.cpp:275-282): the command queue dies too.
+    cmdQueuePos_ = 0; cmdQueue_[0] = cmdQueue_[1] = 0;
 }
 
 // ── Register interface ──────────────────────────────────────────────────
@@ -252,9 +261,17 @@ uint8_t Ncr53c96::read(int reg) {
             // byte(s) here afterwards.
             if (dataInPos_ < dataIn_.size()) {
                 v = dataIn_[dataInPos_++];
-                if (tcounter_) tcounter_--;
+                if (tcounter_) {
+                    tcounter_--;
+                    // #41 — S_TC0 latches only when a DMA command's counter
+                    // hits zero (decrement_tcounter, ncr53c90.cpp:1234-1251).
+                    // This port DOES drain DMA-variant chunks on PIO-mode
+                    // devices (Q6.6b), so the flag stays honest for them; a
+                    // polled ($10) drain never sets it.
+                    if (dmaCommand_ && tcounter_ == 0) status_ |= S_TC0;
+                }
                 if (dataInPos_ >= dataIn_.size()) {
-                    status_ |= S_TC0; advanceToStatus(); raiseIrq(I_BUS);
+                    advanceToStatus(); raiseIrq(I_BUS);
                 }
                 updateDrq();
             } else {
@@ -262,18 +279,39 @@ uint8_t Ncr53c96::read(int reg) {
             }
             break;
         case R_COMMAND: v = lastCmd; break;
-        // 53c90a status_r (ncr53c90.cpp:1288): S_INTERRUPT | latched | phase.
+        // 53c90a status_r (ncr53c90.cpp:1288-1296): S_INTERRUPT | latched |
+        // phase — and, with an interrupt pending, the READ itself drops the
+        // three sticky error bits (the same set the ISTAT read clears).
+        //
+        // Audit § 2.7 re-check (2026-08-06), ALIGNED. The audit filed this
+        // side effect as cosmetic on the premise that S_GROSS_ERROR /
+        // S_PARITY / S_TCC are never raised. That premise is now STALE:
+        // wave 1 gave S_GROSS_ERROR a real producer — a third command write
+        // onto the 2-deep queue (commandWrite, ncr53c90.cpp:890-893) — so the
+        // divergence became reachable, and two STATUS reads with an interrupt
+        // pending would keep reporting an error MAME had already dropped.
+        // Modelled rather than re-documented: it is provably inert on every
+        // boot path (all three bits are 0 there, so the mask clears nothing),
+        // and S_TC0 is deliberately OUTSIDE the mask — MAME clears that one
+        // only in load_tcounter (:922-925). S_PARITY/S_TCC still have no
+        // producer here (no parity model, no target-mode terminal count).
         case R_STATUS:
             v = (irq_ ? S_INTERRUPT : 0) | (status_ & (S_TC0 | S_PARITY | S_GROSS_ERROR))
                 | phaseStatusBits();
+            if (irq_) status_ &= uint8_t(~(S_GROSS_ERROR | S_PARITY | S_TCC));
             break;
         // Reading istatus clears the interrupt (ncr53c90.cpp:1103-1122).
         case R_ISTAT:
             v = istatus_;
             if (irq_) {
-                status_ &= ~(S_GROSS_ERROR | S_PARITY);
+                status_ &= ~(S_GROSS_ERROR | S_PARITY | S_TCC);
                 istatus_ = 0; seq_ = 0; irq_ = false;
             }
+            // A non-zero interrupt status pops the finished command off the
+            // queue and starts the one waiting behind it (ncr53c90.cpp:
+            // 1116-1117 istatus_r → command_pop_and_chain). A read that
+            // returns 0 (deferred IRQ still pending) pops nothing.
+            if (v) commandPopAndChain();
             break;
         case R_SEQ:    v = seq_; break;                       // sequence step
         // FIFO flags: low 5 bits = byte count, top 3 = seq step. In DATA IN the
@@ -316,7 +354,7 @@ void Ncr53c96::write(int reg, uint8_t v) {
         case R_TCMID:  tcount_ = (tcount_ & ~uint32_t(0x00FF00)) | (uint32_t(v) << 8); break;
         case R_TCHIGH: tcount_ = (tcount_ & ~uint32_t(0xFF0000)) | (uint32_t(v) << 16); break;
         case R_FIFO:   fifoPush(v); break;
-        case R_COMMAND: startCommand(v); break;
+        case R_COMMAND: commandWrite(v); break;
         case R_STATUS:  busId_ = v & 7; break;                // bus_id_w
         case R_ISTAT:   selectTimeout_ = v; break;            // timeout_w
         case R_SEQ:     syncPeriod_ = v & 0x1F; break;        // sync_period_w
@@ -330,29 +368,103 @@ void Ncr53c96::write(int reg, uint8_t v) {
     }
 }
 
+// ── Command queue (ncr53c90.cpp:886-916 command_w / command_pop_and_chain) ─
+// The chip holds the executing command in slot 0 and queues ONE more behind
+// it; a third write sets S_GROSS_ERROR and is dropped — a status flag only,
+// no interrupt (ncr53c90.cpp:890-893: check_irq() with istatus unchanged).
+// RESET / RESET BUS jump the queue and execute at once (:895-900).
+void Ncr53c96::commandWrite(uint8_t c) {
+    if (cmdQueuePos_ == 2) {
+        status_ |= S_GROSS_ERROR;
+        return;
+    }
+    uint8_t op = c & 0x7F;
+    if (op == CM_RESET || op == CM_RESET_BUS) cmdQueuePos_ = 0;
+    cmdQueue_[cmdQueuePos_++] = c;
+    if (cmdQueuePos_ == 1) startCommand(c);
+}
+
+// Pop the finished command; if one is queued behind it, start it now
+// (ncr53c90.cpp:905-914). Called from the interrupt-status read and from
+// the commands that complete without an interrupt.
+void Ncr53c96::commandPopAndChain() {
+    if (cmdQueuePos_) {
+        cmdQueuePos_--;
+        if (cmdQueuePos_) {
+            cmdQueue_[0] = cmdQueue_[1];
+            startCommand(cmdQueue_[0]);
+        }
+    }
+}
+
+// #40 — ncr53c90a_device::check_valid_command (ncr53c90.cpp:1298-1308 — the
+// 53c94/96 inherit it, no override) with the functional model's mode mapping:
+// MODE_I = connected as the initiator (a target is selected and the bus is
+// not free), MODE_D = disconnected. MODE_T never arises — this model is
+// initiator-only (docs/LLE_VS_HLE.md §1.5), so the target group always fails.
+bool Ncr53c96::checkValidCommand_(uint8_t op) const {
+    const bool modeI = disk_ != nullptr && phase_ != BUS_FREE;
+    const int subcmd = op & 15;
+    switch ((op >> 4) & 7) {
+        case 0: return subcmd <= 3;              // misc group, any mode
+        case 4: return !modeI && subcmd <= 6;    // disconnected group (MODE_D)
+        case 1: return modeI && (subcmd <= 2 || subcmd == 8
+                                 || subcmd == 10 || subcmd == 11); // initiator
+        default: return false;                   // target group needs MODE_T
+    }
+}
+
 // ── Command dispatch (ncr53c90.cpp:927 start_command) ───────────────────
 void Ncr53c96::startCommand(uint8_t c) {
     lastCmd = c;
     uint8_t op = c & 0x7F;
+    // #40 — mode/command validation (start_command, ncr53c90.cpp:928-935):
+    // an invalid command latches I_ILLEGAL at once and executes nothing —
+    // no dma flag, no tcounter reload — and it stays in queue slot 0 until
+    // the interrupt-status read pops it (istatus_r → command_pop_and_chain).
+    if (!checkValidCommand_(op)) {
+        raiseIrq(I_ILLEGAL);
+        return;
+    }
     dmaCommand_ = (c & CMD_DMA) != 0;
     if (dmaCommand_) { tcounter_ = tcount_ ? tcount_ : 0x10000; status_ &= ~S_TC0; }
     else             { tcounter_ = 0; }
 
     switch (op) {
-        case CM_NOP: break;
+        case CM_NOP:
+            commandPopAndChain();             // ncr53c90.cpp:949-952
+            break;
 
         case CM_FLUSH_FIFO:
             fifoPos_ = 0; updateDrq();
+            commandPopAndChain();             // ncr53c90.cpp:954-958
             break;
 
         case CM_RESET:
-            reset();
+            reset();                          // clears the queue too (:279)
             break;
 
         case CM_RESET_BUS:
-            // ncr53c90.cpp:965 — raises I_SCSI_RESET unless config bit 6 masks it.
+            // ncr53c90.cpp:965-969 + BUSRESET_WAIT_INT :324-334. S_RST resets
+            // every target: the in-flight session buffers die with the bus
+            // (a stale dataIn_ residue otherwise ghosts into the next
+            // transaction's FIFO reads), the aborted command's scheduled
+            // completion must not fire, and reset_disconnect() (:275-282)
+            // drops the command queue. The chip FIFO itself is NOT flushed —
+            // only CM_RESET's device_reset does that.
             phase_ = BUS_FREE; disk_ = nullptr;
-            if (!(config1_ & 0x40)) raiseIrq(I_SCSI_RESET);
+            cmd_.clear(); dataIn_.clear(); dataInPos_ = 0;
+            dataOut_.clear(); dataOutExpected_ = 0;
+            targetStatus_ = 0; msgInLeft_ = 0;
+            selCdbWait_ = false; dataXfer_ = false;
+            pendBits_ = 0; pendDelay_ = 0;
+            cmdQueuePos_ = 0;
+            updateDrq();
+            // I_SCSI_RESET unless config bit 6 masks it, after the bus-settle
+            // delay (:968 delay(130) — 130 × clock-conversion SCSI clocks).
+            if (!(config1_ & 0x40))
+                raiseIrqDeferred(I_SCSI_RESET,
+                    scsiClocksToCpu_(130 * (clockConv_ ? clockConv_ : 8)));
             break;
 
         case CD_SELECT:      selectTarget(false); break;
@@ -369,15 +481,17 @@ void Ncr53c96::startCommand(uint8_t c) {
 
         case CD_ENABLE_SEL:
             // Enable selection/reselection: MAME just command_pop_and_chain()
-            // — NO interrupt (ncr53c90.cpp:841). The Mac OS 8 SCSI Manager
+            // — NO interrupt (ncr53c90.cpp:989-992). The Mac OS 8 SCSI Manager
             // issues this to arm reselection handling after an async command;
             // our old spurious I_FUNCTION mis-sequenced its interrupt-driven
             // completion wait (Q6.5c). Chain silently.
+            commandPopAndChain();
             break;
         case CD_DISABLE_SEL:
             // Disable selection/reselection: function_complete() (I_FUNCTION)
-            // then chain (ncr53c90.cpp:845).
+            // then chain (ncr53c90.cpp:996-1000).
             raiseIrq(I_FUNCTION);
+            commandPopAndChain();
             break;
 
         case CI_XFER:        transferInfo(); break;
@@ -403,31 +517,61 @@ void Ncr53c96::startCommand(uint8_t c) {
             break;
 
         case CI_PAD: {
-            // Transfer Pad DISCARDS bytes off the bus until TC hits 0 (MAME
-            // CI_PAD -> INIT_XFR_RECV_PAD_WAIT_REQ). A bare interrupt left the
-            // DATA-IN residue live, and the next CI_COMPLETE latches STATUS
-            // into the FIFO without clearing it — so read(R_FIFO), which keys
-            // on residue rather than phase, returned stale block data as the
-            // SCSI status byte.
-            size_t left = dataIn_.size() - dataInPos_;
-            size_t n = tcounter_ ? std::min<size_t>(tcounter_, left) : left;
-            dataInPos_ += n;
-            if (tcounter_ >= n) tcounter_ -= uint32_t(n);
-            else                tcounter_ = 0;
-            if (dataInPos_ >= dataIn_.size() && phase_ == DATA_IN) {
-                status_ |= S_TC0;
-                advanceToStatus();
+            // Transfer Pad moves filler bytes until the transfer counter
+            // exhausts — function_complete(), I_FUNCTION with S_TC0 latched
+            // (ncr53c90.cpp:707-714 INIT_XFR_SEND_PAD / :729-737
+            // INIT_XFR_RECV_PAD) — or until the target changes phase first —
+            // bus_complete(), I_BUS, and the command queue is dropped
+            // (:699 / :721 `command_pos = 0`).
+            bool tcHit = false;
+            if (phase_ == DATA_OUT) {
+                // Send pad: zeros go out to the target (send_byte drives 0x00
+                // when padding, ncr53c90.cpp:749-757) until TC0 or the
+                // expected write payload completes (= the phase change).
+                while (dataOut_.size() < dataOutExpected_) {
+                    dataOut_.push_back(0);
+                    if (tcounter_ && --tcounter_ == 0) { tcHit = true; break; }
+                }
+                if (dataOut_.size() >= dataOutExpected_)
+                    advanceToStatus();        // padded write executes → STATUS
+            } else {
+                // Receive pad DISCARDS bytes off the bus. A bare interrupt
+                // left the DATA-IN residue live, and the next CI_COMPLETE
+                // latches STATUS into the FIFO without clearing it — so
+                // read(R_FIFO), which keys on residue rather than phase,
+                // returned stale block data as the SCSI status byte.
+                size_t left = dataIn_.size() - dataInPos_;
+                size_t n = tcounter_ ? std::min<size_t>(tcounter_, left) : left;
+                dataInPos_ += n;
+                if (tcounter_) {
+                    tcounter_ -= uint32_t(n);
+                    tcHit = tcounter_ == 0;
+                }
+                if (dataInPos_ >= dataIn_.size() && phase_ == DATA_IN)
+                    advanceToStatus();
             }
-            raiseIrq(I_BUS);
+            if (tcHit) {                      // TC exhausted first
+                status_ |= S_TC0;
+                raiseIrq(I_FUNCTION);         // function_complete (:713/:736)
+            } else {                          // target changed phase first
+                cmdQueuePos_ = 0;             // :699/:721 command_pos = 0
+                raiseIrq(I_BUS);              // bus_complete
+            }
+            updateDrq();
             break;
         }
 
         case CI_SET_ATN:
         case CI_RESET_ATN:
-            break;                            // ATN line: no functional effect
+            // ATN line: no functional effect; chains without an interrupt
+            // (ncr53c90.cpp:1042-1052).
+            commandPopAndChain();
+            break;
 
         default:
-            // Unknown/unsupported command → illegal-command interrupt.
+            // Valid per check_valid_command but unimplemented here
+            // (CD_RESELECT / CD_SELECT_ATN3 — the model is initiator-only,
+            // docs/LLE_VS_HLE.md §1.5) → illegal-command interrupt.
             raiseIrq(I_ILLEGAL);
             break;
     }
@@ -538,7 +682,9 @@ void Ncr53c96::advanceToStatus() {
                               : 0x02;
     }
     phase_ = STATUS;
-    status_ |= S_TC0;
+    // No S_TC0 here (#41): the flag belongs to the DMA transfer counter alone
+    // (MAME decrement_tcounter, ncr53c90.cpp:1234-1251) — the drain/gather
+    // sites latch it when tcounter reaches zero on a DMA command.
     updateDrq();
 }
 
@@ -561,7 +707,6 @@ void Ncr53c96::transferInfo() {
             // $408D1FA2). Signal that here so the polled path unblocks.
             if (dataInPos_ < dataIn_.size()) {
                 dataXfer_ = true;         // FIFO now holds fetched payload (R_FLAGS)
-                status_ |= S_TC0;
                 // Bytes this Transfer Info moves off the bus — the chunk the
                 // step 9 delay model charges at sync_period clocks each. A
                 // DMA variant moves tcounter_; a polled (non-DMA) one moves
@@ -573,6 +718,17 @@ void Ncr53c96::transferInfo() {
                 const uint32_t remaining = uint32_t(dataIn_.size() - dataInPos_);
                 const uint32_t chunk =
                     tcounter_ ? std::min<uint32_t>(tcounter_, remaining) : 1;
+                // #41 — S_TC0 strictly tracks the DMA transfer counter (MAME
+                // decrement_tcounter early-outs on !dma_command and sets the
+                // flag only at tcounter==0, ncr53c90.cpp:1234-1251). The
+                // buffered model pre-announces it here — at Transfer Info time
+                // the bus side has already fetched the chunk, and the OS 8.1
+                // driver polls S_TC0 BEFORE bulk-reading ($408D1F7C →
+                // $408D1FA2) — but only when the programmed count is fully
+                // consumable: a short chunk (the target changes phase before
+                // TC reaches 0) or a polled $10 must NOT set it.
+                if (dmaCommand_ && remaining >= tcounter_)
+                    status_ |= S_TC0;
                 // A completed Transfer Info raises the bus-service interrupt
                 // (ncr53c90.cpp:686 bus_complete). This fires for BOTH the DMA
                 // variant ($90 — the driver bursts the window then waits on
@@ -671,7 +827,14 @@ uint8_t Ncr53c96::dmaRead() {
     if (dataInPos_ < dataIn_.size()) {
         dmaBytes++;
         uint8_t b = dataIn_[dataInPos_++];
-        if (tcounter_) tcounter_--;
+        if (tcounter_) {
+            tcounter_--;
+            // #41 — S_TC0 latches only when the DMA counter reaches zero
+            // (decrement_tcounter, ncr53c90.cpp:1234-1251); a payload that
+            // ends short (target phase change first) completes with I_BUS
+            // alone and leaves the residual count readable in R_TC*.
+            if (dmaCommand_ && tcounter_ == 0) status_ |= S_TC0;
+        }
         // Q6.3: the DMA Transfer Info moves exactly the programmed transfer
         // count (TC) per command, then raises the bus-service interrupt
         // (ncr53c90.cpp bus_complete, S_TC0). The Mac OS 8.1 driver's
@@ -683,7 +846,6 @@ uint8_t Ncr53c96::dmaRead() {
         // blocks, so the first-chunk interrupt never re-armed). Advance to
         // STATUS only once the last byte of the payload has left.
         if (tcounter_ == 0 || dataInPos_ >= dataIn_.size()) {
-            status_ |= S_TC0;
             if (dataInPos_ >= dataIn_.size())
                 advanceToStatus();            // whole payload done → STATUS
             raiseIrq(I_BUS);                  // bus_complete (ncr53c90.cpp:686)

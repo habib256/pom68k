@@ -354,11 +354,14 @@ private:
     uint32_t ramIndex(uint32_t addr) const {
         if (overlay_) return 0xFFFFFFFF;
         if (addr >= 0x800000)                // fixed 2 MB alias (v8.cpp:33-35)
-            return addr & 0x1FFFFF;
+            // Tinker Bell decodes NO $800000 motherboard image: its
+            // ram_size unmaps $000000-$9FFFFF and installs nothing above
+            // $7FFFFF (v8.cpp:1066-1095) — the hole reads open bus.
+            return model_ == Model::MacTv ? 0xFFFFFFFF : (addr & 0x1FFFFF);
         if (mbMapped_ && addr >= mbLoc_ && addr < mbLoc_ + mbSize_)
             return addr - mbLoc_;
-        if (simmMapped_ && addr < simmPhys_)
-            return simmOff_ + addr;
+        if (simmMapped_ && addr - simmLoc_ < simmPhys_)  // simmLoc_ = 0 on V8
+            return simmOff_ + (addr - simmLoc_);
         return 0xFFFFFFFF;
     }
     uint8_t viaAccess8(uint32_t addr, bool write, uint8_t v);
@@ -408,6 +411,10 @@ private:
     // SIMM at $000000 when enabled, motherboard after it; alias fixed.
     bool simmMapped_ = false;
     uint32_t simmOff_ = 0, simmPhys_ = 0;    // physical SIMM bank
+    // SIMM window bus base: 0 on V8/Eagle/Spice (SIMM at zero), $400000 on
+    // Tinker Bell (v8.cpp:1093). Fixed by the model → profile identity,
+    // set in the ctor and NOT serialized (like mbRam_).
+    uint32_t simmLoc_ = 0;
     uint32_t mbLoc_ = 0, mbSize_ = 0;        // motherboard window ($FFFFFFFF = none)
     bool mbMapped_ = false;
 

@@ -103,7 +103,41 @@ int main(int argc, char** argv)
     const char* base = argc > 1 ? argv[1] : "tests/assets/6502_functional_test.bin";
     const char* ext  = argc > 2 ? argv[2] : "tests/assets/65C02_extended_opcodes_test.bin";
 
-    bool ok = runImage(base, 0x3469, "Klaus 6502 functional");
+    // $CB / $DB are the WDC WAI/STP, not MAME's 1-cycle NOPs — POM68K is
+    // richer than `r65c02` on purpose (MAME-parity audit §2.11, pinned
+    // 2026-08-06; the personality question is CLOSED in
+    // docs/IOP_BRINGUP.md §4 — a capstone sweep finds zero $CB/$DB in
+    // either shipped IOP firmware blob). The Klaus extended image below
+    // already exercises them, but it reports one aggregate trap address;
+    // this makes the decode itself the observable so a future parity diff
+    // that demotes them to NOPs fails HERE, with a legible message.
+    bool ok = true;
+    {
+        std::vector<uint8_t> ram(0x10000, 0xEA);   // NOP fill
+        R65c02 cpu;
+        cpu.read8 = [&ram](uint16_t a) { return ram[a]; };
+        cpu.write8 = [&ram](uint16_t a, uint8_t v) { ram[a] = v; };
+        ram[0x0200] = 0xCB;                        // WAI  — falls through
+        ram[0x0201] = 0xEA;                        // NOP
+        ram[0x0202] = 0xDB;                        // STP  — sticky halt
+        cpu.hardReset();
+        cpu.setProgramCounter(0x0200);
+        cpu.step();
+        if (cpu.isHalted()) {
+            std::fprintf(stderr, "WAI/STP: $CB must not halt the core\n");
+            ok = false;
+        }
+        cpu.step();                                // NOP
+        cpu.step();                                // STP
+        if (!cpu.isHalted()) {
+            std::fprintf(stderr,
+                "WAI/STP: $DB must set the STP halt latch (MAME's r65c02 "
+                "decodes it as a NOP — do not import that)\n");
+            ok = false;
+        }
+    }
+
+    ok = runImage(base, 0x3469, "Klaus 6502 functional") && ok;
     ok = runImage(ext, 0x24F1, "Klaus 65C02 extended") && ok;
 
     std::printf(ok ? "OK\n" : "FAILED\n");

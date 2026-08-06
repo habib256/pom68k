@@ -36,6 +36,27 @@ std::vector<uint8_t> AdbBus::command(uint8_t cmd, const std::vector<uint8_t>& da
 
     if (op == 3 && addr == kbdAddr_) {   // keyboard talk
         if (reg == 0) {
+            // MAME-parity audit §2.9 (cosmetic, DOCUMENT-SKIP 2026-08-06):
+            // this HLE path puts the OLDEST queued event in byte 0. The LLE
+            // path does the opposite — AdbLine::adbTalk (AdbLine.cpp:358-375)
+            // reproduces MAME's buffer[1]-first quirk verbatim
+            // (macadb.cpp:660-672: m_buffer[1] = keybuf[start], then
+            // m_buffer[0] = the next one, and buffer[0] goes out first). The
+            // two paths are therefore inconsistent with each other and the
+            // HLE one is the non-MAME order.
+            // NOT aligned, deliberately. The order is only distinguishable
+            // when two events are queued in the same poll, both are accepted
+            // by the ADB Manager, and — decisively — NO CTest gate reaches
+            // this code: roms/adbmodem/342s0440-b.bin is present, so AdbVia
+            // runs LLE by default (AdbVia::attach) and Egret/Cuda run LLE by
+            // default too, which leaves AdbBus's keyboard branch on the
+            // stderr-announced NON-CONFORMANT fallback only
+            // (docs/LLE_VS_HLE.md §2). Swapping it would be an unvalidatable
+            // behaviour change on a live input path for zero measurable
+            // parity gain.
+            // Reopening condition: if this HLE model ever gets its own gate,
+            // or a dump-less configuration becomes supported, swap to
+            // { k1, k0 } and re-run family_input_etalon + input_etalon.
             if (keyQueue_.empty()) return { 0xFF, 0xFF };
             uint8_t k0 = keyQueue_.front(); keyQueue_.pop_front();
             uint8_t k1 = 0xFF;

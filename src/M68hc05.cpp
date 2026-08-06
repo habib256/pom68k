@@ -110,14 +110,27 @@ void M68hc05::write8(uint16_t addr, uint8_t v) {
         return;
     }
     if (addr == 0x0008) {                            // timer_ctrl_w :171
+        // Acking the flag WITHDRAWS a pending-but-untaken request (level
+        // semantics: request = flag AND enable). m68hc05e1.cpp's
+        // set_input_line(CLEAR_LINE) intends exactly this but the generic
+        // m6805 base defeats it — its external-IRQ-pin latch (m6805.cpp
+        // :541-546) never clears pending until taken. MAME's own detailed
+        // HC05 model is the arbiter: m68hc05.cpp:313-318 clears
+        // M68HC05_INT_TIMER from pending on flag ack. Keep this as-is
+        // (MAME-parity audit #46, refuted 2026-08-06).
         if ((timerCtrl_ & 0x80) && !(v & 0x80)) { pending_ &= ~INT_TIMER; timerCtrl_ &= 0x7F; }
         else if ((timerCtrl_ & 0x40) && !(v & 0x40)) { pending_ &= ~INT_TIMER; timerCtrl_ &= 0xBF; }
         timerCtrl_ = uint8_t((timerCtrl_ & 0xC0) | (v & 0x3F));
         return;
     }
     if (addr == 0x0012) {                            // onesec_w :199
-        // Every write re-arms the one-second timer (:201 m_timer->adjust).
-        if (!onesecArmed_) { onesecArmed_ = true; onesecAcc_ = 0; }
+        // EVERY write re-arms the 1 Hz phase: the next seconds_tick lands
+        // one second after this write (m68hc05e1.cpp:201, unconditional
+        // m_timer->adjust(from_seconds(1), 0, from_seconds(1))). Arming
+        // only once let the tick free-run from the first write instead
+        // (MAME-parity audit #47).
+        onesecArmed_ = true;
+        onesecAcc_ = 0;
         if ((onesec_ & 0x40) && !(v & 0x40)) pending_ &= ~INT_CPI;
         onesec_ = v;
         return;
@@ -132,6 +145,14 @@ void M68hc05::pushState() {
     push8(uint8_t(pc_ >> 8));                        // PCH
     push8(x_);
     push8(a_);
+    // MAME-parity audit §2.10 (cosmetic, POM68K is MORE faithful — PIN,
+    // 2026-08-06): the 6805 CCR is 5 bits wide and its top three bits read
+    // as 1 on silicon (MC68HC05 family manual, CCR = 1 1 1 H I N Z C), so
+    // the byte the interrupt sequence stacks has $E0 set. MAME pushes its
+    // raw m_cc (m6805.cpp:554/561), whose bits 7-5 are whatever they were
+    // initialised to — i.e. 0. Keep cc()'s `| 0xE0`. A future parity diff
+    // must NOT "fix" this toward MAME: the stacked byte is what RTI pops
+    // back and what a firmware that walks its own stack frame sees.
     push8(cc() /* 111HINZC */);
 }
 
@@ -270,6 +291,22 @@ int M68hc05::execOne() {
     uint8_t op = fetch8();
     int cyc = kCycles[op];
     if (cyc == 0) {                                  // undefined opcode
+        // MAME-parity audit §2.10 (cosmetic, DOCUMENT-SKIP 2026-08-06):
+        // MAME's `illegal` handler (m6805.cpp:587-590, dispatched from the
+        // s_hmos/s_cmos tables) only logerrors and falls through to the next
+        // opcode. POM68K latches instead: run() short-circuits while
+        // illegal_ is set, freezing the MCU at the offending PC/opcode. That
+        // is a debugging aid and it is load-bearing — a 6805 that fetches an
+        // undefined opcode has lost its PC, and "continue quietly" turns a
+        // one-line diagnostic into an MCU wandering through PRAM with the
+        // host handshake half-open. It is also unreachable on the shipped
+        // firmware: m68hc05_test asserts !illegal() over the whole Cuda
+        // 2.37 boot, and egret_lle_test/cuda_lle_test do the same.
+        // Additionally covered by the ABSOLUTE rule on this file — halting
+        // vs continuing changes the MCU's instruction rate, and a 2 % shift
+        // deadlocks the Mac TV (`pom68k-mactv-gate-broken`).
+        // Reopening condition: a firmware dump that legitimately executes an
+        // undefined opcode (some 6805 masks alias them onto real ones).
         illegal_ = true;
         illegalPc_ = uint16_t((pc_ - 1) & 0x1FFF);
         illegalOp_ = op;
@@ -371,6 +408,15 @@ int M68hc05::execOne() {
                     cc_ |= CC_I;
                     pc_ = read16(0x1FFC);
                     break;
+                // MAME-parity audit §2.10 (POM68K is MORE than MAME — PIN,
+                // 2026-08-06): MAME's `stop`/`wait` handlers are
+                // `fatalerror("unimplemented")` (6805ops.hxx:527-539), so
+                // there is nothing to be in parity WITH. POM68K implements
+                // both as the WAIT state: I cleared, core idle, on-chip
+                // timers still running. STOP would additionally gate the
+                // oscillator (timers frozen); approximating it as WAIT is
+                // the conservative direction — a firmware that STOPs still
+                // gets woken by its timer instead of hanging forever.
                 case 0x8E:                           // STOP (clears I, sleeps)
                 case 0x8F:                           // WAIT
                     cc_ &= uint8_t(~CC_I);

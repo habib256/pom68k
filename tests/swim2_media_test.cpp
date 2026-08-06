@@ -323,6 +323,126 @@ int main() {
         check(untouched, "neighbour GCR sector stays blank");
     }
 
+    // ── Cosmetic MAME divergences, pinned (parity audit § 2.4) ────────
+    {
+        // (d) A write span with NO transition must leave the track alone.
+        // MAME's flush_write (swim2.cpp:100-126) hands write_flux a span with
+        // zero fluxes, which erases that arc; Swim2::finishWrite makes it a
+        // no-op on purpose (see the note there). Pin it: open write ACTION,
+        // close it without feeding a single byte, and the medium must read
+        // back byte-for-byte — through the real cell engine, not just through
+        // readSector, so a future erase-then-canonicalise alignment shows up.
+        std::vector<uint8_t> img(SonyDrive::kSize800K);
+        for (size_t i = 0; i < img.size(); i++)
+            img[i] = uint8_t(0x33 + (i % 241));
+
+        SonyDrive drive;
+        drive.setSuperDrive(true);
+        drive.setSpinClockHz(15667200);
+        check(drive.insertImage(img), "insert patterned 800K for the empty span");
+
+        uint8_t before[512];
+        check(drive.readSector(0, 0, 0, before), "baseline read of t0 h0 s0");
+
+        Swim2 swim;
+        swim.reset();
+        swim.attachDrive(&drive, nullptr);
+        drive.commandSwim(0x2);                  // spindle on
+        swim.write(5, 0x44);                     // GCR clocking + GCR write
+        swim.write(7, 0x9A);                     // motor + A + write + ACTION
+        swim.write(6, 0x18);                     // leave write mode at once
+        check((swim.read(2) & 0x01) == 0, "empty write span raises no underrun");
+
+        uint8_t after[512];
+        check(drive.readSector(0, 0, 0, after), "read t0 h0 s0 after empty span");
+        check(std::memcmp(before, after, 512) == 0,
+              "empty write span leaves the track intact");
+        // The sharp end of the divergence. Aligning would call commitCells,
+        // which erases the arc and then runs the whole-track decoder over it;
+        // every field that still verifies is re-committed through
+        // writeSector(), which sets dirty_ and re-encodes the track. A write
+        // that wrote nothing would thus mark the medium dirty and have
+        // flushToFile() rewrite the host image on eject.
+        check(!drive.dirty(), "empty write span does not dirty the medium");
+
+        // And the track still frames through the read engine.
+        swim.write(5, 0x04);                     // GCR read clocking
+        swim.write(7, 0x8A);                     // motor + A + read + ACTION
+        auto stream = drainSwim(swim, drive, 2000, kGcrByte, 2000 * kGcrByte * 4);
+        int prologues = 0;
+        for (size_t i = 0; i + 3 < stream.size(); i++)
+            if ((stream[i] & 0xFF) == 0xD5 && (stream[i + 1] & 0xFF) == 0xAA &&
+                (stream[i + 2] & 0xFF) == 0x96)
+                prologues++;
+        check(prologues >= 2, "address prologues survive the empty write span");
+    }
+
+    {
+        // (b) The reset CRC seed is unobservable. Swim2::reset now seeds
+        // crc_ = $FFFF to match MAME swim2.cpp:61 instead of the $CDB4
+        // crc_clear() value; this pins that the choice cannot matter, by
+        // writing the same MFM field twice on ONE controller — the second
+        // pass starts with whatever the first left in crc_, and must commit
+        // exactly as the first did (the MARK byte reseeds the register).
+        SonyDrive first, second;
+        for (SonyDrive* d : { &first, &second }) {
+            d->setSuperDrive(true);
+            d->setSpinClockHz(15667200);
+            d->insertImage(std::vector<uint8_t>(SonyDrive::kSize1440K, 0));
+        }
+
+        Swim2 swim;
+        swim.reset();
+        swim.write(5, 0x00);                     // MFM write, fclk
+
+        // The controller is NOT reset between the two passes — only the media
+        // changes — so pass 2 starts on the CRC register pass 1 left behind.
+        // Both media are fresh, so both splices land at rotation angle 0 and
+        // the decoder's "first field under the head wins" rule cannot skew
+        // the comparison.
+        auto writeSectorField = [&](SonyDrive& drive, uint8_t fill) {
+            swim.attachDrive(&drive, nullptr);
+            drive.commandSwim(0x2);              // spindle on
+            auto feed = [&](int reg, uint8_t v) {
+                while (swim.fifoCount() >= 2) { swim.tick(64); drive.tick(64); }
+                swim.write(reg, v);
+                swim.tick(kMfmByte / 2);
+                drive.tick(kMfmByte / 2);
+            };
+            swim.write(7, 0x9A);
+            for (int i = 0; i < 12; i++) feed(0, 0x00);
+            for (int i = 0; i < 3; i++) feed(1, 0xA1);
+            feed(0, 0xFE);
+            feed(0, 0x00); feed(0, 0x00); feed(0, 0x02); feed(0, 0x02);
+            feed(2, 0);
+            for (int i = 0; i < 22; i++) feed(0, 0x4E);
+            for (int i = 0; i < 12; i++) feed(0, 0x00);
+            for (int i = 0; i < 3; i++) feed(1, 0xA1);
+            feed(0, 0xFB);
+            for (int i = 0; i < 512; i++) feed(0, uint8_t(fill + (i & 0x0F)));
+            feed(2, 0);
+            for (int i = 0; i < 4; i++) feed(0, 0x4E);
+            while (swim.fifoCount()) { swim.tick(kMfmByte); drive.tick(kMfmByte); }
+            swim.tick(kMfmByte * 2); drive.tick(kMfmByte * 2);
+            swim.write(6, 0x18);
+        };
+        auto payloadOk = [](const uint8_t* got, uint8_t fill) {
+            for (int i = 0; i < 512; i++)
+                if (got[i] != uint8_t(fill + (i & 0x0F))) return false;
+            return true;
+        };
+
+        writeSectorField(first, 0x70);           // crc_ still at the reset seed
+        uint8_t a[512];
+        check(first.readSector(0, 0, 1, a), "first field commits after reset");
+        check(payloadOk(a, 0x70), "field written on the reset CRC seed verifies");
+
+        writeSectorField(second, 0x90);          // crc_ carried over from above
+        uint8_t b[512];
+        check(second.readSector(0, 0, 1, b), "second field commits");
+        check(payloadOk(b, 0x90), "CRC state carried across sessions is irrelevant");
+    }
+
     // ── Drive detect / eject ──────────────────────────────────────────
     {
         SonyDrive drive;

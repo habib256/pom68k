@@ -12,6 +12,24 @@
 // applefdintf phases_w → mac_floppy seek_phase_w; mode/devsel/hdsel from
 // swim2.cpp:128-137, 300-303.
 // Gate: tests/swim2_test.cpp, tests/swim2_media_test.cpp.
+//
+// KNOWN MAME DIVERGENCE, deliberately kept (parity audit § 2.4, cosmetic):
+// **no DAT1BYTE line.** MAME's swim2 has one (update_dat1byte, swim2.cpp:
+// 553-565, driven from :283/:289/:370/:379/:390 — assert while the 2-deep
+// FIFO has room in write mode, or holds a byte in read mode), and so does
+// ours on Swim1 (`onDat1Byte`, wired for the IIfx/Eclipse IOPs). It stays
+// unmodelled here because **no consumer exists on either side**: the three
+// MAME devices that instantiate a swim2 — v8.cpp, sonora.cpp, iosb.cpp —
+// never call dat1byte_cb(), and the only two wirings in the whole tree are
+// swim1 consumers (maciifx.cpp:486, macquadra700.cpp:879-880). Same split
+// here: the two POM68K platforms that own an Apple PIC IOP — IIfxMemory and
+// Q700Memory (Quadra 700/900/950) — both instantiate a `Swim1`, and so do
+// RbvMemory and VaspMemory; the `Swim2` boards (Sonora, MEMCjr/Q605, djMEMC/
+// Centris, F108/Q630, the V8 side that uses one) have no DMA engine to feed.
+// Adding it would mean new serialized state driving a callback nobody sets.
+// Reopen the moment a swim2 machine grows an IOP or a DMA client: the
+// implementation is a one-liner copy of Swim1::updateDat1Byte, called from
+// fifoPush/fifoPop/fifoClear and the mode-register writes.
 
 #pragma once
 #include "SaveState.h"

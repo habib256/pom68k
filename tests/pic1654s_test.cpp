@@ -142,6 +142,36 @@ int main() {
         CHECK(uint8_t(p.reg(0x01) - before) == 2, "RTCC falling edges -> TMR0 +2");
     }
 
-    if (failures == 0) std::printf("PASS: pic1654s core (%d checks)\n", 6);
+    // --- Test 7: the undefined-opcode block, pinned ---
+    // MAME-parity audit §2.9 (cosmetic, DOCUMENT-SKIP 2026-08-06). MAME's
+    // main table (pic16c5x.cpp:881-882) is indexed by op>>4: entry $04 is
+    // clrw, entry $05 — opcodes $050-$05F, CLRW with a non-zero f field —
+    // is `illegal`, a logerror-only stub. The datasheet encodes CLRW as
+    // `0000 0100 0000` with the f field simply not consulted (d=0 already
+    // selects W), so silicon clears W across the whole $040-$05F block and
+    // POM68K does too. Both readings are no-ops for the shipped firmware
+    // (342s0440-b contains no $05x and no $01x word; unprogrammed words
+    // read $0FFF = XORLW), so this pins the choice rather than defending
+    // it — do not "align" toward MAME's illegal() without re-reading
+    // src/Pic1654s.cpp's note at the CLRF/CLRW case.
+    {
+        Pic1654s p;
+        auto img = rom({
+            MOVLW(0xAA),
+            0x055,                         // undefined → CLRW here
+            MOVWF(0x16),
+            MOVLW(0x33),
+            0x015,                         // undefined → inert in both models
+            MOVWF(0x17),
+            GOTO(0x006),
+        });
+        p.loadRom(img.data(), img.size());
+        p.run(200);
+        CHECK(p.reg(0x16) == 0x00, "undefined $055 clears W (CLRW reading)");
+        CHECK((p.status() & 0x04) != 0, "undefined $055 sets Z");
+        CHECK(p.reg(0x17) == 0x33, "undefined $015 is inert (MAME parity)");
+    }
+
+    if (failures == 0) std::printf("PASS: pic1654s core (%d checks)\n", 7);
     return failures ? 1 : 0;
 }

@@ -13,6 +13,18 @@
 // ((cmd & $78) == $38, bit 7 = read, bits 2-0 = address bits 7-5),
 // second byte %aaaaa_xx (bits 6-2 = address bits 4-0), then the data
 // byte (read back or written). The Plus 343-0040 never issues them.
+//
+// ONE SUPERSET FOR BOTH PARTS (audit § 2.2, cosmetic — not aligned). MAME
+// splits the family in two devices: rtc3430042 (256-byte XPRAM) and
+// rtc3430040 (the compacts' part — 20 bytes of NVRAM, macrtc.cpp:415-424,
+// and a write-protect register that answers ONLY to the exact command $35,
+// anything else being logged as illegal, :306-317). POM68K runs the -0042
+// superset on the compacts too: full XPRAM array, WP accepted from any
+// reg-13 command form. Unobservable — the compact ROMs never issue an
+// extended command and write WP as $35 — and splitting it would buy a
+// model flag, a second code path and a save-state field for nothing.
+// Reopen if a compact-era title is ever seen probing XPRAM past $13 or
+// poking reg 13 with a non-$35 command.
 // Model: MAME rtc3430042 (macrtc.cpp); Mini vMac RTC.c.
 // Gates: rom_boot_etalon (Plus classic), macii_boot_etalon (extended —
 // the ROM boots on an unpatched image only if XPRAM answers).

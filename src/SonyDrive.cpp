@@ -79,9 +79,28 @@ int SonyDrive::sectorsOnCurrentTrack() const {
     return hd_ ? sectorsInTrackHd() : sectorsInTrack(track_);
 }
 
+// Setup-register reflection path (SWIM1/2 setup.2 → drive mode, an HLE
+// shortcut: in MAME a controller setup write never touches the drive's
+// m_mfm, which only moves on the seek_phase strobes). The guards keep the
+// reflection conservative — a non-SuperDrive can't enter MFM, HD media
+// stays MFM — which is the closest byte-level stand-in for MAME's "setup
+// writes change nothing on the drive". The strobes go through
+// commandMfmMode() below, which is the MAME-exact table.
 void SonyDrive::setMfmMode(bool on) {
     if (!superDrive_ && on) return;
-    if (hd_ && !on) return;                      // HD media is always MFM
+    if (hd_ && !on) return;                      // reflection-only guard
+    if (mfmMode_ == on) return;
+    mfmMode_ = on;
+    encodeTrack();
+}
+
+// Strobe-path mode switch (MAME mac_floppy seek_phase_w): MFM-on is gated
+// on the MECHANISM (m_has_mfm, floppy.cpp:3369-3375); GCR-on has NO guard
+// at all (floppy.cpp:3382-3386) — HD media obeys too, and the GCR framer
+// then sees the MFM cells as garbage exactly like hardware. The rpm swap
+// of MAME's track_changed() is rpmNow(), already keyed on mfmMode_ && hd_.
+void SonyDrive::commandMfmMode(bool on) {
+    if (on && !superDrive_) return;
     if (mfmMode_ == on) return;
     mfmMode_ = on;
     encodeTrack();
@@ -93,7 +112,10 @@ void SonyDrive::reset() {
     cellPos_ = 0;
     motorOn_ = false;
     dirToZero_ = false;
-    switched_ = false;
+    // Disk-change latch across reset: MAME's device_reset leaves m_dskchg
+    // alone and device_start seeds it from exists() (floppy.cpp:560) —
+    // "changed" reads high only while the drive sits empty.
+    switched_ = !hasDisk();
     wrState_ = wrSync_ = wrAddrPos_ = wrDataPos_ = 0;
     // A machine reset mid-write must not leave stale nibbles for the next
     // flushWrite to commit as a half-sector (insert/eject already clear it).
@@ -170,7 +192,10 @@ bool SonyDrive::insertImage(std::vector<uint8_t> data) {
     image_ = std::move(data);
     track_ = 0;
     side1_ = false;
-    switched_ = true;
+    // MAME floppy.cpp:672-673 (init_floppy_load): inserting media SETS
+    // m_dskchg on a Mac drive (m_dskchg_writable), i.e. CLEARS the change
+    // latch — only eject raises it (call_unload, floppy.cpp:723).
+    switched_ = false;
     wrState_ = 0;
     gcrWrBuf_.clear();
     encodeTrack();
@@ -212,6 +237,26 @@ void SonyDrive::encodeTrack() {
     if (cellPos_ >= cells_.size()) cellPos_ = 0;
 }
 
+// KNOWN MAME DIVERGENCE, deliberately kept (parity audit § 2.3, cosmetic):
+// **2M mode is unreachable.** MAME's mac_floppy_device::track_changed picks
+// `m_mfm ? (is_2m() ? 600 : 300) : <GCR zone>` (floppy.cpp:3399-3414), and
+// mfd75w::is_2m() is true whenever the inserted medium is DD (floppy.cpp:
+// 3494-3503) — so MFM clocking on an 800K/400K disk spins the spindle at
+// 600 RPM and lays down the 1.6 MB "2M" format. We never return 600: the
+// combination mfmMode_ && !hd_ falls through to the GCR zone table here, and
+// encodeTrack() hands it to encodeTrackGcr(). The *sense* bit is modelled
+// exactly (sense() case $F and senseSwim() case $F both implement
+// mfd75w::is_2m), so a guest probing for the capability gets MAME's answer;
+// only the spin rate and the format are missing.
+// Not aligned. It is not a comment-sized change — it needs a whole DD-MFM
+// track encoder (encodeTrackMfm is hard-wired to the HD 18×512 System-34
+// layout) for a format no shipped Mac driver ever writes: the Sony 1.4 MB
+// mechanism reads DD media in GCR at the five variable speeds below. And the
+// one line that *is* small — the 600 in this function — feeds
+// spinCyclesPerRev() and nominalCells(), i.e. index pulse, tach, rotational
+// latency and track length: rotation timing, off limits after 2026-08-05.
+// Reopen if a guest is ever seen strobing MFM-on (commandSwim $9) with DD
+// media in the drive; commandMfmMode() is the place that would notice.
 int SonyDrive::rpmNow() const {
     if (mfmMode_ && hd_) return 300;             // SuperDrive HD (mfd75w)
     static const int kRpm[5] = { 394, 429, 472, 525, 590 };
@@ -220,7 +265,9 @@ int SonyDrive::rpmNow() const {
 
 // Nominal cells per revolution: C15M / cell-divider vs the spindle RPM.
 // The encoded track content is slightly shorter; the remainder is the
-// physical gap4, padded with empty cells.
+// physical gap4, padded with empty cells at the TAIL — MAME instead sizes a
+// self-sync PREGAP at the head so the zone fills exactly. Deliberate, see
+// the geometry note on encodeTrackGcr().
 int64_t SonyDrive::nominalCells() const {
     const int cellCyc = (mfmMode_ && hd_) ? 16 : 31;   // swim2.cpp:329
     return (15667200LL * 60) / (int64_t(rpmNow()) * cellCyc);
@@ -272,6 +319,36 @@ void SonyDrive::buildCells() {
 // GCR-encode the current (track, side) as a byte-level nibble stream.
 // Self-sync groups are emitted as plain 0xFF bytes: the IWM model delivers
 // whole nibbles, so 10-bit sync framing is not needed (Plus Too approach).
+//
+// KNOWN MAME DIVERGENCE, deliberately kept (parity audit § 2.3, cosmetic).
+// docs/LLE_VS_HLE.md § 1.3 inventories only the tag half of this ("committed
+// tracks re-encode canonically… recovered tag bytes are dropped"); the filler
+// lengths below are recorded here and nowhere else. Fields and checksum are
+// MAME-exact (build_mac_track_gcr, flopimg.cpp:2019-2110); the *filler
+// geometry* is not:
+//   • pregap. MAME sizes it so the track fills its speed zone exactly —
+//     `pregap = cells_per_speed_zone[zone] - 6208*sectors`, emitted at the
+//     head of the track as alternating 24-cell $ff3fcf/$f3fcff sync groups
+//     (flopimg.cpp:2037-2051). We emit a fixed 38 sync bytes ahead of each
+//     address field — 40 counting the previous sector's two tail syncs, i.e.
+//     400 cells against MAME's 8×48 = 384 (flopimg.cpp:2054-2057) — and push
+//     the zone slack to the TAIL, as zero cells (see buildCells()) instead of
+//     self-sync, so gap4 reads back as a run of no-transition cells. On the
+//     *nibble* path (Iwm) there is no gap4 at all: stream_ wraps straight
+//     from the last sector's tail into the next sector's pregap.
+//   • the address→data gap is 7 sync bytes here vs MAME's 48 cells (~4.8).
+//   • tag bytes are zero-filled: MAME's DC42 loader carries the real 12-byte
+//     tag per sector (ap_dsk35.cpp:225-227, 290-296); flat .dsk images have
+//     no tag space at all, and writeSector()/flushToFile() would have nowhere
+//     to put a recovered one.
+// Not aligned, on the standing rule that anything shaping the nibble stream
+// is off limits after the 2026-08-05 GCR/denibble repair: these lengths ARE
+// the spacing Apple's hand-timed read loop runs against, and every byte of
+// slack moves where the guest's sync hunt lands. Zero benefit — the guest
+// hunts for $D5 $AA $96, it never counts filler. Gated as-is by
+// tests/gcr_test.cpp (tag bytes zero + the 40/7 sync runs). Reopen only
+// together with step 2 of the § 1.3 flux plan, which replaces this encoder
+// with a cell/flux track store where MAME's zone arithmetic applies directly.
 void SonyDrive::encodeTrackGcr() {
     int ns = sectorsInTrack(track_);
 
@@ -809,8 +886,14 @@ bool SonyDrive::sense(int addr) const {
         case 0x3: return !writeProtected_;           // WRTPRT (0 = protected)
         case 0x4: return !motorOn_;                  // MOTORON (0 = on)
         case 0x5: return track_ != 0;                // TKO (0 = track 0)
-        case 0x6: return switched_;                  // SWITCHED / disk changed
+        case 0x6: return switched_;                  // DSKCHG latch (MAME reg 3
+                                                     // !m_dskchg: eject raises,
+                                                     // insert/strobe clear)
         case 0x7: {                                  // TACH: 120 edges/rev
+            // MAME floppy.cpp:3293-3301 (wpt_r 0xb): the tach only runs
+            // with media in and the spindle on; otherwise the line is low
+            // (same gate senseSwim reg 0xB already had).
+            if (!hasDisk() || !motorOn_) return false;
             // Same machine-clock rule as senseSwim reg B (2026-08-05):
             // spin_ counts whatever cycles the platform ticks, and
             // spinCyclesPerRev() knows both the drive clock and the
@@ -820,14 +903,34 @@ bool SonyDrive::sense(int addr) const {
             const int64_t phase = (spin_ % cyclesPerRev) * 120 / cyclesPerRev;
             return phase & 1;
         }
-        case 0x8: return false;                      // RDDATA0
-        case 0x9: return false;                      // RDDATA1
+        case 0x8:                                    // RDDATA0 (MAME reg 0x4)
+        case 0x9: {                                  // RDDATA1 (MAME reg 0xC)
+            // MAME floppy.cpp:3269-3271 (wpt_r case 0x4/0xc):
+            //   !m_has_mfm ? false : (!m_image || m_mon) ? true : !m_idx.
+            // The idle-high level on a SuperDrive is the rd1=1 of the
+            // documented capability signature x011 (floppy.cpp:3229-3235);
+            // pinning it to 0 made an empty MFD-75W sign f..c = 1110,
+            // i.e. an HD-20. Spinning: one ~2 ms active-low index pulse
+            // per revolution, same law as senseSwim reg 0x4/0xC.
+            if (!superDrive_) return false;
+            if (!hasDisk() || !motorOn_) return true;
+            const int64_t rev = spinCyclesPerRev();
+            return (spin_ % rev) > spinClockHz_ / 500;
+        }
         case 0xA: return superDrive_;                // SUPERDRIVE (1 = HD-capable)
         case 0xB: return mfmMode_;                   // MFM mode
-        case 0xC: return doubleSided_;               // SIDES (1 = DS)
+        case 0xC: return true;                       // SIDES: the MECHANISM,
+            // not the media — MAME wpt_r case 6 returns m_sides == 2, a
+            // drive constant (floppy.cpp:3278-3279); MFD-51W and MFD-75W
+            // are both two-head drives (:3461-3491). 400K media still
+            // signs itself via the address-field format byte $02.
         case 0xD: return !motorOn_;                  // READY (0 = ready)
         case 0xE: return false;                      // INSTALLED (0 = present)
-        case 0xF: return hd_ ? false : true;         // REVISED / !2M (HD hole)
+        case 0xF:                                    // 2M (MAME reg 0xF, is_2m)
+            // SuperDrive: mfd75w::is_2m (floppy.cpp:3494-3503) — 1 only
+            // with DD media inserted; empty drive reads 0 (the x of the
+            // x011 signature). 800K drive: mfd51w::is_2m — always 1.
+            return superDrive_ ? (hasDisk() && !hd_) : true;
     }
     return true;
 }
@@ -839,7 +942,10 @@ bool SonyDrive::senseSwim(int reg) const {
     case 0x0: return dirToZero_;                 // direction
     case 0x1: return true;                       // step complete
     case 0x2: return !motorOn_;                  // motor is active low
-    case 0x3: return !hasDisk();                 // !m_dskchg (unload = high)
+    case 0x3: return switched_;                  // !m_dskchg: the change
+        // LATCH, not presence — raised by eject (floppy.cpp:723), cleared
+        // by insert (:672-673) and by the DskchgClear strobe (:3377-3379,
+        // unconditionally, media present or not).
     case 0x4: case 0xC: {                        // index/read-data
         // MAME reports high for a SuperDrive while stopped/no media, which
         // forms the documented initial capability signature x011 (2M,
@@ -858,7 +964,9 @@ bool SonyDrive::senseSwim(int reg) const {
         return (spin_ % rev) > spinClockHz_ / 500;   // ~2 ms low pulse
     }
     case 0x5: return superDrive_;                // MFD-75W capability
-    case 0x6: return doubleSided_;
+    case 0x6: return true;                       // DoubleSide: mechanism
+        // constant (MAME m_sides == 2, floppy.cpp:3278-3279) — see the
+        // classic table's case 0xC.
     case 0x7: return false;                      // drive exists
     case 0x8: return !hasDisk();
     case 0x9: return !writeProtected_;
@@ -893,11 +1001,11 @@ void SonyDrive::commandSwim(int reg) {
     case 0x4: dirToZero_ = true; break;           // previous cylinder
     case 0x6: setMotorState(false); break;
     case 0x7: eject(); break;
-    case 0x9:
-        if (superDrive_) setMfmMode(true);
-        break;
-    case 0xC: break;                             // clear dskchg (inserted stays low)
-    case 0xD: setMfmMode(false); break;
+    case 0x9: commandMfmMode(true); break;       // MFM on (floppy.cpp:3369-3375)
+    case 0xC: switched_ = false; break;          // DskchgClear (floppy.cpp:
+                                                 // 3377-3379, unconditional)
+    case 0xD: commandMfmMode(false); break;      // GCR on, NO media guard
+                                                 // (floppy.cpp:3382-3386)
     default: break;
     }
 }
@@ -923,23 +1031,22 @@ void SonyDrive::command(int addr) {
         case 0b110:                                  // EJECT (ca2=1)
             if (ca2) eject();
             break;
-        case 0b001:                                  // CLRSWITCHED / MFM on
-            // 800K: CA2=1 clears disk-changed (DEV.md). SuperDrive also
-            // uses this strobe as MFM-mode-on (MAME seek_phase_w 0x9).
-            if (ca2) {
-                if (superDrive_) {
-                    mfmMode_ = true;
-                    encodeTrack();
-                }
-                switched_ = false;
-            }
+        case 0b001:                                  // (CA1,CA0,SEL) = 001
+            // CA2=1 → MAME reg 0xC "DskchgClear" (seek_phase_w,
+            // floppy.cpp:3379-3382); CA2=0 → reg 0x8, unassigned.
+            // Clearing disk-changed must NOT touch the MFM mode: the
+            // old fused decode flipped a SuperDrive into MFM on every
+            // disk-change ack.
+            if (ca2) switched_ = false;
             break;
-        case 0b101:                                  // GCR mode on (SuperDrive)
-            // MAME mac_floppy seek_phase_w case 0xd
-            if (ca2 && superDrive_ && !hd_) {
-                mfmMode_ = false;
-                encodeTrack();
-            }
+        case 0b011:                                  // (CA1,CA0,SEL) = 011
+            // CA2=0 → MAME reg 0x9 "MFMModeOn" (floppy.cpp:3369-3375,
+            // gated on m_has_mfm); CA2=1 → reg 0xD "GCRModeOn"
+            // (floppy.cpp:3382-3386, NO guard — HD media obeys too). The
+            // old code had GCR-on parked on 0b101 (MAME reg 0xA/0xE, both
+            // unassigned). commandMfmMode() is the MAME-exact strobe table
+            // and carries the re-encode.
+            commandMfmMode(!ca2);
             break;
         default: break;
     }

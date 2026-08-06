@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// ── DAFB II video cell (MEMCjr integrated, version 3) — MAME dafb.cpp ──
+// ── DAFB / DAFB II video cell — MAME dafb.cpp ──
 // Register window map (dafb_base::map): +$000 main regs, +$100 Swatch
 // CRTC/interrupts, +$200 Antelope RAMDAC (revised AC842a), +$300 clock
 // generator — which chip lives there depends on the DAFB flavour
@@ -14,11 +14,18 @@
 // the bus decoder (Q605Memory::vram_): rendering is host-side, so the
 // cell only owns the register/CRTC/CLUT/clock state.
 //
-// Parity status vs dafb.cpp (2026-07-21 pass): Swatch CRTC timing →
-// recalc_mode()-derived geometry, Gazelle bit-banged pixel clock,
-// extended monitor sense, display-disable bit, VBL/cursor interrupts,
-// RAMDAC modes incl. Antelope x555. Remaining gaps: no VRAM
-// arbitration/timing; VBL line hard-coded at 480 (as in MAME).
+// Parity status vs dafb.cpp (2026-07-21 pass, cosmetics reviewed
+// 2026-08-06): Swatch CRTC timing → recalc_mode()-derived geometry,
+// Gazelle bit-banged pixel clock, extended monitor sense, display-disable
+// bit, VBL/cursor interrupts, RAMDAC modes incl. Antelope x555,
+// monochrome-sense blue replication in the CLUT. Remaining gaps: no VRAM
+// arbitration/timing; VBL line 480 as in MAME, wrapped modulo the frame
+// height so sub-480 modes still fire once per frame.
+// Three divergences are deliberate and documented at their sites in
+// Dafb.cpp: the CLUT read phase wraps R→G→B (MAME's counter runs
+// unbounded and poisons its own write path), convolution does not
+// destructively divide the stride echo, and the aux-scanline interrupt
+// enable is ignored rather than fatalerror'd.
 // Gate: tests/q605_dafb_test.cpp.
 
 #pragma once
@@ -33,8 +40,21 @@ public:
     // Gazelle) — see clockgenWrite8.
     enum class Clockgen { Gazelle, Dp8534, Dp8531 };
 
-    explicit Dafb(int64_t cpuHz, Clockgen clockgen = Clockgen::Gazelle)
-        : cpuHz_(cpuHz), clockgen_(clockgen) {}
+    // Which RAMDAC/CODEC the flavour carries (dafb.cpp:14-17 + the ramdac
+    // overrides): the discrete DAFB of the Q700/Q900 has the plain AC842 —
+    // no PCBR1, no x555 (dafb_base::ramdac_r/w:712-820); the Q950's DAFB II
+    // an AC842a — PCBR1 version ID $01 (dafb_q950_device:1131); djMEMC and
+    // MEMCjr an Antelope, a further revised AC842a — ID $02 (:1258/:1400).
+    enum class Ramdac { Ac842, Ac842a, Antelope };
+
+    // `version` is what register $2C reports in bits 11-9 (dafb.cpp:426-427):
+    // MAME gives the discrete DAFB 1 (dafb_base ctor:84) and every DAFB II
+    // flavour (Q950 / djMEMC / MEMCjr device_start) 3 — the Apple driver
+    // branches on it (the Q700 512×384 quirk keys off version 1, :835).
+    explicit Dafb(int64_t cpuHz, Clockgen clockgen = Clockgen::Gazelle,
+                  int version = 3, Ramdac ramdac = Ramdac::Antelope)
+        : cpuHz_(cpuHz), clockgen_(clockgen),
+          version_(version), ramdac_(ramdac) {}
 
     void reset();
 
@@ -95,8 +115,8 @@ public:
     // ── Save states (SaveState.h contract) ──────────────────────────────
     // The whole cell travels: register echo file, Swatch CRTC + derived
     // geometry, RAMDAC/CLUT, the three clock generators' serial state and
-    // the frame clock phase. cpuHz_/clockgen_ are construction; onIrq is
-    // re-bound by the machine.
+    // the frame clock phase. cpuHz_/clockgen_/version_/ramdac_ are
+    // construction; onIrq is re-bound by the machine.
     template <class Ar> void visit(Ar& ar) {
         ar(regs_, intStatus_, swatchIntEnable_, cursorLine_,
            palAddress_, palIdx_, ac842Pbctrl_, pcbr1_,
@@ -123,6 +143,8 @@ private:
 
     int64_t  cpuHz_;
     Clockgen clockgen_;
+    int      version_ = 3;             // construction (like clockgen_)
+    Ramdac   ramdac_ = Ramdac::Antelope;
     uint32_t regs_[0x100] = {};    // raw register file (echo backing)
     uint8_t  intStatus_ = 0;       // bit 0 = VBL, bit 2 = cursor scanline
     uint32_t swatchIntEnable_ = 0; // $104: bit 0 VBL, bit 2 cursor line

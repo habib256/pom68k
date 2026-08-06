@@ -64,6 +64,23 @@ int main() {
 
             for (size_t p = 0; p + 760 < nib.size(); p++) {
                 if (!(nib[p] == 0xD5 && nib[p+1] == 0xAA && nib[p+2] == 0x96)) continue;
+                // Filler geometry — a DELIBERATE MAME divergence, pinned here
+                // so it stays a documented fact (parity audit § 2.3 cosmetic;
+                // see the note on SonyDrive::encodeTrackGcr). The self-sync
+                // run in front of an address prologue is 40 bytes: the
+                // previous sector's 2 tail syncs + this sector's 38 pregap
+                // syncs = 400 cells. MAME's build_mac_track_gcr emits
+                // 8 × (24+24) = 384 cells there (flopimg.cpp:2054-2057) and
+                // sizes a separate head-of-track pregap from the speed zone
+                // (:2037-2051), where our zone slack is a tail pad of empty
+                // cells that the nibble stream does not even carry.
+                if (p >= 41) {
+                    size_t syncs = 0;
+                    while (syncs < p && nib[p-1-syncs] == 0xFF) syncs++;
+                    CHECK(syncs == 40,
+                          "address pregap: %zu self-sync bytes, want 40 (t%d h%d)",
+                          syncs, t, h);
+                }
                 int atrk = gcrInv(nib[p+3]), asec = gcrInv(nib[p+4]);
                 int aside = gcrInv(nib[p+5]), afmt = gcrInv(nib[p+6]), asum = gcrInv(nib[p+7]);
                 CHECK(atrk == (t & 0x3F), "addr track %d vs %d", atrk, t);
@@ -77,6 +94,11 @@ int main() {
                 while (q + 710 < nib.size() &&
                        !(nib[q] == 0xD5 && nib[q+1] == 0xAA && nib[q+2] == 0xAD)) q++;
                 CHECK(nib[q] == 0xD5, "data mark for sector %d", asec);
+                // Same divergence at the address→data gap: 7 self-sync bytes
+                // (1 after the epilogue + 6 before the data prologue) = 70
+                // cells, where MAME writes 48 (flopimg.cpp:2068-2069).
+                CHECK(q - (p + 10) == 7,
+                      "addr->data gap: %zu sync bytes, want 7", q - (p + 10));
                 CHECK(gcrInv(nib[q+3]) == asec, "data sector byte");
 
                 // MAME decode loop (extract_sectors_from_track_mac_gcr6)
@@ -109,6 +131,10 @@ int main() {
                       "data checksum t%d h%d s%d", t, h, asec);
                 CHECK(nib[r+4] == 0xDE && nib[r+5] == 0xAA, "data epilogue");
 
+                // Tag bytes are zero-filled on purpose: MAME's DC42 loader
+                // carries the real 12 per sector (ap_dsk35.cpp:225-227) but a
+                // flat image has nowhere to store one on write-back
+                // (parity audit § 2.3, LLE_VS_HLE § 1.3).
                 for (int i = 0; i < 12; i++)
                     CHECK(sdata[i] == 0, "tag byte %d", i);
                 for (int i = 0; i < 512; i++)

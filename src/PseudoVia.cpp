@@ -27,7 +27,10 @@ uint8_t PseudoVia::read(uint32_t offset) {
         if (offset == 0x12 || offset == 0x13) data &= uint8_t(~0x80);
         return data;
     }
-    offset &= 0x13;                          // A0, A1, A4 decoded
+    // Decode width per flavour: base and V8 read through the narrow A0/A1/A4
+    // decode (pseudovia.cpp:222 — V8 only overrides write), Sonora reads the
+    // full $00-$1F file (:413; regs 4/5 are distinct, not port-B mirrors).
+    offset &= (flavour_ == Flavour::Sonora) ? 0x1Fu : 0x13u;
     uint8_t data = regs_[offset];
 
     if (offset == 0x00) data = 0;            // port B: no inputs wired on LC II
@@ -43,10 +46,11 @@ uint8_t PseudoVia::read(uint32_t offset) {
 }
 
 // v8_pseudovia_device::write (pseudovia.cpp:329-388). The base device's
-// write (:250-290) differs only in case 0x03 — see below. (MAME's base
-// case 0x13 falls through to a bare recalc without touching the IER; that
-// is a MAME slip, not hardware: the RBV/VASP ROMs enable their interrupts
-// through it, so both flavours keep the bit-7-selector form here.)
+// write (:250-307) differs in case 0x03 (no ~$10 ASC mask, :268-271) and
+// in case 0x13, where a set-write of exactly $FF stores $1F — "the IIci
+// ROM's POST demands it" (:290-305). That quirk is base-only: V8
+// (:376-386), Sonora (:488-498) and Msc (:600-610) keep the plain bit-7
+// selector.
 void PseudoVia::write(uint32_t offset, uint8_t v) {
     if (flavour_ == Flavour::Msc) {
         // msc_pseudovia_device::write — no port-A window, full decode,
@@ -62,7 +66,13 @@ void PseudoVia::write(uint32_t offset, uint8_t v) {
         return;
     }
 
-    offset &= 0x1F;
+    // Decode width per flavour: base writes through the narrow A0/A1/A4
+    // decode (pseudovia.cpp:252 — so $0B mirrors the IFR ack), V8/Sonora
+    // decode $00-$1F (:337/:449), Msc keeps the full offset (:560) — its
+    // $14-$FF non-cases fall out of the switch as NOPs, like master's
+    // (no write function has a default case).
+    if (flavour_ == Flavour::Base)      offset &= 0x13;
+    else if (flavour_ != Flavour::Msc)  offset &= 0x1F;
     switch (offset) {
     case 0x00:
         if (onPortB) onPortB(v);
@@ -88,8 +98,16 @@ void PseudoVia::write(uint32_t offset, uint8_t v) {
         break;
     case 0x12:                               // slot IER, bit-7 selector
     case 0x13:                               // IER, bit-7 selector
-        if (v & 0x80) regs_[offset] |= uint8_t(v & 0x7F);
-        else          regs_[offset] &= uint8_t(~(v & 0x7F));
+        if (v & 0x80) {
+            regs_[offset] |= uint8_t(v & 0x7F);
+            // Base IER only: a $FF write stores $1F — "the IIci ROM's
+            // POST demands it" (pseudovia.cpp:295-298; no other flavour
+            // has the quirk).
+            if (offset == 0x13 && flavour_ == Flavour::Base && v == 0xFF)
+                regs_[offset] = 0x1F;
+        } else {
+            regs_[offset] &= uint8_t(~(v & 0x7F));
+        }
         recalcIrqs();
         break;
     }

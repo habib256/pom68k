@@ -112,6 +112,11 @@ public:
     bool cpuHeld() const { return pmu_.active() && pmu_.cpuHeld(); }
     PgePmu& pmu() { return pmu_; }
     bool pgeActive() const { return pmu_.active(); }
+    // Clock/PRAM live inside the PMU on Duos — same forwarder shape as the
+    // other platforms' setRtcSeconds (e.g. V8Memory → egret). The ctor
+    // already seeds from host time (MAME m68hc05pge.cpp:185-187 does it in
+    // device_start); this lets the GUI re-seed like every other machine.
+    void setRtcSeconds(uint32_t s) { pmu_.setSeconds(s); }
     // Input goes through the PG&E. The matrix keyboard and the trackball
     // quadrature counters are milestone 4; until then host events ride the
     // ADB devices behind the PMU's modem cell, which is how an external
@@ -212,7 +217,7 @@ private:
     bool sccIrq_ = false;
     uint8_t mscConfig_ = 0;          // msc_config_w (bit 1 halves CPU clock)
     uint8_t mscClockCtrl_ = 0;       // MSC block reg 1
-    uint8_t mscSoundCtrl_ = 0;       // reg 2; bit 0 SOUND_BUSY read-clears
+    uint8_t mscSoundCtrl_ = 0;       // reg 2; bit 6 SOUND_BUSY read-clears
     uint8_t gscRegs_[0x20] = {};     // latched; decodeScreen() reads reg 4
     bool wakeReset_ = false;         // PMU wake → CPU reset at run boundary
     bool pmuReq_ = true;             // /PMU_REQ latch (host-written PB2)

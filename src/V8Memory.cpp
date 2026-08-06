@@ -41,6 +41,7 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
     else
         pvia_.onVideoRead = [this] { return uint8_t((montype_ << 3) & 0x38); };
     if (model_ == Model::MacTv) montype_ = 6;   // built-in 640×480 CRT
+    if (model_ == Model::MacTv) simmLoc_ = 0x400000;  // SIMM bus base (v8.cpp:1093)
     pvia_.onVideoWrite = [this](uint8_t v) { videoConfig_ = v; };
     egret_.setAdbBus(&adb_);
     // ASC IRQ is LEVEL-triggered into pseudo-VIA IFR bit 4 (v8.cpp:119-122).
@@ -208,8 +209,9 @@ void V8Memory::reset() {
     vblState_ = false;
     // VIA1 port A input = V8-family machine ID | diag bit: $D4 for the
     // V8 proper (LC/LC II, v8.cpp:249-252), $92 for the Classic II's
-    // Eagle (v8.cpp:657-660), $82 for the Color Classic's Spice
-    // (v8.cpp:755-758); PB3 = Egret XCVR_SESSION, idle high. PB0-PB2
+    // Eagle (v8.cpp:657-660). The Color Classic's Spice reads a plain
+    // $82 — no diag-bit OR, no config port at all (v8.cpp:703-704,
+    // 755-758); PB3 = Egret XCVR_SESSION, idle high. PB0-PB2
     // (legacy RTC lines) and PB6-PB7 keep the 6522 pull-up default 1
     // (review 2026-07-16: they read 0 before, incl. to the ROM's
     // old-clock probe). PB4/PB5 (VIA_FULL/SYS_SESSION) are HOST-driven
@@ -220,7 +222,7 @@ void V8Memory::reset() {
     // the boot etalon).
     // Tinker Bell reads a plain $84 (v8.cpp:946-949, no diag bit OR).
     via_.setInA(model_ == Model::ClassicII     ? 0x93
-                : model_ == Model::ColorClassic ? 0x83
+                : model_ == Model::ColorClassic ? 0x82
                 : model_ == Model::MacTv        ? 0x84
                                                 : 0xD5);
     via_.setInB(uint8_t(0xC7 | (xcvrSession_() << 3)));
@@ -228,13 +230,30 @@ void V8Memory::reset() {
 
 // MAME v8.cpp:354-422 ram_size(). SIMM bank (bank A) always maps at 0,
 // motherboard (bank B) after the CONFIGURED SIMM size; the first 2 MB of
-// motherboard RAM are always aliased at $800000 (handled in ramIndex).
+// motherboard RAM are always aliased at $800000 (handled in ramIndex) —
+// except on the Mac TV's Tinker Bell, which has its own layout below.
 // ram_ layout mirrors MAME's contiguous RAM device: motherboard at
 // offset 0, SIMM at +4 MB — except the 10 MB config, where the SIMM is
 // 8 MB at +2 MB and the soldered bank's upper 2 MB are the wasted ones
 // (v8.cpp:363-369).
 void V8Memory::applyRamConfig(uint8_t config) {
     if (overlay_) return;
+
+    // Tinker Bell override (v8.cpp:1066-1101 tinkerbell_device::ram_size):
+    // motherboard 4 MB ALWAYS at 0, SIMM ALWAYS at $400000 when any SIMM
+    // bit is set, no 2 MB truncate bit, and NO $800000 motherboard image
+    // (ramIndex). The $C0 the ROM writes — "8 MB SIMM, alias only" on V8 —
+    // means 4 MB motherboard + 4 MB SIMM here (v8.cpp:1068-1070).
+    if (model_ == Model::MacTv) {
+        simmPhys_ = totalRam_ > mbRam_ ? totalRam_ - mbRam_ : 0;
+        simmOff_ = mbRam_;                   // ram_: motherboard first
+        simmMapped_ = simmPhys_ > 0 && (config & 0xC0) != 0;
+        mbLoc_ = 0;                          // v8.cpp:1084-1085
+        mbSize_ = mbRam_;
+        mbMapped_ = true;
+        jitMapChanged();
+        return;
+    }
 
     simmPhys_ = totalRam_ > mbRam_ ? totalRam_ - mbRam_ : 0;
     simmOff_ = mbRam_;
@@ -407,6 +426,14 @@ uint8_t V8Memory::read8(uint32_t addr) {
         swim_.setSel((via_.portA() & 0x20) != 0);
         return swim_.read((addr >> 9) & 0xF);
     }
+    // Ariel RAMDAC. MAME gives it the same 8 KB window (v8.cpp:93,
+    // map(0x524000,0x525fff)) but ariel_device::read/write switch on the
+    // raw offset and only decode 0-3 (ariel.cpp:62-94), so on master the
+    // band from +4 up reads 0. We decode A0-A1 and mirror — an 8 KB chip
+    // select on a 4-register RAMDAC is partial decode, and MAME's zero
+    // band is a consequence of using the map offset as a register index.
+    // Cosmetic (nothing shipped touches +4 and up); the argument in full,
+    // and the identical VASP case, are in VaspMemory.cpp read8.
     if (addr >= 0xF24000 && addr < 0xF26000) return ariel_.read(addr & 3);
     if (addr >= 0xF26000 && addr < 0xF28000) {
         uint8_t d = pvia_.read(addr - 0xF26000);
@@ -462,7 +489,7 @@ const uint8_t* V8Memory::codeSpan(uint32_t phys, uint32_t& len) const {
         if (phys >= 0x800000)                    edge = 0xA00000;
         else if (mbMapped_ && phys >= mbLoc_ && phys < mbLoc_ + mbSize_)
                                                  edge = mbLoc_ + mbSize_;
-        else                                     edge = simmPhys_;
+        else                                     edge = simmLoc_ + simmPhys_;
         len = edge - phys;
         if (uint64_t(i) + len > ram_.size()) len = uint32_t(ram_.size() - i);
         return ram_.data() + i;
@@ -487,7 +514,7 @@ uint8_t* V8Memory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
         if (phys >= 0x800000)                    edge = 0xA00000;
         else if (mbMapped_ && phys >= mbLoc_ && phys < mbLoc_ + mbSize_)
                                                  edge = mbLoc_ + mbSize_;
-        else                                     edge = simmPhys_;
+        else                                     edge = simmLoc_ + simmPhys_;
         len = edge - phys;
         if (uint64_t(i) + len > ram_.size()) len = uint32_t(ram_.size() - i);
         return ram_.data() + i;
@@ -524,8 +551,8 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
                 jitGuard_->note(addr, 1);
                 if (addr >= 0x800000 && mbMapped_ && (addr & 0x1FFFFF) < mbSize_)
                     jitGuard_->note(mbLoc_ + (addr & 0x1FFFFF), 1);
-                else if (addr < 0x800000 && i < 0x200000)
-                    jitGuard_->note(0x800000 | i, 1);
+                else if (model_ != Model::MacTv && addr < 0x800000 && i < 0x200000)
+                    jitGuard_->note(0x800000 | i, 1);  // no alias on Tinker Bell
             }
             ram_[i] = v;
         }
@@ -668,8 +695,9 @@ void V8Memory::write16(uint32_t addr, uint16_t v) {
                 jitGuard_->note(addr, 2);
                 if (addr >= 0x800000 && mbMapped_ && (addr & 0x1FFFFF) < mbSize_)
                     jitGuard_->note(mbLoc_ + (addr & 0x1FFFFF), 2);
-                else if (addr < 0x800000 && i0 != 0xFFFFFFFF && i0 < 0x200000)
-                    jitGuard_->note(0x800000 | i0, 2);
+                else if (model_ != Model::MacTv && addr < 0x800000
+                         && i0 != 0xFFFFFFFF && i0 < 0x200000)
+                    jitGuard_->note(0x800000 | i0, 2);  // no alias on Tinker Bell
             }
             if (i0 != 0xFFFFFFFF) ram_[i0] = uint8_t(v >> 8);
             if (i1 != 0xFFFFFFFF) ram_[i1] = uint8_t(v);

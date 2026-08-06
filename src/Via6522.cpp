@@ -5,12 +5,29 @@
 #include <cstdio>
 #include <cstdlib>
 
+// DELIBERATE DIVERGENCE (docs/MAME_PARITY_AUDIT.md § 2.1, cosmetic):
+// RES on a real 6522 clears every internal register EXCEPT T1, T2 and the SR
+// (R6522 datasheet § 2.1), and MAME follows the silicon — device_reset()
+// (6522via.cpp:329-346) touches the ports, PCR/ACR/IER/IFR and the two
+// "active" flags, then merely DISARMS the timers (adjust(never)); m_t1ll/
+// m_t1lh/m_t2ll/m_t2lh/m_sr keep their pre-reset contents (device_start()
+// even seeds them $F3/$B5/$FF/$FF from a VIC-20 dump). POM68K zeroes them.
+// KEPT, not aligned: the difference is unobservable — every shipped Mac ROM
+// reprograms the latches, the SR and the ACR before arming anything, and
+// t1armed_/t2armed_ are cleared here either way, so no stale underflow can
+// flag — while a warm reset that PRESERVED counters would make the reset
+// state of all 36 machines depend on when the reset landed. Zeroing is what
+// the boot etalons and the save-state round-trips were built on; a
+// cold-start difference cannot arise either (the members carry in-class
+// initializers). Reopen only if a guest is ever caught reading T1/T2/SR
+// between a reset and its own programming.
 void Via6522::reset() {
     ora_ = orb_ = ddra_ = ddrb_ = 0;
     inA_ = inB_ = 0xFF;
     acr_ = pcr_ = sr_ = ifr_ = ier_ = 0;
     t1_ = t2_ = 0; t1latch_ = 0; t2ll_ = 0;
     t1armed_ = t2armed_ = false;
+    t1Pb7_ = true;                              // MAME 6522via.cpp:347
     srHostWritten_ = false;
     shiftCount_ = 0;
     cb1_ = cb2_ = true;
@@ -34,11 +51,30 @@ bool Via6522::tick(int n) {
             // meant to set never arrived (guest spins at IPL 0).
             setIfr(TIMER1); hit = true;
             t1armed_ = true;
+            // DELIBERATE DIVERGENCE (audit § 2.1, cosmetic): the free-run
+            // period is N+2 φ2 cycles — R6522 datasheet § 5.1 ("the time
+            // between interrupts is N+2 cycles"), and the value every Mac
+            // timing table is written against. MAME schedules N+IFR_DELAY
+            // with IFR_DELAY = 3 (6522via.cpp:102, :542) and then SUBTRACTS
+            // those 3 clocks back out when the guest reads the counter
+            // (:117-119) — an interrupt-latency fudge bolted onto the
+            // period, not a claim about the divider. KEPT: T1 is the
+            // heartbeat of every platform tick and of the Time Manager, so
+            // a blanket +1 φ2 (1.2766 µs at the Plus's 783.36 kHz) would
+            // re-time all 36 boot etalons for a parity gain of zero.
+            // Pinned by tests/via6522_parity_test.cpp (deliberate N+2).
             int period = int(t1latch_) + 2;
+            // MAME 6522via.cpp:538-541 t1_tick(): continuous mode toggles
+            // the T1 PB7 square wave on each underflow (skipped for a zero
+            // latch). A tick(n) slice may span several periods, so flip by
+            // underflow parity. Visible on port B only while ACR bit 7 set.
+            if (t1latch_ > 0 && ((int(-(t1_ + 1)) / period + 1) & 1))
+                t1Pb7_ = !t1Pb7_;
             t1_ = period - 1 + ((t1_ + 1) % period);
         } else {
             if (t1armed_) { setIfr(TIMER1); hit = true; }
             t1armed_ = false;
+            t1Pb7_ = true;                       // MAME 6522via.cpp:546: one-shot leaves PB7 high
             t1_ &= 0xFFFF;                       // wraps and keeps counting
         }
     }
@@ -62,6 +98,19 @@ bool Via6522::tick(int n) {
         }
     }
     return hit;
+}
+
+// T2 pulse-count mode (ACR bit 5): one decrement per PB6 falling edge, from
+// setInB(). MAME 6522via.cpp:129-150 counter2_decrement(): borrow through
+// T2CH; the 0x0000 → 0xFFFF underflow flags TIMER2 once per T2CH write.
+// tick() already skips the φ2 decrement in this mode.
+void Via6522::countPb6Pulse() {
+    if ((t2_ & 0xFFFF) == 0) {
+        t2_ = 0xFFFF;
+        if (t2armed_) { t2armed_ = false; setIfr(TIMER2); }
+    } else {
+        t2_ = (t2_ - 1) & 0xFFFF;
+    }
 }
 
 void Via6522::extShiftCB1(bool level, bool cb2FromPic) {
@@ -92,7 +141,12 @@ void Via6522::extShiftCB1(bool level, bool cb2FromPic) {
         // every ROM byte as byte<<1 (Talk R0 $2C arrived as Listen $58) and
         // ADBReInit relocated the devices into phantom addresses.
         if (fell) {
-            if (extBits_ > 0) sr_ = uint8_t(sr_ << 1);
+            // MAME 6522via.cpp:437-443 shift_out(): the outgoing MSB
+            // recirculates into bit 0 (m_sr = (m_sr << 1) | m_out_cb2).
+            // The bits presented on CB2 are unchanged (a recirculated bit
+            // needs 8 shifts to reach bit 7; at most 7 happen per byte) —
+            // only the SR residue after the byte matches hardware now.
+            if (extBits_ > 0) sr_ = uint8_t((sr_ << 1) | ((sr_ >> 7) & 1));
             return;
         }
         if (!rose) return;
@@ -161,6 +215,7 @@ void Via6522::write(int reg, uint8_t v) {
                      break;
         case T1CH:   t1latch_ = uint16_t((t1latch_ & 0x00FF) | (v << 8));
                      t1_ = t1latch_; t1armed_ = true;
+                     t1Pb7_ = false;             // MAME 6522via.cpp:934: PB7 drops on T1CH write
                      ifr_ &= uint8_t(~TIMER1); break;
         case T2CL:   t2ll_ = v; break;          // stage the low latch (R6522 §5.6)
         case T2CH:   t2_ = int32_t((uint32_t(v) << 8) | t2ll_);   // latch → counter

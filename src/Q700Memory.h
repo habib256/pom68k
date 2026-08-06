@@ -37,8 +37,9 @@
 //   * VIA1 PA identity: $D0|bit0 (Q900) or $90|bit0 (Q950) vs the Q700's
 //     $C0|bit0; VIA2 port B carries no DFAC on these boards.
 //   * 5 NuBus slots instead of 2; Q950 runs at 33.333 MHz (Q900 at 25).
-// The Q950's DAFB II wants `m_dafb_version = 3` — which POM68K's `Dafb`
-// already reports unconditionally (`Dafb.cpp:69`), so no video delta.
+// The Q950's DAFB II reports version 3 with the AC842a RAMDAC (PCBR1 ID
+// $01); the Q700/Q900 chip reports version 1 with the plain AC842 — the
+// ctor passes both to the `Dafb` cell (dafb.cpp:84,426-427,1105-1131).
 //
 // Two things differ from the Centris beyond the layout:
 //  * SCSI lives behind **DAFB's** TurboSCSI cell, not IOSB's — DAFB register
@@ -135,7 +136,7 @@ public:
     AdbVia& adbVia() { return adbVia_; }
     AdbBus& adb() { return adb_; }
     Scc8530& scc() { return scc_; }
-    AscSonora& asc() { return asc_; }
+    AscEasc& asc() { return asc_; }
     Swim1& swim() { return swim_; }
     // Eclipse-only front end (unused on the Spike; see the header note).
     ApplePic& sccPic() { return sccPic_; }
@@ -272,7 +273,9 @@ public:
         // Each ApplePic carries its 32 KB of host-uploaded firmware — a
         // restore that dropped it would wake IOPs with no program.
         if (eclipse()) {
-            ar(sccPic_, swimPic_, adbLine_, egret_, scsi2_);
+            ar(sccPic_, swimPic_, adbLine_, egret_, scsi2_,
+               scsiCtrl2_, scsi2ReadCycles_, scsi2WriteCycles_,
+               scsi2DmaReadCycles_, scsi2DmaWriteCycles_);
         }
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
@@ -299,6 +302,7 @@ private:
     void ioWrite8(uint32_t addr, uint8_t v);
     uint8_t scsiDmaRead_();
     void    scsiDmaWrite_(uint8_t v);
+    void    scsiHoldDtack_(bool write);
     void    scsiPoll_();
     void syncSwimFromCpu();
     uint8_t dafbRead8(uint32_t addr);
@@ -310,7 +314,10 @@ private:
     AdbBus adb_;
     AdbVia adbVia_;
     Scc8530 scc_;
-    AscSonora asc_;
+    // Discrete EASC $B0 (macquadra700.cpp:805 wires ASC_EASC on every
+    // quadra_base machine) — not the Sonora $BC cell this board shipped
+    // with before the MAME-parity audit (finding #1).
+    AscEasc asc_;
     int64_t ascCycAcc_ = 0;
     Swim1 swim_;
     SonyDrive drive0_, drive1_;
@@ -342,6 +349,12 @@ private:
     uint16_t scsiCtrl_ = 0;
     int scsiReadCycles_ = 3, scsiWriteCycles_ = 3;
     int scsiDmaReadCycles_ = 3, scsiDmaWriteCycles_ = 3;
+    // SCSI bus 2, register $28 — same decode (dafb.cpp:424,533-576). The
+    // latch exists on every flavour; only the Eclipse wires a second 53C96
+    // behind it, so on the Spike bit 9 (live DRQ) simply never rises.
+    uint16_t scsiCtrl2_ = 0;
+    int scsi2ReadCycles_ = 3, scsi2WriteCycles_ = 3;
+    int scsi2DmaReadCycles_ = 3, scsi2DmaWriteCycles_ = 3;
 
     Dafb dafbCell_;
 

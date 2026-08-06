@@ -11,12 +11,14 @@
 // MAME mv_sonora.cpp:20-26 — the five Sonora modelines. The LC III
 // drives 512×384 (sense 2) and 640×480 13" (sense 6) here; the other
 // three are kept for ROM probing completeness.
+// The trailing pair is MAME's own {supports16bpp, monochrome}: only the
+// 640×870 15" Portrait (sense $01) is a mono display.
 static const SonoraMemory::Modeline kModelines[] = {
-    { 0x02, 15667200,  640, 16, 32,  80,  407,  1, 3, 19, true  },
-    { 0x06, 31334400,  896, 80, 64, 112,  525,  3, 3, 39, true  },
-    { 0x01, 57283200,  832, 32, 80,  80,  918,  3, 3, 42, false },
-    { 0x09, 57283200, 1152, 32, 64, 224,  667,  1, 3, 39, false },
-    { 0x0B, 25175000,  800, 16, 96,  48,  525, 10, 2, 33, false },
+    { 0x02, 15667200,  640, 16, 32,  80,  407,  1, 3, 19, true,  false },
+    { 0x06, 31334400,  896, 80, 64, 112,  525,  3, 3, 39, true,  false },
+    { 0x01, 57283200,  832, 32, 80,  80,  918,  3, 3, 42, false, true  },
+    { 0x09, 57283200, 1152, 32, 64, 224,  667,  1, 3, 39, false, false },
+    { 0x0B, 25175000,  800, 16, 96,  48,  525, 10, 2, 33, false, false },
 };
 
 const SonoraMemory::Modeline* SonoraMemory::modeline(uint8_t id) {
@@ -268,10 +270,19 @@ void SonoraMemory::dacWrite(int reg, uint8_t v) {
     case 1:
         palRgb_[palIdx_++] = v;
         if (palIdx_ == 3) {
-            // Monochrome modelines feed the blue gun only; both LC III
-            // monitors here are RGB, so store the triplet as written.
-            pens_[palAddr_] = uint32_t(palRgb_[0]) << 16
-                            | uint32_t(palRgb_[1]) << 8 | palRgb_[2];
+            // A monochrome modeline (only the 640×870 15" Portrait, sense
+            // $01) wires the blue DAC to the video amplifier, so the R and
+            // G bytes are dropped and blue drives all three primaries
+            // (mv_sonora.cpp:373-388). The LC III's own two monitors are
+            // RGB, so this never fires on a boot gate — it is the same
+            // rule the RBV portrait display gets (RbvVideo.h pen()) and
+            // the DAFB (Dafb::write32 $210), applied here at the write as
+            // MAME does, because pens_[] is what the decoder reads.
+            const bool mono = mode_ && mode_->monochrome;
+            pens_[palAddr_] = mono
+                ? (uint32_t(v) << 16 | uint32_t(v) << 8 | v)
+                : (uint32_t(palRgb_[0]) << 16
+                   | uint32_t(palRgb_[1]) << 8 | palRgb_[2]);
             palIdx_ = 0;
             palAddr_++;
         }
@@ -351,7 +362,11 @@ uint8_t SonoraMemory::read8(uint32_t addr) {
     if (addr >= 0x5FFFFFFC) {                // machine ID (maclc3.cpp:161)
         return uint8_t(machineId_ >> ((3 - (addr & 3)) * 8));
     }
-    if (addr >= 0x51000000) return 0xFF;     // open bus
+    // $51000000-$5FFFFFFB: unmapped in MAME too (sonora.cpp:49-61 — every
+    // window mirrors at most $00FC0000, inside $50xxxxxx; maclc3.cpp:147-161)
+    // and the space has no unmap_value_high, so it reads 0 — same rule as
+    // the in-page unmapped-I/O return below, not open-bus $FF.
+    if (addr >= 0x51000000) return 0x00;
 
     // ── Sonora I/O page $50xxxxxx ──
     const uint32_t sub = addr & 0xFFFFFF;

@@ -15,9 +15,16 @@
 Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
     // Discrete DAFB (macquadra700.cpp:729 instantiates plain dafb_device):
     // the DP8531 clock chip, not the MEMCjr's Gazelle (dafb.cpp:884).
+    // Q700/Q900 carry the original chip — version 1 in register $2C
+    // (dafb.cpp:84,426-427) with the plain AC842 RAMDAC (no PCBR1/x555);
+    // the Q950's DAFB II reports version 3 with the AC842a, PCBR1 version
+    // ID $01 (dafb_q950_device, dafb.cpp:1105,1131).
     : asc_(cpuHz), egret_(via1_, /*cudaPolarity=*/false, int(cpuHz)),
       totalRam_(totalRam), cpuHz_(cpuHz), model_(model),
-      dafbCell_(cpuHz, Dafb::Clockgen::Dp8531) {
+      dafbCell_(cpuHz, Dafb::Clockgen::Dp8531,
+                model == Model::Q950 ? 3 : 1,
+                model == Model::Q950 ? Dafb::Ramdac::Ac842a
+                                     : Dafb::Ramdac::Ac842) {
     while (totalRam_ & (totalRam_ - 1)) totalRam_ &= totalRam_ - 1;   // pow2
     ram_.assign(totalRam_, 0);
     rom_.assign(kRomSize, 0xFF);
@@ -176,6 +183,9 @@ void Q700Memory::reset() {
     scsiCtrl_ = 0;
     scsiReadCycles_ = scsiWriteCycles_ = 3;
     scsiDmaReadCycles_ = scsiDmaWriteCycles_ = 3;
+    scsiCtrl2_ = 0;
+    scsi2ReadCycles_ = scsi2WriteCycles_ = 3;
+    scsi2DmaReadCycles_ = scsi2DmaWriteCycles_ = 3;
     dafbCell_.reset();
     via1_.reset();
     via2_.reset();
@@ -408,6 +418,12 @@ uint8_t Q700Memory::dafbRead8(uint32_t addr) {
         uint32_t val = uint32_t(scsiCtrl_) | (scsi_.drq() ? 0x200u : 0u);
         return uint8_t(val >> (8 * (3 - (addr & 3))));
     }
+    // Bus 2 (dafb.cpp:424): the Eclipse's second 53C96 behind the same
+    // status shape; on the Spike nothing drives DRQ so bit 9 stays low.
+    if ((addr & 0x3FC) == 0x28) {
+        uint32_t val = uint32_t(scsiCtrl2_) | (scsi2_.drq() ? 0x200u : 0u);
+        return uint8_t(val >> (8 * (3 - (addr & 3))));
+    }
     if ((addr & 0x3FC) == 0x210 && (addr & 3) != 3) return 0;
     uint32_t val = dafbCell_.read32(addr & ~3u);
     return uint8_t(val >> (8 * (3 - (addr & 3))));
@@ -423,14 +439,30 @@ void Q700Memory::dafbWrite8(uint32_t addr, uint8_t v) {
     uint32_t merged = (dafbCell_.rawReg(addr) & ~(0xFFu << sh))
                     | (uint32_t(v) << sh);
     if ((addr & 3) != 3) { dafbCell_.setRawReg(addr, merged); return; }
+    // Registers below $200 are 12 bits wide: MAME masks `data &= 0xfff`
+    // at the top of both dafb_w (dafb.cpp:435) and swatch_w (:625) — the
+    // MEMCjr/djMEMC callers already clamp, this caller must too.
+    if ((addr & 0x3FC) < 0x200) merged &= 0xFFF;
     if ((addr & 0x3FC) == 0x24) {
         // dafb.cpp:490-530 — one register, four wait-state selections.
+        dafbCell_.setRawReg(addr, merged);        // keep the echo coherent
         scsiCtrl_ = uint16_t(merged);
         scsiReadCycles_  = (merged & 1) ? 6 : ((merged & 2) ? 4 : 3);
         scsiWriteCycles_ = (merged & 4) ? 3 : 4;
         scsiDmaReadCycles_ = (merged & 8) ? 3 : 4;
         if (merged & 0x10)      scsiDmaWriteCycles_ = 5;
         else if (merged & 0x20) scsiDmaWriteCycles_ = 3;
+        return;
+    }
+    if ((addr & 0x3FC) == 0x28) {
+        // dafb.cpp:533-576 — SCSI bus 2, the same wait-state decode.
+        dafbCell_.setRawReg(addr, merged);
+        scsiCtrl2_ = uint16_t(merged);
+        scsi2ReadCycles_  = (merged & 1) ? 6 : ((merged & 2) ? 4 : 3);
+        scsi2WriteCycles_ = (merged & 4) ? 3 : 4;
+        scsi2DmaReadCycles_ = (merged & 8) ? 3 : 4;
+        if (merged & 0x10)      scsi2DmaWriteCycles_ = 5;
+        else if (merged & 0x20) scsi2DmaWriteCycles_ = 3;
         return;
     }
     dafbCell_.write32(addr & ~3u, merged);
@@ -465,11 +497,17 @@ uint8_t Q700Memory::ioRead8(uint32_t addr) {
         sccIrqLine(scc_.irqAsserted());
         return d;
     }
-    // Eclipse only: the tower's SECOND 53C96 bus (registers + pseudo-DMA).
-    if (eclipse() && base >= 0x0F400 && base < 0x0F500)
+    // Eclipse only: the tower's SECOND 53C96 bus (registers + pseudo-DMA),
+    // charged with the bus-2 wait states latched by DAFB register $28
+    // (dafb.cpp turboscsi_r<1>:973 / turboscsi_dma_r<1>:996).
+    if (eclipse() && base >= 0x0F400 && base < 0x0F500) {
+        if (cpu_) cpu_->stall(scsi2ReadCycles_);
         return scsi2_.read((base >> 4) & 0xF);
-    if (eclipse() && base >= 0x0F500 && base < 0x0F504)
+    }
+    if (eclipse() && base >= 0x0F500 && base < 0x0F504) {
+        if (cpu_ && ((sub >> 18) & 1)) cpu_->stall(scsi2DmaReadCycles_);
         return scsi2_.drq() ? scsi2_.dmaRead() : 0xFF;
+    }
     if (base >= 0x0F000 && base < 0x0F100) {      // TurboSCSI 53C96 registers
         if (cpu_) cpu_->stall(scsiReadCycles_);
         uint8_t d = scsi_.read((base >> 4) & 0xF);
@@ -515,10 +553,12 @@ void Q700Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if (eclipse() && base >= 0x0F400 && base < 0x0F500) {
+        if (cpu_) cpu_->stall(scsi2WriteCycles_);
         scsi2_.write((base >> 4) & 0xF, v);
         return;
     }
     if (eclipse() && base >= 0x0F500 && base < 0x0F504) {
+        if (cpu_ && ((sub >> 18) & 1)) cpu_->stall(scsi2DmaWriteCycles_);
         if (scsi2_.drq()) scsi2_.dmaWrite(v);
         return;
     }
@@ -547,15 +587,38 @@ void Q700Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
 }
 
+// The DAFB never bus-errors a PDMA access outright. With the DRQ-check bit
+// of scsiCtrl set (bit 7 = reads, bit 8 = writes — dafb.cpp:484-486) it
+// HOLDS OFF /DTACK until the 53C96 raises DRQ; MAME models the hold-off by
+// rewinding the instruction and spinning 50 µs per retry
+// (dafb.cpp:996-1030 turboscsi_dma_r / :1033-1082 turboscsi_dma_w). Here
+// the wait is charged as machine-cycle stall while the chip's deferred-IRQ
+// clock advances in the same 50 µs slices. The register description's
+// "bus error on timeout" (dafb.cpp:485) is the only /BERR this window may
+// raise — the pre-audit immediate bus error on !DRQ was finding #17.
+void Q700Memory::scsiHoldDtack_(bool write) {
+    const int slice = int(cpuHz_ / 20000);        // MAME's 50 µs spin quantum
+    int64_t budget = cpuHz_ / 50;                 // ~20 ms hold-off cap
+    while (!scsi_.drq() && budget > 0) {
+        scsi_.tick(slice);
+        if (cpu_) cpu_->stall(slice);
+        budget -= slice;
+    }
+    scsiPoll_();
+    if (!scsi_.drq()) busError(0x5000F100, write);   // timeout → /BERR
+}
+
 uint8_t Q700Memory::scsiDmaRead_() {
-    if (!scsi_.drq()) busError(0x5000F100, false);
+    if (!scsi_.drq() && (scsiCtrl_ & 0x80)) scsiHoldDtack_(false);
+    // DRQ-check clear: "no DRQ safety check, just blindly push to the
+    // 53c9x" (dafb.cpp:1060) — the read mirror pops whatever the chip has.
     uint8_t d = scsi_.dmaRead();
     scsiPoll_();
     return d;
 }
 
 void Q700Memory::scsiDmaWrite_(uint8_t v) {
-    if (!scsi_.drq()) busError(0x5000F100, true);
+    if (!scsi_.drq() && (scsiCtrl_ & 0x100)) scsiHoldDtack_(true);
     scsi_.dmaWrite(v);
     scsiPoll_();
 }

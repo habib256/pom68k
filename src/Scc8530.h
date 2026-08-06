@@ -194,9 +194,9 @@ private:
         uint8_t rr0Latch = 0;        // RR0 frozen at interrupt time
         bool latched = false;
         bool txIp = false;           // Tx Buffer Empty interrupt pending
-        bool txEmptyEvent = false;   // buffer BECAME empty since last
-                                     // Reset Tx Int Pending (8530: TxIP
-                                     // is edge-, not level-triggered)
+                                     // (edge-latched at became-empty when
+                                     // WR1 bit 1 is armed; an edge while
+                                     // disarmed is lost — z80scc.cpp:1866)
         // ── Tx engine (SCC Tx/Rx-fidelity LLE, MAME z80scc oracle) ──
         // One-slot Tx buffer (NMOS 8530) feeding a modelled shift register
         // that drains at the programmed character pace. The byte moves
@@ -275,14 +275,14 @@ private:
 
         // ── Save states (SaveState.h) ───────────────────────────────────
         // The full channel: WR file, the interrupt latches (RR0 freeze, the
-        // edge-triggered TxIP and its txEmptyEvent), the modelled Tx shifter
+        // edge-triggered TxIP), the modelled Tx shifter
         // mid-character, and the whole LLAP Rx side — injected frame queue,
         // the frame being paced onto the FIFO, and the 3-deep Rx FIFO with
         // its per-byte RR1. Interrupt latches are the load-bearing part: an
         // 8530 driver acknowledges edges, so a restore that cleared a
         // pending TxIP loses an interrupt the guest is blocked on.
         template <class Ar> void visit(Ar& ar) {
-            ar(wr, dcd, extPending, rr0Latch, latched, txIp, txEmptyEvent);
+            ar(wr, dcd, extPending, rr0Latch, latched, txIp);
             ar(txBufFull, txGracing, txBufData, txShiftData, txShiftIn,
                txFlushing, relatch, txUnderrun, hunt, rtsPin, dtrPin);
             ar(txBuf, rxQueue, rxCur, rxPace, rxPos, rxTimer);

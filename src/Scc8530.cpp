@@ -134,12 +134,16 @@ uint8_t Scc8530::rr0(const Chan& c) const {
     // abandoning a frame mid-read, and masking on FIFO contents wedged it
     // ("Impossible d'ouvrir AppleTalk").
     const bool rxBusy = !c.rxCur.empty();
+    // bit 4 Sync/Hunt is no longer gated on SDLC mode: master sets it on
+    // Enter Hunt OR a disabled receiver in every mode (z80scc.cpp:1937-1940).
+    // The async /SYNC-pin half of the bit stays unmodeled (no pin, no
+    // consumer — MAME_PARITY_AUDIT #34).
     // bit 2 Tx Buffer Empty is LIVE: it drops while a byte waits behind a
     // busy shifter — the pacing the LAP transmit loop polls on.
     return uint8_t(((rxStanding_ || !c.fifo.empty()) ? 0x01 : 0x00)
                    | (c.dcd ? 0x08 : 0x00)
                    | (c.txBufFull ? 0x00 : 0x04) | (ctsHigh_ ? 0x20 : 0x00)
-                   | ((c.hunt && sdlcMode(c)) ? 0x10 : 0x00)
+                   | (c.hunt ? 0x10 : 0x00)
                    | (c.txUnderrun ? 0x40 : 0x00)
                    | ((openLine() && sdlcMode(c) && !rxBusy) ? 0x80 : 0x00));
 }
@@ -206,6 +210,9 @@ void Scc8530::rxPushByte(Chan& c) {
         return;
     }
     if (c.fifo.size() >= 3) {
+        // Same overrun model as injectRxByte(): the queued byte carries the
+        // flag, the arriving one is what is lost (see the note there for the
+        // MAME z80scc.cpp:2559-2575 divergence and why it is kept).
         if (!c.fifo.empty()) c.fifo.back().rr1 |= 0x20;
         raiseRxInt(c, true);
         // Not advancing rxPos re-presents the byte next byte-time: that is the
@@ -264,6 +271,16 @@ void Scc8530::rxPushByte(Chan& c) {
 void Scc8530::injectRxByte(int ch, uint8_t d, bool parityError, bool framingError) {
     Chan& c = ch_[ch & 1];
     if (sdlcMode(c) || !rxEnabled(c)) return;
+    // Overrun: the incoming character is lost and RR1 bit 5 rides the byte
+    // that is still queued behind it, so the driver SEES the error when it
+    // drains the FIFO. DELIBERATE DIVERGENCE (audit § 2.5, cosmetic — which
+    // byte survives): MAME writes the new character over the slot at the
+    // write pointer without stepping the FIFO (z80scc.cpp:2559-2572), i.e.
+    // it keeps the newest byte in a slot the read pointer cannot reach yet,
+    // and the very next non-overrun character clears the flag it left there
+    // (:2575). KEPT: the Zilog UM's whole point is that the overrun be
+    // readable, and this is the mouse/LLAP receive path — the two models
+    // differ only in which byte is discarded, never in the error itself.
     if (c.fifo.size() >= 3) {                    // overrun: drop, flag RR1.5
         if (!c.fifo.empty()) c.fifo.back().rr1 |= 0x20;
         raiseRxInt(c, true);
@@ -384,8 +401,11 @@ uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
             // read LIVE (Zilog SCC UM §3.2) — freezing bit 0 hid every Rx
             // byte from a driver with an unserviced ext/status pending.
             uint8_t live = rr0(c);
-            return c.latched ? uint8_t((c.rr0Latch & 0xF8) | (live & 0x07))
-                             : live;
+            // Of D7-D3, only the WR15-ARMED bits freeze at the latch; the
+            // unarmed ones read live alongside D2-D0 (z80scc.cpp:1438-1443
+            // masks the latched value by WR15).
+            const uint8_t frozen = uint8_t(c.latched ? (c.wr[15] & 0xF8) : 0);
+            return uint8_t((c.rr0Latch & frozen) | (live & ~frozen));
         }
         case 1: {                               // status of the FIFO-top byte
             // Bit 0 All Sent is LIVE: set when both the buffer and the
@@ -414,7 +434,16 @@ uint8_t Scc8530::readCtl_(int channel, Chan& c, int reg) {
                          : ch_[0].rxIp       ? 0b010
                          : ch_[0].txIp       ? 0b000
                          : ch_[0].extPending ? 0b001 : 0b011;
-                vec = uint8_t((vec & ~0x0E) | (code << 1));
+                // WR9 bit 4 Status High/Low: the code moves to V6-V4 with
+                // its bit order REVERSED (z80scc.cpp:700-710 bitswap; the
+                // Zilog UM's "modify vector" table). Mac OS runs status
+                // low — the high path is for parity only.
+                if (ch_[0].wr[9] & 0x10) {
+                    const int hi = ((code & 1) << 2) | (code & 2) | ((code >> 2) & 1);
+                    vec = uint8_t((vec & 0x8F) | (hi << 4));
+                } else {
+                    vec = uint8_t((vec & ~0x0E) | (code << 1));
+                }
             }
             return vec;
         }
@@ -462,8 +491,9 @@ bool Scc8530::txLoad(Chan& c, int rem) {
     c.txGracing = false;                        // a late byte ends the grace
     c.txShiftIn = paceOf(c) + rem;
     if (c.txShiftIn <= 0) c.txShiftIn = 1;
-    c.txEmptyEvent = true;                      // buffer BECAME empty
     if (c.wr[1] & 0x02) c.txIp = true;          // WR1 bit 1 = Tx Int Enable
+                                                // (edge lost if disarmed —
+                                                // z80scc.cpp:1866-1903)
     return true;
 }
 
@@ -475,6 +505,14 @@ bool Scc8530::txLoad(Chan& c, int rem) {
 void Scc8530::writeData(int channel, uint8_t d) {
     if (sccDbg()) fprintf(stderr, "[scc] %c data <- %02X\n", channel ? 'A' : 'B', d);
     Chan& c = ch_[channel & 1];
+    // Writing the next character IS the acknowledgment: the single-slot
+    // buffer going full clears a pending TxIP and consumes the became-
+    // empty event (MAME z80scc.cpp:2477-2500 — the 1-slot FIFO filling
+    // clears the Tx int_state; Zilog SCC UM — TxIP resets on a data
+    // write or Reset Tx Int Pending). An idle shifter re-raises it at
+    // once through txLoad below: the buffer hands the byte on and
+    // BECOMES empty again, which is the chip's next TBE edge.
+    c.txIp = false;
     // Overwriting a full buffer loses the previous byte, as on the real
     // chip — drivers pace on TBE (RR0 bit 2) or TxIP.
     c.txBufData = d;
@@ -560,9 +598,29 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                                                 // RR1 (parity/overrun/CRC —
                                                 // z80scc WR0_ERROR_RESET)
                 break;
-            case 0x10:                          // Reset External/Status ints
+            case 0x10: {                        // Reset External/Status ints
+                // The chip QUEUES persistent status changes (Zilog SCC UM,
+                // WR0 description; MAME z80scc.cpp:1763-1781 →
+                // update_extint:793-818): releasing the latch diffs the
+                // LIVE RR0 against the frozen one over the WR15-enabled
+                // D7-D3 — a change that arrived DURING the latched window
+                // and still persists re-latches and interrupts again. A
+                // mouse DCD edge landing mid-service was silently lost
+                // before. Divergence from MAME, per the UM: the re-latch
+                // freezes the LIVE state (the UM's "second change causes
+                // another interrupt" is a fresh latch event, and the
+                // quadrature driver must read the NEW DCD level); MAME
+                // keeps the stale latched value.
+                const bool wasLatched = c.latched;
+                const uint8_t frozen = c.rr0Latch;
                 c.extPending = false;
                 c.latched = false;
+                if (wasLatched && (c.wr[1] & 0x01) &&
+                    ((frozen ^ rr0(c)) & c.wr[15] & 0xF8)) {
+                    c.rr0Latch = rr0(c);
+                    c.latched = true;
+                    c.extPending = true;
+                }
                 // Servicing re-arms the standing-abort presentation: on
                 // an open line the SDLC receiver detects the next abort
                 // ~130 µs later (tick delivers it). Event-driven, so a
@@ -570,21 +628,39 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
                 if (openLine() && sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
                     c.relatch = kAbortRelatch;
                 break;
+            }
             case 0x28:                          // Reset Tx Int Pending
                 c.txIp = false;
-                c.txEmptyEvent = false;         // event consumed
                 break;
             case 0x38:                          // Reset Highest IUS
-                c.extPending = false;
-                c.latched = false;
-                c.txIp = false;
-                c.txEmptyEvent = false;
-                c.specialIp = false;            // (rxIp is FIFO-level driven)
+                // Clears only the highest-priority Interrupt-Under-Service
+                // bit; every IP latch SURVIVES, so a second pending source
+                // keeps requesting (MAME z80scc.cpp:1782-1802 clears one
+                // daisy-chain IEO bit and re-checks; Zilog SCC UM —
+                // "allowing lower priority conditions to request
+                // interrupts"). On a Mac the SCC never sees an INTACK
+                // cycle (/INTACK tied inactive, the 68k autovectors), so
+                // no IUS bit is ever SET and there is nothing to clear:
+                // each IP falls only to its own ack — a data write or $28
+                // for Tx, $10 for ext/status, $30 for special Rx, the
+                // FIFO draining for Rx. (Clearing every channel IP here
+                // threw away a second pending source the ISR had not yet
+                // dispatched.) The command still marks "ISR done" for the
+                // event-driven standing-abort re-present, exactly like
+                // Reset Ext/Status above.
                 if (openLine() && sdlcMode(c) && (c.wr[15] & 0x80) && (c.wr[1] & 0x01))
                     c.relatch = kAbortRelatch;
                 break;
             default: break;
         }
+        return;
+    }
+    // WR8 through the control pointer IS the transmit buffer — symmetric
+    // with RR8 (z80scc.cpp:2003-2008 do_sccreg_wr8 → data_write). Storing
+    // it dead in wr[8] dropped the byte.
+    if (ptr_ == 8) {
+        ptr_ = 0;
+        writeData(channel, v);
         return;
     }
     // WR2 (interrupt vector) and WR9 (master interrupt control) are
@@ -623,7 +699,6 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
             c2.firstCharSeen = false;
             c2.txBuf.clear();
             c2.txIp = false;
-            c2.txEmptyEvent = false;
             c2.txBufFull = false;
             c2.txShiftIn = 0;
             c2.txFlushing = false;
@@ -644,6 +719,24 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
             c2.wr[5]   = 0x00;
             c2.wr[14]  = uint8_t((c2.wr[14] & 0xC3) | 0x20);
             c2.wr[15]  = 0xF8;
+            // RR1 resets with them (z80scc.cpp:1157-1159: m_rr1 &= 0x07,
+            // |= 0x06 | RR1_ALL_SENT — exactly this channel's cold value).
+            // With the FIFO cleared, readCtl_ case 1 answers from rr1Rd, so
+            // without this a parity/overrun/CRC error latched before the
+            // reset was still readable in RR1 on a chip the driver had just
+            // torn down and re-armed.
+            c2.rr1Rd = 0x07;
+            // NOT applied here (audit § 2.5, cosmetic): the extra HARDWARE-
+            // reset values MAME layers on top for the $C0 form —
+            // device_reset_after_children() sets WR10 = 0, WR11 = $08 and
+            // WR14 = (WR14 & $F0) | $30 (z80scc.cpp:502-518) where the
+            // channel reset above leaves WR11 untouched and WR14 at
+            // (WR14 & $C3) | $20. WR10 has no consumer in POM68K, but WR11
+            // is the Tx clock source (updateSerial, :57) and WR14 bits 1-0
+            // the BRG enable/source: forcing them would re-time the byte
+            // pace of every LLAP/mouse channel on a reset the drivers
+            // immediately follow with their own WR11/WR14 programming.
+            // Zero parity benefit, live timing path — kept as is.
             // WR5 is now clear, so both pins release (Zilog: a channel
             // reset drives /RTS and /DTR high).
             c2.rtsPin = c2.dtrPin = true;
@@ -712,6 +805,10 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
         c.rxIp = false;
         c.specialIp = false;
         c.firstCharSeen = false;
+        // A disabled receiver also sets Sync/Hunt, any mode — silently, no
+        // ext/status latch on this path (z80scc.cpp:1937-1940 sets RR0_SYNC_HUNT
+        // in the WR3 handler without a trigger).
+        c.hunt = true;
     }
 
     // Arming Break/Abort IE (WR15 bit 7) on an open line latches the
@@ -733,14 +830,12 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
         if (!c.latched) { c.rr0Latch = rr0(c); c.latched = true; }
         c.extPending = true;
     }
-    // Enabling Tx interrupts (WR1 bit 1) presents a PENDING became-empty
-    // event (a byte was written since the last Reset Tx Int Pending) —
-    // but a never-filled buffer does NOT interrupt on enable: the
-    // 8530's TxIP is set when the buffer BECOMES empty, not because it
-    // is empty (Zilog SCC UM; review 2026-07-16 — the old
-    // latch-on-enable fired a spurious level-2 on the Plus for any app
-    // arming WR1 bit 1 during driver open).
-    if (ptr_ == 1 && (v & 0x02) && c.txEmptyEvent) c.txIp = true;
+    // Enabling Tx interrupts (WR1 bit 1) presents NOTHING retroactively:
+    // TxIP is set only at a became-empty EDGE, and only if WR1 bit 1 was
+    // enabled at edge time (z80scc.cpp:1866-1903 — do_sccreg_wr1 just
+    // stores and re-checks standing IPs; an edge that happened while
+    // disabled is lost, matching the Zilog UM). The old replay of a stale
+    // event here was MAME_PARITY_AUDIT #35.
     ptr_ = 0;
 }
 

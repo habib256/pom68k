@@ -69,19 +69,54 @@ public:
     enum Icr {
         ICR_DBUS = 0x01, ICR_ATN = 0x02, ICR_SEL = 0x04, ICR_BSY = 0x08,
         ICR_ACK = 0x10, ICR_LA = 0x20, ICR_AIP = 0x40, ICR_RST = 0x80,
+        // Audit § 2.6(d), ALIGNED: bits 6/5 are READ-ONLY status (arbitration
+        // in progress / lost arbitration). A write only lands in the low
+        // 0x9F — MAME `m_icmd = (m_icmd & ~IC_WRITE) | (data & IC_WRITE)`
+        // with IC_WRITE = 0x9f (machine/ncr5380.h:83-84, icmd_w :355); bit 6
+        // on the WRITE side is the chip's TEST mode, which latches nothing
+        // readable. AIP is synthesized from `phase_` in read(R_ICR); LA never
+        // sets — this engine has one initiator and cannot lose arbitration.
+        ICR_WRITE = 0x9F,
     };
-    // Mode Register bits
+    // Mode Register bits.
+    //
+    // Audit § 2.6(a), DOCUMENT-SKIP — MODE_EOP_IE and BSR_ENDDMA below are
+    // stored/reported as 0 and never act. On silicon (and in MAME) the
+    // End-Of-DMA flag has exactly ONE producer: the /EOP pin, driven by an
+    // external DMA controller when its byte count expires — MAME
+    // `ncr5380_device::eop_w` (machine/ncr5380.cpp:762-778) sets BAS_ENDOFDMA
+    // and, with MODE_EOPIRQ, interrupts. There is no /EOP source anywhere in
+    // POM68K: every platform here is PSEUDO-DMA (the CPU moves each byte
+    // through the DACK window), and the only Mac with a real SCSI DMA engine
+    // — the IIfx — is modelled at MAME's own M3 subset (bare 53C80 + soft
+    // handshake, `IIfxMemory::scsiDmaRead/Write`), the full engine being
+    // A/UX-only (`apple/scsidma.cpp:12`; MAME calls eop_w only from
+    // scsidma.cpp:393-394). Modelling the flag would add a bit no code can
+    // ever set. Reopening condition: the IIfx SCSIDMA engine grows its
+    // count-driven transfer path (`docs/IOP_BRINGUP.md`), which is the moment
+    // an /EOP edge becomes expressible.
     enum Mode {
         MODE_ARBITRATE = 0x01, MODE_DMA = 0x02, MODE_MONBSY = 0x04,
         MODE_EOP_IE = 0x08, MODE_PARITY_IE = 0x10, MODE_PARITY_CHK = 0x20,
         MODE_TARGET = 0x40, MODE_BLOCK_DMA = 0x80,
     };
-    // Current SCSI Bus Status (R4) bits — live bus signals
+    // Current SCSI Bus Status (R4) bits — live bus signals.
+    //
+    // Audit § 2.6(b), DOCUMENT-SKIP: CBS_DBP (data-bus parity) and BSR_PARITY
+    // always read 0, and MODE_PARITY_CHK / MODE_PARITY_IE are stored inert.
+    // This is not a divergence — it is MAME parity. The nscsi bus carries no
+    // parity line, so `csstat_r` never sets ST_DBP (machine/ncr5380.cpp:
+    // 445-459: the value is assembled from S_RST/BSY/REQ/MSG/CTL/INP/SEL and
+    // nothing else) and BAS_PARITYERROR has no producer either — `rpi_r`
+    // (:521-529) clears a bit that is never raised. Both models therefore
+    // report "parity always good", which is also what a healthy bus reports.
     enum Cbs {
         CBS_DBP = 0x01, CBS_SEL = 0x02, CBS_IO = 0x04, CBS_CD = 0x08,
         CBS_MSG = 0x10, CBS_REQ = 0x20, CBS_BSY = 0x40, CBS_RST = 0x80,
     };
-    // Bus and Status Register (R5) bits
+    // Bus and Status Register (R5) bits. BSR_BUSERR (MONBSY busy-error) and
+    // BSR_ENDDMA are inert here — see the MODE_MONBSY simplification in
+    // docs/LLE_VS_HLE.md § 1.5 and the § 2.6(a) note above.
     enum Bsr {
         BSR_ACK = 0x01, BSR_ATN = 0x02, BSR_BUSERR = 0x04, BSR_PHASE = 0x08,
         BSR_IRQ = 0x10, BSR_PARITY = 0x20, BSR_DRQ = 0x40, BSR_ENDDMA = 0x80,
@@ -142,6 +177,7 @@ private:
     void execute();
     void finishWrite();
     static int writeByteCount(const std::vector<uint8_t>& cdb);
+    void extendDataOut();            // FORMAT UNIT defect-list header length
     void ackRising();
     void ackFalling();
     bool targetPhase() const;
