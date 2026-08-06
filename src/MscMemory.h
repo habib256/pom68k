@@ -117,6 +117,14 @@ public:
     // already seeds from host time (MAME m68hc05pge.cpp:185-187 does it in
     // device_start); this lets the GUI re-seed like every other machine.
     void setRtcSeconds(uint32_t s) { pmu_.setSeconds(s); }
+    // Battery persistence. The Duo is the one platform whose PRAM lives in
+    // neither a discrete Rtc nor an Egret/Cuda — it is the PG&E's own
+    // internal RAM + SRAM, persisted byte for byte in MAME's layout.
+    // Wired by `runDuo` (main.cpp) since the Duo became the 37th profile:
+    // load after the boot image is resolved, save after the machine thread
+    // joins. Details, incl. the $91 power-flag scrub, in MscMemory.cpp.
+    bool loadPram(const std::string& path);
+    void savePram(const std::string& path);
     // Input goes through the PG&E. The matrix keyboard and the trackball
     // quadrature counters are milestone 4; until then host events ride the
     // ADB devices behind the PMU's modem cell, which is how an external
@@ -181,7 +189,15 @@ public:
         ar.blob(vram_);
         ar(via_, pvia_, pmu_, asc_, scsi_, scc_);
         for (auto& d : scsiDisks_) ar(d);
-        ar(totalRam_, overlay_, sccIrq_, mscConfig_, mscClockCtrl_, mscSoundCtrl_);
+        // pmuReq_ is the HOST's half of the REQ wire: written through
+        // pseudo-VIA2 PB2 and read back on every port-B read. The PMU's own
+        // view of the same wire (PgePmu::reqLevel_) travels inside pmu_, so
+        // leaving this one out restored a machine where the guest read back
+        // a level it never wrote — the two ends of one wire disagreeing.
+        // Idle-high at most sample points, which is exactly why it did not
+        // show up as a test failure (2026-08-06 save-state walk).
+        ar(totalRam_, overlay_, sccIrq_, mscConfig_, mscClockCtrl_, mscSoundCtrl_,
+           pmuReq_);
         ar(viaAcc_, tickAcc_, c15Acc_, framePos_, vblState_, wakeReset_);
         ar.bytes(gscRegs_, sizeof gscRegs_);
         if constexpr (Ar::loading) {

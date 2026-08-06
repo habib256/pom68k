@@ -31,6 +31,7 @@
 
 #pragma once
 #include <cstdint>
+#include <string>
 
 class Rtc {
 public:
@@ -40,6 +41,7 @@ public:
     uint8_t dataBit() const { return out_; }   // CPU reads this on PB0
     void tickSecond() { seconds_++; }
     void setSeconds(uint32_t s) { seconds_ = s; }
+    uint32_t seconds() const { return seconds_; }   // as Egret::seconds()
 
     // Cold-start XPRAM: Basilisk II XPRAMInit defaults ('NuMc' validity,
     // DynWait, SPConfig $22, OSDefault/timeout $76-$77, no default
@@ -48,6 +50,23 @@ public:
 
     uint8_t xpram(uint8_t addr) const { return pram_[addr]; }
     void setXpram(uint8_t addr, uint8_t v) { pram_[addr] = v; }
+
+    // ── Battery file ────────────────────────────────────────────────────
+    // The 256-byte XPRAM, flat, no header — the format `CentrisMemory`
+    // has written since the djMEMC bring-up, so existing `.pram` files
+    // keep loading. The chip lives on a battery on real hardware; here
+    // the machine calls these around the run loop (`<image>.<profile>.pram`,
+    // main.cpp), which is what makes a guest's Control Panel settings
+    // survive a session.
+    //
+    // Seconds are deliberately NOT in the file. Every machine seeds the
+    // clock from host wall time at construction, and a restored stale
+    // count would be strictly worse than the true current time — the
+    // opposite trade-off from `Egret`/`CudaLle`, whose MCU owns the clock
+    // across the transport and whose file therefore carries a 4-byte
+    // seconds tail (Egret.cpp:27-45).
+    bool loadPram(const std::string& path);
+    void savePram(const std::string& path) const;
 
     // ── Save states (SaveState.h contract) ──────────────────────────────
     // The whole chip travels: clock, unified XPRAM, and the bit-serial

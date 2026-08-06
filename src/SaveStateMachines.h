@@ -39,6 +39,8 @@ class MacMemory;
 class Cpu68k;
 class IIfxMemory;
 class IIfxCpu;
+class MscMemory;
+class MscCpu;
 
 namespace pom68k {
 
@@ -77,6 +79,13 @@ enum class SnapMachine : std::uint32_t {
     // three share the $420DBFF3 ROM (the Q950 has its own, but the tag must
     // discriminate the 900 from the 700 regardless).
     Quadra900 = 35, Quadra950 = 36,
+    // Appended 2026-08-06: platform #11 (MSC + PG&E), the first PowerBook.
+    // Its machine chunk nests the one store no desktop has — the PG&E's
+    // 32 KB SRAM, which carries BOTH the firmware the system ROM uploads
+    // over SPI at every boot and the PMU-side PRAM. Nothing reloads it on
+    // restore, so it travels in the snapshot or the restored PMU has no
+    // program (docs/DUO_BRINGUP.md).
+    Duo230 = 37,
 };
 
 // One save/load pair per machine family; `kind` pins the profile inside
@@ -132,6 +141,11 @@ bool load(MacIIMemory& mem, Cpu020& cpu, SnapMachine kind,
 void save(IIfxMemory& mem, IIfxCpu& cpu, SnapMachine kind,
           std::vector<std::uint8_t>& out);
 bool load(IIfxMemory& mem, IIfxCpu& cpu, SnapMachine kind,
+          const std::uint8_t* data, std::size_t len, std::string& err);
+
+void save(MscMemory& mem, MscCpu& cpu, SnapMachine kind,
+          std::vector<std::uint8_t>& out);
+bool load(MscMemory& mem, MscCpu& cpu, SnapMachine kind,
           const std::uint8_t* data, std::size_t len, std::string& err);
 
 void save(MacMemory& mem, Cpu68k& cpu, SnapMachine kind,

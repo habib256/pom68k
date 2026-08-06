@@ -246,6 +246,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-06** — [The PRAM finally survives the session on all eleven boards, and the Duo becomes the 37th profile — the first laptop](#2026-08-06-duo-profile)
 - **2026-08-06** — [A chip-by-chip parity sweep against MAME master: 94 findings worked, and the three bugs it found were the ones nobody wrote down](#2026-08-06-mame-parity-sweep)
 - **2026-08-05** — [The floppy boost gate: freeze the boost to 1 while the motor runs — first LC II GCR mount ever, `lcii_floppy_etalon` asserts it](#2026-08-05-floppy-boost-gate)
 - **2026-08-05** — [What the driver gives up ON: badDCksum on the MDB — the boost compresses the denibble path below the IWM's 14-tick hold, the poll re-reads the same nibble](#2026-08-05-sony-giveup)
@@ -438,6 +439,64 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-06-duo-profile"></a>
+## 2026-08-06 (later) — The PRAM finally survives the session on all eleven boards, and the Duo becomes the 37th profile — the first laptop
+
+Two linked pieces of the same debt. `docs/SIMPLIFICATIONS_REVIEW.md` had
+ranked **PRAM persistence (F1)** first of the seven simplifications worth
+closing — the only one with a *recurring user cost*: on the compacts, the
+Mac II family, the IIfx and the Duo, every Control Panel setting died with
+the process while the other seven platforms kept theirs.
+
+**F1.** The file I/O moved onto the chip that owns the PRAM —
+`Rtc::loadPram/savePram`, on the `Egret::loadPram` precedent — and the four
+platforms forward to it; `CentrisMemory`'s hand-rolled copy is gone. Format
+unchanged (flat 256 bytes), so `.pram` files from earlier builds still load.
+**Seconds are deliberately not in the file**: every machine seeds its clock
+from host wall time at construction, and restoring a stale count would be
+strictly worse than the true current time — the opposite trade-off from
+`Egret`/`CudaLle`, whose MCU owns the clock across the transport and whose
+file therefore carries a 4-byte tail. New gate `rtc_pram_test` (15 checks):
+round trip, the 256-byte format pinned, a missing *or short* file refused
+whole rather than half-applied, the clock untouched, and the three platforms
+reading back each other's image.
+
+The Duo is the one board whose PRAM lives in neither a discrete RTC nor an
+Egret/Cuda: it is the PG&E's own internal RAM + 32 KB SRAM, persisted in
+MAME's layout (`m68hc05pge.cpp:952-975`) **including the `$91` power-flag
+scrub on load** — without it the boot ROM skips its cold-boot path. Gated in
+`msc_parity_test` § F with a negative control.
+
+**And that gave the Duo its profile.** House rule: a `kProfiles` row is
+earned by a Finder cell *plus* the GUI/save-state wiring. The Finder cell had
+stood since 2026-07-31; this closes the rest — `runDuo` + `MscMachine`
+(the loop ticks the machine while `cpuHeld()`, since the PMU boots before the
+68030), `MachineKind::Duo`, the `ECFA989B` dispatch, the JIT engine menu
+(`MscCpu` exposes the same trio as the other 030s), `SnapMachine::Duo230 = 37`,
+and the battery file the paragraph above just made possible. **Platform #12
+now has a GUI citizen; all twelve implementations do.**
+
+**The save-state walk earned its keep.** Rather than assume the device tree
+travelled, every member of `MscMemory` and everything it nests was checked
+against the actual `visit()` bodies. It found **`MscMemory::pmuReq_`
+unserialized** while `PgePmu::reqLevel_` — the PMU's view of the *same wire* —
+was: a restore handed the guest back a REQ level it never wrote. It had
+failed no test, because REQ is idle-high at most sample points. That is
+precisely why it is recorded here and not just fixed.
+
+Not wired, and each a **machine-side API absence rather than a shell gap**:
+no floppy (the Duo's drive lives in the Dock — `MscMemory` has no SWIM), no
+drive sounds, no live CD-bay swap, and `mouseButton(bool)` carries no index
+so button 1 is dropped.
+
+Gates on a freshly built tree: **75/75 `unit`**, `duo230_boot_etalon`,
+`savestate_030_test` (17 Duo checks — the 32 KB SRAM carrying the mid-boot
+BORG v2 upload round-trips, plus a 3 M-cycle determinism check after
+restore), and the F1-touched platforms — compacts, Mac II, SE/30,
+`centris650_boot_etalon` (the one place F1 changed a platform that already
+worked). `iifx_boot_etalon` stays red on the still-dirty 7.6 volume, byte
+for byte the same signature as before this work.
 
 <a id="2026-08-06-mame-parity-sweep"></a>
 ## 2026-08-06 — A chip-by-chip parity sweep against MAME master: 94 findings worked, and the three bugs it found were the ones nobody wrote down

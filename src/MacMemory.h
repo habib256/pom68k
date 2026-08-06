@@ -105,6 +105,13 @@ public:
     // Called once per emulated second: RTC seconds + CA2 interrupt.
     void tickOneSecond();
     Rtc& rtc() { return rtc_; }
+    // Battery file (Rtc.h): the compacts keep their Control Panel settings
+    // between sessions like every other platform. The 343-0040 part has
+    // only 20 bytes of NVRAM on silicon, but POM68K runs the -0042
+    // superset (Rtc.h header) — the file is the same flat 256 bytes
+    // everywhere, and the compact ROMs only ever touch the low end.
+    bool loadPram(const std::string& path) { return rtc_.loadPram(path); }
+    void savePram(const std::string& path) { rtc_.savePram(path); }
     Iwm& iwm() { return iwm_; }
     SonyDrive& internalDrive() { return drive_; }
     bool insertDisk(const std::string& path) { return drive_.insert(path); }

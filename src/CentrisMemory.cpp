@@ -43,23 +43,16 @@ bool CentrisMemory::loadRom(const std::vector<uint8_t>& data) {
     return true;
 }
 
+// The file I/O moved onto the chip that owns the PRAM (Rtc.cpp, the
+// Egret::loadPram precedent) when the compacts / Mac II / IIfx gained the
+// same persistence — same flat 256-byte format, so `.pram` files written
+// by earlier builds still load.
 bool CentrisMemory::loadPram(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return false;
-    std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)),
-                           std::istreambuf_iterator<char>());
-    if (b.size() < 256) return false;
-    for (int i = 0; i < 256; i++) rtc_.setXpram(uint8_t(i), b[i]);
-    return true;
+    return rtc_.loadPram(path);
 }
 
 void CentrisMemory::savePram(const std::string& path) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) return;
-    for (int i = 0; i < 256; i++) {
-        uint8_t v = rtc_.xpram(uint8_t(i));
-        out.write(reinterpret_cast<const char*>(&v), 1);
-    }
+    rtc_.savePram(path);
 }
 
 void CentrisMemory::reset() {

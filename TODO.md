@@ -774,12 +774,18 @@ Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
   milestones 1-3 of `docs/DUO_BRINGUP.md` are done (`MscMemory`/`MscCpu`,
   `M68hc05Pge`/`PgePmu` LLE incl. the mid-boot BORG v2 upload and the
   /PMU_INT level, `MscMemory::decodeScreen`; gate `duo230_boot_etalon`,
-  System 7.5.5, SCSI 3448 cmds). Remaining, in milestone order:
+  System 7.5.5, SCSI 3448 cmds). **The GUI machine loop, the `kProfiles`
+  row and save states landed 2026-08-06 — the Duo is the 37th profile
+  and platform #12's first GUI citizen** (`runDuo`, `MachineKind::Duo`,
+  `SnapMachine::Duo230`, battery file through the PG&E; milestone 3b of
+  `docs/DUO_BRINGUP.md` lists what is deliberately NOT wired — floppy,
+  drive sounds, live CD-bay swap, right mouse button, all machine-side
+  API absences rather than shell gaps). Remaining, in milestone order:
   **input through the PMU** (trackball + matrix keyboard →
-  `duo230_input_etalon`), GUI machine loop + `kProfiles` registration +
-  save states, variants (210/250 trivial, 270c CSC, 280 040, then PB150
-  as the no-oracle MSC variant), and **the actual point — a sleep/wake
-  gate** (`duo230_sleep_etalon`), which no other machine can test.
+  `duo230_input_etalon`), variants (210/250 trivial, 270c CSC, 280 040,
+  then PB150 as the no-oracle MSC variant), and **the actual point — a
+  sleep/wake gate** (`duo230_sleep_etalon`), which no other machine can
+  test.
   The 140-180 line is a different PMU (Mitsubishi M50753, 6502-class —
   POMIIGS `CPU65816` candidate) — same brick as Portable/PB100.
 - [ ] **AV DSP (DSP3210)** → 660AV/840AV. Not planned.
@@ -792,7 +798,8 @@ Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
 ### Remaining machines with the ROM already in `roms/`
 
 *(The Mac IIfx shipped 2026-08-01 as the 34th profile and left this table;
-the Duo 230 boots but is not a profile yet — see the two majors above.)*
+the PowerBook Duo 230 followed on 2026-08-06 as the 37th — the first
+laptop — and left it too.)*
 
 | Machine | ROM on hand | New brick |
 |---|---|---|

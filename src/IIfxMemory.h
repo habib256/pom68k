@@ -84,6 +84,10 @@ public:
 
     Via6522& via1() { return via1_; }
     Rtc& rtc() { return rtc_; }
+    // Battery file (Rtc.h). The IIfx keeps a discrete RTC despite its two
+    // IOPs — the PICs carry the ADB and serial firmware, not the PRAM.
+    bool loadPram(const std::string& path) { return rtc_.loadPram(path); }
+    void savePram(const std::string& path) { rtc_.savePram(path); }
     NuBus& nubus() { return nubus_; }
     TobyVideo* toby() { return toby_; }
     AscV8& asc() { return asc_; }
