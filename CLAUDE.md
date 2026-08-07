@@ -47,7 +47,7 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
 | `DUO_BRINGUP.md` | PowerBook Duo 230 blueprint — the MSC + PG&E (68HC05 Power Manager) brick, milestone plan |
 | `CACHE_040.md` | 68040 copyback/snooping blueprint — no oracle, no DMA client yet, M0 CM-bit numbers, milestones M1-M3 |
 
-## Status (2026-08-04)
+## Status (2026-08-07)
 
 - **The IIfx gates are green again (2026-08-06, late).** They had been red
   since the previous day and were twice mis-diagnosed as a code regression.
@@ -64,12 +64,13 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **162 CTest gates** (`ctest -N` 2026-08-06: 77 `unit`, 8 `smoke`,
+- **162 CTest gates** (`ctest -N` 2026-08-07: 77 `unit`, 8 `smoke`,
   23 `jit`, 36 `m040`, 81 `etalon` — `jit` grew by the five 020/000/IIfx boot
-  gates plus the cycle-exact `jit_lockstep_68000_test` pair, 2026-08-06);
-  last FULL run **143/143 green**,
-  2026-08-03, on a **fully rebuilt tree** (`make` first, 150
-  objects/binaries relinked), 3 h 03.
+  gates plus the cycle-exact `jit_lockstep_68000_test` pair); last FULL run
+  **162/162 green, 2026-08-07**, 3 h 35 (11:35:58 → 15:10:58), on a **fully
+  rebuilt tree** (`make -j4` first, `BUILD_EXIT=0`, no truncated binary,
+  freshness checked per gate). The previous full run was 143/143 on
+  2026-08-03.
   **The `make` is part of the claim, not a detail.** An earlier run the
   same day returned 143/143 over binaries linked at *different times* —
   102 of ~110 were older than `libpom68k_core.a` — and proved nothing:
@@ -137,10 +138,10 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 143 gates, ~3h (asset-dependent ones soft-skip)
-ctest -L unit                # 66 gates — no ROM or disk image needed
+ctest                        # 162 gates, ~3h35 (asset-dependent ones soft-skip)
+ctest -L unit                # 77 gates — no ROM or disk image needed
 ctest -L smoke               # 8 gates — one machine, both CPU engines
-ctest -L jit                 # 16 gates;  -L m040 = 32, the 68040 family
+ctest -L jit                 # 23 gates;  -L m040 = 36, the 68040 family
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
 ./POM68K [ROM] [media...]    # profile picked by ROM size + checksum; the
                              # mapping is `kProfiles` in src/main.cpp

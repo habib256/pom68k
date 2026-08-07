@@ -5,17 +5,16 @@ live in `CHANGELOG.md` (implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`).
 
-**Counts verified 2026-08-05** — re-verify before quoting them anywhere:
-- **147 CTest gates** (`ctest -N`): 67 `unit`, 8 `smoke`, 16 `jit`, 35 `m040`,
-  76 `etalon` (144th: the CD-bay hot-swap gate, 2026-08-04; 145th:
-  `cache040_test`, 2026-08-05; 146th/147th: `q605_soak/persist_etalon`,
-  2026-08-05). Last FULL suite 143/143 on 2026-08-03,
-  3 h 01; since then the touched tiers ran green (incl. the full `m040`
-  tier 33/33 on fresh binaries, flag ON, 2026-08-05, and the two new
-  Q605 beyond-boot gates on fresh binaries the same day) but a full
-  rebuilt-tree `ctest` has not — schedule one before quoting 147/147.
-  The 8.1 image was GUI-cleaned 2026-08-05 (drVolAtrb back to $0100).
-- **36 machine profiles** = 36 tags in `SnapMachine`, `src/SaveStateMachines.h`.
+**Counts verified 2026-08-07** — re-verify before quoting them anywhere:
+- **162 CTest gates** (`ctest -N`): 77 `unit`, 8 `smoke`, 23 `jit`, 36 `m040`,
+  81 `etalon`. Last FULL suite **162/162 on 2026-08-07**, 3 h 35
+  (11:35:58 → 15:10:58), on a fully rebuilt tree (`make -j4` first,
+  `BUILD_EXIT=0`, no truncated binary, per-gate freshness checked). The
+  previous full run was 143/143 on 2026-08-03, so the 19 gates added since
+  had never been in one until now.
+  Both boot images read `drVolAtrb = $0100` (clean); the corrupted
+  `MacOS-7.6-boot.vhd` was deleted 2026-08-06 — see § 1.
+- **37 machine profiles** = 37 tags in `SnapMachine`, `src/SaveStateMachines.h`.
 
 House rule for this file: an item earns its place by saying **what to do next**,
 concretely. When it lands, it moves to `CHANGELOG.md` and leaves at most one
@@ -81,14 +80,19 @@ retouche, relancer `q700` **et** `q900`, jamais en parallèle
 
 ## 1. Red now
 
-- **The IIfx etalons** (`iifx_boot/input/post_etalon`): red since
-  2026-08-04 because `hdv/MacOS-7.6-boot.vhd` was corrupted by the
-  all-ID SCSI mirror era (seven concurrent mounts of one volume — see
-  `CHANGELOG.md` § 2026-08-04 (soir)). The emulator-side fix is in
-  (single-ID attach, boots `boot.vhd` to the Finder); the gates need the
-  7.6 image restored from a source. One open lead from the same hunt:
-  GISTPERSO (7.5.5) on the IIfx wedges at ROM `$4081B66E` under
-  single-ID — never a supported combo, parked in memory.
+*(The IIfx etalons are **RESOLVED 2026-08-06**. They had been red since
+2026-08-04 because `hdv/MacOS-7.6-boot.vhd` was corrupted by the all-ID
+SCSI mirror era — seven concurrent mounts of one volume; `drVolAtrb` read
+`$0000`, bit 8 clear, and the failing signature `menu bar 0.50 / desktop
+0.26` was a modal repair alert sitting over the desktop, which is also what
+ate the injected mouse motion and the held key. The emulator-side fix
+(single-ID attach) had been in for days; what remained was the image, and
+the image was not repairable. Deleted; the gates fall back to
+`GISTPERSO-boot.vhd` and all four pass — `f=539 menu bar 0.06, desktop
+0.69`, 8/8 input checks, `jit_iifx_boot_etalon` identical. So the
+GISTPERSO-wedges-at-`$4081B66E` lead from the same hunt is **also stale**:
+that combination boots. Mechanism, and the two wrong diagnoses it cost:
+`CHANGELOG.md` § 2026-08-06 (late night).)*
 *(The 800K-GCR-on-boosted-030 refusal is **RESOLVED 2026-08-05**: the
 boost compressed Apple's denibble inner path below the IWM's 14-tick
 hold → duplicated nibbles → badDCksum on every field. Fix = the floppy
@@ -185,7 +189,7 @@ after it has demonstrated sensitivity** — and only after it has demonstrated
 ## 2. Test & validation depth — the single biggest gap
 
 The gates prove **boot**, not **use**, and the machine fan-out made the ratio
-worse. Of the **36 profiles** covered by the **147 gates**, only **9** have any
+worse. Of the **37 profiles** covered by the **162 gates**, only **9** have any
 gate past the Finder signature: LC II (`lcii_soak/persist/launch/floppy_etalon`
 + `lcii_savestate_etalon`), Quadra 605 (`q605_soak/persist_etalon` —
 2026-08-05, the second beyond-boot machine —, `q605_cudalle_mouse/key_etalon`,
@@ -196,7 +200,7 @@ quadrature + M0110 keys), the four input gates from 2026-07-29
 (`iifx_input_etalon`, 2026-08-01). That is NINE profiles
 with any gate past the Finder signature; enumerate them with
 `ctest -N | grep -E 'input_etalon|beyond|mouse_etalon|key_etalon|savestate_etalon'`
-rather than trusting this sentence. **The other 27 profiles are
+rather than trusting this sentence. **The other 28 profiles are
 boot-to-Finder signature only.** A machine can pass its etalon and still be
 useless for real work.
 
@@ -249,7 +253,9 @@ GUI engine switch on every family, PGO training per CPU family. Design and
 measurements: `src/jit/POM68K_JIT.md`; per-item history in `CHANGELOG.md`
 (2026-07-27 → 2026-07-31).
 
-Current state: engine available on every 020/030/040 machine; the **x86-64
+Current state: engine available on **every CPU wrapper in the tree** —
+twelve of them, 68000 included since 2026-08-06, so there is no machine
+left without a second engine; the **x86-64
 backend is declared 68040-only** (`BackendCaps::guestFamilies`, `JitBackend.h §
 GuestFamily`) so `auto` gives the 030s `threaded`. Best measured figure: Q605
 boot etalon **61.3 s interpreter → 22.9 s JIT (×2.68)**.
@@ -854,9 +860,10 @@ bake `tools/wrap_hfs.py`).
   exits over 12.2 G instructions), and a non-conformant mode is exactly
   where the five relaxations the JIT refuses become legal. `docs/
   HLE_OVERLAY.md` § 0 dates every premise; read it before building anything.
-  Note also that the JIT reaches only nine CPU wrappers — on the Plus/SE/
-  Classic, the Mac II family and the IIfx, HLE is the ONLY accelerator that
-  exists.
+  Note that the JIT now reaches **every** CPU wrapper (2026-08-06), so HLE
+  is no longer the only accelerator anywhere — but on the 68000 and 68020
+  guests the window is worth ×1.0-1.1, because there is no ATC walk to skip,
+  which is precisely where an HLE overlay would have room.
 - [ ] **Retro68 as a guest-level differential oracle**: build small Toolbox /
   Device Manager / XPRAM probes, run identical binaries under MAME and POM68K,
   compare. Known friction: no `Lists.h`/`AppleTalk.h` shims in multiversal
