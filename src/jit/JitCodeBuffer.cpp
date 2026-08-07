@@ -54,7 +54,17 @@ std::size_t roundUp(std::size_t n, std::size_t to) {
 // written through a data mapping is invisible to the fetcher until the
 // range is explicitly flushed. On x86-64 this is a no-op by architecture.
 void flushICache(void* p, std::size_t n) {
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#if defined(POM68K_JIT_MEM_NONE)
+    // No writable-then-executable memory means no generated code, so there
+    // is nothing to flush — and the clang branch below cannot be reached
+    // here anyway: `__builtin___clear_cache` lowers to `llvm.clear_cache`,
+    // which the WebAssembly backend refuses outright ("llvm.clear_cache is
+    // not supported on wasm", a hard codegen error, not a link failure).
+    // This file already knew about Emscripten on the MAPPING side; the
+    // i-cache side was missed, so the default configuration could not build
+    // for a target the tree claims to support.
+    (void)p; (void)n;
+#elif defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
     (void)p; (void)n;
 #elif defined(POM68K_JIT_MEM_WIN32)
     FlushInstructionCache(GetCurrentProcess(), p, n);
