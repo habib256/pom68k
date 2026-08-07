@@ -49,24 +49,23 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
 
 ## Status (2026-08-04)
 
-- **RED, 2026-08-06: the Mac IIfx does not.** `iifx_boot_etalon` and
-  `iifx_input_etalon` both fail — the Finder paints and the System loads off
-  SCSI, but injected mouse motion does not repaint the cursor and a held key
-  never reaches KeyMap (the ADB path through the IOP firmware). `r65c02_test`,
-  `applepic_test` and `iifx_post_etalon` stay green, so the break is above the
-  IOP core. **Not** caused by the JIT wiring of the same day: measured by
-  stashing it and rebuilding at `b1c7999`, where both gates fail with
-  identical figures. Immediate suspect: the PRAM pass, which left
-  `IIfxMemory::reset()` calling `rtc_.factoryDefaults()` on a machine whose
-  XPRAM carries the ADB and monitor configuration — a lead, not a finding.
-  Until it is fixed, the two claims below are **wrong**, and `-L jit` is
-  22/23. See `CHANGELOG.md` 2026-08-06 (late night).
+- **The IIfx gates are green again (2026-08-06, late).** They had been red
+  since the previous day and were twice mis-diagnosed as a code regression.
+  The cause was the boot volume: `hdv/MacOS-7.6-boot.vhd` carried
+  `drVolAtrb = $0000` (bit 8 clear — never cleanly unmounted) and was in
+  fact **corrupted**, by the all-ID SCSI mirror used during IIfx bring-up
+  before the single-ID fix. It was the ONLY image the IIfx could use (its
+  ROM caps at 7.6, and Q700/Centris list 8.1 first — which is why only the
+  IIfx gates were red). Image deleted; the gates fall back to
+  `GISTPERSO-boot.vhd` and all four pass. **Read `drVolAtrb` bit 8 on a
+  gate's image before theorising about its code** — `CHANGELOG.md`
+  2026-08-06 (late night).
 - All **37 profiles boot the Finder**, each covered by a boot-etalon gate
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **161 CTest gates** (`ctest -N` 2026-08-06: 77 `unit`, 8 `smoke`,
-  22 `jit`, 36 `m040`, 80 `etalon` — `jit` grew by the four 020/000 boot
+- **162 CTest gates** (`ctest -N` 2026-08-06: 77 `unit`, 8 `smoke`,
+  23 `jit`, 36 `m040`, 81 `etalon` — `jit` grew by the five 020/000/IIfx boot
   gates plus the cycle-exact `jit_lockstep_68000_test` pair, 2026-08-06);
   last FULL run **143/143 green**,
   2026-08-03, on a **fully rebuilt tree** (`make` first, 150
