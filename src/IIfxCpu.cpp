@@ -4,21 +4,55 @@
 #include "IIfxCpu.h"
 #include "IIfxMemory.h"
 
-IIfxCpu::IIfxCpu(IIfxMemory& mem, bool withFpu) : mem_(mem) {
+namespace {
+jit::MemoryHooks iifxJitHooks(IIfxMemory& mem) {
+    jit::MemoryHooks h;
+    h.self = &mem;
+    h.codeSpan = [](void* s, uint32_t phys, uint32_t& len) {
+        return static_cast<IIfxMemory*>(s)->codeSpan(phys, len);
+    };
+    h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
+        return static_cast<IIfxMemory*>(s)->dataSpan(phys, len, write != 0);
+    };
+    h.setGuard = [](void* s, jit::CodeGuard* g) {
+        static_cast<IIfxMemory*>(s)->setJitGuard(g);
+    };
+    h.ramBytes = [](void* s) { return static_cast<IIfxMemory*>(s)->ramBytes(); };
+    return h;
+}
+}  // namespace
+
+IIfxCpu::IIfxCpu(IIfxMemory& mem, bool withFpu)
+      // Declared, never sampled from getModel(): setModel() has not run at
+      // member-init time, and reading it there is the mistake JitEngine.h
+      // documents (it cost the Quadra its x64 backend).
+    : mem_(mem), jit_(*this, iifxJitHooks(mem), jit::kGuest68030) {
     setModel(moira::Model::M68030);
     setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
+    // Fixed batch, like the Mac II family: the IIfx is one of the four
+    // platforms still on kPeriphBatch rather than a device-derived
+    // deadline (TODO.md § 4).
+    jit_.setPeriphPacing(&lastPeriphClock_, kPeriphBatch);
 }
 
 void IIfxCpu::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
+    jit_.flushAll();
     reset();
     setA(7, 0x2000);
     setISP(0x2000);
 }
 
+// A cache-control write is the guest announcing freshly written code — the
+// SMC hint every other wrapper honours.
+void IIfxCpu::didChangeCACR(moira::u32 /*value*/) {
+    jit_.flushAll();
+}
+
 void IIfxCpu::runCycles(moira::i64 n) {
-    executeUntil(getClock() + n);
+    const moira::i64 target = getClock() + n;
+    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
     flushTicks();
 }
 

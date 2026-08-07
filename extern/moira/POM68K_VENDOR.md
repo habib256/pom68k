@@ -1049,8 +1049,8 @@ not a machine wrapper, so one engine serves every machine profile that carries
 one — eleven CPU wrappers today: `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu`
 (68040), `Cpu030`, `RbvCpu`, `SonoraCpu`, `VaspCpu`, `MscCpu` (68030, plus
 the Macintosh LC's 68020 flavour of `Cpu030`), and since 2026-08-06
-`Cpu020` (Mac II family) and `Cpu68k` (the compacts). Only `IIfxCpu` carries
-none.
+`Cpu020` (Mac II family), `Cpu68k` (the compacts) and `IIfxCpu` (the IIfx).
+Every CPU wrapper in the tree carries one.
 A public non-virtual member is the only shape that stays a **direct** call
 from another translation
 unit — and this file already records what an indirect call on the

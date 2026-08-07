@@ -308,6 +308,51 @@ bool IIfxMemory::isIo(uint32_t addr, uint32_t& off) const {
     return true;
 }
 
+// ── JIT memory hooks (src/jit/POM68K_JIT.md § 4) ────────────────────────
+// Mirrors read8Decoded()'s plain-memory cases. No address to reconcile: the
+// IIfx has no HMMU and no GLUE remap, so what the probe reports is what the
+// bus decodes (IIfxMemory.h § JIT memory hooks).
+const uint8_t* IIfxMemory::codeSpan(uint32_t phys, uint32_t& len) const {
+    len = 0;
+    // The overlay is dropped by a ROM-region READ (rom_switch_r). A windowed
+    // fetch performs no read, so while it is up the window must serve
+    // NOTHING — not the ROM region whose read would drop it, and not low
+    // memory, which is that same ROM until it does.
+    if (overlay_) return nullptr;
+    if (phys < 0x40000000u) {
+        if (phys >= ramSize_) return nullptr;     // above the SIMMs: open bus
+        len = ramSize_ - phys;
+        return ram_.data() + phys;
+    }
+    if (phys < 0x50000000u) {                     // ROM, mirrored every 512 KB
+        const uint32_t o = (phys - 0x40000000u) & (kRomSize - 1);
+        len = kRomSize - o;
+        return rom_.data() + o;
+    }
+    return nullptr;                               // OSS/VIA/PIC I/O, NuBus
+}
+
+uint8_t* IIfxMemory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
+    len = 0;
+    if (overlay_) return nullptr;
+    if (phys < 0x40000000u) {
+        if (phys >= ramSize_) return nullptr;
+        len = ramSize_ - phys;
+        return ram_.data() + phys;
+    }
+    if (!write && phys < 0x50000000u) {
+        const uint32_t o = (phys - 0x40000000u) & (kRomSize - 1);
+        len = kRomSize - o;
+        return rom_.data() + o;
+    }
+    return nullptr;
+}
+
+void IIfxMemory::jitMapChanged() {
+    if (jitGuard_) jitGuard_->invalidate();
+    if (cpu_) cpu_->pomJitDtlbFlush();
+}
+
 uint8_t IIfxMemory::read8(uint32_t addr) { return read8Decoded(addr); }
 
 uint8_t IIfxMemory::read8Decoded(uint32_t addr) {
@@ -320,8 +365,9 @@ uint8_t IIfxMemory::read8Decoded(uint32_t addr) {
     if (addr < 0x50000000u) {
         // Any ROM-region read drops the overlay (rom_switch_r,
         // `maciifx.cpp:169-186`) — the very first instruction fetch after
-        // reset already lands here.
-        if (overlay_) overlay_ = false;
+        // reset already lands here. This is a READ side effect, so it is
+        // also the one map move a JIT write guard can never see: say it.
+        if (overlay_) { overlay_ = false; jitMapChanged(); }
         return rom_[(addr - 0x40000000u) & (kRomSize - 1)];
     }
 
@@ -374,7 +420,12 @@ void IIfxMemory::write8(uint32_t addr, uint8_t v) { write8Decoded(addr, v); }
 void IIfxMemory::write8Decoded(uint32_t addr, uint8_t v) {
     if (addr < 0x40000000u) {
         if (overlay_) return;                    // ROM under the overlay
-        if (addr < ramSize_) ram_[addr] = v;
+        if (addr < ramSize_) {
+            // One name per byte on this board — no $800000 alias to mirror
+            // the way the GLUE and V8 maps need (IIfxMemory.h § JIT hooks).
+            if (jitGuard_) jitGuard_->note(addr, 1);
+            ram_[addr] = v;
+        }
         return;
     }
     if (addr < 0x50000000u) return;              // ROM

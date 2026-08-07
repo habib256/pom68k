@@ -43,11 +43,11 @@ All are bit-exact against the interpreter — registers,
 supervisor stacks, cycle clock and the low 2 KB of guest RAM, compared at
 every instruction boundary.
 
-**Where the engine is wired.** Eleven CPU wrappers hold a `jit::Engine`:
-`Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu` (68040), `Cpu030`, `RbvCpu`,
-`SonoraCpu`, `VaspCpu`, `MscCpu` (68030, plus the Macintosh LC's 68020
-flavour of `Cpu030`), and since 2026-08-06 `Cpu020` (the Mac II family) and
-`Cpu68k` (the compacts). Only the IIfx (`IIfxCpu`) still has none. The
+**Where the engine is wired.** **Every** CPU wrapper in the tree — twelve
+of them: `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu` (68040), `Cpu030`,
+`RbvCpu`, `SonoraCpu`, `VaspCpu`, `MscCpu`, `IIfxCpu` (68030, plus the
+Macintosh LC's 68020 flavour of `Cpu030`), `Cpu020` (the Mac II family) and
+`Cpu68k` (the compacts). The last four landed on 2026-08-06. The
 **x86-64 code generator** is narrower still: 68040 guests only, by declared
 capability (§ 7).
 
@@ -58,7 +58,7 @@ engine being worth switching on. Ranked by measured end-to-end gain
 | Guest | Machines | Window buys | Because |
 |---|---|---|---|
 | 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | ×2.1-2.7 (x64) | an ATC walk per fetch, replaced by a bounds check |
-| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, Duo | ×1.4-1.7 | same, through `mmuFetchWord` |
+| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | ×1.4-1.7 | same, through `mmuFetchWord` |
 | 68020 | Macintosh LC, **Mac II** | ×1.0-1.2 | no MMU to skip — only the map decode |
 | 68000 | **Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
 
@@ -718,8 +718,14 @@ chain cannot outrun the caller's cycle target or ignore a pending interrupt.
   and the member. `Cpu68k` (the compacts) is the first guest where the
   window is NOT free of cycle accounting, and § 3.1 is the whole argument.
   Measured: SE/30 ×1.37, Mac II ×1.21, Mac Plus ×1.08, Classic ×1.03 —
-  which is why the ranking table at the top of this file now exists. Only
-  the IIfx is left without an engine.
+  which is why the ranking table at the top of this file now exists. The
+  IIfx followed the same day (`iifx_boot_etalon`), and with it every CPU
+  wrapper in the tree carries an engine: a 68030, so the ATC probe and
+  `mmuFetchWord` were already there, and the easiest map the window has
+  met — 32-bit clean, no HMMU, no GLUE remap, nothing to reconcile. Its one
+  peculiarity is that the boot overlay drops on a ROM-region READ
+  (`rom_switch_r`), which is the V8 case: while it is up, `codeSpan` must
+  serve nothing at all, or the map would stay latched in its boot state.
   Three things fell out of the work rather than being the point of it: a
   `PMOVE` to the 68030's `TC`/`SRP`/`CRP` did not bump `pomJitMmuGen`
   (every 030 machine's window and block cache could survive a change of

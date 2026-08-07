@@ -1061,12 +1061,12 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   headless and CTest. The GUI **CPU** menu switches it live (through the
   machine thread's command queue, so the swap lands between two
   instructions); `POM68K_CPU_ENGINE=jit` selects it at startup.
-- **Where it is wired.** **Eleven** CPU wrappers carry a `jit::Engine`: the
+- **Where it is wired.** **Twelve** CPU wrappers carry a `jit::Engine`: the
   030s `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`, the 040s
   `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, and — since 2026-08-06 —
   `Cpu020` (Mac II / IIx / IIcx / SE-30) and `Cpu68k` (Plus / SE / SE FDHD
-  / Classic). **Only `IIfxCpu` carries none.** The GUI menu binds on every
-  one of them. The **x86-64 code generator** is **68040-only by declared
+  / Classic) and `IIfxCpu` (the IIfx). **Every CPU wrapper in the tree now
+  carries one.** The GUI menu binds on every one of them. The **x86-64 code generator** is **68040-only by declared
   capability** (`BackendCaps::guestFamilies`), so `auto` gives everything
   else the `threaded` backend. That is a guest-family constraint, not a
   host one: the 030's `(An)+` timing, restartable-write/format-$A framing

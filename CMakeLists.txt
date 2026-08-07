@@ -1296,7 +1296,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                  # (VIA PA4 overlay, M0110) and — just below, because it is
                  # the one gate whose binary is shared — the Classic (ADB,
                  # and the overlay drops on the first low-RAM WRITE).
-                 system_boot_etalon)
+                 system_boot_etalon
+                 # The IIfx (2026-08-06), which completes the set: every CPU
+                 # wrapper in the tree now carries an engine. Its map is the
+                 # easiest the window has met — 32-bit clean, no HMMU, no
+                 # GLUE remap — but its overlay drops on a ROM-region READ,
+                 # which is the one map move a write guard cannot see, so
+                 # this gate is really about that.
+                 iifx_boot_etalon)
         add_test(NAME jit_${gate} COMMAND ${gate}
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_${gate} PROPERTIES

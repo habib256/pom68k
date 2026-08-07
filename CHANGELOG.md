@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **…and what made it a safe default (event-driven ADB wire)** → [2026-07-24 — Event-driven ADB wire: the Egret firmware LLE is the LC II DEFAULT](#2026-07-24--event-driven-adb-wire-the-egret-firmware-lle-is-the-lc-ii-default)
 - **the Color Classic "Cuda 0417 wedge" was never a core bug** → [2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug…](#2026-07-29--the-color-classic-0417-wedge-was-a-missing-dfac2-not-a-core-bug-both-factory-cudas-land)
 - **"the IIsi has no working ADB" was wrong three times over — `peek8()` is PHYSICAL** → [2026-07-29 — Input-delivery gates for the 030 families…](#2026-07-29--input-delivery-gates-for-the-030-families-loud-hle-fallbacks-and-a-retracted-bug)
+- **the IIfx gates went red BEFORE the JIT work — measured by stashing it and rebuilding, not assumed** → [2026-08-06 (late night) — The IIfx closes the set…](#2026-08-06-jit-iifx)
 - **the "PGO divergence" in the JIT was the U bit, not the optimizer** → [2026-07-28 (fifth pass) — The "PGO divergence" was the U bit all along](#2026-07-28-fifth-pass--the-pgo-divergence-was-the-u-bit-all-along)
 - **"the JIT probe refuses a 68020, so the window never arms on the LC" (`Cpu030.h`) was stale the day it was written — and "routing the cycle-exact 68000 through `pomJitExecOne` would be wrong" was never demonstrated** → [2026-08-06 (evening) — The JIT reaches the last two families…](#2026-08-06-jit-020-000)
 - **"the break is between the ADB driver and the Event Manager" was wrong — KeyTime was a false observable, the cause was Slow Keys in the image** → [2026-07-31 — The ten-month red gate was Slow Keys](#2026-07-31-slow-keys)
@@ -79,6 +80,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **what the JIT is worth per guest family — and why the 68020/68000 seams were last** → [2026-08-06 (evening) — The JIT reaches the last two families…](#2026-08-06-jit-020-000)
 - **why a fetch window on a CYCLE-EXACT core cannot skip what one on the 030/040 can** → [2026-08-06 (evening) — The JIT reaches the last two families…](#2026-08-06-jit-020-000)
 - **how a lockstep can report millions of identical checkpoints and still prove nothing** → [2026-08-06 (night) — The cycle-exact lockstep…](#2026-08-06-lockstep-68000)
+- **which CPU wrappers carry a JIT engine, and what each is worth** → [2026-08-06 (late night) — The IIfx closes the set…](#2026-08-06-jit-iifx)
 - **why the compacts' VBL comes from `MacFrameClock`, not `MacMemory::tick()` — and what that breaks in a harness** → [2026-08-06 (night) — The cycle-exact lockstep…](#2026-08-06-lockstep-68000)
 - **…all four 030 families** → [2026-07-28 (seventh pass) — All four 030 families under the engine](#2026-07-28-seventh-pass--all-four-030-families-under-the-engine)
 - **why a backend is valid per GUEST family, not just per host** → [2026-07-30 — A JIT backend is valid per GUEST family, not just per host](#2026-07-30--a-jit-backend-is-valid-per-guest-family-not-just-per-host)
@@ -251,6 +253,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-06** — [The IIfx closes the set: every CPU wrapper carries an engine — and its gate is red for a reason that predates all of it](#2026-08-06-jit-iifx)
 - **2026-08-06** — [The cycle-exact lockstep, and the same trap twice in one day: a green gate that meant "nothing ran"](#2026-08-06-lockstep-68000)
 - **2026-08-06** — [The JIT reaches the last two families, and the compacts are the first guest where the window is not free](#2026-08-06-jit-020-000)
 - **2026-08-06** — [The PRAM finally survives the session on all eleven boards, and the Duo becomes the 37th profile — the first laptop](#2026-08-06-duo-profile)
@@ -444,6 +447,67 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-06-jit-iifx"></a>
+## 2026-08-06 (late night) — The IIfx closes the set: every CPU wrapper carries an engine — and its gate is red for a reason that predates all of it
+
+Platform #12 was the last wrapper without a `jit::Engine`. It is a 68030, so
+the ATC probe and the `mmuFetchWord` choke point the five other 030 families
+use were already there — no Moira work at all — and its map is the **easiest
+the window has met**: the IIfx is 32-bit clean, with no HMMU and no GLUE
+24-bit remap (24-bit compatibility is the 030 PMMU's job), so what
+`pomJitProbeCode` reports *is* the bus address. The Mac II board had to
+refuse its own high-byte aliases and the V8 its bank remap; here there is
+nothing to reconcile, and one RAM byte carries one name, so the write guard
+needs no mirrored `note()` either.
+
+The single thing worth care is the boot overlay, and it is the V8 case
+exactly: on this machine a ROM-region **read** drops it (`rom_switch_r`,
+`maciifx.cpp:169-186`). A windowed fetch performs no read. So while the
+overlay is up `codeSpan` serves *nothing* — not low memory, and not the ROM
+region whose read would drop it — because serving either would leave the map
+latched in its boot state forever. `jitMapChanged()` fires at the drop.
+
+`jit_iifx_boot_etalon` registered. `POM68K_JIT.md`'s ranking table gains the
+IIfx in the 68030 row (×1.4-1.7); nothing else moved.
+
+**The gate is RED, and not because of any of this.** `jit_iifx_boot_etalon`,
+`iifx_boot_etalon` and `iifx_input_etalon` all fail. That was measured, not
+assumed: the JIT work was stashed, the tree rebuilt at `b1c7999`, and the
+two pre-existing gates re-run.
+
+| | committed tree, JIT work stashed | with the IIfx engine wired |
+|---|---|---|
+| `iifx_boot_etalon` | **FAILED** — `menu bar 0.50, desktop 0.26, SCSI 680` | FAILED — **identical** figures |
+| `iifx_input_etalon` | **FAILED** — mouse motion, held key | FAILED — same two checks |
+
+Identical to the hundredth, and `iifx_boot_etalon` is the *interpreter*
+gate. So the second engine is not implicated: there is a pre-existing IIfx
+regression on `main`, and it is what both gates are reporting.
+
+**What it looks like.** The input gate is precise: the Finder desktop paints
+and the System loads off SCSI, but **injected mouse motion does not repaint
+the cursor** and **a held key never reaches KeyMap** — the ADB path through
+the IOP firmware. `applepic_test`, `r65c02_test` and `iifx_post_etalon` stay
+green, so the R65C02 core and the POST are fine; the break is above them.
+Not diagnosed here. The immediate suspect is the previous night's PRAM work,
+which touched `IIfxMemory.h` and left `IIfxMemory::reset()` calling
+`rtc_.factoryDefaults()` on a machine whose XPRAM carries the ADB and
+monitor configuration — a lead, not a finding.
+
+This entry therefore lands with a knowingly red gate, on instruction, and
+says so rather than quietly omitting the gate to keep the suite green.
+`CLAUDE.md`'s "all 37 profiles boot the Finder" and its 2026-08-03
+"143/143 green" are both false as of tonight; the Status block is corrected
+in the same commit.
+
+**And the pattern held to the end.** The two entries below are about green
+results that meant "nothing ran". This one is the mirror image: a red result
+that meant "something else is broken". Both are cases where the number on
+the screen was not the question it appeared to answer, and both cost a
+measurement to tell apart.
 
 ---
 

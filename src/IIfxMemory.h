@@ -50,6 +50,7 @@
 #include "Swim1.h"
 #include "TobyVideo.h"
 #include "Via6522.h"
+#include "jit/JitGuard.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -78,6 +79,27 @@ public:
     uint8_t  peek8(uint32_t addr) const;
 
     void setCpu(IIfxCpu* cpu) { cpu_ = cpu; }
+
+    // ── JIT memory hooks (src/jit/POM68K_JIT.md § 4) ────────────────────
+    // The simplest map in the tree for a code window: the IIfx is 32-bit
+    // clean, with no HMMU and no GLUE 24-bit remap (24-bit compatibility is
+    // the 030 PMMU's job), so what pomJitProbeCode reports IS the bus
+    // address and there is nothing to reconcile — unlike the GLUE and V8
+    // boards, which both had to refuse their own remapped aliases.
+    //
+    // Refused: the whole map while the overlay is up. That is not caution,
+    // it is the same rule V8Memory follows for the same reason — on this
+    // machine a ROM-region READ is what drops the overlay (rom_switch_r,
+    // maciifx.cpp:169-186), and a windowed fetch performs no read, so
+    // serving it would leave the map latched in its boot state forever.
+    // Also refused: all of $50xxxxxx I/O and NuBus.
+    const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
+    uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
+    // The overlay drop, which is a read side effect and therefore the one
+    // map move no write guard could ever see.
+    void jitMapChanged();
+
     void updateIrq();
     int  iplLevel() const;
     void tick(int cpuCycles);
@@ -174,6 +196,11 @@ public:
         if (toby_) ar(*toby_);
         ar(ossRegs_, ramSize_, overlay_, scsiDmaCtl_, scsiDmaCount_,
            scsiDmaAddr_, viaPhase_, c15Acc_, tickAcc_, secAcc_);
+        if constexpr (Ar::loading) {
+            // RAM and the overlay state just changed wholesale, which no
+            // write can express (JitGuard.h § invalidate).
+            if (jitGuard_) jitGuard_->invalidate();
+        }
     }
 
 private:
@@ -204,6 +231,7 @@ private:
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
     IIfxCpu* cpu_ = nullptr;
+    jit::CodeGuard* jitGuard_ = nullptr;   // not serialized: machine wiring
 
     uint8_t ossRegs_[0x400] = {};
     uint32_t ramSize_;

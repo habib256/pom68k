@@ -7,6 +7,7 @@
 
 #pragma once
 #include "MoiraSnapshot.h"
+#include "jit/JitEngine.h"
 #include <cstdint>
 
 class IIfxMemory;
@@ -16,6 +17,18 @@ public:
     explicit IIfxCpu(IIfxMemory& mem, bool withFpu = true);
 
     void hardReset();
+
+    // ── JIT engine (src/jit/POM68K_JIT.md) ──────────────────────────────
+    // The last wrapper to get one (2026-08-06), and the least eventful: the
+    // IIfx is a 68030, so it takes the ATC probe and the mmuFetchWord choke
+    // point the five other 030 families already use — no Moira work at all.
+    // Its map is also the easiest the engine has met: 32-bit clean, no HMMU
+    // and no GLUE remap, so the probe's address IS the bus address.
+    jit::Engine& jit() { return jit_; }
+    const jit::Engine& jit() const { return jit_; }
+    int  engine() const { return jit_.enabled() ? 1 : 0; }
+    void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
+
     void runCycles(moira::i64 n);
     void runUntil(moira::i64 clockTarget);
     void updateIpl();
@@ -39,9 +52,11 @@ private:
     void write8(moira::u32 addr, moira::u8 v) const override;
     void write16(moira::u32 addr, moira::u16 v) const override;
     void sync(int cycles) override;
+    void didChangeCACR(moira::u32 value) override;
     void catchUp();
 
     IIfxMemory& mem_;
+    jit::Engine jit_;
     moira::i64 lastPeriphClock_ = 0;
     static constexpr int kPeriphBatch = 64;
 };
