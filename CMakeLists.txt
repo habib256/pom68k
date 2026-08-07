@@ -26,8 +26,13 @@ endif()
 # native + LTO buy ~15-25% on the Moira hot loop. ON by default (POM68K is
 # built from source on the machine that runs it); disable for a portable
 # binary with -DPOM68K_NATIVE=OFF.
+# EMSCRIPTEN is excluded, not merely untested: `-march=` does not exist for
+# wasm32 ("unsupported option '-march=' for target 'wasm32-unknown-emscripten'")
+# and the option is ON by default, so the DEFAULT configuration could not build
+# the target this file already has an EMSCRIPTEN branch for. There is no host
+# CPU to tune for when the host is a browser.
 option(POM68K_NATIVE "Optimize for the build host CPU (-march=native + LTO)" ON)
-if(POM68K_NATIVE AND NOT MSVC)
+if(POM68K_NATIVE AND NOT MSVC AND NOT EMSCRIPTEN)
     add_compile_options(-march=native)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT pom68k_ipo)
