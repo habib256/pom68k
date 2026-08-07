@@ -253,6 +253,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-07** — [162/162 on a fully rebuilt tree: the first complete run since the gate count went from 143 to 162](#2026-08-07-full-run)
 - **2026-08-06** — [The IIfx closes the set: every CPU wrapper carries an engine — and the "regression" was a corrupted disk image](#2026-08-06-jit-iifx)
 - **2026-08-06** — [The cycle-exact lockstep, and the same trap twice in one day: a green gate that meant "nothing ran"](#2026-08-06-lockstep-68000)
 - **2026-08-06** — [The JIT reaches the last two families, and the compacts are the first guest where the window is not free](#2026-08-06-jit-020-000)
@@ -447,6 +448,52 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-07-full-run"></a>
+## 2026-08-07 — 162/162 on a fully rebuilt tree: the first complete run since the gate count went from 143 to 162
+
+3 h 35 (11:35:58 → 15:10:58), `CTEST_EXIT=0`, zero failures. 77 `unit`,
+8 `smoke`, 23 `jit`, 36 `m040`, 81 `etalon`.
+
+**The `make` is the claim, again.** The tree was rebuilt in full first —
+`BUILD_EXIT=0`, no truncated binary, and every gate binary verified newer
+than what it links. That check earned its keep twice in one night:
+
+* It caught that `libpom68k_core.a` was **four minutes older than the
+  sources** (00:42:44 against 00:46:41). A `make` run while the JIT work was
+  stashed had rebuilt the library *without* the IIfx engine, and the
+  `jit_iifx_boot_etalon` reported green an hour earlier had therefore run
+  the interpreter twice. After the rebuild it retires 33 873 130
+  instructions, 100 % through the window, 756 501 arms — and reaches the
+  same Finder.
+* It also produced a **false positive of its own**: six gates
+  (`sst68000/030/040`, `fpu_sanity`, `berr030_test`, `cache040_test`) looked
+  stale against `libpom68k_core.a`, which they do not link — they link
+  `moira`, and were correctly newer than `libmoira.a`. The heuristic was
+  comparing to the wrong library.
+
+**Five green results that answered the wrong question, in one working
+day** — worth listing together, because the shape is the same every time
+and only the disguise changes:
+
+| what looked fine | what was actually true |
+|---|---|
+| the engine reported itself ON | it retired **zero** instructions (`runUntil` vs `runCycles`) |
+| a lockstep: 2.5 M identical checkpoints | every fetch came from ROM; the guest never ran from RAM |
+| `ctest -L jit -R ""` exited 0 | "No tests were found!!!" — the tier never ran |
+| `jit_iifx_boot_etalon` passed | the binary had no engine in it |
+| three IIfx gates red "since 2026-08-04" | the boot volume was corrupt, not the code |
+
+Four of the five were silence mistaken for success; the last was noise
+mistaken for signal. The habits that came out of them are cheap and now
+in-tree: `POM68K_JIT_VERBOSE=1` prints retired/window/arms at teardown, the
+68000 lockstep asserts its own reach before reporting, and a red gate's
+*inputs* get checked before any hypothesis about its code.
+
+Counts refreshed across `CLAUDE.md`, `TODO.md`, `DEV.md`, `README.md` and
+`POM68K_JIT.md` — several still read 143/144/147 gates and 36 profiles.
 
 ---
 

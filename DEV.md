@@ -1229,7 +1229,7 @@ documented in their own file headers.
 ## 6. Test tiers and gates
 
 **Never iterate against a bare `ctest` or a bare `make`.** A full run is
-143 gates / ~3h, and `ctest -j` is unsafe because the boot etalons are
+162 gates / ~3h35, and `ctest -j` is unsafe because the boot etalons are
 contention-sensitive; a bare `make` relinks ~90 binaries under tree-wide
 LTO. Labels are **derived from test names** at registration time
 (`CMakeLists.txt`, end of the test block), so a gate added tomorrow is
