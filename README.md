@@ -88,9 +88,16 @@ adapted from POM1's battle-tested workflows):
 | `POM68K-macOS-v<v>.dmg` | macOS 11+, Universal 2 (Apple Silicon + Intel) |
 | `POM68K-Windows-v<v>.zip` | Windows x64, self-contained (no DLL beside the exe) |
 
-No ROM ships in any package — drop your own dumps into the data directory
-each package provisions on first launch (`roms/`, `hdv/`, `disks35/`; the
-in-package README says where). `POM68K --version` prints the banner and
+No ROM ships in any package — drop your own dumps into `roms/`, `hdv/`,
+`disks35/`. The **AppImage looks for those beside itself first**: create
+`roms/` next to the `.AppImage` file and everything, writes included (PRAM,
+save states, screenshots), stays there — a portable install on a USB stick
+works. Failing that it uses the directory you launched from if it holds one of
+those folders, and failing that `~/.local/share/POM68K`, which it seeds on
+first run with a README saying so. `POM68K_DATA_DIR=<path>` overrides all
+three, and the chosen directory is printed on stderr at every launch. The
+macOS `.app` still always uses `~/Library/Application Support/POM68K`; the
+Windows zip finds its data beside the `.exe`. `POM68K --version` prints the banner and
 exits before any window — that is the CI smoke and a quick install check.
 Maintainers: run the *Build bionic builder image* workflow once, pin the
 digests it prints into `release.yml`, then push a version tag.

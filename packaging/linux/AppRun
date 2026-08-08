@@ -1,25 +1,64 @@
 #!/bin/bash
-# AppRun for POM68K — run the emulator from a per-user data directory.
+# AppRun for POM68K — decide WHICH directory the emulator treats as its own.
 #
 # POM68K resolves its assets (roms/, hdv/, disks35/) relative to the current
 # working directory, the executable directory and its parent. Inside an
-# AppImage the executable directory is a read-only squashfs, and ROMs are
-# user-provided (never shipped — see README/LICENSE), so every asset dir
-# lives in $XDG_DATA_HOME/POM68K and we chdir there before exec.
+# AppImage the executable directory is a read-only squashfs mount under /tmp,
+# so it can never hold user data — ROMs are user-provided and never shipped
+# (README/LICENSE). Something must therefore choose a data directory and chdir
+# to it, and that choice is this file's whole job.
 #
-# First launch seeds the empty directory skeleton plus a README telling the
-# user where to drop their ROM dumps and disk images.
+# It used to be one directory, unconditionally: $XDG_DATA_HOME/POM68K. That
+# made the obvious layout — roms/ and hdv/ sitting NEXT TO the .AppImage, or
+# in the directory you launched it from — silently do nothing: the emulator
+# was already somewhere else by the time it looked. Order of preference now,
+# first match wins:
+#
+#   1. $POM68K_DATA_DIR                  explicit, always wins
+#   2. the directory containing the .AppImage, if it already holds data
+#   3. the directory you launched from ($OWD), if it already holds data
+#   4. $XDG_DATA_HOME/POM68K             seeded on first run, as before
+#
+# "Holds data" means it already contains roms/, hdv/ or disks35/. That test is
+# what keeps 2 and 3 safe: dropping the AppImage in ~/Downloads must not
+# scatter a directory skeleton there, and a portable install on a USB stick
+# must not be ignored. Nothing is ever CREATED outside case 4 — the user makes
+# roms/ beside the AppImage, and that is the whole opt-in.
+#
+# The chosen directory is where guest writes land too: PRAM files, save states
+# and screenshots follow the disk images, which is what "portable" has to mean.
 
 set -e
 
 HERE="$(dirname "$(readlink -f "${0}")")"
 
-XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-DATADIR="${XDG_DATA_HOME}/POM68K"
-mkdir -p "${DATADIR}/roms" "${DATADIR}/hdv" "${DATADIR}/disks35"
+# Does this directory look like a POM68K data directory?
+has_data() {
+    [ -n "${1:-}" ] && [ -d "$1" ] &&
+    { [ -d "$1/roms" ] || [ -d "$1/hdv" ] || [ -d "$1/disks35" ]; }
+}
 
-if [ ! -f "${DATADIR}/README.txt" ]; then
-    cat > "${DATADIR}/README.txt" <<'EOF'
+# $APPIMAGE is the absolute path of the .AppImage FILE and $OWD the directory
+# the user ran it from — both set by the AppImage runtime, both absent when
+# AppRun is executed straight out of an extracted AppDir.
+BESIDE=""
+[ -n "${APPIMAGE:-}" ] && BESIDE="$(dirname "${APPIMAGE}")"
+
+DATADIR=""
+SOURCE=""
+if [ -n "${POM68K_DATA_DIR:-}" ]; then
+    DATADIR="${POM68K_DATA_DIR}"; SOURCE="POM68K_DATA_DIR"
+    mkdir -p "${DATADIR}"
+elif has_data "${BESIDE}"; then
+    DATADIR="${BESIDE}";          SOURCE="beside the AppImage"
+elif has_data "${OWD:-}"; then
+    DATADIR="${OWD}";             SOURCE="the launch directory"
+else
+    XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+    DATADIR="${XDG_DATA_HOME}/POM68K"; SOURCE="the per-user data directory"
+    mkdir -p "${DATADIR}/roms" "${DATADIR}/hdv" "${DATADIR}/disks35"
+    if [ ! -f "${DATADIR}/README.txt" ]; then
+        cat > "${DATADIR}/README.txt" <<'EOF'
 POM68K data directory
 =====================
 
@@ -28,10 +67,21 @@ POM68K data directory
   hdv/      — hard-disk images (.vhd/.dsk/.img — raw HFS or DDM-partitioned).
   disks35/  — 3.5" floppy images (.dsk 400K/800K/1440K, DiskCopy 4.2).
 
+POM68K is using THIS directory because it found no data directory closer to
+you. To keep everything next to the AppImage instead — a portable install, a
+USB stick — create a roms/ (or hdv/, or disks35/) folder beside the .AppImage
+file and relaunch; POM68K will use that folder for everything, writes
+included. POM68K_DATA_DIR=<path> overrides both.
+
 Launch with no arguments to boot the first ROM found, or:
   POM68K <rom> [disk images...]
 EOF
+    fi
 fi
+
+# Say which one, and why. A misplaced ROM set is otherwise indistinguishable
+# from a broken build — the emulator just comes up with the built-in demo ROM.
+echo "POM68K: data directory = ${DATADIR}  (${SOURCE})" >&2
 
 export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
 

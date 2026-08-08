@@ -256,6 +256,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-08 (later)** — [The AppImage ignored a `roms/` folder sitting right next to it — the launcher had already chdir'd elsewhere](#2026-08-08-appimage-datadir)
 - **2026-08-08** — [NeoST's Pi recipe, ported: LTO had been coupled to `-march=native`, so every released binary shipped without it](#2026-08-08-raspberry-pi)
 - **2026-08-07 (later)** — [RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks](#2026-08-07-rascsi-oracle)
 - **2026-08-07** — [162/162 on a fully rebuilt tree: the first complete run since the gate count went from 143 to 162](#2026-08-07-full-run)
@@ -455,6 +456,51 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-08-appimage-datadir"></a>
+## 2026-08-08 (later) — The AppImage ignored a `roms/` folder sitting right next to it — the launcher had already chdir'd elsewhere
+
+Reported as a plain expectation: *the AppImage should load `roms/`, `hdv/` and
+the rest from the directory it sits in*. It could not, and the reason is one
+line of `packaging/linux/AppRun`.
+
+POM68K resolves assets against the current working directory, the executable
+directory and its parent (`findPath`, `src/main.cpp:298`). Inside an AppImage
+the executable directory is a read-only squashfs mount under `/tmp`, so it can
+never hold user data — something has to choose a directory and chdir to it.
+`AppRun` chose `$XDG_DATA_HOME/POM68K`, **unconditionally**. By the time the
+emulator looked at the world, it was already somewhere else: a `roms/` beside
+the `.AppImage` was invisible, and so was one in the directory you launched
+from. The symptom is indistinguishable from a broken build — POM68K simply
+comes up on its built-in demo ROM.
+
+Order of preference now, first match wins: `POM68K_DATA_DIR`; the directory
+containing the `.AppImage` (`dirname "$APPIMAGE"`); the launch directory
+(`$OWD`); then `$XDG_DATA_HOME/POM68K` as before. Cases 2 and 3 apply **only
+when that directory already contains `roms/`, `hdv/` or `disks35/`** — that
+test is the whole safety argument. Dropping the AppImage in `~/Downloads` must
+not scatter a directory skeleton there, and a portable install on a USB stick
+must not be ignored; nothing is ever *created* outside case 4, so making the
+folder is the entire opt-in gesture. The chosen directory is where guest
+writes land too — PRAM, save states, screenshots follow the disk images, which
+is what portable has to mean.
+
+The launcher now prints its choice and its reason on stderr at every start,
+because "wrong data directory" and "broken package" otherwise look identical
+from the user's side. The seeded `README.txt` in case 4 explains how to move to
+case 2.
+
+Verified end to end on the real artifact from run 31263114761: extracted,
+`AppRun` swapped in, and all four branches exercised with the shipped x86_64
+binary — XDG when nothing is beside it, the AppImage's own directory when
+`roms/` is there, the launch directory when only that holds `hdv/`, and
+`POM68K_DATA_DIR` beating both. The cwd branch of `findPath` itself needed no
+proof: it is what all 81 boot etalons already run on.
+
+Unchanged, deliberately: the macOS `.app` still always uses
+`~/Library/Application Support/POM68K` (same pattern, different platform
+convention — a bundle is not a portable file), and the Windows zip already
+finds its data beside the `.exe` through the executable-directory branch.
 
 <a id="2026-08-08-raspberry-pi"></a>
 ## 2026-08-08 — NeoST's Pi recipe, ported: LTO had been coupled to `-march=native`, so every released binary shipped without it
