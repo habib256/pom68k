@@ -46,6 +46,7 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
 | `IOP_BRINGUP.md` | Mac IIfx / Quadra 900-950 blueprint — the Apple PIC IOP (R65C02) + OSS brick, milestone plan |
 | `DUO_BRINGUP.md` | PowerBook Duo 230 blueprint — the MSC + PG&E (68HC05 Power Manager) brick, milestone plan |
 | `CACHE_040.md` | 68040 copyback/snooping blueprint — no oracle, no DMA client yet, M0 CM-bit numbers, milestones M1-M3 |
+| `RASPBERRY_PI.md` | Pi build recipe — `-mcpu`/`-mtune`/LTO/PGO, which number came from where, and the silent-PGO trap |
 
 ## Status (2026-08-07)
 
@@ -145,7 +146,16 @@ ctest -L jit                 # 23 gates;  -L m040 = 36, the 68040 family
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
 ./POM68K [ROM] [media...]    # profile picked by ROM size + checksum; the
                              # mapping is `kProfiles` in src/main.cpp
+
+tools/pgo_train.sh build-pgo # PGO here (train + rebuild, ONE build dir)
+packaging/raspberry/build_native_pi.sh --pgo   # PGO + LTO + -mcpu, on a Pi
 ```
+
+Three optimization knobs, **independent since 2026-08-08** (they used to be
+one, which cost every released binary its LTO): `POM68K_NATIVE` (native ISA,
+ON), `POM68K_TUNE=<core>` (schedule for a core, ISA floor unchanged — the
+release aarch64 AppImage uses `cortex-a72`), `POM68K_LTO`. Numbers, provenance
+and the silent-PGO trap: `docs/RASPBERRY_PI.md`.
 
 Never iterate on a full `ctest` or a full `make` — labels are derived from
 test names at the end of `CMakeLists.txt`; pick the narrowest tier.

@@ -89,6 +89,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **the biggest JIT win since the fetch window: one deleted arm-time DTLB flush** → [2026-07-31 — The window-churn investigation ends on one deleted line…](#2026-07-31-window-churn-dtlb-flush)
 - **PGO trained per CPU family (−26 % on the LC II); why the page-granular dispatch table was dropped** → [2026-07-29 (late) — PGO across all four CPU families (−26 % on the LC II)…](#2026-07-29-pgo-four-cpu-families)
 - **the first performance pass: 0.40× → 1.91× realtime** → [2026-07-17 — Performance pass: 0.40× → 1.91× realtime at the Finder (the sound…](#2026-07-17-performance-pass-realtime)
+- **why every RELEASED binary shipped without LTO, and the three knobs that replaced the one** → [2026-08-08 — NeoST's Pi recipe, ported…](#2026-08-08-raspberry-pi)
+- **how a PGO build fails SILENTLY (the `.gcda` absolute-path trap), and the audit against it** → [2026-08-08 — NeoST's Pi recipe, ported…](#2026-08-08-raspberry-pi)
+- **why untrained machines came out of a PGO build slower than out of `-O3`** → [2026-08-08 — NeoST's Pi recipe, ported…](#2026-08-08-raspberry-pi)
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
@@ -253,6 +256,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-08** — [NeoST's Pi recipe, ported: LTO had been coupled to `-march=native`, so every released binary shipped without it](#2026-08-08-raspberry-pi)
 - **2026-08-07 (later)** — [RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks](#2026-08-07-rascsi-oracle)
 - **2026-08-07** — [162/162 on a fully rebuilt tree: the first complete run since the gate count went from 143 to 162](#2026-08-07-full-run)
 - **2026-08-06** — [The IIfx closes the set: every CPU wrapper carries an engine — and the "regression" was a corrupted disk image](#2026-08-06-jit-iifx)
@@ -451,6 +455,117 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-08-raspberry-pi"></a>
+## 2026-08-08 — NeoST's Pi recipe, ported: LTO had been coupled to `-march=native`, so every released binary shipped without it
+
+Task: take NeoST's Raspberry Pi optimizations
+(`../neost/docs/PERFORMANCE.md`, `../neost/packaging/raspberry/`) and bring
+them here. Same CPU core (Moira), same target board, so most of the reasoning
+transfers directly. What did *not* transfer is more interesting than what did.
+
+**The bug found on the way, and it is the largest item in this entry.**
+`POM68K_NATIVE` meant two things at once — `-march=native` **and** LTO, in one
+`if`. Every distributable build therefore sets `POM68K_NATIVE=OFF` for
+portability (`build_in_bionic.sh`, `package_macos_release.sh`, `release.yml`'s
+Windows job, `ci.yml`) and lost its LTO as a side effect nobody wrote down.
+**All four release artifacts have been plain `-O3` since the option was
+introduced (2026-07-17).** LTO is not a portability hazard: it changes what
+the linker may inline, not what the CPU must support. Three separate knobs
+now:
+
+| knob | meaning | portable |
+|---|---|---|
+| `POM68K_NATIVE` (ON) | native ISA floor + cost model | no, by construction |
+| `POM68K_TUNE=<core>` | schedule for a core, **ISA floor unchanged** | yes |
+| `POM68K_LTO` (defaults to `POM68K_NATIVE`) | link-time optimization | yes |
+
+`packaging/linux/build_in_bionic.sh` passes `-DPOM68K_LTO=ON`, and on aarch64
+`-DPOM68K_TUNE=cortex-a72` — the Pi 4/400 this artifact exists for. `-mtune=`
+reorders and emits no A72-only instruction, so the AppImage still loads on a
+Pi 3 and a Pi 5. macOS and Windows are deliberately left alone for now (the
+`.dmg` was not exercised here; MSVC needs `/GL` + `/LTCG`, which the CMake
+block does not do).
+
+**`-mcpu` over `-march` on aarch64.** `POM68K_NATIVE` emitted `-march=native`
+on every target. On aarch64 that sets the architecture features and leaves the
+**cost model generic** — and the cost model is the entire point for an
+interpreter dispatch loop. It is `-mcpu=native` there now, `-march=native`
+elsewhere (x86-64 has no `-mcpu`, and its `-march=native` does carry tuning).
+Both are probed with `check_cxx_compiler_flag` and fall back rather than fail:
+on some 64-bit Pi kernels the MIDR GCC reads is incomplete and the flag is
+rejected outright.
+
+**`packaging/raspberry/build_native_pi.sh`** — for the person who compiles on
+the Pi, which `README.md` treats as the normal path. Reads
+`/proc/device-tree/model` rather than trusting `-mcpu=native` (Pi 5 →
+`cortex-a76`, Pi 4/400 → `cortex-a72`, Pi 3 → `cortex-a53`); sizes `-j` at
+~1.2 GB per job, because `-j4` on a 2 GB board OOM-kills `cc1plus` on
+`Moira.cpp` and the symptom reads like a compiler bug; gates the PGO pass's
+LTO on ≥ 2 GB; `--install`s to `/opt/pom68k` with `cp -rn` — POM68K *writes*
+to disk images, and clobbering one on a binary upgrade destroys a guest
+volume.
+
+**The silent-PGO trap, and the audit against it.** GCC names each `.gcda`
+after the **absolute path of the object** it belongs to. Instrument in one
+build directory, read back from another, and the use pass finds no profile at
+all — and `-Wno-missing-profile`, which this tree needs for the GUI objects
+nothing trains, makes that outcome completely silent: no gain, no message.
+NeoST published a "PGO = −4 %" that was nothing but this. The training load
+moved into `tools/pgo_train_run.sh`, shared by the desktop and Pi recipes so
+they cannot drift, and it now **exits non-zero** when no gate ran (all
+soft-skipped for missing assets), when no counter file landed, or when no
+`Moira.cpp.gcda` exists — the one translation unit every gate necessarily
+executes. Naming any machine's own `.cpp` there would misfire the moment
+`POM68K_PGO_GATES` narrows the set: a static library contributes only the
+objects the link pulls in.
+
+**Cold code was the other half.** GCC optimizes functions the training set
+never entered **for size**. A four-machine training set leaves ~30 machine and
+device translation units cold, so untrained profiles came out of a PGO build
+*slower* than out of a plain `-O3` one. `-fprofile-partial-training` (GCC ≥ 10,
+probed) fixes that, and the training set widened for the same reason: from
+four gates to seven — one machine per CPU family, plus `compact_boot_etalon`
+(68000 + contention) and `system_boot_etalon`, whose IWM/GCR floppy engine no
+hard-disk boot ever reaches.
+
+**Provenance of the numbers, stated because most are not ours.** POM68K's own
+PGO measurement is x86-64: −33 % interpreter, −18 % JIT (2026-07-28). The
+−20 % (PGO) / −34 % (PGO+LTO) / ~10-20 % (`-mcpu`) figures are **NeoST's, on a
+Cortex-A72**, on the same Moira interpreter. **POM68K has never been measured
+on a Pi, before or after.** Producing that number is the open item, and it
+must use `jit_bench` (fixed cycle budget + state fingerprint), never a boot
+etalon — an etalon stops the instant it recognises the Finder, so two builds
+get timed over different amounts of guest work.
+
+**Not ported, with reasons** (`docs/RASPBERRY_PI.md` § 6). A CI-built
+`-mcpu=cortex-a72` artifact: NeoST's runner can train because its TOS ROMs are
+committed; **POM68K's ROMs are user-provided and never committed**, so a
+runner has nothing to boot and would collect exactly the empty profile the
+audit above exists to catch. Kiosk/session/Bluetooth provisioning: that is
+arcade-cabinet plumbing for a single-application box, and POM68K has no such
+product shape. NeoST's *code-level* optimizations: POM68K already went down
+that road with its own profile and reached different answers — the peripheral
+deadline mechanism is its version of the scheduler fix (833.2 M → 86.65 M
+`tick()` calls), while page-granular memory dispatch and an O(1) ATC lookup
+were measured and **dropped** (`TODO.md`, *Measured and DROPPED*). Re-open
+those from POM68K numbers, never from NeoST's.
+
+**Verified, and not.** On x86-64: `POM68K_LTO=ON` with `POM68K_NATIVE=OFF`
+really emits `-flto=auto` now (it did not before), a rejected `-mtune=` warns
+and is dropped instead of breaking the build, and `pgo_train_run.sh` fails
+loudly on both audit branches. The PGO cycle was run for real, not just
+configured: an `-fprofile-generate` build of `system_boot_etalon` booted
+System 6 off a GCR floppy, wrote 25 `.gcda` including `Moira.cpp.gcda`, the
+audit passed, and a translation unit recompiled with `-fprofile-use
+-fprofile-correction -fprofile-partial-training -Wmissing-profile` consumed
+that profile with **no** missing-profile warning — the exact signal whose
+absence is the silent failure. One number worth having: that instrumented
+build took **14m42 on a 16-core desktop, 13 of them `Moira.cpp` alone**,
+single-threaded, everything else blocked behind it. `-j` does not help there,
+so a `--pgo` run on a Pi 4 is an afternoon. **No aarch64 compiler, emulator or board was available**,
+so every `-mcpu=cortex-a72` claim and the whole `build_native_pi.sh` path are
+unexercised; the AppImage change needs a `release.yml` dispatch to be real.
 
 <a id="2026-08-07-full-run"></a>
 ## 2026-08-07 (later) — RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks

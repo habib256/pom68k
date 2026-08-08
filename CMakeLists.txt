@@ -22,8 +22,8 @@ if(MSVC)
 endif()
 
 # ─── Host-tuned optimization (perf pass 2026-07-17) ──────────────────────
-# The LC II at cache-boost 4 needs every cycle the host can give; -march=
-# native + LTO buy ~15-25% on the Moira hot loop. ON by default (POM68K is
+# The LC II at cache-boost 4 needs every cycle the host can give; native
+# tuning + LTO buy ~15-25% on the Moira hot loop. ON by default (POM68K is
 # built from source on the machine that runs it); disable for a portable
 # binary with -DPOM68K_NATIVE=OFF.
 # EMSCRIPTEN is excluded, not merely untested: `-march=` does not exist for
@@ -31,13 +31,65 @@ endif()
 # and the option is ON by default, so the DEFAULT configuration could not build
 # the target this file already has an EMSCRIPTEN branch for. There is no host
 # CPU to tune for when the host is a browser.
-option(POM68K_NATIVE "Optimize for the build host CPU (-march=native + LTO)" ON)
-if(POM68K_NATIVE AND NOT MSVC AND NOT EMSCRIPTEN)
-    add_compile_options(-march=native)
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT pom68k_ipo)
-    if(pom68k_ipo)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+#
+# THREE knobs, deliberately separate (they were one until 2026-08-08, and the
+# coupling cost every released binary its LTO — see below):
+#
+#   POM68K_NATIVE  raise the ISA floor AND the cost model to this host.
+#                  Non-distributable by construction.
+#   POM68K_TUNE    schedule for a named core WITHOUT raising the ISA floor
+#                  (`-mtune=`). Distributable: the binary still runs on every
+#                  CPU of the family, it is merely ordered for that one. This
+#                  is how the release aarch64 AppImage targets the Pi 4/400's
+#                  Cortex-A72 while staying loadable on a Pi 3.
+#   POM68K_LTO     link-time optimization. Independent of both: a portable
+#                  binary has every reason to want it.
+option(POM68K_NATIVE "Optimize for the build host CPU (native ISA + tuning)" ON)
+set(POM68K_TUNE "" CACHE STRING
+    "Tune for a named core without raising the ISA floor (e.g. cortex-a72)")
+option(POM68K_LTO "Link-time optimization" ${POM68K_NATIVE})
+
+if(NOT MSVC AND NOT EMSCRIPTEN)
+    include(CheckCXXCompilerFlag)
+    if(POM68K_NATIVE)
+        # aarch64 wants `-mcpu=native`, not `-march=native`: on this target
+        # `-march=` sets the architecture features and leaves the cost model
+        # GENERIC, and the cost model is the whole point for an interpreter
+        # dispatch loop. x86-64 has no `-mcpu=`, so it keeps `-march=native`
+        # (which does carry tuning there).
+        # Both are probed rather than assumed: on some 64-bit Pi kernels the
+        # MIDR that GCC reads is incomplete and the flag is rejected outright.
+        # Falling back beats failing twenty minutes later on a random .cpp.
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+            set(pom68k_native_flag "-mcpu=native")
+        else()
+            set(pom68k_native_flag "-march=native")
+        endif()
+        check_cxx_compiler_flag("${pom68k_native_flag}" pom68k_native_ok)
+        if(pom68k_native_ok)
+            add_compile_options(${pom68k_native_flag})
+        else()
+            message(STATUS "POM68K: ${pom68k_native_flag} rejected by "
+                           "${CMAKE_CXX_COMPILER_ID} — building generic")
+        endif()
+    endif()
+    if(POM68K_TUNE)
+        check_cxx_compiler_flag("-mtune=${POM68K_TUNE}" pom68k_tune_ok)
+        if(pom68k_tune_ok)
+            add_compile_options(-mtune=${POM68K_TUNE})
+            message(STATUS "POM68K: tuned for ${POM68K_TUNE} (ISA floor unchanged)")
+        else()
+            message(WARNING "POM68K: -mtune=${POM68K_TUNE} rejected — ignored")
+        endif()
+    endif()
+    if(POM68K_LTO)
+        include(CheckIPOSupported)
+        check_ipo_supported(RESULT pom68k_ipo OUTPUT pom68k_ipo_why)
+        if(pom68k_ipo)
+            set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+        else()
+            message(STATUS "POM68K: LTO requested but unsupported — ${pom68k_ipo_why}")
+        endif()
     endif()
 endif()
 
@@ -89,6 +141,15 @@ if(NOT POM68K_PGO STREQUAL "off" AND NOT MSVC)
         elseif(POM68K_PGO STREQUAL "use")
             add_compile_options(-fprofile-use -fprofile-correction -Wno-missing-profile)
             add_link_options(-fprofile-use)
+            # Without this, GCC optimizes every function the training set never
+            # entered for SIZE. A four-machine training set leaves ~30 machine
+            # and device translation units cold, so the untrained profiles would
+            # come out of a PGO build SLOWER than out of a plain -O3 one. GCC 10+.
+            include(CheckCXXCompilerFlag)
+            check_cxx_compiler_flag(-fprofile-partial-training pom68k_partial_ok)
+            if(pom68k_partial_ok)
+                add_compile_options(-fprofile-partial-training)
+            endif()
         else()
             message(FATAL_ERROR "POM68K_PGO must be off, generate or use")
         endif()
