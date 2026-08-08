@@ -45,6 +45,7 @@ change AppleTalk behaviour are repeated here.
 | `POM68K_LTOUDP=1` | off | also join the real LToUDP cable (§6.1). Suppresses the boost — external peers are real wires |
 | `POM68K_ATALK_DEBUG=1` | off | DDP/NBP/ATP tracer + one line per client retransmit with its lag (`src/AtalkStack.cpp:16`) |
 | `POM68K_MACIP_DEBUG=1` | off | every IP datagram both ways, with TCP flags/seq/ack |
+| `POM68K_DAYNAPORT=<id>` | off | put a DaynaPort SCSI/Link (Ethernet as a SCSI target) at that SCSI ID on the Quadra 605; `=1` picks the default ID 3. Its uplink is the same NAT the MacIP gateway uses — §6.4bis |
 
 ### 0.2 Guest side
 
@@ -100,7 +101,7 @@ only sees traffic when the LToUDP cable is up.
 
 ### 0.5 Gates
 
-`ctest -L unit` runs the first six in seconds; the last two need ROM +
+`ctest -L unit` runs the first seven in seconds; the last two need ROM +
 disk assets and soft-skip without them.
 
 | Gate | Covers |
@@ -111,6 +112,7 @@ disk assets and soft-skip without them.
 | `afp_server_test` | OpenSession→Login→OpenVol→Enumerate→Read; ASP SPWrite→WriteContinue→FPWrite; resource fork → `.AppleDouble` |
 | `pap_server_test` | OpenConn→SendData→PostScript→EOF→spool; `%%?Query` answered `*` |
 | `macip_gw_test` | address assign, ICMP echo, a real UDP round-trip and a full TCP SYN→data→FIN both ways through the user-mode NAT on loopback |
+| `daynaport_test` | the SCSI/Link command set (READ/WRITE frame formats, the 6-byte header + more-data flag, SET MAC, the 37-byte INQUIRY) and the round trip guest → Ethernet frame → `EtherLink` → NAT → back, plus proxy-ARP refusing the guest's own address (§6.4bis) |
 | `llap_two_system_etalon` | two Macs acquire node IDs over real ENQ traffic |
 | `q605_ot_bind_etalon` | Open Transport's `.MPP` binds against the in-process stack (§2.5) |
 
@@ -727,6 +729,45 @@ Netscape 2 / MacWeb on 7.5 all work against these.
 | Names fail, IPs work | DNS must be a real resolver reachable through NAT (never 127.0.0.53); try 1.1.1.1 and re-enter it guest-side |
 | `https://` anything | Expected — TLS era gap, use FrogFind / theoldnet |
 | Large transfers stall | External only: tun MTU must be 586 (`ip link show tunX`) — DDP's payload ceiling |
+
+### 6.4bis The other way to the same NAT: Ethernet over SCSI (2026-08-07)
+
+MacIP exists because the Mac's only network is LocalTalk. The period
+answer when that was too slow was a **DaynaPort SCSI/Link**: an Ethernet
+card that answers SCSI commands, so any Mac with a SCSI bus — which is
+every machine in this tree — gets real Ethernet. POM68K now models one
+(`DaynaPort`), bridged by `EtherLink` onto the **same** user-mode NAT
+`MacIpGateway` already runs. So there are two roads to the outside and one
+gateway behind both:
+
+```
+MacTCP "AppleTalk (MacIP)" ── DDP-22 ── Scc8530/LLAP ──┐
+                                                        ├── MacIpGateway NAT ── host sockets
+MacTCP "Ethernet" ── DaynaPort ── SCSI bus ── EtherLink ┘
+```
+
+Why bother, given §6.4 works: the LLAP road runs at 230.4 kbit/s through
+the SCC, the most timing-fragile device here (hence
+`POM68K_ATALK_WIRE_BOOST`). The SCSI bus is neither slow nor fragile.
+
+Operating it: `POM68K_DAYNAPORT=<id>` (Quadra 605 only today; `=1` picks
+the default ID 3, where the CD-ROM normally sits). Guest side needs the
+DaynaPort SCSI/Link driver plus a **manual** MacTCP/TCP-IP configuration —
+an address in the gateway's subnet (192.168.151.x by default), the gateway
+as router, a DNS server. There is no address handout on this road: MacIP's
+ATP assign has no Ethernet equivalent and no BOOTP/RARP responder is
+modelled, so the lease is learned from the guest's first packet. ARP is
+answered as a proxy for the whole subnet, never for the guest's own
+address — a reply there reads as a duplicate address and MacTCP refuses to
+initialise.
+
+Caveats, all real: **no guest driver has been run against it** (the
+command set is gated by `daynaport_test`, the driver's opinion of it is
+not); **no EtherTalk** — the card carries IPv4 and ARP only, so everything
+in §§1-5 above still travels over the SCC; and the uplink lives in
+`AtalkHub`, so `POM68K_APPLETALK=0` leaves the guest a card with nothing
+behind it. Design notes: `DEV.md` § 3.3bis; rationale and the RaSCSI/PiSCSI
+provenance: `CHANGELOG.md` 2026-08-07 (later).
 
 ### 6.5 The in-process stack — POM68K as its own router, server, printer and gateway
 

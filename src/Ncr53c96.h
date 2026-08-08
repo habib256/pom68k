@@ -27,11 +27,10 @@
 // Gate: tests/ncr53c96_test.cpp.
 
 #pragma once
+#include "ScsiTarget.h"
 #include <cstdint>
 #include <functional>
 #include <vector>
-
-class ScsiDisk;
 
 class Ncr53c96 {
 public:
@@ -40,7 +39,7 @@ public:
     // Attach a target at a SCSI ID (0-6). The initiator is ID 7 by default
     // (set through the CONFIG1 register at run time — bus_id_w selects the
     // destination for a Select command).
-    void attach(ScsiDisk* disk, int id = 0) {
+    void attach(ScsiTarget* disk, int id = 0) {
         if (id >= 0 && id < 7) targets_[id] = disk;
     }
 
@@ -169,8 +168,8 @@ public:
     }
 
 private:
-    ScsiDisk* targets_[7] = {};
-    ScsiDisk* disk_ = nullptr;           // target selected this session
+    ScsiTarget* targets_[7] = {};
+    ScsiTarget* disk_ = nullptr;         // target selected this session
 
     // Register file
     uint8_t config1_ = 0, config2_ = 0, config3_ = 0;
@@ -245,5 +244,5 @@ private:
     void advanceToStatus();               // DATA/COMMAND done → STATUS
     uint8_t phaseStatusBits() const;      // low 3 bits of the STATUS register
     static int cdbLength(uint8_t op);
-    static int writeByteCount(const std::vector<uint8_t>& cdb);
+    int writeByteCount(const std::vector<uint8_t>& cdb) const;
 };

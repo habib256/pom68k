@@ -21,19 +21,19 @@
 
 #pragma once
 #include "SaveState.h"
+#include "ScsiTarget.h"
 #include <cstdint>
 #include <functional>
 #include <vector>
 #include <string>
 
-class ScsiDisk;
-
 class Ncr5380 {
 public:
     void reset();
     // Attach a target at a SCSI ID (0-6). The historical single-disk call
-    // sites (Plus, tests) keep the default ID 0.
-    void attach(ScsiDisk* disk, int id = 0) {
+    // sites (Plus, tests) keep the default ID 0. Any ScsiTarget answers
+    // here, not just a disk — see ScsiTarget.h.
+    void attach(ScsiTarget* disk, int id = 0) {
         if (id >= 0 && id < 7) targets_[id] = disk;
     }
 
@@ -149,8 +149,8 @@ public:
     }
 
 private:
-    ScsiDisk* targets_[7] = {};      // by SCSI ID (7 = initiator, never used)
-    ScsiDisk* disk_ = nullptr;       // target selected by the current session
+    ScsiTarget* targets_[7] = {};    // by SCSI ID (7 = initiator, never used)
+    ScsiTarget* disk_ = nullptr;     // target selected by the current session
 
     // Register file (as written by the initiator)
     uint8_t odr_ = 0, icr_ = 0, mode_ = 0, tcr_ = 0, selEnable_ = 0;
@@ -176,8 +176,7 @@ private:
     void enterBusFree();
     void execute();
     void finishWrite();
-    static int writeByteCount(const std::vector<uint8_t>& cdb);
-    void extendDataOut();            // FORMAT UNIT defect-list header length
+    void extendDataOut();            // defect-list header → real DATA OUT size
     void ackRising();
     void ackFalling();
     bool targetPhase() const;

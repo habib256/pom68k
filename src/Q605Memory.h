@@ -41,6 +41,7 @@
 #include "AdbBus.h"
 #include "Scc8530.h"
 #include "Ncr53c96.h"
+#include "DaynaPort.h"
 #include "ScsiDisk.h"
 #include "Asc.h"
 #include "Swim2.h"
@@ -121,6 +122,10 @@ public:
     bool insertDisk(const std::string& path) { return drive0_.insert(path); }
     void ejectDisk() { drive0_.eject(); }
     Ncr53c96& scsi() { return scsi_; }
+    // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus.
+    // AtalkHub::attach detects this accessor and wires the card to the
+    // in-process NAT through an EtherLink.
+    DaynaPort& daynaPort() { return dayna_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
     ScsiDisk& scsiDiskAt(int id) { return scsiDisks_[id & 7]; }  // boot drive (tests poke it)
 
@@ -327,6 +332,7 @@ private:
     int64_t swimCycAcc_ = 0;       // CPU→C15M fractional bridge (shared timeline)
     Ncr53c96 scsi_;                // TurboSCSI 53C96 (Q6)
     ScsiDisk scsiDisks_[7];        // by SCSI ID; [0] = boot drive
+    DaynaPort dayna_;              // opt-in Ethernet target (POM68K_DAYNAPORT)
     Cpu040* cpu_ = nullptr;
 
     void jitMapChanged();

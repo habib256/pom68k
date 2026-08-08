@@ -45,6 +45,12 @@ void Ncr53c96::acceptDataOutByte_(uint8_t v) {
         // I_BUS completion trigger below but must not forge the flag.
         if (dmaCommand_ && tcounter_ == 0) status_ |= S_TC0;
     }
+    // A defect-list header carries the real length of what follows it, so the
+    // gather target can grow once the first four bytes are in (FORMAT UNIT /
+    // REASSIGN BLOCKS — ScsiDisk::extendDataOut).
+    if (disk_ && !cmd_.empty())
+        dataOutExpected_ = disk_->extendDataOut(cmd_.data(), int(cmd_.size()),
+                                                dataOut_, dataOutExpected_);
     if (tcounter_ == 0 || dataOut_.size() >= dataOutExpected_) {
         if (dataOut_.size() >= dataOutExpected_)
             advanceToStatus();
@@ -201,13 +207,13 @@ int Ncr53c96::cdbLength(uint8_t op) {
         default: return 6;
     }
 }
-int Ncr53c96::writeByteCount(const std::vector<uint8_t>& cdb) {
-    if (cdb.empty()) return 0;
-    if (cdb[0] == 0x0A && cdb.size() >= 5)                    // WRITE(6)
-        return (cdb[4] ? cdb[4] : 256) * 512;
-    if (cdb[0] == 0x2A && cdb.size() >= 9)                    // WRITE(10)
-        return ((cdb[7] << 8) | cdb[8]) * 512;
-    return 0;
+// DATA OUT sizing belongs to the target — see ScsiDisk::writeByteCount.
+// What this controller kept locally was WRITE(6)/(10) and nothing else, so
+// MODE SELECT and FORMAT UNIT with a parameter list hung the bus on every
+// 53C96 machine while working on the Plus.
+int Ncr53c96::writeByteCount(const std::vector<uint8_t>& cdb) const {
+    if (!disk_ || cdb.empty()) return 0;
+    return disk_->writeByteCount(cdb.data(), int(cdb.size()));
 }
 
 // Low 3 status bits reflect the live target phase (I/O, C/D, MSG).
@@ -584,7 +590,7 @@ void Ncr53c96::startCommand(uint8_t c) {
 void Ncr53c96::selectTarget(bool withAtn, bool stopAfterMsg) {
     selects++;
     seq_ = 0;
-    ScsiDisk* t = (busId_ >= 0 && busId_ < 7) ? targets_[busId_] : nullptr;
+    ScsiTarget* t = (busId_ >= 0 && busId_ < 7) ? targets_[busId_] : nullptr;
     if (!t || !t->present()) {
         // Selection timeout: the target never asserted BSY → disconnect.
         phase_ = BUS_FREE; disk_ = nullptr;

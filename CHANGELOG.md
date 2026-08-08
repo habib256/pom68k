@@ -253,6 +253,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-07 (later)** — [RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks](#2026-08-07-rascsi-oracle)
 - **2026-08-07** — [162/162 on a fully rebuilt tree: the first complete run since the gate count went from 143 to 162](#2026-08-07-full-run)
 - **2026-08-06** — [The IIfx closes the set: every CPU wrapper carries an engine — and the "regression" was a corrupted disk image](#2026-08-06-jit-iifx)
 - **2026-08-06** — [The cycle-exact lockstep, and the same trap twice in one day: a green gate that meant "nothing ran"](#2026-08-06-lockstep-68000)
@@ -452,6 +453,118 @@ Newest first.
 ---
 
 <a id="2026-08-07-full-run"></a>
+## 2026-08-07 (later) — RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks
+<a id="2026-08-07-rascsi-oracle"></a>
+
+Started as "what is worth taking from `rdmark/RASCSI-X68k`". Two framing
+corrections came first and both matter for anyone who reads that repo next:
+it is an **archived** (Nov 2022) fork of GIMONS' RaSCSI 1.52b written for
+the **Sharp X68000**, Japanese-commented, ~80 % of it (GPIO bit-banging,
+FatFs baremetal, a 152 KB Human68k host-drive bridge, X68000 drivers) has no
+meaning here; and the Mac-relevant descendant is **PiSCSI**, which is where
+the DaynaPort emulation actually lives. Also worth writing down so nobody
+hopes for it twice: RaSCSI's CD support is **behind** ours — `OpenCue` is a
+stub (`disk.cpp:3608`) and all three `PlayAudio*` return INVALID CDB
+(`:4010-4041`), so there is nothing there for the CDDA TODO.
+
+What it did have was an oracle for a hole nobody had looked at.
+
+**The finding: our target only ever answered the ROM.** `ScsiDisk`'s MODE
+SENSE returned a header, a block descriptor and **no pages at all** —
+faithful to MAME's `nscsi_hd`, which does the same. That is enough to boot,
+which is why 81 etalons were green over it: the ROM READs a volume and never
+asks a drive anything else. But it means **no software running inside the
+guest could work on a disk** — HD SC Setup, Drive Setup, Silverlining and
+FWB each read mode pages 1/3/4 and the Apple page `$30` signature before
+they will touch a drive. The tree had been routing around this for months
+from the host side, with `tools/wrap_hfs.py` and the in-memory DDM/
+Apple_Driver43 façade in `ScsiDisk::applyFlatHfsFacade`.
+
+RaSCSI has a whole `SCSIHD_APPLE` class for exactly this
+(`disk.cpp:2857-2918`): INQUIRY spoofing the Apple-branded Seagate ST225N,
+plus page `$30` carrying `"APPLE COMPUTER, INC."` at page offset `$0A`. We
+already did the CD-ROM half of that trick and had never done the disk half.
+
+Landed: pages 1/2/3/4/8/`$30`, `$3F` for the set, PC=1 reporting only what
+MODE SELECT could really change, an unsupported page answered CHECK
+CONDITION / `$24` instead of a silently empty reply, MODE SENSE(10), and
+twelve commands the ROM never issues and formatters do (REZERO, REASSIGN,
+SEEK(6/10), SEND DIAGNOSTIC, START/STOP, PREVENT/ALLOW, WRITE AND
+VERIFY(10), VERIFY(10) with a real BytChk comparison and MISCOMPARE, SYNC
+CACHE, READ DEFECT DATA, MODE SELECT(10)). The CD-ROM's own MODE SENSE was
+folded into the same function — same header, its own page set and its own
+`$30` layout, which is MAME's and is **not** interchangeable with the
+disk's.
+
+**The bug found on the way, and it is the interesting one.** The count of
+DATA OUT bytes a command owes the target lived in the CONTROLLERS — a
+private `writeByteCount` in `Ncr5380.cpp` and another in `Ncr53c96.cpp` —
+and the two disagreed. The 5380 knew MODE SELECT(6) and the FORMAT UNIT
+defect-list header; the 53C96 knew WRITE(6) and WRITE(10) and nothing else.
+So a parameter-list command on any 53C96 machine (Q605, LC 475, LC 575)
+reached STATUS while the driver still had its list to send. No gate saw it
+because nothing in the tree ever issued one to a Quadra — the ROM doesn't,
+and the boot path doesn't. It is now `ScsiTarget::writeByteCount` /
+`::extendDataOut`, asked of the target, with one table.
+
+That duplication had a cause worth naming: both engines held a
+`ScsiDisk*`, which quietly encoded "the only thing that can live on a Mac's
+SCSI bus is a disk". `ScsiTarget.h` is now the interface — four methods,
+deliberately **without** block size, media or geometry, because a controller
+that knows those has grown a device model.
+
+**Which made the second target cheap.** `DaynaPort` is the DaynaPort
+SCSI/Link: an Ethernet card that answers SCSI commands, from Dayna's
+SLINKCMD.TXT as PiSCSI implements it (BSD-3-Clause — GPLv3 can incorporate
+it, and MAME models no SCSI Ethernet target, so there is no higher-ranked
+oracle here). `EtherLink` is the eighty lines between it and the NAT
+**already inside** `MacIpGateway`: Ethernet framing plus proxy ARP for the
+whole subnet, never answering for the guest's own address — a reply there
+reads to MacTCP as a duplicate address and it refuses to initialise.
+Leases now record which link they came in on and `sendIpToGuest` routes DDP
+or Ethernet accordingly.
+
+Two details that are not decoration. Received frames are padded to the
+60-byte Ethernet minimum and given a **real CRC-32 FCS** (PiSCSI pads to 128
+and lets the checksum go wrong, on the grounds that no known driver checks
+it); and a driver's own trailing FCS is stripped on transmit, because what
+is on the other side is a software gateway, where a stray FCS is four bytes
+of garbage on every packet.
+
+Wiring is opt-in and off by default — a new device answering selection
+changes what the ROM's bus probe finds, and 81 etalons are calibrated
+against a bus of disks. `POM68K_DAYNAPORT=<id>` on the Quadra 605;
+`AtalkHub::attach` finds `mem.daynaPort()` through a `requires` clause, so
+the other eleven machines compile untouched.
+
+**Measured**: `q605_boot_etalon` reaches the same Mac OS 8.1 desktop with a
+card at ID 4 — identical screen signature (menu 203.5/71.3, desktop
+145.9/64.8), **4558** SCSI commands against **4551** without it. Seven
+commands: one bus probe of one extra target.
+
+**What is NOT done, and none of it is a detail.** No guest-side SCSI/Link
+**driver** has been run against this — the command set is gated, the
+driver's opinion of it is not, and that is the only test that would settle
+it. No GUI menu entry. Not in save states (a restore comes back with an
+empty Rx ring). No EtherTalk: the card carries IPv4 and ARP, so AppleTalk
+still goes over the SCC. And the uplink lives in `AtalkHub`, so
+`POM68K_APPLETALK=0` leaves the guest a card with nothing behind it.
+
+Gates: `scsi_target_test` and `daynaport_test`, both asset-free (each builds
+its own image / drives its own wire), so neither can soft-skip into a
+phantom pass. 162 → **164**; `unit` 77 → 79. Verified green after a full
+`make -j4` (`MAKE_EXIT=0`): `unit` 79/79, `smoke` 8/8, and the three SCSI
+front ends end to end — `scsi_boot_etalon` (Plus/5380), `macii_boot_etalon`
+(Mac II/5380 + PDMA), `q605_boot_etalon` (Quadra/53C96), plus
+`classic2_boot_etalon`.
+
+One process note, third time this week: **three gate binaries were 0 bytes**
+after a `make` I killed mid-link, and `make` considered them up to date
+because their timestamps were newer than their inputs. The freshness check
+in `CLAUDE.md` missed them because it tested `-executable -size 0`, and a
+truncated link leaves the file **without** the executable bit. Check
+`-type f -size 0` and ignore the mode.
+
 ## 2026-08-07 — 162/162 on a fully rebuilt tree: the first complete run since the gate count went from 143 to 162
 
 3 h 35 (11:35:58 → 15:10:58), `CTEST_EXIT=0`, zero failures. 77 `unit`,

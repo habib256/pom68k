@@ -31,12 +31,13 @@
 #pragma once
 #include "FloppySoundSink.h"
 #include "SaveState.h"
+#include "ScsiTarget.h"
 #include <cstdint>
 #include <fstream>
 #include <string>
 #include <vector>
 
-class ScsiDisk {
+class ScsiDisk : public ScsiTarget {
 public:
     // Two personalities on one target, because both SCSI controllers
     // (`Ncr5380`, `Ncr53c96`) and all 32 machines route to `ScsiDisk*`:
@@ -66,7 +67,7 @@ public:
     uint32_t blockSize() const { return kind_ == Kind::Cdrom ? 2048u : 512u; }
 
     // A CD-ROM target exists even with no disc in it; a hard disk does not.
-    bool present() const { return kind_ == Kind::Cdrom ? attached_ : blocks_ > 0; }
+    bool present() const override { return kind_ == Kind::Cdrom ? attached_ : blocks_ > 0; }
     uint32_t blocks() const { return blocks_; }
     // Per-target traffic. A gate that asserts on the CONTROLLER's total
     // cannot tell a mounted CD from an ignored one — the boot volume's
@@ -88,7 +89,23 @@ public:
     // 2 = CHECK CONDITION). `dataIn` carries WRITE payload (unused for now).
     uint8_t command(const uint8_t* cdb, int cdbLen,
                     std::vector<uint8_t>& dataOut,
-                    const std::vector<uint8_t>& dataIn);
+                    const std::vector<uint8_t>& dataIn) override;
+
+    // ── DATA OUT sizing (asked by the controller BEFORE command() runs) ──
+    // A controller has to know how many bytes to handshake out of the
+    // initiator before the target can act, and that count lives in the CDB
+    // — differently for every command. It belongs to the target, not to the
+    // controller: both Ncr5380 and Ncr53c96 used to carry their own partial
+    // copy of this table, which is why MODE SELECT worked on the Plus and
+    // not on the Quadra.
+    int writeByteCount(const uint8_t* cdb, int cdbLen) const override;
+    // A few commands carry their real length INSIDE the first bytes rather
+    // than in the CDB (the 4-byte defect-list header of FORMAT UNIT and
+    // REASSIGN BLOCKS). Called each time the gather reaches `expected`;
+    // returns the new total, or `expected` when there is nothing to extend.
+    std::size_t extendDataOut(const uint8_t* cdb, int cdbLen,
+                              const std::vector<uint8_t>& sofar,
+                              std::size_t expected) const override;
 
     // Mechanical-sound consumer (GUI only; tests leave it null). READs
     // and WRITEs post kNoStamp step events — the sink's auto-motor-off
@@ -151,6 +168,8 @@ private:
     void read(uint32_t lba, uint32_t count, std::vector<uint8_t>& out);
     void write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& in);
     void setSense(uint8_t key, uint8_t asc);
+    // MODE SENSE(6) and (10) share a body; `ten` picks the header shape.
+    uint8_t modeSense(const uint8_t* cdb, bool ten, std::vector<uint8_t>& out);
     bool applyFlatHfsFacade(const std::string& imagePath);
 
     std::vector<uint8_t> image_;     // raw sectors (possibly façade-prefixed)

@@ -182,6 +182,8 @@ add_library(pom68k_core STATIC
     src/MacIpGateway.cpp  # in-process MacIP gateway + user-mode NAT
     src/MacInput.cpp      # M5.5 — M0110 keyboard + quadrature mouse
     src/ScsiDisk.cpp      # M7 — SCSI direct-access target
+    src/DaynaPort.cpp     # DaynaPort SCSI/Link — Ethernet as a SCSI target
+    src/EtherLink.cpp     # Ethernet framing + ARP: DaynaPort ↔ MacIpGateway
     src/Ncr5380.cpp       # M7 — SCSI controller (phase engine)
     src/Ncr53c96.cpp      # Q6 — NCR 53C96 SCSI controller (Quadra 605)
     src/PseudoVia.cpp     # O6 — LC II pseudo-VIA (V8 interrupt core)
@@ -397,6 +399,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME scsi_disk_test COMMAND scsi_disk_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+    # The target's SCSI-2 surface: mode pages, the Apple page $30 signature
+    # and the formatter command set. Builds its own image — no asset, no skip.
+    add_executable(scsi_target_test tests/scsi_target_test.cpp)
+    target_link_libraries(scsi_target_test PRIVATE pom68k_core)
+    add_test(NAME scsi_target_test COMMAND scsi_target_test)
+
     # M6 gate: the startup chime is a real decaying tone (soft-skips).
     add_executable(sound_test tests/sound_test.cpp)
     target_link_libraries(sound_test PRIVATE pom68k_core)
@@ -479,6 +487,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(macip_gw_test tests/macip_gw_test.cpp)
     target_link_libraries(macip_gw_test PRIVATE pom68k_core)
     add_test(NAME macip_gw_test COMMAND macip_gw_test)
+
+    # DaynaPort SCSI/Link (Ethernet as a SCSI target) + the EtherLink bridge
+    # onto the same NAT the MacIP gateway uses.
+    add_executable(daynaport_test tests/daynaport_test.cpp)
+    target_include_directories(daynaport_test PRIVATE tests)
+    target_link_libraries(daynaport_test PRIVATE pom68k_core)
+    add_test(NAME daynaport_test COMMAND daynaport_test)
 
     # LLAP two-System etalon: two Mac II machines boot Sys 6 with AppleTalk
     # seeded active on a shared virtual cable — real LAP address acquisition

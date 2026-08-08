@@ -24,11 +24,13 @@
 #include "AtalkStack.h"
 #include "AfpServer.h"
 #include "PapServer.h"
+#include "EtherLink.h"
 #include "MacIpGateway.h"
 #include "LtoUdp.h"
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 
@@ -95,6 +97,19 @@ public:
         afp_.configure(cfg_.serverName, vol, cfg_.shareDir);
         pap_.configure(cfg_.printerName, cfg_.spoolDir);
         macip_.configure(cfg_.gwIp, cfg_.gwMask, cfg_.dns);
+        // A machine carrying a DaynaPort SCSI/Link gets that card wired to
+        // the SAME NAT the MacIP gateway uses — the guest's MacTCP then has
+        // two ways to the outside (IP-in-DDP over LocalTalk, or IP over
+        // Ethernet through the SCSI bus) and one gateway behind both.
+        // `requires` rather than a virtual: the eleven machines with no card
+        // compile exactly as before, and adding one to a machine is a member
+        // plus an accessor.
+        if constexpr (requires { mem.daynaPort(); }) {
+            if (mem.daynaPort().present()) {
+                ether_ = std::make_unique<EtherLink>(mem.daynaPort(), macip_);
+                ether_->attach();
+            }
+        }
         applyLocked();
         attached_ = true;
     }
@@ -204,6 +219,8 @@ private:
     AfpServer afp_;
     PapServer pap_;
     MacIpGateway macip_;
+    // Non-null only on a machine whose DaynaPort was put on the bus.
+    std::unique_ptr<EtherLink> ether_;
     LtoUdp* cable_ = nullptr;
     std::function<void(const uint8_t*, size_t)> inject_;
     std::function<WireMeter()> wire_;

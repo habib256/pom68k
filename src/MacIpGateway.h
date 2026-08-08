@@ -30,6 +30,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -46,6 +47,33 @@ public:
     void setEnabled(bool on);
     bool enabled() const { return enabled_; }
     void tick(int64_t now);
+
+    // ── Raw-link (Ethernet) side ────────────────────────────────────────
+    // A DaynaPort SCSI/Link gives the guest an Ethernet interface, so its
+    // MacTCP speaks IP over Ethernet instead of IP-in-DDP. Everything past
+    // the link is the same NAT: only how a datagram reaches the guest
+    // changes, so a lease records which link it was learned on and
+    // sendIpToGuest routes accordingly.
+    //
+    // There is no address handout on this path — MacIP's ATP assign has no
+    // Ethernet equivalent. The guest is configured by hand (an address in
+    // the gateway's subnet, the gateway as router) and the lease is learned
+    // from its first packet, which is what handleIp already does for DDP.
+    void setEtherSink(std::function<void(uint32_t dstIp,
+                                         const std::vector<uint8_t>&)> s) {
+        etherSink_ = std::move(s);
+    }
+    void ipFromEther(const uint8_t* ip, size_t n) {
+        handleIp(AtalkStack::Addr{}, true, ip, n);
+    }
+    uint32_t gwIp() const { return gw_; }
+    uint32_t netmask() const { return mask_; }
+    uint32_t dnsIp() const { return dns_; }
+    // Is this address one we have handed to / learned from a guest? The
+    // Ethernet link needs it to keep its proxy-ARP off the guest's own
+    // address (answering that would look like a duplicate-address collision
+    // to MacTCP, which refuses to come up).
+    bool leased(uint32_t ip) const { return leases_.count(ip) != 0; }
 
     struct Status {
         bool enabled = false;
@@ -66,6 +94,8 @@ private:
     struct Lease {
         AtalkStack::Addr at;             // AppleTalk return address
         int64_t lastSeen = 0;
+        bool ether = false;              // reached over a raw Ethernet link,
+                                         // in which case `at` means nothing
     };
     struct UdpFlow {
         int fd = -1;
@@ -96,7 +126,8 @@ private:
     void atpHandler(std::shared_ptr<AtalkStack::AtpTxn> t);
     void ddpHandler(const AtalkStack::Addr& src, uint8_t type,
                     const uint8_t* p, size_t n);
-    void handleIp(const AtalkStack::Addr& src, const uint8_t* p, size_t n);
+    void handleIp(const AtalkStack::Addr& src, bool ether,
+                  const uint8_t* p, size_t n);
     void handleTcpFromGuest(const uint8_t* ip, size_t n);
     void handleUdpFromGuest(const uint8_t* ip, size_t n);
     void sendIpToGuest(uint32_t dstIp, const std::vector<uint8_t>& pkt);
@@ -114,6 +145,7 @@ private:
     uint16_t ipId_ = 1;
     uint32_t isnCounter_ = 0x12340000;
 
+    std::function<void(uint32_t, const std::vector<uint8_t>&)> etherSink_;
     std::map<uint32_t, Lease> leases_;   // guest IP → return address
     std::vector<UdpFlow> udp_;
     std::vector<std::unique_ptr<TcpConn>> tcp_;

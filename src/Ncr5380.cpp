@@ -82,34 +82,21 @@ void Ncr5380::enterMsgIn()   {
 // Expected DATA OUT byte count for the commands that carry one, else 0.
 // Dropping a parameter phase and jumping straight to STATUS desynchronizes
 // the initiator's handshake (it keeps ACKing bytes the target never takes).
-int Ncr5380::writeByteCount(const std::vector<uint8_t>& cdb) {
-    if (cdb.empty()) return 0;
-    if (cdb[0] == 0x0A && cdb.size() >= 5)                     // WRITE(6)
-        return (cdb[4] ? cdb[4] : 256) * 512;
-    if (cdb[0] == 0x2A && cdb.size() >= 9)                     // WRITE(10)
-        return ((cdb[7] << 8) | cdb[8]) * 512;
-    if (cdb[0] == 0x15 && cdb.size() >= 5)                     // MODE SELECT(6):
-        return cdb[4];                     // parameter list (MAME hd.cpp:622-631)
-    if (cdb[0] == 0x04 && cdb.size() >= 2 && (cdb[1] & 0x10))  // FORMAT UNIT,
-        return 4;                          // FmtData: header first (extendDataOut)
-    return 0;
-}
-
-// FORMAT UNIT FmtData: the CDB carries no length — the 4-byte defect-list
-// header does (bytes 2-3, SCSI-1). Extend the expected DATA OUT once the
-// header is in; a zero defect-list length completes right away. MAME's
-// target (hd.cpp:601-620) formats with no list at all, so the bytes are
-// accepted for the handshake and handed to ScsiDisk, which discards them.
+// How many DATA OUT bytes to handshake before the target can act, and how
+// to grow that count once a defect-list header has landed: both are the
+// TARGET's business (ScsiDisk::writeByteCount / ::extendDataOut). This
+// controller used to carry its own partial copy of the table, which is how
+// MODE SELECT ended up supported here and not on the 53C96.
 void Ncr5380::extendDataOut() {
-    if (!cmd_.empty() && cmd_[0] == 0x04 &&
-        dataOutExpected_ == 4 && dataOut_.size() == 4)
-        dataOutExpected_ += size_t((dataOut_[2] << 8) | dataOut_[3]);
+    if (!disk_ || cmd_.empty()) return;
+    dataOutExpected_ = disk_->extendDataOut(cmd_.data(), int(cmd_.size()),
+                                            dataOut_, dataOutExpected_);
 }
 
 void Ncr5380::execute() {
     commands++; lastCmd = cmd_.empty() ? 0 : cmd_[0];
     if (onCommand) onCommand(cmd_);
-    int wbytes = writeByteCount(cmd_);
+    int wbytes = disk_ ? disk_->writeByteCount(cmd_.data(), int(cmd_.size())) : 0;
     if (wbytes > 0) {                                          // WRITE: collect DATA OUT first
         phase_ = DATA_OUT; dataOut_.clear(); dataOutExpected_ = size_t(wbytes);
         req_ = true;

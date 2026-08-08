@@ -441,6 +441,31 @@ blind*:
   fine for a Mac; target-side DISCONNECT is approximated by direct BUS FREE
   detection.
 
+**Target side — the disk (2026-08-07).** `ScsiDisk` now answers the SCSI-2
+surface a guest-side formatter reads (mode pages 1/2/3/4/8 + the Apple `$30`
+signature, MODE SENSE/SELECT(10), SEEK/VERIFY/SYNC CACHE/READ DEFECT DATA),
+where before it answered only what the ROM asks for. Two simplifications
+remain, both stated at the code:
+
+- **MODE SELECT is accepted and discarded** — status GOOD, nothing applied.
+  This is MAME's behaviour too (`hd.cpp:622-631`), and it is a real
+  simplification: a formatter that sets a 1024-byte sector size in page 3 is
+  told GOOD and keeps getting 512. No Mac tool does it (HFS is 512-bound) and
+  honouring it means re-blocking the image. → Reopen when a guest tool is
+  observed writing page 3 bytes `$0C`/`$0D`.
+- **The geometry in page 4 is invented** — 8 heads × 25 sectors, cylinders
+  derived (RaSCSI's convention). An image has no platters; what must hold is
+  that cylinders × heads × sectors lands near the real capacity, which
+  `scsi_target_test` asserts. There is no oracle for the "right" answer.
+
+**Target side — the DaynaPort (2026-08-07).** `DaynaPort` is LLE against
+SLINKCMD.TXT at the command level, with two named omissions: **multicast
+filtering** (`$0D` accepts its list and discards it — the link is
+point-to-point, one gateway and one guest, so there is nothing to filter
+out) and the **dropped-packet report** (the Rx ring drops and counts when
+full but never raises the `$FFFFFFFF` flag; PiSCSI does the same). → Reopen
+either on a driver observed to depend on it.
+
 **DAFB's own TurboSCSI cell is absent** (real DAFB/DAFB II inserts configurable
 wait states per 5394/5396 access and can hold off /DTACK on pseudo-DMA, MAME
 `dafb.cpp` `m_scsi_*_cycles`). N/A on the Q605 — its SCSI sits behind
