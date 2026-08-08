@@ -42,6 +42,22 @@ tools/pgo_train.sh build-pgo
 cmake --build build-pgo -j4
 ```
 
+### On a Raspberry Pi
+
+Compiling on the Pi itself beats the generic AppImage: the ISA floor rises to
+the exact core instead of plain armv8-a, and `--pgo` adds the profile on top.
+The script reads `/proc/device-tree/model` for the core (Pi 5 → `cortex-a76`,
+Pi 4/400 → `cortex-a72`, Pi 3 → `cortex-a53`), sizes `-j` against the board's
+RAM, and installs without ever overwriting a disk image:
+
+```bash
+packaging/raspberry/build_native_pi.sh --pgo          # → build-pi/POM68K
+sudo packaging/raspberry/build_native_pi.sh --pgo --install   # → /opt/pom68k
+```
+
+Recipe, measurements and their provenance, and the way a mis-set-up PGO build
+fails **silently**: `docs/RASPBERRY_PI.md`.
+
 On Apple Silicon, `auto` selects the native AArch64 generator. Its linked
 exits, per-access MMIO thunk and expanded opcode coverage reach 97.3 % native
 retirement in the fixed 1,000-frame Q605 benchmark. Five-million-step fine and
@@ -68,7 +84,7 @@ adapted from POM1's battle-tested workflows):
 | Package | Target |
 |---|---|
 | `POM68K-<v>-x86_64.AppImage` | any Linux with glibc ≥ 2.27 (Mint 19.x and newer) |
-| `POM68K-<v>-aarch64.AppImage` | aarch64 Linux, **Raspberry Pi 400/4/5 included** (Pi OS bookworm) |
+| `POM68K-<v>-aarch64.AppImage` | aarch64 Linux, **Raspberry Pi 400/4/5 included** (Pi OS bookworm) — LTO, scheduled for the Cortex-A72, generic armv8-a floor |
 | `POM68K-macOS-v<v>.dmg` | macOS 11+, Universal 2 (Apple Silicon + Intel) |
 | `POM68K-Windows-v<v>.zip` | Windows x64, self-contained (no DLL beside the exe) |
 

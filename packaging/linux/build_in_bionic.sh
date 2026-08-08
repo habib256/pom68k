@@ -23,12 +23,23 @@ git clone --depth 1 --branch "${IMGUI_TAG:-v1.92.8-docking}" \
     https://github.com/ocornut/imgui.git imgui
 
 # --- Build POM68K ------------------------------------------------------------
-#     POM68K_NATIVE=OFF: no -march=native in a distributable binary.
-#     -static-libstdc++/-static-libgcc: g++-11's newer GLIBCXX/libgcc symbols
-#     must not raise the floor above bionic's glibc 2.27 — with them static,
-#     the ONLY libc-family floor the AppImage imposes is glibc itself.
+#     POM68K_NATIVE=OFF: no native ISA floor in a distributable binary.
+#     POM68K_LTO=ON: LTO is NOT a portability hazard — it changes code layout,
+#     not the instruction set. It used to ride on POM68K_NATIVE, which meant
+#     every released artifact shipped without it; the two are separate knobs
+#     since 2026-08-08. (NeoST measured LTO as roughly half of its PGO+LTO
+#     gain on the same Moira loop — docs/PERFORMANCE_PI.md § 3.)
+#     POM68K_TUNE on aarch64: schedule for the Cortex-A72, i.e. the Pi 4/400
+#     this artifact exists for. `-mtune=` reorders, it does NOT emit A72-only
+#     instructions — the AppImage still loads on a Pi 3 (A53) and a Pi 5 (A76),
+#     and on every other aarch64 machine. Raising the floor would need
+#     `-mcpu=`, which is what packaging/raspberry/build_native_pi.sh is for.
+TUNE=""
+case "$(uname -m)" in
+    aarch64|arm64) TUNE="-DPOM68K_TUNE=${POM68K_TUNE:-cortex-a72}" ;;
+esac
 cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release \
-    -DPOM68K_NATIVE=OFF -DPOM68K_TESTS=OFF \
+    -DPOM68K_NATIVE=OFF -DPOM68K_LTO=ON -DPOM68K_TESTS=OFF ${TUNE} \
     ${POM68K_VERSION:+-DPOM68K_VERSION="${POM68K_VERSION}"} \
     -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
 cmake --build build-release -j"$(nproc)" --target POM68K

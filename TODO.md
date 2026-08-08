@@ -306,6 +306,32 @@ Open, in ROI order:
   idle-Finder gap is dominated by the ATC-eviction exactness contract, which
   density cannot touch. Micro-wins (local rel8, shared stubs) are third-order.
 
+### Build recipe — Raspberry Pi (landed 2026-08-08, `docs/RASPBERRY_PI.md`)
+
+`POM68K_NATIVE` / `POM68K_TUNE` / `POM68K_LTO` are three knobs now, not one;
+the aarch64 AppImage gets LTO + `-mtune=cortex-a72`;
+`packaging/raspberry/build_native_pi.sh` builds `-mcpu=<exact core>` + PGO on
+the board; `tools/pgo_train_run.sh` is the shared training load and **fails
+loudly** where PGO used to fail silently. Left open:
+
+- [ ] **Measure POM68K on an actual Pi, before and after.** Every ARM number
+  in `docs/RASPBERRY_PI.md` is NeoST's, borrowed from the same Moira
+  interpreter on a Cortex-A72 (−20 % PGO, −34 % PGO+LTO, ~10-20 % `-mcpu`).
+  POM68K's own PGO figure is x86-64 only. Use `jit_bench`
+  (`POM68K_BENCH_FRAMES`), never a boot etalon: an etalon stops when it
+  recognises the Finder, so two builds get timed over different amounts of
+  guest work. The fingerprints it prints must match across builds.
+- [ ] **Validate the release AppImage change.** `build_in_bionic.sh` now
+  passes `-DPOM68K_LTO=ON` (+ `-DPOM68K_TUNE=cortex-a72` on aarch64). Neither
+  was exercised — no aarch64 toolchain here, and the bionic image is not
+  built locally. Dispatch `release.yml` (publish is tag-gated) before trusting
+  it; watch the LTO link time and RAM on the runner.
+- [ ] **LTO for the macOS `.dmg` and the Windows `.zip`.** The same argument
+  applies (`package_macos_release.sh`, `release.yml`'s Windows job both set
+  `POM68K_NATIVE=OFF` and so still get no LTO). Stopped at Linux deliberately:
+  the universal-2 `lipo` path was not exercised, and MSVC needs `/GL` +
+  `/LTCG`, which the CMake block does not emit.
+
 ### Measured and DROPPED — do not re-open without new data
 
 These cost real time to measure. The numbers, not the conclusions, are the
