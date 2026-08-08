@@ -9,10 +9,13 @@
 #                                           linuxdeploy (rpath $ORIGIN/../lib)
 #   usr/share/applications/POM68K.desktop
 #   usr/share/icons/hicolor/512x512/apps/POM68K.png
-#   AppRun                                  seeds ~/.local/share/POM68K
-#                                           (roms/, hdv/, disks35/) and
-#                                           chdirs there — ROMs are
-#                                           user-provided, never shipped.
+#   AppRun                                  picks the data directory and
+#                                           chdirs to it: beside the .AppImage
+#                                           if roms/hdv/disks35 already sit
+#                                           there, else the launch directory,
+#                                           else ~/.local/share/POM68K, which
+#                                           it seeds. ROMs are user-provided,
+#                                           never shipped.
 #
 # Output: dist/POM68K-<VERSION>-<arch>.AppImage
 #
