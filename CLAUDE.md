@@ -64,10 +64,10 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **162 CTest gates** (`ctest -N` 2026-08-07: 77 `unit`, 8 `smoke`,
-  23 `jit`, 36 `m040`, 81 `etalon` — `jit` grew by the five 020/000/IIfx boot
-  gates plus the cycle-exact `jit_lockstep_68000_test` pair); last FULL run
-  **162/162 green, 2026-08-07**, 3 h 35 (11:35:58 → 15:10:58), on a **fully
+- **164 CTest gates** (`ctest -N` 2026-08-07, later: 79 `unit`, 8 `smoke`,
+  23 `jit`, 36 `m040`, 81 `etalon` — `unit` grew by `scsi_target_test` and
+  `daynaport_test`, both asset-free); last FULL run **162/162 green,
+  2026-08-07**, i.e. the whole suite as it stood before those two, 3 h 35 (11:35:58 → 15:10:58), on a **fully
   rebuilt tree** (`make -j4` first, `BUILD_EXIT=0`, no truncated binary,
   freshness checked per gate). The previous full run was 143/143 on
   2026-08-03.
@@ -138,8 +138,8 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 162 gates, ~3h35 (asset-dependent ones soft-skip)
-ctest -L unit                # 77 gates — no ROM or disk image needed
+ctest                        # 164 gates, ~3h35 (asset-dependent ones soft-skip)
+ctest -L unit                # 79 gates — no ROM or disk image needed
 ctest -L smoke               # 8 gates — one machine, both CPU engines
 ctest -L jit                 # 23 gates;  -L m040 = 36, the 68040 family
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
@@ -200,8 +200,9 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **MCU firmware LLE** (Egret / Cuda on a real 6805) | `M68hc05.*`, `CudaLle.*`, `Egret.*` | ✓ default where `roms/` has the dump; HLE fallback (`POM68K_EGRET_LLE=0`) — `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `q605_cudalle_*` | MAME + factory firmware |
 | **Apple PIC IOP** (IIfx + the Eclipse towers) | `R65c02.*` (core), `ApplePic.*` (device), `IIfxMemory.*`/`IIfxCpu.*` (the platform) | M1-M3, M5-M6 ✓ — **the IIfx is the 34th profile**: `iifx_boot_etalon` (Finder on 7.6), `iifx_input_etalon` (mouse + KeyMap through the IOP firmware), `iifx_post_etalon`, `applepic_test`, `r65c02_test`, save states in `savestate_030_test`. **M7 closed 2026-08-02**: the Quadra 900/950 are the 35th/36th profiles — the same IOP brick on the Quadra 700 board (`q900_/q950_boot_etalon`, Eclipse save states in `savestate_040_test`) — `docs/IOP_BRINGUP.md` | POM2 `M6502` vendored; MAME `applepic.cpp`/`maciifx.cpp` |
 | **PG&E Power Manager + MSC** (PowerBook Duo) | `M68hc05Pge.*` (the PMU's own 68HC05 variant), `PgePmu.*` (SPI/REQ-ACK wire + /PMU_INT level), `MscMemory.*`/`MscCpu.*` (the platform) | M1-M3 ✓ — **the Duo 230 boots the Finder** (`duo230_boot_etalon`, System 7.5.5) but is **not** a GUI profile: no `kProfiles` row, no save states. Next: input through the PMU, then sleep/wake — `docs/DUO_BRINGUP.md` | MAME `macpwrbkmsc.cpp`/`msc.cpp`/`m68hc05pge.cpp` |
-| **SCSI NCR 5380 + disks** | `Ncr5380.h/.cpp`, `ScsiDisk.h/.cpp` | M7 ✓; + pseudo-DMA (`scsi_pdma_test`) | MAME `ncr5380.cpp`, pce |
+| **SCSI NCR 5380 + disks** | `Ncr5380.h/.cpp`, `ScsiDisk.h/.cpp` | M7 ✓; + pseudo-DMA (`scsi_pdma_test`). Target-side SCSI-2 surface since 2026-08-07: mode pages 1/2/3/4/8 + the Apple `$30` signature on the **hard disk**, MODE SENSE/SELECT(10), SEEK/VERIFY/SYNC CACHE/READ DEFECT DATA — what guest-side formatters read and the ROM never asks for (`scsi_target_test`) | MAME `ncr5380.cpp`, pce; **RaSCSI** `disk.cpp` for the mode pages (MAME models none) |
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` |
+| **What else can sit on the bus** — `ScsiTarget` interface (both controllers hold one, not a `ScsiDisk*`); **DaynaPort SCSI/Link** = Ethernet as a SCSI target, bridged by `EtherLink` (framing + proxy ARP) onto the NAT already in `MacIpGateway` | `ScsiTarget.h`, `DaynaPort.*`, `EtherLink.*` | Opt-in, off by default: `POM68K_DAYNAPORT=<id>` on the Quadra 605. Command set + Ethernet round trip gated (`daynaport_test`); `q605_boot_etalon` reaches the same desktop with a card at ID 4. **No guest driver has been run against it**, no GUI entry, no save states, no EtherTalk | SLINKCMD.TXT via PiSCSI `scsi_daynaport.cpp`; `DEV.md` § 3.3bis |
 | **CD-ROM target** (`ScsiDisk::Kind::Cdrom`, `.cue`/`.bin`, 2048-B blocks) | `ScsiDisk.*` | ✓ `scsi_cdrom_test`, `q605_cdrom_etalon`, `q605_cdboot_etalon` | MAME cdrom |
 | **Sound** — Plus PWM + chime; ASC flavours `AscV8` / `AscSonora` ($BC) / `AscIosb` ($BB) | `MacAudio.h`, `MacAudioHost.h`, `Asc.*` | ✓ `sound_test`, `asc_test`, `q605_asc_test` | GttMFH; MAME ASC/IOSB |
 | **Drive sounds** (floppy + HDD FX) | `FloppySound.*`, `FloppySoundSink.h` | ✓ `floppy_sound_test` | MAME floppy_sound_device via POM2 |

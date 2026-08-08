@@ -207,7 +207,7 @@ void MacIpGateway::atpHandler(std::shared_ptr<AtalkStack::AtpTxn> t) {
 
 void MacIpGateway::ddpHandler(const AtalkStack::Addr& src, uint8_t type,
                               const uint8_t* p, size_t n) {
-    if (type == kDdpMacIp) handleIp(src, p, n);
+    if (type == kDdpMacIp) handleIp(src, false, p, n);
 }
 
 void MacIpGateway::sendIpToGuest(uint32_t dstIp, const std::vector<uint8_t>& pkt) {
@@ -215,6 +215,12 @@ void MacIpGateway::sendIpToGuest(uint32_t dstIp, const std::vector<uint8_t>& pkt
     if (it == leases_.end()) return;
     stat_.ipToGuest++;
     traceIp("->guest", pkt.data(), pkt.size());
+    // An Ethernet link carries a 1500-byte MTU and frames its own datagrams:
+    // none of the DDP fragmentation below applies to it.
+    if (it->second.ether) {
+        if (etherSink_) etherSink_(dstIp, pkt);
+        return;
+    }
     if (pkt.size() <= kMtu) {
         st_.sendDdp(it->second.at, kMacIpSock, kDdpMacIp, pkt.data(), pkt.size());
         return;
@@ -238,8 +244,8 @@ void MacIpGateway::sendIpToGuest(uint32_t dstIp, const std::vector<uint8_t>& pkt
     }
 }
 
-void MacIpGateway::handleIp(const AtalkStack::Addr& src, const uint8_t* p,
-                            size_t n) {
+void MacIpGateway::handleIp(const AtalkStack::Addr& src, bool ether,
+                            const uint8_t* p, size_t n) {
     if (!enabled_ || n < 20 || (p[0] >> 4) != 4) return;
     size_t ihl = (p[0] & 0x0F) * 4;
     if (ihl < 20 || n < ihl) return;
@@ -259,7 +265,7 @@ void MacIpGateway::handleIp(const AtalkStack::Addr& src, const uint8_t* p,
 
     // Learn/refresh the mapping from traffic too (macipgw does the same).
     if ((sip & mask_) == (gw_ & mask_) && sip != gw_) {
-        leases_[sip] = { src, st_.now() };
+        leases_[sip] = { src, st_.now(), ether };
     }
 
     if (dip == gw_) {

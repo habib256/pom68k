@@ -721,6 +721,35 @@ Sys 7.
   mount the volume from the Chooser.**
 - [ ] Interop check against Mini vMac's LToUDP (same multicast group).
 
+### Ethernet over SCSI — DaynaPort SCSI/Link, opt-in since 2026-08-07
+
+`DaynaPort` (the SCSI target) + `EtherLink` (framing + proxy ARP) onto the
+NAT already in `MacIpGateway`. `POM68K_DAYNAPORT=<id>` on the Quadra 605;
+gate `daynaport_test`; design in `DEV.md` § 3.3bis, rationale in
+`CHANGELOG.md` 2026-08-07 (later). Every machine here has a SCSI bus, so
+this is the one Ethernet path that can reach all of them.
+
+- [ ] **Run a real SCSI/Link driver against it.** This is the only test that
+  settles whether the command set is right; everything gated so far is our
+  own reading of SLINKCMD.TXT. Needs the DaynaPort driver on a boot image
+  and a scripted MacTCP config (address in the gateway's subnet, gateway as
+  router) — the same "scripted control panel" need as the Chooser drive
+  above.
+- [ ] GUI: a **Réseau** entry to attach/detach the card and pick its SCSI ID,
+  instead of an env knob at startup only.
+- [ ] Save states: the card is not in any machine's chunk list, so a restore
+  comes back with an empty Rx ring. Cheap to add, but it changes the on-disk
+  format for every existing `.pomss` — do it with the next format bump.
+- [ ] **EtherTalk** (AARP + 802.3/SNAP DDP) so AppleTalk can leave the SCC
+  too. Today the card carries IPv4 and ARP only, and AFP/PAP still go over
+  LocalTalk at 230.4 kbit/s through the most timing-fragile device in the
+  tree. This is the item with the most to gain.
+- [ ] Decouple the uplink from `AtalkHub`: with `POM68K_APPLETALK=0` the
+  guest sees the card and it carries nothing, because the NAT lives in the
+  hub.
+- [ ] Carry the card to the other eleven platforms (a member + an accessor
+  each — `AtalkHub::attach` already detects it with a `requires` clause).
+
 ---
 
 ## 7. New machine profiles

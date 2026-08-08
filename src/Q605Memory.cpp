@@ -55,6 +55,25 @@ Q605Memory::Q605Memory(uint32_t totalRam)
         const char* e = std::getenv("POM68K_SCSI_LAT");
         scsi_.setLatency(e ? std::atoi(e) : -1);
     }
+    // DaynaPort SCSI/Link — Ethernet as a SCSI target, opt-in and OFF by
+    // default: a new device answering selection changes what the ROM's bus
+    // probe finds, and every boot etalon is calibrated against a bus with
+    // only disks on it. POM68K_DAYNAPORT=<id> puts the card at that ID
+    // (=1 means "pick the default", ID 3 — where MAME parks the CD-ROM, so
+    // choose another if a disc is mounted).
+    // The card is on the bus regardless of AppleTalk; what it is WIRED to is
+    // the in-process NAT, which lives in AtalkHub (see AtalkHub::attach).
+    // With POM68K_APPLETALK=0 the guest still sees the card and it carries
+    // nothing — a cable-unplugged state, not a missing device.
+    if (const char* e = std::getenv("POM68K_DAYNAPORT"); e && e[0] && e[0] != '0') {
+        int id = std::atoi(e);
+        if (id < 1 || id > 6) id = 3;
+        dayna_.attach();
+        scsi_.attach(&dayna_, id);
+        std::fprintf(stderr, "DaynaPort SCSI/Link at SCSI ID %d "
+                     "(guest needs the SCSI/Link driver + a manual MacTCP "
+                     "address in the gateway's subnet)\n", id);
+    }
     if (const char* id = std::getenv("POM68K_Q605_ID"))
         machineId_ = uint32_t(std::strtoul(id, nullptr, 16));
     // Cuda firmware LLE — the DEFAULT whenever the real dump is present

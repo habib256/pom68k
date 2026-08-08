@@ -741,10 +741,87 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   auto-handshakes one byte per A9 access. One target at SCSI ID 0. Bit
   layouts from MAME `ncr5380.cpp`; sequence from pce `macplus/scsi.c` and a
   bit-exact ROM disassembly (`SCSI_DO_SELECT`).
-- **Target** (`ScsiDisk`): SCSI-1 direct-access — TEST UNIT READY, REQUEST
-  SENSE, INQUIRY (byte 0 = `$00`, direct-access, is all the ROM keys on),
-  READ CAPACITY, READ(6/10), **WRITE(6/10)**, MODE SENSE. Also CD-ROM
-  (`Kind::Cdrom`, `POM68K_CD_TRACE`).
+- **Target** (`ScsiDisk`, one implementation of `ScsiTarget` —
+  [§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)):
+  SCSI-1 direct-access — TEST UNIT READY, REQUEST SENSE, INQUIRY (byte 0 =
+  `$00`, direct-access, is all the ROM keys on), READ CAPACITY, READ(6/10),
+  **WRITE(6/10)**, MODE SENSE. Also CD-ROM (`Kind::Cdrom`,
+  `POM68K_CD_TRACE`).
+- **The guest-side half of the target, added 2026-08-07.** Everything above
+  is what the *ROM* needs to read a volume, and it is all the boot etalons
+  can prove. Nothing running INSIDE the guest could work on a disk: MODE
+  SENSE answered a bare header with no pages at all, so HD SC Setup, Drive
+  Setup, Silverlining and FWB each refused the drive — which is why the tree
+  grew a host-side `tools/wrap_hfs.py` + DDM-template façade instead. Now:
+  - **mode pages** 1 (error recovery), 2 (disconnect/reconnect), 3 (format
+    device), 4 (rigid geometry — 8 heads × 25 sectors, cylinders derived),
+    8 (caching) and **`$30`, the Apple signature** (`"APPLE COMPUTER,
+    INC."` at page offset `$0A`) — the hard-disk twin of the page `$30` the
+    CD-ROM personality already carried. `$3F` returns the set; an
+    unsupported page is CHECK CONDITION / `$24`, not an empty reply. PC=1
+    (changeable) reports only what MODE SELECT could actually alter.
+  - **INQUIRY** answers as the Apple-branded Seagate an internal Mac drive
+    reports (`" SEAGATE"` / `"          ST225N"`); `POM68K_SCSI_INQUIRY=pom68k`
+    restores the emulator's own identity.
+  - **commands** REZERO, REASSIGN BLOCKS, SEEK(6/10), SEND DIAGNOSTIC,
+    START/STOP, PREVENT/ALLOW, WRITE AND VERIFY(10), VERIFY(10) (BytChk
+    compares for real and answers MISCOMPARE / `$1D`), SYNCHRONIZE CACHE,
+    READ DEFECT DATA(10), MODE SELECT(10), MODE SENSE(10).
+  - Oracle: **RaSCSI** (`RASCSI-X68k src/raspberrypi/disk.cpp:1473-1616` +
+    `:2857-2918`, BSD-3-Clause). MAME's `nscsi_hd` models none of it, so
+    for this one area RaSCSI outranks the usual source order.
+  - Gate: `scsi_target_test` (builds its own image — no asset, never skips).
+- **DATA OUT sizing belongs to the target**, not the controller
+  (`ScsiTarget::writeByteCount` / `::extendDataOut`). Both engines used to
+  carry their own partial copy of that table and they disagreed: the 5380
+  knew MODE SELECT(6) and the FORMAT UNIT defect-list header, the 53C96
+  knew only WRITE(6)/(10). A parameter-list command on any 53C96 machine
+  therefore reached STATUS while the driver still had its list to send.
+
+### 3.3bis What else can live on the bus: `ScsiTarget` + `DaynaPort`
+
+`ScsiTarget.h` is the four-method interface both controllers hold
+(`present`, `command`, `writeByteCount`, `extendDataOut`) — deliberately
+without block size, media or geometry, because a controller that knows
+those has grown a device model. `ScsiDisk` is one implementation;
+`DaynaPort` is the other.
+
+**`DaynaPort`** (`DaynaPort.h/.cpp`) is the DaynaPort SCSI/Link: an
+Ethernet card that answers SCSI commands. READ(6) with control byte
+`$C0`/`$80` pulls one received frame behind a 6-byte header (2-byte length
+including the FCS, 4-byte flags — `$10` = more queued); WRITE(6) pushes one
+out in either the raw or the `$80` header format; `$09` retrieve stats,
+`$0C` set mode / set MAC, `$0D` set multicast (accepted, discarded), `$0E`
+enable/disable. INQUIRY is a processor device (`$03`) in **37 bytes** — the
+Mac driver rejects the usual 36. Received frames are padded to the 60-byte
+Ethernet minimum and given a real CRC-32 FCS; the 6 KB Rx ring drops the
+arriving frame when full and counts it.
+
+**`EtherLink`** (`EtherLink.h/.cpp`) is the wire between that card and the
+NAT already inside `MacIpGateway`: Ethernet framing plus an ARP responder
+that **proxies for the whole subnet** (the gateway is the only thing on the
+segment) while never answering for the guest's own address — a reply there
+reads as a duplicate address and MacTCP refuses to initialise.
+`MacIpGateway` leases now record which link they were learned on, and
+`sendIpToGuest` routes DDP or Ethernet accordingly.
+
+Wiring: `POM68K_DAYNAPORT=<id>` puts a card on the **Quadra 605**'s bus
+(`=1` → the default ID 3, where MAME parks the CD-ROM). `AtalkHub::attach`
+detects `mem.daynaPort()` with a `requires` clause, so the eleven machines
+without one compile unchanged and adding a card elsewhere is a member plus
+an accessor. The card is on the bus regardless of AppleTalk; its *uplink*
+is the hub's NAT, so `POM68K_APPLETALK=0` leaves the guest a card with
+nothing behind it.
+
+Measured: `q605_boot_etalon` reaches the same Mac OS 8.1 desktop with the
+card at ID 4 — identical screen signature, 4558 SCSI commands against 4551
+without it, which is one bus probe of one extra target.
+
+Not done, and each is a real gap: no guest-side SCSI/Link **driver** has
+been run against this (the command set is gated, the driver's opinion of it
+is not); no GUI menu entry; not in save states (a restore comes back with
+an empty Rx ring); EtherTalk is not bridged — the card carries IPv4 and ARP,
+so AppleTalk still goes over the SCC. Gate: `daynaport_test`.
 - **THE GATE (why it took a day): the ROM's SCSI-presence probe.**
   `E_SoftReset` does `MOVE.L ($420000),D0; CMP.L ($440000),D0; BEQ no-scsi`.
   On real hardware the 128 KB ROM does **not** mirror across the whole
@@ -1173,7 +1250,12 @@ codes — a guest can select any of them itself with a Listen R3, this only
 moves the reset value), `POM68K_APPLETALK`,
 `POM68K_SHARE_DIR`, `POM68K_ATALK_WIRE_BOOST`, `POM68K_LTOUDP`,
 `POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_DRIVE_SFX`
-(`0` = silence the drive FX), `POM68K_SCSI_DDM_TEMPLATE`.
+(`0` = silence the drive FX), `POM68K_SCSI_DDM_TEMPLATE`,
+`POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
+instead of the Apple-branded Seagate the guest's own disk tools expect —
+[§3.3](#33-scsi-ncr-5380)), `POM68K_DAYNAPORT` (`<id>` = put a DaynaPort
+SCSI/Link at that SCSI ID on the Quadra 605; `1` = the default ID 3 —
+[§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)).
 
 **Duo / PG&E (platform #11, in bring-up)** — behavioural:
 `POM68K_PGE_ADB` (`0` = detach the ADB bus from the modem cell),

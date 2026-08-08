@@ -13,7 +13,8 @@ constexpr int kBlockSize = 512;
 constexpr uint8_t kGood = 0x00, kCheck = 0x02;
 // Sense keys
 constexpr uint8_t kNoSense = 0x00, kNotReady = 0x02, kIllegalRequest = 0x05,
-                  kDataProtect = 0x07, kUnitAttention = 0x06;
+                  kDataProtect = 0x07, kUnitAttention = 0x06,
+                  kMiscompare = 0x0E;
 
 // wrap_hfs.py layout: 96-block head (DDM + map + Apple_Driver43) then HFS.
 constexpr uint32_t kFacadePrefixBlocks = 96;
@@ -453,6 +454,256 @@ void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& i
 
 void ScsiDisk::setSense(uint8_t key, uint8_t asc) { senseKey_ = key; senseAsc_ = asc; }
 
+// ── MODE SENSE pages, hard-disk personality ─────────────────────────────
+// MAME's nscsi_hd answers MODE SENSE with a bare header and no pages at all
+// (hd.cpp:632-660). That is enough to boot a volume the host prepared and
+// not enough for anything running INSIDE the guest to work on the drive:
+// HD SC Setup, Drive Setup, Silverlining and FWB all read pages 1/3/4 before
+// they will touch a disk, and Apple's tools additionally require the page
+// $30 signature — the same gate the CD-ROM personality already answers.
+//
+// The layouts below are RaSCSI's, which is the closest thing to an oracle
+// for "what a Mac SCSI drive must report": RASCSI-X68k
+// src/raspberrypi/disk.cpp:1473-1616 (Disk::AddError / AddFormat / AddDrive /
+// AddCache) and :2897-2918 (SCSIHD_APPLE::AddVendor), BSD-3-Clause — a
+// license GPLv3 can incorporate, and a source of truth outside the usual
+// MAME ranking precisely because MAME models none of this.
+//
+// `changeable` = MODE SENSE PC field 1: the same pages, but every field the
+// target will let MODE SELECT alter is reported as all-ones and everything
+// else as zero. Returns false for a page this target does not carry, which
+// is a CHECK CONDITION / INVALID FIELD IN CDB and not an empty reply.
+static bool appendDiskModePage(std::vector<uint8_t>& body, uint8_t page,
+                               bool changeable, uint32_t blocks) {
+    const size_t b = body.size();
+    switch (page) {
+        case 0x01:                                   // read-write error recovery
+            body.resize(b + 12, 0);
+            body[b] = 0x01; body[b + 1] = 0x0A;
+            // Retry count 0, device-internal limit time: RaSCSI leaves the
+            // whole page zero in both PC modes (disk.cpp:1473-1490), which
+            // reads as "no AWRE/ARRE, retries are the drive's business".
+            return true;
+
+        case 0x02:                                   // disconnect-reconnect
+            // Not in RaSCSI (the X68000 never asks); SCSI-2 §8.3.6. Some Mac
+            // formatters do ask, and an all-zero page is the legal way for a
+            // target to say it has no buffer-ratio or disconnect preference.
+            body.resize(b + 16, 0);
+            body[b] = 0x02; body[b + 1] = 0x0E;
+            return true;
+
+        case 0x03:                                   // format device
+            body.resize(b + 24, 0);
+            body[b] = 0x80 | 0x03;                   // PS: parameters saveable
+            body[b + 1] = 0x16;
+            if (changeable) {                        // only the sector size is
+                body[b + 0x0C] = 0xFF;               // offered as changeable —
+                body[b + 0x0D] = 0xFF;               // and even that is a
+                return true;                         // polite fiction (RaSCSI
+            }                                        // disk.cpp:1508-1512)
+            body[b + 0x03] = 0x08;                   // tracks per zone
+            body[b + 0x0A] = 0x00;                   // sectors per track = 25
+            body[b + 0x0B] = 0x19;
+            body[b + 0x0C] = uint8_t(kBlockSize >> 8);
+            body[b + 0x0D] = uint8_t(kBlockSize);
+            return true;
+
+        case 0x04: {                                 // rigid drive geometry
+            body.resize(b + 24, 0);
+            body[b] = 0x04; body[b + 1] = 0x16;
+            if (changeable) return true;             // geometry is not settable
+            // The geometry is invented, and must be: an image has no platters.
+            // RaSCSI's convention (8 heads × 25 sectors, cylinders derived —
+            // disk.cpp:1553-1565) keeps cylinders inside the 24-bit field for
+            // every image size a 68k Mac can address.
+            const uint32_t cyl = (blocks >> 3) / 25;
+            body[b + 0x02] = uint8_t(cyl >> 16);
+            body[b + 0x03] = uint8_t(cyl >> 8);
+            body[b + 0x04] = uint8_t(cyl);
+            body[b + 0x05] = 0x08;                   // heads
+            return true;
+        }
+
+        case 0x08:                                   // caching
+            body.resize(b + 12, 0);
+            body[b] = 0x08; body[b + 1] = 0x0A;
+            // All zero = read cache on, no prefetch, write cache off. Write
+            // cache off is the honest answer: ScsiDisk::write already writes
+            // through to the backing file on every WRITE.
+            return true;
+
+        case 0x30:                                   // the Apple signature
+            body.resize(b + 30, 0);
+            body[b] = 0x30; body[b + 1] = 0x1C;
+            // This string is the whole point. Apple's disk tools read it and
+            // refuse the drive without it — the hard-disk twin of the CD-ROM
+            // page $30 check in MAME cd.cpp:604-618.
+            if (!changeable)
+                std::memcpy(&body[b + 0x0A], "APPLE COMPUTER, INC.", 20);
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+// ── MODE SENSE pages, CD-ROM personality ────────────────────────────────
+// A different page set AND a different page $30 layout from the hard disk
+// above: the CD signature is MAME's (cd.cpp:604-618, page length byte 0 and
+// the string at offset 2), the disk's is RaSCSI's. They are not
+// interchangeable — each is what its own driver reads.
+static bool appendCdModePage(std::vector<uint8_t>& body, uint8_t page,
+                             bool changeable) {
+    switch (page) {
+        case 0x0E: {                                 // CD audio control
+            // Mac OS asks for this right after it accepts the disc
+            // (1A 00 0E 00 1C) and stops there if it does not come back.
+            static const uint8_t audio[16] = {
+                0x8E, 0x0E, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x01, 0xFF, 0x02, 0xFF, 0x04, 0xFF, 0x08, 0xFF };
+            const size_t b = body.size();
+            body.insert(body.end(), audio, audio + sizeof audio);
+            if (changeable) std::memset(&body[b] + 2, 0, sizeof(audio) - 2);
+            return true;
+        }
+        case 0x30: {                                 // the Apple signature
+            static const uint8_t magic[0x18] = {
+                0x30, 0x00, 'A','P','P','L','E',' ','C','O','M','P','U',
+                'T','E','R',',',' ','I','N','C',' ',' ',' ' };
+            const size_t b = body.size();
+            body.insert(body.end(), magic, magic + sizeof magic);
+            if (changeable) std::memset(&body[b] + 2, 0, sizeof(magic) - 2);
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+// MODE SENSE(6) $1A and MODE SENSE(10) $5A differ only in header shape and
+// allocation-length width, so they share one body — and both personalities
+// share the header, differing only in their page set, their block size and
+// the write-protect bit.
+uint8_t ScsiDisk::modeSense(const uint8_t* cdb, bool ten,
+                            std::vector<uint8_t>& out) {
+    const bool cd = (kind_ == Kind::Cdrom);
+    const uint8_t page = cdb[2] & 0x3F;
+    // PC: 0 = current, 1 = changeable, 2 = default, 3 = saved. Current and
+    // default are identical here (nothing is ever saved), and PC 3 is
+    // reported as current rather than refused — RaSCSI does the same, and a
+    // driver that asks for saved values wants a plausible answer, not an
+    // error it has no path for.
+    const bool changeable = ((cdb[2] >> 6) & 3) == 1;
+    const bool dbd = (cdb[1] & 0x08) != 0;           // disable block descriptor
+    const size_t alloc = ten ? size_t((cdb[7] << 8) | cdb[8])
+                             : size_t(cdb[4] ? cdb[4] : 4);
+
+    auto addPage = [&](std::vector<uint8_t>& body, uint8_t p) {
+        return cd ? appendCdModePage(body, p, changeable)
+                  : appendDiskModePage(body, p, changeable, blocks_);
+    };
+    static const uint8_t kDiskPages[] = { 0x01, 0x02, 0x03, 0x04, 0x08, 0x30 };
+    static const uint8_t kCdPages[]   = { 0x0E, 0x30 };
+
+    std::vector<uint8_t> body;
+    bool valid = false;
+    if (page == 0x3F) {                              // all pages
+        if (cd) for (uint8_t p : kCdPages)   valid |= addPage(body, p);
+        else    for (uint8_t p : kDiskPages) valid |= addPage(body, p);
+    } else {
+        valid = addPage(body, page);
+    }
+    if (!valid) {                                    // unsupported page
+        setSense(kIllegalRequest, 0x24);
+        return kCheck;
+    }
+
+    const size_t hdr = ten ? 8 : 4;
+    out.assign(hdr, 0);
+    out[ten ? 3 : 2] = cd ? 0x80 : 0x00;             // device-specific: a disc
+                                                     // is write-protected
+    if (!dbd) {
+        // The block descriptor is how the driver learns the block size.
+        // Omitting it (DBD clear) is what made Mac OS 8.1 probe the Apple
+        // page and then give up: it asked 1A 00 30 00 24 and never spoke to
+        // the target again.
+        const uint32_t bs = blockSize();
+        // Deliberate divergence, CD only and load-bearing: the count field
+        // carries blocks-1 rather than the block count. It is what the Apple
+        // CD driver was gated against and changing it is a mount regression,
+        // not a spec cleanup.
+        const uint32_t count = cd ? (blocks_ ? blocks_ - 1 : 0) : blocks_;
+        if (ten) out[7] = 8; else out[3] = 8;        // block descriptor length
+        out.push_back(0x00);                         // density code
+        out.push_back(uint8_t(count >> 16));         // number of blocks
+        out.push_back(uint8_t(count >> 8));
+        out.push_back(uint8_t(count));
+        out.push_back(0x00);
+        out.push_back(uint8_t(bs >> 16));            // block length
+        out.push_back(uint8_t(bs >> 8));
+        out.push_back(uint8_t(bs));
+    }
+    out.insert(out.end(), body.begin(), body.end());
+    // The length field describes what the target HAS, not what fits in the
+    // initiator's buffer — a short allocation truncates the data and leaves
+    // the count alone, which is how the driver learns to ask again bigger.
+    if (ten) {
+        const size_t n = out.size() - 2;
+        out[0] = uint8_t(n >> 8); out[1] = uint8_t(n);
+    } else {
+        out[0] = uint8_t(out.size() - 1);
+    }
+    if (alloc && out.size() > alloc) out.resize(alloc);
+    return kGood;
+}
+
+// ── How many DATA OUT bytes this CDB owes the target ────────────────────
+// The controller handshakes exactly this many bytes out of the initiator,
+// then calls command() with them. Getting it wrong does not corrupt data —
+// it hangs the bus, because the initiator and the target disagree about
+// whose turn it is.
+int ScsiDisk::writeByteCount(const uint8_t* cdb, int cdbLen) const {
+    if (!cdb || cdbLen < 6) return 0;
+    const int bs = int(blockSize());
+    switch (cdb[0]) {
+        case 0x0A:                                    // WRITE(6)
+            return (cdb[4] ? cdb[4] : 256) * bs;
+        case 0x2A:                                    // WRITE(10)
+        case 0x2E:                                    // WRITE AND VERIFY(10)
+            return cdbLen >= 9 ? ((cdb[7] << 8) | cdb[8]) * bs : 0;
+        case 0x2F:                                    // VERIFY(10), BytChk set:
+            // the comparison data comes over the bus like a write.
+            return (cdbLen >= 9 && (cdb[1] & 0x02))
+                 ? ((cdb[7] << 8) | cdb[8]) * bs : 0;
+        case 0x15:                                    // MODE SELECT(6)
+            return cdb[4];                            // parameter list length
+        case 0x55:                                    // MODE SELECT(10)
+            return cdbLen >= 9 ? ((cdb[7] << 8) | cdb[8]) : 0;
+        case 0x1D:                                    // SEND DIAGNOSTIC
+            return cdbLen >= 5 ? ((cdb[3] << 8) | cdb[4]) : 0;
+        case 0x04:                                    // FORMAT UNIT, FmtData:
+            return (cdb[1] & 0x10) ? 4 : 0;           // header first, then
+        case 0x07:                                    // REASSIGN BLOCKS:
+            return 4;                                 // extendDataOut()
+        default:
+            return 0;
+    }
+}
+
+// FORMAT UNIT / REASSIGN BLOCKS: the CDB carries no length — the 4-byte
+// defect-list header does (bytes 2-3, SCSI-1 §9.2.6). A zero-length list
+// completes right away. The bytes are accepted for the handshake and then
+// discarded: an image has no defect list to keep.
+std::size_t ScsiDisk::extendDataOut(const uint8_t* cdb, int cdbLen,
+                                    const std::vector<uint8_t>& sofar,
+                                    std::size_t expected) const {
+    if (!cdb || cdbLen < 1) return expected;
+    if (cdb[0] != 0x04 && cdb[0] != 0x07) return expected;
+    if (expected != 4 || sofar.size() != 4) return expected;
+    return expected + std::size_t((sofar[2] << 8) | sofar[3]);
+}
+
 uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                           std::vector<uint8_t>& dataOut,
                           const std::vector<uint8_t>& dataIn) {
@@ -523,56 +774,9 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
                 return kGood;
             }
 
-            case 0x1A: {                             // MODE SENSE(6)
-                const uint8_t page = cdb[2] & 0x3F;
-                const uint8_t alloc = cdb[4] ? cdb[4] : 4;
-                const bool noBlockDesc = (cdb[1] & 0x08) != 0;   // DBD
-                std::vector<uint8_t> body;
-                // The magic Apple page: "APPLE COMPUTER, INC" is what the
-                // Apple CD-ROM driver reads to decide a drive is genuine
-                // (MAME cd.cpp:604-618). Without it the disc never mounts,
-                // however correct the rest of the target is.
-                // CD audio control page — Mac OS asks for it right after it
-                // accepts the disc (1A 00 0E 00 1C), and stops there if it
-                // does not come back (MAME cd.cpp:587-604).
-                if (page == 0x0E || page == 0x3F) {
-                    static const uint8_t audio[16] = {
-                        0x8E, 0x0E, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x01, 0xFF, 0x02, 0xFF, 0x04, 0xFF, 0x08, 0xFF };
-                    body.insert(body.end(), audio, audio + sizeof audio);
-                }
-                if (page == 0x30 || page == 0x3F) {
-                    static const uint8_t magic[0x17] = {
-                        0x00, 'A','P','P','L','E',' ','C','O','M','P','U',
-                        'T','E','R',',',' ','I','N','C',' ',' ',' ' };
-                    body.push_back(0x30);
-                    body.insert(body.end(), magic, magic + sizeof magic);
-                }
-                dataOut.clear();
-                dataOut.push_back(0);                    // length, filled below
-                dataOut.push_back(0x00);                 // medium type
-                dataOut.push_back(0x80);                 // write protected
-                dataOut.push_back(noBlockDesc ? 0x00 : 0x08);
-                // The block descriptor is how the driver learns the disc is
-                // 2048 bytes/block. Omitting it (DBD clear) is what made Mac
-                // OS 8.1 probe the Apple page and then give up: it asked
-                // 1A 00 30 00 24 and never spoke to the target again.
-                if (!noBlockDesc) {
-                    uint32_t last = blocks_ ? blocks_ - 1 : 0;
-                    dataOut.push_back(0x00);             // density code
-                    dataOut.push_back(uint8_t(last >> 16));
-                    dataOut.push_back(uint8_t(last >> 8));
-                    dataOut.push_back(uint8_t(last));
-                    dataOut.push_back(0x00);
-                    dataOut.push_back(0x00);             // block length = 2048
-                    dataOut.push_back(0x08);
-                    dataOut.push_back(0x00);
-                }
-                dataOut.insert(dataOut.end(), body.begin(), body.end());
-                dataOut[0] = uint8_t(dataOut.size() - 1);
-                if (dataOut.size() > alloc) dataOut.resize(alloc);
-                return kGood;
-            }
+            // MODE SENSE(6)/(10) are shared with the hard disk below —
+            // same header, CD page set (audio control + the Apple
+            // signature), 2048-byte block descriptor.
 
             case 0x43: {                             // READ TOC
                 if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
@@ -659,9 +863,33 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             case 0x2B:                               // SEEK(10)
                 return kGood;
 
-            case 0x0A: case 0x2A:                    // WRITE(6)/(10)
+            case 0x0A: case 0x2A: case 0x2E:         // WRITE(6)/(10),
+                                                     // WRITE AND VERIFY(10)
                 setSense(kDataProtect, 0x27);        // WRITE PROTECTED
                 return kCheck;
+
+            case 0x07:                               // REASSIGN BLOCKS
+            case 0x37:                               // READ DEFECT DATA(10)
+                // Defect management on a read-only medium: real drives
+                // refuse, and the shared disk path below would answer GOOD.
+                setSense(kIllegalRequest, 0x20);
+                return kCheck;
+
+            case 0x2F: {                             // VERIFY(10)
+                // Range check against 2048-byte blocks. BytChk is accepted
+                // and not compared — the shared path's comparison indexes
+                // 512-byte blocks, which would be silently wrong here, and a
+                // disc that reads at all reads correctly.
+                if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
+                uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
+                             | (uint32_t(cdb[4]) << 8) | cdb[5];
+                uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
+                if (uint64_t(lba) + cnt > blocks_) {
+                    setSense(kIllegalRequest, 0x24);
+                    return kCheck;
+                }
+                return kGood;
+            }
 
             case 0x08: case 0x28:                    // READ(6)/(10)
                 if (!blocks_) { setSense(kNotReady, 0x3A); return kCheck; }
@@ -697,9 +925,23 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             if (dataOut.size() > 1) dataOut[1] = 0x00;   // not removable
             if (dataOut.size() > 2) dataOut[2] = 0x01;   // SCSI-1 (ANSI)
             if (dataOut.size() > 4) dataOut[4] = 31;     // additional length
-            static const char vendor[] = "POM68K   POM68K HD DISK   1.0 ";
-            for (size_t i = 8; i < dataOut.size() && i - 8 < sizeof(vendor) - 1; i++)
-                dataOut[i] = uint8_t(vendor[i - 8]);
+            // 8 bytes vendor, 16 product, 4 revision. The default is the
+            // Apple-branded Seagate an internal Mac drive reports, because
+            // that is what the guest's own tools expect to find next to the
+            // page $30 signature (RASCSI-X68k disk.cpp:2866-2890 —
+            // SCSIHD_APPLE exists for exactly this reason).
+            // POM68K_SCSI_INQUIRY=pom68k answers with the emulator's own
+            // identity instead, for anyone who would rather see the truth in
+            // SCSIProbe than have HD SC Setup cooperate.
+            static const bool own = [] {
+                const char* e = std::getenv("POM68K_SCSI_INQUIRY");
+                return e && e[0] && std::strcmp(e, "pom68k") == 0;
+            }();
+            static const char apple[]  = " SEAGATE          ST225N1.0 ";
+            static const char pom68k[] = "POM68K  POM68K HD DISK  1.0 ";
+            const char* id = own ? pom68k : apple;
+            for (size_t i = 8; i < dataOut.size() && i - 8 < 28; i++)
+                dataOut[i] = uint8_t(id[i - 8]);
             return kGood;
         }
 
@@ -737,19 +979,10 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             return kGood;
         }
 
-        case 0x1A: {                                 // MODE SENSE(6)
-            uint8_t alloc = cdb[4] ? cdb[4] : 4;
-            dataOut.assign(alloc, 0);
-            if (dataOut.size() > 0)                   // mode data length = n-1
-                dataOut[0] = uint8_t(dataOut.size() - 1);
-            if (dataOut.size() > 3) dataOut[3] = 8;  // block descriptor length
-            if (dataOut.size() > 11) {               // descriptor block length = 512
-                dataOut[9]  = uint8_t(kBlockSize >> 16);
-                dataOut[10] = uint8_t(kBlockSize >> 8);
-                dataOut[11] = uint8_t(kBlockSize);
-            }
-            return kGood;
-        }
+        case 0x1A:                                   // MODE SENSE(6)
+            return modeSense(cdb, false, dataOut);
+        case 0x5A:                                   // MODE SENSE(10)
+            return modeSense(cdb, true, dataOut);
 
         case 0x0A: {                                 // WRITE(6)
             uint32_t lba = (uint32_t(cdb[1] & 0x1F) << 16) | (uint32_t(cdb[2]) << 8) | cdb[3];
@@ -778,12 +1011,106 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
         }
 
         case 0x15:                                   // MODE SELECT(6)
+        case 0x55:                                   // MODE SELECT(10)
             // Parameter list (delivered via `dataIn` by the controller's
             // DATA OUT phase) is accepted and ignored, status GOOD — MAME's
             // target does exactly this (hd.cpp:622-631). The old default
             // answered CHECK CONDITION, which desynchronized drivers that
             // set error-recovery pages before their first READ.
+            //
+            // Deliberate simplification, and a real one: a formatter that
+            // MODE SELECTs a 1024-byte sector size is told GOOD and keeps
+            // getting 512. No Mac tool does this (HFS is 512-bound), and
+            // honouring it would mean re-blocking the whole image. Reopening
+            // condition: a guest tool observed to set page 3 byte $0C/$0D.
             return kGood;
+
+        case 0x01:                                   // REZERO UNIT
+        case 0x1D:                                   // SEND DIAGNOSTIC
+        case 0x1E:                                   // PREVENT/ALLOW REMOVAL
+        case 0x1B:                                   // START/STOP UNIT
+            // Mechanical or self-test commands with nothing to move: a
+            // fixed disk cannot be ejected, has no spindle to park and
+            // passes every self-test it is asked to run.
+            return kGood;
+
+        case 0x07:                                   // REASSIGN BLOCKS
+            // The defect list arrives in `dataIn` and is discarded: an image
+            // has no spare sectors because it has no bad ones. Answering
+            // GOOD is what lets a formatter finish its surface scan.
+            return kGood;
+
+        case 0x35:                                   // SYNCHRONIZE CACHE(10)
+            // Every WRITE already wrote through to the backing file, so the
+            // cache to flush is the host's. Make it explicit anyway — a
+            // driver that issues this before telling the user it is safe to
+            // power off deserves the real flush, not just a GOOD.
+            if (writeBack_ && file_.is_open()) file_.flush();
+            return kGood;
+
+        case 0x0B: {                                 // SEEK(6)
+            uint32_t lba = (uint32_t(cdb[1] & 0x1F) << 16)
+                         | (uint32_t(cdb[2]) << 8) | cdb[3];
+            if (lba >= blocks_) { setSense(kIllegalRequest, 0x24); return kCheck; }
+            return kGood;
+        }
+        case 0x2B: {                                 // SEEK(10)
+            uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
+                         | (uint32_t(cdb[4]) << 8) | cdb[5];
+            if (lba >= blocks_) { setSense(kIllegalRequest, 0x24); return kCheck; }
+            return kGood;
+        }
+
+        case 0x2E: {                                 // WRITE AND VERIFY(10)
+            // Same wire shape as WRITE(10); the verify is free because the
+            // write cannot half-land — it is a memcpy into an image.
+            uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
+                         | (uint32_t(cdb[4]) << 8) | cdb[5];
+            uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
+            if (uint64_t(lba) + cnt > blocks_) {
+                setSense(kIllegalRequest, 0x24);
+                return kCheck;
+            }
+            write(lba, cnt, dataIn);
+            return kGood;
+        }
+
+        case 0x2F: {                                 // VERIFY(10)
+            uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
+                         | (uint32_t(cdb[4]) << 8) | cdb[5];
+            uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
+            if (uint64_t(lba) + cnt > blocks_) {
+                setSense(kIllegalRequest, 0x24);
+                return kCheck;
+            }
+            // BytChk clear = "is this range readable" — always yes here.
+            // BytChk set = the initiator sent bytes to compare against, and
+            // a real MISCOMPARE ($1D) is the only useful answer. Reporting
+            // GOOD unconditionally would make a formatter's verify pass a
+            // test that never ran.
+            if (cdb[1] & 0x02) {
+                const uint64_t off = uint64_t(lba) * kBlockSize;
+                const uint64_t n = uint64_t(cnt) * kBlockSize;
+                if (off + n > image_.size() || dataIn.size() < n ||
+                    std::memcmp(image_.data() + off, dataIn.data(), size_t(n)) != 0) {
+                    setSense(kMiscompare, 0x1D);
+                    return kCheck;
+                }
+            }
+            return kGood;
+        }
+
+        case 0x37: {                                 // READ DEFECT DATA(10)
+            // An empty list, in the format the initiator asked for. A drive
+            // with no defects is exactly what an image is, and formatters
+            // read this to decide the surface is clean.
+            uint16_t alloc = uint16_t((cdb[7] << 8) | cdb[8]);
+            dataOut.assign(4, 0);
+            dataOut[1] = uint8_t(cdb[2] & 0x1F);     // echo P/G list + format
+            // bytes 2-3 = defect list length = 0
+            if (alloc && dataOut.size() > alloc) dataOut.resize(alloc);
+            return kGood;
+        }
 
         case 0x04:                                   // FORMAT UNIT
             // MAME answers GOOD (hd.cpp:601-620; its zero-fill loop indexes
