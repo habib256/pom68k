@@ -11,7 +11,18 @@
 #     SCHEDULED for the A72 (-mtune=), which costs no portability; this one
 #     raises the ISA FLOOR, which does. Two different products, and the name
 #     says which is which;
+#   · it produces the TARBALL, which the release does not and a Pi OS Lite
+#     box needs;
 #   · breaking it cannot break the release pipeline.
+#
+#  READ THIS BEFORE RECOMMENDING THE PACKAGE. Measured 2026-08-08: on
+#  cortex-a72 the raised floor changes NOTHING — `-mcpu=X` is `-march=<X's
+#  arch> -mtune=X`, the release already carries `-mtune=cortex-a72`, and the
+#  remaining ISA delta (crc, crypto) is code GCC never emits by itself. The
+#  build therefore compiles BOTH ways and diffs them, and the job summary
+#  tells you whether this run's core actually bought anything. When it did
+#  not, the release AppImage is the better package and the tarball is the
+#  only reason to be here.
 #
 #  It reuses the pinned bionic aarch64 builder image — the same one the
 #  release uses — so the glibc floor stays 2.27, comfortably under Raspberry
@@ -159,6 +170,7 @@ jobs:
         run: |
           set -euo pipefail
           APP=$(ls dist/*pi400*.AppImage); TGZ=$(ls dist/*pi400*.tar.gz)
+          DELTA=$(cat dist/ISA-DELTA.txt)
           {
             echo "### Raspberry Pi packages — \`-mcpu=${MCPU}\`, LTO, no PGO"
             echo ''
@@ -168,7 +180,18 @@ jobs:
             echo "| \`$(basename "$TGZ")\` | $(du -h "$TGZ" | cut -f1) | Pi OS Lite / kiosk — no libfuse2 needed |"
             echo ''
             echo "ISA floor raised to \`${MCPU}\`: these will **not** run on a lesser core."
-            echo "For everything else aarch64, use the generic release AppImage."
+            echo ''
+            if [ "$DELTA" = none ]; then
+              echo "⚠️ **The raised floor changed nothing.** Built both ways and diffed:"
+              echo "\`-mcpu=${MCPU}\` produced code byte-identical to the release"
+              echo "build's \`-mtune=${MCPU}\`, so this package is **no faster** than"
+              echo "\`POM68K-<v>-aarch64.AppImage\` — which also runs on every other"
+              echo "aarch64 machine. Prefer the release AppImage; take the **tar.gz**"
+              echo "from here only if you need a package that works without libfuse2."
+            else
+              echo "✅ The raised floor **did** change the generated code versus"
+              echo "\`-mtune=${MCPU}\` alone — this build is genuinely core-specific."
+            fi
             echo ''
             echo "PGO is not in this build and cannot be — no ROMs in CI to train on."
             echo "See \`docs/RASPBERRY_PI.md\`; \`build_native_pi.sh --pgo\` does it on the board."

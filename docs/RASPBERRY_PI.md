@@ -20,7 +20,7 @@ to its wall-clock, and two builds of the same tree must print the same one.
 |---|---|---|---|
 | **LTO** | inlines across translation units; lets the Moira dispatch and the bus fast path see each other | **yes** — no ISA change | `POM68K_LTO` (CMake) |
 | **`-mtune=cortex-a72`** | schedules for the A72's pipeline; emits **no** A72-only instruction, so a Pi 3 still loads the binary | **yes** | `POM68K_TUNE` (CMake) |
-| **`-mcpu=cortex-a72`** | the above **plus** raises the ISA floor to that core | **no** | `packaging/raspberry/build_native_pi.sh` |
+| **`-mcpu=cortex-a72`** | the above **plus** raises the ISA floor to that core — **measured worth on this codebase: nothing, see § 1bis** | **no** | `packaging/raspberry/build_native_pi.sh` |
 | **PGO** | lays the frequent branch outcome out in sequence | yes, but needs a training run with real assets | `POM68K_PGO` + `tools/pgo_train_run.sh` |
 
 The split matters because two different people build POM68K for a Pi:
@@ -30,6 +30,45 @@ The split matters because two different people build POM68K for a Pi:
   or a Pi 5;
 - **the one who compiles on the Pi** (`README.md`'s normal path) — gets
   `-mcpu=<the exact core>` and, with `--pgo`, the profile too.
+
+---
+
+## 1bis. `-mcpu` buys nothing over `-mtune` here — measured
+
+Written down first because it is the one result that contradicts the recipe
+this file ports, and because it is cheap to re-derive.
+
+`-mcpu=X` is exactly `-march=<X's architecture> -mtune=X`. The generic
+release AppImage already carries `-mtune=cortex-a72` (§ 2). What is left is
+the *architecture* delta between the Cortex-A72 and baseline armv8-a: `crc`
+and `crypto`. GCC does not emit either on its own — they arrive through
+intrinsics, and POM68K uses none.
+
+So the two builds should produce the same code, and they do. The aarch64
+binaries out of `release.yml` and `pi400.yml` differ by **27 bytes out of
+8 698 128**, in exactly two places:
+
+| offset | bytes | what |
+|---|---|---|
+| 700-719 | 20 | `.note.gnu.build-id` — a hash of the contents, different between *any* two links |
+| 7 531 192-7 531 198 | 7 | the version string (`0.1.0` vs `daba645`) |
+
+Nothing else. **The machine code is byte-identical.**
+
+Two consequences, and the second is the useful one:
+
+- **A Pi 4/400 should use the release AppImage**, which is the same code and
+  also runs everywhere else. `pi400.yml`'s remaining reason to exist is its
+  **tarball** (§ 4bis), not speed.
+- **NeoST's "~10-20 % for `-mcpu`" was never about the ISA floor.** It is the
+  gain of a tuned build over a `-mtune=generic` one — which is real, and which
+  POM68K now collects in the *portable* artifact. The lever was the cost
+  model all along; raising the floor was incidental to it.
+
+This is measured per run rather than remembered: `build_in_bionic_pi.sh`
+compiles both ways, strips the build-id, diffs, and the job summary reports
+which answer came out. A Pi 5's Cortex-A76 is armv8.2-a — LSE atomics, fp16,
+dotprod — where the answer may genuinely differ.
 
 ---
 
@@ -68,7 +107,9 @@ POM68K on a Pi that exists today:
 | `-O3` + PGO | −20 % |
 | `-O3` + PGO + LTO | **−34 %** |
 
-and, separately, ~10-20 % for `-mcpu=<exact core>` over generic aarch64.
+and, separately, ~10-20 % for `-mcpu=<exact core>` over generic aarch64 —
+which § 1bis shows is the **tuning** half of that flag, not the ISA floor, and
+which the portable release artifact therefore already collects.
 
 **Not measured anywhere yet:** POM68K on a Pi, before and after. Producing
 that is the open item. Do it with the fixed-budget harness, never with a boot
@@ -128,8 +169,13 @@ POM68K_PGO_GATES="q605 lcii classic" POM68K_PGO_ENGINES=interp \
 GitHub's native arm64 runner, in the same pinned bionic image the release
 uses, so the glibc floor stays 2.27 (Pi OS bookworm is 2.36).
 
-It exists because the two Pi artifacts are genuinely different products, and
-the filename is the only thing that tells them apart:
+**Take the tarball from it; on a Pi 4/400, take the AppImage from the
+release.** § 1bis is why: for `cortex-a72` the raised floor produces identical
+code, so the only thing this workflow adds is a package that does not need
+libfuse2. The workflow measures that per run and says so in its summary.
+
+The two Pi artifacts are still genuinely different products, and the filename
+is the only thing that tells them apart:
 
 | | ISA floor | Runs on | Where from |
 |---|---|---|---|

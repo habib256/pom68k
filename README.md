@@ -96,6 +96,13 @@ A fifth package is built **on demand**, not per tag — *Raspberry Pi package
 | `POM68K-<v>-pi400-aarch64.AppImage` | Pi 4/400 (or Pi 5 / Pi 3 — you pick the core). ISA floor **raised** to that core, so it will not run on a lesser one |
 | `pom68k-<v>-pi400-aarch64.tar.gz` | the same build for Pi OS Lite / a kiosk: Pi OS bookworm does not install `libfuse2`, and an unpacked tree needs none |
 
+On a **Pi 4/400, take the tar.gz but prefer the release AppImage** to the
+`pi400` one: raising the ISA floor to `cortex-a72` was measured to produce
+**byte-identical code** to the release build's `-mtune=cortex-a72` (27 bytes
+differ out of 8 698 128 — build-id and version string, nothing else), and the
+release artifact also runs everywhere else. The workflow re-measures this on
+every run and reports the verdict. `docs/RASPBERRY_PI.md` § 1bis.
+
 No ROM ships in any package — drop your own dumps into `roms/`, `hdv/`,
 `disks35/`. The **AppImage looks for those beside itself first**: create
 `roms/` next to the `.AppImage` file and everything, writes included (PRAM,

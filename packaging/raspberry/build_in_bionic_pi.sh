@@ -14,8 +14,18 @@
 #                      from a Pi 3 to a server. One artifact for everyone.
 #
 #    this one          -mcpu=$POM68K_MCPU         ISA floor RISES to that core.
-#                      GCC may use instructions and a cost model the generic
-#                      build cannot. Runs on that core and its supersets only.
+#                      GCC MAY use instructions the generic build cannot.
+#                      Runs on that core and its supersets only.
+#
+#  "MAY" is doing real work in that sentence. Measured 2026-08-08: on
+#  cortex-a72 it does NOT — the two binaries are byte-identical bar the
+#  build-id and the version string, because `-mcpu=X` is `-march=<X's arch>
+#  -mtune=X`, the release already carries `-mtune=cortex-a72`, and the only
+#  ISA delta left (crc, crypto) is code GCC never writes by itself. The build
+#  below therefore MEASURES the difference every run rather than assuming it,
+#  and says so in the job summary. For a Pi 4/400 the honest recommendation is
+#  the release AppImage; what this workflow still gives that the release does
+#  not is the tarball.
 #
 #  Both get LTO. Neither gets PGO, and that is not an oversight: profile
 #  training needs a machine that BOOTS, POM68K ships no ROMs (user-provided,
@@ -75,6 +85,49 @@ grep -q -- "-mcpu=${MCPU}" build-pi400/CMakeFiles/pom68k_core.dir/flags.make \
     || { echo "ERROR: -mcpu=${MCPU} is absent from the compile flags"; exit 1; }
 
 cmake --build build-pi400 -j"$(nproc)" --target POM68K
+
+# --- Does the raised floor change ANYTHING? Measure, do not assert ------------
+# Measured 2026-08-08 on cortex-a72: it does not. `-mcpu=X` is `-march=<X's
+# arch> -mtune=X`, and the generic release build already carries
+# `-mtune=cortex-a72`; the only ISA delta left is crc+crypto, which GCC never
+# generates on its own for this code. The two binaries came out byte-identical
+# apart from the build-id and the version string.
+#
+# So this step builds the RELEASE configuration too and diffs it. It is the
+# difference between shipping a package and shipping a claim: for a core whose
+# extra instructions nothing uses, the honest answer is "identical, use the
+# release AppImage", and for a Pi 5's cortex-a76 (armv8.2-a: LSE atomics,
+# fp16, dotprod) the answer may well differ. Whoever prepares a board gets
+# told which, per run, instead of inheriting today's result forever.
+rm -rf build-ref
+cmake -S . -B build-ref -DCMAKE_BUILD_TYPE=Release \
+    -DPOM68K_NATIVE=OFF -DPOM68K_LTO=ON -DPOM68K_TESTS=OFF \
+    -DPOM68K_TUNE="${MCPU}" \
+    ${POM68K_VERSION:+-DPOM68K_VERSION="${POM68K_VERSION}"} \
+    -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+cmake --build build-ref -j"$(nproc)" --target POM68K
+
+# The build-id is a hash of the contents and differs between any two links;
+# removing it is what makes the comparison mean "the CODE is the same". Both
+# builds carry the same POM68K_VERSION, so the version string cannot diverge.
+objcopy --remove-section=.note.gnu.build-id build-pi400/POM68K /tmp/cmp-mcpu
+objcopy --remove-section=.note.gnu.build-id build-ref/POM68K   /tmp/cmp-tune
+mkdir -p dist
+if cmp -s /tmp/cmp-mcpu /tmp/cmp-tune; then
+    echo "none" > dist/ISA-DELTA.txt
+    set +x
+    echo "###############################################################"
+    echo "#  -mcpu=${MCPU} produced BYTE-IDENTICAL code to the release"
+    echo "#  build (-mtune=${MCPU}, generic armv8-a floor)."
+    echo "#  This package is therefore no faster than the release"
+    echo "#  AppImage. Its remaining reason to exist is the .tar.gz,"
+    echo "#  which needs no libfuse2 — see docs/RASPBERRY_PI.md."
+    echo "###############################################################"
+    set -x
+else
+    echo "differs" > dist/ISA-DELTA.txt
+    echo "[pi400] -mcpu=${MCPU} changed the generated code vs -mtune=${MCPU}"
+fi
 
 # --- Package 1: the AppImage --------------------------------------------------
 export POM68K_BUILD_DIR=build-pi400
