@@ -112,10 +112,14 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
   until a named client (three reopening conditions in § 3). Next:
   `TODO.md` § *Test & validation depth*.
 - **Release CI** ships four artifacts on tag (Linux x86_64/aarch64
-  AppImage glibc-2.27 — the aarch64 one is the Pi 400 package —, macOS
-  Universal 2 dmg, Windows x64 zip); `--version` is the headless smoke.
-  Bootstrap: run *Build bionic builder image* once, pin its digests in
-  `release.yml`.
+  AppImage glibc-2.27, macOS Universal 2 dmg, Windows x64 zip);
+  `--version` is the headless smoke. Bootstrap: run *Build bionic builder
+  image* once, pin its digests in `release.yml`. Since 2026-08-08 the Linux
+  two are built with **LTO** (it used to ride on `-march=native`, so every
+  released binary had silently lost it) and the aarch64 one with
+  `-mtune=cortex-a72` — ISA floor unchanged, so it still loads everywhere.
+  A **fifth package is on demand**, `pi400.yml`: `-mcpu=<core>` (floor
+  RAISED) as AppImage + tar.gz, no PGO possible in CI — `docs/RASPBERRY_PI.md`.
 
 ## Conventions (inherited from POMIIGS/POM2)
 

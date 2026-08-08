@@ -256,6 +256,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-08 (third)** — [A Pi package built for ONE core: the `-mcpu` half of NeoST's workflow ports, the PGO half still cannot](#2026-08-08-pi400-ci)
 - **2026-08-08 (later)** — [The AppImage ignored a `roms/` folder sitting right next to it — the launcher had already chdir'd elsewhere](#2026-08-08-appimage-datadir)
 - **2026-08-08** — [NeoST's Pi recipe, ported: LTO had been coupled to `-march=native`, so every released binary shipped without it](#2026-08-08-raspberry-pi)
 - **2026-08-07 (later)** — [RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks](#2026-08-07-rascsi-oracle)
@@ -456,6 +457,64 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-08-pi400-ci"></a>
+## 2026-08-08 (third) — A Pi package built for ONE core: the `-mcpu` half of NeoST's workflow ports, the PGO half still cannot
+
+This morning's entry recorded "a CI-built `-mcpu=cortex-a72` artifact" under
+*not ported*, with the ROM argument attached. **That conflated two halves of
+NeoST's `pi-borne.yml` that are independent.** Training a profile needs a
+machine that boots, so PGO in CI is genuinely blocked by POM68K shipping no
+ROMs — but `-mcpu=cortex-a72` needs no asset at all. Only the second sentence
+survives; `docs/RASPBERRY_PI.md` § 6 is corrected accordingly.
+
+`.github/workflows/pi400.yml`, dispatched by hand with a core to target
+(cortex-a72 / a76 / a53). It reuses the **pinned bionic aarch64 builder image
+the release already uses** rather than introducing a bookworm container, so
+the glibc floor stays 2.27 — under Pi OS bookworm's 2.36 with room to spare —
+and GCC 11 in that image knows every Pi core.
+
+The two Pi artifacts are different products and only the filename says so:
+
+| | ISA floor | Runs on |
+|---|---|---|
+| `POM68K-<v>-aarch64.AppImage` | armv8-a, `-mtune=cortex-a72` | every aarch64 machine |
+| `POM68K-<v>-pi400-aarch64.AppImage` | the chosen core | that core and its supersets |
+
+**The build fails rather than degrades.** `build_native_pi.sh` falls back to
+generic when the compiler rejects `-mcpu`, because a human is waiting for a
+binary. In CI that is backwards: an artifact named `pi400` that is secretly
+generic is worse than no artifact. So the container probes the flag first, and
+then asserts it reached the real compile line
+(`build-pi400/CMakeFiles/pom68k_core.dir/flags.make`) — CMake silently
+dropping it is the failure mode being guarded. What that does **not** prove is
+which instructions GCC then emitted; the verified claim is the flag, not the
+encoding, and the workflow says so where it makes it.
+
+**A tarball beside the AppImage, and it is not a convenience.** Raspberry Pi
+OS bookworm does not install `libfuse2`, which a type-2 AppImage needs in
+order to mount itself; a Pi OS Lite kiosk cannot run the AppImage at all.
+Both packages come out of ONE build — the tarball reuses the AppDir
+`build_appimage.sh` just staged, same binary and same linuxdeploy-bundled
+glfw/libX*, so they cannot drift.
+
+That tarball needed a launcher, and rather than duplicate `AppRun`'s
+data-directory logic it got **one more candidate in `AppRun` itself**: the
+launcher's own directory, tried after the `.AppImage`'s and before `$OWD`.
+Inside an AppImage that candidate is inert — the file then lives on a
+read-only squashfs mount, which cannot contain `roms/`. Unpacked, it is the
+root of the tree the operator dropped `roms/` into, and the whole folder is
+the installation. One rule, both packages.
+
+Verified on the real x86_64 artifact, all five branches: `POM68K_DATA_DIR`
+wins; `roms/` beside the `.AppImage` wins over the launcher's directory; the
+launcher's directory fires only when it holds data (an AppImage mount does
+not); `$OWD`; then XDG. The tarball layout was assembled by hand from the
+shipped AppDir and launched from `/tmp` — so a cwd match could not fake it —
+and chose its own directory with the bundled libraries resolving. The
+workflow re-runs that last check on the runner, `pi400.yml` being **the only
+piece here that has never executed**: it needs a dispatch, and its `-mcpu`
+path cannot be exercised on this x86-64 host at all.
 
 <a id="2026-08-08-appimage-datadir"></a>
 ## 2026-08-08 (later) — The AppImage ignored a `roms/` folder sitting right next to it — the launcher had already chdir'd elsewhere

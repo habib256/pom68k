@@ -88,6 +88,14 @@ adapted from POM1's battle-tested workflows):
 | `POM68K-macOS-v<v>.dmg` | macOS 11+, Universal 2 (Apple Silicon + Intel) |
 | `POM68K-Windows-v<v>.zip` | Windows x64, self-contained (no DLL beside the exe) |
 
+A fifth package is built **on demand**, not per tag — *Raspberry Pi package
+(-mcpu)* in the Actions tab, one core per run:
+
+| Package | Target |
+|---|---|
+| `POM68K-<v>-pi400-aarch64.AppImage` | Pi 4/400 (or Pi 5 / Pi 3 — you pick the core). ISA floor **raised** to that core, so it will not run on a lesser one |
+| `pom68k-<v>-pi400-aarch64.tar.gz` | the same build for Pi OS Lite / a kiosk: Pi OS bookworm does not install `libfuse2`, and an unpacked tree needs none |
+
 No ROM ships in any package — drop your own dumps into `roms/`, `hdv/`,
 `disks35/`. The **AppImage looks for those beside itself first**: create
 `roms/` next to the `.AppImage` file and everything, writes included (PRAM,

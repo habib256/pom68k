@@ -321,11 +321,17 @@ loudly** where PGO used to fail silently. Left open:
   (`POM68K_BENCH_FRAMES`), never a boot etalon: an etalon stops when it
   recognises the Finder, so two builds get timed over different amounts of
   guest work. The fingerprints it prints must match across builds.
-- [ ] **Validate the release AppImage change.** `build_in_bionic.sh` now
-  passes `-DPOM68K_LTO=ON` (+ `-DPOM68K_TUNE=cortex-a72` on aarch64). Neither
-  was exercised — no aarch64 toolchain here, and the bionic image is not
-  built locally. Dispatch `release.yml` (publish is tag-gated) before trusting
-  it; watch the LTO link time and RAM on the runner.
+- [x] **Validate the release AppImage change** — DONE 2026-08-08, run
+  31263114761: four jobs green, `-- POM68K: tuned for cortex-a72 (ISA floor
+  unchanged)` in the aarch64 log, glibc floor still 2.17. The LTO is visible
+  in the size: aarch64 3 779 143 → 3 216 148 B (−14.9 %), x86_64 3 720 638 →
+  3 127 936 B (−15.9 %), macOS and Windows unchanged — exactly the scope
+  enabled.
+- [ ] **Dispatch `pi400.yml` once.** The `-mcpu=<core>` package (AppImage +
+  tar.gz, `packaging/raspberry/build_in_bionic_pi.sh`) has never run: no
+  aarch64 toolchain on the dev host, so nothing about its `-mcpu` path is
+  exercised. Everything around it was verified on the shipped x86_64 artifact
+  (the five AppRun branches, the tarball layout launched from `/tmp`).
 - [ ] **LTO for the macOS `.dmg` and the Windows `.zip`.** The same argument
   applies (`package_macos_release.sh`, `release.yml`'s Windows job both set
   `POM68K_NATIVE=OFF` and so still get no LTO). Stopped at Linux deliberately:
