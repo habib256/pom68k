@@ -327,11 +327,18 @@ loudly** where PGO used to fail silently. Left open:
   in the size: aarch64 3 779 143 → 3 216 148 B (−14.9 %), x86_64 3 720 638 →
   3 127 936 B (−15.9 %), macOS and Windows unchanged — exactly the scope
   enabled.
-- [ ] **Dispatch `pi400.yml` once.** The `-mcpu=<core>` package (AppImage +
-  tar.gz, `packaging/raspberry/build_in_bionic_pi.sh`) has never run: no
-  aarch64 toolchain on the dev host, so nothing about its `-mcpu` path is
-  exercised. Everything around it was verified on the shipped x86_64 artifact
-  (the five AppRun branches, the tarball layout launched from `/tmp`).
+- [x] **Dispatch `pi400.yml`** — DONE 2026-08-08, run 31264225875 green
+  (81 objects, `-mcpu=cortex-a72` on the real compile line, glibc floor 2.17,
+  both packages launched on the runner). **And it refuted its own premise**:
+  the binary is byte-identical to the release build's `-mtune=cortex-a72`
+  (27 bytes differ out of 8 698 128 — build-id + version string). `-mcpu=X` is
+  `-march=<X's arch> -mtune=X`, and the ISA delta (crc, crypto) is code GCC
+  never emits by itself. The workflow now builds both ways and reports the
+  verdict per run. `CHANGELOG.md` 2026-08-08 (fourth).
+- [ ] **Dispatch `pi400.yml` with `cortex-a76` once.** A Pi 5 is armv8.2-a —
+  LSE atomics, fp16, dotprod — the one case where the raised floor might
+  actually change codegen. The comparison step will now say so either way;
+  nobody should re-derive the a72 result to find out.
 - [ ] **LTO for the macOS `.dmg` and the Windows `.zip`.** The same argument
   applies (`package_macos_release.sh`, `release.yml`'s Windows job both set
   `POM68K_NATIVE=OFF` and so still get no LTO). Stopped at Linux deliberately:

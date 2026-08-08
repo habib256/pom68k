@@ -32,6 +32,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
 - **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
 
+- **"`-mcpu=<core>` is worth 10-20 % over generic aarch64" — inherited from NeoST, and the ISA half of it buys POM68K nothing (byte-identical code)** → [2026-08-08 (fourth) — `-mcpu=cortex-a72` produced byte-identical code…](#2026-08-08-mcpu-identical)
+- **"a CI-built `-mcpu` artifact cannot be done, no ROMs" — conflated two independent halves of NeoST's workflow** → [2026-08-08 (third) — A Pi package built for ONE core…](#2026-08-08-pi400-ci)
 - **a belief held for a whole day and overturned three times: Q6.4 "not a Cuda framing bug" … then it was** → [2026-07-19 — Q6.4 re-localized: it is a System-launch HANDOFF failure, NOT a Cuda…](#2026-07-19--q64-re-localized-it-is-a-system-launch-handoff-failure-not-a-cuda-reply-framing-bug-the-prior-completion-isr-buffer-smash-lead-is-disproven-no-fix-landed-yet)
 - **…and the entry that closed it** → [2026-07-19 — Q6.4 + Q6.2 BOTH RESOLVED: the boot restart loop AND the block-0 loop…](#2026-07-19--q64--q62-both-resolved-the-boot-restart-loop-and-the-block-0-loop-were-one-coupled-cuda-reply-framing-bug-the-system-now-loads)
 - **the Q605 `CACHE_BOOST` default of 1 ("boost 2+ fails SCSI bring-up") was stale — it is 4 now** → [2026-07-25 — Quadra 800 (26th machine), the 040 boost ceiling lifted…](#2026-07-25--quadra-800-26th-machine-the-040-boost-ceiling-lifted-and-the-pic-co-step-un-boosted)
@@ -256,6 +258,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-08 (fourth)** — [`-mcpu=cortex-a72` produced byte-identical code to `-mtune=cortex-a72`: the Pi package's whole premise, measured and mostly refuted](#2026-08-08-mcpu-identical)
 - **2026-08-08 (third)** — [A Pi package built for ONE core: the `-mcpu` half of NeoST's workflow ports, the PGO half still cannot](#2026-08-08-pi400-ci)
 - **2026-08-08 (later)** — [The AppImage ignored a `roms/` folder sitting right next to it — the launcher had already chdir'd elsewhere](#2026-08-08-appimage-datadir)
 - **2026-08-08** — [NeoST's Pi recipe, ported: LTO had been coupled to `-march=native`, so every released binary shipped without it](#2026-08-08-raspberry-pi)
@@ -457,6 +460,64 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-08-mcpu-identical"></a>
+## 2026-08-08 (fourth) — `-mcpu=cortex-a72` produced byte-identical code to `-mtune=cortex-a72`: the Pi package's whole premise, measured and mostly refuted
+
+`pi400.yml` was dispatched, went green in 2 min 19, and produced an AppImage
+of **exactly 3 359 920 bytes — the same size, to the byte, as the generic
+aarch64 release AppImage built an hour earlier**. That coincidence was worth
+one command.
+
+Unsquashed both AppImages and compared the two `POM68K` binaries: **27
+differing bytes out of 8 698 128**, in exactly two clusters.
+
+| offset | bytes | what |
+|---|---|---|
+| 700-719 | 20 | `.note.gnu.build-id` (`.note.gnu.bu[...]` at file offset `0x2ac`, header 16 + SHA1 20 → payload 700-719) — a hash of the contents, different between *any* two links |
+| 7 531 192-7 531 198 | 7 | the version string: `0.1.0\0\0\0` versus `daba645\0` |
+
+**The machine code is identical.** Not similar — identical.
+
+The reason is arithmetic, once stated: `-mcpu=X` *is* `-march=<X's
+architecture> -mtune=X`. The generic release build already carries
+`-mtune=cortex-a72` — added this morning, three entries up. What remains is
+the architecture delta between a Cortex-A72 and baseline armv8-a, which is
+`crc` and `crypto`, and GCC emits neither on its own; they come from
+intrinsics, and POM68K uses none. There was nothing left for the raised floor
+to do.
+
+Two things follow, and the second is the one worth keeping.
+
+**A Pi 4/400 should use the release AppImage.** Same code, and it runs on
+every other aarch64 machine too. What `pi400.yml` still uniquely provides is
+its **tarball** — Raspberry Pi OS bookworm does not install `libfuse2`, so a
+Pi OS Lite box cannot run a type-2 AppImage at all. The workflow's promise was
+rewritten around that: header, job summary and `docs/RASPBERRY_PI.md` § 4bis
+now point a Pi 4 owner at the release package.
+
+**NeoST's "~10-20 % for `-mcpu` over generic aarch64" was never about the ISA
+floor.** It is the gain of a *tuned* build over a `-mtune=generic` one. The
+lever was the cost model the whole time; the floor came along for the ride.
+POM68K now collects that gain in the **portable** artifact, which is strictly
+better — same speed, no lost machines. `docs/RASPBERRY_PI.md` § 1bis and § 3
+are corrected; this morning's entry over-credited `-mcpu` by inheriting
+NeoST's framing without testing it here.
+
+**The build now measures this instead of remembering it.**
+`build_in_bionic_pi.sh` compiles the release configuration alongside the
+`-mcpu` one, strips the build-id from both (which is what makes a byte
+comparison mean "the code is the same" — the version string cannot diverge,
+both builds take the same `POM68K_VERSION`), diffs them, and writes the
+verdict where the job summary reports it. A Pi 5's Cortex-A76 is armv8.2-a —
+LSE atomics, fp16, dotprod — and may well answer differently; nobody should
+have to re-derive today's result to find out.
+
+The first run of `pi400.yml` (31264225875) predates that check: 81 objects
+compiled, `-mcpu=cortex-a72` present on the real compile line, glibc floor
+2.17, both packages launched on the runner, and the tarball chose its own
+directory from `/tmp`. All of that stands. It simply did not ask the one
+question that mattered.
 
 <a id="2026-08-08-pi400-ci"></a>
 ## 2026-08-08 (third) — A Pi package built for ONE core: the `-mcpu` half of NeoST's workflow ports, the PGO half still cannot
