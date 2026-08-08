@@ -16,14 +16,21 @@
 #
 #   1. $POM68K_DATA_DIR                  explicit, always wins
 #   2. the directory containing the .AppImage, if it already holds data
-#   3. the directory you launched from ($OWD), if it already holds data
-#   4. $XDG_DATA_HOME/POM68K             seeded on first run, as before
+#   3. this launcher's own directory, if it already holds data
+#   4. the directory you launched from ($OWD), if it already holds data
+#   5. $XDG_DATA_HOME/POM68K             seeded on first run, as before
 #
 # "Holds data" means it already contains roms/, hdv/ or disks35/. That test is
-# what keeps 2 and 3 safe: dropping the AppImage in ~/Downloads must not
-# scatter a directory skeleton there, and a portable install on a USB stick
-# must not be ignored. Nothing is ever CREATED outside case 4 — the user makes
-# roms/ beside the AppImage, and that is the whole opt-in.
+# what keeps 2-4 safe: dropping the AppImage in ~/Downloads must not scatter a
+# directory skeleton there, and a portable install on a USB stick must not be
+# ignored. Nothing is ever CREATED outside case 5 — the user makes roms/
+# beside the AppImage, and that is the whole opt-in.
+#
+# Case 3 is inert inside an AppImage — this file then lives on a read-only
+# squashfs mount, which cannot hold roms/. It exists for the EXTRACTED
+# packaging (the Pi tarball, packaging/raspberry/): there this file sits at the
+# root of the unpacked tree, next to the roms/ the operator dropped in, and
+# that tree is the whole installation. One rule serves both packages.
 #
 # The chosen directory is where guest writes land too: PRAM files, save states
 # and screenshots follow the disk images, which is what "portable" has to mean.
@@ -51,6 +58,8 @@ if [ -n "${POM68K_DATA_DIR:-}" ]; then
     mkdir -p "${DATADIR}"
 elif has_data "${BESIDE}"; then
     DATADIR="${BESIDE}";          SOURCE="beside the AppImage"
+elif has_data "${HERE}"; then
+    DATADIR="${HERE}";            SOURCE="the unpacked install directory"
 elif has_data "${OWD:-}"; then
     DATADIR="${OWD}";             SOURCE="the launch directory"
 else

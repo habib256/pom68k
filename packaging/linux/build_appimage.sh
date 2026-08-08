@@ -17,9 +17,12 @@
 #                                           it seeds. ROMs are user-provided,
 #                                           never shipped.
 #
-# Output: dist/POM68K-<VERSION>-<arch>.AppImage
+# Output: dist/POM68K-<VERSION>[-<TAG>]-<arch>.AppImage
 #
 # Env: POM68K_VERSION (else the VERSION file), POM68K_BUILD_DIR (else build),
+#      POM68K_PKG_TAG (a variant marker in the filename — "pi400" for the
+#      -mcpu=cortex-a72 build, which must not be confused with the generic
+#      aarch64 release artifact: same arch in the name, different ISA floor),
 #      POM68K_APPIMAGE_TOOLS_DIR (baked in the release image; a local run
 #      fetches into build-appimage/tools).
 
@@ -103,7 +106,8 @@ install -m 755 packaging/linux/AppRun "${APPDIR}/AppRun"
 
 # --- appimagetool: wrap ------------------------------------------------------
 mkdir -p "${DIST}"
-OUT="${DIST}/POM68K-${VERSION}-${APPIMAGE_ARCH}.AppImage"
+TAG="${POM68K_PKG_TAG:+-${POM68K_PKG_TAG}}"
+OUT="${DIST}/POM68K-${VERSION}${TAG}-${APPIMAGE_ARCH}.AppImage"
 ARCH="${APPIMAGE_ARCH}" "${TOOLS}/appimagetool.AppDir/AppRun" \
     "${RUNTIME_ARG[@]}" "${APPDIR}" "${OUT}"
 echo "[appimage] wrote ${OUT}"

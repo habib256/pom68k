@@ -1,0 +1,183 @@
+# =============================================================================
+#  Raspberry Pi package — built for ONE core (-mcpu), on demand.
+#
+#  Separate from release.yml, for three reasons:
+#
+#   · it is triggered BY HAND, when a board is being prepared, not on every
+#     tag;
+#   · it builds for a SPECIFIC core (-mcpu=cortex-a72 for the Pi 4 / Pi 400),
+#     where the release publishes a GENERIC aarch64 AppImage that has to load
+#     on everything from a Pi 3 to a server. That generic artifact is already
+#     SCHEDULED for the A72 (-mtune=), which costs no portability; this one
+#     raises the ISA FLOOR, which does. Two different products, and the name
+#     says which is which;
+#   · breaking it cannot break the release pipeline.
+#
+#  It reuses the pinned bionic aarch64 builder image — the same one the
+#  release uses — so the glibc floor stays 2.27, comfortably under Raspberry
+#  Pi OS bookworm's 2.36. GCC 11 in that image knows every Pi core.
+#
+#  NO PGO HERE, deliberately. Training a profile needs a machine that boots,
+#  and POM68K ships no ROMs (user-provided, never committed), so this runner
+#  has nothing to boot. An empty profile silently yields a plain -O3 binary —
+#  docs/RASPBERRY_PI.md § 5. PGO on the Pi is the user's own
+#  `packaging/raspberry/build_native_pi.sh --pgo`, run where the assets live.
+#
+#  Two packages out of ONE build:
+#    POM68K-<v>-pi400-aarch64.AppImage   Pi OS with a desktop, one click
+#    pom68k-<v>-pi400-aarch64.tar.gz     Pi OS Lite / kiosk — bookworm does
+#                                        not install libfuse2, which a type-2
+#                                        AppImage needs to mount itself
+#
+#  Fetch:  gh run download <run-id> -n POM68K-pi400-aarch64
+# =============================================================================
+name: Raspberry Pi package (-mcpu)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mcpu:
+        description: "Target core: cortex-a72 (Pi 4 / Pi 400), cortex-a76 (Pi 5), cortex-a53 (Pi 3)"
+        required: true
+        default: cortex-a72
+        type: choice
+        options: [cortex-a72, cortex-a76, cortex-a53]
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  IMGUI_TAG: v1.92.8-docking     # matches setup_imgui.sh and every other job
+
+jobs:
+  pi:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    env:
+      BUILDER_IMAGE: ghcr.io/habib256/pom68k-bionic-builder:bionic-aarch64
+      MCPU: ${{ inputs.mcpu }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # Names the packages after something traceable. Without it every build
+      # would be called "dev" and two boards could not be told apart.
+      - name: Build identity
+        id: id
+        run: echo "ver=$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR (pull the builder image)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build POM68K for ${{ inputs.mcpu }} in the pinned bionic builder
+        env:
+          POM68K_VERSION: ${{ steps.id.outputs.ver }}
+        run: |
+          IMAGE="$(echo "$BUILDER_IMAGE" | tr '[:upper:]' '[:lower:]')"
+          docker pull "$IMAGE"
+          docker run --rm \
+            -v "$PWD":/work -w /work \
+            -e POM68K_MCPU="$MCPU" -e POM68K_VERSION -e IMGUI_TAG \
+            "$IMAGE" \
+            bash /work/packaging/raspberry/build_in_bionic_pi.sh
+
+      - name: Verify both packages
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*pi400*.AppImage)
+          TGZ=$(ls dist/*pi400*.tar.gz)
+          echo "AppImage: $APP"
+          echo "tarball : $TGZ"
+
+          # The name must say pi400 AND aarch64: the two artifacts differ from
+          # the generic release package only by their ISA floor, and a file
+          # that loses that distinction is a support incident waiting to happen.
+          case "$APP" in *-pi400-aarch64.AppImage) ;;
+            *) echo "ERROR: $APP is not named -pi400-aarch64.AppImage"; exit 1 ;; esac
+
+          # AppImageKit's aarch64 `continuous` runtime is ET_DYN, which
+          # AppImageLauncher rejects as "type -1"; build_appimage.sh pins the
+          # release-12 ET_EXEC runtime. Check the pin took.
+          TYPE=$(readelf -h "$APP" | awk -F'[ :]+' '/^ *Type:/ {print $3; exit}')
+          test "$TYPE" = "EXEC" || { echo "ERROR: runtime is $TYPE, not EXEC"; exit 1; }
+
+          "$APP" --appimage-extract >/dev/null
+          BIN=squashfs-root/usr/bin/POM68K
+          readelf -h "$BIN" | grep -q AArch64 \
+            || { echo "ERROR: not an AArch64 binary"; exit 1; }
+          MAX=$(objdump -T "$BIN" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -V | tail -1)
+          echo "Highest glibc symbol required: ${MAX:-none}"
+          test "$(printf '%s\nGLIBC_2.27\n' "$MAX" | sort -V | tail -1)" = "GLIBC_2.27" \
+            || { echo "ERROR: requires ${MAX} > GLIBC_2.27"; exit 1; }
+          rm -rf squashfs-root
+
+          # The tarball must carry the launcher, the binary AND the empty data
+          # skeleton — a package that unpacks to a bare binary would send the
+          # operator hunting for where roms/ goes.
+          LIST=$(tar tzf "$TGZ")
+          for want in pom68k-pi400/POM68K pom68k-pi400/usr/bin/POM68K \
+                      pom68k-pi400/roms/ pom68k-pi400/README.txt; do
+            printf '%s\n' "$LIST" | grep -q "^${want}" \
+              || { echo "ERROR: $want missing from the tarball"; exit 1; }
+          done
+          echo "OK: naming, ET_EXEC runtime, AArch64, glibc floor, tarball layout"
+
+      - name: Install runtime GL/X libs for the launch smokes
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libopengl0 libglx0 libgl1 \
+            libx11-6 libxext6 libxrandr2 libxinerama1 libxcursor1 libxi6
+
+      # The runner is arm64, so BOTH packages really execute here. Its core is
+      # a Neoverse — an armv8.2-a superset of every Pi core listed above — so
+      # this proves the binary runs, not that it would run on a Pi 3.
+      - name: Smoke-launch both packages (--version)
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*pi400*.AppImage)
+          TGZ=$(ls dist/*pi400*.tar.gz)
+
+          OUT=$("$APP" --appimage-extract-and-run --version)
+          echo "$OUT"
+          grep -q "Macintosh 68k emulator" <<<"$OUT" \
+            || { echo "ERROR: AppImage printed no version banner"; exit 1; }
+
+          mkdir -p /tmp/tgz && tar -xzf "$TGZ" -C /tmp/tgz
+          OUT=$(cd /tmp && /tmp/tgz/pom68k-pi400/POM68K --version 2>&1)
+          echo "$OUT"
+          grep -q "Macintosh 68k emulator" <<<"$OUT" \
+            || { echo "ERROR: tarball launcher printed no version banner"; exit 1; }
+          # …and it must have chosen its OWN directory, not $HOME: the shipped
+          # roms/ skeleton is what makes the package portable. Launched from
+          # /tmp precisely so a cwd match cannot fake this.
+          grep -q "data directory = /tmp/tgz/pom68k-pi400" <<<"$OUT" \
+            || { echo "ERROR: launcher did not use the unpacked directory"; exit 1; }
+          echo "OK: both packages launch, tarball is self-contained"
+
+      - name: Summary
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*pi400*.AppImage); TGZ=$(ls dist/*pi400*.tar.gz)
+          {
+            echo "### Raspberry Pi packages — \`-mcpu=${MCPU}\`, LTO, no PGO"
+            echo ''
+            echo "| Package | Size | For |"
+            echo "|---|---|---|"
+            echo "| \`$(basename "$APP")\` | $(du -h "$APP" | cut -f1) | Pi OS **with a desktop** — one clickable file |"
+            echo "| \`$(basename "$TGZ")\` | $(du -h "$TGZ" | cut -f1) | Pi OS Lite / kiosk — no libfuse2 needed |"
+            echo ''
+            echo "ISA floor raised to \`${MCPU}\`: these will **not** run on a lesser core."
+            echo "For everything else aarch64, use the generic release AppImage."
+            echo ''
+            echo "PGO is not in this build and cannot be — no ROMs in CI to train on."
+            echo "See \`docs/RASPBERRY_PI.md\`; \`build_native_pi.sh --pgo\` does it on the board."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: POM68K-pi400-aarch64
+          path: |
+            dist/*pi400*.AppImage
+            dist/*pi400*.tar.gz
+          if-no-files-found: error

@@ -122,6 +122,38 @@ POM68K_PGO_GATES="q605 lcii classic" POM68K_PGO_ENGINES=interp \
 
 ---
 
+## 4bis. The CI package: `-mcpu`, on demand
+
+`.github/workflows/pi400.yml` — **Run workflow**, pick a core. Built on
+GitHub's native arm64 runner, in the same pinned bionic image the release
+uses, so the glibc floor stays 2.27 (Pi OS bookworm is 2.36).
+
+It exists because the two Pi artifacts are genuinely different products, and
+the filename is the only thing that tells them apart:
+
+| | ISA floor | Runs on | Where from |
+|---|---|---|---|
+| `POM68K-<v>-aarch64.AppImage` | armv8-a, `-mtune=cortex-a72` | every aarch64 machine | every tag, `release.yml` |
+| `POM68K-<v>-pi400-aarch64.AppImage` | **the chosen core** | that core and its supersets | on demand, `pi400.yml` |
+
+Two packages come out of one build, no recompilation. The `.tar.gz` is not a
+convenience: **Raspberry Pi OS bookworm does not install `libfuse2`**, which a
+type-2 AppImage needs in order to mount itself. Unpacked, there is nothing to
+mount — and the launcher is the same `AppRun`, whose third candidate is its
+own directory, so `roms/` goes at the root of the unpacked tree and the whole
+folder is the installation.
+
+The build **fails** rather than falls back if the compiler rejects the
+`-mcpu`, and asserts the flag reached the real compile line
+(`build-pi400/CMakeFiles/pom68k_core.dir/flags.make`) — CMake would otherwise
+have dropped it and produced a generic binary under a `pi400` name, which is
+worse than no artifact. What that does *not* prove is which instructions GCC
+then chose to emit; the claim verified is the flag, not the encoding.
+
+No PGO, and it cannot have any — see § 6.
+
+---
+
 ## 5. The PGO trap: its failure mode is silence
 
 GCC names each `.gcda` after the **absolute path of the object** it belongs
@@ -171,15 +203,14 @@ out every 68030 machine's hot loop as if it were cold.
 
 ## 6. Not ported, and why
 
-- **A CI-built `-mcpu=cortex-a72` artifact.** NeoST has one
-  (`.github/workflows/pi-borne.yml`): it trains on the ARM64 runner, so the Pi
-  pays nothing. It can do that because its TOS ROMs are in the repository.
-  **POM68K's ROMs are user-provided and never committed**, so a CI runner has
-  nothing to boot and any profile it collected would be empty — the exact
-  silent failure § 5 describes. Training has to happen where the assets are.
-  Reopening condition: an asset-free workload that is *representative* (the
-  SST vector suites are not — they exercise every opcode uniformly, which is
-  the opposite of a profile).
+- **PGO in CI.** The `-mcpu` half of NeoST's Pi workflow *was* ported (§ 4bis
+  below); its PGO half cannot be. NeoST trains on its ARM64 runner because its
+  TOS ROMs are in the repository. **POM68K's ROMs are user-provided and never
+  committed**, so a runner has nothing to boot and any profile it collected
+  would be empty — the exact silent failure § 5 describes. Training has to
+  happen where the assets are. Reopening condition: an asset-free workload
+  that is *representative* (the SST vector suites are not — they exercise
+  every opcode uniformly, which is the opposite of a profile).
 - **Kiosk/session/Bluetooth provisioning** (`install_kiosk.sh`,
   `neost-kiosk@.service`, …). That is arcade-cabinet plumbing for a
   single-application box. POM68K has no such product shape today; porting it
