@@ -13,6 +13,7 @@
 // non-trivial SCSI traffic. Soft-skips without the ROM or a bootable
 // hdv/ image.
 
+#include "AssetFingerprint.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 #include "Cpu030.h"
@@ -62,6 +63,7 @@ int main() {
         std::printf("SKIP: needs the 1 MB Color Classic ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

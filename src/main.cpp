@@ -8,6 +8,7 @@
 // ROM selects the LC 475 / Quadra 605 machine (MEMCjr/PrimeTime + 68LC040).
 
 #include "imgui.h"
+#include "MachineHost.h"
 #include "DiskBays.h"
 #include "DockLayout.h"
 #include "backends/imgui_impl_glfw.h"
@@ -440,10 +441,6 @@ private:
 // POM68K_KEY_TRACE=1 — stderr log of every GUI key event at PUSH (UI
 // thread) and APPLY (machine thread). A freeze where pushes continue but
 // applies stop = machine-thread wedge; both stopping = GUI-side.
-static void keyTrace(const char* where, uint8_t adb, bool down) {
-    static const bool on = std::getenv("POM68K_KEY_TRACE") != nullptr;
-    if (on) std::fprintf(stderr, "[key] %s adb=%02X %s\n", where, adb, down ? "dn" : "up");
-}
 
 // Two host keys can share one Mac transition code (for example the two
 // Command keys). Count presses per code so the DOWN transition is
@@ -514,106 +511,6 @@ static std::function<int()> gGetCpuEngine;
 static std::function<jit::Stats::Snapshot()> gJitStats;
 static const char* gJitBackend = nullptr;              // backend chosen for this host
 
-// ── Save states (TODO § C GUI wiring) ───────────────────────────────────
-// Shared plumbing embedded in each machine-thread struct: the GUI queues a
-// request; the MACHINE thread performs the save/load between two quanta
-// (the Cmd::CpuEngine precedent — a restore replaces the whole tree, so it
-// must land between two instructions, never mid-quantum from the GUI
-// thread) and posts a one-line outcome the machine window displays. The
-// run function fills in the profile tag and the state-file path (tagged
-// like the .pram file, so states pair with their boot volume).
-struct SaveStateSlot {
-    pom68k::SnapMachine kind{};        // 0 = profile not wired
-    std::string path;
-
-    void request(bool load) {
-        std::lock_guard<std::mutex> l(mu_);
-        pending_ |= load ? 2 : 1;
-    }
-    std::string message() {
-        std::lock_guard<std::mutex> l(mu_);
-        return message_;
-    }
-
-    // Machine-thread side, called from applyCmds() (between quanta).
-    // Returns what actually happened (bit 0 = saved, bit 1 = restored) so
-    // single-threaded callers (the Plus loop) can resync their frame clock
-    // after a restore.
-    template <class Mem, class Cpu>
-    int apply(Mem& mem, Cpu& cpu) {
-        int p;
-        { std::lock_guard<std::mutex> l(mu_); p = pending_; pending_ = 0; }
-        if (!p) return 0;
-        int done = 0;
-        if (kind == pom68k::SnapMachine{} || path.empty()) {
-            post("Save states: profil non câblé");
-            return 0;
-        }
-        if (p & 1) {
-            std::vector<uint8_t> blob;
-            pom68k::save(mem, cpu, kind, blob);
-            // Atomic temp+rename, the floppy write-back convention: a crash
-            // mid-write must never leave a truncated state file behind.
-            const std::string tmp = path + ".tmp";
-            std::FILE* f = std::fopen(tmp.c_str(), "wb");
-            if (!f || std::fwrite(blob.data(), 1, blob.size(), f) != blob.size()) {
-                if (f) std::fclose(f);
-                std::remove(tmp.c_str());
-                post("État NON sauvé: écriture impossible (" + tmp + ")");
-            } else {
-                std::fclose(f);
-                if (std::rename(tmp.c_str(), path.c_str()) != 0) {
-                    std::remove(tmp.c_str());
-                    post("État NON sauvé: rename impossible (" + path + ")");
-                } else {
-                    post("État sauvé → " + path + " ("
-                         + std::to_string((blob.size() + 512) / 1024) + " Ko)");
-                    done |= 1;
-                }
-            }
-        }
-        if (p & 2) {
-            std::vector<uint8_t> blob;
-            std::FILE* f = std::fopen(path.c_str(), "rb");
-            if (!f) {
-                post("Aucun état à restaurer (" + path + ")");
-            } else {
-                std::fseek(f, 0, SEEK_END);
-                long n = std::ftell(f);
-                std::fseek(f, 0, SEEK_SET);
-                blob.resize(n > 0 ? size_t(n) : 0);
-                size_t got = blob.empty() ? 0
-                           : std::fread(blob.data(), 1, blob.size(), f);
-                std::fclose(f);
-                std::string err;
-                if (got != blob.size()) {
-                    post("État NON restauré: lecture tronquée (" + path + ")");
-                } else if (!pom68k::load(mem, cpu, kind,
-                                         blob.data(), blob.size(), err)) {
-                    // A refused snapshot leaves the machine untouched — the
-                    // reason (profile/ROM/RAM mismatch, corruption) is
-                    // load()'s own explanation.
-                    post("État NON restauré: " + err);
-                } else {
-                    post(err.empty() ? "État restauré ← " + path
-                                     : "État restauré (" + err + ")");
-                    done |= 2;
-                }
-            }
-        }
-        return done;
-    }
-
-private:
-    void post(std::string m) {
-        std::lock_guard<std::mutex> l(mu_);
-        message_ = std::move(m);
-        std::printf("SaveState: %s\n", message_.c_str());
-    }
-    std::mutex mu_;
-    int pending_ = 0;                  // bit 0 = save, bit 1 = load
-    std::string message_;
-};
 
 // The "État" row every machine window shows: Sauver / Restaurer + the last
 // outcome. One helper so the ten windows stay in step.
@@ -1024,57 +921,11 @@ static void relaunchIfSwitched(char* argv0) {
 // Same GUI ↔ machine contract as LcMachine: queued commands, published
 // framebuffer + status. Video is NuBus Toby (640×480); sound is discrete
 // ASC @ $50F14000. Frame slice ≈ 60.15 Hz at 15.6672 MHz.
-struct MacIiMachine {
-    MacIIMemory& mem; Cpu020& cpu; MacAudioHost& audioHost;
-    MacIiMachine(MacIIMemory& m, Cpu020& c, MacAudioHost& a)
-        : mem(m), cpu(c), audioHost(a) {
-        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
-    }
-    ~MacIiMachine() { stop(); }
-
-    // Engine state + JIT gauges for the CPU menu (the LcMachine contract:
-    // the menu tick follows the MACHINE; the swap lands one queue trip
-    // later, on the machine thread).
-    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
-    jit::Stats::Snapshot jitStats() const {
-        std::lock_guard<std::mutex> l(jitMu_);
-        return jitSnap_;
-    }
-
-    std::atomic<bool> running{true}, turbo{true}, quit{false};
-
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, CpuEngine,
-                          InsertFloppy, EjectFloppy } t; int a = 0, b = 0; };
-    void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
-
-    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
-    SaveStateSlot state;
-
-    // Floppy hot-swap (GUI → machine thread; the DafbMachine contract).
-    void requestInsertFloppy(std::string path) {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        floppyPending_ = std::move(path);
-        cmds_.push_back({Cmd::InsertFloppy});
-    }
-    void requestEjectFloppy() {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        cmds_.push_back({Cmd::EjectFloppy});
-    }
-    bool floppyInserted() const {
-        return floppyFlag_.load(std::memory_order_relaxed);
-    }
-    void setFloppyInserted(bool on) {
-        floppyFlag_.store(on, std::memory_order_relaxed);
-    }
-    std::string floppyPending_;              // guarded by cmdMu_
-    std::atomic<bool> floppyFlag_{false};
-
-    bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
-        std::lock_guard<std::mutex> l(fbMu_);
-        if (fbShared_.empty()) return false;
-        out = fbShared_; w = fbW_; h = fbH_;
-        return true;
-    }
+struct MacIiMachine
+    : MachineHost<MacIiMachine, MacIIMemory, Cpu020, MacAudioHost> {
+    using Base = MachineHost<MacIiMachine, MacIIMemory, Cpu020, MacAudioHost>;
+    using Base::Base;
+    static constexpr bool kStereo = false;
 
     struct Status { uint32_t pc; long long clock; bool overlay, hmmu24; };
     Status status() const {
@@ -1084,112 +935,18 @@ struct MacIiMachine {
                  (stFlags_.load(std::memory_order_relaxed) & 2) != 0 };
     }
 
-    int stepTick() {
-        applyCmds();
-        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
-        int sleepUs = 0;
-        if (activeHold_ > 0 && audioHost.started()) {
-            int n = 0;
-            while (audioHost.buffered() < kTarget && n < 8) {
-                runOne();
-                if (drain()) activeHold_ = 90; else activeHold_--;
-                audioHost.pushRaw(samp_, 0);
-                n++;
-            }
-            if (n == 0) {
-                if (++starve_ > 80) {
-                    runOne();
-                    if (drain()) activeHold_ = 90; else activeHold_--;
-                    starve_ = 0;
-                }
-                sleepUs = 2000;
-            } else starve_ = 0;
-        } else {
-            auto t0 = std::chrono::steady_clock::now();
-            int n = 0;
-            do {
-                runOne();
-            } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
-                     std::chrono::steady_clock::now() - t0 <
-                         std::chrono::milliseconds(10));
-            if (drain()) {
-                activeHold_ = 90;
-                audioHost.pushFrame(samp_, 0);
-            }
-            if (!turbo.load(std::memory_order_relaxed)) {
-                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
-                                 std::chrono::steady_clock::now() - t0).count();
-                sleepUs = int(std::max<long long>(0, 16625 - spent));
-            }
-        }
-        publish();
-        return sleepUs;
-    }
+    // ── The platform half of the host contract ─────────────────────────────
+    int64_t frameCycles() const { return kFrame; }
 
-    void start() {
-#ifndef __EMSCRIPTEN__
-        th_ = std::thread([this] {
-            while (!quit.load(std::memory_order_relaxed)) {
-                int us = stepTick();
-                if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
-            }
-        });
-#endif
-    }
-    void stop() {
-#ifndef __EMSCRIPTEN__
-        quit.store(true);
-        if (th_.joinable()) th_.join();
-#endif
-    }
-
-    void publish(bool force = false) {
-        auto now = std::chrono::steady_clock::now();
-        if (!force && framesRun_ == 0 &&
-            now - lastPub_ < std::chrono::milliseconds(16)) return;
-        lastPub_ = now; framesRun_ = 0;
-        TobyVideo* tv = mem.toby();
-        Se30Video* sv = mem.se30();
-        int hres = tv ? tv->hres() : sv ? Se30Video::W : TobyVideo::W;
-        int vres = tv ? tv->vres() : sv ? Se30Video::H : TobyVideo::H;
-        // `fb_` is the RASTER SURFACE — runOne() decoded each row as the
-        // beam scanned it. Catch up once more so a paused machine still
-        // publishes a complete frame.
-        if (tv || sv) rasterBeam();
-        else fb_.assign(size_t(hres) * size_t(vres), 0xFFFFFFFFu);
-        for (uint32_t& px : fb_) px |= 0xFF000000u;
-        {
-            std::lock_guard<std::mutex> l(fbMu_);
-            fbShared_ = fb_; fbW_ = hres; fbH_ = vres;
-        }
-        stPc_.store(cpu.getPC(), std::memory_order_relaxed);
-        stClock_.store(cpu.getClock(), std::memory_order_relaxed);
-        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
-                               (mem.hmmu24() ? 2 : 0)),
-                       std::memory_order_relaxed);
-        {
-            std::lock_guard<std::mutex> l(jitMu_);
-            jitSnap_ = cpu.jit().stats().snapshot();
-        }
-    }
-
-private:
-    static constexpr int64_t kFrame = MacIIMemory::kCpuHz / 60;
-    static constexpr size_t kTarget = 2225;
-
-    void runOne() {
-        // Raster catch-up rides the wire slicing (LLE_VS_HLE §1.1): the
-        // Toby card runs its own CRTC frame clock, while the SE/30's
-        // pseudo-slot video has none and rides the machine's 60 Hz one.
+    void emulateQuantum() {
+        // Raster catch-up rides the wire slicing (LLE_VS_HLE §1.1): the Toby
+        // card runs its own CRTC frame clock, while the SE/30's pseudo-slot
+        // video has none and rides the machine's 60 Hz one.
         runQuantumWithWire(mem, cpu, kFrame, [this] { rasterBeam(); });
         framesRun_++;
     }
-    void rasterBeam() {
-        if (TobyVideo* tv = mem.toby()) tv->raster(fb_);
-        else if (Se30Video* sv = mem.se30())
-            sv->raster(fb_, mem.framePos(), mem.frameCycles(), mem.frameCount());
-    }
-    bool drain() {
+
+    bool drainAudio() {
         samp_.clear();
         while (mem.asc().available() > 0)
             samp_.push_back(float(mem.asc().pop()) / 32768.0f);
@@ -1197,53 +954,37 @@ private:
         for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
         return !samp_.empty() && hi - lo >= 0.02f;
     }
-    void applyCmds() {
-        std::string pending;
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
-          pending.swap(floppyPending_); }
-        for (const Cmd& c : cmdsApply_) switch (c.t) {
-            case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
-            case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
-                               mem.keyEvent(uint8_t(c.a), c.b != 0); break;
-            case Cmd::HardReset:   cpu.hardReset(); break;
-            case Cmd::InsertFloppy:
-                if (!pending.empty() && mem.insertDisk(pending))
-                    floppyFlag_.store(true, std::memory_order_relaxed);
-                break;
-            case Cmd::EjectFloppy:
-                mem.ejectDisk();
-                floppyFlag_.store(false, std::memory_order_relaxed);
-                break;
-            // Engine swap between two runCycles() — an instruction
-            // boundary (the LcMachine precedent).
-            case Cmd::CpuEngine:
-                cpu.setEngine(c.a);
-                stEngine_.store(c.a, std::memory_order_relaxed);
-                break;
-        }
-        cmdsApply_.clear();
-        state.apply(mem, cpu);         // save/load between two quanta
+
+    void renderFrame(std::vector<uint32_t>& out, int& w, int& h) {
+        TobyVideo* tv = mem.toby();
+        Se30Video* sv = mem.se30();
+        w = tv ? tv->hres() : sv ? Se30Video::W : TobyVideo::W;
+        h = tv ? tv->vres() : sv ? Se30Video::H : TobyVideo::H;
+        // `fb_` is the RASTER SURFACE — emulateQuantum() decoded each row as
+        // the beam scanned it. Catch up once more so a paused machine still
+        // publishes a complete frame.
+        if (tv || sv) rasterBeam();
+        else fb_.assign(size_t(w) * size_t(h), 0xFFFFFFFFu);
+        out.assign(fb_.begin(), fb_.end());
+        // The decoders pack 00RRGGBB — alpha 0. ImGui blends, so a 0 alpha
+        // draws fully transparent; force A=$FF before the BGRA upload.
+        for (uint32_t& px : out) px |= 0xFF000000u;
     }
 
-    std::thread th_;
-    std::mutex cmdMu_;
-    std::vector<Cmd> cmds_, cmdsApply_;
-    std::mutex fbMu_;
-    std::vector<uint32_t> fbShared_;
-    int fbW_ = 0, fbH_ = 0;
-    std::atomic<uint32_t> stPc_{0};
-    std::atomic<long long> stClock_{0};
-    std::atomic<uint8_t> stFlags_{0};
-    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
-    mutable std::mutex jitMu_;
-    jit::Stats::Snapshot jitSnap_{};
-    int activeHold_ = 0;
-    int starve_ = 0;
-    int framesRun_ = 0;
-    std::chrono::steady_clock::time_point lastPub_{};
-    std::vector<uint32_t> fb_;
-    std::vector<float> samp_;
+    void publishStatus() {
+        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
+                               (mem.hmmu24() ? 2 : 0)),
+                       std::memory_order_relaxed);
+    }
+
+private:
+    static constexpr int64_t kFrame = MacIIMemory::kCpuHz / 60;
+
+    void rasterBeam() {
+        if (TobyVideo* tv = mem.toby()) tv->raster(fb_);
+        else if (Se30Video* sv = mem.se30())
+            sv->raster(fb_, mem.framePos(), mem.frameCycles(), mem.frameCount());
+    }
 };
 
 // ── Macintosh II: GLUE + 68020 + Toby NuBus, selected by a 256 KB ROM ───
@@ -1542,56 +1283,11 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
 // atomics. What is IIfx-specific is what the CPU window shows — the two
 // Apple PIC IOPs are processors in their own right, and "are they still
 // executing?" is the first question any IIfx bug asks.
-struct IIfxMachine {
-    IIfxMemory& mem; IIfxCpu& cpu; MacAudioHost& audioHost;
-    IIfxMachine(IIfxMemory& m, IIfxCpu& c, MacAudioHost& a)
-        : mem(m), cpu(c), audioHost(a) {
-        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
-    }
-    ~IIfxMachine() { stop(); }
-
-    // Engine state + JIT gauges for the CPU menu (the LcMachine contract:
-    // the menu tick follows the MACHINE; the swap lands one queue trip
-    // later, on the machine thread).
-    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
-    jit::Stats::Snapshot jitStats() const {
-        std::lock_guard<std::mutex> l(jitMu_);
-        return jitSnap_;
-    }
-
-    std::atomic<bool> running{true}, turbo{true}, quit{false};
-
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, CpuEngine,
-                          InsertFloppy, EjectFloppy } t; int a = 0, b = 0; };
-    void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
-
-    SaveStateSlot state;
-
-    // Floppy hot-swap (GUI → machine thread; the DafbMachine contract).
-    void requestInsertFloppy(std::string path) {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        floppyPending_ = std::move(path);
-        cmds_.push_back({Cmd::InsertFloppy});
-    }
-    void requestEjectFloppy() {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        cmds_.push_back({Cmd::EjectFloppy});
-    }
-    bool floppyInserted() const {
-        return floppyFlag_.load(std::memory_order_relaxed);
-    }
-    void setFloppyInserted(bool on) {
-        floppyFlag_.store(on, std::memory_order_relaxed);
-    }
-    std::string floppyPending_;              // guarded by cmdMu_
-    std::atomic<bool> floppyFlag_{false};
-
-    bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
-        std::lock_guard<std::mutex> l(fbMu_);
-        if (fbShared_.empty()) return false;
-        out = fbShared_; w = fbW_; h = fbH_;
-        return true;
-    }
+struct IIfxMachine
+    : MachineHost<IIfxMachine, IIfxMemory, IIfxCpu, MacAudioHost> {
+    using Base = MachineHost<IIfxMachine, IIfxMemory, IIfxCpu, MacAudioHost>;
+    using Base::Base;
+    static constexpr bool kStereo = false;
 
     struct Status { uint32_t pc; long long clock; bool overlay;
                     long long sccPicCycles, swimPicCycles; };
@@ -1603,97 +1299,10 @@ struct IIfxMachine {
                  stSwimPic_.load(std::memory_order_relaxed) };
     }
 
-    int stepTick() {
-        applyCmds();
-        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
-        int sleepUs = 0;
-        if (activeHold_ > 0 && audioHost.started()) {
-            int n = 0;
-            while (audioHost.buffered() < kTarget && n < 8) {
-                runOne();
-                if (drain()) activeHold_ = 90; else activeHold_--;
-                audioHost.pushRaw(samp_, 0);
-                n++;
-            }
-            if (n == 0) {
-                if (++starve_ > 80) {
-                    runOne();
-                    if (drain()) activeHold_ = 90; else activeHold_--;
-                    starve_ = 0;
-                }
-                sleepUs = 2000;
-            } else starve_ = 0;
-        } else {
-            auto t0 = std::chrono::steady_clock::now();
-            int n = 0;
-            do {
-                runOne();
-            } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
-                     std::chrono::steady_clock::now() - t0 <
-                         std::chrono::milliseconds(10));
-            if (drain()) {
-                activeHold_ = 90;
-                audioHost.pushFrame(samp_, 0);
-            }
-            if (!turbo.load(std::memory_order_relaxed)) {
-                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
-                                 std::chrono::steady_clock::now() - t0).count();
-                sleepUs = int(std::max<long long>(0, 16625 - spent));
-            }
-        }
-        publish();
-        return sleepUs;
-    }
+    // ── The platform half of the host contract ─────────────────────────────
+    int64_t frameCycles() const { return kFrame; }
 
-    void start() {
-#ifndef __EMSCRIPTEN__
-        th_ = std::thread([this] {
-            while (!quit.load(std::memory_order_relaxed)) {
-                int us = stepTick();
-                if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
-            }
-        });
-#endif
-    }
-    void stop() {
-#ifndef __EMSCRIPTEN__
-        quit.store(true);
-        if (th_.joinable()) th_.join();
-#endif
-    }
-
-    void publish(bool force = false) {
-        auto now = std::chrono::steady_clock::now();
-        if (!force && framesRun_ == 0 &&
-            now - lastPub_ < std::chrono::milliseconds(16)) return;
-        lastPub_ = now; framesRun_ = 0;
-        TobyVideo* tv = mem.toby();
-        int hres = tv ? tv->hres() : TobyVideo::W;
-        int vres = tv ? tv->vres() : TobyVideo::H;
-        if (tv) tv->raster(fb_);          // raster surface, see runOne()
-        else fb_.assign(size_t(hres) * size_t(vres), 0xFFFFFFFFu);
-        for (uint32_t& px : fb_) px |= 0xFF000000u;
-        {
-            std::lock_guard<std::mutex> l(fbMu_);
-            fbShared_ = fb_; fbW_ = hres; fbH_ = vres;
-        }
-        stPc_.store(cpu.getPC(), std::memory_order_relaxed);
-        stClock_.store(cpu.getClock(), std::memory_order_relaxed);
-        stOverlay_.store(mem.overlay(), std::memory_order_relaxed);
-        stSccPic_.store(mem.sccPic().cpu().cycleCount(), std::memory_order_relaxed);
-        stSwimPic_.store(mem.swimPic().cpu().cycleCount(), std::memory_order_relaxed);
-        {
-            std::lock_guard<std::mutex> l(jitMu_);
-            jitSnap_ = cpu.jit().stats().snapshot();
-        }
-    }
-
-private:
-    // 60.15 Hz on a 40 MHz clock (the IIfx's OSS tick, not a round 60).
-    static constexpr int64_t kFrame = IIfxMemory::kCpuHz * 100 / 6015;
-    static constexpr size_t kTarget = 2225;
-
-    void runOne() {
+    void emulateQuantum() {
         // Raster catch-up on the Toby card's own CRTC frame clock
         // (LLE_VS_HLE §1.1) — the IIfx has no built-in video.
         runQuantumWithWire(mem, cpu, kFrame, [this] {
@@ -1701,7 +1310,8 @@ private:
         });
         framesRun_++;
     }
-    bool drain() {
+
+    bool drainAudio() {
         samp_.clear();
         while (mem.asc().available() > 0)
             samp_.push_back(float(mem.asc().pop()) / 32768.0f);
@@ -1709,53 +1319,32 @@ private:
         for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
         return !samp_.empty() && hi - lo >= 0.02f;
     }
-    void applyCmds() {
-        std::string pending;
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
-          pending.swap(floppyPending_); }
-        for (const Cmd& c : cmdsApply_) switch (c.t) {
-            case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
-            case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
-            case Cmd::HardReset:   cpu.hardReset(); break;
-            case Cmd::InsertFloppy:
-                if (!pending.empty() && mem.insertDisk(pending))
-                    floppyFlag_.store(true, std::memory_order_relaxed);
-                break;
-            case Cmd::EjectFloppy:
-                mem.ejectDisk();
-                floppyFlag_.store(false, std::memory_order_relaxed);
-                break;
-            // Engine swap between two runCycles() — an instruction
-            // boundary (the LcMachine precedent).
-            case Cmd::CpuEngine:
-                cpu.setEngine(c.a);
-                stEngine_.store(c.a, std::memory_order_relaxed);
-                break;
-        }
-        cmdsApply_.clear();
-        state.apply(mem, cpu);         // save/load between two quanta
+
+    void renderFrame(std::vector<uint32_t>& out, int& w, int& h) {
+        TobyVideo* tv = mem.toby();
+        w = tv ? tv->hres() : TobyVideo::W;
+        h = tv ? tv->vres() : TobyVideo::H;
+        if (tv) tv->raster(fb_);          // raster surface, see emulateQuantum()
+        else fb_.assign(size_t(w) * size_t(h), 0xFFFFFFFFu);
+        out.assign(fb_.begin(), fb_.end());
+        for (uint32_t& px : out) px |= 0xFF000000u;
     }
 
-    std::thread th_;
-    std::mutex cmdMu_;
-    std::vector<Cmd> cmds_, cmdsApply_;
-    std::mutex fbMu_;
-    std::vector<uint32_t> fbShared_;
-    int fbW_ = 0, fbH_ = 0;
-    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
-    mutable std::mutex jitMu_;
-    jit::Stats::Snapshot jitSnap_{};
-    std::atomic<uint32_t> stPc_{0};
-    std::atomic<long long> stClock_{0};
+    // The two IOPs' cycle counters are the visible sign that their firmware is
+    // running at all — the machine window shows them, and a frozen counter is
+    // the first thing to look at when ADB goes quiet.
+    void publishStatus() {
+        stOverlay_.store(mem.overlay(), std::memory_order_relaxed);
+        stSccPic_.store(mem.sccPic().cpu().cycleCount(), std::memory_order_relaxed);
+        stSwimPic_.store(mem.swimPic().cpu().cycleCount(), std::memory_order_relaxed);
+    }
+
+private:
+    // 60.15 Hz on a 40 MHz clock (the IIfx's OSS tick, not a round 60).
+    static constexpr int64_t kFrame = IIfxMemory::kCpuHz * 100 / 6015;
+
     std::atomic<bool> stOverlay_{true};
     std::atomic<long long> stSccPic_{0}, stSwimPic_{0};
-    int activeHold_ = 0;
-    int starve_ = 0;
-    int framesRun_ = 0;
-    std::chrono::steady_clock::time_point lastPub_{};
-    std::vector<uint32_t> fb_;
-    std::vector<float> samp_;
 };
 
 // ── Macintosh IIfx: OSS + two Apple PIC IOPs, 68030 @ 40 MHz ────────────
@@ -2039,63 +1628,14 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
 //     from the GUI thread to this one).
 // Under Emscripten there is no thread: the GUI frame calls stepTick()
 // inline — one code path, two drivers.
-struct LcMachine {
-    V8Memory& mem; Cpu030& cpu; V8Video& video; MacAudioHost& audioHost;
+struct LcMachine
+    : MachineHost<LcMachine, V8Memory, Cpu030, MacAudioHost> {
+    using Base = MachineHost<LcMachine, V8Memory, Cpu030, MacAudioHost>;
+    static constexpr bool kStereo = false;
+
+    V8Video& video;
     LcMachine(V8Memory& m, Cpu030& c, V8Video& v, MacAudioHost& a)
-        : mem(m), cpu(c), video(v), audioHost(a) {
-        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
-    }
-    // Any exit() while the thread runs (Xlib's default error handler exits
-    // behind GLFW's back) would otherwise destroy a joinable std::thread —
-    // an instant std::terminate. Joining here turns that into a clean stop.
-    ~LcMachine() { stop(); }
-
-    // Engine state + JIT gauges for the CPU menu (DafbMachine contract:
-    // the menu tick follows the MACHINE; the swap lands one queue trip
-    // later, on the machine thread).
-    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
-    jit::Stats::Snapshot jitStats() const {
-        std::lock_guard<std::mutex> l(jitMu_);
-        return jitSnap_;
-    }
-
-    std::atomic<bool> running{true}, turbo{true}, quit{false};
-
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense,
-                          CpuEngine, InsertFloppy, EjectFloppy } t;
-                 int a = 0, b = 0; };
-    void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
-
-    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
-    SaveStateSlot state;
-
-    // Floppy hot-swap (GUI → machine thread; the DafbMachine contract).
-    void requestInsertFloppy(std::string path) {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        floppyPending_ = std::move(path);
-        cmds_.push_back({Cmd::InsertFloppy});
-    }
-    void requestEjectFloppy() {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        cmds_.push_back({Cmd::EjectFloppy});
-    }
-    bool floppyInserted() const {
-        return floppyFlag_.load(std::memory_order_relaxed);
-    }
-    void setFloppyInserted(bool on) {
-        floppyFlag_.store(on, std::memory_order_relaxed);
-    }
-    std::string floppyPending_;              // guarded by cmdMu_
-    std::atomic<bool> floppyFlag_{false};
-
-    // Latest decoded frame (00RRGGBB, alpha forced — see the decode note).
-    // Returns false until the first publish.
-    bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
-        std::lock_guard<std::mutex> l(fbMu_);
-        if (fbShared_.empty()) return false;
-        out = fbShared_; w = fbW_; h = fbH_;
-        return true;
-    }
+        : Base(m, c, a), video(v) {}
 
     struct Status { uint32_t pc; long long clock; bool overlay, mmu, held;
                     uint8_t config, sense; };
@@ -2109,138 +1649,10 @@ struct LcMachine {
                  stSense_.load(std::memory_order_relaxed) };
     }
 
-    // One pacing tick (the former GUI-frame emulation block, verbatim
-    // logic). Returns how long the caller may sleep (µs) before the next
-    // tick — 0 = come straight back.
-    int stepTick() {
-        applyCmds();
-        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
-        int sleepUs = 0;
-        // Audio-clocked pacing (TODO § sound tempo wobble): while the guest
-        // streams sound, the emulation speed IS the tempo, so it must track
-        // the host DAC, not the host CPU. When sound was heard recently
-        // (activeHold_), each tick emulates just enough frames to keep the
-        // host ring near ~100 ms — the DAC's 22 254 Hz consumption paces the
-        // machine at real time and absorbs the 60.15 vs wall-clock drift
-        // with no resampler. Silence between notes is pushed too (pushRaw):
-        // it is part of the musical timeline. When no sound plays, the
-        // time-budgeted turbo runs (fast boot/Finder; gated push keeps the
-        // ring free of silence).
-        if (activeHold_ > 0 && audioHost.started()) {
-            int n = 0;
-            while (audioHost.buffered() < kTarget && n < 8) {
-                runOne();
-                if (drain()) activeHold_ = 90; else activeHold_--;
-                audioHost.pushRaw(samp_, 0);
-                n++;
-            }
-            if (n == 0) {
-                // Ring at target: real time says "no frame due yet". Sleep a
-                // hair and let the DAC drain — unless it stopped consuming
-                // entirely (unplugged device): after ~160 ms of that, force
-                // a frame so the machine never freezes.
-                if (++starve_ > 80) {
-                    runOne();
-                    if (drain()) activeHold_ = 90; else activeHold_--;
-                    starve_ = 0;
-                }
-                sleepUs = 2000;
-            } else starve_ = 0;
-        } else {
-            // Time-budgeted turbo: emulate in ≤10 ms bursts so commands and
-            // the published frame stay fresh; between bursts the GUI thread
-            // runs undisturbed on its own core. Without turbo, pace one
-            // frame per 60.15 Hz period.
-            auto t0 = std::chrono::steady_clock::now();
-            int n = 0;
-            do {
-                runOne();
-            } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
-                     std::chrono::steady_clock::now() - t0 <
-                         std::chrono::milliseconds(10));
-            if (drain()) {
-                activeHold_ = 90;                       // sound starts:
-                audioHost.pushFrame(samp_, 0);          // switch to pacing
-            }
-            if (!turbo.load(std::memory_order_relaxed)) {
-                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
-                                 std::chrono::steady_clock::now() - t0).count();
-                sleepUs = int(std::max<long long>(0, 16625 - spent));
-            }
-        }
-        publish();
-        return sleepUs;
-    }
+    // ── The platform half of the host contract ─────────────────────────────
+    int64_t frameCycles() const { return kFrame; }
 
-    void start() {
-#ifndef __EMSCRIPTEN__
-        th_ = std::thread([this] {
-            while (!quit.load(std::memory_order_relaxed)) {
-                int us = stepTick();
-                if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
-            }
-        });
-#endif
-    }
-    void stop() {
-#ifndef __EMSCRIPTEN__
-        quit.store(true);
-        if (th_.joinable()) th_.join();
-#endif
-    }
-
-    // Decode + hand over the frame and the status snapshot. Throttled: a
-    // tick that emulated nothing (audio ring full, pause) publishes at most
-    // ~60 Hz, so the 640×480 decode isn't re-run 500×/s during the pacing
-    // sleeps.
-    void publish(bool force = false) {
-        auto now = std::chrono::steady_clock::now();
-        if (!force && framesRun_ == 0 &&
-            now - lastPub_ < std::chrono::milliseconds(16)) return;
-        lastPub_ = now; framesRun_ = 0;
-        int hres, vres;
-        video.size(hres, vres);
-        // `fb_` is the RASTER SURFACE: runOne() has already decoded each row
-        // at the moment the beam scanned it. Catch up once more here so a
-        // paused or held machine still publishes a complete frame, then copy
-        // out — the surface itself must stay alpha-free, since the next
-        // frame overwrites only the rows the beam repaints.
-        video.raster(fb_, /*full=*/true);
-        // The decoders pack 00RRGGBB — alpha 0. ImGui renders textures with
-        // alpha blending on, so a 0 alpha draws fully transparent (black
-        // window background); force A=$FF before the BGRA upload.
-        fbPub_.assign(fb_.begin(), fb_.end());
-        for (uint32_t& px : fbPub_) px |= 0xFF000000u;
-        {
-            std::lock_guard<std::mutex> l(fbMu_);
-            fbShared_.swap(fbPub_); fbW_ = hres; fbH_ = vres;
-        }
-        stPc_.store(cpu.getPC(), std::memory_order_relaxed);
-        stClock_.store(cpu.getClock(), std::memory_order_relaxed);
-        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
-                               ((cpu.getTC() & 0x80000000) ? 2 : 0) |
-                               (mem.cpuHeld() ? 4 : 0)),
-                       std::memory_order_relaxed);
-        stConfig_.store(mem.ramConfig(), std::memory_order_relaxed);
-        // The sense byte is written on THIS thread (Cmd::Sense) and it is a
-        // multi-field update inside V8Memory (vidSpram_/vidSpramSaved_/
-        // montype_) — so it crosses to the GUI as an atomic like every other
-        // machine→GUI value, never by reaching into mem from the GUI thread.
-        stSense_.store(mem.monitorSense(), std::memory_order_relaxed);
-        {
-            std::lock_guard<std::mutex> l(jitMu_);
-            jitSnap_ = cpu.jit().stats().snapshot();
-        }
-    }
-
-private:
-    // CPU cycles per 60 Hz slice: 640×407 dots at C15M for the V8 machines,
-    // the true clock/60 for the Mac TV's C32M Tinker Bell (~2× the cycles).
-    const int kFrame = mem.cpuHz() == V8Memory::kCpuHz
-        ? 640 * 407 : int(mem.cpuHz() / 60);
-    static constexpr size_t kTarget = 2225;    // ~100 ms of 22 257 Hz sound
-
-    void runOne() {
+    void emulateQuantum() {
         // The raster catch-up rides the wire slicing: each row is decoded
         // once, when the beam scans it (LLE_VS_HLE §1.1, gate
         // v8_raster_test). Total work per frame is unchanged — it is the
@@ -2250,11 +1662,12 @@ private:
         else runQuantumWithWire(mem, cpu, kFrame, beam);
         framesRun_++;
     }
+
     // Drain the ASC samples produced by the last slice (22 257 Hz mono,
     // continuous — an empty FIFO repeats its stale byte) and report whether
     // they carry real sound (AC span, same gate as MacAudioHost::pushFrame).
     // The facade dispatches per model (Spice = Sonora EASC, mono L+R mix).
-    bool drain() {
+    bool drainAudio() {
         samp_.clear();
         while (mem.ascAvailable() > 0)
             samp_.push_back(float(mem.ascPop()) / 32768.0f);
@@ -2262,59 +1675,39 @@ private:
         for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
         return !samp_.empty() && hi - lo >= 0.02f;
     }
-    void applyCmds() {
-        std::string pending;
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
-          pending.swap(floppyPending_); }
-        for (const Cmd& c : cmdsApply_) switch (c.t) {
-            // V8Memory routes to the firmware AdbLine when the Egret LLE
-            // is active (POM68K_EGRET_LLE), else to the HLE's AdbBus.
-            case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
-            case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
-                               mem.keyEvent(uint8_t(c.a), c.b != 0); break;
-            case Cmd::HardReset:   cpu.hardReset(); break;
-            case Cmd::InsertFloppy:
-                if (!pending.empty() && mem.insertDisk(pending))
-                    floppyFlag_.store(true, std::memory_order_relaxed);
-                break;
-            case Cmd::EjectFloppy:
-                mem.ejectDisk();
-                floppyFlag_.store(false, std::memory_order_relaxed);
-                break;
-            case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
-            // Engine swap between two runCycles() — an instruction
-            // boundary (the DafbMachine precedent).
-            case Cmd::CpuEngine:
-                cpu.setEngine(c.a);
-                stEngine_.store(c.a, std::memory_order_relaxed);
-                break;
-        }
-        cmdsApply_.clear();
-        state.apply(mem, cpu);         // save/load between two quanta
+
+    void renderFrame(std::vector<uint32_t>& out, int& w, int& h) {
+        video.size(w, h);
+        // `fb_` is the RASTER SURFACE: emulateQuantum() already decoded each
+        // row at the moment the beam scanned it. Catch up once more here so a
+        // paused or held machine still publishes a complete frame, then copy
+        // out — the surface itself must stay alpha-free, since the next frame
+        // overwrites only the rows the beam repaints.
+        video.raster(fb_, /*full=*/true);
+        // The decoders pack 00RRGGBB — alpha 0. ImGui renders textures with
+        // alpha blending on, so a 0 alpha draws fully transparent (black
+        // window background); force A=$FF before the BGRA upload.
+        out.assign(fb_.begin(), fb_.end());
+        for (uint32_t& px : out) px |= 0xFF000000u;
     }
 
-    std::thread th_;
-    std::mutex cmdMu_;
-    std::vector<Cmd> cmds_, cmdsApply_;
-    std::mutex fbMu_;
-    std::vector<uint32_t> fbShared_;
-    int fbW_ = 0, fbH_ = 0;
-    std::atomic<uint32_t> stPc_{0};
-    std::atomic<long long> stClock_{0};
-    std::atomic<uint8_t> stFlags_{0};
+    void publishStatus() {
+        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
+                               ((cpu.getTC() & 0x80000000) ? 2 : 0) |
+                               (mem.cpuHeld() ? 4 : 0)),
+                       std::memory_order_relaxed);
+        stConfig_.store(mem.ramConfig(), std::memory_order_relaxed);
+        stSense_.store(mem.monitorSense(), std::memory_order_relaxed);
+    }
+
+private:
+    // CPU cycles per 60 Hz slice: 640×407 dots at C15M for the V8 machines,
+    // the true clock/60 for the Mac TV's C32M Tinker Bell (~2× the cycles).
+    const int kFrame = mem.cpuHz() == V8Memory::kCpuHz
+        ? 640 * 407 : int(mem.cpuHz() / 60);
+
     std::atomic<uint8_t> stConfig_{0};
     std::atomic<uint8_t> stSense_{0};   // monitor sense, machine → GUI
-    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
-    mutable std::mutex jitMu_;
-    jit::Stats::Snapshot jitSnap_{};
-    int activeHold_ = 0;           // machine frames of sound-recent state
-    int starve_ = 0;               // safety against a dead DAC
-    int framesRun_ = 0;            // frames emulated since the last publish
-    std::chrono::steady_clock::time_point lastPub_{};
-    std::vector<uint32_t> fb_;     // raster surface (no alpha — see publish)
-    std::vector<uint32_t> fbPub_;  // alpha'd copy handed to the GUI
-    std::vector<float> samp_;
 };
 
 // ── Mac LC II (O6): V8 + 68030, selected by a 512 KB ROM ────────────────
@@ -2734,58 +2127,18 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
 // Resolution comes from the ACTIVE Sonora modeline, monitor pick via the
 // sense buttons (2 = 512×384, 6 = 640×480) like the LC II.
 template <class Mem, class Cpu, class Video>
-struct SonoraStyleMachine {
-    Mem& mem; Cpu& cpu; Video& video; MacAudioHost& audioHost;
+struct SonoraStyleMachine
+    : MachineHost<SonoraStyleMachine<Mem, Cpu, Video>, Mem, Cpu, MacAudioHost> {
+    using Base = MachineHost<SonoraStyleMachine<Mem, Cpu, Video>, Mem, Cpu,
+                             MacAudioHost>;
+    using Base::mem; using Base::cpu; using Base::fb_; using Base::samp_;
+    using Base::framesRun_; using Base::stPc_; using Base::stClock_;
+    using Base::stFlags_;
+    static constexpr bool kStereo = false;
+
+    Video& video;
     SonoraStyleMachine(Mem& m, Cpu& c, Video& v, MacAudioHost& a)
-        : mem(m), cpu(c), video(v), audioHost(a) {
-        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
-    }
-    ~SonoraStyleMachine() { stop(); }
-
-    // Engine state + JIT gauges for the CPU menu (DafbMachine contract:
-    // the menu tick follows the MACHINE; the swap lands one queue trip
-    // later, on the machine thread).
-    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
-    jit::Stats::Snapshot jitStats() const {
-        std::lock_guard<std::mutex> l(jitMu_);
-        return jitSnap_;
-    }
-
-    std::atomic<bool> running{true}, turbo{true}, quit{false};
-
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, Sense,
-                          CpuEngine, InsertFloppy, EjectFloppy } t;
-                 int a = 0, b = 0; };
-    void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
-
-    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
-    SaveStateSlot state;
-
-    // Floppy hot-swap (GUI → machine thread; the DafbMachine contract).
-    void requestInsertFloppy(std::string path) {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        floppyPending_ = std::move(path);
-        cmds_.push_back({Cmd::InsertFloppy});
-    }
-    void requestEjectFloppy() {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        cmds_.push_back({Cmd::EjectFloppy});
-    }
-    bool floppyInserted() const {
-        return floppyFlag_.load(std::memory_order_relaxed);
-    }
-    void setFloppyInserted(bool on) {
-        floppyFlag_.store(on, std::memory_order_relaxed);
-    }
-    std::string floppyPending_;              // guarded by cmdMu_
-    std::atomic<bool> floppyFlag_{false};
-
-    bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
-        std::lock_guard<std::mutex> l(fbMu_);
-        if (fbShared_.empty()) return false;
-        out = fbShared_; w = fbW_; h = fbH_;
-        return true;
-    }
+        : Base(m, c, a), video(v) {}
 
     struct Status { uint32_t pc; long long clock; bool overlay, mmu, held;
                     uint8_t sense; };
@@ -2798,104 +2151,10 @@ struct SonoraStyleMachine {
                  stSense_.load(std::memory_order_relaxed) };
     }
 
-    int stepTick() {                    // LcMachine::stepTick, verbatim logic
-        applyCmds();
-        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
-        int sleepUs = 0;
-        if (activeHold_ > 0 && audioHost.started()) {
-            int n = 0;
-            while (audioHost.buffered() < kTarget && n < 8) {
-                runOne();
-                if (drain()) activeHold_ = 90; else activeHold_--;
-                audioHost.pushRaw(samp_, 0);
-                n++;
-            }
-            if (n == 0) {
-                if (++starve_ > 80) {
-                    runOne();
-                    if (drain()) activeHold_ = 90; else activeHold_--;
-                    starve_ = 0;
-                }
-                sleepUs = 2000;
-            } else starve_ = 0;
-        } else {
-            auto t0 = std::chrono::steady_clock::now();
-            int n = 0;
-            do {
-                runOne();
-            } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
-                     std::chrono::steady_clock::now() - t0 <
-                         std::chrono::milliseconds(10));
-            if (drain()) {
-                activeHold_ = 90;
-                audioHost.pushFrame(samp_, 0);
-            }
-            if (!turbo.load(std::memory_order_relaxed)) {
-                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
-                                 std::chrono::steady_clock::now() - t0).count();
-                sleepUs = int(std::max<long long>(0, 16625 - spent));
-            }
-        }
-        publish();
-        return sleepUs;
-    }
+    // ── The platform half of the host contract ─────────────────────────────
+    int64_t frameCycles() const { return kFrame; }
 
-    void start() {
-#ifndef __EMSCRIPTEN__
-        th_ = std::thread([this] {
-            while (!quit.load(std::memory_order_relaxed)) {
-                int us = stepTick();
-                if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
-            }
-        });
-#endif
-    }
-    void stop() {
-#ifndef __EMSCRIPTEN__
-        quit.store(true);
-        if (th_.joinable()) th_.join();
-#endif
-    }
-
-    void publish(bool force = false) {
-        auto now = std::chrono::steady_clock::now();
-        if (!force && framesRun_ == 0 &&
-            now - lastPub_ < std::chrono::milliseconds(16)) return;
-        lastPub_ = now; framesRun_ = 0;
-        int hres, vres;
-        video.size(hres, vres);
-        // `fb_` is the RASTER SURFACE — runOne() already decoded each row as
-        // the beam scanned it. Catch up once more so a paused or held
-        // machine still publishes a complete frame, then copy out: the
-        // surface itself stays alpha-free, since the next frame overwrites
-        // only the rows the beam repaints.
-        video.raster(fb_, /*full=*/true);
-        fbPub_.assign(fb_.begin(), fb_.end());
-        for (uint32_t& px : fbPub_) px |= 0xFF000000u;
-        {
-            std::lock_guard<std::mutex> l(fbMu_);
-            fbShared_.swap(fbPub_); fbW_ = hres; fbH_ = vres;
-        }
-        stPc_.store(cpu.getPC(), std::memory_order_relaxed);
-        stClock_.store(cpu.getClock(), std::memory_order_relaxed);
-        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
-                               ((cpu.getTC() & 0x80000000) ? 2 : 0) |
-                               (mem.cpuHeld() ? 4 : 0)),
-                       std::memory_order_relaxed);
-        // Machine-thread write (Cmd::Sense), so it must cross as an atomic —
-        // see LcMachine::publish.
-        stSense_.store(mem.monitorSense(), std::memory_order_relaxed);
-        {
-            std::lock_guard<std::mutex> l(jitMu_);
-            jitSnap_ = cpu.jit().stats().snapshot();
-        }
-    }
-
-private:
-    const int64_t kFrame = mem.cpuHz() / 60;   // true machine clock (33 MHz+)
-    static constexpr size_t kTarget = 2225;
-
-    void runOne() {
+    void emulateQuantum() {
         // Raster catch-up rides the wire slicing: each row is decoded once,
         // when the beam scans it (LLE_VS_HLE §1.1, VideoBeam.h). Same total
         // work per frame as the old whole-frame decode, correctly placed.
@@ -2904,7 +2163,8 @@ private:
         else runQuantumWithWire(mem, cpu, kFrame, beam);
         framesRun_++;
     }
-    bool drain() {
+
+    bool drainAudio() {
         samp_.clear();
         while (mem.ascAvailable() > 0)
             samp_.push_back(float(mem.ascPop()) / 32768.0f);
@@ -2912,55 +2172,33 @@ private:
         for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
         return !samp_.empty() && hi - lo >= 0.02f;
     }
-    void applyCmds() {
-        std::string pending;
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
-          pending.swap(floppyPending_); }
-        for (const Cmd& c : cmdsApply_) switch (c.t) {
-            case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
-            case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
-            case Cmd::HardReset:   cpu.hardReset(); break;
-            case Cmd::InsertFloppy:
-                if (!pending.empty() && mem.insertDisk(pending))
-                    floppyFlag_.store(true, std::memory_order_relaxed);
-                break;
-            case Cmd::EjectFloppy:
-                mem.ejectDisk();
-                floppyFlag_.store(false, std::memory_order_relaxed);
-                break;
-            case Cmd::Sense:       mem.setMonitorSense(uint8_t(c.a)); cpu.hardReset(); break;
-            // Engine swap between two runCycles() — an instruction
-            // boundary (the DafbMachine precedent).
-            case Cmd::CpuEngine:
-                cpu.setEngine(c.a);
-                stEngine_.store(c.a, std::memory_order_relaxed);
-                break;
-        }
-        cmdsApply_.clear();
-        state.apply(mem, cpu);         // save/load between two quanta
+
+    void renderFrame(std::vector<uint32_t>& out, int& w, int& h) {
+        video.size(w, h);
+        // `fb_` is the RASTER SURFACE — emulateQuantum() already decoded each
+        // row as the beam scanned it. Catch up once more so a paused or held
+        // machine still publishes a complete frame, then copy out: the
+        // surface itself stays alpha-free, since the next frame overwrites
+        // only the rows the beam repaints.
+        video.raster(fb_, /*full=*/true);
+        out.assign(fb_.begin(), fb_.end());
+        for (uint32_t& px : out) px |= 0xFF000000u;
     }
 
-    std::thread th_;
-    std::mutex cmdMu_;
-    std::vector<Cmd> cmds_, cmdsApply_;
-    std::mutex fbMu_;
-    std::vector<uint32_t> fbShared_;
-    int fbW_ = 0, fbH_ = 0;
-    std::atomic<uint32_t> stPc_{0};
-    std::atomic<long long> stClock_{0};
-    std::atomic<uint8_t> stFlags_{0};
+    void publishStatus() {
+        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
+                               ((cpu.getTC() & 0x80000000) ? 2 : 0) |
+                               (mem.cpuHeld() ? 4 : 0)),
+                       std::memory_order_relaxed);
+        // Machine-thread write (Cmd::Sense), so it must cross as an atomic —
+        // see the Sense arm in MachineHost::applyCmds.
+        stSense_.store(mem.monitorSense(), std::memory_order_relaxed);
+    }
+
+private:
+    const int64_t kFrame = mem.cpuHz() / 60;   // true machine clock (33 MHz+)
+
     std::atomic<uint8_t> stSense_{0};   // monitor sense, machine → GUI
-    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
-    mutable std::mutex jitMu_;
-    jit::Stats::Snapshot jitSnap_{};
-    int activeHold_ = 0;
-    int starve_ = 0;
-    int framesRun_ = 0;
-    std::chrono::steady_clock::time_point lastPub_{};
-    std::vector<uint32_t> fb_;     // raster surface (no alpha — see publish)
-    std::vector<uint32_t> fbPub_;  // alpha'd copy handed to the GUI
-    std::vector<float> samp_;
 };
 
 using Lc3Machine = SonoraStyleMachine<SonoraMemory, SonoraCpu, SonoraVideo>;
@@ -3882,58 +3120,15 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
 // (Q605Memory + Cpu040) and the Centris 610/650 (CentrisMemory + CentrisCpu).
 // Both expose the same surface, so one template drives both.
 template <class Mem, class Cpu>
-struct DafbMachine {
-    Mem& mem; Cpu& cpu; MacAudioHost& audioHost;
-    DafbMachine(Mem& m, Cpu& c, MacAudioHost& a)
-        : mem(m), cpu(c), audioHost(a) {
-        // POM68K_CPU_ENGINE may have started us on the JIT; mirror whatever
-        // the CPU actually built itself with so the menu tick is honest.
-        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
-    }
-    ~DafbMachine() { stop(); }
-
-    std::atomic<bool> running{true}, turbo{true}, quit{false};
-
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset, InsertFloppy,
-                          EjectFloppy, InsertBay, EjectBay, CpuEngine } t;
-                 int a = 0, b = 0; };
-    void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
-
-    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
-    SaveStateSlot state;
-    void requestInsertFloppy(std::string path) {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        floppyPending_ = std::move(path);
-        cmds_.push_back({Cmd::InsertFloppy});
-    }
-    void requestEjectFloppy() {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        cmds_.push_back({Cmd::EjectFloppy});
-    }
-    // CD-bay media in/out (same queue discipline as the floppy: the path
-    // travels under cmdMu_, the machine thread applies between quanta).
-    void requestInsertBay(int id, std::string path) {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        bayPending_ = std::move(path);
-        cmds_.push_back({Cmd::InsertBay, id});
-    }
-    void requestEjectBay(int id) {
-        std::lock_guard<std::mutex> l(cmdMu_);
-        cmds_.push_back({Cmd::EjectBay, id});
-    }
-    bool floppyInserted() const {
-        return floppyFlag_.load(std::memory_order_relaxed);
-    }
-    void setFloppyInserted(bool on) {
-        floppyFlag_.store(on, std::memory_order_relaxed);
-    }
-
-    bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
-        std::lock_guard<std::mutex> l(fbMu_);
-        if (fbShared_.empty()) return false;
-        out = fbShared_; w = fbW_; h = fbH_;
-        return true;
-    }
+struct DafbMachine
+    : MachineHost<DafbMachine<Mem, Cpu>, Mem, Cpu, MacAudioHost> {
+    using Base = MachineHost<DafbMachine<Mem, Cpu>, Mem, Cpu, MacAudioHost>;
+    using Base::Base;
+    using Base::mem; using Base::cpu; using Base::fb_; using Base::samp_;
+    using Base::framesRun_; using Base::stPc_; using Base::stClock_;
+    using Base::stFlags_;
+    // The IOSB ASC is the one stereo sound path in the tree.
+    static constexpr bool kStereo = true;
 
     struct Status { uint32_t pc; long long clock; bool overlay, mmu, held; int w, h, depth; };
     Status status() const {
@@ -3947,196 +3142,77 @@ struct DafbMachine {
                  stDepth_.load(std::memory_order_relaxed) };
     }
 
-    // Which engine the machine thread is actually running (the menu's tick
-    // must follow the machine, not the click — the swap happens one queue
-    // round-trip later).
-    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
-    // Lock-free copy of the JIT gauges. Published at the same ~16 ms cadence
-    // as the framebuffer, which is exactly what a statistics window wants.
-    jit::Stats::Snapshot jitStats() const {
-        std::lock_guard<std::mutex> l(jitMu_);
-        return jitSnap_;
-    }
+    // ── The platform half of the host contract ─────────────────────────────
+    int64_t frameCycles() const { return kFrame; }
 
-    // Same audio-clocked pacing as LcMachine: while the guest streams sound
-    // the emulation speed IS the tempo, so it tracks the host DAC via the ASC
-    // ring; otherwise a time-budgeted turbo runs (fast boot/Finder).
-    int stepTick() {
-        applyCmds();
-        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
-        int sleepUs = 0;
-        if (activeHold_ > 0 && audioHost.started()) {
-            int n = 0;
-            while (audioHost.buffered() < kTarget && n < 8) {
-                runOne();
-                if (drain()) activeHold_ = 90; else activeHold_--;
-                audioHost.pushRawStereo(samp_, 0);
-                n++;
-            }
-            if (n == 0) {
-                if (++starve_ > 80) {
-                    runOne();
-                    if (drain()) activeHold_ = 90; else activeHold_--;
-                    starve_ = 0;
-                }
-                sleepUs = 2000;
-            } else starve_ = 0;
-        } else {
-            // Time-budgeted turbo: emulate in ≤10 ms bursts so commands and the
-            // published frame stay fresh; without turbo, pace ~60 Hz.
-            auto t0 = std::chrono::steady_clock::now();
-            int n = 0;
-            do {
-                runOne();
-            } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
-                     std::chrono::steady_clock::now() - t0 <
-                         std::chrono::milliseconds(10));
-            if (drain()) {
-                activeHold_ = 90;                       // sound starts:
-                audioHost.pushFrameStereo(samp_, 0);    // switch to pacing
-            }
-            if (!turbo.load(std::memory_order_relaxed)) {
-                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
-                                 std::chrono::steady_clock::now() - t0).count();
-                sleepUs = int(std::max<long long>(0, 16625 - spent));
+    void emulateQuantum() {
+        newFrameGeom();
+        auto beam = [this] { rasterBeam(); };
+        if (mem.cpuHeld()) { mem.tick(kFrame); beam(); }
+        else runQuantumWithWire(mem, cpu, kFrame, beam);
+        framesRun_++;
+        // POM68K_KEY_TRACE heartbeat: proves the machine thread and the
+        // guest are still advancing (~1 s of emulated time per line).
+        static const bool hb = std::getenv("POM68K_KEY_TRACE") != nullptr;
+        if (hb) {
+            static long n = 0;
+            static uint32_t lastPc = 0, stable = 0;
+            static bool dumped = false;
+            if (++n % 60 == 0) {
+                const uint32_t pc = cpu.getPC();
+                std::fprintf(stderr, "[hb] frames=%ld clock=%lld pc=%08X\n",
+                             n, (long long)cpu.getClock(), pc);
+                // Same 64-byte window for 5 consecutive beats (~5 s) in RAM:
+                // dump the spin loop once so it can be disassembled.
+                if (pc < 0x40000000 && (pc >> 6) == (lastPc >> 6)) {
+                    if (++stable == 5 && !dumped) {
+                        dumped = true;
+                        const uint32_t base = (pc & ~15u) - 16;
+                        std::fprintf(stderr, "[hb] spin dump @%08X:", base);
+                        for (uint32_t i = 0; i < 48; i++)
+                            std::fprintf(stderr, "%s%02X", (i % 16) ? " " :
+                                         "\n[hb]   ", mem.peek8(base + i));
+                        std::fprintf(stderr, "\n");
+                    }
+                } else { stable = 0; }
+                lastPc = pc;
             }
         }
-        publish();
-        return sleepUs;
     }
 
-    void start() {
-#ifndef __EMSCRIPTEN__
-        th_ = std::thread([this] {
-            while (!quit.load(std::memory_order_relaxed)) {
-                int us = stepTick();
-                if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
-            }
-        });
-#endif
-    }
-    void stop() {
-#ifndef __EMSCRIPTEN__
-        quit.store(true);
-        if (th_.joinable()) th_.join();
-#endif
-    }
-
-    // ── Freeze probe (POM68K_FREEZE_PROBE=1) ──
-    // A guest that looks frozen while the CPU keeps executing is either
-    // spinning in a loop or stuck in an interrupt handler that never
-    // returns. From outside the two are identical, and telling them apart
-    // IS the diagnosis. Sample PC + SR at the publish rate and print the
-    // distribution every ~2 s: a live guest spreads over hundreds of
-    // addresses, a wedged one collapses onto one or two. SR answers the
-    // rest — supervisor bit ($2000) and the interrupt mask (bits 8-10):
-    // mask 7 in supervisor on a tight PC range means an interrupt handler
-    // that never rearmed, which no guest-side UI action can recover from.
-    void freezeProbe(uint32_t pc, uint16_t sr) {
-        static const bool on = std::getenv("POM68K_FREEZE_PROBE") != nullptr;
-        if (!on) return;
-        probeHist_[pc]++;
-        probeSr_ = sr;
-        if (++probeSamples_ < 125) return;          // ~2 s at 16 ms
-        std::vector<std::pair<uint32_t, int>> top(probeHist_.begin(),
-                                                  probeHist_.end());
-        std::sort(top.begin(), top.end(),
-                  [](const auto& a, const auto& b) { return a.second > b.second; });
-        std::fprintf(stderr, "[freeze] %d samples, %zu distinct PC  SR=$%04X "
-                     "(%s, IPL mask %u)\n", probeSamples_, probeHist_.size(),
-                     probeSr_, (probeSr_ & 0x2000) ? "supervisor" : "user",
-                     unsigned((probeSr_ >> 8) & 7));
-        for (size_t i = 0; i < top.size() && i < 4; i++)
-            std::fprintf(stderr, "[freeze]   PC=$%08X  %d× (%d%%)\n",
-                         top[i].first, top[i].second,
-                         top[i].second * 100 / probeSamples_);
-        // Collapsed onto a handful of addresses = a real spin, not a busy
-        // stretch. Dump the loop body and the register file: what the loop
-        // polls (which address, which bit) is the whole answer, and a spin
-        // waiting on a flag that never sets names the subsystem that owes
-        // it. Disassembling live RAM is the only way here — the code is a
-        // driver loaded into the system heap, absent from the ROM.
-        // Dump once per *loop*, not once per run: boot legitimately spins
-        // (ROM device polls) long before the failure under study, and a
-        // single global one-shot is always spent on the wrong one. Two
-        // dominant PCs within 64 bytes are the same loop; anything further
-        // is a new one and earns its own dump, capped at 8.
-        bool fresh = true;
-        // Signed compare: seen - 64 wraps for a spin PC below $40, which made
-        // the neighbourhood test unable to suppress a redump there.
-        for (uint32_t seen : probeDumped_) {
-            const int64_t d = int64_t(top[0].first) - int64_t(seen);
-            if (d > -64 && d < 64) fresh = false;
+    // Drain interleaved IOSB ASC stereo frames and report real AC content.
+    bool drainAudio() {
+        samp_.clear();
+        int16_t left, right;
+        while (mem.asc().popStereo(left, right)) {
+            samp_.push_back(float(left) / 32768.0f);
+            samp_.push_back(float(right) / 32768.0f);
         }
-        if (probeHist_.size() <= 8 && fresh && probeDumped_.size() < 8) {
-            probeDumped_.push_back(top[0].first);
-            // Window = top[0] plus only the dominant PCs that belong to the
-            // SAME loop (within 64 bytes). Spanning min..max of the whole
-            // top-4 is what turns one stray far-away sample into millions of
-            // disassembly lines.
-            uint32_t lo = top[0].first, hi = top[0].first;
-            for (size_t i = 1; i < top.size() && i < 4; i++) {
-                if (top[i].first + 64 < top[0].first ||
-                    top[i].first > top[0].first + 64) continue;
-                lo = std::min(lo, top[i].first);
-                hi = std::max(hi, top[i].first);
-            }
-            // Clamp, don't wrap: a spin PC below $18 sent lo to ~$FFFFFFE8,
-            // so the loop below never ran and the dump was silently empty —
-            // and the PC was recorded as dumped, so it was never retried.
-            lo = (lo > 24 ? lo - 24 : 0) & ~1u;
-            std::fprintf(stderr, "[freeze] spin loop at $%08X — disassembly:\n",
-                         top[0].first);
-            char line[256];
-            for (uint32_t a = lo; a < hi + 24;) {
-                int n = cpu.disassemble(line, a);
-                std::fprintf(stderr, "[freeze]   %c $%08X  %s\n",
-                             a == top[0].first ? '>' : ' ', a, line);
-                a += uint32_t(n > 0 ? n : 2);
-            }
-            for (int i = 0; i < 8; i++)
-                std::fprintf(stderr, "[freeze]   D%d=$%08X  A%d=$%08X\n", i,
-                             cpu.getD(i), i, cpu.getA(i));
-            std::fprintf(stderr, "[freeze]   SP=$%08X  ISP=$%08X\n",
-                         cpu.getSP(), cpu.getISP());
-        }
-        probeHist_.clear();
-        probeSamples_ = 0;
+        float lo = 1.f, hi = -1.f;
+        for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
+        return !samp_.empty() && hi - lo >= 0.02f;
     }
-    std::vector<uint32_t> probeDumped_;
-    std::map<uint32_t, int> probeHist_;
-    int probeSamples_ = 0;
-    uint16_t probeSr_ = 0;
 
-    void publish(bool force = false) {
-        auto now = std::chrono::steady_clock::now();
-        if (!force && framesRun_ == 0 &&
-            now - lastPub_ < std::chrono::milliseconds(16)) return;
-        lastPub_ = now; framesRun_ = 0;
-        // `fb_` is the RASTER SURFACE — runOne() decoded each row as the
-        // beam scanned it. Catch up once more so a paused or held machine
-        // still publishes a complete frame.
+    void renderFrame(std::vector<uint32_t>& out, int& w, int& h) {
+        // `fb_` is the RASTER SURFACE — emulateQuantum() decoded each row as
+        // the beam scanned it. Catch up once more so a paused or held machine
+        // still publishes a complete frame. decodeRows() already forced the
+        // alpha byte, so the copy out needs no fixup.
         newFrameGeom();
         rasterBeam(true);
-        const int w = geom_.w, h = geom_.h, depth = geom_.depth;
-        {
-            std::lock_guard<std::mutex> l(fbMu_);
-            fbShared_ = fb_; fbW_ = w; fbH_ = h;
-        }
-        stPc_.store(cpu.getPC(), std::memory_order_relaxed);
-        stClock_.store(cpu.getClock(), std::memory_order_relaxed);
+        w = geom_.w; h = geom_.h;
+        out.assign(fb_.begin(), fb_.end());
+    }
+
+    void publishStatus() {
         stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
                                ((cpu.getTC040() & 0x8000) ? 2 : 0) |
                                (mem.cpuHeld() ? 4 : 0)),
                        std::memory_order_relaxed);
         freezeProbe(cpu.getPC(), cpu.getSR());
-        stW_.store(w, std::memory_order_relaxed);
-        stH_.store(h, std::memory_order_relaxed);
-        stDepth_.store(depth, std::memory_order_relaxed);
-        {
-            std::lock_guard<std::mutex> l(jitMu_);
-            jitSnap_ = cpu.jit().stats().snapshot();
-        }
+        stW_.store(geom_.w, std::memory_order_relaxed);
+        stH_.store(geom_.h, std::memory_order_relaxed);
+        stDepth_.store(geom_.depth, std::memory_order_relaxed);
     }
 
     // Decode the Q605 framebuffer (VRAM at $F9000000) into 00RRGGBB. Screen
@@ -4156,12 +3232,6 @@ struct DafbMachine {
                    off != o.off || stride != o.stride;
         }
     };
-
-    // (There is no whole-frame `decode()` here on purpose. The other eight
-    // decoders keep one because tests and screenshot paths call it; this
-    // one lived only inside publish(), which now goes through the raster
-    // surface, so a `decode()` would be dead code. A still is
-    // `newFrameGeom(); rasterBeam(true);`.)
 
     Geom resolveGeom() {
         int w = 0, h = 0, depth = 0;
@@ -4258,15 +3328,6 @@ struct DafbMachine {
         }
     }
 
-private:
-    // One 60 Hz emulation quantum (25 MHz / 60 ≈ 416 667 cycles). During the
-    // Cuda power-on hold the CPU is parked, so just tick the peripherals.
-    // Derived, not hardcoded: this template is shared by Q605 (25 MHz),
-    // Centris/Quadra 6x0-800 (20/25/33.33) and Q630 (33), so a fixed 25 MHz
-    // quantum ran the 33 MHz boards ~24 % slow and the Centris 610 ~25 % fast —
-    // and fed the same wrong budget to the LLE MCU seconds counter.
-    const int kFrame = int(mem.cpuHz() / 60);
-    static constexpr size_t kTarget = 2225;    // ~100 ms of 22 257 Hz sound
     // Advance the beam off the video cell's own frame accumulator (DAFB's
     // Swatch clock, or Valkyrie's) and decode the rows it has crossed —
     // each visible row rendered once, when it is scanned out (LLE_VS_HLE
@@ -4302,124 +3363,99 @@ private:
         }
     }
 
-    void runOne() {
-        newFrameGeom();
-        auto beam = [this] { rasterBeam(); };
-        if (mem.cpuHeld()) { mem.tick(kFrame); beam(); }
-        else runQuantumWithWire(mem, cpu, kFrame, beam);
-        framesRun_++;
-        // POM68K_KEY_TRACE heartbeat: proves the machine thread and the
-        // guest are still advancing (~1 s of emulated time per line).
-        static const bool hb = std::getenv("POM68K_KEY_TRACE") != nullptr;
-        if (hb) {
-            static long n = 0;
-            static uint32_t lastPc = 0, stable = 0;
-            static bool dumped = false;
-            if (++n % 60 == 0) {
-                const uint32_t pc = cpu.getPC();
-                std::fprintf(stderr, "[hb] frames=%ld clock=%lld pc=%08X\n",
-                             n, (long long)cpu.getClock(), pc);
-                // Same 64-byte window for 5 consecutive beats (~5 s) in RAM:
-                // dump the spin loop once so it can be disassembled.
-                if (pc < 0x40000000 && (pc >> 6) == (lastPc >> 6)) {
-                    if (++stable == 5 && !dumped) {
-                        dumped = true;
-                        const uint32_t base = (pc & ~15u) - 16;
-                        std::fprintf(stderr, "[hb] spin dump @%08X:", base);
-                        for (uint32_t i = 0; i < 48; i++)
-                            std::fprintf(stderr, "%s%02X", (i % 16) ? " " :
-                                         "\n[hb]   ", mem.peek8(base + i));
-                        std::fprintf(stderr, "\n");
-                    }
-                } else { stable = 0; }
-                lastPc = pc;
+    // ── Freeze probe (POM68K_FREEZE_PROBE=1) ──
+    // A guest that looks frozen while the CPU keeps executing is either
+    // spinning in a loop or stuck in an interrupt handler that never
+    // returns. From outside the two are identical, and telling them apart
+    // IS the diagnosis. Sample PC + SR at the publish rate and print the
+    // distribution every ~2 s: a live guest spreads over hundreds of
+    // addresses, a wedged one collapses onto one or two. SR answers the
+    // rest — supervisor bit ($2000) and the interrupt mask (bits 8-10):
+    // mask 7 in supervisor on a tight PC range means an interrupt handler
+    // that never rearmed, which no guest-side UI action can recover from.
+    void freezeProbe(uint32_t pc, uint16_t sr) {
+        static const bool on = std::getenv("POM68K_FREEZE_PROBE") != nullptr;
+        if (!on) return;
+        probeHist_[pc]++;
+        probeSr_ = sr;
+        if (++probeSamples_ < 125) return;          // ~2 s at 16 ms
+        std::vector<std::pair<uint32_t, int>> top(probeHist_.begin(),
+                                                  probeHist_.end());
+        std::sort(top.begin(), top.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+        std::fprintf(stderr, "[freeze] %d samples, %zu distinct PC  SR=$%04X "
+                     "(%s, IPL mask %u)\n", probeSamples_, probeHist_.size(),
+                     probeSr_, (probeSr_ & 0x2000) ? "supervisor" : "user",
+                     unsigned((probeSr_ >> 8) & 7));
+        for (size_t i = 0; i < top.size() && i < 4; i++)
+            std::fprintf(stderr, "[freeze]   PC=$%08X  %d× (%d%%)\n",
+                         top[i].first, top[i].second,
+                         top[i].second * 100 / probeSamples_);
+        // Collapsed onto a handful of addresses = a real spin, not a busy
+        // stretch. Dump the loop body and the register file: what the loop
+        // polls (which address, which bit) is the whole answer, and a spin
+        // waiting on a flag that never sets names the subsystem that owes
+        // it. Disassembling live RAM is the only way here — the code is a
+        // driver loaded into the system heap, absent from the ROM.
+        // Dump once per *loop*, not once per run: boot legitimately spins
+        // (ROM device polls) long before the failure under study, and a
+        // single global one-shot is always spent on the wrong one. Two
+        // dominant PCs within 64 bytes are the same loop; anything further
+        // is a new one and earns its own dump, capped at 8.
+        bool fresh = true;
+        // Signed compare: seen - 64 wraps for a spin PC below $40, which made
+        // the neighbourhood test unable to suppress a redump there.
+        for (uint32_t seen : probeDumped_) {
+            const int64_t d = int64_t(top[0].first) - int64_t(seen);
+            if (d > -64 && d < 64) fresh = false;
+        }
+        if (probeHist_.size() <= 8 && fresh && probeDumped_.size() < 8) {
+            probeDumped_.push_back(top[0].first);
+            // Window = top[0] plus only the dominant PCs that belong to the
+            // SAME loop (within 64 bytes). Spanning min..max of the whole
+            // top-4 is what turns one stray far-away sample into millions of
+            // disassembly lines.
+            uint32_t lo = top[0].first, hi = top[0].first;
+            for (size_t i = 1; i < top.size() && i < 4; i++) {
+                if (top[i].first + 64 < top[0].first ||
+                    top[i].first > top[0].first + 64) continue;
+                lo = std::min(lo, top[i].first);
+                hi = std::max(hi, top[i].first);
             }
+            // Clamp, don't wrap: a spin PC below $18 sent lo to ~$FFFFFFE8,
+            // so the loop below never ran and the dump was silently empty —
+            // and the PC was recorded as dumped, so it was never retried.
+            lo = (lo > 24 ? lo - 24 : 0) & ~1u;
+            std::fprintf(stderr, "[freeze] spin loop at $%08X — disassembly:\n",
+                         top[0].first);
+            char line[256];
+            for (uint32_t a = lo; a < hi + 24;) {
+                int n = cpu.disassemble(line, a);
+                std::fprintf(stderr, "[freeze]   %c $%08X  %s\n",
+                             a == top[0].first ? '>' : ' ', a, line);
+                a += uint32_t(n > 0 ? n : 2);
+            }
+            for (int i = 0; i < 8; i++)
+                std::fprintf(stderr, "[freeze]   D%d=$%08X  A%d=$%08X\n", i,
+                             cpu.getD(i), i, cpu.getA(i));
+            std::fprintf(stderr, "[freeze]   SP=$%08X  ISP=$%08X\n",
+                         cpu.getSP(), cpu.getISP());
         }
-    }
-    // Drain interleaved IOSB ASC stereo frames and report real AC content.
-    bool drain() {
-        samp_.clear();
-        int16_t left, right;
-        while (mem.asc().popStereo(left, right)) {
-            samp_.push_back(float(left) / 32768.0f);
-            samp_.push_back(float(right) / 32768.0f);
-        }
-        float lo = 1.f, hi = -1.f;
-        for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
-        return !samp_.empty() && hi - lo >= 0.02f;
-    }
-    void applyCmds() {
-        // Take the pending path out UNDER the lock: the GUI thread reassigns
-        // floppyPending_ (under cmdMu_) while this thread was reading it by
-        // const& through the milliseconds of file I/O in insertDisk() — a
-        // use-after-free on the second pick from the Disques menu.
-        std::string pending, bayPending;
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_);
-          pending.swap(floppyPending_); bayPending.swap(bayPending_); }
-        for (const Cmd& c : cmdsApply_) switch (c.t) {
-            // Q605Memory routes to the firmware AdbLine when the Cuda LLE
-            // is active (POM68K_CUDA_LLE), else to the Egret HLE's AdbBus.
-            case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            case Cmd::MouseButton: mem.mouseButton(c.b != 0, c.a); break;
-            case Cmd::Key:         keyTrace("apply", uint8_t(c.a), c.b != 0);
-                               mem.keyEvent(uint8_t(c.a), c.b != 0); break;
-            case Cmd::HardReset:   cpu.hardReset(); break;
-            case Cmd::InsertFloppy:
-                if (!pending.empty() && mem.insertDisk(pending))
-                    floppyFlag_.store(true, std::memory_order_relaxed);
-                break;
-            case Cmd::EjectFloppy:
-                mem.ejectDisk();
-                floppyFlag_.store(false, std::memory_order_relaxed);
-                break;
-            // Only Q605Memory carries the CD-bay hooks so far; the other
-            // 040 memories compile this template too, hence the requires.
-            case Cmd::InsertBay:
-                if constexpr (requires { mem.insertBayMedia(1, bayPending); }) {
-                    if (!bayPending.empty()) mem.insertBayMedia(c.a, bayPending);
-                }
-                break;
-            case Cmd::EjectBay:
-                if constexpr (requires { mem.ejectBayMedia(1); })
-                    mem.ejectBayMedia(c.a);
-                break;
-            // Switching execution engines. applyCmds() is the first
-            // statement of stepTick(), i.e. strictly between two calls to
-            // runCycles() — so the swap always lands on an instruction
-            // boundary and needs no lock of its own.
-            case Cmd::CpuEngine:
-                cpu.setEngine(c.a);
-                stEngine_.store(c.a, std::memory_order_relaxed);
-                break;
-        }
-        cmdsApply_.clear();
-        state.apply(mem, cpu);         // save/load between two quanta
+        probeHist_.clear();
+        probeSamples_ = 0;
     }
 
-    std::thread th_;
-    std::mutex cmdMu_;
-    std::vector<Cmd> cmds_, cmdsApply_;
-    std::string floppyPending_;
-    std::string bayPending_;                 // CD-bay path, guarded by cmdMu_
-    std::atomic<bool> floppyFlag_{false};
-    std::mutex fbMu_;
-    std::vector<uint32_t> fbShared_;
-    int fbW_ = 0, fbH_ = 0;
-    std::atomic<uint32_t> stPc_{0};
-    std::atomic<long long> stClock_{0};
-    std::atomic<uint8_t> stFlags_{0};
+private:
+    const int kFrame = int(mem.cpuHz() / 60);
+
     std::atomic<int> stW_{0}, stH_{0}, stDepth_{0};
-    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
-    mutable std::mutex jitMu_;
-    jit::Stats::Snapshot jitSnap_{};
-    int framesRun_ = 0;
-    int activeHold_ = 0;           // machine frames of sound-recent state
-    int starve_ = 0;               // safety against a dead DAC
-    std::chrono::steady_clock::time_point lastPub_{};
-    std::vector<uint32_t> fb_;     // raster surface (alpha already forced)
     Geom geom_;                    // geometry the current frame is scanned with
     VideoBeam beam_;               // not serialized: pure cache
-    std::vector<float> samp_;
+
+    std::vector<uint32_t> probeDumped_;
+    std::map<uint32_t, int> probeHist_;
+    int probeSamples_ = 0;
+    uint16_t probeSr_ = 0;
 };
 
 using QuadraMachine  = DafbMachine<Q605Memory, Cpu040>;
@@ -4464,11 +3500,20 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
     else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
     // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
-    // SCSI remains the default boot path; a floppy is just media presence for the GUI.
+    // "SCSI remains the default boot path" was the intent and NOT what the code
+    // did: a Mac boots whatever medium is in the drive at power-on, so the
+    // convenience scan of disks35/ put System 6.0.5 in the SuperDrive and every
+    // 040 machine came up on "This startup disk will not work on this Macintosh
+    // model" instead of the Finder. Seen on screen 2026-08-09; no gate could
+    // see it, because no gate auto-inserts — this path exists only in the GUI.
+    // So the scan now runs ONLY when there is no SCSI disk to boot. An explicit
+    // POM68K_FLOPPY is an instruction, not a convenience, and is still honoured
+    // either way; the Disques window hot-swaps at any time (the Mac II and IIfx
+    // loops have always worked this way).
     std::string floppyPath;
     if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
-    if (floppyPath.empty()) floppyPath = findPath("disks35/Disk605.dsk");
-    if (floppyPath.empty()) floppyPath = findPath("disks35/quadra.img");
+    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/Disk605.dsk");
+    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/quadra.img");
     static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
     if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
     // Secondary volumes (argv[3..] → SCSI IDs 1..6).
@@ -4812,11 +3857,20 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
     else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
     // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
-    // SCSI remains the default boot path; a floppy is just media presence for the GUI.
+    // "SCSI remains the default boot path" was the intent and NOT what the code
+    // did: a Mac boots whatever medium is in the drive at power-on, so the
+    // convenience scan of disks35/ put System 6.0.5 in the SuperDrive and every
+    // 040 machine came up on "This startup disk will not work on this Macintosh
+    // model" instead of the Finder. Seen on screen 2026-08-09; no gate could
+    // see it, because no gate auto-inserts — this path exists only in the GUI.
+    // So the scan now runs ONLY when there is no SCSI disk to boot. An explicit
+    // POM68K_FLOPPY is an instruction, not a convenience, and is still honoured
+    // either way; the Disques window hot-swaps at any time (the Mac II and IIfx
+    // loops have always worked this way).
     std::string floppyPath;
     if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
-    if (floppyPath.empty()) floppyPath = findPath("disks35/Disk605.dsk");
-    if (floppyPath.empty()) floppyPath = findPath("disks35/quadra.img");
+    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/Disk605.dsk");
+    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/quadra.img");
     static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
     if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
     // Secondary volumes (argv[3..] → SCSI IDs 1..6).
@@ -5157,11 +4211,20 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
     else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
     // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
-    // SCSI remains the default boot path; a floppy is just media presence for the GUI.
+    // "SCSI remains the default boot path" was the intent and NOT what the code
+    // did: a Mac boots whatever medium is in the drive at power-on, so the
+    // convenience scan of disks35/ put System 6.0.5 in the SuperDrive and every
+    // 040 machine came up on "This startup disk will not work on this Macintosh
+    // model" instead of the Finder. Seen on screen 2026-08-09; no gate could
+    // see it, because no gate auto-inserts — this path exists only in the GUI.
+    // So the scan now runs ONLY when there is no SCSI disk to boot. An explicit
+    // POM68K_FLOPPY is an instruction, not a convenience, and is still honoured
+    // either way; the Disques window hot-swaps at any time (the Mac II and IIfx
+    // loops have always worked this way).
     std::string floppyPath;
     if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
-    if (floppyPath.empty()) floppyPath = findPath("disks35/Disk605.dsk");
-    if (floppyPath.empty()) floppyPath = findPath("disks35/quadra.img");
+    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/Disk605.dsk");
+    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/quadra.img");
     static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
     if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
     // Secondary volumes (argv[3..] → SCSI IDs 1..6).
@@ -5486,11 +4549,20 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
     else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
     // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
-    // SCSI remains the default boot path; a floppy is just media presence for the GUI.
+    // "SCSI remains the default boot path" was the intent and NOT what the code
+    // did: a Mac boots whatever medium is in the drive at power-on, so the
+    // convenience scan of disks35/ put System 6.0.5 in the SuperDrive and every
+    // 040 machine came up on "This startup disk will not work on this Macintosh
+    // model" instead of the Finder. Seen on screen 2026-08-09; no gate could
+    // see it, because no gate auto-inserts — this path exists only in the GUI.
+    // So the scan now runs ONLY when there is no SCSI disk to boot. An explicit
+    // POM68K_FLOPPY is an instruction, not a convenience, and is still honoured
+    // either way; the Disques window hot-swaps at any time (the Mac II and IIfx
+    // loops have always worked this way).
     std::string floppyPath;
     if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
-    if (floppyPath.empty()) floppyPath = findPath("disks35/Disk605.dsk");
-    if (floppyPath.empty()) floppyPath = findPath("disks35/quadra.img");
+    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/Disk605.dsk");
+    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/quadra.img");
     static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
     if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
     // Secondary volumes (argv[3..] → SCSI IDs 1..6).
@@ -5795,38 +4867,11 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
 //   - there is no floppy drive at all (the Duo's is in the dock), so no
 //     insert/eject plumbing and no drive-sound wiring — MscMemory has
 //     neither API.
-struct MscMachine {
-    MscMemory& mem; MscCpu& cpu; MacAudioHost& audioHost;
-    MscMachine(MscMemory& m, MscCpu& c, MacAudioHost& a)
-        : mem(m), cpu(c), audioHost(a) {
-        stEngine_.store(cpu.engine(), std::memory_order_relaxed);
-    }
-    ~MscMachine() { stop(); }
-
-    // Engine state + JIT gauges for the CPU menu (DafbMachine contract:
-    // the menu tick follows the MACHINE; the swap lands one queue trip
-    // later, on the machine thread).
-    int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
-    jit::Stats::Snapshot jitStats() const {
-        std::lock_guard<std::mutex> l(jitMu_);
-        return jitSnap_;
-    }
-
-    std::atomic<bool> running{true}, turbo{true}, quit{false};
-
-    struct Cmd { enum T { MouseMove, MouseButton, Key, HardReset,
-                          CpuEngine } t; int a = 0, b = 0; };
-    void push(Cmd c) { std::lock_guard<std::mutex> l(cmdMu_); cmds_.push_back(c); }
-
-    // Save-state requests (GUI → machine thread; see SaveStateSlot above).
-    SaveStateSlot state;
-
-    bool latchFrame(std::vector<uint32_t>& out, int& w, int& h) {
-        std::lock_guard<std::mutex> l(fbMu_);
-        if (fbShared_.empty()) return false;
-        out = fbShared_; w = fbW_; h = fbH_;
-        return true;
-    }
+struct MscMachine
+    : MachineHost<MscMachine, MscMemory, MscCpu, MacAudioHost> {
+    using Base = MachineHost<MscMachine, MscMemory, MscCpu, MacAudioHost>;
+    using Base::Base;
+    static constexpr bool kStereo = false;
 
     struct Status { uint32_t pc; long long clock; bool overlay, mmu, held;
                     uint8_t gscMode; };
@@ -5838,106 +4883,20 @@ struct MscMachine {
                  stGsc_.load(std::memory_order_relaxed) };
     }
 
-    int stepTick() {                    // LcMachine::stepTick, verbatim logic
-        applyCmds();
-        if (!running.load(std::memory_order_relaxed)) { publish(); return 5000; }
-        int sleepUs = 0;
-        if (activeHold_ > 0 && audioHost.started()) {
-            int n = 0;
-            while (audioHost.buffered() < kTarget && n < 8) {
-                runOne();
-                if (drain()) activeHold_ = 90; else activeHold_--;
-                audioHost.pushRaw(samp_, 0);
-                n++;
-            }
-            if (n == 0) {
-                if (++starve_ > 80) {
-                    runOne();
-                    if (drain()) activeHold_ = 90; else activeHold_--;
-                    starve_ = 0;
-                }
-                sleepUs = 2000;
-            } else starve_ = 0;
-        } else {
-            auto t0 = std::chrono::steady_clock::now();
-            int n = 0;
-            do {
-                runOne();
-            } while (turbo.load(std::memory_order_relaxed) && ++n < 8 &&
-                     std::chrono::steady_clock::now() - t0 <
-                         std::chrono::milliseconds(10));
-            if (drain()) {
-                activeHold_ = 90;
-                audioHost.pushFrame(samp_, 0);
-            }
-            if (!turbo.load(std::memory_order_relaxed)) {
-                auto spent = std::chrono::duration_cast<std::chrono::microseconds>(
-                                 std::chrono::steady_clock::now() - t0).count();
-                sleepUs = int(std::max<long long>(0, 16625 - spent));
-            }
-        }
-        publish();
-        return sleepUs;
-    }
+    // ── The platform half of the host contract ─────────────────────────────
+    int64_t frameCycles() const { return kFrame; }
 
-    void start() {
-#ifndef __EMSCRIPTEN__
-        th_ = std::thread([this] {
-            while (!quit.load(std::memory_order_relaxed)) {
-                int us = stepTick();
-                if (us > 0) std::this_thread::sleep_for(std::chrono::microseconds(us));
-            }
-        });
-#endif
-    }
-    void stop() {
-#ifndef __EMSCRIPTEN__
-        quit.store(true);
-        if (th_.joinable()) th_.join();
-#endif
-    }
-
-    void publish(bool force = false) {
-        auto now = std::chrono::steady_clock::now();
-        if (!force && framesRun_ == 0 &&
-            now - lastPub_ < std::chrono::milliseconds(16)) return;
-        lastPub_ = now; framesRun_ = 0;
-        // Fixed-mode LCD: 640x400, one GSC layout per frame, no beam and no
-        // mode change — decodeScreen() reads VRAM whole (MscMemory.h:152).
-        mem.decodeScreen(fb_);
-        for (uint32_t& px : fb_) px |= 0xFF000000u;
-        {
-            std::lock_guard<std::mutex> l(fbMu_);
-            fbShared_ = fb_;
-            fbW_ = MscMemory::kScreenW; fbH_ = MscMemory::kScreenH;
-        }
-        stPc_.store(cpu.getPC(), std::memory_order_relaxed);
-        stClock_.store(cpu.getClock(), std::memory_order_relaxed);
-        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
-                               ((cpu.getTC() & 0x80000000) ? 2 : 0) |
-                               (mem.cpuHeld() ? 4 : 0)),
-                       std::memory_order_relaxed);
-        stGsc_.store(mem.gscReg(4), std::memory_order_relaxed);
-        {
-            std::lock_guard<std::mutex> l(jitMu_);
-            jitSnap_ = cpu.jit().stats().snapshot();
-        }
-    }
-
-private:
-    const int64_t kFrame = mem.cpuHz() / 60;   // 33 MHz on the Duo 230
-    static constexpr size_t kTarget = 2225;
-
-    void runOne() {
-        // PG&E hold: the PMU releases the 68030 through its port E, so
-        // until it does the peripherals must still be clocked or the MCU
-        // never gets there (duo230_boot_etalon.cpp:52). Same shape as the
-        // Egret power-on hold on the V8/Sonora boards.
+    void emulateQuantum() {
+        // PG&E hold: the PMU releases the 68030 through its port E, so until
+        // it does the peripherals must still be clocked or the MCU never gets
+        // there (duo230_boot_etalon.cpp:52). Same shape as the Egret power-on
+        // hold on the V8/Sonora boards.
         if (mem.cpuHeld()) mem.tick(int(kFrame));
         else runQuantumWithWire(mem, cpu, kFrame);
         framesRun_++;
     }
-    bool drain() {
+
+    bool drainAudio() {
         samp_.clear();
         while (mem.ascAvailable() > 0)
             samp_.push_back(float(mem.ascPop()) / 32768.0f);
@@ -5945,46 +4904,28 @@ private:
         for (float v : samp_) { if (v < lo) lo = v; if (v > hi) hi = v; }
         return !samp_.empty() && hi - lo >= 0.02f;
     }
-    void applyCmds() {
-        { std::lock_guard<std::mutex> l(cmdMu_); cmdsApply_.swap(cmds_); }
-        for (const Cmd& c : cmdsApply_) switch (c.t) {
-            case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
-            // The trackball has ONE button and MscMemory::mouseButton takes
-            // no index (PgePmu → AdbBus), so the right button is dropped
-            // rather than mapped onto the left.
-            case Cmd::MouseButton: if (c.a == 0) mem.mouseButton(c.b != 0); break;
-            case Cmd::Key:         mem.keyEvent(uint8_t(c.a), c.b != 0); break;
-            case Cmd::HardReset:   cpu.hardReset(); break;
-            // Engine swap between two runCycles() — an instruction
-            // boundary (the DafbMachine precedent).
-            case Cmd::CpuEngine:
-                cpu.setEngine(c.a);
-                stEngine_.store(c.a, std::memory_order_relaxed);
-                break;
-        }
-        cmdsApply_.clear();
-        state.apply(mem, cpu);         // save/load between two quanta
+
+    void renderFrame(std::vector<uint32_t>& out, int& w, int& h) {
+        // Fixed-mode LCD: 640x400, one GSC layout per frame, no beam and no
+        // mode change — decodeScreen() reads VRAM whole (MscMemory.h:152), so
+        // it can write the published buffer directly.
+        mem.decodeScreen(out);
+        for (uint32_t& px : out) px |= 0xFF000000u;
+        w = MscMemory::kScreenW; h = MscMemory::kScreenH;
     }
 
-    std::thread th_;
-    std::mutex cmdMu_;
-    std::vector<Cmd> cmds_, cmdsApply_;
-    std::mutex fbMu_;
-    std::vector<uint32_t> fbShared_;
-    int fbW_ = 0, fbH_ = 0;
-    std::atomic<uint32_t> stPc_{0};
-    std::atomic<long long> stClock_{0};
-    std::atomic<uint8_t> stFlags_{0};
-    std::atomic<uint8_t> stGsc_{0};          // GSC reg 4 = panel depth mode
-    std::atomic<int> stEngine_{0};           // 0 = interpreter, 1 = JIT
-    mutable std::mutex jitMu_;
-    jit::Stats::Snapshot jitSnap_{};
-    int activeHold_ = 0;
-    int starve_ = 0;
-    int framesRun_ = 0;
-    std::chrono::steady_clock::time_point lastPub_{};
-    std::vector<uint32_t> fb_;
-    std::vector<float> samp_;
+    void publishStatus() {
+        stFlags_.store(uint8_t((mem.overlay() ? 1 : 0) |
+                               ((cpu.getTC() & 0x80000000) ? 2 : 0) |
+                               (mem.cpuHeld() ? 4 : 0)),
+                       std::memory_order_relaxed);
+        stGsc_.store(mem.gscReg(4), std::memory_order_relaxed);
+    }
+
+private:
+    const int64_t kFrame = mem.cpuHz() / 60;   // 33 MHz on the Duo 230
+
+    std::atomic<uint8_t> stGsc_{0};            // GSC reg 4 = panel depth mode
 };
 
 // ── PowerBook Duo 230: MSC + PG&E, 68030 @ 33 MHz ───────────────────────

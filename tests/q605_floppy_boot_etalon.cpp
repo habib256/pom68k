@@ -6,6 +6,7 @@
 // read-back). Optional ROM floppy-boot path soft-skips without
 // roms/quadra605.rom — full ROM boot remains fragile vs SCSI default.
 
+#include "AssetFingerprint.h"
 #include "Q605Memory.h"
 #include "Cpu040.h"
 #include "Swim2.h"
@@ -124,6 +125,7 @@ int main(int argc, char** argv) {
     if (romPath.empty()) {
         std::printf("  (optional ROM floppy-boot soft-skipped — no quadra605.rom)\n");
     } else {
+        testasset::report({ romPath });
         std::ifstream in(romPath, std::ios::binary);
         std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());

@@ -4,6 +4,7 @@
 // mac2fdhd ROM ($97221136). POM68K_IICX=1 selects the IIcx (3 fewer NuBus
 // slots + VIA1 PA6 id). Soft-skips without the ROM + a bootable hdv/ image.
 
+#include "AssetFingerprint.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
@@ -30,6 +31,7 @@ int main() {
         std::printf("SKIP: needs the mac2fdhd ($97221136) ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});

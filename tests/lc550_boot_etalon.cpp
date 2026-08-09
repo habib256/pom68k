@@ -8,6 +8,7 @@
 // Same Cuda 341S0060 firmware LLE and 8-bpp color Finder signature as
 // lc520_boot_etalon. Soft-skips without the ROM or a bootable hdv/ image.
 
+#include "AssetFingerprint.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
 #include "SonoraCpu.h"
@@ -56,6 +57,7 @@ int main() {
         std::printf("SKIP: needs the 1 MB EDE66CBD ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

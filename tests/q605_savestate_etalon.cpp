@@ -14,6 +14,7 @@
 // Soft-skips without the FF7439EE ROM + hdv/MacOS-8.1-boot.vhd.
 // Exit 0 = pass / soft-skip, 1 = fail.
 
+#include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
 #include "SaveState.h"
@@ -158,6 +159,7 @@ int main() {
         std::printf("SKIP: needs FF7439EE ROM + hdv/MacOS-8.1-boot.vhd\n");
         return 0;
     }
+    testasset::report({ romPath, diskPath });
 
     std::ifstream in(romPath, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),

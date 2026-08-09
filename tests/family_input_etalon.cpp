@@ -31,6 +31,7 @@
 //    below is MMU-independent: idle frames must be identical, and
 //    injected motion must change pixels.
 
+#include "AssetFingerprint.h"
 #include "Cpu030.h"
 #include "RbvCpu.h"
 #include "RbvMemory.h"
@@ -211,6 +212,7 @@ int main(int argc, char** argv) {
         if (rom.empty()) rom = find(aio ? "roms/maclc520.rom" : "roms/maclc3.rom");
         std::string img = sys75Image("hdv/lc3-boot.vhd");
         if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM + Sys 7.5 image\n"); return 0; }
+        testasset::report({ rom, img });
         std::vector<uint8_t> romData = loadRomFile(rom);
         SonoraMemory mem(0x800000, SonoraMemory::kCpuHz,
                          aio ? SonoraMemory::kIdLc520 : SonoraMemory::kIdLc3,

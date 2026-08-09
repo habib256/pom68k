@@ -1,5 +1,6 @@
 // POM68K — declrom_test gate: format block, CRC, Display sResource.
 
+#include "AssetFingerprint.h"
 #include "DeclRom.h"
 #include <cstdio>
 #include <fstream>
@@ -40,6 +41,7 @@ int main() {
 
     std::string path = findDeclRom();
     if (!path.empty()) {
+        testasset::report({ path });
         std::ifstream f(path, std::ios::binary);
         std::vector<uint8_t> file((std::istreambuf_iterator<char>(f)), {});
         check(file.size() == 4096, "Toby file size 4096");

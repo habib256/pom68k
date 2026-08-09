@@ -9,6 +9,7 @@
 // $420DBFF3 ROM. Mac OS 8.1 / System 7 Finder at 640×480 DAFB (the
 // q605/centris signature). Soft-skips without the ROM or a bootable image.
 
+#include "AssetFingerprint.h"
 #include "Q700Memory.h"
 #include "Q700Cpu.h"
 
@@ -112,6 +113,7 @@ int main(int argc, char** argv) {
         std::printf("SKIP: %s needs its 1 MB ROM + a bootable hdv/ image\n", name);
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

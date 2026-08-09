@@ -114,6 +114,21 @@ inline int accessThunkMode() { return detail::envInt("POM68K_JIT_ACCESS_THUNK", 
 // J1 does not do fine-grained eviction).
 inline int maxBlocks() { return detail::envInt("POM68K_JIT_MAX_BLOCKS", 65536, 64, 1 << 20); }
 
+// MEASUREMENT knob, not a tuning one: kill the code window every N retired
+// instructions, on purpose. The engine's dominant residual cost is the
+// window dying under ATC eviction — 794 M window-lost exits over 12.2 G
+// instructions on the idle Finder (POM68K_JIT.md § 3) — and that figure was
+// a rate with no price attached: nobody had measured what ONE exit costs.
+// Forcing exits at a chosen rate over an otherwise identical workload makes
+// the price the SLOPE of wall time against exit count. A window kill is
+// architecturally invisible (the next arm re-derives the same window from
+// the same translation), so a bench fingerprint must NOT move with N —
+// which is what makes the regression a measurement rather than a story.
+// 0 = off. Never set outside a bench: it slows the engine down on purpose.
+inline int windowKillEvery() {
+    return detail::envInt("POM68K_JIT_WINDOW_KILL", 0, 0, 1 << 24);
+}
+
 // Chatter on stderr: backend selection, flushes, block statistics.
 inline bool verbose() { return detail::envBool("POM68K_JIT_VERBOSE", false); }
 

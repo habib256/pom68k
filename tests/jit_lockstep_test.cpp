@@ -19,6 +19,7 @@
 //
 // Soft-skips (exit 0) when the user-provided ROM is absent.
 
+#include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
 #include "jit/JitConfig.h"
@@ -195,6 +196,7 @@ int main(int argc, char** argv) {
         memRef.attachScsi(diskPath);
         memJit.attachScsi(diskPath);
     }
+    testasset::report({ romPath, diskPath });
     std::printf("[jit_lockstep] disk=%s\n",
                 diskPath.empty() ? "(none — ROM POST only)" : diskPath.c_str());
 

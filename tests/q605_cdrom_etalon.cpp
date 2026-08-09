@@ -24,6 +24,7 @@
 // counted on the CONTROLLER cannot tell the two apart (9619 vs 9618
 // measured). Soft-skips without the assets.
 
+#include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
 
@@ -137,8 +138,7 @@ int main() {
                     "Apple CD image (input/MacOS_86.iso)\n");
         return 0;
     }
-    std::printf("assets: ROM=%s disk=%s cd=%s\n", romPath.c_str(),
-                diskPath.c_str(), cdPath.c_str());
+    testasset::report({ romPath, cdPath, diskPath });
 
     std::ifstream in(romPath, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),

@@ -10,6 +10,7 @@
 // path is the Egret firmware LLE (default since 2026-07-24). Soft-skips
 // without the 3193670E ROM or a bootable hdv/ image.
 
+#include "AssetFingerprint.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 #include "Cpu030.h"
@@ -56,6 +57,7 @@ int main() {
         std::printf("SKIP: needs the 512 KB Classic II ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

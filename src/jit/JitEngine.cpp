@@ -36,6 +36,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
         maxInstrs_ = backend_->caps().maxBlockInstrs;
     maxBlocks_ = maxBlocks();
     hotAt_ = hotThreshold(backend_->caps().nativeCode);
+    windowKill_ = killCountdown_ = windowKillEvery();
     ctx_.cpu = &cpu_;
     ctx_.stats = &stats_;
     ctx_.dtlbFill = &Engine::fillDtlbThunk;
@@ -386,6 +387,15 @@ void Engine::runWindow(int64_t clockTarget) {
         if (!histo_.empty()) [[unlikely]] histo_[cpu_.pomJitPeek(cpu_.getPC())]++;
         if (!cpu_.pomJitExecOne()) { n++; stats_.bump(Exit::Fault); break; }
         n++;
+        // POM68K_JIT_WINDOW_KILL: a forced exit, indistinguishable from the
+        // ATC-eviction one except that its rate is chosen. Off = one
+        // always-predicted branch.
+        if (windowKill_ && --killCountdown_ <= 0) [[unlikely]] {
+            killCountdown_ = windowKill_;
+            disarmWindow();
+            stats_.bump(Exit::WindowLost);
+            break;
+        }
     }
     if (n) { stats_.add(stats_.instrs, n); stats_.add(stats_.windowInstrs, n); }
 }
@@ -683,6 +693,20 @@ void Engine::executeUntil(int64_t clockTarget) {
         if (r.instrs) stats_.add(stats_.instrs, r.instrs);
         if (r.slowInstrs) stats_.add(stats_.slowInstrs, r.slowInstrs);
         stats_.bump(r.exit);
+        // Same forced exit on the block path. A generated block checks the
+        // window from inside its own code (and, once linked, jumps to the
+        // next block without coming back), so the kill can only be applied
+        // where a block RETURNS — the realized rate is therefore at most the
+        // requested one. That is why the regression is fitted against the
+        // exit count the run actually reports, never against N.
+        if (windowKill_) [[unlikely]] {
+            killCountdown_ -= int(r.instrs > uint32_t(windowKill_) ? windowKill_ : r.instrs);
+            if (killCountdown_ <= 0) {
+                killCountdown_ = windowKill_;
+                disarmWindow();
+                stats_.bump(Exit::WindowLost);
+            }
+        }
         // Any flush the block itself asked for was deferred; honour it now,
         // with nothing of the cache in flight.
         if (pendingFlush_) flushAll();

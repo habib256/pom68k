@@ -13,6 +13,7 @@
 // ('ER'). Independent of the ROM, so it pins the controller regardless of the
 // boot trigger. Modelled on tests/ncr5380_test.cpp / scsi_pdma_test.cpp.
 
+#include "AssetFingerprint.h"
 #include "Ncr53c96.h"
 #include "ScsiDisk.h"
 #include <cstdio>
@@ -108,6 +109,7 @@ int main() {
     std::string img = find("hdv/MacOS-8.1-boot.vhd");
     if (img.empty()) img = find("hdv/HD20SC.vhd");   // fall back to any bootable image
     if (img.empty()) { std::printf("SKIP: no SCSI disk image found\n"); return 0; }
+    testasset::report({ img });
 
     ScsiDisk disk;
     CHECK(disk.open(img), "open image %s", img.c_str());

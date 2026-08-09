@@ -24,6 +24,7 @@
 // KeyTime ($0186) is NOT a usable observable here: a Slow Keys periodic
 // task copies Ticks into it continuously, keystrokes or not.
 
+#include "AssetFingerprint.h"
 #include "Q605Memory.h"
 #include "Cpu040.h"
 #include <cstdio>
@@ -45,6 +46,7 @@ int main() {
     std::string rom = find("roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM");
     std::string img = find("hdv/MacOS-8.1-boot.vhd");
     if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM+disk\n"); return 0; }
+    testasset::report({ rom, img });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});

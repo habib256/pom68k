@@ -91,6 +91,31 @@ if(NOT MSVC AND NOT EMSCRIPTEN)
             message(STATUS "POM68K: LTO requested but unsupported — ${pom68k_ipo_why}")
         endif()
     endif()
+    # ─── Link speed ──────────────────────────────────────────────────────
+    # This tree links ~130 executables against one static core, every one of
+    # them under tree-wide LTO, so a core change costs ~130 full relinks and
+    # the linker is a first-order term in the working loop. mold and lld are
+    # drop-in and several times faster than BFD ld at exactly this shape of
+    # work. Neither is a dependency: absent, the build is unchanged.
+    # Not tied to POM68K_LTO — a non-LTO build links the same 130 binaries.
+    option(POM68K_FAST_LINK "Use mold or lld when one is installed" ON)
+    if(POM68K_FAST_LINK)
+        foreach(pom68k_ld mold lld)
+            find_program(pom68k_ld_${pom68k_ld} ld.${pom68k_ld})
+            if(pom68k_ld_${pom68k_ld})
+                # Probed, not assumed: the driver has to know the flag, and
+                # a GCC older than 12 does not know -fuse-ld=mold at all.
+                set(CMAKE_REQUIRED_LINK_OPTIONS "-fuse-ld=${pom68k_ld}")
+                check_cxx_compiler_flag("" pom68k_ld_${pom68k_ld}_ok)
+                unset(CMAKE_REQUIRED_LINK_OPTIONS)
+                if(pom68k_ld_${pom68k_ld}_ok)
+                    add_link_options(-fuse-ld=${pom68k_ld})
+                    message(STATUS "POM68K: linking with ${pom68k_ld}")
+                    break()
+                endif()
+            endif()
+        endforeach()
+    endif()
 endif()
 
 # ─── Profile-guided optimization (perf pass 2026-07-28) ──────────────────
@@ -347,6 +372,11 @@ option(POM68K_TESTS "Build the test targets" ON)
 if(POM68K_TESTS AND NOT EMSCRIPTEN)
     enable_testing()
 
+    # Gate-side headers (tests/AssetFingerprint.h, tests/atalk_test_util.h).
+    # Directory-scoped so every target below sees them without 130 edits;
+    # the GUI target above is deliberately outside it.
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests)
+
     # M1 gate: Moira boots the demo ROM through the real machine path.
     add_executable(cpu_smoke tests/cpu_smoke.cpp)
     target_link_libraries(cpu_smoke PRIVATE pom68k_core)
@@ -555,6 +585,47 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_include_directories(daynaport_test PRIVATE tests)
     target_link_libraries(daynaport_test PRIVATE pom68k_core)
     add_test(NAME daynaport_test COMMAND daynaport_test)
+
+    # Gate for the gate preamble: SHA-256 against FIPS 180-4 (padding
+    # boundaries included) and the drVolAtrb probe against both image
+    # layouts, synthesised in the test. Asset-free — it links nothing but
+    # the header, so it stays in `unit`.
+    add_executable(asset_fingerprint_test tests/asset_fingerprint_test.cpp)
+    add_test(NAME asset_fingerprint_test COMMAND asset_fingerprint_test)
+
+    # The GUI ↔ machine-thread contract (src/MachineHost.h): queue ordering,
+    # the framebuffer double buffer, the engine-swap round trip, the pacing
+    # branches and the thread teardown. `main.cpp` is the one translation unit
+    # outside pom68k_core, so this contract had six copies and no gate until
+    # it was lifted into a header (2026-08-09). No ROM, no image.
+    add_executable(machinehost_test tests/machinehost_test.cpp)
+    target_link_libraries(machinehost_test PRIVATE pom68k_core)
+    add_test(NAME machinehost_test COMMAND machinehost_test)
+
+    # The docs' citable invariants, checked against the code: profile count
+    # (kProfiles == SnapMachine == what CLAUDE.md says), every gate CLAUDE.md
+    # names is registered, every registered gate carries a label, and the gate
+    # totals it quotes. Reads pom68k_gates.tsv, which the tier block below
+    # writes at configure time. Links nothing.
+    add_executable(docs_test tests/docs_test.cpp)
+    target_compile_definitions(docs_test PRIVATE
+        POM68K_GATE_ROSTER="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv")
+    add_test(NAME docs_test COMMAND docs_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # The env-knob surface against DEV.md § 5, both directions. Found twelve
+    # undocumented knobs and one documented ghost the first time it ran.
+    # Links nothing; walks the source tree.
+    add_executable(config_test tests/config_test.cpp)
+    add_test(NAME config_test COMMAND config_test)
+
+    # tests/FolderProbe.h — "did the guest create a folder?", the observable
+    # the three beyond-boot persist gates judge PASS/FAIL on. Gated here
+    # rather than through three six-minute machine runs, and because the
+    # thing it replaced was wrong twice over (case-sensitive, and reporting
+    # the most FREQUENT candidate instead of the one that moves).
+    add_executable(folderprobe_test tests/folderprobe_test.cpp)
+    add_test(NAME folderprobe_test COMMAND folderprobe_test)
 
     # LLAP two-System etalon: two Mac II machines boot Sys 6 with AppleTalk
     # seeded active on a shared virtual cable — real LAP address acquisition
@@ -917,6 +988,21 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              TIMEOUT 1800)
     endforeach()
 
+    # Beyond-boot on the THIRD machine (TODO §2, the freshness tail): the
+    # Macintosh IIvx — VASP + Egret 341S0851 + 68030, 640×480×8. Same two
+    # scenarios. Chosen over the RBV siblings because physical low RAM IS
+    # the framebuffer there, so the low-memory Time global is not readable
+    # through peek8 — see the header of iivx_beyond_etalon.cpp.
+    add_executable(iivx_beyond_etalon tests/iivx_beyond_etalon.cpp)
+    target_link_libraries(iivx_beyond_etalon PRIVATE pom68k_core)
+    foreach(scenario soak persist)
+        add_test(NAME iivx_${scenario}_etalon COMMAND iivx_beyond_etalon
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(iivx_${scenario}_etalon PROPERTIES
+                             ENVIRONMENT "POM68K_BEYOND=${scenario}"
+                             TIMEOUT 1800)
+    endforeach()
+
     # Phase C gate: Macintosh LC (68020 on the same V8 board, 2 MB
     # soldered) boots to the Finder (soft-skips without ROM + image).
     add_executable(lc_boot_etalon tests/lc_boot_etalon.cpp)
@@ -1232,6 +1318,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(jit_bench EXCLUDE_FROM_ALL tests/jit_bench.cpp)
     target_link_libraries(jit_bench PRIVATE pom68k_core)
 
+    # The same stopwatch on the LC II — the machine `TODO.md` § 0·A names as
+    # the speed objective ("~×1,3 temps réel en turbo"), and the one a
+    # Quadra-only bench could say nothing about. Body shared with jit_bench:
+    # tests/BenchHarness.h.
+    add_executable(jit_bench_lcii EXCLUDE_FROM_ALL tests/jit_bench_lcii.cpp)
+    target_link_libraries(jit_bench_lcii PRIVATE pom68k_core)
+
     # ── JIT gates (src/jit/POM68K_JIT.md) ────────────────────────────────
     # The portability seam: backend selection, W^X executable memory, and
     # the block classifier's safety rules. No assets, runs everywhere.
@@ -1401,57 +1494,6 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                          ENVIRONMENT "POM68K_COMPACT_MODEL=classic;POM68K_CPU_ENGINE=jit"
                          TIMEOUT 3600)
 
-    # ─── Test tiers (`ctest -L <label>`) ─────────────────────────────────
-    # A bare `ctest` runs every gate and takes hours on a busy host — far too
-    # slow to develop against, and the boot etalons are contention-sensitive
-    # so `-j` is not an option either. Every gate therefore carries labels,
-    # so a working loop can pick the smallest set that actually proves the
-    # change at hand:
-    #
-    #   ctest -L smoke    ~35 s   ONE machine, BOTH engines — the JIT loop
-    #   ctest -L unit     ~1 min  everything needing no ROM or disk image
-    #   ctest -L jit      ~8 min  every JIT gate, all four 68040 machines
-    #   ctest -L m040     ~25 min the 68040 family on both engines
-    #   ctest                     everything (the release gate)
-    #
-    # Labels are DERIVED from test names rather than declared per gate, so a
-    # gate registered tomorrow is classified the moment it is added.
-    get_property(pom68k_tests DIRECTORY PROPERTY TESTS)
-    foreach(t IN LISTS pom68k_tests)
-        set(lbl "")
-        if(t MATCHES "etalon$")
-            list(APPEND lbl etalon)
-        else()
-            list(APPEND lbl unit)
-        endif()
-        if(t MATCHES "^jit_")
-            list(APPEND lbl jit)
-        endif()
-        # The 68040 family — the JIT's entire blast radius today.
-        if(t MATCHES "q605|lc475|lc575|centris|quadra6|quadra8|q630|lc580|q700|q900|q950|turboscsi|swim2")
-            list(APPEND lbl m040)
-        endif()
-        set_tests_properties(${t} PROPERTIES LABELS "${lbl}")
-    endforeach()
-
-    # The working loop. jit_lockstep_test is the real proof — it compares the
-    # JIT against the interpreter register by register at every instruction
-    # boundary — and the two q605 etalons show the machine still reaches the
-    # Finder on each engine. Anything a JIT change can break shows up here.
-    set_property(TEST jit_backend_test jit_lockstep_test jit_lockstep_blocks_test
-                      jit_lockstep_x64_test jit_lockstep_x64_fine_test
-                      jit_lockstep_noaccess_test
-                      q605_boot_etalon jit_q605_boot_etalon
-                 APPEND PROPERTY LABELS smoke)
-    if(TEST jit_lockstep_a64_coarse_test)
-        set_property(TEST jit_lockstep_a64_coarse_test APPEND PROPERTY LABELS smoke)
-    endif()
-
-    # `make jitdev` builds ONLY what `ctest -L smoke` needs. The tree-wide LTO
-    # makes a full `make` relink ~90 binaries after any core change; this is
-    # three. Pair them: `make -j4 jitdev && ctest -L smoke`.
-    add_custom_target(jitdev DEPENDS
-                      jit_backend_test jit_lockstep_test q605_boot_etalon)
 endif()
 
 # Dev tool (not a gate): instruction-level Sony-driver trace.
@@ -1543,4 +1585,113 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # resources, trap table, UniversalInfo) — Basilisk II-derived parsers,
     # see docs/BASILISK_ROM_NOTES.md. Standalone, no emulator core.
     add_executable(rominfo EXCLUDE_FROM_ALL tools/rominfo.cpp)
+
+    # ─── Test tiers (`ctest -L <label>`) ─────────────────────────────────
+    # A bare `ctest` runs every gate and takes hours on a busy host — far too
+    # slow to develop against, and the boot etalons are contention-sensitive
+    # so `-j` is not an option either. Every gate therefore carries labels,
+    # so a working loop can pick the smallest set that actually proves the
+    # change at hand:
+    #
+    #   ctest -L smoke        ~35 s   ONE machine, BOTH engines — the JIT loop
+    #   ctest -L unit         ~1 min  everything needing no ROM or disk image
+    #   ctest -L jit          ~8 min  every JIT gate, all four 68040 machines
+    #   ctest -L m040         ~25 min the 68040 family on both engines
+    #   ctest -L etalon-core          ONE profile per platform — 12 of the 81
+    #   ctest                         everything (the release gate)
+    #
+    # `etalon` on its own is 81 gates / ~3 h 35, which is a release gate and
+    # not a pre-commit check — so the temptation to skip it grows with every
+    # machine added. `etalon-core` is the answer to "does a change break a
+    # PLATFORM": one representative profile from each of the 12 memory-map
+    # implementations, chosen as the profile that platform was brought up on.
+    # A change that survives it can still break a sibling PROFILE (a clock, a
+    # model ID, an MCU), which is what the full label is for.
+    # `-L etalon` still matches all 81: CTest matches labels by regex, and the
+    # core gates carry both.
+    set(POM68K_ETALON_CORE
+        system_boot_etalon        # 68000 compacts   — MacMemory
+        macii_boot_etalon         # GLUE + NuBus     — MacIIMemory
+        iifx_boot_etalon          # OSS + 2 IOPs     — IIfxMemory
+        iisi_boot_etalon          # RBV              — RbvMemory
+        lcii_boot_etalon          # V8               — V8Memory
+        lc3_boot_etalon           # Sonora           — SonoraMemory
+        iivx_boot_etalon          # VASP             — VaspMemory
+        q605_boot_etalon          # MEMCjr+PrimeTime — Q605Memory
+        centris650_boot_etalon    # djMEMC + IOSB    — CentrisMemory
+        q700_boot_etalon          # discrete 040     — Q700Memory
+        q630_boot_etalon          # F108 + Valkyrie  — Q630Memory
+        duo230_boot_etalon)       # MSC + PG&E       — MscMemory
+    #
+    # Labels are DERIVED from test names rather than declared per gate, so a
+    # gate registered tomorrow is classified the moment it is added.
+    get_property(pom68k_tests DIRECTORY PROPERTY TESTS)
+    foreach(t IN LISTS pom68k_tests)
+        set(lbl "")
+        if(t MATCHES "etalon$")
+            list(APPEND lbl etalon)
+            if(t IN_LIST POM68K_ETALON_CORE)
+                list(APPEND lbl etalon-core)
+            endif()
+        else()
+            list(APPEND lbl unit)
+        endif()
+        if(t MATCHES "^jit_")
+            list(APPEND lbl jit)
+        endif()
+        # The 68040 family — the JIT's entire blast radius today.
+        if(t MATCHES "q605|lc475|lc575|centris|quadra6|quadra8|q630|lc580|q700|q900|q950|turboscsi|swim2")
+            list(APPEND lbl m040)
+        endif()
+        set_tests_properties(${t} PROPERTIES LABELS "${lbl}")
+    endforeach()
+
+    # A name in POM68K_ETALON_CORE that is not a registered gate would drop a
+    # PLATFORM out of the pre-commit tier silently — and a tier that quietly
+    # covers eleven platforms while claiming twelve is worse than no tier.
+    # Renaming a gate must therefore break the configure, not the coverage.
+    foreach(core IN LISTS POM68K_ETALON_CORE)
+        if(NOT core IN_LIST pom68k_tests)
+            message(FATAL_ERROR
+                "POM68K_ETALON_CORE lists '${core}', which is not a registered "
+                "test. Update the list in CMakeLists.txt: it is the one place "
+                "that names a representative profile per platform.")
+        endif()
+    endforeach()
+
+
+    # The working loop. jit_lockstep_test is the real proof — it compares the
+    # JIT against the interpreter register by register at every instruction
+    # boundary — and the two q605 etalons show the machine still reaches the
+    # Finder on each engine. Anything a JIT change can break shows up here.
+    set_property(TEST jit_backend_test jit_lockstep_test jit_lockstep_blocks_test
+                      jit_lockstep_x64_test jit_lockstep_x64_fine_test
+                      jit_lockstep_noaccess_test
+                      q605_boot_etalon jit_q605_boot_etalon
+                 APPEND PROPERTY LABELS smoke)
+    if(TEST jit_lockstep_a64_coarse_test)
+        set_property(TEST jit_lockstep_a64_coarse_test APPEND PROPERTY LABELS smoke)
+    endif()
+
+    # The registry, as a file `docs_test` can read: one line per gate,
+    # "<name>\t<label>,<label>". CTest has no way to hand a test the roster,
+    # and a documentation gate that cannot see the roster can only check the
+    # docs against themselves.
+    set(pom68k_gate_list "")
+    foreach(t IN LISTS pom68k_tests)
+        get_test_property(${t} LABELS tlabels)
+        if(NOT tlabels)
+            set(tlabels "")
+        endif()
+        string(REPLACE ";" "," tlabels "${tlabels}")
+        string(APPEND pom68k_gate_list "${t}\t${tlabels}\n")
+    endforeach()
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv "${pom68k_gate_list}")
+
+    # `make jitdev` builds ONLY what `ctest -L smoke` needs. The tree-wide LTO
+    # makes a full `make` relink ~90 binaries after any core change; this is
+    # three. Pair them: `make -j4 jitdev && ctest -L smoke`.
+    add_custom_target(jitdev DEPENDS
+                      jit_backend_test jit_lockstep_test q605_boot_etalon)
+
 endif()

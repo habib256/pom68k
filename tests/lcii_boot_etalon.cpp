@@ -20,6 +20,7 @@
 // non-trivial SCSI command count (the volume was read, not just probed).
 // Exit 0 = pass / soft-skip, 1 = fail.
 
+#include "AssetFingerprint.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 #include "Cpu030.h"
@@ -73,6 +74,7 @@ int main() {
         std::printf("SKIP: needs the 512 KB LC II ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

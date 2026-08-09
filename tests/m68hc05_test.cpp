@@ -9,6 +9,7 @@
 // programmed (rate 3 after MAME's :140 cheat), port directions are set,
 // RAM/stack traffic happens. Soft-skips without the dump.
 
+#include "AssetFingerprint.h"
 #include "M68hc05.h"
 #include <algorithm>
 #include <cstdio>
@@ -76,6 +77,7 @@ int main() {
         std::printf("SKIP: needs roms/cuda/341s0788.bin\n");
         return gFails ? 1 : 0;
     }
+    testasset::report({ path });
     std::ifstream in(path, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());

@@ -21,6 +21,8 @@
 // POM68K_DUMP=1 writes q605_beyond_<mode>.ppm for eyeballing/calibration.
 // Soft-skips without the FF7439EE ROM + hdv/MacOS-8.1-boot.vhd.
 
+#include "AssetFingerprint.h"
+#include "FolderProbe.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
 
@@ -236,6 +238,7 @@ int main() {
         std::printf("SKIP: needs FF7439EE ROM + hdv/MacOS-8.1-boot.vhd\n");
         return 0;
     }
+    testasset::report({ romPath, diskPath });
 
     std::ifstream in(romPath, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
@@ -303,17 +306,8 @@ int main() {
         // localized names are accepted so the gate follows the volume, not
         // this comment. Full phrases only — the bare "untitled" substring
         // occurs hundreds of times in a stock volume and drowns the signal.
-        auto best = [&](long& out) {
-            const char* cands[] = { "untitled folder", "Nouveau dossier",
-                                    "dossier sans titre" };
-            const char* which = cands[0]; long m = 0;
-            for (const char* c : cands) {
-                long k = countNeedle(disk, c);
-                if (k > m) { m = k; which = c; }
-            }
-            out = m; return which;
-        };
-        long before; const char* needle = best(before);
+        long before[folderprobe::kCount];
+        folderprobe::sample(disk, before, "before");
         std::vector<uint8_t> snap = disk;
         long dma0 = mem.scsi().dmaBytes;
         // Cmd-N (New Folder): the folder hits the catalog on creation; the
@@ -325,10 +319,17 @@ int main() {
         runFrames(120);                      // let the rename field appear
         keyHold(0x24, 150);                  // Return — commit the name
         runFrames(900);                      // ~15 s: create + flush catalog
-        long after; needle = best(after);
+        long after[folderprobe::kCount];
+        folderprobe::sample(disk, after, "after");
+        const size_t grew = folderprobe::grew(before, after);
         bool wrote = disk != snap;
-        std::printf("persist: '%s' ×%ld → ×%ld, image %s, 53C96 DMA +%ld B\n",
-                    needle, before, after, wrote ? "modified" : "UNCHANGED",
+        std::printf("persist: %s, image %s, 53C96 DMA +%ld B\n",
+                    grew < folderprobe::kCount
+                        ? (std::string("'") + folderprobe::kNames[grew] + "' " +
+                           std::to_string(before[grew]) + " -> " +
+                           std::to_string(after[grew])).c_str()
+                        : "NO candidate folder name appeared",
+                    wrote ? "modified" : "UNCHANGED",
                     mem.scsi().dmaBytes - dma0);
         Screen s = decodeScreen(mem);
         dump("q605_beyond_persist.ppm", s);
@@ -339,10 +340,14 @@ int main() {
         // reset) — surviving THAT is part of what "persist" claims.
         cpu.hardReset();
         bool rebooted = bootToFinder(24000);
-        long survived; needle = best(survived);
-        std::printf("persist: reboot %s, '%s' ×%ld after\n",
-                    rebooted ? "reached the Finder" : "FAILED", needle, survived);
-        ok = wrote && after > before && rebooted && survived > before;
+        long survived[folderprobe::kCount];
+        folderprobe::sample(disk, survived, "reboot");
+        const bool kept = grew < folderprobe::kCount &&
+                          survived[grew] > before[grew];
+        std::printf("persist: reboot %s, folder %s\n",
+                    rebooted ? "reached the Finder" : "FAILED",
+                    kept ? "survived" : "did NOT survive");
+        ok = wrote && grew < folderprobe::kCount && rebooted && kept;
     } else {
         std::fprintf(stderr, "FAIL: unknown POM68K_BEYOND=%s\n", mode.c_str());
         return 1;

@@ -21,6 +21,7 @@
 // Boots the FF7439EE Quadra 605 ROM + Mac OS 8.1 (AppleTalk active in
 // the on-disk prefs). Soft-skips when the assets are absent.
 
+#include "AssetFingerprint.h"
 #include "AtalkHub.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
@@ -55,7 +56,7 @@ int main() {
         std::printf("SKIP: needs FF7439EE ROM + hdv/MacOS-8.1-boot.vhd\n");
         return 0;
     }
-    std::printf("assets: ROM=%s disk=%s\n", romPath.c_str(), diskPath.c_str());
+    testasset::report({ romPath, diskPath });
     std::fflush(stdout);
 
     std::ifstream in(romPath, std::ios::binary);

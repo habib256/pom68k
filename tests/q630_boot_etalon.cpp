@@ -7,6 +7,7 @@
 // the Valkyrie fixed-mode framebuffer, Cuda 341S0060 LLE/ADB, the IOSB ASC,
 // pseudo-VIA2 and TurboSCSI. POM68K_Q630_ID=A55A225A selects the LC 580.
 
+#include "AssetFingerprint.h"
 #include "Q630Cpu.h"
 #include "Q630Memory.h"
 
@@ -132,7 +133,7 @@ int main() {
         std::printf("SKIP: needs the 06684214 ROM + hdv/MacOS-8.1-boot.vhd\n");
         return 0;
     }
-    std::printf("assets: ROM=%s disk=%s\n", romPath.c_str(), diskPath.c_str());
+    testasset::report({ romPath, diskPath });
     std::fflush(stdout);
 
     std::ifstream in(romPath, std::ios::binary);

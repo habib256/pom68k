@@ -258,6 +258,13 @@ private:
     int  maxBlocks_ = 16384;
     int  hotAt_ = 8;             // POM68K_JIT_HOT: visits before compiling
 
+    // POM68K_JIT_WINDOW_KILL — bench instrument (JitConfig.h § windowKillEvery).
+    // Forces a window-lost exit every N retired instructions so the COST of
+    // one exit can be read off the slope of wall time against exit count.
+    // 0 disables it and the hot paths pay one always-predicted branch.
+    int  windowKill_ = 0;
+    int  killCountdown_ = 0;
+
     // POM68K_JIT_HISTO=1 — dynamic opcode census, dumped on destruction.
     // A code generator is only worth the opcodes it actually meets: this is
     // what decided which forms JitBackendX64 emits natively and which it

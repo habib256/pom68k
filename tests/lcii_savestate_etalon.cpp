@@ -18,6 +18,7 @@
 // Soft-skips without the LC II ROM + a bootable hdv/ image (same assets
 // as lcii_boot_etalon). Exit 0 = pass / soft-skip, 1 = fail.
 
+#include "AssetFingerprint.h"
 #include "Cpu030.h"
 #include "SaveState.h"
 #include "SaveStateMachines.h"
@@ -87,6 +88,7 @@ int main() {
         std::printf("SKIP: needs the 512 KB LC II ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

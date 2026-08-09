@@ -6,6 +6,7 @@
 // IIfx ROM + a bootable hdv/ image (System ≤ 7.6 — the IIfx ROM is
 // 32-bit dirty, so no 8.x).
 
+#include "AssetFingerprint.h"
 #include "IIfxMemory.h"
 #include "IIfxCpu.h"
 #include "TobyVideo.h"
@@ -32,6 +33,7 @@ int main() {
         std::printf("SKIP: needs the Mac IIfx ROM ($4147DD77) + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});

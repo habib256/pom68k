@@ -25,9 +25,10 @@ the Machine menu, in the same order and the same grouping
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 164 gates (asset-dependent ones soft-skip)
-ctest -L unit                     # 79 gates, no ROM or disk image needed
+ctest                             # 171 gates (asset-dependent ones soft-skip)
+ctest -L unit                     # 84 gates, no ROM or disk image needed
 ctest -L smoke                    # 8 gates, one machine, both CPU engines
+ctest -L etalon-core              # 12 gates, one profile per platform
 ```
 
 Requires CMake ≥ 3.16, a C++20 compiler, GLFW3 + OpenGL (GUI only).
@@ -116,6 +117,13 @@ Windows zip finds its data beside the `.exe`. `POM68K --version` prints the bann
 exits before any window — that is the CI smoke and a quick install check.
 Maintainers: run the *Build bionic builder image* workflow once, pin the
 digests it prints into `release.yml`, then push a version tag.
+
+A `disks35/` image is listed in the **Disques** window and can be inserted at
+any time, but it goes into the drive at power-on **only when there is no SCSI
+disk to boot from**. A Mac boots whatever medium is in the drive, so inserting
+a System 6 floppy automatically used to make the 040 machines come up on "This
+startup disk will not work on this Macintosh model" instead of the Finder.
+`POM68K_FLOPPY=<path>` is an explicit instruction and inserts one regardless.
 
 ## Run
 

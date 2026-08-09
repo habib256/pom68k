@@ -23,6 +23,104 @@ line here. **Every unchecked box below was re-verified against the code on
 
 ---
 
+## 0·A. Direction produit — la vitesse, et l'ordre dans lequel on la paie
+
+**Décision utilisateur, 2026-08-09.** Le problème n°1 de POM68K est sa
+**vitesse d'exécution**. Toutes les machines doivent être *utilisables*, quitte
+à perdre la conformité sur les plus puissantes. L'échelle voulue :
+
+| Classe | Contrat | État constaté |
+|---|---|---|
+| **68000 compacts** (Plus & co) | **LLE complet, conformité non négociable.** Un Raspberry Pi 400 suffit et doit suffire | tenu |
+| **68020** (Mac II & co) | conformant | la fenêtre ne vaut que ×1,0-1,2 (pas d'ATC à sauter) |
+| **68030** (LC II, 15,67 MHz) | utilisable sur Pi 400 | ~×1,3 temps réel en turbo sur un x86 costaud ; **inutilisable sur Pi 400** |
+| **68040** (Centris, Performa, Quadra) | utilisable | **même un x86 costaud ne suit plus** |
+
+**L'ordre est fixé et il n'est pas négociable :**
+
+> **1. D'abord épuiser toutes les accélérations possibles en LLE et en JIT
+> conformant. 2. Ensuite seulement, ajouter du HLE et du JIT non conformant.**
+
+C'est la règle § *Principle* de `docs/LLE_VS_HLE.md` appliquée à la
+performance : le raccourci ne se mesure et ne se valide que contre une
+référence conforme qui existe déjà. Concrètement, **§ 3 est désormais le
+chemin critique du projet**, et l'item *Optional HLE acceleration overlay*
+(§ 8) est explicitement **bloqué derrière lui**.
+
+### Ce que la bascule non conforme rapportera — estimation, à ne pas citer comme mesure
+
+Base **mesurée** (`POM68K_JIT.md` § 3, bench à budget de cycles fixe, Q605) :
+interpréteur → `threaded` ×1,60-1,69, → `x86-64` **×2,09-2,18**. Le ×2,68 du
+`q605_boot_etalon` est flatté (un etalon s'arrête à la signature Finder, donc
+les deux moteurs sont chronométrés sur des quantités de travail invité
+différentes) — **la base de raisonnement est ×2,1, pas ×2,7**.
+
+| Levier | Gain attendu sur le JIT actuel | Statut |
+|---|---|---|
+| Soft TLB / ATC relâché | +10 à 30 % | **estimé.** Assis sur un fait mesuré (794 M sorties de fenêtre / 12,2 G instr = 1 toutes les ~15) mais le **coût par sortie n'a jamais été mesuré** — c'est le seul terme inconnu de tout le calcul, et le premier à chiffrer |
+| Longues traces, contrat par instruction abandonné | +10 à 20 % | estimé ; le block linking a déjà pris le gros (entrées −53 %, 268 → 566 instr/entrée) |
+| Interruptions + temps grossiers | +0 à 10 % | estimé, et **la relaxation à laquelle ce tree est le plus fragile** (voir plus bas) |
+| ~~Lazy flags~~ | **≈0,8 %** | **MESURÉ et abandonné** — voir § 3 *Measured and DROPPED*. Ne pas le remettre dans un plan de perf |
+
+Composé : **×1,3 à ×2,0 sur le JIT actuel**, soit **×2,7 à ×4,2 face à
+l'interpréteur**. Sacrifier toute la conformité CPU rend donc de l'ordre de
+**+50 %** — ce n'est pas un changement d'échelle. Raison structurelle : le
+générateur x64 *est déjà* un vrai JIT (code machine émis, DTLB inline,
+transferts de contrôle compilés comme terminateurs de bloc) ; les relaxations
+d'un JIT 68k classique servent surtout à *atteindre* cet état, et on y est
+déjà, en payant l'exactitude. On ne rachète que la taxe.
+
+**Le changement d'échelle, s'il existe, est dans le HLE, pas dans le JIT.**
+La liste des instructions non couvertes est menée par les décalages line-$E,
+`Scc`, `PEA` et les modes indexés 68020 — *ce dont sont faits les blitters de
+QuickDraw* (§ 3, *Coverage tail*). Un JIT exécute ces boucles plus vite ; un
+HLE QuickDraw ne les exécute pas du tout. C'est le seul levier dont le gain
+n'est pas borné par le taux d'instructions — et le plus invasif.
+
+### Deux garde-fous à poser AVANT la première ligne de code non conforme
+
+1. **Ne jamais relâcher l'horloge périphérique/MCU.** Relâcher l'exactitude
+   côté CPU, oui ; le temps vu par le VIA, l'Egret/Cuda, l'IWM/SWIM reste sur
+   le compteur machine. Ce tree a trois cicatrices qui disent pourquoi : la
+   Mac TV deadlocke sur **2 %** de dérive du taux d'instructions MCU
+   (§ 1, *Cuda↔VIA phase robustness*) ; le boost i-cache comprimait le
+   dénibblage sous le hold de 14 ticks de l'IWM → `badDCksum` (d'où le gel du
+   boost pendant que le moteur tourne) ; `CudaLle::tick` doit reporter son
+   dépassement en `mcuDebt_` sous peine de suroverclocker le MCU de ~37 %.
+   Le **temps grossier est la relaxation la plus dangereuse ici**, pas la plus
+   rentable — la prendre en dernier, machine par machine.
+2. **L'instrument de mesure ne survit pas au mode non conforme.** Chaque
+   chiffre de la table § 3 a été pris avec les trois moteurs imprimant la
+   **même empreinte** d'état architectural. Un profil relâché imprimera une
+   empreinte différente **par construction**. Il lui faut donc son critère
+   d'équivalence *fonctionnel* (atteint le Finder, lit le bon bloc) **avant**
+   toute mesure, sinon « plus rapide » et « cassé mais rapide » deviennent
+   indiscernables — le mode d'échec que ce projet a déjà payé plusieurs fois.
+
+### Forme visée (pas un booléen)
+
+Le mot est « **progressivement** » : un **profil de fidélité gradué** avec des
+défauts **par famille de machine** (compacts verrouillés au profil conforme ;
+030 et 040 relâchés par cran), pas un interrupteur conforme/non-conforme. Le
+*purity mode* de `docs/HLE_OVERLAY.md` § 7 s'applique tel quel : tous les
+gates d'accuracy forcent le profil conforme, `abort()` si quelque chose tente
+de l'armer.
+
+### Ce qui manque pour transformer tout ceci en plan
+
+- [ ] **Une ligne de base sur le matériel cible.** Aucun chiffre POM68K
+  n'existe sur un vrai Pi 400 (§ 3, *Build recipe*) et « inutilisable » n'est
+  pas une cible tant qu'on ne sait pas *combien* il manque. Mesurer avec
+  `jit_bench` (`POM68K_BENCH_FRAMES`), **jamais** un boot etalon.
+- [ ] **Le ×1,3 de la LC II : avec ou sans JIT ?** Si c'est l'interpréteur, il
+  reste ~×1,5 gratuit juste en activant le moteur. Si c'est déjà `threaded`,
+  la marche est plus raide. La réponse change tout le calcul ci-dessus.
+- [ ] **Chiffrer le coût d'une sortie de fenêtre** — le seul terme estimé de
+  la table. Tant qu'il ne l'est pas, « ATC relâché = +10 à 30 % » est une
+  hypothèse, pas un argument.
+
+---
+
 ## 0. État au 2026-08-03 — la suite complète est verte, le chantier IOP est clos
 
 **`ctest` complet : 143/143, 3 h 03, aucun échec — sur arbre entièrement
@@ -189,7 +287,7 @@ after it has demonstrated sensitivity** — and only after it has demonstrated
 ## 2. Test & validation depth — the single biggest gap
 
 The gates prove **boot**, not **use**, and the machine fan-out made the ratio
-worse. Of the **37 profiles** covered by the **162 gates**, only **9** have any
+worse. Of the **37 profiles** covered by the **170 gates**, only **9** have any
 gate past the Finder signature: LC II (`lcii_soak/persist/launch/floppy_etalon`
 + `lcii_savestate_etalon`), Quadra 605 (`q605_soak/persist_etalon` —
 2026-08-05, the second beyond-boot machine —, `q605_cudalle_mouse/key_etalon`,
@@ -204,13 +302,36 @@ rather than trusting this sentence. **The other 28 profiles are
 boot-to-Finder signature only.** A machine can pass its etalon and still be
 useless for real work.
 
+**Depth is a second axis, and it moved on 2026-08-09.** Of those nine, only
+**three** now have the soak+persist pair that proves a machine *keeps* working
+and *writes*: the LC II, the Quadra 605 and — since `iivx_soak/persist_etalon`
+— the IIvx, which had an input gate and nothing more. Counting profiles alone
+hides that: the IIvx was already inside the nine before it could survive three
+idle minutes or create a folder.
+
 Highest-ROI closers, in order:
 
 - [x] **Soak + persist on the Quadra 605 — LANDED 2026-08-05**
   (`q605_soak_etalon`, `q605_persist_etalon`; the persist run drives the
-  53C96 WRITE end to end — `CHANGELOG.md` § 2026-08-05 (fifth)). Natural
-  next second machines: a `launch`/`floppy` pair on the Q605, or soak on a
-  boot-only profile (RBV / VASP / AIO — the freshness tail).
+  53C96 WRITE end to end — `CHANGELOG.md` § 2026-08-05 (fifth)).
+- [x] **Soak + persist on the Macintosh IIvx — LANDED 2026-08-09**, the THIRD
+  machine (`iivx_soak_etalon`, `iivx_persist_etalon`). VASP rather than an RBV
+  sibling because on the IIsi/IIci physical low RAM IS the framebuffer, so
+  `peek8(0x20C)` reads desktop pixels instead of the Time global. Soak: 180 s
+  on the Mac clock for 180 s of frames, 377 488 381 Egret MCU cycles —
+  matching the LC II reference, an independent check of the MCU timebase on
+  this board.
+  **It also found a defect in the two older gates' shared criterion**: the
+  folder-name search was case-sensitive AND picked whichever candidate was
+  most frequent. On the French 7.5 volume `Nouveau dossier` is a constant
+  localization resource at ×51 and always won, while the created folder is
+  `Dossier sans titre` 10 → 12. The IIvx gate now judges on **the candidate
+  that changes** and prints all of them; `lcii_beyond_etalon` and
+  `q605_beyond_etalon` still use the old heuristic — green on their images,
+  which is not the same as right.
+- [ ] **Next beyond-boot machines**: a `launch`/`floppy` pair on the Q605, or
+  soak on the RBV — which needs a LOGICAL-address read of the Time global
+  first, since `peek8` is physical there.
 - [ ] **Floppy: a guest-INITIATED write — BLOCKED on the §1 SWIM1-IWM
   mount bug, and its 2026-07-29 evidence is RETRACTED** (2026-08-05).
   The "volume mounts, window auto-opens, Cmd-N dropped" story was the
@@ -246,6 +367,12 @@ hardened — RBV / Tinker Bell / VASP / AIO).
 ---
 
 ## 3. JIT — second execution engine
+
+> **Chemin critique du projet depuis le 2026-08-09** (§ 0·A). L'ordre décidé
+> est : épuiser d'abord tout le conformant listé ici, **puis** seulement le
+> HLE / JIT non conformant (§ 8). Les deux premiers items ci-dessous sont ce
+> qui reste de plus gros à gain conformant — et le premier porte sur la LC II,
+> exactement la machine que l'objectif nomme.
 
 Landed and documented: J0/J1 (engine seam, backends, fetch window, block cache),
 J2 (x86-64 code generator), J3 (inline DTLB), block linking, 030 + 020 seams,
@@ -899,6 +1026,107 @@ bake `tools/wrap_hfs.py`).
 
 ## 8. Cross-machine architecture
 
+**Items marked [AR] come from the architecture review of the tree at
+`d3bbd81` (2026-08-09)**, which measured the repository rather than reading
+its docs. Two of its findings are already closed: the gate asset preamble
+(`CHANGELOG.md` 2026-08-09) and the Moira fork decision
+(`extern/moira/POM68K_VENDOR.md` § *Status*). The rest are below, in the
+review's own ROI order.
+
+- [x] **[AR] `MachineHost<Derived, Mem, Cpu, Audio>` — LANDED 2026-08-09.**
+  The six `*Machine` structs (1 671 l.) are one CRTP host (`src/MachineHost.h`,
+  383 l.) plus 681 lines of genuinely per-platform code; `src/main.cpp` went
+  6 711 → 5 616. Measured before extracting: every shared member except
+  `publish()` was **byte-identical across all six**, and `stepTick` was 92-100 %
+  identical — so the split was not a judgement call.
+  **The half the review did not name mattered more than the half it did**:
+  `main.cpp` is the only TU outside `pom68k_core`, so this contract could never
+  be linked by a test. It was lifted into a header *before* being unified, and
+  `machinehost_test` (33 checks, `unit`) now gates what the compiler cannot —
+  queue ordering, the framebuffer double buffer, both pacing branches and the
+  thread teardown. `CHANGELOG.md` 2026-08-09 (third).
+  **The GUI pass was done 2026-08-09** (dedicated Xvfb, a COPY of the boot
+  image — the GUI attaches `writeBack = true`): framebuffer publish, status
+  atomics, save + restore, and floppy hot-swap through the command queue all
+  verified on screen, ending with the guest mounting `Rogue.dsk` picked from
+  the Disques window. It also found a bug no gate could see — the 040 loops
+  auto-inserted `disks35/Disk605.dsk` at power-on and the Quadra booted System
+  6.0.5 off it (`CHANGELOG.md` 2026-08-09 (seventh)).
+  **Still not gated, only checked once by hand.** There is no automated GUI
+  gate and this pass does not create one; a screenshot harness under Xvfb is
+  now demonstrably possible, and would be the way to keep it.
+- [ ] **[AR] The `run*()` bodies are the remaining half of § 2·A.** The hosting
+  is unified; the eleven `run*()` functions (3 428 l.) are not.
+  `runCentris()` (344 l.) and `runQ700()` (350 l.) still share **304 identical
+  lines after normalising platform identifiers, 88 %** — and the diff is
+  almost entirely a *descriptor*: model selection from an env knob → name /
+  clock / machine ID, RAM size, PRAM file suffix and which clock source takes
+  the host time, window title and geometry. Collapse them the same way: one
+  templated `runMachine(desc)` plus a literal per profile. Now cheaper than it
+  was, since the host they all wire up is a single type.
+- [x] **[AR] `etalon-core` — LANDED 2026-08-09.** 12 gates, one representative
+  profile per platform, **12/12 green in 31 min 41 s** (the review estimated
+  ~40). A name in `POM68K_ETALON_CORE` that stops being a registered gate is a
+  configure-time `FATAL_ERROR`. **Building it found that four gates carried no
+  label at all** — `iifx_boot_etalon`, `iifx_input_etalon`, `iifx_post_etalon`,
+  `duo230_boot_etalon` were registered *after* the label-derivation block, so
+  two whole platforms were invisible to every `ctest -L` tier. Block moved;
+  `etalon` 81 → 85.
+  **Link speed: wired, unmeasured.** `POM68K_FAST_LINK` (ON) probes for mold
+  then lld and uses whichever the driver accepts; neither is installed on this
+  host, so there is **no measurement to quote**. Ninja is available and would
+  be the other half — it needs a fresh build tree, which is the user's call.
+- [x] **[AR] `docs_test` — LANDED 2026-08-09**, 75 checks, `unit`, asset-free.
+  Checks `kProfiles` rows == `SnapMachine` tags == every profile count
+  `CLAUDE.md` states; every gate the file names in full is registered; every
+  gate carries a label; every gate total quoted matches, **including the ones
+  inside fenced code blocks** (`ctest -L unit   # 79 gates` — three counts were
+  stale). Reads a roster CMake writes at configure time; the path is baked in,
+  because searching for it relative to the working directory made the gate
+  return 0 after two checks when run from the source tree. A negative control
+  confirms it fails on a wrong number.
+- [~] **[AR] Declare an expiry per environment knob — HALF LANDED 2026-08-09.**
+  The surface is **133 distinct `POM68K_*` names** read as string literals
+  across `src/`, `tests/` and the Moira fork (the review said "105 in `src/`",
+  which both over-counts — build defines like `POM68K_VERSION_STRING` are not
+  knobs — and under-counts, since gates and the fork read their own). 172
+  `getenv` call sites, 37 memoised in a `static`.
+  **Coverage: done.** `config_test` (`unit`, asset-free) now checks `DEV.md`
+  § 5 + `src/jit/POM68K_JIT.md` against the tree in both directions. It found
+  **12** knobs the code reads that no document mentioned — five real
+  emulator knobs (`POM68K_Q700_MODEL`, `POM68K_Q900_IOPWATCH`,
+  `POM68K_Q900_IOP_TRACE`, `POM68K_V8_IOHOLE`, `POM68K_V8_HOLEVAL`), four
+  PG&E bring-up probes, three gate-local — plus one documented ghost
+  (`POM68K_PERIPH_BATCH`), now under a **Retired** heading the gate enforces.
+  All twelve are documented. *Two earlier counts of this same gap (24, then
+  23) were the checker misreading the doc's own notation: § 5 writes
+  `` `POM68K_PROBE*` `` and `` `POM68K_CENTRIS_FPU` / `_BAREFPU` ``, and both
+  forms are real declarations. The gate models all three notations.*
+  **Expiry: not done.** The seven bring-up probes now declare their chantier;
+  the other ~120 entries still do not say whether they are a permanent product
+  option (which earns a gate) or a chantier leftover. That is a decision per
+  knob — the mechanism is in place, the classification is not.
+  Secondary, non-urgent: an unmemoised `getenv` is a linear scan of the
+  environment on glibc — cheap to rule out with a profiler, probably nothing.
+- [ ] **[AR] Separate fixture roles, then version them.** The gates never write
+  their images (`ScsiDisk::open()` defaults `writeBack = false`, no test passes
+  `true`, and `q605_persist_etalon` replays its reboot against the in-memory
+  image) — but the GUI attaches the *same* `hdv/*.vhd` with
+  `attachScsi(path, true)`, twelve sites. A mutable, unversioned file is not a
+  fixture: that is how `MacOS-7.6-boot.vhd` was corrupted and the IIfx gates
+  went red. Two steps left now that the preamble prints the digest: a read-only
+  `hdv/ref/` distinct from the volumes the GUI mounts, then a versioned
+  `assets.lock` (name, size, SHA-256, provenance) + `tools/verify_assets.py` —
+  which distributes no copyrighted content and makes the drift *nameable*.
+- [x] **[AR] `CHANGELOG_INDEX.md` — LANDED 2026-08-09.** 205 dated entries in
+  13 subsystem groups, generated by `tools/changelog_index.py`. The grouping is
+  a keyword heuristic over each entry's hook and says so; an entry filed wrong
+  is a bug in the table in that script, not something to hand-edit. The anchor
+  slugger reproduces the changelog's own existing links exactly, so both index
+  styles stay usable. `docs_test` fails when the index stops covering every
+  dated entry — a generated index that silently falls behind is worse than
+  none, because it looks complete.
+
 - [ ] **Save states — one residual.** The feature shipped 2026-07-30 across all
   11 machine families and 36 profiles (archive core `src/SaveState.h/.cpp`,
   container `SaveStateMachines.h/.cpp`, `MoiraSnapshot.h`, GUI/CLI wiring in
@@ -914,12 +1142,26 @@ bake `tools/wrap_hfs.py`).
   vendored line `Moira::pomFlushAtcs()`, the 030 i-cache, the JIT guard) rather
   than carried; host-backed bulk data stays on the host (`ScsiDisk` ships a
   copy-on-first-write log of what the guest changed, not the image).
-- [ ] **Optional HLE acceleration overlay** (`docs/HLE_OVERLAY.md`, after the
+- [ ] **Optional HLE acceleration overlay** — **BLOQUÉ derrière § 3** par la
+  décision du 2026-08-09 (§ 0·A) : on épuise le conformant d'abord, le HLE et
+  le JIT non conformant ensuite, jamais l'inverse. Ce que cette décision fixe
+  aussi, et que le doc laissait ouvert : la bifurcation § 2.3 de
+  `HLE_OVERLAY.md` (HLE invité vs profil JIT relâché) se tranche en faveur du
+  **profil JIT relâché côté hôte**, parce que le besoin réel est du *débit CPU
+  soutenu sur 030/040*, pas de la latence d'I/O — patcher `.Sony` ne fait pas
+  tourner le Finder d'une LC II plus vite. Le HLE au niveau invité redevient
+  secondaire, **sauf QuickDraw**, qui est le seul endroit où le gain n'est pas
+  borné par le taux d'instructions (§ 0·A).
+
+  Reste vrai par ailleurs (`docs/HLE_OVERLAY.md`, after the
   `docs/LLE_VS_HLE.md` cleanup pass). Start with one hidden `boot.checksum`
   address hook and an HLE-forbidden accuracy-test mode; then signature-matched
   modules, per-module A/B gates and a visible non-conformant-mode indicator.
-  **Prioritize disk HLE**; defer timing-loop elision until its overlap with the
-  JIT is understood. **The premise moved 2026-07-31**: the conformant JIT
+  ~~Prioritize disk HLE; defer timing-loop elision until its overlap with the
+  JIT is understood~~ — **réordonné 2026-08-09** : le disque est de la latence
+  d'I/O, pas du débit, donc secondaire pour l'objectif ; l'élision de boucles
+  temporelles n'est plus « à comprendre » mais tranchée en profil JIT relâché.
+  **The premise moved 2026-07-31**: the conformant JIT
   now measures **×2.68** on `q605_boot_etalon` (61.3 s → 22.9 s), i.e.
   THROUGH the "~×2.5-3 conformant ceiling" this item used to invoke as its
   justification — so the overlay can no longer be sold as the way to make
@@ -940,7 +1182,10 @@ bake `tools/wrap_hfs.py`).
 - [ ] **Refactor the remaining GUI globals**: move compile-unit state such as
   `demoMode` (5 sites in `main.cpp`) into a machine/UI status object; keep
   machine threads, command queues and Emscripten's single-thread path
-  behaviourally aligned.
+  behaviourally aligned. *This is the visible tip of the `MachineHost<M, C>`
+  item at the top of this section — "keep the paths behaviourally aligned" is
+  exactly the obligation that a single host would discharge structurally
+  instead of by hand, across six copies.*
 
 ---
 

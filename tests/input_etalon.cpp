@@ -10,6 +10,7 @@
 // a false green: that cost a debug round on 2026-07-29). Soft-skips without
 // roms/macplus.rom + disks35/Disk605.dsk.
 
+#include "AssetFingerprint.h"
 #include "Cpu68k.h"
 #include "MacMemory.h"
 #include "MacFrame.h"
@@ -34,6 +35,7 @@ int main() {
         std::printf("SKIP: needs roms/macplus.rom + disks35/Disk605.dsk\n");
         return 0;
     }
+    testasset::report({ rom, dsk });
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());

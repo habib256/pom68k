@@ -45,6 +45,8 @@
 // POM68K_DUMP=1 writes lcii_beyond_<mode>.ppm for eyeballing/calibration.
 // Soft-skips without the LC II ROM + a bootable hdv/ image.
 
+#include "AssetFingerprint.h"
+#include "FolderProbe.h"
 #include "V8Memory.h"
 #include "SonyDrive.h"
 #include "V8Video.h"
@@ -178,6 +180,7 @@ int main() {
         std::printf("SKIP: needs the 512 KB LC II ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
@@ -288,17 +291,8 @@ int main() {
         // Full folder-name phrases only — the HFS catalog stores the whole
         // Pascal name, so this is a clean 0→1 signal (the bare "untitled"
         // substring occurs ~430× in a stock volume and drowns it out).
-        auto best = [&](long& out) {
-            const char* cands[] = { "untitled folder", "Nouveau dossier",
-                                    "dossier sans titre" };
-            const char* which = cands[0]; long m = 0;
-            for (const char* c : cands) {
-                long k = countNeedle(disk, c);
-                if (k > m) { m = k; which = c; }
-            }
-            out = m; return which;
-        };
-        long before; const char* needle = best(before);
+        long before[folderprobe::kCount];
+        folderprobe::sample(disk, before, "before");
         std::vector<uint8_t> snap = disk;
         // Cmd-N (New Folder) in the frontmost Finder window, then Return to
         // commit the still-editable name, then let the catalog flush.
@@ -309,10 +303,17 @@ int main() {
         runFrames(120);                      // let the rename field appear
         keyTap(0x24);                        // Return — commit the name
         runFrames(900);                      // ~15 s: create + flush catalog
-        long after; needle = best(after);
+        long after[folderprobe::kCount];
+        folderprobe::sample(disk, after, "after");
+        const size_t grew = folderprobe::grew(before, after);
         bool wrote = disk != snap;
-        std::printf("persist: '%s' ×%ld → ×%ld, image %s\n", needle,
-                    before, after, wrote ? "modified" : "UNCHANGED");
+        std::printf("persist: %s, image %s\n",
+                    grew < folderprobe::kCount
+                        ? (std::string("'") + folderprobe::kNames[grew] + "' " +
+                           std::to_string(before[grew]) + " -> " +
+                           std::to_string(after[grew])).c_str()
+                        : "NO candidate folder name appeared",
+                    wrote ? "modified" : "UNCHANGED");
         std::vector<uint32_t> fb;
         screen(fb);
         dump("lcii_beyond_persist.ppm", fb);
@@ -320,11 +321,15 @@ int main() {
         cpu.hardReset();
         while (mem.cpuHeld()) mem.tick(1000);
         runFrames(16000);
-        long survived; needle = best(survived);
+        long survived[folderprobe::kCount];
+        folderprobe::sample(disk, survived, "reboot");
         bool rebooted = !cpu.isHalted() && finderUp();
-        std::printf("persist: reboot %s, '%s' ×%ld after\n",
-                    rebooted ? "reached the Finder" : "FAILED", needle, survived);
-        ok = wrote && after > before && rebooted && survived > before;
+        const bool kept = grew < folderprobe::kCount &&
+                          survived[grew] > before[grew];
+        std::printf("persist: reboot %s, folder %s\n",
+                    rebooted ? "reached the Finder" : "FAILED",
+                    kept ? "survived" : "did NOT survive");
+        ok = wrote && grew < folderprobe::kCount && rebooted && kept;
     } else if (mode == "launch") {
         // Drive the machine with the MOUSE: double-click a folder in the
         // frontmost window to open it. A new window always appears (screen
@@ -547,18 +552,8 @@ int main() {
         // Mounting opens the volume's window, so it is frontmost and Cmd-N
         // creates the folder ON THE FLOPPY — the same gesture `persist`
         // uses on the hard disk, no desktop-icon hunting needed.
-        auto folderCount = [&](const std::vector<uint8_t>& img, const char*& which) {
-            const char* cands[] = { "untitled folder", "Nouveau dossier",
-                                    "dossier sans titre" };
-            long m = 0; which = cands[0];
-            for (const char* c : cands) {
-                long k = countNeedle(img, c);
-                if (k > m) { m = k; which = c; }
-            }
-            return m;
-        };
-        const char* needle = nullptr;
-        long before = folderCount(floppyOrig, needle);
+        long before[folderprobe::kCount];
+        folderprobe::sample(floppyOrig, before, "floppy/before");
         std::vector<uint8_t> hdSnap = mem.scsiDisk().image();
         std::printf("floppy: write-protect sense = %d\n",
                     drv.isWriteProtected());
@@ -636,10 +631,15 @@ int main() {
         back.close();
         bool sizeOk = after.size() == floppyOrig.size();
         bool changed = after != floppyOrig;
-        const char* n2 = nullptr;
-        long got = folderCount(after, n2);
-        std::printf("floppy: '%s' ×%ld → ×%ld in the host file\n",
-                    got ? n2 : needle, before, got);
+        long got[folderprobe::kCount];
+        folderprobe::sample(after, got, "floppy/after");
+        const size_t grewF = folderprobe::grew(before, got);
+        std::printf("floppy: %s in the host file\n",
+                    grewF < folderprobe::kCount
+                        ? (std::string("'") + folderprobe::kNames[grewF] + "' " +
+                           std::to_string(before[grewF]) + " -> " +
+                           std::to_string(got[grewF])).c_str()
+                        : "NO candidate folder name appeared");
         bool stillHfs = after.size() >= 0x402 &&
                         after[0x400] == 0x42 && after[0x401] == 0x44;
         std::printf("floppy: host file %s, size %s, HFS sig %s, "

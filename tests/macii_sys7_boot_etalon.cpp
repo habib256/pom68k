@@ -1,6 +1,7 @@
 // POM68K — Mac II System 7 → Finder gate (EtherTalk alert dismiss path).
 // Soft-skips without Mac II ROM + System 7.0/7.1 HD .dsk.
 
+#include "AssetFingerprint.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
@@ -26,6 +27,7 @@ int main() {
         std::printf("SKIP: needs Mac II ROM + hdv/System 7.0|7.1 HD.dsk\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});

@@ -1,0 +1,118 @@
+// POM68K — Macintosh 68k emulator
+// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+//
+// The GUI ↔ machine-thread save/restore slot, lifted out of `main.cpp`
+// unchanged (2026-08-09) so it can be reached by a gate: `main.cpp` is the
+// only translation unit outside `pom68k_core`, so nothing that lives there
+// can be tested. This carries no GUI dependency and never did — the ImGui
+// row that drives it (`saveStateUi`) stays in `main.cpp`.
+
+#pragma once
+
+#include "SaveStateMachines.h"
+
+#include <cstdio>
+#include <mutex>
+#include <string>
+#include <vector>
+
+// ── Save states (TODO § C GUI wiring) ───────────────────────────────────
+// Shared plumbing embedded in each machine-thread struct: the GUI queues a
+// request; the MACHINE thread performs the save/load between two quanta
+// (the Cmd::CpuEngine precedent — a restore replaces the whole tree, so it
+// must land between two instructions, never mid-quantum from the GUI
+// thread) and posts a one-line outcome the machine window displays. The
+// run function fills in the profile tag and the state-file path (tagged
+// like the .pram file, so states pair with their boot volume).
+struct SaveStateSlot {
+    pom68k::SnapMachine kind{};        // 0 = profile not wired
+    std::string path;
+
+    void request(bool load) {
+        std::lock_guard<std::mutex> l(mu_);
+        pending_ |= load ? 2 : 1;
+    }
+    std::string message() {
+        std::lock_guard<std::mutex> l(mu_);
+        return message_;
+    }
+
+    // Machine-thread side, called from applyCmds() (between quanta).
+    // Returns what actually happened (bit 0 = saved, bit 1 = restored) so
+    // single-threaded callers (the Plus loop) can resync their frame clock
+    // after a restore.
+    template <class Mem, class Cpu>
+    int apply(Mem& mem, Cpu& cpu) {
+        int p;
+        { std::lock_guard<std::mutex> l(mu_); p = pending_; pending_ = 0; }
+        if (!p) return 0;
+        int done = 0;
+        if (kind == pom68k::SnapMachine{} || path.empty()) {
+            post("Save states: profil non câblé");
+            return 0;
+        }
+        if (p & 1) {
+            std::vector<uint8_t> blob;
+            pom68k::save(mem, cpu, kind, blob);
+            // Atomic temp+rename, the floppy write-back convention: a crash
+            // mid-write must never leave a truncated state file behind.
+            const std::string tmp = path + ".tmp";
+            std::FILE* f = std::fopen(tmp.c_str(), "wb");
+            if (!f || std::fwrite(blob.data(), 1, blob.size(), f) != blob.size()) {
+                if (f) std::fclose(f);
+                std::remove(tmp.c_str());
+                post("État NON sauvé: écriture impossible (" + tmp + ")");
+            } else {
+                std::fclose(f);
+                if (std::rename(tmp.c_str(), path.c_str()) != 0) {
+                    std::remove(tmp.c_str());
+                    post("État NON sauvé: rename impossible (" + path + ")");
+                } else {
+                    post("État sauvé → " + path + " ("
+                         + std::to_string((blob.size() + 512) / 1024) + " Ko)");
+                    done |= 1;
+                }
+            }
+        }
+        if (p & 2) {
+            std::vector<uint8_t> blob;
+            std::FILE* f = std::fopen(path.c_str(), "rb");
+            if (!f) {
+                post("Aucun état à restaurer (" + path + ")");
+            } else {
+                std::fseek(f, 0, SEEK_END);
+                long n = std::ftell(f);
+                std::fseek(f, 0, SEEK_SET);
+                blob.resize(n > 0 ? size_t(n) : 0);
+                size_t got = blob.empty() ? 0
+                           : std::fread(blob.data(), 1, blob.size(), f);
+                std::fclose(f);
+                std::string err;
+                if (got != blob.size()) {
+                    post("État NON restauré: lecture tronquée (" + path + ")");
+                } else if (!pom68k::load(mem, cpu, kind,
+                                         blob.data(), blob.size(), err)) {
+                    // A refused snapshot leaves the machine untouched — the
+                    // reason (profile/ROM/RAM mismatch, corruption) is
+                    // load()'s own explanation.
+                    post("État NON restauré: " + err);
+                } else {
+                    post(err.empty() ? "État restauré ← " + path
+                                     : "État restauré (" + err + ")");
+                    done |= 2;
+                }
+            }
+        }
+        return done;
+    }
+
+private:
+    void post(std::string m) {
+        std::lock_guard<std::mutex> l(mu_);
+        message_ = std::move(m);
+        std::printf("SaveState: %s\n", message_.c_str());
+    }
+    std::mutex mu_;
+    int pending_ = 0;                  // bit 0 = save, bit 1 = load
+    std::string message_;
+};

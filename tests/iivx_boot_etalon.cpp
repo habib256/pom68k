@@ -11,6 +11,7 @@
 // desktop weave, lc520_boot_etalon rationale). Soft-skips without the
 // 4957EB49 ROM or a bootable hdv/ image.
 
+#include "AssetFingerprint.h"
 #include "VaspMemory.h"
 #include "VaspVideo.h"
 #include "VaspCpu.h"
@@ -60,6 +61,7 @@ int main() {
         std::printf("SKIP: needs the 1 MB 4957EB49 ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

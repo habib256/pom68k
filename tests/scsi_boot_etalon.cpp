@@ -7,6 +7,7 @@
 // the Finder desktop signature. Soft-skips without roms/macplus.rom +
 // hdv/HD20SC.vhd.
 
+#include "AssetFingerprint.h"
 #include "Cpu68k.h"
 #include "MacMemory.h"
 #include "MacVideo.h"
@@ -30,6 +31,7 @@ int main() {
         std::printf("SKIP: needs roms/macplus.rom + hdv/HD20SC.vhd\n");
         return 0;
     }
+    testasset::report({ rom, hd });
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());

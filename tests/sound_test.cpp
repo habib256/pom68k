@@ -7,6 +7,7 @@
 // energy fades over time (the Mac "bong"). Writes chime.wav for listening.
 // Soft-skips without roms/macplus.rom.
 
+#include "AssetFingerprint.h"
 #include "Cpu68k.h"
 #include "MacMemory.h"
 #include "MacAudio.h"
@@ -42,6 +43,7 @@ static void writeWav(const std::string& path, const std::vector<float>& s, int r
 int main() {
     std::string rom = find("roms/macplus.rom");
     if (rom.empty()) { std::printf("SKIP: roms/macplus.rom not found\n"); return 0; }
+    testasset::report({ rom });
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     MacMemory mem; mem.loadRom(romData);

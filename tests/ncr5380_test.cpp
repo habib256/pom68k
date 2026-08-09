@@ -8,6 +8,7 @@
 // Descriptor Map. Also exercises the pseudo-DMA fast path. Independent of
 // the ROM, so it pins the controller even while the boot trigger is sorted.
 
+#include "AssetFingerprint.h"
 #include "Ncr5380.h"
 #include "ScsiDisk.h"
 #include <cstdio>
@@ -78,6 +79,7 @@ static int doRead(Ncr5380& scsi, uint32_t lba, std::vector<uint8_t>& block, bool
 int main() {
     std::string img = find("hdv/HD20SC.vhd");
     if (img.empty()) { std::printf("SKIP: hdv/HD20SC.vhd not found\n"); return 0; }
+    testasset::report({ img });
     ScsiDisk disk;
     CHECK(disk.open(img), "open image");
     Ncr5380 scsi;

@@ -20,6 +20,7 @@
 //
 // Soft-skips without the IIfx ROM ($4147DD77) + a bootable System ≤ 7.6.
 
+#include "AssetFingerprint.h"
 #include "IIfxMemory.h"
 #include "IIfxCpu.h"
 #include "TobyVideo.h"
@@ -57,6 +58,7 @@ int main() {
         std::printf("SKIP: needs the Mac IIfx ROM ($4147DD77) + a bootable image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});

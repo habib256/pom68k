@@ -13,6 +13,7 @@
 // Debug env knobs (the lc520_boot_etalon harness): POM68K_DIAG=1,
 // POM68K_PROBE=1, POM68K_HALT=2/<pc>, POM68K_FRAMES=<n>, POM68K_DUMP=1.
 
+#include "AssetFingerprint.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 #include "Cpu030.h"
@@ -64,6 +65,7 @@ int main() {
         std::printf("SKIP: needs the 1 MB Mac TV ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

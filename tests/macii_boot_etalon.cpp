@@ -1,6 +1,7 @@
 // POM68K — Mac II boot gate: SCSI → Finder (640×480 menu/desktop metrics).
 // Soft-skips without ROM + bootable hdv/ image.
 
+#include "AssetFingerprint.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
@@ -31,6 +32,7 @@ int main() {
         std::printf("SKIP: needs Mac II ROM + bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});

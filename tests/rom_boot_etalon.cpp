@@ -7,6 +7,7 @@
 // overlay cleared, gray 50% dither desktop, white icon box at screen
 // centre. Pixel-perfect etalons come with M8 (NeoST pattern).
 
+#include "AssetFingerprint.h"
 #include "Cpu68k.h"
 #include "MacMemory.h"
 #include "MacVideo.h"
@@ -28,6 +29,7 @@ int main(int argc, char** argv) {
         std::printf("SKIP: roms/macplus.rom not found (user-provided)\n");
         return 0;                                  // soft skip
     }
+    testasset::report({ path });
     std::ifstream in(path, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());

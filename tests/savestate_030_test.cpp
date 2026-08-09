@@ -21,6 +21,7 @@
 // coverage belongs to the machine's savestate etalon (lcii_savestate_
 // etalon is the template).
 
+#include "AssetFingerprint.h"
 #include "IIfxCpu.h"
 #include "IIfxMemory.h"
 #include "M68hc05Pge.h"
@@ -250,6 +251,7 @@ void testDuo() {
                     "roms/pge/pge_boot.bin\n", "duo230");
         return;
     }
+    testasset::report({ romPath, pgePath });
     std::ifstream rin(romPath, std::ios::binary);
     const std::vector<uint8_t> rom((std::istreambuf_iterator<char>(rin)),
                                    std::istreambuf_iterator<char>());

@@ -8,6 +8,7 @@
 // UniversalInfo defaultRSRCs 4 -> integer PACK 4 bound (CHANGELOG
 // 2026-07-21 "Bare no-FPU solved"). Soft-skips when assets are absent.
 
+#include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
 
@@ -128,7 +129,8 @@ int main() {
         std::printf("SKIP: needs FF7439EE ROM + hdv/MacOS-8.1-boot.vhd\n");
         return 0;
     }
-    std::printf("assets: ROM=%s disk=%s (bare NOFPU=2)\n", romPath.c_str(), diskPath.c_str());
+    testasset::report({ romPath, diskPath });
+    std::printf("config: bare NOFPU=2 (true FPUModel::NONE)\n");
     std::fflush(stdout);
 
     std::ifstream in(romPath, std::ios::binary);

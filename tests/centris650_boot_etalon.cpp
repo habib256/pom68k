@@ -11,6 +11,7 @@
 // Finder at 640×480 DAFB (same signature as q605_boot_etalon). Soft-skips
 // without the ROM or a bootable image.
 
+#include "AssetFingerprint.h"
 #include "CentrisMemory.h"
 #include "CentrisCpu.h"
 
@@ -113,6 +114,7 @@ int main() {
         std::printf("SKIP: needs the F1A6F343/F1ACAD13 ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

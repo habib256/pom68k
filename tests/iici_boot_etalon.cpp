@@ -18,6 +18,7 @@
 // - POM68K_FRAMES=<n> — override the 16 000-frame budget.
 // - POM68K_DUMP=1     — write iici_screen.ppm at the end.
 
+#include "AssetFingerprint.h"
 #include "RbvMemory.h"
 #include "RbvVideo.h"
 #include "RbvCpu.h"
@@ -67,6 +68,7 @@ int main() {
         std::printf("SKIP: needs the 512 KB IIci ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

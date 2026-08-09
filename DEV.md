@@ -1303,8 +1303,55 @@ Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
 `POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_HALT`, `POM68K_DUMP`,
 `POM68K_FRAMES`, `POM68K_BENCH_*`, `POM68K_PROBE*`,
 `POM68K_INPUT_ANYPATH`, `POM68K_JIT_LOCKSTEP_*`, `POM68K_IIFX_SHOT`
-(debug PPM out of `iifx_boot_etalon`), `POM68K_IIFX_POST_CYCLES`) are
-documented in their own file headers.
+(debug PPM out of `iifx_boot_etalon`), `POM68K_IIFX_POST_CYCLES`,
+`POM68K_CD_HOT` (`q605_cdrom_etalon`: insert the disc AFTER the Finder is
+up instead of at power-on), `POM68K_FLOPPY_IMG` / `POM68K_FLOPPY_SETTLE`
+(`lcii_beyond_etalon`'s floppy scenario: which 800K image, and how long to
+settle before judging the mount)) are documented in their own file headers.
+
+**Bring-up probes** — added to this list 2026-08-09, when `config_test`
+first ran and found twelve knobs the code reads that no document mentioned.
+Each is a *chantier* knob: it belongs to an open investigation and goes when
+that investigation closes.
+
+| knob | chantier | what it does |
+|---|---|---|
+| `POM68K_V8_IOHOLE` | V8 map holes (`TODO` § 4) | `=<n>` logs the first n reads in an unmapped V8 I/O hole with the PC. The Classic II ROM dereferences `$50F18038` and the block behind it has never been identified; the access pattern is the only way to name it |
+| `POM68K_V8_HOLEVAL` | same | `=<hex>` what a hole reads back on the Eagle's forgiving bus. MAME answers 0, but that is its `address_space` default and not a modelled decision — so this stays a knob, not a fact, until an observable separates them |
+| `POM68K_Q900_IOPWATCH` | Eclipse IOP (`docs/IOP_BRINGUP.md` § M7) | `=<hex>` names every writer of one IOP RAM byte (65C02 / host window / DMA). Written for a SWIM IOP that returned through a corrupted stack frame |
+| `POM68K_Q900_IOP_TRACE` | same | `=<n>` IOP port traffic, capped (a bare `=1` is useless past the first firmware upload) |
+| `POM68K_PGE_TRAP` | Duo PMU (`docs/DUO_BRINGUP.md`) | `=<hexbyte>` break when the PG&E RECEIVES that byte over SPI |
+| `POM68K_PGE_PCCOUNT` | same | `="hex,hex,…"` execution counts + first hits for named PMU firmware addresses |
+| `POM68K_PGE_PCHIST` / `POM68K_PGE_PCWIN` | same | PMU PC histogram and its window — where the 68HC05 actually spends its time |
+
+`POM68K_Q700_MODEL` belongs with **Machine selection** above: it picks
+`q700` / `q900` / `q950` on the discrete-040 board (the GUI menu sets it
+before relaunching, and a `$3DC27823` ROM overrides it — that dump IS a
+Quadra 950 whatever the environment inherited).
+
+**Retired** — names that must NOT come back without a new decision. Listed
+because a knob that vanishes silently leaves its documentation looking
+current:
+
+- `POM68K_PERIPH_BATCH` — fixed peripheral batching, replaced by event
+  deadlines on eight platforms (2026-08-03/04). The remaining fixed-batch
+  machines (compacts, Mac II, IIfx, MSC) have no knob at all.
+
+### How this list stays true
+
+`config_test` (`unit`, asset-free) checks it in both directions: every
+`POM68K_*` name the code reads as a string literal must appear here or in
+`src/jit/POM68K_JIT.md`, and every name that appears here must exist in the
+code unless it is under **Retired**. It understands the three notations this
+section already uses — a full name, a `` `POM68K_X*` `` wildcard, and a
+`` `POM68K_CENTRIS_FPU` / `_BAREFPU` `` suffix continuation — so nothing has
+to be rewritten to be checkable. **Still re-derive rather than extend by
+hand**; the gate tells you when you forgot, it does not write the entry.
+
+**Not yet enforced**: an expiry per knob. The seven probes above declare
+their chantier; the other ~120 entries do not yet say whether they are a
+permanent product option (which earns a gate) or a chantier leftover. That
+classification is a decision per knob, not a mechanical one — `TODO.md` § 8.
 
 ---
 
@@ -1343,6 +1390,71 @@ whole-machine `*_trace` binaries (`sony_trace`, `lcii_sony_trace`,
 `q605_trace`, `macii_mouse_trace`, …) are `EXCLUDE_FROM_ALL` dev tools, not gates — the
 gate is the `add_test` NAME, which is not always the binary name
 (`macii_mouse_trace` registers as `macii_mouse_etalon`).
+
+### The GUI ↔ machine-thread contract (`src/MachineHost.h`)
+
+Every machine runs on one CRTP host: `MachineHost<Derived, Mem, Cpu, Audio>`.
+It owns the thread, the command queue, the framebuffer double buffer, the
+status atomics, the `SaveStateSlot` and the JIT gauge snapshot. A platform
+supplies only its own half:
+
+| hook | what it does |
+|---|---|
+| `int64_t frameCycles() const` | cycles in one emulated frame |
+| `void emulateQuantum()` | run one frame; bump `framesRun_` |
+| `bool drainAudio()` | pull samples into `samp_`; true = audible |
+| `void renderFrame(out, w, h)` | fill the publish buffer |
+| `void publishStatus()` | store this platform's status atomics |
+| `static constexpr bool kStereo` | which `MacAudioHost` entry points to use |
+
+Two rules the header enforces rather than documents. **`fb_` is the platform's
+private raster surface** — on the row-granular decoders it persists across
+frames and only the scanned rows are repainted, so `renderFrame()` fills a
+separate `out` and publication is a swap; the host never takes `fb_`.
+And **`cpuEngine()` follows the machine, not the click**: the menu tick reports
+the engine actually running, and a swap lands one queue round-trip later.
+
+Per-platform variations that are not worth a hook go to
+`if constexpr (requires { … })` in `applyCmds()` — the CD bay
+(`insertBayMedia`), the monitor sense (`setMonitorSense`), the floppy (the Duo
+230 has no drive at all), and `mouseButton(bool)` vs `(bool, int)`.
+
+CRTP and not a base class **on purpose**: every `self()->` resolves at compile
+time, so the no-virtual-in-the-bus-path rule stays mechanical.
+
+Gated by `machinehost_test` (`unit`, asset-free) — queue ordering, the double
+buffer, both pacing branches, the thread teardown. That gate exists because
+`main.cpp` is the only translation unit outside `pom68k_core`: nothing that
+stays in it can be tested, which is why the contract was moved out before it
+was unified (`CHANGELOG.md` 2026-08-09 (third)). **The GUI layer above it is
+still compile-verified only.**
+
+### What a gate prints about its own assets
+
+Every gate that opens a user-provided file prints one `ASSET` line per file
+before it boots — path, size, SHA-256, and for a disk image the HFS volume name
+and `drVolAtrb` with bit 8 decoded:
+
+```
+ASSET disk   "hdv/MacOS-8.1-boot.vhd" 314621952 B sha256 ea4f068a…
+             HFS "Mac-8.1-US" drVolAtrb $0100 clean
+```
+
+One call, `testasset::report({ rom, img });` from `tests/AssetFingerprint.h`
+(header-only; `tests/` is on the include path for every gate). The role label is
+deduced from the path, so there is nothing per-gate to keep consistent. The
+volume probe walks the Apple Partition Map when block 0 is `'ER'` and falls back
+to a bare MDB at offset 1024 for the flat `.dsk` images.
+
+**Why it exists**: `roms/` and `hdv/` are user-provided and gitignored, so a
+gate's fixture can change under it with nothing in the record. On 2026-08-06
+that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
+The digest is also what an `assets.lock` would pin, if one lands.
+
+**Bit 8 clear is a tell, not a verdict.** `hdv/HD20SC.vhd` reads `$0000` and
+four green gates boot from it. It says where to look first when a boot gate goes
+red. Cost is ~265 MB/s, 1.4 % of `q605_boot_etalon` — no cache, no opt-out knob.
+The mechanism is itself gated by `asset_fingerprint_test` (`unit`, asset-free).
 
 Pinned CPU vector suites, which are gates in their own right:
 `sst68000` (**1 000 058** accepted SingleStepTests 68000 vectors),

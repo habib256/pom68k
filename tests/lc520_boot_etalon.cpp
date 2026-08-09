@@ -12,6 +12,7 @@
 // CUDA_V2XX 341s0060 — Cuda 2.40; 2.37 livelocks on pseudo-cmd $0E, see
 // docs/LC520_BRINGUP.md). Soft-skips without the ROM or a bootable image.
 
+#include "AssetFingerprint.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
 #include "SonoraCpu.h"
@@ -59,6 +60,7 @@ int main() {
         std::printf("SKIP: needs the 1 MB EDE66CBD ROM + a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),

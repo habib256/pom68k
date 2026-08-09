@@ -42,7 +42,11 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **…and what made it a safe default (event-driven ADB wire)** → [2026-07-24 — Event-driven ADB wire: the Egret firmware LLE is the LC II DEFAULT](#2026-07-24--event-driven-adb-wire-the-egret-firmware-lle-is-the-lc-ii-default)
 - **the Color Classic "Cuda 0417 wedge" was never a core bug** → [2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug…](#2026-07-29--the-color-classic-0417-wedge-was-a-missing-dfac2-not-a-core-bug-both-factory-cudas-land)
 - **"the IIsi has no working ADB" was wrong three times over — `peek8()` is PHYSICAL** → [2026-07-29 — Input-delivery gates for the 030 families…](#2026-07-29--input-delivery-gates-for-the-030-families-loud-hle-fallbacks-and-a-retracted-bug)
+- **"the naive matcher measurably slowed the gates" — it did not; 3.3 s on a 550-second gate, and nobody had timed it** → [2026-08-09 (eighth)](#2026-08-09-folderprobe)
 - **a red gate whose cause was a CORRUPTED BOOT IMAGE, not code — check drVolAtrb bit 8 before theorising** → [2026-08-06 (late night) — The IIfx closes the set…](#2026-08-06-jit-iifx)
+- **one probe for "did the guest create a folder?", and the gate that makes it safe to optimize** → [2026-08-09 (eighth)](#2026-08-09-folderprobe)
+- **"the machine never created the folder" was the GATE's needle list: case-sensitive, and picking the most frequent candidate instead of the one that changes** → [2026-08-09 (fifth) — Four gates carried no label at all…](#2026-08-09-tiers-and-gates)
+- **`ctest -L etalon` never covered the IIfx or the Duo — four gates were registered after the label block and carried no label** → [2026-08-09 (fifth)](#2026-08-09-tiers-and-gates)
 - **the "PGO divergence" in the JIT was the U bit, not the optimizer** → [2026-07-28 (fifth pass) — The "PGO divergence" was the U bit all along](#2026-07-28-fifth-pass--the-pgo-divergence-was-the-u-bit-all-along)
 - **"the JIT probe refuses a 68020, so the window never arms on the LC" (`Cpu030.h`) was stale the day it was written — and "routing the cycle-exact 68000 through `pomJitExecOne` would be wrong" was never demonstrated** → [2026-08-06 (evening) — The JIT reaches the last two families…](#2026-08-06-jit-020-000)
 - **"the break is between the ADB driver and the Event Manager" was wrong — KeyTime was a false observable, the cause was Slow Keys in the image** → [2026-07-31 — The ten-month red gate was Slow Keys](#2026-07-31-slow-keys)
@@ -245,12 +249,17 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Audits, doc syncs and cross-cutting reviews
 
+- **what does the GUI do that no gate can see?** → [2026-08-09 (seventh) — The GUI pass](#2026-08-09-gui-pass)
+
 - **adversarial subsystem audit — 3 fixes** → [2026-07-17 — adversarial subsystem audit: 3 correctness fixes](#2026-07-17--adversarial-subsystem-audit-3-correctness-fixes)
 - **adversarial subsystem audit #2 — 9 fixes** → [2026-07-17 — adversarial subsystem audit #2: 9 correctness fixes](#2026-07-17--adversarial-subsystem-audit-2-9-correctness-fixes)
 - **8-angle bug hunt + UI work** → [2026-07-16 — review fixes (8-angle bug hunt) + UI…](#2026-07-16--review-fixes-8-angle-bug-hunt--ui-mouse-capture-drag-fix-machine-menu)
 - **Basilisk II knowledge applied (rominfo, XPRAM defaults)** → [2026-07-15 — Basilisk II knowledge applied: rominfo, XPRAM defaults](#2026-07-15--basilisk-ii-knowledge-applied-rominfo-xpram-defaults)
 - **the Finder boot matrix, Phase A** → [2026-07-21 — Finder matrix Phase A complete (all four machines)](#2026-07-21--finder-matrix-phase-a-complete-all-four-machines)
 - **status pass: what is actually left** → [2026-07-25 — Doc sync + status pass: 25 machines, 90 gates, what is actually left](#2026-07-25--doc-sync--status-pass-25-machines-90-gates-what-is-actually-left)
+- **which image did this gate actually open, and was the volume clean?** → [2026-08-09 — A red gate can now say for itself whether the image moved](#2026-08-09-asset-fingerprint)
+- **is `extern/moira/` vendored or forked, and who decided?** → [2026-08-09 (later) — Moira is a fork, and the file now says so](#2026-08-09-moira-fork)
+- **where does a machine's GUI thread, command queue and framebuffer handoff live — and what gates them?** → [2026-08-09 (third) — Six copies of the GUI ↔ machine-thread contract became one](#2026-08-09-machinehost)
 
 ---
 
@@ -258,6 +267,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-09 (eighth)** — [One folder probe instead of three, and a gate for the thing three gates judge on](#2026-08-09-folderprobe)
+- **2026-08-09 (seventh)** — [The GUI pass: the Quadra booted System 6.0.5 off a floppy nobody asked for, and no gate could ever have seen it](#2026-08-09-gui-pass)
+- **2026-08-09 (fifth)** — [Four gates carried no label at all, and the folder the persist gate said was never created was there all along](#2026-08-09-tiers-and-gates)
+- **2026-08-09 (third)** — [Six copies of the GUI ↔ machine-thread contract became one, and the thing that had never been testable got a gate](#2026-08-09-machinehost)
+- **2026-08-09 (later)** — [Moira is a fork, and the file now says so: the upstream exit had expired without anyone choosing it](#2026-08-09-moira-fork)
+- **2026-08-09** — [A red gate can now say for itself whether the image moved: 60 gates print a SHA-256 and drVolAtrb before booting](#2026-08-09-asset-fingerprint)
 - **2026-08-08 (fourth)** — [`-mcpu=cortex-a72` produced byte-identical code to `-mtune=cortex-a72`: the Pi package's whole premise, measured and mostly refuted](#2026-08-08-mcpu-identical)
 - **2026-08-08 (third)** — [A Pi package built for ONE core: the `-mcpu` half of NeoST's workflow ports, the PGO half still cannot](#2026-08-08-pi400-ci)
 - **2026-08-08 (later)** — [The AppImage ignored a `roms/` folder sitting right next to it — the launcher had already chdir'd elsewhere](#2026-08-08-appimage-datadir)
@@ -460,6 +475,386 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-09-folderprobe"></a>
+## 2026-08-09 (eighth) — One folder probe instead of three, and a gate for the thing three gates judge on
+
+The IIvx port exposed a criterion that was wrong in two ways
+(`CHANGELOG.md` 2026-08-09 (fifth)). Both defects existed in **three** copies —
+`lcii_beyond_etalon` twice, `q605_beyond_etalon` once — so the fix went into
+`tests/FolderProbe.h` and all four gates now call it.
+
+The criterion, stated plainly: **the signal is not the biggest count, it is the
+count that changes.** `count()` folds ASCII case; `sample()` prints every
+candidate at every sampling point rather than only the winner — printing only
+the winner is precisely what turned a working machine into a wrong diagnosis;
+`grew()` returns the candidate that moved, or "none".
+
+All three gates re-run green on the shared criterion, and the numbers show why
+the old one held on two of them and not the third:
+
+| gate | candidate that moved | |
+|---|---|---|
+| `iivx_persist_etalon` | `Dossier sans titre` | 10 → 12 |
+| `q605_persist_etalon` | `untitled folder` | 14 → 16 |
+| `lcii_persist_etalon` | `untitled folder` | 29 → 31 |
+
+On the two English volumes the moving candidate happened to be the largest as
+well; on the French one it was not, and never would be.
+
+**`folderprobe_test`** (19 checks, `unit`) gates the helper: exact and folded
+matches, overlapping runs, empty and over-long needles, MacRoman high bytes
+passing through unfolded, agreement with a naive reference implementation over
+a 40 KB adversarial corpus — and, for `grew()`, that a huge constant candidate
+never wins over one that moved by 2. Validating a string matcher through three
+six-minute machine runs was the wrong loop.
+
+`count()` was then rewritten with a 256-entry fold table and a first-byte
+reject: **1.10 s → 0.49 s** for the three candidates over 314 MB (856 →
+1942 MB/s). `folderprobe_test` is what made that rewrite safe to make at all —
+same answers on every shape, including a 40 KB adversarial corpus, or the speed
+is worthless.
+
+**And a retraction inside the same entry.** That rewrite was first justified
+here, and reported to the user, as fixing a naive scan that "measurably slowed
+the gates". It did not. That was an inference from runs that *felt* long, and
+nobody had timed anything. Measured afterwards: the naive version costs about
+**3.3 s per gate run against a 550-second gate — 0.6 %, invisible**. The three
+re-runs bracket it: `iivx` 551.7 s, `q605` 634.0 s, `lcii` 327.9 s, with counts
+identical to the pre-rewrite run in all three. The optimization is real and
+stays; the regression it was said to repair never existed. Writing "measurably"
+about something unmeasured is the exact failure this project's method exists to
+prevent, and it happened in the entry describing a gate built to prevent it.
+
+<a id="2026-08-09-gui-pass"></a>
+## 2026-08-09 (seventh) — The GUI pass: the Quadra booted System 6.0.5 off a floppy nobody asked for, and no gate could ever have seen it
+
+The `MachineHost` refactor left one thing unverified and said so: the GUI layer
+above the contract is compile-checked only, and no gate opens a window. So the
+window was opened — under a **dedicated Xvfb on `:99`**, never the user's own
+session, and against a **copy** of `hdv/MacOS-8.1-boot.vhd`, because the GUI
+attaches `writeBack = true` and a fixture is not a scratch volume (the whole of
+§ 2·B in one precaution; the fixture's SHA-256 was identical afterwards).
+
+**The first screenshot showed a dialog, not a desktop:**
+
+> This startup disk will not work on this Macintosh model. Use the latest
+> Installer to update this disk for this model. (System 6.0.5 does not work on
+> this model; you need a newer version that does.)
+
+The Quadra 605 had booted the **floppy**. Four of the `run*()` loops scan for
+`disks35/Disk605.dsk` and insert it at power-on, under a comment reading:
+
+> SCSI remains the default boot path; a floppy is just media presence for the GUI.
+
+That was the intent and not what the code did. A Mac boots whatever medium is
+in the drive at power-on — POM68K is being *accurate* here — so the convenience
+scan put a System 6.0.5 disk in the SuperDrive and every 040 machine came up on
+that dialog instead of the Finder. The Mac II and IIfx loops have always
+inserted only on an explicit `POM68K_FLOPPY`; the four 040 loops now scan
+`disks35/` **only when there is no SCSI disk to boot**, which is what their own
+comment always claimed. `POM68K_FLOPPY` remains an instruction and is honoured
+either way.
+
+**No gate could have caught this.** Every etalon builds its machine directly and
+attaches exactly what it means to attach; this code path exists only in
+`main.cpp`, the one translation unit no test can link. It took a screenshot.
+
+With the fix, the same launch reaches the Mac OS 8.1 Finder — desktop picture,
+menu bar, clock — and the rest of the pass exercised precisely what the refactor
+moved:
+
+| path | observable |
+|---|---|
+| framebuffer publish → GL upload | the Finder renders, 640×480×8 |
+| `publishStatus()` atomics | CPU panel: `PC`, `clock`, `640x480 @ 8 bpp`, `MMU=on` |
+| `SaveStateSlot` (moved to a header) | « Sauver l'état » wrote a 33 MB `.pomss` |
+| restore between two quanta | « État restauré ← … », machine alive, guest clock frozen at the saved minute |
+| `requestInsertFloppy` → queue → `applyCmds` | picked `Rogue.dsk` from the Disques window; **the guest mounted it** — "Rogue" on the desktop |
+
+That last row is the whole command-queue contract end to end, from an ImGui
+click to an HFS volume on the guest's desktop, through the `if constexpr
+(requires …)` arm that replaced six hand-written copies.
+
+<a id="2026-08-09-tiers-and-gates"></a>
+## 2026-08-09 (fifth) — Four gates carried no label at all, and the folder the persist gate said was never created was there all along
+
+Three of the architecture review's items in one pass, and both of the real
+findings came from building the check rather than from reasoning about it.
+
+**`etalon-core`: 12 gates, one per platform, 12/12 in 31 min 41 s.** The full
+`etalon` label is a release gate, not a pre-commit check, and the temptation to
+skip it grows with every machine. The core tier takes one representative
+profile from each of the 12 memory-map implementations — the profile that
+platform was brought up on. Measured, not estimated: `system_boot_etalon` 4.5 s,
+`iifx_boot_etalon` 4.4 s (both real passes — the asset preamble from this
+morning is what makes a 4-second "PASSED" checkable at a glance instead of
+suspicious), up to `centris650_boot_etalon` 318 s and `q700_boot_etalon` 310 s.
+A name in the list that stops being a registered gate is now a `FATAL_ERROR` at
+configure time: renaming a gate must break the build, not the coverage.
+
+**And building it found that four gates had no label at all.** The
+label-derivation block sits under a comment promising that "a gate registered
+tomorrow is classified the moment it is added" — but it was placed in the
+*middle* of the test section, and the four gates registered after it —
+`iifx_boot_etalon`, `iifx_input_etalon`, `iifx_post_etalon`, `duo230_boot_etalon`
+— were classified by nothing. **Two entire platforms, the OSS + dual-IOP board
+and the MSC + PG&E board, were invisible to every `ctest -L` tier**, while the
+docs advertised the tiers as complete. The block moved to the true end of the
+section; `etalon` went 81 → 85 on the spot. `docs_test` now fails if any gate
+is unlabelled, so the promise is enforced rather than written.
+
+**`docs_test` (75 checks) and `config_test`, both `unit`, both asset-free.**
+The first checks what a reader would act on: `kProfiles` rows == `SnapMachine`
+tags == every profile count `CLAUDE.md` states (37), every gate the file names
+in full is registered, every gate carries a label, and every gate total quoted
+— *including the ones inside a fenced code block*, which is where the counts
+were stalest (`ctest -L unit   # 79 gates`, three gates out of date). A negative
+control confirmed it fails on a wrong number, and that control caught a second
+problem: run from the source tree the gate had been returning 0 after its first
+two checks, because it searched for the CMake-generated roster relative to the
+working directory. The roster path is now baked in at configure time and a
+missing roster is a failure, not a skip.
+
+`config_test` checks the env-knob surface both ways: **133** distinct
+`POM68K_*` names are read across `src/`, `tests/` and the Moira fork, and it
+found **12** the code reads that no document mentioned — five real emulator
+knobs (`POM68K_Q700_MODEL`, `POM68K_Q900_IOPWATCH`, `POM68K_Q900_IOP_TRACE`,
+`POM68K_V8_IOHOLE`, `POM68K_V8_HOLEVAL`), four PG&E bring-up probes, three
+gate-local — plus one documented ghost, `POM68K_PERIPH_BATCH`, now under a
+**Retired** heading the gate enforces. All twelve are documented.
+
+Two earlier counts of that same gap, 24 and then 23, were **the checker
+misreading the documentation**: `DEV.md` § 5 writes `` `POM68K_PROBE*` `` and
+`` `POM68K_CENTRIS_FPU` / `_BAREFPU` ``, and both are real declarations. The
+gate models all three notations, so § 5 did not have to be rewritten to become
+checkable. What is still NOT enforced is an expiry per knob — permanent product
+option versus chantier leftover. Seven bring-up probes now declare their
+chantier; the other ~120 entries are a decision each, not a mechanical one.
+
+**Beyond-boot on the third machine: the Macintosh IIvx (VASP).** Soak and
+persist, after the LC II and the Quadra 605. Note what this does *not* move:
+the IIvx was already one of the nine profiles with a gate past the Finder
+signature, because it has had `iivx_input_etalon` since 2026-07-29. Counting
+profiles hides the axis that actually matters here — only **three** of those
+nine can now be shown to keep working for three idle minutes and to write a
+file that survives a reboot. The IIvx rather than an RBV
+sibling on purpose: on the IIsi/IIci, physical low RAM *is* the framebuffer
+while the PMMU moves logical low memory, so `peek8(0x20C)` there reads desktop
+pixels rather than the Time global — the mistake this project has already made
+three times. VASP has its own VRAM. Soak: 180 s on the Mac clock for 180 s of
+frames, and 377 488 381 Egret MCU cycles, matching the LC II reference almost
+exactly — an independent confirmation the MCU timebase is right on this board.
+
+**The persist gate failed, and the failure was in the gate.** It reported
+`'Nouveau dossier' ×24 → ×24` — which reads exactly like "the machine never
+created the folder". A screen dump showed the folder plainly there, named
+**"Dossier sans titre"**, in a window that had gone from 8 items to 9.
+
+Two defects, both inherited verbatim from `lcii_beyond_etalon` and
+`q605_beyond_etalon`:
+
+1. The needle list was **case-sensitive** and spelled `dossier sans titre`; the
+   French 7.5 Finder writes `Dossier sans titre`.
+2. Worse, the gate picked **whichever candidate was most frequent**. On this
+   volume `Nouveau dossier` occurs 51 times as a constant localization
+   resource and never moves, while the created folder is 10 → 12 (HFS writes
+   the name twice: the catalog folder record and its thread record). The
+   maximum picked the resource string every run.
+
+The criterion is now **the candidate that CHANGES**, and every candidate's
+count is printed at all three sampling points instead of just the winner —
+which is what turned a wrong diagnosis into a measurement. With that,
+`'Dossier sans titre' 10 → 12`, surviving a hard reset at 12: the catalog write
+reached the medium, not just the System's disk cache. The same criterion belongs
+in the two older gates; they are green today, and green with a heuristic that
+happens to hold on their images is not the same as green.
+
+<a id="2026-08-09-machinehost"></a>
+## 2026-08-09 (third) — Six copies of the GUI ↔ machine-thread contract became one, and the thing that had never been testable got a gate
+
+The architecture review put `MachineHost<M, C>` second by ROI and estimated a
+week. Measuring first made it smaller and sharper than the estimate, and moved
+the real difficulty somewhere else entirely.
+
+**What the six hosts actually shared.** Method by method, normalised and
+diffed against `MacIiMachine` as the reference:
+
+| member | IIfx | Lc | Sonora | Dafb | Msc |
+|---|---|---|---|---|---|
+| `push`, `requestInsertFloppy`, `requestEjectFloppy`, `floppyInserted`, `setFloppyInserted`, `latchFrame`, `cpuEngine`, `jitStats`, `start`, `stop` | 100 % | 100 % | 100 % | 100 % | 100 % |
+| `stepTick` (41 l.) | **100 %** | 95 % | 97 % | 92 % | 97 % |
+| `publish` (29 l.) | 65 % | 58 % | 58 % | 62 % | 62 % |
+
+So the split was not a judgement call. Everything except `publish()` was
+already one function written six times; `publish()` differed only where each
+platform reads its framebuffer geometry. `src/MachineHost.h` takes the first
+group, and each platform supplies `renderFrame()`, `emulateQuantum()`,
+`drainAudio()`, `publishStatus()` and `frameCycles()`.
+
+| | before | after |
+|---|---|---|
+| `MacIiMachine` | 221 | 65 |
+| `IIfxMachine` | 215 | 63 |
+| `LcMachine` | 277 | 81 |
+| `SonoraStyleMachine` | 229 | 74 |
+| `DafbMachine` | 540 | 338 |
+| `MscMachine` | 191 | 60 |
+| **total** | **1 671** | **681** |
+| `src/main.cpp` | 6 711 | **5 616** |
+
+`DafbMachine` stays the largest because 220 of its lines are
+`resolveGeom`/`decodeRows`/`freezeProbe` — real platform code, not hosting.
+
+**CRTP, not a base class.** Every `self()->` call resolves at compile time, so
+the no-virtual-in-the-bus-path rule the review specifically asked to protect is
+kept mechanically rather than by memory. The platform variations that are not
+worth a hook at all went to `if constexpr (requires { … })`, the pattern
+`DafbMachine` had already proven for the CD bay: the Duo has no floppy
+(`MscMemory` has no `insertDisk`) and its PMU takes `mouseButton(bool)` where
+every other platform takes `(bool, int)` — both are now one arm each, compiled
+only where the member exists.
+
+**The part the review did not name, and it is the important one.** `main.cpp`
+is the only translation unit outside `pom68k_core`, so **nothing in it can be
+linked by a test** — which is the structural reason this contract had six
+copies and zero gates, and why "just refactor it" would have been a 1 100-line
+edit verified by a compiler alone. So the contract was lifted out *before* it
+was unified: `SaveStateSlot` and `keyTrace` moved to headers unchanged, and
+`machinehost_test` (33 checks, `unit`, no ROM, no image) now gates what a
+compiler cannot — queue ordering, the framebuffer double buffer, the pacing
+branches, and the thread teardown. Real `Q605Memory` + `Cpu040`; the audio host
+is a fake because it is a template parameter and because the audio-clocked
+branch is otherwise unreachable in a silent test.
+
+Two of its checks are worth naming because they pin comments that used to be
+promises: **`cpuEngine()` must not follow the click** (it reports the engine
+the machine is actually running, and the swap lands one queue round-trip
+later), and **a batch of conflicting commands applies in order, last wins**.
+
+One behaviour was reconciled rather than copied. The six `publish()`
+implementations disagreed about the framebuffer: `LcMachine` and
+`SonoraStyleMachine` carefully copied `fb_` into a second buffer and swapped it
+out — because on a row-granular decoder `fb_` persists across frames and only
+the scanned rows are repainted — while `MacIiMachine` forced alpha into `fb_`
+itself. The host now states it: `renderFrame(out, w, h)` fills a publish
+buffer, `fb_` stays the platform's private raster surface, and publication is a
+swap. No platform pays more copies than before; `MscMachine` pays one fewer.
+
+**Not done, and it must be said plainly**: the GUI has no gate and still has
+none. `--version` passes, the tree builds, `ctest -L unit` is 81/81 and
+`-L smoke` 8/8 — none of which opens a window. A hands-on pass over the machine
+windows (menus, framebuffer upload, floppy/CD hot-swap, save/restore) is
+required before this is called finished, and it joins the identical caveat
+already standing for the save-state GUI wiring in `TODO.md` § 8.
+
+<a id="2026-08-09-moira-fork"></a>
+## 2026-08-09 (later) — Moira is a fork, and the file now says so: the upstream exit had expired without anyone choosing it
+
+An architecture review of the tree at `d3bbd81` made a point that is hard to
+argue with once stated: `extern/moira/` has been called *vendored* for a month
+while the thing it names stopped being true, and **nobody had decided the
+alternative — the current state was a third choice, arrived at by default**.
+
+Measured on this tree rather than recalled:
+
+| | |
+|---|---|
+| distinct `pom*` extension identifiers | **50** (36 of them `pomJit*`) |
+| `POM68K`-marked lines | **358** (was 336 on 2026-07-31) |
+| source files carrying a marker | **13 of 25** |
+| patch groups in the inventory | **23** |
+| files POM68K adds outright | `MoiraCache040.h` |
+
+Twenty-three groups, of which two are not patches over upstream's design but a
+second consumer of it: the JIT seam (row 22) and the ATC performance work
+(row 16). A re-sync stopped being a merge with conflicts some time ago; it is a
+port.
+
+**Decision: assume the fork.** The rejected alternative was regrouping the 50
+hooks behind one extension surface to keep a rebase cheap — rejected because it
+buys back a path the project does not intend to walk, and charges for it in the
+currency the hooks exist to save. Row 14 already records the number: turning the
+i-cache overlay into a virtual hook cost **~11 %**. Rows 16 and 22 are inlining
+work by construction. A permanent throughput tax for an optional future merge is
+the wrong trade for an emulator whose accuracy claims all rest on the
+interpreter staying fast enough to run.
+
+What the decision obliges is written into the first section of
+`extern/moira/POM68K_VENDOR.md` as a four-point maintenance contract: the file
+is the fork's design record and not a re-sync aid; upstream is cherry-picked
+deliberately per fix with its own gate, never merged wholesale; the MIT notice
+and the NeoST → Hoffmann lineage stay exactly as they are (the licence
+obligation is untouched by any of this); and
+`grep -rn POM68K extern/moira/Moira/` stays the machine-checkable inventory —
+which is the only reason the table above could be measured at all.
+
+**Reopening condition**, stated so this does not become another default:
+upstream landing something the fork cannot cheaply reproduce (a full 68040 FPU,
+a rewritten dispatch core), and then only against a *measured* estimate of
+porting the 23 groups onto it. Not by the general discomfort of being forked.
+
+Side effect: the marked-line count in the file's own header had drifted (336 /
+12 of 24, dated 2026-07-31) and is now 358 / 13 of 25. The twelve unmarked files
+— `MoiraDasm*`, `StrWriter*`, `MoiraDebugger.*`, and four headers — used to be
+described as "the cheap half of a re-sync"; they are now described as the only
+place an upstream fix can still be taken as-is.
+
+<a id="2026-08-09-asset-fingerprint"></a>
+## 2026-08-09 — A red gate can now say for itself whether the image moved: 60 gates print a SHA-256 and drVolAtrb before booting
+
+On 2026-08-06 the four IIfx gates went red and were twice diagnosed as a code
+regression before the real cause turned up in the boot volume: a corrupted
+`hdv/MacOS-7.6-boot.vhd` with `drVolAtrb` bit 8 clear. The rule that came out of
+it — *read `drVolAtrb` bit 8 before theorising about a gate's code* — was
+written down and is good advice, but it is advice, and it costs a human round
+trip every time. **Both facts existed during the failing run and neither was in
+the gate's output.**
+
+`tests/AssetFingerprint.h` (header-only, no link-line edits) now prints one line
+per asset, immediately after the gate resolves its paths and before it boots:
+
+```
+ASSET rom    "roms/1MB ROMs/1993-10 - FF7439EE - …ROM" 1048576 B sha256 9c758473…
+ASSET disk   "hdv/MacOS-8.1-boot.vhd" 314621952 B sha256 ea4f068a…
+             HFS "Mac-8.1-US" drVolAtrb $0100 clean
+```
+
+The volume probe walks the Apple Partition Map when the image has one (`'ER'` at
+block 0 — every `.vhd` here) and falls back to a bare MDB at offset 1024 (what
+the `.dsk` floppies are). Sixty gates are wired; the role label (`rom` / `disk` /
+`floppy` / `cd`) is deduced from the path, so the call is the same one line
+everywhere: `testasset::report({ rom, img });`.
+
+**Cost, measured before deciding not to cache it.** 728 MB of images hashed in
+2.74 s — **265 MB/s**, so 1.2 s for the 314 MB 8.1 volume. `q605_boot_etalon`
+runs 1 m 28 with the preamble: **1.4 %**. Over the 81 `etalon` gates that is
+about 90 s on a 3 h 35 run, ~0.7 %. Cheap enough that the digest cache and the
+opt-out knob both got dropped before being written — a knob added to fix a
+reproducibility problem would have walked straight into the *other* debt the
+same review named.
+
+**A finding from the first run, worth pinning before the 2026-08-06 lesson
+hardens into the wrong rule.** `hdv/HD20SC.vhd` and `hdv/PROBER.vhd` both read
+`drVolAtrb $0000` — bit 8 clear — and four green gates (`macii_boot_etalon`,
+`iix_boot_etalon`, `se30_boot_etalon`, `scsi_boot_etalon`) boot from HD20SC
+every run. **Bit 8 clear is a tell, not a verdict.** It says where to look first
+when a boot gate goes red; it does not say the image is broken. The header says
+so in its own comment, because that is where someone reading a red gate will be.
+
+`asset_fingerprint_test` gates the mechanism — asset-free, `unit` label. SHA-256
+against the FIPS 180-4 vectors *plus* 55/56/63/64 bytes, which is where a
+hand-rolled padding goes wrong; then both image layouts, synthesised in the
+test, including a variant with bit 8 deliberately cleared. That last check
+failed on its first run: the author had cleared MDB+11, and `drAtrb` is
+big-endian, so bit 8 lives in MDB+10 — the assertion caught its own test's bug
+before it could certify anything.
+
+**What this does not do.** It does not version the assets and it does not
+separate the gates' fixtures from the volumes the GUI mounts writable
+(`attachScsi(path, true)`, twelve sites). Those are the other two halves of the
+same problem and are still open — this is the half that pays for itself in one
+red gate.
 
 <a id="2026-08-08-mcpu-identical"></a>
 ## 2026-08-08 (fourth) — `-mcpu=cortex-a72` produced byte-identical code to `-mtune=cortex-a72`: the Pi package's whole premise, measured and mostly refuted

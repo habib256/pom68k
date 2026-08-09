@@ -6,6 +6,7 @@
 // present. Checks the Finder signature: white menu bar with black glyphs
 // on top, 50% gray desktop below, disk still inserted, head seeked.
 
+#include "AssetFingerprint.h"
 #include "Cpu68k.h"
 #include "MacMemory.h"
 #include "MacVideo.h"
@@ -29,6 +30,7 @@ int main() {
         std::printf("SKIP: needs roms/macplus.rom + disks35/Disk605.dsk\n");
         return 0;
     }
+    testasset::report({ rom, dsk });
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());

@@ -11,6 +11,7 @@
 // on top, 50 % gray dithered desktop below, disk still inserted.
 // Soft-skips unless the model's ROM and disks35/Disk605.dsk are present.
 
+#include "AssetFingerprint.h"
 #include "Cpu68k.h"
 #include "MacMemory.h"
 #include "MacVideo.h"
@@ -50,6 +51,7 @@ int main() {
         std::printf("SKIP: needs %s + disks35/Disk605.dsk\n", romRel);
         return 0;
     }
+    testasset::report({ rom, dsk });
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)), {});
 

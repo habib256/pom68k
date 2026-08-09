@@ -14,6 +14,7 @@
 // (bus/nscsi/hd.cpp:601-631). Soft-skips without hdv/HD20SC.vhd.
 // Exit 0 = pass, 1 = fail.
 
+#include "AssetFingerprint.h"
 #include "V8Memory.h"
 #include "Cpu030.h"
 
@@ -49,6 +50,7 @@ int main() {
     std::printf("scsi_pdma_test — V8 SCSI pseudo-DMA + BERR timeout (O6.5)\n");
     std::string img = find("hdv/HD20SC.vhd");
     if (img.empty()) { std::printf("SKIP: hdv/HD20SC.vhd not found\n"); return 0; }
+    testasset::report({ img });
 
     V8Memory mem;
     Cpu030 cpu(mem);

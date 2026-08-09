@@ -1,6 +1,7 @@
 // POM68K — LC II System 7.1 → Finder gate (SPConfig AppleTalk-inactive).
 // Soft-skips without LC II ROM + System 7.1 HD .dsk.
 
+#include "AssetFingerprint.h"
 #include "V8Memory.h"
 #include "V8Video.h"
 #include "Cpu030.h"
@@ -45,6 +46,7 @@ int main() {
         std::printf("SKIP: needs LC II ROM + hdv/System 7.1|7.5.5 HD.dsk\n");
         return 0;
     }
+    testasset::report({ rom, img });
 
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)), {});

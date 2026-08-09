@@ -31,6 +31,7 @@
 //
 // Soft-skips (exit 0) when the user-provided ROM is absent.
 
+#include "AssetFingerprint.h"
 #include "Cpu68k.h"
 #include "MacMemory.h"
 #include "MacFrame.h"
@@ -186,6 +187,7 @@ int main(int argc, char** argv) {
         memRef.insertDisk(diskPath);
         memJit.insertDisk(diskPath);
     }
+    testasset::report({ romPath, diskPath });
 
     cpuRef.setEngine(0);
     cpuJit.setEngine(1);

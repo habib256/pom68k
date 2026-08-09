@@ -8,6 +8,7 @@
 // ScrnBase. If the pattern is on screen, the whole floppy path works.
 // Self-contained except the ROM (soft-skips without roms/macplus.rom).
 
+#include "AssetFingerprint.h"
 #include "Cpu68k.h"
 #include "MacMemory.h"
 #include "MacVideo.h"
@@ -62,6 +63,7 @@ int main(int argc, char** argv) {
         }
     }
     if (rom.empty()) { std::printf("SKIP: roms/macplus.rom not found\n"); return 0; }
+    testasset::report({ rom });
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());

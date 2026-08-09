@@ -1,6 +1,7 @@
 // POM68K — flat HFS ('LK') → in-memory SCSI DDM façade.
 // Soft-skips without an Infinite Mac-style .dsk + HD20SC/boot template.
 
+#include "AssetFingerprint.h"
 #include "ScsiDisk.h"
 #include <cstdio>
 #include <fstream>
@@ -24,6 +25,7 @@ int main() {
         std::printf("SKIP: needs flat HFS .dsk + HD20SC/boot.vhd template\n");
         return 0;
     }
+    testasset::report({ dsk, tpl });
 
     // Confirm source is still bare HFS on disk.
     {

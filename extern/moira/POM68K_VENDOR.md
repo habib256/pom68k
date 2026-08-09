@@ -8,6 +8,60 @@ included: deferred IPL recognition (`setIplDelay`/`pollIpl`), STOP
 level-sensitive IRQ re-check, exception-handling robustness, watchpoint
 24-bit address masking.
 
+## Status: this is a permanent fork (decided 2026-08-09)
+
+**The copy in `extern/moira/` is no longer a vendored library with a re-sync
+path. It is a fork, and the project owns it.** Said explicitly because the
+alternative had become a third choice nobody had made: the exit strategy
+towards upstream had quietly expired while the file still read as if a rebase
+were the plan.
+
+What forced it, measured on this tree rather than remembered:
+
+| | |
+|---|---|
+| distinct `pom*` extension identifiers | **50** (36 of them `pomJit*`) |
+| `POM68K`-marked lines | **358** |
+| source files carrying a marker | **13 of 25** |
+| patch groups in the inventory below | **23** |
+| files POM68K *adds* outright | `MoiraCache040.h` |
+
+Twenty-three patch groups, two of which (the JIT seam, row 22, and the ATC
+performance work, row 16) are not patches over upstream's design but a second
+consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
+
+**The rejected alternative** was regrouping the 50 hooks behind a single
+extension surface to keep a rebase cheap. It is rejected because it buys back a
+path the project does not intend to walk, and it charges for it in the exact
+currency the hooks exist to save: row 14 records that turning the i-cache
+overlay into a virtual hook cost **~11 %**, and rows 16 and 22 are inlining work
+by construction. Paying a permanent throughput tax for an optional future merge
+is the wrong trade for an emulator whose accuracy claims all rest on the
+interpreter's speed being tolerable.
+
+**What the decision obliges instead** — the maintenance contract:
+
+1. **This file is the fork's design record**, not a re-sync aid. The journal
+   sections keep carrying the *why* (oracle ruling, ROM behaviour, guest bug);
+   losing one is losing the reason, which the code cannot restate.
+2. **Upstream is a source of reports and ideas, not of merges.** A fix landing
+   in Dirk Hoffmann's Moira is read, and cherry-picked deliberately as its own
+   change with its own gate — never applied wholesale.
+3. **The MIT notice and attribution stay** exactly as they are (`Moira/LICENSE`,
+   the provenance paragraph above). Forking changes the maintenance posture, not
+   one line of the licence obligation, and the lineage above stays accurate.
+4. **`grep -rn POM68K extern/moira/Moira/` stays the machine-checkable
+   inventory.** It is what makes this file auditable instead of aspirational,
+   and it is the reason the numbers in the table above could be measured at all.
+
+**Reopening condition** — reversed only by upstream landing something the fork
+cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
+against a *measured* estimate of porting the 23 groups onto it. Not by the
+general discomfort of being forked.
+
+The "Before re-syncing from upstream" note further down is now the exception
+path, not the plan.
+
 ## How to read this file
 
 Unlike NeoST (which patches `MoiraConfig.h` at build time), POM68K **edits the
@@ -22,7 +76,8 @@ find.
   lost here cannot be recovered from the code.
 - Every local change is marked `POM68K` (often `POM68K <slice>:`) in the source,
   so `grep -rn POM68K extern/moira/Moira/` is the machine-checkable inventory —
-  336 marked lines across 12 of the 24 source files, as of 2026-07-31.
+  358 marked lines across 13 of the 25 source files, as of 2026-08-09 (was 336
+  across 12 of 24 on 2026-07-31; the 25th file is `MoiraCache040.h`, added).
 - Sections are never rewritten when superseded, only annotated. § *Model support
   in this copy* (last section) is the current state; the journal is history.
 
@@ -61,8 +116,9 @@ gate in the last column of each row.
 Rows 2-21 are the accuracy work; rows 22-23 are pure seams (inert when nothing
 arms them). The twelve files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.*` (2), `MoiraMacros.h`,
-`MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are the cheap half of a
-re-sync: nothing local to re-apply there.
+`MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
+still be taken as-is; everything else is ported by hand, per the fork decision
+above.
 
 ## Build configuration (`Moira/MoiraConfig.h`)
 

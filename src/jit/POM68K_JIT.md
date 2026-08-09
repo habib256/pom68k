@@ -443,10 +443,11 @@ Everything in `JitConfig.h` unless noted.
 | `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr — **plus a retired / window-covered / arms / failed line at teardown**, which is how you tell "the engine is on" from "the engine is doing something" (§ 3.1) |
 | `POM68K_JIT_ACCESS_THUNK` | `2` | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores |
 | `POM68K_JIT_HISTO` | `0` | dynamic opcode census, dumped at exit, with the backend's `canEmit()` coverage (`JitEngine.cpp dumpHisto()`) |
+| `POM68K_JIT_WINDOW_KILL` | `0` | **measurement instrument, not tuning**: kill the code window every N retired instructions on purpose, so the price of ONE window-lost exit is the slope of wall time against exit count (§ 3.2). A kill is architecturally invisible, so a bench fingerprint must not move with N — that is what makes the fit a measurement rather than a story. Slows the engine down by design |
 | `POM68K_JIT_LOCKSTEP_N` | `5000000` | instructions compared by `jit_lockstep_test` |
 | `POM68K_JIT_LOCKSTEP_BUDGET` | `1` | cycles between comparisons (higher = longer blocks) |
 | `POM68K_JIT_LOCKSTEP_FINE_AT` | — | step after which the comparison drops to one cycle |
-| `POM68K_BENCH_FRAMES` | `3000` | `tests/jit_bench.cpp` only — frames of 416 667 cycles to run |
+| `POM68K_BENCH_FRAMES` | q605 `3000`, lcii `6000` | `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` — frames of 416 667 (Q605) or 260 480 (LC II) **machine** cycles |
 
 `POM68K_JIT_FETCH` and `POM68K_JIT_BLOCKS` are not independent, and that is
 deliberate: block discovery reads opcodes out of the code window, so

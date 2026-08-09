@@ -1,6 +1,7 @@
 // POM68K — Mac II POST gate: ROM through Slot Manager + live Toby framebuffer.
 // Soft-skips without the 256 KB Mac II ROM.
 
+#include "AssetFingerprint.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
@@ -28,6 +29,7 @@ int main() {
         std::printf("SKIP: needs Mac II 256 KB ROM in roms/256KB ROMs/\n");
         return 0;
     }
+    testasset::report({ romPath });
 
     std::ifstream in(romPath, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)), {});

@@ -5,6 +5,7 @@
 // ID = VIA1 PA $C1 + VIA2 PB $87 (MAME macse30 config). Soft-skips without
 // the ROM, the video ROM and a bootable hdv/ image.
 
+#include "AssetFingerprint.h"
 #include "MacIIMemory.h"
 #include "Se30Video.h"
 #include "Cpu020.h"
@@ -33,6 +34,7 @@ int main() {
                     "roms/se30/se30vrom.uk6 and a bootable hdv/ image\n");
         return 0;
     }
+    testasset::report({ rom, vrom, img });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});

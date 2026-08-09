@@ -6,6 +6,7 @@
 // absent. This exercises the 68040/MMU/FPU, MEMCjr/DAFB, Cuda/ADB,
 // PrimeTime IOSB ASC, pseudo-VIA2 and TurboSCSI machine path.
 
+#include "AssetFingerprint.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
 
@@ -126,7 +127,7 @@ int main() {
         std::printf("SKIP: needs FF7439EE ROM + hdv/MacOS-8.1-boot.vhd\n");
         return 0;
     }
-    std::printf("assets: ROM=%s disk=%s\n", romPath.c_str(), diskPath.c_str());
+    testasset::report({ romPath, diskPath });
     std::fflush(stdout);
 
     std::ifstream in(romPath, std::ios::binary);

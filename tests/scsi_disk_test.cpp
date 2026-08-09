@@ -7,6 +7,7 @@
 // block 1 must come back through the SCSI command path. Soft-skips without
 // hdv/HD20SC.vhd.
 
+#include "AssetFingerprint.h"
 #include "ScsiDisk.h"
 #include <cstdio>
 #include <fstream>
@@ -27,6 +28,7 @@ static std::string find(const char* rel) {
 int main() {
     std::string img = find("hdv/HD20SC.vhd");
     if (img.empty()) { std::printf("SKIP: hdv/HD20SC.vhd not found\n"); return 0; }
+    testasset::report({ img });
 
     ScsiDisk disk;
     CHECK(disk.open(img), "open image");

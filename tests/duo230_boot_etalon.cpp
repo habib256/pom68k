@@ -6,6 +6,7 @@
 // shifter / /PMU_INT level path (CHANGELOG 2026-07-31 night). Soft-skips
 // without the ROM, the PG&E dump or the 7.5.5 image.
 
+#include "AssetFingerprint.h"
 #include "MscCpu.h"
 #include "MscMemory.h"
 #include <cstdio>
@@ -32,6 +33,7 @@ int main() {
                     "and hdv/System 7.5.5 HD.dsk\n");
         return 0;
     }
+    testasset::report({ rom, pge, img });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});

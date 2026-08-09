@@ -10,6 +10,7 @@
 // Boots are offset ~2 s so the Ticks-seeded random IDs differ (two real
 // machines never power up cycle-synchronous). Soft-skips without assets.
 
+#include "AssetFingerprint.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
@@ -53,6 +54,7 @@ int main() {
         std::printf("SKIP: needs Mac II ROM + hdv/System 7.0|7.1 HD.dsk\n");
         return 0;
     }
+    testasset::report({ rom, img });
     setenv("POM68K_APPLETALK", "1", 1);       // SPConfig $21 before reset
 
     std::ifstream rin(rom, std::ios::binary);
