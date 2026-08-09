@@ -33,8 +33,8 @@ line here. **Every unchecked box below was re-verified against the code on
 |---|---|---|
 | **68000 compacts** (Plus & co) | **LLE complet, conformité non négociable.** Un Raspberry Pi 400 suffit et doit suffire | tenu |
 | **68020** (Mac II & co) | conformant | la fenêtre ne vaut que ×1,0-1,2 (pas d'ATC à sauter) |
-| **68030** (LC II, 15,67 MHz) | utilisable sur Pi 400 | ~×1,3 temps réel en turbo sur un x86 costaud ; **inutilisable sur Pi 400** |
-| **68040** (Centris, Performa, Quadra) | utilisable | **même un x86 costaud ne suit plus** |
+| **68030** (LC II, 15,67 MHz) | utilisable sur Pi 400 | rapporté ~×1,3 en turbo ; **mesuré 2026-08-09 : ×1,98 interprété, ×2,40 moteur allumé** (thread machine, budget fixe). L'écart avec le ×1,3 n'est expliqué ni par le CPU ni par le raster — voir plus bas. **Aucun chiffre sur Pi 400** |
+| **68040** (Centris, Performa, Quadra) | utilisable | **mesuré 2026-08-09 : ×0,79 interprété — ×1,73 moteur allumé.** « Ne suit plus » est vrai de la **configuration par défaut**, où le moteur est off ; il n'est pas vrai de la machine |
 
 **L'ordre est fixé et il n'est pas négociable :**
 
@@ -57,7 +57,7 @@ différentes) — **la base de raisonnement est ×2,1, pas ×2,7**.
 
 | Levier | Gain attendu sur le JIT actuel | Statut |
 |---|---|---|
-| Soft TLB / ATC relâché | +10 à 30 % | **estimé.** Assis sur un fait mesuré (794 M sorties de fenêtre / 12,2 G instr = 1 toutes les ~15) mais le **coût par sortie n'a jamais été mesuré** — c'est le seul terme inconnu de tout le calcul, et le premier à chiffrer |
+| ~~Soft TLB / ATC relâché~~ | **≈3 %** | **MESURÉ et RÉFUTÉ 2026-08-09** (`POM68K_JIT_WINDOW_KILL`, `POM68K_JIT.md` § 3.2). Une sortie de fenêtre coûte **42,9 ns** (LC II/`threaded`, R² = 0,990) et **120,4 ns** (Q605/x64, R² = 0,961) ; aux taux naturels de chaque famille cela fait **3,5 %** et **3,2 %** du run. Le « +10 à 30 % » multipliait un taux réel par une intuition. Ne pas le remettre dans un plan de perf |
 | Longues traces, contrat par instruction abandonné | +10 à 20 % | estimé ; le block linking a déjà pris le gros (entrées −53 %, 268 → 566 instr/entrée) |
 | Interruptions + temps grossiers | +0 à 10 % | estimé, et **la relaxation à laquelle ce tree est le plus fragile** (voir plus bas) |
 | ~~Lazy flags~~ | **≈0,8 %** | **MESURÉ et abandonné** — voir § 3 *Measured and DROPPED*. Ne pas le remettre dans un plan de perf |
@@ -111,13 +111,54 @@ de l'armer.
 - [ ] **Une ligne de base sur le matériel cible.** Aucun chiffre POM68K
   n'existe sur un vrai Pi 400 (§ 3, *Build recipe*) et « inutilisable » n'est
   pas une cible tant qu'on ne sait pas *combien* il manque. Mesurer avec
-  `jit_bench` (`POM68K_BENCH_FRAMES`), **jamais** un boot etalon.
-- [ ] **Le ×1,3 de la LC II : avec ou sans JIT ?** Si c'est l'interpréteur, il
-  reste ~×1,5 gratuit juste en activant le moteur. Si c'est déjà `threaded`,
-  la marche est plus raide. La réponse change tout le calcul ci-dessus.
-- [ ] **Chiffrer le coût d'une sortie de fenêtre** — le seul terme estimé de
-  la table. Tant qu'il ne l'est pas, « ATC relâché = +10 à 30 % » est une
-  hypothèse, pas un argument.
+  `jit_bench` **ou `jit_bench_lcii`** (`POM68K_BENCH_FRAMES`), **jamais** un
+  boot etalon. Depuis 2026-08-09 les deux impriment un **× temps réel**, seule
+  forme du chiffre qui se compare d'un hôte à l'autre — et la seule qui se
+  compare à la cible, qui est « ×1 ou mieux », pas « n secondes ».
+- [x] **Le ×1,3 de la LC II : avec ou sans JIT ?** — MESURÉ 2026-08-09,
+  `tests/jit_bench_lcii.cpp` (nouveau : le bench était Quadra-605-only).
+  Budget fixe 16 000 frames = 4,17 G cycles **machine** = 266,0 s de temps
+  invité, hôte au repos, empreintes identiques : interpréteur 134,3 s =
+  **×1,98 temps réel**, moteur `threaded` 110,9 s = **×2,40** (le moteur vaut
+  **×1,21**). Sur 32 000 frames (boot + Finder au repos) : ×1,87 → ×2,18.
+  **Donc ni l'un ni l'autre : le thread machine seul ne descend pas à ×1,3.**
+  Deux suites, dans cet ordre :
+  - [ ] **Où passe l'écart ×1,98 → ×1,3 ?** Le quantum du GUI est
+    `runQuantumWithWire` (`main.cpp:232`), qui découpe la frame en 64 tranches
+    quand AppleTalk est actif — le défaut — avec un rattrapage raster à chaque
+    tranche. `POM68K_BENCH_SLICES` l'a chiffré : **2,2 %**, et 64 tranches ne
+    coûtent pas plus qu'une. **Innocenté**, comme le cœur CPU. Restent, dans
+    cet ordre : le `tick` du hub AppleTalk par tranche (il vit dans
+    `main.cpp`, donc aucun bench ne l'atteint aujourd'hui), le thread GUI
+    lui-même (`renderFrame` + upload GL + ImGui à 60 Hz), le chemin audio —
+    et l'hypothèse que le ×1,3 soit une impression, puisque rien n'affiche de
+    ratio. Commencer par la jauge (dernier item de cette liste).
+  - [ ] Rejouer l'A/B sur un vrai Pi 400 (case 1) : c'est le même instrument.
+- [x] **Chiffrer le coût d'une sortie de fenêtre** — FAIT 2026-08-09, et le
+  résultat **retire un levier du plan** : 42,9 ns (LC II/`threaded`) et
+  120,4 ns (Q605/x64) par sortie, soit **3,5 % et 3,2 %** des runs respectifs.
+  Instrument : `POM68K_JIT_WINDOW_KILL=N` tue la fenêtre toutes les N
+  instructions exprès, le prix est la pente ; l'empreinte ne doit pas bouger
+  avec N, et elle n'a pas bougé. Détail et réserve sur le chemin bloc (le kill
+  y effondre le cache de blocs, donc on n'ajuste qu'entre points kill) :
+  `POM68K_JIT.md` § 3.2.
+
+**Ce que la table devient une fois ces deux cases fermées.** Il ne reste,
+côté conformant, que « longues traces » (+10 à 20 %, estimé) et
+« interruptions/temps grossiers » (+0 à 10 %, estimé, et la relaxation à
+laquelle ce tree est le plus fragile). Les deux autres lignes sont mortes,
+mesurées : lazy flags ≈0,8 %, ATC relâché ≈3 %. **La conclusion de § 0·A n'en
+est pas affaiblie, elle est durcie** : sacrifier la conformité CPU ne change
+pas d'échelle, et le changement d'échelle, s'il existe, est dans le HLE.
+
+- [ ] **Une jauge de vitesse dans le GUI.** Rien n'affiche de ratio temps réel
+  aujourd'hui, alors que la direction produit est écrite *en ratios* et que
+  l'écart ×1,98 (mesuré) vs ×1,3 (rapporté) n'a toujours pas d'explication.
+  Le thread machine publie déjà `clock` en atomique (`MachineHost.h`) : un
+  ratio = deux échantillons et une division, et tout rapport futur de ce type
+  devient vérifiable au lieu d'être une impression. **À faire avant de
+  chercher plus loin l'écart** — c'est le seul suspect qu'on peut éliminer
+  sans instrumenter le GUI à l'aveugle (`pom68k-never-drive-gui-blind`).
 
 ---
 
