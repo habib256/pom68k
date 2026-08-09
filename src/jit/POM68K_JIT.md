@@ -58,13 +58,23 @@ engine being worth switching on. Ranked by measured end-to-end gain
 | Guest | Machines | Window buys | Because |
 |---|---|---|---|
 | 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | ×2.1-2.7 (x64) | an ATC walk per fetch, replaced by a bounds check |
-| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | ×1.4-1.7 | same, through `mmuFetchWord` |
+| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** (LC II, fixed budget, 2026-08-09) | same, through `mmuFetchWord` |
 | 68020 | Macintosh LC, **Mac II** | ×1.0-1.2 | no MMU to skip — only the map decode |
 | 68000 | **Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
 
 The last two rows are the honest reason the 020/000 seams took until
 2026-08-06 to exist: they were never going to pay much, and saying so is
 worth more than a number that flatters the subsystem.
+
+**The 68030 row has now been three different numbers, and the third is the
+first one taken on a fixed budget.** ×1.6 (before the ATC bit-exactness
+capping of 2026-07-28), then "neutral, the window is worth nothing on the
+LC II" (2026-07-30, retracted the ×1.6), and now ×1.21 — measured with
+`jit_bench_lcii` over 4.17 G machine cycles with identical fingerprints,
+where both earlier figures came from `lcii_boot_etalon`, which stops at the
+Finder and therefore times the two engines over different amounts of guest
+work. What changed the sign back is block linking and the 2026-08-06 seam
+work, not the window itself. § 3.2 prices what is left.
 
 ---
 
@@ -282,6 +292,65 @@ for that page (`Moira::pomJitAtcEvict`, and that is the exactness contract,
 not a bug); the idle Finder lives under that regime. No conformant backend
 escapes it. It is the measured ceiling at the idle Finder, and the reason
 the 20 G ratio is below the 5 G one.
+
+### 3.2 What one window exit actually costs (2026-08-09)
+
+The paragraph above was a **rate with no price**: 794 M exits over 12.2 G
+instructions says how often the window dies, not what a death costs. That gap
+is what let `TODO.md` § 0·A price a relaxed ATC at "+10 to 30 %" — an estimate
+resting on an unexamined intuition. `POM68K_JIT_WINDOW_KILL=N` (§ 6) removes
+the intuition: it kills the window every N retired instructions on purpose, so
+the price is the **slope** of wall time against the exit count the run
+reports. The fingerprint must not move with N, and does not.
+
+**LC II, `threaded`, 4.17 G machine cycles — the clean case**, because the
+threaded backend has no block cache: the only thing N changes is how often
+the window is re-armed.
+
+| forced kill | window-lost exits | wall |
+|---|---|---|
+| none | 91 192 756 | 110.86 s |
+| every 64 | 115 523 243 | 112.02 s |
+| every 16 | 188 513 571 | 115.93 s |
+| every 8 | 285 834 265 | 120.67 s |
+| every 4 | 480 477 013 | 127.44 s |
+
+**42.9 ns per exit** (R² = 0.990, pairwise 42.6-52.1 ns). The 91.2 M natural
+exits therefore cost **3.9 s of 110.9 s — 3.5 %**, and a soft TLB that never
+lost a window at all would return ×1.037. Not ×1.1 to ×1.3.
+
+**Quadra 605, `x86-64`, 5 G machine cycles — the corroboration, with a
+caveat.** Here the instrument perturbs more than the re-arm: forcing kills
+collapses the block cache (258 398 blocks compiled with no kill, ~89 150 with
+any), so the no-kill point sits in a different regime from the four kill
+points and must not be fitted with them. Over the four kill points, where the
+regime is stable, the slope is **120.4 ns per exit** (R² = 0.961) — three
+times the threaded price, which is what a backend that must also re-enter
+generated code should cost. Applied to this run's **30.4 M natural exits**
+(one per 98.5 instructions, six times rarer than on the LC II): **3.66 s of
+115.57 s — 3.2 %.**
+
+Two backends, two guest families, per-exit prices a factor of three apart,
+natural rates a factor of six apart — and the same answer to the question that
+matters: **eliminating window loss entirely is worth about 3 %.** The
+"+10 to 30 %" in `TODO.md` § 0·A was an estimate built by multiplying a real
+rate by an intuition, and it is retracted there.
+
+The same pass measured what the *host* side of a frame costs, since a
+CPU-only bench cannot be compared with a ratio seen on screen. Running the
+GUI's own quantum — `POM68K_BENCH_SLICES`, N slices per frame with a raster
+catch-up at each boundary, which is what `runQuantumWithWire` does (1 slice
+with the network off, 64 with AppleTalk on) — costs **2.2 %** on the LC II,
+and 64 slices cost no more than one:
+
+| LC II, 16 000 frames | CPU alone | 1 slice + raster | 64 slices + raster |
+|---|---|---|---|
+| interpreter | 134.33 s ×1.98 | 137.47 s ×1.94 | 136.25 s ×1.95 |
+| `threaded` | 110.86 s ×2.40 | 113.79 s ×2.34 | 113.74 s ×2.34 |
+
+(At 64 slices the fingerprint legitimately differs — slicing moves the
+interrupt boundaries, so the guest runs a marginally different path for the
+same machine-cycle budget. Within a slice count the engines still agree.)
 
 Superseded measurements, and what changed between them, are in § 10.
 

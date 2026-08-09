@@ -267,6 +267,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-09 (ninth)** — [The LC II never was at ×1.3, and the window exit nobody had priced costs 43 ns](#2026-08-09-speed-baseline)
 - **2026-08-09 (eighth)** — [One folder probe instead of three, and a gate for the thing three gates judge on](#2026-08-09-folderprobe)
 - **2026-08-09 (seventh)** — [The GUI pass: the Quadra booted System 6.0.5 off a floppy nobody asked for, and no gate could ever have seen it](#2026-08-09-gui-pass)
 - **2026-08-09 (fifth)** — [Four gates carried no label at all, and the folder the persist gate said was never created was there all along](#2026-08-09-tiers-and-gates)
@@ -475,6 +476,144 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-09-speed-baseline"></a>
+## 2026-08-09 (ninth) — The LC II never was at ×1.3, and the window exit nobody had priced costs 43 ns
+
+`TODO.md` § 0·A, written this morning, ends with three boxes: what is missing
+before the speed direction becomes a plan. Two of them are measurements this
+host can take, and neither had an instrument.
+
+**The instrument first, because there wasn't one.** `jit_bench` is
+Quadra-605-only — 040, `Cpu040`, `Q605Memory`, hard-coded. The machine § 0·A
+is actually written about is the **LC II**, and nothing could time it except
+`lcii_boot_etalon`, which stops when it recognises the Finder and therefore
+times two engines over different amounts of guest work. So the bench body
+moved into `tests/BenchHarness.h` (timed loop, architectural fingerprint,
+report) and `tests/jit_bench_lcii.cpp` assembles the 030 machine on top of it.
+
+**And the report now prints a × real-time ratio — which immediately caught
+the harness lying.** The first version computed it from `getClock()` and
+announced the LC II at **×7.94**. `runCycles(n)` takes n **machine** cycles
+and advances Moira by `n × cacheBoost_`, so `getClock()` is the *boosted core*
+clock and the ratio was four times too flattering. Same class as the
+viaSync/stall boost bug and the AppleTalk hub timers, on the stopwatch this
+time — `CLAUDE.md`'s rule (bus time is counted on machine cycles, never on the
+boosted clock) turns out to cover instruments too. The struct now carries both
+counts, under a comment saying which is which.
+
+### Box 2 — the LC II's ×1.3 is neither the interpreter nor the engine
+
+Fixed budget, idle host, identical fingerprints:
+
+| LC II, 16 000 frames = 4.17 G machine cycles = 266.0 s of guest time | wall | × real time |
+|---|---|---|
+| Moira interpreter | 134.3 s | **×1.98** |
+| JIT, `threaded` | 110.9 s | **×2.40** |
+
+and over 32 000 frames (boot, then idle Finder): ×1.87 → ×2.18. The engine is
+worth **×1.21** on this machine, and **the machine thread alone never descends
+to ×1.3**. So the observed figure is not a CPU ceiling, and the question
+moves: the GUI's quantum is not `runCycles` but `runQuantumWithWire`
+(`main.cpp:232`), which cuts each frame into **64 slices** when AppleTalk is
+on — the default — with a raster catch-up at every boundary.
+`POM68K_BENCH_SLICES` prices exactly that shape instead of guessing at it.
+
+That ×1.21 is also the **third** value this row has had: ×1.6 before the ATC
+bit-exactness capping, "neutral, the window buys nothing on the LC II" on
+2026-07-30 (which retracted the ×1.6), and now ×1.21 — the first of the three
+measured on a fixed budget rather than at a boot etalon's finish line. What
+changed the sign back is block linking and the 2026-08-06 seam work, not the
+window.
+
+### Box 3 — one window-lost exit costs 42.9 ns, which refutes the estimate it was meant to support
+
+§ 0·A's table priced a relaxed ATC / soft TLB at "+10 to 30 %", resting on a
+measured *rate* — 794 M window-lost exits over 12.2 G instructions, one every
+~15 — with **no price attached to the event**. It was the only estimated term
+in the whole calculation, so it was the first to kill.
+
+`POM68K_JIT_WINDOW_KILL=N` (`JitConfig.h`, `JitEngine.cpp`) kills the code
+window every N retired instructions **on purpose**. The price of one exit is
+then the slope of wall time against the exit count the run actually reports —
+never against N, since a generated block can only let the kill land where it
+returns. A kill is architecturally invisible, so the fingerprint must not move
+with N: it did not, `73b4557e64a3be62` on all five points, which is what makes
+this a measurement rather than a story.
+
+LC II, `threaded`, 16 000 frames:
+
+| forced kill | window-lost exits | wall |
+|---|---|---|
+| none | 91 192 756 | 110.86 s |
+| every 64 | 115 523 243 | 112.02 s |
+| every 16 | 188 513 571 | 115.93 s |
+| every 8 | 285 834 265 | 120.67 s |
+| every 4 | 480 477 013 | 127.44 s |
+
+Least squares: **42.9 ns per window-lost exit**, R² = 0.990, residuals ≤ 1 s;
+pairwise slopes against the baseline 42.6-52.1 ns, so the fit is not hiding a
+curve. The consequence is arithmetic: the run's 91.2 M natural exits cost
+**3.9 s of 110.9 s — 3.5 %**. A *perfect* soft TLB, one that never lost a
+window at all, would return ×1.037 on this machine and this workload.
+
+**And it corroborates on a different backend, a different guest and a
+different rate.** Quadra 605, `x86-64`, 5 G machine cycles. There the
+instrument perturbs more than the re-arm — forcing kills collapses the block
+cache (258 398 blocks compiled with no kill, ~89 150 with any), so the no-kill
+point sits in another regime and must not be fitted with the rest. Over the
+four kill points, where the regime is stable, the slope is **120.4 ns per
+exit** (R² = 0.961), three times the threaded price — which is what a backend
+that must also re-enter generated code should cost. This run's natural exits
+are **30.4 M, one per 98.5 instructions**, six times rarer than on the LC II,
+so they cost **3.66 s of 115.57 s — 3.2 %.**
+
+Two backends, two guest families, unit prices a factor of three apart, rates a
+factor of six apart, and the same answer: **window loss is worth about 3 %,
+end to end.** "+10 to 30 %" was wrong by roughly an order of magnitude, and
+wrong in the way this project's method exists to catch — a real measured rate
+multiplied by an unexamined intuition about what the event costs. The line in
+§ 0·A is corrected in place, with the measurement beside it.
+
+### And the Quadra's own headline, which was hiding in the baseline
+
+The same Q605 run says the 040 class is **×0.79 real time interpreted and
+×1.73 with the engine on** — the ratio is ×2.20, against ×2.18 measured on
+2026-07-31, so the engine's worth is intact and the host is simply ~19 %
+slower today than it was then (the interpreter's 213.1 s became 253.96 s for
+the same budget; both halves moved together, which is what says "host", not
+"regression"). § 0·A's row for the 68040 class — "even a beefy x86 can no
+longer keep up" — is therefore true of the **default configuration only**.
+The first lever on that family is not a new chantier: it is that the engine
+is off by default.
+
+### What the GUI's own quantum costs — and what is still unexplained
+
+A CPU-only bench cannot be compared with a ratio seen on screen, so
+`POM68K_BENCH_SLICES` runs the LC II under the GUI's actual quantum: N slices
+per frame with a raster catch-up at each boundary, the shape
+`runQuantumWithWire` gives it — 1 slice with the network off, **64** with
+AppleTalk on, which is the default.
+
+| LC II, 16 000 frames | CPU alone | 1 slice + raster | 64 slices + raster |
+|---|---|---|---|
+| interpreter | 134.33 s ×1.98 | 137.47 s ×1.94 | 136.25 s ×1.95 |
+| `threaded` | 110.86 s ×2.40 | 113.79 s ×2.34 | 113.74 s ×2.34 |
+
+**2.2 %, and 64 slices cost no more than one.** (At 64 the fingerprint
+legitimately differs: slicing moves the interrupt boundaries, so the guest
+takes a marginally different path through the same machine-cycle budget.
+Within a slice count the two engines still agree bit for bit.)
+
+So the raster and the slicing are cleared along with the CPU core, and the
+×1.98 → ×1.3 gap is **still unexplained**. What the bench does not contain,
+in the order worth trying: the AppleTalk hub's per-slice `tick` (it lives in
+`main.cpp`, not in the core, so no bench can reach it today), the GUI thread
+itself (`renderFrame` + the GL upload + ImGui at 60 Hz), the audio path — and
+the possibility that ×1.3 was an impression rather than a reading, since
+nothing in the GUI displays a speed ratio at all. That last one is cheap to
+remove and would make every future report of this kind checkable, which is
+why it is filed first in `TODO.md` § 0·A.
 
 <a id="2026-08-09-folderprobe"></a>
 ## 2026-08-09 (eighth) — One folder probe instead of three, and a gate for the thing three gates judge on

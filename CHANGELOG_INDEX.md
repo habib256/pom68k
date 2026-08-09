@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 206 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` fails when the two drift.
+**Generated** by `tools/changelog_index.py` from the 207 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` fails when the two drift.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
 | [Save states](#save-states) | 5 |
-| [Machine bring-ups](#machine-bring-ups) | 34 |
+| [Machine bring-ups](#machine-bring-ups) | 35 |
 | [Build, packaging and release](#build-packaging-and-release) | 3 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 11 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 4 |
@@ -213,6 +213,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-02 (sixth)** — [The "Quadra modifier bug" retracted: same machine, other image, works](CHANGELOG.md#2026-08-02-cmdn-retracted)
 - **2026-08-06 (late night)** — [The IIfx closes the set: every CPU wrapper carries an engine — and the "regression" was a corrupted disk image](CHANGELOG.md#2026-08-06-jit-iifx)
 - **2026-08-06 (later)** — [The PRAM finally survives the session on all eleven boards, and the Duo becomes the 37th profile — the first laptop](CHANGELOG.md#2026-08-06-duo-profile)
+- **2026-08-09 (ninth)** — [The LC II never was at ×1.3, and the window exit nobody had priced costs 43 ns](CHANGELOG.md#2026-08-09-speed-baseline)
 - **2026-08-09 (third)** — [Six copies of the GUI ↔ machine-thread contract became one, and the thing that had never been testable got a gate](CHANGELOG.md#2026-08-09-machinehost)
 
 ## Build, packaging and release
