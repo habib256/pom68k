@@ -25,8 +25,8 @@ the Machine menu, in the same order and the same grouping
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 171 gates (asset-dependent ones soft-skip)
-ctest -L unit                     # 84 gates, no ROM or disk image needed
+ctest                             # 173 gates (asset-dependent ones soft-skip)
+ctest -L unit                     # 86 gates, no ROM or disk image needed
 ctest -L smoke                    # 8 gates, one machine, both CPU engines
 ctest -L etalon-core              # 12 gates, one profile per platform
 ```

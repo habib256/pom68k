@@ -879,6 +879,14 @@ Moira::pomJitDataSlow(u32 addr, u32 want, bool w) noexcept
         pomJitDtlbFillFn(pomJitDtlbFillCtx, addr, w != 0);
         if (e.tag != want) return nullptr;
     }
+    // POM68K 2026-08-10: the level-0 page carries a tag and a host and
+    // nothing else, so it cannot express the entry's per-slice code mask.
+    // Rather than widen it, this path keeps the OLD, coarser rule — a write
+    // page holding any translated code is refused outright. The mask exists
+    // for GENERATED code, which tests it inline; this window is opt-in
+    // (POM68K_DATA_WINDOW) and measured a net loss on the interpreter, so
+    // buying it back here would be paying for a path nobody runs.
+    if (w && e.codeMask) return nullptr;
     PomJitDataPage &c = w ? pomJitDataW1 : pomJitDataR1;
     c.tag = want;
     c.host = e.host;

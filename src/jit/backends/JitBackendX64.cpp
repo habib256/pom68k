@@ -47,6 +47,7 @@
 
 #include "Moira.h"
 
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -110,11 +111,30 @@ struct Frame {
     void*     linkTable;      // +64  the block-link table (Context)
     uint32_t  value;          // +72  operand across an access thunk
     uint32_t  pad2;
+    // POM68K_JIT_HISTO only; null otherwise, and then nothing is emitted for
+    // them at all. Two separate censuses because they name two different
+    // pieces of work: `slowStatic` is an opcode this backend cannot emit AT
+    // ALL (the target list for the next emitter), while `slowRuntime` is an
+    // instruction it DID compile whose runtime access or guard could not be
+    // inlined (the target list for the data path). Summing them — which is
+    // what a single counter amounts to — reads as missing ISA coverage and
+    // sends the work to the wrong place.
+    //
+    // The a64 backend has had these since it was written; x64 never wrote
+    // them, so `[jit] block fallback census` printed 0 on x86-64 for as long
+    // as it has existed, next to a JitBackend.h comment describing what it
+    // was telling us. Fixed 2026-08-09, and it is the instrument the 68040
+    // coverage-tail work is picked with.
+    uint64_t* slowStaticHisto;   // +80
+    uint64_t* slowRuntimeHisto;  // +88
 };
 constexpr int32_t kFClockTarget = 0, kFInstrs = 8, kFExit = 12;
 constexpr int32_t kFDtlbSelf = 16, kFDtlbFill = 24, kFGuard = 32;
 constexpr int32_t kFScratch = 40, kFSaveA = 44, kFSaveV = 48;
 constexpr int32_t kFSlow = 52, kFPeriph = 56, kFLinkTab = 64, kFValue = 72;
+constexpr int32_t kFHistoStatic = 80, kFHistoRuntime = 88;
+static_assert(offsetof(Frame, slowStaticHisto) == kFHistoStatic);
+static_assert(offsetof(Frame, slowRuntimeHisto) == kFHistoRuntime);
 
 // Sizes. A 64-instruction block of memory-touching forms tops out around
 // 12 KB with its cold half; the code buffer holds thousands of blocks and
@@ -186,7 +206,21 @@ int eaRmwCost(int m, int szIdx) {
 }
 
 // MOVE's destination surcharge (execMove0/2/3/4/5/7/8, 68020 column).
-const int8_t kMoveDst[kM_COUNT] = { 0, 0, 2, 2, 3, 3, -1, 3, 4, -1, -1, -1 };
+//
+// The `(xxx).W` cell read 3 until 2026-08-09 and is 2: execMove7's 68020
+// column is byte-for-byte execMove2's and execMove3's — on the 020 an
+// absolute-short destination costs exactly what a register-indirect one
+// does, because its extension word is already in the prefetch queue. The
+// off-by-one made the cross-check refuse EVERY `MOVE <ea>,(xxx).W`, and
+// the first honest fallback census on x86-64 put that single wrong cell at
+// **47.4 % of all block fallbacks** on the idle Finder (opcodes 21DF and
+// 21CF, 3.94 M executions each over 648 M instructions).
+//
+// It cost coverage and never correctness, which is the whole point of
+// cross-checking the table against the tracer's own measurement instead of
+// trusting it — but it stayed invisible for as long as it did because the
+// census that would have named it was never wired on this backend.
+const int8_t kMoveDst[kM_COUNT] = { 0, 0, 2, 2, 3, 3, -1, 2, 4, -1, -1, -1 };
 
 // Which half of the $8/$9/$B/$C/$D space an opcode belongs to:
 //   0 = <ea> into a register (including the ADDA/SUBA/CMPA forms)
@@ -230,7 +264,9 @@ public:
         : a_(a), L_(L), ir_(ir),
           paced_(ctx.periphClock != nullptr && ctx.periphBatch != 0),
           batch_(ctx.periphBatch), thunks_(accessThunkMode()),
-          linkMask_(ctx.linkTable ? ctx.linkMask : 0) {}
+          linkMask_(ctx.linkTable ? ctx.linkMask : 0),
+          histo_(ctx.slowStaticHisto != nullptr),
+          ic_(L.icLive && icacheEmitEnabled()) {}
 
     // Emits the whole block. False = give up; the engine keeps the IR and
     // runs the block through the fetch-window loop instead.
@@ -248,6 +284,9 @@ private:
     // ── per-instruction ──────────────────────────────────────────────────
     bool emitInstr(size_t i);
     bool emitMove(size_t i, int szIdx);
+    bool emitScc(size_t i);
+    void chargeIcache(size_t i);
+    void unchargeIcache(size_t i);
     bool emitAluEaRg(size_t i);
     bool emitAluRgEa(size_t i);
     bool emitAddSubQ(size_t i);
@@ -355,6 +394,13 @@ private:
     std::vector<Label*> slow_;       // its "hand this one to Moira" stub
     std::vector<Label*> budget_;     // …and the two guard exits, which have
     std::vector<Label*> flags_;      // to commit the boundary state first
+    // POM68K_JIT_HISTO only: two counting doors onto the SAME stub body, so
+    // the census can tell "this backend has no emitter for that opcode" from
+    // "it compiled the instruction and the access bailed out". Unused (and
+    // never emitted) when the census is off — the two labels then simply
+    // alias slow_[i] and cost nothing.
+    std::vector<Label*> slowStatic_;
+    std::vector<Label*> slowRuntime_;
     Label *exitBudget_ = nullptr, *exitFlags_ = nullptr, *exitFault_ = nullptr;
     Label *exitLost_ = nullptr, *epilogue_ = nullptr;
     int  loopTo_ = -1;
@@ -372,16 +418,220 @@ private:
     size_t linkEntry_ = 0;
     int native_ = 0;
     size_t cur_ = 0;                 // instruction being emitted
+    bool histo_ = false;             // POM68K_JIT_HISTO
+    // 68030 i-cache overlay (Layout::icLive). When set, every NATIVELY
+    // emitted instruction charges the model for the words it fetches; the
+    // cold fallback stub charges itself, through pomJitExecOne ->
+    // mmuExecuteStart -> mmuFetchWord. `icSkip_` is the block-entry branch
+    // that jumps over all of it when CACR bit 0 is clear.
+    bool    ic_ = false;
+    Label*  icOff_ = nullptr;
+    // Which (line, tag, longword-bit) triples this block has already
+    // charged. Direct-mapped, 16 lines: within a block, a second fetch of
+    // the same longword of the same line is a guaranteed HIT, because
+    // nothing but instruction fetch touches the i-cache and MOVEC — the
+    // only way CACR moves — is Kind::Unsafe and cannot appear inside one.
+    uint32_t icTag_[16] = {};
+    uint8_t  icValid_[16] = {};
+    bool     icSeen_[16] = {};
+
+    // The door a RUNTIME bail-out takes. With the census off it is the stub
+    // itself, so nothing about the hot path changes; with it on, it is the
+    // counting door. Written as one accessor so that a new bail-out site
+    // cannot forget to be counted — the sites all read `runtimeStub(i)`.
+    // A RUNTIME bail-out needs its own door whenever anything has to be
+    // undone or counted on the way out; a STATIC one never does, because
+    // rewind() has already removed everything the instruction emitted.
+    bool needRuntimeDoor() const { return histo_ || ic_; }
+    Label& runtimeStub(size_t i) {
+        return needRuntimeDoor() ? *slowRuntime_[i] : *slow_[i];
+    }
+    Label& staticStub(size_t i)  { return histo_ ? *slowStatic_[i]  : *slow_[i]; }
 };
+
+// ── the 68030 instruction cache, charged by generated code ───────────────
+// MC68030UM §6: 256 bytes = 16 lines x 4 longwords, LOGICAL, direct-mapped,
+// tag = A[31:8] + supervisor, per-longword valid bits, gated on CACR bit 0,
+// `missPenalty` cycles charged on a miss. The interpreter charges it inside
+// mmuFetchWord (MoiraExecMMU_cpp.h:421-454) — before the code window hook,
+// so the fetch window and the threaded backend inherit it. Generated code
+// fetches nothing, so it has to do this itself or the clock drifts from the
+// interpreter's inside one block. Measured: with x64 forced onto an LC II
+// the two engines' miss counts part company at the first block that runs.
+//
+// Everything the model needs is a COMPILE-TIME constant for a known pc:
+//
+//   line = (addr >> 4) & 15   tag = (addr >> 8) | (super ? 1<<31 : 0)
+//   bit  = 1 << ((addr >> 2) & 3)          super = BlockIr::super
+//
+// so a fetch is a load of tag[line] at a fixed offset, a compare against an
+// immediate, a test of valid[line] against an immediate, and a cold miss
+// stub. Two folds make it cheaper still: within a block, only the FIRST
+// touch of a (line, tag, longword) can miss — nothing but instruction fetch
+// touches this cache, and MOVEC is Kind::Unsafe so CACR cannot move inside
+// a block — and the whole thing is skipped at block entry when the cache is
+// disabled.
+//
+// WHERE it is emitted matters as much as what: immediately before the
+// instruction's own code, on the natively-emitted path ONLY. The fallback
+// stub re-enters Moira through pomJitExecOne(), whose 030 branch runs
+// mmuExecuteStart<C68020>() and therefore charges the model itself
+// (Moira.cpp:327). Charging here as well would double-count; charging
+// before the bail-out decision would charge an instruction that then re-runs
+// and charges again.
+void Emitter::chargeIcache(size_t i) {
+    if (!ic_) return;
+    const Instr& in = ir_.instrs[i];
+    // What the interpreter fetches for this instruction: mmuExecuteStart
+    // reads ird at pc and irc at pc + 2, then readExt walks the extension
+    // words — so every word of the instruction, plus the lookahead at
+    // pc + 2 for a one-word instruction.
+    // HOW MANY WORDS THE INTERPRETER ACTUALLY FETCHES, which is not the
+    // instruction's length. mmuExecuteStart reads ird at pc and irc at
+    // pc + 2 — two fetches for every instruction, however short — and then
+    // each readExt<C> on the 68030 CONSUMES queue.irc and refetches the next
+    // word (MoiraDataflow_cpp.h, `queue.irc = mmuFetchWord(reg.pc)` after
+    // `reg.pc += 2`). An instruction of W words therefore performs **W + 1**
+    // fetches, at pc, pc+2, … pc+2W — one past its own last word, because
+    // the queue always runs a word ahead.
+    //
+    // The first cut charged W (floored at 2), which is right only for
+    // one-word instructions and under-charges every other by exactly one.
+    // The 030 lockstep measured the shortfall directly: 2 084 fetches missing
+    // over one bring-up run, with the miss count and the clock already
+    // correct — the shape of a systematic off-by-one, not of a lost event.
+    const uint32_t words = uint32_t(in.words) + 1;
+    const uint32_t sup = ir_.super ? 0x80000000u : 0u;
+
+    // `fetches` counts every fetch while armed, cache ENABLED OR NOT — it is
+    // a diagnostic, but Cpu030::icacheStats() exposes it and the 030 lockstep
+    // compares it, so it is kept exact. It sits outside the CACR gate for the
+    // same reason the interpreter's does.
+    a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icFetches), int32_t(words));
+
+    // ONE gate for the whole instruction: CACR cannot change inside a block
+    // (MOVEC is Kind::Unsafe), so one test covers every word.
+    //
+    // The gate is also what makes the compile-time fold below SOUND. A
+    // "guaranteed hit" is only guaranteed because an earlier fetch in this
+    // block performed the tag/valid update — which it did only if the cache
+    // was enabled. Putting the folded hit under the same gate as the update
+    // that justifies it keeps the two on the same side of that question.
+    Label& gateOff = *a_.fresh();
+    a_.testMI(Sz::B, at(L_.cacr), 1);
+    a_.jcc(Cc::E, gateOff);
+
+    for (uint32_t w = 0; w < words; w++) {
+        const uint32_t addr = in.pc + w * 2;
+        const int line = int((addr >> 4) & 15);
+        const uint32_t tag = (addr >> 8) | sup;
+        const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
+
+        // Already charged in this block, same tag, same longword: the
+        // interpreter would hit, and a hit costs nothing but the counter.
+        if (icSeen_[line] && icTag_[line] == tag && (icValid_[line] & bit)) {
+            a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icHits), 1);
+            continue;
+        }
+
+        Label& done = *a_.fresh();
+        Label& miss = *a_.fresh();
+        a_.aluMI(Asm::Op::CMP, Sz::L, at(L_.icTag + uint32_t(line) * 4),
+                 int32_t(tag));
+        a_.jcc(Cc::NE, miss);
+        a_.testMI(Sz::B, at(L_.icValid + uint32_t(line)), bit);
+        a_.jcc(Cc::E, miss);
+        a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icHits), 1);
+        a_.jmp(done);
+
+        // Miss: direct-mapped, so a tag change evicts the WHOLE line before
+        // the new longword is marked valid. Cold, but not deferred to the
+        // block's cold half — it falls through into the next instruction and
+        // deferring it would need a jump back for no gain.
+        a_.bind(miss);
+        Label& sameTag = *a_.fresh();
+        a_.aluMI(Asm::Op::CMP, Sz::L, at(L_.icTag + uint32_t(line) * 4),
+                 int32_t(tag));
+        a_.jcc(Cc::E, sameTag);
+        a_.movMI(Sz::L, at(L_.icTag + uint32_t(line) * 4), int32_t(tag));
+        a_.movMI(Sz::B, at(L_.icValid + uint32_t(line)), 0);
+        a_.bind(sameTag);
+        a_.aluMI(Asm::Op::OR, Sz::B, at(L_.icValid + uint32_t(line)), bit);
+        a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icMisses), 1);
+        // The penalty is a wrapper knob read at run time, not a constant:
+        // POM68K_ICACHE_MISS can differ per machine and the interpreter
+        // reads it from the same field.
+        // A 32-bit load zeroes the upper half, and missPenalty is clamped to
+        // [0, 64] where it is read from the environment (Cpu030.cpp), so no
+        // sign extension is needed to reach the 64-bit clock.
+        a_.movRM(Sz::L, RAX, at(L_.icPenalty));
+        a_.aluRR(Asm::Op::ADD, Sz::Q, kClk, RAX);
+        a_.bind(done);
+
+        // Model the same transition in the COMPILER's shadow copy, so the
+        // rest of this block can fold. The shadow is only ever used to prove
+        // a later fetch is a guaranteed hit, and it is conservative by
+        // construction: it starts empty at every block.
+        if (!icSeen_[line] || icTag_[line] != tag) {
+            icTag_[line] = tag; icValid_[line] = 0; icSeen_[line] = true;
+        }
+        icValid_[line] |= bit;
+    }
+    a_.bind(gateOff);
+}
+
+// The exact inverse of one instruction's charge, for every path that hands
+// the instruction back to be RE-RUN. The charge is emitted before the
+// instruction, in the interpreter's order, and the re-run goes through
+// pomJitExecOne -> mmuExecuteStart -> mmuFetchWord, which charges it a second
+// time. That second charge is a HIT for every word — the first one left the
+// tag and the valid bit set — so the over-count is exactly N fetches and N
+// hits whichever way the first charge went, and the miss count and the clock
+// are already right. Subtracting those two is therefore exact, not an
+// approximation.
+//
+// `hits` only ever moves while the cache is enabled, so its half sits behind
+// the same CACR test the charge did; `fetches` counts regardless, like the
+// interpreter's.
+void Emitter::unchargeIcache(size_t i) {
+    if (!ic_) return;
+    const uint32_t words = uint32_t(ir_.instrs[i].words) + 1;
+    a_.aluMI(Asm::Op::SUB, Sz::Q, at(L_.icFetches), int32_t(words));
+    Label& noHits = *a_.fresh();
+    a_.testMI(Sz::B, at(L_.cacr), 1);
+    a_.jcc(Cc::E, noHits);
+    a_.aluMI(Asm::Op::SUB, Sz::Q, at(L_.icHits), int32_t(words));
+    a_.bind(noHits);
+}
 
 // One call per instruction, matching the interpreter's one CYCLES_68020
 // per instruction. It is the single most expensive thing in an emitted
 // instruction, and it is not negotiable: see pom68kJitSync above.
 void Emitter::chargeCycles(int cycles) {
-    if (!paced_) {                       // no pacing information: always call
+    if (!paced_) {
+        // No pacing information: call every time. The spill and the reload
+        // are NOT optional here, and leaving them out is how this path threw
+        // every cycle charge silently away. `clock` lives in a callee-saved
+        // register for the whole chain of linked blocks (kClk), so the
+        // callee — which reads it and adds to it — has to be handed the
+        // current value, and the register has to be re-read afterwards or
+        // the epilogue's spillClock() writes the stale one back OVER the
+        // charge. The cold half of the paced path below has always done
+        // exactly this; this branch simply never did.
+        //
+        // It went unnoticed because the four wrappers that pace the engine
+        // (Cpu040, CentrisCpu, Q630Cpu, Q700Cpu) are precisely the four
+        // families the code generators declare, so no generated code had
+        // ever taken this branch. The first thing that did — an x86-64
+        // block on a 68030 — ran its only compiled instruction for FREE,
+        // which let the guest run one instruction past its cycle budget and
+        // part company with the interpreter. Found 2026-08-10 by
+        // jit_lockstep_030_test; docs/JIT_BRINGUP.md § C.4.
+        spillClock();
         a_.movRR(Sz::Q, RDI, kCpu);
         a_.movRI(RSI, uint32_t(cycles));
         call(reinterpret_cast<void*>(&pom68kJitSync));
+        fillClock();
         return;
     }
     // The wrapper's own batching test, inlined: sync() advances the clock and
@@ -516,7 +766,7 @@ bool Emitter::emitSubroutine(size_t i) {
         // before the stack pointer moves. Nothing is committed yet, so
         // handing the whole instruction over is exact.
         a_.testRI(Sz::L, RDI, 1);
-        a_.jcc(Cc::NE, *slow_[i]);
+        a_.jcc(Cc::NE, runtimeStub(i));
         a_.aluMI(Asm::Op::ADD, Sz::L, A(7), 4);
         a_.movMR(Sz::L, at(L_.pc), RDI);
         a_.movMR(Sz::L, at(L_.pc0), RDI);
@@ -572,7 +822,7 @@ bool Emitter::emitSubroutine(size_t i) {
     a_.movMR(Sz::L, F(kFValue), RAX);
     if (!constant) {
         a_.testRI(Sz::L, RAX, 1);
-        a_.jcc(Cc::NE, *slow_[i]);
+        a_.jcc(Cc::NE, runtimeStub(i));
     }
     // Push the return address — the next instruction, since computeEA has
     // already consumed this one's extension words.
@@ -835,6 +1085,43 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss) {
         a_.aluRI(Asm::Op::CMP, Sz::L, RDX, 4096 - n);
         a_.jcc(Cc::A, miss);
     }
+    // ── the per-slice code mask, writes only (Moira.h § PomJitDtlbEntry) ──
+    // An entry maps 4 KB; CodeGuard works at 256 bytes. A store into a slice
+    // that some cached block was translated from must go through the memory
+    // map so the guard sees it — but a store 3 KB away from that block must
+    // not pay for sharing a page with it, which is what refusing the whole
+    // entry used to cost (95.6 % of all remembered refusals, -9.8 % of wall
+    // clock; POM68K_JIT.md § 8).
+    //
+    // Hot path: two instructions and a branch that is not taken on any page
+    // with no code in it, which is nearly all of them. The precise slice
+    // test is cold, because a page that holds code at all is rare and a
+    // store landing in the code's own slice is rarer still.
+    Label& maskOk = *a_.fresh();
+    if (write) {
+        Label& maskCold = *a_.fresh();
+        a_.aluMI(Asm::Op::CMP, Sz::L, mem(RCX, 4), 0);
+        a_.jcc(Cc::NE, maskCold);
+        // Cold: which slices does THIS access touch? `n` is at most 64
+        // (a full MOVEM burst) and a slice is 256 bytes, so an access spans
+        // at most two of them — first and last, tested separately rather
+        // than as a range, which needs no mask construction.
+        cold_.push_back([this, &maskCold, &maskOk, &miss, n] {
+            a_.bind(maskCold);
+            a_.movRM(Sz::L, R8, mem(RCX, 4));          // the mask
+            for (int end = 0; end < (n > 1 ? 2 : 1); end++) {
+                a_.movRR(Sz::L, RCX, RDX);             // entry ptr is done with
+                if (end) a_.aluRI(Asm::Op::ADD, Sz::L, RCX, n - 1);
+                a_.shiftRI(Sz::L, RCX, 5, moira::Moira::PomJitDtlb::kSliceShift);
+                a_.movRI(R9, 1);
+                a_.shiftRCl(Sz::L, R9, 4);             // 1 << slice
+                a_.testRR(Sz::L, R8, R9);
+                a_.jcc(Cc::NE, miss);
+            }
+            a_.jmp(maskOk);
+        });
+    }
+    a_.bind(maskOk);
     // `and edx, 4095` already zeroed the upper half, so this is a clean
     // 64-bit index with no extension step.
     a_.aluRR(Asm::Op::ADD, Sz::Q, RSI, RDX);
@@ -872,7 +1159,7 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss) {
 // through a thunk, and only a FAULT falls all the way back.
 void Emitter::memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess) {
     soleAccess = soleAccess && thunks_ >= 1;
-    Label& miss = soleAccess ? *a_.fresh() : *slow_[cur_];
+    Label& miss = soleAccess ? *a_.fresh() : runtimeStub(cur_);
 
     memProbe(addr, sizeBytes(szIdx), false, miss);
     if (szIdx == 0) {
@@ -899,7 +1186,7 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess) {
         call(reinterpret_cast<void*>(&pom68kJitRead));
         fillClock();
         a_.testRR(Sz::L, RAX, RAX);
-        a_.jcc(Cc::E, *slow_[idx]);       // it faulted: nothing was committed
+        a_.jcc(Cc::E, runtimeStub(idx));       // it faulted: nothing was committed
         a_.movRM(Sz::L, dst, F(kFValue)); // already host-ordered
         a_.jmp(done);
     });
@@ -907,7 +1194,7 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess) {
 
 void Emitter::memStore(Reg addr, int szIdx, Reg src, bool soleAccess) {
     soleAccess = soleAccess && thunks_ >= 2;
-    Label& miss = soleAccess ? *a_.fresh() : *slow_[cur_];
+    Label& miss = soleAccess ? *a_.fresh() : runtimeStub(cur_);
 
     // The value is live across memProbe, whose miss path calls out and
     // therefore clobbers every caller-saved register, `src` included.
@@ -938,7 +1225,7 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src, bool soleAccess) {
         call(reinterpret_cast<void*>(&pom68kJitWrite));
         fillClock();
         a_.testRR(Sz::L, RAX, RAX);
-        a_.jcc(Cc::E, *slow_[idx]);
+        a_.jcc(Cc::E, runtimeStub(idx));
         // A store the memory map performed itself may have landed in a page
         // holding translated code; the guard is the only thing that can see
         // that, and the block must not run any further if it did.
@@ -953,6 +1240,13 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src, bool soleAccess) {
         a_.movRM(Sz::Q, RAX, F(kFGuard));
         a_.aluMI(Asm::Op::CMP, Sz::B, mem(RAX, 0), 0);
         a_.jccShort(Cc::E, ok);
+        // …and because it re-enters at THIS instruction's pc, the instruction
+        // is about to be run a second time — so the 68030 i-cache charge it
+        // already took has to come back off, exactly as on the runtime-bail
+        // door. This exit is the one the door does not cover, and it is what
+        // the 030 lockstep's residual +2 fetches were (2026-08-10): visible
+        // only with POM68K_JIT_ACCESS_THUNK=2, since only a STORE reaches it.
+        unchargeIcache(idx);
         emitBoundary(ir_.instrs[idx].pc, -1);
         a_.jmp(*exitLost_);
         a_.bind(ok);
@@ -1079,8 +1373,15 @@ bool Emitter::emitAluEaRg(size_t i) {
     const int rc = kEaRead[src.idx][szIdx];
     if (rc < 0) return false;
     if (!lengthOk(i, src.ext)) return false;
-    // CMPA/ADDA/SUBA charge the same as the register forms on the 68020.
-    if (rc != ir_.instrs[i].cycles) return false;
+    // ADDA/SUBA charge exactly the register forms on the 68020 (execAdda's
+    // 020 column IS kEaRead). CMPA does NOT: execCmpa's own column is
+    // kEaRead + 2 in every mode, byte, word and long alike — it holds a
+    // SYNC(2) that the ADDA path only takes for a word or a register source
+    // (MoiraExec_cpp.h:2129 vs :421-423). Charging both alike refused every
+    // single CMPA; on the idle Finder that was 1.04 M fallbacks, 12 % of all
+    // of them, second only to the MOVE cost cell fixed above (2026-08-09).
+    const int cost = (isAddr && isCmp) ? rc + 2 : rc;
+    if (cost != ir_.instrs[i].cycles) return false;
     if (isAddr) {
         Ea an; an.idx = kM_AN; an.reg = dn;
         if (aliases(src, an)) return false;
@@ -1438,6 +1739,34 @@ bool Emitter::emitLine4(size_t i) {
         return true;
     }
 
+    if ((op & 0xFFC0) == 0x4840) {                   // PEA <ea>
+        // The address computation must come BEFORE the stack moves: Moira
+        // is computeEA then push, and `PEA (A7)` / `PEA d16(A7)` are legal
+        // and read the OLD A7. Same shape as BSR's push above; the only
+        // difference is what goes on the stack.
+        Ea src;
+        if (!decode(i, mode, reg, 2, 0, src)) return false;
+        if (!src.memory) return false;               // PEA needs an address
+        if (src.idx == kM_PI || src.idx == kM_PD) return false;  // not encodable
+        if (!lengthOk(i, src.ext)) return false;
+        // execPea, 68020 column. No Dn/An row: those encodings are SWAP.
+        static const int8_t kPea[kM_COUNT] =
+            { -1, -1, 9, -1, -1, 10, -1, 9, 9, 10, -1, -1 };
+        const int cycles = kPea[src.idx];
+        if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+        addrOf(src, RDI, 2);
+        a_.movRM(Sz::L, RAX, A(7));
+        a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
+        a_.movMR(Sz::L, F(kFSaveA), RAX);
+        memStore(RAX, 2, RDI);
+        // A7 moves only once the store has committed: a bail-out inside
+        // memStore re-runs the whole instruction through Moira, and a
+        // pre-decremented A7 would make it push twice.
+        a_.movRM(Sz::L, RAX, F(kFSaveA));
+        a_.movMR(Sz::L, A(7), RAX);
+        return true;
+    }
+
     if (szIdx > 2) return false;
     const uint16_t family = op & 0xFF00;
 
@@ -1514,6 +1843,56 @@ bool Emitter::emitLine4(size_t i) {
 // worth having at all here: when the target is another instruction of THIS
 // block — a loop closing on itself — the branch becomes an internal jump
 // and the loop never returns to the engine.
+// Scc <ea> — sets a BYTE to $FF or $00 and branches nothing, which is why it
+// is Kind::Cond and sits inside a block rather than ending one. On the 68020
+// column the register form is a flat 4 cycles whatever the condition (the
+// 68000's `data ? 6 : 4` is a 68000-only quirk), and the memory forms never
+// READ the destination — execSccEa's 020 branch computes the EA, updates An
+// and writes, so this is a SINGLE guest access and may use the access thunk.
+bool Emitter::emitScc(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const uint16_t op = in.opcode;
+    const int cc = (op >> 8) & 0xF;
+    const int mode = (op >> 3) & 7, reg = op & 7;
+    if ((op & 0xF0F8) == 0x50F8) return false;        // TRAPcc (Unsafe anyway)
+
+    // condToAl leaves ZF SET when the condition is true, and clobbers RAX.
+    // setcc NE therefore yields 1 for FALSE and 0 for true; subtracting one
+    // turns that into the 68k's $00 / $FF without a branch.
+    const auto materialise = [&](Reg dst) {
+        condToAl(cc);
+        a_.setccR(Cc::NE, dst);
+        a_.aluRI(Asm::Op::SUB, Sz::B, dst, 1);
+    };
+
+    if (mode == 0) {                                  // Scc Dn — execSccRg
+        if (in.cycles != 4) return false;
+        if (!lengthOk(i, 0)) return false;
+        materialise(RDI);
+        a_.movMR(Sz::B, D(reg), RDI);                 // byte only; D(n) upper
+        return true;                                  // bits are left alone
+    }
+
+    Ea dst;
+    if (!decode(i, mode, reg, 0, 0, dst)) return false;
+    if (!dst.memory) return false;                    // An is not a Scc target
+    if (dst.idx == kM_DIPC || dst.idx == kM_IM) return false;   // not writable
+    if (!lengthOk(i, dst.ext)) return false;
+    // execSccEa, 68020 column (byte row).
+    static const int8_t kScc[kM_COUNT] =
+        { -1, -1, 10, 10, 11, 11, -1, 10, 10, -1, -1, -1 };
+    const int cycles = kScc[dst.idx];
+    if (cycles < 0 || cycles != int(in.cycles)) return false;
+
+    // Value first: condToAl clobbers RAX, which is where the address goes.
+    // Neither half reads the other's state, so the order is free.
+    materialise(RDI);
+    addrOf(dst, RAX, 0);
+    memStore(RAX, 0, RDI, /*soleAccess=*/true);
+    commitEa(dst, 0);                                 // (A7)+/-(A7) step 2
+    return true;
+}
+
 bool Emitter::emitBranch(size_t i) {
     const Instr& in = ir_.instrs[i];
     const uint16_t op = in.opcode;
@@ -1667,7 +2046,7 @@ bool Emitter::emitJmp(size_t i) {
     addrOf(ea, RDI, 2);
     if (!constant) {                     // odd target: 040 address error
         a_.testRI(Sz::L, RDI, 1);
-        a_.jcc(Cc::NE, *slow_[i]);
+        a_.jcc(Cc::NE, runtimeStub(i));
     }
     a_.movMR(Sz::L, at(L_.pc), RDI);
     a_.movMR(Sz::L, at(L_.pc0), RDI);
@@ -1729,14 +2108,14 @@ bool Emitter::emitMovem(size_t i) {
     // The restart latch: armed between a faulted MOVEM and its completed
     // re-run. Cold in every normal execution, so one byte test.
     a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.movemArmed), 0);
-    a_.jcc(Cc::NE, *slow_[i]);
+    a_.jcc(Cc::NE, runtimeStub(i));
 
     if (ea.idx == kM_PD) {
         // -(An): descending stores from An-size down to An-n*size, which
         // is also the span base and the final An.
         a_.movRM(Sz::L, RAX, A(ea.reg));
         a_.aluRI(Asm::Op::SUB, Sz::L, RAX, n * size);
-        memProbe(RAX, n * size, /*write=*/true, *slow_[i]);
+        memProbe(RAX, n * size, /*write=*/true, runtimeStub(i));
         // The probe's fill path clobbers caller-saved registers; the base
         // register itself is unchanged until the end, so re-read it.
         a_.movRM(Sz::L, RDI, A(ea.reg));             // initial
@@ -1769,7 +2148,7 @@ bool Emitter::emitMovem(size_t i) {
 
     // Ascending forms, both directions: base address into RAX.
     addrOf(ea, RAX, szIdx);
-    memProbe(RAX, n * size, toRegs ? false : true, *slow_[i]);
+    memProbe(RAX, n * size, toRegs ? false : true, runtimeStub(i));
     int j = 0;
     for (int b = 0; b < 16; b++) {
         if (!(mask & (1 << b))) continue;
@@ -1826,7 +2205,7 @@ bool Emitter::emitInstr(size_t i) {
             return emitLine4(i);
         case 0x5000:
             if ((op & 0xF0F8) == 0x50C8) return emitDbcc(i);
-            if ((op & 0x00C0) == 0x00C0) return false;         // Scc
+            if ((op & 0x00C0) == 0x00C0) return emitScc(i);
             return emitAddSubQ(i);
         case 0x6000:
             return (op & 0x0F00) == 0x0100 ? emitSubroutine(i) : emitBranch(i);
@@ -1844,9 +2223,13 @@ bool Emitter::emit() {
     if (n == 0 || ir_.code.empty()) return false;
 
     entry_.resize(n); slow_.resize(n); budget_.resize(n); flags_.resize(n);
+    if (histo_) slowStatic_.resize(n);
+    if (needRuntimeDoor()) slowRuntime_.resize(n);
     for (size_t i = 0; i < n; i++) {
         entry_[i] = a_.fresh(); slow_[i] = a_.fresh();
         budget_[i] = a_.fresh(); flags_[i] = a_.fresh();
+        if (histo_) slowStatic_[i] = a_.fresh();
+        if (needRuntimeDoor()) slowRuntime_[i] = a_.fresh();
     }
     // Which instruction, if any, the block's own terminating branch jumps
     // back to: its boundary is reached from two directions, so the cold
@@ -1879,6 +2262,14 @@ bool Emitter::emit() {
     if (paced_) a_.movRM(Sz::Q, kPer, F(kFPeriph));
     fillClock();
     a_.aluRR(Asm::Op::XOR, Sz::L, kCnt, kCnt);
+    // The 68030's per-instruction contract, minus the seven fields the fault
+    // re-run re-establishes (Moira.h § PomJitLayout::mmuRmw). Emitted in the
+    // PROLOGUE, before linkEntry_, and once per chain rather than once per
+    // instruction: TAS and CAS are the only things that set the flag, both
+    // are Kind::Unsafe, so no block in a linked chain can raise it again —
+    // the same argument that lets a chain inherit privilege and the MMU
+    // generation without re-checking them (POM68K_JIT.md § 9).
+    if (L_.is030) a_.movMI(Sz::B, at(L_.mmuRmw), 0);
     linkEntry_ = a_.size();
 
     size_t emitted = 0;
@@ -1887,8 +2278,29 @@ bool Emitter::emit() {
         a_.bind(*entry_[i]);
         guards(i);
 
+        // A 68030 branch longer than one word fetches a DIFFERENT number of
+        // words on its two paths: the not-taken path consumes the
+        // displacement through readExt (one extra fetch), the taken path
+        // reads it straight out of queue.irc and never does. The i-cache
+        // charge below is emitted once, before the condition is even
+        // evaluated, so it cannot express that. Refuse the form rather than
+        // charge one of its two paths wrongly — coverage, not correctness,
+        // and only until the charge is split across emitBranch's own paths.
+        if (ic_ && ir_.instrs[i].kind == Kind::Branch && ir_.instrs[i].words > 1) {
+            a_.jmp(staticStub(i));
+            emitted = i + 1;
+            continue;
+        }
+
         const Asm::Mark mark = a_.mark();
         pollIpl();
+        // In mmuExecuteStart's own order: POLL_IPL, then the fetch that
+        // charges the 030 i-cache. INSIDE the mark, deliberately — if the
+        // instruction turns out not to be emittable, rewind() takes the
+        // charge away with the rest and the fallback stub charges it itself
+        // through mmuFetchWord. The compiler's shadow of the cache is
+        // advanced either way, because the real cache changes either way.
+        chargeIcache(i);
         const bool native = emitInstr(i);
         emitted = i + 1;
 
@@ -1898,7 +2310,7 @@ bool Emitter::emit() {
             // will perform. Then send
             // the instruction to its stub in the cold half.
             a_.rewind(mark);
-            a_.jmp(*slow_[i]);
+            a_.jmp(staticStub(i));
             continue;
         }
         native_++;
@@ -1953,6 +2365,29 @@ bool Emitter::emit() {
     }
 
     for (size_t i = 0; i < emitted; i++) {
+        // POM68K_JIT_HISTO: the two counting doors onto the shared body.
+        // Emitted BEFORE the boundary commit, which is safe because they
+        // touch nothing but a host scratch register and a counter array the
+        // guest cannot see — and they must not sit after it, or a bail-out
+        // that then exits would count an instruction it did not run.
+        if (histo_) {
+            const int32_t off = int32_t(ir_.instrs[i].opcode) * 8;
+            a_.bind(*slowStatic_[i]);
+            a_.movRM(Sz::Q, RAX, F(kFHistoStatic));
+            a_.aluMI(Asm::Op::ADD, Sz::Q, mem(RAX, off), 1);
+            a_.jmp(*slow_[i]);
+        }
+        if (needRuntimeDoor()) {
+            a_.bind(*slowRuntime_[i]);
+            if (histo_) {
+                const int32_t off = int32_t(ir_.instrs[i].opcode) * 8;
+                a_.movRM(Sz::Q, RAX, F(kFHistoRuntime));
+                a_.aluMI(Asm::Op::ADD, Sz::Q, mem(RAX, off), 1);
+            }
+            // The instruction is about to be re-run by the interpreter, so
+            // the 68030 i-cache charge it already took comes back off.
+            unchargeIcache(i);
+        }
         a_.bind(*slow_[i]);
         emitBoundary(ir_.instrs[i].pc, int(i) == loopTarget ? -1 : int(i) - 1);
         spillClock();
@@ -1999,6 +2434,10 @@ bool Emitter::emit() {
     for (size_t i = emitted; i < n; i++) {
         if (entry_[i]->bound < 0) entry_[i]->bound = epilogue_->bound;
         if (slow_[i]->bound < 0) slow_[i]->bound = epilogue_->bound;
+        if (histo_ && slowStatic_[i]->bound < 0)
+            slowStatic_[i]->bound = epilogue_->bound;
+        if (needRuntimeDoor() && slowRuntime_[i]->bound < 0)
+            slowRuntime_[i]->bound = epilogue_->bound;
         if (budget_[i]->bound < 0) budget_[i]->bound = epilogue_->bound;
         if (flags_[i]->bound < 0) flags_[i]->bound = epilogue_->bound;
     }
@@ -2032,6 +2471,7 @@ public:
         BackendCaps c;
         c.nativeCode = true;
         c.aluReg = c.aluMem = c.moves = c.branches = c.addrModes = true;
+        c.dtlbCodeMask = true;             // memProbe tests it on every store
         c.maxBlockInstrs = 64;
         // 68040 FAMILY ONLY, and this is a correctness statement, not a
         // measurement. Everything in this file is written against the 040's
@@ -2072,7 +2512,7 @@ public:
 
 private:
     CodeBuffer buf_;
-    int diagLeft_ = 40;              // POM68K_JIT_VERBOSE block dump budget
+    int diagLeft_ = verboseBlocks();  // POM68K_JIT_VERBOSE block dump budget
     Layout layout_{};
     bool haveLayout_ = false;
     std::vector<uint8_t> scratch_;
@@ -2103,6 +2543,7 @@ bool X64Backend::canEmit(uint16_t op) const {
             if ((op & 0xF1C0) == 0x41C0) return eaOk;              // LEA
             if ((op & 0xFFB8) == 0x4880) return true;              // EXT
             if ((op & 0xFFF8) == 0x4840) return true;              // SWAP
+            if ((op & 0xFFC0) == 0x4840) return eaOk;              // PEA
             if ((op & 0xFB80) == 0x4880 && mode >= 2) return true; // MOVEM
             if ((op & 0xFF00) == 0x4A00 || (op & 0xFF00) == 0x4200 ||
                 (op & 0xFF00) == 0x4400 || (op & 0xFF00) == 0x4600)
@@ -2110,7 +2551,12 @@ bool X64Backend::canEmit(uint16_t op) const {
             return false;
         case 0x5000:
             if ((op & 0xF0F8) == 0x50C8) return true;               // DBcc
-            return (op & 0x00C0) != 0x00C0 && eaOk;                 // ADDQ/SUBQ
+            if ((op & 0xF0F8) == 0x50F8) return false;              // TRAPcc
+            if ((op & 0x00C0) == 0x00C0)                            // Scc
+                return mode == 0 || (eaOk && mode != 1 &&
+                                     eaIndex(mode, reg) != kM_DIPC &&
+                                     eaIndex(mode, reg) != kM_IM);
+            return eaOk;                                            // ADDQ/SUBQ
         case 0x6000: return true;                                   // Bcc/BRA/BSR
         case 0x7000: return (op & 0x0100) == 0;                     // MOVEQ
         case 0x8000: case 0x9000: case 0xB000: case 0xC000: case 0xD000:
@@ -2185,6 +2631,8 @@ RunResult X64Backend::run(Compiled* c, Context& ctx) {
                            : &kNoGuard;
     f.periphClock = ctx.periphClock;
     f.linkTable = ctx.linkTable;
+    f.slowStaticHisto = ctx.slowStaticHisto;
+    f.slowRuntimeHisto = ctx.slowRuntimeHisto;
 
     using Fn = void (*)(moira::Moira*, Frame*);
     reinterpret_cast<Fn>(static_cast<X64Compiled*>(c)->entry)(ctx.cpu, &f);

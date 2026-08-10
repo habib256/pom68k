@@ -134,6 +134,20 @@ int main() {
     std::printf("  SCSI=%ld  pc=$%08X  %s\n", mem.scsi().commands, cpu.getPC(),
                 cpu.isHalted() ? "HALTED" : "running");
 
+    // The 68030 on-chip i-cache (Moira.h § PomIcache). Reported here because
+    // it is the ONE piece of 030 timing the JIT has to reproduce and cannot
+    // inherit: the fetch window and the threaded backend charge it through
+    // mmuFetchWord like the interpreter does, but generated code fetches no
+    // instructions at all and would charge nothing. These three numbers must
+    // therefore be IDENTICAL across engines at a fixed cycle budget — they
+    // are the 030 half of the fingerprint. See docs/JIT_BRINGUP.md § B.
+    const Cpu030::ICacheStats ic = cpu.icacheStats();
+    const double hitPct = ic.hits + ic.misses
+                        ? 100.0 * double(ic.hits) / double(ic.hits + ic.misses) : 0.0;
+    std::printf("  icache: %lld fetches, %lld hits, %lld misses (%.2f%% hit)%s\n",
+                (long long)ic.fetches, (long long)ic.hits, (long long)ic.misses,
+                hitPct, cpu.icacheEnabled() ? "" : "  [CACR bit 0 clear]");
+
     if (const char* ppm = std::getenv("POM68K_BENCH_PPM")) dumpPpm(mem, ppm);
     return 0;
 }

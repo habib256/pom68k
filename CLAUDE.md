@@ -65,8 +65,8 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **171 CTest gates** (`ctest -N` 2026-08-09: 84 `unit`, 8 `smoke`,
-  23 `jit`, 36 `m040`, 87 `etalon`, of which 12 `etalon-core` — one profile
+- **173 CTest gates** (`ctest -N` 2026-08-10: 86 `unit`, 8 `smoke`,
+  25 `jit`, 36 `m040`, 87 `etalon`, of which 12 `etalon-core` — one profile
   per platform, **12/12 green in 31 min 41 s**, the pre-commit tier).
   `etalon` jumped 81 → 87 for two reasons: two new IIvx beyond-boot gates,
   and **four gates that carried no label at all** — the three IIfx ones and
@@ -149,11 +149,11 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 171 gates, ~3h35 (asset-dependent ones soft-skip)
-ctest -L unit                # 84 gates — no ROM or disk image needed
+ctest                        # 173 gates, ~3h40 (asset-dependent ones soft-skip)
+ctest -L unit                # 86 gates — no ROM or disk image needed
 ctest -L smoke               # 8 gates — one machine, both CPU engines
 ctest -L etalon-core         # 12 gates — ONE profile per platform, 31 min
-ctest -L jit                 # 23 gates;  -L m040 = 36, the 68040 family
+ctest -L jit                 # 25 gates;  -L m040 = 36, the 68040 family
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
 ./POM68K [ROM] [media...]    # profile picked by ROM size + checksum; the
                              # mapping is `kProfiles` in src/main.cpp

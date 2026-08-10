@@ -9247,3 +9247,183 @@ watchdog never arms without Break/Abort IE).
   desktop + mouse pointer + ?-icon; VBL IRQ drives the blink counter wait
   at `$402420`. No VIA timers or RTC needed to get here, confirming the
   BMOW Plus Too minimal-hardware list.
+
+## 2026-08-10 — Conformant-JIT chantier: phase 0 and phase A landed, and the 68030 blocker finally named
+
+`docs/JIT_BRINGUP.md` is the new plan (040 coverage tail, 030 i-cache, 030
+code generation, default engine); `src/jit/POM68K_JIT.md` §§ 3.1bis/3.1ter
+carry the measurements. Ordered by what each thing cost to find.
+
+**An instrument that reported success because it was not looking.**
+`Context::slowStaticHisto`/`slowRuntimeHisto` — the census that separates
+"this backend has no emitter for that opcode" from "it compiled the
+instruction and the access bailed at run time" — is written by the a64
+backend and had NEVER been written by the x64 one. `[jit] block fallback
+census` printed `0` on x86-64 for as long as it existed, next to a
+`JitBackend.h` comment describing what it was telling us. Wired; it named two
+wrong cost-table cells within one run.
+
+**Two cost cells, 59 % of all block fallbacks between them.**
+`kMoveDst[(xxx).W]` was 3 and is 2 — `execMove7`'s 68020 column is
+byte-for-byte `execMove2`/`execMove3`'s, because an absolute-short
+destination's extension word is already in the prefetch queue. That refused
+EVERY `MOVE <ea>,(xxx).W`: 47.4 % of fallbacks. `CMPA` charges `kEaRead + 2`,
+not `kEaRead` — `execCmpa` holds a `SYNC(2)` the `ADDA`/`SUBA` path takes
+only for a word or register source. That refused every `CMPA`: a further
+12 %. Both were coverage bugs and never correctness bugs, which is exactly
+what cross-checking the table against the tracer's own measurement buys.
+
+**A real self-modifying-code hole.** `markPages()` has never flushed the data
+TLB, while `POM68K_JIT.md` § 8's invalidation table has claimed since it was
+written that it does. A write entry filled for a page BEFORE it held
+translated code points straight at the host bytes, so a store through it
+bypasses the memory map, the write guard never sees it, and the block that
+page now carries is never evicted. Fixed on the slice's 0 -> 1 transition
+only — an unconditional flush here is the same 8 KB memset whose arm-time
+cousin cost 23-33 % of wall clock.
+
+**The data path was the coverage tail, not the instruction set.** With the
+census finally reporting, 57 % of remaining fallbacks were two stack-push
+forms that compile natively and bail at RUN time. Splitting the data-TLB
+refusals by reason named it: **63 998 of 66 922 remembered refusals (95.6 %)
+were "this 4 KB page holds translated code somewhere"** — an entry maps
+4 KB, `CodeGuard` works at 256 bytes, and 68k code shares its page with its
+own stack constantly. Deleting the refusal unsafely measured the ceiling at
+−9.8 % of wall clock AND moved the bench fingerprint, which is what proved
+it load-bearing. `PomJitDtlbEntry::codeMask` (16 bits, one per slice) buys it
+back safely: two host instructions on the write path and a cold precise slice
+test. Backends declare `BackendCaps::dtlbCodeMask` before being handed such
+an entry; a64 does not, so it keeps the whole-page refusal.
+
+Plus the `PEA` and `Scc` emitters, `POM68K_JIT_VERBOSE_BLOCKS=N` (the block
+dump is the only place a block's measured per-instruction cycles are visible,
+and a hard-coded 40 only ever showed ROM reset code), and an i-cache line in
+`jit_bench_lcii`.
+
+Phase A end to end on the fixed 3 000-frame Q605 budget, fingerprint
+`5af1d47a9322bebf` unchanged at every step: **10.30 s -> 8.98 s (−12.8 %)**,
+native 96.2 -> 98.5 %, block fallbacks 16 475 202 -> 2 570 058 (−84 %),
+runtime fallbacks −94 %, remembered TLB refusals 66 922 -> 2 935.
+`ctest -L jit` 23/23.
+
+**`jit_lockstep_030_test`** — the differential coverage the 68030 has never
+had. Every previous lockstep runs two Quadra 605s. Two LC IIs, stepped from
+power-up, comparing registers, the three stacks, SR, `clock`, 2 KB of low RAM
+**and the three `PomIcache` counters**. Its first version ran 256 cycles per
+comparison and never left the ROM self test — 2.6 % of instructions on the
+JIT path, 99.1 % of window arms refused — so it now FAILS rather than
+reporting green when the JIT carries less than half the instructions or when
+most arms are refused. Calibrated at 8192, it reaches 89 % / 5.6 %.
+
+**It immediately refuted the premise the 030 plan rested on.** `TODO.md` § 3
+said the divergence was localized to the compiled memory-access path, because
+`POM68K_JIT_ACCESS_THUNK=0` boots the LC II. Forcing x64 onto the LC II
+diverges at **exactly the same step (5956) with the thunk on and off**, and at
+`POM68K_JIT_BLOCK_MAX` 1, 4 and 64 alike. So it is neither the access path
+nor block length: the generator is wrong from its FIRST compiled instruction.
+
+**The blocker, named.** `mmuExecuteStart` resets, on every 68030 instruction,
+a block of MMU bookkeeping with no 68040 counterpart in that form —
+`mmuState`, `mmuIdx`, `mmuAd`, `mmuFixupReg`, `mmuCcrSave`, `mmuLogging`,
+`mmuRmw`, `mmuOpcodeV`. Generated code reproduces `mmu040InstrStart`'s
+contract and none of this. Seven of the eight are read only when a bus-error
+frame is stacked and are re-established by the interpreter's re-run; `mmuRmw`
+is not, and is now cleared in the block prologue (once per linked chain: TAS
+and CAS are the only setters and both are `Kind::Unsafe`). That was not the
+cause — the numbers did not move — but it is a real hole closed.
+
+Landed for the 68030 and NOT yet validated, all unreachable in any shipped
+configuration because `guestFamilies` still excludes `kGuest68030`: the
+030 branch of `pomJitProbeData` (data-space fc, the 030's own
+`writeProtect`/`modified` rules), 030 access thunks (`mmuRead`/`mmuWrite`
+with the data fc set and a redirected `fcSource` refused), and
+`Emitter::chargeIcache` — the MC68030UM §6 model emitted constant-folded per
+natively emitted instruction. C.2/C.3 **cannot** be validated on their own:
+the interpreter's `POM68K_DATA_WINDOW` reaches `pomJitData` only from
+`mmu040Read`/`mmu040Write`, and the 030 interpreter uses `mmuRead`/
+`mmuWrite`, so a run with the window on and off gives identical fingerprints
+AND identical zero fills — a dead path, not a passing test.
+
+The i-cache attempt did establish one design correction: it reports
+**+613 745 fetches for +17 cycles of clock**. Fetches that carry no time are
+double counts, and the source is exact — a compiled instruction charges
+before it runs, and one that then bails at run time is re-run through
+`mmuFetchWord`, which charges it again as a hit. So the clock half is likely
+already right and the counter half is a placement question. Details and the
+two candidate placements: `docs/JIT_BRINGUP.md` § B.
+
+**C.4 narrowed the same day, by elimination.** Four probes against the same
+bisect (`FINE_AT=5950 FINE_BUDGET=32`, one-instruction blocks): the emitted
+i-cache (`POM68K_JIT_ICACHE_EMIT=0`) and block linking (`POM68K_JIT_LINKS=0`)
+both leave the divergence bit-identical at step 7511; charging a taken `Bcc`
+8 cycles instead of 6 makes it WORSE (7508), so the constant is right;
+refusing `Emitter::emitBranch` on an 030 moves it to 7516 **with pc and clock
+agreeing there**. It is the branch emitter — and not the whole story, since a
+second, non-clock divergence follows five steps later.
+
+The hunt also turned up a structural fact that changes how a 68030 block dump
+must be read: `Instr::cycles` is the CLOCK DELTA over the instruction, and on
+a 68030 `mmuFetchWord` adds the i-cache miss penalty to that clock *during*
+the instruction. A traced value is therefore the table cost **plus**
+`misses x missPenalty` — `67F6/8c` is a not-taken branch (4) plus one miss
+(4), `361A/10c` is 6 plus one miss. Every 030 instruction that happened to
+miss while being traced is refused for a reason that has nothing to do with
+its cost table. That is conservative, so it costs coverage and not
+correctness, but it means the cross-check is not *validating* anything on
+this family: a serious 030 generator wants the tracer to record the cost net
+of the i-cache charge. `POM68K_JIT_ICACHE_EMIT` and the gate's
+`POM68K_JIT_LOCKSTEP_FINE_BUDGET` (default 64 — a 1-cycle budget never gives
+the engine room to build a block, so a "fine" run silently compares the
+interpreter with itself) both exist because of this session.
+
+## 2026-08-10 (second) — the 68030 blocker was two bugs, and the first one was never 68030-specific
+
+`jit_lockstep_030_test` goes from diverging at step 5956 to **step 25768**,
+4.3x further, with pc, clock, every register and the RAM window matching all
+the way. Full account: `docs/JIT_BRINGUP.md` § C.4.
+
+**`Emitter::chargeCycles` threw the cycle charge away on any machine that
+does not pace the engine.** The clock lives in a callee-saved register
+(`kClk`) for a whole chain of linked blocks. The `!paced_` path called the
+sync thunk — which reads `clock` from memory and adds to it — without
+spilling the register first or reloading it after, so the epilogue's
+`spillClock()` wrote the stale value straight back over the charge. The paced
+path's own cold half has always done that spill/reload; this branch never
+did.
+
+It stayed latent because the four wrappers that pace the engine — `Cpu040`,
+`CentrisCpu`, `Q630Cpu`, `Q700Cpu` — are **exactly the four families the code
+generators declare**, so no generated code had ever taken the branch. The
+first that did, an x86-64 block on a 68030, ran its only compiled instruction
+for FREE; the guest then ran one instruction past its cycle budget and parted
+company with the interpreter. The eight other wrappers (`Cpu020`, `Cpu030`,
+`Cpu68k`, `IIfxCpu`, `MscCpu`, `RbvCpu`, `SonoraCpu`, `VaspCpu`) would each
+have hit it the moment a generator reached them.
+
+**The emitted i-cache model was off by one on every instruction longer than
+one word.** On the 68030 `readExt()` consumes `queue.irc` and then refetches
+the next word, so a W-word instruction performs **W+1** fetches at
+pc … pc+2W — one past its own last word, because the queue runs a word ahead.
+The first cut charged `max(2, W)`. The gate measured the shortfall as 2 084
+missing fetches with the miss count and the clock already correct: an
+off-by-one, not a lost event. With it: the exact un-charge on the
+runtime-bail door (a compiled instruction charges before it runs; one that
+bails is re-run through `mmuFetchWord` and charged again, always as a HIT, so
+the over-count is exactly N fetches and N hits and subtracting them is exact),
+and a temporary refusal of multi-word branches on an 030, whose two paths
+fetch different numbers of words.
+
+**Method, since it is the reusable part.** Six candidates, each switched off
+in turn against one bisect, and nearly every step was a refutation: not the
+i-cache emission, not block linking, not the taken-`Bcc` constant (making it
+8 is worse), not the access thunk. The two rows that pointed forward were
+`POM68K_JIT_BLOCKS=0` running 40 000 steps clean — so the fault was in
+emitted code — and dropping the fine budget from 32 to 2 machine cycles,
+which turned "somewhere in a block" into a single readable fact: both engines
+start at `$40A00920`, both spend 10 cycles, the interpreter retires two
+instructions and the JIT retires three. An instruction that ran for nothing.
+At the coarse budget the same divergence had reported 613 745 "extra"
+fetches, which was noise from comparing two machines that had already parted.
+
+68040 untouched throughout: `ctest -L smoke` 8/8, Q605 bench fingerprint
+`5af1d47a9322bebf` and 98.5 % native unchanged.

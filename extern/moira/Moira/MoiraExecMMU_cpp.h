@@ -2076,6 +2076,60 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
     // descriptor bits back through mmuWrite32), no ATC pseudo-LRU update,
     // and no fault. A refusal costs nothing but a bail-out to the
     // interpreter, which then does the real thing.
+
+    // 030 branch (2026-08-10, docs/JIT_BRINGUP.md § C.2) — the data-space
+    // twin of pomJitProbeCode's 030 branch above, held to the same three
+    // rules, plus the two a write has that a read does not.
+    //
+    // The function code is DATA space (1 user / 5 supervisor) where the code
+    // probe uses program space (2 / 6). That is not cosmetic: the 68030 ATC
+    // tags every entry with its fc and matches it EXACTLY (mmuAtcArr[].fc),
+    // so probing the data side with the program fc would miss every entry
+    // and silently refuse everything — a whole engine that looks merely slow.
+    if (cpuModel == Model::M68030) {
+        const u8 fc = u8((super ? 4 : 0) | 1);          // data space
+        const u32 mask = mmuPageMask();
+        pageBase = logical & ~mask;
+        pageLen  = mask + 1;
+
+        // mmuMatchTTAccess already honours the direction (a read-transparent
+        // TT register returns false for a write), so unlike the 040's TTR
+        // there is no separate write-protect answer to decode here.
+        if (mmuMatchTTAccess(logical, fc, write)) { phys = logical; return true; }
+        if (!(reg.tc & 0x80000000)) { phys = logical; return true; }
+
+        // Read-only scan, O(1) first through the interpreter's own last-hit
+        // memo — same argument as the code probe: eviction churn re-probes
+        // constantly, and the 22-entry scan on every one of them is what
+        // made the MMU-on 030 machines slower under the engine than
+        // interpreted.
+        const auto usable = [&](const MmuAtcEntry &e) -> int {
+            if (!e.valid || e.fc != fc || e.logical != pageBase) return -1;
+            if (e.busError) return 0;                   // invalid / S-only
+            if (write) {
+                if (e.writeProtect) return 0;
+                // An unmodified page owes its descriptor an M bit on the
+                // first write, and setting it is a guest-memory STORE
+                // (mmuTranslateAccess does it through mmuWrite32). A probe
+                // may not perform one, so refuse and let the interpreter.
+                if (!e.modified) return 0;
+            }
+            return 1;
+        };
+        {
+            const MmuAtcEntry &e = mmuAtcArr[mmuAtcLast[fc & 7][0]];
+            const int v = usable(e);
+            if (v == 0) return false;
+            if (v > 0) { phys = e.physical | (logical & mask); return true; }
+        }
+        for (const MmuAtcEntry &e : mmuAtcArr) {
+            const int v = usable(e);
+            if (v == 0) return false;
+            if (v > 0) { phys = e.physical | (logical & mask); return true; }
+        }
+        return false;
+    }
+
     if (cpuModel < Model::M68EC040) return false;
 
     const u32 maski = mmu040PageMaskI();
@@ -2132,13 +2186,46 @@ Moira::pomJitLayout() const
     l.ird = at(&queue.ird);   l.irc = at(&queue.irc);
     l.dtlbR = at(&pomJitDtlbR.e[0]);       l.dtlbW = at(&pomJitDtlbW.e[0]);
     l.movemArmed = at(&mmu040MovemArmed);
+    l.cacr = at(&reg.cacr);
+    l.icTag = at(&pomIcache.tag[0]);       l.icValid = at(&pomIcache.valid[0]);
+    l.icFetches = at(&pomIcache.fetches);  l.icHits = at(&pomIcache.hits);
+    l.icMisses = at(&pomIcache.misses);    l.icPenalty = at(&pomIcache.missPenalty);
+    l.icLive = pomIcache.armed && cpuModel == Model::M68030;
+    l.is030 = cpuModel == Model::M68030;
+    l.mmuRmw = at(&mmuRmw);
     return l;
 }
 
+// The access half of the JIT data path, for both MMU generations. These
+// perform the REAL access through the SAME entry point the interpreter uses
+// for that model, and convert the one thing a JIT frame cannot survive — a
+// thrown fault — into `false`. They must not be "an equivalent access": a
+// 68030 sent down the 040 path would translate through the wrong ATC, take
+// the wrong fault frame and skip the 030's restartable-write bookkeeping.
+//
+// 030 branch added 2026-08-10 (docs/JIT_BRINGUP.md § C.3). Two things it has
+// to establish that the 040 entry point takes as an argument:
+//
+//   * the FUNCTION CODE. mmuRead/mmuWrite read it back with readFC(), which
+//     is (sr.s ? 4 : 0) | fcl — so the data-space fcl has to be set here,
+//     exactly as the interpreter's setFC<M>() does before its own access.
+//   * `fcSource`. MOVES and the SFC/DFC registers redirect readFC() to an
+//     alternate space; that is Kind::Unsafe and cannot appear inside a
+//     block, but a stale non-zero fcSource would silently translate this
+//     access in the wrong space, so it is refused rather than assumed.
 bool
 Moira::pomJitReadData(u32 addr, int bytes, u32 &out) noexcept
 {
     try {
+        if (cpuModel == Model::M68030) {
+            if (fcSource != 0) return false;
+            setFC(FC::USER_DATA);               // readFC() ORs in sr.s
+            switch (bytes) {
+                case 1: out = mmuRead<Core::C68020, Byte, 0>(addr); return true;
+                case 2: out = mmuRead<Core::C68020, Word, 0>(addr); return true;
+                default: out = mmuRead<Core::C68020, Long, 0>(addr); return true;
+            }
+        }
         switch (bytes) {
             case 1: out = mmu040Read<Core::C68020, Byte>(addr, true); return true;
             case 2: out = mmu040Read<Core::C68020, Word>(addr, true); return true;
@@ -2153,6 +2240,15 @@ bool
 Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
 {
     try {
+        if (cpuModel == Model::M68030) {
+            if (fcSource != 0) return false;
+            setFC(FC::USER_DATA);
+            switch (bytes) {
+                case 1: mmuWrite<Core::C68020, Byte, 0>(addr, val); return true;
+                case 2: mmuWrite<Core::C68020, Word, 0>(addr, val); return true;
+                default: mmuWrite<Core::C68020, Long, 0>(addr, val); return true;
+            }
+        }
         switch (bytes) {
             case 1: mmu040Write<Core::C68020, Byte>(addr, val, true); return true;
             case 2: mmu040Write<Core::C68020, Word>(addr, val, true); return true;

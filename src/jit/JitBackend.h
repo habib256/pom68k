@@ -73,6 +73,18 @@ struct BackendCaps {
     bool addrModes    = false;  // indexed / displacement modes
     int  maxBlockInstrs = 64;
 
+    // Generated code tests PomJitDtlbEntry::codeMask before a store, so the
+    // engine may hand it a write entry for a page that holds translated code
+    // in SOME slice. A backend that does not (or that emits no code at all)
+    // gets the older, coarser answer: no write entry for such a page, ever.
+    //
+    // This is a SAFETY declaration, like guestFamilies: a backend that stores
+    // through an entry without testing the mask bypasses the memory map, so
+    // jit::CodeGuard never sees the store and a block translated from that
+    // page is never evicted — self-modifying code, undetected. Defaulting to
+    // false means a new backend is conservative until it says otherwise.
+    bool dtlbCodeMask = false;
+
     // Bitmask of GuestFamily. Deliberately defaults to 0 = "not declared",
     // which selection treats as "do not use": a new backend that forgets to
     // state its scope gets a diagnostic, not a silent wedge on the first

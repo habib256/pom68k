@@ -430,19 +430,40 @@ boot etalon **61.3 s interpreter → 22.9 s JIT (×2.68)**.
 
 Open, in ROI order:
 
-- [ ] **Widen the x86-64 backend to the 68030 family.** The divergence is
-  **localized**: with `POM68K_JIT_ACCESS_THUNK=0` — which hands every
-  memory-touching instruction back to the interpreter — x64 boots the LC II to
-  the Finder, so what breaks is the natively-compiled memory-access path, not
-  the emitters. Work items, in order:
-  - **an `lcii`/x64 lockstep gate FIRST.** `jit_lockstep_test` and friends run
-    two **Quadra 605** machines, so an 030 code generator has no differential
-    coverage at all — and this bug is exactly what that costs.
-  - a 68030 branch in `pomJitProbeData` (it returns false below `M68EC040`
-    today, so the inline DTLB never fills on an 030 at all);
-  - model-correct access thunks: `pomJitReadData`/`pomJitWriteData` call
-    `mmu040Read`/`mmu040Write` unconditionally;
-  - the 030's `(An)+` update order (before the access, not after —
+- [ ] **Widen the x86-64 backend to the 68030 family.** Plan, milestones and
+  every measurement: `docs/JIT_BRINGUP.md` § C.
+  - [x] **an `lcii`/x64 lockstep gate FIRST** — `jit_lockstep_030_test` +
+    `jit_lockstep_030_blocks_test`, 2026-08-10. Two LC IIs stepped from
+    power-up comparing registers, the three stacks, SR, `clock`, 2 KB of low
+    RAM **and the three `PomIcache` counters**. Calibrated at 8192 cycles per
+    comparison: the first version ran 256 and never left the ROM self test
+    (2.6 % of instructions on the JIT path, 99.1 % of window arms refused),
+    which is why it now FAILS rather than reports green when the JIT carries
+    less than half the instructions.
+  - [x] a 68030 branch in `pomJitProbeData` (data-space fc, the 030's own
+    `writeProtect`/`modified` rules) and model-correct access thunks
+    (`mmuRead`/`mmuWrite`, data fc set, `fcSource` refused when redirected).
+    **Written, NOT validated** — see below.
+  - > **~~The divergence is localized to the memory-access path~~ — REFUTED
+    > 2026-08-10.** With `POM68K_JIT_ACCESS_THUNK=0`, which hands every
+    > memory-touching instruction back to the interpreter, x64 on the LC II
+    > diverges at **exactly the same step (5956)** as with it on. The
+    > compiled access path is not what breaks. What differs in both runs is
+    > the **68030 i-cache accounting** — generated code fetches no
+    > instructions and charges no miss penalty. So the order changed: the
+    > i-cache charge comes FIRST.
+    >
+    > Also measured: C.2/C.3 above **cannot be validated on their own** —
+    > the interpreter's `POM68K_DATA_WINDOW` reaches `pomJitData` only from
+    > `mmu040Read`/`mmu040Write`, and the 030 interpreter uses
+    > `mmuRead`/`mmuWrite`, so the window is a dead path there (identical
+    > fingerprints AND identical zero fills). Their gate is the boot etalon
+    > once the family is declared.
+  - [ ] **the emitted i-cache charge** (`docs/JIT_BRINGUP.md` § B) — constant
+    folded per natively emitted instruction; the cold fallback stub charges
+    itself already, through `pomJitExecOne` → `mmuExecuteStart` →
+    `mmuFetchWord`.
+  - [ ] the 030's `(An)+` update order (before the access, not after —
     `MoiraDataflow_cpp.h:326-332`), its restartable last write (`:355-361`), and
     the end-of-instruction prefetch refill that makes `queue.irc` mean something
     different at a block exit.
