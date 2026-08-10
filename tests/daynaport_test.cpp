@@ -231,7 +231,8 @@ int main() {
     {
         sent.clear();
         std::vector<uint8_t> f = ethFrame(kGuestMac, kGuestMac, 0x0800,
-                                          std::vector<uint8_t>(60, 0x7E));
+                                          std::vector<uint8_t>(46, 0x7E));
+        CHECK(f.size() == 60, "FCS boundary fixture is a minimum Ethernet frame");
         std::vector<uint8_t> wire = f;
         const uint32_t c = crc32(f.data(), f.size());
         wire.push_back(uint8_t(c));       wire.push_back(uint8_t(c >> 8));

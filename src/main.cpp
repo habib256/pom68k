@@ -68,8 +68,11 @@
 #include <string>
 #include <thread>
 #include <vector>
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
 #include <unistd.h>
+#endif
+#ifdef _WIN32
+#include <process.h>
 #endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -901,13 +904,26 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
 
 // Relaunch on the argument list the menu picked (no-op when none was).
 static void relaunchIfSwitched(char* argv0) {
-#if defined(__linux__) && !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__)
     if (gSwitchArgs.empty()) return;
+#if defined(_WIN32)
+    std::vector<const char*> args = { argv0 };
+    for (const std::string& a : gSwitchArgs) args.push_back(a.c_str());
+    args.push_back(nullptr);
+    ::_execv(argv0, args.data());
+#else
     std::vector<char*> args = { argv0 };
     for (const std::string& a : gSwitchArgs)
         args.push_back(const_cast<char*>(a.c_str()));
     args.push_back(nullptr);
+#if defined(__linux__)
     ::execv("/proc/self/exe", args.data());
+#elif defined(__APPLE__)
+    ::execv(argv0, args.data());
+#else
+    return;
+#endif
+#endif
     std::fprintf(stderr, "relaunch failed — start manually: %s \"%s...\"\n",
                  argv0, gSwitchArgs[0].c_str());
 #else
@@ -1112,8 +1128,8 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                        : model == MacIIMemory::Model::IIcx ? pom68k::SnapMachine::IIcx
                        : model == MacIIMemory::Model::SE30 ? pom68k::SnapMachine::SE30
                                                            : pom68k::SnapMachine::MacII;
-    machine.state.path = (hddPath.empty() ? std::string(name)
-                                          : hddPath + "." + name) + ".pomss";
+    machine.state.path = (hddPath.empty() ? pramTag
+                                          : hddPath + "." + pramTag) + ".pomss";
     machine.publish(true);
 
     // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
@@ -1121,7 +1137,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
         std::getenv("POM68K_FLOPPY") ? std::getenv("POM68K_FLOPPY") : "";
     static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
     if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
-    machine.setFloppyInserted(floppyOk);
+    machine.setFloppyInserted(floppyOk, floppyPath);
 
     struct Ctx {
         GLFWwindow* window; MacIiMachine& m; GLuint tex;
@@ -1171,7 +1187,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -1458,7 +1474,7 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
         std::getenv("POM68K_FLOPPY") ? std::getenv("POM68K_FLOPPY") : "";
     static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
     if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
-    machine.setFloppyInserted(floppyOk);
+    machine.setFloppyInserted(floppyOk, floppyPath);
 
     struct Ctx {
         GLFWwindow* window; IIfxMachine& m; GLuint tex;
@@ -1508,7 +1524,7 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -1918,7 +1934,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     if (const char* env = std::getenv("POM68K_FLOPPY")) {
         if (mem.insertDisk(env)) {
             ctx.floppyPath = env; ctx.floppyOk = true;
-            machine.setFloppyInserted(true);
+            machine.setFloppyInserted(true, env);
             std::printf("Floppy: %s\n", env);
         }
     }
@@ -1986,7 +2002,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;      // cheap, and follows a relaunch
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -2356,7 +2372,7 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     if (const char* env = std::getenv("POM68K_FLOPPY")) {
         if (mem.insertDisk(env)) {
             ctx.floppyPath = env; ctx.floppyOk = true;
-            machine.setFloppyInserted(true);
+            machine.setFloppyInserted(true, env);
             std::printf("Floppy: %s\n", env);
         }
     }
@@ -2429,7 +2445,7 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -2605,8 +2621,9 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
 
+    const std::string profileTag = vi ? "iivi" : "iivx";
     static std::string pramPath =
-        (hddPath.empty() ? std::string("iivx") : hddPath) + ".iivx.pram";
+        (hddPath.empty() ? profileTag : hddPath + "." + profileTag) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     mem.setRtcSeconds(hostMacSeconds());
     mem.egret().factoryDefaults();
@@ -2667,7 +2684,7 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     if (const char* env = std::getenv("POM68K_FLOPPY")) {
         if (mem.insertDisk(env)) {
             ctx.floppyPath = env; ctx.floppyOk = true;
-            machine.setFloppyInserted(true);
+            machine.setFloppyInserted(true, env);
             std::printf("Floppy: %s\n", env);
         }
     }
@@ -2740,7 +2757,7 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -2953,7 +2970,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     if (const char* env = std::getenv("POM68K_FLOPPY")) {
         if (mem.insertDisk(env)) {
             ctx.floppyPath = env; ctx.floppyOk = true;
-            machine.setFloppyInserted(true);
+            machine.setFloppyInserted(true, env);
             std::printf("Floppy: %s\n", env);
         }
     }
@@ -3026,7 +3043,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -3472,10 +3489,11 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     // and LC/Performa 575 "Optimus" ($A55A222E, 68LC040 @ 33). POM68K_Q605_ID
     // / POM68K_Q605_NOFPU select (the GUI menu sets them before relaunch);
     // default = LC 475.
+    const char* qid = getenv("POM68K_Q605_ID");
+    const bool q605 = qid && strstr(qid, "2225");
+    const bool lc575 = qid && (strstr(qid, "222e") || strstr(qid, "222E"));
+    const std::string profileTag = q605 ? "q605" : lc575 ? "lc575" : "lc475";
     {
-        const char* id = getenv("POM68K_Q605_ID");
-        const bool q605 = id && strstr(id, "2225");
-        const bool lc575 = id && (strstr(id, "222e") || strstr(id, "222E"));
         std::printf("Machine: %s (68%s040 @ %d MHz, MEMCjr+PrimeTime)\n",
                     q605 ? "Quadra 605" : lc575 ? "Macintosh LC 575"
                                                 : "Macintosh LC 475",
@@ -3559,7 +3577,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     // Battery-backed PRAM+clock (Cuda XPRAM) — persist it like the LC II so a
     // cold PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
     static std::string pramPath =
-        (hddPath.empty() ? std::string("quadra605") : hddPath + ".q605") + ".pram";
+        (hddPath.empty() ? profileTag : hddPath + "." + profileTag) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // Same as LC II: the file's clock froze while powered off — wall time
     // comes from the host at every launch (GUI only).
@@ -3597,13 +3615,9 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static QuadraMachine machine{mem, cpu, audioHost};
-    {
-        const char* qid = getenv("POM68K_Q605_ID");
-        machine.state.kind = qid && strstr(qid, "2225") ? pom68k::SnapMachine::Q605
-                           : qid && (strstr(qid, "222e") || strstr(qid, "222E"))
-                                 ? pom68k::SnapMachine::Lc575
-                                 : pom68k::SnapMachine::Lc475;
-    }
+    machine.state.kind = q605 ? pom68k::SnapMachine::Q605
+                       : lc575 ? pom68k::SnapMachine::Lc575
+                               : pom68k::SnapMachine::Lc475;
     machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     // The "CPU" menu is global; only machines that HAVE a second engine
     // install its hooks. `machine` is static, so a captureless lambda can
@@ -3612,7 +3626,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
     gJitBackend   = cpu.jit().backendName();
-    machine.setFloppyInserted(floppyOk);
+    machine.setFloppyInserted(floppyOk, floppyPath);
     machine.publish(true);
 
     struct Ctx {
@@ -3676,9 +3690,9 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                 h.hardReset = [&c] { c.m.push({QuadraMachine::Cmd::HardReset}); };
                 // CD bays: media in/out of a drive that exists on the bus
                 // (attached at boot, or the reserved "cdbay"), no reboot.
-                h.bayIsCd  = [](int id) { return mem.bayIsCdrom(id); };
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
                 h.insertBay = [&c](int id, const std::string& d) {
-                    if (!mem.bayIsCdrom(id)) return false;
+                    if (!c.m.bayIsCdrom(id)) return false;
                     c.m.requestInsertBay(id, d);
                     return true;
                 };
@@ -3702,7 +3716,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -3768,8 +3782,9 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
         ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
                     st.overlay ? 1 : 0, st.w, st.h, st.depth,
                     st.mmu ? "on" : "off", st.held ? 1 : 0);
+        const std::string liveFloppy = c.m.floppyPath();
         ImGui::Text("floppy=%s", c.m.floppyInserted()
-                    ? (c.floppyPath.empty() ? "inserted" : c.floppyPath.c_str())
+                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
                     : "none");
         bool running = c.m.running.load(std::memory_order_relaxed);
         if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
@@ -3916,7 +3931,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     // Battery-backed PRAM+clock (discrete RTC XPRAM) — persist it so a cold
     // PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
     static std::string pramPath =
-        (hddPath.empty() ? std::string("centris") : hddPath) + ".centris.pram";
+        (hddPath.empty() ? cmodel : hddPath + "." + cmodel) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // Discrete RTC: the file's clock froze while powered off — wall time
     // comes from the host at every launch (GUI only).
@@ -3966,7 +3981,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
     gJitBackend   = cpu.jit().backendName();
-    machine.setFloppyInserted(floppyOk);
+    machine.setFloppyInserted(floppyOk, floppyPath);
     machine.publish(true);
 
     struct Ctx {
@@ -4030,9 +4045,9 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
                 h.hardReset = [&c] { c.m.push({CentrisMachine::Cmd::HardReset}); };
                 // CD bays: media in/out of a drive that exists on the bus
                 // (attached at boot, or the reserved "cdbay"), no reboot.
-                h.bayIsCd  = [](int id) { return mem.bayIsCdrom(id); };
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
                 h.insertBay = [&c](int id, const std::string& d) {
-                    if (!mem.bayIsCdrom(id)) return false;
+                    if (!c.m.bayIsCdrom(id)) return false;
                     c.m.requestInsertBay(id, d);
                     return true;
                 };
@@ -4056,7 +4071,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -4122,8 +4137,9 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
         ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
                     st.overlay ? 1 : 0, st.w, st.h, st.depth,
                     st.mmu ? "on" : "off", st.held ? 1 : 0);
+        const std::string liveFloppy = c.m.floppyPath();
         ImGui::Text("floppy=%s", c.m.floppyInserted()
-                    ? (c.floppyPath.empty() ? "inserted" : c.floppyPath.c_str())
+                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
                     : "none");
         bool running = c.m.running.load(std::memory_order_relaxed);
         if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
@@ -4326,7 +4342,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
     gJitBackend   = cpu.jit().backendName();
-    machine.setFloppyInserted(floppyOk);
+    machine.setFloppyInserted(floppyOk, floppyPath);
     machine.publish(true);
 
     struct Ctx {
@@ -4390,9 +4406,9 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
                 h.hardReset = [&c] { c.m.push({Q700Machine::Cmd::HardReset}); };
                 // CD bays: media in/out of a drive that exists on the bus
                 // (attached at boot, or the reserved "cdbay"), no reboot.
-                h.bayIsCd  = [](int id) { return mem.bayIsCdrom(id); };
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
                 h.insertBay = [&c](int id, const std::string& d) {
-                    if (!mem.bayIsCdrom(id)) return false;
+                    if (!c.m.bayIsCdrom(id)) return false;
                     c.m.requestInsertBay(id, d);
                     return true;
                 };
@@ -4416,7 +4432,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -4482,8 +4498,9 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
         ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
                     st.overlay ? 1 : 0, st.w, st.h, st.depth,
                     st.mmu ? "on" : "off", st.held ? 1 : 0);
+        const std::string liveFloppy = c.m.floppyPath();
         ImGui::Text("floppy=%s", c.m.floppyInserted()
-                    ? (c.floppyPath.empty() ? "inserted" : c.floppyPath.c_str())
+                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
                     : "none");
         bool running = c.m.running.load(std::memory_order_relaxed);
         if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
@@ -4530,7 +4547,11 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     // + the fixed-mode Valkyrie framebuffer + Cuda 341S0060, 68040 @ 33 MHz.
     // POM68K_Q630_ID picks the identity ($A55A2252 = Quadra 630 by default,
     // $A55A225A = LC/Performa 580). $06684214 / $064DC91D ROMs.
-    std::printf("Machine: Macintosh Quadra 630 (68040 @ 33 MHz, F108 + Valkyrie)\n");
+    const char* q630id = getenv("POM68K_Q630_ID");
+    const bool lc580 = q630id && (strstr(q630id, "225a") || strstr(q630id, "225A"));
+    const std::string profileTag = lc580 ? "lc580" : "q630";
+    std::printf("Machine: Macintosh %s (68040 @ 33 MHz, F108 + Valkyrie)\n",
+                lc580 ? "LC 580" : "Quadra 630");
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
 
     static Q630Memory mem(32u << 20);
@@ -4608,7 +4629,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     // Battery-backed PRAM+clock (discrete RTC XPRAM) — persist it so a cold
     // PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
     static std::string pramPath =
-        (hddPath.empty() ? std::string("quadra630") : hddPath) + ".q630.pram";
+        (hddPath.empty() ? profileTag : hddPath + "." + profileTag) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // The Cuda holds the clock on this board (no discrete RTC): its saved
     // seconds froze while powered off, so re-seed from the host (GUI only).
@@ -4645,12 +4666,8 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
     static Q630Machine machine{mem, cpu, audioHost};
-    {
-        const char* qid = getenv("POM68K_Q630_ID");
-        machine.state.kind = qid && (strstr(qid, "225a") || strstr(qid, "225A"))
-                                 ? pom68k::SnapMachine::Lc580
-                                 : pom68k::SnapMachine::Q630;
-    }
+    machine.state.kind = lc580 ? pom68k::SnapMachine::Lc580
+                               : pom68k::SnapMachine::Q630;
     machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     // The "CPU" menu is global; only machines that HAVE a second engine
     // install its hooks. `machine` is static, so a captureless lambda can
@@ -4659,7 +4676,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
     gJitBackend   = cpu.jit().backendName();
-    machine.setFloppyInserted(floppyOk);
+    machine.setFloppyInserted(floppyOk, floppyPath);
     machine.publish(true);
 
     struct Ctx {
@@ -4723,9 +4740,9 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
                 h.hardReset = [&c] { c.m.push({Q630Machine::Cmd::HardReset}); };
                 // CD bays: media in/out of a drive that exists on the bus
                 // (attached at boot, or the reserved "cdbay"), no reboot.
-                h.bayIsCd  = [](int id) { return mem.bayIsCdrom(id); };
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
                 h.insertBay = [&c](int id, const std::string& d) {
-                    if (!mem.bayIsCdrom(id)) return false;
+                    if (!c.m.bayIsCdrom(id)) return false;
                     c.m.requestInsertBay(id, d);
                     return true;
                 };
@@ -4749,7 +4766,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
-            host.floppyPath = c.floppyPath;
+            host.floppyPath = c.m.floppyPath();
             pom68k::diskBaysWindow(host);
         }
 
@@ -4815,8 +4832,9 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
         ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
                     st.overlay ? 1 : 0, st.w, st.h, st.depth,
                     st.mmu ? "on" : "off", st.held ? 1 : 0);
+        const std::string liveFloppy = c.m.floppyPath();
         ImGui::Text("floppy=%s", c.m.floppyInserted()
-                    ? (c.floppyPath.empty() ? "inserted" : c.floppyPath.c_str())
+                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
                     : "none");
         bool running = c.m.running.load(std::memory_order_relaxed);
         if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
@@ -5091,6 +5109,7 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
                 h.hasFloppyDrive = false;   // the Duo's floppy is in the dock
+                h.supportsEmptyCdDrive = false; // MscMemory has no empty target
                 return h;
             }();
             host.romName  = c.romName;

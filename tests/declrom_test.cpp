@@ -2,6 +2,8 @@
 
 #include "AssetFingerprint.h"
 #include "DeclRom.h"
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <fstream>
 
@@ -26,6 +28,15 @@ int main() {
     check(syn.size() > 64, "synthetic ROM non-trivial size");
     check(DeclRom::validateFormatBlock(syn.data(), syn.size()), "synthetic format block");
     check(DeclRom::dirOffset(syn.data(), syn.size()) < syn.size(), "directory in bounds");
+    const std::array<uint8_t, 26> driverHeader = {
+        0x00, 0x00, 0x00, 0x2A, 0x4C, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x00, 0x16,
+        0x00, 0x1A, 0x00, 0x1E, 0x00, 0x22, 0x70, 0x00,
+        0x4E, 0x75,
+    };
+    check(std::search(syn.begin(), syn.end(), driverHeader.begin(),
+                      driverHeader.end()) != syn.end(),
+          "synthetic video driver has in-block routine offsets");
 
     uint32_t crcField = uint32_t(syn[syn.size() - 12]) << 24
                       | uint32_t(syn[syn.size() - 11]) << 16

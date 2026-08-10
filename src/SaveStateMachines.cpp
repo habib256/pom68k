@@ -64,6 +64,7 @@
 #include "VaspCpu.h"
 #include "VaspMemory.h"
 #include "Via6522.h"
+#include <cstdio>
 #include <cstring>
 
 // ── Compile-time check of every chunk ───────────────────────────────────
@@ -165,7 +166,8 @@ void saveT(Mem& mem, Cpu& cpu, SnapMachine kind,
 
 template <class Mem, class Cpu>
 bool loadT(Mem& mem, Cpu& cpu, SnapMachine kind,
-           const std::uint8_t* data, std::size_t len, std::string& err) {
+           const std::uint8_t* data, std::size_t len, std::string& err,
+           bool transactional = true) {
     err.clear();
     if (len < sizeof sav::kMagic
         || std::memcmp(data, sav::kMagic, sizeof sav::kMagic) != 0) {
@@ -200,7 +202,11 @@ bool loadT(Mem& mem, Cpu& cpu, SnapMachine kind,
                 err = "save state was taken with a different ROM";
                 return false;
             }
-            if (h.ramSize != mem.ramBytes()) {
+            // During rollback the failed Reader may already have cleared or
+            // resized RAM. The rollback blob was produced from this exact
+            // object immediately before mutation, so rechecking the now-
+            // damaged live size would prevent the transaction from undoing.
+            if (transactional && h.ramSize != mem.ramBytes()) {
                 err = "save state has " + std::to_string(h.ramSize)
                     + " bytes of RAM, this machine has "
                     + std::to_string(mem.ramBytes());
@@ -218,14 +224,31 @@ bool loadT(Mem& mem, Cpu& cpu, SnapMachine kind,
         return false;
     }
 
-    // Pass 2: apply. The machine chunk goes first so the CPU's cache flush
+    // Pass 2: apply. Reader necessarily writes fields as it walks them, so
+    // take the rollback snapshot only after pass 1 proves this load will
+    // reach mutation. Invalid headers and truncated containers stay cheap.
+    std::vector<std::uint8_t> rollback;
+    if (transactional) saveT(mem, cpu, kind, rollback);
+    auto rejectApplied = [&](const char* why) {
+        if (transactional) {
+            std::string rollbackErr;
+            if (!loadT(mem, cpu, kind, rollback.data(), rollback.size(),
+                       rollbackErr, false))
+                std::fprintf(stderr, "FATAL: save-state rollback failed: %s\n",
+                             rollbackErr.c_str());
+        }
+        err = why;
+        return false;
+    };
+
+    // The machine chunk goes first so the CPU's cache flush
     // (MoiraSnapshot, on load) happens against the restored RAM.
     { auto r = machChunk.reader();
       r(mem);
-      if (!r.ok()) { err = "machine chunk is corrupt"; return false; } }
+      if (!r.ok()) return rejectApplied("machine chunk is corrupt"); }
     { auto r = cpuChunk.reader();
       r(cpu);
-      if (!r.ok()) { err = "CPU chunk is corrupt"; return false; } }
+      if (!r.ok()) return rejectApplied("CPU chunk is corrupt"); }
 
     if (unknown)
         err = "warning: skipped " + std::to_string(unknown)

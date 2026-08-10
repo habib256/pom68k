@@ -49,6 +49,7 @@
 #include "jit/JitStats.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -96,6 +97,7 @@ public:
         enum T { MouseMove, MouseButton, Key, HardReset, CpuEngine,
                  InsertFloppy, EjectFloppy, InsertBay, EjectBay, Sense } t;
         int a = 0, b = 0;
+        std::string path;
     };
 
     void push(Cmd c) {
@@ -113,29 +115,39 @@ public:
     // never reads a std::string the GUI thread is still assigning.
     void requestInsertFloppy(std::string path) {
         std::lock_guard<std::mutex> l(cmdMu_);
-        floppyPending_ = std::move(path);
-        cmds_.push_back({Cmd::InsertFloppy});
+        cmds_.push_back({Cmd::InsertFloppy, 0, 0, std::move(path)});
     }
     void requestEjectFloppy() {
         std::lock_guard<std::mutex> l(cmdMu_);
         cmds_.push_back({Cmd::EjectFloppy});
     }
     bool floppyInserted() const {
-        return floppyFlag_.load(std::memory_order_relaxed);
+        return floppyFlag_.load(std::memory_order_acquire);
     }
-    void setFloppyInserted(bool on) {
-        floppyFlag_.store(on, std::memory_order_relaxed);
+    void setFloppyInserted(bool on, std::string path = {}) {
+        {
+            std::lock_guard<std::mutex> l(mediaMu_);
+            floppyPath_ = on ? std::move(path) : std::string();
+        }
+        floppyFlag_.store(on, std::memory_order_release);
+    }
+    std::string floppyPath() const {
+        std::lock_guard<std::mutex> l(mediaMu_);
+        return floppyPath_;
     }
 
     // CD-bay media in/out — same queue discipline as the floppy.
     void requestInsertBay(int id, std::string path) {
         std::lock_guard<std::mutex> l(cmdMu_);
-        bayPending_ = std::move(path);
-        cmds_.push_back({Cmd::InsertBay, id});
+        cmds_.push_back({Cmd::InsertBay, id, 0, std::move(path)});
     }
     void requestEjectBay(int id) {
         std::lock_guard<std::mutex> l(cmdMu_);
         cmds_.push_back({Cmd::EjectBay, id});
+    }
+    bool bayIsCdrom(int id) const {
+        return id >= 0 && id < int(stBayCd_.size())
+            && stBayCd_[size_t(id)].load(std::memory_order_relaxed);
     }
 
     // ── Framebuffer handoff ────────────────────────────────────────────────
@@ -254,6 +266,11 @@ public:
         stPc_.store(cpu.getPC(), std::memory_order_relaxed);
         stClock_.store(cpu.getClock(), std::memory_order_relaxed);
         self()->publishStatus();
+        if constexpr (requires { mem.bayIsCdrom(1); }) {
+            for (int id = 1; id <= 6; ++id)
+                stBayCd_[size_t(id)].store(mem.bayIsCdrom(id),
+                                            std::memory_order_relaxed);
+        }
         {
             std::lock_guard<std::mutex> l(jitMu_);
             jitSnap_ = cpu.jit().stats().snapshot();
@@ -283,17 +300,12 @@ protected:
     // by `requires` rather than by a per-platform override, so a machine that
     // has no CD bay compiles the same template and simply has no arm.
     void applyCmds() {
-        // Take the pending paths out UNDER the lock: the GUI thread reassigns
-        // floppyPending_ (under cmdMu_) while this thread would otherwise be
-        // reading it by const& through the milliseconds of file I/O inside
-        // insertDisk() — a use-after-free on the second pick from the Disques
-        // menu. Found once, in one of the six copies.
-        std::string pending, bayPending;
+        // Swap the complete commands under the lock. Media paths live in each
+        // command, preserving command/payload association when several picks
+        // arrive before the next machine quantum.
         {
             std::lock_guard<std::mutex> l(cmdMu_);
             cmdsApply_.swap(cmds_);
-            pending.swap(floppyPending_);
-            bayPending.swap(bayPending_);
         }
         for (const Cmd& c : cmdsApply_) switch (c.t) {
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
@@ -313,20 +325,29 @@ protected:
             // The Duo 230 has no floppy drive at all, so it has no insertDisk;
             // the GUI simply never offers it the menu entry.
             case Cmd::InsertFloppy:
-                if constexpr (requires { mem.insertDisk(pending); }) {
-                    if (!pending.empty() && mem.insertDisk(pending))
-                        floppyFlag_.store(true, std::memory_order_relaxed);
+                if constexpr (requires { mem.insertDisk(c.path); }) {
+                    if (!c.path.empty() && mem.insertDisk(c.path)) {
+                        {
+                            std::lock_guard<std::mutex> l(mediaMu_);
+                            floppyPath_ = c.path;
+                        }
+                        floppyFlag_.store(true, std::memory_order_release);
+                    }
                 }
                 break;
             case Cmd::EjectFloppy:
                 if constexpr (requires { mem.ejectDisk(); }) {
                     mem.ejectDisk();
-                    floppyFlag_.store(false, std::memory_order_relaxed);
+                    {
+                        std::lock_guard<std::mutex> l(mediaMu_);
+                        floppyPath_.clear();
+                    }
+                    floppyFlag_.store(false, std::memory_order_release);
                 }
                 break;
             case Cmd::InsertBay:
-                if constexpr (requires { mem.insertBayMedia(1, bayPending); }) {
-                    if (!bayPending.empty()) mem.insertBayMedia(c.a, bayPending);
+                if constexpr (requires { mem.insertBayMedia(1, c.path); }) {
+                    if (!c.path.empty()) mem.insertBayMedia(c.a, c.path);
                 }
                 break;
             case Cmd::EjectBay:
@@ -352,14 +373,28 @@ protected:
                 break;
         }
         cmdsApply_.clear();
-        state.apply(mem, cpu);         // save/load between two quanta
+        const int stateDone = state.apply(mem, cpu); // between two quanta
+        if ((stateDone & 2) != 0) {
+            if constexpr (requires { mem.internalDrive().hasDisk();
+                                     mem.internalDrive().backingPath(); }) {
+                const auto& drive = mem.internalDrive();
+                {
+                    std::lock_guard<std::mutex> l(mediaMu_);
+                    floppyPath_ = drive.hasDisk() ? drive.backingPath()
+                                                  : std::string();
+                }
+                floppyFlag_.store(drive.hasDisk(), std::memory_order_release);
+            }
+        }
     }
 
     std::thread th_;
     std::mutex cmdMu_;
     std::vector<Cmd> cmds_, cmdsApply_;
-    std::string floppyPending_, bayPending_;      // guarded by cmdMu_
     std::atomic<bool> floppyFlag_{false};
+    mutable std::mutex mediaMu_;
+    std::string floppyPath_;
+    std::array<std::atomic<bool>, 7> stBayCd_{};
 
     std::mutex fbMu_;
     std::vector<uint32_t> fbShared_;

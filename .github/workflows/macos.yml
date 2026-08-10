@@ -28,9 +28,10 @@ jobs:
         run: >-
           cmake --build build --parallel 3 --target
           POM68K cpu_smoke savestate_test
-          atalk_stack_test afp_server_test pap_server_test
+          atalk_stack_test afp_server_test pap_server_test declrom_test
+          jit_restart_write_030_test jit_lockstep_test jit_lockstep_030_test
 
       - name: Test
         run: >-
           ctest --test-dir build --output-on-failure
-          -R '^(cpu_smoke|savestate_test|atalk_stack_test|afp_server_test|pap_server_test)$'
+          -R '^(cpu_smoke|savestate_test|atalk_stack_test|afp_server_test|pap_server_test|declrom_test|jit_restart_write_030_test|jit_lockstep_a64_coarse_test|jit_lockstep_030_a64_experimental_test)$'

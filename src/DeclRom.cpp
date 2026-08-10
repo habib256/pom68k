@@ -160,14 +160,18 @@ std::vector<uint8_t> DeclRom::buildSynthetic(uint32_t fbBase) {
     b.string("Display_Video_Apple_TFB");
 
     uint32_t videoDrvr = b.pos();
-    b.long_(0x20);
+    // Physical block size + classic Device Manager header. Routine offsets
+    // are relative to the header immediately after the size longword (18
+    // bytes: four fields and five offsets). The old $1C..$24 offsets landed
+    // beyond this block in the following declaration-ROM directory, so the
+    // synthetic-only path executed data when the video driver was opened.
+    b.long_(0x2A);
     b.word(0x4C00); b.word(0); b.word(0); b.word(0);
-    b.word(0x1C); b.word(0x1E); b.word(0x20); b.word(0x22); b.word(0x24);
-    b.word(0x4E75);   // Open: rts
-    b.word(0x4E75);   // Prime: rts
-    b.word(0x4E75);   // Control: rts
-    b.word(0x4E75);   // Status: rts
-    b.word(0x4E75);   // Close: rts
+    b.word(0x12); b.word(0x16); b.word(0x1A); b.word(0x1E); b.word(0x22);
+    for (int i = 0; i < 5; ++i) {
+        b.word(0x7000);   // moveq #noErr,D0
+        b.word(0x4E75);   // rts
+    }
 
     uint32_t vidDrvrDir = b.pos();
     b.offs(0x02, videoDrvr);

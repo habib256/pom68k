@@ -48,6 +48,10 @@ constexpr uint16_t kVolId = 1;
 // bad_alloc handler, so that is std::terminate — then writes a 4 GB
 // .AppleDouble sidecar.
 constexpr uint64_t kMaxRsrcFork = 16ull * 1024 * 1024;
+// AFP 2.1 carries data-fork positions in a 32-bit field. Classic File Manager
+// callers use signed longs, so keep the host-side sparse-file defence without
+// imposing the Resource Manager's unrelated 16 MiB ceiling on normal files.
+constexpr uint64_t kMaxDataFork = 0x7fffffffull;
 constexpr int64_t kAfpEpoch = 946684800;      // 2000-01-01 (AFP date zero)
 
 void put16(std::vector<uint8_t>& v, uint16_t x) { v.push_back(x >> 8); v.push_back(uint8_t(x)); }
@@ -1096,7 +1100,7 @@ void AfpServer::handleWrite(Session& s, uint8_t sid, uint16_t seq,
                 // The resource branch below clamps; the data branch did not, so
                 // a bogus offset made a multi-gigabyte sparse file whose length
                 // AFP then reported back as the fork size.
-                if (at < 0 || uint64_t(at) + data.size() > kMaxRsrcFork) {
+                if (at < 0 || uint64_t(at) + data.size() > kMaxDataFork) {
                     aspReply(t, kErrParam, {});
                     return;
                 }

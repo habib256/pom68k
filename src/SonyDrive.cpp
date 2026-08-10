@@ -7,6 +7,7 @@
 // floppy.cpp:3452-3477). Cross-checked against pce gcr-mac.c — see DEV.md.
 
 #include "SonyDrive.h"
+#include "AtomicReplace.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -789,7 +790,7 @@ bool SonyDrive::flushToFile() {
                   std::streamsize(image_.size()));
         if (!out) { std::remove(tmp.c_str()); return false; }
     }
-    if (std::rename(tmp.c_str(), path_.c_str()) != 0) {
+    if (!atomicReplaceFile(tmp, path_)) {
         std::remove(tmp.c_str());
         return false;
     }

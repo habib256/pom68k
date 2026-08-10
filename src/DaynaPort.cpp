@@ -197,7 +197,7 @@ std::uint8_t DaynaPort::command(const std::uint8_t* cdb, int cdbLen,
             // not part of the datagram. Strip them: what is on the other end
             // of sendFrame is a software gateway, and a stray FCS shows up
             // there as four bytes of trailing garbage on every packet.
-            if (len > kMinFrame + 4) {
+            if (len >= kMinFrame + 4) {
                 const std::uint32_t crc = ethCrc32(frame, len - 4);
                 const std::uint8_t* t = frame + len - 4;
                 if (t[0] == std::uint8_t(crc) && t[1] == std::uint8_t(crc >> 8) &&

@@ -60,6 +60,7 @@ struct DiskBaysHost {
     std::vector<std::string>* extras = nullptr; // SCSI 1..N, live view
     std::string  floppyPath;                    // "" when no drive / no disk
     bool         hasFloppyDrive = false;
+    bool         supportsEmptyCdDrive = true;   // false on the undocked Duo
 
     // --- Hot-swap hooks (null => staged + reboot) ---
     // insertBay returns false when the bay exists but refused the image.

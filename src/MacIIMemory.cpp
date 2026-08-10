@@ -781,4 +781,3 @@ void MacIIMemory::tick(int cpuCycles) {
     }
 }
 
-

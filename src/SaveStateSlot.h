@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "AtomicReplace.h"
 #include "SaveStateMachines.h"
 
 #include <cstdio>
@@ -64,7 +65,7 @@ struct SaveStateSlot {
                 post("État NON sauvé: écriture impossible (" + tmp + ")");
             } else {
                 std::fclose(f);
-                if (std::rename(tmp.c_str(), path.c_str()) != 0) {
+                if (!atomicReplaceFile(tmp, path)) {
                     std::remove(tmp.c_str());
                     post("État NON sauvé: rename impossible (" + path + ")");
                 } else {

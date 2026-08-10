@@ -208,6 +208,37 @@ int main() {
         CHECK(s == "Salutur", "write landed over the old bytes");
     }
 
+    // The 16 MiB ceiling belongs to resource forks only. A data write that
+    // crosses it must remain legal (and sparse on the host), otherwise Finder
+    // copies of ordinary files fail part-way through with paramErr.
+    {
+        constexpr uint32_t kAt = 16u * 1024u * 1024u - 1u;
+        uint16_t tid = g_tid++;
+        std::vector<uint8_t> req = { 6, sid, uint8_t(seq >> 8), uint8_t(seq) };
+        req.push_back(33); req.push_back(0);
+        put16v(req, ref);
+        put32v(req, kAt);
+        put32v(req, 2);
+        w.clear();
+        w.atpReq(47, 201, 130, tid, req);
+        int wtid = -1;
+        for (auto& g : w.out)
+            if (g.dstNode == 47 && g.dstSock == 200 && g.ddpType == 3
+                && g.pay.size() >= 8 && (g.pay[0] & 0xC0) == 0x40 && g.pay[4] == 7)
+                wtid = get16(g.pay.data() + 2);
+        CHECK(wtid >= 0, "large data-fork write pulls a WriteContinue");
+        if (wtid >= 0) {
+            w.atpRespond(47, 200, 130, uint16_t(wtid),
+                         { { 0, 0, 0, 0, 'X', 'Y' } });
+            std::vector<uint8_t> wr;
+            CHECK(w.aspResult(tid, 201, wr) == 0,
+                  "data fork may cross the resource-fork 16 MiB ceiling");
+        }
+        seq++;
+        CHECK(fs::file_size(dir + "/a.txt") == uint64_t(kAt) + 2,
+              "large data-fork write reached the host file");
+    }
+
     // ── resource fork → .AppleDouble sidecar ──
     {
         std::vector<uint8_t> cmd = { 26, uint8_t(0x80) };

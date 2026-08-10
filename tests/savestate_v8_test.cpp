@@ -27,6 +27,7 @@
 #include "V8Memory.h"
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -64,6 +65,23 @@ std::vector<uint8_t> makeRom() {
 }
 
 using Blob = std::vector<uint8_t>;
+
+bool corruptMachPayload(Blob& b) {
+    for (size_t p = sizeof sav::kMagic; p + 8 <= b.size();) {
+        const uint32_t n = uint32_t(b[p + 4]) | uint32_t(b[p + 5]) << 8
+                         | uint32_t(b[p + 6]) << 16 | uint32_t(b[p + 7]) << 24;
+        if (p + 8 + n > b.size()) return false;
+        if (!std::memcmp(b.data() + p, "MACH", 4) && n >= 10) {
+            // The first MACH field is RAM's zero-run blob length. Ten
+            // continuation bytes make that inner varint invalid while the
+            // outer chunk table remains structurally valid.
+            std::memset(b.data() + p + 8, 0xFF, 10);
+            return true;
+        }
+        p += 8 + n;
+    }
+    return false;
+}
 
 // A machine brought up to a non-trivial state: booted past the overlay, with
 // input queued on the ADB path and the counter loop already spinning.
@@ -179,6 +197,20 @@ int main() {
                 anyAccepted = true;
         }
         check(!anyAccepted, "reject: no truncated prefix is accepted");
+
+        // A structurally valid container can still fail inside MACH. Reader
+        // has already written several fields at that point, so load() must
+        // roll the entire machine and CPU back before returning false.
+        const Blob exactBefore = m.save();
+        Blob innerBad = exactBefore;
+        check(corruptMachPayload(innerBad),
+              "reject: constructed an inner MACH corruption");
+        std::string innerErr;
+        check(!pom68k::load(m.mem, m.cpu, pom68k::SnapMachine::LcII,
+                            innerBad.data(), innerBad.size(), innerErr),
+              "reject: corrupt MACH payload is refused");
+        check(m.save() == exactBefore,
+              "reject: corrupt MACH rollback is byte-exact");
 
         // A machine with a DIFFERENT ROM must refuse the snapshot outright,
         // because the guest's cached ROM addresses would land elsewhere.

@@ -54,6 +54,7 @@ bool isCd(const std::string& p) {
 bool isDiskImage(const std::string& p) {
     return endsWithNoCase(p, ".vhd") || endsWithNoCase(p, ".hda")
         || endsWithNoCase(p, ".img") || endsWithNoCase(p, ".dsk")
+        || endsWithNoCase(p, ".image")
         || isCd(p);
 }
 
@@ -141,11 +142,14 @@ bool bayIsLive(const DiskBaysHost& host, int index) {
 
 // A SuperDrive holds 400 K, 800 K or 1.44 MB. Anything larger in the list is
 // a hard-disk image and has no business being offered to the floppy bay.
-constexpr unsigned long long kMaxFloppyBytes = 1474560ull + 4096;
+// Largest supported DC42: 84-byte header + 1.44 MiB data + 12 tag bytes for
+// each of 2880 sectors. Tagged DiskCopy images are larger than raw media.
+constexpr unsigned long long kMaxFloppyBytes = 84ull + 1474560ull + 2880ull * 12ull;
 
 bool looksLikeFloppy(const std::string& p) {
     if (isCd(p)) return false;
-    if (!endsWithNoCase(p, ".dsk") && !endsWithNoCase(p, ".img")) return false;
+    if (!endsWithNoCase(p, ".dsk") && !endsWithNoCase(p, ".img")
+        && !endsWithNoCase(p, ".image")) return false;
     std::error_code ec;
     auto n = fs::file_size(p, ec);
     return !ec && n > 0 && n <= kMaxFloppyBytes;
@@ -257,14 +261,15 @@ void diskBaysWindow(DiskBaysHost& host) {
     if (host.hasFloppyDrive) {
         ImGui::TextDisabled("Disquette (SWIM)");
         bool in = host.floppyInserted && host.floppyInserted();
-        ImGui::Text("%s", in && !host.floppyPath.empty()
-                              ? fileName(host.floppyPath).c_str() : "<vide>");
-        ImGui::SameLine(280);
         if (in) {
+            ImGui::Text("%s", !host.floppyPath.empty()
+                                  ? fileName(host.floppyPath).c_str()
+                                  : "<insérée>");
+            ImGui::SameLine();
             if (ImGui::SmallButton("Éjecter##fd") && host.ejectFloppy)
                 host.ejectFloppy();
         } else {
-            ImGui::SetNextItemWidth(200);
+            ImGui::SetNextItemWidth(-1);
             std::string fd;
             if (imageCombo("##fdpick", std::string(), host.bootPath, fd, true)
                 && !fd.empty() && host.insertFloppy)
@@ -368,16 +373,20 @@ void diskBaysWindow(DiskBaysHost& host) {
                        "Une baie vide au démarrage demande un redémarrage: "
                        "le ROM ne sonde le bus SCSI qu'une fois, au boot.");
     ImGui::PopStyleColor();
-    ImGui::Checkbox("Réserver un lecteur CD vide au démarrage",
-                    &gReserveEmpty);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Ajoute un lecteur CD sans disque sur le bus au\n"
-                          "prochain « Appliquer et redémarrer ». Le System le\n"
-                          "sonde comme un vrai lecteur: un .iso/.toast inséré\n"
-                          "ensuite monte à chaud, sans redémarrage.\n"
-                          "Désactivé par défaut: cela modifie le bus, et les\n"
-                          "gates de boot sont chronométrés sur le bus actuel.");
-    if (gReserveEmpty && !gStaged) beginStaging(host);
+    if (host.supportsEmptyCdDrive) {
+        ImGui::Checkbox("Réserver un lecteur CD vide au démarrage",
+                        &gReserveEmpty);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Ajoute un lecteur CD sans disque sur le bus au\n"
+                              "prochain « Appliquer et redémarrer ». Le System le\n"
+                              "sonde comme un vrai lecteur: un .iso/.toast inséré\n"
+                              "ensuite monte à chaud, sans redémarrage.\n"
+                              "Désactivé par défaut: cela modifie le bus, et les\n"
+                              "gates de boot sont chronométrés sur le bus actuel.");
+        if (gReserveEmpty && !gStaged) beginStaging(host);
+    } else {
+        gReserveEmpty = false;
+    }
 
     // ── Add an image the scan cannot see.
     ImGui::Separator();

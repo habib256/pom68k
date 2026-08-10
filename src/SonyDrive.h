@@ -27,6 +27,7 @@ public:
     bool insertImage(std::vector<uint8_t> data); // in-memory image
     void eject();                                // clear image (sense CSTIN)
     bool hasDisk() const { return !image_.empty(); }
+    const std::string& backingPath() const { return path_; }
     bool doubleSided() const { return doubleSided_; }
     bool isHd() const { return hd_; }
     bool isSuperDrive() const { return superDrive_; }
