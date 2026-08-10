@@ -408,6 +408,27 @@ public:
     // normally, which is always a "go back through execute()" signal.
     bool pomJitExecOne();
 
+    // Detailed timing for one instruction while the JIT tracer is recording.
+    // The probe is deliberately opt-in: normal interpreter execution pays
+    // only one predictable false branch in pomJitExecOne(). `baseCycles`
+    // includes the instruction's data-bus activity, but excludes the 68030
+    // instruction-cache overlay and exception/trace processing performed
+    // after the handler stopped.
+    struct PomJitTiming {
+        i64 baseCycles = 0;
+        i64 icacheCycles = 0;
+        i64 postExceptionCycles = 0;
+        bool valid = false;
+    };
+    void pomJitBeginTiming() {
+        pomJitTiming = {};
+        pomJitTimingProbe = true;
+    }
+    PomJitTiming pomJitEndTiming() {
+        pomJitTimingProbe = false;
+        return pomJitTiming;
+    }
+
     // Side-effect-free translation probe for a CODE address. TTR match,
     // MMU-disabled identity, then a read-only scan of the instruction ATC.
     // It deliberately does NOT walk the page tables: a walk writes the U/M
@@ -911,6 +932,12 @@ protected:
         }
     };
     PomIcache pomIcache;
+
+    // Written only by the opt-in 68030 path in pomJitExecOne(). Keeping the
+    // storage beside the cache model makes the measured miss delta and its
+    // configured penalty part of one contract.
+    bool pomJitTimingProbe = false;
+    PomJitTiming pomJitTiming {};
 
     
     //

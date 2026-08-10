@@ -646,6 +646,8 @@ Everything in `JitConfig.h` unless noted.
 | `POM68K_JIT_LOCKSTEP_N` | `5000000` | instructions compared by `jit_lockstep_test` |
 | `POM68K_JIT_LOCKSTEP_BUDGET` | `1` | cycles between comparisons (higher = longer blocks) |
 | `POM68K_JIT_LOCKSTEP_FINE_AT` | — | step after which the comparison drops to one cycle |
+| `POM68K_JIT_LOCKSTEP_FULL_RAM_AT` | — | 030 gate diagnostic: compare the complete 10 MiB RAM bus from this checkpoint onward instead of only low globals |
+| `POM68K_JIT_LOCKSTEP_WRITE_TRACE_AT` | — | 030 gate diagnostic: journal writes overlapping `$533E` inside this coarse quantum, including direct A64 DTLB stores |
 | `POM68K_BENCH_FRAMES` | q605 `3000`, lcii `6000` | `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` — frames of 416 667 (Q605) or 260 480 (LC II) **machine** cycles |
 
 `POM68K_JIT_FETCH` and `POM68K_JIT_BLOCKS` are not independent, and that is
@@ -654,6 +656,16 @@ deliberate: block discovery reads opcodes out of the code window, so
 but its own dispatch overhead — useful exactly once, as the zero point.
 `POM68K_JIT_BLOCKS=0` is the interesting attribution knob on a
 code-generating backend: window on, no generated code at all.
+
+The successful 030 `(An)+` write has a narrow oracle.
+`jit_restart_write_030_test` compares its
+address/value, post-access An, complete 16 MiB memory image and CPU state
+sampled inside MMIO. This caught CCR publication after LASTWRITE instead of
+before it. The follow-up write journal found that `$533E` was corrupted by
+the next memory-to-memory MOVE: its source probe committed `(A0)+`, its
+destination probe refused, then replay incremented A0 again. Both mappings
+are now probed before either EA mutation. `(An)+` is enabled without a flag
+and the coarse 120k lockstep is green.
 
 ---
 
@@ -664,9 +676,10 @@ code-generating backend: window on, no generated code at all.
 > contract, and the differences from the 68030 are semantic, not cosmetic:
 > `(An)+` updates the register *before* the access on an 030 and *after* it
 > on an 040 (`MoiraDataflow_cpp.h:326-332`), the 030 marks its last write
-> restartable and stacks a format $A frame (`:355-361`), the prefetch queue
-> is refilled at the end of an instruction on one and not the other (so
-> `queue.irc` means different things at a block exit), and the data thunks
+> restartable and stacks a format $A frame (`:355-361`). Both mode-5 cores
+> suppress the tail refill; consequently `queue.irc` is the exact held word
+> (lookahead, extension or displacement), never simply a word derived from
+> the exit PC. The data thunks
 > `pomJitReadData`/`pomJitWriteData` reach `mmu040Read`/`mmu040Write`
 > unconditionally while `pomJitProbeData` refuses everything below
 > `M68EC040` outright.

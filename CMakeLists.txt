@@ -1254,6 +1254,15 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(berr030_test PRIVATE moira)
     add_test(NAME berr030_test COMMAND berr030_test)
 
+    # AArch64 68030 gate: train a native MOVE.B-to-memory block, inject an
+    # external /BERR only after it is cached, and compare the complete short
+    # restartable-write frame with a pure-interpreter oracle. Soft-skips on
+    # hosts where the AArch64 backend is not available.
+    add_executable(jit_restart_write_030_test tests/jit_restart_write_030_test.cpp)
+    target_link_libraries(jit_restart_write_030_test PRIVATE pom68k_core)
+    add_test(NAME jit_restart_write_030_test COMMAND jit_restart_write_030_test)
+    set_tests_properties(jit_restart_write_030_test PROPERTIES LABELS "jit;unit")
+
     # M1 gate (docs/CACHE_040.md): 68040 architectural cache-TAG state
     # (POM68K_040_DCACHE) — UM § 4 semantics on the Cache040 struct, then
     # CACR/TTR/CINV/CPUSH through a bare 68040 Moira. Tags only: data is
@@ -1430,6 +1439,16 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_lockstep_a64_coarse_test PROPERTIES
                              ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=50"
+                             TIMEOUT 1800)
+
+        # Apple-Silicon 68030 gate: unlike the portable pair above, this one
+        # exercises generated arm64 code, including the emitted 030 i-cache
+        # model and its exact runtime-bail uncharge. The final 10k checks use
+        # a fine budget to localise any future instruction-boundary drift.
+        add_test(NAME jit_lockstep_030_a64_experimental_test COMMAND jit_lockstep_030_test 120000
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(jit_lockstep_030_a64_experimental_test PROPERTIES
+                             ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_UNSAFE_BACKEND=1;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=128;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
                              TIMEOUT 1800)
     endif()
 

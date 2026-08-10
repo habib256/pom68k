@@ -1,11 +1,18 @@
 # Build trees
 build/
-# Both spellings: every other build dir in this file uses a hyphen
-# (build-pgo, build-release, build-appimage...), so `build_wasm` alone
-# with an underscore let an `emcmake cmake -B build-wasm` tree — 7.9 MB
-# of .wasm — sit untracked-but-not-ignored, one `git add -A` from a commit.
-build_wasm/
-build-wasm/
+build-*/
+build_*/
+
+# Keep only the final WebAssembly binary versionable, not its build tree.
+!build-wasm/
+build-wasm/**
+!build-wasm/*.wasm
+!build_wasm/
+build_wasm/**
+!build_wasm/*.wasm
+
+# Finder metadata
+.DS_Store
 # Dear ImGui is fetched by setup_imgui.sh, not vendored
 imgui/
 disks35/

@@ -32,6 +32,9 @@ namespace moira { class Moira; }
 
 namespace jit {
 
+using WriteObserver = void (*)(void*, moira::Moira*, uint32_t, uint32_t,
+                               uint32_t, uint32_t, int);
+
 // Which GUEST CPU families a backend's compiled form is semantically valid
 // for. This is not a performance hint and not a capability ranking: Moira's
 // own dataflow branches on the model, so a generator that bakes in one
@@ -41,8 +44,9 @@ namespace jit {
 //     on a 68040 (MoiraDataflow_cpp.h:326-332);
 //   * the 68030 marks its last write restartable and stacks a format $A
 //     frame (:355-361), the 68040 does not;
-//   * the prefetch queue is refilled at the end of an instruction on one and
-//     not the other, so `queue.irc` means different things at a block exit.
+//   * both mode-5 cores suppress the tail refill, so a block must preserve
+//     the exact held word (lookahead, extension or displacement) rather than
+//     manufacture `queue.irc` from the exit PC.
 //
 // A backend that REPLAYS through Moira's own handlers inherits whatever the
 // model does and therefore covers everything; a code generator has to
@@ -116,6 +120,8 @@ struct Context {
     // back to the interpreter.
     uint8_t* (*dtlbFill)(void* self, uint32_t addr, int write) = nullptr;
     void*    dtlbSelf = nullptr;
+    WriteObserver observeWrite = nullptr;
+    void* observeWriteSelf = nullptr;
     // ── block linking ────────────────────────────────────────────────────
     // A direct-mapped pc -> compiled-entry table, owned by the engine and
     // read by generated code at a block's exit. Without it, a block that

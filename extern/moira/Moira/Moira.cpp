@@ -325,6 +325,48 @@ Moira::pomJitExecOne()
     // copy, both cores, so the src/jit engine drives either without
     // knowing which it holds.
     if (cpuModel == Model::M68030) {
+        if (pomJitTimingProbe) [[unlikely]] {
+            const i64 start = clock;
+            const i64 misses = pomIcache.misses;
+            if (!mmuExecuteStart<Core::C68020>()) {
+                pomJitTiming.postExceptionCycles = clock - start;
+                pomJitTiming.valid = true;
+                return false;
+            }
+
+            bool retired = true;
+            reg.pc += 2;
+            i64 handlerEnd = clock;
+            i64 handlerMisses = pomIcache.misses;
+            try {
+                (this->*exec[queue.ird])(queue.ird);
+                handlerEnd = clock;
+                handlerMisses = pomIcache.misses;
+            } catch (const std::exception &exc) {
+                handlerEnd = clock;
+                handlerMisses = pomIcache.misses;
+                processException(exc);
+                retired = false;
+            }
+            if (trace040Pending) [[unlikely]] {
+                trace040Pending = false;
+                try {
+                    execException(M68kException::TRACE);
+                } catch (const std::exception &exc) {
+                    processException(exc);
+                }
+                retired = false;
+            }
+
+            const i64 missCycles =
+                (handlerMisses - misses) * i64(pomIcache.missPenalty);
+            pomJitTiming.icacheCycles = missCycles;
+            pomJitTiming.baseCycles = handlerEnd - start - missCycles;
+            pomJitTiming.postExceptionCycles = clock - handlerEnd;
+            pomJitTiming.valid = true;
+            return retired;
+        }
+
         if (!mmuExecuteStart<Core::C68020>()) return false;
 
         bool retired = true;

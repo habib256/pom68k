@@ -1,0 +1,36 @@
+name: macOS
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  apple-silicon:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GUI dependency
+        run: brew install glfw
+
+      - name: Fetch pinned Dear ImGui docking release
+        run: ./setup_imgui.sh
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DPOM68K_NATIVE=OFF
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build GUI and portable gates
+        run: >-
+          cmake --build build --parallel 3 --target
+          POM68K cpu_smoke savestate_test
+          atalk_stack_test afp_server_test pap_server_test
+
+      - name: Test
+        run: >-
+          ctest --test-dir build --output-on-failure
+          -R '^(cpu_smoke|savestate_test|atalk_stack_test|afp_server_test|pap_server_test)$'

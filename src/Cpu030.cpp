@@ -17,6 +17,10 @@ jit::MemoryHooks v8JitHooks(V8Memory& mem) {
     h.dataSpan = [](void* s, uint32_t phys, uint32_t& len, int write) {
         return static_cast<V8Memory*>(s)->dataSpan(phys, len, write != 0);
     };
+    h.aliasCodeMask = [](void* s, uint32_t phys, const uint8_t* map,
+                         uint32_t pages) {
+        return static_cast<V8Memory*>(s)->jitAliasCodeMask(phys, map, pages);
+    };
     h.setGuard = [](void* s, jit::CodeGuard* g) {
         static_cast<V8Memory*>(s)->setJitGuard(g);
     };
@@ -31,6 +35,9 @@ Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020)
       // which is not set yet at member-init time (JitEngine.h).
     : mem_(mem), jit_(*this, v8JitHooks(mem),
                       as020 ? jit::kGuest68020 : jit::kGuest68030) {
+    // Generated code can charge ordinary instruction cycles inline and call
+    // sync() only when the event-driven machine actually becomes due.
+    jit_.setPeriphDeadline(&periphDeadline_);
     // as020: the Macintosh LC profile — MAME maclc.cpp:342 runs the same
     // V8 machine on a 68020 (Apple HMMU part; the V8's $80FFFFFF decode
     // makes the HMMU translation a no-op for us). FPU socket empty by
@@ -118,8 +125,10 @@ void Cpu030::runCycles(moira::i64 n) {
             const moira::i64 chunk =
                 std::min<moira::i64>(end - machineClock(), 4096);
             const moira::i64 target = getClock() + chunk * boost_;
+            if (periphTraceFn_) emitPeriphTrace(0, 0, target);
             if (jit_.enabled()) jit_.executeUntil(target);
             else executeUntil(target);
+            if (periphTraceFn_) emitPeriphTrace(1, 0, target);
             flushTicks();
         }
     }
@@ -269,6 +278,23 @@ void Cpu030::flushTicks() {
     if (m) mem_.tick(m);           // VIA1 timers (φ2 = CPU/20) + 60.15 Hz
     pollBoostGate();
     schedulePeriphDeadline();
+    if (periphTraceFn_) emitPeriphTrace(2, m);
+}
+
+void Cpu030::emitPeriphTrace(int phase, int delivered, moira::i64 target) {
+    if (!periphTraceFn_) return;
+    PeriphTracePoint p;
+    p.pc = getPC();
+    p.clock = clock;
+    p.machine = machineClock();
+    p.deadline = periphDeadline_;
+    p.remainder = periphAccum_;
+    p.target = target;
+    p.phase = phase;
+    p.delivered = delivered;
+    p.nextEvent = mem_.cyclesToNextEvent();
+    p.deviceHash = mem_.debugDeviceHash();
+    periphTraceFn_(periphTraceOpaque_, p);
 }
 
 void Cpu030::sync(int cycles) {

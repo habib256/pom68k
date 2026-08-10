@@ -50,6 +50,11 @@ struct MemoryHooks {
     // refuse anything a store cannot simply land in — ROM, a region with a
     // write side effect, or a map with a debug write-watch armed.
     uint8_t* (*dataSpan)(void* self, uint32_t phys, uint32_t& len, int write) = nullptr;
+    // Adds per-256-byte write-mask bits for bus aliases of `physSlice`.
+    // The engine accounts for the direct view; machine maps return only
+    // aliases that reach the same backing bytes through another address.
+    uint32_t (*aliasCodeMask)(void* self, uint32_t physSlice,
+                              const uint8_t* pageMap, uint32_t pages) = nullptr;
     // Attaches (or detaches, with nullptr) the write guard.
     void (*setGuard)(void* self, CodeGuard* guard) = nullptr;
     // Physical RAM size, for sizing the guard's page map.
@@ -90,6 +95,10 @@ public:
     void setPeriphDeadline(const void* deadline) {
         ctx_.periphClock = deadline;
         ctx_.periphBatch = -1;
+    }
+    void setWriteObserver(void* opaque, WriteObserver fn) {
+        ctx_.observeWriteSelf = opaque;
+        ctx_.observeWrite = fn;
     }
 
     const char* backendName() const;

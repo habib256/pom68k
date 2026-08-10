@@ -36,6 +36,7 @@
 #include <vector>
 
 class Cpu030;
+namespace moira { class Moira; }
 
 class V8Memory {
 public:
@@ -112,8 +113,25 @@ public:
     // (pomJitProbeData is 040-only), so it stays cheap and honest.
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
     uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    uint32_t jitAliasCodeMask(uint32_t physSlice, const uint8_t* pageMap,
+                              uint32_t pages) const;
     void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
     uint32_t ramBytes() const { return uint32_t(ram_.size()); }
+    using WriteObserver = void (*)(void*, moira::Moira*, uint32_t, uint32_t,
+                                   uint32_t, uint32_t, int);
+    void setWriteObserver(void* opaque, WriteObserver fn) {
+        writeObserverOpaque_ = opaque; writeObserver_ = fn;
+    }
+    void observeWrite(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
+                      uint32_t value, uint32_t instructionPc, int native) {
+        if (writeObserver_)
+            writeObserver_(writeObserverOpaque_, cpu, addr, bytes, value,
+                           instructionPc, native);
+    }
+    // Diagnostic fingerprint of the save-stated device tree, excluding the
+    // large RAM/VRAM blobs. Used by the 030 JIT lockstep to locate the first
+    // hidden peripheral difference inside one coarse CPU quantum.
+    uint64_t debugDeviceHash();
     void jitMapChanged();
 
     void updateIrq();
@@ -370,6 +388,8 @@ private:
     void viaSync();                          // E-clock stall (v8.cpp:462-483)
 
     jit::CodeGuard* jitGuard_ = nullptr;     // JIT code invalidation
+    void* writeObserverOpaque_ = nullptr;
+    WriteObserver writeObserver_ = nullptr;
     std::vector<uint8_t> ram_, rom_, vram_;
     Via6522 via_;
     PseudoVia pvia_;

@@ -51,6 +51,24 @@ public:
                                             // — in REAL machine cycles
     void flushTicks();                      // run peripherals up to `clock`
 
+    struct PeriphTracePoint {
+        uint32_t pc = 0;
+        moira::i64 clock = 0;
+        moira::i64 machine = 0;
+        moira::i64 deadline = 0;
+        moira::i64 remainder = 0;
+        moira::i64 target = 0;
+        int phase = 0;             // 0 before executeUntil, 1 after, 2 flush
+        int delivered = 0;
+        int nextEvent = 0;
+        uint64_t deviceHash = 0;
+    };
+    using PeriphTraceFn = void (*)(void*, const PeriphTracePoint&);
+    void setPeriphTrace(void* opaque, PeriphTraceFn fn) {
+        periphTraceOpaque_ = opaque;
+        periphTraceFn_ = fn;
+    }
+
     // The core clock runs at boost_× machine rate — boost_ is cacheBoost_
     // normally and 1 while the floppy motor runs (the gate below). Bus
     // models (E-clock alignment, wait states) must work in machine cycles:
@@ -150,6 +168,9 @@ private:
     int icacheMiss_ = 4;           // boosted cycles charged per i-cache miss
     moira::i64 periphAccum_ = 0;   // sub-ratio remainder for exact scaling
     moira::i64 periphDeadline_ = 0;
+    void* periphTraceOpaque_ = nullptr;
+    PeriphTraceFn periphTraceFn_ = nullptr;
+    void emitPeriphTrace(int phase, int delivered, moira::i64 target = 0);
     void schedulePeriphDeadline();
 
     // ── Floppy boost gate (CHANGELOG 2026-08-05 (eighth)) ───────────────

@@ -462,11 +462,67 @@ Open, in ROI order:
   - [ ] **the emitted i-cache charge** (`docs/JIT_BRINGUP.md` § B) — constant
     folded per natively emitted instruction; the cold fallback stub charges
     itself already, through `pomJitExecOne` → `mmuExecuteStart` →
-    `mmuFetchWord`.
-  - [ ] the 030's `(An)+` update order (before the access, not after —
-    `MoiraDataflow_cpp.h:326-332`), its restartable last write (`:355-361`), and
-    the end-of-instruction prefetch refill that makes `queue.irc` mean something
-    different at a block exit.
+    `mmuFetchWord`. **AArch64 half DONE 2026-08-10**: 120k lockstep,
+    351,770,189 native instructions and 948,544,659 identical cache fetches;
+    Finder boot green. It remains behind the unsafe development override:
+    compact counters + deadline pacing + hot=128 + native `DBcc` reduced
+    fixed-budget wall time **5.63 → 4.57 s**, block fallbacks
+    **3,030,048 → 257,369**, and total exits **4.48 M → 1.59 M**, versus
+    3.43 s threaded. **Split trace metadata DONE 2026-08-10**: each IR
+    instruction now records base/data-bus, i-cache and post-exception cycles
+    separately. It safely admits `ADDQ/SUBQ ...,An` (`584F`: 2+4+0), reducing
+    fallbacks again to **236,298**; it correctly refuses `TST.B (An)` (`4A11`:
+    70+0+0), whose excess was not a cache miss. 120k A64 lockstep green. This unchecked
+    box now names the x64 half plus the AArch64 throughput exit criterion.
+  - [ ] the 030's restartable last write (`MoiraDataflow_cpp.h:355-361`) and
+    the exact no-tail-refill queue contract at a block exit.
+    **`(An)+` update order DONE on A64 2026-08-10**:
+    update after a successful probe but before the access, including an exact
+    MMIO-thunk rollback before interpreter replay. 120k lockstep green;
+    `205F/221F/245F/4A1F` leave the fallback census. A broad last-write shortcut
+    (`MOVE reg/imm -> memory` after a writable probe) diverged at step 10,455
+    and was reverted. Isolation of `1D40` reaches step 31,162; its coarse
+    quantum ends one instruction apart while 64-cycle continuation and full
+    backing RAM stay exact. **Wrapper/peripheral oracle DONE 2026-08-10**:
+    `POM68K_JIT_LOCKSTEP_PERIPH_TRACE_AT` hashes the save-stated V8 device tree
+    at every edge and delivery. It proves the first 23 trace points identical
+    and finds point 24, a delivery at the same clock/device hash but PC `40A09A14` vs
+    `40A09A0A`, after an identical `40A0B400` boundary. **CPU boundary DONE**:
+    disabling links makes the run exact; making only the `1D40` block a
+    bidirectional chain barrier preserves all other links and passes 120k
+    (351,770,098 JIT instructions). **LAST-WRITE GATE DONE 2026-08-10**:
+    `jit_restart_write_030_test` enters an already-compiled `1D40` block,
+    forces the exact write thunk and its untouched replay to fault, then
+    compares all 32 bytes of the `$A` frame (SR/next-PC/LASTWRITE/SSW/address/
+    opcode/output buffer). The env flag is removed. Register/immediate-source
+    MOVE writes to `(An)`, `d16(An)` and absolute EAs are now native behind
+    the same bidirectional barrier; at that checkpoint indexed and
+    `(An)+/-(An)` destinations remained closed. 120k lockstep green without
+    an opcode flag; fixed census
+    70 blocks / 177,459 fallbacks, identical fingerprint. **TERMINAL QUEUE
+    DONE 2026-08-10**: every traced IR instruction now carries its observed
+    next PC, IRD and IRC independently. A64 commits those observations on
+    linear exits and validates each branch formula against the path that was
+    traced. `jit_restart_write_030_test` additionally compiles self-looping
+    `JMP (xxx).L` and `BRA.L` cases and proves that IRC is respectively the
+    low address word and low displacement word, not a synthetic lookahead.
+    **RESTARTABLE EA EXPANSION DONE 2026-08-10**: `-(An)` and brief indexed
+    destinations now pass byte-exact injected `$A` frames plus the full 120k
+    lockstep (351,794,391 native instructions). Predecrement is committed
+    before every access and rolled back before a fault replay. Destination
+    `(An)+` initially reproduced the full-machine divergence at coarse step
+    10,455. **PI SUCCESS ORACLE DONE 2026-08-10**:
+    the gate compares the written byte, pre/post A6, all 16 MiB of backing
+    memory and address/value/width/A6/PC/PC0/IRD/IRC/SR/clock inside MMIO.
+    It fixed CCR publication after instead of before LASTWRITE. The remaining
+    coarse-only failure first differed silently at RAM `$533E` (`00` vs
+    `40`) on step 10,448. The write journal named `22D8`: its source probe
+    committed `(A0)+`, its destination probe refused, and replay incremented
+    A0 again. Memory-to-memory MOVE now probes both mappings before either EA
+    mutation. PI is enabled without a flag and the full 120k gate is green.
+    The fixed benchmark remains bit-exact (`1c5e30c648c72e48`): 119 blocks,
+    40,383,551 native instructions, 393,527 fallbacks, 4.60 s. This slice
+    claims semantics, not a statistically established speedup.
 - [ ] **Coverage tail** (after MOVEM/DBcc/JMP): register-count and memory
   shifts/rotates, Scc (`JitBackendX64.cpp:1819` refuses it), PEA; **the 68020 indexed modes are
   the big block** (a brief extension-word decoder — QuickDraw's blitters;

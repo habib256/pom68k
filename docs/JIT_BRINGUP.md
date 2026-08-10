@@ -187,28 +187,19 @@ clock + register + RAM compare) and `jit_lockstep_x64_test` green, then
 landed item and record the coverage delta — an emitter whose census share
 does not move did not do what it claimed.
 
-### Phase A2 (a64) — **BLOCKED on an arm64 host, 2026-08-10**
+### Phase A2 (a64) — **LANDED and proved on Apple Silicon, 2026-08-10**
 
-`JitBackendA64.cpp` is compiled only when `CMAKE_SYSTEM_PROCESSOR` is
-aarch64 (`CMakeLists.txt`), so on an x86-64 machine it can be neither
-compiled nor run. Writing its half of the code mask there would be code
-nobody could validate — which is exactly what `BackendCaps` exists to
-prevent. a64 therefore keeps `dtlbCodeMask = false` and with it the older,
-correct, whole-page refusal: it forgoes the −9.8 % ceiling on Apple Silicon
-and the Pi, and forgoes nothing in correctness.
-
-What it needs when an arm64 host is available: `memProbe`
-(`JitBackendA64.cpp:596`) loads the entry into `x14` and then immediately
-overwrites `x14` with the host pointer, so the mask must be read BEFORE
-that — and the `fill` tail, which takes its host straight from the thunk's
-return value, holds no entry pointer at all and has to recompute one. The
-two cost-table fixes and the `PEA`/`Scc` emitters are architecture-neutral
-facts about the 68020 cycle column; a64 re-derives them in its own decode
-pass, held to the same cross-check against `Instr::cycles`.
+The arm64 host became available and the predicted implementation was borne
+out exactly. `memProbe` tests `PomJitDtlbEntry::codeMask` before replacing
+the hit-path entry pointer in `x14`; after a fill it recomputes that entry and
+tests the freshly installed mask. First and last 256-byte slices are checked,
+covering the largest possible MOVEM span. The backend now advertises
+`dtlbCodeMask = true`. The 68040 native smoke and a 100,000-step AArch64
+lockstep remained bit-identical.
 
 ---
 
-## Phase B — the 68030 instruction cache under generated code — **LANDED 2026-08-10, not yet provable**
+## Phase B — the 68030 instruction cache under generated code — **PROVED on AArch64 2026-08-10**
 
 `Emitter::chargeIcache` (`JitBackendX64.cpp`) emits the MC68030UM §6 model
 for every natively emitted instruction, constant-folded exactly as B.2 below
@@ -236,8 +227,121 @@ hedge.** The 030 generator is wrong from its first compiled instruction
 effect on the 68040 machines (`icLive` is false there): `ctest -L smoke` 8/8
 and the Q605 bench fingerprint unchanged.
 
-**One thing the attempt did establish, and it is a design correction the
-next session should start from.** With the emission in, the gate reports
+**AArch64 closes the correctness proof.** Its emitted twin charges `words + 1` fetches,
+aggregates fetch/hit counters once per instruction, folds repeated longword
+checks, adds miss penalties to the live `x21` clock, and exactly un-charges
+fetches/hits before a runtime replay. The dedicated
+`jit_lockstep_030_a64_experimental_test` passed 120,000 comparisons with 351,770,189
+native instructions and identical **948,544,659 fetches / 681,239,356 hits /
+267,301,136 misses**. `jit_lcii_boot_etalon` then reached the identical
+Finder signature in 57.05 s under the development override.
+
+It is deliberately **not declared yet**. The first fixed 1,000-frame LC II
+budget measured interpreter 3.78 s, threaded 3.43 s, and AArch64 5.63 s.
+Three safe changes reduce the native result to **4.57 s (−18.8 %)**: the LC II
+now exposes its event-driven peripheral deadline so ordinary cycle charges
+stay inline, and the 030 experimental gate uses a measured hot threshold of
+128; the emitted i-cache aggregates its counters once per instruction; and
+`DBcc` is no longer caught by the multi-word-`Bcc` refusal (it always consumes
+exactly two fetches). The same benchmark now compiles **61** blocks, retires
+30.6 % natively, and cuts block fallbacks **3,030,048 → 257,369** plus total
+exits **4.48 M → 1.59 M**. It nevertheless remains slower than threaded.
+Subtracting i-cache penalties from the tracer's cycle cross-check was also
+tried; it diverged at lockstep step 31,162 and was reverted. Selectively
+accepting a larger traced cost for `TST.B (An)` and `ADDQ.W #n,An` also
+diverged (steps 7,798 and 10,902).
+
+**The tracer now resolves that ambiguity at the source.** While recording
+only, `pomJitExecOne` snapshots the handler boundary and the 030 cache-miss
+counter; every `Instr` carries total, base/data-bus, i-cache and
+post-exception cycles, with the invariant `total = base + cache + post`
+checked before the split is exposed. Normal interpretation pays only one
+predictable false branch. A64 consumes the split for two deliberately safe
+forms: register-only `ADDQ/SUBQ ...,An`, and read-only `TST (An)`.
+
+The result demonstrates why the split matters. The hot `584F` trace is
+**6 = 2 base + 4 i-cache + 0 post** and is now native. The apparent twin
+`4A11` is **70 = 70 base + 0 i-cache + 0 post**: its excess is real data-bus
+work, so it remains refused. On the fixed 1,000-frame run this cuts block
+fallbacks **257,369 -> 236,298** and compiles 62 blocks; wall remains 4.57 s
+and the fingerprint/cache counters are unchanged. The 120k experimental
+lockstep passes, beyond both former divergence points. Correct but slower
+native code must not replace the faster conformant floor;
+`POM68K_JIT_UNSAFE_BACKEND=1` and the dedicated experimental lockstep remain
+the development lane until native coverage and block-exit economics are fixed.
+
+**The next semantic slice, `(An)+`, is now closed on AArch64.** A refused
+translation leaves `An` untouched; after a successful probe the 030 updates
+it before the actual load/store; an exact MMIO read thunk sees the updated
+register and rolls it back if it reports a fault, so Moira can replay the
+untouched instruction and build the format-A/B frame. The ordinary 040
+post-access order is unchanged. This makes `205F`, `221F`, `245F` and `4A1F`
+native and, together with split-cost register `ADDQ`, moves fixed-budget block
+fallbacks **236,298 -> 187,746 (-20.5 %)** and compiled blocks 62 -> 67.
+The 120k lockstep remains green; wall is 4.59 s, effectively unchanged.
+
+The same proof does **not** yet cover restartable writes. Admitting all
+`MOVE register/immediate -> memory` forms merely because their writable DTLB
+probe succeeded diverged at lockstep step **10,455** and was reverted. The
+first diagnosis blamed the pre-store CCR/PC/LASTWRITE boundary; isolating only
+the census representative `1D40` disproved that conclusion. It stays exact
+through step **31,162**, then an 8192-cycle comparison ends one instruction
+apart with identical backing RAM; continuing from the same boundary in
+64-cycle quanta stays exact. Sending the successful write through Moira's
+exact 030 write path and synchronising i-cache misses word by word do not move
+the boundary. The missing oracle was therefore added before opening the form.
+`POM68K_JIT_LOCKSTEP_PERIPH_TRACE_AT=N` records every
+`executeUntil` edge and peripheral delivery during comparison N: PC,
+core/machine clocks, target, deadline, scaling remainder, delivered cycles,
+next-event distance and a hash of the complete save-stated V8 device tree
+(large RAM/VRAM blobs excluded). The hook is null outside that diagnostic
+comparison.
+
+That oracle changes the diagnosis decisively. At comparison 31,162 the first
+23 trace points are identical. Point 24 is a peripheral delivery with the
+same clock `1021342681`,
+machine clock, deadline, remainder, next event and device hash on both
+machines, but the interpreter is at `40A09A14` while A64 is at `40A09A0A`;
+the previous trace point was fully identical at `40A0B400`. No hidden peripheral
+state precedes the split. Disabling native block links makes the whole run
+exact, which identifies the missing contract: a block containing a 030 write
+cannot be crossed as a transparent native-chain boundary. A64 now suppresses
+both its published link entry and its outgoing links for that block alone.
+With all other links enabled, `1D40` passes the full 120k gate
+(351,770,098 JIT instructions and identical i-cache counters).
+
+**The last-write gate is now explicit and self-contained.**
+`jit_restart_write_030_test` trains a native `MOVE.B D0,d16(A6)` block against
+plain RAM, then points the same EA into an external `/BERR` hole. The refused
+DTLB access first enters Moira's exact 030 write thunk and faults; A64 restores
+the pre-access clock/EA boundary, then untouched interpreter replay faults a
+second time and stacks the frame. All **32 bytes** match the pure-interpreter
+oracle: updated SR, next PC, `$A008`, internal `LASTWRITE`, SSW `$0315`, fault
+address, opcode `1D40` and sign-extended output buffer `$FFFFFF80`. The old
+`POM68K_JIT_A64_RESTART_WRITE` switch is gone. The permanently enabled family
+is deliberately narrow: register/immediate-source `MOVE` to `(An)`, `d16(An)`
+or absolute destinations. At that checkpoint indexed and `(An)+/-(An)`
+destinations remained closed. Every such write block keeps the bidirectional
+chain barrier. The 120k lockstep passes without an opcode flag; the fixed benchmark keeps
+fingerprint `1c5e30c648c72e48`, compiles 70 blocks and reduces fallbacks to
+177,459. Two wall samples are 4.91–5.03 s, so this is a correctness/coverage
+gain, not yet a throughput claim.
+
+The next EA expansion split cleanly rather than landing as one switch.
+`MOVE.B D0,-(A6)` and `MOVE.B D0,d8(A6,D1.W)` each enter an already compiled
+block, fault once in the exact native thunk, replay once, and match all 32
+bytes of the interpreter's format-$A frame plus the final A6. Predecrement is
+therefore performed before the access and reversed before replay; brief
+indexed needs no register rollback. Both are enabled and the 120k lockstep
+passes with 351,794,391 native instructions. Destination `(An)+` is still
+refused: its injected fault is also byte-exact, but admitting its successful
+path alone reproduces the coarse-quantum divergence at step 10,455. The fixed
+benchmark remains bit-exact (`1c5e30c648c72e48`, 5.05 s); its 118 blocks and
+392,563 fallbacks make this a semantic expansion, not a throughput win.
+
+**An earlier emitted-i-cache attempt established a separate design
+correction, now implemented by the runtime-bail uncharge.** With the emission
+in, the gate reported
 **+613 745 instruction fetches on the JIT side for +17 cycles of clock**.
 Fetches that carry no time are not fetches — they are double counts, and
 their source is exact: a compiled instruction charges the model *before* it
@@ -248,8 +352,8 @@ again. The re-charge is a HIT (the forward charge left the tag and valid bit
 set), so it costs a counter and no cycles, which is precisely the +613 745 /
 +17 signature.
 
-So the **clock** half of the model is very likely already right and the
-**counter** half is not, and the fix is a placement question rather than an
+The **clock** half of that model was already right and the **counter** half was
+not; the correction was a placement/uncharge question rather than an
 arithmetic one:
 
 * charging at the END of an instruction's native code instead of the start
@@ -593,10 +697,12 @@ Then four more, all named in `JitBackend.h:38-56`:
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`). The 040 does not. A compiled store that faults must leave
    the 030's frame, not the 040's.
-3. **The prefetch queue is refilled at the end of an instruction** on one
-   and not the other, so `queue.irc` means something different at a block
-   exit. The block epilogue has to leave the queue in the state the
-   interpreter would.
+3. **Neither mode-5 core refills the prefetch queue at instruction end.**
+   `queue.irc` therefore remains the word held by the path that just ran: the
+   next linear word, the last extension skipped by `SKIP_LAST_RD`, or a
+   branch/DBcc displacement. The tracer records terminal PC/IRD/IRC
+   separately and a generator must reproduce that observation at every
+   block exit.
 4. **`mmu040MovemArmed`** (the MOVEM restart latch, `PomJitLayout::movemArmed`)
    is 040 state. The 030's MOVEM restart contract is its own; until it is
    modelled, MOVEM is refused on an 030 rather than emitted — coverage, not
@@ -681,11 +787,11 @@ trying to avoid.
 |---|---|
 | 0 — measure | **done**, `POM68K_JIT.md` § 3.1bis |
 | A — 68040 tail (x64) | **done**, −12.8 % wall, `ctest -L jit` 23/23 |
-| A2 — a64 mirror | **blocked**, needs an arm64 host; a64 stays conservative |
+| A2 — a64 mirror | **done on Apple Silicon**, including the 256-byte DTLB code mask |
 | C.1 — 030 lockstep gate | **done**, `jit_lockstep_030_test` (+ blocks variant) |
 | C.2 / C.3 — 030 probe + thunks | **written, unvalidated**; their gate is C.5 |
-| B — emitted i-cache | **written, unjudgeable** behind C.4's blocker; a placement correction is already identified |
-| C.4 — per-instruction contract | **open, and it is THE blocker** — `mmuExecuteStart`'s resets |
+| B — emitted i-cache | **correctness-proved on AArch64** by 120k lockstep + Finder boot; compact counters + native DBcc, still slower than threaded |
+| C.4 — per-instruction contract | **partial** — resets + split timing + `(An)+` order done; restartable last-write boundary remains |
 | C.5 / C.6 — declare + boot gates | not started |
 | D — default engine | not started; nothing in it may move before C |
 

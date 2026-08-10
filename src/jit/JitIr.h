@@ -8,7 +8,7 @@
 // sense on its own architecture, that is a design error (invariant 6 of
 // src/jit/POM68K_JIT.md).
 //
-// Three contracts are deliberately written into the IR rather than left to
+// Four contracts are deliberately written into the IR rather than left to
 // the backends:
 //
 //  1. CONDITION CODES ARE EXPLICIT. An entry declares which 68k CCR bits it
@@ -21,6 +21,10 @@
 //  3. NO HOST POINTERS. The IR holds guest addresses only. Host pointers
 //     live in the code window (Moira::PomJitWindow) and in the backend's
 //     own compiled artefact, both of which are invalidated independently.
+//  4. THE TERMINAL PREFETCH STATE IS OBSERVED. On the mode-5 68030 there is
+//     no tail refill: IRC may be the next word, an extension word, or a
+//     displacement depending on the instruction path. The tracer records
+//     PC/IRD/IRC separately so a backend never infers this from length.
 
 #pragma once
 #include <cstdint>
@@ -74,12 +78,19 @@ struct Instr {
     uint16_t words   = 1;      // instruction length in 16-bit words
     Kind     kind    = Kind::Alu;
     uint8_t  flags   = FlagNone;
-    // Cycles this instruction charged the clock when the TRACER ran it —
-    // the interpreter's own answer, not a second timing model. A code
-    // generator computes what it believes the cost to be and refuses to
-    // emit unless the two agree, so a wrong or missing table entry costs
-    // coverage rather than correctness (src/jit/POM68K_JIT.md § 9).
+    // Total cycles this instruction charged when the tracer ran it, followed
+    // by its three independently observed components. On cores without a
+    // detailed timing probe `baseCycles == cycles` and both other fields are
+    // zero. A backend may validate a known-safe 68030 form against the base
+    // component without mistaking a cache miss for an opcode cost.
     uint16_t cycles  = 0;
+    uint16_t baseCycles = 0;
+    uint16_t icacheCycles = 0;
+    uint16_t postExceptionCycles = 0;
+    uint32_t observedNextPc = 0; // PC after the traced instruction
+    uint16_t terminalIrd = 0;    // queue at that same boundary
+    uint16_t terminalIrc = 0;
+    bool terminalQueueValid = false;
 };
 
 // Why a block stopped growing. Recorded for the gauges: the mix tells us

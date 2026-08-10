@@ -488,14 +488,40 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         // rather than modelled: a backend has to agree with it before it may
         // emit the instruction (JitIr.h, Instr::cycles).
         const int64_t clk0 = cpu_.getClock();
-        if (!cpu_.pomJitExecOne()) { retired++; why = EndReason::Faulted; break; }
+        cpu_.pomJitBeginTiming();
+        const bool didRetire = cpu_.pomJitExecOne();
+        const auto timing = cpu_.pomJitEndTiming();
+        if (!didRetire) { retired++; why = EndReason::Faulted; break; }
         retired++;
         const int64_t spent = cpu_.getClock() - clk0;
         const uint16_t cycles = uint16_t(spent >= 0 && spent < 0x10000 ? spent : 0);
+        const auto narrowCycles = [](int64_t value) {
+            return uint16_t(value >= 0 && value < 0x10000 ? value : 0);
+        };
+        // Never expose a partial or internally inconsistent split to a code
+        // generator. Overflow likewise collapses to the legacy conservative
+        // representation, in which the whole delta is `baseCycles`.
+        const bool timingExact = timing.valid &&
+            timing.baseCycles >= 0 && timing.icacheCycles >= 0 &&
+            timing.postExceptionCycles >= 0 &&
+            timing.baseCycles + timing.icacheCycles +
+                timing.postExceptionCycles == spent;
+        const uint16_t baseCycles = timingExact
+            ? narrowCycles(timing.baseCycles) : cycles;
+        const uint16_t icacheCycles = timingExact
+            ? narrowCycles(timing.icacheCycles) : 0;
+        const uint16_t postExceptionCycles = timingExact
+            ? narrowCycles(timing.postExceptionCycles) : 0;
+        const uint32_t observedNextPc = cpu_.getPC();
+        const uint16_t terminalIrd = cpu_.getIRD();
+        const uint16_t terminalIrc = cpu_.getIRC();
 
         if (terminator) {
             ir.instrs.push_back(Instr{ at, op, uint16_t(words), kind,
-                                       instrFlags(op, kind), cycles });
+                                       instrFlags(op, kind), cycles, baseCycles,
+                                       icacheCycles, postExceptionCycles,
+                                       observedNextPc, terminalIrd, terminalIrc,
+                                       true });
             at += words * 2;
             why = EndReason::ControlFlow;
             break;
@@ -506,13 +532,19 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         // outside that window means the instruction transferred control —
         // a trap the classifier did not predict, or a fault redirect.
         if (next <= at || next - at > 22) {
-            ir.instrs.push_back(Instr{ at, op, 1, kind, instrFlags(op, kind), cycles });
+            ir.instrs.push_back(Instr{ at, op, 1, kind, instrFlags(op, kind),
+                                       cycles, baseCycles, icacheCycles,
+                                       postExceptionCycles, observedNextPc,
+                                       terminalIrd, terminalIrc, true });
             why = EndReason::Discontinuity;
             break;
         }
 
         ir.instrs.push_back(Instr{ at, op, uint16_t((next - at) / 2),
-                                   kind, instrFlags(op, kind), cycles });
+                                   kind, instrFlags(op, kind), cycles, baseCycles,
+                                   icacheCycles, postExceptionCycles,
+                                   observedNextPc, terminalIrd, terminalIrc,
+                                   true });
         at = next;
 
         if (guard_.tripped()) { why = EndReason::WindowEdge; break; }
@@ -641,14 +673,17 @@ uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
             const uint32_t s = first + i;
             if (s < pageMap_.size() && pageMap_[s]) mask |= 1u << i;
         }
-        if (mask) {
-            dtlbWhy_[kWhyCodePage]++;
-            // A backend that does not test the mask must never be handed
-            // this entry: its store would bypass the map and the guard would
-            // never see it. That is the whole-page refusal this replaced,
-            // kept for everyone who has not opted in (BackendCaps).
-            if (!maskAware_) host = nullptr;
-        }
+    }
+    if (write && host && mem_.aliasCodeMask)
+        mask |= mem_.aliasCodeMask(mem_.self, physSlice, pageMap_.data(),
+                                   uint32_t(pageMap_.size()));
+    if (mask) {
+        dtlbWhy_[kWhyCodePage]++;
+        // A backend that does not test the mask must never be handed this
+        // entry: its store would bypass the map and the guard would never
+        // see it. That is the whole-page refusal this replaced, kept for
+        // everyone who has not opted in (BackendCaps).
+        if (!maskAware_) host = nullptr;
     }
 
     // The answer is cached either way. A REFUSAL is worth remembering — an

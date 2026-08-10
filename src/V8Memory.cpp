@@ -3,10 +3,83 @@
 
 #include "V8Memory.h"
 #include "Cpu030.h"
+#include <array>
+#include <bit>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <fstream>
 #include <iterator>
+#include <string>
+#include <type_traits>
+
+namespace {
+
+class DeviceHashArchive {
+public:
+    static constexpr bool loading = false;
+
+    template <class... Ts> void operator()(Ts&... xs) { (one(xs), ...); }
+
+    // RAM and VRAM are checked by the lockstep separately. Hash their sizes
+    // so a topology mismatch is still visible without walking megabytes at
+    // every peripheral deadline.
+    void blob(const std::vector<uint8_t>& v) {
+        mixByte(0xB1);
+        mixInt(uint64_t(v.size()));
+    }
+    void bytes(const void* p, std::size_t n) {
+        mixByte(0xB2);
+        mixInt(uint64_t(n));
+        const auto* b = static_cast<const uint8_t*>(p);
+        for (std::size_t i = 0; i < n; ++i) mixByte(b[i]);
+    }
+    void varint(uint64_t v) { mixByte(0xB3); mixInt(v); }
+    bool ok() const { return true; }
+    void fail() {}
+    uint64_t value() const { return hash_; }
+
+private:
+    template <class T>
+    static constexpr bool visitable = requires(T& x, DeviceHashArchive& ar) {
+        x.visit(ar);
+    };
+
+    template <class T> void one(T& x) {
+        if constexpr (visitable<T>) {
+            x.visit(*this);
+        } else if constexpr (std::is_enum_v<T>) {
+            mixInt(uint64_t(static_cast<std::underlying_type_t<T>>(x)));
+        } else if constexpr (std::is_same_v<T, bool>) {
+            mixByte(x ? 1 : 0);
+        } else if constexpr (std::is_floating_point_v<T>) {
+            if constexpr (sizeof(T) == 4) mixInt(std::bit_cast<uint32_t>(x));
+            else mixInt(std::bit_cast<uint64_t>(x));
+        } else if constexpr (std::is_integral_v<T>) {
+            using U = std::make_unsigned_t<T>;
+            mixInt(uint64_t(U(x)), sizeof(T));
+        } else if constexpr (std::is_array_v<T>) {
+            for (auto& e : x) one(e);
+        } else if constexpr (requires { x.size(); x.begin(); x.end(); }) {
+            mixInt(uint64_t(x.size()));
+            for (auto& e : x) one(e);
+        } else {
+            static_assert(sizeof(T) == 0, "unsupported device-hash field");
+        }
+    }
+
+    void mixByte(uint8_t v) {
+        hash_ ^= v;
+        hash_ *= 1099511628211ull;
+    }
+    void mixInt(uint64_t v, std::size_t bytes = sizeof(uint64_t)) {
+        for (std::size_t i = 0; i < bytes; ++i) mixByte(uint8_t(v >> (i * 8)));
+    }
+
+    uint64_t hash_ = 1469598103934665603ull;
+};
+
+}  // namespace
 
 V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
     : ram_(totalRam, 0), rom_(kRomSize, 0), vram_(kVramSize, 0),
@@ -118,6 +191,12 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
         }
     }
     reset();
+}
+
+uint64_t V8Memory::debugDeviceHash() {
+    DeviceHashArchive ar;
+    visit(ar);
+    return ar.value();
 }
 
 // 512 KB flat image; the stored big-endian word checksum (bytes 4…end)
@@ -527,6 +606,33 @@ uint8_t* V8Memory::dataSpan(uint32_t phys, uint32_t& len, bool write) {
     return nullptr;
 }
 
+uint32_t V8Memory::jitAliasCodeMask(uint32_t physSlice,
+                                    const uint8_t* pageMap,
+                                    uint32_t pages) const {
+    if (!pageMap || overlay_) return 0;
+    uint32_t mask = 0;
+    constexpr uint32_t kShift = jit::CodeGuard::kShift;
+    constexpr uint32_t kSlices = 4096u >> kShift;
+    for (uint32_t bit = 0; bit < kSlices; ++bit) {
+        const uint32_t bus = (physSlice + (bit << kShift)) & addrMask_;
+        const uint32_t backing = ramIndex(bus);
+        if (backing == 0xFFFFFFFF) continue;
+
+        uint32_t alias = 0xFFFFFFFF;
+        if (bus >= 0x800000 && bus < 0xA00000 && mbMapped_ &&
+            (bus & 0x1FFFFF) < mbSize_) {
+            alias = mbLoc_ + (bus & 0x1FFFFF);
+        } else if (model_ != Model::MacTv && bus < 0x800000 &&
+                   backing < 0x200000) {
+            alias = 0x800000 | backing;
+        }
+        const uint32_t slice = alias >> kShift;
+        if (alias != 0xFFFFFFFF && slice < pages && pageMap[slice])
+            mask |= 1u << bit;
+    }
+    return mask;
+}
+
 void V8Memory::jitMapChanged() {
     if (jitGuard_) jitGuard_->invalidate();
     if (cpu_) cpu_->pomJitDtlbFlush();
@@ -534,6 +640,8 @@ void V8Memory::jitMapChanged() {
 
 void V8Memory::write8(uint32_t addr, uint8_t v) {
     addr &= addrMask_;
+    if (writeObserver_)
+        observeWrite(cpu_, addr, 1, v, cpu_ ? cpu_->getPC0() : 0, 0);
     if (addr & 0x80000000) {                 // PDS slot $E: no card
         if (model_ == Model::ClassicII) return;       // no PDS, open bus
         busError();
@@ -684,6 +792,8 @@ uint16_t V8Memory::read16(uint32_t addr) {
 
 void V8Memory::write16(uint32_t addr, uint16_t v) {
     addr &= addrMask_;
+    if (writeObserver_)
+        observeWrite(cpu_, addr, 2, v, cpu_ ? cpu_->getPC0() : 0, 0);
     // POM68K perf (2026-07-17): word fast paths for RAM / VRAM (see
     // read16) — side-effect-free regions only.
     if (addr < 0xA00000) [[likely]] {                    // RAM space
@@ -817,4 +927,3 @@ void V8Memory::tick(int cpuCycles) {
                                              // below applies it); was latch-high only
     updateIrq();
 }
-

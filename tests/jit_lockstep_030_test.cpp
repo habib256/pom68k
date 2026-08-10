@@ -5,9 +5,9 @@
 // never had. Two identical Mac LC II machines are built from the same ROM
 // and the same read-only disk image, one driven by the Moira interpreter
 // and one by the JIT engine, and stepped from power-up while every
-// architectural register, the three stacks, the cycle clock, the low RAM
-// globals AND the 68030 instruction-cache counters are compared at each
-// boundary.
+// architectural register, the three stacks, the cycle clock, the terminal
+// instruction queue, the low RAM globals AND the 68030 instruction-cache
+// counters are compared at each boundary.
 //
 // WHY IT EXISTS. `jit_lockstep_test` and its variants all run two Quadra
 // 605s, so until this file the 68030 side of the engine had no
@@ -39,6 +39,7 @@
 #include "V8Memory.h"
 #include "jit/JitConfig.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -87,7 +88,7 @@ void ensureBootDriverType(std::vector<uint8_t>& img) {
 
 struct State {
     uint32_t d[8], a[8], pc, usp, isp, msp;
-    uint16_t sr;
+    uint16_t sr, ird, irc;
     int64_t  clock;
 };
 
@@ -99,6 +100,8 @@ State capture(const moira::Moira& cpu) {
     s.isp = cpu.getISP();
     s.msp = cpu.getMSP();
     s.sr = cpu.getSR();
+    s.ird = cpu.getIRD();
+    s.irc = cpu.getIRC();
     s.clock = cpu.getClock();
     return s;
 }
@@ -120,10 +123,63 @@ bool same(const Cpu030::ICacheStats& x, const Cpu030::ICacheStats& y) {
 // is ordinary RAM (unlike the RBV boards, where it IS the framebuffer), so
 // this window means what it says here.
 constexpr uint32_t kWatchBytes = 2048;
-uint32_t ramDiff(const V8Memory& a, const V8Memory& b) {
-    for (uint32_t i = 0; i < kWatchBytes; i++)
+uint32_t ramDiff(const V8Memory& a, const V8Memory& b,
+                 uint32_t bytes = kWatchBytes) {
+    for (uint32_t i = 0; i < bytes; i++)
         if (a.peek8(i) != b.peek8(i)) return i;
     return 0xFFFFFFFF;
+}
+
+using PeriphTrace = std::vector<Cpu030::PeriphTracePoint>;
+
+struct WritePoint {
+    uint32_t addr = 0, value = 0, pc = 0;
+    uint32_t a0 = 0, a1 = 0, a2 = 0, a3 = 0;
+    uint32_t bytes = 0;
+    int64_t clock = 0;
+    int native = 0;
+};
+using WriteTrace = std::vector<WritePoint>;
+
+void collectWrite(void* opaque, moira::Moira* cpu, uint32_t addr,
+                  uint32_t bytes, uint32_t value, uint32_t pc, int native) {
+    constexpr uint32_t watched = 0x533E;
+    if (addr > watched || addr + bytes <= watched) return;
+    static_cast<WriteTrace*>(opaque)->push_back({
+        addr, value, pc, cpu->getA(0), cpu->getA(1), cpu->getA(2),
+        cpu->getA(3), bytes, cpu->getClock(), native
+    });
+}
+
+void printWrite(const char* who, size_t i, const WritePoint& p) {
+    std::printf("  %-6s[%zu] %c pc=%08X clk=%lld addr=%08X/%u value=%08X"
+                " A0=%08X A1=%08X A2=%08X A3=%08X\n",
+                who, i, p.native ? 'N' : 'I', p.pc,
+                (long long)p.clock, p.addr, p.bytes, p.value,
+                p.a0, p.a1, p.a2, p.a3);
+}
+
+void collectPeriphTrace(void* opaque, const Cpu030::PeriphTracePoint& p) {
+    static_cast<PeriphTrace*>(opaque)->push_back(p);
+}
+
+bool same(const Cpu030::PeriphTracePoint& a,
+          const Cpu030::PeriphTracePoint& b) {
+    return a.pc == b.pc && a.clock == b.clock && a.machine == b.machine &&
+           a.deadline == b.deadline && a.remainder == b.remainder &&
+           a.target == b.target && a.phase == b.phase &&
+           a.delivered == b.delivered && a.nextEvent == b.nextEvent &&
+           a.deviceHash == b.deviceHash;
+}
+
+void printPeriphPoint(const char* who, const Cpu030::PeriphTracePoint& p) {
+    std::printf("  %-6s phase=%d pc=%08X clock=%lld machine=%lld target=%lld"
+                " delivered=%d deadline=%lld"
+                " remainder=%lld next=%d devices=%016llX\n",
+                who, p.phase, p.pc, (long long)p.clock, (long long)p.machine,
+                (long long)p.target, p.delivered,
+                (long long)p.deadline, (long long)p.remainder, p.nextEvent,
+                (unsigned long long)p.deviceHash);
 }
 
 }  // namespace
@@ -247,6 +303,17 @@ int main(int argc, char** argv) {
     long traceFrom = -1;
     if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_TRACE_FROM"))
         traceFrom = std::atol(t);
+    long periphTraceAt = -1;
+    if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_PERIPH_TRACE_AT"))
+        periphTraceAt = std::atol(t);
+    long fullRamAt = -1;
+    if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_FULL_RAM_AT"))
+        fullRamAt = std::atol(t);
+    long writeTraceAt = -1;
+    if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_WRITE_TRACE_AT"))
+        writeTraceAt = std::atol(t);
+    PeriphTrace periphRef, periphJit;
+    WriteTrace writesRef, writesJit;
 
     for (long i = 0; i < steps; i++) {
         const long b = (fineAt >= 0 && i >= fineAt) ? fineBudget : budget;
@@ -259,15 +326,81 @@ int main(int argc, char** argv) {
         }
         trail[trailAt] = { cpuJit.getPC(), cpuJit.getClock() };
         trailAt = (trailAt + 1) % kTrail;
+        if (i == periphTraceAt) {
+            periphRef.clear();
+            periphJit.clear();
+            cpuRef.setPeriphTrace(&periphRef, collectPeriphTrace);
+            cpuJit.setPeriphTrace(&periphJit, collectPeriphTrace);
+        }
+        if (i == writeTraceAt) {
+            writesRef.clear(); writesJit.clear();
+            memRef.setWriteObserver(&writesRef, collectWrite);
+            memJit.setWriteObserver(&writesJit, collectWrite);
+            cpuJit.jit().setWriteObserver(&writesJit, collectWrite);
+        }
         cpuRef.runCycles(b);
         cpuJit.runCycles(b);
+        if (i == writeTraceAt) {
+            memRef.setWriteObserver(nullptr, nullptr);
+            memJit.setWriteObserver(nullptr, nullptr);
+            cpuJit.jit().setWriteObserver(nullptr, nullptr);
+            size_t first = 0, common = std::min(writesRef.size(), writesJit.size());
+            while (first < common) {
+                const auto& r = writesRef[first]; const auto& j = writesJit[first];
+                if (r.addr != j.addr || r.bytes != j.bytes ||
+                    r.value != j.value || r.pc != j.pc || r.clock != j.clock ||
+                    r.a0 != j.a0 || r.a1 != j.a1 || r.a2 != j.a2 ||
+                    r.a3 != j.a3) break;
+                ++first;
+            }
+            std::printf("[jit_lockstep_030] write trace step %ld:"
+                        " %zu interp / %zu jit, first difference %zu\n",
+                        i, writesRef.size(), writesJit.size(), first);
+            const size_t from = first > 2 ? first - 2 : 0;
+            const size_t to = std::min(std::max(writesRef.size(), writesJit.size()),
+                                       first + 4);
+            for (size_t k = from; k < to; ++k) {
+                if (k < writesRef.size()) printWrite("interp", k, writesRef[k]);
+                if (k < writesJit.size()) printWrite("jit", k, writesJit[k]);
+            }
+        }
+        if (i == periphTraceAt) {
+            cpuRef.setPeriphTrace(nullptr, nullptr);
+            cpuJit.setPeriphTrace(nullptr, nullptr);
+            const size_t common = std::min(periphRef.size(), periphJit.size());
+            size_t first = 0;
+            while (first < common && same(periphRef[first], periphJit[first]))
+                ++first;
+            if (first != periphRef.size() || first != periphJit.size()) {
+                std::printf("[jit_lockstep_030] peripheral trace diverged at step %ld,"
+                            " point %zu (%zu interp / %zu jit)\n",
+                            i, first, periphRef.size(), periphJit.size());
+                if (first < periphRef.size()) printPeriphPoint("interp", periphRef[first]);
+                if (first < periphJit.size()) printPeriphPoint("jit", periphJit[first]);
+                if (first) {
+                    std::printf("  previous trace point was identical:\n");
+                    printPeriphPoint("both", periphRef[first - 1]);
+                }
+            } else {
+                std::printf("[jit_lockstep_030] peripheral trace step %ld:"
+                            " %zu points identical\n", i, common);
+            }
+        }
 
         const State r = capture(cpuRef);
         const State j = capture(cpuJit);
-        const uint32_t bad = ramDiff(memRef, memJit);
+        uint32_t bad = (fullRamAt >= 0 && i >= fullRamAt)
+            ? ramDiff(memRef, memJit, 0x00A00000)
+            : ramDiff(memRef, memJit);
         const Cpu030::ICacheStats icr = cpuRef.icacheStats();
         const Cpu030::ICacheStats icj = cpuJit.icacheStats();
         if (same(r, j) && bad == 0xFFFFFFFF && same(icr, icj)) continue;
+
+        // Once another observable has tripped, walking the complete LC II
+        // RAM bus is cheap and names a successful-store divergence that the
+        // low-globals tripwire would otherwise report much later.
+        if (bad == 0xFFFFFFFF)
+            bad = ramDiff(memRef, memJit, 0x00A00000);
 
         if (!same(icr, icj)) {
             std::printf("[jit_lockstep_030] 68030 i-cache accounting diverged\n");
@@ -293,6 +426,8 @@ int main(int argc, char** argv) {
         std::printf("\n");
         std::printf("  pc    interp=%08X  jit=%08X\n", r.pc, j.pc);
         std::printf("  sr    interp=%04X      jit=%04X\n", r.sr, j.sr);
+        std::printf("  queue interp=%04X/%04X jit=%04X/%04X (IRD/IRC)\n",
+                    r.ird, r.irc, j.ird, j.irc);
         std::printf("  clock interp=%lld      jit=%lld\n",
                     (long long)r.clock, (long long)j.clock);
         for (int k = 0; k < 8; k++)
