@@ -362,7 +362,9 @@ public:
             const u32 slice = (logicalPage + off) >> 12;
             for (PomJitDtlb *t : { &pomJitDtlbR, &pomJitDtlbW }) {
                 PomJitDtlbEntry &e = t->e[slice & (PomJitDtlb::kEntries - 1)];
-                if ((e.tag & 0x7FFFFFFFu) == slice) { e.tag = PomJitDtlb::kEmpty; e.host = nullptr; }
+                if ((e.tag & 0x7FFFFFFFu) == slice) {
+                    e.tag = PomJitDtlb::kEmpty; e.host = nullptr; e.codeMask = 0;
+                }
             }
             if ((pomJitDataR1.tag & 0x7FFFFFFFu) == slice) pomJitDataR1 = {};
             if ((pomJitDataW1.tag & 0x7FFFFFFFu) == slice) pomJitDataW1 = {};
@@ -439,18 +441,42 @@ public:
     // sit at +0 and +8 of one cache line's worth of addressing.
     struct PomJitDtlbEntry {
         u32 tag;                        // logical page number (addr >> 12)
-        u32 pad;
+        // POM68K 2026-08-10 — WRITE table only, zero everywhere else. One bit
+        // per 256-byte slice of this 4 KB page: set = some cached block was
+        // translated from there, so a store into that slice MUST go through
+        // the memory map, where jit::CodeGuard can see it.
+        //
+        // Before this field the whole ENTRY was refused when the page held
+        // any code at all, because an entry maps 4 KB while the guard works
+        // at 256 bytes — a 16x mismatch, and 68k code and its stack share
+        // pages constantly. That single refusal was 95.6 % of every
+        // remembered data-TLB refusal on an idle Finder (63 998 of 66 922),
+        // and removing it unsafely was worth -9.8 % of wall clock. The mask
+        // buys the same thing safely: three host instructions on the write
+        // path, of which the branch is never taken on a page with no code.
+        //
+        // It cannot go stale: jit::Engine::markPages() flushes both tables
+        // whenever a slice gains its first block. Losing one (serviceGuard's
+        // 1 -> 0 direction) leaves the mask conservative, which costs
+        // coverage and never correctness.
+        u32 codeMask;
         u8* host;                       // host bytes for that page, byte 0
     };
     struct PomJitDtlb {
         static constexpr u32 kEntries = 256;     // direct-mapped, 4 KB/table
         static constexpr u32 kEmpty = 0xFFFFFFFF;  // no logical page is ~0
+        // Slices per page, and therefore bits used in codeMask. Mirrors
+        // jit::CodeGuard::kShift; the static_assert lives in JitEngine.cpp,
+        // which is the one place that can see both.
+        static constexpr u32 kSliceShift = 8;
 
         PomJitDtlbEntry e[kEntries];
 
         PomJitDtlb() { clear(); }
         void clear() {
-            for (u32 i = 0; i < kEntries; i++) { e[i].tag = kEmpty; e[i].host = nullptr; }
+            for (u32 i = 0; i < kEntries; i++) {
+                e[i].tag = kEmpty; e[i].host = nullptr; e[i].codeMask = 0;
+            }
         }
     };
     PomJitDtlb pomJitDtlbR, pomJitDtlbW;
@@ -648,6 +674,51 @@ public:
         // must bail to the interpreter while it is set, because the
         // restart must resume from the SAVED ea, not a recomputed one.
         u32 movemArmed;
+
+        // ── the 68030 instruction cache (PomIcache above) ────────────────
+        // Generated code fetches no instructions, so on an 030 guest it has
+        // to charge the overlay itself or the clock drifts from the
+        // interpreter's within one block. Everything the model needs is a
+        // compile-time constant for a known pc — the line, the tag and the
+        // longword valid bit — so all a backend needs at run time is where
+        // the four arrays live. `cacr` is here for the same emitter: bit 0
+        // gates the whole model and cannot change inside a block (MOVEC is
+        // Kind::Unsafe), so it is tested once at block entry.
+        u32 cacr;
+        u32 icTag, icValid;        // PomIcache::tag[0] / valid[0]
+        u32 icFetches, icHits, icMisses;
+        u32 icPenalty;             // PomIcache::missPenalty
+        // True only when the overlay is BOTH armed by the wrapper AND
+        // reachable, which means a 68030 guest: the charge lives inside
+        // mmuFetchWord, and that is the 030's instruction-fetch path alone.
+        // A 68040 machine can have `armed` set and never charge a thing,
+        // which is why this is not simply PomIcache::armed — a backend that
+        // read that flag would emit the model on Quadras, where it is dead
+        // code that changes the clock.
+        bool icLive;
+
+        // The guest family, for the per-instruction contract rather than for
+        // the instruction set. On a 68030 mmuExecuteStart resets a block of
+        // MMU bookkeeping at EVERY instruction (MoiraExecMMU_cpp.h:521-529)
+        // that mmu040InstrStart has no counterpart for; generated code stands
+        // in for that function and therefore owes the same resets.
+        bool is030;
+        // …of which exactly one has to be emitted. `mmuRmw` (islrmw030)
+        // survives the instruction that set it — TAS and CAS, both
+        // Kind::Unsafe and so never inside a block — and until the next
+        // mmuExecuteStart clears it, every translation takes the locked-RMW
+        // path (mmuMatchTTAccess's RWM-only match, mmuRead's SSW RM bit).
+        // Entering generated code with it set is how a block full of
+        // ordinary loads starts translating as locked writes.
+        //
+        // The other seven are NOT emitted, and the argument is that they are
+        // read only when a bus-error frame is stacked: mmuState, mmuIdx,
+        // mmuAd, mmuFixupReg, mmuCcrSave, mmuLogging, mmuOpcodeV. A compiled
+        // instruction that faults commits nothing and hands itself back, and
+        // the interpreter's re-run enters through mmuExecuteStart — which
+        // resets all seven before executing it again. They are re-established
+        // on the only path that reads them.
+        u32 mmuRmw;
     };
     PomJitLayout pomJitLayout() const;
 

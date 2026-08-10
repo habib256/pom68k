@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 207 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` fails when the two drift.
+**Generated** by `tools/changelog_index.py` from the 209 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` fails when the two drift.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,8 +8,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 13 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 27 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 14 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 28 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 27 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 31 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 11 |
@@ -39,6 +39,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-06 (evening)** — [The JIT reaches the last two families, and the compacts are the first guest where the window is not free](CHANGELOG.md#2026-08-06-jit-020-000)
 - **2026-08-06 (night)** — [The cycle-exact lockstep, and the same trap twice in one day: a green gate that meant "nothing ran"](CHANGELOG.md#2026-08-06-lockstep-68000)
 - **2026-08-08 (third)** — [A Pi package built for ONE core: the `-mcpu` half of NeoST's workflow ports, the PGO half still cannot](CHANGELOG.md#2026-08-08-pi400-ci)
+- **2026-08-10** — [Conformant-JIT chantier: phase 0 and phase A landed, and the 68030 blocker finally named](CHANGELOG.md#2026-08-10--conformant-jit-chantier-phase-0-and-phase-a-landed-and-the-68030-blocker-finally-named)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -69,6 +70,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-05 (ninth)** — [The floppy boost gate: freeze the i-cache boost to 1 while the motor runs, and the LC II mounts its first GCR floppy ever](CHANGELOG.md#2026-08-05-floppy-boost-gate)
 - **2026-08-07 (later)** — [RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks](CHANGELOG.md#2026-08-07-full-run)
 - **2026-08-09 (later)** — [Moira is a fork, and the file now says so: the upstream exit had expired without anyone choosing it](CHANGELOG.md#2026-08-09-moira-fork)
+- **2026-08-10 (second)** — [the 68030 blocker was two bugs, and the first one was never 68030-specific](CHANGELOG.md#2026-08-10-second--the-68030-blocker-was-two-bugs-and-the-first-one-was-never-68030-specific)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

@@ -129,7 +129,29 @@ inline int windowKillEvery() {
     return detail::envInt("POM68K_JIT_WINDOW_KILL", 0, 0, 1 << 24);
 }
 
+// ATTRIBUTION knob for the 68030 instruction-cache charge that generated
+// code emits (docs/JIT_BRINGUP.md § B). The model is architecturally
+// required — generated code fetches nothing, so without it the clock drifts
+// from the interpreter's — but "required" and "correct" are different
+// claims, and separating them needs a switch. Off, an 030 block charges the
+// instruction cost alone and any residual divergence belongs to something
+// else. Default ON; only a bring-up measurement should turn it off.
+inline bool icacheEmitEnabled() {
+    return detail::envBool("POM68K_JIT_ICACHE_EMIT", true);
+}
+
 // Chatter on stderr: backend selection, flushes, block statistics.
 inline bool verbose() { return detail::envBool("POM68K_JIT_VERBOSE", false); }
+
+// How many compiled blocks a code generator dumps under POM68K_JIT_VERBOSE.
+// It used to be a hard-coded 40, which is the first 40 blocks of a boot —
+// i.e. ROM reset code, and never the form you are actually chasing. The
+// dump is the only place a block's per-instruction MEASURED cycle counts
+// (`Instr::cycles`) are visible, and those are what the cost cross-check
+// refuses on, so a refusal deep in a boot was undiagnosable without a
+// rebuild. Raise it to find one; it is pure stderr volume.
+inline int verboseBlocks() {
+    return detail::envInt("POM68K_JIT_VERBOSE_BLOCKS", 40, 0, 1 << 24);
+}
 
 }  // namespace jit

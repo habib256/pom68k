@@ -1389,6 +1389,38 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                          ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_JIT_LOCKSTEP_FINE_AT=2400000"
                          TIMEOUT 1800)
 
+    # ── the 68030 lockstep (docs/JIT_BRINGUP.md § C.1) ───────────────────
+    # Every gate above runs two Quadra 605s, so until this one the 68030
+    # side of the engine had no instruction-level differential coverage at
+    # all — and that gap has already been paid for: on 2026-07-30 `auto`
+    # handed the x86-64 generator the 030 machines and jit_lcii_boot_etalon
+    # timed out after an HOUR, with nothing to say beyond "it did not
+    # arrive". A boot etalon cannot name an instruction; this can.
+    #
+    # It also compares the three PomIcache counters, which is the half a
+    # Quadra gate cannot have: Moira charges the 030 i-cache overlay inside
+    # mmuFetchWord, before the JIT window hook, so today both engines charge
+    # it identically — and a code generator emitting 030 blocks fetches no
+    # instructions and would charge nothing at all.
+    add_executable(jit_lockstep_030_test tests/jit_lockstep_030_test.cpp)
+    target_link_libraries(jit_lockstep_030_test PRIVATE pom68k_core)
+    add_test(NAME jit_lockstep_030_test COMMAND jit_lockstep_030_test 120000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_030_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
+                         TIMEOUT 1800)
+
+    # …and with the block path forced on, same argument as the 68000 pair
+    # above: `threaded` replays through pomJitExecOne(), so it charges
+    # Moira's own cycles and the i-cache along with them. A future 030 code
+    # generator will not, which is exactly what this variant exists to
+    # notice.
+    add_test(NAME jit_lockstep_030_blocks_test COMMAND jit_lockstep_030_test 120000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_030_blocks_test PROPERTIES
+                         ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
+                         TIMEOUT 1800)
+
     # Apple-Silicon release gate. A coarse budget exercises complete native
     # blocks, linked exits and peripheral synchronization; five million
     # comparisons cover every late-boot A64 regression found during bring-up.

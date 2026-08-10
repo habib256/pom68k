@@ -212,6 +212,22 @@ private:
     // entry — the write guard would never see the store.
     std::vector<uint8_t> codePage_;
 
+    // POM68K_JIT_VERBOSE diagnostics: WHY fillDtlb refused, not just how
+    // often. `dtlbRefused` alone cannot separate a TRANSIENT refusal (no ATC
+    // entry yet, or a write to a page still owing its M bit — the
+    // interpreter fixes both and the next probe succeeds) from a REMEMBERED
+    // one, which is written into the table as a null host and then bails
+    // every later access to that page without ever calling back. Those are
+    // what a runtime-fallback census actually sees, and the two kinds want
+    // completely different fixes.
+    enum RefuseWhy { kWhyProbe, kWhyPageLen, kWhyCodePage, kWhyNotRam, kWhyCount };
+    uint64_t dtlbWhy_[kWhyCount] = {};
+
+    // BackendCaps::dtlbCodeMask, cached: may fillDtlb hand out a write entry
+    // for a page holding translated code in some slice? Only if the backend
+    // tests the per-slice mask before storing.
+    bool maskAware_ = false;
+
     std::unordered_map<uint64_t, Block> blocks_;
     // slice -> the blocks translated from it. Servicing a guard trip by
     // scanning the whole cache is O(blocks) per write, and the writes are

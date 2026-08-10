@@ -35,6 +35,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     if (maxInstrs_ > backend_->caps().maxBlockInstrs)
         maxInstrs_ = backend_->caps().maxBlockInstrs;
     maxBlocks_ = maxBlocks();
+    maskAware_ = backend_->caps().dtlbCodeMask;
     hotAt_ = hotThreshold(backend_->caps().nativeCode);
     windowKill_ = killCountdown_ = windowKillEvery();
     ctx_.cpu = &cpu_;
@@ -106,6 +107,20 @@ Engine::~Engine() {
                      (unsigned long long)s.blocksRun,
                      (unsigned long long)s.blocksCompiled,
                      (unsigned long long)s.flushes);
+        // Refusals BY REASON. The counts are of fillDtlb calls, so a
+        // REMEMBERED refusal appears once here and then serves every later
+        // access to that page silently — which is why this line has to be
+        // read next to the runtime half of the fallback census, never on
+        // its own. `codepage` is the one that is architecturally forced:
+        // an entry maps a whole 4 KB slice, so a page holding ANY block's
+        // code can never become a write entry, however far the store is
+        // from the code (docs/JIT_BRINGUP.md § A.0).
+        std::fprintf(stderr,
+                     "[jit] dtlb refusals: probe=%llu pagelen=%llu codepage=%llu notram=%llu\n",
+                     (unsigned long long)dtlbWhy_[kWhyProbe],
+                     (unsigned long long)dtlbWhy_[kWhyPageLen],
+                     (unsigned long long)dtlbWhy_[kWhyCodePage],
+                     (unsigned long long)dtlbWhy_[kWhyNotRam]);
     }
     cpu_.pomJitDtlbFillFn = nullptr;
     cpu_.pomJitDtlbFillCtx = nullptr;
@@ -295,13 +310,34 @@ void Engine::markPages(uint64_t blockKey, uint32_t physBase, uint32_t physLen) {
     if (pageMap_.empty() || !physLen) return;
     uint32_t p = physBase >> CodeGuard::kShift;
     const uint32_t last = (physBase + physLen - 1) >> CodeGuard::kShift;
+    bool gained = false;
     for (; p <= last && p < pageMap_.size(); p++) {
+        if (!pageMap_[p]) gained = true;
         pageMap_[p] = 1;
         sliceIndex_[p].push_back(blockKey);
     }
     uint32_t q = physBase >> 12;
     const uint32_t qlast = (physBase + physLen - 1) >> 12;
     for (; q <= qlast && q < codePage_.size(); q++) codePage_[q] = 1;
+
+    // ── the INVALIDATION this function owes, and never paid ──────────────
+    // A data-TLB write entry filled for a page BEFORE it held any translated
+    // code points straight at the host bytes and carries an empty code mask.
+    // A store through it bypasses the memory map, so the write guard never
+    // sees it and the block the page now carries is never evicted:
+    // self-modifying code, undetected. POM68K_JIT.md § 8's invalidation
+    // table has claimed since it was written that "markPages() flushes when
+    // it marks"; it did not — only the 1 -> 0 direction in serviceGuard()
+    // ever flushed (found and fixed 2026-08-10).
+    //
+    // The flush is on the 0 -> 1 TRANSITION of a SLICE, which is both what
+    // makes the mask sound and what keeps this cheap: the engine compiles
+    // tens of thousands of blocks per boot but they come from far fewer
+    // distinct slices, and the count falls to nothing once the working set
+    // is translated. An UNCONDITIONAL flush here would be the same 8 KB
+    // memset whose arm-time cousin cost -23 to -33 % of wall clock (§ 8,
+    // "the arm-time flush that owned nothing"). Do not promote it to one.
+    if (gained) cpu_.pomJitDtlbFlush();
 }
 
 bool Engine::armWindow(uint32_t pc, bool super) {
@@ -546,8 +582,10 @@ uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
     // A failed PROBE is transient — no ATC entry yet, or a write to a page
     // whose descriptor still owes its M bit. The interpreter's next access
     // fixes both, so this one is not remembered.
-    if (!cpu_.pomJitProbeData(addr, super, write != 0, phys, pageBase, pageLen))
+    if (!cpu_.pomJitProbeData(addr, super, write != 0, phys, pageBase, pageLen)) {
+        dtlbWhy_[kWhyProbe]++;
         return nullptr;
+    }
 
     // An entry maps a 4 KB SLICE, whatever the MMU's page size: the first
     // cut refused anything but 4 KB pages — "the 68040 boots with 4 KB on
@@ -559,25 +597,65 @@ uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
     // page simply fills as two independent slices; translation preserves
     // the in-page offset and pages are size-aligned, so the slice's
     // physical base is just the translated address rounded down.
-    if (pageLen != 4096 && pageLen != 8192) return nullptr;
+    // …and that argument does not stop at 8 KB. Any page at least a slice
+    // wide fills as independent 4 KB slices, because translation preserves
+    // the in-page offset and pages are size-aligned. A page SMALLER than a
+    // slice is a different matter and stays refused: one slice would then
+    // span several pages with different translations, and the entry has room
+    // for exactly one.
+    //
+    // The 68030 is where this stopped being academic. Its TC picks a page
+    // size anywhere from 256 bytes to 32 KB, and the Mac LC II's System does
+    // not pick 4 or 8 KB: with the old exact test, x86-64 on an LC II
+    // refused **17 425 292** fills over one bring-up run — every single data
+    // access paying a call, a probe and a rejection, which is the same
+    // constant loss the 8 KB case cost before it was allowed (2026-08-10).
+    if (pageLen < 4096) { dtlbWhy_[kWhyPageLen]++; return nullptr; }
     (void)pageBase;
     const uint32_t physSlice = phys & ~4095u;
 
-    const bool codePage = write && !codePage_.empty() &&
-                          (physSlice >> 12) < codePage_.size() &&
-                          codePage_[physSlice >> 12];
-
     uint32_t span = 0;
-    uint8_t* host = codePage ? nullptr
-                             : mem_.dataSpan(mem_.self, physSlice, span, write);
+    uint8_t* host = mem_.dataSpan(mem_.self, physSlice, span, write);
     if (host && span < 4096) host = nullptr;
+    if (!host) dtlbWhy_[kWhyNotRam]++;
+
+    // ── the per-slice code mask (Moira.h § PomJitDtlbEntry) ───────────────
+    // A page holding translated code used to be refused WHOLE, because an
+    // entry maps 4 KB while CodeGuard works at 256 bytes — a 16x mismatch,
+    // and 68k code shares its page with its own stack constantly. That one
+    // refusal was 95.6 % of every remembered refusal on an idle Finder
+    // (63 998 of 66 922), and dropping it — unsafely, as a ceiling
+    // measurement — was worth -9.8 % of wall clock. Generated code now
+    // tests the mask and falls back per SLICE, so a store that could be
+    // self-modifying still goes through the memory map and the guard still
+    // sees it, while a store 3 KB away from the nearest block does not pay
+    // for the coincidence of sharing a page with it.
+    uint32_t mask = 0;
+    if (write && host && !codePage_.empty() &&
+        (physSlice >> 12) < codePage_.size() && codePage_[physSlice >> 12]) {
+        static_assert(CodeGuard::kShift == moira::Moira::PomJitDtlb::kSliceShift,
+                      "one mask bit per CodeGuard slice");
+        const uint32_t first = physSlice >> CodeGuard::kShift;
+        const uint32_t n = 4096u >> CodeGuard::kShift;
+        for (uint32_t i = 0; i < n; i++) {
+            const uint32_t s = first + i;
+            if (s < pageMap_.size() && pageMap_[s]) mask |= 1u << i;
+        }
+        if (mask) {
+            dtlbWhy_[kWhyCodePage]++;
+            // A backend that does not test the mask must never be handed
+            // this entry: its store would bypass the map and the guard would
+            // never see it. That is the whole-page refusal this replaced,
+            // kept for everyone who has not opted in (BackendCaps).
+            if (!maskAware_) host = nullptr;
+        }
+    }
 
     // The answer is cached either way. A REFUSAL is worth remembering — an
-    // I/O register, the ROM window seen by a store, a page holding
-    // translated code — because a hardware poll loop would otherwise ask
-    // again on every single iteration, and the ask is a call. Every reason
-    // for refusing here needs a map change or a block flush to stop being
-    // true, and both empty this cache.
+    // I/O register, the ROM window seen by a store — because a hardware poll
+    // loop would otherwise ask again on every single iteration, and the ask
+    // is a call. Every reason for refusing here needs a map change or a
+    // block flush to stop being true, and both empty this cache.
     moira::Moira::PomJitDtlb& tlb = write ? cpu_.pomJitDtlbW : cpu_.pomJitDtlbR;
     const uint32_t page = addr >> 12;
     moira::Moira::PomJitDtlbEntry& e = tlb.e[page & (moira::Moira::PomJitDtlb::kEntries - 1)];
@@ -586,6 +664,7 @@ uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
     // hit by user code — and nothing needs flushing on an RTE.
     e.tag = moira::Moira::pomJitDataTag(addr, super);
     e.host = host;
+    e.codeMask = mask;
     stats_.add(host ? stats_.dtlbFills : stats_.dtlbRefused);
     return host;
 }

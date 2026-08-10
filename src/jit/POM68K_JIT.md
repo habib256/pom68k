@@ -293,6 +293,136 @@ not a bug); the idle Finder lives under that regime. No conformant backend
 escapes it. It is the measured ceiling at the idle Finder, and the reason
 the 20 G ratio is below the 5 G one.
 
+### 3.1bis Re-baselined, and the fallback census that never worked (2026-08-10)
+
+The table above predates three landed emitters and two cost-table fixes, so
+it was re-taken. Same instrument, same rule (identical fingerprints across
+engines), one budget:
+
+**Quadra 605, 3 000 frames (1.25 G machine cycles, 5.0 G core, idle Finder),
+`fp=5af1d47a9322bebf` on all three:**
+
+| engine | wall | × real time | vs interpreter |
+|---|---|---|---|
+| Moira interpreter | 48.51 s | ×1.03 | — |
+| JIT, `threaded` | 28.10 s | ×1.78 | ×1.73 |
+| JIT, `x86-64` | **9.71 s** | **×5.15** | **×5.00** |
+
+**Mac LC II, 6 000 frames (1.56 G machine cycles, 6.25 G core),
+`fp=cfb184b6faddabec` on both:**
+
+| engine | wall | × real time | vs interpreter |
+|---|---|---|---|
+| Moira interpreter | 50.27 s | ×1.98 | — |
+| JIT, `threaded` | 41.63 s | ×2.40 | ×1.21 |
+
+**The 68030 i-cache is identical across engines, to the digit** —
+1 602 507 733 fetches / 1 093 456 393 hits / 509 047 173 misses (68.23 %) on
+both. That is not a coincidence to be grateful for, it is the ordering in
+`mmuFetchWord` (`MoiraExecMMU_cpp.h:421-454`): the overlay is charged BEFORE
+the window hook, and the threaded backend replays through Moira's own
+handlers. It had never been measured; it is the premise a 68030 code
+generator has to preserve by hand (`docs/JIT_BRINGUP.md` § B).
+
+**Two cost-table cells were wrong, and the instrument that would have said so
+was dead.** `Context::slowStaticHisto`/`slowRuntimeHisto` — the census that
+separates "no emitter for this opcode" from "compiled, but its runtime access
+bailed" — is written by the a64 backend and was **never written by the x64
+one**, so `[jit] block fallback census` printed `0` on x86-64 for as long as
+it existed, next to a `JitBackend.h` comment describing what it was telling
+us. Wired 2026-08-10; it named both cells within one run:
+
+* `kMoveDst[(xxx).W]` was 3 and is **2** — `execMove7`'s 68020 column is
+  byte-for-byte `execMove2`/`execMove3`'s, because an absolute-short
+  destination's extension word is already in the prefetch queue. This refused
+  **every** `MOVE <ea>,(xxx).W`: 47.4 % of all block fallbacks.
+* `CMPA` charges `kEaRead + 2`, not `kEaRead` — `execCmpa` holds a `SYNC(2)`
+  that the `ADDA`/`SUBA` path takes only for a word or register source
+  (`:2129` vs `:421-423`). This refused **every** `CMPA`: a further 12 %.
+
+Effect over the 3 000-frame budget, fingerprint unchanged:
+
+| | before | after |
+|---|---|---|
+| native share | 96.2 % | **97.6 %** |
+| block fallbacks | 16 475 202 | **7 387 537** (−55 %) |
+| …of which "no emitter" | 11 523 169 | **2 425 771** (−79 %) |
+| wall | 10.30 s | **9.71 s** (−5.7 %) |
+
+Both were coverage bugs and never correctness bugs — which is exactly what
+cross-checking the table against the tracer's own measurement buys, and why
+`jit_lockstep_x64_fine_test` stayed green through both. The lesson is the
+other one: **an instrument that is wired on one backend and not the other
+reports success on the backend that is not looking.**
+
+`POM68K_JIT_VERBOSE_BLOCKS=N` (default 40) came out of the same hunt: the
+block dump is the only place a block's MEASURED per-instruction cycle counts
+are visible, and a hard-coded 40 only ever showed ROM reset code.
+
+### 3.1ter The data path was the coverage tail, not the instruction set (2026-08-10)
+
+With the census finally reporting, the ordered fallback list on a real
+workload turned out to have almost nothing to do with the one § 7 predicted
+(line-$E shifts, `Scc`, `PEA`, indexed modes). After the two cost fixes,
+**57 % of all remaining fallbacks were two stack-push forms that compile
+natively and then bail at RUN time** — `MOVEM.L regs,-(A7)` and
+`MOVE.L (xxx).W,-(A7)`.
+
+Splitting the data-TLB refusals by reason (`POM68K_JIT_VERBOSE`, new line)
+named it in one run: **63 998 of 66 922 remembered refusals — 95.6 % — were
+"this 4 KB page holds translated code somewhere"**. An entry maps 4 KB;
+`CodeGuard` works at 256 bytes; 68k code shares its page with its own stack
+constantly. Deleting the refusal *unsafely* measured the ceiling at
+**-9.8 % of wall clock**, and moved the bench fingerprint — which is the
+proof that the refusal was load-bearing and not merely conservative.
+
+Two changes, both conformant:
+
+* **`PomJitDtlbEntry::codeMask`** — 16 bits, one per 256-byte slice.
+  Generated code tests it on the write path: two instructions and a branch
+  that is not taken on any page with no code in it, and a cold precise
+  slice test otherwise. A store that could be self-modifying still goes
+  through the memory map; a store 3 KB away from the nearest block no longer
+  pays for sharing a page with it. Backends declare
+  `BackendCaps::dtlbCodeMask` before they are handed such an entry — a
+  backend that stores without testing the mask would bypass the guard, so
+  the default is the old whole-page refusal.
+* **`markPages()` now flushes the data TLB**, which § 8's invalidation table
+  has claimed it did since that table was written. It did not: only the
+  1 → 0 direction in `serviceGuard()` ever flushed. A write entry filled for
+  a page *before* it held code let stores past the guard undetected — a real
+  self-modifying-code hole, not a coverage one. The flush is on a slice's
+  0 → 1 transition only, so it stays far away from the unconditional
+  arm-time flush § 8 deleted for costing 23-33 %.
+
+Then two emitters from the original list, `PEA` and `Scc` (a flat 4 cycles
+in the register form on the 020 column, and no destination READ in the
+memory forms, so it is a single guest access).
+
+**Phase A, end to end, on the 3 000-frame Q605 budget — fingerprint
+`5af1d47a9322bebf` unchanged at every step:**
+
+| | before | after |
+|---|---|---|
+| wall | 10.30 s | **8.98 s** (−12.8 %) |
+| native share | 96.2 % | **98.5 %** |
+| block fallbacks | 16 475 202 | **2 570 058** (−84 %) |
+| …runtime (data path) | 5 088 852 | **308 748** (−94 %) |
+| remembered dtlb refusals | 66 922 | **2 935** |
+
+**What is left, and why it is not obviously worth doing.** The residual
+2.6 M fallbacks are 0.4 % of retired instructions, led by `BTST` on a device
+register (the cycle cross-check refusing an access whose cost is a wait
+state — correct, and not fixable), a two-memory-operand `MOVE` (no access
+thunk is allowed when a bail-out would re-run the first access), line-$E
+shifts (~113 k) and the 68020 indexed modes (~167 k).
+
+The indexed modes stay OPEN rather than dropped, and the reason is a limit
+of the instrument: **this workload does not draw.** The idle Finder is
+exactly where QuickDraw's blitters — the thing the indexed modes were
+motivated by — are absent. Re-open with a census taken over a drawing-heavy
+phase; do not close it on an idle-Finder number.
+
 ### 3.2 What one window exit actually costs (2026-08-09)
 
 The paragraph above was a **rate with no price**: 794 M exits over 12.2 G
