@@ -62,6 +62,16 @@ struct Frame {
     WriteObserver observeWrite;
     void* observeWriteSelf;
     uint64_t observedHostPointer;
+    uint64_t* slowRuntimeReasonHisto;
+    const uint32_t* dtlbFillReason;
+    uint32_t runtimeReason;
+    uint32_t pad2;
+    RuntimeAddressObserver runtimeAddressObserver;
+    void* runtimeAddressSelf;
+    uint32_t runtimeAddress;
+    uint32_t runtimeCodeMask;
+    uint32_t runtimeBytes;
+    uint32_t runtimeWrite;
 };
 static_assert(offsetof(Frame, linkTable) == 64);
 static_assert(offsetof(Frame, slowStaticHisto) == 80);
@@ -70,6 +80,25 @@ static_assert(offsetof(Frame, savedClock) == 96);
 static_assert(offsetof(Frame, observeWrite) == 104);
 static_assert(offsetof(Frame, observeWriteSelf) == 112);
 static_assert(offsetof(Frame, observedHostPointer) == 120);
+static_assert(offsetof(Frame, slowRuntimeReasonHisto) == 128);
+static_assert(offsetof(Frame, dtlbFillReason) == 136);
+static_assert(offsetof(Frame, runtimeReason) == 144);
+static_assert(offsetof(Frame, runtimeAddressObserver) == 152);
+static_assert(offsetof(Frame, runtimeAddressSelf) == 160);
+static_assert(offsetof(Frame, runtimeAddress) == 168);
+static_assert(offsetof(Frame, runtimeCodeMask) == 172);
+static_assert(offsetof(Frame, runtimeBytes) == 176);
+static_assert(offsetof(Frame, runtimeWrite) == 180);
+
+// Set once at the start of every compile. Code generation is synchronous;
+// thread_local keeps independent machine threads from sharing this option.
+thread_local bool gRuntimeReasonHisto = false;
+// Opcode-local release of the historical conservative store guard. B592 is
+// the sole promoted default: its zero-mask path is lockstep/SMC/long-oracle
+// proved. Zero keeps the byte-for-byte legacy path; other opcodes remain an
+// explicit diagnostic selection until they clear the same evidence bar.
+thread_local uint16_t gExactStoreGuardOpcode = 0xB592;
+thread_local uint16_t gCurrentOpcode = 0;
 
 // Minimal fixed-width assembler. Every memory operand is an unsigned scaled
 // immediate off x0 (Moira*) or x1 (Frame*); layout() validates the offsets.
@@ -729,8 +758,15 @@ void loadGuest(Asm& a, int bits, unsigned rd);
 void guardCodeSlices(Asm& a, unsigned entry, unsigned pageOff, int bytes,
                      int miss) {
     const int clear = a.label();
+    const bool exact = gExactStoreGuardOpcode != 0 &&
+                       gCurrentOpcode == gExactStoreGuardOpcode;
     a.ldrW(12, entry, 4);                // PomJitDtlbEntry::codeMask
-    a.cbzW(12, clear);
+    if (exact) {
+        a.cmpWZero(12);
+        a.bCond(Asm::EQ, clear);
+    } else {
+        a.cbzW(12, clear);
+    }
     for (int end = 0; end < (bytes > 1 ? 2 : 1); end++) {
         if (end) a.addImmW(10, pageOff, unsigned(bytes - 1));
         else a.movRegW(10, pageOff);
@@ -738,9 +774,87 @@ void guardCodeSlices(Asm& a, unsigned entry, unsigned pageOff, int bytes,
         a.movW(11, 1);
         a.lslVarW(11, 11, 10);
         a.andW(10, 12, 11);
-        a.cbnzW(10, miss);
+        if (gRuntimeReasonHisto) {
+            const int next = a.label();
+            if (exact) {
+                a.cmpWZero(10);
+                a.bCond(Asm::EQ, next);
+            } else {
+                a.cbzW(10, next);
+            }
+            a.strW(12, 1, 172);         // Frame::runtimeCodeMask
+            a.b(miss);
+            a.bind(next);
+        } else {
+            if (exact) {
+                a.cmpWZero(10);
+                a.bCond(Asm::NE, miss);
+            } else {
+                a.cbnzW(10, miss);
+            }
+        }
     }
     a.bind(clear);
+}
+
+void markRuntimeReason(Asm& a, RuntimeFallbackReason reason) {
+    if (!gRuntimeReasonHisto) return;
+    a.movW(12, uint32_t(reason));
+    a.strW(12, 1, 144);                 // Frame::runtimeReason
+}
+
+void markRuntimeAccess(Asm& a, int bytes, bool write, bool clearMask) {
+    if (!gRuntimeReasonHisto) return;
+    a.strW(9, 1, 168);                  // Frame::runtimeAddress
+    if (clearMask) {
+        a.movW(12, 0);
+        a.strW(12, 1, 172);             // Frame::runtimeCodeMask
+    }
+    a.movW(12, unsigned(bytes));
+    a.strW(12, 1, 176);                 // Frame::runtimeBytes
+    a.movW(12, write ? 1u : 0u);
+    a.strW(12, 1, 180);                 // Frame::runtimeWrite
+}
+
+void clearRuntimeAccess(Asm& a) {
+    if (!gRuntimeReasonHisto) return;
+    a.movW(12, 0);
+    a.strW(12, 1, 176);                 // zero bytes = no address detail
+}
+
+void observeRuntimeAddress(Asm& a, uint16_t opcode) {
+    if (!gRuntimeReasonHisto) return;
+    const int record = a.label(), maybeOther = a.label(), done = a.label();
+    a.ldrW(9, 1, 144);                  // Frame::runtimeReason
+    a.movW(10, uint32_t(RuntimeCodeMask));
+    a.cmpW(9, 10);
+    a.bCond(Asm::EQ, record);
+    a.movW(10, uint32_t(RuntimeCrossPage));
+    a.cmpW(9, 10);
+    a.bCond(Asm::NE, maybeOther);
+    a.b(record);
+    a.bind(maybeOther);
+    a.movW(10, uint32_t(RuntimeOther));
+    a.cmpW(9, 10);
+    a.bCond(Asm::NE, done);
+    a.ldrW(10, 1, 176);
+    a.cmpWZero(10);
+    a.bCond(Asm::EQ, done);
+    a.bind(record);
+    a.ldrX(16, 1, 152);                 // Frame::runtimeAddressObserver
+    a.ldrX(0, 1, 160);                  // observer self
+    a.movRegW(1, 9);                    // reason
+    a.movW(2, opcode);
+    // x1 has just become the first integer argument. Recover Frame from the
+    // prologue save before loading the remaining arguments.
+    a.ldrX(14, 31, 40);                 // saved Frame* at [sp,#40]
+    a.ldrW(3, 14, 168);
+    a.ldrW(4, 14, 176);
+    a.ldrW(5, 14, 180);
+    a.ldrW(6, 14, 172);
+    a.blr(16);
+    a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
+    a.bind(done);
 }
 
 // Translate guest address w9. On success x14 is the host byte pointer; a
@@ -748,6 +862,10 @@ void guardCodeSlices(Asm& a, unsigned entry, unsigned pageOff, int bytes,
 void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
               int miss) {
     const int fill = a.label(), have = a.label(), done = a.label();
+    const int crossMiss = gRuntimeReasonHisto ? a.label() : miss;
+    const int maskMiss = gRuntimeReasonHisto ? a.label() : miss;
+    const int nonPlainMiss = gRuntimeReasonHisto ? a.label() : miss;
+    const int fillMiss = gRuntimeReasonHisto ? a.label() : miss;
     a.lsrW(10, 9, 12);                 // logical page
     a.movRegW(11, 10);                 // tag
     if (super) {
@@ -766,13 +884,13 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
     a.movW(12, 4095); a.andW(13, 9, 12);
     if (bytes > 1) {
         a.movW(12, unsigned(4096 - bytes));
-        a.cmpW(13, 12); a.bCond(Asm::HI, miss);
+        a.cmpW(13, 12); a.bCond(Asm::HI, crossMiss);
     }
     // Read codeMask before x14 stops being the entry pointer and becomes
     // the host pointer. This is the arm64 half of the 256-byte write guard.
-    if (write) guardCodeSlices(a, 14, 13, bytes, miss);
+    if (write) guardCodeSlices(a, 14, 13, bytes, maskMiss);
     a.ldrX(14, 14, 8);
-    a.cbzX(14, miss);
+    a.cbzX(14, nonPlainMiss);
     a.addX(14, 14, 13);
     a.b(done);
 
@@ -788,11 +906,11 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
     a.movRegX(14, 0);
     a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
     a.ldrW(9, 1, 40);
-    a.cbzX(14, miss);
+    a.cbzX(14, fillMiss);
     a.movW(12, 4095); a.andW(13, 9, 12);
     if (bytes > 1) {
         a.movW(12, unsigned(4096 - bytes));
-        a.cmpW(13, 12); a.bCond(Asm::HI, miss);
+        a.cmpW(13, 12); a.bCond(Asm::HI, crossMiss);
     }
     if (write) {
         // The fill thunk returns only the host pointer. Recompute the entry
@@ -803,9 +921,48 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
         a.lslX(10, 10, 4);
         a.address(15, 0, L.dtlbW);
         a.addX(15, 15, 10);
-        guardCodeSlices(a, 15, 13, bytes, miss);
+        guardCodeSlices(a, 15, 13, bytes, maskMiss);
     }
     a.addX(14, 14, 13);
+
+    if (gRuntimeReasonHisto) {
+        // The successful fill path arrives here by fall-through. Skip the
+        // diagnostic miss stubs; otherwise every success is mislabeled as
+        // the first reason even though the totals still appear to add up.
+        a.b(done);
+        a.bind(crossMiss);
+        markRuntimeAccess(a, bytes, write, true);
+        markRuntimeReason(a, RuntimeCrossPage);
+        a.b(miss);
+        a.bind(maskMiss);
+        // The historical CBZ/CBNZ fixup tests w9 regardless of the register
+        // requested by guardCodeSlices. Preserve that conservative fallback
+        // until its newly exposed native stores are conformant, but classify
+        // it honestly: w10 is the actual (mask & accessed-slice) result.
+        {
+            const int falseConflict = a.label();
+            a.cmpWZero(10);
+            a.bCond(Asm::EQ, falseConflict);
+            a.strW(12, 1, 172);
+            markRuntimeAccess(a, bytes, write, false);
+            markRuntimeReason(a, RuntimeCodeMask);
+            a.b(miss);
+            a.bind(falseConflict);
+            markRuntimeAccess(a, bytes, write, true);
+            markRuntimeReason(a, RuntimeOther);
+            a.b(miss);
+        }
+        a.bind(nonPlainMiss);
+        markRuntimeReason(a, RuntimeNonPlain);
+        a.b(miss);
+        a.bind(fillMiss);
+        // fillDtlb records why a null was returned. The pointer is present
+        // exactly when this diagnostic code was emitted.
+        a.ldrX(15, 1, 136);             // Frame::dtlbFillReason
+        a.ldrW(12, 15, 0);
+        a.strW(12, 1, 144);
+        a.b(miss);
+    }
     a.bind(done);
 }
 
@@ -849,6 +1006,7 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     a.ldrX(21, 1, 96); a.strX(21, 0, L.clock);
     a.b(slow);                          // fault: replay untouched instruction
     a.bind(ok);
+    markRuntimeReason(a, RuntimeOther); // handled MMIO was not the fallback
     a.ldrW(rd, 1, 72);                  // thunk result is host-ordered
     a.bind(done);
 }
@@ -937,6 +1095,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     a.ldrX(21, 1, 96); a.strX(21, 0, L.clock);
     a.b(slow);
     a.bind(ok);
+    markRuntimeReason(a, RuntimeOther); // handled MMIO was not the fallback
     a.ldrW(rs, 1, 72);
     a.bind(done);
 }
@@ -1958,9 +2117,11 @@ public:
         c.aluReg = c.aluMem = c.moves = c.branches = c.addrModes = true;
         c.dtlbCodeMask = true;
         c.maxBlockInstrs = 64;
-        // The 68030 emitter is implemented and lockstep-clean, but remains
-        // behind POM68K_JIT_UNSAFE_BACKEND until its fixed-budget throughput
-        // beats the threaded backend (docs/JIT_BRINGUP.md Phase A2/B).
+        // The 68030 emitter is lockstep-clean, but remains behind the unsafe
+        // development override: two adjacent 6,000-frame measurements did
+        // not reproduce a throughput win over `threaded`. The repaired IIfx
+        // oracle is green on all three engines; throughput is the remaining
+        // promotion blocker (2026-08-11).
         c.guestFamilies = kGuest68040;
         return c;
     }
@@ -1985,6 +2146,14 @@ private:
 };
 
 Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
+    gRuntimeReasonHisto = ctx.slowRuntimeReasonHisto != nullptr;
+    gExactStoreGuardOpcode = 0xB592;
+    if (const char* value = detail::env("POM68K_JIT_A64_STORE_GUARD_OPCODE")) {
+        char* end = nullptr;
+        const unsigned long opcode = std::strtoul(value, &end, 0);
+        if (end != value && *end == '\0' && opcode <= 0xFFFFu)
+            gExactStoreGuardOpcode = uint16_t(opcode);
+    }
     const auto reject = [this](const char* why) -> Compiled* {
         if (verbose() && diagLeft_-- > 0)
             std::fprintf(stderr, "[jit/a64] refused: %s\n", why);
@@ -2056,6 +2225,8 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
 
     for (size_t i = 0; i < ir.instrs.size(); i++) {
         a.bind(entries[i]);
+        markRuntimeReason(a, RuntimeOther);
+        clearRuntimeAccess(a);
         exits.push_back({a.label(), a.label()});
         a.ldrX(10, 1, 0);                // Frame::clockTarget
         a.cmpX(21, 10);
@@ -2064,6 +2235,7 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         a.cbnzW(9, exits.back().flags);
 
         const Instr& in = ir.instrs[i];
+        gCurrentOpcode = in.opcode;
         // A word/long Bcc fetches a different number of words on its taken
         // and fall-through paths on the 68030. DBcc is not such a Bcc: it
         // always consumes its displacement extension before choosing among
@@ -2150,6 +2322,20 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         a.b(slowBody[i]);
         a.bind(slowRuntime[i]);
         if (ctx.slowRuntimeHisto) emitHisto(88);
+        if (ctx.slowRuntimeReasonHisto) {
+            // Flat [reason][opcode] table. One reason plane is 65536 * 8
+            // bytes, hence the 19-bit shift.
+            a.ldrX(14, 1, 128);
+            a.ldrW(9, 1, 144);
+            a.lslX(9, 9, 19);
+            a.addX(14, 14, 9);
+            a.address(15, 14, uint32_t(ir.instrs[i].opcode) * 8);
+            a.ldrX(9, 15, 0);
+            a.addImmX(9, 9, 1);
+            a.strX(9, 15, 0);
+        }
+        if (ctx.runtimeAddressObserver)
+            observeRuntimeAddress(a, ir.instrs[i].opcode);
         if (icache) unchargeIcache(a, L, ir.instrs[i]);
         a.b(slowBody[i]);
         a.bind(slowBody[i]);
@@ -2248,6 +2434,10 @@ RunResult A64Backend::run(Compiled* c, Context& ctx) {
     f.linkTable = ctx.linkTable;
     f.slowStaticHisto = ctx.slowStaticHisto;
     f.slowRuntimeHisto = ctx.slowRuntimeHisto;
+    f.slowRuntimeReasonHisto = ctx.slowRuntimeReasonHisto;
+    f.dtlbFillReason = ctx.dtlbFillReason;
+    f.runtimeAddressObserver = ctx.runtimeAddressObserver;
+    f.runtimeAddressSelf = ctx.runtimeAddressSelf;
     f.observeWrite = ctx.observeWrite;
     f.observeWriteSelf = ctx.observeWriteSelf;
     using Fn = void (*)(moira::Moira*, Frame*);

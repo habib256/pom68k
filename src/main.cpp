@@ -67,6 +67,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 #if defined(__linux__) || defined(__APPLE__)
 #include <unistd.h>
@@ -512,7 +513,37 @@ static bool gShowJit = false;
 static std::function<void(int)> gSetCpuEngine;         // 0 = interpreter, 1 = JIT
 static std::function<int()> gGetCpuEngine;
 static std::function<jit::Stats::Snapshot()> gJitStats;
+static std::function<std::pair<long long, long long>()> gSpeedSample;
 static const char* gJitBackend = nullptr;              // backend chosen for this host
+
+// GUI-only real-time gauge. machineMenu() calls this every rendered frame so
+// closing the CPU menu cannot turn the measurement into a stale long average.
+// No emulator state is read directly: threaded machines publish their real
+// machine clock atomically; the compact has no second thread.
+static double realtimeRatio() {
+    static long long lastMachineClock = 0;
+    static double ratio = 0.0;
+    static std::chrono::steady_clock::time_point lastAt{};
+    if (!gSpeedSample) return 0.0;
+
+    const auto [machineClock, machineHz] = gSpeedSample();
+    const auto now = std::chrono::steady_clock::now();
+    if (!lastAt.time_since_epoch().count() || machineClock < lastMachineClock) {
+        lastMachineClock = machineClock;
+        lastAt = now;
+        ratio = 0.0;
+        return ratio;
+    }
+    const double dt = std::chrono::duration<double>(now - lastAt).count();
+    if (dt >= 0.5) {
+        ratio = machineHz > 0
+            ? double(machineClock - lastMachineClock) / (dt * double(machineHz))
+            : 0.0;
+        lastMachineClock = machineClock;
+        lastAt = now;
+    }
+    return ratio;
+}
 
 
 // The "État" row every machine window shows: Sauver / Restaurer + the last
@@ -676,7 +707,7 @@ static void jitWindow() {
     }
 
     ImGui::SeparatorText("Moteur");
-    dot(eng == 1, eng == 1 ? "Moteur accéléré actif" : "Interpréteur Moira (défaut)");
+    dot(eng == 1, eng == 1 ? "Moteur accéléré actif" : "Interpréteur Moira (référence)");
     ImGui::Text("Backend : %s", gJitBackend ? gJitBackend : "-");
     // The counters below are the ENGINE's; while the interpreter drives the
     // machine the engine sees nothing, so the rate would sit frozen at the
@@ -725,6 +756,7 @@ static void jitWindow() {
 
 static void machineMenu(MachineKind cur, GLFWwindow* window,
                         const std::function<void()>& extraMenus = {}) {
+    const double speed = realtimeRatio();
     if (!ImGui::BeginMainMenuBar()) return;
     if (ImGui::BeginMenu("Machine")) {
         // rom = canonical short name (a convenience symlink); sig = the CRC32
@@ -851,12 +883,23 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         ImGui::EndMenu();
     }
     // ── CPU: which execution engine drives this machine ──────────────────
-    // The interpreter is the default and the reference; the JIT sits beside
-    // it and is switched live, between two instructions, through the machine
-    // thread's command queue (DafbMachine::Cmd::CpuEngine).
+    // The fastest proved conformant engine is the 68040 default; the
+    // interpreter remains the reference. Either is switched live, between
+    // two instructions, through the machine thread's command queue.
     if (ImGui::BeginMenu("CPU")) {
         const bool hasJit = bool(gSetCpuEngine);
         const int eng = hasJit ? gGetCpuEngine() : 0;
+
+        if (gSpeedSample) {
+            if (speed >= 1.0)
+                ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.35f, 1),
+                                   "Vitesse : ×%.2f temps réel", speed);
+            else
+                ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1),
+                                   "Vitesse : ×%.2f temps réel", speed);
+            ImGui::TextDisabled("mesurée sur l'horloge machine, sans modifier son rythme");
+            ImGui::Separator();
+        }
         if (ImGui::MenuItem("Interpréteur (Moira)", nullptr, eng == 0, hasJit) &&
             eng != 0) {
             gSetCpuEngine(0);
@@ -1123,6 +1166,7 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({MacIiMachine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.state.kind = model == MacIIMemory::Model::IIx  ? pom68k::SnapMachine::IIx
                        : model == MacIIMemory::Model::IIcx ? pom68k::SnapMachine::IIcx
@@ -1463,6 +1507,7 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({IIfxMachine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.state.kind = pom68k::SnapMachine::IIfx;
     machine.state.path = (hddPath.empty() ? std::string("IIfx")
@@ -1910,6 +1955,7 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({LcMachine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.state.kind = model == V8Memory::Model::Lc           ? pom68k::SnapMachine::Lc
                        : model == V8Memory::Model::ClassicII    ? pom68k::SnapMachine::ClassicII
@@ -2349,6 +2395,7 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({Lc3Machine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.state.kind = model == SonoraModel::Lc3Plus   ? pom68k::SnapMachine::Lc3Plus
                        : model == SonoraModel::Lc520     ? pom68k::SnapMachine::Lc520
@@ -2664,6 +2711,7 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({VaspMachine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.state.kind = vi ? pom68k::SnapMachine::IIvi : pom68k::SnapMachine::IIvx;
     machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
@@ -2950,6 +2998,7 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({RbvMachine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.state.kind = iici ? pom68k::SnapMachine::IIci : pom68k::SnapMachine::IIsi;
     machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
@@ -3625,6 +3674,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({QuadraMachine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.setFloppyInserted(floppyOk, floppyPath);
     machine.publish(true);
@@ -3980,6 +4030,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({CentrisMachine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.setFloppyInserted(floppyOk, floppyPath);
     machine.publish(true);
@@ -4341,6 +4392,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({Q700Machine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.setFloppyInserted(floppyOk, floppyPath);
     machine.publish(true);
@@ -4675,6 +4727,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({Q630Machine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.setFloppyInserted(floppyOk, floppyPath);
     machine.publish(true);
@@ -5057,6 +5110,7 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
     gSetCpuEngine = [](int e) { machine.push({MscMachine::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
+    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
     gJitBackend   = cpu.jit().backendName();
     machine.publish(true);
 
@@ -5500,6 +5554,8 @@ int main(int argc, char** argv) {
     gSetCpuEngine = [](int e) { ctx.cpu.setEngine(e); };
     gGetCpuEngine = [] { return ctx.cpu.engine(); };
     gJitStats     = [] { return ctx.cpu.jit().stats().snapshot(); };
+    gSpeedSample = [] { return std::pair{static_cast<long long>(ctx.cpu.machineClock()),
+                                         static_cast<long long>(ctx.mem.cpuHz())}; };
     gJitBackend   = cpu.jit().backendName();
 
     auto frame = [](void* p) {

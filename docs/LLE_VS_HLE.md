@@ -648,9 +648,10 @@ Neither is a hardware deviation, but both make choices a reader should know.
   36 `SnapMachine` tags at `:49`), gated by `savestate_test`,
   `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`,
   `q605_savestate_etalon`.
-- **JIT** (`src/jit/`, `POM68K_JIT.md`): a second execution engine, **off by
-  default everywhere** — the interpreter is what every accuracy claim rests
-  on. Both backends are bit-exact against it (registers, supervisor stacks,
+- **JIT** (`src/jit/`, `POM68K_JIT.md`): a second execution engine, the
+  conformant default on validated 68040 guests and opt-in elsewhere. The
+  interpreter remains what every accuracy claim rests on, with explicit
+  reference etalons. All backends are bit-exact against it (registers, supervisor stacks,
   cycle clock, low 2 KB of RAM, compared at every instruction boundary —
   `jit_lockstep_*`). The five relaxations a classic 68k JIT makes and this one
   refuses (coarse time, coarse interrupts, a soft TLB instead of exact ATC

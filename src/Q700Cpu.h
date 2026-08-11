@@ -23,7 +23,8 @@ public:
     void hardReset();
     void runCycles(moira::i64 n);
     // ── JIT engine (src/jit/POM68K_JIT.md) ─────────────────────────────
-    // The second execution engine, OFF by default. setEngine() is the only
+    // The second execution engine, ON by default for this validated 68040.
+    // setEngine() is the only
     // switch; the GUI routes it through the machine thread's command queue
     // so it always lands between two instructions.
     jit::Engine& jit() { return jit_; }

@@ -1134,10 +1134,12 @@ section deliberately does not restate it. The four-point extension the
 engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
 § *JIT seam*. What belongs *here*, because it is about the rest of the tree:
 
-- **It is a second engine, not a replacement.** Off by default in the GUI,
-  headless and CTest. The GUI **CPU** menu switches it live (through the
-  machine thread's command queue, so the swap lands between two
-  instructions); `POM68K_CPU_ENGINE=jit` selects it at startup.
+- **It is a second engine, not a replacement.** It is the conformant default
+  on validated 68040 guests; every other family starts on the interpreter.
+  The GUI **CPU** menu switches it live (through the machine thread's command
+  queue, so the swap lands between two instructions), and
+  `POM68K_CPU_ENGINE=interp|jit` overrides the family default. The
+  interpreter remains an explicit etalon tier and the accuracy oracle.
 - **Where it is wired.** **Twelve** CPU wrappers carry a `jit::Engine`: the
   030s `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`, the 040s
   `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, and — since 2026-08-06 —
@@ -1358,7 +1360,7 @@ classification is a decision per knob, not a mechanical one — `TODO.md` § 8.
 ## 6. Test tiers and gates
 
 **Never iterate against a bare `ctest` or a bare `make`.** A full run is
-162 gates / ~3h35, and `ctest -j` is unsafe because the boot etalons are
+180 gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
 contention-sensitive; a bare `make` relinks ~90 binaries under tree-wide
 LTO. Labels are **derived from test names** at registration time
 (`CMakeLists.txt`, end of the test block), so a gate added tomorrow is
@@ -1375,13 +1377,13 @@ binaries under different environments.
 
 | command | gates | when |
 |---|---|---|
-| `ctest -L smoke` | 8 | the working loop — one machine, both engines |
-| `ctest -L unit` | 61 (~40 s) | anything touching non-machine code; no ROM or disk image needed |
-| `ctest -L jit` | 16 | before proposing a JIT change |
-| `ctest -L m040` | 30 | the 68040 family — the JIT's blast radius |
-| `ctest` | 136 (~2h30) | the release gate, once |
+| `ctest -L smoke` | 9 | the working loop — one machine, both engines |
+| `ctest -L unit` | 89 (~1 min) | anything touching non-machine code; no ROM or disk image needed |
+| `ctest -L jit` | 28 | before proposing a JIT change |
+| `ctest -L m040` | 40 | the 68040 family on the default engine plus explicit interpreter references |
+| `ctest` | 180 (~4h) | the release gate, once |
 
-Counts verified against `ctest -N` on 2026-08-01; they drift every time a
+Counts verified against `ctest -N` on 2026-08-10; they drift every time a
 gate lands, so **re-derive rather than trust them**. (`src/jit/POM68K_JIT.md`
 § 5 carries the same tiers with the per-lockstep-flavour breakdown and the
 timings — it is the authority on the JIT side of this loop.) Asset-dependent gates

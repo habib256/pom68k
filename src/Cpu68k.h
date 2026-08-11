@@ -35,7 +35,7 @@ public:
     // read, and a 68000 has no MMU to walk. What it does save is the map
     // decode — MacMemory::read16 is two read8() switch dispatches per
     // opcode word. Measured numbers live in src/jit/POM68K_JIT.md § 7.
-    // Off by default, like every other machine.
+    // Off by default for the cycle-exact 68000 family.
     jit::Engine& jit() { return jit_; }
     const jit::Engine& jit() const { return jit_; }
     int  engine() const { return jit_.enabled() ? 1 : 0; }

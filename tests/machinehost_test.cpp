@@ -105,6 +105,10 @@ int main() {
 
         m.publish(true);
         check(m.renders == 1, "publish(force) renders exactly one frame");
+        check(m.machineHz() == mem.cpuHz(),
+              "the GUI speed gauge uses the platform's real machine rate");
+        check(m.machineClock() == cpu.machineClock(),
+              "publish exposes real machine cycles, not boosted core cycles");
         check(m.latchFrame(out, w, h), "latchFrame succeeds after publish");
         check(w == 64 && h == 32 && out.size() == 64 * 32,
               "the latched frame carries the platform's geometry");
@@ -136,13 +140,13 @@ int main() {
         // This is the invariant the CPU menu is built on: between the click
         // and the machine thread applying it, the tick must still read the
         // engine that is actually running.
-        check(m.cpuEngine() == 0, "engine starts at the interpreter");
-        m.push({MonoMachine::Cmd::CpuEngine, 1});
-        check(m.cpuEngine() == 0,
+        check(m.cpuEngine() == 1, "a 68040 starts on the accelerated engine");
+        m.push({MonoMachine::Cmd::CpuEngine, 0});
+        check(m.cpuEngine() == 1,
               "cpuEngine() does NOT follow the click before the queue drains");
         m.stepTick();
-        check(m.cpuEngine() == 1, "cpuEngine() follows the machine after apply");
-        check(cpu.engine() == 1, "the CPU really swapped engines");
+        check(m.cpuEngine() == 0, "cpuEngine() follows the machine after apply");
+        check(cpu.engine() == 0, "the CPU really swapped to the reference engine");
 
         // ── The queue is FIFO ─────────────────────────────────────────────
         // Two conflicting commands in one batch: the LAST one must win, or a

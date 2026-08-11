@@ -17,6 +17,37 @@ namespace {
 // extern/moira/Moira/MoiraExecMMU_cpp.h. Four bytes is therefore the
 // minimum span, and Moira::pomJitFetch's bounds test assumes it.
 constexpr uint32_t kMinWindow = 4;
+
+constexpr int kEaBuckets = 12;
+
+int eaBucket(int mode, int reg) {
+    if (mode < 7) return mode;
+    return reg <= 4 ? 7 + reg : -1;
+}
+
+const char* eaBucketName(int bucket) {
+    static constexpr const char* names[kEaBuckets] = {
+        "Dn", "An", "(An)", "(An)+", "-(An)", "d16(An)", "idx(An)",
+        "abs.W", "abs.L", "d16(PC)", "idx(PC)", "imm"
+    };
+    return bucket >= 0 && bucket < kEaBuckets ? names[bucket] : "n/a";
+}
+
+void formatEa(char* out, size_t size, int mode, int reg) {
+    switch (mode) {
+        case 0: std::snprintf(out, size, "D%d", reg); break;
+        case 1: std::snprintf(out, size, "A%d", reg); break;
+        case 2: std::snprintf(out, size, "(A%d)", reg); break;
+        case 3: std::snprintf(out, size, "(A%d)+", reg); break;
+        case 4: std::snprintf(out, size, "-(A%d)", reg); break;
+        case 5: std::snprintf(out, size, "d16(A%d)", reg); break;
+        case 6: std::snprintf(out, size, "idx(A%d)", reg); break;
+        case 7:
+            std::snprintf(out, size, "%s", eaBucketName(eaBucket(mode, reg)));
+            break;
+        default: std::snprintf(out, size, "n/a"); break;
+    }
+}
 }  // namespace
 
 Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
@@ -75,8 +106,14 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
         histo_.assign(1 << 16, 0);
         slowStaticHisto_.assign(1 << 16, 0);
         slowRuntimeHisto_.assign(1 << 16, 0);
+        slowRuntimeReasonHisto_.assign(RuntimeReasonCount << 16, 0);
         ctx_.slowStaticHisto = slowStaticHisto_.data();
         ctx_.slowRuntimeHisto = slowRuntimeHisto_.data();
+        ctx_.slowRuntimeReasonHisto = slowRuntimeReasonHisto_.data();
+        ctx_.dtlbFillReason = &dtlbLastReason_;
+        runtimeAddressHisto_.reserve(1 << 16);
+        ctx_.runtimeAddressObserver = &Engine::runtimeAddressThunk;
+        ctx_.runtimeAddressSelf = this;
     }
 
     if (verbose()) {
@@ -85,7 +122,26 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
                      backend_->name(), backend_->description(),
                      int(useWindow_), int(useBlocks_), maxInstrs_, ram >> 20);
     }
-    setEnabled(defaultEngine() == EngineKind::Jit);
+    // Phase D: native 68040 backends are lockstep- and full-boot-proved, and
+    // the portable backend inherits Moira's handlers. Other guest families
+    // remain opt-in until their own evidence bar is met. An explicit
+    // POM68K_CPU_ENGINE still overrides this policy in either direction.
+    setEnabled(defaultEngine(guestFamily == kGuest68040) == EngineKind::Jit);
+}
+
+void Engine::recordRuntimeAddress(uint32_t reason, uint32_t opcode,
+                                  uint32_t address, uint32_t bytes,
+                                  uint32_t write, uint32_t codeMask) {
+    RuntimeAddressKey key{reason, opcode, address, bytes, write, codeMask};
+    if (lastRuntimeAddressCount_ && key == lastRuntimeAddress_) {
+        ++*lastRuntimeAddressCount_;
+        return;
+    }
+    auto [it, inserted] = runtimeAddressHisto_.try_emplace(key, 0);
+    (void)inserted;
+    lastRuntimeAddress_ = key;
+    lastRuntimeAddressCount_ = &it->second;
+    ++it->second;
 }
 
 Engine::~Engine() {
@@ -197,11 +253,181 @@ void Engine::dumpHisto() const {
                  (unsigned long long)slowTotal);
     for (size_t i = 0; i < slow.size() && i < 60; i++) {
         const uint64_t n = slow[i].unsupported + slow[i].runtime;
-        std::fprintf(stderr, "  %04X %-8s %10llu unsupported %10llu runtime  %5.2f%%\n",
+        char ea[64] = {};
+        const uint16_t op = slow[i].op;
+        const uint16_t hi = op & 0xF000;
+        if (hi == 0x1000 || hi == 0x2000 || hi == 0x3000) {
+            char src[24], dst[24];
+            formatEa(src, sizeof src, (op >> 3) & 7, op & 7);
+            formatEa(dst, sizeof dst, (op >> 6) & 7, (op >> 9) & 7);
+            std::snprintf(ea, sizeof ea, "  %s -> %s", src, dst);
+        } else if ((op & 0xFB80) == 0x4880) {
+            char operand[24];
+            formatEa(operand, sizeof operand, (op >> 3) & 7, op & 7);
+            std::snprintf(ea, sizeof ea, "  EA=%s", operand);
+        }
+        std::fprintf(stderr, "  %04X %-8s %10llu unsupported %10llu runtime  %5.2f%%%s\n",
                      slow[i].op, kKind[int(classify(slow[i].op))],
                      (unsigned long long)slow[i].unsupported,
                      (unsigned long long)slow[i].runtime,
-                     slowTotal ? 100.0 * double(n) / double(slowTotal) : 0.0);
+                     slowTotal ? 100.0 * double(n) / double(slowTotal) : 0.0,
+                     ea);
+    }
+
+    if (!slowRuntimeReasonHisto_.empty()) {
+        static constexpr const char* names[RuntimeReasonCount] = {
+            "fill/tag MMU", "non-plain/MMIO", "codeMask",
+            "cross-page", "other guard"
+        };
+        uint64_t attributed = 0;
+        std::fprintf(stderr, "\n[jit] runtime fallback causes\n");
+        for (uint32_t reason = 0; reason < RuntimeReasonCount; reason++) {
+            struct ReasonRow { uint16_t op; uint64_t n; };
+            std::vector<ReasonRow> top;
+            uint64_t total = 0;
+            const size_t base = size_t(reason) << 16;
+            for (uint32_t op = 0; op < (1u << 16); op++) {
+                const uint64_t n = slowRuntimeReasonHisto_[base + op];
+                total += n;
+                if (n) top.push_back({uint16_t(op), n});
+            }
+            attributed += total;
+            std::sort(top.begin(), top.end(), [](const ReasonRow& a, const ReasonRow& b) {
+                return a.n > b.n;
+            });
+            std::fprintf(stderr, "  %-16s %12llu  %6.2f%%",
+                         names[reason], (unsigned long long)total,
+                         runtimeTotal ? 100.0 * double(total) / double(runtimeTotal) : 0.0);
+            for (size_t i = 0; i < top.size() && i < 8; i++)
+                std::fprintf(stderr, "  %04X:%llu", top[i].op,
+                             (unsigned long long)top[i].n);
+            std::fputc('\n', stderr);
+        }
+        std::fprintf(stderr, "  %-16s %12llu / %12llu runtime%s\n",
+                     "attributed", (unsigned long long)attributed,
+                     (unsigned long long)runtimeTotal,
+                     attributed == runtimeTotal ? "  exact" : "  MISMATCH");
+    }
+
+    if (!runtimeAddressHisto_.empty()) {
+        struct AddressRow { RuntimeAddressKey key; uint64_t n; };
+        for (uint32_t reason : {uint32_t(RuntimeCodeMask),
+                                uint32_t(RuntimeCrossPage),
+                                uint32_t(RuntimeOther)}) {
+            std::vector<AddressRow> addressRows;
+            uint64_t observed = 0, expected = 0;
+            for (const auto& [key, n] : runtimeAddressHisto_) {
+                if (key.reason != reason) continue;
+                addressRows.push_back({key, n});
+                observed += n;
+            }
+            const size_t base = size_t(reason) << 16;
+            for (uint32_t op = 0; op < (1u << 16); op++)
+                expected += slowRuntimeReasonHisto_[base + op];
+            std::sort(addressRows.begin(), addressRows.end(),
+                      [](const AddressRow& a, const AddressRow& b) {
+                          return a.n > b.n;
+                      });
+            const char* title = reason == RuntimeCodeMask ? "codeMask"
+                              : reason == RuntimeCrossPage ? "cross-page"
+                              : "conservative-store-guard";
+            std::fprintf(stderr, "\n[jit] exact %s addresses — %llu / %llu%s\n",
+                         title,
+                         (unsigned long long)observed,
+                         (unsigned long long)expected,
+                         observed == expected ? " exact" : " MISMATCH");
+            for (size_t i = 0; i < addressRows.size() && i < 60; i++) {
+                const auto& row = addressRows[i];
+                const auto& k = row.key;
+                if (reason != RuntimeCrossPage) {
+                    std::fprintf(stderr,
+                        "  op=%04X %c addr=$%08X page=$%05X slice=%X "
+                        "mask=$%04X bytes=%u  %12llu\n",
+                        k.opcode, k.write ? 'W' : 'R', k.address,
+                        k.address >> 12, (k.address >> 8) & 15,
+                        k.codeMask & 0xFFFFu, k.bytes,
+                        (unsigned long long)row.n);
+                } else {
+                    std::fprintf(stderr,
+                        "  op=%04X %c addr=$%08X page=$%05X off=$%03X "
+                        "bytes=%u  %12llu\n",
+                        k.opcode, k.write ? 'W' : 'R', k.address,
+                        k.address >> 12, k.address & 4095u, k.bytes,
+                        (unsigned long long)row.n);
+                }
+            }
+        }
+    }
+
+    struct ModeCount { uint64_t unsupported = 0, runtime = 0; };
+    ModeCount moveSrc[kEaBuckets]{}, moveDst[kEaBuckets]{},
+              movePair[kEaBuckets][kEaBuckets]{}, movemEa[kEaBuckets]{};
+    for (const SlowRow& row : slow) {
+        const uint16_t op = row.op;
+        const uint16_t hi = op & 0xF000;
+        if (hi == 0x1000 || hi == 0x2000 || hi == 0x3000) {
+            const int src = eaBucket((op >> 3) & 7, op & 7);
+            const int dst = eaBucket((op >> 6) & 7, (op >> 9) & 7);
+            if (src >= 0 && dst >= 0) {
+                moveSrc[src].unsupported += row.unsupported;
+                moveSrc[src].runtime += row.runtime;
+                moveDst[dst].unsupported += row.unsupported;
+                moveDst[dst].runtime += row.runtime;
+                movePair[src][dst].unsupported += row.unsupported;
+                movePair[src][dst].runtime += row.runtime;
+            }
+        } else if ((op & 0xFB80) == 0x4880) {
+            const int ea = eaBucket((op >> 3) & 7, op & 7);
+            if (ea >= 0) {
+                movemEa[ea].unsupported += row.unsupported;
+                movemEa[ea].runtime += row.runtime;
+            }
+        }
+    }
+
+    auto dumpModes = [](const char* title, const ModeCount* counts) {
+        struct ModeRow { int mode; uint64_t n; };
+        std::vector<ModeRow> rows;
+        for (int mode = 0; mode < kEaBuckets; mode++) {
+            const uint64_t n = counts[mode].unsupported + counts[mode].runtime;
+            if (n) rows.push_back({mode, n});
+        }
+        std::sort(rows.begin(), rows.end(), [](const ModeRow& a, const ModeRow& b) {
+            return a.n > b.n;
+        });
+        std::fprintf(stderr, "\n[jit] fallback addressing — %s\n", title);
+        for (const ModeRow& row : rows) {
+            const ModeCount& c = counts[row.mode];
+            std::fprintf(stderr, "  %-8s %12llu unsupported %12llu runtime\n",
+                         eaBucketName(row.mode),
+                         (unsigned long long)c.unsupported,
+                         (unsigned long long)c.runtime);
+        }
+    };
+    dumpModes("MOVE source", moveSrc);
+    dumpModes("MOVE destination", moveDst);
+    dumpModes("MOVEM operand", movemEa);
+
+    struct PairRow { int src, dst; uint64_t n; };
+    std::vector<PairRow> pairs;
+    for (int src = 0; src < kEaBuckets; src++) {
+        for (int dst = 0; dst < kEaBuckets; dst++) {
+            const ModeCount& c = movePair[src][dst];
+            const uint64_t n = c.unsupported + c.runtime;
+            if (n) pairs.push_back({src, dst, n});
+        }
+    }
+    std::sort(pairs.begin(), pairs.end(), [](const PairRow& a, const PairRow& b) {
+        return a.n > b.n;
+    });
+    std::fprintf(stderr, "\n[jit] fallback addressing — top MOVE source -> destination pairs\n");
+    for (size_t i = 0; i < pairs.size() && i < 24; i++) {
+        const PairRow& row = pairs[i];
+        const ModeCount& c = movePair[row.src][row.dst];
+        std::fprintf(stderr, "  %-8s -> %-8s %12llu unsupported %12llu runtime\n",
+                     eaBucketName(row.src), eaBucketName(row.dst),
+                     (unsigned long long)c.unsupported,
+                     (unsigned long long)c.runtime);
     }
 }
 
@@ -607,7 +833,11 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
 //   * no store into a page holding translated code — that one has to go
 //     through the memory map so the write guard sees it.
 uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
-    if (!mem_.dataSpan) return nullptr;
+    dtlbLastReason_ = RuntimeFillTag;
+    if (!mem_.dataSpan) {
+        dtlbLastReason_ = RuntimeNonPlain;
+        return nullptr;
+    }
 
     const bool super = cpu_.pomJitSuper();
     uint32_t phys = 0, pageBase = 0, pageLen = 0;
@@ -649,7 +879,10 @@ uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
     uint32_t span = 0;
     uint8_t* host = mem_.dataSpan(mem_.self, physSlice, span, write);
     if (host && span < 4096) host = nullptr;
-    if (!host) dtlbWhy_[kWhyNotRam]++;
+    if (!host) {
+        dtlbWhy_[kWhyNotRam]++;
+        dtlbLastReason_ = RuntimeNonPlain;
+    }
 
     // ── the per-slice code mask (Moira.h § PomJitDtlbEntry) ───────────────
     // A page holding translated code used to be refused WHOLE, because an

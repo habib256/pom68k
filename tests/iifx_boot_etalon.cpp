@@ -2,9 +2,11 @@
 // Finder on platform #12 (OSS + dual IOPs), video on the slot-9 Toby
 // card, ADB bit-banged by the SWIM IOP's real firmware against the
 // `AdbLine` LLE devices. Menu/desktop metrics on the decoded 640×480
-// framebuffer, the macii_boot_etalon pattern. Soft-skips without the
-// IIfx ROM + a bootable hdv/ image (System ≤ 7.6 — the IIfx ROM is
-// 32-bit dirty, so no 8.x).
+// framebuffer, the macii_boot_etalon pattern. Soft-skips without the IIfx
+// ROM, the real Toby 342-0008-a declaration ROM, and a bootable hdv/ image
+// (System ≤ 7.6 — the IIfx ROM is 32-bit dirty, so no 8.x). A synthetic
+// declaration is suitable for card unit tests, not this machine oracle:
+// without the real slot resource the ROM never reaches StartBoot.
 
 #include "AssetFingerprint.h"
 #include "IIfxMemory.h"
@@ -26,14 +28,21 @@ static std::string find(const char* rel) {
 
 int main() {
     std::string rom = find("roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM");
-    std::string img = find("hdv/MacOS-7.6-boot.vhd");
-    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+    std::string toby = find("roms/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/68k/256k/Macintosh II/342-0008-a.bin");
+    // This is the recorded IIfx reference (f=539 / SCSI 512). The 7.6
+    // image may be a mutable GUI work volume, so it is only a fallback.
+    std::string img = find("hdv/GISTPERSO-boot.vhd");
+    if (img.empty()) img = find("hdv/MacOS-7.6-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
-    if (rom.empty() || img.empty()) {
-        std::printf("SKIP: needs the Mac IIfx ROM ($4147DD77) + a bootable hdv/ image\n");
+    if (rom.empty() || toby.empty() || img.empty()) {
+        std::printf("SKIP: needs the Mac IIfx ROM ($4147DD77), Toby 342-0008-a, and a bootable hdv/ image\n");
         return 0;
     }
-    testasset::report({ rom, img });
+    testasset::report({ { "rom", rom }, { "declrom", toby }, { "disk", img } });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
@@ -44,7 +53,10 @@ int main() {
 
     IIfxMemory mem;
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    mem.installTobyVideo();
+    if (!mem.installTobyVideo(toby)) {
+        std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
+        return 1;
+    }
     IIfxCpu cpu(mem, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();

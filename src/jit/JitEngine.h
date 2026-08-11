@@ -3,7 +3,8 @@
 //
 // ── JIT engine (host-agnostic layer 1) ──
 // The second execution engine, sitting BESIDE the Moira interpreter and
-// never in front of it: off by default, switchable at run time, and always
+// never in front of it: default on validated 68040 guests, switchable at run
+// time, and always
 // able to hand a program counter back to the interpreter at an instruction
 // boundary with exact guest state.
 //
@@ -179,7 +180,11 @@ private:
         uint32_t pad;
         void*    entry;
     };
-    static constexpr uint32_t kLinkSlots = 4096;
+    // A full Q605 run compiles well over 100k blocks. With 4096 direct-mapped
+    // slots, unrelated hot PCs constantly displaced one another and turned
+    // otherwise linkable transfers back into Engine round trips. 64k slots
+    // cost 1 MiB per CPU and keep the O(1), non-dangling invalidation model.
+    static constexpr uint32_t kLinkSlots = 65536;
     static constexpr uint32_t kNoLink = 0xFFFFFFFF;
     static uint32_t linkIndex(uint32_t pc) { return (pc >> 1) & (kLinkSlots - 1); }
 
@@ -231,6 +236,7 @@ private:
     // completely different fixes.
     enum RefuseWhy { kWhyProbe, kWhyPageLen, kWhyCodePage, kWhyNotRam, kWhyCount };
     uint64_t dtlbWhy_[kWhyCount] = {};
+    uint32_t dtlbLastReason_ = RuntimeFillTag;
 
     // BackendCaps::dtlbCodeMask, cached: may fillDtlb hand out a write entry
     // for a page holding translated code in some slice? Only if the backend
@@ -298,6 +304,33 @@ private:
     std::vector<uint64_t> histo_;
     std::vector<uint64_t> slowStaticHisto_;
     std::vector<uint64_t> slowRuntimeHisto_;
+    std::vector<uint64_t> slowRuntimeReasonHisto_;
+    struct RuntimeAddressKey {
+        uint32_t reason, opcode, address, bytes, write, codeMask;
+        bool operator==(const RuntimeAddressKey&) const = default;
+    };
+    struct RuntimeAddressHash {
+        size_t operator()(const RuntimeAddressKey& k) const noexcept {
+            uint64_t h = uint64_t(k.address) * 0x9E3779B185EBCA87ull;
+            h ^= uint64_t(k.opcode | (k.reason << 16)) * 0xC2B2AE3D27D4EB4Full;
+            h ^= uint64_t(k.bytes | (k.write << 8) | (k.codeMask << 16));
+            return size_t(h ^ (h >> 32));
+        }
+    };
+    std::unordered_map<RuntimeAddressKey, uint64_t, RuntimeAddressHash>
+        runtimeAddressHisto_;
+    RuntimeAddressKey lastRuntimeAddress_{};
+    uint64_t* lastRuntimeAddressCount_ = nullptr;
+    static void runtimeAddressThunk(void* self, uint32_t reason,
+                                    uint32_t opcode, uint32_t address,
+                                    uint32_t bytes, uint32_t write,
+                                    uint32_t codeMask) {
+        static_cast<Engine*>(self)->recordRuntimeAddress(
+            reason, opcode, address, bytes, write, codeMask);
+    }
+    void recordRuntimeAddress(uint32_t reason, uint32_t opcode,
+                              uint32_t address, uint32_t bytes,
+                              uint32_t write, uint32_t codeMask);
     void dumpHisto() const;
 };
 

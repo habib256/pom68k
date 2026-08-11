@@ -114,14 +114,18 @@ public:
     Via6522& via1() { return via1_; }
     Egret& cuda() { return cuda_; }
     AdbBus& adb() { return adb_; }
-    Scc8530& scc() { return scc_; }
+    // External wire injection is an access at the current machine time, so
+    // it observes the SCC only after its serialized event debt is applied.
+    Scc8530& scc() { flushScc(); return scc_; }
+    int64_t deferredSccCycles() const { return sccDebt_; } // scheduler gate
     AscIosb& asc() { return asc_; }
     Swim2& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive0_; }
     SonyDrive& externalDrive() { return drive1_; }
     bool insertDisk(const std::string& path) { return drive0_.insert(path); }
     void ejectDisk() { drive0_.eject(); }
-    Ncr53c96& scsi() { return scsi_; }
+    Ncr53c96& scsi() { flushScsi(); return scsi_; }
+    int64_t deferredScsiCycles() const { return scsiDebt_; } // scheduler gate
     // The DaynaPort SCSI/Link, if POM68K_DAYNAPORT put one on the bus.
     // AtalkHub::attach detects this accessor and wires the card to the
     // in-process NAT through an EtherLink.
@@ -286,7 +290,8 @@ public:
            memcjr_, dafbHolding_, iosbRegs_,
            scsiReadCycles_, scsiWriteCycles_,
            scsiDmaReadCycles_, scsiDmaWriteCycles_,
-           ascCycAcc_, swimLastCpu_, swimCycAcc_, viaEClock_, tickAcc_);
+           ascCycAcc_, swimLastCpu_, swimCycAcc_, viaEClock_, tickAcc_,
+           sccDebt_, scsiDebt_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -315,6 +320,11 @@ private:
     bool cudaLleOn_ = false;
     AdbBus adb_;
     Scc8530 scc_;
+    // Event scheduler debt, in 25 MHz machine cycles. Unlike a derived host
+    // cache this is observable device time: save/load must preserve it.
+    int64_t sccDebt_ = 0;
+    bool sccEventDriven_ = true; // host tuning, fixed at construction
+    void flushScc();
     // PrimeTime's IOSB audio cell at $50014000: $BB version, stereo FIFO A/B,
     // 22.257 kHz at C15M (15.6672 MHz), level IRQ on pseudo-VIA2 bit 4.
     // This is the IOSB ASC verified by ASCTester on an LC 475, not the $B0
@@ -331,6 +341,9 @@ private:
     int64_t swimLastCpu_ = -1;     // <0: latch on first sync
     int64_t swimCycAcc_ = 0;       // CPU→C15M fractional bridge (shared timeline)
     Ncr53c96 scsi_;                // TurboSCSI 53C96 (Q6)
+    int64_t scsiDebt_ = 0;         // deferred 25 MHz machine cycles
+    bool scsiEventDriven_ = true;  // host tuning, fixed at construction
+    void flushScsi();
     ScsiDisk scsiDisks_[7];        // by SCSI ID; [0] = boot drive
     DaynaPort dayna_;              // opt-in Ethernet target (POM68K_DAYNAPORT)
     Cpu040* cpu_ = nullptr;

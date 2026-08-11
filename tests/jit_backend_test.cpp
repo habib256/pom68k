@@ -14,6 +14,7 @@
 
 #include "jit/JitBackend.h"
 #include "jit/JitCodeBuffer.h"
+#include "jit/JitConfig.h"
 #include "jit/JitIr.h"
 
 #if defined(POM68K_JIT_BACKEND_A64)
@@ -22,7 +23,9 @@
 #endif
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <string>
 
 namespace {
 
@@ -40,9 +43,37 @@ void checkSafe(uint16_t op, const char* what) {
     check(jit::classify(op) != jit::Kind::Unsafe, what);
 }
 
+void setCpuEngineEnv(const char* value) {
+#ifdef _WIN32
+    _putenv_s("POM68K_CPU_ENGINE", value ? value : "");
+#else
+    if (value) setenv("POM68K_CPU_ENGINE", value, 1);
+    else unsetenv("POM68K_CPU_ENGINE");
+#endif
+}
+
 }  // namespace
 
 int main() {
+    // The product default is per guest family, while the environment remains
+    // an unconditional user/test override. Keep this asset-free so a default
+    // regression fails before any boot gate is involved.
+    const char* oldEngine = std::getenv("POM68K_CPU_ENGINE");
+    const bool hadOldEngine = oldEngine != nullptr;
+    const std::string savedEngine = oldEngine ? oldEngine : "";
+    setCpuEngineEnv(nullptr);
+    check(jit::defaultEngine(false) == jit::EngineKind::Interp,
+          "non-68040 guests default to the interpreter");
+    check(jit::defaultEngine(true) == jit::EngineKind::Jit,
+          "validated 68040 guests default to the accelerated engine");
+    setCpuEngineEnv("interp");
+    check(jit::defaultEngine(true) == jit::EngineKind::Interp,
+          "POM68K_CPU_ENGINE=interp explicitly restores the reference");
+    setCpuEngineEnv("jit");
+    check(jit::defaultEngine(false) == jit::EngineKind::Jit,
+          "POM68K_CPU_ENGINE=jit explicitly enables the engine on another family");
+    setCpuEngineEnv(hadOldEngine ? savedEngine.c_str() : nullptr);
+
     std::printf("[jit_backend] backend registry\n");
 
     int count = 0;

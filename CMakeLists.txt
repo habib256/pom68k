@@ -866,6 +866,11 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(q605_dafb_test PRIVATE pom68k_core)
     add_test(NAME q605_dafb_test COMMAND q605_dafb_test)
 
+    add_executable(q605_event_scheduler_test tests/q605_event_scheduler_test.cpp)
+    target_link_libraries(q605_event_scheduler_test PRIVATE pom68k_core)
+    add_test(NAME q605_event_scheduler_test COMMAND q605_event_scheduler_test)
+    set_tests_properties(q605_event_scheduler_test PROPERTIES LABELS "m040;unit")
+
     # LLE step 9 gate: PrimeTime TurboSCSI wait-state cell (IOSB reg 2)
     # + the 53C96 MAME-derived selection/transfer delay model.
     add_executable(q605_turboscsi_test tests/q605_turboscsi_test.cpp)
@@ -1263,6 +1268,16 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME jit_restart_write_030_test COMMAND jit_restart_write_030_test)
     set_tests_properties(jit_restart_write_030_test PROPERTIES LABELS "jit;unit")
 
+    # AArch64 68040 gate for opcode-local removal of the conservative store
+    # fallback. It proves both halves of the contract: mask-null ordinary RAM
+    # is direct, while a true overlap with translated code is observed by the
+    # memory map and precisely invalidates the cached block. Soft-skips away
+    # from AArch64.
+    add_executable(jit_store_guard_a64_test tests/jit_store_guard_a64_test.cpp)
+    target_link_libraries(jit_store_guard_a64_test PRIVATE pom68k_core)
+    add_test(NAME jit_store_guard_a64_test COMMAND jit_store_guard_a64_test)
+    set_tests_properties(jit_store_guard_a64_test PROPERTIES LABELS "jit;unit")
+
     # M1 gate (docs/CACHE_040.md): 68040 architectural cache-TAG state
     # (POM68K_040_DCACHE) — UM § 4 semantics on the Cache040 struct, then
     # CACR/TTR/CINV/CPUSH through a bare 68040 Moira. Tags only: data is
@@ -1535,6 +1550,18 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              ENVIRONMENT "POM68K_CPU_ENGINE=jit" TIMEOUT 3600)
     endforeach()
 
+    # The plain 68040 etalons now exercise the accelerated default. Preserve
+    # one explicit interpreter oracle per 68040 platform: a default is only
+    # conformant while the old reference remains independently runnable and
+    # green on the exact same executable and assets.
+    foreach(gate q605_boot_etalon centris650_boot_etalon
+                 q630_boot_etalon q700_boot_etalon)
+        add_test(NAME interp_${gate} COMMAND ${gate}
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(interp_${gate} PROPERTIES
+                             ENVIRONMENT "POM68K_CPU_ENGINE=interp" TIMEOUT 3600)
+    endforeach()
+
     # The ADB compact under the JIT. Out of the loop above because the
     # compact family is "one binary, POM68K_COMPACT_MODEL picks the
     # sibling" — the test NAME is not an executable name here, and the
@@ -1714,11 +1741,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # The working loop. jit_lockstep_test is the real proof — it compares the
     # JIT against the interpreter register by register at every instruction
     # boundary — and the two q605 etalons show the machine still reaches the
-    # Finder on each engine. Anything a JIT change can break shows up here.
+    # Finder on the accelerated DEFAULT and the explicit interpreter oracle.
+    # Anything a JIT/default-policy change can break shows up here.
     set_property(TEST jit_backend_test jit_lockstep_test jit_lockstep_blocks_test
                       jit_lockstep_x64_test jit_lockstep_x64_fine_test
                       jit_lockstep_noaccess_test
-                      q605_boot_etalon jit_q605_boot_etalon
+                      q605_boot_etalon interp_q605_boot_etalon
                  APPEND PROPERTY LABELS smoke)
     if(TEST jit_lockstep_a64_coarse_test)
         set_property(TEST jit_lockstep_a64_coarse_test APPEND PROPERTY LABELS smoke)

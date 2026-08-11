@@ -2,9 +2,10 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // ── JIT configuration (environment surface) ──
-// One place for every knob of the second execution engine. The engine is
-// OFF by default everywhere (GUI, headless, CTest): the Moira interpreter
-// stays the reference, the JIT is opt-in — see src/jit/POM68K_JIT.md.
+// One place for every knob of the second execution engine. The fastest
+// conformant engine is the default on 68040 guests; every other family keeps
+// the Moira interpreter. The interpreter remains an explicit, continuously
+// tested reference — see src/jit/POM68K_JIT.md.
 
 #pragma once
 #include <cstdlib>
@@ -38,12 +39,12 @@ inline int envInt(const char* key, int dflt, int lo, int hi) {
 
 }  // namespace detail
 
-// POM68K_CPU_ENGINE=jit turns the JIT on at construction time. Anything else
-// (unset, `interp`, `0`) keeps the interpreter — the GUI menu can still
-// switch at runtime.
-inline EngineKind defaultEngine() {
+// An explicit POM68K_CPU_ENGINE always wins. With it unset, `jitByDefault`
+// is the evidence-backed per-family policy supplied by Engine: true only for
+// the 68040 today. The GUI menu can still switch live in either direction.
+inline EngineKind defaultEngine(bool jitByDefault) {
     const char* v = detail::env("POM68K_CPU_ENGINE");
-    if (!v) return EngineKind::Interp;
+    if (!v) return jitByDefault ? EngineKind::Jit : EngineKind::Interp;
     if (!std::strncmp(v, "jit", 3) || v[0] == '1') return EngineKind::Jit;
     return EngineKind::Interp;
 }

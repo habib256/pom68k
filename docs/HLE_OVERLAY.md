@@ -26,7 +26,7 @@ design below survives; its motivating arithmetic does not. What changed:
 
 | Written as | Reality on 2026-07-31 | Consequence for this study |
 |---|---|---|
-| "the **planned** method-JIT" (§2, §9) | Shipped 2026-07-27 → 2026-07-31 (J0–J3 + block linking). Off by default, GUI **CPU** menu, `POM68K_CPU_ENGINE=jit` | Every "when the JIT lands" deferral below is **due now**, not pending |
+| "the **planned** method-JIT" (§2, §9) | Shipped 2026-07-27 → 2026-07-31 (J0–J3 + block linking); conformant 68040 default since 2026-08-10, GUI **CPU** menu, `POM68K_CPU_ENGINE=interp|jit` override | Every "when the JIT lands" deferral below is **due now**, not pending |
 | the JIT would take the CPU-speed job, HLE the wait-elision job | `q605_boot_etalon`: **61.3 s interpreted → 22.9 s, ×2.68** (`POM68K_JIT.md` § 3). It went *through* the "~×2.5 conformant ceiling" `TODO.md` § 8 still quotes | The conformant path is faster than this study assumed. The HLE overlay's remaining value is narrower and must be re-argued, not assumed |
 | the residual cost is code size / footprint | It is the **ATC-exactness contract**: 794 M window-lost exits over 12.2 G instructions — one derived-state death per ~15 instructions at the idle Finder, because Mac OS 8.1's VM ages pages by writing descriptor U bits (`POM68K_JIT.md` § 3, § 8) | This is the sharpest thing this study has learned. **It names exactly what a non-conformant mode could buy** that no conformant backend can — see § 2 |
 | the JIT accelerates "the CPU", full stop | The JIT is wired into **eight 020/030/040 CPU wrappers only**; `Cpu68k` (68000: Plus/SE/SE FDHD/Classic) and `Cpu020` (Mac II/IIx/IIcx) have **none**, and the x86-64 generator is 68040-only by declared capability | On those machines HLE is still the *only* accelerator on the table |
@@ -64,9 +64,10 @@ nobody exercises anymore) and dissolves the project's identity. Keeping the
 frontier explicit — in code, in the UI, and in the test gates — is what makes the
 feature a net win instead of a slow-acting poison.
 
-The JIT was built under the same rule and is the working proof it holds:
-a second engine, off by default in GUI, headless and CTest, with the
-interpreter as the declared reference (`POM68K_JIT.md` § 2, invariants 1 and 3).
+The JIT was built under the same rule and is the working proof it holds: the
+proved conformant engine is now the 68040 default, while the interpreter stays
+the declared and explicitly tested reference (`POM68K_JIT.md` § 2,
+invariants 1 and 3). Other guest families remain on the interpreter.
 
 ---
 

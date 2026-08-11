@@ -21,13 +21,18 @@ static std::string find(const char* rel) {
 int main() {
     std::string rom = find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
     if (rom.empty()) rom = find("roms/256KB ROMs/1987-03 - 97851DB6 - MacII (800k v1).ROM");
+    std::string toby = find("roms/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/68k/256k/Macintosh II/342-0008-a.bin");
     std::string img = find("hdv/System 7.0 HD.dsk");
     if (img.empty()) img = find("hdv/System 7.1 HD.dsk");
-    if (rom.empty() || img.empty()) {
-        std::printf("SKIP: needs Mac II ROM + hdv/System 7.0|7.1 HD.dsk\n");
+    if (rom.empty() || toby.empty() || img.empty()) {
+        std::printf("SKIP: needs Mac II ROM, Toby 342-0008-a, and hdv/System 7.0|7.1 HD.dsk\n");
         return 0;
     }
-    testasset::report({ rom, img });
+    testasset::report({ { "rom", rom }, { "declrom", toby }, { "disk", img } });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
@@ -38,7 +43,10 @@ int main() {
 
     MacIIMemory mem;
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    mem.installTobyVideo();
+    if (!mem.installTobyVideo(toby)) {
+        std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
+        return 1;
+    }
     Cpu020 cpu(mem, true);
     mem.setCpu(&cpu);
     cpu.hardReset();

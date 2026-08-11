@@ -27,7 +27,7 @@ public:
     // window (pomJitFetch020) and the identity branch of pomJitProbeCode
     // have been there since the 030 extension landed. What was missing was
     // on this side — the memory hooks (MacIIMemory::codeSpan) and this
-    // member. Off by default, like everywhere else.
+    // member. Off by default for this 020/030 family.
     //
     // Both models of this wrapper are served: the plain 68020 takes the
     // identity probe, the IIx/IIcx/SE-30 68030 takes the ATC probe and

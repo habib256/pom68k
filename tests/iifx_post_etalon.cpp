@@ -15,8 +15,9 @@
 //      proven by selection attempts — `Ncr5380::commands` counts real
 //      commands once a disk answers).
 //
-// Soft-skips without the IIfx ROM. A disk image is optional here — the
-// full Finder etalon is milestone 5's gate.
+// Soft-skips without the IIfx ROM and real Toby 342-0008-a declaration ROM.
+// A disk image is optional here — the full Finder etalon is milestone 5's
+// gate. The real slot resource is nevertheless required for StartBoot.
 
 #include "AssetFingerprint.h"
 #include "IIfxMemory.h"
@@ -57,11 +58,16 @@ static bool firmwareInRom(ApplePic& pic, const std::vector<uint8_t>& rom,
 
 int main() {
     std::string rom = find("roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM");
-    if (rom.empty()) {
-        std::printf("SKIP: needs the Mac IIfx ROM ($4147DD77)\n");
+    std::string toby = find("roms/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/68k/256k/Macintosh II/342-0008-a.bin");
+    if (rom.empty() || toby.empty()) {
+        std::printf("SKIP: needs the Mac IIfx ROM ($4147DD77) and Toby 342-0008-a\n");
         return 0;
     }
-    testasset::report({ rom });
+    testasset::report({ { "rom", rom }, { "declrom", toby } });
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
     if (romData.size() != IIfxMemory::kRomSize) {
@@ -71,8 +77,12 @@ int main() {
 
     IIfxMemory mem;
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    mem.installTobyVideo();
-    std::string img = find("hdv/MacOS-7.6-boot.vhd");
+    if (!mem.installTobyVideo(toby)) {
+        std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
+        return 1;
+    }
+    std::string img = find("hdv/GISTPERSO-boot.vhd");
+    if (img.empty()) img = find("hdv/MacOS-7.6-boot.vhd");
     if (!img.empty() && !mem.attachScsi(img)) {
         std::fprintf(stderr, "FAIL: attachScsi(%s)\n", img.c_str());
         return 1;

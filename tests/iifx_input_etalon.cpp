@@ -51,14 +51,19 @@ void check(bool ok, const char* what) {
 
 int main() {
     std::string rom = find("roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM");
-    std::string img = find("hdv/MacOS-7.6-boot.vhd");
-    if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+    std::string toby = find("roms/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/68k/256k/Macintosh II/342-0008-a.bin");
+    std::string img = find("hdv/GISTPERSO-boot.vhd");
+    if (img.empty()) img = find("hdv/MacOS-7.6-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
-    if (rom.empty() || img.empty()) {
-        std::printf("SKIP: needs the Mac IIfx ROM ($4147DD77) + a bootable image\n");
+    if (rom.empty() || toby.empty() || img.empty()) {
+        std::printf("SKIP: needs the Mac IIfx ROM ($4147DD77), Toby 342-0008-a, and a bootable image\n");
         return 0;
     }
-    testasset::report({ rom, img });
+    testasset::report({ { "rom", rom }, { "declrom", toby }, { "disk", img } });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
@@ -69,7 +74,10 @@ int main() {
 
     IIfxMemory mem;
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
-    mem.installTobyVideo();
+    if (!mem.installTobyVideo(toby)) {
+        std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
+        return 1;
+    }
     IIfxCpu cpu(mem, /*withFpu=*/true);
     mem.setCpu(&cpu);
     cpu.hardReset();

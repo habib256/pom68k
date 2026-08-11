@@ -5,6 +5,7 @@
 // firmware → VIA1 shifter → ADB Manager → mouse driver → MTemp → slot VBL
 // (VIA2 CA1) → jCrsrTask. Soft-skips without ROM+disk assets.
 
+#include "AssetFingerprint.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
@@ -24,16 +25,28 @@ static std::string find(const char* rel) {
 int main() {
     std::string rom = find("roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM");
     if (rom.empty()) rom = find("roms/256KB ROMs/1987-03 - 97851DB6 - MacII (800k v1).ROM");
+    std::string toby = find("roms/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin");
+    if (toby.empty())
+        toby = find("roms/archive/macroms/68k/256k/Macintosh II/342-0008-a.bin");
     std::string img = find("hdv/HD20SC.vhd");
     if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
-    if (rom.empty() || img.empty()) { std::printf("SKIP: needs ROM+disk\n"); return 0; }
+    if (rom.empty() || toby.empty() || img.empty()) {
+        std::printf("SKIP: needs Mac II ROM, Toby 342-0008-a, and disk\n");
+        return 0;
+    }
+    testasset::report({ { "rom", rom }, { "declrom", toby }, { "disk", img } });
 
     std::ifstream rin(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(rin)), {});
     MacIIMemory mem;
     mem.loadRom(romData);
-    mem.installTobyVideo();
+    if (!mem.installTobyVideo(toby)) {
+        std::fprintf(stderr, "FAIL: bad Toby declaration ROM\n");
+        return 1;
+    }
     Cpu020 cpu(mem, true);
     mem.setCpu(&cpu);
     cpu.hardReset();

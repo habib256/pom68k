@@ -15,6 +15,10 @@
 Q605Memory::Q605Memory(uint32_t totalRam)
     : totalRam_(totalRam)
 {
+    if (const char* e = std::getenv("POM68K_Q605_EVENT_SCC"))
+        sccEventDriven_ = e[0] != '0';
+    if (const char* e = std::getenv("POM68K_Q605_EVENT_SCSI"))
+        scsiEventDriven_ = e[0] != '0';
     // The ROM's bank prober sizes RAM by ALIASING (write a pattern,
     // find where it reappears): the size must be a power of two and
     // the whole $0-$3FFFFFFF window must mirror modulo the size, like
@@ -128,7 +132,9 @@ void Q605Memory::reset() {
     cuda_.reset();
     cudaLle_.reset();
     scc_.reset();
+    sccDebt_ = 0;
     scsi_.reset();
+    scsiDebt_ = 0;
     asc_.reset();
     swim_.reset();
     swim_.attachDrive(&drive0_, &drive1_);
@@ -256,6 +262,7 @@ uint8_t Q605Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
 
 uint8_t Q605Memory::via2Access8(uint32_t addr, bool write, uint8_t v) {
     if (cpu_) cpu_->flushTicks();
+    flushScsi();
     viaSync();
     int reg = (addr >> 9) & 0x0F;            // pseudovia.cpp quadra flavor
     if (write) {
@@ -370,6 +377,7 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
     if ((sub & ~0xF00000u) >= 0x02000 && (sub & ~0xF00000u) < 0x04000)
         return via2Access8(sub & 0x1FFF, false, 0);
     if (base >= 0x0C000 && base < 0x0E000) {     // SCC, byte on D8-15
+        flushScc();
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
         sccIrqLine(scc_.irqAsserted());          // reading RR0 / data can clear
@@ -394,6 +402,7 @@ uint8_t Q605Memory::ioRead8(uint32_t addr) {
         // Every register access costs 3 CPU cycles (iosb.cpp:486 turboscsi_r
         // adjust_icount, step 9 wait-state cell).
         if (cpu_) cpu_->stall(scsiReadCycles_);
+        flushScsi();
         uint8_t d = scsi_.read((base >> 4) & 0xF);
         scsiPoll_();
         return d;
@@ -446,6 +455,7 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if (base >= 0x0C000 && base < 0x0E000) {
+        flushScc();
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
@@ -468,6 +478,7 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
         if (cpu_) cpu_->stall(scsiWriteCycles_); // iosb.cpp:494 turboscsi_w
+        flushScsi();
         scsi_.write((base >> 4) & 0xF, v);
         scsiPoll_();
         return;
@@ -520,6 +531,7 @@ void Q605Memory::ioWrite8(uint32_t addr, uint8_t v) {
 // costs are charged at the ioRead8/ioWrite8 call sites (step 9 cell).
 // macquadra605.cpp:206 drq_handler -> primetime scsi_drq_w -> via2.
 uint8_t Q605Memory::scsiDmaRead_() {
+    flushScsi();
     if (!scsi_.drq()) busError(0x50010100, false);
     uint8_t d = scsi_.dmaRead();
     scsiPoll_();
@@ -527,6 +539,7 @@ uint8_t Q605Memory::scsiDmaRead_() {
 }
 
 void Q605Memory::scsiDmaWrite_(uint8_t v) {
+    flushScsi();
     if (!scsi_.drq()) busError(0x50010100, true);
     scsi_.dmaWrite(v);
     scsiPoll_();
@@ -748,8 +761,20 @@ void Q605Memory::tick(int cpuCycles) {
     // .MPP LAP sleeps on. A real LToUDP peer transmitting drops the stream
     // (Scc8530::openLine, LLE step 8). A de-asserted SCC must also lower the
     // line.
-    scc_.tick(cpuCycles);
-    if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }
+    // The SCC is event-driven: carry elapsed machine time until its next
+    // architectural transition instead of entering the device at every
+    // unrelated CUDA/VIA/SCSI wake-up. MMIO and external wire injection
+    // call flushScc(), so no observer can see state older than its access.
+    if (sccEventDriven_) {
+        sccDebt_ += cpuCycles;
+        if (scc_.cyclesToNextEvent() <= sccDebt_) flushScc();
+    } else {
+        scc_.tick(cpuCycles);
+        if (sccIrq_ != scc_.irqAsserted()) {
+            sccIrq_ = scc_.irqAsserted();
+            updateIrq();
+        }
+    }
 
     // IOSB ASC and SWIM2 run on C15M (15.6672 MHz),
     // independent of the 25 MHz CPU — convert cpuCycles into ASC-clock ticks
@@ -765,8 +790,13 @@ void Q605Memory::tick(int cpuCycles) {
     // SCSI bus-service latency countdown (Q6.5b) → reflect the deferred IRQ
     // into the pseudo-VIA2 line when it lands.
     if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
-    scsi_.tick(cpuCycles);
-    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+    if (scsiEventDriven_) {
+        scsiDebt_ += cpuCycles;
+        if (scsi_.cyclesToNextEvent() <= scsiDebt_) flushScsi();
+    } else {
+        scsi_.tick(cpuCycles);
+        if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+    }
 
     // 60.15 Hz CA1 tick (iosb 6015_timer)
     tickAcc_ += int64_t(cpuCycles) * 6015;
@@ -785,8 +815,20 @@ int Q605Memory::cyclesToNextEvent() const {
     // changes emulated time. The factory Cuda normally binds at ~12 cycles.
     int best = cudaLleOn_ ? cudaLle_.cyclesToNextEvent() : 1;
     best = std::min(best, viaEClock_.cyclesToNext(kCpuHz));
-    best = std::min(best, scc_.cyclesToNextEvent());
-    best = std::min(best, scsi_.cyclesToNextEvent());
+    if (sccEventDriven_) {
+        const int sccNext = scc_.cyclesToNextEvent();
+        if (sccNext != 0x7fffffff) {
+            const int64_t left = int64_t(sccNext) - sccDebt_;
+            best = std::min(best, int(std::max<int64_t>(left, 1)));
+        }
+    } else best = std::min(best, scc_.cyclesToNextEvent());
+    if (scsiEventDriven_) {
+        const int scsiNext = scsi_.cyclesToNextEvent();
+        if (scsiNext != 0x7fffffff) {
+            const int64_t left = int64_t(scsiNext) - scsiDebt_;
+            best = std::min(best, int(std::max<int64_t>(left, 1)));
+        }
+    } else best = std::min(best, scsi_.cyclesToNextEvent());
 
     auto bridge = [](int deviceCycles, int64_t acc, int64_t deviceHz,
                      int64_t machineHz) {
@@ -804,6 +846,30 @@ int Q605Memory::cyclesToNextEvent() const {
     best = std::min(best, int((caNeed + 6015 - 1) / 6015));
     best = std::min(best, dafbCell_.cyclesToNextEvent());
     return std::max(best, 1);
+}
+
+void Q605Memory::flushScc() {
+    // Normally bounded by cyclesToNextEvent(). Chunking also makes a long
+    // idle snapshot safe: an SCC with no armed event may accumulate more
+    // than tick(int) can represent before a later MMIO/wire access.
+    while (sccDebt_ > 0) {
+        const int step = int(std::min<int64_t>(sccDebt_, 0x7fffffff));
+        sccDebt_ -= step;
+        scc_.tick(step);
+    }
+    if (sccIrq_ != scc_.irqAsserted()) {
+        sccIrq_ = scc_.irqAsserted();
+        updateIrq();
+    }
+}
+
+void Q605Memory::flushScsi() {
+    while (scsiDebt_ > 0) {
+        const int step = int(std::min<int64_t>(scsiDebt_, 0x7fffffff));
+        scsiDebt_ -= step;
+        scsi_.tick(step);
+    }
+    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
 }
 
 namespace {
@@ -842,11 +908,13 @@ Q605Memory::LockstepDebug Q605Memory::lockstepDebug() const {
     auto scsiDmaWriteCycles = scsiDmaWriteCycles_;
     auto ascCycAcc = ascCycAcc_, swimLastCpu = swimLastCpu_;
     auto swimCycAcc = swimCycAcc_, tickAcc = tickAcc_;
+    auto sccDebt = sccDebt_, scsiDebt = scsiDebt_;
     auto viaEClock = viaEClock_;
     machineAr(overlay, sccIrq, ascLine, pvIfr, pvIer, pvPortB, nubusIrqs,
               scsiReadCycles, scsiWriteCycles,
               scsiDmaReadCycles, scsiDmaWriteCycles,
-              ascCycAcc, swimLastCpu, swimCycAcc, tickAcc, viaEClock);
+              ascCycAcc, swimLastCpu, swimCycAcc, tickAcc, viaEClock,
+              sccDebt, scsiDebt);
     d.machine = sav::hash(machineBytes.data(), machineBytes.size());
     d.nextEvent = cyclesToNextEvent();
     d.ipl = iplLevel();

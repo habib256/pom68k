@@ -1,19 +1,21 @@
 # POM68K JIT — design, invariants, journal
 
 A **second execution engine**, living beside the Moira interpreter and never
-in front of it. Off by default everywhere — GUI, headless, CTest. The user
-turns it on from the **CPU** menu (or `POM68K_CPU_ENGINE=jit`) to see what it
-does; the interpreter remains what every accuracy claim in this project rests
-on.
+in front of it. It is the default on the fully proved 68040 family and remains
+opt-in on every other guest. The **CPU** menu switches it live;
+`POM68K_CPU_ENGINE=interp|jit` overrides the family policy. The interpreter
+remains what every accuracy claim in this project rests on and has its own
+explicit etalon registrations.
 
 Read `extern/moira/POM68K_VENDOR.md` § *JIT seam* for the ten-point
 extension this subsystem needs inside the vendored core.
 
-**On the name (2026-07-28, after an honest question).** What ships by
-default under the CPU menu is NOT a JIT: it is the interpreter running
-behind a fetch window, with a block replayer on top. Only the x86-64
-backend actually emits machine code — a JIT in the strict sense, and a
-cycle-exact one, which is precisely why its wins are bounded (§ 7). The GUI
+**On the name (updated 2026-08-10).** The portable `threaded` backend is NOT
+a JIT: it is the interpreter running behind a fetch window, with a block
+replayer on top. The x86-64 and AArch64 backends emit machine code and are
+JITs in the strict sense; `auto` selects one of them for the default 68040
+path when the host supports it. Their exactness is why the wins are bounded
+(§ 7). The GUI
 says "Moteur accéléré" and names the backend (`main.cpp:855` and `:691`);
 the subsystem keeps its internal name because `src/jit/` names the seam and
 the machinery, which a future non-conformant fast mode
@@ -133,7 +135,7 @@ Each one names the gate that would catch it breaking.
 |---|---|---|
 | 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_lockstep_test` (five registrations, § 5) |
 | 2 | **Exits happen at instruction boundaries only.** No partial guest state — registers, CCR, PC, clock — ever survives a block exit. Everything unusual (interrupt, trace, STOP, breakpoint, MMU fault, an opcode outside the classifier) is handed back to `Moira::execute()` at a clean boundary. | `jit_lockstep_x64_fine_test` (one cycle per comparison); `jit_backend_test` for the classifier rules |
-| 3 | **The default is the interpreter**, in the GUI, headless and under CTest (`JitConfig.h defaultEngine()`). | every gate that is not `jit_*`; the `jit_*` gates are separate registrations of the same binaries under `POM68K_CPU_ENGINE=jit` |
+| 3 | **The fastest proved conformant engine is the default, per guest family.** Today that is `jit/auto` for 68040 and the interpreter elsewhere. `POM68K_CPU_ENGINE=interp` always restores the oracle. | `jit_backend_test` pins the policy and both overrides; `interp_{q605,centris650,q630,q700}_boot_etalon` keep one interpreter reference per 68040 platform |
 | 4 | **Peripheral time stays owed.** Blocks never run past the caller's cycle target (`Context::clockTarget`) and generated cycles go through the machine's virtual `sync()` (`pomJitSync`), so VIA, ASC, SWIM and the Egret/Cuda MCU keep their pacing. | `jit_mactv_boot_etalon` — registered for exactly this reason: Tinker Bell's Cuda transport deadlocks on a 2 % shift in MCU pacing long before a Finder signature would fail |
 | 5 | **Nothing cached survives a change of the address map.** Overlay flips (`CodeGuard::invalidate()`), MMU/ATC changes (`blocksGen_` vs `Moira::pomJitMmuGen`) and cache-control writes (`didChangeCACR` → `flushAll()`) drop the block cache and the code window. | `jit_q605_boot_etalon` (the boot overlay flips in the first milliseconds); `jit_lockstep_test` |
 | 6 | **No host knowledge above `jit::Backend`.** An architecture `#ifdef` outside `src/jit/backends/` or `JitCodeBuffer.cpp` is a design error. | `jit_backend_test` (its header states invariants 6 and 7 as its purpose) |
@@ -627,7 +629,7 @@ Everything in `JitConfig.h` unless noted.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `POM68K_CPU_ENGINE` | `interp` | `jit` starts on the JIT (the GUI menu still switches live) |
+| `POM68K_CPU_ENGINE` | 68040 `jit`, others `interp` | explicit `interp` or `jit` overrides the per-family default (the GUI menu still switches live) |
 | `POM68K_JIT_BACKEND` | `auto` | `auto` \| `threaded` \| `x64` \| `a64` |
 | `POM68K_JIT_UNSAFE_BACKEND` | `0` | force an explicitly named backend onto a guest family it does not declare (`JitBackend.cpp`) — for developing that family's support, never for use |
 | `POM68K_JIT_FETCH` | `1` | the instruction-fetch code window (J1a) |
@@ -636,6 +638,8 @@ Everything in `JitConfig.h` unless noted.
 | `POM68K_JIT_HOT` | native `1`, threaded `512` | visits before a recorded block is translated |
 | `POM68K_JIT_LINKS` | `1` | direct block-to-block linking for native backends; `0` is the attribution/debug path |
 | `POM68K_JIT_A64_PACING` | `1` | AArch64 inline peripheral deadline/batch test; `0` calls `sync(cycles)` after every emitted instruction for attribution |
+| `POM68K_Q605_EVENT_SCC` | `1` | Q605 carries serialized SCC time debt to its exact event/MMIO boundary; `0` restores per-`tick` stepping for A/B attribution |
+| `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
 | `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
 | `POM68K_DATA_WINDOW` | `0` | the INTERPRETER's data window (§ 8) — opt-in since the ATC-exactness capping made it a net loss (`JitEngine.cpp:39-53`) |
 | `POM68K_JIT_PARANOID` | `0` | re-validate the translation at every arm — for differential testing (`JitEngine.cpp`) |
@@ -889,8 +893,8 @@ workload a THIRD of all instructions are control transfers (23 % branches,
 10 % call/return), so that round trip was being paid every few instructions.
 What it bought back is measured in § 7.
 
-The link is a **table**, not a patched jump: `Engine::linkTable_`, 4096 slots,
-direct mapped on the guest pc (`(pc >> 1) & 4095`) and tagged with
+The link is a **table**, not a patched jump: `Engine::linkTable_`, 65,536 slots,
+direct mapped on the guest pc (`(pc >> 1) & 65535`) and tagged with
 `pc | super` — pc is always even, so the privilege bit rides in bit 0 and a
 user-mode and a supervisor block at one address cannot be confused. An exit
 whose target is a compile-time constant emits four instructions
@@ -919,6 +923,15 @@ Three things make jumping straight into another block safe:
 
 Every block's first instruction still runs the budget and flag guards, so a
 chain cannot outrun the caller's cycle target or ignore a pending interrupt.
+
+The table originally had 4,096 slots. A 6,000-frame Q605 workload compiles
+more than 150k blocks over its lifetime and keeps up to 65,536 resident, so
+the small direct map made unrelated hot PCs displace one another. Raising it
+to 65,536 slots costs 1 MiB per CPU and, on AArch64, reduced `block end` exits
+from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
+22.62/22.39 s to 21.27/21.41 s (about 5.2%), with fingerprint
+`f8e91527781ede67` and 1,410,142,343 retired instructions unchanged. The four
+68040 JIT etalons and their four explicit interpreter oracles remain green.
 
 ---
 

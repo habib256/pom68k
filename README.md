@@ -25,8 +25,8 @@ the Machine menu, in the same order and the same grouping
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 176 gates (asset-dependent ones soft-skip)
-ctest -L unit                     # 89 gates, no ROM or disk image needed
+ctest                             # 182 gates (asset-dependent ones soft-skip)
+ctest -L unit                     # 91 gates, no ROM or disk image needed
 ctest -L smoke                    # 9 gates, one machine, both CPU engines
 ctest -L etalon-core              # 12 gates, one profile per platform
 ```
@@ -250,14 +250,15 @@ Menus:
   ROM or RAM size is refused and the machine is left untouched. All 34
   profiles are wired (`src/SaveStateMachines.h:49`). Also **Sons des
   lecteurs** (drive sounds).
-- **CPU** — pick the execution engine. The Moira **interpreter** is the
-  default and the reference for every accuracy claim. Beside it sits an
-  accelerated engine, switchable live between two instructions, available
-  on the 68030/68040 machines (the Mac II family, the compacts and the IIfx
-  are interpreter-only). It is honestly labelled: with the portable `threaded`
-  backend it is the interpreter behind a fetch window, and only the x86-64
-  backend actually emits host code. `POM68K_CPU_ENGINE=jit` starts on it;
-  design and measurements in `src/jit/POM68K_JIT.md`.
+- **CPU** — pick the execution engine. The conformant accelerated engine is
+  the default on the 68040 family; every other family still starts on the
+  Moira **interpreter**, which remains the reference for every accuracy
+  claim. Both are available and switchable live on every machine. `auto`
+  selects the validated native x86-64/AArch64 generator for a 68040 and the
+  portable `threaded` window elsewhere. `POM68K_CPU_ENGINE=interp|jit`
+  overrides the family default explicitly; design, gates and measurements in
+  `src/jit/POM68K_JIT.md`. The CPU menu also reports **× real time**, measured
+  from the machine clock without changing emulated timing.
 - **Disques** — pick the boot volume and toggle secondary SCSI images next
   to the current one (relaunches: the ROM only scans the bus at boot).
   Every machine but the compact 68000 family has it.

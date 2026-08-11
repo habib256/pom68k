@@ -106,6 +106,23 @@ public:
     const BlockIr* ir = nullptr;   // owned by the engine's block cache
 };
 
+// Diagnostic-only attribution of a native instruction's final runtime
+// fallback. The overall runtime opcode census remains the source of truth;
+// these buckets explain it and must sum back to it when enabled.
+enum RuntimeFallbackReason : uint32_t {
+    RuntimeFillTag = 0,       // tag miss whose exact ATC/data probe refused
+    RuntimeNonPlain,          // MMIO, ROM write, hole, or remembered null host
+    RuntimeCodeMask,          // store overlaps translated-code slice
+    RuntimeCrossPage,         // one access straddles a 4 KiB DTLB slice
+    RuntimeOther,             // CPU/queue/branch guard unrelated to data mapping
+    RuntimeReasonCount
+};
+
+using RuntimeAddressObserver = void (*)(void* self, uint32_t reason,
+                                        uint32_t opcode, uint32_t address,
+                                        uint32_t bytes, uint32_t write,
+                                        uint32_t codeMask);
+
 // Everything a running block is allowed to touch.
 struct Context {
     moira::Moira* cpu = nullptr;
@@ -163,6 +180,10 @@ struct Context {
     // native instruction whose runtime access/guard could not be inlined.
     uint64_t* slowStaticHisto = nullptr;
     uint64_t* slowRuntimeHisto = nullptr;
+    uint64_t* slowRuntimeReasonHisto = nullptr; // [reason][opcode]
+    const uint32_t* dtlbFillReason = nullptr;   // last fillDtlb refusal
+    RuntimeAddressObserver runtimeAddressObserver = nullptr;
+    void* runtimeAddressSelf = nullptr;
 };
 
 struct RunResult {

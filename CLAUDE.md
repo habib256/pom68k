@@ -65,14 +65,15 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
   (named per row in the machine table below). The OS-version sweep (System 4.1 → Mac OS 8.1)
   is `tests/finder_boot_matrix.cpp` — an on-demand harness, `EXCLUDE_FROM_ALL`
   and **not** a registered CTest. Bring-up history: `CHANGELOG.md`, by date.
-- **176 CTest gates** (`ctest -N` 2026-08-10: 89 `unit`, 9 `smoke`,
-  28 `jit`, 36 `m040`, 87 `etalon`, of which 12 `etalon-core` — one profile
+- **182 CTest gates** (`ctest -N` 2026-08-12: 91 `unit`, 9 `smoke`,
+  29 `jit`, 41 `m040`, 91 `etalon`, of which 12 `etalon-core` — one profile
   per platform, **12/12 green in 31 min 41 s**, the pre-commit tier).
-  `etalon` jumped 81 → 87 for two reasons: two new IIvx beyond-boot gates,
+  `etalon` first jumped 81 → 87 for two new IIvx beyond-boot gates and
   and **four gates that carried no label at all** — the three IIfx ones and
   `duo230_boot_etalon` were registered *after* the label-derivation block, so
   two whole platforms were invisible to every `ctest -L` tier (fixed
-  2026-08-09; `docs_test` now fails if any gate is unlabelled).
+  2026-08-09); the four explicit 68040 interpreter references then brought
+  it to 91 (`docs_test` fails if any gate is unlabelled).
   `-L unit` and `-L smoke` green 2026-08-09 on a fully rebuilt tree; last FULL run **162/162 green,
   2026-08-07**, i.e. the whole suite as it stood before those two, 3 h 35 (11:35:58 → 15:10:58), on a **fully
   rebuilt tree** (`make -j4` first, `BUILD_EXIT=0`, no truncated binary,
@@ -96,7 +97,8 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
   (two `ApplePic` + `AdbLine` + `Egret` + 2nd 53C96) is gated in
   `savestate_040_test`, the Duo's PG&E tail (internal RAM + the 32 KB SRAM
   carrying the mid-boot BORG v2 upload) in `savestate_030_test`.
-- **JIT**: second engine, off by default (see the table below).
+- **JIT**: conformant default on 68040, opt-in elsewhere; the interpreter
+  remains the explicit accuracy oracle (see the table below).
 - The **PowerBook Duo 230** (MSC + PG&E) is the **37th profile** since
   2026-08-06 — the first laptop, and the row that earned platform #12 its
   GUI citizenship: `runDuo` + `kProfiles` + `SnapMachine::Duo230`, on top of
@@ -149,11 +151,11 @@ profile). `SnapMachine` in `src/SaveStateMachines.h` carries the matching
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 176 gates, ~3h40 (asset-dependent ones soft-skip)
-ctest -L unit                # 89 gates — no ROM or disk image needed
+ctest                        # 182 gates, ~4h (asset-dependent ones soft-skip)
+ctest -L unit                # 91 gates — no ROM or disk image needed
 ctest -L smoke               # 9 gates — one machine, both CPU engines
 ctest -L etalon-core         # 12 gates — ONE profile per platform, 31 min
-ctest -L jit                 # 28 gates;  -L m040 = 36, the 68040 family
+ctest -L jit                 # 29 gates;  -L m040 = 41, the 68040 family
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
 ./POM68K [ROM] [media...]    # profile picked by ROM size + checksum; the
                              # mapping is `kProfiles` in src/main.cpp
@@ -238,7 +240,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ `fpu_sanity` | MC68881/882UM; WinUAE fpp.c |
 | **68040 core + MMU** | `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; **7 200/7 200 pinned vectors** | MC68040UM + WinUAE oracle |
 | **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (12 save/load pairs, 37 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 12 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
-| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** and **AArch64** code generators — A64 full-boot-gated, `auto` on arm64 since 2026-08-04). **Off by default everywhere** — the interpreter is what every accuracy claim rests on | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓. Engine wired in **11** machine loops: `Cpu030` (V8, incl. the 68020 LC), `SonoraCpu`, `VaspCpu`, `RbvCpu`, `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, `MscCpu`, and since 2026-08-06 `Cpu020` (Mac II family) + `Cpu68k` (compacts) + `IIfxCpu` — **every CPU wrapper in the tree now carries one**. Worth per guest: 68040 ×2.1-2.7, 68030 ×1.4-1.7, 68020 ×1.0-1.2, 68000 ×1.03-1.08 — the window skips an ATC walk, and the last two guests have none. The compacts are the ONE family where the window is not free of cycle accounting (`SYNC` is a no-op only on `Core::C68020`): `pomJitFetch000` replaces the bus read alone and keeps contention. x64 codegen is **68040-only by declared capability** (`BackendCaps::guestFamilies`), so `auto` gives the 030s `threaded`. `q605_boot_etalon` 61.3 s interp → 22.9 s (×2.68), 89.6 % native | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
+| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** and **AArch64** code generators). **`jit/auto` is the conformant 68040 default**; every other family still defaults to the interpreter, which remains the accuracy oracle and has one explicit etalon per 68040 platform | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J3 ✓ on 68040. Engine wired into every CPU wrapper. Worth per guest: 68040 ×2.1-3.7, 68030 ×1.2-1.7, 68020 ×1.0-1.2, 68000 ×1.03-1.08. x64/A64 codegen remains **68040-only by declared capability**, so unfinished native 030 work cannot become a shipping default. `POM68K_CPU_ENGINE=interp|jit` overrides the family policy; `interp_{q605,centris650,q630,q700}_boot_etalon` preserve the reference tier | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
 
 ## CPU core: Moira (permanent fork)
 

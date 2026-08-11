@@ -764,15 +764,14 @@ constructed (it is the only place that knows its own guest family and its
 selected backend). `POM68K_CPU_ENGINE=interp` becomes the documented opt-out
 and stays the thing every accuracy claim can fall back to.
 
-**D.3 — the blast radius, which is the real work.** Flipping the default
-changes what ~87 `etalon` gates are testing. Today `jit_*` gates set
-`POM68K_CPU_ENGINE=jit` explicitly and the rest run the interpreter; after
-the flip, the plain gates run the JIT and the *interpreter* is what needs an
-explicit tier. The gate registration in `CMakeLists.txt` has to be
-re-derived accordingly, and `docs_test` (which since 2026-08-09 fails on any
-unlabelled gate) is the thing that will catch a row that got missed.
-This is done **last**, in its own commit, behind a full `-L etalon` run —
-not folded into a phase that also changes emitters.
+**D.3 — the blast radius, which is the real work.** The 68040 flip changes
+what its plain `etalon` gates test: they now run the JIT, while four explicit
+`interp_{q605,centris650,q630,q700}_boot_etalon` registrations preserve one
+reference per platform. The existing `jit_*` names remain as explicit-engine
+regressions and for stable tooling. `docs_test` (which since 2026-08-09 fails
+on any unlabelled gate) catches a row that gets missed. Each future family
+flip follows the same shape, in its own commit and never folded into an
+emitter change.
 
 **D.4 — say so in the GUI.** The Machine/CPU menu shows which engine is
 running and, when it is the JIT, which backend. A user who is running a
@@ -793,7 +792,7 @@ trying to avoid.
 | B — emitted i-cache | **correctness-proved on AArch64** by 120k lockstep + Finder boot; compact counters + native DBcc, still slower than threaded |
 | C.4 — per-instruction contract | **partial** — resets + split timing + `(An)+` order done; restartable last-write boundary remains |
 | C.5 / C.6 — declare + boot gates | not started |
-| D — default engine | not started; nothing in it may move before C |
+| D — default engine | **68040 landed**: `jit/auto` by default, explicit interpreter oracle per platform; 030 remains behind C.5/C.6 |
 
 Everything written for the 68030 is unreachable in any shipped
 configuration: `guestFamilies` still excludes `kGuest68030`, so the code

@@ -165,6 +165,15 @@ public:
     // round-trip later, and a tick that led it would lie during the gap.
     int cpuEngine() const { return stEngine_.load(std::memory_order_relaxed); }
 
+    // Published real machine cycles for GUI-only throughput measurement.
+    // This is deliberately machineClock(), not Moira's boosted core clock:
+    // dividing its delta by mem.cpuHz() gives emulated seconds without
+    // changing (or even consulting) the scheduler.
+    long long machineClock() const {
+        return stMachineClock_.load(std::memory_order_relaxed);
+    }
+    long long machineHz() const { return mem.cpuHz(); }
+
     // Lock-free-enough copy of the JIT gauges, republished at the same ~16 ms
     // cadence as the framebuffer — which is exactly what a stats window wants.
     jit::Stats::Snapshot jitStats() const {
@@ -265,6 +274,7 @@ public:
         }
         stPc_.store(cpu.getPC(), std::memory_order_relaxed);
         stClock_.store(cpu.getClock(), std::memory_order_relaxed);
+        stMachineClock_.store(cpu.machineClock(), std::memory_order_relaxed);
         self()->publishStatus();
         if constexpr (requires { mem.bayIsCdrom(1); }) {
             for (int id = 1; id <= 6; ++id)
@@ -404,6 +414,7 @@ protected:
 
     std::atomic<uint32_t> stPc_{0};
     std::atomic<long long> stClock_{0};
+    std::atomic<long long> stMachineClock_{0};
     std::atomic<uint8_t> stFlags_{0};
     std::atomic<int> stEngine_{0};                // 0 = interpreter, 1 = JIT
 

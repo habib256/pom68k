@@ -1849,7 +1849,11 @@ Moira::mmu040AtcFill(bool data, u32 addr, u32 status)
     // POM68K M0 probe (docs/CACHE_040.md): histogram the descriptor CM
     // bits Mac OS actually maps, per ATC fill. Diagnostic only, env-gated,
     // prints at process exit; recorded in POM68K_VENDOR.md.
-    if (std::getenv("POM68K_040_CM_STATS")) {
+    // This is an immutable process-level diagnostic knob. ATC fills are a
+    // hot path, so do not ask libc to rescan the environment on every fill.
+    static const bool cmStatsEnabled =
+        std::getenv("POM68K_040_CM_STATS") != nullptr;
+    if (cmStatsEnabled) {
         struct CmStats {
             unsigned long long n[2][4] {};
             ~CmStats() {

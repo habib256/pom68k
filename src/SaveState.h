@@ -211,7 +211,10 @@ private:
 // state in an older build (with the extra chunk reported, not silently
 // dropped).
 inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
-inline constexpr u32      kVersion   = 1;
+// v2 adds serialized per-device scheduler debt (Q605/SCC and 53C96). A v1
+// Q605 chunk has no value from which that observable elapsed time can be
+// reconstructed, so reject it explicitly instead of misreading the tail.
+inline constexpr u32      kVersion   = 2;
 
 struct Header {
     u32 version     = kVersion;

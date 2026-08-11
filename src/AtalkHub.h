@@ -58,21 +58,22 @@ public:
     void attach(M& mem, int64_t cpuHz, LtoUdp* cable) {
         std::lock_guard<std::mutex> l(mu_);
         cable_ = cable;
-        auto& scc = mem.scc();
+        (void)mem.scc(); // synchronize an event-driven device at attachment
         stack_.configure(2, 128, cfg_.serverName.empty() ? "POM68K" : cfg_.serverName,
                          cpuHz);
         // Relay BrRq to the segment only when a real cable carries external
         // peers; solo, the relay + our reply collide in the guest Rx FIFO.
         stack_.setBridgeRelay(cable && cable->active());
         cpuHz_ = cpuHz;
-        inject_ = [&scc](const uint8_t* d, size_t n) {
-            scc.injectRxFrame(0, d, n, false);
+        inject_ = [&mem](const uint8_t* d, size_t n) {
+            mem.scc().injectRxFrame(0, d, n, false);
         };
         // The lossless wire never drops — it DELAYS. Surface that delay:
         // a retransmit whose lag matches a deep backlog / long hold is
         // congestion, not loss (and then lowering the boost is the wrong
         // knob — the guest's Rx drain rate is the cap).
-        wire_ = [&scc] {
+        wire_ = [&mem] {
+            auto& scc = mem.scc();
             return WireMeter{ scc.rxBacklog(0), scc.rxBacklogMax(0),
                               scc.rxHoldMaxCycles(0), scc.rxOverflowDrops(0) };
         };

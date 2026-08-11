@@ -10,7 +10,7 @@
 // ratio is the honest speed-up.
 //
 //   POM68K_BENCH_FRAMES  frames of 416 667 cycles to run (default 3000)
-//   POM68K_CPU_ENGINE    interp (default) | jit
+//   POM68K_CPU_ENGINE    interp | jit (unset = 68040 default, currently jit)
 //   POM68K_BENCH_PPM     dump the final screen here (diagnosing a boot)
 //
 // The timed loop, the fingerprint and the report live in `BenchHarness.h`,

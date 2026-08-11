@@ -151,14 +151,219 @@ mesurées : lazy flags ≈0,8 %, ATC relâché ≈3 %. **La conclusion de § 0·
 est pas affaiblie, elle est durcie** : sacrifier la conformité CPU ne change
 pas d'échelle, et le changement d'échelle, s'il existe, est dans le HLE.
 
-- [ ] **Une jauge de vitesse dans le GUI.** Rien n'affiche de ratio temps réel
-  aujourd'hui, alors que la direction produit est écrite *en ratios* et que
+- [x] **Une jauge de vitesse dans le GUI.** Le menu CPU affiche désormais le
+  ratio temps réel sur les douze familles, alors que la direction produit est
+  écrite *en ratios* et que
   l'écart ×1,98 (mesuré) vs ×1,3 (rapporté) n'a toujours pas d'explication.
-  Le thread machine publie déjà `clock` en atomique (`MachineHost.h`) : un
-  ratio = deux échantillons et une division, et tout rapport futur de ce type
-  devient vérifiable au lieu d'être une impression. **À faire avant de
-  chercher plus loin l'écart** — c'est le seul suspect qu'on peut éliminer
-  sans instrumenter le GUI à l'aveugle (`pom68k-never-drive-gui-blind`).
+  Le thread machine publie `machineClock()` séparément du `getClock()` boosté :
+  deux échantillons espacés de 500 ms, divisés par `mem.cpuHz()` et le temps
+  hôte. Le calcul reste dans le GUI et ne touche ni scheduler ni périphériques.
+  `machinehost_test` verrouille que la source est bien l'horloge machine.
+
+  **Mesure GUI 2026-08-11**, sur quatre copies jetables du même disque 8.1,
+  moyenne des dix derniers échantillons affichés : Q605 **×2,596**, Q630
+  **×2,274**, Centris 650 **×3,448**, Q700 **×3,394**. Ce sont des mesures de
+  l'application complète (thread machine, rendu, audio et hub), pas le débit
+  isolé de `jit_bench`.
+
+- [x] **Reprofiler les sorties JIT et l'échéancement 68040 avant de choisir le
+  levier suivant** — FAIT 2026-08-11 sur Q605/AArch64, 6 000 frames fixes.
+  Deux runs donnent 22,62/22,39 s, l'empreinte identique
+  `f8e91527781ede67` et exactement 1 410 142 343 instructions retirées.
+  Les 191 272 060 sorties sont dominées par `block end` (149 265 073), loin
+  devant `not compilable` (16 749 751) et `window lost` (16 491 988). Le
+  profil hôte place ensuite `mmu040Translate`, `M68hc05::run`,
+  `Q605Memory::tick`, les écritures MMU, SCC et DAFB parmi les piles chaudes.
+  L'échéance périphérique AArch64 en ligne est déjà le bon défaut : à 2 000
+  frames elle donne 3,05 s contre 3,66 s avec `sync` à chaque instruction,
+  soit **≈20 %**, avec empreinte, compteurs JIT et nombre de ticks identiques.
+  Ne pas grossir le pas périphérique moyen de 19,11 cycles machine : il est
+  observable. **Chaînage repris 2026-08-11** : la table directe de 4 096
+  destinations collisionnait bien avant le plafond de 65 536 blocs résidents.
+  La porter à 65 536 slots (1 Mio par CPU) réduit `block end` de 149 265 073
+  à 72 507 478 et donne 21,27/21,41 s contre 22,62/22,39 s, soit **≈5,2 %
+  répétés**, avec l'empreinte `f8e91527781ede67` et 1 410 142 343 instructions
+  retirées inchangées. Lockstep, les quatre étalons JIT 68040 et leurs quatre
+  oracles interprétés passent 12/12. Le meilleur prochain rendement conforme
+  se déplace donc vers les chemins MMU/tick, toujours sous oracle interprété.
+  Le `getenv(POM68K_040_CM_STATS)` vu dans les remplissages ATC
+  est désormais lu une fois par processus ; le coût total est sous le bruit
+  de mesure et n'est pas revendiqué comme accélération.
+
+  **Passe MMU/tick 2026-08-11 — cinq raccourcis rejetés, aucun défaut
+  relâché.** Après le chaînage, un nouveau `sample` place
+  `mmu040Translate` à 1 064/7 706 échantillons, `Q605Memory::tick` à 255,
+  `M68hc05::run` à 201 et `cyclesToNextEvent` à 100. L'index secondaire ATC
+  régresse à 22,66 s ; l'inlining forcé du lookup ne dépasse pas le bruit ;
+  le hook direct MCU→ADB donne 22,00/21,91 s ; les retours anticipés du
+  scheduler 21,81/21,95 s ; la garde code à 128 octets 21,89/21,93 s avec
+  davantage de churn. Tous ont été retirés. Le census exact explique le
+  mur : 173,1 M fallbacks viennent des gardes/adresses contre 46,2 M
+  d'opcodes non supportés. La suite n'est donc pas un quantum plus gros :
+  elle exige soit un scheduler événementiel par périphérique avec son état
+  différé sérialisé et canonisé par les oracles, soit une réduction ciblée
+  des conflits `codeMask`, avec gate d'auto-modification dédié.
+
+  **Passe `codeMask` ciblée 2026-08-11 — seuil 128 octets rejeté.** La
+  granularité d'éviction est restée à 256 octets et seul le masque de store
+  DTLB a été séparé en deux demi-tranches de 128 octets, avec un gate
+  distinguant une vraie écriture auto-modifiante d'une écriture voisine dans
+  la même tranche d'éviction. Les cinq gates ciblés (unitaire, backend,
+  lockstep, Q605 JIT et oracle Q605 interprété) passent, l'empreinte reste
+  `f8e91527781ede67` et les compteurs CPU/JIT sont identiques. Mais deux runs
+  donnent 21,71/21,72 s et surtout exactement **162 738** écritures dans du
+  code traduit, comme le masque 256 octets : aucune collision observable
+  n'est supprimée. Le changement et son gate ont donc été retirés. Descendre
+  sous 128 octets imposerait d'agrandir l'entrée DTLB ou d'ajouter un bitmap
+  vivant au chemin de store, sans signal de rendement. La prochaine cible
+  conforme est le scheduler événementiel, avec état différé sérialisé et
+  canonisé avant toute mesure de promotion.
+
+  **Première tranche du scheduler événementiel 2026-08-11 — Q605/SCC
+  promue.** `Q605Memory` ne rentre plus dans le SCC à chaque réveil sans
+  rapport avec lui : elle accumule une dette explicite en cycles machine,
+  la soustrait de `cyclesToNextEvent()` et la vide exactement à l'échéance,
+  avant tout accès MMIO ou avant toute injection LocalTalk externe. Cette
+  dette fait partie de `visit()` et du hash lockstep ; le format de snapshot
+  passe à la version 2 afin qu'un ancien Q605 sans cette phase ne soit jamais
+  accepté comme s'il était complet. A/B dans le même binaire sur 6 000 frames :
+  **21,40–21,49 s** événementiel contre **21,94–22,06 s** historique, soit
+  environ **2,5–3 %**, avec empreinte `f8e91527781ede67`, instructions,
+  sorties, blocs, conflits `codeMask`, SCSI et compteurs DTLB identiques.
+  Huit gates passent : contrat scheduler, archives générique et 040,
+  déterminisme save/restore Finder Q605, LocalTalk/OT, lockstep, boot JIT et
+  oracle interprété. La promotion est ensuite confirmée par une passe
+  séquentielle fraîche du tier complet : **91/91** verts en 5 244,66 s,
+  quatre oracles interprétés 68040 et quinze étalons JIT inclus. Prochaine
+  extension : appliquer le même contrat à un second périphérique Q605
+  seulement après avoir ajouté son flush MMIO et son état de dette au même
+  ensemble de gates.
+
+  **Deuxième tranche 2026-08-11 — Q605/53C96 promue.** Le contrôleur
+  TurboSCSI accumule maintenant sa propre dette 25 MHz, sérialisée dans
+  `visit()` et incluse dans le hash lockstep. Elle est consommée à son
+  échéance, avant chaque registre MMIO, fenêtre pseudo-DMA, lecture VIA2
+  des lignes IRQ/DRQ et accès externe au contrôleur. Le gate scheduler
+  distingue explicitement les deux dettes et prouve que le flush MMIO SCSI
+  ne consomme pas la dette SCC. Les huit oracles ciblés sont verts : contrat
+  scheduler, TurboSCSI, archives générique et 040, save/restore Finder Q605,
+  lockstep, boot JIT et boot interprété. Sur deux paires A/B de 18 000 frames, la variante
+  événementielle donne **91,32/91,53 s** contre **92,40/91,87 s**, soit
+  91,43 s contre 92,14 s en moyenne (**−0,77 %**). Les deux paires gardent
+  le même sens, l'empreinte `7817661fd1097608` et tous les compteurs CPU/JIT,
+  DTLB, `codeMask` et SCSI bit à bit identiques. L'override
+  `POM68K_Q605_EVENT_SCSI=0` conserve le chemin historique pour attribution.
+  Une tentative identique sur l'ASC a auparavant passé ses sept gates mais
+  régressé le débit (21,80/22,35 s contre 21,72/21,86 s) ; elle a donc été
+  entièrement retirée, conformément au critère de promotion.
+  La promotion SCSI est définitivement confirmée par une passe séquentielle
+  fraîche du tier complet : **91/91** verts en **5 199,77 s**, quatre oracles
+  interprétés 68040 et quinze étalons JIT inclus.
+
+  **Reprofilage puis tentative DAFB 2026-08-11 — rejetée.** Avec SCC et
+  53C96 événementiels actifs, 11 243 échantillons placent toujours
+  `Dafb::tick` à 77 sommets de pile, devant `AscIosb::tick` (23) et
+  `Via6522::tick` (27), mais loin derrière `mmu040Translate` (1 683),
+  `Q605Memory::tick` (393) et `M68hc05::run` (319). Une dette DAFB
+  sérialisée, flushée aux MMIO/observations raster et à chaque frontière
+  de frame, a passé les gates scheduler, DAFB et raster. Le premier deadline
+  de frame injectait toutefois un réveil CPU non observable et changeait 137
+  instructions ; il a été corrigé en gardant le réveil de frame interne et
+  en ne publiant au CPU que les IRQ Swatch. L'A/B est alors bit-exact
+  (`7817661fd1097608`, 4 567 738 111 instructions et tous les compteurs
+  identiques), mais deux paires longues de 18 000 frames se contredisent :
+  **91,35 contre 91,21 s**, puis **91,26 contre 91,64 s**. Le gain moyen de
+  0,13 % est sous le bruit et n'est pas reproductible ; dette, override et
+  gates DAFB expérimentaux ont donc été entièrement retirés. Ne pas porter
+  cette voie à Centris/Q700 sans un nouveau profil montrant un coût DAFB
+  significativement plus élevé sur ces machines.
+
+  **Cache d'échéance SCC 2026-08-11 — rejeté.** Un prototype conservait la
+  dette SCC sérialisée mais mémorisait son prochain deadline comme état
+  strictement dérivé, invalidé par reset, chargement, MMIO et tout accès
+  externe mutable. Un mode oracle recalculait `Scc8530::cyclesToNextEvent()`
+  à chaque hit et abortait sur le moindre écart ; le workload OS de 6 000
+  frames l'a passé avec empreinte et compteurs exacts. Le court est neutre
+  (21,96 s avec cache contre 21,93 s direct). Les longues changent de régime
+  thermique et ne reproduisent aucun gain : 91,30 contre 94,36 s dans une
+  première paire contaminée, puis **94,24 contre 93,39 s** en ordre inversé
+  dans le même régime lent. Cache, oracle, override et extensions de gate ont
+  été retirés. Ne pas propager au 53C96/Centris/Q700 : le prochain travail
+  est l'attribution diagnostique des fallbacks CPU par opcode et adressage.
+
+  **Histogramme CPU précis 2026-08-11 — attribution faite, promotion
+  `MOVE abs.W` rejetée.** `POM68K_JIT_HISTO=1` sépare désormais fallback
+  statique et runtime par opcode, affiche les modes source/destination de
+  MOVE, l'EA de MOVEM et les couples de modes dominants. Sur 6 000 frames,
+  les 219 277 316 fallbacks se partagent en 46 167 498 statiques et
+  173 109 818 runtime. `MOVEM -(A7)` est déjà natif et représente 17,31 M
+  refus runtime : ce n'est pas une lacune d'opcode. La principale lacune
+  statique est `MOVE -> abs.W` : `21DF` + `21CF` totalisent 14 767 513 cas.
+  Le coût AArch64 `abs.W` a été corrigé expérimentalement de 3 à 2, comme
+  x86-64 et la colonne 68020 de Moira ; les 14,77 M cas passent alors tous
+  de « unsupported » à « runtime », sans réduire le total. L'A/B court donne
+  19,99 contre 20,38 s, mais l'A/B long est strictement neutre : **56,24
+  contre 56,23 s**, empreinte `09c8292cd2e21a88` et 2 988 932 165
+  instructions identiques. La modification et son override ont donc été
+  retirés. La prochaine attribution doit ventiler les 173,1 M refus runtime
+  par cause MMU précise (`tag/fill`, `codeMask`, MMIO, page croisée), avant
+  tout changement du chemin mémoire à risque sémantique supérieur.
+
+  **Attribution runtime + adresses exactes 2026-08-11 — faite, et la cible
+  `codeMask` initiale était fausse.** Sous `POM68K_JIT_HISTO=1`, AArch64
+  conserve désormais la cause, l'opcode, l'adresse logique, lecture/écriture,
+  largeur et masque jusqu'au fallback final ; un MMIO servi par le thunk exact
+  n'est pas compté. L'histogramme complet attribue **140 982 525 /
+  140 982 525** refus : garde de store conservatrice **128 824 006 (91,38 %)**,
+  vrai `codeMask` **9 044 353 (6,42 %)**, non-plain/MMIO **2 972 353
+  (2,11 %)**, fill/tag **96 953 (0,07 %)**, franchissement 4 Kio **44 860
+  (0,03 %)**. La cause de l'ancien faux 68,84 % est précise : le fixup
+  AArch64 historique de `CBZ/CBNZ` encode w9/x14 quel que soit le registre
+  demandé ; le garde teste donc l'adresse et refuse les stores même avec un
+  masque nul. Corriger globalement ce fixup donne 826 556 495 instructions,
+  SCSI=0 et l'empreinte divergente `35cb722024e28325` : cette promotion a été
+  rejetée et le chemin conservateur rétabli. Le défaut cache donc des stores
+  natifs encore non conformes ; il ne peut pas être simplement « réparé ».
+
+  Les vraies collisions sont très concentrées : page logique `$01F56`,
+  tranche 1, masque `$FFFE`, avec une pile autour de `$01F56100–$01F5618E` ;
+  le store touche réellement une tranche contenant du code traduit, ce n'est
+  pas un faux voisin à relâcher. Les franchissements sont trop rares pour être
+  le prochain levier et dominés par la pile `$000ADFFC` (`4CDF` lecture 16
+  octets : 16 716 cas ; `48E7` écriture 16 octets : 5 287) puis les accès
+  4 octets à offset `$FFE`. L'accès bi-page n'a donc pas le rendement attendu.
+  Le census léger sans instrumentation conserve l'oracle : empreinte
+  `f8e91527781ede67`, 1 410 142 343 instructions, SCSI=6 173. Prochaine cible
+  conforme : isoler par opcode les stores masqués-nuls libérés par le vrai
+  test du masque, avec lockstep et gate d'auto-modification, au lieu de
+  relâcher `codeMask` ou de scinder les pages en bloc.
+
+  **Isolation par opcode 2026-08-11 — `B592` promu seul.** Le backend garde
+  le comportement conservateur historique pour tous les stores sauf un
+  opcode explicitement sélectionné ; `POM68K_JIT_A64_STORE_GUARD_OPCODE=0`
+  restitue l'oracle précédent et permet d'évaluer les candidats un par un.
+  Le nouveau gate AArch64 prouve sur `2F40`, puis sur `B592` (`EOR.L
+  D2,(A2)`), les deux côtés du contrat : un masque nul emprunte réellement
+  le chemin RAM direct, tandis qu'une destination dans la tranche traduite
+  repasse par la mémoire exacte, modifie les quatre octets, invalide une fois
+  le bloc et laisse mémoire/état frontière identiques à l'interpréteur.
+  `2F40`, `42A7` et `2F0C` sont conformes en lockstep et sur 6 000 frames,
+  mais ne montrent aucun gain reproductible. `B592` supprime **16 776 916**
+  fallbacks et donne **20,99/21,01 s** contre **21,24/21,43 s** en A/B long,
+  avec empreinte `f8e91527781ede67`, 1 410 142 343 instructions, SCSI=6 173
+  et compteurs déterministes identiques. Il devient donc l'unique défaut
+  libéré. La promotion est confirmée après reconstruction intégrale par une
+  passe séquentielle fraîche du tier : **91/91** verts en **5 240,40 s**,
+  quatre oracles interprétés 68040 et quinze étalons JIT inclus. Toute
+  extension reste soumise au gate SMC, au lockstep, au boot
+  JIT/interpréteur et au tier étalon complet.
+
+**Tier étalon de référence 2026-08-11.** Après les corrections Toby, une
+seule exécution séquentielle fraîche de `ctest -L etalon` passe **91/91** en
+5 231,16 s. Les oracles explicites `interp_q605_boot_etalon`,
+`interp_q630_boot_etalon`, `interp_centris650_boot_etalon` et
+`interp_q700_boot_etalon` sont verts dans cette même passe ; ils restent la
+référence de chaque plateforme 68040 face au moteur par défaut.
 
 ---
 
@@ -474,6 +679,22 @@ Open, in ROI order:
     fallbacks again to **236,298**; it correctly refuses `TST.B (An)` (`4A11`:
     70+0+0), whose excess was not a cache miss. 120k A64 lockstep green. This unchecked
     box now names the x64 half plus the AArch64 throughput exit criterion.
+    **Critère AArch64 toujours non satisfait, re-mesuré 2026-08-11** : sur
+    6 000 frames fixes, `threaded` est stable à 20,37/20,39 s ; AArch64 donne
+    19,43 puis 22,64 s, avec la même empreinte et les mêmes compteurs i-cache.
+    Une victoire sur deux n'est pas un gain reproductible : la déclaration
+    reste 68040-only et l'override expérimental demeure obligatoire. Sept
+    boots 030 représentatifs passent en natif. **Oracle IIfx rétabli
+    2026-08-11** : le zéro-SCSI venait de la déclaration Toby synthétique,
+    pas d'un moteur CPU. Les trois gates exigent désormais la vraie ROM de
+    carte `342-0008-a` et prennent le GISTPERSO propre comme fixture prioritaire.
+    Interpréteur, threaded et AArch64 expérimental donnent tous l'étalon exact
+    `f=539`, Finder `0,06/0,69`, `512` commandes SCSI. C.6 reste ouvert sur
+    son critère de débit reproductible, plus sur la conformité de l'IIfx.
+    **Aucune promotion 68030 avant les quatre preuves cumulatives suivantes** :
+    empreinte et compteurs identiques ; IIfx, LC II, IIvx, IIsi, SE/30,
+    Macintosh TV et Duo verts ; gain répété sur plusieurs exécutions ; tier
+    étalon complet vert sur l'interpréteur et sur le moteur candidat.
   - [ ] the 030's restartable last write (`MoiraDataflow_cpp.h:355-361`) and
     the exact no-tail-refill queue contract at a block exit.
     **`(An)+` update order DONE on A64 2026-08-10**:

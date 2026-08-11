@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 214 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` fails when the two drift.
+**Generated** by `tools/changelog_index.py` from the 216 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` fails when the two drift.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 16 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 30 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 31 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 27 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 31 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 11 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 3 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 11 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 4 |
-| [Cross-cutting](#cross-cutting) | 25 |
+| [Cross-cutting](#cross-cutting) | 26 |
 
 ---
 
@@ -72,6 +72,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-05 (ninth)** — [The floppy boost gate: freeze the i-cache boost to 1 while the motor runs, and the LC II mounts its first GCR floppy ever](CHANGELOG.md#2026-08-05-floppy-boost-gate)
 - **2026-08-07 (later)** — [RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks](CHANGELOG.md#2026-08-07-full-run)
 - **2026-08-09 (later)** — [Moira is a fork, and the file now says so: the upstream exit had expired without anyone choosing it](CHANGELOG.md#2026-08-09-moira-fork)
+- **2026-08-10 (eighth)** — [The fastest conformant engine becomes the 68040 default](CHANGELOG.md#2026-08-10-jit-040-default)
 - **2026-08-10 (fourth)** — [The 68030 trace cost stops being a guess: base, i-cache and post-exception are separate](CHANGELOG.md#2026-08-10-jit-030-trace-cost)
 - **2026-08-10 (second)** — [the 68030 blocker was two bugs, and the first one was never 68030-specific](CHANGELOG.md#2026-08-10-second--the-68030-blocker-was-two-bugs-and-the-first-one-was-never-68030-specific)
 - **2026-08-10 (seventh)** — [The successful postincrement oracle names the first hidden RAM divergence](CHANGELOG.md#2026-08-10-jit-030-pi-success)
@@ -276,4 +277,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-05 (third)** — [The m040 sweep is paid and the cache chantier closes at M1](CHANGELOG.md#2026-08-05-cache040-closed)
 - **2026-08-06** — [A chip-by-chip parity sweep against MAME master: 94 findings worked, and the three bugs it found were the ones nobody wrote down](CHANGELOG.md#2026-08-06-mame-parity-sweep)
 - **2026-08-10 (sixth)** — [Restartable destinations split: predecrement and brief index land; postincrement stays closed](CHANGELOG.md#2026-08-10-jit-030-restart-ea)
+- **2026-08-12** — [One opcode clears the conservative AArch64 store guard](CHANGELOG.md#2026-08-12-a64-b592-store)
 

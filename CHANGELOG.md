@@ -75,6 +75,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why only AArch64 `B592` may bypass the conservative zero-mask store fallback** → [2026-08-12 — One opcode clears the store guard](#2026-08-12-a64-b592-store)
+- **why the conformant 68040 JIT became the product default, and how the interpreter stayed a tested oracle** → [2026-08-10 (eighth) — The fastest conformant engine becomes the 68040 default](#2026-08-10-jit-040-default)
 - **what a successful 68030 `(An)+` write exposes before CPU state diverges** → [2026-08-10 (seventh) — The successful postincrement oracle](#2026-08-10-jit-030-pi-success)
 - **the 68030 tracer separates base / i-cache / post-exception cost** → [2026-08-10 (fourth) — The trace cost stops being a guess](#2026-08-10-jit-030-trace-cost)
 - **AArch64 becomes automatic; two quadratic/128-MiB publication costs removed** → [2026-08-04 — AArch64 Finder gate green and fast](#2026-08-04-a64-green-fast)
@@ -269,6 +271,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-12** — [One opcode clears the conservative AArch64 store guard](#2026-08-12-a64-b592-store)
+- **2026-08-10 (eighth)** — [The fastest conformant engine becomes the 68040 default](#2026-08-10-jit-040-default)
 - **2026-08-10 (seventh)** — [The successful postincrement oracle names the first hidden RAM divergence](#2026-08-10-jit-030-pi-success)
 - **2026-08-10 (sixth)** — [Restartable destinations split: predecrement and brief index land; postincrement stays closed](#2026-08-10-jit-030-restart-ea)
 - **2026-08-10 (fifth)** — [The 68030 JIT block boundary now carries the exact terminal IRD/IRC](#2026-08-10-jit-030-terminal-queue)
@@ -9254,6 +9258,74 @@ watchdog never arms without Break/Abort IE).
   desktop + mouse pointer + ?-icon; VBL IRQ drives the blink counter wait
   at `$402420`. No VIA timers or RTC needed to get here, confirming the
   BMOW Plus Too minimal-hardware list.
+
+<a id="2026-08-12-a64-b592-store"></a>
+## 2026-08-12 — One opcode clears the conservative AArch64 store guard
+
+Runtime attribution exposed that 128.8 million AArch64 fallbacks were not
+real `codeMask` collisions. A historical `CBZ/CBNZ` fixup always encoded its
+tested register as w9/x14, so the write guard tested the guest address instead
+of the computed slice mask and conservatively replayed almost every native
+store. Fixing it globally was not safe: the Q605 oracle diverged with SCSI=0.
+
+The correction is therefore opcode-local. `B592` (`EOR.L D2,(A2)`) alone uses
+the real zero-mask test by default; every other opcode retains the historical
+fallback. `POM68K_JIT_A64_STORE_GUARD_OPCODE=0` restores that oracle exactly,
+while another value selects one diagnostic candidate. A dedicated synthetic
+gate proves ordinary RAM bypasses the memory callback and that the same cached
+block aimed at its own code takes the exact map path, changes all four bytes,
+causes one precise invalidation, and matches the interpreter boundary state.
+
+`2F40`, `42A7` and `2F0C` were conformant but had no repeatable throughput
+gain. `B592` removes 16,776,916 fallbacks and measured 20.99/21.01 seconds
+against 21.24/21.43 seconds for the conservative path over 6,000 Q605 frames.
+Both variants retained fingerprint `f8e91527781ede67`, 1,410,142,343 retired
+instructions and SCSI=6,173. After a full rebuild, the sequential reference
+tier passed 91/91 in 5,240.40 seconds, including four explicit interpreted
+68040 oracles and fifteen JIT etalons.
+
+<a id="2026-08-10-jit-040-default"></a>
+## 2026-08-10 (eighth) — The fastest conformant engine becomes the 68040 default
+
+The interpreter-only startup policy had outlived the evidence that justified
+it. Both native 68040 generators now have instruction-boundary locksteps,
+complete Finder gates and fixed-budget fingerprints identical to Moira, while
+the portable backend replays Moira's own handlers. Leaving that engine behind
+an opt-in made the shipping configuration roughly two to three times slower
+than the fastest conformant configuration already in the tree.
+
+`defaultEngine()` now takes the evidence-backed family policy from
+`jit::Engine`: an unset environment selects `jit/auto` for `kGuest68040` and
+the interpreter for 68000/020/030. Explicit `POM68K_CPU_ENGINE=interp|jit`
+still wins unconditionally. The unfinished native 030 path remains unreachable
+without its unsafe development override; this change broadens no backend's
+guest-family declaration.
+
+The interpreter did not disappear when it stopped being the 68040 product
+default. Four new registrations run the same executables and assets under
+`POM68K_CPU_ENGINE=interp`, one per 68040 platform:
+`interp_{q605,centris650,q630,q700}_boot_etalon`. The smoke tier now compares
+the ordinary Q605 default with that explicit oracle instead of redundantly
+running the JIT twice. `jit_backend_test` independently pins the unset policy
+and both environment overrides without assets.
+
+Freshly relinked Release/native/LTO executables on Apple Silicon all reached
+their existing Finder criteria on both engines:
+
+| platform | default `jit/auto` | explicit interpreter | default speed-up |
+|---|---:|---:|---:|
+| Q605 | 61.51 s | 165.89 s | **2.70x** |
+| Centris 650 | 358.32 s | 710.93 s | **1.98x** |
+| Q630 | 84.07 s | 199.87 s | **2.38x** |
+| Q700 | 461.61 s | 720.32 s | **1.56x** |
+
+The short fixed-budget Q605 bench separately printed the same architectural
+fingerprint (`1ef079ac290187ce`) on both engines; an unset LC II run still
+reported `engine=interp`. The asset-free policy/host tests and the nine-gate
+smoke pass. The `unit` tier's only failure was the pre-existing host-socket
+`macip_gw_test` (UDP/TCP loopback never reached the host), reproduced alone
+and unrelated to CPU execution. Gate roster after the four oracle additions:
+180 total, 89 unit, 9 smoke, 28 JIT, 40 m040 and 91 etalon.
 
 <a id="2026-08-10-jit-030-pi-success"></a>
 ## 2026-08-10 (seventh) — The successful postincrement oracle names the first hidden RAM divergence
