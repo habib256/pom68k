@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # POM68K — AppleTalk router joining the emulator's LToUDP cable to the
 # host-side EtherTalk segment where netatalk (atalkd/afpd) lives. Uses the
-# vendored TashRouter (extern/tashrouter). Run AFTER appleshare_bridge.sh
-# (which creates pomtap0 and starts atalkd/afpd):
+# vendored TashRouter (extern/tashrouter). appleshare.sh starts this for you
+# as its step 2 — BEFORE atalkd, deliberately: atalkd is non-seed and learns
+# net/zone from the router, so the router must route first. To run it by hand
+# the tap must already exist (appleshare.sh step 1):
 #
 #   .venv-tools/bin/python tools/netatalk2/router.py
 #

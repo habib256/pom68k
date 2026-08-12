@@ -129,9 +129,11 @@ void PgePmu::setPmuReq(bool level) {
                          level ? 1 : 0, ackLevel_ ? 1 : 0, mcu_->pc(),
                          (long long)mcu_->cycleCount());
     }
-    // POM68K_PGE_NOSPIN=1: drop MAME's 80 µs host stall (via2_out_b) —
-    // bisect knob, since a stall that long could equally make the host
-    // sleep straight through the PMU's ACK window.
+    // MAME's 80 µs host stall (via2_out_b). POM68K_PGE_SPINUS is the bisect
+    // knob — a stall that long could equally make the host sleep straight
+    // through the PMU's ACK window, so the length is settable and 0 drops it
+    // entirely. (An earlier POM68K_PGE_NOSPIN=1 was documented here long
+    // after it stopped being read by anything. 2026-08-12)
     // Measured 2026-07-31: WITHOUT it the machine does not boot at all
     // (ADBReInit #1 never completes, 0 SCSI selects) — MAME's stall is
     // load-bearing, exactly as the Cuda transport experience predicts.

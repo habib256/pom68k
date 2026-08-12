@@ -185,6 +185,57 @@ int main() {
     }
     check(!gates.empty(), "gate roster read from pom68k_gates.tsv");
 
+    // The registry has TWO sizes. `jit_lockstep_a64_coarse_test` and
+    // `jit_lockstep_030_a64_experimental_test` are registered only on an
+    // AArch64 host with the native backends (CMakeLists.txt, the guard that
+    // writes this file), so a document cannot state one total and be true
+    // everywhere. The docs state the FULL (AArch64) numbers; CMake tells us
+    // here which of them this host is missing, and checks 5 and 6 add them
+    // back before comparing. On the dev host this file is empty and every
+    // count below is a plain identity.
+    //
+    // The alternative — declaring one architecture canonical and skipping the
+    // gate elsewhere — was rejected: it would leave the counts unchecked on
+    // the CI host that runs them most often. If a THIRD conditional gate ever
+    // appears, register it in that same else() branch or these checks start
+    // lying by exactly one. (2026-08-12)
+    std::map<std::string, std::string> absent;         // name → would-be labels
+    {
+        std::string p;
+#ifdef POM68K_GATE_ROSTER_ABSENT
+        if (std::ifstream(POM68K_GATE_ROSTER_ABSENT)) p = POM68K_GATE_ROSTER_ABSENT;
+#endif
+        if (p.empty()) p = testasset::find("pom68k_gates_absent.tsv");
+        std::ifstream f(p);
+        std::string line;
+        while (std::getline(f, line)) {
+            size_t tab = line.find('\t');
+            if (tab == std::string::npos) continue;
+            absent[line.substr(0, tab)] = line.substr(tab + 1);
+        }
+    }
+    if (!absent.empty())
+        std::printf("note: %zu host-conditional gate(s) not registered here; "
+                    "the documented AArch64 totals are held to account\n",
+                    absent.size());
+
+    // How many gates carry `label`, counting the ones this host cannot
+    // register. Labels are comma-separated, and `etalon` must not match
+    // `etalon-core`, which is why this compares whole fields.
+    auto countLabel = [&](const std::string& label) {
+        int n = 0;
+        auto scan = [&](const std::string& labels) {
+            std::stringstream ss(labels);
+            std::string one;
+            while (std::getline(ss, one, ','))
+                if (one == label) { n++; return; }
+        };
+        for (const auto& [name, labels] : gates) { (void)name; scan(labels); }
+        for (const auto& [name, labels] : absent) { (void)name; scan(labels); }
+        return n;
+    };
+    const int totalGates = int(gates.size() + absent.size());
+
     std::vector<std::string> unlabelled;
     for (const auto& [name, labels] : gates)
         if (labels.empty()) unlabelled.push_back(name);
@@ -226,21 +277,12 @@ int main() {
 
     // ── 5. The totals CLAUDE.md quotes ───────────────────────────────────
     for (int n : numbersBefore(doc, " CTest gates"))
-        check(n == int(gates.size()),
+        check(n == totalGates,
               "CLAUDE.md says " + std::to_string(n) + " CTest gates; ctest has " +
-              std::to_string(gates.size()));
+              std::to_string(totalGates));
 
     for (const char* label : { "unit", "smoke", "jit", "m040", "etalon" }) {
-        int have = 0;
-        for (const auto& [name, labels] : gates) {
-            (void)name;
-            // Labels are comma-separated; `etalon` must not match
-            // `etalon-core`, which is why this compares whole fields.
-            std::stringstream ss(labels);
-            std::string one;
-            while (std::getline(ss, one, ','))
-                if (one == label) { have++; break; }
-        }
+        const int have = countLabel(label);
         for (int n : numbersBefore(doc, std::string("`") + label + "`"))
             check(n == have,
                   std::string("CLAUDE.md says ") + std::to_string(n) + " `" +
@@ -251,17 +293,6 @@ int main() {
     // `ctest -L unit   # 79 gates` is the same claim as the prose, and it is
     // where the count was stalest: no backticks, so check 5 walked straight
     // past it. Matched in CLAUDE.md and README.md alike.
-    auto labelCount = [&](const std::string& label) {
-        int n = 0;
-        for (const auto& [name, labels] : gates) {
-            (void)name;
-            std::stringstream ss(labels);
-            std::string one;
-            while (std::getline(ss, one, ','))
-                if (one == label) { n++; break; }
-        }
-        return n;
-    };
     for (const char* file : { "CLAUDE.md", "README.md" }) {
         const std::string p = testasset::find(file);
         if (p.empty()) continue;
@@ -284,13 +315,13 @@ int main() {
             const int stated_n = std::stoi(line.substr(k, end - k));
             // Which label? `-L <label>` on the same line, else the total.
             const size_t lpos = line.find("-L ");
-            int want = int(gates.size());
+            int want = totalGates;
             std::string which = "total";
             if (lpos != std::string::npos && lpos < hash) {
                 which.clear();
                 for (size_t c = lpos + 3; c < hash && !std::isspace(uint8_t(line[c])); c++)
                     which += line[c];
-                want = labelCount(which);
+                want = countLabel(which);
             }
             check(stated_n == want,
                   std::string(file) + ": `" + line.substr(0, hash - 1) +

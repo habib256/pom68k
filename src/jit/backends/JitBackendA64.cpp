@@ -511,7 +511,16 @@ const int8_t kEaReadA64[E_COUNT][3] = {
     {2,2,2}, {2,2,2}, {6,6,6}, {6,6,6}, {7,7,7}, {7,7,7},
     {9,9,9}, {6,6,6}, {6,6,6}, {7,7,7}, {9,9,9}, {4,4,6}
 };
-const int8_t kMoveDstA64[E_COUNT] = {0,0,2,2,3,3,-1,3,4,-1,-1,-1};
+// E_AW (index 7) reads 2, not 3 — the same correction the x86-64 twin took on
+// 2026-08-09 after a fallback census (JitBackendX64.cpp:208-221): on the 020 an
+// absolute-short destination costs what a register-indirect one does, its
+// extension word being already in the prefetch queue. The cost table is
+// cross-checked against the tracer's own Instr::cycles, so a wrong cell does
+// not mis-time anything — it makes the backend REFUSE the form outright. On
+// x86-64 that single cell was 47.4 % of all block fallbacks; this backend has
+// been paying the same toll silently because the census was never run here.
+// Coverage, not correctness. (2026-08-12)
+const int8_t kMoveDstA64[E_COUNT] = {0,0,2,2,3,3,-1,2,4,-1,-1,-1};
 
 // LC II's dominant device poll. Unlike an inline DTLB load, this form must
 // always use Moira's exact 030 access path: the traced 70-cycle cost is the

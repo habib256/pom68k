@@ -50,6 +50,23 @@ public:
     // The firmware holds the 680x0 in reset until its PC3 rising edge.
     bool cpuHeld() const { return held_; }
 
+    // Firmware-driven RESET_SYSTEM ($11) — the Finder's "Restart". The MCU
+    // pulses the same PC3 line a SECOND time, on a machine that has already
+    // booted; the power-on release is filtered out for you (see the handler,
+    // CudaLle.cpp). The PG&E twin is PgePmu::onCpuReset, bound by MscMemory
+    // to onWake (MscMemory.cpp:88), which is why the Duo restarts and no
+    // Egret/Cuda machine does.
+    //
+    // UNBOUND on every platform today, so behaviour is unchanged. Binding it
+    // is NOT a one-liner and must not be done casually: this fires from
+    // inside viaWrite(), and every platform's reset() calls egret_.reset() /
+    // cuda_.reset() (V8Memory.cpp:259, SonoraMemory.cpp:109,
+    // Q605Memory.cpp:134) — a direct binding re-enters and resets the MCU
+    // while it is executing. It needs a DEFERRED reset (latch here, act at
+    // the next tick boundary), one binding per Egret/Cuda platform, and a
+    // gate; TODO § 4 carries it. (2026-08-12)
+    std::function<void()> onCpuReset;
+
     // Host VIA1 port B outputs (machine calls on ORB/DDRB writes):
     // PB4 = BYTEACK, PB5 = TIP (both active low on a Cuda).
     void portBChanged(uint8_t pb);

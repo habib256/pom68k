@@ -1511,7 +1511,7 @@ three under different environments.
 | `ctest -L unit` | 92 (~1 min) | anything touching non-machine code; no ROM or disk image needed |
 | `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
 | `ctest -L jit` | 29 | before proposing a JIT change |
-| `ctest -L m040` | 41 | the 68040 family on the default engine plus explicit interpreter references |
+| `ctest -L m040` | 42 | the 68040 family on the default engine plus explicit interpreter references |
 | `ctest -L etalon` | 91 (~3 h 35) | every profile — the release gate, not a pre-commit check |
 | `ctest` | 183 (~4h) | everything, once |
 

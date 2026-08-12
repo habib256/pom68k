@@ -58,7 +58,7 @@ matching 37 tags.
   harness, `EXCLUDE_FROM_ALL` and **not** a registered CTest. Bring-up
   history: `CHANGELOG.md`, by date.
 - **183 CTest gates** (`ctest -N` 2026-08-12: 92 `unit`, 9 `smoke`, 29 `jit`,
-  41 `m040`, 91 `etalon`, of which 12 `etalon-core` — one profile per
+  42 `m040`, 91 `etalon`, of which 12 `etalon-core` — one profile per
   platform, the pre-commit tier, 12/12 green in 31 min 41 s). The registry is
   **host-conditional by two**: the AArch64 lockstep pair is registered only on
   an AArch64 host with the native backends, so an x86-64 configure sees 181.
@@ -142,7 +142,7 @@ ctest                        # 183 gates, ~4h (asset-dependent ones soft-skip)
 ctest -L unit                # 92 gates — no ROM or disk image needed
 ctest -L smoke               # 9 gates — one machine, both CPU engines
 ctest -L etalon-core         # 12 gates — ONE profile per platform, 31 min
-ctest -L jit                 # 29 gates;  -L m040 = 41, the 68040 family
+ctest -L jit                 # 29 gates;  -L m040 = 42, the 68040 family
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
 ./POM68K [ROM] [media...]    # profile picked by ROM size + checksum; the
                              # mapping is `kProfiles` in src/main.cpp

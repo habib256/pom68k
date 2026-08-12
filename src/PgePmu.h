@@ -28,7 +28,8 @@
 // Boot flow: 512 B mask ROM runs first, host uploads the main firmware
 // over SPI into the PGE's SRAM, PMU releases the 68030 via port E bit 2.
 // The 68030 is HELD until then (cpuHeld — msc.cpp:151).
-// Gate: tests/m68hc05pge_test.cpp; blueprint docs/DUO_BRINGUP.md.
+// Gates: tests/msc_parity_test.cpp, tests/duo230_boot_etalon.cpp;
+// blueprint docs/DUO_BRINGUP.md.
 
 #pragma once
 #include "AdbBus.h"

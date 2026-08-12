@@ -626,7 +626,7 @@ Widen only when the smoke tier is green:
 |---|---|---|
 | `ctest -L unit` | 92 | anything touching non-machine code |
 | `ctest -L jit` | 29 | before proposing a JIT change |
-| `ctest -L m040` | 41 | the 68040 family — the JIT's blast radius |
+| `ctest -L m040` | 42 | the 68040 family — the JIT's blast radius |
 | `ctest -L etalon-core` | 12 | one profile per platform, ~32 min — the pre-commit tier |
 | `ctest` | 183 | the release gate, once |
 

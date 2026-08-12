@@ -65,14 +65,20 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     // probe finds, and every boot etalon is calibrated against a bus with
     // only disks on it. POM68K_DAYNAPORT=<id> puts the card at that ID
     // (=1 means "pick the default", ID 3 — where MAME parks the CD-ROM, so
-    // choose another if a disc is mounted).
+    // choose another if a disc is mounted). `=0` and empty are off.
+    // The knob is boolean-shaped at its edges, so `=1` reads as "on, you
+    // choose" and NOT as "at ID 1": ID 1 is unreachable through this knob,
+    // which is the price of `=1` meaning what everyone types it to mean.
+    // Until 2026-08-12 the guard was `id < 1`, so atoi("1") passed straight
+    // through and the card landed at ID 1 — the one behaviour no document
+    // ever described. (2026-08-12)
     // The card is on the bus regardless of AppleTalk; what it is WIRED to is
     // the in-process NAT, which lives in AtalkHub (see AtalkHub::attach).
     // With POM68K_APPLETALK=0 the guest still sees the card and it carries
     // nothing — a cable-unplugged state, not a missing device.
     if (const char* e = std::getenv("POM68K_DAYNAPORT"); e && e[0] && e[0] != '0') {
         int id = std::atoi(e);
-        if (id < 1 || id > 6) id = 3;
+        if (id <= 1 || id > 6) id = 3;
         dayna_.attach();
         scsi_.attach(&dayna_, id);
         std::fprintf(stderr, "DaynaPort SCSI/Link at SCSI ID %d "

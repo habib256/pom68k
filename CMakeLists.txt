@@ -612,7 +612,8 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # writes at configure time. Links nothing.
     add_executable(docs_test tests/docs_test.cpp)
     target_compile_definitions(docs_test PRIVATE
-        POM68K_GATE_ROSTER="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv")
+        POM68K_GATE_ROSTER="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv"
+        POM68K_GATE_ROSTER_ABSENT="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv")
     add_test(NAME docs_test COMMAND docs_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -1473,6 +1474,17 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         set_tests_properties(jit_lockstep_030_a64_experimental_test PROPERTIES
                              ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_UNSAFE_BACKEND=1;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=128;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
                              TIMEOUT 1800)
+    else()
+        # These two are the ONLY host-conditional gates, so the registry has
+        # two sizes and the docs cannot state one number. Record what this
+        # host is missing, with the labels the derivation loop below would
+        # have given them (both: `unit` + `jit`; the coarse one also takes
+        # `smoke` explicitly), so `docs_test` can hold the documented
+        # AArch64 totals to account on any host instead of failing everywhere
+        # else. Adding a third conditional gate means adding it here — and
+        # docs_test says so in its own failure text. (2026-08-12)
+        set(pom68k_absent_gates
+            "jit_lockstep_a64_coarse_test\tunit,jit,smoke\njit_lockstep_030_a64_experimental_test\tunit,jit\n")
     endif()
 
     # ── the x86-64 code generator ────────────────────────────────────────
@@ -1763,17 +1775,17 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     #   ctest -L unit         ~1 min  everything needing no ROM or disk image
     #   ctest -L jit          ~8 min  every JIT gate, all four 68040 machines
     #   ctest -L m040         ~25 min the 68040 family on both engines
-    #   ctest -L etalon-core          ONE profile per platform — 12 of the 81
+    #   ctest -L etalon-core          ONE profile per platform — 12 of the 91
     #   ctest                         everything (the release gate)
     #
-    # `etalon` on its own is 81 gates / ~3 h 35, which is a release gate and
+    # `etalon` on its own is 91 gates / ~3 h 35, which is a release gate and
     # not a pre-commit check — so the temptation to skip it grows with every
     # machine added. `etalon-core` is the answer to "does a change break a
     # PLATFORM": one representative profile from each of the 12 memory-map
     # implementations, chosen as the profile that platform was brought up on.
     # A change that survives it can still break a sibling PROFILE (a clock, a
     # model ID, an MCU), which is what the full label is for.
-    # `-L etalon` still matches all 81: CTest matches labels by regex, and the
+    # `-L etalon` still matches all 91: CTest matches labels by regex, and the
     # core gates carry both.
     set(POM68K_ETALON_CORE
         system_boot_etalon        # 68000 compacts   — MacMemory
@@ -1815,6 +1827,19 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
             t STREQUAL "jit_lockstep_a64_coarse_test" OR
             t STREQUAL "savestate_040_test"))
             list(APPEND lbl product lle a64-oracle)
+        endif()
+        # MERGE, never overwrite. A gate that set LABELS explicitly at its
+        # registration did so because the derivation cannot see what it knows:
+        # `quadra_event_scheduler_test` asked for m040 at :880 and silently lost
+        # it here for two weeks, because this line used to assign — and the
+        # m040 regex below matches `quadra6|quadra8`, not `quadra_`. Nothing
+        # reported it: `ctest -L m040` simply ran one gate fewer than the docs
+        # claimed. Its sibling `q605_event_scheduler_test` survived only by the
+        # accident of re-deriving the same pair. (2026-08-12)
+        get_test_property(${t} LABELS pom68k_prior_lbl)
+        if(pom68k_prior_lbl)
+            list(APPEND lbl ${pom68k_prior_lbl})
+            list(REMOVE_DUPLICATES lbl)
         endif()
         set_tests_properties(${t} PROPERTIES LABELS "${lbl}")
     endforeach()
@@ -1861,6 +1886,10 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         string(APPEND pom68k_gate_list "${t}\t${tlabels}\n")
     endforeach()
     file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv "${pom68k_gate_list}")
+    # Empty on the AArch64 dev host, two rows anywhere else — see the guard
+    # above. docs_test adds these back before comparing with the docs.
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv
+         "${pom68k_absent_gates}")
 
     # `make jitdev` builds ONLY what `ctest -L smoke` needs. The tree-wide LTO
     # makes a full `make` relink ~90 binaries after any core change; this is

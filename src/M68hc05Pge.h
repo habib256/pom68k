@@ -21,7 +21,8 @@
 // M6805 opcode set but differ in address width (16 vs 13 bits), stack
 // window ($40-$FF vs $C0-$FF), vector table, memory map and every
 // peripheral. Unify only with gates green on both sides.
-// Gate: tests/m68hc05pge_test.cpp (boot ROM executes, SPI upload works).
+// Gates: tests/msc_parity_test.cpp (boot ROM executes, SPI upload works,
+// PRAM round trip), tests/duo230_boot_etalon.cpp.
 
 #pragma once
 #include "SaveState.h"
