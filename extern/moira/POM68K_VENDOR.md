@@ -621,7 +621,7 @@ therefore stays NULL/IDLE-only, documented in `execFSave`.
 (fpp.c:2593-2812) exactly under the oracle's config
 (`fpu_model = 68882`, `fpu_mode = 1` softfloat,
 `fpu_no_unimplemented = false` — `oracle/uae/glue.c` `pom_default_prefs`,
-:86-105), oracle-verified:
+:80-105), oracle-verified:
 
 | frame (1st long)  | behaviour                                        |
 |-------------------|--------------------------------------------------|
@@ -1146,12 +1146,14 @@ Five additions in this first slice, all marked `POM68K JIT`, all inert until a
 > "off by default" below as "off unless the family policy or the env knob
 > arms it"; the seam itself is still inert code until an engine arms it.
 
-> **Read the three sub-sections below as one patch group.** J0/J1 was 68040-
+> **Read the four sub-sections below as one patch group.** J0/J1 was 68040-
 > only; J2 (2026-07-28) added the code-generator surface *and* extended the
 > seam to the 68030 and the plain 68020; J3/J3b (2026-07-28) added the
 > data path and the ATC-eviction contract that makes every derived cache
-> exact (all three in commit `b2c4e19`; the 2026-07-30 `movemArmed` addition
-> came with the compiled MOVEM). `grep -rn "POM68K JIT\|POM68K J3" extern/moira/Moira/` is
+> exact (those three in commit `b2c4e19`; the 2026-07-30 `movemArmed` addition
+> came with the compiled MOVEM); J4 (2026-08-10) widened the data TLB and
+> added the timing probe.
+> `grep -rn "POM68K JIT\|POM68K J3" extern/moira/Moira/` is
 > the authoritative site list: `Moira.h`, `Moira.cpp`, `MoiraExecMMU_cpp.h`,
 > `MoiraDataflow_cpp.h`.
 

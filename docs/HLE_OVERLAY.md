@@ -48,14 +48,16 @@ Two secondary premises also moved, in the overlay's favour:
   and since 2026-08-12 it is no longer even a design: `SaveStateMachines.cpp:163`
   writes `lle::snapshotFlags()` into the header and `:207-210` refuses an
   HLE-tainted restore in strict mode.
-- **The "loud non-conformant mode" precedent exists.** Every HLE ADB fallback
+- **The "loud non-conformant mode" precedent exists.** Every HLE ADB *fallback*
   prints a `NON-CONFORMANT` notice to stderr on entry **and** registers the
   module in `pom68k::lle` — seven sites: `AdbVia.cpp:63-70`,
   `V8Memory.cpp:182-194`, `SonoraMemory.cpp:71-79`, `VaspMemory.cpp:41-48`,
-  `RbvMemory.cpp:52-59`, `Q605Memory.cpp:105-112`, `Q630Memory.cpp:93-100`
-  (plus `Q700Memory.cpp:37` for the Eclipse Egret), per `LLE_VS_HLE.md` § 2's
-  policy settled 2026-07-29. § 7's visible-cheat requirement extends that
-  mechanism; it does not invent one.
+  `RbvMemory.cpp:52-59`, `Q605Memory.cpp:105-112`, `Q630Memory.cpp:93-100`,
+  per `LLE_VS_HLE.md` § 2's policy settled 2026-07-29. An eighth site
+  registers *without* a notice — `Q700Memory.cpp:37`, the Eclipse Q900/Q950,
+  whose Egret HLE is unconditional rather than a fallback, so no dump would
+  silence it and product mode refuses those profiles outright. § 7's
+  visible-cheat requirement extends that mechanism; it does not invent one.
 
 ---
 
@@ -368,7 +370,8 @@ already reaches ×2.68 on the Quadra 605 boot (`POM68K_JIT.md` § 3), so the
 overlay can no longer be justified as "the way to make POM68K fast." Its
 remaining, honest arguments are three, and the middle one has weakened since
 this was written: **host I/O latency the JIT cannot touch** (`disk.sony`); **the
-68000 and Mac II families, where the JIT is wired but worth ×1.0-1.1**; and
+68000 and Mac II families, where the JIT is wired but worth ×1.03-1.08 and
+×1.0-1.2 respectively** (§ 0); and
 **the exactness contract itself** — the one thing a conformant backend may never
 relax, and the measured floor of the JIT at the idle Finder. Anything built here
 should be built for one of those three reasons, and for no other.

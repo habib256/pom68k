@@ -51,7 +51,9 @@ oracle/
    and log the ruling in `fuzz/disputes/NOTES.md` (real-hardware traces
    welcome and outrank everything).
 5. Repeat per family until the corpus converges, then pin it under
-   `tests/data/sst68030/` (CTest gate `sst68030`).
+   `tests/data/sst68030/` (CTest gate `sst68030`). `tests/data/` is
+   **gitignored** (`.gitignore:28`), so a fresh clone has no corpus and
+   both SST gates soft-skip until you run the loop.
 
 `fuzz/loop.sh [N-per-cell] [seed]` (defaults 200 / 1) runs one full turn:
 build the oracle, fuzz the `{core,mmu,random,fpu} × {off,identity,tt}`

@@ -29,7 +29,7 @@ relative to `BasiliskII/src/`; line numbers refer to that checkout.
 |---|---|
 | Is this fact real, or Basilisk hearsay? | **§8** = firsthand; everything else = secondhand |
 | What does the ROM read **XPRAM `$AE`** for? | **§8.5** — ROM-resource combo, i.e. FPU vs integer `PACK 4` |
-| What does the ROM read **XPRAM `$8A`** for? | §5.1 (24/32-bit boot mode), §6, §7.5 |
+| What does the ROM read **XPRAM `$8A`** for? | §5.1 (24/32-bit boot mode), §6, §7 (cited as §7.5) |
 | What must a factory PRAM/XPRAM contain? | **§8.8** (what POM68K actually seeds), §5.1 (Basilisk's block) |
 | How does the ROM find its **UniversalInfo**, and what is in it? | §2.1-§2.2 (layout) → **§8.3** (the real 13-record dump) |
 | What is `defaultRSRCs` / the **HWCfgFlags FPU bit**? | §2.2 → **§8.5** |
@@ -221,9 +221,9 @@ implements the same trailer and the §9.1 CRC (`src/DeclRom.h`,
 
 ### 8.8 What this put into the POM68K code — and the one Basilisk default rejected
 
-`Egret::factoryDefaults()` (`src/Egret.cpp:47-104`) seeds Basilisk's known-good
-XPRAM block when no battery file carries the system's `'NuMc'` validity
-signature at `$0C-$0F`: `'NuMc'`, `$01` = DynWait, the standard classic-PRAM
+`Egret::factoryDefaults()` (`src/Egret.cpp:47-100` — block comment at 47, body
+at 56) seeds Basilisk's known-good XPRAM block when no battery file carries
+the system's `'NuMc'` validity signature at `$0C-$0F`: `'NuMc'`, `$01` = DynWait, the standard classic-PRAM
 block at `$08-$1F`, OSDefault = MacOS at `$76-$77`, plus a POM68K-only built-in
 video sPRAM seed at `$58` (`$83` = 8 bpp). A valid signature also spares the
 ROM's cold-PRAM detours (full-RAM burn-in, PRAM re-init) on a first boot.
@@ -689,6 +689,9 @@ shift-register/handshake transport that InitADB exercises.
   10 is always fetched from **address `$28` of the current address map**.
 
 ## § 7. CLOSED — the LC II "vector 10 = `$00000000`" hunt (2026-07-15)
+
+*Cited as **§7.5** by `src/Egret.cpp:50` and `docs/LCII_HARDWARE.md`; there is
+no subsection — the whole of §7 is meant.*
 
 > **Resolved. All three hypotheses below were wrong.** Kept because the ROM
 > facts they rest on are real and reusable, and because the *shape* of the

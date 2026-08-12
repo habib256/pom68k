@@ -21,7 +21,7 @@ vagues de correction du 2026-08-06 au 2026-08-12 ont statué sur **chaque** entr
 de la table § 1 ; la disposition définitive vit **dans le code**, pas ici :
 
 ```bash
-grep -rn "MAME-parity audit\|parity audit" src/ tests/    # ~35 sites
+grep -rn "MAME-parity audit\|parity audit" src/ tests/    # 39 sites (2026-08-12)
 ```
 
 Quatre dispositions, chacune marquée in-file à l'endroit concerné :
@@ -259,16 +259,18 @@ inventoriées. Les gaps réels sont tous dans des chemins froid/erreur jamais ex
 
 **Verdict** : parité forte sur tous les chemins chauds ; la divergence phare (`$804` clear inconditionnel vs gate
 `!(HALF_B)` de MAME) est délibérée, justifiée par les dumps ASCTester que MAME embarque lui-même, et inventoriée.
-Sur plusieurs points POM68K colle mieux au vrai matériel que le câblage MAME. Manques réels : **pas de modèle
-EASC du tout** (Quadra 700/900/950 servis par le Sonora `$BC`), stub wavetable, et quelques bords classiques.
+Sur plusieurs points POM68K colle mieux au vrai matériel que le câblage MAME. Manques réels au moment de
+l'audit : **pas de modèle EASC du tout** (Quadra 700/900/950 servis par le Sonora `$BC`) — **corrigé depuis**
+(action 8 du § 3 : classe `AscEasc`, version `$B0`, câblée dans `Q700Memory.h:324`, gate `asc_easc_test`) ;
+stub wavetable ; et quelques bords classiques.
 Le master fetché diffère du master 2026-07-15 cité dans les commentaires (F09/F29 lit désormais 0 ; l'EASC
 complet a atterri) — reflété dans les findings.
 
 **Bug-suspect** : table #1 (medium) ; #42, #43, #44.
 
 **Simplifications** :
-- Mode wavetable classique = stub silence, registres wavetable 2/3 perdus (`regs_[0x20]`) — **medium**, non inventorié explicitement dans LLE_VS_HLE.
-- IRQ idle-empty-cycle classique (dérivée QEMU) inexistante chez MAME et sur le dump IIci — porteur déclaré, condition de réouverture non écrite.
+- Mode wavetable classique = stub silence, registres wavetable 2/3 perdus (`regs_[0x20]`) — **medium** ; **inventorié depuis le 2026-08-12** à `LLE_VS_HLE.md` § 1.7 (c'est la seule simplification audio avec un oracle : MAME l'implémente et embarque le dump ASCTester).
+- IRQ idle-empty-cycle classique (dérivée QEMU) inexistante chez MAME et sur le dump IIci — **condition de réouverture écrite depuis le 2026-08-12**, `LLE_VS_HLE.md` § 1.7 (soit un binaire réel qui en dépend, soit la retirer derrière un flag et vérifier que `asc_test` reste vert).
 - Duo : AscV8 `$E8` au lieu du variant MSC `$E9` (clone exact, TODO in-file).
 
 **Cosmétique** : ports FIFO 16 bits IOSB non modélisés (non câblés chez MAME non plus) ; largeur du fichier registres (lectures hors blocs → 0 vs backing store complet).
@@ -301,9 +303,9 @@ comme glue.
 **Bug-suspect** : table #46, #47.
 
 **Simplifications** :
-- **Ligne reset PC3 = seul le release de boot** : un RESET_SYSTEM (`$11`) piloté par firmware n'atteint jamais la machine (Egret surtout ; le Cuda de MAME a son propre quirk symétrique) — **medium**, non inventorié ; sorties PC2 NMI et PA4 DFAC également absentes.
+- **Ligne reset PC3 = seul le release de boot** : un RESET_SYSTEM (`$11`) piloté par firmware n'atteint jamais la machine (Egret surtout ; le Cuda de MAME a son propre quirk symétrique) — **medium** ; **inventorié depuis le 2026-08-12** à `LLE_VS_HLE.md` § 1.9, et c'est la moitié encore ouverte de l'action 9 (§ 3). Sorties PC2 NMI et PA4 DFAC également absentes, même raison : aucun consommateur.
 - Timer programmable fixé à 512 cycles quel que soit le rate PLL (le cheat rate-2→3 partagé rend ça invisible pour le firmware expédié).
-- DFAC2 = ACK I2C seulement, audio non routé dans l'atténuateur (§ 4.1 ; la parité MAME stricte muterait ces machines).
+- DFAC2 = ACK I2C seulement, audio non routé dans l'atténuateur (`LLE_VS_HLE.md` § 3, « The Cuda's I2C bus and its DFAC2 » — c'est la parité MAME, dont le `dfac2_device::write_data` ne fait que logger ; la parité *stricte* muterait ces machines).
 - Egret.cpp : HLE totale du transport, fallback uniquement (§ 1.9).
 
 **Cosmétique** : ACK esclave I2C un demi-clock en avance (couvre la phase échantillonnée) ; opcodes indéfinis = halt (aide au debug) ; CC empilé bits 7-5 forcés à 1 (plus fidèle silicium que MAME).
@@ -336,7 +338,7 @@ boot — aucun des bug-suspects ne pouvait la faire tomber.
 
 **Simplifications** :
 - Matrice clavier/power key/trackball non câblées, entrée injectée au niveau cellule ADB — milestone déclaré (DUO_BRINGUP, « Next: input through the PMU ») ; piège documenté : le `$DF` littéral de MAME = power-key-held → hang.
-- Pas de persistance NVRAM RAM interne + SRAM (PRAM/flag power ; recette MAME du scrub `$91` à copier le moment venu).
+- ~~Pas de persistance NVRAM RAM interne + SRAM (PRAM/flag power)~~ — **PÉRIMÉ : livré avec le 37e profil**, `MscMemory::loadPram`/`savePram` (`MscMemory.cpp:137-175`) sérialisent la RAM interne + la SRAM 32 Ko du PG&E et **appliquent le scrub `$91`** (cold boot forcé, `m68hc05pge.cpp:959`) que cette ligne annonçait comme « à copier ». Même classe d'erreur que le finding PRAM du § 2.2 : lu dans un doc, pas dans le code.
 - Entrée d'interruption facturée 0 cycle (inexactitude délibérée partagée avec l'E1 — leçon Mac TV).
 - `power_cycle_w` et le bit clock-divide MSC loggés, non modélisés (milestone sommeil).
 
@@ -365,7 +367,7 @@ partagé avec l'agent VIA) et le `ram_size` Tinker Bell (table #2).
 
 **Bug-suspect** : table #2, #19 (medium) ; #57, #58, #59 (+ #20 partagé).
 
-**Simplifications** : géométrie trame/VBL V8 fixée sur la modeline 12" quel que soit le sense (MAME fixe la 13" ; seul RBV a `recalcFrame()` — non inventorié § 1) ; duplication canal-bleu CLUT du mode portrait mono Sonora absente (RBV l'a).
+**Simplifications** : géométrie trame/VBL V8 fixée sur la modeline 12" quel que soit le sense (MAME fixe la 13" ; seul RBV a `recalcFrame()`) — **inventorié depuis le 2026-08-12** à `LLE_VS_HLE.md` § 1.1, avec sa condition de réouverture (un sense V8 sélectionnable à l'exécution) ; duplication canal-bleu CLUT du mode portrait mono Sonora absente (`RbvVideo.h:66-72` l'a, `SonoraVideo.h` non) — `SIMPLIFICATIONS_REVIEW.md` F2.
 
 **Cosmétique** : registres DAC VASP miroités sur toute la fenêtre 8 Ko (probablement plus fidèle au partial-decode réel) ; quirk matériel « IER bit 7 lit 1 » du MDU IIci/IIsi absent des deux émulateurs (parité MAME conservée, divergence matérielle documentée chez MAME même).
 

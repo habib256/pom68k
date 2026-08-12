@@ -9,7 +9,7 @@ the inside.
 | Project | What it is |
 |---|---|
 | `prober/` | **POM68K Prober** — tests POM68K *from the inside*: machine/ROM/chip identity (Gestalt + low-mem + a bus-error topology sweep), AppleTalk state (NBP), CPU/FPU/QuickDraw benchmarks, video inventory, Power Manager, ADB/drives/volumes/slots/sound. Writes its raw findings as a TSV file **next to the application** (primary output, needs no network) and as JSON Lines on the mounted AFP volume (secondary, for the host-side loop). Spec: `prober/SPEC.md`. `compat/` carries the `Lists.h`/AppleTalk/Power-Manager glue absent from Retro68's multiversal interfaces. |
-| `mac-rogue/` | **TMS_Rogue port** — the Berlin-Interpretation roguelike from POM1's Apple-1 + TMS9918 build (`POM1 sketchs/tms9918/game_rogue`), as a real Mac app: 256×192 TMS frame in a window, colour where colour exists, B&W where it does not — one binary from the Mac Plus to the Quadra 950. `mac-rogue/README.md` has the status and asset pipeline (`tools/extract_rogue_assets.py`). |
+| `mac-rogue/` | **TMS_Rogue port** — the Berlin-Interpretation roguelike from POM1's Apple-1 + TMS9918 build (`POM1 sketchs/tms9918/game_rogue`), as a real Mac app: 256×192 TMS frame in a window, colour where colour exists, B&W where it does not — one binary from the Mac Plus to the Quadra 950. `mac-rogue/README.md` has the status and asset pipeline (`dev/mac-rogue/tools/extract_rogue_assets.py`). |
 | `Retro68/`, `Retro68-build/` | The toolchain — **not committed** (user-built, ~11 GB, gitignored). Bootstrap below. |
 
 ## Toolchain bootstrap (once)
@@ -58,8 +58,12 @@ the transportable form) and `.dsk` (a mountable 800 K disk image).
   partitioned Apple SCSI image. It rejects a `dir2hfs.py` volume, whose
   boot blocks are deliberately zero.)
 - **AFP share**: with the in-process AppleTalk stack on, drop the `.bin`
-  in the `POM68K_SHARE_DIR` and fetch it from the guest — the same
-  volume the prober writes its JSONL report back to.
+  in the `POM68K_SHARE_DIR` and fetch it from the guest. For the same
+  volume to also take the prober's JSONL report back, it must be **named
+  `POM68K Logs`** — that string is hardcoded in the guest
+  (`kVolName`, `dev/prober/main.c`) and the in-process volume takes the
+  share folder's own name (`AtalkHub.h`), so point `POM68K_SHARE_DIR` at
+  a folder called `POM68K Logs` or the write returns `fnfErr`.
 
 House rules that apply here: artifacts (`build/`, `*.dsk`) are never
 committed; the toolchain is user-built like ROMs are user-provided; a

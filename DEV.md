@@ -1235,7 +1235,8 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   semantically from the 040's.
 - **…and what it is worth there**, because "wired" and "worth switching on"
   are not the same claim. The window's job is to skip an ATC walk, so the
-  gain tracks the MMU: 68040 ×2.1-2.7 (x64), 68030 **×1.21** (LC II, fixed
+  gain tracks the MMU: 68040 **×5.0** on a fixed budget and **×2.68** end to
+  end on `q605_boot_etalon` (x64), 68030 **×1.21** (LC II, fixed
   budget, 2026-08-09 — this figure has been re-measured twice and the
   earlier ×1.6 was retracted), **68020 ×1.0-1.2, 68000 ×1.03-1.08**. On the
   last two there is no walk to skip and only the machine's address decode is
@@ -1547,10 +1548,15 @@ side of this loop.
 
 ### The GUI ↔ machine-thread contract (`src/MachineHost.h`)
 
-Every machine runs on one CRTP host: `MachineHost<Derived, Mem, Cpu, Audio>`.
-It owns the thread, the command queue, the framebuffer double buffer, the
-status atomics, the `SaveStateSlot` and the JIT gauge snapshot. A platform
-supplies only its own half:
+Eleven of the twelve platforms run on one CRTP host:
+`MachineHost<Derived, Mem, Cpu, Audio>`. It owns the thread, the command
+queue, the framebuffer double buffer, the status atomics, the `SaveStateSlot`
+and the JIT gauge snapshot. Six `*Machine` structs instantiate it
+(`main.cpp` `MacIiMachine`, `IIfxMachine`, `LcMachine`,
+`SonoraStyleMachine<>`, `DafbMachine<>`, `MscMachine`). The **68000 compacts
+are the exception**: they never gained a machine thread, and still run their
+`MacMemory`/`Cpu68k`/`MacVideo` inline on the GUI thread at the tail of
+`main()`. A platform on the host supplies only its own half:
 
 | hook | what it does |
 |---|---|
@@ -1603,7 +1609,10 @@ to a bare MDB at offset 1024 for the flat `.dsk` images.
 **Why it exists**: `roms/` and `hdv/` are user-provided and gitignored, so a
 gate's fixture can change under it with nothing in the record. On 2026-08-06
 that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
-The digest is also what an `assets.lock` would pin, if one lands.
+`assets.lock` (repo root, 3 rows) already pins the *firmware* identities
+`--lle-aarch64` accepts — label, size, SHA-256, path, qualified profiles. What
+is still missing is the same treatment for the ROMs and disk images, which is
+what this digest would feed (`TODO.md` § 8).
 
 **Bit 8 clear is a tell, not a verdict.** `hdv/HD20SC.vhd` reads `$0000` and
 four green gates boot from it. It says where to look first when a boot gate goes

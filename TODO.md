@@ -860,6 +860,20 @@ default (`POM68K_APPLETALK=0` disables it). Gates `atalk_stack_test`,
 `afp_server_test`, `pap_server_test`, `macip_gw_test`. Reference:
 `docs/APPLETALK.md` § 6.5.
 
+- [ ] **The lapENQ address-defence ACK does not use the express path its own
+  comment promises.** `src/AtalkStack.cpp:88-96` claims *"the express path keeps
+  the ACK inside the prober's window, like the cable's synthesized CTS"*, but the
+  only production binding of `stack_.sendFrame` appends to `pending_`
+  (`AtalkHub.h:80-90`) and the flush at `AtalkHub.h:69` calls
+  `injectRxFrame(0, d, n, /*express=*/false)` — one tick later, then further
+  delayed by LLAP's 400 µs inter-dialog gap. `express=true` exists but is used
+  only for the CTS synth (`main.cpp:210`). Consequence: a guest probing node 128
+  can time out and take the internal node's address, after which `onGuestFrame`'s
+  `src != node_` guard stops recording it and every DDP the stack sends to 128 is
+  also the guest's own address. Fix: either a `sendControlFrame` hook bound to
+  `injectRxFrame(..., true)`, or correct the comment. Found by the 2026-07-27
+  bug hunt, still open (`.bughunt/INDEX.md`); no gate exercises address defence —
+  `llap_two_system_etalon` comes closest and does not.
 - [ ] Persist CNIDs across runs (per-session today; a `.AppleDB` or an id in the
   `.AppleDouble` sidecar would survive a reboot, matching netatalk's catalog).
 - [ ] AFP corners the subset skips: a proper Desktop database (icons / comments /
@@ -938,7 +952,7 @@ Explicitly **out of scope** for now: AV DSP, all 4 MB PPC ROMs.
 
 ### Independent majors — the only things left that are not just a ROM dump
 
-- [ ] **Power Manager, Duo line.** Platform #12 (MSC + PG&E) is finished
+- [ ] **Power Manager, Duo line.** The MSC + PG&E platform is finished
   through milestone 3b of `docs/DUO_BRINGUP.md`: `MscMemory`/`MscCpu`,
   `M68hc05Pge`/`PgePmu` LLE including the mid-boot BORG v2 upload and the
   /PMU_INT level, `MscMemory::decodeScreen` (fixed 640×400 LCD, grayscale by
@@ -1039,9 +1053,11 @@ that silently falls behind is worse than none, because it looks complete).
   plus eleven secondary-disk loops. A mutable, unversioned file is not a
   fixture: that is how `MacOS-7.6-boot.vhd` was corrupted and the IIfx gates
   went red. Two steps left now that the preamble prints the digest: a read-only
-  `hdv/ref/` distinct from the volumes the GUI mounts, then a versioned
-  `assets.lock` (name, size, SHA-256, provenance) + `tools/verify_assets.py` —
-  which distributes no copyrighted content and makes the drift *nameable*.
+  `hdv/ref/` distinct from the volumes the GUI mounts, then **extending the
+  existing `assets.lock`** — which today pins only the three firmware dumps
+  `--lle-aarch64` qualifies (label, size, SHA-256, path, profiles) — to the ROMs
+  and disk images, plus a `tools/verify_assets.py` to check it. It distributes
+  no copyrighted content and makes the drift *nameable*.
 - [ ] **[AR] Env knobs: the gate is sound again, the *classification* is what
   is left.** `config_test` (`unit`, asset-free) checks `DEV.md` § 5 +
   `src/jit/POM68K_JIT.md` against the tree in both directions, and re-derived

@@ -372,9 +372,11 @@ hardware-tested) oracle wins: **sign 0**.
 
 ### Observations — the classes Musashi could not testify on
 
-Proposals when written; **all promoted to rulings by D22** below. What
-survives here is the WinUAE-side fact each one pinned, because Moira has
-to match it:
+Proposals when written. D22 below **promotes four of them** into the
+WinUAE-solo `fpu` corpus (FSAVE/FRESTORE supervisor frames, packed
+decimal, FDBcc/FTRAPcc, FMOVEM-fp); the last two were never arbitrated
+and were settled by the retirement, not by a ruling. What survives here
+is the WinUAE-side fact each one pinned, because Moira has to match it:
 
 - **FSAVE/FRESTORE, supervisor forms** — WinUAE stacks the real 68882
   **$3C idle frame** (frame id `(version << 24) | 0x380000`, fsave_data
@@ -396,7 +398,7 @@ to match it:
 - State-restore semantics: `set_state` masks FPCR/FPSR ($FFF0 /
   $0FFFFFF8) and leaves the FPU **"in use"** (WinUAE `regs.fpu_state = 1`),
   so a restored state FSAVEs an *idle* frame, not NULL — the premise of
-  fix 1 in the O5 slice-2 list above.
+  fix 1 in the O5 slice-2 list below.
 - **Operational**: the `random` family executes $F2xx/$F3xx through the
   FPU instead of F-lining, so regenerating the integer corpora via
   `loop.sh` mints random-family vectors that need Moira's FPU exec layer

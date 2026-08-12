@@ -81,7 +81,7 @@ reference profile documented here**; the per-variant deltas are in
 
 Constants as built: `V8Memory::kRomSize` `$80000`, `kVramSize` `$80000`,
 `kMbRamSize` `$400000`, `kCpuHz` 15 667 200, `kViaHz` 783 360
-(`V8Memory.h:42-47`).
+(`V8Memory.h:43-48`).
 
 ## Clocking
 

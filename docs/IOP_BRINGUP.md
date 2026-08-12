@@ -1,9 +1,11 @@
 # Mac IIfx / Quadra 900-950 bring-up — the Apple PIC IOP + OSS brick
 
 **Status: DONE.** One brick unlocked three machines, all three shipped as GUI
-profiles with save states: the **Mac IIfx** (2026-08-01, platform #12 — OSS +
-two IOPs + SCSIDMA) and the **Quadra 900 / 950** (2026-08-02 — the Quadra 700
-board wearing the IIfx's front end). Gates `iifx_post_etalon`,
+profiles with save states: the **Mac IIfx** (2026-08-01, OSS + two IOPs +
+SCSIDMA — "platform #12" in `IIfxMemory.h:4` is a creation-order label, not a
+row number in CLAUDE.md's machine table) and the **Quadra 900 / 950**
+(2026-08-02 — the Quadra 700 board wearing the IIfx's front end).
+Gates `iifx_post_etalon`,
 `iifx_boot_etalon` (Finder on System 7.6), `iifx_input_etalon`,
 `q900_boot_etalon`, `q950_boot_etalon`, plus the device gates `r65c02_test`
 and `applepic_test`; save states in `savestate_030_test` (IIfx) and
@@ -162,7 +164,7 @@ code branches on) **plus** the IIfx front end:
 
 `q700_boot_etalon <q700|q900|q950>` selects the machine — one binary, three
 gates. A `$3DC27823` ROM pins q950 regardless of `POM68K_Q700_MODEL`, and q950
-without that ROM falls back to q700 (`main.cpp:4321-4323`).
+without that ROM falls back to q700 (`main.cpp:4320-4321`).
 
 ---
 
@@ -189,14 +191,14 @@ image to its `$24F1` success trap, since that image tests WAI/STP
 
 ---
 
-## 5. Milestones — what each established (all closed)
+## 5. Milestones — what each established (all closed on the Mac OS path)
 
 | M | Deliverable | Gate | The fact it pinned |
 |---|---|---|---|
 | M1 | `src/R65c02.*` vendored from POM2 `M6502` | `r65c02_test` (Klaus's 65C02 extended image → `$24F1`, plus the base 6502 functional image; `tests/assets/`, label `unit`, no machine assets) | CMOS + Rockwell set required; WAI/STP kept (§ 4) |
 | M2 | `src/ApplePic.*` — host window, shared RAM + auto-increment, status/control, timer, 2-channel DMA, int mask/flags, GPIO, bypass | `applepic_test` (uploads a hand-assembled 65C02 program, then proves reset-release, mailboxes both ways, timer one-shot + continuous cadence, DMA loopback, bypass pass-through) | 32 KB RAM, not 2 KB; timer/DMA phase counted in PIC clocks with remainders carried |
 | M3 | `src/IIfxMemory.*` + platform loop: map, OSS, BIU stub, the `$50024000` BERR window, VIA1/RTC/ASC/SWIM1/SCC, ROM overlay | `iifx_post_etalon` | The IOP firmware uploads are byte-identical to the system ROM — verify that before suspecting anything else |
-| M4 | SCSIDMA | folded into M3 (`IIfxMemory.cpp:237+`), no separate class | Mac OS needs only the 5380 + soft handshake; `$00-$03` must fall through to reg 0 with no DRQ |
+| M4 | SCSIDMA | the Mac OS subset folded into M3 (`IIfxMemory.cpp:237+`), no separate class; true DMA + the restartable handshake stall stay deferred as A/UX-only, and `IIfxMemory.h:239-240` still calls that remainder "M4" | Mac OS needs only the 5380 + soft handshake; `$00-$03` must fall through to reg 0 with no DRQ |
 | M5 | ADB through the SWIM PIC GPIO ↔ `AdbBus`/`AdbLine` | `iifx_boot_etalon` (Finder on 7.6, ~26 guest-seconds) | Zero HLE on the wire: ADBReInit → IOP mailbox → real SWIM PIC firmware → GPIO bit-bang → `AdbLine` |
 | M6 | Profile plumbing: `kProfiles` row, `SnapMachine::IIfx = 34`, save states (`ApplePic::visit` carries the 32 KB RAM, R65C02 registers, DMA and timer phase) | `iifx_input_etalon` (cursor + KeyMap, 8-byte window) | MCU↔host *phase* is load-bearing state, not derivable — the Cuda lesson |
 | M7 | Quadra 900/950 = the Eclipse front end on `Q700Memory` | `q900_boot_etalon`, `q950_boot_etalon`; `SnapMachine::Quadra900/950 = 35/36` | § 5b — four Quadra 700 rules that must not apply to the tower |

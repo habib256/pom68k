@@ -240,7 +240,7 @@ deliberately broad for the same reason — one machine per CPU family, plus the
 floppy path no hard-disk boot ever reaches. The list lives in **one** place,
 `tools/pgo_train_run.sh`'s `kGates`, shared by both recipes:
 
-| Label | Gate | Covers |
+| Label | Gate binary (a target name, not always a CTest name) | Covers |
 |---|---|---|
 | `q605` | `q605_boot_etalon` | 68040 + MMU, MEMCjr/DAFB/Cuda LLE |
 | `lc3` | `lc3_boot_etalon` | 68030, MMU on, Sonora |

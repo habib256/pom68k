@@ -4,14 +4,20 @@
 > record, kept verbatim (in French, as NeoST wrote it) because POM68K's copy of
 > Moira inherits its four patches. It describes NeoST, not this tree, so:
 >
-> - **All four patches are still present here** — deferred IPL
+> - **All four patches below are still present here** — deferred IPL
 >   (`iplPrev`/`iplChangeClock`/`iplDelay4`/`iplDelay2`, `setIplDelay`,
->   `pollIpl`, `POLL_IPL` in `MoiraMacros.h:67`), the exception guards and
->   double-fault-to-HALT rule in `Moira.cpp processException`, the STOP
->   level-sensitive IRQ re-check (`Moira.cpp:587-605`), the guarded
->   `reset<C>()`, and the 24-bit watchpoint mask
->   (`MoiraDataflow_cpp.h:547`/`:637`). They carry `NEOST` markers, never
->   `POM68K` ones — `grep -rn NEOST Moira/` finds them.
+>   `pollIpl`, `POLL_IPL` in `MoiraMacros.h:67`), the STOP level-sensitive
+>   IRQ re-check (`Moira.cpp:612` — `if (reg.ipl > reg.sr.ipl || reg.ipl == 7)`
+>   in the `STOPPED` branch opened at `:587`), the guarded `reset<C>()` whose
+>   double fault ends in `halt()` rather than an escaping C++ exception
+>   (`Moira.cpp:284-309`), and the 24-bit watchpoint mask
+>   (`MoiraDataflow_cpp.h:547`/`:637`). Beyond the four, NeoST also wrapped
+>   three `execException` calls on `execute()`'s own paths in `try` →
+>   `processException`, so an odd TRACE/PRIVILEGE vector raises an address error
+>   instead of escaping the emulator (`Moira.cpp:527`, `:590`, `:635`) —
+>   undocumented below but present. Everything NeoST touched carries `NEOST`
+>   markers, never `POM68K` ones — `grep -rn NEOST Moira/` finds them, and the
+>   two greps are disjoint.
 > - **Deferred IPL is dormant in POM68K.** Nothing in `src/` or `tests/` calls
 >   `setIplDelay`, so `iplDelay4 == 0` and `pollIpl()` is the plain
 >   assignment on every profile. `NEOST_IPLFETCH` was NeoST's env knob and is

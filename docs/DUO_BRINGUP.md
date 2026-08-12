@@ -1,4 +1,8 @@
-# PowerBook Duo bring-up — the MSC + PG&E platform (platform #11)
+# PowerBook Duo bring-up — the MSC + PG&E platform
+
+(`MscMemory.h:4` calls this "platform #11" and `IIfxMemory.h:4` calls OSS+IOP
+"#12": those are **creation order**, not row numbers in CLAUDE.md's machine
+table, and nothing derives from them.)
 
 **Status: the Duo 230 is the 37th profile** (2026-08-06). It boots System 7.5.5
 to the Finder — menu bar, battery icon, Control Strip, mounted volume — under
@@ -145,6 +149,13 @@ the tree can exercise. Then the PB150, whose ROM is the only oracle.
 - **Honouring the Listen R3 activator byte in `AdbBus`** (a device only moves
   on `$00`/`$FE`) did not fix the third-ADBReInit hang. Kept anyway — it is a
   real fidelity gap.
+- **"ADBBase goes stale under the waiter."** A3 read `$5894` at one stop and
+  `$57BC` at another, which looked like re-entrancy. It was an artefact of
+  comparing two different stop points: `--stop-at` with a small skip catches
+  the *early* ROM-era ADBReInit, which legitimately runs at the older ADBBase.
+  Measured at the real hang, `ADBBase ($0CF8) == A3`. `duo_trace` prints both
+  so the question cannot be fudged again — **a pointer compared across two
+  stop points is not a measurement.**
 
 ## Diagnostics (all in-tree, all env-gated)
 
@@ -173,7 +184,7 @@ completed exchange), `POM68K_PGE_HSHAKE` (REQ/ACK and /PMU_INT transitions),
 
 `MscMemory` already carries `kCpuHz210` and all three Duo 2x0 box IDs
 (`MscMemory.h:53-59`); the 210/250 share the `ECFA989B` ROM, so they need an
-env selector row in `kProfiles` (see the comment at `main.cpp:5490-5494`).
+env selector row in `kProfiles` (see the comment at `main.cpp:5488-5492`).
 
 ROMs in `roms/1MB ROMs/` (user-provided, gitignored): Duo 210/230/250
 `ECFA989B`, Duo 270c `0024D346`, Duo 280/280c `015621D7`, PB150 `FDA22562`.

@@ -47,7 +47,7 @@ matching 37 tags.
 | `APPLETALK.md` | AppleTalk / LocalTalk / LLAP reference + netatalk/CUPS bridge — read before touching `Scc8530`/`LtoUdp` |
 | `IOP_BRINGUP.md` | Mac IIfx / Quadra 900-950 blueprint — the Apple PIC IOP (R65C02) + OSS brick, milestone plan |
 | `DUO_BRINGUP.md` | PowerBook Duo 230 blueprint — the MSC + PG&E (68HC05 Power Manager) brick, milestone plan |
-| `CACHE_040.md` | 68040 copyback/snooping blueprint — no oracle, no DMA client yet, M0 CM-bit numbers, milestones M1-M3 |
+| `CACHE_040.md` | 68040 copyback/snooping blueprint — M1 (tag state) shipped and the chantier closed there; M0 CM-bit numbers, and § 3's three conditions for reopening M2/M3 |
 | `RASPBERRY_PI.md` | Pi build recipe — `-mcpu`/`-mtune`/LTO/PGO, which number came from where, and the silent-PGO trap |
 
 ## Status (2026-08-12)
@@ -66,8 +66,10 @@ matching 37 tags.
   out — against the roster CMake writes at configure time, and fails if any
   gate carries no label.
 - Last FULL run **162/162 green, 2026-08-07**, 3 h 35, on a **fully rebuilt
-  tree** (`make -j4` first, freshness checked per gate). **The `make` is part
-  of the claim, not a detail**: an earlier run the same day returned 143/143
+  tree** (`make -j4` first, freshness checked per gate) — the registry has
+  grown by 21 gates since, so that run is not a claim about today's suite.
+  **The `make` is part of the claim, not a detail**: an earlier run the same
+  day returned 143/143
   over binaries linked at *different times* — 102 of ~110 older than
   `libpom68k_core.a` — and proved nothing, because `ctest` does not build.
   A phantom failure gets investigated; a phantom pass gets quoted.
@@ -100,8 +102,10 @@ matching 37 tags.
   `TODO.md` § *Test & validation depth*.
 - Peripheral **event deadlines** cover eight platforms — V8, Sonora, VASP,
   RBV, Q605, Centris, Q700/Eclipse, Q630, i.e. every CPU wrapper carrying
-  `schedulePeriphDeadline()`. Compacts, Mac II, IIfx and MSC stay on fixed
-  batches, each for a stated reason (`TODO.md` § 4).
+  `schedulePeriphDeadline()`. Mac II, IIfx and MSC stay on fixed batches
+  (`Cpu020`/`IIfxCpu` 64 cycles, `MscCpu` 128), each for a stated reason
+  (`TODO.md` § 4). The compacts are neither: `Cpu68k::sync()` calls
+  `catchUp()` before **every** bus access, so their peripheral time is exact.
 - **Release CI** ships four artifacts on tag (Linux x86_64/aarch64
   AppImage glibc-2.27, macOS Universal 2 dmg, Windows x64 zip);
   `--version` is the headless smoke. Bootstrap: run *Build bionic builder
@@ -165,7 +169,7 @@ bare `FPUModel::NONE` — both reach the Finder (integer PACK 4 via the XPRAM
 `$AE` ROM-resource combo).
 
 Mac Plus 24-bit address map, boot overlay, framebuffer/sound-buffer offsets
-and the contention model: `DEV.md` § *Mac Plus platform*. Every other map is
+and the contention model: `DEV.md` § 2.1. Every other map is
 in its `*Memory.h`.
 
 ## Machines — 12 platform implementations
@@ -184,7 +188,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **VASP** (V8 peripherals on Sonora addressing) | IIvx, IIvi | `VaspMemory.*`, `VaspCpu.*`, `VaspVideo.h` | `iivx_/iivi_boot_etalon`, `iivx_input_etalon`, `iivx_soak/persist_etalon` | MAME `vasp.cpp`/`maciivx.cpp` |
 | **MEMCjr + PrimeTime** | LC 475, LC 575, Quadra 605 | `Q605Memory.*`, `Cpu040.*` | `q605_boot/floppy_boot/nofpu_boot/barefpu_boot/ot_bind_etalon`, `q605_soak/persist_etalon`, `lc475_/lc575_boot_etalon` | MAME `macquadra605.cpp` |
 | **djMEMC + IOSB** | Centris 610/650, Quadra 610/650/800 | `CentrisMemory.*`, `CentrisCpu.*` (reuse `Dafb`/`Ncr53c96`/`Swim2`/`AscIosb`/`PseudoVia` + `Rtc` + `AdbVia`) | `centris610/650_`, `quadra610/650/800_boot_etalon` | MAME `macquadra800.cpp`/`djmemc.cpp`/`iosb.cpp` |
-| **Discrete 040** (Mac II front end + Quadra back end) | Quadra 700; **Quadra 900 / 950** = the same board with the IIfx's front end (two `ApplePic` IOPs, `Egret` instead of the discrete RTC, a 2nd 53C96) | `Q700Memory.*` (`Model {Spike,Q900,Q950}`), `Q700Cpu.*`; SCSI through DAFB's own TurboSCSI cell | `q700_/q900_/q950_boot_etalon` | `DEV.md` § *Discrete-040 platform*; `docs/IOP_BRINGUP.md` § M7 |
+| **Discrete 040** (Mac II front end + Quadra back end) | Quadra 700; **Quadra 900 / 950** = the same board with the IIfx's front end (two `ApplePic` IOPs, `Egret` instead of the discrete RTC, a 2nd 53C96) | `Q700Memory.*` (`Model {Spike,Q900,Q950}`), `Q700Cpu.*`; SCSI through DAFB's own TurboSCSI cell | `q700_/q900_/q950_boot_etalon` | `DEV.md` § 2.8; `docs/IOP_BRINGUP.md` § M7 |
 | **F108 + PrimeTime II + Valkyrie** | Quadra 630, LC 580 | `Q630Memory.*`, `Q630Cpu.*`, `Valkyrie.*` (fixed-mode framebuffer) | `q630_/lc580_boot_etalon` | MAME `valkyrie.cpp` |
 | **MSC + PG&E** (PowerBook Duo) | Duo 230 (68030 @ 33 MHz, LCD 640×400 via `MscMemory::decodeScreen`) | `MscMemory.*`, `MscCpu.*`, `PgePmu.*`, `M68hc05Pge.*` (the PMU's own 68HC05, BORG v2 uploaded mid-boot) | `duo230_boot_etalon`, `msc_parity_test`, save states in `savestate_030_test` | MAME `macpwrbkmsc.cpp`/`msc.cpp`/`m68hc05pge.cpp`; `docs/DUO_BRINGUP.md` |
 
@@ -197,7 +201,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **RTC 343-0042** (clock + PRAM serial) | `Rtc.h/.cpp` | M4 ✓; PRAM file persistence belongs to the owning machine (`loadPram`/`savePram` on `*Memory`) — **all 12 have it**, each wired by its runner in `main.cpp`. What differs is the *store*: discrete `Rtc` (compacts, Mac II family, IIfx, IIci), Egret/Cuda XPRAM (everything else), PG&E RAM + SRAM (Duo) | Mini vMac RTC.c |
 | Built-in demo ROM | `DemoRom.h` | ✓ (gate vehicle) | — |
 | UI (ImGui/GLFW, turbo, Machine/Disques/CPU/Réseau menus) | `main.cpp` | ✓ | POMIIGS main.cpp |
-| **GUI ↔ machine-thread contract** — thread, command queue, framebuffer double buffer, status atomics, save-state slot, JIT gauges. One CRTP host for all 12 platforms since 2026-08-09 (six near-copies before); platforms supply `emulateQuantum`/`drainAudio`/`renderFrame`/`publishStatus` only | `MachineHost.h`, `SaveStateSlot.h`; the six `*Machine` structs in `main.cpp` | ✓ `machinehost_test` (38 checks, `unit`). **The GUI layer above it is compile-verified only** — no gate opens a window | `DEV.md` § 6 |
+| **GUI ↔ machine-thread contract** — thread, command queue, framebuffer double buffer, status atomics, save-state slot, JIT gauges. One CRTP host since 2026-08-09 (six near-copies before); platforms supply `emulateQuantum`/`drainAudio`/`renderFrame`/`publishStatus` only. Six `*Machine` structs cover the **eleven** non-compact platforms; the 68000 compacts still run inline on the GUI thread in `main()` | `MachineHost.h`, `SaveStateSlot.h`; the six `*Machine` structs in `main.cpp` | ✓ `machinehost_test` (38 checks, `unit`). **The GUI layer above it is compile-verified only** — no gate opens a window | `DEV.md` § 6 |
 | **SST 68000 harness** | `tests/sst68000.cpp` | M4.5 ✓; 1 000 058 vectors | SingleStepTests/680x0 |
 | **IWM + Sony 3.5" 800K GCR** | `Iwm.h/.cpp`, `SonyDrive.h/.cpp` | M5 ✓; write engine + GCR write-back (`iwm_write_test`) | MAME `iwm.cpp`/`ap_dsk35.cpp` |
 | **SWIM1** (IWM + ISM, 1.44 MB MFM) | `Swim1.h/.cpp` | ✓ `swim1_test` | MAME SWIM |
@@ -211,7 +215,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **NCR 53C96 TurboSCSI** | `Ncr53c96.*` | Q6 ✓; PIO + pseudo-DMA | MAME `ncr53c90.cpp` |
 | **What else can sit on the bus** — `ScsiTarget` interface (both controllers hold one, not a `ScsiDisk*`); **DaynaPort SCSI/Link** = Ethernet as a SCSI target, bridged by `EtherLink` (framing + proxy ARP) onto the NAT already in `MacIpGateway` | `ScsiTarget.h`, `DaynaPort.*`, `EtherLink.*` | Opt-in, off by default: `POM68K_DAYNAPORT=<id>` on the Quadra 605. Command set + Ethernet round trip gated (`daynaport_test`); `q605_boot_etalon` reaches the same desktop with a card at ID 4. **No guest driver has been run against it**, no GUI entry, no save states, no EtherTalk | SLINKCMD.TXT via PiSCSI `scsi_daynaport.cpp`; `DEV.md` § 3.3bis |
 | **CD-ROM target** (`ScsiDisk::Kind::Cdrom`, `.cue`/`.bin`, 2048-B blocks) | `ScsiDisk.*` | ✓ `scsi_cdrom_test`, `q605_cdrom_etalon`, `q605_cdboot_etalon` | MAME cdrom |
-| **Sound** — Plus PWM + chime; ASC flavours `AscV8` / `AscSonora` ($BC) / `AscIosb` ($BB) | `MacAudio.h`, `MacAudioHost.h`, `Asc.*` | ✓ `sound_test`, `asc_test`, `q605_asc_test` | GttMFH; MAME ASC/IOSB |
+| **Sound** — Plus PWM + chime; **four** ASC flavours in one file: `AscV8` (version byte at construction — `$E8` on V8, `$00` on the Mac II / IIfx / IIci discrete cell), `AscSonora` ($BC), `AscEasc` ($B0, 44.1 kHz, the Quadra 700/900/950), `AscIosb` ($BB) | `MacAudio.h`, `MacAudioHost.h`, `Asc.*` | ✓ `sound_test`, `asc_test`, `asc_easc_test`, `q605_asc_test` | GttMFH; MAME ASC/EASC/IOSB |
 | **Drive sounds** (floppy + HDD FX) | `FloppySound.*`, `FloppySoundSink.h` | ✓ `floppy_sound_test` | MAME floppy_sound_device via POM2 |
 | **Video decoders** + **raster beam** | `VideoBeam.h` (scan position + row schedule; owns no clock — it adopts each platform's own `framePos_`), `MacVideo.h`, `TobyVideo.*`, `V8Video.h`, `RbvVideo.h`, `SonoraVideo.h`, `VaspVideo.h`, `Se30Video.h`, `Dafb.*`, `Valkyrie.*`, `Ariel.h` | ✓ per platform; **row-granular decode on all 9** since 2026-08-02 — the beam owns no clock, it adopts each platform's own `framePos_`. `video_beam_test`, `v8_raster_test`, `raster_equiv_test` | per-platform MAME; `docs/LLE_VS_HLE.md` § 1.1 |
 | **DAFB/Antelope** (Swatch CRTC, three clock generators, CLUT, sense) | `Dafb.*` | Q8.1 ✓ + MAME-parity pass | MAME `dafb.cpp` |
@@ -223,7 +227,7 @@ clock / CPU / model ID / MCU. Per-platform deep-dive: `DEV.md`.
 | **68882 FPU** (softfloat, `setFPUModel`) | `extern/moira` FPU + `extern/softfloat/` | O5 ✓ `fpu_sanity` | MC68881/882UM; WinUAE fpp.c |
 | **68040 core + MMU** | `extern/moira`, `tests/sst68040.cpp` | Q1-Q4 ✓; **7 200/7 200 pinned vectors** | MC68040UM + WinUAE oracle |
 | **Save states** — one `visit<Ar>()` per class drives save AND load; chunked container + zero-run codec. Callbacks/pointers **re-bound, not serialized**; caches **flushed**; disk images stay on the host (`ScsiDisk` copy-on-first-write log) | `SaveState.*`, `SaveStateMachines.*` (12 save/load pairs, 37 `SnapMachine` tags), `MoiraSnapshot.h`, `visit()` in each device | ✓ all 12 families; GUI menu Machine « Sauver / Restaurer l'état » (`main.cpp` `SaveStateSlot`, machine-thread apply, `<image>.<profile>.pomss`); `savestate_test`, `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`, `q605_savestate_etalon` | — |
-| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** and **AArch64** code generators). **`jit/auto` is the conformant 68040 default**; every other family still defaults to the interpreter, which remains the accuracy oracle and has one explicit etalon per 68040 platform | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J3 ✓ on 68040. Engine wired into every CPU wrapper. Worth per guest: 68040 ×2.1-3.7, 68030 ×1.2-1.7, 68020 ×1.0-1.2, 68000 ×1.03-1.08. x64/A64 codegen remains **68040-only by declared capability**, so unfinished native 030 work cannot become a shipping default. `POM68K_CPU_ENGINE=interp|jit` overrides the family policy; `interp_{q605,centris650,q630,q700}_boot_etalon` preserve the reference tier | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
+| **JIT — second execution engine** (host-agnostic `jit::Engine` + `jit::Backend`; `threaded` portable floor, **x86-64** and **AArch64** code generators). **`jit/auto` is the conformant 68040 default**; every other family still defaults to the interpreter, which remains the accuracy oracle and has one explicit etalon per 68040 platform | `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`, `backends/`), seam in `extern/moira` | J0-J2 ✓ on 68040 (engine + IR, then the x86-64 generator — `POM68K_JIT.md` § 10; the AArch64 generator landed after and carries no milestone letter). Engine wired into every CPU wrapper. Worth per guest (`POM68K_JIT.md` § 3.4 owns these): 68040 ×2.68 end to end on `q605_boot_etalon`, ×5.0 on a fixed budget; 68030 ×1.21; 68020 ×1.0-1.2; 68000 ×1.03-1.08. x64/A64 codegen remains **68040-only by declared capability**, so unfinished native 030 work cannot become a shipping default. `POM68K_CPU_ENGINE=interp|jit` overrides the family policy; `interp_{q605,centris650,q630,q700}_boot_etalon` preserve the reference tier | `src/jit/POM68K_JIT.md`; WinUAE JIT as reference, not imported |
 
 ## CPU core: Moira (permanent fork)
 

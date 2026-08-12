@@ -40,13 +40,14 @@ an SST vector set and soft-skip without one.
 
 Requires CMake ≥ 3.16, a C++20 compiler, and — for the GUI target only — GLFW
 ≥ 3.3 + OpenGL. Without `imgui/` the GUI target is simply not declared
-(`CMakeLists.txt:319`) and the core library plus the tests still build, which
+(`CMakeLists.txt:320`, `if(EXISTS "${IMGUI_DIR}/imgui.cpp")`) and the core
+library plus the tests still build, which
 is what headless CI does.
 
 Optional: a profile-guided build measured **−33 % on the interpreter** and
 −18 % on the JIT (Quadra 605 boot), bit-identical emulation. The helper keeps
 the three steps in one directory and, on Clang/AppleClang, merges the runtime
-profiles with `llvm-profdata` (rationale + flags: `CMakeLists.txt:120`):
+profiles with `llvm-profdata` (rationale + flags: `CMakeLists.txt:121-140`):
 
 ```bash
 tools/pgo_train.sh build-pgo

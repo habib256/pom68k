@@ -95,7 +95,9 @@ placed. `decode()` (whole frame, state as of now) stays for stills and tests.
 **Converted — all nine**: `V8Video`, `SonoraVideo`, `VaspVideo`, `RbvVideo`,
 `TobyVideo` (its own CRTC clock), `Se30Video` (no CRTC of its own — it rides
 `MacIIMemory`'s 60 Hz accumulator), `Dafb` and `Valkyrie` (both through the
-one `DafbMachine` template, so twelve profiles at once), and `MacVideo`.
+one `DafbMachine` template — `main.cpp:3540-3543`, four instantiations
+covering **thirteen** profiles: Q605×3, Centris×5, Q700×3, Q630×2), and
+`MacVideo`.
 
 Two per-platform notes worth keeping. On the DAFB/Valkyrie side the geometry
 is resolved **once per frame**, not per row: walking the guest's
@@ -309,9 +311,10 @@ never a VIA bus cycle. Bus time is now charged in **machine cycles**
 Both workarounds are retired (`RbvCpu` back to the shared default;
 `POM68K_Q605_CACHE_BOOST` re-measured green at 2/4/8 across the 040 family).
 The audit found one more boosted-clock reader: `AdbVia::syncTo` fed the
-PIC1654S co-step the raw core clock — all four call sites now pass
-`machineClock()`. **Any new consumer of the CPU clock must ask which domain it
-is in.**
+PIC1654S co-step the raw core clock — every boosted call site now passes
+`machineClock()` (eight of the nine today; the compacts' `MacMemory.cpp:97`
+passes `getClock()`, which on an unboosted `Cpu68k` is the same clock).
+**Any new consumer of the CPU clock must ask which domain it is in.**
 
 **030 + GLUE** (`MacIIMemory`, IIx/IIcx): once the CPU's own PMMU is enabled
 (TC bit 31) the address Moira presents is already physical, so the GLUE 24-bit
@@ -624,11 +627,18 @@ same class of mistake as the false green in § 5.
 ## 1.7 Audio — fixed drain rate
 
 `Asc.*`. FIFO semantics are faithful (MODE mask, edge/level IRQ variants);
-the drain is a fixed 22 257 Hz via fractional accumulators. Three flavors share
-the file: `AscV8` (LC II/VASP), `AscSonora` (the EASC at `$BC` on Spice/Sonora)
-and `AscIosb` (Q605 stereo).
+the drain is a fixed 22 257 Hz via fractional accumulators. **Four** flavours
+share the file, each pinned by the version byte its `$800` returns:
+`AscV8` — one class, two identities: version `$E8` on the V8/VASP/Duo
+integrations (the Duo should read `$E9`, still a TODO at `MscMemory.h:222`)
+and version `$00` on the Mac II / IIfx / IIci **discrete** cell, which is
+exactly what `AscV8::classic()` tests (`Asc.h:110`, `MacIIMemory.h:258`);
+`AscSonora` (`$BC`, Spice/Sonora — `Asc.cpp:503`),
+`AscIosb` (`$BB`, Q605 stereo — `:324`) and `AscEasc` (`$B0`, the real EASC
+on the discrete-040 Quadra 700/900/950 — `:685`, landed as MAME-audit action
+8, gate `asc_easc_test`).
 
-**Pinned quirk**: the Sonora/Spice EASC `$804` status read must clear the IRQ
+**Pinned quirk**: the Sonora/Spice (`AscSonora`) `$804` status read must clear the IRQ
 **unconditionally** — MAME's `HALF_B` gate freezes the CC / LC III boot at
 "Bienvenue." inside the autovector.
 
@@ -764,26 +774,34 @@ escapes.
 | Device | Files | Default today | Fallback triggers |
 |---|---|---|---|
 | **Egret / Cuda** | `Egret.*` (HLE) vs `M68hc05.*` + `CudaLle.*` (LLE) | **Firmware LLE** on every Egret/Cuda machine: CC factory `341s0417` (2.35), Mac TV `341s0789` (2.38), LC III/III+ + IIvx/IIvi `341s0851`, LC 520/550/CC II + Q630/LC 580 `341s0060` (2.40 — 2.37 livelocks that ROM on pseudo-cmd `$0E`), LC II `341s0850`, Q605 `341s0788` | `POM68K_EGRET_LLE=0` / `POM68K_CUDA_LLE=0`, or missing dump |
-| **ADB modem** (Mac II / IIx / IIcx / SE/30, IIci, Centris + Quadra 610/650/800) | `AdbVia.*` (HLE byte SM on VIA SR) vs `Pic1654s.*` + `AdbLine.*` (LLE) | **Firmware LLE** when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia.cpp:53-67`); `Via6522::extShiftCB1` is the wire | `POM68K_ADB_LLE=0`, or missing dump |
+| **ADB modem** (every machine holding an `AdbVia`: the ADB compacts SE / SE FDHD / Classic, Mac II / IIx / IIcx / SE/30, IIci, Centris + Quadra 610/650/800, Quadra 700 — the Eclipse Q900/Q950 attach one too but their Egret owns the ADB bus, `Q700Memory.cpp:363`) | `AdbVia.*` (HLE byte SM on VIA SR) vs `Pic1654s.*` + `AdbLine.*` (LLE) | **Firmware LLE** when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia::attach`, `AdbVia.cpp:53-67`); `Via6522::extShiftCB1` is the wire | `POM68K_ADB_LLE=0`, or missing dump |
 | **ADB bus** (Egret/Cuda machines) | `AdbBus.*` | Unused — both machines feed `AdbLine` under the firmware LLE | Retires with the Egret HLE |
 
 Gates: `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `egret_test`,
 `pic1654s_test`, `adbline_test`, `q605_cudalle_*`, `macii_mouse_etalon`,
-`input_etalon`, `family_input_etalon` (which **SKIPs rather than passes** when
-a machine fell back to HLE — the gate exists to pin the firmware path).
+`input_etalon`, and the four gates the `family_input_etalon` binary serves
+(`lc3_`/`lc520_`/`iivx_`/`iisi_input_etalon`) — which **SKIP rather than pass**
+when a machine fell back to HLE, since they exist to pin the firmware path.
 
 ### Retirement policy (settled 2026-07-29)
 
 The fallbacks are **kept** — MCU dumps are user-provided and not
 distributable, and without an Egret/Cuda the V8-class machines cannot boot at
-all — but **never silent**: every entry into an HLE ADB path prints a
+all — but **never silent on a fallback path**: every entry into an HLE ADB
+*fallback* prints a
 NON-CONFORMANT-substitute notice naming the missing dump — six memory classes
 (`V8Memory.cpp:182-190`, `SonoraMemory.cpp:71-77`, `VaspMemory.cpp:41-45`,
 `RbvMemory.cpp:52-56`, `Q605Memory.cpp:105-110`, `Q630Memory.cpp:93-98`) plus
-`AdbVia` itself (`AdbVia.cpp:63-68`), which covers the Mac II and Centris
-families. Since 2026-08-12 each of those entries also registers the module in
-`pom68k::lle` (`src/LleSession.h`), so the session has one authoritative
-purity answer and the save state carries it. That satisfies the § Principle rule without
+`AdbVia` itself (`AdbVia.cpp:63-68`), which covers the compacts, the Mac II,
+Centris and Q700 families. Since 2026-08-12 each of those entries also
+registers the module in `pom68k::lle` (`src/LleSession.h`), so the session has
+one authoritative purity answer and the save state carries it. **One
+registration is silent**: the Eclipse Q900/Q950 run the Egret HLE
+unconditionally and `Q700Memory.cpp:37` registers `HleEgretCuda` with no
+stderr notice — it is not a *fallback* (no dump would change it), which is why
+it is refused outright in product mode (§ 5) rather than warned about. If the
+Eclipse ever gains an Egret LLE, give it the notice too.
+That satisfies the § Principle rule without
 orphaning no-dump users. Actually deleting `Egret.*` / `AdbBus` / the
 byte-model (and § 4.1's last hack with them) is a **product decision** —
 "POM68K requires MCU dumps" — not a code cleanup. Take it deliberately.
@@ -874,7 +892,7 @@ round when assumed otherwise:
   `iisi_input_etalon` therefore asserts on screen pixels (cursor motion),
   which the MMU cannot move.
 - **Factory PRAM seeding is reset-time only** — `Rtc::factoryDefaults`
-  (`Rtc.cpp:24-70`, Mac II) and `Egret::factoryDefaults` (`Egret.cpp:56-100`,
+  (`Rtc.cpp:24-60`, Mac II) and `Egret::factoryDefaults` (`Egret.cpp:56-100`,
   LC II / Cuda). Borderline but kept: factory PRAM is hardware-plausible and
   prevents the ROM's cold-PRAM re-init loop. Documented *policy*, not just
   code: `Rtc` writes the full Basilisk block only when `'NuMc'` is absent but
@@ -1019,8 +1037,10 @@ correctness it buys:
 **LLE AArch64 product mode (2026-08-12).** `--lle-aarch64` keeps a
 session-wide registry of the HLE modules a machine actually fell back to
 (`src/LleSession.h`: `activateHle` / `qualified()`), locks the native engine
-once the session qualifies (`engineChangeAllowed`, honoured by the four
-040 CPU wrappers and the GUI command queue), verifies firmware by size +
+once the session qualifies (`engineChangeAllowed`, called by the four 040 CPU
+wrappers — `Cpu040.cpp:209`, `CentrisCpu.cpp:128`, `Q630Cpu.cpp:128`,
+`Q700Cpu.cpp:129`; the GUI's CPU menu greys itself on the same condition,
+`main.cpp:913-918`), verifies firmware by size +
 SHA-256 against `assets.lock`, and stamps that provenance into the save
 state (`SaveStateMachines.cpp:163`). Restoring a snapshot that carries an
 HLE module is **refused** in strict mode (`:207-210`). Build with

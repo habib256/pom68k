@@ -267,7 +267,7 @@ platforms.
 |---|---|---|
 | **128K / 512K / 512Ke** | A subset of the Plus: 64K ROM, no SCSI, less RAM. Memory/ROM config on `MacMemory`. | 128K `28BA61CE` and 512K `28BA4E50` are on hand |
 | **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kProfiles[]` row + an env value |
-| **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:53-59`; the `main.cpp:5490-5494` comment says the same |
+| **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:53-59`; the `main.cpp:5488-5492` comment says the same |
 | **Generalized NuBus + slot video** | The Mac II Toby/DeclRom port made reusable | Real cards on IIx/IIcx/IIci/IIsi/VASP and the NuBus Quadras. The IIfx, which has no built-in video, already boots on `TobyVideo` in slot 9 |
 | **ATA/IDE target on the Quadra 630 / LC 580** | The port is mapped (`Q630Memory.h:27`), it just has no drive | The remaining gap on that board; boot currently goes over SCSI |
 
@@ -292,10 +292,13 @@ Re-derived from `CMakeLists.txt` on 2026-08-12:
   persist), Quadra 605 (OT bind, CD-ROM ×3, floppy, mouse, key, soak, persist,
   savestate), IIfx (`iifx_input_etalon`). **28 profiles are proven only to the
   point where the Finder appears** — including every 2026-08 arrival.
-- **14 of 37** are additionally gated on the **second execution engine**
+- **15 of 37** are additionally gated on the **second execution engine**
   (`jit_*_boot_etalon`: q605, centris650, q630, q700, lcii, mactv, lc3, iivx,
-  iisi, lc, macii, se30, classic, iifx); four of those also carry an explicit
-  `interp_*_boot_etalon` interpreter reference (q605, centris650, q630, q700).
+  iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` at
+  `CMakeLists.txt:1513-1554`, plus `jit_classic_boot_etalon` registered on its
+  own at `:1657` because it shares the compact binary); four of those also
+  carry an explicit `interp_*_boot_etalon` interpreter reference (q605,
+  centris650, q630, q700).
 
 Adding a 38th machine is cheaper than hardening the 37 that exist. Read the
 roadmap below against that trade — and against `TODO.md` § 2, which calls test

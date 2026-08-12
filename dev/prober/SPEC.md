@@ -42,12 +42,13 @@ Ressources (menus/fenêtre) créées à l'exécution → pas de `.r`.
 | `chart.h/.c` | troisième vue : barres normalisées par groupe, valeur écrite à côté | — |
 | `compat/` | glues absentes du multiversal : `Lists.h`, AppleTalk, traps Power Manager / `Microseconds` / `ReadXPRam` | — |
 
-`compat/prober_compat.h` porte trois interrupteurs, chacun avec sa
-justification vérifiée : `PROBER_HAVE_POWER 1`, `PROBER_HAVE_MICROSECONDS 1`,
-`PROBER_HAVE_XPRAM 0` (`_ReadXPRam` n'a **aucun** prototype ni glue dans les
-Universal Interfaces 3.4 — seulement un numéro de trap dans `Traps.h` ; l'écrire
-resterait un pari). Tant qu'il vaut 0, la section `pram` du § 3.4 n'est pas
-compilée.
+`compat/prober_compat.h` porte quatre interrupteurs, chacun avec sa
+justification vérifiée : `PROBER_HAVE_SLOTS 1`, `PROBER_HAVE_POWER 1`,
+`PROBER_HAVE_MICROSECONDS 1`, `PROBER_HAVE_XPRAM 0` (`_ReadXPRam` n'a **aucun**
+prototype ni glue dans les Universal Interfaces 3.4 — seulement un numéro de
+trap dans `Traps.h` ; l'écrire resterait un pari). Tant qu'il vaut 0, la
+section `pram` du § 3.4 n'est pas compilée. `net.c` en porte un cinquième,
+local : `PROBER_ZONES 1` (§ 4).
 
 ## 2. Modèle de données (`report.h`)
 
@@ -141,7 +142,8 @@ pas (`mppOpen = down`, `R_WARN`) :
 
 Les glues et les noms de champs viennent de `compat/AppleTalk.h` ; repli bas
 niveau via `Control(.MPP/.XPP)` avec le `csCode` documenté
-(`docs/APPLETALK.md` §3.3/§4.4) si une glue manque.
+(`docs/APPLETALK.md` §3.2 pour ZIP/`GetMyZone`, §3.3 pour NBP) si une glue
+manque.
 
 ## 5. `report` — sorties
 
@@ -224,11 +226,17 @@ inscriptible en mode user (vrai sur Mac classique). **À revérifier sur 040.**
 
 ## 8. Contrepartie host
 
-netatalk `afp.conf` : partage `[POM68K Logs] path=/srv/pom68k/logs` (accès
-invité pour le banc) — ou le bridge tout fait de `tools/netatalk2/`. Lancer
-`POM68K_LTOUDP=1 ./POM68K …`, lire `/srv/pom68k/logs/Probe-*.log`, parser le
-JSONL, differ contre `golden/<machine>.expected`. Le golden lui-même n'existe
-pas encore.
+Le nom du volume est **codé en dur** côté guest (`kVolName = "POM68K Logs"`,
+`main.c`) : `Report_WriteAFP` ne cherche que celui-là et rend `fnfErr` sinon.
+Donc netatalk `afp.conf` : partage `[POM68K Logs] path=/srv/pom68k/logs` (accès
+invité pour le banc). Le bridge tout fait de `tools/netatalk2/` **ne suffit
+pas tel quel** — il publie un unique volume `Input` (`AppleVolumes.default`
+dans `appleshare.sh`) ; il faut lui ajouter une ligne `… "POM68K Logs"`. Même
+remarque pour la pile AppleTalk interne : son volume prend le nom du dossier
+partagé (`AtalkHub.h`), donc `POM68K_SHARE_DIR` doit pointer sur un dossier
+nommé `POM68K Logs`. Ensuite : lancer `POM68K_LTOUDP=1 ./POM68K …`, lire
+`Probe-*.log`, parser le JSONL, differ contre `golden/<machine>.expected`. Le
+golden lui-même n'existe pas encore.
 
 ## 9. Points encore ouverts
 

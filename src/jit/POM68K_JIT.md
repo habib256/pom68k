@@ -66,7 +66,7 @@ engine being worth switching on. Ranked by measured gain (§ 3.4):
 
 | Guest | Machines | Window buys | Because |
 |---|---|---|---|
-| 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | ×2.7 on the boot etalon, **×5.0** on a fixed budget (x64, § 3.4) | an ATC walk per fetch, replaced by a bounds check |
+| 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | **×5.0** on a fixed budget (x64, § 3.4); ×2.68 end to end on `q605_boot_etalon` (2026-07-31, § 3.4) | an ATC walk per fetch, replaced by a bounds check |
 | 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** (LC II, fixed budget, threaded — no native 030 generator ships) | same, through `mmuFetchWord` |
 | 68020 | Macintosh LC, **Mac II** | ×1.0-1.2 | no MMU to skip — only the map decode |
 | 68000 | **Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
@@ -127,8 +127,11 @@ what it does and does not drive today:
 | `dtlbCodeMask` | `Engine::fillDtlb` | may the engine hand out a WRITE entry for a 4 KB page holding translated code in some 256-byte slice? Only a backend that tests `PomJitDtlbEntry::codeMask` before storing (§ 8). Defaults false = the old whole-page refusal |
 
 The per-opcode question is **not** a block boundary: `Backend::canEmit()` is
-an encoding-only answer, consulted by the opcode census (`POM68K_JIT_HISTO`)
-and by `jit_backend_test`; the coverage floor inside `compile()` counts what
+an encoding-only answer — consulted by the opcode census
+(`POM68K_JIT_HISTO`), by `jit_backend_test`, and by `A64Backend::compile()`
+as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:2294`;
+the x64 emitters carry their own switch and never call it). The coverage
+floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below half native
 (`JitBackendX64.cpp:2604`). Anything an otherwise-compilable block contains
 that the backend cannot emit becomes a per-instruction cold stub inside the
@@ -321,6 +324,12 @@ instrument, same rule (identical fingerprints across engines), one budget:
 |---|---|---|---|
 | Moira interpreter | 50.27 s | ×1.98 | — |
 | JIT, `threaded` | 41.63 s | ×2.40 | ×1.21 |
+
+The one end-to-end figure the ranking table at the top of this file also
+quotes, kept because it is the only one taken at the scale a user sees:
+`q605_boot_etalon` to the 256-colour Finder, **61.3 s interpreted against
+22.9 s on x64 — ×2.68** (2026-07-31). It is a boot gate, so it is not a
+stopwatch (§ 3.3) — never quote it against a bench number.
 
 **The 68030 i-cache is identical across engines, to the digit** —
 1 602 507 733 fetches / 1 093 456 393 hits / 509 047 173 misses (68.23 %) on
@@ -586,8 +595,8 @@ stacks, the cycle clock — **and the first 2 KB of guest RAM**. That last one
 is not decoration. A JIT bug in a STORE shows up in a register only much
 later, when something reads the byte back; the 68k system globals live in low
 RAM and are written constantly during a boot, which makes them a cheap, high
-yield tripwire. Its FIVE registrations exist because each covers something
-the others cannot:
+yield tripwire. Its five registrations — six on AArch64 — exist because each
+covers something the others cannot:
 
 | gate | what it pins |
 |---|---|
@@ -700,8 +709,9 @@ from.
 
 ## 7. The x86-64 backend (J2)
 
-> **Scope: the 68040 family only** (`caps().guestFamilies = kGuest68040`,
-> `JitBackendX64.cpp:2497` — and the same for a64 at `:2156`).
+> **Scope: the 68040 family only** (`caps().guestFamilies = kGuest68040` —
+> `JitBackendX64.cpp:2497`, and the same declaration in
+> `JitBackendA64.cpp:2156`).
 > Everything below is written against the 040's instruction-boundary
 > contract, and the differences from the 68030 are semantic, not cosmetic:
 > `(An)+` updates the register *before* the access on an 030 and *after* it
@@ -864,8 +874,8 @@ are the safety argument for the whole path:
   modified, because that write owes the descriptor an M bit. The 68030
   branch (`MoiraExecMMU_cpp.h:2085-2135`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
-  exactly, so probing the data side with the program code would miss every
-  entry and refuse everything — an engine that looks merely slow;
+  exactly, so probing the data side with the program-space `fc` would miss
+  every entry and refuse everything — an engine that looks merely slow;
 * **no I/O and no unmapped hole** — `dataSpan` (per machine, e.g.
   `Q605Memory::dataSpan`) hands back plain RAM, ROM for a read, and the
   **framebuffer aperture**, and nothing else. The framebuffer is in
@@ -916,7 +926,7 @@ after: **27** flushes.
 Every code-window re-arm used to call `pomJitDtlbFlush()` unconditionally —
 clearing both 4 KB tables, once per ~15 idle instructions (§ 3.3), paid even
 by `threaded`, which never reads the DTLB at all. It was standing in for
-invalidations that every one already have an exact owner:
+invalidations that each already have an exact owner:
 
 | what could go stale | who kills it |
 |---|---|

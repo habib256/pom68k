@@ -13,8 +13,10 @@ are how M1 was reasoned and what it costs to redo.
 
 ## 0. What the recon changed about this chantier
 
-`TODO.md` § 0 lists "040 copyback/snooping" as the largest remaining CPU
-inexactness. Two findings reframe what that work actually is:
+The chantier opened because "040 copyback/snooping" was then billed as the
+largest remaining CPU inexactness. Two findings reframe what that work
+actually is (and are why `TODO.md` § 4 now records it closed rather than
+pending):
 
 1. **There is no oracle.** The vendored WinUAE oracle models a 68030
    data cache (`oracle/uae/upstream/cpummu030.h`,

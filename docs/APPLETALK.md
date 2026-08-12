@@ -58,7 +58,7 @@ Nothing to start on the host. Launch the GUI, then in the guest:
 | **Internet** | TCP/IP (Open Transport) or MacTCP control panel → *Connect via* **AppleTalk (MacIP)**, server zone **POM68K** — full steps and per-OS quirks in §6.4 |
 
 The internal node is a real terminated peer at **net 2, node 128**, zone
-**POM68K** (`AtalkHub::attach`, `src/AtalkHub.h:60-61` — the zone name is the
+**POM68K** (`AtalkHub::attach`, `src/AtalkHub.h:62-63` — the zone name is the
 server name): it defends its own address against the
 guest's lapENQ probes, so the guest settles on a different ID exactly as
 it would against hardware.
@@ -281,7 +281,7 @@ still lives by:**
   answering, relaying a BrRq as a segment LkUp put our broadcast and our
   own LkUpReply back-to-back in the guest's Rx FIFO. Hence
   `setBridgeRelay` — **off unless the LToUDP cable is up**
-  (`AtalkStack.h:90-96`, `AtalkHub.h:64`).
+  (`AtalkStack.h:90-96`, `AtalkHub.h:66`).
 - Replies generated inside the guest's TX callback would hit a deaf
   receiver, so `AtalkHub::sendFrame` **queues** and flushes from `tick()`,
   after the guest's EOM ISR has re-armed Rx (`AtalkHub.h:79-91`, flush at
@@ -306,7 +306,7 @@ line has carried a frame (`Scc8530::lineDriven_`, reasoning at
 `src/Scc8530.h:315-338`, `openLine()` at `:334`). System 7's LAP does not
 care, but OT waits for the abort to *clear* before binding `.MPP` — gate
 `q605_ot_bind_etalon`, and the env hatch that used to paper over it
-(`POM68K_SCC_CLEANLINE`) is retired (`docs/LLE_VS_HLE.md` §4.2 item 10,
+(`POM68K_SCC_CLEANLINE`) is retired (`docs/LLE_VS_HLE.md` §4.1 item 10,
 CHANGELOG 2026-07-28).
 
 Gap list and MAME line references: `docs/LLE_VS_HLE.md` §1.4.
@@ -944,6 +944,6 @@ dotted quad) · assign = ATP func 1 · probe = 3 · default
   notably `zip/responding.py`.
 - POM68K itself: `DEV.md` §5 (every environment knob),
   `docs/LLE_VS_HLE.md` §1.4 (SCC gaps + the MAME `z80scc.cpp` audit),
-  §1.10 (the in-process stack's one synthesized signal) and §4.2 item 10
+  §1.10 (the in-process stack's one synthesized signal) and §4.1 item 10
   (the virgin-line ruling), `CHANGELOG.md` (LLAP milestone 1, the SCC IDG fix,
   the AppleShare bridge, the in-process stack), `TODO.md` §6 (backlog).

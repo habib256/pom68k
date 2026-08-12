@@ -231,9 +231,9 @@ and `:2226`. Three things about them that cost a round to learn:
 
 * The probe uses **data** space (`fc = super ? 5 : 1`), not the program
   space the code probe uses. The 68030 ATC tags every entry with its `fc`
-  and matches it exactly, so probing the data side with the program code
-  misses every entry and silently refuses everything — an engine that looks
-  merely slow.
+  and matches it exactly, so probing the data side with the program-space
+  `fc` misses every entry and silently refuses everything — an engine that
+  looks merely slow.
 * Page size comes from `mmuPageMask()` and is anything from 256 B to 32 KB.
   The DTLB fills in 4 KB slices, so a page *narrower* than a slice stays
   refused (one slice would span several translations); anything ≥ 4 KB fills
