@@ -1,5 +1,36 @@
 # Moira — copie vendorisée (fork NeoST)
 
+> **POM68K note (English, 2026-08-12).** This file is **NeoST's** provenance
+> record, kept verbatim (in French, as NeoST wrote it) because POM68K's copy of
+> Moira inherits its four patches. It describes NeoST, not this tree, so:
+>
+> - **All four patches are still present here** — deferred IPL
+>   (`iplPrev`/`iplChangeClock`/`iplDelay4`/`iplDelay2`, `setIplDelay`,
+>   `pollIpl`, `POLL_IPL` in `MoiraMacros.h:67`), the exception guards and
+>   double-fault-to-HALT rule in `Moira.cpp processException`, the STOP
+>   level-sensitive IRQ re-check (`Moira.cpp:587-605`), the guarded
+>   `reset<C>()`, and the 24-bit watchpoint mask
+>   (`MoiraDataflow_cpp.h:547`/`:637`). They carry `NEOST` markers, never
+>   `POM68K` ones — `grep -rn NEOST Moira/` finds them.
+> - **Deferred IPL is dormant in POM68K.** Nothing in `src/` or `tests/` calls
+>   `setIplDelay`, so `iplDelay4 == 0` and `pollIpl()` is the plain
+>   assignment on every profile. `NEOST_IPLFETCH` was NeoST's env knob and is
+>   not read by anything here; `Moira.h:602-604` (`pomJitSimpleIpl`) depends
+>   on the feature staying off, since generated code models `POLL_IPL` as the
+>   assignment.
+> - **`NEOST_EXC_DIAG`** (presence-only, stderr) survives and is the only
+>   environment variable the vendored core reads besides the `POM68K_040_*`
+>   pair — `Moira.cpp:1257`, `MoiraExceptions_cpp.h:830`,
+>   `MoiraDataflow_cpp.h:1040`.
+> - Everything else it names — `docs/MOIRA_WINUAE_CONVERGENCE.md`,
+>   `tools/make_trace_odd_test.py`, `roms/tos106us.img`, the `Cpu68k::run` STOP
+>   guard, the 19/19 Atari etalons, the `trace_odd` gate — is **NeoST-side and
+>   does not exist in POM68K**. The rationale is kept because the *why* of each
+>   patch is not recoverable from the code; the file paths are not usable.
+> - **Its closing instruction does not apply.** POM68K's copy is a fork
+>   (`POM68K_VENDOR.md` § *Status*): changes are committed here and documented
+>   there, not pushed back to NeoST.
+
 Ce dossier n'est **plus un sous-module Git**. C'est une copie versionnée
 directement dans le dépôt NeoST (« vendorisée ») du cœur 68000 cycle-exact
 [Moira](https://github.com/dirkwhoffmann/Moira) de Dirk W. Hoffmann (licence MIT,
@@ -77,4 +108,6 @@ et écriture). Court-circuité hors watchpoints (`flags & CHECK_WP &&`) → zér
 marche normale. Vérifié : `--watch FF8001` (via `$8001.w`) et `--watch 10` (RAM directe)
 se déclenchent ; self-tests + glue-selftest 31/31 intacts.
 
-Toute modif future d'un fichier `Moira/` se commit **normalement** dans NeoST.
+*(NeoST's original closing line — "toute modif future d'un fichier `Moira/` se
+commit normalement dans NeoST" — is superseded in this repo: see the POM68K
+note at the top.)*

@@ -1,48 +1,61 @@
 # HLE_OVERLAY.md — opt-in HLE accelerator (non-conformant mode)
 
+> **STATUS: DESIGN STUDY. NOTHING HERE HAS BEEN BUILT.** Re-verified
+> 2026-08-12: no `HleModule`, `HleRegistry`, `HleContext`, no signature
+> scanner, no purity flag, no module UI exists in `src/` or `tests/`. Nothing
+> below describes POM68K's behaviour — it describes a feature that has been
+> deferred for a year and may never ship. Read it only when deciding whether
+> to build it.
+>
+> One piece of its guardrail set *did* ship, for a different reason: the LLE
+> AArch64 product mode's **session module registry and save-state stamp**
+> (`src/LleSession.h`, 2026-08-12 — `LLE_VS_HLE.md` § 5). § 3's third
+> guardrail and § 7's stamp are therefore no longer hypothetical; anything
+> built here extends that mechanism rather than inventing one.
+
 Design study for an **opt-in High-Level-Emulation overlay** layered *on top of*
 POM68K's accurate LLE core, in the spirit of Basilisk II's targeted ROM patches:
 trade timing fidelity for speed **only where the user explicitly asks**.
 
-**Status: design study, nothing built.** Verified 2026-07-31 — no `HleModule`,
-`HleRegistry`, `HleContext` or purity flag exists anywhere in `src/` or
-`tests/`. This file exists so the design is pinned before any code lands.
-
 | Where it lives elsewhere | |
 |---|---|
 | backlog entry | `TODO.md` § 8 *Cross-machine architecture* — "Optional HLE acceleration overlay" |
-| the *what* and *how* of Basilisk's patches | `docs/BASILISK_ROM_NOTES.md` (EMUL_OP plane §1, patch map §3, trap dispatcher §4, Egret/Cuda/ADB/PRAM stubs §5) — the implementation oracle, not restated here |
+| the *what* and *how* of Basilisk's patches | `docs/BASILISK_ROM_NOTES.md` (EMUL_OP plane §1, patch map §3, trap dispatcher §4, Egret/Cuda/ADB/PRAM stubs §5) — the implementation oracle, not restated here. **Those sections are its SECONDHAND tier** (read from Basilisk's sources, not verified on a ROM); only its §8 is firsthand. Anything here that becomes code must be re-verified against the actual ROM first |
 | what POM68K already deviates on, and its policy | `docs/LLE_VS_HLE.md` — §2's "kept but LOUD" retirement policy is the precedent this overlay's visibility guardrail should follow |
 | the conformant accelerator that shipped instead | `src/jit/POM68K_JIT.md` |
 | the identity this must not undermine | `CLAUDE.md` |
 
 ---
 
-## 0. Premises re-dated 2026-07-31 — read this before the design
+## 0. Premises re-dated 2026-07-31, re-checked 2026-08-12 — read this first
 
 This study was written when the JIT was a plan. It has since **shipped and been
-measured**, which moves three of the study's load-bearing assumptions. The
+measured**, which moves four of the study's load-bearing assumptions. The
 design below survives; its motivating arithmetic does not. What changed:
 
-| Written as | Reality on 2026-07-31 | Consequence for this study |
+| Written as | Reality | Consequence for this study |
 |---|---|---|
-| "the **planned** method-JIT" (§2, §9) | Shipped 2026-07-27 → 2026-07-31 (J0–J3 + block linking); conformant 68040 default since 2026-08-10, GUI **CPU** menu, `POM68K_CPU_ENGINE=interp|jit` override | Every "when the JIT lands" deferral below is **due now**, not pending |
+| "the **planned** method-JIT" (§2, §9) | Shipped 2026-07-27 → 2026-07-31 (J0–J3 + block linking); conformant 68040 default since 2026-08-10, GUI **CPU** menu, `POM68K_CPU_ENGINE=interp\|jit` override | Every "when the JIT lands" deferral below is **due now**, not pending |
 | the JIT would take the CPU-speed job, HLE the wait-elision job | `q605_boot_etalon`: **61.3 s interpreted → 22.9 s, ×2.68** (`POM68K_JIT.md` § 3). It went *through* the "~×2.5 conformant ceiling" `TODO.md` § 8 still quotes | The conformant path is faster than this study assumed. The HLE overlay's remaining value is narrower and must be re-argued, not assumed |
 | the residual cost is code size / footprint | It is the **ATC-exactness contract**: 794 M window-lost exits over 12.2 G instructions — one derived-state death per ~15 instructions at the idle Finder, because Mac OS 8.1's VM ages pages by writing descriptor U bits (`POM68K_JIT.md` § 3, § 8) | This is the sharpest thing this study has learned. **It names exactly what a non-conformant mode could buy** that no conformant backend can — see § 2 |
-| the JIT accelerates "the CPU", full stop | The JIT is wired into **eight 020/030/040 CPU wrappers only**; `Cpu68k` (68000: Plus/SE/SE FDHD/Classic) and `Cpu020` (Mac II/IIx/IIcx) have **none**, and the x86-64 generator is 68040-only by declared capability | On those machines HLE is still the *only* accelerator on the table |
+| the JIT accelerates "the CPU", full stop | **Corrected 2026-08-12: the JIT engine is wired into all twelve CPU wrappers**, `Cpu68k` and `Cpu020` included, and there are `jit_classic_`, `jit_macii_` and `jit_lockstep_68000_*` gates. What is 68040-only is the *native* x64/A64 codegen (by declared capability) and the default policy | The "HLE is the only accelerator on the 68000 and Mac II families" argument — § 2 and § 11's second reason — is **dead**. Those families get the `threaded` backend today; measured worth is ×1.03-1.08 on 68000, ×1.0-1.2 on 68020, so the honest form of the argument is "the JIT buys them almost nothing", not "they have nothing" |
 
 Two secondary premises also moved, in the overlay's favour:
 
 - **Save states shipped** 2026-07-30 (`src/SaveState.h/.cpp`,
-  `SaveStateMachines.h/.cpp`, 11 machine families / 36 profiles). § 3's
-  "stamp the active module set" guardrail is no longer hypothetical: the
-  container already carries a format version and a `SnapMachine` profile tag
-  to hang a module-set stamp beside.
-- **The "loud non-conformant mode" precedent exists.** The HLE ADB fallbacks
-  print a `NON-CONFORMANT` notice to stderr on every entry (`AdbVia.cpp:62`,
-  `Q605Memory.cpp:81`, `SonoraMemory.cpp:68`, `RbvMemory.cpp:51`,
-  `VaspMemory.cpp:40`), per `LLE_VS_HLE.md` § 2's policy settled 2026-07-29.
-  § 6's visible-cheat requirement should extend that mechanism, not invent one.
+  `SaveStateMachines.h/.cpp`, **12** machine families / **37** profiles).
+  § 3's "stamp the active module set" guardrail is no longer hypothetical —
+  and since 2026-08-12 it is no longer even a design: `SaveStateMachines.cpp:163`
+  writes `lle::snapshotFlags()` into the header and `:207-210` refuses an
+  HLE-tainted restore in strict mode.
+- **The "loud non-conformant mode" precedent exists.** Every HLE ADB fallback
+  prints a `NON-CONFORMANT` notice to stderr on entry **and** registers the
+  module in `pom68k::lle` — seven sites: `AdbVia.cpp:63-70`,
+  `V8Memory.cpp:182-194`, `SonoraMemory.cpp:71-79`, `VaspMemory.cpp:41-48`,
+  `RbvMemory.cpp:52-59`, `Q605Memory.cpp:105-112`, `Q630Memory.cpp:93-100`
+  (plus `Q700Memory.cpp:37` for the Eclipse Egret), per `LLE_VS_HLE.md` § 2's
+  policy settled 2026-07-29. § 7's visible-cheat requirement extends that
+  mechanism; it does not invent one.
 
 ---
 
@@ -98,7 +111,7 @@ Three observations that must steer prioritisation:
    floor at the idle Finder is derived-state churn forced by ATC exactness
    (§ 0), and it refuses by charter the five relaxations a classic 68k JIT
    makes: coarse time, coarse interrupts, a soft TLB instead of exact ATC
-   semantics, lazy flags, long traces (`POM68K_JIT.md` header). A
+   semantics, lazy flags, long traces (`POM68K_JIT.md:22-25`). A
    **non-conformant mode is where those relaxations are legal.** Whether that
    belongs in *this* overlay (guest-level, patch a Toolbox routine) or as a
    relaxed JIT profile (host-level, keep the ATC-derived state across evictions)
@@ -107,7 +120,8 @@ Three observations that must steer prioritisation:
 
 Non-goal worth stating: this overlay is **not** a way to make the JIT faster on
 the machines it already covers. It is (a) boot-time and I/O latency everywhere,
-and (b) the only accelerator at all on the 68000 and Mac II families.
+and (b) the only *large* win available on the 68000 and Mac II families, where
+the JIT is wired but buys ×1.03-1.08 and ×1.0-1.2 respectively.
 
 ---
 
@@ -117,15 +131,15 @@ Three failure modes, each with its mandated guardrail:
 
 1. **Bitrot of the LLE path.** If disk-HLE becomes the comfort mode, nobody
    exercises the NCR5380 pseudo-DMA / SWIM path and its LLE bugs reawaken months
-   later. → *Guardrail:* accuracy gates always run in **purity mode** (§ 6) with
+   later. → *Guardrail:* accuracy gates always run in **purity mode** (§ 7) with
    HLE assertively disabled.
 2. **HLE hiding an LLE bug.** A title that only works with disk-HLE may be masking
    a genuine IWM/SCSI emulation bug. → *Guardrail:* every module ships an **A/B
-   gate** (§ 6) that boots HLE-off *and* HLE-on and compares the functional result;
+   gate** (§ 7) that boots HLE-off *and* HLE-on and compares the functional result;
    a divergence opens an LLE ticket, it is not shrugged off.
 3. **Determinism & save-states.** A state saved HLE-on is not replayable HLE-off —
    the short-circuited hardware has no coherent state. → *Guardrail:* save-states
-   **stamp the active module set** and refuse/warn on reload mismatch (§ 6). The
+   **stamp the active module set** and refuse/warn on reload mismatch (§ 7). The
    container to stamp exists today (§ 0).
 
 The symmetry behind all three, and the reason per-module opt-in is not
@@ -141,26 +155,18 @@ visible, reversible, and with **zero** standing in the conformance suite.
 ## 4. What Basilisk II actually does (and what we borrow)
 
 Basilisk II is not "LLE plus a few patches" — it is **full native HLE**, and ROM
-patching is merely its attach mechanism. Detail in `BASILISK_ROM_NOTES.md`;
-the four pieces that matter here:
-
-- **The `EMUL_OP` trap plane** — reserved opcodes `$7100–$71FF`, *illegal*
-  encodings of `MOVEQ` (`0111 rrr 0 dddddddd`; bit 8 must be 0, and at `$71xx`
-  it is 1). The CPU takes them as illegal instructions; the handler decodes the
-  low byte as an index and jumps into native C++. Note the deliberate avoidance
-  of the A-line — on a Mac that space is the Toolbox (§ 5.1).
-- **Signature-based patching** — at ROM load, scan for *byte patterns* (checksum
-  entry, memory test, `.Sony`, `SCSIDispatch`, `CudaDispatch`, …) and write an
-  `EMUL_OP` at each entry. Matching by pattern, not by hardcoded address, is what
-  lets one build survive many ROM revisions (`BASILISK_ROM_NOTES.md` §1, §3.3).
-- **Whole-subsystem replacement** — the patched routine doesn't drive emulated
-  hardware; it *is* the driver. The chips underneath are **not emulated at all**.
-- **Boot neutralisation** — the ROM checksum and the hardware probes are patched
-  out because the patched ROM no longer checksums and the expected chips don't
-  exist (`BASILISK_ROM_NOTES.md` §3.2).
+patching is merely its attach mechanism: an `EMUL_OP` trap plane at `$7100-$71FF`
+(illegal `MOVEQ` encodings, chosen to stay *out* of the A-line, which on a Mac is
+the Toolbox — § 5.1), installed at ROM load by **byte-signature scan** rather than
+at hardcoded addresses, replacing whole subsystems (the patched routine *is* the
+driver; the chips underneath are not emulated at all) and neutralising the ROM
+checksum and hardware probes because neither would survive. Mechanism, patch map
+and per-device stubs: `BASILISK_ROM_NOTES.md` §§ 1, 3.2, 3.3, 5 — the
+implementation oracle, not restated here.
 
 **What we borrow:** the trap-plane idea and, above all, the **signature-scan
-discipline**. **What differs:** in POM68K the hardware *does* exist and is
+discipline** — matching by pattern is what lets one build survive many ROM
+revisions. **What differs:** in POM68K the hardware *does* exist and is
 accurately emulated, so our HLE short-circuits *selected* paths whose faithful
 emulation is expensive while everything else stays LLE. That is a **more modest,
 safer point on the LLE↔HLE spectrum** than Basilisk's all-native design — a
@@ -177,9 +183,9 @@ Checked against the vendored core on 2026-07-31. The study's original claim
 
 | Hook | Where | Reality |
 |---|---|---|
-| `willExecute(func, Instr, Mode, Size, opcode)` | `Moira.h:723`, called at `MoiraExec_cpp.h:12` | Gated by `if constexpr (MOIRA_WILL_EXECUTE)`, and this vendor's macro is `I == STOP \|\| I == TAS \|\| I == BKPT` (`MoiraConfig.h:89`). **Not a per-instruction hook** unless that macro is widened — which puts a test on every instruction, i.e. the very cost § 5.2 tries to avoid |
-| `didReachSoftwareTrap(addr)` | `Moira.h:806`, fired from `execLineA` (`MoiraExec_cpp.h:36-48`) | A real trap plane — keyed on opcode in `debugger.swTraps`, restores the original instruction before calling back. But it is **A-line only**, and on a Mac the A-line *is* the Toolbox trap space. Basilisk chose `$71xx` precisely to stay out of it |
-| `MoiraDebugger` breakpoints / softstops | `MoiraDebugger.*`, checked at `Moira.cpp:616` | **The zero-cost-when-unused route**: `State::CHECK_BP` is set only while a breakpoint exists (`MoiraDebugger.cpp:190-192`), so an unarmed build pays one already-hot flag test. **Caveat:** the check sits at the `done:` label — *after* the instruction retires, reporting `reg.pc0`. An entry-address hook therefore fires with the routine's first instruction **already executed**; the handler must either account for that or hook the instruction before the entry |
+| `willExecute(func, Instr, Mode, Size, opcode)` | `Moira.h:872` (virtual) / `:1015`, called at `MoiraExec_cpp.h:12` | Gated by `if constexpr (MOIRA_WILL_EXECUTE)`, and this vendor's macro is `I == Instr::STOP \|\| I == Instr::TAS \|\| I == Instr::BKPT` (`MoiraConfig.h:89`). **Not a per-instruction hook** unless that macro is widened — which puts a test on every instruction, i.e. the very cost § 5.2 tries to avoid |
+| `didReachSoftwareTrap(addr)` | `Moira.h:974` (virtual) / `:1066`, fired from `execLineA` (`MoiraExec_cpp.h:47`) | A real trap plane — keyed on opcode in `debugger.swTraps`, restores the original instruction before calling back. But it is **A-line only**, and on a Mac the A-line *is* the Toolbox trap space. Basilisk chose `$71xx` precisely to stay out of it |
+| `MoiraDebugger` breakpoints / softstops | `MoiraDebugger.*`, checked at `Moira.cpp:667` | **The zero-cost-when-unused route**: `State::CHECK_BP` is set only while a breakpoint exists (`MoiraDebugger.cpp:190-192`), so an unarmed build pays one already-hot flag test. **Caveat:** the check sits at the `done:` label — *after* the instruction retires, reporting `reg.pc0`. An entry-address hook therefore fires with the routine's first instruction **already executed**; the handler must either account for that or hook the instruction before the entry |
 
 Also corrected: `Cpu68k` derives from `MoiraSnapshot` (`src/MoiraSnapshot.h:32`),
 not from `moira::Moira` directly; `MacMemory::loadRom` is at
@@ -227,12 +233,13 @@ never a hardcoded address** (the Basilisk lesson that survives ROM revisions,
 
 ### 5.4 Per-machine applicability
 
-The 36 shipping profiles span 11 machine families with different ROMs and
-different drivers (IWM vs SWIM1 vs SWIM2, NCR 5380 vs 53C96, M0110 vs PIC1654S
-vs Egret vs Cuda — inventory in `docs/68K_FAMILY_SCOPE.md`). `machines` gates a
-module to the families it understands; `RomMatch` further gates it to the
-specific ROM the scan recognises. `SnapMachine` (`src/SaveStateMachines.h:49`)
-already enumerates the 36 profiles and is the natural basis for `MachineMask`.
+The 37 shipping profiles span 12 platform implementations with different ROMs
+and different drivers (IWM vs SWIM1 vs SWIM2, NCR 5380 vs 53C96, M0110 vs
+PIC1654S vs Egret vs Cuda vs PG&E — roster in `CLAUDE.md`, reachability in
+`docs/68K_FAMILY_SCOPE.md`). `machines` gates a module to the families it
+understands; `RomMatch` further gates it to the specific ROM the scan
+recognises. `SnapMachine` (`src/SaveStateMachines.h:51-89`) already enumerates
+the 37 profiles and is the natural basis for `MachineMask`.
 A module with no signature hit on the loaded ROM is inert and greyed, not a
 hazard.
 
@@ -264,13 +271,13 @@ and Plus ROMs are catalogued in `BASILISK_ROM_NOTES.md` §3 (patch map) and §5
 ## 7. Guardrails (keeping the oracle discipline)
 
 - **Purity mode.** A global `HLE_FORBIDDEN` flag set by every accuracy gate —
-  the 32 `*_boot_etalon`s, the SST vector suites (`sst68000`/`sst68030`/
-  `sst68040`), the JIT locksteps. Any attempt to install an HLE hook while the
-  flag is set **`abort()`s**. This makes it *mechanically impossible* for an
-  oracle gate to be "helped." (The JIT's invariant 3 — default off in GUI,
-  headless *and* CTest — is the same discipline expressed as a default rather
-  than a lock; the overlay needs the lock, because it changes results and the
-  JIT does not.)
+  the boot etalons (48 gate names end in `boot_etalon`), the SST vector suites
+  (`sst68000`/`sst68030`/`sst68040`), the JIT locksteps. Any attempt to install
+  an HLE hook while the flag is set **`abort()`s**. This makes it *mechanically
+  impossible* for an oracle gate to be "helped." The JIT does not need the
+  lock: its invariant 3 is "the fastest **proved conformant** engine is the
+  default per guest family" (`POM68K_JIT.md` § 2), so switching engines is
+  conformance-neutral. The overlay needs the lock precisely because it is not.
 - **Per-module A/B gate.** One CTest per module runs the scenario HLE-off then
   HLE-on and compares the **functional** outcome (reaches the Finder, reads the
   correct block) — *not* cycle-exact, since HLE changes timing by construction. A
@@ -299,17 +306,17 @@ predictions. Source: `src/jit/POM68K_JIT.md` §§ 4, 8, 9.
   JIT collapses busy-loops *conformantly*; the question is whether the remaining
   win justifies a guest-level patch or a relaxed engine profile.
 - **The invalidation machinery already exists.** `jit::CodeGuard` watches guest
-  writes at **256-byte** granularity (`JitGuard.h:44`) and `Engine::serviceGuard()`
-  evicts only the blocks overlapping a written slice (`JitEngine.cpp:190`). A
-  byte-patch module writing into `rom_` must go through that path, or patch
-  before the first compile.
+  writes at **256-byte** slice granularity (`JitGuard.h:28-62`) and
+  `Engine::serviceGuard()` evicts only the blocks overlapping a written slice
+  (`JitEngine.cpp:492`). A byte-patch module writing into `rom_` must go through
+  that path, or patch before the first compile.
 - **An A-line or illegal-opcode hook exits a JIT block cleanly for free.** The
   classifier marks the **whole A-line** and the `$4Exx` group `Unsafe`
   (`POM68K_JIT.md` § 4), so such an instruction is already a block boundary and
   is handed back to `Moira::execute()`. A hook placed there needs no new JIT
   work. A hook on an *ordinary* instruction does not get that for free.
 - **Address-hook modules and the code window.** Breakpoints are checked in
-  `Moira::execute()` (`Moira.cpp:616`), which a replayed or generated block
+  `Moira::execute()` (`Moira.cpp:667`), which a replayed or generated block
   bypasses by design. An address hook must therefore either force the block
   boundary itself or arm through the engine — this is the one genuinely new
   integration item, and it is why § 5.2 keeps both strategies alive.
@@ -357,13 +364,14 @@ technical: purity mode, A/B gates, stamped save-states, and a visible cheat
 indicator.
 
 What the JIT changed is the *case*, not the design. The conformant engine
-already reaches ×2.68 on the Quadra 605 boot, so the overlay can no longer be
-justified as "the way to make POM68K fast." Its remaining, honest arguments are
-three: **host I/O latency the JIT cannot touch** (`disk.sony`); **the 68000 and
-Mac II families, where no accelerator exists at all**; and **the exactness
-contract itself** — the one thing a conformant backend may never relax, and the
-measured floor of the JIT at the idle Finder. Anything built here should be
-built for one of those three reasons, and for no other.
+already reaches ×2.68 on the Quadra 605 boot (`POM68K_JIT.md` § 3), so the
+overlay can no longer be justified as "the way to make POM68K fast." Its
+remaining, honest arguments are three, and the middle one has weakened since
+this was written: **host I/O latency the JIT cannot touch** (`disk.sony`); **the
+68000 and Mac II families, where the JIT is wired but worth ×1.0-1.1**; and
+**the exactness contract itself** — the one thing a conformant backend may never
+relax, and the measured floor of the JIT at the idle Finder. Anything built here
+should be built for one of those three reasons, and for no other.
 
 The genuine risk is unchanged: not writing the code, but letting HLE's
 convenience erode the LLE path that gives the project its worth. As long as the

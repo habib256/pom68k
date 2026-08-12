@@ -4,8 +4,10 @@
 brought up **with no working MAME driver to copy** — MAME's `maclc520` /
 `maclc550` are non-booting stubs, so the ROM itself had to be the oracle.
 It is kept for the **method** as much as the result: this is the playbook for
-the next machine that has a ROM dump and nothing else (`docs/68K_FAMILY_SCOPE.md`
-lists which those are — IIfx, Quadra 900/950, SE/30).
+the next machine that has a ROM dump and nothing else. The three machines this
+file first named as candidates (IIfx, Quadra 900/950, SE/30) have all since
+shipped with MAME drivers to lean on; the remaining ROM-only entry is the
+**PowerBook 150** (`docs/68K_FAMILY_SCOPE.md` § 3, `docs/DUO_BRINGUP.md`).
 
 Contrast with the *other* bring-up shape, which is cheaper and should always
 be tried first: the **Mac IIvx** booted on the first try by recombining proven
@@ -19,9 +21,10 @@ The machine as-built is `DEV.md` § 2.5 (Sonora); the code is
 `SonoraMemory.*` / `SonoraCpu.*` / `SonoraVideo.h` with **`cudaAdb = true`**.
 
 ROM: `roms/1MB ROMs/1993-10 - EDE66CBD - ...ROM` (header checksum
-`$EDE66CBD`), shared by LC 520, LC 550, Color Classic II and the
-Performa 275/550/560. CPU: LC 520 = 68030 @ 25 MHz, LC 550 / CC II = 33.33 MHz
-(`SonoraMemory::kCpuHz` / `kCpuHzPlus`).
+`$EDE66CBD`; user-provided, `roms/` is gitignored), shared by LC 520, LC 550,
+Color Classic II and the Performa 275/550/560. CPU: LC 520 = 68030 @ 25 MHz,
+LC 550 / CC II = 33.33 MHz (`SonoraMemory::kCpuHz` / `kCpuHzPlus`, selected by
+the `kP[]` profile table in `runLc3`, `main.cpp:2299-2309`).
 **The Mac TV is not in this family** — different ROM, different ASIC, see
 § Siblings.
 
@@ -54,9 +57,11 @@ Performa 275/550/560. CPU: LC 520 = 68030 @ 25 MHz, LC 550 / CC II = 33.33 MHz
 - `POM68K_DIAG=1` — periodic PC / SCSI / depth / d7 + Cuda-MCU-PC trace.
 - `POM68K_PROBE=1` — 200-frame run + final-state dump.
 - `POM68K_HALT=<hex pc>` — run until PC hits [pc, pc+8] or d7 bit 17
-  (ROM-monitor flag) rises, then dump the branch-target trail + registers.
-  `POM68K_HALT=2` = print the first 400 branch targets from reset.
-- `POM68K_FRAMES=<n>` — override the 16 000-frame budget.
+  (ROM-monitor flag) rises, then dump the 128-deep branch-target trail +
+  registers. Two special values: `=2` prints the first 400 branch targets from
+  reset and exits; `=1` traps on `SP == $2600` instead of a PC.
+- `POM68K_FRAMES=<n>` — override the 16 000-frame budget (`kFrames`), or the
+  200 frames `POM68K_PROBE` imposes.
 - `POM68K_DUMP=1` — write `lc520_screen.ppm` at the end.
 
 ## The four walls, in boot order

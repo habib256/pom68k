@@ -8,10 +8,9 @@ the inside.
 
 | Project | What it is |
 |---|---|
-| `bonjour-pomme-one/` | Hello-world — the toolchain smoke test. One `main.c`; if this builds and boots, the toolchain is good. |
-| `prober/` | **POM68K Prober** — tests POM68K *from the inside*: machine/ROM/chip identity (Gestalt), AppleTalk state (NBP), CPU/FPU interpreter checks, benchmarks, power calls; drops its report as JSON Lines on the mounted AFP volume (netatalk host share) for the host-side conformance loop. Spec: `prober/SPEC.md`. `compat/` carries the `Lists.h`/AppleTalk API glue absent from Retro68's multiversal interfaces, plus the PBControl declarations the prober needs. |
+| `prober/` | **POM68K Prober** — tests POM68K *from the inside*: machine/ROM/chip identity (Gestalt + low-mem + a bus-error topology sweep), AppleTalk state (NBP), CPU/FPU/QuickDraw benchmarks, video inventory, Power Manager, ADB/drives/volumes/slots/sound. Writes its raw findings as a TSV file **next to the application** (primary output, needs no network) and as JSON Lines on the mounted AFP volume (secondary, for the host-side loop). Spec: `prober/SPEC.md`. `compat/` carries the `Lists.h`/AppleTalk/Power-Manager glue absent from Retro68's multiversal interfaces. |
 | `mac-rogue/` | **TMS_Rogue port** — the Berlin-Interpretation roguelike from POM1's Apple-1 + TMS9918 build (`POM1 sketchs/tms9918/game_rogue`), as a real Mac app: 256×192 TMS frame in a window, colour where colour exists, B&W where it does not — one binary from the Mac Plus to the Quadra 950. `mac-rogue/README.md` has the status and asset pipeline (`tools/extract_rogue_assets.py`). |
-| `Retro68/`, `Retro68-build/` | The toolchain — **not committed** (user-built, ~11 GB). Bootstrap below. |
+| `Retro68/`, `Retro68-build/` | The toolchain — **not committed** (user-built, ~11 GB, gitignored). Bootstrap below. |
 
 ## Toolchain bootstrap (once)
 
@@ -29,7 +28,7 @@ build recipe points at
 ## Building an app
 
 ```bash
-cd dev/prober          # or mac-rogue, bonjour-pomme-one
+cd dev/prober          # or mac-rogue
 mkdir -p build && cd build
 cmake .. -DCMAKE_TOOLCHAIN_FILE=../../Retro68-build/toolchain/m68k-apple-macos/cmake/retro68.toolchain.cmake
 make
@@ -44,12 +43,23 @@ the transportable form) and `.dsk` (a mountable 800 K disk image).
 
 - **Floppy**: the `.dsk` mounts directly — GUI *Disques* menu, CLI
   argument, or `POM68K_FLOPPY=<path>`.
-- **SCSI volume**: pack the MacBinary into an HFS image with
-  `tools/dir2hfs.py` / `tools/wrap_hfs.py` (that is how `hdv/PROBER.vhd`
-  is produced).
+- **SCSI volume**: bake the MacBinary into a data-only HFS volume and
+  attach it as a secondary disk. `dir2hfs.py` decodes `.bin` to native
+  data+resource forks with the embedded Type/Creator, so the app is
+  runnable the moment the volume mounts:
+
+  ```bash
+  .venv-tools/bin/python tools/dir2hfs.py <dir-holding-the-.bin> hdv/PROBER
+  ./build/POM68K <ROM> hdv/boot.vhd hdv/PROBER.vhd
+  ```
+
+  (`tools/wrap_hfs.py` is a different job — it wraps an *already
+  bootable* bare HFS volume, one carrying `LK` boot blocks, into a
+  partitioned Apple SCSI image. It rejects a `dir2hfs.py` volume, whose
+  boot blocks are deliberately zero.)
 - **AFP share**: with the in-process AppleTalk stack on, drop the `.bin`
   in the `POM68K_SHARE_DIR` and fetch it from the guest — the same
-  volume the prober writes its report back to.
+  volume the prober writes its JSONL report back to.
 
 House rules that apply here: artifacts (`build/`, `*.dsk`) are never
 committed; the toolchain is user-built like ROMs are user-provided; a

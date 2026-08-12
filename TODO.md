@@ -1,25 +1,43 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (implementation detail in `DEV.md`, vendor notes in
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 216 dated entries by
+subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
-in `src/jit/POM68K_JIT.md`).
+in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 
-**Counts verified 2026-08-07** — re-verify before quoting them anywhere:
-- **162 CTest gates** (`ctest -N`): 77 `unit`, 8 `smoke`, 23 `jit`, 36 `m040`,
-  81 `etalon`. Last FULL suite **162/162 on 2026-08-07**, 3 h 35
-  (11:35:58 → 15:10:58), on a fully rebuilt tree (`make -j4` first,
-  `BUILD_EXIT=0`, no truncated binary, per-gate freshness checked). The
-  previous full run was 143/143 on 2026-08-03, so the 19 gates added since
-  had never been in one until now.
-  Both boot images read `drVolAtrb = $0100` (clean); the corrupted
-  `MacOS-7.6-boot.vhd` was deleted 2026-08-06 — see § 1.
-- **37 machine profiles** = 37 tags in `SnapMachine`, `src/SaveStateMachines.h`.
+**Counts re-verified against `CMakeLists.txt` and the code on 2026-08-12** —
+re-verify before quoting them anywhere:
+
+- **The gate registry is host-conditional, so a single number is always wrong
+  somewhere.** On the AArch64 dev host with `POM68K_JIT_BACKENDS=auto`:
+  **183 gates** — 92 `unit`, 9 `smoke`, 29 `jit`, 41 `m040`, 91 `etalon`
+  (12 of them `etalon-core`). On any other host, **181** — 90 `unit`,
+  8 `smoke`, 27 `jit`: `jit_lockstep_a64_coarse_test` and
+  `jit_lockstep_030_a64_experimental_test` are registered only under
+  AArch64 + `auto` (`CMakeLists.txt:1459-1476`), and the first also joins
+  `smoke`. Seven more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
+  (default OFF, `CMakeLists.txt:372`, and it FATAL_ERRORs off AArch64).
+  `unit` is *not* "asset-free" — the derivation at `CMakeLists.txt:1794-1820`
+  makes it "name does not end in `etalon`", nothing more.
+- **Last FULL suite: 162/162 on 2026-08-07**, 3 h 35, fully rebuilt tree
+  (`make -j4` first, `BUILD_EXIT=0`, per-gate freshness checked). That predates
+  the ~20 gates added since, so **no complete run covers today's registry.**
+  The freshest whole-tier evidence is `ctest -L etalon` **91/91**, several
+  fresh sequential passes on 2026-08-11 (5 199-5 244 s each).
+  **The `make` is part of the claim, not the decor**: an earlier 143/143 the
+  same week ran over binaries linked at different times and proved nothing —
+  `ctest` does not compile. A phantom failure gets investigated; a phantom pass
+  gets quoted.
+- **37 machine profiles** = 37 `kProfiles` rows (`src/main.cpp:801-854`) = 37
+  `SnapMachine` tags (`src/SaveStateMachines.h:51-89`) = 21 `MachineKind`
+  values over **12** platform implementations. `docs_test` gates this triangle
+  against `CLAUDE.md` — **not against this file**, which is why the numbers
+  here drift and CLAUDE.md's do not.
 
 House rule for this file: an item earns its place by saying **what to do next**,
 concretely. When it lands, it moves to `CHANGELOG.md` and leaves at most one
-line here. **Every unchecked box below was re-verified against the code on
-2026-07-31**, and § 0/§ 1/§ 4 again on **2026-08-03**.
+line here.
 
 ---
 
@@ -34,7 +52,7 @@ line here. **Every unchecked box below was re-verified against the code on
 | **68000 compacts** (Plus & co) | **LLE complet, conformité non négociable.** Un Raspberry Pi 400 suffit et doit suffire | tenu |
 | **68020** (Mac II & co) | conformant | la fenêtre ne vaut que ×1,0-1,2 (pas d'ATC à sauter) |
 | **68030** (LC II, 15,67 MHz) | utilisable sur Pi 400 | rapporté ~×1,3 en turbo ; **mesuré 2026-08-09 : ×1,98 interprété, ×2,40 moteur allumé** (thread machine, budget fixe). L'écart avec le ×1,3 n'est expliqué ni par le CPU ni par le raster — voir plus bas. **Aucun chiffre sur Pi 400** |
-| **68040** (Centris, Performa, Quadra) | utilisable | **mesuré 2026-08-09 : ×0,79 interprété — ×1,73 moteur allumé.** « Ne suit plus » est vrai de la **configuration par défaut**, où le moteur est off ; il n'est pas vrai de la machine |
+| **68040** (Centris, Performa, Quadra) | utilisable | **mesuré 2026-08-09 : ×0,79 interprété — ×1,73 moteur allumé.** « Ne suit plus » était vrai de la configuration par défaut de l'époque ; depuis le 2026-08-10 le JIT **est** le défaut sur 68040, donc ce n'est plus vrai de la machine livrée |
 
 **L'ordre est fixé et il n'est pas négociable :**
 
@@ -43,37 +61,43 @@ line here. **Every unchecked box below was re-verified against the code on
 
 C'est la règle § *Principle* de `docs/LLE_VS_HLE.md` appliquée à la
 performance : le raccourci ne se mesure et ne se valide que contre une
-référence conforme qui existe déjà. Concrètement, **§ 3 est désormais le
-chemin critique du projet**, et l'item *Optional HLE acceleration overlay*
-(§ 8) est explicitement **bloqué derrière lui**.
+référence conforme qui existe déjà. Concrètement, **§ 3 est le chemin critique
+du projet**, et l'item *Optional HLE acceleration overlay* (§ 8) est
+explicitement **bloqué derrière lui**.
 
 ### Ce que la bascule non conforme rapportera — estimation, à ne pas citer comme mesure
 
-Base **mesurée** (`POM68K_JIT.md` § 3, bench à budget de cycles fixe, Q605) :
-interpréteur → `threaded` ×1,60-1,69, → `x86-64` **×2,09-2,18**. Le ×2,68 du
-`q605_boot_etalon` est flatté (un etalon s'arrête à la signature Finder, donc
-les deux moteurs sont chronométrés sur des quantités de travail invité
-différentes) — **la base de raisonnement est ×2,1, pas ×2,7**.
+Base **mesurée** (`POM68K_JIT.md` § 3.4, budget fixe de 3 000 frames sur Q605,
+empreinte identique sur les trois moteurs) : interpréteur 48,51 s →
+`threaded` 28,10 s (**×1,73**) → `x86-64` 9,71 s (**×5,00**). Le ×2,68 du
+`q605_boot_etalon` ne sert PAS de base : un etalon s'arrête à la signature
+Finder, donc les deux moteurs y sont chronométrés sur des quantités de travail
+invité différentes. *(Les ×1,60-1,69 / ×2,09-2,18 que cette section a longtemps
+cités sont antérieurs au 2026-07-31 et explicitement périmés par § 3.4 — trois
+émetteurs, deux cellules de table de coût et la suppression du flush DTLB à
+l'armement les séparent.)*
 
 | Levier | Gain attendu sur le JIT actuel | Statut |
 |---|---|---|
-| ~~Soft TLB / ATC relâché~~ | **≈3 %** | **MESURÉ et RÉFUTÉ 2026-08-09** (`POM68K_JIT_WINDOW_KILL`, `POM68K_JIT.md` § 3.2). Une sortie de fenêtre coûte **42,9 ns** (LC II/`threaded`, R² = 0,990) et **120,4 ns** (Q605/x64, R² = 0,961) ; aux taux naturels de chaque famille cela fait **3,5 %** et **3,2 %** du run. Le « +10 à 30 % » multipliait un taux réel par une intuition. Ne pas le remettre dans un plan de perf |
+| ~~Soft TLB / ATC relâché~~ | **≈3 %** | **MESURÉ et RÉFUTÉ 2026-08-09** (`POM68K_JIT_WINDOW_KILL`, `POM68K_JIT.md` § 3.6). Une sortie de fenêtre coûte **42,9 ns** (LC II/`threaded`, R² = 0,990) et **120,4 ns** (Q605/x64, R² = 0,961) ; aux taux naturels de chaque famille cela fait **3,5 %** et **3,2 %** du run. Le « +10 à 30 % » multipliait un taux réel par une intuition. Ne pas le remettre dans un plan de perf |
 | Longues traces, contrat par instruction abandonné | +10 à 20 % | estimé ; le block linking a déjà pris le gros (entrées −53 %, 268 → 566 instr/entrée) |
 | Interruptions + temps grossiers | +0 à 10 % | estimé, et **la relaxation à laquelle ce tree est le plus fragile** (voir plus bas) |
 | ~~Lazy flags~~ | **≈0,8 %** | **MESURÉ et abandonné** — voir § 3 *Measured and DROPPED*. Ne pas le remettre dans un plan de perf |
 
-Composé : **×1,3 à ×2,0 sur le JIT actuel**, soit **×2,7 à ×4,2 face à
-l'interpréteur**. Sacrifier toute la conformité CPU rend donc de l'ordre de
-**+50 %** — ce n'est pas un changement d'échelle. Raison structurelle : le
+Composé : **×1,3 à ×2,0 sur le JIT actuel** — appliqué à la base ×5,00
+ci-dessus, de l'ordre de ×6,5 à ×10 face à l'interpréteur, mais le rapport qui
+compte ici est le premier, pas l'absolu. Sacrifier toute la conformité CPU rend
+donc de l'ordre de **+50 %** — ce n'est pas un changement d'échelle. Raison
+structurelle : le
 générateur x64 *est déjà* un vrai JIT (code machine émis, DTLB inline,
 transferts de contrôle compilés comme terminateurs de bloc) ; les relaxations
 d'un JIT 68k classique servent surtout à *atteindre* cet état, et on y est
 déjà, en payant l'exactitude. On ne rachète que la taxe.
 
 **Le changement d'échelle, s'il existe, est dans le HLE, pas dans le JIT.**
-La liste des instructions non couvertes est menée par les décalages line-$E,
-`Scc`, `PEA` et les modes indexés 68020 — *ce dont sont faits les blitters de
-QuickDraw* (§ 3, *Coverage tail*). Un JIT exécute ces boucles plus vite ; un
+La liste des instructions non couvertes est menée par les décalages line-$E et
+les modes indexés 68020 — *ce dont sont faits les blitters de QuickDraw*
+(§ 3, *Coverage tail*). Un JIT exécute ces boucles plus vite ; un
 HLE QuickDraw ne les exécute pas du tout. C'est le seul levier dont le gain
 n'est pas borné par le taux d'instructions — et le plus invasif.
 
@@ -82,11 +106,11 @@ n'est pas borné par le taux d'instructions — et le plus invasif.
 1. **Ne jamais relâcher l'horloge périphérique/MCU.** Relâcher l'exactitude
    côté CPU, oui ; le temps vu par le VIA, l'Egret/Cuda, l'IWM/SWIM reste sur
    le compteur machine. Ce tree a trois cicatrices qui disent pourquoi : la
-   Mac TV deadlocke sur **2 %** de dérive du taux d'instructions MCU
-   (§ 1, *Cuda↔VIA phase robustness*) ; le boost i-cache comprimait le
-   dénibblage sous le hold de 14 ticks de l'IWM → `badDCksum` (d'où le gel du
-   boost pendant que le moteur tourne) ; `CudaLle::tick` doit reporter son
-   dépassement en `mcuDebt_` sous peine de suroverclocker le MCU de ~37 %.
+   Mac TV deadlocke sur **2 %** de dérive du taux d'instructions MCU ; le boost
+   i-cache comprimait le dénibblage sous le hold de 14 ticks de l'IWM →
+   `badDCksum` (d'où le gel du boost pendant que le moteur tourne) ;
+   `CudaLle::tick` doit reporter son dépassement en `mcuDebt_` sous peine de
+   suroverclocker le MCU de ~37 %.
    Le **temps grossier est la relaxation la plus dangereuse ici**, pas la plus
    rentable — la prendre en dernier, machine par machine.
 2. **L'instrument de mesure ne survit pas au mode non conforme.** Chaque
@@ -112,341 +136,143 @@ de l'armer.
   n'existe sur un vrai Pi 400 (§ 3, *Build recipe*) et « inutilisable » n'est
   pas une cible tant qu'on ne sait pas *combien* il manque. Mesurer avec
   `jit_bench` **ou `jit_bench_lcii`** (`POM68K_BENCH_FRAMES`), **jamais** un
-  boot etalon. Depuis 2026-08-09 les deux impriment un **× temps réel**, seule
-  forme du chiffre qui se compare d'un hôte à l'autre — et la seule qui se
-  compare à la cible, qui est « ×1 ou mieux », pas « n secondes ».
-- [x] **Le ×1,3 de la LC II : avec ou sans JIT ?** — MESURÉ 2026-08-09,
-  `tests/jit_bench_lcii.cpp` (nouveau : le bench était Quadra-605-only).
-  Budget fixe 16 000 frames = 4,17 G cycles **machine** = 266,0 s de temps
-  invité, hôte au repos, empreintes identiques : interpréteur 134,3 s =
-  **×1,98 temps réel**, moteur `threaded` 110,9 s = **×2,40** (le moteur vaut
-  **×1,21**). Sur 32 000 frames (boot + Finder au repos) : ×1,87 → ×2,18.
-  **Donc ni l'un ni l'autre : le thread machine seul ne descend pas à ×1,3.**
-  Deux suites, dans cet ordre :
-  - [ ] **Où passe l'écart ×1,98 → ×1,3 ?** Le quantum du GUI est
-    `runQuantumWithWire` (`main.cpp:232`), qui découpe la frame en 64 tranches
-    quand AppleTalk est actif — le défaut — avec un rattrapage raster à chaque
-    tranche. `POM68K_BENCH_SLICES` l'a chiffré : **2,2 %**, et 64 tranches ne
-    coûtent pas plus qu'une. **Innocenté**, comme le cœur CPU. Restent, dans
-    cet ordre : le `tick` du hub AppleTalk par tranche (il vit dans
-    `main.cpp`, donc aucun bench ne l'atteint aujourd'hui), le thread GUI
-    lui-même (`renderFrame` + upload GL + ImGui à 60 Hz), le chemin audio —
-    et l'hypothèse que le ×1,3 soit une impression, puisque rien n'affiche de
-    ratio. Commencer par la jauge (dernier item de cette liste).
-  - [ ] Rejouer l'A/B sur un vrai Pi 400 (case 1) : c'est le même instrument.
-- [x] **Chiffrer le coût d'une sortie de fenêtre** — FAIT 2026-08-09, et le
-  résultat **retire un levier du plan** : 42,9 ns (LC II/`threaded`) et
-  120,4 ns (Q605/x64) par sortie, soit **3,5 % et 3,2 %** des runs respectifs.
-  Instrument : `POM68K_JIT_WINDOW_KILL=N` tue la fenêtre toutes les N
-  instructions exprès, le prix est la pente ; l'empreinte ne doit pas bouger
-  avec N, et elle n'a pas bougé. Détail et réserve sur le chemin bloc (le kill
-  y effondre le cache de blocs, donc on n'ajuste qu'entre points kill) :
-  `POM68K_JIT.md` § 3.2.
+  boot etalon. Les deux impriment un **× temps réel**, seule forme du chiffre
+  qui se compare d'un hôte à l'autre — et la seule qui se compare à la cible,
+  qui est « ×1 ou mieux », pas « n secondes ».
+- [ ] **Où passe l'écart ×1,98 (mesuré, thread machine) → ×1,3 (rapporté,
+  GUI) ?** Innocentés : le cœur CPU, le raster, et le découpage en tranches du
+  quantum GUI (`runQuantumWithWire`, `main.cpp:238`, 64 tranches quand
+  AppleTalk est actif — `POM68K_BENCH_SLICES` le chiffre à **2,2 %**, et 64
+  tranches ne coûtent pas plus qu'une). Restent, dans cet ordre : le `tick` du
+  hub AppleTalk par tranche (il vit dans `main.cpp`, donc aucun bench ne
+  l'atteint aujourd'hui), le thread GUI lui-même (`renderFrame` + upload GL +
+  ImGui à 60 Hz), le chemin audio — et l'hypothèse que le ×1,3 soit une
+  impression. La jauge GUI existe désormais (voir ci-dessous), donc l'écart est
+  observable des deux côtés.
+- [ ] **Rejouer l'A/B sur un vrai Pi 400** : même instrument que la case 1.
 
-**Ce que la table devient une fois ces deux cases fermées.** Il ne reste,
-côté conformant, que « longues traces » (+10 à 20 %, estimé) et
-« interruptions/temps grossiers » (+0 à 10 %, estimé, et la relaxation à
-laquelle ce tree est le plus fragile). Les deux autres lignes sont mortes,
-mesurées : lazy flags ≈0,8 %, ATC relâché ≈3 %. **La conclusion de § 0·A n'en
-est pas affaiblie, elle est durcie** : sacrifier la conformité CPU ne change
-pas d'échelle, et le changement d'échelle, s'il existe, est dans le HLE.
+**La jauge de vitesse du GUI a atterri** : le menu CPU affiche le ratio temps
+réel sur les douze familles, calculé côté GUI à partir de `machineClock()`
+publié séparément du `getClock()` boosté (deux échantillons à 500 ms d'écart,
+divisés par `mem.cpuHz()`), sans toucher ni scheduler ni périphériques ;
+`machinehost_test` verrouille que la source est bien l'horloge machine.
+**Mesure GUI 2026-08-11**, quatre copies jetables du même disque 8.1, moyenne
+des dix derniers échantillons : Q605 **×2,596**, Q630 **×2,274**, Centris 650
+**×3,448**, Q700 **×3,394** — application complète (thread machine, rendu,
+audio, hub), pas le débit isolé de `jit_bench`.
 
-- [x] **Une jauge de vitesse dans le GUI.** Le menu CPU affiche désormais le
-  ratio temps réel sur les douze familles, alors que la direction produit est
-  écrite *en ratios* et que
-  l'écart ×1,98 (mesuré) vs ×1,3 (rapporté) n'a toujours pas d'explication.
-  Le thread machine publie `machineClock()` séparément du `getClock()` boosté :
-  deux échantillons espacés de 500 ms, divisés par `mem.cpuHz()` et le temps
-  hôte. Le calcul reste dans le GUI et ne touche ni scheduler ni périphériques.
-  `machinehost_test` verrouille que la source est bien l'horloge machine.
+### Passe perf 2026-08-11 — ce qui a été promu, et tout ce qui a été rejeté
 
-  **Mesure GUI 2026-08-11**, sur quatre copies jetables du même disque 8.1,
-  moyenne des dix derniers échantillons affichés : Q605 **×2,596**, Q630
-  **×2,274**, Centris 650 **×3,448**, Q700 **×3,394**. Ce sont des mesures de
-  l'application complète (thread machine, rendu, audio et hub), pas le débit
-  isolé de `jit_bench`.
+> **Ce bloc est le seul enregistrement de cette journée : `CHANGELOG.md` n'a
+> aucune entrée datée du 2026-08-11.** Ne pas le supprimer sans l'y verser
+> d'abord. Toutes les mesures : Q605/AArch64, 6 000 frames fixes sauf mention,
+> empreinte `f8e91527781ede67` et 1 410 142 343 instructions retirées comme
+> invariant de non-régression.
 
-- [x] **Reprofiler les sorties JIT et l'échéancement 68040 avant de choisir le
-  levier suivant** — FAIT 2026-08-11 sur Q605/AArch64, 6 000 frames fixes.
-  Deux runs donnent 22,62/22,39 s, l'empreinte identique
-  `f8e91527781ede67` et exactement 1 410 142 343 instructions retirées.
-  Les 191 272 060 sorties sont dominées par `block end` (149 265 073), loin
-  devant `not compilable` (16 749 751) et `window lost` (16 491 988). Le
-  profil hôte place ensuite `mmu040Translate`, `M68hc05::run`,
-  `Q605Memory::tick`, les écritures MMU, SCC et DAFB parmi les piles chaudes.
-  L'échéance périphérique AArch64 en ligne est déjà le bon défaut : à 2 000
-  frames elle donne 3,05 s contre 3,66 s avec `sync` à chaque instruction,
-  soit **≈20 %**, avec empreinte, compteurs JIT et nombre de ticks identiques.
-  Ne pas grossir le pas périphérique moyen de 19,11 cycles machine : il est
-  observable. **Chaînage repris 2026-08-11** : la table directe de 4 096
-  destinations collisionnait bien avant le plafond de 65 536 blocs résidents.
-  La porter à 65 536 slots (1 Mio par CPU) réduit `block end` de 149 265 073
-  à 72 507 478 et donne 21,27/21,41 s contre 22,62/22,39 s, soit **≈5,2 %
-  répétés**, avec l'empreinte `f8e91527781ede67` et 1 410 142 343 instructions
-  retirées inchangées. Lockstep, les quatre étalons JIT 68040 et leurs quatre
-  oracles interprétés passent 12/12. Le meilleur prochain rendement conforme
-  se déplace donc vers les chemins MMU/tick, toujours sous oracle interprété.
-  Le `getenv(POM68K_040_CM_STATS)` vu dans les remplissages ATC
-  est désormais lu une fois par processus ; le coût total est sous le bruit
-  de mesure et n'est pas revendiqué comme accélération.
+**Promu :**
 
-  **Passe MMU/tick 2026-08-11 — cinq raccourcis rejetés, aucun défaut
-  relâché.** Après le chaînage, un nouveau `sample` place
-  `mmu040Translate` à 1 064/7 706 échantillons, `Q605Memory::tick` à 255,
-  `M68hc05::run` à 201 et `cyclesToNextEvent` à 100. L'index secondaire ATC
-  régresse à 22,66 s ; l'inlining forcé du lookup ne dépasse pas le bruit ;
-  le hook direct MCU→ADB donne 22,00/21,91 s ; les retours anticipés du
-  scheduler 21,81/21,95 s ; la garde code à 128 octets 21,89/21,93 s avec
-  davantage de churn. Tous ont été retirés. Le census exact explique le
-  mur : 173,1 M fallbacks viennent des gardes/adresses contre 46,2 M
-  d'opcodes non supportés. La suite n'est donc pas un quantum plus gros :
-  elle exige soit un scheduler événementiel par périphérique avec son état
-  différé sérialisé et canonisé par les oracles, soit une réduction ciblée
-  des conflits `codeMask`, avec gate d'auto-modification dédié.
+- **Table de chaînage 4 096 → 65 536 destinations** (1 Mio par CPU). Elle
+  collisionnait bien avant le plafond de 65 536 blocs résidents : `block end`
+  149 265 073 → 72 507 478, 22,62/22,39 s → **21,27/21,41 s** (≈5,2 % répétés).
+- **Échéancier événementiel, Q605/SCC.** `Q605Memory` accumule une dette
+  explicite en cycles machine, la soustrait de `cyclesToNextEvent()` et la vide
+  exactement à l'échéance, avant tout accès MMIO ou toute injection LocalTalk
+  externe. La dette fait partie de `visit()` et du hash lockstep ; le format de
+  snapshot passe à la **version 2** pour qu'un ancien Q605 sans cette phase ne
+  soit jamais accepté comme complet. **21,40-21,49 s** contre 21,94-22,06 s
+  (≈2,5-3 %), tous compteurs identiques. Override : `POM68K_Q605_EVENT_SCC=0`.
+- **Échéancier événementiel, Q605/53C96.** Même contrat, dette 25 MHz propre,
+  consommée avant chaque registre MMIO, fenêtre pseudo-DMA, lecture VIA2 des
+  lignes IRQ/DRQ et accès externe. Le gate scheduler prouve que le flush MMIO
+  SCSI ne consomme pas la dette SCC. Deux paires A/B de 18 000 frames :
+  **91,43 s** contre 92,14 s en moyenne (**−0,77 %**), empreinte
+  `7817661fd1097608`. Override : `POM68K_Q605_EVENT_SCSI=0`.
+- **`B592` (`EOR.L D2,(A2)`) sort de la garde de store conservatrice AArch64**,
+  seul opcode libéré ; **16 776 916** fallbacks supprimés, **20,99/21,01 s**
+  contre 21,24/21,43 s. `POM68K_JIT_A64_STORE_GUARD_OPCODE=0` restitue l'oracle
+  précédent et permet d'évaluer un candidat à la fois — `2F40`, `42A7` et
+  `2F0C` ont déjà été testés : conformes en lockstep et sur 6 000 frames, mais
+  **aucun gain reproductible**, ne pas les reprendre comme candidats.
+  Le gate SMC AArch64 prouve les deux côtés du contrat : masque nul → chemin RAM direct ;
+  destination dans la tranche traduite → mémoire exacte, quatre octets
+  modifiés, bloc invalidé une fois, état frontière identique à l'interpréteur.
+  *(Seul élément de cette journée qui soit dans `CHANGELOG.md` — 2026-08-12.)*
 
-  **Passe `codeMask` ciblée 2026-08-11 — seuil 128 octets rejeté.** La
-  granularité d'éviction est restée à 256 octets et seul le masque de store
-  DTLB a été séparé en deux demi-tranches de 128 octets, avec un gate
-  distinguant une vraie écriture auto-modifiante d'une écriture voisine dans
-  la même tranche d'éviction. Les cinq gates ciblés (unitaire, backend,
-  lockstep, Q605 JIT et oracle Q605 interprété) passent, l'empreinte reste
-  `f8e91527781ede67` et les compteurs CPU/JIT sont identiques. Mais deux runs
-  donnent 21,71/21,72 s et surtout exactement **162 738** écritures dans du
-  code traduit, comme le masque 256 octets : aucune collision observable
-  n'est supprimée. Le changement et son gate ont donc été retirés. Descendre
-  sous 128 octets imposerait d'agrandir l'entrée DTLB ou d'ajouter un bitmap
-  vivant au chemin de store, sans signal de rendement. La prochaine cible
-  conforme est le scheduler événementiel, avec état différé sérialisé et
-  canonisé avant toute mesure de promotion.
+**Rejeté — ne pas rouvrir sans données nouvelles :**
 
-  **Première tranche du scheduler événementiel 2026-08-11 — Q605/SCC
-  promue.** `Q605Memory` ne rentre plus dans le SCC à chaque réveil sans
-  rapport avec lui : elle accumule une dette explicite en cycles machine,
-  la soustrait de `cyclesToNextEvent()` et la vide exactement à l'échéance,
-  avant tout accès MMIO ou avant toute injection LocalTalk externe. Cette
-  dette fait partie de `visit()` et du hash lockstep ; le format de snapshot
-  passe à la version 2 afin qu'un ancien Q605 sans cette phase ne soit jamais
-  accepté comme s'il était complet. A/B dans le même binaire sur 6 000 frames :
-  **21,40–21,49 s** événementiel contre **21,94–22,06 s** historique, soit
-  environ **2,5–3 %**, avec empreinte `f8e91527781ede67`, instructions,
-  sorties, blocs, conflits `codeMask`, SCSI et compteurs DTLB identiques.
-  Huit gates passent : contrat scheduler, archives générique et 040,
-  déterminisme save/restore Finder Q605, LocalTalk/OT, lockstep, boot JIT et
-  oracle interprété. La promotion est ensuite confirmée par une passe
-  séquentielle fraîche du tier complet : **91/91** verts en 5 244,66 s,
-  quatre oracles interprétés 68040 et quinze étalons JIT inclus. Prochaine
-  extension : appliquer le même contrat à un second périphérique Q605
-  seulement après avoir ajouté son flush MMIO et son état de dette au même
-  ensemble de gates.
+- **Échéancier événementiel sur l'ASC** : sept gates verts, mais **régression
+  de débit** (21,80/22,35 s contre 21,72/21,86 s) — entièrement retiré, selon
+  le critère de promotion. C'est le premier candidat qu'on croit évident quand
+  on lit « étendre à un troisième périphérique » plus bas : il a déjà été fait.
+- **Index secondaire ATC** (22,66 s, régression), **inlining forcé du lookup**
+  (sous le bruit), **hook direct MCU→ADB** (22,00/21,91 s), **retours anticipés
+  du scheduler** (21,81/21,95 s), **garde code à 128 octets** (21,89/21,93 s,
+  plus de churn).
+- **Seuil `codeMask` à 128 octets** : gates verts, empreinte inchangée, mais
+  21,71/21,72 s et **exactement 162 738** écritures dans du code traduit,
+  comme le masque 256 octets — *aucune collision observable supprimée*.
+  Descendre sous 128 imposerait d'agrandir l'entrée DTLB ou d'ajouter un bitmap
+  vivant au chemin de store, sans signal de rendement.
+- **Dette DAFB sérialisée** : bit-exacte, gates verts, mais deux paires de
+  18 000 frames se contredisent (91,35 vs 91,21 s, puis 91,26 vs 91,64 s).
+  Gain moyen 0,13 %, sous le bruit. **Ne pas porter à Centris/Q700 sans un
+  nouveau profil montrant un coût DAFB significativement plus élevé là-bas.**
+- **Cache d'échéance SCC** (deadline mémorisé comme état strictement dérivé,
+  invalidé par reset/chargement/MMIO/accès externe mutable, avec mode oracle
+  recalculant `Scc8530::cyclesToNextEvent()` à chaque hit) : court neutre
+  (21,96 vs 21,93 s), longs non reproductibles et contaminés par le régime
+  thermique (91,30 vs 94,36 s, puis 94,24 vs 93,39 s en ordre inversé).
+- **Correction globale du coût AArch64 `abs.W`** (3 → 2, comme x86-64 et la
+  colonne 68020 de Moira) : les 14,77 M cas `MOVE -> abs.W` (`21DF` + `21CF`)
+  passent de « unsupported » à « runtime » sans réduire le total ; A/B court
+  19,99 vs 20,38 s mais A/B long strictement neutre (**56,24 vs 56,23 s**).
+- **Correction globale du fixup `CBZ/CBNZ`** (il encode w9/x14 quel que soit le
+  registre demandé, donc la garde teste l'adresse et refuse les stores même
+  avec un masque nul) : 826 556 495 instructions, SCSI = 0, empreinte
+  divergente `35cb722024e28325`. **Le défaut cache des stores natifs encore
+  non conformes ; il ne peut pas être simplement « réparé ».**
 
-  **Deuxième tranche 2026-08-11 — Q605/53C96 promue.** Le contrôleur
-  TurboSCSI accumule maintenant sa propre dette 25 MHz, sérialisée dans
-  `visit()` et incluse dans le hash lockstep. Elle est consommée à son
-  échéance, avant chaque registre MMIO, fenêtre pseudo-DMA, lecture VIA2
-  des lignes IRQ/DRQ et accès externe au contrôleur. Le gate scheduler
-  distingue explicitement les deux dettes et prouve que le flush MMIO SCSI
-  ne consomme pas la dette SCC. Les huit oracles ciblés sont verts : contrat
-  scheduler, TurboSCSI, archives générique et 040, save/restore Finder Q605,
-  lockstep, boot JIT et boot interprété. Sur deux paires A/B de 18 000 frames, la variante
-  événementielle donne **91,32/91,53 s** contre **92,40/91,87 s**, soit
-  91,43 s contre 92,14 s en moyenne (**−0,77 %**). Les deux paires gardent
-  le même sens, l'empreinte `7817661fd1097608` et tous les compteurs CPU/JIT,
-  DTLB, `codeMask` et SCSI bit à bit identiques. L'override
-  `POM68K_Q605_EVENT_SCSI=0` conserve le chemin historique pour attribution.
-  Une tentative identique sur l'ASC a auparavant passé ses sept gates mais
-  régressé le débit (21,80/22,35 s contre 21,72/21,86 s) ; elle a donc été
-  entièrement retirée, conformément au critère de promotion.
-  La promotion SCSI est définitivement confirmée par une passe séquentielle
-  fraîche du tier complet : **91/91** verts en **5 199,77 s**, quatre oracles
-  interprétés 68040 et quinze étalons JIT inclus.
+**Attribution, faite et à ne pas refaire :**
 
-  **Reprofilage puis tentative DAFB 2026-08-11 — rejetée.** Avec SCC et
-  53C96 événementiels actifs, 11 243 échantillons placent toujours
-  `Dafb::tick` à 77 sommets de pile, devant `AscIosb::tick` (23) et
-  `Via6522::tick` (27), mais loin derrière `mmu040Translate` (1 683),
-  `Q605Memory::tick` (393) et `M68hc05::run` (319). Une dette DAFB
-  sérialisée, flushée aux MMIO/observations raster et à chaque frontière
-  de frame, a passé les gates scheduler, DAFB et raster. Le premier deadline
-  de frame injectait toutefois un réveil CPU non observable et changeait 137
-  instructions ; il a été corrigé en gardant le réveil de frame interne et
-  en ne publiant au CPU que les IRQ Swatch. L'A/B est alors bit-exact
-  (`7817661fd1097608`, 4 567 738 111 instructions et tous les compteurs
-  identiques), mais deux paires longues de 18 000 frames se contredisent :
-  **91,35 contre 91,21 s**, puis **91,26 contre 91,64 s**. Le gain moyen de
-  0,13 % est sous le bruit et n'est pas reproductible ; dette, override et
-  gates DAFB expérimentaux ont donc été entièrement retirés. Ne pas porter
-  cette voie à Centris/Q700 sans un nouveau profil montrant un coût DAFB
-  significativement plus élevé sur ces machines.
+- Census exact des fallbacks (`POM68K_JIT_HISTO=1`, qui sépare statique et
+  runtime par opcode, affiche les modes source/destination de MOVE, l'EA de
+  MOVEM et les couples dominants) : **219 277 316** fallbacks = 46 167 498
+  statiques + 173 109 818 runtime. `MOVEM -(A7)` est **déjà natif** et pèse
+  17,31 M refus runtime — ce n'est pas une lacune d'opcode.
+- Attribution runtime complète, cause + opcode + adresse logique + R/W +
+  largeur + masque conservés jusqu'au fallback final (un MMIO servi par le
+  thunk exact n'est pas compté) : **140 982 525 / 140 982 525** attribués —
+  garde de store conservatrice **128 824 006 (91,38 %)**, vrai `codeMask`
+  **9 044 353 (6,42 %)**, non-plain/MMIO **2 972 353 (2,11 %)**, fill/tag
+  **96 953 (0,07 %)**, franchissement 4 Kio **44 860 (0,03 %)**. L'ancien
+  « 68,84 % de `codeMask` » était l'artefact du fixup `CBZ/CBNZ` ci-dessus.
+- Les vraies collisions sont très concentrées : page logique `$01F56`,
+  tranche 1, masque `$FFFE`, pile autour de `$01F56100-$01F5618E` — le store
+  touche réellement une tranche contenant du code traduit, **ce n'est pas un
+  faux voisin à relâcher**. Les franchissements de page sont dominés par la
+  pile `$000ADFFC` (`4CDF` lecture 16 o : 16 716 cas ; `48E7` écriture 16 o :
+  5 287) puis les accès 4 octets à offset `$FFE` : trop rares pour être le
+  prochain levier.
+- Profil hôte après SCC + 53C96 événementiels (11 243 échantillons) :
+  `mmu040Translate` 1 683, `Q605Memory::tick` 393, `M68hc05::run` 319,
+  `Dafb::tick` 77, `Via6522::tick` 27, `AscIosb::tick` 23.
+- L'échéance périphérique AArch64 en ligne est le bon défaut : 3,05 s contre
+  3,66 s avec `sync` à chaque instruction sur 2 000 frames (**≈20 %**).
+  **Ne pas grossir le pas périphérique moyen de 19,11 cycles machine : il est
+  observable.**
 
-  **Cache d'échéance SCC 2026-08-11 — rejeté.** Un prototype conservait la
-  dette SCC sérialisée mais mémorisait son prochain deadline comme état
-  strictement dérivé, invalidé par reset, chargement, MMIO et tout accès
-  externe mutable. Un mode oracle recalculait `Scc8530::cyclesToNextEvent()`
-  à chaque hit et abortait sur le moindre écart ; le workload OS de 6 000
-  frames l'a passé avec empreinte et compteurs exacts. Le court est neutre
-  (21,96 s avec cache contre 21,93 s direct). Les longues changent de régime
-  thermique et ne reproduisent aucun gain : 91,30 contre 94,36 s dans une
-  première paire contaminée, puis **94,24 contre 93,39 s** en ordre inversé
-  dans le même régime lent. Cache, oracle, override et extensions de gate ont
-  été retirés. Ne pas propager au 53C96/Centris/Q700 : le prochain travail
-  est l'attribution diagnostique des fallbacks CPU par opcode et adressage.
-
-  **Histogramme CPU précis 2026-08-11 — attribution faite, promotion
-  `MOVE abs.W` rejetée.** `POM68K_JIT_HISTO=1` sépare désormais fallback
-  statique et runtime par opcode, affiche les modes source/destination de
-  MOVE, l'EA de MOVEM et les couples de modes dominants. Sur 6 000 frames,
-  les 219 277 316 fallbacks se partagent en 46 167 498 statiques et
-  173 109 818 runtime. `MOVEM -(A7)` est déjà natif et représente 17,31 M
-  refus runtime : ce n'est pas une lacune d'opcode. La principale lacune
-  statique est `MOVE -> abs.W` : `21DF` + `21CF` totalisent 14 767 513 cas.
-  Le coût AArch64 `abs.W` a été corrigé expérimentalement de 3 à 2, comme
-  x86-64 et la colonne 68020 de Moira ; les 14,77 M cas passent alors tous
-  de « unsupported » à « runtime », sans réduire le total. L'A/B court donne
-  19,99 contre 20,38 s, mais l'A/B long est strictement neutre : **56,24
-  contre 56,23 s**, empreinte `09c8292cd2e21a88` et 2 988 932 165
-  instructions identiques. La modification et son override ont donc été
-  retirés. La prochaine attribution doit ventiler les 173,1 M refus runtime
-  par cause MMU précise (`tag/fill`, `codeMask`, MMIO, page croisée), avant
-  tout changement du chemin mémoire à risque sémantique supérieur.
-
-  **Attribution runtime + adresses exactes 2026-08-11 — faite, et la cible
-  `codeMask` initiale était fausse.** Sous `POM68K_JIT_HISTO=1`, AArch64
-  conserve désormais la cause, l'opcode, l'adresse logique, lecture/écriture,
-  largeur et masque jusqu'au fallback final ; un MMIO servi par le thunk exact
-  n'est pas compté. L'histogramme complet attribue **140 982 525 /
-  140 982 525** refus : garde de store conservatrice **128 824 006 (91,38 %)**,
-  vrai `codeMask` **9 044 353 (6,42 %)**, non-plain/MMIO **2 972 353
-  (2,11 %)**, fill/tag **96 953 (0,07 %)**, franchissement 4 Kio **44 860
-  (0,03 %)**. La cause de l'ancien faux 68,84 % est précise : le fixup
-  AArch64 historique de `CBZ/CBNZ` encode w9/x14 quel que soit le registre
-  demandé ; le garde teste donc l'adresse et refuse les stores même avec un
-  masque nul. Corriger globalement ce fixup donne 826 556 495 instructions,
-  SCSI=0 et l'empreinte divergente `35cb722024e28325` : cette promotion a été
-  rejetée et le chemin conservateur rétabli. Le défaut cache donc des stores
-  natifs encore non conformes ; il ne peut pas être simplement « réparé ».
-
-  Les vraies collisions sont très concentrées : page logique `$01F56`,
-  tranche 1, masque `$FFFE`, avec une pile autour de `$01F56100–$01F5618E` ;
-  le store touche réellement une tranche contenant du code traduit, ce n'est
-  pas un faux voisin à relâcher. Les franchissements sont trop rares pour être
-  le prochain levier et dominés par la pile `$000ADFFC` (`4CDF` lecture 16
-  octets : 16 716 cas ; `48E7` écriture 16 octets : 5 287) puis les accès
-  4 octets à offset `$FFE`. L'accès bi-page n'a donc pas le rendement attendu.
-  Le census léger sans instrumentation conserve l'oracle : empreinte
-  `f8e91527781ede67`, 1 410 142 343 instructions, SCSI=6 173. Prochaine cible
-  conforme : isoler par opcode les stores masqués-nuls libérés par le vrai
-  test du masque, avec lockstep et gate d'auto-modification, au lieu de
-  relâcher `codeMask` ou de scinder les pages en bloc.
-
-  **Isolation par opcode 2026-08-11 — `B592` promu seul.** Le backend garde
-  le comportement conservateur historique pour tous les stores sauf un
-  opcode explicitement sélectionné ; `POM68K_JIT_A64_STORE_GUARD_OPCODE=0`
-  restitue l'oracle précédent et permet d'évaluer les candidats un par un.
-  Le nouveau gate AArch64 prouve sur `2F40`, puis sur `B592` (`EOR.L
-  D2,(A2)`), les deux côtés du contrat : un masque nul emprunte réellement
-  le chemin RAM direct, tandis qu'une destination dans la tranche traduite
-  repasse par la mémoire exacte, modifie les quatre octets, invalide une fois
-  le bloc et laisse mémoire/état frontière identiques à l'interpréteur.
-  `2F40`, `42A7` et `2F0C` sont conformes en lockstep et sur 6 000 frames,
-  mais ne montrent aucun gain reproductible. `B592` supprime **16 776 916**
-  fallbacks et donne **20,99/21,01 s** contre **21,24/21,43 s** en A/B long,
-  avec empreinte `f8e91527781ede67`, 1 410 142 343 instructions, SCSI=6 173
-  et compteurs déterministes identiques. Il devient donc l'unique défaut
-  libéré. La promotion est confirmée après reconstruction intégrale par une
-  passe séquentielle fraîche du tier : **91/91** verts en **5 240,40 s**,
-  quatre oracles interprétés 68040 et quinze étalons JIT inclus. Toute
-  extension reste soumise au gate SMC, au lockstep, au boot
-  JIT/interpréteur et au tier étalon complet.
-
-**Tier étalon de référence 2026-08-11.** Après les corrections Toby, une
-seule exécution séquentielle fraîche de `ctest -L etalon` passe **91/91** en
-5 231,16 s. Les oracles explicites `interp_q605_boot_etalon`,
-`interp_q630_boot_etalon`, `interp_centris650_boot_etalon` et
-`interp_q700_boot_etalon` sont verts dans cette même passe ; ils restent la
-référence de chaque plateforme 68040 face au moteur par défaut.
-
----
-
-## 0. État au 2026-08-03 — la suite complète est verte, le chantier IOP est clos
-
-**`ctest` complet : 143/143, 3 h 03, aucun échec — sur arbre entièrement
-reconstruit** (`make` d'abord, 150 objets et binaires relinkés).
-
-**Le `make` fait partie de l'affirmation, pas du décor.** Un premier run le
-même jour avait rendu 143/143 sur des binaires liés à des moments
-différents — 102 sur ~110 étaient plus anciens que `libpom68k_core.a` — et
-ne prouvait rien : **`ctest` ne compile pas.** Le piège est asymétrique :
-un échec fantôme se fait enquêter, un succès fantôme se fait citer. Il
-avait déjà été écrit dans `CLAUDE.md` avant qu'on ne vérifie.
-**Un `ctest` vert ne vaut que la fraîcheur de ses binaires.**
-
-**36 profils, tous bootant le Finder.** Les deux derniers sont les tours
-Eclipse (Quadra 900 et 950), arrivées le 2026-08-02 avec le chantier IOP :
-
-| Run | Résultat |
-|---|---|
-| `q900_boot_etalon` | 640×480×1, 5830 cmd SCSI |
-| `q950_boot_etalon` | 640×480×**8**, 33,333 MHz, ROM `$3DC27823` |
-| `q700_boot_etalon` (garde-fou) | 5838 cmd SCSI, aucune régression |
-
-Le mur M7 n'était **pas dans l'IOP** : `read16` appliquait encore la règle de
-voie d'octets du Quadra 700 à la fenêtre hôte de l'IOP SWIM, la ROM lisait le
-registre d'adresse partagée `$0203` comme `$0200`, décrémentait et écrivait
-sur la pile du 65C02. Un `!eclipse()`. C'est le **quatrième** bug du motif
-« règle héritée du Q700 » (`docs/IOP_BRINGUP.md` § 5b) — et la moitié non
-corrigée du #2. Détail : `CHANGELOG.md` § 2026-08-02 (quatrième).
-
-**`docs/LLE_VS_HLE.md` ne porte plus aucun bug vivant.** Le seul qui restait,
-le « symptôme des modificateurs du Quadra », a été rétracté par expérience le
-2026-08-02 : même machine, autre image, tout arrive. Tout ce qui subsiste
-en § 1 est une simplification, avec sa raison et sa condition de réouverture.
-
-**La prochaine action, par ordre de trou architectural décroissant :**
-
-1. **§ 2, profondeur de test** — 9 profils sur 36 ont un gate au-delà de la
-   signature Finder. Décision produit prise le 2026-08-02 : on implémente le
-   LLE d'abord, on construira les gates longs ensuite.
-
-*(Copyback/snooping 040 : chantier **CLOS à M1** le 2026-08-05 —
-balayage `m040` 33/33 flag ON sur binaires frais, décision M2
-documentée avec ses conditions de réouverture, `docs/CACHE_040.md`
-§ 3 / `CHANGELOG.md` § 2026-08-05 (third).)*
-
-*(Échéances périphériques : huit plateformes converties les 2026-08-03/04,
-27 gates sériels verts — les quatre restantes ont chacune leur raison,
-`TODO.md` § 4 / `CHANGELOG.md`.)*
-
-**Garde-fou permanent.** `Q700Memory` sert trois machines : après toute
-retouche, relancer `q700` **et** `q900`, jamais en parallèle
-(`pom68k-no-concurrent-ctest`).
+**La suite conforme, dans l'ordre :** étendre l'échéancier événementiel à un
+troisième périphérique Q605 — *seulement* après avoir ajouté son flush MMIO et
+son état de dette au même ensemble de gates — puis isoler par opcode les stores
+masqués-nuls libérés par le vrai test du masque, sous gate SMC + lockstep +
+boot JIT/interpréteur + tier étalon complet. Toute promotion exige les quatre
+mêmes preuves : empreinte et compteurs identiques, gain **répété**, gates
+ciblés verts, tier `etalon` complet vert.
 
 ---
 
 ## 1. Red now
 
-*(The IIfx etalons are **RESOLVED 2026-08-06**. They had been red since
-2026-08-04 because `hdv/MacOS-7.6-boot.vhd` was corrupted by the all-ID
-SCSI mirror era — seven concurrent mounts of one volume; `drVolAtrb` read
-`$0000`, bit 8 clear, and the failing signature `menu bar 0.50 / desktop
-0.26` was a modal repair alert sitting over the desktop, which is also what
-ate the injected mouse motion and the held key. The emulator-side fix
-(single-ID attach) had been in for days; what remained was the image, and
-the image was not repairable. Deleted; the gates fall back to
-`GISTPERSO-boot.vhd` and all four pass — `f=539 menu bar 0.06, desktop
-0.69`, 8/8 input checks, `jit_iifx_boot_etalon` identical. So the
-GISTPERSO-wedges-at-`$4081B66E` lead from the same hunt is **also stale**:
-that combination boots. Mechanism, and the two wrong diagnoses it cost:
-`CHANGELOG.md` § 2026-08-06 (late night).)*
-*(The 800K-GCR-on-boosted-030 refusal is **RESOLVED 2026-08-05**: the
-boost compressed Apple's denibble inner path below the IWM's 14-tick
-hold → duplicated nibbles → badDCksum on every field. Fix = the floppy
-boost gate (`boost_` frozen to 1 while the motor runs, in
-`Cpu030`/`RbvCpu`/`VaspCpu`; `POM68K_FLOPPY_BOOST_GATE=0` reproduces
-the defect); `lcii_floppy_etalon` now ASSERTS the mount + guest write —
-the first GCR mount this platform ever had. Mechanism + fix:
-`CHANGELOG.md` § 2026-08-05 (eighth)/(ninth), microscope:
-`tests/lcii_sony_trace`. Residual, parked in § 2: Cmd-N on the mounted
-floppy repaints the window but lands no folder in its catalog.)*
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
   — reported in the GUI, and **NOT reproduced headless**: judged on the
   desktop (the mounted volume's icon, screen-diff) rather than on
@@ -457,158 +283,117 @@ floppy repaints the window but lands no folder in its catalog.)*
   machine-thread insert against a running emulation, the live PRAM/Finder
   state, the actual image on the actual profile. Next: reproduce IN THE
   GUI with `POM68K_FLOPPY` unset, insert from the Disques window, and
-  compare that Swim2 dialogue against the headless one (traced harness in
-  the session scratchpad, linked object-before-archive). Only then a gate
+  compare that Swim2 dialogue against the headless one. Only then a gate
   — "Q605 + 7.5.5 boot volume + hot GCR insert mounts" — which must fail
   on today's tree before it is worth anything.
-
-*(nothing else — `jit_q605_boot_etalon` went red on 2026-08-04 after the
-A64/pacing merge and green again the same day: the x64 emitter handed the
-dynamic link target across `chargeCycles` in RDI, which the pacing
-callout clobbers; a garbage tag that matched a populated slot jumped
-into an unrelated block. `leaveToDynamic` now reloads the target from
-`at(L_.pc)` — the exact shape the A64 backend already had, which is why
-only x64 failed. Full hunt: `CHANGELOG.md` § 2026-08-04. Reproducer kept
-for regressions: the coarse x64 lockstep,
-`POM68K_JIT_BACKEND=x64 POM68K_JIT_HOT=1 POM68K_JIT_LOCKSTEP_BUDGET=50
-./build/jit_lockstep_test 5000000`.)*
-
-*(previously: `q605_cudalle_key_etalon` went green 2026-07-31: the cause was
-Easy Access **Slow Keys enabled inside `MacOS-8.1-boot.vhd`**, not the
-emulator. Full diagnosis in `CHANGELOG.md` § 2026-07-31; the gate now holds
-each key 150 frames, which both a Slow-Keys guest and a normal one accept.)*
-
-### Follow-ups from that hunt
-
-- [x] **The 8.1 image is CLEAN — done 2026-08-02, verified.** Easy Access is
-  gone from `hdv/MacOS-8.1-boot.vhd`: the non-destructive read of `$484185`
-  now reports **no Easy Access engine at all** (`$FA` = ordinary RAM, not
-  `$00`), **6-frame taps land**, and Cmd-N repaints the screen — the same
-  behaviour the GISTPERSO image always had. Re-ran `ctest -L m040`
-  afterwards as this entry required: **32/32 green**, no dirty-volume
-  signature. It had cost two investigations (the ten-month red gate, then
-  the phantom "Quadra modifier bug").
-  Note for whoever checks this again: read `$484185` with
-  `adb_key_probe` — do NOT use the hold-Return gesture, which is a toggle
-  and answers the question by changing the answer. And expect three
-  outcomes, not two: `$FF` on, `$00` off, **anything else = the engine is
-  not loaded**, which is what a properly cleaned image looks like.
 - [ ] **"Beeps sound wrong / differ per letter"** (field report): the beep
-  itself was the Slow Keys rejection beep — expected, and it stops now that
-  the image is clean (2026-08-02). What remains is the unrelated half:
+  itself was the Slow Keys rejection beep — expected, and it stopped when the
+  8.1 image was cleaned (2026-08-02). What remains is the unrelated half:
   whether ASC renders audible output *correctly* is still untested
   (`q605_asc_test` covers registers/IRQ, not sound). Low-priority ASC item.
-- [x] **Cmd-N "Quadra modifier bug" — RETRACTED 2026-08-02.** Crossed
-  machine against image instead of arguing: Q605 + 8.1 does not repaint,
-  **Q605 + GISTPERSO does**, LC II + GISTPERSO does — and on all three the
-  guest's KeyMap holds Command and N *simultaneously*. The variable was the
-  image, never the Quadra, and the modifier reaches the guest everywhere.
-  `LLE_VS_HLE.md` § 5 has **no live bug left**. Root cause of the false
-  lead: the probe's Cmd-N block hardcoded 3/6-frame taps — the exact length
-  Slow Keys rejects — and never sampled KeyMap during the gesture. Both
-  fixed. Full story: `CHANGELOG.md` § 2026-08-02 (sixth).
 
-Methodology notes, now paid for three times: `KeyLast` ($0184) moves in **no**
-cell, including working ones; **`KeyTime` ($0186) is stamped continuously by
-the Slow Keys periodic task, keystrokes or not** — its "lockstep with typing"
-was a coincidence of sampling cadence; and a VRAM-hash probe reported "keys
-lost" on a cell where KeyMap proves they arrive. **Believe an observable only
-after it has demonstrated sensitivity** — and only after it has demonstrated
-*silence without stimulus*.
+*(Nothing else is red. Resolved and worth one line each: the IIfx etalons
+(2026-08-06 — a corrupted `hdv/MacOS-7.6-boot.vhd`, `drVolAtrb = $0000`, not a
+code regression; deleted, the gates fall back to `GISTPERSO-boot.vhd`); the
+800K-GCR-on-boosted-030 refusal (2026-08-05 — the floppy boost gate);
+`jit_q605_boot_etalon` (2026-08-04 — `leaveToDynamic` now reloads the target
+from `at(L_.pc)`); `q605_cudalle_key_etalon` (2026-07-31 — Easy Access Slow
+Keys inside the image); the Cuda↔VIA phase robustness chantier (2026-08-03 —
+`M68hc05::serviceInterrupts` charges the hardware's 11 cycles, gated by
+`cuda_lle_test`). Each has its date in `CHANGELOG.md`.)*
 
-### Cuda↔VIA phase robustness — CLOSED 2026-08-03
+### Three method rules those hunts paid for, in full
 
-- [x] `M68hc05::serviceInterrupts` now charges the hardware's **11 cycles**
-  (`m6805.cpp:570`). The former zero-cycle accommodation is pinned by a
-  synthetic IRQ gate (`11 + 2` cycles for entry plus the first NOP).
-  `CudaLle::cyclesToNextEvent()` derives the first machine cycle on which the
-  MCU can execute after its fractional-clock remainder and overshoot debt;
-  `cuda_lle_test` proves both halves of that contract (silence before, progress
-  exactly at the deadline). The historical seven-of-eight-CB1 Mac TV wedge no
-  longer reproduces: `mactv_boot_etalon` reaches the Finder with the 11-cycle
-  cost, and all three `q605_cudalle_{boot,mouse,key}_etalon` gates are green.
+- **Read `drVolAtrb` bit 8 on a gate's image before theorising about its
+  code.** Every gate prints a SHA-256 and `drVolAtrb` in its preamble since
+  2026-08-09; a `$0000` there means the volume was never cleanly unmounted.
+  Two wrong diagnoses were bought before this rule existed.
+- **Believe an observable only after it has demonstrated sensitivity — and
+  only after it has demonstrated *silence without stimulus*.** `KeyLast`
+  (`$0184`) moves in **no** cell, including working ones; **`KeyTime`
+  (`$0186`) is stamped continuously by the Slow Keys periodic task**,
+  keystrokes or not (its "lockstep with typing" was a sampling coincidence);
+  a VRAM-hash probe reported "keys lost" on a cell where KeyMap proves they
+  arrive.
+- **Read `$484185` with `adb_key_probe` to check Easy Access, never with the
+  hold-Return gesture** — that gesture is a toggle and answers the question by
+  changing the answer. Expect **three** outcomes: `$FF` on, `$00` off,
+  **anything else = the engine is not loaded**, which is what a properly
+  cleaned image looks like.
 
 ---
 
 ## 2. Test & validation depth — the single biggest gap
 
 The gates prove **boot**, not **use**, and the machine fan-out made the ratio
-worse. Of the **37 profiles** covered by the **170 gates**, only **9** have any
-gate past the Finder signature: LC II (`lcii_soak/persist/launch/floppy_etalon`
-+ `lcii_savestate_etalon`), Quadra 605 (`q605_soak/persist_etalon` —
-2026-08-05, the second beyond-boot machine —, `q605_cudalle_mouse/key_etalon`,
-`q605_cdrom/cdboot_etalon`, `q605_savestate_etalon`, `q605_ot_bind_etalon`),
-Mac II (`macii_mouse_etalon`), **Mac Plus** (`input_etalon` — mouse
-quadrature + M0110 keys), the four input gates from 2026-07-29
-(`lc3_`, `lc520_`, `iivx_`, `iisi_input_etalon`) and the IIfx
-(`iifx_input_etalon`, 2026-08-01). That is NINE profiles
-with any gate past the Finder signature; enumerate them with
-`ctest -N | grep -E 'input_etalon|beyond|mouse_etalon|key_etalon|savestate_etalon'`
-rather than trusting this sentence. **The other 28 profiles are
-boot-to-Finder signature only.** A machine can pass its etalon and still be
-useless for real work.
+worse. Of the **37 profiles**, only **9** have any gate past the Finder
+signature: LC II (`lcii_soak/persist/launch/floppy_etalon` +
+`lcii_savestate_etalon`), Quadra 605 (`q605_soak/persist_etalon`,
+`q605_cudalle_mouse/key_etalon`, `q605_cdrom/cdboot/cdhot_etalon`,
+`q605_savestate_etalon`, `q605_ot_bind_etalon`), Mac II (`macii_mouse_etalon`),
+**Mac Plus** (`input_etalon` — mouse quadrature + M0110 keys), the four input
+gates from 2026-07-29 (`lc3_`, `lc520_`, `iivx_`, `iisi_input_etalon`), the
+IIfx (`iifx_input_etalon`) and the IIvx (`iivx_soak/persist_etalon`).
+Enumerate them with
+`ctest -N | grep -E 'input_etalon|soak|persist|mouse_etalon|key_etalon|savestate_etalon'`
+rather than trusting this sentence. **The other 28 profiles are boot-to-Finder
+signature only.** A machine can pass its etalon and still be useless for real
+work.
 
-**Depth is a second axis, and it moved on 2026-08-09.** Of those nine, only
-**three** now have the soak+persist pair that proves a machine *keeps* working
-and *writes*: the LC II, the Quadra 605 and — since `iivx_soak/persist_etalon`
-— the IIvx, which had an input gate and nothing more. Counting profiles alone
-hides that: the IIvx was already inside the nine before it could survive three
-idle minutes or create a folder.
+**Depth is a second axis.** Of those nine, only **three** have the soak+persist
+pair that proves a machine *keeps* working and *writes*: the LC II, the Quadra
+605 and the IIvx. Counting profiles alone hides that — the IIvx was inside the
+nine before it could survive three idle minutes or create a folder.
 
 Highest-ROI closers, in order:
 
-- [x] **Soak + persist on the Quadra 605 — LANDED 2026-08-05**
-  (`q605_soak_etalon`, `q605_persist_etalon`; the persist run drives the
-  53C96 WRITE end to end — `CHANGELOG.md` § 2026-08-05 (fifth)).
-- [x] **Soak + persist on the Macintosh IIvx — LANDED 2026-08-09**, the THIRD
-  machine (`iivx_soak_etalon`, `iivx_persist_etalon`). VASP rather than an RBV
-  sibling because on the IIsi/IIci physical low RAM IS the framebuffer, so
-  `peek8(0x20C)` reads desktop pixels instead of the Time global. Soak: 180 s
-  on the Mac clock for 180 s of frames, 377 488 381 Egret MCU cycles —
-  matching the LC II reference, an independent check of the MCU timebase on
-  this board.
-  **It also found a defect in the two older gates' shared criterion**: the
-  folder-name search was case-sensitive AND picked whichever candidate was
-  most frequent. On the French 7.5 volume `Nouveau dossier` is a constant
-  localization resource at ×51 and always won, while the created folder is
-  `Dossier sans titre` 10 → 12. The IIvx gate now judges on **the candidate
-  that changes** and prints all of them; `lcii_beyond_etalon` and
-  `q605_beyond_etalon` still use the old heuristic — green on their images,
-  which is not the same as right.
 - [ ] **Next beyond-boot machines**: a `launch`/`floppy` pair on the Q605, or
   soak on the RBV — which needs a LOGICAL-address read of the Time global
-  first, since `peek8` is physical there.
-- [ ] **Floppy: a guest-INITIATED write — BLOCKED on the §1 SWIM1-IWM
-  mount bug, and its 2026-07-29 evidence is RETRACTED** (2026-08-05).
-  The "volume mounts, window auto-opens, Cmd-N dropped" story was the
-  System 7.5 INIT DIALOG end to end: the changed region x 3..494 /
-  y 2..240 *was the dialog box*, the modal dialog ate Cmd-N, and the
-  gesture's Return pressed its default [Eject]. KeyMap sampling proves
-  the keystrokes arrive at every settle time; nothing was ever dropped.
-  `lcii_floppy_etalon` now detects the dialog instead of calling it a
-  mount. The write gesture becomes trivial the day the volume actually
-  mounts — fix §1 first. Device-side write→eject→flush stays gated by
-  `floppy_persist_test`. Full story: `CHANGELOG.md` § 2026-08-05 (sixth).
+  first, since `peek8` is physical there (that is the same trap as the
+  retracted IIsi "ADB Manager" bug: on a RAM-based-video machine physical low
+  RAM *is* the framebuffer while the ROM's PMMU moves the System's logical low
+  memory elsewhere — **check `TC` bit 31 before trusting any low-memory read**).
+- [ ] **Floppy: a guest-INITIATED write — BLOCKED on the § 1 SWIM1-IWM mount
+  bug.** The 2026-07-29 "volume mounts, window auto-opens, Cmd-N dropped"
+  evidence is RETRACTED (2026-08-05): it was the System 7.5 INIT DIALOG end to
+  end — the changed region x 3..494 / y 2..240 *was the dialog box*, the modal
+  dialog ate Cmd-N, and the gesture's Return pressed its default [Eject].
+  KeyMap sampling proves the keystrokes arrive at every settle time.
+  `lcii_floppy_etalon` now detects the dialog instead of calling it a mount.
+  The write gesture becomes trivial the day the volume actually mounts.
+  Device-side write→eject→flush stays gated by `floppy_persist_test`.
 - [ ] **Widen per-machine System coverage.** Each profile's etalon pins one
   reference image (`GISTPERSO`, Infinite Mac 8.1…). `finder_boot_matrix`
-  currently accepts only four machines (`tests/finder_boot_matrix.cpp:328-333`
-  — `plus`/`macii`/`lcii`/`q605`); every profile added since Phase C has no
+  accepts only four machines (`tests/finder_boot_matrix.cpp:328-333` —
+  `plus`/`macii`/`lcii`/`q605`); every profile added since Phase C has no
   matrix cell. This is the calcify-around-one-image trap `LLE_VS_HLE.md` warns
   about. Add cells as images are validated — Classic II, LC, Color Classic,
-  LC III and the AIO family are the oldest debts.
+  LC III and the AIO family are the oldest debts. (The harness is
+  `EXCLUDE_FROM_ALL` and deliberately not a registered CTest.)
 - [ ] **Plus floppy System 4.1 cell.** `bootPlus`
   (`tests/finder_boot_matrix.cpp:136-155`) only does `attachScsi`; the 4.1 cell
   needs an `insertDisk` path. All HD cells PASS.
 
-**Per-machine LLE-completeness estimates** (±5 pts, re-scored 2026-07-25):
-Plus ~85, Q605 ~80, LC II ~80, LC 475/575 ~79, Mac II ~78, LC / LC III/III+
-~75, Centris/Quadra 610/650 ~74, Classic II / LC 520 family ~73, IIx/IIcx ~73,
-IIvx/vi ~72, IIsi / IIci ~70, Color Classic ~70, Mac TV ~70. Common ceilings:
-whole-frame video everywhere, cycle-exact CPU only on the Plus, and the
-beyond-boot gap above. Lowest scores are **freshness** (booted-once, not
-hardened — RBV / Tinker Bell / VASP / AIO).
-*(The "whole-frame video everywhere" ceiling lifted on six of nine decoders
-2026-08-02 — see § 4bis; these scores predate it.)*
+**The shared beyond-boot criterion is settled and centralised** — do not
+re-invent it per gate. `tests/FolderProbe.h` (gate `folderprobe_test`,
+19 checks): **the signal is not the biggest count, it is the count that
+changes.** `count()` folds ASCII case, `sample()` prints every candidate at
+every sampling point, `grew()` returns the candidate that moved. The three
+beyond-gate binaries (`lcii_`, `q605_`, `iivx_beyond_etalon` — which back
+`lcii_soak/persist/launch/floppy`, `q605_soak/persist` and
+`iivx_soak/persist_etalon`) and `folderprobe_test` all include it since
+2026-08-09. The old "most frequent candidate" heuristic held on
+English volumes by luck and never could on the French 7.5 one, where the
+localization resource `Nouveau dossier` sits at ×51 while the created folder
+is `Dossier sans titre` 10 → 12.
+
+**Per-machine LLE-completeness estimates** (±5 pts, re-scored 2026-07-25, and
+they predate the row-granular raster work): Plus ~85, Q605 ~80, LC II ~80,
+LC 475/575 ~79, Mac II ~78, LC / LC III/III+ ~75, Centris/Quadra 610/650 ~74,
+Classic II / LC 520 family ~73, IIx/IIcx ~73, IIvx/vi ~72, IIsi / IIci ~70,
+Color Classic ~70, Mac TV ~70. Common ceilings: cycle-exact CPU only on the
+Plus, and the beyond-boot gap above. Lowest scores are **freshness**
+(booted-once, not hardened — RBV / Tinker Bell / VASP / AIO).
 
 ---
 
@@ -616,181 +401,131 @@ hardened — RBV / Tinker Bell / VASP / AIO).
 
 > **Chemin critique du projet depuis le 2026-08-09** (§ 0·A). L'ordre décidé
 > est : épuiser d'abord tout le conformant listé ici, **puis** seulement le
-> HLE / JIT non conformant (§ 8). Les deux premiers items ci-dessous sont ce
-> qui reste de plus gros à gain conformant — et le premier porte sur la LC II,
-> exactement la machine que l'objectif nomme.
+> HLE / JIT non conformant (§ 8).
 
 Landed and documented: J0/J1 (engine seam, backends, fetch window, block cache),
 J2 (x86-64 code generator), J3 (inline DTLB), block linking, 030 + 020 seams,
 GUI engine switch on every family, PGO training per CPU family. Design and
-measurements: `src/jit/POM68K_JIT.md`; per-item history in `CHANGELOG.md`
-(2026-07-27 → 2026-07-31).
+measurements: `src/jit/POM68K_JIT.md`; plan and milestones:
+`docs/JIT_BRINGUP.md`; per-item history in `CHANGELOG.md`.
 
-Current state: engine available on **every CPU wrapper in the tree** —
-twelve of them, 68000 included since 2026-08-06, so there is no machine
-left without a second engine; the **x86-64
-backend is declared 68040-only** (`BackendCaps::guestFamilies`, `JitBackend.h §
-GuestFamily`) so `auto` gives the 030s `threaded`. Best measured figure: Q605
-boot etalon **61.3 s interpreter → 22.9 s JIT (×2.68)**.
+Current state: the engine reaches **every CPU wrapper in the tree** — twelve of
+them, 68000 included since 2026-08-06. **`jit/auto` has been the conformant
+default on 68040 since 2026-08-10**; every other family still defaults to the
+interpreter, which remains the accuracy oracle and keeps one explicit etalon per
+68040 platform (`interp_{q605,centris650,q630,q700}_boot_etalon`). Both x86-64
+and AArch64 code generators are declared **68040-only** by capability
+(`BackendCaps::guestFamilies`, `JitBackend.h § GuestFamily`), so `auto` gives
+the 030s `threaded` and unfinished native 030 work cannot become a shipping
+default. Best measured figures — fixed budget, identical fingerprint on every
+engine (`POM68K_JIT.md` § 3.4, Q605, 3 000 frames): interpreter 48.51 s,
+`threaded` 28.10 s (×1.73), `x86-64` **9.71 s (×5.00)**. The ×2.68 quoted
+elsewhere is the `q605_boot_etalon` wall clock (61.3 s → 22.9 s), a different
+and flattered instrument — see § 0·A.
 
 Open, in ROI order:
 
-- [ ] **Widen the x86-64 backend to the 68030 family.** Plan, milestones and
-  every measurement: `docs/JIT_BRINGUP.md` § C.
-  - [x] **an `lcii`/x64 lockstep gate FIRST** — `jit_lockstep_030_test` +
-    `jit_lockstep_030_blocks_test`, 2026-08-10. Two LC IIs stepped from
-    power-up comparing registers, the three stacks, SR, `clock`, 2 KB of low
-    RAM **and the three `PomIcache` counters**. Calibrated at 8192 cycles per
-    comparison: the first version ran 256 and never left the ROM self test
-    (2.6 % of instructions on the JIT path, 99.1 % of window arms refused),
-    which is why it now FAILS rather than reports green when the JIT carries
-    less than half the instructions.
-  - [x] a 68030 branch in `pomJitProbeData` (data-space fc, the 030's own
-    `writeProtect`/`modified` rules) and model-correct access thunks
-    (`mmuRead`/`mmuWrite`, data fc set, `fcSource` refused when redirected).
-    **Written, NOT validated** — see below.
-  - > **~~The divergence is localized to the memory-access path~~ — REFUTED
+- [ ] **Widen the code generators to the 68030 family.** Plan, milestones and
+  every measurement: `docs/JIT_BRINGUP.md` Phase C. Prerequisites already
+  landed: the `lcii` lockstep gates (`jit_lockstep_030_test` +
+  `jit_lockstep_030_blocks_test`, 2026-08-10 — two LC IIs stepped from
+  power-up comparing registers, the three stacks, SR, `clock`, 2 KB of low RAM
+  **and the three `PomIcache` counters**, calibrated at 8192 cycles per
+  comparison so the gate FAILS rather than reports green when the JIT carries
+  less than half the instructions); a 68030 branch in `pomJitProbeData` and
+  model-correct access thunks (**written, gated only by the boot etalon once
+  the family is declared** — the interpreter's `POM68K_DATA_WINDOW` reaches
+  `pomJitData` only from `mmu040Read`/`mmu040Write`, and the 030 interpreter
+  uses `mmuRead`/`mmuWrite`, so that window is a dead path there).
+  - > **The divergence is NOT localized to the memory-access path — REFUTED
     > 2026-08-10.** With `POM68K_JIT_ACCESS_THUNK=0`, which hands every
     > memory-touching instruction back to the interpreter, x64 on the LC II
-    > diverges at **exactly the same step (5956)** as with it on. The
-    > compiled access path is not what breaks. What differs in both runs is
-    > the **68030 i-cache accounting** — generated code fetches no
-    > instructions and charges no miss penalty. So the order changed: the
-    > i-cache charge comes FIRST.
-    >
-    > Also measured: C.2/C.3 above **cannot be validated on their own** —
-    > the interpreter's `POM68K_DATA_WINDOW` reaches `pomJitData` only from
-    > `mmu040Read`/`mmu040Write`, and the 030 interpreter uses
-    > `mmuRead`/`mmuWrite`, so the window is a dead path there (identical
-    > fingerprints AND identical zero fills). Their gate is the boot etalon
-    > once the family is declared.
-  - [ ] **the emitted i-cache charge** (`docs/JIT_BRINGUP.md` § B) — constant
-    folded per natively emitted instruction; the cold fallback stub charges
-    itself already, through `pomJitExecOne` → `mmuExecuteStart` →
-    `mmuFetchWord`. **AArch64 half DONE 2026-08-10**: 120k lockstep,
-    351,770,189 native instructions and 948,544,659 identical cache fetches;
-    Finder boot green. It remains behind the unsafe development override:
-    compact counters + deadline pacing + hot=128 + native `DBcc` reduced
-    fixed-budget wall time **5.63 → 4.57 s**, block fallbacks
-    **3,030,048 → 257,369**, and total exits **4.48 M → 1.59 M**, versus
-    3.43 s threaded. **Split trace metadata DONE 2026-08-10**: each IR
-    instruction now records base/data-bus, i-cache and post-exception cycles
-    separately. It safely admits `ADDQ/SUBQ ...,An` (`584F`: 2+4+0), reducing
-    fallbacks again to **236,298**; à ce stade il refuse correctement
-    `TST.B (An)` (`4A11`:
-    70+0+0), whose excess was not a cache miss. 120k A64 lockstep green. This unchecked
-    box now names the x64 half plus the AArch64 throughput exit criterion.
-    **Critère AArch64 toujours non satisfait, re-mesuré 2026-08-11** : sur
-    6 000 frames fixes, `threaded` est stable à 20,37/20,39 s ; AArch64 donne
-    19,43 puis 22,64 s, avec la même empreinte et les mêmes compteurs i-cache.
-    Une victoire sur deux n'est pas un gain reproductible : la déclaration
-    reste 68040-only et l'override expérimental demeure obligatoire. Sept
-    boots 030 représentatifs passent en natif. **Oracle IIfx rétabli
-    2026-08-11** : le zéro-SCSI venait de la déclaration Toby synthétique,
-    pas d'un moteur CPU. Les trois gates exigent désormais la vraie ROM de
-    carte `342-0008-a` et prennent le GISTPERSO propre comme fixture prioritaire.
-    Interpréteur, threaded et AArch64 expérimental donnent tous l'étalon exact
-    `f=539`, Finder `0,06/0,69`, `512` commandes SCSI. C.6 reste ouvert sur
-    son critère de débit reproductible, plus sur la conformité de l'IIfx.
-    **Lecture SR native DONE 2026-08-12** : `MOVE SR,Dn` reconstruit T1/T0,
-    S/M, le vrai masque `reg.sr.ipl` et le CCR, sans écraser le mot haut de
-    Dn. Le smoke natif vérifie `$2718`, les locksteps 030 (120k) et 040 (5M)
-    passent. Sur le census 10k comparable, `40C0` représente 77 555
-    instructions (2,33 %), devient natif et disparaît des fallbacks statiques
-    (couverture déclarée 99,1 %). **Poll exact DONE 2026-08-12** : `4A11`
-    passe toujours par `pomJitReadData`; la MMU et le périphérique possèdent
-    les 64 cycles variables, le code natif seulement les 6 cycles fixes et
-    les flags. Lockstep 120k vert ; fallbacks statiques 10k **61 436 -> 3 924
-    (-93,6 %)**. Aucun gain de débit n'est revendiqué : sur deux paires fixes
-    de 6 000 frames, threaded fait 19,52/19,50 s et AArch64 20,18/20,16 s,
-    empreinte `cfb184b6faddabec` et compteurs i-cache identiques. Le verrou
-    mesuré devient la résidence native globale (18,4 %) et 64,6 M sorties
-    AArch64 contre 50,7 M threaded, plus ce fallback particulier.
-    **Aucune promotion 68030 avant les quatre preuves cumulatives suivantes** :
-    empreinte et compteurs identiques ; IIfx, LC II, IIvx, IIsi, SE/30,
-    Macintosh TV et Duo verts ; gain répété sur plusieurs exécutions ; tier
-    étalon complet vert sur l'interpréteur et sur le moteur candidat.
-  - [ ] the 030's restartable last write (`MoiraDataflow_cpp.h:355-361`) and
-    the exact no-tail-refill queue contract at a block exit.
-    **`(An)+` update order DONE on A64 2026-08-10**:
-    update after a successful probe but before the access, including an exact
-    MMIO-thunk rollback before interpreter replay. 120k lockstep green;
-    `205F/221F/245F/4A1F` leave the fallback census. A broad last-write shortcut
-    (`MOVE reg/imm -> memory` after a writable probe) diverged at step 10,455
-    and was reverted. Isolation of `1D40` reaches step 31,162; its coarse
-    quantum ends one instruction apart while 64-cycle continuation and full
-    backing RAM stay exact. **Wrapper/peripheral oracle DONE 2026-08-10**:
-    `POM68K_JIT_LOCKSTEP_PERIPH_TRACE_AT` hashes the save-stated V8 device tree
-    at every edge and delivery. It proves the first 23 trace points identical
-    and finds point 24, a delivery at the same clock/device hash but PC `40A09A14` vs
-    `40A09A0A`, after an identical `40A0B400` boundary. **CPU boundary DONE**:
-    disabling links makes the run exact; making only the `1D40` block a
-    bidirectional chain barrier preserves all other links and passes 120k
-    (351,770,098 JIT instructions). **LAST-WRITE GATE DONE 2026-08-10**:
-    `jit_restart_write_030_test` enters an already-compiled `1D40` block,
-    forces the exact write thunk and its untouched replay to fault, then
-    compares all 32 bytes of the `$A` frame (SR/next-PC/LASTWRITE/SSW/address/
-    opcode/output buffer). The env flag is removed. Register/immediate-source
-    MOVE writes to `(An)`, `d16(An)` and absolute EAs are now native behind
-    the same bidirectional barrier; at that checkpoint indexed and
-    `(An)+/-(An)` destinations remained closed. 120k lockstep green without
-    an opcode flag; fixed census
-    70 blocks / 177,459 fallbacks, identical fingerprint. **TERMINAL QUEUE
-    DONE 2026-08-10**: every traced IR instruction now carries its observed
-    next PC, IRD and IRC independently. A64 commits those observations on
-    linear exits and validates each branch formula against the path that was
-    traced. `jit_restart_write_030_test` additionally compiles self-looping
-    `JMP (xxx).L` and `BRA.L` cases and proves that IRC is respectively the
-    low address word and low displacement word, not a synthetic lookahead.
-    **RESTARTABLE EA EXPANSION DONE 2026-08-10**: `-(An)` and brief indexed
-    destinations now pass byte-exact injected `$A` frames plus the full 120k
-    lockstep (351,794,391 native instructions). Predecrement is committed
-    before every access and rolled back before a fault replay. Destination
-    `(An)+` initially reproduced the full-machine divergence at coarse step
-    10,455. **PI SUCCESS ORACLE DONE 2026-08-10**:
-    the gate compares the written byte, pre/post A6, all 16 MiB of backing
-    memory and address/value/width/A6/PC/PC0/IRD/IRC/SR/clock inside MMIO.
-    It fixed CCR publication after instead of before LASTWRITE. The remaining
-    coarse-only failure first differed silently at RAM `$533E` (`00` vs
-    `40`) on step 10,448. The write journal named `22D8`: its source probe
-    committed `(A0)+`, its destination probe refused, and replay incremented
-    A0 again. Memory-to-memory MOVE now probes both mappings before either EA
-    mutation. PI is enabled without a flag and the full 120k gate is green.
-    The fixed benchmark remains bit-exact (`1c5e30c648c72e48`): 119 blocks,
-    40,383,551 native instructions, 393,527 fallbacks, 4.60 s. This slice
-    claims semantics, not a statistically established speedup.
-- [ ] **Coverage tail** (after MOVEM/DBcc/JMP): register-count and memory
-  shifts/rotates, Scc (`JitBackendX64.cpp:1819` refuses it), PEA; **the 68020 indexed modes are
-  the big block** (a brief extension-word decoder — QuickDraw's blitters;
-  currently refused at `JitBackendX64.cpp:36,171,175`). MULU/DIVU stay fallback
-  (data-dependent cycles — the cross-check refuses them honestly).
+    > diverges at **exactly the same step (5956)** as with it on. What differs
+    > in both runs is the **68030 i-cache accounting** — generated code fetches
+    > no instructions and charges no miss penalty.
+  - [ ] **The emitted i-cache charge** (`docs/JIT_BRINGUP.md` Phase B) —
+    constant-folded per natively emitted instruction; the cold fallback stub
+    charges itself already, through `pomJitExecOne` → `mmuExecuteStart` →
+    `mmuFetchWord`. **AArch64 half semantically DONE**: split trace metadata
+    (base/data-bus, i-cache and post-exception cycles recorded separately),
+    native `MOVE SR,Dn` reconstructing T1/T0, S/M, the real `reg.sr.ipl` mask
+    and the CCR without clobbering Dn's high word (2026-08-12), and an exact
+    poll path where `4A11` still goes through `pomJitReadData` so the MMU and
+    the peripheral own the 64 variable cycles while native code owns only the
+    6 fixed ones and the flags (2026-08-12). Static fallbacks on the fixed 10k
+    census **61 436 → 3 924 (−93,6 %)**; declared coverage 99,1 %; 120k
+    lockstep green throughout.
+    **The throughput criterion is still NOT met**, re-measured 2026-08-12: on
+    two fixed 6 000-frame pairs `threaded` does 19,52/19,50 s and AArch64
+    20,18/20,16 s, same fingerprint `cfb184b6faddabec` and identical i-cache
+    counters. (An earlier pair was 20,37/20,39 s threaded vs 19,43 then
+    22,64 s AArch64 — one win out of two is not a gain.) The measured lock is
+    global native residency (**18,4 %**) and **64,6 M AArch64 exits against
+    50,7 M threaded**. The declaration therefore stays 68040-only and the
+    experimental override stays mandatory.
+    **No 68030 promotion before four cumulative proofs**: identical fingerprint
+    and counters; IIfx, LC II, IIvx, IIsi, SE/30, Macintosh TV and Duo green;
+    a gain repeated across runs; the full `etalon` tier green on both the
+    interpreter and the candidate engine.
+    *(Fixture trap that already cost a wrong diagnosis, 2026-08-11, and which
+    `CHANGELOG.md` does not record: a zero-SCSI IIfx run was blamed on the CPU
+    engine and was the **synthetic Toby declaration ROM**. All three IIfx gates
+    require the real card ROM `342-0008-a` and SKIP without it
+    (`tests/iifx_boot_etalon.cpp:31-42`); `IIfxMemory::installTobyVideo` falls
+    back to `DeclRom::buildSynthetic` with only a stderr line
+    (`IIfxMemory.cpp:102-104`). Interpreter, `threaded` and experimental
+    AArch64 then all give the same etalon — `f=539`, Finder `0,06/0,69`,
+    512 SCSI commands.)*
+  - [ ] The 030's restartable last write (`MoiraDataflow_cpp.h:355-361`) and
+    the exact no-tail-refill queue contract at a block exit. **Landed on A64
+    2026-08-10, gated by `jit_restart_write_030_test`** (which compares all 32
+    bytes of an injected `$A` frame — SR/next-PC/LASTWRITE/SSW/address/opcode/
+    output buffer — and additionally compiles self-looping `JMP (xxx).L` and
+    `BRA.L` to prove IRC is the low address/displacement word, not a synthetic
+    lookahead): `(An)+` update after a successful probe but before the access
+    with exact MMIO-thunk rollback; `-(An)` and brief-indexed destinations
+    committed before every access and rolled back before a fault replay;
+    register/immediate-source MOVE to `(An)`, `d16(An)` and absolute EAs
+    native behind a bidirectional chain barrier. **What is still open**:
+    a *broad* last-write shortcut (`MOVE reg/imm → memory` after a writable
+    probe) diverged at step 10 455 and was reverted, and indexed destinations
+    beyond the brief form remain closed.
+    Two oracles built here are worth reusing before anyone re-derives them:
+    `POM68K_JIT_LOCKSTEP_PERIPH_TRACE_AT` hashes the save-stated device tree at
+    every edge and delivery (it proved 23 trace points identical and isolated
+    point 24 — same clock, same device hash, PC `40A09A14` vs `40A09A0A`);
+    and the PI success oracle compares the written byte, pre/post A6, all
+    16 MiB of backing memory and address/value/width/A6/PC/PC0/IRD/IRC/SR/clock
+    inside MMIO. The latter is what named `22D8`: its source probe committed
+    `(A0)+`, its destination probe refused, and replay incremented A0 again —
+    **memory-to-memory MOVE now probes both mappings before either EA
+    mutation.**
+- [ ] **Coverage tail** (after MOVEM/DBcc/JMP/Scc/PEA): register-count and
+  memory shifts/rotates (nothing decodes line-$E on either backend); **the
+  68020 indexed modes are the big block** — a brief extension-word decoder,
+  and what QuickDraw's blitters are made of; refused today at
+  `JitBackendX64.cpp:36` (the stated exclusion) and `:171-172` (`eaIndex`
+  returns −1 for mode 6). MULU/DIVU stay fallback (data-dependent cycles —
+  the cross-check refuses them honestly).
+  *(Two items left this list on x86-64, 2026-08-10: `Emitter::emitScc`,
+  `JitBackendX64.cpp:1852`, emits both the register and the memory forms on
+  the 68020 cycle column, and `PEA` is native at `:1742-1755` with its own
+  `kPea` cost row. **Neither is emitted by the AArch64 backend** — that
+  asymmetry is the honest remainder here.)*
 - [ ] **Compact `mmu040InstrStart`.** Eight per-instruction field resets + a
   `getCCR()` pack; adjacent fields could collapse into one or two wide stores.
   Small, but it sits on every single 040 instruction.
-- [x] **Bring aarch64 to x86-64's opcode-family level.** Register/memory ALU,
-  branches, calls/returns, MOVE, BTST, LINK/UNLK and MOVEM now use native
-  AArch64 plus the same exact fallback policy; 5 M-step lockstep passes.
-- [x] **Close the AArch64 full-boot gate and enable `auto`.** Hidden peripheral
-  lockstep localized four emitter defects: NEG used an immediate instead of a
-  register, EA commit clobbered an ALU operand, short MOVE immediates were not
-  masked, and BFINS lost its mask while setting flags. Five-million-step fine
-  and coarse locksteps plus the complete Q605 Finder boot now pass. Flushing
-  only newly emitted code instead of the entire 128 MiB code reservation also
-  removes the dominant Apple-Silicon compile cost. Replacing the slice
-  invalidation `unordered_multimap` with an O(1)-append index removes a second,
-  quadratic long-boot cost (and duplicate indexing). The fixed Release
-  benchmark is 1.22 s A64 versus 4.55 s threaded (3.73x); the full Finder gate
-  is 9.19 s versus 21.14 s (2.30x), with identical signatures.
 - [ ] **Generated-code density** — deprioritized 2026-07-30. The stale
-  150 B/instr figure predates boundary-deferral + cold emission; the re-baseline
-  shows x64 already beating threaded on both regimes (−10 %). The residual
-  idle-Finder gap is dominated by the ATC-eviction exactness contract, which
-  density cannot touch. Micro-wins (local rel8, shared stubs) are third-order.
+  150 B/instr figure predates boundary-deferral + cold emission; the
+  re-baseline shows x64 already beating threaded on both regimes (−10 %). The
+  residual idle-Finder gap is dominated by the ATC-eviction exactness contract,
+  which density cannot touch. Micro-wins (local rel8, shared stubs) are
+  third-order.
 
 ### Build recipe — Raspberry Pi (landed 2026-08-08, `docs/RASPBERRY_PI.md`)
 
-`POM68K_NATIVE` / `POM68K_TUNE` / `POM68K_LTO` are three knobs now, not one;
-the aarch64 AppImage gets LTO + `-mtune=cortex-a72`;
+`POM68K_NATIVE` / `POM68K_TUNE` / `POM68K_LTO` are three CMake knobs now, not
+one; the aarch64 AppImage gets LTO + `-mtune=cortex-a72`;
 `packaging/raspberry/build_native_pi.sh` builds `-mcpu=<exact core>` + PGO on
 the board; `tools/pgo_train_run.sh` is the shared training load and **fails
 loudly** where PGO used to fail silently. Left open:
@@ -802,26 +537,17 @@ loudly** where PGO used to fail silently. Left open:
   (`POM68K_BENCH_FRAMES`), never a boot etalon: an etalon stops when it
   recognises the Finder, so two builds get timed over different amounts of
   guest work. The fingerprints it prints must match across builds.
-- [x] **Validate the release AppImage change** — DONE 2026-08-08, run
-  31263114761: four jobs green, `-- POM68K: tuned for cortex-a72 (ISA floor
-  unchanged)` in the aarch64 log, glibc floor still 2.17. The LTO is visible
-  in the size: aarch64 3 779 143 → 3 216 148 B (−14.9 %), x86_64 3 720 638 →
-  3 127 936 B (−15.9 %), macOS and Windows unchanged — exactly the scope
-  enabled.
-- [x] **Dispatch `pi400.yml`** — DONE 2026-08-08, run 31264225875 green
-  (81 objects, `-mcpu=cortex-a72` on the real compile line, glibc floor 2.17,
-  both packages launched on the runner). **And it refuted its own premise**:
-  the binary is byte-identical to the release build's `-mtune=cortex-a72`
-  (27 bytes differ out of 8 698 128 — build-id + version string). `-mcpu=X` is
-  `-march=<X's arch> -mtune=X`, and the ISA delta (crc, crypto) is code GCC
-  never emits by itself. The workflow now builds both ways and reports the
-  verdict per run. `CHANGELOG.md` 2026-08-08 (fourth).
 - [ ] **Dispatch `pi400.yml` with `cortex-a76` once.** A Pi 5 is armv8.2-a —
   LSE atomics, fp16, dotprod — the one case where the raised floor might
-  actually change codegen. The comparison step will now say so either way;
-  nobody should re-derive the a72 result to find out.
+  actually change codegen. **The a72 case is already settled and refuted**
+  (2026-08-08, run 31264225875): `-mcpu=cortex-a72` produced a binary
+  byte-identical to the release `-mtune=cortex-a72` (27 bytes differ out of
+  8 698 128 — build-id + version string), because `-mcpu=X` is
+  `-march=<X's arch> -mtune=X` and the ISA delta (crc, crypto) is code GCC
+  never emits by itself. The workflow builds both ways and reports the verdict
+  per run; nobody should re-derive the a72 result to find out.
 - [ ] **LTO for the macOS `.dmg` and the Windows `.zip`.** The same argument
-  applies (`package_macos_release.sh`, `release.yml`'s Windows job both set
+  applies (`package_macos_release.sh` and `release.yml`'s Windows job both set
   `POM68K_NATIVE=OFF` and so still get no LTO). Stopped at Linux deliberately:
   the universal-2 `lipo` path was not exercised, and MSVC needs `/GL` +
   `/LTCG`, which the CMake block does not emit.
@@ -829,7 +555,8 @@ loudly** where PGO used to fail silently. Left open:
 ### Measured and DROPPED — do not re-open without new data
 
 These cost real time to measure. The numbers, not the conclusions, are the
-value here.
+value here. (The 2026-08-11 rejections are in § 0·A, where they are the only
+record.)
 
 - **Lazy condition codes in x64: ceiling ≈0.8 %.** Method: duplicate the flag
   emission (storing the same byte twice is a semantic no-op, so the delta is the
@@ -853,7 +580,7 @@ value here.
   is the WALK and per-access bookkeeping, not the lookup** — re-open only with a
   profile that separates them.
 - **The interpreter's data window (J1c) is opt-in, not open work.** It exists
-  (`JitEngine.cpp:50`, `POM68K_DATA_WINDOW=1`, `POM68K_JIT.md §8`); capping it
+  (`JitEngine.cpp:87`, `POM68K_DATA_WINDOW=1`, `POM68K_JIT.md § 8`); capping it
   at ATC coverage for bit-exactness made it a net loss on the interpreter. The
   x64 keeps its inline TLB.
 
@@ -867,243 +594,156 @@ class of divergence mimics memory corruption; see CHANGELOG 2026-07-28.
 
 ## 4. LLE fidelity — replace HLE shortcuts
 
-Inventory and migration plan: `docs/LLE_VS_HLE.md`. Policy settled 2026-07-29
-(§2): HLE fallbacks are **kept but LOUD** (stderr NON-CONFORMANT notice at every
-HLE ADB entry) because MCU dumps are non-distributable; deletion would be a
-deliberate "POM68K requires MCU dumps" product decision, not a cleanup.
+Inventory and migration plan: `docs/LLE_VS_HLE.md`, which **carries no live
+BUG any more** (2026-08-02): everything remaining in its § 1 is a
+*simplification*, each with its reason and its reopening condition. Policy
+settled 2026-07-29 (§ 2): HLE fallbacks are **kept but LOUD** (stderr
+NON-CONFORMANT notice at every HLE ADB entry) because MCU dumps are
+non-distributable; deletion would be a deliberate "POM68K requires MCU dumps"
+product decision, not a cleanup.
 
-- [x] **`AdbLine` device model gaps** — CLOSED 2026-08-02. Second mouse button
-  (Extended Mouse Protocol, handler 4, + the R1 identifier block),
-  extended-keyboard handler IDs (1/2/3 as a real register, with a standard
-  keyboard *refusing* 3), and Listen R2 LEDs. Also: SendReset now restores the
-  default handler, not just the default address. `docs/LLE_VS_HLE.md` § 1.6;
-  gate `adbline_test`. *(Talk R2 modifiers had landed 2026-07-31.)*
-  - [x] **Host side — CLOSED 2026-08-03**: `ScreenInput` sends both mouse
-    buttons with an index through every `Cmd::MouseButton` route; conformant
-    `AdbLine` consumers receive button 1 while HLE/one-button paths ignore it.
-    The ten ADB GUI maps also send distinct right Shift/Option/Control codes
-    (and both Command keys); handler 3 preserves them, handlers 1/2 fold them.
-- [x] **Peripheral event deadlines — LANDED 2026-08-03.**
-  `POM68K_PERIPH_STATS=1` counts the path. Over 1200 frames of
-  `q605_boot_etalon`: batch 256 → 25.6 M `mem.tick()` calls / 60.1 s;
-  batch 1 → **833.2 M calls** / 103.3 s. **Same 1.650 G machine cycles
-  delivered either way**, and `catchUp()` is called 879 M times in both —
-  so the cost is neither the devices nor the hook, it is entering the
-  ~15-device fan-out **32.5× more often**.
-  Fixed batching is now replaced by the minimum conservative deadline over
-  Cuda, VIA, SCC, ASC, SWIM, 53C96, CA1 and DAFB on Q605, and by the binding
-  firmware-MCU deadline on V8. `catchUp()` returns until that absolute clock;
-  device-space accesses still force `flushTicks()`. A too-small bound remains
-  merely slow; no bound is allowed to be larger than the next observable
-  transition. The explicit HLE fallback retains its historical batch.
-
-  **The bounds, derived from the code 2026-08-03 — the hard part is done.**
-  Every device in `Q605Memory::tick` can state a bound; **none has to fall
-  back to 1**, which is what makes the refactor worth doing at all:
-
-  | device | bound | value @ 25 MHz |
-  |---|---|---|
-  | `CudaLle` 6805 | `ceil(((mcuDebt_+1)*cpuHz - mcuAcc_) / kMcuHz)` | **~12 — binding, gated** |
-  | VIA E clock | `ceil((cpuHz - viaEClock_.acc) / 783360)` | ~32 |
-  | `AscIosb` drain | `ceil((kCpuHz - drainAcc_) / drainHz())`, scaled C15M→CPU | ~1123 |
-  | `Scc8530` | min of the live countdowns (`peerHold_`, `txShiftIn`, …) | **∞ when idle** |
-  | `Swim*` / `SonyDrive` | cell/spin clock — only while the motor runs | ∞ when parked |
-  | `Ncr53c96` | service-latency countdown — only during a transfer | ∞ when idle |
-  | 60.15 Hz CA1 | `ceil((kCpuHz*100 - tickAcc_) / 6015)` | ~416 000 |
-  | `Dafb` VBL | from `framePos_` | ~416 000 |
-
-  Measured on `q605_boot_etalon` with `POM68K_PERIPH_STATS=1`: **86.65 M**
-  `mem.tick()` calls for 1.675 G machine cycles, or **19.34 cycles/call**.
-  That is 9.6× fewer full fan-outs than the old exact batch-1 measurement
-  (833.2 M), while preserving exact event timing. Gates: the Q605 boot plus
-  all three firmware boot/input etalons, Mac TV, unit and save-state suites.
-- [x] **Extend the event deadlines to the six 030/040 platforms — LANDED
-  2026-08-04** (same day as the inventory below; 27 serial gates green,
-  incl. both jit cousins on `setPeriphDeadline` and the save-state
-  suites with the new serialized field). The contract carries
-  over unchanged: only a device that can raise an interrupt or flip an
-  externally visible line *spontaneously* needs a bound; pure state
-  (SonyDrive spin, rotation angle) is covered by the access-forced
-  `flushTicks()`. Mechanical wrapper change per CPU (copy
-  `Cpu030::catchUp`/`schedulePeriphDeadline`): add `periphDeadline_`,
-  early-return in catchUp, schedule after tick — **and add the new member
-  to the wrapper's `visit()`** (savestate_030/040 gates will catch an
-  omission). Per-platform bound terms, from each `tick()`:
-  - **Sonora** (5 profiles, 25/33 MHz): Egret/Cuda LLE (HLE → historical
-    batch), VIA Bresenham `ceil((cpuHz_−viaAcc_)/kViaHz)`, CA1
-    `ceil((cpuHz_·20−tickAcc_)/1203)`, modeline VBL
-    (`vblStart_`/`frameCycles_` − `framePos_`), AscSonora (check it has a
-    deadline API — AscIosb does, the Sonora flavour may not), SWIM2
-    through `swimAcc_` C15M bridge, SCC.
-  - **VASP** (31.3344/16 MHz): same shape; fixed 60 Hz VBL (480/525);
-    ASC+SWIM1+spin share the `c15Acc_` C15M domain — SWIM1 has no
-    `cyclesToNextEvent` yet (add one, ∞ when parked).
-  - **RBV**: IIsi = Egret LLE like V8; **IIci is the delicate one** —
-    `adbVia_.tick` + `syncTo(machineClock())` every tick (host-paced PIC
-    transport) plus the discrete RTC 1 Hz (`secAcc_`); derive the AdbVia
-    bound from its live countdowns before touching anything
-    (`pom68k-mcu-lle-clock-drift` applies).
-  - **Centris** (20/25/33 MHz): Q605 mix (AscIosb, SWIM2, 53C96, DAFB)
-    plus the Mac II front end — AdbVia/PIC1654S is the binding transport.
-  - **Q700** (Spike/Q900/Q950): Q605 mix + Eclipse tail — two `ApplePic`
-    (65C02 always running: bound = the C15M bridge, small but > 1) +
-    `Egret`. Guard rail: q700 **and** q900, never in parallel.
-  - **Q630**: Q605 mix + Valkyrie VBL + the Cuda I2C slaves.
-  Deliberately NOT in this batch: the compacts (cycle-exact by
-  construction — a deadline there risks the Plus's whole accuracy claim
-  for the cheapest machine to emulate), Mac II family, IIfx (two IOPs
-  always executing → the fan-out is intrinsic) and MSC — each needs its
-  own analysis. Gates per platform: its boot etalons + the input etalons
-  it owns (`iisi_input`, `lc3_`/`lc520_input`) + the save-state suites,
-  serially.
-- [ ] **Quadra 605 / LC 475**: expand Cuda commands only from ROM/driver traces;
-  accurate 040 timing, cache copyback/snooping and on-chip-FPU/FPSP behaviour as
-  separate oracle-gated milestones.
+- [ ] **Quadra 605 / LC 475**: expand Cuda commands only from ROM/driver
+  traces; accurate 040 timing and on-chip-FPU/FPSP behaviour as separate
+  oracle-gated milestones. *(Cache copyback/snooping is no longer part of this
+  item: the chantier CLOSED at M1 on 2026-08-05 — architectural TAG state
+  behind `POM68K_040_DCACHE`, default off, with three named reopening
+  conditions in `docs/CACHE_040.md` § 3.)*
 - [ ] **SCC LLE, Low tier** (2026-07-22 MAME `z80scc.cpp` audit,
-  `docs/LLE_VS_HLE.md` §1.4). **The two items that did not need a new
-  transport landed 2026-08-02**: ~~WR5 RTS output tracking (auto-RTS deassert
-  on all-sent, `tra_complete:1090`)~~ — `/RTS` **and** `/DTR` are now pins,
-  with the Auto-Enables deferral released from `tick()` as the shifter drains;
-  ~~SDLC Rx residue codes (RR1 bits 3-1)~~ — byte-aligned code 011, which the
-  idle RR1 already reported while frame bytes said 000. Both gated in
-  `scc_engine_test`. What is left is deliberately deferred, each for a stated
-  reason: true bit-serial Tx/Rx sampling (only worth it with a real async
-  transport to talk to); chip-variant gating (NMOS 8530 / 85C30 / ESCC — FIFO
-  depth 3/8, WR7', status FIFO `:1363`, needed the day a machine wants the
-  ESCC); WR9 VIS/NV options (hardcoded VIS=1, correct for every Mac target);
-  DPLL (MAME stubs it too, `:305-318`). **Also missing: a consumer** — nothing
-  on the emulated side of the wire reads `rtsAsserted()` yet.
+  `docs/LLE_VS_HLE.md` § 1.4). The two items that needed no new transport
+  landed 2026-08-02 (WR5 `/RTS` **and** `/DTR` as real pins with the
+  Auto-Enables deferral released from `tick()` as the shifter drains; SDLC Rx
+  residue codes, byte-aligned code 011), both gated in `scc_engine_test`.
+  What is left is deliberately deferred, each for a stated reason: true
+  bit-serial Tx/Rx sampling (only worth it with a real async transport to talk
+  to); chip-variant gating (NMOS 8530 / 85C30 / ESCC — FIFO depth 3/8, WR7',
+  status FIFO `:1363`, needed the day a machine wants the ESCC); WR9 VIS/NV
+  options (hardcoded VIS=1, correct for every Mac target); DPLL (MAME stubs it
+  too, `:305-318`). **Also missing: a consumer** — nothing on the emulated side
+  of the wire reads `rtsAsserted()` yet.
   **Caveat that applies to the whole SCC backlog**: MAME's SDLC side is partial
   (Send Abort / CRC resets `:1602/:1635` "not implemented", no EOM latch, no
   hunt/sync) — for LLAP behaviours **we are the more complete model**. Use MAME
   as oracle for the ASYNC side only; do not regress LLAP chasing parity.
-- [x] **Valkyrie I2C pixel clock — CLOSED 2026-08-02.** The Cuda's I2C bus
-  now carries the full `i2c_hle` frame and **two** slaves (DFAC2 `$6F`,
-  ACK-only; Valkyrie `$28`, payload load-bearing). Measured, not assumed: a
-  traced Q630 boot programs M/N/P = `$0E`/`$1B`/`$02` → 30.752 MHz, so
-  640×480 refreshes at 67.80 Hz instead of the frozen 69.08 Hz. Gate
-  `valkyrie_i2c_test` (asserts frame cadence, not the setter).
-  **Left open on purpose**: the result is 1.7 % above Apple's nominal
-  66.67 Hz; a `31.3344/8` reference would be exact, which suggests MAME's
-  `3986400` is off. Needs a real observable before anyone touches it.
-- [x] **`Swim1` DAT1BYTE — CLOSED 2026-08-02.** Level line, `swim1.cpp:1226`
-  semantics, wired per machine: Q900/950 → both IOP DMA channels, IIfx →
-  channel A only, LC II → unwired (unchanged). Every etalon owning a `Swim1`
-  re-run green.
-- [~] **Floppy flux + PLL layer (§ 1.3) — step 1 of 4 landed 2026-08-02.**
-  `src/FluxPll.h` is the integer port of MAME's `fdc_pll_t` (phase
-  feedback, `freq_hist` period trim, ±25 % clamps, `limit` protocol, write
-  side); time unit = **flux ticks**, `kSubCell = 1024` per nominal cell,
-  int64 so snapshots are bit-identical. Gate `flux_pll_test` (17 checks)
-  shows ±12 % jitter and ±8 % rate error both recovered, where a
-  fixed-window separator slips inside 32 cells.
-  **Nothing reads it yet** — `SonyDrive` still stores discrete cells.
-  Next, in order:
+- [~] **Floppy flux + PLL layer** (`docs/LLE_VS_HLE.md` § 1.3) — step 1 of 4
+  landed 2026-08-02. `src/FluxPll.h` is the integer port of MAME's `fdc_pll_t`
+  (phase feedback, `freq_hist` period trim, ±25 % clamps, `limit` protocol,
+  write side); time unit = **flux ticks**, `kSubCell = 1024` per nominal cell,
+  int64 so snapshots are bit-identical. Gate `flux_pll_test` (17 checks) shows
+  ±12 % jitter and ±8 % rate error both recovered, where a fixed-window
+  separator slips inside 32 cells.
+  **Nothing reads it yet** — `SonyDrive` still stores discrete cells. Next, in
+  order:
   1. a flux representation in `SonyDrive` beside `cells_`, plus
      `nextTransition(after)` (MAME's `get_next_transition`) and an opt-in
      jitter model;
   2. move **`Swim2`** onto the PLL first — it is the best-gated controller
-     (`swim2_test`, `swim2_media_test`, `q605` floppy etalons);
+     (`swim2_test`, `swim2_media_test`, the `q605` floppy etalons);
   3. then `Swim1` (its LS-pair correction machinery, `swim1.cpp:965-1140`,
      stops being dead code at that point) and the `Iwm` READ path.
-  Test-first note that already paid: the obvious "prove a dumb decoder
-  fails" case (jitter) does NOT bite — ±12 % never pushes a transition out
-  of its own fixed window. The off-rate track is the case that does.
-- [x] **Classic II Eagle `$F18000` — NAMED 2026-08-02.** It is the analogue
-  **CRT brightness/contrast DAC**, the same cell MAME maps as
-  `spice_device::bright_contrast_w` on the Color Classic. Three independent
-  pieces of evidence, no guessing:
-  1. `rominfo --universal` on the `$3193670E` ROM — the Classic II record
-     (`$003D14`, Gestalt 23, `UnivROMFlags $1A6`) has its own DecoderInfo
-     `$04C7A6` whose **`decoder[6] = $50F18000`** (→ LMG `$0B0A`/`$0312`).
-     That entry is **zero on every LC / LC II / IIci / IIfx / IIsi record**
-     in the same table: the Classic II is the only machine here that
-     declares a device at this base.
-  2. The ROM routine at `$A51350` disassembles as a DAC feed — a 0-255
-     setting scaled `×$2B >> 8` to 0-42, de-scrambled through a 43-entry
-     table, then shifted out **370 times at stride 2** from `$50F18000`.
-     The other two sites are its presence test (write / read back / compare,
-     `$A48D12`) and a 768-byte ramp init (`$A03CE2`).
-  3. Same address, same purpose, in MAME's Spice.
+  Test-first note that already paid: the obvious "prove a dumb decoder fails"
+  case (jitter) does NOT bite — ±12 % never pushes a transition out of its own
+  fixed window. **The off-rate track is the case that does.**
 
-  POM68K now names it instead of dropping it in the map hole. **Behaviour is
-  unchanged** — the Eagle's forgiving-bus tail already discarded the writes —
-  but a named device that is deliberately ignored (our CRT has no analogue
-  stage) is not the same thing as an unexplained hole. `classic2_boot_etalon`
-  and `cclassic_boot_etalon` re-run green.
+### Peripheral event deadlines — eight of twelve platforms, and why the other four are not
 
-  Deliberately NOT done: the presence test fails here because reads return
-  `$FF` and never echo the written value. That is probably right — the DAC is
-  likely write-only — but "probably" is not a measurement, so no read-back
-  value was invented to make the ROM's probe succeed.
+Landed 2026-08-03 (Q605 + V8) and 2026-08-04 (Sonora, VASP, RBV, Centris,
+Q700/Eclipse, Q630; 27 serial gates green). Fixed batching is replaced by
+`min(binding MCU-LLE bound, historical batch)`: `catchUp()` returns until that
+absolute clock, device-space accesses still force `flushTicks()`, a too-small
+bound is merely slow, and **no bound may be larger than the next observable
+transition**. The explicit HLE fallback keeps its historical batch.
+`POM68K_PERIPH_STATS=1` (Cpu040 only) counts the path.
 
-  Also settled while there: the **hole value does not matter to this guest**.
-  `POM68K_V8_HOLEVAL=00` (MAME's default-unmapped 0) and `$FF` both reach the
-  Finder with 9619 SCSI commands, identical. And MAME's 0 here is its
-  `address_space` DEFAULT, not a modelled decision — unlike the Sonora's 0,
-  which `iosb.cpp:54-65` states in a comment. Do NOT align to 0 "for parity":
-  there is no oracle statement to be parallel to.
-- [x] **ADB report rate — MEASURED 2026-08-02, and it is right.** The open
-  question was whether the ~1.6× amplification of a sustained stream came from
-  POM68K servicing *fewer* polls than real hardware. It does not. Trace of a
+The contract, worth keeping because the next platform will need it: **only a
+device that can raise an interrupt or flip an externally visible line
+*spontaneously* needs a bound**; pure state (SonyDrive spin, rotation angle) is
+covered by the access-forced `flushTicks()`. Mechanical wrapper change per CPU:
+add `periphDeadline_`, early-return in `catchUp`, schedule after `tick` — **and
+add the new member to the wrapper's `visit()`** (the `savestate_030/040` gates
+catch an omission).
+
+Why it was worth doing at all, measured on `q605_boot_etalon`: batch 256 →
+25.6 M `mem.tick()` calls / 60.1 s; batch 1 → **833.2 M calls** / 103.3 s, with
+the **same 1.650 G machine cycles delivered either way** and `catchUp()` called
+879 M times in both — the cost is neither the devices nor the hook, it is
+entering the ~15-device fan-out **32.5× more often**. With deadlines: **86.65 M
+calls for 1.675 G machine cycles, 19.34 cycles/call**, exact event timing
+preserved. Every device in `Q605Memory::tick` can state a bound and **none has
+to fall back to 1**:
+
+| device | bound | value @ 25 MHz |
+|---|---|---|
+| `CudaLle` 6805 | `ceil(((mcuDebt_+1)*cpuHz - mcuAcc_) / kMcuHz)` | **~12 — binding, gated** |
+| VIA E clock | `ceil((cpuHz - viaEClock_.acc) / 783360)` | ~32 |
+| `AscIosb` drain | `ceil((kCpuHz - drainAcc_) / drainHz())`, scaled C15M→CPU | ~1123 |
+| `Scc8530` | min of the live countdowns (`peerHold_`, `txShiftIn`, …) | **∞ when idle** |
+| `Swim*` / `SonyDrive` | cell/spin clock — only while the motor runs | ∞ when parked |
+| `Ncr53c96` | service-latency countdown — only during a transfer | ∞ when idle |
+| 60.15 Hz CA1 | `ceil((kCpuHz*100 - tickAcc_) / 6015)` | ~416 000 |
+| `Dafb` VBL | from `framePos_` | ~416 000 |
+
+Deliberately NOT converted, each for a stated reason — **and each still open
+if someone wants it**: the **compacts** (cycle-exact by construction; a
+deadline there risks the Plus's whole accuracy claim for the cheapest machine
+to emulate), the **Mac II family**, the **IIfx** (two IOPs always executing →
+the fan-out is intrinsic) and **MSC**. The IIci is the delicate one of the
+converted set — `adbVia_.tick` + `syncTo(machineClock())` every tick is a
+host-paced PIC transport, so derive its bound from the live countdowns before
+touching anything (`pom68k-mcu-lle-clock-drift` applies).
+
+**Permanent guard rail:** `Q700Memory` serves three machines. After any change
+there, re-run `q700` **and** `q900`, never in parallel
+(`pom68k-no-concurrent-ctest`).
+
+### Closed by measurement, kept as one line each
+
+`AdbLine` device-model gaps + the host-side two-button/modifier routes
+(2026-08-02/03, `adbline_test`); the Valkyrie I2C pixel clock (2026-08-02,
+`valkyrie_i2c_test` — M/N/P = `$0E`/`$1B`/`$02` → 30.752 MHz, 640×480 at
+67.80 Hz; **left open on purpose**: that is 1.7 % above Apple's nominal
+66.67 Hz and a `31.3344/8` reference would be exact, which suggests MAME's
+`3986400` is off — needs a real observable before anyone touches it);
+`Swim1` DAT1BYTE as a level line (2026-08-02); the VIA E clock as exact
+rational arithmetic for both the rate and `viaSync()`'s phase grid, in one
+header `src/ViaEClock.h` because the two must not drift apart (2026-08-02);
+the ASC drain rate following `$807` CLOCK RATE (2026-08-02, `asc_test`);
+the raster beam — `src/VideoBeam.h` + row-granular decode on **all nine**
+decoders, wired into every GUI loop, **the beam owns no clock, it adopts the
+platform's own `framePos_`** so the VBL edges are untouched (2026-08-02,
+`video_beam_test`, `v8_raster_test`, `raster_equiv_test`); one scan position
+per machine exposed to the guest — Valkyrie's `$14` blanking bit reads the LIVE
+line, DAFB has no position register at all (not in `Dafb.cpp`, not in MAME's),
+and the Plus's VIA PB6 already read the same `cpu.getClock() % 130240`.
+
+Two findings from that batch that are still load-bearing:
+
+- **Classic II Eagle `$F18000` is the analogue CRT brightness/contrast DAC**
+  (MAME's `spice_device::bright_contrast_w`), named from three independent
+  pieces of evidence: `rominfo --universal` shows the Classic II record's own
+  DecoderInfo with `decoder[6] = $50F18000`, zero on every LC / LC II / IIci /
+  IIfx / IIsi record in the same table; the ROM routine at `$A51350`
+  disassembles as a DAC feed (0-255 scaled `×$2B >> 8`, de-scrambled through a
+  43-entry table, shifted out 370 times at stride 2); same address and purpose
+  in MAME's Spice. Behaviour is unchanged — our CRT has no analogue stage — but
+  a named device deliberately ignored is not an unexplained hole. **Deliberately
+  NOT done**: the ROM's presence test fails here because reads return `$FF` and
+  never echo; that is probably right for a write-only DAC, but "probably" is not
+  a measurement, so no read-back value was invented.
+  Also settled: **the hole value does not matter to this guest** —
+  `POM68K_V8_HOLEVAL=00` and `$FF` both reach the Finder with 9619 SCSI
+  commands, identical. MAME's 0 here is its `address_space` DEFAULT, not a
+  modelled decision (unlike the Sonora's 0, which `iosb.cpp:54-65` states in a
+  comment). **Do NOT align to 0 "for parity"**: there is no oracle statement to
+  be parallel to.
+- **The ADB report rate is right, and is not a suspect any more.** Trace of a
   full LC III run (`POM68K_ADB_LLE_TRACE=1 ./build/family_input_etalon lc3`,
   199 s emulated, 17 850 ADB commands): the aggregate autopoll interval is
-  **11.18 ms — p10 = p90 = median**, i.e. dead steady, against the Egret's
-  nominal 11.1 ms / 90 Hz. That is **89.5 Hz vs 90**, a 0.6 % deficit, and it
-  is exact by construction because the cadence is the firmware's own timer.
-  The mouse is polled at ~67 Hz *while it has data* (SRQ-driven bursts, the
-  keyboard holding the poll otherwise) — more than one report per 60 Hz frame.
-  → The amplification is therefore System 7's mouse scaling acting on
-  coalesced deltas, exactly as this entry already suspected; the poll rate is
-  not a suspect any more. Anyone re-opening it needs a *new* observable.
-
----
-
-## 4ter. Closed 2026-08-02 — two rounded rates
-
-- [x] **VIA E clock** (§ 1.2). Was an integer divisor on the four 040 boards
-  (25 MHz ÷ 32 = 781.25 kHz, 33 MHz ÷ 42 = 785.7 kHz); now exact rational
-  arithmetic for BOTH the rate and `viaSync()`'s phase grid, in one header
-  (`src/ViaEClock.h`) because the two must not drift apart — mis-scaling that
-  grid is the 2026-07-25 IIsi/LC III bug. All five 040 boot etalons green.
-- [x] **ASC drain rate** (§ 1.7). Follows `$807` CLOCK RATE now (0 = 22 257,
-  2 = 22 050, 3 = 44 100; 1 undefined → Mac rate). Free on every booting
-  machine because only the classic Mac II ASC accepts the write — asserted,
-  not assumed. Gate `asc_test`, measured on cycles-to-drain, verified to bite.
-
----
-
-## 4bis. Video — the raster beam (LLE_VS_HLE § 1.1, the #1-ranked gap)
-
-**Landed 2026-08-02**: `src/VideoBeam.h` + row-granular decode on **all nine**
-decoders (`V8Video`, `SonoraVideo`, `VaspVideo`, `RbvVideo`, `TobyVideo`,
-`Se30Video`, `Dafb`, `Valkyrie`, `MacVideo`), wired into every GUI loop on the
-slicing `runQuantumWithWire` already does when the wire is active — and, on
-the Plus, on a 16× slicing of `MacFrameClock::runFrame` that cannot move the
-vblank edge. Gates `video_beam_test`, `v8_raster_test`, `raster_equiv_test`.
-Design note that matters to anyone touching it: **the beam owns no clock** —
-it adopts the platform's existing `framePos_`, so the VBL edges are untouched.
-Full story in `CHANGELOG.md` § 2026-08-02 (later).
-
-- [x] **Expose the beam to the guest — resolved 2026-08-02, and smaller than
-  it looked.** Valkyrie's `$14` blanking bit was the only real position
-  register in the tree and now reads the LIVE line (it answered from
-  `prevLine_`, which only advances inside `tick()`, i.e. quantised to the
-  peripheral batch). **DAFB has no position register at all** — not in
-  `Dafb.cpp` ($000 regs / $100 Swatch / $200 RAMDAC / $300 clockgen) and not
-  in MAME's either. And the Plus's VIA PB6 already read the same
-  `cpu.getClock() % 130240` the decoder now uses. One scan position per
-  machine, everywhere.
-- [x] **A raster gate beyond the V8** — `raster_equiv_test` (2026-08-02)
-  covers V8/VASP/RBV/Sonora at every depth. Read its header before extending
-  it: the equivalence invariant **cannot** catch a pitch that is wrong but
-  consistent (both sides share the arithmetic), and its harness had to be
-  taught to refuse a uniform frame as a pass after three false greens.
-- [x] **The two unverified JIT boot etalons — CLOSED 2026-08-02.**
-  `jit_q630_boot_etalon` (31.9 s) and `jit_q700_boot_etalon` (153.9 s) both
-  PASSED in the post-image-cleanup `ctest -L m040` run (32/32). They had
-  been *killed* mid-run after the raster work, never failed — a coverage
-  gap, now a result.
+  **11.18 ms — p10 = p90 = median**, dead steady, against the Egret's nominal
+  11.1 ms / 90 Hz. That is **89.5 Hz vs 90**, a 0.6 % deficit, exact by
+  construction because the cadence is the firmware's own timer. The mouse is
+  polled at ~67 Hz *while it has data* (SRQ-driven bursts). So the ~1.6×
+  amplification of a sustained stream is System 7's mouse scaling acting on
+  coalesced deltas. **Anyone re-opening this needs a *new* observable.**
 
 ---
 
@@ -1130,38 +770,44 @@ Full story in `CHANGELOG.md` § 2026-08-02 (later).
   solved: _FP68K binds the integer PACK 4"; gate `q605_barefpu_boot_etalon`
   reaches the Finder under a true `FPUModel::NONE`). **Unverified whether the
   030/LC II path still needs the same UniversalInfo / defaultRSRCs selection**
-  (`POM68K_NOFPU` at `main.cpp:2070,2083`, `Cpu030.cpp:38`) — re-test before
-  spending effort here; the original O6.13 diagnosis may already be obsolete.
+  (`POM68K_NOFPU` at `main.cpp:1828,1841`; the FPU model itself is set in
+  `Cpu030.cpp:46`) — re-test before spending effort here; the original O6.13
+  diagnosis may already be obsolete.
 
-### 68030 / MMU / FPU oracle gaps
+### 68030 / MMU / FPU oracle gaps — CLOSED 2026-08-12
 
-- [x] RTE format `$A/$B` instruction restart (2026-08-12: `$A` pending
-  data-output replay and `$B` `(An)±` inverse fixups, both gated with
-  transient faults in `berr030_test`).
-- [x] PMOVE-through-translation fault frames (2026-08-12: WinUAE-interpreted
-  read/write frames, SSW `$0345`/`$0305`, logical fault address and PMOVE PC).
-- [x] Instruction-stream fetches across page boundaries (2026-08-12:
-  non-contiguous translated page plus invalid-page format-$B oracle in
-  `berr030_test`).
-- [x] FMOVEM indirect-EA read order (2026-08-12: translated full-extension
-  pointer read before three ascending operand longs, raw FP image matched to
-  WinUAE).
+All four closed the same day and gated in `berr030_test`, which is their only
+record (no CHANGELOG entry): RTE format `$A`/`$B` instruction restart (`$A`
+pending data-output replay, `$B` `(An)±` inverse fixups, both with transient
+faults); PMOVE-through-translation fault frames (WinUAE-interpreted read/write
+frames, SSW `$0345`/`$0305`, logical fault address and PMOVE PC —
+`berr030_test:366-401`); instruction-stream fetches across page boundaries
+(non-contiguous translated page plus an invalid-page format-`$B` oracle);
+FMOVEM indirect-EA read order (full-extension pointer read before three
+ascending operand longs, raw FP image matched to WinUAE, `:403-447`).
 
 ### Mac Plus
 
 - [ ] **VIA/RTC accuracy**: model 6522 T1/T2 ±1-cycle reload/IFR latency; VIA
-  E-clock access alignment and IACK E-cycles; persist PRAM and seed the GUI RTC
-  from the host while keeping tests deterministic. *(PRAM file persistence
-  exists on the later machines — `main.cpp:2151,2406` for the LC II, one such
-  pair per machine loop — but `MacMemory` has no `loadPram`/`savePram`, so the
-  Plus/compact family is the gap; `MacIIMemory`, `IIfxMemory` and `MscMemory`
-  lack it too.)*
-- [ ] **Floppy**: external-drive selection (`Iwm.h:23,63` takes a second
-  `SonyDrive*`; `MacMemory.h:147` still passes only the internal one). *(Write
-  support, GCR write-back and host file persistence are DONE — CHANGELOG
-  2026-07-23 / 2026-07-24, `SonyDrive::setWriteBack`/`flushToFile`, gates
-  `iwm_write_test`, `floppy_persist_test`; the eject/insert GUI exists,
-  `main.cpp:3936,4080`.)*
+  E-clock access alignment and IACK E-cycles; seed the GUI RTC from the host
+  while keeping tests deterministic. *(PRAM file persistence is NOT a gap here
+  any more: `MacMemory::loadPram`/`savePram` exist — `MacMemory.h:123-124` —
+  and `runXxx` wires them on all twelve platforms, `main.cpp` 12 `loadPram` /
+  12 `savePram` call sites. What differs per platform is only the STORE:
+  discrete `Rtc` on the compacts, Mac II family, IIfx and IIci; Egret/Cuda
+  XPRAM on V8/Sonora/VASP/Q605/Q630/Centris/Q700/IIsi; PG&E internal RAM +
+  SRAM on the Duo.)*
+- [ ] **Floppy**: external-drive selection. `Iwm::attachDrive` takes a second
+  `SonyDrive*` (`Iwm.h:22`) but every 800K machine passes `nullptr` for it —
+  `MacMemory.cpp:54`, `MacIIMemory.cpp:129`, `IIfxMemory.cpp:129`,
+  `RbvMemory.cpp:160`, `SonoraMemory.cpp:119`, `VaspMemory.cpp:89`,
+  `V8Memory.cpp:271/274`. The SWIM2 boards already pass two
+  (`Q605Memory.cpp:45`, `CentrisMemory.cpp:29`, `Q630Memory.cpp:41`,
+  `Q700Memory.cpp:140`), so this is a per-machine wiring gap, not a device
+  one. *(Write support, GCR write-back and host file persistence are DONE —
+  CHANGELOG 2026-07-23 / 2026-07-24, `SonyDrive::setWriteBack`/`flushToFile`,
+  gates `iwm_write_test`, `floppy_persist_test`; hot eject/insert is the shared
+  Disques window, `src/DiskBays.*`.)*
 - [ ] Keypad/arrow `$79`-prefix handling where required by M0110 input.
 - [ ] **Sound accuracy**: fetch the sound buffer per scanline instead of once
   per frame; model the disk-PWM byte and the analog volume curve.
@@ -1177,8 +823,9 @@ Full story in `CHANGELOG.md` § 2026-08-02 (later).
 
 Base support DONE 2026-07-29 (`ScsiDisk::openCdrom` — INQUIRY type $05 +
 removable, 2048-byte blocks, READ TOC, START/STOP eject, read-only, the Apple
-magic MODE SENSE page $30; `attachCdrom(path, id=3)` on all eleven
-multi-target machines; CLI routes `.iso`/`.cdr`/`.toast`). Gates `scsi_cdrom_test`,
+magic MODE SENSE page $30; `attachCdrom(path, id = 3)` on the eleven
+multi-target platforms — every `*Memory` except the compacts' `MacMemory`;
+CLI routes `.iso`/`.cdr`/`.toast`). Gates `scsi_cdrom_test`,
 `q605_cdrom_etalon` (8.1 boots from HD, an 8.6 CD mounts as data),
 `q605_cdboot_etalon` (no HD → the ROM's 6→0 scan boots the disc, 3913 blocks).
 **Layout matters**: the ROM scans 6→0, so the boot volume goes to ID 6 and the
@@ -1209,8 +856,9 @@ the last 68k release) — a black screen on them is correct behaviour.
 `AtalkStack` (DDP/RTMP/ZIP/NBP/AEP/ATP), `AfpServer` (ASP + AFP 2.1 +
 `.AppleDouble`), `PapServer` (PAP → CUPS/`.ps`), `MacIpGateway` (DDP-22 +
 user-mode NAT), tied by `AtalkHub` with a **Réseau → AppleTalk** window; GUI
-default. Gates `atalk_stack_test`, `afp_server_test`, `pap_server_test`,
-`macip_gw_test`. Reference: `docs/APPLETALK.md` §6.5.
+default (`POM68K_APPLETALK=0` disables it). Gates `atalk_stack_test`,
+`afp_server_test`, `pap_server_test`, `macip_gw_test`. Reference:
+`docs/APPLETALK.md` § 6.5.
 
 - [ ] Persist CNIDs across runs (per-session today; a `.AppleDB` or an id in the
   `.AppleDouble` sidecar would survive a reboot, matching netatalk's catalog).
@@ -1236,25 +884,25 @@ default. Gates `atalk_stack_test`, `afp_server_test`, `pap_server_test`,
 Milestone 1 DONE 2026-07-22: bidirectional SCC LLAP wire (`Scc8530` SDLC Tx
 capture, paced 3-deep Rx FIFO, Hunt carrier sense, WR1 modes, WR3/WR6 address
 search + `$FF` broadcast, EOF + FCS in RR1) and the `LtoUdp` cable (Mini vMac /
-TashRouter format, 239.192.76.84:1954). Gates `llap_loop_test`,
-`ltoudp_test`, `llap_two_system_etalon`. TashRouter interop verified. Note:
-System 6 only opens `.MPP` lazily from the Chooser — headless LLAP tests need
-Sys 7.
+TashRouter format, multicast 239.192.76.84:1954 — `LtoUdp.cpp:24-25`, enabled
+by `POM68K_LTOUDP`). Gates `llap_loop_test`, `ltoudp_test`,
+`llap_two_system_etalon`. TashRouter interop verified. Note: System 6 only
+opens `.MPP` lazily from the Chooser — headless LLAP tests need Sys 7.
 
 - [~] **Full AppleShare session over the real bridge**: infrastructure DONE
   (netatalk **2.4.9** + TashRouter vendored, `tools/netatalk2/build_netatalk2.sh`
-  builds hermetically, `appleshare_bridge.sh` + `router.py` serve `input/` as
-  "Input" in zone "POM68K"). **Remaining: run the bridge with a GUI guest and
-  mount the volume from the Chooser.**
+  builds hermetically, `tools/netatalk2/appleshare.sh` + `router.py` serve
+  `input/` as "Input" in zone "POM68K"). **Remaining: run the bridge with a GUI
+  guest and mount the volume from the Chooser.**
 - [ ] Interop check against Mini vMac's LToUDP (same multicast group).
 
 ### Ethernet over SCSI — DaynaPort SCSI/Link, opt-in since 2026-08-07
 
 `DaynaPort` (the SCSI target) + `EtherLink` (framing + proxy ARP) onto the
-NAT already in `MacIpGateway`. `POM68K_DAYNAPORT=<id>` on the Quadra 605;
-gate `daynaport_test`; design in `DEV.md` § 3.3bis, rationale in
-`CHANGELOG.md` 2026-08-07 (later). Every machine here has a SCSI bus, so
-this is the one Ethernet path that can reach all of them.
+NAT already in `MacIpGateway`. `POM68K_DAYNAPORT=<id>` on the Quadra 605 only
+(`Q605Memory.cpp:73-81`); gate `daynaport_test`; design in `DEV.md` § 3.3bis,
+rationale in `CHANGELOG.md` 2026-08-07 (later). Every machine here has a SCSI
+bus, so this is the one Ethernet path that can reach all of them.
 
 - [ ] **Run a real SCSI/Link driver against it.** This is the only test that
   settles whether the command set is right; everything gated so far is our
@@ -1264,9 +912,9 @@ this is the one Ethernet path that can reach all of them.
   above.
 - [ ] GUI: a **Réseau** entry to attach/detach the card and pick its SCSI ID,
   instead of an env knob at startup only.
-- [ ] Save states: the card is not in any machine's chunk list, so a restore
-  comes back with an empty Rx ring. Cheap to add, but it changes the on-disk
-  format for every existing `.pomss` — do it with the next format bump.
+- [ ] Save states: the card appears nowhere in `SaveStateMachines.*`, so a
+  restore comes back with an empty Rx ring. Cheap to add, but it changes the
+  on-disk format for every existing `.pomss` — do it with the next format bump.
 - [ ] **EtherTalk** (AARP + 802.3/SNAP DDP) so AppleTalk can leave the SCC
   too. Today the card carries IPv4 and ARP only, and AFP/PAP still go over
   LocalTalk at 230.4 kbit/s through the most timing-fragile device in the
@@ -1281,103 +929,72 @@ this is the one Ethernet path that can reach all of them.
 
 ## 7. New machine profiles
 
-Phase A/B/C are done — 36 profiles, all booting the Finder (per-machine detail
-in `CLAUDE.md` § Status and `CHANGELOG.md` 2026-07-21 → 2026-08-02). Effort
-tiers and the full family map: `docs/68K_FAMILY_SCOPE.md`. Rule kept: **each new
-profile gets at least one Finder cell before the next.**
+Phase A/B/C are done — **37 profiles**, all booting the Finder (per-machine
+detail in `CLAUDE.md` § Status and `CHANGELOG.md` 2026-07-21 → 2026-08-06).
+Effort tiers and the full family map: `docs/68K_FAMILY_SCOPE.md`. Rule kept:
+**each new profile gets at least one Finder cell before the next.**
 
-Explicitly **out of scope** for now: PowerBook PMU, AV DSP, all 4 MB PPC ROMs.
+Explicitly **out of scope** for now: AV DSP, all 4 MB PPC ROMs.
 
 ### Independent majors — the only things left that are not just a ROM dump
 
-- [x] **Apple PIC IOP + OSS** → unlocked **IIfx** *and* **Quadra 900/950**.
-  **Opened 2026-08-01** — blueprint + milestone plan: `docs/IOP_BRINGUP.md`;
-  recon findings in `CHANGELOG.md` § 2026-08-01 (headline: the IOP firmware
-  is *downloaded by the host ROM*, no dump needed; the Q900/950 keep the
-  Egret — their IOPs carry only SCC/SWIM). **M1 DONE**: `src/R65c02.*`
-  vendored from POM2's `M6502` (CMOS + full Rockwell set — NOT the
-  POMIIGS `CPU65816`, whose emulation mode lacks RMB/SMB/BBR/BBS), gate
-  `r65c02_test` green on Klaus's two images. **M2 DONE**: `src/ApplePic.*`
-  (host window / shared RAM / timer / 2-ch DMA / ints / GPIO / bypass),
-  gate `applepic_test` — a 65C02 program uploaded through the window
-  proves both mailbox directions, the timer cadences and DMA both ways.
-  **M3 DONE (2026-08-01 evening)**: platform #12
-  (`IIfxMemory.*`/`IIfxCpu.*`), gate `iifx_post_etalon` — both IOP
-  firmwares upload byte-perfect, OSS programmed, boot scan reads the
-  disk; WAI/STP CLOSED (zero in either firmware). **M5 DONE (2026-08-01
-  night)**: gate `iifx_boot_etalon` — **the IIfx boots System 7.6 to the
-  Finder**, ADB served end to end by the SWIM IOP's real firmware
-  bit-banging `AdbLine` (screenshot-verified thresholds; video =
-  `TobyVideo` on slot 9, the IIfx has no built-in video). Remaining, in
-  **M6 DONE (2026-08-01 night)**: **the IIfx is the 34th profile** —
-  `kProfiles` row (group "OSS + IOP"), `MachineKind::IIfx`,
-  `SnapMachine::IIfx = 34`, `IIfxMachine` GUI loop with the two IOP
-  cycle counters in the CPU window, save/load pair + coverage in
-  `savestate_030_test`, ROM dispatch on the 512 KB `$4147DD77`, and
-  gate `iifx_input_etalon` (mouse repaint 43 px vs 0 idle; KeyMap
-  0→1→0). **M7 DONE (2026-08-02): both Eclipse towers boot the Finder and
-  are the 35th/36th profiles.** `Q700Memory::Model {Spike,Q900,Q950}`
-  carries the front end (two `ApplePic`, `AdbLine`, `Egret` on VIA1, the
-  2nd 53C96, VIA1 PA identities, the $1000-wide IOP windows); gates
-  `q900_boot_etalon` (640×480×1, 5830 SCSI cmds) and `q950_boot_etalon`
-  (640×480×**8** at 33.333 MHz, its own `$3DC27823` ROM), Q700 guard rail
-  re-run green. The BRK that walled M7 for a day was **not in the IOP**:
-  `read16` still applied the Spike's odd-byte-lane SWIM rule to the SWIM
-  IOP's host window, so the ROM read the shared-RAM address register as
-  `hi<<8` and wrote a byte onto the 65C02's stack — one `!eclipse()`
-  guard. Story, and the bring-up watchpoints that found it, in
-  `CHANGELOG.md` § 2026-08-02 (fourth) and `docs/IOP_BRINGUP.md` § M7/§ 5b.
-  **M4 (deferred, LOUD)** SCSIDMA true DMA + restartable handshake —
-  A/UX-only per `scsidma.cpp:12`, nothing in the Mac OS path needs it;
-  also dedupe the multi-ID mirror (7.6 mounts all seven copies of the
-  boot volume — cosmetic, guest-visible).
-- [ ] **Power Manager** → Portable / PowerBook 1xx / Duo. **Platform #11
-  (MSC + PG&E): the Duo 230 BOOTS THE FINDER, gated 2026-07-31** —
-  milestones 1-3 of `docs/DUO_BRINGUP.md` are done (`MscMemory`/`MscCpu`,
-  `M68hc05Pge`/`PgePmu` LLE incl. the mid-boot BORG v2 upload and the
-  /PMU_INT level, `MscMemory::decodeScreen`; gate `duo230_boot_etalon`,
-  System 7.5.5, SCSI 3448 cmds). **The GUI machine loop, the `kProfiles`
-  row and save states landed 2026-08-06 — the Duo is the 37th profile
-  and platform #12's first GUI citizen** (`runDuo`, `MachineKind::Duo`,
-  `SnapMachine::Duo230`, battery file through the PG&E; milestone 3b of
-  `docs/DUO_BRINGUP.md` lists what is deliberately NOT wired — floppy,
-  drive sounds, live CD-bay swap, right mouse button, all machine-side
-  API absences rather than shell gaps). Remaining, in milestone order:
-  **input through the PMU** (trackball + matrix keyboard →
-  `duo230_input_etalon`), variants (210/250 trivial, 270c CSC, 280 040,
-  then PB150 as the no-oracle MSC variant), and **the actual point — a
-  sleep/wake gate** (`duo230_sleep_etalon`), which no other machine can
-  test.
+- [ ] **Power Manager, Duo line.** Platform #12 (MSC + PG&E) is finished
+  through milestone 3b of `docs/DUO_BRINGUP.md`: `MscMemory`/`MscCpu`,
+  `M68hc05Pge`/`PgePmu` LLE including the mid-boot BORG v2 upload and the
+  /PMU_INT level, `MscMemory::decodeScreen` (fixed 640×400 LCD, grayscale by
+  GSC reg 4 bits 0-1), gate `duo230_boot_etalon` (System 7.5.5, SCSI 3448
+  cmds), and since 2026-08-06 **the Duo 230 is the 37th GUI profile** —
+  `runDuo` (`main.cpp:5087`), `MachineKind::Duo`, `SnapMachine::Duo230 = 37`,
+  PRAM through the PG&E's own RAM + 32 KB SRAM, save states in
+  `savestate_030_test`. `docs/DUO_BRINGUP.md` § 3b lists what is deliberately
+  NOT wired (floppy, drive sounds, live CD-bay swap, right mouse button — all
+  machine-side API absences, not shell gaps).
+  Remaining, in milestone order: **input through the PMU** (trackball + matrix
+  keyboard → `duo230_input_etalon`), variants (210/250 trivial — `MscMemory.h`
+  already carries `kIdDuo210`/`kIdDuo250` and they share the `$ECFA989B` ROM,
+  so they need an env tag and a `kProfiles` row; then 270c CSC, 280 040, then
+  PB150 as the no-oracle MSC variant), and **the actual point — a sleep/wake
+  gate** (`duo230_sleep_etalon`), which no other machine can test.
   The 140-180 line is a different PMU (Mitsubishi M50753, 6502-class —
   POMIIGS `CPU65816` candidate) — same brick as Portable/PB100.
-- [ ] **AV DSP (DSP3210)** → 660AV/840AV. Not planned.
 - [ ] **NuBus + slot video** beyond Mac II Toby: IIx / IIcx / IIci and the NuBus
   Quadras. VASP/IIvx currently reads its three slots as empty; real cards would
   reuse the Mac II NuBus/DeclRom port.
 - [ ] **ATA/IDE target** on the Quadra 630 / LC 580. The port is mapped but has
   no drive, so boot goes through SCSI — the remaining gap on that board.
+- [ ] **AV DSP (DSP3210)** → 660AV/840AV. Not planned.
+
+*(The Apple PIC IOP + OSS brick is DONE and closed: `src/R65c02.*` +
+`src/ApplePic.*` + platform `IIfxMemory.*`/`IIfxCpu.*`, gates `r65c02_test`,
+`applepic_test`, `iifx_post/boot/input_etalon`, and the same front end on the
+Quadra 700 board carrying the Eclipse towers — `q900_boot_etalon` 640×480×1,
+`q950_boot_etalon` 640×480×8 at 33.333 MHz on its own `$3DC27823` ROM.
+Milestones and the four "inherited Q700 rule" bugs it cost:
+`docs/IOP_BRINGUP.md` § 5b / § M7, `CHANGELOG.md` 2026-08-01 → 2026-08-02.
+**M4 stays deferred and LOUD**: SCSIDMA true DMA + restartable handshake is
+A/UX-only per `scsidma.cpp:12`, nothing in the Mac OS path needs it. The
+multi-ID SCSI mirror it left behind is deduped — the bug that corrupted
+`MacOS-7.6-boot.vhd`, § 1.)*
 
 ### Remaining machines with the ROM already in `roms/`
 
-*(The Mac IIfx shipped 2026-08-01 as the 34th profile and left this table;
-the PowerBook Duo 230 followed on 2026-08-06 as the 37th — the first
-laptop — and left it too.)*
-
 | Machine | ROM on hand | New brick |
 |---|---|---|
+| **PowerBook Duo 210/250/270c/280** | `0024D346` / `015621D7` | none left — `MscMemory` + `PgePmu` ship; identity/clock variants of the gated Duo 230 |
 | **PowerBook 150** | `FDA22562` | LCD framebuffer + 68HC05 PM — the `M68hc05` core already ships |
 | **PowerBook 140-180** | `E33B2724` | LCD framebuffer + the M50753 Power Manager (a different MCU from the Duos') |
-| **PowerBook Duo 210/250/270c/280** | `0024D346` / `015621D7` | none left — `MscMemory` + `PgePmu` ship; identity/clock variants of the gated Duo 230 |
 | **Portable / PowerBook 100** | `96CA3846` / `96645F9C` | LCD framebuffer + M50753 (740/6502) Power Manager |
 
 ### Assets for new profiles
 
 Local, never committed (`hdv/` is gitignored): Infinite Mac copies of System 4.1
 (floppy), 5.1 / 6.0 / 6.0.8 / 7.0 / 7.1 / 7.5 / 7.5.5 HD `.dsk`, plus
-`HD20SC.vhd`, `boot.vhd` / `GISTPERSO-boot.vhd`, `MacOS-7.6-boot.vhd`,
-`MacOS-8.1-boot.vhd`. Full tree also at `../refs/infinite-mac/Images`. Missing
-files: fetch with **Scrapling** (not raw `curl` through the sandbox proxy) —
-`Fetcher.get` / `scrapling extract get` on
+`HD20SC.vhd`, `boot.vhd` / `GISTPERSO-boot.vhd`, `MacOS-8.1-boot.vhd`.
+(`MacOS-7.6-boot.vhd` was deleted as corrupt, § 1; `runIIfx` still probes for it
+first and falls through to `GISTPERSO-boot.vhd`, `main.cpp:1450-1452`.)
+Full tree also at `../refs/infinite-mac/Images`. Missing files: fetch with
+**Scrapling** (not raw `curl` through the sandbox proxy) — `Fetcher.get` /
+`scrapling extract get` on
 `https://raw.githubusercontent.com/mihaip/infinite-mac/main/Images/…`.
 Flat HFS → SCSI façade: `ScsiDisk::open` (gate `scsi_hfs_facade_test`; offline
 bake `tools/wrap_hfs.py`).
@@ -1388,114 +1005,103 @@ bake `tools/wrap_hfs.py`).
 
 **Items marked [AR] come from the architecture review of the tree at
 `d3bbd81` (2026-08-09)**, which measured the repository rather than reading
-its docs. Two of its findings are already closed: the gate asset preamble
-(`CHANGELOG.md` 2026-08-09) and the Moira fork decision
-(`extern/moira/POM68K_VENDOR.md` § *Status*). The rest are below, in the
-review's own ROI order.
+its docs. Landed since and recorded in `CHANGELOG.md` 2026-08-09: the gate
+asset preamble, the Moira fork decision (`extern/moira/POM68K_VENDOR.md`
+§ *Status*), the `MachineHost` CRTP extraction (six `*Machine` structs, 1 671 l.
+→ `src/MachineHost.h` + 681 l. of genuinely per-platform code; `machinehost_test`
+gates the queue ordering, framebuffer double buffer, both pacing branches and
+the thread teardown that no test could link before, because `main.cpp` is the
+only TU outside `pom68k_core`), the `etalon-core` tier (12 gates, one profile
+per platform, 12/12 in 31 min 41 s; a name in `POM68K_ETALON_CORE` that stops
+being a registered gate is a configure-time `FATAL_ERROR`), `docs_test`, and
+`CHANGELOG_INDEX.md` (`tools/changelog_index.py`, 13 subsystem groups;
+`docs_test` fails when it stops covering every dated entry — a generated index
+that silently falls behind is worse than none, because it looks complete).
 
-- [x] **[AR] `MachineHost<Derived, Mem, Cpu, Audio>` — LANDED 2026-08-09.**
-  The six `*Machine` structs (1 671 l.) are one CRTP host (`src/MachineHost.h`,
-  383 l.) plus 681 lines of genuinely per-platform code; `src/main.cpp` went
-  6 711 → 5 616. Measured before extracting: every shared member except
-  `publish()` was **byte-identical across all six**, and `stepTick` was 92-100 %
-  identical — so the split was not a judgement call.
-  **The half the review did not name mattered more than the half it did**:
-  `main.cpp` is the only TU outside `pom68k_core`, so this contract could never
-  be linked by a test. It was lifted into a header *before* being unified, and
-  `machinehost_test` (33 checks, `unit`) now gates what the compiler cannot —
-  queue ordering, the framebuffer double buffer, both pacing branches and the
-  thread teardown. `CHANGELOG.md` 2026-08-09 (third).
-  **The GUI pass was done 2026-08-09** (dedicated Xvfb, a COPY of the boot
-  image — the GUI attaches `writeBack = true`): framebuffer publish, status
-  atomics, save + restore, and floppy hot-swap through the command queue all
-  verified on screen, ending with the guest mounting `Rogue.dsk` picked from
-  the Disques window. It also found a bug no gate could see — the 040 loops
-  auto-inserted `disks35/Disk605.dsk` at power-on and the Quadra booted System
-  6.0.5 off it (`CHANGELOG.md` 2026-08-09 (seventh)).
-  **Still not gated, only checked once by hand.** There is no automated GUI
-  gate and this pass does not create one; a screenshot harness under Xvfb is
-  now demonstrably possible, and would be the way to keep it.
-- [ ] **[AR] The `run*()` bodies are the remaining half of § 2·A.** The hosting
-  is unified; the eleven `run*()` functions (3 428 l.) are not.
-  `runCentris()` (344 l.) and `runQ700()` (350 l.) still share **304 identical
-  lines after normalising platform identifiers, 88 %** — and the diff is
-  almost entirely a *descriptor*: model selection from an env knob → name /
-  clock / machine ID, RAM size, PRAM file suffix and which clock source takes
-  the host time, window title and geometry. Collapse them the same way: one
-  templated `runMachine(desc)` plus a literal per profile. Now cheaper than it
-  was, since the host they all wire up is a single type.
-- [x] **[AR] `etalon-core` — LANDED 2026-08-09.** 12 gates, one representative
-  profile per platform, **12/12 green in 31 min 41 s** (the review estimated
-  ~40). A name in `POM68K_ETALON_CORE` that stops being a registered gate is a
-  configure-time `FATAL_ERROR`. **Building it found that four gates carried no
-  label at all** — `iifx_boot_etalon`, `iifx_input_etalon`, `iifx_post_etalon`,
-  `duo230_boot_etalon` were registered *after* the label-derivation block, so
-  two whole platforms were invisible to every `ctest -L` tier. Block moved;
-  `etalon` 81 → 85.
-  **Link speed: wired, unmeasured.** `POM68K_FAST_LINK` (ON) probes for mold
-  then lld and uses whichever the driver accepts; neither is installed on this
-  host, so there is **no measurement to quote**. Ninja is available and would
-  be the other half — it needs a fresh build tree, which is the user's call.
-- [x] **[AR] `docs_test` — LANDED 2026-08-09**, 75 checks, `unit`, asset-free.
-  Checks `kProfiles` rows == `SnapMachine` tags == every profile count
-  `CLAUDE.md` states; every gate the file names in full is registered; every
-  gate carries a label; every gate total quoted matches, **including the ones
-  inside fenced code blocks** (`ctest -L unit   # 79 gates` — three counts were
-  stale). Reads a roster CMake writes at configure time; the path is baked in,
-  because searching for it relative to the working directory made the gate
-  return 0 after two checks when run from the source tree. A negative control
-  confirms it fails on a wrong number.
-- [~] **[AR] Declare an expiry per environment knob — HALF LANDED 2026-08-09.**
-  The surface is **133 distinct `POM68K_*` names** read as string literals
-  across `src/`, `tests/` and the Moira fork (the review said "105 in `src/`",
-  which both over-counts — build defines like `POM68K_VERSION_STRING` are not
-  knobs — and under-counts, since gates and the fork read their own). 172
-  `getenv` call sites, 37 memoised in a `static`.
-  **Coverage: done.** `config_test` (`unit`, asset-free) now checks `DEV.md`
-  § 5 + `src/jit/POM68K_JIT.md` against the tree in both directions. It found
-  **12** knobs the code reads that no document mentioned — five real
-  emulator knobs (`POM68K_Q700_MODEL`, `POM68K_Q900_IOPWATCH`,
-  `POM68K_Q900_IOP_TRACE`, `POM68K_V8_IOHOLE`, `POM68K_V8_HOLEVAL`), four
-  PG&E bring-up probes, three gate-local — plus one documented ghost
-  (`POM68K_PERIPH_BATCH`), now under a **Retired** heading the gate enforces.
-  All twelve are documented. *Two earlier counts of this same gap (24, then
-  23) were the checker misreading the doc's own notation: § 5 writes
-  `` `POM68K_PROBE*` `` and `` `POM68K_CENTRIS_FPU` / `_BAREFPU` ``, and both
-  forms are real declarations. The gate models all three notations.*
-  **Expiry: not done.** The seven bring-up probes now declare their chantier;
-  the other ~120 entries still do not say whether they are a permanent product
-  option (which earns a gate) or a chantier leftover. That is a decision per
-  knob — the mechanism is in place, the classification is not.
-  Secondary, non-urgent: an unmemoised `getenv` is a linear scan of the
-  environment on glibc — cheap to rule out with a profiler, probably nothing.
+- [ ] **[AR] The `run*()` bodies are the remaining half of the hosting work.**
+  The hosting is unified; the **eleven** `run*()` functions
+  (`main.cpp:1063-5350`, one per platform except the compacts, which run inline
+  in `main()`) are not. `runCentris()` (`:3941`, ~360 l.) and `runQ700()`
+  (`:4301`, ~368 l.) still share the great majority of their bodies after
+  normalising platform identifiers — and the diff is almost entirely a
+  *descriptor*: model selection from an env knob → name / clock / machine ID,
+  RAM size, PRAM file suffix, which clock source takes the host time, window
+  title and geometry. Collapse them the same way: one templated
+  `runMachine(desc)` plus a literal per profile. Cheaper than it was, since the
+  host they all wire up is a single type. *(The "88 % / 304 identical lines"
+  figure was measured on 2026-08-09 and both functions have grown since —
+  re-measure before quoting it.)*
 - [ ] **[AR] Separate fixture roles, then version them.** The gates never write
-  their images (`ScsiDisk::open()` defaults `writeBack = false`, no test passes
-  `true`, and `q605_persist_etalon` replays its reboot against the in-memory
-  image) — but the GUI attaches the *same* `hdv/*.vhd` with
-  `attachScsi(path, true)`, twelve sites. A mutable, unversioned file is not a
+  their images (`ScsiDisk::open()` defaults `writeBack = false` at
+  `ScsiDisk.h:50`, and **no test anywhere passes `true`**; `q605_persist_etalon`
+  replays its reboot against the in-memory image) — but the GUI attaches the
+  *same* `hdv/*.vhd` with `attachScsi(path, true)`, **twelve boot-volume sites**
+  plus eleven secondary-disk loops. A mutable, unversioned file is not a
   fixture: that is how `MacOS-7.6-boot.vhd` was corrupted and the IIfx gates
   went red. Two steps left now that the preamble prints the digest: a read-only
   `hdv/ref/` distinct from the volumes the GUI mounts, then a versioned
   `assets.lock` (name, size, SHA-256, provenance) + `tools/verify_assets.py` —
   which distributes no copyrighted content and makes the drift *nameable*.
-- [x] **[AR] `CHANGELOG_INDEX.md` — LANDED 2026-08-09.** 205 dated entries in
-  13 subsystem groups, generated by `tools/changelog_index.py`. The grouping is
-  a keyword heuristic over each entry's hook and says so; an entry filed wrong
-  is a bug in the table in that script, not something to hand-edit. The anchor
-  slugger reproduces the changelog's own existing links exactly, so both index
-  styles stay usable. `docs_test` fails when the index stops covering every
-  dated entry — a generated index that silently falls behind is worse than
-  none, because it looks complete.
-
-- [ ] **Save states — one residual.** The feature shipped 2026-07-30 across all
-  11 machine families and 36 profiles (archive core `src/SaveState.h/.cpp`,
+- [ ] **[AR] Env knobs: the gate is sound again, the *classification* is what
+  is left.** `config_test` (`unit`, asset-free) checks `DEV.md` § 5 +
+  `src/jit/POM68K_JIT.md` against the tree in both directions, and re-derived
+  by hand on 2026-08-12 both directions are clean over the real surface of
+  **148** distinct `POM68K_*` string literals in `src/`, `tests/` and the Moira
+  fork. What was fixed that day and must not be undone:
+  `tests/config_test.cpp:72-101` turns any backticked token ending in `*` or
+  `_` into a *prefix*, and § 5's own "How this list stays true" paragraph used
+  to spell the harvest target as a backticked POM68K wildcard — inside the
+  section, since `section()` cuts at the next `\n## ` — which registered the
+  empty prefix and made direction 1 unable to fail. **Write meta-references to
+  the namespace without backticks**, and keep real wildcards family-scoped
+  (`POM68K_JIT_*`, `POM68K_JIT_LOCKSTEP_*`, `POM68K_BENCH_*`, `POM68K_PROBE*`,
+  `POM68K_LLE_AARCH64_*`): one broad one re-opens the hole. The two knobs the
+  wildcard had been hiding, `POM68K_JIT_A64_STORE_GUARD_OPCODE` (§ 0·A) and
+  `POM68K_JIT_ICACHE_EMIT`, are documented in `src/jit/POM68K_JIT.md` § 6.
+  Residual, code-side: `config_test.cpp:6` still says "133 distinct names" in
+  its header comment — a stale comment, not a gate failure.
+  **Expiry: still not done.** The bring-up probes declare their chantier; the
+  other ~140 entries still do not say whether they are a permanent product
+  option (which earns a gate) or a chantier leftover. That is a decision per
+  knob — the mechanism is in place, the classification is not.
+  (The `KNOB=0` trap — many knobs test only for existence, so zero *activates*
+  them — is documented once, in `DEV.md` § 5's preamble. Do not re-list it
+  here.)
+- [ ] **`quadra_event_scheduler_test` silently drops out of `ctest -L m040`.**
+  `CMakeLists.txt:880` sets `LABELS "m040;unit"` explicitly, but the derivation
+  loop at `:1794-1820` **overwrites** labels rather than appending, and the name
+  does not match the m040 regex (`quadra6|quadra8` does not match `quadra_`).
+  Fix: add `quadra_event` to the regex at `:1819`, or move the explicit
+  `set_tests_properties` after the loop. The same overwrite drops the inline
+  `a64` label on the LLE preflight gates (`:1618/1625/1631`), so `ctest -L a64`
+  matches nothing while `-L a64-oracle` does — only reachable with
+  `POM68K_PRODUCT_LLE_GATES=ON`. While there: the comment at
+  `CMakeLists.txt:1766-1777` still says `etalon` is 81 gates; it is 91.
+- [ ] **The Machine menu makes "Macintosh II" unclickable once IIx is picked.**
+  `src/main.cpp:866` matches the current profile with
+  `std::strstr(e, pr.envVal) != nullptr`, i.e. **substring**, and the Mac II
+  group's `envVal`s are `ii` / `iix` / `iicx` / `se30`. Selecting "Macintosh
+  IIx" sets `POM68K_MACII_MODEL=iix`, after which `strstr("iix", "ii")` is
+  non-null and both rows compute `isCur = true` — the `&& !isCur` guard then
+  swallows the plain Mac II row. This is the exact class of bug the comment at
+  `:805-808` says was already fixed once; the fix was incomplete. Use `strcmp`
+  (case-insensitive for the hex IDs). No other group overlaps. Secondary: the
+  `ii` token is dead anyway — the dispatch at `:5544-5548` only recognises
+  `iicx`/`se30`/`fdhd` and reaches the plain Mac II by ROM checksum
+  (`$9779D2C4`), while `fdhd` is a runtime-only token with no `kProfiles` row.
+- [ ] **Save states — one residual.** The feature ships across all **12**
+  machine families and **37** profiles (archive core `src/SaveState.h/.cpp`,
   container `SaveStateMachines.h/.cpp`, `MoiraSnapshot.h`, GUI/CLI wiring in
   `main.cpp` `SaveStateSlot`). Gates: `savestate_test`, `savestate_v8_test`,
   `savestate_030/040/68k_test` (all `unit`), plus the real-OS
   `lcii_savestate_etalon` and `q605_savestate_etalon`.
   **Remaining: a hands-on GUI pass** — click « Sauver l'état » / « Restaurer
   l'état » on a booted machine. The machine-level save/load is gated; the GUI
-  layer is compile-verified only.
+  layer is compile-verified only. (More generally: **there is no automated GUI
+  gate at all.** The 2026-08-09 pass under a dedicated Xvfb proved a screenshot
+  harness is possible — and found a bug no gate could see, the 040 loops
+  auto-inserting `disks35/Disk605.dsk` so the Quadra booted System 6.0.5 off
+  it — but it created no gate.)
   Conventions the chunks follow, worth keeping: callbacks and cross-device
   pointers are **re-bound, never serialized** (a pointer becomes an index —
   `Ncr5380::disk_`); pure caches are **flushed** on restore (ATC via the one
@@ -1512,96 +1118,46 @@ review's own ROI order.
   tourner le Finder d'une LC II plus vite. Le HLE au niveau invité redevient
   secondaire, **sauf QuickDraw**, qui est le seul endroit où le gain n'est pas
   borné par le taux d'instructions (§ 0·A).
-
-  Reste vrai par ailleurs (`docs/HLE_OVERLAY.md`, after the
-  `docs/LLE_VS_HLE.md` cleanup pass). Start with one hidden `boot.checksum`
-  address hook and an HLE-forbidden accuracy-test mode; then signature-matched
-  modules, per-module A/B gates and a visible non-conformant-mode indicator.
-  ~~Prioritize disk HLE; defer timing-loop elision until its overlap with the
-  JIT is understood~~ — **réordonné 2026-08-09** : le disque est de la latence
-  d'I/O, pas du débit, donc secondaire pour l'objectif ; l'élision de boucles
-  temporelles n'est plus « à comprendre » mais tranchée en profil JIT relâché.
-  **The premise moved 2026-07-31**: the conformant JIT
-  now measures **×2.68** on `q605_boot_etalon` (61.3 s → 22.9 s), i.e.
-  THROUGH the "~×2.5-3 conformant ceiling" this item used to invoke as its
-  justification — so the overlay can no longer be sold as the way to make
-  POM68K fast. Its surviving argument is narrower and sharper: the residual
-  idle-Finder cost is the ATC-exactness contract itself (794 M window-lost
-  exits over 12.2 G instructions), and a non-conformant mode is exactly
-  where the five relaxations the JIT refuses become legal. `docs/
-  HLE_OVERLAY.md` § 0 dates every premise; read it before building anything.
-  Note that the JIT now reaches **every** CPU wrapper (2026-08-06), so HLE
-  is no longer the only accelerator anywhere — but on the 68000 and 68020
-  guests the window is worth ×1.0-1.1, because there is no ATC walk to skip,
-  which is precisely where an HLE overlay would have room.
+  Reste vrai par ailleurs (`docs/HLE_OVERLAY.md`) : commencer par un seul hook
+  caché sur `boot.checksum` et un mode de test d'accuracy HLE-interdit ; puis
+  des modules appariés par signature, des gates A/B par module et un indicateur
+  visible de mode non conformant.
+  **The premise moved 2026-07-31**: the conformant JIT measures **×2.68** on
+  `q605_boot_etalon` (61.3 s → 22.9 s), i.e. THROUGH the "~×2.5-3 conformant
+  ceiling" this item used to invoke as its justification — so the overlay can no
+  longer be sold as the way to make POM68K fast. Its surviving argument is
+  narrower and sharper: the residual idle-Finder cost is the ATC-exactness
+  contract itself (794 M window-lost exits over 12.2 G instructions), and a
+  non-conformant mode is exactly where the five relaxations the JIT refuses
+  become legal. `docs/HLE_OVERLAY.md` § 0 dates every premise; read it before
+  building anything. Note that the JIT reaches **every** CPU wrapper
+  (2026-08-06), so HLE is no longer the only accelerator anywhere — but on the
+  68000 and 68020 guests the window is worth ×1.0-1.1, because there is no ATC
+  walk to skip, which is precisely where an HLE overlay would have room.
 - [ ] **Retro68 as a guest-level differential oracle**: build small Toolbox /
   Device Manager / XPRAM probes, run identical binaries under MAME and POM68K,
   compare. Known friction: no `Lists.h`/`AppleTalk.h` shims in multiversal
   (hardcoded list in `cincludes.rb`); the prober's `compat/` carries the
   PBControl glue; a 0-byte `.APPL` is normal.
 - [ ] **Refactor the remaining GUI globals**: move compile-unit state such as
-  `demoMode` (5 sites in `main.cpp`) into a machine/UI status object; keep
-  machine threads, command queues and Emscripten's single-thread path
-  behaviourally aligned. *This is the visible tip of the `MachineHost<M, C>`
-  item at the top of this section — "keep the paths behaviourally aligned" is
-  exactly the obligation that a single host would discharge structurally
-  instead of by hand, across six copies.*
+  `demoMode` into a machine/UI status object; keep machine threads, command
+  queues and Emscripten's single-thread path behaviourally aligned. *This is
+  the visible tip of the `run*()` item above — "keep the paths behaviourally
+  aligned" is exactly the obligation a single descriptor-driven runner would
+  discharge structurally instead of by hand.*
 
 ---
 
-## 9. Closed this cycle — index only
+## 9. One lesson kept out of the closed list
 
-One line each; the story is in `CHANGELOG.md` under the date.
+Everything closed before 2026-08-10 now lives in `CHANGELOG.md` by date and in
+`CHANGELOG_INDEX.md` by subsystem; this file no longer duplicates it. One line
+survives because it is *about* this file:
 
-- **i-cache boost vs bus time** (2026-07-25) — `viaSync` read the *boosted*
-  clock and `stall()` charged E-clock waits in boosted cycles, so every VIA-paced
-  pulse was `cacheBoost_`× too short in machine time and host-paced Egret
-  transports wedged above ~20 MHz. **Bus time is charged in machine cycles on
-  all four 030 CPUs** now; `AdbVia::syncTo` was the one remaining `getClock()`
-  reader. `POM68K_Q605_CACHE_BOOST` default is back to **4**; the IIsi's
-  `cacheBoost_ = 1` pin is retired.
-- **Floppy write persistence** (2026-07-24) — gate `floppy_persist_test`.
-- **Beyond-boot gates on the LC II** (2026-07-24 / 2026-07-29) — soak, persist,
-  launch, floppy; caught the ~37 % MCU overclock (`CudaLle mcuDebt_`).
-- **Save states** (2026-07-30) — see §8.
-- **Egret / Cuda firmware LLE** (2026-07-23 → 2026-07-29) — `M68hc05` core, the
-  instruction-slaved ADB wire (`M68hc05::onCycles`), the Cuda 341S0417 "wedge"
-  that was a missing DFAC2 I2C ACK, factory firmware as the default everywhere.
-- **SCC**: async baud machinery + Tx/Rx engine fidelity (2026-07-23); the OS 8.1
-  / OpenTransport standing-abort hang (2026-07-28, gate `q605_ot_bind_etalon`) —
-  a *virgin* line reads clean, the standing abort begins with the first frame the
-  line carries.
-- **CD-ROM** base + mount + boot-from-CD (2026-07-29) — see §5.
-- **Input-delivery gates** for four boot-only machines (2026-07-29).
-- **The IIsi "ADB Manager never initializes" bug — RETRACTED** (2026-07-29):
-  there was never a bug. Three rounds of coherent findings were one artifact —
-  `peek8()` is **physical**, and on a RAM-based-video machine physical low RAM
-  *is* the framebuffer while the ROM's PMMU (`TC=$80F84500`) moves the System's
-  logical low memory elsewhere. "ADBBase" was screen pixels. Lessons kept:
-  **check `TC` bit 31 before trusting any low-memory read**, assert on something
-  the MMU cannot move (pixels, wire traffic, device state), and **corroborate
-  with the observation closest to the user's experience** — "does the cursor
-  move?" (idle diff 0 px, after motion 46 px) would have killed all three
-  rounds at the start. A real gate bug was found en route: a 16-byte scan of the
-  8-byte KeyMap read `$017D=$41` as a keystroke — **a positive assertion over a
-  too-wide window is a false green.**
-- **Block linking** (commit `b2c4e19`, `POM68K_JIT.md §9`) — **this entry had
-  gone stale and misdirected a whole planning round on 2026-07-30.** It is a
-  link *table* (O(1) slot invalidation, no patched jumps); loading phase block
-  entries −53 %, 268 → 566 instr/entry, 18.4 → 16.75 s. At the idle Finder it
-  helps less because the hot exits are `JSR`/`RTS` (still `Unsafe`). *Keep this
-  line as the reminder of why §0's house rule exists.*
-- **JIT window survival under VM page-aging** (2026-07-31) — the culprit was not
-  eviction selectivity but an unconditional `pomJitDtlbFlush()` (a 2 KB memset)
-  on every window re-arm: ≈1.3 TB of memset traffic per long run, paid by both
-  backends. Deleting it is conformance-neutral (every invalidation it stood in
-  for has an exact owner). threaded −22.8/−26.7 %, x64 −28.5/−33.0 %; DTLB fills
-  942 M → 7.8 M; boot etalon 61.3 s interp → **22.9 s JIT**.
-- **`selectBackend("auto")` could never pick x64** (2026-07-30) — and the fix
-  needed a second half: with the filter lifted, `auto` handed x64 the **68030**
-  machines it was never written for and `jit_lcii_boot_etalon` wedged for an
-  hour. **Backend validity is per GUEST family**, not just per host
-  (`BackendCaps::guestFamilies`).
-- **PGO training extended to the 030/020 machines** (2026-07-29,
-  `tools/pgo_train.sh`) — LC II boot −26 %, LC 68020 boot −12 %, on the
-  *default* engine.
+**Block linking** (`POM68K_JIT.md § 9`) had a stale one-line summary here that
+misdirected a whole planning round on 2026-07-30. It is a link *table* (O(1)
+slot invalidation, no patched jumps); loading-phase block entries −53 %,
+268 → 566 instr/entry, 18.4 → 16.75 s; at the idle Finder it helps less because
+the hot exits are `JSR`/`RTS` (still `Unsafe`). **That is why the house rule at
+the top of this file exists**: a closed item leaves at most one line, and that
+line has to be true.

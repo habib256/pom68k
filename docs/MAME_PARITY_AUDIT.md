@@ -9,8 +9,50 @@ latch disk-change SWIM).
 
 **Bilan chiffré (après déduplication) :** 0 bug-suspect *high*, **19 bug-suspect *medium***,
 **40 bug-suspect *low***, 40 simplifications, 35 cosmétiques, 36 cas où POM68K est **plus riche** que MAME.
-Aucun finding ne remet en cause un chemin couvert par les 147 gates vertes — c'est précisément le motif
-récurrent : chaque divergence vit sur un chemin que les ROMs/drivers expédiés n'empruntent pas.
+Aucun finding ne remettait en cause un chemin couvert par les gates vertes du jour — c'est précisément le
+motif récurrent : chaque divergence vit sur un chemin que les ROMs/drivers expédiés n'empruntent pas.
+
+---
+
+## 0. ÉTAT AU 2026-08-12 — l'audit a été traité, ce document est sa clé
+
+**Ce rapport est daté. Ne le lisez plus comme une liste de bugs ouverts.** Les
+vagues de correction du 2026-08-06 au 2026-08-12 ont statué sur **chaque** entrée
+de la table § 1 ; la disposition définitive vit **dans le code**, pas ici :
+
+```bash
+grep -rn "MAME-parity audit\|parity audit" src/ tests/    # ~35 sites
+```
+
+Quatre dispositions, chacune marquée in-file à l'endroit concerné :
+
+| Marqueur in-code | Sens |
+|---|---|
+| *(pas de marqueur, code changé)* | **CORRIGÉ** — le finding a été appliqué |
+| `PIN` / `KNOWN MAME DIVERGENCE, deliberately kept` | divergence gardée **exprès**, avec sa raison |
+| `DOCUMENT-SKIP <date>` | écart cosmétique assumé, commenté, non corrigé |
+| `refuted` | le finding était **faux** — POM68K avait raison |
+
+Vérifié en relisant le code le 2026-08-12 (échantillon large : #2-#6, #10-#14,
+#15-#20, #24-#26, #28-#32, #36-#41, #45, #47-#57, #59) : la table ne contient plus
+de finding non traité. Deux exemples des extrêmes — **#46 a été RÉFUTÉ**
+(`M68hc05.cpp:120`, `tests/m68hc05_test.cpp:188` : le latch 6805 de POM68K est
+correct) et **#21-#23 ont leur propre gate**, `via6522_parity_test`.
+
+**Les 13 actions du § 3 sont faites, sauf une moitié.** Seule reste ouverte la
+partie **Egret/Cuda de l'action 9** : `CudaLle.cpp:273-297` ne fait toujours que
+relâcher le hold de boot sur PC3, donc un `RESET_SYSTEM $11` firmware n'atteint
+jamais le 68030 — le chemin « Redémarrer » du Finder. La moitié Duo est faite
+(`PgePmu::onCpuReset`, `PgePmu.h:71` → `PgePmu.cpp:338` → `MscMemory.cpp:88`).
+Détail et condition de fermeture : `LLE_VS_HLE.md` § 1.9.
+
+**Ce que ce fichier garde donc :** les citations MAME `fichier:lignes` (le coût de
+re-dérivation), les verdicts par puce du § 2, et la liste « POM68K plus riche »
+— qui est la seule trace écrite des endroits où un futur diff de parité
+« corrigerait » le code dans le mauvais sens.
+
+**Une entrée était FAUSSE dès l'origine** et a été propagée dans deux autres
+documents : voir § 2.2 (persistance PRAM).
 
 ---
 
@@ -112,7 +154,15 @@ polarité enable — tout à parité. **Aucun bug-suspect.**
 
 **Simplifications** :
 - Pas d'onde carrée CKO : les machines pulsent CA2 à 1 Hz depuis `cpuHz` (nuance de phase demi-seconde perdue).
-- **Persistance PRAM absente sur 4 plateformes** (compacts, Mac II, IIfx, Duo) — medium, documenté dans la table CLAUDE.md ; réglages perdus entre sessions là où MAME persiste partout.
+- ~~**Persistance PRAM absente sur 4 plateformes** (compacts, Mac II, IIfx, Duo)~~ — **FINDING FAUX,
+  retiré le 2026-08-12.** Les **douze** plateformes déclarent `loadPram`/`savePram` (`MacMemory.h:123`,
+  `MacIIMemory.h:158`, `IIfxMemory.h:111`, `MscMemory.h:126`, et les huit autres) et **chacun des douze
+  runners** de `main.cpp` câble la paire (douze `loadPram`, douze `savePram` ; la première paire à
+  `:1117` / `:1340`). Le fichier est `<image>.<tag-profil>.pram`. Ce qui varie est le **magasin**, pas la
+  persistance : `Rtc` discret, XPRAM Egret/Cuda, ou RAM interne + SRAM du PG&E sur le Duo. L'erreur venait
+  d'une ligne périmée de la table `CLAUDE.md` et a été recopiée dans `SIMPLIFICATIONS_REVIEW.md` (F1) —
+  les deux sont corrigés. **Leçon : une « simplification » lue dans un doc et non dans le code n'est pas
+  un finding.**
 - Seed de l'heure une fois au lancement (pas de resync continu pré-écriture-guest).
 
 **Cosmétique** : regs 12-15 lisent `$FF` vs `$00` ; registre test ignoré (inerte des deux côtés) ; superset 343-0042 unique servant aussi les compacts 343-0040.
@@ -223,7 +273,7 @@ complet a atterri) — reflété dans les findings.
 
 **Cosmétique** : ports FIFO 16 bits IOSB non modélisés (non câblés chez MAME non plus) ; largeur du fichier registres (lectures hors blocs → 0 vs backing store complet).
 
-**POM68K plus riche** : `$804` read-clear inconditionnel (quirk épinglé, § LLE_VS_HLE:558) ; état reset AscIosb conforme au dump LC 475 (MAME ne câble même pas son asc_iosb) ; FIFOSTAT reset Sonora `$0A` (fix hang LC 520/550) ; V8 F09/F29=0 conforme au vrai LC (à épingler d'un commentaire pour éviter une « correction » vers la valeur MAME fausse) ; `$807` CLOCK RATE honoré.
+**POM68K plus riche** : `$804` read-clear inconditionnel (quirk épinglé, `LLE_VS_HLE.md` § 1.7) ; état reset AscIosb conforme au dump LC 475 (MAME ne câble même pas son asc_iosb) ; FIFOSTAT reset Sonora `$0A` (fix hang LC 520/550) ; V8 F09/F29=0 conforme au vrai LC (à épingler d'un commentaire pour éviter une « correction » vers la valeur MAME fausse) ; `$807` CLOCK RATE honoré.
 
 ### 2.9 Grappe ADB (AdbBus / AdbLine / AdbVia / Pic1654s)
 
@@ -321,9 +371,28 @@ partagé avec l'agent VIA) et le `ram_size` Tinker Bell (table #2).
 
 ---
 
-## 3. Actions recommandées
+## 3. Actions recommandées — **12,5 / 13 FAITES** (état 2026-08-12)
 
-Classées par rapport risque/effort. Rappel maison : jamais de ctest complet en itération — viser la gate la plus étroite.
+Classées à l'origine par rapport risque/effort. Rappel maison : jamais de ctest complet en itération — viser
+la gate la plus étroite. Le statut vérifié de chaque action est en tête de ligne ; la preuve est le code cité.
+
+| # | État | Preuve dans le code |
+|---|---|---|
+| 1 | ✅ | `MscMemory.cpp:61-67,391-392` — `SOUND_BUSY` est bien le bit `0x40` |
+| 2 | ✅ | `PseudoVia.cpp:100-108` — cas `v == 0xFF && Flavour::Base` ⇒ `$1F`, commentaire refait |
+| 3 | ✅ | `SonyDrive.cpp:1036-1052` — cas `0b011` ajouté, MFM-on découplé de DskchgClear ; sense `f..c` à `:907-913` |
+| 4 | ✅ | `Scc8530.cpp:515` (TxIP sur écriture data), `:615-623` (re-présentation Ext/Status), `:635-652` (IUS : plus aucun IP jeté) ; **plus** #33 à `:658-661` |
+| 5 | ✅ | `V8Memory.cpp:321-338` — override Tinker Bell dans `applyRamConfig`, pas d'alias `$800000` |
+| 6 | ✅ | `Ncr5380.cpp:355-364,391-395` — `drqActive()` directionnel, l'octet de statut n'est plus consommé |
+| 7 | ✅ | `Q700Memory.cpp:608-641` — hold-off /DTACK gaté sur `scsiCtrl` bits 7/8, cap ~20 ms puis /BERR ; `$28` bus 2 à `:432-435` |
+| 8 | ✅ | `Asc.h:243` — flavour `AscEasc`, gate `asc_easc_test` |
+| 9 | ⚠️ **moitié** | Duo fait (`PgePmu.h:71`, `PgePmu.cpp:338`, `MscMemory.cpp:88`) ; **Egret/Cuda PC3 toujours ouvert** (`CudaLle.cpp:273-297`) — seul reliquat de tout l'audit |
+| 10 | ✅ | `Ncr53c96.cpp:377-400` — file 2 niveaux, `S_GROSS_ERROR`, pop-and-chain ; gate `ncr53c96_queue_test` |
+| 11 | ✅ | `Valkyrie.cpp:124-132` — `vblArmed_ = true` sur l'écriture `$10` ; `$14` lit la ligne vivante (`:85-92`) |
+| 12 | ✅ | `ApplePic.cpp:205-211`, `SonoraMemory.cpp:365-372`, `VaspMemory.cpp:219-222` — tous à 0, règle maison unmapped=0 |
+| 13 | ✅ | `Asc.cpp:71-80` (« Do not "fix" toward MAME »), `ApplePic.cpp:115-125` (DMA DENxONx), `Ariel.h:15-21` (key-color) |
+
+Le texte d'origine de chaque action, avec son raisonnement :
 
 1. **MSC SOUND_BUSY bit 6** (#15) — fix une ligne (`0x40` dans `MscMemory.cpp`) ; vérifier `duo230_boot_etalon`. À faire avant le milestone sommeil, qui lit ce registre.
 2. **Quirk IER `$FF→$1F` flavour Base** (#19) — ajouter le cas + corriger le commentaire périmé (:45-49) ; un check dans `pseudovia_test` (écrire `$FF`, relire `$1F`) le fige. `iisi/iici/iivx/iivi_boot_etalon` en confirmation.

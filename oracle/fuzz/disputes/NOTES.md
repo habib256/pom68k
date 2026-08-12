@@ -1,12 +1,27 @@
 # Oracle disputes — arbitration log
 
-Cases where the two oracles — **WinUAE** (oracle/uae, hatari e77819f7
-`cpummu030.c` + gencpu, PRIMARY) and **Musashi** (oracle/musashi, MAME
-0.276 `m68kmmu.h` + kstenerud 4.60 core) — or the **MC68030 User's
-Manual** disagree. Arbitration rule (CLAUDE.md): majority wins; WinUAE +
-manual + real-hardware reasoning outrank Musashi alone. Every ruling
-below was established by ctypes probes against both `.so`s
-(`oracle_driver.py`) before any code changed.
+**Read this first.** This file is the *permanent record* of rulings
+D1-D22, taken in 2026-07 while POM68K still ran **two** oracles. Since
+**2026-07-15 there is one**: the MAME/Musashi oracle was retired and
+`oracle/musashi/` deleted (rationale at the bottom, § *Musashi retired*).
+So:
+
+- Every `oracle/musashi/VENDOR.md` reference below points at a **deleted
+  tree** — read it as "the Musashi side was patched at the time", not as
+  a file you can open.
+- The arbitration rule quoted in the older sections (*majority wins;
+  WinUAE + manual outrank Musashi alone*) has collapsed into the current
+  one: **the WinUAE oracle's word is law**, Moira-vs-oracle disputes are
+  arbitrated manually against the MC68030UM / MC68881-882UM, and a
+  real-hardware trace outranks everything.
+- The rulings themselves stand. They were established by ctypes probes
+  (`oracle_driver.py`) before any code changed, and Moira still
+  implements them; the "Musashi does X instead" halves are kept because
+  they are *why* each ruling went the way it did.
+
+Oracle in service: **WinUAE** (`oracle/uae`, hatari e77819f7
+`cpummu030.c` + gencpu). Retired: **Musashi** (MAME 0.276 `m68kmmu.h` +
+kstenerud 4.60 core).
 
 ## Arbitrated (2026-07-15) — first arbitration turn
 
@@ -355,52 +370,37 @@ project); Musashi's softfloat default-NaN has the sign bit SET (probe
 created-NaN sign explicitly → per the standing rule the (primary,
 hardware-tested) oracle wins: **sign 0**.
 
-### Observations / proposed WinUAE-solo classes (proposals, NOT rulings)
+### Observations — the classes Musashi could not testify on
 
-- **FSAVE/FRESTORE, supervisor forms** — Musashi writes a fixed
-  68881-style $1C idle frame (`m68kfpu.c perform_fsave`: 7 longs,
-  version $1F) with no BIU flags and only handles (An)+/-(An) (others
-  `fatalerror`-fall-through); WinUAE stacks the real 68882 $3C idle
-  frame (frame id `(version<<24)|0x380000`, fsave_data internals, BIU
-  word) and every legal EA. Same architectural gap as D9/D11 →
-  **propose a WinUAE-solo `fsave` class** once Moira's FPU frames exist
-  to replay them. (User-mode FSAVE/FRESTORE priv violations are already
-  duo-agreed.)
-- **Packed decimal (P format, both directions)** — Musashi's
-  `READ_EA_PACK/store_pack_float80` is a partial sprintf-based model
-  (0/16 agreement, ram diffs on every FP→ea P vector, k-factor issues);
-  WinUAE has the full softfloat_decimal implementation. **Propose
-  WinUAE-solo for the P format** pending a Musashi rewrite.
-- **FDBcc / FTRAPcc are unreachable in Musashi**: the slice-4 D6 stubs
-  `cpdbcc`/`cptrapcc` (masks $F1F8) are MORE specific than `040fpu0`
-  (mask $FF00) and win the generated jump table, so coprocessor-id-1
-  FDBcc/FTRAPcc still raise Line-F (probes #2, #77: Musashi PC lands on
-  the vector-11 pad, WinUAE traps 7 / falls through). FBcc and FScc DO
-  dispatch into the FPU (`m68040_fpu_op0` cases 1-3). Fix is a small
-  Musashi patch (route the id-1 shapes into the FPU conditional
-  decoder + implement FDBcc/FTRAPcc over `test_condition`) — next
-  slice, together with BSUN (Musashi never sets it for IEEE-nonaware
-  predicates on a set NAN bit; the 2/7 FBcc fpsr-only disputes).
-- **FMOVEM of FP registers**: 0/37 — Musashi mis-advances the address
-  between registers in several mode/list combinations (probe #14: three
-  target registers all loaded from the same address) and disagrees on
-  dynamic-list decode (probe #58). Real convergence work, not solo-able.
-- **FSGLDIV/FSGLMUL rounding**: mantissa LSB off-by-one vs WinUAE's
-  proper single-precision rounding (probe #1). Not yet arbitrated
-  against MC68881UM § single-precision semantics — left open.
-- **FMOVE-to-FPCR masking**: Musashi stores all 16 bits (fpcr diffs in
-  FMOVEM-ctrl disputes); WinUAE masks with fpcr_mask $FFF0 (6888x has no
-  bits 3-0). Manual backs WinUAE; small Musashi patch, next slice.
-- The glue layers already converge on state-restore semantics: both
-  oracles mask FPCR/FPSR on set_state ($FFF0 / $0FFFFFF8) and treat the
-  restored FPU as "in use" (WinUAE `regs.fpu_state = 1`, Musashi
-  `fpu_just_reset = 0`) so FSAVE would emit idle frames on both.
-- **Operational**: the `random` family now executes $F2xx/$F3xx through
-  the FPUs instead of F-lining (probe: 99/100 duo at seed 99, the one
-  dispute an FBcc predicate ≥ 32 / BSUN case). Regenerating the gated
-  integer corpora via `loop.sh` will therefore mint random-family
-  vectors Moira cannot replay until its O5 FPU exec layer lands — the
-  pinned pre-O5 corpora still pass 1 040/1 040.
+Proposals when written; **all promoted to rulings by D22** below. What
+survives here is the WinUAE-side fact each one pinned, because Moira has
+to match it:
+
+- **FSAVE/FRESTORE, supervisor forms** — WinUAE stacks the real 68882
+  **$3C idle frame** (frame id `(version << 24) | 0x380000`, fsave_data
+  internals, BIU word) on every legal EA. (Musashi wrote a fixed
+  68881-style $1C frame and handled only (An)+/-(An) — same architectural
+  gap as D9/D11.) User-mode FSAVE/FRESTORE privilege violations were
+  agreed by both.
+- **Packed decimal (P format, both directions)** — WinUAE has the full
+  softfloat_decimal implementation; Musashi's sprintf-based model agreed
+  on 0/16 vectors (k-factor and ram diffs on every FP→ea P vector).
+- **FDBcc / FTRAPcc, FMOVEM of FP registers** — unreachable or
+  address-buggy in Musashi, so WinUAE-solo by necessity.
+- **FSGLDIV/FSGLMUL rounding** — mantissa LSB off-by-one vs WinUAE's
+  proper single-precision rounding (probe #1). Never arbitrated against
+  MC68881UM § single-precision semantics; **settled by policy** once the
+  oracle became solo, not by reading.
+- **FMOVE-to-FPCR masking**: WinUAE masks with `fpcr_mask` **$FFF0** — the
+  6888x has no bits 3-0. Manual backs it.
+- State-restore semantics: `set_state` masks FPCR/FPSR ($FFF0 /
+  $0FFFFFF8) and leaves the FPU **"in use"** (WinUAE `regs.fpu_state = 1`),
+  so a restored state FSAVEs an *idle* frame, not NULL — the premise of
+  fix 1 in the O5 slice-2 list above.
+- **Operational**: the `random` family executes $F2xx/$F3xx through the
+  FPU instead of F-lining, so regenerating the integer corpora via
+  `loop.sh` mints random-family vectors that need Moira's FPU exec layer
+  (landed in O5 slice 2).
 
 ## O5 slice 2 + convergence (2026-07-15) — Moira 68882 exec layer,
 WinUAE-solo fpu corpus adopted
@@ -469,14 +469,13 @@ files, `ctest -R sst68030` total **3 082**.
 
 ## Still unresolved / oracle limitations
 
-### D8. Translation-enabled stepping  [info; residue 1-3 % post-slice-4]
-`--mmu identity`/`tt` cells keep a small disagreement: mid-instruction
-bus-fault frame details on translated accesses (Musashi runs the
-faulted instruction to completion and zero-fills the frame — same
-architectural gap as D9, covered by the WinUAE-solo fault corpora) and
-PMOVE-through-translation faults (Musashi halts, PC $FFFFFFFF). A
-Musashi fault-model rewrite is the only fix; not a blocker (the fault
-family + the duo identity/tt corpora gate the behaviour).
+### D8. Translation-enabled stepping  [moot since the retirement]
+The 1-3 % residue in the `--mmu identity`/`tt` cells was entirely
+Musashi's: mid-instruction bus-fault frame details on translated
+accesses (it ran the faulted instruction to completion and zero-filled
+the frame — the D9 gap) and PMOVE-through-translation faults (it halted,
+PC $FFFFFFFF). With one oracle there is no residue to measure; the
+behaviour is gated by the fault family and the identity/tt corpora.
 
 ### PMOVE TC write, E=1 with invalid config  [Musashi-followed,
 WinUAE cannot arbitrate]

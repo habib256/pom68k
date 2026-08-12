@@ -17,8 +17,8 @@ covers every POM68K profile from the **Mac Plus** to the **Quadra 950**.
 
 ## Building
 
-The toolchain already lives in this repo (`dev/Retro68-build/toolchain`,
-`m68k-apple-macos-gcc 16.1.0`), the same one `dev/bonjour-pomme-one` uses.
+The toolchain is user-built into `dev/Retro68-build/toolchain`
+(`m68k-apple-macos-gcc 16.1.0`) — bootstrap in `dev/README.md`.
 
 ```bash
 cd dev/mac-rogue
@@ -78,7 +78,8 @@ in C read the same way.
 
 ```
 mac_shell.c   Toolbox: window, menus, event pump, CopyBits, the cold-start longjmp
-vdp.c         software TMS9918 Graphics-I: name table + SAT -> 1-bit frame
+snd.c         Sound Manager: 17 SFX motifs on one channel + the music channel
+vdp.c         software TMS9918 Graphics-I: name table + SAT -> frame
 rogue_gfx.c   GENERATED tile / sprite / colour tables
 rogue_map.c   map buffer, tile queries, collision, Galois LFSR + rand_mod
 rogue_gen.c   rooms, L-corridors, door classification, spawns
@@ -86,6 +87,7 @@ rogue_fov.c   Björn Bergström recursive shadowcasting
 rogue_mon.c   the five AIs, combat, XP, the 2x2 boss
 rogue_item.c  floor items, 26-letter bag, timed buffs, throwing
 rogue_draw.c  render_map, place_all_sprites, HUD
+rogue_msg.c   message line + history ring
 rogue_ui.c    title, briefing, help, bag modal, death / win screens
 rogue_main.c  start, turn loop, level transitions
 ```
@@ -113,9 +115,10 @@ transcribed unchanged. These are the exceptions, all deliberate:
 
 1. **Colour is detected, not assumed.** The compositor emits TMS palette
    indices; how they reach the screen depends on the machine. Colour needs
-   two yeses — Color QuickDraw in the ROM (`Gestalt`), *and* a main screen
-   deeper than 1 bit, since a Quadra driving a mono monitor has the first
-   without the second. When both hold, an 8-bit `GWorld` carrying the
+   two yeses (`ColorScreenAvailable`, `mac_shell.c`) — `gestaltQuickdrawVersion`
+   at least `gestalt8BitQD`, *and* a main device whose `pixelSize` is at least
+   4 bpp, since a Quadra driving a mono monitor has the first without the
+   second. When both hold, an 8-bit `GWorld` carrying the
    TMS9918A palette as its CLUT makes presenting a straight row copy. When
    either fails, the same buffer packs to 1 bit under an ink rule: anything
    that is neither transparent nor black becomes ink. The hit-flash follows:
@@ -149,48 +152,49 @@ transcribed unchanged. These are the exceptions, all deliberate:
    keypress. Here it is `TickCount()` at the keypress, XORed with the key —
    the same reaction-time entropy, expressed in Toolbox.
 
+## Sound and animation — the Macintosh talking
+
+The Apple-1 original had neither; both are additions, and both are built so
+that a Mac Plus pays nothing for them.
+
+**Sound** (`snd.c`, 2026-08-04/05). One Sound Manager square-wave channel
+carries seventeen motifs (`SFX_*` in `snd.h`) — combat, pickups, potions, the
+pit, stairs, XP thresholds, a low-HP alarm tail, title/death/win fanfares.
+Fully asynchronous: **the channel's own 128-deep command queue is the
+sequencer**, and a new effect flushes the last. Bright timbre for good news,
+buzzy for violence. The short percussive effects run ~30-40 % below the
+obvious amplitude, because a square wave has no envelope — every note edge is
+a click whose loudness *is* the amp. A **second channel** carries background
+music: a calm A-minor bass loop (E2..E3, near-sine, well under the effects),
+refilled from the event pump **by deadline rather than by interrupt-time
+callback**. `SndNewChannel` is System 6.0.4+; below that both degrade silently
+and their menu items grey out (Display → Sound, Display → Music).
+
+**Animation** (2026-08-05). An idle clock (`gVdpPhase`, 4 Hz) rides the event
+pump — the game blocks in `ShellWaitKey`, so **the wait *is* the animation
+loop**. Floor loot hovers (`SPR_BOB`, ±2 px, desynced per column), torches
+flicker through flame shades (`SPR_FLICKER`) on the floor and in the HUD, the
+ghost floats, headlines pulse warm (`VDP_FG_PULSE`), and the stairs-down
+glints through the *tile* pass — the one animated name-table element, pulling
+the eye to the exit. Fresh wounds tremble: `SPR_SHAKE` jolts the silhouette
+1 px for exactly as long as the hurt flash, keyed off the raw phase rather
+than the column-desynced step, so the 2x2 boss jolts as one body. Level
+transitions are a fall-and-rise curtain — `LevelWipe` darkens the floor being
+left top-to-bottom, `LevelReveal` gives the new one back four rows at a time
+with the SAT still empty, so the map appears first and its inhabitants pop in
+after. The shell only recomposites when the scene actually carries an animated
+element (`VdpAnimated`), so a static screen costs nothing.
+
+Both survive the 1-bit path: bob and shake read as *position*, while flicker,
+glint and pulse are all ink under the mono rule, so the monochrome picture is
+unchanged by them. Same for the UI cards' double-size headlines
+(`VdpPutStringBig`) and per-cell colour (`VdpPutStringColor`).
+
 ## Next
 
 - **Exercise the monochrome path on a real 1-bit profile.** Colour is verified
   on the LC II; the mono packing and the inverted hit-flash have only been
   reasoned about, not seen. A Mac Plus boot is the test.
-- ~~Sound. The original had none.~~ **Done (2026-08-04):** one Sound
-  Manager square-wave channel (`snd.c`), seventeen queued-command motifs —
-  combat, pickups, potions, the pit, stairs, XP thresholds, a low-HP alarm
-  tail, title/death/win fanfares. Fully asynchronous (the channel's own
-  128-deep queue is the sequencer; a new effect flushes the last), bright
-  timbre for good news and buzzy for violence, Display → Sound to mute,
-  silent degrade below System 6.0.4. The Apple-1 original stays silent;
-  this is the Macintosh talking. **2026-08-05:** the short percussive
-  effects dropped ~30-40 % in amplitude (a square wave has no envelope, so
-  every note edge is a click whose loudness *is* the amp), and a **second
-  channel now carries background music** — a calm A-minor bass loop
-  (E2..E3, near-sine timbre, well under the effects), refilled from the
-  event pump by deadline rather than by interrupt-time callback, with its
-  own Display → Music toggle. The UI cards got the same-day facelift:
-  double-size colour headlines (`VdpPutStringBig`) and per-cell text
-  colour (`VdpPutStringColor`), both invisible-identical in monochrome
-  under the ink rule.
-- ~~Animation. Everything held still between keypresses.~~ **Done
-  (2026-08-05):** an idle clock (`gVdpPhase`, 4 Hz) rides the event pump —
-  the game blocks in `ShellWaitKey`, so the wait *is* the animation loop.
-  Floor loot hovers (`SPR_BOB`, ±2 px, desynced per column), torches
-  flicker through flame shades (`SPR_FLICKER`) both on the floor and in
-  the HUD, the ghost floats, and the big headlines (title, GAME OVER,
-  CONGRATULATIONS) pulse warm (`VDP_FG_PULSE`). Level transitions are a
-  fall-and-rise curtain: `LevelWipe` darkens the floor being left
-  top-to-bottom, `LevelReveal` gives the new one back four rows at a
-  time with the SAT still empty, so the map appears first and its
-  inhabitants pop in after. Fresh wounds tremble: `SPR_SHAKE` jolts the
-  silhouette 1 px left/right for exactly as long as the hurt flash (keyed
-  off the raw phase, not the column-desynced step, so the 2x2 boss jolts
-  as one body). The stairs-down glints through the *tile* pass — the one
-  animated name-table element, pulling the eye to the exit. Two torches
-  flank the title and the win screen hovers the amulet. The shell only
-  recomposites when the scene actually carries an animated element
-  (`VdpAnimated`), so a static screen still costs a Mac Plus nothing. Bob
-  and shake read in monochrome (position moves); flicker, glint and pulse
-  shades are all ink, so the 1-bit picture is unchanged by them.
 - The font's `/` glyph is drawn as a backslash, so the HUD reads `HP 11\15`.
   That comes from `tileset_rogue.inc` (char 47, sliced from Quale's
   `font_quale_punct_plus`) and the Apple-1 build has it too — an upstream

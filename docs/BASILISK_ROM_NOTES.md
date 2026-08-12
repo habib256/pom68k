@@ -51,13 +51,20 @@ relative to `BasiliskII/src/`; line numbers refer to that checkout.
 
 ### 8.1 How to re-derive any of this in one command
 
-The parsers of §1-§4 are implemented in **`tools/rominfo.cpp`** (build target
-`rominfo`; standalone, no emulator core):
+The parsers of §1-§4 are implemented in **`tools/rominfo.cpp`** (standalone, no
+emulator core). The target is `EXCLUDE_FROM_ALL` (`CMakeLists.txt:1753`), so
+build it explicitly:
 
 ```
-build/rominfo "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM" \
-              [--resources] [--traps] [--trap A053] [--all]
+make -C build rominfo
+build/rominfo roms/maclcii.rom [--resources] [--traps] [--trap A053] [--all]
 ```
+
+Those four are the **only** flags `main()` parses (`tools/rominfo.cpp:265-272`);
+anything else is silently taken as the ROM *path*, so a typo reports "cannot
+open --whatever". The header, the PACK-4 count and the **whole universal table
++ DecoderInfo dump print unconditionally** — there is no `--universal` switch
+(the usage comment at `tools/rominfo.cpp:26-27` still lists one).
 
 Everything below was produced by that tool on the ROMs in `roms/` (first pass
 2026-07-15, re-verified 2026-07-30). If a claim here and a claim in §1-§7
@@ -81,7 +88,9 @@ that is also what a CPU booting with ROM overlaid at 0 loads as SSP. (§3.1's
 
 ### 8.3 Universal table — LC II ROM, 13 records at `$32D8`
 
-Full `rominfo --universal` dump (field meanings: §2.2):
+The universal-table block `rominfo` prints for this ROM — its columns, in
+order, are `info, kind, hwCfg, FPU, rom85, defRSRC, addrMap, univROM, decoder,
+model` (`tools/rominfo.cpp:225-226`; field meanings: §2.2):
 
 | info | productKind | hwCfg | FPU bit | rom85 | defRSRC | AddrMapFlags | UnivROMFlags | decoder | model |
 |---|---|---|---|---|---|---|---|---|---|
@@ -108,7 +117,9 @@ Firsthand consequences:
   the `$FD` record at `$3BE6` (hwCfgWord `$CC00` = **no FPU**, rom85 `$7FFF`,
   defaultRSRCs 4) — the LC II shape.
 - **`AddrMapFlags $773F` is not universal.** The IIci/IIsi/LC records carry it
-  (this is the value `V8Memory` reproduces, `src/V8Memory.cpp:386-389`), the
+  (it is why the LC/LC II ROM probes the I/O map expecting a bus error, which
+  is what `V8Memory` raises in its unmapped I/O holes —
+  `src/V8Memory.cpp:526-527`), the
   **IIfx record carries `$00000000`**, Gestalt 12 carries `$00039807`, and every
   `$FD` record carries `$00000000`. Do not quote "$773F" as an invariant.
 - The FPU bit is **hwCfgWord bit 12** = bit 28 of the long at +$10 (§2.2). The
@@ -127,7 +138,7 @@ Every populated entry matches `V8Memory`:
 | 5 | `$50F16000` | `$1E0` SWIM | `Swim1` |
 | 8 / 9 / 10 | `$50F10000` / `$50F12000` / `$50F06000` | `$C00` / `$C04` / `$C08` | SCSI triplet over `Ncr5380` |
 | 12 | `$50F14000` | `$CC0` ASCBase | `AscV8` |
-| **13** | **`$50F26000`** | `$CEC` VIA2/RBV | `PseudoVia` (`src/V8Memory.cpp:381,525`) |
+| **13** | **`$50F26000`** | `$CEC` VIA2/RBV | `PseudoVia` (`src/V8Memory.cpp:520-524` read / `:735-738` write) |
 | 11 (real VIA2) | **`$00000000`** | `$CEC` | *unpopulated on V8 — the pseudo-VIA is decoder[13], not [11]* |
 | 6, 7, 15, 16, 17, 18 | `$00000000` | `$B0A`/`$312`/`$266`, `$C00-$C08`, `$1D8`/`$1DC`, `$1E0`, `$CEC` | unused on this board |
 
@@ -210,7 +221,7 @@ implements the same trailer and the §9.1 CRC (`src/DeclRom.h`,
 
 ### 8.8 What this put into the POM68K code — and the one Basilisk default rejected
 
-`Egret::factoryDefaults()` (`src/Egret.cpp:47-105`) seeds Basilisk's known-good
+`Egret::factoryDefaults()` (`src/Egret.cpp:47-104`) seeds Basilisk's known-good
 XPRAM block when no battery file carries the system's `'NuMc'` validity
 signature at `$0C-$0F`: `'NuMc'`, `$01` = DynWait, the standard classic-PRAM
 block at `$08-$1F`, OSDefault = MacOS at `$76-$77`, plus a POM68K-only built-in
@@ -239,8 +250,8 @@ them**:
    `Egret::factoryDefaults` reseeds `$13` even when `'NuMc'` is already there.
 
 `lcii_trace` logs the WarmStart `'WLSC'` milestone at `$CFC` (§4.3) — the ROM's
-own "low memory is valid" marker — and applies the same factory defaults as the
-GUI (`tests/lcii_trace.cpp:461`).
+own "low memory is valid" marker (`tests/lcii_trace.cpp:458-466`) — and applies
+the same factory defaults as the GUI (`tests/lcii_trace.cpp:138`).
 
 ---
 

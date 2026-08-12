@@ -7,8 +7,9 @@ opt-in on every other guest. The **CPU** menu switches it live;
 remains what every accuracy claim in this project rests on and has its own
 explicit etalon registrations.
 
-Read `extern/moira/POM68K_VENDOR.md` § *JIT seam* for the ten-point
-extension this subsystem needs inside the vendored core.
+Read `extern/moira/POM68K_VENDOR.md` § *JIT seam* (row 22 of the patch
+table, twelve numbered points plus 3b) for the extension this subsystem
+needs inside the vendored core.
 
 **On the name (updated 2026-08-10).** The portable `threaded` backend is NOT
 a JIT: it is the interpreter running behind a fetch window, with a block
@@ -16,7 +17,9 @@ replayer on top. The x86-64 and AArch64 backends emit machine code and are
 JITs in the strict sense; `auto` selects one of them for the default 68040
 path when the host supports it. Their exactness is why the wins are bounded
 (§ 7). The GUI
-says "Moteur accéléré" and names the backend (`main.cpp:855` and `:691`);
+says "Moteur accéléré", distinguishes "JIT `<backend>`" from
+"fenêtres (threaded)" and names the backend (`main.cpp:920-930`, gauge
+window at `:706-718`);
 the subsystem keeps its internal name because `src/jit/` names the seam and
 the machinery, which a future non-conformant fast mode
 (`docs/HLE_OVERLAY.md`) would build on. The five relaxations a classic 68k
@@ -29,14 +32,16 @@ entry and in `TODO.md`.
 own handlers with the fetch window armed, and is valid for every guest.
 `x86-64` (§ 7) generates host code for a real subset of the ISA, with an
 inline data TLB (§ 8) and control transfers compiled as block terminators,
-so a loop closing on itself never returns to the engine. On the 68040
-machines `auto` picks x64 and it is the faster of the two on every regime
-measured (§ 3). `aarch64` now implements the same 68040 families as x86-64:
-register and memory ALU, MOVE/MOVEA, effective addresses, bit tests, internal
-branches, calls/returns, LINK/UNLK and MOVEM, backed by an inline big-endian
-DTLB and exact per-instruction fallback. Five-million-step fine/coarse
-locksteps and the complete Q605 Finder boot are
-green, so `auto` selects it on Apple Silicon. Release/native/LTO measures
+so a loop closing on itself never returns to the engine; on an x86-64 host
+`auto` picks it for the 68040 machines and it beats `threaded` on every
+regime measured (§ 3.4). `aarch64` covers the same 68040 *scope* — its
+declared family is identical — with a near-identical but not identical
+opcode set (§ 7): register and memory ALU, MOVE/MOVEA, effective addresses
+including brief indexed, bit tests, internal branches, calls/returns,
+LINK/UNLK, MOVEM, immediate shifts and register bitfields, backed by an
+inline big-endian DTLB and exact per-instruction fallback. Five-million-step
+fine/coarse locksteps and the complete Q605 Finder boot are green, so `auto`
+selects it on AArch64. Release/native/LTO measures
 1.22 s against 4.55 s for threaded on the fixed 1,000-frame Q605 workload
 (3.73x, identical fingerprint); LLVM PGO measures 1.01 s against 3.41 s.
 The complete Finder gate is 9.19 s native against 21.14 s threaded (2.30x),
@@ -48,19 +53,21 @@ every instruction boundary.
 **Where the engine is wired.** **Every** CPU wrapper in the tree — twelve
 of them: `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu` (68040), `Cpu030`,
 `RbvCpu`, `SonoraCpu`, `VaspCpu`, `MscCpu`, `IIfxCpu` (68030, plus the
-Macintosh LC's 68020 flavour of `Cpu030`), `Cpu020` (the Mac II family) and
-`Cpu68k` (the compacts). The last four landed on 2026-08-06. The
-**x86-64 code generator** is narrower still: 68040 guests only, by declared
-capability (§ 7).
+Macintosh LC's 68020 flavour of `Cpu030`), `Cpu020` (the Mac II family,
+68020 or 68030 depending on `is030`) and `Cpu68k` (the compacts). Each
+passes its `GuestFamily` bit to the `jit::Engine` constructor — grep
+`jit::kGuest` in `src/*.cpp` for the roster. The last four wrappers landed
+on 2026-08-06. **Both code generators** are narrower: 68040 guests only, by
+declared capability (`JitBackendX64.cpp:2497`, `JitBackendA64.cpp:2156`;
+§ 7).
 
 **And what each is worth.** The engine being wired is not the same as the
-engine being worth switching on. Ranked by measured end-to-end gain
-(§ 3, § 7.3):
+engine being worth switching on. Ranked by measured gain (§ 3.4):
 
 | Guest | Machines | Window buys | Because |
 |---|---|---|---|
-| 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | ×2.1-2.7 (x64) | an ATC walk per fetch, replaced by a bounds check |
-| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** (LC II, fixed budget, 2026-08-09) | same, through `mmuFetchWord` |
+| 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | ×2.7 on the boot etalon, **×5.0** on a fixed budget (x64, § 3.4) | an ATC walk per fetch, replaced by a bounds check |
+| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** (LC II, fixed budget, threaded — no native 030 generator ships) | same, through `mmuFetchWord` |
 | 68020 | Macintosh LC, **Mac II** | ×1.0-1.2 | no MMU to skip — only the map decode |
 | 68000 | **Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
 
@@ -76,7 +83,7 @@ LC II" (2026-07-30, retracted the ×1.6), and now ×1.21 — measured with
 where both earlier figures came from `lcii_boot_etalon`, which stops at the
 Finder and therefore times the two engines over different amounts of guest
 work. What changed the sign back is block linking and the 2026-08-06 seam
-work, not the window itself. § 3.2 prices what is left.
+work, not the window itself. § 3.6 prices what is left.
 
 ---
 
@@ -116,14 +123,17 @@ what it does and does not drive today:
 |---|---|---|
 | `guestFamilies` | `selectBackend()` | a backend is only a candidate for the families it declares; an explicit `POM68K_JIT_BACKEND=` naming an invalid pair is refused, not honoured (`POM68K_JIT_UNSAFE_BACKEND=1` overrides) |
 | `maxBlockInstrs` | `Engine::Engine` | caps `POM68K_JIT_BLOCK_MAX` |
-| `nativeCode` | `blockCacheEnabled()` | the block cache's default (§ 3) |
+| `nativeCode` | `blockCacheEnabled()`, `hotThreshold()` | the block cache's default (§ 3.7) and the hot threshold (1 vs 512) |
+| `dtlbCodeMask` | `Engine::fillDtlb` | may the engine hand out a WRITE entry for a 4 KB page holding translated code in some 256-byte slice? Only a backend that tests `PomJitDtlbEntry::codeMask` before storing (§ 8). Defaults false = the old whole-page refusal |
 
 The per-opcode question is **not** a block boundary: `Backend::canEmit()` is
-consulted by the opcode census (`POM68K_JIT_HISTO`) and by
-`X64Backend::compile()`, which refuses a block whose native coverage is below
-half. Anything an otherwise-compilable block contains that the backend cannot
-emit becomes a per-instruction cold stub inside the generated code, not a
-shorter block. Block termination is the classifier's job alone (§ 4).
+an encoding-only answer, consulted by the opcode census (`POM68K_JIT_HISTO`)
+and by `jit_backend_test`; the coverage floor inside `compile()` counts what
+the emitter actually produced and refuses a block below half native
+(`JitBackendX64.cpp:2604`). Anything an otherwise-compilable block contains
+that the backend cannot emit becomes a per-instruction cold stub inside the
+generated code, not a shorter block. Block termination is the classifier's
+job alone (§ 4).
 
 ---
 
@@ -133,7 +143,7 @@ Each one names the gate that would catch it breaking.
 
 | # | invariant | gate |
 |---|---|---|
-| 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_lockstep_test` (five registrations, § 5) |
+| 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_lockstep_test` (five registrations, six on AArch64 — § 5), plus its 68000 and 68030 twins (§ 3.2) |
 | 2 | **Exits happen at instruction boundaries only.** No partial guest state — registers, CCR, PC, clock — ever survives a block exit. Everything unusual (interrupt, trace, STOP, breakpoint, MMU fault, an opcode outside the classifier) is handed back to `Moira::execute()` at a clean boundary. | `jit_lockstep_x64_fine_test` (one cycle per comparison); `jit_backend_test` for the classifier rules |
 | 3 | **The fastest proved conformant engine is the default, per guest family.** Today that is `jit/auto` for 68040 and the interpreter elsewhere. `POM68K_CPU_ENGINE=interp` always restores the oracle. | `jit_backend_test` pins the policy and both overrides; `interp_{q605,centris650,q630,q700}_boot_etalon` keep one interpreter reference per 68040 platform |
 | 4 | **Peripheral time stays owed.** Blocks never run past the caller's cycle target (`Context::clockTarget`) and generated cycles go through the machine's virtual `sync()` (`pomJitSync`), so VIA, ASC, SWIM and the Egret/Cuda MCU keep their pacing. | `jit_mactv_boot_etalon` — registered for exactly this reason: Tinker Bell's Cuda transport deadlocks on a 2 % shift in MCU pacing long before a Finder signature would fail |
@@ -230,6 +240,14 @@ at 256 cycles through the boot and dropping to one cycle for the last
 100 000 — so the sharpest comparison lands in live Finder code rather than
 in a boot loop. A `_blocks_test` variant forces the block path on.
 
+`jit_lockstep_030_test` is the third machine class: two Mac LC IIs, 120 000
+comparisons at 8192 cycles with a fine tail, and it adds the three
+`PomIcache` counters to the comparison — the half a Quadra gate cannot have.
+Same `_blocks_test` variant; on AArch64 a third registration
+(`jit_lockstep_030_a64_experimental_test`) drives generated arm64 030 code
+under `POM68K_JIT_UNSAFE_BACKEND=1`, which is the development lane for a
+family no generator declares (`docs/JIT_BRINGUP.md` § C).
+
 Recorded blocks are safe here for a reason worth stating: the `threaded`
 backend replays through `pomJitExecOne()` — Moira's own handlers, charging
 Moira's own cycles — and never replays the recorded `Instr::cycles`. A code
@@ -243,63 +261,49 @@ architectural comparison would catch it.
 | the contention charge deleted from `pomJitFetch000` | `DIVERGED after 982 402 steps — CLOCK DIVERGENCE, delta −8` |
 | the trailing `SYNC(2)` deleted | `DIVERGED after 0 steps` (pc and D-registers immediately) |
 
-**And the first version of this gate passed both of them.** It reported 2.5 M
-checkpoints, 666 M guest cycles and 83 M instructions fetched through the
-window — and every one of those fetches came from **ROM**; instrumented and
-counted, RAM fetches were exactly zero. The cause is a property of this
-family alone: the 60.15 Hz VBL is not generated by `MacMemory::tick()` the
-way every other platform's is, it is raised by `MacFrameClock::runFrame()`
-between two `runUntil()` calls. A harness that only calls `runCycles()`
-never delivers one, so the machine spins in early boot forever — with the
-overlay still up, so low memory is ROM, so `Cpu68k::applyContention` (RAM
-only) never fires and a missing charge is invisible.
+**And the first version of this gate passed both of them**, over 2.5 M
+checkpoints and 666 M guest cycles, because every one of its 83 M windowed
+fetches came from **ROM** — RAM fetches, instrumented and counted, were
+exactly zero. The cause is peculiar to this family: the 60.15 Hz VBL is not
+raised by `MacMemory::tick()` the way every other platform's is, but by
+`MacFrameClock::runFrame()` between two `runUntil()` calls. A harness that
+only calls `runCycles()` never delivers one, so the machine spins in early
+boot forever — overlay still up, low memory therefore ROM,
+`Cpu68k::applyContention` (RAM only) never firing, and a missing charge
+invisible. The harness now reproduces `runFrame()`'s shape and the gate
+asserts its own reach: the overlay must have dropped and the IWM must have
+been polled, or it fails. **Twice in one day, on the same subsystem, a green
+result meant "nothing ran" rather than "nothing broke".**
 
-The harness now reproduces `runFrame()`'s shape, and the gate asserts its
-own reach: the overlay must have dropped and the IWM must have been polled,
-or it fails. The numbers moved accordingly — 1.09 M window arms instead of
-83 730, 47 155 refusals instead of 6, `track 28`, the same figure
-`system_boot_etalon` prints at the Finder. **Twice in one day, on the same
-subsystem, a green result meant "nothing ran" rather than "nothing broke".**
+### 3.3 The instrument, and the exit rate it exposed
 
-### Measured
-
-A boot etalon is a poor stopwatch — it stops the moment it recognises the
-Finder, so the two engines get timed over *different* amounts of guest work
-and the ratio flatters whichever arrived first. The table below therefore
-comes from `tests/jit_bench.cpp` (a dev tool, `make jit_bench`, **not** a
-CTest gate), which runs a **fixed guest-cycle budget**: the same
-instructions, the same peripheral schedule, wall clock the only variable.
-`POM68K_BENCH_FRAMES` sets the budget in frames of 416 667 cycles. It prints
-a fingerprint of the whole architectural state at the end, and every number
-here was taken with all three engines printing the **same** fingerprint.
-
-Quadra 605, Mac OS 8.1. Idle host, adjacent A/B pairs ×3, load 1.00,
-**2026-07-31**:
-
-| | 5 G cycles (12 000 frames) | 20 G cycles (48 000 frames) |
-|---|---|---|
-| what the guest is doing | System + extensions loading | whole boot, then idle |
-| Moira interpreter | 213.1 s | 903.9 s |
-| JIT, `threaded` | 126.1 s ×1.69 | 565.7 s ×1.60 |
-| JIT, `x86-64` — what `auto` picks on an 040 | **97.6 s ×2.18** | **432.3 s ×2.09** |
-
-End to end, `q605_boot_etalon` reaching the 256-colour Finder: **61.3 s
-interpreted, 22.9 s on the JIT — ×2.68.**
+**A boot etalon is a poor stopwatch** — it stops the moment it recognises
+the Finder, so the two engines get timed over *different* amounts of guest
+work and the ratio flatters whichever arrived first. Every number below
+therefore comes from `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp`
+(dev tools, `make jit_bench`, `EXCLUDE_FROM_ALL`, **not** CTest gates),
+which run a **fixed guest-cycle budget**: the same instructions, the same
+peripheral schedule, wall clock the only variable. `POM68K_BENCH_FRAMES`
+sets the budget in frames of 416 667 cycles (Q605) or 640×407 = 260 480
+(LC II). Each prints a fingerprint of the whole architectural state at the
+end, and no number here was taken unless every engine printed the **same**
+fingerprint.
 
 **What still costs, and it is not code size.** Over 12.2 G instructions the
-exit counters show **794 M window-lost exits** on `threaded` — one window
+exit counters showed **794 M window-lost exits** on `threaded` — one window
 death every ~15 instructions. Mac OS 8.1's VM ages pages by writing
 descriptor U bits; every ATC eviction kills the derived window and TLB state
 for that page (`Moira::pomJitAtcEvict`, and that is the exactness contract,
 not a bug); the idle Finder lives under that regime. No conformant backend
-escapes it. It is the measured ceiling at the idle Finder, and the reason
-the 20 G ratio is below the 5 G one.
+escapes it. § 3.6 prices one such exit; it is worth about 3 %, which is much
+less than the rate suggests.
 
-### 3.1bis Re-baselined, and the fallback census that never worked (2026-08-10)
+### 3.4 The current numbers (2026-08-10)
 
-The table above predates three landed emitters and two cost-table fixes, so
-it was re-taken. Same instrument, same rule (identical fingerprints across
-engines), one budget:
+The pre-2026-07-31 figures this file used to carry are superseded — they
+predate three landed emitters, two cost-table fixes and the arm-time DTLB
+flush deletion (§ 8), and § 10 records what changed between them. Same
+instrument, same rule (identical fingerprints across engines), one budget:
 
 **Quadra 605, 3 000 frames (1.25 G machine cycles, 5.0 G core, idle Finder),
 `fp=5af1d47a9322bebf` on all three:**
@@ -321,7 +325,7 @@ engines), one budget:
 **The 68030 i-cache is identical across engines, to the digit** —
 1 602 507 733 fetches / 1 093 456 393 hits / 509 047 173 misses (68.23 %) on
 both. That is not a coincidence to be grateful for, it is the ordering in
-`mmuFetchWord` (`MoiraExecMMU_cpp.h:421-454`): the overlay is charged BEFORE
+`mmuFetchWord` (`MoiraExecMMU_cpp.h:408-461`): the overlay is charged BEFORE
 the window hook, and the threaded backend replays through Moira's own
 handlers. It had never been measured; it is the premise a 68030 code
 generator has to preserve by hand (`docs/JIT_BRINGUP.md` § B).
@@ -342,14 +346,9 @@ us. Wired 2026-08-10; it named both cells within one run:
   that the `ADDA`/`SUBA` path takes only for a word or register source
   (`:2129` vs `:421-423`). This refused **every** `CMPA`: a further 12 %.
 
-Effect over the 3 000-frame budget, fingerprint unchanged:
-
-| | before | after |
-|---|---|---|
-| native share | 96.2 % | **97.6 %** |
-| block fallbacks | 16 475 202 | **7 387 537** (−55 %) |
-| …of which "no emitter" | 11 523 169 | **2 425 771** (−79 %) |
-| wall | 10.30 s | **9.71 s** (−5.7 %) |
+Fixing the two took the native share 96.2 → 97.6 % and block fallbacks from
+16 475 202 to 7 387 537 (−55 %) on the 3 000-frame budget, fingerprint
+unchanged; § 3.5's table carries the end state.
 
 Both were coverage bugs and never correctness bugs — which is exactly what
 cross-checking the table against the tracer's own measurement buys, and why
@@ -357,11 +356,7 @@ cross-checking the table against the tracer's own measurement buys, and why
 other one: **an instrument that is wired on one backend and not the other
 reports success on the backend that is not looking.**
 
-`POM68K_JIT_VERBOSE_BLOCKS=N` (default 40) came out of the same hunt: the
-block dump is the only place a block's MEASURED per-instruction cycle counts
-are visible, and a hard-coded 40 only ever showed ROM reset code.
-
-### 3.1ter The data path was the coverage tail, not the instruction set (2026-08-10)
+### 3.5 The data path was the coverage tail, not the instruction set (2026-08-10)
 
 With the census finally reporting, the ordered fallback list on a real
 workload turned out to have almost nothing to do with the one § 7 predicted
@@ -425,9 +420,9 @@ exactly where QuickDraw's blitters — the thing the indexed modes were
 motivated by — are absent. Re-open with a census taken over a drawing-heavy
 phase; do not close it on an idle-Finder number.
 
-### 3.2 What one window exit actually costs (2026-08-09)
+### 3.6 What one window exit actually costs (2026-08-09)
 
-The paragraph above was a **rate with no price**: 794 M exits over 12.2 G
+§ 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G
 instructions says how often the window dies, not what a death costs. That gap
 is what let `TODO.md` § 0·A price a relaxed ATC at "+10 to 30 %" — an estimate
 resting on an unexamined intuition. `POM68K_JIT_WINDOW_KILL=N` (§ 6) removes
@@ -486,7 +481,7 @@ same machine-cycle budget. Within a slice count the engines still agree.)
 
 Superseded measurements, and what changed between them, are in § 10.
 
-### Why the block cache is OFF for the portable backend
+### 3.7 Why the block cache is OFF for the portable backend
 
 Because it measured **slower** than the window alone there, and the reason is
 structural rather than a tuning failure. Moira re-fetches `ird` itself in
@@ -529,12 +524,21 @@ proven safe is `Unsafe`.
 **`Unsafe`** means it can change the MMU translation, the ATC, the caches or
 the supervisor bit — all of which would silently stale the code window — or
 it is a transfer of control the block builder cannot model. Today that is:
-the `$4Exx` group *except* the carve-outs below (RTE, RTD, TRAP, TRAPV, RTR,
-RESET, STOP, MOVE USP, MOVEC); `MOVE`/`ANDI`/`ORI`/`EORI` to or from SR/CCR;
-`MOVES`, `CAS`/`CAS2`, `CMP2`/`CHK2`; `TAS` (a locked RMW — it sets
-`mmu040Lrmw`, so its read translates with write semantics); `BKPT`;
-`TRAPcc`; the whole A-line; and the whole F-line (FPU, PFLUSH/PTEST,
-CINV/CPUSH, MOVE16). Everything else is already caught by the replay checks.
+the `$4Exx` group *except* the carve-outs below (so RTE, RTD, TRAP, TRAPV,
+RTR, RESET, STOP, MOVE USP, MOVEC are all out); `MOVE`/`ANDI`/`ORI`/`EORI`
+to SR/CCR and `MOVE` **from** SR to memory; `MOVES`, `CAS`/`CAS2`,
+`CMP2`/`CHK2`; `TAS` (a locked RMW — it sets `mmu040Lrmw`, so its read
+translates with write semantics); `BKPT`; `TRAPcc`; the whole A-line; and
+the whole F-line (FPU, PFLUSH/PTEST, CINV/CPUSH, MOVE16). Everything else is
+already caught by the replay checks.
+
+**`MOVE SR,Dn` is the one carve-out out of that SR group** (`JitIr.h:207`,
+2026-08-12): on a 68010+ it is privileged, so a successful trace is
+necessarily supervisor mode, and it changes no mapping and no execution
+state. It is `Kind::Alu`, a read-only block member. A memory destination
+(`MOVE SR,<ea>`) stays `Unsafe` — conservative, and `jit_backend_test` pins
+both halves. Only the AArch64 backend emits it natively; x86-64 takes the
+cold stub.
 
 **`Branch`** is the block's **terminator**, and part of it. The set grew
 twice, each time for a measured reason recorded in `JitIr.h`:
@@ -559,7 +563,7 @@ instead.
 
 ## 5. The working loop
 
-Do not iterate against a bare `ctest` — 162 gates, ~3h35, and `-j` is unsafe
+Do not iterate against a bare `ctest` — 183 gates, hours, and `-j` is unsafe
 because the boot etalons are contention-sensitive. Do not iterate against a
 bare `make` either: tree-wide LTO relinks ~90 binaries after any core change.
 
@@ -568,10 +572,12 @@ make -j4 jitdev && ctest -L smoke     # ~2.5 min end to end
 ```
 
 `jitdev` builds the three binaries `-L smoke` needs (`jit_backend_test`,
-`jit_lockstep_test`, `q605_boot_etalon`) — the other five registrations
-re-run those same binaries under different environments. `-L smoke` is
-**eight** gates: `jit_backend_test`, five flavours of `jit_lockstep_test`,
-and the q605 boot etalon **on both engines**.
+`jit_lockstep_test`, `q605_boot_etalon`) — the other registrations re-run
+those same binaries under different environments. `-L smoke` is **eight**
+gates: `jit_backend_test`, five flavours of `jit_lockstep_test`, and the
+q605 boot etalon **on both engines**; on an AArch64 host with
+`POM68K_JIT_BACKENDS=auto` a sixth lockstep flavour
+(`jit_lockstep_a64_coarse_test`) joins the tier, making it nine.
 
 `jit_lockstep_test` is the one that matters: two Quadra 605 machines from one
 ROM and one read-only disk image, one interpreted and one JIT-driven,
@@ -590,6 +596,7 @@ the others cannot:
 | `jit_lockstep_x64_test` | the code generator at 256 cycles per comparison — long blocks, and a loop closing on itself entirely inside generated code |
 | `jit_lockstep_x64_fine_test` | the code generator at one cycle per comparison |
 | `jit_lockstep_noaccess_test` | x64 + the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
+| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`CMakeLists.txt:1459-1476`), which is also why it is the one smoke gate an x86-64 developer never sees |
 
 Two things this gate learned the hard way, both worth keeping in mind when
 extending it:
@@ -606,20 +613,25 @@ extending it:
 
 Widen only when the smoke tier is green:
 
-| command | gates | time | when |
-|---|---|---|---|
-| `ctest -L unit` | 59 | ~40 s | anything touching non-machine code |
-| `ctest -L jit` | 16 | ~30 min | before proposing a JIT change |
-| `ctest -L m040` | 30 | ~1h30 | the 68040 family — the JIT's blast radius |
-| `ctest` | 129 | ~2h30 | the release gate, once |
+| command | gates | when |
+|---|---|---|
+| `ctest -L unit` | 92 | anything touching non-machine code |
+| `ctest -L jit` | 29 | before proposing a JIT change |
+| `ctest -L m040` | 41 | the 68040 family — the JIT's blast radius |
+| `ctest -L etalon-core` | 12 | one profile per platform, ~32 min — the pre-commit tier |
+| `ctest` | 183 | the release gate, once |
 
-(Gate counts re-derived from `ctest -N` on 2026-07-31; timings from a real
-run. `CMakeLists.txt`'s own inline comment carries older, more optimistic
-estimates. Both drift every time a gate lands — re-derive rather than trust
-either.)
+(Counts from `ctest -N` on 2026-08-12, on an **AArch64** host with
+`POM68K_JIT_BACKENDS=auto`. Two gates are host-conditional
+(`jit_lockstep_a64_coarse_test`, `jit_lockstep_030_a64_experimental_test`),
+so an x86-64 host configures 181 / 90 unit / 27 jit — `m040` and `etalon`
+are host-independent. `CMakeLists.txt`'s own inline comment near the label
+block carries older numbers. All of them drift every time a gate lands —
+re-derive rather than trust either.)
 
-Labels are derived from test names in `CMakeLists.txt`, so a new gate is
-classified the moment it is registered.
+Labels are derived from test names at the end of `CMakeLists.txt`, so a new
+gate is classified the moment it is registered — and the derivation
+OVERWRITES any `LABELS` a registration set inline.
 
 ---
 
@@ -640,19 +652,33 @@ Everything in `JitConfig.h` unless noted.
 | `POM68K_JIT_A64_PACING` | `1` | AArch64 inline peripheral deadline/batch test; `0` calls `sync(cycles)` after every emitted instruction for attribution |
 | `POM68K_Q605_EVENT_SCC` | `1` | Q605 carries serialized SCC time debt to its exact event/MMIO boundary; `0` restores per-`tick` stepping for A/B attribution |
 | `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
+| `POM68K_JIT_A64_STORE_GUARD_OPCODE` | `0xB592` | AArch64 bring-up only: the opcode whose store-guard fallback is removed opcode-locally, parsed `strtoul` base 0 and refused above `0xFFFF` (`JitBackendA64.cpp:2181-2187`) |
+| `POM68K_JIT_ICACHE_EMIT` | `1` | ATTRIBUTION knob for the emitted 68030 i-cache charge (`docs/JIT_BRINGUP.md` § B). Off, an 030 block charges the instruction cost alone, so a residual divergence provably belongs to something else. Only a bring-up measurement should turn it off |
 | `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
-| `POM68K_DATA_WINDOW` | `0` | the INTERPRETER's data window (§ 8) — opt-in since the ATC-exactness capping made it a net loss (`JitEngine.cpp:39-53`) |
+| `POM68K_DATA_WINDOW` | `0` | the INTERPRETER's data window (§ 8) — opt-in since the ATC-exactness capping made it a net loss (`JitEngine.cpp:76-90`) |
 | `POM68K_JIT_PARANOID` | `0` | re-validate the translation at every arm — for differential testing (`JitEngine.cpp`) |
-| `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr — **plus a retired / window-covered / arms / failed line at teardown**, which is how you tell "the engine is on" from "the engine is doing something" (§ 3.1) |
+| `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr — **plus a retired / window-covered / arms / failed line and a dtlb-refusals-by-reason line at teardown**, which is how you tell "the engine is on" from "the engine is doing something" (§ 3.1) |
+| `POM68K_JIT_VERBOSE_BLOCKS` | `40` | how many compiled blocks the dump prints under `POM68K_JIT_VERBOSE`. The dump is the only place a block's MEASURED per-instruction cycles are visible, and 40 only ever reaches ROM reset code — raise it to diagnose a refusal deep in a boot |
 | `POM68K_JIT_ACCESS_THUNK` | `2` | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores |
-| `POM68K_JIT_HISTO` | `0` | dynamic opcode census, dumped at exit, with the backend's `canEmit()` coverage (`JitEngine.cpp dumpHisto()`) |
-| `POM68K_JIT_WINDOW_KILL` | `0` | **measurement instrument, not tuning**: kill the code window every N retired instructions on purpose, so the price of ONE window-lost exit is the slope of wall time against exit count (§ 3.2). A kill is architecturally invisible, so a bench fingerprint must not move with N — that is what makes the fit a measurement rather than a story. Slows the engine down by design |
-| `POM68K_JIT_LOCKSTEP_N` | `5000000` | instructions compared by `jit_lockstep_test` |
-| `POM68K_JIT_LOCKSTEP_BUDGET` | `1` | cycles between comparisons (higher = longer blocks) |
-| `POM68K_JIT_LOCKSTEP_FINE_AT` | — | step after which the comparison drops to one cycle |
-| `POM68K_JIT_LOCKSTEP_FULL_RAM_AT` | — | 030 gate diagnostic: compare the complete 10 MiB RAM bus from this checkpoint onward instead of only low globals |
-| `POM68K_JIT_LOCKSTEP_WRITE_TRACE_AT` | — | 030 gate diagnostic: journal writes overlapping `$533E` inside this coarse quantum, including direct A64 DTLB stores |
-| `POM68K_BENCH_FRAMES` | q605 `3000`, lcii `6000` | `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` — frames of 416 667 (Q605) or 260 480 (LC II) **machine** cycles |
+| `POM68K_JIT_HISTO` | `0` | dynamic opcode census, dumped at exit, with the backend's `canEmit()` coverage — plus the static/runtime fallback census and its per-reason split (`JitEngine.cpp dumpHisto()`) |
+| `POM68K_JIT_WINDOW_KILL` | `0` | **measurement instrument, not tuning**: kill the code window every N retired instructions on purpose, so the price of ONE window-lost exit is the slope of wall time against exit count (§ 3.6). A kill is architecturally invisible, so a bench fingerprint must not move with N — that is what makes the fit a measurement rather than a story. Slows the engine down by design |
+| `POM68K_BENCH_FRAMES` | q605 `3000`, lcii `6000` | `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` — frames of 416 667 (Q605) or 640×407 = 260 480 (LC II) **machine** cycles |
+| `POM68K_BENCH_SLICES` | `0` = CPU alone | `jit_bench_lcii` only: N ≥ 1 runs the GUI's own quantum, N slices per frame with a raster catch-up at each boundary (§ 3.6) |
+
+The lockstep gates read their own knobs, none of which the emulator ever
+sees. Defaults differ per gate because the machine classes do:
+
+| Variable | `jit_lockstep_test` (Q605) | `_68000_test` | `_030_test` (LC II) |
+|---|---|---|---|
+| `POM68K_JIT_LOCKSTEP_N` (`argv[1]` wins) | 5 000 000 | 2 000 000 (CMake passes 2 500 000) | 120 000 (CMake passes it too) |
+| `POM68K_JIT_LOCKSTEP_BUDGET` | 1 | 1 (CMake sets 256) | 8192 |
+| `POM68K_JIT_LOCKSTEP_FINE_AT` | off | off (CMake sets 2 400 000) | off (CMake sets 110 000) |
+| `POM68K_JIT_LOCKSTEP_FINE_BUDGET` | — | — | 64 — **and it must stay well above 1**: at one cycle the engine never gets room to build a block, so a "fine" run compares the interpreter with itself and reports identical |
+| `POM68K_JIT_LOCKSTEP_HIDDEN` / `_TRACE_AT` | dump hidden CPU/peripheral state; trace from a step | — | — |
+| `POM68K_JIT_LOCKSTEP_TRACE_FROM` | — | — | per-instruction trace from a step |
+| `POM68K_JIT_LOCKSTEP_PERIPH_TRACE_AT` | — | — | every `executeUntil` edge and peripheral delivery inside comparison N, with a hash of the save-stated V8 device tree. Null outside that one comparison |
+| `POM68K_JIT_LOCKSTEP_FULL_RAM_AT` | — | — | compare the complete 10 MiB RAM bus from this checkpoint on, not only low globals |
+| `POM68K_JIT_LOCKSTEP_WRITE_TRACE_AT` | — | — | journal writes overlapping `$533E` inside this coarse quantum, including direct A64 DTLB stores |
 
 `POM68K_JIT_FETCH` and `POM68K_JIT_BLOCKS` are not independent, and that is
 deliberate: block discovery reads opcodes out of the code window, so
@@ -661,21 +687,21 @@ but its own dispatch overhead — useful exactly once, as the zero point.
 `POM68K_JIT_BLOCKS=0` is the interesting attribution knob on a
 code-generating backend: window on, no generated code at all.
 
-The successful 030 `(An)+` write has a narrow oracle.
-`jit_restart_write_030_test` compares its
-address/value, post-access An, complete 16 MiB memory image and CPU state
-sampled inside MMIO. This caught CCR publication after LASTWRITE instead of
-before it. The follow-up write journal found that `$533E` was corrupted by
-the next memory-to-memory MOVE: its source probe committed `(A0)+`, its
-destination probe refused, then replay incremented A0 again. Both mappings
-are now probed before either EA mutation. `(An)+` is enabled without a flag
-and the coarse 120k lockstep is green.
+Two more `jit` gates carry no environment at all, because what they pin is
+a boundary rather than a configuration: `jit_restart_write_030_test`
+(a native `MOVE.B D0,d16(A6)` block pointed into a `/BERR` hole, all 32
+bytes of the 68030 format-$A frame compared with a pure-interpreter oracle)
+and `jit_store_guard_a64_test` (mask-null RAM goes direct; a true overlap
+with translated code is seen by the memory map and evicts the block). Both
+soft-skip away from AArch64. `docs/JIT_BRINGUP.md` § C is where they come
+from.
 
 ---
 
 ## 7. The x86-64 backend (J2)
 
-> **Scope: the 68040 family only** (`caps().guestFamilies = kGuest68040`).
+> **Scope: the 68040 family only** (`caps().guestFamilies = kGuest68040`,
+> `JitBackendX64.cpp:2497` — and the same for a64 at `:2156`).
 > Everything below is written against the 040's instruction-boundary
 > contract, and the differences from the 68030 are semantic, not cosmetic:
 > `(An)+` updates the register *before* the access on an 030 and *after* it
@@ -683,10 +709,7 @@ and the coarse 120k lockstep is green.
 > restartable and stacks a format $A frame (`:355-361`). Both mode-5 cores
 > suppress the tail refill; consequently `queue.irc` is the exact held word
 > (lookahead, extension or displacement), never simply a word derived from
-> the exit PC. The data thunks
-> `pomJitReadData`/`pomJitWriteData` reach `mmu040Read`/`mmu040Write`
-> unconditionally while `pomJitProbeData` refuses everything below
-> `M68EC040` outright.
+> the exit PC.
 >
 > This was learned the expensive way. On 2026-07-29 `auto` stopped filtering
 > on `dflt` — correctly, since that filter meant `auto` could never reach
@@ -698,14 +721,19 @@ and the coarse 120k lockstep is green.
 > while the same machine boots in **2 min 21 s** on `threaded`. Selection
 > now tests guest validity before host usability ranking (`JitBackend.h`
 > § *GuestFamily*), so `auto` lands on `threaded` for the 68000/020/030
-> machines and on x64 for 040s where available; Apple Silicon stays threaded
-> until the AArch64 full-boot gate is green.
+> machines and on a code generator for 040s where available — x64 on
+> x86-64, a64 on Apple Silicon and other AArch64 hosts.
 >
-> Widening the scope is a project, not a flag: the 030's update order and
-> prefetch semantics in the emitters, a 030 branch in `pomJitProbeData`,
-> model-correct access thunks, and an `lcii`/x64 lockstep gate to prove it —
-> the lockstep gates today run **two Quadra 605 machines**, so the 030 code
-> generator would have no differential coverage at all until one exists.
+> **The 68k seam below the backends is no longer 040-only, and the scope
+> box is now the only thing holding the line.** `pomJitProbeData` grew an
+> 030 branch (data-space fc, write-protect and owed-M-bit refusals,
+> `MoiraExecMMU_cpp.h:2085-2135`) and `pomJitReadData`/`pomJitWriteData`
+> reach `mmuRead`/`mmuWrite` on an 030 instead of `mmu040Read`/`Write`
+> (`:2226-2257`). `jit_lockstep_030_test` gives the family the differential
+> coverage it lacked. What is still missing is the emitters' side of the
+> 030 contract — `docs/JIT_BRINGUP.md` § C is the live plan, and until it
+> closes, generated 030 code is reachable only under
+> `POM68K_JIT_UNSAFE_BACKEND=1`.
 
 `src/jit/backends/JitBackendX64.cpp` is the first backend that emits host
 machine code; `X64Asm.h` beneath it turns method calls into bytes and knows
@@ -741,14 +769,15 @@ state.
 
 ### What it emits natively
 
-Source of truth: `X64Backend::canEmit()` (`JitBackendX64.cpp:2074`) plus the
+Source of truth: `X64Backend::canEmit()` (`JitBackendX64.cpp:2525`) plus the
 emitters it dispatches to.
 
 * straight-line: `MOVE`/`MOVEA`/`MOVEQ`; the
   `ADD`/`SUB`/`AND`/`OR`/`EOR`/`CMP` families in both directions;
   `ADDA`/`SUBA`/`CMPA`; `ADDQ`/`SUBQ`; the
   `ADDI`/`SUBI`/`ANDI`/`ORI`/`EORI`/`CMPI` immediates; `TST`, `CLR`, `NEG`,
-  `NOT`, `EXT`, `SWAP`, `LEA`, `BTST` (both forms), `LINK`/`UNLK`/`NOP`, and
+  `NOT`, `EXT`, `SWAP`, `LEA`, `PEA`, `Scc`, `BTST` (both forms),
+  `LINK`/`UNLK`/`NOP`, and
   **`MOVEM`** (both directions, both sizes, one span probe per burst, the
   040 restart latch `mmu040MovemArmed` checked);
 * as block terminators: `Bcc`/`BRA`, `JSR`/`BSR`/`RTS`, **`DBcc`** (loops
@@ -756,17 +785,26 @@ emitters it dispatches to.
 * over addressing modes `Dn`, `An`, `(An)`, `(An)+`, `-(An)`, `d16(An)`,
   `(xxx).W`, `(xxx).L`, `d16(PC)` and immediate (`eaIndex()`).
 
-Everything else — including every 68020 indexed mode, every shift and
-rotate, `Scc`, `PEA`, `MULU`/`MULS`/`DIVU`/`DIVS`, `ABCD`/`SBCD`/`EXG`,
-`ADDX`/`SUBX`, `CMPM` and `MOVEP` — falls back per instruction to a cold
-stub that runs that one instruction through Moira and rejoins the compiled
-stream. A block whose native coverage falls below half is refused outright:
-it would be the same interpreter work plus a call and a frame.
+Everything else — including every 68020 indexed mode (`eaIndex()` returns
+−1 for mode 6 and for 7.3), every shift and rotate,
+`MULU`/`MULS`/`DIVU`/`DIVS`, `ABCD`/`SBCD`/`EXG`,
+`ADDX`/`SUBX`, `CMPM`, `MOVEP` and `MOVE SR,Dn` — falls back per instruction
+to a cold stub that runs that one instruction through Moira and rejoins the
+compiled stream. A block whose native coverage falls below half is refused
+outright: it would be the same interpreter work plus a call and a frame.
+
+**The two generators are not the same set, and neither is a superset.**
+x64 has `Scc` and `PEA`; a64 (`canEmitReg()`, `JitBackendA64.cpp:572`) has
+the immediate line-$E shifts and rotates (no `ROX` yet), the register
+bitfield forms, brief-indexed `d8(An,Xn)` and `d8(PC,Xn)`, and
+`MOVE SR,Dn` — and has neither `Scc` nor `PEA`. `jit_backend_test` asserts
+the divergences explicitly (`0x40C0` and `0x0130` are keyed to the active
+backend's name), so closing one is a gate edit as well as an emitter.
 
 ### What it is worth
 
 The generator wins on both bench regimes and on the boot etalon — the
-numbers are in § 3's table; this section is what produced them. Three landed
+numbers are in § 3.4's table; this section is what produced them. Three landed
 changes, in order of size:
 
 1. **The arm-time DTLB flush is gone** (2026-07-31) — worth −23 to −33 %
@@ -779,17 +817,15 @@ changes, in order of size:
    three names, ~5 % of idle-Finder instructions, −3.0 % / −1.7 % on the
    two regimes, boot etalon 25.6 → 24.7 s.
 
-**Coverage.** The last census (`POM68K_JIT_HISTO=1`, blocks off, x64 column)
-read **89.6 % native over 12.2 G instructions** — but it was taken on
-2026-07-30 **before** `MOVEM`/`DBcc`/`JMP` landed, and those were the 5.2 %
-sitting at the top of its uncovered list. Coverage today is therefore
-around 95 %, and **has not been re-measured** — re-run the census before
-quoting a number. After the five, the uncovered list is led by line-$E
-shifts (0.9 %), `Scc`, `PEA`, and the 68020 indexed modes, which are what
-QuickDraw's blitters are built from.
+**Coverage.** 98.5 % native on the 3 000-frame Q605 budget after § 3.5's
+work (was 89.6 % in the 2026-07-30 census, 96.2 % before the two cost-table
+fixes). The residual 0.4 % of retired instructions is enumerated in § 3.5
+along with the reason two of its items are OPEN rather than dropped.
+Re-measure with `POM68K_JIT_HISTO=1` before quoting any of these; a census
+taken over an idle Finder cannot price the indexed modes.
 
 **The next lever is not code density.** The binding cost at the idle Finder
-is the exactness contract itself (§ 3: one window death per ~15
+is the exactness contract itself (§ 3.3: one window death per ~15
 instructions). The old FOOTPRINT theory (47 000 blocks × ~1.5 KB) is not
 disproved but is no longer the leading term, and the DENSITY item it
 motivated (~150 B of host code per guest instruction, mostly the
@@ -825,7 +861,11 @@ are the safety argument for the whole path:
 
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
-  modified, because that write owes the descriptor an M bit;
+  modified, because that write owes the descriptor an M bit. The 68030
+  branch (`MoiraExecMMU_cpp.h:2085-2135`) probes DATA space, `fc = 5/1`,
+  not the program space the code probe uses: the 030 ATC matches `fc`
+  exactly, so probing the data side with the program code would miss every
+  entry and refuse everything — an engine that looks merely slow;
 * **no I/O and no unmapped hole** — `dataSpan` (per machine, e.g.
   `Q605Memory::dataSpan`) hands back plain RAM, ROM for a read, and the
   **framebuffer aperture**, and nothing else. The framebuffer is in
@@ -835,13 +875,23 @@ are the safety argument for the whole path:
   video CELL registers next door (`$F98000xx`) stay out — reads there latch
   and auto-increment. So do ROM seen by a store, and RAM while a debug
   write-watch is armed;
-* **no store into a page holding translated code** — that one has to go
-  through the memory map, so the write guard sees it (`codePage_`);
-* **4 KB and 8 KB MMU pages only**, filled as independent 4 KB slices. The
-  first cut refused anything but 4 KB — "the 68040 boots with 4 KB on every
-  Mac" — which stops being true the moment the System arms paging, and the
-  refusal cost a call, a probe and a rejection on *every* data access:
-  ~7 s slower across engines.
+* **no store into a 256-byte slice holding translated code.** That one has
+  to go through the memory map, so the write guard sees it. It was a
+  refusal of the whole 4 KB page (`codePage_`) until 2026-08-10, when
+  `PomJitDtlbEntry::codeMask` made it per-slice — § 3.5 has the numbers and
+  `BackendCaps::dtlbCodeMask` the safety declaration. A backend that has not
+  opted in still gets the whole-page refusal;
+* **MMU pages smaller than 4 KB.** An entry maps one 4 KB slice, so a page
+  wider than that fills as independent slices (translation preserves the
+  in-page offset and pages are size-aligned), but a page *narrower* would
+  put several different translations inside one entry. The first cut
+  demanded exactly 4 KB — "the 68040 boots with 4 KB on every Mac" — which
+  stops being true the moment the System arms paging (8 KB on the 040), and
+  the refusal, being transient by design, cost a call, a probe and a
+  rejection on *every* data access: ~7 s slower across engines. The 68030
+  made it worse still: its TC picks anything from 256 B to 32 KB, and the
+  LC II's System picks neither 4 nor 8 KB — **17 425 292** refused fills in
+  one bring-up run.
 
 A refusal is *cached* as an entry with a null host pointer, because a
 hardware poll loop would otherwise pay a call per iteration to be told the
@@ -864,7 +914,7 @@ after: **27** flushes.
 ### The arm-time flush that owned nothing (2026-07-31)
 
 Every code-window re-arm used to call `pomJitDtlbFlush()` unconditionally —
-clearing both 4 KB tables, once per ~15 idle instructions (§ 3), paid even
+clearing both 4 KB tables, once per ~15 idle instructions (§ 3.3), paid even
 by `threaded`, which never reads the DTLB at all. It was standing in for
 invalidations that every one already have an exact owner:
 
@@ -873,11 +923,11 @@ invalidations that every one already have an exact owner:
 | the translation itself changed | `Moira::pomJitMapMoved()` flushes at the source of every `pomJitMmuGen` bump |
 | an ATC entry was evicted | `pomJitAtcEvict()`, per page and per space |
 | privilege changed | it rides in each entry's tag (bit 31) |
-| a page gained translated code | `markPages()` flushes when it marks |
+| a slice gained its first block | `markPages()` flushes on the 0 → 1 transition — **which it did not do until 2026-08-10**, and that was a real self-modifying-code hole, not a coverage one (§ 3.5) |
 | a page lost its last block | `serviceGuard()` flushes when it unmarks |
 
 So deleting it is conformance-neutral (two 60 M-step locksteps bit-identical,
-x64 and threaded; `ctest -L jit` 16/16) and worth −23 to −33 % of wall clock
+x64 and threaded; the whole `jit` tier green) and worth −23 to −33 % of wall clock
 depending on backend and regime. DTLB fills over one 60 M-step lockstep:
 942 M → 7.8 M. What survives between two arms is exactly the set of entries
 whose backing ATC rows are still resident — which is the exactness contract
@@ -912,7 +962,9 @@ carries this block's tag it IS this block.
 
 Three things make jumping straight into another block safe:
 
-* the target is entered **past its prologue** (`linkEntry_`), so it inherits
+* the target is entered **past its prologue** (`Backend::linkEntry()`; a
+  backend returning null there is simply never published as a jump target),
+  so it inherits
   the callee-saved registers — `Moira*`, the frame, the clock and its target,
   the pacing baseline — and the retired-instruction count accumulated so far;
 * privilege cannot change inside a chain (every SR write is `Unsafe`), so a
@@ -923,6 +975,14 @@ Three things make jumping straight into another block safe:
 
 Every block's first instruction still runs the budget and flag guards, so a
 chain cannot outrun the caller's cycle target or ignore a pending interrupt.
+
+**One block class is barred from the chain in both directions**, and it was
+found by measurement rather than reasoning: on the 68030 a block containing
+a restartable write cannot be crossed as a transparent native boundary, so
+the a64 backend publishes no link entry for it and emits no outgoing links
+from it (`JitBackendA64.cpp:2216`, `:2453`). Disabling links altogether made
+an otherwise-diverging 120k lockstep exact; barring only this class kept
+every other link and passed the same gate (`docs/JIT_BRINGUP.md` § C).
 
 The table originally had 4,096 slots. A 6,000-frame Q605 workload compiles
 more than 150k blocks over its lifetime and keeps up to 65,536 resident, so
@@ -937,6 +997,30 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
 
 ## 10. Journal
 
+* **2026-08-12 — `MOVE SR,Dn` stops ending a block.** Privileged on a
+  68010+, so a successful trace is supervisor mode by construction, and it
+  changes no mapping (§ 4). 2.33 % of a 10k census stream on the LC II;
+  emitted natively by a64 only, cold-stubbed by x64.
+* **2026-08-10/11 — Phase A, and the arm64 default.** The fallback census
+  was wired on x86-64 (it had only ever been written by a64), which named
+  two wrong cost-table cells; `PomJitDtlbEntry::codeMask` replaced the
+  whole-page store refusal; `markPages()` started flushing the data TLB —
+  a real self-modifying-code hole, not a coverage one; `PEA` and `Scc`
+  landed. −12.8 % wall on the fixed Q605 budget, native share 96.2 → 98.5 %
+  (§ 3.5). Separately: incremental i-cache invalidation and a
+  slice → block-list index made a64 the automatic AArch64 choice, and
+  `jit_lockstep_030_test` gave the 68030 family its first differential
+  coverage.
+* **2026-08-09/10 — the default flipped on the 68040.** `defaultEngine()`
+  stopped being a constant and became a per-family answer
+  (`JitConfig.h:45`, `JitEngine.cpp:129`): `jit/auto` on 68040, interpreter
+  everywhere else, `POM68K_CPU_ENGINE` overriding either way. The plain
+  `q605/centris650/q630/q700_boot_etalon` gates therefore now run the
+  engine, and four `interp_*` registrations preserve one explicit
+  interpreter oracle per 68040 platform — a default is only conformant
+  while the old reference stays independently runnable on the same binary
+  and assets. The evidence bar each future family flip has to clear is
+  `docs/JIT_BRINGUP.md` § D.1.
 * **2026-08-06 — the last two families, and one of them needed a new
   seam.** `Cpu020` (Mac II / IIx / IIcx / SE-30) needed no Moira work at
   all: the plain-020 fetch window and the identity probe have been there
@@ -961,7 +1045,7 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
   `POM68K_JIT_VERBOSE=1` printed nothing that could have told you either.
   It now prints a retired/window/arms line at teardown.
 * **2026-07-31 — the arm-time DTLB flush deleted, and everything
-  re-measured.** § 8 has the argument, § 3 the current table. This is also
+  re-measured.** § 8 has the argument, § 3.4 the current table. This is also
   where the crossover story died: until this pass the x86-64 backend was
   the fastest engine while the guest executed System code and LOST once the
   Finder was up, which the file explained at length. It now wins both
@@ -981,20 +1065,19 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
   They predate the ATC-eviction bit-exactness capping (`pomJitAtcEvict`),
   which is why every current number is roughly an order of magnitude larger
   on the bench: exactness bought at the cost of derived-state churn.
-* **2026-07-27 — J0/J1 measured and hardened.** The fetch window is worth
-  −55 % on the Quadra 605 boot; the block cache is a net loss on `threaded`
-  and ships off there. An adversarial review pass found and closed two real
-  defects in the block path before the gates were called green:
+* **2026-07-27 — J0/J1.** Engine, host-neutral IR, backend interface,
+  portable W^X code buffer, `threaded` backend, code window, block tracing,
+  write guard, GUI **CPU** menu with live switching and a gauge window.
+  Machines wired: Quadra 605 / LC 475 / LC 575 (`Cpu040`), Centris and Quadra
+  610/650/800 (`CentrisCpu`), Quadra 630 / LC 580 (`Q630Cpu`), Quadra 700
+  (`Q700Cpu`); the 68030 wrappers (`Cpu030`, `RbvCpu`, `SonoraCpu`,
+  `VaspCpu`) followed on 2026-07-28. Measured the same day: the fetch window
+  is worth −55 % on the Quadra 605 boot, the block cache is a net loss on
+  `threaded` and ships off there. An adversarial review pass then closed two
+  real defects in the block path before the gates were called green —
   `flushAll()` was reachable re-entrantly from inside a replaying block (a
   guest `MOVEC` to CACR → `didChangeCACR`), freeing the `BlockIr` under the
   backend's own loop; and the block cache had no notion of `pomJitMmuGen`,
   so a `PFLUSH` or a TC/URP/SRP write could point a cached script at
   unrelated code. Flushes are now deferred while a block is in flight, and
   the cache tracks the MMU generation.
-* **2026-07-27 — J0/J1.** Engine, host-neutral IR, backend interface,
-  portable W^X code buffer, `threaded` backend, code window, block tracing,
-  write guard, GUI **CPU** menu with live switching and a gauge window.
-  Machines wired: Quadra 605 / LC 475 / LC 575 (`Cpu040`), Centris and Quadra
-  610/650/800 (`CentrisCpu`), Quadra 630 / LC 580 (`Q630Cpu`), Quadra 700
-  (`Q700Cpu`). The 68030 wrappers (`Cpu030`, `RbvCpu`, `SonoraCpu`,
-  `VaspCpu`) followed on 2026-07-28.

@@ -8,11 +8,15 @@ over real AppleTalk (LLAP → DDP → AFP), no guest-side software needed.
 POM68K guest (POM68K_LTOUDP=1 POM68K_APPLETALK=1)
    ⇄ SCC printer port, real LLAP (src/Scc8530.*)
    ⇄ LToUDP multicast 239.192.76.84:1954 (src/LtoUdp.*)
-   ⇄ TashRouter (extern/tashrouter): LtoudpPort ⇄ MacvtapPort
-   ⇄ pomtap0 (macvtap on a veth pair — stays off your LAN)
-   ⇄ kernel DDP (module `appletalk`) on veth-atalk
+   ⇄ TashRouter (extern/tashrouter): LtoudpPort ⇄ LinuxTapPort
+   ⇄ pomtap0 — a plain TAP, owned by the invoking user, local only
+   ⇄ kernel DDP (module `appletalk`) directly on pomtap0
    ⇄ atalkd + afpd — netatalk 2.4.9 (extern/netatalk2, vendored)
 ```
+
+**Plain TAP, not macvtap-on-veth**: the earlier macvtap setup filtered the
+`09:00:07:ff:ff:ff` RTMP multicasts, so atalkd never learned the network.
+`appleshare.sh` still deletes a leftover `veth-atalk` for that reason.
 
 ## One-time build (no sudo, no system packages)
 
@@ -33,12 +37,23 @@ sudo tools/netatalk2/appleshare.sh --macip         # …plus MacIP: TCP/IP for
 POM68K_LTOUDP=1 POM68K_APPLETALK=1 ./build/POM68K <ROM> <disk>…
 ```
 
-One script brings up module + interfaces, the TashRouter (as your user,
-logs in `run/router.log`), then atalkd + afpd, and self-checks with
+One script brings up module + TAP, the TashRouter (as your user, logs in
+`run/router.log`), then atalkd + cnid_metad + afpd, and self-checks with
 getzones/nbplkup. `sudo tools/netatalk2/appleshare.sh stop` tears it all
-down. Internals: atalkd runs non-seed and learns net/zone from
-TashRouter, so the router is started first (two seed routers on one
-segment fight — the first bring-up's getzones timeout).
+down. Internals worth knowing:
+
+- atalkd runs **non-seed** and learns net/zone from TashRouter, so the
+  router is started first (two seed routers on one segment fight — the
+  first bring-up's getzones timeout).
+- `cnid_metad` is not optional. afpd's default CNID backend is `dbd`: with
+  no metad the mount *succeeds*, then dies the instant afpd needs a Catalog
+  Node ID, which the Mac reports as *"the file server's connection has
+  unexpectedly closed down"* — not an ASP tickle timeout.
+- afpd maps the guest login to **your** user, not `nobody`: Ubuntu homes are
+  `drwxr-x---`, so `nobody` cannot traverse to `input/` and afpd would hide
+  the volume at login (empty Chooser volume list).
+- the router runs from `.venv-tools/bin/python` — create it first if the
+  repo has none (`python3 -m venv .venv-tools`).
 
 In the guest: **Chooser → AppleShare** → server "POM68K" → log in as
 Guest → mount **Input**. StuffIt archives can be expanded straight off
@@ -48,8 +63,8 @@ the share (or copy to the local disk first — LocalTalk runs at its real
 Notes:
 - Kernel module: `modprobe appletalk` (done by the bridge script). The
   module ships with Ubuntu's generic kernels.
-- Nothing binds to your physical network: the DDP segment lives on a
-  local veth pair, and LToUDP multicast has TTL 1.
+- Nothing binds to your physical network: the DDP segment lives on the
+  local `pomtap0` TAP, and LToUDP multicast has TTL 1.
 - `tools/netatalk2/run/` holds the generated configs, logs + pid files
   (gitignored). `sudo tools/netatalk2/appleshare.sh stop` stops it all.
 - System 6 guests: open the Chooser to start AppleTalk (Sys 7 opens it

@@ -34,13 +34,16 @@ with ICMP echo and reclaimed.
 ## How POM68K builds and runs it
 
 - Built by `tools/macip/build_macipgw.sh` **against the vendored
-  netatalk 2.4.9** (`extern/netatalk2` headers + `sys/netatalk/` kernel
-  headers, linked to `extern/netatalk2-build/install/.../libatalk.so`
+  netatalk 2.4.9** (`-I extern/netatalk2/include -I extern/netatalk2/sys`,
+  linked to `extern/netatalk2-build/install/lib/x86_64-linux-gnu/libatalk.so`
   with an rpath). It uses libatalk's public ATP/NBP API plus four
   internal-but-exported symbols (`nbp_parse`, `at_addr_eq`,
   `atp_alloc_buf`, `atp_free_buf`) — all verified exported by the
   vendored `libatalk.so` (2026-07-23). Output:
-  `extern/netatalk2-build/macipgw/macipgw` (gitignored).
+  `extern/netatalk2-build/macipgw/macipgw` (gitignored). The library
+  directory is **hardcoded x86_64** (`build_macipgw.sh:15`), so the script
+  needs that one line changed on aarch64 — it fails with "run
+  build_netatalk2.sh first" rather than a useful message.
 - Started by `tools/macip/macip.sh` (called from
   `tools/netatalk2/appleshare.sh --macip`) after `atalkd`, because
   `nbp_rgstr`/ZIP `GetZoneList` talk to the local `atalkd` through the

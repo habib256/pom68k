@@ -20,8 +20,8 @@ to its wall-clock, and two builds of the same tree must print the same one.
 |---|---|---|---|
 | **LTO** | inlines across translation units; lets the Moira dispatch and the bus fast path see each other | **yes** — no ISA change | `POM68K_LTO` (CMake) |
 | **`-mtune=cortex-a72`** | schedules for the A72's pipeline; emits **no** A72-only instruction, so a Pi 3 still loads the binary | **yes** | `POM68K_TUNE` (CMake) |
-| **`-mcpu=cortex-a72`** | the above **plus** raises the ISA floor to that core — **measured worth on this codebase: nothing, see § 1bis** | **no** | `packaging/raspberry/build_native_pi.sh` |
-| **PGO** | lays the frequent branch outcome out in sequence | yes, but needs a training run with real assets | `POM68K_PGO` + `tools/pgo_train_run.sh` |
+| **`-mcpu=cortex-a72`** | the above **plus** raises the ISA floor to that core — **measured worth on this codebase: nothing, see § 1bis** | **no** | `packaging/raspberry/build_native_pi.sh` (on the board) and `build_in_bionic_pi.sh` (CI); both pass it through `CMAKE_CXX_FLAGS`, never `POM68K_TUNE`, which only emits `-mtune=` |
+| **PGO** | lays the frequent branch outcome out in sequence | yes, but needs a training run with real assets | `POM68K_PGO=generate\|use` (CMake), driven by `tools/pgo_train.sh` / `--pgo`; the training load itself is `tools/pgo_train_run.sh` |
 
 The split matters because two different people build POM68K for a Pi:
 
@@ -133,6 +133,12 @@ packaging/raspberry/build_native_pi.sh --pgo         # + PGO + LTO (recommended)
 sudo packaging/raspberry/build_native_pi.sh --pgo --install    # → /opt/pom68k
 ```
 
+**LTO is off in the plain run**; `--pgo` turns it on, and only above 2 GB of
+RAM (third bullet below). A non-PGO build that wants it needs `POM68K_LTO=1`
+in the environment — the script maps that to `-DPOM68K_LTO=ON` and otherwise
+passes `OFF`, because a Pi's LTO link is minutes long and the operator who
+skipped `--pgo` asked for the short path.
+
 What the script does that a plain `cmake && make` does not:
 
 - **Reads `/proc/device-tree/model`** rather than trusting `-mcpu=native`: on
@@ -225,12 +231,14 @@ nothing — hence the warning line.
 
 ### The other half: cold code
 
-A four-machine training set leaves ~30 machine and device translation units
+Even the broad set below leaves most machine and device translation units
 cold, and GCC optimizes cold functions **for size**. Untrained profiles would
 come out of a PGO build *slower* than out of a plain `-O3` one.
-`-fprofile-partial-training` (GCC ≥ 10, probed) is what stops that, and the
-training set is deliberately broad for the same reason — one machine per CPU
-family, plus the floppy path no hard-disk boot ever reaches:
+`-fprofile-partial-training` (GCC ≥ 10, probed —
+`CMakeLists.txt:174-176`) is what stops that, and the training set is
+deliberately broad for the same reason — one machine per CPU family, plus the
+floppy path no hard-disk boot ever reaches. The list lives in **one** place,
+`tools/pgo_train_run.sh`'s `kGates`, shared by both recipes:
 
 | Label | Gate | Covers |
 |---|---|---|
@@ -249,8 +257,8 @@ out every 68030 machine's hot loop as if it were cold.
 
 ## 6. Not ported, and why
 
-- **PGO in CI.** The `-mcpu` half of NeoST's Pi workflow *was* ported (§ 4bis
-  below); its PGO half cannot be. NeoST trains on its ARM64 runner because its
+- **PGO in CI.** The `-mcpu` half of NeoST's Pi workflow *was* ported (§ 4bis);
+  its PGO half cannot be. NeoST trains on its ARM64 runner because its
   TOS ROMs are in the repository. **POM68K's ROMs are user-provided and never
   committed**, so a runner has nothing to boot and any profile it collected
   would be empty — the exact silent failure § 5 describes. Training has to

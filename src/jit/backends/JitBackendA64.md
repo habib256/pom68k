@@ -1,53 +1,73 @@
 # AArch64 backend — implementation and porting note
 
-## Current implementation (2026-08-04)
+## What it is today
 
-`JitBackendA64.cpp` now covers the same 68040 opcode families advertised by
-the x86-64 backend and adds long branches, modifying bit operations,
-immediate shifts/rotates and constant register bitfields. Plain memory uses
-the inline read/write DTLBs with REV16/REV32;
-refused mappings and unsupported forms re-enter Moira at an exact boundary.
-The Q605 lockstep passes 5 million comparisons (and a coarse-budget run
-exercises complete multi-instruction blocks).
+`JitBackendA64.cpp` is a native 68040 code generator, declared for
+`kGuest68040` and nothing else (`:2156`), and the backend `auto` selects on
+every AArch64 host where `POM68K_JIT_BACKENDS=auto`. Plain memory goes
+through the inline read/write DTLBs with REV16/REV32; refused mappings and
+unsupported forms re-enter Moira at an exact instruction boundary. Peripheral
+pacing keeps the guest clock and the deadline in callee-saved host registers
+and calls synchronization only when a batch or deadline is due. External
+exits probe the engine's direct-mapped link table and branch straight into an
+already-compiled target — constant targets through a tag-checked slot,
+dynamic `RTS`/`JMP` targets by computing the index and validating the runtime
+PC. (On the Q605, whose batch is one, the exact direct synchronization path
+stays cheaper than adding a redundant deadline test.)
 
-Peripheral pacing keeps the guest clock and deadline in callee-saved host
-registers and calls synchronization only when a configured batch is due.
-External exits probe the engine's direct-mapped link table and branch straight
-to an already-compiled target. On the Q605 (whose batch is one), the exact
-direct synchronization path remains cheaper than adding a redundant deadline
-test.
+**Its opcode set is close to the x86-64 backend's but is NOT the same set,
+and neither is a superset.** `canEmitReg()` (`:572`) is the source of truth.
+Only here: the immediate line-$E shifts and rotates (no `ROX` yet), the
+register bitfield forms, brief-indexed `d8(An,Xn)` / `d8(PC,Xn)`
+(`decodeEa()` rejects the full 68020 extension format), and `MOVE SR,Dn`.
+Only on x64: `Scc` and `PEA`. `jit_backend_test` pins several of these
+divergences by backend name, so closing one is a gate edit as well as an
+emitter.
 
-The per-access read thunk and brief indexed addressing raise native retirement
-to 97.3 % on the fixed 1,000-frame Q605 benchmark. Hidden CPU/peripheral-state
-instrumentation found the first differences behind the former late-boot
-failure and localized four targeted emitter bugs: NEG register materialization,
-EA-commit scratch clobbering, short immediate masking and BFINS mask lifetime.
-Five-million-step fine and budget-50 locksteps now pass, as does the complete
-Q605 Finder boot; AArch64 is therefore the automatic arm64 backend.
+Two 68030 emitter families also live here (split cost validation, restartable
+writes, the emitted i-cache charge). They are unreachable in any shipped
+configuration — `guestFamilies` excludes `kGuest68030`, so they run only
+under `POM68K_JIT_UNSAFE_BACKEND=1` and the dedicated
+`jit_lockstep_030_a64_experimental_test`. Their plan and their remaining
+blocker are `docs/JIT_BRINGUP.md` § C.
 
-macOS `sample` then exposed the dominant host cost in `sys_icache_invalidate`:
-each block publication flushed the entire 128 MiB code reservation. The shared
-`CodeBuffer` now invalidates only its newly emitted tail, which also benefits
-Linux AArch64/Raspberry Pi through `__clear_cache`. On Apple Silicon the fixed
-Release/native/LTO workload measures 1.22 s A64 versus 4.55 s threaded (3.73x),
-and the existing LLVM PGO build measures 1.01 s versus 3.41 s; all four runs
-produce the same guest fingerprint.
+**Gates.** `jit_lockstep_a64_coarse_test` (5 M comparisons at 50 cycles,
+registered only on AArch64 with `POM68K_JIT_BACKENDS=auto`),
+`jit_store_guard_a64_test`, `jit_restart_write_030_test`, and the arm64
+native smoke inside `jit_backend_test` — which builds a `MOVEQ` /
+`MOVE SR,D1` / `NOP` block by hand and runs it, so encodings, the Darwin
+AAPCS frame, the MAP_JIT W^X transitions, I-cache invalidation and cycle
+charging are covered without a user ROM.
 
-A second `sample` during the complete boot found virtually every sample in
-`Engine::markPages`: libc++'s `unordered_multimap` scanned an ever-growing
-equal-key group when thousands of blocks shared a 256-byte code slice, and
-the compile path indexed each block twice. The index is now
-`slice -> vector<block key>` (one hash lookup plus O(1) append) and compilation
-does not repeat recording's mark. The complete Release Finder gate fell from
-more than 21 minutes before interruption to 9.19 s, against 21.14 s threaded
-(2.30x), with identical 640x480, framebuffer and SCSI signatures. This engine
-fix is host-neutral and therefore applies to Raspberry Pi AArch64 too.
-The corresponding PGO Finder measurement is 7.86 s versus 15.28 s (1.94x).
+### Measured (Apple Silicon, Release/native/LTO)
 
-The implementation also exposed and fixed a shared `CodeBuffer` bug: after
-the first Apple-Silicon W→X transition, later transitions must only toggle
-`pthread_jit_write_protect_np`; repeating `mprotect(...RWX)` on the same
-`MAP_JIT` mapping fails and leaves already-published code non-executable.
+Fixed 1,000-frame Q605 workload: **1.22 s** against 4.55 s threaded
+(3.73×, identical fingerprint); the same pair under LLVM PGO, 1.01 s against
+3.41 s. The complete Finder gate: **9.19 s** against 21.14 s threaded
+(2.30×), or 7.86 s against 15.28 s under PGO (1.94×), with identical
+640×480, framebuffer and SCSI signatures.
+
+Two host-side costs dominated before those numbers, and both fixes are
+host-neutral (so Raspberry Pi AArch64 gets them too):
+
+* macOS `sample` put the time in `sys_icache_invalidate` — every block
+  publication was flushing the entire 128 MiB code reservation. The shared
+  `CodeBuffer` now invalidates only its newly emitted tail
+  (`icacheSynced_`, `JitCodeBuffer.cpp:183-187`), which on Linux AArch64
+  goes through `__builtin___clear_cache`.
+* A second `sample`, during a full boot, put virtually every sample in
+  `Engine::markPages`: libc++'s `unordered_multimap` scanned an
+  ever-growing equal-key group when thousands of blocks shared one 256-byte
+  slice, and the compile path indexed each block twice. The index is now
+  `slice -> vector<block key>` (one hash lookup, O(1) append) and
+  compilation no longer repeats recording's mark. The Finder gate fell from
+  over 21 minutes before interruption to the 9.19 s above.
+
+The bring-up also found a shared `CodeBuffer` bug worth not re-deriving:
+after the first Apple-Silicon W→X transition, later transitions must only
+toggle `pthread_jit_write_protect_np`. Repeating `mprotect(...RWX)` on the
+same `MAP_JIT` mapping fails and leaves already-published code
+non-executable (`execMapped_`).
 
 ## Porting rationale
 
@@ -96,7 +116,10 @@ Already implemented in `JitCodeBuffer.cpp`, including the toggle right after
 `mmap` (a fresh MAP_JIT mapping is not necessarily writable in the calling
 thread). Note the per-thread part: POM68K runs each machine on its own
 thread, so a buffer written by the machine thread must be toggled by that
-same thread.
+same thread. `CodeBuffer::supported()` probes for real and then restores the
+thread's W state, because that flag is thread-global and a "side-effect-free"
+query that left the thread execute-only would break whatever buffer that
+thread was writing.
 
 ## 4. Big-endian guest on a little-endian host
 
@@ -111,11 +134,3 @@ Entirely inside the backend, and deliberately so. AArch64 has more callee-
 saved general registers than x86-64 (x19–x28 vs rbx/rbp/r12–r15), which
 changes how many 68k registers are worth pinning — a backend-local decision
 that the IR must not, and does not, encode.
-
-## 6. Pacing and block linking
-
-Like x86-64, AArch64 keeps the guest clock and peripheral deadline in host
-registers, calls synchronization only when due, and links hot block exits
-through the engine's direct-mapped table. Constant targets use a tag-checked
-slot directly; dynamic RTS/JMP targets hash and validate the runtime PC.
-Uncompiled targets and tag collisions return through the normal epilogue.
