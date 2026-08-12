@@ -214,7 +214,11 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // v2 adds serialized per-device scheduler debt (Q605/SCC and 53C96). A v1
 // Q605 chunk has no value from which that observable elapsed time can be
 // reconstructed, so reject it explicitly instead of misreading the tail.
-inline constexpr u32      kVersion   = 2;
+// v3 adds the serialized per-device SCC/53C96 debts on Centris, Q630 and
+// Q700 (including the Eclipse second bus). Older readers would otherwise
+// accept the longer chunk while silently dropping elapsed device time.
+// v4 stamps the session's active HLE modules and strict qualification.
+inline constexpr u32      kVersion   = 4;
 
 struct Header {
     u32 version     = kVersion;
@@ -222,9 +226,10 @@ struct Header {
     u32 romChecksum = 0;        // the ROM is not stored, only verified
     u64 ramSize     = 0;
     u64 emuCycles   = 0;        // CPU-cycle stamp (CLAUDE.md: emuCycles everywhere)
+    u32 conformance = 0;        // LleSession.h SnapshotFlag + HLE module mask
 
     template <class Ar> void visit(Ar& ar) {
-        ar(version, machineKind, romChecksum, ramSize, emuCycles);
+        ar(version, machineKind, romChecksum, ramSize, emuCycles, conformance);
     }
 };
 

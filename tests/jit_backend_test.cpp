@@ -210,8 +210,9 @@ int main() {
         mem.setCpu(&cpu);
         cpu.setClock(0);
         cpu.setPC(0x1000);
-        cpu.setSR(0x2010);                  // supervisor + X (must survive MOVEQ)
+        cpu.setSR(0x2710);                  // supervisor + IPL 7 + X
         cpu.setD(0, 0);
+        cpu.setD(1, 0xA5A50000);
         const auto layout = cpu.pomJitLayout();
         *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&cpu) +
                                      layout.flags) = 0;
@@ -219,10 +220,12 @@ int main() {
         jit::BlockIr ir;
         ir.entryPc = ir.codeBase = 0x1000;
         ir.super = true;
-        ir.code = {0x70FF, 0x4E71, 0, 0};   // MOVEQ #-1,D0; NOP; lookahead
+        ir.code = {0x70FF, 0x40C1, 0x4E71, 0, 0}; // MOVEQ; MOVE SR,D1; NOP
         ir.instrs.push_back({0x1000, 0x70FF, 1, jit::Kind::Move,
                              jit::FlagSetsCcr, 2});
-        ir.instrs.push_back({0x1002, 0x4E71, 1, jit::Kind::AddrCalc,
+        ir.instrs.push_back({0x1002, 0x40C1, 1, jit::Kind::Alu,
+                             jit::FlagNone, 8, 8});
+        ir.instrs.push_back({0x1004, 0x4E71, 1, jit::Kind::AddrCalc,
                              jit::FlagNone, 2});
 
         jit::Context ctx;
@@ -238,14 +241,16 @@ int main() {
                         "PC=$%08X clock=%lld\n",
                         rr.instrs, jit::exitName(rr.exit), cpu.getD(0), cpu.getSR(),
                         cpu.getPC(), (long long)cpu.getClock());
-            check(rr.instrs == 2 && rr.slowInstrs == 0,
-                  "two instructions retire natively");
+            check(rr.instrs == 3 && rr.slowInstrs == 0,
+                  "three instructions retire natively");
             check(rr.exit == jit::Exit::BlockEnd, "native block exits cleanly");
             check(cpu.getD(0) == 0xFFFFFFFFu, "MOVEQ sign-extends into D0");
             check((cpu.getSR() & 0x1F) == 0x18,
                   "MOVEQ sets N, clears Z/V/C and preserves X");
-            check(cpu.getPC() == 0x1004, "native block commits its exit PC");
-            check(cpu.getClock() == 4, "native block charges exact cycles");
+            check(cpu.getD(1) == 0xA5A52718u,
+                  "MOVE SR,D1 reconstructs IPL and CCR without clobbering high word");
+            check(cpu.getPC() == 0x1006, "native block commits its exit PC");
+            check(cpu.getClock() == 12, "native block charges exact cycles");
             a64->release(code);
         }
         a64->flushAll();
@@ -302,10 +307,14 @@ int main() {
               "MOVEM.L regs,-(SP) follows the active generator's coverage");
         check(b->canEmit(0x4CDF) == gen,
               "MOVEM.L (SP)+,regs follows the active generator's coverage");
+        const bool a64 = !std::strcmp(b->name(), "aarch64");
         check(b->canEmit(0x51C8) == gen,
               "DBRA follows the active generator's coverage");
+        check(b->canEmit(0x40C0) == a64,
+              "MOVE SR,D0 follows AArch64 native coverage");
+        checkSafe(0x40C0, "MOVE SR,D0 does not end a block");
+        checkUnsafe(0x40D0, "MOVE SR,(A0) remains a block boundary");
         check(!b->canEmit(0xF200), "F-line is never native");
-        const bool a64 = !std::strcmp(b->name(), "aarch64");
         check(b->canEmit(0x0130) == a64,
               "BTST Dn,d8(A0,Xn) follows active generator coverage");
         check(!b->canEmit(0x0108), "MOVEP is not BTST");
@@ -333,7 +342,8 @@ int main() {
     // DBcc was already a terminator; the census pass made it EMITTABLE.
     check(jit::endsBlockAfter(jit::classify(0x51C8)), "DBRA terminates a block");
     checkUnsafe(0x46C0, "MOVE to SR");
-    checkUnsafe(0x40C0, "MOVE from SR");
+    checkSafe(0x40C0, "MOVE SR,D0 is a read-only block member");
+    checkUnsafe(0x40D0, "MOVE SR,(A0)");
     checkUnsafe(0x44C0, "MOVE to CCR");
     checkUnsafe(0x007C, "ORI to SR");
     checkUnsafe(0x027C, "ANDI to SR");

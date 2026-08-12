@@ -513,6 +513,11 @@ const int8_t kEaReadA64[E_COUNT][3] = {
 };
 const int8_t kMoveDstA64[E_COUNT] = {0,0,2,2,3,3,-1,3,4,-1,-1,-1};
 
+// LC II's dominant device poll. Unlike an inline DTLB load, this form must
+// always use Moira's exact 030 access path: the traced 70-cycle cost is the
+// six-cycle instruction plus a device-owned 64-cycle bus delay.
+bool exactTstRead030(uint16_t op) { return op == 0x4A11; }
+
 struct Ea {
     int idx = -1, reg = 0, ext = 0;
     int32_t value = 0;
@@ -589,6 +594,7 @@ bool canEmitReg(uint16_t op) {
             return true;
         }
         case 0x4000:
+            if ((op & 0xFFF8) == 0x40C0) return true; // MOVE SR,Dn
             if ((op & 0xFFF8) == 0x4E50 || (op & 0xFFF8) == 0x4E58) return true;
             if (op == 0x4E75) return true;
             if ((op & 0xFF80) == 0x4E80) {
@@ -972,8 +978,9 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
 // fallback. Multi-access/RMW instructions retain the conservative path so
 // replay can never duplicate a device side effect.
 void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
-                  int slow, bool soleAccess, const Ea* ea = nullptr) {
-    soleAccess = soleAccess && accessThunkMode() >= 1;
+                  int slow, bool soleAccess, const Ea* ea = nullptr,
+                  bool forceExact = false) {
+    soleAccess = forceExact || (soleAccess && accessThunkMode() >= 1);
     if (!soleAccess) {
         memProbe(a, L, super, bits / 8, false, slow);
         if (ea) commitEaBeforeAccess(a, L, *ea, bits);
@@ -982,10 +989,12 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     }
 
     const int miss = a.label(), done = a.label();
-    memProbe(a, L, super, bits / 8, false, miss);
-    if (ea) commitEaBeforeAccess(a, L, *ea, bits);
-    loadGuest(a, bits, rd);
-    a.b(done);
+    if (!forceExact) {
+        memProbe(a, L, super, bits / 8, false, miss);
+        if (ea) commitEaBeforeAccess(a, L, *ea, bits);
+        loadGuest(a, bits, rd);
+        a.b(done);
+    }
 
     a.bind(miss);
     a.strX(21, 1, 96);                 // failed thunk must leave no cycle debt
@@ -1122,6 +1131,24 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         a.movW(11, uint32_t(v));
         a.strW(11, 0, L.d + dn * 4);
         emitLogicFlags(a, L, 11, 32);
+        return true;
+    }
+
+    if ((op & 0xFFF8) == 0x40C0) {                  // MOVE SR,Dn
+        if (in.words != 1 || in.baseCycles != 8 || in.postExceptionCycles != 0)
+            return false;
+        a.movW(11, 0);
+        const auto addSrBit = [&](uint32_t off, unsigned bit) {
+            a.ldrB(9, 0, off);
+            if (bit) a.lslW(9, 9, bit);
+            a.orrW(11, 11, 9);
+        };
+        addSrBit(L.srT1, 15); addSrBit(L.srT0, 14);
+        addSrBit(L.srS, 13);  addSrBit(L.srM, 12);
+        a.ldrB(9, 0, L.srIpl); a.lslW(9, 9, 8); a.orrW(11, 11, 9);
+        addSrBit(L.srX, 4); addSrBit(L.srN, 3); addSrBit(L.srZ, 2);
+        addSrBit(L.srV, 1); addSrBit(L.srC, 0);
+        a.strH(11, 0, L.d + unsigned(op & 7) * 4);
         return true;
     }
 
@@ -1632,22 +1659,26 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             in.words != unsigned(1 + ea.ext) || ea.idx == E_IM ||
             (bits == 8 && ea.idx == E_AN)) return false;
         const bool tst = family == 0x4A00;
+        const bool exact030 = L.is030 && exactTstRead030(op);
         if (!tst && ea.idx == E_AN) return false;
         const int base = kEaReadA64[ea.idx][sz];
         const int cycles = tst ? base : (ea.idx <= E_AN ? 2 : base + 2);
-        // TST (An) is a read-only operation with no effective-address side
-        // effect. Its measured base component still includes any data-bus
-        // stall, so an I/O trace remains conservatively rejected; only an
-        // unrelated instruction-cache miss is removed from validation.
+        // TST (An) is read-only. Ordinarily its measured base component must
+        // match the inline access cost. The hot LC II 4A11 exception below
+        // uses the exact MMU/device thunk, so the device reproduces the
+        // variable part of that component at run time.
         const unsigned tracedCycles = L.is030 && tst &&
                                       (ea.idx == E_AI || ea.idx == E_PI)
             ? in.baseCycles : in.cycles;
-        if (base < 0 || tracedCycles != unsigned(cycles)) return false;
+        if (base < 0 || (exact030
+                ? (in.baseCycles < unsigned(cycles) || in.postExceptionCycles != 0)
+                : tracedCycles != unsigned(cycles))) return false;
         if (ea.memory) {
             if (slow < 0) return false;
             addrOf(a, L, ea, bits);
             if (tst)
-                memLoadGuest(a, L, ir.super, bits, 9, slow, true, &ea);
+                memLoadGuest(a, L, ir.super, bits, 9, slow, true, &ea,
+                             exact030);
             else {
                 memProbe(a, L, ir.super, bits / 8, true, slow);
                 commitEaBeforeAccess(a, L, ea, bits);
@@ -2290,7 +2321,9 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // component recorded by the tracer. Existing instructions traced on
         // cache hits have baseCycles == cycles, so this changes behaviour
         // only for forms explicitly admitted using split timing above.
-        const uint16_t nativeCycles = L.is030 ? in.baseCycles : in.cycles;
+        const uint16_t nativeCycles = L.is030 && exactTstRead030(in.opcode)
+            ? uint16_t(kEaReadA64[E_AI][0])
+            : L.is030 ? in.baseCycles : in.cycles;
         chargeAndRetire(a, L, nativeCycles, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
 

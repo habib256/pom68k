@@ -369,6 +369,9 @@ endif()
 
 # ─── Tests (CTest) — every milestone is gated (POMIIGS discipline) ────────
 option(POM68K_TESTS "Build the test targets" ON)
+option(POM68K_PRODUCT_LLE_GATES
+       "Enable no-skip AArch64 LLE product gates (requires private ROM/firmware assets)"
+       OFF)
 if(POM68K_TESTS AND NOT EMSCRIPTEN)
     enable_testing()
 
@@ -870,6 +873,11 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(q605_event_scheduler_test PRIVATE pom68k_core)
     add_test(NAME q605_event_scheduler_test COMMAND q605_event_scheduler_test)
     set_tests_properties(q605_event_scheduler_test PROPERTIES LABELS "m040;unit")
+
+    add_executable(quadra_event_scheduler_test tests/quadra_event_scheduler_test.cpp)
+    target_link_libraries(quadra_event_scheduler_test PRIVATE pom68k_core)
+    add_test(NAME quadra_event_scheduler_test COMMAND quadra_event_scheduler_test)
+    set_tests_properties(quadra_event_scheduler_test PROPERTIES LABELS "m040;unit")
 
     # LLE step 9 gate: PrimeTime TurboSCSI wait-state cell (IOSB reg 2)
     # + the 53C96 MAME-derived selection/transfer delay model.
@@ -1562,6 +1570,86 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              ENVIRONMENT "POM68K_CPU_ENGINE=interp" TIMEOUT 3600)
     endforeach()
 
+    # Product qualification is intentionally separate from the public
+    # soft-skip etalons: enabling it promises that CI provisioned every
+    # private ROM and firmware dump. Missing assets are hard failures.
+    if(POM68K_PRODUCT_LLE_GATES)
+        if(NOT TARGET POM68K)
+            message(FATAL_ERROR "POM68K_PRODUCT_LLE_GATES requires the GUI executable")
+        endif()
+        if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$" OR
+           NOT POM68K_JIT_BACKENDS STREQUAL "auto")
+            message(FATAL_ERROR "POM68K_PRODUCT_LLE_GATES requires the native AArch64 backend")
+        endif()
+        set(lle_q605_rom "${CMAKE_CURRENT_SOURCE_DIR}/roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM")
+        set(lle_centris_rom "${CMAKE_CURRENT_SOURCE_DIR}/roms/1MB ROMs/1993-02 - F1A6F343 - Quadra, Centris 610,650.ROM")
+        set(lle_q700_rom "${CMAKE_CURRENT_SOURCE_DIR}/roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM")
+        set(lle_q630_rom "${CMAKE_CURRENT_SOURCE_DIR}/roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM")
+        set(lle_boot_disk "${CMAKE_CURRENT_SOURCE_DIR}/hdv/MacOS-8.1-boot.vhd")
+        foreach(asset "${lle_q605_rom}" "${lle_centris_rom}" "${lle_q700_rom}" "${lle_q630_rom}"
+                      "${lle_boot_disk}"
+                      "${CMAKE_CURRENT_SOURCE_DIR}/roms/cuda/341s0788.bin"
+                      "${CMAKE_CURRENT_SOURCE_DIR}/roms/cuda/341s0060.bin"
+                      "${CMAKE_CURRENT_SOURCE_DIR}/roms/adbmodem/342s0440-b.bin")
+            if(NOT EXISTS "${asset}")
+                message(FATAL_ERROR "LLE product asset missing: ${asset}")
+            endif()
+        endforeach()
+        foreach(pair
+                "q605|${lle_q605_rom}|"
+                "centris|${lle_centris_rom}|POM68K_CENTRIS_MODEL=c650"
+                "q700|${lle_q700_rom}|POM68K_Q700_MODEL=q700"
+                "q630|${lle_q630_rom}|POM68K_Q630_ID=A55A2252")
+            string(REPLACE "|" ";" fields "${pair}")
+            list(GET fields 0 profile)
+            list(GET fields 1 rom_path)
+            add_test(NAME lle_a64_${profile}_preflight
+                     COMMAND POM68K --lle-aarch64-check "${rom_path}")
+            list(LENGTH fields field_count)
+            if(field_count GREATER 2)
+                list(GET fields 2 profile_env)
+                if(profile_env)
+                    set_tests_properties(lle_a64_${profile}_preflight PROPERTIES
+                                         ENVIRONMENT "${profile_env}")
+                endif()
+            endif()
+            set_tests_properties(lle_a64_${profile}_preflight PROPERTIES
+                                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                                 LABELS "product;lle;a64" TIMEOUT 60)
+        endforeach()
+        add_test(NAME lle_a64_forced_hle_refused
+                 COMMAND POM68K --lle-aarch64-check "${lle_q605_rom}")
+        set_tests_properties(lle_a64_forced_hle_refused PROPERTIES
+                             ENVIRONMENT "POM68K_CUDA_LLE=0" WILL_FAIL TRUE
+                             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                             LABELS "product;lle;a64" TIMEOUT 60)
+        add_test(NAME lle_a64_missing_firmware_refused
+                 COMMAND POM68K --lle-aarch64-check "${lle_q605_rom}")
+        set_tests_properties(lle_a64_missing_firmware_refused PROPERTIES
+                             ENVIRONMENT "POM68K_FIRMWARE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/no-firmware"
+                             WILL_FAIL TRUE WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                             LABELS "product;lle;a64" TIMEOUT 60)
+        add_test(NAME lle_a64_q900_refused
+                 COMMAND POM68K --lle-aarch64-check "${lle_q700_rom}")
+        set_tests_properties(lle_a64_q900_refused PROPERTIES
+                             ENVIRONMENT "POM68K_Q700_MODEL=q900" WILL_FAIL TRUE
+                             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                             LABELS "product;lle;a64" TIMEOUT 60)
+
+        # Full interpreted and native boots consume the same executable and
+        # assert the same Finder signature. The A64 variants name the backend
+        # explicitly; `auto` is not accepted as product evidence.
+        foreach(gate q605_boot_etalon centris650_boot_etalon
+                     q630_boot_etalon q700_boot_etalon)
+            set_tests_properties(jit_${gate} PROPERTIES
+                                 ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=a64")
+            set_property(TEST jit_${gate} interp_${gate}
+                         APPEND PROPERTY LABELS product lle a64-oracle)
+        endforeach()
+        set_property(TEST jit_lockstep_a64_coarse_test savestate_040_test
+                     APPEND PROPERTY LABELS product lle a64-oracle)
+    endif()
+
     # The ADB compact under the JIT. Out of the loop above because the
     # compact family is "one binary, POM68K_COMPACT_MODEL picks the
     # sibling" — the test NAME is not an executable name here, and the
@@ -1720,6 +1808,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         # The 68040 family — the JIT's entire blast radius today.
         if(t MATCHES "q605|lc475|lc575|centris|quadra6|quadra8|q630|lc580|q700|q900|q950|turboscsi|swim2")
             list(APPEND lbl m040)
+        endif()
+        if(POM68K_PRODUCT_LLE_GATES AND
+           (t MATCHES "^lle_a64_" OR
+            t MATCHES "^(jit_|interp_)(q605|centris650|q630|q700)_boot_etalon$" OR
+            t STREQUAL "jit_lockstep_a64_coarse_test" OR
+            t STREQUAL "savestate_040_test"))
+            list(APPEND lbl product lle a64-oracle)
         endif()
         set_tests_properties(${t} PROPERTIES LABELS "${lbl}")
     endforeach()

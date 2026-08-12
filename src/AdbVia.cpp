@@ -2,6 +2,8 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "AdbVia.h"
+#include "LleSession.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -65,6 +67,7 @@ void AdbVia::attach(Via6522& via, AdbBus& adb, int64_t cpuHz) {
         std::fprintf(stderr, "AdbVia: POM68K_ADB_LLE=0 — NON-CONFORMANT HLE "
                      "ADB byte-model forced\n");
     }
+    if (!lle_) pom68k::lle::activateHle(pom68k::lle::HleAdbModem);
 }
 
 void AdbVia::setupPicPorts() {
@@ -311,4 +314,16 @@ void AdbVia::tick(int cpuCycles) {
     if (state_ == IDLE && adb_->srqPending())
         irqPending_ = true;
     applyIrqToVia();
+}
+
+int AdbVia::cyclesToNextEvent() const {
+    if (!via_ || !adb_) return 0x7fffffff;
+    if (lle_) {
+        const int64_t need = cpuHz_ - picAcc_;
+        if (need <= 0) return 1;
+        return int(std::max<int64_t>(1, (need + kPicHz - 1) / kPicHz));
+    }
+    if (timer_ > 0) return timer_;
+    // The HLE polls SRQ and may re-arm a transaction on its next tick.
+    return 1;
 }

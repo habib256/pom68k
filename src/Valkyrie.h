@@ -40,6 +40,7 @@ public:
     // Frame clock: fires the VBL interrupt at the end of each display
     // period, as valkyrie.cpp's vbl_tick does (level line through onIrq).
     void tick(int cpuCycles);
+    int cyclesToNextEvent() const;
     std::function<void(bool)> onIrq;
 
     // Geometry the host renderer needs.

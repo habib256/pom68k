@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Q700Memory.h"
+#include "LleSession.h"
 #include "Q700Cpu.h"
 #include "Moira.h"
 #include <algorithm>
@@ -31,14 +32,19 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
     vram_.assign(kVramSize, 0);
     adbVia_.attach(via1_, adb_, cpuHz_);
     if (eclipse()) {
+        // Eclipse still uses the command-level Egret model. It is usable for
+        // bring-up, but it must poison product qualification and snapshots.
+        pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
         // The IIfx front end (docs/IOP_BRINGUP.md), grafted on the Spike
         // board. SCC behind its IOP: the z80scc "universal bus" decode —
         // offset bit0 = channel (1 = A), bit1 = data/control.
         sccPic_.readPeriph = [this](int r) -> uint8_t {
+            flushScc();
             const int ch = r & 1;
             return (r & 2) ? scc_.readData(ch) : scc_.readCtl(ch);
         };
         sccPic_.writePeriph = [this](int r, uint8_t v) {
+            flushScc();
             const int ch = r & 1;
             if (r & 2) scc_.writeData(ch, v);
             else scc_.writeCtl(ch, v);
@@ -201,6 +207,7 @@ void Q700Memory::reset() {
     }
     scc_.reset();
     scsi_.reset();
+    sccDebt_ = scsiDebt_ = scsi2Debt_ = 0;
     asc_.reset();
     swim_.reset();
     swim_.attachDrive(&drive0_, &drive1_);
@@ -415,12 +422,14 @@ uint8_t Q700Memory::dafbRead8(uint32_t addr) {
     // TurboSCSI bus-1 control/status (dafb.cpp:421): the latched wait-state
     // bits plus the LIVE DRQ in bit 9 — how the driver polls the FIFO.
     if ((addr & 0x3FC) == 0x24) {
+        flushScsi();
         uint32_t val = uint32_t(scsiCtrl_) | (scsi_.drq() ? 0x200u : 0u);
         return uint8_t(val >> (8 * (3 - (addr & 3))));
     }
     // Bus 2 (dafb.cpp:424): the Eclipse's second 53C96 behind the same
     // status shape; on the Spike nothing drives DRQ so bit 9 stays low.
     if ((addr & 0x3FC) == 0x28) {
+        flushScsi2();
         uint32_t val = uint32_t(scsiCtrl2_) | (scsi2_.drq() ? 0x200u : 0u);
         return uint8_t(val >> (8 * (3 - (addr & 3))));
     }
@@ -493,6 +502,7 @@ uint8_t Q700Memory::ioRead8(uint32_t addr) {
             return d;
         }
         int ch = (base >> 1) & 1;
+        flushScc();
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
         sccIrqLine(scc_.irqAsserted());
         return d;
@@ -501,14 +511,17 @@ uint8_t Q700Memory::ioRead8(uint32_t addr) {
     // charged with the bus-2 wait states latched by DAFB register $28
     // (dafb.cpp turboscsi_r<1>:973 / turboscsi_dma_r<1>:996).
     if (eclipse() && base >= 0x0F400 && base < 0x0F500) {
+        flushScsi2();
         if (cpu_) cpu_->stall(scsi2ReadCycles_);
         return scsi2_.read((base >> 4) & 0xF);
     }
     if (eclipse() && base >= 0x0F500 && base < 0x0F504) {
+        flushScsi2();
         if (cpu_ && ((sub >> 18) & 1)) cpu_->stall(scsi2DmaReadCycles_);
         return scsi2_.drq() ? scsi2_.dmaRead() : 0xFF;
     }
     if (base >= 0x0F000 && base < 0x0F100) {      // TurboSCSI 53C96 registers
+        flushScsi();
         if (cpu_) cpu_->stall(scsiReadCycles_);
         uint8_t d = scsi_.read((base >> 4) & 0xF);
         scsiPoll_();
@@ -547,22 +560,26 @@ void Q700Memory::ioWrite8(uint32_t addr, uint8_t v) {
             return;
         }
         int ch = (base >> 1) & 1;
+        flushScc();
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
         sccIrqLine(scc_.irqAsserted());
         return;
     }
     if (eclipse() && base >= 0x0F400 && base < 0x0F500) {
+        flushScsi2();
         if (cpu_) cpu_->stall(scsi2WriteCycles_);
         scsi2_.write((base >> 4) & 0xF, v);
         return;
     }
     if (eclipse() && base >= 0x0F500 && base < 0x0F504) {
+        flushScsi2();
         if (cpu_ && ((sub >> 18) & 1)) cpu_->stall(scsi2DmaWriteCycles_);
         if (scsi2_.drq()) scsi2_.dmaWrite(v);
         return;
     }
     if (base >= 0x0F000 && base < 0x0F100) {
+        flushScsi();
         if (cpu_) cpu_->stall(scsiWriteCycles_);
         scsi_.write((base >> 4) & 0xF, v);
         scsiPoll_();
@@ -597,6 +614,7 @@ void Q700Memory::ioWrite8(uint32_t addr, uint8_t v) {
 // "bus error on timeout" (dafb.cpp:485) is the only /BERR this window may
 // raise — the pre-audit immediate bus error on !DRQ was finding #17.
 void Q700Memory::scsiHoldDtack_(bool write) {
+    flushScsi();
     const int slice = int(cpuHz_ / 20000);        // MAME's 50 µs spin quantum
     int64_t budget = cpuHz_ / 50;                 // ~20 ms hold-off cap
     while (!scsi_.drq() && budget > 0) {
@@ -609,6 +627,7 @@ void Q700Memory::scsiHoldDtack_(bool write) {
 }
 
 uint8_t Q700Memory::scsiDmaRead_() {
+    flushScsi();
     if (!scsi_.drq() && (scsiCtrl_ & 0x80)) scsiHoldDtack_(false);
     // DRQ-check clear: "no DRQ safety check, just blindly push to the
     // 53c9x" (dafb.cpp:1060) — the read mirror pops whatever the chip has.
@@ -618,6 +637,7 @@ uint8_t Q700Memory::scsiDmaRead_() {
 }
 
 void Q700Memory::scsiDmaWrite_(uint8_t v) {
+    flushScsi();
     if (!scsi_.drq() && (scsiCtrl_ & 0x100)) scsiHoldDtack_(true);
     scsi_.dmaWrite(v);
     scsiPoll_();
@@ -841,7 +861,9 @@ void Q700Memory::tick(int cpuCycles) {
     if (eclipse()) {
         // Both IOPs run on C15M; AdbLine's device timers were rebased onto
         // that same domain. The Egret keeps the CPU clock (µs pacing).
-        const int c15 = int(int64_t(cpuCycles) * 15667200 / cpuHz_);
+        eclipseC15Acc_ += int64_t(cpuCycles) * 15667200;
+        const int c15 = int(eclipseC15Acc_ / cpuHz_);
+        eclipseC15Acc_ -= int64_t(c15) * cpuHz_;
         sccPic_.tick(c15);
         swimPic_.tick(c15);
         adbLine_.tick(c15);
@@ -852,7 +874,11 @@ void Q700Memory::tick(int cpuCycles) {
         if (cpu_) adbVia_.syncTo(cpu_->machineClock());
     }
 
-    scc_.tick(cpuCycles);
+    if (eclipse()) scc_.tick(cpuCycles);
+    else {
+        sccDebt_ += cpuCycles;
+        if (scc_.cyclesToNextEvent() <= sccDebt_) flushScc();
+    }
     if (eclipse()) {
         // On the Eclipse the board's SCC interrupt line belongs to the SCC
         // IOP's HOST interrupt, not to the SCC chip: the chip's /INT is a
@@ -872,8 +898,12 @@ void Q700Memory::tick(int cpuCycles) {
     drive0_.tick(cpuCycles);
     drive1_.tick(cpuCycles);
 
-    scsi_.tick(cpuCycles);
-    scsiPoll_();
+    scsiDebt_ += cpuCycles;
+    if (scsi_.cyclesToNextEvent() <= scsiDebt_) flushScsi();
+    if (eclipse()) {
+        scsi2Debt_ += cpuCycles;
+        if (scsi2_.cyclesToNextEvent() <= scsi2Debt_) flushScsi2();
+    }
 
     // 60.15 Hz to VIA1 CA1. On real hardware VIA2's T1 drives PB7 and the
     // board chains PB7 → VIA1 CA1 (via2_out_b "chain 60.15 Hz to VIA1");
@@ -899,4 +929,72 @@ void Q700Memory::tick(int cpuCycles) {
     }
 
     dafbCell_.tick(cpuCycles);
+}
+
+int Q700Memory::cyclesToNextEvent() const {
+    // Eclipse keeps a 256-cycle ceiling for its explicitly non-conformant
+    // Egret HLE path, but both firmware IOPs now contribute their real next
+    // instruction boundary. The CPU→C15M bridge carries fractional phase.
+    int best = eclipse() ? 256 : adbVia_.cyclesToNextEvent();
+    best = std::min(best, viaEClock_.cyclesToNext(cpuHz_));
+    auto debtBound = [](int next, int64_t debt) {
+        if (next == 0x7fffffff) return next;
+        return int(std::max<int64_t>(1, int64_t(next) - debt));
+    };
+    if (!eclipse())
+        best = std::min(best, debtBound(scc_.cyclesToNextEvent(), sccDebt_));
+    best = std::min(best, debtBound(scsi_.cyclesToNextEvent(), scsiDebt_));
+    if (eclipse())
+        best = std::min(best, debtBound(scsi2_.cyclesToNextEvent(), scsi2Debt_));
+    if (eclipse()) {
+        auto iopBridge = [this](int c15Cycles) {
+            const int64_t need = int64_t(c15Cycles) * cpuHz_ - eclipseC15Acc_;
+            if (need <= 0) return 1;
+            return int((need + 15667200 - 1) / 15667200);
+        };
+        best = std::min(best, iopBridge(sccPic_.cyclesToNextEvent()));
+        best = std::min(best, iopBridge(swimPic_.cyclesToNextEvent()));
+    }
+    best = std::min(best, asc_.cyclesToNextEvent());
+    auto bridge = [this](int deviceCycles) {
+        if (deviceCycles == 0x7fffffff) return deviceCycles;
+        const int64_t need = int64_t(deviceCycles) * cpuHz_ - swimCycAcc_;
+        if (need <= 0) return 1;
+        return int((need + 15667200 - 1) / 15667200);
+    };
+    best = std::min(best, bridge(swim_.cyclesToNextEvent()));
+    best = std::min(best, int(std::max<int64_t>(1,
+        (cpuHz_ * 100 - tickAcc_ + 6014) / 6015)));
+    best = std::min(best, int(std::max<int64_t>(1, cpuHz_ - secAcc_)));
+    best = std::min(best, dafbCell_.cyclesToNextEvent());
+    return std::max(best, 1);
+}
+
+void Q700Memory::flushScc() {
+    while (sccDebt_ > 0) {
+        const int step = int(std::min<int64_t>(sccDebt_, 0x7fffffff));
+        sccDebt_ -= step;
+        scc_.tick(step);
+    }
+    if (!eclipse() && sccIrq_ != scc_.irqAsserted()) {
+        sccIrq_ = scc_.irqAsserted();
+        updateIrq();
+    }
+}
+
+void Q700Memory::flushScsi() {
+    while (scsiDebt_ > 0) {
+        const int step = int(std::min<int64_t>(scsiDebt_, 0x7fffffff));
+        scsiDebt_ -= step;
+        scsi_.tick(step);
+    }
+    scsiPoll_();
+}
+
+void Q700Memory::flushScsi2() {
+    while (scsi2Debt_ > 0) {
+        const int step = int(std::min<int64_t>(scsi2Debt_, 0x7fffffff));
+        scsi2Debt_ -= step;
+        scsi2_.tick(step);
+    }
 }

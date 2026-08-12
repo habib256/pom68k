@@ -49,7 +49,7 @@ void MscCpu::hardReset() {
 }
 
 void MscCpu::didChangeCACR(moira::u32 value) {
-    if (value & 0x0C) pomIcache.reset();
+    pomInvalidateIcache030(value);
     jit_.flushAll();
 }
 

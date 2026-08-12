@@ -5749,6 +5749,10 @@ Moira::execRte(u16 opcode)
     u16 newsr = 0;
     u32 newpc = 0;
     [[maybe_unused]] u16 fword = 0;     // POM68K slice 4: last format word
+    bool rte030WritePending = false;
+    u16 rte030WriteSsw = 0;
+    u32 rte030WriteAddr = 0, rte030WriteData = 0;
+    u8 rte030Fixup[2] = {};
 
     switch (C) {
 
@@ -5938,8 +5942,8 @@ Moira::execRte(u16 opcode)
                     // POM68K O6: short bus-fault frame ($A, 16 words) —
                     // stacked by writeStackFrameShortBusFault on a
                     // last-write fault (extBusError / MMU). PC = next
-                    // instruction; the faulted write is NOT re-run
-                    // (restart model, same policy as the $B frame below).
+                    // instruction; RTE completes the buffered bus write
+                    // below without rerunning the architectural instruction.
 
                     // Status register
                     newsr = (u16)pop<C, Word>();
@@ -5954,7 +5958,7 @@ Moira::execRte(u16 opcode)
                     (void)pop<C, Word>();
 
                     // Special status register
-                    (void)pop<C, Word>();
+                    rte030WriteSsw = (u16)pop<C, Word>();
 
                     // Instruction pipe stage C
                     (void)pop<C, Word>();
@@ -5963,16 +5967,18 @@ Moira::execRte(u16 opcode)
                     (void)pop<C, Word>();
 
                     // Data cycle fault address
-                    (void)pop<C, Long>();
+                    rte030WriteAddr = pop<C, Long>();
 
                     // Internal register (opcode storage)
                     (void)pop<C, Long>();
 
                     // Data output buffer
-                    (void)pop<C, Long>();
+                    rte030WriteData = pop<C, Long>();
 
                     // Internal register (pipeline status)
                     (void)pop<C, Long>();
+                    rte030WritePending = (rte030WriteSsw & 0x0100)
+                                      && !(rte030WriteSsw & 0x0040);
                     break;
 
                 } else if (format == 0b1011 && cpuModel < Model::M68EC040) {
@@ -6021,9 +6027,11 @@ Moira::execRte(u16 opcode)
                     // Data input buffer
                     [[maybe_unused]] u32 dataIn = pop<C, Long>();
 
-                    // Internal registers
+                    // Internal registers: state[0], wb2 address, state[2].
+                    // state[2].high carries the WB3 (An) fixup encoding.
                     (void)pop<C, Word>();
-                    (void)pop<C, Long>();
+                    u32 packedState = pop<C, Long>();
+                    rte030Fixup[1] = u8(packedState >> 8);
 
                     // POM68K O6.9: the handler cleared the SSW DF bit
                     // (bit 9 marker still set) — the faulted data cycle
@@ -6045,8 +6053,8 @@ Moira::execRte(u16 opcode)
                         }
                     }
 
-                    // Version#, Internal information
-                    (void)pop<C, Word>();
+                    // Version#, internal information; high byte is WB2 fixup.
+                    rte030Fixup[0] = u8(pop<C, Word>() >> 8);
 
                     // Internal registers
                     (void)pop<C, Long>();
@@ -6072,6 +6080,52 @@ Moira::execRte(u16 opcode)
     }
 
     setSR(newsr);
+
+    // Undo the live (An)+/-(An) adjustment encoded in a format-$B frame
+    // before the faulted instruction is freshly decoded. WinUAE performs
+    // the same inverse mmu030fixupmod while restoring WB2/WB3 state; without
+    // it a postincrementing operand advances a second time after RTE.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) {
+            for (u8 enc : rte030Fixup) {
+                if (!(enc & 0x40)) continue;
+                const int n = enc & 7;
+                u32 amount = 1u << ((enc >> 3) & 3);
+                if (enc & 0x20) reg.a[n] += amount;
+                else            reg.a[n] -= amount;
+            }
+        }
+    }
+
+    // A 68030 format-$A frame represents a fault on the instruction's last
+    // write. RTE does not rerun the architectural instruction; it completes
+    // the pending bus cycle from the frame's data-output buffer, unless the
+    // handler cleared SSW.DF. WinUAE m68k_do_rte_mmu030 restores exactly
+    // these three fields before resuming at the already-stacked next PC.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030 && rte030WritePending) {
+            const bool savedLogging = mmuLogging;
+            mmuLogging = false;
+            // If the replay faults again it is still the previous
+            // instruction's last write and must stack another short $A
+            // frame at the already-restored next PC.
+            mmuState[1] |= 0x0100;
+            mmuLastWritePc = newpc;
+            mmuDataBuffer = rte030WriteData;
+            switch (rte030WriteSsw & 0x0030) {
+                case 0x0010:
+                    write<C, AddrSpace::DATA, Byte>(rte030WriteAddr, rte030WriteData);
+                    break;
+                case 0x0020:
+                    write<C, AddrSpace::DATA, Word>(rte030WriteAddr, rte030WriteData);
+                    break;
+                default:
+                    write<C, AddrSpace::DATA, Long>(rte030WriteAddr, rte030WriteData);
+                    break;
+            }
+            mmuLogging = savedLogging;
+        }
+    }
 
     // Check for address error
     if (misaligned<C>(newpc)) {

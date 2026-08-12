@@ -38,6 +38,10 @@ public:
     void sync();
 
     void tick(int cpuCycles);
+    // Conservative distance to the next transport transition.  Firmware LLE
+    // can change a VIA/ADB pin on its next PIC instruction; HLE changes state
+    // only when its byte timer expires (or on the next tick while idle/SRQ).
+    int cyclesToNextEvent() const;
     // LLE: run the PIC forward to an absolute CPU-clock stamp. Called both by
     // the periodic peripheral batch and — crucially — at every VIA1 SR/ACR/ORB
     // access, so the PIC interleaves with the ROM's byte handshake at bit

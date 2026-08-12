@@ -893,6 +893,18 @@ correctness it buys:
    came off on 2026-08-02. What remains under § 1.1 is DAFB's VBL line
    hard-coded at 480, which is MAME parity.)*
 
+**Mode produit LLE AArch64 (2026-08-12).** `--lle-aarch64` maintient désormais
+un registre de session des modules HLE, verrouille le moteur natif après
+qualification, vérifie les firmwares par taille + SHA-256 (`assets.lock`) et
+estampille cette provenance dans les save states v4. Une restauration HLE est
+refusée en mode strict. `POM68K_PRODUCT_LLE_GATES=ON` transforme les actifs
+privés absents en échecs durs et groupe préflights, refus négatifs, quatre
+oracles interprétés/A64, lockstep A64 et save-state sous le label `product`.
+Les Eclipse Q900/Q950 restent refusés à cause de leur Egret HLE. Leurs deux
+Apple PIC fournissent maintenant leurs deadlines conservatrices et la phase
+fractionnaire CPU→C15M est sérialisée ; le plafond de 256 cycles demeure
+uniquement comme garde du fallback Egret non conforme.
+
 **Caveat, learned the hard way on 2026-07-29: this inventory is only worth what
 its gates are worth.** Only 9 of the 36 profiles have any beyond-boot gate at
 all — Plus (`input_etalon`), Mac II (`macii_mouse_etalon`, `macii_post_etalon`),

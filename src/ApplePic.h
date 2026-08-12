@@ -84,6 +84,9 @@ public:
 
     /// Advance by `clocks` input clocks (see the timing contract above).
     void tick(int clocks);
+    // Conservative input-clock bound: before this many clocks tick() cannot
+    // execute another 65C02 instruction nor advance timer/DMA state.
+    int cyclesToNextEvent() const { return budget_ < 1 ? 1 - budget_ : 1; }
 
     // ── Gate / debug accessors ───────────────────────────────────────────
     // Bring-up watchpoint: a firmware that returns to a bogus address had

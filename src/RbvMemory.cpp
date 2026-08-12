@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "RbvMemory.h"
+#include "LleSession.h"
 #include "RbvCpu.h"
 #include <cstdio>
 #include <cstdlib>
@@ -54,6 +55,8 @@ RbvMemory::RbvMemory(uint32_t totalRam, int64_t cpuHz, bool iici)
             std::fprintf(stderr, "Rbv: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
                          "HLE ADB substitute forced\n");
         }
+        if (!egretLleOn_)
+            pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
     }
     reset();
 }

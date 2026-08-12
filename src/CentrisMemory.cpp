@@ -69,6 +69,7 @@ void CentrisMemory::reset() {
     adbVia_.reset();
     scc_.reset();
     scsi_.reset();
+    sccDebt_ = scsiDebt_ = 0;
     asc_.reset();
     swim_.reset();
     swim_.attachDrive(&drive0_, &drive1_);
@@ -199,6 +200,7 @@ uint8_t CentrisMemory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
 
 uint8_t CentrisMemory::via2Access8(uint32_t addr, bool write, uint8_t v) {
     if (cpu_) cpu_->flushTicks();
+    flushScsi();
     viaSync();
     int reg = (addr >> 9) & 0x0F;
     if (write) {
@@ -289,6 +291,7 @@ uint8_t CentrisMemory::ioRead8(uint32_t addr) {
         return 0;
     }
     if (base >= 0x0C000 && base < 0x0E000) {      // SCC
+        flushScc();
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
         sccIrqLine(scc_.irqAsserted());
@@ -303,6 +306,7 @@ uint8_t CentrisMemory::ioRead8(uint32_t addr) {
         return 0;
     }
     if (base >= 0x10000 && base < 0x10100) {      // TurboSCSI 53C96
+        flushScsi();
         if (cpu_) cpu_->stall(scsiReadCycles_);
         uint8_t d = scsi_.read((base >> 4) & 0xF);
         scsiPoll_();
@@ -340,6 +344,7 @@ void CentrisMemory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if (base >= 0x0C000 && base < 0x0E000) {
+        flushScc();
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
@@ -355,6 +360,7 @@ void CentrisMemory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if (base >= 0x10000 && base < 0x10100) {
+        flushScsi();
         if (cpu_) cpu_->stall(scsiWriteCycles_);
         scsi_.write((base >> 4) & 0xF, v);
         scsiPoll_();
@@ -390,6 +396,7 @@ void CentrisMemory::ioWrite8(uint32_t addr, uint8_t v) {
 }
 
 uint8_t CentrisMemory::scsiDmaRead_() {
+    flushScsi();
     if (!scsi_.drq()) busError(0x50010100, false);
     uint8_t d = scsi_.dmaRead();
     scsiPoll_();
@@ -397,6 +404,7 @@ uint8_t CentrisMemory::scsiDmaRead_() {
 }
 
 void CentrisMemory::scsiDmaWrite_(uint8_t v) {
+    flushScsi();
     if (!scsi_.drq()) busError(0x50010100, true);
     scsi_.dmaWrite(v);
     scsiPoll_();
@@ -602,8 +610,8 @@ void CentrisMemory::tick(int cpuCycles) {
     adbVia_.tick(cpuCycles);
     if (cpu_) adbVia_.syncTo(cpu_->machineClock());
 
-    scc_.tick(cpuCycles);
-    if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }
+    sccDebt_ += cpuCycles;
+    if (scc_.cyclesToNextEvent() <= sccDebt_) flushScc();
 
     ascCycAcc_ += int64_t(cpuCycles) * AscIosb::kCpuHz;
     int ascCyc = int(ascCycAcc_ / cpuHz_);
@@ -614,8 +622,8 @@ void CentrisMemory::tick(int cpuCycles) {
     drive1_.tick(cpuCycles);
 
     if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
-    scsi_.tick(cpuCycles);
-    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+    scsiDebt_ += cpuCycles;
+    if (scsi_.cyclesToNextEvent() <= scsiDebt_) flushScsi();
 
     // 60.15 Hz CA1 tick (iosb 6015_timer)
     tickAcc_ += int64_t(cpuCycles) * 6015;
@@ -635,4 +643,52 @@ void CentrisMemory::tick(int cpuCycles) {
     }
 
     dafbCell_.tick(cpuCycles);
+}
+
+int CentrisMemory::cyclesToNextEvent() const {
+    int best = adbVia_.cyclesToNextEvent();
+    best = std::min(best, viaEClock_.cyclesToNext(cpuHz_));
+    auto debtBound = [](int next, int64_t debt) {
+        if (next == 0x7fffffff) return next;
+        return int(std::max<int64_t>(1, int64_t(next) - debt));
+    };
+    best = std::min(best, debtBound(scc_.cyclesToNextEvent(), sccDebt_));
+    best = std::min(best, debtBound(scsi_.cyclesToNextEvent(), scsiDebt_));
+    auto bridge = [](int deviceCycles, int64_t acc, int64_t deviceHz,
+                     int64_t machineHz) {
+        if (deviceCycles == 0x7fffffff) return deviceCycles;
+        const int64_t need = int64_t(deviceCycles) * machineHz - acc;
+        if (need <= 0) return 1;
+        return int((need + deviceHz - 1) / deviceHz);
+    };
+    best = std::min(best, bridge(asc_.cyclesToNextEvent(), ascCycAcc_,
+                                 AscIosb::kCpuHz, cpuHz_));
+    best = std::min(best, bridge(swim_.cyclesToNextEvent(), swimCycAcc_,
+                                 AscIosb::kCpuHz, cpuHz_));
+    best = std::min(best, int(std::max<int64_t>(1,
+        (cpuHz_ * 100 - tickAcc_ + 6014) / 6015)));
+    best = std::min(best, int(std::max<int64_t>(1, cpuHz_ - secAcc_)));
+    best = std::min(best, dafbCell_.cyclesToNextEvent());
+    return std::max(best, 1);
+}
+
+void CentrisMemory::flushScc() {
+    while (sccDebt_ > 0) {
+        const int step = int(std::min<int64_t>(sccDebt_, 0x7fffffff));
+        sccDebt_ -= step;
+        scc_.tick(step);
+    }
+    if (sccIrq_ != scc_.irqAsserted()) {
+        sccIrq_ = scc_.irqAsserted();
+        updateIrq();
+    }
+}
+
+void CentrisMemory::flushScsi() {
+    while (scsiDebt_ > 0) {
+        const int step = int(std::min<int64_t>(scsiDebt_, 0x7fffffff));
+        scsiDebt_ -= step;
+        scsi_.tick(step);
+    }
+    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
 }

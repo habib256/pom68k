@@ -126,16 +126,15 @@ public:
     int iplLevel() const;      // SCC=4 > VIA2=2 > VIA1=1 (field_interrupts)
 
     void tick(int cpuCycles);
-    // Spike: PIC ADB, no MCU LLE; Eclipse: Egret HLE + two IOPs — none
-    // states a deadline yet, so the wrapper's batch cap is the bound.
-    int cyclesToNextEvent() const { return 0x7fffffff; }
+    int cyclesToNextEvent() const;
 
     Via6522& via1() { return via1_; }
     Via6522& via2() { return via2_; }
     Rtc& rtc() { return rtc_; }
     AdbVia& adbVia() { return adbVia_; }
     AdbBus& adb() { return adb_; }
-    Scc8530& scc() { return scc_; }
+    Scc8530& scc() { flushScc(); return scc_; }
+    int64_t deferredSccCycles() const { return sccDebt_; }
     AscEasc& asc() { return asc_; }
     Swim1& swim() { return swim_; }
     // Eclipse-only front end (unused on the Spike; see the header note).
@@ -143,13 +142,15 @@ public:
     ApplePic& swimPic() { return swimPic_; }
     AdbLine& adbLine() { return adbLine_; }
     Egret& egret() { return egret_; }
-    Ncr53c96& scsi2() { return scsi2_; }
+    Ncr53c96& scsi2() { flushScsi2(); return scsi2_; }
+    int64_t deferredScsi2Cycles() const { return scsi2Debt_; }
     long adbHostEdges() const { return adbHostEdges_; }
     SonyDrive& internalDrive() { return drive0_; }
     SonyDrive& externalDrive() { return drive1_; }
     bool insertDisk(const std::string& path) { return drive0_.insert(path); }
     void ejectDisk() { drive0_.eject(); }
-    Ncr53c96& scsi() { return scsi_; }
+    Ncr53c96& scsi() { flushScsi(); return scsi_; }
+    int64_t deferredScsiCycles() const { return scsiDebt_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
@@ -267,7 +268,7 @@ public:
            scsiReadCycles_, scsiWriteCycles_,
            scsiDmaReadCycles_, scsiDmaWriteCycles_,
            ascCycAcc_, swimLastCpu_, swimCycAcc_,
-           viaEClock_, tickAcc_, secAcc_);
+           viaEClock_, tickAcc_, secAcc_, sccDebt_, scsiDebt_);
         // Eclipse-only tail: the header pins the profile, so the Quadra
         // 700's chunk layout (and its existing snapshots) is untouched.
         // Each ApplePic carries its 32 KB of host-uploaded firmware — a
@@ -275,7 +276,8 @@ public:
         if (eclipse()) {
             ar(sccPic_, swimPic_, adbLine_, egret_, scsi2_,
                scsiCtrl2_, scsi2ReadCycles_, scsi2WriteCycles_,
-               scsi2DmaReadCycles_, scsi2DmaWriteCycles_);
+               scsi2DmaReadCycles_, scsi2DmaWriteCycles_, scsi2Debt_,
+               eclipseC15Acc_);
         }
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
@@ -314,6 +316,8 @@ private:
     AdbBus adb_;
     AdbVia adbVia_;
     Scc8530 scc_;
+    int64_t sccDebt_ = 0;          // Spike only; Eclipse SCC is IOP-coupled
+    void flushScc();
     // Discrete EASC $B0 (macquadra700.cpp:805 wires ASC_EASC on every
     // quadra_base machine) — not the Sonora $BC cell this board shipped
     // with before the MAME-parity audit (finding #1).
@@ -324,12 +328,17 @@ private:
     int64_t swimLastCpu_ = -1;
     int64_t swimCycAcc_ = 0;
     Ncr53c96 scsi_;
+    int64_t scsiDebt_ = 0;
+    void flushScsi();
     ScsiDisk scsiDisks_[7];
     // Eclipse front end (constructed always, wired only when eclipse()).
     ApplePic sccPic_, swimPic_;
     AdbLine adbLine_;
     Egret egret_;
     Ncr53c96 scsi2_;                   // the tower's second SCSI bus
+    int64_t scsi2Debt_ = 0;
+    int64_t eclipseC15Acc_ = 0;        // CPU→C15M fractional phase
+    void flushScsi2();
     bool egretAdb_ = false;            // Egret serves ADB (vs the IOP wire)
     long adbHostEdges_ = 0;
     Q700Cpu* cpu_ = nullptr;

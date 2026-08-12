@@ -676,7 +676,8 @@ Open, in ROI order:
     3.43 s threaded. **Split trace metadata DONE 2026-08-10**: each IR
     instruction now records base/data-bus, i-cache and post-exception cycles
     separately. It safely admits `ADDQ/SUBQ ...,An` (`584F`: 2+4+0), reducing
-    fallbacks again to **236,298**; it correctly refuses `TST.B (An)` (`4A11`:
+    fallbacks again to **236,298**; à ce stade il refuse correctement
+    `TST.B (An)` (`4A11`:
     70+0+0), whose excess was not a cache miss. 120k A64 lockstep green. This unchecked
     box now names the x64 half plus the AArch64 throughput exit criterion.
     **Critère AArch64 toujours non satisfait, re-mesuré 2026-08-11** : sur
@@ -691,6 +692,20 @@ Open, in ROI order:
     Interpréteur, threaded et AArch64 expérimental donnent tous l'étalon exact
     `f=539`, Finder `0,06/0,69`, `512` commandes SCSI. C.6 reste ouvert sur
     son critère de débit reproductible, plus sur la conformité de l'IIfx.
+    **Lecture SR native DONE 2026-08-12** : `MOVE SR,Dn` reconstruit T1/T0,
+    S/M, le vrai masque `reg.sr.ipl` et le CCR, sans écraser le mot haut de
+    Dn. Le smoke natif vérifie `$2718`, les locksteps 030 (120k) et 040 (5M)
+    passent. Sur le census 10k comparable, `40C0` représente 77 555
+    instructions (2,33 %), devient natif et disparaît des fallbacks statiques
+    (couverture déclarée 99,1 %). **Poll exact DONE 2026-08-12** : `4A11`
+    passe toujours par `pomJitReadData`; la MMU et le périphérique possèdent
+    les 64 cycles variables, le code natif seulement les 6 cycles fixes et
+    les flags. Lockstep 120k vert ; fallbacks statiques 10k **61 436 -> 3 924
+    (-93,6 %)**. Aucun gain de débit n'est revendiqué : sur deux paires fixes
+    de 6 000 frames, threaded fait 19,52/19,50 s et AArch64 20,18/20,16 s,
+    empreinte `cfb184b6faddabec` et compteurs i-cache identiques. Le verrou
+    mesuré devient la résidence native globale (18,4 %) et 64,6 M sorties
+    AArch64 contre 50,7 M threaded, plus ce fallback particulier.
     **Aucune promotion 68030 avant les quatre preuves cumulatives suivantes** :
     empreinte et compteurs identiques ; IIfx, LC II, IIvx, IIsi, SE/30,
     Macintosh TV et Duo verts ; gain répété sur plusieurs exécutions ; tier
@@ -1120,10 +1135,17 @@ Full story in `CHANGELOG.md` § 2026-08-02 (later).
 
 ### 68030 / MMU / FPU oracle gaps
 
-- [ ] RTE format `$A/$B` instruction restart.
-- [ ] PMOVE-through-translation fault frames.
-- [ ] Instruction-stream fetches across page boundaries.
-- [ ] FMOVEM indirect-EA read order.
+- [x] RTE format `$A/$B` instruction restart (2026-08-12: `$A` pending
+  data-output replay and `$B` `(An)±` inverse fixups, both gated with
+  transient faults in `berr030_test`).
+- [x] PMOVE-through-translation fault frames (2026-08-12: WinUAE-interpreted
+  read/write frames, SSW `$0345`/`$0305`, logical fault address and PMOVE PC).
+- [x] Instruction-stream fetches across page boundaries (2026-08-12:
+  non-contiguous translated page plus invalid-page format-$B oracle in
+  `berr030_test`).
+- [x] FMOVEM indirect-EA read order (2026-08-12: translated full-extension
+  pointer read before three ascending operand longs, raw FP image matched to
+  WinUAE).
 
 ### Mac Plus
 

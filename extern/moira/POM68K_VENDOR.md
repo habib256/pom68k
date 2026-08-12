@@ -793,6 +793,27 @@ one predictable branch, nothing else). `Cpu030` arms it in its constructor
 Behaviour byte-identical (lcii_boot_etalon: same 0.09/0.48 metrics, same
 9583 SCSI commands); boot etalon wall time 143 s → 122 s (-15%).
 
+**Exact cache-clear commands (2026-08-12):** `CACR.CI` still invalidates all
+sixteen lines, while `CACR.CEI` now invalidates only the longword selected by
+`CAAR[7:4]` (line) and `CAAR[3:2]` (word), matching the WinUAE oracle
+(`newcpu.c`). The earlier conservative implementation flushed the whole timing
+overlay for either strobe. `berr030_test` pins the selected-word invalidation,
+preservation of its three line neighbours, and preservation of another line.
+
+**Closed 68030 restart/fault oracle gaps (2026-08-12):** the local WinUAE
+mode-5 oracle now pins three previously missing paths in `berr030_test`.
+Format `$A` RTE restores the frame's fault address, SSW and data-output buffer
+and completes the pending last-write bus cycle before continuing at the next
+PC. Format `$B` RTE applies the inverse WB2/WB3 `(An)±` fixups before freshly
+decoding the faulted instruction, preventing a double postincrement. PMOVE
+operand translation faults match WinUAE's format `$B` frames in both
+directions (SSW `$0345` read / `$0305` write). Finally, a translated FMOVEM
+full-extension preindexed-indirect EA reads its pointer before the three
+ascending longs of the selected FP register; the resulting raw 96-bit image
+is byte-identical to WinUAE. The Darwin oracle build was also made portable:
+Mach-O uses `-dead_strip` and the existing `ORACLE_EXPORT` visibility markers
+instead of ELF-only `--gc-sections` and `--version-script`.
+
 ## Odd-SP interrupt frames: no A0 masking on 010/020, single vector scaling (2026-07-17, Lode Runner launch freeze)
 
 `MoiraExceptions_cpp.h`, two related fixes on the interrupt-frame path:

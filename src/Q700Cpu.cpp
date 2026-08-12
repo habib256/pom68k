@@ -2,10 +2,9 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Q700Cpu.h"
+#include "LleSession.h"
 #include "Q700Memory.h"
 #include <cstdlib>
-
-static constexpr moira::i64 kPeriphBatch = 256;
 
 namespace {
 // Bound once, with captureless lambdas: they convert to plain function
@@ -109,14 +108,9 @@ void Q700Cpu::flushTicks() {
     }
 }
 void Q700Cpu::schedulePeriphDeadline() {
-    // min(next observable machine-cycle bound, the historical batch): the
-    // cap keeps every transport without a deadline API (ADB PIC, IOPs) at
-    // exactly its former cadence, so exactness can only refine, never
-    // coarsen (TODO § 4, extension inventory 2026-08-04).
     moira::i64 machine = mem_.cyclesToNextEvent();
     if (machine < 1) machine = 1;
     moira::i64 d = machine * cacheBoost_ - periphAccum_;
-    if (d > kPeriphBatch) d = kPeriphBatch;
     if (d < 1) d = 1;
     periphDeadline_ = clock + d;
 }
@@ -132,6 +126,7 @@ moira::u16 Q700Cpu::read16Dasm(moira::u32 addr) const {
 }
 
 void Q700Cpu::setEngine(int e) {
+    if (!pom68k::lle::engineChangeAllowed(e)) return;
     // setEnabled() already flushes everything; the explicit disarm is belt
     // and braces — a code window left armed while the INTERPRETER runs would
     // have it fetching from a host pointer nobody maintains any more.

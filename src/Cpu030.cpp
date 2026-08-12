@@ -75,11 +75,11 @@ void Cpu030::hardReset() {
 // The System (and self-modifying code like SimCity's dynamic blit generator)
 // clears the i-cache via CACR: bit 3 = Clear Instruction cache, bit 2 = Clear
 // Entry (CAAR). These are write-only strobes (raw value, not the stored CACR).
-// Flush the whole model on either — conservative, never reports a stale hit.
+// CI flushes the model; CEI invalidates only the CAAR-selected longword.
 // (The i-cache timing model itself runs inline in Moira's fetch path —
 // Moira.h § PomIcache.)
 void Cpu030::didChangeCACR(moira::u32 value) {
-    if (value & 0x0C) pomIcache.reset();
+    pomInvalidateIcache030(value);
     // A cache clear is the guest announcing freshly written code — the same
     // SMC hint the 040 wrapper honours.
     jit_.flushAll();

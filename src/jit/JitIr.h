@@ -201,6 +201,10 @@ inline Kind classify(uint16_t op) {
                 }
                 return Kind::Unsafe;
             }
+            // MOVE SR,Dn is a privileged READ on 68010+: a successful trace
+            // is necessarily supervisor-mode, and it changes no mapping or
+            // execution state. Memory destinations remain conservative.
+            if ((op & 0xFFF8) == 0x40C0) return Kind::Alu;
             if ((op & 0xFFC0) == 0x40C0 || (op & 0xFFC0) == 0x42C0 ||
                 (op & 0xFFC0) == 0x44C0 || (op & 0xFFC0) == 0x46C0) {
                 return Kind::Unsafe;                                 // MOVE from/to SR/CCR

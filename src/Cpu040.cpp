@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Cpu040.h"
+#include "LleSession.h"
 #include "Q605Memory.h"
 #include <algorithm>
 #include <cstdio>
@@ -205,6 +206,7 @@ moira::u16 Cpu040::read16Dasm(moira::u32 addr) const {
 }
 
 void Cpu040::setEngine(int e) {
+    if (!pom68k::lle::engineChangeAllowed(e)) return;
     // setEnabled() already flushes everything; the explicit disarm is belt
     // and braces — a code window left armed while the INTERPRETER runs would
     // have it fetching from a host pointer nobody maintains any more.

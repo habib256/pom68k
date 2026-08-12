@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Q630Memory.h"
+#include "LleSession.h"
 #include "Q630Cpu.h"
 #include "Moira.h"
 #include <algorithm>
@@ -96,6 +97,7 @@ Q630Memory::Q630Memory(uint32_t totalRam)
             std::fprintf(stderr, "Q630: POM68K_CUDA_LLE=0 — NON-CONFORMANT "
                          "HLE ADB substitute forced\n");
         }
+        if (!cudaLleOn_) pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
     }
 }
 
@@ -120,6 +122,7 @@ void Q630Memory::reset() {
     cudaLle_.reset();
     scc_.reset();
     scsi_.reset();
+    sccDebt_ = scsiDebt_ = 0;
     asc_.reset();
     swim_.reset();
     swim_.attachDrive(&drive0_, &drive1_);
@@ -248,6 +251,7 @@ uint8_t Q630Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
 
 uint8_t Q630Memory::via2Access8(uint32_t addr, bool write, uint8_t v) {
     if (cpu_) cpu_->flushTicks();
+    flushScsi();
     viaSync();
     int reg = (addr >> 9) & 0x0F;            // pseudovia.cpp quadra flavor
     if (write) {
@@ -304,12 +308,14 @@ uint8_t Q630Memory::ioRead8(uint32_t addr) {
     if ((sub & ~0xF00000u) >= 0x02000 && (sub & ~0xF00000u) < 0x04000)
         return via2Access8(sub & 0x1FFF, false, 0);
     if (base >= 0x0C000 && base < 0x0E000) {     // SCC, byte on D8-15
+        flushScc();
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
         sccIrqLine(scc_.irqAsserted());          // reading RR0 / data can clear
         return d;                                // or (re-)assert the level-4 line
     }
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
+        flushScsi();
         // reg select = (addr>>4)&0xF (iosb.cpp:58-59 turboscsi_r reads
         // m_ncr->read(offset>>4)); absolute reg N at PrimeTime+$10000+N*$10.
         // Every register access costs 3 CPU cycles (iosb.cpp:486 turboscsi_r
@@ -387,6 +393,7 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;
     }
     if (base >= 0x0C000 && base < 0x0E000) {
+        flushScc();
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
@@ -394,6 +401,7 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
         return;                                  // change the pending interrupt
     }
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
+        flushScsi();
         if (cpu_) cpu_->stall(scsiWriteCycles_); // iosb.cpp:494 turboscsi_w
         scsi_.write((base >> 4) & 0xF, v);
         scsiPoll_();
@@ -459,6 +467,7 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
 // costs are charged at the ioRead8/ioWrite8 call sites (step 9 cell).
 // macquadra605.cpp:206 drq_handler -> primetime scsi_drq_w -> via2.
 uint8_t Q630Memory::scsiDmaRead_() {
+    flushScsi();
     if (!scsi_.drq()) busError(0x50010100, false);
     uint8_t d = scsi_.dmaRead();
     scsiPoll_();
@@ -466,6 +475,7 @@ uint8_t Q630Memory::scsiDmaRead_() {
 }
 
 void Q630Memory::scsiDmaWrite_(uint8_t v) {
+    flushScsi();
     if (!scsi_.drq()) busError(0x50010100, true);
     scsi_.dmaWrite(v);
     scsiPoll_();
@@ -682,8 +692,8 @@ void Q630Memory::tick(int cpuCycles) {
     // .MPP LAP sleeps on. A real LToUDP peer transmitting drops the stream
     // (Scc8530::openLine, LLE step 8). A de-asserted SCC must also lower the
     // line.
-    scc_.tick(cpuCycles);
-    if (sccIrq_ != scc_.irqAsserted()) { sccIrq_ = scc_.irqAsserted(); updateIrq(); }
+    sccDebt_ += cpuCycles;
+    if (scc_.cyclesToNextEvent() <= sccDebt_) flushScc();
 
     // IOSB ASC and SWIM2 run on C15M (15.6672 MHz),
     // independent of the 25 MHz CPU — convert cpuCycles into ASC-clock ticks
@@ -699,8 +709,8 @@ void Q630Memory::tick(int cpuCycles) {
     // SCSI bus-service latency countdown (Q6.5b) → reflect the deferred IRQ
     // into the pseudo-VIA2 line when it lands.
     if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
-    scsi_.tick(cpuCycles);
-    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
+    scsiDebt_ += cpuCycles;
+    if (scsi_.cyclesToNextEvent() <= scsiDebt_) flushScsi();
 
     // 60.15 Hz CA1 tick (iosb 6015_timer)
     tickAcc_ += int64_t(cpuCycles) * 6015;
@@ -712,4 +722,48 @@ void Q630Memory::tick(int cpuCycles) {
 
     // Valkyrie frame clock (VBL interrupt) — Valkyrie::tick.
     video_.tick(cpuCycles);
+}
+
+int Q630Memory::cyclesToNextEvent() const {
+    int best = cudaLleOn_ ? cudaLle_.cyclesToNextEvent() : 1;
+    best = std::min(best, viaEClock_.cyclesToNext(kCpuHz));
+    auto debtBound = [](int next, int64_t debt) {
+        if (next == 0x7fffffff) return next;
+        return int(std::max<int64_t>(1, int64_t(next) - debt));
+    };
+    best = std::min(best, debtBound(scc_.cyclesToNextEvent(), sccDebt_));
+    best = std::min(best, debtBound(scsi_.cyclesToNextEvent(), scsiDebt_));
+    auto bridge = [](int deviceCycles, int64_t acc) {
+        if (deviceCycles == 0x7fffffff) return deviceCycles;
+        const int64_t need = int64_t(deviceCycles) * kCpuHz - acc;
+        if (need <= 0) return 1;
+        return int((need + AscIosb::kCpuHz - 1) / AscIosb::kCpuHz);
+    };
+    best = std::min(best, bridge(asc_.cyclesToNextEvent(), ascCycAcc_));
+    best = std::min(best, bridge(swim_.cyclesToNextEvent(), swimCycAcc_));
+    best = std::min(best, int(std::max<int64_t>(1,
+        (kCpuHz * 100 - tickAcc_ + 6014) / 6015)));
+    best = std::min(best, video_.cyclesToNextEvent());
+    return std::max(best, 1);
+}
+
+void Q630Memory::flushScc() {
+    while (sccDebt_ > 0) {
+        const int step = int(std::min<int64_t>(sccDebt_, 0x7fffffff));
+        sccDebt_ -= step;
+        scc_.tick(step);
+    }
+    if (sccIrq_ != scc_.irqAsserted()) {
+        sccIrq_ = scc_.irqAsserted();
+        updateIrq();
+    }
+}
+
+void Q630Memory::flushScsi() {
+    while (scsiDebt_ > 0) {
+        const int step = int(std::min<int64_t>(scsiDebt_, 0x7fffffff));
+        scsiDebt_ -= step;
+        scsi_.tick(step);
+    }
+    if (scsi_.irq() != ((pvIfr_ & 0x08) != 0)) scsiPoll_();
 }

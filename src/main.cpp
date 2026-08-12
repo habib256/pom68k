@@ -50,6 +50,8 @@
 #include "LtoUdp.h"
 #include "AtalkHub.h"
 #include "SaveStateMachines.h"
+#include "LleSession.h"
+#include "FirmwareManifest.h"
 
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -758,6 +760,14 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
                         const std::function<void()>& extraMenus = {}) {
     const double speed = realtimeRatio();
     if (!ImGui::BeginMainMenuBar()) return;
+    if (pom68k::lle::requested()) {
+        const bool qualified = pom68k::lle::qualified();
+        ImGui::TextColored(qualified ? ImVec4(0.3f, 0.85f, 0.35f, 1)
+                                     : ImVec4(0.95f, 0.35f, 0.3f, 1),
+                           qualified ? "LLE AArch64 : QUALIFIÉ"
+                                     : "LLE AArch64 : NON QUALIFIÉ");
+        ImGui::Separator();
+    }
     if (ImGui::BeginMenu("Machine")) {
         // rom = canonical short name (a convenience symlink); sig = the CRC32
         // signature scanned for under roms/ when the short name is absent, so
@@ -900,7 +910,10 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
             ImGui::TextDisabled("mesurée sur l'horloge machine, sans modifier son rythme");
             ImGui::Separator();
         }
-        if (ImGui::MenuItem("Interpréteur (Moira)", nullptr, eng == 0, hasJit) &&
+        const bool engineLocked = pom68k::lle::requested() &&
+                                  pom68k::lle::qualified();
+        if (ImGui::MenuItem("Interpréteur (Moira)", nullptr, eng == 0,
+                            hasJit && !engineLocked) &&
             eng != 0) {
             gSetCpuEngine(0);
         }
@@ -3529,6 +3542,53 @@ using CentrisMachine = DafbMachine<CentrisMemory, CentrisCpu>;
 using Q700Machine    = DafbMachine<Q700Memory, Q700Cpu>;
 using Q630Machine    = DafbMachine<Q630Memory, Q630Cpu>;
 
+static bool fullLleAarch64Requested() {
+    return pom68k::lle::requested();
+}
+
+static bool fullLleAarch64CheckOnly() {
+    const char* e = std::getenv("POM68K_LLE_AARCH64_CHECK_ONLY");
+    return e && e[0] && e[0] != '0';
+}
+
+template <class Cpu>
+static bool qualifyFullLleAarch64(const char* machine, const char* firmware,
+                                  bool firmwareActive, const Cpu& cpu) {
+    if (!fullLleAarch64Requested()) return true;
+    const bool native = cpu.engine() == 1 &&
+                        std::strcmp(cpu.jit().backendName(), "aarch64") == 0;
+    std::string assetError;
+    const bool assetValid = pom68k::firmware::verify(firmware, assetError);
+    const std::uint32_t hle = pom68k::lle::activeHleModules();
+    if (!firmwareActive || !assetValid || !native || hle != 0) {
+        std::string why;
+        if (!firmwareActive)
+            why = std::string("firmware/transport requis inactif: ") + firmware;
+        if (!assetValid) {
+            if (!why.empty()) why += " ; ";
+            why += assetError;
+        }
+        if (!native) {
+            if (!why.empty()) why += " ; ";
+            why += "backend AArch64 natif inactif";
+        }
+        if (hle) {
+            if (!why.empty()) why += " ; ";
+            why += "module(s) HLE actif(s), masque=" + std::to_string(hle);
+        }
+        std::fprintf(stderr,
+            "Mode LLE AArch64 complet: REFUSÉ pour %s — %s. "
+            "La session n'est pas qualifiée LLE et ne sera pas démarrée.\n",
+            machine, why.c_str());
+        pom68k::lle::setQualified(false);
+        return false;
+    }
+    pom68k::lle::setQualified(true);
+    std::printf("Mode LLE AArch64 complet: QUALIFIÉ — %s, %s, backend aarch64\n",
+                machine, firmware);
+    return true;
+}
+
 // ── LC 475 / Quadra 605 (Q6): MEMCjr/PrimeTime + 68LC040, selected by a
 // 1 MB ROM. Structure mirrors runLcII; the Q605 has no ASC yet (silent).
 static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
@@ -3556,6 +3616,10 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
+    if (!qualifyFullLleAarch64(profileTag.c_str(),
+                               "Cuda 341s0788",
+                               mem.cudaLleActive(), cpu)) return 2;
+    if (fullLleAarch64CheckOnly()) return 0;
     cpu.hardReset();
     wireLocalTalk(mem);
 
@@ -3911,6 +3975,10 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
+    if (!qualifyFullLleAarch64(cinfo.name,
+                               "ADB PIC1654S 342s0440-b",
+                               mem.adbLleActive(), cpu)) return 2;
+    if (fullLleAarch64CheckOnly()) return 0;
     cpu.hardReset();
     wireLocalTalk(mem);
 
@@ -4267,6 +4335,12 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
+    if (!qualifyFullLleAarch64(qname,
+                               qkind == Q700Memory::Model::Spike
+                                 ? "ADB PIC1654S 342s0440-b"
+                                 : "Egret Eclipse LLE (non implémenté)",
+                               mem.adbLleActive(), cpu)) return 2;
+    if (fullLleAarch64CheckOnly()) return 0;
     cpu.hardReset();
     wireLocalTalk(mem);
 
@@ -4611,6 +4685,10 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
+    if (!qualifyFullLleAarch64(profileTag.c_str(),
+                               "Cuda 341s0060",
+                               mem.cudaLleActive(), cpu)) return 2;
+    if (fullLleAarch64CheckOnly()) return 0;
     cpu.hardReset();
     wireLocalTalk(mem);
 
@@ -5279,6 +5357,18 @@ int main(int argc, char** argv) {
 #ifndef POM68K_VERSION_STRING
 #define POM68K_VERSION_STRING "dev"
 #endif
+    // Product mode: remove the option before positional ROM/disk parsing,
+    // then force the execution choices it promises. Qualification below is
+    // based on what actually became active, never merely on requested flags.
+    for (int i = 1; i < argc; i++) {
+        const bool checkOnly = std::strcmp(argv[i], "--lle-aarch64-check") == 0;
+        if (!checkOnly && std::strcmp(argv[i], "--lle-aarch64") != 0) continue;
+        setenv("POM68K_LLE_AARCH64_FULL", "1", 1);
+        if (checkOnly) setenv("POM68K_LLE_AARCH64_CHECK_ONLY", "1", 1);
+        for (int j = i; j + 1 < argc; j++) argv[j] = argv[j + 1];
+        --argc;
+        --i;
+    }
     // Release smoke gates run this on display-less CI runners: it must
     // print and exit before glfwInit or any window is created.
     for (int i = 1; i < argc; i++) {
@@ -5297,6 +5387,15 @@ int main(int argc, char** argv) {
     static MacVideo video;
     static MacAudio audio;
     static MacAudioHost audioHost;
+
+    // Set these only after constructing the fallback 68000 objects above;
+    // otherwise their deliberately incompatible backend probe emits a false
+    // warning before ROM dispatch reaches the requested 68040 profile.
+    if (fullLleAarch64Requested()) {
+        setenv("POM68K_CPU_ENGINE", "jit", 1);
+        setenv("POM68K_JIT_BACKEND", "a64", 1);
+    }
+    pom68k::lle::beginSession();
 
     std::string matched;
     std::vector<uint8_t> rom;
@@ -5328,6 +5427,15 @@ int main(int argc, char** argv) {
     if (rom.size() == Q605Memory::kRomSize) {
         const uint32_t ck = uint32_t(rom[0]) << 24 | uint32_t(rom[1]) << 16
                           | uint32_t(rom[2]) << 8 | rom[3];
+        if (fullLleAarch64Requested() &&
+            ck != 0xFF7439EE && ck != 0xF1A6F343 && ck != 0xF1ACAD13 &&
+            ck != 0x420DBFF3 && ck != 0x3DC27823 &&
+            ck != 0x06684214 && ck != 0x064DC91D) {
+            std::fprintf(stderr,
+                "Mode LLE AArch64 complet: REFUSÉ — ce profil n'appartient "
+                "pas aux plateformes 68040 qualifiées.\n");
+            return 2;
+        }
         if (ck == 0xECD99DC0)
             return runLcII(std::move(rom), matched, argc, argv,
                            V8Memory::Model::ColorClassic);
@@ -5385,6 +5493,11 @@ int main(int argc, char** argv) {
         if (ck == 0xECFA989B)
             return runDuo(std::move(rom), matched, argc, argv);
         return runQuadra(std::move(rom), matched, argc, argv);
+    }
+    if (fullLleAarch64Requested()) {
+        std::fprintf(stderr,
+            "Mode LLE AArch64 complet: REFUSÉ — ROM absente ou profil non-68040.\n");
+        return 2;
     }
     // Compact 68000 family (mac128.cpp macse/macsefd/macclasc): the Plus map
     // with a bigger ROM and ADB instead of the M0110 — same MacMemory, a

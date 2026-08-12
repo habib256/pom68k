@@ -22,9 +22,11 @@
 #include "Q630Memory.h"
 #include "Q700Cpu.h"
 #include "Q700Memory.h"
+#include "LleSession.h"
 #include "SaveState.h"
 #include "SaveStateMachines.h"
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -184,6 +186,34 @@ int main() {
     testFamily<Q700Rig>("q700", rom);
     testFamily<Q900Rig>("q900", rom);
     testFamily<Q630Rig>("q630", rom);
+
+    // Product-conformance stamp: a strict qualified state reloads, an HLE
+    // state is explicitly refused, and the CPU engine cannot be switched
+    // back to the interpreter after qualification.
+    Q605Rig strict(rom);
+    setenv("POM68K_LLE_AARCH64_FULL", "1", 1);
+    pom68k::lle::beginSession();
+    pom68k::lle::setQualified(true);
+    strict.cpu.setEngine(1);
+    strict.cpu.setEngine(0);
+    check(strict.cpu.engine() == 1, "lle", "qualified session locks the JIT engine");
+    const Blob qualified = saveOf(strict);
+    std::string strictErr;
+    check(pom68k::load(strict.mem, strict.cpu, Q605Rig::kKind,
+                       qualified.data(), qualified.size(), strictErr),
+          "lle", "strict session restores a qualified snapshot");
+
+    pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+    const Blob hleState = saveOf(strict);
+    pom68k::lle::beginSession();
+    pom68k::lle::setQualified(true);
+    strictErr.clear();
+    check(!pom68k::load(strict.mem, strict.cpu, Q605Rig::kKind,
+                        hleState.data(), hleState.size(), strictErr),
+          "lle", "strict session refuses an HLE-stamped snapshot");
+    check(strictErr.find("not from a qualified LLE AArch64") != std::string::npos,
+          "lle", "HLE snapshot refusal is explicit");
+    unsetenv("POM68K_LLE_AARCH64_FULL");
 
     if (gFails) {
         std::printf("savestate_040_test: %d failure(s)\n", gFails);

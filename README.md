@@ -25,8 +25,8 @@ the Machine menu, in the same order and the same grouping
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 182 gates (asset-dependent ones soft-skip)
-ctest -L unit                     # 91 gates, no ROM or disk image needed
+ctest                             # 183 gates (asset-dependent ones soft-skip)
+ctest -L unit                     # 92 gates, no ROM or disk image needed
 ctest -L smoke                    # 9 gates, one machine, both CPU engines
 ctest -L etalon-core              # 12 gates, one profile per platform
 ```
@@ -76,6 +76,34 @@ POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=threaded ./build-pgo/POM68K
 # Explicit native selection remains accepted:
 POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=a64 ./build-pgo/POM68K
 ```
+
+Le mode produit strict `--lle-aarch64` force ces deux sélections et vérifie
+avant l'ouverture de la session le firmware requis par le profil (Cuda
+341s0788 pour Q605, Cuda 341s0060 pour Q630, PIC1654S 342s0440-b pour
+Centris/Q700). Il termine
+avec le statut 2 et un diagnostic `REFUSÉ` si le backend natif ou le dump est
+absent, si un `*_LLE=0` impose le fallback HLE, ou si le profil n'est pas une
+plateforme 68040 qualifiée. Une session en fallback HLE n'est donc jamais
+annoncée comme « LLE AArch64 complet ».
+
+La qualification couvre toute la session : le moteur est verrouillé sur le
+JIT AArch64, un registre central invalide la qualification dès qu'un module
+HLE s'active, et les save states v4 estampillent cette provenance. Une session
+stricte refuse donc un état créé sous HLE. Les firmwares sont vérifiés contre
+`assets.lock` (nom, taille, SHA-256 et profils autorisés), pas seulement par
+leur capacité à être chargés. `--lle-aarch64-check` exécute ce préflight puis
+quitte avant GLFW, pour la CI.
+
+La CI privée qui possède les actifs doit configurer avec
+`-DPOM68K_PRODUCT_LLE_GATES=ON`, puis exécuter `ctest -L product`. Ce profil
+refuse les actifs manquants à la configuration, impose explicitement le
+backend AArch64 aux quatre boots Q605/Centris/Q630/Q700, garde leurs oracles
+interprétés, lance le lockstep A64 et les save states, et vérifie les refus
+firmware absent, fallback forcé et Q900 non qualifié. Q900/Q950 restent
+explicitement hors qualification jusqu'au chemin Egret/IOP firmware-LLE et
+au chemin Egret firmware-LLE. Les deux Apple PIC fournissent désormais leurs
+deadlines au scheduler ; le plafond historique de 256 cycles ne subsiste sur
+Eclipse que pour son Egret HLE explicitement non conforme.
 
 ## Releases (prebuilt packages)
 

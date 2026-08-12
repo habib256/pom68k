@@ -681,11 +681,12 @@ public:
     // code generator has to touch. Returned as a struct rather than exposed
     // as public members so the register file stays private, and computed
     // from a live object so no offsetof() on a polymorphic type is needed.
-    // src/jit/backends/JitBackendX64.cpp is the only consumer.
+    // Native JIT backends consume this layout without exposing the register
+    // file itself.
     struct PomJitLayout {
         u32 d, a;                       // reg.d[0], reg.a[0]
         u32 pc, pc0;
-        u32 srX, srN, srZ, srV, srC, srS;
+        u32 srT1, srT0, srS, srM, srX, srN, srZ, srV, srC, srIpl;
         u32 regIpl, iplPin;
         u32 clock, flags;
         u32 ird, irc;
@@ -930,8 +931,21 @@ protected:
         void reset() {              // CACR clear strobes / hard reset
             for (int i = 0; i < 16; i++) { tag[i] = 0xFFFFFFFFu; valid[i] = 0; }
         }
+        void clearEntry(u32 caar) { // CACR.CEI: one longword in one cache line
+            const int line = int((caar >> 4) & 0xF);
+            const u8 bit = u8(1u << ((caar >> 2) & 3));
+            valid[line] &= u8(~bit);
+        }
     };
     PomIcache pomIcache;
+
+    // CACR clear bits are write-only command strobes, so wrappers receive
+    // the raw MOVEC value in didChangeCACR(). CI has priority when both are
+    // asserted; CEI invalidates only the CAAR-selected longword entry.
+    void pomInvalidateIcache030(u32 value) {
+        if (value & 0x08) pomIcache.reset();
+        else if (value & 0x04) pomIcache.clearEntry(reg.caar);
+    }
 
     // Written only by the opt-in 68030 path in pomJitExecOne(). Keeping the
     // storage beside the cache model makes the measured miss delta and its

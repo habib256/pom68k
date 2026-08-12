@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Q605Memory.h"
+#include "LleSession.h"
 #include "SaveState.h"
 #include "Cpu040.h"
 #include "Moira.h"
@@ -108,6 +109,7 @@ Q605Memory::Q605Memory(uint32_t totalRam)
             std::fprintf(stderr, "Q605: POM68K_CUDA_LLE=0 — NON-CONFORMANT "
                          "HLE ADB substitute forced\n");
         }
+        if (!cudaLleOn_) pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
     }
 }
 

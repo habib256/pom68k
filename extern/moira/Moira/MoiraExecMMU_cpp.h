@@ -2182,9 +2182,11 @@ Moira::pomJitLayout() const
     PomJitLayout l{};
     l.d = at(&reg.d[0]);      l.a = at(&reg.a[0]);
     l.pc = at(&reg.pc);       l.pc0 = at(&reg.pc0);
+    l.srT1 = at(&reg.sr.t1);  l.srT0 = at(&reg.sr.t0);
+    l.srS = at(&reg.sr.s);    l.srM = at(&reg.sr.m);
     l.srX = at(&reg.sr.x);    l.srN = at(&reg.sr.n);
     l.srZ = at(&reg.sr.z);    l.srV = at(&reg.sr.v);
-    l.srC = at(&reg.sr.c);    l.srS = at(&reg.sr.s);
+    l.srC = at(&reg.sr.c);    l.srIpl = at(&reg.sr.ipl);
     l.regIpl = at(&reg.ipl);  l.iplPin = at(&ipl);
     l.clock = at(&clock);     l.flags = at(&flags);
     l.ird = at(&queue.ird);   l.irc = at(&queue.irc);

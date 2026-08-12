@@ -27,6 +27,7 @@
 #include "Dafb.h"
 #include "Egret.h"
 #include "Iwm.h"
+#include "LleSession.h"
 #include "M68hc05.h"
 #include "M68hc05Pge.h"
 #include "IIfxCpu.h"
@@ -159,6 +160,7 @@ void saveT(Mem& mem, Cpu& cpu, SnapMachine kind,
     h.romChecksum = mem.romChecksum();
     h.ramSize     = mem.ramBytes();
     h.emuCycles   = static_cast<std::uint64_t>(cpu.machineClock());
+    h.conformance = lle::snapshotFlags();
     { sav::Chunk c(out, kHead); sav::Writer w(out); w(h); }
     { sav::Chunk c(out, kCpu);  sav::Writer w(out); w(cpu); }
     { sav::Chunk c(out, kMach); sav::Writer w(out); w(mem); }
@@ -200,6 +202,12 @@ bool loadT(Mem& mem, Cpu& cpu, SnapMachine kind,
             }
             if (h.romChecksum != mem.romChecksum()) {
                 err = "save state was taken with a different ROM";
+                return false;
+            }
+            if (lle::requested() &&
+                (!(h.conformance & lle::SnapshotQualified) ||
+                 lle::snapshotHleModules(h.conformance) != 0)) {
+                err = "save state is not from a qualified LLE AArch64 session";
                 return false;
             }
             // During rollback the failed Reader may already have cleared or

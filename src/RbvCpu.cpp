@@ -62,7 +62,7 @@ void RbvCpu::hardReset() {
 }
 
 void RbvCpu::didChangeCACR(moira::u32 value) {
-    if (value & 0x0C) pomIcache.reset();   // CI/CE strobes → flush model
+    pomInvalidateIcache030(value);         // CI whole / CEI selected longword
     jit_.flushAll();                       // SMC hint, as on every wrapper
 }
 

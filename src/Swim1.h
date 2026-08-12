@@ -41,6 +41,7 @@ public:
     uint8_t read(int reg);
     void write(int reg, uint8_t v);
     void tick(int cycles);
+    int cyclesToNextEvent() const;
 
     // VIA PA5 → IWM-personality SEL (ISM ignores it: HDSEL = mode bit 5)
     void setSel(bool sel) { iwm_.setSel(sel); }

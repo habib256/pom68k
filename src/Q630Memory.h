@@ -104,22 +104,21 @@ public:
     // Called from Q630Cpu::sync with elapsed CPU cycles: VIA1 timers
     // (783.36 kHz) + the 60.15 Hz CA1 tick + the DAFB VBL.
     void tick(int cpuCycles);
-    // Firmware-MCU deadline (SonoraMemory note); wrapper-capped.
-    int cyclesToNextEvent() const {
-        return cudaLleOn_ ? cudaLle_.cyclesToNextEvent() : 0x7fffffff;
-    }
+    int cyclesToNextEvent() const;
 
     Via6522& via1() { return via1_; }
     Egret& cuda() { return cuda_; }
     AdbBus& adb() { return adb_; }
-    Scc8530& scc() { return scc_; }
+    Scc8530& scc() { flushScc(); return scc_; }
+    int64_t deferredSccCycles() const { return sccDebt_; }
     AscIosb& asc() { return asc_; }
     Swim2& swim() { return swim_; }
     SonyDrive& internalDrive() { return drive0_; }
     SonyDrive& externalDrive() { return drive1_; }
     bool insertDisk(const std::string& path) { return drive0_.insert(path); }
     void ejectDisk() { drive0_.eject(); }
-    Ncr53c96& scsi() { return scsi_; }
+    Ncr53c96& scsi() { flushScsi(); return scsi_; }
+    int64_t deferredScsiCycles() const { return scsiDebt_; }
     ScsiDisk& scsiDisk() { return scsiDisks_[0]; }  // boot drive (tests poke it)
 
     // Attach a SCSI target from a backing image (boot drive = ID 0).
@@ -283,7 +282,8 @@ public:
            iosbRegs_, ataIrq_,
            scsiReadCycles_, scsiWriteCycles_,
            scsiDmaReadCycles_, scsiDmaWriteCycles_,
-           ascCycAcc_, swimLastCpu_, swimCycAcc_, viaEClock_, tickAcc_);
+           ascCycAcc_, swimLastCpu_, swimCycAcc_, viaEClock_, tickAcc_,
+           sccDebt_, scsiDebt_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -310,6 +310,8 @@ private:
     bool cudaLleOn_ = false;
     AdbBus adb_;
     Scc8530 scc_;
+    int64_t sccDebt_ = 0;
+    void flushScc();
     // PrimeTime's IOSB audio cell at $50014000: $BB version, stereo FIFO A/B,
     // 22.257 kHz at C15M (15.6672 MHz), level IRQ on pseudo-VIA2 bit 4.
     // This is the IOSB ASC verified by ASCTester on an LC 475, not the $B0
@@ -326,6 +328,8 @@ private:
     int64_t swimLastCpu_ = -1;     // <0: latch on first sync
     int64_t swimCycAcc_ = 0;       // CPU→C15M fractional bridge (shared timeline)
     Ncr53c96 scsi_;                // TurboSCSI 53C96 (Q6)
+    int64_t scsiDebt_ = 0;
+    void flushScsi();
     ScsiDisk scsiDisks_[7];        // by SCSI ID; [0] = boot drive
     Q630Cpu* cpu_ = nullptr;
 

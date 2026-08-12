@@ -73,12 +73,24 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         -Wno-unused-but-set-variable
         -fvisibility=hidden
         -ffunction-sections -fdata-sections)
-    target_link_options(oracle_uae PRIVATE -Wl,--gc-sections)
+    if(APPLE)
+        # Vendored Hatari debugging helpers intentionally retain old-style
+        # implicit declarations; AppleClang 17+ promotes those to errors.
+        target_compile_options(oracle_uae PRIVATE
+            -Wno-error=implicit-function-declaration)
+        target_link_options(oracle_uae PRIVATE -Wl,-dead_strip)
+    else()
+        target_link_options(oracle_uae PRIVATE -Wl,--gc-sections)
+    endif()
 endif()
 
 # API-only visibility: export exactly the oracle_api.h entry points.
-set_target_properties(oracle_uae PROPERTIES
-    LINK_FLAGS "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/oracle_uae.map")
+# ELF uses a version script. On Darwin, -fvisibility=hidden plus the explicit
+# ORACLE_EXPORT attributes in glue.c already provides the same API boundary.
+if(NOT APPLE)
+    set_target_properties(oracle_uae PROPERTIES
+        LINK_FLAGS "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/oracle_uae.map")
+endif()
 
 # ---- smoke tests ---------------------------------------------------------
 enable_testing()

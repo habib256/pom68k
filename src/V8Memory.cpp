@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "V8Memory.h"
+#include "LleSession.h"
 #include "Cpu030.h"
 #include <array>
 #include <bit>
@@ -189,6 +190,8 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
                          "substitute forced\n",
                          cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE");
         }
+        if (!egretLleOn_)
+            pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
     }
     reset();
 }

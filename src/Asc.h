@@ -17,6 +17,7 @@
 // Gate: tests/asc_test.cpp.
 
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 
@@ -250,6 +251,10 @@ public:
     uint8_t read(uint32_t offset);
     void write(uint32_t offset, uint8_t v);
     void tick(int cpuCycles);
+    int cyclesToNextEvent() const {
+        const int64_t need = cpuHz_ - drainAcc_;
+        return int(std::max<int64_t>(1, (need + kSampleRate - 1) / kSampleRate));
+    }
 
     bool irqAsserted() const { return irq_; }
     std::function<void(bool)> onIrq;

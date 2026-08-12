@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "VaspMemory.h"
+#include "LleSession.h"
 #include "VaspCpu.h"
 #include <cstdio>
 #include <cstdlib>
@@ -43,6 +44,8 @@ VaspMemory::VaspMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
             std::fprintf(stderr, "Vasp: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
                          "HLE ADB substitute forced\n");
         }
+        if (!egretLleOn_)
+            pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
     }
     reset();
 }

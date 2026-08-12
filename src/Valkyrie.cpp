@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Valkyrie.h"
+#include <algorithm>
 
 void Valkyrie::reset() {
     videoTiming_ = 0x80;            // valkyrie.cpp device_reset
@@ -229,4 +230,12 @@ void Valkyrie::tick(int cpuCycles) {
         }
         prevLine_ = line;
     }
+}
+
+int Valkyrie::cyclesToNextEvent() const {
+    if (!vtotal_ || !htotal_ || !pixelClock_) return 0x7fffffff;
+    const int64_t lineSpan = int64_t(htotal_) * cpuHz_;
+    const int64_t lineEnd = (int64_t(currentLine()) + 1) * lineSpan;
+    const int64_t need = lineEnd - framePos_;
+    return int(std::max<int64_t>(1, (need + pixelClock_ - 1) / pixelClock_));
 }

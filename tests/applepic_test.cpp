@@ -101,6 +101,22 @@ int main()
 
     pic.reset();
 
+    // Scheduler contract: the advertised bound is the first input clock on
+    // which tick() may execute another IOP cycle. No progress is permitted
+    // before it; progress must occur exactly on it.
+    {
+        ApplePic paced;
+        paced.reset();
+        paced.tick(10);                         // 2 held cycles, debt = -6
+        const int due = paced.cyclesToNextEvent();
+        const int64_t before = paced.clockNow();
+        CHECK(due == 7, "deadline must include ApplePic debt (got %d)", due);
+        paced.tick(due - 1);
+        CHECK(paced.clockNow() == before, "IOP progressed before its deadline");
+        paced.tick(1);
+        CHECK(paced.clockNow() == before + 8, "IOP did not progress on deadline");
+    }
+
     // 1. Held in reset; device regs unreachable outside bypass.
     CHECK(pic.cpuHeld(), "CPU must be held after reset");
     CHECK(pic.hostRead(0x15) == 0, "device-reg read must return 0 in non-bypass");

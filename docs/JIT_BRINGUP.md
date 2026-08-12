@@ -262,13 +262,33 @@ forms: register-only `ADDQ/SUBQ ...,An`, and read-only `TST (An)`.
 The result demonstrates why the split matters. The hot `584F` trace is
 **6 = 2 base + 4 i-cache + 0 post** and is now native. The apparent twin
 `4A11` is **70 = 70 base + 0 i-cache + 0 post**: its excess is real data-bus
-work, so it remains refused. On the fixed 1,000-frame run this cuts block
+work, so it cannot use the ordinary inline-DTLB load. At this checkpoint it
+remained refused. On the fixed 1,000-frame run this cuts block
 fallbacks **257,369 -> 236,298** and compiles 62 blocks; wall remains 4.57 s
 and the fingerprint/cache counters are unchanged. The 120k experimental
 lockstep passes, beyond both former divergence points. Correct but slower
 native code must not replace the faster conformant floor;
 `POM68K_JIT_UNSAFE_BACKEND=1` and the dedicated experimental lockstep remain
 the development lane until native coverage and block-exit economics are fixed.
+
+**`MOVE SR,Dn` is now a native read-only block member (2026-08-12).** The
+AArch64 emitter reconstructs all architected SR fields, including the mask
+from `reg.sr.ipl` rather than the separately sampled interrupt pin level, and
+writes only the low word of `Dn`. A no-ROM native smoke checks `$2718` and the
+120k LC II lockstep passes. In the comparable 10k census, `40C0` accounts for
+77,555 instructions (2.33% of the stream), is marked native, and disappears
+entirely from the static fallback list; reported native coverage is 99.1%.
+The next gate removed that dominant refusal without pretending the access is
+RAM. `TST.B (A1)` always calls `pomJitReadData`, hence the real 030 MMU and
+device path own their variable 64-cycle delay; generated code owns only the
+six fixed instruction cycles and the flags. The 120k lockstep remains exact.
+On the comparable 10k census, static fallbacks fall **61,436 -> 3,924
+(-93.6%)** and `4A11` disappears completely. This is still not a throughput
+claim: two fixed 6,000-frame Release pairs measured threaded at 19.52/19.50 s
+and AArch64 at 20.18/20.16 s, with the same `cfb184b6faddabec` fingerprint and
+i-cache counters. The full run retires only 18.4% of instructions natively and
+has 64.6 M exits versus threaded's 50.7 M; coverage inside compiled blocks is
+no longer the dominant product-level bottleneck.
 
 **The next semantic slice, `(An)+`, is now closed on AArch64.** A refused
 translation leaves `An` untouched; after a successful probe the 030 updates

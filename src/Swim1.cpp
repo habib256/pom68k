@@ -360,6 +360,19 @@ void Swim1::tick(int cycles) {
     else              tickRead(cycles);
 }
 
+int Swim1::cyclesToNextEvent() const {
+    // The legacy IWM personality has no event API yet; retain the historical
+    // scheduler cadence for it.  ISM uses the same cell/TSS engine as SWIM2.
+    if (!ismMode_) return 256;
+    if (!(mode_ & 0x08)) return 0x7fffffff;
+    if (mode_ & 0x10) {
+        if (halfWait_) return int((halfWait_ + 1) / 2);
+        return currentBit_ >= 0 ? 1 : 0x7fffffff;
+    }
+    const int left = cellCycles() - cellPhase_;
+    return left > 0 ? left : 1;
+}
+
 // Read engine: the SWIM2/ideal-cell shifter (see Swim1.h — SWIM1's real
 // LS-pair CSM discriminates flux jitter our discrete cells don't have).
 void Swim1::tickRead(int cycles) {
