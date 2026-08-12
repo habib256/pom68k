@@ -1365,7 +1365,6 @@ laptop — and left it too.)*
 
 | Machine | ROM on hand | New brick |
 |---|---|---|
-| **Quadra 900 / 950** | `420DBFF3` / `3DC27823` | none left — the IOP brick landed with the IIfx and the Eclipse front end is in `Q700Memory`; what remains is the SWIM IOP's BRK (§ 0) |
 | **PowerBook 150** | `FDA22562` | LCD framebuffer + 68HC05 PM — the `M68hc05` core already ships |
 | **PowerBook 140-180** | `E33B2724` | LCD framebuffer + the M50753 Power Manager (a different MCU from the Duos') |
 | **PowerBook Duo 210/250/270c/280** | `0024D346` / `015621D7` | none left — `MscMemory` + `PgePmu` ship; identity/clock variants of the gated Duo 230 |

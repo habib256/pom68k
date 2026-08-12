@@ -272,11 +272,19 @@ choosing the PIC's personality.
   that instant and the 68k PC — which showed the ROM setting the pointer to
   `$01FF` and firing.
 
-  Still open: `dat1byte` → `reqa_w`/`reqb_w` (MAME wires it to **both** DMA
-  channels, `macquadra700.cpp:879-880`; POM68K's `Swim1` has no such
-  callback) — a real extension of the floppy controller, not a wiring line.
-  Not needed for the boot; needed the day a disk transfer goes through the
-  IOP's DMA rather than its polled path.
+  **Closed 2026-08-02:** `Swim1::onDat1Byte` now drives both ApplePic DMA
+  request channels on Q900/Q950 (MAME `macquadra700.cpp`, current lines
+  817-818) and channel A alone on IIfx. The callback follows FIFO occupancy
+  and transfer direction, so DMA no longer depends on a polled workaround.
+
+  A later static note (`7d1da2a`) suspected that ApplePic `gpout1` should
+  drive floppy head-select. Current MAME explicitly disproves that wiring:
+  `gpout0` drives ADB, while SWIM1's own `hdsel_cb` drives
+  `eclipse_state::fdc_hdsel` (`macquadra700.cpp:815,819`). In ISM mode that
+  output is mode bit 5 (`swim1.cpp:341-342`). POM68K already consumes the
+  same bit directly through `Swim1::side1()` for sense, read and write, so
+  wiring `gpout1` to `Iwm::setSel` would invent a board connection and must
+  not be integrated.
 
   **The Quadra 950 came up the same day, off the same one-line fix** —
   `q700_boot_etalon q950` PASSED at 33.333 MHz on its own `$3DC27823` ROM,
