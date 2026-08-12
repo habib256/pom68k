@@ -3,7 +3,7 @@
 //
 // The environment-knob surface, checked against its documentation.
 //
-// 133 distinct `POM68K_*` names are read across `src/`, `tests/` and the
+// 148 distinct `POM68K_*` names are read across `src/`, `tests/` and the
 // Moira fork. No knob is individually wrong; the problem is that the surface
 // grows silently, and `DEV.md` § 5 calls itself "the complete list" — a claim
 // nothing verified. When this gate was first written it found **twelve** names

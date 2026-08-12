@@ -14,12 +14,13 @@ fast, and flags where POM68K deliberately differs.
 - The Sonora/AIO family that inherited this design: `DEV.md` § 2.5 and, for a
   worked from-scratch bring-up, **`docs/LC520_BRINGUP.md`**.
 
-> **Cite `§ Section name`, never a line number.** Source comments already do
-> (`V8Memory.h:14`, `V8Video.h:12`, `PseudoVia.h:25`, `Ariel.h:10`, `Asc.h:14`,
-> `Egret.h:38`, `V8Memory.cpp:337`). Two older cites are by line and are stale
-> after any edit here: `V8Memory.cpp:159` ("LCII_HARDWARE.md:44", the C7M/VIA
-> clock — now § Clocking) and `V8Memory.cpp:388` ("LCII_HARDWARE.md:78", the
-> `AddrMapFlags $773F` BERR note — now § Address map).
+> **Cite `§ Section name`, never a line number.** Most source comments already
+> do (`V8Memory.h:14`, `V8Video.h:11`, `PseudoVia.h:26`, `Ariel.h:10`,
+> `Asc.h:14`, `Egret.h:38`). Two cites are still by line and are wrong after
+> any edit here — resolve them by section, not by counting:
+> `V8Memory.cpp:242` says "LCII_HARDWARE.md:44" (the C7M/VIA clock — **§
+> Clocking**) and `V8Memory.cpp:527` says "LCII_HARDWARE.md:78" (the
+> `AddrMapFlags $773F` BERR note — **§ Address map**).
 
 Mined 2026-07-15 in source-of-truth rank order:
 
@@ -31,8 +32,9 @@ Mined 2026-07-15 in source-of-truth rank order:
    LC II ≈ LC with a 68030 (Apple published no standalone LC II Dev Note;
    the "Macintosh LC II" section rides the LC one).
 3. Cross-checks: EveryMac LC II spec sheet, Linux `via-cuda.c` (Egret
-   handshake), community ROM lists, and the **real LC II ROM already in this
-   repo** (`docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM`, verified).
+   handshake), community ROM lists, and the **real LC II ROM**, verified with
+   `tools/rominfo` (`docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM` —
+   user-provided; `docs/*ROMs/` is gitignored, nothing here is committed).
 
 On conflict the oracle (MAME behaviour) wins, per `CLAUDE.md`.
 
@@ -44,7 +46,7 @@ On conflict the oracle (MAME behaviour) wins, per `CLAUDE.md`.
 | CPU (68030 + PMMU + 68882) | `src/Cpu030.h/.cpp`, `extern/moira` | `sst68030`, `v8_ramsize` (BERR) |
 | VIA1 | `src/Via6522.*` inside `V8Memory` (`viaAccess8`, `viaSync`) | boot etalons |
 | Pseudo-VIA | `src/PseudoVia.h/.cpp` (`Flavour::Level`) | `pseudovia_test` |
-| Video + Ariel | `src/V8Video.h`, `src/Ariel.h` | `v8_video_test` |
+| Video + Ariel | `src/V8Video.h`, `src/Ariel.h`, `src/VideoBeam.h` | `v8_video_test`, `v8_raster_test` |
 | Sound | `src/Asc.h/.cpp` (`AscV8`; `AscSonora` for Spice/Tinker Bell) | `asc_test` |
 | SCSI | `src/Ncr5380.*`, `src/ScsiDisk.*` + `V8Memory::scsiDma_/scsiDmaW_` | `scsi_pdma_test` |
 | Floppy | `src/Swim1.*` (+ `src/Iwm.*`, `src/SonyDrive.*`) | `swim1_test`, `lcii_floppy_etalon` |
@@ -52,7 +54,7 @@ On conflict the oracle (MAME behaviour) wins, per `CLAUDE.md`.
 | Egret | `src/CudaLle.*` + `src/M68hc05.*` (firmware LLE, default); `src/Egret.*` (HLE fallback) | `egret_lle_test`, `egret_test` |
 | ADB devices | `src/AdbBus.*`, `src/AdbLine.*`, `src/MacInput.*` | `lcii_boot_etalon` (mouse) |
 | Save states | `visit<Ar>()` in each class above, `src/SaveState.*` | `savestate_v8_test`, `lcii_savestate_etalon` |
-| Whole machine | `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `lcii_soak/persist/launch/floppy_etalon` | |
+| Whole machine | `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `lcii_soak/persist/launch/floppy_etalon`, `jit_lcii_boot_etalon` (second execution engine) | |
 
 `V8Memory::Model {LcII, Lc, ClassicII, ColorClassic, MacTv}` makes this one
 class the whole V8/Eagle/Spice/Tinker Bell family. The **LC II is the
@@ -79,7 +81,7 @@ reference profile documented here**; the per-variant deltas are in
 
 Constants as built: `V8Memory::kRomSize` `$80000`, `kVramSize` `$80000`,
 `kMbRamSize` `$400000`, `kCpuHz` 15 667 200, `kViaHz` 783 360
-(`V8Memory.h:42-47`).
+(`V8Memory.h:43-48`).
 
 ## Clocking
 
@@ -134,7 +136,12 @@ on BERR to build `AddrMapFlags` (ASCTester on a real LC reports
 `AddrMapFlags $0000773F`, asc.cpp:766-770). `V8Memory::busError()` raises it
 through `Cpu030::extBusError`. **Exception:** the Classic II's Eagle bus is
 forgiving — unmapped I/O returns `$FF` instead, because that ROM dereferences
-wild pointers with no BERR catcher installed (`V8Memory::viaAccess8` tail).
+wild pointers (`$50F18038` among them) with no BERR catcher installed, so any
+BERR there lands on a zero vector → DS 1. The `$FF` is a **knob, not a fact**:
+MAME answers 0 there but that is its `address_space` default, not a modelled
+decision, so `POM68K_V8_HOLEVAL=<hex>` picks the byte until an observable
+separates them, and `POM68K_V8_IOHOLE=<n>` logs the accesses with their PC
+(`V8Memory.cpp:525-554`).
 
 ### 24/32-bit story
 
@@ -196,7 +203,7 @@ from a write. Every config value is pinned by `v8_ramsize`.
 4. Early ROM: probes V8 (pseudo-VIA config/video regs), sizes RAM (writes
    config reg permutations), syncs with Egret (gets PRAM/RTC, boot beep via
    ASC + DFAC), probes SCSI/SWIM for boot volume.
-5. ROM verified in-repo: `docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM`
+5. ROM verified (user-provided copy, `tools/rominfo`)
    — 512 KB (`$80000`), stored checksum `$35C28F5F` = computed big-endian
    word sum of bytes 4…end, ROM version `$067C`, header
    `35C28F5F 0000002A 067C…`; SHA-1
@@ -288,8 +295,9 @@ The 60.15 Hz "VBL" heartbeat and the one-second interrupt both live on VIA1
 
 ## Video (V8 + Ariel)
 
-→ `V8Video.h` (whole-frame decode, one `switch` over the depth) + `Ariel.h`
-(the 256-entry CLUT). Gate `v8_video_test`.
+→ `V8Video.h` (one `switch` over the depth, driven either whole-frame by
+`decode()` or row-by-row by `raster()` off `VideoBeam`) + `Ariel.h` (the
+256-entry CLUT). Gates `v8_video_test`, `v8_raster_test`.
 
 - **VRAM window `$F40000-$FBFFFF`**, 512 KB, framebuffer starts at +0.
 - **Row pitch is fixed at 1024 bytes** for 1/2/4/8 bpp regardless of width;
@@ -497,7 +505,7 @@ V8-specific slice.
 
 | Deviation | Where | Why / status |
 |---|---|---|
-| **Whole-frame video decode**, no beam position | `V8Video.h` | Same model as the Plus. `LLE_VS_HLE` § 1.1 |
+| **No per-pixel beam**, but decode *is* row-granular since 2026-08-02: `V8Video::raster()` renders each visible row once, when `VideoBeam` says the beam scans it (`decode()` stays for stills) | `V8Video.h`, `VideoBeam.h` | `LLE_VS_HLE` § 1.1; gates `v8_raster_test`, `raster_equiv_test` |
 | **VBL geometry is the 12" RGB modeline for every V8 sense** (640×407 @ C15M ⇒ 60.15 Hz); only Tinker Bell switches to the 800×525 VGA timing | `V8Memory::reset` (`frameCycles_`, `vblStart_`) | No guest observed depending on the 640×480 modeline's 59.94 Hz. Not gated. |
 | **VRAM is always 512 KB** (`kVramSize`), never the 256 KB base config | `V8Memory::kVramSize` | The 256 KB machine's mode limits are therefore not enforced |
 | **SCSI DRQ timeout is not timed** — no DRQ raises `/BERR` immediately instead of after ~16 µs | `V8Memory::scsiDma_` | Functionally what the blind-transfer loops need; `LLE_VS_HLE` § 1.5 |

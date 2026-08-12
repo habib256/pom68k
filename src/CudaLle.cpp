@@ -279,7 +279,14 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
                 ? (!resetLine_ && level)
                 : (resetLine_ && !level);
             if (release) {
+                // A release while the CPU was already RUNNING is the firmware
+                // acting on RESET_SYSTEM ($11) — the Finder's "Restart" —
+                // not the power-on hold coming off. Only the former needs the
+                // host reset; at power-on the CPU has not fetched anything
+                // yet, exactly as MscMemory.cpp:86-87 notes for the PG&E.
+                const bool restart = !held_;
                 held_ = false;
+                if (restart && onCpuReset) onCpuReset();
                 if (!pramInstalled_) {   // slap staged PRAM into live RAM
                     for (int i = 0; i < 256; i++)
                         mcu_.setRamByte(0x100 + i, stagedPram_[i]);

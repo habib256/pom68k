@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// ── PowerBook Duo memory map + MSC gate array (platform #11) ──
+// ── PowerBook Duo memory map + MSC gate array (platform #12) ──
 // MSC ("Main System Controller") is the Duo 210/230/250/270c/280/280c
 // system ASIC — and the PowerBook 150's lineage. Map from MAME
 // macpwrbkmsc.cpp:588-627 + msc.cpp:30-38 (R. Belmont, BSD-3-Clause),
@@ -23,12 +23,14 @@
 // through the VIA1 shifter with /PMU_ACK//PMU_REQ on pseudo-VIA2 port B
 // bits 1/2 (macpwrbkmsc.cpp:23-26).
 //
-// Milestone 1 (this skeleton): NO PG&E yet — the CPU is released at
-// reset (on hardware the PMU holds /HALT until it has booted,
-// msc.cpp:151), and the ROM is expected to stall at its first PMU
-// exchange. That stall IS the milestone-1 checkpoint (the LC 520
-// bring-up pattern). PG&E LLE: TODO.md, needs roms/pge/pge_boot.bin.
-// Gate (once booting): tests/duo230_boot_etalon.cpp.
+// The PG&E power manager holds the 68030 until its own firmware has
+// booted (on hardware it holds /HALT, msc.cpp:151): this class owns a
+// PgePmu and reports the hold through cpuHeld(), which the runner spins
+// on. Needs roms/pge/pge_boot.bin — without it there is no power manager
+// and the ROM stalls at the first PMU exchange, which was milestone 1's
+// checkpoint back when that stall was the expected outcome (2026-07-31).
+// Gates: tests/duo230_boot_etalon.cpp (Finder on System 7.5.5),
+// tests/msc_parity_test.cpp. Blueprint: docs/DUO_BRINGUP.md.
 
 #pragma once
 #include "jit/JitGuard.h"

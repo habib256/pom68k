@@ -26,8 +26,8 @@
 //     them silently; see src/PgePmu.cpp and src/M68hc05Pge.cpp.
 //  F. PG&E NVRAM persistence: MscMemory::loadPram/savePram round trip in
 //     MAME's layout, including the $91 power-flag scrub on load
-//     (m68hc05pge.cpp:955-975). The pair is machine-side only — the Duo
-//     has no kProfiles row, so nothing in main.cpp calls it yet.
+//     (m68hc05pge.cpp:955-975). The Duo is kProfiles row 37 since
+//     2026-08-06 and runDuo calls both ends of the pair (main.cpp).
 // Registered in CMakeLists.txt (msc_parity_test, links pom68k_core).
 
 #include "MscCpu.h"

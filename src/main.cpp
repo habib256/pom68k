@@ -56,6 +56,7 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdint>
@@ -797,6 +798,13 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         const char* kSpike = "Discret 040 (Quadra 700/900/950)";
         const char* kF108 = "F108 + PrimeTime II + Valkyrie";
         const char* kMsc = "MSC + PG&E (PowerBook Duo)";
+        // Variant match for the "current profile" tick, below.
+        auto equalsNoCase = [](const char* a, const char* b) {
+            for (; *a && *b; a++, b++)
+                if (std::tolower((unsigned char)*a) != std::tolower((unsigned char)*b))
+                    return false;
+            return *a == *b;
+        };
         const Profile kProfiles[] = {
             { "68000", "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr, nullptr, nullptr, true },
             { "68000", "Macintosh SE", MachineKind::Se, "roms/macse.rom", "B2E362A8", nullptr, nullptr, true },
@@ -863,7 +871,18 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
             bool variantCur = true;              // variant match within a kind
             if (pr.envKey) {
                 const char* e = getenv(pr.envKey);
-                variantCur = e ? (std::strstr(e, pr.envVal) != nullptr) : pr.dflt;
+                // EXACT, case-insensitive — not strstr. The Mac II group's
+                // envVals are "ii"/"iix"/"iicx"/"se30", so a substring test
+                // made "ii" match "iix": after one click on Macintosh IIx the
+                // plain Mac II row also computed isCur, and the `&& !isCur`
+                // guard below swallowed its click. Unreachable from the menu,
+                // exactly like the envKey==nullptr bug the note at :805 records
+                // — same guard, second cause. The runner compares this value
+                // with strcmp (:5545-5548), so exact is also what the machine
+                // itself does; case-insensitive because the hex-ID groups
+                // (POM68K_Q605_ID, POM68K_AIO_ID) are matched case-blind by
+                // their own runners (:3602-3603, :4677, :5470). (2026-08-12)
+                variantCur = e ? equalsNoCase(e, pr.envVal) : pr.dflt;
             }
             bool isCur = kindCur && variantCur;
             std::string path = findPath(pr.rom);
@@ -919,8 +938,10 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         }
         // Honest labelling (2026-07-28): the default accelerated engine is
         // NOT a JIT — it is the interpreter running behind a fetch window
-        // (and, per backend, a block replayer or a code generator). Only
-        // the x86-64 backend actually emits machine code. Users deserve
+        // (and, per backend, a block replayer or a code generator). The
+        // `threaded` floor replays blocks; the x86-64 AND AArch64 backends
+        // both emit machine code, which is why the label below derives from
+        // the backend name rather than naming one. Users deserve
         // the distinction; the internal names (src/jit/, POM68K_JIT_*)
         // stay, because they name the subsystem, not the technique.
         char label[80];

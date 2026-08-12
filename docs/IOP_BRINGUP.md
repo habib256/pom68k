@@ -1,52 +1,44 @@
 # Mac IIfx / Quadra 900-950 bring-up — the Apple PIC IOP + OSS brick
 
-**Goal.** The one brick that unlocks three machines at once
-(`docs/68K_FAMILY_SCOPE.md` §3): the **Mac IIfx** (1990, fastest 68030 Mac,
-40 MHz, "F19" — platform #12: OSS interrupt controller + two IOPs + SCSIDMA),
-and the **Quadra 900/950** (platform #9's Q700 board grown to a tower: same
-DAFB/discrete-040 back end POM68K already ships, plus the *same two IOPs*).
-This is the `docs/LCII_HARDWARE.md`-style blueprint; everything below is read
-from MAME `machine/applepic.cpp`, `apple/maciifx.cpp`, `apple/scsidma.cpp`,
-`apple/macquadra700.cpp` (R. Belmont / AJR, BSD-3-Clause) — cite file:line
-when porting.
+**Status: DONE.** One brick unlocked three machines, all three shipped as GUI
+profiles with save states: the **Mac IIfx** (2026-08-01, OSS + two IOPs +
+SCSIDMA — "platform #12" in `IIfxMemory.h:4` is a creation-order label, not a
+row number in CLAUDE.md's machine table) and the **Quadra 900 / 950**
+(2026-08-02 — the Quadra 700 board wearing the IIfx's front end).
+Gates `iifx_post_etalon`,
+`iifx_boot_etalon` (Finder on System 7.6), `iifx_input_etalon`,
+`q900_boot_etalon`, `q950_boot_etalon`, plus the device gates `r65c02_test`
+and `applepic_test`; save states in `savestate_030_test` (IIfx) and
+`savestate_040_test` (the Eclipse tail).
 
-Status 2026-08-01 (night): **M1-M3 and M5 done, gated — the IIfx BOOTS
-SYSTEM 7.6 TO THE FINDER** (`iifx_boot_etalon`, screenshot-verified;
-Finder in ~26 guest-seconds). The chain with zero HLE on the wire:
-ADBReInit → IOP mailbox → the SWIM PIC's real firmware (uploaded by the
-ROM, verified byte-perfect: SCC vector $040E at ROM+$5F471, SWIM vector
-$5000 at ROM+$5A7EE) → GPIO bit-bang → `AdbLine` keyboard+mouse
-answering. Earlier gates: `r65c02_test`, `applepic_test`,
-`iifx_post_etalon`. The SCSIDMA $00 handshake/ODR aliasing bug and the
-$15D(A3) ADB spin are in `CHANGELOG.md` § 2026-08-01. **The §6 WAI/STP
-question is CLOSED**: a capstone sweep over both firmware blobs finds
-zero WAI/STP. **M6 done too — the IIfx is the 34th profile** (GUI machine
-loop with both IOP cycle counters, `SnapMachine::IIfx = 34` + save states
-carrying the IOP RAM, ROM dispatch on the 512 KB `$4147DD77`, gate
-`iifx_input_etalon`). Remaining: M7 (Q900/950), M4 deferred (A/UX-only
-true DMA; also dedupe the multi-ID attach mirror — 7.6 mounts all seven
-copies).
-ROMs on hand and verified in `roms/`: IIfx `4147DD77` (512 KB), Q700&900
-`420DBFF3`, Q950 `3DC27823` (1 MB).
+**The machines as-built are `DEV.md` § 2.10 (IIfx) and § 2.8 (discrete 040) —
+this file is the porting reference and the debugging record**: what MAME says
+and where (cite `file:line` when porting), the facts the bring-up established,
+and the traps that cost days. Sources: MAME `machine/applepic.cpp`,
+`apple/maciifx.cpp`, `apple/scsidma.cpp`, `apple/macquadra700.cpp`
+(R. Belmont / AJR, BSD-3-Clause).
 
-**The headline finding of the recon** — the reason this brick is cheaper than
-it looks: **the IOP firmware needs no dump.** The PIC's internal 64 KB map is
-*all RAM* plus registers (`applepic.cpp:63-77`); the host ROM downloads the
-65C02 firmware through the shared-RAM window at boot, exactly like the Duo's
-BORG upload (`docs/DUO_BRINGUP.md`). Unlike Egret/Cuda there is no
-non-distributable MCU ROM: the IIfx system ROM we already have IS the
-firmware source. Verify the upload byte-perfect against the host ROM, the way
-the Duo gate does.
+**The finding that made this brick cheap: the IOP firmware needs no dump.**
+The PIC's internal 64 KB map is *all RAM* plus registers
+(`applepic.cpp:63-77`); the host ROM downloads the 65C02 firmware through the
+shared-RAM window at boot, exactly like the Duo's BORG upload
+(`docs/DUO_BRINGUP.md`). Unlike Egret/Cuda there is no non-distributable MCU
+ROM: the system ROM *is* the firmware source. `iifx_post_etalon` verifies the
+upload byte-perfect against the ROM (SCC vector `$040E` at ROM+`$5F471`, SWIM
+vector `$5000` at ROM+`$5A7EE`).
+
+ROMs verified in `roms/`: IIfx `4147DD77` (512 KB), Q700 & Q900 `420DBFF3`,
+Q950 `3DC27823` (1 MB).
 
 ---
 
-## 1. The Apple PIC (343S1021) — one device, instantiated twice
+## 1. The Apple PIC (343S1021) — one device, instantiated twice per board
 
-NCR standard-cell ASIC: **R65C02 core at clock/8** (C15M/8 = 1.9584 MHz,
-`applepic.cpp:81`), 2 KB-class shared RAM (see map), 2 DMA channels,
-host/peripheral mailboxes, one timer. MAME models it as a self-contained
-device (`applepic.cpp`, 578 lines) — port it as `src/ApplePic.*` the same
-way.
+NCR standard-cell ASIC: **R65C02 core at input-clock/8** (C15M/8 =
+1.9584 MHz, `applepic.cpp:81`), **32 KB of internal RAM** mirrored across the
+64 KB space, 2 DMA channels, host/peripheral mailboxes, one timer. MAME models
+it as a self-contained device (`applepic.cpp`) → `src/ApplePic.*`, whose header
+carries the same map with the POM68K-side timing contract.
 
 ### Internal 65C02 map (`applepic.cpp:63-77`)
 
@@ -72,7 +64,8 @@ gets confused otherwise (`applepic.cpp:484-488`).
 ### Host window (32 bytes, `applepic.cpp:125-217`)
 
 Decoded by offset bits, byte lanes doubled in the host map
-(`.umask32(0xff00ff00)` + `.umask32(0x00ff00ff)`, `maciifx.cpp:196-197`):
+(`.umask32(0xff00ff00)` + `.umask32(0x00ff00ff)`, `maciifx.cpp:196-197`) —
+**both** lanes, which is bug #2/#4 in § 5b:
 
 - bit 4 set → device regs `$0-$F` **in bypass mode only** (the host talks
   straight through to the SCC; boot path).
@@ -87,262 +80,203 @@ Decoded by offset bits, byte lanes doubled in the host map
 1 byte per channel per 8 clocks. Control bits `DMAEN/DREQ/DMADIR/DENxONx`
 (`:28-32`): direction I/O↔RAM, chaining (channel B auto-enables when A
 completes), IRQ on tc=0. DREQ lines: SCC WREQA/WREQB (inverted), SWIM
-`dat1byte` (`maciifx.cpp:475-486`).
+`dat1byte`. **On the IIfx `dat1byte` drives channel A alone; on the Eclipse it
+drives both** (`macquadra700.cpp:879-880` sets reqa and appends reqb — the line
+means "the ISM FIFO can move a byte now", and whichever channel the firmware
+enabled is the one that moves). `IIfxMemory.cpp:46` vs `Q700Memory.cpp:62-65`.
 
-### GPIO — the ADB path on the IIfx
+### GPIO — the ADB path
 
 The **SWIM PIC's** gpout0 drives the ADB line (inverted) and gpin reads it
-back (`maciifx.cpp:483-484`): **the IOP firmware bit-bangs ADB in 65C02
-code.** MAME feeds this to its HLE `macadb`; POM68K wires it to the real
-`AdbBus`/`AdbLine` devices instead — LLE on both ends of the wire, the same
-step up the Egret work made.
+back (`maciifx.cpp:483-484`): **the IOP firmware bit-bangs ADB in 65C02 code.**
+MAME feeds this to its HLE `macadb`; POM68K wires it to the real
+`AdbBus`/`AdbLine` devices instead — LLE on both ends of the wire.
+
+**`gpout1` is NOT floppy head-select.** A 2026-08 static note suspected it
+was; current MAME disproves it — SWIM1's own `hdsel_cb` drives
+`eclipse_state::fdc_hdsel` (`macquadra700.cpp:815,819`), and in ISM mode that
+output is mode bit 5 (`swim1.cpp:341-342`), which POM68K already consumes
+through `Swim1::side1()`. Wiring `gpout1` to `Iwm::setSel` would invent a board
+connection.
 
 ---
 
 ## 2. The IIfx board (`maciifx.cpp`)
 
 68030 @ 40 MHz, VIA1 = R65NC22 at C7M/10 = 783.36 kHz, RTC 343-0042 on VIA
-port B (same wiring as the Mac II), ASC (base flavour, IRQ → OSS input 8),
-SWIM1 (POM68K has it), SCC 85C30 (POM68K's 8530 model to start), **no VIA2 —
-the OSS replaces it**, **no onboard video** — boots on a NuBus card
-(MAME defaults slot 9 to `mdc824`; POM68K reuses `TobyVideo`/`DeclRom` from
-the Mac II platform).
+port B (same wiring as the Mac II), **discrete ASC** (base flavour, version
+`$00` — `IIfxMemory.h:225` `AscV8 asc_{0x00}`; IRQ → OSS input 8), SWIM1,
+SCC 85C30, **no VIA2 — the OSS replaces it**, **no onboard video** — it boots
+on a NuBus card (MAME defaults slot 9 to `mdc824`; POM68K reuses
+`TobyVideo`/`DeclRom` from the Mac II platform).
 
-### Address map (`maciifx.cpp:191-206`)
+The address map, the OSS input assignment and the clock domains are in
+`IIfxMemory.h:14-38` and `DEV.md` § 2.10; the MAME originals are
+`maciifx.cpp:191-206` (map) and `:329-398` (OSS). Two entries worth repeating
+because they are load-bearing and non-obvious:
 
-| Range (mirror `$00F00000`) | Device |
-|---|---|
-| `$40000000-$4007FFFF` | ROM (+ overlay at 0 until first read, `:169-186`) |
-| `$50000000` | VIA1 |
-| `$50004000` | **SCC PIC** host window |
-| `$50008000` | SCSIDMA |
-| `$50010000` | ASC |
-| `$50012000` | **SWIM PIC** host window |
-| `$50018000` | BIU — MAME stubs reads as 0 (`:320-327`) |
-| `$5001A000` | OSS |
-| `$50024000-$50027FFF` | **must BUS ERROR** — the ROM probes this to know it's an FMC machine (`:204`) |
-| `$50040000` | VIA1 mirror |
+- **`$50024000-$50027FFF` must BUS ERROR** — that is how the ROM recognises an
+  FMC machine (`maciifx.cpp:204`).
+- **OSS**: a flat `$400`-byte register file. `regs[0..15]` = per-input
+  **priority** (the IPL that input requests); `regs[$202]/[$203]` = pending
+  flags (inputs 8-15 / 0-7); `regs[$200]` bit 7 = interrupt active; writing
+  `$207` acks the 60.15 Hz tick, which also pulses VIA1 CA1 (`:369-374`). On
+  any input change: scan all 16, drive the highest priority level into the
+  68030, level-triggered, previous line cleared first.
 
-### OSS interrupt controller (`maciifx.cpp:329-398`)
-
-A flat `$400`-byte register file. `regs[0..15]` = per-input **priority**
-(IPL level the input requests); `regs[$202]/[$203]` = pending flags (inputs
-8-15 / 0-7); `regs[$200]` bit 7 = interrupt active; write `$207` acks the
-60.15 Hz tick. On any input change: scan all 16, drive the highest priority
-level into the 68030 (level-triggered, previous line cleared first).
-
-Inputs: 0-5 = NuBus slots 9-E, 6 = SWIM PIC, 7 = SCC PIC, 8 = ASC,
-9 = SCSIDMA, 10 = 60.15 Hz tick (also pulses VIA1 CA1, `:369-374`),
-11 = VIA1.
-
-### SCSIDMA (343S0064, `scsidma.cpp` — 424 lines)
+### SCSIDMA (343S0064, `scsidma.cpp`)
 
 NCR **53C80** cell + Apple handshake logic for blind `MOVE.L (A0),(A2)+`
 transfers + arbitration. **"No shipped version of MacOS supports the full
-DMA mode. But A/UX does"** (`scsidma.cpp:12`) — so the Mac OS boot needs the
-5380 register model (POM68K has `Ncr5380` + pseudo-DMA already) behind the
-SCSIDMA control/handshake registers; full DMA can wait.
+DMA mode. But A/UX does"** (`scsidma.cpp:12`) — so the Mac OS boot needs only
+the 5380 register model behind the SCSIDMA control/handshake registers. POM68K
+implements exactly that subset **inline in `IIfxMemory.cpp:237+`**, not as a
+separate `ScsiDma` class; true DMA and the restartable handshake stall are
+deliberately absent (`IIfxMemory.h:239-240`).
+
+The trap that cost a day (fixed 2026-08-01): **`$00-$03` is both the handshake
+data port and 5380 register 0.** With no DRQ active it must fall through to the
+register (`scsidma.cpp:262-310`); swallowing it means selection never puts the
+target ID on the bus and the boot scan finds nothing.
 
 ---
 
 ## 3. The Quadra 900/950 delta (`macquadra700.cpp`)
 
-The Q900 ("Eclipse") / Q950 ("Zydeco") are the Q700 state class POM68K
-already implements (platform #9: discrete 040 + DAFB + TurboSCSI + Egret),
-**plus** the two IOPs replacing the direct SCC/SWIM decode:
+The Q900 ("Eclipse") / Q950 ("Zydeco") are the Q700 state class
+(`Q700Memory::Model {Spike, Q900, Q950}`, `eclipse()` is the one predicate the
+code branches on) **plus** the IIfx front end:
 
-- `quadra900_map` (`:574-593`): SCC PIC at `$5000C000`, SWIM PIC at
-  `$5001E000`; DAFB VRAM window 2 MB (`$F9000000-$F91FFFFF`).
-- **ADB stays on the Egret** (`eclipse_state` has `m_egret`, `:190-216`) —
-  the IOPs only carry SCC and SWIM here. No new ADB work.
+- `quadra900_map` (`:574-593`): SCC PIC host window at `$5000C000`, SWIM PIC at
+  `$5001E000`, each `$1000` wide and mapped on **both** byte lanes; DAFB VRAM
+  window 2 MB (`$F9000000-$F91FFFFF`).
+- **ADB stays on the Egret** (`eclipse_state` has `m_egret`, `:190-216`) — the
+  IOPs carry SCC and SWIM only, and the Egret replaces the Spike's discrete
+  RTC. There is also a second 53C96 bus, and VIA2 port B carries no DFAC.
+  `POM68K_Q900_ADB=iop` forces the IIfx-style IOP-only wire for A/B.
+- VIA1 PA identity `$D0` (Q900) / `$90` (Q950) vs the Spike's `$C0`, each
+  OR'd with the diagnostic-disabled bit 0 — feeding PA0 = 0 sends the ROM down
+  the burn-in path (the IIci lesson, `Q700Memory.cpp:229-234`).
 - Q950: `via_in_a_q950` (`:671`), `DAFB_Q950` flavour at 50 MHz/2 (`:937`),
-  ROM `3DC27823`. Q900 shares the Q700 ROM (`#define rom_macqd900
-  rom_macqd700`, `:954`).
-- 5 NuBus slots instead of 2 (`:912`).
-- 16 SIMM slots, no soldered RAM (`:926`).
+  ROM `3DC27823`, 33.333 MHz. Q900 shares the Q700 ROM (`#define rom_macqd900
+  rom_macqd700`, `:954`) and runs at 25 MHz.
+- 5 NuBus slots instead of 2 (`:912`); 16 SIMM slots, no soldered RAM (`:926`).
 
-So: **IIfx = new platform #12** (OSS instead of VIA2), **Q900/950 = two new
-profiles on platform #9** once `ApplePic` exists.
+`q700_boot_etalon <q700|q900|q950>` selects the machine — one binary, three
+gates. A `$3DC27823` ROM pins q950 regardless of `POM68K_Q700_MODEL`, and q950
+without that ROM falls back to q700 (`main.cpp:4320-4321`).
 
 ---
 
-## 4. The 65C02 core — vendor POM2's `M6502`, not POMIIGS's `CPU65816`
+## 4. The 65C02 core — POM2's `M6502`, not POMIIGS's `CPU65816`
 
-`docs/68K_FAMILY_SCOPE.md` §3 designated POMIIGS `CPU65816` (emulation mode)
-as the candidate. **Recon supersedes that**: MAME's PIC core is an
-**R65C02** (`applepic.h:9`) with the Rockwell bit ops `RMB/SMB/BBR/BBS` —
-and 65816 emulation mode does *not* have them (those opcode columns are
-`ORA [dp]` etc. on a 65816). Meanwhile the sibling **POM2 `M6502`**
-(2115 lines, GPL, same author) has a runtime **CMOS 65C02 mode including the
-full Rockwell set**, cycle counts cited against MAME `ow65c02.lst`, and two
-ready gates: Klaus's 65C02 extended-opcodes image
-(`POM2/tests/65C02_extended_opcodes_test.bin`, SHA-pinned, success trap
-`$24F1`) and a Tom Harte `wdc65c02` manifest. Vendor **that**.
-
-Adaptation is small and mechanical — the only couplings are
+An earlier revision of this file designated POMIIGS `CPU65816` (emulation
+mode). **That was wrong**: MAME's PIC core is an **R65C02** (`applepic.h:9`)
+with the Rockwell bit ops `RMB/SMB/BBR/BBS`, and 65816 emulation mode does not
+have them (those opcode columns are `ORA [dp]` etc. on a 65816). The sibling
+**POM2 `M6502`** has a runtime CMOS 65C02 mode including the full Rockwell set,
+cycle counts cited against MAME `ow65c02.lst`, and two ready test images.
+Vendored as `src/R65c02.*`; the only couplings to strip were
 `memory->memRead/memWrite` (→ `read8`/`write8` callbacks, the `M68hc05`
-pattern) and four Apple II-isms to strip (`advanceCycles`,
-`getCycleCounter`, `iieModeFlags`, `busStateSummary`, `Logger.h`).
+pattern) and four Apple II-isms (`advanceCycles`, `getCycleCounter`,
+`iieModeFlags`, `busStateSummary`).
 
-One personality question to settle in M2, not M1: POM2 implements the WDC
-halts **WAI/STP** (`$CB/$DB`); MAME's `r65c02` treats those as NOPs. Keep
-them behind a flag and scan the uploaded firmware for `$CB/$DB` before
-choosing the PIC's personality.
+**The §6 WAI/STP question is CLOSED.** POM2 implements the WDC halts
+**WAI/STP** (`$CB/$DB`) where MAME's `r65c02` treats them as NOPs. A capstone
+sweep over both uploaded firmware blobs finds **zero** `$CB/$DB`, so the
+personality is unobservable on this board and the WDC behaviour is kept —
+which is also what lets `r65c02_test` run Klaus Dormann's 65C02 extended
+image to its `$24F1` success trap, since that image tests WAI/STP
+(`R65c02.h:24-30`).
 
 ---
 
-## 5. Milestones — each gated before the next (house rule)
+## 5. Milestones — what each established (all closed on the Mac OS path)
 
-- **M1 — `src/R65c02.*`** vendored from POM2 `M6502` (CMOS default, bus
-  callbacks, no Apple II couplings). Gate: `r65c02_test` — Klaus's
-  65C02 extended image (checked into `tests/assets/`; it is GPL test code,
-  not a ROM) run to the `$24F1` success trap, plus the base 6502 functional
-  image. Label `unit`, no machine assets needed.
-- **M2 — `src/ApplePic.*`**: host window, shared RAM + auto-increment,
-  status/control, timer, 2-channel DMA, interrupt mask/flags, GPIO, bypass
-  mode. Gate: `applepic_test` — upload a small 65C02 program through the
-  host window, release /RSTPIC, prove: mailbox echo (host int via `$F035`,
-  IOP int via status bit 3), timer IRQ cadence, DMA loopback against a fake
-  peripheral, bypass-mode pass-through.
-- **M3 — `src/IIfxMemory.*` + platform loop**: map above, OSS, BIU stub,
-  the `$50024000` bus-error window, VIA1/RTC/ASC/SWIM1/SCC wiring, ROM
-  overlay. Gate: `iifx_post_etalon` — the ROM POST completes its IOP
-  firmware uploads (verified byte-perfect) and reaches the boot chime /
-  SCSI scan. Build the scratchpad tracer first
-  (`pom68k-rom-debug-workflow`).
-- **M4 — SCSIDMA** (`src/ScsiDma.*` wrapping `Ncr5380`): register model +
-  blind handshake path (Mac OS path only; full DMA deferred with a LOUD
-  stub). Gate: unit test + the POST's SCSI probe.
-- **M5 — ADB through the SWIM PIC GPIO** ↔ `AdbBus`/`AdbLine`. Gates:
-  `iifx_boot_etalon` (Finder, System 7.x reference image) then
-  `iifx_input_etalon` (cursor + KeyMap, 8-byte window —
-  `pom68k-false-green-wide-assert`).
-- **M6 — profile plumbing**: `kProfiles` row, `SnapMachine` tag, save
-  states (`ApplePic::visit` carries the 64 KB RAM, R65C02 registers, DMA
-  and timer phase — the Cuda lesson: MCU↔host phase is load-bearing,
-  `pom68k-mactv-gate-broken`). The 34th profile.
-- **M7 — Quadra 900/950**: **both towers boot the Finder** (2026-08-02).
-  `Q700Memory::Model {Spike, Q900, Q950}` carries the whole Eclipse front
-  end (two `ApplePic`, `AdbLine`, `Egret` on VIA1 CB1/CB2, the second
-  53C96 bus, VIA1 PA identities `$D0`/`$90`, no DFAC on VIA2 PB, the
-  $1000-wide IOP host windows at +$0C000 / +$1E000, Q950 at 33.333 MHz);
-  `q700_boot_etalon <q700|q900|q950>` selects the machine.
+| M | Deliverable | Gate | The fact it pinned |
+|---|---|---|---|
+| M1 | `src/R65c02.*` vendored from POM2 `M6502` | `r65c02_test` (Klaus's 65C02 extended image → `$24F1`, plus the base 6502 functional image; `tests/assets/`, label `unit`, no machine assets) | CMOS + Rockwell set required; WAI/STP kept (§ 4) |
+| M2 | `src/ApplePic.*` — host window, shared RAM + auto-increment, status/control, timer, 2-channel DMA, int mask/flags, GPIO, bypass | `applepic_test` (uploads a hand-assembled 65C02 program, then proves reset-release, mailboxes both ways, timer one-shot + continuous cadence, DMA loopback, bypass pass-through) | 32 KB RAM, not 2 KB; timer/DMA phase counted in PIC clocks with remainders carried |
+| M3 | `src/IIfxMemory.*` + platform loop: map, OSS, BIU stub, the `$50024000` BERR window, VIA1/RTC/ASC/SWIM1/SCC, ROM overlay | `iifx_post_etalon` | The IOP firmware uploads are byte-identical to the system ROM — verify that before suspecting anything else |
+| M4 | SCSIDMA | the Mac OS subset folded into M3 (`IIfxMemory.cpp:237+`), no separate class; true DMA + the restartable handshake stall stay deferred as A/UX-only, and `IIfxMemory.h:239-240` still calls that remainder "M4" | Mac OS needs only the 5380 + soft handshake; `$00-$03` must fall through to reg 0 with no DRQ |
+| M5 | ADB through the SWIM PIC GPIO ↔ `AdbBus`/`AdbLine` | `iifx_boot_etalon` (Finder on 7.6, ~26 guest-seconds) | Zero HLE on the wire: ADBReInit → IOP mailbox → real SWIM PIC firmware → GPIO bit-bang → `AdbLine` |
+| M6 | Profile plumbing: `kProfiles` row, `SnapMachine::IIfx = 34`, save states (`ApplePic::visit` carries the 32 KB RAM, R65C02 registers, DMA and timer phase) | `iifx_input_etalon` (cursor + KeyMap, 8-byte window) | MCU↔host *phase* is load-bearing state, not derivable — the Cuda lesson |
+| M7 | Quadra 900/950 = the Eclipse front end on `Q700Memory` | `q900_boot_etalon`, `q950_boot_etalon`; `SnapMachine::Quadra900/950 = 35/36` | § 5b — four Quadra 700 rules that must not apply to the tower |
 
-  **Where it stands (2026-08-01, measured):** the Q900 ROM POSTs, brings
-  up 640×480 DAFB video, uploads **both** IOP firmwares and releases
-  them. The SCC IOP runs its real firmware (2484 B) and passes the ROM's
-  bypass-mode walking test on the SCC's WR2/RR2. The SWIM IOP's firmware
-  is verified **byte-perfect**: the ROM's upload script is
-  `[len][addr:2][data…]` chunks at ROM `$5A7EB`, and all **54 chunks /
-  11516 bytes** land exactly (`q900_swimpic.ram` vs the ROM — the check
-  is in this file's history, redo it before suspecting the upload).
+The Q950 came up the same day as the Q900, off the same one-line fix, at
+640×480×**8** where the Q900 lands at 1 bpp — so it is also the tower gate that
+exercises a colour DAFB path. Nothing Zydeco-specific had to be touched.
 
-  **The wall, and what it actually was (resolved 2026-08-02).** The SWIM
-  IOP's 65C02 used to end in its own **BRK panic handler** (`$5060`:
-  `tsx; lda $0106,x; bit #$10; bne $5069`), reached at **`$0042`** through
-  the ordinary epilogue `$53FC PLY; PLX; PLA; $53FF RTS` — a `RTS` onto a
-  return address whose HIGH BYTE had been overwritten with `$00`.
+## 5b. The Eclipse's four inherited-rule bugs — the pattern
 
-  The cause was **not in the IOP**. `Q700Memory::read16` still applied the
-  Spike's odd-byte-lane SWIM1 rule to the `$5001E000` window, where on the
-  Eclipse that window is the SWIM IOP's host window — and MAME installs the
-  handler on **both** lanes (`macquadra700.cpp:590-591`, the range mapped
-  twice with umask `$FF00FF00` **and** `$00FF00FF`). So ROM `$408050CA`
-  `move.w (a2),d3` re-read the IOP's 16-bit shared-RAM address register as
-  `hi<<8` (`$0203` → `$0200`); `subq.w #1` then aimed the following byte
-  write at **`$01FF`**, the top of the 65C02's stack, straight through the
-  return address `jsr $53ED` had just pushed. One `!eclipse()` guard, and
-  the tower boots. This is § 5b bug #4 — and the unfixed half of #2.
+Every Q900 bug was a **Quadra 700 rule that must not apply to the tower**.
+Worth stating as a pattern before the next one:
 
-  **Two hypotheses the 2026-08-01 trace killed, both correct:** not a stack
-  imbalance (SP was `$FA` entering the epilogue and `$FF` after five pulls —
-  exactly right), and not an interrupt storm (no `$504E` in 256 PCs). The
-  *lead* it drew from them was wrong: the state machine at `$5418`-`$5436`
-  comparing `$4E87,x` to `$4E87,y` was running fine, and no SWIM register
-  fed it anything bad — it was killed on the way out. Recorded because the
-  next reader will otherwise re-open `$4E87`.
-
-  **The bring-up tooling that closed it** (all in-tree, all env-gated):
-  `R65c02::spTrail()` prints the SP beside every PC in the trail — that is
-  what proved the depth exact and moved the suspicion to the bytes;
-  `ApplePic::watch` / `POM68K_Q900_IOPWATCH=<hex>` names the *writer* of an
-  IOP RAM byte (`cpu` / `host` / `dma`) and printed
-  `[IOP-WATCH] $01FF <- $00 by host`; and the BRK trap dumps a 64-deep ring
-  of host-window touches with the decoded offset, the shared-RAM pointer at
-  that instant and the 68k PC — which showed the ROM setting the pointer to
-  `$01FF` and firing.
-
-  **Closed 2026-08-02:** `Swim1::onDat1Byte` now drives both ApplePic DMA
-  request channels on Q900/Q950 (MAME `macquadra700.cpp`, current lines
-  817-818) and channel A alone on IIfx. The callback follows FIFO occupancy
-  and transfer direction, so DMA no longer depends on a polled workaround.
-
-  A later static note (`7d1da2a`) suspected that ApplePic `gpout1` should
-  drive floppy head-select. Current MAME explicitly disproves that wiring:
-  `gpout0` drives ADB, while SWIM1's own `hdsel_cb` drives
-  `eclipse_state::fdc_hdsel` (`macquadra700.cpp:815,819`). In ISM mode that
-  output is mode bit 5 (`swim1.cpp:341-342`). POM68K already consumes the
-  same bit directly through `Swim1::side1()` for sense, read and write, so
-  wiring `gpout1` to `Iwm::setSel` would invent a board connection and must
-  not be integrated.
-
-  **The Quadra 950 came up the same day, off the same one-line fix** —
-  `q700_boot_etalon q950` PASSED at 33.333 MHz on its own `$3DC27823` ROM,
-  and at 640×480×**8** where the Q900 lands at 1 bpp, so it is also the
-  tower gate that exercises a colour DAFB path. Nothing Zydeco-specific
-  had to be touched: `via_in_a_q950`, the DAFB_Q950 flavour and the clock
-  were already in place from the platform work.
-
-  Next: profiles 35/36 (`kProfiles`, `SnapMachine`, GUI loop, save states)
-  — **both** towers have now earned their row under the house rule.
-  Gates `q900_boot_etalon` / `q950_boot_etalon` are registered (same
-  binary, selected by argv).
-
-## 5b. The Eclipse's four inherited-rule bugs (M7, all the same class)
-
-Every Q900 bug was a **Quadra 700 rule that must not apply to the
-tower**. Worth stating as a pattern before the next one:
-
-1. **The SCC interrupt line.** `tick()` re-derived `sccIrq_` from the SCC
-   chip every tick. On the Eclipse that line belongs to the SCC IOP's
-   *host* interrupt; the chip's `/INT` is a *peripheral* interrupt into
-   the IOP. The Q700 line wiped the IOP's interrupt the instant it was
-   raised, and the boot waited forever on an `_IOPMsgRequest` ($A087) that
-   had in fact been answered.
-2. **The SWIM word-write quirk.** The Q700's SWIM1 sits on the odd byte
-   lane, so `write16` there delivers only the low half. On the Eclipse
-   that window is the SWIM IOP host window, whose 16-bit RAM-address
-   register the ROM writes with one `move.w d0,(a2)` (a2 = `$5001E001`,
-   ROM `$40804D38`). The quirk dropped the address's high byte, so every
-   upload landed in the low 256 bytes, the ROM's 32 KB IOP RAM test
-   failed, and the IOP was never released from `/RSTPIC`.
+1. **The SCC interrupt line.** `tick()` re-derived `sccIrq_` from the SCC chip
+   every tick. On the Eclipse that line belongs to the SCC IOP's *host*
+   interrupt; the chip's `/INT` is a *peripheral* interrupt into the IOP. The
+   Q700 line wiped the IOP's interrupt the instant it was raised, and the boot
+   waited forever on an `_IOPMsgRequest` (`$A087`) that had in fact been
+   answered.
+2. **The SWIM word-write quirk.** The Q700's SWIM1 sits on the odd byte lane,
+   so `write16` there delivers only the low half. On the Eclipse that window is
+   the SWIM IOP host window, whose 16-bit RAM-address register the ROM writes
+   with one `move.w d0,(a2)` (a2 = `$5001E001`, ROM `$40804D38`). The quirk
+   dropped the address's high byte, every upload landed in the low 256 bytes,
+   the ROM's 32 KB IOP RAM test failed, and the IOP was never released from
+   /RSTPIC.
 3. **The discrete RTC and the DFAC.** Gone on the Eclipse — the Egret owns
    clock/PRAM/power on VIA1 CB1/CB2, and VIA2 port B carries no DFAC.
 4. **The SWIM word-write quirk again — on the READ side.** #2 guarded
    `write16` with `!eclipse()` and left `read16` (three dozen lines away)
-   applying the Spike rule. The ROM's `move.w (a2),d3` then read the IOP's
-   shared-RAM address register as `hi<<8`, and the byte it wrote next
-   landed on the 65C02's stack. Cost: the whole M7 wall. **A byte-lane
-   quirk is a property of a WINDOW, not of a direction — fix both halves in
-   the same edit, and grep for the other one before closing the entry.**
+   applying the Spike rule. ROM `$408050CA` `move.w (a2),d3` then read the
+   IOP's shared-RAM address register as `hi<<8` (`$0203` → `$0200`); the
+   following `subq.w #1` aimed the next byte write at **`$01FF`** — the top of
+   the 65C02's stack, straight through the return address `jsr $53ED` had just
+   pushed. The IOP then `RTS`'d to `$0042` and fell into its own BRK panic
+   handler at `$5060`. One `!eclipse()` guard, and the tower boots.
+   **A byte-lane quirk is a property of a WINDOW, not of a direction — fix both
+   halves in the same edit, and grep for the other one before closing the
+   entry.**
 
-The debugging order that found them, cheapest first, is worth reusing:
-IOP held/released → IOP cycle counter moving → how many bytes of firmware
-each IOP holds → VIA IFR/IER (who is armed, who never fires) → the IOP's
-own interrupt flags/mask → disassemble the IOP RAM at its stuck PC.
+**Two hypotheses that trace killed, both correctly, and one wrong lead they
+produced.** Not a stack imbalance (SP was `$FA` entering the epilogue and `$FF`
+after five pulls — exactly right) and not an interrupt storm (no `$504E` in 256
+PCs). But the *lead* drawn from them was wrong: the state machine at
+`$5418`-`$5436` comparing `$4E87,x` to `$4E87,y` was running fine and no SWIM
+register fed it anything bad — it was killed on the way out. Recorded because
+the next reader will otherwise re-open `$4E87`.
 
-## 6. Risks, called now
+**The bring-up tooling that closed it** (all in-tree, all env-gated):
+`R65c02::spTrail()` prints the SP beside every PC in the trail — that is what
+proved the depth exact and moved suspicion to the bytes;
+`ApplePic::watch` / `POM68K_Q900_IOPWATCH=<hex>` names the *writer* of an IOP
+RAM byte (`cpu` / `host` / `dma`) and printed `[IOP-WATCH] $01FF <- $00 by
+host`; `POM68K_Q900_IOPBRK` dumps a 64-deep ring of host-window touches with the
+decoded offset, the shared-RAM pointer at that instant and the 68k PC — which
+showed the ROM setting the pointer to `$01FF` and firing. `POM68K_Q900_IOP_TRACE`
+and `POM68K_IIFX_*_TRACE` are the coarser eyes; `tests/iifx_trace.cpp` is the
+runner.
 
-- **MAME's IIfx was long booked "A/UX-only"** (MAMEdev wiki, cited in
-  `68K_FAMILY_SCOPE.md`); the current driver carries no MACHINE_NOT_WORKING
-  flag, but expect thin oracle coverage on the Mac OS path. Where MAME and
-  the ROM disagree, the ROM wins (the LC520 precedent).
-- **Mac OS barely uses the machine's extra hardware** (`maciifx.cpp:11-14`):
-  expect the SCC to run in **bypass mode** and the SWIM/ADB firmware to be
-  the real consumers of the IOP model. Don't gold-plate DMA before a gate
-  needs it.
-- **ASC flavour**: MAME instantiates the base ASC on the IIfx — check which
-  POM68K `Asc` flavour matches before wiring ($BB vs $BC vs plain).
-- **Timer/DMA phase**: both are counted in PIC clocks (host clock /8 for
-  instructions, /8 per DMA byte). Keep them slaved to `emuCycles` from day
-  one; the MCU-debt lesson (`pom68k-mcu-lle-clock-drift`) applies verbatim.
+**The debugging order that found all four, cheapest first, is worth reusing:**
+IOP held/released → IOP cycle counter moving → how many bytes of firmware each
+IOP holds → VIA IFR/IER (who is armed, who never fires) → the IOP's own
+interrupt flags/mask → disassemble the IOP RAM at its stuck PC.
+
+## 6. Risks called at the start — how they landed
+
+- **"MAME's IIfx is A/UX-only"** (MAMEdev wiki): the driver carries no
+  MACHINE_NOT_WORKING flag but the oracle coverage on the Mac OS path is thin.
+  It held — where MAME and the ROM disagreed, the ROM won (the LC520
+  precedent). It is also why the practical ceiling is System 7.6: the IIfx ROM
+  is 32-bit dirty and 8.x needs a 32-bit-clean one.
+- **"Mac OS barely uses the machine's extra hardware"** (`maciifx.cpp:11-14`):
+  correct. The SCC runs in bypass mode; the SWIM/ADB firmware is the real
+  consumer of the IOP model. DMA was not gold-plated and did not need to be.
+- **ASC flavour**: settled — the IIfx carries the **discrete** ASC, version
+  `$00`, like the Mac II (`IIfxMemory.h:225`), not the V8 `$E8` or the
+  Sonora/IOSB variants.
+- **Timer/DMA phase**: both counted in PIC clocks (input clock /8 for
+  instructions, /8 per DMA byte), slaved to `emuCycles` with remainders carried
+  as debt from day one (`pom68k-mcu-lle-clock-drift`). That is also what makes
+  the save states restore in phase.

@@ -89,8 +89,22 @@ void AtalkStack::onGuestFrame(const uint8_t* d, size_t n) {
     if (type == kLlapEnq) {
         stats_.enqSeen++;
         // The probe is for OUR address: defend it (lapACK) so the guest
-        // moves on to another ID — the express path keeps the ACK inside
-        // the prober's window, like the cable's synthesized CTS.
+        // moves on to another ID.
+        //
+        // This ACK does NOT take the express path, whatever this comment
+        // used to claim. `sendFrame`'s only production binding queues into
+        // pending_ and flushes from tick() with injectRxFrame(..., express
+        // = false) (AtalkHub.h:80-90); express = true exists on exactly one
+        // caller, the synthesized CTS in main.cpp. Nor would express be an
+        // improvement here: we run inside the guest's TX callback, where
+        // half-duplex Rx is still off, and an express injection is precisely
+        // what Scc8530.cpp:329 lets through into a deaf receiver.
+        //
+        // So the defence lands one tick late by construction. That is fine
+        // for a prober that waits, and a lost race for one that gives up
+        // inside its own frame — a guest probing node 128 can then take the
+        // address we are already using. Unmeasured against a real guest;
+        // TODO § 6 carries it with both candidate fixes. (2026-08-12)
         if (dst == node_ && src == node_ && sendFrame) {
             const uint8_t ack[3] = { src, node_, kLlapAck };
             sendFrame(ack, 3);

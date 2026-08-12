@@ -18,9 +18,11 @@
 // The row stride is `strideForMode << depthIndex` (valkyrie.cpp:154).
 //
 // The pixel clock is programmed over I2C by the Cuda (valkyrie is slave
-// $28, write_data M/N/P) — POM68K does not model that bus, so the clock
-// stays at the 31.3344 MHz default, which only affects the refresh rate
-// the frame clock derives. Gate: tests/q630_boot_etalon.cpp.
+// $28, write_data M/N/P). That bus IS modelled — i2cWrite() below decodes
+// the M/N/P triple and Q630Memory.cpp:73 wires it to the Cuda — so the
+// clock follows the guest instead of sitting at the 31.3344 MHz reset
+// default; it only affects the refresh rate the frame clock derives.
+// Gates: tests/valkyrie_i2c_test.cpp, tests/q630_boot_etalon.cpp.
 
 #pragma once
 #include <cstdint>

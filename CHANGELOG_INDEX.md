@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 216 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` fails when the two drift.
+**Generated** by `tools/changelog_index.py` from the 216 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -34,12 +34,12 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-29 (late)** — [PGO across all four CPU families (−26 % on the LC II); the dispatch-table item measured and dropped](CHANGELOG.md#2026-07-29-pgo-four-cpu-families)
 - **2026-07-30** — [JIT measured honestly: x64 wins both regimes; the next lever is 5 opcodes](CHANGELOG.md#2026-07-30--jit-measured-honestly-x64-wins-both-regimes-the-next-lever-is-5-opcodes)
 - **2026-07-30** — [A JIT backend is valid per GUEST family, not just per host](CHANGELOG.md#2026-07-30--a-jit-backend-is-valid-per-guest-family-not-just-per-host)
-- **2026-08-04** — [Hot floppy swap reaches every runner; release CI for four OS targets; the x64 dynamic-link regression found and fixed](CHANGELOG.md#2026-08-04--hot-floppy-swap-reaches-every-runner-release-ci-for-four-os-targets-the-x64-dynamic-link-regression-found-and-fixed)
-- **2026-08-04** — [AArch64 Finder gate green and fast: hidden-state lockstep plus two host-side bottlenecks removed](CHANGELOG.md#2026-08-04--aarch64-finder-gate-green-and-fast-hidden-state-lockstep-plus-two-host-side-bottlenecks-removed)
+- **2026-08-04** — [Hot floppy swap reaches every runner; release CI for four OS targets; the x64 dynamic-link regression found and fixed](CHANGELOG.md#2026-08-04-floppy-ci)
+- **2026-08-04** — [AArch64 Finder gate green and fast: hidden-state lockstep plus two host-side bottlenecks removed](CHANGELOG.md#2026-08-04-a64-green-fast)
 - **2026-08-06 (evening)** — [The JIT reaches the last two families, and the compacts are the first guest where the window is not free](CHANGELOG.md#2026-08-06-jit-020-000)
 - **2026-08-06 (night)** — [The cycle-exact lockstep, and the same trap twice in one day: a green gate that meant "nothing ran"](CHANGELOG.md#2026-08-06-lockstep-68000)
 - **2026-08-08 (third)** — [A Pi package built for ONE core: the `-mcpu` half of NeoST's workflow ports, the PGO half still cannot](CHANGELOG.md#2026-08-08-pi400-ci)
-- **2026-08-10** — [Conformant-JIT chantier: phase 0 and phase A landed, and the 68030 blocker finally named](CHANGELOG.md#2026-08-10--conformant-jit-chantier-phase-0-and-phase-a-landed-and-the-68030-blocker-finally-named)
+- **2026-08-10** — [Conformant-JIT chantier: phase 0 and phase A landed, and the 68030 blocker finally named](CHANGELOG.md#2026-08-10-jit-chantier-phase-a)
 - **2026-08-10 (fifth)** — [The 68030 JIT block boundary now carries the exact terminal IRD/IRC](CHANGELOG.md#2026-08-10-jit-030-terminal-queue)
 - **2026-08-10 (third)** — [Apple Silicon makes the first native 68030 backend provable](CHANGELOG.md#2026-08-10-jit-030-a64)
 
@@ -70,11 +70,11 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-24** — [Phase C: Macintosh LC (68020) and Classic II (Eagle) boot to the Finder](CHANGELOG.md#2026-07-24--phase-c-macintosh-lc-68020-and-classic-ii-eagle-boot-to-the-finder)
 - **2026-07-25** — [The i-cache boost was accelerating the VIA bus: LC III / LC III+ / IIvx fixed, and the IIsi's boost restored](CHANGELOG.md#2026-07-25--the-i-cache-boost-was-accelerating-the-via-bus-lc-iii--lc-iii--iivx-fixed-and-the-iisis-boost-restored)
 - **2026-08-05 (ninth)** — [The floppy boost gate: freeze the i-cache boost to 1 while the motor runs, and the LC II mounts its first GCR floppy ever](CHANGELOG.md#2026-08-05-floppy-boost-gate)
-- **2026-08-07 (later)** — [RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks](CHANGELOG.md#2026-08-07-full-run)
+- **2026-08-07 (later)** — [RaSCSI read as an oracle: our disk was invisible to every tool running inside the guest, and the SCSI bus could only hold disks](CHANGELOG.md#2026-08-07-rascsi-oracle)
 - **2026-08-09 (later)** — [Moira is a fork, and the file now says so: the upstream exit had expired without anyone choosing it](CHANGELOG.md#2026-08-09-moira-fork)
 - **2026-08-10 (eighth)** — [The fastest conformant engine becomes the 68040 default](CHANGELOG.md#2026-08-10-jit-040-default)
 - **2026-08-10 (fourth)** — [The 68030 trace cost stops being a guess: base, i-cache and post-exception are separate](CHANGELOG.md#2026-08-10-jit-030-trace-cost)
-- **2026-08-10 (second)** — [the 68030 blocker was two bugs, and the first one was never 68030-specific](CHANGELOG.md#2026-08-10-second--the-68030-blocker-was-two-bugs-and-the-first-one-was-never-68030-specific)
+- **2026-08-10 (second)** — [the 68030 blocker was two bugs, and the first one was never 68030-specific](CHANGELOG.md#2026-08-10-jit-030-blocker-two-bugs)
 - **2026-08-10 (seventh)** — [The successful postincrement oracle names the first hidden RAM divergence](CHANGELOG.md#2026-08-10-jit-030-pi-success)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
@@ -105,7 +105,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-01 (night)** — [The Mac IIfx boots the Finder — ADB bit-banged by the IOP's own 65C02 firmware against AdbLine](CHANGELOG.md#2026-08-01-iifx-finder)
 - **2026-08-02** — [The ADB device model and two SCC pins: closing the LLE gaps that needed no new hardware](CHANGELOG.md#2026-08-02-lle-devices)
 - **2026-08-02 (fifth)** — [Two LLE gaps closed: the Cuda's I2C bus gets a second slave, and SWIM1 gets its DMA request line](CHANGELOG.md#2026-08-02-i2c-dat1byte)
-- **2026-08-03** — [Event deadlines close the Cuda phase accommodation; extended ADB input reaches every GUI runner](CHANGELOG.md#2026-08-03--event-deadlines-close-the-cuda-phase-accommodation-extended-adb-input-reaches-every-gui-runner)
+- **2026-08-03** — [Event deadlines close the Cuda phase accommodation; extended ADB input reaches every GUI runner](CHANGELOG.md#2026-08-03-event-deadlines)
 
 ## Storage — SCSI, IWM, SWIM, media
 
@@ -133,7 +133,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-24** — [Floppy write persistence (gate `floppy_persist_test`)](CHANGELOG.md#2026-07-24--floppy-write-persistence-gate-floppy_persist_test)
 - **2026-07-25** — [Macintosh Quadra 700: the 27th machine, and the DAFB TurboSCSI cell](CHANGELOG.md#2026-07-25--macintosh-quadra-700-the-27th-machine-and-the-dafb-turboscsi-cell)
 - **2026-07-29 (later)** — [SCSI CD-ROM support, a guest-level floppy gate, and the LLE inventory re-synced](CHANGELOG.md#2026-07-29-later--scsi-cd-rom-support-a-guest-level-floppy-gate-and-the-lle-inventory-re-synced)
-- **2026-08-04 (soir)** — [The IIfx SCSI mirror mounted one volume seven times; CDs hot-mount under 8.1; the MacIP window opens up](CHANGELOG.md#2026-08-04-soir--the-iifx-scsi-mirror-mounted-one-volume-seven-times-cds-hot-mount-under-81-the-macip-window-opens-up)
+- **2026-08-04 (soir)** — [The IIfx SCSI mirror mounted one volume seven times; CDs hot-mount under 8.1; the MacIP window opens up](CHANGELOG.md#2026-08-04-iifx-mirror-cd-hot)
 - **2026-08-05 (eighth)** — [What the driver gives up ON: badDCksum on the MDB, because the boost compresses Apple's denibble path below the IWM's 14-tick hold and the mid-group poll re-reads the same nibble](CHANGELOG.md#2026-08-05-sony-giveup)
 - **2026-08-05 (fifth)** — [Beyond-boot reaches a second machine: Quadra 605 soak + persist, and the 53C96 finally takes a real guest WRITE](CHANGELOG.md#2026-08-05-q605-beyond)
 - **2026-08-05 (fourth)** — [IWM/SWIM bughunt: the Q700 spindle ran 1.6x fast, and the IWM personality was half-speed-blind on C15M hosts](CHANGELOG.md#2026-08-05-iwm-swim-bughunt)
@@ -238,7 +238,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-31** — [The ten-month red gate was Slow Keys: the GUEST was rejecting the keys](CHANGELOG.md#2026-07-31-slow-keys)
 - **2026-08-03** — [Three items closed by measurement — and a GREEN ctest that proved nothing](CHANGELOG.md#2026-08-03-three-items)
 - **2026-08-05 (later)** — [The M1 bughunt: three real defects the gates were green over](CHANGELOG.md#2026-08-05-cache040-bughunt)
-- **2026-08-07** — [162/162 on a fully rebuilt tree: the first complete run since the gate count went from 143 to 162](CHANGELOG.md#2026-08-07--162162-on-a-fully-rebuilt-tree-the-first-complete-run-since-the-gate-count-went-from-143-to-162)
+- **2026-08-07** — [162/162 on a fully rebuilt tree: the first complete run since the gate count went from 143 to 162](CHANGELOG.md#2026-08-07-full-run)
 - **2026-08-09** — [A red gate can now say for itself whether the image moved: 60 gates print a SHA-256 and drVolAtrb before booting](CHANGELOG.md#2026-08-09-asset-fingerprint)
 - **2026-08-09 (eighth)** — [One folder probe instead of three, and a gate for the thing three gates judge on](CHANGELOG.md#2026-08-09-folderprobe)
 - **2026-08-09 (fifth)** — [Four gates carried no label at all, and the folder the persist gate said was never created was there all along](CHANGELOG.md#2026-08-09-tiers-and-gates)
@@ -272,7 +272,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-31** — [The window-churn investigation ends on one deleted line: −23 to −33 %](CHANGELOG.md#2026-07-31-window-churn-dtlb-flush)
 - **2026-08-01 (later)** — [IOP M2: the Apple PIC device lands — a window-uploaded 65C02 program talks both mailbox directions](CHANGELOG.md#2026-08-01-applepic)
 - **2026-08-02 (third)** — [Two rates that were rounded, and one that was only ever a price](CHANGELOG.md#2026-08-02-eclock-asc)
-- **2026-08-04** — [Event deadlines reach six more platforms: min(MCU bound, historical batch)](CHANGELOG.md#2026-08-04--event-deadlines-reach-six-more-platforms-minmcu-bound-historical-batch)
+- **2026-08-04** — [Event deadlines reach six more platforms: min(MCU bound, historical batch)](CHANGELOG.md#2026-08-04-deadlines-six)
 - **2026-08-05** — [Cache 040 M1: CINV and CPUSH finally act on real state, and the tags cost nothing](CHANGELOG.md#2026-08-05-cache040-m1)
 - **2026-08-05 (third)** — [The m040 sweep is paid and the cache chantier closes at M1](CHANGELOG.md#2026-08-05-cache040-closed)
 - **2026-08-06** — [A chip-by-chip parity sweep against MAME master: 94 findings worked, and the three bugs it found were the ones nobody wrote down](CHANGELOG.md#2026-08-06-mame-parity-sweep)

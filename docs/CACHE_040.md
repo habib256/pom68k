@@ -3,18 +3,28 @@
 *Opened 2026-08-04; M1 landed, was hardened, and the chantier closed
 at M1 on 2026-08-05 (§ 3 — the decision and its reopening conditions).
 Pattern: `IOP_BRINGUP.md` / `DUO_BRINGUP.md` — recon first, milestones
-gated, nothing implemented before its observable is named. Everything
-asserted below was verified in-tree on 2026-08-04; citations inline.*
+gated, nothing implemented before its observable is named. Citations
+re-checked against the tree on **2026-08-12**: the flag, the tag store,
+the CINV/CPUSH path and the 44-check gate are all where this file says
+they are.*
+
+**Read this if you are here to open M2**: § 3 is the whole file. §§ 0-2
+are how M1 was reasoned and what it costs to redo.
 
 ## 0. What the recon changed about this chantier
 
-`TODO.md` § 0 lists "040 copyback/snooping" as the largest remaining CPU
-inexactness. Two findings reframe what that work actually is:
+The chantier opened because "040 copyback/snooping" was then billed as the
+largest remaining CPU inexactness. Two findings reframe what that work
+actually is (and are why `TODO.md` § 4 now records it closed rather than
+pending):
 
 1. **There is no oracle.** The vendored WinUAE oracle models a 68030
    data cache (`oracle/uae/upstream/cpummu030.h`,
    `write_dcache030_lrmw_mmu`) but has **no 68040 data-cache model** —
-   upstream WinUAE serves 040 data straight from memory too. The house
+   upstream WinUAE serves 040 data straight from memory too. Do not be
+   fooled by `struct cache040` / `fill_icache040`
+   (`oracle/uae/upstream/newcpu.h:160,726-738`): that is the
+   **instruction** cache; there is no `*_dcache040` anywhere. The house
    rule "on spec/oracle conflict, the oracle wins" has no oracle to
    defer to here: **the MC68040UM is the spec**, and gates must be
    synthetic self-consistency tests built from its pseudocode.
@@ -56,7 +66,7 @@ Consequences, stated plainly:
 |---|---|---|
 | CINV/CPUSH | `MoiraExec_cpp.h` (`execCinv/execCpush`) | **since M1**: act on the modelled tags when `POM68K_040_DCACHE` is armed (`pomCacheOp040`); no-ops otherwise |
 | CACR | `Cpu040::didChangeCACR` (`src/Cpu040.cpp`) | bit 15/11 drive the **throughput** i-cache overlay + JIT flushAll; **since M1** DE/IE also gate the tag model (read at touch time, no hook needed) |
-| CM bits | `Moira::Mmu040AtcEntry.status` (`Moira.h:1597` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
+| CM bits | `Moira::Mmu040AtcEntry.status` (`Moira.h:1777-1783` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
 | TTR cache fields | `mmu040MatchTTR` | TTR CM bits reachable the same way |
 | JIT contract | `src/jit/POM68K_JIT.md` § derived state; `pomJitAtcEvict` | "derived state dies with the ATC entry" — a data cache is a THIRD state layer the JIT's inline DTLB must never bypass; M2 gates the JIT OFF or excludes cached pages from the DTLB |
 | Snoop hook (future) | none today | first client = IIfx SCSIDMA true DMA (deferred) or any future bus master; the hook lands with the client, not before |
@@ -134,7 +144,8 @@ replacement victims, PA[9] indexing and top-of-address-space spans;
 then CACR/TTR/CINV/CPUSH, MMU-on ATC/peek-walk/unmapped-skip resolver
 paths, disabled-cache retention, and a /BERR descriptor chain through
 a bare 68040 Moira with a bus hole), `sst68040` (7 200 pinned vectors)
-and the 5 JIT lockstep gates green with the flag ON, 2026-08-05. The
+and the JIT lockstep gates — the five that existed then — green with the
+flag ON, 2026-08-05. The
 same day's adversarial bughunt (4 finders + per-finding refuters)
 found and fixed three real defects — an infinite touch loop at
 0xFFFFFFFF, the faultable peek walk, phantom lines after /BERR — and
@@ -179,7 +190,9 @@ owed is paid: after the one-time GUI cleanup of the 8.1 volume
 (drVolAtrb back to $0100), `ctest -L m040` ran **33/33 green with the
 flag ON on freshly relinked binaries** (2 h 00 wall, partly under a
 concurrent session's load — passes stand, only failures would have
-needed serial reruns). The decision point then asks for a concrete
+needed serial reruns). That 33 was the whole `m040` tier **as it stood
+that day**; the tier has since grown to 41, so re-running the sweep is
+a superset, not a repeat. The decision point then asks for a concrete
 motivation to open M2's data path, and none exists:
 
 - **No guest, no diagnostic.** Every profile boots and runs on the

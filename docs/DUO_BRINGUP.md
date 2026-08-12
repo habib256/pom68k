@@ -1,496 +1,307 @@
-# PowerBook Duo / PB150 bring-up — the MSC platform (platform #11)
+# PowerBook Duo bring-up — the MSC + PG&E platform
 
-**Goal.** The last 68k Macs with real power management: the PowerBook Duo
-family (MSC/MSC II ASIC + PG&E power manager), and eventually the PowerBook
-150 (same MSC lineage + IDE, the last 68030 PowerBook, 1994-07). This is the
-`docs/LCII_HARDWARE.md`-style blueprint: everything below is read from MAME
-`macpwrbkmsc.cpp` / `msc.cpp` / `gsc.cpp` / `m68hc05pge.cpp` (R. Belmont,
-BSD-3-Clause) — cite file:line when porting.
+(`MscMemory.h:4` calls this "platform #11" and `IIfxMemory.h:4` calls OSS+IOP
+"#12": those are **creation order**, not row numbers in CLAUDE.md's machine
+table, and nothing derives from them.)
 
-Status 2026-07-31 (night): **the Duo 230 boots System 7.5.5 to the
-Finder** — menu bar, battery icon, Control Strip, mounted volume, three
-ADBReInits completing. The ADBReInit deadlock chased all day resolved
-into a one-line-of-truth fix: **/PMU_INT is a LEVEL into the MSC VIA1's
-customized CB1, not an edge** (§ *The deadlock, solved* below). Etalon
-gate + input milestone are next. Earlier same day: **milestone 2** — the full
-PG&E LLE is in (`src/M68hc05Pge.*` chip clone + `src/PgePmu.*` board
-integration, `PseudoVia::Flavour::Msc`), and the boot now runs the REAL
-power-management sequence end to end:
+**Status: the Duo 230 is the 37th profile** (2026-08-06). It boots System 7.5.5
+to the Finder — menu bar, battery icon, Control Strip, mounted volume — under
+the real power-management sequence, with the PG&E running its own uploaded
+firmware. Gates: `duo230_boot_etalon` (Finder, and the `etalon-core`
+representative for this platform), `msc_parity_test` (asset-free MAME parity),
+save states in `savestate_030_test`.
 
-1. PG&E boot stub executes from `pge_boot.bin`, powers the board, releases
-   the 68030 (~0.7 s in, port E bit 2) — the CPU is held until then.
-2. The system ROM uploads the PMU firmware over SPI through the VIA1
-   shifter (≈32 K transfers; the blob is tagged **"BORG"** in the ROM at
-   `$AA9C4`, upload verified byte-perfect against the ROM), the stub jumps
-   into it at `$8122`, the firmware banks the boot ROM out at `$8131`.
+**The machine as-built is `DEV.md` § 2.11 and the header of `MscMemory.h`;
+this file is the porting reference and the record of what the bring-up
+established** — the MAME cites to port from (`macpwrbkmsc.cpp` / `msc.cpp` /
+`gsc.cpp` / `m68hc05pge.cpp`, R. Belmont, BSD-3-Clause; cite `file:line`),
+the findings that are not derivable from the code, and the things that were
+*disproved* and must not be re-tried.
+
+Still open, in milestone order: **input through the PMU's own paths** (matrix
+keyboard + trackball counters — today's keyboard/mouse ride the PG&E's ADB
+modem cell instead) and then **sleep/wake**, the one path no other machine in
+the tree can exercise. Then the PB150, whose ROM is the only oracle.
+
+---
+
+## The boot sequence, end to end
+
+1. The PG&E boot stub executes from `pge_boot.bin`, powers the board and
+   releases the 68030 (~0.7 s in, port E bit 2 — `msc.cpp:151`). **The CPU is
+   held until then**, so without the stub the ROM stalls loudly at its first
+   PMU exchange (that stall was milestone 1's checkpoint).
+2. The system ROM uploads the PMU firmware over SPI through the VIA1 shifter
+   (≈32 K transfers; the blob is tagged **"BORG"** in the ROM at `$AA9C4`,
+   upload verified byte-perfect), the stub jumps into it at `$8122`, and the
+   firmware banks the boot ROM out at `$8131`.
 3. The firmware serves the PMU protocol (its vector page lands at SRAM
-   `$FFFx`; command dialog observed: host `$3A` reads with counter-ramp
-   replies, steady `$D9`-family traffic after boot).
-4. The host boots on: **GSC VRAM fully painted + SCSI bus probing** at
-   2.5 G cycles (interrupt-driven, stack in high RAM).
+   `$FFFx`; host `$3A` reads answer with counter-ramp replies, steady
+   `$D9`-family traffic after boot).
+4. **Mid-boot, System 7.5.5 replaces that firmware.** PmgrOp `$E1` streams a
+   complete second ~32 KB BORG image over SPI (magic `"BORG"` on the wire, the
+   PMU acking every byte with `$8D`, ~32 782 exchanges) and the PG&E switches
+   to **v2** at ≈MCU cycle 54 M. Everything after that point runs v2, **with
+   different addresses** — a whole debugging detour was spent watching v1 PCs
+   in v2 code. Maps and shared zero-page variables:
+   `pom68k-duo-borg-firmware-map`.
+5. GSC VRAM paints, SCSI probes, the Finder comes up.
 
-**The one bug of the day, for the record**: SRAM writes to $FE00-$FFFF were
-gated off while the boot ROM overlay was in — but MAME's view semantics
-only override READS, so the firmware upload must be able to fill its
-vector page under the overlay. With the gate in place every post-bank-out
-interrupt vectored to $0000 through a zero vector page and the PMU crashed
-into page-zero garbage (`M68hc05Pge.cpp` write8 comment).
+## The findings that cost time (each one a real divergence closed)
 
-**Three more findings, each a real divergence closed:**
-
-*(An earlier revision of this file claimed the opposite of the third
-bullet below — that the PMU interrupt should ride the SPI clock. It was
-written before the measurement and is deleted, not softened.)*
-
+- **/PMU_INT is a LEVEL, not an edge.** This is the fix that turned "third
+  ADBReInit hangs forever" into a booting machine. MAME's `mscvia::pmu_int`
+  (`msc.h:19-33`, "fits what we see in the leaked System 7.1 source") asserts
+  AND clears INT_CB1. `Via6522::pmuIntLevel()` holds IFR.CB1 set while the line
+  is low (surviving IFR writes and ORB accesses; deassert clears it), driven
+  from PG&E port F bit 2, and **only the Duo uses it**. Why an edge cannot
+  work: the ADB→PMU bridge masks IER.CB1 (`move.b #$10,($1C00,A1)`) around
+  every send and acks stale flags, so one assert landing inside that window is
+  lost — and since the PMU never deasserts before a readINT drain, no further
+  edge can ever come. The line stays low forever and every later assert is a
+  write of 0 over 0. Result of the fix: 430 frozen interrupt edges → 1326 and
+  climbing, SCSI 281 → 3448 commands, three ADBReInits complete, Finder.
+- **The PMU interrupt must NOT ride the SPI clock** — a deliberate, measured
+  departure from MAME's literal wiring, and the other half of the same story.
+  MAME binds the PG&E's SCK to `msc_device::cb1_w` → the *interrupting*
+  `write_cb1`; with that, every shift edge sets IFR.CB1, the driver re-enables
+  IER with the flag still pending, its ISR issues readINT (`$78`) again,
+  forever. Same build, 5 G cycles: **interrupt half ON → 176 back-to-back
+  `$78`, 0 SCSI selects; OFF → 1122 selects, 555 commands, the System loads off
+  disk.** `msc.h` models `write_cb1_noint` plus a separate `pmu_int` for
+  exactly this reason. `POM68K_PGE_CB1INT=1` restores the MAME-literal wiring
+  for A/B; `POM68K_PGE_CB1BYTE=1` gives one CB1 IRQ per completed byte.
+- **SRAM writes to `$FE00-$FFFF` must go through while the boot-ROM overlay is
+  up.** MAME's view semantics only override READS, so the firmware upload has
+  to be able to fill its vector page under the overlay. Gate those writes off
+  and every post-bank-out interrupt vectors to `$0000` through a zero vector
+  page, and the PMU crashes into page-zero garbage (`M68hc05Pge.cpp` `write8`).
 - **SR mode 000 shifts IN under an external clock** — stock 6522 behaviour
-  (`SR_DISABLED(m_acr)` → `shift_in()`, `:1199`), not an MSC invention, and
-  the mode the PMU reply path actually uses. Opt-in (`setMscShiftQuirk`)
+  (`SR_DISABLED(m_acr)` → `shift_in()`, `:1199`), not an MSC invention, and the
+  mode the PMU reply path actually uses. Opt-in (`Via6522::setMscShiftQuirk`)
   so the Mac II decode is untouched.
-- **MISO is driven only while the VIA shifts OUT** (MAME hangs
-  `spi_miso_w` off the CB2 *output* callback, whose only caller is
-  `shift_out`). Feeding the SR MSB back in shift-IN mode made the PMU read
-  its own bytes one exchange later.
+- **MISO is driven only while the VIA shifts OUT** (MAME hangs `spi_miso_w`
+  off the CB2 *output* callback, whose only caller is `shift_out`). Feeding the
+  SR MSB back in shift-IN mode made the PMU read its own bytes one exchange
+  later.
+- **The 80 µs host stall is load-bearing, and the window is sharp.** MAME's
+  `via2_out_b` spins the 68030 80 µs on a /PMU_REQ edge; it looked like
+  optional pacing, so it was bisected. The MCU/host interleave is not a free
+  parameter (same lesson as the Cuda transport,
+  `pom68k-mactv-gate-broken`). `POM68K_PGE_SPINUS=<µs>` is left in for phase
+  experiments:
 
-- **The PMU interrupt must NOT ride the SPI clock** — and this one is a
-  deliberate, measured departure from MAME's literal wiring. MAME binds
-  the PG&E's SCK to `msc_device::cb1_w` → the *interrupting* `write_cb1`.
-  With that, every shift edge sets `IFR.CB1`; the driver re-enables IER at
-  the end of each transaction with the flag still pending; its ISR issues
-  readINT (`$78`) again; repeat. Same build, 5 G cycles: **interrupt half
-  ON → 176 back-to-back `$78`, 0 SCSI selects; OFF → 1122 selects, 555
-  commands, the System loads off disk.** `msc.h` models
-  `write_cb1_noint` + a separate `pmu_int` (port F bit 2) for exactly this
-  reason, and that is what we implement. `POM68K_PGE_CB1INT=1` restores
-  the MAME-literal wiring for A/B.
+  | host stall | ADBReInit clears | SCSI commands |
+  |---|---|---|
+  | 0 µs | 0 | 0 |
+  | 40 µs | 2 | 895 |
+  | **80 µs (MAME, default)** | **2** | **895** |
+  | 160 µs | 0 | 0 |
 
-DS2400 battery serial is now a real 1-Wire slave (`PgePmu::Ds2400`, MAME
-`ds2401.cpp` state machine on the MCU cycle clock) fed from
-`duobatid.bin`. MAME's two transport spins (80 µs host after a REQ edge,
-20 µs PMU after an ACK edge) are reproduced.
+- **The PG&E's ADB modem cell had to answer, and framing it took three fixes**
+  (`ADBCR/ADBSR/ADBDR` at `$18-$1A`). MAME's `m68hc05pge` models TDRE and TC on
+  timers but **never RDRF** (`m_adbsr |=` only ever sets TDRE and TC) — a
+  strong hint that MAME's `macpd230` does not reach the Finder either, whatever
+  its lack of a NOT_WORKING flag suggests. The three, each found with
+  `POM68K_PGE_ADBTRACE=1`:
+  1. **A reply must be its own event.** Folding RDRF into the same timer expiry
+     that raises TDRE clobbered ADBDR while the firmware still held the
+     transmitted byte there — 1122 SCSI selects → 0. TX-done and RX-arrived are
+     separate.
+  2. **The TC timer overwrote the scheduled reply.** The firmware acks TDRE by
+     writing ADBCR, which arms the 50 µs TC timer, wiping a reply scheduled off
+     the TDRE expiry. Both expiries chain into the reply now.
+  3. **Listen data bytes must reach the bus.** A Listen R3 with an empty
+     payload means the relocation never happens, so the firmware re-finds the
+     device at its old address and relocates it again — forever. The cell
+     buffers a Listen's two data bytes and only then drives the command.
 
-**Disproved, kept so nobody re-tries it**: port A bit 5 is the power key
-when no matrix row is selected, and `macpwrbkmsc.cpp` returns the literal
-`0xdf` (bit 5 clear) for "not pressed". Implementing that hangs the boot
-dead at `$408B98F2` with Ticks frozen at 0 — the firmware reads it as
-"power key held". Bit 5 must read **1** for released, so a blanket `$FF`
-is correct.
-
-## The deadlock, solved (2026-07-31 night)
-
-The "third ADBReInit hang" investigated below is fixed. The chain, each
-link measured (all the instrumentation listed at the end of this
-section):
-
-1. **The all-zero ADB request was legitimate.** `$4080AA1A` loads
-   D0=D1=D2=0 → command byte `$00` = **SendReset**, count 0 — the normal
-   kick-off of every ADBReInit. The previous session's "the ROM took
-   another branch" was right, but the branch is healthy: D3 is simply
-   passed explicitly by the queue driver ("$408B2E96 tst.l D3" positive
-   path). Byte-identical requests succeed at reinit #1 and fail later —
-   the guest was innocent.
-2. **PmgrOp `$E1` is a full PMU firmware upload.** At host clk ≈2.39 G
-   System 7.5.5 streams a complete ~32 KB second BORG image over SPI
-   (magic `"BORG"` on the wire, the PMU acking every byte with `$8D`,
-   ~32 782 exchanges) and the PG&E **switches firmware** (≈MCU cyc 54 M).
-   Everything after that point runs *v2* — with different addresses.
-   A whole detour was spent watching v1 PCs in v2 code; the maps and the
-   shared zero-page variables are in `pom68k-duo-borg-firmware-map`.
-3. **v2 handled the failing SendReset CORRECTLY.** Windowed MCU traces
-   (POM68K_PGE_PCWIN) show arm (`$89AB`, BSET0 ADBCR + timed state),
-   tick-timed completion (`$8A47` — for a SendReset the firmware waits
-   ~2 ticks and marks the transaction finished itself; the cell reports
-   nothing), cause 4 posted and **/PMU_INT asserted** (`$89EA`).
-4. **The host never saw that assert.** The INT-line log
-   (POM68K_PGE_HSHAKE) shows the line's LAST falling transition at MCU
-   60.6716 M — v2's CPI second-tick posting cause 7 (`$8760`) — landing
-   **inside the guest's masked PmgrOp window**: the ADB→PMU bridge masks
-   IER.CB1 (`move.b #$10,($1C00,A1)`) around every send and acks stale
-   flags. The edge-latched IFR.CB1 was cleared by the driver, IER came
-   back with nothing pending, and since the PMU never deasserts before a
-   readINT drain, **no edge could ever come again**. The line stayed low
-   for the rest of time; every later assert (including the reset
-   completion's) was a write of 0 over 0.
-5. **The fix: level semantics.** MAME's `mscvia::pmu_int` (msc.h:19-33,
-   "fits what we see in the leaked System 7.1 source") asserts AND
-   clears INT_CB1 — /PMU_INT is a level. `Via6522::pmuIntLevel()` now
-   holds IFR.CB1 set while the line is low (survives IFR writes and ORB
-   accesses; deassert clears it), driven from PG&E port F bit 2. Only
-   the Duo uses it. Result: 430 frozen interrupt edges → 1326 and
-   climbing, SCSI 281 → 3448 commands, **three ADBReInits complete, the
-   Finder comes up**.
-
-Also established on the way:
-
-- **System 7.1 does not boot Duos** (no Enabler): the machine reaches a
-  fully-drawn "This startup disk will not work on this Macintosh model"
-  alert — desktop pattern, arrow cursor, waiting for a click on Restart
-  (`MBState $172` poll). A nice unplanned proof that the whole ROM boot,
-  one complete ADBReInit, QuickDraw dialog rendering and GSC 4 bpp are
-  solid. Use the 7.5.5 image for Duo work.
-- **Unplugging the charger makes it worse** (POM68K_PGE_CHARGER=0):
-  ADBReInit #1 never completes, 0 SCSI selects — the battery state
-  machine is load-bearing; leave MAME's "charger present".
-- v2 adds an ADB watchdog: `$01F3` = 8 ticks armed per command, expiry
-  retransmits a `$31` resync byte to the cell.
-- The v2 readINT dispatcher `$86D6` serves causes by bit: 7 = the
-  once-per-second battery/environment report (this is what the steady
-  `$D9` traffic fetches), 4 = ADB reply; `$A0` = host-programmed
-  interrupt-enable mask; delivery re-asserts per remaining cause.
-- Capstone's 6805 mode prints bset/bclr **inverted** (brset/brclr are
+  Result: enumeration converges (Talk R3 → `$62 $05` keyboard, `$63 $01`
+  mouse) and settles into steady-state autopoll (`$2C` → `$FF $FF`).
+- **v2 firmware facts worth keeping**: an ADB watchdog at `$01F3` (8 ticks per
+  command, expiry retransmits a `$31` resync byte to the cell); the readINT
+  dispatcher `$86D6` serves causes by bit — 7 = the once-per-second
+  battery/environment report (what the steady `$D9` traffic fetches), 4 = ADB
+  reply; `$A0` = host-programmed interrupt-enable mask; delivery re-asserts per
+  remaining cause.
+- **Capstone's 6805 mode prints `bset`/`bclr` inverted** (`brset`/`brclr` are
   correct) — arbitrate against `src/M68hc05.cpp`
   (`pom68k-capstone-hc05-bset-inverted`).
 
-Instrumentation added for all this, all kept: `DUO_PGEWATCH` (windowed
-zero-page/cell-register sampling), `DUO_SRAMDUMP` (dump the LIVE
-firmware image), `DUO_KEYAT` (inject a key/mouse event at a clock),
-PMCMD `$20` payload deref in `DUO_PMLOG`, `POM68K_PGE_PCCOUNT` /
-`POM68K_PGE_PCWIN` / `POM68K_PGE_PCHIST` (MCU-side PC counters, windowed
-full logging, bucket histogram), INT-line transition log under
-`POM68K_PGE_HSHAKE`, `POM68K_PGE_CHARGER`.
+## Disproved — kept so nobody re-tries them
 
-## Where it stopped before the fix: **ADBReInit** (historical)
+- **Port A bit 5 as the power key.** `macpwrbkmsc.cpp` returns the literal
+  `$DF` (bit 5 clear) for "not pressed" when no matrix row is selected.
+  Implementing that hangs the boot dead at `$408B98F2` with Ticks frozen at 0 —
+  the firmware reads it as "power key held". Bit 5 must read **1** for
+  released, so a blanket `$FF` is correct.
+- **Raising RDRF unconditionally on transmit-done** (`POM68K_PGE_ADBRX=1`):
+  0 SCSI selects.
+- **Unplugging the charger** (`POM68K_PGE_CHARGER=0`): ADBReInit #1 never
+  completes, 0 SCSI selects. The battery state machine is load-bearing — leave
+  MAME's "charger present".
+- **System 7.1 does not boot Duos** (no Enabler). The machine reaches a
+  fully-drawn "This startup disk will not work on this Macintosh model" alert —
+  desktop pattern, arrow cursor, waiting for a click on Restart (`MBState $172`
+  poll). An unplanned proof that the ROM boot, one complete ADBReInit,
+  QuickDraw dialog rendering and GSC 4 bpp are all solid. **Use the 7.5.5 image
+  for Duo work.**
+- **Honouring the Listen R3 activator byte in `AdbBus`** (a device only moves
+  on `$00`/`$FE`) did not fix the third-ADBReInit hang. Kept anyway — it is a
+  real fidelity gap.
+- **"ADBBase goes stale under the waiter."** A3 read `$5894` at one stop and
+  `$57BC` at another, which looked like re-entrancy. It was an artefact of
+  comparing two different stop points: `--stop-at` with a small skip catches
+  the *early* ROM-era ADBReInit, which legitimately runs at the older ADBBase.
+  Measured at the real hang, `ADBBase ($0CF8) == A3`. `duo_trace` prints both
+  so the question cannot be fudged again — **a pointer compared across two
+  stop points is not a measurement.**
 
-Identified, not guessed. The stall PC `$4080A870` is the tail of
-**ADBReInit**:
+## Diagnostics (all in-tree, all env-gated)
 
-```
-$4080A846  move.b #$24,($15d,A3)   ; ADBBase flags: bit 5 = init running
-$4080A868  bsr    $4080a8f0        ; kick the ADB reset off
-$4080A86C  andi.w #-$701,SR        ; interrupts on
-$4080A870  btst   #$5,($15d,A3)    ; …and wait for bit 5 to clear
-$4080A876  bne    $4080a870
-$4080A878  bsr    $4080aa96        ; (never reached)
-```
-
-Boot state at that point: the System has loaded off disk (1122 SCSI
-selects, 555 commands), QuickDraw is up (`ScrnBase = $60000000`, a live
-MainDevice/PixMap at 4 bpp, rowBytes 320) and the desktop pattern is
-painted. The ROM's own early ADBReInit completed; it is the **System's**
-that hangs. Meanwhile the host stops issuing /PMU_REQ and only re-polls
-`$D9` every ~0.66 s — a timeout retry, not progress.
-
-Cause was the PG&E's **ADB modem cell**: `ADBCR/ADBSR/ADBDR` ($18-$1A)
-modelled TDRE and TC on timers but never RDRF — and MAME's `m68hc05pge`
-does not either (verified: `m_adbsr |=` only ever sets TDRE and TC), which
-is a strong hint that MAME's `macpd230` does not reach the Finder either,
-whatever its lack of a NOT_WORKING flag suggests.
-
-**The cell now answers** (`AdbBus` behind it — command level is honest
-here: the cell IS a hardware transceiver, so the wire lives inside the
-PG&E's silicon and the firmware only exchanges bytes with it). Three
-framing bugs had to be fixed in a row, each one found by
-`POM68K_PGE_ADBTRACE=1`:
-
-1. **A reply must be its own event.** Folding RDRF into the same timer
-   expiry that raises TDRE also clobbered ADBDR while the firmware still
-   held the transmitted byte there: the boot regressed from 1122 SCSI
-   selects to 0. TX-done and RX-arrived are separate now.
-2. **The TC timer overwrote the scheduled reply.** The firmware acks TDRE
-   by writing ADBCR, which arms the 50 µs TC timer — wiping a reply
-   scheduled off the TDRE expiry. Every reply was silently dropped and
-   the cell looked inert. Both expiries chain into the reply now.
-3. **Listen data bytes must reach the bus.** Running a Listen R3 with an
-   empty payload means the relocation never happens, so the firmware
-   re-finds the device at its old address and relocates it again —
-   forever. The cell now buffers a Listen's two data bytes and only then
-   drives the command.
-
-Result: enumeration converges (Talk R3 → `$62 $05` keyboard, `$63 $01`
-mouse) and settles into steady-state autopoll (`$2C` → `$FF $FF`), and
-disk activity goes from 555 to **895 SCSI commands**.
-
-Also disproved along the way, kept as a signpost: raising RDRF
-unconditionally on transmit-done (`POM68K_PGE_ADBRX=1`) — 0 selects.
-
-**Narrowed hard.** Instrumented with `DUO_PCCOUNT="pc,pc,…"` (execution
-counts + the first hits with a clock stamp), which is how the following
-came out:
-
-- ADBReInit runs **three** times and the flag-clear at `$4080A958` fires
-  only **twice**. `$4080A958` is the **only `bclr #5,($15D,A3)` in the
-  whole 1 MB ROM** (verified by pattern search), so nothing else can end
-  the wait.
-- The third call dies in the FIRST thing `$4080A8F0` does: `$4080AA1A`
-  is entered 3 times but its return point `$4080A8F4` only 2. The 16-way
-  device-probe loop after it (`$4080A902`) runs 32 = 16×2 times — the
-  third call never reaches it.
-- Inside, the ADB dispatch `jsr ($5F0)` at `$4080AA48` is entered 835
-  times and returns 835 times, so nothing is stuck *in* the dispatch.
-- **ADBBase does NOT go stale — an earlier claim here was wrong.** A3 was
-  `$5894` at one observation and `$57BC` at another, which looked like the
-  waiter holding a relocated pointer. It was an artefact of comparing two
-  different stop points: `--stop-at` with a small skip catches the *early*
-  ROM-era ADBReInit, which legitimately runs at the older ADBBase. Measured
-  at the real hang, `ADBBase ($0CF8) == A3 == $57BC` — they match. The
-  re-entrancy theory is dead; `duo_trace` now prints both so the question
-  cannot be fudged again.
-
-**The deadlock, caught red-handed.** `$4080AA1A`/`$4080AA22`/`$4080AA28`
-are three entry points converging on one dispatch:
-
-```
-$4080AA3E  pea     ($163,A3)     ; push a parameter pointer (4)
-$4080AA42  movea.l A7,A0
-$4080AA44  movea.l $5f0.w,A1     ; the ADB Manager proc
-$4080AA48  jsr     (A1)
-$4080AA4A  addq.w  #$8,A7        ; pop EIGHT
-$4080AA4C  rts
-```
-
-It pops **8** bytes having pushed only 4, so the healthy path depends on
-the callee at `($5F0)` leaving a 4-byte result behind: `addq` then eats
-result+pointer, and the `rts` finds its own return address. Stopped at the
-835th (last) `rts`, `[sp+0] = $4080A86C` — **not** `$4080A8F4`. The callee
-took an early exit without pushing its result, `addq` swallowed the
-routine's own return address, and the `rts` went two levels up: straight
-to `$4080A86C`, which is `andi.w #-$701,SR` immediately followed by the
-wait loop. The third ADBReInit therefore lands in its wait **without ever
-running the 16-way device probe or reaching the only `bclr #5` in the
-ROM**. The flag can never clear. That is the whole deadlock.
-
-Caveat on that reading: the two-level return may well be the ROM's own
-idiom rather than damage — ADBReInit's wait loop sits exactly at the
-return target, which is suspiciously convenient. What is certain is the
-*measured* fact: on the third call control reaches the wait without the
-device probe having run.
-
-Following the thread one layer deeper (all measured, `DUO_PCCOUNT`):
-
-- `jADBProc ($05F0) = $4080A3DC`, the queue driver. It **never** takes its
-  error exit (`$4080A428`: 0 hits); it enqueues 846 times and kicks
-  processing 846 times. So nothing is failing to queue.
-- `$4080A42C` has the interesting guard: if the queue is idle **and**
-  ADBReInit is running (bit 5), it returns doing nothing — during a
-  reinit, ADBReInit is supposed to drive the bus itself.
-- The send path `$4080A458` jumps through a machine-specific vector
-  `($130,ADBBase)`, which on the Duo is **`$408B2E76`** — the ADB→PMU
-  bridge. It masks VIA1 CB1 (`move.b #$10,($1C00,A1)`), builds a command
-  block on the stack and issues **PmgrOp selector `$20`** — the `$20`
-  commands already visible in the `DUO_PMLOG` stream. At the hang VIA1
-  IER is `$B3`, so CB1 has been re-enabled; the mask is not the leak.
-
-**That trace is now done** (`POM68K_PGE_SPIBYTES=1` logs every completed
-SPI exchange). The third ADBReInit starts at host clk 4 620 607 926 and
-**1 729 clocks later issues exactly one PmgrOp `$20`** (`DUO_PMLOG`:
-`cmd=$0020 … 00 20 00 03`, i.e. selector $20, length 3). On the wire, at
-MCU cycle 74 893 563:
-
-```
-out=$00 in=$E2      ; host: $E2
-out=$62 in=$00
-out=$00 in=$20      ; host: $20   ← the ADB PmgrOp
-out=$20 in=$03      ; host: $03   ← length
-out=$03 in=$00
-out=$00 in=$00
-out=$00 in=$00
-…then nothing but the idle $D9/$DC poll, for ever
-```
-
-(`out` is the PMU, `in` is the host. The PMU echoes each received byte on
-the next exchange — the protocol's per-byte ack. An idle poll is three
-exchanges: host `$D9`, two zeros, PMU answers `$80`.)
-
-So **the command reaches the PMU and the PMU does nothing with it**: no
-ADB transaction on the cell afterwards (the cell only ever shows its own
-`$2C` autopoll), no completion, no interrupt (`intEdges` frozen at 859).
-The transport is fine — the idle `$D9` polls flow through the same path
-before and after.
-
-**Two more measurements, and the lead they leave.**
-`POM68K_PGE_TRAP=<hexbyte>` dumps the firmware's state the instant it
-receives a given byte over SPI:
-
-- The command is **not** dropped by a masked-interrupt window. At the
-  failing `$20` the PG&E is at PC `$96B1` inside an active handler
-  (`pending=$00`), having come through `$9706/$9707 → $970A → $8200 →
-  $81F5 → $82A3 → $96A9`. It is awake and listening.
-- **The payload is `$00 $00 $00` — an empty ADB request.** That is the
-  suspicious part, and it points back at the *guest*, not the PMU. The
-  bridge at `$408B2E76` builds its three bytes as `D3, D0, D2`, and its
-  normal path computes `D3 = (addr << 4) | $0C` (`$408B2EC6-$408B2ECA`),
-  which cannot be `$00`. So the ROM took one of the other branches. The
-  early exit it guards with `move.b ($16C,A3),D3 / bmi` is NOT the one —
-  measured at the hang, `($16C,A3) = $02`, positive.
-
-**The next concrete step**, therefore: single-step `$408B2E76` on the
-third ADBReInit and find which branch produces the all-zero request. That
-is a guest-ROM question with an answerable shape, unlike the firmware
-side. What is still missing for the firmware side is the Power Manager
-protocol document; without it, what selector `$20`'s payload is supposed
-to contain is guesswork, and the PG&E disassembly is the only oracle.
-
-For reference, the ADB globals at the hang (`ADBBase = $57BC`):
-`$15C=$21 $15D=$20 $15E=$02 $16C=$02 $16D=$0F $16E=$21 $16F=$FF`,
-retry counter `$162=$00`.
-
-**The 80 µs host stall is load-bearing.** MAME's `via2_out_b` spins the
-68030 80 µs on a /PMU_REQ edge; it looked like optional pacing, so it was
-bisected (`POM68K_PGE_SPINUS=0`): without it the machine does not boot at
-all — ADBReInit #1 never completes, 0 SCSI selects. Same lesson as the
-Cuda transport (`pom68k-mactv-gate-broken`): the MCU/host interleave is
-not a free parameter. `POM68K_PGE_SPINUS=<µs>` is left in for phase
-experiments, and the sweep says the window is **sharp**:
-
-| host stall | ADBReInit clears | SCSI commands |
-|---|---|---|
-| 0 µs | 0 | 0 |
-| 40 µs | 2 | 895 |
-| **80 µs (MAME, default)** | **2** | **895** |
-| 160 µs | 0 | 0 |
-
-40-80 µs boots, 160 µs does not boot at all. That knife edge is itself a
-hint about the third ADBReInit: it may be the same phase fragility biting
-one layer further in, rather than a missing feature.
-
-**Narrowed further**: ADBReInit now completes **twice** (at ~1.4 G and
-~2.2 G cycles) and hangs on the **third** call. So the mechanism works;
-something about the state it is left in after two rounds does not. Inside
-`$4080A8F0`, the exit that clears the flag is `$4080A958`, reached either
-when the device map `($14C,A3)` is empty or when the relocation dance at
-`$4080A97A`-`$4080A982` finishes. The third call never gets there. Tried
-and did NOT fix it (kept anyway, it is a real fidelity gap): honouring the
-Listen R3 activator byte in `AdbBus` so a device only moves on `$00`/`$FE`.
-
-Next steps, in order (post-fix):
-1. ✅ **`duo230_boot_etalon`** (2026-07-31) — the Finder boot is
-   reproducible; ✅ the profile is wired into `kProfiles` (2026-08-06,
-   milestone 3b below).
-2. Input (milestone 4): `MscMemory::keyEvent/mouseMove/mouseButton`
-   already forward to the PMU's ADB devices (this session); verify a
-   click lands in the booted Finder, then `duo230_input_etalon`.
-3. Duo 210/250 clock variants; then sleep/wake (milestone 6) — the
-   whole point of the platform.
-Diagnostics for future PMU work: `DUO_PMLOG=408898CA` (command stream),
-`POM68K_PGE_ADBTRACE=1` (cell), and the toolbox in § *The deadlock,
-solved*.
+`duo_trace` (`EXCLUDE_FROM_ALL`) is the runner. Host side: `DUO_PMLOG`
+(command stream, e.g. `DUO_PMLOG=408898CA`, with PMCMD `$20` payload deref),
+`DUO_PGEWATCH` (windowed zero-page / cell-register sampling), `DUO_SRAMDUMP`
+(dump the LIVE firmware image — the only way to read v2), `DUO_KEYAT` (inject
+a key/mouse event at a clock), `DUO_PCCOUNT`, `DUO_CKPT`, `DUO_DUMPAT`.
+MCU side: `POM68K_PGE_PCCOUNT` / `_PCWIN` / `_PCHIST` (PC counters, windowed
+full logging, bucket histogram), `POM68K_PGE_TRAP=<hexbyte>` (dump firmware
+state the instant a byte arrives over SPI), `POM68K_PGE_SPIBYTES` (every
+completed exchange), `POM68K_PGE_HSHAKE` (REQ/ACK and /PMU_INT transitions),
+`POM68K_PGE_ADBTRACE`, `POM68K_PGE_TRACE`. Full list with defaults:
+`DEV.md` § 5.
 
 ## Why this order
 
 | Profile | CPU | Screen | MAME support | POM68K order |
 |---|---|---|---|---|
-| **Duo 230** | 030 @ 33 MHz | GSC 640×400×4bpp gray | **full** (`macpd230`) | **1st — oracle-backed** |
-| Duo 210 | 030 @ 25 MHz | same | full | 2nd (clock variant) |
+| **Duo 230** | 030 @ 33 MHz | GSC 640×400×4bpp gray | **full** (`macpd230`) | **shipped — oracle-backed** |
+| Duo 210 | 030 @ 25 MHz (`kCpuHz210`) | same | full | next (clock + box-ID variant) |
 | Duo 250 | 030 @ 33 | same, active matrix | full | cheap variant |
-| Duo 270c | 030+FPU | CSC 640×480×16bpp color | full | after CSC port |
+| Duo 270c | 030+FPU | CSC 640×480×16bpp color | full | after a CSC port |
 | Duo 280/280c | **040** @ 33 | CSC | full | 040 seam reuse |
-| **PowerBook 150** | 030 @ 33 | GSC-class 640×480 gray | **"Future" — none** | LC520-method (ROM as only oracle) |
+| **PowerBook 150** | 030 @ 33 | GSC-class 640×480 gray | **"Future" — none** | LC520 method (ROM as the only oracle) |
 
-ROMs already in `roms/1MB ROMs/`: Duo 210/230/250 `ECFA989B`, Duo 270c
-`0024D346`, Duo 280/280c `015621D7`, PB150 `FDA22562`.
+`MscMemory` already carries `kCpuHz210` and all three Duo 2x0 box IDs
+(`MscMemory.h:53-59`); the 210/250 share the `ECFA989B` ROM, so they need an
+env selector row in `kProfiles` (see the comment at `main.cpp:5488-5492`).
+
+ROMs in `roms/1MB ROMs/` (user-provided, gitignored): Duo 210/230/250
+`ECFA989B`, Duo 270c `0024D346`, Duo 280/280c `015621D7`, PB150 `FDA22562`.
 
 **PG&E dumps (local, never committed — same policy as `roms/cuda/`):**
 
 - `roms/pge/pge_boot.bin` — 512 B PG&E 68HC05 boot mask ROM, CRC32
   `62d4dfed` / SHA1 `79dc721651bf47aec53f57885779c84c4781761d`
-  (MAME `m68hc05pge.cpp`). The PG&E's *main* firmware is **uploaded by the
-  system ROM over SPI at every boot** — only this tiny bootloader is silicon.
+  (MAME `m68hc05pge.cpp`). The PG&E's *main* firmware is uploaded by the
+  system ROM over SPI at every boot — only this bootloader is silicon.
 - `roms/pge/duobatid.bin` — 8 B Dallas DS2400 battery serial, CRC32
   `7545c341` / SHA1 `61b094ee5b398077f70eaa1887921c8366f7abfe`
-  (`macpwrbkmsc.cpp` ROM_START). Read over the PG&E's 1-Wire (port E bit 7).
+  (`macpwrbkmsc.cpp` ROM_START). Read over the PG&E's 1-Wire (port E bit 7);
+  modelled as a real 1-Wire slave (`PgePmu::Ds2400`, MAME `ds2401.cpp` state
+  machine on the MCU cycle clock), including MAME's two transport spins
+  (80 µs host after a REQ edge, 20 µs PMU after an ACK edge).
 
 ## Address map (Duo 2xx; PB150 expected close — verify against its ROM)
 
-CPU sees (from `macpwrbkmsc.cpp:588-627` + `msc.cpp:30-38` + `gsc.cpp` map,
-MSC device mapped at $40000000, GSC at $50000000):
+From `macpwrbkmsc.cpp:588-627` + `msc.cpp:30-38` + the `gsc.cpp` map (MSC
+device mapped at `$40000000`, GSC at `$50000000`). The as-built copy with the
+POM68K decode notes is `MscMemory.h:9-19`.
 
 | Range | Device |
 |---|---|
-| `$40000000-$400FFFFF` (mirror ×16 through $4FF...) | ROM, `rom_switch_r` overlay behaviour like djMEMC |
-| `$50F00000-$50F01FFF` | **VIA1** (MSC-internal `mscvia_device` — CB1 interrupt quirk, see below) |
+| `$40000000-$400FFFFF` (mirror ×16 through `$4FF…`) | ROM, `rom_switch_r` overlay behaviour like djMEMC |
+| `$50F00000-$50F01FFF` | **VIA1** (MSC-internal `mscvia_device` — the CB1 quirk, below) |
 | `$50F04000-$50F05FFF` | SCC 8530 (`scc_r/scc_w`) |
 | `$50F06000-$50F07FFF` | SCSI pseudo-DMA (`scsi_drq`) |
 | `$50F10000-$50F11FFF` | NCR 5380 registers |
 | `$50F12000-$50F13FFF` | SCSI DRQ mirror |
 | `$50F14000-$50F15FFF` | **ASC-MSC flavour** (`asc_msc_device` — a 4th ASC variant next to V8/Sonora/IOSB) |
-| `$50F20000-$50F21FFF` | **GSC registers** (GSC maps at $50000000 base: internal `$00F20000`) |
-| `$50F26000-$50F27FFF` | **pseudo-VIA2** (PMU handshake lives on its port B) |
+| `$50F20000-$50F21FFF` | **GSC registers** (GSC internal `$00F20000`) |
+| `$50F26000-$50F27FFF` | **pseudo-VIA2** (the PMU handshake lives on its port B) |
 | `$50FA0000-$50FA0003` | `power_cycle_w` |
 | `$5FFFFFFC` | box ID: Duo 210 `$A55A1004`, 230 `$A55A1005`, 250 `$A55A1006`, 270c `$A55A1002`, 280 `$A55A1000` |
 | `$60000000-$6001FFFF` (mirror `$0FFE0000`) | GSC VRAM, 128 KB |
 
-## The PG&E power manager (the "powersave" brick)
+## The PG&E power manager
 
-68HC05-family MCU ("PG&E"), MAME device `m68hc05pge` (971 lines):
+68HC05-family MCU ("PG&E"), MAME device `m68hc05pge`; POM68K's clone is
+`src/M68hc05Pge.*` (a separate interpreter, not a subclass of `M68hc05` —
+different address width, stack window, vectors, map and peripherals) plus
+`src/PgePmu.*` for the board wiring.
 
 - **Host comms = SPI slave**, not bit-banged GPIO: the MSC pseudo-VIA2 port B
   bit 1 = `/PMU_ACK`, bit 2 = `/PMU_REQ` (`macpwrbkmsc.cpp:23-26`), data
-  through the VIA1 shifter (our `Via6522::extShiftCB1` machinery is the
-  matching half). This is the Cuda transport shape with a hardware shifter on
-  the MCU end — **less phase-fragile than the Cuda bit-bang** in principle,
-  but treat `pom68k-mactv-gate-broken` as applicable until proven otherwise.
+  through the VIA1 shifter (`Via6522::extShiftCB1` is the matching half). This
+  is the Cuda transport shape with a hardware shifter on the MCU end.
 - On-chip: 11 GPIO ports (A-L), ADC (battery voltage + the non-linear
   temperature sensor — lookup table excerpted at `macpwrbkmsc.cpp:36-66`),
-  PLM timers (backlight brightness: PLM1 $7F→$26, PLM2 $01→$5A, PLM1+PLM2
-  always $80), PWM (A0 charge current, B0 contrast $33-$C5), 1-Wire master
-  (DS2400 battery ID), seconds/RTC (`macseconds_interface`), NVRAM
-  (`device_nvram_interface` — PRAM lives in the PMU here, like Cuda).
+  PLM timers (backlight brightness: PLM1 `$7F`→`$26`, PLM2 `$01`→`$5A`,
+  PLM1+PLM2 always `$80`), PWM (A0 charge current, B0 contrast `$33`-`$C5`),
+  1-Wire master (DS2400 battery ID), seconds/RTC, NVRAM — **the PRAM lives in
+  the PMU here**, like Cuda.
 - Trackball X/Y/button counters read by the PMU (`read_tbX/Y/B`) — input
-  reaches the guest THROUGH the PMU (it is also the ADB controller on Duos).
-- **Boot flow**: 512 B mask ROM waits for the host to upload the real
-  firmware over SPI, then jumps in. So our `M68hc05` runs the boot stub +
-  host-uploaded code — the big firmware ships inside the (user-provided)
-  system ROM, which sidesteps the usual dump-availability question for
-  everything but the 512 B stub.
-
-Port wiring (from `macpwrbkmsc.cpp:773-789`): pullups port C `$FF`, port E
-`$80` (bit 7 = 1-Wire bus).
+  reaches the guest THROUGH the PMU, which is also the ADB controller on Duos.
+  POM68K currently routes keyboard and mouse through the PG&E's ADB modem cell
+  instead; the matrix/quadrature path is milestone 4.
+- Port wiring (`macpwrbkmsc.cpp:773-789`): pull-ups port C `$FF`, port E `$80`
+  (bit 7 = the 1-Wire bus).
 
 ## MSC ASIC notes
 
-- VIA1 is MSC-internal with a **customized CB1 interrupt**: `msc.h:19-26` —
-  shifter-related CB1 raises INT_CB1 in a way stock 6522 does not; MAME
-  matches the leaked System 7.1 source. Port both the quirk and the comment.
-- VIA2 is a pseudo-VIA (the `PseudoVia` pattern from IOSB applies).
+- VIA1 is MSC-internal with a **customized CB1 interrupt** (`msc.h:19-26`),
+  matching the leaked System 7.1 source — see the /PMU_INT level finding above.
+- VIA2 is a pseudo-VIA (`PseudoVia::Flavour::Msc`).
 - MSC embeds the sound (`asc_msc_device`) and wants an "audio active" signal
   into power management (`msc.cpp:129` — sleep must not trigger while sound
-  plays).
-- `rom_switch_r` overlay + `power_cycle_w`: the machine can power-cycle
-  itself; reset semantics via MSC, not a global line.
+  plays). That matters for milestone 6.
+- `rom_switch_r` overlay + `power_cycle_w`: the machine can power-cycle itself;
+  reset semantics go via MSC, not a global line.
 
-## Milestones (house rule: each gated before the next)
+## Milestones
 
-1. ✅ **`duo_trace` boots the ROM to first PMU contact** — no PG&E dumps
-   needed: `MscMemory` skeleton (RAM sizing, ROM overlay, VIA1/VIA2 decode,
-   GSC stub, box ID), `Cpu030` wrapper, tracer on the `q605_trace` pattern.
-   Expected stall: PMU handshake timeout (LC520 memory: handshake timeout →
-   error chime + SCC monitor — that IS the checkpoint).
-2. ✅ **PG&E LLE** (`M68hc05Pge` + `PgePmu`) + `pge_boot.bin` → firmware
-   upload handshake completes, RTC/PRAM served, boot proceeds — including
-   the mid-boot BORG v2 re-upload and the /PMU_INT level semantics
-   (§ *The deadlock, solved*).
-3. ✅ **GSC video decode** (`MscMemory::decodeScreen`, modes 1/2/4 bpp per
-   MAME gsc.cpp) → Finder frames; **`duo230_boot_etalon` GREEN 2026-07-31**
-   (menu bar 0.04 dark, desktop 0.43, SCSI 3448 commands, GSC mode 2).
-3b. ✅ **The 37th profile, 2026-08-06** — the house rule (a GUI profile =
-   a Finder cell *plus* the GUI/save-state wiring) is paid: `runDuo` +
-   `MscMachine` in `main.cpp` (PG&E hold honoured — the loop ticks the
-   machine while `cpuHeld()`, like the Egret loops), the `kProfiles` row
-   (`ECFA989B`, group *MSC + PG&E*), `MachineKind::Duo`, the JIT engine
-   menu (`MscCpu` exposes the same `jit()/engine()/setEngine()` trio as
-   the other 030s), `SnapMachine::Duo230 = 37` + the save/load pair
-   (gated in `savestate_030_test`: the 32 KB PG&E SRAM carrying the
-   mid-boot BORG v2 upload round-trips, plus a 3 M-cycle determinism
-   check), and the battery file `<image>.duo230.pram` — the PG&E's own
-   RAM+SRAM in MAME's layout, with its `$91` power-flag scrub
-   (`msc_parity_test` § F).
+1. ✅ `duo_trace` boots the ROM to first PMU contact (no PG&E dumps needed) —
+   `MscMemory` skeleton, `MscCpu`, tracer on the `q605_trace` pattern.
+2. ✅ **PG&E LLE** (`M68hc05Pge` + `PgePmu`) + `pge_boot.bin` → firmware upload
+   handshake completes, RTC/PRAM served, boot proceeds — including the mid-boot
+   BORG v2 re-upload and the /PMU_INT level semantics.
+3. ✅ **GSC video decode** (`MscMemory::decodeScreen`, 1/2/4 bpp per
+   `gsc.cpp`) → `duo230_boot_etalon` GREEN 2026-07-31 (menu bar 0.04 dark,
+   desktop 0.43, SCSI 3448 commands, GSC mode 2).
+3b. ✅ **The 37th profile, 2026-08-06** — `runDuo` + `MscMachine` in `main.cpp`
+   (the loop ticks the machine while `cpuHeld()`, like the Egret loops), the
+   `kProfiles` row (`ECFA989B`, group *MSC + PG&E*), `MachineKind::Duo`, the
+   JIT engine menu (`MscCpu` exposes the same `jit()/engine()/setEngine()` trio
+   as the other 030s), `SnapMachine::Duo230 = 37` + the save/load pair (gated
+   in `savestate_030_test`: the 32 KB PG&E SRAM carrying the BORG v2 upload
+   round-trips, plus a 3 M-cycle determinism check), and the battery file
+   `<image>.duo230.pram` — the PG&E's own RAM + SRAM in MAME's layout with its
+   `$91` power-flag scrub (`MscMemory.cpp` `loadPram`, gated by
+   `msc_parity_test`).
    Found by the save-state walk and fixed the same day: `MscMemory::pmuReq_`
-   was not serialized while `PgePmu::reqLevel_` — the PMU's view of the
-   *same wire* — was, so a restore desynced the two ends. It never failed a
-   test (REQ is idle-high at most sample points), which is the whole reason
-   it is written down here.
-   **Not wired, machine-side API absences, not shell gaps:** no floppy
-   (the drive lives in the Dock; `MscMemory` has no SWIM), no drive sounds,
-   no live CD-bay swap (`attachCdromEmpty` absent), and `mouseButton(bool)`
-   takes no index so button 1 is dropped.
-4. Input through the PMU (trackball + matrix keyboard) → `duo230_input_etalon`.
-5. Variants: Duo 210/250 (trivial), 270c (CSC), 280 (040), then **PB150**
-   (GSC-480 + IDE `$A55A` probing from its own ROM, no oracle).
-6. **The actual point — power management observable**: sleep/wake cycle as a
-   gate (`duo230_sleep_etalon`): guest sleeps via PMU, wakes on event, Ticks
-   resume. No other machine in the tree can test this path.
+   was not serialized while `PgePmu::reqLevel_` — the PMU's view of the *same
+   wire* — was, so a restore desynced the two ends. It never failed a test
+   (REQ is idle-high at most sample points), which is the whole reason it is
+   written down.
+   **Still absent, machine-side API gaps rather than shell gaps:** no floppy
+   (the drive lives in the Dock; `MscMemory` has no SWIM), no drive sounds, no
+   live CD-bay swap (`attachCdromEmpty` absent), and `mouseButton(bool)` takes
+   no index so button 1 is dropped (`MscMemory.h:134`).
+4. ⬜ **Input through the PMU** (matrix keyboard + trackball counters) →
+   `duo230_input_etalon`. `MscMemory::keyEvent/mouseMove/mouseButton` already
+   forward to the PMU's ADB devices, so the gate can be written first.
+5. ⬜ Variants: Duo 210/250 (trivial, § *Why this order*), 270c (CSC), 280
+   (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
+   oracle).
+6. ⬜ **The actual point — power management observable**: a sleep/wake cycle as
+   a gate (`duo230_sleep_etalon`): guest sleeps via the PMU, wakes on an event,
+   Ticks resume. No other machine in the tree can test this path.
 
 ## Open questions (answer from ROM traces, not guesses)
 
+- The **Power Manager protocol document** is missing. Without it, what a
+  selector's payload is supposed to contain is guesswork and the PG&E
+  disassembly is the only oracle. This is the ceiling on milestones 4 and 6.
 - PB150: exact GSC flavour, IDE decode window, box ID, and whether its PMU
   wants a different firmware image from the Duo one (`FDA22562` will say).
 - MSC II vs MSC differences for the 040 Duos (280/280c).

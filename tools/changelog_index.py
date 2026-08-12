@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Generate CHANGELOG_INDEX.md — one line per dated entry, grouped by subsystem.
 
-CHANGELOG.md is the project's real design record and it is 576 KB / 204 dated
-entries: excellent, and no longer readable linearly.  It already carries two
-indexes of its own — by date, and by "a question a reader arrives with" — but
-neither answers "everything that ever happened to the SCSI stack".  This does.
+CHANGELOG.md is the project's real design record and it passed 600 KB / 200
+dated entries: excellent, and no longer readable linearly.  It already carries
+two indexes of its own — by date, and by "a question a reader arrives with" —
+but neither answers "everything that ever happened to the SCSI stack".  This
+does.  (No count is hard-coded here on purpose: the live one is counted from
+the file and printed into the generated header.)
 
 The grouping is a KEYWORD HEURISTIC over the entry's hook, not a judgement.
 An entry that matches nothing lands under "Cross-cutting", which is honest;
@@ -12,7 +14,14 @@ an entry filed under the wrong heading is a bug in the table below, and the
 fix is to add a keyword rather than to hand-edit the output.
 
 Regenerate with:  python3 tools/changelog_index.py
-`docs_test` fails if the index has drifted from CHANGELOG.md.
+`docs_test` § 7 fails when the index lists a different NUMBER of entries than
+CHANGELOG.md has.  It compares nothing else — a stale hook, a wrong anchor or
+a mis-filed group passes.  Regenerate rather than trust it.
+
+An entry gets its explicit `<a id="…"></a>` only when that anchor sits on the
+line IMMEDIATELY above the heading; a blank line in between silently demotes
+it to the GitHub slug, which still resolves but drifts if the hook is ever
+reworded.
 """
 
 import re
@@ -105,7 +114,9 @@ def main():
     out.append("")
     out.append(f"**Generated** by `tools/changelog_index.py` from the "
                f"{len(entries)} dated entries in `CHANGELOG.md`. Do not edit by "
-               f"hand: regenerate. `docs_test` fails when the two drift.")
+               f"hand: regenerate. `docs_test` § 7 only compares the entry "
+               f"COUNT, so a stale hook or a wrong anchor here passes it — "
+               f"regenerate after every CHANGELOG edit.")
     out.append("")
     out.append("`CHANGELOG.md` carries two indexes of its own — [by date]"
                "(CHANGELOG.md#index-by-date), newest first, and [by topic]"

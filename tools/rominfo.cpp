@@ -268,11 +268,23 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--traps")) allTraps = true;
         else if (!std::strcmp(argv[i], "--resources")) resources = true;
         else if (!std::strcmp(argv[i], "--all")) all = true;
+        // Accepted and documented since the file was written, but never
+        // parsed: it fell through to `path`, so `rominfo rom.ROM --universal`
+        // died with "cannot open --universal". The universal table is printed
+        // unconditionally (below), so the flag asks for what it already gets.
+        else if (!std::strcmp(argv[i], "--universal")) { /* always printed */ }
+        // An unknown flag used to become the path too, which turned every typo
+        // into a confusing open failure on the flag itself. (2026-08-12)
+        else if (argv[i][0] == '-') {
+            std::printf("rominfo: unknown option %s\n", argv[i]);
+            path.clear();
+            break;
+        }
         else path = argv[i];
     }
     if (path.empty()) {
         std::printf("usage: rominfo <rom> [--trap XXXX]... [--traps] "
-                    "[--resources] [--all]\n");
+                    "[--resources] [--universal] [--all]\n");
         return 1;
     }
     std::ifstream f(path, std::ios::binary);

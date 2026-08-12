@@ -23,9 +23,15 @@ generated/   output of build68k + gencpu (vendored generated code, see below)
 includes/    endianswap.h, vs-fix.h  (from hatari src/includes, unmodified)
 shim/        POM68K replacement headers + stubs for the Hatari glue
 glue.c       oracle_api.h implementation (set_state / step / get_state)
-smoke.c      CTest gate: integer step, TRAP via VBR, MMU translation,
-             PTEST/MMUSR, MMU fault frame ($A) + vector 2
-oracle_uae.map  linker version script: only the 5 oracle_* symbols exported
+smoke.c      CTest gate oracle_uae_smoke:   integer step, TRAP via VBR, MMU
+             translation, PTEST/MMUSR, MMU fault frame ($A) + vector 2
+smoke040.c   CTest gate oracle_uae_smoke040 (Q1): integer, TRAP, MOVE16,
+             translated MOVE with U/M updates, PTESTR → MMUSR, format $7
+oracle_uae.map  ELF version script: only the 6 oracle_* symbols of
+             oracle_api.h exported (name, set_model, init, set_state, step,
+             get_state). Not used on Darwin — Mach-O has no version script,
+             so the boundary there is `-fvisibility=hidden` plus the
+             explicit ORACLE_EXPORT attributes in glue.c (CMakeLists.txt:88-92).
 ```
 
 ### upstream/ (from hatari `src/cpu`, same paths)
@@ -49,11 +55,13 @@ cc -Isrc/cpu -I. -o gencpu cpudefs.c gencpu.c readcpu.c
 ./gencpu
 ```
 
-The oracle executes only `cpuemu_32.c` (`op_smalltbl_32`, "Previous 68030
-MMU": 68030 + mmu030, not cycle-exact, not prefetch-compatible — mode 5 of
-`cputbls[][]` in `newcpu.c`), but `newcpu.c` references every table and many
-accessors from the other units unconditionally, so the full Hatari set is
-vendored and linked (`--gc-sections` trims the .so).
+The oracle executes exactly two of these: `cpuemu_32.c` (`op_smalltbl_32`,
+"Previous 68030 MMU": 68030 + mmu030, not cycle-exact, not prefetch-compatible
+— mode 5 of `cputbls[][]` in `newcpu.c`) and, since Q1, `cpuemu_31.c`
+(`op_smalltbl_31`, the Aranym 68040 MMU). But `newcpu.c` references every table
+and many accessors from the other units unconditionally, so the full Hatari set
+is vendored and linked — `-Wl,--gc-sections` trims the .so on ELF,
+`-Wl,-dead_strip` on Mach-O (`CMakeLists.txt:76-83`).
 
 ## Local patches (all marked `POM68K:` in the code)
 

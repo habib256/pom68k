@@ -1,96 +1,57 @@
-# Revue des simplifications délibérées — garder ou fermer ?
+# Deliberate simplifications — the keep/close decision, and where it stands
 
-**Date : 2026-08-06.** Évaluation de décision sur les ~40 simplifications relevées par
-l'audit de parité MAME (`MAME_PARITY_AUDIT.md` § 2.x), croisées avec l'inventaire
-`LLE_VS_HLE.md`. Trois verdicts possibles :
+Decision review of the ~40 simplifications the MAME parity audit turned up
+(`MAME_PARITY_AUDIT.md` § 2.x), crossed with the `LLE_VS_HLE.md` inventory.
+Written 2026-08-06; **status column re-verified against the code 2026-08-12.**
 
-- **GARDER** — le rapport coût/bénéfice est mauvais : aucun consommateur connu, ou la
-  parité stricte serait *pire* (mute une machine, casse un fix mesuré). On ne touche pas.
-- **FERMER** — un bénéfice guest-visible existe ; entrée à mettre au backlog avec son gate.
-- **ÉPINGLER** — on garde le raccourci mais il manque l'inventaire/le commentaire/la
-  condition de réouverture exigés par la règle maison (`LLE_VS_HLE.md` § 5).
+Three verdicts were available: **KEEP** (no known consumer, or strict parity
+would be *worse* — it mutes a machine or breaks a measured fix), **CLOSE**
+(a guest-visible benefit exists; goes to the backlog with its gate), **PIN**
+(keep the shortcut, but write the inventory entry and the reopening condition
+the house rule demands — `LLE_VS_HLE.md` § 5).
 
-Rappel de la règle qui domine tout : *« Adding fidelity on top of unverifiable coverage
-is work with no way to know it landed »* — 25 profils sur 36 ne sont épinglés que par
-« a atteint le Finder ». Toute fermeture recommandée ici doit apporter son gate.
+The rule that dominates everything: *"Adding fidelity on top of unverifiable
+coverage is work with no way to know it landed"* — 28 of the 37 profiles are
+pinned only by "it reached the Finder". **Every closure recommended here must
+bring its gate.**
 
----
+## Verdict, and what has happened since
 
-## 1. Verdict d'ensemble
+**28 of 40: KEEP.** Same profile every time — the absent behaviour has no
+producer or consumer anywhere in the target software (Apple ROMs, System 6 →
+Mac OS 8.1, shipped drivers), and half were already inventoried with a
+reopening condition. Redoing them would be fidelity with neither oracle nor
+gate. The per-chip lists live in `MAME_PARITY_AUDIT.md` § 2.x under
+*Simplifications*; they are not repeated here.
 
-**28 simplifications sur 40 : GARDER.** Elles partagent le même profil : la fonctionnalité
-absente n'a **aucun producteur/consommateur** dans le parc logiciel visé (ROMs Apple,
-System 6→8.1, drivers expédiés), et la moitié sont déjà inventoriées dans `LLE_VS_HLE.md`
-avec leur condition de réouverture. Les refaire serait de la fidélité sans oracle ni gate.
+**7: CLOSE.** Status below.
 
-**7 : FERMER** (§ 2 ci-dessous) — celles qui ont un bénéfice utilisateur ou un chantier
-déjà ouvert qui les absorbe.
+**5: PIN.** All five are now inventory entries in `LLE_VS_HLE.md` (done
+2026-08-12) — that action is complete.
 
-**5 : ÉPINGLER** (§ 3) — raccourcis légitimes mais non conformes à la règle maison
-(pas d'entrée d'inventaire, pas de condition de réouverture écrite).
+### The seven closures
 
----
+| # | Simplification | Status 2026-08-12 | Gate |
+|---|---|---|---|
+| F1 | "PRAM persistence missing on 4 platforms" | **WITHDRAWN — the finding was false.** All twelve platforms declare `loadPram`/`savePram` and all twelve runners wire them (`main.cpp`, first pair `:1117`/`:1340`). The claim came from a stale `CLAUDE.md` table row, never from the code. `MAME_PARITY_AUDIT.md` § 2.2 corrected. | `rtc_pram_test` |
+| F2 | Sonora CLUT: blue-channel duplication missing in mono portrait | **OPEN.** `SonoraVideo.h` has no blue-gun path; `RbvVideo.h:66-72` has it. Intra-project inconsistency more than a simplification; trivial. | a check in an existing Sonora video test |
+| F3 | Duo: `AscV8` `$E8` instead of the MSC variant `$E9` | **OPEN.** `MscMemory.h:222` still carries the in-file TODO. Clone + version register, with the next Duo milestone. | `msc_parity_test` (exists) |
+| F4 | Egret/Cuda PC3 reset line = boot release only | **OPEN, and it is the last thread of the whole audit.** A firmware `RESET_SYSTEM $11` never reaches the 68k (`CudaLle.cpp:273-297`) — that is the Finder's *Restart*. The Duo half shipped (`PgePmu::onCpuReset`), so the pattern exists. Inventoried at `LLE_VS_HLE.md` § 1.9. | a new "Restart from the Finder" etalon on an Egret machine — **no gate walks this path today** |
+| F5 | Classic ASC wavetable mode = silence stub | **OPEN.** `Asc.cpp:124`, `:213`. The only simplification with a plausible *audible* miss (Mac II-era wavetable playback), and the one where an oracle exists: MAME implements it and ships the ASCTester dump. Inventoried at `LLE_VS_HLE.md` § 1.7. | extend `asc_test` (wavetable mode, registers 2/3, non-silent output) |
+| F6 | Duo input through the ADB cell instead of the PMU matrix **+** PG&E NVRAM not persisted | **HALF DONE.** NVRAM persistence shipped with the 37th profile (`MscMemory.h:118-127`, `$91` power-flag scrub included). The matrix keyboard and trackball are still milestone 4 (`MscMemory.h:128-131`, `DUO_BRINGUP.md`). The original ordering advice — do it *before* the `kProfiles` row — was overtaken: the Duo shipped as a GUI profile on 2026-08-06 anyway. | the Duo milestone gates |
+| F7 | Floppy flux/PLL — ideal cells | **OPEN, step 1 of 4.** `src/FluxPll.h` is gated (`flux_pll_test`) and still read by nothing but its own test. Would also wake SWIM1's dead LS-pair correction machinery and the CSM error bits. **But** no guest symptom since the boost/denibble fix — priority *behind* the `TODO.md` test-depth pass, not in front of it. | add a flux-path read behind a flag, compared bit-for-bit against the byte path |
 
-## 2. À FERMER — par rapport bénéfice/effort décroissant
+**Recommended order, unchanged: F2/F3 → F4 → F5 → F6 → F7.** F2-F4 are
+regret-free closures. F5-F7 each deserve a dated `TODO.md` entry.
 
-| # | Simplification | Pourquoi fermer | Effort | Gate à fournir |
-|---|---|---|---|---|
-| F1 | **Persistance PRAM absente sur 4 plateformes** (compacts, Mac II, IIfx, Duo — `Rtc` § 2.2) | Seul item **visible par l'utilisateur final** : réglages (souris, son, démarrage) perdus à chaque session ; MAME persiste partout. Le mécanisme `loadPram`/`savePram` existe déjà sur les 7 autres plateformes — c'est du câblage, pas de la conception. | Faible | Un test round-trip PRAM par famille (écrire via RTC série, relancer, relire) |
-| F2 | **CLUT Sonora : duplication canal bleu en mono portrait** (§ 2.14) | RBV l'a déjà — le code existe dans le dépôt ; écart intra-projet plus que simplification. Trivial. | Trivial | Check dans un test vidéo Sonora existant |
-| F3 | **Duo : ASC `$E8` au lieu du variant MSC `$E9`** (§ 2.8) | TODO in-file déjà posé ; clone + registre version. À faire avec le milestone Duo suivant. | Trivial | `msc_parity_test` (nouveau, déjà en place) |
-| F4 | **Ligne reset PC3 Egret/Cuda = boot seulement** (§ 2.10) — un `RESET_SYSTEM $11` firmware n'atteint jamais la machine | Le chantier vague-1 #16 vient de construire **exactement** l'infrastructure nécessaire (callback reset + ré-armement overlay, `PgePmu.onCpuReset`) ; la généraliser aux plateformes Egret/Cuda est le même motif. C'est le chemin « Redémarrer » du Finder. | Moyen | Nouvelle etalon « Restart depuis le Finder » sur une machine Egret (aucune gate actuelle ne couvre ce chemin — c'était l'action 9 du rapport d'audit) |
-| F5 | **Wavetable ASC classique = stub silence** (§ 2.8) | Seule simplification avec un **manque audible** plausible : jeux/apps Mac II-era utilisant le mode wavetable. MAME l'implémente (oracle disponible), le dump ASCTester aussi. | Moyen | Extension d'`asc_test` (mode wavetable, registres 2/3, sortie non-silence) |
-| F6 | **Entrée Duo par cellule ADB au lieu de la matrice PMU** + **NVRAM PGE non persistée** (§ 2.12) | Déjà des milestones déclarés (`DUO_BRINGUP.md` « Next: input through the PMU », recette scrub `$91` notée). Pas une décision à prendre — un ordre à confirmer : les faire *avant* la ligne `kProfiles` Duo (règle maison : profil GUI = Finder + GUI/save-state). | Moyen×2 | Les gates du milestone Duo |
-| F7 | **Floppy flux/PLL — cellules idéales** (§ 2.3/2.4, `LLE_VS_HLE` § 1.3) | Le seul gros chantier qui mérite de rester ouvert : étape 1/4 déjà faite (`FluxPll.h` gaté mais orphelin), et il activerait la machinerie LS-pair morte du SWIM1 + les bits d'erreur CSM jamais levés. **Mais** : aucun symptôme guest depuis le fix boost/denibble — priorité *derrière* la passe test-depth de `TODO.md`, pas devant. | Élevé | `flux_pll_test` existe ; ajouter la lecture via flux sous flag, comparée bit-à-bit au chemin octet |
+## The standing conclusion
 
-**Ordre recommandé : F1 → F2/F3 (une après-midi à trois) → F4 → F5 → F6 → F7.**
-F1-F4 sont des fermetures « sans regret ». F5-F7 méritent chacune une entrée TODO datée.
-
----
-
-## 3. À ÉPINGLER — garder le raccourci, écrire ce qui manque
-
-| # | Raccourci | Ce qui manque |
-|---|---|---|
-| E1 | **IRQ idle-empty-cycle ASC classique** (dérivée QEMU, inexistante chez MAME **et** sur le dump IIci) | C'est une *addition* non sourcée, pas une simplification : écrire la condition de réouverture (quel binaire du monde réel la requiert ?) ou planifier sa suppression contrôlée derrière un env-flag. Seul item de la liste où POM68K modélise *plus* que toutes ses sources. |
-| E2 | **Timer 6805 fixé 512 cycles quel que soit le rate PLL** (§ 2.10) | Invisible avec le firmware expédié (le cheat rate-2→3 partagé le masque) — l'écrire dans `LLE_VS_HLE.md` § 1 avec cette justification et le firmware qui le briserait. |
-| E3 | **Géométrie de trame V8 fixée modeline 12"** quel que soit le sense (§ 2.14 ; MAME fixe la 13", seul RBV a `recalcFrame()`) | Choix *différent* de MAME et non documenté : une ligne d'inventaire + le commentaire in-file. Fermer seulement si un jour le sense V8 devient sélectionnable dans le GUI. |
-| E4 | **CI_COMPLETE instantané + seq non mis à jour après MSG_ACCEPT** (53C96, § 2.7) | Inventorié à moitié (§ 1.5 couvre le staging, pas ces deux-là) — les ajouter à la même entrée. |
-| E5 | **Ready floppy = `!motorOn`** au lieu du compteur 2 tours (§ 2.3) | Une ligne d'inventaire § 1.3 ; le fix est trivial mais sans gate qui l'observe, il violerait la règle « fidélité sans couverture ». (L'agent vague-1 a noté la même classe sur `senseSwim` 0xF mfd51w — même ligne d'inventaire.) |
-|  | *(également : divergence UM-vs-MAME du re-latch SCC vague 1, gate `!(HALF_B)` EASC vs ruling Sonora — déjà épinglées in-code par les agents, à reporter dans `LLE_VS_HLE.md` § 3 « fidelity facts that look like bugs »)* | |
-
----
-
-## 4. À GARDER — liste compacte et pourquoi
-
-**VIA 6522 (×4)** : polarité PCR fixe, shifter interne partiel, modes sortie CA2/CB2,
-latching ports — aucune ROM expédiée ne les touche ; déjà couverts par DEV.md § M4.
-**RTC (×2)** : pas de CKO (les machines pulsent à 1 Hz depuis `cpuHz` — équivalent au
-demi-cycle près), seed unique au lancement. **IWM (×1)** : timer moteur MODE_DELAY
-(MAME est immédiat aussi). **SWIM (×1)** : output-enable nibble + SEL35 (aucun
-consommateur). **SCC (×5)** : CTS, auto-enable DCD, Zero Count, verrou FIFO condition
-spéciale, pace WR11 — tous « only worth it with a real async transport » (§ 1.4) ;
-le jour où un vrai périphérique série est branché, rouvrir en bloc. **5380 (×3)** :
-SER/(re)sélection, MONBSY, timing d'arbitrage — posture § 1.5 assumée, pas de mode target.
-**53C96 (×1)** : staging tcounter↔FIFO (2 écarts délibérés documentés, dont le chemin
-7.5.5). **ADB (×2)** : les deux fallbacks HLE — non-conformité annoncée sur stderr,
-retraite programmée avec l'Egret HLE (§ 2). **MCU (×2)** : DFAC2 ACK-seulement (la
-parité stricte **muterait** les machines — § 4.1), Egret.cpp fallback. **ApplePic (×1)** :
-échantillonnage IRQ à l'instruction (documenté in-source). **PG&E (×2)** : entrée
-d'interruption 0 cycle (leçon Mac TV : 2 % de dérive = deadlock — c'est un *fix*, pas
-une dette), `power_cycle_w`/clock-divide loggés (milestone sommeil les absorbera).
-
-Point commun : chacun a soit une **raison mesurée** (deadlock, mute, oracle absent),
-soit un **absent structurel** (pas de producteur). Les fermer serait du risque pur.
-
----
-
-## 5. Décision proposée
-
-1. **Continuer la politique actuelle** — le triptyque « raison écrite + condition de
-   réouverture + fallback annoncé » tient : l'audit multi-agent n'a trouvé **aucune**
-   simplification cachée non assumée, seulement 5 défauts d'épinglage (§ 3).
-2. **Fermer F1-F4** dès la fin des vagues de correction en cours (F1 est la seule dette
-   avec un coût utilisateur récurrent).
-3. **Inscrire F5-F7 au TODO** datés, *derrière* la passe test-depth qui reste prioritaire.
-4. **Faire la passe d'épinglage E1-E5** (une session docs+commentaires, zéro risque).
+1. **The current policy holds.** The multi-agent audit found **no hidden,
+   unowned simplification** — only 5 pinning defects, and those are now fixed.
+   The triptych *written reason + reopening condition + announced fallback*
+   is doing its job; keep applying it.
+2. **A "simplification" read in a document and not in the code is not a
+   finding.** F1 cost a real audit slot because a stale doc line was taken as
+   evidence. Read the code.
+3. **Coverage still outranks fidelity.** Nothing on the CLOSE list should
+   land without the gate named beside it.

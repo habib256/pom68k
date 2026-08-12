@@ -33,9 +33,8 @@ and the LC 520 bring-up → `docs/`.
 
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
-inside that section. The last row has no § here yet: the Duo boots
-(`duo230_boot_etalon`) but is still a bring-up, so its blueprint lives in
-`docs/DUO_BRINGUP.md` until the platform earns a GUI profile.
+inside that section. Twelve platforms, twelve sections, 37 GUI profiles
+(`kProfiles` in `src/main.cpp` is the one place the roster lives).
 
 | Platform | Reference machine | Variants in the same section | § |
 |---|---|---|---|
@@ -46,10 +45,10 @@ inside that section. The last row has no § here yet: the Duo boots
 | Sonora gate array | **Mac LC III** | LC III+, LC 520/550, Color Classic II; **VASP** = IIvx / IIvi | [2.5](#25-sonora-gate-array--lc-iii-lc-iii-aio-family--the-vasp-recombination) |
 | MEMCjr + PrimeTime | **Quadra 605** | LC 475, LC 575 | [2.6](#26-memcjr--primetime--quadra-605-lc-475-lc-575) |
 | djMEMC + IOSB | **Centris 650** | Centris 610, Quadra 610/650/800 | [2.7](#27-djmemc--iosb--centris-650-centris-610-quadra-610650800) |
-| Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700) |
+| Discrete 040 + DAFB | **Quadra 700** | Quadra 900 / 950 (the same board + the IIfx's IOP front end) | [2.8](#28-discrete-040--dafb--quadra-700--900--950) |
 | F108 + PrimeTime II + Valkyrie | **Quadra 630** | LC 580 | [2.9](#29-f108--primetime-ii--valkyrie--quadra-630-lc-580) |
 | OSS + 2 Apple PIC IOPs | **Mac IIfx** | (Quadra 900/950 reuse the IOPs on the Q700 board) | [2.10](#210-oss--two-apple-pic-iops--mac-iifx) |
-| MSC + PG&E Power Manager | **PowerBook Duo 230** | (210/250/270c/280, then PB150 — none wired) | `MscMemory`/`MscCpu`/`PgePmu`/`M68hc05Pge`; blueprint `docs/DUO_BRINGUP.md` |
+| MSC + PG&E Power Manager | **PowerBook Duo 230** | (210/250/270c/280, then PB150 — none wired) | [2.11](#211-msc--pge-power-manager--powerbook-duo-230) |
 
 ---
 
@@ -87,9 +86,10 @@ is the machine that exposed this: its ROM's Egret transport is a *host-paced*
 bit-bang (`bclr`/`bset` of VIA1 PB4 / `via_full` back to back), and until
 2026-07-25 `viaSync` aligned in the boosted domain, so every pulse came out
 `cacheBoost_`× too short and the firmware missed it. Same root cause as the
-LC III / IIvx black screens. Fixed on all four 030 CPUs; the whole 040
-family is likewise boost-invariant, which is what let the default rise from
-1 to 4 (CHANGELOG 2026-07-25).
+LC III / IIvx black screens. Fixed on every 030 wrapper (five today —
+`MscCpu` was built boost-invariant from the start, `MscCpu.h:35`); the whole
+040 family is likewise boost-invariant, which is what let the default rise
+from 1 to 4 (CHANGELOG 2026-07-25).
 
 **Unmapped I/O reads back 0, not open-bus `$FF`.** MAME parity
 (`iosb.cpp:54-65`) for the whole V8 / VASP / Sonora / RBV / IOSB line. An
@@ -99,13 +99,21 @@ open-bus `$FF` hard-wedges the LC III+ ProductInfo RAM-device poll at
 address-dependent open bus above the real ROM window — see the SCSI-probe
 story in [§3.3](#33-scsi-ncr-5380).
 
-**There are two pseudo-VIA flavours, and they are not interchangeable.**
-`PseudoVia::Flavour` (since 2026-07-27). MAME's `rbv.cpp:66` and
-`vasp.cpp:90` instantiate the **base** `APPLE_PSEUDOVIA`, where IFR bit 4
-(ASC) latches only the 0→1 *edge* and the guest's write-1-to-ack sticks.
-The **level** flavour, with its `~$10` ack mask, belongs to
-`v8_pseudovia_device` / `sonora_pseudovia_device` alone. VASP in particular
-cannot survive stacking two level behaviours (CHANGELOG).
+**The pseudo-VIA flavours are not interchangeable.** `PseudoVia::Flavour`
+= `{Level, Base, Msc, Sonora}`, one per MAME device (`pseudovia.cpp`), and
+the axis that matters is IFR bit 4 (ASC). MAME's `rbv.cpp:66` and
+`vasp.cpp:90` instantiate the **Base** `pseudovia_device`, where bit 4
+latches only the 0→1 *edge* and the guest's write-1-to-ack sticks; **Level**
+(`v8_pseudovia_device`, with its `~$10` ack mask) follows the line, so the
+ack is a NOP. Getting it backwards is not cosmetic in either direction:
+those Base boards pair the cell with a V8-flavour ASC whose IRQ line is
+itself level-sticky, so Level on top makes an enabled ASC interrupt
+unacknowledgeable — and Level boards hang System 7 sound if the ack
+sticks. `Sonora` and `Msc` are Level's ASC semantics with a wider decode
+(`PseudoVia.h:34-44`): Sonora answers the full `$00-$1F` on *reads* too
+(regs 4/5 are real backing store, not port-B mirrors), and the Duo's decodes
+all 256 bytes with no port-A window, adds a port-B *input* carrying the PMU
+`/PMU_ACK` (PB1) / `/PMU_REQ` (PB2) lines, and the MSC block at `$20-$2F`.
 
 **The boot overlay clears three different ways.** Plus: only when the ROM
 explicitly clears VIA PA4 ([§2.1](#21-68000--pal-glue--mac-plus-se-se-fdhd-classic)).
@@ -143,7 +151,7 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   emulator save-state corruption source — a field added to one and
   forgotten in the other restores as garbage months later. The visitor
   removes the failure mode by construction rather than by review.
-- **What must NOT go through `visit()`** (`SaveState.h:20-30`):
+- **What must NOT go through `visit()`** (`SaveState.h:20-26`):
   `std::function` callbacks and inter-device pointers (**re-bound** by the
   machine after restore, never serialized); pure caches (Moira's ATC, JIT
   blocks — **flushed**, re-derivable); host-backed bulk data (ROM, disk
@@ -156,9 +164,10 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
 - **`SnapMachine`** is one tag per **profile**, not per class — identity
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
-  append, never renumber. All **34** profiles are enumerated
-  (`SaveStateMachines.h`) and each of the **11** machine families has a
-  `save`/`load` pair.
+  append, never renumber. All **37** profiles are enumerated
+  (`SaveStateMachines.h:51-89`, tags 1-37 contiguous) and each of the **12**
+  machine families has a `save`/`load` overload pair
+  (`SaveStateMachines.h:96-154`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
   `savestate_040_test`, `savestate_68k_test` (all `unit`), plus the
   whole-machine `lcii_savestate_etalon` and `q605_savestate_etalon`.
@@ -278,8 +287,13 @@ emulators just mirror via a mask and let the ROM discover it.
 - VIA timers: φ2 ticks batched through `MacMemory::tick` from the CPU's
   peripheral catch-up. The 6522's ±1-cycle reload/IFR latency is **not**
   modelled, nor is E-clock (/VPA) alignment of VIA accesses — TODO M4.1.
-- RTC: full command/read/write serial protocol, 20-byte PRAM, in-memory
-  only (no file persistence); seconds start at 0 (deterministic tests).
+- RTC: full command/read/write serial protocol; seconds start at 0
+  (deterministic tests). The silicon part here is the 343-0040 with 20
+  bytes of NVRAM, but `Rtc` runs the -0042 superset — one flat 256-byte
+  XPRAM on every platform, and the compact ROMs only touch the low end.
+  **PRAM persists on all twelve platforms**, `loadPram`/`savePram` on the
+  `*Memory` class, file `<boot image>.<profile>.pram`, wired by each
+  runner in `main.cpp` (`MacMemory.h:117-124`).
 - PB6 H4 is derived from the true beam position (`clock % 352 < 256`),
   unlike MAME's constant.
 
@@ -358,7 +372,8 @@ Functional accuracy (O6).
   Sonora EASC `$BC` + Cuda) and a `cpuHz` ctor param: the gate array stays
   in the C15M domain while the CPU ticks rescale (the VASP pattern).
   - **LC** — 68020 + HMMU, 2 MB soldered, HMMU mask on pseudo-VIA PB3.
-  - **Classic II** — Eagle, VIA1 PA `$92`, mono 512×342 out of RAM at
+  - **Classic II** — Eagle, VIA1 PA reads `$93` (`$92` Eagle ID | the
+    diagnostic-disabled PA0 — the IIci lesson), mono 512×342 out of RAM at
     `$1F9A80`, forgiving bus.
   - **Color Classic** — Spice, PA `$82`, fixed sense 2, SWIM2 in the gate
     array, **factory Cuda 341S0417 (2.35) firmware LLE, default since
@@ -407,7 +422,7 @@ desktop pixels unless they account for the PMMU.
   reset-hold, so the 68030 runs from power-on. Three empty NuBus slots
   read 0. ROM `$368CADFE`, 25 MHz. **VIA1 PA must read `$C7`, not `$C6`**:
   MAME's `via_in_a` is `0xC6 | BIT(config,1)` and diagnostic mode is
-  disabled by default, so PA0 = 1 (`RbvMemory.cpp:163-168`). With PA0 = 0
+  disabled by default, so PA0 = 1 (`RbvMemory.cpp:166-173`). With PA0 = 0
   the ROM takes the diagnostic path and spins forever in its VIA-T2
   calibration loop.
 - **The IIsi is the machine that exposed the bus-time bug** —
@@ -508,11 +523,17 @@ the fixed IOSB `$A55A2BAD` for all of them:
 | Centris 650 | `$46` | 68LC040 @ 25 MHz |
 | Quadra 610 | `$44` | 68040 @ 25 MHz |
 | Quadra 650 | `$52` | 68040 @ 33.33 MHz |
-| Quadra 800 | `$12` | 68040 @ 33 MHz; adds SONIC + NuBus |
+| Quadra 800 | `$12` | 68040 @ 33.33 MHz (SONIC + NuBus on the real board — see below) |
+
+(Clocks are `CentrisMemory.h:56-59`, straps `:61-67`, the runner table
+`main.cpp:3966-3971`. The Q650 and Q800 share one constant — the "33 MHz"
+on the Q800's GUI label is a rounding, not a second rate.)
 
 `POM68K_CENTRIS_FPU` / `_BAREFPU` pick the FPU; `POM68K_CENTRIS_MODEL`
-(or the legacy `POM68K_CENTRIS610`) picks the strap. The Quadra 800 leaves
-SONIC/NuBus unmapped but models the Ethernet address ROM at `$50008000`.
+(or the legacy `POM68K_CENTRIS610`) picks the strap. SONIC and NuBus stay
+unmapped, but the Ethernet address ROM at `$50008000` is modelled on
+**every** model of the board (six MAC bytes at +0..5, the inverted XOR at
++7 — the ROM's SONIC presence probe), not only the Quadra 800.
 
 **The one map delta that matters:** djMEMC maps a **2 MB** VRAM window
 (`$F9000000-$F91FFFFF`) where MEMCjr mapped 1 MB — the 1 MB of VRAM must be
@@ -545,16 +566,8 @@ layout the Centris/Q800 share. ROM `$420DBFF3`; VIA1 PA reads `$C1`
 - *Simplification*: the 60.15 Hz tick is generated directly into VIA1 CA1;
   real hardware routes VIA2's T1 out of PB7 into VIA1 CA1
   (`via2_out_b`, "chain 60.15 Hz to VIA1").
-- Gate: `q700_boot_etalon` (Mac OS 8.1, 640×480 DAFB).
-- **The Quadra 900/950 grow out of this same class.** `Q700Memory::Model
-  {Spike, Q900, Q950}` carries the Eclipse front end — two `ApplePic` IOPs
-  (§ 2.10's device), `AdbLine`, `Egret` on VIA1, a second 53C96, the VIA1 PA
-  identities and the `$1000`-wide IOP windows — selected by
-  `./q700_boot_etalon <q700|q900|q950>`. The Q900 POSTs, paints 640×480 and
-  releases both IOPs; the SWIM IOP's byte-perfect firmware then falls into
-  its own BRK handler. That is the one open thread — `TODO.md` § 0 and
-  `docs/IOP_BRINGUP.md` § M7 — and profiles 35/36 stay unregistered until it
-  closes.
+- Gate: `q700_boot_etalon` (Mac OS 8.1, 640×480 DAFB); the same binary takes
+  `<q700|q900|q950>` and backs the two tower gates below.
 
 **The "Eclipse" towers — Quadra 900 and 950** (`Model {Spike, Q900, Q950}`,
 `eclipse()` is the one predicate the code branches on; full blueprint and
@@ -562,14 +575,17 @@ bring-up history in `docs/IOP_BRINGUP.md` § M7). Same board, with the **Mac
 IIfx's front end** grafted on:
 
 - The SCC and SWIM decodes are replaced by two **Apple PIC IOP** host
-  windows (`$5000C000` and `$5001E000`, `$1000` wide, register offset
-  `(addr >> 1) & $1F` on **both** byte lanes). Each IOP runs a 65C02 on
-  firmware the host ROM uploads at boot — there is no dump.
+  windows — the SCC's over `+$0C000-$0DFFF`, the SWIM's over the whole
+  `+$1E000-$1FFFF` decode (each takes the entire span the device it replaces
+  had), register offset `(addr >> 1) & $1F` on **both** byte lanes. Each IOP runs a 65C02 on firmware the host ROM uploads at
+  boot — there is no dump.
 - **ADB is bit-banged by the SWIM IOP's firmware** through its GPIO onto
   `AdbLine`; the **Egret** on VIA1 CB1/CB2 replaces the discrete RTC (clock,
   PRAM, and it holds the 68040 in reset until its own firmware releases it).
-  A **second 53C96** bus sits at `+$0F400`.
-- VIA1 PA identity `$D0` (Q900) / `$90` (Q950); the Q950 runs at
+  A **second 53C96** bus sits at `+$0F400` (registers) / `+$0F500`
+  (pseudo-DMA), its wait states latched by DAFB register `$28`.
+- VIA1 PA reads `$D1` (Q900) / `$91` (Q950) — the identity nibble `$D0`/`$90`
+  OR the diagnostic-disabled PA0, exactly as the Spike's `$C1`; the Q950 runs at
   **33.333 MHz** on its own `$3DC27823` ROM, the Q900 shares the Quadra
   700's `$420DBFF3` (so `POM68K_Q700_MODEL` is the only thing that tells
   those two apart).
@@ -608,11 +624,18 @@ just a *video timing number* selecting one of a handful of hardwired modes
 4=16 bpp), a 3-byte RAMDAC at `$50F24000` (payload in the **top** byte of
 each longword) and 1 MB of VRAM whose frame buffer starts at **+$1000**.
 Row stride is `strideForMode << depthIndex` (`valkyrie.cpp:154`). The pixel
-clock is programmed over I2C by the Cuda (Valkyrie is slave `$28`); POM68K
-does not model that bus, so the clock stays at the 31.3344 MHz default —
-which only affects the refresh rate the frame clock derives.
+clock is programmed over I2C by the Cuda (Valkyrie is slave `$28`), and
+**that bus is modelled since 2026-08-02**: `CudaLle` decodes the i2c_hle
+framing and hands `Valkyrie::i2cWrite(reg, value)` the M/N/P divisors of a
+3.9864 MHz reference — `pixelClock = 3986400 × 2^P × N / M`. Register 0 is
+written and ignored, as in MAME. A traced Q630 boot programs N=27, M=14,
+P=2 → **30.752 MHz**, not the 31.3344 MHz reset value; the clock is what
+paces `Valkyrie::tick`, so it sets the VBL cadence the guest sees. Header
+`Valkyrie.h:1-23` still carries the pre-2026-08-02 "not modelled" note —
+the code below it (`:65-70`) is the truth.
 
-Gates: `q630_boot_etalon`, `lc580_boot_etalon` (640×480×8 Finder).
+Gates: `q630_boot_etalon`, `lc580_boot_etalon` (640×480×8 Finder),
+`valkyrie_i2c_test` (the clock-generator arithmetic and its cadence effect).
 
 ### 2.10 OSS + two Apple PIC IOPs — Mac IIfx
 
@@ -633,10 +656,11 @@ firmware the host uploads at boot.
   `R65c02` at C15M/8 with 32 KB of RAM, a timer, two DMA channels and a
   host mailbox window. **There is no IOP ROM**: the internal map is all
   RAM + registers, so the system ROM downloads the firmware through the
-  shared-RAM window and then releases `/RSTPIC` — the Duo BORG pattern,
-  and `iifx_post_etalon` verifies both images byte-for-byte against the
-  ROM (SCC vector `$040E` at ROM+`$5F471`, SWIM vector `$5000` at
-  ROM+`$5A7EE`).
+  shared-RAM window and then releases `/RSTPIC` — the Duo BORG pattern.
+  `iifx_post_etalon` proves the upload is the real firmware: the 64 bytes
+  at each PIC's reset-vector target must appear verbatim somewhere in the
+  system ROM (observed SCC vector `$040E` at ROM+`$5F471`, SWIM vector
+  `$5000` at ROM+`$5A7EE`).
 - **ADB is bit-banged by the SWIM IOP.** Its GPIO pair drives the wire
   (gpout0 **inverted** on the board) and `AdbLine`'s LLE keyboard+mouse
   answer — no HLE anywhere on that path, unlike every MCU-based family.
@@ -657,6 +681,56 @@ firmware the host uploads at boot.
 Gates: `r65c02_test`, `applepic_test`, `iifx_post_etalon`,
 `iifx_boot_etalon` (Finder on 7.6), `iifx_input_etalon` (mouse repaint +
 KeyMap through the IOP firmware), save states in `savestate_030_test`.
+
+### 2.11 MSC + PG&E Power Manager — PowerBook Duo 230
+
+`MscMemory` / `MscCpu` / `PgePmu` / `M68hc05Pge`. The only laptop, the 37th
+profile (`main.cpp:854`, `runDuo` at `:5087`, `SnapMachine::Duo230`), a
+68030 @ **33 MHz** (`kCpuHz230`; the 210 is 25 MHz, `kCpuHz210`). Blueprint
+and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
+`MscMemory.h:1-31` — the LC-family `$50Fxxxxx` shape with three deltas: a
+**GSC** LCD controller (regs `$50F20000`, 128 KB VRAM at `$60000000`),
+`$50FA0000` power_cycle_w, and no floppy at all (the Duo Dock carries it).
+Box IDs at `$5FFFFFFC`: Duo 210 `$A55A1004`, **230 `$A55A1005`**, 250
+`$A55A1006`.
+
+What makes it a platform rather than a variant: **there is no Egret or
+Cuda**. Power, clock, PRAM, the matrix keyboard, the trackball and the
+1-Wire battery ID all live behind the **PG&E**, an Apple semi-custom 68HC05
+with 512 B of boot mask ROM, 960 B of internal RAM and **32 KB of SRAM that
+receives the main firmware, uploaded by the system ROM over SPI at every
+boot** (the IIfx IOP pattern, one processor further down). The PMU boots
+first and **holds the 68030 in reset** while its port E bit 2 is LOW; the
+**rising** edge is the release, and it also re-arms the ROM overlay and
+restarts the CPU from the reset vector (`PgePmu.h:67-71`, MAME `msc.cpp:151`
+for the hold). So without `roms/pge/pge_boot.bin` there is no release and
+the ROM stalls loudly at its first PMU exchange. The wire is VIA1's shifter
+(SCK→CB1, MOSI→CB2, MISO→SR bit 7) with `/PMU_ACK` on pseudo-VIA2 port B
+bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
+
+- **PRAM is the PMU's own RAM + SRAM**, not an RTC and not an XPRAM —
+  persisted byte for byte in MAME's layout, including the `$91` power-flag
+  scrub on load (`MscMemory.cpp`). It is the one platform where the battery
+  file is not a `Rtc`/MCU XPRAM dump.
+- **Screen is fixed 640×400 grayscale** (`MscMemory::decodeScreen`), depth
+  from GSC register 4 bits 0-1: 0 → 1 bpp, 1 → 2 bpp, 2 → 4 bpp; pen *p* of
+  16 renders as the P2/P5 gray `((15-p)<<4) | $F`.
+- **Input still rides the PMU's ADB modem cell**, not the matrix scanner or
+  the trackball counters — which is how an external Duo keyboard/mouse would
+  reach the guest anyway. The matrix/quadrature path and the sleep/wake gate
+  no other machine can test are the two open milestones (`TODO.md` § 7).
+- The PG&E core is a **separate interpreter clone** of `M68hc05`, not a
+  subclass: same M6805 opcodes, but different address width (16 vs 13 bits),
+  stack window, vector table, memory map and every peripheral — and the E1's
+  Cuda/Egret transport is phase-fragile enough that unifying them needs both
+  sides green first (`M68hc05Pge.h:18-24`).
+- Gates: `duo230_boot_etalon` (Finder on System 7.5.5, and the
+  `etalon-core` representative for this platform), `msc_parity_test`
+  (MAME-parity unit gate, asset-free — SOUND_BUSY bit, the port E reset
+  edge, port H's `$00` latch, the RTC seed, PRAM round trip, and two
+  deliberate parity deltas pinned so a diff cannot flip them), save states
+  in `savestate_030_test`. `duo_trace` is the diagnostic runner
+  (`EXCLUDE_FROM_ALL`, its own `DUO_*` knobs — [§5](#5-environment-knobs--the-complete-list)).
 
 ---
 
@@ -711,8 +785,11 @@ implementation actually depends on, several found the hard way with
 
 ### 3.2 Storage: SWIM1 and the SWIM2 cell engine
 
-- **`Swim1`** — IWM + ISM modes, 1.44 MB MFM. Used by V8, RBV, VASP and the
-  Quadra 700. Gate `swim1_test`.
+- **`Swim1`** — IWM + ISM modes, 1.44 MB MFM. Used by V8, RBV, VASP, the
+  IIfx (behind its SWIM IOP) and the discrete-040 board (direct on the
+  Quadra 700, behind the SWIM IOP on the Eclipse towers). Gate
+  `swim1_test`. `Swim2` covers Sonora, Q605, Centris and Q630, plus the V8's
+  `spiceClass()` boards; the Duo has no internal drive at all.
 - **`Swim2`** (2026-07-23, `docs/LLE_VS_HLE.md` step 13) runs MAME
   `swim2.cpp`'s **bit engines**: the MFM sync-hunting shifter with serial
   CRC-CCITT (`$CDB4` seed, `M_CRC0` on handshake bit 1), the GCR high-bit
@@ -738,7 +815,9 @@ Boots System 6 from a raw Apple SCSI image (`hdv/*.vhd`, 512-byte blocks,
   it triggers on ICR SEL asserted + BSY released with the target-ID bit on
   ODR, independent of the Mode ARBITRATE bit. Phases
   COMMAND→DATA(IN/OUT)→STATUS→MSG IN with REQ/ACK per byte; pseudo-DMA
-  auto-handshakes one byte per A9 access. One target at SCSI ID 0. Bit
+  auto-handshakes one byte per A9 access. Seven target slots by ID
+  (`targets_[7]`, ID 7 = the initiator, never used): the boot volume at 0,
+  extra `argv` volumes at 1-6, a CD bay wherever the machine puts it. Bit
   layouts from MAME `ncr5380.cpp`; sequence from pce `macplus/scsi.c` and a
   bit-exact ROM disassembly (`SCSI_DO_SELECT`).
 - **Target** (`ScsiDisk`, one implementation of `ScsiTarget` —
@@ -848,7 +927,7 @@ so AppleTalk still goes over the SCC. Gate: `daynaport_test`.
 `Ncr53c96.h/.cpp` (Q6). Streamed CDBs, PIO Transfer Info, DRQ-gated
 pseudo-DMA, STATUS/MSG completion, and the OS 8.1 SCSI Manager's mixed
 PIO/DMA chunking. On the Quadra 700 the surrounding cell is DAFB's, not
-IOSB's ([§2.8](#28-discrete-040--dafb--quadra-700)). Gates:
+IOSB's ([§2.8](#28-discrete-040--dafb--quadra-700--900--950)). Gates:
 `ncr53c96_test`, `q605_turboscsi_test`.
 
 ### 3.5 Input: M0110 keyboard + quadrature mouse
@@ -922,24 +1001,26 @@ firmware, so they are exact by construction.
   RB2/RB3→CB1/CB2 shifter, RB4→PB3 IRQ, RA2/RA3→ADB line) and steps the PIC
   at every VIA1 access (`MacIIMemory::viaAccess` → `AdbVia::syncTo`).
 
-**Two fixes made it run end to end**: an **ST-idle pull-up** — PB4/PB5 read
-high when the 68k leaves them as inputs, so idle = ST=IDLE(3) and not a
-spurious NEW that RESET-looped the PIC (`readA` does `portB | ~ddrb`) — and
-the line-timing recalibration above.
+**Four things this path will not survive without** (each cost a session;
+the narrative is CHANGELOG "Mac II LLE ADB default", 2026-07-22, the date
+LLE became the default):
 
-**Default since 2026-07-22.** The "self-test misroute" blocker was three
-stacked bugs (full detail: CHANGELOG "Mac II LLE ADB default"): PIC
-instruction cost ignored (`tickLle` now charges `run(1)`'s real 1-3-cycle
-cost, after which the firmware's wire timing lands on the ADB spec); a
-phantom IFR.SHIFT from the Slot-Manager ORB `armShiftComplete()` hack whose
-`$15D(A3)` guard is ADBBase→flags (gated off in LLE — the firmware's
-idle-timeout byte serves the `$7100` POST wait for real); and the VIA
-mode-111 ext shift-out advancing the SR on the *first* CB1 falling edge,
-delivering every ROM byte `<<1` to the PIC. **Note for future co-stepping
-work:** `syncTo`'s burst-at-VIA-access interleaving is temporally *exact* —
-VIA state only changes at VIA accesses and the CPU only sees PIC effects
-through VIA reads, both of which sync first; only the cost accounting was
-wrong.
+1. **ST-idle pull-up** — PB4/PB5 read high when the 68k leaves them as
+   inputs, so idle = ST=IDLE(3) and not a spurious NEW that RESET-loops the
+   PIC (`readA` does `portB | ~ddrb`).
+2. **Real PIC instruction cost** — `tickLle` charges `run(1)`'s actual
+   1-3 cycles; only then does the firmware's own delay-loop wire timing land
+   on the ADB spec values.
+3. **No phantom IFR.SHIFT** from the Slot-Manager ORB `armShiftComplete()`
+   hack (gated off in LLE — the firmware's idle-timeout byte serves the
+   `$7100` POST wait for real; its `$15D(A3)` guard is ADBBase→flags).
+4. **VIA mode-111 ext shift-out must not advance the SR on the *first* CB1
+   falling edge** — that delivers every ROM byte `<<1` to the PIC.
+
+**Note for future co-stepping work:** `syncTo`'s burst-at-VIA-access
+interleaving is temporally *exact* — VIA state only changes at VIA accesses
+and the CPU only sees PIC effects through VIA reads, both of which sync
+first; only the cost accounting (2) was ever wrong.
 
 Firmware map (from disassembly): ST-change dispatch @`0x022` with index =
 (last-cmd-op<<2)|newST; `0x065` = shift byte PIC→VIA; `0x077` = VIA→PIC
@@ -1125,10 +1206,10 @@ model none either; `docs/LLE_VS_HLE.md` § 1.1), VBL line hard-coded at 480
 ## 4. JIT — the second execution engine
 
 `src/jit/` (`JitEngine`, `JitBackend`, `JitIr`, `JitCodeBuffer`, `JitGuard`,
-`backends/`), J0-J2.
+`backends/` = `threaded`, `JitBackendX64`, `JitBackendA64`).
 
 **Design, invariants, measurements, the block-cache attribution, the
-x86-64 backend, the inline data TLB, block linking and the full environment
+native backends, the inline data TLB, block linking and the full environment
 table are in `src/jit/POM68K_JIT.md`** — that file is authoritative and this
 section deliberately does not restate it. The four-point extension the
 engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
@@ -1145,16 +1226,21 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, and — since 2026-08-06 —
   `Cpu020` (Mac II / IIx / IIcx / SE-30) and `Cpu68k` (Plus / SE / SE FDHD
   / Classic) and `IIfxCpu` (the IIfx). **Every CPU wrapper in the tree now
-  carries one.** The GUI menu binds on every one of them. The **x86-64 code generator** is **68040-only by declared
-  capability** (`BackendCaps::guestFamilies`), so `auto` gives everything
-  else the `threaded` backend. That is a guest-family constraint, not a
-  host one: the 030's `(An)+` timing, restartable-write/format-$A framing
-  and prefetch refill differ semantically from the 040's.
+  carries one.** The GUI menu binds on every one of them. **Both** native
+  code generators — x86-64 and AArch64 — declare `guestFamilies =
+  kGuest68040` (`JitBackendX64.cpp:2497`, `JitBackendA64.cpp:2156`), so
+  `auto` gives every other family the `threaded` backend. That is a
+  guest-family constraint, not a host one: the 030's `(An)+` timing,
+  restartable-write/format-$A framing and prefetch refill differ
+  semantically from the 040's.
 - **…and what it is worth there**, because "wired" and "worth switching on"
   are not the same claim. The window's job is to skip an ATC walk, so the
-  gain tracks the MMU: 68040 ×2.1-2.7, 68030 ×1.4-1.7, **68020 ×1.0-1.2,
-  68000 ×1.03-1.08**. On the last two there is no walk to skip and only the
-  machine's address decode is saved.
+  gain tracks the MMU: 68040 **×5.0** on a fixed budget and **×2.68** end to
+  end on `q605_boot_etalon` (x64), 68030 **×1.21** (LC II, fixed
+  budget, 2026-08-09 — this figure has been re-measured twice and the
+  earlier ×1.6 was retracted), **68020 ×1.0-1.2, 68000 ×1.03-1.08**. On the
+  last two there is no walk to skip and only the machine's address decode is
+  saved. `POM68K_JIT.md` § 3 owns these numbers and their method.
 - **The compacts are the one family where the window is not free.** Moira's
   `SYNC(x)` macro is a no-op on `Core::C68020` only — which covers the
   68020, 030 and 040. On `Core::C68000` it is real, `MOIRA_PRECISE_TIMING`
@@ -1196,30 +1282,43 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   calls `jitMapChanged()` directly, [§1.2](#12-family-wide-invariants));
   and a change of translation (`Moira::pomJitMmuGen`, bumped by every ATC
   flush and TTR write).
-- **Gates (16, label `jit`)**: `jit_backend_test` (backend registry, W^X
-  buffer, classifier safety rules — no assets), **five** flavours of
-  `jit_lockstep_test` (`_blocks`, `_x64`, `_x64_fine`, `_noaccess` — see
-  `POM68K_JIT.md` §5 for what each one covers), and **ten**
-  `jit_*_boot_etalon` twins (q605, centris650, q630, q700, lcii, mactv,
-  lc3, iivx, iisi, lc) — the same etalon executables re-run with
-  `POM68K_CPU_ENGINE=jit`.
+- **Gates (label `jit`: 29 on an AArch64 host, 27 elsewhere)**:
+  `jit_backend_test` (backend registry, W^X buffer, classifier safety rules
+  — no assets), `jit_restart_write_030_test`, `jit_store_guard_a64_test`,
+  **eleven** `jit_lockstep_*` flavours (68000 / 030 / 040 each plain and
+  `_blocks`, plus `_x64`, `_x64_fine`, `_noaccess`, and two registered only
+  when the a64 backend is built — `_a64_coarse` and
+  `_030_a64_experimental`; `POM68K_JIT.md` § 5 says what each covers), and
+  **fifteen** `jit_*_boot_etalon` twins (q605, centris650, q630, q700, lcii,
+  mactv, lc3, iivx, iisi, lc, macii, se30, system, classic, iifx) — the same
+  etalon executables re-run with `POM68K_CPU_ENGINE=jit`
+  (`CMakeLists.txt:1509-1559`).
 
 ---
 
 ## 5. Environment knobs — the complete list
 
-Derived from the code — re-derived 2026-08-01 with
+Derived from the code — the same harvest `config_test` performs, every
+`POM68K_…` **string literal** in the three directories it scans:
 
 ```bash
-grep -rhoP '(?:getenv|env|envBool|envInt)\(\s*"\KPOM68K_[A-Z0-9_]+' \
-     src/ tests/ oracle/ extern/moira/ | sort -u
+grep -rhoP '"\KPOM68K_[A-Z0-9_]+(?=")' \
+     src/ tests/ extern/moira/Moira --include=*.h --include=*.cpp | sort -u
 ```
 
-after a cross-check found **22 knobs the code reads that no document
-mentioned**. Note the `getenv`-only form misses the JIT knobs, which go
-through `jit::detail::env()` (`src/jit/JitConfig.h:22`). **Re-derive rather
-than extend by hand**: the check is one command, and it is how this list was
-found to be missing in the first place.
+148 distinct names as of 2026-08-12. Match on the literal, not on `getenv`:
+the JIT knobs go through `jit::detail::env()` (`src/jit/JitConfig.h:22`) and
+a `getenv`-anchored pattern misses every one of them. **Re-derive rather
+than extend by hand** — the two cross-checks that built this list found 22
+and then 12 knobs the code read that no document mentioned.
+
+Knobs that test only for *presence* — `POM68K_NOFPU`, `POM68K_FLOPPY_RO`,
+`POM68K_MMU040_WALK`, `POM68K_Q605_NOFPU`, `POM68K_CENTRIS_FPU` /
+`_BAREFPU`, `POM68K_Q630_LC040` / `_BAREFPU`, `POM68K_Q700_LC040` /
+`_BAREFPU`, `POM68K_LTOUDP`, `POM68K_CENTRIS610`, `POM68K_PERIPH_STATS`,
+every `*_TRACE` — **activate on `=0` too**. Setting one to zero to turn it
+off is the trap; unset it instead. The knobs that do honour `=0` say so
+below.
 
 **Machine selection** (README documents these in prose):
 `POM68K_MACII_MODEL`, `POM68K_LC3_PLUS`, `POM68K_AIO_ID`, `POM68K_IIVI`,
@@ -1237,12 +1336,12 @@ documented before 2026-07-31:
 | `POM68K_CENTRIS_FPU` / `_BAREFPU` / `_CACHE_BOOST` | the same three for `CentrisCpu` |
 | `POM68K_Q700_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q700Cpu` |
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
-| `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the 030 CPUs (`Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`) |
-| `POM68K_FLOPPY_BOOST_GATE` | `=0` disables the floppy boost gate on the `Swim1` 030s (`Cpu030`, `RbvCpu`, `VaspCpu`) — the boost then compresses the Sony denibble path below the IWM's 14-tick hold and GCR mounts fail with badDCksum (the pre-2026-08-05 defect, kept reproducible for `lcii_sony_trace`) |
+| `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4, miss cost 0-64 default 4; the per-class defaults live in the headers (`Cpu030.h:167-168` and siblings) |
+| `POM68K_FLOPPY_BOOST_GATE` | `=0` disables the floppy boost gate on the `Swim1` 030s (`Cpu030`, `RbvCpu`, `VaspCpu` — **not** `SonoraCpu` or `MscCpu`, which never read it) — the boost then compresses the Sony denibble path below the IWM's 14-tick hold and GCR mounts fail with badDCksum (the pre-2026-08-05 defect, kept reproducible for `lcii_sony_trace`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
 | `POM68K_040_DCACHE` | arm the M1 architectural cache-TAG model on the 040s (`docs/CACHE_040.md` § M1) — tags, dirty bits and CINV/CPUSH scopes become real state; **data is still served by the bus**, default off |
 | `POM68K_PERIPH_STATS` | count the peripheral catch-up path (Cpu040 only): catchUp/flushTicks/mem.tick calls + cycles per call, printed at exit. The old `POM68K_PERIPH_BATCH` knob is GONE — fixed batching was replaced by event deadlines on eight platforms (2026-08-03/04, `CHANGELOG.md` § *Event deadlines*); the remaining fixed-batch machines (compacts, Mac II, IIfx, MSC) have no knob |
-| `POM68K_NOFPU` | Mac II **and IIfx**: no 68881/68882 |
+| `POM68K_NOFPU` | no 68881/68882. Read by **six** platform runners in `main.cpp`: Mac II (`:1074`), IIfx (`:1432`), V8 (`:1828`), Sonora (`:2314`), VASP (`:2631`), RBV (`:2915`). The 68040 families have their own `*_LC040`/`*_NOFPU` knobs above |
 
 **Devices and subsystems**: `POM68K_EGRET_LLE`, `POM68K_CUDA_LLE`,
 `POM68K_CUDA_FW`, `POM68K_ADB_LLE`, `POM68K_ADB_KBD_ID` (`AdbLine`'s
@@ -1256,10 +1355,26 @@ moves the reset value), `POM68K_APPLETALK`,
 `POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
 instead of the Apple-branded Seagate the guest's own disk tools expect —
 [§3.3](#33-scsi-ncr-5380)), `POM68K_DAYNAPORT` (`<id>` = put a DaynaPort
-SCSI/Link at that SCSI ID on the Quadra 605; `1` = the default ID 3 —
-[§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)).
+SCSI/Link at that SCSI ID on the Quadra 605; a value outside 1-6 — or a
+non-numeric one — lands on the default ID 3, `0` or unset = no card
+(`Q605Memory.cpp:73-77`) —
+[§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)),
+`POM68K_FIRMWARE_ROOT` (`<dir>` **replaces** both default search bases
+`./` and `../` for every dump `FirmwareManifest::verify` looks up —
+`FirmwareManifest.h:86-89`; a path that does not hold `roms/…` makes every
+MCU fall back to HLE, which is the point when qualifying a packaged build).
 
-**Duo / PG&E (platform #11, in bring-up)** — behavioural:
+**Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, set by the
+flag rather than by hand (`main.cpp:5363-5371`):
+`POM68K_LLE_AARCH64_FULL` (`LleSession.h:24-26`; the run must be on the
+AArch64 code generator with every MCU on real firmware, and any HLE
+fallback disqualifies it) and `POM68K_LLE_AARCH64_CHECK_ONLY`
+(`--lle-aarch64-check`: run the preflight, print, exit 0 without opening a
+window). Both honour `=0`. The gates that exercise them (`lle_a64_…`) are
+behind the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES —
+[§6](#6-test-tiers-and-gates).
+
+**Duo / PG&E** — behavioural ([§2.11](#211-msc--pge-power-manager--powerbook-duo-230)):
 `POM68K_PGE_ADB` (`0` = detach the ADB bus from the modem cell),
 `POM68K_PGE_SPINUS` (host stall per /PMU_REQ edge, µs, default 80, `0` =
 off), `POM68K_PGE_CB1INT` / `POM68K_PGE_CB1BYTE` (alternate SPI-clock →
@@ -1279,11 +1394,15 @@ documents them).
 `POM68K_JIT_*` family — see `src/jit/POM68K_JIT.md` § 6. **That table is
 authoritative** and was itself corrected on 2026-07-31.
 
-**Quadra 900/950 ("Eclipse", in bring-up on the Q700 board)**:
-`POM68K_Q900_ADB` (`iop` forces the IIfx-style IOP-only ADB wire),
-`POM68K_Q900_IOPBRK` (dump the SWIM IOP's last 256 PCs at its first `$00`
-— the open M7 lead, `TODO.md` § 0), `POM68K_Q900_IOP_TRACE=<max lines>`
-(every host-window touch), and the test-side `POM68K_Q900_IOPDUMP`
+**Quadra 900/950 ("Eclipse", on the Q700 board — M7 closed 2026-08-02)**:
+`POM68K_Q900_ADB` (`iop` forces the IIfx-style IOP-only ADB wire; default
+is Egret-owned), `POM68K_Q900_IOPBRK` (dump either IOP's 65C02 PC/SP trail
+at its first `BRK` — the tool that closed M7, kept for the next one),
+`POM68K_Q900_IOP_TRACE` (`=<max lines>`, every host-window touch; a bare
+`=1` means 600 lines, which the first firmware upload exhausts),
+`POM68K_Q900_IOPWATCH` (`=<hex>`, names every writer of one IOP RAM byte —
+65C02, host window or DMA; written for a SWIM IOP that returned through a
+corrupted stack frame), and the test-side `POM68K_Q900_IOPDUMP`
 (`q700_boot_etalon`).
 
 **Diagnostics** (stderr traces, no behavioural change unless stated):
@@ -1313,15 +1432,14 @@ settle before judging the mount)) are documented in their own file headers.
 
 **Bring-up probes** — added to this list 2026-08-09, when `config_test`
 first ran and found twelve knobs the code reads that no document mentioned.
-Each is a *chantier* knob: it belongs to an open investigation and goes when
-that investigation closes.
+Each belongs to an open investigation and goes when that investigation
+closes. (The two Eclipse-IOP probes graduated with M7 on 2026-08-02; they
+are documented with the rest of the Q900 group above.)
 
 | knob | chantier | what it does |
 |---|---|---|
 | `POM68K_V8_IOHOLE` | V8 map holes (`TODO` § 4) | `=<n>` logs the first n reads in an unmapped V8 I/O hole with the PC. The Classic II ROM dereferences `$50F18038` and the block behind it has never been identified; the access pattern is the only way to name it |
 | `POM68K_V8_HOLEVAL` | same | `=<hex>` what a hole reads back on the Eagle's forgiving bus. MAME answers 0, but that is its `address_space` default and not a modelled decision — so this stays a knob, not a fact, until an observable separates them |
-| `POM68K_Q900_IOPWATCH` | Eclipse IOP (`docs/IOP_BRINGUP.md` § M7) | `=<hex>` names every writer of one IOP RAM byte (65C02 / host window / DMA). Written for a SWIM IOP that returned through a corrupted stack frame |
-| `POM68K_Q900_IOP_TRACE` | same | `=<n>` IOP port traffic, capped (a bare `=1` is useless past the first firmware upload) |
 | `POM68K_PGE_TRAP` | Duo PMU (`docs/DUO_BRINGUP.md`) | `=<hexbyte>` break when the PG&E RECEIVES that byte over SPI |
 | `POM68K_PGE_PCCOUNT` | same | `="hex,hex,…"` execution counts + first hits for named PMU firmware addresses |
 | `POM68K_PGE_PCHIST` / `POM68K_PGE_PCWIN` | same | PMU PC histogram and its window — where the 68HC05 actually spends its time |
@@ -1342,16 +1460,30 @@ current:
 ### How this list stays true
 
 `config_test` (`unit`, asset-free) checks it in both directions: every
-`POM68K_*` name the code reads as a string literal must appear here or in
+POM68K\_ name the code reads as a string literal must appear here or in
 `src/jit/POM68K_JIT.md`, and every name that appears here must exist in the
 code unless it is under **Retired**. It understands the three notations this
-section already uses — a full name, a `` `POM68K_X*` `` wildcard, and a
-`` `POM68K_CENTRIS_FPU` / `_BAREFPU` `` suffix continuation — so nothing has
-to be rewritten to be checkable. **Still re-derive rather than extend by
-hand**; the gate tells you when you forgot, it does not write the entry.
+section already uses — a full name; a *backticked* name ending in `*` or in
+an underscore, which registers as a **prefix** covering everything under it;
+and a suffix continuation of the previous name (`POM68K_CENTRIS_FPU` then
+`_BAREFPU` → `POM68K_CENTRIS_BAREFPU`). So nothing has to be rewritten to be
+checkable. **Still re-derive rather than extend by hand**; the gate tells you
+when you forgot, it does not write the entry.
 
-**Not yet enforced**: an expiry per knob. The seven probes above declare
-their chantier; the other ~120 entries do not yet say whether they are a
+**The prefix rule is a loaded gun, and it went off in this very paragraph.**
+`config_test` cuts § 5 at the next `## `, so a `###` subsection like this one
+is *inside* it — and until 2026-08-12 the sentence above spelled the harvest
+target as a backticked POM68K wildcard. That registered the empty prefix
+POM68K\_, which covers every name in the tree, so direction 1 could not fail:
+three knobs (`POM68K_FIRMWARE_ROOT`, `POM68K_LLE_AARCH64_FULL` and
+`_CHECK_ONLY`) had never been documented and the gate was green anyway. Write
+meta-references to the knob namespace **without backticks**, as above; name a
+pair with the suffix notation rather than a wildcard; and keep real wildcards
+narrow — the four live ones are `POM68K_JIT_*`, `POM68K_JIT_LOCKSTEP_*`,
+`POM68K_BENCH_*` and `POM68K_PROBE*`.
+
+**Not yet enforced**: an expiry per knob. The five probes above declare
+their chantier; the other ~140 entries do not yet say whether they are a
 permanent product option (which earns a gate) or a chantier leftover. That
 classification is a decision per knob, not a mechanical one — `TODO.md` § 8.
 
@@ -1360,45 +1492,71 @@ classification is a decision per knob, not a mechanical one — `TODO.md` § 8.
 ## 6. Test tiers and gates
 
 **Never iterate against a bare `ctest` or a bare `make`.** A full run is
-180 gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
+~183 gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
 contention-sensitive; a bare `make` relinks ~90 binaries under tree-wide
-LTO. Labels are **derived from test names** at registration time
-(`CMakeLists.txt`, end of the test block), so a gate added tomorrow is
-classified the moment it exists.
+LTO.
 
 ```bash
 make -j4 jitdev && ctest -L smoke     # ~2.5 min end to end
 ```
 
-`jitdev` (`CMakeLists.txt:1110`) builds exactly the **three** binaries
+`jitdev` (`CMakeLists.txt:1868`) builds exactly the **three** binaries
 `-L smoke` needs — `jit_backend_test`, `jit_lockstep_test`,
-`q605_boot_etalon`; the other five smoke registrations re-run those same
-binaries under different environments.
+`q605_boot_etalon`; the remaining smoke registrations re-run those same
+three under different environments.
 
 | command | gates | when |
 |---|---|---|
 | `ctest -L smoke` | 9 | the working loop — one machine, both engines |
-| `ctest -L unit` | 89 (~1 min) | anything touching non-machine code; no ROM or disk image needed |
-| `ctest -L jit` | 28 | before proposing a JIT change |
-| `ctest -L m040` | 40 | the 68040 family on the default engine plus explicit interpreter references |
-| `ctest` | 180 (~4h) | the release gate, once |
+| `ctest -L unit` | 92 (~1 min) | anything touching non-machine code; no ROM or disk image needed |
+| `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
+| `ctest -L jit` | 29 | before proposing a JIT change |
+| `ctest -L m040` | 42 | the 68040 family on the default engine plus explicit interpreter references |
+| `ctest -L etalon` | 91 (~3 h 35) | every profile — the release gate, not a pre-commit check |
+| `ctest` | 183 (~4h) | everything, once |
 
-Counts verified against `ctest -N` on 2026-08-10; they drift every time a
-gate lands, so **re-derive rather than trust them**. (`src/jit/POM68K_JIT.md`
-§ 5 carries the same tiers with the per-lockstep-flavour breakdown and the
-timings — it is the authority on the JIT side of this loop.) Asset-dependent gates
-soft-skip when the user-provided ROM/disk images are absent. The
-whole-machine `*_trace` binaries (`sony_trace`, `lcii_sony_trace`,
-`q605_trace`, `macii_mouse_trace`, …) are `EXCLUDE_FROM_ALL` dev tools, not gates — the
-gate is the `add_test` NAME, which is not always the binary name
-(`macii_mouse_trace` registers as `macii_mouse_etalon`).
+**The totals are host-dependent**, which is why `ctest -N` and not this table
+is the authority. Two gates — `jit_lockstep_a64_coarse_test` and
+`jit_lockstep_030_a64_experimental_test` — are registered only on an AArch64
+host with the a64 backend built (`CMakeLists.txt:1459-1476`), so the numbers
+above are the AArch64 ones and an x86-64 tree reads **181** total, 90 `unit`,
+8 `smoke`, 27 `jit` (`m040` and `etalon` are host-independent). Seven more
+appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
+which also requires AArch64 and hard-fails on a missing asset instead of
+skipping.
+
+Labels are **derived from the test name** in one loop at the end of
+`CMakeLists.txt` (`:1794-1820`): name ends in `etalon` → `etalon` (+
+`etalon-core` if it is in the twelve-name `POM68K_ETALON_CORE` list, whose
+membership is a configure-time `FATAL_ERROR` if a name stops resolving);
+anything else → `unit`; `^jit_` → `jit`; a substring match on the 68040
+machine names → `m040`. A gate added tomorrow is classified the moment it
+exists. **The loop `set`s LABELS, it does not append** — an explicit
+`set_tests_properties(... LABELS ...)` at `add_test` time is silently
+overwritten by whatever the name derives to, so express a label through the
+NAME, never inline.
+
+Asset-dependent gates soft-skip when the user-provided ROM/disk images are
+absent. The whole-machine `*_trace` binaries (`sony_trace`, `lcii_sony_trace`,
+`q605_trace`, `duo_trace`, `iifx_trace`, …) are among the 17
+`EXCLUDE_FROM_ALL` dev tools, not gates — and the gate is the `add_test`
+NAME, which is not always the binary name (`macii_mouse_trace` registers as
+`macii_mouse_etalon`; `compact_boot_etalon` backs four gates under four other
+names). `src/jit/POM68K_JIT.md` § 5 carries the same tiers with the
+per-lockstep-flavour breakdown and the timings — the authority on the JIT
+side of this loop.
 
 ### The GUI ↔ machine-thread contract (`src/MachineHost.h`)
 
-Every machine runs on one CRTP host: `MachineHost<Derived, Mem, Cpu, Audio>`.
-It owns the thread, the command queue, the framebuffer double buffer, the
-status atomics, the `SaveStateSlot` and the JIT gauge snapshot. A platform
-supplies only its own half:
+Eleven of the twelve platforms run on one CRTP host:
+`MachineHost<Derived, Mem, Cpu, Audio>`. It owns the thread, the command
+queue, the framebuffer double buffer, the status atomics, the `SaveStateSlot`
+and the JIT gauge snapshot. Six `*Machine` structs instantiate it
+(`main.cpp` `MacIiMachine`, `IIfxMachine`, `LcMachine`,
+`SonoraStyleMachine<>`, `DafbMachine<>`, `MscMachine`). The **68000 compacts
+are the exception**: they never gained a machine thread, and still run their
+`MacMemory`/`Cpu68k`/`MacVideo` inline on the GUI thread at the tail of
+`main()`. A platform on the host supplies only its own half:
 
 | hook | what it does |
 |---|---|
@@ -1451,7 +1609,10 @@ to a bare MDB at offset 1024 for the flat `.dsk` images.
 **Why it exists**: `roms/` and `hdv/` are user-provided and gitignored, so a
 gate's fixture can change under it with nothing in the record. On 2026-08-06
 that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
-The digest is also what an `assets.lock` would pin, if one lands.
+`assets.lock` (repo root, 3 rows) already pins the *firmware* identities
+`--lle-aarch64` accepts — label, size, SHA-256, path, qualified profiles. What
+is still missing is the same treatment for the ROMs and disk images, which is
+what this digest would feed (`TODO.md` § 8).
 
 **Bit 8 clear is a tell, not a verdict.** `hdv/HD20SC.vhd` reads `$0000` and
 four green gates boot from it. It says where to look first when a boot gate goes
