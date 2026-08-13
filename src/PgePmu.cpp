@@ -403,6 +403,13 @@ void PgePmu::wirePorts() {
     };
 }
 
+int PgePmu::cyclesToNextEvent() const {
+    const int64_t need = (int64_t(mcuDebt_) + 1) * cpuHz_ - mcuAcc_;
+    if (need <= 0) return 1;
+    const int64_t cycles = (need + kMcuHz - 1) / kMcuHz;
+    return int(cycles > 0 ? cycles : 1);
+}
+
 void PgePmu::tick(int cpuCycles) {
     // Machine cycles → 2.097 MHz MCU cycles, carrying run()'s overshoot
     // as debt (pom68k-mcu-lle-clock-drift: without it the MCU overclocks

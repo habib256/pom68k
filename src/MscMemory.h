@@ -90,6 +90,14 @@ public:
 
     void tick(int cpuCycles);        // VIA timers, 60.15 Hz CA1, VBL
 
+    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // Machine cycles until the earliest moment a device here can change
+    // observable state on its own. The PG&E is the binding source: its
+    // 68HC05 executes continuously, so this normally lands near the
+    // MCU-cycle bridge (~16 cycles at 33 MHz). Conservative by contract —
+    // waking early only costs time, waking late moves emulated time.
+    int cyclesToNextEvent() const;
+
     Via6522& via1() { return via_; }
     PseudoVia& pseudoVia() { return pvia_; }
     AscV8& asc() { return asc_; }
@@ -221,7 +229,9 @@ private:
     // with SOUND_BUSY read-clear), msc_config on the video hook.
     PseudoVia pvia_{PseudoVia::Flavour::Msc};
     PgePmu pmu_;                     // PG&E on the VIA1 shifter
-    AscV8 asc_;                      // TODO milestone 3+: ASC_MSC flavour
+    // ASC_MSC: an exact V8 clone whose only difference is the version byte
+    // ($E9, from the Duo 210 ASCTester dump — MAME asc.cpp:1378-1417).
+    AscV8 asc_{0xE9};
     Ncr5380 scsi_;
     ScsiDisk scsiDisks_[7];
     Scc8530 scc_;

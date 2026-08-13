@@ -26,7 +26,11 @@ public:
     static constexpr int kSampleRate = 22257;
     static constexpr int64_t kCpuHz = 15667200;
 
-    // Mac II discrete ASC reports version $00; V8 (LC II) reports $E8.
+    // Version byte answered at $800 (get_version). Mac II / IIfx / IIci
+    // discrete cell = $00 (the only `classic()` one), V8 and VASP = $E8,
+    // the PowerBook Duo's MSC = $E9 — an exact V8 clone, the byte being
+    // the whole difference (MAME asc_msc_device, hardware-confirmed by the
+    // in-file Duo 210 ASCTester dump "ASC Version: $E9", asc.cpp:1384-1417).
     explicit AscV8(uint8_t version = 0xE8) : version_(version) {}
 
     void reset();
@@ -81,6 +85,17 @@ public:
     int fifoCap() const { return cap_; }
     int fifoCapB() const { return capB_; }
 
+    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // CPU cycles until the next drained sample, which is the only thing
+    // that moves FIFO status or the IRQ line without a bus access. The
+    // classic cell also raises the QEMU empty-cycle IRQ, but only ever on a
+    // drain boundary, so the same bound covers it. Mirrors AscSonora's.
+    int cyclesToNextEvent() const {
+        const int64_t need = kCpuHz - drainAcc_;
+        if (need <= 0) return 1;
+        return int(std::max<int64_t>(1, (need + drainHz() - 1) / drainHz()));
+    }
+
     // ── Save states (SaveState.h) ───────────────────────────────────────
     // Both FIFOs with their pointers and fill levels, the register block and
     // the drain accumulator — the Sound Manager polls the half/empty status
@@ -92,14 +107,26 @@ public:
     // snapshot. A restore drops the queued audio instead — the audible cost
     // is one gap, the alternative is a bigger file and no fidelity gain.
     // `version_` is board identity, set at construction.
+    // `wtPhase_`/`wtIncr_` are the four wavetable oscillators. They are real
+    // chip state, not a cache: the guest writes an increment once and the
+    // phase free-runs, so a restore that dropped them would silence or
+    // detune a voice mid-note. They live outside `regs_` because two of the
+    // four pairs ($821-$82F) sit past its 32-byte block, and because MAME
+    // keeps the same live copies and rebuilds the register bytes on read
+    // (asc.cpp:344-357). Adding them moved the snapshot format to v5.
     template <class Ar> void visit(Ar& ar) {
         ar(fifo_, fifoB_, rd_, wr_, rdB_, wrB_, cap_, capB_,
-           regs_, fifoStat_, irq_, drainAcc_, emptyCycleSamples_);
+           regs_, fifoStat_, irq_, drainAcc_, emptyCycleSamples_,
+           wtPhase_, wtIncr_);
         if constexpr (Ar::loading) outRd_ = outWr_ = 0;
     }
 
 private:
     uint8_t readReg(uint32_t offset);        // read logic (onRead tap wraps it)
+    // The $810-$82F wavetable window: one byte of a 24-bit phase or
+    // increment. Returns false when the offset is not in the window, so the
+    // caller falls through to the ordinary register file.
+    static bool wtRegister(uint32_t reg, int& voice, bool& isIncr, int& shift);
     enum {
         STAT_HALF_A = 0x01, STAT_EMPTY_OR_FULL_A = 0x02,
         STAT_HALF_B = 0x04, STAT_EMPTY_OR_FULL_B = 0x08
@@ -107,7 +134,16 @@ private:
     void setIrq(bool s) {
         if (s != irq_) { irq_ = s; if (onIrq) onIrq(s); }
     }
-    bool classic() const { return version_ != 0xE8; }
+    // "Classic" = the Mac II / IIfx / IIci DISCRETE cell, version $00 — the
+    // only flavour with stereo FIFO B, wavetable mode, writable MODE/CONTROL
+    // and read-clearing status. Everything else this class serves is a V8
+    // integration and behaves identically to the V8 whatever its version
+    // byte: $E8 on V8/VASP, $E9 on the Duo's MSC, which MAME implements as
+    // `asc_msc_device : asc_v8_device` with get_version() overridden and
+    // nothing else (asc.cpp:1378-1417). Testing `!= 0xE8` would therefore
+    // have turned the Duo into a classic ASC the moment its version byte
+    // became honest — the predicate names the ONE classic part instead.
+    bool classic() const { return version_ == 0x00; }
     void classicResetFifos();
 
     uint8_t fifo_[0x400] = {};
@@ -137,6 +173,12 @@ private:
     // is not what this note excuses. Reopening condition: the wavetable
     // engine lands, or a guest is caught reading back register space.
     uint8_t regs_[0x20] = {};                // sparse classic regs ($800+)
+    // Four-voice wavetable oscillators (classic ASC only — the mode is
+    // "unique to the first-generation ASC", asc.cpp:19). 24-bit phase
+    // accumulators and increments, mapped at $811/$815, $819/$81D,
+    // $821/$825, $829/$82D, big-endian, one byte per register.
+    uint32_t wtPhase_[4] = {};
+    uint32_t wtIncr_[4] = {};
     uint8_t fifoStat_ = STAT_EMPTY_OR_FULL_A;
     bool irq_ = false;
     int64_t drainAcc_ = 0;

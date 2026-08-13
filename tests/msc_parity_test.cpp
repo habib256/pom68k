@@ -70,6 +70,26 @@ static void testSoundBusy() {
     mem.write8(kSndCtrl, 0xFF);
     check(mem.read8(kSndCtrl) == 0xFF, "reg-2 write read back whole");
     check(mem.read8(kSndCtrl) == 0xBF, "read-clear removed only bit 6");
+
+    // ── SIMPLIFICATIONS_REVIEW F3: the MSC's ASC identity ───────────────
+    // Version $E9, from the Duo 210 ASCTester dump (MAME asc.cpp:1384) —
+    // the ONLY difference from the V8's cell, since asc_msc_device derives
+    // from asc_v8_device and overrides get_version() alone.
+    const uint32_t kAscVersion = 0x50F14800;         // $800 = VERSION
+    check(mem.read8(kAscVersion) == 0xE9, "ASC reports version $E9 (ASC_MSC)");
+    mem.read8(kSndCtrl);                             // drain SOUND_BUSY
+
+    // …and it must still BEHAVE as a V8 clone, not as the Mac II discrete
+    // cell that the version byte alone used to select. The three V8 tells:
+    // MODE/CONTROL/FIFO-MODE read back a forced 1 and refuse writes, and
+    // the FIFO windows read 0 instead of being memory-mapped RAM.
+    mem.write8(kAscVersion + 1, 0x02);               // try MODE = wavetable
+    check(mem.read8(kAscVersion + 1) == 1, "MODE stays forced to 1 (FIFO), V8-style");
+    check(mem.read8(kAscVersion + 2) == 1, "CONTROL reads the V8 constant 1");
+    check(mem.read8(kAscVersion + 3) == 1, "FIFO MODE reads the V8 constant 1");
+    mem.write8(0x50F14000, 0x5A);                    // FIFO A window
+    check(mem.read8(0x50F14000) == 0, "FIFO window reads 0, not classic RAM");
+    mem.read8(kSndCtrl);                             // drain SOUND_BUSY
 }
 
 // ── B. Port E bit 2 edge → onCpuReset, on the real 68HC05 core ─────────

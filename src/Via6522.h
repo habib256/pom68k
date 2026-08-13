@@ -12,6 +12,7 @@
 
 #pragma once
 #include "SaveState.h"
+#include <algorithm>
 #include <cstdint>
 
 class Via6522 {
@@ -104,6 +105,34 @@ public:
     }
     bool extShiftCB2Out() const { return (sr_ >> 7) & 1; }
     void loadSRDevice(uint8_t v) { sr_ = v; }   // device presents a byte, no IFR
+    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // φ2 (E-clock) ticks until this VIA can next change observable state ON
+    // ITS OWN — 0x7fffffff when it cannot. Only three things in tick() flip
+    // a line or an IFR bit without a bus access: a T1 underflow (always in
+    // free-run, only while armed one-shot), a T2 underflow in timer mode
+    // while armed, and a shift-register byte completing. Everything else a
+    // guest can observe (counter reads, PB7 under ACR7, port levels) needs
+    // a bus access, and an access forces a flush before it is served.
+    //
+    // This is DELIBERATELY not "the next E tick". A bound of one E tick is
+    // always safe but says nothing: it would wake the whole device fan-out
+    // 783 360 times a second whatever the VIA is doing. A T1 counting a few
+    // thousand E ticks — the Time Manager's normal state — genuinely has
+    // nothing to say until it underflows, and saying so is what lets the
+    // deadline beat a fixed batch instead of losing to it.
+    //
+    // Waking EARLY only costs time; waking late changes emulated time. When
+    // in doubt this must round down.
+    int cyclesToNextEvent() const {
+        int best = 0x7fffffff;
+        // t1_/t2_ hold "ticks remaining minus one": tick(n) underflows when
+        // the counter goes negative, i.e. at n = counter + 1.
+        if ((acr_ & 0x40) || t1armed_) best = std::min(best, int(t1_) + 1);
+        if (!(acr_ & 0x20) && t2armed_) best = std::min(best, int(t2_) + 1);
+        if (shiftCount_ > 0) best = std::min(best, shiftCount_);
+        return std::max(best, 1);
+    }
+
     uint8_t acr() const { return acr_; }
     uint8_t srValue() const { return sr_; }
     // Q6: true when the HOST (guest CPU) has written the SR since the last

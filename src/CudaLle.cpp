@@ -224,6 +224,16 @@ void CudaLle::i2cWire(bool scl, bool sda) {
     i2cSda_ = sda;
 }
 
+// The machine action a firmware RESET_SYSTEM ($11) performs: pull the host
+// /RESET line. Factored out of the PC3 handler above so the shipped path and
+// any caller run the SAME code — a gate can drive a restart without
+// synthesising a full Cuda VIA transaction, and what it drives is not a
+// stand-in for the real thing but the real thing. The power-on filter stays
+// at the call site: this is the action, not the decision.
+void CudaLle::hostReset() {
+    if (onCpuReset) onCpuReset();
+}
+
 void CudaLle::mcuPortWrite(int p, uint8_t v) {
     if (onMcuPortWrite) onMcuPortWrite(p, v);
     switch (p) {
@@ -286,7 +296,7 @@ void CudaLle::mcuPortWrite(int p, uint8_t v) {
                 // yet, exactly as MscMemory.cpp:86-87 notes for the PG&E.
                 const bool restart = !held_;
                 held_ = false;
-                if (restart && onCpuReset) onCpuReset();
+                if (restart) hostReset();
                 if (!pramInstalled_) {   // slap staged PRAM into live RAM
                     for (int i = 0; i < 256; i++)
                         mcu_.setRamByte(0x100 + i, stagedPram_[i]);

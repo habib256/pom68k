@@ -39,12 +39,17 @@ de finding non traité. Deux exemples des extrêmes — **#46 a été RÉFUTÉ**
 (`M68hc05.cpp:120`, `tests/m68hc05_test.cpp:188` : le latch 6805 de POM68K est
 correct) et **#21-#23 ont leur propre gate**, `via6522_parity_test`.
 
-**Les 13 actions du § 3 sont faites, sauf une moitié.** Seule reste ouverte la
-partie **Egret/Cuda de l'action 9** : `CudaLle.cpp:273-297` ne fait toujours que
-relâcher le hold de boot sur PC3, donc un `RESET_SYSTEM $11` firmware n'atteint
-jamais le 68030 — le chemin « Redémarrer » du Finder. La moitié Duo est faite
-(`PgePmu::onCpuReset`, `PgePmu.h:71` → `PgePmu.cpp:338` → `MscMemory.cpp:88`).
-Détail et condition de fermeture : `LLE_VS_HLE.md` § 1.9.
+**Les 13 actions du § 3 sont faites** — la dernière moitié, la partie
+Egret/Cuda de l'**action 9**, a fermé le 2026-08-13. Un `RESET_SYSTEM $11`
+firmware atteint désormais le 68k sur les **six** plateformes portant un
+Egret/Cuda LLE (V8, Sonora, VASP, RBV, Q605, Q630 — le Centris n'a pas
+d'Egret et l'Eclipse tourne sur celui HLE, sans seam). Reset **différé** par
+construction : le handler PC3 décide, `CudaLle::hostReset()` agit, la machine
+réarme son overlay et verrouille `restartPending_`, le wrapper CPU consomme
+le verrou à une frontière de run — jamais dans le callback mémoire, qui
+resetterait le MCU en pleine instruction. Même contrat que la moitié Duo
+(`PgePmu::onCpuReset` → `MscMemory.cpp:88`). Gate : `cuda_restart_test`
+(22 checks, les deux saveurs). Détail : `LLE_VS_HLE.md` § 1.9.
 
 **Ce que ce fichier garde donc :** les citations MAME `fichier:lignes` (le coût de
 re-dérivation), les verdicts par puce du § 2, et la liste « POM68K plus riche »
@@ -269,9 +274,9 @@ complet a atterri) — reflété dans les findings.
 **Bug-suspect** : table #1 (medium) ; #42, #43, #44.
 
 **Simplifications** :
-- Mode wavetable classique = stub silence, registres wavetable 2/3 perdus (`regs_[0x20]`) — **medium** ; **inventorié depuis le 2026-08-12** à `LLE_VS_HLE.md` § 1.7 (c'est la seule simplification audio avec un oracle : MAME l'implémente et embarque le dump ASCTester).
+- ~~Mode wavetable classique = stub silence, registres wavetable 2/3 perdus (`regs_[0x20]`)~~ — **FERMÉ le 2026-08-13** (F5) : moteur 4 voix d'après `asc.cpp:248-281`, oscillateurs phase/incrément 24 bits en état propre (les paires `$821-$82F` étaient *hors* de `regs_`, d'où la perte constatée par l'audit), relecture reconstruite depuis les valeurs vives comme MAME. Sérialisés → format de snapshot **v5**. Gate : `asc_test` (+16 checks).
 - IRQ idle-empty-cycle classique (dérivée QEMU) inexistante chez MAME et sur le dump IIci — **condition de réouverture écrite depuis le 2026-08-12**, `LLE_VS_HLE.md` § 1.7 (soit un binaire réel qui en dépend, soit la retirer derrière un flag et vérifier que `asc_test` reste vert).
-- Duo : AscV8 `$E8` au lieu du variant MSC `$E9` (clone exact, TODO in-file).
+- ~~Duo : AscV8 `$E8` au lieu du variant MSC `$E9`~~ — **FERMÉ le 2026-08-13** (F3), et ce n'était pas « un octet » : `classic()` testait `version_ != 0xE8`, donc la valeur honnête aurait reclassé le Duo en cellule discrète Mac II (FIFO B stéréo, MODE/CONTROL inscriptibles, fenêtres FIFO mappées). Le prédicat désigne désormais la seule pièce classique (`version_ == 0x00`), ce que dit la hiérarchie MAME (`asc_msc_device : asc_v8_device`, `get_version()` seul redéfini). Gate : `msc_parity_test` (+5 checks).
 
 **Cosmétique** : ports FIFO 16 bits IOSB non modélisés (non câblés chez MAME non plus) ; largeur du fichier registres (lectures hors blocs → 0 vs backing store complet).
 
@@ -303,7 +308,7 @@ comme glue.
 **Bug-suspect** : table #46, #47.
 
 **Simplifications** :
-- **Ligne reset PC3 = seul le release de boot** : un RESET_SYSTEM (`$11`) piloté par firmware n'atteint jamais la machine (Egret surtout ; le Cuda de MAME a son propre quirk symétrique) — **medium** ; **inventorié depuis le 2026-08-12** à `LLE_VS_HLE.md` § 1.9, et c'est la moitié encore ouverte de l'action 9 (§ 3). Sorties PC2 NMI et PA4 DFAC également absentes, même raison : aucun consommateur.
+- ~~**Ligne reset PC3 = seul le release de boot**~~ — **FERMÉ le 2026-08-13** (F4/action 9) : le `RESET_SYSTEM $11` atteint le 68k sur les six plateformes à Egret/Cuda LLE, reset différé, gate `cuda_restart_test`. Sorties PC2 NMI et PA4 DFAC toujours absentes, pour la raison que cette entrée n'a plus : aucun consommateur.
 - Timer programmable fixé à 512 cycles quel que soit le rate PLL (le cheat rate-2→3 partagé rend ça invisible pour le firmware expédié).
 - DFAC2 = ACK I2C seulement, audio non routé dans l'atténuateur (`LLE_VS_HLE.md` § 3, « The Cuda's I2C bus and its DFAC2 » — c'est la parité MAME, dont le `dfac2_device::write_data` ne fait que logger ; la parité *stricte* muterait ces machines).
 - Egret.cpp : HLE totale du transport, fallback uniquement (§ 1.9).

@@ -193,6 +193,22 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
         if (!egretLleOn_)
             pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
     }
+    // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED on
+    // purpose: this fires from inside viaWrite(), i.e. from a memory
+    // callback under the CPU, and V8Memory::reset() would reset the very
+    // MCU that is mid-instruction issuing it. Latch here, act in
+    // Cpu030::runCycles. Only the address map comes back — the devices,
+    // the PRAM and the MCU keep running, which is what the /RESET line
+    // does on the board (the gate array and the CPU are on it; the Egret
+    // is the one pulling it). The overlay's own clear re-runs
+    // applyRamConfig, so dropping the RAM windows here reproduces the
+    // power-on order exactly.
+    egretLle_.onCpuReset = [this] {
+        overlay_ = true;
+        simmMapped_ = mbMapped_ = false;
+        jitMapChanged();
+        restartPending_ = true;
+    };
     reset();
 }
 
@@ -234,6 +250,7 @@ bool V8Memory::loadRom(const std::vector<uint8_t>& data) {
 
 void V8Memory::reset() {
     overlay_ = true;
+    restartPending_ = false;         // a cold reset supersedes a warm one
     config_ = 0;
     videoConfig_ = 0;
     sccIrq_ = false;

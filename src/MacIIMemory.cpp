@@ -709,6 +709,54 @@ uint8_t MacIIMemory::peek8(uint32_t addr) const {
     return 0xFF;
 }
 
+int MacIIMemory::cyclesToNextEvent() const {
+    int best = 0x7fffffff;
+    auto tighten = [&best](int64_t cycles) {
+        if (cycles < 1) cycles = 1;
+        if (cycles < best) best = int(cycles);
+    };
+
+    // The two 6522s run on the board's φ2 = C15M / 20 (an exact integer
+    // ratio here, unlike the 040 boards' fractional accumulator). Their own
+    // bound is in E ticks, so bridge it: N E ticks land N*20 - viaPhase_
+    // CPU cycles from now.
+    const int viaTicks = std::min(via1_.cyclesToNextEvent(),
+                                  via2_.cyclesToNextEvent());
+    if (viaTicks != 0x7fffffff)
+        tighten(int64_t(viaTicks) * 20 - viaPhase_);
+
+    // The ADB transceiver, LLE ONLY: the PIC1654S's own 460.8 kHz clock,
+    // which is the binding source on this board (~34 CPU cycles). The HLE
+    // byte model deliberately does NOT get a say — its bound is a flat 1
+    // whenever no transaction timer is armed, meaning "I might act at any
+    // moment", and honouring that would collapse the deadline to a flush per
+    // cycle. The fallback keeps its historical batch instead, which is both
+    // its former cadence and the rule the other platforms follow
+    // (TODO § 4: "the explicit HLE fallback keeps its historical batch").
+    if (adbVia_.lle()) tighten(adbVia_.cyclesToNextEvent());
+
+    // Sound drain, and the SCC's live countdowns (infinite when idle).
+    tighten(asc_.cyclesToNextEvent());
+    tighten(scc_.cyclesToNextEvent());
+
+    // The mouse flips SCC DCD and VIA port lines between accesses.
+    tighten(mouse_.cyclesToNextEvent());
+
+    // The two board timers: the 60 Hz VBL into VIA1 CA1, and the RTC's
+    // one-second tick into CA2.
+    tighten(kCpuHz / 60 - tickAcc_);
+    tighten(kCpuHz - secAcc_);
+
+    // NOT bounded here, deliberately: the IWM and the Sony drives (pure
+    // state — spin angle and nibble position — which no line reflects until
+    // a register is read, and a read forces a flush), and NuBus cards (the
+    // Toby's VBL reaches the CPU through a slot IRQ, but no card in the tree
+    // raises one between accesses today). Both are held to the old cadence
+    // by the wrapper's batch cap; give them a real bound the day one of them
+    // gains a spontaneous line.
+    return std::max(best, 1);
+}
+
 void MacIIMemory::tick(int cpuCycles) {
     tickCalls_++;
     viaPhase_ += cpuCycles;

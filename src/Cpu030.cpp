@@ -86,6 +86,12 @@ void Cpu030::didChangeCACR(moira::u32 value) {
 }
 
 void Cpu030::runCycles(moira::i64 n) {
+    // The Egret/Cuda firmware asked for a host reset (RESET_SYSTEM $11, the
+    // Finder's "Restart"). Apply it HERE, at a run boundary, never from
+    // inside the memory callback that raised it — same contract as the
+    // Duo's PMU wake (MscCpu.cpp:59). The machine has already re-armed its
+    // ROM overlay, so this fetch takes the reset vectors out of ROM.
+    if (mem_.consumeRestart()) reset();
     if (fpuLog_) {                 // single-step so the PC ring stays current
         // runCycles(n) is a budget of n MACHINE cycles — the normal path below
         // multiplies by cacheBoost_ and flushTicks() divides by it, so running

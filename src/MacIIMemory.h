@@ -88,6 +88,15 @@ public:
     int  iplLevel() const;
     void tick(int cpuCycles);
 
+    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // CPU cycles until the earliest moment any device here can change
+    // observable state on its own. Conservative by contract: a bound that is
+    // too small only costs time, one that is too large moves emulated time.
+    // Devices with no bound of their own (IWM, the drives, NuBus cards) are
+    // covered by the wrapper's cap at the historical batch, so this can only
+    // ever refine the old fixed cadence, never coarsen it.
+    int cyclesToNextEvent() const;
+
     Via6522& via1() { return via1_; }
     Via6522& via2() { return via2_; }
     NuBus& nubus() { return nubus_; }

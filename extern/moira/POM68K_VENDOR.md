@@ -123,8 +123,9 @@ gate in the last column of each row.
 | 21 | **External /BERR on the plain 68020** (queue refill, access capture, guarded restores) | `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h` | the Mac LC ROM's 32-bit probe died in a DS-1 Sad Mac | `lc_boot_etalon` |
 | 22 | **JIT seam** — fetch window (040/030/020 + the cycle-exact 68000 flavour), data TLB (with the per-slice `codeMask`), probes, `pomJitExecOne`, layout, ATC-eviction hook, bus-stall hook, `PomJitTiming` probe | `Moira.h`, `Moira.cpp`, `MoiraExecMMU_cpp.h`, `MoiraDataflow_cpp.h` | the second execution engine drives this object from `src/jit/` | `jit_lockstep_test`, `jit_system_boot_etalon` |
 | 23 | **Save-state seam** `pomFlushAtcs()` | `Moira.h` | a restored snapshot replaces the page tables under live ATCs | `savestate_030_test`, `savestate_040_test` |
+| 24 | **68010-only `readBuffer`/`writeBuffer`** — `pomSetRB<C>`/`pomSetWB<C>` setters; the store compiles away off the C68010 core, argument side effects (the address-error dummy `readM`) preserved | `Moira.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h` | the buffers are 68010 format-$8 frame state and no Mac is a 68010; maintained on every core they made snapshot bytes depend on JIT arming history | `savestate_040_test` |
 
-Rows 2-21 are the accuracy work; rows 22-23 are pure seams (inert when nothing
+Rows 2-21 are the accuracy work; rows 22-24 are pure seams (inert when nothing
 arms them). The twelve files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.*` (2), `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
@@ -1576,6 +1577,77 @@ JIT is approximate. Gated by `tests/cache040_test.cpp` (44 checks,
 incl. MMU-on resolver paths against real page tables and a /BERR
 descriptor chain); `sst68040` and the JIT lockstep suite run green
 with the flag armed.
+
+## 68010-only exception-frame buffers (2026-08-12, savestate determinism)
+
+`readBuffer`/`writeBuffer` have exactly one architectural consumer:
+`writeStackFrame1000`, the 68010 format-$8 bus/address-error frame
+(`MoiraExceptions_cpp.h:134/140`, asserted `C == Core::C68010`). Upstream
+nevertheless maintains them on **every** core — one store per memory write in
+`writeOp`, one per extension-word fetch — because a single dataflow serves
+all three cores.
+
+That convenience broke save-state determinism the day the JIT became the
+68040 default (2026-08-10): the JIT's contract deliberately excludes the
+buffers (they are guest-invisible on every Mac model), so their serialized
+value depends on **when the JIT was armed** — a restore calls
+`pomJitDisarm()`, the post-restore interpreted warm-up window stamps
+`writeBuffer` with live loop data, and `savestate_040_test` § determinism
+failed on all five 040 families at CPU-chunk offset 256 (the `writeBuffer`
+field; `readBuffer` only matched by accident, tracking the loop-invariant
+extension word). Interpreter-forced runs were green — the divergence was the
+engine asymmetry, not the container.
+
+The fix removes the asymmetry at its root: two `pom*` hooks in `Moira.h`,
+
+    template <Core C> void pomSetRB(u16 v) { if constexpr (C == Core::C68010) readBuffer = v; }
+    template <Core C> void pomSetWB(u16 v) { if constexpr (C == Core::C68010) writeBuffer = v; }
+
+and every producer site (12 in `MoiraDataflow_cpp.h`, 19 in
+`MoiraExec_cpp.h`, each marked `// POM68K: 68010-only`) calls the hook
+instead of assigning. Two properties matter:
+
+- **C68010 is bit-for-bit unchanged** — the hook performs the identical
+  store there, so the 68010 frame keeps its exact contents.
+- **Side effects survive on every core.** Several sites read the bus into
+  the buffer (`readBuffer = (u16)readM<...>(ea & ~1)` — the address-error
+  dummy read). A hook *argument* is always evaluated; only the dead store is
+  elided, so bus traffic and cycle accounting are untouched on 68000/020+.
+
+Gate: `savestate_040_test` (all five 040 rigs green under the default
+`jit/auto` **and** under `POM68K_CPU_ENGINE=interp`). `sst68000` pins that
+the cycle-exact 68000 core is unaffected.
+
+**Follow-up audit, 2026-08-13 — does `writeBuffer` have siblings?** The
+defect's class is "a serialized field the interpreter maintains and the JIT
+does not". Two things were established, both by experiment rather than by
+reading:
+
+- **The restore-determinism check IS the detector for this class, and every
+  machine family has one** — `savestate_68k_test` (Plus, SE, **Mac II**),
+  `savestate_v8_test` (LC II), `savestate_030_test` (Sonora, VASP, RBV,
+  RBV-IIci, IIfx, Duo) and `savestate_040_test` (Q605, Centris, Q700, Q900,
+  Q630). Restoring the pre-fix behaviour makes all five 040 rigs fail again
+  at the same byte, so the detector demonstrably bites. `jit_lockstep_*`
+  does **not** cover the class: it compares registers, the three stacks, the
+  clock, 2 KB of RAM and a dozen IPL fields — not the chunk.
+- **A direct interpreter-vs-JIT chunk diff finds nothing, and that is not
+  the reassurance it looks like.** Running the two engines side by side for
+  the same cycles produced identical chunks even with the defect restored,
+  because the JIT's fallback path executes through the interpreter: a store
+  that falls back still writes the buffer. The asymmetry only shows when the
+  PROPORTION of interpreted execution differs between two runs — which is
+  exactly what a restore creates by disarming the JIT. Do not replace the
+  determinism check with an engine diff; the engine diff is the weaker
+  instrument.
+
+The residual risk is bounded by the same structural fact: the JIT only
+diverges on instructions it emits **natively**, and those are the integer
+moves, ALU ops and branches. Serialized fields reachable only through
+exceptions, traces, the FPU or the PMMU are executed by the same interpreter
+under both engines. `tests/CpuChunkMap.h` now names the field behind a
+divergence offset, so the next occurrence reports "CPU chunk +256 =
+writeBuffer" instead of "byte 312".
 
 ## Model support in this copy (`MoiraTypes.h`)
 

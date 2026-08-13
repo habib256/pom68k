@@ -11,8 +11,8 @@ re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
   somewhere.** On the AArch64 dev host with `POM68K_JIT_BACKENDS=auto`:
-  **183 gates** — 92 `unit`, 9 `smoke`, 29 `jit`, 42 `m040`, 91 `etalon`
-  (12 of them `etalon-core`). On any other host, **181** — 90 `unit`,
+  **185 gates** — 94 `unit`, 9 `smoke`, 29 `jit`, 42 `m040`, 91 `etalon`
+  (12 of them `etalon-core`). On any other host, **183** — 92 `unit`,
   8 `smoke`, 27 `jit`: `jit_lockstep_a64_coarse_test` and
   `jit_lockstep_030_a64_experimental_test` are registered only under
   AArch64 + `auto` (`CMakeLists.txt:1459-1476`), and the first also joins
@@ -273,20 +273,6 @@ ciblés verts, tier `etalon` complet vert.
 
 ## 1. Red now
 
-- [ ] **`savestate_040_test` is RED, and was not listed here** (found
-  2026-08-12 on an x86-64 Linux host, gcc 13.3, no LTO). Five failures, all
-  one symptom: *"q630 determinism: 150k cycles after a restore match"* —
-  first divergence at byte 312 of 6983. Save, load and byte-identical
-  re-save all pass, so the container and the visit() coverage are fine; what
-  diverges is the machine's *behaviour* over 150k cycles after a restore, on
-  the Q630/Valkyrie platform. **Verified pre-existing**: the identical
-  failure, at the identical byte, reproduces on a pristine `main` tree, so
-  it is neither this session's documentation work nor its code fixes.
-  Unknown whether it is host-specific — it has never been run here before,
-  and the last recorded full run (2026-08-07) was green on the dev host, so
-  reproduce on AArch64 before assuming a regression. First suspect: a device
-  whose state is restored but whose *derived* timing is not (Valkyrie's I2C
-  pixel clock feeds the frame clock — `Valkyrie.h`, `Q630Memory.cpp:73`).
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
   — reported in the GUI, and **NOT reproduced headless**: judged on the
   desktop (the mounted volume's icon, screen-diff) rather than on
@@ -306,8 +292,13 @@ ciblés verts, tier `etalon` complet vert.
   whether ASC renders audible output *correctly* is still untested
   (`q605_asc_test` covers registers/IRQ, not sound). Low-priority ASC item.
 
-*(Nothing else is red — the two items above and `savestate_040_test`.
-Resolved and worth one line each: the IIfx etalons
+*(Nothing else is red — the two items above.
+Resolved and worth one line each: `savestate_040_test` (2026-08-12 (later) —
+not Valkyrie and not one platform: all five 040 families diverged at CPU-chunk
+offset 256, `writeBuffer`, a 68010-frame field the interpreter maintained on
+every core and the JIT does not, exposed when `jit/auto` became the 68040
+default on 2026-08-10; the buffers are 68010-only in the fork since patch
+group 24, both engines now agree by neither touching them); the IIfx etalons
 (2026-08-06 — a corrupted `hdv/MacOS-7.6-boot.vhd`, `drVolAtrb = $0000`, not a
 code regression; deleted, the gates fall back to `GISTPERSO-boot.vhd`); the
 800K-GCR-on-boosted-030 refusal (2026-08-05 — the floppy boost gate);
@@ -617,22 +608,15 @@ NON-CONFORMANT notice at every HLE ADB entry) because MCU dumps are
 non-distributable; deletion would be a deliberate "POM68K requires MCU dumps"
 product decision, not a cleanup.
 
-- [ ] **The Finder's "Restart" is a no-op on every Egret/Cuda machine.** The
-  firmware's `RESET_SYSTEM` ($11) pulses PC3 a second time, and
-  `CudaLle`'s PC3 handler only cleared the boot hold: the 68k is never reset
-  and the ROM overlay never re-armed, so "Restart" resumes stale state. The
-  seam now exists and is correctly edged — `CudaLle::onCpuReset`, fired only
-  on a release that is *not* the power-on one (2026-08-12) — but it is
-  **unbound on all eight Egret/Cuda platforms**, so behaviour is unchanged
-  until someone binds it. Binding is not a one-liner: it fires from inside
-  `viaWrite()`, and every platform's `reset()` calls `egret_.reset()` /
-  `cuda_.reset()` (`V8Memory.cpp:259`, `SonoraMemory.cpp:109`,
-  `Q605Memory.cpp:134`), so a direct binding re-enters and resets the MCU
-  mid-instruction. Needs: a **deferred** reset (latch in the handler, act at
-  the next `tick()` boundary), one binding per platform, and a gate that
-  drives $11 and asserts the overlay is back. The working twin is the PG&E's
-  (`PgePmu::onCpuReset` → `MscMemory.cpp:88`), which is why the Duo restarts
-  and nothing else does. Origin: MAME parity audit action 9, half done.
+- [x] **The Finder's "Restart"** — **done 2026-08-13** on the six platforms
+  that carry an Egret/Cuda LLE (V8, Sonora, VASP, RBV, Q605, Q630; the old
+  "eight" counted Centris, which has no Egret, and the Eclipse, which runs
+  the HLE one). Deferred latch + per-platform binding + `cuda_restart_test`
+  (22 checks, both flavours). Detail: `docs/LLE_VS_HLE.md` § 1.9.
+  *Still open here*: a **guest-level** etalon that boots a System, picks
+  Finder → Redémarrer and asserts the machine comes back up. The gate that
+  landed proves the seam end to end from the firmware's own action; it does
+  not prove the Toolbox path that leads to it.
 - [ ] **Quadra 605 / LC 475**: expand Cuda commands only from ROM/driver
   traces; accurate 040 timing and on-chip-FPU/FPSP behaviour as separate
   oracle-gated milestones. *(Cache copyback/snooping is no longer part of this
@@ -713,11 +697,27 @@ to fall back to 1**:
 | 60.15 Hz CA1 | `ceil((kCpuHz*100 - tickAcc_) / 6015)` | ~416 000 |
 | `Dafb` VBL | from `framePos_` | ~416 000 |
 
-Deliberately NOT converted, each for a stated reason — **and each still open
-if someone wants it**: the **compacts** (cycle-exact by construction; a
-deadline there risks the Plus's whole accuracy claim for the cheapest machine
-to emulate), the **Mac II family**, the **IIfx** (two IOPs always executing →
-the fan-out is intrinsic) and **MSC**. The IIci is the delicate one of the
+**Extended 2026-08-13, and the extension is OPT-IN because it was measured.**
+`Cpu020` (Mac II family) and `MscCpu` (Duo) now carry the deadline behind
+`POM68K_MACII_EVENT=1` / `POM68K_DUO_EVENT=1`; the default stays the
+historical batch. One binary, knob flipped between runs: Mac II
+65.28/66.37 s against 57.18/56.49 s (**+14.2 %/+17.5 %**, repeated), Duo
+109.49 s against 100.50 s (**+9.0 %**) — every run reaching the Finder with
+the Mac II etalon's three observables identical either way. The deadline is
+strictly more correct (jitter → 0) and its correctness is invisible to every
+gate we have, so defaulting it on would be the ASC-scheduler mistake again
+(§ 0·A, withdrawn on a throughput regression despite seven green gates).
+Full reasoning and the per-board bounds: `docs/LLE_VS_HLE.md` § 1.2.
+→ Flip either default once a **jitter-sensitive gate** exists to justify it.
+
+Deliberately NOT converted, each for a stated reason: the **compacts**
+(cycle-exact by construction; a deadline there risks the Plus's whole
+accuracy claim for the cheapest machine to emulate) and the **IIfx** —
+whose reason is now **verified, not assumed**: `ApplePic::tick` steps one
+65C02 instruction per iteration with no idle state, so
+`ApplePic::cyclesToNextEvent()` is 1 always (`ApplePic.h:89`) and a deadline
+would collapse to a flush per cycle, replacing a 64-cycle batch with the
+worst case. The IIci is the delicate one of the
 converted set — `adbVia_.tick` + `syncTo(machineClock())` every tick is a
 host-paced PIC transport, so derive its bound from the live countdowns before
 touching anything (`pom68k-mcu-lle-clock-drift` applies).

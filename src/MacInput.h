@@ -63,6 +63,19 @@ public:
     bool x1 = false, y1 = false;     // → SCC DCD A / B
     bool x2 = false, y2 = false;     // → VIA PB4 / PB5
 
+    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // CPU cycles until the next quadrature edge — the mouse flips SCC DCD
+    // and VIA port lines spontaneously, so it owes a bound. With nothing
+    // queued it cannot move on its own; a host delta arriving later is
+    // served at the next deadline, which the wrapper caps at the historical
+    // batch, so the added latency is bounded by that batch and not by this
+    // infinity.
+    int cyclesToNextEvent() const {
+        if (dx_ == 0 && dy_ == 0) return 0x7fffffff;
+        const int left = kStepCycles - phase_;
+        return left > 0 ? left : 1;
+    }
+
     // ── Save states (SaveState.h contract) ──────────────────────────────
     // Queued deltas, quadrature phase and the live line levels all travel:
     // a restore mid-gesture must not step the wrong direction.

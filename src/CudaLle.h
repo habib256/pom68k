@@ -67,6 +67,12 @@ public:
     // gate; TODO § 4 carries it. (2026-08-12)
     std::function<void()> onCpuReset;
 
+    // The action a firmware RESET_SYSTEM performs — pull the host /RESET
+    // line. The PC3 handler calls exactly this once it has decided the
+    // release is a restart and not the power-on hold coming off, so a
+    // caller here exercises the shipped path rather than a replica.
+    void hostReset();
+
     // Host VIA1 port B outputs (machine calls on ORB/DDRB writes):
     // PB4 = BYTEACK, PB5 = TIP (both active low on a Cuda).
     void portBChanged(uint8_t pb);

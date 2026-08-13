@@ -36,7 +36,9 @@ public:
 
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
-        ar(lastPeriphClock_, periphAccum_);
+        // periphDeadline_ is scheduling state, not a cache — TODO § 4's
+        // contract names this line, and savestate_030_test catches it.
+        ar(lastPeriphClock_, periphAccum_, periphDeadline_);
     }
 
 private:
@@ -56,5 +58,7 @@ private:
     int cacheBoost_ = 4;
     int icacheMiss_ = 4;
     moira::i64 periphAccum_ = 0;
+    moira::i64 periphDeadline_ = 0;
+    void schedulePeriphDeadline();
     static constexpr moira::i64 kPeriphBatch = 128;
 };

@@ -34,15 +34,29 @@ gate. The per-chip lists live in `MAME_PARITY_AUDIT.md` § 2.x under
 | # | Simplification | Status 2026-08-12 | Gate |
 |---|---|---|---|
 | F1 | "PRAM persistence missing on 4 platforms" | **WITHDRAWN — the finding was false.** All twelve platforms declare `loadPram`/`savePram` and all twelve runners wire them (`main.cpp`, first pair `:1117`/`:1340`). The claim came from a stale `CLAUDE.md` table row, never from the code. `MAME_PARITY_AUDIT.md` § 2.2 corrected. | `rtc_pram_test` |
-| F2 | Sonora CLUT: blue-channel duplication missing in mono portrait | **OPEN.** `SonoraVideo.h` has no blue-gun path; `RbvVideo.h:66-72` has it. Intra-project inconsistency more than a simplification; trivial. | a check in an existing Sonora video test |
-| F3 | Duo: `AscV8` `$E8` instead of the MSC variant `$E9` | **OPEN.** `MscMemory.h:222` still carries the in-file TODO. Clone + version register, with the next Duo milestone. | `msc_parity_test` (exists) |
-| F4 | Egret/Cuda PC3 reset line = boot release only | **OPEN, and it is the last thread of the whole audit.** A firmware `RESET_SYSTEM $11` never reaches the 68k (`CudaLle.cpp:273-297`) — that is the Finder's *Restart*. The Duo half shipped (`PgePmu::onCpuReset`), so the pattern exists. Inventoried at `LLE_VS_HLE.md` § 1.9. | a new "Restart from the Finder" etalon on an Egret machine — **no gate walks this path today** |
-| F5 | Classic ASC wavetable mode = silence stub | **OPEN.** `Asc.cpp:124`, `:213`. The only simplification with a plausible *audible* miss (Mac II-era wavetable playback), and the one where an oracle exists: MAME implements it and ships the ASCTester dump. Inventoried at `LLE_VS_HLE.md` § 1.7. | extend `asc_test` (wavetable mode, registers 2/3, non-silent output) |
+| F2 | Sonora CLUT: blue-channel duplication missing in mono portrait | **WITHDRAWN 2026-08-13 — the finding was mis-scoped, and the behaviour was already right.** MAME applies the blue gun at the CLUT **write** (`mv_sonora.cpp:373-388` `dac_w`), keyed on the active modeline's `monochrome` flag, NOT in the decoder — and so does POM68K, in `SonoraMemory::dacWrite`. The audit looked in `SonoraVideo.h`, where MAME has no such path either. What was genuinely missing was the **gate**: no boot etalon reaches it (both LC III monitors are RGB). Now `sonora_video_test`, 11 checks, verified to bite (neutralising the blue gun fails exactly the 4 mono assertions). | `sonora_video_test` ✓ |
+| F3 | Duo: `AscV8` `$E8` instead of the MSC variant `$E9` | **CLOSED 2026-08-13 — and it was not one byte.** `classic()` tested `version_ != 0xE8`, so an honest `$E9` would have turned the Duo into the Mac II *discrete* cell: stereo FIFO B, writable MODE/CONTROL, memory-mapped FIFO windows. The predicate now names the one classic part (`version_ == 0x00`), which is what MAME's hierarchy says — `asc_msc_device : asc_v8_device` overriding `get_version()` and nothing else. Bite-checked: the old predicate fails exactly the four new V8-behaviour assertions. | `msc_parity_test` ✓ (+5 checks) |
+| F4 | Egret/Cuda PC3 reset line = boot release only | **CLOSED 2026-08-13 on the six platforms that carry an Egret/Cuda LLE** (V8, Sonora, VASP, RBV, Q605, Q630 — *not* eight: Centris has no Egret at all and the Eclipse Q900/950 run the HLE `Egret`, which has no seam and is already refused in product mode). Deferred by construction, as the trap demanded: the callback latches `restartPending_` and re-arms the overlay, and the CPU wrapper consumes it at a run boundary — the Duo's `MscCpu.cpp:59` contract. `CudaLle::hostReset()` factors the action out of the PC3 handler so the gate drives the shipped path, not a replica. | `cuda_restart_test` ✓ (22 checks, both flavours) |
+| F5 | Classic ASC wavetable mode = silence stub | **CLOSED 2026-08-13.** The four-voice engine is in (`Asc.cpp`, MAME `asc.cpp:248-281`): 24-bit phase accumulators, bits 23-15 as a 512-byte index, voices 0/1 on FIFO A and 2/3 on FIFO B with odd voices on the upper half, offset-binary samples, no FIFO IRQ. The oscillators are their own state — two of the four pairs (`$821-$82F`) live past `regs_` — so they are serialized, which moved the snapshot format to **v5**. | `asc_test` ✓ (+16 checks) |
 | F6 | Duo input through the ADB cell instead of the PMU matrix **+** PG&E NVRAM not persisted | **HALF DONE.** NVRAM persistence shipped with the 37th profile (`MscMemory.h:118-127`, `$91` power-flag scrub included). The matrix keyboard and trackball are still milestone 4 (`MscMemory.h:128-131`, `DUO_BRINGUP.md`). The original ordering advice — do it *before* the `kProfiles` row — was overtaken: the Duo shipped as a GUI profile on 2026-08-06 anyway. | the Duo milestone gates |
 | F7 | Floppy flux/PLL — ideal cells | **OPEN, step 1 of 4.** `src/FluxPll.h` is gated (`flux_pll_test`) and still read by nothing but its own test. Would also wake SWIM1's dead LS-pair correction machinery and the CSM error bits. **But** no guest symptom since the boost/denibble fix — priority *behind* the `TODO.md` test-depth pass, not in front of it. | add a flux-path read behind a flag, compared bit-for-bit against the byte path |
 
-**Recommended order, unchanged: F2/F3 → F4 → F5 → F6 → F7.** F2-F4 are
-regret-free closures. F5-F7 each deserve a dated `TODO.md` entry.
+**F2 to F5 are closed (2026-08-13), each with the gate named beside it.**
+What is left of the seven: **F6** (the Duo's matrix keyboard/trackball, still
+milestone 4 — its NVRAM half shipped with the 37th profile) and **F7** (the
+floppy flux/PLL layer, step 1 of 4, deliberately behind the `TODO.md`
+test-depth pass).
+
+Two lessons the closures paid for, both worth more than the code:
+
+- **F2 was not a defect, it was a mis-scoped reading** — the second time this
+  review has spent a slot on a finding taken from a document rather than the
+  code (F1 was the first). The behaviour had been correct since the Sonora
+  landed; what was missing was a gate. *Read the code, and say which line.*
+- **F3 was labelled "one byte" and was not.** The version byte was a
+  *behaviour selector* through `classic()`, so the honest value would have
+  silently reclassified the whole chip. A closure sized by its diff is sized
+  wrong; the bite check is what proves which.
 
 ## The standing conclusion
 

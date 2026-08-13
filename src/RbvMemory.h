@@ -160,6 +160,16 @@ public:
         drive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
+    // A firmware RESET_SYSTEM ($11) latched a warm restart (the Finder's
+    // "Restart"). One-shot: the CPU wrapper consumes it at a run boundary
+    // and resets itself there, never from inside the memory callback that
+    // raised it. Binding: this class's constructor.
+    bool consumeRestart() {
+        bool r = restartPending_;
+        restartPending_ = false;
+        return r;
+    }
+
     bool cpuHeld() const {
         // The IIci's ADB modem does not gate the CPU — it runs from power-on
         // (MAME machine_reset only holds when an Egret is present).
@@ -250,7 +260,8 @@ public:
         for (auto& d : scsiDisks_) ar(d);
         ar(totalRam_, overlay_, sccIrq_, videoConfig_, montype_);
         ar(viaAcc_, tickAcc_, c15Acc_, secAcc_, framePos_, frameCycles_,
-           vblStart_, vblState_, frameTotalLines_, frameCount_);
+           vblStart_, vblState_, frameTotalLines_, frameCount_,
+           restartPending_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -320,6 +331,7 @@ private:
     int64_t  cpuHz_;
     jit::CodeGuard* jitGuard_ = nullptr;   // JIT code invalidation
     bool overlay_ = true;
+    bool restartPending_ = false;   // firmware $11 → CPU reset at a boundary
     bool sccIrq_ = false;
     uint8_t videoConfig_ = 0;
     uint8_t montype_ = 6;            // 640×480 13" RGB

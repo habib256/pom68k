@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 216 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 220 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -15,12 +15,12 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 11 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
-| [Save states](#save-states) | 5 |
+| [Save states](#save-states) | 6 |
 | [Machine bring-ups](#machine-bring-ups) | 35 |
 | [Build, packaging and release](#build-packaging-and-release) | 3 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 11 |
-| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 4 |
-| [Cross-cutting](#cross-cutting) | 26 |
+| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
+| [Cross-cutting](#cross-cutting) | 28 |
 
 ---
 
@@ -184,6 +184,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-30** — [Save states survive the real Finder: `lcii_savestate_etalon`](CHANGELOG.md#2026-07-30--save-states-survive-the-real-finder-lcii_savestate_etalon)
 - **2026-07-30** — [Save states: the archive core + the whole LC II tree](CHANGELOG.md#2026-07-30--save-states-the-archive-core--the-whole-lc-ii-tree)
 - **2026-08-01 (late night)** — [The IIfx is the 34th profile: GUI, save states, and an input gate whose thresholds were measured, not invented](CHANGELOG.md#2026-08-01-iifx-profile)
+- **2026-08-12 (later)** — [The red savestate gate was the engine default flip, and the leak was a 68010 frame buffer](CHANGELOG.md#2026-08-12-savestate-writebuffer)
 
 ## Machine bring-ups
 
@@ -249,6 +250,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-17** — [adversarial subsystem audit: 3 correctness fixes](CHANGELOG.md#2026-07-17--adversarial-subsystem-audit-3-correctness-fixes)
 - **2026-07-22** — [`docs/LLE_VS_HLE.md` third pass: inventory re-synced to the live tree](CHANGELOG.md#2026-07-22--docslle_vs_hlemd-third-pass-inventory-re-synced-to-the-live-tree)
 - **2026-07-23** — [LLE audit: step 9 closed, the quick wins are exhausted](CHANGELOG.md#2026-07-23--lle-audit-step-9-closed-the-quick-wins-are-exhausted)
+- **2026-08-13** — [Four audit closures, and two of them were not what the audit said they were](CHANGELOG.md#2026-08-13-f2-f5-closures)
 
 ## Cross-cutting
 
@@ -278,4 +280,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-06** — [A chip-by-chip parity sweep against MAME master: 94 findings worked, and the three bugs it found were the ones nobody wrote down](CHANGELOG.md#2026-08-06-mame-parity-sweep)
 - **2026-08-10 (sixth)** — [Restartable destinations split: predecrement and brief index land; postincrement stays closed](CHANGELOG.md#2026-08-10-jit-030-restart-ea)
 - **2026-08-12** — [One opcode clears the conservative AArch64 store guard](CHANGELOG.md#2026-08-12-a64-b592-store)
+- **2026-08-13 (later)** — [The peripheral deadline reaches the last two wrappers, measures worse than the batch, and ships off](CHANGELOG.md#2026-08-13-periph-deadline-optin)
+- **2026-08-13 (third)** — [writeBuffer has no siblings, the determinism check is why, and an engine diff would have said so wrongly](CHANGELOG.md#2026-08-13-chunk-asymmetry-audit)
 

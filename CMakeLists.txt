@@ -849,6 +849,19 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(v8_video_test PRIVATE pom68k_core)
     add_test(NAME v8_video_test COMMAND v8_video_test)
 
+    # SIMPLIFICATIONS_REVIEW F4: the Finder's "Restart" — the firmware's
+    # RESET_SYSTEM reaching the 68k. Needs an MCU dump; SKIPs without one.
+    add_executable(cuda_restart_test tests/cuda_restart_test.cpp)
+    target_link_libraries(cuda_restart_test PRIVATE pom68k_core)
+    add_test(NAME cuda_restart_test COMMAND cuda_restart_test)
+
+    # SIMPLIFICATIONS_REVIEW F2: the Sonora CLUT's monochrome blue gun —
+    # applied at the DAC write on the active modeline, as MAME does, so no
+    # boot etalon (both LC III monitors are RGB) ever walks it.
+    add_executable(sonora_video_test tests/sonora_video_test.cpp)
+    target_link_libraries(sonora_video_test PRIVATE pom68k_core)
+    add_test(NAME sonora_video_test COMMAND sonora_video_test)
+
     # LLE_VS_HLE §1.1 gate, step 3: the row-range invariant — decoding a
     # frame in arbitrary row chunks must be bit-identical to one pass, on
     # every decoder and at every depth. Catches the row-offset arithmetic

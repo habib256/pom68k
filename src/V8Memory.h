@@ -217,6 +217,16 @@ public:
         drive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
+    // A firmware RESET_SYSTEM ($11) latched a warm restart (the Finder's
+    // "Restart"). One-shot: the CPU wrapper consumes it at a run boundary
+    // and resets itself there, never from inside the memory callback that
+    // raised it. See the binding in the constructor.
+    bool consumeRestart() {
+        bool r = restartPending_;
+        restartPending_ = false;
+        return r;
+    }
+
     bool cpuHeld() const {                             // power-on reset hold
         return egretLleOn_ ? egretLle_.cpuHeld() : egret_.cpuHeld();
     }
@@ -349,7 +359,7 @@ public:
            vidSpram_, vidSpramSaved_, overlay_, sccIrq_);
         ar(simmMapped_, simmOff_, simmPhys_, mbLoc_, mbSize_, mbMapped_);
         ar(viaPhase_, tickAcc_, framePos_, frameCycles_, vblStart_,
-           c15Acc_, vblState_, frameCount_);
+           c15Acc_, vblState_, frameCount_, restartPending_);
 
         if constexpr (Ar::loading) {
             // RAM and the whole address map just changed wholesale. A write
@@ -445,6 +455,7 @@ private:
     uint8_t vidSpram_[8][3] = {};            // parked video sPRAM per sense
     bool vidSpramSaved_[8] = {};
     bool overlay_ = true;
+    bool restartPending_ = false;    // firmware $11 → CPU reset at a boundary
     bool sccIrq_ = false;
     int viaPhase_ = 0;                       // CPU-cycle remainder for ÷20
     int64_t tickAcc_ = 0;                    // 60.15 Hz Bresenham accumulator
