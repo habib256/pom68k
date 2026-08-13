@@ -632,7 +632,17 @@ compares `#$2A` and dispatches through a table — the ROM's **serial
 monitor**, so it faults rather than running slow. It was first met as "the
 IIfx cannot boot twice", because the first boot's mount clears exactly that
 bit and a block-diff against the pristine file changes **exactly LBA 98 and
-nothing else**; the reset turned out to be incidental. **This rewrites 2026-08-06**, where a IIfx image that would
+nothing else**; the reset turned out to be incidental.
+
+The refusal is **not** a blanket property of the platform, and calling it
+one was too broad: on `RaSCSI-Boot-7.5.3.hdv` the IIfx boots a volume whose
+block 98 a previous run had already modified. The trigger is that bit on
+*this* volume and the 7.6-FR System it carries. Nor can the gate simply
+change image, the move that fixed the Plus and the Mac II — a double-boot
+survey of every bootable image in `hdv/` puts GISTPERSO as the only one this
+ROM boots at all (7.1 dies at 177 commands, 7.5 at 98, RaSCSI at 121, and
+`boot.vhd` runs 9516 commands without ever satisfying the signature). The
+table is in `TODO.md` § 1 so nobody repeats it. **This rewrites 2026-08-06**, where a IIfx image that would
 not boot was called corrupted: merely dirty is enough, and only the IIfx
 cares — the other eleven reboot off their own dirty volume every persist
 run.

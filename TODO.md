@@ -273,9 +273,9 @@ ciblés verts, tier `etalon` complet vert.
 
 ## 1. Red now
 
-- [ ] **The IIfx cannot boot a volume whose clean-unmount bit is clear.**
-  Isolated 2026-08-13 (sixth) down to **one boot and one bit**, and it is NOT
-  corruption:
+- [ ] **On `GISTPERSO-boot.vhd`, clearing the volume's clean-unmount bit is
+  enough to stop the IIfx booting it.** Isolated 2026-08-13 (sixth) down to
+  **one boot and one bit**, and it is NOT corruption:
 
   > Take a pristine `hdv/GISTPERSO-boot.vhd`, clear **bit 8 of `drVolAtrb`**
   > in the in-memory MDB (volume block 2 = LBA 98, offset `$0A`), and boot
@@ -283,7 +283,32 @@ ciblés verts, tier `etalon` complet vert.
   > at `pc=$40843B22`. Leave the bit alone ⇒ **FINDER**, 1397 commands.
   > No first boot, no reset, nothing else touched.
 
-  That is the whole defect. It was first met as "the IIfx cannot boot twice"
+  **But the refusal is NOT universal, and saying so was too broad**: on
+  `RaSCSI-Boot-7.5.3.hdv` the IIfx boots a volume whose block 98 the
+  previous run had already modified (`boot 2 … FINDER, SCSI 4486`). So the
+  trigger is the bit *on this volume* — the 7.6-FR System it carries — not
+  a blanket refusal by the platform. The pristine/dirty control above still
+  holds for GISTPERSO and is what pins causation there.
+
+  **No other image can carry the gate**, surveyed 2026-08-13 with a
+  double-boot probe (`boot 1` / `boot 2` on a rebuilt machine, volume
+  carried over):
+
+  | image | boot 1 | boot 2 |
+  |---|---|---|
+  | `GISTPERSO-boot.vhd` | Finder, SCSI 1397 | FAILS |
+  | `System 7.1 HD.dsk` | fails, SCSI 177 | — |
+  | `System 7.5 HD.dsk` | fails, SCSI 98 | — |
+  | `RaSCSI-Boot-7.5.3.hdv` | fails, SCSI 121 | Finder, SCSI 4486 |
+  | `boot.vhd` | signature never met, SCSI 9516 | same |
+
+  So switching the gate's image — the move that fixed the Plus and the Mac
+  II — is not available here; GISTPERSO is the only image this ROM boots at
+  all. (`boot.vhd` gets a long way, 9516 commands, and only fails the
+  signature: if it is ever worth pursuing, tune that first, do not re-run
+  the survey.)
+
+  It was first met as "the IIfx cannot boot twice"
   — the first boot's mount clears that very bit, and a block-diff against
   the pristine file changes **exactly LBA 98 and nothing else** — but the
   reset is incidental: reproduced with a CPU-only reset, with a full
