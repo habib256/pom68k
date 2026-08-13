@@ -73,13 +73,17 @@ uint32_t TobyVideo::read32(uint32_t slotOff) {
 void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
     uint32_t r = mapOff(slotOff);
     if (r >= 0xA0000 && r < 0xB0000) {
+        // MAME vbl_w (nubus_m2video.cpp:270-281): bit 2 of the offset selects
+        // disable (unconditional, IRQ line untouched) vs enable+ack. The
+        // disable was once gated on `vramWrites == 0` ("keep VBL armed after
+        // first paint", a synthetic-decl-ROM-era guard); System 7.6's video
+        // driver teardown disables the card here, then SIntRemoves its
+        // handler, then unmasks — with the disable swallowed the slot 9 line
+        // stayed asserted against an empty queue and the ROM dispatcher
+        // recursed the stack 6 MB into the system heap (the
+        // iifx_persist_etalon F-LINE storm at pc=1).
         if (r & 4) {
-            // Primary Init disables VBL before setup (`ADDA #$A0004; CLR.B`).
-            // If it never reaches the matching enable @$A0000 (trap/MAC2
-            // early return), the ROM $6DD8 wait starves. Keep VBL armed once
-            // the framebuffer has been painted.
-            if (vramWrites == 0)
-                vblDisable_ = true;
+            vblDisable_ = true;
         } else {
             vblDisable_ = false;
             vblEnableWrites++;
@@ -121,12 +125,6 @@ void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
             w = (w & ~uint32_t(0xFFu << sh)) | (uint32_t(uint8_t(~v)) << sh);
             vram_[idx] = w;
             vramWrites++;
-            // Arm VBL once Primary Init starts painting — stands in for the
-            // Decl ROM CLR.B @$A0000 that successful init would perform.
-            if (vblDisable_) {
-                vblDisable_ = false;
-                vblEnableWrites++;
-            }
             return;
         }
 }

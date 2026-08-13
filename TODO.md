@@ -273,167 +273,17 @@ ciblés verts, tier `etalon` complet vert.
 
 ## 1. Red now
 
-- [ ] **On `GISTPERSO-boot.vhd`, clearing the volume's clean-unmount bit is
-  enough to stop the IIfx booting it.** Isolated 2026-08-13 (sixth) down to
-  **one boot and one bit**, and it is NOT corruption:
-
-  > Take a pristine `hdv/GISTPERSO-boot.vhd`, clear **bit 8 of `drVolAtrb`**
-  > in the in-memory MDB (volume block 2 = LBA 98, offset `$0A`), and boot
-  > the IIfx ONCE. `$0100 → $0000` ⇒ **FAILED**, 441 SCSI commands, stopped
-  > at `pc=$40843B22`. Leave the bit alone ⇒ **FINDER**, 1397 commands.
-  > No first boot, no reset, nothing else touched.
-
-  **But the refusal is NOT universal, and saying so was too broad**: on
-  `RaSCSI-Boot-7.5.3.hdv` the IIfx boots a volume whose block 98 the
-  previous run had already modified (`boot 2 … FINDER, SCSI 4486`). So the
-  trigger is the bit *on this volume* — the 7.6-FR System it carries — not
-  a blanket refusal by the platform. The pristine/dirty control above still
-  holds for GISTPERSO and is what pins causation there.
-
-  **No other image can carry the gate**, surveyed 2026-08-13 with a
-  double-boot probe (`boot 1` / `boot 2` on a rebuilt machine, volume
-  carried over):
-
-  | image | boot 1 | boot 2 |
-  |---|---|---|
-  | `GISTPERSO-boot.vhd` | Finder, SCSI 1397 | FAILS |
-  | `System 7.1 HD.dsk` | fails, SCSI 177 | — |
-  | `System 7.5 HD.dsk` | fails, SCSI 98 | — |
-  | `RaSCSI-Boot-7.5.3.hdv` | fails, SCSI 121 | Finder, SCSI 4486 |
-  | `boot.vhd` | signature never met, SCSI 9516 | same |
-
-  So switching the gate's image — the move that fixed the Plus and the Mac
-  II — is not available here; GISTPERSO is the only image this ROM boots at
-  all. (`boot.vhd` gets a long way, 9516 commands, and only fails the
-  signature: if it is ever worth pursuing, tune that first, do not re-run
-  the survey.)
-
-  It was first met as "the IIfx cannot boot twice"
-  — the first boot's mount clears that very bit, and a block-diff against
-  the pristine file changes **exactly LBA 98 and nothing else** — but the
-  reset is incidental: reproduced with a CPU-only reset, with a full
-  `mem.reset()`, on a machine rebuilt object by object, and now with no
-  reset at all. `$40843B22` is `bra.w $408439A8`, a loop whose head reads a
-  byte, masks `#$7F`, compares `#$2A` and dispatches through a table at
-  `$40843A04` — **the ROM's serial monitor**, i.e. it faults, it is not slow.
-  This rewrites `CHANGELOG.md` 2026-08-06: the `hdv/MacOS-7.6-boot.vhd` that
-  cost two days there was diagnosed as "corrupted"; a volume merely left
-  dirty is enough to do it, and only the IIfx is affected — the other eleven
-  platforms reboot off their own dirty volume in `*_persist_etalon` without
-  complaint. Gate: `iifx_persist_etalon`, red and carrying this record; its
-  gesture half is green (`'Dossier sans titre' 10 → 12`, folder survives).
-
-  **The exception is caught** (Moira's `willExecute(M68kException, u16)`
-  delegate, recording every vector that is not an A-line trap, a TRAP #n or
-  an autovector), and the one-bit run gives the SAME signature as the
-  two-boot one, so the warm and cold paths converge:
-
-  - clean control → four BUS ERRORs at `pc=$408030B8`, `sr=$2711`, **and
-    nothing else in the entire boot**. Finder.
-  - bit cleared → **the same four**, then an endless F-LINE storm at
-    **`pc=$00000001`**, `sr=$2208`, parked in the ROM monitor.
-
-  So execution jumps to address 1 and every fetch after that is an F-LINE.
-
-  **DEAD LEAD, killed by control — do not re-open it.** The supervisor stack
-  at the first F-LINE (SP `$00003EBA`) holds return address `$40806F06`
-  under ROM frames (`$40806ED8`, `$40809B70`, `$4080280E`, …) with a `"DRV"`
-  tag, which reads exactly like the culprit. It is not. `$40806F06` follows
-  this loop:
-
-  ```
-  40806EEC  lea.l    ([$d04], d0.w * 4, $40), a1
-  40806EF4  move.l   (a1), d0        ; entry; 0 ends the walk
-  40806EF8  movea.l  d0, a1
-  40806EFC  movea.l  $8(a1), a0      ; the routine pointer
-  40806F00  movea.l  $c(a1), a1      ; its argument
-  40806F04  jsr      (a0)            ; ← this is what lands on 1
-  ```
-
-  i.e. the ROM walks a table of records anchored at the long in low memory
-  **`$D04`** and calls `record+8` on each.
-
-  Moira exposes breakpoints, so this can be read AT the call with no fork
-  change: `debugger.breakpoints.setAt(0x40806F04)` plus a
-  `didReachBreakpoint` override. Failing boot: the `jsr` is taken 60+ times
-  with `A0 = $00005F6E`, `A1 = $F9900000`, `[$D04] = $00003E88` — which
-  looks damning (a loop, a low-RAM routine pointer, an anchor that lands in
-  the stack region). **The clean control takes the same `jsr` 40 times with
-  the IDENTICAL three values and reaches the Finder.** So this call site is
-  normal, and neither the earlier "one of those pointers is 1" (inferred
-  from the stack, and wrong — the pointer is `$5F6E`) nor "the `$D04`
-  anchor is corrupt" survives.
-
-  Run the control at the same breakpoint before believing any register on
-  this path: everything here looks abnormal and is not.
-
-  A fifth attempt — a ring of the last A-line traps, to get a Toolbox-level
-  trace of what the guest was doing — is also INVALID and should not be
-  rebuilt as written: it reports 64 identical "vector 10" hits at
-  `pc=$40806EEC`, where the word is `$43F0`, the `lea` opcode, not an
-  `$Axxx` trap. The PC/vector pairing assumed by that instrument does not
-  hold; anything read from it is noise.
-  **Two attempts to dump that table failed to establish anything — do not
-  repeat them.** Post-mortem (after the boot gave up) it reads
-  `[$D04] = $00680002` with the records filled by a repeating `$6DB6DB6D`
-  pattern; re-taken INSIDE the exception delegate at the first F-LINE it
-  reads `[$D04] = $00003E88`, and `$3E88 + $40` lands **inside the
-  supervisor stack** — the "entries" printed are literally the stack bytes,
-  the same `40 80 6E C0 / 44 52 56 00 / 40 80 27 A6` the frame dump shows.
-  Both moments are already past the runaway, so neither says what the table
-  held at the `jsr`. Catching it needs a breakpoint ON `$40806F04`, not a
-  snapshot at the fault.
-  Moira's instruction delegate is compiled out except for STOP/TAS/BKPT
-  (`MOIRA_WILL_EXECUTE`, `MoiraConfig.h:89`), and sampling the PC by
-  shrinking the run quantum PERTURBS the machine — see the delay-loop
-  artefact below.
-
-  Superseded detail from the two-boot framing (kept, it is still true):
-
-  - boot 1 — **four** BUS ERRORs at `pc=$408030B8`, `sr=$2711`, and nothing
-    else in the whole boot. Reaches the Finder. VBR at each:
-    `$40802E74`, `$40840EF0`, `$40840EF0`, **`$00000000`**.
-  - boot 2 — **the same four** BUS ERRORs at the same PC, VBR
-    `$40802E74`, `$40840EF0`, `$40840EF0`, **`$40840EF0`** — then an endless
-    F-LINE storm at **`pc=$00000001`**, `sr=$2208`, `vbr=$00000000`, to a
-    halt.
-
-  The ROM's RAM-sizing probe at `$408030B8` therefore faults **by design on
-  both boots**; the VBR difference at the fourth probe is a symptom of the
-  paths having already parted, not the variable.
-
-  A power cycle says the same thing independently: build a fresh
-  `IIfxMemory` + `IIfxCpu` with zeroed RAM and carry a volume in — pristine
-  reaches the Finder (SCSI 1397), dirtied fails. So it is neither RAM state,
-  nor device state, nor the ROM overlay.
-
-  **And it is not our SCSI target.** A logging proxy in front of `ScsiDisk`
-  recorded every CDB and status of both boots: **zero non-GOOD statuses on
-  either side**. They run identically for 14 commands and part there — the
-  pristine boot READS LBA $62 (98, the MDB) and then WRITES it, which is the
-  mount clearing the clean bit; the dirty boot never does, reads elsewhere,
-  and stops after 441 commands. The guest is taking its own different path
-  on a volume it knows was not unmounted cleanly, and in our machine that
-  path does not complete.
-  Ruled out along the way: re-arming the ROM overlay before the reset
-  (`mem.reset()`) changes nothing — the overlay is dropped by the first
-  ROM-region READ (`IIfxMemory::read8Decoded`, MAME `rom_switch_r`), long
-  before the probe. And a first reading of the exception trace blamed the
-  previous session's System handlers left in RAM at
-  `BUSERR ($8) = $000294CA` — measured and real, but not the cause: the
-  faults that matter dispatch through the ROM table.
-  Next: follow the GUEST, not the bus — the System's own not-cleanly-
-  unmounted path is what diverges, and every layer under it has now been
-  cleared. Do NOT re-derive the block diff, the exception trace, the
-  pristine/dirty control or the CDB comparison; all four are above.
-  **And do not chase the delay loop.** A PC ring taken by stepping
-  `runCycles(16)` instead of a frame shows the machine parked in the ROM's
-  calibrated delay at `$40807A5A` (`move.w $d00.w,d0; mulu.w #$1f4,d0;
-  dbra`) — but that is an ARTEFACT of the small quantum, which changes the
-  peripheral interleave: at the normal frame quantum the machine halts, and
-  the constant it reads is `$D00 = $19EF`, a few seconds' worth, not an
-  eternity. Measured 2026-08-13; the stepping instrument perturbs what it
-  measures here.
+*(The dirty-volume refusal that stood here — "on `GISTPERSO-boot.vhd`,
+clearing the volume's clean-unmount bit is enough to stop the IIfx booting
+it" — is closed, 2026-08-13 (seventh): `iifx_persist_etalon` is green. It
+was never the mount path: 7.6-FR's not-cleanly-unmounted path tears the
+video driver down and reinstalls it mid-boot, and `TobyVideo` swallowed the
+teardown's VBL disable (a synthetic-decl-ROM-era guard), so the ROM's
+level-2 dispatcher recursed on an unserviceable slot 9 until the stack had
+eaten 6 MB of heap. "Stopped at pc=$40843B22" was the serial-monitor
+tombstone, and "jumps to address 1" was open bus with a wrapped PC. The
+controls, the dead leads and the storm anatomy: `CHANGELOG.md` 2026-08-13
+(seventh).)*
 
 *(The two beyond-boot reds that stood here — the Duo's frozen System clock
 and "Cmd-N never reaches the Finder on the three non-Egret/Cuda input
@@ -471,7 +321,8 @@ every core and the JIT does not, exposed when `jit/auto` became the 68040
 default on 2026-08-10; the buffers are 68010-only in the fork since patch
 group 24, both engines now agree by neither touching them); the IIfx etalons
 (2026-08-06 — a corrupted `hdv/MacOS-7.6-boot.vhd`, `drVolAtrb = $0000`, not a
-code regression; deleted, the gates fall back to `GISTPERSO-boot.vhd`); the
+code regression; deleted, the gates fall back to `GISTPERSO-boot.vhd`; the
+dirty-bit refusal underneath closed 2026-08-13 (seventh) — Toby VBL disable); the
 800K-GCR-on-boosted-030 refusal (2026-08-05 — the floppy boost gate);
 `jit_q605_boot_etalon` (2026-08-04 — `leaveToDynamic` now reloads the target
 from `at(L_.pc)`); `q605_cudalle_key_etalon` (2026-07-31 — Easy Access Slow
@@ -519,9 +370,8 @@ work.
 
 **Depth is a second axis.** **All twelve** platforms now carry the
 soak+persist pair that proves a machine *keeps* working and *writes*, and as
-of 2026-08-13 (sixth) **twelve soaks and ten persists are green**, with one
-red (`iifx_persist_etalon`, § 1 — the IIfx cannot boot a volume it has itself
-mounted once) and one SKIP that names what it cannot see (`duo_persist_etalon`
+of 2026-08-13 (seventh) **twelve soaks and eleven persists are green**, with
+one SKIP that names what it cannot see (`duo_persist_etalon`
 — the Duo creates the folder and never writes it). Counting profiles alone
 hides this axis: the IIvx was inside the nine before it could survive three
 idle minutes or create a folder, and the Quadra 630's two legs were green for
@@ -1204,7 +1054,8 @@ Milestones and the four "inherited Q700 rule" bugs it cost:
 **M4 stays deferred and LOUD**: SCSIDMA true DMA + restartable handshake is
 A/UX-only per `scsidma.cpp:12`, nothing in the Mac OS path needs it. The
 multi-ID SCSI mirror it left behind is deduped — the bug that corrupted
-`MacOS-7.6-boot.vhd`, § 1.)*
+`MacOS-7.6-boot.vhd` (`CHANGELOG.md` 2026-08-13 (seventh) for where that
+volume's story ended).)*
 
 ### Remaining machines with the ROM already in `roms/`
 
@@ -1220,7 +1071,8 @@ multi-ID SCSI mirror it left behind is deduped — the bug that corrupted
 Local, never committed (`hdv/` is gitignored): Infinite Mac copies of System 4.1
 (floppy), 5.1 / 6.0 / 6.0.8 / 7.0 / 7.1 / 7.5 / 7.5.5 HD `.dsk`, plus
 `HD20SC.vhd`, `boot.vhd` / `GISTPERSO-boot.vhd`, `MacOS-8.1-boot.vhd`.
-(`MacOS-7.6-boot.vhd` was deleted as corrupt, § 1; `runIIfx` still probes for it
+(`MacOS-7.6-boot.vhd` was deleted as corrupt — the refusal it triggered is
+closed, `CHANGELOG.md` 2026-08-13 (seventh); `runIIfx` still probes for it
 first and falls through to `GISTPERSO-boot.vhd`, `main.cpp:1450-1452`.)
 Full tree also at `../refs/infinite-mac/Images`. Missing files: fetch with
 **Scrapling** (not raw `curl` through the sandbox proxy) — `Fetcher.get` /

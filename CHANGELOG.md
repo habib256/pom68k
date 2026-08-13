@@ -282,6 +282,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-13 (seventh)** — [The IIfx dirty-volume refusal was a swallowed VBL disable, and "address 1" was open bus wearing a wrapped PC](#2026-08-13-iifx-toby-vbl-disable)
 - **2026-08-13 (sixth)** — [The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow](#2026-08-13-beyond-boot-reds)
 - **2026-08-13 (fifth)** — [Beyond-boot for the whole roster: sixteen gates, one engine, and the campaign paid twice before it was even green](#2026-08-13-beyond-boot-roster)
 - **2026-08-13 (fourth)** — [The first RBV machine past boot: the missing piece was an instrument, and its first run validated itself](#2026-08-13-iisi-beyond-boot)
@@ -507,6 +508,72 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-13-iifx-toby-vbl-disable"></a>
+## 2026-08-13 (seventh) — The IIfx dirty-volume refusal was a swallowed VBL disable, and "address 1" was open bus wearing a wrapped PC
+
+`iifx_persist_etalon` is **green** — the last red on the board. The machine
+defect § 1 carried ("the IIfx cannot boot a volume it has itself mounted
+once") was not in the mount path, not in SCSI, not in the OSS, and not even
+IIfx-specific code: `TobyVideo` was refusing to honour the guest's VBL
+**disable**, and the one guest sequence that needs it honoured is exactly
+what 7.6-FR's not-cleanly-unmounted path does.
+
+**The instrument TODO § 1 asked for closed the case in two runs.** A
+breakpoint ring at the slot-dispatch `jsr (a0)` (`$40806F04`), dumped by the
+first F-LINE:
+
+- Hit #142 — after 141 healthy ones — reads `D0=$9DB02000 A0=$FFFFFFFF
+  A1=$FFFFFFFF SP=$00003EBE`: the dispatcher walked a queue whose bytes were
+  its own stack frames, loaded `$FFFFFFFF` as a routine pointer and jumped.
+  The fetch at `$FFFFFFFF` reads open-bus `$FFFF` — an F-line opcode — and
+  the PC wraps to **1**. "Execution jumps to address 1" was never an address:
+  it was open bus with a wrapped program counter.
+- A second ring at the ROM's level-2 autovector handler (`$40809B30`) plus
+  per-frame OSS/Toby samples timed the anatomy. At SCSI command 441 — the
+  end of the dirty path's catalog scan — the guest, at mask 7, removes the
+  video driver's slot interrupt handler (queue head `$3EEC`: `$4F60 → 0`)
+  and tears the card down before putting it back. Our Toby swallowed the
+  teardown's VBL disable, so the 60 Hz tick that lands inside that window
+  asserted slot 9 against an empty queue, and the unmask met it:
+  **112 016 level-2 deliveries in 1.6 s**, one every 561 cycles, each
+  recursion $38 deeper — the supervisor stack descended **6 MB**, from
+  `$5F24F6` to `$3EEE`, through the system heap, the SlotQDT table and the
+  queue records, until the dispatcher dispatched its own frames. The ROM's
+  F-line handler then parks in the serial monitor: the `$40843B22` "stopped"
+  PC of every earlier account is the crash's tombstone, not its site.
+
+**The swallow was ours, and it was deliberate once.** `TobyVideo::write8`
+gated the `$A0004` disable on `vramWrites == 0` ("keep VBL armed once the
+framebuffer has been painted") and re-armed VBL on any VRAM write — both
+guards from the synthetic-decl-ROM era, when a Primary Init that disabled
+VBL and never re-enabled starved the ROM's VBL wait. Every Toby gate runs
+the real 342-0008-a today — the IIfx three hard-require it, the Mac II
+family's no-arg install finds the same dump in `tests/data/` — so the
+guards' reason was gone and their cost was this red. Both removed: `vbl_w`
+is now MAME parity (`nubus_m2video.cpp:270-281`) — bit 2 = disable,
+unconditional, IRQ line untouched; enable = ack + lower.
+
+With the disable honoured the whole teardown+reinstall fits inside one
+frame — the per-frame samples show head `$4F60 → $4F78` across a single
+boundary, the window's tick suppressed — and the dirty boot sails past the
+old death: deliveries run 1:1 with dispatches (8 489 = 8 489), SCSI reaches
+1 953, and the persist reboot finds the Finder in 24 s. A theory died the
+same run: a breakpoint on the ROM warm
+entry (`$4080002A`) never fired — the guest does not restart the machine on
+this path, so the RESET-instruction lead (Moira's `execReset` resets no
+peripheral) stays a curiosity, not a cause.
+
+**Board, every binary relinked first**: `savestate_030_test`,
+`iifx_soak/persist/post/input_etalon`, `iix/iicx/se30_boot_etalon`,
+`macii_post/boot/sys7_boot/mouse_etalon` — **12/12 green**, plus
+`llap_two_system_etalon` re-run after its own relink (its first pass rode a
+stale binary and proved nothing). Twelve soaks and **eleven** persists green;
+the Duo's named SKIP is the roster's only remaining gap. This closes the
+2026-08-06 story for good: the "corrupted" `MacOS-7.6-boot.vhd` and the
+"IIfx refuses a dirty volume" of the (sixth) entry were the same swallowed
+write all along — merely dirty was enough because dirty is what makes 7.6
+tear the video driver down and put it back mid-boot.
 
 <a id="2026-08-13-beyond-boot-reds"></a>
 ## 2026-08-13 (sixth) — The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow
