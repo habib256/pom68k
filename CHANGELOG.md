@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 220 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 222 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -282,6 +282,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-13 (fifth)** — [Beyond-boot for the whole roster: sixteen gates, one engine, and the campaign paid twice before it was even green](#2026-08-13-beyond-boot-roster)
+- **2026-08-13 (fourth)** — [The first RBV machine past boot: the missing piece was an instrument, and its first run validated itself](#2026-08-13-iisi-beyond-boot)
 - **2026-08-13 (third)** — [writeBuffer has no siblings, the determinism check is why, and an engine diff would have said so wrongly](#2026-08-13-chunk-asymmetry-audit)
 - **2026-08-13 (later)** — [The peripheral deadline reaches the last two wrappers, measures worse than the batch, and ships off](#2026-08-13-periph-deadline-optin)
 - **2026-08-13** — [Four audit closures, and two of them were not what the audit said they were](#2026-08-13-f2-f5-closures)
@@ -504,6 +506,101 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-13-beyond-boot-roster"></a>
+## 2026-08-13 (fifth) — Beyond-boot for the whole roster: sixteen gates, one engine, and the campaign paid twice before it was even green
+
+Every one of the twelve platform implementations now has the soak+persist
+pair registered — eight new thin gates (`compact`, `macii`, `iifx`,
+`sonora`, `duo`, `centris`, `q700`, `q630` — `*_beyond_etalon.cpp`) on one
+shared engine (`tests/BeyondBoot.h`), joining the four machines that already
+had private copies. Registry: **203 gates** (201 on x86-64), `etalon` 109,
+`m040` 48. Final board: **19 of 24 legs green**, one SKIP naming its
+milestone, four reds each carrying an evidence-backed cause in `TODO.md`
+§ 1 — none of them mysterious.
+
+**The campaign found two real defects before it was done.**
+
+- **The Duo's System clock is frozen.** 0 s on the Mac clock over 180
+  emulated seconds, read through the live PMMU tables with an instrument
+  validated at 180/180 on three other 030 machines. Cause by grep: no
+  one-second source exists from the PG&E to the host — `raiseCa2` lives on
+  five platforms and never on `MscMemory`. The GUI Duo's menu-bar clock
+  must be frozen too; nobody had looked. `duo_soak_etalon` stays red until
+  the PG&E grows its /PMU_INT one-second path.
+- **Cmd-N is inert on exactly the three non-Egret/Cuda input paths** (Plus
+  M0110, Mac II PIC1654S, IIfx IOP) while the same engine gesture creates
+  and keeps folders on all eight Egret/Cuda machines. The KeyMap probe at
+  the gesture's peak shows **Cmd and N both live in the guest**
+  (`… 20 80 …`), the volume is writable, the desktop clean — and single
+  keys work (the boot matrix dismisses CautionAlerts with Return on the
+  Mac II), and the mouse works (a click wakes the Centris display through
+  the same PIC). Working hypothesis, unverified: the keyDown *event* posts
+  without the cmdKey modifier bit — KeyMap and the event modifier word are
+  separate paths through these transceivers. Next instrument: an
+  event-queue probe. Three persist gates stay red carrying that record.
+
+**What the failures taught, in the order they were paid for:**
+
+- The **soak window is stated in CPU-time frames** — the Mac II's first red
+  was this gate's own bug (the boot etalon's 800×525 convenience quantum is
+  1.61× a real frame; 289 "seconds" on a healthy clock).
+- **System 6 Finders need an open window for Cmd-N** — the HD20SC image sat
+  under two "input failures" that were really a 6.x Finder with nothing
+  focused. The 7.x volumes changed the question into the real finding
+  above. FolderProbe knows the System 6 names now anyway.
+- **7.5.x and 8.1 black the display after ~3 idle minutes** on Sonora and
+  djMEMC-class machines (software fill, videoMode untouched — the LC III
+  read `$02` before and after). The engine grew an optional `wake` hook: a
+  user-shaped mouse wiggle and click before the final Finder check. What
+  the soak proves on such a machine includes waking from idle.
+- The persist reboot lands on the **dirty-volume alert**, which the
+  Egret/Cuda machines dismiss with a Return tap in the boot poll — and the
+  IIfx cannot, which is the same event gap as its red persist.
+- **`make target1 target2 …` without `-k` stops at the first error and the
+  later targets never build** — the fifth stale-binary phantom of the day
+  ran three pre-fix binaries through a full campaign. Every rebuild in the
+  campaign now ends with a per-binary marker check (`strings` for runtime
+  strings, mtime against the source otherwise).
+
+<a id="2026-08-13-iisi-beyond-boot"></a>
+## 2026-08-13 (fourth) — The first RBV machine past boot: the missing piece was an instrument, and its first run validated itself
+
+The IIsi has the soak+persist pair (`iisi_soak/persist_etalon`,
+`tests/rbv_beyond_etalon.cpp`) — the fourth machine with one, the first
+RAM-based-video machine, and the discharge of the oldest prerequisite in
+`TODO.md` § 2: a LOGICAL-address read of the Time global. On the RBV
+machines physical low RAM IS the framebuffer and the ROM's PMMU relocates
+logical low memory, so `peek8(0x20C)` reads desktop pixels — the trap that
+cost three rounds of a nonexistent "IIsi has no ADB" bug and kept these
+machines out of every beyond-boot gate.
+
+The instrument is `tests/Mmu030Peek.h`: a side-effect-free walk of the live
+030 page tables, mirroring `Moira::mmuWalkTables` case for case — short and
+long descriptors, the early-termination page descriptor, the D3 indirection
+rule — but reading descriptors through `peek8`, whose physical-ness is
+exactly right for them (table addresses in descriptors ARE physical). A
+test-side walk and not a call into Moira, deliberately: the live walk reads
+through the bus and its non-ptest mode writes the descriptor U/M bits — an
+instrument that answers the question by changing the answer, the Easy Access
+lesson again.
+
+**The first soak run validated the instrument by construction.** TC read
+back `$80F84500` — the documented IIsi value — and the Mac clock advanced
+**180 s in exactly 180 s of emulated frames**, with the Egret's 68HC05 at
+377.5 M cycles over those 180 s (2.097 MHz — no overclock). A wrong walk
+does not produce a clock that beats the second; it produces pixels. The
+persist leg then drove the whole write path from the guest: Cmd-N through
+the Egret firmware LLE, `Dossier sans titre` 10 → 12 in the HFS catalog
+(FolderProbe's the-count-that-changes criterion, on the French volume), a
+hard reset, and the folder still there — the catalog write reached the
+medium, not just the System's cache.
+
+The gate is also a standing regression test for the trap itself: it FAILS
+loudly if the Finder is up while the PMMU is off, instead of quietly
+reading pixels. Registry: 187 gates (185 on an x86-64 host), `etalon` 93.
+Next cheap step, recorded in `TODO.md` § 2: the IIci is now a rig clone —
+`Mmu030Peek.h` was the whole blocker for the RBV family.
 
 <a id="2026-08-13-chunk-asymmetry-audit"></a>
 ## 2026-08-13 (third) — writeBuffer has no siblings, the determinism check is why, and an engine diff would have said so wrongly

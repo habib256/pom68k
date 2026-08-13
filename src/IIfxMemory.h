@@ -118,6 +118,9 @@ public:
     Scc8530& scc() { return scc_; }
     Swim1& swim() { return swim_; }
     Ncr5380& scsi() { return scsi_; }
+    // The boot disk's image, as the sibling memories expose it (the beyond
+    // gate samples the HFS catalog through it).
+    ScsiDisk& scsiDisk(int id = 0) { return scsiDisks_[id]; }
     AdbLine& adbLine() { return adbLine_; }
     SonyDrive& internalDrive() { return drive_; }
 

@@ -1126,15 +1126,16 @@ rather than for an accelerator. Anything the overlay ever needs should
 extend it, not re-invent it.
 
 **Caveat, learned the hard way on 2026-07-29: this inventory is only worth what
-its gates are worth.** Only **9 of the 37 profiles** have any beyond-boot gate
-at all — Plus (`input_etalon`), Mac II (`macii_mouse_etalon`,
-`macii_post_etalon`), LC II (`lcii_soak/persist/launch/floppy/savestate_etalon`),
-Q605 (`q605_soak/persist/cdrom/cdboot/cdhot/ot_bind/savestate/cudalle_*` plus
-the `q605_asc/dafb/turboscsi/event_scheduler` unit tests), IIvx
-(`iivx_soak/persist_etalon`), the four machines the `family_input_etalon`
-binary serves (`lc3_`/`lc520_`/`iivx_`/`iisi_input_etalon`) and the IIfx
-(`iifx_input_etalon`, `iifx_post_etalon`). The other **28 profiles are pinned
-only by "it reached the Finder"**.
+its gates are worth.** Since **2026-08-13** the beyond-boot pair (soak +
+persist, one shared engine — `tests/BeyondBoot.h`) is registered on **every
+one of the twelve platform implementations**: 19 of the 24 legs green, one
+SKIP naming its milestone (Duo persist ← F6), four reds each carrying an
+evidence-backed cause in `TODO.md` § 1 (the Duo's frozen System clock; the
+Cmd-N event gap on the three non-Egret/Cuda input paths). The campaign found
+two real guest-visible defects before it was done, which is the § 5 argument
+made flesh: coverage finds what fidelity work cannot even see. Per-PROFILE
+depth is still thin — the pairs pin one profile per platform, and the other
+25 profiles remain boot-to-Finder only.
 
 In one day the suite produced a **false green** (a positive assertion over a
 too-wide window — KeyMap is 8 bytes, the scan was 16, so a dead ADB stack read
