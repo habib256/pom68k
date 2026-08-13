@@ -73,6 +73,11 @@ public:
     // cannot tell a mounted CD from an ignored one — the boot volume's
     // traffic drowns it (measured: 9619 vs 9618).
     long readCommands = 0, readBlocks = 0;
+    // The write half. Added for the beyond-boot persist gates, which judge
+    // on the image bytes and so cannot tell "the guest never wrote" from
+    // "the guest wrote the same bytes back" — the first is an input or a
+    // read-only-mount defect, the second is a Finder that did nothing.
+    long writeCommands = 0, writeBlocks = 0;
 
     // True when open() applied the in-memory HFS-flat → SCSI façade.
     bool flatHfsFacade() const { return hfsPrefixBlocks_ != 0; }

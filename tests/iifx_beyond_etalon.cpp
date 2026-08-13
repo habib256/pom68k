@@ -78,8 +78,23 @@ int main() {
             std::fprintf(stderr, "[finder] menu %.2f desk %.2f\n", menu, desk);
             lm = menu; ld = desk;
         }
-        // iifx_boot_etalon's signature (its 7.6-FR desktop reads up to 0.79).
-        return menu < 0.35 && desk > 0.20 && desk < 0.90;
+        // iifx_boot_etalon's signature (its 7.6-FR desktop reads up to
+        // 0.79), plus a menu-bar FLOOR. Without it the gate called the
+        // Finder up while the ROM had only painted the desktop pattern and
+        // the menu bar still held nothing but the Apple: 0.060 of ink
+        // against 0.183 once "Fichier Édition Présentation Famille Spécial"
+        // is drawn (measured on this gate's own dumps, 2026-08-13). The
+        // whole persist gesture went into that half-booted machine, opened
+        // the volume's window, and the gate reported it as a dead IOP
+        // keyboard path. An upper bound alone cannot tell an empty menu bar
+        // from a full one — only a lower bound can.
+        //
+        // The floor also covers what `lightRun` covers elsewhere, and does
+        // it better here: a modal alert DIMS the menu bar, so the ink falls
+        // below the floor on its own. Adding the run test as well made this
+        // gate's soak red — this desktop is a dark noisy 7.6-FR pattern and
+        // an ordinary Finder window on it reads as a dialog.
+        return menu > 0.12 && menu < 0.35 && desk > 0.20 && desk < 0.90;
     };
     auto boot = [&]() {
         // Early-exit poll, as the boot etalon does: the IIfx reference
@@ -92,8 +107,14 @@ int main() {
             if (f % 60 == 59 && mem.scsi().commands > 500 && finderUp())
                 return true;
             if (f >= 3000 && f % 1200 == 0) {
+                // 150 frames, the engine's hold everywhere: it outlasts a
+                // Slow Keys acceptance delay and a normal keyboard takes it
+                // just the same (pom68k-81-image-slow-keys). The 30-frame
+                // tap this used to send was below that threshold, which is
+                // why the dirty-volume alert sat at menu 0.50 / desk 0.40
+                // through the whole ceiling "despite Return taps".
                 mem.keyEvent(0x24, true);
-                for (int k = 0; k < 30; k++) cpu.runCycles(kFrame);
+                for (int k = 0; k < 150; k++) cpu.runCycles(kFrame);
                 mem.keyEvent(0x24, false);
             }
         }
@@ -124,6 +145,15 @@ int main() {
     };
     h.key = [&](uint8_t code, bool down) { mem.keyEvent(code, down); };
     h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
+    h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
+    // A CPU reset, not a machine reset — TRIED and reverted 2026-08-13.
+    // `mem.reset()` looks more faithful and is worse here: it wipes the
+    // IIfx's PRAM (`rtc_.factoryDefaults()`) and zeroes the Duo's GSC mode
+    // registers, and the guest does not rewrite the latter, so the second
+    // boot decoded at the wrong depth and the screen came back as noise
+    // while the machine was plainly alive behind it. It also did not fix
+    // what it was tried for: the IIfx's second boot fails identically
+    // either way, and even on a machine rebuilt from scratch.
     h.reboot = [&]() { cpu.hardReset(); return boot(); };
     h.dump = [&](const char* mode) {
         std::vector<uint32_t> fb;

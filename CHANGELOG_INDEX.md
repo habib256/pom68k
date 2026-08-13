@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 222 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 223 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
 | [Save states](#save-states) | 6 |
-| [Machine bring-ups](#machine-bring-ups) | 37 |
+| [Machine bring-ups](#machine-bring-ups) | 38 |
 | [Build, packaging and release](#build-packaging-and-release) | 3 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 11 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
@@ -225,6 +225,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-09 (third)** — [Six copies of the GUI ↔ machine-thread contract became one, and the thing that had never been testable got a gate](CHANGELOG.md#2026-08-09-machinehost)
 - **2026-08-13 (fifth)** — [Beyond-boot for the whole roster: sixteen gates, one engine, and the campaign paid twice before it was even green](CHANGELOG.md#2026-08-13-beyond-boot-roster)
 - **2026-08-13 (fourth)** — [The first RBV machine past boot: the missing piece was an instrument, and its first run validated itself](CHANGELOG.md#2026-08-13-iisi-beyond-boot)
+- **2026-08-13 (sixth)** — [The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow](CHANGELOG.md#2026-08-13-beyond-boot-reds)
 
 ## Build, packaging and release
 

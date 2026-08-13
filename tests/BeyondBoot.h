@@ -63,6 +63,10 @@ struct Hooks {
     // that never blanks passes with or without. The wake is part of what the
     // soak proves on such a machine: idle survival AND waking from it.
     std::function<void()> wake;
+    // Optional: blocks the guest has WRITTEN to its boot volume so far
+    // (ScsiDisk::writeBlocks). The persist flow polls it instead of
+    // budgeting a fixed number of frames for the flush — see persist().
+    std::function<long()> writes;
 };
 
 inline int soak(const Hooks& h) {
@@ -92,6 +96,10 @@ inline int persist(const Hooks& h) {
     long before[folderprobe::kCount];
     folderprobe::sample(disk, before, "before");
     const std::vector<uint8_t> snap = disk;
+    // Captured HERE, not after the gesture: the flush can land while the
+    // keys are still being held, and a counter sampled afterwards would
+    // wait for a second write that never comes.
+    const long w0 = h.writes ? h.writes() : 0;
 
     auto hold = [&](uint8_t code, int frames) {
         h.key(code, true);
@@ -104,13 +112,47 @@ inline int persist(const Hooks& h) {
     h.key(0x2D, true);                         // 'n' down, held past Slow Keys
     h.frames(75);
     if (h.probe) h.probe();                    // both keys should be live NOW
+    if (h.dump) h.dump("gesture");             // the screen AT the peak
     h.frames(75);
     h.key(0x2D, false);
     h.frames(6);
     h.key(0x37, false);
     h.frames(120);                             // rename field appears
     hold(0x24, 150);                           // Return — commit the name
-    h.frames(900);                             // ~15 s: create + flush catalog
+
+    // ── Wait for the FLUSH, do not budget for it ────────────────────────
+    // Creating the folder and landing it on the medium are two different
+    // events. The Finder's half is fast — a screen dump at the gesture's
+    // peak shows the icon already on the desktop — but the catalog, the
+    // volume bitmap and the MDB live in the File Manager's cache until
+    // something flushes the volume, and how long THAT takes is a property
+    // of the machine and its System, not a constant. The original fixed
+    // 900 frames (~15 s) was tuned on the Egret/Cuda 7.5/8.1 volumes and
+    // silently mis-judged the slower ones: the Plus and the Mac II created
+    // the folder every run and were failed for it, because the gate
+    // sampled the image before the write existed.
+    //
+    // So poll the write counter and stop at the first byte that lands.
+    // Faster than the old budget where the guest is quick, correct where
+    // it is not; a gate that cannot see the counter keeps the old budget.
+    const long kFlushCap = 7200;               // 2 emulated minutes
+    long waited = 0;
+    if (h.writes) {
+        while (waited < kFlushCap && h.writes() == w0) {
+            h.frames(60);
+            waited += 60;
+        }
+        const bool landed = h.writes() != w0;
+        // The old fixed budget, kept AFTER the first write rather than
+        // instead of it: a gate that was green on 900 frames still gets
+        // its 900 to finish the catalog + bitmap + MDB burst.
+        // 0 = the flush landed during the gesture itself, before this poll.
+        std::printf("persist: first write %ld frames after the commit%s\n",
+                    waited, landed ? "" : " — NONE within the cap");
+        h.frames(900);
+    } else {
+        h.frames(900);
+    }
 
     long after[folderprobe::kCount];
     folderprobe::sample(disk, after, "after");
@@ -128,6 +170,7 @@ inline int persist(const Hooks& h) {
     // Reboot on the modified volume — deliberately dirty (no clean unmount
     // before the reset); surviving THAT is part of what "persist" claims.
     const bool rebooted = h.reboot();
+    if (h.dump) h.dump("reboot");              // the screen it came back to
     long survived[folderprobe::kCount];
     folderprobe::sample(disk, survived, "reboot");
     const bool kept = grew < folderprobe::kCount && survived[grew] > before[grew];
@@ -164,6 +207,38 @@ inline double darkRatio(const std::vector<uint32_t>& fb, int W,
         }
     return double(dark) / (double(x1 - x0) * (y1 - y0));
 }
+
+// ── "Is a modal dialog up?" ─────────────────────────────────────────────
+// The longest horizontal run of LIGHT pixels below the menu bar. Every
+// boot signature here is a pair of dark ratios, and every one of them is
+// satisfied WITH an alert on screen — which is how three gates came to
+// send a whole persist gesture into a modal dialog that swallows keys, and
+// be read as broken input paths for it. A ratio cannot fix that: it has to
+// guess where the box is, and the first attempt sampled a band the alert
+// only half covered and passed anyway. A run length does not care where
+// the box is. Measured on the gates' own dumps: clean desktops 47 (Plus),
+// 65, 70 (Mac II) — a dither cannot hold a light run — against 381 for the
+// alert both the 7.5.5 and the 7.1 volumes open at boot. Judge at 120.
+inline int lightRun(const std::vector<uint32_t>& fb, int W, int H) {
+    int best = 0;
+    for (int y = 30; y < H - 30; y += 2) {
+        if (fb.size() < size_t(y) * size_t(W) + size_t(W)) break;
+        int run = 0;
+        for (int x = 0; x < W; x++) {
+            if ((fb[size_t(y) * W + x] & 0xFF) >= 0x80) {
+                if (++run > best) best = run;
+            } else {
+                run = 0;
+            }
+        }
+    }
+    return best;
+}
+// 200, not 120: a desktop can put two icon LABELS side by side (measured
+// 129 on a Mac II desktop carrying two volume icons in adjacent columns),
+// and that must not read as a dialog. The alert measures 381, so the gap
+// is wide either way.
+inline constexpr int kDialogRun = 200;
 
 inline void dumpPpm(const char* name, const std::vector<uint32_t>& fb,
                     int W, int H) {

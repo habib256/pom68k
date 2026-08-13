@@ -119,7 +119,10 @@ public:
     // (msc.cpp:151 + pmu_porte_w). Without roms/pge/pge_boot.bin there is
     // no PMU to do that, so the CPU runs free (the milestone-1 skeleton
     // behaviour — the ROM then stalls at the PMU handshake, loudly).
-    bool cpuHeld() const { return pmu_.active() && pmu_.cpuHeld(); }
+    // Held by the PMU at power-on, or by a full system sleep the guest
+    // asked for through power_cycle_w (msc.cpp INPUT_LINE_HALT); only the
+    // PMU's wake clears the latter.
+    bool cpuHeld() const { return (pmu_.active() && pmu_.cpuHeld()) || sleeping_; }
     PgePmu& pmu() { return pmu_; }
     bool pgeActive() const { return pmu_.active(); }
     // Clock/PRAM live inside the PMU on Duos — same forwarder shape as the
@@ -209,6 +212,7 @@ public:
         ar(totalRam_, overlay_, sccIrq_, mscConfig_, mscClockCtrl_, mscSoundCtrl_,
            pmuReq_);
         ar(viaAcc_, tickAcc_, c15Acc_, framePos_, vblState_, wakeReset_);
+        ar(powerCycle_, sleeping_);
         ar.bytes(gscRegs_, sizeof gscRegs_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
@@ -249,6 +253,8 @@ private:
     uint8_t gscRegs_[0x20] = {};     // latched; decodeScreen() reads reg 4
     bool wakeReset_ = false;         // PMU wake → CPU reset at run boundary
     bool pmuReq_ = true;             // /PMU_REQ latch (host-written PB2)
+    uint32_t powerCycle_ = 0;        // power_cycle_w byte lanes, assembling
+    bool sleeping_ = false;          // full system sleep (CPU halted)
 
     int64_t viaAcc_ = 0;
     int64_t tickAcc_ = 0;

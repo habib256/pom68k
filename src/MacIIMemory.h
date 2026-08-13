@@ -146,11 +146,18 @@ public:
     }
     bool attachScsi(const std::string& path, bool writeBack = false, int id = 0) {
         if (id < 0 || id > 6 || !scsiDisks_[id].open(path, writeBack)) return false;
-        // Mirror on every ID so StartBoot's 7→0 scan does not burn multi-
-        // second BSY waits on empty targets ($40826CC0). Deduping is left
-        // to the ROM ($B2E); we still prefer a single open image.
-        for (int i = 0; i < 7; i++)
-            scsi_.attach(&scsiDisks_[id], i);
+        // One ID, one target — the same correction IIfxMemory took on
+        // 2026-08-04, for the same reason and now with the same evidence
+        // here. This used to mirror the disk on all seven IDs so that
+        // StartBoot's 7→0 scan would not burn multi-second BSY waits on
+        // empty targets ($40826CC0), on the belief that the Mac II ROM
+        // dedupes what the IIfx ROM does not ($B2E). It does not: a screen
+        // dump after macii_persist_etalon's reboot shows SEVEN "Macintosh
+        // HD" volumes on the desktop, each carrying its own copy of the
+        // folder the gesture created — seven VCBs writing one store, which
+        // is precisely what corrupted the IIfx's 7.6 volume. The empty-ID
+        // selection timeouts are the price of a truthful bus.
+        scsi_.attach(&scsiDisks_[id], id);
         return true;
     }
     Iwm& iwm() { return iwm_; }

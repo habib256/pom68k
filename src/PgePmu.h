@@ -86,7 +86,14 @@ public:
 
     M68hc05Pge& mcu() { return *mcu_; }
     AdbBus& adb() { return adb_; }
-    void keyEvent(uint8_t code, bool down) { adb_.keyEvent(code, down); }
+    // The Duo's BUILT-IN keyboard is a matrix the PG&E scans itself, not an
+    // ADB device: rows selected on port C, columns read on port A (X0-X7)
+    // and port B bits 0-2 (X8-X10), modifiers on port B bits 3-7, all
+    // active low (macpwrbkmsc.cpp pmu_porta_r/pmu_portb_r/pmu_portc_w and
+    // its Y0-Y7 + keyb_special tables). Host codes are Mac VIRTUAL key
+    // codes, the same ones every other machine here takes; a code the Duo's
+    // keyboard does not physically have is dropped.
+    void keyEvent(uint8_t code, bool down);
     void mouseMove(int dx, int dy) { adb_.mouseMove(dx, dy); }
     void mouseButton(bool down) { adb_.mouseButton(down); }
     long pmuIntEdges = 0;                            // port F bit 2 falls
@@ -99,10 +106,21 @@ public:
            lastPortE_, lastPortF_, lastPortG_, lastPortC_, lastPortH_,
            lastMosi_);
         ar(ds2400_, adb_);
+        for (auto& r : matrix_) ar(r);       // per element: uint16_t, not bytes
+        ar(modifiers_, powerKey_);
     }
 
 private:
     void wirePorts();
+    // Selected matrix row, or -1 when the port C latch selects none — which
+    // is the POWER-KEY pseudo-row, not "nothing" (pmu_porta_r). MAME picks
+    // the LOWEST driven row when several are, so this does too.
+    int matrixRow() const {
+        const uint8_t sel = uint8_t(~lastPortC_);
+        for (int i = 0; i < 8; i++)
+            if (sel & (1u << i)) return i;
+        return -1;
+    }
 
     // Heap-allocated: the PGE carries a 32 KB SRAM; keep machine objects
     // that embed a PgePmu small.
@@ -130,6 +148,13 @@ private:
     // here: the cell IS a hardware transceiver, so the wire lives inside
     // the PG&E's silicon and the firmware only ever sees bytes.
     AdbBus adb_;
+
+    // Built-in keyboard: one bit per key, 1 = HELD. Stored positively and
+    // inverted at the port, which is the only place the active-low wire
+    // exists. matrix_[row] bits 0-7 → port A, bits 8-10 → port B bits 0-2.
+    uint16_t matrix_[8] = {};
+    uint8_t modifiers_ = 0;          // keyb_special bits 3-7, 1 = held
+    bool powerKey_ = false;          // the port A pseudo-row, bit 5
 
     // ── DS2400 battery serial, 1-Wire slave on port E bit 7 ─────────────
     // MAME machine/ds2401.cpp state machine on the MCU cycle clock

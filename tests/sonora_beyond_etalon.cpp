@@ -111,6 +111,7 @@ int main() {
     };
     h.key = [&](uint8_t code, bool down) { mem.keyEvent(code, down); };
     h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
+    h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
     h.reboot = [&]() { cpu.hardReset(); return boot(); };
     h.dump = [&](const char* mode) {
         SonoraVideo video(mem);

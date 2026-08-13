@@ -282,6 +282,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-13 (sixth)** — [The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow](#2026-08-13-beyond-boot-reds)
 - **2026-08-13 (fifth)** — [Beyond-boot for the whole roster: sixteen gates, one engine, and the campaign paid twice before it was even green](#2026-08-13-beyond-boot-roster)
 - **2026-08-13 (fourth)** — [The first RBV machine past boot: the missing piece was an instrument, and its first run validated itself](#2026-08-13-iisi-beyond-boot)
 - **2026-08-13 (third)** — [writeBuffer has no siblings, the determinism check is why, and an engine diff would have said so wrongly](#2026-08-13-chunk-asymmetry-audit)
@@ -506,6 +507,196 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-13-beyond-boot-reds"></a>
+## 2026-08-13 (sixth) — The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow
+
+Yesterday's entry (fifth) closed with four red legs, one SKIP and a single
+working hypothesis covering three of them: *the keyDown event posts without
+the cmdKey modifier bit on the non-Egret/Cuda transceivers*. It named the
+next instrument as an event-queue probe.
+
+**That hypothesis was wrong, and the instrument that settled it was a
+screen dump.** `POM68K_DUMP=1` at the gesture's peak — 75 frames after
+Cmd and N go down — shows the Mac Plus with its **File menu highlighted**
+and, 250 frames later, an `untitled folder` icon sitting on the desktop.
+The Mac II shows the same. The IIfx shows the same. Cmd-N had been working
+on all three the whole time. The KeyMap reading in the previous entry was
+accurate and the conclusion drawn from it was not: the gates were failing
+*after* the folder existed, for six unrelated reasons.
+
+**The engine could not see the difference, so it now can.** `ScsiDisk`
+gained `writeCommands`/`writeBlocks` beside its read counters, and
+`BeyondBoot.h`'s persist polls them instead of budgeting a fixed 900
+frames for the flush: "the guest never wrote" and "the guest wrote and the
+Finder did nothing" are different failures and the image bytes alone
+cannot tell them apart. It also dumps the screen at the gesture's peak and
+after the reboot, which is what made the rest of this entry findable.
+
+- **The Duo was not missing a one-second source. It was dead.** A probe
+  sampling the guest's `Time`, the PG&E's own RTC, the /PMU_INT edge
+  count, VIA1's IFR/IER and the 68030's SR and PC: the PG&E's RTC advanced
+  one per second (its 1 s timer is fine), CB1 sat latched in the IFR and
+  was never serviced, VIA1 accesses were **frozen**, and the CPU sat at
+  `$40888B14` — `bra.b *` — with **SR $2704, interrupt mask 7**, from
+  58 s after boot onwards. Disassembly of the ROM around it: the routine
+  writes `power_cycle_w` and then spins, because the reset IS its return
+  path. MAME (`msc.cpp:191-206): "CPU power down control. Expects the CPU
+  to reset after a short delay and resume" — 0 and `$5A000000` pulse the
+  CPU's reset line, anything else halts it for a full system sleep.
+  POM68K had a milestone-1 `fprintf`. Implemented (**not** re-arming the
+  ROM overlay: MAME pulses reset alone, so the vectors come from the RAM
+  at `$0` where the System parked its resume path). `duo_soak_etalon`:
+  180 s on the Mac clock. The previous entry's "no one-second source is
+  wired from the PG&E to the host, verified by grep" was a true statement
+  about `raiseCa2` and a wrong diagnosis: nothing was running to receive
+  a one-second event. The boot gate never noticed because the framebuffer
+  keeps showing the desktop the machine painted before it died.
+- **System 7.0 never flushes its volume.** The Plus created the folder on
+  every run and was failed for it: ONE write command in a whole session —
+  the mount flag — and none at all in the **two emulated minutes** after
+  the gesture. On `System 7.1 HD.dsk` the same gesture writes the catalog
+  and the folder survives the reset. Both compact legs green.
+- **A modal alert was eating the gesture, and the boot signatures were
+  blind to it.** These volumes are Infinite Mac builds: their System
+  Folder carries an alias file named `Infinite HD` (type `hdsk`, creator
+  `MACS`) to the library volume that setup normally mounts alongside, and
+  with only the System disk attached the Finder opens *"The alias
+  'Infinite HD' could not be opened"* at every boot. Nothing here is an
+  emulation defect — the volume mounts under its own correct name, and
+  the disk the alias wants genuinely is not there. But every signature on
+  the roster is a pair of dark ratios, and every one of them is satisfied
+  with that alert on screen, so the boot loops stopped tapping Return the
+  moment the menu bar appeared and the whole gesture went into a dialog
+  that swallows keys. `BeyondBoot.h::lightRun` judges it on the longest
+  horizontal light run below the menu bar instead: a dithered desktop
+  cannot hold one (measured 47-70; two adjacent icon labels reach 129),
+  an alert is 381. A ratio cannot do this — the first attempt sampled a
+  band the alert only half covered and passed anyway.
+- **The IIfx was not at the Finder when the gesture started.** Its boot
+  poll early-exits on `menu < 0.35 && desk in range`, which the ROM's
+  bare desktop pattern satisfies with a menu bar holding nothing but the
+  Apple: 0.060 of ink against 0.183 once the menus are drawn. An upper
+  bound cannot tell an empty menu bar from a full one; the gate now
+  carries a floor as well. Its Return taps were also 30 frames, below a
+  Slow Keys acceptance delay — the "despite Return taps" in the previous
+  entry. 150 everywhere now, the engine's own rule.
+- **The Mac II mounts its boot volume seven times.** The post-reboot dump
+  shows seven `Macintosh HD` icons, each carrying its own copy of the
+  created folder. `MacIIMemory::attachScsi` still mirrored the disk on
+  all seven IDs — the bring-up workaround `IIfxMemory` dropped on
+  2026-08-04 after seven VCBs writing one store corrupted its 7.6 volume
+  — on the belief that the Mac II ROM dedupes what the IIfx ROM does not.
+  It does not. One ID, one target, here too. **Four gates in that family
+  then failed, and on inspection none of them was about booting**:
+  `iix_`, `iicx_`, `se30_` and `macii_boot_etalon` all reached the same
+  Finder desktop they always did (menu 0.07-0.10, desktop 0.50) and tripped
+  only on `scsi().commands > 500`, at 291-295 — a threshold that had been
+  counting the mirror answering the ROM's 7→0 scan seven times. Lowered to
+  200 with that written down; the screen half is untouched.
+- **8 MB of RAM is enough to never flush at all.** With the mirror gone
+  and the alert dismissed, the Mac II still wrote nothing in **ten**
+  emulated minutes after creating the folder. At 4 MB — the Plus's size,
+  the Duo 230's factory size, period-correct for a Mac II — the same
+  gesture reaches the medium immediately. System 7.x sizes its disk cache
+  from RAM and simply holds the catalog blocks; a volume that is never
+  flushed is never flushed on real hardware either. Both gates now
+  configure a machine that persists rather than waiting on a cache that
+  will not drain.
+- **`q630_beyond_etalon` had never started a Quadra 630.** It looked for
+  the 06684214 dump under a fourth spelling no archive uses, and a SKIP
+  exits 0 — two green CTest rows over a machine that never ran. Fixed to
+  `q630_boot_etalon`'s own list, and given that gate's poll-and-dismiss
+  boot loop in place of 16000 frames and a single look.
+
+**Board, on a tree rebuilt first and verified as one CTest run**
+(`ctest -R 'soak_etalon|persist_etalon|lcii_launch|lcii_floppy' -j8`, 26 rows,
+17 min 53 s, every binary relinked after the last edit): **25 passed, 1
+failed**. Twelve soaks green, ten persists green, `duo_persist_etalon` a SKIP
+that names what it cannot see, `iifx_persist_etalon` red. Before this entry
+the same board read four reds, one SKIP with a disproven reason, and two rows
+that had never started their machine.
+
+**One red is left, and it is a machine defect the campaign isolated rather
+than a gate that judges badly.** With the IIfx's gesture half green
+(`'Dossier sans titre' 10 → 12`, the folder survives), its post-gesture
+reboot dies — and the campaign chased that down to **one boot and one bit**:
+
+> Take a pristine `GISTPERSO-boot.vhd`, clear **bit 8 of `drVolAtrb`** in
+> the in-memory MDB (LBA 98, offset `$0A`), boot the IIfx ONCE. `$0100 →
+> $0000` ⇒ FAILED, 441 SCSI commands, stopped at `pc=$40843B22`. Leave the
+> bit alone ⇒ FINDER, 1397 commands. No reset, nothing else touched.
+
+`$40843B22` is `bra.w $408439A8`, a loop that reads a byte, masks `#$7F`,
+compares `#$2A` and dispatches through a table — the ROM's **serial
+monitor**, so it faults rather than running slow. It was first met as "the
+IIfx cannot boot twice", because the first boot's mount clears exactly that
+bit and a block-diff against the pristine file changes **exactly LBA 98 and
+nothing else**; the reset turned out to be incidental. **This rewrites 2026-08-06**, where a IIfx image that would
+not boot was called corrupted: merely dirty is enough, and only the IIfx
+cares — the other eleven reboot off their own dirty volume every persist
+run.
+
+Controls cleared every layer underneath. **Exceptions** (Moira's
+`willExecute(M68kException, u16)`): the clean control's ENTIRE boot contains
+four BUS ERRORs at `$408030B8` — the ROM's RAM-sizing probe, faulting by
+design — and nothing else; clearing the bit gives the same four and then an
+endless F-LINE storm at `pc=$00000001`. The warm two-boot case produces the
+identical signature, so both paths converge.
+
+**What the campaign did NOT find is worth as much as what it did.** The
+supervisor stack at the first F-LINE points at `$40806F06`, under ROM frames
+carrying a `"DRV"` tag — the instruction after a `jsr (a0)` in a loop that
+walks a table anchored at the low-memory long `$D04`. Read at the call
+itself (Moira exposes breakpoints, so `debugger.breakpoints.setAt` plus a
+`didReachBreakpoint` override needs no fork change) the failing boot takes
+that `jsr` 60+ times with `A0 = $00005F6E`, `A1 = $F9900000`,
+`[$D04] = $00003E88`: a loop, a low-RAM routine pointer, an anchor landing
+in the stack region. Damning — until **the clean control takes the same
+`jsr` 40 times with the identical three values and reaches the Finder.**
+The lead is dead, and so are three others: a delay loop at `$40807A5A` that
+only exists when the run quantum is shrunk to sample it, "the divergence is
+one register, VBR" (a symptom of paths already parted), and the previous
+session's System handlers left in RAM (real, but the faults dispatch through
+the ROM table). All four are written into `TODO.md` § 1 as closed, because
+each of them reads like an answer.
+**Power cycle**: a fresh `IIfxMemory` + `IIfxCpu` with zeroed RAM boots the
+volume a second time and **reaches the Finder when the volume is pristine**,
+fails when it carries that one dirty block — so neither RAM state nor device
+state nor the ROM overlay. **The bus**: a logging proxy in front of
+`ScsiDisk` recorded every CDB of both boots and found **zero non-GOOD
+statuses on either side**; they run identically for 14 commands and part
+where the pristine boot reads LBA $62 and then writes it — the mount
+clearing the clean bit — which the dirty boot never does.
+
+So the guest takes its own different path on a volume it knows was not
+unmounted cleanly, and in our machine that path does not complete. *(Two
+readings were discarded on the way, and both are recorded rather than
+quietly dropped: the previous session's System handlers left in RAM at
+`BUSERR ($8) = $000294CA` — real, but the faults that matter dispatch
+through the ROM table — and "the divergence is exactly one register, VBR",
+which the pristine/dirty control demotes to a symptom.)* `TODO.md` § 1
+carries all four controls and names where to look next.
+
+**The Duo's SKIP survives, with its reason replaced.** It skipped on "the
+built-in keyboard is a PMU matrix, DUO_BRINGUP milestone 4". The matrix is
+now implemented in `PgePmu` from MAME's `Y0`-`Y7` + `keyb_special` tables
+(rows selected on port C, columns on port A and port B bits 0-2, modifiers
+on port B bits 3-7, all active low), keyed by Mac virtual code like every
+other machine here; keys the Duo does not physically have are dropped rather
+than mapped to a neighbour. It works: the Duo dismisses its own boot alert
+with Return and `untitled folder` is on the desktop after Cmd-N.
+
+What actually blocks the leg is that **this guest never writes the folder** —
+zero write commands in TEN emulated minutes, at 4 MB and at 8 MB alike, while
+its own boot issues 60. Not a budget (the poll ran to 36000 frames), and not
+the disk cache alone (the Mac II, same symptom, flushes as soon as it has
+4 MB; this one does not). Pressing the power key to end the session through
+the System raises no dialog — on a Duo that key is the PMU's, not the
+keyboard's. Working hypothesis, unverified and written into the gate: the
+System is holding the writes behind the power manager's hard-disk spin-down,
+and `ScsiDisk` is always instantly ready, so the spin-up the driver flushes
+on never happens.
 
 <a id="2026-08-13-beyond-boot-roster"></a>
 ## 2026-08-13 (fifth) — Beyond-boot for the whole roster: sixteen gates, one engine, and the campaign paid twice before it was even green
