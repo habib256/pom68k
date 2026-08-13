@@ -1064,11 +1064,16 @@ correctness it buys:
    programmed by the Cuda. What is left is **VRAM arbitration/timing**,
    DAFB's VBL line hard-coded at 480 (as in MAME), and the V8 frame
    geometry pinned to the 12" modeline.
-2. **Peripheral-tick batching** (§ 1.2) — down to **three** wrappers
-   (`Cpu020` 64, `IIfxCpu` 64, `MscCpu` 128; ≤ 4.1 µs of IRQ-latency
-   jitter). The other eight platforms are on the device-derived deadline and
-   the compacts tick per bus access. *(The VIA E-clock ratio came off this
-   list on 2026-08-02: `src/ViaEClock.h` is exact rational arithmetic.)*
+2. **Peripheral-tick batching** (§ 1.2) — **as closed as it is worth being,
+   2026-08-13.** Eight platforms run the deadline by default; `Cpu020` (Mac
+   II family) and `MscCpu` (Duo) now HAVE it but ship **off**, because it
+   measured **+14-17 %** and **+9 %** for exactness no gate can see; the
+   `IIfxCpu` is refused on evidence (its IOPs execute continuously, so their
+   bound is always 1); the compacts tick per bus access. What is left is not
+   plumbing but **a gate that can see IRQ jitter** — until one exists,
+   flipping either default is unverifiable work by this section's own
+   caveat. *(The VIA E-clock ratio came off this list on 2026-08-02:
+   `src/ViaEClock.h` is exact rational arithmetic.)*
 3. **No 040 copyback/snooping** (§ 1.2); the i-cache overlays are throughput
    models, not architectural caches. The tag model behind
    `POM68K_040_DCACHE` exists (M1) and the chantier is **closed** with three
