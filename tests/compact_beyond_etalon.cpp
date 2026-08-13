@@ -27,9 +27,16 @@
 
 int main() {
     std::string rom = testasset::find("roms/macplus.rom");
-    // System 7.0 first: the persist gesture needs a 7.x Finder (System 6's
-    // Cmd-N is inert with no window open — round 2's HD20SC finding).
-    std::string img = testasset::find("hdv/System 7.0 HD.dsk");
+    // System 7.1 first. Two versions are ruled out by measurement, not by
+    // taste: System 6's Cmd-N is inert with no window open (round 2's
+    // HD20SC finding), and System 7.0 creates the folder — a screen dump
+    // at the gesture's peak shows the icon on the desktop — but never
+    // flushes the volume: ONE write command in a whole session, the mount
+    // flag, and none at all in the two emulated minutes that follow. The
+    // gate spent a day being read as a broken keyboard because of it.
+    // 7.1 writes the catalog and the folder survives the reset.
+    std::string img = testasset::find("hdv/System 7.1 HD.dsk");
+    if (img.empty()) img = testasset::find("hdv/System 7.0 HD.dsk");
     if (img.empty()) img = testasset::find("hdv/HD20SC.vhd");
     if (img.empty()) img = testasset::find("hdv/boot.vhd");
     if (rom.empty() || img.empty()) {
@@ -113,11 +120,17 @@ int main() {
         mem.keyboard().enqueue(down ? t : uint8_t(t | 0x80));
     };
     h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
+    h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
     h.probe = [&]() {
         std::fprintf(stderr, "[keymap]");
         for (uint32_t a = 0x174; a < 0x17C; a++)
             std::fprintf(stderr, " %02X", mem.peek8(a));
         std::fprintf(stderr, "  (want Cmd+N bits live)\n");
+        // Did the guest write ANYTHING to the volume since it mounted? A
+        // System 7 mount alone dirties the MDB, so zero here means the
+        // volume came up read-only and no keystroke could ever change it.
+        std::fprintf(stderr, "[scsi] write cmds %ld blocks %ld\n",
+                     mem.scsiDisk().writeCommands, mem.scsiDisk().writeBlocks);
     };
     h.reboot = [&]() {
         cpu.hardReset();

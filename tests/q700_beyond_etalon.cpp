@@ -125,6 +125,7 @@ int main() {
     h.time = [&](uint32_t* out) { *out = peek32(mem, 0x20C); return true; };
     h.key = [&](uint8_t code, bool down) { mem.keyEvent(code, down); };
     h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
+    h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
     h.reboot = [&]() { cpu.hardReset(); return boot(); };
     h.dump = [&](const char* mode) {
         Screen s = decodeScreen(mem);

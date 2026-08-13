@@ -101,8 +101,82 @@ void PgePmu::Ds2400::tick(int64_t now) {
     }
 }
 
+// ── The Duo's built-in keyboard matrix ──────────────────────────────────
+// One entry per key the PowerBook Duo physically has, transcribed from
+// MAME's Y0-Y7 / keyb_special port tables (macpwrbkmsc.cpp:647-757). The
+// index is the Mac VIRTUAL key code — the code every POM68K machine takes
+// from the host — and the value is the column bit inside its row. The Duo
+// keyboard has no F1-F3 and no keypad beyond Enter; codes with no cell here
+// are dropped rather than mapped to a neighbour.
+namespace {
+
+struct DuoKey { uint8_t vk; uint8_t row; uint8_t bit; };
+
+constexpr DuoKey kDuoMatrix[] = {
+    // Y0
+    { 0x30, 0, 0 }, { 0x0D, 0, 1 }, { 0x0F, 0, 2 }, { 0x10, 0, 3 },
+    { 0x22, 0, 4 }, { 0x23, 0, 6 }, { 0x1E, 0, 7 }, { 0x7E, 0, 9 },
+    // Y1
+    { 0x07, 1, 1 }, { 0x02, 1, 2 }, { 0x05, 1, 3 }, { 0x26, 1, 4 },
+    { 0x25, 1, 5 }, { 0x27, 1, 7 }, { 0x7D, 1, 9 },
+    // Y2 — bits 1 and 3 are the brightness keys (F4/F5 on MAME's layout)
+    { 0x35, 2, 0 }, { 0x76, 2, 1 }, { 0x60, 2, 3 }, { 0x09, 2, 4 },
+    { 0x2E, 2, 7 }, { 0x4C, 2, 8 }, { 0x31, 2, 9 },
+    // Y3 — bits 1 and 3 are the contrast keys (F6/F7)
+    { 0x61, 3, 1 }, { 0x08, 3, 2 }, { 0x62, 3, 3 }, { 0x0B, 3, 5 },
+    { 0x2D, 3, 6 }, { 0x2B, 3, 7 }, { 0x7B, 3, 9 },
+    // Y4
+    { 0x00, 4, 0 }, { 0x01, 4, 1 }, { 0x03, 4, 3 }, { 0x04, 4, 4 },
+    { 0x28, 4, 5 }, { 0x29, 4, 6 }, { 0x2F, 4, 7 }, { 0x2C, 4, 8 },
+    { 0x7C, 4, 9 },
+    // Y5
+    { 0x0C, 5, 0 }, { 0x13, 5, 1 }, { 0x15, 5, 2 }, { 0x16, 5, 3 },
+    { 0x1C, 5, 5 }, { 0x1D, 5, 6 }, { 0x18, 5, 8 },
+    // Y6
+    { 0x06, 6, 0 }, { 0x32, 6, 1 }, { 0x0E, 6, 2 }, { 0x11, 6, 3 },
+    { 0x20, 6, 4 }, { 0x1F, 6, 5 }, { 0x21, 6, 6 }, { 0x2A, 6, 8 },
+    { 0x24, 6, 9 },
+    // Y7
+    { 0x12, 7, 1 }, { 0x14, 7, 2 }, { 0x17, 7, 3 }, { 0x1A, 7, 4 },
+    { 0x19, 7, 5 }, { 0x1B, 7, 6 }, { 0x33, 7, 8 },
+};
+
+// keyb_special, the five modifiers the scanner reads on port B bits 3-7.
+constexpr DuoKey kDuoModifiers[] = {
+    { 0x37, 0, 3 },              // Command
+    { 0x3B, 0, 4 },              // Control
+    { 0x38, 0, 5 },              // Shift
+    { 0x3A, 0, 6 },              // Option
+    { 0x39, 0, 7 },              // Caps Lock
+};
+
+}  // namespace
+
+void PgePmu::keyEvent(uint8_t code, bool down) {
+    if (code == 0x7F) { powerKey_ = down; return; }   // ADB power key
+    for (const DuoKey& k : kDuoModifiers) {
+        if (k.vk != code) continue;
+        if (down) modifiers_ |= uint8_t(1u << k.bit);
+        else modifiers_ &= uint8_t(~(1u << k.bit));
+        return;
+    }
+    for (const DuoKey& k : kDuoMatrix) {
+        if (k.vk != code) continue;
+        if (down) matrix_[k.row] |= uint16_t(1u << k.bit);
+        else matrix_[k.row] &= uint16_t(~(1u << k.bit));
+        return;
+    }
+    // Not on this keyboard. An external Duo keyboard would come down the
+    // ADB cell instead, which is where this used to go unconditionally —
+    // and where nothing ever arrived, because the cell enumerates no
+    // devices (M68hc05Pge's adbCommand note).
+}
+
 void PgePmu::reset() {
     mcu_->reset();
+    for (auto& r : matrix_) r = 0;
+    modifiers_ = 0;
+    powerKey_ = false;
     mcuAcc_ = 0;
     mcuDebt_ = 0;
     held_ = true;
@@ -238,11 +312,17 @@ void PgePmu::wirePorts() {
             // $DF instead hangs the boot dead at $408B98F2 with Ticks
             // frozen at 0, i.e. the firmware reads $DF as "power key held"
             // and never starts the machine. So $FF here is not laziness;
-            // it is the released state. Matrix columns X0-X7 are likewise
-            // active low, no key = all ones (real input is milestone 4).
-            return 0xFF;
+            // it is the released state.
+            if (matrixRow() < 0)
+                return uint8_t(0xDF | (powerKey_ ? 0x00 : 0x20));
+            return uint8_t(~uint8_t(matrix_[matrixRow()] & 0xFF));
         case M68hc05Pge::B:
-            return 0xFF;                             // modifiers + X8-X10
+            // Modifiers on bits 3-7, matrix columns X8-X10 on bits 0-2
+            // (pmu_portb_r). Both active low.
+            return uint8_t((~modifiers_ & 0xF8) |
+                           (matrixRow() < 0
+                                ? 0x07
+                                : uint8_t(~(matrix_[matrixRow()] >> 8) & 0x07)));
         case M68hc05Pge::C:
             return 0xFF;                             // row select readback
         case M68hc05Pge::D:

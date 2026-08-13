@@ -18,10 +18,11 @@ established** — the MAME cites to port from (`macpwrbkmsc.cpp` / `msc.cpp` /
 the findings that are not derivable from the code, and the things that were
 *disproved* and must not be re-tried.
 
-Still open, in milestone order: **input through the PMU's own paths** (matrix
-keyboard + trackball counters — today's keyboard/mouse ride the PG&E's ADB
-modem cell instead) and then **sleep/wake**, the one path no other machine in
-the tree can exercise. Then the PB150, whose ROM is the only oracle.
+Still open, in milestone order: the **trackball quadrature counters** (the
+mouse still rides the PG&E's ADB modem cell; the KEYBOARD matrix landed
+2026-08-13) and then **sleep/wake**, the one path no other machine in the tree
+can exercise — of which the CPU-power-down half is now done, see milestone 6.
+Then the PB150, whose ROM is the only oracle.
 
 ---
 
@@ -242,8 +243,9 @@ different address width, stack window, vectors, map and peripherals) plus
   the PMU here**, like Cuda.
 - Trackball X/Y/button counters read by the PMU (`read_tbX/Y/B`) — input
   reaches the guest THROUGH the PMU, which is also the ADB controller on Duos.
-  POM68K currently routes keyboard and mouse through the PG&E's ADB modem cell
-  instead; the matrix/quadrature path is milestone 4.
+  POM68K routes the KEYBOARD through the real matrix since 2026-08-13; the
+  mouse still rides the PG&E's ADB modem cell, and the quadrature counters
+  are what is left of milestone 4.
 - Port wiring (`macpwrbkmsc.cpp:773-789`): pull-ups port C `$FF`, port E `$80`
   (bit 7 = the 1-Wire bus).
 
@@ -287,15 +289,27 @@ different address width, stack window, vectors, map and peripherals) plus
    (the drive lives in the Dock; `MscMemory` has no SWIM), no drive sounds, no
    live CD-bay swap (`attachCdromEmpty` absent), and `mouseButton(bool)` takes
    no index so button 1 is dropped (`MscMemory.h:134`).
-4. ⬜ **Input through the PMU** (matrix keyboard + trackball counters) →
-   `duo230_input_etalon`. `MscMemory::keyEvent/mouseMove/mouseButton` already
-   forward to the PMU's ADB devices, so the gate can be written first.
+4. 🟨 **Input through the PMU**. The **keyboard matrix is done** (2026-08-13,
+   `PgePmu`): rows selected on port C, columns on port A (X0-X7) and port B
+   bits 0-2 (X8-X10), modifiers on port B bits 3-7, all active low, from
+   MAME's `Y0`-`Y7` + `keyb_special` tables; `keyEvent` takes Mac virtual key
+   codes like every other machine and drops what this keyboard does not
+   physically have. Gated by `duo_persist_etalon`, which dismisses the boot
+   alert with Return and creates a folder with Cmd-N. **The trackball
+   quadrature counters are still open** — the mouse rides the ADB modem cell.
 5. ⬜ Variants: Duo 210/250 (trivial, § *Why this order*), 270c (CSC), 280
    (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
    oracle).
-6. ⬜ **The actual point — power management observable**: a sleep/wake cycle as
-   a gate (`duo230_sleep_etalon`): guest sleeps via the PMU, wakes on an event,
-   Ticks resume. No other machine in the tree can test this path.
+6. 🟨 **The actual point — power management observable.** The **CPU
+   power-down half is done** (2026-08-13): `power_cycle_w` was a milestone-1
+   `fprintf`, so when the idle System asked to be cycled — 58 s into an idle
+   Finder — the ROM's `bra.b *` at `$x88B14` never ended and the machine
+   froze with the interrupt mask at 7. MAME `msc.cpp:191-206`: 0 and
+   `$5A000000` pulse the CPU's reset line (the overlay is NOT re-armed —
+   the vectors come from the RAM at `$0`), anything else halts for a full
+   system sleep. `duo_soak_etalon` covers it: 180 s of Mac clock across many
+   power-down cycles. Still open: the FULL sleep (port G bit 5) and the wake
+   event, i.e. `duo230_sleep_etalon` proper. No other machine can test it.
 
 ## Open questions (answer from ROM traces, not guesses)
 

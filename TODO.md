@@ -273,41 +273,152 @@ ciblés verts, tier `etalon` complet vert.
 
 ## 1. Red now
 
-- [ ] **The Duo's System clock is FROZEN — found by `duo_soak_etalon` on its
-  first run (2026-08-13), and the gate stays registered and red until the
-  fix.** Over 180 emulated seconds at the Finder, the Time global advanced
-  **0 s** (read through the live PMMU tables — the instrument is validated on
-  three other 030 machines, 180/180 on each). Cause, verified by grep: **no
-  one-second source is wired from the PG&E to the host** — `raiseCa2`/
-  one-second delivery exists on five platforms and never on `MscMemory`. On a
-  real Duo the Power Manager raises the one-second event over /PMU_INT. The
-  menu-bar clock in the GUI Duo must be frozen too; nobody had looked.
-  Fix belongs to the PG&E bring-up (`docs/DUO_BRINGUP.md`), next to the F6
-  matrix-keyboard milestone that keeps `duo_persist_etalon` a SKIP (input
-  through the PMU is milestone 4; Cmd-N through the ADB cell leaves the
-  image byte-identical — verified the same day).
-- [ ] **Cmd-N never reaches the Finder on the three non-Egret/Cuda input
-  paths — found by the beyond-boot roster (2026-08-13), three gates stay
-  registered and red.** On the Plus (M0110), the Mac II (PIC1654S/AdbVia)
-  and the IIfx (IOP firmware ↔ AdbLine), the persist gesture leaves the
-  image byte-identical, while the SAME shared-engine gesture creates and
-  keeps a folder on every Egret/Cuda machine (LC II, IIvx, IIsi, Q605,
-  Q630, Q700, LC III, Centris). The KeyMap probe rules out the cheap
-  explanations: at the gesture's peak **Cmd and N are BOTH live in the
-  guest's KeyMap** (`00 00 00 00 00 20 80 00` — N = byte 5 bit 5, Cmd =
-  byte 6 bit 7, identical on Plus and Mac II), the volume is writable and
-  clean (`drVolAtrb $0100`), the desktop band is clean at gesture time,
-  and single keys demonstrably work on the same paths (the boot matrix
-  dismisses System 7 CautionAlerts with Return on the Mac II). Working
-  hypothesis, UNVERIFIED: the keyDown **event** posts without the cmdKey
-  modifier bit — KeyMap is driver-level state, the event's modifier word
-  is a separate path through these transceivers. Next instrument: an
-  event-queue probe (EvQ low-memory walk) sampling the posted event's
-  modifiers during the gesture; do NOT re-derive the KeyMap evidence,
-  it is above. Gates: `compact_persist_etalon`, `macii_persist_etalon`,
-  `iifx_persist_etalon` (the IIfx persist also wedges its post-gesture
-  REBOOT at menu 0.50 / desk 0.40 despite Return taps — likely the same
-  event gap leaving the dirty-volume alert undismissed).
+- [ ] **The IIfx cannot boot a volume whose clean-unmount bit is clear.**
+  Isolated 2026-08-13 (sixth) down to **one boot and one bit**, and it is NOT
+  corruption:
+
+  > Take a pristine `hdv/GISTPERSO-boot.vhd`, clear **bit 8 of `drVolAtrb`**
+  > in the in-memory MDB (volume block 2 = LBA 98, offset `$0A`), and boot
+  > the IIfx ONCE. `$0100 → $0000` ⇒ **FAILED**, 441 SCSI commands, stopped
+  > at `pc=$40843B22`. Leave the bit alone ⇒ **FINDER**, 1397 commands.
+  > No first boot, no reset, nothing else touched.
+
+  That is the whole defect. It was first met as "the IIfx cannot boot twice"
+  — the first boot's mount clears that very bit, and a block-diff against
+  the pristine file changes **exactly LBA 98 and nothing else** — but the
+  reset is incidental: reproduced with a CPU-only reset, with a full
+  `mem.reset()`, on a machine rebuilt object by object, and now with no
+  reset at all. `$40843B22` is `bra.w $408439A8`, a loop whose head reads a
+  byte, masks `#$7F`, compares `#$2A` and dispatches through a table at
+  `$40843A04` — **the ROM's serial monitor**, i.e. it faults, it is not slow.
+  This rewrites `CHANGELOG.md` 2026-08-06: the `hdv/MacOS-7.6-boot.vhd` that
+  cost two days there was diagnosed as "corrupted"; a volume merely left
+  dirty is enough to do it, and only the IIfx is affected — the other eleven
+  platforms reboot off their own dirty volume in `*_persist_etalon` without
+  complaint. Gate: `iifx_persist_etalon`, red and carrying this record; its
+  gesture half is green (`'Dossier sans titre' 10 → 12`, folder survives).
+
+  **The exception is caught** (Moira's `willExecute(M68kException, u16)`
+  delegate, recording every vector that is not an A-line trap, a TRAP #n or
+  an autovector), and the one-bit run gives the SAME signature as the
+  two-boot one, so the warm and cold paths converge:
+
+  - clean control → four BUS ERRORs at `pc=$408030B8`, `sr=$2711`, **and
+    nothing else in the entire boot**. Finder.
+  - bit cleared → **the same four**, then an endless F-LINE storm at
+    **`pc=$00000001`**, `sr=$2208`, parked in the ROM monitor.
+
+  So execution jumps to address 1 and every fetch after that is an F-LINE.
+
+  **DEAD LEAD, killed by control — do not re-open it.** The supervisor stack
+  at the first F-LINE (SP `$00003EBA`) holds return address `$40806F06`
+  under ROM frames (`$40806ED8`, `$40809B70`, `$4080280E`, …) with a `"DRV"`
+  tag, which reads exactly like the culprit. It is not. `$40806F06` follows
+  this loop:
+
+  ```
+  40806EEC  lea.l    ([$d04], d0.w * 4, $40), a1
+  40806EF4  move.l   (a1), d0        ; entry; 0 ends the walk
+  40806EF8  movea.l  d0, a1
+  40806EFC  movea.l  $8(a1), a0      ; the routine pointer
+  40806F00  movea.l  $c(a1), a1      ; its argument
+  40806F04  jsr      (a0)            ; ← this is what lands on 1
+  ```
+
+  i.e. the ROM walks a table of records anchored at the long in low memory
+  **`$D04`** and calls `record+8` on each.
+
+  Moira exposes breakpoints, so this can be read AT the call with no fork
+  change: `debugger.breakpoints.setAt(0x40806F04)` plus a
+  `didReachBreakpoint` override. Failing boot: the `jsr` is taken 60+ times
+  with `A0 = $00005F6E`, `A1 = $F9900000`, `[$D04] = $00003E88` — which
+  looks damning (a loop, a low-RAM routine pointer, an anchor that lands in
+  the stack region). **The clean control takes the same `jsr` 40 times with
+  the IDENTICAL three values and reaches the Finder.** So this call site is
+  normal, and neither the earlier "one of those pointers is 1" (inferred
+  from the stack, and wrong — the pointer is `$5F6E`) nor "the `$D04`
+  anchor is corrupt" survives.
+
+  Run the control at the same breakpoint before believing any register on
+  this path: everything here looks abnormal and is not.
+
+  A fifth attempt — a ring of the last A-line traps, to get a Toolbox-level
+  trace of what the guest was doing — is also INVALID and should not be
+  rebuilt as written: it reports 64 identical "vector 10" hits at
+  `pc=$40806EEC`, where the word is `$43F0`, the `lea` opcode, not an
+  `$Axxx` trap. The PC/vector pairing assumed by that instrument does not
+  hold; anything read from it is noise.
+  **Two attempts to dump that table failed to establish anything — do not
+  repeat them.** Post-mortem (after the boot gave up) it reads
+  `[$D04] = $00680002` with the records filled by a repeating `$6DB6DB6D`
+  pattern; re-taken INSIDE the exception delegate at the first F-LINE it
+  reads `[$D04] = $00003E88`, and `$3E88 + $40` lands **inside the
+  supervisor stack** — the "entries" printed are literally the stack bytes,
+  the same `40 80 6E C0 / 44 52 56 00 / 40 80 27 A6` the frame dump shows.
+  Both moments are already past the runaway, so neither says what the table
+  held at the `jsr`. Catching it needs a breakpoint ON `$40806F04`, not a
+  snapshot at the fault.
+  Moira's instruction delegate is compiled out except for STOP/TAS/BKPT
+  (`MOIRA_WILL_EXECUTE`, `MoiraConfig.h:89`), and sampling the PC by
+  shrinking the run quantum PERTURBS the machine — see the delay-loop
+  artefact below.
+
+  Superseded detail from the two-boot framing (kept, it is still true):
+
+  - boot 1 — **four** BUS ERRORs at `pc=$408030B8`, `sr=$2711`, and nothing
+    else in the whole boot. Reaches the Finder. VBR at each:
+    `$40802E74`, `$40840EF0`, `$40840EF0`, **`$00000000`**.
+  - boot 2 — **the same four** BUS ERRORs at the same PC, VBR
+    `$40802E74`, `$40840EF0`, `$40840EF0`, **`$40840EF0`** — then an endless
+    F-LINE storm at **`pc=$00000001`**, `sr=$2208`, `vbr=$00000000`, to a
+    halt.
+
+  The ROM's RAM-sizing probe at `$408030B8` therefore faults **by design on
+  both boots**; the VBR difference at the fourth probe is a symptom of the
+  paths having already parted, not the variable.
+
+  A power cycle says the same thing independently: build a fresh
+  `IIfxMemory` + `IIfxCpu` with zeroed RAM and carry a volume in — pristine
+  reaches the Finder (SCSI 1397), dirtied fails. So it is neither RAM state,
+  nor device state, nor the ROM overlay.
+
+  **And it is not our SCSI target.** A logging proxy in front of `ScsiDisk`
+  recorded every CDB and status of both boots: **zero non-GOOD statuses on
+  either side**. They run identically for 14 commands and part there — the
+  pristine boot READS LBA $62 (98, the MDB) and then WRITES it, which is the
+  mount clearing the clean bit; the dirty boot never does, reads elsewhere,
+  and stops after 441 commands. The guest is taking its own different path
+  on a volume it knows was not unmounted cleanly, and in our machine that
+  path does not complete.
+  Ruled out along the way: re-arming the ROM overlay before the reset
+  (`mem.reset()`) changes nothing — the overlay is dropped by the first
+  ROM-region READ (`IIfxMemory::read8Decoded`, MAME `rom_switch_r`), long
+  before the probe. And a first reading of the exception trace blamed the
+  previous session's System handlers left in RAM at
+  `BUSERR ($8) = $000294CA` — measured and real, but not the cause: the
+  faults that matter dispatch through the ROM table.
+  Next: follow the GUEST, not the bus — the System's own not-cleanly-
+  unmounted path is what diverges, and every layer under it has now been
+  cleared. Do NOT re-derive the block diff, the exception trace, the
+  pristine/dirty control or the CDB comparison; all four are above.
+  **And do not chase the delay loop.** A PC ring taken by stepping
+  `runCycles(16)` instead of a frame shows the machine parked in the ROM's
+  calibrated delay at `$40807A5A` (`move.w $d00.w,d0; mulu.w #$1f4,d0;
+  dbra`) — but that is an ARTEFACT of the small quantum, which changes the
+  peripheral interleave: at the normal frame quantum the machine halts, and
+  the constant it reads is `$D00 = $19EF`, a few seconds' worth, not an
+  eternity. Measured 2026-08-13; the stepping instrument perturbs what it
+  measures here.
+
+*(The two beyond-boot reds that stood here — the Duo's frozen System clock
+and "Cmd-N never reaches the Finder on the three non-Egret/Cuda input
+paths" — are closed, 2026-08-13 (sixth). Neither was what it said it was:
+the Duo was not missing a one-second source, it was DEAD (a `power_cycle_w`
+stub left the ROM spinning at `bra.b *` with the interrupt mask at 7, 58 s
+after boot), and Cmd-N always worked — screen dumps at the gesture's peak
+show the folder on the desktop of every one of the three. The KeyMap
+evidence in that entry was correct; the conclusion drawn from it was not.
+Full account: `CHANGELOG.md` 2026-08-13 (sixth).)*
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
   — reported in the GUI, and **NOT reproduced headless**: judged on the
   desktop (the mounted volume's icon, screen-diff) rather than on
@@ -327,7 +438,7 @@ ciblés verts, tier `etalon` complet vert.
   whether ASC renders audible output *correctly* is still untested
   (`q605_asc_test` covers registers/IRQ, not sound). Low-priority ASC item.
 
-*(Nothing else is red — the two items above.
+*(Nothing else is red — the items above.
 Resolved and worth one line each: `savestate_040_test` (2026-08-12 (later) —
 not Valkyrie and not one platform: all five 040 families diverged at CPU-chunk
 offset 256, `writeBuffer`, a 68010-frame field the interpreter maintained on
@@ -381,12 +492,16 @@ rather than trusting this sentence. **The other 28 profiles are boot-to-Finder
 signature only.** A machine can pass its etalon and still be useless for real
 work.
 
-**Depth is a second axis.** **Four** now have the soak+persist pair that
-proves a machine *keeps* working and *writes*: the LC II, the Quadra 605, the
-IIvx — and, since 2026-08-13, the **IIsi**, the first RAM-based-video machine
-to get one (`iisi_soak/persist_etalon`, `tests/rbv_beyond_etalon.cpp`).
-Counting profiles alone hides that axis — the IIvx was inside the nine before
-it could survive three idle minutes or create a folder.
+**Depth is a second axis.** **All twelve** platforms now carry the
+soak+persist pair that proves a machine *keeps* working and *writes*, and as
+of 2026-08-13 (sixth) **twelve soaks and ten persists are green**, with one
+red (`iifx_persist_etalon`, § 1 — the IIfx cannot boot a volume it has itself
+mounted once) and one SKIP that names what it cannot see (`duo_persist_etalon`
+— the Duo creates the folder and never writes it). Counting profiles alone
+hides this axis: the IIvx was inside the nine before it could survive three
+idle minutes or create a folder, and the Quadra 630's two legs were green for
+a day while its gate looked for a ROM under a name no archive uses and SKIPped
+without ever starting the machine.
 
 The IIsi pair discharged the prerequisite this list used to carry: a
 LOGICAL-address read of the Time global. `tests/Mmu030Peek.h` is that read —

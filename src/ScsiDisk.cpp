@@ -414,6 +414,8 @@ void ScsiDisk::write(uint32_t lba, uint32_t count, const std::vector<uint8_t>& i
         sound_->motor(true, true);
         sound_->step(int(lba >> 11), FloppySoundSink::kNoStamp);
     }
+    writeCommands++;
+    writeBlocks += long(count);
     uint64_t off = uint64_t(lba) * kBlockSize;
     uint64_t n = uint64_t(count) * kBlockSize;
     if (off >= image_.size()) return;

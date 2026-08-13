@@ -4,7 +4,7 @@
 // Beyond-boot on the Macintosh II (GLUE + NuBus Toby + 68020, ADB through
 // the PIC1654S) — shared-engine gate (BeyondBoot.h). Rig, boot length and
 // signature from macii_boot_etalon; Time is physical (no PMMU on a stock
-// Mac II). The HD20SC image runs a System 6 Finder, whose new folder is
+// Mac II). The HD20SC fallback runs a System 6 Finder, whose new folder is
 // "Empty Folder" — FolderProbe carries the System 6 names since 2026-08-13.
 // POM68K_BEYOND=soak|persist. Soft-skips without assets.
 
@@ -25,11 +25,13 @@ int main() {
     std::string rom = testasset::find("roms/macii.rom");
     if (rom.empty())
         rom = testasset::find("roms/512KB ROMs/1988-09 - 97221136 - Mac IIx & IIcx & SE30.ROM");
-    // System 7.0 first — the macii_sys7_boot_etalon combination. The HD20SC
-    // fallback boots a System 6 Finder, whose Cmd-N needs an open window, so
-    // the persist gesture only works on a 7.x volume.
-    std::string img = testasset::find("hdv/System 7.0 HD.dsk");
-    if (img.empty()) img = testasset::find("hdv/System 7.1 HD.dsk");
+    // System 7.1 first. The HD20SC fallback boots a System 6 Finder, whose
+    // Cmd-N needs an open window; System 7.0 creates the folder and then
+    // never flushes the volume (measured on the Plus, same image: one write
+    // command per session and none after the gesture — see
+    // compact_beyond_etalon.cpp). 7.1 is the first version that persists.
+    std::string img = testasset::find("hdv/System 7.1 HD.dsk");
+    if (img.empty()) img = testasset::find("hdv/System 7.0 HD.dsk");
     if (img.empty()) img = testasset::find("hdv/HD20SC.vhd");
     if (rom.empty() || img.empty()) {
         std::printf("SKIP: needs Mac II ROM + bootable hdv/ image\n");
@@ -43,7 +45,17 @@ int main() {
         std::fprintf(stderr, "FAIL: ROM size\n");
         return 1;
     }
-    MacIIMemory mem;
+    // 4 MB, not the 8 MB default — a rig choice with a measured reason.
+    // System 7.1 sizes its disk cache from RAM, and on 8 MB it holds the
+    // new folder's catalog blocks indefinitely: the Finder creates the
+    // folder (a screen dump shows the icon), and the guest issues NOT ONE
+    // write command in the next TEN emulated minutes. At 4 MB — the Plus's
+    // size, and a period-correct Mac II — the same gesture reaches the
+    // medium immediately. Nothing here is an emulator defect: a volume
+    // that is never flushed is never flushed on real hardware either, and
+    // this gate is about persistence, so it configures a machine that
+    // persists rather than waiting on a cache that will not drain.
+    MacIIMemory mem(0x400000);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.installTobyVideo();
     Cpu020 cpu(mem, true);
@@ -77,11 +89,19 @@ int main() {
         };
         const double menu = blackRatio(0, W, 2, 20);
         const double desk = blackRatio(W / 2, W, 40, H - 40);
+        // No modal dialog: this volume opens one at every boot ("the alias
+        // 'Infinite HD' could not be opened") and the two ratios above are
+        // satisfied with it up, so boot() stopped tapping Return the moment
+        // the menu bar appeared and the persist gesture went into a dialog
+        // that swallows keys. BeyondBoot.h::lightRun carries the reasoning.
+        const int white = beyondboot::lightRun(fb, W, H);
         if (menu != lastMenu || desk != lastDesk) {
-            std::fprintf(stderr, "[finder] menu %.2f desk %.2f\n", menu, desk);
+            std::fprintf(stderr, "[finder] menu %.2f desk %.2f white %d\n",
+                         menu, desk, white);
             lastMenu = menu; lastDesk = desk;
         }
-        return menu < 0.35 && desk > 0.20 && desk < 0.70;
+        return menu < 0.35 && desk > 0.20 && desk < 0.70 &&
+               white < beyondboot::kDialogRun;
     };
     // Adaptive boot: run the bulk, then poll — pressing Return every ~20 s
     // while the Finder is not up, the finder_boot_matrix trick for the
@@ -92,10 +112,14 @@ int main() {
         for (int poll = 0; poll < 20; poll++) {
             if (cpu.isHalted()) return false;
             if (finderUp()) return true;
+            // 150 frames, the engine's hold everywhere: it outlasts a Slow
+            // Keys acceptance delay, and a normal keyboard accepts it just
+            // the same (pom68k-81-image-slow-keys). The old 30-frame tap
+            // was below that threshold.
             mem.keyEvent(0x24, true);
-            frames(30);
+            frames(150);
             mem.keyEvent(0x24, false);
-            frames(1170);
+            frames(1050);
         }
         return !cpu.isHalted() && finderUp();
     };
@@ -116,6 +140,11 @@ int main() {
     };
     h.key = [&](uint8_t code, bool down) { mem.keyEvent(code, down); };
     h.probe = [&]() {
+        // Has the guest written ANYTHING since it mounted? A System 7 mount
+        // alone clears the volume's clean-unmount bit, so a zero here is a
+        // dead write path, not a Finder that did nothing.
+        std::fprintf(stderr, "[scsi] write cmds %ld blocks %ld\n",
+                     mem.scsiDisk().writeCommands, mem.scsiDisk().writeBlocks);
         std::fprintf(stderr, "[keymap]");
         for (uint32_t a = 0x174; a < 0x17C; a++)
             std::fprintf(stderr, " %02X", mem.peek8(a));
@@ -124,6 +153,7 @@ int main() {
         std::fprintf(stderr, "  (want Cmd+N bits live)\n");
     };
     h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
+    h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
     h.reboot = [&]() { cpu.hardReset(); return boot(); };
     h.dump = [&](const char* mode) {
         TobyVideo* tv = mem.toby();

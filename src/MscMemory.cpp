@@ -79,6 +79,7 @@ MscMemory::MscMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
         overlay_ = true;
         jitMapChanged();
         wakeReset_ = true;
+        sleeping_ = false;           // a full power_cycle_w sleep ends here
     };
     // pmu_porte_w:431-441 → msc.cpp pmu_reset_w:363-378: raising port E
     // bit 2 releases /RESET with the overlay re-armed — the same machine
@@ -193,6 +194,8 @@ void MscMemory::reset() {
     pvia_.reset();
     pmu_.reset();
     wakeReset_ = false;
+    powerCycle_ = 0;
+    sleeping_ = false;
     pmuReq_ = true;
     asc_.reset();
     scsi_.reset();
@@ -404,10 +407,32 @@ void MscMemory::write8(uint32_t addr, uint8_t v) {
         return;
     }
     if (low >= 0xA0000 && low < 0xA0004) {
-        // power_cycle_w (msc.cpp:207-222): 0 / $5A000000 → CPU reset and
-        // resume, else full sleep. Milestone 1 just reports it.
-        std::fprintf(stderr, "msc: power_cycle_w byte $%02X (lane %u)\n",
-                     v, addr & 3);
+        // ── power_cycle_w (msc.cpp:191-206) ────────────────────────────
+        // The 68030 asking to be powered down. MAME: 0 and $5A000000 mean
+        // "reset me and resume" — PowerBook processor cycling, the idle
+        // path — and any other value is a full system sleep that halts the
+        // CPU until the PMU wakes it. The guest writes this and then spins
+        // in `bra.b *` at $x88B14 with the interrupt mask at 7: the reset
+        // IS the return path, there is no other way out.
+        //
+        // Until 2026-08-13 this was a milestone-1 fprintf, so that spin
+        // never ended. The Duo froze 58 s into an idle Finder — reported
+        // by duo_soak_etalon as a Mac clock stuck at 0 s over 180 s, and
+        // first mis-read as "no one-second source is wired from the PG&E".
+        // The one-second source was fine: nothing was running to receive
+        // it. The screen keeps showing the desktop the machine painted
+        // before it died, which is why the boot gate never noticed.
+        //
+        // The reset does NOT re-arm the ROM overlay — unlike the PMU's own
+        // reset (pmu_reset_w), which does. MAME pulses the CPU's reset
+        // line alone, so the vectors come from RAM at $0, where the System
+        // parked its resume path.
+        powerCycle_ = (powerCycle_ << 8) | v;
+        if ((addr & 3) != 3) return;             // wait for the full long
+        const uint32_t word = powerCycle_;
+        powerCycle_ = 0;
+        if (word == 0 || word == 0x5A000000) wakeReset_ = true;
+        else sleeping_ = true;                   // until the PMU wakes us
         return;
     }
 }
