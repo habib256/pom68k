@@ -11,8 +11,8 @@ re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
   somewhere.** On the AArch64 dev host with `POM68K_JIT_BACKENDS=auto`:
-  **185 gates** — 94 `unit`, 9 `smoke`, 29 `jit`, 42 `m040`, 91 `etalon`
-  (12 of them `etalon-core`). On any other host, **183** — 92 `unit`,
+  **203 gates** — 94 `unit`, 9 `smoke`, 29 `jit`, 48 `m040`, 109 `etalon`
+  (12 of them `etalon-core`). On any other host, **201** — 92 `unit`,
   8 `smoke`, 27 `jit`: `jit_lockstep_a64_coarse_test` and
   `jit_lockstep_030_a64_experimental_test` are registered only under
   AArch64 + `auto` (`CMakeLists.txt:1459-1476`), and the first also joins
@@ -273,6 +273,41 @@ ciblés verts, tier `etalon` complet vert.
 
 ## 1. Red now
 
+- [ ] **The Duo's System clock is FROZEN — found by `duo_soak_etalon` on its
+  first run (2026-08-13), and the gate stays registered and red until the
+  fix.** Over 180 emulated seconds at the Finder, the Time global advanced
+  **0 s** (read through the live PMMU tables — the instrument is validated on
+  three other 030 machines, 180/180 on each). Cause, verified by grep: **no
+  one-second source is wired from the PG&E to the host** — `raiseCa2`/
+  one-second delivery exists on five platforms and never on `MscMemory`. On a
+  real Duo the Power Manager raises the one-second event over /PMU_INT. The
+  menu-bar clock in the GUI Duo must be frozen too; nobody had looked.
+  Fix belongs to the PG&E bring-up (`docs/DUO_BRINGUP.md`), next to the F6
+  matrix-keyboard milestone that keeps `duo_persist_etalon` a SKIP (input
+  through the PMU is milestone 4; Cmd-N through the ADB cell leaves the
+  image byte-identical — verified the same day).
+- [ ] **Cmd-N never reaches the Finder on the three non-Egret/Cuda input
+  paths — found by the beyond-boot roster (2026-08-13), three gates stay
+  registered and red.** On the Plus (M0110), the Mac II (PIC1654S/AdbVia)
+  and the IIfx (IOP firmware ↔ AdbLine), the persist gesture leaves the
+  image byte-identical, while the SAME shared-engine gesture creates and
+  keeps a folder on every Egret/Cuda machine (LC II, IIvx, IIsi, Q605,
+  Q630, Q700, LC III, Centris). The KeyMap probe rules out the cheap
+  explanations: at the gesture's peak **Cmd and N are BOTH live in the
+  guest's KeyMap** (`00 00 00 00 00 20 80 00` — N = byte 5 bit 5, Cmd =
+  byte 6 bit 7, identical on Plus and Mac II), the volume is writable and
+  clean (`drVolAtrb $0100`), the desktop band is clean at gesture time,
+  and single keys demonstrably work on the same paths (the boot matrix
+  dismisses System 7 CautionAlerts with Return on the Mac II). Working
+  hypothesis, UNVERIFIED: the keyDown **event** posts without the cmdKey
+  modifier bit — KeyMap is driver-level state, the event's modifier word
+  is a separate path through these transceivers. Next instrument: an
+  event-queue probe (EvQ low-memory walk) sampling the posted event's
+  modifiers during the gesture; do NOT re-derive the KeyMap evidence,
+  it is above. Gates: `compact_persist_etalon`, `macii_persist_etalon`,
+  `iifx_persist_etalon` (the IIfx persist also wedges its post-gesture
+  REBOOT at menu 0.50 / desk 0.40 despite Return taps — likely the same
+  event gap leaving the dirty-volume alert undismissed).
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
   — reported in the GUI, and **NOT reproduced headless**: judged on the
   desktop (the mounted volume's icon, screen-diff) rather than on
@@ -346,19 +381,29 @@ rather than trusting this sentence. **The other 28 profiles are boot-to-Finder
 signature only.** A machine can pass its etalon and still be useless for real
 work.
 
-**Depth is a second axis.** Of those nine, only **three** have the soak+persist
-pair that proves a machine *keeps* working and *writes*: the LC II, the Quadra
-605 and the IIvx. Counting profiles alone hides that — the IIvx was inside the
-nine before it could survive three idle minutes or create a folder.
+**Depth is a second axis.** **Four** now have the soak+persist pair that
+proves a machine *keeps* working and *writes*: the LC II, the Quadra 605, the
+IIvx — and, since 2026-08-13, the **IIsi**, the first RAM-based-video machine
+to get one (`iisi_soak/persist_etalon`, `tests/rbv_beyond_etalon.cpp`).
+Counting profiles alone hides that axis — the IIvx was inside the nine before
+it could survive three idle minutes or create a folder.
+
+The IIsi pair discharged the prerequisite this list used to carry: a
+LOGICAL-address read of the Time global. `tests/Mmu030Peek.h` is that read —
+a side-effect-free walk of the live 030 page tables through `peek8` (whose
+physical-ness is exactly right for descriptor addresses), mirroring
+`mmuWalkTables` case for case but never driving the bus and never setting
+U/M bits. The first soak validated the instrument by construction: TC read
+back `$80F84500` (the documented IIsi value) and the Mac clock advanced
+**180 s in 180 s of frames** — a wrong walk reads pixels, not a clock. The
+gate FAILS loudly if the Finder is up with the PMMU off, so the
+physical-vs-logical trap now has a standing regression test.
 
 Highest-ROI closers, in order:
 
-- [ ] **Next beyond-boot machines**: a `launch`/`floppy` pair on the Q605, or
-  soak on the RBV — which needs a LOGICAL-address read of the Time global
-  first, since `peek8` is physical there (that is the same trap as the
-  retracted IIsi "ADB Manager" bug: on a RAM-based-video machine physical low
-  RAM *is* the framebuffer while the ROM's PMMU moves the System's logical low
-  memory elsewhere — **check `TC` bit 31 before trusting any low-memory read**).
+- [ ] **Next beyond-boot machines**: a `launch`/`floppy` pair on the Q605,
+  soak on the **IIci** (the other RBV — `Mmu030Peek.h` makes it a rig clone
+  now), or the AIO family.
 - [ ] **Floppy: a guest-INITIATED write — BLOCKED on the § 1 SWIM1-IWM mount
   bug.** The 2026-07-29 "volume mounts, window auto-opens, Cmd-N dropped"
   evidence is RETRACTED (2026-08-05): it was the System 7.5 INIT DIALOG end to

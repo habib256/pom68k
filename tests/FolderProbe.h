@@ -41,7 +41,11 @@ namespace folderprobe {
 // would drown the signal.
 inline constexpr const char* kNames[] = { "untitled folder",
                                           "Nouveau dossier",
-                                          "Dossier sans titre" };
+                                          "Dossier sans titre",
+                                          // System 6 Finders (the beyond-boot
+                                          // roster's Mac II and Plus images):
+                                          "Empty Folder",
+                                          "Dossier vide" };
 inline constexpr size_t kCount = sizeof(kNames) / sizeof(kNames[0]);
 
 // Case-insensitive on ASCII: the catalog name is MacRoman and the candidates

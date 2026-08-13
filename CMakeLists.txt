@@ -1030,6 +1030,37 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              TIMEOUT 1800)
     endforeach()
 
+    # Beyond-boot on the FOURTH machine, and the first RAM-based-video one:
+    # the IIsi. Blocked until 2026-08-13 on the logical-address read of the
+    # Time global (peek8 is physical and low physical RAM is the framebuffer
+    # there) — tests/Mmu030Peek.h is that read, a side-effect-free walk of
+    # the live page tables.
+    add_executable(rbv_beyond_etalon tests/rbv_beyond_etalon.cpp)
+    target_link_libraries(rbv_beyond_etalon PRIVATE pom68k_core)
+    foreach(scenario soak persist)
+        add_test(NAME iisi_${scenario}_etalon COMMAND rbv_beyond_etalon
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(iisi_${scenario}_etalon PROPERTIES
+                             ENVIRONMENT "POM68K_BEYOND=${scenario}"
+                             TIMEOUT 1800)
+    endforeach()
+
+    # Beyond-boot for the whole roster (2026-08-13): every platform gets the
+    # soak+persist pair on the shared engine (tests/BeyondBoot.h). One thin
+    # gate binary per platform; POM68K_BEYOND picks the scenario.
+    foreach(machine sonora centris q700 q630 duo macii iifx compact)
+        add_executable(${machine}_beyond_etalon tests/${machine}_beyond_etalon.cpp)
+        target_link_libraries(${machine}_beyond_etalon PRIVATE pom68k_core)
+        foreach(scenario soak persist)
+            add_test(NAME ${machine}_${scenario}_etalon
+                     COMMAND ${machine}_beyond_etalon
+                     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            set_tests_properties(${machine}_${scenario}_etalon PROPERTIES
+                                 ENVIRONMENT "POM68K_BEYOND=${scenario}"
+                                 TIMEOUT 1800)
+        endforeach()
+    endforeach()
+
     # Phase C gate: Macintosh LC (68020 on the same V8 board, 2 MB
     # soldered) boots to the Finder (soft-skips without ROM + image).
     add_executable(lc_boot_etalon tests/lc_boot_etalon.cpp)
