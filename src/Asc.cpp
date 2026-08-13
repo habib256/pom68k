@@ -5,6 +5,21 @@
 #include <algorithm>
 #include <cstring>
 
+// The wavetable register window, $810-$82F (reg offsets $10-$2F). Each
+// voice owns two 24-bit big-endian values three bytes apart in a 8-byte
+// stride: phase at $x1-$x3, increment at $x5-$x7 (asc.cpp:474-560 on the
+// write side, :344-357 on the read side). $810/$814/… are unmapped holes.
+bool AscV8::wtRegister(uint32_t reg, int& voice, bool& isIncr, int& shift) {
+    if (reg < 0x10 || reg > 0x2F) return false;
+    const uint32_t rel = reg - 0x10;         // 0..0x1F
+    voice = int(rel >> 3);                   // 8 bytes per voice
+    const uint32_t in = rel & 7;             // 0=hole,1..3=phase,4=hole,5..7=incr
+    if (in == 0 || in == 4) return false;
+    isIncr = in >= 5;
+    shift = 8 * (2 - int((in - (isIncr ? 5 : 1))));   // 16, 8, 0
+    return true;
+}
+
 void AscV8::classicResetFifos() {
     rd_ = wr_ = rdB_ = wrB_ = 0;
     cap_ = capB_ = 0;
@@ -14,6 +29,7 @@ void AscV8::classicResetFifos() {
 void AscV8::reset() {
     classicResetFifos();
     for (auto& r : regs_) r = 0;
+    for (int i = 0; i < 4; i++) wtPhase_[i] = wtIncr_[i] = 0;
     std::memset(fifo_, 0, sizeof fifo_);
     std::memset(fifoB_, 0, sizeof fifoB_);
     // Classic ASC idle status is $00 (ASCTester on IIci); V8 starts empty.
@@ -67,7 +83,15 @@ uint8_t AscV8::readReg(uint32_t offset) {
         }
         return rv;
     }
-    default:
+    default: {
+        // Wavetable phase/increment read back from the LIVE oscillators, not
+        // from the register file — the phase advances every sample, so a
+        // stored copy would be stale the moment playback started. MAME does
+        // the same rebuild on any read in the window (asc.cpp:344-357).
+        int voice, shift; bool isIncr;
+        if (classic() && offset >= 0x800
+            && wtRegister(offset - 0x800, voice, isIncr, shift))
+            return uint8_t((isIncr ? wtIncr_[voice] : wtPhase_[voice]) >> shift);
         // FIFO IRQ-control registers live at bus offsets $F09/$F29, not
         // $809/$829. Classic reads them as 0: MAME master asc_device::read
         // (asc.cpp:657-667) overrides the base $01 (asc.cpp:335-337) to
@@ -84,6 +108,7 @@ uint8_t AscV8::readReg(uint32_t offset) {
         // (audit § 2.8(b)).
         if (offset - 0x800 < 0x20) return regs_[offset - 0x800];
         return 0;
+    }
     }
 }
 
@@ -189,14 +214,25 @@ void AscV8::write(uint32_t offset, uint8_t v) {
         if (!classic()) return;
         if (reg < 0x20) regs_[reg] = v;
         return;
-    default:
+    default: {
         if (offset == 0xE00) {               // test hook: force status + IRQ
             fifoStat_ |= 0x0F;
             setIrq(true);
             return;
         }
+        // Wavetable phase/increment (classic only): one byte of a 24-bit
+        // value, straight into the live oscillator. Two of the four voices
+        // live past `regs_`, which is exactly why the oscillators are their
+        // own state rather than a view of the register file.
+        int voice, shift; bool isIncr;
+        if (classic() && wtRegister(reg, voice, isIncr, shift)) {
+            uint32_t& dst = isIncr ? wtIncr_[voice] : wtPhase_[voice];
+            dst = (dst & ~(0xFFu << shift)) | (uint32_t(v) << shift);
+            return;
+        }
         if (reg < 0x20) regs_[reg] = v;
         return;
+    }
     }
 }
 
@@ -209,9 +245,42 @@ void AscV8::tick(int cpuCycles) {
 
         if (classic()) {
             const uint8_t mode = regs_[0x01] & 3;
+            if (mode == 2) {
+                // ── Four-voice wavetable (asc.cpp:248-281) ─────────────
+                // Unique to the first-generation ASC. Each voice advances a
+                // 24-bit phase by its increment and takes bits 23-15 as a
+                // 512-byte table index; voices 0/1 read FIFO A, 2/3 FIFO B,
+                // odd voices from the upper half of their RAM. Samples are
+                // offset binary (XOR $80 → signed). No FIFO status and no
+                // IRQ here: MAME's case 2 raises none, and the Sound
+                // Manager drives wavetable playback open-loop.
+                static constexpr uint32_t kTableOffset[2] = {0, 0x200};
+                int mix = 0;
+                for (int ch = 0; ch < 4; ch++) {
+                    wtPhase_[ch] = (wtPhase_[ch] + wtIncr_[ch]) & 0xFFFFFF;
+                    const uint8_t* table = ch < 2 ? fifo_ : fifoB_;
+                    const uint32_t idx = ((wtPhase_[ch] >> 15) & 0x1FF)
+                                       + kTableOffset[ch & 1];
+                    mix += int(int8_t(table[idx & 0x3FF] ^ 0x80));
+                }
+                // MAME weights each voice at 64 in 16-bit terms (put_int
+                // with a 32768*4 full scale over samples scaled by 256), so
+                // four voices at full deflection land exactly at full
+                // scale. Clamp rather than wrap: the sum's low bound is
+                // -32768 and its high bound +32512, but a future gain
+                // change must not silently alias.
+                mix *= 64;
+                if (mix > 32767) mix = 32767;
+                if (mix < -32768) mix = -32768;
+                if (((outWr_ - outRd_) & (kOutSize - 1)) < kOutSize - 1)
+                    out_[outWr_++ & (kOutSize - 1)] = int16_t(mix);
+                continue;
+            }
             if (mode != 1) {
-                // Off or wavetable: no FIFO half-empty IRQ. Wavetable audio
-                // is still a functional stub (silence out) — Sys7 uses FIFO.
+                // Chip off (mode 0) or the undefined mode 3: silence, and no
+                // FIFO half-empty IRQ. (MAME holds the last sample as a DC
+                // level instead of zeroing — an anti-click detail with no
+                // guest observable, not adopted.)
                 if (((outWr_ - outRd_) & (kOutSize - 1)) < kOutSize - 1)
                     out_[outWr_++ & (kOutSize - 1)] = 0;
                 continue;

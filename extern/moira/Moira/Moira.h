@@ -127,9 +127,25 @@ protected:
     
     // Read buffer (appears in 68010 exception frames)
     u16 readBuffer {};
-    
+
     // Write buffer (appears in 68010 exception frames)
     u16 writeBuffer {};
+
+    // POM68K: the two buffers above are architectural on the 68010 ONLY (its
+    // format-$8 frame is the single consumer, writeStackFrame1000). They are
+    // serialized in the save state, and maintaining them on every core made
+    // the snapshot fingerprint depend on which engine executed recent
+    // accesses — the JIT does not maintain them — so restore-then-run
+    // diverged from run (savestate_040_test § determinism, 2026-08-12).
+    // These setters keep the 68010 exact and compile to nothing elsewhere;
+    // the argument is still evaluated, so a side-effectful source (the
+    // address-error dummy readM) keeps its bus access on every core.
+    template <Core C> void pomSetRB(u16 v) {
+        if constexpr (C == Core::C68010) readBuffer = v;
+    }
+    template <Core C> void pomSetWB(u16 v) {
+        if constexpr (C == Core::C68010) writeBuffer = v;
+    }
     
     // State flags used internally
     int flags {};

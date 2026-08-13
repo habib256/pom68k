@@ -109,7 +109,7 @@ Moira::computeEA(u32 n) {
         case 7: // ABS.W
         {
             result = (i16)queue.irc;
-            readBuffer = queue.irc;
+            pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
 
             if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
@@ -125,7 +125,7 @@ Moira::computeEA(u32 n) {
                     result = queue.irc << 16;
                     readExt<C>();
                     result |= queue.irc;
-                    readBuffer = queue.irc;
+                    pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
                     if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
                     mmuLogging = logSave;
                     mmuLogExtWord(result);
@@ -136,7 +136,7 @@ Moira::computeEA(u32 n) {
             result = queue.irc << 16;
             readExt<C>();
             result |= queue.irc;
-            readBuffer = queue.irc;
+            pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
 
             if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
@@ -344,7 +344,7 @@ Moira::writeOp(int n, u32 val)
 
         default:
 
-            writeBuffer = (S == Long) ? u16(val >> 16) : u16(val & 0xFFFF);
+            pomSetWB<C>((S == Long) ? u16(val >> 16) : u16(val & 0xFFFF));  // POM68K: 68010-only
 
             // Compute effective address
             u32 ea = computeEA<C, M, S>(n);
@@ -399,7 +399,7 @@ Moira::writeOp(int n, u32 ea, u32 val)
 
         default:
 
-            writeBuffer = (S == Long) ? u16(val >> 16) : u16(val & 0xFFFF);
+            pomSetWB<C>((S == Long) ? u16(val >> 16) : u16(val & 0xFFFF));  // POM68K: 68010-only
 
             // POM68K O4 slice 3: see the other writeOp overload
             if constexpr (C == Core::C68020) {
@@ -709,7 +709,7 @@ Moira::readI()
             readExt<C>();
             mmuLogging = logSave;
             mmuLogExtWord(result);
-            readBuffer = queue.irc;
+            pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
             return result;
         }
     }
@@ -739,7 +739,7 @@ Moira::readI()
         default:
             fatalError;
     }
-    readBuffer = queue.irc;
+    pomSetRB<C>(queue.irc);  // POM68K: 68010-only
 
     return result;
 }
@@ -847,18 +847,18 @@ Moira::prefetch()
     if constexpr (C == Core::C68020) {
         if (u16 w; pomJitFetch020<(F & POLL) != 0>(reg.pc + 2, w)) {
             queue.irc = w;
-            readBuffer = w;
+            pomSetRB<C>(w);  // POM68K: 68010-only
             return;
         }
     } else {
         if (u16 w; pomJitFetch000<C, (F & POLL) != 0>(reg.pc + 2, w)) {
             queue.irc = w;
-            readBuffer = w;
+            pomSetRB<C>(w);  // POM68K: 68010-only
             return;
         }
     }
     queue.irc = (u16)read<C, AddrSpace::PROG, Word, F>(reg.pc + 2);
-    readBuffer = queue.irc;
+    pomSetRB<C>(queue.irc);  // POM68K: 68010-only
 }
 
 template <Core C, Flags F, int delay> void
@@ -992,8 +992,9 @@ Moira::jumpToVector(int nr)
 
         } else {
 
-            queue.irc = readBuffer = u16(reg.pc);
-            writeBuffer = u16(4 * nr);
+            queue.irc = u16(reg.pc);
+            pomSetRB<C>(queue.irc);  // POM68K: 68010-only
+            pomSetWB<C>(u16(4 * nr));  // POM68K: 68010-only
             
             switch (M68kException(nr)) {
                     

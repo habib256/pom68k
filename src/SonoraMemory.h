@@ -163,6 +163,16 @@ public:
         drive_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
+    // A firmware RESET_SYSTEM ($11) latched a warm restart (the Finder's
+    // "Restart"). One-shot: the CPU wrapper consumes it at a run boundary
+    // and resets itself there, never from inside the memory callback that
+    // raised it. Binding: this class's constructor.
+    bool consumeRestart() {
+        bool r = restartPending_;
+        restartPending_ = false;
+        return r;
+    }
+
     bool cpuHeld() const {
         return egretLleOn_ ? egretLle_.cpuHeld() : egret_.cpuHeld();
     }
@@ -257,7 +267,8 @@ public:
         ar(pens_, palAddr_, palIdx_, palControl_, palColkey_, palRgb_,
            vidMode_, vidDepth_, vidMonId_, vidVtest_, montype_);
         ar(viaAcc_, tickAcc_, swimAcc_, framePos_, frameCycles_,
-           vblStart_, vblState_, frameTotalLines_, frameCount_);
+           vblStart_, vblState_, frameTotalLines_, frameCount_,
+           restartPending_);
         if constexpr (Ar::loading) {
             mode_ = modeline(vidMode_);
             if (jitGuard_) jitGuard_->invalidate();
@@ -300,6 +311,7 @@ private:
     uint32_t machineId_ = kIdLc3;     // $5FFFFFFC model longword
     jit::CodeGuard* jitGuard_ = nullptr;   // JIT code invalidation
     bool overlay_ = true;
+    bool restartPending_ = false;   // firmware $11 → CPU reset at a boundary
     bool sccIrq_ = false;
 
     // Sonora video registers (mv_sonora.cpp): CLUT + mode/depth/sense.

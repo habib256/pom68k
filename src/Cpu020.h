@@ -48,9 +48,13 @@ public:
     moira::i64 machineClock() const { return clock; }
 
     // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
+    // periphDeadline_ is real scheduling state, not a cache: a restore that
+    // dropped it would run the fan-out on a stale deadline until the next
+    // flush. The savestate gates catch the omission — that is why the
+    // contract in TODO § 4 names this line explicitly.
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
-        ar(lastPeriphClock_);
+        ar(lastPeriphClock_, periphDeadline_);
     }
 
 private:
@@ -72,5 +76,9 @@ private:
     MacIIMemory& mem_;
     jit::Engine jit_;
     moira::i64 lastPeriphClock_ = 0;
+    moira::i64 periphDeadline_ = 0;
+    void schedulePeriphDeadline();
+    // Upper bound on the computed deadline, and the cadence the JIT is
+    // paced at. Was the fixed batch until 2026-08-13.
     static constexpr int kPeriphBatch = 64;
 };

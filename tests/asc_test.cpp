@@ -214,6 +214,153 @@ int main() {
         check(v8.read(0x807) == 0x00, "V8 integration: $807 not writable, reads 0");
     }
 
+    // ── SIMPLIFICATIONS_REVIEW F5: four-voice wavetable mode ────────────
+    // MODE = 2, unique to the first-generation ASC (asc.cpp:19, engine at
+    // :248-281). Each voice advances a 24-bit phase by its increment and
+    // takes bits 23-15 as a 512-byte index; voices 0/1 read FIFO A, 2/3
+    // read FIFO B, and odd voices take the upper half (+$200) of theirs.
+    // Samples are offset binary. Registers: phase at $811/$819/$821/$829,
+    // increment at $815/$81D/$825/$82D, 24-bit big-endian.
+    {
+        // Voice n's phase register base; increment sits 4 bytes later.
+        auto phaseReg = [](int v) { return uint32_t(0x811 + 8 * v); };
+        auto incrReg  = [](int v) { return uint32_t(0x815 + 8 * v); };
+        auto write24  = [](AscV8& a, uint32_t reg, uint32_t v) {
+            a.write(reg,     uint8_t(v >> 16));
+            a.write(reg + 1, uint8_t(v >> 8));
+            a.write(reg + 2, uint8_t(v));
+        };
+        auto read24 = [](AscV8& a, uint32_t reg) {
+            return uint32_t(a.read(reg)) << 16 | uint32_t(a.read(reg + 1)) << 8
+                 | a.read(reg + 2);
+        };
+        // Drain n samples and return the loudest absolute output seen.
+        auto peak = [](AscV8& a, int samples) {
+            a.tick(704 * samples);
+            int pk = 0;
+            while (a.available()) {
+                int s = a.pop();
+                if (s < 0) s = -s;
+                if (s > pk) pk = s;
+            }
+            return pk;
+        };
+
+        AscV8 wt(0x00);
+        bool wtIrq = false;
+        wt.onIrq = [&](bool s) { wtIrq = s; };
+        wt.reset();
+        wt.write(0x801, 2);                   // MODE = wavetable
+        check(wt.read(0x801) == 2, "wavetable: MODE 2 accepted");
+
+        // Registers are live oscillators, not a register-file echo: the
+        // two upper voices live past the 32-byte block entirely.
+        write24(wt, phaseReg(3), 0x123456);
+        write24(wt, incrReg(3), 0x00ABCD);
+        check(read24(wt, phaseReg(3)) == 0x123456,
+              "wavetable: voice 3 phase reads back (past regs_)");
+        check(read24(wt, incrReg(3)) == 0x00ABCD,
+              "wavetable: voice 3 increment reads back");
+
+        // A silent table ($80 = offset-binary zero) stays silent even with
+        // every oscillator running — this is the control for the next check.
+        for (uint32_t i = 0; i < 0x400; i++) {
+            wt.write(i, 0x80);                // FIFO A as wavetable RAM
+            wt.write(0x400 + i, 0x80);        // FIFO B
+        }
+        for (int v = 0; v < 4; v++) {
+            write24(wt, phaseReg(v), 0);
+            write24(wt, incrReg(v), 0x008000);
+        }
+        check(peak(wt, 200) == 0, "wavetable: a centred table is silent");
+
+        // Now make voice 0's table a square wave. The engine must produce
+        // real audio — the whole point of F5, where the old stub emitted
+        // zeroes whatever the guest programmed.
+        for (uint32_t i = 0; i < 0x200; i++)
+            wt.write(i, i < 0x100 ? 0xFF : 0x00);
+        const int loud = peak(wt, 400);
+        check(loud > 4000, "wavetable: a square-wave table is audible");
+        check(loud <= 32767, "wavetable: output stays inside int16");
+
+        // The phase free-runs: it must have advanced by increment × samples.
+        AscV8 ph(0x00);
+        ph.reset();
+        ph.write(0x801, 2);
+        write24(ph, phaseReg(0), 0);
+        write24(ph, incrReg(0), 0x000100);
+        ph.tick(704 * 16);                    // 16 samples
+        const uint32_t advanced = read24(ph, phaseReg(0));
+        check(advanced == 0x001000,
+              "wavetable: phase advances by increment per sample");
+        check(read24(ph, phaseReg(1)) == 0,
+              "wavetable: a zero-increment voice does not drift");
+
+        // Voice/table routing. One voice moves at a time, and the loud
+        // region sits in the SECOND half of a table so the three parked
+        // voices — which all sit at index 0 — read centred silence: a
+        // parked voice on a loud sample is a DC offset that would make
+        // every "silent" assertion below pass or fail for the wrong reason.
+        // Increment $8000 advances the index by exactly one per sample, so
+        // a sweep needs >256 samples to reach a region at index $100.
+        auto routingRig = [&](AscV8& a, bool loudInB) {
+            a.reset();
+            a.write(0x801, 2);
+            for (uint32_t i = 0; i < 0x400; i++) {
+                a.write(i, 0x80);                   // FIFO A: all centred
+                a.write(0x400 + i, 0x80);           // FIFO B: all centred
+            }
+            // Square wave over indices $100-$1FF of the chosen FIFO's UPPER
+            // half — i.e. bytes $300-$3FF of that FIFO's own 1 KB, which is
+            // write offset $300 for FIFO A and $700 for FIFO B (the B
+            // window starts at $400).
+            const uint32_t base = loudInB ? 0x700 : 0x300;
+            for (uint32_t i = 0; i < 0x100; i++)
+                a.write(base + i, i < 0x80 ? 0xFF : 0x00);
+            for (int v = 0; v < 4; v++) {
+                write24(a, phaseReg(v), 0);
+                write24(a, incrReg(v), 0);
+            }
+        };
+        // Park every voice back at index 0 — a voice left where the previous
+        // sweep stopped can sit ON the loud region and contribute a DC
+        // offset, which is exactly what made the first version of this
+        // block report routing failures that were its own bookkeeping.
+        auto sweepOnly = [&](AscV8& a, int voice) {
+            for (int v = 0; v < 4; v++) {
+                write24(a, incrReg(v), 0);
+                write24(a, phaseReg(v), 0);
+            }
+            write24(a, incrReg(voice), 0x008000);
+            return peak(a, 400);
+        };
+
+        // Loud region in FIFO A's UPPER half → only voice 1 reaches it.
+        AscV8 rtA(0x00);
+        routingRig(rtA, /*loudInB=*/false);
+        check(sweepOnly(rtA, 1) > 4000, "wavetable: voice 1 reads FIFO A's upper half");
+        check(sweepOnly(rtA, 0) == 0, "wavetable: voice 0 stays in A's lower half");
+        check(sweepOnly(rtA, 2) == 0, "wavetable: voice 2 reads FIFO B, not A");
+
+        // Loud region in FIFO B's UPPER half → only voice 3 reaches it.
+        AscV8 rtB(0x00);
+        routingRig(rtB, /*loudInB=*/true);
+        check(sweepOnly(rtB, 3) > 4000, "wavetable: voice 3 reads FIFO B's upper half");
+        check(sweepOnly(rtB, 2) == 0, "wavetable: voice 2 stays in B's lower half");
+        check(sweepOnly(rtB, 1) == 0, "wavetable: voice 1 reads FIFO A, not B");
+
+        // Wavetable mode raises no FIFO interrupt (MAME's case 2 has no
+        // set_irq_line): a guest driving it open-loop must not be woken.
+        check(!wtIrq, "wavetable: no FIFO IRQ in wavetable mode");
+
+        // And the mode is classic-only: a V8 integration forces FIFO mode,
+        // so the same programming must not turn into wavetable playback.
+        AscV8 v8wt(0xE8);
+        v8wt.reset();
+        v8wt.write(0x801, 2);
+        check(v8wt.read(0x801) == 1, "V8: MODE stays forced to FIFO, no wavetable");
+    }
+
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");
     return gFails ? 1 : 0;
 }

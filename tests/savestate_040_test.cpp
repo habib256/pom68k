@@ -14,6 +14,8 @@
 // Synthetic counter-loop ROM at $40000010 (the shared ROM window), no
 // assets. Full-OS coverage belongs to a per-machine savestate etalon.
 
+#include "CpuChunkMap.h"
+
 #include "CentrisCpu.h"
 #include "CentrisMemory.h"
 #include "Cpu040.h"
@@ -60,6 +62,17 @@ std::vector<uint8_t> makeRom(uint32_t size) {
 }
 
 using Blob = std::vector<uint8_t>;
+
+// Where the CPU chunk's payload starts inside a container, so a divergence
+// offset can be mapped to a field name. 0 if the chunk is not found.
+size_t cpuPayloadStart(const Blob& b) {
+    const uint8_t* cur = b.data() + 8;             // past the magic
+    const uint8_t* end = b.data() + b.size();
+    sav::ChunkView cv;
+    while (sav::nextChunk(cur, end, cv))
+        if (cv.is("CPU ")) return size_t(cv.data - b.data());
+    return 0;
+}
 
 struct Q605Rig {
     Q605Memory mem;
@@ -172,7 +185,10 @@ void testFamily(const char* family, const std::vector<uint8_t>& rom) {
         size_t i = 0;
         const size_t n = std::min(restored.size(), direct.size());
         while (i < n && restored[i] == direct[i]) i++;
-        std::printf("    first divergence at byte %zu of %zu\n", i, n);
+        // Name the field, not just the offset. "Byte 312" cost a diagnostic
+        // round on 2026-08-12 before anyone knew it meant `writeBuffer`
+        // (CpuChunkMap.h explains why this check is the class detector).
+        cpuchunk::explain(i, cpuPayloadStart(direct), n);
     }
 }
 }  // namespace

@@ -225,13 +225,53 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
   computed deadline, and on `Cpu030` also as the explicit non-conformant
   cadence of the Egret/Cuda HLE fallback (`Cpu030.h:216-219`).
 
-  Still open, three wrappers:
+  Still on a batch by default, three wrappers — but the story changed on
+  **2026-08-13**: two of them now HAVE the deadline, measured, and it is
+  **opt-in because it costs more than it demonstrably buys**.
 
-  | wrapper | platform | batch | jitter at its clock |
+  | wrapper | platform | default | jitter at its clock | deadline available |
+  |---|---|---|---|---|
+  | `Cpu020` (`Cpu020.h:75`) | Mac II / IIx / IIcx / SE/30 | batch 64 | ≤ 4.1 µs @ 15.67 MHz | `POM68K_MACII_EVENT=1` |
+  | `IIfxCpu` (`IIfxCpu.h:61`) | Mac IIfx | batch 64 | ≤ 1.6 µs @ 40 MHz | **no — refused, see below** |
+  | `MscCpu` (`MscCpu.h:59`) | PowerBook Duo 230 | batch 128 | ≤ 3.9 µs @ 33 MHz | `POM68K_DUO_EVENT=1` |
+
+  **The measurement, which is the whole finding** (one binary, the knob
+  flipped between runs, same image):
+
+  | gate | deadline | historical batch | cost |
   |---|---|---|---|
-  | `Cpu020` (`Cpu020.h:75`) | Mac II / IIx / IIcx / SE/30 | 64 | ≤ 4.1 µs @ 15.67 MHz |
-  | `IIfxCpu` (`IIfxCpu.h:61`) | Mac IIfx | 64 | ≤ 1.6 µs @ 40 MHz |
-  | `MscCpu` (`MscCpu.h:59`) | PowerBook Duo 230 | 128 | ≤ 3.9 µs @ 33 MHz |
+  | `macii_boot_etalon` pair 1 | 65.28 s | 57.18 s | **+14.2 %** |
+  | `macii_boot_etalon` pair 2 | 66.37 s | 56.49 s | **+17.5 %** |
+  | `duo230_boot_etalon` | 109.49 s | 100.50 s | **+9.0 %** |
+
+  All four runs reach the Finder and the Mac II etalon's three observables
+  (menu bar 0.10, desktop 0.49, 1159 SCSI commands) are **identical either
+  way**. So the deadline is strictly more correct — jitter → 0 — and on the
+  only workload this tree can measure, that correctness is **not
+  observable** while its cost is, repeatedly.
+
+  Why the other eight took the same trade for almost nothing: they were
+  replacing a far coarser batch. On the Q605 the baseline was 256 and exact-1
+  cost **+76 %**; the deadline landed near the coarse baseline *and* was
+  exact, so it was close to free. These two boards start from an already fine
+  batch (64 / 128) whose binding source is only ~2× / 8× finer, so there is no
+  slack to recover — only the per-entry fan-out cost. The governing precedent
+  is the Q605 **ASC** event scheduler: seven green gates, a throughput
+  regression, and it was withdrawn entirely (`TODO.md` § 0·A).
+  → **Turn either on by default** the day a gate can SEE the difference (a
+  jitter-sensitive beyond-boot gate) or a guest symptom appears. The
+  mechanism, its bounds and its save-state field are in place, so that day
+  costs one character.
+
+  **The IIfx is refused, and this was verified rather than assumed
+  (2026-08-13).** `ApplePic::tick` steps one 65C02 instruction per loop
+  iteration with no idle state — the IOP firmware always runs — so
+  `ApplePic::cyclesToNextEvent()` is 1 whatever the machine is doing
+  (`ApplePic.h:89`). A deadline there would collapse to a flush per cycle and
+  replace a 64-cycle batch with the worst case, for exactness a device that
+  is itself a CPU cannot offer anyway. The `TODO.md` claim ("two IOPs always
+  executing → the fan-out is intrinsic") is **correct**; this is the check,
+  so nobody re-derives it.
 
   The 68000 compacts are **not** on a batch at all: `Cpu68k::sync()` runs
   before every bus access and calls `catchUp()` unconditionally
@@ -296,9 +336,13 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
   off) — state only, data still served by the bus, chantier closed at M1:
   `docs/CACHE_040.md`. No copyback data path, no snooping.
 
-→ **Closing the remainder**: transpose the deadline interface to the three
-wrappers above (`Cpu020`, `IIfxCpu`, `MscCpu`). Real caches remain a
-Moira-side project (`extern/moira`), not a wrapper change.
+→ **Closing the remainder**: done as far as it is worth doing. The deadline
+interface reached `Cpu020` and `MscCpu` on 2026-08-13 and sits behind a knob
+for the measured reason above; the `IIfxCpu` is refused on evidence. What is
+left is not more plumbing but a **gate that can see IRQ jitter** — until one
+exists, flipping either default is unverifiable work by the § 5 caveat's own
+definition. Real caches remain a Moira-side project (`extern/moira`), not a
+wrapper change.
 
 **Pinned lesson — the overlay must not touch bus time** (root-caused
 2026-07-25). It used to compress VIA-paced pulses `cacheBoost_`× because
@@ -670,13 +714,24 @@ cite it here), or the next audit pass removes it behind an env flag and the
 `asc_test` rates stay green. Until one of the two happens it is the only
 un-sourced behaviour in the audio path — do not copy the pattern.
 
-*Missing, and audibly so:* the classic ASC's **wavetable mode is a silence
-stub** (`Asc.cpp:124`, `:213`; wavetable registers land in `regs_[0x20]` and
-are never played). MAME implements it and ships the ASCTester dump, so
-unlike most entries here there **is** an oracle. The plausible consumer is
-Mac II-era software that uses wavetable rather than FIFO playback.
-→ Closing it: extend `asc_test` with a wavetable block (registers 2/3,
-non-silent output).
+*~~Missing, and audibly so:~~ the classic ASC's **wavetable mode** —
+**CLOSED 2026-08-13.** The four-voice engine is implemented against MAME
+`asc.cpp:248-281`: each voice advances a 24-bit phase by its increment and
+takes bits 23-15 as a 512-byte table index; voices 0/1 read FIFO A, 2/3 read
+FIFO B, and odd voices take the upper half (+`$200`) of theirs; samples are
+offset binary; each voice is weighted so four at full deflection land
+exactly at full scale. No FIFO status and no IRQ in this mode — MAME's
+`case 2` raises none, and the Sound Manager drives wavetable playback
+open-loop. The oscillators are **their own state, not a view of `regs_`**:
+two of the four phase/increment pairs (`$821-$82F`) sit past that 32-byte
+block entirely, which is why the register file could never have carried
+them, and reads rebuild the bytes from the live values as MAME does
+(`asc.cpp:344-357`). They travel in the save state, which moved the format
+to **v5** — a free-running oscillator is not re-derivable, so a v4 snapshot
+is refused rather than resumed with four silent voices.
+Gate: `asc_test` (+16 checks — audible output, per-sample phase advance,
+the voice→table routing in both directions, no IRQ, and that a V8
+integration still refuses the mode), verified to bite.
 
 Gate: `asc_test` — measured through the observable the register changes (CPU
 cycles to drain a fixed sample count), not by asserting on `drainHz()`, which
@@ -693,19 +748,28 @@ Functional slot windows; **no arbitration or timeout cycles**.
 The firmware path (§ 2) closes every *wire* gap — framing, pacing, MCU RAM and
 autopoll are the 68HC05's own. Two things it does not close:
 
-- **The PC3 reset line only releases the boot hold.** `CudaLle`'s PC3 handler
-  (`CudaLle.cpp:273-297`, Cuda = rising edge, Egret = falling, per
-  `cuda.cpp`/`egret.cpp` `pc_w`) clears `held_` and installs the staged PRAM
-  — and stops there. A firmware-driven `RESET_SYSTEM` (`$11`) therefore
-  never reaches the 68k: it does not reset the CPU and does not re-arm the
-  ROM overlay. **This is the Finder's "Restart" path.** The mechanism now
-  exists on the other side of the tree — `PgePmu::onCpuReset`
-  (`PgePmu.h:71`, fired at `PgePmu.cpp:338`, wired in `MscMemory.cpp:88`)
-  does exactly this for the Duo's PMU. → **Closing it**: give the
-  Egret/Cuda machines the same callback, and gate it with a "Restart from
-  the Finder" etalon on an Egret machine — **no current gate exercises this
-  path at all**, which is why it survived this long. (`PC2`/NMI and
-  `PA4`/DFAC outputs are absent for the same reason: no consumer.)
+- ~~**The PC3 reset line only releases the boot hold.**~~ — **CLOSED
+  2026-08-13.** A firmware `RESET_SYSTEM` (`$11`) now reaches the 68k on
+  every platform that carries an Egret/Cuda LLE, i.e. **six**: V8, Sonora,
+  VASP, RBV, Q605, Q630. (The old "eight Egret/Cuda platforms" was wrong on
+  both ends — Centris carries no Egret at all, and the Eclipse Q900/950 run
+  the HLE `Egret`, which has no such seam and is already refused in product
+  mode. If the Eclipse ever gains an Egret LLE it inherits this for free.)
+  The design is the one the trap demanded: the PC3 handler decides
+  (`restart = !held_`, so the power-on release is filtered out) and calls
+  `CudaLle::hostReset()`, which fires `onCpuReset`; the machine's binding
+  re-arms the ROM overlay and latches `restartPending_`; the CPU wrapper
+  consumes the latch at its next run boundary and resets there — never
+  inside the memory callback, which would reset the MCU mid-instruction.
+  Exactly the Duo's contract (`MscCpu.cpp:59`). **Only the address map comes
+  back**: the MCU, its PRAM and the devices keep running, because the
+  /RESET line takes the CPU and the gate array, not the part pulling it.
+  The latch is serialized (snapshot format **v5**) — a snapshot taken inside
+  that window must not resume without the reset it owes.
+  Gate: `cuda_restart_test`, 22 checks over both flavours and both bindings
+  (Q605/Cuda/rising/`Cpu040` and LC II/Egret/falling/`Cpu030`), verified to
+  bite. (`PC2`/NMI and `PA4`/DFAC outputs are still absent, for the reason
+  this entry no longer has: no consumer.)
 - **The 6805's programmable timer is pinned at 512 cycles** whatever the PLL
   rate the firmware programs (`M68hc05.cpp:479-486`). Invisible on every
   dump POM68K ships, because the shared rate-2→3 accommodation masks it.
@@ -1023,11 +1087,12 @@ correctness it buys:
    real async transport to talk to. *(The RTS/DTR pins and the SDLC residue
    codes came off this list on 2026-08-02; the ADB device-model holes at
    item 4's old neighbour came off the same day — see § 1.6.)*
-7. **The Egret/Cuda PC3 reset line** (§ 1.9) — a firmware `RESET_SYSTEM`
-   never reaches the 68k, i.e. the Finder's *Restart* is unmodelled on every
-   Egret/Cuda machine. Cheap now that `PgePmu::onCpuReset` exists as the
-   pattern; the cost is the gate, since **no current etalon walks this
-   path**.
+7. ~~**The Egret/Cuda PC3 reset line**~~ (§ 1.9) — **closed 2026-08-13**,
+   on the six platforms that carry an Egret/Cuda LLE, with
+   `cuda_restart_test` as the gate that was the real cost. The classic ASC's
+   wavetable mode (§ 1.7) closed the same day. What remains of the
+   `SIMPLIFICATIONS_REVIEW.md` closure list is F6 (the Duo's matrix input)
+   and F7 (the floppy flux layer, item 5 above).
 8. **NuBus arbitration** (§ 1.8) — needs a second card to contend.
    *(VRAM arbitration came off this list on 2026-08-03: audited and
    accepted, no oracle in any of MAME's four video devices and no guest

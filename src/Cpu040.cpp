@@ -92,6 +92,13 @@ void Cpu040::hardReset() {
 }
 
 void Cpu040::runCycles(moira::i64 n) {
+    // The Egret/Cuda firmware asked for a host reset (RESET_SYSTEM $11, the
+    // Finder's "Restart"). Apply it HERE, at a run boundary, never from
+    // inside the memory callback that raised it — same contract as the
+    // Duo's PMU wake (MscCpu.cpp:59). The machine has already re-armed its
+    // ROM overlay, so this fetch takes the reset vectors out of ROM.
+    if (mem_.consumeRestart()) reset();
+
     // n is a peripheral (machine) cycle budget; run cacheBoost_× more Moira
     // cycles so hot i-cache-resident code keeps up with a real 040 without
     // derailing ASC/VIA pacing (same contract as Cpu030).

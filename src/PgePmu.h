@@ -53,6 +53,15 @@ public:
     void reset();
     void tick(int cpuCycles);                        // CudaLle debt pattern
 
+    // ── Peripheral event deadline (TODO § 4) ────────────────────────────
+    // Machine cycles until the PMU's 68HC05 can execute another cycle,
+    // accounting for the fractional clock bridge AND run()'s overshoot debt
+    // — exactly CudaLle::cyclesToNextEvent, because the clocking is the
+    // same design. The PMU is the binding source on this board: it executes
+    // continuously, so it always has something it could do next. Defined in
+    // the .cpp, where the MCU clock constant lives.
+    int cyclesToNextEvent() const;
+
     // ── Machine-facing lines ──
     bool cpuHeld() const { return held_ || !porteBit2_; }
     bool pmuAck() const { return ackLevel_; }        // pseudo-VIA2 PB1

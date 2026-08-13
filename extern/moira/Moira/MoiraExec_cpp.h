@@ -1483,7 +1483,7 @@ Moira::execBsr(u16 opcode)
 
         // Check for address errors
         if (misaligned<C>(reg.sp)) {
-            writeBuffer = 0;
+            pomSetWB<C>(0);  // POM68K: 68010-only (Moira.h pomSetWB)
             throw AddressError(makeFrame<AE_WRITE|AE_DATA>(newpc));
 
         }
@@ -1714,7 +1714,7 @@ Moira::execChk(u16 opcode)
 
         } else {
 
-            readBuffer = (u16)readM<C, M, S>(ea & ~1);
+            pomSetRB<C>((u16)readM<C, M, S>(ea & ~1));  // POM68K: 68010-only store; the dummy read stays on every core
             updateAnPI<M, S>(src);
             if (isAbsMode(M) || M == Mode::AI || M == Mode::PI || M == Mode::PD) {
 
@@ -2780,7 +2780,7 @@ Moira::execJsr(u16 opcode)
 
                 prefetch<C>();
                 reg.sp -= 4;
-                writeBuffer = u16(reg.pc >> 16);
+                pomSetWB<C>(u16(reg.pc >> 16));  // POM68K: 68010-only
                 throw AddressError(makeFrame<AE_DATA>(reg.sp));
             }
 
@@ -2852,7 +2852,7 @@ Moira::execLink(u16 opcode)
     // Check for address error
     if (misaligned<C>(sp)) {
 
-        writeBuffer = u16(readA(ax) >> 16);
+        pomSetWB<C>(u16(readA(ax) >> 16));  // POM68K: 68010-only
         writeA(ax, sp);
         throw AddressError(makeFrame<AE_DATA|AE_WRITE>(sp, getPC() + 2, getSR(), ird));
     }
@@ -3226,7 +3226,7 @@ Moira::execMove4(u16 opcode)
     if (looping<I>() && S == Long) loopModeDelay = 0;
 
     ea = computeEA<C, Mode::PD, S, IMPL_DEC>(dst);
-    writeBuffer = u16(data);
+    pomSetWB<C>(u16(data));  // POM68K: 68010-only
 
     // Check for address error
     if (misaligned<C, S>(ea)) {
@@ -3941,8 +3941,8 @@ Moira::execMovemRgEa(u16 opcode)
 
                 SYNC(2);
                 setFC<M>();
-                readBuffer = mask;
-                writeBuffer = u16(reg.r[i] & 0xFFFF);
+                pomSetRB<C>(mask);  // POM68K: 68010-only
+                pomSetWB<C>(u16(reg.r[i] & 0xFFFF));  // POM68K: 68010-only
                 throw AddressError(makeFrame<AE_WRITE>(U32_SUB(ea, 2)));
             }
 
@@ -4007,8 +4007,8 @@ Moira::execMovemRgEa(u16 opcode)
 
                 SYNC(2);
                 setFC<M>();
-                readBuffer = mask;
-                writeBuffer = S == Long ? u16(reg.r[i] >> 16) : u16(reg.r[i] & 0xFFFF);
+                pomSetRB<C>(mask);  // POM68K: 68010-only
+                pomSetWB<C>(S == Long ? u16(reg.r[i] >> 16) : u16(reg.r[i] & 0xFFFF));  // POM68K: 68010-only
                 throw AddressError(makeFrame<AE_WRITE>(ea));
             }
 
@@ -4236,7 +4236,7 @@ Moira::execMoves(u16 opcode)
                 }
             } catch (AddressError &exc) {
 
-                writeBuffer = (S == Long ? u16(value >> 16) : u16(value & 0xFFFF));
+                pomSetWB<C>(S == Long ? u16(value >> 16) : u16(value & 0xFFFF));  // POM68K: 68010-only
 
                 // EXPERIMENTAL: CLEAN THIS UP (RENAME stackFrame.ird to irc?!)
                 fcSource = 0;
@@ -4361,7 +4361,7 @@ Moira::execMoveCcrEa(u16 opcode)
 
     if (misaligned<C>(ea)) {
 
-        writeBuffer = val & 0xFFFF;
+        pomSetWB<C>(u16(val & 0xFFFF));  // POM68K: 68010-only
         updateAnPI<M, S>(dst);
         setFC<M>();
         throw AddressError(makeFrame<AE_WRITE|AE_INC_PC>(ea));
@@ -4473,7 +4473,7 @@ Moira::execMoveSrEa(u16 opcode)
 
         if (misaligned<C>(ea)) {
 
-            writeBuffer = val & 0xFFFF;
+            pomSetWB<C>(u16(val & 0xFFFF));  // POM68K: 68010-only
             updateAnPI<M, S>(dst);
             setFC<M>();
             throw AddressError(makeFrame<AE_WRITE|AE_INC_PC>(ea));
@@ -4909,7 +4909,7 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
 
         } else {
 
-            readBuffer = (u16)readM<C, M, S>(ea & ~1);
+            pomSetRB<C>((u16)readM<C, M, S>(ea & ~1));  // POM68K: 68010-only store; the dummy read stays on every core
             updateAnPI<M, S>(src);
             if (isAbsMode(M) || M == Mode::AI || M == Mode::PI || M == Mode::PD) {
                 SYNC(2);
@@ -5062,7 +5062,7 @@ Moira::execDivuMoira(u16 opcode, bool *divByZero)
 
         } else {
 
-            readBuffer = (u16)readM<C, M, S>(ea & ~1);
+            pomSetRB<C>((u16)readM<C, M, S>(ea & ~1));  // POM68K: 68010-only store; the dummy read stays on every core
             updateAnPI<M, S>(src);
             SYNC(2);
             if (isAbsMode(M) || M == Mode::AI || M == Mode::PI || M == Mode::PD) {
@@ -5605,9 +5605,9 @@ Moira::execPea(u16 opcode)
 
         } else {
 
-            writeBuffer = u16(ea >> 16);
+            pomSetWB<C>(u16(ea >> 16));  // POM68K: 68010-only
             if (isAbsMode(M)) {
-                readBuffer = queue.irc;
+                pomSetRB<C>(queue.irc);  // POM68K: 68010-only
                 throw AddressError(makeFrame<AE_WRITE|AE_DATA>(reg.sp, U32_SUB(reg.pc, 4)));
             } else if (isDspMode(M)) {
                 prefetch<C>();
@@ -5694,7 +5694,7 @@ Moira::execRtd(u16 opcode)
     if (misaligned<C>(reg.sp)) {
 
         setFC<M>();
-        readBuffer = u16(readM<C, M, Word>(reg.sp & ~1));
+        pomSetRB<C>(u16(readM<C, M, Word>(reg.sp & ~1)));  // POM68K: 68010-only store; the dummy read stays on every core
         throw AddressError(makeFrame<AE_SET_RW|AE_SET_DF>(reg.sp));
     }
 
@@ -6191,7 +6191,7 @@ Moira::execRtr(u16 opcode)
     if (misaligned<C>(reg.sp)) {
 
         setFC<M>();
-        readBuffer = u16(readM<C, M, Word>(reg.sp & ~1));
+        pomSetRB<C>(u16(readM<C, M, Word>(reg.sp & ~1)));  // POM68K: 68010-only store; the dummy read stays on every core
         throw AddressError(makeFrame<AE_SET_RW|AE_SET_DF>(reg.sp));
     }
 
@@ -6251,7 +6251,7 @@ Moira::execRts(u16 opcode)
     if (misaligned<C>(reg.sp)) {
 
         setFC<M>();
-        readBuffer = u16(readM<C, M, Word>(reg.sp & ~1));
+        pomSetRB<C>(u16(readM<C, M, Word>(reg.sp & ~1)));  // POM68K: 68010-only store; the dummy read stays on every core
         throw AddressError(makeFrame<AE_SET_RW|AE_SET_DF>(reg.sp));
     }
 

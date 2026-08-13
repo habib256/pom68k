@@ -3,6 +3,7 @@
 
 #include "Cpu020.h"
 #include "MacIIMemory.h"
+#include <cstdlib>
 
 namespace {
 jit::MemoryHooks macIIJitHooks(MacIIMemory& mem) {
@@ -32,15 +33,16 @@ Cpu020::Cpu020(MacIIMemory& mem, bool withFpu, bool is030)
     setFPUModel(withFpu ? (is030 ? moira::FPUModel::M68882
                                  : moira::FPUModel::M68881)
                         : moira::FPUModel::NONE);
-    // Fixed batch, not a device-derived deadline: the Mac II family is one
-    // of the four platforms still on kPeriphBatch (TODO.md § 4), so the
-    // engine is told the batch it has to respect rather than a deadline.
+    // The JIT is paced by the same batch that caps the deadline below: the
+    // cap is the worst case, so telling the engine the batch keeps it
+    // conservative whatever the devices ask for on a given quantum.
     jit_.setPeriphPacing(&lastPeriphClock_, kPeriphBatch);
 }
 
 void Cpu020::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
+    schedulePeriphDeadline();
     jit_.flushAll();
     reset();
     setA(7, 0x2000);
@@ -101,8 +103,43 @@ void Cpu020::write8(moira::u32 addr, moira::u8 v)   const { mem_.write8(addr, v)
 void Cpu020::write16(moira::u32 addr, moira::u16 v) const { mem_.write16(addr, v); }
 
 void Cpu020::catchUp() {
-    if (clock - lastPeriphClock_ < kPeriphBatch) return;
+    if (clock < periphDeadline_) return;
     flushTicks();
+}
+
+// min(next observable device bound, the historical batch). The cap is what
+// makes this safe to land: every device without a deadline API keeps exactly
+// its former cadence, so the change can only ever wake the fan-out EARLIER
+// than the old fixed batch, never later. There is no cache boost on this
+// wrapper, so the core clock IS the machine clock and no scaling is needed —
+// unlike Cpu030/Cpu040, where the deadline has to be converted.
+void Cpu020::schedulePeriphDeadline() {
+    // OPT-IN, and the measurement is why (2026-08-13, macii_boot_etalon,
+    // two pairs on one binary): deadline 65.28/66.37 s against the fixed
+    // batch's 57.18/56.49 s — a repeated **+14.2 %/+17.5 %**, with the
+    // etalon's three observables (menu bar 0.10, desktop 0.49, 1159 SCSI
+    // commands) IDENTICAL either way. The deadline is strictly more correct
+    // — IRQ jitter falls from ≤ 4.1 µs to zero — but on the only workload
+    // this tree can measure, that exactness is not observable while the cost
+    // is. The eight converted platforms took the same trade for almost
+    // nothing because they were replacing a far coarser batch (Q605: 256,
+    // and exact-1 cost +76 % there); this board's batch was already 64 and
+    // its binding source, the PIC1654S at 460.8 kHz, is only ~2× finer, so
+    // there is no slack to recover — only the per-entry fan-out cost.
+    // Precedent: the Q605 ASC event scheduler was withdrawn ENTIRELY on a
+    // throughput regression despite seven green gates (TODO § 0·A).
+    // → Turn it on by default the day a gate can SEE the difference (a
+    //   jitter-sensitive beyond-boot gate), or a guest symptom appears.
+    static const bool kEventDriven = [] {
+        const char* e = std::getenv("POM68K_MACII_EVENT");
+        return e && std::atoi(e) != 0;
+    }();
+    if (!kEventDriven) { periphDeadline_ = clock + kPeriphBatch; return; }
+
+    moira::i64 d = mem_.cyclesToNextEvent();
+    if (d < 1) d = 1;
+    if (d > kPeriphBatch) d = kPeriphBatch;
+    periphDeadline_ = clock + d;
 }
 
 void Cpu020::flushTicks() {
@@ -110,6 +147,7 @@ void Cpu020::flushTicks() {
     if (d <= 0) return;
     lastPeriphClock_ = clock;
     mem_.tick(int(d));
+    schedulePeriphDeadline();
 }
 
 void Cpu020::sync(int cycles) {

@@ -218,7 +218,15 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // Q700 (including the Eclipse second bus). Older readers would otherwise
 // accept the longer chunk while silently dropping elapsed device time.
 // v4 stamps the session's active HLE modules and strict qualification.
-inline constexpr u32      kVersion   = 4;
+// v5 carries two additions, both real machine state a v4 chunk cannot
+// supply: the classic ASC's four wavetable oscillators (phase and
+// increment, `AscV8::wtPhase_`/`wtIncr_` — a free-running oscillator is not
+// re-derivable from anything else, and dropping it would restore four
+// silent voices mid-note), and the six Egret/Cuda platforms' pending warm
+// restart (`restartPending_`, the firmware's RESET_SYSTEM latched between
+// the MCU callback and the CPU's next run boundary — a snapshot taken in
+// that window must not resume without the reset it owes).
+inline constexpr u32      kVersion   = 5;
 
 struct Header {
     u32 version     = kVersion;

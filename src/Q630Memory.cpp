@@ -99,6 +99,18 @@ Q630Memory::Q630Memory(uint32_t totalRam)
         }
         if (!cudaLleOn_) pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
     }
+    // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED: this
+    // fires from inside viaWrite(), under the CPU, and reset() would reset
+    // the very MCU that is mid-instruction issuing it. Latch here, act at a
+    // run boundary in the CPU wrapper. Only the address map comes back; the
+    // devices, the PRAM and the MCU keep running, which is what the /RESET
+    // line does on the board (the gate array and the CPU sit on it; the
+    // Egret/Cuda is the one pulling it).
+    cudaLle_.onCpuReset = [this] {
+        overlay_ = true;
+        jitMapChanged();
+        restartPending_ = true;
+    };
 }
 
 bool Q630Memory::loadRom(const std::vector<uint8_t>& data) {
@@ -111,6 +123,7 @@ bool Q630Memory::loadRom(const std::vector<uint8_t>& data) {
 
 void Q630Memory::reset() {
     overlay_ = true;
+    restartPending_ = false;   // a cold reset supersedes a warm one
     jitMapChanged();
     pvIfr_ = pvIer_ = pvPortB_ = 0;
     nubusIrqs_ = 0xFF;

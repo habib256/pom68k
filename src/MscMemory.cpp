@@ -509,6 +509,40 @@ uint8_t MscMemory::peek8(uint32_t addr) const {
     return 0xFF;
 }
 
+int MscMemory::cyclesToNextEvent() const {
+    int best = 0x7fffffff;
+    auto tighten = [&best](int64_t cycles) {
+        if (cycles < 1) cycles = 1;
+        if (cycles < best) best = int(cycles);
+    };
+    // Bridge a device-domain bound (cycles on `deviceHz`, with `acc` already
+    // banked in the fractional accumulator) back to machine cycles.
+    auto bridge = [&](int deviceCycles, int64_t acc, int64_t deviceHz) {
+        if (deviceCycles == 0x7fffffff) return;
+        const int64_t need = int64_t(deviceCycles) * cpuHz_ - acc;
+        tighten(need <= 0 ? 1 : (need + deviceHz - 1) / deviceHz);
+    };
+
+    // The PMU's own 68HC05 — the binding source on this board.
+    tighten(pmu_.cyclesToNextEvent());
+    // VIA1 timers and shift register, on the 783.36 kHz φ2.
+    bridge(via_.cyclesToNextEvent(), viaAcc_, kViaHz);
+    // Sound drain and the SCC's live countdowns, both C15M-paced for the
+    // ASC and machine-paced for the SCC (see tick()).
+    bridge(asc_.cyclesToNextEvent(), c15Acc_, kC15M);
+    tighten(scc_.cyclesToNextEvent());
+    // The board's two frame timers: 60.15 Hz into CA1, and the LCD VBL edge.
+    tighten((cpuHz_ * 20 - tickAcc_ + 1202) / 1203);
+    const int64_t frame = cpuHz_ / 60;
+    const int64_t vblAt = frame * 400 / 445;
+    tighten(framePos_ < vblAt ? vblAt - framePos_ : frame - framePos_);
+
+    // NOT bounded: the SCSI controller and the drives — pure state between
+    // accesses, and every access forces a flush. The wrapper's cap at the
+    // historical batch holds them to their former cadence regardless.
+    return std::max(best, 1);
+}
+
 void MscMemory::tick(int cpuCycles) {
     // VIA1 timers at 783.36 kHz (Bresenham on cpuHz_).
     viaAcc_ += int64_t(cpuCycles) * kViaHz;

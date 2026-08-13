@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 216 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 220 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -282,6 +282,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-13 (third)** — [writeBuffer has no siblings, the determinism check is why, and an engine diff would have said so wrongly](#2026-08-13-chunk-asymmetry-audit)
+- **2026-08-13 (later)** — [The peripheral deadline reaches the last two wrappers, measures worse than the batch, and ships off](#2026-08-13-periph-deadline-optin)
+- **2026-08-13** — [Four audit closures, and two of them were not what the audit said they were](#2026-08-13-f2-f5-closures)
+- **2026-08-12 (later)** — [The red savestate gate was the engine default flip, and the leak was a 68010 frame buffer](#2026-08-12-savestate-writebuffer)
 - **2026-08-12** — [One opcode clears the conservative AArch64 store guard](#2026-08-12-a64-b592-store)
 - **2026-08-10 (eighth)** — [The fastest conformant engine becomes the 68040 default](#2026-08-10-jit-040-default)
 - **2026-08-10 (seventh)** — [The successful postincrement oracle names the first hidden RAM divergence](#2026-08-10-jit-030-pi-success)
@@ -500,6 +504,222 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-13-chunk-asymmetry-audit"></a>
+## 2026-08-13 (third) — writeBuffer has no siblings, the determinism check is why, and an engine diff would have said so wrongly
+
+Follow-up to the 2026-08-12 defect, whose class is "a serialized CPU field
+the interpreter maintains and the JIT does not". Two findings, both from
+experiment.
+
+**The detector already exists and covers every family.** The
+restore-determinism check — save, restore into a second machine, run the same
+cycles, compare — is what caught `writeBuffer`, and all twelve machine
+families have one: `savestate_68k_test` (Plus, SE, **Mac II**),
+`savestate_v8_test` (LC II), `savestate_030_test` (Sonora, VASP, RBV,
+RBV-IIci, IIfx, Duo), `savestate_040_test` (Q605, Centris, Q700, Q900, Q630).
+Restoring the pre-fix behaviour makes all five 040 rigs fail again at the
+same byte, so the detector bites on demand. `jit_lockstep_*` does **not**
+cover the class: it compares registers, the three stacks, the clock, 2 KB of
+RAM and a dozen IPL fields — never the chunk itself.
+
+**The obvious instrument is the wrong one.** The natural next step looked
+like "run interpreter and JIT side by side and diff the CPU chunk". Built it;
+it reports *identical* even with the defect deliberately restored. The reason
+is structural: the JIT's fallback path executes through the interpreter, so a
+store that falls back still writes the buffer. The asymmetry only appears
+when the **proportion** of interpreted execution differs between two runs —
+precisely what a restore creates, because it disarms the JIT and the restored
+machine runs an interpreted warm-up the direct machine never runs. An engine
+diff is the weaker instrument and would have licensed a false all-clear.
+
+The residual risk is bounded by the same fact that made the engine diff
+useless: the JIT diverges only on instructions it emits **natively** — integer
+moves, ALU ops, branches — and `writeBuffer` was hit because every `writeOp`
+touches it. Fields reachable only through exceptions, traces, the FPU or the
+PMMU run through the same interpreter under both engines. The determinism
+gates' synthetic counter loop exercises exactly the native-emission subset,
+which is the part that can actually diverge.
+
+Shipped with it: `tests/CpuChunkMap.h`, the `visitCpuCommon` layout as a
+table, so a failure prints `CPU chunk +256 = writeBuffer +0` instead of
+`byte 312`. Mapping that offset by hand cost a full diagnostic round
+yesterday. Verified by reintroducing the defect: the gate names the field.
+
+<a id="2026-08-13-periph-deadline-optin"></a>
+## 2026-08-13 (later) — The peripheral deadline reaches the last two wrappers, measures worse than the batch, and ships off
+
+The event-deadline scheduler now exists on ten of the twelve platforms
+rather than eight: `Cpu020` (Mac II, IIx, IIcx, SE/30) and `MscCpu` (Duo)
+gained `periphDeadline_`, the early return in `catchUp`, the reschedule after
+`tick`, and the field in `visit()`. **Both default to the historical fixed
+batch**, because the measurement said to.
+
+One binary, the knob flipped between runs, same image:
+
+| gate | deadline | historical batch | cost |
+|---|---|---|---|
+| `macii_boot_etalon` pair 1 | 65.28 s | 57.18 s | **+14.2 %** |
+| `macii_boot_etalon` pair 2 | 66.37 s | 56.49 s | **+17.5 %** |
+| `duo230_boot_etalon` | 109.49 s | 100.50 s | **+9.0 %** |
+
+Every run reaches the Finder, and the Mac II etalon's three observables —
+menu bar 0.10, desktop 0.49, 1159 SCSI commands — are **identical either
+way**. The deadline is strictly more correct: IRQ jitter falls from ≤ 4.1 µs
+to zero. On the only workload this tree can measure, that correctness is not
+observable, while its cost is, repeatedly.
+
+**Why the other eight took the same trade for almost nothing.** They were
+replacing a far coarser batch. The Q605's baseline was 256 and exact-1 cost
+**+76 %** there, so a deadline that landed near the coarse baseline *while*
+being exact was close to free. These two boards start from 64 and 128, and
+their binding sources — the PIC1654S at 460.8 kHz, the PG&E's 68HC05 at
+~16 machine cycles — are only ~2× and ~8× finer. There is no slack to
+recover, only the per-entry fan-out cost. The governing precedent is this
+project's own: the Q605 **ASC** event scheduler had seven green gates, showed
+a throughput regression, and was withdrawn entirely.
+
+So the knobs are `POM68K_MACII_EVENT=1` and `POM68K_DUO_EVENT=1`, off by
+default, with a named reopening condition: flip a default the day a gate can
+SEE the difference. Everything needed for that day is in place.
+
+**The IIfx is refused, on evidence rather than on the backlog's word.**
+`TODO.md` said "two IOPs always executing → the fan-out is intrinsic".
+Checked: `ApplePic::tick` steps one 65C02 instruction per loop iteration with
+no idle state, so `ApplePic::cyclesToNextEvent()` returns 1 whatever the
+machine is doing. A deadline there would replace a 64-cycle batch with a
+flush per cycle, for exactness a device that is itself a CPU cannot offer.
+The claim was right; now it is verified, so nobody re-derives it.
+
+**Two traps on the way, both of the silent-slowdown kind.** The 6522 needed a
+**timer-aware** bound (`Via6522::cyclesToNextEvent`, in φ2 ticks: T1 underflow
+armed or free-running, T2 underflow armed, shift-register completion — and
+nothing else, because every other observable needs a bus access, and an
+access already forces a flush). The obvious "next E tick" bound is always
+safe and says nothing: it would have woken the fan-out 783 360 times a second
+whatever the VIA was doing, and made the Mac II 3.2× worse instead of 14 %.
+And `AdbVia::cyclesToNextEvent()` answers a flat 1 in HLE mode whenever no
+transaction timer is armed — "I might act at any moment" — which would have
+collapsed the deadline to a flush per cycle; the house rule already covers it
+("the explicit HLE fallback keeps its historical batch"), so that bound is
+honoured only on the firmware path.
+
+Green on freshly linked binaries: `savestate_test`, `savestate_030_test`,
+`savestate_68k_test` (the three that catch a `periphDeadline_` missing from
+`visit()`), `msc_parity_test`, `via6522_parity_test`, and the default path
+re-timed at 57.05 s with the observables unchanged.
+
+<a id="2026-08-13-f2-f5-closures"></a>
+## 2026-08-13 — Four audit closures, and two of them were not what the audit said they were
+
+`SIMPLIFICATIONS_REVIEW.md` F2 to F5 are closed, each with the gate its own
+row demanded. Two landed as written; two did not survive contact with the
+code, and that is the part worth keeping.
+
+**F2 was not a defect.** The row said the Sonora CLUT lacked the monochrome
+blue-gun duplication because `SonoraVideo.h` has no such path. Neither does
+MAME's decoder: `mv_sonora.cpp:373-388` applies it at the CLUT **write**, in
+`dac_w`, keyed on the active modeline's `monochrome` flag — and
+`SonoraMemory::dacWrite` has done exactly that since the platform landed.
+The audit had read a decoder and concluded about a chip. What was genuinely
+missing was the gate: the only mono modeline is the 15" Portrait, both LC III
+monitors are RGB, so no boot etalon has ever reached the path. Now
+`sonora_video_test`, 11 checks, and the mono half fails cleanly when the blue
+gun is neutralised. Second time this review has spent a slot on a finding
+taken from a document rather than from the code — F1 was the first.
+
+**F3 was labelled "one byte" and was a behaviour switch.** The Duo's ASC
+should answer `$E9`, not `$E8`, per the Duo 210 ASCTester dump. But
+`classic()` tested `version_ != 0xE8`, so writing the honest byte would have
+reclassified the whole chip as the Mac II *discrete* cell: stereo FIFO B,
+writable MODE/CONTROL/FIFO-MODE, memory-mapped FIFO windows. MAME's
+hierarchy says the opposite — `asc_msc_device : asc_v8_device` overrides
+`get_version()` and nothing else — so the predicate now names the one classic
+part, `version_ == 0x00`. Restoring the old predicate fails exactly the four
+new V8-behaviour assertions in `msc_parity_test`, which is how we know the
+trap was real and not theoretical. **A closure sized by its diff is sized
+wrong.**
+
+**F5, the classic ASC's wavetable mode**, is implemented against
+`asc.cpp:248-281`: four voices, 24-bit phase accumulators, bits 23-15 as a
+512-byte table index, voices 0/1 on FIFO A and 2/3 on FIFO B with the odd
+voices on the upper half, offset-binary samples, no FIFO IRQ. The
+oscillators had to become their own state rather than a view of `regs_` —
+two of the four phase/increment pairs (`$821-$82F`) sit past that 32-byte
+block entirely, which is precisely the "wavetable registers lost" the parity
+audit had recorded. They are serialized, so the snapshot format moves to
+**v5**: a free-running oscillator is not re-derivable, and a v4 chunk would
+restore four silent voices mid-note. 16 checks in `asc_test`.
+
+**F4, the Finder's "Restart", was the last thread of the whole audit** — and
+it covers **six** platforms, not the eight the backlog claimed: the Centris
+carries no Egret at all, and the Eclipse Q900/950 run the HLE one, which has
+no seam and is already refused in product mode. The design is the one the
+trap in `TODO.md` demanded: the PC3 handler decides (the power-on release is
+filtered out), `CudaLle::hostReset()` acts, the machine re-arms its ROM
+overlay and latches `restartPending_`, and the CPU wrapper consumes the latch
+at its next run boundary — never inside the memory callback, which would
+reset the MCU mid-instruction. Only the address map comes back: the MCU, its
+PRAM and the devices keep running, because /RESET takes the CPU and the gate
+array, not the part pulling the line. `hostReset()` exists so the gate drives
+the shipped path rather than a replica of it. `cuda_restart_test`, 22 checks
+across both flavours and both bindings (Q605/Cuda/rising/`Cpu040` and
+LC II/Egret/falling/`Cpu030`); unbinding the callback fails four of them.
+
+What is left of the seven closures: F6 (the Duo's matrix keyboard and
+trackball, milestone 4) and F7 (the floppy flux/PLL layer, step 1 of 4,
+deliberately behind the test-depth pass). The honest remainder on F4 itself
+is a **guest-level** etalon — this gate proves the seam from the firmware's
+own action outward, not the Toolbox path that leads a user to it.
+
+<a id="2026-08-12-savestate-writebuffer"></a>
+## 2026-08-12 (later) — The red savestate gate was the engine default flip, and the leak was a 68010 frame buffer
+
+`savestate_040_test` was red — five failures, first divergence at byte 312 —
+and the TODO entry recording it suspected Valkyrie's derived timing on the
+Q630. Reproduced on x86-64: **all five 040 families** fail, each at byte 312
+of containers whose sizes differ by a factor of ten. An offset identical
+across five platforms cannot live in per-platform state; byte 312 is offset
+256 of the CPU chunk, and walking `visitCpuCommon`'s field layout lands it on
+**`writeBuffer`** — the 68010's format-$8 frame data-output buffer, whose
+single architectural consumer is `writeStackFrame1000` (asserted
+`C == C68010`). No Mac is a 68010; the field is guest-invisible on every
+profile POM68K ships.
+
+The mechanism: the interpreter maintains `writeBuffer` on **every** memory
+write (upstream's one-dataflow-for-all-cores convenience), the JIT —
+correctly, per its contract — does not. A restore calls `pomJitDisarm()`, so
+the restored machine runs an interpreted warm-up window the direct machine
+never runs, and that window stamps `writeBuffer` with live loop data
+(`$AD9E`, the test's incrementing counter) where the direct machine's stayed
+frozen at `$0002` from before its JIT armed. `readBuffer` matched only by
+accident — it tracks `queue.irc`, loop-invariant in the test's two-instruction
+loop. Clock, registers, RAM: all identical. Falsification both ways:
+`POM68K_CPU_ENGINE=interp` → green, `=jit` → the five failures. And the
+timeline closes it: the gate was green on the 2026-08-07 full run and red on
+2026-08-12 — `jit/auto` became the 68040 default on **2026-08-10**, between
+the two. Not a Q630 bug, not host-specific, not the container.
+
+Fix at the root, in the fork (patch group 24, `POM68K_VENDOR.md`): the
+buffers are now maintained **only on the C68010 core** — two `pom*` hooks,
+`pomSetRB<C>`/`pomSetWB<C>`, replace all 31 producer sites; the store
+compiles away on 68000/020+, the hook argument still evaluates, so the
+address-error dummy `readM` keeps its bus access on every core, and the
+68010 path performs the identical store. Both engines now agree because
+neither touches the field. Verified, on binaries audited fresh against the
+patched `libmoira.a` (the first `jit`/`smoke` pass had run 18 stale
+executables — phantom greens, discarded and rerun): `savestate_040_test`
+green under `jit/auto`, forced `interp` and forced `jit`; `sst68000`
+1 000 058/1 000 058, `sst68030` 3 082/3 082, `sst68040` 7 200/7 200,
+`fpu_sanity`, the four other savestate gates, `lcii_/q605_savestate_etalon`,
+the `jit` tier 27/27 and the `smoke` tier 8/8 (x86-64 registry), `docs_test`
+after rebuilding its own stale binary.
+
+The method lesson repeats 2026-08-06's: the TODO's "first suspect" was
+theorised from the failing platform's newest device, but the decisive
+observation — the same byte offset on five platforms — was in the failure
+output all along. Diff the *whole* artifact before theorising from the
+machine that happened to be listed first.
 
 <a id="2026-08-12-a64-b592-store"></a>
 ## 2026-08-12 — One opcode clears the conservative AArch64 store guard

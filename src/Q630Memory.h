@@ -161,6 +161,16 @@ public:
         drive1_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
+    // A firmware RESET_SYSTEM ($11) latched a warm restart (the Finder's
+    // "Restart"). One-shot: the CPU wrapper consumes it at a run boundary
+    // and resets itself there, never from inside the memory callback that
+    // raised it. Binding: this class's constructor.
+    bool consumeRestart() {
+        bool r = restartPending_;
+        restartPending_ = false;
+        return r;
+    }
+
     bool cpuHeld() const {
         return cudaLleOn_ ? cudaLle_.cpuHeld() : cuda_.cpuHeld();
     }
@@ -283,7 +293,7 @@ public:
            scsiReadCycles_, scsiWriteCycles_,
            scsiDmaReadCycles_, scsiDmaWriteCycles_,
            ascCycAcc_, swimLastCpu_, swimCycAcc_, viaEClock_, tickAcc_,
-           sccDebt_, scsiDebt_);
+           sccDebt_, scsiDebt_, restartPending_);
         if constexpr (Ar::loading) {
             if (jitGuard_) jitGuard_->invalidate();
         }
@@ -341,6 +351,7 @@ private:
     // LC/Performa 580 $A55A225A. POM68K_Q630_ID overrides (hex).
     uint32_t machineId_ = 0xA55A2252u;
     bool overlay_ = true;
+    bool restartPending_ = false;   // firmware $11 → CPU reset at a boundary
     bool sccIrq_ = false;
 
     // Quadra pseudo-VIA registers
