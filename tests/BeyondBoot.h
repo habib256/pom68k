@@ -67,6 +67,18 @@ struct Hooks {
     // (ScsiDisk::writeBlocks). The persist flow polls it instead of
     // budgeting a fixed number of frames for the flush — see persist().
     std::function<long()> writes;
+    // Optional: a user gesture that makes the guest TOUCH the medium, run
+    // once, ten seconds into the flush poll, and only while nothing has
+    // landed. A Mac does not flush a volume on a timer — it flushes it
+    // when something needs the disk — and eleven of the twelve machines
+    // here have something that does within seconds of the gesture. The
+    // twelfth is the PowerBook Duo: its System 7.5.x is PowerBook system
+    // software, whose whole purpose is to keep the drive still, so the
+    // catalog sits in the File Manager's cache and an idle desktop never
+    // disturbs it. Giving the gate a way to be that "something" is not a
+    // workaround for a defect — it is the difference between "the machine
+    // cannot write" and "nobody asked it to".
+    std::function<void()> stir;
 };
 
 inline int soak(const Hooks& h) {
@@ -91,6 +103,15 @@ inline int soak(const Hooks& h) {
     return ok ? 0 : 1;
 }
 
+// Stage markers, interleaved with POM68K_SCSI_TRACE's CDB stream so "the
+// guest read the catalog and refused to write it" can be told apart from
+// "the guest never touched the disk again". Tied to the same knob: the
+// markers are only meaningful next to the commands they bracket.
+inline void mark(const char* what) {
+    static const bool on = getenv("POM68K_SCSI_TRACE") != nullptr;
+    if (on) std::fprintf(stderr, "[beyond] %s\n", what);
+}
+
 inline int persist(const Hooks& h) {
     std::vector<uint8_t>& disk = h.disk();
     long before[folderprobe::kCount];
@@ -107,6 +128,7 @@ inline int persist(const Hooks& h) {
         h.key(code, false);
         h.frames(6);
     };
+    mark("gesture: Cmd-N down");
     h.key(0x37, true);                         // Cmd down
     h.frames(6);
     h.key(0x2D, true);                         // 'n' down, held past Slow Keys
@@ -118,7 +140,9 @@ inline int persist(const Hooks& h) {
     h.frames(6);
     h.key(0x37, false);
     h.frames(120);                             // rename field appears
+    mark("commit: Return");
     hold(0x24, 150);                           // Return — commit the name
+    mark("flush poll starts");
 
     // ── Wait for the FLUSH, do not budget for it ────────────────────────
     // Creating the folder and landing it on the medium are two different
@@ -138,9 +162,15 @@ inline int persist(const Hooks& h) {
     const long kFlushCap = 7200;               // 2 emulated minutes
     long waited = 0;
     if (h.writes) {
+        // Ten seconds of "did it write on its own?" before the stir hook
+        // gets its turn — long enough that a machine which flushes never
+        // reaches it (they all land inside a second), short enough not to
+        // spend a minute of wall clock on one that never will.
+        const long kStirAt = 600;
         while (waited < kFlushCap && h.writes() == w0) {
             h.frames(60);
             waited += 60;
+            if (h.stir && waited == kStirAt) { mark("stir"); h.stir(); }
         }
         const bool landed = h.writes() != w0;
         // The old fixed budget, kept AFTER the first write rather than
@@ -169,6 +199,11 @@ inline int persist(const Hooks& h) {
 
     // Reboot on the modified volume — deliberately dirty (no clean unmount
     // before the reset); surviving THAT is part of what "persist" claims.
+    // A machine whose `stir` ended the session through the System (the Duo
+    // shuts down from the Finder's Special menu) reboots off a CLEANLY
+    // unmounted volume instead, and proves the weaker half here and the
+    // System's own unmount path in exchange.
+    mark("reboot");
     const bool rebooted = h.reboot();
     if (h.dump) h.dump("reboot");              // the screen it came back to
     long survived[folderprobe::kCount];

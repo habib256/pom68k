@@ -28,6 +28,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <initializer_list>
@@ -132,6 +133,18 @@ inline std::string find(const char* rel) {
         if (std::ifstream(p, std::ios::binary)) return p;
     }
     return {};
+}
+
+// ── POM68K_BEYOND_IMG: run a gate against a volume it does not list ─────
+// Every beyond-boot control is of the form "this machine, that System" or
+// "that machine, this System", and a hard-coded fallback chain can ask
+// neither. The 2026-08-14 Duo hunt needed both: the same 7.5.5 volume on an
+// LC III (does anything else flush it?) and the Duo's own ROM on the 7.6
+// volume (does this machine flush anything?). Empty when unset or when the
+// named file is absent, so the gate's own chain still runs.
+inline std::string overrideImage() {
+    const char* p = std::getenv("POM68K_BEYOND_IMG");
+    return p ? find(p) : std::string();
 }
 
 inline std::string findAny(std::initializer_list<const char*> names) {

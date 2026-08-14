@@ -27,6 +27,7 @@
 #pragma once
 #include "SaveState.h"
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <vector>
 
@@ -192,6 +193,10 @@ private:
     uint8_t kcsr_ = 0;
     uint8_t adcsr_ = 0;
     uint8_t tbcs_ = 0;
+    // POM68K_PGE_TBTRACE: what the firmware actually reads out of the
+    // quadrature counters, and how often — the only way to tell "the host
+    // ignored the motion" from "the firmware never collected it".
+    const bool tbTrace_ = std::getenv("POM68K_PGE_TBTRACE") != nullptr;
     uint8_t spcr_ = 0, spsr_ = 0;
     uint8_t spiIn_ = 0, spiOut_ = 0;
     int spiBit_ = 0;                                 // edges remaining (16..0)

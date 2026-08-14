@@ -3,10 +3,14 @@
 //
 // Beyond-boot on the PowerBook Duo 230 (MSC + PG&E, 68030 @ 33 MHz, LCD
 // 640×400) — shared-engine gate (BeyondBoot.h). Rig, boot loop and Finder
-// signature from duo230_boot_etalon; keyboard through the PG&E's own
-// matrix scanner (PgePmu, DUO_BRINGUP milestone 4 — landed 2026-08-13);
-// Time through the Mmu030Peek walk. POM68K_BEYOND=soak|persist. Soft-skips
-// without the Duo ROM + pge_boot.bin + a bootable image.
+// signature from duo230_boot_etalon; Time through the Mmu030Peek walk.
+// Input is the PG&E's own hardware, both halves (DUO_BRINGUP milestone 4):
+// the matrix scanner for the keyboard, and since 2026-08-14 the trackball
+// quadrature counters for the pointer — which the persist leg steers into
+// the Finder's Special menu, because this machine will not flush its volume
+// any other way (the long note above `h.stir`).
+// POM68K_BEYOND=soak|persist. Soft-skips without the Duo ROM +
+// pge_boot.bin + a bootable image.
 
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
@@ -14,18 +18,22 @@
 #include "MscCpu.h"
 #include "MscMemory.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 int main() {
     std::string rom = testasset::find("roms/duo230.rom");
     if (rom.empty())
         rom = testasset::find("roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM");
-    std::string img = testasset::find("hdv/System 7.5.5 HD.dsk");
+    std::string img = testasset::overrideImage();
+    if (img.empty()) img = testasset::find("hdv/System 7.5.5 HD.dsk");
     if (img.empty()) img = testasset::find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = testasset::find("hdv/boot.vhd");
     if (rom.empty() || img.empty()) {
@@ -80,17 +88,50 @@ int main() {
     };
     auto boot = [&]() {
         long held = 0;
-        while (mem.cpuHeld() && held < 400000) { mem.tick(1000); held++; }
-        if (mem.cpuHeld()) return false;
+        std::map<uint16_t, long> pcs;
+        while (mem.cpuHeld() && held < 400000) {
+            mem.tick(1000);
+            held++;
+            if ((held & 0x3F) == 0) pcs[mem.pmu().mcu().pc()]++;
+        }
+        // Say which of the two ways this can fail actually happened: the
+        // PMU never released the 68030, or it did and the machine died
+        // afterwards. The persist leg's reboot returned "FAILED" with zero
+        // SCSI commands behind it and no way to tell the two apart.
+        std::printf("boot: PMU released the 68030 after %ld ticks%s\n", held,
+                    mem.cpuHeld() ? " — STILL HELD" : "");
+        if (mem.cpuHeld()) {
+            M68hc05Pge& m = mem.pmu().mcu();
+            std::printf("boot: PG&E pc=$%04X waiting=%d illegal=%d "
+                        "(op $%02X at $%04X)\n", m.pc(), m.waiting() ? 1 : 0,
+                        m.illegal() ? 1 : 0, m.illegalOp(), m.illegalPc());
+            std::vector<std::pair<long, uint16_t>> top;
+            for (auto& [pc, n] : pcs) top.push_back({n, pc});
+            std::sort(top.rbegin(), top.rend());
+            for (size_t i = 0; i < top.size() && i < 6; i++)
+                std::printf("  PG&E spins at $%04X x%ld\n", top[i].second,
+                            top[i].first);
+            return false;
+        }
         frames(9000);
+        if (cpu.isHalted())
+            std::printf("boot: CPU HALTED during the first 9000 frames\n");
         // Poll and dismiss, the shape every other gate on the roster uses.
         // The Duo had no dismissal at all: it ran a fixed budget and
         // declared victory, so the boot alert was still up when the persist
         // gesture started and ate every key of it. 150-frame holds — the
         // engine's rule, and above a Slow Keys acceptance delay.
         for (int poll = 0; poll < 16; poll++) {
-            if (cpu.isHalted()) return false;
+            if (cpu.isHalted()) { std::printf("boot: CPU HALTED\n"); return false; }
             if (finderUp()) return true;
+            {   // what the signature actually saw, every poll
+                std::vector<uint32_t> fb;
+                mem.decodeScreen(fb);
+                std::printf("boot poll %d: menu %.3f desk %.3f run %d\n", poll,
+                            beyondboot::darkRatio(fb, W, 0, W, 2, 18),
+                            beyondboot::darkRatio(fb, W, W / 2, W, 40, H - 40),
+                            beyondboot::lightRun(fb, W, H));
+            }
             mem.keyEvent(0x24, true);
             frames(150);
             mem.keyEvent(0x24, false);
@@ -103,52 +144,34 @@ int main() {
     std::printf("Finder up %dx%d, TC=$%08X, SCSI %ld\n", W, H, cpu.getTC(),
                 mem.scsi().commands);
 
-    // ── The persist leg still SKIPs, for a DIFFERENT reason than it used
-    // to, and the old one is disproven ────────────────────────────────────
-    // It used to skip on "the built-in keyboard is a PMU matrix POM68K does
-    // not model, so Cmd-N leaves the image byte-identical". The matrix is
-    // implemented now (PgePmu, from MAME's Y0-Y7 tables) and that reading
-    // was wrong twice over: the keyboard works — this machine dismisses its
-    // own boot alert with Return and a screen dump at the gesture's peak
-    // shows `untitled folder` on the desktop — and the byte-identical image
-    // had a second cause the SKIP hid, namely that the machine was already
-    // DEAD when the gesture arrived, frozen since 58 s in the power_cycle_w
-    // spin.
-    //
-    // What actually blocks the leg is that **this guest never writes the
-    // folder**. Measured 2026-08-13: zero write commands in TEN emulated
-    // minutes after the folder appears, at 4 MB and at 8 MB alike, while
-    // the write path plainly works (60 write commands, 177 blocks, during
-    // its own boot). It is not a budget: the flush poll ran to 36000
-    // frames. Nor is it the disk cache alone — the Mac II, which showed the
-    // same symptom, flushes as soon as it has 4 MB and this one does not.
-    // Pressing the POWER KEY (0x7F, the PG&E's port A pseudo-row) to end
-    // the session through the System raises no dialog: on a Duo that key is
-    // the PMU's, not the keyboard's.
-    //
-    // Working hypothesis, UNVERIFIED: the System is holding the writes
-    // behind the power manager's hard-disk SPIN-DOWN, and `ScsiDisk` is
-    // always instantly ready, so the spin-up transition the driver flushes
-    // on never happens. Next instrument: watch the guest's queue rather
-    // than the medium, or model spin-down on the target. Do NOT re-derive
-    // the ten-minute measurement or re-try the power key.
-    if (getenv("POM68K_BEYOND") && std::string(getenv("POM68K_BEYOND")) == "persist") {
-        std::printf("SKIP: the Duo creates the folder but never writes it — "
-                    "0 write commands in 10 emulated minutes (see above)\n");
-        return 0;
-    }
-
+    // ── Two dead ends this leg cost, kept so nobody buys them twice ─────
+    // It skipped for a year on "the built-in keyboard is a PMU matrix
+    // POM68K does not model". The matrix landed 2026-08-13 and that reading
+    // was wrong twice over: the keyboard works (this machine dismisses its
+    // own boot alert with Return, and a dump at the gesture's peak shows
+    // `untitled folder` on the desktop), and the byte-identical image had a
+    // second cause the SKIP hid — the machine was already DEAD when the
+    // gesture arrived, frozen 58 s in at the power_cycle_w spin.
+    // Then it skipped on "the System is holding the writes behind the
+    // hard-disk SPIN-DOWN". That was wrong too, and its own evidence says
+    // so: the Finder issues eleven READ commands between Cmd and N, so the
+    // drive is plainly awake at the moment of the creation. Do NOT model
+    // spin-down for this, and do NOT re-try the power key — on a Duo it is
+    // the PMU's, and 150 frames of it raise no dialog.
     beyondboot::Hooks h;
     h.name = "PowerBook Duo 230";
     h.frames = frames;
     h.halted = [&]() { return cpu.isHalted(); };
     h.finderUp = finderUp;
-    h.time = [&](uint32_t* out) {
+    // A LOGICAL read of a low-memory global: the Duo runs its System behind
+    // the PMMU like the RBV machines, so `peek8` (physical, and exactly
+    // right for descriptor addresses) has to be walked to it — Mmu030Peek.h.
+    auto peekLog = [&](uint32_t va, int n, uint32_t* out) {
         uint32_t v = 0;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < n; i++) {
             uint32_t phys = 0;
             if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                       0x20C + uint32_t(i), 5,
+                                       va + uint32_t(i), 5,
                                        [&](uint32_t a) { return mem.peek8(a); },
                                        &phys))
                 return false;
@@ -157,6 +180,17 @@ int main() {
         *out = v;
         return true;
     };
+    // The guest's OWN pointer position (Mouse, $830 = v, $832 = h) — the
+    // closed loop lcii_beyond_etalon steers on, which is immune to both
+    // System 7's mouse scaling curve and the report rate.
+    auto pointer = [&](int* x, int* y) {
+        uint32_t h32 = 0, v32 = 0;
+        if (!peekLog(0x832, 2, &h32) || !peekLog(0x830, 2, &v32)) return false;
+        *x = int16_t(h32);
+        *y = int16_t(v32);
+        return true;
+    };
+    h.time = [&](uint32_t* out) { return peekLog(0x20C, 4, out); };
     h.key = [&](uint8_t code, bool down) { mem.keyEvent(code, down); };
     h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
     h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
@@ -167,6 +201,85 @@ int main() {
         std::fprintf(stderr, "[scsi] write cmds %ld blocks %ld, read cmds %ld\n",
                      mem.scsiDisk().writeCommands, mem.scsiDisk().writeBlocks,
                      mem.scsiDisk().readCommands);
+    };
+    auto counters = [&](const char* when) {
+        std::fprintf(stderr, "[scsi] %s: write cmds %ld, read cmds %ld\n", when,
+                     mem.scsiDisk().writeCommands, mem.scsiDisk().readCommands);
+    };
+    // ── Steering the trackball ──────────────────────────────────────────
+    // One delta, then wait for the GUEST to answer it. The counters
+    // latching (PgePmu, 60 Hz) says only that the hardware presented the
+    // motion; the pointer has moved when the Mouse global says so, and
+    // injecting before then builds a backlog that lands as one jump — the
+    // first attempt put the pointer on the bottom edge and could not
+    // bring it back.
+    auto nudge = [&](int dx, int dy) {
+        int bx = 0, by = 0;
+        pointer(&bx, &by);
+        mem.mouseMove(dx, dy);
+        for (int i = 0; i < 90; i++) {
+            frames(1);
+            int x = 0, y = 0;
+            if (pointer(&x, &y) && (x != bx || y != by)) break;
+        }
+    };
+    auto steer = [&](int tx, int ty, int tol) {
+        int px = 0, py = 0;
+        for (int it = 0; it < 60; it++) {
+            if (!pointer(&px, &py)) return false;
+            const int dx = tx - px, dy = ty - py;
+            if (std::abs(dx) <= tol && std::abs(dy) <= tol) return true;
+            // Minimum step 2: one unit is below System 7's mouse-scaling
+            // floor and moves the pointer nowhere, so a loop that ends on
+            // ±1 steps never converges — it runs out of iterations 10 px
+            // short, which is exactly what the first version did.
+            auto step = [](int d) {
+                int s = d / 2;
+                if (std::abs(s) < 2) s = d > 0 ? 2 : (d < 0 ? -2 : 0);
+                return std::max(-8, std::min(8, s));
+            };
+            nudge(step(dx), step(dy));
+        }
+        pointer(&px, &py);
+        std::printf("steer: wanted (%d,%d), reached (%d,%d)\n", tx, ty, px, py);
+        return false;
+    };
+
+    // ── Why this machine needs a gesture the other eleven do not ────────
+    // The Duo creates the folder and never writes it. Measured 2026-08-14,
+    // and this time with the guest's own bookkeeping in view: the Finder
+    // reads the catalog off the disk to make the folder (11 READ commands
+    // between Cmd and N), the icon appears, the rename commits — and the
+    // volume's VCB keeps `vcbFlags` $FF00, the File Manager's own DIRTY
+    // bit, for two solid minutes with zero write commands. Not a budget:
+    // eight further idle minutes left it set, and a Tab, a Cmd-O and a
+    // Cmd-Shift-3 — which pulled 4, 28 and a 28-BLOCK DATA WRITE of its own
+    // — left the catalog exactly where it was. Not the volume either: the
+    // SAME 7.5.5 image on an LC III writes the catalog in the same frame as
+    // the commit and passes its persist leg.
+    // It is PowerBook system software keeping the drive still, which is
+    // what it is for — so the gate does what this machine's user would
+    // have to do, and ends the session through the Finder: Special → Shut
+    // Down, with the trackball, which flushes every volume on the way out.
+    const int kMenuX = 232, kMenuY = 12;       // the "Special" title
+    const int kShutDownY = 141;                // Restart 118..133, this 134..149
+    h.stir = [&]() {
+        beyondboot::mark("stir: Special -> Shut Down");
+        // The title box is ~57x20, an item band 16 tall: aim loosely at the
+        // first and tightly at the second.
+        if (!steer(kMenuX, kMenuY, 8)) {
+            std::printf("stir: never reached the menu bar\n");
+            return;
+        }
+        mem.mouseButton(true);
+        frames(60);
+        steer(kMenuX, kShutDownY, 5);
+        frames(12);
+        if (h.dump) h.dump("menu");
+        mem.mouseButton(false);
+        frames(900);
+        counters("after Shut Down");
+        if (h.dump) h.dump("shutdown");
     };
     // A CPU reset, not a machine reset — TRIED and reverted 2026-08-13.
     // `mem.reset()` looks more faithful and is worse here: it wipes the

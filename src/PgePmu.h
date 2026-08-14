@@ -94,8 +94,19 @@ public:
     // codes, the same ones every other machine here takes; a code the Duo's
     // keyboard does not physically have is dropped.
     void keyEvent(uint8_t code, bool down);
-    void mouseMove(int dx, int dy) { adb_.mouseMove(dx, dy); }
-    void mouseButton(bool down) { adb_.mouseButton(down); }
+    // The Duo's BUILT-IN pointer is the TRACKBALL, decoded by the PG&E's
+    // own two-axis quadrature counters and read by the firmware at
+    // $14-$16 (TBCS/X/Y) — not an ADB device, exactly like the keyboard
+    // above. Deltas arrive here in SCREEN convention (+x right, +y down)
+    // and are presented to the firmware one 60 Hz frame at a time (see
+    // tbLatch and the counter note below). POM68K_PGE_ADBMOUSE=1 sends
+    // motion down the ADB modem cell instead, which is where it used to
+    // go and where the guest's own Mouse global never moved once.
+    void mouseMove(int dx, int dy);
+    void mouseButton(bool down);
+    // The lid. Port F bit 3, read by the PMU firmware: 1 = open.
+    void setClamshell(bool open) { clamshellOpen_ = open; }
+    bool clamshellOpen() const { return clamshellOpen_; }
     long pmuIntEdges = 0;                            // port F bit 2 falls
     long pmuAckEdges = 0;                            // port H bit 6 changes
 
@@ -108,6 +119,8 @@ public:
         ar(ds2400_, adb_);
         for (auto& r : matrix_) ar(r);       // per element: uint16_t, not bytes
         ar(modifiers_, powerKey_);
+        ar(tbAccX_, tbAccY_, tbRegX_, tbRegY_, tbAcc_);
+        ar(tbButton_, clamshellOpen_);
     }
 
 private:
@@ -156,6 +169,25 @@ private:
     uint8_t modifiers_ = 0;          // keyb_special bits 3-7, 1 = held
     bool powerKey_ = false;          // the port A pseudo-row, bit 5
 
+    // ── Trackball quadrature counters ───────────────────────────────────
+    // Two stages, and the split is load-bearing. `tbAccX_/tbAccY_` hold
+    // motion the host has delivered but the hardware has not yet
+    // presented; `tbRegX_/tbRegY_` are what $15/$16 actually read, LATCHED
+    // once per 60 Hz frame and held constant until the next one. That is
+    // MAME's shape (macpwrbkmsc.cpp vbl_w:258-301 recomputes the pair at
+    // every VBL), and it is not decoration: with the counters drained on
+    // every READ instead, a firmware poll that reads a register twice gets
+    // the delta once and zero the second time, and which of the two it
+    // acts on is a race. Measured that way — four moves out of a
+    // twelve-step sweep landed, in whichever direction happened to win;
+    // latched, the same sweep lands all twelve and the pointer tracks.
+    int tbAccX_ = 0, tbAccY_ = 0;
+    uint8_t tbRegX_ = 0, tbRegY_ = 0;
+    int64_t tbAcc_ = 0;              // 60 Hz Bresenham on the machine clock
+    bool tbButton_ = false;
+    bool clamshellOpen_ = true;      // port F bit 3
+    void tbLatch();                  // move one frame's worth into the regs
+
     // ── DS2400 battery serial, 1-Wire slave on port E bit 7 ─────────────
     // MAME machine/ds2401.cpp state machine on the MCU cycle clock
     // (2.097152 cycles/µs): reset ≥480 µs low → presence 30+120 µs, then
@@ -173,6 +205,20 @@ private:
         void write(bool level, int64_t now);         // master line drive
         void tick(int64_t now);                      // deadline pump
         bool read() const { return tx && rx; }
+        // A machine reset restarts the MCU's cycle counter at 0, so every
+        // deadline held here becomes one the clock can no longer reach and
+        // the slave would sit mid-transaction until the counter came round
+        // again. Found while hunting the reset that never released the
+        // 68030 and fixed on principle — it was NOT the cause (that was
+        // the `$91` power flag, see reset()). The serial itself is board
+        // wiring, not state: `data`/`loaded` survive.
+        void reset() {
+            state = Idle;
+            bit = byte = 0;
+            shift = 0;
+            rx = tx = true;
+            mainAt = resetAt = -1;
+        }
         template <class Ar> void visit(Ar& ar) {
             ar(state, bit, byte, shift, rx, tx, mainAt, resetAt);
         }

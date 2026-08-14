@@ -145,6 +145,7 @@ public:
     void keyEvent(uint8_t code, bool down) { pmu_.keyEvent(code, down); }
     void mouseMove(int dx, int dy) { pmu_.mouseMove(dx, dy); }
     void mouseButton(bool down) { pmu_.mouseButton(down); }
+    void setClamshell(bool open) { pmu_.setClamshell(open); }
     bool overlay() const { return overlay_; }
     Scc8530& scc() { return scc_; }
     void sccIrqLine(bool s) { sccIrq_ = s; updateIrq(); }

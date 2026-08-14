@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 222 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 225 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the Duo holds its writes behind the hard-disk spin-down" — the Finder reads the catalog off the disk to create the folder, so the drive is awake; the volume is simply never flushed** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
 - **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
 
@@ -132,6 +133,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
+- **why a PG&E that has already run will not cold-boot again (the `$91` power flag), and why its trackball register has to be LATCHED rather than drained on read** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
 - **the 11-cycle 6805 IRQ restored; second mouse button and right modifiers reach the GUI path** → [2026-08-03 — Event deadlines close the Cuda phase accommodation](#2026-08-03-event-deadlines)
 - **the M68HC05E1 core: real Cuda firmware executes** → [2026-07-23 — M68HC05E1 core: the real Cuda firmware executes (step 10 groundwork)](#2026-07-23--m68hc05e1-core-the-real-cuda-firmware-executes-step-10-groundwork)
 - **Mac OS 8.1 boots on the REAL Cuda firmware** → [2026-07-23 — Mac OS 8.1 boots to the Finder on the REAL Cuda firmware (blueprint…](#2026-07-23--mac-os-81-boots-to-the-finder-on-the-real-cuda-firmware-blueprint-step-3)
@@ -282,6 +284,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-14** — [The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own](#2026-08-14-duo-beyond-boot)
 - **2026-08-13 (seventh)** — [The IIfx dirty-volume refusal was a swallowed VBL disable, and "address 1" was open bus wearing a wrapped PC](#2026-08-13-iifx-toby-vbl-disable)
 - **2026-08-13 (sixth)** — [The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow](#2026-08-13-beyond-boot-reds)
 - **2026-08-13 (fifth)** — [Beyond-boot for the whole roster: sixteen gates, one engine, and the campaign paid twice before it was even green](#2026-08-13-beyond-boot-roster)
@@ -506,6 +509,149 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-14-duo-beyond-boot"></a>
+## 2026-08-14 — The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own
+
+`duo_persist_etalon` is **green**, and with it the roster's last SKIP: **twelve
+soaks and twelve persists**. Getting there cost three separate findings, two of
+which are machine defects and one of which is not a defect at all.
+
+### 1. The PG&E never came back from a machine reset — one byte
+
+The persist leg's reboot had been returning "FAILED" with **zero SCSI
+commands** behind it, and nothing in the output said whether the machine had
+died or never started. It never started: `boot: PMU released the 68030 after
+400000 ticks — STILL HELD`, PG&E `pc=$FE0E`, `waiting=1`. $FE0D is a **STOP**,
+and the code above it is the mask ROM's first decision — `LDA $91 / CMP #$62`
+at $FE28. $91 is the **power flag**, it lives in the PG&E's own RAM, and
+`MscMemory::reset()` resets the MCU while that RAM survives: the ROM read the
+last session's `$62`, took the RESUME path instead of the cold boot, and
+STOPped waiting for a wake event a reset never sends. The 68030 stayed held
+for ever. MAME clears exactly that byte whenever it restores this MCU's NVRAM
+(`m68hc05pge.cpp:959`, *"clear power flag so the boot ROM does a cold boot"*)
+and `MscMemory::loadPram` already copied the rule — `PgePmu::reset()` needed it
+just as much. With the scrub the PMU releases the CPU after 48 393 ticks and
+the second boot runs 3 766 SCSI commands.
+
+Reproduction is **six seconds** and needs no Finder: run the ROM 600 frames,
+`cpu.hardReset()`, watch `cpuHeld()`. That is the shape to reach for — a boot
+etalon is a poor place to debug a reset. (`ds2400_` is now reset with it, for
+the same class of reason: its deadlines are MCU-cycle stamps and the MCU's
+counter restarts at 0, so a reset left the 1-Wire slave waiting on a clock that
+could no longer reach it. That was found first and was **not** the cause.)
+
+### 2. The trackball had never been wired — and the register has to be latched
+
+The Duo's built-in pointer is not an ADB device: it is a quadrature decoder
+inside the PG&E, read at `$14`-`$16` (TBCS/X/Y). `M68hc05Pge` had the
+registers; nothing fed them, and `mouseMove` went down the ADB modem cell,
+where **the guest's Mouse global never moves once** (measured, `POM68K_PGE_ADBMOUSE=1`
+keeps that path for A/B). Wired to the counters, the pointer moves.
+
+The shape of the counters is the part worth keeping. Drained on **read** —
+which is what a counter that resets on read does — the pointer tracked in two
+directions out of four: `+20` in X moved it right, `-20` moved it nowhere, and
+Y was the mirror image. The reason is a race, not a sign: the firmware reads a
+register more than once per sample, the first read takes the delta and the
+second gets zero, and which one it acts on is timing — a twelve-step sweep
+landed **four** of its moves, in whichever direction happened to win.
+**Latched** instead — one frame's accumulated motion moved into the register
+at 60 Hz and held there for the whole frame, which is MAME's own shape
+(`macpwrbkmsc.cpp` `vbl_w` recomputes the pair at every VBL) — the same sweep
+lands all twelve, and a closed loop on the guest's `Mouse` global reaches a
+menu item.
+
+Two gate-side rules came out of it, both measured: inject one delta and wait
+for the **guest** to answer it (the latch says only that the hardware
+presented the motion; steering on that builds a backlog that lands as one jump
+and puts the pointer on the screen edge), and never let the last step be ±1 —
+one unit is below System 7's mouse-scaling floor, so a loop that halves the
+distance ends up nudging by 1 for ever and stops ten pixels short.
+
+### 3. The volume: not spin-down, not the image, not a defect
+
+The Duo creates the folder and never writes it, and this time the guest's own
+bookkeeping says why it is not our bug:
+
+- The Finder issues **eleven READ commands between Cmd and N** — it reads the
+  catalog off the disk to make the folder. The drive is awake at the moment of
+  the creation, which **disproves the previous entry's spin-down hypothesis**;
+  do not model spin-down for this.
+- The volume's VCB (`VCBQHdr` `$358` → `vcbFlags` +6, read through the live 030
+  page tables) holds **`$FF00` — the File Manager's DIRTY bit — for two solid
+  minutes** with zero write commands, and through a further eight idle minutes.
+  The System knows perfectly well the volume is dirty; it simply will not
+  flush it.
+- Prodding does not help: a Tab and a Cmd-O pull 4 and 28 fresh READs, and a
+  Cmd-Shift-3 writes its own **28-block** screen-shot data fork — while the
+  catalog stays where it is.
+- And it is **not the image**: the same `hdv/System 7.5.5 HD.dsk` on an
+  **LC III** writes the catalog *in the same frame as the commit* and passes
+  its persist leg. A second Duo-bootable volume (`RaSCSI-Boot-7.5.3.hdv`)
+  reproduces the Duo's behaviour exactly. And `GISTPERSO-boot.vhd` (7.6),
+  `System 7.5 HD.dsk` and `boot.vhd` never reach this gate's Finder signature
+  on this ROM, so changing image — the move that fixed the Plus — was never
+  available anyway.
+
+That is PowerBook system software keeping the drive still, which is what it is
+for. So the gate does what this machine's user would have to do and ends the
+session **through the Finder**: `Special → Shut Down`, steered with the
+trackball, which flushes every volume on the way out — 60 → 75 write commands,
+`'untitled folder' 13 → 15`, the screen goes black, and the reboot comes back
+to a desktop with the folder still on it. `BeyondBoot.h` gained one optional
+hook for this (`stir`, run once ten seconds into the flush poll and only while
+nothing has landed); the other eleven machines flush inside a frame and never
+reach it.
+
+**The power key is still not a way in**: 150 frames of `$7F` raise no dialog,
+and the screen dump proves it. Nor is the lid: driving the clamshell line
+(port F bit 3, now a line the host can set instead of MAME's hard-wired
+"open") holds the 68030 within 5 s — so the firmware *does* act on the switch —
+but the System runs no sleep procs first (not one write, dirty bit untouched)
+and re-opening does not wake the machine. Both halves are the sleep/wake
+milestone, and this is its first measurement.
+
+### What the campaign found in the gates it used as controls
+
+Using `sonora_beyond_etalon` as the "same volume, other machine" control
+exposed that **its Finder signature is blind to a modal dialog**: run against
+the 7.5.5 image it reported a Finder with *"The alias 'Infinite HD' could not
+be opened"* on screen and sent the whole gesture into it. Its own volume never
+raises one, so the blindness was invisible. It now polls and dismisses like
+the rest of the roster and judges on `lightRun` — at **250**, not the shared
+`kDialogRun` of 200, because this gate's own desktop measures **208** and 200
+would have failed both of its green legs; the alert it has to catch measures
+306-406 on the same screen. Both legs re-verified on both volumes.
+
+And a `ctest -L unit` over the rebuilt tree turned up **`folderprobe_test`
+red, and red since 2026-08-13**: the roster-wide pass added the System 6
+Finders' `Empty Folder` / `Dossier vide` to `FolderProbe.h` and left the
+gate's `kCount == 3` guard behind. Fixed to 5, plus a check that names the two
+newcomers, so the guard keeps meaning "nobody adds a name without thinking".
+Nobody had run the unit tier on a fresh tree in the meantime — which is the
+same lesson as the freshness rule in `CLAUDE.md`, arriving from the other end.
+
+**New instruments**, all env-gated: `POM68K_SCSI_TRACE` (every CDB the guest
+issues, with a sequence number — "the guest went silent", "it read and refused
+to write" and "it spun the drive down" are three different failures and the
+counters cannot tell them apart), `POM68K_BEYOND_IMG` (run any beyond gate
+against a volume it does not list — every control above needed it),
+`POM68K_PGE_TBTRACE` (what the firmware reads out of the quadrature counters),
+and stage markers in `BeyondBoot.h::persist` interleaved with the CDB stream.
+
+**Board, on a tree built to completion first** (`make -j8`, exit 0, no
+zero-byte link products, every binary newer than `libpom68k_core.a`):
+`ctest -L unit` **92/92**, `docs_test` green, `duo230_boot_etalon`,
+`duo_soak_etalon`, `duo_persist_etalon`, `sonora_soak_etalon` and
+`sonora_persist_etalon` all green. The persist leg was run **twice** and
+reported the same numbers both times — first write 600 frames after the
+commit, `'untitled folder' 13 → 15`, reboot to the Finder with the folder
+still there — so the pointer steering is repeatable and not a lucky landing.
+**6 min 49 s** wall for the leg, and that under five other gates running
+beside it, against the registration's 1800 s timeout.
 
 ---
 

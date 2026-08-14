@@ -1,8 +1,8 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Gate for tests/FolderProbe.h — the observable the three beyond-boot persist
-// gates are built on.
+// Gate for tests/FolderProbe.h — the observable every beyond-boot persist
+// gate is built on (three when this was written, twelve since 2026-08-13).
 //
 // It exists because validating a string matcher through three six-minute
 // machine runs is the wrong loop, and because the thing it replaced was wrong
@@ -128,7 +128,17 @@ int main() {
         check(grew(before, after) == kCount, "a shrinking candidate is not a match");
     }
 
-    check(kCount == 3, "three candidate names are compiled in");
+    // The guard is "nobody adds a name without thinking about it", so it has
+    // to be updated when one legitimately arrives. Five since 2026-08-13:
+    // the three System 7 Finders write "untitled folder" / "Nouveau dossier"
+    // / "Dossier sans titre", and the roster-wide beyond-boot pass added the
+    // System 6 pair — "Empty Folder" / "Dossier vide" — for the Plus and Mac
+    // II volumes. That commit did not move this line, so this gate had been
+    // RED since (found 2026-08-14 by a `ctest -L unit` on a rebuilt tree).
+    check(kCount == 5, "five candidate names are compiled in");
+    check(std::strcmp(kNames[3], "Empty Folder") == 0 &&
+          std::strcmp(kNames[4], "Dossier vide") == 0,
+          "…and the last two are the System 6 Finders' names");
 
     std::printf("%s\n", gFails ? "FAILED" : "PASS");
     return gFails ? 1 : 0;
