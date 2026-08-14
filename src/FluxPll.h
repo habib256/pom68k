@@ -66,6 +66,11 @@ public:
 
     int64_t ctime() const { return ctime_; }
     int64_t period() const { return period_; }
+    /// End of the window the next feedReadData() call would close — the
+    /// bound an event scheduler needs for "ticks until the next recovered
+    /// cell". Exact, not conservative: it is the same `ctime_ + period_ +
+    /// phaseAdjust_` the read side computes.
+    int64_t nextWindowEnd() const { return ctime_ + period_ + phaseAdjust_; }
 
     /// `fdc_pll_t::feed_read_data`. `edge` is the first flux transition at
     /// or after `ctime()` (`kNever` if the track is blank ahead); `limit`

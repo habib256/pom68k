@@ -38,7 +38,8 @@ void Swim1::reset() {
     fifo_[0] = fifo_[1] = 0;
     fifoPos_ = 0;
     error_ = 0;
-    cellPhase_ = 0;
+    pll_ = FluxPll();
+    fluxClock_ = 0;
     driveSel_ = 0;
     lstrb_ = false;
     crc_ = 0xCDB4;
@@ -259,6 +260,10 @@ void Swim1::ismWrite(int reg, uint8_t value) {
         if (SonyDrive* d = selectedDrive()) {
             if (d->isSuperDrive()) d->setMfmMode((value & 0x04) == 0);
         }
+        // Mid-read reclocking, same contract as Swim2: the separator's
+        // nominal period follows setup at once, its pull survives.
+        if ((mode_ & 0x18) == 0x08)
+            pll_.setClock(int64_t(cellCycles()) * FluxPll::kSubCell);
         break;
     case 6:                                     // mode clear — bit 6 exits ISM
         mode_ &= uint8_t(~value);
@@ -285,14 +290,23 @@ void Swim1::ismWrite(int reg, uint8_t value) {
         currentBit_ = 0;
         sr_ = 0;
         mfmSyncCounter_ = 0;
-        cellPhase_ = 0;
-        if (SonyDrive* d = selectedDrive()) d->syncCellsToRotation(side1());
+        armReadPll();
     } else if ((previousMode & 0x18) == 0x08 && (mode_ & 0x18) != 0x08) {
         currentBit_ = -1;
-        cellPhase_ = 0;
     }
 
     if (!(mode_ & 0x40)) leaveIsm();             // swim1.cpp:322 "switch to iwm"
+}
+
+// Read-ACTION entry — same contract as Swim2::armReadPll: nominal period
+// from setup, separator parked at the drive's rotation angle, flux budget
+// zeroed. readReset() keeps a pulled period on purpose (FluxPll.h).
+void Swim1::armReadPll() {
+    pll_.setClock(int64_t(cellCycles()) * FluxPll::kSubCell);
+    SonyDrive* d = selectedDrive();
+    const int64_t t0 = d ? d->fluxAngleTicks(side1()) : 0;
+    pll_.readReset(t0);
+    fluxClock_ = t0;
 }
 
 // setup[3:2] → fclk cycles per raw cell, same clocking table as SWIM2
@@ -369,20 +383,27 @@ int Swim1::cyclesToNextEvent() const {
         if (halfWait_) return int((halfWait_ + 1) / 2);
         return currentBit_ >= 0 ? 1 : 0x7fffffff;
     }
-    const int left = cellCycles() - cellPhase_;
-    return left > 0 ? left : 1;
+    const int64_t left = pll_.nextWindowEnd() - fluxClock_;
+    if (left <= 0) return 1;
+    const int64_t cyc = (left + FluxPll::kSubCell - 1) / FluxPll::kSubCell;
+    return int(std::min<int64_t>(cyc, 0x7fffffff));
 }
 
-// Read engine: the SWIM2/ideal-cell shifter (see Swim1.h — SWIM1's real
-// LS-pair CSM discriminates flux jitter our discrete cells don't have).
+// Read engine: the SWIM2 shifter over the REAL data separator (§ 1.3 flux
+// plan step 4a) — FluxPll windows over SonyDrive's flux view. What is
+// still SWIM2-shaped here is the shifter itself: SWIM1's LS-pair cell
+// state machine + correction factors (MAME swim1.cpp:965-1140) remain
+// unported; the separator now hands it PLL-recovered cells, so porting
+// them has an input to discriminate the day it happens.
 void Swim1::tickRead(int cycles) {
-    const int cell = cellCycles();
     SonyDrive* d = selectedDrive();
-    cellPhase_ += cycles;
-    while (cellPhase_ >= cell) {
-        cellPhase_ -= cell;
-        const int bit = (d && d->hasDisk() && d->motorOn())
-                            ? d->nextCell(side1()) : 0;
+    fluxClock_ += int64_t(cycles) * FluxPll::kSubCell;
+    for (;;) {
+        const bool live = d && d->hasDisk() && d->motorOn();
+        const int64_t edge = live ? d->nextFluxAfter(pll_.ctime(), side1())
+                                  : FluxPll::kNever;
+        const int bit = pll_.feedReadData(edge, fluxClock_);
+        if (bit < 0) break;
         if (setup_ & 0x04) {
             // GCR: high bit frames the nibble
             sr_ = uint16_t(((sr_ << 1) | bit) & 0xFF);

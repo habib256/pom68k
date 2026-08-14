@@ -365,7 +365,7 @@ passes `getClock()`, which on an unboosted `Cpu68k` is the same clock).
 remap must be skipped — double-translating wedges the boot mid-System. Same
 split as `V8Memory`'s 020-HMMU-vs-030-PMMU rule.
 
-## 1.3 Floppy — ideal cells, no flux
+## 1.3 Floppy — a real separator over a cell-derived flux view
 
 `Swim2.*` runs the **real bit engines** (MAME `swim2.cpp`): the MFM
 sync-hunting shifter with serial CRC-CCITT (`$CDB4` seed, `M_CRC0` handshake
@@ -378,15 +378,48 @@ sectors commit. `Iwm.*` (Plus / LC II) has the real write mode (MAME
 GCR write-back commits on both mouths through the checksum-verified inverse-6&2
 decoder.
 
+**Steps 2-4a of the flux plan landed 2026-08-14.** The SWIM read engines no
+longer consume one pre-aligned cell per fixed window: `SonyDrive` exposes the
+track as a **flux view** (`nextFluxAfter` — MAME's `get_next_transition` —
+edges at cell centres, in `FluxPll` ticks, rebuilt lazily from the cell
+store), and `Swim2` and `Swim1`-ISM each run a **`FluxPll` data separator**
+over it (`tickRead`: window phase feedback + the `freq_hist` period trim,
+nominal period from setup[3:2], reprogrammable mid-ACTION). The separator is
+serialized — window phase and pulled period are live machine state, snapshot
+format **v6** — and an **opt-in jitter model** (`POM68K_FLUX_JITTER=<pct>`,
+deterministic per transition × revolution, default 0/ideal) gives the loop
+something to discriminate. Gated in `swim2_media_test` (+9 checks) and
+`swim1_test` (+1): 12 % peak-shift jitter and ±8 % off-rate tracks decode
+CRC-valid end to end — and the off-rate pair is the one that **bites**
+(neutralising the loop's feedback fails exactly those two checks; jitter
+alone never pushes an edge out of its own fixed window, the trap
+`flux_pll_test` had already named). `nextCell()`, the fixed-window read
+entry, is retired.
+
 *Accepted simplifications*:
 
-- **Discrete cells at the setup-programmed rate** instead of MAME's attotime
-  flux + `fdc_pll` — an ideal PLL, no jitter.
-- **`Swim1`'s ISM read engine reduces to the SWIM2 shifter**: MAME's LS-pair
-  cell state machine + correction factors (`swim1.cpp:965-1140`) exist to
-  discriminate real-world flux jitter, which ideal cells do not have
-  (`Swim1.h:16-21`). `DAT1BYTE` is not wired — the LC II polls the FIFO.
-- **The `Iwm` READ path stays byte-granular** (nibble stream, no cell engine).
+- **The flux STORE is still cell-derived.** The persistent track
+  representation remains the discrete cell ring: the flux view derives edge
+  times from it at canonical spacing, and a committed write re-encodes
+  canonically — so genuinely off-rate or jittered *written* flux does not
+  survive a commit (the gates synthesize it through a test seam,
+  `debugStretchFluxPermille`). Closing that means a first-class flux track
+  store under the cell decoders — the change that would also let
+  `encodeTrackGcr()` adopt MAME's zone arithmetic (see the geometry note
+  there, whose reopening condition names this step).
+- **`Swim1`'s ISM shifter is still the SWIM2 one**: MAME's LS-pair cell
+  state machine + correction factors (`swim1.cpp:965-1140`) refine the same
+  job the PLL now does, driven by the param RAM's correction table. Unported
+  — but no longer *unportable*: the separator hands the shifter
+  PLL-recovered cells, so the machinery would finally have jitter to
+  discriminate. `DAT1BYTE` **is** wired (below).
+- **The `Iwm` READ path stays byte-granular** (nibble stream, no cell
+  engine, no separator). Deliberate twice over: Apple's Plus/LC II denibble
+  loops are hand-timed against the IWM's byte cadence (the 2026-08-05
+  boost-freeze repair), and the standing rule since then is that nothing
+  may reshape that stream without the etalons to prove it. → Reopen as the
+  flux plan's last step, with `disk_boot_etalon` + the LC II floppy gates
+  as the cost.
 - **Committed tracks re-encode canonically** — no exotic-format preservation;
   recovered tag bytes are dropped (flat images have no tag space).
 - **Tach is a sampled bit, not a waveform.**
@@ -409,25 +442,24 @@ channels (`macquadra700.cpp:879-880`), the Mac IIfx only channel A
 II leaves the callback unset and is unchanged. Verified by re-running every
 boot etalon that owns a `Swim1`.
 
-→ **Closing it**: a flux/PLL layer under `SonyDrive`'s cell store closes the
-first three at once — the same change MAME made, and `Swim1`'s correction
-factors then become live rather than dead code.
+→ **Closing the remainder**: a first-class flux track store closes the
+first bullet (and reopens the GCR filler geometry with MAME's zone
+arithmetic as the oracle); the LS-pair port closes the second; the `Iwm`
+cell engine closes the third, at the price of re-proving the hand-timed
+denibble path. None of the three has a guest symptom attached today.
 
-*Step 1 landed 2026-08-02 — the separator exists, and nothing reads it yet.*
-`src/FluxPll.h` is an integer port of MAME's `fdc_pll_t`
-(`machine/fdc_pll.cpp`): phase feedback, the `freq_hist` period trim with
-its ±25 % clamps, the `limit` protocol and the write side. Time is in
-**flux ticks**, `kSubCell = 1024` subdivisions of a nominal cell, int64
-throughout so a snapshot restores bit-identically. Gate `flux_pll_test`
-proves the properties an ideal cell array cannot have: ±12 % jitter
-recovered exactly, and a track written 8 % slow or fast recovered while the
-loop pulls its period — where a fixed-window separator slips inside 32
-cells. **Be precise about what this is**: the class is not wired to
-anything. `SonyDrive` still stores discrete cells and `Swim1`/`Swim2`/`Iwm`
-still read them directly, so no machine behaves differently yet.
-Remaining steps: (2) give `SonyDrive` a flux representation beside its cell
-ring, (3) move `Swim2` (best-gated: `swim2_test`, `swim2_media_test`, the
-q605 floppy gates) onto the PLL, (4) then `Swim1` and `Iwm`.
+*Plan history.* Step 1, **2026-08-02**: `src/FluxPll.h`, the integer port
+of MAME's `fdc_pll_t` (`machine/fdc_pll.cpp`) — phase feedback, the
+`freq_hist` period trim with its ±25 % clamps, the `limit` protocol and
+the write side; time in **flux ticks**, `kSubCell = 1024` subdivisions of
+a nominal cell, int64 throughout so a snapshot restores bit-identically;
+gate `flux_pll_test` (±12 % jitter recovered exactly, ±8 % rate error
+recovered where a fixed window slips inside 32 cells). Steps 2-4a,
+**2026-08-14**: the flux view in `SonyDrive`, `Swim2` and `Swim1`-ISM on
+the separator — the paragraph above. The write side of `FluxPll` remains
+unused by the controllers on purpose: MAME's swim1/swim2 write flux
+directly from the TSS half-cycle times too (`flush_write`), the PLL write
+side belongs to the WD-style FDCs.
 
 *Not a gap (corrected 2026-07-31)*: **host-file persistence exists.**
 `SonyDrive::flushToFile` (`SonyDrive.cpp:768`) writes committed sectors back on
@@ -1086,11 +1118,16 @@ correctness it buys:
    image repaints, and Command + N are simultaneously live in the guest's
    KeyMap on every cell including the failing one. **There is no known live
    bug in this inventory any more** — everything below is a simplification.
-5. **Floppy flux/PLL** (§ 1.3) — ideal cells. **Step 1 of 4 done
-   2026-08-02**: the separator itself (`src/FluxPll.h`, `flux_pll_test`)
-   exists and is gated, but nothing reads it. The remaining three steps are
-   the flux store in `SonyDrive` and moving the three controllers onto it;
-   closing them also activates `Swim1`'s dead LS-pair correction machinery.
+5. **Floppy flux/PLL** (§ 1.3) — **steps 2-4a done 2026-08-14**: the flux
+   view in `SonyDrive` (edges + opt-in jitter), `Swim2` and `Swim1`-ISM
+   reading through a real `FluxPll` separator (snapshot v6), gated with
+   jitter and off-rate blocks verified to bite. What is left, none of it
+   symptom-backed: a first-class flux track *store* (today the view is
+   derived from the canonical cell ring, so off-rate written flux does not
+   survive a commit), the `Swim1` LS-pair correction-factor port (it now
+   has PLL-recovered cells to discriminate), and the `Iwm` READ path
+   (byte-granular on purpose — the hand-timed denibble stream is off
+   limits without its etalons).
 6. **SCC bit-serial sampling** and the DPLL (§ 1.4) — only worth it with a
    real async transport to talk to. *(The RTS/DTR pins and the SDLC residue
    codes came off this list on 2026-08-02; the ADB device-model holes at
@@ -1102,8 +1139,9 @@ correctness it buys:
    through the PMU rather than its ADB cell — on 2026-08-14** (matrix
    keyboard + trackball; the counters latch at 60 Hz, and drained on read
    instead they race the firmware's own double reads). What remains of the
-   `SIMPLIFICATIONS_REVIEW.md` closure list is **F7 alone** (the floppy flux
-   layer, item 5 above).
+   `SIMPLIFICATIONS_REVIEW.md` closure list is **F7's tail alone** (the
+   floppy flux layer — its separator half closed 2026-08-14, item 5 above
+   carries the honest remainder).
 8. **NuBus arbitration** (§ 1.8) — needs a second card to contend.
    *(VRAM arbitration came off this list on 2026-08-03: audited and
    accepted, no oracle in any of MAME's four video devices and no guest

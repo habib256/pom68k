@@ -226,7 +226,12 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // restart (`restartPending_`, the firmware's RESET_SYSTEM latched between
 // the MCU callback and the CPU's next run boundary — a snapshot taken in
 // that window must not resume without the reset it owes).
-inline constexpr u32      kVersion   = 5;
+// v6 replaces the SWIM1/SWIM2 fixed-window read phase (`cellPhase_`, one
+// int) with the FluxPll data separator (window phase, pulled period, flux
+// clock — § 1.3 flux plan step 3). A v5 chunk cannot supply a separator
+// state, and resuming one mid-sector with a nominal loop would shift every
+// following window on non-ideal media, so it is refused, not migrated.
+inline constexpr u32      kVersion   = 6;
 
 struct Header {
     u32 version     = kVersion;

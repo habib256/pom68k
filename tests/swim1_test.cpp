@@ -160,6 +160,54 @@ int main() {
         check(crcOk, "data CRC verifies through the ISM FIFO flags");
     }
 
+    // ── ISM read through the data separator (§ 1.3 flux plan, step 4a):
+    // 12 % peak-shift jitter on every edge and the sector still verifies —
+    // the property the ideal-cell fixed window never had to earn. ─────────
+    {
+        std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);
+        for (int i = 0; i < 512; i++) img[size_t(i)] = uint8_t(0x30 + (i & 0x3F));
+
+        SonyDrive drive;
+        drive.setSpinClockHz(15667200);
+        Swim1 swim;
+        swim.reset();
+        swim.attachDrive(&drive, nullptr);
+        drive.insertImage(std::move(img));
+        drive.setFluxJitterPercent(12);
+
+        switchToIsm(swim);
+        loadParams(swim);
+        drive.commandSwim(0x2);
+        swim.write(5, 0x00);
+        swim.write(7, 0x8A);
+
+        auto stream = drainFifo(swim, drive, 1200, 1200 * kMfmByte * 4);
+        bool found = false, crcOk = false;
+        std::vector<uint8_t> sector;
+        auto marks = [&](size_t i) { return (stream[i] & 0x1FF) == 0x1A1; };
+        for (size_t i = 0; i + 10 < stream.size() && !found; i++) {
+            if (!(marks(i) && marks(i + 1) && marks(i + 2) &&
+                  (stream[i + 3] & 0xFF) == 0xFE && int(stream[i + 6] & 0xFF) == 1))
+                continue;
+            for (size_t j = i + 10; j + 517 < stream.size() && j < i + 80; j++) {
+                if (!(marks(j) && marks(j + 1) && marks(j + 2) &&
+                      (stream[j + 3] & 0xFF) == 0xFB))
+                    continue;
+                sector.clear();
+                for (int k = 0; k < 512; k++)
+                    sector.push_back(uint8_t(stream[j + 4 + size_t(k)]));
+                crcOk = (stream[j + 517] & 0x200) != 0;
+                found = true;
+                break;
+            }
+        }
+        bool payload = found;
+        for (int i = 0; i < 512 && payload; i++)
+            if (sector[size_t(i)] != uint8_t(0x30 + (i & 0x3F))) payload = false;
+        check(found && payload && crcOk,
+              "12% jittered ISM read: sector + CRC through the separator");
+    }
+
     // ── ISM MFM write: param-timed TSS commits a sector ───────────────
     {
         std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);

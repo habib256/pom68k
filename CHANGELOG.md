@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 227 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 228 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -161,6 +161,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Storage — SCSI, IWM/SWIM, media
 
+- **what the SWIM read path actually runs now — a real FluxPll separator over a flux view of the track, and why the off-rate gate (not jitter) is the one that catches its regression** → [2026-08-14 (fourth) — The SWIM read engines get their data separator…](#2026-08-14-flux-separator)
 - **53C96 pseudo-DMA reads** → [2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work…](#2026-07-18--q61-53c96-pseudo-dma-reads-work--the-mac-os-81-scsi-driver-now-transfers-full-512-byte-blocks-off-the-disk)
 - **the block-0 re-read loop was a Cuda ReadXPram framing divergence** → [2026-07-19 — Q6.2 RESOLVED: the block-0 re-read loop was a Cuda ReadXPram…](#2026-07-19--q62-resolved-the-block-0-re-read-loop-was-a-cuda-readxpram-reply-framing-divergence--the-boot-now-loads-the-driver-partition-map-and-system-progresses-to-a-new-scsi-blocker)
 - **multi-block read needed the DATA IN bus-service interrupt** → [2026-07-19 — Q6.3 RESOLVED: SCSI multi-block read…](#2026-07-19--q63-resolved-scsi-multi-block-read--the-polled-10-transfer-info-needed-the-data-in-bus-service-interrupt)
@@ -287,6 +288,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](#2026-08-14-flux-separator)
 - **2026-08-14 (third)** — [The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen](#2026-08-14-eclipse-beyond-boot)
 - **2026-08-14 (later)** — [The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse](#2026-08-14-eclipse-egret-lle)
 - **2026-08-14** — [The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own](#2026-08-14-duo-beyond-boot)
@@ -516,6 +518,62 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-14-flux-separator"></a>
+## 2026-08-14 (fourth) — The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites
+
+Steps 2-4a of the `docs/LLE_VS_HLE.md` § 1.3 flux plan, twelve days after
+step 1 built the separator nobody read. The shape of the change is small
+because the pieces were already honest: `FluxPll` existed and was gated, and
+the SWIM engines already consumed cells one window at a time — what was fake
+was the alignment, one *pre-aligned* cell delivered per fixed window, so the
+loop a real controller uses to find the cell had nothing to do.
+
+- **`SonyDrive` exposes the track as a flux view** (`nextFluxAfter` — MAME's
+  `get_next_transition`): transition times at cell centres, in `FluxPll`
+  ticks (1 C15M clock = `kSubCell` = 1024 ticks), derived lazily from the
+  cell ring so every write-back path keeps it in sync for free, wrap
+  handled per revolution. An **opt-in jitter model** (`POM68K_FLUX_JITTER`,
+  ± pct % of a cell, clamp 45) displaces each edge deterministically per
+  (track, side, transition, **revolution**) — splitmix64, no RNG state —
+  so replays and snapshots are bit-identical while successive revolutions
+  differ, which is what peak-shift noise looks like to a separator.
+- **`Swim2` and `Swim1`-ISM read through the PLL** (`tickRead`: window
+  phase feedback + `freq_hist` period trim instead of `cellPhase_`
+  arithmetic; nominal period from setup[3:2], reprogrammed on a mid-ACTION
+  setup write exactly as the old per-window `cellCycles()` read behaved).
+  `cyclesToNextEvent` returns the separator's own next window end, so the
+  peripheral-deadline contract stays exact. `nextCell()` — the fixed-window
+  entry — is deleted. The `Iwm` READ path is deliberately untouched: the
+  Plus/LC II denibble loops are hand-timed against the IWM byte cadence
+  (2026-08-05), and that stream is off limits without its etalons.
+- **Snapshot format v5 → v6**: the separator (window phase, pulled period,
+  flux clock) replaces `cellPhase_` in both SWIM `visit()`s. It is live
+  machine state, not a derivable cache — restoring a mid-sector snapshot
+  with a nominal loop would shift every following window on non-ideal
+  media. Gated in `swim2_media_test`: snapshot taken mid-sector at 10 %
+  jitter, restored into fresh objects, remaining byte stream identical.
+- **Gates** — `swim2_media_test` +9, `swim1_test` +1, every pre-existing
+  floppy gate re-proving the ideal-edge stream unchanged (on ideal edges
+  the PLL's delta is 0 and it free-runs at nominal: same bits by
+  construction). 12 % jitter decodes CRC-valid MFM and GCR; ±8 % off-rate
+  tracks (`debugStretchFluxPermille`, the test seam) decode while the loop
+  pulls its period. **Verified to bite, and the bite is exactly where the
+  2026-08-02 test-first note said**: with the loop's feedback neutralised
+  (phase + trim zeroed), the two off-rate checks fail and *nothing else
+  does* — jitter alone never pushes an edge out of its own fixed window,
+  on the real controllers just as in `flux_pll_test`.
+
+What this buys today is machinery, not symptoms — no shipped image reads
+differently, which is the point (the etalons prove it). What it retires is
+the § 1.3 lead bullet ("an ideal PLL, no jitter") and the excuse for
+`Swim1`'s missing LS-pair correction machinery: the shifter now receives
+PLL-recovered cells, so MAME's `swim1.cpp:965-1140` port finally has an
+input it could discriminate. Still open there, all symptom-free: the flux
+*store* (the view derives from the canonical cell ring, so off-rate written
+flux does not survive a commit), the LS-pair port itself, and the `Iwm`
+cell engine. `config_test` earned its keep in passing: it refused the tree
+until `POM68K_FLUX_JITTER` appeared in `DEV.md` § 5.
 
 <a id="2026-08-14-eclipse-beyond-boot"></a>
 ## 2026-08-14 (third) — The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen

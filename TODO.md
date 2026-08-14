@@ -697,25 +697,25 @@ product decision, not a cleanup.
   (Send Abort / CRC resets `:1602/:1635` "not implemented", no EOM latch, no
   hunt/sync) — for LLAP behaviours **we are the more complete model**. Use MAME
   as oracle for the ASYNC side only; do not regress LLAP chasing parity.
-- [~] **Floppy flux + PLL layer** (`docs/LLE_VS_HLE.md` § 1.3) — step 1 of 4
-  landed 2026-08-02. `src/FluxPll.h` is the integer port of MAME's `fdc_pll_t`
-  (phase feedback, `freq_hist` period trim, ±25 % clamps, `limit` protocol,
-  write side); time unit = **flux ticks**, `kSubCell = 1024` per nominal cell,
-  int64 so snapshots are bit-identical. Gate `flux_pll_test` (17 checks) shows
-  ±12 % jitter and ±8 % rate error both recovered, where a fixed-window
-  separator slips inside 32 cells.
-  **Nothing reads it yet** — `SonyDrive` still stores discrete cells. Next, in
-  order:
-  1. a flux representation in `SonyDrive` beside `cells_`, plus
-     `nextTransition(after)` (MAME's `get_next_transition`) and an opt-in
-     jitter model;
-  2. move **`Swim2`** onto the PLL first — it is the best-gated controller
-     (`swim2_test`, `swim2_media_test`, the `q605` floppy etalons);
-  3. then `Swim1` (its LS-pair correction machinery, `swim1.cpp:965-1140`,
-     stops being dead code at that point) and the `Iwm` READ path.
-  Test-first note that already paid: the obvious "prove a dumb decoder fails"
-  case (jitter) does NOT bite — ±12 % never pushes a transition out of its own
-  fixed window. **The off-rate track is the case that does.**
+- [x] **Floppy flux + PLL layer, steps 2-4a** — **done 2026-08-14**
+  (`docs/LLE_VS_HLE.md` § 1.3 owns the full state). `SonyDrive` exposes the
+  track as a flux view (`nextFluxAfter` = MAME's `get_next_transition`,
+  opt-in deterministic jitter `POM68K_FLUX_JITTER`), and `Swim2` +
+  `Swim1`-ISM read through a real `FluxPll` separator; the separator is
+  serialized (snapshot **v6**), `nextCell()` retired. Gates:
+  `swim2_media_test` +9 checks, `swim1_test` +1 — 12 % jitter and ±8 %
+  off-rate tracks decode CRC-valid, and the off-rate pair is the one that
+  bites (loop feedback neutralised → exactly those two fail), confirming
+  the 2026-08-02 test-first note: jitter alone never leaves its own fixed
+  window. Every pre-existing floppy gate re-proves the ideal-edge bit
+  stream unchanged. **Still open, none symptom-backed**: a first-class
+  flux track *store* (the view derives from the canonical cell ring, so
+  off-rate written flux does not survive a commit — same change that would
+  let `encodeTrackGcr` adopt MAME's zone arithmetic), the `Swim1` LS-pair
+  correction port (`swim1.cpp:965-1140` — it finally has PLL-recovered
+  cells to discriminate), and the `Iwm` READ path (hand-timed denibble
+  stream — off limits without `disk_boot_etalon` + the LC II floppy gates
+  in the loop).
 
 ### Peripheral event deadlines — eight of twelve platforms, and why the other four are not
 

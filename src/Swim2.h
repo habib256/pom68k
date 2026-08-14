@@ -5,13 +5,15 @@
 // Register model AND bit engine: MAME swim2.cpp — the MFM sync-hunting
 // shifter (swim2.cpp:498-546), serial CRC-CCITT seeded $CDB4 with the
 // M_CRC0 tag (swim2.cpp:343-355, 535-543), and the TSS write serializer
-// in half-cycles (swim2.cpp:402-481). Cells come from SonyDrive's raw
-// cell track (rotation-synced); MAME's attotime flux + fdc_pll are
-// simplified to discrete cells at the setup-programmed rate
-// (cycles_per_cell {16,31,31,63}, swim2.cpp:329-331). Drive CA protocol:
-// applefdintf phases_w → mac_floppy seek_phase_w; mode/devsel/hdsel from
+// in half-cycles (swim2.cpp:402-481). Since the § 1.3 flux-plan step 3
+// (2026-08-14) the read side runs a real data separator: a FluxPll
+// (MAME fdc_pll_t) windowing SonyDrive's flux view, nominal period from
+// setup[3:2] (cycles_per_cell {16,31,31,63}, swim2.cpp:329-331) — not one
+// pre-aligned cell per fixed window. Drive CA protocol: applefdintf
+// phases_w → mac_floppy seek_phase_w; mode/devsel/hdsel from
 // swim2.cpp:128-137, 300-303.
-// Gate: tests/swim2_test.cpp, tests/swim2_media_test.cpp.
+// Gate: tests/swim2_test.cpp, tests/swim2_media_test.cpp (incl. the
+// 12 %-jitter and off-rate separator blocks).
 //
 // KNOWN MAME DIVERGENCE, deliberately kept (parity audit § 2.4, cosmetic):
 // **no DAT1BYTE line.** MAME's swim2 has one (update_dat1byte, swim2.cpp:
@@ -33,6 +35,7 @@
 
 #pragma once
 #include "SaveState.h"
+#include "FluxPll.h"
 #include <cstdint>
 #include <vector>
 
@@ -62,7 +65,11 @@ public:
     // `drive_[2]` are machine-owned pointers, re-attached on restore.
     template <class Ar> void visit(Ar& ar) {
         ar(driveSel_, lstrb_, mode_, setup_, phases_, params_, paramIdx_,
-           fifo_, fifoPos_, error_, cellPhase_);
+           fifo_, fifoPos_, error_);
+        // The data separator is live machine state, not a derivable cache:
+        // a snapshot taken mid-sector must resume with the same window
+        // phase and the same pulled period (snapshot format v6).
+        ar(pll_, fluxClock_);
         ar(crc_, sr_, tssSr_, tssOutput_, mfmSyncCounter_, currentBit_,
            halfWait_, writeHalfPos_, writeStartCell_, writeActive_,
            writeTransitions_);
@@ -86,6 +93,7 @@ private:
     }
 
     int cellCycles() const;                  // setup[3:2] → clocks per cell
+    void armReadPll();                       // read-ACTION entry: land + lock
     void tickRead(int cycles);
     void tickWrite(int cycles);
     void startWrite();
@@ -107,7 +115,13 @@ private:
     uint16_t fifo_[2] = {};
     uint8_t fifoPos_ = 0;
     uint8_t error_ = 0;
-    int cellPhase_ = 0;                  // read pacing: cycles into next cell
+
+    // Read pacing: the FluxPll data separator over SonyDrive's flux view.
+    // `fluxClock_` is the absolute flux time granted to the reader so far
+    // (1 controller cycle = FluxPll::kSubCell ticks) — the PLL closes
+    // windows up to it and stalls with -1 beyond, exactly MAME's `limit`.
+    FluxPll pll_;
+    int64_t fluxClock_ = 0;
 
     // Bit-engine state (MAME m_sr/m_crc/m_tss_*/m_mfm_sync_counter)
     uint16_t crc_ = 0xCDB4;

@@ -12,15 +12,19 @@
 //   2-deep FIFO, TSS write serializer, serial CRC-CCITT) with SWIM1's
 //   16-entry parameter RAM and param-driven write cell timing
 //   (P_TIME0/P_TIME1, swim1.cpp:904-916).
-// Cells come from SonyDrive's raw cell track like Swim2; MAME's
-// LS-pair cell state machine + correction factors (swim1.cpp:965-1140)
-// discriminate real-world flux jitter, which our ideal discrete cells
-// do not have — the read engine therefore reduces to the SWIM2 shifter
-// (accepted simplification, LLE_VS_HLE §3). Gate: tests/swim1_test.cpp,
-// tests/swim1_media_test.cpp.
+// The ISM read side runs the FluxPll data separator over SonyDrive's
+// flux view like Swim2 (§ 1.3 flux plan step 4a, 2026-08-14), so jittered
+// and off-rate media are discriminated by a real loop now. What is still
+// SWIM2-shaped is the shifter behind it: MAME's LS-pair cell state
+// machine + correction factors (swim1.cpp:965-1140) remain unported —
+// they refine the same job the PLL does, from the param RAM's correction
+// table (accepted simplification, LLE_VS_HLE § 1.3, with an input worth
+// discriminating the day they are ported). Gate: tests/swim1_test.cpp
+// (incl. the 12 %-jitter ISM block).
 
 #pragma once
 #include "SaveState.h"
+#include "FluxPll.h"
 #include "Iwm.h"
 #include <cstdint>
 #include <functional>
@@ -71,7 +75,10 @@ public:
         ar(iwm_);
         ar(ismMode_, iwmToIsm_, driveSel_, lstrb_,
            mode_, setup_, phases_, params_, paramIdx_,
-           fifo_, fifoPos_, error_, cellPhase_);
+           fifo_, fifoPos_, error_);
+        // The ISM data separator is live machine state (window phase +
+        // pulled period), not a derivable cache — snapshot format v6.
+        ar(pll_, fluxClock_);
         ar(crc_, sr_, tssSr_, tssOutput_, mfmSyncCounter_, currentBit_,
            halfWait_, writeHalfPos_, writeStartCell_, writeActive_,
            writeTransitions_);
@@ -105,6 +112,7 @@ private:
     void leaveIsm();
 
     int cellCycles() const;
+    void armReadPll();                       // read-ACTION entry: land + lock
     void tickRead(int cycles);
     void tickWrite(int cycles);
     void startWrite();
@@ -129,7 +137,12 @@ private:
     uint16_t fifo_[2] = {};
     uint8_t fifoPos_ = 0;
     uint8_t error_ = 0;
-    int cellPhase_ = 0;
+
+    // ISM read pacing: the FluxPll data separator over SonyDrive's flux
+    // view (see Swim2.h — same contract; the IWM personality keeps its own
+    // byte-granular path, LLE_VS_HLE § 1.3).
+    FluxPll pll_;
+    int64_t fluxClock_ = 0;
 
     // Bit-engine state (same shape as Swim2 — swim1.cpp ism_sync)
     uint16_t crc_ = 0xCDB4;

@@ -1379,7 +1379,11 @@ Keyboard II, 3 = the extended protocol with distinct right-hand modifier
 codes — a guest can select any of them itself with a Listen R3, this only
 moves the reset value), `POM68K_APPLETALK`,
 `POM68K_SHARE_DIR`, `POM68K_ATALK_WIRE_BOOST`, `POM68K_LTOUDP`,
-`POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_DRIVE_SFX`
+`POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_FLUX_JITTER`
+(`<pct>` = displace every flux edge the SWIM separators read by a
+deterministic ± pct % of one nominal cell, clamped to 45 — the opt-in
+jitter model of the § 1.3 flux plan; 0/unset = ideal edges, the default —
+`SonyDrive::fluxJitterEnv`), `POM68K_DRIVE_SFX`
 (`0` = silence the drive FX), `POM68K_SCSI_DDM_TEMPLATE`,
 `POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
 instead of the Apple-branded Seagate the guest's own disk tools expect —
