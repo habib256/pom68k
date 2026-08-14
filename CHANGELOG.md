@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 226 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 227 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -268,6 +268,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Audits, doc syncs and cross-cutting reviews
 
+- **when does a SECOND profile on an already-covered platform deserve its own beyond-boot pair?** → [2026-08-14 (third) — The Eclipse gets a beyond-boot pair of its own…](#2026-08-14-eclipse-beyond-boot)
 - **what does the GUI do that no gate can see?** → [2026-08-09 (seventh) — The GUI pass](#2026-08-09-gui-pass)
 
 - **adversarial subsystem audit — 3 fixes** → [2026-07-17 — adversarial subsystem audit: 3 correctness fixes](#2026-07-17--adversarial-subsystem-audit-3-correctness-fixes)
@@ -286,6 +287,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-14 (third)** — [The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen](#2026-08-14-eclipse-beyond-boot)
 - **2026-08-14 (later)** — [The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse](#2026-08-14-eclipse-egret-lle)
 - **2026-08-14** — [The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own](#2026-08-14-duo-beyond-boot)
 - **2026-08-13 (seventh)** — [The IIfx dirty-volume refusal was a swallowed VBL disable, and "address 1" was open bus wearing a wrapped PC](#2026-08-13-iifx-toby-vbl-disable)
@@ -514,6 +516,43 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-14-eclipse-beyond-boot"></a>
+## 2026-08-14 (third) — The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen
+
+The roster rule since 2026-08-13 is **one soak+persist pair per platform
+implementation**, twelve of them, and "per-PROFILE depth is still thin" is
+listed as accepted debt: the other 25 profiles are boot-to-Finder only. The
+Quadra 900 is the first exception, and the reason is worth stating because it
+is the criterion for any future one.
+
+Past the boot screen the Eclipse is not the Quadra 700 with a different ID.
+The Spike's legs keep alive a discrete RTC, a PIC1654S ADB transceiver and one
+53C96. The tower's keep **two Apple PIC IOPs running host-uploaded 65C02
+firmware, an Egret 341S0851 firmware LLE and a second SCSI bus** — none of
+which the existing pair touches for one frame. Nothing in the suite would
+notice an IOP that stops answering three minutes into an idle Finder, because
+nothing ran an idle Finder on that machine.
+
+`q900_soak_etalon` / `q900_persist_etalon` are the same `q700_beyond_etalon`
+binary under `POM68K_Q700_MODEL=q900` — the knob the GUI already uses to pick
+the profile, so the gate and the shipping path select the machine the same
+way. Both green on the first run:
+
+- **soak** — 180 s on the Mac clock (want 135-225), not halted, Finder still
+  up, with both IOPs and the MCU running the whole time.
+- **persist** — `'untitled folder' 14 → 16`, image modified, and after a
+  reboot the folder is still there. That leg is now the **only** gate that
+  drives the tower's ADB from the Toolbox rather than from a test harness:
+  Cmd-N travels the SWIM IOP's bit-banged wire (2026-08-14 (later) is what
+  established that this is the wire that works), the Finder writes the folder
+  to the medium, and the reboot makes the Egret firmware re-hold and
+  re-release the 68040 — the power-on path, exercised a second time in one
+  process.
+
+Thirteen pairs, 26 legs, all green. The bar for the next per-profile pair is
+the same question: *does this profile keep different silicon alive after the
+Finder appears?* If the answer is no, the boot etalon already covers it.
 
 <a id="2026-08-14-eclipse-egret-lle"></a>
 ## 2026-08-14 (later) — The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse

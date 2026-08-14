@@ -1067,6 +1067,22 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         endforeach()
     endforeach()
 
+    # The Eclipse pair (2026-08-14): the same binary on the tower profile,
+    # which is a different MACHINE past the boot screen — two Apple PIC IOPs,
+    # an Egret firmware LLE and a second 53C96, none of which the Spike's
+    # legs keep alive. The soak is what would notice an IOP that stops
+    # answering three minutes in; the persist leg is the only gate that drives
+    # the tower's ADB (the SWIM IOP's bit-banged wire) from the Toolbox. It
+    # boots twice at 16000 frames, so it gets a longer budget than the pairs
+    # above.
+    foreach(scenario soak persist)
+        add_test(NAME q900_${scenario}_etalon COMMAND q700_beyond_etalon
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(q900_${scenario}_etalon PROPERTIES
+                             ENVIRONMENT "POM68K_BEYOND=${scenario};POM68K_Q700_MODEL=q900"
+                             TIMEOUT 2400)
+    endforeach()
+
     # Phase C gate: Macintosh LC (68020 on the same V8 board, 2 MB
     # soldered) boots to the Finder (soft-skips without ROM + image).
     add_executable(lc_boot_etalon tests/lc_boot_etalon.cpp)

@@ -1,10 +1,18 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Beyond-boot on the Quadra 700 (discrete 040: Mac II front end + DAFB with
-// its own TurboSCSI cell) — shared-engine gate (BeyondBoot.h). Rig, GDevice
-// decode and signature from q700_boot_etalon; Time is physical (q605
-// pattern). POM68K_BEYOND=soak|persist. Soft-skips without assets.
+// Beyond-boot on the discrete-040 board — shared-engine gate (BeyondBoot.h).
+// Rig, GDevice decode and signature from q700_boot_etalon; Time is physical
+// (q605 pattern). POM68K_BEYOND=soak|persist. Soft-skips without assets.
+//
+// `POM68K_Q700_MODEL` picks the profile, exactly as it does for the GUI:
+// `q700` (default) is the Spike, `q900`/`q950` the Eclipse towers — the same
+// board with the IIfx's front end. The towers are worth their own pair
+// because nothing else in the suite keeps two Apple PIC IOPs, an Egret
+// firmware LLE and a second 53C96 alive past the boot screen: the soak is the
+// only thing that would notice an IOP that stops answering three minutes in,
+// and the persist leg is the only one that drives the Eclipse's ADB — the
+// SWIM IOP's bit-banged wire — from the Toolbox rather than from a test.
 
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
@@ -72,14 +80,28 @@ Screen decodeScreen(Q700Memory& mem) {
 }  // namespace
 
 int main() {
-    std::string rom = testasset::find("roms/quadra700.rom");
+    const char* modelEnv = std::getenv("POM68K_Q700_MODEL");
+    const std::string which = modelEnv ? modelEnv : "q700";
+    const bool q950 = which == "q950", q900 = which == "q900";
+    const auto model = q950 ? Q700Memory::Model::Q950
+                    : q900 ? Q700Memory::Model::Q900
+                           : Q700Memory::Model::Spike;
+    const int64_t cpuHz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
+    const char* name = q950 ? "Quadra 950" : q900 ? "Quadra 900" : "Quadra 700";
+    const char* tag = q950 ? "q950" : q900 ? "q900" : "q700";
+
+    // The Q900 shares the Quadra 700's ROM; the Q950 has its own.
+    std::string rom = testasset::find(q950 ? "roms/quadra950.rom"
+                                           : "roms/quadra700.rom");
     if (rom.empty())
-        rom = testasset::find("roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
+        rom = testasset::find(q950
+            ? "roms/1MB ROMs/1992-03 - 3DC27823 - Quadra 950.ROM"
+            : "roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
     std::string img = testasset::find("hdv/MacOS-8.1-boot.vhd");
     if (img.empty()) img = testasset::find("hdv/boot.vhd");
     if (img.empty()) img = testasset::find("hdv/GISTPERSO-boot.vhd");
     if (rom.empty() || img.empty()) {
-        std::printf("SKIP: needs the Quadra 700 ROM + a bootable hdv/ image\n");
+        std::printf("SKIP: %s needs its 1 MB ROM + a bootable hdv/ image\n", name);
         return 0;
     }
     testasset::report({ rom, img });
@@ -87,14 +109,18 @@ int main() {
     std::ifstream in(rom, std::ios::binary);
     std::vector<uint8_t> romData((std::istreambuf_iterator<char>(in)),
                                  std::istreambuf_iterator<char>());
-    Q700Memory mem(8u << 20);
+    Q700Memory mem(8u << 20, cpuHz, model);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
+    if (mem.eclipse())
+        std::printf("Machine: %s, ADB: SWIM IOP wire, Egret: %s\n", name,
+                    mem.egretLleActive() ? "341S0851 firmware LLE"
+                                         : "HLE (NON-CONFORMANT)");
     Q700Cpu cpu(mem);
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
     beyondboot::ensureBootDriverType(mem.scsiDisk().image());
-    const int64_t kFrame = Q700Memory::kCpuHz / 60;
+    const int64_t kFrame = cpuHz / 60;
 
     auto frames = [&](long n) {
         for (long f = 0; f < n && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
@@ -118,7 +144,7 @@ int main() {
     std::printf("Finder up, SCSI %ld\n", mem.scsi().commands);
 
     beyondboot::Hooks h;
-    h.name = "Quadra 700";
+    h.name = name;
     h.frames = frames;
     h.halted = [&]() { return cpu.isHalted(); };
     h.finderUp = finderUp;
@@ -129,7 +155,7 @@ int main() {
     h.reboot = [&]() { cpu.hardReset(); return boot(); };
     h.dump = [&](const char* mode) {
         Screen s = decodeScreen(mem);
-        beyondboot::dumpPpm((std::string("q700_beyond_") + mode + ".ppm").c_str(),
+        beyondboot::dumpPpm((std::string(tag) + "_beyond_" + mode + ".ppm").c_str(),
                             s.pixels, s.width, s.height);
     };
     return beyondboot::run(h);
