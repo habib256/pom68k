@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 225 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 226 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -10,7 +10,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 16 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 31 |
-| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 27 |
+| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 33 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 11 |
 | [Sound](#sound) | 6 |
@@ -106,6 +106,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-02** — [The ADB device model and two SCC pins: closing the LLE gaps that needed no new hardware](CHANGELOG.md#2026-08-02-lle-devices)
 - **2026-08-02 (fifth)** — [Two LLE gaps closed: the Cuda's I2C bus gets a second slave, and SWIM1 gets its DMA request line](CHANGELOG.md#2026-08-02-i2c-dat1byte)
 - **2026-08-03** — [Event deadlines close the Cuda phase accommodation; extended ADB input reaches every GUI runner](CHANGELOG.md#2026-08-03-event-deadlines)
+- **2026-08-14 (later)** — [The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse](CHANGELOG.md#2026-08-14-eclipse-egret-lle)
 
 ## Storage — SCSI, IWM, SWIM, media
 

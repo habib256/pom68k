@@ -127,8 +127,10 @@ int main(int argc, char** argv) {
     Q700Memory mem(32u << 20, cpuHz, model);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     std::printf("Machine: %s (%lld MHz), ADB: %s\n", name, (long long)(cpuHz / 1000000),
-                mem.eclipse() ? "SWIM IOP firmware ↔ AdbLine"
-                              : (mem.adbLleActive() ? "PIC1654S firmware LLE" : "HLE"));
+                mem.eclipse()
+                  ? (mem.egretLleActive() ? "Egret 341S0851 firmware LLE"
+                                          : "Egret HLE (NON-CONFORMANT)")
+                  : (mem.adbLleActive() ? "PIC1654S firmware LLE" : "HLE"));
     if (getenv("POM68K_BERR")) {
         static long n = 0;
         mem.onBusError = [](uint32_t a, bool w) {
@@ -141,8 +143,18 @@ int main(int argc, char** argv) {
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
     // On the Eclipse the Egret holds the 68040 in reset until its firmware
-    // releases it — advance the MCU alone until it does.
+    // releases it — advance the MCU alone until it does. Under the firmware
+    // LLE that release is the 68HC05's own PC3 edge, so a machine still held
+    // when the budget runs out is a dead MCU, not a slow one: say so here
+    // rather than let it surface 16000 frames later as a blank screen.
     for (long g = 0; mem.cpuHeld() && g < 200000; g++) mem.tick(1000);
+    if (mem.cpuHeld()) {
+        std::fprintf(stderr, "FAIL: the Egret never released the 68040 "
+                             "(MCU instructions=%ld)\n",
+                     mem.eclipse() && mem.egretLleActive()
+                       ? mem.egretLle().mcu().instructions : -1L);
+        return 1;
+    }
 
     const int64_t kFrame = cpuHz / 60;
     long limit = 16000;
@@ -320,6 +332,22 @@ int main(int argc, char** argv) {
 
     bool ok = W >= 512 && H >= 342 && menuBar < 0.30
            && desktop > 0.30 && desktop < 0.85 && mem.scsi().commands > 50;
+
+    // Eclipse under the firmware LLE: the desktop above is not by itself
+    // evidence that the 68HC05 served it — a dead MCU that had already
+    // released the CPU would leave the same screen. The floor is ten million
+    // instructions: the boot runs ~4 minutes of MCU time at 2.097 MHz, so
+    // anything near zero means the firmware stopped early.
+    if (mem.eclipse() && mem.egretLleActive()) {
+        const long instr = mem.egretLle().mcu().instructions;
+        std::printf("Egret 341S0851: %ld MCU instructions, PRAM $8A=$%02X\n",
+                    instr, mem.egretLle().pram(0x8A));
+        if (instr < 10000000) {
+            std::fprintf(stderr, "FAIL: the Egret firmware stalled (%ld "
+                                 "instructions)\n", instr);
+            ok = false;
+        }
+    }
     std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED", name,
                 ok ? "booted to the Finder" : "did not reach the Finder");
     return ok ? 0 : 1;

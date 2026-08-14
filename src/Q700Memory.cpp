@@ -21,6 +21,7 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
     // the Q950's DAFB II reports version 3 with the AC842a, PCBR1 version
     // ID $01 (dafb_q950_device, dafb.cpp:1105,1131).
     : asc_(cpuHz), egret_(via1_, /*cudaPolarity=*/false, int(cpuHz)),
+      egretLle_(via1_, cpuHz, CudaLle::Flavor::Egret),
       totalRam_(totalRam), cpuHz_(cpuHz), model_(model),
       dafbCell_(cpuHz, Dafb::Clockgen::Dp8531,
                 model == Model::Q950 ? 3 : 1,
@@ -32,9 +33,53 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
     vram_.assign(kVramSize, 0);
     adbVia_.attach(via1_, adb_, cpuHz_);
     if (eclipse()) {
-        // Eclipse still uses the command-level Egret model. It is usable for
-        // bring-up, but it must poison product qualification and snapshots.
-        pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        // Egret firmware LLE — the real 341S0851 on a real 68HC05
+        // (macquadra700.cpp:886-894 `set_default_bios_tag("341s0851")`, the
+        // same part the LC III and the IIvx carry), the DEFAULT since
+        // 2026-08-14. The Eclipse was the last board in the tree running the
+        // command-level `Egret` model unconditionally — LLE_VS_HLE § 2 called
+        // it out as the one HLE registration with no dump that could change
+        // it. Same rollout as every other Egret machine: POM68K_EGRET_LLE=0
+        // forces the HLE, a missing dump falls back to it, and neither is
+        // silent.
+        {
+            const char* e = std::getenv("POM68K_EGRET_LLE");
+            const bool want = !e || std::atoi(e) != 0;
+            static const char* const kEgretFw[] = {
+                "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
+                "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };
+            if (want) {
+                for (const char* p : kEgretFw) {
+                    std::ifstream in(p, std::ios::binary);
+                    if (!in) continue;
+                    std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
+                                            std::istreambuf_iterator<char>());
+                    if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
+                }
+                if (!egretLleOn_)
+                    std::fprintf(stderr, "Q700: no MCU firmware dump under "
+                                 "roms/egret/ — running the NON-CONFORMANT HLE "
+                                 "ADB substitute (docs/LLE_VS_HLE.md §2)\n");
+            } else {
+                std::fprintf(stderr, "Q700: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
+                             "HLE ADB substitute forced\n");
+            }
+            // The fallback is usable for bring-up, but it must poison product
+            // qualification and snapshots.
+            if (!egretLleOn_)
+                pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        }
+        // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED:
+        // this fires from inside viaWrite(), under the CPU, and reset()
+        // would reset the very MCU that is mid-instruction issuing it. Latch
+        // here, act at a run boundary in Q700Cpu::runCycles. Only the address
+        // map comes back; the devices, the PRAM and the MCU keep running,
+        // which is what the /RESET line does on the board.
+        egretLle_.onCpuReset = [this] {
+            overlay_ = true;
+            jitMapChanged();
+            restartPending_ = true;
+        };
         // The IIfx front end (docs/IOP_BRINGUP.md), grafted on the Spike
         // board. SCC behind its IOP: the z80scc "universal bus" decode —
         // offset bit0 = channel (1 = A), bit1 = data/control.
@@ -82,12 +127,36 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         };
         // MAME wires the ADB devices' data line to BOTH the IOP's gpin and
         // the Egret (`macadb->adb_data_callback().append(m_egret,
-        // set_adb_line)`), so which side actually serves the guest is a
-        // question of what the ROM drives — measured, not assumed
-        // (POM68K_Q900_ADB=iop forces the IIfx-style IOP-only wire).
+        // set_adb_line)`), but only ONE of them DRIVES it: `gpout0` belongs
+        // to the SWIM IOP (`macquadra700.cpp:876`), and the Egret merely
+        // listens — on real hardware this board wants a special Egret
+        // ("Caboose") that MAME cannot make answer either.
+        //
+        // MEASURED 2026-08-14, and it overturned this machine's default.
+        // `q900_input_etalon` boots the tower and injects on one wire at a
+        // time: through the Egret, ADBBase comes up and NOTHING arrives —
+        // Mouse frozen, MBState dead, KeyMap empty; through the IOP, the
+        // cursor crosses the screen (15,15 → 475,323), the click lands and
+        // the KeyMap bit sets, with 719 240 gpout0 edges to show for it. So
+        // the Eclipse's ADB is the IIfx's wire, not the Egret's, and the
+        // default flips here. `POM68K_Q900_ADB=egret` keeps the old routing
+        // for A/B. The Egret is still this board's clock, PRAM, power and
+        // reset MCU — it is simply not its ADB transceiver.
+        //
+        // This was dead from the day the profile landed (2026-08-02) and no
+        // gate could see it: the tower had no input gate at all until the
+        // firmware LLE brought one.
         const char* who = std::getenv("POM68K_Q900_ADB");
-        egretAdb_ = !(who && std::string(who) == "iop");
-        if (egretAdb_) egret_.setAdbBus(&adb_);
+        egretAdb_ = who && std::string(who) == "egret";
+        // HLE only: the command-level model needs an AdbBus to answer from.
+        // Under the firmware LLE the devices sit on the MCU's own bit-serial
+        // line (CudaLle::adbLine), exactly as on every other Egret machine —
+        // the IOP keeps `adbLine_` to itself. MAME merges the two into one
+        // wired-AND wire (`macadb->adb_data_callback().append(m_egret,…)`);
+        // POM68K keeps them separate because only one side is ever driven,
+        // and a shared line would have the IOP's idle gpout0 level sitting on
+        // the Egret's poll. Reopen if a guest ever drives both.
+        if (egretAdb_ && !egretLleOn_) egret_.setAdbBus(&adb_);
 
         // POM68K_Q900_IOPBRK=1: both IOP firmwares end in a BRK panic
         // handler when they lose their way, and the only useful evidence
@@ -145,6 +214,11 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
     if (eclipse()) {
         egret_.factoryDefaults();
         egret_.setPram(0x8A, uint8_t(egret_.pram(0x8A) | 0x05));
+        // The firmware path stages its own copy (installed into MCU RAM
+        // $0100-$01FF when the Egret releases the host), so both paths boot
+        // from the same battery contents — the Q605 rollout's idiom.
+        if (egretLleOn_)
+            for (int i = 0; i < 256; i++) egretLle_.setPram(i, egret_.pram(i));
     }
     {
         const char* e = std::getenv("POM68K_SCSI_LAT");
@@ -162,7 +236,14 @@ bool Q700Memory::loadRom(const std::vector<uint8_t>& data) {
 // On the Eclipse the battery-backed store lives in the Egret, not in a
 // discrete RTC — route there so a tower keeps its clock and startup disk.
 bool Q700Memory::loadPram(const std::string& path) {
-    if (eclipse()) return egret_.loadPram(path);
+    // The Egret HLE object owns the file format on both paths; under the
+    // firmware LLE it is the staging buffer the MCU is handed at release.
+    if (eclipse()) {
+        bool ok = egret_.loadPram(path);
+        if (egretLleOn_)
+            for (int i = 0; i < 256; i++) egretLle_.setPram(i, egret_.pram(i));
+        return ok;
+    }
     std::ifstream in(path, std::ios::binary);
     if (!in) return false;
     std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)),
@@ -173,7 +254,14 @@ bool Q700Memory::loadPram(const std::string& path) {
 }
 
 void Q700Memory::savePram(const std::string& path) {
-    if (eclipse()) { egret_.savePram(path); return; }
+    if (eclipse()) {
+        // Live battery contents are the MCU's RAM under the LLE — copy them
+        // back through the HLE object, which writes the file.
+        if (egretLleOn_)
+            for (int i = 0; i < 256; i++) egret_.setPram(i, egretLle_.pram(i));
+        egret_.savePram(path);
+        return;
+    }
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out) return;
     for (int i = 0; i < 256; i++) {
@@ -184,6 +272,7 @@ void Q700Memory::savePram(const std::string& path) {
 
 void Q700Memory::reset() {
     overlay_ = true;
+    restartPending_ = false;   // a cold reset supersedes a warm one
     jitMapChanged();
     nubusIrqs_ = 0xFF;
     scsiCtrl_ = 0;
@@ -202,6 +291,7 @@ void Q700Memory::reset() {
         swimPic_.reset();
         adbLine_.reset();
         egret_.reset();          // holds the 68040 until the MCU releases it
+        egretLle_.reset();       // …the firmware's own PC3 edge under the LLE
         scsi2_.reset();
         adbHostEdges_ = 0;
     }
@@ -348,7 +438,8 @@ void Q700Memory::viaSync() {
 // XCVR_SESSION on PB3.
 void Q700Memory::refreshVia1PortB() {
     if (eclipse()) {
-        via1_.setInB(uint8_t(egret_.xcvrSession() << 3));
+        via1_.setInB(uint8_t((egretLleOn_ ? egretLle_.xcvrSession()
+                                          : egret_.xcvrSession()) << 3));
         return;
     }
     uint8_t in = rtc_.dataBit() & 1;
@@ -369,7 +460,8 @@ uint8_t Q700Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
             // SYS_SESSION (PB5); no RTC lines, and the SWIM's head-select
             // is the IOP's business (`eclipse_state::via_out_a` is empty).
             if (reg == Via6522::ORB || reg == Via6522::DDRB) {
-                egret_.portBChanged(via1_.portB());
+                if (egretLleOn_) egretLle_.portBChanged(via1_.portB());
+                else             egret_.portBChanged(via1_.portB());
                 refreshVia1PortB();
             }
             updateIrq();
@@ -867,7 +959,11 @@ void Q700Memory::tick(int cpuCycles) {
         sccPic_.tick(c15);
         swimPic_.tick(c15);
         adbLine_.tick(c15);
-        egret_.tick(cpuCycles);
+        // The Egret keeps the CPU clock either way: the HLE paces its wire in
+        // µs, the LLE bridges machine cycles to the 2.097 MHz MCU (and slaves
+        // its own ADB wire to the MCU's cycles, so it is not ticked here).
+        if (egretLleOn_) egretLle_.tick(cpuCycles);
+        else             egret_.tick(cpuCycles);
         refreshVia1PortB();
     } else {
         adbVia_.tick(cpuCycles);
@@ -932,10 +1028,13 @@ void Q700Memory::tick(int cpuCycles) {
 }
 
 int Q700Memory::cyclesToNextEvent() const {
-    // Eclipse keeps a 256-cycle ceiling for its explicitly non-conformant
-    // Egret HLE path, but both firmware IOPs now contribute their real next
-    // instruction boundary. The CPU→C15M bridge carries fractional phase.
-    int best = eclipse() ? 256 : adbVia_.cyclesToNextEvent();
+    // Under the firmware LLE the Egret contributes its own next MCU cycle
+    // (fractional bridge + run() overshoot debt included); the HLE fallback
+    // keeps the historical 256-cycle ceiling, which is all a command-level
+    // model can honestly claim. Both firmware IOPs contribute their real next
+    // instruction boundary either way — the CPU→C15M bridge carries phase.
+    int best = eclipse() ? (egretLleOn_ ? egretLle_.cyclesToNextEvent() : 256)
+                         : adbVia_.cyclesToNextEvent();
     best = std::min(best, viaEClock_.cyclesToNext(cpuHz_));
     auto debtBound = [](int next, int64_t debt) {
         if (next == 0x7fffffff) return next;

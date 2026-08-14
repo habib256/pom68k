@@ -64,6 +64,14 @@ void Q700Cpu::hardReset() {
 }
 
 void Q700Cpu::runCycles(moira::i64 n) {
+    // The Eclipse's Egret firmware asked for a host reset (RESET_SYSTEM $11,
+    // the Finder's "Restart"). Apply it HERE, at a run boundary, never from
+    // inside the memory callback that raised it — the Cpu040 contract
+    // (Cpu040.cpp:100). The machine has already re-armed its ROM overlay, so
+    // this fetch takes the reset vectors out of ROM. The Spike has no such
+    // MCU, and its `restartPending_` is never set.
+    if (mem_.consumeRestart()) reset();
+
     // The one and only switch point between the two engines.
     const moira::i64 target = getClock() + n * cacheBoost_;
     if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);

@@ -104,9 +104,11 @@ struct Q700Rig {
 // The Eclipse tower: the SAME Q700Memory/Q700Cpu save/load pair, but the
 // `eclipse()` branch of `Q700Memory::visit` adds a whole tail nothing else
 // serializes — two ApplePic (each carrying 32 KB of host-uploaded 65C02
-// firmware plus its CPU, timer and DMA phase), AdbLine, the Egret and the
-// second 53C96. A Spike rig exercises none of it, which is exactly how a
-// dropped chunk would ship unnoticed.
+// firmware plus its CPU, timer and DMA phase), AdbLine, the Egret — since
+// 2026-08-14 BOTH the command-level fallback and the 341S0851 firmware LLE,
+// which nests its own 68HC05, ADB wire and half-transferred host handshake —
+// and the second 53C96. A Spike rig exercises none of it, which is exactly
+// how a dropped chunk would ship unnoticed.
 struct Q900Rig {
     Q700Memory mem;
     Q700Cpu cpu;

@@ -9,6 +9,7 @@
 //   lc520  — Sonora AIO, Cuda 341s0060 + the DFAC2 I2C slave
 //   iivx   — VASP, Egret 341s0851 @ 31.3 MHz
 //   iisi   — RBV, Egret 344s0100 @ 20 MHz (screen-observed, see below)
+//   q900   — Eclipse tower, Egret 341s0851 @ 25 MHz (68040, Mac OS 8.1)
 // Method = q605_cudalle_mouse/key_etalon: boot System 7.5, inject deltas
 // into the bit-serial AdbLine and require the input to arrive. The whole
 // chain runs: AdbLine wire → MCU firmware autopoll → VIA1 SR → ADB
@@ -36,6 +37,8 @@
 #include "RbvCpu.h"
 #include "RbvMemory.h"
 #include "RbvVideo.h"
+#include "Q700Cpu.h"
+#include "Q700Memory.h"
 #include "SonoraCpu.h"
 #include "SonoraMemory.h"
 #include "VaspCpu.h"
@@ -95,11 +98,15 @@ std::vector<uint8_t> loadRomFile(const std::string& p) {
 // RAM-based-video machines, where low-memory peeks read the framebuffer
 // instead of the System's globals (see the header): there the mouse is
 // asserted on SCREEN PIXELS instead. Returns the exit code.
+// `keyHold` is the number of frames a key stays down: the 8.1 image used by
+// the 040 towers ships with Slow Keys ON and rejects a tap under ~2 s, so a
+// gate booting that volume has to hold longer than the 7.5 families do.
 template <class M, class C>
 int runInput(M& mem, C& cpu, int64_t kFrame, const char* name,
-             std::function<void(std::vector<uint32_t>&)> snapshot = nullptr) {
+             std::function<void(std::vector<uint32_t>&)> snapshot = nullptr,
+             long bootFrames = 12000, int keyHold = 120) {
     while (mem.cpuHeld()) mem.tick(1000);
-    const long kBootFrames = 12000;          // Finder well before this on
+    const long kBootFrames = bootFrames;     // Finder well before this on
                                              // every family boot etalon
     for (long f = 0; f < kBootFrames && !cpu.isHalted(); f++)
         cpu.runCycles(kFrame);
@@ -185,7 +192,7 @@ int runInput(M& mem, C& cpu, int64_t kFrame, const char* name,
     // masked the IIsi having no working keyboard either (2026-07-29).
     bool keySeen = false;
     mem.keyEvent(0x00, true);
-    for (int f = 0; f < 120 && !keySeen && !cpu.isHalted(); f++) {
+    for (int f = 0; f < keyHold && !keySeen && !cpu.isHalted(); f++) {
         cpu.runCycles(kFrame);
         for (int i = 0; i < 8; i++)
             if (mem.peek8(0x0174 + uint32_t(i)) != 0) { keySeen = true; break; }
@@ -266,6 +273,50 @@ int main(int argc, char** argv) {
                         "Mac IIsi (Egret 344s0100, RBV)",
                         [&video](std::vector<uint32_t>& fb) { video.decode(fb); });
     }
-    std::fprintf(stderr, "usage: %s lc3|lc520|iivx|iisi\n", argv[0]);
+    // Quadra 900 "Eclipse": the tower's Egret 341S0851 firmware LLE, wired
+    // 2026-08-14. The Eclipse is the one board where the ADB devices could
+    // hang off either transport — the Egret's own bit-serial line or the SWIM
+    // IOP's bit-banged wire — and this gate is what finally asked. The answer
+    // was the IOP: through the Egret ADBBase comes up and NOTHING arrives
+    // (`POM68K_Q900_ADB=egret` still reproduces that), through the IOP the
+    // cursor crosses the screen. The tower had had no working input since the
+    // profile landed on 2026-08-02, because it had no input gate. It boots
+    // Mac OS 8.1, not the 7.5 volume the 030 families use, so it gets the
+    // longer key hold (that image has Slow Keys on).
+    if (which == "q900" || which == "q950") {
+        const bool q950 = which == "q950";
+        std::string rom = q950
+            ? find("roms/1MB ROMs/1992-03 - 3DC27823 - Quadra 950.ROM")
+            : find("roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM");
+        if (rom.empty()) rom = find(q950 ? "roms/quadra950.rom" : "roms/quadra700.rom");
+        std::string img = find("hdv/MacOS-8.1-boot.vhd");
+        if (img.empty()) img = find("hdv/boot.vhd");
+        if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
+        if (rom.empty() || img.empty()) { std::printf("SKIP: needs the 1 MB ROM + a bootable image\n"); return 0; }
+        testasset::report({ rom, img });
+        std::vector<uint8_t> romData = loadRomFile(rom);
+        const int64_t hz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
+        Q700Memory mem(32u << 20, hz,
+                       q950 ? Q700Memory::Model::Q950 : Q700Memory::Model::Q900);
+        if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
+        if (!mem.egretLleActive() && !getenv("POM68K_INPUT_ANYPATH")) { std::printf("SKIP: needs roms/egret/341s0851.bin (firmware path)\n"); return 0; }
+        Q700Cpu cpu(mem);
+        mem.setCpu(&cpu);
+        cpu.hardReset();
+        if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk\n"); return 1; }
+        ensureBootDriverType(mem.scsiDisk().image());
+        const int rc = runInput(mem, cpu, hz / 60,
+                                q950 ? "Quadra 950 (Egret 341s0851, Eclipse)"
+                                     : "Quadra 900 (Egret 341s0851, Eclipse)",
+                                nullptr, /*bootFrames=*/16000, /*keyHold=*/240);
+        // Which transport did the ROM actually drive? `adbHostEdges` counts
+        // the SWIM IOP's gpout0 transitions on its own wire; the Egret's MCU
+        // instruction count says its firmware ran. Both are printed because
+        // the answer decides where input has to be injected on this board.
+        std::printf("transport: IOP gpout0 edges=%ld, Egret MCU instr=%ld\n",
+                    mem.adbHostEdges(), mem.egretLle().mcu().instructions);
+        return rc;
+    }
+    std::fprintf(stderr, "usage: %s lc3|lc520|iivx|iisi|q900|q950\n", argv[0]);
     return 2;
 }

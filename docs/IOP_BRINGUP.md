@@ -150,10 +150,23 @@ code branches on) **plus** the IIfx front end:
 - `quadra900_map` (`:574-593`): SCC PIC host window at `$5000C000`, SWIM PIC at
   `$5001E000`, each `$1000` wide and mapped on **both** byte lanes; DAFB VRAM
   window 2 MB (`$F9000000-$F91FFFFF`).
-- **ADB stays on the Egret** (`eclipse_state` has `m_egret`, `:190-216`) — the
-  IOPs carry SCC and SWIM only, and the Egret replaces the Spike's discrete
-  RTC. There is also a second 53C96 bus, and VIA2 port B carries no DFAC.
-  `POM68K_Q900_ADB=iop` forces the IIfx-style IOP-only wire for A/B.
+- **The Egret replaces the Spike's discrete RTC** (`eclipse_state` has
+  `m_egret`, `:190-216`) and owns clock, PRAM, power and the CPU reset line.
+  Since **2026-08-14** it is the factory `341s0851` running on POM68K's own
+  68HC05 (`CudaLle`, `Flavor::Egret`; `:887` `set_default_bios_tag`), not the
+  command-level `Egret` model. `POM68K_EGRET_LLE=0` falls back, loudly.
+- **ADB is NOT the Egret's** — it is the SWIM IOP's, bit-banged on `gpout0`
+  exactly as on the IIfx. MAME feeds the device line to both
+  (`macadb->adb_data_callback().append(m_egret,…)`) but only the IOP drives
+  it (`:876`), and `:884` says why the Egret cannot: this board wants a
+  special "Caboose" Egret that refuses to listen to the 68040 even in MAME.
+  Measured on 2026-08-14 by `q900_input_etalon`, which is also the gate that
+  found the tower had had **no working input since the profile landed**
+  (2026-08-02): through the Egret, ADBBase comes up and nothing arrives;
+  through the IOP, cursor, click and KeyMap all land. The default flipped to
+  the IOP wire that day; `POM68K_Q900_ADB=egret` still routes the other way
+  for A/B.
+- There is also a second 53C96 bus, and VIA2 port B carries no DFAC.
 - VIA1 PA identity `$D0` (Q900) / `$90` (Q950) vs the Spike's `$C0`, each
   OR'd with the diagnostic-disabled bit 0 — feeding PA0 = 0 sends the ROM down
   the burn-in path (the IIci lesson, `Q700Memory.cpp:229-234`).

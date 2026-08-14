@@ -19,14 +19,18 @@
 //      and the gate array, not the Egret/Cuda that is pulling it;
 //   5. the power-on release does NOT count as a restart.
 //
-// Both flavours and both bindings: the Quadra 605 (Cuda, rising edge,
-// Cpu040) and the LC II (Egret, falling edge, Cpu030). Synthetic ROM, so no
-// ROM asset is needed — but the MCU firmware dump is, and its absence is a
-// SKIP rather than a pass, since the whole point is the firmware path.
+// Both flavours and three bindings: the Quadra 605 (Cuda, rising edge,
+// Cpu040), the LC II (Egret, falling edge, Cpu030) and the Quadra 900
+// (Egret on the Eclipse tower, Q700Cpu — added 2026-08-14 with that board's
+// firmware LLE, which is what gave it a seam to bind at all). Synthetic ROM,
+// so no ROM asset is needed — but the MCU firmware dump is, and its absence
+// is a SKIP rather than a pass, since the whole point is the firmware path.
 
 #include "Cpu030.h"
 #include "Cpu040.h"
 #include "Q605Memory.h"
+#include "Q700Cpu.h"
+#include "Q700Memory.h"
 #include "V8Memory.h"
 
 #include <cstdint>
@@ -122,6 +126,25 @@ int main() {
         mem.setCpu(&cpu);
         cpu.hardReset();
         testRestart("q605", mem, cpu, mem.cudaLle());
+    }
+
+    // ── Quadra 900: Egret on the Eclipse tower, Q700Cpu ─────────────────
+    // Same ROM window as the Q605 ($40000000). The Eclipse holds the 68040
+    // in reset until its firmware releases it, so give the MCU the cycles to
+    // do that before the shared body starts asserting.
+    {
+        Q700Memory mem(32u << 20, Q700Memory::kCpuHz, Q700Memory::Model::Q900);
+        if (!mem.egretLleActive()) {
+            std::printf("SKIP: needs roms/egret/341s0851.bin\n");
+            return gFails ? 1 : 0;
+        }
+        Q700Cpu cpu(mem);
+        mem.loadRom(makeRom(Q700Memory::kRomSize, 0x40000000));
+        mem.setCpu(&cpu);
+        cpu.hardReset();
+        for (long g = 0; mem.cpuHeld() && g < 200000; g++) mem.tick(1000);
+        check(!mem.cpuHeld(), "q900", "setup: the Egret released the 68040");
+        testRestart("q900", mem, cpu, mem.egretLle());
     }
 
     // ── LC II: Egret, falling-edge release, Cpu030 ──────────────────────
