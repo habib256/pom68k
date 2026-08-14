@@ -1095,9 +1095,12 @@ correctness it buys:
 7. ~~**The Egret/Cuda PC3 reset line**~~ (§ 1.9) — **closed 2026-08-13**,
    on the six platforms that carry an Egret/Cuda LLE, with
    `cuda_restart_test` as the gate that was the real cost. The classic ASC's
-   wavetable mode (§ 1.7) closed the same day. What remains of the
-   `SIMPLIFICATIONS_REVIEW.md` closure list is F6 (the Duo's matrix input)
-   and F7 (the floppy flux layer, item 5 above).
+   wavetable mode (§ 1.7) closed the same day, and **F6 — the Duo's input
+   through the PMU rather than its ADB cell — on 2026-08-14** (matrix
+   keyboard + trackball; the counters latch at 60 Hz, and drained on read
+   instead they race the firmware's own double reads). What remains of the
+   `SIMPLIFICATIONS_REVIEW.md` closure list is **F7 alone** (the floppy flux
+   layer, item 5 above).
 8. **NuBus arbitration** (§ 1.8) — needs a second card to contend.
    *(VRAM arbitration came off this list on 2026-08-03: audited and
    accepted, no oracle in any of MAME's four video devices and no guest
@@ -1128,12 +1131,14 @@ extend it, not re-invent it.
 **Caveat, learned the hard way on 2026-07-29: this inventory is only worth what
 its gates are worth.** Since **2026-08-13** the beyond-boot pair (soak +
 persist, one shared engine — `tests/BeyondBoot.h`) is registered on **every
-one of the twelve platform implementations**: 19 of the 24 legs green, one
-SKIP naming its milestone (Duo persist ← F6), four reds each carrying an
-evidence-backed cause in `TODO.md` § 1 (the Duo's frozen System clock; the
-Cmd-N event gap on the three non-Egret/Cuda input paths). The campaign found
-two real guest-visible defects before it was done, which is the § 5 argument
-made flesh: coverage finds what fidelity work cannot even see. Per-PROFILE
+one of the twelve platform implementations**, and since **2026-08-14 all 24
+legs are green** — the last SKIP (Duo persist ← F6) and the four reds each
+turned out to name a real defect rather than a gate that judged badly: a
+`power_cycle_w` stub that froze the machine 58 s into an idle Finder, a
+`$91` power flag that stopped the PG&E ever cold-booting twice, a trackball
+that had never been wired, a swallowed VBL disable on the IIfx, and a Mac II
+that mounted its boot volume seven times. That is the § 5 argument made
+flesh: coverage finds what fidelity work cannot even see. Per-PROFILE
 depth is still thin — the pairs pin one profile per platform, and the other
 25 profiles remain boot-to-Finder only.
 

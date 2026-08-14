@@ -172,11 +172,64 @@ void PgePmu::keyEvent(uint8_t code, bool down) {
     // devices (M68hc05Pge's adbCommand note).
 }
 
+// ── The trackball ───────────────────────────────────────────────────────
+// Same split as the keyboard: the Duo's built-in pointer is wired to the
+// PG&E's quadrature decoder, not to the ADB bus, so motion has to arrive
+// through TBCS/TBX/TBY ($14-$16) for the firmware to see it at all. Sent
+// down the ADB modem cell instead — which is where it went until
+// 2026-08-14 — the guest's own Mouse global never moves once.
+// Screen convention throughout: +x right, +y down, exactly what the
+// counters carry (measured on the guest's pointer, all four directions).
+static bool pgeAdbMouse() {
+    const char* e = std::getenv("POM68K_PGE_ADBMOUSE");
+    return e && e[0] != '0';
+}
+
+void PgePmu::mouseMove(int dx, int dy) {
+    if (pgeAdbMouse()) { adb_.mouseMove(dx, dy); return; }
+    tbAccX_ += dx;
+    tbAccY_ += dy;                   // +y is DOWN, both here and on screen
+}
+
+// One frame's worth of accumulated motion becomes what the firmware reads,
+// and stays that for the whole frame.
+void PgePmu::tbLatch() {
+    auto take = [](int& acc) {
+        int d = acc < -127 ? -127 : (acc > 127 ? 127 : acc);
+        acc -= d;
+        return uint8_t(int8_t(d));
+    };
+    tbRegX_ = take(tbAccX_);
+    tbRegY_ = take(tbAccY_);
+}
+
+void PgePmu::mouseButton(bool down) {
+    if (pgeAdbMouse()) { adb_.mouseButton(down); return; }
+    tbButton_ = down;
+}
+
 void PgePmu::reset() {
     mcu_->reset();
+    // A reset here is the machine being POWERED ON, and the PG&E's own RAM
+    // survives it — which is the whole difficulty. $91 is the power flag,
+    // and the mask ROM's first decision (LDA $91 / CMP #$62 at $FE28) is
+    // which way to go on it: cold boot, or resume. Left at $62 by the
+    // session that just ended, the ROM takes the RESUME path, STOPs at
+    // $FE0D waiting for a wake event a reset never sends, and the 68030 is
+    // never released — measured, 400 000 ticks still held, PG&E pc=$FE0E,
+    // waiting=1. MAME clears the same byte for the same reason every time
+    // it restores this MCU's NVRAM (m68hc05pge.cpp:959, "clear power flag
+    // so the boot ROM does a cold boot"), and MscMemory::loadPram already
+    // copies that rule; a reset needs it exactly as much.
+    mcu_->setRamByte(M68hc05Pge::kPowerFlagAddr - 0x40, 0);
     for (auto& r : matrix_) r = 0;
     modifiers_ = 0;
     powerKey_ = false;
+    tbAccX_ = tbAccY_ = 0;
+    tbRegX_ = tbRegY_ = 0;
+    tbAcc_ = 0;
+    tbButton_ = false;
+    clamshellOpen_ = true;
     mcuAcc_ = 0;
     mcuDebt_ = 0;
     held_ = true;
@@ -186,6 +239,7 @@ void PgePmu::reset() {
     lastPortE_ = lastPortF_ = lastPortG_ = lastPortC_ = 0xFF;
     lastPortH_ = 0x00;       // DFAC-reset bit must start low (mac...:129)
     adb_.reset();
+    ds2400_.reset();
     lastMosi_ = false;
 }
 
@@ -278,6 +332,12 @@ void PgePmu::wirePorts() {
             return adb_.command(cmd, d);
         };
 
+    // Trackball quadrature counters ($14-$16): the LATCHED registers, held
+    // steady for a whole 60 Hz frame — never a live drain, see tbLatch().
+    m.tbX = [this] { return tbRegX_; };
+    m.tbY = [this] { return tbRegY_; };
+    m.tbButton = [this] { return tbButton_; };
+
     m.adcIn = [](int ch) -> uint8_t {
         // Fixed board values (macpwrbkmsc.cpp:473-496): healthy battery,
         // ~24 °C. ch0 bat-low, ch1 bat-high, ch2 current, ch3/4 temps.
@@ -336,8 +396,19 @@ void PgePmu::wirePorts() {
                            (ds2400_.read() ? 0x80 : 0x00));
         case M68hc05Pge::F:
             // +5V present (bit 2), PFW ok (bit 1), clamshell open
-            // (bit 3), /PMU_REQ mirrored on bit 6 (pmu_portf_r).
-            return uint8_t(0x0E | (reqLevel_ ? 0x40 : 0x00));
+            // (bit 3), /PMU_REQ mirrored on bit 6 (pmu_portf_r). MAME
+            // hard-wires the lid open; here it is a line the host can
+            // drive, and driving it is the sleep milestone's first
+            // instrument. What it does TODAY, measured 2026-08-14:
+            // closing it holds the 68030 within 5 s — so the firmware
+            // does act on the switch — but the System never runs its
+            // sleep procs first (the volume's dirty bit is untouched and
+            // not one write reaches the disk), and re-opening does not
+            // bring the machine back. Both halves belong to
+            // docs/DUO_BRINGUP.md's sleep/wake milestone; the default is
+            // open, so nothing reaches this path unless a caller asks.
+            return uint8_t(0x06 | (clamshellOpen_ ? 0x08 : 0x00) |
+                           (reqLevel_ ? 0x40 : 0x00));
         case M68hc05Pge::G: {
             // bit 6 = charger present (MAME pmu_portg_r returns 1). The
             // BORG firmware's charge-management pass against our CONSTANT
@@ -491,6 +562,13 @@ int PgePmu::cyclesToNextEvent() const {
 }
 
 void PgePmu::tick(int cpuCycles) {
+    // Trackball registers refresh at the board's 60 Hz, the cadence MAME
+    // recomputes them on (macpwrbkmsc.cpp vbl_w) — see tbLatch().
+    tbAcc_ += int64_t(cpuCycles) * 60;
+    if (tbAcc_ >= cpuHz_) {
+        tbAcc_ %= cpuHz_;
+        tbLatch();
+    }
     // Machine cycles → 2.097 MHz MCU cycles, carrying run()'s overshoot
     // as debt (pom68k-mcu-lle-clock-drift: without it the MCU overclocks
     // ~37 % and the RTC drifts).

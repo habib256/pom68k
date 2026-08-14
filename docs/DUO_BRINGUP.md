@@ -136,6 +136,18 @@ Then the PB150, whose ROM is the only oracle.
   Implementing that hangs the boot dead at `$408B98F2` with Ticks frozen at 0 —
   the firmware reads it as "power key held". Bit 5 must read **1** for
   released, so a blanket `$FF` is correct.
+- **The power key as a way to end a session.** Holding `$7F` for 150 frames
+  on a running desktop raises **no dialog at all** — screen dump, 2026-08-13
+  and again 2026-08-14. On a Duo that key is the PMU's, and whatever the
+  firmware does with it does not reach the System through the path we model.
+  The gate uses the Finder's `Special` menu instead.
+- **"The System holds its writes behind the hard-disk spin-down"** (the
+  2026-08-13 working hypothesis for the persist leg). Disproved by its own
+  evidence: the Finder issues **eleven READ commands between Cmd and N**, so
+  the drive is awake at the moment of the folder creation. What is actually
+  happening is that the volume is never flushed at all — its VCB keeps the
+  File Manager's dirty bit for minutes — which is PowerBook system software
+  doing its job. **Do not model spin-down for this.**
 - **Raising RDRF unconditionally on transmit-done** (`POM68K_PGE_ADBRX=1`):
   0 SCSI selects.
 - **Unplugging the charger** (`POM68K_PGE_CHARGER=0`): ADBReInit #1 never
@@ -169,8 +181,9 @@ MCU side: `POM68K_PGE_PCCOUNT` / `_PCWIN` / `_PCHIST` (PC counters, windowed
 full logging, bucket histogram), `POM68K_PGE_TRAP=<hexbyte>` (dump firmware
 state the instant a byte arrives over SPI), `POM68K_PGE_SPIBYTES` (every
 completed exchange), `POM68K_PGE_HSHAKE` (REQ/ACK and /PMU_INT transitions),
-`POM68K_PGE_ADBTRACE`, `POM68K_PGE_TRACE`. Full list with defaults:
-`DEV.md` § 5.
+`POM68K_PGE_ADBTRACE`, `POM68K_PGE_TRACE`, `POM68K_PGE_TBTRACE` (what the
+firmware reads out of the trackball counters, and how often). Full list with
+defaults: `DEV.md` § 5.
 
 ## Why this order
 
@@ -243,9 +256,16 @@ different address width, stack window, vectors, map and peripherals) plus
   the PMU here**, like Cuda.
 - Trackball X/Y/button counters read by the PMU (`read_tbX/Y/B`) — input
   reaches the guest THROUGH the PMU, which is also the ADB controller on Duos.
-  POM68K routes the KEYBOARD through the real matrix since 2026-08-13; the
-  mouse still rides the PG&E's ADB modem cell, and the quadrature counters
-  are what is left of milestone 4.
+  POM68K routes the KEYBOARD through the real matrix since 2026-08-13 and the
+  POINTER through the counters since 2026-08-14 (`PgePmu::mouseMove`;
+  `POM68K_PGE_ADBMOUSE=1` restores the old ADB-cell route, where the guest's
+  Mouse global never moved once). **The counters are LATCHED, not drained on
+  read**: one frame's accumulated motion moves into `$15`/`$16` at 60 Hz and
+  stays there for the whole frame, which is what MAME's `vbl_w` does. Drained
+  on read instead, the firmware — which reads a register more than once per
+  sample — gets the delta on one read and zero on the next, and which one it
+  acts on is a race: measured, two directions out of four worked and the
+  other two moved the pointer nowhere.
 - Port wiring (`macpwrbkmsc.cpp:773-789`): pull-ups port C `$FF`, port E `$80`
   (bit 7 = the 1-Wire bus).
 
@@ -289,14 +309,22 @@ different address width, stack window, vectors, map and peripherals) plus
    (the drive lives in the Dock; `MscMemory` has no SWIM), no drive sounds, no
    live CD-bay swap (`attachCdromEmpty` absent), and `mouseButton(bool)` takes
    no index so button 1 is dropped (`MscMemory.h:134`).
-4. 🟨 **Input through the PMU**. The **keyboard matrix is done** (2026-08-13,
-   `PgePmu`): rows selected on port C, columns on port A (X0-X7) and port B
-   bits 0-2 (X8-X10), modifiers on port B bits 3-7, all active low, from
-   MAME's `Y0`-`Y7` + `keyb_special` tables; `keyEvent` takes Mac virtual key
-   codes like every other machine and drops what this keyboard does not
-   physically have. Gated by `duo_persist_etalon`, which dismisses the boot
-   alert with Return and creates a folder with Cmd-N. **The trackball
-   quadrature counters are still open** — the mouse rides the ADB modem cell.
+4. ✅ **Input through the PMU**, both halves. The **keyboard matrix**
+   (2026-08-13, `PgePmu`): rows selected on port C, columns on port A (X0-X7)
+   and port B bits 0-2 (X8-X10), modifiers on port B bits 3-7, all active low,
+   from MAME's `Y0`-`Y7` + `keyb_special` tables; `keyEvent` takes Mac virtual
+   key codes like every other machine and drops what this keyboard does not
+   physically have. The **trackball** (2026-08-14): the quadrature counters
+   above, latched at 60 Hz. Both gated by `duo_persist_etalon`, which
+   dismisses the boot alert with Return, creates a folder with Cmd-N, and then
+   steers the pointer into the Finder's `Special` menu to shut the machine
+   down. Two rules for anyone steering it, both paid for: inject one delta and
+   wait for the GUEST to answer it (the latch only says the hardware presented
+   the motion; steering on that builds a backlog that lands as one jump), and
+   never let the last step be ±1 — that is below System 7's mouse-scaling
+   floor, so the pointer stops moving and a halving loop never converges.
+   A dedicated `duo230_input_etalon` is still worth having: the pointer's only
+   coverage today is inside the persist leg.
 5. ⬜ Variants: Duo 210/250 (trivial, § *Why this order*), 270c (CSC), 280
    (040), then **PB150** (GSC-480 + IDE, `$A55A` probing from its own ROM, no
    oracle).
@@ -310,6 +338,17 @@ different address width, stack window, vectors, map and peripherals) plus
    system sleep. `duo_soak_etalon` covers it: 180 s of Mac clock across many
    power-down cycles. Still open: the FULL sleep (port G bit 5) and the wake
    event, i.e. `duo230_sleep_etalon` proper. No other machine can test it.
+   **First measurement, 2026-08-14** — `PgePmu::setClamshell(false)` drives
+   port F bit 3 (the lid; MAME hard-wires it open). Closing it **holds the
+   68030 within 5 s**, so the firmware plainly acts on the switch — but the
+   System runs no sleep procs on the way: not one write command reaches the
+   disk and the mounted volume's `vcbFlags` dirty bit is untouched, where a
+   real PowerBook flushes everything before the power goes. Re-opening the lid
+   does not wake the machine either. Those two are the milestone.
+   *Separately, and NOT part of sleep:* a machine reset must scrub the PG&E's
+   `$91` power flag or the mask ROM takes its RESUME path and STOPs at `$FE0D`
+   for ever (`PgePmu::reset`, 2026-08-14). Six-second reproduction: run the
+   ROM 600 frames, `cpu.hardReset()`, watch `cpuHeld()`.
 
 ## Open questions (answer from ROM traces, not guesses)
 

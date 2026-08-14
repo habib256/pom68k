@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 216 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 225 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -370,13 +370,18 @@ work.
 
 **Depth is a second axis.** **All twelve** platforms now carry the
 soak+persist pair that proves a machine *keeps* working and *writes*, and as
-of 2026-08-13 (seventh) **twelve soaks and eleven persists are green**, with
-one SKIP that names what it cannot see (`duo_persist_etalon`
-— the Duo creates the folder and never writes it). Counting profiles alone
-hides this axis: the IIvx was inside the nine before it could survive three
-idle minutes or create a folder, and the Quadra 630's two legs were green for
-a day while its gate looked for a ROM under a name no archive uses and SKIPped
-without ever starting the machine.
+of 2026-08-14 **twelve soaks and twelve persists are green** — no SKIP left on
+the board. The last one was the Duo's, and it took three findings to close:
+a `$91` power flag that stopped the PG&E ever cold-booting a second time, a
+trackball that had never been wired to the PMU's own quadrature counters, and
+a volume that this machine's System will not flush on its own (its VCB keeps
+the File Manager's dirty bit for minutes; the same image on an LC III writes
+in the frame of the commit), so the gate ends the session through the Finder —
+`Special → Shut Down`, steered with the trackball. `CHANGELOG.md` 2026-08-14.
+Counting profiles alone hides this axis: the IIvx was inside the nine before
+it could survive three idle minutes or create a folder, and the Quadra 630's
+two legs were green for a day while its gate looked for a ROM under a name no
+archive uses and SKIPped without ever starting the machine.
 
 The IIsi pair discharged the prerequisite this list used to carry: a
 LOGICAL-address read of the Time global. `tests/Mmu030Peek.h` is that read —
@@ -1029,12 +1034,23 @@ Explicitly **out of scope** for now: AV DSP, all 4 MB PPC ROMs.
   `savestate_030_test`. `docs/DUO_BRINGUP.md` § 3b lists what is deliberately
   NOT wired (floppy, drive sounds, live CD-bay swap, right mouse button — all
   machine-side API absences, not shell gaps).
-  Remaining, in milestone order: **input through the PMU** (trackball + matrix
-  keyboard → `duo230_input_etalon`), variants (210/250 trivial — `MscMemory.h`
+  **Input through the PMU is done** (2026-08-14): the matrix keyboard landed
+  2026-08-13, and the trackball is wired to the PG&E's own quadrature counters
+  ($14-$16, latched at 60 Hz — the register must NOT be drained on read, or
+  half the directions vanish into a double-read race). `duo_persist_etalon`
+  drives the Finder's Special menu with it. A dedicated `duo230_input_etalon`
+  would still be worth having: today the pointer's only coverage is inside the
+  persist leg.
+  Remaining, in milestone order: variants (210/250 trivial — `MscMemory.h`
   already carries `kIdDuo210`/`kIdDuo250` and they share the `$ECFA989B` ROM,
   so they need an env tag and a `kProfiles` row; then 270c CSC, 280 040, then
   PB150 as the no-oracle MSC variant), and **the actual point — a sleep/wake
-  gate** (`duo230_sleep_etalon`), which no other machine can test.
+  gate** (`duo230_sleep_etalon`), which no other machine can test. That one has
+  its first measurement now: `PgePmu::setClamshell(false)` (port F bit 3, the
+  lid) holds the 68030 within 5 s — the firmware does act on the switch — but
+  the System runs no sleep procs first (not one write reaches the disk, the
+  volume's dirty bit is untouched) and re-opening the lid does not wake the
+  machine. Both halves are the milestone.
   The 140-180 line is a different PMU (Mitsubishi M50753, 6502-class —
   POMIIGS `CPU65816` candidate) — same brick as Portable/PB100.
 - [ ] **NuBus + slot video** beyond Mac II Toby: IIx / IIcx / IIci and the NuBus

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 224 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 225 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 16 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 31 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 27 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 32 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 33 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 11 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
@@ -141,6 +141,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-05 (sixth)** — [The LC II floppy "mount" was the init dialog all along; SWIM1-IWM never mounts, and Cmd-N was pressing [Eject]](CHANGELOG.md#2026-08-05-lcii-floppy-dialog)
 - **2026-08-09 (seventh)** — [The GUI pass: the Quadra booted System 6.0.5 off a floppy nobody asked for, and no gate could ever have seen it](CHANGELOG.md#2026-08-09-gui-pass)
 - **2026-08-13 (seventh)** — [The IIfx dirty-volume refusal was a swallowed VBL disable, and "address 1" was open bus wearing a wrapped PC](CHANGELOG.md#2026-08-13-iifx-toby-vbl-disable)
+- **2026-08-14** — [The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own](CHANGELOG.md#2026-08-14-duo-beyond-boot)
 
 ## Video — decoders, the raster beam, DAFB
 

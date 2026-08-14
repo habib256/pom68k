@@ -205,11 +205,32 @@ uint8_t M68hc05Pge::read8(uint16_t addr) {
         kcsr_ &= 0x3F;
         return r;
     }
-    case 0x14:                                       // TBCS: bit 7 = button
+    case 0x14: {                                     // TBCS: bit 7 = button
         // (active low: 1 = not pressed — trackball_r "button not pressed")
-        return uint8_t(((tbButton && tbButton()) ? 0x00 : 0x80) | tbcs_);
-    case 0x15: return tbX ? tbX() : 0;
-    case 0x16: return tbY ? tbY() : 0;
+        const uint8_t v = uint8_t(((tbButton && tbButton()) ? 0x00 : 0x80) | tbcs_);
+        if (tbTrace_) {
+            static long n = 0;
+            if ((n++ % 1000) == 0)
+                std::fprintf(stderr, "[tb] TBCS -> $%02X (read #%ld)\n", v, n);
+        }
+        return v;
+    }
+    case 0x15: {
+        const uint8_t v = tbX ? tbX() : 0;
+        static uint8_t last = 0;
+        if (tbTrace_ && v != last)
+            std::fprintf(stderr, "[tb] X -> %d\n", int(int8_t(v)));
+        last = v;
+        return v;
+    }
+    case 0x16: {
+        const uint8_t v = tbY ? tbY() : 0;
+        static uint8_t last = 0;
+        if (tbTrace_ && v != last)
+            std::fprintf(stderr, "[tb] Y -> %d\n", int(int8_t(v)));
+        last = v;
+        return v;
+    }
     case 0x18: return adbcr_;
     case 0x19: return adbsr_;
     case 0x1A:                                       // ADBDR

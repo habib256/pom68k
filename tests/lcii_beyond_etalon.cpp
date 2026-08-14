@@ -172,7 +172,8 @@ int main() {
                                                      : "soak";
     std::string rom = find("roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
     if (rom.empty()) rom = find("docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM");
-    std::string img = find("hdv/lcii-boot.vhd");
+    std::string img = testasset::overrideImage();
+    if (img.empty()) img = find("hdv/lcii-boot.vhd");
     if (img.empty()) img = find("hdv/boot.vhd");
     if (img.empty()) img = find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = find("hdv/System 7.5 HD.dsk");

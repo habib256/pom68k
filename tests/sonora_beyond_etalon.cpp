@@ -27,7 +27,8 @@ int main() {
     std::string rom = testasset::find("roms/maclc3.rom");
     if (rom.empty())
         rom = testasset::find("roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM");
-    std::string img = testasset::find("hdv/lc3-boot.vhd");
+    std::string img = testasset::overrideImage();
+    if (img.empty()) img = testasset::find("hdv/lc3-boot.vhd");
     if (img.empty()) img = testasset::find("hdv/boot.vhd");
     if (img.empty()) img = testasset::find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = testasset::find("hdv/System 7.5 HD.dsk");
@@ -76,12 +77,38 @@ int main() {
         };
         const double menu = blackRatio(0, W, 2, 16);
         const double desk = blackRatio(W - 112, W, 40, H - 44);
-        std::fprintf(stderr, "[finder] menu %.2f desk %.2f\n", menu, desk);
-        return menu < 0.30 && desk > 0.35 && desk < 0.65;
+        const int run = beyondboot::lightRun(fb, W, H);
+        std::fprintf(stderr, "[finder] menu %.2f desk %.2f run %d\n",
+                     menu, desk, run);
+        // …plus "no modal dialog". Two ratios are satisfied WITH an alert
+        // on screen, which is how this gate came to send a whole persist
+        // gesture into one: run against hdv/System 7.5.5 HD.dsk it reported
+        // a Finder, and the dump showed "The alias 'Infinite HD' could not
+        // be opened" with Stop/Continue, eating every key. Its own volume
+        // never raises one, so the blindness was invisible — the roster's
+        // own rule (BeyondBoot.h::lightRun), applied here too.
+        //
+        // 250, not the shared kDialogRun (200): this gate's own desktop —
+        // hdv/boot.vhd, "MacPack" — measures **208**, and 200 would fail
+        // every run of the two legs that are green today. The alert it has
+        // to catch measures 306-406 on the same screen, so the gap is
+        // still wide. Both numbers are from this gate's own output.
+        return menu < 0.30 && desk > 0.35 && desk < 0.65 && run < 250;
     };
     auto boot = [&]() {
         while (mem.cpuHeld()) mem.tick(1000);
         frames(16000);
+        // Poll and dismiss, the shape the rest of the roster uses: a
+        // 150-frame Return hold (above a Slow Keys acceptance delay),
+        // then look again.
+        for (int poll = 0; poll < 16; poll++) {
+            if (cpu.isHalted()) return false;
+            if (finderUp()) return true;
+            mem.keyEvent(0x24, true);
+            frames(150);
+            mem.keyEvent(0x24, false);
+            frames(450);
+        }
         return !cpu.isHalted() && finderUp();
     };
 

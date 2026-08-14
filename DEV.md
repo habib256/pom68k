@@ -715,10 +715,26 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
 - **Screen is fixed 640×400 grayscale** (`MscMemory::decodeScreen`), depth
   from GSC register 4 bits 0-1: 0 → 1 bpp, 1 → 2 bpp, 2 → 4 bpp; pen *p* of
   16 renders as the P2/P5 gray `((15-p)<<4) | $F`.
-- **Input still rides the PMU's ADB modem cell**, not the matrix scanner or
-  the trackball counters — which is how an external Duo keyboard/mouse would
-  reach the guest anyway. The matrix/quadrature path and the sleep/wake gate
-  no other machine can test are the two open milestones (`TODO.md` § 7).
+- **Input is the PMU's own hardware**, not its ADB modem cell: the matrix
+  scanner since 2026-08-13 (rows on port C, columns on port A + port B bits
+  0-2, modifiers on port B bits 3-7, all active low) and the **trackball
+  quadrature counters** since 2026-08-14 (`$14` TBCS / `$15` X / `$16` Y).
+  The ADB cell is what an *external* Duo keyboard/mouse would use, and
+  nothing arrives there today — the guest's own Mouse global never moved on
+  that route (`POM68K_PGE_ADBMOUSE=1` keeps it for A/B). **The counters are
+  latched, not drained on read**: one frame's motion moves into the registers
+  at 60 Hz (`PgePmu::tbLatch`, MAME's `vbl_w` cadence) and holds there for
+  the whole frame, because the firmware reads a register more than once per
+  sample and a live drain turns that into a race — measured, two directions
+  out of four silently stopped working. The sleep/wake gate no other machine
+  can test is the one open milestone (`TODO.md` § 7).
+- **A machine reset must scrub the PG&E's `$91` power flag** (`PgePmu::reset`).
+  The MCU restarts from its mask ROM with its RAM intact, and `$91` is what
+  the ROM branches on at `$FE28`: left at the last session's `$62` it takes
+  the RESUME path, STOPs at `$FE0D` waiting for a wake event, and never
+  releases the 68030 — which is why the persist leg's reboot used to fail
+  with zero SCSI commands behind it. Same rule `loadPram` already followed,
+  same reason (`m68hc05pge.cpp:959`).
 - The PG&E core is a **separate interpreter clone** of `M68hc05`, not a
   subclass: same M6805 opcodes, but different address width (16 vs 13 bits),
   stack window, vector table, memory map and every peripheral — and the E1's
@@ -1382,10 +1398,14 @@ behind the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES —
 off), `POM68K_PGE_CB1INT` / `POM68K_PGE_CB1BYTE` (alternate SPI-clock →
 CB1 wirings, MAME-literal A/B), `POM68K_PGE_ADBRX` (disproved RDRF
 experiment, kept as signpost), `POM68K_PGE_CHARGER` (`0` = unplug the
-charger — boots WORSE, see `docs/DUO_BRINGUP.md`). Diagnostics:
+charger — boots WORSE, see `docs/DUO_BRINGUP.md`), `POM68K_PGE_ADBMOUSE`
+(`1` = send pointer motion down the ADB modem cell again instead of the
+PG&E's trackball counters; kept for A/B — the guest's Mouse global never
+moves on that route). Diagnostics:
 `POM68K_PGE_TRACE`, `POM68K_PGE_HSHAKE` (REQ/ACK + INT-line
 transitions), `POM68K_PGE_SPIBYTES`, `POM68K_PGE_TRAP=<hexbyte>`,
-`POM68K_PGE_ADBTRACE`, `POM68K_PGE_PCCOUNT="hex,…"` /
+`POM68K_PGE_TBTRACE` (what the firmware reads out of the trackball
+counters, and how often), `POM68K_PGE_ADBTRACE`, `POM68K_PGE_PCCOUNT="hex,…"` /
 `POM68K_PGE_PCWIN="lo,hi[;…]"` / `POM68K_PGE_PCHIST="lo,hi"` (MCU-side
 PC counters / windowed hit log / 256-byte-bucket histogram). The
 `duo_trace` harness adds `DUO_CKPT`, `DUO_PMLOG`, `DUO_PCCOUNT`,
@@ -1411,7 +1431,10 @@ corrupted stack frame), and the test-side `POM68K_Q900_IOPDUMP`
 `POM68K_ADB_LLE_TRACE`, `POM68K_ADB_PIC_TRACE`, `POM68K_KEY_TRACE`
 (machine-thread heartbeat + a one-shot spin dump), `POM68K_FPU_LOG`,
 `POM68K_FREEZE_PROBE`, `POM68K_DAFB_CLOCK_TRACE`, `POM68K_SCSI_LAT`,
-`POM68K_CD_TRACE`, `POM68K_SE_VIA_TRACE`, `POM68K_ATALK_DEBUG`,
+`POM68K_CD_TRACE`, `POM68K_SCSI_TRACE` (EVERY CDB the guest issues, with a
+sequence number, LBA and count — the instrument that told the Duo's
+"never wrote the catalog" apart from "never touched the disk again"),
+`POM68K_SE_VIA_TRACE`, `POM68K_ATALK_DEBUG`,
 `POM68K_040_CM_STATS` (68040 ATC fills by descriptor cache-mode —
 the `docs/CACHE_040.md` M0 probe),
 `POM68K_MACIP_DEBUG`, and the IIfx trio `POM68K_IIFX_IO_TRACE` (unknown
@@ -1423,7 +1446,9 @@ next person greps once instead of twice: `POM68K_AIO_EGRET`,
 `POM68K_IICX`, `POM68K_MACII_020`, `POM68K_COMPACT_MODEL`,
 `POM68K_Q630_ROM`, `POM68K_BOXID`, `POM68K_SENSE`, `POM68K_DIAG`.
 Purely test-local ones (`POM68K_MX`/`_MY`, `POM68K_TRAIL`, `POM68K_BERR`,
-`POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_HALT`, `POM68K_DUMP`,
+`POM68K_CD_BOOT`, `POM68K_BEYOND`, `POM68K_BEYOND_IMG` (run a beyond-boot
+gate against a volume its own list does not name — every "same machine,
+other System" control needs it), `POM68K_HALT`, `POM68K_DUMP`,
 `POM68K_FRAMES`, `POM68K_BENCH_*`, `POM68K_PROBE*`,
 `POM68K_INPUT_ANYPATH`, `POM68K_JIT_LOCKSTEP_*`, `POM68K_IIFX_SHOT`
 (debug PPM out of `iifx_boot_etalon`), `POM68K_IIFX_POST_CYCLES`,

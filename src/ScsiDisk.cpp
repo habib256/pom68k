@@ -721,6 +721,27 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             return kCheck;
         }
     }
+    // ── POM68K_SCSI_TRACE: every CDB the guest issues, as it issues it ──
+    // The counters answer "what landed on the medium"; the beyond-boot
+    // campaign needs "what did the guest ASK for". A guest that has gone
+    // silent, one that reads and never writes, and one that spins the
+    // drive down (START/STOP UNIT) are three different failures and the
+    // counters cannot tell them apart — see CHANGELOG 2026-08-13 (sixth),
+    // where "zero writes in ten emulated minutes" was all the evidence
+    // there was. Sequence number included so a gate's own printf can be
+    // located in the stream.
+    static const bool kTrace = std::getenv("POM68K_SCSI_TRACE") != nullptr;
+    if (kTrace) {
+        static long seq = 0;
+        const uint32_t lba = cdb[0] & 0x20
+            ? (cdbLen > 5 ? uint32_t(cdb[2]) << 24 | uint32_t(cdb[3]) << 16 |
+                            uint32_t(cdb[4]) << 8 | cdb[5] : 0)
+            : (uint32_t(cdb[1] & 0x1F) << 16 | uint32_t(cdb[2]) << 8 | cdb[3]);
+        const uint32_t cnt = cdb[0] & 0x20
+            ? (cdbLen > 8 ? uint32_t(cdb[7]) << 8 | cdb[8] : 0) : cdb[4];
+        std::fprintf(stderr, "[scsi %ld] op $%02X lba %u n %u\n",
+                     seq++, cdb[0], lba, cnt);
+    }
     if (kind_ == Kind::Cdrom && std::getenv("POM68K_CD_TRACE"))
         std::fprintf(stderr, "[cd] cdb %02X %02X %02X %02X %02X %02X"
                      " %02X %02X %02X %02X\n", cdb[0],
