@@ -580,8 +580,17 @@ IIfx's front end** grafted on:
   had), register offset `(addr >> 1) & $1F` on **both** byte lanes. Each IOP runs a 65C02 on firmware the host ROM uploads at
   boot — there is no dump.
 - **ADB is bit-banged by the SWIM IOP's firmware** through its GPIO onto
-  `AdbLine`; the **Egret** on VIA1 CB1/CB2 replaces the discrete RTC (clock,
-  PRAM, and it holds the 68040 in reset until its own firmware releases it).
+  `AdbLine`, exactly as on the IIfx — measured, not assumed: through the
+  Egret nothing arrives, through the IOP the cursor moves, the click lands
+  and the KeyMap bit sets (`q900_input_etalon`, 2026-08-14;
+  `POM68K_Q900_ADB=egret` reproduces the dead side). MAME wires the device
+  line to both, and `gpout0` — the driving end — belongs to the IOP.
+- The **Egret** on VIA1 CB1/CB2 replaces the discrete RTC and owns clock,
+  PRAM, power and the reset line: it holds the 68040 until its own PC3 edge
+  releases it, and a firmware `RESET_SYSTEM` re-arms the overlay through
+  `Q700Cpu::runCycles`. Its `341S0851` firmware has run on POM68K's own
+  68HC05 since 2026-08-14 (`CudaLle`, `Flavor::Egret`);
+  `POM68K_EGRET_LLE=0` falls back to the command-level model, loudly.
   A **second 53C96** bus sits at `+$0F400` (registers) / `+$0F500`
   (pseudo-DMA), its wait states latched by DAFB register `$28`.
 - VIA1 PA reads `$D1` (Q900) / `$91` (Q950) — the identity nibble `$D0`/`$90`
@@ -1053,13 +1062,15 @@ jCrsrTask fix (same CHANGELOG entry).
 `M68hc05` + `CudaLle` + `Egret` (transport) + `AdbBus`. Real firmware dumps
 under `roms/cuda/`, `0x1100` bytes each mapped at `$0F00`: **341S0417** =
 Cuda 2.35, **341S0788** = 2.37, **341S0060** = 2.40; Egret flavours
-341S0851 (LC III / VASP), 344S0100 (IIsi). `POM68K_EGRET_LLE=0` /
+341S0851 (LC III / VASP / **Eclipse Q900-Q950**), 344S0100 (IIsi).
+`POM68K_EGRET_LLE=0` /
 `POM68K_CUDA_LLE=0` fall back to the HLE byte model;
 `POM68K_CUDA_FW=<path>` forces a specific dump.
 
 - **Firmware LLE is the default** — Cuda since 2026-07-23, the LC II Egret
   flavour since 2026-07-24 (instruction-slaved ADB wire,
-  `M68hc05::onCycles`).
+  `M68hc05::onCycles`), and the Eclipse towers since 2026-08-14, which put
+  every Egret/Cuda board in the tree on real firmware.
 - **The transport is phase-fragile.** A 2 % shift in the MCU instruction
   rate (the 6805's 11-cycle interrupt charge) deadlocks the Mac TV. Keep
   `serviceInterrupts` at 0, and always run `mactv_boot_etalon` after any
@@ -1417,8 +1428,10 @@ documents them).
 authoritative** and was itself corrected on 2026-07-31.
 
 **Quadra 900/950 ("Eclipse", on the Q700 board — M7 closed 2026-08-02)**:
-`POM68K_Q900_ADB` (`iop` forces the IIfx-style IOP-only ADB wire; default
-is Egret-owned), `POM68K_Q900_IOPBRK` (dump either IOP's 65C02 PC/SP trail
+`POM68K_Q900_ADB` (`egret` routes input to the Egret's ADB instead of the
+IOP wire — an A/B knob, and on the measured board nothing arrives that way;
+the default is the SWIM IOP's bit-banged wire since 2026-08-14, when
+`q900_input_etalon` first asked), `POM68K_Q900_IOPBRK` (dump either IOP's 65C02 PC/SP trail
 at its first `BRK` — the tool that closed M7, kept for the next one),
 `POM68K_Q900_IOP_TRACE` (`=<max lines>`, every host-window touch; a bare
 `=1` means 600 lines, which the first firmware upload exhausts),

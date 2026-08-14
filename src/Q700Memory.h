@@ -29,10 +29,20 @@
 //     replaces the SWIM at +$1E000. The IOP firmware is downloaded by the
 //     ROM, exactly as on the IIfx (`docs/IOP_BRINGUP.md`).
 //   * **ADB is bit-banged by the SWIM IOP** (gpout0 → the wire, inverted;
-//     gpin reads it back) against `AdbLine` — no PIC1654S transceiver.
+//     gpin reads it back) against `AdbLine` — no PIC1654S transceiver, and
+//     not the Egret either: MAME feeds the device line to both listeners but
+//     only the IOP drives it. Measured 2026-08-14 (`q900_input_etalon`),
+//     which is when the default stopped routing input at the Egret, where
+//     nothing had ever arrived.
 //   * The discrete 343-0042 RTC is gone: an **Egret** (341S0851) on VIA1
 //     CB1/CB2 owns clock, PRAM and power ("The Quadra 900 replaced the
-//     real-time clock with a compatible variant of Egret").
+//     real-time clock with a compatible variant of Egret"). Since
+//     2026-08-14 that Egret is the **real firmware on a real 68HC05**
+//     (`CudaLle`, `Flavor::Egret`, MAME `macquadra700.cpp:886-894`
+//     `set_default_bios_tag("341s0851")`) whenever the dump is present —
+//     the Eclipse was the last machine in the tree still running the
+//     command-level `Egret` HLE unconditionally. `POM68K_EGRET_LLE=0` or a
+//     missing dump falls back to it, loudly (docs/LLE_VS_HLE.md § 2).
 //   * A **second** 53C96 SCSI bus at +$0F400 (registers) / +$0F502 (DMA).
 //   * VIA1 PA identity: $D0|bit0 (Q900) or $90|bit0 (Q950) vs the Q700's
 //     $C0|bit0; VIA2 port B carries no DFAC on these boards.
@@ -61,6 +71,7 @@
 #include "AdbLine.h"
 #include "ApplePic.h"
 #include "Egret.h"
+#include "CudaLle.h"
 #include "Scc8530.h"
 #include "Ncr53c96.h"
 #include "ScsiDisk.h"
@@ -142,6 +153,8 @@ public:
     ApplePic& swimPic() { return swimPic_; }
     AdbLine& adbLine() { return adbLine_; }
     Egret& egret() { return egret_; }
+    CudaLle& egretLle() { return egretLle_; }
+    bool egretLleActive() const { return egretLleOn_; }
     Ncr53c96& scsi2() { flushScsi2(); return scsi2_; }
     int64_t deferredScsi2Cycles() const { return scsi2Debt_; }
     long adbHostEdges() const { return adbHostEdges_; }
@@ -190,30 +203,63 @@ public:
         drive1_.setSoundSink(floppy);
         for (ScsiDisk& d : scsiDisks_) d.setSoundSink(hdd);
     }
-    // The Spike has no reset-holding MCU; the Eclipse's Egret does hold it.
-    bool cpuHeld() const { return eclipse() ? egret_.cpuHeld() : false; }
-    bool adbLleActive() const { return !eclipse() && adbVia_.lle(); }
+    // The Spike has no reset-holding MCU; the Eclipse's Egret does hold it
+    // (the firmware's own PC3 edge under the LLE, a timer under the HLE).
+    bool cpuHeld() const {
+        if (!eclipse()) return false;
+        return egretLleOn_ ? egretLle_.cpuHeld() : egret_.cpuHeld();
+    }
+    // "The machine's ADB transport is the real firmware": the PIC1654S on
+    // the Spike, the Egret's own 68HC05 on the Eclipse. Product mode reads
+    // this (main.cpp qualifyFullLleAarch64).
+    bool adbLleActive() const {
+        return eclipse() ? egretLleOn_ : adbVia_.lle();
+    }
+
+    // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". The CPU wrapper
+    // consumes the latch at a run boundary (Q700Cpu::runCycles); the MCU
+    // must never be reset from inside the memory callback that raised it.
+    bool consumeRestart() {
+        bool r = restartPending_;
+        restartPending_ = false;
+        return r;
+    }
 
     bool loadPram(const std::string& path);
     void savePram(const std::string& path);
+    // Host wall clock → whichever store keeps time on this board. Both Egret
+    // objects are seeded: the HLE counts seconds itself, the LLE stages them
+    // for the firmware's own counter (Sonora's lesson — seeding one left
+    // every default boot at the 1904 epoch).
+    void setEgretSeconds(uint32_t s) {
+        egret_.setSeconds(s);
+        egretLle_.setSeconds(s);
+    }
 
     // Input reaches the guest over whichever ADB transport this board has:
-    // the PIC1654S transceiver (Spike) or the SWIM IOP's bit-banged wire
-    // (Eclipse — the IIfx path).
+    // the PIC1654S transceiver (Spike), or on the Eclipse the SWIM IOP's
+    // bit-banged wire — the IIfx path, and the one the ROM actually drives
+    // (measured 2026-08-14, `q900_input_etalon`). `POM68K_Q900_ADB=egret`
+    // routes to the Egret instead, where the firmware LLE puts the devices
+    // on the MCU's own bit-serial line and the HLE on the command-level
+    // AdbBus; neither delivers, which is the point of keeping the knob.
     void keyEvent(uint8_t code, bool down) {
         if (!eclipse()) { adbVia_.keyEvent(code, down); return; }
-        if (egretAdb_) adb_.keyEvent(code, down);
-        else adbLine_.keyEvent(code, down);
+        if (!egretAdb_) { adbLine_.keyEvent(code, down); return; }
+        if (egretLleOn_) egretLle_.adbLine().keyEvent(code, down);
+        else adb_.keyEvent(code, down);
     }
     void mouseMove(int dx, int dy) {
         if (!eclipse()) { adbVia_.mouseMove(dx, dy); return; }
-        if (egretAdb_) adb_.mouseMove(dx, dy);
-        else adbLine_.mouseMove(dx, dy);
+        if (!egretAdb_) { adbLine_.mouseMove(dx, dy); return; }
+        if (egretLleOn_) egretLle_.adbLine().mouseMove(dx, dy);
+        else adb_.mouseMove(dx, dy);
     }
     void mouseButton(bool down, int button = 0) {
         if (!eclipse()) { adbVia_.mouseButton(down, button); return; }
-        if (egretAdb_) { if (button == 0) adb_.mouseButton(down); }
-        else adbLine_.mouseButton(down, button);
+        if (!egretAdb_) { adbLine_.mouseButton(down, button); return; }
+        if (egretLleOn_) egretLle_.adbLine().mouseButton(down, button);
+        else if (button == 0) adb_.mouseButton(down);
     }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
@@ -273,8 +319,12 @@ public:
         // 700's chunk layout (and its existing snapshots) is untouched.
         // Each ApplePic carries its 32 KB of host-uploaded firmware — a
         // restore that dropped it would wake IOPs with no program.
+        // `egretLle_` nests its 68HC05, its ADB wire and the half-transferred
+        // host handshake (CudaLle::visit). It travels next to the HLE object
+        // rather than instead of it: the header pins the profile, not the MCU
+        // flavour, so one chunk layout serves both paths.
         if (eclipse()) {
-            ar(sccPic_, swimPic_, adbLine_, egret_, scsi2_,
+            ar(sccPic_, swimPic_, adbLine_, egret_, egretLle_, scsi2_,
                scsiCtrl2_, scsi2ReadCycles_, scsi2WriteCycles_,
                scsi2DmaReadCycles_, scsi2DmaWriteCycles_, scsi2Debt_,
                eclipseC15Acc_);
@@ -334,12 +384,16 @@ private:
     // Eclipse front end (constructed always, wired only when eclipse()).
     ApplePic sccPic_, swimPic_;
     AdbLine adbLine_;
-    Egret egret_;
+    Egret egret_;                      // command-level fallback (LLE_VS_HLE §2)
+    CudaLle egretLle_;                 // Egret firmware LLE (341S0851)
+    bool egretLleOn_ = false;
+    bool restartPending_ = false;      // firmware RESET_SYSTEM, deferred
     Ncr53c96 scsi2_;                   // the tower's second SCSI bus
     int64_t scsi2Debt_ = 0;
     int64_t eclipseC15Acc_ = 0;        // CPU→C15M fractional phase
     void flushScsi2();
-    bool egretAdb_ = false;            // Egret serves ADB (vs the IOP wire)
+    bool egretAdb_ = false;            // Egret serves ADB (vs the IOP wire,
+                                       // the measured default since 2026-08-14)
     long adbHostEdges_ = 0;
     Q700Cpu* cpu_ = nullptr;
 

@@ -28,6 +28,10 @@ inline constexpr Entry kManifest[] = {
      "607890e9ed816be6ca2210620f649ef63816e78d35b4e1e23858b9c8478a2c16"},
     {"ADB PIC1654S 342s0440-b", "roms/adbmodem/342s0440-b.bin", 1024,
      "22466ae8e4c11509dcc862e85c65239efcc780d23eda9fd4c69bb8041cb1318e"},
+    // The Eclipse towers' Egret (macquadra700.cpp:887) — the same part the
+    // LC III and the IIvx carry.
+    {"Egret 341s0851", "roms/egret/341s0851.bin", 4352,
+     "77f5fb2baaca55a5921423b041e60257a864d79d734872991fa607fa33784d88"},
 };
 
 namespace detail {

@@ -4359,7 +4359,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     if (!qualifyFullLleAarch64(qname,
                                qkind == Q700Memory::Model::Spike
                                  ? "ADB PIC1654S 342s0440-b"
-                                 : "Egret Eclipse LLE (non implémenté)",
+                                 : "Egret 341s0851",
                                mem.adbLleActive(), cpu)) return 2;
     if (fullLleAarch64CheckOnly()) return 0;
     cpu.hardReset();
@@ -4442,7 +4442,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     // The file's clock froze while powered off — wall time comes from the
     // host at every launch (GUI only). On the Eclipse there is no discrete
     // RTC in the loop: the Egret keeps time and runs its own second counter.
-    if (mem.eclipse()) mem.egret().setSeconds(hostMacSeconds());
+    if (mem.eclipse()) mem.setEgretSeconds(hostMacSeconds());
     else               mem.rtc().setSeconds(hostMacSeconds());
 
     glfwSetErrorCallback(glfwErrorCallback);

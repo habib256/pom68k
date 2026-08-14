@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 225 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 226 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -648,11 +648,22 @@ NON-CONFORMANT notice at every HLE ADB entry) because MCU dumps are
 non-distributable; deletion would be a deliberate "POM68K requires MCU dumps"
 product decision, not a cleanup.
 
+- [x] **The Egret LLE on the Eclipse towers** — **done 2026-08-14**. The
+  Quadra 900/950 were the last board running the command-level `Egret`
+  model, and the only HLE registration no dump could retire. They now run
+  the real `341s0851` on a real 68HC05 (`CudaLle`, `Flavor::Egret` — the
+  part MAME names, `macquadra700.cpp:887`), which brings them the wire, the
+  MCU RAM, the autopoll, the PC3 restart seam and product-mode
+  qualification. `q900_/q950_boot_etalon` green, new `q900_input_etalon`
+  (the tower's ADB now runs through the firmware, not `AdbBus`),
+  `lle_a64_q900_preflight` replaces `lle_a64_q900_refused`.
 - [x] **The Finder's "Restart"** — **done 2026-08-13** on the six platforms
-  that carry an Egret/Cuda LLE (V8, Sonora, VASP, RBV, Q605, Q630; the old
-  "eight" counted Centris, which has no Egret, and the Eclipse, which runs
-  the HLE one). Deferred latch + per-platform binding + `cuda_restart_test`
-  (22 checks, both flavours). Detail: `docs/LLE_VS_HLE.md` § 1.9.
+  that carried an Egret/Cuda LLE (V8, Sonora, VASP, RBV, Q605, Q630; the old
+  "eight" counted Centris, which has no Egret, and the Eclipse, which ran
+  the HLE one — it took the seam on 2026-08-14 with its own LLE, so the
+  count is now seven). Deferred latch + per-platform binding +
+  `cuda_restart_test` (30 checks, both flavours). Detail:
+  `docs/LLE_VS_HLE.md` § 1.9.
   *Still open here*: a **guest-level** etalon that boots a System, picks
   Finder → Redémarrer and asserts the machine comes back up. The gate that
   landed proves the seam end to end from the firmware's own action; it does

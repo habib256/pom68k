@@ -750,11 +750,14 @@ autopoll are the 68HC05's own. Two things it does not close:
 
 - ~~**The PC3 reset line only releases the boot hold.**~~ — **CLOSED
   2026-08-13.** A firmware `RESET_SYSTEM` (`$11`) now reaches the 68k on
-  every platform that carries an Egret/Cuda LLE, i.e. **six**: V8, Sonora,
-  VASP, RBV, Q605, Q630. (The old "eight Egret/Cuda platforms" was wrong on
-  both ends — Centris carries no Egret at all, and the Eclipse Q900/950 run
-  the HLE `Egret`, which has no such seam and is already refused in product
-  mode. If the Eclipse ever gains an Egret LLE it inherits this for free.)
+  every platform that carries an Egret/Cuda LLE, i.e. **seven since
+  2026-08-14**: V8, Sonora, VASP, RBV, Q605, Q630 and the Eclipse
+  Q900/Q950 (`Q700Memory.cpp`, consumed by `Q700Cpu::runCycles`), which
+  inherited it for free the day its Egret started running real firmware —
+  exactly as this note predicted. (The old "eight Egret/Cuda platforms" was
+  wrong on both ends — Centris carries no Egret at all, and the Eclipse ran
+  the HLE `Egret`, which has no such seam.) All three bindings are gated in
+  `cuda_restart_test` (30 checks: q605, q900, lcii).
   The design is the one the trap demanded: the PC3 handler decides
   (`restart = !held_`, so the power-on release is filtered out) and calls
   `CudaLle::hostReset()`, which fires `onCpuReset`; the machine's binding
@@ -837,8 +840,8 @@ escapes.
 
 | Device | Files | Default today | Fallback triggers |
 |---|---|---|---|
-| **Egret / Cuda** | `Egret.*` (HLE) vs `M68hc05.*` + `CudaLle.*` (LLE) | **Firmware LLE** on every Egret/Cuda machine: CC factory `341s0417` (2.35), Mac TV `341s0789` (2.38), LC III/III+ + IIvx/IIvi `341s0851`, LC 520/550/CC II + Q630/LC 580 `341s0060` (2.40 — 2.37 livelocks that ROM on pseudo-cmd `$0E`), LC II `341s0850`, Q605 `341s0788` | `POM68K_EGRET_LLE=0` / `POM68K_CUDA_LLE=0`, or missing dump |
-| **ADB modem** (every machine holding an `AdbVia`: the ADB compacts SE / SE FDHD / Classic, Mac II / IIx / IIcx / SE/30, IIci, Centris + Quadra 610/650/800, Quadra 700 — the Eclipse Q900/Q950 attach one too but their Egret owns the ADB bus, `Q700Memory.cpp:363`) | `AdbVia.*` (HLE byte SM on VIA SR) vs `Pic1654s.*` + `AdbLine.*` (LLE) | **Firmware LLE** when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia::attach`, `AdbVia.cpp:53-67`); `Via6522::extShiftCB1` is the wire | `POM68K_ADB_LLE=0`, or missing dump |
+| **Egret / Cuda** | `Egret.*` (HLE) vs `M68hc05.*` + `CudaLle.*` (LLE) | **Firmware LLE** on every Egret/Cuda machine: CC factory `341s0417` (2.35), Mac TV `341s0789` (2.38), LC III/III+ + IIvx/IIvi `341s0851`, LC 520/550/CC II + Q630/LC 580 `341s0060` (2.40 — 2.37 livelocks that ROM on pseudo-cmd `$0E`), LC II `341s0850`, Q605 `341s0788`, **Eclipse Q900/Q950 `341s0851` (2026-08-14)** | `POM68K_EGRET_LLE=0` / `POM68K_CUDA_LLE=0`, or missing dump |
+| **ADB modem** (every machine holding an `AdbVia`: the ADB compacts SE / SE FDHD / Classic, Mac II / IIx / IIcx / SE/30, IIci, Centris + Quadra 610/650/800, Quadra 700 — the Eclipse Q900/Q950 attach one too but their Egret owns the ADB bus, and since 2026-08-14 it owns it as firmware on a real 68HC05, gated by `q900_input_etalon`) | `AdbVia.*` (HLE byte SM on VIA SR) vs `Pic1654s.*` + `AdbLine.*` (LLE) | **Firmware LLE** when `roms/adbmodem/342s0440-b.bin` loads (`AdbVia::attach`, `AdbVia.cpp:53-67`); `Via6522::extShiftCB1` is the wire | `POM68K_ADB_LLE=0`, or missing dump |
 | **ADB bus** (Egret/Cuda machines) | `AdbBus.*` | Unused — both machines feed `AdbLine` under the firmware LLE | Retires with the Egret HLE |
 
 Gates: `m68hc05_test`, `cuda_lle_test`, `egret_lle_test`, `egret_test`,
@@ -859,12 +862,12 @@ NON-CONFORMANT-substitute notice naming the missing dump — six memory classes
 `AdbVia` itself (`AdbVia.cpp:63-68`), which covers the compacts, the Mac II,
 Centris and Q700 families. Since 2026-08-12 each of those entries also
 registers the module in `pom68k::lle` (`src/LleSession.h`), so the session has
-one authoritative purity answer and the save state carries it. **One
-registration is silent**: the Eclipse Q900/Q950 run the Egret HLE
-unconditionally and `Q700Memory.cpp:37` registers `HleEgretCuda` with no
-stderr notice — it is not a *fallback* (no dump would change it), which is why
-it is refused outright in product mode (§ 5) rather than warned about. If the
-Eclipse ever gains an Egret LLE, give it the notice too.
+one authoritative purity answer and the save state carries it. **There is no
+silent registration left**: the Eclipse Q900/Q950 used to run the Egret HLE
+unconditionally, `Q700Memory.cpp` registering `HleEgretCuda` with no stderr
+notice because it was not a *fallback* (no dump would have changed it). On
+**2026-08-14** that machine got its firmware LLE (`341s0851`, the MAME part),
+so its HLE became a fallback like every other — and took the notice with it.
 That satisfies the § Principle rule without
 orphaning no-dump users. Actually deleting `Egret.*` / `AdbBus` / the
 byte-model (and § 4.1's last hack with them) is a **product decision** —
@@ -1121,7 +1124,11 @@ HLE module is **refused** in strict mode (`:207-210`). Build with
 turn a missing private asset into a hard failure and to register the
 preflights, the negative-refusal gates, the four interpreted/A64 oracles,
 the A64 lockstep and the save-state gate under the `product` label. The
-Eclipse Q900/Q950 are refused there: they still run the Egret HLE.
+Eclipse Q900/Q950 **joined the qualified list on 2026-08-14** with their
+Egret firmware LLE: `lle_a64_q900_preflight` replaces the old
+`lle_a64_q900_refused`, and what stays refused there is the fallback —
+`lle_a64_q900_forced_hle_refused` (`POM68K_EGRET_LLE=0`) names the HLE mask
+in its refusal.
 
 This is the first shipping piece of the `HLE_OVERLAY.md` guardrail set —
 a module registry plus a stamped save state — built for the product mode

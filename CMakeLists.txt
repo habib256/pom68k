@@ -754,10 +754,16 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # the framebuffer, so peeking the globals reads the desktop pattern.
     add_executable(family_input_etalon tests/family_input_etalon.cpp)
     target_link_libraries(family_input_etalon PRIVATE pom68k_core)
-    foreach(fam lc3 lc520 iivx iisi)
+    # q900 = the Eclipse tower's Egret 341S0851 firmware LLE (2026-08-14):
+    # the one board where ADB could hang off either the Egret or the SWIM
+    # IOP's bit-banged wire, so "which transport does the ROM drive" needed a
+    # gate of its own. It boots Mac OS 8.1 and runs 16000 frames, hence the
+    # longer timeout its 030 siblings do not need.
+    foreach(fam lc3 lc520 iivx iisi q900)
         add_test(NAME ${fam}_input_etalon COMMAND family_input_etalon ${fam}
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     endforeach()
+    set_tests_properties(q900_input_etalon PROPERTIES TIMEOUT 2400)
 
     # LLE step 7 gate (LLE_VS_HLE §1.10): Open Transport binds .MPP on a
     # virgin (never-driven) LocalTalk line — the guest's own lapENQ probes
@@ -1651,10 +1657,15 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                 message(FATAL_ERROR "LLE product asset missing: ${asset}")
             endif()
         endforeach()
+        # q900 joined this list on 2026-08-14, when the Eclipse gained its
+        # Egret 341S0851 firmware LLE: until then it was the one profile
+        # product mode refused on principle (`lle_a64_q900_refused`), because
+        # its ADB/RTC MCU was a command-level model no dump could replace.
         foreach(pair
                 "q605|${lle_q605_rom}|"
                 "centris|${lle_centris_rom}|POM68K_CENTRIS_MODEL=c650"
                 "q700|${lle_q700_rom}|POM68K_Q700_MODEL=q700"
+                "q900|${lle_q700_rom}|POM68K_Q700_MODEL=q900"
                 "q630|${lle_q630_rom}|POM68K_Q630_ID=A55A2252")
             string(REPLACE "|" ";" fields "${pair}")
             list(GET fields 0 profile)
@@ -1685,10 +1696,15 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              ENVIRONMENT "POM68K_FIRMWARE_ROOT=${CMAKE_CURRENT_BINARY_DIR}/no-firmware"
                              WILL_FAIL TRUE WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                              LABELS "product;lle;a64" TIMEOUT 60)
-        add_test(NAME lle_a64_q900_refused
+        # The Eclipse's own forced-HLE refusal — the successor to
+        # `lle_a64_q900_refused`, which asserted the whole profile was
+        # unqualifiable. Now that its Egret runs real firmware, what must
+        # stay refused is the FALLBACK: POM68K_EGRET_LLE=0 on the tower.
+        add_test(NAME lle_a64_q900_forced_hle_refused
                  COMMAND POM68K --lle-aarch64-check "${lle_q700_rom}")
-        set_tests_properties(lle_a64_q900_refused PROPERTIES
-                             ENVIRONMENT "POM68K_Q700_MODEL=q900" WILL_FAIL TRUE
+        set_tests_properties(lle_a64_q900_forced_hle_refused PROPERTIES
+                             ENVIRONMENT "POM68K_Q700_MODEL=q900;POM68K_EGRET_LLE=0"
+                             WILL_FAIL TRUE
                              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                              LABELS "product;lle;a64" TIMEOUT 60)
 

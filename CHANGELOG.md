@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 225 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 226 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the Eclipse's ADB is the Egret's" — a comment that said "measured, not assumed" and never was; it is the SWIM IOP's wire, and both towers had no working input at all between 2026-08-02 and 2026-08-14** → [2026-08-14 (later) — The Eclipse towers run the real Egret firmware…](#2026-08-14-eclipse-egret-lle)
 - **"the Duo holds its writes behind the hard-disk spin-down" — the Finder reads the catalog off the disk to create the folder, so the drive is awake; the volume is simply never flushed** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
 - **the LC II floppy gate's "mounts the volume, opens its window" (2026-07-29) was the INIT DIALOG — and "Cmd-N is dropped" was Return pressing \[Eject\] in it** → [2026-08-05 (sixth) — The LC II floppy "mount" was the init dialog all along](#2026-08-05-lcii-floppy-dialog)
@@ -133,6 +134,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### MCU firmware LLE — M68HC05, Cuda, Egret, PIC1654S, and ADB
 
+- **the last unconditional HLE in the tree retires: the Eclipse towers get the real 341S0851 — and which wire a Quadra 900's ADB devices actually hang off** → [2026-08-14 (later) — The Eclipse towers run the real Egret firmware…](#2026-08-14-eclipse-egret-lle)
 - **why a PG&E that has already run will not cold-boot again (the `$91` power flag), and why its trackball register has to be LATCHED rather than drained on read** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
 - **the 11-cycle 6805 IRQ restored; second mouse button and right modifiers reach the GUI path** → [2026-08-03 — Event deadlines close the Cuda phase accommodation](#2026-08-03-event-deadlines)
 - **the M68HC05E1 core: real Cuda firmware executes** → [2026-07-23 — M68HC05E1 core: the real Cuda firmware executes (step 10 groundwork)](#2026-07-23--m68hc05e1-core-the-real-cuda-firmware-executes-step-10-groundwork)
@@ -284,6 +286,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-14 (later)** — [The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse](#2026-08-14-eclipse-egret-lle)
 - **2026-08-14** — [The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own](#2026-08-14-duo-beyond-boot)
 - **2026-08-13 (seventh)** — [The IIfx dirty-volume refusal was a swallowed VBL disable, and "address 1" was open bus wearing a wrapped PC](#2026-08-13-iifx-toby-vbl-disable)
 - **2026-08-13 (sixth)** — [The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow](#2026-08-13-beyond-boot-reds)
@@ -511,6 +514,79 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-14-eclipse-egret-lle"></a>
+## 2026-08-14 (later) — The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse
+
+The Quadra 900/950 were the last board in the tree running the command-level
+`Egret` model, and the only HLE registration in `LLE_VS_HLE.md` § 2 that was
+**not a fallback**: no dump would have changed it, which is why product mode
+refused the profile outright instead of warning about it. They now run the
+factory **341S0851 on a real 68HC05** (`CudaLle`, `Flavor::Egret` — the part
+MAME names at `macquadra700.cpp:887`, the same one the LC III and the IIvx
+carry), on the same rollout every other Egret machine got: default with the
+dump present, `POM68K_EGRET_LLE=0` or a missing dump falls back, and neither
+fallback is silent.
+
+`q900_boot_etalon` and `q950_boot_etalon` were green on the first run — no
+transport bring-up, no wire archaeology. The evidence that the firmware is
+actually *serving* the machine rather than idling next to it is in the gate
+now: **125 million MCU instructions** over a boot, and PRAM `$8A` reading back
+`$45` at the end — the seed was `$05`, so the guest wrote the rest of that
+byte through the firmware. The etalon also fails loudly if the Egret never
+releases the 68040, instead of letting a dead MCU surface 16 000 frames later
+as a blank screen.
+
+Three things came with it, none of them new code so much as seams the Eclipse
+could finally have:
+
+- **The Finder's Restart.** `SIMPLIFICATIONS_REVIEW.md` F4 closed on
+  2026-08-13 for six platforms and said of the seventh: *"if the Eclipse ever
+  gains an Egret LLE it inherits this for free."* It did. `onCpuReset` latches,
+  `Q700Cpu::runCycles` consumes at a run boundary, `cuda_restart_test` is
+  30 checks over three bindings (q605/Cuda, q900/Egret, lcii/Egret).
+- **A real peripheral bound.** `cyclesToNextEvent` returned a flat 256 on this
+  board — all a command-level model can honestly claim. It is now the MCU's
+  own next cycle, fractional bridge and `run()` overshoot debt included. That
+  is what the firmware costs: `q900_boot_etalon` runs **2 m 52.8 s** against
+  the HLE fallback's **2 m 35.3 s** on the same host, **+11.3 %** — the same
+  order as the event-deadline measurements on the Mac II and the Duo, and
+  paid here for a real 68HC05 rather than for exactness no gate can see.
+- **Product mode.** `Egret 341s0851` joins the firmware manifest,
+  `lle_a64_q900_preflight` replaces `lle_a64_q900_refused`, and the new
+  `lle_a64_q900_forced_hle_refused` pins what must *stay* refused: the
+  fallback, which names its HLE mask in the refusal text.
+
+### The finding: this tower's ADB was never on the Egret
+
+`Q700Memory.cpp` had carried this comment since M7 (2026-08-02): *"MAME wires
+the ADB devices' data line to BOTH the IOP's gpin and the Egret, so which side
+actually serves the guest is a question of what the ROM drives — measured, not
+assumed."* Nobody had measured it. The default said Egret, and the machine had
+no input gate at all, so nothing ever asked.
+
+The firmware LLE brought one — `q900_input_etalon`, the Eclipse leg of
+`family_input_etalon`. It boots Mac OS 8.1 and injects on one wire at a time:
+
+| wire | ADBBase | Mouse | MBState | KeyMap |
+|---|---|---|---|---|
+| Egret (the old default) | `$78F0`, up | (15,15) → (15,15) **frozen** | `80` → `80` dead | EMPTY |
+| SWIM IOP (`gpout0`) | `$78F0`, up | (15,15) → **(475,323)** | `80` → `00` | bit seen |
+
+719 240 `gpout0` edges over the run say which end drives. MAME agrees on
+re-reading: `macadb->adb_data_callback()` feeds *both* listeners, but
+`gpout0_callback` — the driving end — is the SWIM IOP's alone
+(`macquadra700.cpp:876`), and `:884` explains why the Egret cannot serve here
+even in MAME (this board wants a special "Caboose" Egret that refuses to
+listen to the 68040). So the default flipped to the IOP wire, and
+`POM68K_Q900_ADB=egret` now selects the dead side for A/B rather than being it.
+
+**The Quadra 900 and 950 had no working keyboard or mouse from the day they
+landed (2026-08-02) until today.** Both profiles booted, both were gated, both
+were in the machine table — and a boot etalon cannot see an input path.
+`docs/LLE_VS_HLE.md`'s own caveat says it: *this inventory is only worth what
+its gates are worth.* A knob whose comment says "measured, not assumed" and
+whose default was in fact assumed is the shape to watch for.
 
 <a id="2026-08-14-duo-beyond-boot"></a>
 ## 2026-08-14 — The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own
