@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "SonoraMemory.h"
-#include "LleSession.h"
+#include "FirmwareChoice.h"
 #include "SonoraCpu.h"
 #include <cstdio>
 #include <cstdlib>
@@ -48,35 +48,23 @@ SonoraMemory::SonoraMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId,
     // AIO family: Cuda 341S0060 (Cuda 2.40, maclc3.cpp:380), the Q605's
     // proven 341S0788 as fallback. Same POM68K_EGRET_LLE rollout as V8Memory.
     {
-        const char* e = std::getenv("POM68K_EGRET_LLE");
-        const bool want = !e || std::atoi(e) != 0;
-        static const char* const kEgretFw[] = {
-            "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
-            "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };
-        static const char* const kCudaFw[] = {
-            "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin",
-            "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin" };
-        const char* const* fws = cudaAdb ? kCudaFw : kEgretFw;
-        if (want) {
-            for (int i = 0; i < 4; i++) {
-                const char* p = fws[i];
-                std::ifstream in(p, std::ios::binary);
-                if (!in) continue;
-                std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
-                                        std::istreambuf_iterator<char>());
-                if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
-            }
-            if (!egretLleOn_)
-                std::fprintf(stderr, "Sonora: no MCU firmware dump under "
-                             "roms/%s/ — running the NON-CONFORMANT HLE ADB "
-                             "substitute (docs/LLE_VS_HLE.md §2)\n",
-                             cudaAdb ? "cuda" : "egret");
-        } else {
-            std::fprintf(stderr, "Sonora: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
-                         "HLE ADB substitute forced\n");
-        }
-        if (!egretLleOn_)
-            pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        pom68k::fw::Request req;
+        req.module = pom68k::lle::HleEgretCuda;
+        req.name = cudaAdb ? "Cuda — MCU ADB / PRAM / horloge"
+                           : "Egret — MCU ADB / PRAM / horloge";
+        req.enableKnob = "POM68K_EGRET_LLE";     // one knob here, both MCUs
+        req.pathKnob = "POM68K_CUDA_FW";
+        req.logTag = "Sonora";
+        req.candidates = cudaAdb
+            ? std::vector<std::string>{
+                  "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin",
+                  "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin" }
+            : std::vector<std::string>{
+                  "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
+                  "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };
+        egretLleOn_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& fw) {
+            return egretLle_.loadFirmware(fw);
+        });
     }
     // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED: this
     // fires from inside viaWrite(), under the CPU, and reset() would reset

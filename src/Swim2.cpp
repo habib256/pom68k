@@ -14,7 +14,8 @@ void Swim2::reset() {
     fifo_[0] = fifo_[1] = 0;
     fifoPos_ = 0;
     error_ = 0;
-    cellPhase_ = 0;
+    pll_ = FluxPll();
+    fluxClock_ = 0;
     driveSel_ = 0;
     lstrb_ = false;
     // MAME swim2.cpp:61 seeds the CRC register to $FFFF at device_reset —
@@ -192,6 +193,12 @@ void Swim2::write(int reg, uint8_t value) {
             // setup.2 = GCR (set) / MFM (clear) on the read path — swim2.cpp:273
             if (d->isSuperDrive()) d->setMfmMode((value & 0x04) == 0);
         }
+        // Mid-read reclocking: the old fixed-window path re-read
+        // cellCycles() every window, so a setup write took effect at once —
+        // keep that by reprogramming the separator's nominal period (its
+        // accumulated phase/frequency pull survives, as on real silicon).
+        if ((mode_ & 0x18) == 0x08)
+            pll_.setClock(int64_t(cellCycles()) * FluxPll::kSubCell);
         break;
     case 6:                                     // mode clear
         mode_ &= uint8_t(~value);
@@ -215,17 +222,27 @@ void Swim2::write(int reg, uint8_t value) {
         halfWait_ = 0;
     }
     if ((mode_ & 0x18) == 0x08 && (previousMode & 0x18) != 0x08) {
-        // Entering read mode: reset shifter + PLL (here: cell divider),
-        // land the head at the current rotation angle.
+        // Entering read mode: reset shifter, land the separator at the
+        // current rotation angle and forget its phase history.
         currentBit_ = 0;
         sr_ = 0;
         mfmSyncCounter_ = 0;
-        cellPhase_ = 0;
-        if (SonyDrive* d = selectedDrive()) d->syncCellsToRotation(side1());
+        armReadPll();
     } else if ((previousMode & 0x18) == 0x08 && (mode_ & 0x18) != 0x08) {
         currentBit_ = -1;
-        cellPhase_ = 0;
     }
+}
+
+// Read-ACTION entry: program the separator's nominal period from setup,
+// park it at the drive's rotation angle (real rotational latency, as
+// syncCellsToRotation did for the discrete cells) and zero the flux
+// budget. readReset() keeps a pulled period on purpose — see FluxPll.h.
+void Swim2::armReadPll() {
+    pll_.setClock(int64_t(cellCycles()) * FluxPll::kSubCell);
+    SonyDrive* d = selectedDrive();
+    const int64_t t0 = d ? d->fluxAngleTicks(side1()) : 0;
+    pll_.readReset(t0);
+    fluxClock_ = t0;
 }
 
 // setup[3:2] → controller clocks per raw cell (swim2.cpp:329):
@@ -316,20 +333,29 @@ int Swim2::cyclesToNextEvent() const {
         if (halfWait_) return int((halfWait_ + 1) / 2);
         return currentBit_ >= 0 ? 1 : 0x7fffffff;
     }
-    const int left = cellCycles() - cellPhase_;
-    return left > 0 ? left : 1;
+    // Exact: the separator's next window end, converted back to cycles.
+    const int64_t left = pll_.nextWindowEnd() - fluxClock_;
+    if (left <= 0) return 1;
+    const int64_t cyc = (left + FluxPll::kSubCell - 1) / FluxPll::kSubCell;
+    return int(std::min<int64_t>(cyc, 0x7fffffff));
 }
 
-// Read engine — swim2.cpp:482-547 verbatim, cells instead of PLL flux.
+// Read engine — swim2.cpp:482-547 verbatim, over the REAL data separator
+// since the § 1.3 flux plan step 3: FluxPll windows over SonyDrive's flux
+// view instead of one pre-aligned cell per fixed window. On ideal edges
+// the recovered bit sequence is identical (delta = 0, the loop free-runs
+// at its nominal period); jittered or off-rate media now exercise the
+// phase/frequency pull MAME's fdc_pll_t does.
 void Swim2::tickRead(int cycles) {
-    const int cell = cellCycles();
     SonyDrive* d = selectedDrive();
-    cellPhase_ += cycles;
-    while (cellPhase_ >= cell) {
-        cellPhase_ -= cell;
+    fluxClock_ += int64_t(cycles) * FluxPll::kSubCell;
+    for (;;) {
         // No media / stopped spindle: no transitions, the PLL free-runs 0s.
-        const int bit = (d && d->hasDisk() && d->motorOn())
-                            ? d->nextCell(side1()) : 0;
+        const bool live = d && d->hasDisk() && d->motorOn();
+        const int64_t edge = live ? d->nextFluxAfter(pll_.ctime(), side1())
+                                  : FluxPll::kNever;
+        const int bit = pll_.feedReadData(edge, fluxClock_);
+        if (bit < 0) break;                      // window crosses the budget
         if (setup_ & 0x04) {
             // GCR mode: high bit frames the nibble (swim2.cpp:486-497)
             sr_ = uint16_t(((sr_ << 1) | bit) & 0xFF);

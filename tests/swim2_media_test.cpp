@@ -443,6 +443,147 @@ int main() {
         check(payloadOk(b, 0x90), "CRC state carried across sessions is irrelevant");
     }
 
+    // ── Flux separator (§ 1.3 flux plan, steps 2-3) ───────────────────
+    // The read engine runs a FluxPll over SonyDrive's flux view now. The
+    // blocks above are the regression half (ideal edges → identical bit
+    // stream); these are the properties the ideal-cell path never had.
+    {
+        // Opt-in means OFF: no env, no setter → ideal edges.
+        SonyDrive plain;
+        check(plain.fluxJitterPercent() == 0, "flux jitter defaults to 0");
+
+        // ±12 % peak-shift jitter on every edge: the separator's phase
+        // feedback re-centres each window and the sector still verifies.
+        std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);
+        for (int i = 0; i < 512; i++)
+            img[size_t(i)] = uint8_t(0x3C ^ (i & 0x3F));
+        SonyDrive drive;
+        drive.setSuperDrive(true);
+        drive.setSpinClockHz(15667200);
+        drive.insertImage(img);
+        drive.setFluxJitterPercent(12);
+
+        Swim2 swim;
+        swim.reset();
+        swim.attachDrive(&drive, nullptr);
+        drive.commandSwim(0x2);
+        swim.write(5, 0x00);
+        swim.write(7, 0x8A);
+        auto stream = drainSwim(swim, drive, 1200, kMfmByte, 1200 * kMfmByte * 4);
+        std::vector<uint8_t> sector;
+        bool aCrc = false, dCrc = false;
+        check(findMfmSector(stream, 1, sector, &aCrc, &dCrc),
+              "12% jittered MFM: sector frames through the separator");
+        bool payloadOk = !sector.empty();
+        for (int i = 0; i < 512 && payloadOk; i++)
+            if (sector[size_t(i)] != uint8_t(0x3C ^ (i & 0x3F))) payloadOk = false;
+        check(payloadOk && aCrc && dCrc,
+              "12% jittered MFM: payload and both CRCs verify");
+
+        // Same jitter on GCR (31-clock cells, adjacent transitions).
+        SonyDrive gcr;
+        gcr.setSuperDrive(true);
+        gcr.setSpinClockHz(15667200);
+        gcr.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0x69));
+        gcr.setFluxJitterPercent(12);
+        Swim2 sg;
+        sg.reset();
+        sg.attachDrive(&gcr, nullptr);
+        gcr.commandSwim(0x2);
+        sg.write(5, 0x04);
+        sg.write(7, 0x8A);
+        auto gs = drainSwim(sg, gcr, 2000, kGcrByte, 2000 * kGcrByte * 4);
+        int prologues = 0;
+        for (size_t i = 0; i + 3 < gs.size(); i++)
+            if ((gs[i] & 0xFF) == 0xD5 && (gs[i + 1] & 0xFF) == 0xAA &&
+                (gs[i + 2] & 0xFF) == 0x96)
+                prologues++;
+        check(prologues >= 2, "12% jittered GCR: address prologues frame");
+    }
+
+    {
+        // The case that BITES (TODO § 4 test-first note): a track written
+        // on an off-rate spindle. ±8 % is inside the PLL's ±25 % period
+        // pull and far outside a fixed window, which slips within 32 cells
+        // (flux_pll_test) — so these two checks fail on any regression to
+        // fixed-window reading while every ideal-edge block above passes.
+        for (int permille : { 1080, 920 }) {
+            std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);
+            for (int i = 0; i < 512; i++)
+                img[size_t(i)] = uint8_t(0x81 + (i & 0x3F));
+            SonyDrive drive;
+            drive.setSuperDrive(true);
+            drive.setSpinClockHz(15667200);
+            drive.insertImage(std::move(img));
+            drive.debugStretchFluxPermille(permille);
+
+            Swim2 swim;
+            swim.reset();
+            swim.attachDrive(&drive, nullptr);
+            drive.commandSwim(0x2);
+            swim.write(5, 0x00);
+            swim.write(7, 0x8A);
+            auto stream = drainSwim(swim, drive, 1200, kMfmByte,
+                                    1200 * kMfmByte * 5);
+            std::vector<uint8_t> sector;
+            bool aCrc = false, dCrc = false;
+            const bool found = findMfmSector(stream, 1, sector, &aCrc, &dCrc);
+            char what[80];
+            std::snprintf(what, sizeof what,
+                          "off-rate track (%d permille): PLL pulls and decodes",
+                          permille);
+            bool payloadOk = found && !sector.empty();
+            for (int i = 0; i < 512 && payloadOk; i++)
+                if (sector[size_t(i)] != uint8_t(0x81 + (i & 0x3F)))
+                    payloadOk = false;
+            check(payloadOk && aCrc && dCrc, what);
+        }
+    }
+
+    {
+        // The separator is live machine state: snapshot MID-SECTOR, restore
+        // into fresh objects, and the remaining byte stream must match the
+        // uninterrupted run — with jitter on, a nominal-loop restore would
+        // shift every following window.
+        auto makeImg = [] {
+            std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);
+            for (int i = 0; i < 512; i++)
+                img[size_t(i)] = uint8_t(0xE7 - (i & 0x1F));
+            return img;
+        };
+        SonyDrive drive;
+        drive.setSuperDrive(true);
+        drive.setSpinClockHz(15667200);
+        drive.insertImage(makeImg());
+        drive.setFluxJitterPercent(10);
+        Swim2 swim;
+        swim.reset();
+        swim.attachDrive(&drive, nullptr);
+        drive.commandSwim(0x2);
+        swim.write(5, 0x00);
+        swim.write(7, 0x8A);
+
+        auto head = drainSwim(swim, drive, 40, kMfmByte, 40 * kMfmByte * 4);
+        check(head.size() == 40, "mid-sector point reached before snapshot");
+
+        std::vector<sav::u8> buf;
+        { sav::Writer w(buf); w(swim); w(drive); }
+
+        // Reference: the uninterrupted continuation.
+        auto ref = drainSwim(swim, drive, 200, kMfmByte, 200 * kMfmByte * 4);
+
+        SonyDrive drive2;
+        Swim2 swim2;
+        {
+            sav::Reader r(buf.data(), buf.size());
+            r(swim2); r(drive2);
+        }
+        drive2.setFluxJitterPercent(10);         // config, not state
+        swim2.attachDrive(&drive2, nullptr);     // pointers re-bound, not saved
+        auto got = drainSwim(swim2, drive2, 200, kMfmByte, 200 * kMfmByte * 4);
+        check(got == ref, "restored separator resumes bit-identically");
+    }
+
     // ── Drive detect / eject ──────────────────────────────────────────
     {
         SonyDrive drive;

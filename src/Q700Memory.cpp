@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Q700Memory.h"
-#include "LleSession.h"
+#include "FirmwareChoice.h"
 #include "Q700Cpu.h"
 #include "Moira.h"
 #include <algorithm>
@@ -43,31 +43,19 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         // forces the HLE, a missing dump falls back to it, and neither is
         // silent.
         {
-            const char* e = std::getenv("POM68K_EGRET_LLE");
-            const bool want = !e || std::atoi(e) != 0;
-            static const char* const kEgretFw[] = {
+            pom68k::fw::Request req;
+            req.module = pom68k::lle::HleEgretCuda;
+            req.name = "Egret — MCU ADB / PRAM / horloge";
+            req.enableKnob = "POM68K_EGRET_LLE";
+            req.pathKnob = "POM68K_CUDA_FW";
+            req.logTag = "Q700";
+            req.candidates = {
                 "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
                 "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };
-            if (want) {
-                for (const char* p : kEgretFw) {
-                    std::ifstream in(p, std::ios::binary);
-                    if (!in) continue;
-                    std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
-                                            std::istreambuf_iterator<char>());
-                    if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
-                }
-                if (!egretLleOn_)
-                    std::fprintf(stderr, "Q700: no MCU firmware dump under "
-                                 "roms/egret/ — running the NON-CONFORMANT HLE "
-                                 "ADB substitute (docs/LLE_VS_HLE.md §2)\n");
-            } else {
-                std::fprintf(stderr, "Q700: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
-                             "HLE ADB substitute forced\n");
-            }
-            // The fallback is usable for bring-up, but it must poison product
-            // qualification and snapshots.
-            if (!egretLleOn_)
-                pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+            // Reporting HLE still poisons product qualification and snapshots.
+            egretLleOn_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& fw) {
+                return egretLle_.loadFirmware(fw);
+            });
         }
         // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED:
         // this fires from inside viaWrite(), under the CPU, and reset()

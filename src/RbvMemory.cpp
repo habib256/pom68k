@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "RbvMemory.h"
-#include "LleSession.h"
+#include "FirmwareChoice.h"
 #include "RbvCpu.h"
 #include <cstdio>
 #include <cstdlib>
@@ -32,31 +32,19 @@ RbvMemory::RbvMemory(uint32_t totalRam, int64_t cpuHz, bool iici)
     } else {
         // IIsi: Egret firmware LLE — the 344S0100 (maciici.cpp:666
         // set_default_bios_tag), the LC III's 341S0851/0850 as fallbacks.
-        const char* e = std::getenv("POM68K_EGRET_LLE");
-        const bool want = !e || std::atoi(e) != 0;
-        if (want) {
-            for (const char* p : { "roms/egret/344s0100.bin",
-                                   "../roms/egret/344s0100.bin",
-                                   "roms/egret/341s0851.bin",
-                                   "../roms/egret/341s0851.bin",
-                                   "roms/egret/341s0850.bin",
-                                   "../roms/egret/341s0850.bin" }) {
-                std::ifstream in(p, std::ios::binary);
-                if (!in) continue;
-                std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
-                                        std::istreambuf_iterator<char>());
-                if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
-            }
-            if (!egretLleOn_)
-                std::fprintf(stderr, "Rbv: no roms/egret/*.bin — running the "
-                             "NON-CONFORMANT HLE ADB substitute "
-                             "(docs/LLE_VS_HLE.md §2)\n");
-        } else {
-            std::fprintf(stderr, "Rbv: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
-                         "HLE ADB substitute forced\n");
-        }
-        if (!egretLleOn_)
-            pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        pom68k::fw::Request req;
+        req.module = pom68k::lle::HleEgretCuda;
+        req.name = "Egret — MCU ADB / PRAM / horloge";
+        req.enableKnob = "POM68K_EGRET_LLE";
+        req.pathKnob = "POM68K_CUDA_FW";
+        req.logTag = "Rbv";
+        req.candidates = {
+            "roms/egret/344s0100.bin", "../roms/egret/344s0100.bin",
+            "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
+            "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };
+        egretLleOn_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& fw) {
+            return egretLle_.loadFirmware(fw);
+        });
     }
     // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED: this
     // fires from inside viaWrite(), under the CPU, and reset() would reset

@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Q605Memory.h"
-#include "LleSession.h"
+#include "FirmwareChoice.h"
 #include "SaveState.h"
 #include "Cpu040.h"
 #include "Moira.h"
@@ -93,29 +93,21 @@ Q605Memory::Q605Memory(uint32_t totalRam)
     // silently. The staged PRAM mirrors the Egret HLE's factory seed so
     // both paths boot from the same battery contents.
     {
-        const char* e = std::getenv("POM68K_CUDA_LLE");
-        const bool want = !e || std::atoi(e) != 0;
-        if (want) {
-            for (const char* p : { "roms/cuda/341s0788.bin",
-                                   "../roms/cuda/341s0788.bin" }) {
-                std::ifstream in(p, std::ios::binary);
-                if (!in) continue;
-                std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
-                                        std::istreambuf_iterator<char>());
-                if (cudaLle_.loadFirmware(fw)) { cudaLleOn_ = true; break; }
-            }
-            if (cudaLleOn_)
-                for (int i = 0; i < 256; i++)
-                    cudaLle_.setPram(i, cuda_.pram(i));
-            else
-                std::fprintf(stderr, "Q605: no roms/cuda/341s0788.bin — "
-                             "running the NON-CONFORMANT HLE ADB substitute "
-                             "(docs/LLE_VS_HLE.md §2)\n");
-        } else {
-            std::fprintf(stderr, "Q605: POM68K_CUDA_LLE=0 — NON-CONFORMANT "
-                         "HLE ADB substitute forced\n");
-        }
-        if (!cudaLleOn_) pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        pom68k::fw::Request req;
+        req.module = pom68k::lle::HleEgretCuda;
+        req.name = "Cuda — MCU ADB / PRAM / horloge";
+        req.enableKnob = "POM68K_CUDA_LLE";
+        req.pathKnob = "POM68K_CUDA_FW";
+        req.logTag = "Q605";
+        req.candidates = {
+            "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin" };
+        cudaLleOn_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& fw) {
+            return cudaLle_.loadFirmware(fw);
+        });
+        // The staged PRAM mirrors the Egret HLE's factory seed so both paths
+        // boot from the same battery contents.
+        if (cudaLleOn_)
+            for (int i = 0; i < 256; i++) cudaLle_.setPram(i, cuda_.pram(i));
     }
     // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED: this
     // fires from inside viaWrite(), under the CPU, and reset() would reset

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 227 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 231 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 16 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 31 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 33 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 35 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 12 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 3 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 11 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
-| [Cross-cutting](#cross-cutting) | 28 |
+| [Cross-cutting](#cross-cutting) | 30 |
 
 ---
 
@@ -143,6 +143,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-09 (seventh)** — [The GUI pass: the Quadra booted System 6.0.5 off a floppy nobody asked for, and no gate could ever have seen it](CHANGELOG.md#2026-08-09-gui-pass)
 - **2026-08-13 (seventh)** — [The IIfx dirty-volume refusal was a swallowed VBL disable, and "address 1" was open bus wearing a wrapped PC](CHANGELOG.md#2026-08-13-iifx-toby-vbl-disable)
 - **2026-08-14** — [The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own](CHANGELOG.md#2026-08-14-duo-beyond-boot)
+- **2026-08-14 (fifth)** — [SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing](CHANGELOG.md#2026-08-14-ism-csm)
+- **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](CHANGELOG.md#2026-08-14-flux-separator)
 
 ## Video — decoders, the raster beam, DAFB
 
@@ -289,4 +291,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-12** — [One opcode clears the conservative AArch64 store guard](CHANGELOG.md#2026-08-12-a64-b592-store)
 - **2026-08-13 (later)** — [The peripheral deadline reaches the last two wrappers, measures worse than the batch, and ships off](CHANGELOG.md#2026-08-13-periph-deadline-optin)
 - **2026-08-13 (third)** — [writeBuffer has no siblings, the determinism check is why, and an engine diff would have said so wrongly](CHANGELOG.md#2026-08-13-chunk-asymmetry-audit)
+- **2026-08-14 (seventh)** — [Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window](CHANGELOG.md#2026-08-14-firmware-picker)
+- **2026-08-14 (sixth)** — ["Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable](CHANGELOG.md#2026-08-14-peripheral-window)
 

@@ -10,6 +10,7 @@
 #include "AtomicReplace.h"
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 
@@ -230,6 +231,7 @@ void SonyDrive::selectSide(bool side1) {
 
 void SonyDrive::encodeTrack() {
     stream_.clear();
+    fluxDirty_ = true;
     if (!hasDisk()) { cells_.clear(); return; }
     if (mfmMode_ && hd_) encodeTrackMfm();
     else encodeTrackGcr();
@@ -283,6 +285,7 @@ int64_t SonyDrive::spinCyclesPerRev() const {
 // with the missing clock. GCR: 8 cells per nibble, 10 for sync groups.
 void SonyDrive::buildCells() {
     cells_.clear();
+    fluxDirty_ = true;
     if (mfmMode_ && hd_) {
         cells_.reserve(stream_.size() * 16);
         bool last = false;
@@ -482,15 +485,6 @@ uint16_t SonyDrive::nextByte(bool side1) {
     return v;
 }
 
-int SonyDrive::nextCell(bool side1) {
-    if (!hasDisk()) return 0;
-    selectSide(side1);
-    if (cells_.empty()) return 0;
-    const int c = cells_[cellPos_];
-    cellPos_ = (cellPos_ + 1) % cells_.size();
-    return c;
-}
-
 void SonyDrive::syncCellsToRotation(bool side1) {
     if (!hasDisk()) return;
     selectSide(side1);
@@ -502,6 +496,108 @@ void SonyDrive::syncCellsToRotation(bool side1) {
 int64_t SonyDrive::startWriteCells(bool side1) {
     syncCellsToRotation(side1);
     return int64_t(cellPos_);
+}
+
+// ── Flux view (LLE_VS_HLE § 1.3, step 2) ────────────────────────────────
+// `cells_` seen as transition times for a FluxPll separator. One C15M
+// clock = FluxPll::kSubCell ticks; a 1-cell becomes an edge at the CENTRE
+// of its window (the same placement FluxPll::writeNextBit uses, so a
+// write-then-read round trip lands edges where the reader's loop expects
+// them). The revolution length stays `cells_.size()` windows — the tail
+// gap4 zero-cells are simply edge-free time.
+
+int SonyDrive::fluxJitterEnv() {
+    const char* e = std::getenv("POM68K_FLUX_JITTER");
+    if (!e || !*e) return 0;
+    int pct = std::atoi(e);
+    return std::clamp(pct, 0, 45);
+}
+
+void SonyDrive::setFluxJitterPercent(int pct) {
+    fluxJitterPct_ = std::clamp(pct, 0, 45);
+    fluxDirty_ = true;
+}
+
+void SonyDrive::debugStretchFluxPermille(int permille) {
+    fluxStretchPermille_ = std::max(1, permille);
+    fluxDirty_ = true;
+}
+
+int64_t SonyDrive::fluxCellTicks() const {
+    const int cellCyc = (mfmMode_ && hd_) ? 16 : 31;   // = nominalCells()
+    return int64_t(cellCyc) * FluxPll::kSubCell;
+}
+
+int64_t SonyDrive::fluxRevTicks() const {
+    return int64_t(cells_.size()) * fluxCellTicks();
+}
+
+int64_t SonyDrive::fluxAngleTicks(bool side1) {
+    if (!hasDisk()) return 0;
+    selectSide(side1);
+    if (cells_.empty()) return 0;
+    const int64_t rev = spinCyclesPerRev();
+    // Same arithmetic as syncCellsToRotation, kept in ticks so the PLL can
+    // land between two cell boundaries once media stop being ideal.
+    return (spin_ % rev) * fluxRevTicks() / rev;
+}
+
+void SonyDrive::fluxRebuild() {
+    flux_.clear();
+    fluxDirty_ = false;
+    fluxJitterTicks_ = int64_t(fluxJitterPct_) * fluxCellTicks() / 100;
+    if (cells_.empty()) return;
+    const int64_t cellT = fluxCellTicks();
+    const int64_t rev = fluxRevTicks();
+    for (size_t i = 0; i < cells_.size(); i++) {
+        if (!cells_[i]) continue;
+        int64_t t = int64_t(i) * cellT + cellT / 2;
+        if (fluxStretchPermille_ != 1000)        // test seam: off-rate track
+            t = t * fluxStretchPermille_ / 1000;
+        if (t < rev) flux_.push_back(t);         // past the index: overwritten
+    }
+}
+
+// Deterministic per-(track, side, transition, revolution) displacement in
+// [-fluxJitterTicks_, +fluxJitterTicks_] — splitmix64 over the identity, so
+// a re-read of the same revolution sees the same edges (replays and save
+// states stay bit-identical) while successive revolutions differ, which is
+// what real peak-shift noise looks like to a separator.
+int64_t SonyDrive::fluxJitter(size_t idx, int64_t revNo) const {
+    if (!fluxJitterTicks_) return 0;
+    uint64_t x = (uint64_t(idx) << 1) ^ (uint64_t(revNo) << 24)
+               ^ (uint64_t(uint32_t(track_)) << 48) ^ (side1_ ? 1ull : 0ull);
+    x += 0x9E3779B97F4A7C15ull;
+    x ^= x >> 30; x *= 0xBF58476D1CE4E5B9ull;
+    x ^= x >> 27; x *= 0x94D049BB133111EBull;
+    x ^= x >> 31;
+    const uint64_t span = uint64_t(2 * fluxJitterTicks_ + 1);
+    return int64_t(x % span) - fluxJitterTicks_;
+}
+
+int64_t SonyDrive::nextFluxAfter(int64_t tick, bool side1) {
+    if (!hasDisk()) return FluxPll::kNever;
+    selectSide(side1);
+    if (fluxDirty_) fluxRebuild();
+    if (flux_.empty()) return FluxPll::kNever;
+    const int64_t rev = fluxRevTicks();
+    if (tick < 0) tick = 0;
+    int64_t revNo = tick / rev;
+    // Jitter keeps edges within ± <half a min gap>, so the jittered
+    // sequence stays sorted and a search on the ideal positions (widened by
+    // the amplitude) followed by a short forward walk is exact. Two passes:
+    // the wrap into the next revolution always finds flux_[0].
+    for (int hop = 0; hop < 2; hop++, revNo++) {
+        const int64_t pos = tick - revNo * rev;
+        auto it = std::lower_bound(flux_.begin(), flux_.end(),
+                                   pos - fluxJitterTicks_);
+        for (; it != flux_.end(); ++it) {
+            const size_t idx = size_t(it - flux_.begin());
+            const int64_t t = *it + fluxJitter(idx, revNo);
+            if (t >= pos) return revNo * rev + t;
+        }
+    }
+    return FluxPll::kNever;                      // unreachable: flux_ nonempty
 }
 
 // SWIM2 write-back: splice the written cells into the track, then decode
@@ -530,6 +626,7 @@ void SonyDrive::commitCells(int64_t startCell, int64_t totalCells,
         if (t < 0 || t >= totalCells) continue;
         cells_[size_t((startCell + t) % n)] = 1;
     }
+    fluxDirty_ = true;
     if (mediaMfm) decodeMfmCells();
     else          decodeGcrCells();
 }

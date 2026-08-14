@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "V8Memory.h"
-#include "LleSession.h"
+#include "FirmwareChoice.h"
 #include "Cpu030.h"
 #include <array>
 #include <bit>
@@ -141,9 +141,6 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
         if (model_ == Model::ColorClassic) egretLle_.setI2cDfac(true);
         // (Mac TV: no DFAC at all — maclc.cpp mactv device_remove("dfac"),
         // nothing re-added — so its Cuda I2C bus stays empty.)
-        const char* e = std::getenv(cudaMcu ? "POM68K_CUDA_LLE"
-                                            : "POM68K_EGRET_LLE");
-        const bool want = !e || std::atoi(e) != 0;
         static constexpr const char* kEgretFw[] = {
             "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin", nullptr };
         static constexpr const char* kCudaFw[] = {
@@ -155,43 +152,26 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
             "roms/cuda/341s0789.bin", "../roms/cuda/341s0789.bin",
             "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin",
             "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin", nullptr };
-        // Diag/bring-up override: POM68K_CUDA_FW=<path> forces a specific
-        // MCU dump ahead of the per-model list (how the factory 341S0417
-        // is exercised against the M68hc05 without rebuilding).
-        const char* fwOverride = std::getenv("POM68K_CUDA_FW");
-        if (want) {
-            if (fwOverride && *fwOverride) {
-                std::ifstream in(fwOverride, std::ios::binary);
-                std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
-                                        std::istreambuf_iterator<char>());
-                if (in && egretLle_.loadFirmware(fw)) egretLleOn_ = true;
-                else std::fprintf(stderr, "V8: POM68K_CUDA_FW=%s unusable\n",
-                                  fwOverride);
-            }
-            for (const char* const* p = model_ == Model::MacTv ? kTvFw
-                                        : cudaMcu ? kCudaFw : kEgretFw;
-                 !egretLleOn_ && *p; p++) {
-                std::ifstream in(*p, std::ios::binary);
-                if (!in) continue;
-                std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
-                                        std::istreambuf_iterator<char>());
-                if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
-            }
-            // The fallback stays (MCU dumps are user-provided and not
-            // distributable) but it is never silent: the HLE byte-model is
-            // a documented NON-CONFORMANT substitute (LLE_VS_HLE §2).
-            if (!egretLleOn_)
-                std::fprintf(stderr, "V8: no MCU firmware dump under roms/%s/ "
-                             "— running the NON-CONFORMANT HLE ADB substitute "
-                             "(docs/LLE_VS_HLE.md §2)\n",
-                             cudaMcu ? "cuda" : "egret");
-        } else {
-            std::fprintf(stderr, "V8: %s=0 — NON-CONFORMANT HLE ADB "
-                         "substitute forced\n",
-                         cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE");
-        }
-        if (!egretLleOn_)
-            pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        // POM68K_CUDA_FW=<path> forces a specific dump ahead of the
+        // per-model list — the diag path that exercised the factory 341S0417
+        // against the M68hc05 without rebuilding, and since 2026-08-14 the
+        // Périphériques window's per-device picker. fw::select owns it now,
+        // on this board and the six others that had never had it.
+        const char* const* fwList = model_ == Model::MacTv ? kTvFw
+                                     : cudaMcu ? kCudaFw : kEgretFw;
+        std::vector<std::string> cands;
+        for (const char* const* p = fwList; *p; p++) cands.emplace_back(*p);
+        pom68k::fw::Request req;
+        req.module = pom68k::lle::HleEgretCuda;
+        req.name = cudaMcu ? "Cuda — MCU ADB / PRAM / horloge"
+                           : "Egret — MCU ADB / PRAM / horloge";
+        req.enableKnob = cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE";
+        req.pathKnob = "POM68K_CUDA_FW";
+        req.logTag = "V8";
+        req.candidates = std::move(cands);
+        egretLleOn_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& fw) {
+            return egretLle_.loadFirmware(fw);
+        });
     }
     // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED on
     // purpose: this fires from inside viaWrite(), i.e. from a memory

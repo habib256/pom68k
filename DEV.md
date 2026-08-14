@@ -1373,13 +1373,25 @@ documented before 2026-07-31:
 | `POM68K_NOFPU` | no 68881/68882. Read by **six** platform runners in `main.cpp`: Mac II (`:1074`), IIfx (`:1432`), V8 (`:1828`), Sonora (`:2314`), VASP (`:2631`), RBV (`:2915`). The 68040 families have their own `*_LC040`/`*_NOFPU` knobs above |
 
 **Devices and subsystems**: `POM68K_EGRET_LLE`, `POM68K_CUDA_LLE`,
-`POM68K_CUDA_FW`, `POM68K_ADB_LLE`, `POM68K_ADB_KBD_ID` (`AdbLine`'s
+`POM68K_CUDA_FW` (`<path>` = load THIS dump for the Egret/Cuda MCU, ahead of
+the board's own candidate list — since 2026-08-14 honoured on **all seven**
+Egret/Cuda platforms rather than only the V8, and surfaced as the
+Périphériques window's per-device picker. The name covers both MCU flavours;
+it predates the generalisation and is kept rather than renamed under a
+documented script. An unusable path warns and falls through to the factory
+list — a diagnostic left in the environment must not stop a machine
+booting), `POM68K_ADB_FW` (the same for the PIC1654S ADB transceiver),
+`POM68K_ADB_LLE`, `POM68K_ADB_KBD_ID` (`AdbLine`'s
 power-on keyboard handler ID: 1 = Apple Standard, the default, 2 = Extended
 Keyboard II, 3 = the extended protocol with distinct right-hand modifier
 codes — a guest can select any of them itself with a Listen R3, this only
 moves the reset value), `POM68K_APPLETALK`,
 `POM68K_SHARE_DIR`, `POM68K_ATALK_WIRE_BOOST`, `POM68K_LTOUDP`,
-`POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_DRIVE_SFX`
+`POM68K_FLOPPY` (image path), `POM68K_FLOPPY_RO`, `POM68K_FLUX_JITTER`
+(`<pct>` = displace every flux edge the SWIM separators read by a
+deterministic ± pct % of one nominal cell, clamped to 45 — the opt-in
+jitter model of the § 1.3 flux plan; 0/unset = ideal edges, the default —
+`SonyDrive::fluxJitterEnv`), `POM68K_DRIVE_SFX`
 (`0` = silence the drive FX), `POM68K_SCSI_DDM_TEMPLATE`,
 `POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
 instead of the Apple-branded Seagate the guest's own disk tools expect —
@@ -1628,6 +1640,61 @@ buffer, both pacing branches, the thread teardown. That gate exists because
 stays in it can be tested, which is why the contract was moved out before it
 was unified (`CHANGELOG.md` 2026-08-09 (third)). **The GUI layer above it is
 still compile-verified only.**
+
+### The "Périphériques (LLE / HLE)" window (`src/PeripheralWindow.*`)
+
+The visible half of the § 2 fallback policy of `docs/LLE_VS_HLE.md`. That
+policy is *"kept, but never silent"* — every HLE entry prints a
+NON-CONFORMANT notice to stderr — and it had a hole: a user who launches
+from a desktop icon never sees stderr, so for them the fallback WAS silent.
+The window is that notice in a form they can see, plus the manual override.
+
+Three design points, each of which is a rule rather than a preference:
+
+- **It renders reports; it never re-derives.** Every row comes from
+  `pom68k::lle::devices()` (`src/LleSession.h`), filled by the device itself
+  at construction through `pom68k::fw::select()` (`src/FirmwareChoice.h`),
+  which carries mode, reason, the dump actually loaded, the override in
+  force and the paths searched. A window that re-ran "is there a dump / is
+  the knob set" would be a second copy of the decision, free to drift.
+  Reporting HLE still calls `activateHle()`, so product mode is unchanged.
+- **Which dump is a per-device choice too.** `fw::select` is the one search
+  all eight firmware devices run: the path knob first (`POM68K_CUDA_FW`,
+  `POM68K_ADB_FW`), then the board's ordered candidate list, then the HLE
+  substitute. Before it, only `V8Memory` honoured an override at all, so on
+  the other six Egret/Cuda boards "use THIS revision" did not exist. The
+  window offers every dump found beside the candidates —
+  `fw::discoverDumps()` scans their directories — marks the factory parts
+  and the one currently loaded, and takes an arbitrary path for anything
+  else. Two subtleties both gated: a dump pick is a pending change *on its
+  own* (same mode, different machine), and going back to automatic must
+  **unset** the knob, since writing `""` would leave the re-exec with an
+  empty path the device dutifully fails to open.
+- **It lists what THIS machine built.** A Centris has no Egret; the Mac Plus
+  has neither an Egret nor an ADB transceiver. An empty list is a real
+  answer ("no LLE/HLE choice exists here"), not a failure to populate.
+- **Changes are staged and applied by a relaunch**, because the devices are
+  built once from `getenv` before the first instruction — there is no live
+  toggle to offer. Apply calls `setenv` for **every** selected device (not
+  only the changed ones: the re-exec inherits this environment, so a knob
+  left from an earlier session would otherwise survive and win) and re-execs
+  on the process's own `argv`, captured into `gLaunchArgs` at the top of
+  `main()` before the `--lle-aarch64` scrubbing rewrites it.
+
+It sits at **menu-bar level**, beside `Disques...`, and not inside the
+Machine menu: that menu is 37 profiles plus separators, taller than a 900 px
+screen, so an entry appended to it lands under the scroll. That was measured
+under Xvfb, not assumed — the first version was there and could not be
+reached. The window also **opens itself once** on the first frame a machine
+reports a substitute, which is what makes the stderr policy hold for a
+GUI-only user; it never re-opens after being closed, and never appears on a
+fully-LLE machine.
+
+Gate: `peripheral_lle_test` (`unit`, 25 checks) covers the model —
+registration, the product-mode contract, the reason on all three paths,
+`dumpAvailable` against a real file, and the env mapping including the
+re-assert that makes an undo undo. The **window itself is compile-verified
+only**, like every other GUI surface in this tree.
 
 ### What a gate prints about its own assets
 

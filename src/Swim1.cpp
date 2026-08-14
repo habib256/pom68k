@@ -38,13 +38,19 @@ void Swim1::reset() {
     fifo_[0] = fifo_[1] = 0;
     fifoPos_ = 0;
     error_ = 0;
-    cellPhase_ = 0;
+    ismClock_ = lastSync_ = latestEdge_ = 0;
+    prevLs_ = 0x5;
+    csmState_ = CsmInit;
+    csmErr_[0] = csmErr_[1] = 0;
+    csmPairSide_ = csmMinCount_ = 0;
+    correction_[0] = correction_[1] = 0;
+    tsmOut_ = tsmBits_ = 0;
+    tsmMark_ = false;
     driveSel_ = 0;
     lstrb_ = false;
     crc_ = 0xCDB4;
     sr_ = 0;
     tssSr_ = tssOutput_ = 0;
-    mfmSyncCounter_ = 0;
     currentBit_ = -1;
     halfWait_ = 0;
     writeHalfPos_ = 0;
@@ -259,6 +265,9 @@ void Swim1::ismWrite(int reg, uint8_t value) {
         if (SonyDrive* d = selectedDrive()) {
             if (d->isSuperDrive()) d->setMfmMode((value & 0x04) == 0);
         }
+        // No mid-read reclocking needed here: the ISM read thresholds are
+        // pure parameter-RAM arithmetic (swim1.cpp:1003-1080), so a setup
+        // write changes nothing the engine caches.
         break;
     case 6:                                     // mode clear — bit 6 exits ISM
         mode_ &= uint8_t(~value);
@@ -282,14 +291,25 @@ void Swim1::ismWrite(int reg, uint8_t value) {
         halfWait_ = 0;
     }
     if ((mode_ & 0x18) == 0x08 && (previousMode & 0x18) != 0x08) {
+        // Entering read mode — swim1.cpp:388-399 verbatim: land the edge
+        // clock at the drive's rotation angle, arm the CSM (GCR starts
+        // SYNCHRONIZED — only MFM calibrates), forget the calibration.
+        // MAME leaves the TSM assembly registers alone here, so we do too.
         currentBit_ = 0;
         sr_ = 0;
-        mfmSyncCounter_ = 0;
-        cellPhase_ = 0;
-        if (SonyDrive* d = selectedDrive()) d->syncCellsToRotation(side1());
+        SonyDrive* d = selectedDrive();
+        const int64_t t0 = d ? d->fluxAngleTicks(side1())
+                                   / (FluxPll::kSubCell / 2)
+                             : 0;
+        ismClock_ = lastSync_ = latestEdge_ = t0;
+        prevLs_ = 0x5;                           // (1<<2)|1
+        csmState_ = (setup_ & 0x04) ? CsmSynchronized : CsmInit;
+        csmErr_[0] = csmErr_[1] = 0;
+        correction_[0] = correction_[1] = 0;
+        csmPairSide_ = 0;
+        csmMinCount_ = 0;
     } else if ((previousMode & 0x18) == 0x08 && (mode_ & 0x18) != 0x08) {
         currentBit_ = -1;
-        cellPhase_ = 0;
     }
 
     if (!(mode_ & 0x40)) leaveIsm();             // swim1.cpp:322 "switch to iwm"
@@ -369,66 +389,231 @@ int Swim1::cyclesToNextEvent() const {
         if (halfWait_) return int((halfWait_ + 1) / 2);
         return currentBit_ >= 0 ? 1 : 0x7fffffff;
     }
-    const int left = cellCycles() - cellPhase_;
-    return left > 0 ? left : 1;
+    // ISM read: the next observable transition (a FIFO byte, an error
+    // latch) needs at least one more inter-transition gap, and the
+    // shortest legal gap is P_MINCT+6 halves. A smaller bound is merely
+    // slow (the deadline contract), so return the historical 16-cycle
+    // cadence capped by that floor.
+    const int minGap = (params_[P_MINCT] + 6) / 2;
+    return minGap > 0 ? std::min(minGap, 16) : 16;
 }
 
-// Read engine: the SWIM2/ideal-cell shifter (see Swim1.h — SWIM1's real
-// LS-pair CSM discriminates flux jitter our discrete cells don't have).
+// ── ISM read engine — MAME swim1.cpp:885-1233, ported verbatim ──────────
+// Not a window separator: the engine measures INTER-TRANSITION times (in
+// half-cycles), classifies each gap under a Short and a Long hypothesis
+// against cumulative parameter-RAM thresholds scaled by the running
+// correction factor, resolves marginal pairs against the previous gap,
+// and feeds resolved cell counts to two machines — the Correction State
+// Machine (64 minimum cells calibrate `correction_[pair side]`) and the
+// Trans-Space Machine (bytes into the FIFO: MFM via the nb/bb tables with
+// missing-clock mark detection, GCR as gap→bits). Edges come from
+// SonyDrive's flux view, converted FluxPll ticks → halves.
 void Swim1::tickRead(int cycles) {
-    const int cell = cellCycles();
+    constexpr int64_t kHalf = FluxPll::kSubCell / 2;   // ticks per half-cycle
     SonyDrive* d = selectedDrive();
-    cellPhase_ += cycles;
-    while (cellPhase_ >= cell) {
-        cellPhase_ -= cell;
-        const int bit = (d && d->hasDisk() && d->motorOn())
-                            ? d->nextCell(side1()) : 0;
-        if (setup_ & 0x04) {
-            // GCR: high bit frames the nibble
-            sr_ = uint16_t(((sr_ << 1) | bit) & 0xFF);
-            if (sr_ & 0x80) {
-                if (fifoPush(sr_) && !error_) error_ |= 0x01;
-                sr_ = 0;
-            }
+    ismClock_ += int64_t(cycles) * 2;
+    const int64_t nextSync = ismClock_;
+    const bool live = d && d->hasDisk() && d->motorOn();
+
+    while (lastSync_ < nextSync) {
+        // Find when in the future the next edge happens (swim1.cpp:983-999)
+        int64_t cyclesToNext;
+        bool willHitEdge;
+        const int64_t edge =
+            live ? d->nextFluxAfter((latestEdge_ + 2) * kHalf, side1())
+                 : FluxPll::kNever;
+        if (edge == FluxPll::kNever || edge / kHalf > nextSync) {
+            cyclesToNext = nextSync - latestEdge_;
+            willHitEdge = false;
         } else {
-            // MFM: hunt >=64 alternating cells, then 16-cell windows;
-            // odd cells are data, a 0001 raw pattern on an even cell is
-            // a missing clock -> MARK. (swim2.cpp:499-546 shape.)
-            if (mfmSyncCounter_ < 64) {
-                if (bit != (mfmSyncCounter_ & 1)) mfmSyncCounter_++;
-                else mfmSyncCounter_ = 0;
+            cyclesToNext = edge / kHalf - latestEdge_;
+            willHitEdge = true;
+        }
+
+        // Pick up the current rescaling factor (swim1.cpp:1002-1004)
+        int scale = correction_[csmPairSide_];
+        if (scale < 192) scale |= 256;
+
+        // Count the cells in the S and L hypotheses (swim1.cpp:1006-1080):
+        // cumulative thresholds MINCT+6, +s1+4, +s2+4, +RPT+4, all scaled.
+        auto count = [&](uint8_t s1, uint8_t s2) -> uint32_t {
+            int64_t t = params_[P_MINCT] + 3 * 2;
+            if (cyclesToNext <= (scale * t) >> 8) return 0;
+            t += s1 + 2 * 2;
+            if (cyclesToNext <= (scale * t) >> 8) return 1;
+            t += s2 + 2 * 2;
+            if (cyclesToNext <= (scale * t) >> 8) return 2;
+            t += params_[P_RPT] + 2 * 2;
+            if (cyclesToNext <= (scale * t) >> 8) return 3;
+            return 4;
+        };
+        uint32_t sct, lct;
+        if (prevLs_ == 0x5) {                    // previous was a short
+            sct = count(params_[P_SSS], params_[P_SLS]);
+            lct = count(params_[P_SSL], params_[P_SLL]);
+        } else if (prevLs_ == 0x6 || prevLs_ == 0x7 ||
+                   prevLs_ == 0x9 || prevLs_ == 0xd) {   // previous marginal
+            sct = count(params_[P_LSS], params_[P_CSLS]);
+            lct = count(params_[P_LSL], params_[P_CSLS]);
+        } else {                                 // previous was a long
+            sct = count(params_[P_LSS], params_[P_LLS]);
+            lct = count(params_[P_LSL], params_[P_LLL]);
+        }
+
+        // Resolve cell lengths (swim1.cpp:1083-1125)
+        int resolvedCount = 0;
+        uint32_t resolvedType[2] = { 0, 0 };
+        if ((sct == 4 || lct == 4) && !error_)
+            error_ |= 0x20;
+
+        if (willHitEdge) {
+            if (sct == 0) {
+                // No short-cell error: write splices trigger it and the
+                // physical media probably doesn't allow for it (MAME note).
+                sct = lct = 1;
+            }
+            if (sct == 4) sct = 3;
+            if (lct == 4) lct = 3;
+
+            const bool previousMarginal =
+                prevLs_ == 0x6 || prevLs_ == 0x7 ||
+                prevLs_ == 0x9 || prevLs_ == 0xd;
+            const bool currentMarginal =
+                (sct == 1 && lct > 1) || (lct == 1 && sct > 1);
+
+            if (previousMarginal && currentMarginal) {
+                if (!error_) error_ |= 0x40;
+                resolvedCount = 2;
+                resolvedType[0] = (prevLs_ >> 2) & 3;
+                resolvedType[1] = lct;
             } else {
-                if (mfmSyncCounter_ == 64 && bit)
-                    mfmSyncCounter_--;
-                else {
-                    if (mfmSyncCounter_ == 65 || mfmSyncCounter_ == 81) {
-                        tssSr_ = 0xFF;
-                        sr_ = 0;
-                    }
-                    if (mfmSyncCounter_ & 1) {
-                        sr_ |= uint16_t(bit << (((96 - mfmSyncCounter_) >> 1) & 7));
-                        crcUpdate(bit);
-                    }
-                    tssSr_ = uint8_t((tssSr_ << 1) | bit);
-                    if ((tssSr_ & 0xF) == 1 && !(mfmSyncCounter_ & 1))
-                        sr_ |= MARK;
-                    mfmSyncCounter_++;
-                    if (mfmSyncCounter_ == 80) {
-                        if (!(sr_ & MARK)) mfmSyncCounter_ = 0;
-                        else {
-                            crcClear();
-                            if (fifoPush(sr_) && !error_) error_ |= 0x01;
-                        }
-                    } else if (mfmSyncCounter_ == 96) {
-                        mfmSyncCounter_ -= 16;
-                        if (sr_ & MARK) crcClear();
-                        else if (!crc_) sr_ |= CRC0;
-                        if (fifoPush(sr_) && !error_) error_ |= 0x01;
-                    }
+                if (previousMarginal) {
+                    if (sct == 1)
+                        resolvedType[resolvedCount++] = prevLs_ & 3;
+                    else
+                        resolvedType[resolvedCount++] = (prevLs_ >> 2) & 3;
+                }
+                if (!currentMarginal) {
+                    if (sct == 1)
+                        resolvedType[resolvedCount++] = sct;
+                    else
+                        resolvedType[resolvedCount++] = lct;
                 }
             }
+            prevLs_ = uint8_t((lct << 2) | sct);
         }
+
+        // Run the CSM and the TSM on the resolved cells (swim1.cpp:1128-1220)
+        for (int r = 0; r != resolvedCount; r++) {
+            const uint32_t type = resolvedType[r];
+            bool dropOneBit = false;
+            switch (csmState_) {
+            case CsmInit:
+                csmErr_[0] = csmErr_[1] = 0;
+                csmPairSide_ = 0;
+                csmMinCount_ = 0;
+                csmState_ = CsmCountMin;
+                break;
+
+            case CsmCountMin:
+                if (type != 1) {
+                    csmState_ = CsmInit;
+                    break;
+                }
+                csmErr_[csmPairSide_] +=
+                    uint32_t(params_[P_MULT]) * uint32_t(cyclesToNext >> 1);
+                csmMinCount_++;
+                if (csmMinCount_ == 64) {
+                    for (int i = 0; i != 2; i++) {
+                        correction_[i] = uint8_t(csmErr_[i] >> 8);
+                        if (!error_ && (csmErr_[i] < 0xc000 ||
+                                        csmErr_[i] >= 0x1c000))
+                            error_ |= 0x08;
+                    }
+                    csmState_ = CsmWaitNonMin;
+                }
+                break;
+
+            case CsmWaitNonMin:
+                if (type == 1)
+                    break;
+                csmState_ = CsmCheckMark;
+                tsmOut_ = 0;
+                tsmMark_ = false;
+                tsmBits_ = 0;
+                crcClear();
+                dropOneBit = true;
+                [[fallthrough]];
+
+            case CsmCheckMark:
+            case CsmSynchronized:
+                if (setup_ & 0x04) {
+                    // GCR: a gap of N cells is N-1 zeros then a one; the
+                    // high bit frames the byte (swim1.cpp:1166-1175).
+                    for (uint32_t i = 0; i != type; i++) {
+                        const int bit = (i + 1 == type) ? 1 : 0;
+                        tsmOut_ = uint8_t((tsmOut_ << 1) | bit);
+                        if (tsmOut_ & 0x80) {
+                            if (fifoPush(tsmOut_) && !error_) error_ |= 0x01;
+                            tsmOut_ = 0;
+                        }
+                    }
+                } else {
+                    // MFM: gap type + current polarity → emitted bits;
+                    // idx 5 (long-long on a one) is the missing clock of
+                    // the A1/C2 marks (swim1.cpp:1176-1215).
+                    static constexpr uint32_t nb[6] = { 1, 1, 2, 1, 2, 2 };
+                    static constexpr uint32_t bb[6] = { 1, 0, 1, 0, 1, 0 };
+                    const int idx = (tsmOut_ & 1 ? 0 : 3) + int(type) - 1;
+                    uint32_t nbc = nb[idx];
+                    const uint32_t bbc = bb[idx];
+                    if (dropOneBit) {
+                        nbc--;
+                        dropOneBit = false;
+                    }
+                    if (idx == 5)
+                        tsmMark_ = true;
+                    for (uint32_t i = 0; i != nbc; i++) {
+                        const int bit = int((bbc >> (nbc - 1 - i)) & 1);
+                        tsmOut_ = uint8_t((tsmOut_ << 1) | bit);
+                        tsmBits_++;
+                        crcUpdate(bit);
+
+                        if (tsmBits_ == 8) {
+                            if (csmState_ == CsmCheckMark) {
+                                if (!tsmMark_) {
+                                    csmState_ = CsmInit;
+                                    break;
+                                }
+                                csmState_ = CsmSynchronized;
+                            }
+                            uint16_t val = tsmOut_;
+                            if (tsmMark_) {
+                                tsmMark_ = false;
+                                val |= MARK;
+                                crcClear();
+                            }
+                            if (!crc_)
+                                val |= CRC0;
+                            if (fifoPush(val) && !error_) error_ |= 0x01;
+                            tsmBits_ = 0;
+                        }
+                    }
+                }
+                break;
+            }
+
+            csmPairSide_ = uint8_t(!csmPairSide_);
+        }
+
+        // Go to the next sync point (swim1.cpp:1224-1229)
+        if (willHitEdge) {
+            latestEdge_ += cyclesToNext;
+            lastSync_ = latestEdge_;
+        } else
+            lastSync_ = nextSync;
     }
+    lastSync_ = nextSync;
 }
 
 // Write engine — swim1.cpp:888-965: the TSS turns data bits into

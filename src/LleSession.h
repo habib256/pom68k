@@ -3,12 +3,28 @@
 // Devices report every command-level fallback here.  Product mode then has
 // one authoritative answer for the whole session, save states included,
 // instead of inferring purity from the one device a machine happens to query.
+//
+// Since 2026-08-14 the same report carries the WHOLE outcome, not just the
+// failures: which LLE-capable device a machine actually built, which side it
+// landed on, why, and which dump it loaded.  That is what the "Périphériques"
+// window renders (src/PeripheralWindow.*).  The rule it exists to enforce:
+// **the GUI displays what the device reported, it never re-derives the
+// decision** — a second copy of the "is there a dump / is the knob set"
+// logic is exactly the drift this tree has paid for before (CLAUDE.md's
+// per-file notes are full of it).  Devices are built once, from getenv, so a
+// changed selection is applied by relaunching the process with a new
+// environment — the Machine menu's mechanism, reused verbatim.
 
 #pragma once
 
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <mutex>
+#include <string>
+#include <vector>
 
 namespace pom68k::lle {
 
@@ -25,9 +41,12 @@ inline bool requested() noexcept {
     return e && e[0] && e[0] != '0';
 }
 
+inline void clearDevices();          // defined with the registry below
+
 inline void beginSession() noexcept {
     gHleModules.store(0, std::memory_order_release);
     gQualified.store(false, std::memory_order_release);
+    clearDevices();
 }
 
 inline void activateHle(Module module) noexcept {
@@ -54,6 +73,138 @@ inline bool qualified() noexcept {
 // product promise.  Direct callers and the GUI command queue share this gate.
 inline bool engineChangeAllowed(int engine) noexcept {
     return !requested() || !qualified() || engine == 1;
+}
+
+// ── Peripheral registry — what the "Périphériques" window renders ───────
+//
+// One entry per LLE-CAPABLE device the running machine actually built. A
+// machine that has no such device (the compacts' M0110 keyboard, a Centris
+// with no Egret) contributes nothing, which is why the window lists what
+// this machine has rather than a fixed table of every device in the tree.
+
+enum class Mode { Lle, Hle };
+
+enum class Why {
+    LleFirmware,   // real firmware executing on its real MCU core
+    HleNoDump,     // no dump found under any candidate path — the fallback
+    HleForced,     // the knob says 0, dumps notwithstanding
+};
+
+struct Device {
+    Module      module = HleEgretCuda;
+    std::string name;                       // shown as the row title
+    std::string knob;                       // "POM68K_EGRET_LLE"
+    Mode        mode = Mode::Hle;
+    Why         why  = Why::HleNoDump;
+    std::string firmware;                   // dump loaded (LLE), else empty
+    std::vector<std::string> candidates;    // paths the device searched
+    // Per-device dump override. `pathKnob` names the env variable
+    // ("POM68K_CUDA_FW"); `firmwareForced` is the value that was in force
+    // when this device was built — empty means "automatic, first candidate
+    // found". The two are separate from `firmware` on purpose: `firmware`
+    // says what LOADED, `firmwareForced` says what was ASKED FOR, and a
+    // window comparing a staged choice against the loaded path would report
+    // a pending change every time automatic mode picked a file.
+    std::string pathKnob;
+    std::string firmwareForced;
+};
+
+inline std::mutex gDeviceMutex;
+inline std::vector<Device> gDevices;
+
+// A device reports its outcome exactly once, at construction. Reporting an
+// HLE outcome IS the old activateHle() call — product mode keeps behaving
+// identically, and no device can now mark itself HLE without also saying
+// which knob and which dumps were in play.
+inline void report(const Device& d) {
+    {
+        std::lock_guard<std::mutex> lock(gDeviceMutex);
+        bool replaced = false;
+        for (Device& e : gDevices)
+            if (e.module == d.module) { e = d; replaced = true; break; }
+        if (!replaced) gDevices.push_back(d);
+    }
+    if (d.mode == Mode::Hle) activateHle(d.module);
+}
+
+inline std::vector<Device> devices() {
+    std::lock_guard<std::mutex> lock(gDeviceMutex);
+    return gDevices;
+}
+
+inline void clearDevices() {
+    std::lock_guard<std::mutex> lock(gDeviceMutex);
+    gDevices.clear();
+}
+
+// Could this device run LLE at all? Tested on the very paths the device
+// itself searched, so the answer cannot disagree with what a relaunch would
+// find. A device already running firmware needs no probe.
+inline bool dumpAvailable(const Device& d) {
+    if (d.mode == Mode::Lle) return true;
+    for (const std::string& p : d.candidates)
+        if (std::ifstream(p, std::ios::binary)) return true;
+    return false;
+}
+
+struct Choice {
+    Module      module = HleEgretCuda;
+    Mode        mode   = Mode::Lle;
+    std::string firmware;                   // "" = automatic (first found)
+};
+
+// One environment variable the relaunch must carry. `unset` is not a
+// decoration: "back to automatic" has to REMOVE the override, because the
+// re-exec inherits this process's environment and an empty string is a
+// perfectly good path as far as the device is concerned (it would fail to
+// open and warn). The two operations are therefore distinct in the type,
+// rather than encoded as an empty value the caller might setenv() verbatim.
+struct EnvAssignment {
+    std::string knob;
+    std::string value;
+    bool        unset = false;
+};
+
+// The environment a staged selection implies, ready for the relaunch.
+//
+// Every selected device is emitted, INCLUDING one whose choice matches what
+// is running: the relaunch inherits this process's environment, so a knob
+// left over from an earlier relaunch would otherwise survive and silently
+// win. "Undo my earlier HLE forcing" is precisely an explicit `=1`, and
+// "undo my earlier dump pick" is precisely an unset.
+inline std::vector<EnvAssignment>
+envForSelection(const std::vector<Device>& live,
+                const std::vector<Choice>& want) {
+    std::vector<EnvAssignment> out;
+    for (const Device& d : live) {
+        for (const Choice& c : want) {
+            if (c.module != d.module) continue;
+            if (!d.knob.empty())
+                out.push_back({d.knob, c.mode == Mode::Lle ? "1" : "0", false});
+            if (!d.pathKnob.empty()) {
+                if (c.firmware.empty()) out.push_back({d.pathKnob, "", true});
+                else out.push_back({d.pathKnob, c.firmware, false});
+            }
+            break;
+        }
+    }
+    return out;
+}
+
+// How many staged choices differ from what this session is running — the
+// window's "anything to apply?" test. A dump pick counts on its own:
+// switching an already-LLE device from one factory revision to another
+// changes nothing about the mode and everything about the machine.
+inline int pendingCount(const std::vector<Device>& live,
+                        const std::vector<Choice>& want) {
+    int n = 0;
+    for (const Device& d : live)
+        for (const Choice& c : want) {
+            if (c.module != d.module) continue;
+            if (c.mode != d.mode || c.firmware != d.firmwareForced) n++;
+            break;
+        }
+    return n;
 }
 
 enum SnapshotFlag : std::uint32_t {

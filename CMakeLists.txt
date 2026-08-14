@@ -327,7 +327,8 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
         ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
     add_executable(${PROJECT_NAME} src/main.cpp src/miniaudio_impl.cpp
-        src/FloppySound.cpp src/DiskBays.cpp src/DockLayout.cpp ${IMGUI_SOURCES})
+        src/FloppySound.cpp src/DiskBays.cpp src/PeripheralWindow.cpp
+        src/DockLayout.cpp ${IMGUI_SOURCES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
     target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core)
     # Version stamp for `POM68K --version` (release smoke gates). Single
@@ -630,6 +631,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # the most FREQUENT candidate instead of the one that moves).
     add_executable(folderprobe_test tests/folderprobe_test.cpp)
     add_test(NAME folderprobe_test COMMAND folderprobe_test)
+
+    # The peripheral LLE/HLE registry behind the "Périphériques" window. The
+    # window itself is compile-verified only (no gate opens an ImGui window),
+    # so everything that could be wrong lives below it and is gated here.
+    add_executable(peripheral_lle_test tests/peripheral_lle_test.cpp)
+    target_link_libraries(peripheral_lle_test PRIVATE pom68k_core)
+    add_test(NAME peripheral_lle_test COMMAND peripheral_lle_test)
 
     # LLAP two-System etalon: two Mac II machines boot Sys 6 with AppleTalk
     # seeded active on a shared virtual cable — real LAP address acquisition

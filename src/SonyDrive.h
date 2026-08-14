@@ -6,12 +6,17 @@
 // sectors/track). SuperDrive HD: 80×2×18×512 @ 300 RPM (IBM System 34
 // MFM). Sense/command CA protocol addressed by CA2..CA0+SEL, stepped by
 // LSTRB. Images: raw .dsk (819200 / 409600 / 1474560) or DiskCopy 4.2.
+// The track is stored as raw cells (the write-back decoders read them)
+// and exposed to the SWIM read engines as a FLUX VIEW — transition times
+// for their FluxPll data separator, with an opt-in jitter model
+// (POM68K_FLUX_JITTER; § 1.3 flux plan steps 2-3, 2026-08-14).
 // Source of truth: MAME floppy.cpp (mac_floppy / mfd75w) + flopimg.cpp +
 // ap_dsk35.cpp; DEV.md. Gate: tests/gcr_test.cpp, swim2_media_test.
 
 #pragma once
 #include "SaveState.h"
 #include "FloppySoundSink.h"
+#include "FluxPll.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -63,11 +68,12 @@ public:
     void writeNibble(uint8_t nibble);
     void flushWrite(bool side1);
 
-    // ── Raw-cell interface (SWIM2 bit engine, LLE MFM cell timing) ──
-    // The track is a discrete cell array (1 = flux transition) at the
-    // SWIM2 cell rate (MFM 16 / GCR 31 C15M clocks), padded to one full
-    // revolution so angular position and latency are real.
-    int nextCell(bool side1);                    // advance one cell
+    // ── Raw-cell interface (write-back side; reads go through the flux
+    // view below since § 1.3 step 3) ── the track is a discrete cell array
+    // (1 = flux transition) at the media cell rate (MFM 16 / GCR 31 C15M
+    // clocks), padded to one full revolution so angular position and
+    // latency are real. (nextCell(), the fixed-window read entry, retired
+    // with the FluxPll migration — the separator reads transitions now.)
     void syncCellsToRotation(bool side1);        // land head at spin_ angle
     int64_t startWriteCells(bool side1);         // resync + current cell
     // Write-back: blank [startCell, startCell+totalCells), set transition
@@ -77,6 +83,36 @@ public:
     // Clock the spin_ counter ticks in (Plus legacy default 7 833 600 Hz;
     // Q605 passes its 25 MHz machine clock) — used for rotation angle.
     void setSpinClockHz(int64_t hz) { spinClockHz_ = hz; }
+
+    // ── Flux view (LLE_VS_HLE § 1.3, step 2 of the flux plan) ──
+    // The same track as flux-transition TIMES, for a controller running a
+    // FluxPll data separator. Unit: FluxPll ticks, 1 controller (C15M)
+    // clock = FluxPll::kSubCell ticks, so one nominal cell of this medium
+    // is fluxCellTicks() and one revolution fluxRevTicks(). The view is
+    // derived from `cells_` (transition at the CENTRE of each 1-cell, as
+    // FluxPll::writeNextBit lands a written one) and rebuilt lazily, so
+    // every write-back path keeps it in sync for free.
+    int64_t fluxCellTicks() const;               // nominal cell, in ticks
+    int64_t fluxRevTicks() const;                // one revolution, in ticks
+    int64_t fluxAngleTicks(bool side1);          // head position at spin_
+    // First transition at or after `tick` — MAME
+    // floppy_image_device::get_next_transition. `tick` is absolute (the
+    // track repeats every fluxRevTicks()); FluxPll::kNever on a blank or
+    // absent track.
+    int64_t nextFluxAfter(int64_t tick, bool side1);
+    // Opt-in read-jitter model: edges displaced ± pct% of one nominal cell,
+    // deterministically per (track, side, transition, revolution) so runs
+    // and snapshots replay identically. 0 (the default, POM68K_FLUX_JITTER
+    // unset) keeps ideal edges. Clamped to 45 % — half a cell would make
+    // neighbouring transitions swap, which no head amplifier produces.
+    void setFluxJitterPercent(int pct);
+    int fluxJitterPercent() const { return fluxJitterPct_; }
+    // Test seam (gates only): re-derive the flux view with every spacing
+    // scaled by permille/1000, modelling a track written on an off-rate
+    // spindle. Transitions pushed past the revolution end are dropped —
+    // physically, a slow-written track runs into the index. 1000 restores
+    // the as-written view.
+    void debugStretchFluxPermille(int permille);
 
     // Mechanical-sound consumer (GUI only; tests leave it null).
     void setSoundSink(FloppySoundSink* s) { sound_ = s; }
@@ -128,6 +164,7 @@ public:
         ar(wrState_, wrSync_, wrAddrPos_, wrDataPos_,
            wrTrack_, wrHead_, wrSector_, wrData_);
         ar.blob(gcrWrBuf_);
+        fluxDirty_ = true;                       // flux_ is derived from cells_
     }
 
 private:
@@ -135,6 +172,9 @@ private:
     void encodeTrackGcr();
     void encodeTrackMfm();
     void buildCells();
+    void fluxRebuild();
+    int64_t fluxJitter(size_t idx, int64_t revNo) const;
+    static int fluxJitterEnv();
     void decodeMfmCells();
     void decodeGcrCells();
     // Scan a decoded GCR nibble sequence for D5 AA AD data fields and
@@ -159,6 +199,14 @@ private:
     size_t streamPos_ = 0;
     std::vector<uint8_t> cells_;                 // raw cells, one revolution
     size_t cellPos_ = 0;
+    // Flux view over cells_ — derived, rebuilt lazily (never serialized:
+    // visit() marks it dirty on both directions and the first
+    // nextFluxAfter() after a restore rebuilds it from the loaded cells_).
+    std::vector<int64_t> flux_;                  // transition ticks, one rev
+    bool fluxDirty_ = true;
+    int fluxJitterPct_ = fluxJitterEnv();        // POM68K_FLUX_JITTER
+    int64_t fluxJitterTicks_ = 0;
+    int fluxStretchPermille_ = 1000;             // test seam, gates only
     int64_t spinClockHz_ = 7833600;
     int track_ = 0;
     bool side1_ = false;

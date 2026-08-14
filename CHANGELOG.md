@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 227 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 231 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -161,6 +161,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Storage — SCSI, IWM/SWIM, media
 
+- **what the SWIM read path actually runs now — a real FluxPll separator over a flux view of the track, and why the off-rate gate (not jitter) is the one that catches its regression** → [2026-08-14 (fourth) — The SWIM read engines get their data separator…](#2026-08-14-flux-separator)
+- **why only ONE board honoured a firmware-dump override for a year, and what that cost on a family whose behaviour differs by revision** → [2026-08-14 (seventh) — Which dump, not only which side…](#2026-08-14-firmware-picker)
+- **SWIM1's ISM is not a window separator: LS-pair gap classification, the CSM's u8 correction factors (a window on 192..447), and why the param RAM is load-bearing now** → [2026-08-14 (fifth) — SWIM1's ISM read engine is MAME's real one…](#2026-08-14-ism-csm)
 - **53C96 pseudo-DMA reads** → [2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work…](#2026-07-18--q61-53c96-pseudo-dma-reads-work--the-mac-os-81-scsi-driver-now-transfers-full-512-byte-blocks-off-the-disk)
 - **the block-0 re-read loop was a Cuda ReadXPram framing divergence** → [2026-07-19 — Q6.2 RESOLVED: the block-0 re-read loop was a Cuda ReadXPram…](#2026-07-19--q62-resolved-the-block-0-re-read-loop-was-a-cuda-readxpram-reply-framing-divergence--the-boot-now-loads-the-driver-partition-map-and-system-progresses-to-a-new-scsi-blocker)
 - **multi-block read needed the DATA IN bus-service interrupt** → [2026-07-19 — Q6.3 RESOLVED: SCSI multi-block read…](#2026-07-19--q63-resolved-scsi-multi-block-read--the-polled-10-transfer-info-needed-the-data-in-bus-service-interrupt)
@@ -287,6 +290,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-14 (seventh)** — [Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window](#2026-08-14-firmware-picker)
+- **2026-08-14 (sixth)** — ["Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable](#2026-08-14-peripheral-window)
+- **2026-08-14 (fifth)** — [SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing](#2026-08-14-ism-csm)
+- **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](#2026-08-14-flux-separator)
 - **2026-08-14 (third)** — [The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen](#2026-08-14-eclipse-beyond-boot)
 - **2026-08-14 (later)** — [The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse](#2026-08-14-eclipse-egret-lle)
 - **2026-08-14** — [The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own](#2026-08-14-duo-beyond-boot)
@@ -516,6 +523,242 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-14-firmware-picker"></a>
+## 2026-08-14 (seventh) — Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window
+
+The Périphériques window shipped that morning answered "LLE or HLE?". It
+could not answer "which revision?", and looking into why turned up a gap
+older than the window: **only `V8Memory` honoured a dump override.**
+`POM68K_CUDA_FW` had been added as a bring-up path for exercising the
+factory 341S0417 against the M68hc05 without rebuilding, and it stayed
+where it was written. On the six other Egret/Cuda boards — Sonora, VASP,
+RBV, Q605, Q630, Eclipse — "run *this* firmware" did not exist at all, and
+the ADB transceiver had no override on any machine.
+
+That is not a cosmetic gap on this family. Firmware revision is behaviour
+here, and this tree has the scars to prove it: the Color Classic's Cuda
+2.35 takes a DFAC error path without the DFAC2's I2C ACK, and the AIO ROM
+**livelocks** on 2.37's pseudo-command `$0E` — which is why the LC 520
+family pins 2.40. Being unable to say which dump to load meant being unable
+to reproduce either.
+
+`src/FirmwareChoice.h` is now the one search all eight devices run:
+
+  1. the per-device path knob — `POM68K_CUDA_FW` for the Egret/Cuda MCU
+     (the established name, kept rather than renamed for symmetry under a
+     documented script; it covers both flavours), `POM68K_ADB_FW` for the
+     PIC1654S, which is new;
+  2. the board's own ordered candidate list, factory part first;
+  3. failing both, the documented HLE substitute.
+
+An override that fails to load **warns and falls through** rather than
+aborting — a diagnostic path left in someone's environment must not be able
+to stop a machine booting. That was `V8Memory`'s behaviour and it is now
+everyone's. Twenty lines of copy-paste per site collapse into a `Request`
+plus the device's own loader lambda, and the eight stderr wordings become
+one (checked first: the gates that care about the LLE/HLE split read
+`egretLleActive()` / `lle()`, never the text).
+
+The window gained the picker: every dump found beside the candidates
+(`fw::discoverDumps` scans their directories, so a revision the user dumped
+themselves is offered without editing a source file), the factory parts
+marked *(d'origine)*, the loaded one marked *← chargé*, plus a free path
+field for anything living elsewhere. Two behaviours are subtle enough that
+they are gated rather than trusted:
+
+- **A dump pick is a pending change on its own.** Same mode, different
+  machine — and the comparison is against the override *in force*
+  (`firmwareForced`), never against the path automatic mode happened to
+  pick, or every freshly-opened window would claim a pending change.
+- **Returning to automatic must UNSET the knob**, which is why the mapping
+  returns `EnvAssignment{knob, value, unset}` instead of a pair. Writing
+  `""` would leave the re-exec holding an empty path: the device fails to
+  open it, warns, and boots on its factory part — the right machine for the
+  wrong reason, on every boot from then on, with a warning nobody reads
+  because it looks like the no-dump case.
+
+`peripheral_lle_test` grows to 39 checks; both new behaviours were verified
+to bite (writing `""` instead of unsetting, and dropping the firmware term
+from `pendingCount`, each fail exactly their own check). unit 93/93,
+smoke 8/8, jit 27/27. `config_test` again earned its keep: it refused the
+tree until `POM68K_ADB_FW` appeared in `DEV.md` § 5.
+
+<a id="2026-08-14-peripheral-window"></a>
+## 2026-08-14 (sixth) — "Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable
+
+The § 2 policy of `LLE_VS_HLE.md` has been *"fallbacks are kept, but never
+silent"* since 2026-07-29, enforced by a NON-CONFORMANT notice printed at
+every HLE entry. Held up honestly, it had a hole the whole time: it is
+enforced on **stderr**. A user who launches POM68K from a desktop icon or a
+file manager never sees a line of it, so for them the substitute was exactly
+as silent as before the policy existed — and "is this session conformant?"
+had no answer short of relaunching from a terminal.
+
+The window is that notice in a form the GUI user can see, and the fine
+per-device selection the env knobs were previously the only way to reach.
+
+**The architecture is the interesting part, not the widgets.** Three rules:
+
+- **It renders reports; it never re-derives.** Devices already decided
+  LLE-vs-HLE in their constructors; they now `report()` the *whole* outcome
+  to a registry in `LleSession.h` — mode, reason (firmware running / no dump
+  / knob forced), the dump actually loaded, and the paths searched. A window
+  that re-ran "is the dump there, is the knob set" would be a second copy of
+  that decision, free to drift from the first; this tree's per-file notes are
+  a catalogue of what that costs. Reporting HLE still *is* the
+  `activateHle()` call it replaced, so `--lle-aarch64` behaves identically.
+  Seven platforms shared the same twenty lines, so they share one
+  `reportFirmwareDevice()` helper rather than seven near-copies.
+- **It lists what THIS machine built.** A Centris has no Egret; the Mac Plus
+  has neither an Egret nor an ADB transceiver. An empty list is a real
+  answer, and the window says so in words.
+- **Changes are staged, applied by a relaunch.** Devices are constructed once
+  from `getenv` before the first instruction — there is no live toggle, and
+  offering one would be a lie in the UI. Apply sets the knobs and re-execs on
+  the process's own argv, the Machine menu's mechanism.
+
+Two details that are correctness, not polish. Apply writes a value for
+**every** selected device, not only the changed ones: the re-exec inherits
+this process's environment, so a `POM68K_ADB_LLE=0` from an earlier session
+would survive and quietly win — re-asserting `=1` on an unchanged row is what
+makes an undo actually undo. And selecting LLE is **disabled**, with the
+searched paths in the tooltip, when no dump is present: a radio the user can
+click into a state the relaunch would silently discard is worse than a
+disabled one, and "where do I put the file" now has an answer in the window
+instead of in the documentation.
+
+**Running it found the placement bug that reading it did not.** The menu
+entry was first appended to the Machine menu — semantically the right home.
+Under Xvfb the Machine menu turns out to be 37 profiles plus eleven platform
+separators, taller than a 900 px screen, so the entry landed under the scroll
+and could not be reached at all. It sits at menu-bar level now, beside
+`Disques...`. The window also opens itself once on the first frame a machine
+reports a substitute — which is the whole point: the GUI user gets the notice
+without having gone looking for it.
+
+Gate: `peripheral_lle_test`, 25 checks, `unit` — registration and replacement,
+the product-mode contract on both directions, the reason on all three paths,
+`dumpAvailable` against a file created and removed by the test, and the env
+mapping including the re-assert. Verified to bite: restricting
+`envForSelection` to changed devices fails exactly the two checks that exist
+for the inherited-environment trap. The window above it is compile-verified
+only, as every GUI surface in this tree is, but it was also run: on the Mac
+Plus it renders the empty state correctly ("no peripheral with an HLE
+substitute"), which is the honest answer for a machine whose keyboard is an
+M0110.
+
+<a id="2026-08-14-ism-csm"></a>
+## 2026-08-14 (fifth) — SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing
+
+Hours after step 4a put an interim `FluxPll` under SWIM1's ISM shifter, step
+4b replaced both with the machinery the chip actually has —
+`swim1.cpp:885-1233` ported verbatim, the piece § 1.3 had carried as "dead
+code MAME models and we do not" since the first inventory pass.
+
+What the engine is, because it is nothing like a window separator: the ISM
+measures **inter-transition times** in half-cycles of the controller clock
+(`time_to_cycles = 2×clock`, `swim1.cpp:624-632`) and classifies each gap
+under a Short and a Long hypothesis against **cumulative parameter-RAM
+thresholds** (`MINCT+6`, then `+SSx+4`, `+SLx+4`, `+RPT+4` — three branch
+flavours keyed on what the previous gap resolved to). Disagreeing hypotheses
+make a *marginal* pair resolved against the next gap; two marginal pairs in
+a row raise error `$40`. Resolved cell counts feed two machines: the
+**Correction State Machine** — 64 consecutive minimum cells accumulate
+`P_MULT × (gap>>1)` per pair side, and the sums become two **u8 correction
+factors** that rescale every threshold (the `<192 → |256` fold makes the u8
+a window on 192..447, i.e. ±25 % around neutral — the same capture range
+MAME's `fdc_pll_t` clamps to, arrived at from the opposite direction) — and
+the **Trans-Space Machine**, which assembles FIFO bytes directly: MFM
+through the `nb`/`bb` tables with the missing-clock mark detection (`idx 5`
+= the A1/C2 signature), GCR as gap→bits with high-bit framing. GCR ACTION
+starts in `CSM_SYNCHRONIZED` (`swim1.cpp:394`): only MFM calibrates, as on
+silicon. Read errors `$20` (cell too long) and `$08` (calibration out of
+range) complete the register surface.
+
+Two consequences worth recording:
+
+- **The parameter RAM became load-bearing.** `swim1_test`'s table used to
+  say "only TIME0/TIME1 matter to our engine" — true of the SWIM2-shifter
+  stand-in, false of silicon. The new table is *derived from the threshold
+  shapes* (boundaries at 48/80/112/144 halves for MFM-at-fclk, 46/93/155/217
+  for GCR; `P_MULT=64` so a nominal calibration sums to exactly `0x10000` →
+  the neutral scale) and documented as derived, not dumped. The day a real
+  .Sony driver table is traced, compare it against these — the shapes must
+  agree or one of us is wrong.
+- **The bite test lives IN the suite, driven through the register file.** A
+  +20 % off-rate track misclassifies its 2-cell gaps at the neutral scale
+  (115 halves against the 112 boundary), so the read only succeeds because
+  the CSM recalibrates. `P_MULT=0` starves the calibration: same track,
+  error `$08`, no sector — gated both ways in `swim1_test`, no scratch-build
+  neutering needed. A GCR-through-ISM block pins the `CSM_SYNCHRONIZED`
+  entry and the gap→bits TSM.
+
+Snapshot format **v6 → v7**: edge clock, LS-pair phase, calibration
+counters, correction factors and TSM assembly replace SWIM1's interim
+separator state — a snapshot taken mid-calibration must resume with the
+same error counters or every threshold of the rest of the read comes out
+different. `FluxPll` remains `Swim2`'s separator only, on the honest
+ground that MAME's swim2 has no CSM (the silicon replaced it) and the PLL
+stands in for that chip's analog loop. Full rebuild; unit 92/92, smoke
+8/8, jit 27/27 on this host — the asset-dependent tiers still owe a pass
+on a machine with ROMs.
+
+<a id="2026-08-14-flux-separator"></a>
+## 2026-08-14 (fourth) — The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites
+
+Steps 2-4a of the `docs/LLE_VS_HLE.md` § 1.3 flux plan, twelve days after
+step 1 built the separator nobody read. The shape of the change is small
+because the pieces were already honest: `FluxPll` existed and was gated, and
+the SWIM engines already consumed cells one window at a time — what was fake
+was the alignment, one *pre-aligned* cell delivered per fixed window, so the
+loop a real controller uses to find the cell had nothing to do.
+
+- **`SonyDrive` exposes the track as a flux view** (`nextFluxAfter` — MAME's
+  `get_next_transition`): transition times at cell centres, in `FluxPll`
+  ticks (1 C15M clock = `kSubCell` = 1024 ticks), derived lazily from the
+  cell ring so every write-back path keeps it in sync for free, wrap
+  handled per revolution. An **opt-in jitter model** (`POM68K_FLUX_JITTER`,
+  ± pct % of a cell, clamp 45) displaces each edge deterministically per
+  (track, side, transition, **revolution**) — splitmix64, no RNG state —
+  so replays and snapshots are bit-identical while successive revolutions
+  differ, which is what peak-shift noise looks like to a separator.
+- **`Swim2` and `Swim1`-ISM read through the PLL** (`tickRead`: window
+  phase feedback + `freq_hist` period trim instead of `cellPhase_`
+  arithmetic; nominal period from setup[3:2], reprogrammed on a mid-ACTION
+  setup write exactly as the old per-window `cellCycles()` read behaved).
+  `cyclesToNextEvent` returns the separator's own next window end, so the
+  peripheral-deadline contract stays exact. `nextCell()` — the fixed-window
+  entry — is deleted. The `Iwm` READ path is deliberately untouched: the
+  Plus/LC II denibble loops are hand-timed against the IWM byte cadence
+  (2026-08-05), and that stream is off limits without its etalons.
+- **Snapshot format v5 → v6**: the separator (window phase, pulled period,
+  flux clock) replaces `cellPhase_` in both SWIM `visit()`s. It is live
+  machine state, not a derivable cache — restoring a mid-sector snapshot
+  with a nominal loop would shift every following window on non-ideal
+  media. Gated in `swim2_media_test`: snapshot taken mid-sector at 10 %
+  jitter, restored into fresh objects, remaining byte stream identical.
+- **Gates** — `swim2_media_test` +9, `swim1_test` +1, every pre-existing
+  floppy gate re-proving the ideal-edge stream unchanged (on ideal edges
+  the PLL's delta is 0 and it free-runs at nominal: same bits by
+  construction). 12 % jitter decodes CRC-valid MFM and GCR; ±8 % off-rate
+  tracks (`debugStretchFluxPermille`, the test seam) decode while the loop
+  pulls its period. **Verified to bite, and the bite is exactly where the
+  2026-08-02 test-first note said**: with the loop's feedback neutralised
+  (phase + trim zeroed), the two off-rate checks fail and *nothing else
+  does* — jitter alone never pushes an edge out of its own fixed window,
+  on the real controllers just as in `flux_pll_test`.
+
+What this buys today is machinery, not symptoms — no shipped image reads
+differently, which is the point (the etalons prove it). What it retires is
+the § 1.3 lead bullet ("an ideal PLL, no jitter") and the excuse for
+`Swim1`'s missing LS-pair correction machinery: the shifter now receives
+PLL-recovered cells, so MAME's `swim1.cpp:965-1140` port finally has an
+input it could discriminate. Still open there, all symptom-free: the flux
+*store* (the view derives from the canonical cell ring, so off-rate written
+flux does not survive a commit), the LS-pair port itself, and the `Iwm`
+cell engine. `config_test` earned its keep in passing: it refused the tree
+until `POM68K_FLUX_JITTER` appeared in `DEV.md` § 5.
 
 <a id="2026-08-14-eclipse-beyond-boot"></a>
 ## 2026-08-14 (third) — The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen
