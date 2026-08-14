@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 228 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 229 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,7 +11,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 16 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 31 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 34 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 35 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 12 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
@@ -143,6 +143,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-09 (seventh)** — [The GUI pass: the Quadra booted System 6.0.5 off a floppy nobody asked for, and no gate could ever have seen it](CHANGELOG.md#2026-08-09-gui-pass)
 - **2026-08-13 (seventh)** — [The IIfx dirty-volume refusal was a swallowed VBL disable, and "address 1" was open bus wearing a wrapped PC](CHANGELOG.md#2026-08-13-iifx-toby-vbl-disable)
 - **2026-08-14** — [The Duo's last beyond-boot leg: a power flag that never let it reboot, a trackball that was never wired, and a volume this machine will not flush on its own](CHANGELOG.md#2026-08-14-duo-beyond-boot)
+- **2026-08-14 (fifth)** — [SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing](CHANGELOG.md#2026-08-14-ism-csm)
 - **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](CHANGELOG.md#2026-08-14-flux-separator)
 
 ## Video — decoders, the raster beam, DAFB

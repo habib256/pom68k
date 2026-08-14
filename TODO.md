@@ -697,25 +697,26 @@ product decision, not a cleanup.
   (Send Abort / CRC resets `:1602/:1635` "not implemented", no EOM latch, no
   hunt/sync) — for LLAP behaviours **we are the more complete model**. Use MAME
   as oracle for the ASYNC side only; do not regress LLAP chasing parity.
-- [x] **Floppy flux + PLL layer, steps 2-4a** — **done 2026-08-14**
+- [x] **Floppy flux + PLL layer, steps 2-4b** — **done 2026-08-14**
   (`docs/LLE_VS_HLE.md` § 1.3 owns the full state). `SonyDrive` exposes the
   track as a flux view (`nextFluxAfter` = MAME's `get_next_transition`,
-  opt-in deterministic jitter `POM68K_FLUX_JITTER`), and `Swim2` +
-  `Swim1`-ISM read through a real `FluxPll` separator; the separator is
-  serialized (snapshot **v6**), `nextCell()` retired. Gates:
-  `swim2_media_test` +9 checks, `swim1_test` +1 — 12 % jitter and ±8 %
-  off-rate tracks decode CRC-valid, and the off-rate pair is the one that
-  bites (loop feedback neutralised → exactly those two fail), confirming
-  the 2026-08-02 test-first note: jitter alone never leaves its own fixed
-  window. Every pre-existing floppy gate re-proves the ideal-edge bit
-  stream unchanged. **Still open, none symptom-backed**: a first-class
+  opt-in deterministic jitter `POM68K_FLUX_JITTER`); `Swim2` reads through
+  a real `FluxPll` separator (snapshot **v6**); `Swim1`-ISM runs **MAME's
+  real LS-pair/CSM/TSM engine** (`swim1.cpp:885-1233` verbatim, snapshot
+  **v7**) — the 64-min-cell calibration and its per-pair-side correction
+  factors are live, the parameter RAM became load-bearing, and the bite
+  test is IN the suite: a +20 % off-rate track reads only because the CSM
+  recalibrates, `P_MULT=0` starves the calibration and the same track
+  fails with error `$08`. `nextCell()` retired. Gates: `swim2_media_test`
+  +9 checks, `swim1_test` +7; every pre-existing floppy gate re-proves the
+  ideal-edge bit stream unchanged; the 2026-08-02 test-first note held on
+  both engines (jitter alone never leaves its own fixed window — off-rate
+  is what bites). **Still open, neither symptom-backed**: a first-class
   flux track *store* (the view derives from the canonical cell ring, so
   off-rate written flux does not survive a commit — same change that would
-  let `encodeTrackGcr` adopt MAME's zone arithmetic), the `Swim1` LS-pair
-  correction port (`swim1.cpp:965-1140` — it finally has PLL-recovered
-  cells to discriminate), and the `Iwm` READ path (hand-timed denibble
-  stream — off limits without `disk_boot_etalon` + the LC II floppy gates
-  in the loop).
+  let `encodeTrackGcr` adopt MAME's zone arithmetic), and the `Iwm` READ
+  path (hand-timed denibble stream — off limits without
+  `disk_boot_etalon` + the LC II floppy gates in the loop).
 
 ### Peripheral event deadlines — eight of twelve platforms, and why the other four are not
 

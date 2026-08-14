@@ -231,7 +231,14 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // clock — § 1.3 flux plan step 3). A v5 chunk cannot supply a separator
 // state, and resuming one mid-sector with a nominal loop would shift every
 // following window on non-ideal media, so it is refused, not migrated.
-inline constexpr u32      kVersion   = 6;
+// v7 replaces SWIM1's separator state with the real ISM read engine's
+// (§ 1.3 step 4b, MAME swim1.cpp:885-1233): edge clock, LS-pair phase,
+// CSM calibration counters and the two correction factors, TSM assembly.
+// A snapshot taken mid-calibration must resume with the same error
+// counters or the correction factors — which scale every threshold the
+// rest of the read uses — come out different. v6 never shipped a release;
+// it is refused like every other mismatch, not migrated.
+inline constexpr u32      kVersion   = 7;
 
 struct Header {
     u32 version     = kVersion;

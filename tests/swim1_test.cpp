@@ -42,15 +42,35 @@ void switchToIsm(Swim1& s) {
     s.write(kQ7On, 0x57);                        // bit6=1 -> ISM
 }
 
-// Driver-style ISM param table: only TIME0/TIME1 matter to our engine.
-// MFM at fclk: an empty cell is 31 halves (P_TIME0+4), a flux transition
-// swallows the following clock window = 63 halves (P_TIME1+4) — the same
-// 31/63 spacing the SWIM2 engine hardwires (swim2.cpp:432-436).
-void loadParams(Swim1& s) {
-    static const uint8_t kParams[16] = {
-        8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 0, 27, 0, 59,
+// Driver-style ISM param table. With the real CSM read engine the params
+// are LOAD-BEARING, as on silicon: every classification threshold is
+// parameter-RAM arithmetic (swim1.cpp:1006-1080). These MFM-at-fclk values
+// are DERIVED from the engine's own threshold shapes, not dumped from a
+// driver — chosen so the cumulative boundaries land halfway between the
+// legal gap lengths (2/3/4 cells = 64/96/128 halves):
+//   MINCT+6 = 48, +SSS+4 = 80, +SLS+4 = 112, +RPT+4 = 144,
+// with the S and L hypotheses identical (symmetric channel, no marginal
+// pairs) and P_MULT = 64 so a nominal calibration sums 32×64×32 = 0x10000
+// per pair side → correction factor 0x100 = the neutral scale 256.
+// Write side unchanged: an empty cell is 31 halves (P_TIME0+4), a flux
+// swallows the next clock window = 63 halves (P_TIME1+4).
+void loadParams(Swim1& s, uint8_t mult = 64) {
+    const uint8_t kParams[16] = {
+        42, mult, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 0, 27, 0, 59,
     };
     s.write(6, 0xBF);                            // clear all BUT bit 6 → idx 0
+    for (uint8_t p : kParams) s.write(3, p);
+}
+
+// GCR-at-fclk table, same derivation for 31-clock cells (gaps of 1/2/3
+// cells = 62/124/186 halves): MINCT+6 = 46, +SSS+4 = 93, +SLS+4 = 155,
+// +RPT+4 = 217. GCR ACTION starts in CSM_SYNCHRONIZED (swim1.cpp:394), so
+// P_MULT is inert there.
+void loadParamsGcr(Swim1& s) {
+    static const uint8_t kParams[16] = {
+        40, 64, 43, 43, 58, 58, 58, 58, 43, 43, 58, 58, 0, 57, 0, 57,
+    };
+    s.write(6, 0xBF);
     for (uint8_t p : kParams) s.write(3, p);
 }
 
@@ -206,6 +226,101 @@ int main() {
             if (sector[size_t(i)] != uint8_t(0x30 + (i & 0x3F))) payload = false;
         check(found && payload && crcOk,
               "12% jittered ISM read: sector + CRC through the separator");
+    }
+
+    // ── The Correction State Machine is LIVE, gated through the register
+    // file: a +20 % off-rate track misclassifies its 2-cell gaps at the
+    // neutral scale (115 > the 112-half boundary), so the read only
+    // succeeds if the 64-min-cell calibration rescales the thresholds.
+    // P_MULT = 0 starves the calibration — same track, error $08, no
+    // sector. That pair is the port's bite test, live in the suite. ──────
+    {
+        auto tryRead = [](uint8_t mult, uint8_t* errOut) {
+            std::vector<uint8_t> img(SonyDrive::kSize1440K, 0);
+            for (int i = 0; i < 512; i++)
+                img[size_t(i)] = uint8_t(0x52 ^ (i & 0x7F));
+            SonyDrive drive;
+            drive.setSpinClockHz(15667200);
+            Swim1 swim;
+            swim.reset();
+            swim.attachDrive(&drive, nullptr);
+            drive.insertImage(std::move(img));
+            drive.debugStretchFluxPermille(1200);
+
+            switchToIsm(swim);
+            loadParams(swim, mult);
+            drive.commandSwim(0x2);
+            swim.write(5, 0x00);
+            swim.write(7, 0x8A);
+            auto stream = drainFifo(swim, drive, 1200, 1200 * kMfmByte * 5);
+            if (errOut) *errOut = swim.read(2);
+            auto marks = [&](size_t i) { return (stream[i] & 0x1FF) == 0x1A1; };
+            for (size_t i = 0; i + 10 < stream.size(); i++) {
+                if (!(marks(i) && marks(i + 1) && marks(i + 2) &&
+                      (stream[i + 3] & 0xFF) == 0xFE &&
+                      int(stream[i + 6] & 0xFF) == 1))
+                    continue;
+                for (size_t j = i + 10; j + 517 < stream.size() && j < i + 80; j++) {
+                    if (!(marks(j) && marks(j + 1) && marks(j + 2) &&
+                          (stream[j + 3] & 0xFF) == 0xFB))
+                        continue;
+                    if (!(stream[j + 517] & 0x200)) return false;   // CRC bad
+                    for (int k = 0; k < 512; k++)
+                        if (uint8_t(stream[j + 4 + size_t(k)]) !=
+                            uint8_t(0x52 ^ (k & 0x7F)))
+                            return false;
+                    return true;
+                }
+                return false;
+            }
+            return false;
+        };
+        uint8_t err = 0;
+        check(tryRead(64, nullptr),
+              "+20% off-rate track: the CSM recalibrates and the sector reads");
+        check(!tryRead(0, &err),
+              "P_MULT=0 starves the calibration and the same track fails");
+        check((err & 0x08) != 0,
+              "starved calibration raises error $08 (out of range)");
+    }
+
+    // ── GCR through the ISM: CSM_SYNCHRONIZED from ACTION (swim1.cpp:394),
+    // gap→bits TSM, high-bit framing — the address prologues come out. ───
+    {
+        std::vector<uint8_t> img(SonyDrive::kSize800K, 0x37);
+        SonyDrive drive;
+        drive.setSpinClockHz(15667200);
+        Swim1 swim;
+        swim.reset();
+        swim.attachDrive(&drive, nullptr);
+        check(drive.insertImage(std::move(img)), "insert 800K for GCR ISM");
+        check(!drive.mfmMode(), "800K media stays GCR on the SuperDrive");
+
+        switchToIsm(swim);
+        loadParamsGcr(swim);
+        drive.commandSwim(0x2);
+        swim.write(5, 0x04);                     // GCR read clocking
+        swim.write(7, 0x8A);
+
+        constexpr int kGcrByte = 8 * 31;
+        std::vector<uint16_t> stream;
+        {
+            int budget = 2200 * kGcrByte * 4;
+            const int step = kGcrByte / 2;
+            while (int(stream.size()) < 2200 && budget > 0) {
+                swim.tick(step);
+                drive.tick(step);
+                budget -= step;
+                while (swim.fifoCount() && int(stream.size()) < 2200)
+                    stream.push_back(swim.read(1));
+            }
+        }
+        int prologues = 0;
+        for (size_t i = 0; i + 3 < stream.size(); i++)
+            if ((stream[i] & 0xFF) == 0xD5 && (stream[i + 1] & 0xFF) == 0xAA &&
+                (stream[i + 2] & 0xFF) == 0x96)
+                prologues++;
+        check(prologues >= 2, "GCR ISM read frames address prologues");
     }
 
     // ── ISM MFM write: param-timed TSS commits a sector ───────────────

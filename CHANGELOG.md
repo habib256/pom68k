@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 228 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 229 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -162,6 +162,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ### Storage — SCSI, IWM/SWIM, media
 
 - **what the SWIM read path actually runs now — a real FluxPll separator over a flux view of the track, and why the off-rate gate (not jitter) is the one that catches its regression** → [2026-08-14 (fourth) — The SWIM read engines get their data separator…](#2026-08-14-flux-separator)
+- **SWIM1's ISM is not a window separator: LS-pair gap classification, the CSM's u8 correction factors (a window on 192..447), and why the param RAM is load-bearing now** → [2026-08-14 (fifth) — SWIM1's ISM read engine is MAME's real one…](#2026-08-14-ism-csm)
 - **53C96 pseudo-DMA reads** → [2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work…](#2026-07-18--q61-53c96-pseudo-dma-reads-work--the-mac-os-81-scsi-driver-now-transfers-full-512-byte-blocks-off-the-disk)
 - **the block-0 re-read loop was a Cuda ReadXPram framing divergence** → [2026-07-19 — Q6.2 RESOLVED: the block-0 re-read loop was a Cuda ReadXPram…](#2026-07-19--q62-resolved-the-block-0-re-read-loop-was-a-cuda-readxpram-reply-framing-divergence--the-boot-now-loads-the-driver-partition-map-and-system-progresses-to-a-new-scsi-blocker)
 - **multi-block read needed the DATA IN bus-service interrupt** → [2026-07-19 — Q6.3 RESOLVED: SCSI multi-block read…](#2026-07-19--q63-resolved-scsi-multi-block-read--the-polled-10-transfer-info-needed-the-data-in-bus-service-interrupt)
@@ -288,6 +289,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-14 (fifth)** — [SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing](#2026-08-14-ism-csm)
 - **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](#2026-08-14-flux-separator)
 - **2026-08-14 (third)** — [The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen](#2026-08-14-eclipse-beyond-boot)
 - **2026-08-14 (later)** — [The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse](#2026-08-14-eclipse-egret-lle)
@@ -518,6 +520,62 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-14-ism-csm"></a>
+## 2026-08-14 (fifth) — SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing
+
+Hours after step 4a put an interim `FluxPll` under SWIM1's ISM shifter, step
+4b replaced both with the machinery the chip actually has —
+`swim1.cpp:885-1233` ported verbatim, the piece § 1.3 had carried as "dead
+code MAME models and we do not" since the first inventory pass.
+
+What the engine is, because it is nothing like a window separator: the ISM
+measures **inter-transition times** in half-cycles of the controller clock
+(`time_to_cycles = 2×clock`, `swim1.cpp:624-632`) and classifies each gap
+under a Short and a Long hypothesis against **cumulative parameter-RAM
+thresholds** (`MINCT+6`, then `+SSx+4`, `+SLx+4`, `+RPT+4` — three branch
+flavours keyed on what the previous gap resolved to). Disagreeing hypotheses
+make a *marginal* pair resolved against the next gap; two marginal pairs in
+a row raise error `$40`. Resolved cell counts feed two machines: the
+**Correction State Machine** — 64 consecutive minimum cells accumulate
+`P_MULT × (gap>>1)` per pair side, and the sums become two **u8 correction
+factors** that rescale every threshold (the `<192 → |256` fold makes the u8
+a window on 192..447, i.e. ±25 % around neutral — the same capture range
+MAME's `fdc_pll_t` clamps to, arrived at from the opposite direction) — and
+the **Trans-Space Machine**, which assembles FIFO bytes directly: MFM
+through the `nb`/`bb` tables with the missing-clock mark detection (`idx 5`
+= the A1/C2 signature), GCR as gap→bits with high-bit framing. GCR ACTION
+starts in `CSM_SYNCHRONIZED` (`swim1.cpp:394`): only MFM calibrates, as on
+silicon. Read errors `$20` (cell too long) and `$08` (calibration out of
+range) complete the register surface.
+
+Two consequences worth recording:
+
+- **The parameter RAM became load-bearing.** `swim1_test`'s table used to
+  say "only TIME0/TIME1 matter to our engine" — true of the SWIM2-shifter
+  stand-in, false of silicon. The new table is *derived from the threshold
+  shapes* (boundaries at 48/80/112/144 halves for MFM-at-fclk, 46/93/155/217
+  for GCR; `P_MULT=64` so a nominal calibration sums to exactly `0x10000` →
+  the neutral scale) and documented as derived, not dumped. The day a real
+  .Sony driver table is traced, compare it against these — the shapes must
+  agree or one of us is wrong.
+- **The bite test lives IN the suite, driven through the register file.** A
+  +20 % off-rate track misclassifies its 2-cell gaps at the neutral scale
+  (115 halves against the 112 boundary), so the read only succeeds because
+  the CSM recalibrates. `P_MULT=0` starves the calibration: same track,
+  error `$08`, no sector — gated both ways in `swim1_test`, no scratch-build
+  neutering needed. A GCR-through-ISM block pins the `CSM_SYNCHRONIZED`
+  entry and the gap→bits TSM.
+
+Snapshot format **v6 → v7**: edge clock, LS-pair phase, calibration
+counters, correction factors and TSM assembly replace SWIM1's interim
+separator state — a snapshot taken mid-calibration must resume with the
+same error counters or every threshold of the rest of the read comes out
+different. `FluxPll` remains `Swim2`'s separator only, on the honest
+ground that MAME's swim2 has no CSM (the silicon replaced it) and the PLL
+stands in for that chip's analog loop. Full rebuild; unit 92/92, smoke
+8/8, jit 27/27 on this host — the asset-dependent tiers still owe a pass
+on a machine with ROMs.
 
 <a id="2026-08-14-flux-separator"></a>
 ## 2026-08-14 (fourth) — The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites
