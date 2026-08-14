@@ -159,23 +159,30 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
         // MCU dump ahead of the per-model list (how the factory 341S0417
         // is exercised against the M68hc05 without rebuilding).
         const char* fwOverride = std::getenv("POM68K_CUDA_FW");
+        const char* const* fwList = model_ == Model::MacTv ? kTvFw
+                                     : cudaMcu ? kCudaFw : kEgretFw;
+        std::string loadedFw;
         if (want) {
             if (fwOverride && *fwOverride) {
                 std::ifstream in(fwOverride, std::ios::binary);
                 std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
                                         std::istreambuf_iterator<char>());
-                if (in && egretLle_.loadFirmware(fw)) egretLleOn_ = true;
-                else std::fprintf(stderr, "V8: POM68K_CUDA_FW=%s unusable\n",
-                                  fwOverride);
+                if (in && egretLle_.loadFirmware(fw)) {
+                    egretLleOn_ = true;
+                    loadedFw = fwOverride;
+                } else std::fprintf(stderr, "V8: POM68K_CUDA_FW=%s unusable\n",
+                                    fwOverride);
             }
-            for (const char* const* p = model_ == Model::MacTv ? kTvFw
-                                        : cudaMcu ? kCudaFw : kEgretFw;
-                 !egretLleOn_ && *p; p++) {
+            for (const char* const* p = fwList; !egretLleOn_ && *p; p++) {
                 std::ifstream in(*p, std::ios::binary);
                 if (!in) continue;
                 std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
                                         std::istreambuf_iterator<char>());
-                if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
+                if (egretLle_.loadFirmware(fw)) {
+                    egretLleOn_ = true;
+                    loadedFw = *p;
+                    break;
+                }
             }
             // The fallback stays (MCU dumps are user-provided and not
             // distributable) but it is never silent: the HLE byte-model is
@@ -190,8 +197,16 @@ V8Memory::V8Memory(uint32_t totalRam, Model model, int64_t cpuHz)
                          "substitute forced\n",
                          cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE");
         }
-        if (!egretLleOn_)
-            pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        // One report carries the whole outcome to the Périphériques window;
+        // the HLE branch is what used to be the bare activateHle() call.
+        std::vector<std::string> cands;
+        for (const char* const* p = fwList; *p; p++) cands.emplace_back(*p);
+        pom68k::lle::reportFirmwareDevice(
+            pom68k::lle::HleEgretCuda,
+            cudaMcu ? "Cuda — MCU ADB / PRAM / horloge"
+                    : "Egret — MCU ADB / PRAM / horloge",
+            cudaMcu ? "POM68K_CUDA_LLE" : "POM68K_EGRET_LLE",
+            egretLleOn_, want, loadedFw, std::move(cands));
     }
     // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED on
     // purpose: this fires from inside viaWrite(), i.e. from a memory

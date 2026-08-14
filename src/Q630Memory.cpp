@@ -75,16 +75,22 @@ Q630Memory::Q630Memory(uint32_t totalRam)
     {
         const char* e = std::getenv("POM68K_CUDA_LLE");
         const bool want = !e || std::atoi(e) != 0;
+        // macquadra630.cpp:175 set_default_bios_tag("341s0060") — the same
+        // Cuda 2.40 the LC 520 family runs.
+        const std::vector<std::string> kFw = {
+            "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin" };
+        std::string loadedFw;
         if (want) {
-            // macquadra630.cpp:175 set_default_bios_tag("341s0060") — the
-            // same Cuda 2.40 the LC 520 family runs.
-            for (const char* p : { "roms/cuda/341s0060.bin",
-                                   "../roms/cuda/341s0060.bin" }) {
+            for (const std::string& p : kFw) {
                 std::ifstream in(p, std::ios::binary);
                 if (!in) continue;
                 std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
                                         std::istreambuf_iterator<char>());
-                if (cudaLle_.loadFirmware(fw)) { cudaLleOn_ = true; break; }
+                if (cudaLle_.loadFirmware(fw)) {
+                    cudaLleOn_ = true;
+                    loadedFw = p;
+                    break;
+                }
             }
             if (cudaLleOn_)
                 for (int i = 0; i < 256; i++)
@@ -97,7 +103,9 @@ Q630Memory::Q630Memory(uint32_t totalRam)
             std::fprintf(stderr, "Q630: POM68K_CUDA_LLE=0 — NON-CONFORMANT "
                          "HLE ADB substitute forced\n");
         }
-        if (!cudaLleOn_) pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        pom68k::lle::reportFirmwareDevice(
+            pom68k::lle::HleEgretCuda, "Cuda — MCU ADB / PRAM / horloge",
+            "POM68K_CUDA_LLE", cudaLleOn_, want, loadedFw, kFw);
     }
     // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED: this
     // fires from inside viaWrite(), under the CPU, and reset() would reset

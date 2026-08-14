@@ -924,6 +924,20 @@ orphaning no-dump users. Actually deleting `Egret.*` / `AdbBus` / the
 byte-model (and § 4.1's last hack with them) is a **product decision** —
 "POM68K requires MCU dumps" — not a code cleanup. Take it deliberately.
 
+**"Never silent" got its missing half on 2026-08-14.** The policy above was
+enforced on **stderr**, which a user who launches from a desktop icon never
+reads — for them the fallback WAS silent, and "am I conformant?" had no
+answer short of a terminal. Every device now `report()`s its whole outcome
+to the registry in `src/LleSession.h` (mode, reason, the dump actually
+loaded, the paths searched; reporting HLE is still the `activateHle()` call
+it replaced), and the **"Périphériques (LLE / HLE)" window**
+(`src/PeripheralWindow.*`, `DEV.md` § 6) renders it — opening itself the
+first frame a machine reports a substitute. The same window is the manual
+per-device override this file's knobs used to be the only way to reach:
+staged, then applied by a relaunch, because devices are built once from
+`getenv`. Gate: `peripheral_lle_test` (the model; the window itself is
+compile-verified only, like every GUI surface here).
+
 **One HLE-only hack survives inside the byte-model fallback.**
 `MacIIMemory.cpp:349-355`: on VIA1 ORB writes, if ACR shift-in is armed and
 soft-flag bit 5 at `ADBBase($CF8)+$15D` is set, call

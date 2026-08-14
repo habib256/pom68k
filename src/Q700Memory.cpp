@@ -45,16 +45,21 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         {
             const char* e = std::getenv("POM68K_EGRET_LLE");
             const bool want = !e || std::atoi(e) != 0;
-            static const char* const kEgretFw[] = {
+            const std::vector<std::string> kEgretFw = {
                 "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
                 "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };
+            std::string loadedFw;
             if (want) {
-                for (const char* p : kEgretFw) {
+                for (const std::string& p : kEgretFw) {
                     std::ifstream in(p, std::ios::binary);
                     if (!in) continue;
                     std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
                                             std::istreambuf_iterator<char>());
-                    if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
+                    if (egretLle_.loadFirmware(fw)) {
+                        egretLleOn_ = true;
+                        loadedFw = p;
+                        break;
+                    }
                 }
                 if (!egretLleOn_)
                     std::fprintf(stderr, "Q700: no MCU firmware dump under "
@@ -65,9 +70,10 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
                              "HLE ADB substitute forced\n");
             }
             // The fallback is usable for bring-up, but it must poison product
-            // qualification and snapshots.
-            if (!egretLleOn_)
-                pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+            // qualification and snapshots — which reporting HLE still does.
+            pom68k::lle::reportFirmwareDevice(
+                pom68k::lle::HleEgretCuda, "Egret — MCU ADB / PRAM / horloge",
+                "POM68K_EGRET_LLE", egretLleOn_, want, loadedFw, kEgretFw);
         }
         // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED:
         // this fires from inside viaWrite(), under the CPU, and reset()

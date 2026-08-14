@@ -57,6 +57,7 @@ SonoraMemory::SonoraMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId,
             "roms/cuda/341s0060.bin", "../roms/cuda/341s0060.bin",
             "roms/cuda/341s0788.bin", "../roms/cuda/341s0788.bin" };
         const char* const* fws = cudaAdb ? kCudaFw : kEgretFw;
+        std::string loadedFw;
         if (want) {
             for (int i = 0; i < 4; i++) {
                 const char* p = fws[i];
@@ -64,7 +65,11 @@ SonoraMemory::SonoraMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId,
                 if (!in) continue;
                 std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
                                         std::istreambuf_iterator<char>());
-                if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
+                if (egretLle_.loadFirmware(fw)) {
+                    egretLleOn_ = true;
+                    loadedFw = p;
+                    break;
+                }
             }
             if (!egretLleOn_)
                 std::fprintf(stderr, "Sonora: no MCU firmware dump under "
@@ -75,8 +80,13 @@ SonoraMemory::SonoraMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId,
             std::fprintf(stderr, "Sonora: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
                          "HLE ADB substitute forced\n");
         }
-        if (!egretLleOn_)
-            pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        pom68k::lle::reportFirmwareDevice(
+            pom68k::lle::HleEgretCuda,
+            cudaAdb ? "Cuda — MCU ADB / PRAM / horloge"
+                    : "Egret — MCU ADB / PRAM / horloge",
+            "POM68K_EGRET_LLE",                  // one knob here, both MCUs
+            egretLleOn_, want, loadedFw,
+            std::vector<std::string>(fws, fws + 4));
     }
     // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED: this
     // fires from inside viaWrite(), under the CPU, and reset() would reset

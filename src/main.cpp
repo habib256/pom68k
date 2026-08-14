@@ -10,6 +10,7 @@
 #include "imgui.h"
 #include "MachineHost.h"
 #include "DiskBays.h"
+#include "PeripheralWindow.h"
 #include "DockLayout.h"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -504,6 +505,16 @@ static void initDriveSfx(MacAudioHost& host) {
 // `Duo` = platform #12 (MSC + PG&E), the first PowerBook (2026-08-06).
 enum class MachineKind { Plus, Se, SeFdhd, MacClassic, MacII, IIfx, Lc, LcII, ClassicII, ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Q630, Quadra, Duo };
 static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
+// This process's own argv[1..], captured before any parsing consumes it —
+// the Périphériques window relaunches on it, so the machine comes back
+// identical apart from the LLE/HLE knobs the window has just set. (The
+// Machine menu builds a NEW argument list instead; this one preserves the
+// current machine, media included.)
+static std::vector<std::string> gLaunchArgs;
+// Set by the Périphériques window's Apply button, consumed by machineMenu on
+// the same frame. A flag rather than a captured GLFWwindow*: the host is
+// built once as a static and `window` is a per-frame parameter.
+static bool gRelaunchWindow = false;
 
 // ── CPU engine selection (interpreter vs JIT) ───────────────────────────
 // Global, like the AppleTalk window below, so the "CPU" menu appears on
@@ -967,6 +978,11 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
             ImGui::TextDisabled("(POM68K_APPLETALK=0)");
         ImGui::EndMenu();
     }
+    // Bar level, like "Disques...", and NOT inside the Machine menu: that
+    // menu is 37 profiles plus separators, taller than a 900 px screen, so an
+    // entry appended to it lands under the scroll — measured, not assumed
+    // (the first version of this line was there and could not be reached).
+    pom68k::peripheralMenuItem();
     pom68k::dockLayoutMenu();
     if (extraMenus) extraMenus();
     ImGui::TextDisabled("|  Delete: capture mouse");
@@ -977,6 +993,25 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
     pom68k::dockLayoutFrame();
     appleTalkWindow();
     jitWindow();
+    // Global like the two above: every runner goes through machineMenu, so
+    // the window reaches all twelve platforms without touching their loops.
+    {
+        static pom68k::PeripheralHost host = [] {
+            pom68k::PeripheralHost h;
+            h.relaunch = [] {
+                // Same machine, same media — only the environment changed.
+                gSwitchArgs = gLaunchArgs;
+                if (gSwitchArgs.empty()) gSwitchArgs = { std::string() };
+                gRelaunchWindow = true;
+            };
+            return h;
+        }();
+        pom68k::peripheralWindow(host);
+        if (gRelaunchWindow) {
+            gRelaunchWindow = false;
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
+    }
 }
 
 // Relaunch on the argument list the menu picked (no-op when none was).
@@ -5378,6 +5413,11 @@ int main(int argc, char** argv) {
 #ifndef POM68K_VERSION_STRING
 #define POM68K_VERSION_STRING "dev"
 #endif
+    // Captured BEFORE the option scrubbing below rewrites argv: the
+    // Périphériques window relaunches on this list, and a --lle-aarch64 run
+    // that lost its own flag on the way back would silently drop the very
+    // promise the window reports on.
+    for (int i = 1; i < argc; i++) gLaunchArgs.emplace_back(argv[i]);
     // Product mode: remove the option before positional ROM/disk parsing,
     // then force the execution choices it promises. Qualification below is
     // based on what actually became active, never merely on requested flags.

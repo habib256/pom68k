@@ -25,16 +25,21 @@ VaspMemory::VaspMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
     {
         const char* e = std::getenv("POM68K_EGRET_LLE");
         const bool want = !e || std::atoi(e) != 0;
+        const std::vector<std::string> kFw = {
+            "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
+            "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };
+        std::string loadedFw;
         if (want) {
-            for (const char* p : { "roms/egret/341s0851.bin",
-                                   "../roms/egret/341s0851.bin",
-                                   "roms/egret/341s0850.bin",
-                                   "../roms/egret/341s0850.bin" }) {
+            for (const std::string& p : kFw) {
                 std::ifstream in(p, std::ios::binary);
                 if (!in) continue;
                 std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
                                         std::istreambuf_iterator<char>());
-                if (egretLle_.loadFirmware(fw)) { egretLleOn_ = true; break; }
+                if (egretLle_.loadFirmware(fw)) {
+                    egretLleOn_ = true;
+                    loadedFw = p;
+                    break;
+                }
             }
             if (!egretLleOn_)
                 std::fprintf(stderr, "Vasp: no roms/egret/341s085x.bin — "
@@ -44,8 +49,9 @@ VaspMemory::VaspMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
             std::fprintf(stderr, "Vasp: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
                          "HLE ADB substitute forced\n");
         }
-        if (!egretLleOn_)
-            pom68k::lle::activateHle(pom68k::lle::HleEgretCuda);
+        pom68k::lle::reportFirmwareDevice(
+            pom68k::lle::HleEgretCuda, "Egret — MCU ADB / PRAM / horloge",
+            "POM68K_EGRET_LLE", egretLleOn_, want, loadedFw, kFw);
     }
     // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED: this
     // fires from inside viaWrite(), under the CPU, and reset() would reset

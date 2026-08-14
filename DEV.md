@@ -1633,6 +1633,49 @@ stays in it can be tested, which is why the contract was moved out before it
 was unified (`CHANGELOG.md` 2026-08-09 (third)). **The GUI layer above it is
 still compile-verified only.**
 
+### The "Périphériques (LLE / HLE)" window (`src/PeripheralWindow.*`)
+
+The visible half of the § 2 fallback policy of `docs/LLE_VS_HLE.md`. That
+policy is *"kept, but never silent"* — every HLE entry prints a
+NON-CONFORMANT notice to stderr — and it had a hole: a user who launches
+from a desktop icon never sees stderr, so for them the fallback WAS silent.
+The window is that notice in a form they can see, plus the manual override.
+
+Three design points, each of which is a rule rather than a preference:
+
+- **It renders reports; it never re-derives.** Every row comes from
+  `pom68k::lle::devices()` (`src/LleSession.h`), filled by the device itself
+  at construction. `report()` — or the shared `reportFirmwareDevice()`, which
+  seven platforms use verbatim — carries mode, reason, the dump actually
+  loaded and the paths searched. A window that re-ran "is there a dump / is
+  the knob set" would be a second copy of the decision, free to drift.
+  Reporting HLE still calls `activateHle()`, so product mode is unchanged.
+- **It lists what THIS machine built.** A Centris has no Egret; the Mac Plus
+  has neither an Egret nor an ADB transceiver. An empty list is a real
+  answer ("no LLE/HLE choice exists here"), not a failure to populate.
+- **Changes are staged and applied by a relaunch**, because the devices are
+  built once from `getenv` before the first instruction — there is no live
+  toggle to offer. Apply calls `setenv` for **every** selected device (not
+  only the changed ones: the re-exec inherits this environment, so a knob
+  left from an earlier session would otherwise survive and win) and re-execs
+  on the process's own `argv`, captured into `gLaunchArgs` at the top of
+  `main()` before the `--lle-aarch64` scrubbing rewrites it.
+
+It sits at **menu-bar level**, beside `Disques...`, and not inside the
+Machine menu: that menu is 37 profiles plus separators, taller than a 900 px
+screen, so an entry appended to it lands under the scroll. That was measured
+under Xvfb, not assumed — the first version was there and could not be
+reached. The window also **opens itself once** on the first frame a machine
+reports a substitute, which is what makes the stderr policy hold for a
+GUI-only user; it never re-opens after being closed, and never appears on a
+fully-LLE machine.
+
+Gate: `peripheral_lle_test` (`unit`, 25 checks) covers the model —
+registration, the product-mode contract, the reason on all three paths,
+`dumpAvailable` against a real file, and the env mapping including the
+re-assert that makes an undo undo. The **window itself is compile-verified
+only**, like every other GUI surface in this tree.
+
 ### What a gate prints about its own assets
 
 Every gate that opens a user-provided file prints one `ASSET` line per file

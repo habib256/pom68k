@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 229 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 230 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -289,6 +289,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-14 (sixth)** — ["Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable](#2026-08-14-peripheral-window)
 - **2026-08-14 (fifth)** — [SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing](#2026-08-14-ism-csm)
 - **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](#2026-08-14-flux-separator)
 - **2026-08-14 (third)** — [The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen](#2026-08-14-eclipse-beyond-boot)
@@ -520,6 +521,70 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-14-peripheral-window"></a>
+## 2026-08-14 (sixth) — "Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable
+
+The § 2 policy of `LLE_VS_HLE.md` has been *"fallbacks are kept, but never
+silent"* since 2026-07-29, enforced by a NON-CONFORMANT notice printed at
+every HLE entry. Held up honestly, it had a hole the whole time: it is
+enforced on **stderr**. A user who launches POM68K from a desktop icon or a
+file manager never sees a line of it, so for them the substitute was exactly
+as silent as before the policy existed — and "is this session conformant?"
+had no answer short of relaunching from a terminal.
+
+The window is that notice in a form the GUI user can see, and the fine
+per-device selection the env knobs were previously the only way to reach.
+
+**The architecture is the interesting part, not the widgets.** Three rules:
+
+- **It renders reports; it never re-derives.** Devices already decided
+  LLE-vs-HLE in their constructors; they now `report()` the *whole* outcome
+  to a registry in `LleSession.h` — mode, reason (firmware running / no dump
+  / knob forced), the dump actually loaded, and the paths searched. A window
+  that re-ran "is the dump there, is the knob set" would be a second copy of
+  that decision, free to drift from the first; this tree's per-file notes are
+  a catalogue of what that costs. Reporting HLE still *is* the
+  `activateHle()` call it replaced, so `--lle-aarch64` behaves identically.
+  Seven platforms shared the same twenty lines, so they share one
+  `reportFirmwareDevice()` helper rather than seven near-copies.
+- **It lists what THIS machine built.** A Centris has no Egret; the Mac Plus
+  has neither an Egret nor an ADB transceiver. An empty list is a real
+  answer, and the window says so in words.
+- **Changes are staged, applied by a relaunch.** Devices are constructed once
+  from `getenv` before the first instruction — there is no live toggle, and
+  offering one would be a lie in the UI. Apply sets the knobs and re-execs on
+  the process's own argv, the Machine menu's mechanism.
+
+Two details that are correctness, not polish. Apply writes a value for
+**every** selected device, not only the changed ones: the re-exec inherits
+this process's environment, so a `POM68K_ADB_LLE=0` from an earlier session
+would survive and quietly win — re-asserting `=1` on an unchanged row is what
+makes an undo actually undo. And selecting LLE is **disabled**, with the
+searched paths in the tooltip, when no dump is present: a radio the user can
+click into a state the relaunch would silently discard is worse than a
+disabled one, and "where do I put the file" now has an answer in the window
+instead of in the documentation.
+
+**Running it found the placement bug that reading it did not.** The menu
+entry was first appended to the Machine menu — semantically the right home.
+Under Xvfb the Machine menu turns out to be 37 profiles plus eleven platform
+separators, taller than a 900 px screen, so the entry landed under the scroll
+and could not be reached at all. It sits at menu-bar level now, beside
+`Disques...`. The window also opens itself once on the first frame a machine
+reports a substitute — which is the whole point: the GUI user gets the notice
+without having gone looking for it.
+
+Gate: `peripheral_lle_test`, 25 checks, `unit` — registration and replacement,
+the product-mode contract on both directions, the reason on all three paths,
+`dumpAvailable` against a file created and removed by the test, and the env
+mapping including the re-assert. Verified to bite: restricting
+`envForSelection` to changed devices fails exactly the two checks that exist
+for the inherited-environment trap. The window above it is compile-verified
+only, as every GUI surface in this tree is, but it was also run: on the Mac
+Plus it renders the empty state correctly ("no peripheral with an HLE
+substitute"), which is the honest answer for a machine whose keyboard is an
+M0110.
 
 <a id="2026-08-14-ism-csm"></a>
 ## 2026-08-14 (fifth) — SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing
