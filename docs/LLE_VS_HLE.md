@@ -1138,8 +1138,8 @@ extend it, not re-invent it.
 **Caveat, learned the hard way on 2026-07-29: this inventory is only worth what
 its gates are worth.** Since **2026-08-13** the beyond-boot pair (soak +
 persist, one shared engine — `tests/BeyondBoot.h`) is registered on **every
-one of the twelve platform implementations**, and since **2026-08-14 all 24
-legs are green** — the last SKIP (Duo persist ← F6) and the four reds each
+one of the twelve platform implementations**, and since **2026-08-14 every
+leg is green** — the last SKIP (Duo persist ← F6) and the four reds each
 turned out to name a real defect rather than a gate that judged badly: a
 `power_cycle_w` stub that froze the machine 58 s into an idle Finder, a
 `$91` power flag that stopped the PG&E ever cold-booting twice, a trackball
@@ -1148,6 +1148,18 @@ that mounted its boot volume seven times. That is the § 5 argument made
 flesh: coverage finds what fidelity work cannot even see. Per-PROFILE
 depth is still thin — the pairs pin one profile per platform, and the other
 25 profiles remain boot-to-Finder only.
+
+**The first exception, 2026-08-14: the Eclipse gets a pair of its own**
+(`q900_soak/persist_etalon`, same binary, `POM68K_Q700_MODEL=q900`), taking
+the roster to **thirteen pairs, 26 legs, all green**. The Q900 is a second
+profile on an already-covered platform, which the rule above says is thin
+value — except that past the boot screen it is a different machine: the
+Spike's legs keep no Apple PIC IOP alive, no Egret, no second 53C96, and its
+ADB is a PIC1654S rather than the tower's IOP-bit-banged wire. The soak is
+what would notice an IOP that stops answering three minutes in; the persist
+leg is the only gate that drives the tower's ADB from the Toolbox — Cmd-N
+through the IOP wire, the folder on the medium, and a reboot that makes the
+Egret firmware re-hold and re-release the 68040. Both were green first run.
 
 In one day the suite produced a **false green** (a positive assertion over a
 too-wide window — KeyMap is 8 bytes, the scan was 16, so a dead ADB stack read

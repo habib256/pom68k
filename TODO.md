@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 226 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 227 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -396,6 +396,13 @@ physical-vs-logical trap now has a standing regression test.
 
 Highest-ROI closers, in order:
 
+- [x] **The Eclipse pair** — **done 2026-08-14**: `q900_soak/persist_etalon`,
+  the same `q700_beyond_etalon` binary on `POM68K_Q700_MODEL=q900`, both
+  green first run. The first second-profile pair in the roster, and it earns
+  its place because past the boot screen the tower is a different machine:
+  two Apple PIC IOPs, an Egret firmware LLE and a second 53C96 that the
+  Spike's legs never keep alive, plus the only Toolbox-level exercise of the
+  tower's IOP-bit-banged ADB. Thirteen pairs, 26 legs.
 - [ ] **Next beyond-boot machines**: a `launch`/`floppy` pair on the Q605,
   soak on the **IIci** (the other RBV — `Mmu030Peek.h` makes it a rig clone
   now), or the AIO family.

@@ -25,7 +25,7 @@ the Machine menu, in the same order and the same grouping
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 204 gates, ~4 h (asset-dependent ones soft-skip)
+ctest                             # 206 gates, ~4 h (asset-dependent ones soft-skip)
 ctest -L unit                     # 94 gates — everything that is not a boot etalon
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines
 ctest -L etalon-core              # 12 gates, one profile per platform, ~32 min
