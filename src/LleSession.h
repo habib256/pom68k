@@ -98,6 +98,15 @@ struct Device {
     Why         why  = Why::HleNoDump;
     std::string firmware;                   // dump loaded (LLE), else empty
     std::vector<std::string> candidates;    // paths the device searched
+    // Per-device dump override. `pathKnob` names the env variable
+    // ("POM68K_CUDA_FW"); `firmwareForced` is the value that was in force
+    // when this device was built — empty means "automatic, first candidate
+    // found". The two are separate from `firmware` on purpose: `firmware`
+    // says what LOADED, `firmwareForced` says what was ASKED FOR, and a
+    // window comparing a staged choice against the loaded path would report
+    // a pending change every time automatic mode picked a file.
+    std::string pathKnob;
+    std::string firmwareForced;
 };
 
 inline std::mutex gDeviceMutex;
@@ -116,28 +125,6 @@ inline void report(const Device& d) {
         if (!replaced) gDevices.push_back(d);
     }
     if (d.mode == Mode::Hle) activateHle(d.module);
-}
-
-// The shape seven platforms share verbatim: an MCU that runs a factory dump
-// when one is found and the knob allows it, and a command-level substitute
-// otherwise. One helper so the seven cannot drift — `lle` is what the device
-// achieved, `wanted` is what the knob asked for, and the two together are
-// the whole reason.
-inline void reportFirmwareDevice(Module module, std::string name,
-                                 std::string knob, bool lle, bool wanted,
-                                 std::string firmware,
-                                 std::vector<std::string> candidates) {
-    Device d;
-    d.module = module;
-    d.name = std::move(name);
-    d.knob = std::move(knob);
-    d.mode = lle ? Mode::Lle : Mode::Hle;
-    d.why = lle      ? Why::LleFirmware
-            : wanted ? Why::HleNoDump
-                     : Why::HleForced;
-    d.firmware = std::move(firmware);
-    d.candidates = std::move(candidates);
-    report(d);
 }
 
 inline std::vector<Device> devices() {
@@ -161,40 +148,62 @@ inline bool dumpAvailable(const Device& d) {
 }
 
 struct Choice {
-    Module module = HleEgretCuda;
-    Mode   mode   = Mode::Lle;
+    Module      module = HleEgretCuda;
+    Mode        mode   = Mode::Lle;
+    std::string firmware;                   // "" = automatic (first found)
 };
 
-// The environment a staged selection implies, as (knob, value) pairs for
-// setenv() before the relaunch.
+// One environment variable the relaunch must carry. `unset` is not a
+// decoration: "back to automatic" has to REMOVE the override, because the
+// re-exec inherits this process's environment and an empty string is a
+// perfectly good path as far as the device is concerned (it would fail to
+// open and warn). The two operations are therefore distinct in the type,
+// rather than encoded as an empty value the caller might setenv() verbatim.
+struct EnvAssignment {
+    std::string knob;
+    std::string value;
+    bool        unset = false;
+};
+
+// The environment a staged selection implies, ready for the relaunch.
 //
 // Every selected device is emitted, INCLUDING one whose choice matches what
 // is running: the relaunch inherits this process's environment, so a knob
 // left over from an earlier relaunch would otherwise survive and silently
-// win. "Undo my earlier HLE forcing" is precisely an explicit `=1`.
-inline std::vector<std::pair<std::string, std::string>>
+// win. "Undo my earlier HLE forcing" is precisely an explicit `=1`, and
+// "undo my earlier dump pick" is precisely an unset.
+inline std::vector<EnvAssignment>
 envForSelection(const std::vector<Device>& live,
                 const std::vector<Choice>& want) {
-    std::vector<std::pair<std::string, std::string>> out;
+    std::vector<EnvAssignment> out;
     for (const Device& d : live) {
-        if (d.knob.empty()) continue;
-        for (const Choice& c : want)
-            if (c.module == d.module) {
-                out.emplace_back(d.knob, c.mode == Mode::Lle ? "1" : "0");
-                break;
+        for (const Choice& c : want) {
+            if (c.module != d.module) continue;
+            if (!d.knob.empty())
+                out.push_back({d.knob, c.mode == Mode::Lle ? "1" : "0", false});
+            if (!d.pathKnob.empty()) {
+                if (c.firmware.empty()) out.push_back({d.pathKnob, "", true});
+                else out.push_back({d.pathKnob, c.firmware, false});
             }
+            break;
+        }
     }
     return out;
 }
 
 // How many staged choices differ from what this session is running — the
-// window's "anything to apply?" test.
+// window's "anything to apply?" test. A dump pick counts on its own:
+// switching an already-LLE device from one factory revision to another
+// changes nothing about the mode and everything about the machine.
 inline int pendingCount(const std::vector<Device>& live,
                         const std::vector<Choice>& want) {
     int n = 0;
     for (const Device& d : live)
-        for (const Choice& c : want)
-            if (c.module == d.module && c.mode != d.mode) { n++; break; }
+        for (const Choice& c : want) {
+            if (c.module != d.module) continue;
+            if (c.mode != d.mode || c.firmware != d.firmwareForced) n++;
+            break;
+        }
     return n;
 }
 

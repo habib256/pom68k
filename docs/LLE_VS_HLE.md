@@ -935,7 +935,22 @@ it replaced), and the **"Périphériques (LLE / HLE)" window**
 first frame a machine reports a substitute. The same window is the manual
 per-device override this file's knobs used to be the only way to reach:
 staged, then applied by a relaunch, because devices are built once from
-`getenv`. Gate: `peripheral_lle_test` (the model; the window itself is
+`getenv`.
+
+**And which dump, not only which side.** All eight firmware devices now run
+one search — `pom68k::fw::select` (`src/FirmwareChoice.h`): the per-device
+path knob (`POM68K_CUDA_FW` for the Egret/Cuda MCU, `POM68K_ADB_FW` for the
+PIC1654S), then the board's ordered candidate list, then the substitute.
+Before it only `V8Memory` honoured an override, so on the six other
+Egret/Cuda boards "run *this* revision" simply did not exist — a real gap on
+a family whose behaviour differs by firmware (the Color Classic's 2.35 needs
+the DFAC2 ACK, the AIO ROM livelocks on 2.37's pseudo-command `$0E`). The
+window lists every dump found beside the candidates, marks the factory parts
+and the loaded one, and accepts an arbitrary path.
+
+Gate: `peripheral_lle_test` (the model — 39 checks, including that a dump
+pick is a pending change on its own and that returning to automatic *unsets*
+the knob rather than writing an empty path; the window itself is
 compile-verified only, like every GUI surface here).
 
 **One HLE-only hack survives inside the byte-model fallback.**

@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 230 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 231 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -162,6 +162,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ### Storage — SCSI, IWM/SWIM, media
 
 - **what the SWIM read path actually runs now — a real FluxPll separator over a flux view of the track, and why the off-rate gate (not jitter) is the one that catches its regression** → [2026-08-14 (fourth) — The SWIM read engines get their data separator…](#2026-08-14-flux-separator)
+- **why only ONE board honoured a firmware-dump override for a year, and what that cost on a family whose behaviour differs by revision** → [2026-08-14 (seventh) — Which dump, not only which side…](#2026-08-14-firmware-picker)
 - **SWIM1's ISM is not a window separator: LS-pair gap classification, the CSM's u8 correction factors (a window on 192..447), and why the param RAM is load-bearing now** → [2026-08-14 (fifth) — SWIM1's ISM read engine is MAME's real one…](#2026-08-14-ism-csm)
 - **53C96 pseudo-DMA reads** → [2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work…](#2026-07-18--q61-53c96-pseudo-dma-reads-work--the-mac-os-81-scsi-driver-now-transfers-full-512-byte-blocks-off-the-disk)
 - **the block-0 re-read loop was a Cuda ReadXPram framing divergence** → [2026-07-19 — Q6.2 RESOLVED: the block-0 re-read loop was a Cuda ReadXPram…](#2026-07-19--q62-resolved-the-block-0-re-read-loop-was-a-cuda-readxpram-reply-framing-divergence--the-boot-now-loads-the-driver-partition-map-and-system-progresses-to-a-new-scsi-blocker)
@@ -289,6 +290,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-14 (seventh)** — [Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window](#2026-08-14-firmware-picker)
 - **2026-08-14 (sixth)** — ["Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable](#2026-08-14-peripheral-window)
 - **2026-08-14 (fifth)** — [SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing](#2026-08-14-ism-csm)
 - **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](#2026-08-14-flux-separator)
@@ -521,6 +523,66 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-14-firmware-picker"></a>
+## 2026-08-14 (seventh) — Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window
+
+The Périphériques window shipped that morning answered "LLE or HLE?". It
+could not answer "which revision?", and looking into why turned up a gap
+older than the window: **only `V8Memory` honoured a dump override.**
+`POM68K_CUDA_FW` had been added as a bring-up path for exercising the
+factory 341S0417 against the M68hc05 without rebuilding, and it stayed
+where it was written. On the six other Egret/Cuda boards — Sonora, VASP,
+RBV, Q605, Q630, Eclipse — "run *this* firmware" did not exist at all, and
+the ADB transceiver had no override on any machine.
+
+That is not a cosmetic gap on this family. Firmware revision is behaviour
+here, and this tree has the scars to prove it: the Color Classic's Cuda
+2.35 takes a DFAC error path without the DFAC2's I2C ACK, and the AIO ROM
+**livelocks** on 2.37's pseudo-command `$0E` — which is why the LC 520
+family pins 2.40. Being unable to say which dump to load meant being unable
+to reproduce either.
+
+`src/FirmwareChoice.h` is now the one search all eight devices run:
+
+  1. the per-device path knob — `POM68K_CUDA_FW` for the Egret/Cuda MCU
+     (the established name, kept rather than renamed for symmetry under a
+     documented script; it covers both flavours), `POM68K_ADB_FW` for the
+     PIC1654S, which is new;
+  2. the board's own ordered candidate list, factory part first;
+  3. failing both, the documented HLE substitute.
+
+An override that fails to load **warns and falls through** rather than
+aborting — a diagnostic path left in someone's environment must not be able
+to stop a machine booting. That was `V8Memory`'s behaviour and it is now
+everyone's. Twenty lines of copy-paste per site collapse into a `Request`
+plus the device's own loader lambda, and the eight stderr wordings become
+one (checked first: the gates that care about the LLE/HLE split read
+`egretLleActive()` / `lle()`, never the text).
+
+The window gained the picker: every dump found beside the candidates
+(`fw::discoverDumps` scans their directories, so a revision the user dumped
+themselves is offered without editing a source file), the factory parts
+marked *(d'origine)*, the loaded one marked *← chargé*, plus a free path
+field for anything living elsewhere. Two behaviours are subtle enough that
+they are gated rather than trusted:
+
+- **A dump pick is a pending change on its own.** Same mode, different
+  machine — and the comparison is against the override *in force*
+  (`firmwareForced`), never against the path automatic mode happened to
+  pick, or every freshly-opened window would claim a pending change.
+- **Returning to automatic must UNSET the knob**, which is why the mapping
+  returns `EnvAssignment{knob, value, unset}` instead of a pair. Writing
+  `""` would leave the re-exec holding an empty path: the device fails to
+  open it, warns, and boots on its factory part — the right machine for the
+  wrong reason, on every boot from then on, with a warning nobody reads
+  because it looks like the no-dump case.
+
+`peripheral_lle_test` grows to 39 checks; both new behaviours were verified
+to bite (writing `""` instead of unsetting, and dropping the firmware term
+from `pendingCount`, each fail exactly their own check). unit 93/93,
+smoke 8/8, jit 27/27. `config_test` again earned its keep: it refused the
+tree until `POM68K_ADB_FW` appeared in `DEV.md` § 5.
 
 <a id="2026-08-14-peripheral-window"></a>
 ## 2026-08-14 (sixth) — "Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable

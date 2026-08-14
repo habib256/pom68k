@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "VaspMemory.h"
-#include "LleSession.h"
+#include "FirmwareChoice.h"
 #include "VaspCpu.h"
 #include <cstdio>
 #include <cstdlib>
@@ -23,35 +23,18 @@ VaspMemory::VaspMemory(uint32_t totalRam, int64_t cpuHz, uint32_t machineId)
     // Egret firmware LLE — the IIvx/IIvi carry the LC III's 341S0851
     // (maciivx.cpp:407 set_default_bios_tag), 341S0850 as fallback.
     {
-        const char* e = std::getenv("POM68K_EGRET_LLE");
-        const bool want = !e || std::atoi(e) != 0;
-        const std::vector<std::string> kFw = {
+        pom68k::fw::Request req;
+        req.module = pom68k::lle::HleEgretCuda;
+        req.name = "Egret — MCU ADB / PRAM / horloge";
+        req.enableKnob = "POM68K_EGRET_LLE";
+        req.pathKnob = "POM68K_CUDA_FW";
+        req.logTag = "Vasp";
+        req.candidates = {
             "roms/egret/341s0851.bin", "../roms/egret/341s0851.bin",
             "roms/egret/341s0850.bin", "../roms/egret/341s0850.bin" };
-        std::string loadedFw;
-        if (want) {
-            for (const std::string& p : kFw) {
-                std::ifstream in(p, std::ios::binary);
-                if (!in) continue;
-                std::vector<uint8_t> fw((std::istreambuf_iterator<char>(in)),
-                                        std::istreambuf_iterator<char>());
-                if (egretLle_.loadFirmware(fw)) {
-                    egretLleOn_ = true;
-                    loadedFw = p;
-                    break;
-                }
-            }
-            if (!egretLleOn_)
-                std::fprintf(stderr, "Vasp: no roms/egret/341s085x.bin — "
-                             "running the NON-CONFORMANT HLE ADB substitute "
-                             "(docs/LLE_VS_HLE.md §2)\n");
-        } else {
-            std::fprintf(stderr, "Vasp: POM68K_EGRET_LLE=0 — NON-CONFORMANT "
-                         "HLE ADB substitute forced\n");
-        }
-        pom68k::lle::reportFirmwareDevice(
-            pom68k::lle::HleEgretCuda, "Egret — MCU ADB / PRAM / horloge",
-            "POM68K_EGRET_LLE", egretLleOn_, want, loadedFw, kFw);
+        egretLleOn_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& fw) {
+            return egretLle_.loadFirmware(fw);
+        });
     }
     // Firmware RESET_SYSTEM ($11) — the Finder's "Restart". DEFERRED: this
     // fires from inside viaWrite(), under the CPU, and reset() would reset

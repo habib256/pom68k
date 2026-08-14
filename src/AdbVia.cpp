@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "AdbVia.h"
-#include "LleSession.h"
+#include "FirmwareChoice.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -48,35 +48,18 @@ void AdbVia::attach(Via6522& via, AdbBus& adb, int64_t cpuHz) {
     // distributable) but never silently: the byte-model is a documented
     // NON-CONFORMANT substitute (LLE_VS_HLE §2) and §1.9's ORB→SHIFT
     // re-arm lives only on this path.
-    const char* env = std::getenv("POM68K_ADB_LLE");
-    const bool want = !env || env[0] != '0';
-    const std::vector<std::string> kRom = {
-        "roms/adbmodem/342s0440-b.bin", "../roms/adbmodem/342s0440-b.bin" };
-    std::string loadedRom;
-    if (want) {
-        for (const std::string& p : kRom) {
-            std::ifstream f(p, std::ios::binary);
-            if (!f) continue;
-            std::vector<uint8_t> rom((std::istreambuf_iterator<char>(f)),
-                                     std::istreambuf_iterator<char>());
-            if (pic_.loadRom(rom.data(), rom.size())) {
-                lle_ = true;
-                loadedRom = p;
-                break;
-            }
-        }
-        if (lle_) { line_.reset(); picAcc_ = 0; setupPicPorts(); }
-        else
-            std::fprintf(stderr, "AdbVia: no roms/adbmodem/342s0440-b.bin — "
-                         "running the NON-CONFORMANT HLE ADB byte-model "
-                         "(docs/LLE_VS_HLE.md §2)\n");
-    } else {
-        std::fprintf(stderr, "AdbVia: POM68K_ADB_LLE=0 — NON-CONFORMANT HLE "
-                     "ADB byte-model forced\n");
-    }
-    pom68k::lle::reportFirmwareDevice(
-        pom68k::lle::HleAdbModem, "Transcepteur ADB PIC1654S (342S0440-B)",
-        "POM68K_ADB_LLE", lle_, want, loadedRom, kRom);
+    pom68k::fw::Request req;
+    req.module = pom68k::lle::HleAdbModem;
+    req.name = "Transcepteur ADB PIC1654S (342S0440-B)";
+    req.enableKnob = "POM68K_ADB_LLE";
+    req.pathKnob = "POM68K_ADB_FW";
+    req.logTag = "AdbVia";
+    req.candidates = { "roms/adbmodem/342s0440-b.bin",
+                       "../roms/adbmodem/342s0440-b.bin" };
+    lle_ = pom68k::fw::select(req, [this](const std::vector<uint8_t>& rom) {
+        return pic_.loadRom(rom.data(), rom.size());
+    });
+    if (lle_) { line_.reset(); picAcc_ = 0; setupPicPorts(); }
 }
 
 void AdbVia::setupPicPorts() {

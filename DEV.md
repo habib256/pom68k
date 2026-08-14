@@ -1373,7 +1373,15 @@ documented before 2026-07-31:
 | `POM68K_NOFPU` | no 68881/68882. Read by **six** platform runners in `main.cpp`: Mac II (`:1074`), IIfx (`:1432`), V8 (`:1828`), Sonora (`:2314`), VASP (`:2631`), RBV (`:2915`). The 68040 families have their own `*_LC040`/`*_NOFPU` knobs above |
 
 **Devices and subsystems**: `POM68K_EGRET_LLE`, `POM68K_CUDA_LLE`,
-`POM68K_CUDA_FW`, `POM68K_ADB_LLE`, `POM68K_ADB_KBD_ID` (`AdbLine`'s
+`POM68K_CUDA_FW` (`<path>` = load THIS dump for the Egret/Cuda MCU, ahead of
+the board's own candidate list — since 2026-08-14 honoured on **all seven**
+Egret/Cuda platforms rather than only the V8, and surfaced as the
+Périphériques window's per-device picker. The name covers both MCU flavours;
+it predates the generalisation and is kept rather than renamed under a
+documented script. An unusable path warns and falls through to the factory
+list — a diagnostic left in the environment must not stop a machine
+booting), `POM68K_ADB_FW` (the same for the PIC1654S ADB transceiver),
+`POM68K_ADB_LLE`, `POM68K_ADB_KBD_ID` (`AdbLine`'s
 power-on keyboard handler ID: 1 = Apple Standard, the default, 2 = Extended
 Keyboard II, 3 = the extended protocol with distinct right-hand modifier
 codes — a guest can select any of them itself with a Listen R3, this only
@@ -1645,11 +1653,23 @@ Three design points, each of which is a rule rather than a preference:
 
 - **It renders reports; it never re-derives.** Every row comes from
   `pom68k::lle::devices()` (`src/LleSession.h`), filled by the device itself
-  at construction. `report()` — or the shared `reportFirmwareDevice()`, which
-  seven platforms use verbatim — carries mode, reason, the dump actually
-  loaded and the paths searched. A window that re-ran "is there a dump / is
+  at construction through `pom68k::fw::select()` (`src/FirmwareChoice.h`),
+  which carries mode, reason, the dump actually loaded, the override in
+  force and the paths searched. A window that re-ran "is there a dump / is
   the knob set" would be a second copy of the decision, free to drift.
   Reporting HLE still calls `activateHle()`, so product mode is unchanged.
+- **Which dump is a per-device choice too.** `fw::select` is the one search
+  all eight firmware devices run: the path knob first (`POM68K_CUDA_FW`,
+  `POM68K_ADB_FW`), then the board's ordered candidate list, then the HLE
+  substitute. Before it, only `V8Memory` honoured an override at all, so on
+  the other six Egret/Cuda boards "use THIS revision" did not exist. The
+  window offers every dump found beside the candidates —
+  `fw::discoverDumps()` scans their directories — marks the factory parts
+  and the one currently loaded, and takes an arbitrary path for anything
+  else. Two subtleties both gated: a dump pick is a pending change *on its
+  own* (same mode, different machine), and going back to automatic must
+  **unset** the knob, since writing `""` would leave the re-exec with an
+  empty path the device dutifully fails to open.
 - **It lists what THIS machine built.** A Centris has no Egret; the Mac Plus
   has neither an Egret nor an ADB transceiver. An empty list is a real
   answer ("no LLE/HLE choice exists here"), not a failure to populate.

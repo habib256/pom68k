@@ -1,12 +1,15 @@
 // PeripheralWindow -- see PeripheralWindow.h for the contract.
 
 #include "PeripheralWindow.h"
-#include "LleSession.h"
+#include "FirmwareChoice.h"
 
 #include "imgui.h"
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -35,16 +38,44 @@ void openIfFallback(const std::vector<lle::Device>& devs) {
 // choice: staging is dropped with the process that made it.
 std::vector<lle::Choice> gStaged;
 
-lle::Mode stagedMode(const lle::Device& d) {
+// Untouched rows track what is live, so opening the window stages nothing
+// and "Appliquer" stays disabled until the user actually chooses.
+lle::Choice stagedOf(const lle::Device& d) {
     for (const lle::Choice& c : gStaged)
-        if (c.module == d.module) return c.mode;
-    return d.mode;                        // untouched rows track what is live
+        if (c.module == d.module) return c;
+    return {d.module, d.mode, d.firmwareForced};
 }
 
-void stage(const lle::Device& d, lle::Mode mode) {
-    for (lle::Choice& c : gStaged)
-        if (c.module == d.module) { c.mode = mode; return; }
-    gStaged.push_back({d.module, mode});
+void stage(const lle::Choice& c) {
+    for (lle::Choice& e : gStaged)
+        if (e.module == c.module) { e = c; return; }
+    gStaged.push_back(c);
+}
+
+// Dumps offered for a device, discovered once per session: a directory scan
+// per frame would be a syscall storm behind a window nobody is looking at,
+// and dropping a file in while the picker is open is not a case worth
+// paying for (the row says where to put it; reopening rescans).
+const std::vector<std::string>& dumpsFor(const lle::Device& d) {
+    static std::map<std::uint32_t, std::vector<std::string>> cache;
+    auto it = cache.find(std::uint32_t(d.module));
+    if (it == cache.end())
+        it = cache.emplace(std::uint32_t(d.module),
+                           fw::discoverDumps(d.candidates)).first;
+    return it->second;
+}
+
+// Just the filename, which is what identifies an MCU part to a reader —
+// "341s0417.bin" says more than "../roms/cuda/341s0417.bin" repeated eight
+// times down a combo.
+std::string shortName(const std::string& path) {
+    return std::filesystem::path(path).filename().string();
+}
+
+bool isCandidate(const lle::Device& d, const std::string& path) {
+    for (const std::string& c : d.candidates)
+        if (shortName(c) == shortName(path)) return true;
+    return false;
 }
 
 // The colour vocabulary is the AppleTalk window's: green = the conformant
@@ -136,12 +167,14 @@ void peripheralWindow(const PeripheralHost& host) {
         // user can click into a state the relaunch would silently undo is
         // worse than a disabled one, so the paths searched are shown instead.
         const bool canLle = lle::dumpAvailable(d);
-        lle::Mode want = stagedMode(d);
+        lle::Choice want = stagedOf(d);
 
         ImGui::BeginDisabled(!canLle);
         if (ImGui::RadioButton("LLE (composant d'origine)",
-                               want == lle::Mode::Lle))
-            stage(d, lle::Mode::Lle);
+                               want.mode == lle::Mode::Lle)) {
+            want.mode = lle::Mode::Lle;
+            stage(want);
+        }
         ImGui::EndDisabled();
         if (!canLle && ImGui::IsItemHovered()) {
             std::string tip = "Aucun dump trouvé. Chemins cherchés :";
@@ -152,14 +185,69 @@ void peripheralWindow(const PeripheralHost& host) {
         }
         ImGui::SameLine();
         if (ImGui::RadioButton("HLE (substitut, non conformant)",
-                               want == lle::Mode::Hle))
-            stage(d, lle::Mode::Hle);
+                               want.mode == lle::Mode::Hle)) {
+            want.mode = lle::Mode::Hle;
+            stage(want);
+        }
 
-        if (want != d.mode)
+        // ── Which dump. Only meaningful on the LLE side, and only when the
+        // device HAS a path knob — so the control is disabled rather than
+        // hidden: a picker that vanishes when you choose HLE reads like a
+        // bug, one that greys out reads like the truth.
+        if (!d.pathKnob.empty()) {
+            const std::vector<std::string>& dumps = dumpsFor(d);
+            ImGui::BeginDisabled(want.mode != lle::Mode::Lle);
+            ImGui::SetNextItemWidth(330);
+            const std::string label =
+                want.firmware.empty()
+                    ? std::string("Automatique (premier de la liste d'origine)")
+                    : shortName(want.firmware);
+            if (ImGui::BeginCombo("Dump", label.c_str())) {
+                if (ImGui::Selectable("Automatique (premier de la liste "
+                                      "d'origine)", want.firmware.empty())) {
+                    want.firmware.clear();
+                    stage(want);
+                }
+                for (const std::string& p : dumps) {
+                    // The factory parts this machine looks for are marked, so
+                    // "which one is the right one" does not need the manual.
+                    char row[320];
+                    std::snprintf(row, sizeof row, "%s%s%s", shortName(p).c_str(),
+                                  isCandidate(d, p) ? "   (d'origine)" : "",
+                                  p == d.firmware ? "   ← chargé" : "");
+                    if (ImGui::Selectable(row, want.firmware == p)) {
+                        want.firmware = p;
+                        stage(want);
+                    }
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", p.c_str());
+                }
+                ImGui::EndCombo();
+            }
+            // A dump that lives nowhere near roms/ — the diagnostic path the
+            // env knob always allowed, now reachable without a shell.
+            char custom[512];
+            std::snprintf(custom, sizeof custom, "%s", want.firmware.c_str());
+            ImGui::SetNextItemWidth(330);
+            if (ImGui::InputText("Chemin", custom, sizeof custom,
+                                 ImGuiInputTextFlags_EnterReturnsTrue)) {
+                want.firmware = custom;
+                stage(want);
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%s)", d.pathKnob.c_str());
+            ImGui::EndDisabled();
+        }
+
+        if (want.mode != d.mode)
             ImGui::TextColored(kOrange, "→ %s au prochain démarrage (%s=%s)",
-                               want == lle::Mode::Lle ? "LLE" : "HLE",
+                               want.mode == lle::Mode::Lle ? "LLE" : "HLE",
                                d.knob.c_str(),
-                               want == lle::Mode::Lle ? "1" : "0");
+                               want.mode == lle::Mode::Lle ? "1" : "0");
+        if (want.firmware != d.firmwareForced)
+            ImGui::TextColored(kOrange, "→ dump : %s",
+                               want.firmware.empty()
+                                   ? "automatique (choix imposé retiré)"
+                                   : want.firmware.c_str());
 
         ImGui::Unindent();
         ImGui::PopID();
@@ -175,8 +263,13 @@ void peripheralWindow(const PeripheralHost& host) {
                             "redémarre l'émulateur sur la même machine.");
         ImGui::BeginDisabled(!host.relaunch);
         if (ImGui::Button("Appliquer et redémarrer")) {
-            for (const auto& [knob, value] : lle::envForSelection(devs, gStaged))
-                setenv(knob.c_str(), value.c_str(), 1);
+            // `unset` is not "set to empty": see EnvAssignment in
+            // LleSession.h — going back to automatic must REMOVE the
+            // override, or the re-exec inherits it and nothing changes.
+            for (const lle::EnvAssignment& a : lle::envForSelection(devs, gStaged)) {
+                if (a.unset) unsetenv(a.knob.c_str());
+                else setenv(a.knob.c_str(), a.value.c_str(), 1);
+            }
             gStaged.clear();
             host.relaunch();
         }
