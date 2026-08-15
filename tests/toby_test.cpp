@@ -47,8 +47,25 @@ int main() {
     check(int(fb.size()) == toby.hres() * toby.vres(), "decode size matches mode");
     // The CLUT write must have landed: read the address register back and the
     // palette entry through the same (inverted) bus the driver uses.
-    check(bus.read8(base + 0x9001C) == uint8_t(~0x08),
-          "DAC address auto-incremented past the 3 palette bytes");
+    //
+    // This assertion used to expect $08 — one increment per BYTE — and so
+    // pinned the defect instead of the hardware. A Bt453 takes three
+    // palette writes to fill ONE entry and advances the address only on the
+    // third (MAME bt45x.cpp:200-208), so writing R/G/B at entry 5 leaves
+    // the address at 6. The old check passed because the implementation
+    // stepped every write; nothing looked at the COLOUR, which is how a
+    // CLUT that stored a grey per write and shifted every entry by three
+    // survived. Value first now, address second.
+    bus.write8(base + 0x9001C, uint8_t(~0x05));   // re-address entry 5
+    const uint8_t pr = uint8_t(~bus.read8(base + 0x90018));
+    const uint8_t pg = uint8_t(~bus.read8(base + 0x90018));
+    const uint8_t pb = uint8_t(~bus.read8(base + 0x90018));
+    check(pr == 0x12 && pg == 0x34 && pb == 0x56,
+          "CLUT entry 5 reads back the R/G/B that was written");
+    check(pr != pg && pg != pb,
+          "the entry is a COLOUR, not three copies of one component");
+    check(bus.read8(base + 0x9001C) == uint8_t(~0x06),
+          "DAC address advanced ONCE for the three-component entry");
     check(toby.mode() <= 3, "valid depth mode");
 
     // ── CRTC-derived frame clock (MAME nubus_m2video calc_screen_params:

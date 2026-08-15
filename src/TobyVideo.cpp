@@ -27,6 +27,8 @@ void TobyVideo::reset() {
     vblAcc_ = 0;
     vblLine_ = false;
     dacAddr_ = 0;
+    dacRgb_ = 0;
+    dacComp_[0] = dacComp_[1] = dacComp_[2] = 0;
 }
 
 uint32_t TobyVideo::mapOff(uint32_t slotOff) const {
@@ -47,8 +49,14 @@ uint8_t TobyVideo::read8(uint32_t slotOff) {
         // offsets 7 and 6) fell through and the CLUT was never programmed.
         if ((r & 3) != 0) return 0;              // only byte lane 0 is wired
         int o = (int(r - 0x90000) >> 2) & 3;
-        if (o == 2) return uint8_t(pens_[dacAddr_] ^ 0xFFFFFFFFu);
-        if (o == 1 || o == 3) return uint8_t(dacAddr_ ^ 0xFF);
+        if (o == 2) {
+            const uint32_t p = pens_[dacAddr_];
+            const uint8_t c = uint8_t(p >> (16 - 8 * dacRgb_));
+            dacStep();
+            return uint8_t(c ^ 0xFF);
+        }
+        // MAME bt45x address_r resets the component index too (:186).
+        if (o == 1 || o == 3) { dacRgb_ = 0; return uint8_t(dacAddr_ ^ 0xFF); }
         return 0;
     }
     if (r >= 0xD0000 && r < 0xE0000)
@@ -107,10 +115,24 @@ void TobyVideo::write8(uint32_t slotOff, uint8_t v) {
         if ((r & 3) != 0) return;                // only byte lane 0 is wired
         v ^= 0xFF;
         int o = (int(r - 0x90000) >> 2) & 3;     // word index, per MAME's umask32
-        if (o == 1 || o == 3) dacAddr_ = v;      // palette_w is unconditional
+        // Bt453: the address register resets the component index (MAME
+        // bt45x.cpp:191-197), and the palette register takes THREE writes —
+        // red, green, blue — before the address advances (:200-208,
+        // :268-282). This used to store one GREY pen per write and advance
+        // every time, so every CLUT the guest programmed came back
+        // monochrome AND shifted by three: the Mac II family and the IIfx
+        // (whose only video is this card on slot 9) rendered colour modes
+        // as garbage. The 1-bpp boot screen was unaffected, which is why it
+        // survived — the reset pens below carry it.
+        if (o == 1 || o == 3) { dacAddr_ = v; dacRgb_ = 0; }
         else if (o == 2) {
-            pens_[dacAddr_ & 0xFF] = 0xFF000000u | uint32_t(v) * 0x010101u;
-            dacAddr_++;
+            dacComp_[dacRgb_] = v;
+            if (dacRgb_ == 2)
+                pens_[dacAddr_ & 0xFF] =
+                    0xFF000000u | uint32_t(dacComp_[0]) << 16
+                                | uint32_t(dacComp_[1]) << 8
+                                | uint32_t(dacComp_[2]);
+            dacStep();
         }
         return;
     }
