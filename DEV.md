@@ -790,12 +790,26 @@ implementation actually depends on, several found the hard way with
   position-derived tach freezes when the IWM is not streaming, and the ROM
   ejects the disk.
 - **Sense/command tables** per the MFD-51W (sense F "new interface" = 1,
-  SIDES = 1, READY = 0 immediately, STEP completes instantly — matches
-  MAME). Commands: CA2 = value, (CA1,CA0,SEL) = address, LSTRB rising edge.
-- **GCR**: byte-level nibble stream (no 10-bit sync framing needed), one
-  nibble per 128 CPU cycles, 2:1 interleave. MAME's `build_mac_track_gcr`
-  rolling checksum is ported verbatim and cross-validated against pce's
-  independent formulation (200 random sectors, identical output).
+  SIDES = 1, STEP completes instantly — matches MAME). Commands: CA2 =
+  value, (CA1,CA0,SEL) = address, LSTRB rising edge. **READY is not
+  `!motorOn`** since 2026-08-14: `SonyDrive::driveReady()` spends a
+  two-index spin-up counter (MAME `floppy.cpp:825`, `:888-891`), so it
+  arrives up to two revolutions after the motor command — and less than two
+  when the spindle restarts mid-revolution, because the counter follows
+  pulses, not elapsed time.
+- **GCR read is a CELL engine** since 2026-08-14 (flux plan step 6): MAME's
+  `iwm.cpp:398-455` window state machine over `SonyDrive`'s flux store,
+  re-centring on every transition, framing a byte on the shifter's MSB.
+  It replaced a fixed one-nibble-per-128-CPU-cycles cadence, and the
+  cadence is no longer uniform — a data nibble costs eight cell times, a
+  10-cell self-sync group ten, which is how the format keeps a real IWM in
+  step. Reads now also start at the head's true rotational position, and
+  the track's gap4 is written self-sync rather than dead cells (a cell
+  engine has nothing to re-centre on across a transition-free arc).
+  Interleave is 2:1; MAME's `build_mac_track_gcr` rolling checksum is
+  ported verbatim and cross-validated against pce's independent
+  formulation (200 random sectors, identical output). Gate
+  `iwm_read_test`.
 - **Boot blocks**: the ROM validates bbID 'LK' AND the bbVersion word at
   +6 (`$4418`), then jumps to bbEntry at +2 (a `BRA.W` in real blocks).
   Code placed directly at +2 is rejected by the version check → eject.
@@ -805,8 +819,8 @@ implementation actually depends on, several found the hard way with
   loss/duplicate attribution — the tool that located the boost-vs-hold
   mechanism, CHANGELOG 2026-08-05 (eighth)), IWM per-reg/sense counters,
   consumed-nibble ring.
-- Gates: `gcr_test`, `iwm_write_test`, `floppy_persist_test`,
-  `floppy_sound_test`.
+- Gates: `gcr_test`, `iwm_read_test`, `iwm_write_test`,
+  `floppy_persist_test`, `floppy_sound_test`.
 
 ### 3.2 Storage: SWIM1 and the SWIM2 cell engine
 
@@ -819,14 +833,17 @@ implementation actually depends on, several found the hard way with
   `swim2.cpp`'s **bit engines**: the MFM sync-hunting shifter with serial
   CRC-CCITT (`$CDB4` seed, `M_CRC0` on handshake bit 1), the GCR high-bit
   framer, and the TSS write serializer in half-cycles. `SonyDrive` stores
-  each track as one revolution of raw cells (MFM 16 / GCR 31 C15M clocks
-  per cell) padded to the spindle geometry; ACTION start lands the head at
-  the spin-counter angle, i.e. **real rotational latency**
-  (`setSpinClockHz` declares the spin tick unit — Q605 25 MHz). MFM writes
-  are rebuilt per gap (PLL-style, drift-proof), decoded by an offline
-  replica of the read machine, and **only CRC-valid sectors commit**. The
-  IWM/SWIM1 nibble path is unchanged. Gates: `swim2_test`,
-  `swim2_media_test`, `q605_floppy_boot_etalon`.
+  each track as **flux** — transition times, one revolution (§ 1.3 flux
+  plan step 5, 2026-08-14) — with the discrete cell ring derived from it
+  through a `FluxPll`; ACTION start lands the head at the spin-counter
+  angle, i.e. **real rotational latency** (`setSpinClockHz` declares the
+  spin tick unit — Q605 25 MHz). Writes hand `commitFlux()` their TSS
+  half-cycle times directly, so a controller writing at its own rate — the
+  SWIM2 `setup` bit 3 doubling, the SWIM1 ISM's P_TIME0/1 — writes that
+  rate onto the disk; the write-back decode is clocked by that same
+  controller, and **only CRC-valid sectors commit**. A commit no longer
+  re-lays the track canonically, and a failed one no longer heals itself.
+  Gates: `swim2_test`, `swim2_media_test`, `q605_floppy_boot_etalon`.
 
 ### 3.3 SCSI: NCR 5380
 

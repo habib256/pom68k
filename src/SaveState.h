@@ -238,7 +238,7 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // counters or the correction factors — which scale every threshold the
 // rest of the read uses — come out different. v6 never shipped a release;
 // it is refused like every other mismatch, not migrated.
-inline constexpr u32      kVersion   = 7;
+inline constexpr u32      kVersion   = 8;   // v8: SonyDrive carries flux
 
 struct Header {
     u32 version     = kVersion;

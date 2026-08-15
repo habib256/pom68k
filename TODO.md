@@ -294,6 +294,37 @@ after boot), and Cmd-N always worked — screen dumps at the gesture's peak
 show the folder on the desktop of every one of the three. The KeyMap
 evidence in that entry was correct; the conclusion drawn from it was not.
 Full account: `CHANGELOG.md` 2026-08-13 (sixth).)*
+- **`macii_boot_etalon`: 178 SCSI commands against a floor of 200**
+  (2026-08-14). The SCREEN half of the assertion passes — menu bar 0.10,
+  desktop 0.50 — so the machine reaches something that looks like a
+  Finder; only the activity floor fails. The floor was calibrated at
+  291-295 on 2026-08-13 (sixth), when it was lowered from 500 after the
+  all-ID SCSI mirror was retired, so it is recent and it has moved since.
+  **Proved pre-existing**: stashing the day's flux work and rebuilding
+  reproduces 178 exactly. Do NOT lower the floor — it is what separates a
+  boot from a stalled Welcome (~235 commands with jailbars), and 178 is
+  BELOW that stall, which is itself the interesting fact.
+  **Two leads already spent, both dead** — do not re-walk them:
+  (a) *the image is not the one the floor was calibrated on* — it is;
+  `hdv/HD20SC.vhd` entered the probe chain in `c8438a7`, well before the
+  floor was set to 200 in `1d260aa` (2026-08-13 22:02), so 291-295 was
+  measured on this same volume, which reads clean (`drVolAtrb $0100`);
+  (b) *the swallowed VBL disable* — `1bef9bd` (2026-08-13 23:41, three
+  hours after the calibration and in the same file the Mac II shares with
+  the IIfx) made `TobyVideo`'s VBL disable unconditional, and its own
+  removed comment warned that Primary Init disables VBL before setup and
+  may never reach the matching enable. Restoring the old `vramWrites == 0`
+  guard locally changes the count by **nothing**: still 178. Next place to
+  look is the interval `1d260aa..HEAD` by bisect, on a gate that runs in
+  61 s.
+- **`duo_persist_etalon`: the Cmd-N folder never appears** (2026-08-14).
+  "NO candidate folder name appeared, image UNCHANGED" before the reboot,
+  while the post-reboot desktop counts thirteen `untitled folder`s —
+  accumulated state on the shared image is the first thing to rule out.
+  **Proved pre-existing** the same way (stash, rebuild, same failure), and
+  the day's flux work cannot reach it: the Duo has no floppy drive at all.
+  Note the gate drives `mem.mouseButton()` directly, so it is also blind
+  to the `MachineHost` button folding fixed the same day.
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
   — reported in the GUI, and **NOT reproduced headless**: judged on the
   desktop (the mounted volume's icon, screen-diff) rather than on
@@ -697,7 +728,29 @@ product decision, not a cleanup.
   (Send Abort / CRC resets `:1602/:1635` "not implemented", no EOM latch, no
   hunt/sync) — for LLAP behaviours **we are the more complete model**. Use MAME
   as oracle for the ASYNC side only; do not regress LLAP chasing parity.
-- [x] **Floppy flux + PLL layer, steps 2-4b** — **done 2026-08-14**
+- [x] **Floppy flux + PLL layer — the plan is FINISHED, 2026-08-14.**
+  Steps **5 and 6** landed the same day as 2-4b. Step 5: `flux_` is the
+  medium (transition times, one revolution) and `cells_` is what a
+  `FluxPll` recovers from it; both SWIMs hand `commitFlux()` their TSS
+  half-cycle times directly, so a controller writing at its own rate —
+  SWIM2 setup bit 3 doubles the spacing, the SWIM1 ISM takes it from
+  P_TIME0/1 — writes that rate onto the disk. A successful commit no
+  longer re-lays the track canonically and a failed one no longer heals
+  itself. The write-back decode is clocked by the controller that wrote,
+  which is the honest stand-in for a drive that has no reader of its own.
+  Step 6: the `Iwm` READ path is MAME's `sync()` MODE_READ window machine
+  (`iwm.cpp:398-455`) over the store, plus the `:249-250` shifter clear —
+  paid for exactly as this list said it would be, `disk_boot_etalon` +
+  `lcii_floppy_etalon` both green. The gap4 became written self-sync,
+  which is the `encodeTrackGcr` geometry note's reopening condition coming
+  due (the filler is MAME's kind now; the pregap LENGTHS stay put).
+  Snapshot format **v8**; new gate `iwm_read_test`. Also closed that day:
+  the **two-revolution READY spin-up** counter with the gate that was its
+  reopening condition. Left in § 1.3, none symptom-backed: the store holds
+  the LIVE track (a seek re-lays canonically — a whole-image flux store is
+  what MAME has and what MAME pays for), committed tracks re-encode, tach
+  is a sampled bit.
+- [x] ~~**Floppy flux + PLL layer, steps 2-4b**~~ — **done 2026-08-14**
   (`docs/LLE_VS_HLE.md` § 1.3 owns the full state). `SonyDrive` exposes the
   track as a flux view (`nextFluxAfter` = MAME's `get_next_transition`,
   opt-in deterministic jitter `POM68K_FLUX_JITTER`); `Swim2` reads through

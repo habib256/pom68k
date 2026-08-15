@@ -25,8 +25,8 @@ the Machine menu, in the same order and the same grouping
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 207 gates, ~4 h (asset-dependent ones soft-skip)
-ctest -L unit                     # 95 gates — everything that is not a boot etalon
+ctest                             # 208 gates, ~4 h (asset-dependent ones soft-skip)
+ctest -L unit                     # 96 gates — everything that is not a boot etalon
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines
 ctest -L etalon-core              # 12 gates, one profile per platform, ~32 min
 ```
@@ -309,8 +309,10 @@ says which is which.
 
 **Mouse** drives the Mac while hovering the screen; a drag started on the
 screen (Finder drag-and-drop) keeps tracking outside it and never moves the
-host window — the title bar still does. **Delete** toggles full capture
-(cursor grabbed, raw motion). The host keyboard maps to M0110 codes on the
+host window — the title bar still does. A **middle click** (the mouse
+wheel), or **Delete**, toggles full capture (cursor grabbed, raw motion);
+the same click releases it. Hovering the screen is needed to capture, never
+to release. The host keyboard maps to M0110 codes on the
 Plus and to raw ADB codes (= M0110 code >> 1) elsewhere (M0110 table:
 `src/main.cpp:5773`; the ADB tables are one per machine loop, e.g.
 `src/main.cpp:1271` — notes in

@@ -111,7 +111,6 @@ void SonyDrive::commandMfmMode(bool on) {
 void SonyDrive::reset() {
     track_ = 0;
     streamPos_ = 0;
-    cellPos_ = 0;
     motorOn_ = false;
     dirToZero_ = false;
     // Disk-change latch across reset: MAME's device_reset leaves m_dskchg
@@ -138,9 +137,10 @@ void SonyDrive::eject() {
     image_.clear();
     stream_.clear();
     cells_.clear();
+    flux_.clear();
+    fluxRev_ = 0;
     gcrWrBuf_.clear();
     streamPos_ = 0;
-    cellPos_ = 0;
     hd_ = false;
     mfmMode_ = false;
     switched_ = true;
@@ -200,6 +200,7 @@ bool SonyDrive::insertImage(std::vector<uint8_t> data) {
     switched_ = false;
     wrState_ = 0;
     gcrWrBuf_.clear();
+    if (motorOn_) readyCounter_ = 2;             // MAME call_load :666-669
     encodeTrack();
     if (sound_) sound_->click();
     return true;
@@ -229,15 +230,29 @@ void SonyDrive::selectSide(bool side1) {
     encodeTrack();
 }
 
+// Lay the canonical track: the byte stream, the cells it implies, and the
+// flux those cells put on the medium. This is what a track looks like
+// before any guest has written to it — a seek, a side change or a sector
+// commit through one of the byte paths all land here, and all of them
+// legitimately discard whatever flux the medium held: the content comes
+// from `image_`, which is the authority for everything a decoder verified.
 void SonyDrive::encodeTrack() {
+    refreshStream();
+    if (!hasDisk()) { cells_.clear(); flux_.clear(); fluxRev_ = 0; return; }
+    buildCells();
+    fluxSeedFromCells();
+}
+
+// The byte stream alone. Used when the flux on the medium must NOT be
+// re-laid — commitFlux()'s own sector commits, where the controller's
+// transitions are the medium now and `stream_` is only the legacy nibble
+// path's view of it (retired with the Iwm cell engine, § 1.3 step 6).
+void SonyDrive::refreshStream() {
     stream_.clear();
-    fluxDirty_ = true;
-    if (!hasDisk()) { cells_.clear(); return; }
+    if (!hasDisk()) return;
     if (mfmMode_ && hd_) encodeTrackMfm();
     else encodeTrackGcr();
-    buildCells();
     if (streamPos_ >= stream_.size()) streamPos_ = 0;
-    if (cellPos_ >= cells_.size()) cellPos_ = 0;
 }
 
 // KNOWN MAME DIVERGENCE, deliberately kept (parity audit § 2.3, cosmetic):
@@ -285,7 +300,7 @@ int64_t SonyDrive::spinCyclesPerRev() const {
 // with the missing clock. GCR: 8 cells per nibble, 10 for sync groups.
 void SonyDrive::buildCells() {
     cells_.clear();
-    fluxDirty_ = true;
+    cellsDirty_ = false;
     if (mfmMode_ && hd_) {
         cells_.reserve(stream_.size() * 16);
         bool last = false;
@@ -316,6 +331,23 @@ void SonyDrive::buildCells() {
         }
     }
     const int64_t nominal = nominalCells();
+    // Physical gap4. MAME sizes a self-sync PREGAP so the track fills its
+    // speed zone exactly (flopimg.cpp:2037-2051); this encoder keeps the
+    // fixed pregap its geometry note pins and puts the zone slack at the
+    // TAIL — but the slack has to be WRITTEN, because a formatted track has
+    // no unmagnetised arc. It used to be dead cells, which was invisible
+    // while the Iwm walked a byte stream and is not since the cell engine
+    // (§ 1.3 step 6): a transition-free arc gives the read shifter nothing
+    // to re-centre its window on for ~2000 cells, once per revolution.
+    // 10-cell self-sync groups, the same $FF + two 0 cells the sync runs
+    // between fields use.
+    if (!(mfmMode_ && hd_)) {
+        while (int64_t(cells_.size()) + 10 <= nominal) {
+            for (int i = 0; i < 8; i++) cells_.push_back(1);
+            cells_.push_back(0);
+            cells_.push_back(0);
+        }
+    }
     if (nominal > int64_t(cells_.size()))
         cells_.resize(size_t(nominal), 0);
 }
@@ -485,26 +517,16 @@ uint16_t SonyDrive::nextByte(bool side1) {
     return v;
 }
 
-void SonyDrive::syncCellsToRotation(bool side1) {
-    if (!hasDisk()) return;
-    selectSide(side1);
-    if (cells_.empty()) return;
-    const int64_t rev = spinCyclesPerRev();
-    cellPos_ = size_t((spin_ % rev) * int64_t(cells_.size()) / rev);
+int64_t SonyDrive::startWriteFlux(bool side1) {
+    return fluxAngleTicks(side1);
 }
 
-int64_t SonyDrive::startWriteCells(bool side1) {
-    syncCellsToRotation(side1);
-    return int64_t(cellPos_);
-}
-
-// ── Flux view (LLE_VS_HLE § 1.3, step 2) ────────────────────────────────
-// `cells_` seen as transition times for a FluxPll separator. One C15M
-// clock = FluxPll::kSubCell ticks; a 1-cell becomes an edge at the CENTRE
-// of its window (the same placement FluxPll::writeNextBit uses, so a
-// write-then-read round trip lands edges where the reader's loop expects
-// them). The revolution length stays `cells_.size()` windows — the tail
-// gap4 zero-cells are simply edge-free time.
+// ── Flux store (LLE_VS_HLE § 1.3, steps 2 and 5) ────────────────────────
+// One C15M clock = FluxPll::kSubCell ticks. A canonical track puts an edge
+// at the CENTRE of each 1-cell — the same placement FluxPll::writeNextBit
+// uses, so a write-then-read round trip lands edges where the reader's
+// loop expects them. The revolution is fluxRev_ ticks; the tail gap4 is
+// simply edge-free time.
 
 int SonyDrive::fluxJitterEnv() {
     const char* e = std::getenv("POM68K_FLUX_JITTER");
@@ -515,12 +537,15 @@ int SonyDrive::fluxJitterEnv() {
 
 void SonyDrive::setFluxJitterPercent(int pct) {
     fluxJitterPct_ = std::clamp(pct, 0, 45);
-    fluxDirty_ = true;
+    fluxJitterTicks_ = int64_t(fluxJitterPct_) * fluxCellTicks() / 100;
 }
 
 void SonyDrive::debugStretchFluxPermille(int permille) {
     fluxStretchPermille_ = std::max(1, permille);
-    fluxDirty_ = true;
+    // Re-lay the canonical track under the new spacing rather than scaling
+    // what is there: the seam is idempotent that way, so a gate can set
+    // 1100 twice and get +10 %, not +21 %.
+    encodeTrack();
 }
 
 int64_t SonyDrive::fluxCellTicks() const {
@@ -529,33 +554,70 @@ int64_t SonyDrive::fluxCellTicks() const {
 }
 
 int64_t SonyDrive::fluxRevTicks() const {
-    return int64_t(cells_.size()) * fluxCellTicks();
+    return fluxRev_;
 }
 
 int64_t SonyDrive::fluxAngleTicks(bool side1) {
     if (!hasDisk()) return 0;
     selectSide(side1);
-    if (cells_.empty()) return 0;
+    if (fluxRev_ <= 0) return 0;
     const int64_t rev = spinCyclesPerRev();
-    // Same arithmetic as syncCellsToRotation, kept in ticks so the PLL can
-    // land between two cell boundaries once media stop being ideal.
-    return (spin_ % rev) * fluxRevTicks() / rev;
+    // The head's angular position as a time into the revolution, so the PLL
+    // can land between two cell boundaries once media stop being ideal.
+    return (spin_ % rev) * fluxRev_ / rev;
 }
 
-void SonyDrive::fluxRebuild() {
+// Seed the store from the canonical cell ring — the medium as it comes off
+// the encoder, before any guest has written to it.
+void SonyDrive::fluxSeedFromCells() {
     flux_.clear();
-    fluxDirty_ = false;
+    decodeCellTicks_ = 0;                        // canonical track: nominal
     fluxJitterTicks_ = int64_t(fluxJitterPct_) * fluxCellTicks() / 100;
-    if (cells_.empty()) return;
     const int64_t cellT = fluxCellTicks();
-    const int64_t rev = fluxRevTicks();
+    fluxRev_ = int64_t(cells_.size()) * cellT;
+    if (cells_.empty()) return;
     for (size_t i = 0; i < cells_.size(); i++) {
         if (!cells_[i]) continue;
         int64_t t = int64_t(i) * cellT + cellT / 2;
         if (fluxStretchPermille_ != 1000)        // test seam: off-rate track
             t = t * fluxStretchPermille_ / 1000;
-        if (t < rev) flux_.push_back(t);         // past the index: overwritten
+        if (t < fluxRev_) flux_.push_back(t);    // past the index: overwritten
     }
+    // The cells just built ARE the separator's reading of this flux when the
+    // spacing is nominal; under the stretch seam they are not, so make the
+    // decoders re-derive rather than trust them.
+    if (fluxStretchPermille_ != 1000) cellsDirty_ = true;
+}
+
+// The store, read back through a real separator — the offline write-back
+// decoders' view of the medium. Quantizing on the nominal grid instead
+// would defeat the store's whole purpose: a track the guest wrote at its
+// own rate would decode to garbage here and commit nothing, where a real
+// controller's PLL reads it back without noticing.
+void SonyDrive::rebuildCellsFromFlux() {
+    cellsDirty_ = false;
+    cells_.clear();
+    if (flux_.empty() || fluxRev_ <= 0) return;
+    const int64_t cellT = decodeCellTicks_ > 0 ? decodeCellTicks_
+                                               : fluxCellTicks();
+    FluxPll pll;
+    pll.setClock(cellT);
+    pll.readReset(0);
+    size_t idx = 0;
+    cells_.reserve(size_t(fluxRev_ / cellT) + 8);
+    while (pll.ctime() < fluxRev_) {
+        while (idx < flux_.size() && flux_[idx] < pll.ctime()) idx++;
+        const int64_t edge = idx < flux_.size() ? flux_[idx] : FluxPll::kNever;
+        const int cell = pll.feedReadData(edge, fluxRev_);
+        if (cell < 0) break;                     // window crosses the index
+        cells_.push_back(uint8_t(cell));
+        if (cell) idx++;                         // that edge is consumed
+    }
+}
+
+const std::vector<uint8_t>& SonyDrive::cellsView() {
+    if (cellsDirty_) rebuildCellsFromFlux();
+    return cells_;
 }
 
 // Deterministic per-(track, side, transition, revolution) displacement in
@@ -578,9 +640,8 @@ int64_t SonyDrive::fluxJitter(size_t idx, int64_t revNo) const {
 int64_t SonyDrive::nextFluxAfter(int64_t tick, bool side1) {
     if (!hasDisk()) return FluxPll::kNever;
     selectSide(side1);
-    if (fluxDirty_) fluxRebuild();
-    if (flux_.empty()) return FluxPll::kNever;
-    const int64_t rev = fluxRevTicks();
+    if (flux_.empty() || fluxRev_ <= 0) return FluxPll::kNever;
+    const int64_t rev = fluxRev_;
     if (tick < 0) tick = 0;
     int64_t revNo = tick / rev;
     // Jitter keeps edges within ± <half a min gap>, so the jittered
@@ -600,35 +661,55 @@ int64_t SonyDrive::nextFluxAfter(int64_t tick, bool side1) {
     return FluxPll::kNever;                      // unreachable: flux_ nonempty
 }
 
-// SWIM2 write-back: splice the written cells into the track, then decode
-// the whole track and commit every sector whose address AND data CRCs
-// verify. writeSector() re-encodes the track afterwards, so the raw cells
-// are canonicalized (exotic layouts are not preserved — accepted
-// simplification vs MAME's flux-level track store).
-void SonyDrive::commitCells(int64_t startCell, int64_t totalCells,
-                            const std::vector<int64_t>& transitions,
-                            bool mfm) {
-    if (!hasDisk() || writeProtected_ || cells_.empty()) return;
+// Controller write-back (§ 1.3 step 5): erase the arc the head was over,
+// lay the transitions the write serializer produced AT THE TIMES it
+// produced them, then decode what is now on the medium and commit every
+// sector whose CRCs verify. The flux stays as written — no canonical
+// re-lay — which is what makes a track written at the controller's own
+// rate readable afterwards instead of silently replaced.
+void SonyDrive::commitFlux(int64_t startTick, int64_t totalTicks,
+                           const std::vector<int64_t>& atTicks, bool mfm,
+                           int64_t cellTicks) {
+    if (!hasDisk() || writeProtected_ || fluxRev_ <= 0) return;
     const bool mediaMfm = mfmMode_ && hd_;
     if (mfm != mediaMfm) {
         // Encoding/media mismatch writes flux the media's decoder can't
         // read; nothing can commit — log the drop (LLE_VS_HLE rule b).
         std::fprintf(stderr,
-                     "[sony] %s cell write on %s media dropped (%zu transitions)\n",
+                     "[sony] %s flux write on %s media dropped (%zu transitions)\n",
                      mfm ? "MFM" : "GCR", mediaMfm ? "MFM" : "GCR",
-                     transitions.size());
+                     atTicks.size());
         return;
     }
-    const int64_t n = int64_t(cells_.size());
-    for (int64_t i = 0; i < std::min(totalCells, n); i++)
-        cells_[size_t((startCell + i) % n)] = 0;
-    for (int64_t t : transitions) {
-        if (t < 0 || t >= totalCells) continue;
-        cells_[size_t((startCell + t) % n)] = 1;
+    const int64_t rev = fluxRev_;
+    // A write longer than a revolution overwrites the whole track; anything
+    // it laid down before the last pass is gone under the later one.
+    const int64_t span = std::min(totalTicks, rev);
+    auto wrap = [rev](int64_t t) {
+        t %= rev;
+        return t < 0 ? t + rev : t;
+    };
+    const int64_t from = wrap(startTick);
+    const int64_t to = from + span;              // may run past rev: wraps
+    auto erased = [&](int64_t t) {
+        return (t >= from && t < to) || (to > rev && t < to - rev);
+    };
+    std::vector<int64_t> next;
+    next.reserve(flux_.size() + atTicks.size());
+    for (int64_t t : flux_)
+        if (!erased(t)) next.push_back(t);
+    for (int64_t t : atTicks) {
+        if (t < 0 || t >= span) continue;        // outside the opened arc
+        next.push_back(wrap(from + t));
     }
-    fluxDirty_ = true;
+    std::sort(next.begin(), next.end());
+    flux_.swap(next);
+    cellsDirty_ = true;
+    decodeCellTicks_ = cellTicks > 0 ? cellTicks : 0;
+    inFluxCommit_ = true;
     if (mediaMfm) decodeMfmCells();
     else          decodeGcrCells();
+    inFluxCommit_ = false;
 }
 
 // Offline replica of the SWIM2 MFM read engine (swim2.cpp:499-546) over
@@ -636,8 +717,10 @@ void SonyDrive::commitCells(int64_t startCell, int64_t totalCells,
 // System 34 fields. Two passes cover a write span wrapping the index.
 void SonyDrive::decodeMfmCells() {
     struct TByte { uint8_t val; bool mark; bool crcOk; };
+    const std::vector<uint8_t>& cv = cellsView();
+    if (cv.empty()) return;
     std::vector<TByte> bytes;
-    bytes.reserve(cells_.size() / 16);
+    bytes.reserve(cv.size() / 16);
     uint16_t sr = 0, crc = 0xCDB4;
     uint8_t tss = 0;
     int sync = 0;
@@ -647,9 +730,9 @@ void SonyDrive::decodeMfmCells() {
         else
             crc = uint16_t(crc << 1);
     };
-    const size_t n = cells_.size();
+    const size_t n = cv.size();
     for (size_t k = 0; k < 2 * n; k++) {
-        const int bit = cells_[k % n];
+        const int bit = cv[k % n];
         if (sync < 64) {
             if (bit != (sync & 1)) sync++;
             else sync = 0;
@@ -715,9 +798,14 @@ void SonyDrive::decodeMfmCells() {
         std::fprintf(stderr, "[sony] cell write-back: %zu CRC-valid sector(s)\n",
                      pending.size());
     for (const Pending& p : pending) writeSector(p.t, p.h, p.s, p.data);
-    // Canonicalize the raw cells even when nothing verified (a bad-CRC
-    // write must not leave garbage the next read would see as media).
-    if (pending.empty()) encodeTrack();
+    // Nothing verified. Before the flux store this re-laid the canonical
+    // track, because the cell ring was the only medium there was and
+    // leaving garbage in it would have been read back as media forever.
+    // The store makes that unnecessary AND wrong on the flux path: a write
+    // whose CRC does not verify left real garbage on a real disk, and the
+    // next read is supposed to find it. The byte paths, which have no flux
+    // of their own, still canonicalize.
+    if (pending.empty() && !inFluxCommit_) encodeTrack();
 }
 
 // Offline replica of the SWIM2 GCR read framer (swim2.cpp:486-497) over
@@ -725,12 +813,14 @@ void SonyDrive::decodeMfmCells() {
 // group tails) are absorbed by the empty shifter. Two passes cover a
 // write span wrapping the index.
 void SonyDrive::decodeGcrCells() {
+    const std::vector<uint8_t>& cv = cellsView();
+    if (cv.empty()) return;
     std::vector<uint8_t> bytes;
-    bytes.reserve(cells_.size() / 8);
+    bytes.reserve(cv.size() / 8);
     uint8_t sr = 0;
-    const size_t n = cells_.size();
+    const size_t n = cv.size();
     for (size_t k = 0; k < 2 * n; k++) {
-        sr = uint8_t((sr << 1) | cells_[k % n]);
+        sr = uint8_t((sr << 1) | cv[k % n]);
         if (sr & 0x80) {
             bytes.push_back(sr);
             sr = 0;
@@ -740,9 +830,10 @@ void SonyDrive::decodeGcrCells() {
     if (debug)
         std::fprintf(stderr, "[sony] GCR cell write-back: %d valid sector(s)\n",
                      committed);
-    // Canonicalize even when nothing verified (a bad write must not leave
-    // garbage the next read would see as media).
-    if (!committed) encodeTrack();
+    // See decodeMfmCells: canonicalizing a failed write belongs to the byte
+    // paths, which carry no flux of their own. On the flux path the garbage
+    // IS the medium now.
+    if (!committed && !inFluxCommit_) encodeTrack();
 }
 
 // Scan a decoded nibble sequence for D5 AA AD data fields and commit every
@@ -846,7 +937,15 @@ bool SonyDrive::writeSector(int track, int side, int sector,
     if (off + 512 > image_.size()) return false;
     std::memcpy(&image_[off], data, 512);
     dirty_ = true;
-    if (track == track_ && (side != 0) == side1_) encodeTrack();
+    if (track == track_ && (side != 0) == side1_) {
+        // Re-lay the live track so the medium shows what was just written —
+        // except under commitFlux(), where the controller's own transitions
+        // ARE the medium and re-laying them canonically is exactly the loss
+        // the flux store exists to stop. Only the legacy nibble stream is
+        // resynced there (it retires with the Iwm cell engine, step 6).
+        if (inFluxCommit_) refreshStream();
+        else               encodeTrack();
+    }
     return true;
 }
 
@@ -908,7 +1007,7 @@ bool SonyDrive::readSector(int track, int side, int sector,
 
 // Consume SWIM2 write-FIFO bytes: assemble IBM MFM address/data fields and
 // commit 512-byte payloads via writeSector (legacy byte path; the cell
-// engine commits through commitCells, GCR included).
+// engine commits through commitFlux, GCR included).
 void SonyDrive::writeByte(uint16_t value) {
     if (!hasDisk() || writeProtected_ || !motorOn_) return;
     const bool mark = (value & kMark) != 0;
@@ -1022,7 +1121,7 @@ bool SonyDrive::sense(int addr) const {
             // drive constant (floppy.cpp:3278-3279); MFD-51W and MFD-75W
             // are both two-head drives (:3461-3491). 400K media still
             // signs itself via the address-field format byte $02.
-        case 0xD: return !motorOn_;                  // READY (0 = ready)
+        case 0xD: return !driveReady();              // READY (0 = ready)
         case 0xE: return false;                      // INSTALLED (0 = present)
         case 0xF:                                    // 2M (MAME reg 0xF, is_2m)
             // SuperDrive: mfd75w::is_2m (floppy.cpp:3494-3503) — 1 only
@@ -1078,7 +1177,7 @@ bool SonyDrive::senseSwim(int reg) const {
         return ((spin_ % cyclesPerRev) * 120 / cyclesPerRev) & 1;
     }
     case 0xD: return mfmMode_;
-    case 0xE: return !hasDisk() || !motorOn_;     // NoReady (active high)
+    case 0xE: return !hasDisk() || !driveReady(); // NoReady (active high)
     case 0xF: return superDrive_ && hasDisk() && !hd_; // MAME mfd75w::is_2m
     }
     return false;
@@ -1150,9 +1249,36 @@ void SonyDrive::command(int addr) {
     }
 }
 
+// Spin-up is NOT instant on the READY line. MAME reports the drive ready
+// only after two index pulses (floppy.cpp:888-891, armed at :825), so a
+// Sony at 394 RPM answers ~0.25 s after the motor command — POM68K used to
+// answer the same cycle. The counter decrements on index CROSSINGS rather
+// than on elapsed time, which is what makes the first one land less than a
+// revolution in: the head is wherever the last access left it. Index pulses
+// do not need media (MAME's m_image test at :873 only refines the hole
+// position for hard-sectored disks), so an empty spinning drive becomes
+// ready too, exactly as before this counter existed.
+//
+// spinCyclesPerRev() moves with the GCR speed zone, so `spin_ / rev` is not
+// stable across a seek — the same approximation the rotation angle beside
+// it already makes, and a seek during the 2 revolutions of spin-up only
+// shifts which cycle READY arrives on.
 void SonyDrive::tick(int cpuCycles) {
     cycles_ += cpuCycles;                            // free-running (sound stamps)
-    if (motorOn_) spin_ += cpuCycles;                // spin-up itself is instant
+    if (!motorOn_) return;
+    const int64_t rev = spinCyclesPerRev();
+    const int64_t before = spin_;
+    spin_ += cpuCycles;
+    if (readyCounter_ > 0 && rev > 0) {
+        const int64_t crossed = spin_ / rev - before / rev;
+        if (crossed > 0)
+            readyCounter_ = int(std::max<int64_t>(0, readyCounter_ - crossed));
+    }
+}
+
+// The READY line itself: spindle turning AND the spin-up delay elapsed.
+bool SonyDrive::driveReady() const {
+    return motorOn_ && readyCounter_ == 0;
 }
 
 // Emulated-time stamp for the sound sink, in microseconds — integer
@@ -1163,8 +1289,11 @@ uint64_t SonyDrive::soundMicros() const {
            uint64_t((cycles_ % hz) * 1000000 / hz);
 }
 
+// MAME floppy_image_device::mon_w (floppy.cpp:818-827): starting the
+// spindle arms a two-index READY delay; stopping it drops ready at once.
 void SonyDrive::setMotorState(bool on) {
     if (on == motorOn_) return;
     motorOn_ = on;
+    readyCounter_ = 2;
     if (sound_) sound_->motor(on, hasDisk());
 }

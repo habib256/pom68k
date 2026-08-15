@@ -323,6 +323,153 @@ int main() {
         check(untouched, "neighbour GCR sector stays blank");
     }
 
+    // ── The flux STORE (§ 1.3 flux plan, step 5) ──────────────────────
+    // The block above proves the write-back decodes. These prove what is
+    // left on the MEDIUM afterwards, which is the part that used to be a
+    // lie: the transitions were quantized onto the media's own cell grid
+    // on the way in, and a successful commit then re-laid the whole track
+    // canonically — so a track written at the controller's rate came back
+    // as a track written at the medium's.
+    //
+    // The observable is the gap between consecutive transitions. A
+    // canonical GCR track has every gap a multiple of one 31-clock cell
+    // (kCellTicks); the SWIM2 TSS spaces its GCR flux 63 HALF-cycles apart
+    // (swim2.cpp: `halfWait_ = 63`), i.e. 31.5 clocks — 1.6 % off the
+    // medium, and never a multiple of it. Counting exact-63-half gaps is
+    // therefore zero on a canonical track and hundreds on a written one.
+    {
+        std::vector<uint8_t> img(SonyDrive::kSize800K);
+        for (size_t i = 0; i < img.size(); i++)
+            img[i] = uint8_t(0x11 + (i % 251));
+        SonyDrive src;
+        src.reset();
+        src.insertImage(img);
+        constexpr uint8_t kGcrSector3 = 0x9b;    // kGcr6[3]
+        std::vector<uint8_t> field;
+        {
+            std::vector<uint8_t> nib;
+            for (int i = 0; i < 24000; i++) nib.push_back(src.nextNibble(false));
+            for (size_t p = 3; p + 720 < nib.size(); p++) {
+                if (nib[p] == 0xD5 && nib[p + 1] == 0xAA && nib[p + 2] == 0xAD &&
+                    nib[p + 3] == kGcrSector3) {
+                    field.assign(nib.begin() + long(p),
+                                 nib.begin() + long(p) + 4 + 703 + 2);
+                    break;
+                }
+            }
+        }
+        check(field.size() == 709, "harvest GCR data field (flux-store block)");
+
+        // Write `f` through the TSS at the given setup, and report what the
+        // medium holds afterwards.
+        auto tssWrite = [&](SonyDrive& dst, const std::vector<uint8_t>& f,
+                            uint8_t setup, int paceCycles) {
+            dst.setSuperDrive(true);
+            dst.setSpinClockHz(15667200);
+            dst.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0));
+            Swim2 swim;
+            swim.reset();
+            swim.attachDrive(&dst, nullptr);
+            dst.commandSwim(0x2);                // spindle on
+            swim.write(5, setup);
+            auto feed = [&](uint8_t v) {
+                while (swim.fifoCount() >= 2) { swim.tick(64); dst.tick(64); }
+                swim.write(0, v);
+                swim.tick(paceCycles / 2);
+                dst.tick(paceCycles / 2);
+            };
+            swim.write(7, 0x9A);                 // motor + A + write + ACTION
+            for (int i = 0; i < 6; i++) feed(0xFF);
+            for (uint8_t b : f) feed(b);
+            while (swim.fifoCount()) { swim.tick(paceCycles); dst.tick(paceCycles); }
+            swim.tick(paceCycles * 2); dst.tick(paceCycles * 2);
+            swim.write(6, 0x18);                 // exit write → flush/commit
+        };
+
+        constexpr int64_t kCellTicks = 31 * FluxPll::kSubCell;   // GCR cell
+        constexpr int64_t kHalfTick = FluxPll::kSubCell / 2;
+        constexpr int64_t kTssGap = 63 * kHalfTick;              // 31.5 clocks
+        auto countGap = [](const SonyDrive& d, int64_t gap) {
+            const std::vector<int64_t>& f = d.debugFlux();
+            int n = 0;
+            for (size_t i = 1; i < f.size(); i++)
+                if (f[i] - f[i - 1] == gap) n++;
+            return n;
+        };
+        auto offGrid = [](const SonyDrive& d, int64_t cellT) {
+            int n = 0;
+            for (int64_t t : d.debugFlux())
+                if ((t - cellT / 2) % cellT != 0) n++;
+            return n;
+        };
+
+        // Control: a track straight off the encoder is exactly on the grid.
+        {
+            SonyDrive fresh;
+            fresh.setSuperDrive(true);
+            fresh.insertImage(std::vector<uint8_t>(SonyDrive::kSize800K, 0));
+            check(!fresh.debugFlux().empty(), "canonical track carries flux");
+            check(offGrid(fresh, kCellTicks) == 0,
+                  "canonical track sits exactly on the media cell grid");
+            check(countGap(fresh, kTssGap) == 0,
+                  "canonical track has no 63-half gap anywhere");
+        }
+
+        // (1) A committed write leaves the controller's spacing behind.
+        {
+            SonyDrive dst;
+            tssWrite(dst, field, 0x44, kGcrByte);
+            uint8_t got[512], want[512];
+            check(dst.readSector(0, 0, 3, got), "flux-store write commits");
+            src.readSector(0, 0, 3, want);
+            check(std::memcmp(got, want, 512) == 0,
+                  "flux-store write is still the inverse of the read path");
+            check(countGap(dst, kTssGap) > 100,
+                  "the medium keeps the TSS 63-half spacing, not the cell grid");
+            check(offGrid(dst, kCellTicks) > 100,
+                  "written transitions are off the media grid, as written");
+        }
+
+        // (2) A write the decoder rejects still happened. Before the store
+        // the failed decode re-laid the canonical track, so the guest's
+        // garbage silently healed itself — media do not do that.
+        {
+            std::vector<uint8_t> bad = field;
+            bad[400] = uint8_t(bad[400] ^ 0x0F);  // break the 3-way checksum
+            SonyDrive dst;
+            tssWrite(dst, bad, 0x44, kGcrByte);
+            uint8_t got[512];
+            check(dst.readSector(0, 0, 3, got), "rejected write: sector readable");
+            bool blank = true;
+            for (int i = 0; i < 512 && blank; i++)
+                if (got[i] != 0) blank = false;
+            check(blank, "a checksum-rejected write reaches no sector");
+            check(countGap(dst, kTssGap) > 100,
+                  "a checksum-rejected write still marked the medium");
+        }
+
+        // (3) The case the store exists for: setup bit 3 DOUBLES the write
+        // spacing (swim2.cpp `halfWait_ <<= 1`), so the guest lays down
+        // 63-clock cells on a medium whose nominal cell is 31. It commits —
+        // the write-back verify is clocked by the controller that wrote —
+        // and the doubled spacing is what stays on the disk. The old path
+        // committed too, by quantizing 126 halves onto ONE media cell:
+        // right sector, wrong disk.
+        {
+            SonyDrive dst;
+            tssWrite(dst, field, 0x4C, kGcrByte * 2);
+            uint8_t got[512], want[512];
+            check(dst.readSector(0, 0, 3, got), "double-rate write commits");
+            src.readSector(0, 0, 3, want);
+            check(std::memcmp(got, want, 512) == 0,
+                  "double-rate write carries the same payload");
+            check(countGap(dst, 2 * kTssGap) > 100,
+                  "the medium keeps the DOUBLED spacing (126 halves)");
+            check(countGap(dst, kTssGap) == 0,
+                  "and none of the single-rate spacing");
+        }
+    }
+
     // ── Cosmetic MAME divergences, pinned (parity audit § 2.4) ────────
     {
         // (d) A write span with NO transition must leave the track alone.
@@ -595,6 +742,46 @@ int main() {
         check(!drive.sense(0x1), "CSTIN low when inserted");
         drive.eject();
         check(!drive.hasDisk() && drive.sense(0x1), "eject clears image");
+    }
+
+    // ── /READY: two index pulses of spin-up ───────────────────────────
+    // MAME arms a two-index counter when the spindle starts (floppy.cpp:825)
+    // and only reports ready when it runs out (:888-891). POM68K used to
+    // answer "ready" on the same cycle as the motor command — ~0.25 s early
+    // at 300 RPM. The gate is the reason this stayed open: the boot etalons
+    // mount long after spin-up, so nothing else in the suite can see it.
+    {
+        SonyDrive drive;
+        drive.setSuperDrive(true);
+        drive.setSpinClockHz(15667200);
+        drive.insertImage(std::vector<uint8_t>(SonyDrive::kSize1440K, 0));
+        const int rev = 15667200 * 60 / 300;     // HD MFM spins at 300 RPM
+
+        check(!drive.driveReady(), "a stopped spindle is never ready");
+        drive.commandSwim(0x2);                  // motor on
+        check(drive.motorOn(), "motor command starts the spindle");
+        check(!drive.driveReady(), "the motor command alone does not mean ready");
+        check(drive.senseSwim(0xE), "NoReady is asserted while spinning up");
+
+        drive.tick(rev - 2);
+        check(!drive.driveReady(), "still spinning up one pulse short");
+        drive.tick(4);                           // first index crossed
+        check(!drive.driveReady(), "one index pulse is not enough");
+        drive.tick(rev);                         // second index crossed
+        check(drive.driveReady(), "ready after the second index pulse");
+        check(!drive.senseSwim(0xE), "NoReady clears once ready");
+        check(!drive.sense(0xD), "the IWM READY sense bit is active low");
+
+        // Restarting a spindle that was left mid-revolution reaches ready in
+        // LESS than two full revolutions — the counter follows index pulses,
+        // not elapsed time, and the head is wherever the last access left it.
+        drive.tick(rev / 2);
+        drive.commandSwim(0x6);                  // motor off
+        check(!drive.driveReady(), "stopping the spindle drops ready at once");
+        drive.commandSwim(0x2);                  // motor on again, mid-track
+        drive.tick(rev + rev / 2 + 4);
+        check(drive.driveReady(),
+              "a mid-revolution restart is ready inside two revolutions");
     }
 
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");

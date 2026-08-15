@@ -365,18 +365,19 @@ passes `getClock()`, which on an unboosted `Cpu68k` is the same clock).
 remap must be skipped — double-translating wedges the boot mid-System. Same
 split as `V8Memory`'s 020-HMMU-vs-030-PMMU rule.
 
-## 1.3 Floppy — a real separator over a cell-derived flux view
+## 1.3 Floppy — a real separator over a real flux store
 
 `Swim2.*` runs the **real bit engines** (MAME `swim2.cpp`): the MFM
 sync-hunting shifter with serial CRC-CCITT (`$CDB4` seed, `M_CRC0` handshake
 tag), the GCR high-bit framer, the TSS write serializer in half-cycles.
-`SonyDrive` stores the track as **raw cells** (one padded revolution; rotation
-angle from the spin counter → real rotational latency at every ACTION start);
-MFM writes decode back through the same state machine and only CRC-valid
-sectors commit. `Iwm.*` (Plus / LC II) has the real write mode (MAME
-`MODE_WRITE`: handshake bit 7/bit 6, underrun halt, 128-cycle byte cadence) and
-GCR write-back commits on both mouths through the checksum-verified inverse-6&2
-decoder.
+`SonyDrive` stores the track as **flux** — transition times, one revolution;
+rotation angle from the spin counter → real rotational latency at every
+ACTION start — and MFM writes decode back through the same state machine,
+only CRC-valid sectors committing. `Iwm.*` (Plus / LC II) has the real write
+mode (MAME `MODE_WRITE`: handshake bit 7/bit 6, underrun halt, 128-cycle
+byte cadence) **and, since step 6, the real read mode**: MAME's window state
+machine over that flux. GCR write-back commits on both mouths through the
+checksum-verified inverse-6&2 decoder.
 
 **Steps 2-4b of the flux plan landed 2026-08-14.** The SWIM read engines no
 longer consume one pre-aligned cell per fixed window: `SonyDrive` exposes the
@@ -398,17 +399,61 @@ feedback fails exactly the two off-rate checks; on `Swim1` the bite pair is
 out of its own fixed window, the trap `flux_pll_test` had already named).
 `nextCell()`, the fixed-window read entry, is retired.
 
+**Steps 5 and 6 landed 2026-08-14, and the plan is finished.** The flux is
+the **medium** now, not a view of one, and the `Iwm` reads it.
+
+*Closed by step 5 — the flux store.* `flux_` (transition times, sorted, one
+revolution) is the persistent track; `cells_` is what a `FluxPll` recovers
+from it, derived lazily and consumed only by the offline write-back
+decoders. Both SWIMs hand their TSS half-cycle times straight to
+`commitFlux()` — the per-gap reconstruction onto the media's cell grid is
+gone, and with it the lie it told: a controller writing at its own rate now
+writes that rate onto the disk. Two things had to go with the quantizer.
+A successful commit no longer re-lays the whole track canonically
+(`inFluxCommit_` — `writeSector` refreshes the legacy nibble stream only),
+and a commit whose CRC does *not* verify no longer heals itself, because
+real media do not. What the write-back decode is clocked at is the honest
+part: the drive has no reader of its own, so `commitFlux` takes the
+**controller's** cell period and verifies the write with the clock that
+wrote it (SWIM2 setup bit 3 doubles the write spacing; the SWIM1 ISM takes
+it from P_TIME0/1). Gated four ways, and the gates bite: reinstating the
+canonical re-lay fails exactly the four medium checks and nothing else.
+
+*Closed by step 6 — the `Iwm` cell engine.* The read path is MAME's
+`sync()` MODE_READ machine (`iwm.cpp:398-455`) over `nextFluxAfter`: window
+state machine, re-centred by every transition, byte framed when the
+shifter's MSB goes high; the window tables are `iwm.cpp:334-366` in flux
+ticks, so a C15M host gets MAME's doubled `swim1.cpp` values for free.
+`iwm.cpp:249-250` came with it — an access that leaves the chip on the
+STATUS register while reading clears the shifter. Three behaviours arrive
+that a fixed 128-cycle cadence could not express: bytes come off
+transitions (12 % peak-shift jitter still frames, which is what the
+re-centring is *for* — disabling that one branch fails every check in the
+gate), a self-sync group costs ten cell times against a data nibble's
+eight, and a read starts where rotation left the head instead of where a
+byte array's index happened to be. `nextByte()` retired with it;
+`nextNibble()` survives as the encoder's own gate vehicle, off the live
+path.
+
+*And the gap4 had to become real.* The zone slack was padded with dead
+cells, which is invisible to a byte walker and not to a cell engine: a
+transition-free arc gives the window nothing to re-centre on for ~2000
+cells, once per revolution. It is written self-sync now, which is what a
+formatted track carries. This is the `encodeTrackGcr` geometry note's
+reopening condition coming due — the *filler* is MAME's kind now; the
+pregap LENGTHS stay as they are, still off limits under the 2026-08-05
+denibble rule, and still gated by `gcr_test`.
+
 *Accepted simplifications*:
 
-- **The flux STORE is still cell-derived.** The persistent track
-  representation remains the discrete cell ring: the flux view derives edge
-  times from it at canonical spacing, and a committed write re-encodes
-  canonically — so genuinely off-rate or jittered *written* flux does not
-  survive a commit (the gates synthesize it through a test seam,
-  `debugStretchFluxPermille`). Closing that means a first-class flux track
-  store under the cell decoders — the change that would also let
-  `encodeTrackGcr()` adopt MAME's zone arithmetic (see the geometry note
-  there, whose reopening condition names this step).
+- **The store is the LIVE track, not the whole medium.** `flux_` holds one
+  (track, side); a seek re-lays the destination canonically from `image_`,
+  so flux the guest wrote at its own rate survives a commit, a read-back
+  and a snapshot — but not the head leaving the cylinder. A whole-image
+  flux store is what MAME has, and it costs what MAME pays: ~160 tracks of
+  transition times, tens of MB, in every save state. → **Reopen** for a
+  format that needs it (copy-protected media with per-track rates), which
+  is also the only thing that would make the difference observable.
 - ~~**`Swim1`'s ISM shifter is still the SWIM2 one**~~ — **CLOSED
   2026-08-14 (step 4b), hours after 4a made it portable.** The ISM read
   path is MAME's real engine now (`swim1.cpp:885-1233` verbatim): LS-pair
@@ -429,23 +474,25 @@ out of its own fixed window, the trap `flux_pll_test` had already named).
   `$08`, gated both ways. `DAT1BYTE` **is** wired (below). `FluxPll`
   remains `Swim2`'s separator only: MAME's swim2 has no CSM (the silicon
   replaced it), so the PLL stands in for that chip's analog loop there.
-- **The `Iwm` READ path stays byte-granular** (nibble stream, no cell
-  engine, no separator). Deliberate twice over: Apple's Plus/LC II denibble
-  loops are hand-timed against the IWM's byte cadence (the 2026-08-05
-  boost-freeze repair), and the standing rule since then is that nothing
-  may reshape that stream without the etalons to prove it. → Reopen as the
-  flux plan's last step, with `disk_boot_etalon` + the LC II floppy gates
-  as the cost.
+- ~~**The `Iwm` READ path stays byte-granular**~~ — **CLOSED 2026-08-14
+  (step 6)**, at exactly the price this entry named: `disk_boot_etalon`
+  (3.6 s) and `lcii_floppy_etalon` (165 s) in the loop, both green, plus
+  the new `iwm_read_test`. The caution was right and the fear was not —
+  Apple's denibble loops are hand-timed against *silicon's* cadence, and
+  what replaced the 128-cycle metronome is silicon's cadence.
 - **Committed tracks re-encode canonically** — no exotic-format preservation;
   recovered tag bytes are dropped (flat images have no tag space).
 - **Tach is a sampled bit, not a waveform.**
-- **Drive Ready is `!motorOn`** (`SonyDrive::sense`, `SonyDrive.cpp:928` and
-  `:984`), where MAME's `floppy_image_device` only reports ready after a
-  **two-revolution** spin-up counter — so POM68K declares ready ~0.25 s
-  early. Fixing it is one counter; it stays open because **no gate observes
-  it** (the boot etalons mount long after spin-up), and adding fidelity a
-  gate cannot see is the §5 caveat's failure mode. → **Reopen** together
-  with a floppy-timing gate that samples Ready during spin-up.
+- ~~**Drive Ready is `!motorOn`**~~ — **CLOSED 2026-08-14**, with the gate
+  that was its reopening condition. `SonyDrive::driveReady()` counts index
+  pulses (MAME `floppy.cpp:825` arms two, `:888-891` spends them), so READY
+  arrives up to two revolutions after the motor command instead of on the
+  same cycle — and less than two when the spindle restarts mid-revolution,
+  because the counter follows pulses, not elapsed time. Pulses do not need
+  media (MAME's `m_image` test at `:873` only refines the hole position for
+  hard-sectored disks), so an empty spinning drive still becomes ready.
+  Gated in `swim2_media_test`, which is the only thing in the suite that
+  can see it: the boot etalons mount long after spin-up.
 
 *Closed 2026-08-02*: **`Swim1`'s DAT1BYTE line is wired.** It was listed
 here as "not wired (the LC II polls the FIFO)", which was true of the LC II
@@ -458,14 +505,16 @@ channels (`macquadra700.cpp:879-880`), the Mac IIfx only channel A
 II leaves the callback unset and is unchanged. Verified by re-running every
 boot etalon that owns a `Swim1`.
 
-→ **Closing the remainder**: a first-class flux track store closes the
-first bullet (and reopens the GCR filler geometry with MAME's zone
-arithmetic as the oracle); the `Iwm` cell engine closes the last, at the
-price of re-proving the hand-timed denibble path. Neither has a guest
-symptom attached today. *(The LS-pair port stood between them until
-2026-08-14 — closed the same day it became portable, see above.)*
+→ **The remainder is closed.** Steps 5 and 6 landed 2026-08-14, the same
+day as 4a/4b — the flux plan has no open step. What is left in this section
+is three accepted simplifications with named reopening conditions (a
+whole-image flux store, canonical re-encode of committed tracks, tach as a
+sampled bit), and none of them has a guest symptom attached. The honest
+summary: the floppy stack is flux end to end on every controller POM68K
+ships, and the parts that are not are the parts nothing can observe.
 
-*Plan history.* Step 1, **2026-08-02**: `src/FluxPll.h`, the integer port
+*Plan history.* Steps 5 and 6, **2026-08-14** (the closures above). Step 1,
+**2026-08-02**: `src/FluxPll.h`, the integer port
 of MAME's `fdc_pll_t` (`machine/fdc_pll.cpp`) — phase feedback, the
 `freq_hist` period trim with its ±25 % clamps, the `limit` protocol and
 the write side; time in **flux ticks**, `kSubCell = 1024` subdivisions of
@@ -1166,16 +1215,19 @@ correctness it buys:
    image repaints, and Command + N are simultaneously live in the guest's
    KeyMap on every cell including the failing one. **There is no known live
    bug in this inventory any more** — everything below is a simplification.
-5. **Floppy flux/PLL** (§ 1.3) — **steps 2-4b done 2026-08-14**: the flux
-   view in `SonyDrive` (edges + opt-in jitter), `Swim2` on a real
-   `FluxPll` separator (snapshot v6), and `Swim1`-ISM on **MAME's real
-   LS-pair/CSM/TSM engine** with its correction factors live and gated
-   through the register file (snapshot v7, `P_MULT` bite pair in the
-   suite). What is left, neither symptom-backed: a first-class flux track
-   *store* (today the view is derived from the canonical cell ring, so
-   off-rate written flux does not survive a commit), and the `Iwm` READ
-   path (byte-granular on purpose — the hand-timed denibble stream is off
-   limits without its etalons).
+5. ~~**Floppy flux/PLL**~~ (§ 1.3) — **the plan is FINISHED, 2026-08-14**.
+   Steps 2-4b that morning (flux view, `Swim2` on a real `FluxPll`,
+   `Swim1`-ISM on MAME's LS-pair/CSM/TSM engine), then **step 5** — flux
+   became the *medium*, so a controller's own write rate survives the
+   commit instead of being quantized onto the media's cell grid — and
+   **step 6**, the `Iwm` READ path on MAME's window state machine, at the
+   price this list named: `disk_boot_etalon` + `lcii_floppy_etalon`, both
+   green. The gap4 became written self-sync on the way, which is the
+   `encodeTrackGcr` geometry note's reopening condition coming due. New
+   gate `iwm_read_test`; snapshot format **v8**. What remains in § 1.3 is
+   three simplifications with reopening conditions, none symptom-backed —
+   the largest being that the store holds the LIVE track, so off-rate flux
+   does not survive the head leaving the cylinder.
 6. **SCC bit-serial sampling** and the DPLL (§ 1.4) — only worth it with a
    real async transport to talk to. *(The RTS/DTR pins and the SDLC residue
    codes came off this list on 2026-08-02; the ADB device-model holes at
@@ -1188,8 +1240,9 @@ correctness it buys:
    keyboard + trackball; the counters latch at 60 Hz, and drained on read
    instead they race the firmware's own double reads). What remains of the
    `SIMPLIFICATIONS_REVIEW.md` closure list is **F7's tail alone** (the
-   floppy flux layer — its separator half closed 2026-08-14, item 5 above
-   carries the honest remainder).
+   floppy flux layer) — **closed 2026-08-14 with steps 5 and 6**, so the
+   `SIMPLIFICATIONS_REVIEW.md` closure list is now empty. Item 5 above
+   carries what stayed open inside § 1.3 and why.
 8. **NuBus arbitration** (§ 1.8) — needs a second card to contend.
    *(VRAM arbitration came off this list on 2026-08-03: audited and
    accepted, no oracle in any of MAME's four video devices and no guest

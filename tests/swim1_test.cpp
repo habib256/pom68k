@@ -54,9 +54,9 @@ void switchToIsm(Swim1& s) {
 // per pair side → correction factor 0x100 = the neutral scale 256.
 // Write side unchanged: an empty cell is 31 halves (P_TIME0+4), a flux
 // swallows the next clock window = 63 halves (P_TIME1+4).
-void loadParams(Swim1& s, uint8_t mult = 64) {
+void loadParams(Swim1& s, uint8_t mult = 64, uint8_t time1 = 59) {
     const uint8_t kParams[16] = {
-        42, mult, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 0, 27, 0, 59,
+        42, mult, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 0, 27, 0, time1,
     };
     s.write(6, 0xBF);                            // clear all BUT bit 6 → idx 0
     for (uint8_t p : kParams) s.write(3, p);
@@ -373,6 +373,110 @@ int main() {
         check(drive.readSector(0, 0, 1, back), "read back ISM-written sector");
         check(std::memcmp(back, wr, 512) == 0,
               "param-timed TSS write commits through the cell decoder");
+    }
+
+    // ── The flux STORE, ISM side (§ 1.3 flux plan, step 5) ────────────
+    // The write above is already off the medium's rate: P_TIME1+4 = 63
+    // halves between fluxes where the HD MFM cell is 32, i.e. -1.6 %. The
+    // store is what lets that reach the disk — before it, finishWrite
+    // reconstructed cell indices and the medium came back on its own grid,
+    // so the parameter RAM had no effect a read could ever observe. Here
+    // the param RAM chooses the spacing and the spacing is what stays.
+    {
+        constexpr int64_t kHalfTick = FluxPll::kSubCell / 2;
+        constexpr int64_t kMfmCellTicks = 16 * FluxPll::kSubCell;
+        auto countGap = [](const SonyDrive& d, int64_t gap) {
+            const std::vector<int64_t>& f = d.debugFlux();
+            int n = 0;
+            for (size_t i = 1; i < f.size(); i++)
+                if (f[i] - f[i - 1] == gap) n++;
+            return n;
+        };
+
+        // Write one MFM data field with P_TIME1 = t1, return the drive.
+        auto ismWrite = [&](SonyDrive& drive, Swim1& swim, uint8_t t1,
+                            const uint8_t* wr) {
+            drive.setSpinClockHz(15667200);
+            swim.reset();
+            swim.attachDrive(&drive, nullptr);
+            drive.insertImage(std::vector<uint8_t>(SonyDrive::kSize1440K, 0));
+            switchToIsm(swim);
+            loadParams(swim, 64, t1);
+            drive.commandSwim(0x2);
+            swim.write(5, 0x00);                 // MFM write, fclk
+            auto feed = [&](int reg, uint8_t v) {
+                int guard = 64;
+                while (swim.fifoCount() >= 2 && guard--) {
+                    swim.tick(64); drive.tick(64);
+                }
+                swim.write(reg, v);
+                swim.tick(kMfmByte / 2);
+                drive.tick(kMfmByte / 2);
+            };
+            swim.write(7, 0x9A);
+            for (int i = 0; i < 12; i++) feed(0, 0x00);
+            for (int i = 0; i < 3; i++) feed(1, 0xA1);
+            feed(0, 0xFE);
+            feed(0, 0x00); feed(0, 0x00); feed(0, 0x02); feed(0, 0x02);
+            feed(2, 0);
+            for (int i = 0; i < 22; i++) feed(0, 0x4E);
+            for (int i = 0; i < 12; i++) feed(0, 0x00);
+            for (int i = 0; i < 3; i++) feed(1, 0xA1);
+            feed(0, 0xFB);
+            for (int i = 0; i < 512; i++) feed(0, wr[i]);
+            feed(2, 0);
+            for (int i = 0; i < 4; i++) feed(0, 0x4E);
+            int drainGuard = 64;
+            while (swim.fifoCount() && drainGuard--) {
+                swim.tick(kMfmByte); drive.tick(kMfmByte);
+            }
+            swim.tick(kMfmByte * 2); drive.tick(kMfmByte * 2);
+            swim.write(6, 0x18);                 // exit write -> commit
+        };
+
+        uint8_t wr[512];
+        for (int i = 0; i < 512; i++) wr[i] = uint8_t(0x90 ^ (i & 0xFF));
+
+        // Control: a canonical HD track sits on the 16-clock media grid.
+        {
+            SonyDrive fresh;
+            fresh.insertImage(std::vector<uint8_t>(SonyDrive::kSize1440K, 0));
+            int off = 0;
+            for (int64_t t : fresh.debugFlux())
+                if ((t - kMfmCellTicks / 2) % kMfmCellTicks != 0) off++;
+            check(!fresh.debugFlux().empty() && off == 0,
+                  "canonical HD track sits on the 16-clock media grid");
+            check(countGap(fresh, 63 * kHalfTick) == 0,
+                  "canonical HD track has no 63-half gap");
+        }
+
+        // Default params: 63 halves between fluxes, and that is what lands.
+        {
+            SonyDrive drive; Swim1 swim;
+            ismWrite(drive, swim, 59, wr);
+            uint8_t back[512];
+            check(drive.readSector(0, 0, 1, back) &&
+                  std::memcmp(back, wr, 512) == 0,
+                  "ISM flux-store write still commits its sector");
+            check(countGap(drive, 63 * kHalfTick) > 100,
+                  "the medium keeps P_TIME1's 63-half spacing");
+        }
+
+        // The bite: move P_TIME1 and the DISK moves with it. A guest that
+        // reprograms its write timings is writing a different disk, which
+        // is only true because the store holds times.
+        {
+            SonyDrive drive; Swim1 swim;
+            ismWrite(drive, swim, 67, wr);       // P_TIME1+4 = 71 halves
+            uint8_t back[512];
+            check(drive.readSector(0, 0, 1, back) &&
+                  std::memcmp(back, wr, 512) == 0,
+                  "a +11% param-timed write still verifies on read-back");
+            check(countGap(drive, 71 * kHalfTick) > 100,
+                  "the medium carries the reprogrammed 71-half spacing");
+            check(countGap(drive, 63 * kHalfTick) == 0,
+                  "and none of the default spacing");
+        }
     }
 
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");

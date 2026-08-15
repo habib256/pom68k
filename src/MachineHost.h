@@ -321,11 +321,21 @@ protected:
             case Cmd::MouseMove:   mem.mouseMove(c.a, c.b); break;
             // The Duo's PMU takes the button alone; every other platform also
             // takes the ADB address it should be reported on.
+            //
+            // The single-button form has to FOLD the host buttons, not just
+            // drop the index. The GUI pushes both every frame (ScreenInput:
+            // `button(0, …); button(1, …)`), so on the Duo the right
+            // button's state landed last and overwrote the left's — the left
+            // click did nothing and the right one worked, which reads to a
+            // user as the two being inverted. A Mac mouse has one button;
+            // either host button presses it.
             case Cmd::MouseButton:
-                if constexpr (requires { mem.mouseButton(true, 0); })
+                if constexpr (requires { mem.mouseButton(true, 0); }) {
                     mem.mouseButton(c.b != 0, c.a);
-                else
-                    mem.mouseButton(c.b != 0);
+                } else {
+                    if (c.a >= 0 && c.a < 2) hostBtn_[c.a] = (c.b != 0);
+                    mem.mouseButton(hostBtn_[0] || hostBtn_[1]);
+                }
                 break;
             case Cmd::Key:
                 keyTrace("apply", uint8_t(c.a), c.b != 0);
@@ -401,6 +411,10 @@ protected:
     std::thread th_;
     std::mutex cmdMu_;
     std::vector<Cmd> cmds_, cmdsApply_;
+    // Host button states, machine-thread side. Only the single-button
+    // platforms read them (see Cmd::MouseButton); the ADB ones report each
+    // button on its own address and need no folding.
+    bool hostBtn_[2] = { false, false };
     std::atomic<bool> floppyFlag_{false};
     mutable std::mutex mediaMu_;
     std::string floppyPath_;

@@ -88,7 +88,7 @@ public:
            csmErr_, csmPairSide_, csmMinCount_, correction_,
            tsmOut_, tsmBits_, tsmMark_);
         ar(crc_, sr_, tssSr_, tssOutput_, currentBit_,
-           halfWait_, writeHalfPos_, writeStartCell_, writeActive_,
+           halfWait_, writeHalfPos_, writeStartTick_, writeActive_,
            writeTransitions_);
     }
 
@@ -174,7 +174,7 @@ private:
     uint32_t halfWait_ = 0;
 
     uint64_t writeHalfPos_ = 0;
-    int64_t writeStartCell_ = 0;
+    int64_t writeStartTick_ = 0;
     bool writeActive_ = false;
     std::vector<uint64_t> writeTransitions_;
 };

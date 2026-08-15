@@ -371,11 +371,13 @@ static const char* configureGlfwOpenGl() {
 // STARTED on the Mac screen owns the mouse until release, so Finder
 // drag-and-drop keeps tracking when the pointer leaves the item and the
 // ImGui window never moves from a drag inside it (only its title bar
-// moves it — ConfigWindowsMoveFromTitleBarOnly). The Delete key toggles
-// a hard capture: GLFW disabled cursor (raw deltas, no window edges),
-// ImGui mouse off so clicks can't leak into widgets; Delete releases.
+// moves it — ConfigWindowsMoveFromTitleBarOnly). The MIDDLE mouse button
+// (the wheel), or the Delete key, toggles a hard capture: GLFW disabled
+// cursor (raw deltas, no window edges), ImGui mouse off so clicks can't
+// leak into widgets; the same button or key releases.
 struct ScreenInput {
     bool captured = false;
+    bool midWas = false;                 // middle-button edge detector
     float accX = 0, accY = 0;            // sub-pixel remainder
     float zoom = 2.0f;                   // host px per guest px, live
     double lastX = 0, lastY = 0;         // virtual cursor while captured
@@ -403,8 +405,20 @@ struct ScreenInput {
         ImGui::GetWindowDrawList()->AddImage(
             ImTextureID(intptr_t(tex)), p, ImVec2(p.x + size.x, p.y + size.y));
 
-        if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+        // Capture toggle. The MIDDLE button (the wheel) is the primary one,
+        // and it has to be polled from GLFW rather than ImGui: capture sets
+        // ImGuiConfigFlags_NoMouse, so ImGui stops reporting buttons at
+        // exactly the moment one is needed to get back OUT. Hovering the
+        // screen is required to capture, never to release — otherwise a
+        // capture whose pointer is parked over a menu could not be undone.
+        const bool mid = glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_MIDDLE)
+                             == GLFW_PRESS;
+        const bool midEdge = mid && !midWas;
+        midWas = mid;
+        if (midEdge && (captured || ImGui::IsItemHovered()))
             setCaptured(win, !captured);
+        else if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+            setCaptured(win, !captured);   // kept: the original binding
 
         if (captured) {                  // raw deltas from the virtual cursor
             double x, y;
@@ -985,7 +999,7 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
     pom68k::peripheralMenuItem();
     pom68k::dockLayoutMenu();
     if (extraMenus) extraMenus();
-    ImGui::TextDisabled("|  Delete: capture mouse");
+    ImGui::TextDisabled("|  Clic molette (ou Suppr) : capture souris");
     ImGui::EndMainMenuBar();
     // Every runner goes through machineMenu, so the docked shell is
     // installed in exactly one place. Must follow EndMainMenuBar: the

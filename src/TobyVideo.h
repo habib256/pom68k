@@ -60,7 +60,7 @@ public:
     // megabyte, dwarfed by the machine RAM blob), TFB registers, Bt453
     // CLUT and the CRTC-derived frame clock. bus_/slot_/irqCb_ are wiring.
     template <class Ar> void visit(Ar& ar) {
-        ar(vram_, regs_, pens_, dacAddr_, mode_, vblDisable_,
+        ar(vram_, regs_, pens_, dacAddr_, dacRgb_, dacComp_, mode_, vblDisable_,
            hres_, vres_, htotal_, vtotal_,
            frameCycles_, framePos_, vblAcc_, vblLine_, frameCount_);
     }
@@ -84,6 +84,18 @@ private:
     std::array<uint8_t, 16> regs_{};
     std::array<uint32_t, 256> pens_{};
     uint8_t dacAddr_ = 0;
+    // Bt453 component cycle: which of R/G/B the next palette access is,
+    // and the two components already latched for the entry being written.
+    // Live state, not scratch — a guest can be interrupted between the red
+    // and the blue write, and a snapshot has to resume mid-entry.
+    uint8_t dacRgb_ = 0;
+    uint8_t dacComp_[3] = {};
+    // MAME bt45x increment_address (:200-208): step the component index,
+    // and advance the entry only when it wraps.
+    void dacStep() {
+        dacRgb_ = uint8_t((dacRgb_ + 1) % 3);
+        if (dacRgb_ == 0) dacAddr_++;
+    }
     uint8_t mode_ = 0;
     bool vblDisable_ = true;
     int hres_ = W, vres_ = H;
