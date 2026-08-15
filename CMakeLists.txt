@@ -424,6 +424,10 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(iwm_write_test PRIVATE pom68k_core)
     add_test(NAME iwm_write_test COMMAND iwm_write_test)
 
+    add_executable(iwm_read_test tests/iwm_read_test.cpp)
+    target_link_libraries(iwm_read_test PRIVATE pom68k_core)
+    add_test(NAME iwm_read_test COMMAND iwm_read_test)
+
     # O6.7 gate: SWIM1 IWM/ISM personalities — 1-0-1-1 switch magic, param
     # RAM, and ISM MFM read+write of 1.44 MB media through the cell engine.
     add_executable(swim1_test tests/swim1_test.cpp)

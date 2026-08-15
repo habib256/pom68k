@@ -12,10 +12,40 @@ void Iwm::reset() {
     enable_ = driveSel_ = q6_ = q7_ = sel_ = false;
     mode_ = 0;
     dataReg_ = 0;
-    cellPhase_ = 0;
     writing_ = wrPending_ = wrUnderrun_ = false;
     wrPhase_ = 0;
     selDelay_ = 0;
+    fluxClock_ = nextStateChange_ = nextFluxChange_ = syncUpdate_ = 0;
+    rwState_ = kIdle;
+    rsh_ = 0;
+    readArmed_ = false;
+}
+
+// MAME iwm.cpp:334-366, in the drive's flux ticks. The tables are the
+// C7M ones; a C15M host (Mac II family, the SWIM1 IWM personality) gets
+// MAME's doubled swim1.cpp values for free, because kIwmTick is the
+// absolute size of one IWM clock and clockScale_ only converts tick()'s
+// argument. Q3-clocked mode is not modelled — no Mac wires it.
+int64_t Iwm::halfWindowTicks() const {
+    switch (mode_ & 0x18) {
+        case 0x00: return 14 * kIwmTick;
+        case 0x08: return  7 * kIwmTick;
+        case 0x10: return 16 * kIwmTick;
+        default:   return  8 * kIwmTick;         // 0x18 — the Mac's mode $1F
+    }
+}
+
+int64_t Iwm::windowTicks() const {
+    switch (mode_ & 0x18) {
+        case 0x00: return 28 * kIwmTick;
+        case 0x08: return 14 * kIwmTick;
+        case 0x10: return 36 * kIwmTick;         // NOT 2x the half window
+        default:   return 16 * kIwmTick;
+    }
+}
+
+int64_t Iwm::updateDelayTicks() const {
+    return (mode_ & 0x08 ? 4 : 8) * kIwmTick;    // iwm.cpp:363-366
 }
 
 // Sense/command address presented to the drive: CA2 CA1 CA0 = ph2 ph1 ph0,
@@ -57,6 +87,11 @@ uint8_t Iwm::access(int reg) {
         case 7: q7_ = set; break;
     }
     updateRw();
+    // MAME iwm.cpp:249-250: any access that leaves the chip on the STATUS
+    // register while it is actively READING clears the read shifter. Real,
+    // and now observable — the byte in flight is lost, which is why a
+    // driver polls sense between sectors and not between nibbles.
+    if (q6_ && !q7_ && enable_ && !writing_) rsh_ = 0;
     return readRegister();
 }
 
@@ -70,11 +105,15 @@ void Iwm::updateRw() {
         wrUnderrun_ = false;
         wrPending_ = false;
         wrPhase_ = 7;                             // first load: S_IDLE + 7
+        readArmed_ = false;                       // MAME m_rw_state = S_IDLE
     } else if (!wantWrite && writing_) {
         writing_ = false;
         wrPending_ = false;
+        readArmed_ = false;                       // re-park on the spindle
         if (selectedDrive()) selectedDrive()->flushWrite(sel_);
     }
+    // Losing the drive loses the head position with it.
+    if (!enable_) readArmed_ = false;
 }
 
 uint8_t Iwm::read(int reg) {
@@ -188,12 +227,89 @@ void Iwm::tick(int cpuCycles) {
     // not by ENABLE (mon_w override, floppy.cpp:3417-3420). No spin, no
     // nibbles. (The write engine above stays ungated: the Sony driver never
     // writes motor-off, and iwm_write_test drives it without a motor.)
-    if (!selectedDrive()->motorOn()) { cellPhase_ = 0; return; }
-    cellPhase_ += cpuCycles;
-    while (cellPhase_ >= kCyclesPerNibble) {
-        cellPhase_ -= kCyclesPerNibble;
-        if (dataReg_ & 0x80) overwritten++;
-        dataReg_ = selectedDrive()->nextNibble(sel_);
-        clearCountdown_ = 0;
+    if (!selectedDrive()->motorOn()) { readArmed_ = false; return; }
+    // One tick() cycle in the drive's flux unit. Exact in integers: kIwmTick
+    // is 2048 and clockScale_ is 1 or 2.
+    tickRead(int64_t(cpuCycles) * (kIwmTick / clockScale_));
+}
+
+// The byte reached the data register. MAME clears its async update at the
+// same moment (iwm.cpp:449); clearCountdown_ is that latch here.
+void Iwm::latchData(uint8_t v) {
+    if (dataReg_ & 0x80) overwritten++;
+    dataReg_ = v;
+    clearCountdown_ = 0;
+    if (SonyDrive* d = selectedDrive()) d->nibblesRead++;
+}
+
+// MAME iwm.cpp sync(), case MODE_READ (:398-455) — ported verbatim, with
+// attotime replaced by the drive's flux ticks. This is § 1.3 flux plan
+// step 6: the byte stream is recovered from transitions now, where it used
+// to be handed over one pre-encoded nibble per fixed 128-cycle slot.
+//
+// What changes for a guest: bytes no longer arrive on a metronome. A GCR
+// data nibble always has bit 7 set, so it still self-frames in 8 windows,
+// but a 10-cell self-sync group takes ten — which is precisely how the
+// format keeps a real IWM in step, and precisely what a fixed cadence
+// could not express.
+void Iwm::tickRead(int64_t elapsedTicks) {
+    SonyDrive* d = selectedDrive();
+    if (!readArmed_) {
+        // Park on the spindle: the head is wherever rotation left it, the
+        // same rotational latency Swim2::armReadPll takes.
+        fluxClock_ = d->fluxAngleTicks(sel_);
+        nextStateChange_ = fluxClock_;
+        nextFluxChange_ = 0;
+        syncUpdate_ = 0;
+        rwState_ = kIdle;
+        readArmed_ = true;
+    }
+    const int64_t nextSync = fluxClock_ + elapsedTicks;
+    const int64_t win = windowTicks(), half = halfWindowTicks();
+    while (nextSync > fluxClock_) {
+        if (nextFluxChange_ <= fluxClock_) {
+            const int64_t e = d->nextFluxAfter(fluxClock_ + 1, sel_);
+            nextFluxChange_ = e;
+            if (e != FluxPll::kNever && nextFluxChange_ <= fluxClock_)
+                nextFluxChange_ = fluxClock_ + 1;
+        }
+        if (nextSync < nextStateChange_) { fluxClock_ = nextSync; break; }
+        if (fluxClock_ < nextStateChange_) fluxClock_ = nextStateChange_;
+        if (rwState_ == kIdle) {
+            rsh_ = 0;
+            rwState_ = kEdge0;
+            nextStateChange_ = fluxClock_ + win;
+            clearCountdown_ = 0;
+            syncUpdate_ = 0;
+            continue;
+        }
+        const int64_t endw = nextStateChange_ + (rwState_ == kEdge0 ? win : half);
+        // A transition inside the window re-centres it and closes the cell
+        // half a window later — the chip's whole rate-tracking mechanism.
+        if (rwState_ == kEdge0 && nextFluxChange_ != FluxPll::kNever &&
+            endw >= nextFluxChange_ && nextSync >= nextFluxChange_) {
+            fluxClock_ = nextStateChange_ = nextFluxChange_;
+            rwState_ = kEdge1;
+            continue;
+        }
+        if (nextSync < endw) { fluxClock_ = nextSync; break; }
+        rsh_ = uint8_t((rsh_ << 1) | (rwState_ == kEdge1 ? 1 : 0));
+        nextStateChange_ = fluxClock_ = endw;
+        rwState_ = kEdge0;
+        if (isSync()) {
+            // Latch mode (iwm.cpp:437-446). Unused by the Mac — mode $1F
+            // has bit 1 set, so every Mac reads asynchronously — but the
+            // chip has it and it costs three lines.
+            if (rsh_ >= 0x80) { latchData(rsh_); rsh_ = 0; }
+            else if (rsh_ >= 0x04) { latchData(rsh_); syncUpdate_ = 0; }
+            else if (rsh_ >= 0x02) syncUpdate_ = fluxClock_ + updateDelayTicks();
+        } else if (rsh_ >= 0x80) {
+            latchData(rsh_);
+            rsh_ = 0;
+        }
+    }
+    if (syncUpdate_ && syncUpdate_ <= fluxClock_) {
+        if (isSync()) dataReg_ = rsh_;
+        syncUpdate_ = 0;
     }
 }

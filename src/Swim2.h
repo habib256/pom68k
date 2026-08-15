@@ -71,7 +71,7 @@ public:
         // phase and the same pulled period (snapshot format v6).
         ar(pll_, fluxClock_);
         ar(crc_, sr_, tssSr_, tssOutput_, mfmSyncCounter_, currentBit_,
-           halfWait_, writeHalfPos_, writeStartCell_, writeActive_,
+           halfWait_, writeHalfPos_, writeStartTick_, writeActive_,
            writeTransitions_);
     }
 
@@ -135,7 +135,7 @@ private:
     // Write capture: absolute half-cycles since write start, one entry
     // per flux transition (MAME m_flux_write → floppy write_flux).
     uint64_t writeHalfPos_ = 0;
-    int64_t writeStartCell_ = 0;
+    int64_t writeStartTick_ = 0;
     bool writeActive_ = false;
     std::vector<uint64_t> writeTransitions_;
 };

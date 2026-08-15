@@ -54,7 +54,7 @@ void Swim1::reset() {
     currentBit_ = -1;
     halfWait_ = 0;
     writeHalfPos_ = 0;
-    writeStartCell_ = 0;
+    writeStartTick_ = 0;
     writeActive_ = false;
     writeTransitions_.clear();
     if (onDat1Byte) onDat1Byte(false);           // swim1.cpp:109
@@ -332,12 +332,14 @@ void Swim1::startWrite() {
     writeTransitions_.clear();
     writeActive_ = true;
     SonyDrive* d = selectedDrive();
-    writeStartCell_ = d ? d->startWriteCells(side1()) : 0;
+    writeStartTick_ = d ? d->startWriteFlux(side1()) : 0;
 }
 
-// Same per-gap reconstruction as Swim2::finishWrite — the write spacing
-// comes from the param RAM (P_TIME0/1), the read cells from cellCycles();
-// per-gap rounding keeps them from drifting apart.
+// Same flux hand-off as Swim2::finishWrite. It matters more here: the ISM
+// write spacing comes from the parameter RAM (P_TIME0/1), so a guest that
+// programs its own timings genuinely writes at its own rate — and since
+// § 1.3 step 5 the medium keeps that rate instead of snapping it onto the
+// read grid cellCycles() defines.
 void Swim1::finishWrite() {
     if (!writeActive_) return;
     writeActive_ = false;
@@ -347,26 +349,14 @@ void Swim1::finishWrite() {
     // cells alone. See the long note there.
     if (!d || writeTransitions_.empty()) { writeTransitions_.clear(); return; }
 
-    const uint64_t div = uint64_t(cellCycles()) * 2;   // half-cycles per cell
-    std::vector<int64_t> cellsAt;
-    cellsAt.reserve(writeTransitions_.size());
-    uint64_t prevHalf = 0;
-    int64_t prevCell = -1;
-    for (uint64_t h : writeTransitions_) {
-        int64_t cell;
-        if (prevCell < 0) {
-            cell = int64_t((h + div / 2) / div);
-        } else {
-            int64_t gap = int64_t((h - prevHalf + div / 2) / div);
-            cell = prevCell + std::max<int64_t>(1, gap);
-        }
-        cellsAt.push_back(cell);
-        prevHalf = h;
-        prevCell = cell;
-    }
-    const int64_t totalCells =
-        prevCell + std::max<int64_t>(1, int64_t((writeHalfPos_ - prevHalf + div / 2) / div));
-    d->commitCells(writeStartCell_, totalCells, cellsAt, !(setup_ & 0x40));
+    const int64_t halfTick = FluxPll::kSubCell / 2;
+    std::vector<int64_t> atTicks;
+    atTicks.reserve(writeTransitions_.size());
+    for (uint64_t h : writeTransitions_)
+        atTicks.push_back(int64_t(h) * halfTick);
+    d->commitFlux(writeStartTick_, int64_t(writeHalfPos_) * halfTick, atTicks,
+                  !(setup_ & 0x40),
+                  int64_t(cellCycles()) * FluxPll::kSubCell);
     writeTransitions_.clear();
 }
 

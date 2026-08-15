@@ -41,7 +41,7 @@ void Swim2::reset() {
     currentBit_ = -1;
     halfWait_ = 0;
     writeHalfPos_ = 0;
-    writeStartCell_ = 0;
+    writeStartTick_ = 0;
     writeActive_ = false;
     writeTransitions_.clear();
     if (drive_[0]) drive_[0]->reset();
@@ -235,7 +235,7 @@ void Swim2::write(int reg, uint8_t value) {
 
 // Read-ACTION entry: program the separator's nominal period from setup,
 // park it at the drive's rotation angle (real rotational latency, as
-// syncCellsToRotation did for the discrete cells) and zero the flux
+// the discrete cell resync used to) and zero the flux
 // budget. readReset() keeps a pulled period on purpose — see FluxPll.h.
 void Swim2::armReadPll() {
     pll_.setClock(int64_t(cellCycles()) * FluxPll::kSubCell);
@@ -261,14 +261,19 @@ void Swim2::startWrite() {
     writeTransitions_.clear();
     writeActive_ = true;
     SonyDrive* d = selectedDrive();
-    writeStartCell_ = d ? d->startWriteCells(side1()) : 0;
+    writeStartTick_ = d ? d->startWriteFlux(side1()) : 0;
 }
 
-// Convert the captured transitions into raw cells and hand them to the
-// drive. MAME emits attotime flux that floppy.cpp re-clocks; our discrete
-// equivalent reconstructs cell gaps like a PLL would: per-gap rounding
-// (never cumulative) so the 31/63-half write spacing (swim2.cpp:432-436)
-// can't drift against the 16/31-cycle read cells.
+// Hand the captured transitions to the drive as TIMES — MAME's
+// floppy->write_flux(start, end, count, buffer), which is what the flux
+// store (§ 1.3 step 5) made possible. Half-cycles convert exactly: one
+// controller (C15M) clock is FluxPll::kSubCell ticks, and kSubCell is even.
+// Before the store these times were quantized onto the media's cell grid
+// here, per-gap so the 31/63-half write spacing (swim2.cpp:432-436) would
+// not drift against the 16/31-cycle read cells — a reconstruction that was
+// only needed because the medium had a grid. It does not any more: a
+// controller writing at its own rate lays that rate down, and the reader's
+// separator is what has to cope, exactly as on silicon.
 void Swim2::finishWrite() {
     if (!writeActive_) return;
     writeActive_ = false;
@@ -296,28 +301,14 @@ void Swim2::finishWrite() {
     // is observed relying on erase-by-silence.
     if (!d || writeTransitions_.empty()) { writeTransitions_.clear(); return; }
 
-    const uint64_t div = uint64_t(cellCycles()) * 2;   // half-cycles per cell
-    std::vector<int64_t> cellsAt;
-    cellsAt.reserve(writeTransitions_.size());
-    uint64_t prevHalf = 0;
-    int64_t prevCell = -1;
-    for (uint64_t h : writeTransitions_) {
-        int64_t cell;
-        if (prevCell < 0) {
-            cell = int64_t((h + div / 2) / div);
-        } else {
-            int64_t gap = int64_t((h - prevHalf + div / 2) / div);
-            cell = prevCell + std::max<int64_t>(1, gap);
-        }
-        cellsAt.push_back(cell);
-        prevHalf = h;
-        prevCell = cell;
-    }
-    // Span length in the same per-gap metric (an absolute divide would
-    // drift against the 31-half write spacing and clip the CRC tail).
-    const int64_t totalCells =
-        prevCell + std::max<int64_t>(1, int64_t((writeHalfPos_ - prevHalf + div / 2) / div));
-    d->commitCells(writeStartCell_, totalCells, cellsAt, !(setup_ & 0x40));
+    const int64_t halfTick = FluxPll::kSubCell / 2;
+    std::vector<int64_t> atTicks;
+    atTicks.reserve(writeTransitions_.size());
+    for (uint64_t h : writeTransitions_)
+        atTicks.push_back(int64_t(h) * halfTick);
+    d->commitFlux(writeStartTick_, int64_t(writeHalfPos_) * halfTick, atTicks,
+                  !(setup_ & 0x40),
+                  int64_t(cellCycles()) * FluxPll::kSubCell);
     writeTransitions_.clear();
 }
 
