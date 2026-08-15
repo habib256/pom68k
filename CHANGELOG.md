@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 231 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 233 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -162,6 +162,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ### Storage — SCSI, IWM/SWIM, media
 
 - **what the SWIM read path actually runs now — a real FluxPll separator over a flux view of the track, and why the off-rate gate (not jitter) is the one that catches its regression** → [2026-08-14 (fourth) — The SWIM read engines get their data separator…](#2026-08-14-flux-separator)
+- **a gate that passed for a year while pinning the defect it was meant to catch — the Toby CLUT's address arithmetic** → [2026-08-14 (ninth) — The Toby CLUT stored a grey per write…](#2026-08-14-toby-clut-mouse)
+- **why the Mac II family's colour was broken but its boot screen was not** → [2026-08-14 (ninth) — The Toby CLUT stored a grey per write…](#2026-08-14-toby-clut-mouse)
+- **what a floppy "flux store" buys over a cell ring, and why a failed write must be allowed to leave garbage** → [2026-08-14 (eighth) — The flux plan is finished…](#2026-08-14-flux-store-iwm)
+- **the IWM read path was off limits for nine days on a hand-timed-denibble rule — what it cost to touch it, and why the fear was wrong** → [2026-08-14 (eighth) — The flux plan is finished…](#2026-08-14-flux-store-iwm)
 - **why only ONE board honoured a firmware-dump override for a year, and what that cost on a family whose behaviour differs by revision** → [2026-08-14 (seventh) — Which dump, not only which side…](#2026-08-14-firmware-picker)
 - **SWIM1's ISM is not a window separator: LS-pair gap classification, the CSM's u8 correction factors (a window on 192..447), and why the param RAM is load-bearing now** → [2026-08-14 (fifth) — SWIM1's ISM read engine is MAME's real one…](#2026-08-14-ism-csm)
 - **53C96 pseudo-DMA reads** → [2026-07-18 — Q6.1: 53C96 pseudo-DMA reads work…](#2026-07-18--q61-53c96-pseudo-dma-reads-work--the-mac-os-81-scsi-driver-now-transfers-full-512-byte-blocks-off-the-disk)
@@ -290,6 +294,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-14 (ninth)** — [The Toby CLUT stored a grey per write: a red boot etalon that was a real bug, and a gate that pinned it](#2026-08-14-toby-clut-mouse)
+- **2026-08-14 (eighth)** — [The flux plan is finished: the medium stops being a cell grid, and the IWM reads transitions](#2026-08-14-flux-store-iwm)
 - **2026-08-14 (seventh)** — [Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window](#2026-08-14-firmware-picker)
 - **2026-08-14 (sixth)** — ["Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable](#2026-08-14-peripheral-window)
 - **2026-08-14 (fifth)** — [SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing](#2026-08-14-ism-csm)
@@ -523,6 +529,203 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-14-toby-clut-mouse"></a>
+## 2026-08-14 (ninth) — The Toby CLUT stored a grey per write: a red boot etalon that was a real bug, and a gate that pinned it
+
+Reported from the GUI: "on the IIfx the colours come out strange." They did,
+and so did the Mac II's, the IIx's, the IIcx's — every board whose video is
+the Toby card. `TobyVideo::write8` treated **each** palette-data write as a
+whole pen (`v * 0x010101`, grey) and advanced the CLUT address after it. A
+Bt453 takes **three** writes — red, green, blue — into one entry, and
+advances only on the third (MAME `bt45x.cpp:191-197` for the address
+register's component reset, `:200-208` for `increment_address`, `:268-282`
+for the write). So every colour the guest programmed came back monochrome
+**and** shifted by three: one entry in three carried a red channel, and
+nothing carried a colour.
+
+**The 1-bpp boot screen hid it**, which is why it lived this long: at 1 bpp
+the decoder reads pens 0 and 128, and the reset seeding (`TobyVideo.cpp:17-18`
+— black below 128, white above) is already right, so the Welcome screen and
+the Mac II's own System 6 desktop looked correct without the CLUT ever being
+consulted.
+
+**`iifx_boot_etalon` was RED on this**, and had been. Not from the flux work
+landed the same day — proved by stashing it and re-running, byte for byte
+the same failure — but from the CLUT: the gate scored `menu bar 0.00,
+desktop 0.03` after burning its whole 18 000-frame budget. With the three-
+component cycle in place it reaches the Finder at **f=539** and passes. So
+the user-visible symptom and the red gate were one defect, and the gate had
+been reporting it correctly all along.
+
+**`toby_test` was pinning the bug.** It writes `$12/$34/$56` to entry 5 —
+a correct Bt453 sequence — and then asserted the address had reached **8**,
+i.e. one increment per byte. It passed because the implementation stepped
+every write, and it never looked at the resulting COLOUR at all. That is
+the shape of false green this project keeps re-learning: a gate written
+against the implementation instead of the hardware confirms whatever the
+implementation does. It now reads the entry back through the DAC and
+checks the components are $12/$34/$56, that they are not three copies of
+one value, and that the address advanced **once**.
+
+**Two GUI fixes came with it.** The mouse capture toggle is now a **middle
+click** (the wheel) as well as Delete — and it has to be polled from GLFW
+rather than ImGui, because capture sets `ImGuiConfigFlags_NoMouse` and ImGui
+stops reporting buttons at exactly the moment one is needed to get back out.
+Hovering the screen is required to capture, never to release, or a capture
+whose pointer parked over a menu could not be undone.
+
+And the **Duo's mouse buttons read as inverted**. They were not swapped:
+`MachineHost`'s `Cmd::MouseButton` dropped the button INDEX on the
+single-button platforms, and the GUI pushes both host buttons every frame
+(`ScreenInput`: `button(0, …); button(1, …)`) — so the right button's state
+landed last and overwrote the left's, which from the user's seat is a left
+click that does nothing and a right click that works. A Mac mouse has one
+button; the two host buttons are folded onto it now.
+
+**Not a bug: the Duo's screen is grey on purpose.** Reported alongside the
+above as "the Duo doesn't display in colour, which is abnormal" — it is
+normal. The Duo 210/230/250 drive a 640×400 DBLite panel through Apple's
+**Gray Scale Controller** (MAME `gsc.cpp` names both: "Apple Gray Scale
+Controller", "panel 6 = 640x400 DBLite (PowerBook Duo 210/230/250)"), whose
+palette is sixteen greys. Colour needed a Duo Dock with a video card, or a
+Duo 270c/280c. `MscMemory::decodeScreen` is conformant and stays.
+
+**Two etalons are red and neither is from today's work**, both proved by
+the same stash-and-rerun: `macii_boot_etalon` (178 SCSI commands against a
+floor of 200 — the screen half of the assertion passes, so the machine
+reaches a plausible Finder; the floor was calibrated at 291-295 on
+2026-08-13 **on this same volume**, so the image is not the answer; and
+neither is the swallowed VBL disable that landed in the same file three
+hours later — restoring its old `vramWrites == 0` guard moves the count by
+nothing. Both leads are spent and written down in `TODO.md` § 1 so the
+next person does not walk them again) and `duo_persist_etalon` (the
+Cmd-N folder never appears before the reboot, while the post-reboot desktop
+counts thirteen `untitled folder`s — accumulated state on the shared image
+is the first thing to rule out, per the 2026-08-06 lesson). Recorded here
+rather than fixed, because neither is understood yet and lowering a floor
+to make a gate green is the failure mode this file exists to prevent.
+
+<a id="2026-08-14-flux-store-iwm"></a>
+## 2026-08-14 (eighth) — The flux plan is finished: the medium stops being a cell grid, and the IWM reads transitions
+
+Steps 2-4b that morning gave the SWIM read engines a real data separator
+over a flux **view**. A view is what it was: the persistent track stayed a
+discrete cell ring, the edges were derived from it at canonical spacing, and
+a committed write re-encoded canonically. `LLE_VS_HLE.md` § 1.3 said so
+plainly and named the two remaining steps. Both landed the same day.
+
+**Step 5 — flux becomes the medium.** `flux_` (transition times, sorted,
+one revolution, plus an explicit `fluxRev_`) is now the persistent track;
+`cells_` is what a `FluxPll` recovers from it, derived lazily and consumed
+only by the offline write-back decoders. `Swim1::finishWrite` and
+`Swim2::finishWrite` hand `commitFlux()` their TSS half-cycle times
+directly — one controller clock is `FluxPll::kSubCell` ticks, kSubCell is
+even, the conversion is exact — and the per-gap cell reconstruction both
+carried is deleted.
+
+That reconstruction was the lossy step, and deleting it exposed two more.
+A successful commit used to re-lay the whole track canonically, because
+`writeSector()` calls `encodeTrack()` on the live track; under
+`inFluxCommit_` it now refreshes the legacy nibble stream only. And a
+commit whose CRC did **not** verify used to re-lay it too, on the reasoning
+that garbage in the cell ring would be read back as media forever — true
+when the ring was the only medium there was, and wrong now, because a write
+that fails on a real disk leaves real garbage and the next read is supposed
+to find it.
+
+**What clock verifies a write.** `commitFlux` takes the controller's own
+cell period. The drive has no reader of its own — on silicon nothing
+decodes a track until a controller reads it back — so the honest stand-in
+is to verify the write with the clock that wrote it. This is not
+hypothetical: SWIM2 `setup` bit 3 doubles the write spacing
+(`swim2.cpp`, `halfWait_ <<= 1`) and the SWIM1 ISM takes its spacing from
+P_TIME0/1. Quantizing 126 halves onto one media cell, as the old path did,
+committed the right sector onto the wrong disk.
+
+**The gates bite, and they bite precisely.** The observable is the gap
+between consecutive transitions: a canonical GCR track has every gap a
+multiple of one 31-clock cell, and the TSS spaces its flux 63 half-cycles
+apart — 31.5 clocks, 1.6 % off, never a multiple. Counting exact-63-half
+gaps is 0 on a canonical track and hundreds on a written one. Reinstating
+the canonical re-lay fails **exactly** the four medium checks across
+`swim2_media_test` and `swim1_test` and nothing else; a cruder bite (snap
+the times back onto the grid) also fails the pre-existing write-back checks,
+because the old code accumulated per gap with `max(1, gap)` and never
+collapsed two transitions into one cell. The SWIM1 leg moves P_TIME1 from
+59 to 67 and proves the **disk** moves with it: a +11 % write still verifies
+on read-back and carries 71-half spacing, which before was quantized away
+before it ever reached the medium.
+
+**Step 6 — the IWM reads transitions.** The Plus/LC II read path is MAME's
+`sync()` MODE_READ machine (`iwm.cpp:398-455`) ported verbatim into flux
+ticks: a window state machine, re-centred by every transition, framing a
+byte when the shifter's MSB goes high. The tables are `iwm.cpp:334-366`;
+a C15M host gets MAME's doubled `swim1.cpp` values for free, because one
+IWM clock is an absolute size and `clockScale_` only converts `tick()`'s
+argument. `iwm.cpp:249-250` came with it — an access that leaves the chip
+on the STATUS register while reading clears the shifter.
+
+This is the step the inventory had been refusing for nine days, on the
+standing rule from 2026-08-05 that nothing may reshape the nibble stream
+without the etalons to prove it. The rule was right and the fear was not:
+Apple's denibble loops are hand-timed against **silicon's** cadence, and
+what replaced the 128-cycle metronome is silicon's cadence.
+`disk_boot_etalon` (3.6 s) and `lcii_floppy_etalon` (165 s) were green
+first run.
+
+Three behaviours arrive that a fixed cadence could not express, and the new
+`iwm_read_test` pins each: bytes come off transitions and 12 % peak-shift
+jitter still frames a full revolution of prologues (disabling the
+re-centring branch fails every check in the gate — that branch *is* the
+engine); a self-sync group costs ten cell times against a data nibble's
+eight, which is how the format keeps a real IWM in step; and a read starts
+where rotation left the head rather than where a byte array's index
+happened to be.
+
+**The gap4 had to become real.** The zone slack was padded with dead cells.
+Invisible to a byte walker, not to a cell engine: a transition-free arc
+gives the window nothing to re-centre on for ~2000 cells, once per
+revolution. It is written self-sync now, which is what a formatted track
+carries — the `encodeTrackGcr` geometry note's reopening condition coming
+due. Only the *filler* changed; the pregap LENGTHS stay put, still under
+the denibble rule, still gated by `gcr_test`.
+
+**Also closed: READY.** `SonyDrive::sense` reported ready as `!motorOn`,
+where MAME arms a two-index counter at `floppy.cpp:825` and spends it at
+`:888-891` — POM68K declared ready ~0.25 s early. The counter follows index
+pulses rather than elapsed time, so a spindle restarting mid-revolution
+reaches ready in less than two revolutions; pulses do not need media
+(MAME's `m_image` test at `:873` only refines the hole position for
+hard-sectored disks), so an empty spinning drive still becomes ready. This
+one had stayed open for the stated reason that **no gate could see it** —
+the boot etalons mount long after spin-up — so the gate came with the
+counter, in `swim2_media_test`.
+
+Two harness bugs worth recording, both of which read as engine failures.
+The read gate's poll loop counted every MSB-set read as a new byte, so it
+saw four copies of every nibble and no `D5 AA 96` anywhere — the data
+register holds a framed byte for ~14 IWM clocks precisely so the ROM's
+`tst.b` poll and its `move.b` consume see the same one. And the mode
+register only latches through (q6,q7) = (1,1) with the drive disabled;
+writing it in the wrong order left the chip on its reset mode 0, reading
+with a 28-clock window instead of 16.
+
+Snapshot format **v8**: `flux_`/`fluxRev_` travel (a track the guest wrote
+off-rate is not re-derivable from `image_` — that is the point), `cells_`
+does not (it rebuilds exactly), and the IWM's window phase and partial
+shifter do, because a snapshot taken mid-nibble must resume with them.
+~300 KB against ~75 KB on a GCR track, noise beside the 800 KB image in the
+same snapshot. `nextByte()` retired with the plan; `nextNibble()` survives
+as the encoder's own gate vehicle, off the live path.
+
+What is left in § 1.3 is three simplifications with named reopening
+conditions and no guest symptom: the store holds the **live** track, so
+off-rate flux does not survive the head leaving the cylinder (a whole-image
+flux store is what MAME has, and what MAME pays for — tens of MB in every
+save state); committed tracks re-encode canonically; tach is a sampled bit.
+`SIMPLIFICATIONS_REVIEW.md`'s closure list is now empty. New gate count:
+**208** (96 `unit`).
 
 <a id="2026-08-14-firmware-picker"></a>
 ## 2026-08-14 (seventh) — Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window
