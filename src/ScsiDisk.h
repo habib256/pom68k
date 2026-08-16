@@ -45,7 +45,24 @@ public:
     // blocks, being removable and read-only, and a handful of extra
     // commands — not in how it is wired. MAME derives its cdrom from a
     // shared base for the same reason (`bus/nscsi/cd.cpp`).
-    enum class Kind { Disk, Cdrom };
+    // ── Three targets, and the third one exists because the images do ──
+    // `Disk` is a fixed 512-byte volume; `Cdrom` is a 2048-byte read-only
+    // removable. `Removable` is what an awful lot of "CD images" in
+    // circulation actually are: a dump of a Mac disc taken at **512** bytes
+    // per block, which says so in its Apple driver descriptor (`ER` at
+    // offset 0, `sbBlkSize` at +2) or simply carries a bare HFS `BD` at
+    // 1024 with no descriptor at all. Handing those to the guest through a
+    // 2048-byte CD target puts every partition offset four times too far in
+    // and Mac OS mounts nothing — the symptom the 2026-07-29 note in
+    // `q605_cdrom_etalon` recorded as "read but not mounted, cause not yet
+    // established". The cause is the block size, measured 2026-08-15: the
+    // same `Apeiron_1_0_3.toast` that never appears through the CD bay
+    // mounts instantly as a 512-byte target.
+    // So `openCdrom` reads the medium and picks: a real 2048 disc is a
+    // `Cdrom`, a 512 dump is a `Removable` — a removable direct-access
+    // device, which is what it is, served by the hard-disk command set with
+    // the CD's presence and medium-change behaviour.
+    enum class Kind { Disk, Cdrom, Removable };
 
     bool open(const std::string& path, bool writeBack = false);
     // Mount a CD image (.iso/.cdr/.toast — raw 2048-byte MODE1 sectors).
@@ -62,12 +79,18 @@ public:
     // raises UNIT ATTENTION / $28 and the Finder mounts it, no reboot.
     void attachCdromEmpty();
     void eject();
-    bool cdrom() const { return kind_ == Kind::Cdrom; }
+    // "This bay is the removable kind" — what the platforms' `bayIsCdrom`
+    // and the Disques window ask, and the answer is the same for both
+    // removable kinds: its medium can be swapped without a reboot.
+    bool cdrom() const { return kind_ != Kind::Disk; }
     bool mediumPresent() const { return blocks_ > 0; }
     uint32_t blockSize() const { return kind_ == Kind::Cdrom ? 2048u : 512u; }
 
-    // A CD-ROM target exists even with no disc in it; a hard disk does not.
-    bool present() const override { return kind_ == Kind::Cdrom ? attached_ : blocks_ > 0; }
+    // A removable target exists even with no medium in it; a fixed disk
+    // does not.
+    bool present() const override {
+        return kind_ == Kind::Disk ? blocks_ > 0 : attached_;
+    }
     uint32_t blocks() const { return blocks_; }
     // Per-target traffic. A gate that asserts on the CONTROLLER's total
     // cannot tell a mounted CD from an ignored one — the boot volume's

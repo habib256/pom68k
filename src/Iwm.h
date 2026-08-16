@@ -31,15 +31,41 @@ public:
     // VIA PA5 — SEL bit of the drive sense/command address + head select.
     void setSel(bool sel) { sel_ = sel; }
 
-    // Clock domain of tick(). The Plus feeds CPU cycles at 7.8336 MHz (the
-    // IWM's own C7M — scale 1); the Mac II family and the SWIM1 IWM
-    // personality feed C15M cycles, where every bit window doubles (MAME
-    // swim1.cpp iwm_half_window_size = 2x iwm.cpp's). Wiring, not state —
-    // re-set at construction, never serialized (like drive_).
-    void setClockHz(int64_t hz) { clockScale_ = hz >= 15667200 ? 2 : 1; }
+    // ── TWO clocks, and on the Mac SE they are not the same one ─────────
+    // `setTickHz` is the unit of tick()'s argument: the cycle the platform
+    // counts in (CPU C7M on the compacts, machine C15M on the Mac II
+    // family and the SWIM1 personality).
+    // `setChipHz` is the clock the BOARD wires to the chip's CLK pin,
+    // which is the unit the mode register's window tables are counted in
+    // (MAME `time_to_cycles`, i.e. `clock()` — see Iwm.cpp).
+    // They coincide on every board but the compacts with ADB: MAME's
+    // `macse` re-declares `IWM(config.replace(), m_iwm, C7M*2)`
+    // (mac128.cpp:1317, inherited by macsefd and macclasc) on a machine
+    // whose CPU stays at C7M. Assuming one clock for both is what made the
+    // SE, SE FDHD and Classic eject a perfectly good 800K disk: their ROM
+    // writes mode **$17**, the C15M pair (measured; the Plus writes $1F),
+    // and a 36-clock window counted in C7M is 2.3x the cell — the guest
+    // reads `F7 BD EF F7 BD EF` forever and `.Sony` gives up.
+    // Wiring, not state — re-set at construction, never serialized (like
+    // drive_).
+    void setClockHz(int64_t hz) { setTickHz(hz); setChipHz(hz); }
+    void setTickHz(int64_t hz) { clockScale_ = hz >= 15667200 ? 2 : 1; }
+    void setChipHz(int64_t hz) { chipScale_ = hz >= 15667200 ? 2 : 1; }
 
     // Advance internal time (CPU cycles) — paces the nibble stream.
     void tick(int cpuCycles);
+
+    // NOT given a `cyclesToNextEvent()`, and that was TRIED and dropped on
+    // 2026-08-15. The theory was good — the cell engine keeps ONE framed
+    // byte, so a scheduler batch as long as a GCR byte would hide bytes
+    // from the guest, and a bare-Iwm probe shows exactly that cliff (one
+    // revolution: 12000 bytes / 16 prologues at half-byte batches, 554 / 0
+    // at one byte, 2 / 0 at two). It is not what the machines do: every
+    // register access on these boards calls `flushTicks()` first, so the
+    // chip is already caught up to the poll that is about to read it, and
+    // wiring a one-window deadline into V8/RBV/VASP changed the LC II
+    // floppy gate's counters by ZERO — same nibbles, same polls, same
+    // hits, still red. The real defect was `windowTicks()`; see Iwm.cpp.
 
     long readCount[16] = {};              // per-reg access stats (debug)
     long dataReads = 0, dataHits = 0;     // data-reg polls vs MSB-set reads
@@ -82,6 +108,7 @@ private:
     void tickRead(int64_t elapsedTicks);
     void latchData(uint8_t v);
     bool isSync() const { return !(mode_ & 0x02); }
+    int64_t clockTick() const;                   // one clock of THIS chip
     int64_t halfWindowTicks() const;
     int64_t windowTicks() const;
     int64_t updateDelayTicks() const;
@@ -98,6 +125,7 @@ private:
     bool enable_ = false, driveSel_ = false, q6_ = false, q7_ = false;
     bool sel_ = false;
     int clockScale_ = 1;                  // tick() cycles per C7M clock
+    int chipScale_ = 1;                   // CHIP clocks per C7M clock
     uint8_t mode_ = 0, dataReg_ = 0;
     int clearCountdown_ = 0;              // delayed clear after a data read
 

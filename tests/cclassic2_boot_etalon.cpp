@@ -11,6 +11,7 @@
 // Soft-skips without the ROM or a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "FinderSignature.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
 #include "SonoraCpu.h"
@@ -107,12 +108,22 @@ int main() {
         return double(dark) / (double(x1 - x0) * (y1 - y0));
     };
     double menuBar = darkRatio(0, W, 2, 16);
-    // Desktop weave: sample the BOTTOM strip, not the right-hand column the
-    // 640×480 siblings use. At 512×384 the reference volume's saved Finder
-    // layout puts an open window over the right edge, so that column measured
-    // window interior (0.32 — a hair under the band) instead of the desktop
-    // pattern; the strip below the windows is unambiguously desktop (0.79).
+    // ── The desktop weave is NOT a boot criterion here, and cannot be ────
+    // It was: a dark ratio over the bottom strip, "unambiguously desktop
+    // (0.79)" — chosen after the right-hand column had already been found
+    // measuring an open window's interior. Both readings measure the
+    // reference volume's SAVED FINDER LAYOUT, which is a mutable file: the
+    // strip read 0.27 on 2026-08-16 because `GISTPERSO-boot.vhd` now opens
+    // a second window ("JEUX") across the bottom, over a Finder that is
+    // perfectly up — menu bar, icons, two windows, desktop pattern. There
+    // is no strip of a 512×384 screen a user cannot cover.
+    // So the criteria are the two `FinderSignature.h` terms no volume
+    // layout can move: the guest's own answer to who is running, and the
+    // menu bar's light run. The weave stays PRINTED — it is a good first
+    // thing to read when this gate goes red, just not a boot criterion.
     double desktop = darkRatio(0, W, H - 110, H - 10);
+    const std::string app = findersig::curApName(mem);
+    const int menuRun = findersig::menuBarRun(fb, W, H);
     if (getenv("POM68K_DUMP")) {
         FILE* fp = fopen("cclassic2_screen.ppm", "wb");
         std::fprintf(fp, "P6\n%d %d\n255\n", W, H);
@@ -126,12 +137,15 @@ int main() {
     }
 
     std::printf("mode %dx%d depth %d; menu bar dark %.2f (want <0.30), "
-                "desktop %.2f (want 0.35-0.85), SCSI commands %ld\n",
-                W, H, mem.videoDepth(), menuBar, desktop, mem.scsi().commands);
+                "menu run %d (want >=%d), CurApName \"%s\", desktop weave "
+                "%.2f (printed, not asserted), SCSI commands %ld\n",
+                W, H, mem.videoDepth(), menuBar, menuRun,
+                findersig::menuBarRunFloor(W), app.c_str(), desktop,
+                mem.scsi().commands);
 
     bool ok = W == 512 && H == 384 && mem.videoDepth() == 3
-           && menuBar < 0.30 && desktop > 0.35 && desktop < 0.85
-           && mem.scsi().commands > 50;
+           && menuBar < 0.30 && menuRun >= findersig::menuBarRunFloor(W)
+           && app == "Finder" && mem.scsi().commands > 50;
     std::printf("%s\n", ok ? "PASSED — Macintosh Color Classic II booted to the Finder"
                            : "FAILED");
     return ok ? 0 : 1;

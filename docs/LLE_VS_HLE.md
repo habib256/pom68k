@@ -422,8 +422,21 @@ canonical re-lay fails exactly the four medium checks and nothing else.
 *Closed by step 6 — the `Iwm` cell engine.* The read path is MAME's
 `sync()` MODE_READ machine (`iwm.cpp:398-455`) over `nextFluxAfter`: window
 state machine, re-centred by every transition, byte framed when the
-shifter's MSB goes high; the window tables are `iwm.cpp:334-366` in flux
-ticks, so a C15M host gets MAME's doubled `swim1.cpp` values for free.
+shifter's MSB goes high; the window tables are `iwm.cpp:334-366`, counted
+in **the chip's own clock** — which is not the clock the machine ticks the
+chip in, and on exactly one machine those differ. C7M is the **Plus** alone:
+MAME's `macse` replaces its IWM with `IWM(config.replace(), m_iwm, C7M*2)`
+(`mac128.cpp:1317`, inherited by macsefd and macclasc) on a board whose CPU
+stays at C7M, so `Iwm` carries `setTickHz` (tick()'s unit) and `setChipHz`
+(the CLK pin) separately. One scale for both left the SE, SE FDHD and
+Classic reading `F7 BD EF` off a perfectly good 800K disk and ejecting it —
+`CHANGELOG.md` 2026-08-16. The sentence that stood here, "a C15M host gets
+MAME's doubled `swim1.cpp` values for free", was **wrong** and cost a day:
+swim1.cpp doubles them only because its counter runs at `2*clock()`, so
+taking the doubling *and* a C7M-sized unit made the window 2.3× the cell,
+and no floppy mounted on any non-compact machine — `CHANGELOG.md`
+2026-08-15 (third). The mode register is the tell: a C7M Mac writes `$1F`
+and a C15M one `$17`, and both mean one 2 µs cell.
 `iwm.cpp:249-250` came with it — an access that leaves the chip on the
 STATUS register while reading clears the shifter. Three behaviours arrive
 that a fixed 128-cycle cadence could not express: bytes come off
@@ -608,14 +621,24 @@ waitstated DMA alias). Gate `q605_turboscsi_test`.
 closed as **accepted**, with the verdict recorded so nobody re-opens them
 blind*:
 
-- **tcounter↔FIFO staging**: MAME decides phase advance from
+- **tcounter↔FIFO staging** — *the reopening condition FIRED, 2026-08-16, and
+  the gap is narrower than it was*: MAME decides phase advance from
   `fifo_pos + tcounter`; our payload short-circuits the physical FIFO through
   `dataIn_`/`dataOut_`. The audit re-derived what a true staging engine would
   change *observably*: with instant staging, R_FLAGS, DRQ, S_TC0/I_BUS event
-  order and every byte read are **identical**. A wire-paced engine would
-  differ (data starvation under a slow bus) but risks every pinned Q6.3-Q6.6b
-  OS 8.1 interaction for a nuance no Mac driver observes — they gate on
-  S_TC0/FLAGS, both already honest. → Reopen only on a real divergence.
+  order and every byte read are **identical**. That held for every driver the
+  tree had run — and stopped holding the moment a target asked for a
+  **parameter list** (`a355561`, 2026-08-08), because Mac OS 8.1's CD driver
+  puts the first bytes of one straight into the FIFO *before* the Transfer
+  Info. Short-circuiting the FIFO meant those bytes were never on the bus,
+  and a polled Transfer Info had nothing but a stale DMA `tcount_` to size
+  itself by. Both hung the CD gates for eight days
+  (`CHANGELOG.md` 2026-08-16). What the fix adds is the FIFO's *content*, not
+  its pacing: a Transfer Info drains `fifo_` into the payload first, and in
+  the non-DMA case a preloaded FIFO IS the transfer's length. A wire-paced
+  engine is still not modelled and still risks every pinned Q6.3-Q6.6b OS 8.1
+  interaction for a nuance no Mac driver observes. → Reopen the *pacing* only
+  on a real divergence; the *staging* half is now honest.
 - **Instant selection timeout on empty IDs — and that IS oracle parity**: MAME
   ships `#define DELAY_HACK` (`ncr53c90.cpp:382`, `delay(1)` instead of
   `delay(8192*select_timeout)`), so the oracle's own bus scan is instant. Not

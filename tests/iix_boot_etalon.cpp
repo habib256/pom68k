@@ -5,6 +5,7 @@
 // slots + VIA1 PA6 id). Soft-skips without the ROM + a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "FinderSignature.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
@@ -83,21 +84,21 @@ int main() {
     double menuBar = blackRatio(0, W, 2, 20);
     double desktop = blackRatio(W / 2, W, 40, H - 40);
 
-    std::printf("%s: menu bar black %.2f, desktop %.2f, SCSI commands %ld\n",
-                iicx ? "IIcx" : "IIx", menuBar, desktop, mem.scsi().commands);
+    const int menuRun = findersig::menuBarRun(fb, W, H);
+    const std::string app = findersig::curApName(mem);
 
+    std::printf("%s: menu bar black %.2f, desktop %.2f, menu run %d, "
+                "CurApName \"%s\", SCSI commands %ld\n",
+                iicx ? "IIcx" : "IIx", menuBar, desktop, menuRun,
+                app.c_str(), mem.scsi().commands);
+
+    // The SCSI floor this replaces was a fixture reading, not boot
+    // progress: HD20SC issues 295 commands while its `drVolAtrb` bit 8 is
+    // clear and 178 once it is set, for the identical boot to the
+    // identical desktop. `FinderSignature.h` carries the whole story.
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
-           // > 200, lowered from 500 on 2026-08-13 (sixth). The old
-           // figure was calibrated while `MacIIMemory::attachScsi`
-           // mirrored the boot disk on all SEVEN SCSI IDs, so the ROM's
-           // 7→0 scan and the System's probe both counted the same volume
-           // several times over. With one ID, one target — the mirror
-           // mounted the volume seven times on the desktop, which is what
-           // corrupted the IIfx's volume in August — the same boot to the
-           // same Finder issues 291-295 commands. The screen half of this
-           // assertion is untouched and passes exactly as before; what
-           // changed is an artefact that was never boot progress.
-           && mem.scsi().commands > 200;
+           && menuRun > findersig::menuBarRunFloor(W)
+           && app == "Finder";
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     return ok ? 0 : 1;
 }

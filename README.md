@@ -310,9 +310,9 @@ says which is which.
 **Mouse** drives the Mac while hovering the screen; a drag started on the
 screen (Finder drag-and-drop) keeps tracking outside it and never moves the
 host window — the title bar still does. A **middle click** (the mouse
-wheel), or **Delete**, toggles full capture (cursor grabbed, raw motion);
-the same click releases it. Hovering the screen is needed to capture, never
-to release. The host keyboard maps to M0110 codes on the
+wheel), **Ctrl+Alt+G**, or **Delete**, toggles full capture (cursor grabbed,
+raw motion); any of the three releases it again. Hovering the screen is
+needed to capture, never to release. The host keyboard maps to M0110 codes on the
 Plus and to raw ADB codes (= M0110 code >> 1) elsewhere (M0110 table:
 `src/main.cpp:5773`; the ADB tables are one per machine loop, e.g.
 `src/main.cpp:1271` — notes in

@@ -14,7 +14,9 @@ const char* kDiskWindowTitle = "Bibliothèque de disques";
 
 namespace {
 
-bool        gRebuild = true;        // first frame always lays out
+bool        gRebuild = true;        // first frame lays out (unless imgui.ini
+                                    // already carries a layout — see below)
+bool        gFirstLayout = true;    // consulted once, on the first real frame
 std::string gLastScreen;            // rebuild when the machine changes
 
 } // namespace
@@ -32,6 +34,7 @@ void dockLayoutInit()
 void dockLayoutReset()
 {
     gRebuild = true;
+    gFirstLayout = false;              // an explicit reset outranks the file
 }
 
 void dockLayoutMenu()
@@ -58,11 +61,44 @@ void dockLayoutFrame()
     const ImGuiID root = ImGui::DockSpaceOverViewport(
         0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
+    // ── Persist the arrangement the moment it changes ────────────────────
+    // ImGui's own auto-save runs on a timer (`io.IniSavingRate`, 5 s), so a
+    // window dragged and the emulator closed a second later lost the whole
+    // layout — which from the user's seat is "POM68K does not remember my
+    // docking". Writing on the flag instead costs one small file write per
+    // gesture and makes every exit correct: the twelve runner shutdowns, the
+    // relaunch a machine switch performs, and a crash alike, without a
+    // teardown hook in each of them.
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantSaveIniSettings && io.IniFilename) {
+        ImGui::SaveIniSettingsToDisk(io.IniFilename);
+        io.WantSaveIniSettings = false;
+    }
+
     // Nothing to lay out until the runner has named its screen window; that
     // happens later in the same frame, so the first split lands on frame 2.
     if (!gRebuild || gLastScreen.empty()) return;
-    gRebuild = false;
     const char* screenWindow = gLastScreen.c_str();
+
+    // ── …and do not clobber it on the way back in ────────────────────────
+    // Saving is only half of remembering. `gRebuild` starts true, so the
+    // first real frame used to re-split unconditionally and threw away the
+    // layout ImGui had just restored from imgui.ini. Ask the settings
+    // instead: a window the file knows comes back carrying the dock node it
+    // was in, and that is the arrangement the user made. Only the first
+    // frame consults it — afterwards `gRebuild` means what it says (an
+    // explicit « Réinitialiser », or a machine switch onto a screen-window
+    // name the file has never seen, which must be laid out).
+    if (gFirstLayout) {
+        gFirstLayout = false;
+        const ImGuiWindowSettings* saved =
+            ImGui::FindWindowSettingsByID(ImHashStr(screenWindow));
+        if (saved && saved->DockId != 0) {
+            gRebuild = false;
+            return;
+        }
+    }
+    gRebuild = false;
 
     // Rebuild from scratch: screen on the left, disk library on the right.
     ImGui::DockBuilderRemoveNode(root);

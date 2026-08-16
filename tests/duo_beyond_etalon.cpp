@@ -9,11 +9,15 @@
 // quadrature counters for the pointer — which the persist leg steers into
 // the Finder's Special menu, because this machine will not flush its volume
 // any other way (the long note above `h.stir`).
+// It steers it once more BEFORE that, at the desktop, because the Finder
+// being up is not the same thing as the Finder being in front on a volume
+// whose Startup Items launch Stickies (the note above `h.focusFinder`).
 // POM68K_BEYOND=soak|persist. Soft-skips without the Duo ROM +
 // pge_boot.bin + a bootable image.
 
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
+#include "FinderSignature.h"
 #include "Mmu030Peek.h"
 #include "MscCpu.h"
 #include "MscMemory.h"
@@ -73,6 +77,35 @@ int main() {
     auto frames = [&](long n) {
         for (long f = 0; f < n && !cpu.isHalted(); f++) cpu.runCycles(kFrame);
     };
+    // A LOGICAL read of a low-memory global: the Duo runs its System behind
+    // the PMMU like the RBV machines, so `peek8` (physical, and exactly
+    // right for descriptor addresses) has to be walked to it — Mmu030Peek.h.
+    // Safe at any point of the boot: with TC.E clear the walk is the
+    // identity, so this reads the right byte before the tables exist too.
+    auto peekLog = [&](uint32_t va, int n, uint32_t* out) {
+        uint32_t v = 0;
+        for (int i = 0; i < n; i++) {
+            uint32_t phys = 0;
+            if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
+                                       va + uint32_t(i), 5,
+                                       [&](uint32_t a) { return mem.peek8(a); },
+                                       &phys))
+                return false;
+            v = v << 8 | mem.peek8(phys);
+        }
+        *out = v;
+        return true;
+    };
+    // Which application is frontmost, in the guest's own words ($910
+    // CurApName under MultiFinder). Printed at every boot poll because the
+    // one time it mattered, the answer was "Stickies" and nothing was
+    // looking — see BeyondBoot.h::persist.
+    auto curApp = [&]() {
+        return findersig::curApNameAt([&](uint32_t a) -> int {
+            uint32_t v = 0;
+            return peekLog(a, 1, &v) ? int(v) : -1;
+        });
+    };
     auto finderUp = [&]() {
         std::vector<uint32_t> fb;
         mem.decodeScreen(fb);
@@ -127,10 +160,11 @@ int main() {
             {   // what the signature actually saw, every poll
                 std::vector<uint32_t> fb;
                 mem.decodeScreen(fb);
-                std::printf("boot poll %d: menu %.3f desk %.3f run %d\n", poll,
+                std::printf("boot poll %d: menu %.3f desk %.3f run %d, "
+                            "front \"%s\"\n", poll,
                             beyondboot::darkRatio(fb, W, 0, W, 2, 18),
                             beyondboot::darkRatio(fb, W, W / 2, W, 40, H - 40),
-                            beyondboot::lightRun(fb, W, H));
+                            beyondboot::lightRun(fb, W, H), curApp().c_str());
             }
             mem.keyEvent(0x24, true);
             frames(150);
@@ -141,8 +175,8 @@ int main() {
     };
 
     if (!boot()) { std::fprintf(stderr, "FAIL: no Finder after boot\n"); return 1; }
-    std::printf("Finder up %dx%d, TC=$%08X, SCSI %ld\n", W, H, cpu.getTC(),
-                mem.scsi().commands);
+    std::printf("Finder up %dx%d, TC=$%08X, front \"%s\", SCSI %ld\n", W, H,
+                cpu.getTC(), curApp().c_str(), mem.scsi().commands);
 
     // ── Two dead ends this leg cost, kept so nobody buys them twice ─────
     // It skipped for a year on "the built-in keyboard is a PMU matrix
@@ -163,23 +197,7 @@ int main() {
     h.frames = frames;
     h.halted = [&]() { return cpu.isHalted(); };
     h.finderUp = finderUp;
-    // A LOGICAL read of a low-memory global: the Duo runs its System behind
-    // the PMMU like the RBV machines, so `peek8` (physical, and exactly
-    // right for descriptor addresses) has to be walked to it — Mmu030Peek.h.
-    auto peekLog = [&](uint32_t va, int n, uint32_t* out) {
-        uint32_t v = 0;
-        for (int i = 0; i < n; i++) {
-            uint32_t phys = 0;
-            if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                       va + uint32_t(i), 5,
-                                       [&](uint32_t a) { return mem.peek8(a); },
-                                       &phys))
-                return false;
-            v = v << 8 | mem.peek8(phys);
-        }
-        *out = v;
-        return true;
-    };
+    h.frontApp = curApp;
     // The guest's OWN pointer position (Mouse, $830 = v, $832 = h) — the
     // closed loop lcii_beyond_etalon steers on, which is immune to both
     // System 7's mouse scaling curve and the report rate.
@@ -213,6 +231,25 @@ int main() {
     // injecting before then builds a backlog that lands as one jump — the
     // first attempt put the pointer on the bottom edge and could not
     // bring it back.
+    // ── One trackball unit is not one pixel, so MEASURE it ──────────────
+    // System 7 scales what the driver reports and accelerates it, so a
+    // 6-unit nudge can move the pointer twenty pixels while a 1-unit one
+    // moves it none. The first loop here halved the remaining distance *in
+    // units*, which only settles while that scale factor is under 2 — above
+    // it the loop is a limit cycle, and where the overshoot meets a screen
+    // edge it stops moving at all. Both were measured on 2026-08-15: a
+    // 10 px residual on a desktop steer, and — steering to the menu bar
+    // from the desktop click, a move the leg never made before the Finder
+    // had to be brought to the front — the pointer pinned at y=0 for all
+    // 60 iterations, wanting y=12.
+    // So `nudge` measures pixels per unit on every move it sees, and the
+    // step asks for the delta whose PREDICTED move is the whole remaining
+    // distance. An overshoot then costs one correction instead of becoming
+    // the steady state. What stays irreducible is the quantum: the smallest
+    // delta the guest acts on is 2 units, so no tolerance below ~2×gain is
+    // reachable, and every target below is given the tolerance its own size
+    // allows.
+    double gain = 2.0;                              // pixels per unit
     auto nudge = [&](int dx, int dy) {
         int bx = 0, by = 0;
         pointer(&bx, &by);
@@ -220,7 +257,14 @@ int main() {
         for (int i = 0; i < 90; i++) {
             frames(1);
             int x = 0, y = 0;
-            if (pointer(&x, &y) && (x != bx || y != by)) break;
+            if (pointer(&x, &y) && (x != bx || y != by)) {
+                const int req = std::abs(dx) + std::abs(dy);
+                const int got = std::abs(x - bx) + std::abs(y - by);
+                // A move that ended on a screen edge under-reports, hence
+                // the EMA rather than the last sample.
+                if (req && got) gain = 0.5 * gain + 0.5 * (double(got) / req);
+                break;
+            }
         }
     };
     auto steer = [&](int tx, int ty, int tol) {
@@ -233,16 +277,54 @@ int main() {
             // floor and moves the pointer nowhere, so a loop that ends on
             // ±1 steps never converges — it runs out of iterations 10 px
             // short, which is exactly what the first version did.
-            auto step = [](int d) {
-                int s = d / 2;
-                if (std::abs(s) < 2) s = d > 0 ? 2 : (d < 0 ? -2 : 0);
+            const double g = gain < 1.0 ? 1.0 : gain;
+            auto step = [&](int d) {
+                int s = int(double(d) / g + (d > 0 ? 0.5 : -0.5));
+                if (!s) return 0;
+                if (std::abs(s) < 2) s = d > 0 ? 2 : -2;
                 return std::max(-8, std::min(8, s));
             };
             nudge(step(dx), step(dy));
         }
         pointer(&px, &py);
-        std::printf("steer: wanted (%d,%d), reached (%d,%d)\n", tx, ty, px, py);
+        std::printf("steer: wanted (%d,%d), reached (%d,%d), gain %.1f px/unit\n",
+                    tx, ty, px, py, gain);
         return false;
+    };
+
+    // ── The Finder is up, and it is not in front ────────────────────────
+    // This volume's System 7.5 launches **Stickies** from Startup Items,
+    // and the boot leaves it frontmost over a perfectly good Finder
+    // desktop: the two dark ratios see the desktop it is sitting on, the
+    // dialog check sees no dialog (Return dismissed the alias alert on the
+    // way in), and every keystroke that follows goes to Stickies — whose
+    // File menu answers Cmd-N with a new NOTE. That is where the whole
+    // "the Duo creates the folder and never writes it" reading came apart
+    // on 2026-08-15: it never created one, and no assertion asked.
+    //
+    // So do what the user would: click the empty desktop, which activates
+    // the Finder. (450,300) is clear of the volume and Trash icons
+    // top-right, of the Control Strip bottom-left, and of the middle band
+    // a Stickies note opens into. `BeyondBoot.h::persist` then asks the
+    // guest who is in front and refuses to gesture at anyone else.
+    //
+    // Tolerance 30, and that is the target's own size, not a loosened
+    // threshold: everything within 30 px of (450,300) is the same empty
+    // desktop. Asking a pointer with a several-pixel quantum for 8 is how
+    // the first version of this hook reported "never reached the desktop"
+    // while sitting 10 px away, on the desktop.
+    const int kDeskX = 450, kDeskY = 300;
+    h.focusFinder = [&]() {
+        beyondboot::mark("focus: click the desktop");
+        if (!steer(kDeskX, kDeskY, 30)) {
+            std::printf("focus: never reached the desktop\n");
+            return;
+        }
+        mem.mouseButton(true);
+        frames(10);
+        mem.mouseButton(false);
+        frames(60);
+        if (h.dump) h.dump("focus");
     };
 
     // ── Why this machine needs a gesture the other eleven do not ────────
@@ -265,15 +347,20 @@ int main() {
     const int kShutDownY = 141;                // Restart 118..133, this 134..149
     h.stir = [&]() {
         beyondboot::mark("stir: Special -> Shut Down");
-        // The title box is ~57x20, an item band 16 tall: aim loosely at the
-        // first and tightly at the second.
+        // The title box is ~57x20 and the item band is 16 tall, so 8 and 7
+        // are what those two targets can actually be asked for — 7 around
+        // 141 is 134..148, inside Shut Down's band from end to end, while
+        // the 5 this used to ask for is under the pointer's own quantum and
+        // failed the steer every run (it landed on 134 anyway, one pixel
+        // from Restart, and the return value was not even looked at).
         if (!steer(kMenuX, kMenuY, 8)) {
             std::printf("stir: never reached the menu bar\n");
             return;
         }
         mem.mouseButton(true);
         frames(60);
-        steer(kMenuX, kShutDownY, 5);
+        if (!steer(kMenuX, kShutDownY, 7))
+            std::printf("stir: Shut Down not reached — releasing anyway\n");
         frames(12);
         if (h.dump) h.dump("menu");
         mem.mouseButton(false);

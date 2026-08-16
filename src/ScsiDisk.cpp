@@ -241,8 +241,8 @@ bool ScsiDisk::openCdrom(const std::string& path) {
     // medium change: the guest's driver must see UNIT ATTENTION ($28,
     // not-ready-to-ready) or it will never mount the new disc. The first
     // attach (boot-time bus population) owes nothing.
-    const bool mediumChange = attached_ && kind_ == Kind::Cdrom;
-    kind_ = Kind::Cdrom;
+    const bool mediumChange = attached_ && kind_ != Kind::Disk;
+    kind_ = Kind::Cdrom;                             // re-decided below
     attached_ = true;
     unitAttention_ = false;
     if (file_.is_open()) file_.close();
@@ -297,7 +297,35 @@ bool ScsiDisk::openCdrom(const std::string& path) {
                                              // 2048-multiple: only de-frame
                                              // when the sync says so
     }
-    blocks_ = uint32_t(image_.size() / 2048);
+    // ── Let the medium say how big its blocks are ───────────────────────
+    // See the Kind note in ScsiDisk.h: a dump taken at 512 declares it, and
+    // serving it as 2048 mounts nothing. `ER` at 0 is the Apple driver
+    // descriptor and +2 is sbBlkSize; no descriptor at all with an HFS `BD`
+    // at 1024 is the same thing without a map. Anything else — ISO 9660, a
+    // de-framed raw rip — is a real 2048-byte disc.
+    uint32_t bs = 2048;
+    if (image_.size() >= 1026) {
+        if (image_[0] == 'E' && image_[1] == 'R') {
+            const uint32_t sb = uint32_t(image_[2]) << 8 | image_[3];
+            if (sb == 512 || sb == 2048) bs = sb;
+        } else if (image_[1024] == 'B' && image_[1025] == 'D') {
+            bs = 512;
+        }
+    }
+    kind_ = bs == 2048 ? Kind::Cdrom : Kind::Removable;
+    if (bs != 2048)
+        std::fprintf(stderr, "CD-ROM: %s declares %u-byte blocks — attaching "
+                     "it as a removable disk, not a CD\n", data.c_str(), bs);
+    blocks_ = uint32_t(image_.size() / bs);
+    hfsPrefixBlocks_ = 0;
+    // A bare HFS volume with no partition map needs the same façade a
+    // `.dsk` gets through open(): a DDM plus an Apple_Driver43 borrowed from
+    // a template, or the ROM finds no driver to load and mounts nothing.
+    // That is why `Apeiron_1_0_3.toast` — 512-byte, no map — appeared on the
+    // desktop when it was attached as a SCSI disk and never through the CD
+    // bay (measured 2026-08-15).
+    if (kind_ == Kind::Removable && blocks_ && looksBareHfs(image_))
+        applyFlatHfsFacade(data);
     unitAttention_ = mediumChange && blocks_ > 0;
     return blocks_ > 0;
 }
@@ -315,6 +343,9 @@ void ScsiDisk::attachCdromEmpty() {
 }
 
 void ScsiDisk::eject() {
+    // Back to a plain empty tray: the next medium re-decides the kind (a
+    // 2048 disc and a 512 dump can follow each other in the same drive).
+    if (kind_ == Kind::Removable) kind_ = Kind::Cdrom;
     image_.clear();
     blocks_ = 0;
     hfsPrefixBlocks_ = 0;
@@ -753,7 +784,7 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
     // A medium change owes exactly one CHECK CONDITION / UNIT ATTENTION
     // before anything else executes (SCSI-2 §7.9); INQUIRY and REQUEST
     // SENSE are the two commands that must not be blocked by it.
-    if (kind_ == Kind::Cdrom && unitAttention_
+    if (kind_ != Kind::Disk && unitAttention_
         && cdb[0] != 0x03 && cdb[0] != 0x12) {
         unitAttention_ = false;
         setSense(kUnitAttention, 0x28);          // NOT READY TO READY
@@ -925,6 +956,13 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
 
     switch (cdb[0]) {
         case 0x00:                                   // TEST UNIT READY
+            // An empty removable tray answers NOT READY, exactly as the CD
+            // branch does — that is what makes the driver keep polling and
+            // notice the next medium.
+            if (kind_ == Kind::Removable && !blocks_) {
+                setSense(kNotReady, 0x3A);
+                return kCheck;
+            }
             return kGood;
 
         case 0x03: {                                 // REQUEST SENSE
@@ -945,7 +983,13 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             uint8_t alloc = cdb[4] ? cdb[4] : 36;
             dataOut.assign(alloc, 0);
             if (dataOut.size() > 0) dataOut[0] = 0x00;   // direct-access device
-            if (dataOut.size() > 1) dataOut[1] = 0x00;   // not removable
+            // RMB: a 512-byte disc dump IS a removable direct-access
+            // device, and it says so. Measured both ways on 2026-08-15 —
+            // `Apeiron_1_0_3.toast` in the bay at boot mounts with RMB set
+            // and with it clear, so the bit is not what gates the mount (the
+            // driver partition is); it is set because it is true.
+            if (dataOut.size() > 1)
+                dataOut[1] = kind_ == Kind::Removable ? 0x80 : 0x00;
             if (dataOut.size() > 2) dataOut[2] = 0x01;   // SCSI-1 (ANSI)
             if (dataOut.size() > 4) dataOut[4] = 31;     // additional length
             // 8 bytes vendor, 16 product, 4 revision. The default is the
@@ -1008,6 +1052,12 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             return modeSense(cdb, true, dataOut);
 
         case 0x0A: {                                 // WRITE(6)
+            // A 512-byte disc dump is media, not a disk: read-only, the same
+            // answer the CD branch gives.
+            if (kind_ == Kind::Removable) {
+                setSense(kDataProtect, 0x27);        // WRITE PROTECTED
+                return kCheck;
+            }
             uint32_t lba = (uint32_t(cdb[1] & 0x1F) << 16) | (uint32_t(cdb[2]) << 8) | cdb[3];
             uint32_t cnt = cdb[4] ? cdb[4] : 256;
             // Out-of-range: CHECK CONDITION instead of the old silent clamp
@@ -1022,6 +1072,10 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             return kGood;
         }
         case 0x2A: {                                 // WRITE(10)
+            if (kind_ == Kind::Removable) {          // read-only medium
+                setSense(kDataProtect, 0x27);
+                return kCheck;
+            }
             uint32_t lba = (uint32_t(cdb[2]) << 24) | (uint32_t(cdb[3]) << 16)
                          | (uint32_t(cdb[4]) << 8) | cdb[5];
             uint32_t cnt = (uint32_t(cdb[7]) << 8) | cdb[8];
@@ -1139,8 +1193,8 @@ uint8_t ScsiDisk::command(const uint8_t* cdb, int cdbLen,
             // MAME answers GOOD (hd.cpp:601-620; its zero-fill loop indexes
             // cyl*head*sector — degenerate — so no data expectation exists).
             // Media is left untouched; a FmtData defect list (`dataIn`) is
-            // discarded. A CD-ROM is read-only and refuses.
-            if (kind_ == Kind::Cdrom) {
+            // discarded. A read-only medium refuses — CD or 512-byte dump.
+            if (kind_ != Kind::Disk) {
                 setSense(kIllegalRequest, 0x20);
                 return kCheck;
             }

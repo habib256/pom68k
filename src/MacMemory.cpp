@@ -51,6 +51,11 @@ void MacMemory::reset() {
     via_.reset();
     rtc_.reset();                    // shifter only; seconds/PRAM are battery-backed
     iwm_.reset();
+    // The board's clock on the chip, which is not the CPU's: MAME's macse
+    // replaces the Plus's `IWM(config, m_iwm, C7M)` with `C7M*2`
+    // (mac128.cpp:1182 vs :1317), and macsefd/macclasc inherit it. tick()
+    // keeps being fed C7M CPU cycles on all four — see Iwm.h's note.
+    iwm_.setChipHz(isAdb() ? 15667200 : 7833600);
     iwm_.attachDrive(&drive_, nullptr);
     drive_.reset();
     scc_.reset();

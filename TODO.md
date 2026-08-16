@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 227 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 239 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -20,13 +20,16 @@ re-verify before quoting them anywhere:
   (default OFF, `CMakeLists.txt:372`, and it FATAL_ERRORs off AArch64).
   `unit` is *not* "asset-free" — the derivation at `CMakeLists.txt:1794-1820`
   makes it "name does not end in `etalon`", nothing more.
-- **Last FULL suite: 162/162 on 2026-08-07**, 3 h 35, fully rebuilt tree
-  (`make -j4` first, `BUILD_EXIT=0`, per-gate freshness checked). That predates
-  the ~20 gates added since, so **no complete run covers today's registry.**
-  The freshest whole-tier evidence is `ctest -L etalon` **91/91**, several
-  fresh sequential passes on 2026-08-11 (5 199-5 244 s each).
-  **The `make` is part of the claim, not the decor**: an earlier 143/143 the
-  same week ran over binaries linked at different times and proved nothing —
+- **Last FULL suite: 206/206 on 2026-08-16** — 94/94 `-LE etalon` (206 s) +
+  112/112 `-L etalon` (15 956 s), sequential, on a tree rebuilt from scratch
+  first (`make -j4`, `BUILD_EXIT=0`, zero 0-byte binaries). That is the WHOLE
+  registry on this host, and the first such run since the gate count started
+  moving: the previous claim here was 162/162 on 2026-08-07, which predated
+  ~20 gates. The same day's earlier run of the same tiers found **ten** reds
+  in five unrelated causes (`CHANGELOG.md` 2026-08-16) — which is what a suite
+  that has not been run whole for nine days looks like.
+  **The `make` is part of the claim, not the decor**: an earlier 143/143 in
+  August ran over binaries linked at different times and proved nothing —
   `ctest` does not compile. A phantom failure gets investigated; a phantom pass
   gets quoted.
 - **37 machine profiles** = 37 `kProfiles` rows (`src/main.cpp:801-854`) = 37
@@ -294,37 +297,75 @@ after boot), and Cmd-N always worked — screen dumps at the gesture's peak
 show the folder on the desktop of every one of the three. The KeyMap
 evidence in that entry was correct; the conclusion drawn from it was not.
 Full account: `CHANGELOG.md` 2026-08-13 (sixth).)*
-- **`macii_boot_etalon`: 178 SCSI commands against a floor of 200**
-  (2026-08-14). The SCREEN half of the assertion passes — menu bar 0.10,
-  desktop 0.50 — so the machine reaches something that looks like a
-  Finder; only the activity floor fails. The floor was calibrated at
-  291-295 on 2026-08-13 (sixth), when it was lowered from 500 after the
-  all-ID SCSI mirror was retired, so it is recent and it has moved since.
-  **Proved pre-existing**: stashing the day's flux work and rebuilding
-  reproduces 178 exactly. Do NOT lower the floor — it is what separates a
-  boot from a stalled Welcome (~235 commands with jailbars), and 178 is
-  BELOW that stall, which is itself the interesting fact.
-  **Two leads already spent, both dead** — do not re-walk them:
-  (a) *the image is not the one the floor was calibrated on* — it is;
-  `hdv/HD20SC.vhd` entered the probe chain in `c8438a7`, well before the
-  floor was set to 200 in `1d260aa` (2026-08-13 22:02), so 291-295 was
-  measured on this same volume, which reads clean (`drVolAtrb $0100`);
-  (b) *the swallowed VBL disable* — `1bef9bd` (2026-08-13 23:41, three
-  hours after the calibration and in the same file the Mac II shares with
-  the IIfx) made `TobyVideo`'s VBL disable unconditional, and its own
-  removed comment warned that Primary Init disables VBL before setup and
-  may never reach the matching enable. Restoring the old `vramWrites == 0`
-  guard locally changes the count by **nothing**: still 178. Next place to
-  look is the interval `1d260aa..HEAD` by bisect, on a gate that runs in
-  61 s.
-- **`duo_persist_etalon`: the Cmd-N folder never appears** (2026-08-14).
-  "NO candidate folder name appeared, image UNCHANGED" before the reboot,
-  while the post-reboot desktop counts thirteen `untitled folder`s —
-  accumulated state on the shared image is the first thing to rule out.
-  **Proved pre-existing** the same way (stash, rebuild, same failure), and
-  the day's flux work cannot reach it: the Duo has no floppy drive at all.
-  Note the gate drives `mem.mouseButton()` directly, so it is also blind
-  to the `MachineHost` button folding fixed the same day.
+- *(CLOSED 2026-08-15 — `macii_boot_etalon`, and `iix_`/`se30_` with it,
+  which were red for the same reason and were not noticed. Not a
+  regression: `hdv/HD20SC.vhd` had its `drVolAtrb` bit 8 SET on
+  2026-08-14, and the System skips the scavenge on a volume it finds
+  clean — 295 SCSI commands dirty, 178 clean, identical desktop and
+  identical `vramWrites`. The floor of 200 sat between them. Lead (a) in
+  the old entry — "the image is not the one the floor was calibrated on"
+  — was **right**, and had been closed on the wrong argument: it was
+  checked for probe-chain membership, never for content. The three gates
+  now assert `CurApName == "Finder"` + a menu-bar light run instead of a
+  command count — `tests/FinderSignature.h`, `CHANGELOG.md` 2026-08-15.)*
+- *(CLOSED 2026-08-15 (third) — `lcii_floppy_etalon`, red since 2026-08-14
+  and **found from a GUI field report**, not from the suite: "les disquettes
+  ne se montent plus", the System offering to initialize a perfectly good
+  800K disk. The IWM's cell window was being counted in a C7M-sized unit on
+  boards whose chip is clocked at C15M, so the window was 2.3× the cell and
+  nothing framed — `.Sony` gave up with -67 noAdrMkErr, on **nine
+  platforms**; the compacts were the only machines that could still read a
+  floppy, which is why `disk_boot_etalon` stayed green and hid it.
+  `Iwm::clockTick()`, and `iwm_read_test` now carries the C15M + mode-`$17`
+  combination that had no coverage. `CHANGELOG.md` 2026-08-15 (third).)*
+- *(CLOSED 2026-08-16 — the three CD gates, `q605_cdrom_`/`cdboot_`/
+  `cdhot_etalon`. Not the dirty 8.1 volume the old entry pointed at, and not
+  a CD-ROM defect at all: `git bisect run` over 136 commits named `a355561`
+  (2026-08-08), and what it exposed was **`Ncr53c96` dropping bytes a driver
+  had already put in the FIFO** — twice, on the two MODE SELECTs Mac OS 8.1's
+  CD driver issues while adopting a disc. A preload before the Transfer Info
+  went into `fifo_` and stayed there; and a POLLED Transfer Info sized itself
+  from `tcount_`, a DMA register still holding an earlier command's 16. Both
+  ended with the driver and the chip waiting on each other — R_STATUS polled
+  ~600 times a frame, no further CDB, forever. `CHANGELOG.md` 2026-08-16.)*
+- *(CLOSED 2026-08-16 — `se_`/`sefdhd_`/`classic_`/`jit_classic_boot_etalon`,
+  `FAIL: ejected`. The Mac SE's IWM is clocked at **C15M**
+  (`mac128.cpp:1317`, `IWM(config.replace(), m_iwm, C7M*2)`, inherited by
+  macsefd/macclasc) while its CPU stays at C7M, so `Iwm` needed the two
+  clocks split — `setTickHz` vs `setChipHz`. Same defect as 2026-08-15
+  (third) on the Mac II family, on the three machines nobody re-ran because
+  `disk_boot_etalon` is a Plus. Also closed the same day:
+  `q605_savestate_etalon` (one byte in 33 MB — Moira's `cp`, a per-instruction
+  cycle counter the JIT does not maintain; save-state **v9** drops it),
+  `iisi_persist_etalon` (the leg now runs the shared `BeyondBoot.h` engine,
+  with Cmd-Shift-3 as the flush stir) and `cclassic2_boot_etalon` (its
+  desktop-weave criterion was measuring a window the volume's saved layout
+  opens; `FinderSignature.h` terms instead). `CHANGELOG.md` 2026-08-16.)*
+- **A hot-inserted disc mounts nothing on a guest with no CD stack** — not a
+  defect, and written here so it is not re-investigated: nothing binds a
+  driver to that SCSI id at boot. The reporter's System 7.5 volume has
+  `Apple CD-ROM` and `ISO 9660` but **no `Foreign File Access`**, and Mac OS
+  mounts no disc without the dispatcher. Mac OS 8.1 has it and
+  `q605_cdrom_etalon` gates that path. Same for `ER`/512 discs whose driver
+  partition is a CD driver (`The_Yukon_Trail.cdr`): they do not mount even
+  attached as a plain SCSI disk. `CHANGELOG.md` 2026-08-15 (fifth).
+- **`tests/finder_boot_matrix.cpp` still carries the same trap**: its Mac II
+  leg asserts `scsi().commands > 500` (`:207`) over whatever image the sweep
+  passes it. Not a registered CTest, so nothing is red today, and it was
+  left alone rather than fixed blind — the sweep needs every OS image to
+  re-calibrate. Next: run the sweep, then give it `FinderSignature.h` too.
+- *(CLOSED 2026-08-15 (later) — `duo_persist_etalon`. The gate was typing
+  at **Stickies**: System 7.5 launches it from Startup Items and it ends the
+  boot in front of the Finder, so Cmd-N opened a New Note and the `stir`
+  click landed on empty menu bar right of its four titles. Every term of
+  the signature was satisfied by the desktop underneath. Accumulated image
+  state — the lead recorded here — was not it. The fix is two opt-in
+  `BeyondBoot.h` hooks: `focusFinder` (click the desktop) and `frontApp`
+  (`$910 CurApName`, the guest's own answer), with `persist()` refusing to
+  gesture at anyone but the Finder; plus a steering loop that measures
+  pixels-per-trackball-unit instead of halving in units, which used to pin
+  the pointer at y=0 against the screen edge. `CHANGELOG.md` 2026-08-15
+  (later).)*
 - **System 7.5.5 refuses a hot-inserted GCR floppy on SWIM2 machines**
   — reported in the GUI, and **NOT reproduced headless**: judged on the
   desktop (the mounted volume's icon, screen-diff) rather than on
@@ -470,6 +511,15 @@ beyond-gate binaries (`lcii_`, `q605_`, `iivx_beyond_etalon` — which back
 English volumes by luck and never could on the French 7.5 one, where the
 localization resource `Nouveau dossier` sits at ×51 while the created folder
 is `Dossier sans titre` 10 → 12.
+
+**And the gesture belongs to an APPLICATION, not to a machine** (2026-08-15):
+`persist()` now brings the Finder to the front (`focusFinder`) and asks the
+guest who is there (`frontApp` = `$910 CurApName`) before typing Cmd-N,
+refusing with a named failure otherwise. Both hooks are optional — only
+`duo_beyond_etalon` binds them, because only its volume launches an
+application from Startup Items (Stickies, which answers Cmd-N with a New
+Note). Any gate that starts failing with "NO candidate folder name appeared"
+should bind them before anything else is suspected.
 
 **Per-machine LLE-completeness estimates** (±5 pts, re-scored 2026-07-25, and
 they predate the row-granular raster work): Plus ~85, Q605 ~80, LC II ~80,
@@ -1208,7 +1258,13 @@ that silently falls behind is worse than none, because it looks complete).
   *same* `hdv/*.vhd` with `attachScsi(path, true)`, **twelve boot-volume sites**
   plus eleven secondary-disk loops. A mutable, unversioned file is not a
   fixture: that is how `MacOS-7.6-boot.vhd` was corrupted and the IIfx gates
-  went red. Two steps left now that the preamble prints the digest: a read-only
+  went red. **And it happened again, cheaper and quieter, on 2026-08-14**:
+  `HD20SC.vhd` came back from something with `drVolAtrb` bit 8 SET, the System
+  stopped scavenging it, its boot went from 295 SCSI commands to 178, and three
+  boot gates that asserted on that count went red for two days
+  (`CHANGELOG.md` 2026-08-15). Nothing was corrupted — a fixture merely
+  *changed*, which is enough. Two steps left now that the preamble prints the
+  digest: a read-only
   `hdv/ref/` distinct from the volumes the GUI mounts, then **extending the
   existing `assets.lock`** — which today pins only the three firmware dumps
   `--lle-aarch64` qualifies (label, size, SHA-256, path, profiles) — to the ROMs

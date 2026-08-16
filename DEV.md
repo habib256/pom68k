@@ -1409,7 +1409,12 @@ moves the reset value), `POM68K_APPLETALK`,
 deterministic ± pct % of one nominal cell, clamped to 45 — the opt-in
 jitter model of the § 1.3 flux plan; 0/unset = ideal edges, the default —
 `SonyDrive::fluxJitterEnv`), `POM68K_DRIVE_SFX`
-(`0` = silence the drive FX), `POM68K_SCSI_DDM_TEMPLATE`,
+(`0` = silence the drive FX), `POM68K_NO_CDBAY` (`=1` = do **not** give the
+machine the default empty CD drive the Disques window's CD row needs; every
+platform with an `attachCdromEmpty` boots with one since 2026-08-15, which is
+what makes a disc insertable live instead of staged + rebooted — set this to
+compare a bus against a pre-2026-08-15 capture, `DiskBays.h ensureCdDrive`),
+`POM68K_SCSI_DDM_TEMPLATE`,
 `POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
 instead of the Apple-branded Seagate the guest's own disk tools expect —
 [§3.3](#33-scsi-ncr-5380)), `POM68K_DAYNAPORT` (`<id>` = put a DaynaPort
@@ -1648,6 +1653,18 @@ Per-platform variations that are not worth a hook go to
 (`insertBayMedia`), the monitor sense (`setMonitorSense`), the floppy (the Duo
 230 has no drive at all), and `mouseButton(bool)` vs `(bool, int)`.
 
+**The command queue is one direction only, and media is the place that bites.**
+`Cmd::InsertFloppy`/`EjectFloppy` carry the GUI's intent down; nothing carried
+the DRIVE's state back, so a guest-side eject — a Finder « Ranger », a Cmd-E,
+any `.Sony` eject reaching `SonyDrive::eject()` — left the Disques window
+naming a disk that was no longer there, with an « Éjecter » button for it.
+`publish()` now mirrors `internalDrive()` (flag + backing path) every time it
+runs, next to the CD-bay flags, which is the same rule those already followed:
+**for media, the device is the authority and the queue is only a request.**
+The compacts run inline on the GUI thread and read the drive directly, so they
+only needed their relaunch-args copy of the path cleared. `machinehost_test`
+covers it with the eject issued behind the queue's back.
+
 CRTP and not a base class **on purpose**: every `self()->` resolves at compile
 time, so the no-virtual-in-the-bus-path rule stays mechanical.
 
@@ -1738,10 +1755,21 @@ that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
 is still missing is the same treatment for the ROMs and disk images, which is
 what this digest would feed (`TODO.md` § 8).
 
-**Bit 8 clear is a tell, not a verdict.** `hdv/HD20SC.vhd` reads `$0000` and
-four green gates boot from it. It says where to look first when a boot gate goes
-red. Cost is ~265 MB/s, 1.4 % of `q605_boot_etalon` — no cache, no opt-out knob.
-The mechanism is itself gated by `asset_fingerprint_test` (`unit`, asset-free).
+**Bit 8 clear is a tell, not a verdict.** `hdv/HD20SC.vhd` read `$0000` when
+this preamble was written, and four green gates booted from it. It says where to
+look first when a boot gate goes red. Cost is ~265 MB/s, 1.4 % of
+`q605_boot_etalon` — no cache, no opt-out knob. The mechanism is itself gated by
+`asset_fingerprint_test` (`unit`, asset-free).
+
+**And the bit moves.** That same HD20SC reads `$0100` since 2026-08-14 — it was
+cleanly unmounted by something, and nothing recorded it. The System scavenges a
+dirty volume and skips a clean one, so the identical boot to the identical
+desktop went from 295 SCSI commands to 178 and took three boot gates red with
+it (`CHANGELOG.md` 2026-08-15). The preamble printed the change on every run of
+all three; nobody read it, because a fixture is not where you look for a
+regression. **Read the ASSET lines of a red gate before its diff** — that is
+what they are for, and a criterion that a fixture edit can move is not a
+criterion (`tests/FinderSignature.h`).
 
 Pinned CPU vector suites, which are gates in their own right:
 `sst68000` (**1 000 058** accepted SingleStepTests 68000 vectors),

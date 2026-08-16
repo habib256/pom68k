@@ -14,7 +14,11 @@
 //             catalog name appears (FolderProbe: the signal is the count
 //             that CHANGES, not the biggest count), and after a hard reset
 //             the machine boots back off the modified — deliberately
-//             dirty — volume with the folder still there.
+//             dirty — volume with the folder still there. Cmd-N is the
+//             FINDER's, so the leg first makes sure the Finder is the
+//             application receiving it (`focusFinder`/`frontApp`) — a
+//             volume whose Startup Items launch an application leaves that
+//             one in front, and it answers Cmd-N with something else.
 //
 // The first four machines (LC II, Q605, IIvx, IIsi) each carry a private
 // copy of these flows; extending to the whole roster made an engine worth
@@ -79,6 +83,16 @@ struct Hooks {
     // workaround for a defect — it is the difference between "the machine
     // cannot write" and "nobody asked it to".
     std::function<void()> stir;
+    // Optional pair, and they belong together: WHO receives the gesture.
+    // `frontApp` is the guest's own answer ($910 CurApName under
+    // MultiFinder is the frontmost application — `FinderSignature.h`), and
+    // `focusFinder` brings the Finder to the front the way a user would,
+    // with a click on the desktop. A gate that binds neither keeps the old
+    // behaviour exactly, which is what the eleven green legs want; a gate
+    // that binds them turns "the gesture went somewhere else" from a silent
+    // wrong answer into a named one. See persist().
+    std::function<std::string()> frontApp;
+    std::function<void()> focusFinder;
 };
 
 inline int soak(const Hooks& h) {
@@ -113,6 +127,32 @@ inline void mark(const char* what) {
 }
 
 inline int persist(const Hooks& h) {
+    // ── Whose gesture is it? ────────────────────────────────────────────
+    // Cmd-N is the FINDER's New Folder, and everything below assumed the
+    // Finder was the application receiving it because on eleven volumes it
+    // is. On the Duo's 7.5.5 volume it is not: System 7.5 puts **Stickies**
+    // in Startup Items, it comes up frontmost over a perfectly good Finder
+    // desktop, and its own File menu has a New Note on Cmd-N. So the
+    // gesture opened a sticky note, the `stir` click landed on the empty
+    // menu bar to the right of Stickies' four menus (232 px is where the
+    // FINDER's "Special" title is), nothing was ever asked to flush, and
+    // the gate printed a true sentence about the wrong machine state:
+    // "NO candidate folder name appeared, image UNCHANGED".
+    //
+    // The screen said so all along — the dumps carry Stickies' menu bar —
+    // and no assertion looked. So: bring the Finder to the front, then ask
+    // the GUEST who is in front, and stop here if it is not the Finder.
+    // `CHANGELOG.md` 2026-08-15.
+    if (h.focusFinder) h.focusFinder();
+    if (h.frontApp) {
+        const std::string app = h.frontApp();
+        std::printf("persist: frontmost application \"%s\"\n", app.c_str());
+        if (app != "Finder") {
+            std::printf("FAILED — %s persist: Cmd-N would go to \"%s\", "
+                        "not the Finder\n", h.name, app.c_str());
+            return 1;
+        }
+    }
     std::vector<uint8_t>& disk = h.disk();
     long before[folderprobe::kCount];
     folderprobe::sample(disk, before, "before");

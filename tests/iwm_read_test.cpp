@@ -237,6 +237,44 @@ int main() {
         check(nib.empty(), "a stopped spindle frames no bytes");
     }
 
+    // ── The C15M chip, with the mode a C15M Mac actually writes ───────
+    // Every check above runs a bare `Iwm` — clockScale_ 1, mode $1F — which
+    // is the Mac PLUS. Every other machine in the tree clocks its IWM (or
+    // its SWIM1's IWM personality) at C15M and its ROM writes **$17**: bit
+    // 3 is the chip's clock speed and bit 4 its cell time, so the driver
+    // picks the pair that suits the clock the board wired up, and both
+    // pairs mean one 2 µs Sony GCR cell. MAME agrees — `iwm.cpp:335-361`
+    // counts its tables in `clock()`, `mac128.cpp:1182` gives the Plus C7M
+    // and `macii.cpp:938` gives the Mac II C15M.
+    //
+    // Nothing covered that combination, which is how the flux plan's step 6
+    // shipped a `windowTicks()` 2× too long on nine platforms and no floppy
+    // mounted on any of them for a day (CHANGELOG 2026-08-15 (third)). The
+    // gate below is that combination, and it fails on the old arithmetic:
+    // a 36-clock window scaled by a C7M-sized unit is 4.6 µs over a 2 µs
+    // cell, and NOTHING frames — 0 prologues, not merely fewer.
+    {
+        SonyDrive drive;
+        drive.reset();
+        check(drive.insertImage(pattern), "insert patterned 800K (C15M rig)");
+        drive.setSpinClockHz(15667200);
+        Iwm iwm;
+        iwm.setClockHz(15667200);                // clockScale_ = 2
+        iwm.reset();
+        iwm.attachDrive(&drive, nullptr);
+        iwm.read(kQ6On);
+        iwm.write(kQ7On, 0x17);                  // the C15M Mac's mode
+        iwm.read(kQ6Off);
+        iwm.read(kQ7Off);
+        iwm.read(kEnableOn);
+        drive.setMotor(true);
+        // Twice the cycles for the same seconds of rotation.
+        const auto nib = drainNibbles(iwm, drive, 12000, 8 * 1000 * 1000);
+        check(nib.size() > 8000, "a C15M chip delivers a byte stream at all");
+        check(prologues(nib) >= 12,
+              "mode $17 on a C15M chip frames a revolution of prologues");
+    }
+
     std::printf("%s\n", gFails ? "FAILED" : "PASSED");
     return gFails ? 1 : 0;
 }

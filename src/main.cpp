@@ -372,12 +372,13 @@ static const char* configureGlfwOpenGl() {
 // drag-and-drop keeps tracking when the pointer leaves the item and the
 // ImGui window never moves from a drag inside it (only its title bar
 // moves it — ConfigWindowsMoveFromTitleBarOnly). The MIDDLE mouse button
-// (the wheel), or the Delete key, toggles a hard capture: GLFW disabled
-// cursor (raw deltas, no window edges), ImGui mouse off so clicks can't
-// leak into widgets; the same button or key releases.
+// (the wheel), Ctrl+Alt+G, or the Delete key toggles a hard capture: GLFW
+// disabled cursor (raw deltas, no window edges), ImGui mouse off so clicks
+// can't leak into widgets; any of the three releases it again.
 struct ScreenInput {
     bool captured = false;
     bool midWas = false;                 // middle-button edge detector
+    bool grabWas = false;                // Ctrl+Alt+G edge detector
     float accX = 0, accY = 0;            // sub-pixel remainder
     float zoom = 2.0f;                   // host px per guest px, live
     double lastX = 0, lastY = 0;         // virtual cursor while captured
@@ -415,7 +416,20 @@ struct ScreenInput {
                              == GLFW_PRESS;
         const bool midEdge = mid && !midWas;
         midWas = mid;
-        if (midEdge && (captured || ImGui::IsItemHovered()))
+        // Ctrl+Alt+G — the escape every emulator user already knows (QEMU,
+        // VirtualBox, VMware all release on it). Polled from GLFW for the
+        // same reason as the wheel: it has to work while the capture is ON,
+        // and it is a combination no Mac guest can want, so it needs no
+        // WantTextInput guard the way the bare Delete does.
+        const bool ctrl = glfwGetKey(win, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS
+                       || glfwGetKey(win, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+        const bool alt  = glfwGetKey(win, GLFW_KEY_LEFT_ALT) == GLFW_PRESS
+                       || glfwGetKey(win, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+        const bool grab = ctrl && alt &&
+                          glfwGetKey(win, GLFW_KEY_G) == GLFW_PRESS;
+        const bool grabEdge = grab && !grabWas;
+        grabWas = grab;
+        if ((midEdge || grabEdge) && (captured || ImGui::IsItemHovered()))
             setCaptured(win, !captured);
         else if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
             setCaptured(win, !captured);   // kept: the original binding
@@ -999,7 +1013,7 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
     pom68k::peripheralMenuItem();
     pom68k::dockLayoutMenu();
     if (extraMenus) extraMenus();
-    ImGui::TextDisabled("|  Clic molette (ou Suppr) : capture souris");
+    ImGui::TextDisabled("|  Clic molette / Ctrl+Alt+G (ou Suppr) : capture souris");
     ImGui::EndMainMenuBar();
     // Every runner goes through machineMenu, so the docked shell is
     // installed in exactly one place. Must follow EndMainMenuBar: the
@@ -1212,6 +1226,11 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
@@ -1302,6 +1321,18 @@ static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                // Bound on every threaded runner since 2026-08-15: without
+                // these three the window can only STAGE a disc and reboot,
+                // which is what made mounting a CD a procedure.
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!c.m.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.hasFloppyDrive = true;
                 h.floppyInserted = [&c] { return c.m.floppyInserted(); };
                 h.insertFloppy = [&c](const std::string& d) {
@@ -1557,6 +1588,11 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
@@ -1640,6 +1676,18 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                // Bound on every threaded runner since 2026-08-15: without
+                // these three the window can only STAGE a disc and reboot,
+                // which is what made mounting a CD a procedure.
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!c.m.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.hasFloppyDrive = true;
                 h.floppyInserted = [&c] { return c.m.floppyInserted(); };
                 h.insertFloppy = [&c](const std::string& d) {
@@ -1983,6 +2031,11 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     // Battery-backed PRAM+clock: a cold PRAM triggers the ROM's long
     // full-RAM burn-in on every boot — persist it like a real battery.
@@ -2119,6 +2172,18 @@ static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                // Bound on every threaded runner since 2026-08-15: without
+                // these three the window can only STAGE a disc and reboot,
+                // which is what made mounting a CD a procedure.
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!c.m.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.hasFloppyDrive = true;
                 h.floppyInserted = [&c] { return c.m.floppyInserted(); };
                 h.insertFloppy = [&c](const std::string& d) {
@@ -2436,6 +2501,11 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     static std::string pramPath =
         (hddPath.empty() ? std::string(pr.slug) : hddPath + "." + pr.slug) + ".pram";
@@ -2563,6 +2633,18 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                // Bound on every threaded runner since 2026-08-15: without
+                // these three the window can only STAGE a disc and reboot,
+                // which is what made mounting a CD a procedure.
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!c.m.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.hasFloppyDrive = true;
                 h.floppyInserted = [&c] { return c.m.floppyInserted(); };
                 h.insertFloppy = [&c](const std::string& d) {
@@ -2750,6 +2832,11 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     const std::string profileTag = vi ? "iivi" : "iivx";
     static std::string pramPath =
@@ -2876,6 +2963,18 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                // Bound on every threaded runner since 2026-08-15: without
+                // these three the window can only STAGE a disc and reboot,
+                // which is what made mounting a CD a procedure.
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!c.m.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.hasFloppyDrive = true;
                 h.floppyInserted = [&c] { return c.m.floppyInserted(); };
                 h.insertFloppy = [&c](const std::string& d) {
@@ -3036,6 +3135,11 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     static std::string pramPath = (hddPath.empty() ? std::string(iici ? "iici"
                                                                        : "iisi")
@@ -3163,6 +3267,18 @@ static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
                         if (e != boot) gSwitchArgs.push_back(e);
                     glfwSetWindowShouldClose(c.window, GLFW_TRUE);
                 };
+                // CD bays: media in/out of a drive that exists on the bus
+                // (attached at boot, or the reserved "cdbay"), no reboot.
+                // Bound on every threaded runner since 2026-08-15: without
+                // these three the window can only STAGE a disc and reboot,
+                // which is what made mounting a CD a procedure.
+                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
+                h.insertBay = [&c](int id, const std::string& d) {
+                    if (!c.m.bayIsCdrom(id)) return false;
+                    c.m.requestInsertBay(id, d);
+                    return true;
+                };
+                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
                 h.hasFloppyDrive = true;
                 h.floppyInserted = [&c] { return c.m.floppyInserted(); };
                 h.insertFloppy = [&c](const std::string& d) {
@@ -3756,6 +3872,11 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     // Battery-backed PRAM+clock (Cuda XPRAM) — persist it like the LC II so a
     // cold PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
@@ -4115,6 +4236,11 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     // Battery-backed PRAM+clock (discrete RTC XPRAM) — persist it so a cold
     // PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
@@ -4477,6 +4603,11 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     // Battery-backed PRAM+clock — persist it so a cold PRAM doesn't
     // retrigger the ROM's full-RAM burn-in every boot. The suffix carries
@@ -4825,6 +4956,11 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     // Battery-backed PRAM+clock (discrete RTC XPRAM) — persist it so a cold
     // PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
@@ -5206,6 +5342,11 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
             std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
         } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
     }
+    // Every machine that can hold a CD drive boots with one, so the
+    // Disques window's CD row inserts a disc live like the floppy row
+    // does — the bus is probed once and the drive has to be there for
+    // it (DiskBays.h ensureCdDrive).
+    pom68k::ensureCdDrive(mem, extraDisks);
 
     // Battery-backed PRAM. The Duo keeps it in the PG&E's own RAM+SRAM, not
     // in a discrete Rtc or an Egret/Cuda (MscMemory.cpp:138) — but the file
@@ -5821,6 +5962,12 @@ int main(int argc, char** argv) {
             }();
             host.romName  = c.romName;
             host.bootPath = c.hddPath;
+            // The drive is the authority, here as on the threaded platforms
+            // (MachineHost::publish): a guest-side eject empties it without
+            // going through `ejectFloppy`, and `c.floppyPath` is what a
+            // relaunch would hand back on argv — so it must not outlive the
+            // disk it names.
+            if (!c.mem.internalDrive().hasDisk()) c.floppyPath.clear();
             host.floppyPath = c.floppyPath;
             pom68k::diskBaysWindow(host);
         }

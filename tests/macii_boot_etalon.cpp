@@ -2,6 +2,7 @@
 // Soft-skips without ROM + bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "FinderSignature.h"
 #include "MacIIMemory.h"
 #include "TobyVideo.h"
 #include "Cpu020.h"
@@ -73,24 +74,23 @@ int main() {
     };
     double menuBar = blackRatio(0, W, 2, 20);
     double desktop = blackRatio(W / 2, W, 40, H - 40);
+    const int menuRun = findersig::menuBarRun(fb, W, H);
+    const std::string app = findersig::curApName(mem);
 
-    std::printf("menu bar black %.2f, desktop %.2f, SCSI commands %ld\n",
-                menuBar, desktop, mem.scsi().commands);
+    std::printf("menu bar black %.2f, desktop %.2f, menu run %d, "
+                "CurApName \"%s\", SCSI commands %ld\n",
+                menuBar, desktop, menuRun, app.c_str(), mem.scsi().commands);
 
-    // Jailbars after a stalled Welcome scored ~0.22/0.22 with only ~235 SCSI
-    // cmds; a real Finder boot keeps reading the volume (thousands of cmds).
+    // Jailbars after a stalled Welcome score ~0.22/0.22, which the two
+    // ratios accept — so the discriminating term is the other two, NOT a
+    // floor on `scsi().commands`. That floor was a fixture reading: the
+    // same boot to the same desktop issues 295 commands off HD20SC while
+    // its `drVolAtrb` bit 8 is clear and 178 once it is set, and 200 sat
+    // between them (and above the stall's ~235 besides). The count is
+    // printed, not asserted — `FinderSignature.h` carries the whole story.
     bool ok = menuBar < 0.35 && desktop > 0.20 && desktop < 0.70
-           // > 200, lowered from 500 on 2026-08-13 (sixth). The old
-           // figure was calibrated while `MacIIMemory::attachScsi`
-           // mirrored the boot disk on all SEVEN SCSI IDs, so the ROM's
-           // 7→0 scan and the System's probe both counted the same volume
-           // several times over. With one ID, one target — the mirror
-           // mounted the volume seven times on the desktop, which is what
-           // corrupted the IIfx's volume in August — the same boot to the
-           // same Finder issues 291-295 commands. The screen half of this
-           // assertion is untouched and passes exactly as before; what
-           // changed is an artefact that was never boot progress.
-           && mem.scsi().commands > 200;
+           && menuRun > findersig::menuBarRunFloor(W)
+           && app == "Finder";
     std::printf("%s\n", ok ? "PASSED — booted to Finder" : "FAILED");
     return ok ? 0 : 1;
 }

@@ -281,6 +281,29 @@ public:
                 stBayCd_[size_t(id)].store(mem.bayIsCdrom(id),
                                             std::memory_order_relaxed);
         }
+        // ── The GUEST ejects too ────────────────────────────────────────
+        // `Cmd::EjectFloppy` is only the GUI's half of it. A Finder "Ranger",
+        // a Cmd-E, or any driver eject reaches `SonyDrive::eject()` straight
+        // from the guest — the disk really is out, the host file is already
+        // flushed — and nothing told the GUI, so the Disques window went on
+        // naming a disk the drive no longer had and offering to eject it
+        // again. The drive's own answer is the only truthful one, so take it
+        // here every publish, exactly like the CD bays above. Cheap: one
+        // uncontended lock at ≤60 Hz, and the string only moves when it
+        // changes (an insert-over-insert renames the row too, which the
+        // command path alone did not).
+        if constexpr (requires { mem.internalDrive().hasDisk();
+                                 mem.internalDrive().backingPath(); }) {
+            const auto& drive = mem.internalDrive();
+            const bool in = drive.hasDisk();
+            {
+                std::lock_guard<std::mutex> l(mediaMu_);
+                if (!in) floppyPath_.clear();
+                else if (floppyPath_ != drive.backingPath())
+                    floppyPath_ = drive.backingPath();
+            }
+            floppyFlag_.store(in, std::memory_order_release);
+        }
         {
             std::lock_guard<std::mutex> l(jitMu_);
             jitSnap_ = cpu.jit().stats().snapshot();

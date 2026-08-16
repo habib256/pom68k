@@ -12,9 +12,16 @@
 //     │                          │                    │
 //     └──────────────────────────┴────────────────────┘
 //
-// The split is only a DEFAULT. ImGui persists whatever the user drags into
-// imgui.ini afterwards, so the layout survives restarts; dockLayoutReset()
-// puts it back.
+// The split is only a DEFAULT. Whatever the user drags is persisted to
+// imgui.ini (in the working directory, ImGui's own default name) and restored
+// on the next launch; dockLayoutReset() puts the default back.
+//
+// Both halves of that are deliberate, and neither worked before 2026-08-15:
+// the arrangement is written the FRAME it changes rather than on ImGui's 5 s
+// timer, so closing right after a drag keeps it, and the first frame no
+// longer re-splits over a layout the file just restored. A machine switch
+// still lays out from scratch — it renames the screen window, and a name the
+// file has never seen has nowhere to dock.
 //
 // The screen window's title is the machine profile name and therefore differs
 // per runner ("Macintosh LC II", "Quadra 950", ...), so the layout is keyed on
