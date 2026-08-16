@@ -373,6 +373,9 @@ void Swim1::tick(int cycles) {
 int Swim1::cyclesToNextEvent() const {
     // The legacy IWM personality has no event API yet; retain the historical
     // scheduler cadence for it.  ISM uses the same cell/TSS engine as SWIM2.
+    // (256 is one GCR byte time on a C15M board, which looks alarming next
+    // to the step-6 cell engine and is not: every register access flushes
+    // the chip forward first — measured, `Iwm.h`.)
     if (!ismMode_) return 256;
     if (!(mode_ & 0x08)) return 0x7fffffff;
     if (mode_ & 0x10) {

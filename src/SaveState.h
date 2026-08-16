@@ -238,7 +238,13 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // counters or the correction factors — which scale every threshold the
 // rest of the read uses — come out different. v6 never shipped a release;
 // it is refused like every other mismatch, not migrated.
-inline constexpr u32      kVersion   = 8;   // v8: SonyDrive carries flux
+// v9 DROPS a field from the CPU chunk instead of adding one: Moira's `cp`,
+// the 68020+ extended-addressing cycle-penalty accumulator, which
+// `AVAILABILITY` zeroes at the start of every instruction and which is
+// therefore meaningless at the instruction boundary a snapshot is taken on.
+// The JIT never touches it, so carrying it made a snapshot's fingerprint
+// depend on which engine had run last — `MoiraSnapshot.h` has the receipt.
+inline constexpr u32      kVersion   = 9;   // v9: CPU chunk drops `cp`
 
 struct Header {
     u32 version     = kVersion;

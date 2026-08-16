@@ -792,10 +792,55 @@ void Ncr53c96::transferInfo() {
             // and the 7.5.5 HAL's WRITE(10) spins forever waiting for I_BUS.
             dataXfer_ = true;
             if (!dmaCommand_) {
+                // ── Non-DMA: the FIFO is the budget, not the DMA count ───
+                // The transfer counter is a DMA register (MAME's
+                // decrement_tcounter early-outs on !dma_command), so a
+                // polled Transfer Info moves what the FIFO holds and ends
+                // there — the driver refills and issues another. Reading a
+                // STALE tcount_ instead is what hung Mac OS 8.1's CD driver
+                // on its 28-byte MODE SELECT: it preloaded 12 bytes, issued
+                // $10, and waited on R_STATUS for a completion the chip
+                // owed after those 12 — while this counted down from a 16
+                // left over from an earlier command and waited for four
+                // bytes the driver had no reason to send. Both sides
+                // waiting, ~600 R_STATUS reads a frame and nothing else,
+                // for the rest of the run.
+                // An EMPTY FIFO keeps the old fallback, and that is the
+                // 7.5.5 SCSI Manager HAL's shape (arm first, then stream
+                // the payload through R_FIFO — docs/LLE_VS_HLE.md § 1.5):
+                // there is no preload to size the transfer by.
                 const uint32_t remain = dataOutExpected_ > dataOut_.size()
                     ? uint32_t(dataOutExpected_ - dataOut_.size()) : 0;
-                tcounter_ = tcount_ ? tcount_ : remain;
+                tcounter_ = fifoPos_ ? uint32_t(fifoPos_)
+                                     : (tcount_ ? tcount_ : remain);
                 status_ &= ~S_TC0;
+            }
+            // ── The FIFO is the path to the bus, not a side pocket ───────
+            // A driver may PRELOAD the payload's first bytes into the FIFO
+            // and then program a transfer count covering the whole thing,
+            // those bytes included: the chip streams the FIFO out first and
+            // DMA refills it behind (ncr53c90.cpp DATA OUT drains m_fifo
+            // before fetching). Here they were landing in `fifo_` and
+            // STAYING there, because fifoPush's payload branch needs
+            // `dataXfer_`, which only this command sets.
+            // Mac OS 8.1's CD driver does exactly that on the MODE SELECT it
+            // issues while adopting a disc: CDB `15 00 00 00 08 00`, two
+            // parameter bytes pushed to the FIFO, then `$90` with a count of
+            // 6 and four more bytes through the pseudo-DMA window. The two
+            // vanished, the chip's counter stopped two short of the
+            // driver's, no I_BUS ever came, and the machine sat polling
+            // R_STATUS and R_FLAGS forever — 1333/667 reads and not one
+            // further CDB. That is the CD gates' "no Finder", and it is NOT
+            // a CD-ROM defect: it needs a target that asks for a parameter
+            // list at all, which is why it appeared the day MODE SELECT
+            // stopped being answered with an empty one (a355561,
+            // 2026-08-08) and why bisecting the gate landed there.
+            if (fifoPos_ > 0) {
+                uint8_t pre[16];
+                const int n = fifoPos_ < 16 ? fifoPos_ : 16;
+                std::memcpy(pre, fifo_, size_t(n));
+                fifoPos_ = 0;
+                for (int i = 0; i < n; i++) acceptDataOutByte_(pre[i]);
             }
             updateDrq();
             break;

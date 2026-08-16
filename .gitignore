@@ -28,6 +28,16 @@ roms/
 tests/data/
 # User-provided game/CD images (never committed — GitHub 100MB limit)
 input/
+# CD images, the floppies' opposite number: `cd/` is scanned by the Disques
+# window exactly like `disks35/`, so this is where a user's .iso lives.
+# `.bin` is NOT listed even though a .cue points at one: two 6502 test vectors
+# under tests/assets are .bin and tracked, and a blanket rule would hide the
+# next one. A .cue's data track lives in cd/, which is ignored whole.
+cd/
+*.iso
+*.cdr
+*.toast
+*.cue
 # Editor/tooling
 .cache/
 compile_commands.json

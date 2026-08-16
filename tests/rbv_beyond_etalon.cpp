@@ -28,6 +28,8 @@
 // ROM + a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
+#include "BeyondBoot.h"
+#include "FinderSignature.h"
 #include "FolderProbe.h"
 #include "Mmu030Peek.h"
 #include "RbvCpu.h"
@@ -98,12 +100,9 @@ bool macTime(uint32_t* out) {
     return true;
 }
 
-void keyTap(uint8_t code) {
-    gMem->keyEvent(code, true);
-    runFrames(4);
-    gMem->keyEvent(code, false);
-    runFrames(4);
-}
+// (The 4-frame `keyTap` that stood here went with the private persist flow:
+// `BeyondBoot.h` holds a key past a Slow Keys acceptance delay instead, which
+// is the whole reason the shared engine exists.)
 
 void screen(std::vector<uint32_t>& fb) {
     RbvVideo video(*gMem);
@@ -197,6 +196,10 @@ int main() {
         return 1;
     }
 
+    // 8 MB, like every other IIsi gate. Dropping to 4 was TRIED and does
+    // NOT apply here: it is what fixed the Duo and the Mac II, whose
+    // System sizes its disk cache from RAM, and on this machine the guest
+    // issues no write command at either size.
     RbvMemory mem(0x800000);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.setMonitorSense(6);                  // 13" RGB 640×480
@@ -248,42 +251,67 @@ int main() {
                     dt, cpu.isHalted(), alive ? "still up" : "GONE");
         ok = readable && !cpu.isHalted() && dt >= 135 && dt <= 225 && alive;
     } else if (mode == "persist") {
-        std::vector<uint8_t>& disk = mem.scsiDisk().image();
-        long before[folderprobe::kCount];
-        folderprobe::sample(disk, before, "before");
-        const std::vector<uint8_t> snap = disk;
-        mem.keyEvent(0x37, true);            // Cmd down
-        runFrames(6);
-        keyTap(0x2D);                        // 'n'
-        mem.keyEvent(0x37, false);
-        runFrames(120);                      // rename field appears
-        keyTap(0x24);                        // Return — commit the name
-        runFrames(900);                      // ~15 s: create + flush catalog
-        long after[folderprobe::kCount];
-        folderprobe::sample(disk, after, "after");
-        const bool wrote = disk != snap;
-        const size_t grew = folderprobe::grew(before, after);
-        std::printf("persist: %s, image %s\n",
-                    grew < folderprobe::kCount
-                        ? (std::string("'") + folderprobe::kNames[grew] + "' " +
-                           std::to_string(before[grew]) + " -> " +
-                           std::to_string(after[grew])).c_str()
-                        : "NO candidate folder name appeared",
-                    wrote ? "modified" : "UNCHANGED");
-        std::vector<uint32_t> fb;
-        screen(fb);
-        dump("rbv_beyond_persist.ppm", fb);
-        cpu.hardReset();
-        while (mem.cpuHeld()) mem.tick(1000);
-        runFrames(16000);
-        long survived[folderprobe::kCount];
-        folderprobe::sample(disk, survived, "reboot");
-        const bool rebooted = !cpu.isHalted() && finderUp();
-        const bool kept = grew < folderprobe::kCount && survived[grew] > before[grew];
-        std::printf("persist: reboot %s, folder %s\n",
-                    rebooted ? "reached the Finder" : "FAILED",
-                    kept ? "survived" : "did NOT survive");
-        ok = wrote && grew < folderprobe::kCount && rebooted && kept;
+        // ── This leg is the SHARED engine's now, and that is the fix ─────
+        // The private copy it replaces created the folder every run — the
+        // screen dump at the end shows "Dossier sans titre" in the GIST
+        // PERSO window, 9 elements — and then sampled the image 900 frames
+        // later, when nothing had flushed it yet. At 8 MB System 7.x holds
+        // a created folder in the File Manager's cache indefinitely
+        // (`pom68k-8mb-never-flushes`), so a fixed budget cannot be right
+        // here at any value: the write does not come until something needs
+        // the disk. `BeyondBoot.h::persist` polls `writeBlocks` for up to
+        // two emulated minutes and, ten seconds in, STIRS the guest — the
+        // exact machinery the other eleven legs got and this one, one of
+        // the four pre-engine copies, never did. It also holds Cmd-N and
+        // Return past a Slow Keys acceptance delay instead of tapping them.
+        beyondboot::Hooks h;
+        h.name = "Macintosh IIsi";
+        h.frames = [&](long n) { runFrames(n); };
+        h.key = [&](uint8_t code, bool down) { gMem->keyEvent(code, down); };
+        h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
+        h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
+        h.reboot = [&]() {
+            cpu.hardReset();
+            while (mem.cpuHeld()) mem.tick(1000);
+            runFrames(16000);
+            return !cpu.isHalted() && finderUp();
+        };
+        h.dump = [&](const char* what) {
+            std::vector<uint32_t> fb;
+            screen(fb);
+            dump((std::string("rbv_beyond_") + what + ".ppm").c_str(), fb);
+        };
+        // $910 CurApName needs the page-table walk on an RBV machine —
+        // peek8 there is desktop pixels (`pom68k-peek-is-physical-rbv`).
+        // Measured "Finder" on this volume, so it is not what was wrong;
+        // bound anyway so a future wrong answer is named, not silent.
+        h.frontApp = [&]() { return findersig::curApNameAt(peekLogical); };
+        // ── The stir is Cmd-Shift-3, and it is keyboard-only on purpose ──
+        // This machine is the twelfth to need one and the second overall
+        // (the Duo was the first): with the folder created and on screen,
+        // `POM68K_SCSI_TRACE` shows the guest issuing NO write command for
+        // two emulated minutes — one `$2A lba 98` at mount, the next after
+        // the reboot, nothing between. The Duo's stir drives Special ->
+        // Shut Down with a closed-loop pointer steer; a screen shot asks
+        // for the same thing — a file created on the STARTUP volume, right
+        // now — with three keys and no third copy of that steering loop.
+        // Held past a Slow Keys acceptance delay like every other gesture
+        // here (`pom68k-81-image-slow-keys`).
+        h.stir = [&]() {
+            beyondboot::mark("stir: Cmd-Shift-3 (screen shot to the boot volume)");
+            gMem->keyEvent(0x37, true);          // Cmd
+            runFrames(6);
+            gMem->keyEvent(0x38, true);          // Shift
+            runFrames(6);
+            gMem->keyEvent(0x14, true);          // '3'
+            runFrames(150);
+            gMem->keyEvent(0x14, false);
+            runFrames(6);
+            gMem->keyEvent(0x38, false);
+            gMem->keyEvent(0x37, false);
+            runFrames(300);
+        };
+        return beyondboot::persist(h);
     } else {
         std::fprintf(stderr, "FAIL: unknown POM68K_BEYOND=%s\n", mode.c_str());
         return 1;

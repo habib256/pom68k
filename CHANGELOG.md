@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 233 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 239 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the image is not the one the floor was calibrated on" was ruled a dead lead on the wrong argument (probe-chain membership, not content) — it was the answer, and it took three boot gates red for two days** → [2026-08-15 — Three red boot gates and one bit…](#2026-08-15-hd20sc-clean-bit)
+- **a gate typed a keyboard gesture at the wrong application for a day, on a desktop that looked right — and the fix is to ask the guest who is in front** → [2026-08-15 (later) — The Duo's persist leg had been gesturing at Stickies…](#2026-08-15-duo-stickies-front)
+- **"this disk is unreadable" on every non-compact machine: what unit MAME's IWM window tables are counted in, and why `$17` is the Mac's mode and not `$1F`** → [2026-08-15 (third) — The IWM's cell window was counted in the wrong clock…](#2026-08-15-iwm-window-clock)
 - **"the Eclipse's ADB is the Egret's" — a comment that said "measured, not assumed" and never was; it is the SWIM IOP's wire, and both towers had no working input at all between 2026-08-02 and 2026-08-14** → [2026-08-14 (later) — The Eclipse towers run the real Egret firmware…](#2026-08-14-eclipse-egret-lle)
 - **"the Duo holds its writes behind the hard-disk spin-down" — the Finder reads the catalog off the disk to create the folder, so the drive is awake; the volume is simply never flushed** → [2026-08-14 — The Duo's last beyond-boot leg…](#2026-08-14-duo-beyond-boot)
 - **the 7.5.5 hot-insert refusal is NOT a dskchg modelling gap (mac_floppy re-arms it on insertion)** → [2026-08-05 (fourth) — IWM/SWIM bughunt…](#2026-08-05-iwm-swim-bughunt)
@@ -294,6 +297,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-16** — [Ten red gates, five causes, and the two that were never going to be found by reading](#2026-08-16-ten-red-gates)
+- **2026-08-15 (fifth)** — [Mounting a CD stops being a procedure, and the discs that never mounted finally say why](#2026-08-15-cd-like-a-floppy)
+- **2026-08-15 (fourth)** — [Two things the GUI was not being told: that the guest ejected the disk, and where the user put the windows](#2026-08-15-gui-media-and-dock)
+- **2026-08-15 (third)** — [The IWM's cell window was counted in the wrong clock, and no floppy had mounted anywhere but the compacts since](#2026-08-15-iwm-window-clock)
+- **2026-08-15 (later)** — [The Duo's persist leg had been gesturing at Stickies, and the guest said so all along](#2026-08-15-duo-stickies-front)
+- **2026-08-15** — [Three red boot gates and one bit: the fixture was cleanly unmounted, and the criterion was a fixture reading](#2026-08-15-hd20sc-clean-bit)
 - **2026-08-14 (ninth)** — [The Toby CLUT stored a grey per write: a red boot etalon that was a real bug, and a gate that pinned it](#2026-08-14-toby-clut-mouse)
 - **2026-08-14 (eighth)** — [The flux plan is finished: the medium stops being a cell grid, and the IWM reads transitions](#2026-08-14-flux-store-iwm)
 - **2026-08-14 (seventh)** — [Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window](#2026-08-14-firmware-picker)
@@ -529,6 +538,570 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-16-ten-red-gates"></a>
+## 2026-08-16 — Ten red gates, five causes, and the two that were never going to be found by reading
+
+Asked for in three words: *"Corrige tous les gates rouges."* So the first
+thing was to find out what they ARE, on a tree whose last whole-suite run is
+dated 2026-08-07: full rebuild (`make -j4`, exit 0), then `ctest -LE etalon`
+**94/94**, then `ctest -L etalon` **102/112** in 4 h 23. Ten reds, and the
+grouping is the finding — they were five unrelated causes, not one bad day:
+
+| gates | cause |
+|---|---|
+| `se_`/`sefdhd_`/`classic_`/`jit_classic_boot_etalon` | the SE's IWM is clocked at C15M, and we fed it C7M windows |
+| `q605_cdrom_`/`cdboot_`/`cdhot_etalon` | the 53C96 dropped FIFO bytes a driver preloaded, twice over |
+| `q605_savestate_etalon` | one CPU byte the JIT does not maintain, carried in the snapshot |
+| `iisi_persist_etalon` | the gate asked the guest to write and never asked it to flush |
+| `cclassic2_boot_etalon` | the criterion measured the volume's saved window layout |
+
+### 1. The Mac SE's IWM runs at C15M, and had been given C7M windows
+
+`FAIL: ejected` on three compacts in 9 s, while the Plus booted the SAME
+`disks35/Disk605.dsk` to the Finder. A microscope over both showed the split
+at once: the Plus seeks across the disk (tracks 62/54/76/28, 1 182 177
+nibbles, 27.2 % of its data-register polls landing on a valid byte) and the SE
+never leaves **track 0**, reads 78 003 nibbles at 7.3 %, and `.Sony` gives up
+at frame 2280.
+
+The medium was fine; the framing was not. The SE's consumed-nibble ring holds
+`F7 BD EF F7 BD EF …` — a three-byte lattice, the signature of a window that
+does not fit the cell — and **zero** `D5 AA 96` address marks in 512 bytes,
+where the Plus's ring is live GCR. The mode register says why: the Plus writes
+**`$1F`**, the SE writes **`$17`**. That is the same C15M mode pair the LC II
+writes, and the reason is in MAME: `mac128.cpp:1182` gives the Plus
+`IWM(config, m_iwm, C7M)` and `:1317`, inside `macse`, REPLACES it with
+`IWM(config.replace(), m_iwm, C7M*2)` — inherited by `macsefd` and `macclasc`.
+A 36-clock window counted in C7M is 2.3× the cell, which is exactly the defect
+fixed the day before on the Mac II family (2026-08-15 (third)) — and the
+compacts were never checked, because `disk_boot_etalon` is a Plus.
+
+The fix is that `Iwm` now has **two** clocks, because on this one machine they
+differ: `setTickHz` (the unit of `tick()`'s argument — CPU C7M here) and
+`setChipHz` (what the board wires to the CLK pin — C15M), where one scale used
+to serve both. `MacMemory::reset` sets the chip clock from `isAdb()`, which is
+precisely "not the Plus". Everything else on the compacts is untouched and
+measurably so: `system_boot_etalon` reports the same 2 028 375 polls /
+550 989 hits / 1 182 177 nibbles as before the change.
+
+**Proved a regression, not a fixture**: a worktree at `d764916^` (the commit
+before the flux read engine) boots the SE to the Finder on the same image.
+
+### 2. The 53C96 dropped the bytes a driver had already put in the FIFO
+
+The three CD gates all printed `no Finder`, and `q605_cdrom_etalon` had been
+red since **2026-08-08** — long enough that TODO carried it as "red before the
+CD work, cause unknown". Bisecting it (`git bisect run`, 6 steps over 136
+commits, the gate runs in 42 s) named `a355561` — *"Our SCSI disk only ever
+answered the ROM"*, which taught `ScsiDisk` the whole MODE SENSE/MODE SELECT
+surface and moved DATA-OUT sizing from the controllers into the target.
+
+That commit was right, and it exposed **two** holes in `Ncr53c96`, both the
+same shape: *the FIFO is the path to the bus, not a side pocket.*
+
+- **Bytes preloaded into the FIFO were never delivered.** Mac OS 8.1's CD
+  driver issues `15 00 00 00 08 00` (MODE SELECT, 8-byte list), pushes **two**
+  parameter bytes into the FIFO, then starts `$90` with a DMA count of 6 and
+  streams **four** through the pseudo-DMA window. `fifoPush`'s payload branch
+  needs `dataXfer_`, which only the Transfer Info sets — so those two landed
+  in `fifo_` and stayed there. The chip's counter stopped two short of the
+  driver's, no I_BUS ever came, and the machine sat polling R_STATUS and
+  R_FLAGS (1333/667 reads and not one further CDB) for the rest of the run.
+  Before `a355561` the target claimed no DATA OUT for MODE SELECT at all, so
+  the phase never happened and nothing noticed.
+- **A polled Transfer Info sized itself from a stale DMA count.** Past that
+  first hang the driver reaches a 28-byte MODE SELECT: it preloads **12**
+  bytes and issues `$10` — the NON-DMA variant. The transfer counter is a DMA
+  register (MAME's `decrement_tcounter` early-outs on `!dma_command`), and
+  this code was reading `tcount_` anyway, which still held a **16** from an
+  earlier command. It waited for four bytes the driver had no reason to send;
+  the driver waited on R_STATUS for the completion it was owed after its 12.
+  Non-DMA now takes the FIFO as the budget when the FIFO is preloaded, and
+  keeps the old fallback when it is empty — which is the 7.5.5 SCSI Manager
+  HAL's shape (arm first, then stream through R_FIFO).
+
+All three gates green, with the numbers the good commit measured: data CD
+**115 READs / 144 blocks**, menu 201.8/72.9 (a355561^: 115/144, 202.0/72.6);
+boot-from-CD **3885 blocks / 7.77 MB**. `ncr53c96_test`, `scsi_pdma_test`,
+`scsi_target_test`, `scsi_cdrom_test`, `daynaport_test`, `q605_boot_etalon`
+unmoved.
+
+### 3. One byte in 33 165 127, and it was a cycle counter
+
+`q605_savestate_etalon`: restore, run the same 1200 frames, and the machine
+came out different — `first divergence at byte 302`. It is worth stating what
+that diff actually was, because it is the whole diagnosis: dumping both blobs
+and comparing them gives **exactly one differing byte in 33 MB**, `00` against
+`02`. RAM, every device, the CPU's registers, even `emuCycles` in the header:
+identical.
+
+Byte 302 is CPU-chunk offset 246, and decoding the chunk against
+`MoiraTypes.h` puts that on **`cp`** — Moira's cycle-penalty accumulator for
+the 68020+ extended addressing modes, which `AVAILABILITY` zeroes at the START
+of every instruction on `Core::C68020` (`MoiraExec_cpp.h:11`). At an
+instruction boundary — where every snapshot is taken — it holds the previous
+instruction's leftover and means nothing. The JIT never touches it, and a
+restore calls `pomJitDisarm()`, so the restored run re-warms through the
+interpreter and keeps a different residue: the fingerprint depended on which
+engine had run last. `POM68K_CPU_ENGINE=interp` passes the gate and hashes
+`903e4c62554f1a6b` — the JIT run's *direct* hash — which is what said "not a
+CPU bug, an accounting one".
+
+This is the `readBuffer`/`writeBuffer` case of 2026-08-12 exactly, and it is
+settled the same way: the snapshot stops carrying what only one engine keeps.
+**v9** (the CPU chunk is four bytes shorter). All five `savestate_*` unit
+gates and `lcii_savestate_etalon` green.
+
+### 4. The IIsi's persist leg asked for a folder and never asked for a flush
+
+`NO candidate folder name appeared, image UNCHANGED` — and the screen dump
+shows **"Dossier sans titre"** in the GIST PERSO window, 9 elements. The
+folder was created every run. `POM68K_SCSI_TRACE` shows why it never reached
+the medium: one `$2A lba 98` when the volume mounts, the next after the
+reboot, and **nothing in between** for two emulated minutes.
+
+Two leads were spent and both are dead, recorded so they are not re-walked:
+*the Finder is not in front* (the Duo's Stickies case — measured here with a
+PMMU-walking `$910 CurApName`, and the answer is "Finder"), and *8 MB sizes
+the disk cache too large* (the Duo's and the Mac II's fix — tried at 4 MB, the
+guest issues no write at either size on this machine). It is also not a
+regression: a build at `d764916^` fails identically.
+
+This gate was one of the four pre-engine private copies of the beyond-boot
+flows, and it had never been given what `BeyondBoot.h::persist` grew: key
+holds past a Slow Keys delay, a **write-counter poll** instead of a fixed
+900-frame budget, and a `stir`. Its persist leg is the shared engine's now,
+and the stir is **Cmd-Shift-3** — a screen shot is a file created on the
+startup volume, right now, with three keys and no third copy of the Duo's
+closed-loop pointer steering. First write **600 frames** after the commit
+(i.e. on the stir), `'Dossier sans titre' 10 -> 12`, image modified, folder
+survives the reboot. `iisi_soak_etalon` re-run and still green.
+
+### 5. A gate that measured where the user left a window
+
+`cclassic2_boot_etalon`: `desktop 0.27 (want 0.35-0.85)`. The dump shows a
+completely healthy Finder — menu bar, icons, two open windows, desktop
+pattern — and the bottom strip the gate samples is now covered by a **JEUX**
+window the volume's saved layout opens. The strip had been chosen after the
+right-hand column was found measuring *another* window's interior; there is
+no strip of a 512×384 screen a user cannot cover, so the desktop weave is now
+printed and not asserted. The criteria are `FinderSignature.h`'s two terms no
+layout can move: `CurApName == "Finder"` and the menu bar's light run
+(**494** of 512, floor 256).
+
+### The shape of the day
+
+Two of the five were found by *running* things — the SE's mode register and
+the one snapshot byte — and neither would have come out of reading the code;
+two more were only ever going to be found by bisect (`a355561`) or by asking
+the guest (`CurApName`). The fifth is the fourth gate this month to be red
+because a mutable `hdv/` volume changed under it, which is the item TODO
+§ *Fixtures* has been carrying since 2026-08-09.
+
+<a id="2026-08-15-cd-like-a-floppy"></a>
+## 2026-08-15 (fifth) — Mounting a CD stops being a procedure, and the discs that never mounted finally say why
+
+Asked for in one sentence: *"je dois pouvoir monter un CD comme je monte une
+disquette, dans le dossier cd, sans complication."* Four things were in the
+way, and only the first was the one anybody would have guessed.
+
+**1. `cd/` was not scanned.** `disks35/` is to floppies what `cd/` is to
+discs, except the window only knew about `hdv/` and `disks35/`, so an .iso in
+the obvious place was invisible and had to be typed in or dropped. One line.
+
+**2. There was no CD row.** The floppy has one — a picker, or a name and an
+« Éjecter ». A disc meant going down to the bay list, learning that an empty
+bay needs a reboot, finding the « Réserver un lecteur CD vide » checkbox at
+the bottom of the window, applying, restarting, and only then picking the
+image. Now the CD sits under the floppy with the same two states, filtered to
+CD images, and swaps live in both directions.
+
+**3. The drive had to be asked for.** The hot-swap contract is not
+negotiable — Classic Mac OS probes the bus once — so a disc can only enter a
+drive that was there at boot. Every machine that can hold one now boots with
+one (`ensureCdDrive`), which costs a SCSI id and nothing else. It was off by
+default on the argument that "the boot-etalon gates are timed against the bus
+as it stands today"; that half is simply not true — the gates build their
+machines in `tests/` and never execute a line of `main.cpp`.
+
+**4. Six of the ten threaded runners never bound the bay hooks at all.**
+`bayIsCd`/`insertBay`/`ejectBay` existed on the four 68040 boards only, so on
+the Mac II family, V8, Sonora, VASP, RBV and the IIfx the window could
+*only* stage a change and reboot — whatever the bus looked like. That is the
+part that made this feel like a procedure rather than a click.
+
+### The discs that were read and never mounted
+
+`q605_cdrom_etalon` has carried a note since 2026-07-29: *"the 512-byte-DDM
+hybrids in hdv/ are read but not mounted by Mac OS — cause not yet
+established"*. The cause is the block size, and the field library shows the
+split cleanly:
+
+| image | descriptor | declared block | verdict |
+|---|---|---|---|
+| `MAC_OS_8-1_RETAIL_0.ISO` | `ER` | **2048** | a real CD; mounts (the gate's asset) |
+| `TIM_3.iso`, `Myst-FR.iso`, `The_Yukon_Trail.cdr` | `ER` | **512** | a dump, not a disc |
+| `Apeiron_1_0_3.toast`, `GliderPRO_1_1_2.toast`, `disk1s1s2.cdr` | none, `BD` at 1024 | 512 | a bare HFS volume |
+
+A 512-byte dump served through a 2048-byte CD target puts every partition
+offset four times too far in, and Mac OS mounts nothing. So `openCdrom` reads
+the medium — `ER`'s `sbBlkSize`, or a bare `BD` at 1024 — and attaches a 512
+image as `Kind::Removable`, a removable direct-access target served by the
+hard-disk command set with the CD's presence and medium-change behaviour.
+
+That was necessary and **not sufficient**, which one measurement showed and
+no amount of reasoning would have: with the right block size `Apeiron` still
+did not appear. It has no partition map at all, so there is no driver for the
+ROM to load — exactly the case `open()` already solves for a flat `.dsk` with
+the in-memory DDM façade. `openCdrom` now applies the same façade, and the
+disc mounts from the CD row: icon on the desktop, window open on its files.
+(RMB was suspected and cleared on the way: the same disc mounts with the
+removable bit set and clear. The bit is set because it is true, not because
+it changes anything.)
+
+### What is still not ours
+
+- **A hot insert mounts nothing on a System with no CD stack.** Measured on
+  the reporter's own 7.5 volume: the disc goes into the drive and no icon
+  appears, because nothing bound a driver to that id at boot — `Foreign File
+  Access` is absent from that System Folder (`Apple CD-ROM` and `ISO 9660`
+  are present, the dispatcher that loads them is not). On Mac OS 8.1 the same
+  path works, which is what `q605_cdrom_etalon` gates.
+- **The `ER`/512 discs do not mount even as plain SCSI disks** (measured on
+  `The_Yukon_Trail.cdr`): their driver partition is a CD driver the ROM does
+  not load. Those need the guest's CD stack too.
+
+### And a second stale red
+
+`q605_cdrom_etalon` is **red, and was red before any of this**: same verdict
+and the same numbers — `menu 127.4/127.5`, 26 READs, "no Finder" — with
+`ScsiDisk` stashed back to HEAD. That makes two gates found red today by
+looking rather than by the suite (`lcii_floppy_etalon` was the first), on a
+tree whose last full green run is dated 2026-08-07. Its asset list also
+learned about `cd/`, since that is where the images live now.
+
+Also: the boot row is labelled **BOOT HD (SCSI 0)**.
+
+<a id="2026-08-15-gui-media-and-dock"></a>
+## 2026-08-15 (fourth) — Two things the GUI was not being told: that the guest ejected the disk, and where the user put the windows
+
+Both from the same seat, both the same shape — state that lived in one place
+and was mirrored in another that never got the update.
+
+### The guest ejects too
+
+`Cmd::InsertFloppy` / `Cmd::EjectFloppy` carry the GUI's intent down to the
+machine thread, and that is the *only* direction the queue runs. A Finder
+« Ranger », a Cmd-E, any `.Sony` eject reaches `SonyDrive::eject()` directly —
+the disk really is out and the host file is already flushed — and nothing
+published it. The **Disques** window went on naming a disk the drive no longer
+had, and offering to eject it again.
+
+`MachineHost::publish()` now takes the drive's own answer (flag + backing path)
+every time it runs, which is exactly what the CD-bay flags beside it already
+did. The rule, stated where it can be reused: **for media the device is the
+authority and the queue is only a request.** An insert-over-insert renames the
+row too, which the command path alone did not. The compacts run inline on the
+GUI thread and already read `internalDrive().hasDisk()`; what they needed was
+their `c.floppyPath` copy — the one a machine switch hands back on argv —
+cleared when the drive empties, so a relaunch does not re-insert a disk the
+guest threw out.
+
+`machinehost_test` gains the case, issued **behind the queue's back**
+(`mem.internalDrive().eject()`), and it bites: with the mirror removed both
+new checks fail and the rest of the gate passes. One existing check moved with
+it — "a bay command does not disturb the floppy flag" used to arrange its
+premise with `setFloppyInserted(true)` over an *empty* drive, which the mirror
+now corrects on the next tick. It inserts a real disk instead: a fake premise
+would have failed for the right reason, which is not a reason to keep it.
+
+### And where the user put the windows
+
+Reported as "save the dock layout when POM68K closes". Two halves were
+missing, and saving was the smaller one.
+
+- **Writing.** ImGui's auto-save runs on a timer (`io.IniSavingRate`, 5 s), so
+  dragging a window and closing a second later lost the arrangement.
+  `dockLayoutFrame()` now writes on `io.WantSaveIniSettings` — the frame the
+  layout changes. One small file per gesture, and it makes every exit correct
+  at once: the twelve runner shutdowns, the relaunch a machine switch performs,
+  and a crash alike, with no teardown hook in any of them.
+- **Reading.** `gRebuild` started `true`, so the first real frame re-split the
+  dock space unconditionally — over the layout ImGui had *just* restored from
+  `imgui.ini`. Now the first frame asks the settings first: a window the file
+  knows comes back carrying its `DockId`, and that is the user's arrangement,
+  not ours. `Réinitialiser la disposition` outranks the file, and a machine
+  switch still lays out from scratch — it renames the screen window, and a
+  name the file has never seen has nowhere to dock.
+
+Verified on the running GUI, not by reading the code: launch, `imgui.ini`
+written (715 B, `[Docking]` with a `DockId` for `Macintosh LC II`); hand-edit
+the split to 600/720 where the default builder makes 898/420; relaunch, and the
+window comes up 600/720. Screenshots both ways.
+
+<a id="2026-08-15-iwm-window-clock"></a>
+## 2026-08-15 (third) — The IWM's cell window was counted in the wrong clock, and no floppy had mounted anywhere but the compacts since
+
+Field report, from the GUI, on an LC II: *"les disquettes ne se montent plus"*
+— **Ce disque est illisible par ce Macintosh. Voulez-vous l'initialiser ?**
+It reproduces headless in four minutes, and `lcii_floppy_etalon` had been
+**red** since 2026-08-14 without anyone running it: `icon strip Δ0 px → INIT
+DIALOG (volume NOT mounted)`, on the gate's own `Disk605.dsk` as much as on
+the reported `POM68KProber.dsk`.
+
+**What was true and misleading.** `iwm_read_test`, `iwm_write_test`,
+`swim1_test` and — the loud one — `disk_boot_etalon`, the Mac Plus booting
+System 6 off an 800K GCR floppy through the very same cell engine, were all
+green. So the read path demonstrably worked. It worked *on a C7M chip*.
+
+**The mode register picks the pair that suits the clock.** Bit 3 is the IWM's
+**clock speed**, bit 4 its **cell time**, so a driver writes whichever
+combination makes 2 µs cells out of the clock its board wired up. A C7M Mac
+writes `$1F`; a C15M one writes **`$17`** — measured, the LC II ROM writes
+`$57` and the register keeps the low five bits. MAME says the same from the
+other end: `iwm.cpp:335-361` counts its window tables in `time_to_cycles`,
+i.e. `clock()`, and the machines hand the device different clocks —
+`mac128.cpp:1182: IWM(config, m_iwm, C7M)` against `macii.cpp:938: IWM(config,
+m_fdc, C15M)` and every `SWIM1(config, …, C15M)`. `swim1.cpp` doubles the same
+numbers only because its own counter runs at `2*clock()` (`swim1.cpp:626`);
+both land on **36 C15M clocks**, 2.30 µs, one Sony GCR cell.
+
+The flux plan's step 6 read that doubling as "a C15M host gets MAME's doubled
+values for free" and multiplied the table by a **C7M-sized** unit. For the
+mode a C15M Mac actually uses that is **72 C15M clocks over a 31-clock cell**
+— 2.3× too long, and nothing frames at all. Not "fewer sectors": the engine
+delivered **50 000 bytes off the medium with not one `D5 AA 96` in them**
+(probe in `latchData`), `.Sony` spun out its retries and returned **-67
+noAdrMkErr** four times, `_MountVol` returned -36, and the System offered to
+initialize the disk. The Plus was untouched because `$1F` × a C7M unit is
+still 16 C7M clocks — the arithmetic was wrong and landed right.
+
+One line, `Iwm::clockTick() = kIwmTick / clockScale_`, is the fix: the window,
+half-window and update-delay tables are now in the chip's own clock, the same
+conversion `tick()` already applied to its argument.
+
+**Reach.** Nine platforms — Mac II / IIx / IIcx / SE-30, LC / LC II / Classic
+II / Color Classic / Mac TV, IIsi / IIci, IIvx / IIvi, IIfx, the Eclipse towers
+— every board whose IWM or SWIM1-IWM personality is clocked at C15M. The
+compacts were the only machines in the tree that could still read a floppy.
+
+**The hole that let it ship, closed.** Every check in `iwm_read_test` ran a
+bare `Iwm`: `clockScale_` 1, mode `$1F` — the Mac Plus, and the one machine
+the bug spared. The gate now carries the other combination (C15M chip, mode
+`$17`), and it **bites**: on the old arithmetic it reports 0 prologues while
+every C7M check beside it still passes.
+
+**Two dead ends, both measured, both worth not repeating.**
+- *The scheduler batch.* A bare-`Iwm` probe shows a real cliff — one
+  revolution frames 12000 bytes / 16 prologues at half-byte batches, **554 / 0
+  at one byte**, 2 / 0 at two — and `Swim1::cyclesToNextEvent()` returns
+  exactly 256, one GCR byte on a C15M board. It is not what the machines do:
+  every register access on these boards calls `flushTicks()` first. Wiring a
+  one-window deadline through `Iwm`/`Swim1`/V8/RBV/VASP changed the gate's
+  counters by **zero** — same nibbles, same polls, same hits, still red — and
+  was reverted. The note stays in `Iwm.h` so the theory is not re-bought.
+- *The clock scale itself.* `clockScale_` conversion of `tick()`'s argument is
+  correct: a two-scale probe frames the same 16 prologues per revolution at
+  both. The scale was never the bug; what it did not reach was.
+
+**Green.** `lcii_floppy_etalon` mounts the volume (`icon strip Δ1388 px`, head
+walked to track 10, `drAtrb $0100 → $0000`, host file modified, re-insert OK)
+— the same shape as the pre-flux tree measured at `af4d73b` in a worktree,
+which is how "regression, not a standing limitation" was established before a
+line was changed. `iwm_read_test` (13 checks), `iwm_write_test`, `swim1_test`,
+`disk_boot_etalon` green with it.
+
+**Method.** The bisect that mattered took one worktree and one build: run the
+gate at the commit before the suspect work. The measurement that mattered was
+four lines in `latchData` — *count the address prologues the engine FRAMES* —
+which split "the guest missed the bytes" from "the bytes were never there" in
+one run. Counters that describe the guest (`polls`, `hits`, `overwritten`)
+described nothing: they were within noise of the working tree's.
+
+**Left alone, and named so it is not forgotten.** The data-register hold —
+`clearCountdown_ = 14 * clockScale_` — is the *same* constant class and reads
+the same way MAME's `m_last_sync + 14` does, except `swim1.cpp:569` does NOT
+double it while it doubles the windows, because its counter is `2*clock()`:
+14 of those is **7 C15M clocks**, where we hold for 28. It was not touched
+here because the current value is pinned by a measured badDCksum fix
+(2026-08-05, the note above it) and because every floppy gate is green with
+it. The test if anyone reopens it: `reReads` under `lcii_sony_trace`, and
+`lcii_floppy_etalon` + `disk_boot_etalon` both ways.
+
+**Unrelated, same session, from the same seat.** The mouse capture now also
+releases on **Ctrl+Alt+G** (`ScreenInput::frame`, polled from GLFW like the
+wheel — it must work while the capture is on, which is exactly when ImGui has
+been told to ignore the mouse). The wheel click and Delete are unchanged;
+`README.md` and the toolbar hint say all three. And the alert a GIST PERSO
+shutdown raises — *L'alias "H.D (alias)" n'a pu être ouvert* — is the guest's
+own: the System Folder's **Ouverture à l'extinction** (Shut Down Items) holds
+an alias to a volume named `H.D` that no machine here mounts, and the Finder
+opens everything in that folder on the way out. Offset 1 532 093 of
+`GISTPERSO-boot.vhd` has the two catalog records adjacent. Nothing to fix in
+the emulator; remove the alias or attach an `H.D` volume.
+
+<a id="2026-08-15-duo-stickies-front"></a>
+## 2026-08-15 (later) — The Duo's persist leg had been gesturing at Stickies, and the guest said so all along
+
+`duo_persist_etalon` was the roster's last red gate, with the report
+`TODO.md` § 1 carried since 2026-08-14: **"NO candidate folder name appeared,
+image UNCHANGED"**, and the first suspicion recorded next to it — accumulated
+state on the shared image — was worth ruling out and was not the cause.
+
+**The gate was typing at the wrong application.** The Duo's boot ends with
+**Stickies** in front, not the Finder. System 7.5 puts it in Startup Items;
+it comes up over a perfectly good Finder desktop, and every term of the gate's
+signature is satisfied anyway — the two dark ratios measure the desktop
+Stickies is *sitting on*, and the `lightRun` dialog check is clean because the
+alias alert was dismissed with Return on the way in. So Cmd-N went to
+**Stickies' own File menu, which answers it with a New Note**, and the `stir`
+click at x=232 — where the *Finder's* "Special" title is — landed on the empty
+menu bar to the right of Stickies' four titles. Nothing was ever asked to
+flush. The gate's sentence was true about a machine state nobody had checked.
+
+The screen dumps had carried Stickies' menu bar (`File Edit Note Color`) for a
+day. No assertion looked at it, and the print-out named no application.
+
+**What is measured, and what is not.** The guest's own answer, now printed at
+every boot poll and after the boot: `front "Finder"` at poll 0 with the alias
+alert up, `front "Stickies"` once the boot loop returns. What flipped it
+between the green run of 2026-08-14 and this red one is **not** established —
+no code touching this machine changed, and the fixture did (the volume reads
+`drVolAtrb $0100 clean` today, and the 08-14 entry was written before that).
+The honest statement is the one that matters for the gate: **which application
+was in front at gesture time was never controlled**, so it was free to change,
+and it did. It is controlled now.
+
+**Two hooks, and they are opt-in.** `BeyondBoot.h::Hooks` gains `frontApp`
+(the guest's `$910 CurApName`, which under MultiFinder *is* the frontmost
+application — the read moves into `FinderSignature.h`, shared with this
+morning's three boot gates, and takes a byte-reader so a PMMU machine can pass
+its `Mmu030Peek` walk) and `focusFinder` (do what the user would: click the
+empty desktop). `persist()` calls one, checks the other, and **stops with a
+named failure** — `Cmd-N would go to "Stickies", not the Finder` — instead of
+gesturing into the void. The eleven green legs bind neither and are byte-for-byte
+unaffected.
+
+**The pointer loop could not settle, and that was the second half.** With the
+Finder in front, the folder appeared (`untitled folder`, in rename mode, on the
+gesture dump) and the `stir` still failed: `steer: wanted (232,12), reached
+(239,0)` — the pointer **pinned at y=0 for all 60 iterations**. The loop halved
+the remaining distance *in trackball units*, which only settles while System 7's
+scaling keeps a unit under two pixels; above that it is a limit cycle, and where
+the overshoot meets a screen edge it stops moving at all. That edge was never
+reached before because the desktop click is a new first move. The same law had
+already been leaving a **10 px residual** (`wanted (450,300), reached
+(440,300)`), and the two hand-tuned rules in the 08-14 entry were symptoms of it.
+
+So `nudge` now **measures pixels per unit** on every move it sees (EMA — a move
+that ends on a screen edge under-reports), and the step asks for the delta whose
+predicted move is the whole remaining distance. What stays irreducible is the
+quantum: two units is the smallest delta the guest acts on, so a tolerance below
+~2×gain is unreachable — each target is given the tolerance its own size allows
+(30 px for "an empty patch of desktop", 8 for a 57×20 menu title, **7** for the
+16-px Shut Down band, where the 5 it used to ask for failed the steer every run
+and landed on 134, one pixel from **Restart**, with the return value unread).
+
+**Green, both legs, on freshly linked binaries.** `duo_persist_etalon`:
+`frontmost application "Finder"`, first write **600 frames after the commit**
+(i.e. the `stir` is what produced it, exactly as designed), write commands
+**50 → 65**, `'untitled folder' 13 → 15`, reboot back to the Finder with the
+folder still there. `duo_soak_etalon`: 180 s on the Mac clock, not halted,
+Finder up. `macii_`/`iix_`/`se30_boot_etalon` re-run after the
+`FinderSignature.h` refactor: 3/3 green, `CurApName "Finder"`, menu runs
+636/636/508.
+
+**No emulator code changed** — this is a gate defect from end to end, and the
+08-14 finding it was hiding still stands: the Duo's System really does keep the
+catalog in the File Manager's cache, and really does need Special → Shut Down
+to write it. That is why the leg had a `stir` at all, and the flush numbers
+above are the same ones it measured.
+
+**The rule this leaves.** A beyond-boot gesture is an application's, not a
+machine's. Before asserting that a machine did not do something, ask the guest
+**who was listening** — `CurApName` costs one read, and every screen dump in
+this project shows a menu bar that answers the same question for free.
+
+<a id="2026-08-15-hd20sc-clean-bit"></a>
+## 2026-08-15 — Three red boot gates and one bit: the fixture was cleanly unmounted, and the criterion was a fixture reading
+
+`macii_boot_etalon` had been red since 2026-08-14 with a report that reads
+like a half-success: **menu bar 0.10, desktop 0.50, SCSI commands 178** against
+a floor of 200. The screen half passes, so the machine is at a Finder; only the
+activity floor fails. The previous session proved the red **pre-existing** (stash
+the day's flux work, rebuild, same 178) and wrote two leads into `TODO.md` § 1 as
+dead. One of them was not dead. It was the answer.
+
+**The bisect that ended on its first step.** `1d260aa` (2026-08-13 22:02) is the
+commit that set the floor to 200 and recorded "the same boot to the same Finder
+issues 291-295 commands". Building *that commit* today and running it:
+**178**. The interval `1d260aa..HEAD` contains no regression, because the
+endpoint the bisect calls *good* is red too. Nothing in the tree changed. The
+fixture did.
+
+**One bit, measured both ways.** `hdv/HD20SC.vhd` reads `drVolAtrb $0100` today;
+`DEV.md` recorded it as `$0000` when the fingerprint preamble was written, and
+the file's mtime is **2026-08-14 21:13:54** — after the calibration. Something
+mounted and cleanly unmounted it, and nothing recorded what. Clear bit 8 on a
+copy and re-run:
+
+| `drVolAtrb` | SCSI commands | menu / desktop | `vramWrites` |
+|---|---|---|---|
+| `$0000` dirty | **295** | 0.10 / 0.50 | 422 140 |
+| `$0100` clean | **178** | 0.10 / 0.50 | 422 140 |
+
+The System scavenges a volume it finds dirty and skips one it finds clean. The
+painting is bit-identical — `vramWrites` to the unit — and the whole 117-command
+difference is mount-time verification. The floor of 200 sat between the two.
+
+**Lead (a) was right, and had been closed on the wrong argument.** It read "the
+image is not the one the floor was calibrated on"; it was refuted by showing
+`HD20SC.vhd` entered the *probe chain* in `c8438a7` (2026-07-20), long before the
+floor moved. True, and beside the point: what mattered was not which file the
+gate opened but **what was inside it**. The `ASSET` preamble printed
+`drVolAtrb $0100 clean` on every one of those red runs. Nobody read it, because
+a fixture is not where you look for a regression — which is exactly the habit
+`CLAUDE.md` already tells you to break, and it still cost two days.
+
+**Two gates nobody had noticed.** `iix_boot_etalon` (177) and `se30_boot_etalon`
+(174) carry the same floor over the same image and were red for the same reason,
+un-triaged. The red was three gates wide, not one.
+
+**The fix is not a lower floor.** 178 is below the ~235 of the stalled Welcome
+the floor exists to reject, so the count is not merely mis-tuned, it is
+*inverted* — no threshold separates the two any more. `tests/FinderSignature.h`
+replaces it with two terms a fixture edit cannot move:
+
+- **`CurApName` (`$910`) == `"Finder"`** — the guest's own answer to "what is
+  running". Garbage until frame 449 of the Mac II boot, `"Finder"` from frame
+  500 onward.
+- **the longest light run across the menu bar** — 636 on the Mac II and IIx
+  (640 wide), 508 on the SE/30 (512), against 1-3 on every pre-Finder frame.
+  A 50 % desktop dither cannot hold a light run, and a jailbar field's runs are
+  the stripe width. (That last is reasoning: no jailbar dump survives to
+  measure. Said out loud rather than dressed as a number.)
+
+`scsi().commands` stays **printed** by all three gates — a good first thing to
+read on a red boot, just not a boot criterion.
+
+Verified in both directions on the gate itself, not only on the helpers: green
+on HD20SC clean (178) *and* on a bit-8-cleared copy (292), and with the volume's
+boot blocks zeroed it reports `menu run 5, CurApName "", SCSI commands 12` and
+FAILS. Board: `macii_boot_etalon`, `iix_boot_etalon`, `se30_boot_etalon` — 3/3
+green, 61 s each, on binaries relinked after the bisect left the tree mixed.
+
+`tests/finder_boot_matrix.cpp:207` still asserts `scsi().commands > 500` on its
+Mac II leg. It is an on-demand harness, not a registered CTest, so nothing is
+red — and it was left alone rather than fixed blind, since re-calibrating it
+means running the whole OS sweep (`TODO.md` § 1).
+
+**Method, again, and it is the one already written down.** A gate that reads a
+number out of a shared, writable, un-pinned fixture is measuring the fixture.
+`assets.lock` pins the three firmware dumps; the ROMs and the disk images are
+still unpinned (`TODO.md` § 8), and this is what that debt costs. One more
+reason the preamble exists: **read the `ASSET` lines of a red gate before its
+diff.**
 
 <a id="2026-08-14-toby-clut-mouse"></a>
 ## 2026-08-14 (ninth) — The Toby CLUT stored a grey per write: a red boot etalon that was a real bug, and a gate that pinned it

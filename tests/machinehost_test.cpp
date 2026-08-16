@@ -188,18 +188,41 @@ int main() {
         m.requestEjectFloppy();
         m.stepTick();
         check(m.floppyPath().empty(), "eject clears the published media path");
-        std::remove(fifoDisk.c_str());
+
+        // ── The GUEST ejects, and the GUI has to hear about it ───────────
+        // The command queue is one direction only. A Finder "Ranger" reaches
+        // `SonyDrive::eject()` without passing through it, and until
+        // 2026-08-15 nothing published that: the Disques window kept naming
+        // a disk the drive no longer had, with an « Éjecter » button for it.
+        // The drive is the authority; `publish()` takes its answer.
+        m.requestInsertFloppy(fifoDisk);
+        m.stepTick();
+        check(m.floppyInserted() && m.floppyPath() == fifoDisk,
+              "a disk is in the drive and named");
+        mem.internalDrive().eject();                 // the guest's own eject
+        m.stepTick();
+        check(!m.floppyInserted(),
+              "a guest-side eject clears the published floppy flag");
+        check(m.floppyPath().empty(),
+              "a guest-side eject clears the published media path");
 
         // ── Bay commands are accepted and stay in their lane ──────────────
         // Q605Memory carries insertBayMedia/ejectBayMedia, so these arms are
         // compiled in here; a platform without them compiles the same
         // template with no arm at all (the `requires` in applyCmds()).
-        m.setFloppyInserted(true);
+        // The disk is inserted for real rather than with `setFloppyInserted`:
+        // since publish() mirrors the drive, a flag set behind the drive's
+        // back is corrected on the next tick — which is the point of the
+        // change, and would make a fake here fail for the right reason.
+        m.requestInsertFloppy(fifoDisk);
         m.requestInsertBay(3, "hdv/definitely-not-here.iso");
         m.requestEjectBay(3);
         m.stepTick();
         check(m.floppyInserted(),
               "a bay command does not disturb the floppy flag");
+        m.requestEjectFloppy();
+        m.stepTick();
+        std::remove(fifoDisk.c_str());
 
         // ── Pausing still publishes ──────────────────────────────────────
         // A paused machine must keep the window painted, or « pause » looks

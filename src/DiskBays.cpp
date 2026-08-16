@@ -155,11 +155,44 @@ bool looksLikeFloppy(const std::string& p) {
     return !ec && n > 0 && n <= kMaxFloppyBytes;
 }
 
+// ── What block size does this disc image declare? ──────────────────────────
+// A CD target hands the guest 2048-byte blocks, because that is what a CD is.
+// Plenty of Mac "CD images" in circulation are not: they are dumps taken at
+// 512, and they say so — the Apple driver descriptor (`ER` at offset 0)
+// carries `sbBlkSize` at +2, and an image with no descriptor at all but an
+// HFS `BD` at 1024 is a bare volume in 512-byte blocks. Mac OS reads such a
+// disc through a CD drive and mounts nothing, because every partition offset
+// it computes is four times too far in.
+//
+// Measured 2026-08-15, and it is the cause the 2026-07-29 note in
+// `q605_cdrom_etalon` left open: `Apeiron_1_0_3.toast` (no DDM, `BD` at 1024)
+// does not appear on the desktop through the CD bay and mounts INSTANTLY when
+// the same bytes are attached as a 512-byte SCSI target. The fix belongs in
+// `ScsiDisk` (TODO § 1); until it lands, the window says which is which
+// instead of letting the user wonder why the disc never shows up.
+// Returns 2048, 512, or 0 when the file cannot be read.
+unsigned cdBlockSize(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return 0;
+    unsigned char h[1026] = {};
+    f.read(reinterpret_cast<char*>(h), sizeof h);
+    if (h[0] == 'E' && h[1] == 'R') {
+        const unsigned sb = unsigned(h[2]) << 8 | h[3];
+        return (sb == 512 || sb == 2048) ? sb : 2048;
+    }
+    if (h[1024] == 'B' && h[1025] == 'D') return 512;   // bare HFS at 512
+    return 2048;                                         // ISO 9660 and the rest
+}
+
 // ── Image picker ───────────────────────────────────────────────────────────
 // Returns true and fills `chosen` when the user picked something this frame.
+// The filter is what each row can actually accept: a SuperDrive takes no
+// .iso, and a CD drive takes nothing else.
+enum class Only { Any, Floppy, Cd };
+
 bool imageCombo(const char* label, const std::string& current,
                 const std::string& nearPath, std::string& chosen,
-                bool floppyOnly = false) {
+                Only only = Only::Any) {
     bool picked = false;
     std::string preview = current.empty()
                               ? std::string("<vide>")
@@ -172,7 +205,8 @@ bool imageCombo(const char* label, const std::string& current,
             picked = true;
         }
         for (const std::string& d : diskBaysKnownImages(nearPath)) {
-            if (floppyOnly && !looksLikeFloppy(d)) continue;
+            if (only == Only::Floppy && !looksLikeFloppy(d)) continue;
+            if (only == Only::Cd && !isCd(d)) continue;
             bool sel = samePath(d, current);
             std::string item = fileName(d) + "   " + sizeLabel(d);
             if (isCd(d)) item += "   CD";
@@ -196,6 +230,11 @@ std::vector<std::string> diskBaysKnownImages(const std::string& nearPath) {
     std::vector<std::string> out;
     scanInto(probeDir("hdv"), out);
     scanInto(probeDir("disks35"), out);
+    // `cd/` is to CDs what `disks35/` is to floppies. Before it was scanned,
+    // an .iso sitting in the obvious place was invisible to the window and
+    // had to be typed in or dropped — the first half of "mounting a CD is
+    // complicated" (2026-08-15).
+    scanInto(probeDir("cd"), out);
     if (!nearPath.empty()) {
         std::error_code ec;
         scanInto(fs::path(nearPath).parent_path().string(), out);
@@ -271,16 +310,63 @@ void diskBaysWindow(DiskBaysHost& host) {
         } else {
             ImGui::SetNextItemWidth(-1);
             std::string fd;
-            if (imageCombo("##fdpick", std::string(), host.bootPath, fd, true)
+            if (imageCombo("##fdpick", std::string(), host.bootPath, fd,
+                           Only::Floppy)
                 && !fd.empty() && host.insertFloppy)
                 host.insertFloppy(fd);
         }
         ImGui::Separator();
     }
 
+    // ── The CD, deliberately shaped exactly like the floppy above ────────
+    // Mounting a disc used to mean understanding the bus: find a free bay,
+    // learn that an empty one needs a reboot, discover the « Réserver un
+    // lecteur CD vide » checkbox at the bottom of the window, apply, restart,
+    // and only then pick the .iso. Every machine that can hold a CD drive now
+    // boots with one (`ensureCdDrive`, `DiskBays.h`), so this row is a picker
+    // and an « Éjecter » button — the same two states the floppy has, and no
+    // reboot in either direction. The bay list below still shows the same
+    // drive, for anyone who wants to see which SCSI id it is.
+    {
+        int cdBay = -1;
+        for (int i = 0; i < kMaxBays; i++)
+            if (bayIsLive(host, i)) { cdBay = i; break; }
+        if (cdBay >= 0) {
+            const std::vector<std::string>& ex = activeExtras(host);
+            const std::string cur =
+                cdBay < int(ex.size()) ? ex[size_t(cdBay)] : std::string();
+            const bool loaded = !cur.empty() && cur != kCdBayToken;
+            ImGui::TextDisabled("CD-ROM (SCSI %d)", cdBay + 1);
+            if (loaded) {
+                ImGui::Text("%s", fileName(cur).c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Éjecter##cd")) {
+                    host.ejectBay(cdBay + 1);
+                    if (host.extras && cdBay < int(host.extras->size()))
+                        (*host.extras)[size_t(cdBay)] = kCdBayToken;
+                    gLastError.clear();
+                }
+            } else {
+                ImGui::SetNextItemWidth(-1);
+                std::string cd;
+                if (imageCombo("##cdpick", std::string(), host.bootPath, cd,
+                               Only::Cd) && !cd.empty()) {
+                    if (host.insertBay(cdBay + 1, cd)) {
+                        if (host.extras && cdBay < int(host.extras->size()))
+                            (*host.extras)[size_t(cdBay)] = cd;
+                        gLastError.clear();
+                    } else {
+                        gLastError = "Image refusée par le lecteur CD.";
+                    }
+                }
+            }
+            ImGui::Separator();
+        }
+    }
+
     // ── Boot disk. Never hot-swappable: the .pram file follows the boot
     //    volume and the ROM picks its startup device once, at power-on.
-    ImGui::TextDisabled("Démarrage (SCSI 0)");
+    ImGui::TextDisabled("BOOT HD (SCSI 0)");
     ImGui::SetNextItemWidth(-160);
     std::string chosen;
     if (imageCombo("##boot", boot, host.bootPath, chosen)) {

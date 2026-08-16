@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 233 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 239 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -11,16 +11,16 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 16 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 31 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 36 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 13 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
 | [Save states](#save-states) | 6 |
-| [Machine bring-ups](#machine-bring-ups) | 38 |
-| [Build, packaging and release](#build-packaging-and-release) | 3 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 11 |
+| [Machine bring-ups](#machine-bring-ups) | 40 |
+| [Build, packaging and release](#build-packaging-and-release) | 4 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 12 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
-| [Cross-cutting](#cross-cutting) | 30 |
+| [Cross-cutting](#cross-cutting) | 31 |
 
 ---
 
@@ -146,6 +146,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-14 (eighth)** — [The flux plan is finished: the medium stops being a cell grid, and the IWM reads transitions](CHANGELOG.md#2026-08-14-flux-store-iwm)
 - **2026-08-14 (fifth)** — [SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing](CHANGELOG.md#2026-08-14-ism-csm)
 - **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](CHANGELOG.md#2026-08-14-flux-separator)
+- **2026-08-15 (third)** — [The IWM's cell window was counted in the wrong clock, and no floppy had mounted anywhere but the compacts since](CHANGELOG.md#2026-08-15-iwm-window-clock)
 
 ## Video — decoders, the raster beam, DAFB
 
@@ -234,12 +235,15 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-13 (fifth)** — [Beyond-boot for the whole roster: sixteen gates, one engine, and the campaign paid twice before it was even green](CHANGELOG.md#2026-08-13-beyond-boot-roster)
 - **2026-08-13 (fourth)** — [The first RBV machine past boot: the missing piece was an instrument, and its first run validated itself](CHANGELOG.md#2026-08-13-iisi-beyond-boot)
 - **2026-08-13 (sixth)** — [The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow](CHANGELOG.md#2026-08-13-beyond-boot-reds)
+- **2026-08-15** — [Three red boot gates and one bit: the fixture was cleanly unmounted, and the criterion was a fixture reading](CHANGELOG.md#2026-08-15-hd20sc-clean-bit)
+- **2026-08-15 (later)** — [The Duo's persist leg had been gesturing at Stickies, and the guest said so all along](CHANGELOG.md#2026-08-15-duo-stickies-front)
 
 ## Build, packaging and release
 
 - **2026-08-08** — [NeoST's Pi recipe, ported: LTO had been coupled to `-march=native`, so every released binary shipped without it](CHANGELOG.md#2026-08-08-raspberry-pi)
 - **2026-08-08 (fourth)** — [`-mcpu=cortex-a72` produced byte-identical code to `-mtune=cortex-a72`: the Pi package's whole premise, measured and mostly refuted](CHANGELOG.md#2026-08-08-mcpu-identical)
 - **2026-08-08 (later)** — [The AppImage ignored a `roms/` folder sitting right next to it — the launcher had already chdir'd elsewhere](CHANGELOG.md#2026-08-08-appimage-datadir)
+- **2026-08-15 (fourth)** — [Two things the GUI was not being told: that the guest ejected the disk, and where the user put the windows](CHANGELOG.md#2026-08-15-gui-media-and-dock)
 
 ## Tests, gates and measurement
 
@@ -254,6 +258,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-09** — [A red gate can now say for itself whether the image moved: 60 gates print a SHA-256 and drVolAtrb before booting](CHANGELOG.md#2026-08-09-asset-fingerprint)
 - **2026-08-09 (eighth)** — [One folder probe instead of three, and a gate for the thing three gates judge on](CHANGELOG.md#2026-08-09-folderprobe)
 - **2026-08-09 (fifth)** — [Four gates carried no label at all, and the folder the persist gate said was never created was there all along](CHANGELOG.md#2026-08-09-tiers-and-gates)
+- **2026-08-16** — [Ten red gates, five causes, and the two that were never going to be found by reading](CHANGELOG.md#2026-08-16-ten-red-gates)
 
 ## Documentation, audits and reviews
 
@@ -295,4 +300,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-13 (third)** — [writeBuffer has no siblings, the determinism check is why, and an engine diff would have said so wrongly](CHANGELOG.md#2026-08-13-chunk-asymmetry-audit)
 - **2026-08-14 (seventh)** — [Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window](CHANGELOG.md#2026-08-14-firmware-picker)
 - **2026-08-14 (sixth)** — ["Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable](CHANGELOG.md#2026-08-14-peripheral-window)
+- **2026-08-15 (fifth)** — [Mounting a CD stops being a procedure, and the discs that never mounted finally say why](CHANGELOG.md#2026-08-15-cd-like-a-floppy)
 

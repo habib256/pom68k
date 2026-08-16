@@ -60,8 +60,22 @@ protected:
            iplPrev, iplChangeClock, iplChangeClockPrev,
            iplDelay4, iplDelay2, iplDeferred, irqDelay);
 
+        // `cp` is NOT here, and that is the point (v9, 2026-08-16). It is
+        // Moira's cycle-penalty accumulator for the 68020+ extended
+        // addressing modes, and `AVAILABILITY` zeroes it at the START of
+        // every instruction on Core::C68020 (MoiraExec_cpp.h:11) — so at an
+        // instruction boundary, which is where every snapshot is taken, it
+        // holds the last instruction's leftover and means nothing. The JIT
+        // does not maintain it, so serializing it made the fingerprint
+        // depend on WHICH ENGINE ran the recent instructions: on
+        // `q605_savestate_etalon` the direct run and the restored one (whose
+        // load calls pomJitDisarm, so it re-warms through the interpreter)
+        // came out identical over 33 165 131 bytes except this one — direct
+        // 0, restored 2. Exactly the readBuffer/writeBuffer case of
+        // 2026-08-12, and settled the same way: the engines agree by the
+        // snapshot not carrying what only one of them keeps.
         ar(trace040Pending, tracePc040,
-           fcl, fcSource, exception, cp, loopModeDelay,
+           fcl, fcSource, exception, loopModeDelay,
            readBuffer, writeBuffer, flags);
 
         // 68881/68882 state. FpuExtended is a plain {high, low} pair with no
@@ -72,6 +86,8 @@ protected:
            fpu.fsaveCcr, fpu.fsaveEo, fpu.ea);
 
         if constexpr (Ar::loading) {
+            cp = 0;                  // not carried; the next instruction
+                                     // would zero it anyway (see above)
             // Caches are not carried (see the header note): drop them so the
             // first fetch after a restore refills against the restored RAM.
             // Both ATCs are flushed regardless of model — the set the model

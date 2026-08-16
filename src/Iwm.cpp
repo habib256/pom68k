@@ -21,31 +21,58 @@ void Iwm::reset() {
     readArmed_ = false;
 }
 
-// MAME iwm.cpp:334-366, in the drive's flux ticks. The tables are the
-// C7M ones; a C15M host (Mac II family, the SWIM1 IWM personality) gets
-// MAME's doubled swim1.cpp values for free, because kIwmTick is the
-// absolute size of one IWM clock and clockScale_ only converts tick()'s
-// argument. Q3-clocked mode is not modelled — no Mac wires it.
+// ── The window tables are counted in the CHIP'S OWN clock ───────────────
+// MAME iwm.cpp:335-361, and the unit is `time_to_cycles`, i.e. `clock()` —
+// the clock the machine gives the device, which is C7M on the compacts
+// (`mac128.cpp:1182: IWM(config, m_iwm, C7M)`) and C15M on everything
+// after (`macii.cpp:938: IWM(config, m_fdc, C15M)`; every `SWIM1(config,
+// …, C15M)`). swim1.cpp doubles the same numbers because ITS counter runs
+// at `2*clock()` (`swim1.cpp:626`), so both land on the same absolute
+// window — 36 C15M clocks for the mode the Mac actually uses.
+//
+// Which is the whole point, and what this code got wrong until 2026-08-15:
+// the mode register's bit 3 is the chip's CLOCK SPEED and bit 4 its cell
+// time, so a driver picks the pair to suit the clock it wired up. A C7M
+// Mac writes `$1F` (0x18 → window 16 C7M ≈ 2.04 µs); a C15M one writes
+// **`$17`** (0x10 → window 36 C15M ≈ 2.30 µs). Both are one 2 µs Sony GCR
+// cell. Multiplying the C15M table by a C7M-sized unit — which is what
+// "the doubled swim1.cpp values come for free" amounted to — gives 72 C15M
+// clocks, 2.3× the 31-clock cell, and nothing frames at all: 50 000 bytes
+// off the medium and not one `D5 AA 96` in them, `.Sony` giving up with
+// -67 noAdrMkErr, and no floppy mounting on any non-compact machine
+// (`CHANGELOG.md` 2026-08-15 (third)).
+//
+// So the unit is `clockTick()` — one clock of THIS chip — everywhere.
+//
+// And "this chip's clock" is NOT "the cycle the machine ticks it in": the
+// Mac SE hands the IWM C7M CPU cycles while the board clocks it at C15M
+// (`mac128.cpp:1317`), which is why the two scales are separate fields
+// (Iwm.h `setTickHz`/`setChipHz`). Q3-clocked mode is not modelled: no Mac
+// wires it.
+int64_t Iwm::clockTick() const { return kIwmTick / chipScale_; }
+
 int64_t Iwm::halfWindowTicks() const {
+    const int64_t u = clockTick();
     switch (mode_ & 0x18) {
-        case 0x00: return 14 * kIwmTick;
-        case 0x08: return  7 * kIwmTick;
-        case 0x10: return 16 * kIwmTick;
-        default:   return  8 * kIwmTick;         // 0x18 — the Mac's mode $1F
+        case 0x00: return 14 * u;
+        case 0x08: return  7 * u;
+        case 0x10: return 16 * u;                // the Mac's C15M mode $17
+        default:   return  8 * u;                // 0x18 — the Plus's $1F
     }
 }
 
 int64_t Iwm::windowTicks() const {
+    const int64_t u = clockTick();
     switch (mode_ & 0x18) {
-        case 0x00: return 28 * kIwmTick;
-        case 0x08: return 14 * kIwmTick;
-        case 0x10: return 36 * kIwmTick;         // NOT 2x the half window
-        default:   return 16 * kIwmTick;
+        case 0x00: return 28 * u;
+        case 0x08: return 14 * u;
+        case 0x10: return 36 * u;                // NOT 2x the half window
+        default:   return 16 * u;
     }
 }
 
 int64_t Iwm::updateDelayTicks() const {
-    return (mode_ & 0x08 ? 4 : 8) * kIwmTick;    // iwm.cpp:363-366
+    return (mode_ & 0x08 ? 4 : 8) * clockTick(); // iwm.cpp:363-366
 }
 
 // Sense/command address presented to the drive: CA2 CA1 CA0 = ph2 ph1 ph0,
@@ -128,7 +155,10 @@ void Iwm::write(int reg, uint8_t v) {
     // MAME iwm.cpp control(): mode/data writes reach the chip only through
     // the odd (line-set) addresses — an even access just toggles its line.
     if ((reg & 1) && q6_ && q7_) {
-        if (!enable_) mode_ = v & 0x1F;           // mode register ($1F on Mac)
+        // $1F on a C7M Mac, $17 on a C15M one (windowTicks's note); the
+        // guest picks the pair that matches the clock the board wired up,
+        // and the LC II ROM was measured writing $57 → $17.
+        if (!enable_) mode_ = v & 0x1F;
         else if (writing_) {                      // write-data register
             wrData_ = v;
             wrPending_ = true;                    // latched: handshake b7 low

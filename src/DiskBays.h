@@ -26,14 +26,24 @@
 //     - a bay that is OCCUPIED at boot exists as a removable target from the
 //       ROM's probe onward, and its medium can be swapped live, forever;
 //     - a bay that is EMPTY at boot has no target to probe, so filling it is
-//       staged and takes a reboot -- unless the user opts into reserving
-//       empty bays up front (`reserveEmptyBays`).
+//       staged and takes a reboot.
 //
-//   Reserving empty bays is OFF by default on purpose: it adds SCSI targets
-//   to every machine's bus, and the boot-etalon gates are timed against the
-//   bus as it stands today.
+//   Which is why, since 2026-08-15, every machine that can hold a CD drive
+//   BOOTS with one (`ensureCdDrive` below) and the window carries a CD row
+//   beside the floppy's. Reserving it used to be an opt-in checkbox at the
+//   bottom of the window, off "because the boot-etalon gates are timed
+//   against the bus as it stands today" — which was not true of the gates,
+//   only of the GUI's usability.
+//
+//   What the contract still cannot do for you: **the guest needs a driver**.
+//   A disc mounts because something on the guest side polls that id, and on
+//   a System with no CD stack (no `Foreign File Access`) nothing does — the
+//   medium goes in, the window says so, and no icon appears. That is guest
+//   software, not the bus (`CHANGELOG.md` 2026-08-15 (fifth)).
 // ─────────────────────────────────────────────────────────────────────────────
 
+#include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <string>
 #include <vector>
@@ -106,5 +116,41 @@ bool diskBaysPathIsCd(const std::string& path);
 // The reserved-bay placeholder: an extras entry equal to this names an empty
 // CD drive that must exist on the bus at boot (runners attachCdromEmpty it).
 inline const char* kCdBayToken = "cdbay";
+
+// ── Every machine that can have a CD drive boots with one ──────────────────
+// Call once per runner, straight after the argv extras loop.
+//
+// This is the whole reason the window's CD row can behave like its floppy
+// row. The hot-swap contract above is not negotiable — Classic Mac OS probes
+// the bus once — so a disc can only be inserted live into a drive that was
+// already there at boot. Leaving that to the user meant: find the checkbox at
+// the bottom of the window, apply, restart, *then* pick the .iso. An empty
+// drive costs one SCSI id and nothing else: the ROM enumerates the same seven
+// targets either way, and a System with no CD driver simply never talks to it.
+//
+// It was OFF by default until 2026-08-15, on the argument that "it adds SCSI
+// targets to every machine's bus, and the boot-etalon gates are timed against
+// the bus as it stands today". The second half of that does not hold: the
+// gates build their machines directly in `tests/`, and never run a line of
+// this file. What it really cost was the GUI's usability.
+//
+// A machine whose memory has no `attachCdromEmpty` (the 68000 compacts, the
+// undocked Duo) compiles this out and keeps `supportsEmptyCdDrive = false`.
+// `POM68K_NO_CDBAY=1` opts out for a session — for anyone comparing a bus
+// against a pre-2026-08-15 capture.
+template <class Mem>
+inline void ensureCdDrive(Mem& mem, std::vector<std::string>& extras) {
+    if (std::getenv("POM68K_NO_CDBAY")) return;
+    if (extras.size() >= 6) return;
+    for (const std::string& e : extras)
+        if (e == kCdBayToken || diskBaysPathIsCd(e)) return;   // already one
+    const int id = int(extras.size()) + 1;
+    if constexpr (requires { mem.attachCdromEmpty(id); }) {
+        if (mem.attachCdromEmpty(id)) {
+            extras.push_back(kCdBayToken);
+            std::printf("SCSI CD %d: <vide> (lecteur par défaut)\n", id);
+        }
+    }
+}
 
 } // namespace pom68k

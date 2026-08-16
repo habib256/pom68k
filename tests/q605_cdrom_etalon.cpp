@@ -128,14 +128,20 @@ int main() {
     // Boot-from-CD needs a 68k-bootable disc: Mac OS 8.1 is the last
     // release that runs on a 68040 (8.5/8.6 are PowerPC-only, and a 68k
     // Mac stops at a black screen on them however good the emulation).
+    // `cd/` first: it is where the Disques window scans and therefore where
+    // a user's discs actually live since 2026-08-15 (`DiskBays.cpp`). The
+    // older `input/`+`hdv/` spellings stay so an existing checkout keeps
+    // finding what it had.
     std::string cdPath = bootFromCd
-        ? findAsset({ "input/MAC_OS_8-1_RETAIL_0.ISO", "hdv/MAC_OS_8-1_RETAIL_0.ISO",
+        ? findAsset({ "cd/MAC_OS_8-1_RETAIL_0.ISO", "cd/macos81.iso",
+                      "input/MAC_OS_8-1_RETAIL_0.ISO", "hdv/MAC_OS_8-1_RETAIL_0.ISO",
                       "input/macos81.iso", "hdv/macos81.iso" })
-        : findAsset({ "input/MacOS_86.iso", "hdv/MacOS_86.iso",
+        : findAsset({ "cd/MacOS_86.iso", "cd/MAC_OS_8-1_RETAIL_0.ISO", "cd/cd.iso",
+                      "input/MacOS_86.iso", "hdv/MacOS_86.iso",
                       "input/MAC_OS_8-1_RETAIL_0.ISO", "input/cd.iso", "hdv/cd.iso" });
     if (romPath.empty() || cdPath.empty() || (!bootFromCd && diskPath.empty())) {
         std::printf("SKIP: needs FF7439EE ROM + hdv/MacOS-8.1-boot.vhd + an "
-                    "Apple CD image (input/MacOS_86.iso)\n");
+                    "Apple CD image (cd/MacOS_86.iso)\n");
         return 0;
     }
     testasset::report({ romPath, cdPath, diskPath });
