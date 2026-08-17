@@ -62,3 +62,61 @@ jobs:
 
       - name: Run the manifest-declared asset-free tier
         run: ctest --test-dir build -L asset-none --output-on-failure
+
+  # Does the tree still LINK in the configurations it ships in, and in the
+  # one a developer gets by typing `cmake ..`? The job above answers neither:
+  # it configures `POM68K_NATIVE=OFF`, and `POM68K_LTO` still defaults to
+  # `${POM68K_NATIVE}` (CMakeLists.txt), so turning native off silently turns
+  # LTO off with it — while the released Linux binaries are built
+  # `-DPOM68K_LTO=ON` (packaging/linux/build_in_bionic.sh) and the developer
+  # default is native ON, hence LTO ON. Nor does that runner install lld or
+  # mold, so `POM68K_FAST_LINK` never finds one to probe.
+  #
+  # That blind spot was not theoretical: on 2026-08-17 the tree did not build
+  # AT ALL on a stock x86-64 host with GCC and ld.lld — GCC hands its LTO
+  # objects to the linker as GIMPLE, lld is not given the plugin, and every
+  # executable died on `undefined symbol: main` at 4 % of the build. Two
+  # feature probes that each said yes; nothing probed the pair
+  # (CHANGELOG.md 2026-08-17 (later)).
+  #
+  # Kept deliberately CHEAP, because the failure is a LINK failure and shows
+  # up on the very first executable: this builds only the two standalone
+  # gates that link nothing else, so it costs a compile and two links per
+  # configuration instead of the ~20 minutes an LTO build of the core would
+  # add to every push. What it therefore does NOT prove is that
+  # `libpom68k_core.a` itself survives LTO — the full-suite LTO build stays
+  # a manual/release concern.
+  link-configs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: LTO + fast linker (the developer default)
+            flags: -DPOM68K_LTO=ON
+          - name: LTO, default linker (the release shape)
+            flags: -DPOM68K_LTO=ON -DPOM68K_FAST_LINK=OFF
+          - name: no LTO + fast linker
+            flags: -DPOM68K_LTO=OFF
+    name: link (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        # lld is the point of this job — without it POM68K_FAST_LINK finds
+        # nothing and the combination under test cannot occur.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ lld
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+                -DPOM68K_NATIVE=OFF ${{ matrix.flags }} 2>&1 | tee configure.log
+          grep -E 'POM68K: (linking with|ld\.| LTO)' configure.log || true
+
+      - name: Build and run the standalone gates
+        run: |
+          cmake --build build -j"$(nproc)" --target docs_test config_test
+          ctest --test-dir build -R '^(docs_test|config_test)$' --output-on-failure
