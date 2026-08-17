@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 242 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 243 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -281,6 +281,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Audits, doc syncs and cross-cutting reviews
 
+- **why does the tree not build on a stock x86-64 host, with `undefined symbol: main` in files that plainly have one?** → [2026-08-17 (later) — Two feature probes that each said yes…](#2026-08-17-lto-lld-combination)
 - **when does a SECOND profile on an already-covered platform deserve its own beyond-boot pair?** → [2026-08-14 (third) — The Eclipse gets a beyond-boot pair of its own…](#2026-08-14-eclipse-beyond-boot)
 - **what does the GUI do that no gate can see?** → [2026-08-09 (seventh) — The GUI pass](#2026-08-09-gui-pass)
 
@@ -300,6 +301,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-17 (later)** — [Two feature probes that each said yes, and a tree that did not build at all on x86-64](#2026-08-17-lto-lld-combination)
 - **2026-08-17** — [A64 and x64 stop decoding semantics behind the IR](#2026-08-17-jit-ir-semantics)
 - **2026-08-16 (third)** — [JIT copyback writes cross the native boundary, with dirty-longword and format-$7 proofs attached](#2026-08-16-jit-copyback-write)
 - **2026-08-16 (later)** — [The full 68040 stops masquerading as a 68882; the 68030 and 68020 audits close one real gap each](#2026-08-16-020-030-040-closure)
@@ -542,6 +544,76 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-17-lto-lld-combination"></a>
+## 2026-08-17 (later) — Two feature probes that each said yes, and a tree that did not build at all on x86-64
+
+Configuring this tree on a plain x86-64 Linux host (GCC 13, `ld.lld`
+installed, no `mold`) and running `make -j4` fails at **4 %**, on the first
+four executables it reaches — `asset_fingerprint_test`, `fixture_store_test`,
+`config_test`, `docs_test` — each with:
+
+```
+ld.lld: error: undefined symbol: main
+>>> referenced by …/Scrt1.o:(_start)
+```
+
+`main` is right there in the source, and `nm` finds `T main` in the object
+the link is being handed. The three-line reduction says what is actually
+going on:
+
+| flags | result |
+|---|---|
+| `-flto=auto -fno-fat-lto-objects -fuse-ld=lld` | **undefined symbol: main** |
+| `-flto=auto -fno-fat-lto-objects` (default BFD ld) | links |
+| `-fuse-ld=lld` (no LTO) | links |
+
+GCC's IPO objects are GIMPLE, not machine code — `-fno-fat-lto-objects` is
+what CMake's `CMAKE_INTERPROCEDURAL_OPTIMIZATION` adds, so there is no
+fallback machine-code copy — and a linker the driver does not hand the LTO
+plugin to reads them as objects with no symbols in them. Neither feature is
+broken. **The combination is a third thing, and nothing probed it.**
+
+What let it through is the ordering, and each half was individually correct:
+`check_ipo_supported()` ran *before* `add_link_options(-fuse-ld=lld)`, so it
+answered for the default linker; the linker probe was
+`check_cxx_compiler_flag("")`, which compiles a source with no LTO on it.
+Both said yes. The build said no. This is the same shape as the released
+binaries that had silently lost LTO (`docs/RASPBERRY_PI.md`, 2026-08-08):
+independent knobs, verified independently, used together.
+
+**Fix**: LTO is resolved to a *request* first, the linker probe carries the
+LTO flags the build will really use (`check_cxx_source_compiles` with
+`CMAKE_REQUIRED_FLAGS`/`CMAKE_REQUIRED_LINK_OPTIONS`), and
+`CMAKE_INTERPROCEDURAL_OPTIMIZATION` is committed after. On conflict **the
+fast linker loses, not LTO**: LTO is a shipped optimization this project has
+already lost once by accident, a faster link is a working-loop convenience.
+The configure line is loud about the trade rather than silent:
+
+```
+-- POM68K: ld.lld found but cannot link this compiler's LTO objects
+   — keeping the default linker (LTO stays ON)
+```
+
+The cache variable is renamed `pom68k_ld_<ld>_ok` → `pom68k_ld_<ld>_usable`,
+so a build directory configured before this check re-probes instead of
+trusting the old, weaker answer. Verified in all three directions on this
+host: default (LTO ON, lld present) → default linker + LTO;
+`-DPOM68K_LTO=OFF` → **lld is used**, the fast link is not given up when it
+costs nothing; `-DPOM68K_FAST_LINK=OFF` → default linker, LTO ON.
+
+**Why nobody saw it**: the dev host is AArch64 and the two native CI jobs
+were not this combination. Not a corner case — GCC + lld is a stock
+distribution pairing, and it takes the tree from "216 gates" to "zero
+binaries" with a message that points at the source file instead of the
+build configuration.
+
+**Reopening condition**: `mold` is untested against GCC LTO here (it was not
+installed, so the probe never reached it). If a host has mold and the new
+probe rejects it, that verdict is now measured rather than assumed — but it
+is worth an entry, because mold *is* expected to handle the plugin.
 
 ---
 

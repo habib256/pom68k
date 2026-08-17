@@ -82,11 +82,18 @@ if(NOT MSVC AND NOT EMSCRIPTEN)
             message(WARNING "POM68K: -mtune=${POM68K_TUNE} rejected — ignored")
         endif()
     endif()
+    # ─── LTO, and the linker it has to survive ───────────────────────────
+    # LTO is resolved to a REQUEST first, and only committed at the end of
+    # this block, because the linker probe below has to carry the LTO flags:
+    # the two features are independent, but the BUILD uses them at the same
+    # time and that combination is a third thing that neither probe covered.
+    # See the linker block for the failure it let through.
+    set(pom68k_lto_wanted OFF)
     if(POM68K_LTO)
         include(CheckIPOSupported)
         check_ipo_supported(RESULT pom68k_ipo OUTPUT pom68k_ipo_why)
         if(pom68k_ipo)
-            set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+            set(pom68k_lto_wanted ON)
         else()
             message(STATUS "POM68K: LTO requested but unsupported — ${pom68k_ipo_why}")
         endif()
@@ -97,24 +104,59 @@ if(NOT MSVC AND NOT EMSCRIPTEN)
     # the linker is a first-order term in the working loop. mold and lld are
     # drop-in and several times faster than BFD ld at exactly this shape of
     # work. Neither is a dependency: absent, the build is unchanged.
-    # Not tied to POM68K_LTO — a non-LTO build links the same 130 binaries.
+    #
+    # The probe carries the LTO flags because THE COMBINATION IS THE BUG.
+    # GCC's IPO objects are GIMPLE, not machine code (`-fno-fat-lto-objects`
+    # is what CMake's IPO adds), and a linker the driver does not hand the
+    # LTO plugin to reads them as objects with no symbols in them. GCC 13 +
+    # `ld.lld` + LTO is exactly that case, and it is not a corner: on a plain
+    # x86-64 Linux host with lld installed, EVERY executable in this tree
+    # failed to link with `undefined symbol: main`, at 4 % of the build.
+    # Probing the two halves separately is what let it through, and each
+    # half was individually right: `check_ipo_supported()` ran BEFORE
+    # `-fuse-ld=` was added, so it answered for the default linker, and the
+    # linker probe compiled a source with no LTO on it. Both said yes; the
+    # build said no.
+    # On conflict the fast linker loses, not LTO: LTO is a shipped
+    # optimization that release binaries have already silently lost once
+    # (`docs/RASPBERRY_PI.md`), a faster link is a working-loop convenience.
     option(POM68K_FAST_LINK "Use mold or lld when one is installed" ON)
     if(POM68K_FAST_LINK)
+        include(CheckCXXSourceCompiles)
+        if(pom68k_lto_wanted)
+            set(pom68k_ld_probe_flags "-flto=auto -fno-fat-lto-objects")
+        else()
+            set(pom68k_ld_probe_flags "")
+        endif()
         foreach(pom68k_ld mold lld)
             find_program(pom68k_ld_${pom68k_ld} ld.${pom68k_ld})
             if(pom68k_ld_${pom68k_ld})
-                # Probed, not assumed: the driver has to know the flag, and
-                # a GCC older than 12 does not know -fuse-ld=mold at all.
+                # Probed, not assumed: the driver has to know the flag (a GCC
+                # older than 12 does not know -fuse-ld=mold at all), AND it
+                # has to produce a linkable program under the LTO mode this
+                # build will really use. The cache variable is named
+                # `_usable`, not `_ok`, so a tree configured before this
+                # check existed re-probes instead of trusting the old answer.
+                set(CMAKE_REQUIRED_FLAGS "${pom68k_ld_probe_flags}")
                 set(CMAKE_REQUIRED_LINK_OPTIONS "-fuse-ld=${pom68k_ld}")
-                check_cxx_compiler_flag("" pom68k_ld_${pom68k_ld}_ok)
+                check_cxx_source_compiles("int main() { return 0; }"
+                                          pom68k_ld_${pom68k_ld}_usable)
+                unset(CMAKE_REQUIRED_FLAGS)
                 unset(CMAKE_REQUIRED_LINK_OPTIONS)
-                if(pom68k_ld_${pom68k_ld}_ok)
+                if(pom68k_ld_${pom68k_ld}_usable)
                     add_link_options(-fuse-ld=${pom68k_ld})
                     message(STATUS "POM68K: linking with ${pom68k_ld}")
                     break()
+                elseif(pom68k_lto_wanted)
+                    message(STATUS "POM68K: ld.${pom68k_ld} found but cannot "
+                                   "link this compiler's LTO objects — keeping "
+                                   "the default linker (LTO stays ON)")
                 endif()
             endif()
         endforeach()
+    endif()
+    if(pom68k_lto_wanted)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
     endif()
 endif()
 
