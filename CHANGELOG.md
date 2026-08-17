@@ -615,6 +615,27 @@ installed, so the probe never reached it). If a host has mold and the new
 probe rejects it, that verdict is now measured rather than assumed — but it
 is worth an entry, because mold *is* expected to handle the plugin.
 
+### The same shape again, in `tests/fetch_sst_68000.sh`
+
+Running the tiers on this host also found the SST fetcher failing with
+**exit 1 and not one line of output**, leaving an empty out-dir — after
+which `sst68000` soft-skips exactly as if nobody had asked for the vectors.
+The listing and the payload are two different hosts: `api.github.com` for
+the file names, `raw.githubusercontent.com` for the ~193 MB themselves. A
+sandbox or CI proxy can serve the second and answer the first with 403 (and
+unauthenticated API calls are rate-limited anyway); `curl -sf` then fails
+inside a pipeline under `set -o pipefail`, and the script dies mute.
+
+Now it fails loudly and prints the recovery it was one step away from: the
+payload host is usually still reachable, so take the names from git
+(`git clone --filter=blob:none --no-checkout --depth 1`, `git ls-tree`) and
+pass them explicitly — the mode the script already supported. That is how
+the 125 files were fetched here. A listing that answers but yields no names
+is a separate, equally loud error. Same lesson as the PGO training script
+(2026-08-08): **a fetch that fails silently is worse than one that fails**,
+because the gate downstream reports the absence as a skip, and a skip reads
+as "not applicable" rather than "broken".
+
 ---
 
 <a id="2026-08-17-jit-ir-semantics"></a>
