@@ -80,7 +80,22 @@ La fenêtre se ferme seulement quand les quatre sorties suivantes sont vraies :
   LC II/68030 sur l'hôte x86-64 de référence et sur Apple M4 ; aucun seuil
   des deux familles restantes n'est extrapolé ;
 - [ ] le palier legacy `unit` n'a plus d'échec inexpliqué sur les deux
-  architectures hôtes.
+  architectures hôtes. **Moitié x86-64 mesurée le 2026-08-17** (GCC 13,
+  conteneur neuf, arbre reconstruit from scratch — `make -j4`, exit 0,
+  152 binaires, aucun à 0 octet) : `asset-none` **83/83** en 4,49 s sans un
+  seul SKIP, `unit` **104/104** en 5,34 s, **zéro échec**. Ce que ce vert ne
+  dit pas, et qu'il faut lire avec lui : sur les 21 gates de `unit` hors
+  `asset-none`, **20 sont des soft-skips** faute d'assets privés (ROMs, images
+  disque, dumps MCU, et les données de fuzz 030/040 qui se génèrent avec
+  l'oracle). Un seul tournait vraiment, `savestate_68k_test` — un palier
+  « vert » de 104 dont 84 s'exécutent. Depuis, **`sst68000` aussi** : ses
+  vecteurs sont le seul asset manquant qui soit public, ils ont été
+  récupérés, et le gate donne **1 000 058 / 1 000 058 sur 124 fichiers** en
+  6,67 s. Reste à faire pour cocher : rejouer le palier sur un hôte x86-64
+  *portant les assets*, et la moitié AArch64.
+  **Prérequis levé le même jour** : sur cet hôte l'arbre ne se construisait
+  pas du tout (LTO + `ld.lld`, `CHANGELOG.md` 2026-08-17 (later)) — la case
+  était inatteignable, pas seulement non mesurée.
 
 `docs_test` vérifie la cohérence dynamique du catalogue compilé, des gates,
 des budgets et de la documentation ; il ne doit contenir aucun nombre plafond qui transforme par
