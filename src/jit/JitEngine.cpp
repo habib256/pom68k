@@ -51,26 +51,29 @@ void formatEa(char* out, size_t size, int mode, int reg) {
 }  // namespace
 
 Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
-    : cpu_(cpu), mem_(mem) {
+    : cpu_(cpu), mem_(mem), guestFamily_(guestFamily), config_(resolveConfig()) {
     // The family comes from the wrapper, not from cpu.getModel(): see the
     // ordering note on the declaration in JitEngine.h.
-    backend_ = selectBackend(backendPreference(), guestFamily);
+    backend_ = selectBackend(config_.backend.c_str(), guestFamily,
+                             config_.unsafeBackend);
     if (Backend* instance = backend_->clone()) {
         ownedBackend_.reset(instance);
         backend_ = instance;
     }
-    useWindow_ = fetchWindowEnabled();
-    useBlocks_ = blockCacheEnabled(backend_->caps().nativeCode);
-    paranoid_ = detail::envBool("POM68K_JIT_PARANOID", false);
-    maxInstrs_ = maxBlockInstrs();
+    config_.applyBackendDefaults(backend_->caps().nativeCode);
+    useWindow_ = config_.fetchWindow;
+    useBlocks_ = config_.blockCache;
+    paranoid_ = config_.paranoid;
+    maxInstrs_ = config_.maxBlockInstrs;
     if (maxInstrs_ > backend_->caps().maxBlockInstrs)
         maxInstrs_ = backend_->caps().maxBlockInstrs;
-    maxBlocks_ = maxBlocks();
+    maxBlocks_ = config_.maxBlocks;
     maskAware_ = backend_->caps().dtlbCodeMask;
-    hotAt_ = hotThreshold(backend_->caps().nativeCode);
-    windowKill_ = killCountdown_ = windowKillEvery();
+    hotAt_ = config_.hot;
+    windowKill_ = killCountdown_ = config_.windowKill;
     ctx_.cpu = &cpu_;
     ctx_.stats = &stats_;
+    ctx_.config = &config_;
     ctx_.dtlbFill = &Engine::fillDtlbThunk;
     ctx_.dtlbSelf = this;
     // J3: hand the fill door to the INTERPRETER's data window (Moira.h §
@@ -84,13 +87,13 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     // The x86-64 backend keeps its inline TLB (same cap, but it replaces a
     // C++ call chain, not a hot MRU probe), and invariant 3 gets its
     // interpreter back: byte-identical to the pre-JIT baseline.
-    if (detail::envBool("POM68K_DATA_WINDOW", false)) {
+    if (config_.dataWindow) {
         cpu_.pomJitDtlbFillFn = &Engine::fillDtlbThunk;
         cpu_.pomJitDtlbFillCtx = this;
     }
     ctx_.guard = &guard_;
     clearLinks();
-    if (detail::envBool("POM68K_JIT_LINKS", true)) {
+    if (config_.links) {
         ctx_.linkTable = linkTable_.data();
         ctx_.linkMask = kLinkSlots - 1;
     }
@@ -102,7 +105,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     guard_.pages = uint32_t(pageMap_.size());
     blocksGen_ = cpu_.pomJitMmuGen;
 
-    if (detail::envBool("POM68K_JIT_HISTO", false)) {
+    if (config_.histogram) {
         histo_.assign(1 << 16, 0);
         slowStaticHisto_.assign(1 << 16, 0);
         slowRuntimeHisto_.assign(1 << 16, 0);
@@ -116,9 +119,11 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
         ctx_.runtimeAddressSelf = this;
     }
 
-    if (verbose()) {
+    if (config_.verbose) {
         std::fprintf(stderr,
-                     "[jit] backend=%s (%s) window=%d blocks=%d max=%d ram=%uMB\n",
+                     "[jit] profile=%s backend=%s (%s) window=%d blocks=%d "
+                     "max=%d ram=%uMB\n",
+                     config_.profileName(),
                      backend_->name(), backend_->description(),
                      int(useWindow_), int(useBlocks_), maxInstrs_, ram >> 20);
     }
@@ -126,7 +131,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     // the portable backend inherits Moira's handlers. Other guest families
     // remain opt-in until their own evidence bar is met. An explicit
     // POM68K_CPU_ENGINE still overrides this policy in either direction.
-    setEnabled(defaultEngine(guestFamily == kGuest68040) == EngineKind::Jit);
+    setEnabled(config_.engineForGuest(guestFamily == kGuest68040) == EngineKind::Jit);
 }
 
 void Engine::recordRuntimeAddress(uint32_t reason, uint32_t opcode,
@@ -150,7 +155,7 @@ Engine::~Engine() {
     // often it had to be re-armed to keep that up. A family whose window
     // arms constantly and covers little is paying bookkeeping for nothing,
     // which is exactly what the compacts' numbers show (POM68K_JIT.md § 7).
-    if (verbose()) {
+    if (config_.verbose) {
         const Stats::Snapshot s = stats_.snapshot();
         const double pct = s.instrs ? 100.0 * double(s.windowInstrs) / double(s.instrs) : 0.0;
         std::fprintf(stderr,
@@ -172,12 +177,15 @@ Engine::~Engine() {
         // code can never become a write entry, however far the store is
         // from the code (docs/JIT_BRINGUP.md § A.0).
         std::fprintf(stderr,
-                     "[jit] dtlb refusals: probe=%llu pagelen=%llu codepage=%llu notram=%llu\n",
+                     "[jit] dtlb refusals: probe=%llu pagelen=%llu codepage=%llu "
+                     "notram=%llu cache040=%llu\n",
                      (unsigned long long)dtlbWhy_[kWhyProbe],
                      (unsigned long long)dtlbWhy_[kWhyPageLen],
                      (unsigned long long)dtlbWhy_[kWhyCodePage],
-                     (unsigned long long)dtlbWhy_[kWhyNotRam]);
+                     (unsigned long long)dtlbWhy_[kWhyNotRam],
+                     (unsigned long long)dtlbWhy_[kWhyCache040]);
     }
+    cpu_.pomJitCache040Consumer = false;
     cpu_.pomJitDtlbFillFn = nullptr;
     cpu_.pomJitDtlbFillCtx = nullptr;
     cpu_.pomJitDtlbFlush();
@@ -436,10 +444,11 @@ void Engine::setEnabled(bool on) {
     // armed while the interpreter runs would let IT fetch from a host
     // pointer the engine is no longer maintaining.
     flushAll();
+    cpu_.pomJitCache040Consumer = on;
     if (on == enabled_) return;
     enabled_ = on;
     if (mem_.setGuard) mem_.setGuard(mem_.self, on ? &guard_ : nullptr);
-    if (verbose()) std::fprintf(stderr, "[jit] engine %s\n", on ? "ON" : "OFF");
+    if (config_.verbose) std::fprintf(stderr, "[jit] engine %s\n", on ? "ON" : "OFF");
 }
 
 const char* Engine::backendName() const { return backend_->name(); }
@@ -632,9 +641,13 @@ bool Engine::armWindow(uint32_t pc, bool super) {
         return false;
     }
 
-    cpu_.pomJitArm(host, pageBase, len, super);
+    cpu_.pomJitArm(host, pageBase, physPage, len, super);
     winPhys_ = physPage;
     winLen_ = len;
+    // With an architectural 040 I-cache the translation can be known before
+    // the line exists. Let one interpreter instruction perform the real
+    // fill; the following arm can then expose byte-identical cached data.
+    if (!cpu_.pomJitCovers(pc)) { disarmWindow(); return false; }
     return true;
 }
 
@@ -748,6 +761,9 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                                        icacheCycles, postExceptionCycles,
                                        observedNextPc, terminalIrd, terminalIrc,
                                        true });
+            ir.instrs.back().memory =
+                describeMemory(op, guestFamily_ == kGuest68030);
+            ir.instrs.back().semantics = describeInstruction(op);
             at += words * 2;
             why = EndReason::ControlFlow;
             break;
@@ -762,6 +778,9 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                                        cycles, baseCycles, icacheCycles,
                                        postExceptionCycles, observedNextPc,
                                        terminalIrd, terminalIrc, true });
+            ir.instrs.back().memory =
+                describeMemory(op, guestFamily_ == kGuest68030);
+            ir.instrs.back().semantics = describeInstruction(op);
             why = EndReason::Discontinuity;
             break;
         }
@@ -771,6 +790,9 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                                    icacheCycles, postExceptionCycles,
                                    observedNextPc, terminalIrd, terminalIrc,
                                    true });
+        ir.instrs.back().memory =
+            describeMemory(op, guestFamily_ == kGuest68030);
+        ir.instrs.back().semantics = describeInstruction(op);
         at = next;
 
         if (guard_.tripped()) { why = EndReason::WindowEdge; break; }
@@ -810,6 +832,14 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     if (at > pc && win.armed && pc >= win.base && want <= win.base + win.len) {
         ir.code.reserve((want - pc) / 2);
         for (uint32_t w = pc; w < want; w += 2) ir.code.push_back(cpu_.pomJitPeek(w));
+        for (Instr& in : ir.instrs) {
+            in.extensionCount = uint8_t(std::min<unsigned>(
+                in.words > 0 ? in.words - 1 : 0, Instr::MaxExtensionWords));
+            for (unsigned i = 0; i < in.extensionCount; i++)
+                in.extensions[i] = ir.word(in.pc + 2 + uint32_t(i) * 2);
+            describeEffectiveAddresses(in);
+            describeControlFlow(in);
+        }
     }
 
     Block b;
@@ -834,6 +864,29 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
 //     through the memory map so the write guard sees it.
 uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
     dtlbLastReason_ = RuntimeFillTag;
+
+    // With the architectural 040 D-cache active, a native host mapping is
+    // never legal: it would bypass resident/dirty cache data. Unlike an ATC
+    // probe miss this refusal is not transient, so remember a tagged null
+    // entry. The generated path then goes straight to the exact cache-aware
+    // access thunk instead of calling fillDtlb and receiving the same refusal
+    // on every load/store. A Q605 boot previously made 321 million such
+    // redundant fill calls.
+    if (cpu_.pomCache040Active()) {
+        dtlbWhy_[kWhyCache040]++;
+        dtlbLastReason_ = RuntimeNonPlain;
+        moira::Moira::PomJitDtlb& tlb = write ? cpu_.pomJitDtlbW
+                                              : cpu_.pomJitDtlbR;
+        const uint32_t page = addr >> 12;
+        moira::Moira::PomJitDtlbEntry& e =
+            tlb.e[page & (moira::Moira::PomJitDtlb::kEntries - 1)];
+        e.tag = moira::Moira::pomJitDataTag(addr, cpu_.pomJitSuper());
+        e.host = nullptr;
+        e.codeMask = 0;
+        stats_.add(stats_.dtlbRefused);
+        return nullptr;
+    }
+
     if (!mem_.dataSpan) {
         dtlbLastReason_ = RuntimeNonPlain;
         return nullptr;
@@ -1018,18 +1071,40 @@ void Engine::executeUntil(int64_t clockTarget) {
                 // footprint. Only the TLB flush is needed now so a writable
                 // entry filled before that mark cannot survive compilation.
                 cpu_.pomJitDtlbFlush();
-                b.code = backend_->compile(b.ir, ctx_);
+                // A linked successor bypasses armWindow's I-cache residency
+                // guard. Keep native blocks, but return between them while
+                // the architectural 040 cache is active.
+                const uint32_t savedLinkMask = ctx_.linkMask;
+                if (cpu_.pomCache040Active()) ctx_.linkMask = 0;
+                const bool cacheReady = !cpu_.pomCache040Active() ||
+                    cpu_.pomCache040CodeMatches(
+                        b.ir.entryPc, uint32_t(b.ir.code.size() * 2));
+                if (cacheReady) {
+                    ScopedResolvedConfig activeConfig(ctx_.config);
+                    b.code = backend_->compile(b.ir, ctx_);
+                }
+                ctx_.linkMask = savedLinkMask;
                 if (b.code) {
                     b.code->ir = &b.ir;
                     stats_.add(stats_.blocksCompiled);
                     // From here on another block may jump straight into it
                     // instead of coming back through the engine.
                     if (void* e = backend_->linkEntry(b.code)) publishLink(pc, super, e);
-                } else {
+                } else if (cacheReady) {
                     b.rejected = true;
                 }
             }
             if (!b.code) { runWindow(clockTarget); continue; }
+        }
+
+        // The block may span several I-cache lines. armWindow guarded the
+        // entry line; validate the whole embedded byte stream before native
+        // execution. The window path refills any missing line naturally.
+        if (cpu_.pomCache040Active() &&
+            !cpu_.pomCache040CodeMatches(
+                b.ir.entryPc, uint32_t(b.ir.code.size() * 2))) {
+            runWindow(clockTarget);
+            continue;
         }
 
         running_ = true;

@@ -32,6 +32,8 @@ namespace moira { class Moira; }
 
 namespace jit {
 
+struct ResolvedConfig;
+
 using WriteObserver = void (*)(void*, moira::Moira*, uint32_t, uint32_t,
                                uint32_t, uint32_t, int);
 
@@ -127,6 +129,7 @@ using RuntimeAddressObserver = void (*)(void* self, uint32_t reason,
 struct Context {
     moira::Moira* cpu = nullptr;
     Stats*        stats = nullptr;
+    const ResolvedConfig* config = nullptr; // immutable per-Engine policy
     int64_t       clockTarget = 0;   // stop before running past this
 
     // ── the data path a code generator needs ─────────────────────────────
@@ -241,7 +244,8 @@ public:
 // usable on this host AND valid for `guestFamily` (one GuestFamily bit — the
 // CPU model the engine is attached to). Never returns nullptr: `threaded` is
 // always compiled in, always usable and valid for every guest.
-Backend* selectBackend(const char* pref, uint32_t guestFamily);
+Backend* selectBackend(const char* pref, uint32_t guestFamily,
+                       bool unsafeBackend = false);
 
 // Names of every backend compiled into this binary, most capable first.
 // `count` receives the number of entries. For the GUI and for diagnostics.

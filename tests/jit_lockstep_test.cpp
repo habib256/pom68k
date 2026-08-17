@@ -349,6 +349,25 @@ int main(int argc, char** argv) {
                 (unsigned long long)s.windowArmed,
                 (unsigned long long)s.windowFailed,
                 (unsigned long long)s.dtlbFills);
+    if (cpuJit.pomCache040Active() && cpuJit.jit().nativeBackend() &&
+        jit::cache040LineReadStatsEnabled()) {
+        const auto hits = cpuJit.pomJitCache040NativeReads();
+        const auto writes = cpuJit.pomJitCache040NativeWrites();
+        std::printf("  native 040 D-cache line reads %llu\n",
+                    (unsigned long long)hits);
+        std::printf("  native 040 D-cache copyback writes %llu\n",
+                    (unsigned long long)writes);
+        if (hits == 0) {
+            std::printf("[jit_lockstep] FAIL: native 040 line-read gate "
+                        "was requested but no hit executed\n");
+            return 1;
+        }
+        if (jit::cache040LineWritesEnabled() && writes == 0) {
+            std::printf("[jit_lockstep] FAIL: native 040 copyback-write gate "
+                        "was requested but no hit executed\n");
+            return 1;
+        }
+    }
     if (s.instrs == 0) {
         std::printf("[jit_lockstep] FAIL: the JIT never retired an instruction "
                     "— this gate proved nothing\n");

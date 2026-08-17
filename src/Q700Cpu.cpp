@@ -33,8 +33,8 @@ Q700Cpu::Q700Cpu(Q700Memory& mem)
     // rather than calling sync() on every instruction.
     jit_.setPeriphDeadline(&periphDeadline_);
 
-    // The Quadra 700 ships a FULL 68040 (macquadra700.cpp M68040 @ 50/2 MHz),
-    // so unlike the Centris the default is the 040 identity + Moira's 68882.
+    // The Quadra 700 ships a full 68040 (macquadra700.cpp M68040 @ 50/2 MHz),
+    // so unlike the Centris the default is the 040 identity + integrated FPU.
     // POM68K_Q700_LC040 forces the LC040 (no hardware FPU) for experiments.
     if (getenv("POM68K_Q700_LC040")) {
         setModel(moira::Model::M68LC040);
@@ -42,7 +42,7 @@ Q700Cpu::Q700Cpu(Q700Memory& mem)
                                                   : moira::FPUModel::M68882);
     } else {
         setModel(moira::Model::M68040);
-        setFPUModel(moira::FPUModel::M68882);
+        setFPUModel(moira::FPUModel::M68040);
     }
     if (getenv("POM68K_MMU040_WALK")) setMmu040AtcArmed(false);
     if (const char* b = getenv("POM68K_Q700_CACHE_BOOST")) {

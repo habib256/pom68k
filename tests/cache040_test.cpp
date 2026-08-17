@@ -1,8 +1,8 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// M1 gate (docs/CACHE_040.md § M1) — 68040 architectural cache-TAG
-// state, POM68K_040_DCACHE. Two halves:
+// M1-M3 gate (docs/CACHE_040.md) — complete 68040 architectural cache
+// state, data, copyback, snooping and transaction timing. Three halves:
 //
 //   1. The Cache040 struct driven directly: set indexing and tags
 //      (PA[9:4] / PA[31:10]), allocation policy per CM mode (reads
@@ -17,8 +17,11 @@
 //      gate allocation (MOVEC), the MMU-off default is writethrough
 //      (UM § 3.5.1), a DTT0 transparent region carries its CM field
 //      into the model, and the real $F4xx CINV/CPUSH opcodes reach the
-//      tags with line/page/all scope. Data is still served by the bus —
-//      the model must observe, never interfere.
+//      tags/data with line/page/all scope.
+//
+//   3. Observable stale copyback data, dirty replacement/CPUSH, both
+//      snoop behaviours (including disabled-cache and cross-line cases),
+//      and configurable hit/fill timing.
 //
 // Exit 0 = pass, 1 = fail.
 
@@ -372,13 +375,125 @@ void testCpu() {
           "a bus-erroring descriptor chain is swallowed (no exception)");
 }
 
+void testDataPath() {
+    std::printf("part 3 — M2 line data, copyback, snoop and timing\n");
+
+    Cpu c;
+    c.setCACR(0x80000000);                    // DE
+    c.setDTT0(0x4000C020);                    // $40xxxxxx, both S/U, copyback
+    c.setPomCache040Timing({0, 8, 2});
+
+    auto put32 = [&](uint32_t a, uint32_t v) {
+        a &= 0xFFFFFF;
+        c.mem[a + 0] = uint8_t(v >> 24); c.mem[a + 1] = uint8_t(v >> 16);
+        c.mem[a + 2] = uint8_t(v >> 8);  c.mem[a + 3] = uint8_t(v);
+    };
+    auto get32 = [&](uint32_t a) {
+        a &= 0xFFFFFF;
+        return uint32_t(c.mem[a]) << 24 | uint32_t(c.mem[a + 1]) << 16 |
+               uint32_t(c.mem[a + 2]) << 8 | c.mem[a + 3];
+    };
+
+    constexpr uint32_t A = 0x40008000;
+    constexpr uint32_t OLD = 0x11223344;
+    constexpr uint32_t NEW = 0xA1B2C3D4;
+    put32(A, OLD);
+
+    uint32_t value = 0;
+    check(c.pomJitWriteData(A, 4, NEW) && get32(A) == OLD,
+          "copyback write updates the line but leaves memory stale");
+    auto &jitLine = c.pomJitCache040R.e[
+        (A >> 4) & (moira::Moira::PomJitCache040Table::kEntries - 1)];
+    auto &jitWriteLine = c.pomJitCache040W.e[
+        (A >> 4) & (moira::Moira::PomJitCache040Table::kEntries - 1)];
+    check(jitLine.tag == c.pomJitCache040Tag(A, false) &&
+          jitLine.generation == c.pomJitCache040Gen &&
+          jitLine.line == c.pomCache040Data().lookup(A) &&
+          jitLine.physicalTag == moira::Cache040::tagOf(A),
+          "an exact copyback access publishes a validated JIT read line");
+    check(jitWriteLine.tag == c.pomJitCache040Tag(A, false) &&
+          jitWriteLine.generation == c.pomJitCache040Gen &&
+          jitWriteLine.line == jitLine.line,
+          "an exact copyback write publishes a stronger JIT write line");
+    const uint32_t publishedGen = jitLine.generation;
+    c.pomJitDtlbFlush();
+    check(jitLine.generation == publishedGen &&
+          jitWriteLine.generation == publishedGen &&
+          jitLine.generation != c.pomJitCache040Gen,
+          "a data-translation flush invalidates both published lines by epoch");
+    check(c.pomJitReadData(A, 4, value) && value == NEW,
+          "a CPU read observes dirty cached data, not stale memory");
+    check(jitLine.generation == c.pomJitCache040Gen,
+          "the next exact hit republishes the line under the current epoch");
+
+    // Four more tags in the same set evict the original way-0 line.
+    for (int i = 1; i <= 4; i++) {
+        put32(A + 0x400u * uint32_t(i), 0x01010101u * uint32_t(i));
+        check(c.pomJitReadData(A + 0x400u * uint32_t(i), 4, value),
+              "same-set fill succeeds");
+    }
+    check(get32(A) == NEW,
+          "dirty replacement writes the displaced longword back");
+
+    // Re-dirty, then prove both snoop encodings and disabled-cache snooping.
+    put32(A, OLD);
+    check(c.pomJitWriteData(A, 4, NEW), "re-dirty line for snoop checks");
+    c.setCACR(0);                              // snooper still searches it
+    uint8_t snooped[4] = {};
+    check(c.pomSnoop040Read(A, snooped, 4, false) &&
+          snooped[0] == 0xA1 && snooped[3] == 0xD4,
+          "SC=01 read supplies dirty data even while DC is disabled");
+    uint8_t cleanSnoop[4] = {0x7A, 0x7A, 0x7A, 0x7A};
+    check(!c.pomSnoop040Read(A + 4, cleanSnoop, 4, false) &&
+          cleanSnoop[0] == 0x7A,
+          "snoop read does not supply a clean longword in a dirty line");
+    const uint8_t incoming[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+    check(c.pomSnoop040Write(A, incoming, 4, true),
+          "SC=01 write sinks data and inhibits memory on a dirty hit");
+    check(!c.pomSnoop040Write(A + 4, incoming, 4, true) &&
+          c.pomCache040Data().lookup(A)->dirty == 1,
+          "write sink updates a clean longword without asserting MI");
+    c.setCACR(0x80000000);
+    check(c.pomJitReadData(A, 4, value) && value == 0xDEADBEEF &&
+          get32(A) == OLD,
+          "sunk snoop data remains dirty and CPU-visible");
+    check(!c.pomSnoop040Write(A, incoming, 4, false) &&
+          jitLine.line && !jitLine.line->valid,
+          "SC=10 invalidation makes a published native line fail validation");
+    check(c.pomJitReadData(A, 4, value) && value == OLD,
+          "the following CPU read misses and sees memory");
+
+    // A sink range may cross from a dirty line into a clean one. MI is
+    // asserted for the transaction, but the clean line must not become
+    // dirty merely because an earlier byte hit dirty data.
+    c.pomCache040Data().invalidateAll();
+    put32(A + 12, OLD); put32(A + 16, OLD);
+    check(c.pomJitWriteData(A + 12, 4, NEW) &&
+          c.pomJitReadData(A + 16, 4, value),
+          "prepare adjacent dirty and clean lines");
+    const uint8_t crossing[2] = {0x55, 0x66};
+    check(c.pomSnoop040Write(A + 15, crossing, 2, true) &&
+          c.pomCache040Data().lookup(A + 12)->dirty != 0 &&
+          c.pomCache040Data().lookup(A + 16)->dirty == 0,
+          "cross-line sink does not propagate dirty state to a clean line");
+
+    // The timing overlay charges the four-beat fill once and a hit zero.
+    c.pomCache040Data().invalidateAll();
+    c.setClock(0);
+    check(c.pomJitReadData(A, 4, value) && c.getClock() == 8,
+          "cache miss charges one four-beat line-fill latency");
+    check(c.pomJitReadData(A, 4, value) && c.getClock() == 8,
+          "cache hit adds no external-bus latency");
+}
+
 } // namespace
 
 int main() {
-    std::printf("cache040_test — M1 architectural tag state "
+    std::printf("cache040_test — M1-M3 architectural cache state "
                 "(docs/CACHE_040.md)\n");
     testStruct();
     testCpu();
+    testDataPath();
     std::printf(gFails ? "FAILED (%d)\n" : "PASSED\n", gFails);
     return gFails ? 1 : 0;
 }

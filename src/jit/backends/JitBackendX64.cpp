@@ -61,6 +61,26 @@ using namespace x64;
 
 using Layout = moira::Moira::PomJitLayout;
 
+MemoryProofOptions proofOptions(const Layout& L) {
+    MemoryProofOptions o;
+    const int thunks = accessThunkMode();
+    o.exactReads = thunks >= 1;
+    o.exactWrites = thunks >= 2;
+    o.cacheReads = L.cache040Live && cache040LineReadsEnabled();
+    o.cacheWrites = L.cache040Live && cache040LineWritesEnabled();
+    o.cachePairs = L.cache040Live && cache040LinePairsEnabled();
+    return o;
+}
+
+static_assert(sizeof(moira::Moira::PomJitCache040Entry) == 32);
+static_assert(offsetof(moira::Moira::PomJitCache040Entry, physicalTag) == 4);
+static_assert(offsetof(moira::Moira::PomJitCache040Entry, generation) == 8);
+static_assert(offsetof(moira::Moira::PomJitCache040Entry, line) == 16);
+static_assert(offsetof(moira::Cache040::Line, tag) == 0);
+static_assert(offsetof(moira::Cache040::Line, valid) == 4);
+static_assert(offsetof(moira::Cache040::Line, dirty) == 5);
+static_assert(offsetof(moira::Cache040::Line, data) == 6);
+
 // ── the runtime thunks ───────────────────────────────────────────────────
 // Everything generated code calls. All noexcept, all reporting failure by
 // return value (decision 1 above).
@@ -222,29 +242,6 @@ int eaRmwCost(int m, int szIdx) {
 // census that would have named it was never wired on this backend.
 const int8_t kMoveDst[kM_COUNT] = { 0, 0, 2, 2, 3, 3, -1, 2, 4, -1, -1, -1 };
 
-// Which half of the $8/$9/$B/$C/$D space an opcode belongs to:
-//   0 = <ea> into a register (including the ADDA/SUBA/CMPA forms)
-//   1 = a register back out through <ea>
-//  -1 = one of the sub-encodings squatting in the same space, all of which
-//       the backend leaves to Moira: MULU/MULS/DIVU/DIVS (opmode 3/7 of the
-//       $8/$C lines), ABCD/SBCD/EXG (register-mode, bit 8 set), ADDX/SUBX,
-//       and CMPM.
-int aluDirection(uint16_t op) {
-    const int hi = (op >> 12) & 0xF;
-    const int opmode = (op >> 6) & 7;
-    const int mode = (op >> 3) & 7;
-
-    if (opmode == 3 || opmode == 7)
-        return (hi == 0x9 || hi == 0xB || hi == 0xD) ? 0 : -1;   // else MUL/DIV
-    if (opmode <= 2) return 0;
-
-    // opmode 4-6, the register-to-memory direction. Modes 000 and 001 are
-    // where the packed-decimal, extended-precision and CMPM encodings live;
-    // the one exception is EOR Dn,Dm, which really is a register form.
-    if (mode <= 1) return (hi == 0xB && mode == 0) ? 1 : -1;
-    return 1;
-}
-
 // ── decoded effective address ────────────────────────────────────────────
 struct Ea {
     int  mode = 0, reg = 0;
@@ -257,14 +254,25 @@ struct Ea {
 int sizeBytes(int szIdx) { return szIdx == 0 ? 1 : szIdx == 1 ? 2 : 4; }
 Sz  hostSz(int szIdx) { return szIdx == 0 ? Sz::B : szIdx == 1 ? Sz::W : Sz::L; }
 
+bool hostAluOperation(AluOperation operation, Asm::Op& out) {
+    switch (operation) {
+        case AluOperation::Or:  out = Asm::Op::OR;  return true;
+        case AluOperation::And: out = Asm::Op::AND; return true;
+        case AluOperation::Eor: out = Asm::Op::XOR; return true;
+        case AluOperation::Add: out = Asm::Op::ADD; return true;
+        case AluOperation::Sub: out = Asm::Op::SUB; return true;
+        case AluOperation::Cmp: out = Asm::Op::CMP; return true;
+        default: return false;
+    }
+}
+
 // ── the compiler ─────────────────────────────────────────────────────────
 class Emitter {
 public:
     Emitter(Asm& a, const Layout& L, const BlockIr& ir, const Context& ctx)
         : a_(a), L_(L), ir_(ir),
           paced_(ctx.periphClock != nullptr && ctx.periphBatch != 0),
-          batch_(ctx.periphBatch), thunks_(accessThunkMode()),
-          linkMask_(ctx.linkTable ? ctx.linkMask : 0),
+          batch_(ctx.periphBatch), linkMask_(ctx.linkTable ? ctx.linkMask : 0),
           histo_(ctx.slowStaticHisto != nullptr),
           ic_(L.icLive && icacheEmitEnabled()) {}
 
@@ -302,7 +310,8 @@ private:
     // ── operand plumbing ─────────────────────────────────────────────────
     bool decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea);
     void addrOf(const Ea& ea, Reg dst, int szIdx);
-    void commitEa(const Ea& ea, int szIdx);
+    void commitEa(const Ea& ea, int szIdx,
+                  const MemoryAccessPlan& access);
     // The decoded operands must account for EXACTLY the instruction length
     // the tracer measured. If they do not, this backend has misread the
     // encoding and every extension word it baked in is suspect.
@@ -323,22 +332,31 @@ private:
         }
     }
     // Loads <ea> into `dst` (32-bit host register, value right-justified).
-    void load(const Ea& ea, int szIdx, Reg dst, bool signExtend = false,
-              bool soleAccess = true);
-    void store(const Ea& ea, int szIdx, Reg src, bool soleAccess = true);
+    void load(const Ea& ea, int szIdx, Reg dst,
+              const MemoryAccessPlan& access, bool signExtend = false);
+    void store(const Ea& ea, int szIdx, Reg src,
+               const MemoryAccessPlan& access);
     // Guest memory at the address in `addr`, host pointer left in rsi.
     // `miss` is where a translation the inline TLB cannot serve goes.
     // `bytes` is the SPAN the caller will touch through the pointer — a
     // size for a plain access, n×size for a MOVEM burst; a span crossing
     // the page boundary misses (two translations, someone else's problem).
-    void memProbe(Reg addr, int bytes, bool write, Label& miss);
-    // `soleAccess` says this is the instruction's ONLY guest access, which
-    // is what makes the access thunk usable: a thunk that faults leaves
-    // nothing committed, so the interpreter can re-run the instruction —
-    // but only if re-running cannot repeat a side effect this instruction
-    // already had.
-    void memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess = true);
-    void memStore(Reg addr, int szIdx, Reg src, bool soleAccess = true);
+    void memProbe(Reg addr, int bytes, bool write, Label& miss,
+                  bool cacheRead = false, Label* cacheWriteHit = nullptr,
+                  bool cacheOnly = false, bool countCacheHit = true);
+    // Access capabilities are minted from Instr::memory. In particular,
+    // exact-thunk and cache eligibility are never guessed at a call site.
+    void memLoad(Reg addr, int szIdx, Reg dst,
+                 const MemoryAccessPlan& access);
+    void memStore(Reg addr, int szIdx, Reg src,
+                  const MemoryAccessPlan& access);
+    void memRmwLoad(Reg addr, int szIdx, Reg dst,
+                    const MemoryAccessPlan& read,
+                    const MemoryAccessPlan& write);
+    void memRmwStore(int szIdx, Reg src,
+                     const MemoryAccessPlan& read,
+                     const MemoryAccessPlan& write);
+    void markCache040Dirty(Reg addr, int bytes);
 
     // ── flags ────────────────────────────────────────────────────────────
     void flagsLogic(Sz sz);          // N,Z from the result; V=C=0
@@ -405,7 +423,6 @@ private:
     Label *exitLost_ = nullptr, *epilogue_ = nullptr;
     int  loopTo_ = -1;
     uint32_t linkMask_ = 0;
-    int  thunks_ = 2;
     // Emission deferred to AFTER the block body. Everything a memory access
     // does when the inline TLB cannot serve it — asking the engine to fill
     // an entry, calling the access thunk — is cold, and leaving it inline
@@ -752,16 +769,22 @@ void Emitter::leaveToDynamic() {
 bool Emitter::emitSubroutine(size_t i) {
     const Instr& in = ir_.instrs[i];
     const uint16_t op = in.opcode;
-    const uint32_t nextPc = in.pc + uint32_t(in.words) * 2;
+    const InstructionSemantics& sem = in.semantics;
+    const ControlFlowPlan& control = in.control;
     // What the prefetch queue holds after any of these: the 68040 refills
     // nothing at the end of an instruction, so `irc` is still the word
     // mmu040InstrStart read at pc + 2.
-    const uint16_t ircAfter = ir_.word(in.pc + 2);
+    const uint16_t ircAfter = ir_.prefetchWord(in.pc + 2);
 
-    if (op == 0x4E75) {                              // RTS
-        if (in.cycles != 10) return false;
+    if (sem.operation == SemanticOp::ReturnSubroutine) {
+        if (!control.valid || control.kind != ControlFlowKind::Return ||
+            in.cycles != 10) return false;
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+        const MemoryAccessPlan read = memory.access(
+            MemoryDirection::Read, MemoryOperand::Stack, 4, 3, 7);
+        if (!read.valid() || !memory.complete()) return false;
         a_.movRM(Sz::L, RAX, A(7));
-        memLoad(RAX, 2, RDI);                        // the return address
+        memLoad(RAX, 2, RDI, read);                 // the return address
         // Odd target: the 68040 raises an address error, and it does so
         // before the stack pointer moves. Nothing is committed yet, so
         // handing the whole instruction over is exact.
@@ -777,11 +800,15 @@ bool Emitter::emitSubroutine(size_t i) {
         return true;
     }
 
-    if ((op & 0xF000) == 0x6000) {                   // BSR
-        if (in.words > 2 || in.cycles != 7) return false;
-        const int32_t disp = in.words == 1 ? int8_t(op & 0xFF)
-                                           : int16_t(ir_.word(in.pc + 2));
-        const uint32_t target = uint32_t(in.pc + 2 + uint32_t(disp));
+    if (sem.operation == SemanticOp::BranchSubroutine) {
+        if (!control.valid || control.kind != ControlFlowKind::DirectCall ||
+            !control.targetKnown || !control.pushesReturnAddress ||
+            in.words > 2 || in.cycles != 7) return false;
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+        const MemoryAccessPlan write = memory.access(
+            MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
+        if (!write.valid() || !memory.complete()) return false;
+        const uint32_t target = control.target;
         if (target & 1) return false;
         // The return address is the next instruction, for both forms
         // (Moira: reg.pc + 2 on the word form, and reg.pc is already past
@@ -789,8 +816,8 @@ bool Emitter::emitSubroutine(size_t i) {
         a_.movRM(Sz::L, RAX, A(7));
         a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
         a_.movMR(Sz::L, F(kFSaveA), RAX);
-        a_.movRI(RDI, nextPc);
-        memStore(RAX, 2, RDI);
+        a_.movRI(RDI, control.returnAddress);
+        memStore(RAX, 2, RDI, write);
         a_.movRM(Sz::L, RAX, F(kFSaveA));
         a_.movMR(Sz::L, A(7), RAX);
         a_.movMI(Sz::L, at(L_.pc), int32_t(target));
@@ -802,8 +829,13 @@ bool Emitter::emitSubroutine(size_t i) {
         return true;
     }
 
-    if ((op & 0xFFC0) != 0x4E80) return false;       // JSR <ea>
-    const int mode = (op >> 3) & 7, reg = op & 7;
+    if (sem.operation != SemanticOp::JumpSubroutine || !control.valid ||
+        !control.pushesReturnAddress) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    const MemoryAccessPlan write = memory.access(
+        MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
+    if (!write.valid() || !memory.complete()) return false;
+    const int mode = sem.eaMode, reg = sem.eaReg;
     Ea ea;
     if (!decode(i, mode, reg, 2, 0, ea)) return false;
     if (!ea.memory) return false;                    // JSR needs an address
@@ -813,8 +845,8 @@ bool Emitter::emitSubroutine(size_t i) {
         { -1, -1, 4, -1, -1, 5, -1, 4, 4, 5, -1, -1 };
     if (kJsr[ea.idx] < 0 || kJsr[ea.idx] != int(in.cycles)) return false;
 
-    const bool constant = (ea.idx == kM_AW || ea.idx == kM_AL || ea.idx == kM_DIPC);
-    if (constant && (uint32_t(ea.value) & 1)) return false;
+    const bool constant = control.targetKnown;
+    if (constant && (control.target & 1)) return false;
 
     // The target first: it must be known good before the stack moves,
     // because an odd one is an address error with nothing committed.
@@ -829,8 +861,8 @@ bool Emitter::emitSubroutine(size_t i) {
     a_.movRM(Sz::L, RAX, A(7));
     a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
     a_.movMR(Sz::L, F(kFSaveA), RAX);
-    a_.movRI(RDI, nextPc);
-    memStore(RAX, 2, RDI);
+    a_.movRI(RDI, control.returnAddress);
+    memStore(RAX, 2, RDI, write);
     a_.movRM(Sz::L, RAX, F(kFSaveA));
     a_.movMR(Sz::L, A(7), RAX);
 
@@ -840,7 +872,7 @@ bool Emitter::emitSubroutine(size_t i) {
     commitQueue(op, ircAfter);
     chargeCycles(int(in.cycles));
     a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
-    if (constant) leaveTo(uint32_t(ea.value));
+    if (constant) leaveTo(control.target);
     else          leaveToDynamic();
     return true;
 }
@@ -964,47 +996,16 @@ bool Emitter::decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea) 
     ea.mode = mode; ea.reg = reg;
     ea.idx = eaIndex(mode, reg);
     if (ea.idx < 0) return false;
-    ea.memory = ea.idx >= kM_AI && ea.idx != kM_IM;
-
-    const uint32_t pc = ir_.instrs[i].pc;
-    const uint32_t extPc = pc + 2 + uint32_t(extAt) * 2;
-    switch (ea.idx) {
-        case kM_DN: case kM_AN: case kM_AI: case kM_PI: case kM_PD:
-            ea.ext = 0;
-            return true;
-        case kM_DI:
-            ea.value = int16_t(ir_.word(extPc));
-            ea.ext = 1;
-            return true;
-        case kM_AW:
-            ea.value = int16_t(ir_.word(extPc));
-            ea.ext = 1;
-            return true;
-        case kM_AL:
-            ea.value = int32_t(uint32_t(ir_.word(extPc)) << 16 | ir_.word(extPc + 2));
-            ea.ext = 2;
-            return true;
-        case kM_DIPC:
-            // The 68k adds the displacement to the address of the extension
-            // word itself, which is a compile-time constant here.
-            ea.value = int32_t(extPc + uint32_t(int16_t(ir_.word(extPc))));
-            ea.ext = 1;
-            return true;
-        case kM_IM:
-            if (szIdx == 2) {
-                ea.value = int32_t(uint32_t(ir_.word(extPc)) << 16 | ir_.word(extPc + 2));
-                ea.ext = 2;
-            } else if (szIdx == 1) {
-                ea.value = int16_t(ir_.word(extPc));
-                ea.ext = 1;
-            } else {
-                ea.value = int8_t(ir_.word(extPc) & 0xFF);
-                ea.ext = 1;
-            }
-            return true;
-        default:
-            return false;
-    }
+    const Instr& in = ir_.instrs[i];
+    const DecodedEffectiveAddress* decoded = findEffectiveAddress(
+        in, uint8_t(mode), uint8_t(reg), uint8_t(szIdx), uint8_t(extAt));
+    // Full 68020 index plans are valid shared IR, not brief extensions.
+    // Native support remains closed until this backend has a proved lowering.
+    if (!decoded || !decoded->valid || decoded->fullFormat) return false;
+    ea.memory = decoded->memory();
+    ea.value = decoded->value;
+    ea.ext = decoded->extensionWords;
+    return true;
 }
 
 // Guest effective address into `dst`. For (An)+ and -(An) the register
@@ -1032,7 +1033,13 @@ void Emitter::addrOf(const Ea& ea, Reg dst, int szIdx) {
     }
 }
 
-void Emitter::commitEa(const Ea& ea, int szIdx) {
+void Emitter::commitEa(const Ea& ea, int szIdx,
+                       const MemoryAccessPlan& access) {
+    // x64 keeps the instruction boundary transactional: even a semantic
+    // BeforeAccess update is published only after every fallible native
+    // operation has succeeded. A fault replays the pristine instruction in
+    // Moira. The contract still authorises whether an EA commit exists.
+    if (access.eaCommit == EaCommit::None) return;
     const int step = (ea.reg == 7 && szIdx == 0) ? 2 : sizeBytes(szIdx);
     if (ea.idx == kM_PI) a_.aluMI(Asm::Op::ADD, Sz::L, A(ea.reg), step);
     else if (ea.idx == kM_PD) a_.aluMI(Asm::Op::SUB, Sz::L, A(ea.reg), step);
@@ -1042,11 +1049,73 @@ void Emitter::commitEa(const Ea& ea, int szIdx) {
 // exit RSI points at the host bytes. A tag miss goes to the fill stub (and
 // retries); anything the fill refuses, and any access straddling a page,
 // goes to this instruction's slow path with nothing committed.
-void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss) {
+void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
+                       bool cacheRead, Label* cacheWriteHit,
+                       bool cacheOnly, bool countCacheHit) {
     const int n = bytes;
     const int32_t table = int32_t(write ? L_.dtlbW : L_.dtlbR);
     Label& have = *a_.fresh();
     Label& fill = *a_.fresh();
+    Label& done = *a_.fresh();
+
+    const bool cacheWrite = write && cacheWriteHit != nullptr;
+    if (((cacheRead && !write && cache040LineReadsEnabled()) || cacheWrite) &&
+        L_.cache040Live) {
+        Label& cacheMiss = *a_.fresh();
+
+        // A line-crossing operand needs two translations/cache ways. The
+        // exact thunk owns that rare case.
+        a_.movRR(Sz::L, RDX, addr);
+        a_.aluRI(Asm::Op::AND, Sz::L, RDX, 15);
+        if (n > 1) {
+            a_.aluRI(Asm::Op::CMP, Sz::L, RDX, 16 - n);
+            a_.jcc(Cc::A, cacheMiss);
+        }
+
+        // Direct-mapped logical line table (32-byte entries).
+        a_.movRR(Sz::L, RCX, addr);
+        a_.shiftRI(Sz::L, RCX, 5, 4);
+        a_.movRR(Sz::L, R8, RCX);
+        if (ir_.super)
+            a_.aluRI(Asm::Op::OR, Sz::L, R8, int32_t(0x80000000u));
+        a_.aluRI(Asm::Op::AND, Sz::L, RCX,
+                 int32_t(moira::Moira::PomJitCache040Table::kEntries - 1));
+        a_.shiftRI(Sz::L, RCX, 4, 5);
+        a_.leaIdx(RCX, kCpu, RCX, 1,
+                  int32_t(cacheWrite ? L_.cache040W : L_.cache040R));
+        a_.aluRM(Asm::Op::CMP, Sz::L, R8, mem(RCX, 0));
+        a_.jcc(Cc::NE, cacheMiss);
+
+        // Invalidate with the DATA ATC generation, then validate the live
+        // fixed cache way against eviction/CINV/CPUSH.
+        a_.movRM(Sz::L, R9, mem(RCX, 8));
+        a_.aluRM(Asm::Op::CMP, Sz::L, R9, at(L_.cache040Gen));
+        a_.jcc(Cc::NE, cacheMiss);
+        a_.movRM(Sz::L, R9, mem(RCX, 4));
+        a_.movRM(Sz::Q, RSI, mem(RCX, 16));
+        a_.aluMI(Asm::Op::CMP, Sz::B,
+                 mem(RSI, int32_t(offsetof(moira::Cache040::Line, valid))), 0);
+        a_.jcc(Cc::E, cacheMiss);
+        a_.aluRM(Asm::Op::CMP, Sz::L, R9,
+                 mem(RSI, int32_t(offsetof(moira::Cache040::Line, tag))));
+        a_.jcc(Cc::NE, cacheMiss);
+
+        // Only sole-access instructions enter this path, so the diagnostic
+        // hit count cannot become speculative and then be replayed.
+        if (countCacheHit) {
+            a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040Hits), 1);
+            if (cache040LineReadStatsEnabled())
+                a_.aluMI(Asm::Op::ADD, Sz::Q,
+                         at(cacheWrite ? L_.cache040NativeWriteHits
+                                       : L_.cache040NativeReadHits), 1);
+        }
+        a_.aluRI(Asm::Op::ADD, Sz::Q, RSI,
+                 int32_t(offsetof(moira::Cache040::Line, data)));
+        a_.aluRR(Asm::Op::ADD, Sz::Q, RSI, RDX);
+        a_.jmp(cacheWrite ? *cacheWriteHit : done);
+        a_.bind(cacheMiss);
+        if (cacheOnly) a_.jmp(miss);
+    }
 
     // Entry address into RCX. x86 SIB scales stop at 8 and an entry is 16
     // bytes, so the index is shifted rather than scaled.
@@ -1148,6 +1217,7 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss) {
         entryPtr();
         a_.jmp(have);
     });
+    a_.bind(done);
 }
 
 // Big-endian guest, little-endian host: every multi-byte access byte-swaps.
@@ -1157,11 +1227,18 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss) {
 // this path — and running the WHOLE instruction through Moira to reach it
 // throws away everything the block already did. So the access alone goes
 // through a thunk, and only a FAULT falls all the way back.
-void Emitter::memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess) {
-    soleAccess = soleAccess && thunks_ >= 1;
-    Label& miss = soleAccess ? *a_.fresh() : runtimeStub(cur_);
+void Emitter::memLoad(Reg addr, int szIdx, Reg dst,
+                      const MemoryAccessPlan& access) {
+    if (!access.valid() || access.direction != MemoryDirection::Read ||
+        access.bytes != unsigned(sizeBytes(szIdx))) {
+        a_.jmp(runtimeStub(cur_));
+        return;
+    }
+    const bool cacheRead = access.cache;
+    const bool exactAccess = access.exactThunk;
+    Label& miss = exactAccess ? *a_.fresh() : runtimeStub(cur_);
 
-    memProbe(addr, sizeBytes(szIdx), false, miss);
+    memProbe(addr, sizeBytes(szIdx), false, miss, cacheRead);
     if (szIdx == 0) {
         a_.movzx(Sz::B, dst, mem(RSI, 0));
     } else if (szIdx == 1) {
@@ -1171,7 +1248,7 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess) {
         a_.movRM(Sz::L, dst, mem(RSI, 0));
         a_.bswap(dst);
     }
-    if (!soleAccess) return;
+    if (!exactAccess) return;
 
     Label& done = *a_.fresh();
     a_.bind(done);
@@ -1192,25 +1269,44 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst, bool soleAccess) {
     });
 }
 
-void Emitter::memStore(Reg addr, int szIdx, Reg src, bool soleAccess) {
-    soleAccess = soleAccess && thunks_ >= 2;
-    Label& miss = soleAccess ? *a_.fresh() : runtimeStub(cur_);
+void Emitter::memStore(Reg addr, int szIdx, Reg src,
+                       const MemoryAccessPlan& access) {
+    if (!access.valid() || access.direction != MemoryDirection::Write ||
+        access.bytes != unsigned(sizeBytes(szIdx))) {
+        a_.jmp(runtimeStub(cur_));
+        return;
+    }
+    const bool cacheWrite = access.cache;
+    const bool exactAccess = access.exactThunk;
+    Label& miss = exactAccess ? *a_.fresh() : runtimeStub(cur_);
+    Label* cacheHit = cacheWrite ? a_.fresh() : nullptr;
+    Label* cacheDone = cacheWrite ? a_.fresh() : nullptr;
 
     // The value is live across memProbe, whose miss path calls out and
     // therefore clobbers every caller-saved register, `src` included.
     a_.movMR(Sz::L, F(kFSaveV), src);
-    memProbe(addr, sizeBytes(szIdx), true, miss);
-    a_.movRM(Sz::L, src, F(kFSaveV));
-    if (szIdx == 0) {
-        a_.movMR(Sz::B, mem(RSI, 0), src);
-    } else if (szIdx == 1) {
-        a_.rolR16(src, 8);
-        a_.movMR(Sz::W, mem(RSI, 0), src);
-    } else {
-        a_.bswap(src);
-        a_.movMR(Sz::L, mem(RSI, 0), src);
+    memProbe(addr, sizeBytes(szIdx), true, miss, false, cacheHit);
+    const auto emitStore = [&] {
+        a_.movRM(Sz::L, src, F(kFSaveV));
+        if (szIdx == 0) {
+            a_.movMR(Sz::B, mem(RSI, 0), src);
+        } else if (szIdx == 1) {
+            a_.rolR16(src, 8);
+            a_.movMR(Sz::W, mem(RSI, 0), src);
+        } else {
+            a_.bswap(src);
+            a_.movMR(Sz::L, mem(RSI, 0), src);
+        }
+    };
+    emitStore();
+    if (cacheWrite) {
+        a_.jmp(*cacheDone);
+        a_.bind(*cacheHit);
+        emitStore();
+        markCache040Dirty(addr, sizeBytes(szIdx));
+        a_.bind(*cacheDone);
     }
-    if (!soleAccess) return;
+    if (!exactAccess) return;
 
     Label& done = *a_.fresh();
     a_.bind(done);
@@ -1254,8 +1350,80 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src, bool soleAccess) {
     });
 }
 
-void Emitter::load(const Ea& ea, int szIdx, Reg dst, bool signExtend,
-                   bool soleAccess) {
+// A true RMW is proved once with the writable translation before its read
+// becomes observable. The host pointer is then kept across flag generation,
+// so the write cannot discover a late refusal after CCR state changed.
+void Emitter::memRmwLoad(Reg addr, int szIdx, Reg dst,
+                         const MemoryAccessPlan& read,
+                         const MemoryAccessPlan& write) {
+    if (!memoryRmwAccessPair(read, write) ||
+        read.bytes != unsigned(sizeBytes(szIdx))) {
+        a_.jmp(runtimeStub(cur_));
+        return;
+    }
+    memProbe(addr, sizeBytes(szIdx), true, runtimeStub(cur_));
+    a_.movMR(Sz::Q, F(kFValue), RSI);
+    if (szIdx == 0) {
+        a_.movzx(Sz::B, dst, mem(RSI, 0));
+    } else if (szIdx == 1) {
+        a_.movzx(Sz::W, dst, mem(RSI, 0));
+        a_.rolR16(dst, 8);
+    } else {
+        a_.movRM(Sz::L, dst, mem(RSI, 0));
+        a_.bswap(dst);
+    }
+}
+
+void Emitter::memRmwStore(int szIdx, Reg src,
+                          const MemoryAccessPlan& read,
+                          const MemoryAccessPlan& write) {
+    if (!memoryRmwAccessPair(read, write) ||
+        write.bytes != unsigned(sizeBytes(szIdx))) {
+        a_.jmp(runtimeStub(cur_));
+        return;
+    }
+    a_.movRM(Sz::Q, RSI, F(kFValue));
+    if (szIdx == 0) {
+        a_.movMR(Sz::B, mem(RSI, 0), src);
+    } else if (szIdx == 1) {
+        a_.rolR16(src, 8);
+        a_.movMR(Sz::W, mem(RSI, 0), src);
+    } else {
+        a_.bswap(src);
+        a_.movMR(Sz::L, mem(RSI, 0), src);
+    }
+}
+
+void Emitter::markCache040Dirty(Reg addr, int bytes) {
+    // RSI currently addresses Line::data[addr&15]. Recover the stable line
+    // object, then OR the first/last covered longword bits after the bytes
+    // themselves have been stored. A non-crossing operand simply ORs the
+    // same bit twice.
+    a_.movRR(Sz::L, RDX, addr);
+    a_.aluRI(Asm::Op::AND, Sz::L, RDX, 15);
+    a_.aluRR(Asm::Op::SUB, Sz::Q, RSI, RDX);
+    a_.aluRI(Asm::Op::SUB, Sz::Q, RSI,
+             int32_t(offsetof(moira::Cache040::Line, data)));
+
+    a_.movRR(Sz::L, RCX, RDX);
+    a_.shiftRI(Sz::L, RCX, 5, 2);
+    a_.movRI(R8, 1);
+    a_.shiftRCl(Sz::L, R8, 4);
+    if (bytes > 1) {
+        a_.movRR(Sz::L, RCX, addr);
+        a_.aluRI(Asm::Op::ADD, Sz::L, RCX, bytes - 1);
+        a_.shiftRI(Sz::L, RCX, 5, 2);
+        a_.aluRI(Asm::Op::AND, Sz::L, RCX, 3);
+        a_.movRI(R9, 1);
+        a_.shiftRCl(Sz::L, R9, 4);
+        a_.aluRR(Asm::Op::OR, Sz::L, R8, R9);
+    }
+    a_.aluMR(Asm::Op::OR, Sz::B,
+             mem(RSI, int32_t(offsetof(moira::Cache040::Line, dirty))), R8);
+}
+
+void Emitter::load(const Ea& ea, int szIdx, Reg dst,
+                   const MemoryAccessPlan& access, bool signExtend) {
     switch (ea.idx) {
         case kM_DN:
             if (signExtend && szIdx != 2) {
@@ -1273,19 +1441,20 @@ void Emitter::load(const Ea& ea, int szIdx, Reg dst, bool signExtend,
             return;
         default:
             addrOf(ea, RAX, szIdx);
-            memLoad(RAX, szIdx, dst, soleAccess);
+            memLoad(RAX, szIdx, dst, access);
             if (signExtend && szIdx != 2) a_.movsxRR(hostSz(szIdx), dst, dst);
             return;
     }
 }
 
-void Emitter::store(const Ea& ea, int szIdx, Reg src, bool soleAccess) {
+void Emitter::store(const Ea& ea, int szIdx, Reg src,
+                    const MemoryAccessPlan& access) {
     switch (ea.idx) {
         case kM_DN: a_.movMR(hostSz(szIdx), D(ea.reg), src); return;
         case kM_AN: a_.movMR(Sz::L, A(ea.reg), src); return;
         default:
             addrOf(ea, RAX, szIdx);
-            memStore(RAX, szIdx, src, soleAccess);
+            memStore(RAX, szIdx, src, access);
             return;
     }
 }
@@ -1295,9 +1464,13 @@ void Emitter::store(const Ea& ea, int szIdx, Reg src, bool soleAccess) {
 // MOVE / MOVEA. Source is read, destination written; MOVEA sign-extends a
 // word source to the full address register and touches no flag.
 bool Emitter::emitMove(size_t i, int szIdx) {
-    const uint16_t op = ir_.instrs[i].opcode;
-    const int srcMode = (op >> 3) & 7, srcReg = op & 7;
-    const int dstMode = (op >> 6) & 7, dstReg = (op >> 9) & 7;
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::Move || sem.sizeIndex != szIdx)
+        return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    const int srcMode = sem.eaMode, srcReg = sem.eaReg;
+    const int dstMode = sem.destinationMode, dstReg = sem.destinationReg;
 
     Ea src, dst;
     if (!decode(i, srcMode, srcReg, szIdx, 0, src)) return false;
@@ -1314,58 +1487,125 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     const int cycles = rc + dc;
     if (cycles != ir_.instrs[i].cycles) return false;
 
-    // Two guest accesses means neither may go through an access thunk: a
-    // bail-out on the second would re-run the instruction, and with it the
-    // first — which for an I/O register is a side effect happening twice.
-    const bool twoAccesses = src.memory && dst.memory;
+    MemoryAccessPlan srcAccess, dstAccess;
+    if (src.memory) {
+        srcAccess = memory.access(MemoryDirection::Read,
+                                  MemoryOperand::Source,
+                                  uint8_t(sizeBytes(szIdx)),
+                                  uint8_t(srcMode), uint8_t(srcReg));
+        if (!srcAccess.valid()) return false;
+    }
+    if (dst.memory) {
+        dstAccess = memory.access(MemoryDirection::Write,
+                                  MemoryOperand::Destination,
+                                  uint8_t(sizeBytes(szIdx)),
+                                  uint8_t(dstMode), uint8_t(dstReg));
+        if (!dstAccess.valid()) return false;
+    }
+    if (!memory.complete()) return false;
+
     const bool movea = (dst.idx == kM_AN);
-    load(src, szIdx, RDI, movea, !twoAccesses);
+    const bool cachePair = memory.proof.atomicCachePair();
+    if (cachePair) {
+        if (!srcAccess.cache || !dstAccess.cache) return false;
+        // Probe both cache lines before the first load. R10/R11 are untouched
+        // by the cache-only probes and hold the two resident byte pointers;
+        // any miss reaches the whole-instruction fallback with pristine EA,
+        // flags and diagnostic counters.
+        addrOf(src, RAX, szIdx);
+        memProbe(RAX, 4, false, runtimeStub(i), true, nullptr, true, false);
+        a_.movRR(Sz::Q, R10, RSI);
+        addrOf(dst, RAX, szIdx);
+        Label& writeHit = *a_.fresh();
+        memProbe(RAX, 4, true, runtimeStub(i), false, &writeHit, true, false);
+        a_.jmp(runtimeStub(i));
+        a_.bind(writeHit);
+        a_.movRR(Sz::Q, R11, RSI);
+
+        a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040Hits), 2);
+        if (cache040LineReadStatsEnabled()) {
+            a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040NativeReadHits), 1);
+            a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040NativeWriteHits), 1);
+        }
+        a_.movRM(Sz::L, RDI, mem(R10, 0)); a_.bswap(RDI);
+        a_.testRR(Sz::L, RDI, RDI); flagsLogic(Sz::L);
+        a_.bswap(RDI); a_.movMR(Sz::L, mem(R11, 0), RDI);
+        a_.movRR(Sz::Q, RSI, R11); markCache040Dirty(RAX, 4);
+        commitEa(src, szIdx, srcAccess); commitEa(dst, szIdx, dstAccess);
+        return true;
+    }
+    if (src.memory && dst.memory) {
+        if (memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+            !srcAccess.preflight || !dstAccess.preflight ||
+            in.memory.order != MemoryOrder::SourceThenDestination)
+            return false;
+
+        // Prove both mappings before the source read. This is the concrete
+        // x64 expansion of PreflightAll: a destination refusal cannot occur
+        // after flags or a source device side effect have become visible.
+        addrOf(src, RAX, szIdx);
+        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+        a_.movMR(Sz::Q, F(kFValue), RSI);
+        addrOf(dst, RAX, szIdx);
+        memProbe(RAX, sizeBytes(szIdx), true, runtimeStub(i));
+        a_.movRR(Sz::Q, R11, RSI);                  // destination bytes
+        a_.movRM(Sz::Q, R10, F(kFValue));           // source bytes
+
+        if (szIdx == 0) {
+            a_.movzx(Sz::B, RDI, mem(R10, 0));
+        } else if (szIdx == 1) {
+            a_.movzx(Sz::W, RDI, mem(R10, 0));
+            a_.rolR16(RDI, 8);
+        } else {
+            a_.movRM(Sz::L, RDI, mem(R10, 0));
+            a_.bswap(RDI);
+        }
+        a_.testRR(hostSz(szIdx), RDI, RDI);
+        flagsLogic(hostSz(szIdx));
+        if (szIdx == 0) {
+            a_.movMR(Sz::B, mem(R11, 0), RDI);
+        } else if (szIdx == 1) {
+            a_.rolR16(RDI, 8);
+            a_.movMR(Sz::W, mem(R11, 0), RDI);
+        } else {
+            a_.bswap(RDI);
+            a_.movMR(Sz::L, mem(R11, 0), RDI);
+        }
+        commitEa(src, szIdx, srcAccess);
+        commitEa(dst, szIdx, dstAccess);
+        return true;
+    }
+    load(src, szIdx, RDI, srcAccess, movea);
     if (movea) {
         a_.movMR(Sz::L, A(dst.reg), RDI);
     } else {
         // The flags come from the value itself; test it at its own width.
         a_.testRR(hostSz(szIdx), RDI, RDI);
         flagsLogic(hostSz(szIdx));
-        store(dst, szIdx, RDI, !twoAccesses);
+        store(dst, szIdx, RDI, dstAccess);
     }
-    commitEa(src, szIdx);
-    commitEa(dst, szIdx);
+    commitEa(src, szIdx, srcAccess);
+    commitEa(dst, szIdx, dstAccess);
     return true;
 }
 
 // ADD/SUB/AND/OR/CMP <ea>,Dn — the "ea to register" direction, plus the
 // ADDA/SUBA/CMPA forms that land in an address register.
 bool Emitter::emitAluEaRg(size_t i) {
-    const uint16_t op = ir_.instrs[i].opcode;
-    const int hi = (op >> 12) & 0xF;
-    const int dn = (op >> 9) & 7;
-    const int opmode = (op >> 6) & 7;
-    const int mode = (op >> 3) & 7, reg = op & 7;
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::AluEaToReg &&
+        sem.operation != SemanticOp::AddressAlu)
+        return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    const int dn = sem.registerIndex;
+    const int mode = sem.eaMode, reg = sem.eaReg;
 
     Asm::Op x86op;
-    bool isCmp = false, isAddr = false;
-    int szIdx;
-
-    if (opmode == 3 || opmode == 7) {          // <ea> -> An (word / long)
-        isAddr = true;
-        szIdx = (opmode == 3) ? 1 : 2;
-        if (hi == 0xB) { isCmp = true; x86op = Asm::Op::CMP; }        // CMPA
-        else if (hi == 0xD) x86op = Asm::Op::ADD;                     // ADDA
-        else if (hi == 0x9) x86op = Asm::Op::SUB;                     // SUBA
-        else return false;
-    } else if (opmode <= 2) {
-        szIdx = opmode;
-        switch (hi) {
-            case 0x8: x86op = Asm::Op::OR;  break;
-            case 0x9: x86op = Asm::Op::SUB; break;
-            case 0xB: x86op = Asm::Op::CMP; isCmp = true; break;
-            case 0xC: x86op = Asm::Op::AND; break;
-            case 0xD: x86op = Asm::Op::ADD; break;
-            default: return false;
-        }
-    } else {
-        return false;
-    }
+    if (!hostAluOperation(sem.alu, x86op)) return false;
+    const bool isCmp = sem.alu == AluOperation::Cmp;
+    const bool isAddr = sem.operation == SemanticOp::AddressAlu;
+    const int szIdx = sem.sizeIndex;
 
     Ea src;
     if (!decode(i, mode, reg, szIdx, 0, src)) return false;
@@ -1386,12 +1626,20 @@ bool Emitter::emitAluEaRg(size_t i) {
         Ea an; an.idx = kM_AN; an.reg = dn;
         if (aliases(src, an)) return false;
     }
+    MemoryAccessPlan read;
+    if (src.memory) {
+        read = memory.access(MemoryDirection::Read, MemoryOperand::Source,
+                             uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                             uint8_t(reg));
+        if (!read.valid()) return false;
+    }
+    if (!memory.complete()) return false;
 
     if (isAddr) {
         // An operations are always full-width, with a word source sign
         // extended first, and they never touch the CCR — except CMPA, which
         // compares at 32 bits.
-        load(src, szIdx, RDI, true);
+        load(src, szIdx, RDI, read, true);
         if (isCmp) {
             a_.movRM(Sz::L, RDX, A(dn));
             a_.aluRR(Asm::Op::CMP, Sz::L, RDX, RDI);
@@ -1399,11 +1647,11 @@ bool Emitter::emitAluEaRg(size_t i) {
         } else {
             a_.aluMR(x86op, Sz::L, A(dn), RDI);
         }
-        commitEa(src, szIdx);
+        commitEa(src, szIdx, read);
         return true;
     }
 
-    load(src, szIdx, RDI, false);
+    load(src, szIdx, RDI, read, false);
     if (isCmp) {
         a_.movRM(Sz::L, RDX, D(dn));
         a_.aluRR(Asm::Op::CMP, hostSz(szIdx), RDX, RDI);
@@ -1413,28 +1661,24 @@ bool Emitter::emitAluEaRg(size_t i) {
         if (x86op == Asm::Op::ADD || x86op == Asm::Op::SUB) flagsAddSub(true);
         else flagsLogic(hostSz(szIdx));
     }
-    commitEa(src, szIdx);
+    commitEa(src, szIdx, read);
     return true;
 }
 
 // ADD/SUB/AND/OR/EOR Dn,<ea> — the read-modify-write direction.
 bool Emitter::emitAluRgEa(size_t i) {
-    const uint16_t op = ir_.instrs[i].opcode;
-    const int hi = (op >> 12) & 0xF;
-    const int dn = (op >> 9) & 7;
-    const int szIdx = (op >> 6) & 3;
-    const int mode = (op >> 3) & 7, reg = op & 7;
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::AluRegToEa) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    const int dn = sem.registerIndex;
+    const int szIdx = sem.sizeIndex;
+    const int mode = sem.eaMode, reg = sem.eaReg;
     if (szIdx > 2) return false;
 
     Asm::Op x86op;
-    switch (hi) {
-        case 0x8: x86op = Asm::Op::OR;  break;
-        case 0x9: x86op = Asm::Op::SUB; break;
-        case 0xB: x86op = Asm::Op::XOR; break;      // EOR
-        case 0xC: x86op = Asm::Op::AND; break;
-        case 0xD: x86op = Asm::Op::ADD; break;
-        default: return false;
-    }
+    if (!hostAluOperation(sem.alu, x86op) ||
+        sem.alu == AluOperation::Cmp) return false;
 
     Ea dst;
     if (!decode(i, mode, reg, szIdx, 0, dst)) return false;
@@ -1443,21 +1687,34 @@ bool Emitter::emitAluRgEa(size_t i) {
     const int cycles = eaRmwCost(dst.idx, szIdx);
     if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
 
+    MemoryAccessPlan read, write;
+    if (dst.memory) {
+        read = memory.access(MemoryDirection::Read,
+                             MemoryOperand::Destination,
+                             uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                             uint8_t(reg));
+        write = memory.access(MemoryDirection::Write,
+                              MemoryOperand::Destination,
+                              uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                              uint8_t(reg));
+        if (!memoryRmwAccessPair(read, write))
+            return false;
+    }
+    if (!memory.complete()) return false;
+
     if (dst.idx == kM_DN) {
         a_.movRM(Sz::L, RDI, D(dn));
         a_.aluMR(x86op, hostSz(szIdx), D(dst.reg), RDI);
     } else {
         addrOf(dst, RAX, szIdx);
-        a_.movMR(Sz::L, F(kFSaveA), RAX);           // the address, for the store
-        memLoad(RAX, szIdx, RDI, false);
+        memRmwLoad(RAX, szIdx, RDI, read, write);
         a_.movRM(Sz::L, RDX, D(dn));
         a_.aluRR(x86op, hostSz(szIdx), RDI, RDX);
         // Flags first: the store byte-swaps its operand in place.
         if (x86op == Asm::Op::ADD || x86op == Asm::Op::SUB) flagsAddSub(true);
         else { a_.testRR(hostSz(szIdx), RDI, RDI); flagsLogic(hostSz(szIdx)); }
-        a_.movRM(Sz::L, RAX, F(kFSaveA));
-        memStore(RAX, szIdx, RDI, false);
-        commitEa(dst, szIdx);
+        memRmwStore(szIdx, RDI, read, write);
+        commitEa(dst, szIdx, write);
         return true;
     }
     if (x86op == Asm::Op::ADD || x86op == Asm::Op::SUB) flagsAddSub(true);
@@ -1467,13 +1724,18 @@ bool Emitter::emitAluRgEa(size_t i) {
 
 // ADDQ / SUBQ #1..8,<ea>
 bool Emitter::emitAddSubQ(size_t i) {
-    const uint16_t op = ir_.instrs[i].opcode;
-    const int szIdx = (op >> 6) & 3;
+    const Instr& in = ir_.instrs[i];
+    const uint16_t op = in.opcode;
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::AddSubQuick) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    const int szIdx = sem.sizeIndex;
     if (szIdx > 2) return false;
-    int imm = (op >> 9) & 7;
+    int imm = sem.registerIndex;
     if (imm == 0) imm = 8;
-    const bool sub = (op & 0x0100) != 0;
-    const int mode = (op >> 3) & 7, reg = op & 7;
+    const bool sub = sem.alu == AluOperation::Sub;
+    if (!sub && sem.alu != AluOperation::Add) return false;
+    const int mode = sem.eaMode, reg = sem.eaReg;
 
     Ea dst;
     if (!decode(i, mode, reg, szIdx, 0, dst)) return false;
@@ -1481,6 +1743,21 @@ bool Emitter::emitAddSubQ(size_t i) {
     if (!lengthOk(i, dst.ext)) return false;
     const int cycles = eaRmwCost(dst.idx, szIdx);
     if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+
+    MemoryAccessPlan read, write;
+    if (dst.memory) {
+        read = memory.access(MemoryDirection::Read,
+                             MemoryOperand::Destination,
+                             uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                             uint8_t(reg));
+        write = memory.access(MemoryDirection::Write,
+                              MemoryOperand::Destination,
+                              uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                              uint8_t(reg));
+        if (!memoryRmwAccessPair(read, write))
+            return false;
+    }
+    if (!memory.complete()) return false;
 
     const Asm::Op x86op = sub ? Asm::Op::SUB : Asm::Op::ADD;
 
@@ -1495,21 +1772,21 @@ bool Emitter::emitAddSubQ(size_t i) {
         return true;
     }
     addrOf(dst, RAX, szIdx);
-    a_.movMR(Sz::L, F(kFSaveA), RAX);
-    memLoad(RAX, szIdx, RDI, false);
+    memRmwLoad(RAX, szIdx, RDI, read, write);
     a_.aluRI(x86op, hostSz(szIdx), RDI, imm);
     flagsAddSub(true);
-    a_.movRM(Sz::L, RAX, F(kFSaveA));
-    memStore(RAX, szIdx, RDI, false);
-    commitEa(dst, szIdx);
+    memRmwStore(szIdx, RDI, read, write);
+    commitEa(dst, szIdx, write);
     return true;
 }
 
 bool Emitter::emitMoveq(size_t i) {
-    const uint16_t op = ir_.instrs[i].opcode;
-    if (op & 0x0100) return false;
-    if (ir_.instrs[i].cycles != 2) return false;
-    const int dn = (op >> 9) & 7;
+    const Instr& in = ir_.instrs[i];
+    const uint16_t op = in.opcode;
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::MoveQuick || in.cycles != 2)
+        return false;
+    const int dn = sem.registerIndex;
     const int32_t v = int8_t(op & 0xFF);
     a_.movMI(Sz::L, D(dn), v);
     a_.movMI(Sz::B, at(L_.srN), v < 0 ? 1 : 0);
@@ -1520,23 +1797,17 @@ bool Emitter::emitMoveq(size_t i) {
 
 // ORI/ANDI/SUBI/ADDI/EORI/CMPI #imm,<ea>
 bool Emitter::emitImmediate(size_t i) {
-    const uint16_t op = ir_.instrs[i].opcode;
-    const int kind = (op >> 9) & 7;
-    const int szIdx = (op >> 6) & 3;
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::ImmediateAlu) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    const int szIdx = sem.sizeIndex;
     if (szIdx > 2) return false;
-    const int mode = (op >> 3) & 7, reg = op & 7;
+    const int mode = sem.eaMode, reg = sem.eaReg;
 
     Asm::Op x86op;
-    bool isCmp = false;
-    switch (kind) {
-        case 0: x86op = Asm::Op::OR;  break;
-        case 1: x86op = Asm::Op::AND; break;
-        case 2: x86op = Asm::Op::SUB; break;
-        case 3: x86op = Asm::Op::ADD; break;
-        case 5: x86op = Asm::Op::XOR; break;
-        case 6: x86op = Asm::Op::CMP; isCmp = true; break;
-        default: return false;                       // 4 = static bit ops
-    }
+    if (!hostAluOperation(sem.alu, x86op)) return false;
+    const bool isCmp = sem.alu == AluOperation::Cmp;
 
     Ea imm, dst;
     if (!decode(i, 7, 4, szIdx, 0, imm)) return false;
@@ -1546,6 +1817,24 @@ bool Emitter::emitImmediate(size_t i) {
 
     const int cycles = isCmp ? kEaRead[dst.idx][szIdx] : eaRmwCost(dst.idx, szIdx);
     if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+
+    MemoryAccessPlan read, write;
+    if (dst.memory) {
+        read = memory.access(MemoryDirection::Read,
+                             MemoryOperand::Destination,
+                             uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                             uint8_t(reg));
+        if (!read.valid()) return false;
+        if (!isCmp) {
+            write = memory.access(MemoryDirection::Write,
+                                  MemoryOperand::Destination,
+                                  uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                                  uint8_t(reg));
+            if (!memoryRmwAccessPair(read, write))
+                return false;
+        }
+    }
+    if (!memory.complete()) return false;
 
     if (dst.idx == kM_DN) {
         a_.aluMI(x86op, hostSz(szIdx), D(dst.reg), imm.value);
@@ -1558,20 +1847,18 @@ bool Emitter::emitImmediate(size_t i) {
 
     addrOf(dst, RAX, szIdx);
     if (isCmp) {
-        memLoad(RAX, szIdx, RDI);
+        memLoad(RAX, szIdx, RDI, read);
         a_.aluRI(Asm::Op::CMP, hostSz(szIdx), RDI, imm.value);
         flagsAddSub(false);
-        commitEa(dst, szIdx);
+        commitEa(dst, szIdx, read);
         return true;
     }
-    a_.movMR(Sz::L, F(kFSaveA), RAX);
-    memLoad(RAX, szIdx, RDI, false);
+    memRmwLoad(RAX, szIdx, RDI, read, write);
     a_.aluRI(x86op, hostSz(szIdx), RDI, imm.value);
     if (x86op == Asm::Op::ADD || x86op == Asm::Op::SUB) flagsAddSub(true);
     else flagsLogic(hostSz(szIdx));
-    a_.movRM(Sz::L, RAX, F(kFSaveA));
-    memStore(RAX, szIdx, RDI, false);
-    commitEa(dst, szIdx);
+    memRmwStore(szIdx, RDI, read, write);
+    commitEa(dst, szIdx, write);
     return true;
 }
 
@@ -1580,25 +1867,24 @@ bool Emitter::emitImmediate(size_t i) {
 // poll loops are made of, and it is read-only, which keeps the bail-out
 // argument trivial.
 bool Emitter::emitBitOp(size_t i) {
-    const uint16_t op = ir_.instrs[i].opcode;
-    const int mode = (op >> 3) & 7, reg = op & 7;
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::Bit || sem.action != 0) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    const int mode = sem.eaMode, reg = sem.eaReg;
 
     int bitReg = -1;
     int32_t bitImm = 0;
     int extUsed = 0;
-    bool dynamic;
-    if ((op & 0xF1C0) == 0x0100) {                   // BTST Dn,<ea>
+    const bool dynamic = sem.dynamic;
+    if (dynamic) {                                    // BTST Dn,<ea>
         // …which is also MOVEP's encoding when the mode field is 001. The
-        // An check further down rejects that, but say so here too.
+        // shared decoder has already excluded that overlap.
         if (mode == 1) return false;
-        dynamic = true;
-        bitReg = (op >> 9) & 7;
-    } else if ((op & 0xFFC0) == 0x0800) {            // BTST #imm,<ea>
-        dynamic = false;
-        bitImm = ir_.word(ir_.instrs[i].pc + 2) & 0xFF;
+        bitReg = sem.registerIndex;
+    } else {                                         // BTST #imm,<ea>
+        bitImm = in.extensionWord(0) & 0xFF;
         extUsed = 1;
-    } else {
-        return false;
     }
 
     // A data register is tested modulo 32, memory modulo 8 (a byte).
@@ -1613,6 +1899,14 @@ bool Emitter::emitBitOp(size_t i) {
     const int cycles = toReg ? 4 : eaRmwCost(dst.idx, szIdx);
     if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
 
+    MemoryAccessPlan read;
+    if (dst.memory) {
+        read = memory.access(MemoryDirection::Read, MemoryOperand::Operand,
+                             1, uint8_t(mode), uint8_t(reg));
+        if (!read.valid()) return false;
+    }
+    if (!memory.complete()) return false;
+
     // Z = !bit. Everything else is untouched.
     //
     // ORDER MATTERS: the operand is fetched FIRST. A memory access here is
@@ -1625,7 +1919,7 @@ bool Emitter::emitBitOp(size_t i) {
         a_.movRM(Sz::L, RDI, D(dst.reg));
     } else {
         addrOf(dst, RAX, szIdx);
-        memLoad(RAX, szIdx, RDI);
+        memLoad(RAX, szIdx, RDI, read);
     }
     if (dynamic) {
         a_.movRM(Sz::L, RCX, D(bitReg));
@@ -1637,26 +1931,33 @@ bool Emitter::emitBitOp(size_t i) {
     }
     a_.testRR(Sz::L, RDI, RDX);
     a_.setccM(Cc::E, at(L_.srZ));
-    commitEa(dst, szIdx);
+    commitEa(dst, szIdx, read);
     return true;
 }
 
 // The $4xxx group the backend can own: TST, CLR, NOT, NEG, EXT, SWAP, LEA.
 bool Emitter::emitLine4(size_t i) {
-    const uint16_t op = ir_.instrs[i].opcode;
-    const int mode = (op >> 3) & 7, reg = op & 7;
-    const int szIdx = (op >> 6) & 3;
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    const int mode = sem.eaMode, reg = sem.eaReg;
+    const int szIdx = sem.sizeIndex;
 
-    if (op == 0x4E75 || (op & 0xFFC0) == 0x4E80) return emitSubroutine(i);
+    if (sem.operation == SemanticOp::ReturnSubroutine ||
+        sem.operation == SemanticOp::JumpSubroutine)
+        return emitSubroutine(i);
 
-    if (op == 0x4E71) {                              // NOP
+    if (sem.operation == SemanticOp::Nop) {
         return ir_.instrs[i].cycles == 2;
     }
 
-    if ((op & 0xFFF8) == 0x4E50) {                   // LINK.W An,#d16
+    if (sem.operation == SemanticOp::Link) {         // LINK.W An,#d16
         if (ir_.instrs[i].cycles != 5 || !lengthOk(i, 1)) return false;
-        const int an = op & 7;
-        const int32_t disp = int16_t(ir_.word(ir_.instrs[i].pc + 2));
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+        const MemoryAccessPlan write = memory.access(
+            MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
+        if (!write.valid() || !memory.complete()) return false;
+        const int an = sem.eaReg;
+        const int32_t disp = int16_t(in.extensionWord(0));
 
         // sp = A7 - 4 is both the address written and the value An takes.
         // For LINK A7 the value PUSHED is that same decremented pointer,
@@ -1666,7 +1967,7 @@ bool Emitter::emitLine4(size_t i) {
         if (an == 7) a_.movRR(Sz::L, RDI, RAX);
         else         a_.movRM(Sz::L, RDI, A(an));
         a_.movMR(Sz::L, F(kFSaveA), RAX);            // the address, past the store
-        memStore(RAX, 2, RDI);
+        memStore(RAX, 2, RDI, write);
         // Nothing above committed guest state, so a bail-out re-runs the
         // whole instruction cleanly. Everything below is the commit.
         a_.movRM(Sz::L, RAX, F(kFSaveA));
@@ -1677,12 +1978,17 @@ bool Emitter::emitLine4(size_t i) {
         return true;
     }
 
-    if ((op & 0xFFF8) == 0x4E58) {                   // UNLK An
+    if (sem.operation == SemanticOp::Unlink) {       // UNLK An
         if (ir_.instrs[i].cycles != 6 || !lengthOk(i, 0)) return false;
-        const int an = op & 7;
+        const int an = sem.eaReg;
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+        const MemoryAccessPlan read = memory.access(
+            MemoryDirection::Read, MemoryOperand::Stack, 4, 2,
+            uint8_t(an));
+        if (!read.valid() || !memory.complete()) return false;
         a_.movRM(Sz::L, RAX, A(an));                 // the new stack pointer
         a_.movMR(Sz::L, F(kFSaveA), RAX);
-        memLoad(RAX, 2, RDI);
+        memLoad(RAX, 2, RDI, read);
         // An takes the word read back; A7 lands just past it, except for
         // UNLK A7 where the two are the same register and the read value
         // wins (Moira: `if (an != 7) reg.sp += 4`).
@@ -1695,8 +2001,8 @@ bool Emitter::emitLine4(size_t i) {
         return true;
     }
 
-    if ((op & 0xF1C0) == 0x41C0) {                   // LEA <ea>,An
-        const int an = (op >> 9) & 7;
+    if (sem.operation == SemanticOp::Lea) {          // LEA <ea>,An
+        const int an = sem.registerIndex;
         Ea src;
         if (!decode(i, mode, reg, 2, 0, src)) return false;
         if (!src.memory) return false;               // LEA needs an address
@@ -1711,10 +2017,10 @@ bool Emitter::emitLine4(size_t i) {
         return true;
     }
 
-    if ((op & 0xFFB8) == 0x4880) {                   // EXT.W / EXT.L
+    if (sem.operation == SemanticOp::Extend) {       // EXT.W / EXT.L
         if (ir_.instrs[i].cycles != 4) return false;
-        const int dn = op & 7;
-        const bool toLong = (op & 0x0040) != 0;
+        const int dn = sem.eaReg;
+        const bool toLong = sem.sizeIndex == 2;
         if (toLong) {
             a_.movsx(Sz::W, RDI, D(dn));
             a_.movMR(Sz::L, D(dn), RDI);
@@ -1728,9 +2034,9 @@ bool Emitter::emitLine4(size_t i) {
         return true;
     }
 
-    if ((op & 0xFFF8) == 0x4840) {                   // SWAP Dn
+    if (sem.operation == SemanticOp::Swap) {         // SWAP Dn
         if (ir_.instrs[i].cycles != 4) return false;
-        const int dn = op & 7;
+        const int dn = sem.eaReg;
         a_.movRM(Sz::L, RDI, D(dn));
         a_.shiftRI(Sz::L, RDI, 0, 16);               // ROL 16
         a_.movMR(Sz::L, D(dn), RDI);
@@ -1739,7 +2045,7 @@ bool Emitter::emitLine4(size_t i) {
         return true;
     }
 
-    if ((op & 0xFFC0) == 0x4840) {                   // PEA <ea>
+    if (sem.operation == SemanticOp::Pea) {          // PEA <ea>
         // The address computation must come BEFORE the stack moves: Moira
         // is computeEA then push, and `PEA (A7)` / `PEA d16(A7)` are legal
         // and read the OLD A7. Same shape as BSR's push above; the only
@@ -1754,11 +2060,15 @@ bool Emitter::emitLine4(size_t i) {
             { -1, -1, 9, -1, -1, 10, -1, 9, 9, 10, -1, -1 };
         const int cycles = kPea[src.idx];
         if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+        const MemoryAccessPlan write = memory.access(
+            MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
+        if (!write.valid() || !memory.complete()) return false;
         addrOf(src, RDI, 2);
         a_.movRM(Sz::L, RAX, A(7));
         a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
         a_.movMR(Sz::L, F(kFSaveA), RAX);
-        memStore(RAX, 2, RDI);
+        memStore(RAX, 2, RDI, write);
         // A7 moves only once the store has committed: a bail-out inside
         // memStore re-runs the whole instruction through Moira, and a
         // pre-decremented A7 would make it push twice.
@@ -1768,9 +2078,8 @@ bool Emitter::emitLine4(size_t i) {
     }
 
     if (szIdx > 2) return false;
-    const uint16_t family = op & 0xFF00;
 
-    if (family == 0x4A00) {                          // TST <ea>
+    if (sem.operation == SemanticOp::Test) {         // TST <ea>
         Ea src;
         if (!decode(i, mode, reg, szIdx, 0, src)) return false;
         if (src.idx == kM_IM) return false;
@@ -1778,14 +2087,26 @@ bool Emitter::emitLine4(size_t i) {
         if (!lengthOk(i, src.ext)) return false;
         const int cycles = kEaRead[src.idx][szIdx];
         if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
-        load(src, szIdx, RDI, false);
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+        MemoryAccessPlan read;
+        if (src.memory) {
+            read = memory.access(MemoryDirection::Read,
+                                 MemoryOperand::Operand,
+                                 uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                                 uint8_t(reg));
+            if (!read.valid()) return false;
+        }
+        if (!memory.complete()) return false;
+        load(src, szIdx, RDI, read, false);
         a_.testRR(hostSz(szIdx), RDI, RDI);
         flagsLogic(hostSz(szIdx));
-        commitEa(src, szIdx);
+        commitEa(src, szIdx, read);
         return true;
     }
 
-    if (family != 0x4200 && family != 0x4600 && family != 0x4400) return false;
+    if (sem.operation != SemanticOp::Clear &&
+        sem.operation != SemanticOp::Complement &&
+        sem.operation != SemanticOp::Negate) return false;
 
     Ea dst;
     if (!decode(i, mode, reg, szIdx, 0, dst)) return false;
@@ -1794,14 +2115,35 @@ bool Emitter::emitLine4(size_t i) {
     const int cycles = eaRmwCost(dst.idx, szIdx);
     if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
 
-    if (family == 0x4200) {                          // CLR: write zero
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    MemoryAccessPlan read, write;
+    if (dst.memory) {
+        if (sem.operation != SemanticOp::Clear) {
+            read = memory.access(MemoryDirection::Read,
+                                 MemoryOperand::Destination,
+                                 uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                                 uint8_t(reg));
+            if (!read.valid()) return false;
+        }
+        write = memory.access(MemoryDirection::Write,
+                              MemoryOperand::Destination,
+                              uint8_t(sizeBytes(szIdx)), uint8_t(mode),
+                              uint8_t(reg));
+        if (!write.valid()) return false;
+        if (sem.operation != SemanticOp::Clear &&
+            !memoryRmwAccessPair(read, write))
+            return false;
+    }
+    if (!memory.complete()) return false;
+
+    if (sem.operation == SemanticOp::Clear) {        // CLR: write zero
         if (dst.idx == kM_DN) {
             a_.movMI(hostSz(szIdx), D(dst.reg), 0);
         } else {
             addrOf(dst, RAX, szIdx);
             a_.aluRR(Asm::Op::XOR, Sz::L, RDI, RDI);
-            memStore(RAX, szIdx, RDI);
-            commitEa(dst, szIdx);
+            memStore(RAX, szIdx, RDI, write);
+            commitEa(dst, szIdx, write);
         }
         a_.movMI(Sz::B, at(L_.srN), 0);
         a_.movMI(Sz::B, at(L_.srZ), 1);
@@ -1810,7 +2152,7 @@ bool Emitter::emitLine4(size_t i) {
     }
 
     // NOT ($4600) and NEG ($4400)
-    const bool isNeg = (family == 0x4400);
+    const bool isNeg = sem.operation == SemanticOp::Negate;
     if (dst.idx == kM_DN) {
         if (isNeg) {
             a_.negM(hostSz(szIdx), D(dst.reg));
@@ -1823,8 +2165,7 @@ bool Emitter::emitLine4(size_t i) {
         return true;
     }
     addrOf(dst, RAX, szIdx);
-    a_.movMR(Sz::L, F(kFSaveA), RAX);
-    memLoad(RAX, szIdx, RDI, false);
+    memRmwLoad(RAX, szIdx, RDI, read, write);
     if (isNeg) {
         a_.negR(hostSz(szIdx), RDI);
         flagsAddSub(true);
@@ -1833,9 +2174,8 @@ bool Emitter::emitLine4(size_t i) {
         a_.testRR(hostSz(szIdx), RDI, RDI);
         flagsLogic(hostSz(szIdx));
     }
-    a_.movRM(Sz::L, RAX, F(kFSaveA));
-    memStore(RAX, szIdx, RDI, false);
-    commitEa(dst, szIdx);
+    memRmwStore(szIdx, RDI, read, write);
+    commitEa(dst, szIdx, write);
     return true;
 }
 
@@ -1851,10 +2191,11 @@ bool Emitter::emitLine4(size_t i) {
 // and writes, so this is a SINGLE guest access and may use the access thunk.
 bool Emitter::emitScc(size_t i) {
     const Instr& in = ir_.instrs[i];
-    const uint16_t op = in.opcode;
-    const int cc = (op >> 8) & 0xF;
-    const int mode = (op >> 3) & 7, reg = op & 7;
-    if ((op & 0xF0F8) == 0x50F8) return false;        // TRAPcc (Unsafe anyway)
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::SetCondition) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    const int cc = sem.condition;
+    const int mode = sem.eaMode, reg = sem.eaReg;
 
     // condToAl leaves ZF SET when the condition is true, and clobbers RAX.
     // setcc NE therefore yields 1 for FALSE and 0 for true; subtracting one
@@ -1868,6 +2209,7 @@ bool Emitter::emitScc(size_t i) {
     if (mode == 0) {                                  // Scc Dn — execSccRg
         if (in.cycles != 4) return false;
         if (!lengthOk(i, 0)) return false;
+        if (!memory.complete()) return false;
         materialise(RDI);
         a_.movMR(Sz::B, D(reg), RDI);                 // byte only; D(n) upper
         return true;                                  // bits are left alone
@@ -1883,30 +2225,33 @@ bool Emitter::emitScc(size_t i) {
         { -1, -1, 10, 10, 11, 11, -1, 10, 10, -1, -1, -1 };
     const int cycles = kScc[dst.idx];
     if (cycles < 0 || cycles != int(in.cycles)) return false;
+    const MemoryAccessPlan write = memory.access(
+        MemoryDirection::Write, MemoryOperand::Destination, 1,
+        uint8_t(mode), uint8_t(reg));
+    if (!write.valid() || !memory.complete()) return false;
 
     // Value first: condToAl clobbers RAX, which is where the address goes.
     // Neither half reads the other's state, so the order is free.
     materialise(RDI);
     addrOf(dst, RAX, 0);
-    memStore(RAX, 0, RDI, /*soleAccess=*/true);
-    commitEa(dst, 0);                                 // (A7)+/-(A7) step 2
+    memStore(RAX, 0, RDI, write);
+    commitEa(dst, 0, write);                          // (A7)+/-(A7) step 2
     return true;
 }
 
 bool Emitter::emitBranch(size_t i) {
     const Instr& in = ir_.instrs[i];
     const uint16_t op = in.opcode;
-    if ((op & 0xF000) != 0x6000) return false;       // DBcc: not this pass
-    const int cc = (op >> 8) & 0xF;
-    if (cc == 1) return false;                       // BSR (never classified here)
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::Branch) return false;
+    const ControlFlowPlan& control = in.control;
+    if (!control.valid || !control.targetKnown) return false;
+    const int cc = sem.condition;
 
-    int32_t disp;
-    if (in.words == 1)      disp = int8_t(op & 0xFF);
-    else if (in.words == 2) disp = int16_t(ir_.word(in.pc + 2));
-    else return false;                               // .L form: rare, skipped
+    if (in.words > 2) return false;                  // .L form: rare, skipped
 
-    const uint32_t target = uint32_t(in.pc + 2 + uint32_t(disp));
-    const uint32_t fall = in.pc + uint32_t(in.words) * 2;
+    const uint32_t target = control.target;
+    const uint32_t fall = control.fallthrough;
     if (target & 1) return false;                    // 68040 raises before cond
 
     const bool always = (cc == 0);
@@ -1933,7 +2278,7 @@ bool Emitter::emitBranch(size_t i) {
     // word-displacement branch is the displacement itself.
     a_.movMI(Sz::L, at(L_.pc), int32_t(target));
     a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
-    commitQueue(op, ir_.word(in.pc + 2));
+    commitQueue(op, in.extensionWord(0));
     chargeCycles(takenCycles);
     a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     loopTo_ = targetIdx;
@@ -1947,7 +2292,7 @@ bool Emitter::emitBranch(size_t i) {
         a_.bind(notTaken);
         a_.movMI(Sz::L, at(L_.pc), int32_t(fall));
         a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
-        commitQueue(op, ir_.word(fall));
+        commitQueue(op, ir_.prefetchWord(fall));
         chargeCycles(fallCycles);
         a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
         leaveTo(fall);
@@ -1965,17 +2310,20 @@ bool Emitter::emitBranch(size_t i) {
 bool Emitter::emitDbcc(size_t i) {
     const Instr& in = ir_.instrs[i];
     const uint16_t op = in.opcode;
-    if (in.words != 2 || (op & 0xF0F8) != 0x50C8) return false;
-    const int cc = (op >> 8) & 0xF;
-    const int dn = op & 7;
-    const int32_t disp = int16_t(ir_.word(in.pc + 2));
-    const uint32_t target = uint32_t(in.pc + 2 + uint32_t(disp));
-    const uint32_t fall = in.pc + 4;
+    const InstructionSemantics& sem = in.semantics;
+    const ControlFlowPlan& control = in.control;
+    if (!control.valid || control.kind != ControlFlowKind::DecrementBranch ||
+        !control.targetKnown || in.words != 2 ||
+        sem.operation != SemanticOp::DecrementBranch) return false;
+    const int cc = sem.condition;
+    const int dn = sem.eaReg;
+    const uint32_t target = control.target;
+    const uint32_t fall = control.fallthrough;
     if (target & 1) return false;
     // execDbcc, 68020 column: taken 6, expired 10, condition-true 6. The
     // tracer's one measurement can only confirm the path it took.
     if (in.cycles != 6 && in.cycles != 10) return false;
-    const uint16_t ircAfter = ir_.word(in.pc + 2);
+    const uint16_t ircAfter = in.extensionWord(0);
 
     int targetIdx = -1;
     for (size_t k = 0; k < ir_.instrs.size(); k++)
@@ -2028,8 +2376,11 @@ bool Emitter::emitDbcc(size_t i) {
 bool Emitter::emitJmp(size_t i) {
     const Instr& in = ir_.instrs[i];
     const uint16_t op = in.opcode;
-    if ((op & 0xFFC0) != 0x4EC0) return false;
-    const int mode = (op >> 3) & 7, reg = op & 7;
+    const InstructionSemantics& sem = in.semantics;
+    const ControlFlowPlan& control = in.control;
+    if (sem.operation != SemanticOp::Jump || !control.valid ||
+        control.pushesReturnAddress) return false;
+    const int mode = sem.eaMode, reg = sem.eaReg;
     Ea ea;
     if (!decode(i, mode, reg, 2, 0, ea)) return false;
     if (!ea.memory) return false;
@@ -2038,10 +2389,10 @@ bool Emitter::emitJmp(size_t i) {
     static const int8_t kJmp[kM_COUNT] =
         { -1, -1, 4, -1, -1, 5, -1, 4, 4, 5, -1, -1 };
     if (kJmp[ea.idx] < 0 || kJmp[ea.idx] != int(in.cycles)) return false;
-    const uint16_t ircAfter = ir_.word(in.pc + 2);
+    const uint16_t ircAfter = ir_.prefetchWord(in.pc + 2);
 
-    const bool constant = (ea.idx == kM_AW || ea.idx == kM_AL || ea.idx == kM_DIPC);
-    if (constant && (uint32_t(ea.value) & 1)) return false;
+    const bool constant = control.targetKnown;
+    if (constant && (control.target & 1)) return false;
 
     addrOf(ea, RDI, 2);
     if (!constant) {                     // odd target: 040 address error
@@ -2053,7 +2404,7 @@ bool Emitter::emitJmp(size_t i) {
     commitQueue(op, ircAfter);
     chargeCycles(int(in.cycles));
     a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
-    if (constant) leaveTo(uint32_t(ea.value));
+    if (constant) leaveTo(control.target);
     else          leaveToDynamic();
     return true;
 }
@@ -2075,13 +2426,14 @@ bool Emitter::emitJmp(size_t i) {
 // with An written once at the end.
 bool Emitter::emitMovem(size_t i) {
     const Instr& in = ir_.instrs[i];
-    const uint16_t op = in.opcode;
-    if ((op & 0xFB80) != 0x4880) return false;
-    const bool toRegs = (op & 0x0400) != 0;          // $4C80 = M→R
-    const int szIdx = (op & 0x0040) ? 2 : 1;         // .L / .W
+    const InstructionSemantics& sem = in.semantics;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    if (sem.operation != SemanticOp::Movem) return false;
+    const bool toRegs = sem.toRegisters;
+    const int szIdx = sem.sizeIndex;
     const int size = sizeBytes(szIdx);
-    const int mode = (op >> 3) & 7, reg = op & 7;
-    const uint16_t mask = ir_.word(in.pc + 2);
+    const int mode = sem.eaMode, reg = sem.eaReg;
+    const uint16_t mask = in.extensionWord(0);
     if (mask == 0) return false;                     // legal, rare, not worth it
 
     Ea ea;
@@ -2104,6 +2456,16 @@ bool Emitter::emitMovem(size_t i) {
         { -1, -1, 8, -1, 4, 9, -1, 8, 8, -1, -1, -1 };
     const int base = toRegs ? kBaseToRegs[ea.idx] : kBaseToMem[ea.idx];
     if (base < 0 || base + 4 * n != int(in.cycles)) return false;
+    const MemoryAccessPlan span = memory.access(
+        toRegs ? MemoryDirection::Read : MemoryDirection::Write,
+        MemoryOperand::RegisterList, uint8_t(size), uint8_t(mode),
+        uint8_t(reg));
+    const MemoryOrder emittedOrder = ea.idx == kM_PD
+        ? MemoryOrder::RegisterDescending : MemoryOrder::RegisterAscending;
+    if (!span.valid() || !span.preflight || !memory.complete() ||
+        memory.proof.protocol != MemoryProofProtocol::OrderedSpan ||
+        in.memory.order != emittedOrder || span.eaCommit != EaCommit::PerElement)
+        return false;
 
     // The restart latch: armed between a faulted MOVEM and its completed
     // re-run. Cold in every normal execution, so one byte test.
@@ -2189,32 +2551,38 @@ bool Emitter::emitMovem(size_t i) {
 }
 
 bool Emitter::emitInstr(size_t i) {
-    const uint16_t op = ir_.instrs[i].opcode;
-    switch (op & 0xF000) {
-        case 0x0000:
-            if ((op & 0xF1C0) == 0x0100 || (op & 0xFFC0) == 0x0800) return emitBitOp(i);
-            return emitImmediate(i);
-        case 0x1000: return emitMove(i, 0);
-        case 0x2000: return emitMove(i, 2);
-        case 0x3000: return emitMove(i, 1);
-        case 0x4000:
-            if ((op & 0xFFC0) == 0x4EC0) return emitJmp(i);
-            // MOVEM's memory modes only — mode 000 is EXT/SWAP territory.
-            if ((op & 0xFB80) == 0x4880 && ((op >> 3) & 7) >= 2)
-                return emitMovem(i);
+    const InstructionSemantics& sem = ir_.instrs[i].semantics;
+    switch (sem.operation) {
+        case SemanticOp::ImmediateAlu: return emitImmediate(i);
+        case SemanticOp::Bit: return emitBitOp(i);
+        case SemanticOp::Move: return emitMove(i, sem.sizeIndex);
+        case SemanticOp::Jump: return emitJmp(i);
+        case SemanticOp::Movem: return emitMovem(i);
+        case SemanticOp::Nop:
+        case SemanticOp::Link:
+        case SemanticOp::Unlink:
+        case SemanticOp::Lea:
+        case SemanticOp::Extend:
+        case SemanticOp::Swap:
+        case SemanticOp::Pea:
+        case SemanticOp::Test:
+        case SemanticOp::Clear:
+        case SemanticOp::Negate:
+        case SemanticOp::Complement:
+        case SemanticOp::JumpSubroutine:
+        case SemanticOp::ReturnSubroutine:
             return emitLine4(i);
-        case 0x5000:
-            if ((op & 0xF0F8) == 0x50C8) return emitDbcc(i);
-            if ((op & 0x00C0) == 0x00C0) return emitScc(i);
-            return emitAddSubQ(i);
-        case 0x6000:
-            return (op & 0x0F00) == 0x0100 ? emitSubroutine(i) : emitBranch(i);
-        case 0x7000: return emitMoveq(i);
-        case 0x8000: case 0x9000: case 0xB000: case 0xC000: case 0xD000:
-            return aluDirection(op) == 0 ? emitAluEaRg(i)
-                 : aluDirection(op) == 1 ? emitAluRgEa(i) : false;
-        default:
-            return false;
+        case SemanticOp::DecrementBranch: return emitDbcc(i);
+        case SemanticOp::SetCondition: return emitScc(i);
+        case SemanticOp::AddSubQuick: return emitAddSubQ(i);
+        case SemanticOp::BranchSubroutine: return emitSubroutine(i);
+        case SemanticOp::Branch: return emitBranch(i);
+        case SemanticOp::MoveQuick: return emitMoveq(i);
+        case SemanticOp::AluEaToReg:
+        case SemanticOp::AddressAlu:
+            return emitAluEaRg(i);
+        case SemanticOp::AluRegToEa: return emitAluRgEa(i);
+        default: return false;
     }
 }
 
@@ -2237,10 +2605,9 @@ bool Emitter::emit() {
     int loopTarget = -1;
     if (n && ir_.instrs[n - 1].kind == Kind::Branch) {
         const Instr& br = ir_.instrs[n - 1];
-        if ((br.opcode & 0xF000) == 0x6000 && br.words <= 2) {
-            const int32_t d = br.words == 1 ? int8_t(br.opcode & 0xFF)
-                                            : int16_t(ir_.word(br.pc + 2));
-            const uint32_t t = uint32_t(br.pc + 2 + uint32_t(d));
+        if (br.semantics.operation == SemanticOp::Branch &&
+            br.control.valid && br.control.targetKnown && br.words <= 2) {
+            const uint32_t t = br.control.target;
             for (size_t k = 0; k < n; k++)
                 if (ir_.instrs[k].pc == t) { loopTarget = int(k); break; }
         }
@@ -2320,7 +2687,8 @@ bool Emitter::emit() {
         // exits, and every exit commits them on the way out. The queue does
         // stay — see emitBoundary.
         commitQueue(ir_.instrs[i].opcode,
-                    ir_.word(ir_.instrs[i].pc + uint32_t(ir_.instrs[i].words) * 2));
+                    ir_.prefetchWord(ir_.instrs[i].pc +
+                                     uint32_t(ir_.instrs[i].words) * 2));
         chargeCycles(ir_.instrs[i].cycles);
         a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     }
@@ -2512,60 +2880,67 @@ public:
 
 private:
     CodeBuffer buf_;
-    int diagLeft_ = verboseBlocks();  // POM68K_JIT_VERBOSE block dump budget
+    int diagLeft_ = -1;  // resolved POM68K_JIT_VERBOSE block dump budget
     Layout layout_{};
     bool haveLayout_ = false;
     std::vector<uint8_t> scratch_;
 };
 
-// A cheap, encoding-only answer used by the opcode census and by the
-// minimum-coverage policy in compile(). It over-reports slightly (it cannot
-// know whether the cycle cross-check will agree), which is the right
-// direction: the census is a target list, not a guarantee.
+// A cheap host-admission answer used by the opcode census and by the
+// minimum-coverage policy in compile(). Instruction meaning comes solely
+// from the shared IR decoder; only x64 EA/cost mechanics remain here. It may
+// still over-report because it cannot know whether the traced cycle count
+// will agree, which is the right direction for a target-list census.
 bool X64Backend::canEmit(uint16_t op) const {
-    const int mode = (op >> 3) & 7, reg = op & 7;
+    const InstructionSemantics sem = describeInstruction(op);
+    const int mode = sem.eaMode, reg = sem.eaReg;
     const bool eaOk = eaIndex(mode, reg) >= 0;
-    switch (op & 0xF000) {
-        case 0x0000:
-            if ((op & 0x0F00) == 0x0E00) return false;                 // MOVES/CAS
-            if ((op & 0xF1C0) == 0x0100) return eaOk && mode != 1;      // BTST Dn (not MOVEP)
-            if ((op & 0xFFC0) == 0x0800) return eaOk;                   // BTST #imm
-            if ((op & 0x00FF) == 0x003C || (op & 0x00FF) == 0x007C) return false;
-            return eaOk && ((op >> 6) & 3) <= 2 && (((op >> 9) & 7) != 4);
-        case 0x1000: case 0x2000: case 0x3000: {
-            const int dm = (op >> 6) & 7, dr = (op >> 9) & 7;
+    switch (sem.operation) {
+        case SemanticOp::ImmediateAlu:
+            return eaOk;
+        case SemanticOp::Bit:
+            return sem.action == 0 && eaOk && (!sem.dynamic || mode != 1);
+        case SemanticOp::Move: {
+            const int dm = sem.destinationMode, dr = sem.destinationReg;
             return eaOk && eaIndex(dm, dr) >= 0 && kMoveDst[eaIndex(dm, dr)] >= 0;
         }
-        case 0x4000:
-            if ((op & 0xFFF8) == 0x4E50 || (op & 0xFFF8) == 0x4E58) return true;
-            if (op == 0x4E71 || op == 0x4E75) return true;           // NOP / RTS
-            if ((op & 0xFF80) == 0x4E80) return eaOk;              // JSR / JMP <ea>
-            if ((op & 0xF1C0) == 0x41C0) return eaOk;              // LEA
-            if ((op & 0xFFB8) == 0x4880) return true;              // EXT
-            if ((op & 0xFFF8) == 0x4840) return true;              // SWAP
-            if ((op & 0xFFC0) == 0x4840) return eaOk;              // PEA
-            if ((op & 0xFB80) == 0x4880 && mode >= 2) return true; // MOVEM
-            if ((op & 0xFF00) == 0x4A00 || (op & 0xFF00) == 0x4200 ||
-                (op & 0xFF00) == 0x4400 || (op & 0xFF00) == 0x4600)
-                return eaOk && ((op >> 6) & 3) <= 2;
-            return false;
-        case 0x5000:
-            if ((op & 0xF0F8) == 0x50C8) return true;               // DBcc
-            if ((op & 0xF0F8) == 0x50F8) return false;              // TRAPcc
-            if ((op & 0x00C0) == 0x00C0)                            // Scc
-                return mode == 0 || (eaOk && mode != 1 &&
-                                     eaIndex(mode, reg) != kM_DIPC &&
-                                     eaIndex(mode, reg) != kM_IM);
-            return eaOk;                                            // ADDQ/SUBQ
-        case 0x6000: return true;                                   // Bcc/BRA/BSR
-        case 0x7000: return (op & 0x0100) == 0;                     // MOVEQ
-        case 0x8000: case 0x9000: case 0xB000: case 0xC000: case 0xD000:
-            return eaOk && aluDirection(op) >= 0;
+        case SemanticOp::Nop:
+        case SemanticOp::Link:
+        case SemanticOp::Unlink:
+        case SemanticOp::Extend:
+        case SemanticOp::Swap:
+        case SemanticOp::ReturnSubroutine:
+        case SemanticOp::DecrementBranch:
+        case SemanticOp::Branch:
+        case SemanticOp::BranchSubroutine:
+        case SemanticOp::MoveQuick:
+            return true;
+        case SemanticOp::JumpSubroutine:
+        case SemanticOp::Jump:
+        case SemanticOp::Lea:
+        case SemanticOp::Pea:
+            return eaOk;
+        case SemanticOp::Movem:
+            return true;
+        case SemanticOp::Test:
+        case SemanticOp::Clear:
+        case SemanticOp::Negate:
+        case SemanticOp::Complement:
+        case SemanticOp::AddSubQuick:
+        case SemanticOp::AluEaToReg:
+        case SemanticOp::AluRegToEa:
+        case SemanticOp::AddressAlu:
+            return eaOk;
+        case SemanticOp::SetCondition:
+            return mode == 0 || (eaOk && mode != 1 &&
+                                 eaIndex(mode, reg) != kM_DIPC &&
+                                 eaIndex(mode, reg) != kM_IM);
         default: return false;
     }
 }
 
 Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
+    if (diagLeft_ < 0) diagLeft_ = verboseBlocks();
     if (!ctx.cpu) return nullptr;
     // Generated code models POLL_IPL as a plain assignment. If the deferred
     // IPL-recognition feature is ever armed, this backend has nothing to say.

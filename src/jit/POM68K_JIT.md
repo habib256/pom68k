@@ -146,13 +146,15 @@ Each one names the gate that would catch it breaking.
 
 | # | invariant | gate |
 |---|---|---|
-| 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_lockstep_test` (five registrations, six on AArch64 — § 5), plus its 68000 and 68030 twins (§ 3.2) |
-| 2 | **Exits happen at instruction boundaries only.** No partial guest state — registers, CCR, PC, clock — ever survives a block exit. Everything unusual (interrupt, trace, STOP, breakpoint, MMU fault, an opcode outside the classifier) is handed back to `Moira::execute()` at a clean boundary. | `jit_lockstep_x64_fine_test` (one cycle per comparison); `jit_backend_test` for the classifier rules |
+| 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_asset_free_lockstep_test` is the daily native floor; `jit_lockstep_test` (five registrations, six on AArch64 — § 5), plus its 68000 and 68030 twins (§ 3.2), widens it to real machines |
+| 2 | **Exits happen at instruction boundaries only.** No partial guest state — registers, CCR, PC, clock — ever survives a block exit. Everything unusual (interrupt, trace, STOP, breakpoint, MMU fault, an opcode outside the classifier) is handed back to `Moira::execute()` at a clean boundary. | `jit_asset_free_lockstep_test` compares 768 generated boundaries plus restart/last-write frames; `jit_lockstep_x64_fine_test` widens that to a machine one cycle at a time |
 | 3 | **The fastest proved conformant engine is the default, per guest family.** Today that is `jit/auto` for 68040 and the interpreter elsewhere. `POM68K_CPU_ENGINE=interp` always restores the oracle. | `jit_backend_test` pins the policy and both overrides; `interp_{q605,centris650,q630,q700}_boot_etalon` keep one interpreter reference per 68040 platform |
 | 4 | **Peripheral time stays owed.** Blocks never run past the caller's cycle target (`Context::clockTarget`) and generated cycles go through the machine's virtual `sync()` (`pomJitSync`), so VIA, ASC, SWIM and the Egret/Cuda MCU keep their pacing. | `jit_mactv_boot_etalon` — registered for exactly this reason: Tinker Bell's Cuda transport deadlocks on a 2 % shift in MCU pacing long before a Finder signature would fail |
 | 5 | **Nothing cached survives a change of the address map.** Overlay flips (`CodeGuard::invalidate()`), MMU/ATC changes (`blocksGen_` vs `Moira::pomJitMmuGen`) and cache-control writes (`didChangeCACR` → `flushAll()`) drop the block cache and the code window. | `jit_q605_boot_etalon` (the boot overlay flips in the first milliseconds); `jit_lockstep_test` |
 | 6 | **No host knowledge above `jit::Backend`.** An architecture `#ifdef` outside `src/jit/backends/` or `JitCodeBuffer.cpp` is a design error. | `jit_backend_test` (its header states invariants 6 and 7 as its purpose) |
 | 7 | **Every host POM68K builds for can run the JIT** — on `threaded` at worst. | `jit_backend_test` |
+| 8 | **A memory access has one host-neutral contract.** Count, order, EA commit, restart/LASTWRITE phase and 040 cache eligibility live in `Instr::memory`; A64 and x64 derive the same `MemoryProofPlan`. An undescribed form is an interpreter fallback, never an opcode-local guess. | `jit_backend_test` checks the decoder/planner; `jit_asset_free_lockstep_test` checks RMW/postincrement/stack/fault boundaries; `jit_copyback_{write,bsr,pair}_040_test` executes the cache protocols |
+| 9 | **An emitted opcode has one host-neutral meaning.** Family, ALU operation, width, direction, operands, condition and sub-operation live in `Instr::semantics`. A64/x64 select host instructions and admissible EAs; they do not own ISA dispatch decoders. | `jit_backend_test` checks representative overlaps and native coverage; `docs_test` rejects a backend-local line dispatch or ALU decoder |
 
 ---
 
@@ -324,6 +326,22 @@ instrument, same rule (identical fingerprints across engines), one budget:
 |---|---|---|---|
 | Moira interpreter | 50.27 s | ×1.98 | — |
 | JIT, `threaded` | 41.63 s | ×2.40 | ×1.21 |
+
+The reports use the same JSON schema as CI, so the reviewed x86-64 floors
+above can be replayed without scraping prose:
+
+```bash
+POM68K_PERF_HOST_PROFILE=reference_x86_64 \
+  POM68K_JIT_METRICS_FILE=q605.json ./build/jit_bench
+POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=threaded \
+  POM68K_PERF_HOST_PROFILE=reference_x86_64 \
+  POM68K_JIT_METRICS_FILE=lcii.json ./build/jit_bench_lcii
+python3 tools/check_jit_performance.py --require q605_jit \
+  --require lcii_threaded q605.json lcii.json
+```
+
+Both fingerprints must still match their interpreter legs; the performance
+checker judges the fixed workload and host row, not functional equivalence.
 
 The one end-to-end figure the ranking table at the top of this file also
 quotes, kept because it is the only one taken at the scale a user sees:
@@ -572,9 +590,37 @@ instead.
 
 ## 5. The working loop
 
-Do not iterate against a bare `ctest` — 183 gates, hours, and `-j` is unsafe
+Do not iterate against a bare `ctest` — 218 gates on the A64 development host,
+hours, and `-j` is unsafe
 because the boot etalons are contention-sensitive. Do not iterate against a
 bare `make` either: tree-wide LTO relinks ~90 binaries after any core change.
+
+The first answer after a JIT edit is the native, asset-free tier. It builds
+five small binaries, runs 768 deterministic interpreter/native checkpoints
+plus restart/last-write fault frames, executes generated cache protocols,
+checks the IR/profile contracts and runs the documentation/configuration gates.
+CI sets `POM68K_JIT_REQUIRE_NATIVE=1`, so A64/x64 selection or W^X failure is
+red rather than a soft skip. Each gate has a 45-second ceiling; bounded
+fallback/native-share checks and a fixed-cycle native/interpreter ratio are
+the deterministic budgets. Their reviewed numbers live in
+`performance_budgets.tsv`; CMake refuses a missing or malformed row and
+injects the values selected by workload, guest family and host profile
+into the gates. The same asset-free binary emits
+`pom68k.jit.metrics.v1`; both CI hosts validate it with
+`tools/check_jit_performance.py` and archive the JSON artifact. This daily
+floor is still synthetic. Representative policy is separate: the fixed-cycle
+`q605_jit`/68040 and `lcii_threaded`/68030 x86-64 baselines are versioned from
+the measurements in § 3.4. The Apple M4 (`Mac16,10`) rows come from repeated
+immutable-clone runs on 2026-08-17: Q605 ×9.50–9.67 and LC II `threaded`
+×4.96–5.02. The 68000/68020 workloads intentionally have no invented
+threshold yet.
+
+```bash
+cmake --build build -j4 --target jitfast
+POM68K_JIT_REQUIRE_NATIVE=1 ctest --test-dir build -L jit-fast --output-on-failure
+```
+
+Then run the machine-level lockstep:
 
 ```bash
 make -j4 jitdev && ctest -L smoke     # ~2.5 min end to end
@@ -624,16 +670,17 @@ Widen only when the smoke tier is green:
 
 | command | gates | when |
 |---|---|---|
-| `ctest -L unit` | 92 | anything touching non-machine code |
-| `ctest -L jit` | 29 | before proposing a JIT change |
-| `ctest -L m040` | 42 | the 68040 family — the JIT's blast radius |
+| `ctest -L jit-fast` | 7 | native A64/x64 lockstep/IR/protocol + docs/config, asset-free |
+| `ctest -L unit` | 106 | legacy non-etalon tier (not synonymous with asset-free) |
+| `ctest -L jit` | 37 | before proposing a JIT change (`jit-fast` matches the regex too) |
+| `ctest -L m040` | 51 | the 68040 family — the JIT's blast radius |
 | `ctest -L etalon-core` | 12 | one profile per platform, ~32 min — the pre-commit tier |
-| `ctest` | 183 | the release gate, once |
+| `ctest` | 218 | the release gate, once |
 
-(Counts from `ctest -N` on 2026-08-12, on an **AArch64** host with
+(Counts from `ctest -N` on 2026-08-17, on an **AArch64** host with
 `POM68K_JIT_BACKENDS=auto`. Two gates are host-conditional
 (`jit_lockstep_a64_coarse_test`, `jit_lockstep_030_a64_experimental_test`),
-so an x86-64 host configures 181 / 90 unit / 27 jit — `m040` and `etalon`
+so an x86-64 host configures 216 / 104 unit / 35 jit — `m040` and `etalon`
 are host-independent. `CMakeLists.txt`'s own inline comment near the label
 block carries older numbers. All of them drift every time a gate lands —
 re-derive rather than trust either.)
@@ -646,18 +693,25 @@ OVERWRITES any `LABELS` a registration set inline.
 
 ## 6. Environment surface
 
-Everything in `JitConfig.h` unless noted.
+Everything in `JitConfig.h` unless noted. `resolveConfig()` snapshots the
+whole surface once when an `Engine` is constructed; the selected backend then
+resolves its two dependent defaults (blocks/hot). `Context::config` publishes
+that immutable policy during compilation, so neither A64 nor x64 reads a live
+process environment. Later environment changes affect only future engines.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `POM68K_CPU_ENGINE` | 68040 `jit`, others `interp` | explicit `interp` or `jit` overrides the per-family default (the GUI menu still switches live) |
 | `POM68K_JIT_BACKEND` | `auto` | `auto` \| `threaded` \| `x64` \| `a64` |
+| `POM68K_JIT_PROFILE` | `production` | coherent bundle: `production` = current fast conformant defaults; `conservative` = whole-instruction replay, no links/native 040-line shortcuts, paranoid revalidation; `instrumented` = production access paths plus paranoid validation, histograms and 040 native-hit counters, with links off. A leaf variable below always overrides the profile |
+| `POM68K_PERF_HOST_PROFILE` | host architecture | stable performance-policy identity written to metrics; use a named measured host such as `reference_x86_64` or `apple_m4` for wall-clock baselines, never one architecture-wide threshold |
+| `POM68K_JIT_METRICS_FILE` | unset | write the flat `pom68k.jit.metrics.v1` JSON artifact used by CI and fixed-cycle benches |
 | `POM68K_JIT_UNSAFE_BACKEND` | `0` | force an explicitly named backend onto a guest family it does not declare (`JitBackend.cpp`) — for developing that family's support, never for use |
 | `POM68K_JIT_FETCH` | `1` | the instruction-fetch code window (J1a) |
 | `POM68K_JIT_BLOCKS` | *backend* | block discovery and replay (J1b). The default is the ACTIVE BACKEND's answer, not a constant (`blockCacheEnabled(dflt)`): OFF for `threaded`, which measured slower with blocks than with the window alone, ON for a code generator, which has nothing to run without them |
 | `POM68K_JIT_BLOCK_MAX` | `64` | straight-line instruction ceiling per block, itself capped by `caps().maxBlockInstrs` |
 | `POM68K_JIT_HOT` | native `1`, threaded `512` | visits before a recorded block is translated |
-| `POM68K_JIT_LINKS` | `1` | direct block-to-block linking for native backends; `0` is the attribution/debug path |
+| `POM68K_JIT_LINKS` | profile | direct block-to-block linking for native backends; on only in `production` unless explicitly overridden |
 | `POM68K_JIT_A64_PACING` | `1` | AArch64 inline peripheral deadline/batch test; `0` calls `sync(cycles)` after every emitted instruction for attribution |
 | `POM68K_Q605_EVENT_SCC` | `1` | Q605 carries serialized SCC time debt to its exact event/MMIO boundary; `0` restores per-`tick` stepping for A/B attribution |
 | `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
@@ -665,11 +719,14 @@ Everything in `JitConfig.h` unless noted.
 | `POM68K_JIT_ICACHE_EMIT` | `1` | ATTRIBUTION knob for the emitted 68030 i-cache charge (`docs/JIT_BRINGUP.md` § B). Off, an 030 block charges the instruction cost alone, so a residual divergence provably belongs to something else. Only a bring-up measurement should turn it off |
 | `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
 | `POM68K_DATA_WINDOW` | `0` | the INTERPRETER's data window (§ 8) — opt-in since the ATC-exactness capping made it a net loss (`JitEngine.cpp:76-90`) |
-| `POM68K_JIT_PARANOID` | `0` | re-validate the translation at every arm — for differential testing (`JitEngine.cpp`) |
+| `POM68K_JIT_PARANOID` | profile | re-validate the translation at every arm; off in `production`, on in `conservative`/`instrumented` |
 | `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr — **plus a retired / window-covered / arms / failed line and a dtlb-refusals-by-reason line at teardown**, which is how you tell "the engine is on" from "the engine is doing something" (§ 3.1) |
 | `POM68K_JIT_VERBOSE_BLOCKS` | `40` | how many compiled blocks the dump prints under `POM68K_JIT_VERBOSE`. The dump is the only place a block's MEASURED per-instruction cycles are visible, and 40 only ever reaches ROM reset code — raise it to diagnose a refusal deep in a boot |
-| `POM68K_JIT_ACCESS_THUNK` | `2` | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores |
-| `POM68K_JIT_HISTO` | `0` | dynamic opcode census, dumped at exit, with the backend's `canEmit()` coverage — plus the static/runtime fallback census and its per-reason split (`JitEngine.cpp dumpHisto()`) |
+| `POM68K_JIT_ACCESS_THUNK` | profile | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores; `production`/`instrumented` use 2, `conservative` uses 0 |
+| `POM68K_JIT_040_LINE_READ` / `_WRITE` / `_PAIR` | profile | native 040 D-cache line proofs; on in `production`/`instrumented`, off in `conservative`. `_PAIR` admits only the two IR contracts with a dedicated atomic-pair gate |
+| `POM68K_JIT_040_LINE_STATS` | profile | native read/write proof counters; on in `instrumented`, off otherwise |
+| `POM68K_JIT_HISTO` | profile | dynamic opcode/fallback census; on in `instrumented`, off otherwise (`JitEngine.cpp dumpHisto()`) |
+| `POM68K_JIT_REQUIRE_NATIVE` | unset | gate-only: make the asset-free native protocol tier fail instead of soft-skipping when no A64/x64 generator is usable |
 | `POM68K_JIT_WINDOW_KILL` | `0` | **measurement instrument, not tuning**: kill the code window every N retired instructions on purpose, so the price of ONE window-lost exit is the slope of wall time against exit count (§ 3.6). A kill is architecturally invisible, so a bench fingerprint must not move with N — that is what makes the fit a measurement rather than a story. Slows the engine down by design |
 | `POM68K_BENCH_FRAMES` | q605 `3000`, lcii `6000` | `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` — frames of 416 667 (Q605) or 640×407 = 260 480 (LC II) **machine** cycles |
 | `POM68K_BENCH_SLICES` | `0` = CPU alone | `jit_bench_lcii` only: N ≥ 1 runs the GUI's own quantum, N slices per frame with a raster catch-up at each boundary (§ 3.6) |
@@ -704,6 +761,61 @@ and `jit_store_guard_a64_test` (mask-null RAM goes direct; a true overlap
 with translated code is seen by the memory map and evicts the block). Both
 soft-skip away from AArch64. `docs/JIT_BRINGUP.md` § C is where they come
 from.
+
+### 6.1 The IR memory protocol
+
+`Instr::memory` is filled by `describeMemory()` when a traced instruction is
+committed to a block. Ordinary instructions carry zero, one or two explicit
+accesses; MOVEM carries a variable ordered span. Each access records its
+direction and operand role, width, encoded EA, the model-correct EA commit
+point (`(An)+` is before the access on 030 and after on 040), fault phase
+(`RestartInstruction`, `LastWrite`, `RestartableLastWrite`) and cache-line
+eligibility.
+
+`memoryProofPlan()` is a pure lowering shared by the backends. A sole read or
+write may use its exact thunk and one published 040 line. A memory-to-memory
+instruction preflights both mappings before access zero; only the separately
+proved `$2F38`/`$21DF` contracts lower to `AtomicCachePair`. RMW and MOVEM
+retain whole-instruction/span proofs. This makes a widening reviewable in one
+place: change the contract or planner, then make the pure IR assertions and
+the generated A64/x64 gate agree.
+
+Emission consumes that lowering through `InstructionMemoryPlan`. Each
+mechanically decoded EA must mint a `MemoryAccessPlan` matching direction,
+operand role, width and encoded mode/register; a slot can be consumed once,
+and `complete()` rejects an omitted or invented access. The ordinary A64/x64
+load/store primitives accept this token rather than a `soleAccess` boolean.
+Preflight, exact-thunk, cache and EA-commit policy therefore come from the IR;
+the backends retain address formation and instruction selection, but no
+second semantic memory decoder. RMW uses one writable preflight before its
+read, and `CLR <memory>` is deliberately a single write rather than a
+backend-invented read/write pair.
+
+### 6.2 The IR instruction-semantics protocol
+
+`Instr::semantics` is filled beside `Instr::memory` by the pure
+`describeInstruction()` decoder. It names the operation family, ALU operation,
+byte/word/long width, low EA, MOVE destination EA, register field, condition,
+bit/shift/bitfield action and immediate-vs-register form. Encoding overlaps
+such as MOVEP/dynamic-bit, CMP/EOR direction and MUL/DIV/address-ALU are
+resolved there once; an unknown or unsafe form stays with Moira.
+
+Both native backends dispatch an `Instr` by `SemanticOp` and consume the
+shared `AluOperation`. Their `canEmit(uint16_t)` census entry point calls the
+same pure decoder before applying only host-specific EA admissibility.
+
+`Instr` also owns up to ten extension words and two concrete
+`DecodedEffectiveAddress` plans. `describeEffectiveAddresses()` resolves
+immediate, displacement, absolute, PC-relative, brief-index and complete
+68020 full-index formats after tracing. Full plans name base/index
+suppression, base and outer displacement sizes/values, and direct,
+preindexed or postindexed memory indirection. `ControlFlowPlan` separately
+owns branch/call/jump target, fallthrough and pushed return address. Both
+backends consume these plans; neither calls `branchDisplacement()` nor parses
+an extension. Cycle tables, register choice and host instruction selection
+remain backend work. Full-index lowering is not thereby declared native:
+both generators reject `fullFormat` and replay the untouched instruction
+until that lowering has its own proof.
 
 ---
 
@@ -909,6 +1021,73 @@ same thing. A refused address then costs a tag compare and a null test
 before taking the access thunk. Privilege rides in tag bit 31, so a
 supervisor-only page filled in supervisor mode can never be hit by user code
 and nothing needs flushing on an `RTE`.
+
+### The 68040 D-cache path is physical lines, not host RAM (J4)
+
+With `POM68K_040_DCACHE=1`, every ordinary DTLB fill is a tagged-null
+refusal: a copyback line can contain bytes newer than backing RAM, so even a
+perfect logical-to-physical translation does not authorize a host-RAM load.
+Since 2026-08-16 a successful exact access can instead publish the resident
+`Cache040::Line*` in `pomJitCache040R` (256 direct-mapped, 32-byte entries).
+A generated **sole-access read** uses it only after checking all five parts
+of the proof: logical line plus privilege, current DATA-ATC generation,
+`line.valid`, saved versus current physical tag, and no crossing of the
+16-byte line. The bytes in `Line::data` are already big-endian.
+
+Invalidation is split along the state that changed. DATA-ATC eviction and
+map/control changes bump `pomJitCache040Gen` in O(1), because clearing the
+256 logical lines of every evicted 4 KB page would make ATC churn the new hot
+path. Physical replacement changes the live tag; CINV/CPUSH and invalidating
+snoops clear `valid`; write-sink snoops and CPU writes update the same stable
+line object. A non-zero configured hit charge suppresses publication because
+the generated path contains no `sync()` call.
+
+Sole-access copyback stores use a distinct `pomJitCache040W` table: only an
+exact write that proved write permission, descriptor M state and CM=copyback
+may publish it, so a read entry or a write-through alias can never authorize a
+native store. A generated hit writes the big-endian bytes first and then ORs
+the first/last covered dirty-longword bits. A miss still reaches the exact
+instruction/access path; `jit_copyback_write_040_test` compares all 60 bytes
+of the resulting format-$7 frame for both the last-write (next PC, final CCR)
+and restart (instruction PC, restored CCR/EA) cases. The optimization is
+independently disabled with `POM68K_JIT_040_LINE_WRITE=0`; the separately
+registered control runs that setting and proves it reaches the exact cache
+path rather than backing RAM.
+
+The first host-time pair put ordinary MOVE write hits below noise despite
+4,402,477 removed fallbacks (49.87 -> 49.81 s average). The cache-on census
+then identified a better bounded consumer: BSR's return-address push, already
+using the generic store seam on x64 and now using it on A64 too. It removes
+another 3,933,940 fallbacks. `jit_copyback_bsr_040_test` pins the resident
+stack-line bytes/dirty bit/stale backing RAM and redirects an already compiled
+user-stack push to /BERR, where its complete format-$7 frame must match the
+interpreter after the supervisor-stack switch. Two order-reversed 5 G-cycle
+pairs measure the combined write path at **49.93 -> 49.49 s average**
+(-0.88 %), with the same fingerprint, PC and SCSI count in every run.
+
+The next bounded consumer is a true two-access instruction, not another
+sole store. The hot longword pair `MOVE.L abs.W,-(A7)` (`$2F38`) and
+`MOVE.L (A7)+,abs.W` (`$21DF`) first probes the source R entry and destination
+W entry without touching architectural state or counters. Only two hits
+publish both counters and perform the transfer; either miss replays the whole
+untouched instruction. `POM68K_JIT_040_LINE_PAIR=0` is its independent
+attribution control. `jit_copyback_pair_040_test` pins bytes, dirty bit,
+flags/EA and a second-proof /BERR frame; its separately registered OFF twin
+must produce the same result with no native pair hits. On the fixed Q605 run,
+the pair converts **7,523,969** more fallbacks and averages **46.92 ->
+46.63 s** over two order-reversed pairs (-0.62 %), with identical fingerprint,
+PC and SCSI progress.
+
+The permanent native gates run this mode, not just the cacheless DTLB:
+`jit_lockstep_a64_coarse_test` and `jit_lockstep_x64_test` arm the cache and
+`POM68K_JIT_040_LINE_STATS=1`, which makes the tests fail if an enabled native
+path has no exercised hit. The A64 read run observed 18,576,390 hits over 131,823,105 JIT
+instructions and stayed CPU/RAM/device-identical to the interpreter.
+`POM68K_JIT_040_LINE_READ=0` retains the exact-thunk attribution control.
+With native writes, BSR and the dual-line MOVE path enabled, the same
+five-million-checkpoint gate observed **21,303,835 reads plus 5,896,026
+copyback writes** over 131,823,105 JIT instructions, again with
+CPU/RAM/device state identical.
 
 ### Invalidation: evict, do not flush
 

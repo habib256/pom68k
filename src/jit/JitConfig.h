@@ -8,14 +8,21 @@
 // tested reference — see src/jit/POM68K_JIT.md.
 
 #pragma once
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 namespace jit {
 
 // Which execution engine drives a CPU wrapper. `Interp` calls
 // Moira::executeUntil() exactly like before this subsystem existed.
 enum class EngineKind { Interp, Jit };
+
+// Stabilised operating profiles. Fine-grained variables remain supported as
+// explicit overrides for attribution, but ordinary runs should select one
+// coherent policy instead of assembling a dozen booleans by hand.
+enum class OperatingProfile { Production, Conservative, Instrumented };
 
 namespace detail {
 
@@ -39,10 +46,159 @@ inline int envInt(const char* key, int dflt, int lo, int hi) {
 
 }  // namespace detail
 
+// One immutable policy snapshot per Engine. Environment variables are an
+// input format, not live process-wide configuration: changing one after an
+// Engine was constructed must not alter a later block compiled by that
+// Engine. `applyBackendDefaults` resolves the only two defaults that depend
+// on the selected backend, before the snapshot is published through Context.
+struct ResolvedConfig {
+    OperatingProfile profile = OperatingProfile::Production;
+    std::string backend = "auto";
+    EngineKind engine = EngineKind::Interp;
+    bool engineExplicit = false;
+    bool unsafeBackend = false;
+
+    bool fetchWindow = true;
+    bool blockCache = false;
+    bool blockCacheExplicit = false;
+    int maxBlockInstrs = 64;
+    int hot = 512;
+    bool hotExplicit = false;
+    int accessThunk = 2;
+    bool cache040LineReads = true;
+    bool cache040LineWrites = true;
+    bool cache040LinePairs = true;
+    bool cache040LineReadStats = false;
+    bool links = true;
+    bool paranoid = false;
+    bool histogram = false;
+    int maxBlocks = 65536;
+    int windowKill = 0;
+    bool icacheEmit = true;
+    bool verbose = false;
+    int verboseBlocks = 40;
+    bool dataWindow = false;
+
+    // A64 bring-up controls are captured here too: a backend must never
+    // retain a private getenv-based policy surface.
+    bool a64Pacing = true;
+    uint16_t a64StoreGuardOpcode = 0xB592;
+
+    void applyBackendDefaults(bool nativeCode) {
+        if (!blockCacheExplicit) blockCache = nativeCode;
+        if (!hotExplicit) hot = nativeCode ? 1 : 512;
+    }
+
+    EngineKind engineForGuest(bool jitByDefault) const {
+        return engineExplicit ? engine :
+            (jitByDefault ? EngineKind::Jit : EngineKind::Interp);
+    }
+
+    const char* profileName() const {
+        switch (profile) {
+            case OperatingProfile::Conservative: return "conservative";
+            case OperatingProfile::Instrumented: return "instrumented";
+            default: return "production";
+        }
+    }
+};
+
+inline ResolvedConfig resolveConfig() {
+    ResolvedConfig c;
+    if (const char* v = detail::env("POM68K_JIT_PROFILE")) {
+        if (!std::strcmp(v, "conservative") || !std::strcmp(v, "safe") ||
+            !std::strcmp(v, "proof"))
+            c.profile = OperatingProfile::Conservative;
+        else if (!std::strcmp(v, "instrumented") || !std::strcmp(v, "census"))
+            c.profile = OperatingProfile::Instrumented;
+    }
+    if (const char* v = detail::env("POM68K_JIT_BACKEND")) c.backend = v;
+    if (const char* v = detail::env("POM68K_CPU_ENGINE")) {
+        c.engineExplicit = true;
+        c.engine = (!std::strncmp(v, "jit", 3) || v[0] == '1') ?
+            EngineKind::Jit : EngineKind::Interp;
+    }
+    c.unsafeBackend = detail::envBool("POM68K_JIT_UNSAFE_BACKEND", false);
+    c.fetchWindow = detail::envBool("POM68K_JIT_FETCH", true);
+    c.blockCacheExplicit = detail::env("POM68K_JIT_BLOCKS") != nullptr;
+    c.blockCache = detail::envBool("POM68K_JIT_BLOCKS", false);
+    c.maxBlockInstrs = detail::envInt("POM68K_JIT_BLOCK_MAX", 64, 1, 256);
+    c.hotExplicit = detail::env("POM68K_JIT_HOT") != nullptr;
+    c.hot = detail::envInt("POM68K_JIT_HOT", 512, 1, 1 << 20);
+
+    const bool conservative = c.profile == OperatingProfile::Conservative;
+    const bool instrumented = c.profile == OperatingProfile::Instrumented;
+    const bool production = c.profile == OperatingProfile::Production;
+    c.accessThunk = detail::envInt("POM68K_JIT_ACCESS_THUNK",
+                                   conservative ? 0 : 2, 0, 2);
+    c.cache040LineReads = detail::envBool("POM68K_JIT_040_LINE_READ", !conservative);
+    c.cache040LineWrites = detail::envBool("POM68K_JIT_040_LINE_WRITE", !conservative);
+    c.cache040LinePairs = detail::envBool("POM68K_JIT_040_LINE_PAIR", !conservative);
+    c.cache040LineReadStats = detail::envBool("POM68K_JIT_040_LINE_STATS", instrumented);
+    c.links = detail::envBool("POM68K_JIT_LINKS", production);
+    c.paranoid = detail::envBool("POM68K_JIT_PARANOID", !production);
+    c.histogram = detail::envBool("POM68K_JIT_HISTO", instrumented);
+    c.maxBlocks = detail::envInt("POM68K_JIT_MAX_BLOCKS", 65536, 64, 1 << 20);
+    c.windowKill = detail::envInt("POM68K_JIT_WINDOW_KILL", 0, 0, 1 << 24);
+    c.icacheEmit = detail::envBool("POM68K_JIT_ICACHE_EMIT", true);
+    c.verbose = detail::envBool("POM68K_JIT_VERBOSE", false);
+    c.verboseBlocks = detail::envInt("POM68K_JIT_VERBOSE_BLOCKS", 40, 0, 1 << 24);
+    c.dataWindow = detail::envBool("POM68K_DATA_WINDOW", false);
+    c.a64Pacing = detail::envBool("POM68K_JIT_A64_PACING", true);
+    if (const char* value = detail::env("POM68K_JIT_A64_STORE_GUARD_OPCODE")) {
+        char* end = nullptr;
+        const unsigned long opcode = std::strtoul(value, &end, 0);
+        if (end != value && *end == '\0' && opcode <= 0xFFFFu)
+            c.a64StoreGuardOpcode = uint16_t(opcode);
+    }
+    return c;
+}
+
+namespace detail {
+inline thread_local const ResolvedConfig* activeConfig = nullptr;
+}  // namespace detail
+
+// Backends enter this scope while compiling. It preserves the legacy leaf
+// accessors below, but redirects them to the owning Engine's snapshot rather
+// than getenv(), including when two Engines compile concurrently.
+class ScopedResolvedConfig {
+public:
+    explicit ScopedResolvedConfig(const ResolvedConfig* config)
+        : previous_(detail::activeConfig) { detail::activeConfig = config; }
+    ~ScopedResolvedConfig() { detail::activeConfig = previous_; }
+    ScopedResolvedConfig(const ScopedResolvedConfig&) = delete;
+    ScopedResolvedConfig& operator=(const ScopedResolvedConfig&) = delete;
+private:
+    const ResolvedConfig* previous_;
+};
+
+inline OperatingProfile operatingProfile() {
+    if (detail::activeConfig) return detail::activeConfig->profile;
+    const char* v = detail::env("POM68K_JIT_PROFILE");
+    if (!v) return OperatingProfile::Production;
+    if (!std::strcmp(v, "conservative") || !std::strcmp(v, "safe") ||
+        !std::strcmp(v, "proof"))
+        return OperatingProfile::Conservative;
+    if (!std::strcmp(v, "instrumented") || !std::strcmp(v, "census"))
+        return OperatingProfile::Instrumented;
+    return OperatingProfile::Production;
+}
+
+inline const char* operatingProfileName() {
+    if (detail::activeConfig) return detail::activeConfig->profileName();
+    switch (operatingProfile()) {
+        case OperatingProfile::Conservative: return "conservative";
+        case OperatingProfile::Instrumented: return "instrumented";
+        default: return "production";
+    }
+}
+
 // An explicit POM68K_CPU_ENGINE always wins. With it unset, `jitByDefault`
 // is the evidence-backed per-family policy supplied by Engine: true only for
 // the 68040 today. The GUI menu can still switch live in either direction.
 inline EngineKind defaultEngine(bool jitByDefault) {
+    if (detail::activeConfig)
+        return detail::activeConfig->engineForGuest(jitByDefault);
     const char* v = detail::env("POM68K_CPU_ENGINE");
     if (!v) return jitByDefault ? EngineKind::Jit : EngineKind::Interp;
     if (!std::strncmp(v, "jit", 3) || v[0] == '1') return EngineKind::Jit;
@@ -61,13 +217,17 @@ inline EngineKind defaultEngine(bool jitByDefault) {
 // wedged machine. POM68K_JIT_UNSAFE_BACKEND=1 forces it anyway, which is for
 // developing support for a family the backend does not claim yet.
 inline const char* backendPreference() {
+    if (detail::activeConfig) return detail::activeConfig->backend.c_str();
     const char* v = detail::env("POM68K_JIT_BACKEND");
     return v ? v : "auto";
 }
 
 // J1a — instruction-fetch window. The measured win of the whole J1 stage;
 // kept separately switchable so its contribution can be attributed.
-inline bool fetchWindowEnabled() { return detail::envBool("POM68K_JIT_FETCH", true); }
+inline bool fetchWindowEnabled() {
+    return detail::activeConfig ? detail::activeConfig->fetchWindow :
+        detail::envBool("POM68K_JIT_FETCH", true);
+}
 
 // J1b — basic-block discovery + cached replay. OFF by default, and that is
 // a MEASURED decision, not a hedge: on q605_boot_etalon the fetch window
@@ -82,12 +242,16 @@ inline bool fetchWindowEnabled() { return detail::envBool("POM68K_JIT_FETCH", tr
 // backend measured slower with blocks than with the fetch window alone
 // (below), while a code generator has nothing at all to run without them.
 inline bool blockCacheEnabled(bool dflt) {
+    if (detail::activeConfig) return detail::activeConfig->blockCache;
     return detail::envBool("POM68K_JIT_BLOCKS", dflt);
 }
 
 // Straight-line instruction ceiling per block. A block also ends at the
 // first control-flow, MMU-touching or capability-missing instruction.
-inline int maxBlockInstrs() { return detail::envInt("POM68K_JIT_BLOCK_MAX", 64, 1, 256); }
+inline int maxBlockInstrs() {
+    return detail::activeConfig ? detail::activeConfig->maxBlockInstrs :
+        detail::envInt("POM68K_JIT_BLOCK_MAX", 64, 1, 256);
+}
 
 // Visits before a recorded block is handed to the backend. Native generators
 // default to immediate compilation: after incremental I-cache invalidation,
@@ -96,6 +260,7 @@ inline int maxBlockInstrs() { return detail::envInt("POM68K_JIT_BLOCK_MAX", 64, 
 // the conservative threshold when its block path is explicitly enabled.
 // POM68K_JIT_HOT overrides both defaults for experiments.
 inline int hotThreshold(bool nativeCode) {
+    if (detail::activeConfig) return detail::activeConfig->hot;
     return detail::envInt("POM68K_JIT_HOT", nativeCode ? 1 : 512, 1, 1 << 20);
 }
 
@@ -109,11 +274,60 @@ inline int hotThreshold(bool nativeCode) {
 // 0 = off (hand the whole instruction back), 1 = loads only, 2 = loads and
 // stores. Split because a load that faults has committed nothing, while a
 // store that succeeds already has.
-inline int accessThunkMode() { return detail::envInt("POM68K_JIT_ACCESS_THUNK", 2, 0, 2); }
+inline int accessThunkMode() {
+    if (detail::activeConfig) return detail::activeConfig->accessThunk;
+    const int dflt = operatingProfile() == OperatingProfile::Conservative ? 0 : 2;
+    return detail::envInt("POM68K_JIT_ACCESS_THUNK", dflt, 0, 2);
+}
+
+// J4 — resident 68040 D-cache line reads. Kept independently switchable so
+// the cache-aware JIT can be compared against the exact-access control path
+// without changing the architectural cache model itself.
+inline bool cache040LineReadsEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->cache040LineReads;
+    return detail::envBool("POM68K_JIT_040_LINE_READ",
+        operatingProfile() != OperatingProfile::Conservative);
+}
+inline bool cache040LineWritesEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->cache040LineWrites;
+    return detail::envBool("POM68K_JIT_040_LINE_WRITE",
+        operatingProfile() != OperatingProfile::Conservative);
+}
+inline bool cache040LinePairsEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->cache040LinePairs;
+    return detail::envBool("POM68K_JIT_040_LINE_PAIR",
+        operatingProfile() != OperatingProfile::Conservative);
+}
+inline bool cache040LineReadStatsEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->cache040LineReadStats;
+    return detail::envBool("POM68K_JIT_040_LINE_STATS",
+        operatingProfile() == OperatingProfile::Instrumented);
+}
+
+inline bool linksEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->links;
+    return detail::envBool("POM68K_JIT_LINKS",
+        operatingProfile() == OperatingProfile::Production);
+}
+
+inline bool paranoidEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->paranoid;
+    return detail::envBool("POM68K_JIT_PARANOID",
+        operatingProfile() != OperatingProfile::Production);
+}
+
+inline bool histogramEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->histogram;
+    return detail::envBool("POM68K_JIT_HISTO",
+        operatingProfile() == OperatingProfile::Instrumented);
+}
 
 // Blocks kept in the cache before a full flush (the cache is a plain map;
 // J1 does not do fine-grained eviction).
-inline int maxBlocks() { return detail::envInt("POM68K_JIT_MAX_BLOCKS", 65536, 64, 1 << 20); }
+inline int maxBlocks() {
+    return detail::activeConfig ? detail::activeConfig->maxBlocks :
+        detail::envInt("POM68K_JIT_MAX_BLOCKS", 65536, 64, 1 << 20);
+}
 
 // MEASUREMENT knob, not a tuning one: kill the code window every N retired
 // instructions, on purpose. The engine's dominant residual cost is the
@@ -127,6 +341,7 @@ inline int maxBlocks() { return detail::envInt("POM68K_JIT_MAX_BLOCKS", 65536, 6
 // which is what makes the regression a measurement rather than a story.
 // 0 = off. Never set outside a bench: it slows the engine down on purpose.
 inline int windowKillEvery() {
+    if (detail::activeConfig) return detail::activeConfig->windowKill;
     return detail::envInt("POM68K_JIT_WINDOW_KILL", 0, 0, 1 << 24);
 }
 
@@ -138,11 +353,15 @@ inline int windowKillEvery() {
 // instruction cost alone and any residual divergence belongs to something
 // else. Default ON; only a bring-up measurement should turn it off.
 inline bool icacheEmitEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->icacheEmit;
     return detail::envBool("POM68K_JIT_ICACHE_EMIT", true);
 }
 
 // Chatter on stderr: backend selection, flushes, block statistics.
-inline bool verbose() { return detail::envBool("POM68K_JIT_VERBOSE", false); }
+inline bool verbose() {
+    return detail::activeConfig ? detail::activeConfig->verbose :
+        detail::envBool("POM68K_JIT_VERBOSE", false);
+}
 
 // How many compiled blocks a code generator dumps under POM68K_JIT_VERBOSE.
 // It used to be a hard-coded 40, which is the first 40 blocks of a boot —
@@ -152,7 +371,25 @@ inline bool verbose() { return detail::envBool("POM68K_JIT_VERBOSE", false); }
 // refuses on, so a refusal deep in a boot was undiagnosable without a
 // rebuild. Raise it to find one; it is pure stderr volume.
 inline int verboseBlocks() {
+    if (detail::activeConfig) return detail::activeConfig->verboseBlocks;
     return detail::envInt("POM68K_JIT_VERBOSE_BLOCKS", 40, 0, 1 << 24);
+}
+
+inline bool a64PacingEnabled() {
+    return detail::activeConfig ? detail::activeConfig->a64Pacing :
+        detail::envBool("POM68K_JIT_A64_PACING", true);
+}
+
+inline uint16_t a64StoreGuardOpcode() {
+    if (detail::activeConfig) return detail::activeConfig->a64StoreGuardOpcode;
+    uint16_t opcode = 0xB592;
+    if (const char* value = detail::env("POM68K_JIT_A64_STORE_GUARD_OPCODE")) {
+        char* end = nullptr;
+        const unsigned long parsed = std::strtoul(value, &end, 0);
+        if (end != value && *end == '\0' && parsed <= 0xFFFFu)
+            opcode = uint16_t(parsed);
+    }
+    return opcode;
 }
 
 }  // namespace jit

@@ -1,7 +1,6 @@
-# Minimal CI: build POM68K on Linux and run the `unit` test tier — the 66
-# gates that need no ROM and no disk image (CLAUDE.md § Build & run). The
-# etalon tiers are asset-dependent (user-provided ROMs, never committed) and
-# cannot run here.
+# Minimal CI: build POM68K on Linux and run the manifest's asset-free tier.
+# `unit` is a legacy structural label and includes gates whose useful path
+# soft-skips without a ROM, disk, firmware or external oracle corpus.
 name: CI
 
 on:
@@ -24,12 +23,36 @@ jobs:
       - name: Fetch Dear ImGui (pinned to the tested docking release)
         run: git clone --depth 1 --branch v1.92.8-docking https://github.com/ocornut/imgui.git
 
-      - name: Build POM68K + tests
+      - name: Configure
         # POM68K_NATIVE=OFF: -march=native on a CI runner proves nothing and
         # LTO roughly doubles the link time for 100+ test binaries.
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPOM68K_NATIVE=OFF
+
+      - name: Fast native JIT proof (x86-64, asset-free)
+        env:
+          POM68K_JIT_REQUIRE_NATIVE: "1"
+          POM68K_JIT_METRICS_FILE: ${{ runner.temp }}/pom68k-jit-x86_64.json
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPOM68K_NATIVE=OFF
-          cmake --build build -j"$(nproc)"
+          cmake --build build -j"$(nproc)" --target jitfast
+          ctest --test-dir build -L jit-fast --output-on-failure
+
+      - name: Publish x86-64 JIT metrics
+        if: always()
+        run: |
+          test -f "${{ runner.temp }}/pom68k-jit-x86_64.json"
+          python3 tools/check_jit_performance.py --require synthetic_68040_lockstep "${{ runner.temp }}/pom68k-jit-x86_64.json"
+          cat "${{ runner.temp }}/pom68k-jit-x86_64.json"
+
+      - name: Archive x86-64 JIT metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pom68k-jit-metrics-x86_64
+          path: ${{ runner.temp }}/pom68k-jit-x86_64.json
+          if-no-files-found: error
+
+      - name: Build POM68K + all tests
+        run: cmake --build build -j"$(nproc)"
 
       - name: Smoke-launch (--version exits before any window)
         run: |
@@ -37,5 +60,5 @@ jobs:
           echo "$OUT"
           grep -q "Macintosh 68k emulator" <<<"$OUT"
 
-      - name: Run the unit tier (no ROM or disk image needed)
-        run: ctest --test-dir build -L unit --output-on-failure
+      - name: Run the manifest-declared asset-free tier
+        run: ctest --test-dir build -L asset-none --output-on-failure

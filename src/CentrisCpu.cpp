@@ -37,7 +37,7 @@ CentrisCpu::CentrisCpu(CentrisMemory& mem)
     // soft 68882 (Finder-usable, the Q605 no-FPU precedent).
     if (getenv("POM68K_CENTRIS_FPU")) {
         setModel(moira::Model::M68040);
-        setFPUModel(moira::FPUModel::M68882);
+        setFPUModel(moira::FPUModel::M68040);
     } else {
         setModel(moira::Model::M68LC040);
         setFPUModel(getenv("POM68K_CENTRIS_BAREFPU") ? moira::FPUModel::NONE

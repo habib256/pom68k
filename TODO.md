@@ -1,25 +1,25 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 239 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 242 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 
-**Counts re-verified against `CMakeLists.txt` and the code on 2026-08-12** —
+**Counts re-verified against `CMakeLists.txt` and the code on 2026-08-17** —
 re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
   somewhere.** On the AArch64 dev host with `POM68K_JIT_BACKENDS=auto`:
-  **203 gates** — 94 `unit`, 9 `smoke`, 29 `jit`, 48 `m040`, 109 `etalon`
-  (12 of them `etalon-core`). On any other host, **201** — 92 `unit`,
-  8 `smoke`, 27 `jit`: `jit_lockstep_a64_coarse_test` and
+  **218 gates** — 106 `unit`, 83 `asset-none`, 9 `smoke`, 37 `jit`, 51 `m040`,
+  112 `etalon` (12 of them `etalon-core`). On any other host, **216** — 104 `unit`,
+  8 `smoke`, 35 `jit`: `jit_lockstep_a64_coarse_test` and
   `jit_lockstep_030_a64_experimental_test` are registered only under
   AArch64 + `auto` (`CMakeLists.txt:1459-1476`), and the first also joins
   `smoke`. Seven more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
   (default OFF, `CMakeLists.txt:372`, and it FATAL_ERRORs off AArch64).
-  `unit` is *not* "asset-free" — the derivation at `CMakeLists.txt:1794-1820`
-  makes it "name does not end in `etalon`", nothing more.
+  `unit` is *not* "asset-free" — it remains the legacy "name does not end in
+  `etalon`" label. `asset-none` is the manifest-declared daily tier.
 - **Last FULL suite: 206/206 on 2026-08-16** — 94/94 `-LE etalon` (206 s) +
   112/112 `-L etalon` (15 956 s), sequential, on a tree rebuilt from scratch
   first (`make -j4`, `BUILD_EXIT=0`, zero 0-byte binaries). That is the WHOLE
@@ -32,15 +32,59 @@ re-verify before quoting them anywhere:
   August ran over binaries linked at different times and proved nothing —
   `ctest` does not compile. A phantom failure gets investigated; a phantom pass
   gets quoted.
-- **37 machine profiles** = 37 `kProfiles` rows (`src/main.cpp:801-854`) = 37
-  `SnapMachine` tags (`src/SaveStateMachines.h:51-89`) = 21 `MachineKind`
-  values over **12** platform implementations. `docs_test` gates this triangle
-  against `CLAUDE.md` — **not against this file**, which is why the numbers
-  here drift and CLAUDE.md's do not.
+- **37 machine profiles** = 37 `kMachineProfiles` rows in
+  `src/MachineCatalog.h`, each carrying its stable `SnapMachine` id = 21
+  `MachineKind` values over **12** platform implementations. `docs_test`
+  compares the compiled catalogue directly with `CLAUDE.md`. These numbers
+  describe current coverage; they do not close the all-68k-Macintosh target.
 
 House rule for this file: an item earns its place by saying **what to do next**,
 concretely. When it lands, it moves to `CHANGELOG.md` and leaves at most one
 line here.
+
+---
+
+## 0. Séquencement de la consolidation architecturale — ACTIVE
+
+**Décision utilisateur clarifiée, 2026-08-17.** La finalité de POM68K est le
+support de **tous les Macintosh 68k** ; ce périmètre produit n'est pas
+négociable. Les **37 profils / 12 plateformes** sont l'état courant de la
+matrice, jamais son plafond. Pendant ce cycle, la convergence JIT et les gates
+qui la prouvent passent avant l'ouverture simultanée de nouveaux fronts
+machine ou périphérique : c'est un ordre d'exécution temporaire, pas un gel de
+la couverture cible.
+
+Ce qui reste autorisé et prioritaire : corrections de conformité, réduction
+du delta entre interpréteur et JIT, consolidation d'une abstraction existante,
+tests asset-free, budgets de performance, portabilité A64/x64, documentation
+et suppression de code mort. Un nouveau modèle reste légitime dès qu'il ne
+dilue pas ces sorties prioritaires et qu'il apporte ses contrats et gates.
+
+La fenêtre se ferme seulement quand les quatre sorties suivantes sont vraies :
+
+- [x] toutes les formes réellement émises par A64/x64 consomment les contrats
+  `Instr::semantics` et `Instr::memory` : famille, ALU, taille, direction,
+  accès, ordre et restart ne sont plus redécodés par backend ;
+- [x] `jit-fast` exécute un lockstep synthétique natif, déterministe et sans
+  assets sur les CI A64 et x64, avec `/BERR` restart et last-write ;
+- [x] le fork Moira possède une frontière `pom*`/`POM68K` et un inventaire
+  recalculés par `docs_test` ;
+- [x] les budgets structuraux, de part native et de fallback sont versionnés
+  dans `performance_budgets.tsv`, séparés par hôte et consommés par les gates
+  `jit-fast` ; A64/x64 publient le même JSON structuré ;
+- [x] les extensions indexées 68020 full et les transferts de contrôle ont un
+  plan IR commun ; les backends les refusent sans les redécoder tant que leur
+  lowering natif n'est pas prouvé ;
+- [ ] ajouter les bancs Macintosh à budget de cycles fixe pour 68000 et 68020.
+  Les seuils représentatifs versionnés couvrent déjà Q605/68040 et
+  LC II/68030 sur l'hôte x86-64 de référence et sur Apple M4 ; aucun seuil
+  des deux familles restantes n'est extrapolé ;
+- [ ] le palier legacy `unit` n'a plus d'échec inexpliqué sur les deux
+  architectures hôtes.
+
+`docs_test` vérifie la cohérence dynamique du catalogue compilé, des gates,
+des budgets et de la documentation ; il ne doit contenir aucun nombre plafond qui transforme par
+accident l'état courant en restriction produit.
 
 ---
 
@@ -757,11 +801,35 @@ product decision, not a cleanup.
   landed proves the seam end to end from the firmware's own action; it does
   not prove the Toolbox path that leads to it.
 - [ ] **Quadra 605 / LC 475**: expand Cuda commands only from ROM/driver
-  traces; accurate 040 timing and on-chip-FPU/FPSP behaviour as separate
-  oracle-gated milestones. *(Cache copyback/snooping is no longer part of this
-  item: the chantier CLOSED at M1 on 2026-08-05 — architectural TAG state
-  behind `POM68K_040_DCACHE`, default off, with three named reopening
-  conditions in `docs/CACHE_040.md` § 3.)*
+  traces. The on-chip FPU/FPSP and M0-M3 cache work are closed: opt-in
+  I/D contents, copyback, snooping and bus-transaction timing. What remains
+  is pin-level 040 timing, not an architectural cache gap
+  (`docs/CACHE_040.md`).
+  *Product-performance follow-up*: the cache-active null-DTLB memo removed
+  99.77 % of redundant fill probes but only 2.4 % of Q605 wall time; a
+  last-line tag memo measured worse and was removed. Native physical
+  D-cache-line **reads** have now landed and are lockstep-gated on A64/x64:
+  18.6 M exercised hits and **61.94 -> 48.78 s** (-21.2 %) on the paired
+  Q605 control. Native sole-access **copyback write hits** now follow them:
+  a separate write-authorized line table, emitted dirty-longword publication
+  on A64/x64, and `jit_copyback_write_040_test`, which pins both the last-write
+  and restart halves of the format-$7 fault contract; its independently
+  registered OFF control proves the escape hatch returns to the exact cache
+  path. The first paired 5 G-cycle A/B found the MOVE-only write path below
+  noise (49.87 -> 49.81 s average), so broadening arbitrary stores is closed.
+  The cache-on census instead priced the BSR return-address push; routing that
+  sole write through the same proof removed 3,933,940 more fallbacks. Across
+  two order-reversed pairs the whole write path now averages **49.93 ->
+  49.49 s** (-0.88 %), with identical fingerprint/SCSI/PC. The full A64
+  cache-on census then exposed the next bounded pair: `MOVE.L abs.W,-(A7)`
+  and `MOVE.L (A7)+,abs.W`. Proving both lines before either access removes
+  **7,523,969** more fallbacks and measures **46.92 -> 46.63 s** (-0.62 %)
+  over two order-reversed pairs. Its dedicated ON/OFF gate pins dirty bytes,
+  flags/EA and whole-instruction /BERR replay. The repeated full lockstep
+  exercises **21,303,835 reads + 5,896,026 writes** over 131.8 M JIT
+  instructions without divergence. The mode still misses the
+  Finder guest budget and remains far behind cacheless 11.03 s; more C++ tag
+  lookup and unmeasured RMW work are closed.
 - [ ] **SCC LLE, Low tier** (2026-07-22 MAME `z80scc.cpp` audit,
   `docs/LLE_VS_HLE.md` § 1.4). The two items that needed no new transport
   landed 2026-08-02 (WR5 `/RTS` **and** `/DTR` as real pins with the
@@ -1165,7 +1233,7 @@ Explicitly **out of scope** for now: AV DSP, all 4 MB PPC ROMs.
   persist leg.
   Remaining, in milestone order: variants (210/250 trivial — `MscMemory.h`
   already carries `kIdDuo210`/`kIdDuo250` and they share the `$ECFA989B` ROM,
-  so they need an env tag and a `kProfiles` row; then 270c CSC, 280 040, then
+  so they need a variant tag and a `kMachineProfiles` row; then 270c CSC, 280 040, then
   PB150 as the no-oracle MSC variant), and **the actual point — a sleep/wake
   gate** (`duo230_sleep_etalon`), which no other machine can test. That one has
   its first measurement now: `PgePmu::setClamshell(false)` (port F bit 3, the
@@ -1316,7 +1384,7 @@ that silently falls behind is worse than none, because it looks complete).
   (case-insensitive for the hex IDs). No other group overlaps. Secondary: the
   `ii` token is dead anyway — the dispatch at `:5544-5548` only recognises
   `iicx`/`se30`/`fdhd` and reaches the plain Mac II by ROM checksum
-  (`$9779D2C4`), while `fdhd` is a runtime-only token with no `kProfiles` row.
+  (`$9779D2C4`), while `fdhd` is a runtime-only token with no catalogue row.
 - [ ] **Save states — one residual.** The feature ships across all **12**
   machine families and **37** profiles (archive core `src/SaveState.h/.cpp`,
   container `SaveStateMachines.h/.cpp`, `MoiraSnapshot.h`, GUI/CLI wiring in

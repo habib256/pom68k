@@ -3,7 +3,7 @@
 //
 // ── 68040 CPU (Moira wrapper, Macintosh Quadra 630 / LC 580) ──
 // The Cpu040 pattern on the F108 bus. The Quadra 630 is a FULL 68040 @
-// 33 MHz, so the default is M68040 + Moira's soft 68882; the LC/Performa
+// 33 MHz, so the default is M68040 + its integrated FPU; the LC/Performa
 // 630 and 580 siblings ship a 68LC040 — POM68K_Q630_LC040=1 selects it,
 // POM68K_Q630_BAREFPU=1 a bare FPUModel::NONE with it.
 // Gate: tests/q630_boot_etalon.cpp.

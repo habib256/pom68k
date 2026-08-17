@@ -74,7 +74,8 @@ enum class FPUModel
 {
     NONE,                   // No FPU — F2xx opcodes take Line-F (vector 11)
     M68881,
-    M68882                  // Mac LC II PDS FPU (only model implemented)
+    M68882,                 // External 68882 (Mac II / LC PDS)
+    M68040                  // Integrated MC68040 FPU
 };
 
 // Syntax styles for disassembly output
@@ -401,6 +402,7 @@ static constexpr u8 USER_DATA       = 1;  // User-mode access to data space
 static constexpr u8 USER_PROG       = 2;  // User-mode access to program space
 static constexpr u8 SUPERVISOR_DATA = 5;  // Supervisor access to data space
 static constexpr u8 SUPERVISOR_PROG = 6;  // Supervisor access to program space
+static constexpr u8 CPU_SPACE       = 7;  // CPU-space control transactions
 }
 
 /* Availability masks for different CPU models.
@@ -524,5 +526,13 @@ struct BusError : public std::exception {
 // Moira's mmu* members, captured by mmuPageFault before the throw — see
 // POM68K_VENDOR.md § MMU bus layer.
 struct MmuBusError : public std::exception { };
+
+// Internal control transfer: a 68020/030 accepted an interrupt while the
+// coprocessor protocol returned "come again, interrupts allowed". It is
+// converted to a format-$9 interrupt frame by processException().
+struct FpuMidInstruction : public std::exception {
+    explicit FpuMidInstruction(u8 l) : level(l) { }
+    u8 level;
+};
 
 }

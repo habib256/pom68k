@@ -6,8 +6,8 @@
 // the integer ISA, the 040 MMU (TTR + URP/SRP walks, format $7 faults) and
 // the no-FPU format $4 F-line; external /BERR raises through
 // Moira::extBusError040. Q8 adds a separate I/D ATC (Moira) and a
-// throughput/i-cache overlay transposed from the 030 Cpu030 model —
-// architectural copyback/snooping stays out of scope.
+// throughput overlay transposed from the 030 Cpu030 model, plus Moira's
+// data-bearing 4 KB I/D caches, copyback, snooping and bus-beat timing.
 // Timing adjustments: VIA E-clock sync and TurboSCSI wait states via
 // Q605Memory::stall().
 

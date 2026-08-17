@@ -161,7 +161,19 @@ Moira::writeStackFrame1000(StackFrame &frame, u16 sr, u32 pc, u32 ia, u16 nr, u3
 template <Core C> void
 Moira::writeStackFrame1001(u16 sr, u32 pc, u32 ia, u16 nr)
 {
+    // Four opaque continuation words. The software-visible contract is
+    // their presence and preservation by RTE; the pending FPU dialog lives
+    // in `fpu.busy`, while these words mirror the two prefetched words and
+    // the command so diagnostics see deterministic non-zero context.
+    push<C, Word>(fpu.busyExt);
+    push<C, Word>(fpu.busyOpcode);
+    push<C, Word>(queue.irc);
+    push<C, Word>(queue.ird);
 
+    push<C, Long>(ia);                         // instruction address
+    push<C, Word>(u16(0x9000 | nr << 2));     // format $9 | vector offset
+    push<C, Long>(pc);                         // next word to fetch
+    push<C, Word>(sr);
 }
 
 template <Core C> void
@@ -877,7 +889,10 @@ Moira::execInterrupt(u8 level)
             // RTE never noticed — but any handler reading the offset saw
             // a wrong vector. Found with the Lode Runner odd-SP frame bug
             // (scratchpad/oddframe.cpp shows both).
-            writeStackFrame0000<C>(status, reg.pc, queue.ird);
+            if (fpuMidInterruptFrame && cpuModel < Model::M68EC040)
+                writeStackFrame1001<C>(status, reg.pc, fpu.busyIa, queue.ird);
+            else
+                writeStackFrame0000<C>(status, reg.pc, queue.ird);
 
             if (reg.sr.m) {
 

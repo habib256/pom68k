@@ -9,6 +9,7 @@
 
 #include "imgui.h"
 #include "MachineHost.h"
+#include "MachineCatalog.h"
 #include "DiskBays.h"
 #include "PeripheralWindow.h"
 #include "DockLayout.h"
@@ -528,10 +529,7 @@ static void initDriveSfx(MacAudioHost& host) {
 // Selecting another machine relaunches the process on its ROM — clean
 // state, since each machine is built once at startup (ROM size alone
 // selects the machine in main()).
-// Appended, never inserted: the order is the Machine menu's, and an
-// insertion would silently renumber every kind a running relaunch compares.
-// `Duo` = platform #12 (MSC + PG&E), the first PowerBook (2026-08-06).
-enum class MachineKind { Plus, Se, SeFdhd, MacClassic, MacII, IIfx, Lc, LcII, ClassicII, ColorClassic, MacTv, IIsi, IIci, Lc3, Aio, Vasp, Centris, Q700, Q630, Quadra, Duo };
+using pom68k::MachineKind;
 static std::vector<std::string> gSwitchArgs;   // argv[1..] for the relaunch
 // This process's own argv[1..], captured before any parsing consumes it —
 // the Périphériques window relaunches on it, so the machine comes back
@@ -822,21 +820,6 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
         // only by clock / CPU / model ID / MCU. Entries stay grouped in
         // declaration order — the loop emits a SeparatorText whenever `group`
         // changes, so reordering the table reorders the menu.
-        struct Profile { const char* group; const char* label; MachineKind kind;
-                         const char* rom;
-                         const char* sig; const char* envKey; const char* envVal;
-                         bool dflt; };
-        const char* kGlue = "GLUE + NuBus (Mac II)";
-        const char* kOss = "OSS + IOP (IIfx)";
-        const char* kV8 = "V8 / Eagle / Spice / Tinker Bell";
-        const char* kRbv = "RBV (video en RAM)";
-        const char* kSonora = "Sonora";
-        const char* kVasp = "VASP (Sonora + peripheriques V8)";
-        const char* kMemc = "MEMCjr + PrimeTime";
-        const char* kDjmemc = "djMEMC + IOSB";
-        const char* kSpike = "Discret 040 (Quadra 700/900/950)";
-        const char* kF108 = "F108 + PrimeTime II + Valkyrie";
-        const char* kMsc = "MSC + PG&E (PowerBook Duo)";
         // Variant match for the "current profile" tick, below.
         auto equalsNoCase = [](const char* a, const char* b) {
             for (; *a && *b; a++, b++)
@@ -844,72 +827,16 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
                     return false;
             return *a == *b;
         };
-        const Profile kProfiles[] = {
-            { "68000", "Macintosh Plus", MachineKind::Plus, "roms/macplus.rom", nullptr, nullptr, nullptr, true },
-            { "68000", "Macintosh SE", MachineKind::Se, "roms/macse.rom", "B2E362A8", nullptr, nullptr, true },
-            { "68000", "Macintosh SE FDHD", MachineKind::SeFdhd, "roms/macsefd.rom", "B306E171", nullptr, nullptr, true },
-            { "68000", "Macintosh Classic", MachineKind::MacClassic, "roms/macclassic.rom", "A49F9914", nullptr, nullptr, true },
-            // Tagged like its siblings: with envKey == nullptr, variantCur
-            // defaulted to true, so on ANY Mac II-family machine this row
-            // computed isCur and the "&& !isCur" guard swallowed the click —
-            // the plain Mac II was unreachable from the Machine menu.
-            { kGlue, "Macintosh II", MachineKind::MacII, "roms/macii.rom", "9779D2C4", "POM68K_MACII_MODEL", "ii", false },
-            { kGlue, "Macintosh IIx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iix", true },
-            { kGlue, "Macintosh IIcx", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "iicx", false },
-            { kGlue, "Macintosh SE/30", MachineKind::MacII, "roms/mac2fdhd.rom", "97221136", "POM68K_MACII_MODEL", "se30", false },
-            { kOss, "Macintosh IIfx (40 MHz)", MachineKind::IIfx, "roms/maciifx.rom", "4147DD77", nullptr, nullptr, true },
-            { kRbv, "Macintosh IIci", MachineKind::IIci, "roms/maciici.rom", "368CADFE", nullptr, nullptr, true },
-            { kRbv, "Macintosh IIsi", MachineKind::IIsi, "roms/maciisi.rom", "36B7FB6C", nullptr, nullptr, true },
-            { kV8, "Macintosh LC", MachineKind::Lc, "roms/maclc.rom", "350EACF0", nullptr, nullptr, true },
-            { kV8, "Macintosh LC II", MachineKind::LcII, "roms/maclcii.rom", "35C28F5F", nullptr, nullptr, true },
-            { kV8, "Macintosh Classic II", MachineKind::ClassicII, "roms/classic2.rom", "3193670E", nullptr, nullptr, true },
-            { kV8, "Macintosh Color Classic", MachineKind::ColorClassic, "roms/cclassic.rom", "ECD99DC0", nullptr, nullptr, true },
-            { kV8, "Macintosh TV", MachineKind::MacTv, "roms/mactv.rom", "EAF1678D", nullptr, nullptr, true },
-            { kSonora, "Macintosh LC III", MachineKind::Lc3, "roms/maclc3.rom", "ECBBC41C", "POM68K_LC3_PLUS", "0", true },
-            { kSonora, "Macintosh LC III+ (33 MHz)", MachineKind::Lc3, "roms/maclc3.rom", "ECBBC41C", "POM68K_LC3_PLUS", "1", false },
-            { kSonora, "Macintosh LC 520", MachineKind::Aio, "roms/maclc520.rom", "EDE66CBD", "POM68K_AIO_ID", "A55A0100", true },
-            { kSonora, "Macintosh LC 550 (33 MHz)", MachineKind::Aio, "roms/maclc520.rom", "EDE66CBD", "POM68K_AIO_ID", "A55A0101", false },
-            { kSonora, "Macintosh Color Classic II", MachineKind::Aio, "roms/maclc520.rom", "EDE66CBD", "POM68K_AIO_ID", "CC2", false },
-            { kVasp, "Macintosh IIvx", MachineKind::Vasp, "roms/maciivx.rom", "4957EB49", "POM68K_IIVI", "0", true },
-            { kVasp, "Macintosh IIvi (16 MHz)", MachineKind::Vasp, "roms/maciivx.rom", "4957EB49", "POM68K_IIVI", "1", false },
-            { kMemc, "Macintosh LC 475", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE", "POM68K_Q605_ID", "A55A2221", true },
-            { kMemc, "Macintosh LC 575 (33 MHz)", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE", "POM68K_Q605_ID", "A55A222E", false },
-            { kMemc, "Quadra 605", MachineKind::Quadra, "roms/quadra605.rom", "FF7439EE", "POM68K_Q605_ID", "A55A2225", false },
-            { kDjmemc, "Macintosh Centris 610 (20 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "c610", false },
-            { kDjmemc, "Macintosh Centris 650", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "c650", true },
-            { kDjmemc, "Macintosh Quadra 610", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q610", false },
-            { kDjmemc, "Macintosh Quadra 650 (33 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q650", false },
-            { kDjmemc, "Macintosh Quadra 800 (33 MHz)", MachineKind::Centris, "roms/centris650.rom", "F1A6F343", "POM68K_CENTRIS_MODEL", "q800", false },
-            { kSpike, "Macintosh Quadra 700", MachineKind::Q700, "roms/quadra700.rom", "420DBFF3", "POM68K_Q700_MODEL", "q700", true },
-            // The "Eclipse" towers: the same board plus the Mac IIfx's front
-            // end (two Apple PIC IOPs for SCC and SWIM/ADB, the Egret in
-            // place of the discrete RTC, a second 53C96 bus). The Q900
-            // shares the Quadra 700's ROM — only the env tells them apart —
-            // while the Q950 has its own $3DC27823 dump and is therefore
-            // also reachable by dropping that ROM in.
-            { kSpike, "Macintosh Quadra 900 (IOP)", MachineKind::Q700, "roms/quadra700.rom", "420DBFF3", "POM68K_Q700_MODEL", "q900", false },
-            { kSpike, "Macintosh Quadra 950 (33 MHz, IOP)", MachineKind::Q700, "roms/quadra950.rom", "3DC27823", "POM68K_Q700_MODEL", "q950", false },
-            { kF108, "Macintosh Quadra 630 (33 MHz)", MachineKind::Q630, "roms/quadra630.rom", "06684214", "POM68K_Q630_ID", "A55A2252", true },
-            { kF108, "Macintosh LC / Performa 580", MachineKind::Q630, "roms/quadra630.rom", "06684214", "POM68K_Q630_ID", "A55A225A", false },
-            // The 37th profile (2026-08-06): platform #12's first GUI
-            // citizen. envKey stays null the way the IIfx's does — that is
-            // only safe because MachineKind::Duo has exactly ONE row, so
-            // `kindCur` alone decides `isCur`. The Mac II bug above happened
-            // because FOUR rows shared one kind: add a Duo 210/250 row here
-            // and it must carry an envKey/envVal pair, or both rows will
-            // claim to be current and neither will be clickable.
-            { kMsc, "PowerBook Duo 230 (33 MHz)", MachineKind::Duo, "roms/macduo230.rom", "ECFA989B", nullptr, nullptr, true },
-        };
         const char* lastGroup = nullptr;
-        for (const Profile& pr : kProfiles) {
+        for (const pom68k::MachineProfile& pr : pom68k::kMachineProfiles) {
             if (!lastGroup || std::strcmp(lastGroup, pr.group) != 0) {
                 ImGui::SeparatorText(pr.group);
                 lastGroup = pr.group;
             }
             bool kindCur = pr.kind == cur;
             bool variantCur = true;              // variant match within a kind
-            if (pr.envKey) {
-                const char* e = getenv(pr.envKey);
+            if (pr.variantKey) {
+                const char* e = getenv(pr.variantKey);
                 // EXACT, case-insensitive — not strstr. The Mac II group's
                 // envVals are "ii"/"iix"/"iicx"/"se30", so a substring test
                 // made "ii" match "iix": after one click on Macintosh IIx the
@@ -921,19 +848,20 @@ static void machineMenu(MachineKind cur, GLFWwindow* window,
                 // itself does; case-insensitive because the hex-ID groups
                 // (POM68K_Q605_ID, POM68K_AIO_ID) are matched case-blind by
                 // their own runners (:3602-3603, :4677, :5470). (2026-08-12)
-                variantCur = e ? equalsNoCase(e, pr.envVal) : pr.dflt;
+                variantCur = e ? equalsNoCase(e, pr.variantValue)
+                               : pr.defaultVariant;
             }
             bool isCur = kindCur && variantCur;
-            std::string path = findPath(pr.rom);
-            if (path.empty() && pr.sig) path = findRomBySignature(pr.sig);
+            std::string path = findPath(pr.romPath);
+            if (path.empty() && pr.romCrc32) path = findRomBySignature(pr.romCrc32);
             if (ImGui::MenuItem(pr.label, nullptr, isCur,
                                 isCur || !path.empty()) && !isCur) {
-                if (pr.envKey) {
-                    setenv(pr.envKey, pr.envVal, 1);
+                if (pr.variantKey) {
+                    setenv(pr.variantKey, pr.variantValue, 1);
                     // LC 475 / LC 575 are 68LC040; the Quadra 605 keeps the FPU.
-                    if (!std::strcmp(pr.envKey, "POM68K_Q605_ID")) {
-                        if (std::strstr(pr.envVal, "2221") ||
-                            std::strstr(pr.envVal, "222E")) setenv("POM68K_Q605_NOFPU", "1", 1);
+                    if (!std::strcmp(pr.variantKey, "POM68K_Q605_ID")) {
+                        if (std::strstr(pr.variantValue, "2221") ||
+                            std::strstr(pr.variantValue, "222E")) setenv("POM68K_Q605_NOFPU", "1", 1);
                         else unsetenv("POM68K_Q605_NOFPU");
                     }
                 }

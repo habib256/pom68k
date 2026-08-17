@@ -601,6 +601,20 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(asset_fingerprint_test tests/asset_fingerprint_test.cpp)
     add_test(NAME asset_fingerprint_test COMMAND asset_fingerprint_test)
 
+    # Reference media under ref/ are never opened for write-back: the first
+    # GUI session gets a persistent sibling under work/. No Apple asset needed.
+    add_executable(fixture_store_test tests/fixture_store_test.cpp)
+    target_include_directories(fixture_store_test PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    add_test(NAME fixture_store_test COMMAND fixture_store_test)
+
+    # assets.lock is useful in a clean clone too: validate its schema, and any
+    # present user-provided file. Private runners add --strict to require all.
+    add_test(NAME asset_lock_test
+             COMMAND ${POM68K_TOOLS_PYTHON} tools/verify_assets.py
+                     --manifest assets.lock --root .
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
     # The GUI ↔ machine-thread contract (src/MachineHost.h): queue ordering,
     # the framebuffer double buffer, the engine-swap round trip, the pacing
     # branches and the thread teardown. `main.cpp` is the one translation unit
@@ -610,15 +624,18 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     target_link_libraries(machinehost_test PRIVATE pom68k_core)
     add_test(NAME machinehost_test COMMAND machinehost_test)
 
-    # The docs' citable invariants, checked against the code: profile count
-    # (kProfiles == SnapMachine == what CLAUDE.md says), every gate CLAUDE.md
+    # The docs' citable invariants, checked against the code: compiled profile
+    # catalogue == what CLAUDE.md says, every gate CLAUDE.md
     # names is registered, every registered gate carries a label, and the gate
     # totals it quotes. Reads pom68k_gates.tsv, which the tier block below
     # writes at configure time. Links nothing.
     add_executable(docs_test tests/docs_test.cpp)
+    target_include_directories(docs_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(docs_test PRIVATE
         POM68K_GATE_ROSTER="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv"
-        POM68K_GATE_ROSTER_ABSENT="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv")
+        POM68K_GATE_ROSTER_ABSENT="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv"
+        POM68K_GATE_MANIFEST="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gate_manifest.tsv"
+        POM68K_PERF_BUDGET_FILE="${CMAKE_CURRENT_SOURCE_DIR}/performance_budgets.tsv")
     add_test(NAME docs_test COMMAND docs_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -1355,6 +1372,121 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME jit_restart_write_030_test COMMAND jit_restart_write_030_test)
     set_tests_properties(jit_restart_write_030_test PROPERTIES LABELS "jit;unit")
 
+    # Versioned performance budgets. CMake validates the manifest and turns
+    # each consumed value into a compile-time constant; tests therefore fail
+    # against reviewed policy rather than private literals in their source.
+    set(POM68K_PERF_BUDGET_FILE
+        "${CMAKE_CURRENT_SOURCE_DIR}/performance_budgets.tsv")
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" POM68K_PERF_HOST)
+    if(POM68K_PERF_HOST MATCHES "^(arm64|aarch64)$")
+        set(POM68K_PERF_HOST "aarch64")
+    elseif(POM68K_PERF_HOST MATCHES "^(x86_64|amd64)$")
+        set(POM68K_PERF_HOST "x86_64")
+    else()
+        set(POM68K_PERF_HOST "other")
+    endif()
+    file(STRINGS "${POM68K_PERF_BUDGET_FILE}" pom68k_perf_budget_lines)
+    foreach(line IN LISTS pom68k_perf_budget_lines)
+        if(line MATCHES "^[ \t]*#" OR line STREQUAL "")
+            continue()
+        endif()
+        string(REPLACE "\t" ";" fields "${line}")
+        list(LENGTH fields field_count)
+        if(NOT field_count EQUAL 6)
+            message(FATAL_ERROR
+                "performance_budgets.tsv: expected six columns: ${line}")
+        endif()
+        list(GET fields 0 workload)
+        list(GET fields 1 cpu_family)
+        list(GET fields 2 perf_host)
+        list(GET fields 3 metric)
+        list(GET fields 4 value)
+        if(NOT value MATCHES "^[0-9]+$")
+            message(FATAL_ERROR
+                "performance_budgets.tsv: non-integer value: ${line}")
+        endif()
+        set("POM68K_PERF_${workload}_${cpu_family}_${perf_host}_${metric}"
+            "${value}")
+    endforeach()
+    function(pom68k_perf_budget target workload cpu_family metric macro)
+        set(key "POM68K_PERF_${workload}_${cpu_family}_${POM68K_PERF_HOST}_${metric}")
+        set(fallback "POM68K_PERF_${workload}_${cpu_family}_any_${metric}")
+        if(DEFINED ${key})
+            set(value "${${key}}")
+        elseif(DEFINED ${fallback})
+            set(value "${${fallback}}")
+        else()
+            message(FATAL_ERROR
+                "performance_budgets.tsv: missing ${workload}/${cpu_family}/"
+                "${POM68K_PERF_HOST}/${metric}")
+        endif()
+        target_compile_definitions(${target} PRIVATE
+            "${macro}=${value}")
+    endfunction()
+
+    # Daily native lockstep with no Apple assets: a deterministic flat-RAM
+    # 68040 program compares complete architectural boundaries and RAM, then
+    # injects both restart and last-write bus faults. `jit-fast` makes native
+    # host execution mandatory on the A64 and x64 CI runners.
+    add_executable(jit_asset_free_lockstep_test
+                   tests/jit_asset_free_lockstep_test.cpp)
+    target_link_libraries(jit_asset_free_lockstep_test PRIVATE pom68k_core)
+    pom68k_perf_budget(jit_asset_free_lockstep_test
+        synthetic_68040_lockstep 68040 min_blocks_compiled
+        POM68K_PERF_MIN_BLOCKS_COMPILED)
+    pom68k_perf_budget(jit_asset_free_lockstep_test
+        synthetic_68040_lockstep 68040 min_blocks_run
+        POM68K_PERF_MIN_BLOCKS_RUN)
+    pom68k_perf_budget(jit_asset_free_lockstep_test
+        synthetic_68040_lockstep 68040 min_native_share_permille
+        POM68K_PERF_MIN_NATIVE_SHARE_PERMILLE)
+    pom68k_perf_budget(jit_asset_free_lockstep_test
+        synthetic_68040_lockstep 68040 max_slow_instrs
+        POM68K_PERF_MAX_SLOW_INSTRUCTIONS)
+    add_test(NAME jit_asset_free_lockstep_test COMMAND jit_asset_free_lockstep_test)
+    set_tests_properties(jit_asset_free_lockstep_test PROPERTIES LABELS "jit;unit")
+
+    # J4 write half: one generated copyback hit must publish the precise
+    # dirty-longword mask, while misses retain the 68040 format-$7
+    # last-write/restart dichotomy. Runs on whichever native host backend is
+    # available and soft-skips on hosts that only have the threaded engine.
+    add_executable(jit_copyback_write_040_test
+                   tests/jit_copyback_write_040_test.cpp)
+    target_link_libraries(jit_copyback_write_040_test PRIVATE pom68k_core)
+    pom68k_perf_budget(jit_copyback_write_040_test
+        synthetic_68040_copyback 68040 max_slow_instrs
+        POM68K_PERF_COPYBACK_MAX_SLOW_INSTRUCTIONS)
+    pom68k_perf_budget(jit_copyback_write_040_test
+        synthetic_68040_copyback 68040 max_native_ratio_permille
+        POM68K_PERF_COPYBACK_MAX_RATIO_PERMILLE)
+    pom68k_perf_budget(jit_copyback_write_040_test
+        synthetic_68040_copyback 68040 native_slack_microseconds
+        POM68K_PERF_COPYBACK_SLACK_US)
+    add_test(NAME jit_copyback_write_040_test COMMAND jit_copyback_write_040_test)
+    set_tests_properties(jit_copyback_write_040_test PROPERTIES LABELS "jit;unit")
+    # The attribution switch is itself contractual: OFF must replay the exact
+    # cache-aware write rather than exposing stale backing RAM through DTLB.
+    add_test(NAME jit_copyback_write_040_control_test
+             COMMAND jit_copyback_write_040_test --disabled)
+    set_tests_properties(jit_copyback_write_040_control_test PROPERTIES
+                         LABELS "jit;unit")
+    # Highest-yield real consumer after the paired census: BSR's sole
+    # return-address push, including dirty publication and /BERR stack switch.
+    add_test(NAME jit_copyback_bsr_040_test
+             COMMAND jit_copyback_write_040_test --bsr)
+    set_tests_properties(jit_copyback_bsr_040_test PROPERTIES
+                         LABELS "jit;unit")
+    # The remaining hot MOVE pair needs two cache proofs before either
+    # access becomes visible. The OFF twin pins whole-instruction replay.
+    add_test(NAME jit_copyback_pair_040_test
+             COMMAND jit_copyback_write_040_test --pair)
+    set_tests_properties(jit_copyback_pair_040_test PROPERTIES
+                         LABELS "jit;unit")
+    add_test(NAME jit_copyback_pair_040_control_test
+             COMMAND jit_copyback_write_040_test --pair-disabled)
+    set_tests_properties(jit_copyback_pair_040_control_test PROPERTIES
+                         LABELS "jit;unit")
+
     # AArch64 68040 gate for opcode-local removal of the conservative store
     # fallback. It proves both halves of the contract: mask-null ordinary RAM
     # is direct, while a true overlap with translated code is observed by the
@@ -1365,21 +1497,27 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME jit_store_guard_a64_test COMMAND jit_store_guard_a64_test)
     set_tests_properties(jit_store_guard_a64_test PROPERTIES LABELS "jit;unit")
 
-    # M1 gate (docs/CACHE_040.md): 68040 architectural cache-TAG state
-    # (POM68K_040_DCACHE) — UM § 4 semantics on the Cache040 struct, then
-    # CACR/TTR/CINV/CPUSH through a bare 68040 Moira. Tags only: data is
-    # served by the bus, the model observes.
+    # M1-M3 gate (docs/CACHE_040.md): 68040 cache geometry and line data,
+    # CACR/CM/TTR policy, copyback/CPUSH/CINV, snooping and hit/fill timing.
     add_executable(cache040_test tests/cache040_test.cpp)
     target_link_libraries(cache040_test PRIVATE moira)
     add_test(NAME cache040_test COMMAND cache040_test)
 
     # O5 gate: hand-computed 68882 smoke cases (FMOVECR/FADD/DZ/OPERR/
-    # FCMP/FMOVEM + detached F-line). The differential FPU corpus replays
+    # FCMP/FMOVEM, format-$9 IRQ + BUSY resume, detached F-line). The corpus
     # through sst68030 (tests/data/sst68030_fpu, generated by a parallel
     # fuzz run) once available.
     add_executable(fpu_sanity tests/fpu_sanity.cpp)
     target_link_libraries(fpu_sanity PRIVATE moira)
     add_test(NAME fpu_sanity COMMAND fpu_sanity)
+
+    add_executable(fpu040_test tests/fpu040_test.cpp)
+    target_link_libraries(fpu040_test PRIVATE moira)
+    add_test(NAME fpu040_test COMMAND fpu040_test)
+
+    add_executable(callm_rtm_test tests/callm_rtm_test.cpp)
+    target_link_libraries(callm_rtm_test PRIVATE moira)
+    add_test(NAME callm_rtm_test COMMAND callm_rtm_test)
 
     # Mac II gates: declaration ROM, NuBus, Toby video HLE.
     add_executable(declrom_test tests/declrom_test.cpp)
@@ -1535,12 +1673,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # Apple-Silicon release gate. A coarse budget exercises complete native
     # blocks, linked exits and peripheral synchronization; five million
     # comparisons cover every late-boot A64 regression found during bring-up.
+    # This is also the permanent architectural-cache/J4 gate: the diagnostic
+    # counter makes a green run with zero native physical-line hits fail.
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$" AND
        POM68K_JIT_BACKENDS STREQUAL "auto")
         add_test(NAME jit_lockstep_a64_coarse_test COMMAND jit_lockstep_test 5000000
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_lockstep_a64_coarse_test PROPERTIES
-                             ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=50"
+                             ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=50;POM68K_040_DCACHE=1;POM68K_JIT_040_LINE_STATS=1"
                              TIMEOUT 1800)
 
         # Apple-Silicon 68030 gate: unlike the portable pair above, this one
@@ -1573,10 +1713,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # interesting half of a code generator — long blocks, and a loop closing
     # on itself entirely inside generated code — would go unexercised behind
     # a green light.
-    add_test(NAME jit_lockstep_x64_test COMMAND jit_lockstep_test 400000
+    # The wide x64 variant carries the same cache-on native-line proof; the
+    # fine and no-access variants below retain the default cacheless paths.
+    add_test(NAME jit_lockstep_x64_test COMMAND jit_lockstep_test 1000000
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(jit_lockstep_x64_test PROPERTIES
-                         ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_LOCKSTEP_BUDGET=256"
+                         ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_040_DCACHE=1;POM68K_JIT_040_LINE_STATS=1"
                          TIMEOUT 1800)
 
     # The same, one cycle at a time: the sharpest check there is, and the
@@ -1960,6 +2102,92 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         set_property(TEST jit_lockstep_a64_coarse_test APPEND PROPERTY LABELS smoke)
     endif()
 
+    # Fast, asset-free native-JIT tier. Every registration here must fail,
+    # never soft-skip, on the A64/x64 CI hosts: jit_backend_test requires the
+    # compiled host generator, the copyback trio executes the IR-derived
+    # single/pair proof protocols, and the two standalone checkers keep the
+    # environment/document surfaces coherent. TIMEOUT is the deliberately
+    # coarse CI performance budget; semantic budgets (zero fallback, native
+    # cache-hit/fallback counters, bounded IR size) live inside the gates.
+    set_property(TEST jit_backend_test
+                      jit_asset_free_lockstep_test
+                      jit_copyback_write_040_test
+                      jit_copyback_bsr_040_test
+                      jit_copyback_pair_040_test
+                      docs_test config_test
+                 APPEND PROPERTY LABELS jit-fast)
+    set_tests_properties(jit_backend_test
+                         jit_asset_free_lockstep_test
+                         jit_copyback_write_040_test
+                         jit_copyback_bsr_040_test
+                         jit_copyback_pair_040_test
+                         docs_test config_test
+                         PROPERTIES TIMEOUT 45)
+
+    # Gate contract manifest. `unit` predates the asset model and only means
+    # "not named *_etalon"; it is intentionally retained for compatibility,
+    # but CI and tooling now consume these orthogonal, exhaustive dimensions.
+    # The short exception list names component gates whose useful path needs a
+    # user-provided corpus, firmware or disk despite not being an etalon.
+    set(POM68K_OPTIONAL_ASSET_GATES
+        sst68000 sst68030 sst68040
+        cuda_lle_test egret_lle_test
+        scsi_disk_test ncr53c96_test scsi_pdma_test scsi_hfs_facade_test sound_test
+        savestate_030_test savestate_68k_test)
+    set(pom68k_gate_manifest
+        "name\tassets\thost\tscope\ttier\n")
+    foreach(t IN LISTS pom68k_tests)
+        if(t MATCHES "etalon$" OR
+           (t MATCHES "^jit_lockstep" AND
+            NOT t STREQUAL "jit_asset_free_lockstep_test"))
+            set(gate_assets required)
+        elseif(t IN_LIST POM68K_OPTIONAL_ASSET_GATES)
+            set(gate_assets optional)
+        else()
+            set(gate_assets none)
+        endif()
+
+        if(t MATCHES "(^|_)a64(_|$)" OR t MATCHES "^lle_a64_")
+            set(gate_host a64)
+        elseif(t MATCHES "(^|_)x64(_|$)")
+            set(gate_host x64)
+        elseif(t MATCHES "^jit_(asset_free|copyback)")
+            set(gate_host native)
+        else()
+            set(gate_host any)
+        endif()
+
+        get_test_property(${t} LABELS gate_contract_labels)
+        if(t MATCHES "etalon$")
+            set(gate_scope profile)
+        elseif(t STREQUAL "docs_test" OR t STREQUAL "config_test")
+            set(gate_scope repository)
+        elseif(t MATCHES "^jit_")
+            set(gate_scope engine)
+        else()
+            set(gate_scope component)
+        endif()
+        if("jit-fast" IN_LIST gate_contract_labels OR gate_assets STREQUAL "none")
+            set(gate_tier daily)
+        elseif("etalon-core" IN_LIST gate_contract_labels)
+            set(gate_tier platform)
+        else()
+            set(gate_tier full)
+        endif()
+
+        set_property(TEST ${t} APPEND PROPERTY
+                     LABELS "asset-${gate_assets}" "host-${gate_host}"
+                            "scope-${gate_scope}" "tier-${gate_tier}")
+        set_property(TEST ${t} PROPERTY POM68K_ASSETS ${gate_assets})
+        set_property(TEST ${t} PROPERTY POM68K_HOST ${gate_host})
+        set_property(TEST ${t} PROPERTY POM68K_SCOPE ${gate_scope})
+        set_property(TEST ${t} PROPERTY POM68K_TIER ${gate_tier})
+        string(APPEND pom68k_gate_manifest
+               "${t}\t${gate_assets}\t${gate_host}\t${gate_scope}\t${gate_tier}\n")
+    endforeach()
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gate_manifest.tsv
+         "${pom68k_gate_manifest}")
+
     # The registry, as a file `docs_test` can read: one line per gate,
     # "<name>\t<label>,<label>". CTest has no way to hand a test the roster,
     # and a documentation gate that cannot see the roster can only check the
@@ -1984,5 +2212,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # three. Pair them: `make -j4 jitdev && ctest -L smoke`.
     add_custom_target(jitdev DEPENDS
                       jit_backend_test jit_lockstep_test q605_boot_etalon)
+
+    # Pair with `ctest -L jit-fast`: seven registrations, five small binaries,
+    # no ROM/disk/SST corpus and no GUI dependency.
+    add_custom_target(jitfast DEPENDS
+                      jit_backend_test jit_asset_free_lockstep_test
+                      jit_copyback_write_040_test
+                      docs_test config_test)
 
 endif()
