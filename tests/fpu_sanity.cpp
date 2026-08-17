@@ -35,8 +35,21 @@ class TestCpu : public moira::Moira {
 public:
     TestCpu() : mem(1 << 24, 0) { setModel(moira::Model::M68030); }
     std::vector<uint8_t> mem;
+    void armIrqAfter(int cycles, int level) {
+        irqClock = getClock() + cycles; irqLevel = level; irqArmed = true;
+    }
 
 private:
+    moira::i64 irqClock = 0;
+    int irqLevel = 0;
+    bool irqArmed = false;
+    void sync(int cycles) override {
+        clock += cycles;
+        if (irqArmed && clock >= irqClock) {
+            irqArmed = false;
+            setIPL(moira::u8(irqLevel));
+        }
+    }
     moira::u8  read8(moira::u32 a) const override { return mem[a & 0xFFFFFF]; }
     moira::u16 read16(moira::u32 a) const override {
         return moira::u16((mem[a & 0xFFFFFF] << 8) | mem[(a + 1) & 0xFFFFFF]);
@@ -200,7 +213,7 @@ int main() {
     CHECK(cpu.getA(1) == 0x403C, "frestore idle882: A1 = %08X, want 0000403C", cpu.getA(1));
     CHECK(cpu.getPC0() == 0x1008, "frestore idle882: PC0 = %08X, want 00001008 (no trap)", cpu.getPC0());
 
-    // 12 ── FRESTORE 68882 BUSY frame ($1FD4xxxx): skipped, not a format
+    // 12 ── FRESTORE an opaque 68882 BUSY frame: accepted for compatibility
     // error (fpp.c:2788-2790); A1 advances 4 + $D4
     run(cpu, { 0x227C, 0x0000, 0x4000,              // movea.l #$4000,a1
                0xF359 },                            // frestore (a1)+
@@ -217,7 +230,26 @@ int main() {
         { { 0x4000, 0x1234 }, { 0x4002, 0x5678 } });
     CHECK(cpu.getPC0() == 0x3200, "frestore garbage: PC0 = %08X, want 00003200 (vector 14)", cpu.getPC0());
 
-    // 14 ── timing smoke: FADD.X FP1,FP0 costs its MC68882UM Table 8-3
+    // 14 ── A 68030 coprocessor post-instruction exception uses the
+    // six-word format-$2 frame, with the FP instruction address in its
+    // extra longword (not the integrated-040 format $3).
+    run(cpu, { 0xF200, 0x6000 }, 0, true,
+        { { 0x00d0, 0x0000 }, { 0x00d2, 0x3300 } }); // vector 52 -> $3300
+    {
+        const uint32_t inf[3] = { 0x7fff0000, 0, 0 };
+        cpu.setFP(0, inf);
+        cpu.setFPCR(0x2000);                           // enable OPERR
+        cpu.execute();                                 // fmove.l fp0,d0
+        const uint32_t sp = cpu.getSP();
+        auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
+        auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
+        CHECK(cpu.getPC0() == 0x3300 && sp == 0x7ff4,
+              "030 FP post exception PC0/SP=%08X/%08X", cpu.getPC0(), sp);
+        CHECK(m16(sp + 6) == 0x20d0 && m32(sp + 8) == 0x1000,
+              "030 FP post frame fmt/insn=%04X/%08X", m16(sp + 6), m32(sp + 8));
+    }
+
+    // 15 ── timing smoke: FADD.X FP1,FP0 costs its MC68882UM Table 8-3
     // figure (FPn-to-FPm total = 56), not the old CYCLES_68020 placeholder
     run(cpu, { 0xF200, 0x0422 }, 0, true);          // fadd.x fp1,fp0
     {
@@ -227,7 +259,7 @@ int main() {
               "fadd.x timing: %lld cycles, want 56 (Table 8-3)", (long long)(cpu.getClock() - c0));
     }
 
-    // 15 ── timing smoke: FMOVECR = 32 (Table 8-3)
+    // 16 ── timing smoke: FMOVECR = 32 (Table 8-3)
     run(cpu, { 0xF200, 0x5C00 }, 0, true);          // fmovecr #0,fp0
     {
         auto c0 = cpu.getClock();
@@ -236,8 +268,45 @@ int main() {
               "fmovecr timing: %lld cycles, want 32 (Table 8-3)", (long long)(cpu.getClock() - c0));
     }
 
+    // 17 ── an IRQ accepted from a 68882 IA checkpoint uses the CPU's
+    // format-$9 continuation frame. The handler's FSAVE sees a $D4 BUSY
+    // image; FRESTORE + RTE resumes the suspended square root and commits 2.
+    run(cpu, { 0xF23C, 0x4000, 0x0000, 0x0004,      // fmove.l #4,fp0
+               0xF200, 0x0004 },                    // fsqrt.x fp0,fp0
+        1, true,
+        { { 0x006C, 0x0000 }, { 0x006E, 0x3400 },   // level-3 autovector
+          { 0x3400, 0xF321 },                       // fsave -(a1)
+          { 0x3402, 0xF359 },                       // frestore (a1)+
+          { 0x3404, 0x4E73 } });                    // rte
+    cpu.setSR(0x2000);                              // supervisor, IRQs enabled
+    cpu.setA(1, 0x5000);
+    cpu.armIrqAfter(16, 3);
+    cpu.execute();                                  // interrupted FSQRT
+    {
+        const uint32_t sp = cpu.getSP();
+        auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
+        auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
+        CHECK(cpu.getPC0() == 0x3400 && sp == 0x7fec,
+              "68882 mid-IRQ PC0/SP=%08X/%08X", cpu.getPC0(), sp);
+        CHECK(m16(sp + 6) == 0x906c && m32(sp + 8) == 0x1008,
+              "format-9 word/IA=%04X/%08X", m16(sp + 6), m32(sp + 8));
+    }
+    cpu.execute();                                  // FSAVE BUSY
+    CHECK(cpu.getA(1) == 0x4f28,
+          "fsave busy882: A1=%08X, want 00004F28", cpu.getA(1));
+    CHECK(cpu.mem[0x4f28] == 0x1f && cpu.mem[0x4f29] == 0xd4 &&
+          cpu.mem[0x4f2c] == 'P' && cpu.mem[0x4f2d] == 'O' &&
+          cpu.mem[0x4f2e] == 'M' && cpu.mem[0x4f2f] == '2',
+          "fsave busy882 header/magic not $1FD4/POM2");
+    cpu.execute();                                  // FRESTORE BUSY
+    cpu.execute();                                  // RTE + completion
+    CHECK(cpu.getPC0() == 0x100c && cpu.getA(1) == 0x5000,
+          "format-9 resume PC0/A1=%08X/%08X", cpu.getPC0(), cpu.getA(1));
+    checkFp(cpu, 0, 0x40000000, 0x80000000, 0x00000000,
+            "resumed sqrt(4)");
+
     if (failures) { std::printf("[fpu_sanity] FAIL: %d check(s)\n", failures); return 1; }
     std::printf("[fpu_sanity] OK: detached F-line, FMOVECR, FADD, DZ, OPERR, FCMP/FScc, "
-                "FMOVEM, packed, FPCR, FRESTORE frames, 68882 timing\n");
+                "FMOVEM, packed, FPCR, FRESTORE/exception frames, 68882 timing/BUSY IRQ\n");
     return 0;
 }

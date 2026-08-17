@@ -1,15 +1,10 @@
-# 68040 copyback / snooping — blueprint (M0-M1, chantier CLOSED at M1)
+# 68040 cache content, copyback, snooping and timing — M0-M3 complete
 
-*Opened 2026-08-04; M1 landed, was hardened, and the chantier closed
-at M1 on 2026-08-05 (§ 3 — the decision and its reopening conditions).
+*Opened 2026-08-04; M1 landed and was hardened on 2026-08-05. The
+initial decision to stop at tags was superseded by the explicit request
+to complete the 68040 model; M2/M3 and timing landed on 2026-08-16.
 Pattern: `IOP_BRINGUP.md` / `DUO_BRINGUP.md` — recon first, milestones
-gated, nothing implemented before its observable is named. Citations
-re-checked against the tree on **2026-08-12**: the flag, the tag store,
-the CINV/CPUSH path and the 44-check gate are all where this file says
-they are.*
-
-**Read this if you are here to open M2**: § 3 is the whole file. §§ 0-2
-are how M1 was reasoned and what it costs to redo.
+gated, nothing implemented before its observable is named.*
 
 ## 0. What the recon changed about this chantier
 
@@ -55,21 +50,20 @@ Consequences, stated plainly:
   through pages whose **CM bits** Mac OS sets non-cacheable — so
   honouring CM is the load-bearing correctness requirement of M2, and
   measuring what Mac OS actually maps is M0's probe.
-- Per `extern/moira/POM68K_VENDOR.md` ("Genuinely remaining on the 040,
-  in the order that would bite"), the bigger wall for a *full 68040*
-  claim is **the native FPU opmodes $40-$7F**, ranked above caches.
-  This chantier does not displace that one.
+- The integrated FPU and the cache-content wall both closed on
+  2026-08-16. The cache model is architectural and bus-beat timed; it
+  does not attempt to expose individual BCLK/TA pin transitions.
 
 ## 1. Existing seams (all verified)
 
 | Seam | Where | State |
 |---|---|---|
-| CINV/CPUSH | `MoiraExec_cpp.h` (`execCinv/execCpush`) | **since M1**: act on the modelled tags when `POM68K_040_DCACHE` is armed (`pomCacheOp040`); no-ops otherwise |
+| CINV/CPUSH | `MoiraExec_cpp.h` (`execCinv/execCpush`) | push dirty bytes to physical memory and invalidate the selected line/page/cache |
 | CACR | `Cpu040::didChangeCACR` (`src/Cpu040.cpp`) | bit 15/11 drive the **throughput** i-cache overlay + JIT flushAll; **since M1** DE/IE also gate the tag model (read at touch time, no hook needed) |
 | CM bits | `Moira::Mmu040AtcEntry.status` (`Moira.h:1777-1783` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
 | TTR cache fields | `mmu040MatchTTR` | TTR CM bits reachable the same way |
-| JIT contract | `src/jit/POM68K_JIT.md` § derived state; `pomJitAtcEvict` | "derived state dies with the ATC entry" — a data cache is a THIRD state layer the JIT's inline DTLB must never bypass; M2 gates the JIT OFF or excludes cached pages from the DTLB |
-| Snoop hook (future) | none today | first client = IIfx SCSIDMA true DMA (deferred) or any future bus master; the hook lands with the client, not before |
+| JIT contract | `pomJitFetch`, `pomJitProbeCode/Data`, `pomJitData` | page-to-host-RAM data windows are refused; validated sole reads and write-authorized copyback hits may use the resident physical D-cache line; native writes publish the exact dirty-longword mask; every fetched byte and a native block's whole embedded range require resident byte-for-byte I-cache identity; native links return to that guard between blocks |
+| Snoop hook | `pomSnoop040Read/Write` | alternate-master read supply, invalidate and write-sink/MI behaviour; callable even while DC is disabled |
 
 ## 2. Milestones
 
@@ -151,72 +145,124 @@ found and fixed three real defects — an infinite touch loop at
 0xFFFFFFFF, the faultable peek walk, phantom lines after /BERR — and
 four gate holes, all pinned by the checks above.
 
-**M2 — copyback data path** (same flag, opt-in) — **NOT OPENED,
-decision § 3.** Stores to copyback
-pages land in the modelled line; reads hit dirty lines; eviction and
-CPUSH write back. Requirements proven before merge: CM honoured from
-the ATC entry status (non-cacheable/serial bypass — the display seam),
-MOVE16 semantics (UM: bypasses allocation), the JIT excluded or
-DTLB-fenced on cached pages, and a synthetic staleness gate (a
-deliberately-undisciplined access pattern must now observe stale data
-exactly where the UM says it would). Soak + persist etalons with the
-flag ON are the exit gates.
+**M2 — copyback data path — DONE 2026-08-16.** Each line now carries
+16 data bytes and four dirty-longword bits. Reads perform requested-
+longword-first, four-beat fills; copyback stores allocate and remain
+stale in backing memory until dirty replacement or CPUSH; writethrough
+stores update memory and do not allocate on a miss. Serial/nonserial NC,
+locked RMW, MOVES and MOVE16 bypass allocation and first resolve dirty
+aliases. A failed fill cannot leave a partial valid line. The model is
+enabled with `POM68K_040_DCACHE=1`. It remains opt-in because the necessarily
+cache-aware JIT path does not yet meet the real-ROM product-speed budget;
+this is a performance/default-policy limit, not a missing cache behaviour.
+The JIT may compile/run a block only while its complete embedded byte range
+is resident and byte-identical in I-cache, and returns between blocks to
+recheck it. Ordinary page-to-RAM data mappings remain disabled. Sole reads
+may now hit a published physical D-cache line directly, but only after
+validating the logical+privilege tag, data-ATC epoch, live valid bit and
+physical tag; every miss and every store still crosses the exact D-cache
+model.
 
-**M3 — snooping.** Blocked on a first true bus master (IIfx SCSIDMA is
-the named candidate). The hook is specified here so M2 doesn't paint
-over it: every non-CPU write to guest RAM calls a `snoop(phys, len)`
-that invalidates (SC=01) or updates (SC=10) matching lines per the
-snoop-control bits the master presents. Do not build it before a
-client exists — the IOP lesson (`IOP_BRINGUP.md` § M4) is that
-A/UX-only machinery stays deferred and LOUD.
+**M3 — snooping — DONE 2026-08-16.** `pomSnoop040Read` can supply a
+dirty hit and optionally invalidate it. `pomSnoop040Write` implements
+invalidate or write-sink/MI semantics, including disabled-cache hits and
+cross-line ranges. The shipped 040 boards still have no true DMA master,
+so the API is pinned synthetically and is ready for the deferred IIfx
+SCSIDMA rather than wired to CPU-driven pseudo-DMA.
 
-**Timing** (cache-hit vs miss cycles) is a separate thread feeding the
-existing throughput overlay; it must not be entangled with the
-correctness milestones above.
+**Timing — DONE 2026-08-16.** `PomCache040Timing` separates a cache hit,
+a four-beat line fill and each dirty longword push. Defaults are 0, 8 and
+2 core cycles respectively, matching zero-wait external bus beats; board
+callbacks continue to add their own memory/device wait states. This is an
+architectural transaction model, not a pin-level BCLK/TA waveform model.
 
-## 3. Order of work and the exit condition
+**Performance follow-up — 2026-08-16.** A short Q605 profile disproved the
+obvious host-side optimization: a last-I/D-line tag memo made the Release
+gate **60.63 s -> 63.29 s** (+4.4 %) and was removed. The real repeated work
+was the native data TLB asking on every access whether it could bypass the
+D-cache. Cache-active refusal is now stored as a tagged null entry, so later
+accesses go directly to the exact cache-aware thunk: the full boot's refusal
+counter fell **321,187,389 -> 727,456** (-99.77 %), with identical guest
+state (`SCSI=2329`, same screen statistics). The paired non-verbose Release
+run improved **60.63 s -> 59.19 s** (-2.4 %), useful but nowhere near the
+cacheless **11.03 s** gate. The model therefore remains opt-in. The next
+material lever is a native physical D-cache-line hit path; more tag-lookup
+micro-optimization is explicitly not the answer.
 
-M0 (one sitting: probe + numbers into this doc) → M1 (`cache040_test`
-green + all `m040` etalons green with the flag on) → decision point:
-M2 only if M0's numbers and a concrete motivation (a guest, a
-diagnostic, a timing goal) justify the exposure. The chantier's honest
-exit may well be "M1 + documented decision not to serve data from the
-model until a client demands it" — that would still close the
-`TODO.md` § 4 line, because CINV/CPUSH would finally act on real
-architectural state instead of nothing.
+**Native physical line reads — 2026-08-16.** That next lever is now in both
+native backends. A successful exact access publishes its fixed
+`Cache040::Line*`; generated sole-access loads validate logical privilege,
+the DATA-ATC generation, `valid`, the physical tag and the 16-byte boundary
+before reading the line's big-endian bytes. ATC eviction/map changes advance
+the generation in O(1); replacement, CINV, CPUSH and snoops fail the live-line
+checks.
 
-**Decision — 2026-08-05: the chantier CLOSES at M1.** The sweep M1
-owed is paid: after the one-time GUI cleanup of the 8.1 volume
-(drVolAtrb back to $0100), `ctest -L m040` ran **33/33 green with the
-flag ON on freshly relinked binaries** (2 h 00 wall, partly under a
-concurrent session's load — passes stand, only failures would have
-needed serial reruns). That 33 was the whole `m040` tier **as it stood
-that day**; the tier has since grown to 41, so re-running the sweep is
-a superset, not a repeat. The decision point then asks for a concrete
-motivation to open M2's data path, and none exists:
+The dedicated AArch64 cache-on lockstep executed **18,576,390 native line
+reads** over **131,823,105 JIT instructions** and remained CPU/RAM/device
+identical to the interpreter for five million 50-cycle checkpoints. On the
+paired Release Q605 fixed-budget run, disabling only this path took
+**61.94 s / SCSI=2329**; enabling it took **48.78 s / SCSI=2064** (-21.2 %).
+The cache-on interpreter took **111.28 s / SCSI=2062**, so the new path is
+2.28x faster while its peripheral progress closely follows the reference.
+This still does not reach the Finder inside the calibrated five-billion-cycle
+gate (nor approach the cacheless 11.03 s host cost), so
+`POM68K_040_DCACHE` remains opt-in. `POM68K_JIT_040_LINE_READ=0` is the
+attribution control; `POM68K_JIT_040_LINE_STATS=1` makes lockstep require and
+report an exercised native hit path.
 
-- **No guest, no diagnostic.** Every profile boots and runs on the
-  cache-less model; nothing in the roster observes cache CONTENT —
-  M1's tags already give CINV/CPUSH real state to act on.
-- **Not timing.** Timing is a separate thread feeding the existing
-  throughput overlay (§ 2, last paragraph); it needs cycle numbers,
-  not a data path.
-- **Not coherency.** M3's first snoop client (IIfx SCSIDMA true DMA)
-  is itself deferred and A/UX-only.
+**Native copyback write hits — 2026-08-16.** Sole-access stores now have a
+separate publication proof in both native backends. `pomJitCache040W` is
+filled only after an exact write proves permission, descriptor M state,
+CM=copyback, a resident line and the expected dirty bits. A generated hit
+revalidates the same logical/ATC/physical/line invariants as a read, stores
+the big-endian bytes, then ORs exactly the first and last covered longword
+bits. The write table is deliberately not populated by reads, and a
+write-through alias cannot borrow another alias's dirty state.
 
-Against that stands M2's full exposure: the JIT DTLB fence across the
-entire 040 fleet, the display seam, MOVE16, staleness gates. So the
-chantier takes its named honest exit — **M1 plus this decision**.
+`jit_copyback_write_040_test` is the dedicated gate: a misaligned long store
+must set dirty mask `$3` while backing RAM stays stale, then the already
+compiled block is redirected to a /BERR hole. Its complete 60-byte format-$7
+frame is compared with the interpreter for both last-write (next PC/final
+CCR) and restart (instruction PC/restored CCR and predecrement EA) paths.
+`POM68K_JIT_040_LINE_WRITE=0` keeps the exact-write attribution control, and
+`jit_copyback_write_040_control_test` now runs it as a gate: A64 must replay
+the exact cache-aware instruction, never expose backing RAM through the
+ordinary DTLB.
 
-Reopen M2 when one of these lands, and not before:
+The MOVE-only path removed 4,402,477 fallbacks but measured below noise on
+two order-reversed 5 G-cycle pairs (49.87 -> 49.81 s average). The useful
+next consumer was BSR's sole return-address push: 3,933,940 additional
+fallbacks disappear when A64 uses the same write proof x64 already reached.
+`jit_copyback_bsr_040_test` pins its stack-line bytes, exact dirty longword,
+stale backing RAM and /BERR format-$7 frame across the user-to-supervisor
+stack switch. The combined write path averages **49.93 -> 49.49 s** (-0.88 %)
+with identical guest state.
 
-1. a real guest or diagnostic observed to depend on cache **content**
-   (not tags) — the observable must be named first, per the house
-   pattern;
-2. the IIfx SCSIDMA true-DMA client (which reopens M3, and with it
-   the whole coherency question);
-3. a timing-accuracy goal the throughput overlay cannot meet without
-   real line state.
+The next bounded consumer is the hot longword pair `MOVE.L abs.W,-(A7)` /
+`MOVE.L (A7)+,abs.W`. Both native backends prove the source R line and
+destination W line before either access becomes visible; if the second proof
+misses, the complete untouched instruction is replayed. The dedicated ON/OFF
+pair gates pin exact bytes, dirty bit, flags/EA and the second-line /BERR
+frame. `POM68K_JIT_040_LINE_PAIR=0` isolates this path while leaving ordinary
+line reads/writes enabled. It removes **7,523,969** additional fallbacks and
+measures **46.92 -> 46.63 s** (-0.62 %) over two order-reversed 5 G-cycle
+pairs, with identical guest state. The full A64 cache-on lockstep now
+exercises **5,896,026 native copyback writes plus 21,303,835 reads** over
+131,823,105 JIT instructions and remains CPU/RAM/device-identical for all
+five million checkpoints.
 
-For a *full 68040* claim, the wall ranked above caches is unchanged:
-the native FPU opmodes $40-$7F (`extern/moira/POM68K_VENDOR.md`).
+## 3. Closure and gates
+
+The 2026-08-05 M1-only decision was sound for the then-current guest
+observable, but the later explicit requirement was broader: complete the
+architectural cache behaviour itself. That request supplies the reopening
+condition, and M2/M3 are now implemented.
+
+`cache040_test` pins geometry and replacement, CACR/CM/TTR/MMU paths,
+CINV/CPUSH scopes, stale copyback memory, dirty eviction, disabled-cache
+snooping, write-sink/invalidate behaviour, cross-line snoops and exact
+configured hit/miss charges. `sst68040` remains the ISA/MMU regression
+wall; the standard real-ROM etalons retain their calibrated cacheless mode,
+while cache-on CPU/JIT locksteps are the integration gate. Save states keep
+the project convention: derived cache contents are flushed rather than
+serialized.

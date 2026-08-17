@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 239 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 242 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -91,6 +91,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why A64 and x64 no longer decide separately what a guest opcode means** → [2026-08-17 — A64 and x64 stop decoding semantics behind the IR](#2026-08-17-jit-ir-semantics)
+- **how a native copyback store proves write permission, dirty publication and the 040 last-write/restart dichotomy** → [2026-08-16 (third) — JIT copyback writes cross the native boundary](#2026-08-16-jit-copyback-write)
 - **why only AArch64 `B592` may bypass the conservative zero-mask store fallback** → [2026-08-12 — One opcode clears the store guard](#2026-08-12-a64-b592-store)
 - **why the conformant 68040 JIT became the product default, and how the interpreter stayed a tested oracle** → [2026-08-10 (eighth) — The fastest conformant engine becomes the 68040 default](#2026-08-10-jit-040-default)
 - **what a successful 68030 `(An)+` write exposes before CPU state diverges** → [2026-08-10 (seventh) — The successful postincrement oracle](#2026-08-10-jit-030-pi-success)
@@ -121,6 +123,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **what “complete 020/030/040” actually found: CALLM/RTM, the 030 coprocessor frame, and an integrated 040 FPU** → [2026-08-16 (later) — The full 68040 stops masquerading as a 68882…](#2026-08-16-020-030-040-closure)
 - **68000: 1 000 058 SingleStepTests vectors** → [2026-07-14 — M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **the two-oracle arbitration loop starts** → [2026-07-15 — Phase 2 live: two 68030 oracles + arbitration turn 1](#2026-07-15--phase-2-live-two-68030-oracles--arbitration-turn-1)
 - **Moira executes the 68030 MMU instructions** → [2026-07-15 — O4 slice 1: Moira executes the 68030 MMU instructions](#2026-07-15--o4-slice-1-moira-executes-the-68030-mmu-instructions)
@@ -297,6 +300,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-17** — [A64 and x64 stop decoding semantics behind the IR](#2026-08-17-jit-ir-semantics)
+- **2026-08-16 (third)** — [JIT copyback writes cross the native boundary, with dirty-longword and format-$7 proofs attached](#2026-08-16-jit-copyback-write)
+- **2026-08-16 (later)** — [The full 68040 stops masquerading as a 68882; the 68030 and 68020 audits close one real gap each](#2026-08-16-020-030-040-closure)
 - **2026-08-16** — [Ten red gates, five causes, and the two that were never going to be found by reading](#2026-08-16-ten-red-gates)
 - **2026-08-15 (fifth)** — [Mounting a CD stops being a procedure, and the discs that never mounted finally say why](#2026-08-15-cd-like-a-floppy)
 - **2026-08-15 (fourth)** — [Two things the GUI was not being told: that the guest ejected the disk, and where the user put the windows](#2026-08-15-gui-media-and-dock)
@@ -538,6 +544,222 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-17-jit-ir-semantics"></a>
+## 2026-08-17 — A64 and x64 stop decoding semantics behind the IR
+
+The memory protocol had converged, but the native backends still carried two
+ISA decoders in disguise: separate opcode-line dispatches, ALU-family maps,
+direction logic, widths and overlap exclusions in `canEmit()` and emission.
+That made every coverage change a three-way agreement between A64, x64 and
+the IR, with no gate preventing the two hosts from assigning different
+meaning to the same word.
+
+`InstructionSemantics` now joins `MemoryContract` on every `Instr` recorded by
+the engine. The pure `describeInstruction()` decoder resolves family, ALU
+operation, size, direction, both MOVE EAs, register field, condition and
+bit/shift/bitfield action once. Both native dispatches switch on `SemanticOp`,
+both ALU lowerings consume `AluOperation`, and their raw-opcode census entry
+points call the same decoder before applying only host EA admissibility. MOVEP
+versus dynamic bit operations, CMP versus EOR direction and MUL/DIV versus
+address ALU are therefore shared exclusions rather than coincident masks.
+`docs_test` rejects a backend-local line dispatch or ALU decoder, while
+`jit_backend_test` checks the overlaps and exhaustively proves that every
+opcode claimed by the active backend has valid shared semantics.
+
+The convergence now includes the instruction stream itself. `Instr` owns its
+copied extension words and up to two `DecodedEffectiveAddress` operands;
+`describeEffectiveAddresses()` resolves immediate, displacement, absolute,
+PC-relative, brief-index and complete 68020 full-index formats once. The full
+plan separates base/index suppression, base/outer displacement and direct,
+preindexed or postindexed indirection; reserved encodings remain invalid.
+`ControlFlowPlan` likewise owns target, fallthrough and pushed return address.
+A64 and x64 map those plans to host mechanics through `findEffectiveAddress()`
+and `Instr::control`, and retain raw block-word reads only for the architectural
+prefetch queue. Full-index is deliberately still a native fallback on both
+hosts: recognizing it no longer risks treating its first word as a brief
+extension. Their compile paths also stopped reading
+the process environment: one `ResolvedConfig` snapshot belongs to each
+`Engine`, including the A64 bring-up controls and backend-dependent defaults.
+Changing an experiment variable can therefore affect a future engine, never a
+later block in an existing one.
+
+The surrounding project contracts were consolidated in the same direction:
+
+- `MachineCatalog.h` is the single compiled row per current profile — menu,
+  ROM identity, variant, CPU/platform and stable `SnapMachine` id — with
+  compile-time uniqueness/density checks. Thirty-seven remains current
+  coverage and explicitly not the all-68k-Macintosh product ceiling.
+- CMake emits a five-dimensional gate manifest (assets, host, scope, tier),
+  and CI selects `asset-none` instead of pretending the legacy `unit` label
+  means asset-free.
+- `FixtureStore.h` makes an exact `ref/` path immutable by cloning its first
+  writable open into sibling `work/`; `verify_assets.py` checks every present
+  `assets.lock` entry, and both behaviours have asset-free gates.
+- `performance_budgets.tsv` replaces private test literals with reviewed
+  workload/guest-family/host policy. Daily synthetic structural/share/fallback
+  budgets are separate for A64 and x64; measured fixed-cycle Q605/68040 and
+  LC II/68030 x64 floors are the first representative rows. The same daily
+  lockstep now emits `pom68k.jit.metrics.v1` on both hosts, CI checks it with
+  `tools/check_jit_performance.py` and archives one JSON artifact per host.
+  Repeated immutable-clone runs add the A64 reference rows for an Apple M4:
+  Q605 ×9.50–9.67 and LC II `threaded` ×4.96–5.02, with identical per-run
+  fingerprints/counters. Only 68000/68020 thresholds remain explicitly
+  unfilled rather than extrapolated.
+
+The AArch64 `jit-fast` tier remains 7/7 and the five-million-step Q605
+lockstep remains identical with exactly the pre-change coverage counters:
+5,529,758 JIT instructions, 369 interpreter fallbacks, 261 compiled blocks and
+4,978,420 replays. The x64 translation unit passes a full C++20 syntax build;
+its native execution remains the x64 CI runner's part of the asset-free tier.
+
+The same pass corrected a scope error introduced by the preceding
+stabilisation plan: POM68K targets **every 68k Macintosh**. `docs_test` now
+checks the compiled catalogue, gate contracts, performance policy and
+documents without turning today's profile count into a product ceiling.
+
+<a id="2026-08-16-jit-copyback-write"></a>
+## 2026-08-16 (third) — JIT copyback writes cross the native boundary, with dirty-longword and format-$7 proofs attached
+
+J4's read path had deliberately stopped before stores: a physical cache-line
+pointer alone does not prove that a logical access is writable or copyback,
+and updating bytes without the four dirty-longword bits loses data at the
+next CPUSH/replacement. The write half now has a separate 256-entry
+`pomJitCache040W` table. Only a completed exact write may publish it, after a
+write-side ATC/TTR probe proves permission and descriptor M state, the access
+reports CM=copyback, and the resident line already carries every expected
+dirty bit. A read-only publication and a write-through alias are therefore
+insufficient by construction.
+
+The A64 and x64 emitters revalidate logical privilege, DATA-ATC generation,
+live valid/physical tag and the 16-byte boundary. A hit stores the big-endian
+bytes and ORs the first/last covered longword bits; a miss retains the exact
+path. Native read and write hit counters are separate, and
+`POM68K_JIT_040_LINE_WRITE=0` is the new attribution control.
+
+The new `jit_copyback_write_040_test` is the admission gate rather than a
+promise delegated to the long boot lockstep. Its misaligned longword spans
+two quarters of a line and must produce dirty mask `$3` while backing RAM
+stays stale. It then redirects the already compiled instruction at a /BERR
+hole and compares the entire 60-byte format-$7 frame with the interpreter:
+last-write keeps final CCR and stacks the next PC; restart restores CCR,
+instruction PC and a predecremented address register. The focused gate is
+green on AArch64, the x64 emitter compiles cleanly, and the existing
+cache-structure gate remains green. The five-million-checkpoint A64 cache-on
+lockstep originally ran 131,823,105 JIT instructions with **18,585,072 native
+reads and 1,703,243 native copyback writes**, CPU/RAM/device-identical to the
+interpreter.
+
+The attribution pass then caught and closed its own control defect: on A64,
+`POM68K_JIT_040_LINE_WRITE=0` sent the newly admitted 040 MOVE stores back to
+the ordinary DTLB rather than the exact cache-aware instruction path. The
+new `jit_copyback_write_040_control_test` makes the OFF side prove the same
+dirty mask, stale backing RAM and fault contract with zero native write hits.
+Its corrected 5 G-cycle fingerprint, PC and SCSI count now match ON exactly.
+
+The paired measurement also stopped an attractive dead end. MOVE-only native
+writes removed 4,402,477 fallbacks but averaged **49.87 -> 49.81 s**, below
+noise. The cache-on census named BSR's repeated return-address push instead;
+routing A64 through the same sole-write seam x64 already used removes another
+3,933,940 fallbacks. `jit_copyback_bsr_040_test` pins the resident stack line,
+dirty longword, stale RAM and /BERR frame after a user-to-supervisor stack
+switch. Two order-reversed pairs measure the combined path at **49.93 ->
+49.49 s** (-0.88 %), state-identical.
+
+The next census pair, `$2F38`/`$21DF`, moves a longword between two memory
+operands. Its native path therefore proves both the source R line and
+destination W line before making either access visible; either miss replays
+the untouched instruction. `jit_copyback_pair_040_test` and its independent
+`POM68K_JIT_040_LINE_PAIR=0` control pin the transfer, flags/EA, precise dirty
+bit and second-line /BERR frame. It converts **7,523,969** more fallbacks and
+averages **46.92 -> 46.63 s** (-0.62 %) over two order-reversed pairs, with
+the same fingerprint, PC and SCSI progress. The repeated full lockstep is
+green at **21,303,835 reads and 5,896,026 native copyback writes** over
+131,823,105 JIT instructions. The architectural cache remains opt-in: these
+measured wins do not recover its Finder budget.
+
+<a id="2026-08-16-020-030-040-closure"></a>
+## 2026-08-16 (later) — 020/030/040 closure: integrated FPU, module calls, caches and interruptible 6888x
+
+The request was “complete 68040 and 68030 support, then audit 68020 for LLE”.
+The important first finding was that every full-040 machine selected
+`FPUModel::M68882`: integer/MMU identity said 68040, while every floating-point
+edge still followed an external coprocessor. A distinct `M68040` model now
+implements the sparse hardware opcode map (including all sixteen forced S/D
+variants), 040 FPCR/predicate/exception behaviour, FPSP unimplemented and
+datatype traps (including packed/subnormal payloads), the integrated FMOVEM
+ordering, revision-$41 FSAVE frames and BUSY FRESTORE arithmetic resume.
+Q605, Q630, Q700 and full-FPU Centris/Quadra profiles select it; LC040
+SoftwareFPU compatibility deliberately remains the external 68882 model.
+
+The first real-ROM pass caught what the micro-test had not asserted: the
+format-$2 unimplemented-instruction frame stacked the faulted PC, so FPSP's
+`RTE` executed the same operation forever. The architected field is the next
+PC. After pinning that exact word, `q605_boot_etalon` falls from a 259-second
+failure to a 58.6-second pass; Q630 passes in 93.8 s and Q700 in 392.6 s.
+
+The 68030 audit found one shared-FPU mistake: post-instruction exceptions used
+the 040 format-$3/EA frame. They now use the external-coprocessor format $2
+with the instruction address. Long external-6888x arithmetic is also no
+longer atomic: null/come-again checkpoints sample IPL, an eligible interrupt
+stacks format $9, and FSAVE emits the full $1F/$B4 or $1F/$D4 BUSY frame.
+FRESTORE restores the staged result and remaining execution time; RTE resumes
+at the following CPU instruction. The gate interrupts FSQRT, performs
+FSAVE/FRESTORE in the level-3 handler, then proves FP0 reaches exactly 2.0.
+
+The 68020 audit found the only two empty integer bodies, `CALLM` and `RTM`.
+Both now implement the architected 24-byte type-$00/$01 module frame, option
+000/100 stack rules, argument transfer, and CPU-space CAL/status/IAL/DAL plus
+descriptor-address transactions through explicit board hooks. A machine with
+no such hardware takes format error on type $01 instead of silently executing
+a stub.
+
+The previously tag-only 68040 cache model now carries all 16 bytes per line.
+It implements requested-longword-first four-beat fills, writethrough versus
+copyback allocation, serial/nonserial NC and MOVE16 bypass, dirty replacement,
+real CPUSH/CINV and failed-fill rollback. Alternate masters can request dirty
+read supply, invalidate, or write-sink/MI snooping even with DC disabled.
+Hit, line-fill and dirty-longword-push costs are independently configurable;
+the defaults model zero-wait bus transactions. A JIT block's complete byte
+range must be resident and byte-identical in I-cache, and execution returns
+through that guard between blocks; page-to-host-RAM data windows are fenced,
+so host memory cannot bypass stale or dirty cache state. The architectural model is enabled with
+`POM68K_040_DCACHE=1`; it stays outside the product default until this
+cache-aware JIT path recovers the real-ROM speed budget.
+
+The first performance follow-up rejected its initial low-risk hypothesis:
+remembering the last I/D line made the Release Q605 gate **4.4 % slower** and
+was removed. The useful fix was to remember the JIT data TLB's permanent
+"cannot bypass an active D-cache" answer as a tagged null entry. Redundant
+fill refusals fell **321,187,389 -> 727,456** (-99.77 %) and the paired
+non-verbose run **60.63 s -> 59.19 s**, with the exact same guest fingerprint.
+That is a real but small -2.4 %: cache-off still takes 11.03 s and reaches the
+Finder, while cache-on exhausts the calibrated guest budget at SCSI 2329.
+
+The next lever is now implemented in both native backends. Exact cache-aware
+accesses publish the resident physical `Cache040::Line`; a generated sole
+read uses it only after validating logical privilege, the DATA-ATC epoch,
+the live valid bit, physical tag and the 16-byte boundary. ATC eviction and
+map/control changes invalidate by generation; replacement, CINV, CPUSH and
+snooping invalidate through the line itself. Stores remain exact so
+copyback dirty masks and 040 last-write/restart state cannot be bypassed.
+The A64 cache-on lockstep performed **18,576,390 native line reads** over
+131.8 M JIT instructions with CPU/RAM/device state identical to the
+interpreter. A paired fixed-budget Q605 run improved **61.94 s -> 48.78 s**
+(-21.2 %); its SCSI progress, 2064, is close to the cache-on interpreter's
+2062 (111.28 s) rather than the old exact-thunk control's 2329. The guest
+still does not reach the Finder inside that cache-on budget and the
+cacheless gate remains 11.03 s, so default policy does not move. Attribution:
+`POM68K_JIT_040_LINE_READ=0`; exercised-hit counter/gate:
+`POM68K_JIT_040_LINE_STATS=1`.
+
+New gates: `fpu040_test`, `callm_rtm_test`, extended `fpu_sanity`, and the
+M1-M3 `cache040_test`. Together with `sst68030` and `sst68040`, the focused
+CPU set passes. Real-ROM coverage also passes on the Q605/Q630/Q700, LC II,
+SE/30 and Macintosh II. The honest limit on “complete” remains pin-level
+timing: 030/040 execution is functional rather than an electrical BCLK/TA
+waveform simulation; cache-visible data, coherency and bus-transaction timing
+are now modelled (`docs/CACHE_040.md`).
 
 <a id="2026-08-16-ten-red-gates"></a>
 ## 2026-08-16 — Ten red gates, five causes, and the two that were never going to be found by reading
@@ -11193,6 +11415,10 @@ watchdog never arms without Break/Abort IE).
   coprocessor model) and the oracle is the convergence target, so FSAVE
   stays NULL/IDLE-only (documented in `execFSave` +
   POM68K_VENDOR.md § FPU).
+
+  **Superseded 2026-08-16:** the later hardware-conformance requirement
+  added format-$9 interruption checkpoints and resumable $B4/$D4 BUSY
+  FSAVE/FRESTORE frames; see the 020/030/040 closure entry above.
 - **FRESTORE accepts every documented frame exactly like WinUAE**
   (`fpuop_restore`, fpp.c:2593-2812): NULL $00, 68881 IDLE $1F18,
   68882 IDLE $1F38 (BIU bit 27 clear re-arms a pending exception),
@@ -11586,4 +11812,3 @@ watchdog never arms without Break/Abort IE).
   desktop + mouse pointer + ?-icon; VBL IRQ drives the blink counter wait
   at `$402420`. No VIA timers or RTC needed to get here, confirming the
   BMOW Plus Too minimal-hardware list.
-

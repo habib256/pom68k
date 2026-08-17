@@ -12,6 +12,7 @@
 // device.
 
 #pragma once
+#include "MachineCatalog.h"
 #include "SaveState.h"
 #include <cstdint>
 #include <string>
@@ -43,50 +44,6 @@ class MscMemory;
 class MscCpu;
 
 namespace pom68k {
-
-// Machine profile tag stored in the header. Values are part of the file
-// format — append, never renumber. One tag per PROFILE, not per machine
-// class: identity twins share a ROM (LC III / LC III+, Q605 / LC 475), so
-// the header's ROM checksum cannot tell them apart and the tag must.
-enum class SnapMachine : std::uint32_t {
-    LcII = 1,
-    // V8 siblings (same device tree as the LC II)
-    Lc = 2, ClassicII = 3, ColorClassic = 4, MacTv = 5,
-    // Sonora family
-    Lc3 = 6, Lc3Plus = 7, Lc520 = 8, Lc550 = 9, CClassic2 = 10,
-    // VASP
-    IIvx = 11, IIvi = 12,
-    // RBV
-    IIsi = 13, IIci = 14,
-    // Q605 (MEMCjr) family
-    Q605 = 15, Lc475 = 16, Lc575 = 17,
-    // Centris/Quadra (djMEMC + IOSB) family
-    Centris610 = 18, Centris650 = 19,
-    Quadra610 = 20, Quadra650 = 21, Quadra800 = 22,
-    // Discrete 040 + last 68k desktop
-    Q700 = 23, Q630 = 24, Lc580 = 25,
-    // Mac II family (GLUE board)
-    MacII = 26, IIx = 27, IIcx = 28,
-    // Compact 68000 family
-    Plus = 29, SE = 30, SEFDHD = 31, Classic = 32,
-    // Appended 2026-07-31 (values are file format): the compact IIx
-    SE30 = 33,
-    // Appended 2026-08-01: platform #12 (OSS + dual Apple PIC IOPs)
-    IIfx = 34,
-    // Appended 2026-08-02: the Eclipse towers — the Quadra 700 board with
-    // the IIfx's IOP front end. Same `Q700Memory`/`Q700Cpu` save/load pair;
-    // the tag is what tells a Spike snapshot from a tower one, since all
-    // three share the $420DBFF3 ROM (the Q950 has its own, but the tag must
-    // discriminate the 900 from the 700 regardless).
-    Quadra900 = 35, Quadra950 = 36,
-    // Appended 2026-08-06: platform #11 (MSC + PG&E), the first PowerBook.
-    // Its machine chunk nests the one store no desktop has — the PG&E's
-    // 32 KB SRAM, which carries BOTH the firmware the system ROM uploads
-    // over SPI at every boot and the PMU-side PRAM. Nothing reloads it on
-    // restore, so it travels in the snapshot or the restored PMU has no
-    // program (docs/DUO_BRINGUP.md).
-    Duo230 = 37,
-};
 
 // One save/load pair per machine family; `kind` pins the profile inside
 // the family. save() writes the container (header + CPU + machine chunks);

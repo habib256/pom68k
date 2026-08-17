@@ -45,8 +45,8 @@ Moira::Moira()
 
     createJumpTable(cpuModel, dasmModel);
 
-    // POM68K M1 (docs/CACHE_040.md § M1): the 040 cache-TAG model,
-    // default off. Tags only, no data effect — see MoiraCache040.h.
+    // POM68K M1-M3 (docs/CACHE_040.md): data-bearing 040 I/D caches,
+    // opt-in until the cache-aware JIT regains the calibrated product speed.
     if (const char *e = std::getenv("POM68K_040_DCACHE"))
         pomCache040On = e[0] != '\0' && e[0] != '0';
 
@@ -710,6 +710,20 @@ template <Core C> void
 Moira::processException(const std::exception &exc)
 {
     try {
+
+        if constexpr (C == Core::C68020) {
+            if (auto fi = dynamic_cast<const FpuMidInstruction *>(&exc); fi) {
+                try {
+                    fpuMidInterruptFrame = true;
+                    execInterrupt<C>(fi->level);
+                    fpuMidInterruptFrame = false;
+                } catch (...) {
+                    fpuMidInterruptFrame = false;
+                    halt();
+                }
+                return;
+            }
+        }
 
         // POM68K O4 slice 3: 68030 MMU translation fault → bus error with
         // a format $A/$B frame; a nested fault while stacking it is a

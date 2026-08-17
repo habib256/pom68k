@@ -1,5 +1,8 @@
 # POM68K — Macintosh 68k emulator
 
+**Project mission: support every 68k Macintosh.** The roster below is current
+coverage, not a closed product list.
+
 **37 machine profiles, every one boots the Finder** — from the Macintosh
 Plus (68000, cycle-exact) to the Quadra 950 tower (68040), by way of the
 PowerBook Duo 230 laptop. Sibling of
@@ -8,9 +11,10 @@ sharing their architecture and conventions. CPU core:
 [Moira](https://github.com/dirkwhoffmann/Moira) (vendored via NeoST —
 `extern/moira/POM68K_VENDOR.md`).
 
-The full machine list is the **ROM → machine** table below, which is also
-the Machine menu, in the same order and the same grouping
-(`src/main.cpp:800` `kProfiles[]` — one row per profile, no exceptions).
+The full machine list is the **ROM → machine** table below. The compiled
+source of truth is `src/MachineCatalog.h` (`kMachineProfiles`): the Machine
+menu, ROM identity and stable save-state id all consume each row. The 37 rows
+are present coverage, never a ceiling on the project mission.
 
 | Document | For |
 |---|---|
@@ -25,18 +29,32 @@ the Machine menu, in the same order and the same grouping
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 208 gates, ~4 h (asset-dependent ones soft-skip)
-ctest -L unit                     # 96 gates — everything that is not a boot etalon
+ctest                             # 218 gates, ~4 h (asset-dependent ones soft-skip)
+ctest -L unit                     # 106 legacy non-etalon gates
+ctest -L asset-none               # 83 manifest-declared asset-free gates
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines
+ctest -L jit-fast                 # asset-free native A64/x64 proof + doc/config checks
 ctest -L etalon-core              # 12 gates, one profile per platform, ~32 min
 ```
 
 The counts are those of an **AArch64** host with the default
 `POM68K_JIT_BACKENDS=auto`: two lockstep gates are registered only there, so
-elsewhere it is 181 / 90 unit / 8 smoke (`CMakeLists.txt:1459-1476`; `docs_test`
+elsewhere it is 216 / 104 unit / 8 smoke (`CMakeLists.txt`; `docs_test`
 asserts the numbers against the configured registry). `unit` means "name does
 not end in `_etalon`", not "needs no assets" — several unit gates want a ROM or
 an SST vector set and soft-skip without one.
+
+CTest's generated `pom68k_gate_manifest.tsv` gives every gate independent
+asset/host/scope/tier dimensions. Reference media under an exact `ref/` path
+are never opened writable: `ScsiDisk` clones them once into sibling `work/`.
+`python3 tools/verify_assets.py` verifies each present `assets.lock` entry;
+`performance_budgets.tsv` keys policy by workload, guest CPU family and host
+profile (architecture for deterministic daily gates, named reference host for
+wall-clock baselines). The asset-free A64/x64 jobs emit the same
+`pom68k.jit.metrics.v1` JSON schema and archive it as
+`pom68k-jit-metrics-{aarch64,x86_64}`; `tools/check_jit_performance.py`
+checks those artifacts. Fixed-cycle Q605/68040 and LC II/68030 baselines are
+kept separately from the synthetic daily tripwires.
 
 Requires CMake ≥ 3.16, a C++20 compiler, and — for the GUI target only — GLFW
 ≥ 3.3 + OpenGL. Without `imgui/` the GUI target is simply not declared
@@ -81,6 +99,8 @@ one place: `src/jit/POM68K_JIT.md`.
 POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=auto     ./build/POM68K
 POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=threaded ./build/POM68K   # portable fallback
 POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=a64      ./build/POM68K   # explicit native
+POM68K_JIT_PROFILE=conservative                   ./build/POM68K   # proof/replay policy
+POM68K_JIT_PROFILE=instrumented                   ./build/POM68K   # counters + validation
 ```
 
 ### Strict LLE product mode (`--lle-aarch64`)
@@ -325,7 +345,7 @@ Menus:
   state file sits next to the boot volume as `<disk>.<profile>.pomss`,
   written atomically; a snapshot that does not match the running profile,
   ROM or RAM size is refused and the machine is left untouched. All 37
-  profiles are wired (`SnapMachine`, `src/SaveStateMachines.h:51`). Also
+  profiles are wired (`SnapMachine`, `src/MachineCatalog.h`). Also
   **Sons des lecteurs** (drive sounds).
 - **CPU** — pick the execution engine. The conformant accelerated engine is
   the default on the 68040 family; every other family still starts on the

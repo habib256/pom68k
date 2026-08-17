@@ -1539,11 +1539,78 @@ Moira::execCallm(u16 opcode)
     AVAILABILITY(Core::C68020)
 
     int dst = ( _____________xxx(opcode) );
-    u32 ea, data;
+    const u16 argWord = u16(readI<C, Word>());
+    const u32 ea = computeEA<C, M, Long>(dst);
 
-    readOp<C, M, Byte>(dst, &ea, &data);
-    readExt<C>();
-    prefetch<C, POLL>();
+    // CALLM's immediate field is eight bits.  The descriptor and entry word
+    // are validated completely before any visible register is modified.
+    const u32 control = read<C, AddrSpace::DATA, Long>(ea + 0);
+    const u32 entry = read<C, AddrSpace::DATA, Long>(ea + 4);
+    const u32 moduleData = read<C, AddrSpace::DATA, Long>(ea + 8);
+    const u16 entryWord = u16(read<C, AddrSpace::DATA, Word>(entry));
+
+    const u8 opt = u8(control >> 29);
+    const u8 type = u8(control >> 24) & 0x1f;
+    if ((argWord & 0xff00) || (opt != 0 && opt != 4) || type > 1 ||
+        (control & 0xffff) || (entryWord & 0x0fff)) {
+        execException<C>(M68kException::FORMAT_ERROR);
+        FINALIZE
+        return;
+    }
+
+    const u8 argc = u8(argWord);
+    const int moduleReg = (entryWord >> 12) & 15;
+    const u32 oldSp = reg.sp;
+    const u32 oldModuleData = readR(moduleReg);
+    u32 stackTop = oldSp;
+    u8 savedAccess = 0;
+    u8 accessStatus = 1;
+
+    if (type == 1) {
+        // Type $01 talks to external access-control hardware in CPU space.
+        // Verify the old stack before asking the hardware to change access.
+        // The descriptor-address register is selected by the data FC used
+        // for the descriptor (user=$1, supervisor=$5).
+        (void)read<C, AddrSpace::DATA, Byte>(oldSp);
+        const u8 descriptorFc = reg.sr.s ? FC::SUPERVISOR_DATA : FC::USER_DATA;
+        setFC(FC::CPU_SPACE);
+        const bool ok =
+            readModuleCpuSpace8(0x10000, savedAccess) &&
+            writeModuleCpuSpace32(0x10040 + 4 * descriptorFc, ea) &&
+            writeModuleCpuSpace8(0x10008, u8(control >> 16)) &&
+            readModuleCpuSpace8(0x10004, accessStatus);
+        if (!ok || accessStatus == 0 || accessStatus > 7) {
+            execException<C>(M68kException::FORMAT_ERROR);
+            FINALIZE
+            return;
+        }
+
+        if (accessStatus >= 4) {
+            stackTop = read<C, AddrSpace::DATA, Long>(ea + 12);
+            if (opt == 0) {
+                for (u32 i = 0; i < argc; i++) {
+                    const u8 v = u8(read<C, AddrSpace::DATA, Byte>(oldSp + i));
+                    write<C, AddrSpace::DATA, Byte>(stackTop + i, v);
+                }
+            }
+        }
+    }
+
+    const u32 frame = stackTop - 24;
+    const u32 frameControl = (control & 0xff000000) |
+        (u32(type == 1 ? savedAccess : u8(control >> 16)) << 16) | getCCR();
+    write<C, AddrSpace::DATA, Long>(frame + 0x00, frameControl);
+    write<C, AddrSpace::DATA, Long>(frame + 0x04, argc);
+    write<C, AddrSpace::DATA, Long>(frame + 0x08, ea);
+    write<C, AddrSpace::DATA, Long>(frame + 0x0c, reg.pc);
+    write<C, AddrSpace::DATA, Long>(frame + 0x10, oldModuleData);
+    write<C, AddrSpace::DATA, Long>(frame + 0x14,
+        (opt == 4 || (type == 1 && accessStatus >= 4)) ? oldSp : 0);
+
+    writeR(moduleReg, moduleData);
+    reg.sp = frame;                    // A7 selection is intentionally lost
+    reg.pc = entry + 2;
+    fullPrefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -5750,6 +5817,7 @@ Moira::execRte(u16 opcode)
     u32 newpc = 0;
     [[maybe_unused]] u16 fword = 0;     // POM68K slice 4: last format word
     bool rte030WritePending = false;
+    bool rteFpuMid = false;
     u16 rte030WriteSsw = 0;
     u32 rte030WriteAddr = 0, rte030WriteData = 0;
     u8 rte030Fixup[2] = {};
@@ -5937,6 +6005,19 @@ Moira::execRte(u16 opcode)
                     }
                     break;
 
+                } else if (format == 0b1001 && cpuModel < Model::M68EC040) {
+
+                    // 68020/030 coprocessor mid-instruction continuation.
+                    // The four internal words are opaque to software; after
+                    // restoring them the MPU resumes polling the response CIR.
+                    newsr = (u16)pop<C, Word>();
+                    newpc = pop<C, Long>();
+                    (void)pop<C, Word>();               // format/vector
+                    (void)pop<C, Long>();               // instruction address
+                    for (int i = 0; i < 4; i++) (void)pop<C, Word>();
+                    rteFpuMid = true;
+                    break;
+
                 } else if (format == 0b1010 && cpuModel < Model::M68EC040) {
 
                     // POM68K O6: short bus-fault frame ($A, 16 words) —
@@ -6081,6 +6162,8 @@ Moira::execRte(u16 opcode)
 
     setSR(newsr);
 
+    if (rteFpuMid) fpuCompleteBusy(true);
+
     // Undo the live (An)+/-(An) adjustment encoded in a format-$B frame
     // before the faulted instruction is freshly decoded. WinUAE performs
     // the same inverse mmu030fixupmod while restoring WB2/WB3 state; without
@@ -6175,6 +6258,43 @@ Moira::execRtm(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    const int moduleReg = opcode & 15;
+    const u32 frame = reg.sp;
+
+    // Read and validate the entire module frame before changing registers.
+    const u32 control = read<C, AddrSpace::DATA, Long>(frame + 0x00);
+    const u32 argControl = read<C, AddrSpace::DATA, Long>(frame + 0x04);
+    const u32 newPc = read<C, AddrSpace::DATA, Long>(frame + 0x0c);
+    const u32 oldModuleData = read<C, AddrSpace::DATA, Long>(frame + 0x10);
+    const u32 savedSp = read<C, AddrSpace::DATA, Long>(frame + 0x14);
+
+    const u8 opt = u8(control >> 29);
+    const u8 type = u8(control >> 24) & 0x1f;
+    if ((opt != 0 && opt != 4) || type > 1 || (control & 0x0000ff00) ||
+        (argControl & 0xffffff00)) {
+        execException<C>(M68kException::FORMAT_ERROR);
+        FINALIZE
+        return;
+    }
+
+    const u8 argc = u8(argControl);
+    u8 accessStatus = 1;
+    if (type == 1) {
+        setFC(FC::CPU_SPACE);
+        const bool ok =
+            writeModuleCpuSpace8(0x1000c, u8(control >> 16)) &&
+            readModuleCpuSpace8(0x10004, accessStatus);
+        if (!ok || accessStatus == 0 || accessStatus > 7) {
+            execException<C>(M68kException::FORMAT_ERROR);
+            FINALIZE
+            return;
+        }
+    }
+
+    setCCR(u8(control));
+    writeR(moduleReg, oldModuleData);
+    reg.sp = (type == 1 && accessStatus >= 4 ? savedSp : frame + 24) + argc;
+    reg.pc = newPc;
     fullPrefetch<C, POLL>();
 
     CYCLES_68020(19)
@@ -6692,9 +6812,9 @@ Moira::execUnpkPd(u16 opcode)
 }
 
 // POM68K Q2: CINV/CPUSH execute on the 040 models (M68040UM § 4.5/4.6).
-// Since M1 (docs/CACHE_040.md) they act on the architectural cache-TAG
-// model when it is armed (POM68K_040_DCACHE); data is still served by
-// the bus, so the push half of CPUSH stays a data no-op. Scope 00 is
+// Since M2 (docs/CACHE_040.md) they act on data-bearing architectural
+// caches when armed (POM68K_040_DCACHE); CPUSH writes dirty longwords
+// before invalidating its selected lines. Scope 00 is
 // not a valid encoding (WinUAE cpudefs registers only the
 // $F408/$F410/$F418 rows, mask $FF38) and falls to Line-F even in
 // supervisor mode; the cache field (bits 7-6) is a don't-care for the

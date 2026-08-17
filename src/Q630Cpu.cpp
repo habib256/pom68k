@@ -33,7 +33,8 @@ Q630Cpu::Q630Cpu(Q630Memory& mem)
     // rather than calling sync() on every instruction.
     jit_.setPeriphDeadline(&periphDeadline_);
 
-    // The Quadra 630 ships a FULL 68040 (macquadra630.cpp M68040 @ 33 MHz);
+    // The Quadra 630 ships a full 68040 with its integrated FPU
+    // (macquadra630.cpp M68040 @ 33 MHz);
     // POM68K_Q630_LC040 forces the 68LC040 of the LC/Performa 630 and 580.
     if (getenv("POM68K_Q630_LC040")) {
         setModel(moira::Model::M68LC040);
@@ -41,7 +42,7 @@ Q630Cpu::Q630Cpu(Q630Memory& mem)
                                                   : moira::FPUModel::M68882);
     } else {
         setModel(moira::Model::M68040);
-        setFPUModel(moira::FPUModel::M68882);
+        setFPUModel(moira::FPUModel::M68040);
     }
     if (getenv("POM68K_MMU040_WALK")) setMmu040AtcArmed(false);
     if (const char* b = getenv("POM68K_Q630_CACHE_BOOST")) {

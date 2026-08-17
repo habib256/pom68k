@@ -119,7 +119,7 @@ Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
 
 
 //
-// POM68K O5 slice 2 — MC68882 FPU EXECUTION (2026-07-15)
+// POM68K O5/Q9 — MC6888x + integrated MC68040 FPU execution
 //
 // The 68882 programmer's model (MC68881/MC68882 User's Manual) executed on
 // top of extern/softfloat — the same 80-bit softfloat family the primary
@@ -128,21 +128,20 @@ Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
 // from WinUAE fpp.c / fpp_softfloat.c (oracle vendor tree, hatari e77819f7)
 // with file:line citations; the manual is cited where it is the source.
 //
-// Reachability: nothing in this file executes unless a 6888x is attached
+// Reachability: nothing in this file executes unless an FPU is attached
 // (setFPUModel). With fpuModel == NONE the jump table holds the stock
 // Line-F handlers, keeping the FPU-less SST030 corpus byte-identical.
 //
-// Known-incomplete (for the differential loop to attack):
-//   * FPU exception *traps* use a best-effort format $0 frame (pre- and
-//     mid-instruction) instead of the MC68030UM coprocessor protocol
-//     frames ($9/$2); FPSR/accrued bookkeeping itself is complete. Fuzz
-//     keeps exception enables mostly zero, so this path is rarely taken.
-//   * FSAVE BUSY frames are not generated (FRESTORE skips them), matching
-//     WinUAE's 6888x support level — a deliberate oracle-parity decision
-//     (POM68K_VENDOR.md § FPU).
-//   * FRESTORE of a 68040 BUSY frame ($41/$60, reachable through WinUAE's
-//     version-hack, see execFRestore) skips the frame instead of resuming
-//     the interrupted op.
+// External-coprocessor interruption boundary:
+//   * 020/030 pre-instruction traps use format $0 and post-instruction
+//     traps use format $2. Long 6888x operations publish null/come-again
+//     checkpoints; an eligible IRQ stacks format $9 and leaves a resumable
+//     coprocessor command.
+//   * FSAVE serializes that command as a $1F/$B4 or $1F/$D4 BUSY frame;
+//     FRESTORE resumes frames emitted by this model and accepts opaque
+//     hardware BUSY frames for compatibility (POM68K_VENDOR.md § FPU).
+// The integrated 040 path implements its native opcode subset, FPSP
+// unimplemented/datatype traps, revision-$41 FSAVE frames, and BUSY resume.
 //
 
 // FPSR bit layout (MC68881UM § 2.2.2; WinUAE fpp.h:10-17, fpp.c:295-309)
@@ -322,8 +321,8 @@ static void fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
 
 // The 6888x predicate table (WinUAE fpp.c:2069-2087, condition_table_6888x,
 // cputester-verified against real silicon). Indexed by
-// [(N Z I NAN) * 32 + predicate]; the 040/060 differ only on a few IEEE
-// non-aware rows and are not modelled (LC II PDS FPU is a 68882).
+// [(N Z I NAN) * 32 + predicate]; fpuCondEval applies the sixteen 040
+// differences after this base lookup.
 static const bool fpuCondTable6888x[512] = {
     0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1,
     0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -393,6 +392,73 @@ static const u32 fpuCrUndef[11][3] = {
 static inline bool fpuIsDyadic(u16 ext)
 {
     return (ext & 0x30) == 0x20 || (ext & 0x7f) == 0x38;
+}
+
+// Native MC68040 forced-precision arithmetic opmodes (MC68040UM Table E-1).
+// The 68881/68882 reject the whole $40-$7F range; the 040 implements only
+// these sixteen encodings.  Keeping the predicate in one place is important:
+// an unknown command in this range is an F-line instruction, not a silent
+// arithmetic no-op.
+static inline bool fpuIsNative040(u16 ext)
+{
+    switch (ext & 0x7f) {
+        case 0x40: case 0x41: case 0x44: case 0x45: // FSMOVE/FSSQRT/FDMOVE/FDSQRT
+        case 0x58: case 0x5a: case 0x5c: case 0x5e: // FSABS/FSNEG/FDABS/FDNEG
+        case 0x60: case 0x62: case 0x63:             // FSDIV/FSADD/FSMUL
+        case 0x64: case 0x66: case 0x67:             // FDDIV/FDADD/FDMUL
+        case 0x68: case 0x6c:                         // FSSUB/FDSUB
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Base opmodes executed directly by the integrated MC68040 FPU.  Valid
+// arithmetic commands not in this list trap to the FPSP as unimplemented;
+// reserved holes are filtered separately and take an ordinary Line-F.
+static inline bool fpuIsImplemented040(u16 ext)
+{
+    switch (ext & 0x7f) {
+        case 0x00: case 0x04: case 0x18: case 0x1a:
+        case 0x20: case 0x22: case 0x23: case 0x24:
+        case 0x27: case 0x28: case 0x38: case 0x3a:
+            return true;
+        default:
+            return fpuIsNative040(ext);
+    }
+}
+
+static inline bool fpuIsNonexistent040(u16 ext)
+{
+    switch (ext & 0x7f) {
+        case 0x05: case 0x07: case 0x0b: case 0x13: case 0x17: case 0x1b:
+        case 0x29: case 0x2a: case 0x2b: case 0x2c: case 0x2d: case 0x2e:
+        case 0x2f: case 0x39: case 0x3b: case 0x3c: case 0x3d: case 0x3e:
+        case 0x3f: case 0x42: case 0x43: case 0x46: case 0x47: case 0x48:
+        case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e:
+        case 0x4f: case 0x50: case 0x51: case 0x52: case 0x53: case 0x54:
+        case 0x55: case 0x56: case 0x57: case 0x59: case 0x5b: case 0x5d:
+        case 0x5f: case 0x61: case 0x65: case 0x69: case 0x6a: case 0x6b:
+        case 0x6d: case 0x6e: case 0x6f: case 0x70: case 0x71: case 0x72:
+        case 0x73: case 0x74: case 0x75: case 0x76: case 0x77:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static inline int fpuForcedPrecision040(u16 ext)
+{
+    switch (ext & 0x7f) {
+        case 0x40: case 0x41: case 0x58: case 0x5a:
+        case 0x60: case 0x62: case 0x63: case 0x68:
+            return 32;
+        case 0x44: case 0x45: case 0x5c: case 0x5e:
+        case 0x64: case 0x66: case 0x67: case 0x6c:
+            return 64;
+        default:
+            return 0;
+    }
 }
 
 //
@@ -476,9 +542,9 @@ static constexpr int FPU_CK_FDR_IN_REG  = 31;
 static constexpr int FPU_CK_FDR_DYN     = 14;   // dynamic (Dn) list surcharge
 
 // Table 8-8 (MC68882/MC68881 rows, cache case): FSAVE/FRESTORE by frame.
-// The BUSY figures are FRESTORE-only here (FSAVE never emits BUSY, see
-// execFSave); an invalid frame charges the NULL figure before the format
-// error (documented estimate — the manual has no such row).
+// BUSY uses the manual's frame costs for both save/restore staging; an
+// invalid frame charges the NULL figure before the format error (documented
+// estimate — the manual has no such row).
 static constexpr int FPU_CK_FSAVE_NULL  = 16;
 static constexpr int FPU_CK_FSAVE_IDLE2 = 100;  // 68882 $38 IDLE
 static constexpr int FPU_CK_FSAVE_IDLE1 = 52;   // 68881 $18 IDLE
@@ -521,6 +587,55 @@ Moira::fpuResetState()
     fpu.expPend = 0;
     fpu.fsaveCcr = 0;
     fpu.fsaveEo[0] = fpu.fsaveEo[1] = fpu.fsaveEo[2] = 0;
+    fpu.ea = fpu.fpiarCu = 0;
+    fpu.busy = false;
+    fpu.busyUntil = 0;
+    fpu.busyOpcode = fpu.busyExt = 0;
+    fpu.busyIa = 0;
+    fpu.busyFpsr = 0;
+    for (auto &r : fpu.busyFp) r = FpuExtended { 0, 0 };
+    fpu.cmdreg1b = fpu.cmdreg3b = 0;
+    fpu.stag = fpu.dtag = fpu.wbtm66 = fpu.grs = fpu.wbte15 = 0;
+    fpu.e1 = fpu.e3 = fpu.t = false;
+    for (int i = 0; i < 3; i++) fpu.fpt[i] = fpu.et[i] = fpu.wbt[i] = 0;
+}
+
+void
+Moira::fpuCompleteBusy(bool wait)
+{
+    if (!fpu.busy) return;
+    if (wait && clock < fpu.busyUntil)
+        sync(int(fpu.busyUntil - clock));
+    if (clock < fpu.busyUntil) return;
+
+    for (int i = 0; i < 8; i++) fpu.fp[i] = fpu.busyFp[i];
+    fpu.fpsr = fpu.busyFpsr;
+    fpu.busy = false;
+    fpu.state = 1;
+}
+
+template <Core C> void
+Moira::fpuRunBusy(int cycles, u16 opcode, u16 ext)
+{
+    // MC68881/2 protocol null/come-again primitives set IA, allowing the
+    // MPU to sample interrupts at short checkpoints while it waits. The
+    // integrated 040 never enters this external-coprocessor path.
+    fpu.busy = true;
+    fpu.busyOpcode = opcode;
+    fpu.busyExt = ext;
+    fpu.busyUntil = clock + cycles;
+
+    int left = cycles;
+    while (left > 0) {
+        const int quantum = std::min(left, 8);
+        sync(quantum);
+        left -= quantum;
+        fpu.busyUntil = clock + left;
+        pollIpl();
+        if (left && (reg.ipl > reg.sr.ipl || reg.ipl == 7))
+            throw FpuMidInstruction(reg.ipl);
+    }
+    fpuCompleteBusy(false);
 }
 
 void
@@ -545,9 +660,10 @@ Moira::fpuSetMode()
         case 0x30: set_float_rounding_mode(float_round_up, &moiraFpuFs); break;
     }
 
-    // 6888x: FADD/FSUB of opposite infinities yields the second operand
-    // (WinUAE fp_init_softfloat, fpp_softfloat.c:753-761)
-    set_special_flags(addsub_swap_inf, &moiraFpuFs);
+    // The integrated 040 and external 6888x use different NaN/infinity
+    // compatibility flags (WinUAE fp_init_softfloat, fpp_softfloat.c).
+    set_special_flags(fpuModel == FPUModel::M68040
+        ? cmp_signed_nan : addsub_swap_inf, &moiraFpuFs);
 }
 
 void
@@ -628,18 +744,52 @@ Moira::fpuNormalize(FpuExtended &v)
     // branch, fpp.c:1455-1472)
     floatx80 fx = fpuToFx80(v);
     if (floatx80_is_unnormal(fx) || floatx80_is_denormal(fx)) {
+        if (fpuModel == FPUModel::M68040 && !floatx80_is_zero(fx)) return;
         v = fpuFromFx80(floatx80_normalize(fx));
     }
 }
 
+static bool
+fpuNeedsDatatype040(const FpuExtended &v)
+{
+    const floatx80 f = fpuToFx80(v);
+    return !floatx80_is_zero(f) &&
+        (floatx80_is_unnormal(f) || floatx80_is_denormal(f));
+}
+
+static inline bool fpuSingleDenormal040(u32 v)
+{
+    return (v & 0x7f800000u) == 0 && (v & 0x007fffffu) != 0;
+}
+
+static inline bool fpuDoubleDenormal040(u32 hi, u32 lo)
+{
+    return (hi & 0x7ff00000u) == 0 && ((hi & 0x000fffffu) != 0 || lo != 0);
+}
+
+static u8
+fpuTag040(const FpuExtended &v, int size)
+{
+    const floatx80 f = fpuToFx80(v);
+    if (floatx80_is_zero(f)) return 1;
+    if (floatx80_is_unnormal(f) || floatx80_is_denormal(f))
+        return (size == 1 || size == 5) ? 5 : 4;
+    if (floatx80_is_any_nan(f)) return 3;
+    if (floatx80_is_infinity(f)) return 2;
+    return 0;
+}
+
 bool
-Moira::fpuCheckArithException(const FpuExtended &src, u16 opcode, u16 ext, u32 ea)
+Moira::fpuCheckArithException(
+    const FpuExtended &src, u16 opcode, u16 ext, u32 ea, u32 nonmaskable)
 {
     // WinUAE fpsr_check_arithmetic_exception, 6888x branch (fpp.c:445-508):
     // latch the highest-priority enabled exception vector; the trap itself
     // fires pre-instruction at the NEXT FPU instruction (coprocessor
     // protocol). Also captures the 68882 FSAVE IDLE-frame data.
     u32 exception = fpu.fpsr & fpu.fpcr & 0xff00;
+    if (fpuModel == FPUModel::M68040)
+        exception |= fpu.fpsr & (FPSR_OVFL | FPSR_UNFL | nonmaskable);
     if (!exception) return false;
 
     fpu.expPend = fpuVectorFor(exception);
@@ -647,6 +797,45 @@ Moira::fpuCheckArithException(const FpuExtended &src, u16 opcode, u16 ext, u32 e
     fpu.fpiar = reg.pc0;                                // fpp.c:478-480
 
     u32 opclass = ext >> 13 & 7;
+
+    if (fpuModel == FPUModel::M68040) {
+        // Integrated-FPU exception state. Enabled exceptions are delivered
+        // immediately (post-instruction); OVFL/UNFL are nonmaskable. The
+        // frame fields mirror WinUAE's revision-$41 UNIMP/BUSY capture.
+        fpu.expState = 1;
+        fpu.fpiarCu = fpu.fpiar;
+        fpu.cmdreg1b = ext;
+        fpu.cmdreg3b = 0;
+        fpu.stag = fpu.dtag = fpu.wbtm66 = 0;
+        fpu.grs = fpu.expPend == 54 ? 7 : 1;
+        fpu.wbte15 = fpu.expPend == 54 ? 1 : 0;
+        fpu.e1 = true; fpu.e3 = false; fpu.t = opclass == 3;
+        for (int i = 0; i < 3; i++) fpu.fpt[i] = fpu.et[i] = fpu.wbt[i] = 0;
+
+        fpu.et[0] = u32(src.high) << 16;
+        fpu.et[1] = u32(src.low >> 32);
+        fpu.et[2] = u32(src.low);
+        fpu.stag = fpuTag040(src, opclass == 0 ? -1 : int((ext >> 10) & 7));
+
+        const int dreg = (ext >> 7) & 7;
+        if (fpuIsDyadic(ext)) {
+            const FpuExtended &d = fpu.fp[dreg];
+            fpu.fpt[0] = u32(d.high) << 16;
+            fpu.fpt[1] = u32(d.low >> 32);
+            fpu.fpt[2] = u32(d.low);
+            fpu.dtag = fpuTag040(d, -1);
+        }
+
+        if ((fpu.expPend == 49 || fpu.expPend == 51 || fpu.expPend == 53) &&
+            (((ext & 0x30) == 0x20) || ((ext & 0x3f) == 0x04))) {
+            fpu.expState = 2;
+            fpu.e1 = false; fpu.e3 = true;
+            fpu.cmdreg3b = u16((ext & 0x03c3) | ((ext & 0x0038) >> 1) |
+                               ((ext & 0x0004) << 3));
+            fpu.wbte15 = fpu.expPend == 51 ? 1 : 0;
+        }
+        return true;
+    }
 
     fpu.fsaveEo[0] = fpu.fsaveEo[1] = fpu.fsaveEo[2] = 0;
     if (opclass == 3) {                                 // fpp.c:491-495
@@ -698,8 +887,9 @@ Moira::execFpuException(u16 vector, bool pre)
     // (newcpu_common.c:1616, nr 48-55): pre-instruction = four-word
     // format $0 with PC = the FP instruction being started (it
     // re-executes after the handler); post-instruction (FMOVE out) =
-    // format $3 "floating-point post-instruction" frame — SR, next PC,
-    // $3xxx vector word, then the operand's effective address (fp_ea).
+    // 68020/030 format $2 "coprocessor instruction" frame (which carries
+    // the instruction address); the integrated 68040 uses format $3
+    // "floating-point post-instruction" with the operand effective address.
     // Solo-corpus arbitrated 2026-07-15 (was a format $0 stub).
     u16 status = getSR();
 
@@ -710,6 +900,13 @@ Moira::execFpuException(u16 vector, bool pre)
     if (pre) {
 
         writeStackFrame0000<C>(status, reg.pc0, vector);
+
+    } else if (cpuModel < Model::M68EC040) {
+
+        push<C, Long>(reg.pc0);                         // instruction address
+        push<C, Word>(u16(0x2000 | vector << 2));       // format $2 | offset
+        push<C, Long>(reg.pc);                          // next instruction
+        push<C, Word>(status);
 
     } else {
 
@@ -804,9 +1001,115 @@ Moira::execFpuDisabled040(u32 ea)
     jumpToVector<C>(11);
 }
 
+template <Core C> void
+Moira::execFpuUnimplemented040(
+    u16 opcode, u16 ext, const FpuExtended &src, int dst, int size, u32 ea)
+{
+    // MC68040 unimplemented arithmetic instruction.  The format-$2
+    // exception frame points at the operand EA, while a following FSAVE
+    // exposes the revision-$41 UNIMP state used by Motorola FPSP.
+    if ((ext & 0x7f) == 0x04) ext |= 1;       // FSQRT command encoding 4 -> 5
+
+    fpu.state = 1;
+    fpu.expState = 1;
+    fpu.expPend = 0;
+    fpu.fpiar = reg.pc0;
+    fpu.fpiarCu = reg.pc0;
+    fpu.ea = ea;
+    fpu.cmdreg3b = u16((ext & 0x03c3) | ((ext & 0x0038) >> 1) |
+                       ((ext & 0x0004) << 3));
+    fpu.cmdreg1b = ext;
+    fpu.stag = fpuTag040(src, size);
+    fpu.dtag = 0;
+    fpu.wbtm66 = fpu.grs = fpu.wbte15 = 0;
+    fpu.e1 = fpu.e3 = fpu.t = false;
+    fpu.et[0] = u32(src.high) << 16;
+    fpu.et[1] = u32(src.low >> 32);
+    fpu.et[2] = u32(src.low);
+    for (int i = 0; i < 3; i++) fpu.fpt[i] = fpu.wbt[i] = 0;
+    if (dst >= 0) {
+        const FpuExtended &d = fpu.fp[dst & 7];
+        fpu.fpt[0] = u32(d.high) << 16;
+        fpu.fpt[1] = u32(d.low >> 32);
+        fpu.fpt[2] = u32(d.low);
+        fpu.dtag = fpuTag040(d, -1);
+    }
+
+    u16 status = getSR();
+    setSupervisorMode(true);
+    clearTraceFlags();
+    flags &= ~State::TRACE_EXC;
+    trace040Pending = false;
+
+    push<C, Long>(ea);                              // format-$2 operand EA
+    push<C, Word>(u16(0x2000 | 11 << 2));
+    push<C, Long>(reg.pc);                          // resume after FP instruction
+    push<C, Word>(status);
+    jumpToVector<C>(11);
+}
+
+template <Core C> void
+Moira::execFpuDatatype040(
+    u16 opcode, u16 ext, const FpuExtended &src, int dst, int size, u32 ea,
+    const u32 *packed, bool encodedDenormal)
+{
+    (void)opcode;
+    fpu.state = 1;
+    fpu.expState = 2;
+    fpu.expPend = 55;
+    fpu.fpiar = reg.pc0;
+    fpu.fpiarCu = reg.pc0;
+    fpu.ea = ea;
+    fpu.cmdreg1b = ext;
+    fpu.cmdreg3b = u16((ext & 0x03c3) | ((ext & 0x0038) >> 1) |
+                       ((ext & 0x0004) << 3));
+    fpu.stag = fpuTag040(src, size);
+    fpu.dtag = 0;
+    fpu.wbtm66 = fpu.grs = fpu.wbte15 = 0;
+    fpu.e1 = packed != nullptr;
+    fpu.e3 = false;
+    fpu.t = ((ext >> 13) & 7) == 3;
+    fpu.et[0] = u32(src.high) << 16;
+    fpu.et[1] = u32(src.low >> 32);
+    fpu.et[2] = u32(src.low);
+    for (int i = 0; i < 3; i++) fpu.fpt[i] = fpu.wbt[i] = 0;
+
+    const u32 opclass = (ext >> 13) & 7;
+    if (packed && opclass != 3) {
+        // The 040 BUSY frame carries an incoming packed operand in this
+        // deliberately odd split form (WinUAE fp_unimp_datatype).
+        fpu.fpt[2] = packed[0];
+        fpu.fpt[1] = packed[1];
+        fpu.et[1] = packed[1];
+        fpu.et[2] = packed[2];
+        fpu.stag = 7;
+    } else if (opclass == 3) {
+        // FMOVE-to-packed records the source in both ET and FPT.
+        fpu.fpt[0] = fpu.et[0];
+        fpu.fpt[1] = fpu.et[1];
+        fpu.fpt[2] = fpu.et[2];
+        fpu.dtag = fpu.stag;
+    } else if (dst >= 0) {
+        const FpuExtended &d = fpu.fp[dst & 7];
+        fpu.fpt[0] = u32(d.high) << 16;
+        fpu.fpt[1] = u32(d.low >> 32);
+        fpu.fpt[2] = u32(d.low);
+        fpu.dtag = fpuTag040(d, -1);
+    }
+    if (encodedDenormal) {
+        fpu.stag = 5;
+        fpu.et[0] = size == 1 ? 0x3f800000u : 0x3c000000u;
+    }
+    execFpuException<C>(55, false);
+}
+
 template <Core C> bool
 Moira::fpuCheckPending()
 {
+    if ((fpuModel == FPUModel::M68881 || fpuModel == FPUModel::M68882) &&
+        fpu.busy)
+        fpuCompleteBusy(true);
+
     // WinUAE fp_exception_pending (fpp.c:377-408): a latched arithmetic
     // exception fires pre-instruction at the next FPU instruction. The
     // 68882 keeps the vector armed after taking it (fpp.c:386-388); the
@@ -840,7 +1143,22 @@ Moira::fpuCondEval(u16 cond)
     }
 
     int control = (fpu.fpsr >> 24) & 15;
-    return fpuCondTable6888x[control * 32 + (cond & 0x1f)] ? 1 : 0;
+    const int index = control * 32 + (cond & 0x1f);
+    bool result = fpuCondTable6888x[index];
+
+    // The 040/060 predicate table differs from the 6888x table at these
+    // sixteen NAN/non-aware entries (WinUAE condition_table_040_060).
+    if (fpuModel == FPUModel::M68040) {
+        switch (index) {
+            case 167: case 174: case 183: case 190:
+            case 231: case 238: case 247: case 254:
+            case 423: case 430: case 439: case 446:
+            case 487: case 494: case 503: case 510:
+                result = false;
+                break;
+        }
+    }
+    return result ? 1 : 0;
 }
 
 bool
@@ -956,13 +1274,22 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
 {
     // Opmode dispatch, WinUAE fp_arithmetic (fpp.c:2935-3157). The alias
     // opmodes (0x05, 0x07, 0x0b, ... — undocumented but real on 6888x
-    // silicon) map onto their base operation. Opmodes >= 0x40 never reach
-    // here (F-line, see execFGeneric).
+    // silicon) map onto their base operation. The native MC68040 subset in
+    // $40-$7F reaches this function only after execFGeneric has checked the
+    // CPU model and the exact whitelist above.
     floatx80 src = fpuToFx80(srcM);
     floatx80 dst = fpuToFx80(dstM);
     u64 quot = 0;
     uint64_t q = 0;     // softfloat's uint64_t may differ from moira::u64
     u8 s = 0;
+
+    // FSMOVE/FDMOVE and the S/D arithmetic variants override FPCR.PREC.
+    // Set the precision before the operation, rather than rounding an
+    // extended result afterwards: that avoids a double-rounding error and
+    // lets SoftFloat raise INEX/OVFL/UNFL at the architecturally selected
+    // boundary (MC68040UM 9.4.1).
+    if (int precision = fpuForcedPrecision040(ext))
+        set_floatx80_rounding_precision(precision, &moiraFpuFs);
 
     switch (ext & 0x7f) {
 
@@ -1045,6 +1372,23 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
             fpuSetResultFlags(fpuFromFx80(dst));
             return false;
         }
+
+        case 0x40: dst = floatx80_move(src, &moiraFpuFs); break;            // FSMOVE
+        case 0x41: dst = floatx80_sqrt(src, &moiraFpuFs); break;            // FSSQRT
+        case 0x44: dst = floatx80_move(src, &moiraFpuFs); break;            // FDMOVE
+        case 0x45: dst = floatx80_sqrt(src, &moiraFpuFs); break;            // FDSQRT
+        case 0x58: dst = floatx80_abs(src, &moiraFpuFs); break;             // FSABS
+        case 0x5a: dst = floatx80_neg(src, &moiraFpuFs); break;             // FSNEG
+        case 0x5c: dst = floatx80_abs(src, &moiraFpuFs); break;             // FDABS
+        case 0x5e: dst = floatx80_neg(src, &moiraFpuFs); break;             // FDNEG
+        case 0x60: dst = floatx80_div(dst, src, &moiraFpuFs); break;        // FSDIV
+        case 0x62: dst = floatx80_add(dst, src, &moiraFpuFs); break;        // FSADD
+        case 0x63: dst = floatx80_mul(dst, src, &moiraFpuFs); break;        // FSMUL
+        case 0x64: dst = floatx80_div(dst, src, &moiraFpuFs); break;        // FDDIV
+        case 0x66: dst = floatx80_add(dst, src, &moiraFpuFs); break;        // FDADD
+        case 0x67: dst = floatx80_mul(dst, src, &moiraFpuFs); break;        // FDMUL
+        case 0x68: dst = floatx80_sub(dst, src, &moiraFpuFs); break;        // FSSUB
+        case 0x6c: dst = floatx80_sub(dst, src, &moiraFpuFs); break;        // FDSUB
         default:
             return false;   // unreachable — filtered in execFGeneric
     }
@@ -1076,7 +1420,17 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
         switch (size) {
 
             case 0: fpuFromIntV(src, i32(readD(n))); return 1;              // L
-            case 1: fpuToSingleV(src, readD(n)); fpuNormalize(src); return 1; // S
+            case 1:
+            {
+                const u32 raw = readD(n);
+                fpuToSingleV(src, raw); fpuNormalize(src);
+                if (fpuModel == FPUModel::M68040 && fpuSingleDenormal040(raw)) {
+                    execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
+                                          size, 0, nullptr, true);
+                    return -1;
+                }
+                return 1;
+            }
             case 4: fpuFromIntV(src, i16(readD(n))); return 1;              // W
             case 6: fpuFromIntV(src, i8(readD(n))); return 1;               // B
 
@@ -1098,7 +1452,17 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
         switch (size) {
 
             case 0: fpuFromIntV(src, i32(readI<C, Long>())); return 1;
-            case 1: fpuToSingleV(src, readI<C, Long>()); fpuNormalize(src); return 1;
+            case 1:
+            {
+                const u32 raw = readI<C, Long>();
+                fpuToSingleV(src, raw); fpuNormalize(src);
+                if (fpuModel == FPUModel::M68040 && fpuSingleDenormal040(raw)) {
+                    execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
+                                          size, 0, nullptr, true);
+                    return -1;
+                }
+                return 1;
+            }
             case 2:
                 e0 = readI<C, Long>(); e1 = readI<C, Long>(); e2 = readI<C, Long>();
                 fpuToExtendedV(src, e0, e1, e2); fpuNormalize(src); return 1;
@@ -1106,12 +1470,24 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
             {
                 u32 wrd[3];
                 wrd[0] = readI<C, Long>(); wrd[1] = readI<C, Long>(); wrd[2] = readI<C, Long>();
+                if (fpuModel == FPUModel::M68040) {
+                    const FpuExtended zero { 0, 0 };
+                    execFpuDatatype040<C>(opcode, ext, zero, (ext >> 7) & 7,
+                                          size, 0, wrd);
+                    return -1;
+                }
                 fpuToPackedV(src, wrd); fpuNormalize(src); return 1;
             }
             case 4: fpuFromIntV(src, i16(readI<C, Word>())); return 1;
             case 5:
                 e0 = readI<C, Long>(); e1 = readI<C, Long>();
-                fpuToDoubleV(src, e0, e1); fpuNormalize(src); return 1;
+                fpuToDoubleV(src, e0, e1); fpuNormalize(src);
+                if (fpuModel == FPUModel::M68040 && fpuDoubleDenormal040(e0, e1)) {
+                    execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
+                                          size, 0, nullptr, true);
+                    return -1;
+                }
+                return 1;
             case 6: fpuFromIntV(src, i8(readI<C, Word>())); return 1;
 
             default:
@@ -1146,7 +1522,17 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
         switch (size) {
 
             case 0: fpuFromIntV(src, i32(readM<C, M, Long>(ad))); return 1;
-            case 1: fpuToSingleV(src, readM<C, M, Long>(ad)); fpuNormalize(src); return 1;
+            case 1:
+            {
+                const u32 raw = readM<C, M, Long>(ad);
+                fpuToSingleV(src, raw); fpuNormalize(src);
+                if (fpuModel == FPUModel::M68040 && fpuSingleDenormal040(raw)) {
+                    execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
+                                          size, ea, nullptr, true);
+                    return -1;
+                }
+                return 1;
+            }
             case 2:
             {
                 u32 w1 = readM<C, M, Long>(ad);
@@ -1160,6 +1546,12 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
                 wrd[0] = readM<C, M, Long>(ad);
                 wrd[1] = readM<C, M, Long>(ad + 4);
                 wrd[2] = readM<C, M, Long>(ad + 8);
+                if (fpuModel == FPUModel::M68040) {
+                    const FpuExtended zero { 0, 0 };
+                    execFpuDatatype040<C>(opcode, ext, zero, (ext >> 7) & 7,
+                                          size, ea, wrd);
+                    return -1;
+                }
                 fpuToPackedV(src, wrd); fpuNormalize(src); return 1;
             }
             case 4: fpuFromIntV(src, i16(readM<C, M, Word>(ad))); return 1;
@@ -1167,7 +1559,13 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
             {
                 u32 w1 = readM<C, M, Long>(ad);
                 u32 w2 = readM<C, M, Long>(ad + 4);
-                fpuToDoubleV(src, w1, w2); fpuNormalize(src); return 1;
+                fpuToDoubleV(src, w1, w2); fpuNormalize(src);
+                if (fpuModel == FPUModel::M68040 && fpuDoubleDenormal040(w1, w2)) {
+                    execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
+                                          size, ea, nullptr, true);
+                    return -1;
+                }
+                return 1;
             }
             case 6: fpuFromIntV(src, i8(readM<C, M, Byte>(ad))); return 1;
 
@@ -1194,6 +1592,17 @@ Moira::fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea)
     };
 
     if constexpr (M == Mode::DN) {
+
+        // Packed output to Dn is an invalid EA (ordinary Line-F), not a
+        // software-datatype operation. Memory packed output is handled below.
+        if (fpuModel == FPUModel::M68040 && (size == 3 || size == 7))
+            return 0;
+        if (fpuModel == FPUModel::M68040 &&
+            (size == 0 || size == 1 || size == 4 || size == 6) &&
+            fpuNeedsDatatype040(value)) {
+            execFpuDatatype040<C>(opcode, ext, value, -1, size, 0);
+            return -1;
+        }
 
         switch (size) {
 
@@ -1264,6 +1673,14 @@ Moira::fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea)
             ad = computeEA<C, M, Long>(n);
         }
         ea = ad;    // WinUAE *adp (fpp.c:1884) — feeds fp_ea on a latch
+
+        if (fpuModel == FPUModel::M68040 &&
+            (size == 3 || size == 7 || fpuNeedsDatatype040(value))) {
+            const u32 packedMarker[3] {};
+            execFpuDatatype040<C>(opcode, ext, value, -1, size, ea,
+                                  (size == 3 || size == 7) ? packedMarker : nullptr);
+            return -1;
+        }
 
         switch (size) {
 
@@ -1610,12 +2027,11 @@ Moira::execFSave(u16 opcode)
     // (fpp.c:2532-2534) — the primary oracle runs that path, so it is
     // replicated when cpuModel == M68030.
     //
-    // BUSY frames ($B4/$D4) are deliberately NOT generated: WinUAE's own
-    // 6888x support never emits them (fpuop_save has no busy path — the
-    // mid-instruction save window doesn't exist in its coprocessor
-    // model), and the oracle is the convergence target. FRESTORE accepts
-    // them (skip, like WinUAE fpp.c:2788-2790). Decision logged in
-    // POM68K_VENDOR.md § FPU.
+    // If an interrupt stopped a long 6888x operation at a protocol
+    // checkpoint, serialize its private completion image as the documented
+    // $B4/$D4 BUSY frame. The opaque payload starts with a POM2 marker so
+    // FRESTORE can resume it deterministically; real hardware frames remain
+    // accepted as opaque compatibility input.
     SUPERVISOR_MODE_ONLY
 
     int n = _____________xxx(opcode);
@@ -1636,17 +2052,76 @@ Moira::execFSave(u16 opcode)
         return;
     }
 
+    if (fpuModel == FPUModel::M68040) {
+        // Revision-$41 integrated-FPU frames. IDLE/NULL is four bytes;
+        // exceptional states are the $34-byte UNIMP and $64-byte BUSY
+        // layouts consumed by Motorola FPSP.
+        int frameSize = fpu.expState == 2 ? 0x64 : (fpu.expState == 1 ? 0x34 : 4);
+        const u32 frameId = fpu.expState == 2 ? 0x41600000u :
+                            fpu.expState == 1 ? 0x41300000u :
+                            fpu.state == 0 ? 0u : 0x41000000u;
+        if constexpr (M == Mode::PD) ad -= frameSize;
+        const u32 adp = ad;
+
+        writeM<C, M, Long>(ad, frameId); ad += 4;
+        if (fpu.expState == 2) {
+            writeM<C, M, Long>(ad, 0); ad += 4;
+            writeM<C, M, Long>(ad, 0); ad += 4;          // CU_SAVEPC
+            writeM<C, M, Long>(ad, 0); ad += 4;
+            writeM<C, M, Long>(ad, 0); ad += 4;
+            writeM<C, M, Long>(ad, 0); ad += 4;
+            for (int i = 0; i < 3; i++) {
+                writeM<C, M, Long>(ad, fpu.wbt[i]); ad += 4;
+            }
+            writeM<C, M, Long>(ad, 0); ad += 4;
+            writeM<C, M, Long>(ad, fpu.fpiarCu); ad += 4;
+            writeM<C, M, Long>(ad, 0); ad += 4;
+            writeM<C, M, Long>(ad, 0); ad += 4;
+        }
+        if (fpu.expState != 0) {
+            writeM<C, M, Long>(ad, u32(fpu.cmdreg3b) << 16); ad += 4;
+            writeM<C, M, Long>(ad, 0); ad += 4;
+            writeM<C, M, Long>(ad, u32(fpu.stag) << 29 |
+                u32(fpu.wbtm66) << 26 | u32(fpu.grs) << 23); ad += 4;
+            writeM<C, M, Long>(ad, u32(fpu.cmdreg1b) << 16); ad += 4;
+            writeM<C, M, Long>(ad, u32(fpu.dtag) << 29 |
+                u32(fpu.wbte15) << 20); ad += 4;
+            writeM<C, M, Long>(ad, u32(fpu.e1) << 26 |
+                u32(fpu.e3) << 25 | u32(fpu.t) << 20); ad += 4;
+            for (int i = 0; i < 3; i++) {
+                writeM<C, M, Long>(ad, fpu.fpt[i]); ad += 4;
+            }
+            for (int i = 0; i < 3; i++) {
+                writeM<C, M, Long>(ad, fpu.et[i]); ad += 4;
+            }
+        }
+
+        if constexpr (M == Mode::PD) writeA(n, adp);
+        fpu.expState = 0;
+        fpu.expPend = 0;
+        prefetch<C, POLL>();
+        CYCLES_68020(frameSize == 4 ? FPU_CK_FSAVE_NULL : FPU_CK_FSAVE_IDLE2)
+        FINALIZE
+        return;
+    }
+
+    fpuCompleteBusy(false);
+
     const int fpuVersion = 0x1f;                        // fpp.c:1429-1432
-    int frameSize = fpuModel == FPUModel::M68882 ? 0x3c : 0x1c;
-    u32 frameId = fpu.state == 0
-        ? u32(frameSize - 4) << 16
-        : (u32(fpuVersion) << 24) | (u32(frameSize - 4) << 16);
+    const bool busy = fpu.busy;
+    int frameSize = busy ? (fpuModel == FPUModel::M68882 ? 0xd8 : 0xb8)
+                         : (fpuModel == FPUModel::M68882 ? 0x3c : 0x1c);
+    u32 frameId = busy
+        ? (u32(fpuVersion) << 24) | u32(frameSize - 4) << 16
+        : fpu.state == 0
+            ? u32(frameSize - 4) << 16
+            : (u32(fpuVersion) << 24) | (u32(frameSize - 4) << 16);
 
     u32 biuFlags = 0x540effff;                          // fpp.c:2510
     biuFlags |= fpu.expState ? 0x20000000 : 0x08000000;
 
     fpu.expPend = 0;                                    // fpp.c:2514
-    if (fpu.state == 0) frameSize = 4;                  // NULL frame
+    if (!busy && fpu.state == 0) frameSize = 4;         // NULL frame
 
     if constexpr (M == Mode::PD) ad -= frameSize;
     u32 adp = ad;
@@ -1654,7 +2129,29 @@ Moira::execFSave(u16 opcode)
     writeM<C, M, Long>(ad, frameId);
     ad += 4;
 
-    if (fpu.state != 0) {   // IDLE frame
+    if (busy) {
+        // The chip's internal bytes are deliberately opaque to software.
+        // Keep a deterministic POM2 image so our FRESTORE can resume the
+        // suspended SoftFloat operation while preserving the architectural
+        // $1F/$D4 (or $B4) frame size and transfer order.
+        const u32 remain = fpu.busyUntil > clock
+            ? u32(fpu.busyUntil - clock) : 0;
+        for (int off = 4; off < frameSize; off += 4) {
+            u32 v = 0;
+            if (off == 4) v = 0x504f4d32;               // "POM2"
+            else if (off == 8) v = remain;
+            else if (off == 12) v = u32(fpu.busyOpcode) << 16 | fpu.busyExt;
+            else if (off == 16) v = fpu.busyFpsr;
+            else if (off >= 24 && off < 24 + 8 * 12) {
+                const int r = (off - 24) / 12;
+                const int w = ((off - 24) % 12) / 4;
+                if (w == 0) v = u32(fpu.busyFp[r].high) << 16;
+                else if (w == 1) v = u32(fpu.busyFp[r].low >> 32);
+                else v = u32(fpu.busyFp[r].low);
+            }
+            writeM<C, M, Long>(ad, v); ad += 4;
+        }
+    } else if (fpu.state != 0) {   // IDLE frame
 
         writeM<C, M, Long>(ad, fpu.fsaveCcr);           // command/condition
         ad += 4;
@@ -1681,11 +2178,14 @@ Moira::execFSave(u16 opcode)
 
     fpu.expState = 0;
     fpu.expPend = 0;
+    fpu.busy = false;                              // FSAVE leaves FPCP idle
 
     prefetch<C, POLL>();
 
     // Table 8-8 (FSAVE row) by emitted frame
     CYCLES_68020(frameSize == 4 ? FPU_CK_FSAVE_NULL :
+                 frameSize == 0xd8 ? FPU_CK_FREST_BUSY2 :
+                 frameSize == 0xb8 ? FPU_CK_FREST_BUSY1 :
                  frameSize == 0x3c ? FPU_CK_FSAVE_IDLE2 : FPU_CK_FSAVE_IDLE1)
 
     FINALIZE
@@ -1703,8 +2203,8 @@ Moira::execFRestore(u16 opcode)
     //   version $00           -> NULL: FPU reset (fpu_null, fpp.c:2796)
     //   version $1F, size $18 -> 68881 IDLE: reload micro-state
     //   version $1F, size $38 -> 68882 IDLE: reload micro-state
-    //   version $1F, size $B4 -> 68881 BUSY: skipped (fpp.c:2788-2790)
-    //   version $1F, size $D4 -> 68882 BUSY: skipped
+    //   version $1F, size $B4 -> 68881 BUSY: resume POM2 frame; accept opaque
+    //   version $1F, size $D4 -> 68882 BUSY: resume POM2 frame; accept opaque
     //   version $1F, other    -> format error (vector 14, fpp.c:2791-2794)
     //   version $41           -> WinUAE's 68040 retry hack, see below
     //   anything else         -> format error (vector 14, fpp.c:2804-2806)
@@ -1738,7 +2238,7 @@ Moira::execFRestore(u16 opcode)
 
     int ck = FPU_CK_FREST_NULL;             // Table 8-8 (FRESTORE row)
 
-    if (frameVersion == 0x1f) {             // 6888x frame
+    if (frameVersion == 0x1f && fpuModel != FPUModel::M68040) { // 6888x frame
 
         u32 frameSize = (d >> 16) & 0xff;
         fpu.state = 1;
@@ -1765,6 +2265,32 @@ Moira::execFRestore(u16 opcode)
 
         } else if (frameSize == 0xB4 || frameSize == 0xD4) {    // BUSY
 
+            const u32 magic = readM<C, M, Long>(adOrig + 4);
+            if (magic == 0x504f4d32) {
+                const u32 remain = readM<C, M, Long>(adOrig + 8);
+                const u32 command = readM<C, M, Long>(adOrig + 12);
+                fpu.busyOpcode = u16(command >> 16);
+                fpu.busyExt = u16(command);
+                fpu.busyFpsr = readM<C, M, Long>(adOrig + 16);
+                for (int r = 0; r < 8; r++) {
+                    const u32 p = adOrig + 24 + u32(12 * r);
+                    const u32 w0 = readM<C, M, Long>(p);
+                    const u32 w1 = readM<C, M, Long>(p + 4);
+                    const u32 w2 = readM<C, M, Long>(p + 8);
+                    fpu.busyFp[r] = FpuExtended {
+                        u16(w0 >> 16), u64(w1) << 32 | w2 };
+                }
+                fpu.busy = true;
+                // The restore transfer itself precedes resumed execution.
+                const int restoreCk = frameSize == 0xD4
+                    ? FPU_CK_FREST_BUSY2 : FPU_CK_FREST_BUSY1;
+                fpu.busyUntil = clock + restoreCk + remain;
+            } else {
+                // An opaque hardware frame remains accepted. Its exact
+                // microcode state cannot be interpreted, matching the old
+                // compatibility behavior, but it is never rejected.
+                fpu.busy = false;
+            }
             ad += frameSize;                    // skipped (fpp.c:2788-2790)
             ck = frameSize == 0xD4 ? FPU_CK_FREST_BUSY2 : FPU_CK_FREST_BUSY1;
 
@@ -1780,7 +2306,7 @@ Moira::execFRestore(u16 opcode)
 
         fpuResetState();
 
-    } else if (frameVersion == 0x41) {
+    } else if (frameVersion == 0x41 && fpuModel == FPUModel::M68040) {
 
         // WinUAE's "horrible hack" (fpp.c:2799-2802): with
         // fpu_no_unimplemented == false — the oracle's config,
@@ -1802,13 +2328,43 @@ Moira::execFRestore(u16 opcode)
 
         } else if (frameSize == 0x60) {                 // 68040 BUSY
 
-            // WinUAE reloads the frame and, when CU_SAVEPC == $FE and
-            // the command is opclass 0/2, re-executes the interrupted
-            // arithmetic op (fpp.c:2668-2725). The resume is not
-            // modelled (TODO — no planted fuzz frame produces it); the
-            // frame is skipped with WinUAE's final address (ad_orig +
-            // 4 + $60, the sum of its field offsets).
-            ad += frameSize;
+            // Resume a planted BUSY frame when CU_SAVEPC is $FE, matching
+            // WinUAE fpp.c:2668-2725. The FPT/ET operands are raw extended
+            // values and CMDREG1B selects the destination and operation.
+            const u32 cuSavePc = readM<C, M, Long>(adOrig + 8) >> 24;
+            const bool et15 = (readM<C, M, Long>(adOrig + 60) & 0x10000000u) != 0;
+            const u16 cmd = u16(readM<C, M, Long>(adOrig + 64) >> 16);
+            const bool fpte15 = (readM<C, M, Long>(adOrig + 68) & 0x10000000u) != 0;
+            const u32 fpt0 = readM<C, M, Long>(adOrig + 76);
+            const u32 fpt1 = readM<C, M, Long>(adOrig + 80);
+            const u32 fpt2 = readM<C, M, Long>(adOrig + 84);
+            const u32 et0 = readM<C, M, Long>(adOrig + 88);
+            const u32 et1 = readM<C, M, Long>(adOrig + 92);
+            const u32 et2 = readM<C, M, Long>(adOrig + 96);
+            ad = adOrig + 4 + frameSize;
+
+            const u32 opclass = (cmd >> 13) & 7;
+            if (cuSavePc == 0xfe && (opclass == 0 || opclass == 2)) {
+                FpuExtended dst { u16(fpt0 >> 16), u64(fpt1) << 32 | fpt2 };
+                FpuExtended src { u16(et0 >> 16), u64(et1) << 32 | et2 };
+                if (fpte15)
+                    dst = fpuFromFx80(floatx80_denormalize(fpuToFx80(dst), true));
+                if (et15)
+                    src = fpuFromFx80(floatx80_denormalize(fpuToFx80(src), true));
+                fpuSetMode();
+                fpuClearStatus();
+                const bool store = fpuArithmetic(src, dst, cmd);
+                if (store) fpu.fp[(cmd >> 7) & 7] = dst;
+                if (fpuCheckArithException(src, opcode, cmd, fpu.ea)) {
+                    execFpuException<C>(u16(fpu.expPend), false);
+                    CYCLES_68020(ck)
+                    FINALIZE
+                    return;
+                }
+            }
+            fpu.state = 1;
+            fpu.expState = 0;
+            fpu.expPend = 0;
 
         } else {
 
@@ -2001,6 +2557,13 @@ Moira::execFMovecr(u16 opcode)
     u16 ext = u16(readI<C, Word>());
     int dst = ______xxx_______(ext);
 
+    if (fpuModel == FPUModel::M68040) {
+        const FpuExtended src { 0, 0 };
+        execFpuUnimplemented040<C>(opcode, ext, src, dst, -1, 0);
+        FINALIZE
+        return;
+    }
+
     if (ext & 0x40) {
 
         execLineF<C, I, M, S>(opcode);
@@ -2013,7 +2576,7 @@ Moira::execFMovecr(u16 opcode)
     // maybe_set_fpiar (fpp.c:755-762): FPIAR updates only when an
     // exception other than BSUN is enabled — a WinUAE (= oracle) economy
     // replicated on purpose
-    if (fpu.fpcr & 0x7f00) fpu.fpiar = reg.pc0;
+    if (fpuModel == FPUModel::M68040 || (fpu.fpcr & 0x7f00)) fpu.fpiar = reg.pc0;
 
     FpuExtended v;
     fpuGetConstant(v, ext & 0x7f);
@@ -2039,14 +2602,26 @@ Moira::execFGeneric(u16 opcode)
     u16 ext = u16(readI<C, Word>());
     int dstReg = ______xxx_______(ext);
 
-    // 6888x: opmodes $40-$7F do not exist (they are the 68040 S/D-rounded
-    // variants) — F-line (WinUAE fault_if_nonexisting_opmode,
-    // fpp.c:1130-1136, accurate mode). Checked before the operand fetch.
-    if ((ext & 0x7f) >= 0x40) {
-
+    // Non-existing opmodes fault before fetching an operand. The external
+    // 6888x rejects all of $40-$7F; the integrated 040 has a sparse map and
+    // reserves $78-$7F for the illegal-instruction vector.
+    if (fpuModel == FPUModel::M68040) {
+        if ((ext & 0x7f) >= 0x78) {
+            execException<C>(M68kException::ILLEGAL);
+            return;
+        }
+        if (fpuIsNonexistent040(ext)) {
+            execLineF<C, I, M, S>(opcode);
+            return;
+        }
+    } else if ((ext & 0x7f) >= 0x40) {
         execLineF<C, I, M, S>(opcode);
         return;
     }
+
+    FpuExtended oldFp[8];
+    for (int i = 0; i < 8; i++) oldFp[i] = fpu.fp[i];
+    const u32 oldFpsr = fpu.fpsr;
 
     fpuSetMode();
     fpuClearStatus();
@@ -2062,22 +2637,67 @@ Moira::execFGeneric(u16 opcode)
 
     } else {
 
-        if (fpuGetSource<C, M>(opcode, ext, src, ea) == 0) {
-
+        const int sourceResult = fpuGetSource<C, M>(opcode, ext, src, ea);
+        if (sourceResult == 0) {
             execLineF<C, I, M, S>(opcode);
+            return;
+        }
+        if (sourceResult < 0) {
+            FINALIZE
             return;
         }
     }
 
-    if (fpu.fpcr & 0x7f00) fpu.fpiar = reg.pc0;     // maybe_set_fpiar
+    if (fpuModel == FPUModel::M68040 || (fpu.fpcr & 0x7f00))
+        fpu.fpiar = reg.pc0;
 
     FpuExtended dst = fpu.fp[dstReg];
     if (fpuIsDyadic(ext)) fpuNormalize(dst);        // fpp.c:3560-3561
 
+    if (fpuModel == FPUModel::M68040 && !fpuIsImplemented040(ext)) {
+        const int size = (ext & 0x4000) ? int((ext >> 10) & 7) : -1;
+        execFpuUnimplemented040<C>(opcode, ext, src, dstReg, size, ea);
+        FINALIZE
+        return;
+    }
+
+    if (fpuModel == FPUModel::M68040) {
+        const int size = (ext & 0x4000) ? int((ext >> 10) & 7) : -1;
+        if (size == 3 || size == 7 || fpuNeedsDatatype040(src) ||
+            (fpuIsDyadic(ext) && fpuNeedsDatatype040(dst))) {
+            execFpuDatatype040<C>(opcode, ext, src, dstReg, size, ea);
+            FINALIZE
+            return;
+        }
+    }
+
     bool store = fpuArithmetic(src, dst, ext);
 
-    fpuCheckArithException(src, opcode, ext, ea);   // latch, trap at next FP op
+    const bool immediate = fpuCheckArithException(src, opcode, ext, ea);
+    if (immediate && fpuModel == FPUModel::M68040) {
+        execFpuException<C>(u16(fpu.expPend), false);
+        FINALIZE
+        return;
+    }
     if (store) fpu.fp[dstReg] = dst;
+
+    if (fpuModel == FPUModel::M68881 || fpuModel == FPUModel::M68882) {
+        // Keep the completed image private while the MPU waits on the
+        // coprocessor protocol. An interrupt at an IA checkpoint exposes a
+        // format-$9 continuation and FSAVE can then suspend this BUSY image.
+        for (int i = 0; i < 8; i++) fpu.busyFp[i] = fpu.fp[i];
+        fpu.busyFpsr = fpu.fpsr;
+        for (int i = 0; i < 8; i++) fpu.fp[i] = oldFp[i];
+        fpu.fpsr = oldFpsr;
+
+        fpu.busyIa = reg.pc0;
+        prefetch<C, POLL>();
+        const int cycles = fpuCk882Op[ext & 0x3f] +
+            ((ext & 0x4000) ? fpuCk882Fmt[___xxx__________(ext)] : 0) + cp;
+        fpuRunBusy<C>(cycles, opcode, ext);
+        FINALIZE
+        return;
+    }
 
     prefetch<C, POLL>();
 
@@ -2105,16 +2725,24 @@ Moira::execFMove(u16 opcode)
     FpuExtended value = fpu.fp[______xxx_______(ext)];
     u32 ea = 0;
 
-    if (fpuPutDest<C, M>(opcode, ext, value, ea) == 0) {
+    const int putResult = fpuPutDest<C, M>(opcode, ext, value, ea);
+    if (putResult <= 0) {
 
-        execLineF<C, I, M, S>(opcode);
+        if (putResult == 0) execLineF<C, I, M, S>(opcode);
         return;
     }
 
     fpuMakeStatus();
-    if (fpu.fpcr & 0x7f00) fpu.fpiar = reg.pc0;     // maybe_set_fpiar
+    if (fpuModel == FPUModel::M68040 || (fpu.fpcr & 0x7f00))
+        fpu.fpiar = reg.pc0;
 
-    if (fpuCheckArithException(value, opcode, ext, ea)) { /* 6888x: maskable */ }
+    const int dstSize = (ext >> 10) & 7;
+    const u32 integerNonmaskable = fpuModel == FPUModel::M68040 &&
+        (dstSize == 0 || dstSize == 4 || dstSize == 6)
+        ? (FPSR_SNAN | FPSR_OPERR) : 0;
+    if (fpuCheckArithException(value, opcode, ext, ea, integerNonmaskable)) {
+        /* 040: immediate; 6888x: maskable pending exception. */
+    }
     if (fpu.expPend) {
 
         // Mid/post-instruction exception (WinUAE fp_exception_pending(false),
@@ -2293,10 +2921,22 @@ Moira::execFMovem(u16 opcode)
 
         u32 list = (mode & 1) ? readD((ext >> 4) & 7) & 0xff : ext & 0xff;
 
-        // 6888x: -(An) transfers descending; static/dynamic predecrement
-        // list format reverses the register order (fpp.c:3450-3461)
+        // 6888x and 040 use different list and word orders. On the 040,
+        // memory->FP static/dynamic predecrement-format lists count FP0 up;
+        // FP->memory may also write each 96-bit register low-mantissa first
+        // (WinUAE fpp.c:3461-3490).
         const int incr = (M == Mode::PD) ? -1 : 1;
-        const int regdir = (mode == 0 || mode == 1) ? -1 : 1;
+        int regdir = (mode == 0 || mode == 1) ? -1 : 1;
+        bool reverseWords = false;
+        if (fpuModel == FPUModel::M68040) {
+            regdir = 1;
+            if ((mode == 0 || mode == 1) && (M == Mode::PD || toEa))
+                regdir = -1;
+            if (list && toEa && incr > 0 && regdir < 0)
+                reverseWords = true;
+            if (list && toEa && incr < 0 && regdir > 0)
+                reverseWords = true;
+        }
 
         // POM68K O5 (seed-17 solo convergence): 68030 restart bookkeeping,
         // WinUAE fmovem2mem/fmovem2fpp mmu030 paths (fpp.c:2810-2841,
@@ -2343,12 +2983,14 @@ Moira::execFMovem(u16 opcode)
                     u32 w1 = u32(fpu.fp[fpn].high) << 16;
                     u32 w2 = u32(fpu.fp[fpn].low >> 32);
                     u32 w3 = u32(fpu.fp[fpn].low);
-                    if (mmu030) mmuDataBuffer = w1;
-                    writeM<C, M, Long>(ad, w1);
+                    const u32 first = reverseWords ? w3 : w1;
+                    const u32 third = reverseWords ? w1 : w3;
+                    if (mmu030) mmuDataBuffer = first;
+                    writeM<C, M, Long>(ad, first);
                     if (mmu030) { mmuState[0]++; mmuDataBuffer = w2; }
                     writeM<C, M, Long>(ad + 4, w2);
-                    if (mmu030) { mmuState[0]++; mmuDataBuffer = w3; }
-                    writeM<C, M, Long>(ad + 8, w3);
+                    if (mmu030) { mmuState[0]++; mmuDataBuffer = third; }
+                    writeM<C, M, Long>(ad + 8, third);
                     if (mmu030) mmuState[0]++;
                 } else {
                     // Save the first two longs in case the 2nd or 3rd

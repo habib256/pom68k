@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "ScsiDisk.h"
+#include "FixtureStore.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -146,7 +147,24 @@ bool ScsiDisk::applyFlatHfsFacade(const std::string& imagePath) {
 }
 
 bool ScsiDisk::open(const std::string& path, bool writeBack) {
-    std::ifstream in(path, std::ios::binary);
+    std::string backingPath = path;
+    if (writeBack) {
+        const pom68k::WritableFixture routed = pom68k::writableFixture(path);
+        if (routed.reference) {
+            if (!routed.writable) {
+                std::fprintf(stderr, "SCSI: immutable reference %s: %s; "
+                                     "session is read-only\n",
+                             path.c_str(), routed.error.c_str());
+                writeBack = false;
+            } else {
+                backingPath = routed.path;
+                std::fprintf(stderr, "SCSI: immutable reference %s -> work %s%s\n",
+                             path.c_str(), backingPath.c_str(),
+                             routed.copied ? " (cloned)" : "");
+            }
+        }
+    }
+    std::ifstream in(backingPath, std::ios::binary);
     if (!in) return false;
     // Block read, not istreambuf_iterator: byte-wise iteration measured
     // 1.6 % of a whole bench run in callgrind (2026-07-31) — ~10 G host
@@ -164,17 +182,17 @@ bool ScsiDisk::open(const std::string& path, bool writeBack) {
     writeBack_ = false;
 
     if (blocks_ && looksBareHfs(image_))
-        applyFlatHfsFacade(path);
+        applyFlatHfsFacade(backingPath);
 
     // The save-state write log is relative to the image as just loaded.
     resetWriteLog();
 
     if (blocks_ && writeBack) {
-        file_.open(path, std::ios::in | std::ios::out | std::ios::binary);
+        file_.open(backingPath, std::ios::in | std::ios::out | std::ios::binary);
         writeBack_ = file_.is_open();
         if (!writeBack_)
             std::fprintf(stderr, "SCSI: %s not writable — session writes "
-                         "will be lost on exit\n", path.c_str());
+                         "will be lost on exit\n", backingPath.c_str());
         else if (hfsPrefixBlocks_)
             std::fprintf(stderr, "SCSI: write-back maps LBA≥%u onto flat HFS file\n",
                          hfsPrefixBlocks_);

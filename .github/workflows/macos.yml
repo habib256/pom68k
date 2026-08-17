@@ -29,7 +29,29 @@ jobs:
           cmake --build build --parallel 3 --target
           POM68K cpu_smoke savestate_test
           atalk_stack_test afp_server_test pap_server_test declrom_test
-          jit_restart_write_030_test jit_lockstep_test jit_lockstep_030_test
+          jitfast jit_restart_write_030_test jit_lockstep_test jit_lockstep_030_test
+
+      - name: Fast native JIT proof (AArch64, asset-free)
+        env:
+          POM68K_JIT_REQUIRE_NATIVE: "1"
+          POM68K_JIT_METRICS_FILE: ${{ runner.temp }}/pom68k-jit-aarch64.json
+        run: >-
+          ctest --test-dir build --output-on-failure -L jit-fast
+
+      - name: Publish AArch64 JIT metrics
+        if: always()
+        run: |
+          test -f "${{ runner.temp }}/pom68k-jit-aarch64.json"
+          python3 tools/check_jit_performance.py --require synthetic_68040_lockstep "${{ runner.temp }}/pom68k-jit-aarch64.json"
+          cat "${{ runner.temp }}/pom68k-jit-aarch64.json"
+
+      - name: Archive AArch64 JIT metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pom68k-jit-metrics-aarch64
+          path: ${{ runner.temp }}/pom68k-jit-aarch64.json
+          if-no-files-found: error
 
       - name: Test
         run: >-

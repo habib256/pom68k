@@ -1444,7 +1444,7 @@ Moira::execPLoad(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // MC68030UM § 9.7 PLOAD: table search + ATC fill (not modelled). The
+    // MC68030UM § 9.7 PLOAD: table search + ATC fill. The
     // search's history updates (U, and U+M for PLOADW, § 9.5.3.5) land in
     // RAM, early aborts included. MMUSR is NOT affected. WinUAE goes
     // straight to the table search — no TT match, no fc=7 bypass — and
@@ -2034,12 +2034,17 @@ Moira::pomJitProbeCode(u32 logical, bool super,
     if (cpuModel < Model::M68EC040) return false;
 
     const u32 maski = mmu040PageMaskI();
-    pageBase = logical & maski;
+    const u32 mmuPageBase = logical & maski;
+    pageBase = mmuPageBase;
     pageLen  = ~maski + 1;
+    const auto finish = [&](u32 p) {
+        phys = p;
+        return true;
+    };
 
     // Transparent translation is identity and cannot fault on a read.
-    if (mmu040MatchTTR(logical, super, false)) { phys = logical; return true; }
-    if (!mmu040Enabled()) { phys = logical; return true; }
+    if (mmu040MatchTTR(logical, super, false)) return finish(logical);
+    if (!mmu040Enabled()) return finish(logical);
     if (!mmu040AtcArmed) return false;      // POM68K_MMU040_WALK differential mode
 
     // Read-only scan of the INSTRUCTION ATC. Deliberately not
@@ -2048,26 +2053,25 @@ Moira::pomJitProbeCode(u32 logical, bool super,
     // O(1) first, same memo trick as the 030 branch above.
     {
         const Mmu040AtcEntry &e = mmu040AtcI[mmu040AtcLastI[0]];
-        if (e.valid && (e.logical & maski) == pageBase) {
+        if (e.valid && (e.logical & maski) == mmuPageBase) {
             if (!(e.status & 1)) return false;
             if (!super && (e.status & 0x80)) return false;
-            phys = e.physical | (logical & ~maski);
-            return true;
+            return finish(e.physical | (logical & ~maski));
         }
     }
     for (const Mmu040AtcEntry &e : mmu040AtcI) {
-        if (!e.valid || (e.logical & maski) != pageBase) continue;
+        if (!e.valid || (e.logical & maski) != mmuPageBase) continue;
         if (!(e.status & 1)) return false;                  // invalid descriptor
         if (!super && (e.status & 0x80)) return false;      // supervisor-only page
-        phys = e.physical | (logical & ~maski);
-        return true;
+        return finish(e.physical | (logical & ~maski));
     }
     return false;
 }
 
 bool
 Moira::pomJitProbeData(u32 logical, bool super, bool write,
-                       u32 &phys, u32 &pageBase, u32 &pageLen) const
+                       u32 &phys, u32 &pageBase, u32 &pageLen,
+                       bool allowCache040) const
 {
     // POM68K J2 (src/jit/POM68K_JIT.md § 8). The data twin of
     // pomJitProbeCode, and held to the same three rules: it must not touch
@@ -2135,6 +2139,11 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
     }
 
     if (cpuModel < Model::M68EC040) return false;
+    // The ordinary data TLB must never route around the D-cache. The J4
+    // publisher is the sole exception: after an exact access has completed
+    // it needs a read-only ATC lookup to associate that logical line with
+    // the physical Cache040::Line that now contains the authoritative data.
+    if (pomCache040On && !allowCache040) return false;
 
     const u32 maski = mmu040PageMaskI();
     pageBase = logical & maski;
@@ -2168,6 +2177,55 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
     return false;
 }
 
+void
+Moira::pomJitCache040Publish(u32 logical, int bytes, bool write)
+{
+    // A non-zero hit charge has to pass through sync(), where the machine
+    // catches peripherals up. Generated line loads intentionally contain no
+    // call, so do not publish under that timing policy.
+    if (!pomCache040Active() || !(reg.cacr & 0x80000000) ||
+        pomCache040Timing.hit != 0 || bytes <= 0 || bytes > 16 ||
+        unsigned(logical & 15) > 16u - unsigned(bytes)) return;
+
+    // The exact access immediately preceding this call has filled/hit the
+    // data ATC. Re-probe it without touching pseudo-LRU or guest descriptors;
+    // this is association only, never an access in its own right.
+    u32 phys = 0, pageBase = 0, pageLen = 0;
+    if (!pomJitProbeData(logical, bool(reg.sr.s), write,
+                         phys, pageBase, pageLen, true)) return;
+    (void)pageBase; (void)pageLen;
+    if (unsigned(phys & 15) > 16u - unsigned(bytes)) return;
+
+    Cache040::Line *line = pomCache040D.lookup(phys);
+    if (!line) return;                   // disabled/NC/WT write miss
+
+    const u32 logicalTag = pomJitCache040Tag(logical, bool(reg.sr.s));
+    const u32 slot = (logical >> 4) & (PomJitCache040Table::kEntries - 1);
+    const auto publish = [&](PomJitCache040Entry &e) {
+        e.tag = logicalTag;
+        e.physicalTag = line->tag;
+        e.generation = pomJitCache040Gen;
+        e.line = line;
+    };
+    publish(pomJitCache040R.e[slot]);
+
+    // A write entry is stronger than a read entry: the exact access proved
+    // both write permission/M-bit state and copyback policy. `pomCache040Cm`
+    // is the attribute captured by that access's translation, so an alias
+    // through a write-through mapping can never inherit permission merely
+    // because the physical line happens to be dirty through another alias.
+    if (write && pomCache040Cm == Cache040::CM_COPYBACK) {
+        const unsigned first = unsigned(phys & 15) >> 2;
+        const unsigned last = unsigned((phys & 15) + u32(bytes) - 1) >> 2;
+        const u8 dirty = u8((1u << first) | (1u << last));
+        // This is also the publication proof: an exact copyback store must
+        // have made every covered longword authoritative in the line before
+        // generated code is allowed to continue the sequence natively.
+        if ((line->dirty & dirty) == dirty)
+            publish(pomJitCache040W.e[slot]);
+    }
+}
+
 Moira::PomJitLayout
 Moira::pomJitLayout() const
 {
@@ -2191,6 +2249,13 @@ Moira::pomJitLayout() const
     l.clock = at(&clock);     l.flags = at(&flags);
     l.ird = at(&queue.ird);   l.irc = at(&queue.irc);
     l.dtlbR = at(&pomJitDtlbR.e[0]);       l.dtlbW = at(&pomJitDtlbW.e[0]);
+    l.cache040R = at(&pomJitCache040R.e[0]);
+    l.cache040W = at(&pomJitCache040W.e[0]);
+    l.cache040Gen = at(&pomJitCache040Gen);
+    l.cache040Hits = at(&pomCache040D.hits);
+    l.cache040NativeReadHits = at(&pomJitCache040NativeReadHits);
+    l.cache040NativeWriteHits = at(&pomJitCache040NativeWriteHits);
+    l.cache040Live = pomCache040Active();
     l.movemArmed = at(&mmu040MovemArmed);
     l.cacr = at(&reg.cacr);
     l.icTag = at(&pomIcache.tag[0]);       l.icValid = at(&pomIcache.valid[0]);
@@ -2233,10 +2298,12 @@ Moira::pomJitReadData(u32 addr, int bytes, u32 &out) noexcept
             }
         }
         switch (bytes) {
-            case 1: out = mmu040Read<Core::C68020, Byte>(addr, true); return true;
-            case 2: out = mmu040Read<Core::C68020, Word>(addr, true); return true;
-            default: out = mmu040Read<Core::C68020, Long>(addr, true); return true;
+            case 1: out = mmu040Read<Core::C68020, Byte>(addr, true); break;
+            case 2: out = mmu040Read<Core::C68020, Word>(addr, true); break;
+            default: out = mmu040Read<Core::C68020, Long>(addr, true); break;
         }
+        pomJitCache040Publish(addr, bytes, false);
+        return true;
     } catch (...) {
         return false;
     }
@@ -2256,10 +2323,16 @@ Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
             }
         }
         switch (bytes) {
-            case 1: mmu040Write<Core::C68020, Byte>(addr, val, true); return true;
-            case 2: mmu040Write<Core::C68020, Word>(addr, val, true); return true;
-            default: mmu040Write<Core::C68020, Long>(addr, val, true); return true;
+            case 1: mmu040Write<Core::C68020, Byte>(addr, val, true); break;
+            case 2: mmu040Write<Core::C68020, Word>(addr, val, true); break;
+            default: mmu040Write<Core::C68020, Long>(addr, val, true); break;
         }
+        // A copyback write miss allocates a line; a write-through hit
+        // refreshes one. Publishing it here lets a later sole read use the
+        // resident authoritative bytes without ever routing the write itself
+        // around dirty-mask and restart bookkeeping.
+        pomJitCache040Publish(addr, bytes, true);
+        return true;
     } catch (...) {
         return false;
     }
@@ -2292,29 +2365,230 @@ Moira::mmu040MatchTTR(u32 addr, bool super, bool data, u32 *cm) const
 void
 Moira::pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode)
 {
-    // POM68K M1 (docs/CACHE_040.md § M1). CACR gates lookup AND
-    // allocation (M68040UM § 4.4: a disabled cache is not searched; its
-    // contents survive until CINV — DE = bit 31, IE = bit 15). szCode is
-    // the access's SSW size, reused by split sub-accesses: on a
-    // page-crossing misaligned access the dirty span can over-reach by
-    // one longword. Tags carry no data in M1; M2 must split exactly.
-    //
-    // The touch happens at TRANSLATE time, before the bus access it
-    // describes — if that access then /BERRs, a real 040 line fill
-    // terminated by TEA leaves no valid line (UM § 7), so the span is
-    // stamped here and rolled back in extBusError040. The stamp is
-    // cleared first so a non-allocating access (cache disabled, NC
-    // page) never lets a later /BERR roll back an OLDER span.
-    pomCacheLastBytes = 0;
-    Cache040 &c = data ? pomCache040D : pomCache040I;
-    if (!(reg.cacr & (data ? 0x80000000 : 0x8000))) return;
-    const int bytes = szCode == 0 ? 1 : szCode == 1 ? 2 : szCode == 2 ? 4 : 16;
-    if (cm < Cache040::CM_SERIAL_NC) {
-        pomCacheLastPa = pa;
-        pomCacheLastBytes = bytes;
-        pomCacheLastData = data;
+    // M2: translation records attributes only. The data-bearing helper is
+    // called at the exact bus-access site, so a split/misaligned transfer
+    // dirties only the bytes actually transferred and a failed line fill
+    // can roll back the new line without guessing from the SSW size.
+    (void)pa; (void)write;
+    pomCache040Cm = cm;
+    pomCache040Move16 = szCode == 3;
+    pomCache040Enabled = (reg.cacr & (data ? 0x80000000 : 0x8000)) != 0;
+
+    // Locked transfers and MOVES alternate-space accesses are implicitly
+    // noncacheable (MC68040UM §7.4.3), independently of descriptor CM.
+    if ((data && mmu040Lrmw) || mmu040Moves >= 0) pomCache040Enabled = false;
+}
+
+void
+Moira::pomCache040Writeback(u32 base, const Cache040::Line &line)
+{
+    for (int lw = 0; lw < 4; lw++) {
+        if (!(line.dirty & (1u << lw))) continue;
+        const int o = 4 * lw;
+        const u32 a = base + u32(o);
+        mmu040AccAddr = a; mmu040AccVal = u32(line.data[o]) << 24 |
+            u32(line.data[o + 1]) << 16 | u32(line.data[o + 2]) << 8 |
+            line.data[o + 3];
+        mmu040AccSz = 2; mmu040AccWrite = true; mmu040AccData = true;
+        write16(a, u16(mmu040AccVal >> 16));
+        write16(a + 2, u16(mmu040AccVal));
+        if (pomCache040Timing.pushLong > 0) sync(pomCache040Timing.pushLong);
     }
-    c.touch(pa, write, cm, bytes, szCode == 3);
+}
+
+void
+Moira::pomCache040Writeback(u32 base, const Cache040::Evicted &line)
+{
+    Cache040::Line view;
+    view.valid = line.valid; view.dirty = line.dirty;
+    for (int i = 0; i < 16; i++) view.data[i] = line.data[i];
+    pomCache040Writeback(base, view);
+}
+
+Cache040::Line *
+Moira::pomCache040Fill(Cache040 &cache, u32 pa)
+{
+    const bool data = &cache == &pomCache040D;
+    if (Cache040::Line *hit = cache.lookup(pa)) {
+        cache.hits++;
+        if (pomCache040Timing.hit > 0) sync(pomCache040Timing.hit);
+        return hit;
+    }
+
+    Cache040::Evicted evicted;
+    Cache040::Line *line = cache.allocate(pa, &evicted);
+    const u32 base = pa & ~u32(15);
+    try {
+        if (evicted.valid && evicted.dirty)
+            pomCache040Writeback(evicted.base, evicted);
+
+        // A real line read begins with the requested longword and wraps
+        // inside the 16-byte line. This matters for a /BERR in a later beat.
+        const int first = int((pa >> 2) & 3);
+        for (int beat = 0; beat < 4; beat++) {
+            const int lw = (first + beat) & 3;
+            const int o = 4 * lw;
+            const u32 a = base + u32(o);
+            mmu040AccAddr = a; mmu040AccVal = 0;
+            mmu040AccSz = 2; mmu040AccWrite = false; mmu040AccData = data;
+            const u16 hi = read16(a);
+            const u16 lo = read16(a + 2);
+            line->data[o] = u8(hi >> 8); line->data[o + 1] = u8(hi);
+            line->data[o + 2] = u8(lo >> 8); line->data[o + 3] = u8(lo);
+        }
+        if (pomCache040Timing.lineFill > 0) sync(pomCache040Timing.lineFill);
+        return line;
+    } catch (...) {
+        // A failed fill never leaves a partial new line. The 040 restores a
+        // dirty victim from its push buffer; an old clean victim stays gone.
+        cache.invalidateLine(base);
+        if (evicted.valid && evicted.dirty) {
+            Cache040::Line *old = cache.allocate(evicted.base);
+            old->dirty = evicted.dirty;
+            for (int i = 0; i < 16; i++) old->data[i] = evicted.data[i];
+        }
+        throw;
+    }
+}
+
+void
+Moira::pomCache040PushHit(u32 pa)
+{
+    pomCache040D.drainLine(pa, [&](u32 base, const Cache040::Line &line) {
+        pomCache040Writeback(base, line);
+    });
+}
+
+u32
+Moira::pomCache040ReadValue(u32 pa, bool data, int bytes)
+{
+    Cache040 &cache = data ? pomCache040D : pomCache040I;
+    const bool cachable = pomCache040On && pomCache040Enabled &&
+        pomCache040Cm < Cache040::CM_SERIAL_NC && !pomCache040Move16;
+
+    if (!cachable) {
+        // A cache-inhibited data reference first pushes a dirty alias or
+        // invalidates a clean one. MOVE16 follows the same coherency rule.
+        if (pomCache040On && pomCache040Enabled && data) {
+            Cache040::Line *line = cache.lookup(pa);
+            if (line && line->dirty) pomCache040PushHit(pa);
+            else if (line) cache.invalidateLine(pa);
+        }
+        if (bytes == 1) return read8(pa);
+        if (bytes == 2) return read16(pa);
+        return u32(read16(pa)) << 16 | read16(pa + 2);
+    }
+
+    u32 result = 0;
+    int done = 0;
+    while (done < bytes) {
+        const u32 a = pa + u32(done);
+        Cache040::Line *line = pomCache040Fill(cache, a);
+        const int off = int(a & 15);
+        const int chunk = std::min(bytes - done, 16 - off);
+        for (int i = 0; i < chunk; i++) result = result << 8 | line->data[off + i];
+        done += chunk;
+    }
+    return result;
+}
+
+void
+Moira::pomCache040WriteValue(u32 pa, u32 val, bool data, int bytes)
+{
+    Cache040 &cache = data ? pomCache040D : pomCache040I;
+    const bool cachable = pomCache040On && pomCache040Enabled && data &&
+        pomCache040Cm < Cache040::CM_SERIAL_NC && !pomCache040Move16;
+
+    if (!cachable) {
+        if (pomCache040On && pomCache040Enabled && data) {
+            Cache040::Line *line = cache.lookup(pa);
+            if (line && line->dirty) pomCache040PushHit(pa);
+            else if (line) cache.invalidateLine(pa);
+        }
+        if (bytes == 1) write8(pa, u8(val));
+        else if (bytes == 2) write16(pa, u16(val));
+        else { write16(pa, u16(val >> 16)); write16(pa + 2, u16(val)); }
+        return;
+    }
+
+    // Write-through never allocates on a miss. On a hit it updates the
+    // resident copy and also performs the external write below.
+    const bool copyback = pomCache040Cm == Cache040::CM_COPYBACK;
+    int done = 0;
+    while (done < bytes) {
+        const u32 a = pa + u32(done);
+        Cache040::Line *line = cache.lookup(a);
+        if (line) {
+            cache.hits++;
+            if (pomCache040Timing.hit > 0) sync(pomCache040Timing.hit);
+        } else if (copyback) {
+            line = pomCache040Fill(cache, a);
+        }
+
+        const int off = int(a & 15);
+        const int chunk = std::min(bytes - done, 16 - off);
+        if (line) {
+            for (int i = 0; i < chunk; i++)
+                line->data[off + i] = u8(val >> (8 * (bytes - done - i - 1)));
+            if (copyback) {
+                for (int i = 0; i < chunk; i++)
+                    line->dirty |= u8(1u << ((off + i) >> 2));
+            }
+        }
+        done += chunk;
+    }
+
+    if (!copyback) {
+        if (bytes == 1) write8(pa, u8(val));
+        else if (bytes == 2) write16(pa, u16(val));
+        else { write16(pa, u16(val >> 16)); write16(pa + 2, u16(val)); }
+    }
+}
+
+bool
+Moira::pomSnoop040Read(u32 pa, u8 *dst, int bytes, bool invalidate)
+{
+    if (!pomCache040On || !dst || bytes <= 0) return false;
+    bool supplied = false;
+    for (int i = 0; i < bytes; i++) {
+        const u32 a = pa + u32(i);
+        Cache040::Line *line = pomCache040D.lookup(a);
+        const u8 dirtyBit = u8(1u << ((a & 15) >> 2));
+        if (!line || !(line->dirty & dirtyBit)) continue;
+        dst[i] = line->data[a & 15];
+        supplied = true;
+    }
+    if (invalidate) {
+        const u64 end = u64(pa) + u64(bytes);
+        for (u64 a = pa & ~u32(15); a < end; a += 16)
+            pomCache040D.invalidateLine(u32(a));
+    }
+    return supplied;
+}
+
+bool
+Moira::pomSnoop040Write(u32 pa, const u8 *src, int bytes, bool sink)
+{
+    if (!pomCache040On || !src || bytes <= 0) return false;
+    bool inhibitMemory = false;
+    if (!sink || bytes == 16) {
+        const u64 end = u64(pa) + u64(bytes);
+        for (u64 a = pa & ~u32(15); a < end; a += 16)
+            pomCache040D.invalidateLine(u32(a));
+        return false;
+    }
+    for (int i = 0; i < bytes; i++) {
+        const u32 a = pa + u32(i);
+        Cache040::Line *line = pomCache040D.lookup(a);
+        if (!line) continue;
+        const u8 dirtyBit = u8(1u << ((a & 15) >> 2));
+        const bool dirtyHit = (line->dirty & dirtyBit) != 0;
+        if (dirtyHit) inhibitMemory = true;
+        const int off = int(a & 15);
+        line->data[off] = src[i];
+        if (dirtyHit) line->dirty |= dirtyBit;
+    }
+    return inhibitMemory;
 }
 
 u32
@@ -2378,9 +2652,6 @@ Moira::pomCache040Phys(u32 addr, u32 &pa)
     // space, where the machine raises extBusError040 (bughunt
     // 2026-08-05). Flag ON may not surface a fault flag OFF's no-op
     // never produced: a bus-erroring chain is UNMAPPED here, full stop.
-    // The stamp is cleared first so the /BERR rollback path cannot
-    // invalidate the previous access's legitimately touched span.
-    pomCacheLastBytes = 0;
     u32 status = 0;
     try {
         status = mmu040PeekWalk(addr, super);
@@ -2395,11 +2666,11 @@ Moira::pomCache040Phys(u32 addr, u32 &pa)
 void
 Moira::pomCacheOp040(u16 opcode)
 {
-    // CINV/CPUSH acting on the M1 tag model (M68040UM § 4.5/4.6).
+    // CINV/CPUSH acting on the M2 data-bearing model (M68040UM § 4.5/4.6).
     // Bits 7-6 = caches (01 DC, 10 IC, 11 both, 00 none), bit 5 = push,
     // bits 4-3 = scope (01 line, 10 page, 11 all), bits 2-0 = An.
-    // CPUSH's push is a data no-op in M1 (memory is already current);
-    // both act with the caches DISABLED too (UM § 4.4).
+    // CPUSH writes each dirty longword before invalidating the selected
+    // line(s); both instructions act with caches disabled too (UM §4.4).
     const bool push = opcode & 0x20;
     const int scope = (opcode >> 3) & 3;
 
@@ -2407,16 +2678,35 @@ Moira::pomCacheOp040(u16 opcode)
     if (scope != 3 && !pomCache040Phys(reg.a[opcode & 7], pa)) return;
     const u32 pmask = mmu040PageMaskI();
 
-    auto apply = [&](Cache040 &c) {
+    auto apply = [&](Cache040 &c, bool data) {
+        auto sink = [&](u32 base, const Cache040::Line &line) {
+            pomCache040Writeback(base, line);
+        };
         switch (scope) {
-            case 1: push ? void(c.pushLine(pa)) : c.invalidateLine(pa); break;
-            case 2: push ? void(c.pushPage(pa, pmask))
-                         : c.invalidatePage(pa, pmask); break;
-            default: push ? void(c.pushAll()) : c.invalidateAll(); break;
+            case 1:
+                if (push && data) (void)c.drainLine(pa, sink);
+                else if (push) (void)c.pushLine(pa);
+                else c.invalidateLine(pa);
+                break;
+            case 2:
+                if (push && data) (void)c.drainPage(pa, pmask, sink);
+                else if (push) (void)c.pushPage(pa, pmask);
+                else c.invalidatePage(pa, pmask);
+                break;
+            default:
+                if (push && data) (void)c.drainAll(sink);
+                else if (push) (void)c.pushAll();
+                else c.invalidateAll();
+                break;
         }
     };
-    if (opcode & 0x40) apply(pomCache040D);
-    if (opcode & 0x80) apply(pomCache040I);
+    if (opcode & 0x40) apply(pomCache040D, true);
+    if (opcode & 0x80) {
+        apply(pomCache040I, false);
+        // Native blocks embed instruction bytes. An IC invalidate/push is
+        // the boundary at which those bytes may architecturally change.
+        pomJitMapMoved();
+    }
 }
 
 template <Core C> u32
@@ -2616,7 +2906,7 @@ Moira::mmu040Read(u32 addr, bool data)
     // contract as the fetch window and the JIT's inline loads, and the
     // next slow access stamps its own before anything can read it. The
     // SYNC(2)s skipped with the long path expand to nothing on the 040.
-    if (data) [[likely]] {
+    if (data && !pomCache040On) [[likely]] {
         constexpr int n = S == Byte ? 1 : S == Word ? 2 : 4;
         if (const u8 *p = pomJitData<n, false>(addr)) {
             if constexpr (S == Byte) return p[0];
@@ -2642,10 +2932,7 @@ Moira::mmu040Read(u32 addr, bool data)
     if constexpr (S == Byte) {
 
         u32 pa = mmu040Translate<C>(addr, 0, super, data, false, 0);
-        SYNC(2);
-        u32 r = read8(pa & addrMask<C>());
-        SYNC(2);
-        return r;
+        return pomCache040ReadValue(pa & addrMask<C>(), data, 1);
     }
 
     if constexpr (S == Word) {
@@ -2653,19 +2940,14 @@ Moira::mmu040Read(u32 addr, bool data)
         if ((addr & pageMask) + 2 > pageMask + 1) {     // page-crossing
             mmu040AccSplit = true;
             u32 hi = mmu040Translate<C>(addr, 0, super, data, false, 1);
-            SYNC(2);
-            u32 r = u32(read8(hi & addrMask<C>())) << 8;
+            u32 r = pomCache040ReadValue(hi & addrMask<C>(), data, 1) << 8;
             mmu040AccFirst = false;
             u32 lo = mmu040Translate<C>(addr + 1, 0, super, data, false, 1);
-            r |= read8(lo & addrMask<C>());
-            SYNC(2);
+            r |= pomCache040ReadValue(lo & addrMask<C>(), data, 1);
             return r;
         }
         u32 pa = mmu040Translate<C>(addr, 0, super, data, false, 1);
-        SYNC(2);
-        u32 r = read16(pa & addrMask<C>());
-        SYNC(2);
-        return r;
+        return pomCache040ReadValue(pa & addrMask<C>(), data, 2);
     }
 
     if constexpr (S == Long) {
@@ -2674,31 +2956,22 @@ Moira::mmu040Read(u32 addr, bool data)
             mmu040AccSplit = true;
             if (!(addr & 1)) {                          // word halves
                 u32 hi = mmu040Translate<C>(addr, 0, super, data, false, 2);
-                SYNC(2);
-                u32 r = u32(read16(hi & addrMask<C>())) << 16;
-                SYNC(4);
+                u32 r = pomCache040ReadValue(hi & addrMask<C>(), data, 2) << 16;
                 mmu040AccFirst = false;
                 u32 lo = mmu040Translate<C>(addr + 2, 0, super, data, false, 2);
-                r |= read16(lo & addrMask<C>());
-                SYNC(2);
+                r |= pomCache040ReadValue(lo & addrMask<C>(), data, 2);
                 return r;
             }
             u32 r = 0;                                  // four bytes
             for (int i = 0; i < 4; i++) {
                 u32 pa = mmu040Translate<C>(addr + i, 0, super, data, false, 2);
-                r = r << 8 | read8(pa & addrMask<C>());
+                r = r << 8 | pomCache040ReadValue(pa & addrMask<C>(), data, 1);
                 mmu040AccFirst = false;
             }
-            SYNC(8);
             return r;
         }
         u32 pa = mmu040Translate<C>(addr, 0, super, data, false, 2);
-        SYNC(2);
-        u32 r = u32(read16(pa & addrMask<C>())) << 16;
-        SYNC(4);
-        r |= read16((pa + 2) & addrMask<C>());
-        SYNC(2);
-        return r;
+        return pomCache040ReadValue(pa & addrMask<C>(), data, 4);
     }
 }
 
@@ -2716,7 +2989,7 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
     // the SAME instruction can still fault, and the format $7 frame stacks
     // this dichotomy — a fast path that skipped it would change which pc a
     // two-write instruction's second fault reports.
-    if (data) [[likely]] {
+    if (data && !pomCache040On) [[likely]] {
         constexpr int n = S == Byte ? 1 : S == Word ? 2 : 4;
         if (u8 *p = pomJitData<n, true>(addr)) {
             if (!mmu040MovemArmed && !mmu040LastWrite) {
@@ -2734,6 +3007,15 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
     const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0
                                         : bool(reg.sr.s);
     const u32 pageMask = ~mmu040PageMaskI();
+    const auto publishJitLine = [&] {
+        // Generated AArch64 stores conservatively replay a first cache miss
+        // through this exact instruction path. Publish that successful
+        // access so the next execution can prove a native copyback hit.
+        // No engine means no consumer and no extra read-only ATC probe.
+        if (data && pomJitCache040Consumer)
+            pomJitCache040Publish(addr, S == Byte ? 1 : S == Word ? 2 : 4,
+                                  true);
+    };
 
     // Default last-write marking (gencpu gen_set_fault_pc): the store an
     // instruction ends on faults with PC = next instruction and no
@@ -2761,9 +3043,8 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
     if constexpr (S == Byte) {
 
         u32 pa = mmu040Translate<C>(addr, val, super, data, true, 0);
-        SYNC(2);
-        write8(pa & addrMask<C>(), u8(val));
-        SYNC(2);
+        pomCache040WriteValue(pa & addrMask<C>(), val, data, 1);
+        publishJitLine();
         return;
     }
 
@@ -2772,18 +3053,16 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
         if ((addr & pageMask) + 2 > pageMask + 1) {
             mmu040AccSplit = true;
             u32 hi = mmu040Translate<C>(addr, val >> 8, super, data, true, 1);
-            SYNC(2);
-            write8(hi & addrMask<C>(), u8(val >> 8));
+            pomCache040WriteValue(hi & addrMask<C>(), val >> 8, data, 1);
             mmu040AccFirst = false;
             u32 lo = mmu040Translate<C>(addr + 1, val, super, data, true, 1);
-            write8(lo & addrMask<C>(), u8(val));
-            SYNC(2);
+            pomCache040WriteValue(lo & addrMask<C>(), val, data, 1);
+            publishJitLine();
             return;
         }
         u32 pa = mmu040Translate<C>(addr, val, super, data, true, 1);
-        SYNC(2);
-        write16(pa & addrMask<C>(), u16(val));
-        SYNC(2);
+        pomCache040WriteValue(pa & addrMask<C>(), val, data, 2);
+        publishJitLine();
         return;
     }
 
@@ -2793,30 +3072,25 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
             mmu040AccSplit = true;
             if (!(addr & 1)) {
                 u32 hi = mmu040Translate<C>(addr, val >> 16, super, data, true, 2);
-                SYNC(2);
-                write16(hi & addrMask<C>(), u16(val >> 16));
-                SYNC(4);
+                pomCache040WriteValue(hi & addrMask<C>(), val >> 16, data, 2);
                 mmu040AccFirst = false;
                 u32 lo = mmu040Translate<C>(addr + 2, val, super, data, true, 2);
-                write16(lo & addrMask<C>(), u16(val));
-                SYNC(2);
+                pomCache040WriteValue(lo & addrMask<C>(), val, data, 2);
+                publishJitLine();
                 return;
             }
             for (int i = 0; i < 4; i++) {
                 u8 b = u8(val >> (24 - 8 * i));
                 u32 pa = mmu040Translate<C>(addr + i, b, super, data, true, 2);
-                write8(pa & addrMask<C>(), b);
+                pomCache040WriteValue(pa & addrMask<C>(), b, data, 1);
                 mmu040AccFirst = false;
             }
-            SYNC(8);
+            publishJitLine();
             return;
         }
         u32 pa = mmu040Translate<C>(addr, val, super, data, true, 2);
-        SYNC(2);
-        write16(pa & addrMask<C>(), u16(val >> 16));
-        SYNC(4);
-        write16((pa + 2) & addrMask<C>(), u16(val));
-        SYNC(2);
+        pomCache040WriteValue(pa & addrMask<C>(), val, data, 4);
+        publishJitLine();
         return;
     }
 }
@@ -2835,8 +3109,8 @@ Moira::mmu040GetMove16(u32 addr)
 
     u32 pa = mmu040Translate<C>(a, 0, super, true, false, 3);
     for (int i = 0; i < 4; i++) {
-        mmu040Move16[i] = u32(read16((pa + 4 * i) & addrMask<C>())) << 16
-                        | read16((pa + 4 * i + 2) & addrMask<C>());
+        mmu040Move16[i] = pomCache040ReadValue(
+            (pa + 4 * i) & addrMask<C>(), true, 4);
     }
     SYNC(8);
 }
@@ -2853,8 +3127,8 @@ Moira::mmu040PutMove16(u32 addr)
 
     u32 pa = mmu040Translate<C>(a, mmu040Move16[0], super, true, true, 3);
     for (int i = 0; i < 4; i++) {
-        write16((pa + 4 * i) & addrMask<C>(), u16(mmu040Move16[i] >> 16));
-        write16((pa + 4 * i + 2) & addrMask<C>(), u16(mmu040Move16[i]));
+        pomCache040WriteValue((pa + 4 * i) & addrMask<C>(),
+                              mmu040Move16[i], true, 4);
     }
     SYNC(8);
 }
@@ -2866,18 +3140,8 @@ Moira::extBusError040()
     // a bus callback; the captured access context builds the same
     // format $7 frame as a translation fault, with SSW.ATC clear
     // (WinUAE mmu_hardware_bus_error -> mmu_bus_error nonmmu = true).
-    //
-    // POM68K M1 (bughunt 2026-08-05): the failing access's cache-tag
-    // touch already ran at translate time — a real 040 line fill
-    // terminated by TEA leaves no valid line (UM § 7), so the stamped
-    // span is rolled back before the fault is raised.
-    if (pomCache040On && pomCacheLastBytes) {
-        Cache040 &c = pomCacheLastData ? pomCache040D : pomCache040I;
-        const u64 end = u64(pomCacheLastPa) + u64(pomCacheLastBytes);
-        for (u64 la = pomCacheLastPa & ~u32(15); la < end; la += 16)
-            c.invalidateLine(u32(la));
-        pomCacheLastBytes = 0;
-    }
+    // A failed M2 line fill rolls its partial allocation back at the fill
+    // site before this callback raises the architectural fault.
     bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0 : bool(reg.sr.s);
     int fc = (super ? 4 : 0) | (mmu040AccData ? 1 : 2);
     mmu040Fault<Core::C68020>(mmu040AccAddr, mmu040AccVal, fc,

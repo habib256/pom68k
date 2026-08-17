@@ -212,6 +212,8 @@ private:
 
     moira::Moira& cpu_;
     MemoryHooks   mem_;
+    uint32_t      guestFamily_ = 0; // fixes model-specific IR memory semantics
+    ResolvedConfig config_;         // environment resolved once per Engine
     std::unique_ptr<Backend> ownedBackend_;
     Backend*      backend_ = nullptr;
     Context       ctx_{};
@@ -234,7 +236,10 @@ private:
     // every later access to that page without ever calling back. Those are
     // what a runtime-fallback census actually sees, and the two kinds want
     // completely different fixes.
-    enum RefuseWhy { kWhyProbe, kWhyPageLen, kWhyCodePage, kWhyNotRam, kWhyCount };
+    enum RefuseWhy {
+        kWhyProbe, kWhyPageLen, kWhyCodePage, kWhyNotRam, kWhyCache040,
+        kWhyCount
+    };
     uint64_t dtlbWhy_[kWhyCount] = {};
     uint32_t dtlbLastReason_ = RuntimeFillTag;
 

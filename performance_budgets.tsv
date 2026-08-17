@@ -1,0 +1,33 @@
+# workload	cpu_family	host_profile	metric	value	unit
+# Daily structural/native-share budgets. They are duplicated deliberately:
+# changing one host's policy cannot silently change the other host's gate.
+synthetic_68040_lockstep	68040	aarch64	min_blocks_compiled	3	blocks
+synthetic_68040_lockstep	68040	aarch64	min_blocks_run	700	blocks
+synthetic_68040_lockstep	68040	aarch64	min_native_share_permille	990	permille
+synthetic_68040_lockstep	68040	aarch64	max_slow_instrs	0	instructions
+synthetic_68040_lockstep	68040	x86_64	min_blocks_compiled	3	blocks
+synthetic_68040_lockstep	68040	x86_64	min_blocks_run	700	blocks
+synthetic_68040_lockstep	68040	x86_64	min_native_share_permille	990	permille
+synthetic_68040_lockstep	68040	x86_64	max_slow_instrs	0	instructions
+synthetic_68040_lockstep	68040	any	min_blocks_compiled	3	blocks
+synthetic_68040_lockstep	68040	any	min_blocks_run	700	blocks
+synthetic_68040_lockstep	68040	any	min_native_share_permille	990	permille
+synthetic_68040_lockstep	68040	any	max_slow_instrs	0	instructions
+synthetic_68040_copyback	68040	aarch64	max_slow_instrs	4	instructions
+synthetic_68040_copyback	68040	aarch64	max_native_ratio_permille	2000	permille
+synthetic_68040_copyback	68040	aarch64	native_slack_microseconds	2000	microseconds
+synthetic_68040_copyback	68040	x86_64	max_slow_instrs	4	instructions
+synthetic_68040_copyback	68040	x86_64	max_native_ratio_permille	2000	permille
+synthetic_68040_copyback	68040	x86_64	native_slack_microseconds	2000	microseconds
+synthetic_68040_copyback	68040	any	max_slow_instrs	4	instructions
+synthetic_68040_copyback	68040	any	max_native_ratio_permille	2000	permille
+synthetic_68040_copyback	68040	any	native_slack_microseconds	2000	microseconds
+
+# Macintosh fixed-cycle baselines. The documented x86-64 reference measured
+# 5.15x Q605 native / 2.40x LC II threaded. An Apple M4 (Mac16,10), measured
+# from immutable disk clones on 2026-08-17, produced 9.50-9.67x / 4.96-5.02x.
+# A 12-13% margin makes these regression floors, not benchmark-record claims.
+q605_jit	68040	reference_x86_64	min_realtime_permille	4500	permille
+lcii_threaded	68030	reference_x86_64	min_realtime_permille	2100	permille
+q605_jit	68040	apple_m4	min_realtime_permille	8300	permille
+lcii_threaded	68030	apple_m4	min_realtime_permille	4300	permille

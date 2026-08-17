@@ -16,8 +16,8 @@ chip-by-chip diff against MAME (59 findings, all dispositioned in-code —
 grep `MAME-parity audit` in `src/`); this file owns the *classification* and
 the reopening conditions. `SIMPLIFICATIONS_REVIEW.md` is the keep/close
 decision on the audit's simplification list. `CACHE_040.md` owns the 040
-cache chantier, closed at M1. `HLE_OVERLAY.md` is a design study nobody has
-built.
+cache chantier, now closed through M3. `HLE_OVERLAY.md` is a design study
+nobody has built.
 
 **Read § 1 first** — it is the whole live surface. §§ 2–3 are smaller (HLE
 fallbacks, pure-LLE facts that look like bugs); § 4 is resolved history,
@@ -329,12 +329,12 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
   in 2026-07-25. The now-orphaned `viaDiv()`/`kViaDiv` helpers were deleted.
   Verified: all four 040 boards boot (`q605_`, `centris650_`,
   `quadra800_`, `q700_`, `q630_boot_etalon`) and the `unit` tier was green.
-- **i-cache is a throughput overlay, not an architectural cache**:
+- **the legacy i-cache boost is a throughput overlay**:
   `cacheBoost_` scales Moira cycles in `flushTicks` (`Cpu040.h:101`, default
-  **4**; `POM68K_Q605_CACHE_BOOST` overrides 1–64). The 040 data cache now
-  has an architectural **tag** model behind `POM68K_040_DCACHE` (default
-  off) — state only, data still served by the bus, chantier closed at M1:
-  `docs/CACHE_040.md`. No copyback data path, no snooping.
+  **4**; `POM68K_Q605_CACHE_BOOST` overrides 1–64). Separately, the 040 has
+  an opt-in architectural I/D cache behind `POM68K_040_DCACHE=1`: line data,
+  WT/CB/NC policy, dirty writeback, CPUSH/CINV, snooping and transaction
+  timing (`docs/CACHE_040.md`).
 
 → **Closing the remainder**: done as far as it is worth doing. The deadline
 interface reached `Cpu020` and `MscCpu` on 2026-08-13 and sits behind a knob
@@ -1229,10 +1229,10 @@ correctness it buys:
    flipping either default is unverifiable work by this section's own
    caveat. *(The VIA E-clock ratio came off this list on 2026-08-02:
    `src/ViaEClock.h` is exact rational arithmetic.)*
-3. **No 040 copyback/snooping** (§ 1.2); the i-cache overlays are throughput
-   models, not architectural caches. The tag model behind
-   `POM68K_040_DCACHE` exists (M1) and the chantier is **closed** with three
-   named reopening conditions — `docs/CACHE_040.md` § 3.
+3. ~~**No 040 copyback/snooping**~~ — **closed 2026-08-16** (§ 1.2).
+   `POM68K_040_DCACHE` now covers architectural cache data, copyback,
+   snooping and hit/fill/push timing; only pin-level bus waveforms remain
+   outside the model (`docs/CACHE_040.md`).
 4. ~~The Quadra Cmd-N modifier symptom~~ — **retracted 2026-08-02** (§ 1.6).
    It was the dirty 8.1 image, not the Quadra: the same machine on another
    image repaints, and Command + N are simultaneously live in the guest's

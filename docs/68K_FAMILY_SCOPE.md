@@ -4,22 +4,27 @@ Which classic 68K Macs POM68K ships, and what each remaining one costs.
 Written 2026-07-17; the Phase C fan-out (2026-07-24/25) obsoleted most of it,
 and every line was re-derived from the code on **2026-08-12**.
 
+The target is **every 68k Macintosh**. Counts in this document describe the
+current implementation and must never be read as a ceiling on that target.
+
 **POM68K ships 37 machine profiles across 12 platform implementations. Every
 one boots to the Finder and every one has a boot etalon that proves it.**
-Sources of truth for that count: `SnapMachine` (`src/SaveStateMachines.h:51`,
-37 tags, values 1..37) and `kProfiles[]` (`src/main.cpp:800-855`, one row per
-profile, which is also the **Machine** menu). A platform = one `*Memory`/`*Cpu`
-pair in `src/` and one save/load overload in `src/SaveStateMachines.h`.
+Source of truth for that count: `kMachineProfiles` in
+`src/MachineCatalog.h`. Every row carries its stable `SnapMachine` id and is
+consumed by the **Machine** menu; compile-time checks keep ids unique and
+dense. A platform = one `*Memory`/`*Cpu` pair in `src/` and one save/load
+overload in `src/SaveStateMachines.h`.
 
 There is no longer any platform in `src/` without a profile row: the last two
-paid the house rule (a `kProfiles` line is earned by a Finder cell *plus* GUI
+paid the house rule (a catalogue row is earned by a Finder cell *plus* GUI
 and save-state wiring) — the **Quadra 900/950** on 2026-08-02 and the
 **PowerBook Duo 230** on 2026-08-06.
 
 **The headline for scope: all CPU cores exist** — 68000 cycle-exact,
 68020/68030+PMMU/68040+MMU functional and oracle-fuzzed against WinUAE, plus
-the 68882. Nothing left in the family is blocked by the CPU. **Every remaining
-machine is a co-processor problem**: one of the bricks in § 3, or a ROM dump.
+the 68882 and the integrated 68040 FPU. Nothing left in the family is blocked
+by the CPU. **Every remaining machine is a co-processor problem**: one of the
+bricks in § 3, or a ROM dump.
 
 Per-subsystem status lives in `CLAUDE.md`; the as-built per-platform
 descriptions in `DEV.md` § 2; the LLE-vs-HLE deviation inventory in
@@ -133,7 +138,7 @@ only.
 |---|---|---|---|
 | Macintosh LC 475 | 68LC040 | `FF7439EE` | `lc475_boot_etalon` |
 | Macintosh LC 575 | 68LC040 | `FF7439EE` | `lc575_boot_etalon` |
-| Quadra 605 | 68040 + soft 68882 | `FF7439EE` | `q605_boot_etalon`, `q605_nofpu_/barefpu_/floppy_/cudalle_boot_etalon`, `q605_cudalle_mouse_/key_etalon`, `q605_ot_bind_etalon`, `q605_cdrom_/cdboot_/cdhot_etalon`, `q605_soak_/persist_/savestate_etalon`, `jit_q605_boot_etalon`, `interp_q605_boot_etalon` |
+| Quadra 605 | 68040 + integrated FPU | `FF7439EE` | `q605_boot_etalon`, `q605_nofpu_/barefpu_/floppy_/cudalle_boot_etalon`, `q605_cudalle_mouse_/key_etalon`, `q605_ot_bind_etalon`, `q605_cdrom_/cdboot_/cdhot_etalon`, `q605_soak_/persist_/savestate_etalon`, `jit_q605_boot_etalon`, `interp_q605_boot_etalon` |
 
 ### djMEMC + IOSB — `CentrisMemory` / `CentrisCpu`
 
@@ -151,7 +156,7 @@ binds them. Clocks and ID pins are per profile (`CentrisMemory.h:56-67`).
 | Macintosh Quadra 650 | 33.33 MHz / `$52` | `quadra650_boot_etalon` |
 | Macintosh Quadra 800 | 33.33 MHz / `$12` | `quadra800_boot_etalon` |
 
-All five share ROM `F1A6F343`. The 610/650/800 get a full 68040 + 68882
+All five share ROM `F1A6F343`. The 610/650/800 get a full 68040 + integrated FPU
 (`POM68K_CENTRIS_FPU`, set by the runner); the Centrises get a 68LC040.
 
 ### Discrete 040 — `Q700Memory` / `Q700Cpu` (Spike, Eclipse, Zydeco)
@@ -198,7 +203,7 @@ open milestones: `docs/DUO_BRINGUP.md`.
 
 The heavy lifting is done; remaining machines mostly re-wire existing parts.
 
-1. **Moira: 68000 (cycle-exact) + 68020 + 68030/PMMU + 68882 + 68040/040 MMU.**
+1. **Moira: 68000 (cycle-exact) + 68020 + 68030/PMMU + 68882 + 68040/040 MMU/FPU.**
    Covers the CPU of the *entire* 68k line. 030/040 oracle-fuzzed against
    WinUAE (`oracle/`, `tests/sst68030`, `tests/sst68040`).
 2. **Firmware-LLE MCUs (`M68hc05` + `CudaLle`)** running real **Egret** and
@@ -266,17 +271,23 @@ platforms.
 | Item | Why cheap | Note |
 |---|---|---|
 | **128K / 512K / 512Ke** | A subset of the Plus: 64K ROM, no SCSI, less RAM. Memory/ROM config on `MacMemory`. | 128K `28BA61CE` and 512K `28BA4E50` are on hand |
-| **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kProfiles[]` row + an env value |
+| **Performa rebadges** of shipped machines | Model-ID longword only — the LC 475 / LC III+ / CC II / LC 580 precedent | `kMachineProfiles` row + a variant value |
 | **Duo 210 / 250** | `MscMemory` already carries `kCpuHz210` and all three box IDs (`kIdDuo210/230/250`); they share the `ECFA989B` ROM, so they need an env selector like the Mac II group's | `MscMemory.h:53-59`; the `main.cpp:5488-5492` comment says the same |
 | **Generalized NuBus + slot video** | The Mac II Toby/DeclRom port made reusable | Real cards on IIx/IIcx/IIci/IIsi/VASP and the NuBus Quadras. The IIfx, which has no built-in video, already boots on `TobyVideo` in slot 9 |
 | **ATA/IDE target on the Quadra 630 / LC 580** | The port is mapped (`Q630Memory.h:27`), it just has no drive | The remaining gap on that board; boot currently goes over SCSI |
 
-**Orthogonal, blocks no boot: full architectural 68040 fidelity** — i/d caches,
-copyback/snooping, and the real partial on-chip FPU where transcendentals
-(`FSIN`/`FTAN`) trap to the software **FPSP**. The current 040 uses Moira's
-68882 model plus an i-cache throughput overlay; the architectural d-cache TAG
-state exists behind `POM68K_040_DCACHE` (default off) and the chantier is
-closed at M1 with three named reopening conditions — `docs/CACHE_040.md` § 3.
+**Orthogonal, blocks no boot: pin-level 68040 timing** — the integrated FPU
+implements the hardware subset and delegates unsupported operations
+(`FSIN`/`FTAN`, etc.) to the guest **FPSP**. The 4 KB I/D caches now carry
+data, implement writethrough/copyback/NC modes, dirty replacement and
+CPUSH/CINV, expose alternate-master snooping, and charge configurable
+hit/fill/push transaction costs (`POM68K_040_DCACHE=1`). Cache-aware native
+line reads are conformant and measured (-21.2 % on the fixed-budget Q605
+control), but the mode remains opt-in because the cache-on real-ROM gate still
+misses its Finder budget and costs far more than the calibrated cacheless
+path. What is
+not modelled is an electrical BCLK/TA waveform; board wait states remain in
+the memory callbacks. See `docs/CACHE_040.md`.
 
 ---
 

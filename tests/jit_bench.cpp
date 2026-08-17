@@ -84,11 +84,14 @@ void dumpPpm(const Q605Memory& mem, const char* path) {
 }  // namespace
 
 int main() {
-    const std::string romPath = findAsset({
+    const std::string romPath = std::getenv("POM68K_BENCH_ROM")
+        ? std::getenv("POM68K_BENCH_ROM") : findAsset({
         "roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM",
         "roms/mame/macqd605/ff7439ee.bin", "roms/quadra605.rom", "roms/q605.rom"
     });
-    const std::string diskPath = findAsset({ "hdv/MacOS-8.1-boot.vhd", "hdv/q605-boot.vhd" });
+    const std::string diskPath = std::getenv("POM68K_BENCH_DISK")
+        ? std::getenv("POM68K_BENCH_DISK")
+        : findAsset({ "hdv/MacOS-8.1-boot.vhd", "hdv/q605-boot.vhd" });
     if (romPath.empty() || diskPath.empty()) {
         std::printf("SKIP: needs the FF7439EE ROM + hdv/MacOS-8.1-boot.vhd\n");
         return 0;
@@ -111,7 +114,8 @@ int main() {
     const int frames = bench::frames(3000);
 
     const bench::Result r = bench::run(cpu, frames, kFrameCycles);
-    bench::report("q605  ", cpu, r, mem.cpuHz());
+    const char* workload = cpu.engine() ? "q605_jit" : "q605_interp";
+    bench::report("q605", workload, "68040", cpu, r, mem.cpuHz());
     std::printf("  SCSI=%ld  pc=$%08X  %s\n", mem.scsi().commands, cpu.getPC(),
                 cpu.isHalted() ? "HALTED" : "running");
 

@@ -17,18 +17,18 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-08-12; the 2026-08-09 figures were 50/36 and 358, before the J4 timing
-probe, the data-TLB code mask and the exact CACR strobes landed):
+2026-08-17; earlier counts predated the 040 FPU/cache completion and JIT
+memory-contract work):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **55** (40 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **361** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **79** (52 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **390** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **13 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **23** | this file |
+| patch groups in the inventory below | **29** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
-Twenty-three patch groups, two of which (the JIT seam, row 22, and the ATC
+Twenty-nine patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -58,7 +58,7 @@ interpreter's speed being tolerable.
 
 **Reopening condition** — reversed only by upstream landing something the fork
 cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
-against a *measured* estimate of porting the 23 groups onto it. Not by the
+against a *measured* estimate of porting the 29 groups onto it. Not by the
 general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
@@ -78,8 +78,9 @@ find.
   lost here cannot be recovered from the code.
 - Every local change is marked `POM68K` (often `POM68K <slice>:`) in the source,
   so `grep -rn POM68K extern/moira/Moira/` is the machine-checkable inventory —
-  361 marked lines across 13 of the 25 source files, as of 2026-08-12 (was 336
-  across 12 of 24 on 2026-07-31; the 25th file is `MoiraCache040.h`, added).
+  390 marked lines across 13 of the 25 source files, as of 2026-08-17 (was 361
+  across 13 of 25 on 2026-08-12 and 336 across 12 of 24 on 2026-07-31; the
+  25th file is `MoiraCache040.h`, added).
   The NeoST patches carry `NEOST` markers instead, not `POM68K` ones — the two
   greps are disjoint.
 - Sections are never rewritten when superseded, only annotated. § *Model support
@@ -104,7 +105,7 @@ gate in the last column of each row.
 | 2 | **SST 680x0 convergence** — address-error machinery, DIV/CHK/ASR/LINK rules | `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h`, `MoiraALU_cpp.h` | 1 000 058/1 000 060 vectors; the oracle wins over the manual | `sst68000` |
 | 3 | **68030 MMU instructions** PMOVE/PTEST/PFLUSH(A)/PLOAD (stubs → real) | `MoiraExecMMU_cpp.h`, `Moira.h`, `MoiraTypes.h` | LC II ROM enables the PMMU at `$A416AA` | `sst68030` |
 | 4 | 68030 MMU **two-oracle arbitration** D1-D6b (decode, EA order, Line-F, vector 56) | `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h` | WinUAE won every dispute; Musashi retired | `sst68030` |
-| 5 | **68030 MMU bus layer** — translation, 22-entry ATC, $A/$B frames, mode-5 fetch model | `MoiraExecMMU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h`, `MoiraALU_cpp.h`, `Moira.cpp`, `MoiraTypes.h` | every LC II access is translated | `sst68030` |
+| 5 | **68030 MMU bus layer** — translation, 22-entry ATC, $A/$B frames, mode-5 fetch model | `MoiraExecMMU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraDataflow.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h`, `MoiraALU_cpp.h`, `Moira.cpp`, `MoiraTypes.h` | every LC II access is translated | `sst68030` |
 | 6 | 68030 **integer arbitration** D11-D17 (CHK/DIV CCR, format $2, odd-PC AE) | `MoiraExec_cpp.h`, `MoiraALU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h` | WinUAE rulings; all `C == C68020`-gated | `sst68030` |
 | 7 | **68882 FPU execution** (empty stubs → full), `setFPUModel()` | `MoiraExecFPU_cpp.h`, `Moira.h`, `Moira.cpp`, `MoiraTypes.h`, `MoiraInit_cpp.h` | LC II PDS FPU; softfloat-backed | `fpu_sanity`, `sst68030` |
 | 8 | FPU **timing tables + FRESTORE acceptance matrix** | `MoiraExecFPU_cpp.h` | MC68881/882UM § 8; placeholders billed a 570-cycle FTWOTOX as 20 | `fpu_sanity` |
@@ -124,9 +125,14 @@ gate in the last column of each row.
 | 22 | **JIT seam** — fetch window (040/030/020 + the cycle-exact 68000 flavour), data TLB (with the per-slice `codeMask`), probes, `pomJitExecOne`, layout, ATC-eviction hook, bus-stall hook, `PomJitTiming` probe | `Moira.h`, `Moira.cpp`, `MoiraExecMMU_cpp.h`, `MoiraDataflow_cpp.h` | the second execution engine drives this object from `src/jit/` | `jit_lockstep_test`, `jit_system_boot_etalon` |
 | 23 | **Save-state seam** `pomFlushAtcs()` | `Moira.h` | a restored snapshot replaces the page tables under live ATCs | `savestate_030_test`, `savestate_040_test` |
 | 24 | **68010-only `readBuffer`/`writeBuffer`** — `pomSetRB<C>`/`pomSetWB<C>` setters; the store compiles away off the C68010 core, argument side effects (the address-error dummy `readM`) preserved | `Moira.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h` | the buffers are 68010 format-$8 frame state and no Mac is a 68010; maintained on every core they made snapshot bytes depend on JIT arming history | `savestate_040_test` |
+| 25 | **MC68020 CALLM/RTM** — type-$00/$01 module frames, CPU-space access-control protocol, stack switching and argument copy | `MoiraExec_cpp.h`, `Moira.h`, `MoiraTypes.h` | the final two integer stubs in the 020 instruction map | `callm_rtm_test` |
+| 26 | **MC68030 FPU post-instruction frame** — format $2 with instruction address | `MoiraExecFPU_cpp.h` | the external-coprocessor path incorrectly used the 040 format-$3 frame | `fpu_sanity` |
+| 27 | **Integrated MC68040 FPU** — sparse native map, forced S/D precision, FPSP traps, revision-$41 FSAVE and BUSY resume | `MoiraExecFPU_cpp.h`, `Moira.h`, `MoiraTypes.h` | full-040 machines no longer masquerade as an attached 68882 | `fpu040_test`, `sst68040` |
+| 28 | **MC68040 data-bearing caches** — I/D line contents, WT/CB/NC policy, writeback, CPUSH/CINV, snooping and hit/fill/push timing | `MoiraCache040.h`, `MoiraExecMMU_cpp.h`, `Moira.h` | tags alone could not expose stale copyback data or alternate-master coherency | `cache040_test`, `sst68040` |
+| 29 | **MC68881/2 mid-instruction interrupts** — protocol checkpoints, format $9, BUSY FSAVE/FRESTORE resume | `MoiraExecFPU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraExec_cpp.h`, `Moira.h`, `MoiraTypes.h` | long coprocessor commands are interruptible between null/come-again responses | `fpu_sanity` |
 
-Rows 2-21 are the accuracy work; rows 22-24 are pure seams (inert when nothing
-arms them). The twelve files carrying no `POM68K` marker at all —
+Rows 2-21 and 25-29 are the accuracy work; rows 22-24 are pure seams (inert
+when nothing arms them). The twelve files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.*` (2), `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
 still be taken as-is; everything else is ported by hand, per the fork decision
@@ -577,8 +583,8 @@ full 15/15 ctest unchanged.
 Known model limits (for the differential loop): FMOVEM
 full-extension-format EAs consume their words before a direction-rule
 Line-F but memory-indirect side reads may differ from WinUAE's exact
-order (still open); FRESTORE of a 68040 BUSY frame ($41/$60) skips it
-instead of resuming the interrupted op (see below).
+order (still open). The historical 68040-BUSY limitation named here was
+closed by the distinct integrated-040 model on 2026-08-16 (see below).
 
 ### O5 follow-ups closed (2026-07-15): FPU timing + FRESTORE frames
 
@@ -612,11 +618,11 @@ paths are untouched. Cycles stay **advisory** in Phase 2 (SST030
 placeholders (a 570-cycle FTWOTOX billed as 20) are gone. Gated by two
 `fpu_sanity` timing smokes (FADD.X = 56, FMOVECR = 32, exact).
 
-**FSAVE BUSY frames — decision: never generated.** WinUAE's own 6888x
-support has no busy-save path (fpuop_save, fpp.c:2374-2580 emits NULL
-or IDLE only; the mid-instruction save window doesn't exist in its
-coprocessor model), and the oracle is the convergence target. FSAVE
-therefore stays NULL/IDLE-only, documented in `execFSave`.
+**FSAVE BUSY frames — superseded 2026-08-16.** The original oracle-parity
+decision was to emit NULL/IDLE only because WinUAE has no mid-instruction
+window. The later requirement explicitly targets the hardware behaviour:
+long external-6888x operations now expose interrupt checkpoints and FSAVE
+therefore emits a resumable BUSY frame when one is suspended.
 
 **FRESTORE acceptance matrix** — mirrors `fpuop_restore`
 (fpp.c:2593-2812) exactly under the oracle's config
@@ -628,13 +634,18 @@ therefore stays NULL/IDLE-only, documented in `execFSave`.
 |-------------------|--------------------------------------------------|
 | version $00       | NULL: full FPU reset (fpu_null)                  |
 | $1F, size $18/$38 | 68881/68882 IDLE: reload ccr/eo/BIU micro-state; BIU bit 27 clear re-arms the pending exception (fpp.c:2781-2787) |
-| $1F, size $B4/$D4 | 68881/68882 BUSY: skipped, `ad += size` (fpp.c:2788-2790) |
+| $1F, size $B4/$D4 | 68881/68882 BUSY: resume POM2-authored state; opaque hardware frames remain accepted |
 | $1F, other size   | format error, vector 14 (D21 PC convention)      |
 | $41, size $00     | 68040 IDLE via WinUAE's version hack (fpp.c:2799-2802; get_fpu_version(68040) == $41): state = non-null, expState cleared |
 | $41, size $28/$30 | 68040 UNIMP: skipped                             |
-| $41, size $60     | 68040 BUSY: skipped (WinUAE resumes the op when CU_SAVEPC == $FE — not modelled, TODO in `execFRestore`) |
+| $41, size $60     | historical 68040 hack: skipped; the integrated model added later resumes `CU_SAVEPC == $FE` arithmetic |
 | $41, other size   | format error, vector 14                          |
 | anything else     | format error, vector 14 (incl. $40 — it mismatches $41) |
+
+> **Corrected 2026-08-16:** this was one mixed compatibility matrix. The
+> distinct `M68881/M68882` models now accept only revision `$1F`; the
+> integrated `M68040` model accepts only revision `$41` and implements its
+> BUSY resume path.
 
 Note the version byte of **both** 6888x frame flavours is $1F
 (get_fpu_version, fpp.c:1432-1449) — there is no $1E.
@@ -648,6 +659,38 @@ WinUAE-solo): **800/800** at first replay, 93 FRESTOREs covering every
 matrix row. New `fpu_sanity` cases pin NULL reset, IDLE $38 acceptance
 (+$3C postincrement), BUSY $D4 skip (+$D8 postincrement) and
 garbage → vector 14.
+
+## Integrated MC68040 FPU + 020/030 closure audit (2026-08-16)
+
+Full-040 machines now select `FPUModel::M68040`, distinct from an external
+68882. The model executes the 040 hardware subset, including all sixteen
+forced-single/forced-double opmodes, applies the 040 FPCR mask, predicate
+table and immediate exception rules, and sends valid non-hardware operations
+to vector 11 for the guest FPSP. Denormal/unnormal and packed operands take
+the software-datatype path with the 040's packed/subnormal BUSY payload.
+FMOVEM uses the integrated core's distinct list and 96-bit word ordering.
+FSAVE emits revision-$41 NULL/IDLE, UNIMP and BUSY frames; FRESTORE resumes a
+planted BUSY arithmetic command when `CU_SAVEPC` is `$FE`, including the
+FPTE15/ET15 denormalization bits. `fpu040_test` pins the sparse decode map,
+precision boundaries, nonmaskable integer conversion exceptions, datatype
+payloads, FMOVEM, every native `$40-$7F` opcode, FSAVE and BUSY resume.
+
+The family audit found two older gaps outside the 040. On the 68030,
+post-instruction external-FPU exceptions now stack format $2 plus the
+instruction address (pre-instruction exceptions remain format $0). On the
+68020, the empty CALLM/RTM bodies are replaced by the complete 24-byte
+type-$00/$01 module-frame protocol, including the optional CPU-space
+access-control hooks and stack/argument transfer. `fpu_sanity` and
+`callm_rtm_test` pin those corrections.
+
+The external 6888x boundary closed later the same day. Arithmetic and
+transcendental commands keep their completed image private while the MPU
+waits, sample IPL at protocol checkpoints, and on an eligible interrupt
+stack the 68020/030 format-$9 continuation frame. FSAVE writes a complete
+$1F/$B4 (68881) or $1F/$D4 (68882) BUSY frame and idles the coprocessor;
+FRESTORE reloads the staged result and remaining cycles, and RTE resumes at
+the following CPU instruction. `fpu_sanity` interrupts FSQRT, saves/restores
+inside the handler, verifies the frame and the exact final FP0 value.
 
 ## External /BERR + RTE $A (2026-07-15, O6 slice 1)
 
@@ -1525,7 +1568,7 @@ engine needs no extra call.
 
 Nothing else in the vendored tree changed for save states.
 
-## 68040 cache-TAG model — M1 (2026-08-05, docs/CACHE_040.md)
+## 68040 cache-TAG model — historical M1 (2026-08-05)
 
 `POM68K_040_DCACHE` (env, read once in the constructor, default off;
 `setPomCache040()` overrides for tests) arms an **architectural tag
@@ -1577,6 +1620,38 @@ JIT is approximate. Gated by `tests/cache040_test.cpp` (44 checks,
 incl. MMU-on resolver paths against real page tables and a /BERR
 descriptor chain); `sst68040` and the JIT lockstep suite run green
 with the flag armed.
+
+## 68040 cache contents, copyback, snooping and timing — M2/M3 (2026-08-16)
+
+The M1-only boundary above is superseded. `Cache040::Line` carries all 16
+bytes; translation records the CM/CACR/MOVE16 attributes and the access site
+performs a requested-longword-first fill, WT/CB/NC policy and failed-fill
+rollback. Dirty victims and CPUSH write physical longwords back before
+invalidation. `pomSnoop040Read/Write` cover dirty supply, invalidate and
+write-sink/MI, including disabled-cache and cross-line hits. Hit, four-beat
+fill and dirty-longword-push costs are separate runtime values.
+
+The JIT page-to-host-RAM data TLB is refused while this model is active. A native code block
+requires its complete embedded range to be resident in I-cache and to match
+the host span byte for byte; blocks return through that guard instead of linking directly. Thus
+generated execution can neither fetch memory newer than a stale I-cache line
+nor bypass dirty D-cache data. `POM68K_040_DCACHE=1` enables the model; the
+product default remains cacheless until this guarded JIT regains its
+real-ROM speed budget. `cache040_test` and the cache-on 040 JIT locksteps are
+the gates.
+
+Performance follow-up: cache-active DTLB refusals are remembered as tagged
+null entries, sending subsequent native accesses straight to the exact
+D-cache thunk instead of repeating a side-effect-free probe. On the Q605
+gate this reduced refusal calls from 321,187,389 to 727,456 and wall time
+from 60.63 s to 59.19 s, without changing guest state. A last-cache-line memo
+measured +4.4 % and was removed. The native physical-line read path then
+landed in A64/x64: logical privilege, DATA-ATC generation, live valid bit,
+physical tag and line boundary are checked on every hit; stores remain exact.
+The permanent cache-on native locksteps require a non-zero hit count (18.6 M
+on the measured A64 run). Its paired fixed-budget Q605 result is 61.94 s to
+48.78 s (-21.2 %), but cacheless remains 11.03 s and cache-on still misses
+the Finder budget, so opt-in policy is unchanged.
 
 ## 68010-only exception-frame buffers (2026-08-12, savestate determinism)
 
@@ -1652,10 +1727,12 @@ writeBuffer" instead of "byte 312".
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)
-- 68EC020 / 68020 — functional execution ✓
+- 68EC020 / 68020 — functional execution ✓, including CALLM/RTM module
+  frames and optional CPU-space access-control transactions.
 - 68030 — functional execution of the **MMU instruction set** ✓ (O4
   slice 1) and of **bus-level address translation + ATC + bus-fault
-  frames** ✓ (O4 slice 3, see above).
+  frames** ✓ (O4 slice 3, see above), plus 6888x format-$2
+  post-instruction exception frames.
 - 68881/68882 — **execution ✓** when attached via `setFPUModel()` (O5
   slice 2, see above; softfloat-backed, 68882 = LC II PDS FPU).
 - 68LC040 / 68EC040 / 68040 — **integer execution ✓** (Q2: MOVE16,
@@ -1664,32 +1741,22 @@ writeBuffer" instead of "byte 312".
   **040 MMU bus translation ✓** (Q3, section above: TTR + URP/SRP walk
   with U/M, page-split accesses, format $7 faults with the last-write
   dichotomy, MOVEM restart, PTEST), with the **32-entry I/D ATC overlay
-  ✓** (Q8, section above).
+  ✓** (Q8, section above), and an **integrated FPU ✓** (native sparse
+  opmodes, FPSP traps, revision-$41 FSAVE/FRESTORE frames and BUSY resume).
 
-  Genuinely remaining on the 040, in the order that would bite:
-
-  1. **Native 040 FPU opmodes $40-$7F** — the S/D-rounded variants
-     (FSMOVE/FDMOVE/FSADD/…) are not decoded: `fpuArithmetic`'s dispatch
-     covers $00-$3F and `execFGeneric` takes Line-F above that
-     (`MoiraExecFPU_cpp.h`, "opmodes $40-$7F do not exist" — correct for
-     a 6888x, wrong for a real 040). This is THE wall for a full 68040;
-     POM68K sidesteps it with the 68LC040 model or a soft 68882.
-  2. **FRESTORE 040 BUSY frame ($41, size $60)** — skipped with WinUAE's
-     final address; the instruction resume when `CU_SAVEPC == $FE` is not
-     modelled (TODO in `execFRestore`; no planted fuzz frame reaches it).
-  3. **Architectural caches — tags only.** Since M1 (§ *68040 cache-TAG
-     model*, 2026-08-05) `execCinv`/`execCpush` call `pomCacheOp040` when
-     `POM68K_040_DCACHE` arms the model, and `mmu040Translate` maintains
-     it; with the flag clear (the default) both stay supervisor-checked
-     no-ops, as they were through Q2. What is still missing is the **data
-     path** — no copyback, no snooping, every access served by the bus — so
-     the caches remain architecturally unobservable to the guest either way.
-     M2 stays shut until a named client; the three reopening conditions are
-     in `docs/CACHE_040.md` § 3. (The `POM68K_Q605_CACHE_BOOST` overlay is a
-     throughput knob, not a cache.) Local patch for the M0 probe that sized
-     the work: `mmu040AtcFill` carries an env-gated CM-bit histogram
-     (`POM68K_040_CM_STATS`, presence-only, stderr at exit) — diagnostic
-     only, no behavioural change.
+  The architectural caches are now complete at the transaction level:
+  physically indexed/tagged I/D line data, WT/CB/NC policy, requested-
+  longword-first four-beat fills, dirty replacement/CPUSH, CINV, MOVE16
+  bypass, alternate-master snooping and configurable hit/fill/push charges.
+  `POM68K_040_DCACHE=1` opts in. While armed, ordinary JIT page-to-RAM data
+  windows are fenced; a code block's whole embedded range must be resident
+  and byte-identical in I-cache, and direct links cannot bypass the next
+  residency guard. Native backends may serve a sole read from a published
+  physical D-cache line after checking logical privilege, DATA-ATC epoch,
+  live valid bit, physical tag and line boundary. Writes remain on the exact
+  path so dirty masks and format-$7 restart bookkeeping stay centralized.
+  What remains outside scope is pin-level BCLK/TA waveform simulation, not
+  an architectural cache behaviour (`docs/CACHE_040.md`).
 
   Implemented but **not exercised by the fuzzer**: the 8K-page (TC.P)
   cell — `mmu040PageMaskI()` and the walk's `if (reg.tc040 & 0x4000)`

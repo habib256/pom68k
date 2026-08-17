@@ -34,7 +34,8 @@ and the LC 520 bring-up → `docs/`.
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
 inside that section. Twelve platforms, twelve sections, 37 GUI profiles
-(`kProfiles` in `src/main.cpp` is the one place the roster lives).
+(`kMachineProfiles` in `src/MachineCatalog.h` is the one place the roster,
+ROM identity and stable save-state id live).
 
 | Platform | Reference machine | Variants in the same section | § |
 |---|---|---|---|
@@ -473,16 +474,17 @@ Gates: `lc3_`, `lc3plus_`, `lc520_`, `lc550_`, `cclassic2_`, `iivx_`,
   040 exception frames, TTRs, three-level URP/SRP translation, MMUSR/PTEST
   and restartable MMU faults. `sst68040` pins **7 200/7 200** vectors
   across integer, random and MMU families. Q8 adds a separate I/D ATC (32
-  entries, `POM68K_MMU040_WALK` disables it) and an i-cache/throughput
-  overlay; **architectural copyback/snooping and cycle-accurate 040 timing
-  are not modelled**.
+  entries, `POM68K_MMU040_WALK` disables it), an i-cache/throughput overlay,
+  and data-bearing 4 KB I/D caches with WT/CB/NC modes, dirty writeback,
+  CPUSH/CINV, snooping and bus-transaction timing. Pin-level BCLK/TA
+  waveforms are not modelled.
 - **`POM68K_Q605_CACHE_BOOST` default is 4** (since 2026-07-25). The old
   default of 1 carried the note "boost 2+ fails SCSI bring-up" — re-measured,
   that was a stale symptom of the machine-cycle bug in
   [§1.2](#12-family-wide-invariants); the whole 040 family is green at 4.
 - **FPU compatibility:** a real Quadra 605 has a full 68040+FPU, an LC 475
   a 68LC040. The MAME `macqd605` oracle is a full 68040 and POM68K defaults
-  to M68040 + Moira's soft 68882. `POM68K_Q605_NOFPU=1` selects
+  to M68040 + Moira's integrated-040 FPU model. `POM68K_Q605_NOFPU=1` selects
   **M68LC040 + soft 68882** (SoftwareFPU-equivalent); `=2` selects a TRUE
   bare `FPUModel::NONE`, and Mac OS 8.1 then installs the ROM's **integer
   PACK 4** — the selector is the ROM-resource combo in XPRAM `$AE`,
@@ -1265,6 +1267,21 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   queue, so the swap lands between two instructions), and
   `POM68K_CPU_ENGINE=interp|jit` overrides the family default. The
   interpreter remains an explicit etalon tier and the accuracy oracle.
+- **Configuration is per engine, not live process state.** `resolveConfig()`
+  reads every JIT knob once; after backend selection it resolves the native
+  defaults for blocks/hot and publishes a const `ResolvedConfig` through
+  `Context`. A64/x64 compilation contains no `getenv`, so changing an
+  experiment variable cannot mutate an already-running machine.
+- **The IR owns meaning, memory, extensions and control.** `Instr::semantics`,
+  `Instr::memory`, its copied extension words and its
+  `DecodedEffectiveAddress` plans are filled together by `JitEngine::record`.
+  Full 68020 index plans retain base/index suppression, distinct base/outer
+  displacements and pre/post-indexed indirection; `ControlFlowPlan` carries
+  target, fallthrough and return address. Backends lower those facts; they do
+  not keep an ISA/EA/control decoder. Full-index native lowering remains
+  deliberately closed on both hosts, so a valid but unsupported plan falls
+  back intact. `docs_test` enforces the boundary and `jit_backend_test`
+  covers the reserved and variable-length forms.
 - **Where it is wired.** **Twelve** CPU wrappers carry a `jit::Engine`: the
   030s `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`, the 040s
   `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, and — since 2026-08-06 —
@@ -1326,9 +1343,10 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   calls `jitMapChanged()` directly, [§1.2](#12-family-wide-invariants));
   and a change of translation (`Moira::pomJitMmuGen`, bumped by every ATC
   flush and TTR write).
-- **Gates (label `jit`: 29 on an AArch64 host, 27 elsewhere)**:
-  `jit_backend_test` (backend registry, W^X buffer, classifier safety rules
-  — no assets), `jit_restart_write_030_test`, `jit_store_guard_a64_test`,
+- **Gates (`ctest -L jit`: 37 on an AArch64 host, 35 elsewhere)**:
+  nine asset-free protocol gates — `jit_backend_test`,
+  `jit_asset_free_lockstep_test`, `jit_restart_write_030_test`,
+  `jit_store_guard_a64_test` and the five `jit_copyback_*` registrations —,
   **eleven** `jit_lockstep_*` flavours (68000 / 030 / 040 each plain and
   `_blocks`, plus `_x64`, `_x64_fine`, `_noaccess`, and two registered only
   when the a64 backend is built — `_a64_coarse` and
@@ -1383,7 +1401,11 @@ documented before 2026-07-31:
 | `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4, miss cost 0-64 default 4; the per-class defaults live in the headers (`Cpu030.h:167-168` and siblings) |
 | `POM68K_FLOPPY_BOOST_GATE` | `=0` disables the floppy boost gate on the `Swim1` 030s (`Cpu030`, `RbvCpu`, `VaspCpu` — **not** `SonoraCpu` or `MscCpu`, which never read it) — the boost then compresses the Sony denibble path below the IWM's 14-tick hold and GCR mounts fail with badDCksum (the pre-2026-08-05 defect, kept reproducible for `lcii_sony_trace`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
-| `POM68K_040_DCACHE` | arm the M1 architectural cache-TAG model on the 040s (`docs/CACHE_040.md` § M1) — tags, dirty bits and CINV/CPUSH scopes become real state; **data is still served by the bus**, default off |
+| `POM68K_040_DCACHE` | `1` enables the architectural 040 I/D-cache model; line data, WT/CB/NC, copyback, CPUSH/CINV, snooping and timing are complete, but the product default stays cacheless until the cache-aware JIT recovers the real-ROM speed budget (`docs/CACHE_040.md`) |
+| `POM68K_JIT_040_LINE_READ` | `=0` disables only native reads from published physical 040 D-cache lines; attribution control, default on when the architectural cache is active |
+| `POM68K_JIT_040_LINE_WRITE` | `=0` disables native sole-access copyback write hits (including BSR return-address pushes) while retaining native line reads; exact-path attribution control, default on when the architectural cache is active |
+| `POM68K_JIT_040_LINE_PAIR` | `=0` disables the atomic two-proof native path for hot longword MOVE pairs (`$2F38`/`$21DF`) while leaving independent line reads/writes enabled; attribution control, default on |
+| `POM68K_JIT_040_LINE_STATS` | `=1` emits separate diagnostic native read/write hit counters; the cache-on native locksteps require both enabled paths to be exercised |
 | `POM68K_PERIPH_STATS` | count the peripheral catch-up path (Cpu040 only): catchUp/flushTicks/mem.tick calls + cycles per call, printed at exit. The old `POM68K_PERIPH_BATCH` knob is GONE — fixed batching was replaced by event deadlines on eight platforms (2026-08-03/04, `CHANGELOG.md` § *Event deadlines*) |
 | `POM68K_MACII_EVENT` | `=1` arms the peripheral event deadline on the Mac II family (`Cpu020`: Mac II, IIx, IIcx, SE/30) instead of the fixed 64-cycle batch. **Opt-in on purpose**: measured 2026-08-13 at **+14.2 %/+17.5 %** on `macii_boot_etalon` over two pairs, with the etalon's observables identical either way — strictly more correct (IRQ jitter → 0), invisible to every gate we have. `docs/LLE_VS_HLE.md` § 1.2 |
 | `POM68K_DUO_EVENT` | `=1` arms the same on the PowerBook Duo (`MscCpu`, batch 128). **+9.0 %** on `duo230_boot_etalon`, same Finder; the PG&E's 68HC05 binds at ~16 machine cycles, so this board pays 8× the fan-out entries. Opt-in for the same reason |
@@ -1460,6 +1482,8 @@ documents them).
 **JIT**: `POM68K_CPU_ENGINE`, `POM68K_DATA_WINDOW` and the whole
 `POM68K_JIT_*` family — see `src/jit/POM68K_JIT.md` § 6. **That table is
 authoritative** and was itself corrected on 2026-07-31.
+Use `POM68K_JIT_PROFILE=production|conservative|instrumented` for normal
+operation; individual variables remain explicit attribution overrides.
 
 **Quadra 900/950 ("Eclipse", on the Q700 board — M7 closed 2026-08-02)**:
 `POM68K_Q900_ADB` (`egret` routes input to the Egret's ADB instead of the
@@ -1566,13 +1590,24 @@ classification is a decision per knob, not a mechanical one — `TODO.md` § 8.
 ## 6. Test tiers and gates
 
 **Never iterate against a bare `ctest` or a bare `make`.** A full run is
-~183 gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
+218 gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
 contention-sensitive; a bare `make` relinks ~90 binaries under tree-wide
 LTO.
 
 ```bash
+cmake --build build -j4 --target jitfast
+POM68K_JIT_REQUIRE_NATIVE=1 ctest --test-dir build -L jit-fast
 make -j4 jitdev && ctest -L smoke     # ~2.5 min end to end
 ```
+
+`jit-fast` is the no-asset A64/x64 CI floor: IR memory-contract/profile
+checks, 768 deterministic interpreter/native checkpoints, restart and
+last-write fault frames, generated copyback write/BSR/pair protocols,
+45-second test budgets, and `docs_test` + `config_test`. CI requires a native
+backend, so this tier cannot pass by selecting `threaded` or soft-skipping.
+The same lockstep binary writes `pom68k.jit.metrics.v1`; the Linux x86-64 and
+macOS AArch64 jobs validate and archive identical fields (backend, guest/host,
+cycles, wall time, block/native/fallback counters and native share).
 
 `jitdev` (`CMakeLists.txt:1868`) builds exactly the **three** binaries
 `-L smoke` needs — `jit_backend_test`, `jit_lockstep_test`,
@@ -1582,19 +1617,21 @@ three under different environments.
 | command | gates | when |
 |---|---|---|
 | `ctest -L smoke` | 9 | the working loop — one machine, both engines |
-| `ctest -L unit` | 92 (~1 min) | anything touching non-machine code; no ROM or disk image needed |
+| `ctest -L jit-fast` | 7 (~3 s) | native A64/x64 lockstep/IR/protocol + documentation/configuration, no assets |
+| `ctest -L unit` | 106 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
+| `ctest -L asset-none` | 83 | manifest-declared asset-free daily tier |
 | `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
-| `ctest -L jit` | 29 | before proposing a JIT change |
-| `ctest -L m040` | 42 | the 68040 family on the default engine plus explicit interpreter references |
-| `ctest -L etalon` | 91 (~3 h 35) | every profile — the release gate, not a pre-commit check |
-| `ctest` | 183 (~4h) | everything, once |
+| `ctest -L jit` | 37 | before proposing a JIT change (`jit-fast` matches this regex too) |
+| `ctest -L m040` | 51 | the 68040 family on the default engine plus explicit interpreter references |
+| `ctest -L etalon` | 112 (~3 h 35) | every profile — the release gate, not a pre-commit check |
+| `ctest` | 218 (~4h) | everything, once |
 
 **The totals are host-dependent**, which is why `ctest -N` and not this table
 is the authority. Two gates — `jit_lockstep_a64_coarse_test` and
 `jit_lockstep_030_a64_experimental_test` — are registered only on an AArch64
 host with the a64 backend built (`CMakeLists.txt:1459-1476`), so the numbers
-above are the AArch64 ones and an x86-64 tree reads **181** total, 90 `unit`,
-8 `smoke`, 27 `jit` (`m040` and `etalon` are host-independent). Seven more
+above are the AArch64 ones and an x86-64 tree reads **216** total, 104 `unit`,
+8 `smoke`, 35 `jit` (`m040` and `etalon` are host-independent). Seven more
 appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
 which also requires AArch64 and hard-fails on a missing asset instead of
 skipping.
@@ -1754,6 +1791,14 @@ that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
 `--lle-aarch64` accepts — label, size, SHA-256, path, qualified profiles. What
 is still missing is the same treatment for the ROMs and disk images, which is
 what this digest would feed (`TODO.md` § 8).
+
+`python3 tools/verify_assets.py` validates the manifest schema and every
+present entry (size + SHA-256; `--strict` also refuses missing files). A disk
+fixture placed under an exact `ref/` path is immutable by construction:
+`FixtureStore.h` maps a writable open to the sibling `work/` path, creates its
+directories and clones once. Later sessions reopen the persistent work copy;
+an explicit path outside `ref/` keeps the historical direct-write behaviour.
+`fixture_store_test` proves all three cases without an Apple asset.
 
 **Bit 8 clear is a tell, not a verdict.** `hdv/HD20SC.vhd` read `$0000` when
 this preamble was written, and four green gates booted from it. It says where to

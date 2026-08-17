@@ -18,6 +18,10 @@
 //   3. every gate CLAUDE.md names by its full name is registered in CTest
 //   4. every registered gate carries at least one label
 //   5. the gate totals CLAUDE.md states match the registry
+//   6. the permanent Moira fork's pom*/POM68K boundary matches its inventory
+//   7. native JIT backends consume, but never recreate, memory semantics
+//   8. A64/x64 dispatch, extensions, EAs and control come from Instr
+//   9. performance policy is keyed by workload, guest family and host
 //
 // Check 4 is here because it caught a live one the day it was written: four
 // gates — the three IIfx ones and `duo230_boot_etalon` — were registered
@@ -30,11 +34,14 @@
 // docs against themselves.
 
 #include "AssetFingerprint.h"          // testasset::find — the two-base search
+#include "MachineCatalog.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <set>
@@ -52,47 +59,6 @@ static std::string slurp(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     return std::string((std::istreambuf_iterator<char>(f)),
                        std::istreambuf_iterator<char>());
-}
-
-// The braced initialiser list of `const Profile kProfiles[] = { ... }`: one
-// row per profile, each opening with "{ " at the start of its line.
-static int countProfileRows(const std::string& src) {
-    const std::string anchor = "const Profile kProfiles[] = {";
-    size_t i = src.find(anchor);
-    if (i == std::string::npos) return -1;
-    size_t j = i + anchor.size() - 1;             // the opening brace
-    int depth = 0, rows = 0;
-    bool atLineStart = false;
-    for (size_t k = j; k < src.size(); k++) {
-        if (src[k] == '\n') { atLineStart = true; continue; }
-        if (atLineStart && (src[k] == ' ' || src[k] == '\t')) continue;
-        if (src[k] == '{') {
-            depth++;
-            if (depth == 2 && atLineStart) rows++;   // a row, not the array
-        } else if (src[k] == '}') {
-            if (--depth == 0) break;
-        }
-        atLineStart = false;
-    }
-    return rows;
-}
-
-// `enum class SnapMachine : std::uint32_t { LcII = 1, ... };` — every
-// enumerator carries an explicit value because the values ARE the file
-// format, which is what makes them countable.
-static int countSnapTags(const std::string& src) {
-    size_t i = src.find("enum class SnapMachine");
-    if (i == std::string::npos) return -1;
-    size_t e = src.find("};", i);
-    if (e == std::string::npos) return -1;
-    int n = 0;
-    for (size_t k = i; k + 1 < e; k++) {
-        if (src[k] != '=') continue;
-        size_t v = k + 1;
-        while (v < e && std::isspace(uint8_t(src[v]))) v++;
-        if (v < e && std::isdigit(uint8_t(src[v]))) n++;
-    }
-    return n;
 }
 
 // Every integer that immediately precedes `needle` in `text`, ignoring the
@@ -119,31 +85,41 @@ static std::vector<int> numbersBefore(const std::string& text,
 
 int main() {
     const std::string mainCpp = testasset::find("src/main.cpp");
-    const std::string snapH   = testasset::find("src/SaveStateMachines.h");
+    const std::string catalog = testasset::find("src/MachineCatalog.h");
     const std::string claude  = testasset::find("CLAUDE.md");
     // The roster path is baked in at configure time. It used to be searched
     // for relative to the working directory, and run from the source tree the
     // search failed and the gate returned 0 after only the first two checks —
     // a green run that had skipped everything that mattered.
     std::string roster;
+    std::string manifest;
+    std::string performanceBudgets;
 #ifdef POM68K_GATE_ROSTER
     if (std::ifstream(POM68K_GATE_ROSTER)) roster = POM68K_GATE_ROSTER;
 #endif
     if (roster.empty()) roster = testasset::find("pom68k_gates.tsv");
-    if (mainCpp.empty() || snapH.empty() || claude.empty()) {
+#ifdef POM68K_GATE_MANIFEST
+    if (std::ifstream(POM68K_GATE_MANIFEST)) manifest = POM68K_GATE_MANIFEST;
+#endif
+    if (manifest.empty()) manifest = testasset::find("pom68k_gate_manifest.tsv");
+#ifdef POM68K_PERF_BUDGET_FILE
+    if (std::ifstream(POM68K_PERF_BUDGET_FILE))
+        performanceBudgets = POM68K_PERF_BUDGET_FILE;
+#endif
+    if (performanceBudgets.empty())
+        performanceBudgets = testasset::find("performance_budgets.tsv");
+    if (mainCpp.empty() || catalog.empty() || claude.empty()) {
         std::printf("SKIP: run from the build or source tree (needs src/ + CLAUDE.md)\n");
         return 0;
     }
 
-    // ── 1. The two places a profile is declared must agree ────────────────
-    const int rows = countProfileRows(slurp(mainCpp));
-    const int tags = countSnapTags(slurp(snapH));
-    check(rows > 0, "kProfiles table found in src/main.cpp");
-    check(tags > 0, "SnapMachine enum found in src/SaveStateMachines.h");
-    check(rows == tags,
-          "kProfiles rows (" + std::to_string(rows) + ") == SnapMachine tags (" +
-          std::to_string(tags) + ")");
-
+    // ── 1. One compiled catalogue drives menu and snapshot identity ───────
+    const int rows = int(pom68k::kMachineProfileCount);
+    check(slurp(mainCpp).find("pom68k::kMachineProfiles") != std::string::npos,
+          "Machine menu consumes the compiled profile catalogue");
+    check(slurp(catalog).find("enum class SnapMachine") != std::string::npos,
+          "snapshot ids live beside the profile catalogue");
+    check(rows > 0, "compiled machine catalogue is non-empty");
     // ── 2. …and CLAUDE.md must state that number, everywhere it states one ─
     const std::string doc = slurp(claude);
     std::vector<int> stated;
@@ -185,6 +161,128 @@ int main() {
     }
     check(!gates.empty(), "gate roster read from pom68k_gates.tsv");
 
+    // Every gate has an explicit, orthogonal execution contract. This catches
+    // the old false identity `unit == asset-free`, host-only gates hidden by a
+    // generic tier, and future registrations omitted from daily policy.
+    std::map<std::string, std::vector<std::string>> gateManifest;
+    {
+        std::ifstream f(manifest);
+        std::string line;
+        std::getline(f, line); // header
+        check(line == "name\tassets\thost\tscope\ttier",
+              "gate manifest has the versioned five-column schema");
+        while (std::getline(f, line)) {
+            std::vector<std::string> cells;
+            std::stringstream ss(line);
+            std::string cell;
+            while (std::getline(ss, cell, '\t')) cells.push_back(cell);
+            if (cells.size() == 5)
+                gateManifest[cells[0]] = {cells[1], cells[2], cells[3], cells[4]};
+        }
+    }
+    check(gateManifest.size() == gates.size(),
+          "gate manifest covers every registered gate exactly once");
+    const std::set<std::string> assetKinds{"none", "optional", "required"};
+    const std::set<std::string> hostKinds{"any", "native", "a64", "x64"};
+    const std::set<std::string> scopeKinds{"component", "engine", "profile", "repository"};
+    const std::set<std::string> tierKinds{"daily", "platform", "full"};
+    std::vector<std::string> invalidManifest;
+    for (const auto& [name, cells] : gateManifest) {
+        if (!gates.count(name) || cells.size() != 4 ||
+            !assetKinds.count(cells[0]) || !hostKinds.count(cells[1]) ||
+            !scopeKinds.count(cells[2]) || !tierKinds.count(cells[3]))
+            invalidManifest.push_back(name);
+    }
+    check(invalidManifest.empty(),
+          invalidManifest.empty()
+              ? "every gate manifest row has valid assets/host/scope/tier"
+              : "invalid gate manifest rows: " + [&] {
+                    std::string out;
+                    for (const auto& name : invalidManifest) out += name + " ";
+                    return out;
+                }());
+
+    // Budgets are data, not literals hidden inside benchmarks. CMake consumes
+    // these exact rows into the named gates; this side catches schema drift,
+    // duplicate policy and a budget attached to an unregistered gate.
+    std::set<std::string> budgetKeys;
+    bool budgetSchema = !performanceBudgets.empty();
+    {
+        std::ifstream f(performanceBudgets);
+        for (std::string line; std::getline(f, line); ) {
+            if (line.empty() || line[0] == '#') continue;
+            std::vector<std::string> cells;
+            std::stringstream ss(line);
+            for (std::string cell; std::getline(ss, cell, '\t'); )
+                cells.push_back(cell);
+            if (cells.size() != 6) {
+                budgetSchema = false;
+                continue;
+            }
+            const bool knownWorkload = cells[0] == "synthetic_68040_lockstep" ||
+                cells[0] == "synthetic_68040_copyback" ||
+                cells[0] == "q605_jit" || cells[0] == "lcii_threaded";
+            const bool knownFamily = cells[1] == "68030" || cells[1] == "68040";
+            const bool knownHost = cells[2] == "aarch64" ||
+                cells[2] == "x86_64" || cells[2] == "any" ||
+                cells[2] == "reference_x86_64" ||
+                cells[2] == "apple_m4";
+            if (!knownWorkload || !knownFamily || !knownHost ||
+                cells[3].empty() || cells[4].empty() || cells[5].empty() ||
+                !std::all_of(cells[4].begin(), cells[4].end(),
+                             [](unsigned char c) { return std::isdigit(c); }))
+                budgetSchema = false;
+            if (!budgetKeys.insert(cells[0] + "/" + cells[1] + "/" +
+                                   cells[2] + "/" + cells[3]).second)
+                budgetSchema = false;
+        }
+    }
+    std::set<std::string> requiredBudgets;
+    for (const std::string& host : {"aarch64", "x86_64", "any"}) {
+        for (const std::string& metric : {"min_blocks_compiled", "min_blocks_run",
+                                          "min_native_share_permille",
+                                          "max_slow_instrs"})
+            requiredBudgets.insert("synthetic_68040_lockstep/68040/" + host +
+                                   "/" + metric);
+        for (const std::string& metric : {"max_slow_instrs",
+                                          "max_native_ratio_permille",
+                                          "native_slack_microseconds"})
+            requiredBudgets.insert("synthetic_68040_copyback/68040/" + host +
+                                   "/" + metric);
+    }
+    requiredBudgets.insert(
+        "q605_jit/68040/reference_x86_64/min_realtime_permille");
+    requiredBudgets.insert(
+        "lcii_threaded/68030/reference_x86_64/min_realtime_permille");
+    requiredBudgets.insert(
+        "q605_jit/68040/apple_m4/min_realtime_permille");
+    requiredBudgets.insert(
+        "lcii_threaded/68030/apple_m4/min_realtime_permille");
+    check(budgetSchema,
+          "performance budget manifest has valid workload/family/host rows");
+    check(budgetKeys == requiredBudgets,
+          "performance policy separates daily hosts and pins measured Macintosh baselines");
+
+    // Both native runners must publish the same schema and pass it through
+    // the same budget checker. Architecture-specific filenames are metadata,
+    // not two reporting implementations.
+    const std::string metricsHeader = slurp(
+        testasset::find("src/jit/JitMetrics.h"));
+    const std::string linuxCi = slurp(
+        testasset::find(".github/workflows/ci.yml"));
+    const std::string macCi = slurp(
+        testasset::find(".github/workflows/macos.yml"));
+    check(metricsHeader.find("pom68k.jit.metrics.v1") != std::string::npos,
+          "JIT metrics schema is explicit and versioned");
+    for (const auto& [name, workflow] :
+         std::array<std::pair<const char*, const std::string*>, 2>{{
+             {"x86-64 CI", &linuxCi}, {"AArch64 CI", &macCi}}}) {
+        check(workflow->find("POM68K_JIT_METRICS_FILE") != std::string::npos &&
+              workflow->find("tools/check_jit_performance.py") != std::string::npos &&
+              workflow->find("actions/upload-artifact@v4") != std::string::npos,
+              std::string(name) + " validates and archives structured JIT metrics");
+    }
+
     // The registry has TWO sizes. `jit_lockstep_a64_coarse_test` and
     // `jit_lockstep_030_a64_experimental_test` are registered only on an
     // AArch64 host with the native backends (CMakeLists.txt, the guard that
@@ -219,16 +317,18 @@ int main() {
                     "the documented AArch64 totals are held to account\n",
                     absent.size());
 
-    // How many gates carry `label`, counting the ones this host cannot
-    // register. Labels are comma-separated, and `etalon` must not match
-    // `etalon-core`, which is why this compares whole fields.
+    // How many gates `ctest -L <label>` selects, counting the ones this host
+    // cannot register. -L is a REGEX over each label, not an equality test:
+    // `jit` therefore also selects `jit-fast`. The old whole-field compare
+    // made the documentation gate certify an exact-label count while CTest
+    // actually ran that count plus the docs/config `jit-fast` gates.
     auto countLabel = [&](const std::string& label) {
         int n = 0;
         auto scan = [&](const std::string& labels) {
             std::stringstream ss(labels);
             std::string one;
             while (std::getline(ss, one, ','))
-                if (one == label) { n++; return; }
+                if (one.find(label) != std::string::npos) { n++; return; }
         };
         for (const auto& [name, labels] : gates) { (void)name; scan(labels); }
         for (const auto& [name, labels] : absent) { (void)name; scan(labels); }
@@ -330,11 +430,104 @@ int main() {
         }
     }
 
-    // ── 7. CHANGELOG_INDEX.md covers every dated entry ───────────────────
+    {
+        // ── 7. The permanent Moira fork has an explicit boundary ─────────
+        // Physical indirection is intentionally NOT the boundary: the fork's
+        // design record documents an ~11% loss when a hot i-cache seam was
+        // virtualised. The auditable boundary is lexical instead: local APIs
+        // use `pom*`, changed source files carry `POM68K`, and the inventory
+        // names every such file. Recompute all four headline numbers so the
+        // vendor document cannot silently fossilise again.
+        namespace fs = std::filesystem;
+        const std::string vendorPath =
+            testasset::find("extern/moira/POM68K_VENDOR.md");
+        check(!vendorPath.empty(), "Moira fork design record located");
+        if (!vendorPath.empty()) {
+            const std::string vendor = slurp(vendorPath);
+            const fs::path moiraDir = fs::path(vendorPath).parent_path() / "Moira";
+            int sourceFiles = 0, markedFiles = 0, markedLines = 0;
+            std::set<std::string> pomIds;
+            std::vector<std::string> boundaryLeaks;
+            std::vector<std::string> markedNames;
+            const auto word = [](char c) {
+                return std::isalnum(uint8_t(c)) || c == '_';
+            };
+            std::error_code ec;
+            for (fs::recursive_directory_iterator it(moiraDir, ec), end;
+                 !ec && it != end; it.increment(ec)) {
+                if (!it->is_regular_file()) continue;
+                const std::string ext = it->path().extension().string();
+                if (ext != ".h" && ext != ".cpp") continue;
+                sourceFiles++;
+                const std::string source = slurp(it->path().string());
+                bool marked = false, hasPom = false;
+                std::stringstream lines(source);
+                for (std::string line; std::getline(lines, line); ) {
+                    if (line.find("POM68K") != std::string::npos) {
+                        marked = true;
+                        markedLines++;
+                    }
+                }
+                for (size_t i = source.find("pom"); i != std::string::npos;
+                     i = source.find("pom", i + 3)) {
+                    if (i && word(source[i - 1])) continue;
+                    size_t e = i + 3;
+                    while (e < source.size() && word(source[e])) e++;
+                    if (e == i + 3) continue;
+                    hasPom = true;
+                    pomIds.insert(source.substr(i, e - i));
+                }
+                const std::string name = it->path().filename().string();
+                if (marked) {
+                    markedFiles++;
+                    markedNames.push_back(name);
+                }
+                if (hasPom && !marked) boundaryLeaks.push_back(name);
+            }
+            check(!ec, "Moira source inventory traversed");
+            check(boundaryLeaks.empty(),
+                  "every source file exposing a pom* extension carries a POM68K marker");
+
+            const size_t tableStart = vendor.find("## Inventory of local patches");
+            const size_t tableEnd = vendor.find("\n## ", tableStart + 3);
+            const std::string inventory = tableStart == std::string::npos
+                ? std::string() : vendor.substr(tableStart, tableEnd - tableStart);
+            int patchGroups = 0;
+            std::stringstream rowsIn(inventory);
+            for (std::string line; std::getline(rowsIn, line); ) {
+                if (line.size() > 3 && line[0] == '|' && line[1] == ' ' &&
+                    std::isdigit(uint8_t(line[2]))) patchGroups++;
+            }
+            check(patchGroups > 0, "Moira local-patch inventory table parsed");
+            for (const std::string& name : markedNames)
+                check(inventory.find('`' + name + '`') != std::string::npos,
+                      "Moira inventory names marked source `" + name + "`");
+
+            int jitIds = 0;
+            for (const std::string& id : pomIds)
+                if (id.rfind("pomJit", 0) == 0) jitIds++;
+            const std::string idClaim = "**" + std::to_string(pomIds.size()) +
+                "** (" + std::to_string(jitIds) + " of them `pomJit*`)";
+            const std::string lineClaim = "| **" + std::to_string(markedLines) + "** |";
+            const std::string fileClaim = "**" + std::to_string(markedFiles) +
+                " of " + std::to_string(sourceFiles) + "**";
+            const std::string groupClaim = "| **" + std::to_string(patchGroups) + "** |";
+            check(vendor.find(idClaim) != std::string::npos,
+                  "Moira document states the computed pom* identifier count");
+            check(vendor.find(lineClaim) != std::string::npos,
+                  "Moira document states the computed POM68K-marked line count");
+            check(vendor.find(fileClaim) != std::string::npos,
+                  "Moira document states the computed marked/source file count");
+            check(vendor.find(groupClaim) != std::string::npos,
+                  "Moira document states the computed patch-group count");
+        }
+    }
+
     // A generated index that silently stops covering new entries is worse
     // than none: it looks complete. Regenerate with
     // `python3 tools/changelog_index.py`.
     {
+        // ── 8. CHANGELOG_INDEX.md covers every dated entry ───────────────
         const std::string clPath = testasset::find("CHANGELOG.md");
         const std::string ixPath = testasset::find("CHANGELOG_INDEX.md");
         if (!clPath.empty() && !ixPath.empty()) {
@@ -353,6 +546,54 @@ int main() {
                       " dated entries — regenerate with tools/changelog_index.py");
         }
     }
+
+    // ── 9. Native backends do not grow a second memory decoder ───────────
+    // The compiler enforces token-bearing access-helper signatures; this
+    // lexical boundary catches the two tempting ways to bypass that seam.
+    for (const char* relative : {
+             "src/jit/backends/JitBackendA64.cpp",
+             "src/jit/backends/JitBackendX64.cpp" }) {
+        const std::string path = testasset::find(relative);
+        check(!path.empty(), std::string(relative) + " located");
+        if (path.empty()) continue;
+        const std::string source = slurp(path);
+        check(source.find("instructionMemoryPlan(") != std::string::npos,
+              std::string(relative) + " consumes Instr::memory plans");
+        check(source.find("describeMemory(") == std::string::npos,
+              std::string(relative) + " does not decode memory semantics");
+        check(source.find("soleAccess") == std::string::npos,
+              std::string(relative) + " has no opcode-local sole-access guess");
+        check(source.find("exactTstRead030") == std::string::npos,
+              std::string(relative) + " has no opcode-local exact-access exception");
+        check(source.find(".semantics") != std::string::npos,
+              std::string(relative) + " consumes Instr::semantics");
+        check(source.find("findEffectiveAddress(") != std::string::npos,
+              std::string(relative) + " consumes Instr effective-address plans");
+        check(source.find(".control") != std::string::npos,
+              std::string(relative) + " consumes Instr control-flow plans");
+        check(source.find("branchDisplacement(") == std::string::npos,
+              std::string(relative) + " does not decode branch extensions");
+        check(source.find("decoded->fullFormat") != std::string::npos,
+              std::string(relative) + " rejects unproved full-index lowering safely");
+        check(source.find(".word(") == std::string::npos,
+              std::string(relative) + " never re-decodes BlockIr extension words");
+        check(source.find("describeInstruction(op)") != std::string::npos,
+              std::string(relative) + " shares raw-opcode census semantics");
+        check(source.find("switch (op & 0xF000)") == std::string::npos,
+              std::string(relative) + " has no opcode-line dispatch decoder");
+        check(source.find("aluDirectionA64") == std::string::npos &&
+              source.find("memoryAluDirection(") == std::string::npos &&
+              source.find("enum class AluOp") == std::string::npos,
+              std::string(relative) + " has no private ALU semantic decoder");
+        check(source.find("detail::env") == std::string::npos &&
+              source.find("getenv(") == std::string::npos,
+              std::string(relative) + " has no private live environment policy");
+    }
+
+    const std::string enginePath = testasset::find("src/jit/JitEngine.cpp");
+    check(!enginePath.empty() &&
+          slurp(enginePath).find("config_(resolveConfig())") != std::string::npos,
+          "each JIT Engine resolves its configuration exactly at construction");
 
     std::printf("%s\n", gFails ? "FAILED" : "PASS");
     return gFails ? 1 : 0;

@@ -35,7 +35,7 @@ Cpu040::Cpu040(Q605Memory& mem)
     // rather than calling sync() on every instruction.
     jit_.setPeriphDeadline(&periphDeadline_);
 
-    // Q6.6: model the full 68040 with an FPU, matching the MAME golden
+    // Q6.6: model the full 68040 with its integrated FPU, matching the MAME golden
     // oracle `macqd605` (macquadra605.cpp:158 `M68040(...)`; only its
     // lc475/lc575 variants use M68LC040). In Moira M68040 and M68LC040 are
     // identical except the FPU-availability bit, so this only turns the FPU
@@ -43,7 +43,8 @@ Cpu040::Cpu040(Q605Memory& mem)
     // (`$408E9AC0 fmove.l fpcr,D0`) and boots.
     //
     // POM68K_Q605_NOFPU selects the LC 475 CPU identity (M68LC040) but keeps
-    // Moira's 68882 as a SoftwareFPU-equivalent. Bare FPUModel::NONE still
+    // Moira's external-68882 semantics as a SoftwareFPU-equivalent. Bare
+    // FPUModel::NONE still
     // reaches SysError 90 (dsNoFPU): Mac OS installs PACK 4's F-line glue,
     // which does not replace FPSP for raw 040 FPU opcodes. True NONE + FPSP
     // remains a follow-up; the soft-FPU path is what makes LC040 Finder-usable.
@@ -60,7 +61,7 @@ Cpu040::Cpu040(Q605Memory& mem)
         }
     } else {
         setModel(moira::Model::M68040);
-        setFPUModel(moira::FPUModel::M68882);
+        setFPUModel(moira::FPUModel::M68040);
     }
 
     // Q8: walk-per-access comparison mode (disables the I/D ATC overlay).
@@ -74,8 +75,8 @@ Cpu040::Cpu040(Q605Memory& mem)
         int v = atoi(p);
         if (v >= 0 && v <= 64) icacheMiss_ = v;
     }
-    // 040 has a larger on-chip i-cache than the 030; reuse the 030 overlay
-    // as a throughput model (not an architectural copyback/snoop model).
+    // This remains only the legacy throughput scaler. Moira's distinct
+    // PomCache040 model owns architectural I/D contents and coherency.
     pomIcache.armed = true;
     pomIcache.missPenalty = icacheMiss_;
     pomIcache.reset();

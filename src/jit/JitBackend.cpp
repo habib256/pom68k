@@ -76,7 +76,8 @@ const char* familyName(uint32_t f) {
 }
 }  // namespace
 
-Backend* selectBackend(const char* pref, uint32_t guestFamily) {
+Backend* selectBackend(const char* pref, uint32_t guestFamily,
+                       bool unsafeBackend) {
     if (!pref || !*pref) pref = "auto";
 
     if (std::strcmp(pref, "auto") != 0) {
@@ -95,7 +96,7 @@ Backend* selectBackend(const char* pref, uint32_t guestFamily) {
             // etalon timeout gets blamed on unrelated work. The override
             // exists so the family can still be worked on deliberately.
             if (!validForGuest(b, guestFamily)) {
-                if (detail::envBool("POM68K_JIT_UNSAFE_BACKEND", false)) {
+                if (unsafeBackend) {
                     std::fprintf(stderr,
                                  "[jit] WARNING: backend '%s' is not valid for a %s "
                                  "guest and POM68K_JIT_UNSAFE_BACKEND is set — "

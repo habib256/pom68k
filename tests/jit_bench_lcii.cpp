@@ -84,11 +84,13 @@ void dumpPpm(V8Memory& mem, const char* path) {
 }  // namespace
 
 int main() {
-    std::string romPath = findAsset({
+    std::string romPath = std::getenv("POM68K_BENCH_ROM")
+        ? std::getenv("POM68K_BENCH_ROM") : findAsset({
         "roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM",
         "docs/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM"
     });
-    const std::string diskPath = findAsset({
+    const std::string diskPath = std::getenv("POM68K_BENCH_DISK")
+        ? std::getenv("POM68K_BENCH_DISK") : findAsset({
         "hdv/lcii-boot.vhd", "hdv/boot.vhd", "hdv/GISTPERSO-boot.vhd"
     });
     if (romPath.empty() || diskPath.empty()) {
@@ -130,7 +132,10 @@ int main() {
         std::printf("  quantum: %d slice(s)/frame with a raster catch-up each"
                     " (GUI shape)\n", slices);
     }
-    bench::report("lcii  ", cpu, r, mem.cpuHz());
+    const char* workload = !cpu.engine() ? "lcii_interp"
+        : std::string(cpu.jit().backendName()) == "threaded"
+            ? "lcii_threaded" : "lcii_native_experimental";
+    bench::report("lcii", workload, "68030", cpu, r, mem.cpuHz());
     std::printf("  SCSI=%ld  pc=$%08X  %s\n", mem.scsi().commands, cpu.getPC(),
                 cpu.isHalted() ? "HALTED" : "running");
 

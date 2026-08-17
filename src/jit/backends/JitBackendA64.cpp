@@ -25,6 +25,29 @@ namespace {
 
 using Layout = moira::Moira::PomJitLayout;
 
+MemoryProofOptions proofOptions(const Layout& L) {
+    MemoryProofOptions o;
+    const int thunks = accessThunkMode();
+    o.exactReads = thunks >= 1;
+    // This backend's exact write replay is the proved 68030 LASTWRITE
+    // subset. 040 stores use the native copyback-line protocol instead.
+    o.exactWrites = L.is030 && thunks >= 2;
+    o.cacheReads = L.cache040Live && cache040LineReadsEnabled();
+    o.cacheWrites = L.cache040Live && cache040LineWritesEnabled();
+    o.cachePairs = L.cache040Live && cache040LinePairsEnabled();
+    o.restartableWriteRequired = L.is030;
+    return o;
+}
+
+static_assert(sizeof(moira::Moira::PomJitCache040Entry) == 32);
+static_assert(offsetof(moira::Moira::PomJitCache040Entry, physicalTag) == 4);
+static_assert(offsetof(moira::Moira::PomJitCache040Entry, generation) == 8);
+static_assert(offsetof(moira::Moira::PomJitCache040Entry, line) == 16);
+static_assert(offsetof(moira::Cache040::Line, tag) == 0);
+static_assert(offsetof(moira::Cache040::Line, valid) == 4);
+static_assert(offsetof(moira::Cache040::Line, dirty) == 5);
+static_assert(offsetof(moira::Cache040::Line, data) == 6);
+
 extern "C" void pom68kA64Sync(moira::Moira* cpu, uint32_t cycles) noexcept {
     cpu->pomJitSync(int(cycles));
 }
@@ -395,8 +418,6 @@ void unchargeIcache(Asm& a, const Layout& L, const Instr& in) {
     a.bind(disabled);
 }
 
-enum class AluOp { Or, And, Eor, Add, Sub, Cmp };
-
 uint32_t regOff(const Layout& L, bool address, unsigned n) {
     return (address ? L.a : L.d) + n * 4;
 }
@@ -479,19 +500,6 @@ void emitAddSubFlags(Asm& a, const Layout& L, int bits, bool sub, bool setX) {
     }
 }
 
-bool aluDirectionA64(uint16_t op, int& direction) {
-    const int hi = (op >> 12) & 0xF;
-    const int opmode = (op >> 6) & 7;
-    const int mode = (op >> 3) & 7;
-    if (opmode == 3 || opmode == 7) {
-        direction = (hi == 0x9 || hi == 0xB || hi == 0xD) ? 0 : -1;
-        return direction >= 0;
-    }
-    if (opmode <= 2) { direction = 0; return true; }
-    direction = (mode <= 1) ? ((hi == 0xB && mode == 0) ? 1 : -1) : 1;
-    return direction >= 0;
-}
-
 enum EaIndex { E_DN, E_AN, E_AI, E_PI, E_PD, E_DI, E_IX,
                E_AW, E_AL, E_DIPC, E_IXPC, E_IM, E_COUNT };
 
@@ -522,11 +530,6 @@ const int8_t kEaReadA64[E_COUNT][3] = {
 // Coverage, not correctness. (2026-08-12)
 const int8_t kMoveDstA64[E_COUNT] = {0,0,2,2,3,3,-1,2,4,-1,-1,-1};
 
-// LC II's dominant device poll. Unlike an inline DTLB load, this form must
-// always use Moira's exact 030 access path: the traced 70-cycle cost is the
-// six-cycle instruction plus a device-owned 64-cycle bus delay.
-bool exactTstRead030(uint16_t op) { return op == 0x4A11; }
-
 struct Ea {
     int idx = -1, reg = 0, ext = 0;
     int32_t value = 0;
@@ -536,164 +539,106 @@ struct Ea {
     bool memory = false;
 };
 
-bool decodeEa(const BlockIr& ir, const Instr& in, int mode, int reg,
+bool decodeEa(const Instr& in, int mode, int reg,
               int bits, int extAt, Ea& ea) {
     ea.idx = eaIndexA64(mode, reg); ea.reg = reg;
     if (ea.idx < 0) return false;
-    ea.memory = ea.idx >= E_AI && ea.idx != E_IM;
-    const uint32_t extPc = in.pc + 2 + uint32_t(extAt) * 2;
-    switch (ea.idx) {
-        case E_DN: case E_AN: case E_AI: case E_PI: case E_PD:
-            return true;
-        case E_DI: ea.value = int16_t(ir.word(extPc)); ea.ext = 1; return true;
-        case E_IX: case E_IXPC: {
-            const uint16_t x = ir.word(extPc);
-            if (x & 0x0100) return false;            // full 68020 format later
-            ea.value = int8_t(x & 0xFF);
-            ea.base = extPc;
-            ea.ixReg = ((x >> 12) & 7) + ((x & 0x8000) ? 8 : 0);
-            ea.ixLong = (x & 0x0800) != 0;
-            ea.ixShift = (x >> 9) & 3;
-            ea.ext = 1;
-            return true;
-        }
-        case E_AW: ea.value = int16_t(ir.word(extPc)); ea.ext = 1; return true;
-        case E_AL:
-            ea.value = int32_t(uint32_t(ir.word(extPc)) << 16 | ir.word(extPc + 2));
-            ea.ext = 2; return true;
-        case E_DIPC:
-            ea.value = int32_t(extPc + uint32_t(int16_t(ir.word(extPc))));
-            ea.ext = 1; return true;
-        case E_IM:
-            if (bits == 32) {
-                ea.value = int32_t(uint32_t(ir.word(extPc)) << 16 | ir.word(extPc + 2));
-                ea.ext = 2;
-            } else {
-                ea.value = bits == 8 ? int8_t(ir.word(extPc) & 0xFF)
-                                     : int16_t(ir.word(extPc));
-                ea.ext = 1;
-            }
-            return true;
-        default: return false;
-    }
+    const uint8_t size = bits == 8 ? 0 : bits == 16 ? 1 : 2;
+    const DecodedEffectiveAddress* decoded = findEffectiveAddress(
+        in, uint8_t(mode), uint8_t(reg), size, uint8_t(extAt));
+    // Full 68020 index plans are decoded by the common IR, but this backend
+    // has not proved a lowering for them yet. Reject the plan as a capability
+    // decision; never reinterpret its first word as the brief format.
+    if (!decoded || !decoded->valid || decoded->fullFormat) return false;
+    ea.memory = decoded->memory();
+    ea.value = decoded->value;
+    ea.base = decoded->extensionAddress;
+    ea.ixReg = decoded->indexRegister;
+    ea.ixLong = decoded->indexLong;
+    ea.ixShift = decoded->indexShift;
+    ea.ext = decoded->extensionWords;
+    return true;
 }
 
 bool canEmitReg(uint16_t op) {
-    if (op == 0x4E71 || ((op & 0xF100) == 0x7000)) return true;
-    const int mode = (op >> 3) & 7;
-    switch (op & 0xF000) {
-        case 0x0000: { // immediate ALU to Dn
-            if ((op & 0xF100) == 0x0100 || (op & 0xFF00) == 0x0800) {
-                const int ei = eaIndexA64(mode, op & 7);
-                const int action = (op >> 6) & 3;
-                return mode != 1 && ei >= 0 && ei != E_AN && ei != E_IM &&
-                       (action == 0 || ei != E_DIPC);
-            }
-            const int kind = (op >> 9) & 7, sz = (op >> 6) & 3;
-            const int ei = eaIndexA64(mode, op & 7);
-            return ei >= 0 && ei != E_AN && ei != E_IM && ei != E_DIPC && sz <= 2 &&
-                   (kind == 0 || kind == 1 || kind == 2 || kind == 3 ||
-                    kind == 5 || kind == 6);
-        }
-        case 0x1000: case 0x2000: case 0x3000: {
-            const int dm = (op >> 6) & 7, dr = (op >> 9) & 7;
-            const int si = eaIndexA64(mode, op & 7), di = eaIndexA64(dm, dr);
+    const InstructionSemantics sem = describeInstruction(op);
+    const int mode = sem.eaMode;
+    const int ei = eaIndexA64(mode, sem.eaReg);
+    const auto controlEa = [](int index) {
+        return index == E_AI || index == E_DI || index == E_AW ||
+               index == E_AL || index == E_DIPC;
+    };
+    switch (sem.operation) {
+        case SemanticOp::Nop:
+        case SemanticOp::MoveQuick:
+        case SemanticOp::MoveSrToReg:
+        case SemanticOp::Link:
+        case SemanticOp::Unlink:
+        case SemanticOp::ReturnSubroutine:
+        case SemanticOp::DecrementBranch:
+        case SemanticOp::Branch:
+        case SemanticOp::BranchSubroutine:
+        case SemanticOp::Extend:
+        case SemanticOp::Swap:
+            return true;
+        case SemanticOp::Bit:
+            return mode != 1 && ei >= 0 && ei != E_AN && ei != E_IM &&
+                   (sem.action == 0 || ei != E_DIPC);
+        case SemanticOp::ImmediateAlu:
+            return ei >= 0 && ei != E_AN && ei != E_IM && ei != E_DIPC;
+        case SemanticOp::Move: {
+            const int dm = sem.destinationMode, dr = sem.destinationReg;
+            const int si = ei, di = eaIndexA64(dm, dr);
             if (si < 0 || di < 0 || di == E_IM || di == E_DIPC) return false;
-            if ((op & 0xF000) == 0x1000 && (mode == 1 || dm == 1)) return false;
+            if (sem.sizeIndex == 0 && (mode == 1 || dm == 1)) return false;
             return true;
         }
-        case 0x4000:
-            if ((op & 0xFFF8) == 0x40C0) return true; // MOVE SR,Dn
-            if ((op & 0xFFF8) == 0x4E50 || (op & 0xFFF8) == 0x4E58) return true;
-            if (op == 0x4E75) return true;
-            if ((op & 0xFF80) == 0x4E80) {
-                const int ei = eaIndexA64(mode, op & 7);
-                return ei == E_AI || ei == E_DI || ei == E_AW ||
-                       ei == E_AL || ei == E_DIPC;
-            }
-            if ((op & 0xF1C0) == 0x41C0) {
-                const int ei = eaIndexA64(mode, op & 7);
-                return ei == E_AI || ei == E_DI || ei == E_AW ||
-                       ei == E_AL || ei == E_DIPC;
-            }
-            if ((op & 0xFB80) == 0x4880 && mode >= 2) return true;
-            if ((op & 0xFFB8) == 0x4880 || (op & 0xFFF8) == 0x4840) return true;
-            return eaIndexA64(mode, op & 7) >= 0 &&
-                   ((op & 0xFF00) == 0x4A00 || (op & 0xFF00) == 0x4200 ||
-                    (op & 0xFF00) == 0x4400 || (op & 0xFF00) == 0x4600) &&
-                   ((op >> 6) & 3) <= 2;
-        case 0x5000:
-            if ((op & 0xF0F8) == 0x50C8) return true;
-            return eaIndexA64(mode, op & 7) >= 0 &&
-                   eaIndexA64(mode, op & 7) != E_IM &&
-                   eaIndexA64(mode, op & 7) != E_DIPC &&
-                   (op & 0x00C0) != 0x00C0;
-        case 0x6000:
+        case SemanticOp::JumpSubroutine:
+        case SemanticOp::Jump:
+        case SemanticOp::Lea:
+            return controlEa(ei);
+        case SemanticOp::Movem:
             return true;
-        case 0x8000: case 0x9000: case 0xB000: case 0xC000: case 0xD000: {
-            int direction = -1;
-            return eaIndexA64(mode, op & 7) >= 0 && aluDirectionA64(op, direction);
-        }
-        case 0xE000: {
-            if ((op & 0xF8C0) == 0xE8C0) return mode == 0; // register bitfield
-            const int sz = (op >> 6) & 3, type = (op >> 3) & 3;
-            return sz <= 2 && !(op & 0x20) && type != 2; // immediate, no ROX yet
-        }
+        case SemanticOp::Test:
+        case SemanticOp::Clear:
+        case SemanticOp::Negate:
+        case SemanticOp::Complement:
+        case SemanticOp::AluRegToEa:
+            return ei >= 0 && ei != E_IM;
+        case SemanticOp::AddSubQuick:
+            return ei >= 0 && ei != E_IM && ei != E_DIPC;
+        case SemanticOp::AluEaToReg:
+        case SemanticOp::AddressAlu:
+            return ei >= 0; // immediate is a legal source EA
+        case SemanticOp::Bitfield:
+            return mode == 0;
+        case SemanticOp::ShiftRegister:
+            return !sem.dynamic && sem.action != 2; // no ROX yet
         default: return false;
     }
-}
-
-// Narrow 68030 restartable-write family. These MOVE forms have one data
-// access and no source side effect.
-// A direct DTLB hit is guaranteed-faultless by dataSpan(); every refusal is
-// attempted through Moira's exact access thunk and replayed untouched if it
-// faults. Brief indexed and -(An) destinations are included only because the
-// injected-fault and successful-access gates prove their observable state.
-// Full 68020 indexed extensions remain rejected by decodeEa().
-bool restartWrite030(uint16_t op) {
-    const uint16_t line = op & 0xF000;
-    if (line != 0x1000 && line != 0x2000 && line != 0x3000) return false;
-    const int sm = (op >> 3) & 7;
-    const int dm = (op >> 6) & 7;
-    const int sr = op & 7;
-    const int dr = (op >> 9) & 7;
-    const int si = eaIndexA64(sm, sr);
-    const int di = eaIndexA64(dm, dr);
-    const bool sourceValue = si == E_DN || si == E_AN || si == E_IM;
-    const bool provedDestination = di == E_AI || di == E_PI || di == E_PD ||
-                                   di == E_DI || di == E_IX || di == E_AW ||
-                                   di == E_AL;
-    return sourceValue && provedDestination &&
-           !(line == 0x1000 && si == E_AN);
 }
 
 int bitsForSizeIndex(int sz) { return sz == 0 ? 8 : sz == 1 ? 16 : 32; }
 
-bool emitAluResult(Asm& a, const Layout& L, AluOp kind, int bits,
+bool emitAluResult(Asm& a, const Layout& L, AluOperation kind, int bits,
                    bool store, bool addressDst, unsigned dst, bool setX) {
     switch (kind) {
-        case AluOp::Or:  a.orrW(11, 9, 10); break;
-        case AluOp::And: a.andW(11, 9, 10); break;
-        case AluOp::Eor: a.eorW(11, 9, 10); break;
-        case AluOp::Add: a.addW(11, 9, 10); break;
-        case AluOp::Sub: case AluOp::Cmp: a.subW(11, 9, 10); break;
+        case AluOperation::Or:  a.orrW(11, 9, 10); break;
+        case AluOperation::And: a.andW(11, 9, 10); break;
+        case AluOperation::Eor: a.eorW(11, 9, 10); break;
+        case AluOperation::Add: a.addW(11, 9, 10); break;
+        case AluOperation::Sub: case AluOperation::Cmp: a.subW(11, 9, 10); break;
+        default: return false;
     }
     maskResult(a, 11, bits);
     if (store) storeSized(a, L, 11, addressDst, dst, bits);
-    if (kind == AluOp::Add)
+    if (kind == AluOperation::Add)
         emitAddSubFlags(a, L, bits, false, setX);
-    else if (kind == AluOp::Sub || kind == AluOp::Cmp)
+    else if (kind == AluOperation::Sub || kind == AluOperation::Cmp)
         emitAddSubFlags(a, L, bits, true, setX);
     else
         emitLogicFlags(a, L, 11, bits);
     return true;
-}
-
-uint32_t immediateValue(const BlockIr& ir, const Instr& in, int bits) {
-    if (bits == 32)
-        return uint32_t(ir.word(in.pc + 2)) << 16 | ir.word(in.pc + 4);
-    return bits == 8 ? uint32_t(ir.word(in.pc + 2) & 0xFF)
-                     : uint32_t(ir.word(in.pc + 2));
 }
 
 void addrOf(Asm& a, const Layout& L, const Ea& ea, int bits) {
@@ -743,20 +688,21 @@ void commitEa(Asm& a, const Layout& L, const Ea& ea, int bits) {
 // DTLB translation/probe has succeeded (or immediately before an exact
 // access thunk). A real fault is replayed by Moira, which then constructs the
 // format-A/B restart state itself.
-void commitEaBeforeAccess(Asm& a, const Layout& L, const Ea& ea, int bits) {
-    // Predecrement precedes the access on every core. Postincrement reads
-    // differ by model; the mode-5 030 performs it before the access.
-    if (ea.idx == E_PD || (L.is030 && ea.idx == E_PI))
+void commitEaBeforeAccess(Asm& a, const Layout& L, const Ea& ea, int bits,
+                          const MemoryAccessPlan& access) {
+    if (access.eaCommit == EaCommit::BeforeAccess)
         commitEa(a, L, ea, bits);
 }
 
-void commitEaAfterAccess(Asm& a, const Layout& L, const Ea& ea, int bits) {
-    if (ea.idx == E_PD || (L.is030 && ea.idx == E_PI)) return;
-    commitEa(a, L, ea, bits);
+void commitEaAfterAccess(Asm& a, const Layout& L, const Ea& ea, int bits,
+                         const MemoryAccessPlan& access) {
+    if (access.eaCommit == EaCommit::AfterAccess)
+        commitEa(a, L, ea, bits);
 }
 
-void rollbackEaBeforeAccess(Asm& a, const Layout& L, const Ea& ea, int bits) {
-    if (ea.idx != E_PD && (!L.is030 || ea.idx != E_PI)) return;
+void rollbackEaBeforeAccess(Asm& a, const Layout& L, const Ea& ea, int bits,
+                            const MemoryAccessPlan& access) {
+    if (access.eaCommit != EaCommit::BeforeAccess) return;
     const unsigned step = ea.reg == 7 && bits == 8 ? 2u : unsigned(bits / 8);
     a.ldrW(13, 0, L.a + unsigned(ea.reg) * 4);
     if (ea.idx == E_PI) a.subImmW(13, 13, step);
@@ -875,12 +821,78 @@ void observeRuntimeAddress(Asm& a, uint16_t opcode) {
 // Translate guest address w9. On success x14 is the host byte pointer; a
 // refused mapping or cross-page access transfers to the untouched slow path.
 void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
-              int miss) {
+              int miss, bool cacheRead = false, int cacheWriteHit = -1,
+              bool cacheOnly = false, bool countCacheHit = true) {
     const int fill = a.label(), have = a.label(), done = a.label();
     const int crossMiss = gRuntimeReasonHisto ? a.label() : miss;
     const int maskMiss = gRuntimeReasonHisto ? a.label() : miss;
     const int nonPlainMiss = gRuntimeReasonHisto ? a.label() : miss;
     const int fillMiss = gRuntimeReasonHisto ? a.label() : miss;
+
+    const bool cacheWrite = write && cacheWriteHit >= 0;
+    if (((cacheRead && !write && cache040LineReadsEnabled()) || cacheWrite) &&
+        L.cache040Live) {
+        const int cacheMiss = a.label();
+
+        // A line-crossing operand needs two independently translated cache
+        // lines. Keep that rare case on the exact path.
+        a.movW(12, 15); a.andW(13, 9, 12);
+        if (bytes > 1) {
+            a.movW(12, unsigned(16 - bytes));
+            a.cmpW(13, 12); a.bCond(Asm::HI, cacheMiss);
+        }
+
+        // Direct-mapped logical-line lookup (32-byte entries).
+        a.lsrW(10, 9, 4);
+        a.movRegW(11, 10);
+        if (super) {
+            a.movW(12, 0x80000000u); a.orrW(11, 11, 12);
+        }
+        a.movW(12, moira::Moira::PomJitCache040Table::kEntries - 1);
+        a.andW(10, 10, 12);
+        a.lslX(10, 10, 5);
+        a.address(14, 0, cacheWrite ? L.cache040W : L.cache040R);
+        a.addX(14, 14, 10);
+        a.ldrW(12, 14, 0);
+        a.cmpW(11, 12); a.bCond(Asm::NE, cacheMiss);
+
+        // ATC-derived state cannot survive an ATC eviction/map change.
+        a.ldrW(12, 14, 8);
+        a.ldrW(13, 0, L.cache040Gen);
+        a.cmpW(12, 13); a.bCond(Asm::NE, cacheMiss);
+
+        // The cache way is stable, its contents are not: validate both the
+        // valid bit and physical tag before exposing its big-endian bytes.
+        a.ldrW(13, 14, 4);
+        a.ldrX(14, 14, 16);
+        a.ldrB(12, 14, offsetof(moira::Cache040::Line, valid));
+        a.cbzW(12, cacheMiss);
+        a.ldrW(12, 14, offsetof(moira::Cache040::Line, tag));
+        a.cmpW(12, 13); a.bCond(Asm::NE, cacheMiss);
+
+        // Cache040::hits is diagnostic state, but keep it exact: this path
+        // is emitted only for an instruction's sole guest access, so no
+        // later speculative probe can force a replay after the increment.
+        if (countCacheHit) {
+            a.ldrX(12, 0, L.cache040Hits);
+            a.addImmX(12, 12, 1);
+            a.strX(12, 0, L.cache040Hits);
+            if (cache040LineReadStatsEnabled()) {
+                const uint32_t counter = cacheWrite ? L.cache040NativeWriteHits
+                                                    : L.cache040NativeReadHits;
+                a.ldrX(12, 0, counter);
+                a.addImmX(12, 12, 1);
+                a.strX(12, 0, counter);
+            }
+        }
+        a.movW(12, 15); a.andW(13, 9, 12);
+        a.addImmX(14, 14, offsetof(moira::Cache040::Line, data));
+        a.addX(14, 14, 13);
+        a.b(cacheWrite ? cacheWriteHit : done);
+        a.bind(cacheMiss);
+        if (cacheOnly) a.b(miss);
+    }
+
     a.lsrW(10, 9, 12);                 // logical page
     a.movRegW(11, 10);                 // tag
     if (super) {
@@ -987,20 +999,23 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
 // fallback. Multi-access/RMW instructions retain the conservative path so
 // replay can never duplicate a device side effect.
 void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
-                  int slow, bool soleAccess, const Ea* ea = nullptr,
-                  bool forceExact = false) {
-    soleAccess = forceExact || (soleAccess && accessThunkMode() >= 1);
-    if (!soleAccess) {
-        memProbe(a, L, super, bits / 8, false, slow);
-        if (ea) commitEaBeforeAccess(a, L, *ea, bits);
+                  int slow, const MemoryAccessPlan& access,
+                  const Ea* ea = nullptr) {
+    if (!access.valid() || access.direction != MemoryDirection::Read ||
+        access.bytes != unsigned(bits / 8)) { a.b(slow); return; }
+    const bool cacheRead = access.cache;
+    const bool exactAccess = access.exactThunk;
+    if (!exactAccess) {
+        memProbe(a, L, super, bits / 8, false, slow, cacheRead);
+        if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
         loadGuest(a, bits, rd);
         return;
     }
 
     const int miss = a.label(), done = a.label();
-    if (!forceExact) {
-        memProbe(a, L, super, bits / 8, false, miss);
-        if (ea) commitEaBeforeAccess(a, L, *ea, bits);
+    if (!access.exactRequired) {
+        memProbe(a, L, super, bits / 8, false, miss, cacheRead);
+        if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
         loadGuest(a, bits, rd);
         a.b(done);
     }
@@ -1011,7 +1026,7 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     a.address(3, 1, 72);                // Frame::value
     a.movRegW(1, 9);                    // guest address
     a.movW(2, unsigned(bits / 8));
-    if (ea) commitEaBeforeAccess(a, L, *ea, bits);
+    if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
     a.movX(16, uint64_t(uintptr_t(&pom68kA64Read)));
     a.blr(16);
     a.movRegW(14, 0);
@@ -1020,7 +1035,7 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     a.cmpWZero(14);
     const int ok = a.label();
     a.bCond(Asm::NE, ok);
-    if (ea) rollbackEaBeforeAccess(a, L, *ea, bits);
+    if (ea) rollbackEaBeforeAccess(a, L, *ea, bits, access);
     a.ldrX(21, 1, 96); a.strX(21, 0, L.clock);
     a.b(slow);                          // fault: replay untouched instruction
     a.bind(ok);
@@ -1042,6 +1057,28 @@ void storeGuest(Asm& a, int bits, unsigned rs) {
     } else {
         a.rev32W(12, rs); a.strW(12, 14, 0);
     }
+}
+
+// Publish the authoritative bytes written through x14 to the line's four
+// dirty-longword bits. The cache probe has already proved that this is a
+// resident copyback line and that the whole operand fits inside it.
+void markCache040Dirty(Asm& a, int bytes) {
+    a.movW(12, 15); a.andW(13, 9, 12); // byte offset in the line
+    a.subX(15, 14, 13);
+    a.subImmX(15, 15, offsetof(moira::Cache040::Line, data));
+
+    a.lsrW(13, 13, 2);
+    a.movW(12, 1); a.lslVarW(12, 12, 13);
+    if (bytes > 1) {
+        a.addImmW(13, 9, unsigned(bytes - 1));
+        a.lsrW(13, 13, 2);
+        a.movW(10, 3); a.andW(13, 13, 10);
+        a.movW(10, 1); a.lslVarW(10, 10, 13);
+        a.orrW(12, 12, 10);
+    }
+    a.ldrB(13, 15, offsetof(moira::Cache040::Line, dirty));
+    a.orrW(12, 12, 13);
+    a.strB(12, 15, offsetof(moira::Cache040::Line, dirty));
 }
 
 // Optional lockstep journal for direct stores, which otherwise bypass the
@@ -1078,19 +1115,46 @@ void observeDirectWrite(Asm& a, int bits, uint32_t instructionPc) {
 // update are restored before the untouched instruction is replayed, which
 // is where the format-A/B frame is constructed.
 void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
-                   int slow, bool soleAccess, const Ea* ea = nullptr) {
-    soleAccess = L.is030 && soleAccess && accessThunkMode() >= 1;
-    if (!soleAccess) {
-        memProbe(a, L, super, bits / 8, true, slow);
-        if (ea) commitEaBeforeAccess(a, L, *ea, bits);
+                   int slow, const MemoryAccessPlan& access,
+                   const Ea* ea = nullptr) {
+    if (!access.valid() || access.direction != MemoryDirection::Write ||
+        access.bytes != unsigned(bits / 8)) { a.b(slow); return; }
+    const bool cacheExactWrite = !L.is030 && access.single() && L.cache040Live;
+    const bool cacheWrite = access.cache;
+    const bool exactAccess = L.is030 && access.exactThunk;
+    if (!exactAccess) {
+        // This is the attribution-control half of the J4 write gate. Once
+        // the architectural D-cache is live, disabling its native line hit
+        // must restore the exact cache-aware instruction path; an ordinary
+        // DTLB pointer names backing RAM and would bypass a dirty copyback
+        // line. The enabled path below may still consult the DTLB after a W
+        // miss, but cache-active fills are tagged-null refusals and therefore
+        // reach the same untouched replay.
+        if (cacheExactWrite && !cacheWrite) {
+            a.b(slow);
+            return;
+        }
+        const int cacheHit = cacheWrite ? a.label() : -1;
+        const int done = cacheWrite ? a.label() : -1;
+        memProbe(a, L, super, bits / 8, true, slow, false, cacheHit);
+        if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
         a.ldrW(rs, 1, 72);
         storeGuest(a, bits, rs);
+        if (cacheWrite) {
+            a.b(done);
+            a.bind(cacheHit);
+            if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
+            a.ldrW(rs, 1, 72);
+            storeGuest(a, bits, rs);
+            markCache040Dirty(a, bits / 8);
+            a.bind(done);
+        }
         return;
     }
 
     const int miss = a.label(), done = a.label(), ok = a.label();
     memProbe(a, L, super, bits / 8, true, miss);
-    if (ea) commitEaBeforeAccess(a, L, *ea, bits);
+    if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
     a.ldrW(rs, 1, 72);
     storeGuest(a, bits, rs);
     a.b(done);
@@ -1101,7 +1165,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     a.ldrW(3, 1, 72);
     a.movRegW(1, 9);
     a.movW(2, unsigned(bits / 8));
-    if (ea) commitEaBeforeAccess(a, L, *ea, bits);
+    if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
     a.movX(16, uint64_t(uintptr_t(&pom68kA64Write)));
     a.blr(16);
     a.movRegW(14, 0);
@@ -1109,7 +1173,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     a.ldrX(21, 0, L.clock);
     a.cmpWZero(14);
     a.bCond(Asm::NE, ok);
-    if (ea) rollbackEaBeforeAccess(a, L, *ea, bits);
+    if (ea) rollbackEaBeforeAccess(a, L, *ea, bits, access);
     a.ldrX(21, 1, 96); a.strX(21, 0, L.clock);
     a.b(slow);
     a.bind(ok);
@@ -1131,19 +1195,22 @@ void storeGuestOff(Asm& a, int bits, unsigned rs, uint32_t off) {
 bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                   int slow = -1) {
     const uint16_t op = in.opcode;
-    if (op == 0x4E71) return in.cycles == 2;
+    const InstructionSemantics& sem = in.semantics;
+    if (!sem.valid()) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
+    if (sem.operation == SemanticOp::Nop) return in.cycles == 2;
 
-    if ((op & 0xF100) == 0x7000) {                  // MOVEQ
+    if (sem.operation == SemanticOp::MoveQuick) {
         if (in.cycles != 2) return false;
         const int32_t v = int8_t(op & 0xFF);
-        const unsigned dn = (op >> 9) & 7;
+        const unsigned dn = sem.registerIndex;
         a.movW(11, uint32_t(v));
         a.strW(11, 0, L.d + dn * 4);
         emitLogicFlags(a, L, 11, 32);
         return true;
     }
 
-    if ((op & 0xFFF8) == 0x40C0) {                  // MOVE SR,Dn
+    if (sem.operation == SemanticOp::MoveSrToReg) {
         if (in.words != 1 || in.baseCycles != 8 || in.postExceptionCycles != 0)
             return false;
         a.movW(11, 0);
@@ -1157,18 +1224,17 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         a.ldrB(9, 0, L.srIpl); a.lslW(9, 9, 8); a.orrW(11, 11, 9);
         addSrBit(L.srX, 4); addSrBit(L.srN, 3); addSrBit(L.srZ, 2);
         addSrBit(L.srV, 1); addSrBit(L.srC, 0);
-        a.strH(11, 0, L.d + unsigned(op & 7) * 4);
+        a.strH(11, 0, L.d + sem.eaReg * 4);
         return true;
     }
 
-    const uint16_t line = op & 0xF000;
-    if (line == 0x1000 || line == 0x2000 || line == 0x3000) { // MOVE/MOVEA
-        const int bits = line == 0x1000 ? 8 : line == 0x3000 ? 16 : 32;
-        const int sm = (op >> 3) & 7, sr = op & 7;
-        const int dm = (op >> 6) & 7, dr = (op >> 9) & 7;
+    if (sem.operation == SemanticOp::Move) {         // MOVE/MOVEA
+        const int bits = bitsForSizeIndex(sem.sizeIndex);
+        const int sm = sem.eaMode, sr = sem.eaReg;
+        const int dm = sem.destinationMode, dr = sem.destinationReg;
         Ea src, dst;
-        if (!decodeEa(ir, in, sm, sr, bits, 0, src) ||
-            !decodeEa(ir, in, dm, dr, bits, src.ext, dst)) return false;
+        if (!decodeEa(in, sm, sr, bits, 0, src) ||
+            !decodeEa(in, dm, dr, bits, src.ext, dst)) return false;
         if (bits == 8 && (src.idx == E_AN || dst.idx == E_AN)) return false;
         if ((src.idx == E_PI || src.idx == E_PD) && src.reg == dst.reg &&
             (dst.idx == E_AN || dst.idx == E_AI || dst.idx == E_PI ||
@@ -1180,7 +1246,24 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // fault-proved family. Brief indexed destination calculation costs
         // five base cycles; keep that admission local so memory-source MOVE
         // forms do not ride on this sole-write proof.
-        const bool restartWrite = L.is030 && restartWrite030(op);
+        MemoryAccessPlan srcAccess, dstAccess;
+        if (src.memory) {
+            srcAccess = memory.access(MemoryDirection::Read,
+                                      MemoryOperand::Source,
+                                      uint8_t(bits / 8), uint8_t(sm),
+                                      uint8_t(sr));
+            if (!srcAccess.valid()) return false;
+        }
+        if (dst.memory) {
+            dstAccess = memory.access(MemoryDirection::Write,
+                                      MemoryOperand::Destination,
+                                      uint8_t(bits / 8), uint8_t(dm),
+                                      uint8_t(dr));
+            if (!dstAccess.valid()) return false;
+        }
+        if (!memory.complete()) return false;
+        const bool restartWrite = L.is030 &&
+                                  memory.proof.restartableLastWrite();
         const int dstCycles = restartWrite && dst.idx == E_IX
             ? 5 : kMoveDstA64[dst.idx];
         const int cycles = kEaReadA64[src.idx][sz] + dstCycles;
@@ -1192,6 +1275,59 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
 
         if (src.memory && dst.memory) {
             if (slow < 0) return false;
+            // The two dominant cache-on MOVE fallbacks are the paired
+            // longword shuttles abs.W -> -(A7) and (A7)+ -> abs.W. Probe
+            // BOTH resident lines before reading either one: a miss can
+            // then replay a pristine instruction, while two hits make the
+            // source read and dirty destination write indivisible here.
+            const bool cachePair = memory.proof.atomicCachePair();
+            if (cachePair) {
+                if (!srcAccess.cache || !dstAccess.cache) return false;
+                addrOf(a, L, src, bits);
+                memProbe(a, L, ir.super, 4, false, slow, true, -1,
+                         true, false);
+                a.strX(14, 1, 120);                  // source line bytes
+                addrOf(a, L, dst, bits);
+                const int writeHit = a.label();
+                memProbe(a, L, ir.super, 4, true, slow, false, writeHit,
+                         true, false);
+                a.b(slow);                           // cache-only success branches
+                a.bind(writeHit);
+
+                // Publish both diagnostic hits only after both proofs. If
+                // the W probe misses, exact replay owns the source hit and
+                // these counters must not be double-incremented.
+                a.ldrX(12, 0, L.cache040Hits);
+                a.addImmX(12, 12, 2); a.strX(12, 0, L.cache040Hits);
+                if (cache040LineReadStatsEnabled()) {
+                    a.ldrX(12, 0, L.cache040NativeReadHits);
+                    a.addImmX(12, 12, 1);
+                    a.strX(12, 0, L.cache040NativeReadHits);
+                    a.ldrX(12, 0, L.cache040NativeWriteHits);
+                    a.addImmX(12, 12, 1);
+                    a.strX(12, 0, L.cache040NativeWriteHits);
+                }
+
+                // Large Moira layout offsets use x15 as the assembler's
+                // address scratch, so preserve the first pointer in Frame
+                // across the second probe/counter stores, then swap the
+                // slot over to the destination for the actual transfer.
+                a.ldrX(15, 1, 120);                  // source line bytes
+                a.strX(14, 1, 120);                  // destination line bytes
+                commitEaBeforeAccess(a, L, src, bits, srcAccess);
+                a.movRegX(14, 15); loadGuest(a, bits, 11);
+                commitEaAfterAccess(a, L, src, bits, srcAccess);
+                commitEaBeforeAccess(a, L, dst, bits, dstAccess);
+                a.ldrX(14, 1, 120); storeGuest(a, bits, 11);
+                markCache040Dirty(a, 4);
+                commitEaAfterAccess(a, L, dst, bits, dstAccess);
+                emitLogicFlags(a, L, 11, bits);
+                return true;
+            }
+            if (memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+                !srcAccess.preflight || !dstAccess.preflight ||
+                in.memory.order != MemoryOrder::SourceThenDestination)
+                return false;
             // A memory-to-memory MOVE has two independently refusable DTLB
             // probes. The old sequential path committed a 030 source (An)+
             // after the first hit; if the destination probe then missed,
@@ -1204,15 +1340,15 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             memProbe(a, L, ir.super, bits / 8, true, slow);
             a.movRegX(15, 14);             // destination host pointer
 
-            commitEaBeforeAccess(a, L, src, bits);
+            commitEaBeforeAccess(a, L, src, bits, srcAccess);
             a.ldrX(14, 1, 120);
             loadGuest(a, bits, 11);
-            commitEaAfterAccess(a, L, src, bits);
+            commitEaAfterAccess(a, L, src, bits, srcAccess);
 
-            commitEaBeforeAccess(a, L, dst, bits);
+            commitEaBeforeAccess(a, L, dst, bits, dstAccess);
             a.movRegX(14, 15);
             storeGuest(a, bits, 11);
-            commitEaAfterAccess(a, L, dst, bits);
+            commitEaAfterAccess(a, L, dst, bits, dstAccess);
             emitLogicFlags(a, L, 11, bits);
             return true;
         }
@@ -1220,8 +1356,9 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if (src.memory) {
             if (slow < 0) return false;
             addrOf(a, L, src, bits);
-            memLoadGuest(a, L, ir.super, bits, 11, slow, !dst.memory, &src);
-            if (!dst.memory) commitEaAfterAccess(a, L, src, bits);
+            memLoadGuest(a, L, ir.super, bits, 11, slow, srcAccess, &src);
+            if (!dst.memory)
+                commitEaAfterAccess(a, L, src, bits, srcAccess);
         } else if (src.idx == E_IM) {
             a.movW(11, uint32_t(src.value));
             // Brief immediates are decoded through int8_t/int16_t so MOVEA.W
@@ -1254,7 +1391,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 const uint16_t heldIrd = in.terminalQueueValid
                     ? in.terminalIrd : in.opcode;
                 const uint16_t heldIrc = in.terminalQueueValid
-                    ? in.terminalIrc : ir.word(nextPc);
+                    ? in.terminalIrc : ir.prefetchWord(nextPc);
                 a.movW(12, heldIrd); a.strH(12, 0, L.ird);
                 a.movW(12, heldIrc); a.strH(12, 0, L.irc);
             }
@@ -1263,17 +1400,18 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 // Probe before publishing CCR, PC/queue or the An update so
                 // MMIO and /BERR reach Moira with a pristine entry boundary.
                 memProbe(a, L, ir.super, bits / 8, true, slow);
-                commitEaBeforeAccess(a, L, dst, bits);
+                commitEaBeforeAccess(a, L, dst, bits, dstAccess);
                 a.ldrW(11, 1, 72);
                 emitLogicFlags(a, L, 11, bits);
                 observeDirectWrite(a, bits, in.pc);
                 storeGuest(a, bits, 11);
             } else {
                 memStoreGuest(a, L, ir.super, bits, 11, slow,
-                              restartWrite && !src.memory, &dst);
+                              dstAccess, &dst);
             }
-            if (src.memory) commitEaAfterAccess(a, L, src, bits);
-            commitEaAfterAccess(a, L, dst, bits);
+            if (src.memory)
+                commitEaAfterAccess(a, L, src, bits, srcAccess);
+            commitEaAfterAccess(a, L, dst, bits, dstAccess);
         } else {
             if (dst.idx == E_AN && bits == 16) a.sxtH(11, 11);
             storeSized(a, L, 11, dst.idx == E_AN, unsigned(dst.reg),
@@ -1284,18 +1422,18 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         return true;
     }
 
-    if (line == 0x0000) {                          // immediate ALU -> Dn
-        const int mode = (op >> 3) & 7;
-        const bool dynamicBit = (op & 0xF100) == 0x0100;
-        const bool staticBit = (op & 0xFF00) == 0x0800;
-        if (dynamicBit || staticBit) {               // BTST/BCHG/BCLR/BSET
+    if (sem.operation == SemanticOp::Bit ||
+        sem.operation == SemanticOp::ImmediateAlu) {
+        const int mode = sem.eaMode;
+        if (sem.operation == SemanticOp::Bit) {      // BTST/BCHG/BCLR/BSET
+            const bool dynamicBit = sem.dynamic;
             if (mode == 1) return false;             // MOVEP overlap / An
             const bool toReg = mode == 0;
             const int bits = toReg ? 32 : 8;
-            const int action = (op >> 6) & 3;        // 0 test,1 xor,2 clear,3 set
-            const int extUsed = staticBit ? 1 : 0;
+            const int action = sem.action;           // 0 test,1 xor,2 clear,3 set
+            const int extUsed = dynamicBit ? 0 : 1;
             Ea dst;
-            if (!decodeEa(ir, in, mode, op & 7, bits, extUsed, dst) ||
+            if (!decodeEa(in, mode, sem.eaReg, bits, extUsed, dst) ||
                 dst.idx == E_AN || dst.idx == E_IM ||
                 (action != 0 && dst.idx == E_DIPC) ||
                 in.words != unsigned(1 + extUsed + dst.ext)) return false;
@@ -1303,25 +1441,40 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             const int base = kEaReadA64[dst.idx][sz];
             const int cycles = toReg ? 4 : base + 2;
             if (base < 0 || in.cycles != unsigned(cycles)) return false;
+            MemoryAccessPlan read, write;
+            if (dst.memory) {
+                read = memory.access(MemoryDirection::Read,
+                                     MemoryOperand::Operand, 1,
+                                     uint8_t(mode), sem.eaReg);
+                if (!read.valid()) return false;
+                if (action != 0) {
+                    write = memory.access(MemoryDirection::Write,
+                                          MemoryOperand::Operand, 1,
+                                          uint8_t(mode), sem.eaReg);
+                    if (!memoryRmwAccessPair(read, write))
+                        return false;
+                }
+            }
+            if (!memory.complete()) return false;
             if (dst.memory) {
                 if (slow < 0) return false;
                 addrOf(a, L, dst, bits);
                 if (action == 0)
-                    memLoadGuest(a, L, ir.super, bits, 11, slow, true, &dst);
+                    memLoadGuest(a, L, ir.super, bits, 11, slow, read, &dst);
                 else {
                     memProbe(a, L, ir.super, bits / 8, true, slow);
-                    commitEaBeforeAccess(a, L, dst, bits);
+                    commitEaBeforeAccess(a, L, dst, bits, read);
                     loadGuest(a, bits, 11);
                 }
             } else {
                 loadSized(a, L, 11, false, unsigned(dst.reg), 32);
             }
             if (dynamicBit) {
-                a.ldrW(10, 0, L.d + ((op >> 9) & 7) * 4);
+                a.ldrW(10, 0, L.d + sem.registerIndex * 4);
                 a.movW(12, toReg ? 31 : 7); a.andW(10, 10, 12);
                 a.movW(12, 1); a.lslVarW(12, 12, 10);
             } else {
-                const uint32_t bit = ir.word(in.pc + 2) & 0xFF;
+                const uint32_t bit = in.extensionWord(0) & 0xFF;
                 a.movW(12, 1u << (bit & (toReg ? 31u : 7u)));
             }
             a.movRegW(13, 11);                    // original operand
@@ -1336,11 +1489,11 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             if (action != 0) {
                 a.movRegW(11, 13);
                 if (dynamicBit) {
-                    a.ldrW(10, 0, L.d + ((op >> 9) & 7) * 4);
+                    a.ldrW(10, 0, L.d + sem.registerIndex * 4);
                     a.movW(12, toReg ? 31 : 7); a.andW(10, 10, 12);
                     a.movW(12, 1); a.lslVarW(12, 12, 10);
                 } else {
-                    const uint32_t bit = ir.word(in.pc + 2) & 0xFF;
+                    const uint32_t bit = in.extensionWord(0) & 0xFF;
                     a.movW(12, 1u << (bit & (toReg ? 31u : 7u)));
                 }
                 if (action == 1) a.eorW(11, 11, 12);
@@ -1349,63 +1502,74 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 if (dst.memory) storeGuest(a, bits, 11);
                 else a.strW(11, 0, L.d + unsigned(dst.reg) * 4);
             }
-            if (dst.memory) commitEaAfterAccess(a, L, dst, bits);
+            if (dst.memory)
+                commitEaAfterAccess(a, L, dst, bits,
+                                    action == 0 ? read : write);
             return true;
         }
-        const int kindCode = (op >> 9) & 7, sz = (op >> 6) & 3;
+        const int sz = sem.sizeIndex;
         if (sz > 2) return false;
-        AluOp kind;
-        switch (kindCode) {
-            case 0: kind = AluOp::Or; break;
-            case 1: kind = AluOp::And; break;
-            case 2: kind = AluOp::Sub; break;
-            case 3: kind = AluOp::Add; break;
-            case 5: kind = AluOp::Eor; break;
-            case 6: kind = AluOp::Cmp; break;
-            default: return false;
-        }
+        const AluOperation kind = sem.alu;
+        if (kind == AluOperation::None) return false;
         const int bits = bitsForSizeIndex(sz);
         const int immExt = bits == 32 ? 2 : 1;
         Ea dst;
-        if (!decodeEa(ir, in, (op >> 3) & 7, op & 7, bits, immExt, dst) ||
+        if (!decodeEa(in, sem.eaMode, sem.eaReg, bits, immExt, dst) ||
             dst.idx == E_AN || dst.idx == E_IM || dst.idx == E_DIPC ||
             in.words != unsigned(1 + immExt + dst.ext)) return false;
         const int base = kEaReadA64[dst.idx][sz];
-        const int cycles = kind == AluOp::Cmp ? base
+        const int cycles = kind == AluOperation::Cmp ? base
                            : (dst.idx == E_DN ? 2 : base + 2);
         if (base < 0 || in.cycles != unsigned(cycles)) return false;
+        MemoryAccessPlan read, write;
+        if (dst.memory) {
+            read = memory.access(MemoryDirection::Read,
+                                 MemoryOperand::Destination,
+                                 uint8_t(bits / 8), sem.eaMode, sem.eaReg);
+            if (!read.valid()) return false;
+            if (kind != AluOperation::Cmp) {
+                write = memory.access(MemoryDirection::Write,
+                                      MemoryOperand::Destination,
+                                      uint8_t(bits / 8), sem.eaMode,
+                                      sem.eaReg);
+                if (!memoryRmwAccessPair(read, write))
+                    return false;
+            }
+        }
+        if (!memory.complete()) return false;
         if (dst.memory) {
             if (slow < 0) return false;
             addrOf(a, L, dst, bits);
-            if (kind == AluOp::Cmp)
-                memLoadGuest(a, L, ir.super, bits, 9, slow, true, &dst);
+            if (kind == AluOperation::Cmp)
+                memLoadGuest(a, L, ir.super, bits, 9, slow, read, &dst);
             else {
                 memProbe(a, L, ir.super, bits / 8, true, slow);
-                commitEaBeforeAccess(a, L, dst, bits);
+                commitEaBeforeAccess(a, L, dst, bits, read);
                 loadGuest(a, bits, 9);
             }
         } else {
             loadSized(a, L, 9, false, unsigned(dst.reg), bits);
         }
-        a.movW(10, immediateValue(ir, in, bits));
+        a.movW(10, jit::immediateValue(in, sem.sizeIndex));
         emitAluResult(a, L, kind, bits,
-                      !dst.memory && kind != AluOp::Cmp,
-                      false, unsigned(dst.reg), kind != AluOp::Cmp);
+                      !dst.memory && kind != AluOperation::Cmp,
+                      false, unsigned(dst.reg), kind != AluOperation::Cmp);
         if (dst.memory) {
-            if (kind != AluOp::Cmp) storeGuest(a, bits, 11);
-            commitEaAfterAccess(a, L, dst, bits);
+            if (kind != AluOperation::Cmp) storeGuest(a, bits, 11);
+            commitEaAfterAccess(a, L, dst, bits,
+                                kind == AluOperation::Cmp ? read : write);
         }
         return true;
     }
 
-    if (line == 0x5000) {                          // ADDQ/SUBQ register
-        const int sz = (op >> 6) & 3, mode = (op >> 3) & 7;
+    if (sem.operation == SemanticOp::AddSubQuick) {
+        const int sz = sem.sizeIndex, mode = sem.eaMode;
         if (sz > 2) return false;
-        int imm = (op >> 9) & 7; if (!imm) imm = 8;
-        const bool sub = (op & 0x0100) != 0;
+        int imm = sem.registerIndex; if (!imm) imm = 8;
+        const bool sub = sem.alu == AluOperation::Sub;
         const int bits = mode == 1 ? 32 : bitsForSizeIndex(sz);
         Ea dst;
-        if (!decodeEa(ir, in, mode, op & 7, bits, 0, dst) ||
+        if (!decodeEa(in, mode, sem.eaReg, bits, 0, dst) ||
             dst.idx == E_IM || dst.idx == E_DIPC ||
             in.words != unsigned(1 + dst.ext)) return false;
         const int base = kEaReadA64[dst.idx][bits == 8 ? 0 : bits == 16 ? 1 : 2];
@@ -1419,11 +1583,25 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const unsigned tracedCycles = L.is030 && dst.idx <= E_AN
             ? in.baseCycles : in.cycles;
         if (base < 0 || tracedCycles != unsigned(cycles)) return false;
+        MemoryAccessPlan read, write;
+        if (dst.memory) {
+            read = memory.access(MemoryDirection::Read,
+                                 MemoryOperand::Destination,
+                                 uint8_t(bits / 8), uint8_t(mode),
+                                 sem.eaReg);
+            write = memory.access(MemoryDirection::Write,
+                                  MemoryOperand::Destination,
+                                  uint8_t(bits / 8), uint8_t(mode),
+                                  sem.eaReg);
+            if (!memoryRmwAccessPair(read, write))
+                return false;
+        }
+        if (!memory.complete()) return false;
         if (dst.memory) {
             if (slow < 0) return false;
             addrOf(a, L, dst, bits);
             memProbe(a, L, ir.super, bits / 8, true, slow);
-            commitEaBeforeAccess(a, L, dst, bits);
+            commitEaBeforeAccess(a, L, dst, bits, read);
             loadGuest(a, bits, 9);
         } else {
             loadSized(a, L, 9, dst.idx == E_AN, unsigned(dst.reg), bits);
@@ -1434,128 +1612,163 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             a.strW(11, 0, L.a + unsigned(dst.reg) * 4);
             return true;                            // address form: no flags
         }
-        emitAluResult(a, L, sub ? AluOp::Sub : AluOp::Add,
+        emitAluResult(a, L, sub ? AluOperation::Sub : AluOperation::Add,
                       bits, !dst.memory, false, unsigned(dst.reg), true);
         if (dst.memory) {
-            storeGuest(a, bits, 11); commitEaAfterAccess(a, L, dst, bits);
+            storeGuest(a, bits, 11);
+            commitEaAfterAccess(a, L, dst, bits, write);
         }
         return true;
     }
 
-    if (line == 0x8000 || line == 0x9000 || line == 0xB000 ||
-        line == 0xC000 || line == 0xD000) {
-        int direction = -1;
-        if (!aluDirectionA64(op, direction)) return false;
-        const int hi = (op >> 12) & 0xF, opmode = (op >> 6) & 7;
-        const int mode = (op >> 3) & 7;
+    if (sem.operation == SemanticOp::AluEaToReg ||
+        sem.operation == SemanticOp::AluRegToEa ||
+        sem.operation == SemanticOp::AddressAlu) {
+        const int direction = sem.operation == SemanticOp::AluRegToEa ? 1 : 0;
+        const int mode = sem.eaMode;
 
-        if (opmode == 3 || opmode == 7) {            // ADDA/SUBA/CMPA
-            if (hi != 0x9 && hi != 0xB && hi != 0xD) return false;
-            const int srcBits = opmode == 3 ? 16 : 32;
+        if (sem.operation == SemanticOp::AddressAlu) { // ADDA/SUBA/CMPA
+            const int srcBits = bitsForSizeIndex(sem.sizeIndex);
             const int sz = srcBits == 16 ? 1 : 2;
             Ea src;
-            if (!decodeEa(ir, in, mode, op & 7, srcBits, 0, src) ||
+            if (!decodeEa(in, mode, sem.eaReg, srcBits, 0, src) ||
                 in.words != unsigned(1 + src.ext) ||
                 in.cycles != unsigned(kEaReadA64[src.idx][sz])) return false;
+            MemoryAccessPlan read;
+            if (src.memory) {
+                read = memory.access(MemoryDirection::Read,
+                                     MemoryOperand::Source,
+                                     uint8_t(srcBits / 8), uint8_t(mode),
+                                     sem.eaReg);
+                if (!read.valid()) return false;
+            }
+            if (!memory.complete()) return false;
             if (src.memory) {
                 if (slow < 0) return false;
                 addrOf(a, L, src, srcBits);
-                memLoadGuest(a, L, ir.super, srcBits, 10, slow, true, &src);
-                commitEaAfterAccess(a, L, src, srcBits);
+                memLoadGuest(a, L, ir.super, srcBits, 10, slow, read, &src);
+                commitEaAfterAccess(a, L, src, srcBits, read);
             } else if (src.idx == E_IM) a.movW(10, uint32_t(src.value));
             else loadSized(a, L, 10, src.idx == E_AN, unsigned(src.reg), srcBits);
             if (srcBits == 16) a.sxtH(10, 10);
-            a.ldrW(9, 0, L.a + ((op >> 9) & 7) * 4);
-            const AluOp kind = hi == 0x9 ? AluOp::Sub
-                               : hi == 0xB ? AluOp::Cmp : AluOp::Add;
-            if (kind == AluOp::Add) a.addW(11, 9, 10);
+            a.ldrW(9, 0, L.a + sem.registerIndex * 4);
+            const AluOperation kind = sem.alu;
+            if (kind == AluOperation::Add) a.addW(11, 9, 10);
             else a.subW(11, 9, 10);
-            if (kind != AluOp::Cmp)
-                a.strW(11, 0, L.a + ((op >> 9) & 7) * 4);
+            if (kind != AluOperation::Cmp)
+                a.strW(11, 0, L.a + sem.registerIndex * 4);
             else
                 emitAddSubFlags(a, L, 32, true, false);
             return true;
         }
 
-        const int bits = bitsForSizeIndex(direction == 0 ? opmode : opmode - 4);
+        const int bits = bitsForSizeIndex(sem.sizeIndex);
         if (bits == 8 && mode == 1) return false;
-        AluOp kind;
-        switch (hi) {
-            case 0x8: kind = AluOp::Or; break;
-            case 0x9: kind = AluOp::Sub; break;
-            case 0xB: kind = direction == 0 ? AluOp::Cmp : AluOp::Eor; break;
-            case 0xC: kind = AluOp::And; break;
-            case 0xD: kind = AluOp::Add; break;
-            default: return false;
-        }
-        const unsigned dn = (op >> 9) & 7;
+        const AluOperation kind = sem.alu;
+        if (kind == AluOperation::None) return false;
+        const unsigned dn = sem.registerIndex;
         if (direction == 0) {
             const int sz = bits == 8 ? 0 : bits == 16 ? 1 : 2;
             Ea src;
-            if (!decodeEa(ir, in, mode, op & 7, bits, 0, src) ||
+            if (!decodeEa(in, mode, sem.eaReg, bits, 0, src) ||
                 in.words != unsigned(1 + src.ext) ||
                 in.cycles != unsigned(kEaReadA64[src.idx][sz])) return false;
+            MemoryAccessPlan read;
+            if (src.memory) {
+                read = memory.access(MemoryDirection::Read,
+                                     MemoryOperand::Source,
+                                     uint8_t(bits / 8), uint8_t(mode),
+                                     sem.eaReg);
+                if (!read.valid()) return false;
+            }
+            if (!memory.complete()) return false;
             if (src.memory) {
                 if (slow < 0) return false;
                 addrOf(a, L, src, bits);
-                memLoadGuest(a, L, ir.super, bits, 10, slow, true, &src);
-                commitEaAfterAccess(a, L, src, bits);
+                memLoadGuest(a, L, ir.super, bits, 10, slow, read, &src);
+                commitEaAfterAccess(a, L, src, bits, read);
             } else if (src.idx == E_IM) a.movW(10, uint32_t(src.value));
             else loadSized(a, L, 10, src.idx == E_AN, unsigned(src.reg), bits);
             loadSized(a, L, 9, false, dn, bits);       // destination
-            return emitAluResult(a, L, kind, bits, kind != AluOp::Cmp,
-                                 false, dn, kind != AluOp::Cmp);
+            return emitAluResult(a, L, kind, bits, kind != AluOperation::Cmp,
+                                 false, dn, kind != AluOperation::Cmp);
         }
         if (mode == 0) {                                // EOR Dn,Dm
-            if (kind != AluOp::Eor || in.words != 1 || in.cycles != 2)
+            if (kind != AluOperation::Eor || in.words != 1 || in.cycles != 2)
                 return false;
-            loadSized(a, L, 9, false, op & 7, bits);
+            loadSized(a, L, 9, false, sem.eaReg, bits);
             loadSized(a, L, 10, false, dn, bits);
-            return emitAluResult(a, L, kind, bits, true, false, op & 7, false);
+            return emitAluResult(a, L, kind, bits, true, false,
+                                 sem.eaReg, false);
         }
         // Register-to-memory ALU: one writable translation serves the RMW,
         // so the fallback is still entered before any guest-visible change.
         const int sz = bits == 8 ? 0 : bits == 16 ? 1 : 2;
         Ea dst;
-        if (!decodeEa(ir, in, mode, op & 7, bits, 0, dst) || !dst.memory ||
+        if (!decodeEa(in, mode, sem.eaReg, bits, 0, dst) || !dst.memory ||
             dst.idx == E_DIPC || in.words != unsigned(1 + dst.ext)) return false;
         const int cycles = kEaReadA64[dst.idx][sz] + 2;
         if (in.cycles != unsigned(cycles) || slow < 0) return false;
+        const MemoryAccessPlan read = memory.access(
+            MemoryDirection::Read, MemoryOperand::Destination,
+            uint8_t(bits / 8), uint8_t(mode), sem.eaReg);
+        const MemoryAccessPlan write = memory.access(
+            MemoryDirection::Write, MemoryOperand::Destination,
+            uint8_t(bits / 8), uint8_t(mode), sem.eaReg);
+        if (!memoryRmwAccessPair(read, write) || !memory.complete())
+            return false;
         addrOf(a, L, dst, bits);
         memProbe(a, L, ir.super, bits / 8, true, slow);
-        commitEaBeforeAccess(a, L, dst, bits);
+        commitEaBeforeAccess(a, L, dst, bits, read);
         loadGuest(a, bits, 9);
         loadSized(a, L, 10, false, dn, bits);
         emitAluResult(a, L, kind, bits, false, false, 0,
-                      kind == AluOp::Add || kind == AluOp::Sub);
-        storeGuest(a, bits, 11); commitEaAfterAccess(a, L, dst, bits);
+                      kind == AluOperation::Add || kind == AluOperation::Sub);
+        storeGuest(a, bits, 11);
+        commitEaAfterAccess(a, L, dst, bits, write);
         return true;
     }
 
-    if (line == 0x4000) {
-        const int mode = (op >> 3) & 7, sz = (op >> 6) & 3;
-        if ((op & 0xFFF8) == 0x4E50) {              // LINK.W An,#d16
+    if (sem.operation == SemanticOp::Link ||
+        sem.operation == SemanticOp::Unlink ||
+        sem.operation == SemanticOp::Lea ||
+        sem.operation == SemanticOp::Movem ||
+        sem.operation == SemanticOp::Extend ||
+        sem.operation == SemanticOp::Swap ||
+        sem.operation == SemanticOp::Test ||
+        sem.operation == SemanticOp::Clear ||
+        sem.operation == SemanticOp::Negate ||
+        sem.operation == SemanticOp::Complement) {
+        const int mode = sem.eaMode, sz = sem.sizeIndex;
+        if (sem.operation == SemanticOp::Link) {     // LINK.W An,#d16
             if (in.cycles != 5 || in.words != 2 || slow < 0) return false;
-            const unsigned an = op & 7;
-            const int32_t disp = int16_t(ir.word(in.pc + 2));
+            const unsigned an = sem.eaReg;
+            const MemoryAccessPlan write = memory.access(
+                MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
+            if (!write.valid() || !memory.complete() ||
+                write.eaCommit != EaCommit::BeforeAccess)
+                return false;
+            const int32_t disp = int16_t(in.extensionWord(0));
             a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
             a.strW(9, 1, 44);                       // new frame/address
             if (an == 7) a.movRegW(11, 9);
             else a.ldrW(11, 0, L.a + an * 4);
             a.strW(11, 1, 72);
-            memProbe(a, L, ir.super, 4, true, slow);
-            a.ldrW(11, 1, 72); storeGuest(a, 32, 11);
+            memStoreGuest(a, L, ir.super, 32, 11, slow, write);
             a.ldrW(9, 1, 44); a.strW(9, 0, L.a + an * 4);
             a.movW(10, uint32_t(disp)); a.addW(9, 9, 10);
             a.strW(9, 0, L.a + 7 * 4);
             return true;
         }
-        if ((op & 0xFFF8) == 0x4E58) {              // UNLK An
+        if (sem.operation == SemanticOp::Unlink) {   // UNLK An
             if (in.cycles != 6 || in.words != 1 || slow < 0) return false;
-            const unsigned an = op & 7;
+            const unsigned an = sem.eaReg;
+            const MemoryAccessPlan read = memory.access(
+                MemoryDirection::Read, MemoryOperand::Stack, 4, 2,
+                uint8_t(an));
+            if (!read.valid() || !memory.complete()) return false;
             a.ldrW(9, 0, L.a + an * 4); a.strW(9, 1, 44);
-            memProbe(a, L, ir.super, 4, false, slow);
-            loadGuest(a, 32, 11);
+            memLoadGuest(a, L, ir.super, 32, 11, slow, read);
             a.strW(11, 0, L.a + an * 4);
             if (an != 7) {
                 a.ldrW(9, 1, 44); a.addImmW(9, 9, 4);
@@ -1563,25 +1776,25 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             }
             return true;
         }
-        if ((op & 0xF1C0) == 0x41C0) {              // LEA <ea>,An
+        if (sem.operation == SemanticOp::Lea) {      // LEA <ea>,An
             Ea src;
-            if (!decodeEa(ir, in, mode, op & 7, 32, 0, src) || !src.memory ||
+            if (!decodeEa(in, mode, sem.eaReg, 32, 0, src) || !src.memory ||
                 src.idx == E_PI || src.idx == E_PD ||
                 in.words != unsigned(1 + src.ext)) return false;
             static const int8_t cost[E_COUNT] =
                 {-1,-1,6,-1,-1,7,-1,6,6,7,-1,-1};
             if (cost[src.idx] < 0 || in.cycles != unsigned(cost[src.idx])) return false;
             addrOf(a, L, src, 32);
-            a.strW(9, 0, L.a + ((op >> 9) & 7) * 4);
+            a.strW(9, 0, L.a + sem.registerIndex * 4);
             return true;
         }
-        if ((op & 0xFB80) == 0x4880 && mode >= 2) { // MOVEM
-            const bool toRegs = (op & 0x0400) != 0;
-            const int bits = (op & 0x0040) ? 32 : 16, bytes = bits / 8;
-            const uint16_t mask = ir.word(in.pc + 2);
+        if (sem.operation == SemanticOp::Movem) {
+            const bool toRegs = sem.toRegisters;
+            const int bits = bitsForSizeIndex(sem.sizeIndex), bytes = bits / 8;
+            const uint16_t mask = in.extensionWord(0);
             if (!mask || slow < 0) return false;
             Ea ea;
-            if (!decodeEa(ir, in, mode, op & 7, bits, 1, ea) || !ea.memory ||
+            if (!decodeEa(in, mode, sem.eaReg, bits, 1, ea) || !ea.memory ||
                 in.words != unsigned(2 + ea.ext)) return false;
             if ((toRegs && ea.idx == E_PD) ||
                 (!toRegs && (ea.idx == E_PI || ea.idx == E_DIPC))) return false;
@@ -1592,6 +1805,18 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 {-1,-1,8,-1,4,9,-1,8,8,-1,-1,-1};
             const int baseCost = toRegs ? toRegBase[ea.idx] : toMemBase[ea.idx];
             if (baseCost < 0 || in.cycles != unsigned(baseCost + 4 * n)) return false;
+            const MemoryAccessPlan span = memory.access(
+                toRegs ? MemoryDirection::Read : MemoryDirection::Write,
+                MemoryOperand::RegisterList, uint8_t(bytes), uint8_t(mode),
+                sem.eaReg);
+            const MemoryOrder emittedOrder = ea.idx == E_PD
+                ? MemoryOrder::RegisterDescending
+                : MemoryOrder::RegisterAscending;
+            if (!span.valid() || !span.preflight || !memory.complete() ||
+                memory.proof.protocol != MemoryProofProtocol::OrderedSpan ||
+                in.memory.order != emittedOrder ||
+                span.eaCommit != EaCommit::PerElement)
+                return false;
             a.ldrB(9, 0, L.movemArmed); a.cbnzW(9, slow);
 
             auto loadR = [&](int b, unsigned rd) {
@@ -1641,10 +1866,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             }
             return true;
         }
-        if ((op & 0xFFB8) == 0x4880) {              // EXT
+        if (sem.operation == SemanticOp::Extend) {   // EXT
             if (in.cycles != 4 || in.words != 1) return false;
-            const unsigned dn = op & 7;
-            if (op & 0x0040) {
+            const unsigned dn = sem.eaReg;
+            if (sem.sizeIndex == 2) {
                 a.ldrH(11, 0, L.d + dn * 4); a.sxtH(11, 11);
                 a.strW(11, 0, L.d + dn * 4); emitLogicFlags(a, L, 11, 32);
             } else {
@@ -1654,21 +1879,24 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             }
             return true;
         }
-        if ((op & 0xFFF8) == 0x4840) {              // SWAP
+        if (sem.operation == SemanticOp::Swap) {     // SWAP
             if (in.cycles != 4 || in.words != 1) return false;
-            a.ldrW(11, 0, L.d + (op & 7) * 4); a.rorW(11, 11, 16);
-            a.strW(11, 0, L.d + (op & 7) * 4); emitLogicFlags(a, L, 11, 32);
+            a.ldrW(11, 0, L.d + sem.eaReg * 4); a.rorW(11, 11, 16);
+            a.strW(11, 0, L.d + sem.eaReg * 4);
+            emitLogicFlags(a, L, 11, 32);
             return true;
         }
         if (sz > 2) return false;
         const int bits = bitsForSizeIndex(sz);
-        const uint16_t family = op & 0xFF00;
+        if (sem.operation != SemanticOp::Test &&
+            sem.operation != SemanticOp::Clear &&
+            sem.operation != SemanticOp::Complement &&
+            sem.operation != SemanticOp::Negate) return false;
         Ea ea;
-        if (!decodeEa(ir, in, mode, op & 7, bits, 0, ea) ||
+        if (!decodeEa(in, mode, sem.eaReg, bits, 0, ea) ||
             in.words != unsigned(1 + ea.ext) || ea.idx == E_IM ||
             (bits == 8 && ea.idx == E_AN)) return false;
-        const bool tst = family == 0x4A00;
-        const bool exact030 = L.is030 && exactTstRead030(op);
+        const bool tst = sem.operation == SemanticOp::Test;
         if (!tst && ea.idx == E_AN) return false;
         const int base = kEaReadA64[ea.idx][sz];
         const int cycles = tst ? base : (ea.idx <= E_AN ? 2 : base + 2);
@@ -1679,6 +1907,35 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const unsigned tracedCycles = L.is030 && tst &&
                                       (ea.idx == E_AI || ea.idx == E_PI)
             ? in.baseCycles : in.cycles;
+        MemoryAccessPlan read, write;
+        if (ea.memory) {
+            if (tst) {
+                read = memory.access(MemoryDirection::Read,
+                                     MemoryOperand::Operand,
+                                     uint8_t(bits / 8), uint8_t(mode),
+                                     sem.eaReg);
+                if (!read.valid()) return false;
+            } else if (sem.operation == SemanticOp::Clear) {
+                write = memory.access(MemoryDirection::Write,
+                                      MemoryOperand::Destination,
+                                      uint8_t(bits / 8), uint8_t(mode),
+                                      sem.eaReg);
+                if (!write.valid()) return false;
+            } else {
+                read = memory.access(MemoryDirection::Read,
+                                     MemoryOperand::Destination,
+                                     uint8_t(bits / 8), uint8_t(mode),
+                                     sem.eaReg);
+                write = memory.access(MemoryDirection::Write,
+                                      MemoryOperand::Destination,
+                                      uint8_t(bits / 8), uint8_t(mode),
+                                      sem.eaReg);
+                if (!memoryRmwAccessPair(read, write))
+                    return false;
+            }
+        }
+        if (!memory.complete()) return false;
+        const bool exact030 = read.valid() && read.exactRequired;
         if (base < 0 || (exact030
                 ? (in.baseCycles < unsigned(cycles) || in.postExceptionCycles != 0)
                 : tracedCycles != unsigned(cycles))) return false;
@@ -1686,43 +1943,54 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             if (slow < 0) return false;
             addrOf(a, L, ea, bits);
             if (tst)
-                memLoadGuest(a, L, ir.super, bits, 9, slow, true, &ea,
-                             exact030);
-            else {
+                memLoadGuest(a, L, ir.super, bits, 9, slow, read, &ea);
+            else if (sem.operation != SemanticOp::Clear) {
                 memProbe(a, L, ir.super, bits / 8, true, slow);
-                commitEaBeforeAccess(a, L, ea, bits);
+                commitEaBeforeAccess(a, L, ea, bits, read);
                 loadGuest(a, bits, 9);
             }
         } else {
             loadSized(a, L, 9, ea.idx == E_AN, unsigned(ea.reg), bits);
             maskResult(a, 9, bits);
         }
-        switch (family) {
-            case 0x4A00: emitLogicFlags(a, L, 9, bits); break;
-            case 0x4200: a.movW(11, 0); emitLogicFlags(a, L, 11, bits); break;
-            case 0x4600:
+        switch (sem.operation) {
+            case SemanticOp::Test: emitLogicFlags(a, L, 9, bits); break;
+            case SemanticOp::Clear: a.movW(11, 0); break;
+            case SemanticOp::Complement:
                 a.mvnW(11, 9); maskResult(a, 11, bits);
                 emitLogicFlags(a, L, 11, bits); break;
-            case 0x4400:
+            case SemanticOp::Negate:
                 a.movRegW(10, 9); a.movW(9, 0); a.subW(11, 9, 10);
                 maskResult(a, 11, bits);
                 emitAddSubFlags(a, L, bits, true, true); break;
             default: return false;
         }
         if (!tst) {
-            if (ea.memory) storeGuest(a, bits, 11);
+            if (ea.memory) {
+                if (sem.operation == SemanticOp::Clear) {
+                    a.strW(11, 1, 72);
+                    addrOf(a, L, ea, bits);
+                    memStoreGuest(a, L, ir.super, bits, 11, slow, write, &ea);
+                } else {
+                    storeGuest(a, bits, 11);
+                }
+            }
             else storeSized(a, L, 11, false, unsigned(ea.reg), bits);
         }
-        if (ea.memory) commitEaAfterAccess(a, L, ea, bits);
+        if (ea.memory)
+            commitEaAfterAccess(a, L, ea, bits,
+                                tst ? read : write);
+        if (sem.operation == SemanticOp::Clear)
+            emitLogicFlags(a, L, 11, bits);
         return true;
     }
 
-    if (line == 0xE000 && (op & 0xF8C0) == 0xE8C0) { // register bitfield
-        if (((op >> 3) & 7) != 0 || in.words != 2) return false;
-        const uint16_t ext = ir.word(in.pc + 2);
+    if (sem.operation == SemanticOp::Bitfield) {     // register bitfield
+        if (sem.eaMode != 0 || in.words != 2) return false;
+        const uint16_t ext = in.extensionWord(0);
         if ((ext & 0x0820) != 0) return false;       // register offset/width later
-        const int kind = (op >> 8) & 7;
-        const unsigned dst = op & 7, out = (ext >> 12) & 7;
+        const int kind = sem.action;
+        const unsigned dst = sem.eaReg, out = (ext >> 12) & 7;
         const unsigned offset = (ext >> 6) & 31;
         unsigned width = ext & 31; if (!width) width = 32;
         static const uint8_t cycles[8] = {6,8,12,8,12,18,12,10};
@@ -1780,15 +2048,15 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         return true;
     }
 
-    if (line == 0xE000) {                          // immediate register shifts
-        const int sz = (op >> 6) & 3, type = (op >> 3) & 3;
-        if (sz > 2 || (op & 0x20) || type == 2 || in.words != 1) return false;
+    if (sem.operation == SemanticOp::ShiftRegister) {
+        const int sz = sem.sizeIndex, type = sem.action;
+        if (sz > 2 || sem.dynamic || type == 2 || in.words != 1) return false;
         const int bits = bitsForSizeIndex(sz);
-        int count = (op >> 9) & 7; if (!count) count = 8;
-        const bool left = (op & 0x0100) != 0;
+        int count = sem.registerIndex; if (!count) count = 8;
+        const bool left = sem.left;
         const int expected = type == 1 ? 4 : type == 3 ? 8 : left ? 8 : 6;
         if (in.cycles != unsigned(expected)) return false;
-        const unsigned dn = op & 7;
+        const unsigned dn = sem.eaReg;
         loadSized(a, L, 11, false, dn, bits); maskResult(a, 11, bits);
         a.movW(13, 0);                              // accumulated ASL overflow
         for (int k = 0; k < count; k++) {
@@ -1968,24 +2236,30 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
                      int epilogue, int slow, bool paced, int batch,
                      uint32_t linkMask) {
     const uint16_t op = in.opcode;
-    const uint32_t nextPc = in.pc + uint32_t(in.words) * 2;
-    const uint16_t entryLookahead = ir.word(in.pc + 2);
+    const InstructionSemantics& sem = in.semantics;
+    const ControlFlowPlan& control = in.control;
+    const uint16_t entryLookahead = ir.prefetchWord(in.pc + 2);
     // Mode-5 has no tail refill. Instructions that consume all but their
     // last extension with readExt(), then SKIP_LAST_RD/fullPrefetch(), hold
     // the last encoded word. A one-word transfer still holds its entry
     // lookahead. The traced path below must confirm every formula before a
     // 68030 branch emitter is admitted.
     const uint16_t lastHeld = in.words > 1
-        ? ir.word(nextPc - 2) : entryLookahead;
+        ? in.extensionWord(in.words - 2) : entryLookahead;
     const auto tracedQueueIs = [&](uint16_t irc) {
         return !L.is030 || !in.terminalQueueValid ||
                (in.terminalIrd == op && in.terminalIrc == irc);
     };
 
-    if (op == 0x4E75) {                              // RTS
-        if (in.words != 1 || in.cycles != 10) return false;
+    if (sem.operation == SemanticOp::ReturnSubroutine) {
+        if (!control.valid || control.kind != ControlFlowKind::Return ||
+            in.words != 1 || in.cycles != 10) return false;
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
+        const MemoryAccessPlan read = memory.access(
+            MemoryDirection::Read, MemoryOperand::Stack, 4, 3, 7);
+        if (!read.valid() || !memory.complete()) return false;
         a.ldrW(9, 0, L.a + 7 * 4);
-        memLoadGuest(a, L, ir.super, 32, 11, slow, true);
+        memLoadGuest(a, L, ir.super, 32, 11, slow, read);
         a.movW(12, 1); a.andW(9, 11, 12); a.cbnzW(9, slow);
         a.ldrW(9, 0, L.a + 7 * 4); a.addImmW(9, 9, 4);
         a.strW(9, 0, L.a + 7 * 4);
@@ -1998,18 +2272,24 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         return true;
     }
 
-    if ((op & 0xF000) == 0x6000 && ((op >> 8) & 15) == 1) { // BSR
-        if (in.words > 3 || in.cycles != 7) return false;
-        const int32_t disp = in.words == 1 ? int8_t(op & 0xFF)
-                           : in.words == 2 ? int16_t(ir.word(in.pc + 2))
-                           : int32_t(uint32_t(ir.word(in.pc + 2)) << 16 |
-                                     ir.word(in.pc + 4));
-        const uint32_t target = uint32_t(in.pc + 2 + uint32_t(disp));
+    if (sem.operation == SemanticOp::BranchSubroutine) {
+        if (!control.valid || control.kind != ControlFlowKind::DirectCall ||
+            !control.targetKnown || !control.pushesReturnAddress ||
+            in.words > 3 || in.cycles != 7) return false;
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
+        const MemoryAccessPlan write = memory.access(
+            MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
+        if (!write.valid() || !memory.complete()) return false;
+        const uint32_t target = control.target;
         if (target & 1) return false;
         a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
         a.strW(9, 1, 44);
-        memProbe(a, L, ir.super, 4, true, slow);
-        a.movW(11, nextPc); storeGuest(a, 32, 11);
+        a.movW(11, control.returnAddress); a.strW(11, 1, 72);
+        // The return-address push is BSR's only data access. Route it
+        // through the same write-authorized copyback proof as MOVE stores;
+        // a miss reaches the untouched instruction before A7 or the target
+        // boundary is committed.
+        memStoreGuest(a, L, ir.super, 32, 11, slow, write);
         a.ldrW(9, 1, 44); a.strW(9, 0, L.a + 7 * 4);
         if (!tracedQueueIs(lastHeld)) return false;
         commitBoundary(a, L, target); commitQueue(a, L, op, lastHeld);
@@ -2019,53 +2299,59 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         return true;
     }
 
-    if ((op & 0xFF80) == 0x4E80) {                  // JSR / JMP
-        const bool jsr = (op & 0x0040) == 0;
+    if (sem.operation == SemanticOp::JumpSubroutine ||
+        sem.operation == SemanticOp::Jump) {
+        const bool jsr = sem.operation == SemanticOp::JumpSubroutine;
+        if (!control.valid || control.pushesReturnAddress != jsr) return false;
+        auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
+        MemoryAccessPlan write;
+        if (jsr) {
+            write = memory.access(MemoryDirection::Write,
+                                  MemoryOperand::Stack, 4, 4, 7);
+            if (!write.valid()) return false;
+        }
+        if (!memory.complete()) return false;
         Ea ea;
-        if (!decodeEa(ir, in, (op >> 3) & 7, op & 7, 32, 0, ea) ||
+        if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 0, ea) ||
             !ea.memory || ea.idx == E_PI || ea.idx == E_PD ||
             in.words != unsigned(1 + ea.ext)) return false;
         static const int8_t cost[E_COUNT] =
             {-1,-1,4,-1,-1,5,-1,4,4,5,-1,-1};
         if (cost[ea.idx] < 0 || in.cycles != unsigned(cost[ea.idx])) return false;
         addrOf(a, L, ea, 32);
-        a.strW(9, 1, 72);                           // target
+        a.strW(9, 1, 48);                           // target (Frame::saveV)
         a.movW(12, 1); a.andW(9, 9, 12); a.cbnzW(9, slow);
         if (jsr) {
             a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
             a.strW(9, 1, 44);
-            memProbe(a, L, ir.super, 4, true, slow);
-            a.movW(11, nextPc); storeGuest(a, 32, 11);
+            a.movW(11, control.returnAddress); a.strW(11, 1, 72);
+            memStoreGuest(a, L, ir.super, 32, 11, slow, write);
             a.ldrW(9, 1, 44); a.strW(9, 0, L.a + 7 * 4);
         }
-        a.ldrW(11, 1, 72);
+        a.ldrW(11, 1, 48);
         a.strW(11, 0, L.pc); a.strW(11, 0, L.pc0);
         if (!tracedQueueIs(lastHeld)) return false;
         commitQueue(a, L, op, lastHeld);
         chargeAndRetire(a, L, unsigned(cost[ea.idx]), paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
-        const bool constant = ea.idx == E_AW || ea.idx == E_AL || ea.idx == E_DIPC;
-        if (constant) leaveTo(a, ir, uint32_t(ea.value), linkMask, epilogue);
+        const bool constant = control.targetKnown;
+        if (constant) leaveTo(a, ir, control.target, linkMask, epilogue);
         else leaveToDynamic(a, L, ir, linkMask, epilogue);
         return true;
     }
 
-    if ((op & 0xF000) == 0x6000) {                   // BRA/Bcc (not BSR)
-        const int cc = (op >> 8) & 15;
-        if (cc == 1 || in.words > 3) return false;
-        const int32_t disp = in.words == 1 ? int8_t(op & 0xFF)
-                           : in.words == 2 ? int16_t(ir.word(in.pc + 2))
-                           : int32_t(uint32_t(ir.word(in.pc + 2)) << 16 |
-                                     ir.word(in.pc + 4));
-        const uint32_t target = uint32_t(in.pc + 2 + uint32_t(disp));
-        const uint32_t fall = in.pc + uint32_t(in.words) * 2;
+    if (sem.operation == SemanticOp::Branch) {
+        const int cc = sem.condition;
+        if (!control.valid || !control.targetKnown || in.words > 3) return false;
+        const uint32_t target = control.target;
+        const uint32_t fall = control.fallthrough;
         if (target & 1) return false;
         const int takenCycles = cc == 0 ? 10 : 6;
         const int fallCycles = in.words == 1 ? 4 : 6;
         if (in.cycles != takenCycles && in.cycles != fallCycles) return false;
 
         const uint16_t takenIrc = lastHeld;
-        const uint16_t fallIrc = ir.word(fall);
+        const uint16_t fallIrc = ir.prefetchWord(fall);
         if (L.is030 && in.terminalQueueValid) {
             const bool targetOnly = in.observedNextPc == target && target != fall;
             const bool fallOnly = in.observedNextPc == fall && target != fall;
@@ -2096,12 +2382,13 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         return true;
     }
 
-    if ((op & 0xF0F8) == 0x50C8) {                  // DBcc
-        if (in.words != 2 || (in.cycles != 6 && in.cycles != 10)) return false;
-        const int cc = (op >> 8) & 15, dn = op & 7;
-        const int32_t disp = int16_t(ir.word(in.pc + 2));
-        const uint32_t target = uint32_t(in.pc + 2 + uint32_t(disp));
-        const uint32_t fall = in.pc + 4;
+    if (sem.operation == SemanticOp::DecrementBranch) {
+        if (!control.valid || control.kind != ControlFlowKind::DecrementBranch ||
+            !control.targetKnown || in.words != 2 ||
+            (in.cycles != 6 && in.cycles != 10)) return false;
+        const int cc = sem.condition, dn = sem.eaReg;
+        const uint32_t target = control.target;
+        const uint32_t fall = control.fallthrough;
         if (target & 1) return false;
         if (!tracedQueueIs(entryLookahead)) return false;
         const int condTrue = a.label(), expired = a.label();
@@ -2112,7 +2399,7 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         a.cbzW(9, expired);
 
         commitBoundary(a, L, target);
-        commitQueue(a, L, op, ir.word(in.pc + 2));
+        commitQueue(a, L, op, in.extensionWord(0));
         chargeAndRetire(a, L, 6, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
         { const int ti = findTarget(ir, target);
@@ -2121,14 +2408,14 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
 
         a.bind(expired);
         commitBoundary(a, L, fall);
-        commitQueue(a, L, op, ir.word(in.pc + 2));
+        commitQueue(a, L, op, in.extensionWord(0));
         chargeAndRetire(a, L, 10, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
         leaveTo(a, ir, fall, linkMask, epilogue);
 
         a.bind(condTrue);
         commitBoundary(a, L, fall);
-        commitQueue(a, L, op, ir.word(in.pc + 2));
+        commitQueue(a, L, op, in.extensionWord(0));
         chargeAndRetire(a, L, 6, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
         leaveTo(a, ir, fall, linkMask, epilogue);
@@ -2182,26 +2469,24 @@ private:
     CodeBuffer buf_;
     Layout layout_{};
     bool haveLayout_ = false;
-    int diagLeft_ = 40;
+    int diagLeft_ = -1;
 };
 
 Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
+    if (diagLeft_ < 0) diagLeft_ = verboseBlocks();
     gRuntimeReasonHisto = ctx.slowRuntimeReasonHisto != nullptr;
-    gExactStoreGuardOpcode = 0xB592;
-    if (const char* value = detail::env("POM68K_JIT_A64_STORE_GUARD_OPCODE")) {
-        char* end = nullptr;
-        const unsigned long opcode = std::strtoul(value, &end, 0);
-        if (end != value && *end == '\0' && opcode <= 0xFFFFu)
-            gExactStoreGuardOpcode = uint16_t(opcode);
-    }
+    gExactStoreGuardOpcode = a64StoreGuardOpcode();
     const auto reject = [this](const char* why) -> Compiled* {
-        if (verbose() && diagLeft_-- > 0)
+        if (verbose() && diagLeft_ > 0) {
+            diagLeft_--;
             std::fprintf(stderr, "[jit/a64] refused: %s\n", why);
+        }
         return nullptr;
     };
     if (!ctx.cpu || ir.instrs.empty() || ir.code.empty() ||
         !ctx.cpu->pomJitSimpleIpl()) return reject("empty/context/IPL mode");
-    if (verbose()) {
+    if (verbose() && diagLeft_ > 0) {
+        diagLeft_--;
         std::fprintf(stderr, "[jit/a64] native block $%08X (%zu):",
                      ir.entryPc, ir.instrs.size());
         for (const Instr& in : ir.instrs)
@@ -2213,11 +2498,14 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     if (!haveLayout_) { layout_ = ctx.cpu->pomJitLayout(); haveLayout_ = true; }
     const Layout& L = layout_;
     const bool paced = ctx.periphClock && ctx.periphBatch != 0 &&
-                       detail::envBool("POM68K_JIT_A64_PACING", true);
+                       a64PacingEnabled();
     const int batch = paced ? ctx.periphBatch : 0;
     const bool restartWrite = L.is030 &&
         std::any_of(ir.instrs.begin(), ir.instrs.end(),
-                    [](const Instr& in) { return restartWrite030(in.opcode); });
+                    [&L](const Instr& in) {
+                        return memoryProofPlan(in.memory, proofOptions(L))
+                            .restartableLastWrite();
+                    });
     // The 030 oracle proved that a block containing a native write is an
     // architectural chain boundary in both directions. Returning to Engine
     // services every deferred condition before another compiled block can
@@ -2282,7 +2570,8 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // condition-true, counter-expired and taken paths, so the ordinary
         // words+1 charge is exact. This distinction covers 56C9, which the
         // LC II census measured at 95.68% of all block fallbacks.
-        const bool dbcc = (in.opcode & 0xF0F8) == 0x50C8;
+        const bool dbcc =
+            in.semantics.operation == SemanticOp::DecrementBranch;
         if (icache && in.kind == Kind::Branch && in.words > 1 && !dbcc) {
             a.b(slowStatic[i]);
             continue;
@@ -2318,7 +2607,7 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
             ? in.terminalIrd : in.opcode;
         const uint16_t irc = in.terminalQueueValid
             ? in.terminalIrc
-            : ir.word(in.pc + uint32_t(in.words) * 2);
+            : ir.prefetchWord(in.pc + uint32_t(in.words) * 2);
         // Halfword stores avoid assuming that the queue itself is 4-byte
         // aligned. (x86 tolerates its combined unaligned 32-bit store;
         // AArch64's scaled STR encoding does not encode that offset.)
@@ -2330,7 +2619,8 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // component recorded by the tracer. Existing instructions traced on
         // cache hits have baseCycles == cycles, so this changes behaviour
         // only for forms explicitly admitted using split timing above.
-        const uint16_t nativeCycles = L.is030 && exactTstRead030(in.opcode)
+        const uint16_t nativeCycles = L.is030 &&
+                                      memoryRequiresExactAccess(in.memory)
             ? uint16_t(kEaReadA64[E_AI][0])
             : L.is030 ? in.baseCycles : in.cycles;
         chargeAndRetire(a, L, nativeCycles, paced, batch, in.pc,

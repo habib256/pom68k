@@ -5,7 +5,7 @@
 // The Cpu040 pattern on the Quadra 700's discrete bus: the Q2-Q4 040 core
 // (integer ISA, 040 MMU, ATC overlay) with external /BERR through
 // Moira::extBusError040. The Q700 is a FULL 68040 @ 25 MHz (50 MHz XTAL / 2),
-// so the default is M68040 + Moira's soft 68882; POM68K_Q700_LC040=1 selects
+// so the default is M68040 + its integrated FPU; POM68K_Q700_LC040=1 selects
 // the LC040 and POM68K_Q700_BAREFPU=1 a bare FPUModel::NONE with it.
 // Gate: tests/q700_boot_etalon.cpp.
 

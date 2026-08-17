@@ -52,9 +52,322 @@ void setCpuEngineEnv(const char* value) {
 #endif
 }
 
+void setEnv(const char* key, const char* value) {
+#ifdef _WIN32
+    _putenv_s(key, value ? value : "");
+#else
+    if (value) setenv(key, value, 1);
+    else unsetenv(key);
+#endif
+}
+
+struct SavedEnv {
+    const char* key;
+    bool had;
+    std::string value;
+    explicit SavedEnv(const char* k)
+        : key(k), had(std::getenv(k) != nullptr),
+          value(std::getenv(k) ? std::getenv(k) : "") {}
+    void clear() const { setEnv(key, nullptr); }
+    void restore() const { setEnv(key, had ? value.c_str() : nullptr); }
+};
+
 }  // namespace
 
 int main() {
+    // ── One IR memory contract, one proof planner, every backend ─────────
+    // These are encoding-level and asset-free. The copyback gates exercise
+    // the generated A64/x64 implementations of the same plans below.
+    {
+        std::printf("[jit_backend] IR semantic and memory protocols\n");
+        check(sizeof(jit::MemoryContract) <= 40,
+              "memory contract stays compact enough for every traced instruction");
+        check(sizeof(jit::InstructionSemantics) <= 16,
+              "instruction-semantics contract stays compact in every trace");
+
+        const auto pair = jit::describeMemory(0x2F38, false); // MOVE.L abs.W,-(A7)
+        check(pair.described && pair.count == 2,
+              "memory-to-memory MOVE records two accesses");
+        check(pair.order == jit::MemoryOrder::SourceThenDestination,
+              "MOVE records source-before-destination order");
+        check(pair.access[0].direction == jit::MemoryDirection::Read &&
+              pair.access[1].direction == jit::MemoryDirection::Write,
+              "MOVE records R then W directions");
+        check(pair.access[1].eaCommit == jit::EaCommit::BeforeAccess,
+              "MOVE -(A7) records its pre-access EA commit");
+        check(pair.lastWrite == 1 && pair.cachePairProved,
+              "MOVE identifies its last write and proved cache pair");
+
+        jit::MemoryProofOptions cache;
+        cache.cacheReads = cache.cacheWrites = cache.cachePairs = true;
+        const auto pairProof = jit::memoryProofPlan(pair, cache);
+        check(pairProof.protocol == jit::MemoryProofProtocol::AtomicCachePair &&
+              pairProof.preflightMask == 3 && pairProof.cacheMask == 3,
+              "pair plan proves R and W before either access is visible");
+        auto pairUse = jit::instructionMemoryPlan(pair, cache);
+        const auto pairRead = pairUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Source,
+            4, 7, 0);
+        const auto pairWrite = pairUse.access(
+            jit::MemoryDirection::Write, jit::MemoryOperand::Destination,
+            4, 4, 7);
+        check(pairRead.valid() && pairWrite.valid() && pairUse.complete() &&
+              pairRead.cache && pairWrite.cache &&
+              pairWrite.eaCommit == jit::EaCommit::BeforeAccess,
+              "backend access tokens carry order, cache and EA commit from IR");
+        check(!pairUse.access(jit::MemoryDirection::Read,
+                              jit::MemoryOperand::Source, 4, 7, 0).valid(),
+              "an IR access slot cannot be consumed twice");
+
+        const auto rmw = jit::describeMemory(0xB592, false); // EOR.L D2,(A2)
+        const auto rmwProof = jit::memoryProofPlan(rmw, cache);
+        check(rmw.count == 2 && rmw.order == jit::MemoryOrder::ReadModifyWrite,
+              "RMW records read then last-write on one operand");
+        check(rmwProof.protocol == jit::MemoryProofProtocol::ReadModifyWrite &&
+              rmwProof.preflightMask == 3 && rmwProof.cacheMask == 0,
+              "unproved RMW stays on one whole-instruction proof");
+        auto rmwUse = jit::instructionMemoryPlan(rmw, cache);
+        const auto rmwRead = rmwUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Destination,
+            4, 2, 2);
+        const auto rmwWrite = rmwUse.access(
+            jit::MemoryDirection::Write, jit::MemoryOperand::Destination,
+            4, 2, 2);
+        check(jit::memoryRmwAccessPair(rmwRead, rmwWrite) &&
+              rmwUse.complete(),
+              "RMW tokens require both ordered accesses and one preflight");
+
+        const auto clr = jit::describeMemory(0x4292, false); // CLR.L (A2)
+        auto clrUse = jit::instructionMemoryPlan(clr, cache);
+        const auto clrWrite = clrUse.access(
+            jit::MemoryDirection::Write, jit::MemoryOperand::Destination,
+            4, 2, 2);
+        check(clr.count == 1 && clrWrite.valid() && clrUse.complete() &&
+              clrWrite.protocol == jit::MemoryProofProtocol::SingleWrite,
+              "CLR memory is one write, never a backend-invented read");
+
+        const auto timedRead = jit::describeMemory(0x4A11, true);
+        jit::MemoryProofOptions noOptionalThunks;
+        noOptionalThunks.exactReads = false;
+        noOptionalThunks.exactWrites = false;
+        noOptionalThunks.cacheReads = true;
+        const auto timedProof = jit::memoryProofPlan(timedRead,
+                                                     noOptionalThunks);
+        check(jit::memoryRequiresExactAccess(timedRead) &&
+              timedProof.exactThunkMask == 1 && timedProof.cacheMask == 0,
+              "model-required exact access is IR policy, not an A64 opcode exception");
+
+        const auto write030 = jit::describeMemory(0x2140, true); // MOVE.L D0,d16(A0)
+        jit::MemoryProofOptions proof030;
+        proof030.exactWrites = true;
+        proof030.restartableWriteRequired = true;
+        const auto lastWrite = jit::memoryProofPlan(write030, proof030);
+        check(lastWrite.protocol == jit::MemoryProofProtocol::SingleWrite &&
+              lastWrite.restartableLastWrite() && lastWrite.exactThunkMask == 1,
+              "68030 proved LASTWRITE produces a restartable exact-write plan");
+
+        const auto bsr = jit::describeMemory(0x6106, false);
+        const auto rts = jit::describeMemory(0x4E75, false);
+        check(jit::memoryProofPlan(bsr, cache).protocol ==
+                  jit::MemoryProofProtocol::SingleWrite &&
+              bsr.access[0].operand == jit::MemoryOperand::Stack,
+              "BSR describes its sole stack write");
+        check(jit::memoryProofPlan(rts, cache).protocol ==
+                  jit::MemoryProofProtocol::SingleRead &&
+              rts.access[0].eaCommit == jit::EaCommit::AfterAccess,
+              "RTS describes its stack read and postincrement commit");
+
+        const auto movem = jit::describeMemory(0x48E7, false);
+        check(movem.count == jit::MemoryContract::VariableCount &&
+              movem.order == jit::MemoryOrder::RegisterDescending &&
+              jit::memoryProofPlan(movem, cache).protocol ==
+                  jit::MemoryProofProtocol::OrderedSpan,
+              "MOVEM predecrement records a variable descending access span");
+
+        const auto adda = jit::describeInstruction(0xD3C1); // ADDA.L D1,A1
+        check(adda.operation == jit::SemanticOp::AddressAlu &&
+              adda.alu == jit::AluOperation::Add && adda.sizeIndex == 2 &&
+              adda.eaMode == 0 && adda.eaReg == 1 &&
+              adda.registerIndex == 1,
+              "IR describes ADDA operation, width and operands once");
+        const auto eor = jit::describeInstruction(0xB592); // EOR.L D2,(A2)
+        check(eor.operation == jit::SemanticOp::AluRegToEa &&
+              eor.alu == jit::AluOperation::Eor && eor.bytes() == 4,
+              "IR distinguishes register-to-EA EOR from CMP encoding overlap");
+        const auto move = jit::describeInstruction(0x2ADC);
+        check(move.operation == jit::SemanticOp::Move && move.bytes() == 4 &&
+              move.eaMode == 3 && move.eaReg == 4 &&
+              move.destinationMode == 3 && move.destinationReg == 5,
+              "IR records both MOVE operands in architectural order");
+        jit::Instr moveExt;
+        moveExt.pc = 0x1000;
+        moveExt.opcode = 0x23FC; // MOVE.L #$12345678,$00ABCDEF.L
+        moveExt.words = 5;
+        moveExt.semantics = jit::describeInstruction(moveExt.opcode);
+        moveExt.extensionCount = 4;
+        moveExt.extensions[0] = 0x1234;
+        moveExt.extensions[1] = 0x5678;
+        moveExt.extensions[2] = 0x00AB;
+        moveExt.extensions[3] = 0xCDEF;
+        jit::describeEffectiveAddresses(moveExt);
+        const auto* moveSource = jit::findEffectiveAddress(moveExt, 7, 4, 2, 0);
+        const auto* moveDestination = jit::findEffectiveAddress(moveExt, 7, 1, 2, 2);
+        check(moveSource && moveSource->valid && !moveSource->memory() &&
+              uint32_t(moveSource->value) == 0x12345678u &&
+              moveDestination && moveDestination->valid &&
+              moveDestination->memory() &&
+              uint32_t(moveDestination->value) == 0x00ABCDEFu,
+              "IR owns extension decoding and both concrete MOVE effective addresses");
+
+        jit::Instr fullDirect;
+        fullDirect.pc = 0x2000;
+        fullDirect.opcode = 0x2030; // MOVE.L ([full extension],A0),D0
+        fullDirect.words = 4;
+        fullDirect.semantics = jit::describeInstruction(fullDirect.opcode);
+        fullDirect.extensionCount = 3;
+        fullDirect.extensions[0] = 0x1D30; // D1.L*4, full, long BD, direct
+        fullDirect.extensions[1] = 0xFFFE;
+        fullDirect.extensions[2] = 0xDCBA;
+        jit::describeEffectiveAddresses(fullDirect);
+        const auto* directEa = jit::findEffectiveAddress(fullDirect, 6, 0, 2, 0);
+        check(directEa && directEa->valid && directEa->fullFormat &&
+              directEa->kind == jit::EffectiveAddressKind::FullIndex &&
+              directEa->extensionWords == 3 &&
+              directEa->baseDisplacementWords == 2 &&
+              uint32_t(directEa->baseDisplacement) == 0xFFFEDCBAu &&
+              directEa->indirect == jit::IndexIndirect::None &&
+              directEa->indexRegister == 1 && directEa->indexLong &&
+              directEa->indexShift == 2,
+              "IR decodes the complete direct 68020 full-index format");
+
+        jit::Instr fullIndirect;
+        fullIndirect.pc = 0x3000;
+        fullIndirect.opcode = 0x203B; // MOVE.L full-index(PC),D0
+        fullIndirect.words = 5;
+        fullIndirect.semantics = jit::describeInstruction(fullIndirect.opcode);
+        fullIndirect.extensionCount = 4;
+        fullIndirect.extensions[0] = 0xB1A3; // A3.W, BS, word BD, pre, long OD
+        fullIndirect.extensions[1] = 0xFF80;
+        fullIndirect.extensions[2] = 0x0001;
+        fullIndirect.extensions[3] = 0x2345;
+        jit::describeEffectiveAddresses(fullIndirect);
+        const auto* indirectEa =
+            jit::findEffectiveAddress(fullIndirect, 7, 3, 2, 0);
+        check(indirectEa && indirectEa->valid && indirectEa->fullFormat &&
+              indirectEa->kind == jit::EffectiveAddressKind::PcFullIndex &&
+              indirectEa->baseSuppressed && !indirectEa->indexSuppressed &&
+              indirectEa->baseDisplacement == -128 &&
+              indirectEa->outerDisplacement == 0x00012345 &&
+              indirectEa->indirect == jit::IndexIndirect::Preindexed &&
+              indirectEa->extensionWords == 4,
+              "IR separates base/outer displacement and preindexed indirection");
+
+        jit::Instr fullPost;
+        fullPost.pc = 0x4000;
+        fullPost.extensionCount = 2;
+        fullPost.extensions[0] = 0x01D6; // BS+IS, null BD, post, word OD
+        fullPost.extensions[1] = 0xFFFC;
+        const auto postEa = jit::decodeEffectiveAddress(
+            fullPost, jit::OperandRole::Operand, 6, 2, 2, 0);
+        check(postEa.valid && postEa.baseSuppressed && postEa.indexSuppressed &&
+              postEa.baseDisplacementWords == 0 &&
+              postEa.outerDisplacementWords == 1 &&
+              postEa.outerDisplacement == -4 &&
+              postEa.indirect == jit::IndexIndirect::Postindexed,
+              "IR decodes suppressed-base/index postindexed full extensions");
+
+        fullPost.extensions[0] = 0x0100; // reserved BD=00
+        check(!jit::decodeEffectiveAddress(
+                  fullPost, jit::OperandRole::Operand, 6, 2, 2, 0).valid,
+              "IR rejects reserved 68020 full-extension encodings");
+
+        jit::Instr bsrInstr;
+        bsrInstr.pc = 0x5000; bsrInstr.opcode = 0x6100; bsrInstr.words = 2;
+        bsrInstr.semantics = jit::describeInstruction(bsrInstr.opcode);
+        bsrInstr.extensionCount = 1; bsrInstr.extensions[0] = 0xFFFE;
+        jit::describeEffectiveAddresses(bsrInstr);
+        jit::describeControlFlow(bsrInstr);
+        check(bsrInstr.control.valid && bsrInstr.control.targetKnown &&
+              bsrInstr.control.kind == jit::ControlFlowKind::DirectCall &&
+              bsrInstr.control.target == 0x5000 &&
+              bsrInstr.control.fallthrough == 0x5004 &&
+              bsrInstr.control.returnAddress == 0x5004 &&
+              bsrInstr.control.pushesReturnAddress,
+              "IR owns BSR target, fallthrough and pushed return address");
+
+        jit::Instr jsr;
+        jsr.pc = 0x6000; jsr.opcode = 0x4EB9; jsr.words = 3;
+        jsr.semantics = jit::describeInstruction(jsr.opcode);
+        jsr.extensionCount = 2;
+        jsr.extensions[0] = 0x0012; jsr.extensions[1] = 0x3456;
+        jit::describeEffectiveAddresses(jsr);
+        jit::describeControlFlow(jsr);
+        check(jsr.control.valid && jsr.control.targetKnown &&
+              jsr.control.kind == jit::ControlFlowKind::DirectCall &&
+              jsr.control.target == 0x00123456 &&
+              jsr.control.returnAddress == 0x6006,
+              "IR resolves constant JSR control data from its EA plan");
+        const auto movemLoad = jit::describeInstruction(0x4CDF);
+        check(movemLoad.operation == jit::SemanticOp::Movem &&
+              movemLoad.toRegisters && movemLoad.bytes() == 4,
+              "IR records MOVEM span direction and width");
+        check(!jit::describeInstruction(0x0108).valid(),
+              "shared semantics never misdecode MOVEP as a bit operation");
+        check(!jit::describeInstruction(0x0AC0).valid(),
+              "shared semantics leave CAS to the interpreter");
+    }
+
+    // Profiles are bundles, while a leaf variable remains an explicit A/B
+    // override. No static env caching: one process can prove all three.
+    {
+        std::printf("[jit_backend] operating profiles\n");
+        const SavedEnv saved[] = {
+            SavedEnv("POM68K_JIT_PROFILE"),
+            SavedEnv("POM68K_JIT_ACCESS_THUNK"),
+            SavedEnv("POM68K_JIT_LINKS"),
+            SavedEnv("POM68K_JIT_PARANOID"),
+            SavedEnv("POM68K_JIT_HISTO"),
+            SavedEnv("POM68K_JIT_040_LINE_PAIR"),
+            SavedEnv("POM68K_JIT_040_LINE_STATS"),
+        };
+        for (const auto& e : saved) e.clear();
+
+        setEnv("POM68K_JIT_PROFILE", "production");
+        check(jit::accessThunkMode() == 2 && jit::linksEnabled() &&
+              !jit::paranoidEnabled() && !jit::histogramEnabled(),
+              "production profile is the current fast conformant policy");
+        setEnv("POM68K_JIT_PROFILE", "conservative");
+        check(jit::accessThunkMode() == 0 && !jit::linksEnabled() &&
+              jit::paranoidEnabled() && !jit::cache040LinePairsEnabled(),
+              "conservative profile keeps replay and revalidation boundaries");
+        setEnv("POM68K_JIT_PROFILE", "instrumented");
+        check(jit::accessThunkMode() == 2 && !jit::linksEnabled() &&
+              jit::paranoidEnabled() && jit::histogramEnabled() &&
+              jit::cache040LineReadStatsEnabled(),
+              "instrumented profile enables census and proof counters");
+        setEnv("POM68K_JIT_ACCESS_THUNK", "1");
+        check(jit::accessThunkMode() == 1,
+              "a leaf knob explicitly overrides its selected profile");
+
+        // An Engine publishes this resolved snapshot while compiling. Later
+        // process-wide changes are inputs for a future Engine only.
+        setEnv("POM68K_JIT_PROFILE", "production");
+        setEnv("POM68K_JIT_ACCESS_THUNK", nullptr);
+        jit::ResolvedConfig resolved = jit::resolveConfig();
+        resolved.applyBackendDefaults(true);
+        setEnv("POM68K_JIT_PROFILE", "conservative");
+        {
+            jit::ScopedResolvedConfig active(&resolved);
+            check(jit::accessThunkMode() == 2 && jit::linksEnabled() &&
+                  jit::blockCacheEnabled(false) && jit::hotThreshold(false) == 1,
+                  "resolved configuration is stable and carries backend defaults");
+        }
+        check(jit::accessThunkMode() == 0,
+              "legacy accessors remain live outside an Engine compile scope");
+
+        for (const auto& e : saved) e.restore();
+    }
+
     // The product default is per guest family, while the environment remains
     // an unconditional user/test override. Keep this asset-free so a default
     // regression fails before any boot gate is involved.
@@ -94,6 +407,9 @@ int main() {
     jit::Backend* autoPick = jit::selectBackend("auto", jit::kGuest68040);
     check(autoPick != nullptr, "auto selection never returns null");
     check(autoPick->usable(), "the selected backend reports itself usable");
+    if (std::getenv("POM68K_JIT_REQUIRE_NATIVE"))
+        check(autoPick->caps().nativeCode,
+              "this CI tier requires the host A64/x64 generator to execute");
     std::printf("  auto (68040) -> %s (%s)\n",
                 autoPick->name(), autoPick->description());
 
@@ -227,6 +543,10 @@ int main() {
                              jit::FlagNone, 8, 8});
         ir.instrs.push_back({0x1004, 0x4E71, 1, jit::Kind::AddrCalc,
                              jit::FlagNone, 2});
+        for (jit::Instr& in : ir.instrs) {
+            in.memory = jit::describeMemory(in.opcode, false);
+            in.semantics = jit::describeInstruction(in.opcode);
+        }
 
         jit::Context ctx;
         ctx.cpu = &cpu;
@@ -267,6 +587,16 @@ int main() {
         jit::Backend* b = jit::selectBackend("auto", jit::kGuest68040);
         std::printf("[jit_backend] native coverage (%s)\n", b->name());
         const bool gen = b->caps().nativeCode;
+        bool allNativeDescribed = true;
+        for (unsigned opcode = 0; opcode <= 0xFFFF; opcode++) {
+            if (b->canEmit(uint16_t(opcode)) &&
+                !jit::describeInstruction(uint16_t(opcode)).valid()) {
+                allNativeDescribed = false;
+                break;
+            }
+        }
+        check(allNativeDescribed,
+              "every opcode claimed by the active backend has shared IR semantics");
         // The two opcodes a Mac ROM's hardware poll loops are built from.
         check(b->canEmit(0x082B) == gen, "BTST #imm,d16(A3)");
         check(b->canEmit(0x66F8) == gen, "BNE.S -8");

@@ -15,11 +15,13 @@
 //     ×1 or better on the target host, and a ratio is the only form of the
 //     measurement that survives changing machine, host or budget.
 //
-// Env: POM68K_BENCH_FRAMES (budget, in frames), POM68K_CPU_ENGINE=interp|jit.
+// Env: POM68K_BENCH_FRAMES (budget, in frames), POM68K_CPU_ENGINE=interp|jit,
+// POM68K_BENCH_ROM / POM68K_BENCH_DISK (explicit immutable-run inputs).
 
 #pragma once
 
 #include "jit/JitEngine.h"
+#include "jit/JitMetrics.h"
 
 #include <chrono>
 #include <cstdint>
@@ -110,7 +112,8 @@ Result run(Cpu& cpu, int nFrames, int64_t frameCycles) {
 }
 
 template <class Cpu>
-void report(const char* machine, Cpu& cpu, const Result& r, int64_t cpuHz) {
+void report(const char* machine, const char* workload, const char* cpuFamily,
+            Cpu& cpu, const Result& r, int64_t cpuHz) {
     const double guestSecs = cpuHz ? double(r.machineCycles) / double(cpuHz) : 0.0;
     const double core = r.secs > 0 ? double(r.coreCycles) / r.secs : 0.0;
     std::printf("%s engine=%-6s cycles=%lld machine (%lld core, boost \xC3\x97%.1f)"
@@ -122,11 +125,30 @@ void report(const char* machine, Cpu& cpu, const Result& r, int64_t cpuHz) {
                 r.secs, guestSecs, r.secs > 0 ? guestSecs / r.secs : 0.0,
                 core / 1e6, (unsigned long long)r.fp);
 
-    if (!cpu.engine()) return;
+    jit::MetricsRecord metrics;
+    metrics.gate = "jit_fixed_cycle_bench";
+    metrics.workload = workload;
+    metrics.cpuFamily = cpuFamily;
+    metrics.backend = cpu.engine() ? cpu.jit().backendName() : "interpreter";
+    metrics.engine = cpu.engine() ? "jit" : "interp";
+    metrics.machineCycles = uint64_t(r.machineCycles);
+    metrics.coreCycles = uint64_t(r.coreCycles);
+    metrics.wallNs = uint64_t(r.secs * 1.0e9);
+    metrics.fingerprint = r.fp;
+    metrics.realtimePermille = r.secs > 0
+        ? uint64_t(guestSecs / r.secs * 1000.0) : 0;
+
+    if (!cpu.engine()) {
+        jit::emitMetrics(metrics);
+        return;
+    }
 
     const jit::Stats::Snapshot s = cpu.jit().stats().snapshot();
     const uint64_t retired = s.instrs + s.interpInstrs;
-    if (!retired) return;
+    if (!retired) {
+        jit::emitMetrics(metrics);
+        return;
+    }
 
     std::printf("  backend=%s  retired=%llu  %.1f Minstr/s  "
                 "blocks %llu compiled / %llu run (%.1f instr/run)\n",
@@ -142,6 +164,14 @@ void report(const char* machine, Cpu& cpu, const Result& r, int64_t cpuHz) {
     // window path because no block covered them.
     const uint64_t notNative = s.slowInstrs + s.windowInstrs;
     const uint64_t native = s.instrs > notNative ? s.instrs - notNative : 0;
+    metrics.blocksCompiled = s.blocksCompiled;
+    metrics.blocksRun = s.blocksRun;
+    metrics.jitInstrs = s.instrs;
+    metrics.nativeInstrs = native;
+    metrics.interpInstrs = s.interpInstrs;
+    metrics.slowInstrs = s.slowInstrs;
+    metrics.windowInstrs = s.windowInstrs;
+    metrics.nativeSharePermille = retired ? native * 1000 / retired : 0;
     std::printf("  native %llu (%.1f%%) \xC2\xB7 block fallback %llu (%.1f%%) \xC2\xB7 "
                 "window/interp %llu (%.1f%%)\n",
                 (unsigned long long)native, 100.0 * double(native) / double(retired),
@@ -165,6 +195,7 @@ void report(const char* machine, Cpu& cpu, const Result& r, int64_t cpuHz) {
     if (exits)
         std::printf("  exits total    %12llu  (1 per %.1f instr)\n",
                     (unsigned long long)exits, double(retired) / double(exits));
+    jit::emitMetrics(metrics);
 }
 
 }  // namespace bench
