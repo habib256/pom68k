@@ -276,6 +276,12 @@ jobs:
         env:
           POM68K_VERSION: ${{ needs.version.outputs.pom68k_version }}
         run: |
+          # No -DPOM68K_LTO here on purpose: the whole optimization block in
+          # CMakeLists.txt is guarded `if(NOT MSVC AND NOT EMSCRIPTEN)`, so
+          # the knob is INERT on this job whatever its default. MSVC LTO
+          # would be /GL + /LTCG, which that block does not emit (TODO.md
+          # § 3). Passing OFF here would read as a decision; there is none
+          # to make until the flags exist.
           $cfg = @('-S', '.', '-B', 'build',
                    "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake",
                    '-DVCPKG_TARGET_TRIPLET=x64-windows-static',

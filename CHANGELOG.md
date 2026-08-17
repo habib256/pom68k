@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 243 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 244 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -282,6 +282,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ### Audits, doc syncs and cross-cutting reviews
 
 - **why does the tree not build on a stock x86-64 host, with `undefined symbol: main` in files that plainly have one?** → [2026-08-17 (later) — Two feature probes that each said yes…](#2026-08-17-lto-lld-combination)
+- **"the knobs are independent since 2026-08-08" — the knobs were; their DEFAULTS were not, and the distributable build still lost its LTO** → [2026-08-17 (third) — The 2026-08-08 knob split was half done…](#2026-08-17-lto-default-on)
 - **when does a SECOND profile on an already-covered platform deserve its own beyond-boot pair?** → [2026-08-14 (third) — The Eclipse gets a beyond-boot pair of its own…](#2026-08-14-eclipse-beyond-boot)
 - **what does the GUI do that no gate can see?** → [2026-08-09 (seventh) — The GUI pass](#2026-08-09-gui-pass)
 
@@ -301,6 +302,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-17 (third)** — [The 2026-08-08 knob split was half done: LTO's default still followed NATIVE](#2026-08-17-lto-default-on)
 - **2026-08-17 (later)** — [Two feature probes that each said yes, and a tree that did not build at all on x86-64](#2026-08-17-lto-lld-combination)
 - **2026-08-17** — [A64 and x64 stop decoding semantics behind the IR](#2026-08-17-jit-ir-semantics)
 - **2026-08-16 (third)** — [JIT copyback writes cross the native boundary, with dirty-longword and format-$7 proofs attached](#2026-08-16-jit-copyback-write)
@@ -544,6 +546,60 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-17-lto-default-on"></a>
+## 2026-08-17 (third) — The 2026-08-08 knob split was half done: LTO's *default* still followed NATIVE
+
+`CMakeLists.txt` said, three lines above the code that contradicted it:
+
+> `POM68K_LTO` link-time optimization. **Independent of both**: a portable
+> binary has every reason to want it.
+
+and then `option(POM68K_LTO "Link-time optimization" ${POM68K_NATIVE})`. So
+in the one case the comment was written for — a *distributable* build, which
+sets `NATIVE=OFF` precisely to stay loadable everywhere — LTO was still off
+unless the build named it a second time. Every packaging script in the tree
+carries that second mention (`build_in_bionic.sh`, `build_in_bionic_pi.sh`,
+`build_native_pi.sh`), which is the tell: they are not being explicit for
+style, they are working around the default.
+
+This is the residue of 2026-08-08, where making the knobs independent
+stopped the released binaries from silently losing their LTO. The knobs did
+become independent; the *default* did not. **`POM68K_LTO` now defaults ON.**
+
+**A default flip is only safe if it changes nothing that already exists**, so
+every site passing `NATIVE=OFF` was audited and made to state its intent
+rather than inherit one:
+
+- **`ci.yml` `linux`** — `-DPOM68K_LTO=OFF`, explicitly. It had been getting
+  no-LTO as a side effect while its comment claimed both reasons at once
+  ("`-march=native` proves nothing **and** LTO doubles the link time"). Only
+  the first is about NATIVE. This job wants a fast build; it now says so.
+- **`macos.yml` and `package_macos_release.sh`** — `-DPOM68K_LTO=OFF`. These
+  would have picked LTO up as a side effect of this very commit, on a path
+  nobody has exercised. LTO for the macOS package is open work with its own
+  reason for being open (the universal-2 `lipo` path, `TODO.md` § 3); it
+  should land as that item, not as fallout.
+- **`release.yml` Windows** — nothing to change, and a comment saying why:
+  the whole optimization block is guarded `if(NOT MSVC AND NOT EMSCRIPTEN)`,
+  so the knob is **inert** on MSVC at any default. Passing `OFF` there would
+  read as a decision; there is none to make until `/GL` + `/LTCG` exist.
+- The Pi and bionic scripts already passed `-DPOM68K_LTO=ON`: unchanged, and
+  their explicitness is now belt-and-braces rather than load-bearing.
+
+Verified by configuring, not by reading: `NATIVE=OFF` alone — the portable
+build the comment was written for — resolves `POM68K_LTO=ON` where it used
+to resolve OFF; a bare `cmake ..` gives ON; the CI shape gives OFF and keeps
+`lld` (the fast link is not given up where it costs nothing, per the probe
+that landed earlier today).
+
+**Cost, stated plainly**: LTO roughly doubles the link time of the ~130 test
+binaries. That is why the flip comes with three explicit `OFF`s rather than
+none — a default should serve the case that cannot speak for itself (someone
+typing `cmake ..`, or a future packaging script that forgets), not the two
+jobs that can.
 
 ---
 

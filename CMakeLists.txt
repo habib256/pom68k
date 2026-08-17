@@ -43,11 +43,21 @@ endif()
 #                  is how the release aarch64 AppImage targets the Pi 4/400's
 #                  Cortex-A72 while staying loadable on a Pi 3.
 #   POM68K_LTO     link-time optimization. Independent of both: a portable
-#                  binary has every reason to want it.
+#                  binary has every reason to want it — so it defaults ON,
+#                  not to POM68K_NATIVE. It followed NATIVE until 2026-08-17,
+#                  which made this comment a lie in the one case it was
+#                  written for: a distributable build sets NATIVE=OFF, and so
+#                  got no LTO unless it asked twice. That is the coupling the
+#                  2026-08-08 split was supposed to remove and only half did
+#                  — every distributable script already carries an explicit
+#                  `-DPOM68K_LTO=ON` for exactly this reason.
+#                  It is expensive: LTO roughly doubles the link time of the
+#                  ~130 test binaries. A build that does not want it must now
+#                  say `-DPOM68K_LTO=OFF` and say why (see .github/workflows).
 option(POM68K_NATIVE "Optimize for the build host CPU (native ISA + tuning)" ON)
 set(POM68K_TUNE "" CACHE STRING
     "Tune for a named core without raising the ISA floor (e.g. cortex-a72)")
-option(POM68K_LTO "Link-time optimization" ${POM68K_NATIVE})
+option(POM68K_LTO "Link-time optimization" ON)
 
 if(NOT MSVC AND NOT EMSCRIPTEN)
     include(CheckCXXCompilerFlag)

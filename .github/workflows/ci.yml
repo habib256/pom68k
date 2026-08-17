@@ -24,9 +24,16 @@ jobs:
         run: git clone --depth 1 --branch v1.92.8-docking https://github.com/ocornut/imgui.git
 
       - name: Configure
-        # POM68K_NATIVE=OFF: -march=native on a CI runner proves nothing and
-        # LTO roughly doubles the link time for 100+ test binaries.
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPOM68K_NATIVE=OFF
+        # POM68K_NATIVE=OFF: -march=native on a CI runner proves nothing.
+        # POM68K_LTO=OFF is now SEPARATE and deliberate: LTO roughly doubles
+        # the link time of the ~130 test binaries, which is not what this job
+        # is for. It used to come free with NATIVE=OFF, and that silent
+        # coupling is exactly what was removed on 2026-08-17 — this job wants
+        # no LTO, so it says no LTO. The `link-configs` job below is where
+        # the LTO configurations are proved.
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF
 
       - name: Fast native JIT proof (x86-64, asset-free)
         env:
@@ -65,12 +72,11 @@ jobs:
 
   # Does the tree still LINK in the configurations it ships in, and in the
   # one a developer gets by typing `cmake ..`? The job above answers neither:
-  # it configures `POM68K_NATIVE=OFF`, and `POM68K_LTO` still defaults to
-  # `${POM68K_NATIVE}` (CMakeLists.txt), so turning native off silently turns
-  # LTO off with it — while the released Linux binaries are built
-  # `-DPOM68K_LTO=ON` (packaging/linux/build_in_bionic.sh) and the developer
-  # default is native ON, hence LTO ON. Nor does that runner install lld or
-  # mold, so `POM68K_FAST_LINK` never finds one to probe.
+  # it asks for no LTO on purpose (link time), while the released Linux
+  # binaries are built `-DPOM68K_LTO=ON`
+  # (packaging/linux/build_in_bionic.sh) and `POM68K_LTO` now defaults ON.
+  # Nor does that runner install lld or mold, so `POM68K_FAST_LINK` never
+  # finds one to probe.
   #
   # That blind spot was not theoretical: on 2026-08-17 the tree did not build
   # AT ALL on a stock x86-64 host with GCC and ld.lld — GCC hands its LTO

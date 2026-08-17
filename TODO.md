@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 243 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 244 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -739,11 +739,20 @@ loudly** where PGO used to fail silently. Left open:
   `-march=<X's arch> -mtune=X` and the ISA delta (crc, crypto) is code GCC
   never emits by itself. The workflow builds both ways and reports the verdict
   per run; nobody should re-derive the a72 result to find out.
-- [ ] **LTO for the macOS `.dmg` and the Windows `.zip`.** The same argument
-  applies (`package_macos_release.sh` and `release.yml`'s Windows job both set
-  `POM68K_NATIVE=OFF` and so still get no LTO). Stopped at Linux deliberately:
-  the universal-2 `lipo` path was not exercised, and MSVC needs `/GL` +
-  `/LTCG`, which the CMake block does not emit.
+- [ ] **LTO for the macOS `.dmg` and the Windows `.zip`.** Stopped at Linux
+  deliberately: the universal-2 `lipo` path was not exercised, and MSVC needs
+  `/GL` + `/LTCG`, which the CMake block does not emit.
+  **Re-stated 2026-08-17**, because the old wording ("both set
+  `POM68K_NATIVE=OFF` and so still get no LTO") stopped being true when
+  `POM68K_LTO` started defaulting ON. The two halves are now different:
+  - **macOS** — `package_macos_release.sh` and `macos.yml` would have picked
+    LTO up as a *side effect* of that flip, on a path nobody has exercised.
+    Both now pass `-DPOM68K_LTO=OFF` with the reason written next to it. This
+    item is one line away from done: delete that flag and exercise `lipo`.
+  - **Windows** — nothing to flip. The whole optimization block is guarded
+    `if(NOT MSVC AND NOT EMSCRIPTEN)`, so `POM68K_LTO` is **inert** on MSVC
+    at any default; the job passes no LTO flag on purpose, and says so. The
+    work is emitting `/GL` + `/LTCG`, not changing a knob.
 
 ### Measured and DROPPED — do not re-open without new data
 
