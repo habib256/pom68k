@@ -1,0 +1,108 @@
+# Nightly: does libpom68k_core.a survive LTO, on both host architectures?
+#
+# The gap this closes. `ci.yml` has two jobs and neither answers it:
+#   - `linux` asks for -DPOM68K_LTO=OFF on purpose, because LTO roughly
+#     doubles the link time of the ~150 binaries and that is not what a
+#     per-push job is for.
+#   - `link-configs` builds only the two standalone gates that link nothing
+#     else. That is enough to catch a broken linker/LTO pairing on the very
+#     first executable, and it says so in its own comment, but it never links
+#     the core.
+# Meanwhile the released Linux binaries ARE built -DPOM68K_LTO=ON
+# (packaging/linux/build_in_bionic.sh), and since 2026-08-17 POM68K_LTO
+# defaults ON, so a plain `cmake ..` is this shape too. Nothing was proving it.
+#
+# Both architectures, deliberately. The dev host is AArch64 and CI was
+# x86-64, and that split is exactly how the tree came to not build at all on
+# a stock x86-64 host (CHANGELOG.md 2026-08-17 (later)): a configuration
+# nobody exercised. A nightly is the cheap place to stop repeating that.
+#
+# Cost. This is the ~150-binary LTO build, so it is measured in tens of
+# minutes, not seconds -- which is why it is nightly and manual-only, never
+# per-push. `-flto=auto` spawns its own LTRANS jobs per link on top of the
+# make parallelism; that combination was run at -j4 on 4 cores / 15 GB while
+# writing this, over all 152 binaries, without OOM. If a runner ever does OOM
+# here, lower --parallel before suspecting the code.
+name: Nightly LTO
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-lto-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lto-core:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    name: LTO core (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        # No lld or mold on purpose: the released Linux binaries go through
+        # packaging/linux/build_in_bionic.sh, which installs neither, so the
+        # shape under test here is LTO + the default linker. The lld/mold
+        # question belongs to ci.yml's `link-configs`, which owns it.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev
+
+      - name: Fetch Dear ImGui (pinned to the tested docking release)
+        run: git clone --depth 1 --branch v1.92.8-docking https://github.com/ocornut/imgui.git
+
+      - name: Configure (the release shape)
+        # POM68K_NATIVE=OFF + POM68K_LTO=ON is what a distributable build is:
+        # no ISA floor raised, but the cross-TU inlining kept. Both are stated
+        # rather than inherited -- inheriting is what cost the release
+        # binaries their LTO in the first place.
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          -DPOM68K_NATIVE=OFF -DPOM68K_LTO=ON
+
+      - name: Build everything under LTO
+        run: cmake --build build --parallel "$(nproc)"
+
+      - name: The core is real, not an empty archive
+        run: |
+          ls -l build/libpom68k_core.a
+          test -s build/libpom68k_core.a
+          # A 0-byte binary passing for a built one is a trap this project has
+          # already paid for; check the whole output, not just the archive.
+          empty=$(find build -maxdepth 1 -type f -executable -size 0 | wc -l)
+          echo "0-byte executables: $empty"
+          test "$empty" -eq 0
+
+      - name: Smoke-launch (--version exits before any window)
+        run: |
+          OUT=$(./build/POM68K --version)
+          echo "$OUT"
+          grep -q "Macintosh 68k emulator" <<<"$OUT"
+
+      - name: Run the asset-free tier against the LTO build
+        # Linking is not behaving: LTO reorders and inlines across translation
+        # units, so the tier is re-run here rather than assumed. Parallel is
+        # safe because every gate now declares its scheduling cost
+        # (gate_resource_budgets.tsv -> PROCESSORS).
+        run: ctest --test-dir build -L asset-none -j "$(nproc)" --output-on-failure
+
+      - name: Keep the build log when it breaks
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-lto-${{ matrix.arch }}-logs
+          path: |
+            build/CMakeCache.txt
+            build/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: warn
