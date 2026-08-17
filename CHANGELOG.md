@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 245 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 246 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -282,6 +282,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ### Audits, doc syncs and cross-cutting reviews
 
 - **why does the tree not build on a stock x86-64 host, with `undefined symbol: main` in files that plainly have one?** → [2026-08-17 (later) — Two feature probes that each said yes…](#2026-08-17-lto-lld-combination)
+- **what proves the shape the release actually ships -- the core linked under LTO -- and on which architectures?** → [2026-08-17 (fifth) — Nothing was linking the core under LTO…](#2026-08-17-nightly-lto-core)
 - **why is a full `ctest` 4 h 30, and what would it take to run it in parallel?** → [2026-08-17 (fourth) — The suite is sequential by habit…](#2026-08-17-gate-scheduling-cost)
 - **"the knobs are independent since 2026-08-08" — the knobs were; their DEFAULTS were not, and the distributable build still lost its LTO** → [2026-08-17 (third) — The 2026-08-08 knob split was half done…](#2026-08-17-lto-default-on)
 - **when does a SECOND profile on an already-covered platform deserve its own beyond-boot pair?** → [2026-08-14 (third) — The Eclipse gets a beyond-boot pair of its own…](#2026-08-14-eclipse-beyond-boot)
@@ -303,6 +304,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-17 (fifth)** — [Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes](#2026-08-17-nightly-lto-core)
 - **2026-08-17 (fourth)** — [The suite is sequential by habit, not by constraint, and now says what it costs](#2026-08-17-gate-scheduling-cost)
 - **2026-08-17 (third)** — [The 2026-08-08 knob split was half done: LTO's default still followed NATIVE](#2026-08-17-lto-default-on)
 - **2026-08-17 (later)** — [Two feature probes that each said yes, and a tree that did not build at all on x86-64](#2026-08-17-lto-lld-combination)
@@ -548,6 +550,55 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-17-nightly-lto-core"></a>
+## 2026-08-17 (fifth) — Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes
+
+`ci.yml` gained a `link-configs` job earlier today, and its own comment is
+explicit about what it does not cover: it builds only the two standalone
+gates that link nothing else, which catches a broken linker/LTO pairing on
+the very first executable but never links `libpom68k_core.a`. The other job,
+`linux`, asks for `-DPOM68K_LTO=OFF` on purpose. So **no job anywhere linked
+the core under LTO** — while the released Linux binaries are built
+`-DPOM68K_LTO=ON`, and since this morning a plain `cmake ..` is that shape
+too.
+
+New `nightly.yml`, schedule + `workflow_dispatch` only, matrix over
+`ubuntu-latest` and `ubuntu-24.04-arm`. **Both architectures deliberately**:
+the dev host is AArch64 and CI was x86-64, and that split is precisely how
+the tree came to not build at all on a stock x86-64 host
+([2026-08-17 (later)](#2026-08-17-lto-lld-combination)). A nightly is the
+cheap place to stop repeating it.
+
+It checks three things rather than trusting an exit code — the core archive
+is non-empty, **no executable is 0 bytes** (the phantom-pass trap this
+project has already paid for), and the asset-free tier still passes, because
+linking is not behaving and LTO reorders across translation units. That tier
+runs `-j` now that every gate declares its scheduling cost
+([2026-08-17 (fourth)](#2026-08-17-gate-scheduling-cost)).
+
+No `lld` or `mold` installed here on purpose: the released binaries go
+through `build_in_bionic.sh`, which installs neither, so the shape under
+test is LTO + the default linker. The lld question belongs to
+`link-configs`, which owns it.
+
+**Rehearsed locally before being trusted, and the rehearsal moved a number.**
+The exact configuration — release shape, `--parallel 4` on 4 cores / 15 GB —
+built all **152 binaries in 87 minutes**, exit 0, no OOM, and then passed
+all three checks: archive 15 632 170 bytes, 152 executables and **0 of them
+empty**, `asset-none` **83/83 in 1.09 s** at `-j4`. The first draft of the
+job carried `timeout-minutes: 180`, a figure written with no measurement
+behind it; 87 min leaves a slower or busier runner far too little margin and
+a timeout on a nightly costs a whole night, so the ceiling is **240** and the
+87 is now in the file rather than in somebody's memory.
+
+**Limit of that rehearsal, stated**: the GUI target was excluded — `apt` is
+blocked by the sandbox proxy on that host, so no OpenGL dev packages and
+CMake skipped `POM68K`. The `--version` smoke step is therefore the one step
+of this job that has never been run. It is also the one the daily `linux`
+job already exercises, just without LTO.
 
 ---
 

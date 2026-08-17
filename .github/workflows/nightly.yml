@@ -17,12 +17,15 @@
 # a stock x86-64 host (CHANGELOG.md 2026-08-17 (later)): a configuration
 # nobody exercised. A nightly is the cheap place to stop repeating that.
 #
-# Cost. This is the ~150-binary LTO build, so it is measured in tens of
-# minutes, not seconds -- which is why it is nightly and manual-only, never
-# per-push. `-flto=auto` spawns its own LTRANS jobs per link on top of the
-# make parallelism; that combination was run at -j4 on 4 cores / 15 GB while
-# writing this, over all 152 binaries, without OOM. If a runner ever does OOM
-# here, lower --parallel before suspecting the code.
+# Cost, measured rather than guessed. This exact configuration -- release
+# shape, `--parallel 4` on 4 cores / 15 GB -- built all 152 binaries in
+# **87 minutes**, exit 0, no OOM (2026-08-17, GUI target excluded: that host
+# had no OpenGL dev packages, so add headroom for it). That is why the job is
+# nightly and manual-only, never per-push, and why the ceiling below is 240
+# and not 180: 87 min leaves a slower or busier runner far too little margin,
+# and a timeout on a nightly costs a whole night. `-flto=auto` spawns its own
+# LTRANS jobs per link on top of the make parallelism; if a runner ever does
+# OOM here, lower --parallel before suspecting the code.
 name: Nightly LTO
 
 on:
@@ -46,7 +49,7 @@ jobs:
             arch: aarch64
     name: LTO core (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 180
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v5
 

@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 245 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 246 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.

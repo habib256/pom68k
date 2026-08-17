@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 245 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 246 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -17,7 +17,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
 | [Save states](#save-states) | 6 |
 | [Machine bring-ups](#machine-bring-ups) | 40 |
-| [Build, packaging and release](#build-packaging-and-release) | 5 |
+| [Build, packaging and release](#build-packaging-and-release) | 6 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 12 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
 | [Cross-cutting](#cross-cutting) | 32 |
@@ -248,6 +248,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-08 (fourth)** — [`-mcpu=cortex-a72` produced byte-identical code to `-mtune=cortex-a72`: the Pi package's whole premise, measured and mostly refuted](CHANGELOG.md#2026-08-08-mcpu-identical)
 - **2026-08-08 (later)** — [The AppImage ignored a `roms/` folder sitting right next to it — the launcher had already chdir'd elsewhere](CHANGELOG.md#2026-08-08-appimage-datadir)
 - **2026-08-15 (fourth)** — [Two things the GUI was not being told: that the guest ejected the disk, and where the user put the windows](CHANGELOG.md#2026-08-15-gui-media-and-dock)
+- **2026-08-17 (fifth)** — [Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes](CHANGELOG.md#2026-08-17-nightly-lto-core)
 - **2026-08-17 (third)** — [The 2026-08-08 knob split was half done: LTO's *default* still followed NATIVE](CHANGELOG.md#2026-08-17-lto-default-on)
 
 ## Tests, gates and measurement
