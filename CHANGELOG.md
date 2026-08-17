@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 244 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 245 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -282,6 +282,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ### Audits, doc syncs and cross-cutting reviews
 
 - **why does the tree not build on a stock x86-64 host, with `undefined symbol: main` in files that plainly have one?** → [2026-08-17 (later) — Two feature probes that each said yes…](#2026-08-17-lto-lld-combination)
+- **why is a full `ctest` 4 h 30, and what would it take to run it in parallel?** → [2026-08-17 (fourth) — The suite is sequential by habit…](#2026-08-17-gate-scheduling-cost)
 - **"the knobs are independent since 2026-08-08" — the knobs were; their DEFAULTS were not, and the distributable build still lost its LTO** → [2026-08-17 (third) — The 2026-08-08 knob split was half done…](#2026-08-17-lto-default-on)
 - **when does a SECOND profile on an already-covered platform deserve its own beyond-boot pair?** → [2026-08-14 (third) — The Eclipse gets a beyond-boot pair of its own…](#2026-08-14-eclipse-beyond-boot)
 - **what does the GUI do that no gate can see?** → [2026-08-09 (seventh) — The GUI pass](#2026-08-09-gui-pass)
@@ -302,6 +303,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-17 (fourth)** — [The suite is sequential by habit, not by constraint, and now says what it costs](#2026-08-17-gate-scheduling-cost)
 - **2026-08-17 (third)** — [The 2026-08-08 knob split was half done: LTO's default still followed NATIVE](#2026-08-17-lto-default-on)
 - **2026-08-17 (later)** — [Two feature probes that each said yes, and a tree that did not build at all on x86-64](#2026-08-17-lto-lld-combination)
 - **2026-08-17** — [A64 and x64 stop decoding semantics behind the IR](#2026-08-17-jit-ir-semantics)
@@ -546,6 +548,86 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-17-gate-scheduling-cost"></a>
+## 2026-08-17 (fourth) — The suite is sequential by habit, not by constraint, and now says what it costs
+
+A full run is **4 h 30 sequential**, and that is the reason it happens
+rarely: the 2026-08-16 pass found **ten red gates in five unrelated causes**
+after nine days without one, and one of those causes — the IWM cell window
+counted in the wrong clock, nine platforms unable to mount a floppy — was
+found by a **GUI field report**, not by the suite. Late detection is this
+project's most expensive recurring tax, and its cause is the price of the
+feedback, not any lack of rigour.
+
+**Checked rather than assumed, and the answer changes the problem**: nothing
+requires that run to be sequential.
+
+- `grep -c RUN_SERIAL CMakeLists.txt` → **0**. `RESOURCE_LOCK` → **0**.
+  `PROCESSORS` → **0**. No concurrency constraint is declared anywhere.
+- `ScsiDisk::open(path, writeBack = false)` loads the image **whole into
+  memory**, and `ScsiDisk.h:160` says it outright: *"tests run write-back
+  off"*. Gates are **readers** of the shared assets, not writers.
+
+So the sequential run is an invocation habit (`ctest` with no `-j`). The
+binding resource is RAM — each etalon holds its whole image resident, so N
+gates in parallel hold N images — and nobody had ever written down what a
+gate costs.
+
+**Measured, on x86-64**: `tools/measure_gate_ram.py` runs each gate with its
+own `WORKING_DIRECTORY`/`ENVIRONMENT` and reads peak RSS from `wait4()`'s
+**per-child** rusage (not `RUSAGE_CHILDREN`, which accumulates across every
+child already reaped and would report the whole run's high-water mark).
+90 gates measured, 14 soft-skipped: median **12 MiB**, p90 32 MiB, max
+**111 MiB** (`jit_copyback_write_040_test`). `sst68000` is 71 MiB — it
+streams its 1 GB corpus rather than holding it. **The entire runnable
+registry on this host fits in one 256 MiB slot**; whatever costs 4 h 30 is
+in the etalons, and they cannot be measured where the images are absent.
+
+**`gate_resource_budgets.tsv`** is that number, versioned per host in the
+same shape as `performance_budgets.tsv`: reviewed policy, not literals in
+the registry. CMake turns each row into a `PROCESSORS` property,
+`slots = ceil(peak_rss_kb / 256 MiB)`, and the gate manifest gains two
+columns — `slots` and `slots_src`, the latter `measured` or **`assumed`**,
+so "nobody has calibrated this tier" can never read as "this tier is cheap".
+`docs_test` enforces the new schema and, specifically, that an `assumed` row
+never claims more than one slot: a multi-slot guess would quietly serialize
+the suite it exists to parallelize. (It also did its job unprompted — the
+seven-column manifest failed the five-column check on the first run.)
+
+**`PROCESSORS`, not `RESOURCE_GROUPS`, and that is a measured choice.**
+Resource groups model RAM properly, but they are **silently ignored** unless
+the operator remembers `--resource-spec-file` — verified here on a throwaway
+project: a grouped test with no spec file simply runs, unconstrained. A
+safety mechanism that only works when you remember a flag is not a safety
+mechanism. `PROCESSORS` is honoured by the plain `ctest -j8` people type.
+
+**This commit changes no scheduling.** Every gate on this host measures
+under one slot, so every gate is one slot — exactly today's behaviour. That
+is deliberate: a conservative *guess* for the uncalibrated etalons would be
+worse than nothing, because an etalon wrongly declared at 8 slots makes
+`ctest -j8` slower than it is today. The mechanism ships neutral; the
+numbers come from the host that has the assets.
+
+Proven end to end anyway, with a temporary row: 1 500 000 kB →
+`6 slot(s), measured` in the manifest → `PROCESSORS=6` in CTest's own JSON;
+row removed → `1 slot, assumed`. And the payoff is already visible on what
+does run here, verdicts identical at every level: `asset-none` **3.08 s →
+0.80 s at -j4** (83/83 throughout), `unit` **9.45 s → 5.32 s** (104/104).
+`-j8` on this 4-core box is 1.10 s, i.e. worse — oversubscription is real
+and is the reason the declaration has to exist.
+
+**Trap worth keeping**: CMake's `file(STRINGS)` reads a file like
+`strings(1)` and **splits a line at any non-ASCII byte**, so an em dash in a
+comment produced a fragment with no leading `#` that then failed the
+four-column check. `performance_budgets.tsv` is pure ASCII for the same
+reason; the new file now says so at the top.
+
+**Next, and it is not code**: sweep the etalon tier where the images live —
+`tools/measure_gate_ram.py --build-dir build -L etalon --fail-on-skip`.
+Until then the 4 h 30 stands.
 
 ---
 

@@ -169,15 +169,19 @@ int main() {
         std::ifstream f(manifest);
         std::string line;
         std::getline(f, line); // header
-        check(line == "name\tassets\thost\tscope\ttier",
-              "gate manifest has the versioned five-column schema");
+        // Seven columns since 2026-08-17: `slots` and `slots_src` carry what
+        // a gate COSTS to run, so `ctest -j` can schedule the suite instead
+        // of it being sequential because nobody knows.
+        check(line == "name\tassets\thost\tscope\ttier\tslots\tslots_src",
+              "gate manifest has the versioned seven-column schema");
         while (std::getline(f, line)) {
             std::vector<std::string> cells;
             std::stringstream ss(line);
             std::string cell;
             while (std::getline(ss, cell, '\t')) cells.push_back(cell);
-            if (cells.size() == 5)
-                gateManifest[cells[0]] = {cells[1], cells[2], cells[3], cells[4]};
+            if (cells.size() == 7)
+                gateManifest[cells[0]] = {cells[1], cells[2], cells[3],
+                                          cells[4], cells[5], cells[6]};
         }
     }
     check(gateManifest.size() == gates.size(),
@@ -186,16 +190,27 @@ int main() {
     const std::set<std::string> hostKinds{"any", "native", "a64", "x64"};
     const std::set<std::string> scopeKinds{"component", "engine", "profile", "repository"};
     const std::set<std::string> tierKinds{"daily", "platform", "full"};
+    // `assumed` means nobody has measured this gate on this host, and it is
+    // scheduled as one slot. It must therefore NEVER carry more than one:
+    // a multi-slot claim that came from nowhere would quietly serialize the
+    // suite it is meant to parallelize.
+    const std::set<std::string> slotSources{"measured", "assumed"};
     std::vector<std::string> invalidManifest;
     for (const auto& [name, cells] : gateManifest) {
-        if (!gates.count(name) || cells.size() != 4 ||
+        if (!gates.count(name) || cells.size() != 6 ||
             !assetKinds.count(cells[0]) || !hostKinds.count(cells[1]) ||
-            !scopeKinds.count(cells[2]) || !tierKinds.count(cells[3]))
+            !scopeKinds.count(cells[2]) || !tierKinds.count(cells[3]) ||
+            !slotSources.count(cells[5])) {
+            invalidManifest.push_back(name);
+            continue;
+        }
+        const int slots = std::atoi(cells[4].c_str());
+        if (slots < 1 || (cells[5] == "assumed" && slots != 1))
             invalidManifest.push_back(name);
     }
     check(invalidManifest.empty(),
           invalidManifest.empty()
-              ? "every gate manifest row has valid assets/host/scope/tier"
+              ? "every gate manifest row has valid assets/host/scope/tier/slots"
               : "invalid gate manifest rows: " + [&] {
                     std::string out;
                     for (const auto& name : invalidManifest) out += name + " ";

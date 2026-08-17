@@ -2186,8 +2186,40 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         cuda_lle_test egret_lle_test
         scsi_disk_test ncr53c96_test scsi_pdma_test scsi_hfs_facade_test sound_test
         savestate_030_test savestate_68k_test)
+    # ── What a gate COSTS, so `ctest -j` can schedule the suite ──────────
+    # Same shape as performance_budgets.tsv: a versioned, per-host, reviewed
+    # manifest rather than literals scattered through the registry. Read
+    # `gate_resource_budgets.tsv` for why RAM is the binding resource and why
+    # PROCESSORS is used rather than the more precise RESOURCE_GROUPS.
+    # A gate with no row is ONE slot — today's behaviour exactly — and the
+    # manifest records that as `assumed`, so an uncalibrated tier can never
+    # read as a cheap one.
+    set(POM68K_GATE_SLOT_KB 262144)          # 256 MiB per scheduling slot
+    set(POM68K_GATE_BUDGET_FILE
+        "${CMAKE_CURRENT_SOURCE_DIR}/gate_resource_budgets.tsv")
+    file(STRINGS "${POM68K_GATE_BUDGET_FILE}" pom68k_gate_budget_lines)
+    foreach(line IN LISTS pom68k_gate_budget_lines)
+        if(line MATCHES "^[ \t]*#" OR line STREQUAL "")
+            continue()
+        endif()
+        string(REPLACE "\t" ";" fields "${line}")
+        list(LENGTH fields field_count)
+        if(NOT field_count EQUAL 4)
+            message(FATAL_ERROR
+                "gate_resource_budgets.tsv: expected four columns: ${line}")
+        endif()
+        list(GET fields 0 budget_gate)
+        list(GET fields 1 budget_host)
+        list(GET fields 2 budget_kb)
+        if(NOT budget_kb MATCHES "^[0-9]+$")
+            message(FATAL_ERROR
+                "gate_resource_budgets.tsv: non-integer peak_rss_kb: ${line}")
+        endif()
+        set("POM68K_GATE_RAM_${budget_gate}_${budget_host}" "${budget_kb}")
+    endforeach()
+
     set(pom68k_gate_manifest
-        "name\tassets\thost\tscope\ttier\n")
+        "name\tassets\thost\tscope\ttier\tslots\tslots_src\n")
     foreach(t IN LISTS pom68k_tests)
         if(t MATCHES "etalon$" OR
            (t MATCHES "^jit_lockstep" AND
@@ -2227,6 +2259,27 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
             set(gate_tier full)
         endif()
 
+        # Scheduling cost. Prefer this host's own measurement, fall back to
+        # a host-agnostic row, and otherwise assume one slot.
+        set(gate_ram_key "POM68K_GATE_RAM_${t}_${POM68K_PERF_HOST}")
+        set(gate_ram_any "POM68K_GATE_RAM_${t}_any")
+        if(DEFINED ${gate_ram_key})
+            set(gate_ram_kb "${${gate_ram_key}}")
+            set(gate_slots_src measured)
+        elseif(DEFINED ${gate_ram_any})
+            set(gate_ram_kb "${${gate_ram_any}}")
+            set(gate_slots_src measured)
+        else()
+            set(gate_ram_kb 0)
+            set(gate_slots_src assumed)
+        endif()
+        # ceil(kb / slot) with integer arithmetic, floored at one slot.
+        math(EXPR gate_slots
+             "(${gate_ram_kb} + ${POM68K_GATE_SLOT_KB} - 1) / ${POM68K_GATE_SLOT_KB}")
+        if(gate_slots LESS 1)
+            set(gate_slots 1)
+        endif()
+
         set_property(TEST ${t} APPEND PROPERTY
                      LABELS "asset-${gate_assets}" "host-${gate_host}"
                             "scope-${gate_scope}" "tier-${gate_tier}")
@@ -2234,8 +2287,9 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         set_property(TEST ${t} PROPERTY POM68K_HOST ${gate_host})
         set_property(TEST ${t} PROPERTY POM68K_SCOPE ${gate_scope})
         set_property(TEST ${t} PROPERTY POM68K_TIER ${gate_tier})
+        set_property(TEST ${t} PROPERTY PROCESSORS ${gate_slots})
         string(APPEND pom68k_gate_manifest
-               "${t}\t${gate_assets}\t${gate_host}\t${gate_scope}\t${gate_tier}\n")
+               "${t}\t${gate_assets}\t${gate_host}\t${gate_scope}\t${gate_tier}\t${gate_slots}\t${gate_slots_src}\n")
     endforeach()
     file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gate_manifest.tsv
          "${pom68k_gate_manifest}")
