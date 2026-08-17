@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 242 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 246 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 18 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 19 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 32 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
@@ -17,10 +17,10 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
 | [Save states](#save-states) | 6 |
 | [Machine bring-ups](#machine-bring-ups) | 40 |
-| [Build, packaging and release](#build-packaging-and-release) | 4 |
+| [Build, packaging and release](#build-packaging-and-release) | 6 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 12 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
-| [Cross-cutting](#cross-cutting) | 31 |
+| [Cross-cutting](#cross-cutting) | 32 |
 
 ---
 
@@ -44,6 +44,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-10 (third)** — [Apple Silicon makes the first native 68030 backend provable](CHANGELOG.md#2026-08-10-jit-030-a64)
 - **2026-08-16 (third)** — [JIT copyback writes cross the native boundary, with dirty-longword and format-$7 proofs attached](CHANGELOG.md#2026-08-16-jit-copyback-write)
 - **2026-08-17** — [A64 and x64 stop decoding semantics behind the IR](CHANGELOG.md#2026-08-17-jit-ir-semantics)
+- **2026-08-17 (later)** — [Two feature probes that each said yes, and a tree that did not build at all on x86-64](CHANGELOG.md#2026-08-17-lto-lld-combination)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -247,6 +248,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-08 (fourth)** — [`-mcpu=cortex-a72` produced byte-identical code to `-mtune=cortex-a72`: the Pi package's whole premise, measured and mostly refuted](CHANGELOG.md#2026-08-08-mcpu-identical)
 - **2026-08-08 (later)** — [The AppImage ignored a `roms/` folder sitting right next to it — the launcher had already chdir'd elsewhere](CHANGELOG.md#2026-08-08-appimage-datadir)
 - **2026-08-15 (fourth)** — [Two things the GUI was not being told: that the guest ejected the disk, and where the user put the windows](CHANGELOG.md#2026-08-15-gui-media-and-dock)
+- **2026-08-17 (fifth)** — [Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes](CHANGELOG.md#2026-08-17-nightly-lto-core)
+- **2026-08-17 (third)** — [The 2026-08-08 knob split was half done: LTO's *default* still followed NATIVE](CHANGELOG.md#2026-08-17-lto-default-on)
 
 ## Tests, gates and measurement
 
@@ -304,4 +307,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-14 (seventh)** — [Which dump, not only which side: one firmware search for all eight devices, and a per-device picker in the window](CHANGELOG.md#2026-08-14-firmware-picker)
 - **2026-08-14 (sixth)** — ["Never silent" was only true on stderr: the Périphériques window makes every LLE/HLE fallback visible, and manually selectable](CHANGELOG.md#2026-08-14-peripheral-window)
 - **2026-08-15 (fifth)** — [Mounting a CD stops being a procedure, and the discs that never mounted finally say why](CHANGELOG.md#2026-08-15-cd-like-a-floppy)
+- **2026-08-17 (fourth)** — [The suite is sequential by habit, not by constraint, and now says what it costs](CHANGELOG.md#2026-08-17-gate-scheduling-cost)
 

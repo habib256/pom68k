@@ -83,6 +83,15 @@ LTO is not a portability hazard: it changes what the linker can inline, not
 what the CPU must support. The knobs are separate since 2026-08-08, and
 `packaging/linux/build_in_bionic.sh` now passes `-DPOM68K_LTO=ON`.
 
+**The split was only half done, and the second half is 2026-08-17**: the
+knobs were independent, but `POM68K_LTO`'s *default* was still
+`${POM68K_NATIVE}`. So the exact case above — a distributable build setting
+`NATIVE=OFF` — still got no LTO unless it named it a second time, and every
+packaging script here carries that second mention for precisely this reason.
+`POM68K_LTO` defaults **ON** now; a build that does not want it says so and
+says why (the CI `linux` job, for link time; both macOS packaging paths,
+because the universal-2 `lipo` path is still unexercised).
+
 > Not yet applied to the macOS `.dmg` or the Windows `.zip`. The same argument
 > holds for both; the reason to stop at Linux is that neither was exercised
 > here, and MSVC needs `/GL` + `/LTCG`, which the CMake block skips today.

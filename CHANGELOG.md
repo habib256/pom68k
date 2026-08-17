@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 242 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 246 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -281,6 +281,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Audits, doc syncs and cross-cutting reviews
 
+- **why does the tree not build on a stock x86-64 host, with `undefined symbol: main` in files that plainly have one?** → [2026-08-17 (later) — Two feature probes that each said yes…](#2026-08-17-lto-lld-combination)
+- **what proves the shape the release actually ships -- the core linked under LTO -- and on which architectures?** → [2026-08-17 (fifth) — Nothing was linking the core under LTO…](#2026-08-17-nightly-lto-core)
+- **why is a full `ctest` 4 h 30, and what would it take to run it in parallel?** → [2026-08-17 (fourth) — The suite is sequential by habit…](#2026-08-17-gate-scheduling-cost)
+- **"the knobs are independent since 2026-08-08" — the knobs were; their DEFAULTS were not, and the distributable build still lost its LTO** → [2026-08-17 (third) — The 2026-08-08 knob split was half done…](#2026-08-17-lto-default-on)
 - **when does a SECOND profile on an already-covered platform deserve its own beyond-boot pair?** → [2026-08-14 (third) — The Eclipse gets a beyond-boot pair of its own…](#2026-08-14-eclipse-beyond-boot)
 - **what does the GUI do that no gate can see?** → [2026-08-09 (seventh) — The GUI pass](#2026-08-09-gui-pass)
 
@@ -300,6 +304,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-17 (fifth)** — [Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes](#2026-08-17-nightly-lto-core)
+- **2026-08-17 (fourth)** — [The suite is sequential by habit, not by constraint, and now says what it costs](#2026-08-17-gate-scheduling-cost)
+- **2026-08-17 (third)** — [The 2026-08-08 knob split was half done: LTO's default still followed NATIVE](#2026-08-17-lto-default-on)
+- **2026-08-17 (later)** — [Two feature probes that each said yes, and a tree that did not build at all on x86-64](#2026-08-17-lto-lld-combination)
 - **2026-08-17** — [A64 and x64 stop decoding semantics behind the IR](#2026-08-17-jit-ir-semantics)
 - **2026-08-16 (third)** — [JIT copyback writes cross the native boundary, with dirty-longword and format-$7 proofs attached](#2026-08-16-jit-copyback-write)
 - **2026-08-16 (later)** — [The full 68040 stops masquerading as a 68882; the 68030 and 68020 audits close one real gap each](#2026-08-16-020-030-040-closure)
@@ -542,6 +550,280 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-17-nightly-lto-core"></a>
+## 2026-08-17 (fifth) — Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes
+
+`ci.yml` gained a `link-configs` job earlier today, and its own comment is
+explicit about what it does not cover: it builds only the two standalone
+gates that link nothing else, which catches a broken linker/LTO pairing on
+the very first executable but never links `libpom68k_core.a`. The other job,
+`linux`, asks for `-DPOM68K_LTO=OFF` on purpose. So **no job anywhere linked
+the core under LTO** — while the released Linux binaries are built
+`-DPOM68K_LTO=ON`, and since this morning a plain `cmake ..` is that shape
+too.
+
+New `nightly.yml`, schedule + `workflow_dispatch` only, matrix over
+`ubuntu-latest` and `ubuntu-24.04-arm`. **Both architectures deliberately**:
+the dev host is AArch64 and CI was x86-64, and that split is precisely how
+the tree came to not build at all on a stock x86-64 host
+([2026-08-17 (later)](#2026-08-17-lto-lld-combination)). A nightly is the
+cheap place to stop repeating it.
+
+It checks three things rather than trusting an exit code — the core archive
+is non-empty, **no executable is 0 bytes** (the phantom-pass trap this
+project has already paid for), and the asset-free tier still passes, because
+linking is not behaving and LTO reorders across translation units. That tier
+runs `-j` now that every gate declares its scheduling cost
+([2026-08-17 (fourth)](#2026-08-17-gate-scheduling-cost)).
+
+No `lld` or `mold` installed here on purpose: the released binaries go
+through `build_in_bionic.sh`, which installs neither, so the shape under
+test is LTO + the default linker. The lld question belongs to
+`link-configs`, which owns it.
+
+**Rehearsed locally before being trusted, and the rehearsal moved a number.**
+The exact configuration — release shape, `--parallel 4` on 4 cores / 15 GB —
+built all **152 binaries in 87 minutes**, exit 0, no OOM, and then passed
+all three checks: archive 15 632 170 bytes, 152 executables and **0 of them
+empty**, `asset-none` **83/83 in 1.09 s** at `-j4`. The first draft of the
+job carried `timeout-minutes: 180`, a figure written with no measurement
+behind it; 87 min leaves a slower or busier runner far too little margin and
+a timeout on a nightly costs a whole night, so the ceiling is **240** and the
+87 is now in the file rather than in somebody's memory.
+
+**Limit of that rehearsal, stated**: the GUI target was excluded — `apt` is
+blocked by the sandbox proxy on that host, so no OpenGL dev packages and
+CMake skipped `POM68K`. The `--version` smoke step is therefore the one step
+of this job that has never been run. It is also the one the daily `linux`
+job already exercises, just without LTO.
+
+---
+
+<a id="2026-08-17-gate-scheduling-cost"></a>
+## 2026-08-17 (fourth) — The suite is sequential by habit, not by constraint, and now says what it costs
+
+A full run is **4 h 30 sequential**, and that is the reason it happens
+rarely: the 2026-08-16 pass found **ten red gates in five unrelated causes**
+after nine days without one, and one of those causes — the IWM cell window
+counted in the wrong clock, nine platforms unable to mount a floppy — was
+found by a **GUI field report**, not by the suite. Late detection is this
+project's most expensive recurring tax, and its cause is the price of the
+feedback, not any lack of rigour.
+
+**Checked rather than assumed, and the answer changes the problem**: nothing
+requires that run to be sequential.
+
+- `grep -c RUN_SERIAL CMakeLists.txt` → **0**. `RESOURCE_LOCK` → **0**.
+  `PROCESSORS` → **0**. No concurrency constraint is declared anywhere.
+- `ScsiDisk::open(path, writeBack = false)` loads the image **whole into
+  memory**, and `ScsiDisk.h:160` says it outright: *"tests run write-back
+  off"*. Gates are **readers** of the shared assets, not writers.
+
+So the sequential run is an invocation habit (`ctest` with no `-j`). The
+binding resource is RAM — each etalon holds its whole image resident, so N
+gates in parallel hold N images — and nobody had ever written down what a
+gate costs.
+
+**Measured, on x86-64**: `tools/measure_gate_ram.py` runs each gate with its
+own `WORKING_DIRECTORY`/`ENVIRONMENT` and reads peak RSS from `wait4()`'s
+**per-child** rusage (not `RUSAGE_CHILDREN`, which accumulates across every
+child already reaped and would report the whole run's high-water mark).
+90 gates measured, 14 soft-skipped: median **12 MiB**, p90 32 MiB, max
+**111 MiB** (`jit_copyback_write_040_test`). `sst68000` is 71 MiB — it
+streams its 1 GB corpus rather than holding it. **The entire runnable
+registry on this host fits in one 256 MiB slot**; whatever costs 4 h 30 is
+in the etalons, and they cannot be measured where the images are absent.
+
+**`gate_resource_budgets.tsv`** is that number, versioned per host in the
+same shape as `performance_budgets.tsv`: reviewed policy, not literals in
+the registry. CMake turns each row into a `PROCESSORS` property,
+`slots = ceil(peak_rss_kb / 256 MiB)`, and the gate manifest gains two
+columns — `slots` and `slots_src`, the latter `measured` or **`assumed`**,
+so "nobody has calibrated this tier" can never read as "this tier is cheap".
+`docs_test` enforces the new schema and, specifically, that an `assumed` row
+never claims more than one slot: a multi-slot guess would quietly serialize
+the suite it exists to parallelize. (It also did its job unprompted — the
+seven-column manifest failed the five-column check on the first run.)
+
+**`PROCESSORS`, not `RESOURCE_GROUPS`, and that is a measured choice.**
+Resource groups model RAM properly, but they are **silently ignored** unless
+the operator remembers `--resource-spec-file` — verified here on a throwaway
+project: a grouped test with no spec file simply runs, unconstrained. A
+safety mechanism that only works when you remember a flag is not a safety
+mechanism. `PROCESSORS` is honoured by the plain `ctest -j8` people type.
+
+**This commit changes no scheduling.** Every gate on this host measures
+under one slot, so every gate is one slot — exactly today's behaviour. That
+is deliberate: a conservative *guess* for the uncalibrated etalons would be
+worse than nothing, because an etalon wrongly declared at 8 slots makes
+`ctest -j8` slower than it is today. The mechanism ships neutral; the
+numbers come from the host that has the assets.
+
+Proven end to end anyway, with a temporary row: 1 500 000 kB →
+`6 slot(s), measured` in the manifest → `PROCESSORS=6` in CTest's own JSON;
+row removed → `1 slot, assumed`. And the payoff is already visible on what
+does run here, verdicts identical at every level: `asset-none` **3.08 s →
+0.80 s at -j4** (83/83 throughout), `unit` **9.45 s → 5.32 s** (104/104).
+`-j8` on this 4-core box is 1.10 s, i.e. worse — oversubscription is real
+and is the reason the declaration has to exist.
+
+**Trap worth keeping**: CMake's `file(STRINGS)` reads a file like
+`strings(1)` and **splits a line at any non-ASCII byte**, so an em dash in a
+comment produced a fragment with no leading `#` that then failed the
+four-column check. `performance_budgets.tsv` is pure ASCII for the same
+reason; the new file now says so at the top.
+
+**Next, and it is not code**: sweep the etalon tier where the images live —
+`tools/measure_gate_ram.py --build-dir build -L etalon --fail-on-skip`.
+Until then the 4 h 30 stands.
+
+---
+
+<a id="2026-08-17-lto-default-on"></a>
+## 2026-08-17 (third) — The 2026-08-08 knob split was half done: LTO's *default* still followed NATIVE
+
+`CMakeLists.txt` said, three lines above the code that contradicted it:
+
+> `POM68K_LTO` link-time optimization. **Independent of both**: a portable
+> binary has every reason to want it.
+
+and then `option(POM68K_LTO "Link-time optimization" ${POM68K_NATIVE})`. So
+in the one case the comment was written for — a *distributable* build, which
+sets `NATIVE=OFF` precisely to stay loadable everywhere — LTO was still off
+unless the build named it a second time. Every packaging script in the tree
+carries that second mention (`build_in_bionic.sh`, `build_in_bionic_pi.sh`,
+`build_native_pi.sh`), which is the tell: they are not being explicit for
+style, they are working around the default.
+
+This is the residue of 2026-08-08, where making the knobs independent
+stopped the released binaries from silently losing their LTO. The knobs did
+become independent; the *default* did not. **`POM68K_LTO` now defaults ON.**
+
+**A default flip is only safe if it changes nothing that already exists**, so
+every site passing `NATIVE=OFF` was audited and made to state its intent
+rather than inherit one:
+
+- **`ci.yml` `linux`** — `-DPOM68K_LTO=OFF`, explicitly. It had been getting
+  no-LTO as a side effect while its comment claimed both reasons at once
+  ("`-march=native` proves nothing **and** LTO doubles the link time"). Only
+  the first is about NATIVE. This job wants a fast build; it now says so.
+- **`macos.yml` and `package_macos_release.sh`** — `-DPOM68K_LTO=OFF`. These
+  would have picked LTO up as a side effect of this very commit, on a path
+  nobody has exercised. LTO for the macOS package is open work with its own
+  reason for being open (the universal-2 `lipo` path, `TODO.md` § 3); it
+  should land as that item, not as fallout.
+- **`release.yml` Windows** — nothing to change, and a comment saying why:
+  the whole optimization block is guarded `if(NOT MSVC AND NOT EMSCRIPTEN)`,
+  so the knob is **inert** on MSVC at any default. Passing `OFF` there would
+  read as a decision; there is none to make until `/GL` + `/LTCG` exist.
+- The Pi and bionic scripts already passed `-DPOM68K_LTO=ON`: unchanged, and
+  their explicitness is now belt-and-braces rather than load-bearing.
+
+Verified by configuring, not by reading: `NATIVE=OFF` alone — the portable
+build the comment was written for — resolves `POM68K_LTO=ON` where it used
+to resolve OFF; a bare `cmake ..` gives ON; the CI shape gives OFF and keeps
+`lld` (the fast link is not given up where it costs nothing, per the probe
+that landed earlier today).
+
+**Cost, stated plainly**: LTO roughly doubles the link time of the ~130 test
+binaries. That is why the flip comes with three explicit `OFF`s rather than
+none — a default should serve the case that cannot speak for itself (someone
+typing `cmake ..`, or a future packaging script that forgets), not the two
+jobs that can.
+
+---
+
+<a id="2026-08-17-lto-lld-combination"></a>
+## 2026-08-17 (later) — Two feature probes that each said yes, and a tree that did not build at all on x86-64
+
+Configuring this tree on a plain x86-64 Linux host (GCC 13, `ld.lld`
+installed, no `mold`) and running `make -j4` fails at **4 %**, on the first
+four executables it reaches — `asset_fingerprint_test`, `fixture_store_test`,
+`config_test`, `docs_test` — each with:
+
+```
+ld.lld: error: undefined symbol: main
+>>> referenced by …/Scrt1.o:(_start)
+```
+
+`main` is right there in the source, and `nm` finds `T main` in the object
+the link is being handed. The three-line reduction says what is actually
+going on:
+
+| flags | result |
+|---|---|
+| `-flto=auto -fno-fat-lto-objects -fuse-ld=lld` | **undefined symbol: main** |
+| `-flto=auto -fno-fat-lto-objects` (default BFD ld) | links |
+| `-fuse-ld=lld` (no LTO) | links |
+
+GCC's IPO objects are GIMPLE, not machine code — `-fno-fat-lto-objects` is
+what CMake's `CMAKE_INTERPROCEDURAL_OPTIMIZATION` adds, so there is no
+fallback machine-code copy — and a linker the driver does not hand the LTO
+plugin to reads them as objects with no symbols in them. Neither feature is
+broken. **The combination is a third thing, and nothing probed it.**
+
+What let it through is the ordering, and each half was individually correct:
+`check_ipo_supported()` ran *before* `add_link_options(-fuse-ld=lld)`, so it
+answered for the default linker; the linker probe was
+`check_cxx_compiler_flag("")`, which compiles a source with no LTO on it.
+Both said yes. The build said no. This is the same shape as the released
+binaries that had silently lost LTO (`docs/RASPBERRY_PI.md`, 2026-08-08):
+independent knobs, verified independently, used together.
+
+**Fix**: LTO is resolved to a *request* first, the linker probe carries the
+LTO flags the build will really use (`check_cxx_source_compiles` with
+`CMAKE_REQUIRED_FLAGS`/`CMAKE_REQUIRED_LINK_OPTIONS`), and
+`CMAKE_INTERPROCEDURAL_OPTIMIZATION` is committed after. On conflict **the
+fast linker loses, not LTO**: LTO is a shipped optimization this project has
+already lost once by accident, a faster link is a working-loop convenience.
+The configure line is loud about the trade rather than silent:
+
+```
+-- POM68K: ld.lld found but cannot link this compiler's LTO objects
+   — keeping the default linker (LTO stays ON)
+```
+
+The cache variable is renamed `pom68k_ld_<ld>_ok` → `pom68k_ld_<ld>_usable`,
+so a build directory configured before this check re-probes instead of
+trusting the old, weaker answer. Verified in all three directions on this
+host: default (LTO ON, lld present) → default linker + LTO;
+`-DPOM68K_LTO=OFF` → **lld is used**, the fast link is not given up when it
+costs nothing; `-DPOM68K_FAST_LINK=OFF` → default linker, LTO ON.
+
+**Why nobody saw it**: the dev host is AArch64 and the two native CI jobs
+were not this combination. Not a corner case — GCC + lld is a stock
+distribution pairing, and it takes the tree from "216 gates" to "zero
+binaries" with a message that points at the source file instead of the
+build configuration.
+
+**Reopening condition**: `mold` is untested against GCC LTO here (it was not
+installed, so the probe never reached it). If a host has mold and the new
+probe rejects it, that verdict is now measured rather than assumed — but it
+is worth an entry, because mold *is* expected to handle the plugin.
+
+### The same shape again, in `tests/fetch_sst_68000.sh`
+
+Running the tiers on this host also found the SST fetcher failing with
+**exit 1 and not one line of output**, leaving an empty out-dir — after
+which `sst68000` soft-skips exactly as if nobody had asked for the vectors.
+The listing and the payload are two different hosts: `api.github.com` for
+the file names, `raw.githubusercontent.com` for the ~193 MB themselves. A
+sandbox or CI proxy can serve the second and answer the first with 403 (and
+unauthenticated API calls are rate-limited anyway); `curl -sf` then fails
+inside a pipeline under `set -o pipefail`, and the script dies mute.
+
+Now it fails loudly and prints the recovery it was one step away from: the
+payload host is usually still reachable, so take the names from git
+(`git clone --filter=blob:none --no-checkout --depth 1`, `git ls-tree`) and
+pass them explicitly — the mode the script already supported. That is how
+the 125 files were fetched here. A listing that answers but yields no names
+is a separate, equally loud error. Same lesson as the PGO training script
+(2026-08-08): **a fetch that fails silently is worse than one that fails**,
+because the gate downstream reports the absence as a skip, and a skip reads
+as "not applicable" rather than "broken".
 
 ---
 

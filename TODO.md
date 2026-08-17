@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 242 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 246 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -80,7 +80,22 @@ La fenêtre se ferme seulement quand les quatre sorties suivantes sont vraies :
   LC II/68030 sur l'hôte x86-64 de référence et sur Apple M4 ; aucun seuil
   des deux familles restantes n'est extrapolé ;
 - [ ] le palier legacy `unit` n'a plus d'échec inexpliqué sur les deux
-  architectures hôtes.
+  architectures hôtes. **Moitié x86-64 mesurée le 2026-08-17** (GCC 13,
+  conteneur neuf, arbre reconstruit from scratch — `make -j4`, exit 0,
+  152 binaires, aucun à 0 octet) : `asset-none` **83/83** en 4,49 s sans un
+  seul SKIP, `unit` **104/104** en 5,34 s, **zéro échec**. Ce que ce vert ne
+  dit pas, et qu'il faut lire avec lui : sur les 21 gates de `unit` hors
+  `asset-none`, **20 sont des soft-skips** faute d'assets privés (ROMs, images
+  disque, dumps MCU, et les données de fuzz 030/040 qui se génèrent avec
+  l'oracle). Un seul tournait vraiment, `savestate_68k_test` — un palier
+  « vert » de 104 dont 84 s'exécutent. Depuis, **`sst68000` aussi** : ses
+  vecteurs sont le seul asset manquant qui soit public, ils ont été
+  récupérés, et le gate donne **1 000 058 / 1 000 058 sur 124 fichiers** en
+  6,67 s. Reste à faire pour cocher : rejouer le palier sur un hôte x86-64
+  *portant les assets*, et la moitié AArch64.
+  **Prérequis levé le même jour** : sur cet hôte l'arbre ne se construisait
+  pas du tout (LTO + `ld.lld`, `CHANGELOG.md` 2026-08-17 (later)) — la case
+  était inatteignable, pas seulement non mesurée.
 
 `docs_test` vérifie la cohérence dynamique du catalogue compilé, des gates,
 des budgets et de la documentation ; il ne doit contenir aucun nombre plafond qui transforme par
@@ -724,11 +739,20 @@ loudly** where PGO used to fail silently. Left open:
   `-march=<X's arch> -mtune=X` and the ISA delta (crc, crypto) is code GCC
   never emits by itself. The workflow builds both ways and reports the verdict
   per run; nobody should re-derive the a72 result to find out.
-- [ ] **LTO for the macOS `.dmg` and the Windows `.zip`.** The same argument
-  applies (`package_macos_release.sh` and `release.yml`'s Windows job both set
-  `POM68K_NATIVE=OFF` and so still get no LTO). Stopped at Linux deliberately:
-  the universal-2 `lipo` path was not exercised, and MSVC needs `/GL` +
-  `/LTCG`, which the CMake block does not emit.
+- [ ] **LTO for the macOS `.dmg` and the Windows `.zip`.** Stopped at Linux
+  deliberately: the universal-2 `lipo` path was not exercised, and MSVC needs
+  `/GL` + `/LTCG`, which the CMake block does not emit.
+  **Re-stated 2026-08-17**, because the old wording ("both set
+  `POM68K_NATIVE=OFF` and so still get no LTO") stopped being true when
+  `POM68K_LTO` started defaulting ON. The two halves are now different:
+  - **macOS** — `package_macos_release.sh` and `macos.yml` would have picked
+    LTO up as a *side effect* of that flip, on a path nobody has exercised.
+    Both now pass `-DPOM68K_LTO=OFF` with the reason written next to it. This
+    item is one line away from done: delete that flag and exercise `lipo`.
+  - **Windows** — nothing to flip. The whole optimization block is guarded
+    `if(NOT MSVC AND NOT EMSCRIPTEN)`, so `POM68K_LTO` is **inert** on MSVC
+    at any default; the job passes no LTO flag on purpose, and says so. The
+    work is emitting `/GL` + `/LTCG`, not changing a knob.
 
 ### Measured and DROPPED — do not re-open without new data
 

@@ -43,11 +43,21 @@ endif()
 #                  is how the release aarch64 AppImage targets the Pi 4/400's
 #                  Cortex-A72 while staying loadable on a Pi 3.
 #   POM68K_LTO     link-time optimization. Independent of both: a portable
-#                  binary has every reason to want it.
+#                  binary has every reason to want it — so it defaults ON,
+#                  not to POM68K_NATIVE. It followed NATIVE until 2026-08-17,
+#                  which made this comment a lie in the one case it was
+#                  written for: a distributable build sets NATIVE=OFF, and so
+#                  got no LTO unless it asked twice. That is the coupling the
+#                  2026-08-08 split was supposed to remove and only half did
+#                  — every distributable script already carries an explicit
+#                  `-DPOM68K_LTO=ON` for exactly this reason.
+#                  It is expensive: LTO roughly doubles the link time of the
+#                  ~130 test binaries. A build that does not want it must now
+#                  say `-DPOM68K_LTO=OFF` and say why (see .github/workflows).
 option(POM68K_NATIVE "Optimize for the build host CPU (native ISA + tuning)" ON)
 set(POM68K_TUNE "" CACHE STRING
     "Tune for a named core without raising the ISA floor (e.g. cortex-a72)")
-option(POM68K_LTO "Link-time optimization" ${POM68K_NATIVE})
+option(POM68K_LTO "Link-time optimization" ON)
 
 if(NOT MSVC AND NOT EMSCRIPTEN)
     include(CheckCXXCompilerFlag)
@@ -82,11 +92,18 @@ if(NOT MSVC AND NOT EMSCRIPTEN)
             message(WARNING "POM68K: -mtune=${POM68K_TUNE} rejected — ignored")
         endif()
     endif()
+    # ─── LTO, and the linker it has to survive ───────────────────────────
+    # LTO is resolved to a REQUEST first, and only committed at the end of
+    # this block, because the linker probe below has to carry the LTO flags:
+    # the two features are independent, but the BUILD uses them at the same
+    # time and that combination is a third thing that neither probe covered.
+    # See the linker block for the failure it let through.
+    set(pom68k_lto_wanted OFF)
     if(POM68K_LTO)
         include(CheckIPOSupported)
         check_ipo_supported(RESULT pom68k_ipo OUTPUT pom68k_ipo_why)
         if(pom68k_ipo)
-            set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+            set(pom68k_lto_wanted ON)
         else()
             message(STATUS "POM68K: LTO requested but unsupported — ${pom68k_ipo_why}")
         endif()
@@ -97,24 +114,59 @@ if(NOT MSVC AND NOT EMSCRIPTEN)
     # the linker is a first-order term in the working loop. mold and lld are
     # drop-in and several times faster than BFD ld at exactly this shape of
     # work. Neither is a dependency: absent, the build is unchanged.
-    # Not tied to POM68K_LTO — a non-LTO build links the same 130 binaries.
+    #
+    # The probe carries the LTO flags because THE COMBINATION IS THE BUG.
+    # GCC's IPO objects are GIMPLE, not machine code (`-fno-fat-lto-objects`
+    # is what CMake's IPO adds), and a linker the driver does not hand the
+    # LTO plugin to reads them as objects with no symbols in them. GCC 13 +
+    # `ld.lld` + LTO is exactly that case, and it is not a corner: on a plain
+    # x86-64 Linux host with lld installed, EVERY executable in this tree
+    # failed to link with `undefined symbol: main`, at 4 % of the build.
+    # Probing the two halves separately is what let it through, and each
+    # half was individually right: `check_ipo_supported()` ran BEFORE
+    # `-fuse-ld=` was added, so it answered for the default linker, and the
+    # linker probe compiled a source with no LTO on it. Both said yes; the
+    # build said no.
+    # On conflict the fast linker loses, not LTO: LTO is a shipped
+    # optimization that release binaries have already silently lost once
+    # (`docs/RASPBERRY_PI.md`), a faster link is a working-loop convenience.
     option(POM68K_FAST_LINK "Use mold or lld when one is installed" ON)
     if(POM68K_FAST_LINK)
+        include(CheckCXXSourceCompiles)
+        if(pom68k_lto_wanted)
+            set(pom68k_ld_probe_flags "-flto=auto -fno-fat-lto-objects")
+        else()
+            set(pom68k_ld_probe_flags "")
+        endif()
         foreach(pom68k_ld mold lld)
             find_program(pom68k_ld_${pom68k_ld} ld.${pom68k_ld})
             if(pom68k_ld_${pom68k_ld})
-                # Probed, not assumed: the driver has to know the flag, and
-                # a GCC older than 12 does not know -fuse-ld=mold at all.
+                # Probed, not assumed: the driver has to know the flag (a GCC
+                # older than 12 does not know -fuse-ld=mold at all), AND it
+                # has to produce a linkable program under the LTO mode this
+                # build will really use. The cache variable is named
+                # `_usable`, not `_ok`, so a tree configured before this
+                # check existed re-probes instead of trusting the old answer.
+                set(CMAKE_REQUIRED_FLAGS "${pom68k_ld_probe_flags}")
                 set(CMAKE_REQUIRED_LINK_OPTIONS "-fuse-ld=${pom68k_ld}")
-                check_cxx_compiler_flag("" pom68k_ld_${pom68k_ld}_ok)
+                check_cxx_source_compiles("int main() { return 0; }"
+                                          pom68k_ld_${pom68k_ld}_usable)
+                unset(CMAKE_REQUIRED_FLAGS)
                 unset(CMAKE_REQUIRED_LINK_OPTIONS)
-                if(pom68k_ld_${pom68k_ld}_ok)
+                if(pom68k_ld_${pom68k_ld}_usable)
                     add_link_options(-fuse-ld=${pom68k_ld})
                     message(STATUS "POM68K: linking with ${pom68k_ld}")
                     break()
+                elseif(pom68k_lto_wanted)
+                    message(STATUS "POM68K: ld.${pom68k_ld} found but cannot "
+                                   "link this compiler's LTO objects — keeping "
+                                   "the default linker (LTO stays ON)")
                 endif()
             endif()
         endforeach()
+    endif()
+    if(pom68k_lto_wanted)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
     endif()
 endif()
 
@@ -2134,8 +2186,40 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         cuda_lle_test egret_lle_test
         scsi_disk_test ncr53c96_test scsi_pdma_test scsi_hfs_facade_test sound_test
         savestate_030_test savestate_68k_test)
+    # ── What a gate COSTS, so `ctest -j` can schedule the suite ──────────
+    # Same shape as performance_budgets.tsv: a versioned, per-host, reviewed
+    # manifest rather than literals scattered through the registry. Read
+    # `gate_resource_budgets.tsv` for why RAM is the binding resource and why
+    # PROCESSORS is used rather than the more precise RESOURCE_GROUPS.
+    # A gate with no row is ONE slot — today's behaviour exactly — and the
+    # manifest records that as `assumed`, so an uncalibrated tier can never
+    # read as a cheap one.
+    set(POM68K_GATE_SLOT_KB 262144)          # 256 MiB per scheduling slot
+    set(POM68K_GATE_BUDGET_FILE
+        "${CMAKE_CURRENT_SOURCE_DIR}/gate_resource_budgets.tsv")
+    file(STRINGS "${POM68K_GATE_BUDGET_FILE}" pom68k_gate_budget_lines)
+    foreach(line IN LISTS pom68k_gate_budget_lines)
+        if(line MATCHES "^[ \t]*#" OR line STREQUAL "")
+            continue()
+        endif()
+        string(REPLACE "\t" ";" fields "${line}")
+        list(LENGTH fields field_count)
+        if(NOT field_count EQUAL 4)
+            message(FATAL_ERROR
+                "gate_resource_budgets.tsv: expected four columns: ${line}")
+        endif()
+        list(GET fields 0 budget_gate)
+        list(GET fields 1 budget_host)
+        list(GET fields 2 budget_kb)
+        if(NOT budget_kb MATCHES "^[0-9]+$")
+            message(FATAL_ERROR
+                "gate_resource_budgets.tsv: non-integer peak_rss_kb: ${line}")
+        endif()
+        set("POM68K_GATE_RAM_${budget_gate}_${budget_host}" "${budget_kb}")
+    endforeach()
+
     set(pom68k_gate_manifest
-        "name\tassets\thost\tscope\ttier\n")
+        "name\tassets\thost\tscope\ttier\tslots\tslots_src\n")
     foreach(t IN LISTS pom68k_tests)
         if(t MATCHES "etalon$" OR
            (t MATCHES "^jit_lockstep" AND
@@ -2175,6 +2259,27 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
             set(gate_tier full)
         endif()
 
+        # Scheduling cost. Prefer this host's own measurement, fall back to
+        # a host-agnostic row, and otherwise assume one slot.
+        set(gate_ram_key "POM68K_GATE_RAM_${t}_${POM68K_PERF_HOST}")
+        set(gate_ram_any "POM68K_GATE_RAM_${t}_any")
+        if(DEFINED ${gate_ram_key})
+            set(gate_ram_kb "${${gate_ram_key}}")
+            set(gate_slots_src measured)
+        elseif(DEFINED ${gate_ram_any})
+            set(gate_ram_kb "${${gate_ram_any}}")
+            set(gate_slots_src measured)
+        else()
+            set(gate_ram_kb 0)
+            set(gate_slots_src assumed)
+        endif()
+        # ceil(kb / slot) with integer arithmetic, floored at one slot.
+        math(EXPR gate_slots
+             "(${gate_ram_kb} + ${POM68K_GATE_SLOT_KB} - 1) / ${POM68K_GATE_SLOT_KB}")
+        if(gate_slots LESS 1)
+            set(gate_slots 1)
+        endif()
+
         set_property(TEST ${t} APPEND PROPERTY
                      LABELS "asset-${gate_assets}" "host-${gate_host}"
                             "scope-${gate_scope}" "tier-${gate_tier}")
@@ -2182,8 +2287,9 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         set_property(TEST ${t} PROPERTY POM68K_HOST ${gate_host})
         set_property(TEST ${t} PROPERTY POM68K_SCOPE ${gate_scope})
         set_property(TEST ${t} PROPERTY POM68K_TIER ${gate_tier})
+        set_property(TEST ${t} PROPERTY PROCESSORS ${gate_slots})
         string(APPEND pom68k_gate_manifest
-               "${t}\t${gate_assets}\t${gate_host}\t${gate_scope}\t${gate_tier}\n")
+               "${t}\t${gate_assets}\t${gate_host}\t${gate_scope}\t${gate_tier}\t${gate_slots}\t${gate_slots_src}\n")
     endforeach()
     file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gate_manifest.tsv
          "${pom68k_gate_manifest}")

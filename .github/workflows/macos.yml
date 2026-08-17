@@ -19,9 +19,15 @@ jobs:
         run: ./setup_imgui.sh
 
       - name: Configure
+        # POM68K_LTO=OFF is stated, not inherited. It used to come free with
+        # NATIVE=OFF; since 2026-08-17 the default is ON, and turning it on
+        # HERE would be a silent behaviour change on a path nobody has
+        # exercised — LTO for the macOS build is open work with its own
+        # reason for being open (the universal-2 lipo path, TODO.md § 3).
+        # Flip this the day that item is done, not as a side effect.
         run: >-
           cmake -S . -B build
-          -DPOM68K_NATIVE=OFF
+          -DPOM68K_NATIVE=OFF -DPOM68K_LTO=OFF
           -DCMAKE_BUILD_TYPE=Release
 
       - name: Build GUI and portable gates
