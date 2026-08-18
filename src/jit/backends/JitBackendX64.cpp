@@ -272,9 +272,27 @@ public:
     Emitter(Asm& a, const Layout& L, const BlockIr& ir, const Context& ctx)
         : a_(a), L_(L), ir_(ir),
           paced_(ctx.periphClock != nullptr && ctx.periphBatch != 0),
-          batch_(ctx.periphBatch), linkMask_(ctx.linkTable ? ctx.linkMask : 0),
+          batch_(ctx.periphBatch),
+          // The 030 oracle proved (a64 lockstep step 10455) that a block
+          // containing a native 030 write is an architectural chain
+          // boundary in BOTH directions: returning to the Engine services
+          // every deferred condition before another compiled block can
+          // observe the store. So such a block takes no outgoing links —
+          // and compile() below also withholds its published entry. x64
+          // never had this contract because hit-traced 030 writes compile
+          // here too; the latent hole predates the split-timing admissions.
+          restartWrite030_(L.is030 &&
+              std::any_of(ir.instrs.begin(), ir.instrs.end(),
+                          [&L](const Instr& in) {
+                              return memoryProofPlan(in.memory,
+                                                     proofOptions(L))
+                                  .restartableLastWrite();
+                          })),
+          linkMask_(ctx.linkTable && !restartWrite030_ ? ctx.linkMask : 0),
           histo_(ctx.slowStaticHisto != nullptr),
           ic_(L.icLive && icacheEmitEnabled()) {}
+
+    bool restartWrite030() const { return restartWrite030_; }
 
     // Emits the whole block. False = give up; the engine keeps the IR and
     // runs the block through the fetch-window loop instead.
@@ -422,6 +440,7 @@ private:
     Label *exitBudget_ = nullptr, *exitFlags_ = nullptr, *exitFault_ = nullptr;
     Label *exitLost_ = nullptr, *epilogue_ = nullptr;
     int  loopTo_ = -1;
+    bool restartWrite030_ = false;
     uint32_t linkMask_ = 0;
     // Emission deferred to AFTER the block body. Everything a memory access
     // does when the inline TLB cannot serve it — asking the engine to fill
@@ -3085,7 +3104,11 @@ Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
 
     X64Compiled* c = new X64Compiled();
     c->entry = dst;
-    c->linked = dst + e.linkEntryOffset();
+    // The write-block chain-boundary contract, second half (see the
+    // Emitter ctor): the fault-frame gate proves REPLAY, not transparent
+    // links, so nothing may jump into this block without the Engine
+    // between them.
+    c->linked = e.restartWrite030() ? nullptr : dst + e.linkEntryOffset();
     return c;
 }
 
