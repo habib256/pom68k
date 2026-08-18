@@ -2273,12 +2273,31 @@ bool Emitter::emitBranch(size_t i) {
         a_.jcc(Cc::NE, notTaken);                    // condToAl: ZF set == taken
     }
 
-    // Taken. fullPrefetch() does not refill the queue on the 68040, so irc
-    // still holds the word mmu040InstrStart fetched at pc + 2 — which for a
-    // word-displacement branch is the displacement itself.
+    // Taken. Neither mode-5 core refills the queue at instruction end, so
+    // irc still holds the word fetched at pc + 2: the DISPLACEMENT for a
+    // word branch, the ENTRY LOOKAHEAD for a short one. The first version
+    // committed `extensionWord(0)` unconditionally — which for a one-word
+    // branch is not a machine word at all but the accessor's 0 default —
+    // and the 030 lockstep at HEAD caught it as a terminal queue of
+    // 66FA/0000 against the interpreter's 66FA/4E75 (a taken BNE.S with an
+    // RTS in the lookahead). a64's `lastHeld` (JitBackendA64.cpp:2251) is
+    // the same formula; on the 030 the tracer's terminal capture must also
+    // CONFIRM it before the emitter is admitted, exactly as a64 does.
+    const uint16_t takenIrc = in.words > 1 ? in.extensionWord(0)
+                                           : ir_.prefetchWord(in.pc + 2);
+    const uint16_t fallIrcQ = ir_.prefetchWord(fall);
+    if (L_.is030 && in.terminalQueueValid) {
+        const bool targetOnly = in.observedNextPc == target && target != fall;
+        const bool fallOnly = in.observedNextPc == fall && target != fall;
+        if (in.terminalIrd != op ||
+            (targetOnly && in.terminalIrc != takenIrc) ||
+            (fallOnly && in.terminalIrc != fallIrcQ) ||
+            (!targetOnly && !fallOnly && in.terminalIrc != takenIrc &&
+             in.terminalIrc != fallIrcQ)) return false;
+    }
     a_.movMI(Sz::L, at(L_.pc), int32_t(target));
     a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
-    commitQueue(op, in.extensionWord(0));
+    commitQueue(op, takenIrc);
     chargeCycles(takenCycles);
     a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     loopTo_ = targetIdx;
@@ -2292,7 +2311,7 @@ bool Emitter::emitBranch(size_t i) {
         a_.bind(notTaken);
         a_.movMI(Sz::L, at(L_.pc), int32_t(fall));
         a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
-        commitQueue(op, ir_.prefetchWord(fall));
+        commitQueue(op, fallIrcQ);
         chargeCycles(fallCycles);
         a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
         leaveTo(fall);
