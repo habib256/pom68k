@@ -1485,7 +1485,17 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     const int dc = kMoveDst[dst.idx];
     if (rc < 0 || dc < 0) return false;
     const int cycles = rc + dc;
-    if (cycles != ir_.instrs[i].cycles) return false;
+    // On an 030 the traced total carries the i-cache penalty of THAT run
+    // (JIT_BRINGUP § C.4: `Instr::cycles` is not the table cost there), so
+    // comparing it against the table refuses every instruction that missed
+    // during its trace — a motive foreign to its cost. Consume the split
+    // base cost for exactly the family a64 proved: a postincrement source
+    // whose sole access is a read into a register. Wider admissions have
+    // DIVERGED every time (steps 31162/7798/10902); mirror, don't extend.
+    const bool splitSafe030 = L_.is030 && src.idx == kM_PI && !dst.memory;
+    const unsigned tracedCycles030 = splitSafe030
+        ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
+    if (unsigned(cycles) != tracedCycles030) return false;
 
     MemoryAccessPlan srcAccess, dstAccess;
     if (src.memory) {
@@ -1685,7 +1695,12 @@ bool Emitter::emitAluRgEa(size_t i) {
     if (dst.idx == kM_AN || dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
     if (!lengthOk(i, dst.ext)) return false;
     const int cycles = eaRmwCost(dst.idx, szIdx);
-    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+    // Register-only ADDQ/SUBQ: no data access, no ordering, no restartable
+    // write hides behind the lower split cost — the first deliberately
+    // narrow consumer a64 landed. Memory forms keep the total-cost check.
+    const unsigned traced030q = L_.is030 && dst.idx <= kM_AN
+        ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
+    if (cycles < 0 || unsigned(cycles) != traced030q) return false;
 
     MemoryAccessPlan read, write;
     if (dst.memory) {
@@ -1742,7 +1757,12 @@ bool Emitter::emitAddSubQ(size_t i) {
     if (dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
     if (!lengthOk(i, dst.ext)) return false;
     const int cycles = eaRmwCost(dst.idx, szIdx);
-    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+    // Register-only ADDQ/SUBQ: no data access, no ordering, no restartable
+    // write hides behind the lower split cost — the first deliberately
+    // narrow consumer a64 landed. Memory forms keep the total-cost check.
+    const unsigned traced030q = L_.is030 && dst.idx <= kM_AN
+        ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
+    if (cycles < 0 || unsigned(cycles) != traced030q) return false;
 
     MemoryAccessPlan read, write;
     if (dst.memory) {
@@ -2086,7 +2106,14 @@ bool Emitter::emitLine4(size_t i) {
         if (src.idx == kM_AN && szIdx == 0) return false;
         if (!lengthOk(i, src.ext)) return false;
         const int cycles = kEaRead[src.idx][szIdx];
-        if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+        // TST (An)/(An)+ is read-only: consume the split base cost on an
+        // 030 so an i-cache miss during the trace does not refuse it
+        // (same admission as a64; the exact-thunk 4A11 refinement is NOT
+        // ported — that form stays refused here).
+        const unsigned traced030 = L_.is030 &&
+                (src.idx == kM_AI || src.idx == kM_PI)
+            ? in.baseCycles : in.cycles;
+        if (cycles < 0 || unsigned(cycles) != traced030) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         MemoryAccessPlan read;
         if (src.memory) {
@@ -2744,7 +2771,16 @@ bool Emitter::emit() {
         commitQueue(ir_.instrs[i].opcode,
                     ir_.prefetchWord(ir_.instrs[i].pc +
                                      uint32_t(ir_.instrs[i].words) * 2));
-        chargeCycles(ir_.instrs[i].cycles);
+        // On the 030 the emitted i-cache model (chargeIcache) has already
+        // reproduced the fetch component, so a native instruction owes only
+        // the tracer's BASE cost. Charging the traced total pays the
+        // trace-time miss a SECOND time whenever the current run reproduces
+        // it: +4 per miss, the 5956-step lockstep divergence that shelved
+        // the first split admissions. Instructions traced on hits have
+        // base == cycles, so this changes behaviour only for the admitted
+        // split forms — a64's rule verbatim (JitBackendA64.cpp:2622).
+        chargeCycles(int(L_.is030 ? ir_.instrs[i].baseCycles
+                                  : ir_.instrs[i].cycles));
         a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     }
 
