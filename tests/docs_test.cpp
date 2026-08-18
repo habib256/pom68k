@@ -309,14 +309,13 @@ int main() {
               std::string(name) + " validates and archives structured JIT metrics");
     }
 
-    // The registry has TWO sizes. `jit_lockstep_a64_coarse_test` and
-    // `jit_lockstep_030_a64_experimental_test` are registered only on an
-    // AArch64 host with the native backends (CMakeLists.txt, the guard that
-    // writes this file), so a document cannot state one total and be true
-    // everywhere. The docs state the FULL (AArch64) numbers; CMake tells us
-    // here which of them this host is missing, and checks 5 and 6 add them
-    // back before comparing. On the dev host this file is empty and every
-    // count below is a plain identity.
+    // The registry has MORE THAN ONE size: the AArch64 lockstep pair is
+    // registered only on an AArch64 host, and since 2026-08-18 the x64 030
+    // experimental lockstep only on x86-64 (CMakeLists.txt, the guards that
+    // write this file) — so a document cannot state one total and be true
+    // everywhere. The docs state the UNION numbers; CMake tells us here
+    // which of them this host is missing, and checks 5 and 6 add them back
+    // before comparing. No host has an empty file any more.
     //
     // The alternative — declaring one architecture canonical and skipping the
     // gate elsewhere — was rejected: it would leave the counts unchecked on

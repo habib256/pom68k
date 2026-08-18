@@ -1771,16 +1771,34 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_UNSAFE_BACKEND=1;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=128;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
                              TIMEOUT 1800)
     else()
-        # These two are the ONLY host-conditional gates, so the registry has
-        # two sizes and the docs cannot state one number. Record what this
-        # host is missing, with the labels the derivation loop below would
-        # have given them (both: `unit` + `jit`; the coarse one also takes
-        # `smoke` explicitly), so `docs_test` can hold the documented
-        # AArch64 totals to account on any host instead of failing everywhere
-        # else. Adding a third conditional gate means adding it here — and
+        # The a64 pair are host-conditional gates: the registry has more
+        # than one size and the docs cannot state one number. Record what
+        # this host is missing, with the labels the derivation loop below
+        # would have given them (both: `unit` + `jit`; the coarse one also
+        # takes `smoke` explicitly), so `docs_test` can hold the documented
+        # totals to account on any host instead of failing everywhere else.
+        # Adding another conditional gate means adding it here — and
         # docs_test says so in its own failure text. (2026-08-12)
         set(pom68k_absent_gates
             "jit_lockstep_a64_coarse_test\tunit,jit,smoke\njit_lockstep_030_a64_experimental_test\tunit,jit\n")
+    endif()
+
+    # The x86-64 twin of the 030 experimental gate — first green 2026-08-18,
+    # after the taken-short-branch IRC fix and the 030 base-charge rule; it
+    # exists so that state cannot silently rot the way its absence let the
+    # IRC defect sit unregistered. Same shape: generated x64 code under the
+    # unsafe override (the declaration is still 68040-only — C.5 is a
+    # separate, measured decision).
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
+       POM68K_JIT_BACKENDS STREQUAL "auto")
+        add_test(NAME jit_lockstep_030_x64_experimental_test COMMAND jit_lockstep_030_test 120000
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(jit_lockstep_030_x64_experimental_test PROPERTIES
+                             ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_UNSAFE_BACKEND=1;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
+                             TIMEOUT 1800)
+    else()
+        string(APPEND pom68k_absent_gates
+            "jit_lockstep_030_x64_experimental_test\tunit,jit\n")
     endif()
 
     # ── the x86-64 code generator ────────────────────────────────────────

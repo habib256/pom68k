@@ -61,12 +61,13 @@ coverage, not a product ceiling.
   (System 4.1 → Mac OS 8.1) is `tests/finder_boot_matrix.cpp` — an on-demand
   harness, `EXCLUDE_FROM_ALL` and **not** a registered CTest. Bring-up
   history: `CHANGELOG.md`, by date.
-- **224 CTest gates** (`ctest -N` 2026-08-18: 106 `unit`, 9 `smoke`, 37 `jit`,
+- **225 CTest gates** (`ctest -N` 2026-08-18: 107 `unit`, 9 `smoke`, 38 `jit`,
   51 `m040`, 53 `m030`, 118 `etalon`, of which 12 `etalon-core` — one profile
   per platform, the pre-commit tier, 12/12 green in 31 min 41 s). The registry
-  is **host-conditional by two**: the AArch64 lockstep pair is registered only
-  on an AArch64 host with the native backends, so an x86-64 configure sees
-  222.
+  is **host-conditional by three**: the AArch64 lockstep pair is registered
+  only on an AArch64 host with the native backends, and the x64 030
+  experimental lockstep only on x86-64 — so an x86-64 configure sees 223 and
+  an AArch64 one 224.
   `docs_test` re-checks these totals — and every gate name this file spells
   out — against the roster CMake writes at configure time, and fails if any
   gate carries no label. The generated gate manifest also pins asset, host,
@@ -172,12 +173,12 @@ coverage, not a product ceiling.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 224 gates, ~4h (asset-dependent ones soft-skip)
-ctest -L unit                # 106 legacy non-etalon gates
+ctest                        # 225 gates, ~4h (asset-dependent ones soft-skip)
+ctest -L unit                # 107 legacy non-etalon gates
 ctest -L asset-none          # 83 gates — manifest-declared asset-free tier
 ctest -L smoke               # 9 gates — one machine, both CPU engines
 ctest -L etalon-core         # 12 gates — ONE profile per platform, 31 min
-ctest -L jit                 # 37 gates;  -L m040 = 51;  -L m030 = 53
+ctest -L jit                 # 38 gates;  -L m040 = 51;  -L m030 = 53
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
 cmake --build . -j4 --target jitfast && POM68K_JIT_REQUIRE_NATIVE=1 ctest -L jit-fast
 ./POM68K [ROM] [media...]    # profile picked by ROM size + checksum; the
