@@ -69,6 +69,13 @@ MemoryProofOptions proofOptions(const Layout& L) {
     o.cacheReads = L.cache040Live && cache040LineReadsEnabled();
     o.cacheWrites = L.cache040Live && cache040LineWritesEnabled();
     o.cachePairs = L.cache040Live && cache040LinePairsEnabled();
+    // NOTE deliberately absent here: a64 sets restartableWriteRequired
+    // globally, which on x64 strips the exact thunk from every
+    // NON-restartable 030 write and diverged the LC II lockstep at an
+    // 8192-cycle boundary (peripheral-phase class, 2026-08-18) while
+    // regressing reach. x64 scopes the option to the restartable MOVE
+    // family inside emitMove instead — everything else keeps the plans
+    // this backend was proved green with.
     return o;
 }
 
@@ -420,6 +427,27 @@ private:
     // the JIT never sees, so both have to be exactly what the interpreter
     // would have left behind at that instruction boundary.
     void commitQueue(uint16_t ird, uint16_t irc);
+    // What the prefetch queue holds after instruction i: neither mode-5
+    // core refills at instruction end, so for a control-flow form `irc` is
+    // the LAST word its fetch path consumed — the final extension word of a
+    // multiword instruction (SKIP_LAST_RD leaves it in place), or the entry
+    // lookahead at pc+2 for a one-word one (the queue runs a word ahead).
+    // a64's `lastHeld` (JitBackendA64.cpp:2251); the x64 flavours used
+    // prefetchWord(pc+2) or extensionWord(0), each right only for the
+    // two-word case — the extended restart-write oracle caught JMP (xxx).L
+    // holding the address HIGH half where the machine holds the low.
+    uint16_t heldIrc(size_t i) const {
+        const Instr& in = ir_.instrs[i];
+        return in.words > 1 ? in.extensionWord(in.words - 2)
+                            : ir_.prefetchWord(in.pc + 2);
+    }
+    // On the 030 the tracer's terminal capture must CONFIRM a control-flow
+    // emitter's irc formula before it is admitted (a64:2253).
+    bool tracedQueueIs(size_t i, uint16_t irc) const {
+        const Instr& in = ir_.instrs[i];
+        return !L_.is030 || !in.terminalQueueValid ||
+               (in.terminalIrd == in.opcode && in.terminalIrc == irc);
+    }
     void pollIpl();
 
     Asm& a_;
@@ -790,10 +818,11 @@ bool Emitter::emitSubroutine(size_t i) {
     const uint16_t op = in.opcode;
     const InstructionSemantics& sem = in.semantics;
     const ControlFlowPlan& control = in.control;
-    // What the prefetch queue holds after any of these: the 68040 refills
-    // nothing at the end of an instruction, so `irc` is still the word
-    // mmu040InstrStart read at pc + 2.
-    const uint16_t ircAfter = ir_.prefetchWord(in.pc + 2);
+    // What the prefetch queue holds after any of these: heldIrc — the last
+    // consumed extension for BSR.L/JSR-long forms, the pc+2 lookahead for
+    // RTS and the two-word forms (where the two formulas coincide).
+    const uint16_t ircAfter = heldIrc(i);
+    if (!tracedQueueIs(i, ircAfter)) return false;
 
     if (sem.operation == SemanticOp::ReturnSubroutine) {
         if (!control.valid || control.kind != ControlFlowKind::Return ||
@@ -1330,6 +1359,8 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
     Label& done = *a_.fresh();
     a_.bind(done);
     const size_t idx = cur_;
+    // The cold lambda runs after this frame is gone: carry the rollback by
+    // value, never by pointer.
     cold_.push_back([this, &miss, &done, addr, szIdx, idx] {
         a_.bind(miss);
         spillClock();                    // a device access can stall the CPU
@@ -1500,18 +1531,40 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     if (aliases(src, dst)) return false;
     if (!lengthOk(i, src.ext + dst.ext)) return false;
 
+    // a64's proven restartable-write family: register/immediate source into
+    // (An)/(An)+/-(An)/d16(An)/brief-indexed/absolute, marked by the IR's
+    // own proof — the emitter never re-derives it from the opcode. The
+    // restartable option is SCOPED to this second plan (see proofOptions):
+    // when the instruction is in-family, the family-aware plan replaces the
+    // baseline one wholesale, so its accesses carry the restart fault
+    // phase the thunk contract needs; out of family, the baseline plans —
+    // the ones every green run was proved with — stay untouched.
+    bool restartWrite = false;
+    if (L_.is030 && dst.memory) {
+        MemoryProofOptions o2 = proofOptions(L_);
+        o2.restartableWriteRequired = true;
+        auto memoryR = instructionMemoryPlan(in.memory, o2);
+        if (memoryR.proof.restartableLastWrite()) {
+            restartWrite = true;
+            memory = memoryR;
+        }
+    }
     const int rc = kEaRead[src.idx][szIdx];
-    const int dc = kMoveDst[dst.idx];
+    // Brief-indexed destination calculation costs five base cycles in the
+    // restartable family (a64:1268); the plain table refuses E_IX entirely.
+    const int dc = (restartWrite && dst.idx == kM_IX) ? 5 : kMoveDst[dst.idx];
     if (rc < 0 || dc < 0) return false;
     const int cycles = rc + dc;
     // On an 030 the traced total carries the i-cache penalty of THAT run
     // (JIT_BRINGUP § C.4: `Instr::cycles` is not the table cost there), so
     // comparing it against the table refuses every instruction that missed
     // during its trace — a motive foreign to its cost. Consume the split
-    // base cost for exactly the family a64 proved: a postincrement source
-    // whose sole access is a read into a register. Wider admissions have
-    // DIVERGED every time (steps 31162/7798/10902); mirror, don't extend.
-    const bool splitSafe030 = L_.is030 && src.idx == kM_PI && !dst.memory;
+    // base cost for exactly the families a64 proved: a postincrement source
+    // whose sole access is a read into a register, and the restartable
+    // writes above. Wider admissions have DIVERGED every time (steps
+    // 31162/7798/10902); mirror, don't extend.
+    const bool splitSafe030 = L_.is030 &&
+        ((src.idx == kM_PI && !dst.memory) || restartWrite);
     const unsigned tracedCycles030 = splitSafe030
         ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
     if (unsigned(cycles) != tracedCycles030) return false;
@@ -1609,8 +1662,44 @@ bool Emitter::emitMove(size_t i, int szIdx) {
         a_.movMR(Sz::L, A(dst.reg), RDI);
     } else {
         // The flags come from the value itself; test it at its own width.
+        // On the 030 this order is load-bearing: Moira publishes N/Z/V/C
+        // BEFORE writeOp's LASTWRITE access, so an exact MMIO callback and
+        // a fault frame both observe the final CCR (a64:1377).
         a_.testRR(hostSz(szIdx), RDI, RDI);
         flagsLogic(hostSz(szIdx));
+        // (An)+ under an exact-access contract is CONSERVATIVE: its update
+        // is architecturally before the access, no rollback door can make
+        // the thunk's replay pristine for a POST-incremented register the
+        // handler already observed, so the instruction is not emitted at
+        // all — the in-block stub hands it to Moira, which owns MMIO and
+        // /BERR alike with perfect mid-write state (the oracle pins
+        // writeFaults == 1 for this form, == 2 for the thunked ones).
+        if (L_.is030 && dst.idx == kM_PI && dstAccess.exactThunk)
+            return false;
+        if (restartWrite && dstAccess.exactThunk && dst.idx != kM_PI) {
+            // At Moira's last-write point reg.pc has consumed every
+            // extension while pc0 still names this instruction, and the
+            // queue holds the tracer's terminal capture. An exact MMIO
+            // thunk exposes all of it mid-block, so materialise the
+            // running boundary before the store (a64:1385-1397).
+            const uint32_t nextPc = in.pc + uint32_t(in.words) * 2;
+            a_.movMI(Sz::L, at(L_.pc), int32_t(nextPc));
+            a_.movMI(Sz::L, at(L_.pc0), int32_t(in.pc));
+            commitQueue(in.terminalQueueValid ? in.terminalIrd : in.opcode,
+                        in.terminalQueueValid ? in.terminalIrc
+                                              : ir_.prefetchWord(nextPc));
+        }
+        // -(An) deliberately takes the SAME door as every other memory
+        // destination: thunk on exact pages, tail commit after. The a64
+        // commits the predecrement BEFORE the access so the device handler
+        // observes it moved; two x64 ports of that contract (pre-commit,
+        // then commit-on-both-doors) each diverged the real LC II lockstep
+        // at an 8192-cycle peripheral boundary (~24k steps, 2026-08-18)
+        // while the fault-frame oracle pins nothing about a PD callback's
+        // A6 — its PD case checks fault count and frame bytes, both of
+        // which the pristine replay already satisfies. Reopen only with an
+        // oracle check that a real device write observes the committed An,
+        // and bring the peripheral-phase trace from that bisect with you.
         store(dst, szIdx, RDI, dstAccess);
     }
     commitEa(src, szIdx, srcAccess);
@@ -2294,7 +2383,7 @@ bool Emitter::emitBranch(size_t i) {
     if (!control.valid || !control.targetKnown) return false;
     const int cc = sem.condition;
 
-    if (in.words > 2) return false;                  // .L form: rare, skipped
+    if (in.words > 3) return false;                  // 1 (.S), 2 (.W), 3 (.L)
 
     const uint32_t target = control.target;
     const uint32_t fall = control.fallthrough;
@@ -2329,8 +2418,7 @@ bool Emitter::emitBranch(size_t i) {
     // RTS in the lookahead). a64's `lastHeld` (JitBackendA64.cpp:2251) is
     // the same formula; on the 030 the tracer's terminal capture must also
     // CONFIRM it before the emitter is admitted, exactly as a64 does.
-    const uint16_t takenIrc = in.words > 1 ? in.extensionWord(0)
-                                           : ir_.prefetchWord(in.pc + 2);
+    const uint16_t takenIrc = heldIrc(i);
     const uint16_t fallIrcQ = ir_.prefetchWord(fall);
     if (L_.is030 && in.terminalQueueValid) {
         const bool targetOnly = in.observedNextPc == target && target != fall;
@@ -2471,7 +2559,8 @@ bool Emitter::emitJmp(size_t i) {
     static const int8_t kJmp[kM_COUNT] =
         { -1, -1, 4, -1, -1, 5, -1, 4, 4, 5, -1, -1 };
     if (kJmp[ea.idx] < 0 || kJmp[ea.idx] != int(in.cycles)) return false;
-    const uint16_t ircAfter = ir_.prefetchWord(in.pc + 2);
+    const uint16_t ircAfter = heldIrc(i);      // JMP (xxx).L holds the LOW half
+    if (!tracedQueueIs(i, ircAfter)) return false;
 
     const bool constant = control.targetKnown;
     if (constant && (control.target & 1)) return false;
@@ -2787,9 +2876,15 @@ bool Emitter::emit() {
         // No pc/pc0 here: nothing downstream reads them until the block
         // exits, and every exit commits them on the way out. The queue does
         // stay — see emitBoundary.
+        // a64:2612's rule: the tracer's terminal capture wins when it
+        // exists (SKIP_LAST_RD forms hold their last extension, not the
+        // next word); the linear-next word is the fallback for mid-block
+        // instructions, whose commit the next instruction overwrites.
         commitQueue(ir_.instrs[i].opcode,
-                    ir_.prefetchWord(ir_.instrs[i].pc +
-                                     uint32_t(ir_.instrs[i].words) * 2));
+                    ir_.instrs[i].terminalQueueValid
+                        ? ir_.instrs[i].terminalIrc
+                        : ir_.prefetchWord(ir_.instrs[i].pc +
+                                           uint32_t(ir_.instrs[i].words) * 2));
         // On the 030 the emitted i-cache model (chargeIcache) has already
         // reproduced the fetch component, so a native instruction owes only
         // the tracer's BASE cost. Charging the traced total pays the
