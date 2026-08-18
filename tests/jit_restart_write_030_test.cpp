@@ -1,7 +1,10 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// AArch64 68030 restartable-write gate. MOVE.B destinations d16(A6), -(A6),
+// Native-backend 68030 restartable-write gate (a64, and x64 since
+// 2026-08-18 — the declaration made the generators reachable without the
+// unsafe override, and this oracle now judges whichever native backend the
+// host carries). MOVE.B destinations d16(A6), -(A6),
 // brief indexed and (A6)+ are trained against RAM, then replayed into a /BERR
 // hole. The successful (A6)+ path is additionally checked against complete
 // RAM and against the CPU state observable from an exact MMIO callback.
@@ -218,8 +221,23 @@ void prepareFault(FaultCpu& c) {
 
 int main() {
     std::printf("jit_restart_write_030_test — injected 68030 last-write /BERR\n");
-    setenv("POM68K_JIT_BACKEND", "a64", 1);
-    setenv("POM68K_JIT_UNSAFE_BACKEND", "1", 1);
+    // Judge the HOST's native generator: a64 on AArch64, x64 on x86-64 —
+    // an explicit POM68K_JIT_BACKEND in the environment wins. No unsafe
+    // override since the 68030 declaration (2026-08-18): if selection falls
+    // back to `threaded`, that is a real regression and the SKIP below
+    // will say so on a host that should have a generator.
+#if defined(__aarch64__) || defined(_M_ARM64)
+    const char* nativeKey = "a64";
+    const char* nativeName = "aarch64";
+#else
+    const char* nativeKey = "x64";
+    const char* nativeName = "x86-64";
+#endif
+    setenv("POM68K_JIT_BACKEND", nativeKey, /*overwrite=*/0);
+    if (const char* b = getenv("POM68K_JIT_BACKEND")) {
+        if (!std::strcmp(b, "a64")) nativeName = "aarch64";
+        else if (!std::strcmp(b, "x64")) nativeName = "x86-64";
+    }
     setenv("POM68K_JIT_BLOCKS", "1", 1);
     setenv("POM68K_JIT_HOT", "1", 1);
     setenv("POM68K_JIT_ACCESS_THUNK", "2", 1);
@@ -238,9 +256,9 @@ int main() {
     ref.setTC(12u << 20);
     native.setTC(12u << 20);
 
-    if (std::strcmp(native.jit.backendName(), "aarch64") != 0) {
-        std::printf("SKIP: AArch64 backend unavailable (%s)\n",
-                    native.jit.backendName());
+    if (std::strcmp(native.jit.backendName(), nativeName) != 0) {
+        std::printf("SKIP: native backend '%s' unavailable (%s)\n",
+                    nativeName, native.jit.backendName());
         return 0;
     }
 

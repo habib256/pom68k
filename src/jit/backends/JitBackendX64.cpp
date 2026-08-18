@@ -420,6 +420,27 @@ private:
     // the JIT never sees, so both have to be exactly what the interpreter
     // would have left behind at that instruction boundary.
     void commitQueue(uint16_t ird, uint16_t irc);
+    // What the prefetch queue holds after instruction i: neither mode-5
+    // core refills at instruction end, so for a control-flow form `irc` is
+    // the LAST word its fetch path consumed — the final extension word of a
+    // multiword instruction (SKIP_LAST_RD leaves it in place), or the entry
+    // lookahead at pc+2 for a one-word one (the queue runs a word ahead).
+    // a64's `lastHeld` (JitBackendA64.cpp:2251); the x64 flavours used
+    // prefetchWord(pc+2) or extensionWord(0), each right only for the
+    // two-word case — the extended restart-write oracle caught JMP (xxx).L
+    // holding the address HIGH half where the machine holds the low.
+    uint16_t heldIrc(size_t i) const {
+        const Instr& in = ir_.instrs[i];
+        return in.words > 1 ? in.extensionWord(in.words - 2)
+                            : ir_.prefetchWord(in.pc + 2);
+    }
+    // On the 030 the tracer's terminal capture must CONFIRM a control-flow
+    // emitter's irc formula before it is admitted (a64:2253).
+    bool tracedQueueIs(size_t i, uint16_t irc) const {
+        const Instr& in = ir_.instrs[i];
+        return !L_.is030 || !in.terminalQueueValid ||
+               (in.terminalIrd == in.opcode && in.terminalIrc == irc);
+    }
     void pollIpl();
 
     Asm& a_;
@@ -790,10 +811,11 @@ bool Emitter::emitSubroutine(size_t i) {
     const uint16_t op = in.opcode;
     const InstructionSemantics& sem = in.semantics;
     const ControlFlowPlan& control = in.control;
-    // What the prefetch queue holds after any of these: the 68040 refills
-    // nothing at the end of an instruction, so `irc` is still the word
-    // mmu040InstrStart read at pc + 2.
-    const uint16_t ircAfter = ir_.prefetchWord(in.pc + 2);
+    // What the prefetch queue holds after any of these: heldIrc — the last
+    // consumed extension for BSR.L/JSR-long forms, the pc+2 lookahead for
+    // RTS and the two-word forms (where the two formulas coincide).
+    const uint16_t ircAfter = heldIrc(i);
+    if (!tracedQueueIs(i, ircAfter)) return false;
 
     if (sem.operation == SemanticOp::ReturnSubroutine) {
         if (!control.valid || control.kind != ControlFlowKind::Return ||
@@ -2294,7 +2316,7 @@ bool Emitter::emitBranch(size_t i) {
     if (!control.valid || !control.targetKnown) return false;
     const int cc = sem.condition;
 
-    if (in.words > 2) return false;                  // .L form: rare, skipped
+    if (in.words > 3) return false;                  // 1 (.S), 2 (.W), 3 (.L)
 
     const uint32_t target = control.target;
     const uint32_t fall = control.fallthrough;
@@ -2329,8 +2351,7 @@ bool Emitter::emitBranch(size_t i) {
     // RTS in the lookahead). a64's `lastHeld` (JitBackendA64.cpp:2251) is
     // the same formula; on the 030 the tracer's terminal capture must also
     // CONFIRM it before the emitter is admitted, exactly as a64 does.
-    const uint16_t takenIrc = in.words > 1 ? in.extensionWord(0)
-                                           : ir_.prefetchWord(in.pc + 2);
+    const uint16_t takenIrc = heldIrc(i);
     const uint16_t fallIrcQ = ir_.prefetchWord(fall);
     if (L_.is030 && in.terminalQueueValid) {
         const bool targetOnly = in.observedNextPc == target && target != fall;
@@ -2471,7 +2492,8 @@ bool Emitter::emitJmp(size_t i) {
     static const int8_t kJmp[kM_COUNT] =
         { -1, -1, 4, -1, -1, 5, -1, 4, 4, 5, -1, -1 };
     if (kJmp[ea.idx] < 0 || kJmp[ea.idx] != int(in.cycles)) return false;
-    const uint16_t ircAfter = ir_.prefetchWord(in.pc + 2);
+    const uint16_t ircAfter = heldIrc(i);      // JMP (xxx).L holds the LOW half
+    if (!tracedQueueIs(i, ircAfter)) return false;
 
     const bool constant = control.targetKnown;
     if (constant && (control.target & 1)) return false;
@@ -2787,9 +2809,15 @@ bool Emitter::emit() {
         // No pc/pc0 here: nothing downstream reads them until the block
         // exits, and every exit commits them on the way out. The queue does
         // stay — see emitBoundary.
+        // a64:2612's rule: the tracer's terminal capture wins when it
+        // exists (SKIP_LAST_RD forms hold their last extension, not the
+        // next word); the linear-next word is the fallback for mid-block
+        // instructions, whose commit the next instruction overwrites.
         commitQueue(ir_.instrs[i].opcode,
-                    ir_.prefetchWord(ir_.instrs[i].pc +
-                                     uint32_t(ir_.instrs[i].words) * 2));
+                    ir_.instrs[i].terminalQueueValid
+                        ? ir_.instrs[i].terminalIrc
+                        : ir_.prefetchWord(ir_.instrs[i].pc +
+                                           uint32_t(ir_.instrs[i].words) * 2));
         // On the 030 the emitted i-cache model (chargeIcache) has already
         // reproduced the fetch component, so a native instruction owes only
         // the tracer's BASE cost. Charging the traced total pays the
