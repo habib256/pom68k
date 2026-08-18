@@ -50,7 +50,9 @@ void MscCpu::hardReset() {
 
 void MscCpu::didChangeCACR(moira::u32 value) {
     pomInvalidateIcache030(value);
-    jit_.flushAll();
+    // SMC hint — but only the INSTRUCTION-cache strobes are one. See
+    // Cpu030::didChangeCACR for the measurement that narrowed this.
+    if (value & 0x0C) jit_.flushAll();
 }
 
 void MscCpu::runCycles(moira::i64 n) {

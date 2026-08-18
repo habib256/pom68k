@@ -2312,17 +2312,34 @@ bool Emitter::emitDbcc(size_t i) {
     const uint16_t op = in.opcode;
     const InstructionSemantics& sem = in.semantics;
     const ControlFlowPlan& control = in.control;
+    // `canEmit` says yes for every DBcc, so a refusal here is invisible from
+    // outside and the census reports it as an unsupported opcode with no
+    // hint why. On the 68030 DBcc is the LARGEST single in-block fallback
+    // (37.8 %, docs/JIT_BRINGUP.md § C.4ter), which is exactly the case
+    // that had to be diagnosed by elimination. Name the guard instead.
+    const auto refuse = [&](const char* why) {
+        if (verbose())
+            std::fprintf(stderr, "[jit]   DBcc $%08X %04X refused: %s "
+                         "(words=%u cycles=%u ctrl=%d/%d target=$%08X)\n",
+                         in.pc, op, why, in.words, in.cycles,
+                         int(control.valid), int(control.targetKnown),
+                         control.target);
+        return false;
+    };
     if (!control.valid || control.kind != ControlFlowKind::DecrementBranch ||
-        !control.targetKnown || in.words != 2 ||
-        sem.operation != SemanticOp::DecrementBranch) return false;
+        !control.targetKnown)
+        return refuse("control-flow plan");
+    if (in.words != 2) return refuse("not 2 words");
+    if (sem.operation != SemanticOp::DecrementBranch)
+        return refuse("semantics");
     const int cc = sem.condition;
     const int dn = sem.eaReg;
     const uint32_t target = control.target;
     const uint32_t fall = control.fallthrough;
-    if (target & 1) return false;
+    if (target & 1) return refuse("odd target");
     // execDbcc, 68020 column: taken 6, expired 10, condition-true 6. The
     // tracer's one measurement can only confirm the path it took.
-    if (in.cycles != 6 && in.cycles != 10) return false;
+    if (in.cycles != 6 && in.cycles != 10) return refuse("cycle cross-check");
     const uint16_t ircAfter = in.extensionWord(0);
 
     int targetIdx = -1;
@@ -2582,7 +2599,19 @@ bool Emitter::emitInstr(size_t i) {
         case SemanticOp::AddressAlu:
             return emitAluEaRg(i);
         case SemanticOp::AluRegToEa: return emitAluRgEa(i);
-        default: return false;
+        default:
+            // The dispatch keys on the TRACED `in.semantics.operation`,
+            // while `canEmit()` keys on the static `describeInstruction(op)`
+            // — so an opcode the census reports as "unsupported" may have a
+            // perfectly good emitter that was never reached. Say so.
+            if (verbose())
+                std::fprintf(stderr, "[jit]   no emitter for $%08X %04X: "
+                             "traced semantics op=%d (canEmit=%d)\n",
+                             ir_.instrs[i].pc, ir_.instrs[i].opcode,
+                             int(ir_.instrs[i].semantics.operation),
+                             int(describeInstruction(ir_.instrs[i].opcode)
+                                     .operation));
+            return false;
     }
 }
 
@@ -2975,8 +3004,10 @@ Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
 
     // A block of nothing but fallbacks is strictly worse than the fetch
     // window loop: same interpreter work, plus a call and a frame. Refuse
-    // it and let the engine run the window instead.
-    if (e.nativeCount() * 2 < int(ir.instrs.size())) {
+    // it and let the engine run the window instead. The bar is
+    // POM68K_JIT_MIN_NATIVE percent (JitConfig.h owns the rationale and the
+    // 68030 measurement that made it a knob).
+    if (e.nativeCount() * 100 < int(ir.instrs.size()) * minNativePercent()) {
         if (verbose() && diagLeft_ > 0) std::fprintf(stderr, "[jit]   ^ REFUSED(coverage)\n");
         return nullptr;
     }

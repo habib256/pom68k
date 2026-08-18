@@ -110,6 +110,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
         slowStaticHisto_.assign(1 << 16, 0);
         slowRuntimeHisto_.assign(1 << 16, 0);
         slowRuntimeReasonHisto_.assign(RuntimeReasonCount << 16, 0);
+        indexFormSites_.assign(1 << 16, {0, 0});
         ctx_.slowStaticHisto = slowStaticHisto_.data();
         ctx_.slowRuntimeHisto = slowRuntimeHisto_.data();
         ctx_.slowRuntimeReasonHisto = slowRuntimeReasonHisto_.data();
@@ -416,6 +417,58 @@ void Engine::dumpHisto() const {
     dumpModes("MOVE destination", moveDst);
     dumpModes("MOVEM operand", movemEa);
 
+    // The indexed modes, split by EXTENSION form. `docs/JIT_BRINGUP.md`
+    // scopes the work as "a brief extension-word decoder", so what decides
+    // it is not how many fallbacks carry an indexed EA but how many carry
+    // one that decoder would actually reach. Weight is the fallback count
+    // of the opcode; the form comes from the compiled sites (see
+    // indexFormSites_). An opcode compiled BOTH ways is reported as mixed
+    // rather than assigned, because its counter cannot be divided.
+    if (!indexFormSites_.empty()) {
+        uint64_t brief = 0, full = 0, mixed = 0;
+        double briefApportioned = 0;
+        uint32_t briefSites = 0, fullSites = 0;
+        for (const SlowRow& row : slow) {
+            const auto& sites = indexFormSites_[row.op];
+            if (!sites[0] && !sites[1]) continue;      // no indexed EA here
+            const uint64_t n = row.unsupported + row.runtime;
+            if (sites[0] && sites[1]) mixed += n;
+            else if (sites[0]) brief += n;
+            else full += n;
+            briefApportioned += double(n) * double(sites[0]) /
+                                double(sites[0] + sites[1]);
+        }
+        for (const auto& sites : indexFormSites_) {
+            briefSites += sites[0];
+            fullSites += sites[1];
+        }
+        const uint64_t idx = brief + full + mixed;
+        std::fprintf(stderr,
+                     "\n[jit] indexed-mode fallbacks by extension form — "
+                     "%llu attributed (of %llu total fallbacks)\n",
+                     (unsigned long long)idx, (unsigned long long)slowTotal);
+        std::fprintf(stderr, "  brief (d8,An/PC,Xn) %12llu  %5.1f%%\n",
+                     (unsigned long long)brief,
+                     idx ? 100.0 * double(brief) / double(idx) : 0.0);
+        std::fprintf(stderr, "  full 68020 format   %12llu  %5.1f%%\n",
+                     (unsigned long long)full,
+                     idx ? 100.0 * double(full) / double(idx) : 0.0);
+        std::fprintf(stderr, "  mixed (both seen)   %12llu  %5.1f%%\n",
+                     (unsigned long long)mixed,
+                     idx ? 100.0 * double(mixed) / double(idx) : 0.0);
+        std::fprintf(stderr, "  compiled slots: %u brief, %u full "
+                     "(cumulative over the run, not per phase)\n",
+                     briefSites, fullSites);
+        // An ESTIMATE, and labelled one: the mixed mass is split by each
+        // opcode's own brief/full slot ratio. Exactness would need the
+        // census keyed per compiled SITE rather than per opcode — a change
+        // inside both code generators' cold stubs, which this number is
+        // meant to decide whether to bother with.
+        std::fprintf(stderr, "  brief share if mixed is apportioned by slot "
+                     "ratio: %5.1f%%  (ESTIMATE)\n",
+                     idx ? 100.0 * briefApportioned / double(idx) : 0.0);
+    }
+
     struct PairRow { int src, dst; uint64_t n; };
     std::vector<PairRow> pairs;
     for (int src = 0; src < kEaBuckets; src++) {
@@ -439,6 +492,44 @@ void Engine::dumpHisto() const {
     }
 }
 
+// One tally per COMPILED slot, not per execution: the question it answers
+// is "what shape is the code", and the static census supplies the weight.
+void Engine::recordIndexForms(const BlockIr& ir) {
+    if (indexFormSites_.empty()) return;
+    for (const Instr& in : ir.instrs) {
+        for (uint8_t e = 0; e < in.effectiveAddressCount; e++) {
+            const DecodedEffectiveAddress& ea = in.effectiveAddresses[e];
+            switch (ea.kind) {
+                case EffectiveAddressKind::BriefIndex:
+                case EffectiveAddressKind::PcBriefIndex:
+                    indexFormSites_[in.opcode][0]++;
+                    break;
+                case EffectiveAddressKind::FullIndex:
+                case EffectiveAddressKind::PcFullIndex:
+                    indexFormSites_[in.opcode][1]++;
+                    break;
+                default: break;
+            }
+        }
+    }
+}
+
+void Engine::censusPhase(const char* label) {
+    if (histo_.empty()) return;
+    std::fprintf(stderr, "\n[jit] ════ census phase '%s' ════\n", label);
+    dumpHisto();
+    std::fill(histo_.begin(), histo_.end(), 0);
+    std::fill(slowStaticHisto_.begin(), slowStaticHisto_.end(), 0);
+    std::fill(slowRuntimeHisto_.begin(), slowRuntimeHisto_.end(), 0);
+    std::fill(slowRuntimeReasonHisto_.begin(), slowRuntimeReasonHisto_.end(), 0);
+    // lastRuntimeAddressCount_ points INTO this map; clearing without
+    // resetting it would leave the fast-path cache writing through a
+    // dangling pointer on the next runtime fallback.
+    runtimeAddressHisto_.clear();
+    lastRuntimeAddress_ = {};
+    lastRuntimeAddressCount_ = nullptr;
+}
+
 void Engine::setEnabled(bool on) {
     // Unconditional, even when the state does not change: leaving a window
     // armed while the interpreter runs would let IT fetch from a host
@@ -460,7 +551,7 @@ uint64_t Engine::retired() const {
            stats_.interpInstrs.load(std::memory_order_relaxed);
 }
 
-void Engine::flushAll() {
+void Engine::flushAll(Flush cause) {
     // RE-ENTRANCY. This is reachable from INSIDE a running block: a guest
     // MOVEC to CACR reaches Moira::setCACR -> Cpu040::didChangeCACR ->
     // flushAll() while the backend is iterating the very BlockIr we would
@@ -483,6 +574,7 @@ void Engine::flushAll() {
     blocksGen_ = cpu_.pomJitMmuGen;
     pendingFlush_ = false;
     stats_.add(stats_.flushes);
+    stats_.bump(cause);
     stats_.blocksLive.store(0, std::memory_order_relaxed);
 }
 
@@ -502,7 +594,7 @@ void Engine::serviceGuard() {
     if (!guard_.tripped()) return;
     stats_.add(stats_.invalidations);
 
-    if (guard_.mustFlush() || blocks_.empty()) { flushAll(); return; }
+    if (guard_.mustFlush() || blocks_.empty()) { flushAll(Flush::Guard); return; }
 
     for (int k = 0; k < guard_.nHits; k++) {
         const uint32_t slice = guard_.hits[k];
@@ -812,7 +904,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
 
     // A flush requested from inside the trace was deferred; the block we
     // just recorded belongs to the world that flush is throwing away.
-    if (pendingFlush_) { flushAll(); return nullptr; }
+    if (pendingFlush_) { flushAll(Flush::Deferred); return nullptr; }
 
     ir.endReason = why;
 
@@ -1003,6 +1095,7 @@ void Engine::executeUntil(int64_t clockTarget) {
             cpu_.execute();
             stats_.add(stats_.interpInstrs);
             stats_.bump(Exit::CpuFlags);
+            stats_.miss(Miss::CpuFlags);
             continue;
         }
 
@@ -1015,6 +1108,7 @@ void Engine::executeUntil(int64_t clockTarget) {
             armBackoff_--;
             cpu_.execute();
             stats_.add(stats_.interpInstrs);
+            stats_.miss(Miss::ArmBackoff);
             continue;
         }
 
@@ -1025,6 +1119,7 @@ void Engine::executeUntil(int64_t clockTarget) {
             armBackoff_ = 32;
             cpu_.execute();
             stats_.add(stats_.interpInstrs);
+            stats_.miss(Miss::ArmFailed);
             continue;
         }
         armBackoff_ = 0;
@@ -1040,7 +1135,7 @@ void Engine::executeUntil(int64_t clockTarget) {
         // it. The window is refused on a generation mismatch; the block
         // cache has to be dropped, because there is nothing in a (pc,super)
         // key that could notice.
-        if (blocksGen_ != cpu_.pomJitMmuGen) flushAll();
+        if (blocksGen_ != cpu_.pomJitMmuGen) flushAll(Flush::MmuGen);
 
         auto it = blocks_.find(key(pc, super));
         if (it == blocks_.end()) {
@@ -1051,9 +1146,11 @@ void Engine::executeUntil(int64_t clockTarget) {
             // step in — otherwise this loop would not advance.
             traceRetired_ = 0;
             record(pc, super, clockTarget);
+            stats_.miss(Miss::Trace, traceRetired_);
             if (traceRetired_ == 0) {
                 cpu_.execute();
                 stats_.add(stats_.interpInstrs);
+                stats_.miss(Miss::Trace);
             }
             continue;
         }
@@ -1081,6 +1178,7 @@ void Engine::executeUntil(int64_t clockTarget) {
                         b.ir.entryPc, uint32_t(b.ir.code.size() * 2));
                 if (cacheReady) {
                     ScopedResolvedConfig activeConfig(ctx_.config);
+                    recordIndexForms(b.ir);
                     b.code = backend_->compile(b.ir, ctx_);
                 }
                 ctx_.linkMask = savedLinkMask;
@@ -1094,7 +1192,15 @@ void Engine::executeUntil(int64_t clockTarget) {
                     b.rejected = true;
                 }
             }
-            if (!b.code) { runWindow(clockTarget); continue; }
+            if (!b.code) {
+                const uint64_t before = stats_.windowInstrs.load(
+                    std::memory_order_relaxed);
+                runWindow(clockTarget);
+                stats_.miss(b.rejected ? Miss::Rejected : Miss::NotHot,
+                            stats_.windowInstrs.load(
+                                std::memory_order_relaxed) - before);
+                continue;
+            }
         }
 
         // The block may span several I-cache lines. armWindow guarded the
@@ -1103,7 +1209,11 @@ void Engine::executeUntil(int64_t clockTarget) {
         if (cpu_.pomCache040Active() &&
             !cpu_.pomCache040CodeMatches(
                 b.ir.entryPc, uint32_t(b.ir.code.size() * 2))) {
+            const uint64_t before = stats_.windowInstrs.load(
+                std::memory_order_relaxed);
             runWindow(clockTarget);
+            stats_.miss(Miss::CacheLine,
+                        stats_.windowInstrs.load(std::memory_order_relaxed) - before);
             continue;
         }
 
@@ -1131,7 +1241,7 @@ void Engine::executeUntil(int64_t clockTarget) {
         }
         // Any flush the block itself asked for was deferred; honour it now,
         // with nothing of the cache in flight.
-        if (pendingFlush_) flushAll();
+        if (pendingFlush_) flushAll(Flush::Deferred);
         else if (guard_.tripped()) serviceGuard();
     }
 }

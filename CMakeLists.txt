@@ -1626,6 +1626,13 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(jit_bench_lcii EXCLUDE_FROM_ALL tests/jit_bench_lcii.cpp)
     target_link_libraries(jit_bench_lcii PRIVATE pom68k_core)
 
+    # Dev harness: the drawing-phase fallback census (POM68K_JIT.md § 3.5 —
+    # the indexed-mode question refuses idle-Finder numbers). Boots the
+    # Q605, launches dev/mac-rogue off the SWIM2 and plays it, dumping the
+    # census per phase. A measurement, not a gate.
+    add_executable(q605_rogue_census EXCLUDE_FROM_ALL tests/q605_rogue_census.cpp)
+    target_link_libraries(q605_rogue_census PRIVATE pom68k_core)
+
     # ── JIT gates (src/jit/POM68K_JIT.md) ────────────────────────────────
     # The portability seam: backend selection, W^X executable memory, and
     # the block classifier's safety rules. No assets, runs everywhere.

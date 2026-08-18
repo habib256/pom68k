@@ -27,6 +27,7 @@
 #include "JitIr.h"
 #include "JitStats.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -115,8 +116,13 @@ public:
 
     // Everything cached is dropped: the code window, the block cache and
     // whatever the backend is holding. Called on hard reset, on cache
-    // control writes, and whenever the memory map moves.
-    void flushAll();
+    // control writes, and whenever the memory map moves. The cause is only
+    // ever a gauge (`Stats::flushCauses`); it changes nothing the flush
+    // does. The twelve CPU wrappers call it without one on purpose — from
+    // the engine's side "a wrapper asked" IS the cause, and the two kinds
+    // it covers (hard reset, SMC hint) are orders of magnitude apart in
+    // frequency, so the counter reads as the hint.
+    void flushAll(Flush cause = Flush::External);
 
     const Stats& stats() const { return stats_; }
     Stats& stats() { return stats_; }
@@ -124,6 +130,13 @@ public:
     // Gauge helper for the GUI: guest instructions per second, measured over
     // the caller's own wall clock (the engine does not read the host clock).
     uint64_t retired() const;
+
+    // POM68K_JIT_HISTO phase instrument: dump the census accumulated so far
+    // under `label`, then zero every census counter, so one run can report
+    // boot, idle-Finder and a drawing phase as separate censuses instead of
+    // one cumulative blur (§ 3.5 refuses idle-Finder numbers for the
+    // indexed-mode question). No-op when the census is off.
+    void censusPhase(const char* label);
 
 private:
     struct Block {
@@ -310,6 +323,19 @@ private:
     std::vector<uint64_t> slowStaticHisto_;
     std::vector<uint64_t> slowRuntimeHisto_;
     std::vector<uint64_t> slowRuntimeReasonHisto_;
+
+    // Which 68020 indexed EXTENSION form each opcode was compiled with —
+    // [opcode][0] = brief (d8,An/PC,Xn), [1] = the full format. The static
+    // fallback census counts an opcode, and an opcode does not say which
+    // form its extension word carried; that word is per SITE. Deciding
+    // whether the brief decoder alone is worth writing needs the split, so
+    // the engine tallies it where it holds the IR — which also means both
+    // backends report it, instead of whichever one had the counter wired.
+    // Deliberately NOT cleared by censusPhase(): a block compiled during
+    // boot still executes during a later phase, and clearing would leave
+    // its opcodes unattributed exactly where they matter most.
+    std::vector<std::array<uint32_t, 2>> indexFormSites_;
+    void recordIndexForms(const BlockIr& ir);
     struct RuntimeAddressKey {
         uint32_t reason, opcode, address, bytes, write, codeMask;
         bool operator==(const RuntimeAddressKey&) const = default;

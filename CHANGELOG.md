@@ -58,6 +58,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **…and what made it a safe default (event-driven ADB wire)** → [2026-07-24 — Event-driven ADB wire: the Egret firmware LLE is the LC II DEFAULT](#2026-07-24--event-driven-adb-wire-the-egret-firmware-lle-is-the-lc-ii-default)
 - **the Color Classic "Cuda 0417 wedge" was never a core bug** → [2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug…](#2026-07-29--the-color-classic-0417-wedge-was-a-missing-dfac2-not-a-core-bug-both-factory-cudas-land)
 - **"the IIsi has no working ADB" was wrong three times over — `peek8()` is PHYSICAL** → [2026-07-29 — Input-delivery gates for the 030 families…](#2026-07-29--input-delivery-gates-for-the-030-families-loud-hle-fallbacks-and-a-retracted-bug)
+- **"the JIT's 68030 lock is global native residency" (2026-08-12) — residency is a SYMPTOM; forcing it up with a lower coverage bar is 37 % SLOWER** → [2026-08-18 (third) — Native residency is a symptom…](#2026-08-18-residency-trap)
+- **"Phase C is an emitter-coverage problem" — on x86-64 the 68030 generator is slower than the INTERPRETER, and 82 % of the guest never enters a block at all** → [2026-08-18 (later) — The 68030's JIT spends its life re-compiling…](#2026-08-18-030-flush-storm)
+- **"the 68020 indexed modes are ~167 k of the JIT's fallbacks" — off by 67×; the figure came from a top-60 *opcode* list and a mode fragments across hundreds of opcodes** → [2026-08-18 — The indexed modes were never 167 k…](#2026-08-18-drawing-census)
 - **"the naive matcher measurably slowed the gates" — it did not; 3.3 s on a 550-second gate, and nobody had timed it** → [2026-08-09 (eighth)](#2026-08-09-folderprobe)
 - **a red gate whose cause was a CORRUPTED BOOT IMAGE, not code — check drVolAtrb bit 8 before theorising** → [2026-08-06 (late night) — The IIfx closes the set…](#2026-08-06-jit-iifx)
 - **one probe for "did the guest create a folder?", and the gate that makes it safe to optimize** → [2026-08-09 (eighth)](#2026-08-09-folderprobe)
@@ -304,6 +307,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-18 (third)** — [Native residency is a symptom, not the lock: forcing it up makes the 68030 JIT 37 % slower](#2026-08-18-residency-trap)
+- **2026-08-18 (later)** — [The 68030's JIT spends its life re-compiling: 26 544 of 28 816 whole-cache flushes are one wrapper hint](#2026-08-18-030-flush-storm)
+- **2026-08-18** — [The indexed modes were never 167 k, and the idle Finder understates the JIT's fallback pressure 6×](#2026-08-18-drawing-census)
 - **2026-08-17 (fifth)** — [Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes](#2026-08-17-nightly-lto-core)
 - **2026-08-17 (fourth)** — [The suite is sequential by habit, not by constraint, and now says what it costs](#2026-08-17-gate-scheduling-cost)
 - **2026-08-17 (third)** — [The 2026-08-08 knob split was half done: LTO's default still followed NATIVE](#2026-08-17-lto-default-on)
@@ -552,6 +558,213 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-18-residency-trap"></a>
+## 2026-08-18 (third) — Native residency is a symptom, not the lock: forcing it up makes the 68030 JIT 37 % slower
+
+Two thirds of the LC II's execution never enters a block (2026-08-18
+(later)). This entry finds out why, and the answer retracts the diagnosis
+this project has carried since 2026-08-12.
+
+**Every refusal is the same one.** A new `jit::Miss` gauge attributes each
+retired instruction that did not become generated code: `backend declined`
+**158 390 083 — 66.9 %**, `arm backoff` 13.5 %, `tracing` 5.1 %, `cpu
+flags` 1.3 %, `window refused` 0.4 %. Dumping every compile attempt
+(`POM68K_JIT_VERBOSE_BLOCKS=3000000`) names the decline exactly: of 277 002
+attempts, **202 848 fail the native-coverage bar** in `X64Backend::compile`
+— and **zero** fail `emit()`. The bar wants half a block's instructions
+emitted natively. It never bites on a 68040 (98.5 % coverage) and rejects
+73 % of blocks on a 68030.
+
+**So lower the bar. No — it is the trap.** `POM68K_JIT_MIN_NATIVE` makes it
+sweepable; same 2000 frames, fingerprint `3de5c5ab62b4eca8` on all seven
+runs:
+
+| `MIN_NATIVE` | wall | native | block fallback | window/interp |
+|---|---|---|---|---|
+| 0 | 29.99 s | 31.3 % | 52.2 % | 16.5 % |
+| 10 | 23.45 s | 19.1 % | 14.0 % | 67.0 % |
+| 25 | 22.23 s | 16.8 % | 7.3 % | 75.9 % |
+| **50 (default)** | **21.84 s** | 14.4 % | 3.4 % | 82.2 % |
+| 65 / 80 / 95 | 21.86 / 21.95 / 21.86 s | ~11 % | ~0.5 % | ~88 % |
+
+At `MIN_NATIVE=0` native residency is **2.2× higher and the engine is 37 %
+slower**. An instruction that falls back *inside* a block costs more than
+the same instruction on the window path — it pays a call, a frame and a
+boundary commit where the window pays a plain interpreter dispatch. From 50
+upward the wall is one flat plateau, so the inherited 68040 number is
+already at the optimum and tuning it wins nothing.
+
+**That retracts "the measured lock is global native residency (18.4 %)"**
+(`TODO.md` § 3, 2026-08-12, and restated in this session's own earlier
+entry). Residency is a symptom of how many instructions per block the
+emitters can take. Widening the emitters is right; widening them *to raise
+residency* is the wrong reason, and optimising residency directly makes
+things worse.
+
+**And the 68030 wants different instructions than the 68040 does.** Its own
+fallback census, same run: `DBcc 56C9` **37.8 %**, the `(A7)+` pops
+(`205F`/`221F`/`245F`/`4A1F`) **28.6 %** combined, memory-to-memory
+`MOVE.L (A0),(A2)+` 13.1 %, `ADDQ.W #4,A7` + `UNLK A6` 12.2 %. The
+indexed modes that lead the 68040 drawing census earlier today are
+**3 708** here, against 1 976 626 for `(An)+` as a MOVE source. Census the
+guest you are optimising.
+
+**And the top one is refused by a single named guard.** The census reads as
+"no emitter for `56C9`", which is false: `emitDbcc` exists, `canEmit` says
+yes, and instrumenting every guard inside it logs zero refusals. The
+refusal is upstream at `JitBackendX64.cpp:2684` — with the 68030 i-cache
+charge armed, **every multi-word branch is refused**, and a DBcc is always
+two words. The comment there says why: the two paths of a long branch fetch
+a different number of words, while `chargeIcache()` is emitted once before
+the condition. The obstacle is that the compiler's shadow of the i-cache is
+a compile-time model whose state, after a conditional branch, depends on
+the run-time path. Priced with `POM68K_JIT_ICACHE_EMIT=0` (which moves the
+fingerprint, so it is a measurement, not an option): native residency
+14.4 → **21.4 %**, wall **21.96 → 21.26 s**. Three percent.
+
+**The honest ceiling.** Both non-conformant ceilings at once — no CACR
+flush, no i-cache charge — put the x64 generator at **16.49 s**, against
+**14.19 s** for `threaded` at its own ceiling. Strip the 68030 generator of
+both its known costs and it is still 16 % behind the portable backend. Of
+the three plausible levers, one is non-conformant, one was already optimal,
+and one is worth 3 %. C.5's declaration staying shut on x64 is not caution,
+it is the measurement.
+
+The remaining 68030 gaps are Phase C.4's own list — the `(An)+` pre-access
+ordering delta and the cost cross-check refusing instructions whose traced
+cycles carry an i-cache penalty (`Instr::baseCycles`) — both **closed on
+AArch64 and untouched on x86-64**, which is the distance between an a64
+generator within 3 % of `threaded` and an x64 one 44 % behind. Porting them
+is still the obvious work; C.4quater says not to expect parity from it.
+
+<a id="2026-08-18-030-flush-storm"></a>
+## 2026-08-18 (later) — The 68030's JIT spends its life re-compiling: 26 544 of 28 816 whole-cache flushes are one wrapper hint
+
+Phase C is written as an emitter-coverage problem — widen the generators to
+the 68030 family, close the semantic deltas, meet a throughput bar. Measured
+on x86-64 it is not that problem, or not first. `jit_bench_lcii`, 2000
+frames, **fingerprint `3de5c5ab62b4eca8` on every line**:
+
+| engine | CACR hint armed | disarmed |
+|---|---|---|
+| interpreter | 17.90 s (×1.86) | — |
+| `threaded` | 15.14 s (×2.20) | **14.19 s (×2.34)** |
+| x86-64 generator | 21.91 s (×1.52) | 17.13 s (×1.94) |
+
+**The x64 generator on a 68030 is slower than the interpreter it exists to
+beat**, and at its own ceiling it still loses to `threaded`. The AArch64
+half losing to `threaded` was known (2026-08-12); the x64 half is worse.
+
+**Why: almost nothing runs in a block.** Native residency 14.4 %, window and
+interpreter 82.2 % of retired instructions — yet *inside* a block 81 % of
+instructions are already native. Widening the instruction set raises the
+81 %, not the 14 %. The first-order problem is block coverage of execution,
+not which opcodes an emitter accepts.
+
+**What was eating the cache**, named by a new gauge (`jit::Flush` +
+`Stats::flushCauses`, printed by every bench — a flush total says what it
+cost, only the cause says what to do): of 28 816 whole-cache flushes,
+**26 544 were the CPU wrapper's CACR hint**, 2 264 a translation move, and
+**8** a write into code the precise evictor could not localise. 74 154
+blocks compiled for 29 272 distinct — 2.8 blocks per flush.
+
+Two results about that hint, and the negative one cost the same to get:
+
+* **Gating it on the instruction-cache strobes buys nothing.** Only CACR
+  bits 3 (CI) and 2 (CEI) can announce code; the rest are the data cache,
+  and a 68030's data cache is write-through, so a guest that wrote code and
+  cleared only that is already broken on real hardware. The four 68030
+  wrappers (`Cpu030`, `VaspCpu`, `RbvCpu`, `MscCpu`) now test for them —
+  and flushes went 26 544 → **26 529**. Every CACR write this guest makes
+  really is an i-cache clear. Correct change, wrong suspect.
+* **Removing the hint entirely is worth −21.8 % of wall clock**
+  (`POM68K_JIT_030_CACR_FLUSH=0`, an unsafe instrument, not a knob). The
+  gain is *compile* time not paid rather than residency: native share
+  **falls** 14.4 → 11.4 % while wall drops 21.91 → 17.13 s. `threaded`
+  gains too but 3.5× less (−6.3 %), because a flush costs it a window and
+  costs the block path generated code.
+
+Whether the hint can go for good is a real question and not a knob: on the
+V8 the guard already sees every write into RAM — SCSI is CPU-driven
+pseudo-DMA (`V8Memory::scsiDma_` *reads* the controller; the store into RAM
+is an ordinary guest MOVE through `write8`/`write16`, which notes the
+guard), the IWM is polled, and generated-code stores cross the DTLB
+`codeMask`. If that inventory holds on every 68030 board the hint is
+redundant. One workload's matching fingerprint is not that proof, and
+`TODO.md` § 3's four-proof bar applies. Left armed.
+
+<a id="2026-08-18-drawing-census"></a>
+## 2026-08-18 — The indexed modes were never 167 k, and the idle Finder understates the JIT's fallback pressure 6×
+
+`POM68K_JIT.md` § 3.5 left the 68020 indexed modes OPEN with an explicit
+condition: *"Re-open with a census taken over a drawing-heavy phase; do not
+close it on an idle-Finder number."* This is that census.
+
+`tests/q605_rogue_census.cpp` (dev harness, `EXCLUDE_FROM_ALL`, not a CTest)
+boots the Quadra 605 on Mac OS 8.1, inserts `dev/mac-rogue`'s `Rogue.dsk`
+into the SWIM2 after the Finder is up, launches the game from the keyboard
+and plays ~2 emulated minutes of it, with `Engine::censusPhase()` splitting
+the run into separately-dumped censuses — boot, idle Finder, mount+launch,
+title, gameplay. The tree already owned a real QuickDraw workload; nothing
+had ever pointed the census at it.
+
+**The `~167 k` figure § 3.5 quoted was a reporting artefact.** It was read
+off the top-60 *opcode* list (2026-08-10). The addressing rollup that sums
+every opcode landed on 2026-08-12, two days later — and an addressing mode
+fragments across hundreds of opcodes, so each one is far below a top-60 cut
+and the total never appeared anywhere. On the very same idle Finder the
+rollup says **11.2 M**: 31 % of all block fallbacks, the largest single
+category, 67× the number the section was carrying. The workload was never
+the problem with that number; the view was.
+
+What the drawing phase does change is magnitude and form:
+
+| phase | instrs | native | fallbacks | per instr | indexed | full-format |
+|---|---|---|---|---|---|---|
+| idle Finder (60 s) | 78.2 M | 92.6 % | 36.4 M | 0.47 | 30.7 % | 36.1 % |
+| gameplay (~2 min) | 96.0 M | 91.4 % | 272.8 M | **2.84** | 28.8 % | **4.1 %** |
+
+* **An idle Finder understates fallback pressure 6×** — 0.47 fallbacks per
+  retired instruction against 2.84. Boot (2.10) and app launch (3.63) sit
+  with the drawing phase, not with the idle one, so *every* ratio § 3.5
+  quotes is an idle-Finder ratio.
+* **The share attributable to indexed modes barely moves** (31 % → 29 %).
+  Drawing did not create the category; it was already the biggest one.
+* **The form mix inverts**, and this is what decides the work's scope. The
+  full 68020 extension is 36.1 % of indexed fallbacks at idle and **4.1 %**
+  while drawing. The brief share is a bracket rather than a point: 36 % is
+  the mass on opcodes whose every compiled site was brief, 96 % is
+  everything that is not full-only, and apportioning the 60 % seen both
+  ways by each opcode's own slot ratio estimates **71.5 %**. (By raw
+  compiled slot the run is 46 380 brief against 3 242 full — 93.5 % — but
+  slots are not execution-weighted and that number must not be quoted as
+  the share.) Every point in the bracket decides the same way: the brief
+  extension-word decoder § 7 scopes is aimed at exactly the workload that
+  needs it. `TODO.md` § 3 now says brief-first.
+
+The split is tallied in the **engine** (`Engine::recordIndexForms`, one
+tally per compiled slot), not in a code generator's cold stub. That costs
+exactness — the static census counts an opcode, and an opcode compiled both
+ways can only be reported as `mixed` (60 % of the gameplay mass), which is
+why the 71.5 % is printed with an ESTIMATE label — and buys what the
+2026-08-10 lesson says matters more: **both backends report it**, rather
+than whichever one had the counter wired. Exactness here would mean keying
+the census per compiled site inside both generators' cold stubs; this number
+is what that change would have to be worth.
+
+**Two harness lessons, both the same mistake in different clothes.** The
+first gesture selected the app with Cmd-A and the icon came back
+unhighlighted, so nothing launched; type-select ("r-o-g-u-e", the five
+letters that had *already* steered the desktop in that same run) works
+first time. Prefer the mechanism the run has just proven over a second,
+unproven one. Then the validity check called a run that visibly played the
+game — monster killed, XP 002, HP 13/14 — an **INVALID** census, because it
+asked for cumulative screen change over 36 rounds and the move list is a
+closed walk: the player ends each round where it started, so a per-round
+diff reads ~0 while every step in between repainted. Sampling per key gives
+200+/468. This is `FolderProbe.h`'s rule ("the signal is not the biggest
+count, it is the count that changes") arriving from a third direction.
 
 <a id="2026-08-17-nightly-lto-core"></a>
 ## 2026-08-17 (fifth) — Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes
