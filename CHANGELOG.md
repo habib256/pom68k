@@ -633,6 +633,16 @@ silently inert until some unrelated CMakeLists edit forced a reconfigure.
 Both TSVs are now `CMAKE_CONFIGURE_DEPENDS`, and a `touch` on the manifest
 provably recompiles its consumers.
 
+**The full registry sealed the day: 222/222 green in 2 h 11 on relinked
+binaries** — the first whole-registry PARALLEL run this tree has ever
+quoted: 208 gates at `-j16` in 1 h 27 (the calibrated slot budgets held),
+then the two families the RAM model cannot see — Q700/Eclipse, which share
+`Q700Memory`, and the UDP-port AppleTalk gates — serialized in 43 min,
+14/14. Freshness guard green before the tier, `HOST BUSY`-grade hygiene
+during it. Against the historical 4 h 30 sequential habit, the suite now
+costs half — and D.1 condition 4 for the 68030 `threaded` default is met
+by this very run.
+
 Bookkeeping the audit forced: the six `interp_*_boot_etalon` oracles landed
 with the 68030 default flip put the registry at **224** (118 `etalon`,
 53 `m030`) — `docs_test` caught `CLAUDE.md` and `README.md` still saying
