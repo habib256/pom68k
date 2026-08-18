@@ -171,7 +171,10 @@ void report(const char* machine, const char* workload, const char* cpuFamily,
     // instructions that ran as HOST CODE, against those a compiled block
     // handed straight back to Moira, against those the engine ran on the
     // window path because no block covered them.
-    const uint64_t notNative = s.slowInstrs + s.windowInstrs;
+    // `instrs` counts native + block-fallback + window + TRACED; until the
+    // tracer got its own counter the subtraction below absorbed its share
+    // into "native" (5.1 % on the 68030, a third of the printed residency).
+    const uint64_t notNative = s.slowInstrs + s.windowInstrs + s.traceInstrs;
     const uint64_t native = s.instrs > notNative ? s.instrs - notNative : 0;
     metrics.blocksCompiled = s.blocksCompiled;
     metrics.blocksRun = s.blocksRun;
@@ -182,12 +185,41 @@ void report(const char* machine, const char* workload, const char* cpuFamily,
     metrics.windowInstrs = s.windowInstrs;
     metrics.nativeSharePermille = retired ? native * 1000 / retired : 0;
     std::printf("  native %llu (%.1f%%) \xC2\xB7 block fallback %llu (%.1f%%) \xC2\xB7 "
-                "window/interp %llu (%.1f%%)\n",
+                "window/interp %llu (%.1f%%) \xC2\xB7 tracing %llu (%.1f%%)\n",
                 (unsigned long long)native, 100.0 * double(native) / double(retired),
                 (unsigned long long)s.slowInstrs,
                 100.0 * double(s.slowInstrs) / double(retired),
                 (unsigned long long)(s.windowInstrs + s.interpInstrs),
-                100.0 * double(s.windowInstrs + s.interpInstrs) / double(retired));
+                100.0 * double(s.windowInstrs + s.interpInstrs) / double(retired),
+                (unsigned long long)s.traceInstrs,
+                100.0 * double(s.traceInstrs) / double(retired));
+
+    // The gauge proves its own sum (docs/MEASURING.md § R5): every retired
+    // instruction is in exactly one bucket, and every not-native bucket is
+    // attributed by exactly one Miss counter. An ECART here is a counting
+    // bug in the engine, not a property of the guest.
+    {
+        uint64_t missSum = 0;
+        for (int i = 0; i < int(jit::Miss::Count); i++) missSum += s.misses[i];
+        const uint64_t attributed = s.windowInstrs + s.interpInstrs +
+                                    s.traceInstrs;
+        const int64_t gap = int64_t(missSum) - int64_t(attributed);
+        std::printf("  identity: buckets %llu+%llu+%llu+%llu+%llu = %llu vs "
+                    "retired %llu \xC2\xB7 misses %llu vs attributed %llu %s\n",
+                    (unsigned long long)native,
+                    (unsigned long long)s.slowInstrs,
+                    (unsigned long long)s.windowInstrs,
+                    (unsigned long long)s.interpInstrs,
+                    (unsigned long long)s.traceInstrs,
+                    (unsigned long long)(native + s.slowInstrs + s.windowInstrs +
+                                         s.interpInstrs + s.traceInstrs),
+                    (unsigned long long)retired,
+                    (unsigned long long)missSum,
+                    (unsigned long long)attributed,
+                    gap == 0 ? "\xC2\xB7 OK"
+                             : (std::string("\xC2\xB7 ECART ") +
+                                std::to_string((long long)gap)).c_str());
+    }
     std::printf("  window %llu armed / %llu refused \xC2\xB7 dtlb %llu filled / %llu refused"
                 " \xC2\xB7 %llu flush(es), %llu from a write into translated code\n",
                 (unsigned long long)s.windowArmed, (unsigned long long)s.windowFailed,

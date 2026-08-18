@@ -2446,6 +2446,13 @@ bool Emitter::emitMovem(size_t i) {
     const InstructionSemantics& sem = in.semantics;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     if (sem.operation != SemanticOp::Movem) return false;
+    // The 030's MOVEM restart contract is its own (mmu030 fixups, not the
+    // 040 restart latch modelled below) and is NOT implemented. Until
+    // 2026-08-18 this was refused only by ACCIDENT — the cost cross-check
+    // rejects any instruction whose traced cycles carry an i-cache penalty
+    // — and JIT_BRINGUP § C.4.4 says to make that a real guard before any
+    // C.5 flip: an accident of the cross-check is not a safety property.
+    if (L_.is030) return false;
     const bool toRegs = sem.toRegisters;
     const int szIdx = sem.sizeIndex;
     const int size = sizeBytes(szIdx);

@@ -112,6 +112,13 @@ struct Stats {
     std::atomic<uint64_t> dtlbRefused{0};   // …refused: not plain memory
     std::atomic<uint64_t> slowInstrs{0};    // ran through a block's fallback
     std::atomic<uint64_t> windowInstrs{0};  // ran on the fetch-window path
+    // Retired BY THE TRACER (its first pass executes as it records). They
+    // land in `instrs` but in neither windowInstrs nor slowInstrs, so until
+    // 2026-08-18 the report's `native = instrs - slow - window` silently
+    // absorbed them: the 68030's "14.4 % native residency" was ~9.3 % host
+    // code + 5.1 % tracer interpretation, and JIT_BRINGUP's "unexplained
+    // 82 % window share" closed exactly once this was counted apart.
+    std::atomic<uint64_t> traceInstrs{0};
     std::atomic<uint64_t> evictions{0};     // blocks dropped by a precise evict
     std::atomic<uint64_t> exits[int(Exit::Count)] = {};
     std::atomic<uint64_t> flushCauses[int(Flush::Count)] = {};
@@ -131,6 +138,7 @@ struct Stats {
         blocksCompiled = 0; blocksRun = 0; blocksLive = 0;
         flushes = 0; invalidations = 0; windowArmed = 0; windowFailed = 0;
         dtlbFills = 0; dtlbRefused = 0; slowInstrs = 0; windowInstrs = 0;
+        traceInstrs = 0;
         evictions = 0;
         for (auto& e : exits) e = 0;
         for (auto& f : flushCauses) f = 0;
@@ -142,6 +150,7 @@ struct Stats {
         uint64_t instrs, interpInstrs, blocksCompiled, blocksRun, blocksLive;
         uint64_t flushes, invalidations, windowArmed, windowFailed;
         uint64_t dtlbFills, dtlbRefused, slowInstrs, windowInstrs, evictions;
+        uint64_t traceInstrs;
         uint64_t exits[int(Exit::Count)];
         uint64_t flushCauses[int(Flush::Count)];
         uint64_t misses[int(Miss::Count)];
@@ -161,6 +170,7 @@ struct Stats {
         s.dtlbRefused = dtlbRefused.load(std::memory_order_relaxed);
         s.slowInstrs = slowInstrs.load(std::memory_order_relaxed);
         s.windowInstrs = windowInstrs.load(std::memory_order_relaxed);
+        s.traceInstrs = traceInstrs.load(std::memory_order_relaxed);
         s.evictions = evictions.load(std::memory_order_relaxed);
         for (int i = 0; i < int(Exit::Count); i++)
             s.exits[i] = exits[i].load(std::memory_order_relaxed);

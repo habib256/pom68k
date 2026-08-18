@@ -926,7 +926,12 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
 
     running_ = false;
     traceRetired_ = retired;
-    if (retired) stats_.add(stats_.instrs, retired);
+    if (retired) {
+        stats_.add(stats_.instrs, retired);
+        // Counted apart so the report's native share stops absorbing the
+        // tracer's interpretation (JitStats.h owns the why).
+        stats_.add(stats_.traceInstrs, retired);
+    }
 
     // A single-instruction "block" that ended on a discontinuity or a fault
     // describes nothing reusable — do not cache it.

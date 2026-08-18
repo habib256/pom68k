@@ -1789,6 +1789,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             return true;
         }
         if (sem.operation == SemanticOp::Movem) {
+            // Same explicit 030 refusal as x64 (JIT_BRINGUP § C.4.4): the
+            // 030 MOVEM restart contract is unmodelled, and the cost
+            // cross-check's i-cache side effect is not a guard.
+            if (L.is030) return false;
             const bool toRegs = sem.toRegisters;
             const int bits = bitsForSizeIndex(sem.sizeIndex), bytes = bits / 8;
             const uint16_t mask = in.extensionWord(0);
