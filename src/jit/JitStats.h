@@ -39,6 +39,65 @@ inline const char* exitName(Exit e) {
     }
 }
 
+// Why the WHOLE cache was dropped. A flush is not an error either, but on a
+// 68030 it is the difference between a code generator and a warm-up loop:
+// every flush throws away compiled code that must then be re-recorded and
+// re-visited `hot` times before it is native again. A total tells you the
+// cost; only the cause tells you what to do about it.
+enum class Flush : int {
+    External = 0,     // a CPU wrapper asked: hard reset, or an SMC hint
+                      // (68030 `didChangeCACR`, 68040 CINV/CPUSH). Resets
+                      // are a handful per run, so this is the hint.
+    MmuGen,           // the translation moved (`pomJitMapMoved`); a block is
+                      // a script of LOGICAL addresses and cannot survive it
+    Guard,            // a write into translated code the precise evictor
+                      // could not localise (`CodeGuard::mustFlush`)
+    Deferred,         // a flush requested while the backend was mid-replay
+    Count
+};
+
+inline const char* flushName(Flush f) {
+    switch (f) {
+        case Flush::External:  return "wrapper hint/reset";
+        case Flush::MmuGen:    return "translation moved";
+        case Flush::Guard:     return "write into code";
+        case Flush::Deferred:  return "deferred";
+        default:               return "?";
+    }
+}
+
+// Why an instruction did NOT run as generated code. Exit reasons explain
+// how a block STOPPED; these explain why one never started, which on the
+// 68030 is where the throughput went: measured 2026-08-18, 82 % of retired
+// instructions never entered a block at all, while 81 % of the ones that
+// did were already native. Counted in instructions, not events, so the
+// shares add up against `retired`.
+enum class Miss : int {
+    CpuFlags = 0,     // Moira had a flag up: IRQ, trace, STOP, breakpoint
+    ArmFailed,        // armWindow() refused this pc — not plain memory, or
+                      // a translation the probe could not confirm
+    ArmBackoff,       // …and the 32-instruction backoff after such a refusal
+    Trace,            // being recorded: tracing IS execution, so a block's
+                      // first pass is always interpreted
+    NotHot,           // a recorded block below its visit threshold
+    Rejected,         // the backend declined to generate code for it
+    CacheLine,        // 68040 architectural i-cache: block bytes not resident
+    Count
+};
+
+inline const char* missName(Miss m) {
+    switch (m) {
+        case Miss::CpuFlags:   return "cpu flags";
+        case Miss::ArmFailed:  return "window refused";
+        case Miss::ArmBackoff: return "arm backoff";
+        case Miss::Trace:      return "tracing";
+        case Miss::NotHot:     return "not hot yet";
+        case Miss::Rejected:   return "backend declined";
+        case Miss::CacheLine:  return "040 line absent";
+        default:               return "?";
+    }
+}
+
 struct Stats {
     std::atomic<uint64_t> instrs{0};        // guest instructions run by the JIT
     std::atomic<uint64_t> interpInstrs{0};  // …run by the interpreter fallback
@@ -55,8 +114,14 @@ struct Stats {
     std::atomic<uint64_t> windowInstrs{0};  // ran on the fetch-window path
     std::atomic<uint64_t> evictions{0};     // blocks dropped by a precise evict
     std::atomic<uint64_t> exits[int(Exit::Count)] = {};
+    std::atomic<uint64_t> flushCauses[int(Flush::Count)] = {};
+    std::atomic<uint64_t> misses[int(Miss::Count)] = {};   // in INSTRUCTIONS
 
     void bump(Exit e) { exits[int(e)].fetch_add(1, std::memory_order_relaxed); }
+    void bump(Flush f) { flushCauses[int(f)].fetch_add(1, std::memory_order_relaxed); }
+    void miss(Miss m, uint64_t n = 1) {
+        misses[int(m)].fetch_add(n, std::memory_order_relaxed);
+    }
     void add(std::atomic<uint64_t>& c, uint64_t n = 1) {
         c.fetch_add(n, std::memory_order_relaxed);
     }
@@ -68,6 +133,8 @@ struct Stats {
         dtlbFills = 0; dtlbRefused = 0; slowInstrs = 0; windowInstrs = 0;
         evictions = 0;
         for (auto& e : exits) e = 0;
+        for (auto& f : flushCauses) f = 0;
+        for (auto& m : misses) m = 0;
     }
 
     // Snapshot for the GUI: a plain POD copy, no atomics to drag around.
@@ -76,6 +143,8 @@ struct Stats {
         uint64_t flushes, invalidations, windowArmed, windowFailed;
         uint64_t dtlbFills, dtlbRefused, slowInstrs, windowInstrs, evictions;
         uint64_t exits[int(Exit::Count)];
+        uint64_t flushCauses[int(Flush::Count)];
+        uint64_t misses[int(Miss::Count)];
     };
     Snapshot snapshot() const {
         Snapshot s{};
@@ -95,6 +164,10 @@ struct Stats {
         s.evictions = evictions.load(std::memory_order_relaxed);
         for (int i = 0; i < int(Exit::Count); i++)
             s.exits[i] = exits[i].load(std::memory_order_relaxed);
+        for (int i = 0; i < int(Flush::Count); i++)
+            s.flushCauses[i] = flushCauses[i].load(std::memory_order_relaxed);
+        for (int i = 0; i < int(Miss::Count); i++)
+            s.misses[i] = misses[i].load(std::memory_order_relaxed);
         return s;
     }
 };

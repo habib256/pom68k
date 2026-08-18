@@ -77,6 +77,7 @@ struct ResolvedConfig {
     bool icacheEmit = true;
     bool verbose = false;
     int verboseBlocks = 40;
+    int minNativePercent = 50;
     bool dataWindow = false;
 
     // A64 bring-up controls are captured here too: a backend must never
@@ -143,6 +144,7 @@ inline ResolvedConfig resolveConfig() {
     c.icacheEmit = detail::envBool("POM68K_JIT_ICACHE_EMIT", true);
     c.verbose = detail::envBool("POM68K_JIT_VERBOSE", false);
     c.verboseBlocks = detail::envInt("POM68K_JIT_VERBOSE_BLOCKS", 40, 0, 1 << 24);
+    c.minNativePercent = detail::envInt("POM68K_JIT_MIN_NATIVE", 50, 0, 100);
     c.dataWindow = detail::envBool("POM68K_DATA_WINDOW", false);
     c.a64Pacing = detail::envBool("POM68K_JIT_A64_PACING", true);
     if (const char* value = detail::env("POM68K_JIT_A64_STORE_GUARD_OPCODE")) {
@@ -373,6 +375,20 @@ inline bool verbose() {
 inline int verboseBlocks() {
     if (detail::activeConfig) return detail::activeConfig->verboseBlocks;
     return detail::envInt("POM68K_JIT_VERBOSE_BLOCKS", 40, 0, 1 << 24);
+}
+
+// The share of a block's instructions a code generator must emit natively
+// before the block is worth keeping. Below it the block is refused and the
+// engine runs the fetch window instead — same interpreter work without a
+// call and a frame, which is the right trade for a block that is ALL
+// fallbacks. The 50 % it started at is an inherited 68040 number and never
+// bites there (98.5 % coverage); on a 68030 it refused 202 848 of 277 002
+// compile attempts — 73 % — and with them two thirds of all execution
+// (docs/JIT_BRINGUP.md § C.4bis). A knob so the trade can be measured on
+// each guest instead of assumed from one.
+inline int minNativePercent() {
+    if (detail::activeConfig) return detail::activeConfig->minNativePercent;
+    return detail::envInt("POM68K_JIT_MIN_NATIVE", 50, 0, 100);
 }
 
 inline bool a64PacingEnabled() {

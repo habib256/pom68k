@@ -618,6 +618,66 @@ and flattered instrument — see § 0·A.
 
 Open, in ROI order:
 
+- [ ] **Port the a64 68030 deltas to x86-64 — the forms the 030's OWN
+  census names.** Measured 2026-08-18 (`docs/JIT_BRINGUP.md` § C.4bis and
+  § C.4ter, `jit_bench_lcii` 2000 frames, one fingerprint throughout): the
+  x64 generator is **slower than the interpreter** on a 68030 (21.84 s vs
+  17.90 s) and loses to `threaded` (15.14 s) even at its own ceiling.
+  Two thirds of the guest never enters a block, always for the same reason:
+  202 848 of 277 002 compile attempts fail the 50 % native-coverage bar,
+  and **zero** fail `emit()`.
+  - > **"The lock is global native residency" — RETRACTED 2026-08-18.**
+    > Residency is a symptom. Sweeping the bar with `POM68K_JIT_MIN_NATIVE`
+    > shows forcing it up makes the engine **monotonically slower**: at 0 %
+    > residency is 2.2× higher (31.3 %) and wall is **37 % worse**
+    > (29.99 s), because a fallback *inside* a block pays a call, a frame
+    > and a boundary commit where the window pays a plain dispatch.
+    > Everything from 50 upward is a flat plateau — the inherited 68040
+    > number is already optimal. What raises residency legitimately is
+    > emitting more instructions per block, not admitting worse blocks.
+  - The 68030's fallback census is **not** the 68040 drawing census's
+    answer: `DBcc 56C9` **37.8 %**, the `(A7)+` pops (`205F`/`221F`/`245F`/
+    `4A1F`) **28.6 %**, memory-to-memory `MOVE.L (A0),(A2)+` 13.1 %,
+    `ADDQ.W #4,A7` + `UNLK` 12.2 %. `idx(An)` is **3 708** against
+    1 976 626 for `(An)+` as a MOVE source. Census the guest you are
+    optimising.
+  - **DBcc is not missing an emitter** — `emitDbcc` exists and refuses
+    nothing. `JitBackendX64.cpp:2684` refuses **every multi-word branch**
+    while the 030 i-cache charge is armed, because a long branch's two
+    paths fetch a different number of words and `chargeIcache()` is emitted
+    once, before the condition. Unlocking it (priced with
+    `POM68K_JIT_ICACHE_EMIT=0`, which moves the fingerprint) is worth
+    residency 14.4 → 21.4 % and **3 %** of wall. The real obstacle is that
+    the i-cache shadow is a compile-time model and its post-branch state is
+    run-time dependent.
+  - **The honest ceiling: there is no measured path to parity on x86-64.**
+    Both non-conformant ceilings at once (no CACR flush, no i-cache charge)
+    give 16.49 s against `threaded`'s own ceiling of **14.19 s**. Keep
+    C.5's declaration shut on x64 — that is now the measurement, not
+    caution.
+  - The remaining gaps are C.4's own and are **closed on a64, untouched on
+    x64**: the `(An)+` pre-access ordering delta, and the cost cross-check
+    refusing instructions whose traced cycles carry an i-cache penalty
+    (`Instr::baseCycles`, which a64 consumes for narrow forms). That is
+    why a64 sits within 3 % of `threaded` on a 68030 and x64 is 44 % behind.
+    Still the obvious work; do not expect parity from it.
+  - The cache is dropped **28 816** times per run, **26 544** of them by the
+    wrapper's CACR SMC hint (new `jit::Flush` gauge, printed by every
+    bench): 74 154 compiles for 29 272 distinct blocks. Gating the hint on
+    the i-cache strobes CI/CEI — done, all four 68030 wrappers — is correct
+    and buys **15 flushes**: this guest's CACR writes really are all i-cache
+    clears. Removing the hint outright is worth **−21.8 %** wall
+    (`POM68K_JIT_030_CACR_FLUSH=0`, unsafe instrument), and the gain is
+    compile time, not residency (native share *falls* to 11.4 %).
+  - **To retire the hint conformantly**, prove the guard sees every write
+    into RAM on each 68030 board. Done for the V8: SCSI is CPU-driven
+    pseudo-DMA, IWM polled, generated stores cross the DTLB `codeMask`.
+    Not done for VASP, RBV, MSC. The four-proof bar below applies.
+  - Residual not-native causes once the declined blocks are set aside:
+    `arm backoff` 13.5 % (each `armWindow` refusal costs 32 single-stepped
+    instructions — 998 655 refusals × 32), `tracing` 5.1 %, `cpu flags`
+    1.3 %. The backoff is the only one big enough to be worth a look after
+    the emitter work.
 - [ ] **Widen the code generators to the 68030 family.** Plan, milestones and
   every measurement: `docs/JIT_BRINGUP.md` Phase C. Prerequisites already
   landed: the `lcii` lockstep gates (`jit_lockstep_030_test` +
@@ -700,6 +760,23 @@ Open, in ROI order:
   `JitBackendX64.cpp:36` (the stated exclusion) and `:171-172` (`eaIndex`
   returns −1 for mode 6). MULU/DIVU stay fallback (data-dependent cycles —
   the cross-check refuses them honestly).
+  - **The drawing census asked for by `POM68K_JIT.md` § 3.5 has been taken**
+    (2026-08-18, § 3.5bis, `tests/q605_rogue_census.cpp` — the Q605 playing
+    `dev/mac-rogue` off the floppy). It **promotes** this item rather than
+    closing it: the indexed modes are **29 % of all block fallbacks** while
+    drawing and **31 % on the idle Finder** — the largest single category
+    either way. The `~167 k` in § 3.5 was the top-60 *opcode* view, which
+    fragments a mode across hundreds of opcodes; the all-opcode rollup that
+    landed two days later says 11.2 M for the same idle workload.
+    What drawing changes is **magnitude** (2.84 fallbacks per retired
+    instruction against 0.47 idle — an idle Finder understates the pressure
+    6×) and **form**: the full 68020 extension is 36.1 % of indexed
+    fallbacks at idle and **4.1 %** while drawing. The brief share is a
+    bracket — 36 % (opcodes brief at every compiled site) to 96 % (all that
+    is not full-only), the both-ways mass apportioned by slot ratio
+    estimating **71.5 %**, which the dump labels an ESTIMATE. Every point in
+    it decides the same way: **scope the work brief-first**; the full format
+    is a second, smaller question and not on the drawing path.
   *(Two items left this list on x86-64, 2026-08-10: `Emitter::emitScc`,
   `JitBackendX64.cpp:1852`, emits both the register and the memory forms on
   the 68020 cycle column, and `PEA` is native at `:1742-1755` with its own

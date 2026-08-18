@@ -393,10 +393,188 @@ Three rules the bisect method earned, all of them still live:
   which time the two machines had long since parted. Resolution, not
   instrumentation, is what makes a divergence solvable.
 
+### C.4bis — where the 68030 throughput actually goes (2026-08-18, x86-64)
+
+C.4 reads as an emitter-coverage problem. Measured on this host it is not,
+or not yet. `jit_bench_lcii`, 2000 frames, **fingerprint
+`3de5c5ab62b4eca8` on every line below**:
+
+| engine | CACR hint armed | disarmed |
+|---|---|---|
+| interpreter | 17.90 s (×1.86) | — |
+| `threaded` | 15.14 s (×2.20) | **14.19 s (×2.34)** |
+| x86-64 generator | 21.91 s (×1.52) | 17.13 s (×1.94) |
+
+Two things follow, and neither is about which opcodes the emitters accept.
+
+**1. The x64 generator on a 68030 is slower than the INTERPRETER** (21.91 s
+against 17.90 s), and at its own ceiling it still loses to `threaded`
+(17.13 against 14.19). The AArch64 half was already known to lose to
+`threaded` (`TODO.md` § 3, 2026-08-12); the x64 half is worse, and neither
+number is a coverage tail away from winning.
+
+**2. Almost nothing runs in a block.** Native residency is **14.4 %** and
+the window/interpreter path carries **82.2 %** of retired instructions.
+A new gauge (`jit::Miss`, printed by every bench) attributes those
+instructions to the reason they never became generated code:
+
+```
+cpu flags 2 963 286 (1.3%)   window refused 998 655 (0.4%)
+arm backoff 31 956 960 (13.5%)   tracing 12 113 082 (5.1%)
+backend declined 158 390 083 (66.9%)
+```
+
+**Two thirds of the guest runs on the window because the backend refused
+the block outright**, and over the whole run that refusal is *always* the
+same one: 202 848 of 277 002 compile attempts (73 %) fail the
+native-coverage bar in `X64Backend::compile`, and **zero** fail `emit()`.
+The bar wants half a block's instructions emitted natively, which never
+bites on a 68040 (98.5 % coverage) and rejects almost everything on a
+68030.
+
+### C.4ter — and lowering that bar makes it WORSE (the residency trap)
+
+The obvious next move is to lower the bar. It is wrong, and the sweep says
+so unambiguously — `POM68K_JIT_MIN_NATIVE`, same 2000 frames, fingerprint
+`3de5c5ab62b4eca8` on all seven runs:
+
+| `MIN_NATIVE` | wall | native | block fallback | window/interp |
+|---|---|---|---|---|
+| 0 | 29.99 s | 31.3 % | 52.2 % | 16.5 % |
+| 10 | 23.45 s | 19.1 % | 14.0 % | 67.0 % |
+| 25 | 22.23 s | 16.8 % | 7.3 % | 75.9 % |
+| **50 (default)** | **21.84 s** | 14.4 % | 3.4 % | 82.2 % |
+| 65 / 80 / 95 | 21.86 / 21.95 / 21.86 s | ~11 % | ~0.5 % | ~88 % |
+
+**Native residency is not the objective function.** At `MIN_NATIVE=0`
+residency is 2.2× higher and the engine is **37 % slower**: an instruction
+that falls back *inside* a block costs more than the same instruction on
+the window path, because it pays a call, a frame and a boundary commit
+where the window pays a straight interpreter dispatch. Everything from 50
+upward is one flat plateau, so the inherited 68040 number is already at the
+optimum and there is nothing to win by tuning it.
+
+That retires the framing this document and `TODO.md` § 3 both carried —
+"the measured lock is global native residency (18.4 %)". Residency is a
+**symptom**. The lock is how many instructions per block the emitters can
+take, because that is what carries a block over a bar which is correctly
+placed. Widening the emitters is right after all; widening them to raise
+*residency* is not what makes it right.
+
+**What the 68030 actually wants emitted**, from its own fallback census
+(`POM68K_JIT_HISTO=1` on the same run) — and it is **not** the drawing
+census's answer for the 68040, which is a lesson about censusing the guest
+you are optimising:
+
+| opcode | form | share of in-block fallbacks |
+|---|---|---|
+| `56C9` | `DBNE D1,disp` | **37.8 %** |
+| `24D0` | `MOVE.L (A0),(A2)+` (memory→memory) | 13.1 % |
+| `205F` `221F` `245F` `4A1F` | `(A7)+` pops and `TST.B (A7)+` | **28.6 %** combined |
+| `584F` `4E5E` | `ADDQ.W #4,A7`, `UNLK A6` | 12.2 % |
+
+`idx(An)` — the mode the 68040 drawing census puts first — is **3 708**
+here, next to 1 976 626 for `(An)+` as a MOVE source.
+
+### C.4quater — DBcc is refused by ONE named guard, and unlocking it buys 3 %
+
+The census reads as "no emitter for `56C9`". It is not: `emitDbcc` exists,
+`canEmit(0x56C9)` says yes, and instrumenting every guard inside it logs
+**zero** refusals. The refusal is upstream of the dispatch, at
+`JitBackendX64.cpp:2684`, and it is deliberate:
+
+```cpp
+if (ic_ && ir_.instrs[i].kind == Kind::Branch && ir_.instrs[i].words > 1) {
+    a_.jmp(staticStub(i)); ... continue;   // 68030 i-cache charge only
+}
+```
+
+**With the 68030 i-cache charge armed, every multi-word branch is refused**
+— and a DBcc is always two words. The reason is in the comment: the two
+paths of a long branch fetch a different number of words (the not-taken
+path consumes the displacement through `readExt`, the taken path reads it
+out of `queue.irc`), while `chargeIcache(i)` is emitted once, before the
+condition is evaluated. The hard part is not the emitter — `emitDbcc`
+already has three separate paths, each ending in its own `chargeCycles` —
+it is that the compiler's shadow of the i-cache is a **compile-time**
+model, and after a conditional branch its state depends on the path taken
+at run time.
+
+Priced with the existing knob (`POM68K_JIT_ICACHE_EMIT=0`, which changes
+the fingerprint and is therefore a measurement, not an option):
+
+| | wall | native | declined |
+|---|---|---|---|
+| armed (`3de5c5ab62b4eca8`) | 21.96 s | 14.4 % | 66.9 % |
+| charge off (`f51a3e54f16ba414`) | 21.26 s | **21.4 %** | 61.2 % |
+
+Native residency rises by half and wall clock moves **3.2 %**. Again:
+residency is not the objective function.
+
+### C.4quinquies — the honest ceiling on x86-64
+
+Both non-conformant ceilings together — no CACR flush, no i-cache charge
+(`fp=42c0af0935a63304`, so architecturally this is not POM68K any more):
+
+| engine | best measured |
+|---|---|
+| x86-64 generator, both ceilings | 16.49 s (×2.02) |
+| **`threaded`, its own ceiling** | **14.19 s (×2.34)** |
+| x86-64 generator, as shipped | 21.96 s (×1.51) |
+
+**Strip the 68030 generator of both its known costs and it is still 16 %
+slower than the portable threaded backend.** That is the state of Phase C
+on x86-64: no measured lever reaches parity, and the three that were
+plausible are respectively non-conformant (the flush), already optimal
+(the coverage bar) and worth 3 % (the branch guard). C.5's declaration
+staying shut on x64 is not caution, it is the measurement.
+
+What is left unmeasured, and is where the remaining distance must be: **why
+82 % of execution is on the window path at all**, when only 66.9 % is
+explained by declined blocks and 13.5 % by the post-refusal arm backoff.
+The a64 half is a different story — within 3 % of `threaded` — and porting
+its `baseCycles` consumption and `(An)+` ordering to x86-64 remains the
+obvious coverage work, but C.4quater says not to expect parity from it.
+
+Where the flushes came from, named by the new `Stats::flushCauses` gauge
+(`jit::Flush`, printed by every bench): of 28 816 whole-cache flushes,
+**26 544 were the CPU wrapper's CACR hint**, 2 264 a translation move and
+**8** a write into code the precise evictor could not localise. 74 154
+blocks compiled for 29 272 distinct ones — 2.8 blocks per flush, a cache
+that never gets to keep anything.
+
+Two results about that hint, one negative and worth as much as the other:
+
+* **Gating it on the instruction-cache strobes buys nothing here.** CACR
+  bits 3 (CI) and 2 (CEI) are the only ones that can announce code — the
+  rest are the data cache, which on a write-through 68030 cannot — and the
+  four 68030 wrappers now test for them. Flushes went 26 544 → **26 529**.
+  Every CACR write this guest makes really is an i-cache clear. The gate is
+  still right; it is simply not where the cost is.
+* **Removing the hint entirely is worth −21.8 % of wall clock**, measured
+  with `POM68K_JIT_030_CACR_FLUSH=0` (an UNSAFE instrument, § 6, not a
+  tuning knob). The gain is *compile* time not paid, not residency: with
+  the hint gone, native share **falls** 14.4 → 11.4 % while wall drops
+  21.91 → 17.13 s. `threaded` gains too, but 3.5× less (−6.3 %), because a
+  flush costs it only a window and costs the block path generated code.
+
+**Making that conformant is a real question, not a knob.** On the V8 the
+guard already sees every write into RAM — SCSI is CPU-driven pseudo-DMA
+(`V8Memory::scsiDma_` is a *read* of the controller; the store into RAM is
+an ordinary guest `MOVE` through `write8`/`write16`, which `note()`s the
+guard), the IWM is polled, and generated-code stores cross the DTLB's
+`codeMask`. If that inventory holds for every 68030 board, the hint is
+redundant and can go. One workload's matching fingerprint is not that
+proof, and the four-proof bar in `TODO.md` § 3 applies.
+
 **C.5 — flip the declaration.** `guestFamilies |= kGuest68030` in a64 once
 C.4 is complete AND the throughput bar is met, then the same walk on x64.
 Not before: the declaration is what stopped the 2026-07-30 wedge from
 recurring, and flipping it early converts a coverage gap into a wedged guest.
+C.4bis/C.4ter say the bar is further away than the raw numbers suggest, and
+that the way to it is per-instruction emitter coverage on the forms the
+**68030** census names — not residency, which moves the wrong way when
+forced.
 
 **C.6 — the full-boot gates.** `jit_lcii_boot_etalon` on the native backend
 (this is the gate that timed out at one hour on 2026-07-30 — it is the

@@ -447,6 +447,59 @@ exactly where QuickDraw's blitters — the thing the indexed modes were
 motivated by — are absent. Re-open with a census taken over a drawing-heavy
 phase; do not close it on an idle-Finder number.
 
+### 3.5bis The drawing census, and what the idle Finder got wrong (2026-08-18)
+
+That census exists now: `tests/q605_rogue_census.cpp` (dev harness,
+`EXCLUDE_FROM_ALL`, **not** a CTest) boots the Q605 on Mac OS 8.1, mounts
+`dev/mac-rogue`'s `Rogue.dsk` off the SWIM2, launches the game with the
+keyboard and plays it for ~2 emulated minutes, calling
+`Engine::censusPhase()` between stages so boot, idle Finder, launch, title
+and gameplay are dumped as **separate** censuses instead of one cumulative
+blur. It fails rather than reports when the game demonstrably never ran: an
+idle census filed as a drawing census would be worse than no number.
+
+**The `~167 k` figure above was an artefact of the reporting view, not of
+the workload.** It came from the top-60 opcode list (2026-08-10); the
+addressing rollup that sums *every* opcode landed two days later
+(2026-08-12), and indexed modes fragment across hundreds of opcodes, so each
+one is small and the total never appeared. On the same idle Finder the
+rollup says **11.2 M**, 31 % of all block fallbacks — the largest single
+category, and 67× the number this section quoted.
+
+What the drawing phase actually changes is **magnitude and form**, not
+share (x86-64 backend, one run, figures reproduced bit-identically across
+three):
+
+| phase | instrs | native | fallbacks | per instr | indexed | full-format |
+|---|---|---|---|---|---|---|
+| idle Finder (60 s) | 78.2 M | 92.6 % | 36.4 M | 0.47 | 30.7 % | 36.1 % |
+| gameplay (~2 min) | 96.0 M | 91.4 % | 272.8 M | **2.84** | 28.8 % | **4.1 %** |
+
+* **An idle Finder understates fallback pressure 6×.** Per retired
+  instruction it is 0.47 against 2.84 — and boot (2.10) and app launch
+  (3.63) sit with the drawing phase, not with the idle one. Every ratio § 3.5
+  quotes is an idle-Finder ratio.
+* **The share attributable to indexed modes barely moves** (31 % → 29 %), so
+  the category was already the biggest one; drawing did not create it.
+* **The form mix inverts.** Of the indexed fallbacks, the full 68020
+  extension is 36.1 % at idle and **4.1 %** while drawing. The brief share
+  is bracketed, not a point: **36 %** is the mass on opcodes whose every
+  compiled site was brief, **96 %** is everything that is not full-only, and
+  apportioning the 60 % seen both ways by each opcode's own slot ratio
+  estimates **71.5 %**. All three bounds say the same thing — **the brief
+  decoder § 7 scopes is aimed at the workload that needs it.**
+
+The brief/full split is tallied in the *engine* (`Engine::recordIndexForms`,
+per compiled slot) rather than in a code generator's cold stub. That costs
+exactness — the census counts an opcode, and an opcode compiled both ways
+can only be reported as `mixed`, which is why the 71.5 % is labelled an
+ESTIMATE in the dump — and buys the thing § 3.4's lesson says matters more:
+**both backends report it**, instead of whichever one had the counter wired.
+Exactness would mean keying the census per compiled SITE inside both
+generators' cold stubs; the 36-96 % bracket is what that change has to be
+worth, and today it is not, because every point in the bracket decides the
+same way.
+
 ### 3.6 What one window exit actually costs (2026-08-09)
 
 § 3.3's exit count was a **rate with no price**: 794 M exits over 12.2 G
@@ -728,8 +781,11 @@ process environment. Later environment changes affect only future engines.
 | `POM68K_JIT_HISTO` | profile | dynamic opcode/fallback census; on in `instrumented`, off otherwise (`JitEngine.cpp dumpHisto()`) |
 | `POM68K_JIT_REQUIRE_NATIVE` | unset | gate-only: make the asset-free native protocol tier fail instead of soft-skipping when no A64/x64 generator is usable |
 | `POM68K_JIT_WINDOW_KILL` | `0` | **measurement instrument, not tuning**: kill the code window every N retired instructions on purpose, so the price of ONE window-lost exit is the slope of wall time against exit count (§ 3.6). A kill is architecturally invisible, so a bench fingerprint must not move with N — that is what makes the fit a measurement rather than a story. Slows the engine down by design |
+| `POM68K_JIT_MIN_NATIVE` | `50` | percent of a block's instructions a generator must emit natively before the block is kept; below it the block is refused and the fetch window runs instead. **Sweeping it is a measurement, and the measurement says leave it alone**: 0 % more than doubles native residency and costs **37 %** of wall clock on the 68030, everything from 50 up is one flat plateau (`docs/JIT_BRINGUP.md` § C.4ter). A fallback inside a block pays a call, a frame and a boundary commit; on the window it pays a dispatch |
+| `POM68K_JIT_030_CACR_FLUSH` | `1` | **UNSAFE measurement instrument, not tuning** (68030 wrappers). `0` stops honouring the guest's CACR instruction-cache clear as an SMC hint, so the block cache survives it. It prices the hint — measured −21.8 % of wall clock on the LC II, `docs/JIT_BRINGUP.md` § C.4bis — at the cost of the engine's only notice for code that arrived without a guarded CPU write. Compare fingerprints on both sides or the number means nothing |
 | `POM68K_BENCH_FRAMES` | q605 `3000`, lcii `6000` | `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` — frames of 416 667 (Q605) or 640×407 = 260 480 (LC II) **machine** cycles |
 | `POM68K_BENCH_SLICES` | `0` = CPU alone | `jit_bench_lcii` only: N ≥ 1 runs the GUI's own quantum, N slices per frame with a raster catch-up at each boundary (§ 3.6) |
+| `POM68K_DUMP` | unset | `tests/q605_rogue_census.cpp` (`make q605_rogue_census`, `EXCLUDE_FROM_ALL`): write `q605_rogue_*.ppm` at every stage. The harness sets `POM68K_JIT_HISTO` itself and dumps one census PER PHASE (§ 3.5bis) — a drawing workload, which `jit_bench` is not |
 
 The lockstep gates read their own knobs, none of which the emulator ever
 sees. Defaults differ per gate because the machine classes do:

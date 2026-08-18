@@ -54,7 +54,9 @@ void VaspCpu::hardReset() {
 
 void VaspCpu::didChangeCACR(moira::u32 value) {
     pomInvalidateIcache030(value);         // CI whole / CEI selected longword
-    jit_.flushAll();                       // SMC hint, as on every wrapper
+    // SMC hint — but only the INSTRUCTION-cache strobes are one. See
+    // Cpu030::didChangeCACR for the measurement that narrowed this.
+    if (value & 0x0C) jit_.flushAll();
 }
 
 void VaspCpu::runCycles(moira::i64 n) {

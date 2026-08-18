@@ -80,9 +80,32 @@ void Cpu030::hardReset() {
 // Moira.h § PomIcache.)
 void Cpu030::didChangeCACR(moira::u32 value) {
     pomInvalidateIcache030(value);
-    // A cache clear is the guest announcing freshly written code — the same
-    // SMC hint the 040 wrapper honours.
-    jit_.flushAll();
+    // A cache clear is the guest announcing freshly written code — but only
+    // an INSTRUCTION-cache clear says that. CI (bit 3) and CEI (bit 2) are
+    // the two strobes that do; everything else in CACR is the data cache
+    // (ED/FD/CD/CED/WA) or an enable/freeze bit, and a data-cache command
+    // cannot announce code — on a 68030 the data cache is write-through, so
+    // a guest that wrote code and cleared only THAT is already broken on
+    // real hardware. Measured on the LC II (jit_bench_lcii, 2000 frames):
+    // flushing on every CACR write dropped the whole block cache 26 544
+    // times, against 2 264 for a translation move and 8 for a write into
+    // code — 2.8 compiled blocks per flush, i.e. the cache never got to
+    // keep anything and 82 % of the guest ran on the window path.
+    // What actually protects the JIT from unannounced code is `CodeGuard`
+    // (201 030 precise invalidations in that same run), not this hint.
+    //
+    // POM68K_JIT_030_CACR_FLUSH=0 is a MEASUREMENT INSTRUMENT, not tuning,
+    // and it is UNSAFE: it removes the only notice the engine gets for code
+    // that arrived without a CPU write it could guard (a segment loaded by
+    // SCSI pseudo-DMA is the real case). It exists to price the hint before
+    // anyone pays to make it precise — the same method § 3.5 used on the
+    // codeMask refusal. A fingerprint taken with it MUST be compared against
+    // one taken without.
+    static const bool cacrFlush = [] {
+        const char* v = getenv("POM68K_JIT_030_CACR_FLUSH");
+        return !v || atoi(v) != 0;
+    }();
+    if ((value & 0x0C) && cacrFlush) jit_.flushAll();
 }
 
 void Cpu030::runCycles(moira::i64 n) {

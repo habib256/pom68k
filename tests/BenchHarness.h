@@ -185,6 +185,36 @@ void report(const char* machine, const char* workload, const char* cpuFamily,
                 (unsigned long long)s.dtlbFills, (unsigned long long)s.dtlbRefused,
                 (unsigned long long)s.flushes, (unsigned long long)s.invalidations);
 
+    // A flush total says what it cost; only the cause says what to do. On
+    // the 68030 this line is the difference between "the emitters refuse
+    // too much" and "the cache never gets to keep anything".
+    if (s.flushes) {
+        std::printf("  flush causes:");
+        for (int i = 0; i < int(jit::Flush::Count); i++)
+            if (s.flushCauses[i])
+                std::printf("  %s %llu", jit::flushName(jit::Flush(i)),
+                            (unsigned long long)s.flushCauses[i]);
+        std::printf("\n");
+    }
+
+    // Why instructions never became generated code. Exit reasons say how a
+    // block stopped; these say why one never started — the 68030's actual
+    // throughput question (docs/JIT_BRINGUP.md § C.4bis).
+    {
+        uint64_t missed = 0;
+        for (int i = 0; i < int(jit::Miss::Count); i++) missed += s.misses[i];
+        if (missed) {
+            std::printf("  not-native causes (instrs):");
+            for (int i = 0; i < int(jit::Miss::Count); i++)
+                if (s.misses[i])
+                    std::printf("  %s %llu (%.1f%%)",
+                                jit::missName(jit::Miss(i)),
+                                (unsigned long long)s.misses[i],
+                                100.0 * double(s.misses[i]) / double(retired));
+            std::printf("\n");
+        }
+    }
+
     uint64_t exits = 0;
     for (int i = 0; i < int(jit::Exit::Count); i++) exits += s.exits[i];
     for (int i = 0; i < int(jit::Exit::Count); i++)

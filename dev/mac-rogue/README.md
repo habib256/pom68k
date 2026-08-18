@@ -15,6 +15,13 @@ covers every POM68K profile from the **Mac Plus** to the **Quadra 950**.
 > the HUD. `m68k-apple-macos-gcc 16.1.0`, `-Os -Wall`, **zero warnings**.
 > text 27 992 + data 5 024 + bss 58 120 = ~91 KB against a 1 MB partition.
 
+Since 2026-08-18 it is also an **instrument**: `tests/q605_rogue_census.cpp`
+mounts `build/Rogue.dsk` on a Quadra 605, launches it from the keyboard and
+plays it, because the JIT's fallback census needed a workload that actually
+draws and the idle Finder is where QuickDraw's blitters are absent
+(`src/jit/POM68K_JIT.md` § 3.5bis). Keep `Rogue.dsk` buildable: a change
+that breaks the app's launch takes that measurement with it.
+
 ## Building
 
 The toolchain is user-built into `dev/Retro68-build/toolchain`
