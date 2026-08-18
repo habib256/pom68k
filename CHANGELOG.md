@@ -58,6 +58,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **…and what made it a safe default (event-driven ADB wire)** → [2026-07-24 — Event-driven ADB wire: the Egret firmware LLE is the LC II DEFAULT](#2026-07-24--event-driven-adb-wire-the-egret-firmware-lle-is-the-lc-ii-default)
 - **the Color Classic "Cuda 0417 wedge" was never a core bug** → [2026-07-29 — The Color Classic "0417 wedge" was a missing DFAC2, not a core bug…](#2026-07-29--the-color-classic-0417-wedge-was-a-missing-dfac2-not-a-core-bug-both-factory-cudas-land)
 - **"the IIsi has no working ADB" was wrong three times over — `peek8()` is PHYSICAL** → [2026-07-29 — Input-delivery gates for the 030 families…](#2026-07-29--input-delivery-gates-for-the-030-families-loud-hle-fallbacks-and-a-retracted-bug)
+- **"nothing under ~3 % is a claim on this host" — assumed, and 6× too loose: three NULL experiments measure 0.3-1.0 %; a floor that wide buries every real 1-2 % effect** → [2026-08-18 (fourth) — The measurement method measured itself…](#2026-08-18-method-audit)
 - **"the JIT's 68030 lock is global native residency" (2026-08-12) — residency is a SYMPTOM; forcing it up with a lower coverage bar is 37 % SLOWER** → [2026-08-18 (third) — Native residency is a symptom…](#2026-08-18-residency-trap)
 - **"Phase C is an emitter-coverage problem" — on x86-64 the 68030 generator is slower than the INTERPRETER, and 82 % of the guest never enters a block at all** → [2026-08-18 (later) — The 68030's JIT spends its life re-compiling…](#2026-08-18-030-flush-storm)
 - **"the 68020 indexed modes are ~167 k of the JIT's fallbacks" — off by 67×; the figure came from a top-60 *opcode* list and a mode fragments across hundreds of opcodes** → [2026-08-18 — The indexed modes were never 167 k…](#2026-08-18-drawing-census)
@@ -307,6 +308,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-18 (fourth)** — [The measurement method measured itself: the floor was 6× too loose, the freshness guard cried wolf, and the A/B is now ABBA in one process](#2026-08-18-method-audit)
 - **2026-08-18 (third)** — [Native residency is a symptom, not the lock: forcing it up makes the 68030 JIT 37 % slower](#2026-08-18-residency-trap)
 - **2026-08-18 (later)** — [The 68030's JIT spends its life re-compiling: 26 544 of 28 816 whole-cache flushes are one wrapper hint](#2026-08-18-030-flush-storm)
 - **2026-08-18** — [The indexed modes were never 167 k, and the idle Finder understates the JIT's fallback pressure 6×](#2026-08-18-drawing-census)
@@ -558,6 +560,111 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-18-method-audit"></a>
+## 2026-08-18 (fourth) — The measurement method measured itself: the floor was 6× too loose, the freshness guard cried wolf, and the A/B is now ABBA in one process
+
+`docs/MEASURING.md` was written this morning to stop numbers like the
++18 %/−9.6 % pair from happening again. This entry is the afternoon's audit
+of that document with its own rules, and every instrument it proposed needed
+a correction the moment it was pointed at itself.
+
+**The noise floor was assumed, and assumed 6× too loose.** R2 said "~3 % on
+this host", derived from three *separate* interpreter invocations spreading
+1.4 % — a number that priced process start-up and the page cache, not the
+emulator. The harness now has a **null experiment** (`POM68K_BENCH_NULL=1`:
+the reference arm against itself, so any delta is the instrument's own).
+Three null runs on the same host: worst arm spreads **0.3 / 1.0 / 0.5 %**,
+deltas −0.0 / +0.0 / +0.1 %. The floor is now a *measured* budget row —
+`host_wallclock/any/x86_64/noise_floor_permille = 10`, worst-of-three, in
+`performance_budgets.tsv` with the other reviewed policy — and reaches the
+benches as a compile-time constant. The wrongness had a direction: a 3 %
+rule on a host that resolves 1 % does not protect against noise, it buries
+every real 1-2 % effect under "not a claim". The harness now says
+`POLICY TOO LOOSE` when the recorded floor is more than twice the measured
+one, and `HOST NOISIER THAN POLICY` (exit 1) for the opposite drift.
+
+**The calibration read its own policy — and confirmed it.** The first cut of
+the null experiment folded the *recorded* floor into the floor it reported,
+so a host that had just demonstrated 0.3 % was told to record 3.0 %: the
+number already in the file, forever. Calibration now reads the run and
+nothing else; the comparison against policy is a separate sentence.
+`docs/MEASURING.md` § 3 keeps it as the fourth wrong-quantity trap.
+
+**The freshness guard answered STALE to everything, including three binaries
+seen linking minutes before.** `tools/check_binaries_fresh.py` asked
+`make -q <target>` of the top-level Makefile, where every CMake convenience
+rule depends on the *phony* `cmake_check_build_system` — never up to date, by
+construction, so every verdict was "would rebuild". The question moved to
+the rule that carries the real prerequisites
+(`CMakeFiles/<t>.dir/build.make`), and the guard's first honest sweep found
+**58 of 136 gate executables older than `libpom68k_core.a`** — the exact
+phantom-pass shape `CLAUDE.md` records as the 143/143 that proved nothing.
+The lesson became R5: *a guard nobody has watched say both yes and no is not
+an instrument*, and `--self-test` now proves both verdicts on the real tree
+without touching a file (`make -W`, the what-if flag).
+
+**The A/B is ABBA, warmed up, and self-describing.** `bench::compare` ran
+`A B A B`, which under one-way drift (thermal ramp, a build winding down —
+the 1-minute load fell 36.6 → 0.55 in the quarter hour before one
+measurement) lands the whole drift on one arm. It now counterbalances
+`A B / B A`, discards a cold-cache warm-up pair, applies the widest of (arm
+A spread, arm B spread, recorded floor) — the backoff sweep survived its
+first re-measure precisely because only arm A's spread was consulted — and
+prints the verdict two-sided: a regression inside the floor is as unreal as
+a win, and more expensive, because it reverts good changes. Every result
+carries its own conditions: the process's `POM68K_*` set (the +18 % was one
+knob differing between arms), build stamp, host load before/after,
+fingerprint.
+
+**Re-measured under the corrected protocol** (one binary, fingerprint
+identical per budget): `threaded` vs interpreter on the LC II is
+**−3.7 %** at 1200 frames (10.31 → 9.92 s), **−8.3 %** at 2000
+(16.89 → 15.49 s) and **−10.5 %** at 3000 (25.20 → 22.56 s), arm spreads
+0.1-2.8 %. The trend of the morning's ABAB table stands; its points move by
+up to 2.4 points at the same budgets, which is the protocol difference
+being priced.
+
+**And the provenance line caught its first stale binary the same hour.** The
+3000-frame run printed `floor 3.0%` beside a build stamp minutes older than
+the TSV that had just been re-recorded to 1 % — because `file(STRINGS)`
+registers **no configure dependency**, so editing either budget manifest was
+silently inert until some unrelated CMakeLists edit forced a reconfigure.
+Both TSVs are now `CMAKE_CONFIGURE_DEPENDS`, and a `touch` on the manifest
+provably recompiles its consumers.
+
+Bookkeeping the audit forced: the six `interp_*_boot_etalon` oracles landed
+with the 68030 default flip put the registry at **224** (118 `etalon`,
+53 `m030`) — `docs_test` caught `CLAUDE.md` and `README.md` still saying
+218, and now also pins the two `host_wallclock` budget rows.
+
+**And the freshened tree's first tier run found a red the stale tree had
+been hiding for a day.** `sst68030` reads **3068/3082** on binaries relinked
+from scratch — 14 FPU vectors, invisible since 2026-08-17 because the gate's
+executable predated the change (the phantom pass, live). Worktree bisect:
+green at `e449b3a`, red at `90f5f56`. **Closed the same day by ruling D23**
+(`oracle/fuzz/disputes/NOTES.md`): a new replay tool,
+`oracle/fuzz/replay030.py`, ran all 2042 pinned FPU vectors' initial states
+back through the UNCHANGED oracle .so and reproduced every pinned final
+bit-for-bit — so the pin is the oracle's living word, and the 2026-08-17
+merge had overruled it on manual reading alone, twice: the 030
+post-instruction FPU frame is format **$3 with the operand EA** on the 030
+too (not MC68030UM's $2 — fpu_tt #63 pushes $30C4), and FRESTORE's
+version-$41 "horrible hack" is **FPU-model-independent** (an
+`&& fpuModel == M68040` guard format-errored $41 frames the oracle skips on
+a 68882 — the other 4 reds, where the oracle takes no exception at all).
+Both reverted, `fpu_sanity` check 14 — written alongside the $2 change and
+asserting it — re-pinned to $3-with-EA. `sst68030` **3082/3082**,
+`sst68040` 7200/7200 and `fpu040_test` untouched. Two more
+guards earned their keep the same hour: the **busy-host refusal** joined
+`bench::compare` after a concurrent compile was pointed out by the reader
+rather than the tool (1-min load over ¼ of the hardware threads at either
+end → `HOST BUSY`, exit 1, nothing quotable — the day's A/B numbers are
+provisional until re-measured quiet), and both budget TSVs became
+`CMAKE_CONFIGURE_DEPENDS` after the bench printed the OLD noise floor
+beside a build stamp minutes older than the freshly edited manifest —
+`file(STRINGS)` registers no configure dependency, so policy edits were
+silently inert.
 
 <a id="2026-08-18-residency-trap"></a>
 ## 2026-08-18 (third) — Native residency is a symptom, not the lock: forcing it up makes the 68030 JIT 37 % slower

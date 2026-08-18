@@ -1262,7 +1262,10 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
 § *JIT seam*. What belongs *here*, because it is about the rest of the tree:
 
 - **It is a second engine, not a replacement.** It is the conformant default
-  on validated 68040 guests; every other family starts on the interpreter.
+  on validated 68040 guests, and since 2026-08-18 on **68030** ones too —
+  there as `threaded`, never generated code, because both native backends
+  declare themselves 68040-only and `auto` cannot hand an 030 a code
+  generator. 68000 and 68020 still start on the interpreter.
   The GUI **CPU** menu switches it live (through the machine thread's command
   queue, so the swap lands between two instructions), and
   `POM68K_CPU_ENGINE=interp|jit` overrides the family default. The

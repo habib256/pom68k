@@ -71,6 +71,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     maskAware_ = backend_->caps().dtlbCodeMask;
     hotAt_ = config_.hot;
     windowKill_ = killCountdown_ = config_.windowKill;
+    armBackoff_steps_ = config_.armBackoff;
     ctx_.cpu = &cpu_;
     ctx_.stats = &stats_;
     ctx_.config = &config_;
@@ -129,10 +130,29 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
                      int(useWindow_), int(useBlocks_), maxInstrs_, ram >> 20);
     }
     // Phase D: native 68040 backends are lockstep- and full-boot-proved, and
-    // the portable backend inherits Moira's handlers. Other guest families
-    // remain opt-in until their own evidence bar is met. An explicit
+    // the portable backend inherits Moira's handlers. An explicit
     // POM68K_CPU_ENGINE still overrides this policy in either direction.
-    setEnabled(config_.engineForGuest(guestFamily == kGuest68040) == EngineKind::Jit);
+    //
+    // **68030 joined on 2026-08-18**, and it gets `threaded`, not generated
+    // code: both native generators declare themselves 68040-only through
+    // `BackendCaps::guestFamilies`, so `auto` cannot hand an 030 a code
+    // generator — the unfinished native 030 work stays unreachable from a
+    // shipping default, which is the property that stopped the 2026-07-30
+    // wedge. What `threaded` changes is the FETCH path, and that is where
+    // the 68030's time is: callgrind on the shipping LC II interpreter puts
+    // `mmuFetchWord` + `Cpu030::read16` at 44.4 % of all instructions, and
+    // the code window replaces exactly that with a host pointer. Measured
+    // (jit_bench_lcii, 2000 frames, fingerprint `3de5c5ab62b4eca8` on every
+    // engine): interpreter 17.90 s / x1.86, `threaded` 15.14 s / x2.20.
+    // Its conformance is not inherited, it is gated: `jit_lockstep_030_test`
+    // and `_blocks_test` step two LC IIs from power-up comparing registers,
+    // the three stacks, SR, `clock`, 2 KB of low RAM and the three PomIcache
+    // counters — and the 030 i-cache overlay is charged inside
+    // `mmuFetchWord` BEFORE the window hook, so the window is conformant on
+    // it by construction (docs/JIT_BRINGUP.md line 32).
+    const bool jitByDefault =
+        (guestFamily & (kGuest68040 | kGuest68030)) != 0;
+    setEnabled(config_.engineForGuest(jitByDefault) == EngineKind::Jit);
 }
 
 void Engine::recordRuntimeAddress(uint32_t reason, uint32_t opcode,
@@ -561,6 +581,20 @@ void Engine::flushAll(Flush cause) {
     // block returns, before it touches the cache again.
     if (running_) { pendingFlush_ = true; return; }
 
+    // A DISABLED engine holds nothing: no blocks, no links, no armed window,
+    // and page maps that were zeroed when it was switched off. Clearing them
+    // again costs two `memset`s over a map sized by guest RAM, and the CPU
+    // wrappers call this on every guest instruction-cache strobe whether the
+    // engine is running or not. On the shipping LC II — where the JIT is OFF
+    // by default, `guestFamily == kGuest68040` being the only case that arms
+    // it — the guest's ~26 500 CACR clears per 2000 frames put `flushAll` at
+    // 1.0 % of the INTERPRETER's instruction count and a large share of the
+    // 4.1 % spent in `__memset_avx2` (callgrind, 2026-08-18). Removing the
+    // work is worth **5.8 % of wall clock** with the fingerprint unmoved.
+    // The disarm stays unconditional: setEnabled()'s contract is that no
+    // window survives a switch, and it is free when none is armed.
+    if (!enabled_) { disarmWindow(); return; }
+
     for (auto& kv : blocks_) if (kv.second.code) backend_->release(kv.second.code);
     blocks_.clear();
     sliceIndex_.clear();
@@ -892,7 +926,12 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
 
     running_ = false;
     traceRetired_ = retired;
-    if (retired) stats_.add(stats_.instrs, retired);
+    if (retired) {
+        stats_.add(stats_.instrs, retired);
+        // Counted apart so the report's native share stops absorbing the
+        // tracer's interpretation (JitStats.h owns the why).
+        stats_.add(stats_.traceInstrs, retired);
+    }
 
     // A single-instruction "block" that ended on a discontinuity or a fault
     // describes nothing reusable — do not cache it.
@@ -1116,7 +1155,7 @@ void Engine::executeUntil(int64_t clockTarget) {
             // Code outside plain memory, or a translation the probe cannot
             // confirm. The interpreter runs it and stacks any fault itself
             // — and the next probes wait their turn.
-            armBackoff_ = 32;
+            armBackoff_ = armBackoff_steps_;
             cpu_.execute();
             stats_.add(stats_.interpInstrs);
             stats_.miss(Miss::ArmFailed);

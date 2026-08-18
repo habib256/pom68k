@@ -11,6 +11,8 @@
 //
 //   POM68K_BENCH_FRAMES  frames of 416 667 cycles to run (default 3000)
 //   POM68K_CPU_ENGINE    interp | jit (unset = 68040 default, currently jit)
+//   POM68K_BENCH_COMPARE / POM68K_BENCH_NULL — the one-process interleaved
+//                        A/B and the host-floor calibration (MEASURING.md)
 //   POM68K_BENCH_PPM     dump the final screen here (diagnosing a boot)
 //
 // The timed loop, the fingerprint and the report live in `BenchHarness.h`,
@@ -100,6 +102,33 @@ int main() {
     std::ifstream in(romPath, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
+
+    // POM68K_BENCH_COMPARE=N — the interleaved A/B, POM68K_BENCH_NULL=1 the
+    // host-floor calibration. Same protocol as the LC II twin; the shared
+    // contract (ABBA order, warm-up pair, floor, provenance stamps) lives in
+    // BenchHarness.h and docs/MEASURING.md § 1 owns the why.
+    if (bench::compareRepeats() > 0) {
+        constexpr int64_t kCmpFrameCycles = 416667;    // 25 MHz / ~60 Hz
+        const int cmpFrames = bench::frames(3000);
+        std::printf("q605 %s, %d repeats x 2 arms ABBA, %d frames per run, "
+                    "built %s\n",
+                    bench::nullExperiment() ? "NULL experiment (A vs A)"
+                                            : "interleaved A/B",
+                    bench::compareRepeats(), cmpFrames, bench::buildStamp());
+        return bench::compare("q605", "interp", "jit", [&](int arm) {
+            Q605Memory m(32u << 20);
+            m.loadRom(rom);
+            m.attachScsi(diskPath);
+            Cpu040 c(m);
+            m.setCpu(&c);
+            c.setEngine(arm);                          // 0 interp, 1 jit
+            c.hardReset();
+            while (m.cpuHeld()) m.tick(1000);
+            const bench::Result r = bench::run(c, cmpFrames, kCmpFrameCycles);
+            return bench::Sample{ r.secs, r.fp };
+        });
+    }
+
     Q605Memory mem(32u << 20);
     if (!mem.loadRom(rom) || !mem.attachScsi(diskPath)) {
         std::fprintf(stderr, "FAIL: could not load ROM/disk\n");

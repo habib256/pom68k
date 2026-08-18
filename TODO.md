@@ -335,6 +335,16 @@ ciblés verts, tier `etalon` complet vert.
 
 ## 1. Red now
 
+*(The `sst68030` 3068/3082 that stood here for a few hours on 2026-08-18 —
+14 FPU vectors red under a day-old STALE binary, bisected to `90f5f56` —
+is closed the same day by **ruling D23** (`oracle/fuzz/disputes/NOTES.md`):
+the oracle replay (`oracle/fuzz/replay030.py`, 2042/2042 pinned finals
+reproduced bit-for-bit) proved the 2026-08-17 merge had overruled the
+oracle on spec alone, twice — the 030 post-instruction frame is format $3
+with EA on the 030 too, and FRESTORE's version-$41 hack is FPU-model-
+independent. Both reverted, `fpu_sanity` check 14 re-pinned; 3082/3082,
+`sst68040` 7200/7200 untouched.)*
+
 *(The dirty-volume refusal that stood here — "on `GISTPERSO-boot.vhd`,
 clearing the volume's clean-unmount bit is enough to stop the IIfx booting
 it" — is closed, 2026-08-13 (seventh): `iifx_persist_etalon` is green. It
@@ -479,6 +489,14 @@ Keys inside the image); the Cuda↔VIA phase robustness chantier (2026-08-03 —
   changing the answer. Expect **three** outcomes: `$FF` on, `$00` off,
   **anything else = the engine is not loaded**, which is what a properly
   cleaned image looks like.
+- **Run `tools/check_binaries_fresh.py` before quoting any tier, and run its
+  `--self-test` the first time on a new machine.** The whole method file is
+  `docs/MEASURING.md`; the two shapes this guard kills are the phantom pass
+  (143/143 over stale binaries) and the phantom failure (four "reds" that
+  were missing executables). Its own first version answered STALE to
+  everything — it asked the top-level Makefile, whose every rule depends on
+  a phony target — which is why the self-test exists (R5: a guard nobody
+  has watched say both yes and no is not an instrument).
 
 ---
 
@@ -604,9 +622,13 @@ measurements: `src/jit/POM68K_JIT.md`; plan and milestones:
 
 Current state: the engine reaches **every CPU wrapper in the tree** — twelve of
 them, 68000 included since 2026-08-06. **`jit/auto` has been the conformant
-default on 68040 since 2026-08-10**; every other family still defaults to the
-interpreter, which remains the accuracy oracle and keeps one explicit etalon per
-68040 platform (`interp_{q605,centris650,q630,q700}_boot_etalon`). Both x86-64
+default on 68040 since 2026-08-10**, and **on 68030 since 2026-08-18** — the
+16 profiles behind `Cpu030`/`SonoraCpu`/`VaspCpu`/`RbvCpu`/`IIfxCpu`/`MscCpu`,
+worth **×1.18** on the LC II (17.90 → 15.14 s, fixed budget, one fingerprint).
+68000 and 68020 still default to the interpreter, which remains the accuracy
+oracle and keeps one explicit etalon per platform on both accelerated
+families (`interp_*_boot_etalon`: q605, centris650, q630, q700 and now
+lcii, lc3, iivx, iisi, iifx, duo230). Both x86-64
 and AArch64 code generators are declared **68040-only** by capability
 (`BackendCaps::guestFamilies`, `JitBackend.h § GuestFamily`), so `auto` gives
 the 030s `threaded` and unfinished native 030 work cannot become a shipping

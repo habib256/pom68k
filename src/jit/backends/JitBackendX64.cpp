@@ -1485,7 +1485,17 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     const int dc = kMoveDst[dst.idx];
     if (rc < 0 || dc < 0) return false;
     const int cycles = rc + dc;
-    if (cycles != ir_.instrs[i].cycles) return false;
+    // On an 030 the traced total carries the i-cache penalty of THAT run
+    // (JIT_BRINGUP § C.4: `Instr::cycles` is not the table cost there), so
+    // comparing it against the table refuses every instruction that missed
+    // during its trace — a motive foreign to its cost. Consume the split
+    // base cost for exactly the family a64 proved: a postincrement source
+    // whose sole access is a read into a register. Wider admissions have
+    // DIVERGED every time (steps 31162/7798/10902); mirror, don't extend.
+    const bool splitSafe030 = L_.is030 && src.idx == kM_PI && !dst.memory;
+    const unsigned tracedCycles030 = splitSafe030
+        ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
+    if (unsigned(cycles) != tracedCycles030) return false;
 
     MemoryAccessPlan srcAccess, dstAccess;
     if (src.memory) {
@@ -1685,7 +1695,12 @@ bool Emitter::emitAluRgEa(size_t i) {
     if (dst.idx == kM_AN || dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
     if (!lengthOk(i, dst.ext)) return false;
     const int cycles = eaRmwCost(dst.idx, szIdx);
-    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+    // Register-only ADDQ/SUBQ: no data access, no ordering, no restartable
+    // write hides behind the lower split cost — the first deliberately
+    // narrow consumer a64 landed. Memory forms keep the total-cost check.
+    const unsigned traced030q = L_.is030 && dst.idx <= kM_AN
+        ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
+    if (cycles < 0 || unsigned(cycles) != traced030q) return false;
 
     MemoryAccessPlan read, write;
     if (dst.memory) {
@@ -1742,7 +1757,12 @@ bool Emitter::emitAddSubQ(size_t i) {
     if (dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
     if (!lengthOk(i, dst.ext)) return false;
     const int cycles = eaRmwCost(dst.idx, szIdx);
-    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+    // Register-only ADDQ/SUBQ: no data access, no ordering, no restartable
+    // write hides behind the lower split cost — the first deliberately
+    // narrow consumer a64 landed. Memory forms keep the total-cost check.
+    const unsigned traced030q = L_.is030 && dst.idx <= kM_AN
+        ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
+    if (cycles < 0 || unsigned(cycles) != traced030q) return false;
 
     MemoryAccessPlan read, write;
     if (dst.memory) {
@@ -2086,7 +2106,14 @@ bool Emitter::emitLine4(size_t i) {
         if (src.idx == kM_AN && szIdx == 0) return false;
         if (!lengthOk(i, src.ext)) return false;
         const int cycles = kEaRead[src.idx][szIdx];
-        if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+        // TST (An)/(An)+ is read-only: consume the split base cost on an
+        // 030 so an i-cache miss during the trace does not refuse it
+        // (same admission as a64; the exact-thunk 4A11 refinement is NOT
+        // ported — that form stays refused here).
+        const unsigned traced030 = L_.is030 &&
+                (src.idx == kM_AI || src.idx == kM_PI)
+            ? in.baseCycles : in.cycles;
+        if (cycles < 0 || unsigned(cycles) != traced030) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         MemoryAccessPlan read;
         if (src.memory) {
@@ -2273,12 +2300,31 @@ bool Emitter::emitBranch(size_t i) {
         a_.jcc(Cc::NE, notTaken);                    // condToAl: ZF set == taken
     }
 
-    // Taken. fullPrefetch() does not refill the queue on the 68040, so irc
-    // still holds the word mmu040InstrStart fetched at pc + 2 — which for a
-    // word-displacement branch is the displacement itself.
+    // Taken. Neither mode-5 core refills the queue at instruction end, so
+    // irc still holds the word fetched at pc + 2: the DISPLACEMENT for a
+    // word branch, the ENTRY LOOKAHEAD for a short one. The first version
+    // committed `extensionWord(0)` unconditionally — which for a one-word
+    // branch is not a machine word at all but the accessor's 0 default —
+    // and the 030 lockstep at HEAD caught it as a terminal queue of
+    // 66FA/0000 against the interpreter's 66FA/4E75 (a taken BNE.S with an
+    // RTS in the lookahead). a64's `lastHeld` (JitBackendA64.cpp:2251) is
+    // the same formula; on the 030 the tracer's terminal capture must also
+    // CONFIRM it before the emitter is admitted, exactly as a64 does.
+    const uint16_t takenIrc = in.words > 1 ? in.extensionWord(0)
+                                           : ir_.prefetchWord(in.pc + 2);
+    const uint16_t fallIrcQ = ir_.prefetchWord(fall);
+    if (L_.is030 && in.terminalQueueValid) {
+        const bool targetOnly = in.observedNextPc == target && target != fall;
+        const bool fallOnly = in.observedNextPc == fall && target != fall;
+        if (in.terminalIrd != op ||
+            (targetOnly && in.terminalIrc != takenIrc) ||
+            (fallOnly && in.terminalIrc != fallIrcQ) ||
+            (!targetOnly && !fallOnly && in.terminalIrc != takenIrc &&
+             in.terminalIrc != fallIrcQ)) return false;
+    }
     a_.movMI(Sz::L, at(L_.pc), int32_t(target));
     a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
-    commitQueue(op, in.extensionWord(0));
+    commitQueue(op, takenIrc);
     chargeCycles(takenCycles);
     a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     loopTo_ = targetIdx;
@@ -2292,7 +2338,7 @@ bool Emitter::emitBranch(size_t i) {
         a_.bind(notTaken);
         a_.movMI(Sz::L, at(L_.pc), int32_t(fall));
         a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
-        commitQueue(op, ir_.prefetchWord(fall));
+        commitQueue(op, fallIrcQ);
         chargeCycles(fallCycles);
         a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
         leaveTo(fall);
@@ -2446,6 +2492,13 @@ bool Emitter::emitMovem(size_t i) {
     const InstructionSemantics& sem = in.semantics;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     if (sem.operation != SemanticOp::Movem) return false;
+    // The 030's MOVEM restart contract is its own (mmu030 fixups, not the
+    // 040 restart latch modelled below) and is NOT implemented. Until
+    // 2026-08-18 this was refused only by ACCIDENT — the cost cross-check
+    // rejects any instruction whose traced cycles carry an i-cache penalty
+    // — and JIT_BRINGUP § C.4.4 says to make that a real guard before any
+    // C.5 flip: an accident of the cross-check is not a safety property.
+    if (L_.is030) return false;
     const bool toRegs = sem.toRegisters;
     const int szIdx = sem.sizeIndex;
     const int size = sizeBytes(szIdx);
@@ -2718,7 +2771,16 @@ bool Emitter::emit() {
         commitQueue(ir_.instrs[i].opcode,
                     ir_.prefetchWord(ir_.instrs[i].pc +
                                      uint32_t(ir_.instrs[i].words) * 2));
-        chargeCycles(ir_.instrs[i].cycles);
+        // On the 030 the emitted i-cache model (chargeIcache) has already
+        // reproduced the fetch component, so a native instruction owes only
+        // the tracer's BASE cost. Charging the traced total pays the
+        // trace-time miss a SECOND time whenever the current run reproduces
+        // it: +4 per miss, the 5956-step lockstep divergence that shelved
+        // the first split admissions. Instructions traced on hits have
+        // base == cycles, so this changes behaviour only for the admitted
+        // split forms — a64's rule verbatim (JitBackendA64.cpp:2622).
+        chargeCycles(int(L_.is030 ? ir_.instrs[i].baseCycles
+                                  : ir_.instrs[i].cycles));
         a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     }
 
