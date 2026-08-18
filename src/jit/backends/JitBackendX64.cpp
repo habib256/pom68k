@@ -272,9 +272,27 @@ public:
     Emitter(Asm& a, const Layout& L, const BlockIr& ir, const Context& ctx)
         : a_(a), L_(L), ir_(ir),
           paced_(ctx.periphClock != nullptr && ctx.periphBatch != 0),
-          batch_(ctx.periphBatch), linkMask_(ctx.linkTable ? ctx.linkMask : 0),
+          batch_(ctx.periphBatch),
+          // The 030 oracle proved (a64 lockstep step 10455) that a block
+          // containing a native 030 write is an architectural chain
+          // boundary in BOTH directions: returning to the Engine services
+          // every deferred condition before another compiled block can
+          // observe the store. So such a block takes no outgoing links —
+          // and compile() below also withholds its published entry. x64
+          // never had this contract because hit-traced 030 writes compile
+          // here too; the latent hole predates the split-timing admissions.
+          restartWrite030_(L.is030 &&
+              std::any_of(ir.instrs.begin(), ir.instrs.end(),
+                          [&L](const Instr& in) {
+                              return memoryProofPlan(in.memory,
+                                                     proofOptions(L))
+                                  .restartableLastWrite();
+                          })),
+          linkMask_(ctx.linkTable && !restartWrite030_ ? ctx.linkMask : 0),
           histo_(ctx.slowStaticHisto != nullptr),
           ic_(L.icLive && icacheEmitEnabled()) {}
+
+    bool restartWrite030() const { return restartWrite030_; }
 
     // Emits the whole block. False = give up; the engine keeps the IR and
     // runs the block through the fetch-window loop instead.
@@ -422,6 +440,7 @@ private:
     Label *exitBudget_ = nullptr, *exitFlags_ = nullptr, *exitFault_ = nullptr;
     Label *exitLost_ = nullptr, *epilogue_ = nullptr;
     int  loopTo_ = -1;
+    bool restartWrite030_ = false;
     uint32_t linkMask_ = 0;
     // Emission deferred to AFTER the block body. Everything a memory access
     // does when the inline TLB cannot serve it — asking the engine to fill
@@ -2949,11 +2968,20 @@ public:
         // `jit_lcii_boot_etalon` timed out at an hour, where the same
         // machine boots in 2 min 21 s on `threaded`.
         //
-        // Widening this is real work, not a flag flip: it means the 030's
-        // update order and prefetch semantics in the emitters, a 030 branch
-        // in pomJitProbeData, model-correct access thunks, and an
-        // lcii/x64 lockstep gate to prove it. See POM68K_JIT.md § 7.
-        c.guestFamilies = kGuest68040;
+        // Widening was real work, not a flag flip — and it is DONE for
+        // correctness (2026-08-18): the 030 branch in pomJitProbeData, the
+        // split-timing consumption, the taken-short-branch IRC fix, the
+        // write-block chain-boundary contract, and the
+        // jit_lockstep_030_x64_experimental_test gate that holds all of it
+        // to 120 000 identical steps. The declaration below is therefore
+        // CORRECTNESS scope: an explicit POM68K_JIT_BACKEND=x64 on a 68030
+        // is honoured without the unsafe override. It is NOT the default:
+        // selectBackend()'s auto path still resolves a 68030 to `threaded`,
+        // because the generator measures SLOWER there (JIT_BRINGUP
+        // § C.4quinquies: 21.96 s as shipped vs threaded 15.14 s, and
+        // still 16 % behind at both non-conformant ceilings) — the shipped
+        // default must be the fastest conformant mode, D.1 condition 3.
+        c.guestFamilies = kGuest68040 | kGuest68030;
         return c;
     }
 
@@ -3085,7 +3113,11 @@ Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
 
     X64Compiled* c = new X64Compiled();
     c->entry = dst;
-    c->linked = dst + e.linkEntryOffset();
+    // The write-block chain-boundary contract, second half (see the
+    // Emitter ctor): the fault-frame gate proves REPLAY, not transparent
+    // links, so nothing may jump into this block without the Engine
+    // between them.
+    c->linked = e.restartWrite030() ? nullptr : dst + e.linkEntryOffset();
     return c;
 }
 
