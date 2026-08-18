@@ -1768,7 +1768,7 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         add_test(NAME jit_lockstep_030_a64_experimental_test COMMAND jit_lockstep_030_test 120000
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_lockstep_030_a64_experimental_test PROPERTIES
-                             ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_UNSAFE_BACKEND=1;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=128;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
+                             ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=128;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
                              TIMEOUT 1800)
     else()
         # The a64 pair are host-conditional gates: the registry has more
@@ -1794,7 +1794,7 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         add_test(NAME jit_lockstep_030_x64_experimental_test COMMAND jit_lockstep_030_test 120000
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_lockstep_030_x64_experimental_test PROPERTIES
-                             ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_UNSAFE_BACKEND=1;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
+                             ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
                              TIMEOUT 1800)
     else()
         string(APPEND pom68k_absent_gates

@@ -2968,11 +2968,20 @@ public:
         // `jit_lcii_boot_etalon` timed out at an hour, where the same
         // machine boots in 2 min 21 s on `threaded`.
         //
-        // Widening this is real work, not a flag flip: it means the 030's
-        // update order and prefetch semantics in the emitters, a 030 branch
-        // in pomJitProbeData, model-correct access thunks, and an
-        // lcii/x64 lockstep gate to prove it. See POM68K_JIT.md § 7.
-        c.guestFamilies = kGuest68040;
+        // Widening was real work, not a flag flip — and it is DONE for
+        // correctness (2026-08-18): the 030 branch in pomJitProbeData, the
+        // split-timing consumption, the taken-short-branch IRC fix, the
+        // write-block chain-boundary contract, and the
+        // jit_lockstep_030_x64_experimental_test gate that holds all of it
+        // to 120 000 identical steps. The declaration below is therefore
+        // CORRECTNESS scope: an explicit POM68K_JIT_BACKEND=x64 on a 68030
+        // is honoured without the unsafe override. It is NOT the default:
+        // selectBackend()'s auto path still resolves a 68030 to `threaded`,
+        // because the generator measures SLOWER there (JIT_BRINGUP
+        // § C.4quinquies: 21.96 s as shipped vs threaded 15.14 s, and
+        // still 16 % behind at both non-conformant ceilings) — the shipped
+        // default must be the fastest conformant mode, D.1 condition 3.
+        c.guestFamilies = kGuest68040 | kGuest68030;
         return c;
     }
 

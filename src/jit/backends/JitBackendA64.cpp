@@ -2448,12 +2448,15 @@ public:
         c.aluReg = c.aluMem = c.moves = c.branches = c.addrModes = true;
         c.dtlbCodeMask = true;
         c.maxBlockInstrs = 64;
-        // The 68030 emitter is lockstep-clean, but remains behind the unsafe
-        // development override: two adjacent 6,000-frame measurements did
-        // not reproduce a throughput win over `threaded`. The repaired IIfx
-        // oracle is green on all three engines; throughput is the remaining
-        // promotion blocker (2026-08-11).
-        c.guestFamilies = kGuest68040;
+        // The 68030 emitter is lockstep-clean (120k gate), and since
+        // 2026-08-18 the declaration says so: an explicit
+        // POM68K_JIT_BACKEND=a64 on a 68030 is honoured without the unsafe
+        // override. Throughput is still the promotion blocker — two
+        // adjacent 6,000-frame measurements did not reproduce a win over
+        // `threaded` (within 3 %) — so selectBackend()'s auto path keeps
+        // resolving a 68030 to `threaded` until the fixed-budget bench
+        // says otherwise (D.1 condition 3).
+        c.guestFamilies = kGuest68040 | kGuest68030;
         return c;
     }
     bool canEmit(uint16_t op) const override {

@@ -120,8 +120,13 @@ coverage, not a product ceiling.
   `lle_a64_q900_preflight`). Every remaining HLE entry is a *fallback* — a
   missing dump or an explicit `*_LLE=0`, and never silent.
 - **JIT**: `jit/auto` is the conformant default on 68040 **and, since
-  2026-08-18, on 68030** — where it resolves to `threaded`, never generated
-  code, both native backends being 68040-only by declared capability. Worth
+  2026-08-18, on 68030** — where it resolves to `threaded`: both code
+  generators now DECLARE the 68030 (correctness proved by the two
+  `jit_lockstep_030_*_experimental_test` gates, 120k identical steps each,
+  and an LC II Finder boot), so `POM68K_JIT_BACKEND=x64|a64` selects
+  generated code on an 030 with no unsafe override — but `auto` keeps the
+  measured-fastest conformant mode, and the generator still loses to
+  `threaded` there (`docs/JIT_BRINGUP.md` § C.4quinquies). Worth
   **×1.18** on the LC II (17.90 s → 15.14 s at a fixed budget, one
   fingerprint), and the fetch path callgrind puts at 44 % of the
   interpreter is exactly what the code window replaces. 68000/68020 stay

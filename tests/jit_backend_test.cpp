@@ -438,16 +438,32 @@ int main() {
         check(b != nullptr && (b->caps().guestFamilies & fam) != 0,
               "auto never returns a backend invalid for the guest it was asked about");
     }
-    // The concrete regression: the x86-64 generator is 68040-only, so asking
-    // for it on a 68030 must NOT come back as x64. Before 2026-07-30 it did,
-    // and jit_lcii_boot_etalon spent an hour wedged proving it.
+    // The history of this check IS the safety story. Before 2026-07-30 an
+    // explicit x64 on a 68030 was honoured with no 030 semantics behind it,
+    // and jit_lcii_boot_etalon spent an hour wedged proving it; the
+    // declaration then refused it for a year of afternoons. Since
+    // 2026-08-18 the 030 work is lockstep-proved
+    // (jit_lockstep_030_x64_experimental_test, 120k identical), the
+    // declaration says so, and the pin flips: an EXPLICIT request is
+    // honoured — while `auto` still resolves a 68030 to `threaded`,
+    // because the generator measures slower there and the shipped default
+    // must be the fastest conformant mode (D.1 condition 3; deleting the
+    // auto skip is the C.5 default flip, a measured decision).
     if (hasX64) {
         jit::Backend* on030 = jit::selectBackend("x64", jit::kGuest68030);
-        check(std::strcmp(on030->name(), "x86-64") != 0,
-              "x64 requested for a 68030 guest is refused, not honoured");
+        check(!std::strcmp(on030->name(), "x86-64"),
+              "x64 requested for a 68030 guest is honoured since the "
+              "declaration (2026-08-18)");
         jit::Backend* on040 = jit::selectBackend("x64", jit::kGuest68040);
         check(!std::strcmp(on040->name(), "x86-64"),
-              "…and it is still served for the 68040 it was written for");
+              "…and still served for the 68040 it was written for");
+        jit::Backend* auto030 = jit::selectBackend("auto", jit::kGuest68030);
+        check(!std::strcmp(auto030->name(), "threaded"),
+              "auto on a 68030 stays `threaded` — the default is the "
+              "fastest conformant mode, not the newest generator");
+        jit::Backend* auto040 = jit::selectBackend("auto", jit::kGuest68040);
+        check(!std::strcmp(auto040->name(), "x86-64"),
+              "auto on a 68040 still picks the native generator");
     }
 
     // Every backend compiled in must DECLARE a scope: the caps field defaults

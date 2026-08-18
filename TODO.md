@@ -629,9 +629,11 @@ worth **×1.18** on the LC II (17.90 → 15.14 s, fixed budget, one fingerprint)
 oracle and keeps one explicit etalon per platform on both accelerated
 families (`interp_*_boot_etalon`: q605, centris650, q630, q700 and now
 lcii, lc3, iivx, iisi, iifx, duo230). Both x86-64
-and AArch64 code generators are declared **68040-only** by capability
-(`BackendCaps::guestFamilies`, `JitBackend.h § GuestFamily`), so `auto` gives
-the 030s `threaded` and unfinished native 030 work cannot become a shipping
+and AArch64 code generators **declare the 68030 since 2026-08-18**
+(`BackendCaps::guestFamilies`) — correctness is lockstep-gated on both ISAs
+and an explicit backend request needs no unsafe override — while `auto`
+still gives the 030s `threaded` by measured policy (the selectBackend skip;
+JIT_BRINGUP § C.4quinquies), so slower native 030 code cannot become a shipping
 default. Best measured figures — fixed budget, identical fingerprint on every
 engine (`POM68K_JIT.md` § 3.4, Q605, 3 000 frames): interpreter 48.51 s,
 `threaded` 28.10 s (×1.73), `x86-64` **9.71 s (×5.00)**. The ×2.68 quoted

@@ -23,7 +23,7 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 
 | Fact | Where |
 |---|---|
-| x64 and a64 both declare `guestFamilies = kGuest68040` **only** | `JitBackendX64.cpp:2497`, `JitBackendA64.cpp:2156` |
+| x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope; `auto` still skips them on 030 (see C.5) | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackend.cpp` (the auto skip) |
 | `threaded` declares `kGuestAny` and is what `auto` gives every 000/020/030 | `JitBackendThreaded.cpp:42` |
 | Selection tests guest validity *before* host ranking | `JitBackend.cpp:64-66`, `:136-139` |
 | `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:1993-2029` |
@@ -35,7 +35,7 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 | Moira runs the 68030 on `Core::C68020` cycle counts — **the same 68020 column the x64/a64 cost tables are transcribed from** | `JitBackendX64.cpp:163-223`, `Cpu030.h:144-168` |
 | `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` asserted before the split is exposed | `JitIr.h:81-89` |
 | `jit_lockstep_030_test` exists: two LC IIs, register + clock + low-RAM + **three i-cache counters** per checkpoint | `tests/jit_lockstep_030_test.cpp` |
-| The whole 030 emitter set is unreachable in any shipped configuration: `guestFamilies` excludes `kGuest68030`, so it runs only under `POM68K_JIT_UNSAFE_BACKEND=1` | `JitBackend.cpp:97-104` |
+| The 030 emitters are reachable by EXPLICIT `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override), and by nothing else: `auto` skips native generators on 030 guests, so a shipping default cannot pick them by accident | `JitBackend.cpp` (auto skip), `jit_backend_test` pins all four cases |
 
 Two consequences worth naming up front, because they cut work out of the
 plan:
@@ -567,14 +567,24 @@ guard), the IWM is polled, and generated-code stores cross the DTLB's
 redundant and can go. One workload's matching fingerprint is not that
 proof, and the four-proof bar in `TODO.md` § 3 applies.
 
-**C.5 — flip the declaration.** `guestFamilies |= kGuest68030` in a64 once
-C.4 is complete AND the throughput bar is met, then the same walk on x64.
-Not before: the declaration is what stopped the 2026-07-30 wedge from
-recurring, and flipping it early converts a coverage gap into a wedged guest.
-C.4bis/C.4ter say the bar is further away than the raw numbers suggest, and
-that the way to it is per-instruction emitter coverage on the forms the
-**68030** census names — not residency, which moves the wrong way when
-forced.
+**C.5 — flip the declaration.** SPLIT AND HALF-LANDED 2026-08-18. The
+original coupling — declaration == default — protected against the
+2026-07-30 wedge when nothing else did. Since the x64 030 lockstep went
+green (the IRC fix + the base-charge rule) and got its own registered gate,
+correctness has a standing guard, so the two halves were separated:
+
+* **Declaration: LANDED.** Both generators declare `kGuest68030`; an
+  explicit `POM68K_JIT_BACKEND=x64|a64` on an 030 is honoured with no
+  unsafe override. Proved by `jit_backend_test` (four pinned selection
+  cases), both 120k lockstep gates, and an LC II Finder boot under
+  explicit x64 (the gate that timed out at an hour on 2026-07-30).
+* **Default: NOT flipped.** `selectBackend()`'s auto path skips native
+  generators for 030 guests, because they measure SLOWER than `threaded`
+  (§ C.4quinquies) and the shipped default must be the fastest conformant
+  mode. Deleting that skip is the real C.5 flip; it fires per D.1
+  condition 3 — a fixed-budget bench win, on a quiet host — and never as
+  a side effect. C.4bis/C.4ter still say how to get there: emitter
+  coverage on the forms the **68030** census names, not residency.
 
 **C.6 — the full-boot gates.** `jit_lcii_boot_etalon` on the native backend
 (this is the gate that timed out at one hour on 2026-07-30 — it is the
@@ -644,7 +654,7 @@ folded into an emitter change.
 | C.1 — 030 lockstep gate | **done** (threaded, blocks, a64-experimental) |
 | C.2 / C.3 — 030 probe + thunks | **written**; validated only indirectly, their gate is C.5 |
 | C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order and the narrow restartable-write family done; the MOVEM guard and the throughput problem remain |
-| C.5 / C.6 — declare + boot gates | not started; blocked on D.1 condition 3 |
+| C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18** (auto still `threaded` on 030 pending D.1-3); LC II Finder boots under explicit x64; the plain-name boot gates remain to register |
 | D — default engine | **68040 landed**: `jit/auto` by default, explicit interpreter oracle per platform; 030 behind C.5/C.6 |
 
 ## Gates this plan still adds
