@@ -78,6 +78,7 @@ struct ResolvedConfig {
     bool verbose = false;
     int verboseBlocks = 40;
     int minNativePercent = 50;
+    int armBackoff = 32;
     bool dataWindow = false;
 
     // A64 bring-up controls are captured here too: a backend must never
@@ -145,6 +146,7 @@ inline ResolvedConfig resolveConfig() {
     c.verbose = detail::envBool("POM68K_JIT_VERBOSE", false);
     c.verboseBlocks = detail::envInt("POM68K_JIT_VERBOSE_BLOCKS", 40, 0, 1 << 24);
     c.minNativePercent = detail::envInt("POM68K_JIT_MIN_NATIVE", 50, 0, 100);
+    c.armBackoff = detail::envInt("POM68K_JIT_ARM_BACKOFF", 32, 0, 4096);
     c.dataWindow = detail::envBool("POM68K_DATA_WINDOW", false);
     c.a64Pacing = detail::envBool("POM68K_JIT_A64_PACING", true);
     if (const char* value = detail::env("POM68K_JIT_A64_STORE_GUARD_OPCODE")) {
@@ -389,6 +391,28 @@ inline int verboseBlocks() {
 inline int minNativePercent() {
     if (detail::activeConfig) return detail::activeConfig->minNativePercent;
     return detail::envInt("POM68K_JIT_MIN_NATIVE", 50, 0, 100);
+}
+
+// Instructions single-stepped through the interpreter after `armWindow`
+// refuses a pc, before the engine probes again. Probing on EVERY
+// instruction is what once made the 030 machines slower under the JIT than
+// interpreted, hence a backoff — but `armWindow`'s own comment says the
+// interpreter's fetch fills the ATC and "the next attempt usually
+// succeeds", which argues the other way — and the backoff does carry 13.5 %
+// of all retired instructions on the LC II (998 655 refusals x 32).
+//
+// **It looked like a 2.9 % win and it is not one.** A single-run sweep read
+//   32 -> 16.04 s   8 -> 15.65 s   2 -> 15.57 s   0 -> 15.64 s
+// which is a tidy curve with a minimum at 2. Re-measured INTERLEAVED, three
+// repeats per arm on one binary (docs/MEASURING.md § R1), it inverts:
+// 32 medians 15.61 s (15.36-15.75), 2 medians 15.95 s (15.47-16.01) — both
+// spreads larger than the gap. The whole effect was the host's noise floor,
+// and the first sweep found a minimum in it because a sweep of single runs
+// always finds one somewhere. **Default stays 32**; the knob stays because
+// pricing this again needs it, not because 32 is proven optimal.
+inline int armBackoffSteps() {
+    if (detail::activeConfig) return detail::activeConfig->armBackoff;
+    return detail::envInt("POM68K_JIT_ARM_BACKOFF", 32, 0, 4096);
 }
 
 inline bool a64PacingEnabled() {

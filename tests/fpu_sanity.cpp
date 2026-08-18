@@ -231,8 +231,14 @@ int main() {
     CHECK(cpu.getPC0() == 0x3200, "frestore garbage: PC0 = %08X, want 00003200 (vector 14)", cpu.getPC0());
 
     // 14 ── A 68030 coprocessor post-instruction exception uses the
-    // six-word format-$2 frame, with the FP instruction address in its
-    // extra longword (not the integrated-040 format $3).
+    // six-word format-$3 frame with the operand's effective address in its
+    // extra longword — zero here, the destination being a register.
+    // D23 (2026-08-18): this check asserted the MC68030UM's format $2 for
+    // one day, written alongside the Moira change it was gating — and both
+    // overruled the pinned oracle, which pushes $3-with-EA on the 030 too
+    // (fpu_tt #63, frame word $30C4; replay030.py reproduces all 2042
+    // pinned FPU finals bit-for-bit). Oracle wins over spec; overruling it
+    // takes a real 68030's own stack frame, which nobody has produced.
     run(cpu, { 0xF200, 0x6000 }, 0, true,
         { { 0x00d0, 0x0000 }, { 0x00d2, 0x3300 } }); // vector 52 -> $3300
     {
@@ -245,8 +251,8 @@ int main() {
         auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
         CHECK(cpu.getPC0() == 0x3300 && sp == 0x7ff4,
               "030 FP post exception PC0/SP=%08X/%08X", cpu.getPC0(), sp);
-        CHECK(m16(sp + 6) == 0x20d0 && m32(sp + 8) == 0x1000,
-              "030 FP post frame fmt/insn=%04X/%08X", m16(sp + 6), m32(sp + 8));
+        CHECK(m16(sp + 6) == 0x30d0 && m32(sp + 8) == 0,
+              "030 FP post frame fmt/ea=%04X/%08X", m16(sp + 6), m32(sp + 8));
     }
 
     // 15 ── timing smoke: FADD.X FP1,FP0 costs its MC68882UM Table 8-3

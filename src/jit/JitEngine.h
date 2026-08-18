@@ -285,6 +285,9 @@ private:
     // interpreted before probing again; the guest is untouched either way
     // (the ATC-eviction hook makes window and no-window walk-identical).
     int armBackoff_ = 0;
+    // POM68K_JIT_ARM_BACKOFF — how many instructions the interpreter takes
+    // alone after a refused arm. Sampled once (JitConfig.h owns the why).
+    int armBackoff_steps_ = 32;
     // Instructions the last trace actually retired (it executes as it
     // records, so the caller must not run one more on top).
     uint32_t traceRetired_ = 0;

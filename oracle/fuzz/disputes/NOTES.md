@@ -538,6 +538,35 @@ its vendored tree deleted. Rationale:
   (D22).
 - Patching it to the rulings cost more than its testimony was worth.
 
+### D23. 030 FPU post-instruction frame format, and the $41 FRESTORE
+hack's reach  [ruled: WinUAE — a spec-based overrule REVERTED]
+Two 2026-08-17 Moira changes (the 020/030/040-closure merge) contradicted
+the pinned corpus, and the red sat invisible for a day under a STALE
+`sst68030` binary — surfaced 2026-08-18 by `tools/check_binaries_fresh.py`
+on the first fresh relink, 3068/3082.
+
+(a) The 030 post-instruction FPU exception frame was moved to the
+MC68030UM's format $2 ("coprocessor instruction", instruction address).
+The oracle pushes **format $3 with the operand EA on the 030 too**
+(fpu_tt #63: frame word $30C4, EA $0006B34E), and a full replay of all
+2042 pinned FPU vectors through the UNCHANGED oracle .so reproduces every
+final bit-for-bit (`replay030.py`, new with this ruling) — so the pin is
+the oracle's living word, not a stale capture. 10 of the 14 reds.
+
+(b) An `&& fpuModel == M68040` guard was added to FRESTORE's version-$41
+branch. WinUAE's "horrible hack" (fpp.c:2799-2802) compares the frame
+against the 68040's version regardless of the CURRENT fpu model, so $41
+frames on a 68882 take the 68040 retry branch ($41/$00 IDLE, $41/$30 and
+$41/$28 skipped) instead of format-erroring. 4 of the 14 reds (fpu_tt
+#166, fpu_off #28/#83, fpu_identity #75 — the oracle takes no exception
+on any of them).
+
+Both reverted; `fpu_sanity` check 14 — written alongside change (a) and
+asserting $2 — re-pinned to $3-with-EA. **WinUAE wins per the standing
+solo policy**: overruling the oracle on manual reading alone is exactly
+what this section exists to forbid. Reopen either half only with a real
+68030's own stacked frame. 3082/3082, `sst68040` 7200/7200 untouched.
+
 From now on **all cells are WinUAE-solo**: the oracle's word is law,
 and Moira-vs-oracle disputes are arbitrated manually (MC68030UM /
 MC68881-882UM reading; oracle wins over spec; real-hardware traces

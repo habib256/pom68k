@@ -1429,6 +1429,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # against reviewed policy rather than private literals in their source.
     set(POM68K_PERF_BUDGET_FILE
         "${CMAKE_CURRENT_SOURCE_DIR}/performance_budgets.tsv")
+    # file(STRINGS) does NOT register a configure dependency, so editing the
+    # manifest changed nothing until some unrelated CMakeLists edit forced a
+    # reconfigure — a policy file whose edits are silently inert. Caught on
+    # 2026-08-18 by the bench's own provenance line: a run printed the OLD
+    # noise floor next to a build stamp minutes older than the TSV
+    # (docs/MEASURING.md § 2, why the binary must identify itself).
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${POM68K_PERF_BUDGET_FILE}")
     string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" POM68K_PERF_HOST)
     if(POM68K_PERF_HOST MATCHES "^(arm64|aarch64)$")
         set(POM68K_PERF_HOST "aarch64")
@@ -1625,6 +1633,17 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # tests/BenchHarness.h.
     add_executable(jit_bench_lcii EXCLUDE_FROM_ALL tests/jit_bench_lcii.cpp)
     target_link_libraries(jit_bench_lcii PRIVATE pom68k_core)
+
+    # A/B protocol (docs/MEASURING.md § R2): "below the noise floor there is
+    # no claim" needs the floor to be a NUMBER, and one that was measured on
+    # this host by a null experiment rather than guessed by whoever is
+    # reading the delta. It reaches the benches the same way every other
+    # budget in this tree reaches a test — through the reviewed manifest, so
+    # a change of policy is a diff and not a literal edited in a header.
+    foreach(b jit_bench jit_bench_lcii)
+        pom68k_perf_budget(${b} host_wallclock any noise_floor_permille
+                           POM68K_BENCH_NOISE_FLOOR_PERMILLE)
+    endforeach()
 
     # Dev harness: the drawing-phase fallback census (POM68K_JIT.md § 3.5 —
     # the indexed-mode question refuses idle-Finder numbers). Boots the
@@ -1853,8 +1872,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # one explicit interpreter oracle per 68040 platform: a default is only
     # conformant while the old reference remains independently runnable and
     # green on the exact same executable and assets.
+    # The same debt came due on 2026-08-18, when `threaded` became the 68030
+    # default: one interpreter oracle per 68030 PLATFORM (six of them —
+    # V8, Sonora, VASP, RBV, IIfx, MSC), not per profile, because what the
+    # oracle pins is a memory map and an engine policy, not a clock.
     foreach(gate q605_boot_etalon centris650_boot_etalon
-                 q630_boot_etalon q700_boot_etalon)
+                 q630_boot_etalon q700_boot_etalon
+                 lcii_boot_etalon lc3_boot_etalon iivx_boot_etalon
+                 iisi_boot_etalon iifx_boot_etalon duo230_boot_etalon)
         add_test(NAME interp_${gate} COMMAND ${gate}
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(interp_${gate} PROPERTIES
@@ -2110,6 +2135,17 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         if(t MATCHES "q605|lc475|lc575|centris|quadra6|quadra8|q630|lc580|q700|q900|q950|turboscsi|swim2")
             list(APPEND lbl m040)
         endif()
+        # The 68030 family — the six platforms behind `Cpu030`, `SonoraCpu`,
+        # `VaspCpu`, `RbvCpu`, `IIfxCpu` and `MscCpu`. Added 2026-08-18 for
+        # the same reason `m040` exists: an engine-policy change on one CPU
+        # family needs ONE command to prove, not a hand-written alternation
+        # of forty gate names. The absence of this label is a large part of
+        # why a 68030 default measured on 2026-08-10 was still unflipped a
+        # week later — the doubt was cheap, the proof was not.
+        # `lc` alone would catch lc475/lc575/lc580, which are 68040 boards.
+        if(t MATCHES "lcii|lc_boot|lc3|lc520|lc550|classic2|cclassic|mactv|iivx|iivi|iisi|iici|iifx|duo|rbv|sonora|vasp|msc_")
+            list(APPEND lbl m030)
+        endif()
         if(POM68K_PRODUCT_LLE_GATES AND
            (t MATCHES "^lle_a64_" OR
             t MATCHES "^(jit_|interp_)(q605|centris650|q630|q700)_boot_etalon$" OR
@@ -2203,6 +2239,8 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # read as a cheap one.
     set(POM68K_GATE_SLOT_KB 262144)          # 256 MiB per scheduling slot
     set(POM68K_GATE_BUDGET_FILE
+        "${CMAKE_CURRENT_SOURCE_DIR}/gate_resource_budgets.tsv")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/gate_resource_budgets.tsv")
     file(STRINGS "${POM68K_GATE_BUDGET_FILE}" pom68k_gate_budget_lines)
     foreach(line IN LISTS pom68k_gate_budget_lines)

@@ -17,6 +17,11 @@
 //   POM68K_CPU_ENGINE    interp (default) | jit
 //   POM68K_JIT_BACKEND   threaded | x86-64 | aarch64 (auto gives an 030
 //                        `threaded`: the code generators declare 68040 only)
+//   POM68K_BENCH_COMPARE N repeats per arm, both arms in THIS process,
+//                        counterbalanced ABBA — the only supported way to
+//                        produce a delta (docs/MEASURING.md § R1)
+//   POM68K_BENCH_NULL=1  run the reference arm against itself: measures
+//                        this host's noise floor instead of assuming one
 //   POM68K_BENCH_PPM     dump the final screen here (diagnosing a boot)
 //   POM68K_BENCH_SLICES  cut each frame into N slices and catch the raster
 //                        beam up at every boundary — the GUI machine loop's
@@ -101,6 +106,35 @@ int main() {
     std::ifstream in(romPath, std::ios::binary);
     std::vector<uint8_t> rom((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
+
+    constexpr int64_t kFrameCycles = 640 * 407;      // 60.15 Hz @ 15.6672 MHz
+    const int frames = bench::frames(6000);
+
+    // POM68K_BENCH_COMPARE=N — the interleaved A/B (docs/MEASURING.md § R1).
+    // A fresh machine per repeat: that is what a separate process gives,
+    // minus the process, and it is the only way the two arms see the same
+    // page cache and the same thermal state.
+    if (bench::compareRepeats() > 0) {
+        std::printf("lcii %s, %d repeats x 2 arms ABBA, %d frames per run, "
+                    "built %s\n",
+                    bench::nullExperiment() ? "NULL experiment (A vs A)"
+                                            : "interleaved A/B",
+                    bench::compareRepeats(), frames, bench::buildStamp());
+        return bench::compare("lcii", "interp", "jit", [&](int arm) {
+            V8Memory m;
+            m.loadRom(rom);
+            Cpu030 c(m, /*withFpu=*/true);
+            m.setCpu(&c);
+            c.setEngine(arm);                        // 0 interp, 1 jit
+            c.hardReset();
+            m.attachScsi(diskPath);
+            ensureBootDriverType(m.scsiDisk().image());
+            while (m.cpuHeld()) m.tick(1000);
+            const bench::Result r = bench::run(c, frames, kFrameCycles);
+            return bench::Sample{ r.secs, r.fp };
+        });
+    }
+
     V8Memory mem;
     if (!mem.loadRom(rom)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     Cpu030 cpu(mem, /*withFpu=*/true);
@@ -109,9 +143,6 @@ int main() {
     if (!mem.attachScsi(diskPath)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
     ensureBootDriverType(mem.scsiDisk().image());
     while (mem.cpuHeld()) mem.tick(1000);            // the Egret holds it at power-on
-
-    constexpr int64_t kFrameCycles = 640 * 407;      // 60.15 Hz @ 15.6672 MHz
-    const int frames = bench::frames(6000);
 
     // 0 = CPU alone. N ≥ 1 = the GUI's quantum: N slices per frame, the
     // raster beam caught up at each boundary (V8Video::raster is what

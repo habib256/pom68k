@@ -236,8 +236,12 @@ int main() {
             }
             const bool knownWorkload = cells[0] == "synthetic_68040_lockstep" ||
                 cells[0] == "synthetic_68040_copyback" ||
-                cells[0] == "q605_jit" || cells[0] == "lcii_threaded";
-            const bool knownFamily = cells[1] == "68030" || cells[1] == "68040";
+                cells[0] == "q605_jit" || cells[0] == "lcii_threaded" ||
+                cells[0] == "host_wallclock";
+            // `host_wallclock` is guest-independent (family `any`): the
+            // noise floor prices the HOST, docs/MEASURING.md § R2.
+            const bool knownFamily = cells[1] == "68030" ||
+                cells[1] == "68040" || cells[1] == "any";
             const bool knownHost = cells[2] == "aarch64" ||
                 cells[2] == "x86_64" || cells[2] == "any" ||
                 cells[2] == "reference_x86_64" ||
@@ -273,6 +277,13 @@ int main() {
         "q605_jit/68040/apple_m4/min_realtime_permille");
     requiredBudgets.insert(
         "lcii_threaded/68030/apple_m4/min_realtime_permille");
+    // The measured wall-clock noise floor per bench host, plus the
+    // conservative `any` fallback an unmeasured host inherits
+    // (docs/MEASURING.md § R2 owns the numbers and their provenance).
+    requiredBudgets.insert(
+        "host_wallclock/any/x86_64/noise_floor_permille");
+    requiredBudgets.insert(
+        "host_wallclock/any/any/noise_floor_permille");
     check(budgetSchema,
           "performance budget manifest has valid workload/family/host rows");
     check(budgetKeys == requiredBudgets,

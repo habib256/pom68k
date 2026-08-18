@@ -887,10 +887,22 @@ Moira::execFpuException(u16 vector, bool pre)
     // (newcpu_common.c:1616, nr 48-55): pre-instruction = four-word
     // format $0 with PC = the FP instruction being started (it
     // re-executes after the handler); post-instruction (FMOVE out) =
-    // 68020/030 format $2 "coprocessor instruction" frame (which carries
-    // the instruction address); the integrated 68040 uses format $3
-    // "floating-point post-instruction" with the operand effective address.
+    // format $3 "floating-point post-instruction" frame — SR, next PC,
+    // $3xxx vector word, then the operand's effective address (fp_ea).
     // Solo-corpus arbitrated 2026-07-15 (was a format $0 stub).
+    //
+    // ── D23 (2026-08-18): the format is $3 on the 020/030 TOO. ──
+    // A `cpuModel < M68EC040 → format $2` branch stood here for a day
+    // (2026-08-17), justified by MC68030UM reading — and it was wrong by
+    // the project's own law. The pinned solo corpus carries $3-with-EA
+    // frames for the external 6888x (fpu_tt #63: frame word $30C4, EA
+    // pushed), a fresh replay of all 2042 pinned FPU vectors through the
+    // unchanged oracle reproduces them bit-for-bit (oracle/fuzz/
+    // replay030.py), and disputes/NOTES.md reserves overruling the oracle
+    // for real-hardware traces, which nobody has produced. sst68030 was
+    // red for that day and NOBODY SAW IT because the gate's binary was
+    // stale — the freshness guard (tools/check_binaries_fresh.py) is what
+    // surfaced it. Reopen only with a real 68030's own stack frame.
     u16 status = getSR();
 
     setSupervisorMode(true);
@@ -900,13 +912,6 @@ Moira::execFpuException(u16 vector, bool pre)
     if (pre) {
 
         writeStackFrame0000<C>(status, reg.pc0, vector);
-
-    } else if (cpuModel < Model::M68EC040) {
-
-        push<C, Long>(reg.pc0);                         // instruction address
-        push<C, Word>(u16(0x2000 | vector << 2));       // format $2 | offset
-        push<C, Long>(reg.pc);                          // next instruction
-        push<C, Word>(status);
 
     } else {
 
@@ -2306,7 +2311,7 @@ Moira::execFRestore(u16 opcode)
 
         fpuResetState();
 
-    } else if (frameVersion == 0x41 && fpuModel == FPUModel::M68040) {
+    } else if (frameVersion == 0x41) {
 
         // WinUAE's "horrible hack" (fpp.c:2799-2802): with
         // fpu_no_unimplemented == false — the oracle's config,
@@ -2315,6 +2320,14 @@ Moira::execFRestore(u16 opcode)
         // get_fpu_version(68040) == $41 since fpu_revision == 0
         // (fpp.c:1442-1446); a $40 frame mismatches and falls through to
         // the format error below. Oracle-verified 2026-07-15 (solo).
+        //
+        // D23bis (2026-08-18): the hack is MODEL-INDEPENDENT. It compares
+        // the frame against the 68040's version, not the current FPU's, so
+        // it fires on a 68882 too — an `&& fpuModel == M68040` guard added
+        // on 2026-08-17 format-errored $41 frames on the 030 and put four
+        // pinned vectors red ($41/$30, $41/$28 skipped; $41/$00 = IDLE;
+        // fpu_tt #166, fpu_off #28/#83, fpu_identity #75 — the oracle
+        // takes no exception on any of them).
         u32 frameSize = (d >> 16) & 0xff;
 
         if (frameSize == 0x00) {                        // 68040 IDLE
