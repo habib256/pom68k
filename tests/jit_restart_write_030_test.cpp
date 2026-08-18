@@ -451,8 +451,13 @@ int main() {
         std::snprintf(what, sizeof(what), "%s %s", name,
                       exactNativeThunk ? "takes thunk plus exact replay"
                                        : "remains on conservative replay");
-        check(eaRef.writeFaults == 1 &&
-              eaNative.writeFaults == (exactNativeThunk ? 2 : 1), what);
+        const bool faultCountOk = eaRef.writeFaults == 1 &&
+              eaNative.writeFaults == (exactNativeThunk ? 2 : 1);
+        if (!faultCountOk)
+            std::printf("    writeFaults ref=%d jit=%d (want jit=%d)\n",
+                        eaRef.writeFaults, eaNative.writeFaults,
+                        exactNativeThunk ? 2 : 1);
+        check(faultCountOk, what);
         std::snprintf(what, sizeof(what), "%s format-$A frame is byte-exact", name);
         check(refEaSp == kStack - 32 && jitEaSp == refEaSp &&
               std::memcmp(eaRef.mem.data() + refEaSp,
@@ -467,7 +472,14 @@ int main() {
                  "MOVE.B D0,(A6)+ fault");
     checkWriteEa(0x1D00, 0, false, kHole + 1, kHole, true,
                  "MOVE.B D0,-(A6) fault");
-    checkWriteEa(0x1D80, 0x1000, true, kHole, kHole, true,
+    // Brief-indexed destination: the a64 takes the exact thunk (its Ea
+    // carries index-register fields); the x64 decoder still maps mode 6 to
+    // -1 (eaIndex, JitBackendX64.cpp) so the form runs conservatively —
+    // one fault, byte-exact frame via pristine replay. Pinned per backend:
+    // flipping the x64 flag to true IS the acceptance test for a future
+    // x64 brief-indexed EA port.
+    const bool ixThunk = !std::strcmp(nativeName, "aarch64");
+    checkWriteEa(0x1D80, 0x1000, true, kHole, kHole, ixThunk,
                  "MOVE.B D0,d8(A6,D1.W) fault");
 
     // The full-machine $533E corruption was not the PI write itself. The
