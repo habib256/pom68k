@@ -522,6 +522,16 @@ Both non-conformant ceilings together — no CACR flush, no i-cache charge
 | **`threaded`, its own ceiling** | **14.19 s (×2.34)** |
 | x86-64 generator, as shipped | 21.96 s (×1.51) |
 
+*(Post-1b re-measure, 2026-08-18 late: with the correctness port complete —
+heldIrc, restartable-write contract, PI-conservative — the as-shipped
+generator prices at **+32.9 % over the interpreter** at 2000 frames, ABBA
+quiet-host, fp `3de5c5ab62b4eca8`, spreads ~1 %. Slightly worse than the
+morning's 21.96 s: PI-destination stores under the exact contract are now
+conservatively refused, which is correctness the old number did not carry.
+The auto skip stands on a quotable number. One instrument note: the bench's
+build stamp is the TU's `__DATE__`, blind to a library-only relink — trust
+the link mtime, or touch the bench TU before quoting.)*
+
 **Strip the 68030 generator of both its known costs and it is still 16 %
 slower than the portable threaded backend.** That is the state of Phase C
 on x86-64: no measured lever reaches parity, and the three that were
