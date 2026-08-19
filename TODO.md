@@ -643,7 +643,17 @@ and flattered instrument — see § 0·A.
 Open, in ROI order:
 
 - [ ] **Port the a64 68030 deltas to x86-64 — the forms the 030's OWN
-  census names.** Measured 2026-08-18 (`docs/JIT_BRINGUP.md` § C.4bis and
+  census names.** **2026-08-19: the x86-64 generator now BEATS `threaded`
+  on the LC II from ~2500 frames up — −12.0 % at the bench's default
+  6000-frame budget (ABBA, quiet host, fp `cfb184b6faddabec`) — after the
+  i-cache uncharge hole was fixed, the CACR hint retired on the proven V8
+  inventory, the base-cost cross-check made global, and the MMU-generation
+  flush made a lazy revalidation (`docs/JIT_BRINGUP.md` § C.4sexies,
+  `CHANGELOG.md` 2026-08-19). Remaining named levers: the restartable-write
+  family still keeps the total-cost check (~44 % of in-block fallbacks,
+  reproducer parked), BSR.W and the wider single-path branch exemptions
+  stay refused. The paragraph below is the 2026-08-18 state it overturned.**
+  Measured 2026-08-18 (`docs/JIT_BRINGUP.md` § C.4bis and
   § C.4ter, `jit_bench_lcii` 2000 frames, one fingerprint throughout): the
   x64 generator is **slower than the interpreter** on a 68030 (21.84 s vs
   17.90 s) and loses to `threaded` (15.14 s) even at its own ceiling.

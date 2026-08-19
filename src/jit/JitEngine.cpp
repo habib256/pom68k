@@ -72,6 +72,16 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     hotAt_ = config_.hot;
     windowKill_ = killCountdown_ = config_.windowKill;
     armBackoff_steps_ = config_.armBackoff;
+    // The virgin table must read as EMPTY (kNoLink), not as value-zero:
+    // tag 0 is a legal user-mode pc-0 key. The old whole-table clearLinks
+    // established this on the first flush; the lazy clear never sweeps the
+    // full table, so establish it once here.
+    for (LinkSlot& sl : linkTable_) { sl.tag = kNoLink; sl.entry = nullptr; }
+    dispatchRingOn_ = [] {
+        const char* v = getenv("POM68K_JIT_DISPATCH_RING");
+        return v && atoi(v) != 0;
+    }();
+    if (dispatchRingOn_) dispatchEv_.resize(kDispatchRing);
     ctx_.cpu = &cpu_;
     ctx_.stats = &stats_;
     ctx_.config = &config_;
@@ -571,6 +581,15 @@ uint64_t Engine::retired() const {
            stats_.interpInstrs.load(std::memory_order_relaxed);
 }
 
+void Engine::ring(uint8_t kind, uint32_t pc, int64_t target,
+                  uint8_t exit, uint32_t instrs) {
+    DispatchEv& e = dispatchEv_[dispatchHead_];
+    e.pc = pc; e.clock = cpu_.getClock(); e.target = target;
+    e.kind = kind; e.exit = exit; e.instrs = instrs;
+    dispatchHead_ = (dispatchHead_ + 1) % kDispatchRing;
+    if (dispatchCount_ < kDispatchRing) dispatchCount_++;
+}
+
 void Engine::flushAll(Flush cause) {
     // RE-ENTRANCY. This is reachable from INSIDE a running block: a guest
     // MOVEC to CACR reaches Moira::setCACR -> Cpu040::didChangeCACR ->
@@ -877,6 +896,12 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
             ? narrowCycles(timing.icacheCycles) : 0;
         const uint16_t postExceptionCycles = timingExact
             ? narrowCycles(timing.postExceptionCycles) : 0;
+        // The real instruction-stream fetch count (SKIP_LAST_RD forms fetch
+        // `words`, not `words + 1`) — what the emitted 030 i-cache charge
+        // must reproduce. 0 = unknown; the backend then refuses to charge.
+        const uint8_t fetchWords = uint8_t(
+            timing.fetchWords > 0 && timing.fetchWords < 256
+                ? timing.fetchWords : 0);
         const uint32_t observedNextPc = cpu_.getPC();
         const uint16_t terminalIrd = cpu_.getIRD();
         const uint16_t terminalIrc = cpu_.getIRC();
@@ -885,6 +910,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
             ir.instrs.push_back(Instr{ at, op, uint16_t(words), kind,
                                        instrFlags(op, kind), cycles, baseCycles,
                                        icacheCycles, postExceptionCycles,
+                                       fetchWords,
                                        observedNextPc, terminalIrd, terminalIrc,
                                        true });
             ir.instrs.back().memory =
@@ -902,7 +928,8 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         if (next <= at || next - at > 22) {
             ir.instrs.push_back(Instr{ at, op, 1, kind, instrFlags(op, kind),
                                        cycles, baseCycles, icacheCycles,
-                                       postExceptionCycles, observedNextPc,
+                                       postExceptionCycles, fetchWords,
+                                       observedNextPc,
                                        terminalIrd, terminalIrc, true });
             ir.instrs.back().memory =
                 describeMemory(op, guestFamily_ == kGuest68030);
@@ -914,6 +941,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         ir.instrs.push_back(Instr{ at, op, uint16_t((next - at) / 2),
                                    kind, instrFlags(op, kind), cycles, baseCycles,
                                    icacheCycles, postExceptionCycles,
+                                   fetchWords,
                                    observedNextPc, terminalIrd, terminalIrc,
                                    true });
         ir.instrs.back().memory =
@@ -975,6 +1003,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
 
     Block b;
     b.ir = std::move(ir);
+    b.gen = blocksGen_;
     auto [it, inserted] = blocks_.emplace(key(pc, super), std::move(b));
     if (!inserted) return &it->second;
 
@@ -1130,11 +1159,13 @@ void Engine::executeUntil(int64_t clockTarget) {
         // HALT, a breakpoint, instruction logging — is the interpreter's
         // business, always. The engine never second-guesses those paths.
         if (!cpu_.pomJitIdle()) {
+            const uint32_t fpc = cpu_.getPC();
             disarmWindow();
             cpu_.execute();
             stats_.add(stats_.interpInstrs);
             stats_.bump(Exit::CpuFlags);
             stats_.miss(Miss::CpuFlags);
+            if (dispatchRingOn_) [[unlikely]] ring(0, fpc, clockTarget, 0, 1);
             continue;
         }
 
@@ -1148,6 +1179,7 @@ void Engine::executeUntil(int64_t clockTarget) {
             cpu_.execute();
             stats_.add(stats_.interpInstrs);
             stats_.miss(Miss::ArmBackoff);
+            if (dispatchRingOn_) [[unlikely]] ring(1, pc, clockTarget, 0, 1);
             continue;
         }
 
@@ -1159,6 +1191,7 @@ void Engine::executeUntil(int64_t clockTarget) {
             cpu_.execute();
             stats_.add(stats_.interpInstrs);
             stats_.miss(Miss::ArmFailed);
+            if (dispatchRingOn_) [[unlikely]] ring(2, pc, clockTarget, 0, 1);
             continue;
         }
         armBackoff_ = 0;
@@ -1170,13 +1203,41 @@ void Engine::executeUntil(int64_t clockTarget) {
         // A recorded block is a script of LOGICAL addresses. When the
         // translation underneath changes — a PFLUSH, a write to TC/URP/SRP
         // or a TTR — the same logical pc can point at entirely different
-        // code, and the cache would happily replay the old script against
-        // it. The window is refused on a generation mismatch; the block
-        // cache has to be dropped, because there is nothing in a (pc,super)
-        // key that could notice.
-        if (blocksGen_ != cpu_.pomJitMmuGen) flushAll(Flush::MmuGen);
+        // code. Until 2026-08-19 the whole cache was dropped here, 4 527
+        // times per 2000-frame LC II boot, and the retrace+recompile storm
+        // was the largest x64-vs-threaded differential left once the CACR
+        // hint had been retired. Nothing that binds logical to physical
+        // survives the bump unrevalidated — the data TLB is flushed at the
+        // source (Moira::pomJitMapMoved), pomJitCovers refuses the stale
+        // window so armWindow has ALREADY re-proved this pc's page under
+        // the new generation, and every published native link is retracted
+        // below. The BLOCKS stay, each pinned by its recorded
+        // (logical page, physical page, length) triple: the dispatch path
+        // re-proves that triple against the fresh window before a stale-
+        // generation block may run or publish again, and evicts it when
+        // the mapping moved.
+        if (blocksGen_ != cpu_.pomJitMmuGen) {
+            cpu_.pomJitDtlbFlush();          // idempotent belt to the source
+            clearLinks();
+            blocksGen_ = cpu_.pomJitMmuGen;
+            stats_.bump(Flush::MmuGen);
+        }
 
         auto it = blocks_.find(key(pc, super));
+        if (it != blocks_.end() && it->second.gen != blocksGen_) {
+            Block& b = it->second;
+            if (b.ir.codeBase == cpu_.pomJitWindow.base &&
+                b.ir.physBase == winPhys_ && b.ir.physLen == winLen_) {
+                b.gen = blocksGen_;
+                if (b.code)
+                    if (void* e = backend_->linkEntry(b.code))
+                        publishLink(pc, super, e);
+            } else {
+                if (b.code) backend_->release(b.code);
+                blocks_.erase(it);
+                it = blocks_.end();
+            }
+        }
         if (it == blocks_.end()) {
             // First visit: tracing runs the instructions as it records them,
             // so there is normally nothing left to execute afterwards. Only
@@ -1191,6 +1252,8 @@ void Engine::executeUntil(int64_t clockTarget) {
                 stats_.add(stats_.interpInstrs);
                 stats_.miss(Miss::Trace);
             }
+            if (dispatchRingOn_) [[unlikely]]
+                ring(3, pc, clockTarget, 0, traceRetired_ ? traceRetired_ : 1);
             continue;
         }
 
@@ -1215,11 +1278,28 @@ void Engine::executeUntil(int64_t clockTarget) {
                 const bool cacheReady = !cpu_.pomCache040Active() ||
                     cpu_.pomCache040CodeMatches(
                         b.ir.entryPc, uint32_t(b.ir.code.size() * 2));
-                if (cacheReady) {
+                // POM68K_JIT_DENY_FROM/_TO (hex): refuse to COMPILE any
+                // block whose entry pc falls in [from, to). A bisection
+                // instrument, not a mode: the 2026-08-19 retained-cache
+                // divergence could only be pinned to one block by halving
+                // the pc space, because every pacing/knob perturbation
+                // moved the trajectory and healed the symptom.
+                static const uint32_t denyFrom = [] {
+                    const char* v = getenv("POM68K_JIT_DENY_FROM");
+                    return v ? uint32_t(strtoul(v, nullptr, 16)) : 0u;
+                }();
+                static const uint32_t denyTo = [] {
+                    const char* v = getenv("POM68K_JIT_DENY_TO");
+                    return v ? uint32_t(strtoul(v, nullptr, 16)) : 0u;
+                }();
+                const bool denied = denyFrom != denyTo &&
+                    pc >= denyFrom && pc < denyTo;
+                if (cacheReady && !denied) {
                     ScopedResolvedConfig activeConfig(ctx_.config);
                     recordIndexForms(b.ir);
                     b.code = backend_->compile(b.ir, ctx_);
                 }
+                if (denied) { b.rejected = true; }
                 ctx_.linkMask = savedLinkMask;
                 if (b.code) {
                     b.code->ir = &b.ir;
@@ -1238,6 +1318,10 @@ void Engine::executeUntil(int64_t clockTarget) {
                 stats_.miss(b.rejected ? Miss::Rejected : Miss::NotHot,
                             stats_.windowInstrs.load(
                                 std::memory_order_relaxed) - before);
+                if (dispatchRingOn_) [[unlikely]]
+                    ring(4, pc, clockTarget, 0,
+                         uint32_t(stats_.windowInstrs.load(
+                             std::memory_order_relaxed) - before));
                 continue;
             }
         }
@@ -1259,6 +1343,8 @@ void Engine::executeUntil(int64_t clockTarget) {
         running_ = true;
         RunResult r = backend_->run(b.code, ctx_);
         running_ = false;
+        if (dispatchRingOn_) [[unlikely]]
+            ring(5, pc, clockTarget, uint8_t(r.exit), r.instrs);
 
         stats_.add(stats_.blocksRun);
         if (r.instrs) stats_.add(stats_.instrs, r.instrs);

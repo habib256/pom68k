@@ -62,6 +62,19 @@ public:
     // (341s0789, Cuda 2.38), 8 MB RAM cap, its own 1 MB ROM ($EAF1678D).
     enum class Model { LcII, Lc, ClassicII, ColorClassic, MacTv };
 
+    // Every path that can deposit code in guest RAM on a V8 board passes
+    // CodeGuard::note(): stores go through write8/write16 (which note BOTH
+    // bus views of the 2 MB alias), SCSI is CPU-driven pseudo-DMA (the
+    // controller is READ at $F12000/reg 6 — the store into RAM is an
+    // ordinary guest MOVE), the IWM/SWIM is polled, and generated-code
+    // stores cross the DTLB codeMask into pomJitWrite -> write8/16. No
+    // device on this board masters the bus. So the CACR SMC hint is
+    // REDUNDANT here and Cpu030::didChangeCACR consults this constant
+    // (docs/JIT_BRINGUP.md § C.4quinquies priced the hint at -21.8 % of
+    // the code generator's wall clock on the LC II). A board that grows a
+    // bus master (a NuBus card, a real DMA engine) must flip this back.
+    static constexpr bool kJitStoreInventoryComplete = true;
+
     // totalRam: 4, 6, 8 or 10 MB (motherboard + SIMM pair);
     // 10 MB is the V8 hard limit (12 MB installed, 2 MB wasted).
     // cpuHz: C15M for everything but the Mac TV's C32M — the gate array

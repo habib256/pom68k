@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 250 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 251 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 22 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 32 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 33 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 13 |
@@ -83,6 +83,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-10 (second)** — [the 68030 blocker was two bugs, and the first one was never 68030-specific](CHANGELOG.md#2026-08-10-jit-030-blocker-two-bugs)
 - **2026-08-10 (seventh)** — [The successful postincrement oracle names the first hidden RAM divergence](CHANGELOG.md#2026-08-10-jit-030-pi-success)
 - **2026-08-16 (later)** — [020/030/040 closure: integrated FPU, module calls, caches and interruptible 6888x](CHANGELOG.md#2026-08-16-020-030-040-closure)
+- **2026-08-19** — [The 68030 code generator beats `threaded` at the default budget: the blocker was never coverage, it was an uncharge that assumed a re-run](CHANGELOG.md#2026-08-19-030-codegen-parity)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

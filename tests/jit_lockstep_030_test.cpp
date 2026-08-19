@@ -169,17 +169,21 @@ bool same(const Cpu030::PeriphTracePoint& a,
            a.deadline == b.deadline && a.remainder == b.remainder &&
            a.target == b.target && a.phase == b.phase &&
            a.delivered == b.delivered && a.nextEvent == b.nextEvent &&
-           a.deviceHash == b.deviceHash;
+           a.deviceHash == b.deviceHash && a.icFetches == b.icFetches &&
+           a.icHits == b.icHits && a.icMisses == b.icMisses;
 }
 
 void printPeriphPoint(const char* who, const Cpu030::PeriphTracePoint& p) {
     std::printf("  %-6s phase=%d pc=%08X clock=%lld machine=%lld target=%lld"
                 " delivered=%d deadline=%lld"
-                " remainder=%lld next=%d devices=%016llX\n",
+                " remainder=%lld next=%d devices=%016llX"
+                " ic=%lld/%lld/%lld\n",
                 who, p.phase, p.pc, (long long)p.clock, (long long)p.machine,
                 (long long)p.target, p.delivered,
                 (long long)p.deadline, (long long)p.remainder, p.nextEvent,
-                (unsigned long long)p.deviceHash);
+                (unsigned long long)p.deviceHash,
+                (long long)p.icFetches, (long long)p.icHits,
+                (long long)p.icMisses);
 }
 
 }  // namespace
@@ -381,6 +385,15 @@ int main(int argc, char** argv) {
                     std::printf("  previous trace point was identical:\n");
                     printPeriphPoint("both", periphRef[first - 1]);
                 }
+                // A first mismatch is a symptom; how the gap MOVES across
+                // the following deliveries is the diagnosis (grows = a
+                // per-instruction charge difference, constant = a one-off,
+                // shrinks = re-convergence and the step cut is the residue).
+                for (size_t k = first + 1;
+                     k < std::min(common, first + 8); ++k) {
+                    printPeriphPoint("interp", periphRef[k]);
+                    printPeriphPoint("jit", periphJit[k]);
+                }
             } else {
                 std::printf("[jit_lockstep_030] peripheral trace step %ld:"
                             " %zu points identical\n", i, common);
@@ -394,7 +407,19 @@ int main(int argc, char** argv) {
             : ramDiff(memRef, memJit);
         const Cpu030::ICacheStats icr = cpuRef.icacheStats();
         const Cpu030::ICacheStats icj = cpuJit.icacheStats();
-        if (same(r, j) && bad == 0xFFFFFFFF && same(icr, icj)) continue;
+        // The counters alone can agree while the CACHE CONTENT has already
+        // parted (same totals, different lines): the state skew then shows
+        // up thousands of steps later as a timing drift with equal counters
+        // — which is exactly how the 2026-08-19 retained-cache divergence
+        // presented. Compare the tags and valid bits too, so the FIRST
+        // silent skew is the one the gate names.
+        const bool icStateSame =
+            std::memcmp(cpuRef.icacheState().tag, cpuJit.icacheState().tag,
+                        sizeof(cpuRef.icacheState().tag)) == 0 &&
+            std::memcmp(cpuRef.icacheState().valid, cpuJit.icacheState().valid,
+                        sizeof(cpuRef.icacheState().valid)) == 0;
+        if (same(r, j) && bad == 0xFFFFFFFF && same(icr, icj) && icStateSame)
+            continue;
 
         // Once another observable has tripped, walking the complete LC II
         // RAM bus is cheap and names a successful-store divergence that the
@@ -402,6 +427,19 @@ int main(int argc, char** argv) {
         if (bad == 0xFFFFFFFF)
             bad = ramDiff(memRef, memJit, 0x00A00000);
 
+        if (!icStateSame) {
+            std::printf("[jit_lockstep_030] 68030 i-cache CONTENT diverged\n");
+            for (int l = 0; l < 16; l++) {
+                if (cpuRef.icacheState().tag[l] != cpuJit.icacheState().tag[l] ||
+                    cpuRef.icacheState().valid[l] != cpuJit.icacheState().valid[l])
+                    std::printf("  line %2d: interp tag=%08X valid=%X · "
+                                "jit tag=%08X valid=%X\n", l,
+                                cpuRef.icacheState().tag[l],
+                                cpuRef.icacheState().valid[l],
+                                cpuJit.icacheState().tag[l],
+                                cpuJit.icacheState().valid[l]);
+            }
+        }
         if (!same(icr, icj)) {
             std::printf("[jit_lockstep_030] 68030 i-cache accounting diverged\n");
             std::printf("  fetches interp=%lld jit=%lld\n",
@@ -417,6 +455,30 @@ int main(int argc, char** argv) {
             std::printf("[jit_lockstep_030] RAM differs at $%08X: interp=%02X jit=%02X\n",
                         bad, memRef.peek8(bad), memJit.peek8(bad));
 
+        {
+            unsigned n = 0, head = 0;
+            const jit::Engine::DispatchEv* ev = cpuJit.jit().dispatchRing(n, head);
+            if (n) {
+                static const char* kKind[] = { "flags", "backoff", "armfail",
+                    "trace", "window", "block", "cacheline", "notready" };
+                std::printf("[jit_lockstep_030] last %u jit dispatches"
+                            " (oldest first):\n", n);
+                long long lo = 0, hi = 0;   // clock window filter
+                if (const char* w = std::getenv("POM68K_JIT_RING_CLK")) {
+                    std::sscanf(w, "%lld,%lld", &lo, &hi);
+                }
+                for (unsigned k = 0; k < n; k++) {
+                    const auto& e = ev[(head + jit::Engine::kDispatchRing - n + k)
+                                       % jit::Engine::kDispatchRing];
+                    if (hi && (e.clock < lo || e.clock > hi)) continue;
+                    std::printf("  %-8s pc=%08X clk=%lld tgt=%lld exit=%u"
+                                " instrs=%u\n",
+                                kKind[e.kind < 8 ? e.kind : 7], e.pc,
+                                (long long)e.clock, (long long)e.target,
+                                e.exit, e.instrs);
+                }
+            }
+        }
         std::printf("[jit_lockstep_030] DIVERGED after %ld steps\n", i);
         std::printf("  last boundaries (jit): ");
         for (int k = 0; k < kTrail; k++) {

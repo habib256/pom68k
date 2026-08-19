@@ -308,6 +308,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-19** — [The 68030 code generator beats `threaded` at the default budget: the blocker was never coverage, it was an uncharge that assumed a re-run](#2026-08-19-030-codegen-parity)
 - **2026-08-18 (fourth)** — [The measurement method measured itself: the floor was 6× too loose, the freshness guard cried wolf, and the A/B is now ABBA in one process](#2026-08-18-method-audit)
 - **2026-08-18 (third)** — [Native residency is a symptom, not the lock: forcing it up makes the 68030 JIT 37 % slower](#2026-08-18-residency-trap)
 - **2026-08-18 (later)** — [The 68030's JIT spends its life re-compiling: 26 544 of 28 816 whole-cache flushes are one wrapper hint](#2026-08-18-030-flush-storm)
@@ -560,6 +561,94 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-19-030-codegen-parity"></a>
+## 2026-08-19 — The 68030 code generator beats `threaded` at the default budget: the blocker was never coverage, it was an uncharge that assumed a re-run
+
+**x86-64 generator vs `threaded`, `jit_bench_lcii`, ABBA in one process,
+3 repeats per arm, quiet host, one fingerprint per budget:** 1200 frames
++18.4 %, 2000 frames +3.3 %, 3000 frames **−4.6 %**, 6000 frames (the
+bench's default budget, fp `cfb184b6faddabec`) **−12.0 %** — threaded
+42.29 s, generated code 37.22 s, spreads 0.1/0.6 %. The generator started
+the day at **+45 %** (21.9 s against 15.14 s at 2000 frames) and
+§ C.4quinquies's "no measured path to parity on x86-64" is RETRACTED — the
+ceiling it measured was real, but it was measuring three bugs and a policy,
+not a limit. What moved, in causal order:
+
+* **The CACR hint is retired on the V8** (`V8Memory::kJitStoreInventoryComplete`,
+  consulted by `Cpu030::didChangeCACR`; `POM68K_JIT_030_CACR_FLUSH` is now
+  three-valued — unset = the board's own answer, 1/0 force). The store
+  inventory the 2026-08-18 entry asked for is in the code: every store into
+  RAM passes `CodeGuard::note()` (both alias views), SCSI pseudo-DMA is a
+  guest MOVE, the IWM is polled, generated stores cross the DTLB codeMask.
+  26 544 flushes/run became **1**.
+* Retention immediately turned the x64 030 lockstep red at step 25 192 — and
+  the divergence was **pre-existing, not the retirement's**: the HEAD backend
+  diverges identically once blocks live long enough. The signature (−2
+  fetches, −2 hits, equal misses, −4 cycles, one instruction of pc skew at a
+  budget cut) took three new instruments to read: an i-cache CONTENT compare
+  in the gate (tags+valid, not just counters), i-cache counters on every
+  peripheral-trace point, and a dispatch ring (`POM68K_JIT_DISPATCH_RING`)
+  recording the engine's last 8192 dispatch decisions. The ring named it in
+  one run: a block entered at clock<target, charged its first instruction's
+  i-cache model (a MISS: +4 cycles, tag written), the store bailed at run
+  time, `unchargeIcache` pre-subtracted the hit-shaped re-run it assumed —
+  and `pom68kJitStep` then DECLINED to execute. The boundary the budget cut
+  carried a charge for an instruction that never ran. **The uncharge was
+  exact only when the re-run actually happened.**
+* **Fix: the charge moved to the success path** — after the body for
+  straight-line instructions, past the last bail inside each control-flow
+  emitter — and `unchargeIcache` is deleted (`shadowIcache` keeps the
+  compiler's fold shadow advancing for fallbacks). No exit can carry a
+  charge for an unexecuted instruction, by construction.
+* **That one fix re-attributes two old verdicts.** The a64 "block-link
+  chain-boundary contract" (lockstep 10 455, 2026-08-10) has this bug's
+  exact signature — deliveries at identical clocks with differing PCs — and
+  with the charge on the success path, **restart-write blocks take links
+  again** and the 120k x64 gate holds. And the three divergences that
+  condemned wider `baseCycles` admissions (steps 31 162 / 7 798 / 10 902)
+  were almost certainly it too: **the base-cost cross-check is now the
+  global 030 rule** (`Emitter::traced030`, post-exception traces never
+  match), and the whole 2026-08-18 census unlocked at once — CMPI, the
+  d16(A7) loads, RTS, UNLK, LEA/PEA, Scc, one-word Bcc traced on a miss.
+  DBcc follows a64's own finding (2 fetches on all three paths — the
+  expired path's extra word rides `mmuRead`, outside PomIcache); a
+  conditional two-word Bcc charges 2 words before the split and its
+  fall-through adds pc+4 itself; `JSR d16(PC)` ($4EBA, 6.8 % of fallbacks)
+  was only ever refused by the BSR path's `!= 7` constant.
+* **MMU-generation flushes became lazy revalidation.** 4 527 translation
+  moves per 2000-frame boot each dropped the whole cache; the retrace +
+  recompile storm was the largest remaining differential (callgrind:
+  `record` ≈ 6.5 %, `clearLinks`' 1 MiB memset 3.3 % — the link wipe now
+  visits only published slots). A block now carries the
+  (logical page, physical page, length) triple its recording window proved;
+  on a generation bump the DTLB and links drop, and a block runs again only
+  after the freshly re-armed window re-proves its triple. Blocks whose
+  mapping moved are evicted; everything else keeps its code.
+
+Parked with reproducers, not mysteries: admitting the **restartable-write
+family on base cost** still diverges at a coarse cut (step 19 658;
+fine-budget heals it; the window is a one-instruction native DBRA self-loop
+— TimeDBRA — plus class-2 stores; isolate with `POM68K_JIT_DENY_FROM/_TO`),
+so those keep the total-cost check — the census prices that at ~44 % of the
+remaining in-block fallbacks, the single biggest known lever left.
+**BSR.W** ($6100) and the wider single-path exemptions (BRA.W, multi-word
+JMP/JSR) diverge with a one-miss-for-one-hit swap at an identical pc when
+emitted under the armed charge (step 16 097) and stay refused.
+
+Re-confirmed after a from-scratch `make -j6` (exit 0) on the freshly
+linked binaries: null experiment +0.1 % (arm spreads 0.1/0.1 %), 2000
+frames +2.6 %, 6000 frames **−12.3 %** (42.10 s vs 36.94 s) — and the
+`-L m030` tier 53/53 with `-L jit` green behind it, on the same tree.
+
+Correctness held throughout: `jit_lockstep_030_test`,
+`jit_lockstep_030_blocks_test`, `jit_lockstep_030_x64_experimental_test`
+(120k steps each), `jit_restart_write_030_test`, smoke 8/8, and the Q605
+68040 bench is fingerprint-identical to its interpreter and *faster* than
+the documented 9.71 s (8.55 s at 3000 frames — the lazy link wipe pays
+there too). The engine `auto` default for 030 guests is untouched: C.5's
+flip has its own D.1 bar, and condition (3) — a fixed-budget bench win —
+is now measured true at 3000 frames and above.
 
 <a id="2026-08-18-method-audit"></a>
 ## 2026-08-18 (fourth) — The measurement method measured itself: the floor was 6× too loose, the freshness guard cried wolf, and the A/B is now ABBA in one process

@@ -955,6 +955,13 @@ struct Instr {
     uint16_t baseCycles = 0;
     uint16_t icacheCycles = 0;
     uint16_t postExceptionCycles = 0;
+    // How many instruction-stream words the traced run actually fetched
+    // through mmuFetchWord (the pomIcache.fetches delta). NOT words + 1:
+    // a form whose last extension is consumed under SKIP_LAST_RD fetches
+    // only `words` (MOVEA.L (xxx).W,An was the counterexample the
+    // retained-cache lockstep produced, 2026-08-19). 0 = not captured;
+    // the 030 emitted charge refuses to guess and must not emit then.
+    uint8_t fetchWords = 0;
     uint32_t observedNextPc = 0; // PC after the traced instruction
     uint16_t terminalIrd = 0;    // queue at that same boundary
     uint16_t terminalIrc = 0;

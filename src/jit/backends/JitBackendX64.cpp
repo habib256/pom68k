@@ -295,7 +295,7 @@ public:
                                                      proofOptions(L))
                                   .restartableLastWrite();
                           })),
-          linkMask_(ctx.linkTable && !restartWrite030_ ? ctx.linkMask : 0),
+          linkMask_(ctx.linkTable ? ctx.linkMask : 0),
           histo_(ctx.slowStaticHisto != nullptr),
           ic_(L.icLive && icacheEmitEnabled()) {}
 
@@ -318,8 +318,20 @@ private:
     bool emitInstr(size_t i);
     bool emitMove(size_t i, int szIdx);
     bool emitScc(size_t i);
-    void chargeIcache(size_t i);
-    void unchargeIcache(size_t i);
+    // `exactFetchWords` overrides the words+1 rule for the forms whose
+    // mmuFetchWord count is NOT linear (DBcc: 2 on every path — see the
+    // call site in emit()). 0 = the linear rule.
+    void chargeIcache(size_t i, uint32_t exactFetchWords = 0);
+    // Advances the compiler's shadow of the cache WITHOUT emitting the
+    // charge — for instructions the interpreter will execute (static
+    // refusals): their mmuFetchWord run performs the same line transitions,
+    // so later folds stay justified, but no charge may be emitted for them.
+    void shadowIcache(size_t i, uint32_t exactFetchWords = 0);
+    // One extra word on ONE path of a conditional branch (the fall-through
+    // of a two-word Bcc). Never folded and never advances the shadow: the
+    // other path does not perform this fetch, so nothing downstream may
+    // rely on it.
+    void chargeIcacheExtraWord(uint32_t addr);
     bool emitAluEaRg(size_t i);
     bool emitAluRgEa(size_t i);
     bool emitAddSubQ(size_t i);
@@ -443,6 +455,26 @@ private:
     }
     // On the 030 the tracer's terminal capture must CONFIRM a control-flow
     // emitter's irc formula before it is admitted (a64:2253).
+    // The admission cross-check's view of the traced cost. On the 030 the
+    // traced total carries the i-cache penalties of THAT run (JIT_BRINGUP
+    // § C.4: `Instr::cycles` is not the table cost there), and the emitted
+    // charge reproduces them at run time — so comparing the TOTAL against
+    // the table refused every instruction that happened to miss during its
+    // trace: 0C42 CMPI, the d16(A7) loads, RTS, UNLK, one-word Bcc — the
+    // whole 2026-08-19 fallback census. The base split is what the table
+    // must match. A trace that carried post-exception cycles did not retire
+    // cleanly and never matches (a64:1944's rule). Widening this beyond the
+    // narrow a64 families diverged every time it was tried BEFORE the
+    // charge-on-success fix (steps 31162/7798/10902) — those divergences
+    // were the uncharge hole, not this rule; the retained-cache lockstep
+    // now holds with the rule global.
+    unsigned traced030(size_t i) const {
+        const Instr& in = ir_.instrs[i];
+        if (!L_.is030) return in.cycles;
+        if (in.postExceptionCycles != 0) return 0xFFFFFFFFu;  // never matches
+        return in.baseCycles;
+    }
+
     bool tracedQueueIs(size_t i, uint16_t irc) const {
         const Instr& in = ir_.instrs[i];
         return !L_.is030 || !in.terminalQueueValid ||
@@ -506,7 +538,10 @@ private:
     // A RUNTIME bail-out needs its own door whenever anything has to be
     // undone or counted on the way out; a STATIC one never does, because
     // rewind() has already removed everything the instruction emitted.
-    bool needRuntimeDoor() const { return histo_ || ic_; }
+    // The runtime door needs a body of its own only for the census
+    // counters now: since 2026-08-19 the i-cache charge sits after the
+    // body, so a runtime bail has nothing to undo on its way out.
+    bool needRuntimeDoor() const { return histo_; }
     Label& runtimeStub(size_t i) {
         return needRuntimeDoor() ? *slowRuntime_[i] : *slow_[i];
     }
@@ -543,7 +578,7 @@ private:
 // (Moira.cpp:327). Charging here as well would double-count; charging
 // before the bail-out decision would charge an instruction that then re-runs
 // and charges again.
-void Emitter::chargeIcache(size_t i) {
+void Emitter::chargeIcache(size_t i, uint32_t exactFetchWords) {
     if (!ic_) return;
     const Instr& in = ir_.instrs[i];
     // What the interpreter fetches for this instruction: mmuExecuteStart
@@ -564,7 +599,14 @@ void Emitter::chargeIcache(size_t i) {
     // The 030 lockstep measured the shortfall directly: 2 084 fetches missing
     // over one bring-up run, with the miss count and the clock already
     // correct — the shape of a systematic off-by-one, not of a lost event.
-    const uint32_t words = uint32_t(in.words) + 1;
+    // The TRACED fetch count, never a guess from the length: a form whose
+    // last extension is consumed under SKIP_LAST_RD fetches `words`, not
+    // `words + 1` (MOVEA.L (xxx).W,An — the retained-cache lockstep's
+    // counterexample, 2026-08-19). emit() refuses any instruction whose
+    // trace did not capture the count.
+    const uint32_t words = exactFetchWords ? exactFetchWords
+                         : in.fetchWords   ? uint32_t(in.fetchWords)
+                                           : uint32_t(in.words) + 1;
     const uint32_t sup = ir_.super ? 0x80000000u : 0u;
 
     // `fetches` counts every fetch while armed, cache ENABLED OR NOT — it is
@@ -585,6 +627,13 @@ void Emitter::chargeIcache(size_t i) {
     a_.testMI(Sz::B, at(L_.cacr), 1);
     a_.jcc(Cc::E, gateOff);
 
+    // Optimistic aggregation — a64's scheme (JitBackendA64.cpp:365): every
+    // word is counted as a hit ONCE, up front, and each word that actually
+    // misses corrects the pair (hits -1, misses +1) in its own cold tail.
+    // Exact whichever way each check goes, and the common case — a folded
+    // guaranteed hit — costs ZERO instructions instead of an add each.
+    a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icHits), int32_t(words));
+
     for (uint32_t w = 0; w < words; w++) {
         const uint32_t addr = in.pc + w * 2;
         const int line = int((addr >> 4) & 15);
@@ -592,11 +641,9 @@ void Emitter::chargeIcache(size_t i) {
         const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
 
         // Already charged in this block, same tag, same longword: the
-        // interpreter would hit, and a hit costs nothing but the counter.
-        if (icSeen_[line] && icTag_[line] == tag && (icValid_[line] & bit)) {
-            a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icHits), 1);
+        // interpreter would hit, and the aggregate above already counted it.
+        if (icSeen_[line] && icTag_[line] == tag && (icValid_[line] & bit))
             continue;
-        }
 
         Label& done = *a_.fresh();
         Label& miss = *a_.fresh();
@@ -604,9 +651,7 @@ void Emitter::chargeIcache(size_t i) {
                  int32_t(tag));
         a_.jcc(Cc::NE, miss);
         a_.testMI(Sz::B, at(L_.icValid + uint32_t(line)), bit);
-        a_.jcc(Cc::E, miss);
-        a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icHits), 1);
-        a_.jmp(done);
+        a_.jcc(Cc::NE, done);            // hit: the aggregate covered it
 
         // Miss: direct-mapped, so a tag change evicts the WHOLE line before
         // the new longword is marked valid. Cold, but not deferred to the
@@ -621,6 +666,7 @@ void Emitter::chargeIcache(size_t i) {
         a_.movMI(Sz::B, at(L_.icValid + uint32_t(line)), 0);
         a_.bind(sameTag);
         a_.aluMI(Asm::Op::OR, Sz::B, at(L_.icValid + uint32_t(line)), bit);
+        a_.aluMI(Asm::Op::SUB, Sz::Q, at(L_.icHits), 1);
         a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icMisses), 1);
         // The penalty is a wrapper knob read at run time, not a constant:
         // POM68K_ICACHE_MISS can differ per machine and the interpreter
@@ -644,28 +690,77 @@ void Emitter::chargeIcache(size_t i) {
     a_.bind(gateOff);
 }
 
-// The exact inverse of one instruction's charge, for every path that hands
-// the instruction back to be RE-RUN. The charge is emitted before the
-// instruction, in the interpreter's order, and the re-run goes through
-// pomJitExecOne -> mmuExecuteStart -> mmuFetchWord, which charges it a second
-// time. That second charge is a HIT for every word — the first one left the
-// tag and the valid bit set — so the over-count is exactly N fetches and N
-// hits whichever way the first charge went, and the miss count and the clock
-// are already right. Subtracting those two is therefore exact, not an
-// approximation.
+// The shadow half of chargeIcache alone. An instruction the backend hands
+// to the interpreter still FETCHES through mmuFetchWord when it runs,
+// performing exactly the line transitions the charge would have modelled —
+// so the compiler's shadow must advance either way, or a later
+// instruction's folded "guaranteed hit" would rest on an update this block
+// never promised.
 //
-// `hits` only ever moves while the cache is enabled, so its half sits behind
-// the same CACR test the charge did; `fetches` counts regardless, like the
-// interpreter's.
-void Emitter::unchargeIcache(size_t i) {
+// (Until 2026-08-19 the charge itself was emitted BEFORE the instruction,
+// paired with an `unchargeIcache` on the runtime-bail door that pre-
+// subtracted the re-run's expected hit counts. That pair was exact only
+// when the re-run actually happened. When pom68kJitStep DECLINED — covers
+// or idle gone at that very boundary — the block exited carrying a charge
+// for an instruction that never ran; if that charge had missed, a miss
+// count, a tag update and a penalty came with it. The retained-cache 030
+// lockstep caught it as a budget boundary cut 4 cycles and 2 fetches apart
+// with every other observable equal, at trap-dispatch code the old
+// flush-on-every-CACR-strobe regime never kept compiled long enough to
+// expose. Charging on the SUCCESS path only removes the whole class, and
+// the uncharge with it.)
+void Emitter::chargeIcacheExtraWord(uint32_t addr) {
     if (!ic_) return;
-    const uint32_t words = uint32_t(ir_.instrs[i].words) + 1;
-    a_.aluMI(Asm::Op::SUB, Sz::Q, at(L_.icFetches), int32_t(words));
-    Label& noHits = *a_.fresh();
+    const uint32_t sup = ir_.super ? 0x80000000u : 0u;
+    const int line = int((addr >> 4) & 15);
+    const uint32_t tag = (addr >> 8) | sup;
+    const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
+    a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icFetches), 1);
+    Label& gateOff = *a_.fresh();
     a_.testMI(Sz::B, at(L_.cacr), 1);
-    a_.jcc(Cc::E, noHits);
-    a_.aluMI(Asm::Op::SUB, Sz::Q, at(L_.icHits), int32_t(words));
-    a_.bind(noHits);
+    a_.jcc(Cc::E, gateOff);
+    a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icHits), 1);
+    Label& done = *a_.fresh();
+    Label& miss = *a_.fresh();
+    a_.aluMI(Asm::Op::CMP, Sz::L, at(L_.icTag + uint32_t(line) * 4),
+             int32_t(tag));
+    a_.jcc(Cc::NE, miss);
+    a_.testMI(Sz::B, at(L_.icValid + uint32_t(line)), bit);
+    a_.jcc(Cc::NE, done);
+    a_.bind(miss);
+    Label& sameTag = *a_.fresh();
+    a_.aluMI(Asm::Op::CMP, Sz::L, at(L_.icTag + uint32_t(line) * 4),
+             int32_t(tag));
+    a_.jcc(Cc::E, sameTag);
+    a_.movMI(Sz::L, at(L_.icTag + uint32_t(line) * 4), int32_t(tag));
+    a_.movMI(Sz::B, at(L_.icValid + uint32_t(line)), 0);
+    a_.bind(sameTag);
+    a_.aluMI(Asm::Op::OR, Sz::B, at(L_.icValid + uint32_t(line)), bit);
+    a_.aluMI(Asm::Op::SUB, Sz::Q, at(L_.icHits), 1);
+    a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.icMisses), 1);
+    a_.movRM(Sz::L, RAX, at(L_.icPenalty));
+    a_.aluRR(Asm::Op::ADD, Sz::Q, kClk, RAX);
+    a_.bind(done);
+    a_.bind(gateOff);
+}
+
+void Emitter::shadowIcache(size_t i, uint32_t exactFetchWords) {
+    if (!ic_) return;
+    const Instr& in = ir_.instrs[i];
+    const uint32_t words = exactFetchWords ? exactFetchWords
+                         : in.fetchWords   ? uint32_t(in.fetchWords)
+                                           : uint32_t(in.words) + 1;
+    const uint32_t sup = ir_.super ? 0x80000000u : 0u;
+    for (uint32_t w = 0; w < words; w++) {
+        const uint32_t addr = in.pc + w * 2;
+        const int line = int((addr >> 4) & 15);
+        const uint32_t tag = (addr >> 8) | sup;
+        const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
+        if (!icSeen_[line] || icTag_[line] != tag) {
+            icTag_[line] = tag; icValid_[line] = 0; icSeen_[line] = true;
+        }
+        icValid_[line] |= bit;
+    }
 }
 
 // One call per instruction, matching the interpreter's one CYCLES_68020
@@ -826,7 +921,7 @@ bool Emitter::emitSubroutine(size_t i) {
 
     if (sem.operation == SemanticOp::ReturnSubroutine) {
         if (!control.valid || control.kind != ControlFlowKind::Return ||
-            in.cycles != 10) return false;
+            traced030(i) != 10) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         const MemoryAccessPlan read = memory.access(
             MemoryDirection::Read, MemoryOperand::Stack, 4, 3, 7);
@@ -838,6 +933,7 @@ bool Emitter::emitSubroutine(size_t i) {
         // handing the whole instruction over is exact.
         a_.testRI(Sz::L, RDI, 1);
         a_.jcc(Cc::NE, runtimeStub(i));
+        chargeIcache(i);                 // success path: past the last bail
         a_.aluMI(Asm::Op::ADD, Sz::L, A(7), 4);
         a_.movMR(Sz::L, at(L_.pc), RDI);
         a_.movMR(Sz::L, at(L_.pc0), RDI);
@@ -849,9 +945,15 @@ bool Emitter::emitSubroutine(size_t i) {
     }
 
     if (sem.operation == SemanticOp::BranchSubroutine) {
+        // BSR prices at 7; the PC-relative JSR forms (4EBA d16(PC)) carry
+        // the SAME semantics record and price at 5 (execJsr's DIPC column,
+        // = kJsr below). Accept both and charge what the trace confirmed —
+        // the LC II census had 4EBA at 6.8 % of block fallbacks, refused
+        // by nothing but this constant (2026-08-19).
+        const unsigned bsrCost = traced030(i);
         if (!control.valid || control.kind != ControlFlowKind::DirectCall ||
             !control.targetKnown || !control.pushesReturnAddress ||
-            in.words > 2 || in.cycles != 7) return false;
+            in.words > 2 || (bsrCost != 7 && bsrCost != 5)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         const MemoryAccessPlan write = memory.access(
             MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
@@ -868,10 +970,11 @@ bool Emitter::emitSubroutine(size_t i) {
         memStore(RAX, 2, RDI, write);
         a_.movRM(Sz::L, RAX, F(kFSaveA));
         a_.movMR(Sz::L, A(7), RAX);
+        chargeIcache(i);                 // success path: past the last bail
         a_.movMI(Sz::L, at(L_.pc), int32_t(target));
         a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
         commitQueue(op, ircAfter);
-        chargeCycles(7);
+        chargeCycles(int(bsrCost));
         a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
         leaveTo(target);
         return true;
@@ -891,7 +994,7 @@ bool Emitter::emitSubroutine(size_t i) {
     if (!lengthOk(i, ea.ext)) return false;
     static const int8_t kJsr[kM_COUNT] =
         { -1, -1, 4, -1, -1, 5, -1, 4, 4, 5, -1, -1 };
-    if (kJsr[ea.idx] < 0 || kJsr[ea.idx] != int(in.cycles)) return false;
+    if (kJsr[ea.idx] < 0 || unsigned(kJsr[ea.idx]) != traced030(i)) return false;
 
     const bool constant = control.targetKnown;
     if (constant && (control.target & 1)) return false;
@@ -913,12 +1016,14 @@ bool Emitter::emitSubroutine(size_t i) {
     memStore(RAX, 2, RDI, write);
     a_.movRM(Sz::L, RAX, F(kFSaveA));
     a_.movMR(Sz::L, A(7), RAX);
+    chargeIcache(i);                     // success path: past the last bail
 
     a_.movRM(Sz::L, RDI, F(kFValue));
     a_.movMR(Sz::L, at(L_.pc), RDI);
     a_.movMR(Sz::L, at(L_.pc0), RDI);
     commitQueue(op, ircAfter);
-    chargeCycles(int(in.cycles));
+    chargeCycles(kJsr[ea.idx]);          // table/base cost; the emitted
+                                         // i-cache charge owns the misses
     a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     if (constant) leaveTo(control.target);
     else          leaveToDynamic();
@@ -1386,13 +1491,11 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
         a_.movRM(Sz::Q, RAX, F(kFGuard));
         a_.aluMI(Asm::Op::CMP, Sz::B, mem(RAX, 0), 0);
         a_.jccShort(Cc::E, ok);
-        // …and because it re-enters at THIS instruction's pc, the instruction
-        // is about to be run a second time — so the 68030 i-cache charge it
-        // already took has to come back off, exactly as on the runtime-bail
-        // door. This exit is the one the door does not cover, and it is what
-        // the 030 lockstep's residual +2 fetches were (2026-08-10): visible
-        // only with POM68K_JIT_ACCESS_THUNK=2, since only a STORE reaches it.
-        unchargeIcache(idx);
+        // …and because it re-enters at THIS instruction's pc, the
+        // instruction is about to be run a second time. Its 68030 i-cache
+        // charge sits AFTER the body on the success path (2026-08-19), so
+        // at this exit nothing has been charged and nothing needs undoing —
+        // the re-run's own mmuFetchWord charge is the one that counts.
         emitBoundary(ir_.instrs[idx].pc, -1);
         a_.jmp(*exitLost_);
         a_.bind(ok);
@@ -1563,11 +1666,20 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     // whose sole access is a read into a register, and the restartable
     // writes above. Wider admissions have DIVERGED every time (steps
     // 31162/7798/10902); mirror, don't extend.
-    const bool splitSafe030 = L_.is030 &&
-        ((src.idx == kM_PI && !dst.memory) || restartWrite);
-    const unsigned tracedCycles030 = splitSafe030
-        ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
-    if (unsigned(cycles) != tracedCycles030) return false;
+    // The RESTARTABLE-WRITE family keeps the TOTAL-cost check — i.e. a
+    // restartable MOVE whose trace carried an i-cache miss stays refused.
+    // Admitting it on the base split is the ONE base admission the
+    // retained-cache lockstep still rejects (2026-08-19, step 19658: a
+    // budget-cut boundary lands with the jit clock ahead and one miss
+    // over, the same coarse-cut-only shape as the uncharge hole, healed
+    // by any fine budget). Every other MOVE shape — register and memory
+    // sources into registers, non-restartable and memory-to-memory
+    // destinations — holds the base rule through the full 120k gate. The
+    // residual forensics are a named TODO, not a mystery to re-derive:
+    // isolate with POM68K_JIT_DENY_FROM/_TO and the dispatch ring.
+    const unsigned tracedMove = restartWrite ? unsigned(ir_.instrs[i].cycles)
+                                             : traced030(i);
+    if (unsigned(cycles) != tracedMove) return false;
 
     MemoryAccessPlan srcAccess, dstAccess;
     if (src.memory) {
@@ -1739,7 +1851,7 @@ bool Emitter::emitAluEaRg(size_t i) {
     // single CMPA; on the idle Finder that was 1.04 M fallbacks, 12 % of all
     // of them, second only to the MOVE cost cell fixed above (2026-08-09).
     const int cost = (isAddr && isCmp) ? rc + 2 : rc;
-    if (cost != ir_.instrs[i].cycles) return false;
+    if (cost < 0 || unsigned(cost) != traced030(i)) return false;
     if (isAddr) {
         Ea an; an.idx = kM_AN; an.reg = dn;
         if (aliases(src, an)) return false;
@@ -1803,12 +1915,7 @@ bool Emitter::emitAluRgEa(size_t i) {
     if (dst.idx == kM_AN || dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
     if (!lengthOk(i, dst.ext)) return false;
     const int cycles = eaRmwCost(dst.idx, szIdx);
-    // Register-only ADDQ/SUBQ: no data access, no ordering, no restartable
-    // write hides behind the lower split cost — the first deliberately
-    // narrow consumer a64 landed. Memory forms keep the total-cost check.
-    const unsigned traced030q = L_.is030 && dst.idx <= kM_AN
-        ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
-    if (cycles < 0 || unsigned(cycles) != traced030q) return false;
+    if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
 
     MemoryAccessPlan read, write;
     if (dst.memory) {
@@ -1865,12 +1972,7 @@ bool Emitter::emitAddSubQ(size_t i) {
     if (dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
     if (!lengthOk(i, dst.ext)) return false;
     const int cycles = eaRmwCost(dst.idx, szIdx);
-    // Register-only ADDQ/SUBQ: no data access, no ordering, no restartable
-    // write hides behind the lower split cost — the first deliberately
-    // narrow consumer a64 landed. Memory forms keep the total-cost check.
-    const unsigned traced030q = L_.is030 && dst.idx <= kM_AN
-        ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles;
-    if (cycles < 0 || unsigned(cycles) != traced030q) return false;
+    if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
 
     MemoryAccessPlan read, write;
     if (dst.memory) {
@@ -1912,7 +2014,7 @@ bool Emitter::emitMoveq(size_t i) {
     const Instr& in = ir_.instrs[i];
     const uint16_t op = in.opcode;
     const InstructionSemantics& sem = in.semantics;
-    if (sem.operation != SemanticOp::MoveQuick || in.cycles != 2)
+    if (sem.operation != SemanticOp::MoveQuick || traced030(i) != 2)
         return false;
     const int dn = sem.registerIndex;
     const int32_t v = int8_t(op & 0xFF);
@@ -1944,7 +2046,7 @@ bool Emitter::emitImmediate(size_t i) {
     if (!lengthOk(i, imm.ext + dst.ext)) return false;
 
     const int cycles = isCmp ? kEaRead[dst.idx][szIdx] : eaRmwCost(dst.idx, szIdx);
-    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+    if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
 
     MemoryAccessPlan read, write;
     if (dst.memory) {
@@ -2025,7 +2127,7 @@ bool Emitter::emitBitOp(size_t i) {
     if (!lengthOk(i, extUsed + dst.ext)) return false;
 
     const int cycles = toReg ? 4 : eaRmwCost(dst.idx, szIdx);
-    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+    if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
 
     MemoryAccessPlan read;
     if (dst.memory) {
@@ -2075,11 +2177,11 @@ bool Emitter::emitLine4(size_t i) {
         return emitSubroutine(i);
 
     if (sem.operation == SemanticOp::Nop) {
-        return ir_.instrs[i].cycles == 2;
+        return traced030(i) == 2;
     }
 
     if (sem.operation == SemanticOp::Link) {         // LINK.W An,#d16
-        if (ir_.instrs[i].cycles != 5 || !lengthOk(i, 1)) return false;
+        if (traced030(i) != 5 || !lengthOk(i, 1)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         const MemoryAccessPlan write = memory.access(
             MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
@@ -2107,7 +2209,7 @@ bool Emitter::emitLine4(size_t i) {
     }
 
     if (sem.operation == SemanticOp::Unlink) {       // UNLK An
-        if (ir_.instrs[i].cycles != 6 || !lengthOk(i, 0)) return false;
+        if (traced030(i) != 6 || !lengthOk(i, 0)) return false;
         const int an = sem.eaReg;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         const MemoryAccessPlan read = memory.access(
@@ -2139,14 +2241,14 @@ bool Emitter::emitLine4(size_t i) {
         static const int8_t kLea[kM_COUNT] =
             { -1, -1, 6, -1, -1, 7, -1, 6, 6, 7, -1, -1 };
         const int cycles = kLea[src.idx];
-        if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+        if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
         addrOf(src, RAX, 2);
         a_.movMR(Sz::L, A(an), RAX);
         return true;
     }
 
     if (sem.operation == SemanticOp::Extend) {       // EXT.W / EXT.L
-        if (ir_.instrs[i].cycles != 4) return false;
+        if (traced030(i) != 4) return false;
         const int dn = sem.eaReg;
         const bool toLong = sem.sizeIndex == 2;
         if (toLong) {
@@ -2163,7 +2265,7 @@ bool Emitter::emitLine4(size_t i) {
     }
 
     if (sem.operation == SemanticOp::Swap) {         // SWAP Dn
-        if (ir_.instrs[i].cycles != 4) return false;
+        if (traced030(i) != 4) return false;
         const int dn = sem.eaReg;
         a_.movRM(Sz::L, RDI, D(dn));
         a_.shiftRI(Sz::L, RDI, 0, 16);               // ROL 16
@@ -2187,7 +2289,7 @@ bool Emitter::emitLine4(size_t i) {
         static const int8_t kPea[kM_COUNT] =
             { -1, -1, 9, -1, -1, 10, -1, 9, 9, 10, -1, -1 };
         const int cycles = kPea[src.idx];
-        if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+        if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         const MemoryAccessPlan write = memory.access(
             MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
@@ -2215,13 +2317,9 @@ bool Emitter::emitLine4(size_t i) {
         if (!lengthOk(i, src.ext)) return false;
         const int cycles = kEaRead[src.idx][szIdx];
         // TST (An)/(An)+ is read-only: consume the split base cost on an
-        // 030 so an i-cache miss during the trace does not refuse it
-        // (same admission as a64; the exact-thunk 4A11 refinement is NOT
-        // ported — that form stays refused here).
-        const unsigned traced030 = L_.is030 &&
-                (src.idx == kM_AI || src.idx == kM_PI)
-            ? in.baseCycles : in.cycles;
-        if (cycles < 0 || unsigned(cycles) != traced030) return false;
+        // (the exact-thunk 4A11 refinement is NOT ported —
+        // that form stays refused here).
+        if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         MemoryAccessPlan read;
         if (src.memory) {
@@ -2248,7 +2346,7 @@ bool Emitter::emitLine4(size_t i) {
     if (dst.idx == kM_AN || dst.idx == kM_IM || dst.idx == kM_DIPC) return false;
     if (!lengthOk(i, dst.ext)) return false;
     const int cycles = eaRmwCost(dst.idx, szIdx);
-    if (cycles < 0 || cycles != ir_.instrs[i].cycles) return false;
+    if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
 
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     MemoryAccessPlan read, write;
@@ -2342,7 +2440,7 @@ bool Emitter::emitScc(size_t i) {
     };
 
     if (mode == 0) {                                  // Scc Dn — execSccRg
-        if (in.cycles != 4) return false;
+        if (traced030(i) != 4) return false;
         if (!lengthOk(i, 0)) return false;
         if (!memory.complete()) return false;
         materialise(RDI);
@@ -2359,7 +2457,7 @@ bool Emitter::emitScc(size_t i) {
     static const int8_t kScc[kM_COUNT] =
         { -1, -1, 10, 10, 11, 11, -1, 10, 10, -1, -1, -1 };
     const int cycles = kScc[dst.idx];
-    if (cycles < 0 || cycles != int(in.cycles)) return false;
+    if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
     const MemoryAccessPlan write = memory.access(
         MemoryDirection::Write, MemoryOperand::Destination, 1,
         uint8_t(mode), uint8_t(reg));
@@ -2394,13 +2492,27 @@ bool Emitter::emitBranch(size_t i) {
     const int fallCycles = (in.words == 1) ? 4 : 6;
     // A branch charges different amounts on its two paths, so the tracer's
     // single measurement can only confirm the path it took.
-    const int traced = in.cycles;
-    if (traced != takenCycles && traced != fallCycles) return false;
+    const unsigned traced = traced030(i);
+    if (traced != unsigned(takenCycles) && traced != unsigned(fallCycles))
+        return false;
 
     // Is the target inside this block? Only then can it stay in host code.
     int targetIdx = -1;
     for (size_t k = 0; k < ir_.instrs.size(); k++)
         if (ir_.instrs[k].pc == target) { targetIdx = int(k); break; }
+
+    // The i-cache charge — before the condition split so it covers both
+    // paths. One-word forms fetch pc and pc+2 on either path. A two-word
+    // conditional Bcc fetches those same two words on both paths and ONE
+    // more, pc+4, on the fall-through only (readExt consumes the
+    // displacement there; the taken path reads it out of queue.irc) — so
+    // the common charge here is exactly 2 words and the fall-through path
+    // below adds its own. Placed after this emitter's last compile-time
+    // refusal; it has no runtime bail, so this is the success path. The
+    // traced-queue refusal below is emitted-code-agnostic: emit()'s rewind
+    // covers it.
+    const bool bccWord = L_.is030 && ic_ && in.words == 2 && !always;
+    chargeIcache(i, bccWord ? 2u : 0u);
 
     Label& notTaken = *a_.fresh();
     if (!always) {
@@ -2443,6 +2555,9 @@ bool Emitter::emitBranch(size_t i) {
 
     if (!always) {
         a_.bind(notTaken);
+        // The fall-through's extra fetch: readExt consumed the displacement
+        // and refilled the lookahead at pc+4.
+        if (bccWord) chargeIcacheExtraWord(in.pc + 4);
         a_.movMI(Sz::L, at(L_.pc), int32_t(fall));
         a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
         commitQueue(op, fallIrcQ);
@@ -2492,8 +2607,21 @@ bool Emitter::emitDbcc(size_t i) {
     if (target & 1) return refuse("odd target");
     // execDbcc, 68020 column: taken 6, expired 10, condition-true 6. The
     // tracer's one measurement can only confirm the path it took.
-    if (in.cycles != 6 && in.cycles != 10) return refuse("cycle cross-check");
+    if (traced030(i) != 6 && traced030(i) != 10)
+        return refuse("cycle cross-check");
     const uint16_t ircAfter = in.extensionWord(0);
+    // Every DBcc path leaves the displacement in queue.irc (no readExt, no
+    // mode-5 refill); the tracer's terminal capture must agree — a64:2398.
+    if (!tracedQueueIs(i, ircAfter)) return refuse("traced queue");
+
+    // The i-cache charge, HERE because a DBcc has no runtime bail: every
+    // refusal above is compile-time, so from this point the instruction
+    // always executes and the charge is on the success path by
+    // construction. Exactly 2 words on every path — all three fetch pc and
+    // pc+2 through mmuFetchWord and nothing else (the expired path's extra
+    // pc+4 word goes through read<PROG> -> mmuRead, outside PomIcache, and
+    // the mode-5 fullPrefetch is a no-op) — a64:2574's finding.
+    chargeIcache(i, 2);
 
     int targetIdx = -1;
     for (size_t k = 0; k < ir_.instrs.size(); k++)
@@ -2558,7 +2686,7 @@ bool Emitter::emitJmp(size_t i) {
     if (!lengthOk(i, ea.ext)) return false;
     static const int8_t kJmp[kM_COUNT] =
         { -1, -1, 4, -1, -1, 5, -1, 4, 4, 5, -1, -1 };
-    if (kJmp[ea.idx] < 0 || kJmp[ea.idx] != int(in.cycles)) return false;
+    if (kJmp[ea.idx] < 0 || unsigned(kJmp[ea.idx]) != traced030(i)) return false;
     const uint16_t ircAfter = heldIrc(i);      // JMP (xxx).L holds the LOW half
     if (!tracedQueueIs(i, ircAfter)) return false;
 
@@ -2570,10 +2698,12 @@ bool Emitter::emitJmp(size_t i) {
         a_.testRI(Sz::L, RDI, 1);
         a_.jcc(Cc::NE, runtimeStub(i));
     }
+    chargeIcache(i);                     // success path: past the last bail
     a_.movMR(Sz::L, at(L_.pc), RDI);
     a_.movMR(Sz::L, at(L_.pc0), RDI);
     commitQueue(op, ircAfter);
-    chargeCycles(int(in.cycles));
+    chargeCycles(kJmp[ea.idx]);          // table/base cost; the emitted
+                                         // i-cache charge owns the misses
     a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
     if (constant) leaveTo(control.target);
     else          leaveToDynamic();
@@ -2633,7 +2763,7 @@ bool Emitter::emitMovem(size_t i) {
     static const int8_t kBaseToMem[kM_COUNT] =
         { -1, -1, 8, -1, 4, 9, -1, 8, 8, -1, -1, -1 };
     const int base = toRegs ? kBaseToRegs[ea.idx] : kBaseToMem[ea.idx];
-    if (base < 0 || base + 4 * n != int(in.cycles)) return false;
+    if (base < 0 || unsigned(base + 4 * n) != traced030(i)) return false;
     const MemoryAccessPlan span = memory.access(
         toRegs ? MemoryDirection::Read : MemoryDirection::Write,
         MemoryOperand::RegisterList, uint8_t(size), uint8_t(mode),
@@ -2843,7 +2973,59 @@ bool Emitter::emit() {
         // evaluated, so it cannot express that. Refuse the form rather than
         // charge one of its two paths wrongly — coverage, not correctness,
         // and only until the charge is split across emitBranch's own paths.
-        if (ic_ && ir_.instrs[i].kind == Kind::Branch && ir_.instrs[i].words > 1) {
+        //
+        // DBcc is NOT such a branch — a64's finding (JitBackendA64.cpp:2574),
+        // and it was 95.68 % of this census's block fallbacks there. All
+        // THREE of its mode-5 paths fetch exactly pc and pc+2 through
+        // mmuFetchWord (mmuExecuteStart), and nothing more: the displacement
+        // is consumed from queue.irc without a readExt on every path, the
+        // taken path's fullPrefetch is a no-op on the mode-5 030
+        // (MoiraDataflow_cpp.h:865), and the expired path's extra word read
+        // at pc+4 goes through read<PROG> -> mmuRead — the DATA-side funnel,
+        // which never touches PomIcache. So a charge of exactly 2 words,
+        // emitted before the condition, is path-independent and exact.
+        const bool dbcc030 = ic_ &&
+            ir_.instrs[i].semantics.operation == SemanticOp::DecrementBranch;
+        // Widening this exemption to the other single-path transfers
+        // (BRA.W, BSR.W, multi-word JSR/JMP) was tried 2026-08-19 and
+        // diverged at step 16097 with a one-miss-for-one-hit swap at an
+        // identical pc — their fetch/charge story is NOT settled; do not
+        // re-widen without a per-form fetch-address proof against the
+        // mode-5 core, not just a count.
+        //
+        // A CONDITIONAL two-word Bcc is different: its fetch model is
+        // proved against the mode-5 source — both paths fetch pc and
+        // pc+2 (mmuExecuteStart), and only the fall-through consumes the
+        // displacement through readExt, fetching pc+4 (execBcc). So
+        // emitBranch charges the common two words before the condition
+        // and the fall-through path adds its own extra word; nothing is
+        // path-ambiguous. Only longer conditional forms stay refused.
+        const bool bccW030 = ic_ && ir_.instrs[i].words == 2 &&
+            ir_.instrs[i].semantics.operation == SemanticOp::Branch &&
+            ir_.instrs[i].semantics.condition != 0;
+        // JSR d16(PC) ($4EBA): one path, two words, both fetched at pc and
+        // pc+2 through mmuFetchWord and nothing else — the displacement is
+        // consumed from queue.irc, the traced fetch count is 2, and
+        // tracedQueueIs pins the held displacement. 6.8 % of the LC II
+        // fallback census, 120k-gated. BSR.W ($6100) — same emitter, same
+        // fetch story on paper — DIVERGES the gate at step 16097 with a
+        // one-miss-for-one-hit swap when exempted, and stays refused until
+        // that is understood; so does the wider single-path exemption
+        // (BRA.W, multi-word JMP/JSR), which fails the same way.
+        const bool bsrW030 = ic_ && ir_.instrs[i].words == 2 &&
+            ir_.instrs[i].opcode == 0x4EBA &&
+            ir_.instrs[i].semantics.operation == SemanticOp::BranchSubroutine;
+        if (ic_ && ir_.instrs[i].kind == Kind::Branch &&
+            ir_.instrs[i].words > 1 && !dbcc030 && !bccW030 && !bsrW030) {
+            a_.jmp(staticStub(i));
+            emitted = i + 1;
+            continue;
+        }
+        // No traced fetch count, no charge: an emitted charge that guesses
+        // words + 1 over-fetches every SKIP_LAST_RD form. IRs recorded by
+        // this tree always carry the count on an 030; this is the guard
+        // that keeps a stale or foreign IR honest.
+        if (ic_ && !dbcc030 && !ir_.instrs[i].fetchWords) {
             a_.jmp(staticStub(i));
             emitted = i + 1;
             continue;
@@ -2851,13 +3033,6 @@ bool Emitter::emit() {
 
         const Asm::Mark mark = a_.mark();
         pollIpl();
-        // In mmuExecuteStart's own order: POLL_IPL, then the fetch that
-        // charges the 030 i-cache. INSIDE the mark, deliberately — if the
-        // instruction turns out not to be emittable, rewind() takes the
-        // charge away with the rest and the fallback stub charges it itself
-        // through mmuFetchWord. The compiler's shadow of the cache is
-        // advanced either way, because the real cache changes either way.
-        chargeIcache(i);
         const bool native = emitInstr(i);
         emitted = i + 1;
 
@@ -2865,13 +3040,24 @@ bool Emitter::emit() {
             // Leave no trace of a family that gave up half-way — including
             // the IPL sample, which the fallback's own mmu040InstrStart
             // will perform. Then send
-            // the instruction to its stub in the cold half.
+            // the instruction to its stub in the cold half. The i-cache
+            // SHADOW still advances: the interpreter's run of this very
+            // instruction performs the same line transitions.
             a_.rewind(mark);
+            shadowIcache(i, dbcc030 ? 2u : 0u);
             a_.jmp(staticStub(i));
             continue;
         }
         native_++;
         if (ir_.instrs[i].kind == Kind::Branch) break;   // it committed its own
+
+        // The 68030 i-cache charge — on the SUCCESS path only, after every
+        // runtime bail the body can take, so no exit can ever carry a
+        // charge for an instruction that did not run (see shadowIcache's
+        // header comment for the divergence the old charge-first order
+        // cost). Branch-kind terminals charge inside their own emitters, at
+        // the first point past their last possible bail.
+        chargeIcache(i);
 
         // No pc/pc0 here: nothing downstream reads them until the block
         // exits, and every exit commits them on the way out. The queue does
@@ -2957,9 +3143,6 @@ bool Emitter::emit() {
                 a_.movRM(Sz::Q, RAX, F(kFHistoRuntime));
                 a_.aluMI(Asm::Op::ADD, Sz::Q, mem(RAX, off), 1);
             }
-            // The instruction is about to be re-run by the interpreter, so
-            // the 68030 i-cache charge it already took comes back off.
-            unchargeIcache(i);
         }
         a_.bind(*slow_[i]);
         emitBoundary(ir_.instrs[i].pc, int(i) == loopTarget ? -1 : int(i) - 1);
@@ -3212,7 +3395,13 @@ Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
     // Emitter ctor): the fault-frame gate proves REPLAY, not transparent
     // links, so nothing may jump into this block without the Engine
     // between them.
-    c->linked = e.restartWrite030() ? nullptr : dst + e.linkEntryOffset();
+    // Blocks with restartable 030 writes take links again since
+    // 2026-08-19: the a64 divergence that suppressed them (lockstep step
+    // 10455 — a peripheral delivery at identical clocks with differing
+    // PCs) is the exact signature of the i-cache uncharge hole fixed the
+    // same day (see shadowIcache), and with the charge on the success
+    // path the full 120k x64 gate holds with links restored.
+    c->linked = dst + e.linkEntryOffset();
     return c;
 }
 
