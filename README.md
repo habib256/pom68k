@@ -30,17 +30,18 @@ are present coverage, never a ceiling on the project mission.
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
 ctest                             # 225 gates, ~4 h (asset-dependent ones soft-skip)
-ctest -L unit                     # 106 legacy non-etalon gates
+ctest -L unit                     # 107 legacy non-etalon gates
 ctest -L asset-none               # 83 manifest-declared asset-free gates
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines
 ctest -L jit-fast                 # asset-free native A64/x64 proof + doc/config checks
 ctest -L etalon-core              # 12 gates, one profile per platform, ~32 min
 ```
 
-The counts are those of an **AArch64** host with the default
-`POM68K_JIT_BACKENDS=auto`: two lockstep gates are registered only there, so
-elsewhere it is 216 / 104 unit / 8 smoke (`CMakeLists.txt`; `docs_test`
-asserts the numbers against the configured registry). `unit` means "name does
+The counts are the documented registry's (225 total); three lockstep gates
+are host-conditional — two AArch64-only, one x86-64-only
+(`jit_lockstep_030_x64_experimental_test`) — so an x86-64 configure sees
+223 / 105 unit / 8 smoke and an AArch64 one 224 (`CMakeLists.txt`;
+`docs_test` asserts the numbers against the configured registry). `unit` means "name does
 not end in `_etalon`", not "needs no assets" — several unit gates want a ROM or
 an SST vector set and soft-skip without one.
 
@@ -58,14 +59,14 @@ kept separately from the synthetic daily tripwires.
 
 Requires CMake ≥ 3.16, a C++20 compiler, and — for the GUI target only — GLFW
 ≥ 3.3 + OpenGL. Without `imgui/` the GUI target is simply not declared
-(`CMakeLists.txt:320`, `if(EXISTS "${IMGUI_DIR}/imgui.cpp")`) and the core
+(`CMakeLists.txt:372`, `if(EXISTS "${IMGUI_DIR}/imgui.cpp")`) and the core
 library plus the tests still build, which
 is what headless CI does.
 
 Optional: a profile-guided build measured **−33 % on the interpreter** and
 −18 % on the JIT (Quadra 605 boot), bit-identical emulation. The helper keeps
 the three steps in one directory and, on Clang/AppleClang, merges the runtime
-profiles with `llvm-profdata` (rationale + flags: `CMakeLists.txt:121-140`):
+profiles with `llvm-profdata` (rationale + flags: `CMakeLists.txt:173-234`):
 
 ```bash
 tools/pgo_train.sh build-pgo
@@ -110,7 +111,8 @@ checks the firmware the profile needs against the compiled manifest
 (`src/FirmwareManifest.h`, mirrored in `assets.lock`, which additionally
 records each dump's qualified profiles) by size **and** SHA-256, not merely
 by "it loaded": Cuda 341s0788 for the Q605 family, Cuda 341s0060 for the
-Q630 family, PIC1654S 342s0440-b for Centris/Quadra. It exits with status
+Q630 family, PIC1654S 342s0440-b for Centris/Quadra, Egret 341s0851 for
+the Eclipse towers (Q900/Q950). It exits with status
 **2** and a `REFUSÉ` diagnostic when the native backend or a dump is missing,
 when a `*_LLE=0` forces the HLE fallback, or when the profile is not a
 qualified 68040 platform — an HLE-fallback session is never announced as full
@@ -120,15 +122,16 @@ Qualification covers the whole session: `src/LleSession.h` holds a central
 register that invalidates it the moment any HLE module activates, and save
 states (format v4) stamp that provenance, so a strict session refuses a state
 taken under HLE. `--lle-aarch64-check` runs the preflight and exits before
-GLFW, for CI. The Eclipse towers (Q900/Q950) stay out of qualification until
-their Egret firmware-LLE path lands. Design notes: `docs/LLE_VS_HLE.md`.
+GLFW, for CI. The Eclipse towers (Q900/Q950) joined qualification with
+their Egret firmware LLE on 2026-08-14. Design notes: `docs/LLE_VS_HLE.md`.
 
 Private CI that holds the assets configures `-DPOM68K_PRODUCT_LLE_GATES=ON`
 (default OFF; AArch64 + the GUI target, or configuration fails) and runs
-`ctest -L product`: missing assets become configure-time errors, the four
-Q605/Centris/Q630/Q700 boots are pinned to the AArch64 backend with their
-interpreted oracles kept alongside, and the three negative refusals (missing
-firmware, forced fallback, unqualified Q900) are gated too.
+`ctest -L product`: missing assets become configure-time errors, five
+preflights (Q605/Centris/Q700/Q900/Q630) plus the four boots pinned to the
+AArch64 backend with their interpreted oracles kept alongside, and the
+three negative refusals (missing firmware, forced fallback, Q900
+forced-HLE) are gated too.
 
 ## Releases (prebuilt packages)
 
@@ -167,7 +170,7 @@ first run with a README saying so. `POM68K_DATA_DIR=<path>` overrides all
 three, and the chosen directory is printed on stderr at every launch
 (`packaging/linux/AppRun`). The macOS `.app` always uses
 `~/Library/Application Support/POM68K` — its launcher `cd`s there
-(`package_macos_release.sh:71`, at the repo root); the Windows zip has no
+(`package_macos_release.sh:76`, at the repo root); the Windows zip has no
 launcher and resolves everything against the working directory, which is the
 `.exe`'s own folder when you double-click it. `POM68K --version` prints the
 banner and exits before any window — that is the CI smoke and a quick
@@ -197,11 +200,11 @@ animates the 512×342 framebuffer.
 **Without a ROM argument** the app looks for, in order: `roms/maclcii.rom`,
 a `35C28F5F` scan of `roms/`, `roms/macplus.rom`, `roms/macii.rom`,
 `roms/quadra605.rom`, then the `9779D2C4` and `FF7439EE` scans
-(`src/main.cpp:5406-5419`). The default machine is therefore the **Mac LC II**.
+(`src/main.cpp:5549-5563`). The default machine is therefore the **Mac LC II**.
 Each path is tried against the working directory, the executable's directory
-and its parent (`findPath`, `src/main.cpp:305`); the signature scan walks
+and its parent (`findPath`, `src/main.cpp:308`); the signature scan walks
 `roms/` recursively and matches the CRC32 hex **in the file name**
-(`findRomBySignature`, `src/main.cpp:319`), which is how Apple dumps are
+(`findRomBySignature`, `src/main.cpp:322`), which is how Apple dumps are
 normally named — rename yours to something else and only the exact short name
 or an explicit `argv[1]` will find it.
 
@@ -209,7 +212,7 @@ or an explicit `argv[1]` will find it.
 
 Dispatch is by ROM **size**, then by the header checksum (the first four
 bytes, big-endian), then by an environment variable for models that share a
-ROM and differ only by clock / CPU / model ID. `src/main.cpp:5427` is the
+ROM and differ only by clock / CPU / model ID. `src/main.cpp:5571` is the
 code; the **Machine** menu sets the same variables and relaunches.
 
 | Size | Checksum | Machine(s) | Selector |
@@ -246,7 +249,8 @@ stderr). First choice per family, with the fallbacks the code then tries:
 `341s0060`/`341s0788`), `roms/cuda/341s0060.bin` (LC 520/550/CC II, Quadra
 630, LC 580 — Cuda 2.40; 2.37 livelocks these ROMs),
 `roms/cuda/341s0788.bin` (Quadra 605 family), `roms/egret/341s0851.bin`
-(LC III, LC III+, IIvx, IIvi — then the LC II's `341s0850`),
+(LC III, LC III+, IIvx, IIvi, and the Eclipse towers Q900/Q950 since
+2026-08-14 `Q700Memory.cpp:52-53` — then the LC II's `341s0850`),
 `roms/egret/344s0100.bin` (IIsi), `roms/adbmodem/342s0440-b.bin` — the
 PIC1654S ADB transceiver, used by every `AdbVia` platform: SE / SE FDHD /
 Classic, the Mac II family, the IIci, Centris/Quadra 610/650/800 and the
@@ -334,8 +338,8 @@ wheel), **Ctrl+Alt+G**, or **Delete**, toggles full capture (cursor grabbed,
 raw motion); any of the three releases it again. Hovering the screen is
 needed to capture, never to release. The host keyboard maps to M0110 codes on the
 Plus and to raw ADB codes (= M0110 code >> 1) elsewhere (M0110 table:
-`src/main.cpp:5773`; the ADB tables are one per machine loop, e.g.
-`src/main.cpp:1271` — notes in
+`src/main.cpp:5923`; the ADB tables are one per machine loop, e.g.
+`src/main.cpp:1300` — notes in
 `DEV.md` § *Input: M0110 keyboard + quadrature mouse*).
 
 Menus:

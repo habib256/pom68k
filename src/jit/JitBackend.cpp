@@ -140,17 +140,16 @@ Backend* selectBackend(const char* pref, uint32_t guestFamily,
             continue;
         // Validity says a generator is CORRECT for the family — the 030
         // lockstep gates hold both of them to that since 2026-08-18. `auto`
-        // asks a different question: which backend is FASTEST, and on the
-        // 68030 the measured answer is still the portable replay
-        // (JIT_BRINGUP § C.4quinquies: the x64 generator ships 45 % behind
-        // `threaded` and stays 16 % behind at both non-conformant
-        // ceilings; a64 is within 3 % and still behind). So auto skips
-        // native generators for 030 guests — an explicit
-        // POM68K_JIT_BACKEND=x64/a64 selects them, no unsafe override
-        // needed since the declaration. Deleting this skip IS the C.5
-        // default flip, and it is a measured decision (D.1 condition 3),
-        // never a side effect.
-        if (guestFamily == kGuest68030 && b->caps().nativeCode) continue;
+        // asks a different question: which backend is FASTEST, and the
+        // answer is the backend's own `caps().autoFamilies` declaration,
+        // earned per (family, backend) pair on D.1 evidence and never
+        // implied by correctness. Today that means the 68040 on both
+        // generators and nothing else: the x64 030 flip is written and
+        // blocked on the IIsi segfault (JIT_BRINGUP § C.4septies), and
+        // a64's uncharge fix is unported, its bench win unmeasured. An
+        // explicit POM68K_JIT_BACKEND=x64/a64 keeps consulting
+        // `guestFamilies` only.
+        if (!(b->caps().autoFamilies & guestFamily)) continue;
         return b;
     }
     return threadedBackend();          // threaded is always usable and valid

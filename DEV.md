@@ -166,9 +166,9 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   twins share a ROM (LC III / LC III+, Q605 / LC 475) so the header
   checksum cannot tell them apart. Values are part of the file format:
   append, never renumber. All **37** profiles are enumerated
-  (`SaveStateMachines.h:51-89`, tags 1-37 contiguous) and each of the **12**
+  (`MachineCatalog.h:35-49`, tags 1-37 contiguous) and each of the **12**
   machine families has a `save`/`load` overload pair
-  (`SaveStateMachines.h:96-154`).
+  (`SaveStateMachines.h:53-110`).
 - Gates: `savestate_test`, `savestate_v8_test`, `savestate_030_test`,
   `savestate_040_test`, `savestate_68k_test` (all `unit`), plus the
   whole-machine `lcii_savestate_etalon` and `q605_savestate_etalon`.
@@ -196,7 +196,7 @@ told apart by its checksum. Gates: `rom_boot_etalon`, `disk_boot_etalon`,
 | Range | Device | Notes |
 |---|---|---|
 | `$000000-$3FFFFF` | RAM | mirrors modulo RAM size (MAME `offset & ram_mask`) |
-| `$400000-$4FFFFF` | ROM 128 KB | mirrored; pce mirrors to `$57FFFF` |
+| `$400000-$4FFFFF` | ROM 128 KB | mirrored only within `$400000-$41FFFF` (A0 undecoded); above `$400000+romSize` = address-dependent open bus (`MacMemory.cpp:339-348`, § 3.3bis — the SCSI probe depends on it). pce mirrors to `$57FFFF`; this map deliberately does not |
 | `$580000-$5FFFFF` | SCSI NCR 5380 | reg = A4-A6 (×16); A0: 0=read 1=write; A9=DACK (pseudo-DMA `$580201`/`$580260`) |
 | `$600000-$7FFFFF` | RAM overlay window | RAM lives here while overlay on |
 | `$800000-$9FFFFF` | SCC **read** (even, D8-D15) | `sccRBase=$9FFFF8`; A1=channel (0=B), A2=ctl/data; **odd read resets the SCC** (Mini vMac) |
@@ -528,7 +528,7 @@ the fixed IOSB `$A55A2BAD` for all of them:
 | Quadra 800 | `$12` | 68040 @ 33.33 MHz (SONIC + NuBus on the real board — see below) |
 
 (Clocks are `CentrisMemory.h:56-59`, straps `:61-67`, the runner table
-`main.cpp:3966-3971`. The Q650 and Q800 share one constant — the "33 MHz"
+`main.cpp:4081-4088`. The Q650 and Q800 share one constant — the "33 MHz"
 on the Q800's GUI label is a rounding, not a second rate.)
 
 `POM68K_CENTRIS_FPU` / `_BAREFPU` pick the FPU; `POM68K_CENTRIS_MODEL`
@@ -641,9 +641,8 @@ framing and hands `Valkyrie::i2cWrite(reg, value)` the M/N/P divisors of a
 3.9864 MHz reference — `pixelClock = 3986400 × 2^P × N / M`. Register 0 is
 written and ignored, as in MAME. A traced Q630 boot programs N=27, M=14,
 P=2 → **30.752 MHz**, not the 31.3344 MHz reset value; the clock is what
-paces `Valkyrie::tick`, so it sets the VBL cadence the guest sees. Header
-`Valkyrie.h:1-23` still carries the pre-2026-08-02 "not modelled" note —
-the code below it (`:65-70`) is the truth.
+paces `Valkyrie::tick`, so it sets the VBL cadence the guest sees. The
+header states it plainly now (`Valkyrie.h:20-24`, `i2cWrite` at `:67-72`).
 
 Gates: `q630_boot_etalon`, `lc580_boot_etalon` (640×480×8 Finder),
 `valkyrie_i2c_test` (the clock-generator arithmetic and its cadence effect).
@@ -696,7 +695,7 @@ KeyMap through the IOP firmware), save states in `savestate_030_test`.
 ### 2.11 MSC + PG&E Power Manager — PowerBook Duo 230
 
 `MscMemory` / `MscCpu` / `PgePmu` / `M68hc05Pge`. The only laptop, the 37th
-profile (`main.cpp:854`, `runDuo` at `:5087`, `SnapMachine::Duo230`), a
+profile (`MachineCatalog.h:48`, `runDuo` at `main.cpp:5221`, `SnapMachine::Duo230`), a
 68030 @ **33 MHz** (`kCpuHz230`; the 210 is 25 MHz, `kCpuHz210`). Blueprint
 and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
 `MscMemory.h:1-31` — the LC-family `$50Fxxxxx` shape with three deltas: a
@@ -713,7 +712,7 @@ receives the main firmware, uploaded by the system ROM over SPI at every
 boot** (the IIfx IOP pattern, one processor further down). The PMU boots
 first and **holds the 68030 in reset** while its port E bit 2 is LOW; the
 **rising** edge is the release, and it also re-arms the ROM overlay and
-restarts the CPU from the reset vector (`PgePmu.h:67-71`, MAME `msc.cpp:151`
+restarts the CPU from the reset vector (`PgePmu.h:66`, `:77-81`, MAME `msc.cpp:151`
 for the hold). So without `roms/pge/pge_boot.bin` there is no release and
 the ROM stalls loudly at its first PMU exchange. The wire is VIA1's shifter
 (SCK→CB1, MOSI→CB2, MISO→SR bit 7) with `/PMU_ACK` on pseudo-VIA2 port B
@@ -1265,11 +1264,12 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   on validated 68040 guests, and since 2026-08-18 on **68030** ones too —
   there as `threaded`: the code generators declare the 68030 since the same
   day (lockstep-gated on both ISAs; explicit `POM68K_JIT_BACKEND=x64|a64`
-  selects them, no unsafe override), but `auto` deliberately skips them on
-  030 guests because they measure slower than the portable replay — the
-  default is the fastest conformant mode, and deleting that skip is the
-  C.5 default flip, a measured decision. 68000 and 68020 still start on
-  the interpreter.
+  selects them, no unsafe override), but `auto` consults the separate
+  `BackendCaps::autoFamilies` SPEED mask (2026-08-19), which both
+  generators still cap at the 68040: x64's 030 bench win is measured
+  (JIT_BRINGUP § C.4sexies, −12 %) but its promotion — the C.5 flip — is
+  blocked on the IIsi segfault under generated code (§ C.4septies).
+  68000 and 68020 still start on the interpreter.
   The GUI **CPU** menu switches it live (through the machine thread's command
   queue, so the swap lands between two instructions), and
   `POM68K_CPU_ENGINE=interp|jit` overrides the family default. The
@@ -1296,11 +1296,13 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   / Classic) and `IIfxCpu` (the IIfx). **Every CPU wrapper in the tree now
   carries one.** The GUI menu binds on every one of them. **Both** native
   code generators — x86-64 and AArch64 — declare `guestFamilies =
-  kGuest68040` (`JitBackendX64.cpp:2497`, `JitBackendA64.cpp:2156`), so
-  `auto` gives every other family the `threaded` backend. That is a
-  guest-family constraint, not a host one: the 030's `(An)+` timing,
-  restartable-write/format-$A framing and prefetch refill differ
-  semantically from the 040's.
+  kGuest68040 | kGuest68030` since 2026-08-18 (correctness scope; the
+  030's `(An)+` timing, restartable-write/format-$A framing and prefetch
+  refill are proved by the two 120k lockstep gates), while their
+  `autoFamilies` speed masks stay at `kGuest68040` — so `auto` gives
+  every non-040 family the `threaded` backend until a (family, backend)
+  pair earns its D.1 promotion (the 030-on-x64 one is blocked on the
+  IIsi, JIT_BRINGUP § C.4septies).
 - **…and what it is worth there**, because "wired" and "worth switching on"
   are not the same claim. The window's job is to skip an ATC walk, so the
   gain tracks the MMU: 68040 **×5.0** on a fixed budget and **×2.68** end to
@@ -1354,14 +1356,15 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   nine asset-free protocol gates — `jit_backend_test`,
   `jit_asset_free_lockstep_test`, `jit_restart_write_030_test`,
   `jit_store_guard_a64_test` and the five `jit_copyback_*` registrations —,
-  **eleven** `jit_lockstep_*` flavours (68000 / 030 / 040 each plain and
-  `_blocks`, plus `_x64`, `_x64_fine`, `_noaccess`, and two registered only
-  when the a64 backend is built — `_a64_coarse` and
-  `_030_a64_experimental`; `POM68K_JIT.md` § 5 says what each covers), and
+  **twelve** `jit_lockstep_*` flavours (68000 / 030 / 040 each plain and
+  `_blocks`, plus `_x64`, `_x64_fine`, `_noaccess`, the x86-64-only
+  `_030_x64_experimental`, and two registered only when the a64 backend is
+  built — `_a64_coarse` and `_030_a64_experimental`; `POM68K_JIT.md` § 5
+  says what each covers), and
   **fifteen** `jit_*_boot_etalon` twins (q605, centris650, q630, q700, lcii,
   mactv, lc3, iivx, iisi, lc, macii, se30, system, classic, iifx) — the same
   etalon executables re-run with `POM68K_CPU_ENGINE=jit`
-  (`CMakeLists.txt:1509-1559`).
+  (`CMakeLists.txt:1841-1887`, plus `jit_classic_boot_etalon` at `:2001`).
 
 ---
 
@@ -1375,8 +1378,8 @@ grep -rhoP '"\KPOM68K_[A-Z0-9_]+(?=")' \
      src/ tests/ extern/moira/Moira --include=*.h --include=*.cpp | sort -u
 ```
 
-148 distinct names as of 2026-08-12. Match on the literal, not on `getenv`:
-the JIT knobs go through `jit::detail::env()` (`src/jit/JitConfig.h:22`) and
+179 distinct names as of 2026-08-19. Match on the literal, not on `getenv`:
+the JIT knobs go through `jit::detail::env()` (`src/jit/JitConfig.h:29`) and
 a `getenv`-anchored pattern misses every one of them. **Re-derive rather
 than extend by hand** — the two cross-checks that built this list found 22
 and then 12 knobs the code read that no document mentioned.
@@ -1405,7 +1408,7 @@ documented before 2026-07-31:
 | `POM68K_CENTRIS_FPU` / `_BAREFPU` / `_CACHE_BOOST` | the same three for `CentrisCpu` |
 | `POM68K_Q700_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q700Cpu` |
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
-| `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4, miss cost 0-64 default 4; the per-class defaults live in the headers (`Cpu030.h:167-168` and siblings) |
+| `POM68K_CACHE_BOOST` / `POM68K_ICACHE_MISS` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4, miss cost 0-64 default 4; the per-class defaults live in the headers (`Cpu030.h:176-177` and siblings) |
 | `POM68K_FLOPPY_BOOST_GATE` | `=0` disables the floppy boost gate on the `Swim1` 030s (`Cpu030`, `RbvCpu`, `VaspCpu` — **not** `SonoraCpu` or `MscCpu`, which never read it) — the boost then compresses the Sony denibble path below the IWM's 14-tick hold and GCR mounts fail with badDCksum (the pre-2026-08-05 defect, kept reproducible for `lcii_sony_trace`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
 | `POM68K_040_DCACHE` | `1` enables the architectural 040 I/D-cache model; line data, WT/CB/NC, copyback, CPUSH/CINV, snooping and timing are complete, but the product default stays cacheless until the cache-aware JIT recovers the real-ROM speed budget (`docs/CACHE_040.md`) |
@@ -1416,7 +1419,8 @@ documented before 2026-07-31:
 | `POM68K_PERIPH_STATS` | count the peripheral catch-up path (Cpu040 only): catchUp/flushTicks/mem.tick calls + cycles per call, printed at exit. The old `POM68K_PERIPH_BATCH` knob is GONE — fixed batching was replaced by event deadlines on eight platforms (2026-08-03/04, `CHANGELOG.md` § *Event deadlines*) |
 | `POM68K_MACII_EVENT` | `=1` arms the peripheral event deadline on the Mac II family (`Cpu020`: Mac II, IIx, IIcx, SE/30) instead of the fixed 64-cycle batch. **Opt-in on purpose**: measured 2026-08-13 at **+14.2 %/+17.5 %** on `macii_boot_etalon` over two pairs, with the etalon's observables identical either way — strictly more correct (IRQ jitter → 0), invisible to every gate we have. `docs/LLE_VS_HLE.md` § 1.2 |
 | `POM68K_DUO_EVENT` | `=1` arms the same on the PowerBook Duo (`MscCpu`, batch 128). **+9.0 %** on `duo230_boot_etalon`, same Finder; the PG&E's 68HC05 binds at ~16 machine cycles, so this board pays 8× the fan-out entries. Opt-in for the same reason |
-| `POM68K_NOFPU` | no 68881/68882. Read by **six** platform runners in `main.cpp`: Mac II (`:1074`), IIfx (`:1432`), V8 (`:1828`), Sonora (`:2314`), VASP (`:2631`), RBV (`:2915`). The 68040 families have their own `*_LC040`/`*_NOFPU` knobs above |
+| `POM68K_NOFPU` | no 68881/68882. Read by **six** platform runners in `main.cpp`: Mac II (`:1091`), IIfx (`:1465`), V8 (`:1887`), Sonora (`:2386`), VASP (`:2717`), RBV (`:3018`). The 68040 families have their own `*_LC040`/`*_NOFPU` knobs above |
+| `POM68K_Q605_EVENT_SCC` / `_SCSI` | per-device event-deadline splits on the MEMCjr board (`Q605Memory.cpp:19,21`, presence-parsed `!= '0'`) — same family as the `*_EVENT` pair above |
 
 **Devices and subsystems**: `POM68K_EGRET_LLE`, `POM68K_CUDA_LLE`,
 `POM68K_CUDA_FW` (`<path>` = load THIS dump for the Egret/Cuda MCU, ahead of
@@ -1447,18 +1451,18 @@ compare a bus against a pre-2026-08-15 capture, `DiskBays.h ensureCdDrive`),
 `POM68K_SCSI_INQUIRY` (`pom68k` = report the emulator's own INQUIRY strings
 instead of the Apple-branded Seagate the guest's own disk tools expect —
 [§3.3](#33-scsi-ncr-5380)), `POM68K_DAYNAPORT` (`<id>` = put a DaynaPort
-SCSI/Link at that SCSI ID on the Quadra 605; a value outside 1-6 — or a
-non-numeric one — lands on the default ID 3, `0` or unset = no card
-(`Q605Memory.cpp:73-77`) —
+SCSI/Link at that SCSI ID on the Quadra 605; a value outside 2-6 — or a
+non-numeric one — lands on the default ID 3 (ID 1 is refused too), `0` or
+unset = no card (`Q605Memory.cpp:79-87`) —
 [§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)),
 `POM68K_FIRMWARE_ROOT` (`<dir>` **replaces** both default search bases
 `./` and `../` for every dump `FirmwareManifest::verify` looks up —
-`FirmwareManifest.h:86-89`; a path that does not hold `roms/…` makes every
+`FirmwareManifest.h:89-93`; a path that does not hold `roms/…` makes every
 MCU fall back to HLE, which is the point when qualifying a packaged build).
 
 **Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, set by the
-flag rather than by hand (`main.cpp:5363-5371`):
-`POM68K_LLE_AARCH64_FULL` (`LleSession.h:24-26`; the run must be on the
+flag rather than by hand (`main.cpp:5507-5515`):
+`POM68K_LLE_AARCH64_FULL` (`LleSession.h:39-42`; the run must be on the
 AArch64 code generator with every MCU on real firmware, and any HLE
 fallback disqualifies it) and `POM68K_LLE_AARCH64_CHECK_ONLY`
 (`--lle-aarch64-check`: run the preflight, print, exit 0 without opening a
@@ -1518,6 +1522,12 @@ the `docs/CACHE_040.md` M0 probe),
 `POM68K_MACIP_DEBUG`, and the IIfx trio `POM68K_IIFX_IO_TRACE` (unknown
 I/O touches), `POM68K_IIFX_SCSI_TRACE` (5380/SCSIDMA registers with PC),
 `POM68K_IIFX_ADB_TRACE` (ADB line-state transitions + decoded commands).
+`POM68K_PERF_HOST_PROFILE` (performance-policy identity written to JIT
+metrics, `src/jit/JitMetrics.h:27` — semantics in `POM68K_JIT.md` § 6).
+Four legacy non-prefixed diagnostics predate the namespace and are kept
+as-is: `EGRET_CMD_LOG` (`Egret.cpp:294`), `RTCDBG` (`Rtc.cpp:144`),
+`SCCDBG` (`Scc8530.cpp:11`), `NEOST_EXC_DIAG` (Moira exception diag,
+`Moira.cpp:1271`).
 
 **Test-only knobs** — read by a gate, never by the emulator; listed so the
 next person greps once instead of twice: `POM68K_AIO_EGRET`,
@@ -1559,8 +1569,11 @@ because a knob that vanishes silently leaves its documentation looking
 current:
 
 - `POM68K_PERIPH_BATCH` — fixed peripheral batching, replaced by event
-  deadlines on eight platforms (2026-08-03/04). The remaining fixed-batch
-  machines (compacts, Mac II, IIfx, MSC) have no knob at all.
+  deadlines on eight platforms (2026-08-03/04). Of the remaining
+  fixed-batch machines, the Mac II family and the MSC have the opt-in
+  `*_EVENT` knobs above (`MACII`/`DUO`); the compacts and the IIfx have
+  no knob at all (exact by `sync()` and refused on evidence,
+  respectively).
 
 ### How this list stays true
 
@@ -1616,7 +1629,7 @@ The same lockstep binary writes `pom68k.jit.metrics.v1`; the Linux x86-64 and
 macOS AArch64 jobs validate and archive identical fields (backend, guest/host,
 cycles, wall time, block/native/fallback counters and native share).
 
-`jitdev` (`CMakeLists.txt:1868`) builds exactly the **three** binaries
+`jitdev` (`CMakeLists.txt:2382`) builds exactly the **three** binaries
 `-L smoke` needs — `jit_backend_test`, `jit_lockstep_test`,
 `q605_boot_etalon`; the remaining smoke registrations re-run those same
 three under different environments.
@@ -1625,34 +1638,37 @@ three under different environments.
 |---|---|---|
 | `ctest -L smoke` | 9 | the working loop — one machine, both engines |
 | `ctest -L jit-fast` | 7 (~3 s) | native A64/x64 lockstep/IR/protocol + documentation/configuration, no assets |
-| `ctest -L unit` | 106 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
+| `ctest -L unit` | 107 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
 | `ctest -L asset-none` | 83 | manifest-declared asset-free daily tier |
 | `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
-| `ctest -L jit` | 37 | before proposing a JIT change (`jit-fast` matches this regex too) |
+| `ctest -L jit` | 38 | before proposing a JIT change (`jit-fast` matches this regex too) |
 | `ctest -L m040` | 51 | the 68040 family on the default engine plus explicit interpreter references |
-| `ctest -L etalon` | 112 (~3 h 35) | every profile — the release gate, not a pre-commit check |
-| `ctest` | 218 (~4h) | everything, once |
+| `ctest -L m030` | 53 | the 68030 family, same shape (since 2026-08-18) |
+| `ctest -L etalon` | 118 (~3 h 45) | every profile — the release gate, not a pre-commit check |
+| `ctest` | 225 (~4h30) | everything, once |
 
 **The totals are host-dependent**, which is why `ctest -N` and not this table
-is the authority. Two gates — `jit_lockstep_a64_coarse_test` and
-`jit_lockstep_030_a64_experimental_test` — are registered only on an AArch64
-host with the a64 backend built (`CMakeLists.txt:1459-1476`), so the numbers
-above are the AArch64 ones and an x86-64 tree reads **216** total, 104 `unit`,
-8 `smoke`, 35 `jit` (`m040` and `etalon` are host-independent). Seven more
+is the authority. Three gates are host-conditional: the AArch64 pair
+`jit_lockstep_a64_coarse_test` + `jit_lockstep_030_a64_experimental_test`
+(`CMakeLists.txt:1755-1772`) and the x86-64-only
+`jit_lockstep_030_x64_experimental_test` (`:1792-1801`) — so an x86-64
+tree reads **223** total, 105 `unit`, 8 `smoke`, 36 `jit`, and an AArch64
+one 224 (`m040` and `etalon` are host-independent). Eight more
 appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
 which also requires AArch64 and hard-fails on a missing asset instead of
 skipping.
 
 Labels are **derived from the test name** in one loop at the end of
-`CMakeLists.txt` (`:1794-1820`): name ends in `etalon` → `etalon` (+
+`CMakeLists.txt` (`:2139-2188`): name ends in `etalon` → `etalon` (+
 `etalon-core` if it is in the twelve-name `POM68K_ETALON_CORE` list, whose
 membership is a configure-time `FATAL_ERROR` if a name stops resolving);
 anything else → `unit`; `^jit_` → `jit`; a substring match on the 68040
-machine names → `m040`. A gate added tomorrow is classified the moment it
-exists. **The loop `set`s LABELS, it does not append** — an explicit
-`set_tests_properties(... LABELS ...)` at `add_test` time is silently
-overwritten by whatever the name derives to, so express a label through the
-NAME, never inline.
+machine names → `m040`, and on the 68030 ones → `m030` (`:2164-2165`,
+since 2026-08-18). A gate added tomorrow is classified the moment it
+exists. **The loop MERGES with explicit labels since 2026-08-12**
+(`:2174-2187` — `get_test_property` + append + de-dup): an inline
+`LABELS` at `add_test` time survives; it used to be silently overwritten,
+which is how `quadra_event_scheduler_test` lost `m040` for two weeks.
 
 Asset-dependent gates soft-skip when the user-provided ROM/disk images are
 absent. The whole-machine `*_trace` binaries (`sony_trace`, `lcii_sony_trace`,

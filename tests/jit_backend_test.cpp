@@ -437,6 +437,12 @@ int main() {
         jit::Backend* b = jit::selectBackend("auto", fam);
         check(b != nullptr && (b->caps().guestFamilies & fam) != 0,
               "auto never returns a backend invalid for the guest it was asked about");
+        // …and never a native generator outside its own speed declaration:
+        // autoFamilies is earned per (family, backend) pair on D.1
+        // evidence, so `auto` handing out undeclared native code would be
+        // the C.5 discipline silently broken.
+        check(!b->caps().nativeCode || (b->caps().autoFamilies & fam) != 0,
+              "auto only serves native code where autoFamilies declares it");
     }
     // The history of this check IS the safety story. Before 2026-07-30 an
     // explicit x64 on a 68030 was honoured with no 030 semantics behind it,
@@ -445,10 +451,12 @@ int main() {
     // 2026-08-18 the 030 work is lockstep-proved
     // (jit_lockstep_030_x64_experimental_test, 120k identical), the
     // declaration says so, and the pin flips: an EXPLICIT request is
-    // honoured — while `auto` still resolves a 68030 to `threaded`,
-    // because the generator measures slower there and the shipped default
-    // must be the fastest conformant mode (D.1 condition 3; deleting the
-    // auto skip is the C.5 default flip, a measured decision).
+    // honoured. 2026-08-19 made the flip a one-line declaration
+    // (caps().autoFamilies) and then did NOT fire it: the bench win is
+    // measured (JIT_BRINGUP § C.4sexies, −12 %) but the first m030 run
+    // under the flip found the IIsi in SIGSEGV under the generator
+    // (§ C.4septies) — so `auto` on an 030 stays `threaded`, on every
+    // host, until that fix.
     if (hasX64) {
         jit::Backend* on030 = jit::selectBackend("x64", jit::kGuest68030);
         check(!std::strcmp(on030->name(), "x86-64"),
@@ -459,8 +467,8 @@ int main() {
               "…and still served for the 68040 it was written for");
         jit::Backend* auto030 = jit::selectBackend("auto", jit::kGuest68030);
         check(!std::strcmp(auto030->name(), "threaded"),
-              "auto on a 68030 stays `threaded` — the default is the "
-              "fastest conformant mode, not the newest generator");
+              "auto on a 68030 stays `threaded` — the flip waits on the "
+              "IIsi segfault (JIT_BRINGUP § C.4septies)");
         jit::Backend* auto040 = jit::selectBackend("auto", jit::kGuest68040);
         check(!std::strcmp(auto040->name(), "x86-64"),
               "auto on a 68040 still picks the native generator");
@@ -537,6 +545,16 @@ int main() {
         std::printf("[jit_backend] aarch64 native smoke\n");
         check(!std::strcmp(autoPick->name(), "aarch64"),
               "auto selects the validated AArch64 backend on arm64");
+        // No 030 promotion on this host either: the a64 generator still
+        // carries the uncharge hole and no measured 030 bench win, so a
+        // 68030 keeps resolving to the portable replay.
+        {
+            jit::Backend* a64auto030 =
+                jit::selectBackend("auto", jit::kGuest68030);
+            check(!std::strcmp(a64auto030->name(), "threaded"),
+                  "auto on a 68030 stays `threaded` on arm64 — a64 has no "
+                  "measured win there yet (uncharge port pending)");
+        }
         static Q605Memory mem;
         static Cpu040 cpu(mem);
         mem.setCpu(&cpu);

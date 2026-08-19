@@ -103,9 +103,10 @@ void Cpu030::didChangeCACR(moira::u32 value) {
     //
     // POM68K_JIT_030_CACR_FLUSH remains the measurement instrument, now
     // three-valued: unset = the board's own answer; =1 forces the hint back
-    // ON (prices it on a proven board); =0 forces it OFF everywhere, which
-    // is UNSAFE on boards whose store inventory is NOT proven (VASP, RBV,
-    // MSC — see their didChangeCACR). A fingerprint taken under a forced
+    // ON (prices it on a proven board); =0 forces it OFF — on THIS wrapper
+    // only: VASP/RBV/MSC never read the knob and always flush on the
+    // CI/CEI strobes, precisely because their store inventories are NOT
+    // proven (see their didChangeCACR). A fingerprint taken under a forced
     // value MUST be compared against one taken without.
     static const int cacrFlushKnob = [] {
         const char* v = getenv("POM68K_JIT_030_CACR_FLUSH");

@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 246 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 253 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -308,6 +308,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-19 (third)** — [The C.5 flip is written, and its first tier run stopped it: the IIsi dies under the generator — code the `jit_*` 030 gates never ran](#2026-08-19-c5-blocked-iisi)
+- **2026-08-19 (second)** — [A full-parallel LTO make froze the host: with LTO the memory spike is the LINK, and an interrupted make leaves binaries that lie](#2026-08-19-make-lto-freeze)
 - **2026-08-19** — [The 68030 code generator beats `threaded` at the default budget: the blocker was never coverage, it was an uncharge that assumed a re-run](#2026-08-19-030-codegen-parity)
 - **2026-08-18 (fourth)** — [The measurement method measured itself: the floor was 6× too loose, the freshness guard cried wolf, and the A/B is now ABBA in one process](#2026-08-18-method-audit)
 - **2026-08-18 (third)** — [Native residency is a symptom, not the lock: forcing it up makes the 68030 JIT 37 % slower](#2026-08-18-residency-trap)
@@ -561,6 +563,81 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-19-c5-blocked-iisi"></a>
+## 2026-08-19 (third) — The C.5 flip is written, and its first tier run stopped it: the IIsi dies under the generator — code the `jit_*` 030 gates never ran
+
+The flip's vehicle landed as designed: `BackendCaps::autoFamilies`, a SPEED
+mask separate from the `guestFamilies` correctness mask, consulted only by
+`auto` and earned per (family, backend) pair on D.1 evidence —
+`jit_backend_test` pins that `auto` never serves native code outside it.
+Then the first `-L m030` run with 030 in x64's mask (`-j4`, memory-capped)
+answered D.1 condition 4: **the four IIsi gates SIGSEGV at ~4-5 s wall**
+(`iisi_boot` 5.22 s, `jit_iisi_boot` 5.21 s, `iisi_input` 4.26 s,
+`iisi_persist` 5.17 s), while every 030 platform visible around them
+boots the generator green — **the IIci included, same RBV board** (183 s),
+VASP 263/154 s, Sonora 283/716/467 s, LC II persist 202 s, IIfx. The
+run's FULL tally is honestly unknown: its output went through `| tail
+-40`, which also swallowed ctest's exit status, and a concurrent
+`docs_test` invocation in the same build dir clobbered `LastTest.log` —
+two piping sins now on record, quote nothing from a truncated run. So
+the mask ships carrying the 68040 only; adding `kGuest68030` in
+`JitBackendX64.cpp` is the whole future flip, behind a CLEAN full tier.
+
+**The crash was latent, and the way it hid is the day's real finding: the
+`jit_*_boot_etalon` gates on 030 set `POM68K_CPU_ENGINE=jit` and nothing
+else.** Their backend is `auto`, which resolved every 030 to `threaded` —
+so `jit_iisi_boot_etalon` green on 2026-08-18 was `threaded` green, and
+the x64 generator had never executed one instruction of the IIsi's boot.
+A gate named `jit_*` pinned the engine, not the backend, and nothing else
+noticed. (The 030 lockstep gates DO pin the generator — but they are
+LC II only.)
+
+Diagnosed read-only to the parking line (the session ran no reproduction
+— host discipline after the morning's freeze): `codeSpan`/`dataSpan`
+bounds, `CodeGuard::note()` slice bounds, the link table's `kNoLink`
+init, precise eviction (`retractLink` before `release`), `serviceGuard()`
+only ever reached with `running_` false, `flushAll`'s `pendingFlush_`
+deferral under a live block, and the RBV video decoder's fixed
+`ram_.data()` base are all sound by inspection. What distinguishes the
+IIsi from the passing IIci is the Egret 344S0100 LLE and its host-paced
+VIA1 PB4 bit-bang transport (the machine's own pacing entry, 2026-07-25)
+— plus 20 vs 25 MHz. Parked with reproducer and triage order in
+`docs/JIT_BRINGUP.md` § C.4septies: crash PC first (inside the code
+buffer = wild block transfer; in a helper = bad host pointer), then the
+dispatch ring, then `POM68K_JIT_DENY_FROM/_TO` bisection.
+
+<a id="2026-08-19-make-lto-freeze"></a>
+## 2026-08-19 (second) — A full-parallel LTO make froze the host: with LTO the memory spike is the LINK, and an interrupted make leaves binaries that lie
+
+The morning after the parity night, a session wrote the C.5 flip at 08:23
+and launched a full `make` at high `-j` to validate it. At 08:32, mid-link,
+the host froze hard — no OOM kill, no journal line, nothing but the last
+binary's timestamp — and had to be power-cycled. The mechanism: with
+`POM68K_LTO=ON` (the default since 2026-08-17) **every test binary's link
+re-runs LTO over `libpom68k_core.a`, and `-flto=auto` spawns up to `nproc`
+ltrans workers per link** — so N concurrent links on a 16-core host is
+N×16 compiler processes competing for 39 GiB + 31 GiB of swap. The box
+died thrashing before `systemd-oomd` could pick a victim, which is why the
+journal is silent: a memory freeze that never reaches the killer leaves no
+trace. Compile parallelism is not the budget that matters under LTO; LINK
+parallelism is.
+
+The damage was quieter than the freeze: the interrupted make left
+**twelve 0-byte binaries** (`llap_two_system_etalon` was the link in
+flight; `savestate_030_test`, `sound_test`, `machinehost_test` and nine
+more had been truncated for relinking). A 0-byte file with a fresh mtime
+can look *up to date* to `make` — the 2026-08-16 phantom-pass lesson in a
+new costume: that day the lie was binaries older than the library, today
+it is binaries that are not binaries at all. After ANY interrupted build:
+`find build -maxdepth 1 -type f -size 0 -delete`, then rebuild.
+
+Method going forward, applied by this session: `make -j4` (the envelope
+the 2026-08-16 full run proved on this host — the constraint is memory
+per LTO link, not cores), and every heavy build or test run wrapped in
+`systemd-run --user --scope -p MemoryMax=30G -p MemorySwapMax=2G` so the
+worst case kills the job and never the host. The resumed `-j4` build
+completed in the same tree, exit 0, zero 0-byte artifacts.
 
 <a id="2026-08-19-030-codegen-parity"></a>
 ## 2026-08-19 — The 68030 code generator beats `threaded` at the default budget: the blocker was never coverage, it was an uncharge that assumed a re-run

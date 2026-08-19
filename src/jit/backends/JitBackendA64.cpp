@@ -2451,12 +2451,17 @@ public:
         // The 68030 emitter is lockstep-clean (120k gate), and since
         // 2026-08-18 the declaration says so: an explicit
         // POM68K_JIT_BACKEND=a64 on a 68030 is honoured without the unsafe
-        // override. Throughput is still the promotion blocker — two
-        // adjacent 6,000-frame measurements did not reproduce a win over
-        // `threaded` (within 3 %) — so selectBackend()'s auto path keeps
-        // resolving a 68030 to `threaded` until the fixed-budget bench
-        // says otherwise (D.1 condition 3).
+        // override.
         c.guestFamilies = kGuest68040 | kGuest68030;
+        // But NOT 030 in `autoFamilies`: this generator still carries the
+        // uncharge hole x64 fixed on 2026-08-19 (`unchargeIcache` sits
+        // ahead of a `pom68kA64Step` that can decline), and its last two
+        // 6,000-frame measurements were behind `threaded` (within 3 %).
+        // Port the charge-on-success placement, re-measure on an AArch64
+        // host, and promote on the number (D.1 condition 3) — never by
+        // symmetry with x64, whose own 030 slot waits on the IIsi
+        // segfault (JIT_BRINGUP § C.4septies).
+        c.autoFamilies = kGuest68040;
         return c;
     }
     bool canEmit(uint16_t op) const override {

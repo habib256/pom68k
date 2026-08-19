@@ -23,19 +23,19 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 
 | Fact | Where |
 |---|---|
-| x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope; `auto` still skips them on 030 (see C.5) | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackend.cpp` (the auto skip) |
+| x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope. Speed scope is the separate `caps().autoFamilies` mask (2026-08-19, the flip's vehicle): both generators carry the 68040 only — adding `kGuest68030` to x64's IS the blocked flip (§ C.4septies) — and `threaded` carries `kGuestAny` as the floor | `JitBackendX64.cpp:3268`, `JitBackendA64.cpp:2464`, `JitBackendThreaded.cpp:47`, `JitBackend.cpp` (selection) |
 | `threaded` declares `kGuestAny` and is what `auto` gives every 000/020/030 | `JitBackendThreaded.cpp:42` |
-| Selection tests guest validity *before* host ranking | `JitBackend.cpp:64-66`, `:136-139` |
-| `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:1993-2029` |
-| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2085-2135` |
-| **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h:2226-2257` |
+| Selection tests guest validity *before* host ranking | `JitBackend.cpp:63-66`, `:137-140` |
+| `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:1997-2033` |
+| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2088-2139` |
+| **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h:2287` and `:2312` |
 | The 030 i-cache overlay is charged **inside `mmuFetchWord`, before the JIT window hook** — so the fetch window and the `threaded` backend are conformant on it by construction | `MoiraExecMMU_cpp.h:408-461` |
-| `PomIcache` = MC68030UM §6: 256 B, 16 lines × 4 longwords, logical, direct-mapped, tag = A[31:8] + supervisor, per-longword valid bits, gated on `CACR` bit 0, `missPenalty` cycles per miss | `Moira.h:925-940`, rationale in `Cpu030.h:140-200` |
+| `PomIcache` = MC68030UM §6: 256 B, 16 lines × 4 longwords, logical, direct-mapped, tag = A[31:8] + supervisor, per-longword valid bits, gated on `CACR` bit 0, `missPenalty` cycles per miss | `Moira.h:1050-1082`, rationale in `Cpu030.h:152-177` + `:203-208` |
 | The cold fallback stub re-enters Moira through `pomJitExecOne()`, whose **030 branch runs `mmuExecuteStart<C68020>()`** — i.e. it fetches through `mmuFetchWord` and charges the i-cache itself | `Moira.cpp:318-348` |
-| Moira runs the 68030 on `Core::C68020` cycle counts — **the same 68020 column the x64/a64 cost tables are transcribed from** | `JitBackendX64.cpp:163-223`, `Cpu030.h:144-168` |
-| `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` asserted before the split is exposed | `JitIr.h:81-89` |
+| Moira runs the 68030 on `Core::C68020` cycle counts — **the same 68020 column the x64/a64 cost tables are transcribed from** | `JitBackendX64.cpp:190-250`, `Cpu030.h:152-177` |
+| `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` asserted before the split is exposed | `JitIr.h:949-957`, `JitEngine.cpp:891` |
 | `jit_lockstep_030_test` exists: two LC IIs, register + clock + low-RAM + **three i-cache counters** per checkpoint | `tests/jit_lockstep_030_test.cpp` |
-| The 030 emitters are reachable by EXPLICIT `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override), and by nothing else: `auto` skips native generators on 030 guests, so a shipping default cannot pick them by accident | `JitBackend.cpp` (auto skip), `jit_backend_test` pins all four cases |
+| The 030 emitters are reachable by EXPLICIT `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override) — and by `auto` on an x86-64 host once the flip commit lands (written 2026-08-19, blocked on the IIsi, § C.4septies). An AArch64 host resolves an 030 to `threaded` either way: a shipping default only reaches a generator that EARNED the (family, backend) pair on D.1 evidence | `JitBackend.cpp` (selection), `jit_backend_test` pins the per-host cases |
 
 Two consequences worth naming up front, because they cut work out of the
 plan:
@@ -100,8 +100,11 @@ timing model), and `MOVEP` never showed a number worth an emitter.
 
 `Emitter::chargeIcache` emits the MC68030UM §6 model for every natively
 emitted instruction, constant-folded as B.2 below describes, on both
-generators (`JitBackendX64.cpp:482`, `JitBackendA64.cpp:342`, each paired
-with an `unchargeIcache` on the runtime-bail door). `PomJitLayout`
+generators — differently since 2026-08-19: on x64 the charge sits on the
+SUCCESS path, past every bail, and `unchargeIcache` is deleted
+(`JitBackendX64.cpp:581`, § C.4sexies); a64 still emits the old paired
+form — charge up front, `unchargeIcache` on the runtime-bail door
+(`JitBackendA64.cpp:365`, `:412`) — pending the port. `PomJitLayout`
 carries `cacr`, the six `PomIcache` offsets and `icLive` — deliberately
 **not** `PomIcache::armed`, because a 68040 wrapper can have that flag set
 while the charge, which lives in `mmuFetchWord`, is unreachable; a backend
@@ -220,14 +223,16 @@ interpreter, one JIT, comparing all 16 registers, PC, the three stack
 pointers, SR, `clock`, the terminal instruction queue, the first 2 KB of RAM
 and the three `PomIcache` counters. Registered as `jit_lockstep_030_test`
 (threaded, budget 8192, fine from 110 000), `jit_lockstep_030_blocks_test`
-(block path forced on) and, on AArch64 only,
-`jit_lockstep_030_a64_experimental_test` (generated arm64 code under the
-unsafe override). This is not scaffolding for the rest of the phase — it *is*
+(block path forced on), and one generated-code twin per host ISA —
+`jit_lockstep_030_x64_experimental_test` on x86-64,
+`jit_lockstep_030_a64_experimental_test` on AArch64 — each under an
+explicit `POM68K_JIT_BACKEND`, no unsafe override since the 2026-08-18
+declaration. This is not scaffolding for the rest of the phase — it *is*
 the phase's value. An 030 code generator without differential coverage is
 exactly the 2026-07-30 one-hour timeout again.
 
-**C.2 / C.3 — the 030 probe and thunks — DONE**, `MoiraExecMMU_cpp.h:2085`
-and `:2226`. Three things about them that cost a round to learn:
+**C.2 / C.3 — the 030 probe and thunks — DONE**, `MoiraExecMMU_cpp.h:2088`
+and `:2287`. Three things about them that cost a round to learn:
 
 * The probe uses **data** space (`fc = super ? 5 : 1`), not the program
   space the code probe uses. The 68030 ATC tags every entry with its `fc`
@@ -261,7 +266,9 @@ reset block.
    unchanged.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
-   `restartWrite030()` (`JitBackendA64.cpp:644`): register/immediate-source
+   `restartWrite030()` (a64: the local `restartWrite` at
+   `JitBackendA64.cpp:1265`; x64 member `JitBackendX64.cpp:291`):
+   register/immediate-source
    `MOVE` to `(An)`, `(An)+`, `-(An)`, `d16(An)`, brief-indexed or absolute.
    Predecrement is performed before the access and reversed before replay;
    brief indexed needs no rollback. `jit_restart_write_030_test` is the
@@ -278,11 +285,13 @@ reset block.
    separately (`Instr::terminalIrd/terminalIrc/terminalQueueValid`) and the
    a64 branch emitters confirm their formula against it before compiling.
 4. **`mmu040MovemArmed`** (`PomJitLayout::movemArmed`) is 040 state; the
-   030's MOVEM restart contract is its own and is **not modelled**. There is
-   no explicit 030 guard on the MOVEM emitter — it is refused in practice
-   only because its cost check compares against the raw traced cycles, which
-   on an 030 include the i-cache penalty. **Make that a real guard before
-   C.5 flips the declaration**; an accident of the cross-check is not a
+   030's MOVEM restart contract is its own and is **not modelled**. The
+   explicit 030 guard on the MOVEM emitter is REAL since 2026-08-19 —
+   `if (L_.is030) return false;` on both backends
+   (`JitBackendX64.cpp:2739`, `JitBackendA64.cpp:1794`) — because it had
+   been refused in practice only by its cost check comparing raw traced
+   cycles, and `traced030` making the base rule global would have
+   un-refused it silently; an accident of the cross-check is not a
    safety property.
 5. **`mmuExecuteStart` resets a block of MMU bookkeeping on EVERY 68030
    instruction** that has no 68040 counterpart in that form
@@ -298,7 +307,7 @@ reset block.
    this**. Two fields are immediately guest-visible: `mmuCcrSave` is what a
    bus-error frame stacks, and `mmuRmw` left true from an earlier locked
    access sends every subsequent translation down the RMW path. `mmuRmw` is
-   now cleared in the a64 block prologue (`JitBackendA64.cpp:2233`) — once
+   now cleared in the a64 block prologue (`JitBackendA64.cpp:2542`) — once
    per linked chain, since `TAS` and `CAS` are its only setters and both are
    `Kind::Unsafe`. It was measured and it was **not** the cause of any
    divergence; the hole is real and the rest of the block is still open.
@@ -367,7 +376,7 @@ hidden peripheral state precedes the split. Disabling native block links made
 the whole run exact — which identifies the missing contract: **a block
 containing an 030 write cannot be crossed as a transparent native chain
 boundary.** a64 now suppresses both its published link entry and its outgoing
-links for that block alone (`JitBackendA64.cpp:2216`, `:2453`), and with
+links for that block alone (`JitBackendA64.cpp:2525`, `:2764`), and with
 every other link enabled the full 120k gate passes.
 
 #### How to reproduce and bisect
@@ -478,10 +487,17 @@ here, next to 1 976 626 for `(An)+` as a MOVE source.
 
 ### C.4quater — DBcc is refused by ONE named guard, and unlocking it buys 3 %
 
+> **Superseded 2026-08-19 — § C.4sexies item 4.** The x64 guard described
+> below is gone: `Emitter::traced030` made the base-cost rule global and
+> DBcc / conditional Bcc.W compile. The guard survives only on a64
+> (`JitBackendA64.cpp:2587`, now with a `!dbcc` carve-out), pending the
+> uncharge port. The measurement stands as the record of what the guard
+> cost.
+
 The census reads as "no emitter for `56C9`". It is not: `emitDbcc` exists,
 `canEmit(0x56C9)` says yes, and instrumenting every guard inside it logs
-**zero** refusals. The refusal is upstream of the dispatch, at
-`JitBackendX64.cpp:2684`, and it is deliberate:
+**zero** refusals. The refusal was upstream of the dispatch, in the x64
+`compile` loop, and it was deliberate:
 
 ```cpp
 if (ic_ && ir_.instrs[i].kind == Kind::Branch && ir_.instrs[i].words > 1) {
@@ -550,8 +566,11 @@ What is left unmeasured, and is where the remaining distance must be: **why
 82 % of execution is on the window path at all**, when only 66.9 % is
 explained by declined blocks and 13.5 % by the post-refusal arm backoff.
 The a64 half is a different story — within 3 % of `threaded` — and porting
-its `baseCycles` consumption and `(An)+` ordering to x86-64 remains the
-obvious coverage work, but C.4quater says not to expect parity from it.
+its `baseCycles` consumption and `(An)+` ordering to x86-64 was the
+obvious coverage work (both landed with § C.4sexies: `Emitter::traced030`
+at `JitBackendX64.cpp:471`, the restartable family at `:1789`), though
+C.4quater said not to expect parity from it alone — and it was right: the
+parity came from the uncharge fix.
 
 Where the flushes came from, named by the new `Stats::flushCauses` gauge
 (`jit::Flush`, printed by every bench): of 28 816 whole-cache flushes,
@@ -618,8 +637,10 @@ order — the full forensic narrative is `CHANGELOG.md` 2026-08-19:
    the peripheral trace, and the engine dispatch ring
    (`POM68K_JIT_DISPATCH_RING=1`).
 3. That fix re-attributes the a64 **block-link chain-boundary contract**
-   (same divergence signature): restart-write blocks link again, gates
-   green.
+   (same divergence signature): on x64, restart-write blocks take links
+   again (`JitBackendX64.cpp:3401-3410`) and the gates hold; a64 keeps its
+   link suppression (`JitBackendA64.cpp:2525`, `:2764`) until the
+   uncharge port lets it be retried there.
 4. **`Emitter::traced030` makes the base-cost cross-check the global 030
    rule** (post-exception traces never match), unlocking the whole
    2026-08-18 census — plus DBcc (a64's 2-fetch rule), conditional Bcc.W
@@ -634,7 +655,8 @@ order — the full forensic narrative is `CHANGELOG.md` 2026-08-19:
 
 **The a64 generator still carries the uncharge hole** — its
 `unchargeIcache` sits on the runtime door ahead of a `pom68kA64Step` that
-can decline (`JitBackendA64.cpp:2678`), the exact pattern fixed on x64.
+can decline (`JitBackendA64.cpp:2683`, the function at `:412`), the exact
+pattern fixed on x64.
 Latent there for the same reason it was latent here (the flush storm), it
 becomes reachable the moment an AArch64 host retires the CACR hint. Port
 the charge-on-success placement before that; the gate that judges it,
@@ -650,6 +672,48 @@ biggest known lever left. **BSR.W** and the wider single-path branch
 exemptions swap one miss for one hit at an identical pc (step 16 097) and
 stay refused.
 
+### C.4septies — the IIsi dies under the generator, and the `jit_*` 030 gates never tested it (2026-08-19, parked with reproducer)
+
+The first `-L m030` run with the flip in force: **all four IIsi gates
+SIGSEGV at ~4-5 s wall** (`iisi_boot_etalon` 5.22 s, `jit_iisi_boot_etalon`
+5.21 s, `iisi_input_etalon` 4.26 s, `iisi_persist_etalon` 5.17 s — a
+deterministic early-boot point), while every 030 platform visible around
+them boots the generator green: **the IIci passes on the same RBV board**
+(183 s), VASP (`iivx` 263 s, `iivi` 154 s), Sonora (`lc3plus` 283 s, soak
+716 s, persist 467 s), LC II (persist 202 s), IIfx. (The run's full tally
+was lost to a `| tail -40` — the 2026-08-19 (third) CHANGELOG entry owns
+that lesson; the four SegFaults and the listed greens are verbatim.)
+
+**This is latent, not a regression of the parity night** — and the way it
+hid is itself the finding: the `jit_*_boot_etalon` gates on 030 set
+`POM68K_CPU_ENGINE=jit` and nothing else, so their backend is `auto` —
+which resolved to `threaded` on every 030 until the flip. `jit_iisi` green
+on 2026-08-18 was `threaded` green. **The x64 generator had never executed
+the IIsi at all.**
+
+What a read-only pass eliminated (all audited sound): `codeSpan`/`dataSpan`
+bounds against `totalRam_`; `CodeGuard::note()` slice bounds; the link
+table's `kNoLink` init (virgin tag-0 aliasing was already handled at
+construction); precise eviction (`retractLink` before `release`, slice
+index erased with the slice); `serviceGuard()` reachable only from the
+dispatch loop with `running_` false; `flushAll` deferring under `running_`
+via `pendingFlush_` (a MOVEC-to-CACR executed by the in-block fallback is
+safe); the RBV video decoder (fixed `ram_.data()` base, screen ≪ RAM).
+What distinguishes the IIsi from the passing IIci: the **Egret 344S0100
+LLE** and its early-boot transport — the HOST-paced VIA1 PB4 bit-bang that
+already earned this machine its own pacing entry (CHANGELOG 2026-07-25) —
+plus 20 vs 25 MHz.
+
+Reproducer: any build with 030 in x64's `autoFamilies`, then
+`./build/iisi_boot_etalon` — SIGSEGV ≈ 5 s. Triage order for the next
+session: (1) `POM68K_JIT_BACKEND=threaded` must stay green; (2) get the
+crash PC (gdb or coredumpctl) — the first question is whether it lies
+INSIDE the code buffer (wild block transfer: stale link, freed block) or
+in a helper (bad host pointer); (3) `POM68K_JIT_DISPATCH_RING=1` for the
+last 8192 dispatch decisions; (4) bisect by pc with
+`POM68K_JIT_DENY_FROM/_TO`. The i-cache CONTENT compare in the lockstep
+gate does not cover this machine — the 030 lockstep is LC II only.
+
 **C.5 — flip the declaration.** SPLIT AND HALF-LANDED 2026-08-18. The
 original coupling — declaration == default — protected against the
 2026-07-30 wedge when nothing else did. Since the x64 030 lockstep went
@@ -661,18 +725,25 @@ correctness has a standing guard, so the two halves were separated:
   unsafe override. Proved by `jit_backend_test` (four pinned selection
   cases), both 120k lockstep gates, and an LC II Finder boot under
   explicit x64 (the gate that timed out at an hour on 2026-07-30).
-* **Default: NOT flipped.** `selectBackend()`'s auto path skips native
-  generators for 030 guests, because they measure SLOWER than `threaded`
-  (§ C.4quinquies) and the shipped default must be the fastest conformant
-  mode. Deleting that skip is the real C.5 flip; it fires per D.1
-  condition 3 — a fixed-budget bench win, on a quiet host — and never as
-  a side effect. C.4bis/C.4ter still say how to get there: emitter
-  coverage on the forms the **68030** census names, not residency.
-  **2026-08-19: D.1 condition 3 is now measured TRUE at 3000 frames and
-  above (§ C.4sexies), with the boot-phase budgets still threaded-faster.
-  The flip remains its own commit behind conditions 2 and 4 — the 030
-  boot etalons under the generator, and the full `-L etalon` tier with
-  the new default in force.**
+* **Default: flip WRITTEN 2026-08-19, BLOCKED on the IIsi segfault**
+  (§ C.4septies). The mechanism is in the tree: `BackendCaps::autoFamilies`
+  is the SPEED mask `auto` consults, separate from the `guestFamilies`
+  correctness mask an explicit `POM68K_JIT_BACKEND=` consults, and a
+  family enters it per (family, backend) pair on D.1 evidence only. x64
+  declares 040 only today — its 030 condition 3 is measured at the bench's
+  default budget (§ C.4sexies, −12 %), and adding `kGuest68030` to its
+  mask IS the flip, waiting on condition 4. a64 declares 040 only for its
+  own reasons: its uncharge hole
+  (§ C.4sexies) is unported and its last two 6,000-frame measurements
+  were behind `threaded` — promotion there is its own measured decision,
+  never symmetry with x64. `threaded` declares `kGuestAny`: the floor the
+  selection loop terminates on. **What the first `-L m030` run under the
+  flip found (2026-08-19): the four IIsi gates die in SIGSEGV ~5 s in,
+  while the 030 platforms visible around them — IIci included, same RBV
+  board — boot the generator green. Condition 4 is red, so the flip
+  commit waits on that fix**; below ~2500 frames `threaded` also still wins the boot
+  phase, which the flip accepts: the default is set for the session, not
+  the boot.
 
 **C.6 — the full-boot gates.** `jit_lcii_boot_etalon` on the native backend
 (this is the gate that timed out at one hour on 2026-07-30 — it is the
@@ -700,12 +771,13 @@ declaration. Decide with a number, not before.
 > default. If the JIT wins on a family and is proved bit-identical on that
 > family, the JIT is what a user gets without setting anything.
 
-`defaultEngine(bool jitByDefault)` (`JitConfig.h:45`) is no longer a
-constant; `Engine::Engine` passes `guestFamily == kGuest68040`
-(`JitEngine.cpp:129`). So `jit/auto` is the shipped default on the 68040
-machines and the interpreter everywhere else, with `POM68K_CPU_ENGINE`
-overriding in either direction. `jit_backend_test` pins all four cases
-without touching an asset.
+`defaultEngine(bool jitByDefault)` (`JitConfig.h:203`) is no longer a
+constant; `Engine::Engine` passes
+`(guestFamily & (kGuest68040 | kGuest68030)) != 0` (`JitEngine.cpp:163`).
+So `jit/auto` is the shipped default on the 68040 machines **and the
+68030 ones** — where `auto` resolves to `threaded` — and the interpreter
+everywhere else, with `POM68K_CPU_ENGINE` overriding in either direction.
+`jit_backend_test` pins the cases without touching an asset.
 
 **D.1 — the evidence bar, and it is the reusable part of this phase.** A
 (guest family, backend) pair becomes a default only when all four hold:
@@ -718,12 +790,17 @@ without touching an asset.
    faster, with matching fingerprints;
 4. the whole `-L etalon` tier is green with the new default in force.
 
-The 68030 fails (3) today, which is the whole of why C.5 has not fired.
+(68030, x86-64) holds (1) and (3) since 2026-08-19; (2) and (4) are RED on
+one machine — the IIsi segfault under the generator (§ C.4septies) — which
+is the whole of why C.5 has not fired. (68030, a64) still fails (3), so an
+AArch64 host keeps `threaded` there either way.
 
 **D.2 — the blast radius, which is the real work.** The 68040 flip changed
-what its plain `etalon` gates test: they now run the JIT, while four
-explicit `interp_{q605,centris650,q630,q700}_boot_etalon` registrations
-preserve one reference per platform. The existing `jit_*` names remain as
+what its plain `etalon` gates test: they now run the JIT, while ten
+explicit `interp_*_boot_etalon` registrations preserve one reference per
+platform — four 68040 (q605, centris650, q630, q700) and, since the
+2026-08-18 030 engine default, six 68030 (lcii, lc3, iivx, iisi, iifx,
+duo230). The existing `jit_*` names remain as
 explicit-engine regressions and for stable tooling. `docs_test` (which since
 2026-08-09 fails on any unlabelled gate) catches a row that gets missed.
 Each future family flip follows the same shape, in its own commit and never
@@ -741,9 +818,9 @@ folded into an emitter change.
 | B — emitted 030 i-cache | **correctness-proved on AArch64** by the 120k lockstep + a Finder boot; still slower than `threaded` |
 | C.1 — 030 lockstep gate | **done** (threaded, blocks, a64-experimental) |
 | C.2 / C.3 — 030 probe + thunks | **written**; validated only indirectly, their gate is C.5 |
-| C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order and the narrow restartable-write family done; the MOVEM guard and the throughput problem remain |
-| C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18** (auto still `threaded` on 030 pending D.1-3); LC II Finder boots under explicit x64; the plain-name boot gates remain to register |
-| D — default engine | **68040 landed**: `jit/auto` by default, explicit interpreter oracle per platform; 030 behind C.5/C.6 |
+| C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, the MOVEM guard and the x64 throughput win (§ C.4sexies) done; parked: the restartable-write base-cost admission and BSR.W (§ C.4sexies), the a64 uncharge port |
+| C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; default flip written 2026-08-19 and BLOCKED on the IIsi segfault** (§ C.4septies — `autoFamilies`, x64 only; a64 pending its uncharge port + own bench win). Under the flip the plain 030 boot etalons run the generator through `auto`; note the `jit_*` 030 gates pin the ENGINE, not the backend |
+| D — default engine | **68040 landed**; 68030-on-x86-64 written 2026-08-19 and blocked on the IIsi segfault (§ C.4septies; AArch64 stays `threaded` regardless), explicit interpreter oracle per platform |
 
 ## Gates this plan still adds
 

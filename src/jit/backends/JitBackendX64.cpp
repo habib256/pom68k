@@ -3253,13 +3253,19 @@ public:
         // jit_lockstep_030_x64_experimental_test gate that holds all of it
         // to 120 000 identical steps. The declaration below is therefore
         // CORRECTNESS scope: an explicit POM68K_JIT_BACKEND=x64 on a 68030
-        // is honoured without the unsafe override. It is NOT the default:
-        // selectBackend()'s auto path still resolves a 68030 to `threaded`,
-        // because the generator measures SLOWER there (JIT_BRINGUP
-        // § C.4quinquies: 21.96 s as shipped vs threaded 15.14 s, and
-        // still 16 % behind at both non-conformant ceilings) — the shipped
-        // default must be the fastest conformant mode, D.1 condition 3.
+        // is honoured without the unsafe override.
         c.guestFamilies = kGuest68040 | kGuest68030;
+        // SPEED scope. The 68030's bench condition is MET — 37.22 s vs
+        // `threaded` 42.29 s at the bench's default budget, −12 %,
+        // fingerprints identical (JIT_BRINGUP § C.4sexies) — but the
+        // family stays OUT of `auto`: the first `-L m030` run under the
+        // flip found the four IIsi gates in SIGSEGV ~5 s into boot, code
+        // this generator had never executed because the `jit_*` 030 gates
+        // pin the engine, not the backend (§ C.4septies, parked with
+        // reproducer). Adding kGuest68030 here IS the C.5 flip; it fires
+        // when the IIsi runs the generator green (D.1 condition 4), never
+        // before.
+        c.autoFamilies = kGuest68040;
         return c;
     }
 

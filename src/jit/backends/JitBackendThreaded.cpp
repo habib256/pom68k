@@ -40,6 +40,11 @@ public:
         // semantics" this file's header claims — and the reason `auto` has a
         // correct floor for the 68000/020/030 machines.
         c.guestFamilies = kGuestAny;
+        // And every guest for `auto` too: this is the floor the selection
+        // loop terminates on. kEntries ranks native generators first, so
+        // this mask never shadows a faster backend — it guarantees a
+        // correct resolution exists for every family.
+        c.autoFamilies = kGuestAny;
         return c;
     }
 

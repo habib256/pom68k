@@ -15,8 +15,10 @@
 //
 //   POM68K_BENCH_FRAMES  frames of 640×407 cycles (default 6000 ≈ 1.56 G)
 //   POM68K_CPU_ENGINE    interp (default) | jit
-//   POM68K_JIT_BACKEND   threaded | x86-64 | aarch64 (auto gives an 030
-//                        `threaded`: the code generators declare 68040 only)
+//   POM68K_JIT_BACKEND   threaded | x86-64 | aarch64 (auto consults each
+//                        backend's autoFamilies SPEED declaration — a
+//                        family is earned per backend on D.1 evidence,
+//                        JIT_BRINGUP § C.5)
 //   POM68K_BENCH_COMPARE N repeats per arm, both arms in THIS process,
 //                        counterbalanced ABBA — the only supported way to
 //                        produce a delta (docs/MEASURING.md § R1)

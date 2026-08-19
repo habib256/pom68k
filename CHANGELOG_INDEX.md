@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 251 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 253 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,8 +16,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
 | [Save states](#save-states) | 6 |
-| [Machine bring-ups](#machine-bring-ups) | 40 |
-| [Build, packaging and release](#build-packaging-and-release) | 6 |
+| [Machine bring-ups](#machine-bring-ups) | 41 |
+| [Build, packaging and release](#build-packaging-and-release) | 7 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 13 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
 | [Cross-cutting](#cross-cutting) | 32 |
@@ -245,6 +245,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-13 (sixth)** — [The beyond-boot reds were six different causes wearing one hypothesis, and the Duo was dead rather than slow](CHANGELOG.md#2026-08-13-beyond-boot-reds)
 - **2026-08-15** — [Three red boot gates and one bit: the fixture was cleanly unmounted, and the criterion was a fixture reading](CHANGELOG.md#2026-08-15-hd20sc-clean-bit)
 - **2026-08-15 (later)** — [The Duo's persist leg had been gesturing at Stickies, and the guest said so all along](CHANGELOG.md#2026-08-15-duo-stickies-front)
+- **2026-08-19 (third)** — [The C.5 flip is written, and its first tier run stopped it: the IIsi dies under the generator — code the `jit_*` 030 gates never ran](CHANGELOG.md#2026-08-19-c5-blocked-iisi)
 
 ## Build, packaging and release
 
@@ -254,6 +255,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-15 (fourth)** — [Two things the GUI was not being told: that the guest ejected the disk, and where the user put the windows](CHANGELOG.md#2026-08-15-gui-media-and-dock)
 - **2026-08-17 (fifth)** — [Nothing was linking the core under LTO, and the shape the release ships takes 87 minutes](CHANGELOG.md#2026-08-17-nightly-lto-core)
 - **2026-08-17 (third)** — [The 2026-08-08 knob split was half done: LTO's *default* still followed NATIVE](CHANGELOG.md#2026-08-17-lto-default-on)
+- **2026-08-19 (second)** — [A full-parallel LTO make froze the host: with LTO the memory spike is the LINK, and an interrupted make leaves binaries that lie](CHANGELOG.md#2026-08-19-make-lto-freeze)
 
 ## Tests, gates and measurement
 

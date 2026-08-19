@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 246 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 253 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -10,14 +10,15 @@ in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** On the AArch64 dev host with `POM68K_JIT_BACKENDS=auto`:
-  **218 gates** — 106 `unit`, 83 `asset-none`, 9 `smoke`, 37 `jit`, 51 `m040`,
-  112 `etalon` (12 of them `etalon-core`). On any other host, **216** — 104 `unit`,
-  8 `smoke`, 35 `jit`: `jit_lockstep_a64_coarse_test` and
-  `jit_lockstep_030_a64_experimental_test` are registered only under
-  AArch64 + `auto` (`CMakeLists.txt:1459-1476`), and the first also joins
-  `smoke`. Seven more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
-  (default OFF, `CMakeLists.txt:372`, and it FATAL_ERRORs off AArch64).
+  somewhere.** The documented registry: **225 gates** — 107 `unit`, 83
+  `asset-none`, 9 `smoke`, 38 `jit`, 51 `m040`, 53 `m030`, 118 `etalon`
+  (12 of them `etalon-core`). Three are host-conditional — the AArch64
+  pair `jit_lockstep_a64_coarse_test` + `jit_lockstep_030_a64_experimental_test`
+  (`CMakeLists.txt:1755-1772`, the first also joins `smoke`) and the
+  x86-64-only `jit_lockstep_030_x64_experimental_test` (`:1792-1801`) — so
+  an x86-64 configure sees **223** (105 `unit`, 8 `smoke`, 36 `jit`) and an
+  AArch64 one 224. Eight more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
+  (default OFF, `CMakeLists.txt:425`, and it FATAL_ERRORs off AArch64).
   `unit` is *not* "asset-free" — it remains the legacy "name does not end in
   `etalon`" label. `asset-none` is the manifest-declared daily tier.
 - **Last FULL suite: 206/206 on 2026-08-16** — 94/94 `-LE etalon` (206 s) +
@@ -503,7 +504,7 @@ Keys inside the image); the Cuda↔VIA phase robustness chantier (2026-08-03 —
 ## 2. Test & validation depth — the single biggest gap
 
 The gates prove **boot**, not **use**, and the machine fan-out made the ratio
-worse. Of the **37 profiles**, only **9** have any gate past the Finder
+worse. Of the **37 profiles**, only **14** have any gate past the Finder
 signature: LC II (`lcii_soak/persist/launch/floppy_etalon` +
 `lcii_savestate_etalon`), Quadra 605 (`q605_soak/persist_etalon`,
 `q605_cudalle_mouse/key_etalon`, `q605_cdrom/cdboot/cdhot_etalon`,
@@ -513,13 +514,13 @@ gates from 2026-07-29 (`lc3_`, `lc520_`, `iivx_`, `iisi_input_etalon`), the
 IIfx (`iifx_input_etalon`) and the IIvx (`iivx_soak/persist_etalon`).
 Enumerate them with
 `ctest -N | grep -E 'input_etalon|soak|persist|mouse_etalon|key_etalon|savestate_etalon'`
-rather than trusting this sentence. **The other 28 profiles are boot-to-Finder
+rather than trusting this sentence. **The other ~23 profiles are boot-to-Finder
 signature only.** A machine can pass its etalon and still be useless for real
 work.
 
 **Depth is a second axis.** **All twelve** platforms now carry the
 soak+persist pair that proves a machine *keeps* working and *writes*, and as
-of 2026-08-14 **twelve soaks and twelve persists are green** — no SKIP left on
+of 2026-08-14 **thirteen soaks and thirteen persists are registered, all green** (twelve platforms, thirteen profile pairs — the towers count twice) — no SKIP left on
 the board. The last one was the Duo's, and it took three findings to close:
 a `$91` power flag that stopped the PG&E ever cold-booting a second time, a
 trackball that had never been wired to the PMU's own quadrature counters, and
@@ -632,8 +633,11 @@ lcii, lc3, iivx, iisi, iifx, duo230). Both x86-64
 and AArch64 code generators **declare the 68030 since 2026-08-18**
 (`BackendCaps::guestFamilies`) — correctness is lockstep-gated on both ISAs
 and an explicit backend request needs no unsafe override — while `auto`
-still gives the 030s `threaded` by measured policy (the selectBackend skip;
-JIT_BRINGUP § C.4quinquies), so slower native 030 code cannot become a shipping
+still gives the 030s `threaded`: it consults the separate
+`BackendCaps::autoFamilies` SPEED mask (2026-08-19), where x64 carries the
+68040 only — its 030 bench win is measured (−12 %, JIT_BRINGUP § C.4sexies)
+but the C.5 flip is BLOCKED on the IIsi segfault under the generator
+(§ C.4septies), so unproven native 030 code cannot become a shipping
 default. Best measured figures — fixed budget, identical fingerprint on every
 engine (`POM68K_JIT.md` § 3.4, Q605, 3 000 frames): interpreter 48.51 s,
 `threaded` 28.10 s (×1.73), `x86-64` **9.71 s (×5.00)**. The ×2.68 quoted
@@ -642,6 +646,19 @@ and flattered instrument — see § 0·A.
 
 Open, in ROI order:
 
+- [ ] **Fix the IIsi SIGSEGV under the x64 generator — the C.5 flip's only
+  blocker.** All four IIsi gates die ~5 s into boot the first time the
+  generator ever runs that machine (the `jit_*` 030 gates pin the ENGINE,
+  not the backend, so `jit_iisi` green had always been `threaded` green);
+  the IIci on the same RBV board boots the generator fine. Parked with
+  reproducer and read-only triage in `docs/JIT_BRINGUP.md` § C.4septies —
+  crash PC first (code buffer = wild block transfer, helper = bad host
+  pointer), then `POM68K_JIT_DISPATCH_RING=1`, then
+  `POM68K_JIT_DENY_FROM/_TO` bisection. Once green, the flip itself is one
+  line (`kGuest68030` into x64's `autoFamilies`) behind a clean full
+  `-L etalon` tier (D.1-4), in its own commit — and the `jit_*` 030 boot
+  gates should pin `POM68K_JIT_BACKEND` explicitly so this class of hole
+  cannot recur.
 - [ ] **Port the a64 68030 deltas to x86-64 — the forms the 030's OWN
   census names.** **2026-08-19: the x86-64 generator now BEATS `threaded`
   on the LC II from ~2500 frames up — −12.0 % at the bench's default
@@ -676,10 +693,13 @@ Open, in ROI order:
     1 976 626 for `(An)+` as a MOVE source. Census the guest you are
     optimising.
   - **DBcc is not missing an emitter** — `emitDbcc` exists and refuses
-    nothing. `JitBackendX64.cpp:2684` refuses **every multi-word branch**
-    while the 030 i-cache charge is armed, because a long branch's two
-    paths fetch a different number of words and `chargeIcache()` is emitted
-    once, before the condition. Unlocking it (priced with
+    nothing. The x64 compile loop refused **every multi-word branch**
+    while the 030 i-cache charge was armed, because a long branch's two
+    paths fetch a different number of words and `chargeIcache()` was
+    emitted once, before the condition. *(Superseded 2026-08-19: the x64
+    guard is gone — DBcc, two-word Bcc and `JSR d16(PC)` compile, the
+    exemptions at `JitBackendX64.cpp:2988-3023`; a64 keeps the guard at
+    `JitBackendA64.cpp:2587` with a `!dbcc` carve-out.)* Unlocking it (priced with
     `POM68K_JIT_ICACHE_EMIT=0`, which moves the fingerprint) is worth
     residency 14.4 → 21.4 % and **3 %** of wall. The real obstacle is that
     the i-cache shadow is a compile-time model and its post-branch state is
@@ -791,7 +811,7 @@ Open, in ROI order:
   memory shifts/rotates (nothing decodes line-$E on either backend); **the
   68020 indexed modes are the big block** — a brief extension-word decoder,
   and what QuickDraw's blitters are made of; refused today at
-  `JitBackendX64.cpp:36` (the stated exclusion) and `:171-172` (`eaIndex`
+  `JitBackendX64.cpp:36` (the stated exclusion) and `:198-199` (`eaIndex`
   returns −1 for mode 6). MULU/DIVU stay fallback (data-dependent cycles —
   the cross-check refuses them honestly).
   - **The drawing census asked for by `POM68K_JIT.md` § 3.5 has been taken**
@@ -812,8 +832,8 @@ Open, in ROI order:
     it decides the same way: **scope the work brief-first**; the full format
     is a second, smaller question and not on the drawing path.
   *(Two items left this list on x86-64, 2026-08-10: `Emitter::emitScc`,
-  `JitBackendX64.cpp:1852`, emits both the register and the memory forms on
-  the 68020 cycle column, and `PEA` is native at `:1742-1755` with its own
+  `JitBackendX64.cpp:2425`, emits both the register and the memory forms on
+  the 68020 cycle column, and `PEA` is native at `:2278-2291` with its own
   `kPea` cost row. **Neither is emitted by the AArch64 backend** — that
   asymmetry is the honest remainder here.)*
 - [ ] **Compact `mmu040InstrStart`.** Eight per-instruction field resets + a
@@ -1080,7 +1100,7 @@ Deliberately NOT converted, each for a stated reason: the **compacts**
 accuracy claim for the cheapest machine to emulate) and the **IIfx** —
 whose reason is now **verified, not assumed**: `ApplePic::tick` steps one
 65C02 instruction per iteration with no idle state, so
-`ApplePic::cyclesToNextEvent()` is 1 always (`ApplePic.h:89`) and a deadline
+`ApplePic::cyclesToNextEvent()` is 1 whenever the PIC is not already in debt (`ApplePic.h:89`) and a deadline
 would collapse to a flush per cycle, replacing a 64-cycle batch with the
 worst case. The IIci is the delicate one of the
 converted set — `adbVia_.tick` + `syncTo(machineClock())` every tick is a
@@ -1166,7 +1186,7 @@ Two findings from that batch that are still load-bearing:
   solved: _FP68K binds the integer PACK 4"; gate `q605_barefpu_boot_etalon`
   reaches the Finder under a true `FPUModel::NONE`). **Unverified whether the
   030/LC II path still needs the same UniversalInfo / defaultRSRCs selection**
-  (`POM68K_NOFPU` at `main.cpp:1828,1841`; the FPU model itself is set in
+  (`POM68K_NOFPU` at `main.cpp:1874,1887`; the FPU model itself is set in
   `Cpu030.cpp:46`) — re-test before spending effort here; the original O6.13
   diagnosis may already be obsolete.
 
@@ -1194,10 +1214,10 @@ ascending operand longs, raw FP image matched to WinUAE, `:403-447`).
   XPRAM on V8/Sonora/VASP/Q605/Q630/Centris/Q700/IIsi; PG&E internal RAM +
   SRAM on the Duo.)*
 - [ ] **Floppy**: external-drive selection. `Iwm::attachDrive` takes a second
-  `SonyDrive*` (`Iwm.h:22`) but every 800K machine passes `nullptr` for it —
-  `MacMemory.cpp:54`, `MacIIMemory.cpp:129`, `IIfxMemory.cpp:129`,
-  `RbvMemory.cpp:160`, `SonoraMemory.cpp:119`, `VaspMemory.cpp:89`,
-  `V8Memory.cpp:271/274`. The SWIM2 boards already pass two
+  `SonyDrive*` (`Iwm.h:23`) but every 800K machine passes `nullptr` for it —
+  `MacMemory.cpp:59`, `MacIIMemory.cpp:129`, `IIfxMemory.cpp:129`,
+  `RbvMemory.cpp:161`, `SonoraMemory.cpp:120`, `VaspMemory.cpp:91`,
+  `V8Memory.cpp:268/271`. The SWIM2 boards already pass two
   (`Q605Memory.cpp:45`, `CentrisMemory.cpp:29`, `Q630Memory.cpp:41`,
   `Q700Memory.cpp:140`), so this is a per-machine wiring gap, not a device
   one. *(Write support, GCR write-back and host file persistence are DONE —
@@ -1256,9 +1276,9 @@ default (`POM68K_APPLETALK=0` disables it). Gates `atalk_stack_test`,
 `afp_server_test`, `pap_server_test`, `macip_gw_test`. Reference:
 `docs/APPLETALK.md` § 6.5.
 
-- [ ] **The lapENQ address-defence ACK does not use the express path its own
-  comment promises.** `src/AtalkStack.cpp:88-96` claims *"the express path keeps
-  the ACK inside the prober's window, like the cable's synthesized CTS"*, but the
+- [ ] **The lapENQ address-defence ACK can lose the prober's race** (the
+  comment at `src/AtalkStack.cpp:94-98` now states this plainly — it used
+  to promise an express path that never existed). The
   only production binding of `stack_.sendFrame` appends to `pending_`
   (`AtalkHub.h:80-90`) and the flush at `AtalkHub.h:69` calls
   `injectRxFrame(0, d, n, /*express=*/false)` — one tick later, then further
@@ -1354,7 +1374,7 @@ Explicitly **out of scope** for now: AV DSP, all 4 MB PPC ROMs.
   /PMU_INT level, `MscMemory::decodeScreen` (fixed 640×400 LCD, grayscale by
   GSC reg 4 bits 0-1), gate `duo230_boot_etalon` (System 7.5.5, SCSI 3448
   cmds), and since 2026-08-06 **the Duo 230 is the 37th GUI profile** —
-  `runDuo` (`main.cpp:5087`), `MachineKind::Duo`, `SnapMachine::Duo230 = 37`,
+  `runDuo` (`main.cpp:5221`), `MachineKind::Duo`, `SnapMachine::Duo230 = 37`,
   PRAM through the PG&E's own RAM + 32 KB SRAM, save states in
   `savestate_030_test`. `docs/DUO_BRINGUP.md` § 3b lists what is deliberately
   NOT wired (floppy, drive sounds, live CD-bay swap, right mouse button — all
@@ -1414,7 +1434,7 @@ Local, never committed (`hdv/` is gitignored): Infinite Mac copies of System 4.1
 `HD20SC.vhd`, `boot.vhd` / `GISTPERSO-boot.vhd`, `MacOS-8.1-boot.vhd`.
 (`MacOS-7.6-boot.vhd` was deleted as corrupt — the refusal it triggered is
 closed, `CHANGELOG.md` 2026-08-13 (seventh); `runIIfx` still probes for it
-first and falls through to `GISTPERSO-boot.vhd`, `main.cpp:1450-1452`.)
+first and falls through to `GISTPERSO-boot.vhd`, `main.cpp:1479-1481`.)
 Full tree also at `../refs/infinite-mac/Images`. Missing files: fetch with
 **Scrapling** (not raw `curl` through the sandbox proxy) — `Fetcher.get` /
 `scrapling extract get` on
@@ -1443,9 +1463,9 @@ that silently falls behind is worse than none, because it looks complete).
 
 - [ ] **[AR] The `run*()` bodies are the remaining half of the hosting work.**
   The hosting is unified; the **eleven** `run*()` functions
-  (`main.cpp:1063-5350`, one per platform except the compacts, which run inline
-  in `main()`) are not. `runCentris()` (`:3941`, ~360 l.) and `runQ700()`
-  (`:4301`, ~368 l.) still share the great majority of their bodies after
+  (`main.cpp:1075-5490`, one per platform except the compacts, which run inline
+  in `main()`) are not. `runCentris()` (`:4060`, ~360 l.) and `runQ700()`
+  (`:4425`, ~368 l.) still share the great majority of their bodies after
   normalising platform identifiers — and the diff is almost entirely a
   *descriptor*: model selection from an env knob → name / clock / machine ID,
   RAM size, PRAM file suffix, which clock source takes the host time, window
@@ -1456,7 +1476,7 @@ that silently falls behind is worse than none, because it looks complete).
   re-measure before quoting it.)*
 - [ ] **[AR] Separate fixture roles, then version them.** The gates never write
   their images (`ScsiDisk::open()` defaults `writeBack = false` at
-  `ScsiDisk.h:50`, and **no test anywhere passes `true`**; `q605_persist_etalon`
+  `ScsiDisk.h:67`, and **no test anywhere passes `true`**; `q605_persist_etalon`
   replays its reboot against the in-memory image) — but the GUI attaches the
   *same* `hdv/*.vhd` with `attachScsi(path, true)`, **twelve boot-volume sites**
   plus eleven secondary-disk loops. A mutable, unversioned file is not a
@@ -1489,8 +1509,6 @@ that silently falls behind is worse than none, because it looks complete).
   `POM68K_LLE_AARCH64_*`): one broad one re-opens the hole. The two knobs the
   wildcard had been hiding, `POM68K_JIT_A64_STORE_GUARD_OPCODE` (§ 0·A) and
   `POM68K_JIT_ICACHE_EMIT`, are documented in `src/jit/POM68K_JIT.md` § 6.
-  Residual, code-side: `config_test.cpp:6` still says "133 distinct names" in
-  its header comment — a stale comment, not a gate failure.
   **Expiry: still not done.** The bring-up probes declare their chantier; the
   other ~140 entries still do not say whether they are a permanent product
   option (which earns a gate) or a chantier leftover. That is a decision per
@@ -1498,28 +1516,22 @@ that silently falls behind is worse than none, because it looks complete).
   (The `KNOB=0` trap — many knobs test only for existence, so zero *activates*
   them — is documented once, in `DEV.md` § 5's preamble. Do not re-list it
   here.)
-- [ ] **`quadra_event_scheduler_test` silently drops out of `ctest -L m040`.**
-  `CMakeLists.txt:880` sets `LABELS "m040;unit"` explicitly, but the derivation
-  loop at `:1794-1820` **overwrites** labels rather than appending, and the name
-  does not match the m040 regex (`quadra6|quadra8` does not match `quadra_`).
-  Fix: add `quadra_event` to the regex at `:1819`, or move the explicit
-  `set_tests_properties` after the loop. The same overwrite drops the inline
-  `a64` label on the LLE preflight gates (`:1618/1625/1631`), so `ctest -L a64`
-  matches nothing while `-L a64-oracle` does — only reachable with
-  `POM68K_PRODUCT_LLE_GATES=ON`. While there: the comment at
-  `CMakeLists.txt:1766-1777` still says `etalon` is 81 gates; it is 91.
-- [ ] **The Machine menu makes "Macintosh II" unclickable once IIx is picked.**
-  `src/main.cpp:866` matches the current profile with
-  `std::strstr(e, pr.envVal) != nullptr`, i.e. **substring**, and the Mac II
-  group's `envVal`s are `ii` / `iix` / `iicx` / `se30`. Selecting "Macintosh
-  IIx" sets `POM68K_MACII_MODEL=iix`, after which `strstr("iix", "ii")` is
-  non-null and both rows compute `isCur = true` — the `&& !isCur` guard then
-  swallows the plain Mac II row. This is the exact class of bug the comment at
-  `:805-808` says was already fixed once; the fix was incomplete. Use `strcmp`
-  (case-insensitive for the hex IDs). No other group overlaps. Secondary: the
-  `ii` token is dead anyway — the dispatch at `:5544-5548` only recognises
-  `iicx`/`se30`/`fdhd` and reaches the plain Mac II by ROM checksum
-  (`$9779D2C4`), while `fdhd` is a runtime-only token with no catalogue row.
+- [x] **`quadra_event_scheduler_test` silently drops out of `ctest -L m040`
+  — FIXED 2026-08-12.** The derivation loop now MERGES explicit labels
+  instead of overwriting (`CMakeLists.txt:2174-2188`), and the registry
+  confirms the gate carries `unit,m040`. Residual to verify once with
+  `POM68K_PRODUCT_LLE_GATES=ON`: that the inline `a64` label on the LLE
+  preflight gates survives too (the merge fix should cover it). While
+  there: the etalon-count comment now at `CMakeLists.txt:2106-2119` says
+  91; the registry says **118** — update it on the next pass through that
+  file.
+- [x] **The Machine menu makes "Macintosh II" unclickable once IIx is picked
+  — FIXED 2026-08-12** (`src/main.cpp:840-853` matches EXACT
+  case-insensitive, not `strstr`). Secondary observations that still hold:
+  the `ii` token is dead — the runtime dispatch (`:5688-5691`) only
+  recognises `iicx`/`se30`/`fdhd` and reaches the plain Mac II by ROM
+  checksum (`$9779D2C4`) — and `fdhd` is a runtime-only token with no
+  catalogue row.
 - [ ] **Save states — one residual.** The feature ships across all **12**
   machine families and **37** profiles (archive core `src/SaveState.h/.cpp`,
   container `SaveStateMachines.h/.cpp`, `MoiraSnapshot.h`, GUI/CLI wiring in

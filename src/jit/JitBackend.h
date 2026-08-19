@@ -97,6 +97,24 @@ struct BackendCaps {
     // machine nobody tested it against. That is the failure this field
     // exists to prevent.
     uint32_t guestFamilies = 0;
+
+    // Bitmask of GuestFamily `auto` may RESOLVE to this backend — the SPEED
+    // declaration, where `guestFamilies` above is the correctness one, and
+    // the two are deliberately separate (JIT_BRINGUP § C.5): a family
+    // enters this mask per (family, backend) pair on D.1 evidence — the
+    // lockstep gate, the boot etalons, a fixed-budget bench win and the
+    // full etalon tier — never as a side effect of an emitter growing.
+    // Defaults to 0 like `guestFamilies`, and for the same reason: a new
+    // backend earns its place in `auto` with a measurement. An explicit
+    // POM68K_JIT_BACKEND=<name> consults `guestFamilies` only.
+    //
+    // History: x64 has carried the 68040 since J2. Its 68030 bench win is
+    // measured (−12 % at the default budget, JIT_BRINGUP § C.4sexies) but
+    // the family waits on the IIsi segfault under the generator
+    // (§ C.4septies) — adding it is the C.5 flip. a64 stays 68040-only
+    // until the uncharge fix is ported and its own bench win is measured
+    // on an AArch64 host.
+    uint32_t autoFamilies = 0;
 };
 
 // A backend's compiled artefact. Opaque above this header: the threaded
