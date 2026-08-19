@@ -22,6 +22,7 @@
 //   7. native JIT backends consume, but never recreate, memory semantics
 //   8. A64/x64 dispatch, extensions, EAs and control come from Instr
 //   9. performance policy is keyed by workload, guest family and host
+//  10. every `file:line` citation that resolves in-tree lands inside the file
 //
 // Check 4 is here because it caught a live one the day it was written: four
 // gates — the three IIfx ones and `duo230_boot_etalon` — were registered
@@ -613,6 +614,115 @@ int main() {
         check(source.find("detail::env") == std::string::npos &&
               source.find("getenv(") == std::string::npos,
               std::string(relative) + " has no private live environment policy");
+    }
+
+    // ── 10. Every `file:line` citation the docs make lands inside the file ─
+    // The house rule is "cite file + line range in comments", and the docs
+    // follow it several hundred times over. Line numbers are the one kind of
+    // reference that rots with every unrelated edit above them, silently:
+    // nothing in the build reads them, so a citation can point twenty lines
+    // past the end of its file and every gate stays green. The 2026-08-19
+    // pass found three that had — `SaveStateMachines.h:96-155` on a
+    // 113-line header among them.
+    //
+    // This is deliberately the WEAK half of the claim: it proves the range
+    // exists, not that it says what the sentence says. A wrong-but-in-range
+    // citation still needs a reader. Mechanising the sound half is cheap
+    // insurance against the failure that cannot be read at all.
+    //
+    // Only citations that resolve inside this tree are judged. A doc naming
+    // `mac128.cpp:1317` is quoting MAME, which is not vendored here; those
+    // resolve to nothing and are skipped rather than guessed at. The
+    // POM68K/MAME naming split makes that safe — `Iwm.cpp` is ours,
+    // `iwm.cpp` is theirs.
+    {
+        const std::string root =
+            claude.substr(0, claude.size() - std::string("CLAUDE.md").size());
+
+        std::vector<std::string> docs = {
+            "CLAUDE.md", "README.md", "DEV.md", "TODO.md",
+            "src/jit/POM68K_JIT.md", "extern/moira/POM68K_VENDOR.md",
+        };
+        {   // …and every research note under docs/, including tomorrow's.
+            std::error_code ec;
+            std::vector<std::string> notes;
+            for (const auto& entry :
+                 std::filesystem::directory_iterator(root + "docs", ec))
+                if (!ec && entry.is_regular_file() &&
+                    entry.path().extension() == ".md")
+                    notes.push_back("docs/" + entry.path().filename().string());
+            std::sort(notes.begin(), notes.end());
+            docs.insert(docs.end(), notes.begin(), notes.end());
+        }
+
+        // First hit wins, so a bare `CMakeLists.txt` is the repo's own.
+        static const char* const kRoots[] = {
+            "", "src/", "src/jit/", "src/jit/backends/", "tests/", "tools/",
+            "oracle/", "extern/moira/Moira/", ".github/workflows/",
+        };
+        auto lineCount = [](const std::string& path) {
+            std::ifstream file(path);
+            int lines = 0;
+            for (std::string ignored; std::getline(file, ignored); ) lines++;
+            return lines;
+        };
+
+        int cited = 0;
+        for (const std::string& doc : docs) {
+            const std::string text = slurp(root + doc);
+            if (text.empty()) continue;
+            std::vector<std::string> stale;
+            for (size_t i = text.find('`'); i != std::string::npos;
+                 i = text.find('`', i + 1)) {
+                const size_t end = text.find('`', i + 1);
+                if (end == std::string::npos) break;
+                const std::string token = text.substr(i + 1, end - i - 1);
+                i = end;
+                // `<path>.<ext>:<first>[-<last>]`, nothing else.
+                const size_t colon = token.rfind(':');
+                if (colon == std::string::npos || colon == 0) continue;
+                const std::string path = token.substr(0, colon);
+                const std::string span = token.substr(colon + 1);
+                if (path.find('.') == std::string::npos ||
+                    path.find(' ') != std::string::npos) continue;
+                int first = 0, last = 0;
+                {
+                    size_t k = 0;
+                    while (k < span.size() && std::isdigit(uint8_t(span[k])))
+                        first = first * 10 + (span[k++] - '0');
+                    if (k == 0) continue;
+                    last = first;
+                    if (k < span.size() && span[k] == '-') {
+                        last = 0;
+                        size_t d = ++k;
+                        while (k < span.size() && std::isdigit(uint8_t(span[k])))
+                            last = last * 10 + (span[k++] - '0');
+                        if (k == d) continue;
+                    }
+                    if (k != span.size()) continue;      // not a pure range
+                }
+                std::string resolved;
+                for (const char* base : kRoots) {
+                    const std::string candidate = root + base + path;
+                    if (std::filesystem::is_regular_file(candidate)) {
+                        resolved = candidate;
+                        break;
+                    }
+                }
+                if (resolved.empty()) continue;          // not ours to judge
+                cited++;
+                const int lines = lineCount(resolved);
+                if (std::max(first, last) > lines)
+                    stale.push_back(token + " (" + path + " has " +
+                                    std::to_string(lines) + " lines)");
+            }
+            for (const std::string& one : stale)
+                check(false, doc + " cites `" + one + "`");
+            check(stale.empty(), doc + ": every in-tree file:line citation "
+                                       "lands inside its file");
+        }
+        check(cited > 100,
+              "in-tree file:line citations judged (" + std::to_string(cited) + ")");
     }
 
     const std::string enginePath = testasset::find("src/jit/JitEngine.cpp");

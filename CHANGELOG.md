@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 253 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 254 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -308,6 +308,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-19 (fourth)** — [A doc/code consistency pass, and the half of it that is now a gate](#2026-08-19-doc-code-consistency)
 - **2026-08-19 (third)** — [The C.5 flip is written, and its first tier run stopped it: the IIsi dies under the generator — code the `jit_*` 030 gates never ran](#2026-08-19-c5-blocked-iisi)
 - **2026-08-19 (second)** — [A full-parallel LTO make froze the host: with LTO the memory spike is the LINK, and an interrupted make leaves binaries that lie](#2026-08-19-make-lto-freeze)
 - **2026-08-19** — [The 68030 code generator beats `threaded` at the default budget: the blocker was never coverage, it was an uncharge that assumed a re-run](#2026-08-19-030-codegen-parity)
@@ -561,6 +562,81 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-19-doc-code-consistency"></a>
+## 2026-08-19 (fourth) — A doc/code consistency pass, and the half of it that is now a gate
+
+A sweep of the whole documentation set against the tree it describes, run
+from a clean clone with `docs_test` and `config_test` green throughout — so
+everything below is drift the two existing documentation gates cannot see,
+which is the useful part of the result.
+
+**Numbers that had moved.**
+
+* `peripheral_lle_test` reports **37** checks. `DEV.md` § 6 said 25 and
+  `LLE_VS_HLE.md` § 2 said 39 — the same gate, two documents, both wrong and
+  in opposite directions. `CLAUDE.md` had the right figure, which is how the
+  disagreement was visible at all.
+* The `EXCLUDE_FROM_ALL` dev tools are **18**, not 17: `q605_rogue_census`
+  joined them on 2026-08-18 and the sentence naming the count did not move.
+* Last FULL suite: `CLAUDE.md` and `TODO.md` both still quoted **206/206 on
+  2026-08-16, 4 h 30 sequential**, two days after the parallel
+  **222/222 in 2 h 11** that superseded it
+  ([2026-08-18 (fourth)](#2026-08-18-method-audit)). A status line that
+  under-reports the suite is not harmless: it is the line a reader consults
+  before deciding a whole run is too expensive to do.
+
+**Citations that had rotted.** `DEV.md` sent a reader to
+`V8Memory.cpp:58-66` for the Color Classic's DFAC2 I2C ACK and landed them
+in a hash helper — the call is at `:137-141`. `POM68K_VENDOR.md` pointed at
+`CMakeLists.txt:646-666` for the SST corpus variables, twenty lines of
+unrelated test registration; they are at `:728-748`. `LLE_VS_HLE.md` cited
+`SaveStateMachines.h:96-155` on a **113-line** header, and put the 37
+`SnapMachine` tags in that file — they live in `MachineCatalog.h:35-49`, as
+`DEV.md` says correctly two hundred lines earlier. `HLE_OVERLAY.md` repeated
+the same wrong home for `SnapMachine`.
+
+**One claim that had become false.** `HLE_OVERLAY.md` still described the
+Eclipse Q900/Q950 as the one HLE registration with **no** stderr notice,
+"unconditional rather than a fallback". That stopped being true on
+2026-08-14, when the towers got the factory `341s0851` on a real 68HC05 —
+`LLE_VS_HLE.md` records the change and `CLAUDE.md` states the consequence
+("no unconditional HLE"), so the design study was the last document still
+carrying the old world. The eight fallback sites are now enumerated with
+what they actually are: one shared `pom68k::fw::select` printing the notice
+(`FirmwareChoice.h:106-110`), which is why a site cannot forget it.
+`LLE_VS_HLE.md`'s own list said "six memory classes" while the next sentence
+explained that `Q700Memory` had become the seventh.
+
+**And one the file had already diagnosed itself.** `DEV.md` § 5 ends with a
+paragraph saying `POM68K_Q700_MODEL` "belongs with **Machine selection**
+above" — the list it belongs in is fifteen lines up and does not name it.
+`config_test` passes either way: the knob *is* documented, just not where a
+reader looking for machine selection would find it. It is in the list now
+and the dangling paragraph is gone.
+
+**The gate.** `docs_test` grows check 10: every `` `file:line` `` citation
+that resolves inside this tree must land inside its file. **438** of them
+do, across 21 documents. This is deliberately the weak half of the claim —
+it proves the range exists, not that it says what the sentence says, so
+`V8Memory.cpp:58-66` (in range, wrong code) would still have needed a
+reader. But `SaveStateMachines.h:96-155` on a 113-line header is the failure
+mode nothing else can catch, because nothing in the build reads a line
+number: the citation rots with every unrelated edit above it and every gate
+stays green. Only in-tree paths are judged; a doc quoting `mac128.cpp:1317`
+is quoting MAME, which is not vendored here, and the POM68K/MAME naming
+split (`Iwm.cpp` ours, `iwm.cpp` theirs) is what makes "resolves to nothing,
+skip it" safe rather than a guess.
+
+Verified on a from-scratch configure of a clean clone (x86-64, GCC 13.3,
+`-DCMAKE_BUILD_TYPE=Release`): `ctest -N` 223 as the file predicts for this
+host, `docs_test` and `config_test` green, and the `asset-none` tier
+**83/83 in 1.30 s at `-j4`** on binaries built for this run — no 0-byte
+executables. Check 10 was proved to bite before it was trusted: pointing one
+`Moira.h` citation at line 99 777 turns the gate red naming the file and its
+real length.
 
 ---
 

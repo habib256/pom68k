@@ -379,7 +379,7 @@ Functional accuracy (O6).
   - **Color Classic** — Spice, PA `$82`, fixed sense 2, SWIM2 in the gate
     array, **factory Cuda 341S0417 (2.35) firmware LLE, default since
     2026-07-29**; the long-standing "0417 wedge" was the missing DFAC2 I2C
-    ACK, not an M68hc05 bug (`CudaLle::setI2cDfac`, `V8Memory.cpp:58-66`).
+    ACK, not an M68hc05 bug (`CudaLle::setI2cDfac`, `V8Memory.cpp:137-141`).
     341S0788 (2.37) stays as the no-0417 fallback.
   - **Mac TV** — its own `$EAF1678D` Tinker Bell ROM (PA id `$84`, fixed
     640×480 sense 6, 8 MB cap, 68030 @ 31.3344 MHz), *not* the EDE66CBD
@@ -1395,7 +1395,10 @@ below.
 **Machine selection** (README documents these in prose):
 `POM68K_MACII_MODEL`, `POM68K_LC3_PLUS`, `POM68K_AIO_ID`, `POM68K_IIVI`,
 `POM68K_Q605_ID`, `POM68K_CENTRIS_MODEL`, `POM68K_CENTRIS610` (legacy
-alias), `POM68K_Q630_ID`, `POM68K_MONITOR`.
+alias), `POM68K_Q700_MODEL` (`q700` / `q900` / `q950` on the discrete-040
+board — the GUI menu sets it before relaunching, and a `$3DC27823` ROM
+overrides it: that dump IS a Quadra 950 whatever the environment
+inherited), `POM68K_Q630_ID`, `POM68K_MONITOR`.
 
 **CPU configuration** — one family per line. Only the Q605 pair was
 documented before 2026-07-31:
@@ -1559,11 +1562,6 @@ are documented with the rest of the Q900 group above.)
 | `POM68K_PGE_PCCOUNT` | same | `="hex,hex,…"` execution counts + first hits for named PMU firmware addresses |
 | `POM68K_PGE_PCHIST` / `POM68K_PGE_PCWIN` | same | PMU PC histogram and its window — where the 68HC05 actually spends its time |
 
-`POM68K_Q700_MODEL` belongs with **Machine selection** above: it picks
-`q700` / `q900` / `q950` on the discrete-040 board (the GUI menu sets it
-before relaunching, and a `$3DC27823` ROM overrides it — that dump IS a
-Quadra 950 whatever the environment inherited).
-
 **Retired** — names that must NOT come back without a new decision. Listed
 because a knob that vanishes silently leaves its documentation looking
 current:
@@ -1672,7 +1670,7 @@ which is how `quadra_event_scheduler_test` lost `m040` for two weeks.
 
 Asset-dependent gates soft-skip when the user-provided ROM/disk images are
 absent. The whole-machine `*_trace` binaries (`sony_trace`, `lcii_sony_trace`,
-`q605_trace`, `duo_trace`, `iifx_trace`, …) are among the 17
+`q605_trace`, `duo_trace`, `iifx_trace`, …) are among the 18
 `EXCLUDE_FROM_ALL` dev tools, not gates — and the gate is the `add_test`
 NAME, which is not always the binary name (`macii_mouse_trace` registers as
 `macii_mouse_etalon`; `compact_boot_etalon` backs four gates under four other
@@ -1784,7 +1782,7 @@ reports a substitute, which is what makes the stderr policy hold for a
 GUI-only user; it never re-opens after being closed, and never appears on a
 fully-LLE machine.
 
-Gate: `peripheral_lle_test` (`unit`, 25 checks) covers the model —
+Gate: `peripheral_lle_test` (`unit`, 37 checks) covers the model —
 registration, the product-mode contract, the reason on all three paths,
 `dumpAvailable` against a real file, and the env mapping including the
 re-assert that makes an undo undo. The **window itself is compile-verified
@@ -1842,7 +1840,7 @@ criterion (`tests/FinderSignature.h`).
 Pinned CPU vector suites, which are gates in their own right:
 `sst68000` (**1 000 058** accepted SingleStepTests 68000 vectors),
 `sst68030` (**3 082** pinned integer/MMU/bus-fault/FPU vectors from the
-WinUAE/Hatari oracle; rulings D1-D22 in `oracle/fuzz/disputes/NOTES.md`),
+WinUAE/Hatari oracle; rulings D1-D23 in `oracle/fuzz/disputes/NOTES.md`),
 `sst68040` (**7 200/7 200** integer/random/MMU vectors).
 
 ---

@@ -1,7 +1,7 @@
 # TODO
 
 **Active work only.** Resolved work, investigation trails and design rationale
-live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 253 dated entries by
+live in `CHANGELOG.md` (`CHANGELOG_INDEX.md` groups its 254 dated entries by
 subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
@@ -21,18 +21,23 @@ re-verify before quoting them anywhere:
   (default OFF, `CMakeLists.txt:425`, and it FATAL_ERRORs off AArch64).
   `unit` is *not* "asset-free" — it remains the legacy "name does not end in
   `etalon`" label. `asset-none` is the manifest-declared daily tier.
-- **Last FULL suite: 206/206 on 2026-08-16** — 94/94 `-LE etalon` (206 s) +
-  112/112 `-L etalon` (15 956 s), sequential, on a tree rebuilt from scratch
-  first (`make -j4`, `BUILD_EXIT=0`, zero 0-byte binaries). That is the WHOLE
-  registry on this host, and the first such run since the gate count started
-  moving: the previous claim here was 162/162 on 2026-08-07, which predated
-  ~20 gates. The same day's earlier run of the same tiers found **ten** reds
-  in five unrelated causes (`CHANGELOG.md` 2026-08-16) — which is what a suite
-  that has not been run whole for nine days looks like.
+- **Last FULL suite: 222/222 on 2026-08-18** — the whole registry on this
+  host and the first PARALLEL whole-registry run the project has quoted:
+  208 gates at `-j16` in 1 h 27 on the calibrated slot budgets, then the two
+  families the RAM model cannot see (Q700/Eclipse, which share `Q700Memory`,
+  and the UDP-port AppleTalk gates) serialized in 43 min, 14/14 — 2 h 11
+  total against the 4 h 30 sequential habit, on relinked binaries with the
+  freshness guard green before the tier (`CHANGELOG.md` 2026-08-18 (fourth)).
+  The previous claim here was 206/206 on 2026-08-16, 4 h 30 sequential; the
+  same day's earlier run of the same tiers found **ten** reds in five
+  unrelated causes (`CHANGELOG.md` 2026-08-16) — which is what a suite that
+  has not been run whole for nine days looks like.
   **The `make` is part of the claim, not the decor**: an earlier 143/143 in
   August ran over binaries linked at different times and proved nothing —
   `ctest` does not compile. A phantom failure gets investigated; a phantom pass
-  gets quoted.
+  gets quoted. The same freshened tree's first tier run then found a red the
+  stale one had hidden for a day (`sst68030` 3068/3082, closed by ruling
+  D23).
 - **37 machine profiles** = 37 `kMachineProfiles` rows in
   `src/MachineCatalog.h`, each carrying its stable `SnapMachine` id = 21
   `MachineKind` values over **12** platform implementations. `docs_test`
