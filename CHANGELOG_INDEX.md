@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 253 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 254 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -18,7 +18,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 6 |
 | [Machine bring-ups](#machine-bring-ups) | 41 |
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 13 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 14 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
 | [Cross-cutting](#cross-cutting) | 32 |
 
@@ -272,6 +272,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-09 (fifth)** — [Four gates carried no label at all, and the folder the persist gate said was never created was there all along](CHANGELOG.md#2026-08-09-tiers-and-gates)
 - **2026-08-16** — [Ten red gates, five causes, and the two that were never going to be found by reading](CHANGELOG.md#2026-08-16-ten-red-gates)
 - **2026-08-18 (fourth)** — [The measurement method measured itself: the floor was 6× too loose, the freshness guard cried wolf, and the A/B is now ABBA in one process](CHANGELOG.md#2026-08-18-method-audit)
+- **2026-08-19 (fourth)** — [A doc/code consistency pass, and the half of it that is now a gate](CHANGELOG.md#2026-08-19-doc-code-consistency)
 
 ## Documentation, audits and reviews
 

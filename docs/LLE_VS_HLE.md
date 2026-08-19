@@ -934,11 +934,11 @@ Neither is a hardware deviation, but both make choices a reader should know.
   snapshot carrying an identity checksum plus whatever the guest modified.
   Snapshots are same-version artifacts (header pins format version + machine
   profile; mismatch is refused). Coverage is the whole tree: `save`/`load`
-  overloads for **all twelve** machine families (`SaveStateMachines.h:96-155`,
-  the **37** `SnapMachine` tags at `:51-89` — one per PROFILE, not per class,
-  because identity twins share a ROM and the header checksum cannot tell them
-  apart), gated by `savestate_test`,
-  `savestate_v8_test`, `savestate_030/040/68k_test`, `lcii_savestate_etalon`,
+  overloads for **all twelve** machine families (`SaveStateMachines.h:53-110`,
+  the **37** `SnapMachine` tags in `MachineCatalog.h:35-49` — one per PROFILE,
+  not per class, because identity twins share a ROM and the header checksum
+  cannot tell them apart), gated by `savestate_test`, `savestate_v8_test`,
+  `savestate_030/040/68k_test`, `lcii_savestate_etalon`,
   `q605_savestate_etalon`.
 - **JIT** (`src/jit/`, `POM68K_JIT.md`): a second execution engine, the
   conformant default on validated 68040 guests and opt-in elsewhere. The
@@ -979,11 +979,15 @@ The fallbacks are **kept** — MCU dumps are user-provided and not
 distributable, and without an Egret/Cuda the V8-class machines cannot boot at
 all — but **never silent on a fallback path**: every entry into an HLE ADB
 *fallback* prints a
-NON-CONFORMANT-substitute notice naming the missing dump — six memory classes
-(`V8Memory.cpp:182-190`, `SonoraMemory.cpp:71-77`, `VaspMemory.cpp:41-45`,
-`RbvMemory.cpp:52-56`, `Q605Memory.cpp:105-110`, `Q630Memory.cpp:93-98`) plus
-`AdbVia` itself (`AdbVia.cpp:63-68`), which covers the compacts, the Mac II,
-Centris and Q700 families. Since 2026-08-12 each of those entries also
+NON-CONFORMANT-substitute notice naming the missing dump — seven memory
+classes (`V8Memory.cpp:164-174`, `SonoraMemory.cpp:51-67`,
+`VaspMemory.cpp:26-37`, `RbvMemory.cpp:35-47`, `Q605Memory.cpp:96-106`,
+`Q630Memory.cpp:78-88`, and `Q700Memory.cpp:46-58` since 2026-08-14) plus
+`AdbVia` itself (`AdbVia.cpp:51-61`), which covers the compacts, the Mac II,
+Centris and Q700 families. All eight go through the one shared
+`pom68k::fw::select`, which is where the notice is actually printed
+(`FirmwareChoice.h:106-110`) — a site cannot forget it. Since 2026-08-12
+each of those entries also
 registers the module in `pom68k::lle` (`src/LleSession.h`), so the session has
 one authoritative purity answer and the save state carries it. **There is no
 silent registration left**: the Eclipse Q900/Q950 used to run the Egret HLE
@@ -1020,7 +1024,7 @@ the DFAC2 ACK, the AIO ROM livelocks on 2.37's pseudo-command `$0E`). The
 window lists every dump found beside the candidates, marks the factory parts
 and the loaded one, and accepts an arbitrary path.
 
-Gate: `peripheral_lle_test` (the model — 39 checks, including that a dump
+Gate: `peripheral_lle_test` (the model — 37 checks, including that a dump
 pick is a pending change on its own and that returning to automatic *unsets*
 the knob rather than writing an empty path; the window itself is
 compile-verified only, like every GUI surface here).

@@ -50,13 +50,16 @@ Two secondary premises also moved, in the overlay's favour:
   HLE-tainted restore in strict mode.
 - **The "loud non-conformant mode" precedent exists.** Every HLE ADB *fallback*
   prints a `NON-CONFORMANT` notice to stderr on entry **and** registers the
-  module in `pom68k::lle` — seven sites: `AdbVia.cpp:63-70`,
-  `V8Memory.cpp:182-194`, `SonoraMemory.cpp:71-79`, `VaspMemory.cpp:41-48`,
-  `RbvMemory.cpp:52-59`, `Q605Memory.cpp:105-112`, `Q630Memory.cpp:93-100`,
-  per `LLE_VS_HLE.md` § 2's policy settled 2026-07-29. An eighth site
-  registers *without* a notice — `Q700Memory.cpp:37`, the Eclipse Q900/Q950,
-  whose Egret HLE is unconditional rather than a fallback, so no dump would
-  silence it and product mode refuses those profiles outright. § 7's
+  module in `pom68k::lle` — eight sites, all through the one shared
+  `pom68k::fw::select` that prints it (`FirmwareChoice.h:106-110`):
+  `AdbVia.cpp:51-61`, `V8Memory.cpp:164-174`, `SonoraMemory.cpp:51-67`,
+  `VaspMemory.cpp:26-37`, `RbvMemory.cpp:35-47`, `Q605Memory.cpp:96-106`,
+  `Q630Memory.cpp:78-88`, `Q700Memory.cpp:46-58` — per `LLE_VS_HLE.md` § 2's
+  policy settled 2026-07-29. The last of those was the last exception: until
+  **2026-08-14** the Eclipse Q900/Q950 registered `HleEgretCuda` *without* a
+  notice, because its Egret HLE was unconditional rather than a fallback and
+  no dump would have silenced it. It now runs the factory `341s0851` on a real
+  68HC05 like every other Egret board, so no silent registration is left. § 7's
   visible-cheat requirement extends that mechanism; it does not invent one.
 
 ---
@@ -240,7 +243,7 @@ and different drivers (IWM vs SWIM1 vs SWIM2, NCR 5380 vs 53C96, M0110 vs
 PIC1654S vs Egret vs Cuda vs PG&E — roster in `CLAUDE.md`, reachability in
 `docs/68K_FAMILY_SCOPE.md`). `machines` gates a module to the families it
 understands; `RomMatch` further gates it to the specific ROM the scan
-recognises. `SnapMachine` (`src/SaveStateMachines.h:51-89`) already enumerates
+recognises. `SnapMachine` (`src/MachineCatalog.h:35-49`) already enumerates
 the 37 profiles and is the natural basis for `MachineMask`.
 A module with no signature hit on the loaded ROM is inert and greyed, not a
 hazard.
