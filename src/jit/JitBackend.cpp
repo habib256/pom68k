@@ -145,8 +145,8 @@ Backend* selectBackend(const char* pref, uint32_t guestFamily,
         // earned per (family, backend) pair on D.1 evidence and never
         // implied by correctness. Today that means the 68040 on both
         // generators and nothing else: the x64 030 flip is written and
-        // blocked on the IIsi segfault (JIT_BRINGUP § C.4septies), and
-        // a64's uncharge fix is unported, its bench win unmeasured. An
+        // blocked on the IIsi segfault (JIT_BRINGUP § C.4septies), while
+        // a64 is conformant but has not earned a 030 bench win. An
         // explicit POM68K_JIT_BACKEND=x64/a64 keeps consulting
         // `guestFamilies` only.
         if (!(b->caps().autoFamilies & guestFamily)) continue;

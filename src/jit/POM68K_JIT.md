@@ -353,9 +353,10 @@ correctness one — and **blocked**: its first `-L m030` run found the four
 IIsi gates in SIGSEGV under the generator (JIT_BRINGUP § C.4septies,
 parked with reproducer), so D.1 condition 4 is red and `auto` keeps
 resolving an 030 to `threaded` until that fix. An AArch64 host stays on
-`threaded` for 030 regardless: the a64 generator carries the unported
-uncharge hole and no measured bench win, so its `autoFamilies` is
-68040-only.
+`threaded` for 030 under `auto`: the a64 generator now has the same
+charge-on-success contract and a real-frame lockstep gate, but its post-port
+6 000-frame ABBA is a statistical tie (`threaded` 20.18 s, a64 20.11 s,
+−0.3 % inside a 3.0 % noise floor), so its `autoFamilies` remains 68040-only.
 
 The reports use the same JSON schema as CI, so the reviewed x86-64 floors
 above can be replayed without scraping prose:
@@ -1263,14 +1264,13 @@ Three things make jumping straight into another block safe:
 Every block's first instruction still runs the budget and flag guards, so a
 chain cannot outrun the caller's cycle target or ignore a pending interrupt.
 
-**One block class is barred from the chain in both directions**, and it was
-found by measurement rather than reasoning: on the 68030 a block containing
-a restartable write cannot be crossed as a transparent native boundary, so
-the a64 backend publishes no link entry for it and emits no outgoing links
-from it (`JitBackendA64.cpp:2525`, `:2764`; x64 lifted this on 2026-08-19
-with the charge-on-success fix — `JitBackendX64.cpp:3401-3410`). Disabling links altogether made
-an otherwise-diverging 120k lockstep exact; barring only this class kept
-every other link and passed the same gate (`docs/JIT_BRINGUP.md` § C).
+**Restartable-write blocks may chain again on both native backends.** Their
+former AArch64 link suppression was evidence for the old pre-charge bug, not
+an architectural boundary: a runtime replay could be declined after i-cache
+state had already moved. With charge-on-success past every bail, both the
+incoming linked entry and outgoing links are safe. The 68030 restart-frame
+test and the 6,000-frame real-cadence AArch64 lockstep pin that contract
+(`docs/JIT_BRINGUP.md` § C.4sexies).
 
 The table originally had 4,096 slots. A 6,000-frame Q605 workload compiles
 more than 150k blocks over its lifetime and keeps up to 65,536 resident, so

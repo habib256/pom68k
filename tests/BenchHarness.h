@@ -37,7 +37,12 @@
 #include <vector>
 #include <thread>              // hardware_concurrency — the busy-host bar
 #ifndef _WIN32
-#include <unistd.h>            // environ — the knob stamp in `compare`
+#include <unistd.h>
+#if defined(__APPLE__)
+#include <crt_externs.h>       // _NSGetEnviron — environ is not declared here
+#else
+extern char** environ;         // knob stamp in `compare`
+#endif
 #endif
 
 namespace bench {
@@ -346,7 +351,12 @@ inline std::string envStamp() {
     return "(environment not enumerated on this host)";
 #else
     std::string out;
-    for (char** e = environ; e && *e; e++)
+#if defined(__APPLE__)
+    char** environment = *_NSGetEnviron();
+#else
+    char** environment = environ;
+#endif
+    for (char** e = environment; e && *e; e++)
         if (std::strncmp(*e, "POM68K_", 7) == 0) {
             if (!out.empty()) out += "  ";
             out += *e;

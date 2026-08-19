@@ -203,6 +203,28 @@ void installWriteLoop(FaultCpu& c, uint16_t opcode, uint16_t extension,
     put16(c, kHandler, 0x4E71);
 }
 
+void installPeaLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0, 0x486E);        // PEA 4(A6)
+    put16(c, kCode + 2, 0x0004);
+    put16(c, kCode + 4, 0x588F);        // ADDQ.L #4,A7
+    put16(c, kCode + 6, 0x60F8);        // BRA.S kCode
+    put16(c, kCode + 8, 0x4E71);
+    put16(c, kHandler, 0x4E71);
+}
+
+void installSccRegisterLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0, 0x50C0);        // ST D0
+    put16(c, kCode + 2, 0x60FC);        // BRA.S kCode
+    put16(c, kCode + 4, 0x4E71);
+    put16(c, kHandler, 0x4E71);
+}
+
 void prepareFault(FaultCpu& c) {
     c.setPC(kCode);
     c.setA(6, kHole);
@@ -241,6 +263,10 @@ int main() {
     setenv("POM68K_JIT_BLOCKS", "1", 1);
     setenv("POM68K_JIT_HOT", "1", 1);
     setenv("POM68K_JIT_ACCESS_THUNK", "2", 1);
+    // This gate owns PEA's direct-store proof. The production default remains
+    // B592; selecting 486E here releases only PEA from the deliberately
+    // opcode-local conservative AArch64 store guard.
+    setenv("POM68K_JIT_A64_STORE_GUARD_OPCODE", "0x486E", 1);
     // The queue cases deliberately exercise multiword control flow. Its
     // variable 030 fetch count is conservatively replayed while emitted
     // i-cache accounting is enabled; disabling that attribution layer lets
@@ -418,6 +444,159 @@ int main() {
     checkSuccessfulPostincrement(false, "MOVE.B D0,(A6)+ RAM success");
     checkSuccessfulPostincrement(true, "MOVE.B D0,(A6)+ MMIO success");
 
+    // AArch64's large Moira-layout accesses use x15 as an address scratch.
+    // A two-memory MOVE once kept the destination host pointer there across
+    // the source (A7)+ commit; the commit clobbered x15 and the byte store
+    // landed in the CPU object's A7 field ($..86 -> $..40) instead of RAM.
+    {
+        setenv("POM68K_JIT_A64_STORE_GUARD_OPCODE", "0x129F", 1);
+        constexpr uint32_t source = 0x006000;
+        constexpr uint32_t destination = 0x007000;
+        FaultCpu moveRef, moveNative;
+        installWriteLoop(moveRef, 0x129F, 0, false); // MOVE.B (A7)+,(A1)
+        installWriteLoop(moveNative, 0x129F, 0, false);
+        moveRef.reset(); moveNative.reset();
+        moveRef.setTC(12u << 20); moveNative.setTC(12u << 20);
+        moveNative.setA(7, source); moveNative.setA(1, destination);
+        moveNative.mem[source] = 0xA5;
+        moveNative.jit.setEnabled(true);
+        // Two independent DTLB fills each replay the instruction once;
+        // leave enough loop iterations to enter the fully native path.
+        moveNative.jit.executeUntil(moveNative.getClock() + 1024);
+        moveNative.setPC(kCode);
+        moveNative.setA(7, source); moveNative.setA(1, destination);
+        moveNative.jit.executeUntil(moveNative.getClock() + 256);
+        const auto trainedMove = moveNative.jit.stats().snapshot();
+
+        moveRef.mem = moveNative.mem;
+        const auto prepareMove = [&](FaultCpu& c) {
+            c.setPC(kCode);
+            c.setA(7, source);
+            c.setA(1, destination);
+            c.mem[source] = 0xA5;
+            c.mem[destination] = 0;
+            c.setSR(0x2700);
+            c.setClock(0);
+            const auto layout = c.pomJitLayout();
+            *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&c) +
+                                         layout.flags) = 0;
+        };
+        prepareMove(moveRef); prepareMove(moveNative);
+        moveRef.executeUntil(1);
+        moveNative.jit.executeUntil(1);
+        const auto afterMove = moveNative.jit.stats().snapshot();
+
+        if (!(trainedMove.blocksCompiled != 0 &&
+              afterMove.instrs > trainedMove.instrs &&
+              afterMove.slowInstrs == trainedMove.slowInstrs))
+            std::printf("    move stats compiled=%llu instrs=%llu->%llu slow=%llu->%llu blocks=%llu->%llu\n",
+                        (unsigned long long)trainedMove.blocksCompiled,
+                        (unsigned long long)trainedMove.instrs,
+                        (unsigned long long)afterMove.instrs,
+                        (unsigned long long)trainedMove.slowInstrs,
+                        (unsigned long long)afterMove.slowInstrs,
+                        (unsigned long long)trainedMove.blocksRun,
+                        (unsigned long long)afterMove.blocksRun);
+        check(trainedMove.blocksCompiled != 0 &&
+              afterMove.instrs > trainedMove.instrs &&
+              afterMove.slowInstrs == trainedMove.slowInstrs,
+              "MOVE.B (A7)+,(A1) executes natively without fallback");
+        check(moveRef.getA(7) == source + 2 &&
+              moveNative.getA(7) == moveRef.getA(7) &&
+              moveRef.getA(1) == destination &&
+              moveNative.getA(1) == destination,
+              "two-memory MOVE preserves both EA register updates");
+        check(moveRef.mem[destination] == 0xA5 &&
+              moveNative.mem[destination] == 0xA5 &&
+              std::memcmp(moveRef.mem.data(), moveNative.mem.data(),
+                          moveRef.mem.size()) == 0,
+              "two-memory MOVE stores through the preserved host pointer");
+        setenv("POM68K_JIT_A64_STORE_GUARD_OPCODE", "0x486E", 1);
+    }
+
+    {
+        FaultCpu sccRef, sccNative;
+        installSccRegisterLoop(sccRef); installSccRegisterLoop(sccNative);
+        sccRef.reset(); sccNative.reset();
+        sccRef.setTC(12u << 20); sccNative.setTC(12u << 20);
+        sccNative.setD(0, 0x12345600);
+        sccNative.jit.setEnabled(true);
+        sccNative.jit.executeUntil(sccNative.getClock() + 256);
+        const auto trainedScc = sccNative.jit.stats().snapshot();
+
+        sccRef.mem = sccNative.mem;
+        const auto prepareScc = [](FaultCpu& c) {
+            c.setPC(kCode);
+            c.setD(0, 0x12345600);
+            c.setA(7, kStack);
+            c.setSR(0x2700);
+            c.setClock(0);
+            const auto layout = c.pomJitLayout();
+            *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&c) +
+                                         layout.flags) = 0;
+        };
+        prepareScc(sccRef); prepareScc(sccNative);
+        sccRef.executeUntil(1);
+        sccNative.jit.executeUntil(1);
+        const auto afterScc = sccNative.jit.stats().snapshot();
+
+        check(trainedScc.blocksCompiled != 0 &&
+              afterScc.instrs > trainedScc.instrs &&
+              afterScc.slowInstrs == trainedScc.slowInstrs,
+              "ST D0 executes natively without an instruction fallback");
+        check(sccRef.getD(0) == 0x123456FF &&
+              sccNative.getD(0) == sccRef.getD(0) &&
+              sccRef.getPC() == sccNative.getPC() &&
+              sccRef.getClock() == sccNative.getClock(),
+              "ST D0 preserves the upper 24 bits and matches the interpreter");
+    }
+
+    // PEA was the remaining line-$4 AArch64 asymmetry. Keep its old-A7
+    // source ordering and sole stack write under a direct native assertion.
+    {
+        FaultCpu peaRef, peaNative;
+        installPeaLoop(peaRef); installPeaLoop(peaNative);
+        peaRef.reset(); peaNative.reset();
+        peaRef.setTC(12u << 20); peaNative.setTC(12u << 20);
+        peaNative.setA(6, 0x004000); peaNative.setA(7, kStack);
+        peaNative.jit.setEnabled(true);
+        peaNative.jit.executeUntil(peaNative.getClock() + 256);
+        const auto trainedPea = peaNative.jit.stats().snapshot();
+
+        peaRef.mem = peaNative.mem;
+        const auto preparePea = [](FaultCpu& c) {
+            c.setPC(kCode);
+            c.setA(6, 0x005000);
+            c.setA(7, kStack);
+            c.setSR(0x2700);
+            c.setClock(0);
+            const auto layout = c.pomJitLayout();
+            *reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(&c) +
+                                         layout.flags) = 0;
+        };
+        preparePea(peaRef); preparePea(peaNative);
+        peaRef.executeUntil(1);
+        peaNative.jit.executeUntil(1);
+        const auto afterPea = peaNative.jit.stats().snapshot();
+
+        check(trainedPea.blocksCompiled != 0 &&
+              afterPea.instrs > trainedPea.instrs &&
+              afterPea.slowInstrs == trainedPea.slowInstrs,
+              "PEA d16(A6) executes natively without an instruction fallback");
+        check(peaRef.getA(7) == kStack - 4 &&
+              peaNative.getA(7) == peaRef.getA(7) &&
+              get32(peaNative, kStack - 4) == 0x005004,
+              "PEA computes its source before A7 and pushes the exact address");
+        check(peaRef.getPC() == peaNative.getPC() &&
+              peaRef.getPC0() == peaNative.getPC0() &&
+              peaRef.getIRD() == peaNative.getIRD() &&
+              peaRef.getIRC() == peaNative.getIRC() &&
+              peaRef.getClock() == peaNative.getClock() &&
+              std::memcmp(peaRef.mem.data(), peaNative.mem.data(),
+                          peaRef.mem.size()) == 0,
+              "PEA leaves an interpreter-identical architectural boundary");
+    }
+
     const auto checkWriteEa = [&](uint16_t opcode, uint16_t extension,
                                   bool hasExtension, uint32_t initialA6,
                                   uint32_t finalA6, bool exactNativeThunk,
@@ -481,6 +660,8 @@ int main() {
     const bool ixThunk = !std::strcmp(nativeName, "aarch64");
     checkWriteEa(0x1D80, 0x1000, true, kHole, kHole, ixThunk,
                  "MOVE.B D0,d8(A6,D1.W) fault");
+    checkWriteEa(0x50DE, 0, false, kHole, kHole + 1, false,
+                 "ST (A6)+ fault");
 
     // The full-machine $533E corruption was not the PI write itself. The
     // following memory-to-memory MOVE hit its source DTLB probe, committed

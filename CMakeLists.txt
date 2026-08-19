@@ -1762,13 +1762,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              TIMEOUT 1800)
 
         # Apple-Silicon 68030 gate: unlike the portable pair above, this one
-        # exercises generated arm64 code, including the emitted 030 i-cache
-        # model and its exact runtime-bail uncharge. The final 10k checks use
-        # a fine budget to localise any future instruction-boundary drift.
-        add_test(NAME jit_lockstep_030_a64_experimental_test COMMAND jit_lockstep_030_test 120000
+        # exercises generated arm64 code with production HOT=1. Its budget
+        # is one real LC II frame: the old 8192-cycle cadence hid a native
+        # two-memory MOVE corruption by changing the outer run boundary.
+        # Six thousand frames also pin the fixed-cycle benchmark fingerprint.
+        add_test(NAME jit_lockstep_030_a64_experimental_test COMMAND jit_lockstep_030_test 6000
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_lockstep_030_a64_experimental_test PROPERTIES
-                             ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=128;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
+                             ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=260480"
                              TIMEOUT 1800)
     else()
         # The a64 pair are host-conditional gates: the registry has more

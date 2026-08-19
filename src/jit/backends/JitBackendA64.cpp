@@ -2,7 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // ── AArch64 code generator ───────────────────────────────────────────────
-// Native 68040 ALU, MOVE, effective-address, control-flow and MOVEM paths,
+// Native 68040/68030 ALU, MOVE, effective-address and control-flow paths,
 // with the same exact per-instruction fallback contract as the x86-64 JIT.
 
 #include "JitBackendA64.h"
@@ -366,6 +366,7 @@ void chargeIcache(Asm& a, const Layout& L, const BlockIr& ir,
                   const Instr& in, IcacheShadow& shadow,
                   uint32_t exactFetchWords = 0) {
     const uint32_t words = exactFetchWords ? exactFetchWords
+                         : in.fetchWords   ? uint32_t(in.fetchWords)
                                            : uint32_t(in.words) + 1;
     const uint32_t sup = ir.super ? 0x80000000u : 0u;
     a.ldrX(9, 0, L.icFetches); a.addImmX(9, 9, words); a.strX(9, 0, L.icFetches);
@@ -409,12 +410,119 @@ void chargeIcache(Asm& a, const Layout& L, const BlockIr& ir,
     a.bind(disabled);
 }
 
-void unchargeIcache(Asm& a, const Layout& L, const Instr& in) {
-    const uint32_t words = uint32_t(in.words) + 1;
-    a.ldrX(9, 0, L.icFetches); a.subImmX(9, 9, words); a.strX(9, 0, L.icFetches);
+// One path-specific fetch, used by the fall-through of a conditional Bcc.W.
+// It deliberately does not advance the compile-time shadow: the taken path
+// does not perform this fetch, so no later fold may rely on the update.
+void chargeIcacheExtraWord(Asm& a, const Layout& L, const BlockIr& ir,
+                           uint32_t addr) {
+    const uint32_t sup = ir.super ? 0x80000000u : 0u;
+    const int line = int((addr >> 4) & 15);
+    const uint32_t tag = (addr >> 8) | sup;
+    const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
+
+    a.ldrX(9, 0, L.icFetches); a.addImmX(9, 9, 1); a.strX(9, 0, L.icFetches);
     const int disabled = a.label();
     a.ldrB(9, 0, L.cacr); a.movW(10, 1); a.andW(9, 9, 10); a.cbzW(9, disabled);
-    a.ldrX(9, 0, L.icHits); a.subImmX(9, 9, words); a.strX(9, 0, L.icHits);
+    a.ldrX(9, 0, L.icHits); a.addImmX(9, 9, 1); a.strX(9, 0, L.icHits);
+
+    const int miss = a.label(), done = a.label(), sameTag = a.label();
+    a.ldrW(9, 0, L.icTag + uint32_t(line) * 4); a.movW(10, tag);
+    a.cmpW(9, 10); a.bCond(Asm::NE, miss);
+    a.ldrB(9, 0, L.icValid + uint32_t(line)); a.movW(10, bit);
+    a.andW(9, 9, 10); a.cbnzW(9, done);
+
+    a.bind(miss);
+    a.ldrW(9, 0, L.icTag + uint32_t(line) * 4); a.movW(10, tag);
+    a.cmpW(9, 10); a.bCond(Asm::EQ, sameTag);
+    a.strW(10, 0, L.icTag + uint32_t(line) * 4);
+    a.movW(9, 0); a.strB(9, 0, L.icValid + uint32_t(line));
+    a.bind(sameTag);
+    a.ldrB(9, 0, L.icValid + uint32_t(line)); a.movW(10, bit);
+    a.orrW(9, 9, 10); a.strB(9, 0, L.icValid + uint32_t(line));
+    a.ldrX(9, 0, L.icHits); a.subImmX(9, 9, 1); a.strX(9, 0, L.icHits);
+    a.ldrX(9, 0, L.icMisses); a.addImmX(9, 9, 1); a.strX(9, 0, L.icMisses);
+    a.ldrW(9, 0, L.icPenalty); a.addX(21, 21, 9);
+    a.bind(done);
+    a.bind(disabled);
+}
+
+// A statically refused instruction is executed by Moira and therefore makes
+// the same cache-line transitions as the emitted charge would. Advance only
+// the compiler shadow so later folded hits remain justified; emit no guest
+// state change here, because the fallback may still be declined at a budget
+// boundary before the instruction actually runs.
+void shadowIcache(const BlockIr& ir, const Instr& in, IcacheShadow& shadow,
+                  uint32_t exactFetchWords = 0) {
+    const uint32_t words = exactFetchWords ? exactFetchWords
+                         : in.fetchWords   ? uint32_t(in.fetchWords)
+                                           : uint32_t(in.words) + 1;
+    const uint32_t sup = ir.super ? 0x80000000u : 0u;
+    for (uint32_t w = 0; w < words; w++) {
+        const uint32_t addr = in.pc + w * 2;
+        const int line = int((addr >> 4) & 15);
+        const uint32_t tag = (addr >> 8) | sup;
+        const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
+        if (!shadow.seen[line] || shadow.tag[line] != tag) {
+            shadow.tag[line] = tag;
+            shadow.valid[line] = 0;
+            shadow.seen[line] = true;
+        }
+        shadow.valid[line] |= bit;
+    }
+}
+
+// Exact data thunks can advance peripheral time from inside the operand
+// access. The interpreter has already paid any instruction-cache misses by
+// then, whereas charge-on-success must normally defer their publication
+// until the access can no longer bail out. Native execution is therefore
+// ordering-safe only when earlier fetches in this block prove that every
+// word of this instruction is already an i-cache hit. Starting the shadow
+// empty makes the proof independent of cache state at block entry.
+bool shadowProvesIcacheHits(const BlockIr& ir, const Instr& in,
+                            const IcacheShadow& shadow,
+                            uint32_t exactFetchWords = 0) {
+    const uint32_t words = exactFetchWords ? exactFetchWords
+                         : in.fetchWords   ? uint32_t(in.fetchWords)
+                                           : uint32_t(in.words) + 1;
+    const uint32_t sup = ir.super ? 0x80000000u : 0u;
+    for (uint32_t w = 0; w < words; w++) {
+        const uint32_t addr = in.pc + w * 2;
+        const int line = int((addr >> 4) & 15);
+        const uint32_t tag = (addr >> 8) | sup;
+        const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
+        if (!shadow.seen[line] || shadow.tag[line] != tag ||
+            !(shadow.valid[line] & bit)) return false;
+    }
+    return true;
+}
+
+// Runtime half of the same proof. On a cache miss the untouched instruction
+// goes through Moira, which applies the miss penalty before its exact data
+// access. On a hit the post-success charge below has no cycle component, so
+// it may safely update only the accounting after the native body. Words
+// already guaranteed by the block shadow need no redundant test.
+void guardIcacheHits(Asm& a, const Layout& L, const BlockIr& ir,
+                     const Instr& in, const IcacheShadow& shadow, int slow,
+                     uint32_t exactFetchWords = 0) {
+    const uint32_t words = exactFetchWords ? exactFetchWords
+                         : in.fetchWords   ? uint32_t(in.fetchWords)
+                                           : uint32_t(in.words) + 1;
+    const uint32_t sup = ir.super ? 0x80000000u : 0u;
+    const int disabled = a.label();
+    a.ldrB(9, 0, L.cacr); a.movW(10, 1); a.andW(9, 9, 10);
+    a.cbzW(9, disabled);
+    for (uint32_t w = 0; w < words; w++) {
+        const uint32_t addr = in.pc + w * 2;
+        const int line = int((addr >> 4) & 15);
+        const uint32_t tag = (addr >> 8) | sup;
+        const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
+        if (shadow.seen[line] && shadow.tag[line] == tag &&
+            (shadow.valid[line] & bit)) continue;
+        a.ldrW(9, 0, L.icTag + uint32_t(line) * 4); a.movW(10, tag);
+        a.cmpW(9, 10); a.bCond(Asm::NE, slow);
+        a.ldrB(9, 0, L.icValid + uint32_t(line)); a.movW(10, bit);
+        a.andW(9, 9, 10); a.cbzW(9, slow);
+    }
     a.bind(disabled);
 }
 
@@ -597,8 +705,12 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::Jump:
         case SemanticOp::Lea:
             return controlEa(ei);
+        case SemanticOp::Pea:
+            return controlEa(ei) || ei == E_IX || ei == E_IXPC;
         case SemanticOp::Movem:
             return true;
+        case SemanticOp::SetCondition:
+            return ei >= 0 && ei != E_AN && ei != E_DIPC && ei != E_IM;
         case SemanticOp::Test:
         case SemanticOp::Clear:
         case SemanticOp::Negate:
@@ -619,6 +731,18 @@ bool canEmitReg(uint16_t op) {
 }
 
 int bitsForSizeIndex(int sz) { return sz == 0 ? 8 : sz == 1 ? 16 : 32; }
+
+// The 68030 timing trace includes the instruction-cache miss penalty in the
+// total. Generated code reproduces that penalty separately, so opcode cost
+// tables must be checked against the base component. A post-exception trace
+// did not retire cleanly and is never a valid native-code admission proof.
+unsigned traced030(const Layout& L, const Instr& in) {
+    if (!L.is030) return in.cycles;
+    if (in.postExceptionCycles != 0) return 0xFFFFFFFFu;
+    return in.baseCycles;
+}
+
+void branchIfCond(Asm& a, const Layout& L, int cc, int taken);
 
 bool emitAluResult(Asm& a, const Layout& L, AluOperation kind, int bits,
                    bool store, bool addressDst, unsigned dst, bool setX) {
@@ -1198,10 +1322,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     const InstructionSemantics& sem = in.semantics;
     if (!sem.valid()) return false;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
-    if (sem.operation == SemanticOp::Nop) return in.cycles == 2;
+    if (sem.operation == SemanticOp::Nop) return traced030(L, in) == 2;
 
     if (sem.operation == SemanticOp::MoveQuick) {
-        if (in.cycles != 2) return false;
+        if (traced030(L, in) != 2) return false;
         const int32_t v = int8_t(op & 0xFF);
         const unsigned dn = sem.registerIndex;
         a.movW(11, uint32_t(v));
@@ -1267,9 +1391,12 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const int dstCycles = restartWrite && dst.idx == E_IX
             ? 5 : kMoveDstA64[dst.idx];
         const int cycles = kEaReadA64[src.idx][sz] + dstCycles;
-        const bool splitSafe030 = L.is030 &&
-            ((src.idx == E_PI && !dst.memory) || restartWrite);
-        const unsigned tracedCycles = splitSafe030 ? in.baseCycles : in.cycles;
+        // The emitted i-cache model owns miss penalties. Keep the historical
+        // total-cost admission only for the restartable-write family: its
+        // coarse-budget reproducer is still parked on x64, so widening that
+        // particular proof by symmetry would be unsound.
+        const unsigned tracedCycles = restartWrite
+            ? unsigned(in.cycles) : traced030(L, in);
         if (cycles < 0 || tracedCycles != unsigned(cycles) ||
             in.words != unsigned(1 + src.ext + dst.ext)) return false;
 
@@ -1309,16 +1436,15 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 }
 
                 // Large Moira layout offsets use x15 as the assembler's
-                // address scratch, so preserve the first pointer in Frame
-                // across the second probe/counter stores, then swap the
-                // slot over to the destination for the actual transfer.
-                a.ldrX(15, 1, 120);                  // source line bytes
-                a.strX(14, 1, 120);                  // destination line bytes
+                // address scratch. Keep neither host pointer live across an
+                // EA commit: source and destination get separate Frame
+                // slots and are reloaded only at the actual access.
+                a.strX(14, 1, 96);                   // destination line bytes
                 commitEaBeforeAccess(a, L, src, bits, srcAccess);
-                a.movRegX(14, 15); loadGuest(a, bits, 11);
+                a.ldrX(14, 1, 120); loadGuest(a, bits, 11);
                 commitEaAfterAccess(a, L, src, bits, srcAccess);
                 commitEaBeforeAccess(a, L, dst, bits, dstAccess);
-                a.ldrX(14, 1, 120); storeGuest(a, bits, 11);
+                a.ldrX(14, 1, 96); storeGuest(a, bits, 11);
                 markCache040Dirty(a, 4);
                 commitEaAfterAccess(a, L, dst, bits, dstAccess);
                 emitLogicFlags(a, L, 11, bits);
@@ -1338,7 +1464,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             a.strX(14, 1, 120);            // source host pointer
             addrOf(a, L, dst, bits);
             memProbe(a, L, ir.super, bits / 8, true, slow);
-            a.movRegX(15, 14);             // destination host pointer
+            a.strX(14, 1, 96);             // destination host pointer
 
             commitEaBeforeAccess(a, L, src, bits, srcAccess);
             a.ldrX(14, 1, 120);
@@ -1346,7 +1472,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             commitEaAfterAccess(a, L, src, bits, srcAccess);
 
             commitEaBeforeAccess(a, L, dst, bits, dstAccess);
-            a.movRegX(14, 15);
+            a.ldrX(14, 1, 96);
             storeGuest(a, bits, 11);
             commitEaAfterAccess(a, L, dst, bits, dstAccess);
             emitLogicFlags(a, L, 11, bits);
@@ -1440,7 +1566,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             const int sz = toReg ? 2 : 0;
             const int base = kEaReadA64[dst.idx][sz];
             const int cycles = toReg ? 4 : base + 2;
-            if (base < 0 || in.cycles != unsigned(cycles)) return false;
+            if (base < 0 || traced030(L, in) != unsigned(cycles)) return false;
             MemoryAccessPlan read, write;
             if (dst.memory) {
                 read = memory.access(MemoryDirection::Read,
@@ -1520,7 +1646,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const int base = kEaReadA64[dst.idx][sz];
         const int cycles = kind == AluOperation::Cmp ? base
                            : (dst.idx == E_DN ? 2 : base + 2);
-        if (base < 0 || in.cycles != unsigned(cycles)) return false;
+        if (base < 0 || traced030(L, in) != unsigned(cycles)) return false;
         MemoryAccessPlan read, write;
         if (dst.memory) {
             read = memory.access(MemoryDirection::Read,
@@ -1562,6 +1688,50 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         return true;
     }
 
+    if (sem.operation == SemanticOp::SetCondition) { // Scc <ea>
+        const int mode = sem.eaMode, reg = sem.eaReg;
+        const int cc = sem.condition;
+        const auto materialise = [&] {
+            const int isTrue = a.label(), done = a.label();
+            a.movW(11, 0);
+            branchIfCond(a, L, cc, isTrue);
+            a.b(done);
+            a.bind(isTrue); a.movW(11, 0xFF);
+            a.bind(done);
+        };
+
+        if (mode == 0) {
+            if (in.words != 1 || traced030(L, in) != 4 ||
+                !memory.complete()) return false;
+            materialise();
+            a.strB(11, 0, L.d + unsigned(reg) * 4);
+            return true;
+        }
+
+        Ea dst;
+        if (!decodeEa(in, mode, reg, 8, 0, dst) || !dst.memory ||
+            dst.idx == E_DIPC || dst.idx == E_IM ||
+            in.words != unsigned(1 + dst.ext) || slow < 0) return false;
+        // execSccEa, 68020 cycle column. The brief-indexed form is native on
+        // AArch64 and costs 13; full-format indexed plans remain rejected by
+        // decodeEa().
+        static const int8_t kScc[E_COUNT] =
+            {-1,-1,10,10,11,11,13,10,10,-1,-1,-1};
+        const int cycles = kScc[dst.idx];
+        if (cycles < 0 || traced030(L, in) != unsigned(cycles)) return false;
+        const MemoryAccessPlan write = memory.access(
+            MemoryDirection::Write, MemoryOperand::Destination, 1,
+            uint8_t(mode), uint8_t(reg));
+        if (!write.valid() || !memory.complete()) return false;
+
+        materialise();
+        a.strW(11, 1, 72);
+        addrOf(a, L, dst, 8);
+        memStoreGuest(a, L, ir.super, 8, 11, slow, write, &dst);
+        commitEaAfterAccess(a, L, dst, 8, write);
+        return true;
+    }
+
     if (sem.operation == SemanticOp::AddSubQuick) {
         const int sz = sem.sizeIndex, mode = sem.eaMode;
         if (sz > 2) return false;
@@ -1580,8 +1750,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // the first deliberately narrow consumer of the split timing: An
         // has no data access, update ordering, or restartable write hidden
         // behind that lower cost.
-        const unsigned tracedCycles = L.is030 && dst.idx <= E_AN
-            ? in.baseCycles : in.cycles;
+        const unsigned tracedCycles = traced030(L, in);
         if (base < 0 || tracedCycles != unsigned(cycles)) return false;
         MemoryAccessPlan read, write;
         if (dst.memory) {
@@ -1633,7 +1802,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             Ea src;
             if (!decodeEa(in, mode, sem.eaReg, srcBits, 0, src) ||
                 in.words != unsigned(1 + src.ext) ||
-                in.cycles != unsigned(kEaReadA64[src.idx][sz])) return false;
+                traced030(L, in) != unsigned(kEaReadA64[src.idx][sz])) return false;
             MemoryAccessPlan read;
             if (src.memory) {
                 read = memory.access(MemoryDirection::Read,
@@ -1672,7 +1841,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             Ea src;
             if (!decodeEa(in, mode, sem.eaReg, bits, 0, src) ||
                 in.words != unsigned(1 + src.ext) ||
-                in.cycles != unsigned(kEaReadA64[src.idx][sz])) return false;
+                traced030(L, in) != unsigned(kEaReadA64[src.idx][sz])) return false;
             MemoryAccessPlan read;
             if (src.memory) {
                 read = memory.access(MemoryDirection::Read,
@@ -1694,7 +1863,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                                  false, dn, kind != AluOperation::Cmp);
         }
         if (mode == 0) {                                // EOR Dn,Dm
-            if (kind != AluOperation::Eor || in.words != 1 || in.cycles != 2)
+            if (kind != AluOperation::Eor || in.words != 1 ||
+                traced030(L, in) != 2)
                 return false;
             loadSized(a, L, 9, false, sem.eaReg, bits);
             loadSized(a, L, 10, false, dn, bits);
@@ -1708,7 +1878,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if (!decodeEa(in, mode, sem.eaReg, bits, 0, dst) || !dst.memory ||
             dst.idx == E_DIPC || in.words != unsigned(1 + dst.ext)) return false;
         const int cycles = kEaReadA64[dst.idx][sz] + 2;
-        if (in.cycles != unsigned(cycles) || slow < 0) return false;
+        if (traced030(L, in) != unsigned(cycles) || slow < 0) return false;
         const MemoryAccessPlan read = memory.access(
             MemoryDirection::Read, MemoryOperand::Destination,
             uint8_t(bits / 8), uint8_t(mode), sem.eaReg);
@@ -1732,6 +1902,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     if (sem.operation == SemanticOp::Link ||
         sem.operation == SemanticOp::Unlink ||
         sem.operation == SemanticOp::Lea ||
+        sem.operation == SemanticOp::Pea ||
         sem.operation == SemanticOp::Movem ||
         sem.operation == SemanticOp::Extend ||
         sem.operation == SemanticOp::Swap ||
@@ -1741,7 +1912,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         sem.operation == SemanticOp::Complement) {
         const int mode = sem.eaMode, sz = sem.sizeIndex;
         if (sem.operation == SemanticOp::Link) {     // LINK.W An,#d16
-            if (in.cycles != 5 || in.words != 2 || slow < 0) return false;
+            if (traced030(L, in) != 5 || in.words != 2 || slow < 0)
+                return false;
             const unsigned an = sem.eaReg;
             const MemoryAccessPlan write = memory.access(
                 MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
@@ -1761,7 +1933,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             return true;
         }
         if (sem.operation == SemanticOp::Unlink) {   // UNLK An
-            if (in.cycles != 6 || in.words != 1 || slow < 0) return false;
+            if (traced030(L, in) != 6 || in.words != 1 || slow < 0)
+                return false;
             const unsigned an = sem.eaReg;
             const MemoryAccessPlan read = memory.access(
                 MemoryDirection::Read, MemoryOperand::Stack, 4, 2,
@@ -1783,9 +1956,33 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 in.words != unsigned(1 + src.ext)) return false;
             static const int8_t cost[E_COUNT] =
                 {-1,-1,6,-1,-1,7,-1,6,6,7,-1,-1};
-            if (cost[src.idx] < 0 || in.cycles != unsigned(cost[src.idx])) return false;
+            if (cost[src.idx] < 0 ||
+                traced030(L, in) != unsigned(cost[src.idx])) return false;
             addrOf(a, L, src, 32);
             a.strW(9, 0, L.a + sem.registerIndex * 4);
+            return true;
+        }
+        if (sem.operation == SemanticOp::Pea) {      // PEA <ea>
+            // Compute the source address before touching A7: PEA (A7) and
+            // PEA d16(A7) use the old stack pointer as their source base.
+            Ea src;
+            if (!decodeEa(in, mode, sem.eaReg, 32, 0, src) || !src.memory ||
+                src.idx == E_PI || src.idx == E_PD ||
+                in.words != unsigned(1 + src.ext) || slow < 0) return false;
+            static const int8_t cost[E_COUNT] =
+                {-1,-1,9,-1,-1,10,12,9,9,10,12,-1};
+            if (cost[src.idx] < 0 ||
+                traced030(L, in) != unsigned(cost[src.idx])) return false;
+            const MemoryAccessPlan write = memory.access(
+                MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
+            if (!write.valid() || !memory.complete()) return false;
+
+            addrOf(a, L, src, 32);
+            a.movRegW(11, 9); a.strW(11, 1, 72);
+            a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
+            a.strW(9, 1, 44);
+            memStoreGuest(a, L, ir.super, 32, 11, slow, write);
+            a.ldrW(9, 1, 44); a.strW(9, 0, L.a + 7 * 4);
             return true;
         }
         if (sem.operation == SemanticOp::Movem) {
@@ -1808,7 +2005,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             static const int8_t toMemBase[E_COUNT] =
                 {-1,-1,8,-1,4,9,-1,8,8,-1,-1,-1};
             const int baseCost = toRegs ? toRegBase[ea.idx] : toMemBase[ea.idx];
-            if (baseCost < 0 || in.cycles != unsigned(baseCost + 4 * n)) return false;
+            if (baseCost < 0 ||
+                traced030(L, in) != unsigned(baseCost + 4 * n)) return false;
             const MemoryAccessPlan span = memory.access(
                 toRegs ? MemoryDirection::Read : MemoryDirection::Write,
                 MemoryOperand::RegisterList, uint8_t(bytes), uint8_t(mode),
@@ -1871,7 +2069,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             return true;
         }
         if (sem.operation == SemanticOp::Extend) {   // EXT
-            if (in.cycles != 4 || in.words != 1) return false;
+            if (traced030(L, in) != 4 || in.words != 1) return false;
             const unsigned dn = sem.eaReg;
             if (sem.sizeIndex == 2) {
                 a.ldrH(11, 0, L.d + dn * 4); a.sxtH(11, 11);
@@ -1884,7 +2082,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             return true;
         }
         if (sem.operation == SemanticOp::Swap) {     // SWAP
-            if (in.cycles != 4 || in.words != 1) return false;
+            if (traced030(L, in) != 4 || in.words != 1) return false;
             a.ldrW(11, 0, L.d + sem.eaReg * 4); a.rorW(11, 11, 16);
             a.strW(11, 0, L.d + sem.eaReg * 4);
             emitLogicFlags(a, L, 11, 32);
@@ -1908,9 +2106,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // match the inline access cost. The hot LC II 4A11 exception below
         // uses the exact MMU/device thunk, so the device reproduces the
         // variable part of that component at run time.
-        const unsigned tracedCycles = L.is030 && tst &&
-                                      (ea.idx == E_AI || ea.idx == E_PI)
-            ? in.baseCycles : in.cycles;
+        const unsigned tracedCycles = traced030(L, in);
         MemoryAccessPlan read, write;
         if (ea.memory) {
             if (tst) {
@@ -1998,7 +2194,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const unsigned offset = (ext >> 6) & 31;
         unsigned width = ext & 31; if (!width) width = 32;
         static const uint8_t cycles[8] = {6,8,12,8,12,18,12,10};
-        if (in.cycles != cycles[kind]) return false;
+        if (traced030(L, in) != cycles[kind]) return false;
         a.ldrW(9, 0, L.d + dst * 4);                // original
         if (offset) a.rorW(10, 9, 32 - offset);     // rotl(original,offset)
         else a.movRegW(10, 9);
@@ -2059,7 +2255,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         int count = sem.registerIndex; if (!count) count = 8;
         const bool left = sem.left;
         const int expected = type == 1 ? 4 : type == 3 ? 8 : left ? 8 : 6;
-        if (in.cycles != unsigned(expected)) return false;
+        if (traced030(L, in) != unsigned(expected)) return false;
         const unsigned dn = sem.eaReg;
         loadSized(a, L, 11, false, dn, bits); maskResult(a, 11, bits);
         a.movW(13, 0);                              // accumulated ASL overflow
@@ -2238,7 +2434,8 @@ void leaveToDynamic(Asm& a, const Layout& L, const BlockIr& ir,
 bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
                      const Instr& in, const std::vector<int>& entries,
                      int epilogue, int slow, bool paced, int batch,
-                     uint32_t linkMask) {
+                     uint32_t linkMask, bool icache,
+                     IcacheShadow& icacheShadow) {
     const uint16_t op = in.opcode;
     const InstructionSemantics& sem = in.semantics;
     const ControlFlowPlan& control = in.control;
@@ -2257,7 +2454,7 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
 
     if (sem.operation == SemanticOp::ReturnSubroutine) {
         if (!control.valid || control.kind != ControlFlowKind::Return ||
-            in.words != 1 || in.cycles != 10) return false;
+            in.words != 1 || traced030(L, in) != 10) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
         const MemoryAccessPlan read = memory.access(
             MemoryDirection::Read, MemoryOperand::Stack, 4, 3, 7);
@@ -2269,6 +2466,7 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         a.strW(9, 0, L.a + 7 * 4);
         a.strW(11, 0, L.pc); a.strW(11, 0, L.pc0);
         if (!tracedQueueIs(entryLookahead)) return false;
+        if (icache) chargeIcache(a, L, ir, in, icacheShadow);
         commitQueue(a, L, op, entryLookahead);
         chargeAndRetire(a, L, 10, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
@@ -2277,9 +2475,10 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
     }
 
     if (sem.operation == SemanticOp::BranchSubroutine) {
+        const unsigned bsrCost = traced030(L, in);
         if (!control.valid || control.kind != ControlFlowKind::DirectCall ||
             !control.targetKnown || !control.pushesReturnAddress ||
-            in.words > 3 || in.cycles != 7) return false;
+            in.words > 3 || (bsrCost != 7 && bsrCost != 5)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
         const MemoryAccessPlan write = memory.access(
             MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
@@ -2296,8 +2495,9 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         memStoreGuest(a, L, ir.super, 32, 11, slow, write);
         a.ldrW(9, 1, 44); a.strW(9, 0, L.a + 7 * 4);
         if (!tracedQueueIs(lastHeld)) return false;
+        if (icache) chargeIcache(a, L, ir, in, icacheShadow);
         commitBoundary(a, L, target); commitQueue(a, L, op, lastHeld);
-        chargeAndRetire(a, L, 7, paced, batch, in.pc,
+        chargeAndRetire(a, L, bsrCost, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
         leaveTo(a, ir, target, linkMask, epilogue);
         return true;
@@ -2321,7 +2521,8 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
             in.words != unsigned(1 + ea.ext)) return false;
         static const int8_t cost[E_COUNT] =
             {-1,-1,4,-1,-1,5,-1,4,4,5,-1,-1};
-        if (cost[ea.idx] < 0 || in.cycles != unsigned(cost[ea.idx])) return false;
+        if (cost[ea.idx] < 0 ||
+            traced030(L, in) != unsigned(cost[ea.idx])) return false;
         addrOf(a, L, ea, 32);
         a.strW(9, 1, 48);                           // target (Frame::saveV)
         a.movW(12, 1); a.andW(9, 9, 12); a.cbnzW(9, slow);
@@ -2335,6 +2536,7 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         a.ldrW(11, 1, 48);
         a.strW(11, 0, L.pc); a.strW(11, 0, L.pc0);
         if (!tracedQueueIs(lastHeld)) return false;
+        if (icache) chargeIcache(a, L, ir, in, icacheShadow);
         commitQueue(a, L, op, lastHeld);
         chargeAndRetire(a, L, unsigned(cost[ea.idx]), paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
@@ -2352,7 +2554,9 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         if (target & 1) return false;
         const int takenCycles = cc == 0 ? 10 : 6;
         const int fallCycles = in.words == 1 ? 4 : 6;
-        if (in.cycles != takenCycles && in.cycles != fallCycles) return false;
+        const unsigned traced = traced030(L, in);
+        if (traced != unsigned(takenCycles) &&
+            traced != unsigned(fallCycles)) return false;
 
         const uint16_t takenIrc = lastHeld;
         const uint16_t fallIrc = ir.prefetchWord(fall);
@@ -2366,9 +2570,18 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
                  in.terminalIrc != fallIrc)) return false;
         }
 
+        // A conditional Bcc.W fetches pc and pc+2 on both paths; only the
+        // fall-through consumes the displacement with readExt and fetches
+        // pc+4. Charge the common prefix here and the path-specific word
+        // below. Longer conditional forms remain refused by compile().
+        const bool bccWord = L.is030 && icache && in.words == 2 && cc != 0;
+        if (icache)
+            chargeIcache(a, L, ir, in, icacheShadow, bccWord ? 2u : 0u);
+
         const int taken = a.label();
         branchIfCond(a, L, cc, taken);
         // Not taken.
+        if (bccWord) chargeIcacheExtraWord(a, L, ir, in.pc + 4);
         commitBoundary(a, L, fall);
         commitQueue(a, L, op, fallIrc);
         chargeAndRetire(a, L, unsigned(fallCycles), paced, batch, in.pc,
@@ -2389,12 +2602,13 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
     if (sem.operation == SemanticOp::DecrementBranch) {
         if (!control.valid || control.kind != ControlFlowKind::DecrementBranch ||
             !control.targetKnown || in.words != 2 ||
-            (in.cycles != 6 && in.cycles != 10)) return false;
+            (traced030(L, in) != 6 && traced030(L, in) != 10)) return false;
         const int cc = sem.condition, dn = sem.eaReg;
         const uint32_t target = control.target;
         const uint32_t fall = control.fallthrough;
         if (target & 1) return false;
         if (!tracedQueueIs(entryLookahead)) return false;
+        if (icache) chargeIcache(a, L, ir, in, icacheShadow, 2);
         const int condTrue = a.label(), expired = a.label();
         if (cc != 1) branchIfCond(a, L, cc, condTrue);
         a.ldrH(9, 0, L.d + unsigned(dn) * 4);        // pre-decrement value
@@ -2448,19 +2662,15 @@ public:
         c.aluReg = c.aluMem = c.moves = c.branches = c.addrModes = true;
         c.dtlbCodeMask = true;
         c.maxBlockInstrs = 64;
-        // The 68030 emitter is lockstep-clean (120k gate), and since
-        // 2026-08-18 the declaration says so: an explicit
+        // The 68030 emitter is lockstep-clean at the real 260480-cycle LC II
+        // frame cadence, and since 2026-08-18 the declaration says so: an explicit
         // POM68K_JIT_BACKEND=a64 on a 68030 is honoured without the unsafe
         // override.
         c.guestFamilies = kGuest68040 | kGuest68030;
-        // But NOT 030 in `autoFamilies`: this generator still carries the
-        // uncharge hole x64 fixed on 2026-08-19 (`unchargeIcache` sits
-        // ahead of a `pom68kA64Step` that can decline), and its last two
-        // 6,000-frame measurements were behind `threaded` (within 3 %).
-        // Port the charge-on-success placement, re-measure on an AArch64
-        // host, and promote on the number (D.1 condition 3) — never by
-        // symmetry with x64, whose own 030 slot waits on the IIsi
-        // segfault (JIT_BRINGUP § C.4septies).
+        // But NOT 030 in `autoFamilies`: charge-on-success and restart-write
+        // linking are now conformant, but the 6,000-frame AArch64 result has
+        // not beaten `threaded` (D.1 condition 3). Promotion is earned by a
+        // repeated matching-fingerprint bench, never by backend symmetry.
         c.autoFamilies = kGuest68040;
         return c;
     }
@@ -2512,17 +2722,11 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     const bool paced = ctx.periphClock && ctx.periphBatch != 0 &&
                        a64PacingEnabled();
     const int batch = paced ? ctx.periphBatch : 0;
-    const bool restartWrite = L.is030 &&
-        std::any_of(ir.instrs.begin(), ir.instrs.end(),
-                    [&L](const Instr& in) {
-                        return memoryProofPlan(in.memory, proofOptions(L))
-                            .restartableLastWrite();
-                    });
-    // The 030 oracle proved that a block containing a native write is an
-    // architectural chain boundary in both directions. Returning to Engine
-    // services every deferred condition before another compiled block can
-    // observe it; the fault-frame gate proves replay, not transparent links.
-    const uint32_t linkMask = ctx.linkTable && !restartWrite ? ctx.linkMask : 0;
+    // Restartable-write blocks may link once the i-cache charge sits past the
+    // last runtime bail. The old chain-boundary divergence was the same stale
+    // pre-charge signature: a helper could decline the replay after counters
+    // and clock had already moved for an instruction that never executed.
+    const uint32_t linkMask = ctx.linkTable ? ctx.linkMask : 0;
 
     Asm a;
     const int epilogue = a.label();
@@ -2576,22 +2780,48 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
 
         const Instr& in = ir.instrs[i];
         gCurrentOpcode = in.opcode;
-        // A word/long Bcc fetches a different number of words on its taken
-        // and fall-through paths on the 68030. DBcc is not such a Bcc: it
-        // always consumes its displacement extension before choosing among
-        // condition-true, counter-expired and taken paths, so the ordinary
-        // words+1 charge is exact. This distinction covers 56C9, which the
-        // LC II census measured at 95.68% of all block fallbacks.
+        // Multi-word control flow needs a proved path-specific fetch model.
+        // DBcc fetches exactly two words on all three paths. Conditional
+        // Bcc.W has two common words plus pc+4 on fall-through. JSR d16(PC)
+        // is a single path with a traced count. BSR.W and wider transfers
+        // remain refused: the x64 lockstep observed a miss-for-hit swap when
+        // those paper proofs were widened.
         const bool dbcc =
             in.semantics.operation == SemanticOp::DecrementBranch;
-        if (icache && in.kind == Kind::Branch && in.words > 1 && !dbcc) {
+        const bool bccWord = icache && in.words == 2 &&
+            in.semantics.operation == SemanticOp::Branch &&
+            in.semantics.condition != 0;
+        const bool jsrD16Pc = icache && in.words == 2 &&
+            in.opcode == 0x4EBA &&
+            in.semantics.operation == SemanticOp::BranchSubroutine;
+        if (icache && in.kind == Kind::Branch && in.words > 1 &&
+            !dbcc && !bccWord && !jsrD16Pc) {
             a.b(slowStatic[i]);
             continue;
         }
+        // Do not guess an instruction-stream fetch count from encoded length:
+        // SKIP_LAST_RD forms are the counterexample. A missing count also
+        // invalidates the compile-time shadow, so later instructions perform
+        // full runtime tag/valid checks instead of folding a presumed hit.
+        if (icache && !dbcc && !in.fetchWords) {
+            icacheShadow = {};
+            a.b(slowStatic[i]);
+            continue;
+        }
+        // A successful exact MMIO thunk may call Cpu030::stall/catchUp from
+        // inside the operand access. If this instruction can still miss in
+        // the i-cache, post-success charging would present that access to
+        // peripherals four cycles too early. Replay the whole instruction
+        // unless the block-local shadow proves a zero-penalty fetch. Plain
+        // DTLB accesses and exact accesses on proved hits stay native.
+        const bool exactDataThunk =
+            memoryProofPlan(in.memory, proofOptions(L)).exactThunkMask != 0;
         const Asm::Mark mark = a.mark();
-        // DBcc reads its displacement from the already fetched queue word;
-        // unlike readExt-based instructions it does not fetch a lookahead.
-        if (icache) chargeIcache(a, L, ir, in, icacheShadow, dbcc ? 2u : 0u);
+        if (icache && exactDataThunk &&
+            !shadowProvesIcacheHits(ir, in, icacheShadow,
+                                    dbcc ? 2u : 0u))
+            guardIcacheHits(a, L, ir, in, icacheShadow, slowRuntime[i],
+                            dbcc ? 2u : 0u);
         // mmu040InstrStart's POLL_IPL sample.
         a.ldrB(9, 0, L.iplPin);
         a.strB(9, 0, L.regIpl);
@@ -2600,7 +2830,8 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         if (in.kind == Kind::Branch) {
             native = emitBranchInstr(a, L, ir, in, entries, epilogue,
                                      slowRuntime[i],
-                                     paced, batch, linkMask);
+                                     paced, batch, linkMask, icache,
+                                     icacheShadow);
         } else if (canEmit(in.opcode)) {
             native = emitRegInstr(a, L, ir, in, slowRuntime[i]);
         }
@@ -2609,11 +2840,18 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
             // after writing a few instructions. Erase that partial attempt
             // and hand the untouched guest instruction to Moira.
             a.rewind(mark);
+            if (icache)
+                shadowIcache(ir, in, icacheShadow, dbcc ? 2u : 0u);
             a.b(slowStatic[i]);
             continue;
         }
         nativeCount++;
         if (in.kind == Kind::Branch) continue;
+
+        // Charge only after the instruction body has crossed its last
+        // runtime-bail edge. A refused re-run can then never leave cache
+        // counters, tags or miss cycles for an instruction that did not run.
+        if (icache) chargeIcache(a, L, ir, in, icacheShadow);
 
         const uint16_t ird = in.terminalQueueValid
             ? in.terminalIrd : in.opcode;
@@ -2631,8 +2869,14 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // component recorded by the tracer. Existing instructions traced on
         // cache hits have baseCycles == cycles, so this changes behaviour
         // only for forms explicitly admitted using split timing above.
-        const uint16_t nativeCycles = L.is030 &&
-                                      memoryRequiresExactAccess(in.memory)
+        // TST.B (A1) ($4A11) is the one exact 030 access whose helper owns
+        // a variable device delay, so generated code owes only the fixed
+        // six-cycle instruction component. `exactRequired` is a memory-
+        // contract property, not a timing class: restartable LINK/MOVE/PEA
+        // writes carry it too and must retain their own traced base cost.
+        const bool exactTst030 = L.is030 && in.opcode == 0x4A11 &&
+                                 memoryRequiresExactAccess(in.memory);
+        const uint16_t nativeCycles = exactTst030
             ? uint16_t(kEaReadA64[E_AI][0])
             : L.is030 ? in.baseCycles : in.cycles;
         chargeAndRetire(a, L, nativeCycles, paced, batch, in.pc,
@@ -2680,7 +2924,6 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         }
         if (ctx.runtimeAddressObserver)
             observeRuntimeAddress(a, ir.instrs[i].opcode);
-        if (icache) unchargeIcache(a, L, ir.instrs[i]);
         a.b(slowBody[i]);
         a.bind(slowBody[i]);
         commitBoundary(a, L, ir.instrs[i].pc);
@@ -2761,7 +3004,7 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     if (!buf_.makeExecutable()) return reject("W^X -> executable");
     auto* c = new A64Compiled;
     c->entry = dst;
-    c->linked = restartWrite ? nullptr : dst + linkEntryOffset;
+    c->linked = dst + linkEntryOffset;
     return c;
 }
 
