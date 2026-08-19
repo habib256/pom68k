@@ -22,8 +22,8 @@ memory-contract work):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **79** (52 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **390** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **80** (53 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **391** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **13 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
 | patch groups in the inventory below | **29** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
@@ -78,7 +78,7 @@ find.
   lost here cannot be recovered from the code.
 - Every local change is marked `POM68K` (often `POM68K <slice>:`) in the source,
   so `grep -rn POM68K extern/moira/Moira/` is the machine-checkable inventory —
-  390 marked lines across 13 of the 25 source files, as of 2026-08-17 (was 361
+  391 marked lines across 13 of the 25 source files, as of 2026-08-19 (was 361
   across 13 of 25 on 2026-08-12 and 336 across 12 of 24 on 2026-07-31; the
   25th file is `MoiraCache040.h`, added).
   The NeoST patches carry `NEOST` markers instead, not `POM68K` ones — the two

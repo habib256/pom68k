@@ -62,6 +62,11 @@ public:
         int delivered = 0;
         int nextEvent = 0;
         uint64_t deviceHash = 0;
+        // The i-cache overlay's counters AT the delivery: an intra-step
+        // charge skew wanders between engines and re-heals by the step
+        // boundary, so only a per-delivery capture can name the window
+        // that first mis-charged (2026-08-19 retained-cache bisect).
+        moira::i64 icFetches = 0, icHits = 0, icMisses = 0;
     };
     using PeriphTraceFn = void (*)(void*, const PeriphTracePoint&);
     void setPeriphTrace(void* opaque, PeriphTraceFn fn) {
@@ -96,6 +101,10 @@ public:
     void resetICacheStats() {
         pomIcache.fetches = pomIcache.hits = pomIcache.misses = 0;
     }
+    // The overlay's CONTENT (tags + valid bits), for the 030 lockstep gate:
+    // counters can agree while the cached lines have parted, and the state
+    // skew then reads as a timing drift thousands of steps later.
+    const moira::Moira::PomIcache& icacheState() const { return pomIcache; }
     bool icacheEnabled() const { return (getCACR() & 0x1) != 0; }
 
     // ── Save states (chunk "CPU ") ──────────────────────────────────────

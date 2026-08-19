@@ -20,6 +20,11 @@
 //   POM68K_BENCH_COMPARE N repeats per arm, both arms in THIS process,
 //                        counterbalanced ABBA — the only supported way to
 //                        produce a delta (docs/MEASURING.md § R1)
+//   POM68K_BENCH_ARMS    <a>,<b> — the two arms of the comparison, each
+//                        `interp` or a backend key (threaded/x64/a64),
+//                        head-to-head in the SAME ABBA process. Unset =
+//                        the historical interp-vs-jit pair
+
 //   POM68K_BENCH_NULL=1  run the reference arm against itself: measures
 //                        this host's noise floor instead of assuming one
 //   POM68K_BENCH_PPM     dump the final screen here (diagnosing a boot)
@@ -115,17 +120,43 @@ int main() {
     // minus the process, and it is the only way the two arms see the same
     // page cache and the same thermal state.
     if (bench::compareRepeats() > 0) {
+        // POM68K_BENCH_ARMS=<a>,<b> — head-to-head of two ENGINE arms in the
+        // SAME ABBA process. Each side is `interp` or a backend key handed to
+        // POM68K_JIT_BACKEND before that arm's machine is built — the Engine
+        // resolves its environment at construction, so the knob binds per
+        // arm. Unset, this is the historical interp-vs-jit comparison.
+        // It exists because `threaded` vs a code generator used to be TWO
+        // compare invocations against the interpreter, which reintroduces
+        // exactly the between-process variance bench::compare removes.
+        std::string armA = "interp", armB = "jit";
+        if (const char* arms = std::getenv("POM68K_BENCH_ARMS")) {
+            const std::string v = arms;
+            const size_t comma = v.find(',');
+            if (comma == std::string::npos || comma == 0 ||
+                comma + 1 == v.size()) {
+                std::fprintf(stderr,
+                             "FAIL: POM68K_BENCH_ARMS wants \"<a>,<b>\" "
+                             "(interp or a backend key per side)\n");
+                return 1;
+            }
+            armA = v.substr(0, comma);
+            armB = v.substr(comma + 1);
+        }
         std::printf("lcii %s, %d repeats x 2 arms ABBA, %d frames per run, "
                     "built %s\n",
                     bench::nullExperiment() ? "NULL experiment (A vs A)"
                                             : "interleaved A/B",
                     bench::compareRepeats(), frames, bench::buildStamp());
-        return bench::compare("lcii", "interp", "jit", [&](int arm) {
+        return bench::compare("lcii", armA.c_str(), armB.c_str(), [&](int arm) {
+            const std::string& spec = arm == 0 ? armA : armB;
+            const bool engineOn = spec != "interp";
+            if (engineOn && spec != "jit")           // "jit" = whatever the
+                setenv("POM68K_JIT_BACKEND", spec.c_str(), 1);   // env says
             V8Memory m;
             m.loadRom(rom);
             Cpu030 c(m, /*withFpu=*/true);
             m.setCpu(&c);
-            c.setEngine(arm);                        // 0 interp, 1 jit
+            c.setEngine(engineOn ? 1 : 0);
             c.hardReset();
             m.attachScsi(diskPath);
             ensureBootDriverType(m.scsiDisk().image());

@@ -448,14 +448,23 @@ public:
         i64 baseCycles = 0;
         i64 icacheCycles = 0;
         i64 postExceptionCycles = 0;
+        // Instruction-stream words the run fetched through mmuFetchWord
+        // (pomIcache.fetches delta; the counter runs whenever armed, cache
+        // enabled or not). NOT derivable from the instruction length: a
+        // SKIP_LAST_RD form consumes its last extension without a refetch,
+        // so it fetches `words`, not `words + 1` — the emitted 030 i-cache
+        // charge needs the real count (POM68K JIT, 2026-08-19).
+        i64 fetchWords = 0;
         bool valid = false;
     };
     void pomJitBeginTiming() {
         pomJitTiming = {};
         pomJitTimingProbe = true;
+        pomJitTimingFetch0 = pomIcache.fetches;
     }
     PomJitTiming pomJitEndTiming() {
         pomJitTimingProbe = false;
+        pomJitTiming.fetchWords = pomIcache.fetches - pomJitTimingFetch0;
         return pomJitTiming;
     }
 
@@ -1085,6 +1094,7 @@ protected:
     // configured penalty part of one contract.
     bool pomJitTimingProbe = false;
     PomJitTiming pomJitTiming {};
+    i64 pomJitTimingFetch0 = 0;
 
     
     //

@@ -131,6 +131,27 @@ public:
     // the caller's own wall clock (the engine does not read the host clock).
     uint64_t retired() const;
 
+    // POM68K_JIT_DISPATCH_RING=1 — the last 64 dispatch decisions of
+    // executeUntil (which path ran, from which pc, at which clock, exiting
+    // how). The 2026-08-19 retained-cache divergence could not be read from
+    // end states: two machines agreed on every counter and differed only in
+    // WHERE the final budget boundary cut, which only the dispatch sequence
+    // can show. Null when off (one predictable branch per dispatch).
+    struct DispatchEv {
+        uint32_t pc = 0;
+        int64_t  clock = 0;
+        int64_t  target = 0;
+        uint8_t  kind = 0;      // 0 flags,1 backoff,2 armfail,3 trace,
+                                // 4 window,5 block,6 cacheline,7 notready
+        uint8_t  exit = 0;      // block runs: RunResult::exit
+        uint32_t instrs = 0;    // instructions the dispatch retired
+    };
+    static constexpr unsigned kDispatchRing = 8192;
+    const DispatchEv* dispatchRing(unsigned& count, unsigned& head) const {
+        count = dispatchCount_; head = dispatchHead_;
+        return dispatchEv_.data();
+    }
+
     // POM68K_JIT_HISTO phase instrument: dump the census accumulated so far
     // under `label`, then zero every census counter, so one run can report
     // boot, idle-Finder and a drawing phase as separate censuses instead of
@@ -142,6 +163,13 @@ private:
     struct Block {
         BlockIr   ir;
         Compiled* code = nullptr;
+        // pomJitMmuGen this block was last proved under. A block is a
+        // script of LOGICAL addresses; when the translation generation
+        // moves, it may run again only after the dispatch loop re-proves
+        // that its recorded (logical page, physical page, length) triple
+        // still holds — the freshly re-armed window supplies the current
+        // triple for free.
+        uint32_t  gen = 0;
         // Visits before this block is worth generating code for. A boot
         // touches a very large amount of code exactly once — compiling all
         // of it costs more than it can ever return, so a block earns its
@@ -203,6 +231,13 @@ private:
 
     void publishLink(uint32_t pc, bool super, void* entry) {
         LinkSlot& s = linkTable_[linkIndex(pc)];
+        // First occupancy of the slot since the last wipe: remember it, so
+        // clearLinks() wipes exactly the slots that carry anything. A flush
+        // used to memset the whole megabyte table — 4 527 translation
+        // flushes per 2000-frame LC II boot made that 3.3 % of the run in
+        // __memset_avx2 (callgrind, 2026-08-19) for slots that were ~99.9 %
+        // already empty.
+        if (s.tag == kNoLink) published_.push_back(linkIndex(pc));
         s.tag = pc | uint32_t(super);
         s.entry = entry;
     }
@@ -215,9 +250,18 @@ private:
         if (s.tag == (pc | uint32_t(super))) { s.tag = kNoLink; s.entry = nullptr; }
     }
     void clearLinks() {
-        for (LinkSlot& s : linkTable_) { s.tag = kNoLink; s.entry = nullptr; }
+        for (uint32_t idx : published_) {
+            linkTable_[idx].tag = kNoLink;
+            linkTable_[idx].entry = nullptr;
+        }
+        published_.clear();
     }
     std::vector<LinkSlot> linkTable_{ kLinkSlots };
+    // Slots holding a live entry — what clearLinks() must visit. Bounded by
+    // the blocks compiled since the last flush; duplicates are impossible
+    // because publishLink records only the empty->occupied transition and
+    // retractLink leaves the slot on the list (cleared twice is harmless).
+    std::vector<uint32_t> published_;
 
     static uint64_t key(uint32_t pc, bool super) {
         return uint64_t(pc) | (super ? (uint64_t(1) << 32) : 0);
@@ -301,6 +345,16 @@ private:
     // block is a script of LOGICAL addresses and does not survive a change
     // of translation.
     uint32_t blocksGen_ = 0;
+
+    // Allocated only when POM68K_JIT_DISPATCH_RING=1 — an Engine lives
+    // inside every CPU wrapper, and a quarter-megabyte of always-present
+    // ring would be paid twelve times over for an instrument that is off.
+    std::vector<DispatchEv> dispatchEv_;
+    unsigned dispatchHead_ = 0;
+    unsigned dispatchCount_ = 0;
+    bool dispatchRingOn_ = false;
+    void ring(uint8_t kind, uint32_t pc, int64_t target,
+              uint8_t exit, uint32_t instrs);
 
     bool enabled_ = false;
     bool useBlocks_ = true;

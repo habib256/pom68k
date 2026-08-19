@@ -94,18 +94,26 @@ void Cpu030::didChangeCACR(moira::u32 value) {
     // What actually protects the JIT from unannounced code is `CodeGuard`
     // (201 030 precise invalidations in that same run), not this hint.
     //
-    // POM68K_JIT_030_CACR_FLUSH=0 is a MEASUREMENT INSTRUMENT, not tuning,
-    // and it is UNSAFE: it removes the only notice the engine gets for code
-    // that arrived without a CPU write it could guard (a segment loaded by
-    // SCSI pseudo-DMA is the real case). It exists to price the hint before
-    // anyone pays to make it precise — the same method § 3.5 used on the
-    // codeMask refusal. A fingerprint taken with it MUST be compared against
-    // one taken without.
-    static const bool cacrFlush = [] {
+    // On THIS board the hint is retired: V8Memory::kJitStoreInventoryComplete
+    // documents that every store into RAM — pseudo-DMA included, which is a
+    // guest MOVE here, not a bus master — passes CodeGuard::note(), so the
+    // "segment loaded by SCSI" case the hint existed for is already caught
+    // precisely. The i-cache MODEL invalidation above is untouched (that is
+    // architecture); only the drop-all-generated-code hint goes.
+    //
+    // POM68K_JIT_030_CACR_FLUSH remains the measurement instrument, now
+    // three-valued: unset = the board's own answer; =1 forces the hint back
+    // ON (prices it on a proven board); =0 forces it OFF everywhere, which
+    // is UNSAFE on boards whose store inventory is NOT proven (VASP, RBV,
+    // MSC — see their didChangeCACR). A fingerprint taken under a forced
+    // value MUST be compared against one taken without.
+    static const int cacrFlushKnob = [] {
         const char* v = getenv("POM68K_JIT_030_CACR_FLUSH");
-        return !v || atoi(v) != 0;
+        return v ? (atoi(v) != 0 ? 1 : 0) : -1;
     }();
-    if ((value & 0x0C) && cacrFlush) jit_.flushAll();
+    const bool flush = cacrFlushKnob < 0 ? !V8Memory::kJitStoreInventoryComplete
+                                         : cacrFlushKnob != 0;
+    if ((value & 0x0C) && flush) jit_.flushAll();
 }
 
 void Cpu030::runCycles(moira::i64 n) {
@@ -323,6 +331,9 @@ void Cpu030::emitPeriphTrace(int phase, int delivered, moira::i64 target) {
     p.delivered = delivered;
     p.nextEvent = mem_.cyclesToNextEvent();
     p.deviceHash = mem_.debugDeviceHash();
+    p.icFetches = pomIcache.fetches;
+    p.icHits = pomIcache.hits;
+    p.icMisses = pomIcache.misses;
     periphTraceFn_(periphTraceOpaque_, p);
 }
 
