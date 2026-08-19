@@ -539,6 +539,13 @@ plausible are respectively non-conformant (the flush), already optimal
 (the coverage bar) and worth 3 % (the branch guard). C.5's declaration
 staying shut on x64 is not caution, it is the measurement.
 
+> **Retracted 2026-08-19 — see § C.4sexies.** The ceiling was a real
+> measurement of three bugs and a policy, not of a limit: with the i-cache
+> uncharge hole fixed, the CACR hint retired on the proven V8 inventory,
+> the base-cost cross-check made global and the MMU-generation flush made
+> a lazy revalidation, the generator beats `threaded` by **12 %** at this
+> bench's default budget.
+
 What is left unmeasured, and is where the remaining distance must be: **why
 82 % of execution is on the window path at all**, when only 66.9 % is
 explained by declined blocks and 13.5 % by the post-refusal arm backoff.
@@ -577,6 +584,72 @@ guard), the IWM is polled, and generated-code stores cross the DTLB's
 redundant and can go. One workload's matching fingerprint is not that
 proof, and the four-proof bar in `TODO.md` § 3 applies.
 
+### C.4sexies — the ceiling was three bugs and a policy (2026-08-19)
+
+The 2026-08-19 session took the x86-64 generator from **+45 %** behind
+`threaded` to **−12 %** ahead at the bench's default budget, conformantly —
+every number below is `jit_bench_lcii`, ABBA in one process, 3 repeats per
+arm, quiet host, fingerprint identical within each budget
+(`3de5c5ab62b4eca8` at 2000 frames, `cfb184b6faddabec` at 6000):
+
+| `POM68K_BENCH_FRAMES` | `threaded` | x86-64 generator | delta |
+|---|---|---|---|
+| 1200 | 8.80 s | 10.42 s | +18.4 % |
+| 2000 | 14.30 s | 14.77 s | +3.3 % |
+| 3000 | 21.21 s | 20.23 s | **−4.6 %** |
+| 6000 (default) | 42.29 s | 37.22 s | **−12.0 %** |
+
+The trend is the boot-warmup story: below ~2500 frames the run is
+single-pass System-loading code and the compile investment cannot amortize;
+a real session sits far beyond the 6000-frame floor. What moved, in causal
+order — the full forensic narrative is `CHANGELOG.md` 2026-08-19:
+
+1. **CACR hint retired on the V8** (per-board constant
+   `V8Memory::kJitStoreInventoryComplete`; the knob is three-valued now).
+   26 544 flushes/run → 1.
+2. Retention exposed a **pre-existing uncharge hole**: a runtime-bailing
+   instruction whose emitted i-cache charge had missed left a charge (miss
+   count, tag, +penalty) for an instruction that never ran whenever
+   `pom68kJitStep` declined the re-run the uncharge had pre-subtracted.
+   **The charge now sits on the success path only** (after the body;
+   inside each control-flow emitter past its last bail) and the uncharge
+   is gone. Diagnosed with three instruments this phase keeps: the
+   lockstep's i-cache CONTENT compare, per-delivery i-cache counters in
+   the peripheral trace, and the engine dispatch ring
+   (`POM68K_JIT_DISPATCH_RING=1`).
+3. That fix re-attributes the a64 **block-link chain-boundary contract**
+   (same divergence signature): restart-write blocks link again, gates
+   green.
+4. **`Emitter::traced030` makes the base-cost cross-check the global 030
+   rule** (post-exception traces never match), unlocking the whole
+   2026-08-18 census — plus DBcc (a64's 2-fetch rule), conditional Bcc.W
+   (2 common words + the fall-through's own pc+4), and `JSR d16(PC)`.
+   The traced **fetch count** (`Instr::fetchWords`) replaces the words+1
+   guess — `MOVEA.L (xxx).W,An` under SKIP_LAST_RD was the counterexample.
+5. **MMU-generation flushes are a lazy revalidation**: blocks carry the
+   (logical page, physical page, length) triple their recording window
+   proved; a generation bump drops the DTLB and the links (the link wipe
+   now visits only published slots — it was a 1 MiB memset ×4527), and a
+   block runs again only after the fresh window re-proves its triple.
+
+**The a64 generator still carries the uncharge hole** — its
+`unchargeIcache` sits on the runtime door ahead of a `pom68kA64Step` that
+can decline (`JitBackendA64.cpp:2678`), the exact pattern fixed on x64.
+Latent there for the same reason it was latent here (the flush storm), it
+becomes reachable the moment an AArch64 host retires the CACR hint. Port
+the charge-on-success placement before that; the gate that judges it,
+`jit_lockstep_030_a64_experimental_test`, only registers on an AArch64
+host.
+
+**Parked with reproducers** (isolate with `POM68K_JIT_DENY_FROM/_TO` + the
+dispatch ring): base-cost admission of the **restartable-write family**
+still diverges at a coarse budget cut (step 19 658, fine-budget heals,
+window = the TimeDBRA self-loop + class-2 stores) — those keep the
+total-cost check, priced at ~44 % of remaining in-block fallbacks, the
+biggest known lever left. **BSR.W** and the wider single-path branch
+exemptions swap one miss for one hit at an identical pc (step 16 097) and
+stay refused.
+
 **C.5 — flip the declaration.** SPLIT AND HALF-LANDED 2026-08-18. The
 original coupling — declaration == default — protected against the
 2026-07-30 wedge when nothing else did. Since the x64 030 lockstep went
@@ -595,6 +668,11 @@ correctness has a standing guard, so the two halves were separated:
   condition 3 — a fixed-budget bench win, on a quiet host — and never as
   a side effect. C.4bis/C.4ter still say how to get there: emitter
   coverage on the forms the **68030** census names, not residency.
+  **2026-08-19: D.1 condition 3 is now measured TRUE at 3000 frames and
+  above (§ C.4sexies), with the boot-phase budgets still threaded-faster.
+  The flip remains its own commit behind conditions 2 and 4 — the 030
+  boot etalons under the generator, and the full `-L etalon` tier with
+  the new default in force.**
 
 **C.6 — the full-boot gates.** `jit_lcii_boot_etalon` on the native backend
 (this is the gate that timed out at one hour on 2026-07-30 — it is the

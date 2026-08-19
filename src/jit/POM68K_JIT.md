@@ -327,6 +327,23 @@ instrument, same rule (identical fingerprints across engines), one budget:
 | Moira interpreter | 50.27 s | ×1.98 | — |
 | JIT, `threaded` | 41.63 s | ×2.40 | ×1.21 |
 
+**2026-08-19 — the x86-64 generator overtakes `threaded` on the LC II**
+(`POM68K_BENCH_ARMS=threaded,x64`, ABBA, 3 repeats/arm, quiet host, one
+fingerprint per budget; `docs/JIT_BRINGUP.md` § C.4sexies has the causal
+story):
+
+| budget (frames) | `threaded` | `x86-64` | delta |
+|---|---|---|---|
+| 1200 | 8.80 s | 10.42 s | +18.4 % |
+| 2000 | 14.30 s | 14.77 s | +3.3 % |
+| 3000 | 21.21 s | 20.23 s | **−4.6 %** |
+| 6000 (`fp=cfb184b6faddabec`) | 42.29 s | **37.22 s** | **−12.0 %** |
+
+Below ~2500 frames the run is single-pass boot code and the compile
+investment cannot amortize; a session sits far past the 6000-frame floor.
+`auto` still resolves to `threaded` on 030 guests until C.5's own flip
+commit clears D.1 conditions 2 and 4.
+
 The reports use the same JSON schema as CI, so the reviewed x86-64 floors
 above can be replayed without scraping prose:
 
@@ -782,7 +799,10 @@ process environment. Later environment changes affect only future engines.
 | `POM68K_JIT_REQUIRE_NATIVE` | unset | gate-only: make the asset-free native protocol tier fail instead of soft-skipping when no A64/x64 generator is usable |
 | `POM68K_JIT_WINDOW_KILL` | `0` | **measurement instrument, not tuning**: kill the code window every N retired instructions on purpose, so the price of ONE window-lost exit is the slope of wall time against exit count (§ 3.6). A kill is architecturally invisible, so a bench fingerprint must not move with N — that is what makes the fit a measurement rather than a story. Slows the engine down by design |
 | `POM68K_JIT_MIN_NATIVE` | `50` | percent of a block's instructions a generator must emit natively before the block is kept; below it the block is refused and the fetch window runs instead. **Sweeping it is a measurement, and the measurement says leave it alone**: 0 % more than doubles native residency and costs **37 %** of wall clock on the 68030, everything from 50 up is one flat plateau (`docs/JIT_BRINGUP.md` § C.4ter). A fallback inside a block pays a call, a frame and a boundary commit; on the window it pays a dispatch |
-| `POM68K_JIT_030_CACR_FLUSH` | `1` | **UNSAFE measurement instrument, not tuning** (68030 wrappers). `0` stops honouring the guest's CACR instruction-cache clear as an SMC hint, so the block cache survives it. It prices the hint — measured −21.8 % of wall clock on the LC II, `docs/JIT_BRINGUP.md` § C.4bis — at the cost of the engine's only notice for code that arrived without a guarded CPU write. Compare fingerprints on both sides or the number means nothing |
+| `POM68K_JIT_030_CACR_FLUSH` | per board | Three-valued since 2026-08-19 (68030 wrappers). **Unset = the board's own answer**: retired on the V8, whose store inventory is proved complete (`V8Memory::kJitStoreInventoryComplete` — every store into RAM passes `CodeGuard::note()`, pseudo-DMA included), honoured on VASP/RBV/MSC, whose inventories are not. `1` forces the hint back ON (prices it on a proven board: −21.8 % of generator wall clock, `docs/JIT_BRINGUP.md` § C.4bis); `0` forces it OFF everywhere, which is UNSAFE on the unproven boards. Compare fingerprints on both sides or the number means nothing |
+| `POM68K_JIT_DISPATCH_RING` | `0` | diagnosis: record the engine's last 8192 dispatch decisions (path, pc, clock, target, exit, instructions) in a ring the 030 lockstep dumps on divergence. The 2026-08-19 uncharge hole was invisible in every end state and named by this ring in one run |
+| `POM68K_JIT_DENY_FROM` / `_TO` | unset | bisection instrument (hex pc range): refuse to COMPILE any block whose entry pc falls in [from, to). Halving the pc space is how a divergence that heals under every pacing perturbation gets pinned to one block |
+| `POM68K_BENCH_ARMS` | unset | `jit_bench_lcii`: `<a>,<b>` runs TWO ENGINE arms head-to-head in the same ABBA process (each side `interp` or a backend key, applied via `POM68K_JIT_BACKEND` before that arm's machine is built). Unset = the historical interp-vs-jit comparison. Exists because threaded-vs-generator used to be two separate compare invocations, which reintroduces the between-process variance `bench::compare` removes |
 | `POM68K_BENCH_FRAMES` | q605 `3000`, lcii `6000` | `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` — frames of 416 667 (Q605) or 640×407 = 260 480 (LC II) **machine** cycles |
 | `POM68K_BENCH_SLICES` | `0` = CPU alone | `jit_bench_lcii` only: N ≥ 1 runs the GUI's own quantum, N slices per frame with a raster catch-up at each boundary (§ 3.6) |
 | `POM68K_DUMP` | unset | `tests/q605_rogue_census.cpp` (`make q605_rogue_census`, `EXCLUDE_FROM_ALL`): write `q605_rogue_*.ppm` at every stage. The harness sets `POM68K_JIT_HISTO` itself and dumps one census PER PHASE (§ 3.5bis) — a drawing workload, which `jit_bench` is not |
