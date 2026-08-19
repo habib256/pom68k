@@ -78,6 +78,7 @@ struct ResolvedConfig {
     bool verbose = false;
     int verboseBlocks = 40;
     int minNativePercent = 50;
+    int profitScore = 0;
     int armBackoff = 32;
     bool dataWindow = false;
 
@@ -146,6 +147,7 @@ inline ResolvedConfig resolveConfig() {
     c.verbose = detail::envBool("POM68K_JIT_VERBOSE", false);
     c.verboseBlocks = detail::envInt("POM68K_JIT_VERBOSE_BLOCKS", 40, 0, 1 << 24);
     c.minNativePercent = detail::envInt("POM68K_JIT_MIN_NATIVE", 50, 0, 100);
+    c.profitScore = detail::envInt("POM68K_JIT_PROFIT_SCORE", 0, 0, 1 << 30);
     c.armBackoff = detail::envInt("POM68K_JIT_ARM_BACKOFF", 32, 0, 4096);
     c.dataWindow = detail::envBool("POM68K_DATA_WINDOW", false);
     c.a64Pacing = detail::envBool("POM68K_JIT_A64_PACING", true);

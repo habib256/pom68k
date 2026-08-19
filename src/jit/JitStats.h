@@ -13,6 +13,30 @@
 
 namespace jit {
 
+// Why a backend declined to publish a compiled block. This is deliberately
+// coarser than the per-opcode fallback census: it attributes the WHOLE
+// compile attempt and its host cost, while RuntimeFallbackReason explains
+// individual instructions inside a block that was accepted.
+enum class CompileReject : int {
+    None = 0,
+    Context,         // missing/empty IR, unsupported live CPU mode
+    Emit,            // assembler/fixup or traced-contract mismatch
+    Coverage,        // native share below POM68K_JIT_MIN_NATIVE
+    CodeMemory,      // reserve/allocation/W^X transition failed
+    Count
+};
+
+inline const char* compileRejectName(CompileReject r) {
+    switch (r) {
+        case CompileReject::None:       return "accepted";
+        case CompileReject::Context:    return "context/IR";
+        case CompileReject::Emit:       return "emit/fixup";
+        case CompileReject::Coverage:   return "coverage";
+        case CompileReject::CodeMemory: return "code memory/W^X";
+        default:                        return "?";
+    }
+}
+
 // Why a block replay handed control back to the interpreter. Every exit is
 // taken at an instruction boundary with exact guest state (invariant 2 of
 // src/jit/POM68K_JIT.md), so an exit is never an error — but the mix tells
@@ -80,6 +104,7 @@ enum class Miss : int {
     Trace,            // being recorded: tracing IS execution, so a block's
                       // first pass is always interpreted
     NotHot,           // a recorded block below its visit threshold
+    NotProfitable,    // below visits × potentially-native instruction score
     Rejected,         // the backend declined to generate code for it
     CacheLine,        // 68040 architectural i-cache: block bytes not resident
     Count
@@ -92,6 +117,7 @@ inline const char* missName(Miss m) {
         case Miss::ArmBackoff: return "arm backoff";
         case Miss::Trace:      return "tracing";
         case Miss::NotHot:     return "not hot yet";
+        case Miss::NotProfitable: return "profit score";
         case Miss::Rejected:   return "backend declined";
         case Miss::CacheLine:  return "040 line absent";
         default:               return "?";
@@ -101,6 +127,11 @@ inline const char* missName(Miss m) {
 struct Stats {
     std::atomic<uint64_t> instrs{0};        // guest instructions run by the JIT
     std::atomic<uint64_t> interpInstrs{0};  // …run by the interpreter fallback
+    std::atomic<uint64_t> compileAttempts{0}; // backend compile() calls
+    std::atomic<uint64_t> compileRejected{0}; // …that published no code
+    std::atomic<uint64_t> compileNanos{0};    // host time spent in compile()
+    std::atomic<uint64_t> compileRejects[int(CompileReject::Count)] = {};
+    std::atomic<uint64_t> compileRejectNanos[int(CompileReject::Count)] = {};
     std::atomic<uint64_t> blocksCompiled{0};
     std::atomic<uint64_t> blocksRun{0};
     std::atomic<uint64_t> blocksLive{0};
@@ -135,6 +166,7 @@ struct Stats {
 
     void reset() {
         instrs = 0; interpInstrs = 0;
+        compileAttempts = 0; compileRejected = 0; compileNanos = 0;
         blocksCompiled = 0; blocksRun = 0; blocksLive = 0;
         flushes = 0; invalidations = 0; windowArmed = 0; windowFailed = 0;
         dtlbFills = 0; dtlbRefused = 0; slowInstrs = 0; windowInstrs = 0;
@@ -143,10 +175,15 @@ struct Stats {
         for (auto& e : exits) e = 0;
         for (auto& f : flushCauses) f = 0;
         for (auto& m : misses) m = 0;
+        for (auto& r : compileRejects) r = 0;
+        for (auto& r : compileRejectNanos) r = 0;
     }
 
     // Snapshot for the GUI: a plain POD copy, no atomics to drag around.
     struct Snapshot {
+        uint64_t compileAttempts, compileRejected, compileNanos;
+        uint64_t compileRejects[int(CompileReject::Count)];
+        uint64_t compileRejectNanos[int(CompileReject::Count)];
         uint64_t instrs, interpInstrs, blocksCompiled, blocksRun, blocksLive;
         uint64_t flushes, invalidations, windowArmed, windowFailed;
         uint64_t dtlbFills, dtlbRefused, slowInstrs, windowInstrs, evictions;
@@ -159,6 +196,15 @@ struct Stats {
         Snapshot s{};
         s.instrs = instrs.load(std::memory_order_relaxed);
         s.interpInstrs = interpInstrs.load(std::memory_order_relaxed);
+        s.compileAttempts = compileAttempts.load(std::memory_order_relaxed);
+        s.compileRejected = compileRejected.load(std::memory_order_relaxed);
+        s.compileNanos = compileNanos.load(std::memory_order_relaxed);
+        for (int i = 0; i < int(CompileReject::Count); i++) {
+            s.compileRejects[i] =
+                compileRejects[i].load(std::memory_order_relaxed);
+            s.compileRejectNanos[i] =
+                compileRejectNanos[i].load(std::memory_order_relaxed);
+        }
         s.blocksCompiled = blocksCompiled.load(std::memory_order_relaxed);
         s.blocksRun = blocksRun.load(std::memory_order_relaxed);
         s.blocksLive = blocksLive.load(std::memory_order_relaxed);

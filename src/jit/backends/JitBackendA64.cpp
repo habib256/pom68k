@@ -2677,7 +2677,7 @@ public:
     bool canEmit(uint16_t op) const override {
         return canEmitReg(op);
     }
-    Compiled* compile(const BlockIr& ir, const Context& ctx) override;
+    CompileResult compile(const BlockIr& ir, const Context& ctx) override;
     void* linkEntry(Compiled* c) const override {
         return static_cast<A64Compiled*>(c)->linked;
     }
@@ -2694,19 +2694,21 @@ private:
     int diagLeft_ = -1;
 };
 
-Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
+CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     if (diagLeft_ < 0) diagLeft_ = verboseBlocks();
     gRuntimeReasonHisto = ctx.slowRuntimeReasonHisto != nullptr;
     gExactStoreGuardOpcode = a64StoreGuardOpcode();
-    const auto reject = [this](const char* why) -> Compiled* {
+    const auto reject = [this](CompileReject reason,
+                               const char* why) -> CompileResult {
         if (verbose() && diagLeft_ > 0) {
             diagLeft_--;
             std::fprintf(stderr, "[jit/a64] refused: %s\n", why);
         }
-        return nullptr;
+        return {nullptr, reason};
     };
     if (!ctx.cpu || ir.instrs.empty() || ir.code.empty() ||
-        !ctx.cpu->pomJitSimpleIpl()) return reject("empty/context/IPL mode");
+        !ctx.cpu->pomJitSimpleIpl())
+        return reject(CompileReject::Context, "empty/context/IPL mode");
     if (verbose() && diagLeft_ > 0) {
         diagLeft_--;
         std::fprintf(stderr, "[jit/a64] native block $%08X (%zu):",
@@ -2980,14 +2982,17 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     a.emit(0xA9415BF5u);                 // ldp x21,x22,[sp,#16]
     a.emit(0xA8C47BFDu);                 // ldp x29,x30,[sp],#64
     a.emit(0xD65F03C0u);                 // ret
-    if (!a.finish()) return reject("branch fixup");
+    if (!a.finish()) return reject(CompileReject::Emit, "branch fixup");
 
     // Match the x86-64 policy: a block dominated by interpreter calls is
     // slower than the threaded window and should not consume code cache.
-    if (nativeCount * 2 < ir.instrs.size()) return reject("native coverage");
+    if (nativeCount * 100 < ir.instrs.size() * size_t(minNativePercent()))
+        return reject(CompileReject::Coverage, "native coverage");
 
-    if (!buf_.valid() && !buf_.reserve(128u * 1024 * 1024)) return reject("code reserve");
-    if (!buf_.makeWritable()) return reject("W^X -> writable");
+    if (!buf_.valid() && !buf_.reserve(128u * 1024 * 1024))
+        return reject(CompileReject::CodeMemory, "code reserve");
+    if (!buf_.makeWritable())
+        return reject(CompileReject::CodeMemory, "W^X -> writable");
     // Keep an indirect entry away from the final 16 bytes of an Apple
     // 16-KiB page. arm64 fetches a wider instruction window at a branch
     // target; a prologue straddling that boundary faults under MAP_JIT on
@@ -2998,14 +3003,15 @@ Compiled* A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // Existing blocks must remain executable even when this allocation
         // cannot be satisfied.
         buf_.makeExecutable();
-        return reject("code buffer full");
+        return reject(CompileReject::CodeMemory, "code buffer full");
     }
     std::memcpy(dst, a.bytes(), a.byteSize());
-    if (!buf_.makeExecutable()) return reject("W^X -> executable");
+    if (!buf_.makeExecutable())
+        return reject(CompileReject::CodeMemory, "W^X -> executable");
     auto* c = new A64Compiled;
     c->entry = dst;
     c->linked = dst + linkEntryOffset;
-    return c;
+    return {c, CompileReject::None};
 }
 
 RunResult A64Backend::run(Compiled* c, Context& ctx) {

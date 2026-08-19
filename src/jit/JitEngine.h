@@ -175,6 +175,10 @@ private:
         // of it costs more than it can ever return, so a block earns its
         // translation by being executed (see POM68K_JIT_HOT).
         uint32_t  visits = 0;
+        // Optimistic number of instructions this backend may emit. Cached
+        // once because the experimental profitability gate consults it on
+        // every return to an untranslated block.
+        uint16_t  nativePotential = 0;
         bool      rejected = false;      // the backend declined it; do not retry
     };
 
@@ -363,6 +367,7 @@ private:
     int  maxInstrs_ = 64;
     int  maxBlocks_ = 16384;
     int  hotAt_ = 8;             // POM68K_JIT_HOT: visits before compiling
+    int  profitScore_ = 0;        // visits × potential native instructions
 
     // POM68K_JIT_WINDOW_KILL — bench instrument (JitConfig.h § windowKillEvery).
     // Forces a window-lost exit every N retired instructions so the COST of

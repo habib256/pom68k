@@ -126,6 +126,11 @@ public:
     const BlockIr* ir = nullptr;   // owned by the engine's block cache
 };
 
+struct CompileResult {
+    Compiled* code = nullptr;
+    CompileReject reject = CompileReject::None;
+};
+
 // Diagnostic-only attribution of a native instruction's final runtime
 // fallback. The overall runtime opcode census remains the source of truth;
 // these buckets explain it and must sum back to it when enabled.
@@ -246,7 +251,9 @@ public:
 
     // `ctx` is the engine's live context: a code generator reads the
     // register-file layout and the data-TLB door from it at compile time.
-    virtual Compiled* compile(const BlockIr& ir, const Context& ctx) = 0;
+    // A refusal names its whole-block cause so the engine can price rejected
+    // work independently from fallbacks inside an accepted block.
+    virtual CompileResult compile(const BlockIr& ir, const Context& ctx) = 0;
 
     // Where a LINKED jump enters this block: past the prologue, because the
     // callee-saved registers the block runs on were already set up by

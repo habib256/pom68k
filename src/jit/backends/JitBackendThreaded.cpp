@@ -48,8 +48,8 @@ public:
         return c;
     }
 
-    Compiled* compile(const BlockIr&, const Context&) override {
-        return new ThreadedCompiled();
+    CompileResult compile(const BlockIr&, const Context&) override {
+        return {new ThreadedCompiled(), CompileReject::None};
     }
     void release(Compiled* c) override { delete c; }
     void flushAll() override {}

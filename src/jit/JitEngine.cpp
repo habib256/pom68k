@@ -6,6 +6,8 @@
 #include "Moira.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 
@@ -60,6 +62,18 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
         ownedBackend_.reset(instance);
         backend_ = instance;
     }
+    // Gate-only hard requirement. An explicit native request normally falls
+    // back to `threaded` when executable memory is unavailable; that is the
+    // right product behaviour, but it made several `jit_*` gates report green
+    // without executing a single generated instruction. Native proof must
+    // fail loudly instead of validating the portable floor a second time.
+    if (std::getenv("POM68K_JIT_REQUIRE_NATIVE") &&
+        !backend_->caps().nativeCode) {
+        std::fprintf(stderr,
+                     "[jit] FAIL: a native backend is required, but selection "
+                     "resolved to '%s'\n", backend_->name());
+        std::abort();
+    }
     config_.applyBackendDefaults(backend_->caps().nativeCode);
     useWindow_ = config_.fetchWindow;
     useBlocks_ = config_.blockCache;
@@ -70,6 +84,7 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     maxBlocks_ = config_.maxBlocks;
     maskAware_ = backend_->caps().dtlbCodeMask;
     hotAt_ = config_.hot;
+    profitScore_ = backend_->caps().nativeCode ? config_.profitScore : 0;
     windowKill_ = killCountdown_ = config_.windowKill;
     armBackoff_steps_ = config_.armBackoff;
     // The virgin table must read as EMPTY (kNoLink), not as value-zero:
@@ -1004,6 +1019,13 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     Block b;
     b.ir = std::move(ir);
     b.gen = blocksGen_;
+    if (profitScore_) {
+        const BackendCaps caps = backend_->caps();
+        for (const Instr& in : b.ir.instrs)
+            if (backend_->canEmit(in.opcode) ||
+                (in.kind == Kind::Branch && caps.branches))
+                b.nativePotential++;
+    }
     auto [it, inserted] = blocks_.emplace(key(pc, super), std::move(b));
     if (!inserted) return &it->second;
 
@@ -1265,7 +1287,12 @@ void Engine::executeUntil(int64_t clockTarget) {
             // fillDtlb refuses write access to a page holding translated
             // code, and a block that modified its own page through the
             // inline store path would leave the guard none the wiser.
-            if (!b.rejected && ++b.visits >= uint32_t(hotAt_)) {
+            const uint32_t visits = ++b.visits;
+            const bool hotReady = visits >= uint32_t(hotAt_);
+            const bool profitReady = !profitScore_ ||
+                uint64_t(visits) * b.nativePotential >=
+                    uint64_t(profitScore_);
+            if (!b.rejected && hotReady && profitReady) {
                 // record() already indexed and marked this block's physical
                 // footprint. Only the TLB flush is needed now so a writable
                 // entry filled before that mark cannot survive compilation.
@@ -1297,7 +1324,26 @@ void Engine::executeUntil(int64_t clockTarget) {
                 if (cacheReady && !denied) {
                     ScopedResolvedConfig activeConfig(ctx_.config);
                     recordIndexForms(b.ir);
-                    b.code = backend_->compile(b.ir, ctx_);
+                    const auto compileStart = std::chrono::steady_clock::now();
+                    stats_.add(stats_.compileAttempts);
+                    const CompileResult compiled = backend_->compile(b.ir, ctx_);
+                    b.code = compiled.code;
+                    const auto compileEnd = std::chrono::steady_clock::now();
+                    const uint64_t compileNs = uint64_t(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            compileEnd - compileStart).count());
+                    stats_.add(stats_.compileNanos, compileNs);
+                    if (!b.code) {
+                        stats_.add(stats_.compileRejected);
+                        CompileReject reason = compiled.reject;
+                        // A backend returning {nullptr, None} would otherwise
+                        // make the attribution silently fail its own sum.
+                        if (reason == CompileReject::None)
+                            reason = CompileReject::Emit;
+                        stats_.add(stats_.compileRejects[int(reason)]);
+                        stats_.add(stats_.compileRejectNanos[int(reason)],
+                                   compileNs);
+                    }
                 }
                 if (denied) { b.rejected = true; }
                 ctx_.linkMask = savedLinkMask;
@@ -1315,7 +1361,10 @@ void Engine::executeUntil(int64_t clockTarget) {
                 const uint64_t before = stats_.windowInstrs.load(
                     std::memory_order_relaxed);
                 runWindow(clockTarget);
-                stats_.miss(b.rejected ? Miss::Rejected : Miss::NotHot,
+                const Miss miss = b.rejected ? Miss::Rejected
+                    : hotReady && !profitReady ? Miss::NotProfitable
+                                               : Miss::NotHot;
+                stats_.miss(miss,
                             stats_.windowInstrs.load(
                                 std::memory_order_relaxed) - before);
                 if (dispatchRingOn_) [[unlikely]]

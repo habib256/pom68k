@@ -24,6 +24,8 @@
 //                        produce a delta (docs/MEASURING.md § R1)
 //   POM68K_BENCH_ARMS    <a>,<b> — the two arms of the comparison, each
 //                        `interp` or a backend key (threaded/x64/a64),
+//                        optionally `<backend>@score=N` to compare two
+//                        profitability policies in one ABBA process,
 //                        head-to-head in the SAME ABBA process. Unset =
 //                        the historical interp-vs-jit pair
 
@@ -144,16 +146,57 @@ int main() {
             armA = v.substr(0, comma);
             armB = v.substr(comma + 1);
         }
+        struct ArmSpec {
+            std::string label;
+            std::string backend;
+            std::string score;
+            bool scoreOverride = false;
+        };
+        const auto parseArm = [](const std::string& text, ArmSpec& out) {
+            out.label = text;
+            const size_t at = text.find('@');
+            out.backend = text.substr(0, at);
+            if (out.backend.empty()) return false;
+            if (at == std::string::npos) return true;
+            constexpr const char prefix[] = "score=";
+            const std::string modifier = text.substr(at + 1);
+            if (modifier.rfind(prefix, 0) != 0 ||
+                modifier.size() == sizeof(prefix) - 1)
+                return false;
+            char* end = nullptr;
+            const long score = std::strtol(
+                modifier.c_str() + sizeof(prefix) - 1, &end, 10);
+            if (!end || *end || score < 0 || score > (1L << 30)) return false;
+            out.score = std::to_string(score);
+            out.scoreOverride = true;
+            return true;
+        };
+        ArmSpec specs[2];
+        if (!parseArm(armA, specs[0]) || !parseArm(armB, specs[1])) {
+            std::fprintf(stderr,
+                         "FAIL: arm syntax is <backend> or "
+                         "<backend>@score=N (0 <= N <= 2^30)\n");
+            return 1;
+        }
+        const char* originalScore = std::getenv("POM68K_JIT_PROFIT_SCORE");
+        const bool hadOriginalScore = originalScore != nullptr;
+        const std::string savedScore = originalScore ? originalScore : "";
         std::printf("lcii %s, %d repeats x 2 arms ABBA, %d frames per run, "
                     "built %s\n",
                     bench::nullExperiment() ? "NULL experiment (A vs A)"
                                             : "interleaved A/B",
                     bench::compareRepeats(), frames, bench::buildStamp());
         return bench::compare("lcii", armA.c_str(), armB.c_str(), [&](int arm) {
-            const std::string& spec = arm == 0 ? armA : armB;
-            const bool engineOn = spec != "interp";
-            if (engineOn && spec != "jit")           // "jit" = whatever the
-                setenv("POM68K_JIT_BACKEND", spec.c_str(), 1);   // env says
+            const ArmSpec& spec = specs[arm];
+            if (spec.scoreOverride)
+                setenv("POM68K_JIT_PROFIT_SCORE", spec.score.c_str(), 1);
+            else if (hadOriginalScore)
+                setenv("POM68K_JIT_PROFIT_SCORE", savedScore.c_str(), 1);
+            else
+                unsetenv("POM68K_JIT_PROFIT_SCORE");
+            const bool engineOn = spec.backend != "interp";
+            if (engineOn && spec.backend != "jit")   // "jit" = whatever the
+                setenv("POM68K_JIT_BACKEND", spec.backend.c_str(), 1); // env says
             V8Memory m;
             m.loadRom(rom);
             Cpu030 c(m, /*withFpu=*/true);

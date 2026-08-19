@@ -101,7 +101,7 @@ layers with a hard boundary:
   layer 1  jit::Engine        block discovery, code window, invalidation,
                               cycle budget, fallback policy, gauges
                                     │  jit::BlockIr  (host-neutral)
-  layer 2  jit::Backend       compile(IR) → Compiled ; run(Compiled, Context)
+  layer 2  jit::Backend       compile(IR) → CompileResult ; run(Compiled, Context)
                                     │
         threaded  ─────  x86-64 (J2)  ─────  aarch64
         portable        native code          native code
@@ -357,6 +357,33 @@ resolving an 030 to `threaded` until that fix. An AArch64 host stays on
 charge-on-success contract and a real-frame lockstep gate, but its post-port
 6 000-frame ABBA is a statistical tie (`threaded` 20.18 s, a64 20.11 s,
 −0.3 % inside a 3.0 % noise floor), so its `autoFamilies` remains 68040-only.
+
+The human fixed-cycle report also prints backend `compile()` attempts,
+refusals, total host time and mean time per attempt. This separates a hotness
+change that merely compiles less code from one that actually makes generated
+execution cheaper; the architectural fingerprint remains the admission rule
+for either comparison.
+
+**2026-08-19 profitability-score experiment (AArch64/68030).** The opt-in
+`POM68K_JIT_PROFIT_SCORE` makes a block earn compilation through
+`visits × potentially-native instructions`, while `HOT` remains a minimum
+visit count. Score 64 is the measured candidate. Direct same-process ABBA,
+three repeats per arm and identical fingerprints:
+
+| LC II budget | score 0 | score 64 | delta |
+|---|---:|---:|---:|
+| 1 000 frames | 4.31 s | 3.99 s | **−7.4 %** |
+| 3 000 frames | 10.60 s | 10.26 s | **−3.3 %** |
+| 6 000 frames | 20.31 s | 19.82 s | −2.4 %, provisional: below the 3 % floor and host-busy refusal |
+
+At 1 000 frames it compiles 5 134 blocks instead of 81 573. Its 365 refused
+attempts split into 7 context/IR and 358 coverage refusals; the refused work
+costs only 0.63 ms against about 24.0 ms for accepted compilation. The gain
+comes from not compiling cold code, not from making rejection cheaper. Score 64
+also moves AArch64 from +19.5 % to +10.7 % behind `threaded` at 1 000 frames
+and reaches a statistical tie (+0.2 %) at 3 000. It **does not become the
+default**: the representative 6 000-frame evidence has not cleared the noise
+and quiet-host gates.
 
 The reports use the same JSON schema as CI, so the reviewed x86-64 floors
 above can be replayed without scraping prose:
@@ -700,6 +727,17 @@ immutable-clone runs on 2026-08-17: Q605 ×9.50–9.67 and LC II `threaded`
 ×4.96–5.02. The 68000/68020 workloads intentionally have no invented
 threshold yet.
 
+`POM68K_JIT_BACKENDS=auto` compiles the generator matching the target
+architecture. `threaded` is the portable control build; `x64` and `a64`
+select one generator explicitly. The explicit forms are also how an Apple
+Silicon developer produces a real x86-64/Rosetta proof instead of letting
+the host processor reported by CMake choose AArch64:
+
+```bash
+cmake -S . -B build-x64-jit -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+  -DPOM68K_NATIVE=OFF -DPOM68K_JIT_BACKENDS=x64
+```
+
 ```bash
 cmake --build build -j4 --target jitfast
 POM68K_JIT_REQUIRE_NATIVE=1 ctest --test-dir build -L jit-fast --output-on-failure
@@ -814,13 +852,14 @@ process environment. Later environment changes affect only future engines.
 | `POM68K_JIT_040_LINE_READ` / `_WRITE` / `_PAIR` | profile | native 040 D-cache line proofs; on in `production`/`instrumented`, off in `conservative`. `_PAIR` admits only the two IR contracts with a dedicated atomic-pair gate |
 | `POM68K_JIT_040_LINE_STATS` | profile | native read/write proof counters; on in `instrumented`, off otherwise |
 | `POM68K_JIT_HISTO` | profile | dynamic opcode/fallback census; on in `instrumented`, off otherwise (`JitEngine.cpp dumpHisto()`) |
-| `POM68K_JIT_REQUIRE_NATIVE` | unset | gate-only: make the asset-free native protocol tier fail instead of soft-skipping when no A64/x64 generator is usable |
+| `POM68K_JIT_REQUIRE_NATIVE` | unset | gate-only: abort Engine construction if explicit selection/W^X resolves to `threaded`. Native builds set it on every `jit_*` 68030 boot gate, so an engine-only green run cannot masquerade as code-generator coverage; CI also uses it for the asset-free protocol tier |
 | `POM68K_JIT_WINDOW_KILL` | `0` | **measurement instrument, not tuning**: kill the code window every N retired instructions on purpose, so the price of ONE window-lost exit is the slope of wall time against exit count (§ 3.6). A kill is architecturally invisible, so a bench fingerprint must not move with N — that is what makes the fit a measurement rather than a story. Slows the engine down by design |
 | `POM68K_JIT_MIN_NATIVE` | `50` | percent of a block's instructions a generator must emit natively before the block is kept; below it the block is refused and the fetch window runs instead. **Sweeping it is a measurement, and the measurement says leave it alone**: 0 % more than doubles native residency and costs **37 %** of wall clock on the 68030, everything from 50 up is one flat plateau (`docs/JIT_BRINGUP.md` § C.4ter). A fallback inside a block pays a call, a frame and a boundary commit; on the window it pays a dispatch |
+| `POM68K_JIT_PROFIT_SCORE` | `0` | experimental native compile gate; 0 preserves the current policy. Otherwise a recorded block must satisfy `visits × potentially native instructions >= score` in addition to `POM68K_JIT_HOT`. This lets long/native loops compile before short single-pass blocks; it is a measurement knob until repeated 1 000/3 000/6 000-frame ABBA evidence earns a default |
 | `POM68K_JIT_030_CACR_FLUSH` | per board | Three-valued since 2026-08-19 (68030 wrappers). **Unset = the board's own answer**: retired on the V8, whose store inventory is proved complete (`V8Memory::kJitStoreInventoryComplete` — every store into RAM passes `CodeGuard::note()`, pseudo-DMA included), honoured on VASP/RBV/MSC, whose inventories are not. `1` forces the hint back ON (prices it on a proven board: −21.8 % of generator wall clock, `docs/JIT_BRINGUP.md` § C.4bis); `0` forces it OFF — read by the V8 wrapper only (`Cpu030.cpp:111`): VASP/RBV/MSC always flush on the CI/CEI strobes and ignore the knob, so their unproven inventories cannot be un-flushed from the environment. Compare fingerprints on both sides or the number means nothing |
 | `POM68K_JIT_DISPATCH_RING` | `0` | diagnosis: record the engine's last 8192 dispatch decisions (path, pc, clock, target, exit, instructions) in a ring the 030 lockstep dumps on divergence. The 2026-08-19 uncharge hole was invisible in every end state and named by this ring in one run |
 | `POM68K_JIT_DENY_FROM` / `_TO` | unset | bisection instrument (hex pc range): refuse to COMPILE any block whose entry pc falls in [from, to). Halving the pc space is how a divergence that heals under every pacing perturbation gets pinned to one block |
-| `POM68K_BENCH_ARMS` | unset | `jit_bench_lcii`: `<a>,<b>` runs TWO ENGINE arms head-to-head in the same ABBA process (each side `interp` or a backend key, applied via `POM68K_JIT_BACKEND` before that arm's machine is built). Unset = the historical interp-vs-jit comparison. Exists because threaded-vs-generator used to be two separate compare invocations, which reintroduces the between-process variance `bench::compare` removes |
+| `POM68K_BENCH_ARMS` | unset | `jit_bench_lcii`: `<a>,<b>` runs TWO ENGINE arms head-to-head in the same ABBA process (each side `interp` or a backend key, applied via `POM68K_JIT_BACKEND` before that arm's machine is built). `<backend>@score=N` additionally binds a profitability score per arm, e.g. `a64@score=0,a64@score=64`. Unset = the historical interp-vs-jit comparison. Exists because separate processes reintroduce the variance `bench::compare` removes |
 | `POM68K_BENCH_FRAMES` | q605 `3000`, lcii `6000` | `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` — frames of 416 667 (Q605) or 640×407 = 260 480 (LC II) **machine** cycles |
 | `POM68K_BENCH_SLICES` | `0` = CPU alone | `jit_bench_lcii` only: N ≥ 1 runs the GUI's own quantum, N slices per frame with a raster catch-up at each boundary (§ 3.6) |
 | `POM68K_DUMP` | unset | `tests/q605_rogue_census.cpp` (`make q605_rogue_census`, `EXCLUDE_FROM_ALL`): write `q605_rogue_*.ppm` at every stage. The harness sets `POM68K_JIT_HISTO` itself and dumps one census PER PHASE (§ 3.5bis) — a drawing workload, which `jit_bench` is not |

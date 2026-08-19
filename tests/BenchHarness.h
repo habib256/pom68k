@@ -171,6 +171,41 @@ void report(const char* machine, const char* workload, const char* cpuFamily,
                 (unsigned long long)s.blocksCompiled,
                 (unsigned long long)s.blocksRun,
                 s.blocksRun ? double(s.instrs) / double(s.blocksRun) : 0.0);
+    if (s.compileAttempts) {
+        uint64_t rejectedCount = 0, rejectedNs = 0;
+        for (int i = 1; i < int(jit::CompileReject::Count); i++) {
+            rejectedCount += s.compileRejects[i];
+            rejectedNs += s.compileRejectNanos[i];
+        }
+        const uint64_t accepted = s.compileAttempts >= s.compileRejected
+            ? s.compileAttempts - s.compileRejected : 0;
+        const uint64_t acceptedNs = s.compileNanos >= rejectedNs
+            ? s.compileNanos - rejectedNs : 0;
+        std::printf("  compile: %llu attempt(s), %llu rejected (%.1f%%), "
+                    "%.2f ms total (%.1f us/attempt)\n",
+                    (unsigned long long)s.compileAttempts,
+                    (unsigned long long)s.compileRejected,
+                    100.0 * double(s.compileRejected) /
+                        double(s.compileAttempts),
+                    double(s.compileNanos) / 1.0e6,
+                    double(s.compileNanos) / double(s.compileAttempts) / 1.0e3);
+        std::printf("    accepted %llu in %.2f ms (%.1f us/accepted)",
+                    (unsigned long long)accepted,
+                    double(acceptedNs) / 1.0e6,
+                    accepted ? double(acceptedNs) / double(accepted) / 1.0e3
+                             : 0.0);
+        for (int i = 1; i < int(jit::CompileReject::Count); i++)
+            if (s.compileRejects[i])
+                std::printf(" · %s %llu/%.2f ms",
+                            jit::compileRejectName(jit::CompileReject(i)),
+                            (unsigned long long)s.compileRejects[i],
+                            double(s.compileRejectNanos[i]) / 1.0e6);
+        if (rejectedCount != s.compileRejected)
+            std::printf(" · REJECT GAP %+lld",
+                        (long long)(int64_t(rejectedCount) -
+                                    int64_t(s.compileRejected)));
+        std::printf("\n");
+    }
 
     // The number that says whether the code generator is doing anything:
     // instructions that ran as HOST CODE, against those a compiled block

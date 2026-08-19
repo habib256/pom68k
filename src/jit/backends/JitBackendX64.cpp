@@ -3271,7 +3271,7 @@ public:
 
     bool canEmit(uint16_t op) const override;
 
-    Compiled* compile(const BlockIr& ir, const Context& ctx) override;
+    CompileResult compile(const BlockIr& ir, const Context& ctx) override;
     void* linkEntry(Compiled* c) const override {
         return static_cast<X64Compiled*>(c)->linked;
     }
@@ -3342,18 +3342,19 @@ bool X64Backend::canEmit(uint16_t op) const {
     }
 }
 
-Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
+CompileResult X64Backend::compile(const BlockIr& ir, const Context& ctx) {
     if (diagLeft_ < 0) diagLeft_ = verboseBlocks();
-    if (!ctx.cpu) return nullptr;
+    if (!ctx.cpu) return {nullptr, CompileReject::Context};
     // Generated code models POLL_IPL as a plain assignment. If the deferred
     // IPL-recognition feature is ever armed, this backend has nothing to say.
-    if (!ctx.cpu->pomJitSimpleIpl()) return nullptr;
+    if (!ctx.cpu->pomJitSimpleIpl()) return {nullptr, CompileReject::Context};
     if (!haveLayout_) {
         layout_ = ctx.cpu->pomJitLayout();
         haveLayout_ = true;
     }
-    if (!buf_.valid() && !buf_.reserve(kCodeBufferBytes)) return nullptr;
-    if (ir.code.empty()) return nullptr;
+    if (!buf_.valid() && !buf_.reserve(kCodeBufferBytes))
+        return {nullptr, CompileReject::CodeMemory};
+    if (ir.code.empty()) return {nullptr, CompileReject::Context};
 
     // Compile into a scratch buffer first: the executable page is W^X, and
     // flipping it per block would cost an mprotect pair each time.
@@ -3374,7 +3375,7 @@ Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
             std::fprintf(stderr, "%04X/%uc ", in.opcode, in.cycles);
         std::fprintf(stderr, "]\n");
     }
-    if (!ok) return nullptr;
+    if (!ok) return {nullptr, CompileReject::Emit};
 
     // A block of nothing but fallbacks is strictly worse than the fetch
     // window loop: same interpreter work, plus a call and a frame. Refuse
@@ -3383,17 +3384,17 @@ Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
     // 68030 measurement that made it a knob).
     if (e.nativeCount() * 100 < int(ir.instrs.size()) * minNativePercent()) {
         if (verbose() && diagLeft_ > 0) std::fprintf(stderr, "[jit]   ^ REFUSED(coverage)\n");
-        return nullptr;
+        return {nullptr, CompileReject::Coverage};
     }
 
-    if (!buf_.makeWritable()) return nullptr;
+    if (!buf_.makeWritable()) return {nullptr, CompileReject::CodeMemory};
     uint8_t* dst = buf_.alloc(a.size(), 16);
-    if (!dst) return nullptr;                        // full: the engine flushes
+    if (!dst) return {nullptr, CompileReject::CodeMemory}; // full: engine flushes
     // Every branch the block contains is internal and rel32-encoded, and
     // the only absolute addresses baked in are the thunks', so the finished
     // bytes are position independent and a plain copy is a valid move.
     std::memcpy(dst, scratch_.data(), a.size());
-    if (!buf_.makeExecutable()) return nullptr;
+    if (!buf_.makeExecutable()) return {nullptr, CompileReject::CodeMemory};
 
     X64Compiled* c = new X64Compiled();
     c->entry = dst;
@@ -3408,7 +3409,7 @@ Compiled* X64Backend::compile(const BlockIr& ir, const Context& ctx) {
     // same day (see shadowIcache), and with the charge on the success
     // path the full 120k x64 gate holds with links restored.
     c->linked = dst + e.linkEntryOffset();
-    return c;
+    return {c, CompileReject::None};
 }
 
 RunResult X64Backend::run(Compiled* c, Context& ctx) {

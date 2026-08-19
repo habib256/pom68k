@@ -711,6 +711,36 @@ last 8192 dispatch decisions; (4) bisect by pc with
 `POM68K_JIT_DENY_FROM/_TO`. The i-cache CONTENT compare in the lockstep
 gate does not cover this machine — the 030 lockstep is LC II only.
 
+**Gate hardening follow-up (2026-08-19).** Native builds now rewrite every
+existing `jit_*` 68030 boot registration to request the compiled generator
+by name and set `POM68K_JIT_REQUIRE_NATIVE=1`; Engine construction aborts if
+selection or W^X falls back to `threaded`. CMake also accepts explicit
+`POM68K_JIT_BACKENDS=x64|a64`, so the x64 tier can be cross-built on Apple
+Silicon. That x86-64 binary reached the IIsi Finder for 1,000 frames under
+Rosetta (47.83 s), and the native AArch64 twin passed in 9.36 s. This closes
+the false-green gate, not the Linux-native crash: the historical SIGSEGV did
+not reproduce on macOS/Rosetta, so the x64 `autoFamilies` flip remains
+blocked until the original host passes the same now-native gate.
+
+### C.4octies — compile refusals are attributed; cold blocks earn code by work (2026-08-19)
+
+`Backend::compile` now returns a structured result. Whole-block refusals are
+counted and timed as context/IR, emit/fixup, coverage or code-memory/W^X;
+this is separate from the existing per-instruction static/runtime fallback
+census inside an accepted block. On the 1,000-frame AArch64 LC II workload,
+score 64 leaves only 365 rejected attempts (7 context, 358 coverage) costing
+0.63 ms: refusal itself is not the throughput problem.
+
+The experimental `POM68K_JIT_PROFIT_SCORE` adds a second admission condition,
+`visits × potentially-native instructions >= score`, without changing the
+default (`0`) or the existing HOT floor. `jit_bench_lcii` accepts
+`a64@score=0,a64@score=64`, so the policy is compared directly inside one
+ABBA process. Score 64 wins 7.4 % at 1,000 frames and 3.3 % at 3,000 with
+matching fingerprints. Its 6,000-frame result is a provisional 2.4 % win,
+inside the 3 % floor and rejected by the busy-host guard. It therefore stays
+an instrument, not production policy; the representative budget must clear
+both bars before `ResolvedConfig` gains a nonzero default.
+
 **C.5 — flip the declaration.** SPLIT AND HALF-LANDED 2026-08-18. The
 original coupling — declaration == default — protected against the
 2026-07-30 wedge when nothing else did. Since the x64 030 lockstep went
@@ -816,7 +846,7 @@ folded into an emitter change.
 | C.1 — 030 lockstep gate | **done** (threaded, blocks, a64-experimental) |
 | C.2 / C.3 — 030 probe + thunks | **written**; validated only indirectly, their gate is C.5 |
 | C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, the MOVEM guard, charge-on-success on both native backends and the x64 throughput win (§ C.4sexies) done; parked: the restartable-write base-cost admission and BSR.W (§ C.4sexies) |
-| C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; default flip written 2026-08-19 and BLOCKED on the IIsi segfault** (§ C.4septies — `autoFamilies`, x64 only; a64 pending its own bench win). Under the flip the plain 030 boot etalons run the generator through `auto`; note the `jit_*` 030 gates pin the ENGINE, not the backend |
+| C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; default flip written 2026-08-19 and BLOCKED on the IIsi segfault** (§ C.4septies — `autoFamilies`, x64 only; a64 pending its own bench win). Native builds now pin both the ENGINE and the compiled backend in every existing `jit_*` 030 boot gate, with fallback made fatal; the x64 IIsi passes under Rosetta but the original Linux-native failure is not yet cleared |
 | D — default engine | **68040 landed**; 68030-on-x86-64 written 2026-08-19 and blocked on the IIsi segfault (§ C.4septies; AArch64 stays `threaded` regardless), explicit interpreter oracle per platform |
 
 ## Gates this plan still adds

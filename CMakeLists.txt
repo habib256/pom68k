@@ -266,11 +266,12 @@ endif()
 # (Emscripten included). Native code generators are added on top, per host
 # architecture, and never replace that floor.
 #
-# POM68K_JIT_BACKENDS: `auto` follows CMAKE_SYSTEM_PROCESSOR; set it to
-# `threaded` to build the portable-only configuration on purpose — that is
-# the control build proving a host without a code generator still works.
+# POM68K_JIT_BACKENDS: `auto` follows CMAKE_SYSTEM_PROCESSOR; `x64` / `a64`
+# select a generator explicitly (notably for a macOS cross-architecture build),
+# and `threaded` builds the portable-only control configuration.
 set(POM68K_JIT_BACKENDS "auto" CACHE STRING
-    "JIT backends to compile: auto | threaded")
+    "JIT backends to compile: auto | threaded | x64 | a64")
+set_property(CACHE POM68K_JIT_BACKENDS PROPERTY STRINGS auto threaded x64 a64)
 set(POM68K_JIT_SOURCES
     src/jit/JitEngine.cpp        # layer 1 — blocks, code window, invalidation
     src/jit/JitBackend.cpp       # layer 2 — backend registry and selection
@@ -278,20 +279,36 @@ set(POM68K_JIT_SOURCES
     src/jit/backends/JitBackendThreaded.cpp   # the portable floor
 )
 set(POM68K_JIT_DEFS "")
-if(POM68K_JIT_BACKENDS STREQUAL "auto" AND NOT EMSCRIPTEN)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+set(POM68K_JIT_NATIVE_BACKEND "")
+if(NOT EMSCRIPTEN)
+    if(POM68K_JIT_BACKENDS STREQUAL "x64" OR
+       (POM68K_JIT_BACKENDS STREQUAL "auto" AND
+        CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"))
         list(APPEND POM68K_JIT_SOURCES src/jit/backends/JitBackendX64.cpp)
         list(APPEND POM68K_JIT_DEFS POM68K_JIT_BACKEND_X64)
         set(POM68K_JIT_HOST "x86-64 code generator")
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+        set(POM68K_JIT_NATIVE_BACKEND "x64")
+    elseif(POM68K_JIT_BACKENDS STREQUAL "a64" OR
+           (POM68K_JIT_BACKENDS STREQUAL "auto" AND
+            CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$"))
         list(APPEND POM68K_JIT_SOURCES src/jit/backends/JitBackendA64.cpp)
         list(APPEND POM68K_JIT_DEFS POM68K_JIT_BACKEND_A64)
         set(POM68K_JIT_HOST "aarch64 code generator")
-    else()
+        set(POM68K_JIT_NATIVE_BACKEND "a64")
+    elseif(POM68K_JIT_BACKENDS STREQUAL "auto" OR
+           POM68K_JIT_BACKENDS STREQUAL "threaded")
         set(POM68K_JIT_HOST "${CMAKE_SYSTEM_PROCESSOR} (portable only)")
+    else()
+        message(FATAL_ERROR
+            "Unknown POM68K_JIT_BACKENDS='${POM68K_JIT_BACKENDS}'; "
+            "expected auto, threaded, x64 or a64")
     endif()
 else()
-    set(POM68K_JIT_HOST "portable only (forced)")
+    if(NOT POM68K_JIT_BACKENDS STREQUAL "auto" AND
+       NOT POM68K_JIT_BACKENDS STREQUAL "threaded")
+        message(FATAL_ERROR "Emscripten supports only the threaded JIT backend")
+    endif()
+    set(POM68K_JIT_HOST "portable only")
 endif()
 message(STATUS "POM68K JIT: threaded backend + ${POM68K_JIT_HOST}")
 
@@ -1753,8 +1770,7 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # comparisons cover every late-boot A64 regression found during bring-up.
     # This is also the permanent architectural-cache/J4 gate: the diagnostic
     # counter makes a green run with zero native physical-line hits fail.
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$" AND
-       POM68K_JIT_BACKENDS STREQUAL "auto")
+    if(POM68K_JIT_NATIVE_BACKEND STREQUAL "a64")
         add_test(NAME jit_lockstep_a64_coarse_test COMMAND jit_lockstep_test 5000000
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_lockstep_a64_coarse_test PROPERTIES
@@ -1787,11 +1803,10 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     # The x86-64 twin of the 030 experimental gate — first green 2026-08-18,
     # after the taken-short-branch IRC fix and the 030 base-charge rule; it
     # exists so that state cannot silently rot the way its absence let the
-    # IRC defect sit unregistered. Same shape: generated x64 code under the
-    # unsafe override (the declaration is still 68040-only — C.5 is a
-    # separate, measured decision).
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
-       POM68K_JIT_BACKENDS STREQUAL "auto")
+    # IRC defect sit unregistered. Same shape: generated x64 code selected
+    # explicitly; 030 correctness is declared, while automatic selection is
+    # still the separate, measured C.5 decision.
+    if(POM68K_JIT_NATIVE_BACKEND STREQUAL "x64")
         add_test(NAME jit_lockstep_030_x64_experimental_test COMMAND jit_lockstep_030_test 120000
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_lockstep_030_x64_experimental_test PROPERTIES
@@ -1887,6 +1902,20 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              ENVIRONMENT "POM68K_CPU_ENGINE=jit" TIMEOUT 3600)
     endforeach()
 
+    # Unlike the generic engine gates above, these are the product evidence
+    # for the 68030 CODE GENERATOR. Pin the compiled host backend explicitly
+    # and make a selection/W^X fallback fatal: an `auto` gate that quietly ran
+    # `threaded` is how the IIsi generator crash remained invisible.
+    if(POM68K_JIT_NATIVE_BACKEND)
+        foreach(gate lcii_boot_etalon mactv_boot_etalon lc3_boot_etalon
+                     iivx_boot_etalon iisi_boot_etalon se30_boot_etalon
+                     iifx_boot_etalon)
+            set_tests_properties(jit_${gate} PROPERTIES
+                ENVIRONMENT
+                    "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=${POM68K_JIT_NATIVE_BACKEND};POM68K_JIT_REQUIRE_NATIVE=1")
+        endforeach()
+    endif()
+
     # The plain 68040 etalons now exercise the accelerated default. Preserve
     # one explicit interpreter oracle per 68040 platform: a default is only
     # conformant while the old reference remains independently runnable and
@@ -1912,8 +1941,7 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         if(NOT TARGET POM68K)
             message(FATAL_ERROR "POM68K_PRODUCT_LLE_GATES requires the GUI executable")
         endif()
-        if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$" OR
-           NOT POM68K_JIT_BACKENDS STREQUAL "auto")
+        if(NOT POM68K_JIT_NATIVE_BACKEND STREQUAL "a64")
             message(FATAL_ERROR "POM68K_PRODUCT_LLE_GATES requires the native AArch64 backend")
         endif()
         set(lle_q605_rom "${CMAKE_CURRENT_SOURCE_DIR}/roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM")

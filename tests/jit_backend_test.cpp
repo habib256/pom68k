@@ -329,6 +329,7 @@ int main() {
             SavedEnv("POM68K_JIT_HISTO"),
             SavedEnv("POM68K_JIT_040_LINE_PAIR"),
             SavedEnv("POM68K_JIT_040_LINE_STATS"),
+            SavedEnv("POM68K_JIT_PROFIT_SCORE"),
         };
         for (const auto& e : saved) e.clear();
 
@@ -353,6 +354,7 @@ int main() {
         // process-wide changes are inputs for a future Engine only.
         setEnv("POM68K_JIT_PROFILE", "production");
         setEnv("POM68K_JIT_ACCESS_THUNK", nullptr);
+        setEnv("POM68K_JIT_PROFIT_SCORE", "64");
         jit::ResolvedConfig resolved = jit::resolveConfig();
         resolved.applyBackendDefaults(true);
         setEnv("POM68K_JIT_PROFILE", "conservative");
@@ -361,6 +363,8 @@ int main() {
             check(jit::accessThunkMode() == 2 && jit::linksEnabled() &&
                   jit::blockCacheEnabled(false) && jit::hotThreshold(false) == 1,
                   "resolved configuration is stable and carries backend defaults");
+            check(resolved.profitScore == 64,
+                  "resolved configuration captures the profitability score");
         }
         check(jit::accessThunkMode() == 0,
               "legacy accessors remain live outside an Engine compile scope");
@@ -412,6 +416,12 @@ int main() {
               "this CI tier requires the host A64/x64 generator to execute");
     std::printf("  auto (68040) -> %s (%s)\n",
                 autoPick->name(), autoPick->description());
+    if (autoPick->caps().nativeCode) {
+        const jit::CompileResult refused =
+            autoPick->compile(jit::BlockIr{}, jit::Context{});
+        check(!refused.code && refused.reject == jit::CompileReject::Context,
+              "native compile refusal carries a structured context reason");
+    }
 
     jit::Backend* threaded = jit::selectBackend("threaded", jit::kGuest68040);
     check(threaded != nullptr && !std::strcmp(threaded->name(), "threaded"),
@@ -587,7 +597,7 @@ int main() {
         ctx.clockTarget = 100;
         jit::Backend* a64 = jit::selectBackend("a64", jit::kGuest68040);
         check(!std::strcmp(a64->name(), "aarch64"), "explicit a64 resolves");
-        jit::Compiled* code = a64->compile(ir, ctx);
+        jit::Compiled* code = a64->compile(ir, ctx).code;
         check(code != nullptr, "MOVEQ/NOP block compiles to AArch64");
         if (code) {
             jit::RunResult rr = a64->run(code, ctx);
