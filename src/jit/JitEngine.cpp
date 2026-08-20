@@ -84,7 +84,11 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     maxBlocks_ = config_.maxBlocks;
     maskAware_ = backend_->caps().dtlbCodeMask;
     hotAt_ = config_.hot;
-    profitScore_ = backend_->caps().nativeCode ? config_.profitScore : 0;
+    const BackendCaps caps = backend_->caps();
+    profitScore_ = caps.nativeCode ? config_.profitScore : 0;
+    if (caps.nativeCode && !config_.profitScoreExplicit &&
+        guestFamily_ == kGuest68030)
+        profitScore_ = int(caps.profitScore68030);
     windowKill_ = killCountdown_ = config_.windowKill;
     armBackoff_steps_ = config_.armBackoff;
     // The virgin table must read as EMPTY (kNoLink), not as value-zero:

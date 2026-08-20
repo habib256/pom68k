@@ -89,7 +89,10 @@ private:
         h.dataSpan = [](void* s, uint32_t p, uint32_t& len, int) -> uint8_t* {
             auto& c = *static_cast<FaultCpu*>(s);
             p &= 0xFFFFFF;
-            if (c.inHole(p)) return nullptr;
+            // dataSpan is the JIT's plain-memory proof. MMIO must take the
+            // exact map callback even though this synthetic fixture keeps a
+            // backing byte vector for convenient full-image comparisons.
+            if (c.inHole(p) || c.inMmio(p)) return nullptr;
             len = uint32_t(c.mem.size()) - p;
             return c.mem.data() + p;
         };
@@ -262,6 +265,10 @@ int main() {
     }
     setenv("POM68K_JIT_BLOCKS", "1", 1);
     setenv("POM68K_JIT_HOT", "1", 1);
+    // This is a one-visit synthetic code corpus. Production AArch64/030
+    // deliberately waits for score 64 before compiling cold blocks; the
+    // restart oracle needs immediate compilation to exercise every thunk.
+    setenv("POM68K_JIT_PROFIT_SCORE", "0", 1);
     setenv("POM68K_JIT_ACCESS_THUNK", "2", 1);
     // This gate owns PEA's direct-store proof. The production default remains
     // B592; selecting 486E here releases only PEA from the deliberately

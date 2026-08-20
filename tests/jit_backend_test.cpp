@@ -365,6 +365,8 @@ int main() {
                   "resolved configuration is stable and carries backend defaults");
             check(resolved.profitScore == 64,
                   "resolved configuration captures the profitability score");
+            check(resolved.profitScoreExplicit,
+                  "an explicit profitability score is distinguished from a backend default");
         }
         check(jit::accessThunkMode() == 0,
               "legacy accessors remain live outside an Engine compile scope");
@@ -555,15 +557,15 @@ int main() {
         std::printf("[jit_backend] aarch64 native smoke\n");
         check(!std::strcmp(autoPick->name(), "aarch64"),
               "auto selects the validated AArch64 backend on arm64");
-        // No 030 promotion on this host either: the a64 generator still
-        // carries the uncharge hole and no measured 030 bench win, so a
-        // 68030 keeps resolving to the portable replay.
+        // AArch64 earns the 030 automatic path independently of x64: exact
+        // i-cache/state lockstep plus a fixed-budget win over threaded.
         {
             jit::Backend* a64auto030 =
                 jit::selectBackend("auto", jit::kGuest68030);
-            check(!std::strcmp(a64auto030->name(), "threaded"),
-                  "auto on a 68030 stays `threaded` on arm64 — a64 has no "
-                  "measured win there yet (uncharge port pending)");
+            check(!std::strcmp(a64auto030->name(), "aarch64"),
+                  "auto on a 68030 selects the measured AArch64 generator");
+            check(a64auto030->caps().profitScore68030 == 64,
+                  "AArch64 68030 publishes its measured cold-code score");
         }
         static Q605Memory mem;
         static Cpu040 cpu(mem);

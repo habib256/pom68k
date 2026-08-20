@@ -122,6 +122,12 @@ thread_local bool gRuntimeReasonHisto = false;
 // explicit diagnostic selection until they clear the same evidence bar.
 thread_local uint16_t gExactStoreGuardOpcode = 0xB592;
 thread_local uint16_t gCurrentOpcode = 0;
+// The opcode-local guard exists for the 68040, whose global correction moved
+// a Q605/SCSI oracle. The 68030 has a different, restartable-write memory
+// contract and its native gate covers every direct store at production frame
+// cadence; use the real slice-mask result for that family instead of the
+// historical w9-based conservative fallback.
+thread_local bool gExactStoreGuards030 = false;
 
 // Minimal fixed-width assembler. Every memory operand is an unsigned scaled
 // immediate off x0 (Moira*) or x1 (Frame*); layout() validates the offsets.
@@ -129,7 +135,13 @@ class Asm {
 public:
     enum Cond : uint32_t { EQ = 0, NE = 1, CS = 2, CC = 3, HI = 8,
                            GE = 10, LT = 11 };
-    struct Fix { size_t at; int label; bool conditional; uint32_t cond; };
+    struct Fix {
+        size_t at;
+        int label;
+        bool conditional;
+        uint32_t cond;
+        unsigned rt = 0;
+    };
     struct Mark { size_t code, labels, fixes; };
 
     Mark mark() const { return {code_.size(), labels_.size(), fixes_.size()}; }
@@ -224,6 +236,7 @@ public:
     void cmpW(unsigned rn, unsigned rm) {
         emit(0x6B00001Fu | (rm << 16) | (rn << 5));
     }
+    void cmpXZero(unsigned rn) { emit(0xF100001Fu | (rn << 5)); }
     void cmpWZero(unsigned rn) { emit(0x7100001Fu | (rn << 5)); }
     void addW(unsigned rd, unsigned rn, unsigned rm) {
         emit(0x0B000000u | (rm << 16) | (rn << 5) | rd);
@@ -319,6 +332,17 @@ public:
         fixes_.push_back({code_.size(), l, true, 18});
         emit(0xB4000000u | rt);
     }
+    // Keep the historical CBZ fixups above byte-for-byte for the 68040
+    // store oracle. New code that needs the named register uses these exact
+    // variants; Fix::rt survives until the branch displacement is known.
+    void cbzWReg(unsigned rt, int l) {
+        fixes_.push_back({code_.size(), l, true, 32, rt});
+        emit(0x34000000u | rt);
+    }
+    void cbzXReg(unsigned rt, int l) {
+        fixes_.push_back({code_.size(), l, true, 33, rt});
+        emit(0xB4000000u | rt);
+    }
     void blr(unsigned rn) { emit(0xD63F0000u | (rn << 5)); }
     void br(unsigned rn) { emit(0xD61F0000u | (rn << 5)); }
 
@@ -333,6 +357,8 @@ public:
                 if (f.cond == 16) code_[f.at] = 0x35000000u | (imm << 5) | 9u;
                 else if (f.cond == 17) code_[f.at] = 0x34000000u | (imm << 5) | 9u;
                 else if (f.cond == 18) code_[f.at] = 0xB4000000u | (imm << 5) | 14u;
+                else if (f.cond == 32) code_[f.at] = 0x34000000u | (imm << 5) | f.rt;
+                else if (f.cond == 33) code_[f.at] = 0xB4000000u | (imm << 5) | f.rt;
                 else code_[f.at] = 0x54000000u | (imm << 5) | f.cond;
             } else {
                 if (d < -(1 << 25) || d >= (1 << 25)) return false;
@@ -359,6 +385,27 @@ struct IcacheShadow {
     bool seen[16] {};
 };
 
+// The 68040 path already keeps the guest clock in a callee-saved host
+// register across directly linked blocks. Do the same for the two hot 68030
+// i-cache counters: publishing fetches/hits through memory for every native
+// guest instruction cost four loads/stores on top of the actual cache model.
+// x23/x24 are part of the linked-block ABI and are spilled before anything
+// that can observe CPU state, then on every generated-code exit. Misses stay
+// memory-resident because they are updated only on the cold miss edge.
+void spillIcacheCounters(Asm& a, const Layout& L) {
+    a.strX(23, 0, L.icFetches);
+    a.strX(24, 0, L.icHits);
+}
+
+void reloadIcacheCounters(Asm& a, const Layout& L) {
+    a.ldrX(23, 0, L.icFetches);
+    a.ldrX(24, 0, L.icHits);
+}
+
+bool icacheCountersLive(const Layout& L) {
+    return L.icLive && icacheEmitEnabled();
+}
+
 // Compact emitted 68030 i-cache model. Fetches and optimistic hits are
 // aggregated once per instruction; each actual miss corrects the hit count,
 // updates its compile-time-known line and adds the runtime miss penalty.
@@ -369,11 +416,11 @@ void chargeIcache(Asm& a, const Layout& L, const BlockIr& ir,
                          : in.fetchWords   ? uint32_t(in.fetchWords)
                                            : uint32_t(in.words) + 1;
     const uint32_t sup = ir.super ? 0x80000000u : 0u;
-    a.ldrX(9, 0, L.icFetches); a.addImmX(9, 9, words); a.strX(9, 0, L.icFetches);
+    a.addImmX(23, 23, words);
 
     const int disabled = a.label();
-    a.ldrB(9, 0, L.cacr); a.movW(10, 1); a.andW(9, 9, 10); a.cbzW(9, disabled);
-    a.ldrX(9, 0, L.icHits); a.addImmX(9, 9, words); a.strX(9, 0, L.icHits);
+    a.cbzWReg(25, disabled);
+    a.addImmX(24, 24, words);
 
     for (uint32_t w = 0; w < words; w++) {
         const uint32_t addr = in.pc + w * 2;
@@ -397,7 +444,7 @@ void chargeIcache(Asm& a, const Layout& L, const BlockIr& ir,
         a.bind(sameTag);
         a.ldrB(9, 0, L.icValid + uint32_t(line)); a.movW(10, bit);
         a.orrW(9, 9, 10); a.strB(9, 0, L.icValid + uint32_t(line));
-        a.ldrX(9, 0, L.icHits); a.subImmX(9, 9, 1); a.strX(9, 0, L.icHits);
+        a.subImmX(24, 24, 1);
         a.ldrX(9, 0, L.icMisses); a.addImmX(9, 9, 1); a.strX(9, 0, L.icMisses);
         a.ldrW(9, 0, L.icPenalty); a.addX(21, 21, 9);
         a.bind(done);
@@ -420,10 +467,10 @@ void chargeIcacheExtraWord(Asm& a, const Layout& L, const BlockIr& ir,
     const uint32_t tag = (addr >> 8) | sup;
     const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
 
-    a.ldrX(9, 0, L.icFetches); a.addImmX(9, 9, 1); a.strX(9, 0, L.icFetches);
+    a.addImmX(23, 23, 1);
     const int disabled = a.label();
-    a.ldrB(9, 0, L.cacr); a.movW(10, 1); a.andW(9, 9, 10); a.cbzW(9, disabled);
-    a.ldrX(9, 0, L.icHits); a.addImmX(9, 9, 1); a.strX(9, 0, L.icHits);
+    a.cbzWReg(25, disabled);
+    a.addImmX(24, 24, 1);
 
     const int miss = a.label(), done = a.label(), sameTag = a.label();
     a.ldrW(9, 0, L.icTag + uint32_t(line) * 4); a.movW(10, tag);
@@ -439,7 +486,7 @@ void chargeIcacheExtraWord(Asm& a, const Layout& L, const BlockIr& ir,
     a.bind(sameTag);
     a.ldrB(9, 0, L.icValid + uint32_t(line)); a.movW(10, bit);
     a.orrW(9, 9, 10); a.strB(9, 0, L.icValid + uint32_t(line));
-    a.ldrX(9, 0, L.icHits); a.subImmX(9, 9, 1); a.strX(9, 0, L.icHits);
+    a.subImmX(24, 24, 1);
     a.ldrX(9, 0, L.icMisses); a.addImmX(9, 9, 1); a.strX(9, 0, L.icMisses);
     a.ldrW(9, 0, L.icPenalty); a.addX(21, 21, 9);
     a.bind(done);
@@ -843,8 +890,9 @@ void loadGuest(Asm& a, int bits, unsigned rd);
 void guardCodeSlices(Asm& a, unsigned entry, unsigned pageOff, int bytes,
                      int miss) {
     const int clear = a.label();
-    const bool exact = gExactStoreGuardOpcode != 0 &&
-                       gCurrentOpcode == gExactStoreGuardOpcode;
+    const bool exact = gExactStoreGuards030 ||
+        (gExactStoreGuardOpcode != 0 &&
+         gCurrentOpcode == gExactStoreGuardOpcode);
     a.ldrW(12, entry, 4);                // PomJitDtlbEntry::codeMask
     if (exact) {
         a.cmpWZero(12);
@@ -907,7 +955,7 @@ void clearRuntimeAccess(Asm& a) {
     a.strW(12, 1, 176);                 // zero bytes = no address detail
 }
 
-void observeRuntimeAddress(Asm& a, uint16_t opcode) {
+void observeRuntimeAddress(Asm& a, const Layout& L, uint16_t opcode) {
     if (!gRuntimeReasonHisto) return;
     const int record = a.label(), maybeOther = a.label(), done = a.label();
     a.ldrW(9, 1, 144);                  // Frame::runtimeReason
@@ -937,6 +985,7 @@ void observeRuntimeAddress(Asm& a, uint16_t opcode) {
     a.ldrW(4, 14, 176);
     a.ldrW(5, 14, 180);
     a.ldrW(6, 14, 172);
+    if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     a.blr(16);
     a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
     a.bind(done);
@@ -1151,6 +1200,7 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     a.movRegW(1, 9);                    // guest address
     a.movW(2, unsigned(bits / 8));
     if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
+    if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     a.movX(16, uint64_t(uintptr_t(&pom68kA64Read)));
     a.blr(16);
     a.movRegW(14, 0);
@@ -1209,10 +1259,14 @@ void markCache040Dirty(Asm& a, int bytes) {
 // machine memory-map callback entirely. w9 is the pre-update guest address;
 // Frame::value holds the source. The callback sees the architectural An
 // update because callers place it immediately before this hook.
-void observeDirectWrite(Asm& a, int bits, uint32_t instructionPc) {
+void observeDirectWrite(Asm& a, const Layout& L, int bits,
+                        uint32_t instructionPc) {
     const int done = a.label();
     a.ldrX(16, 1, 104);
-    a.cbzX(16, done);
+    // The legacy CBZ fixup is deliberately conservative for the 040 store
+    // oracle and hard-wires x14. This is a callback-pointer check, not a
+    // store guard: test x16 exactly so production's null observer is free.
+    a.cbzXReg(16, done);
     a.strW(9, 1, 36);
     a.strX(14, 1, 120);
     a.ldrX(15, 1, 112);
@@ -1224,6 +1278,7 @@ void observeDirectWrite(Asm& a, int bits, uint32_t instructionPc) {
     a.movW(3, unsigned(bits / 8));
     a.movW(5, instructionPc);
     a.movW(6, 1);
+    if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     a.blr(16);
     a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
     a.ldrW(9, 1, 36);
@@ -1290,6 +1345,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     a.movRegW(1, 9);
     a.movW(2, unsigned(bits / 8));
     if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
+    if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     a.movX(16, uint64_t(uintptr_t(&pom68kA64Write)));
     a.blr(16);
     a.movRegW(14, 0);
@@ -1529,7 +1585,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 commitEaBeforeAccess(a, L, dst, bits, dstAccess);
                 a.ldrW(11, 1, 72);
                 emitLogicFlags(a, L, 11, bits);
-                observeDirectWrite(a, bits, in.pc);
+                observeDirectWrite(a, L, bits, in.pc);
                 storeGuest(a, bits, 11);
             } else {
                 memStoreGuest(a, L, ir.super, bits, 11, slow,
@@ -2325,6 +2381,7 @@ void chargeAndRetire(Asm& a, const Layout& L, unsigned cycles,
         }
         a.bCond(Asm::LT, done);
         a.strX(21, 0, L.clock);
+        if (icacheCountersLive(L)) spillIcacheCounters(a, L);
         a.movW(1, 0);                    // cycles already charged
         a.movX(16, uint64_t(uintptr_t(&pom68kA64Sync)));
         a.blr(16);
@@ -2335,15 +2392,14 @@ void chargeAndRetire(Asm& a, const Layout& L, unsigned cycles,
         // x21 is the canonical clock while generated code runs; the helper
         // reads it from the object and writes the charged value back there.
         a.strX(21, 0, L.clock);
+        if (icacheCountersLive(L)) spillIcacheCounters(a, L);
         a.movW(1, cycles);
         a.movX(16, uint64_t(uintptr_t(&pom68kA64Sync)));
         a.blr(16);
         a.emit(0xA94207E0u);             // ldp x0,x1,[sp,#32]
         a.ldrX(21, 0, L.clock);
     }
-    a.ldrW(9, 1, 8);                    // Frame::instrs
-    a.addImmW(9, 9, 1);
-    a.strW(9, 1, 8);
+    a.addImmW(26, 26, 1);               // live Frame::instrs
 }
 
 // Emits a jump to `taken` iff the materialised 68k CCR satisfies cc.
@@ -2667,11 +2723,12 @@ public:
         // POM68K_JIT_BACKEND=a64 on a 68030 is honoured without the unsafe
         // override.
         c.guestFamilies = kGuest68040 | kGuest68030;
-        // But NOT 030 in `autoFamilies`: charge-on-success and restart-write
-        // linking are now conformant, but the 6,000-frame AArch64 result has
-        // not beaten `threaded` (D.1 condition 3). Promotion is earned by a
-        // repeated matching-fingerprint bench, never by backend symmetry.
-        c.autoFamilies = kGuest68040;
+        // The 68030 earns the automatic path independently: production-
+        // cadence lockstep is green through 6,000 frames, the native LLE
+        // platform gates are green, and same-process ABBA at the fixed
+        // 6,000-frame budget beats threaded with the same fingerprint.
+        c.autoFamilies = kGuest68040 | kGuest68030;
+        c.profitScore68030 = 64;
         return c;
     }
     bool canEmit(uint16_t op) const override {
@@ -2721,6 +2778,7 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     }
     if (!haveLayout_) { layout_ = ctx.cpu->pomJitLayout(); haveLayout_ = true; }
     const Layout& L = layout_;
+    gExactStoreGuards030 = L.is030;
     const bool paced = ctx.periphClock && ctx.periphBatch != 0 &&
                        a64PacingEnabled();
     const int batch = paced ? ctx.periphBatch : 0;
@@ -2729,23 +2787,38 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     // pre-charge signature: a helper could decline the replay after counters
     // and clock had already moved for an instruction that never executed.
     const uint32_t linkMask = ctx.linkTable ? ctx.linkMask : 0;
+    const bool icache = L.icLive && icacheEmitEnabled();
 
     Asm a;
     const int epilogue = a.label();
     const int exitLost = a.label();
     const int exitFault = a.label();
     // x21 keeps the guest clock and x22 the peripheral-clock pointer across
-    // linked blocks and helper calls. x0/x1 remain the CPU/Frame ABI pair.
-    a.emit(0xA9BC7BFDu);                 // stp x29,x30,[sp,#-64]!
+    // linked blocks and helper calls. On 030, x23/x24 keep the i-cache
+    // counters; w26 keeps the retired-instruction count on every family.
+    // x0/x1 remain the CPU/Frame ABI pair.
+    a.emit(0xA9BB7BFDu);                 // stp x29,x30,[sp,#-80]!
     a.emit(0x910003FDu);                 // mov x29,sp
     a.emit(0xA9015BF5u);                 // stp x21,x22,[sp,#16]
     a.emit(0xA90207E0u);                 // stp x0,x1,[sp,#32]
+    if (icache) a.emit(0xA90363F7u);      // stp x23,x24,[sp,#48]
+    a.emit(0xA9046BF9u);                 // stp x25,x26,[sp,#64]
     a.ldrX(21, 0, L.clock);
+    a.ldrW(26, 1, 8);                    // Frame::instrs
     if (paced) a.ldrX(22, 1, 56);        // Frame::periphClock
     // TAS/CAS are unsafe block terminators, hence no linked native chain can
     // set the 030 locked-RMW latch. Clear the value inherited from the last
     // interpreted instruction, matching mmuExecuteStart's contract.
     if (L.is030) { a.movW(9, 0); a.strB(9, 0, L.mmuRmw); }
+    if (icache) {
+        reloadIcacheCounters(a, L);
+        // CACR.EI cannot change inside a generated/linkable chain: MOVEC is
+        // unsafe and ends the block. This mirrors the 68040 live-clock ABI
+        // and removes a CACR load/mask from every native 030 instruction.
+        a.ldrB(25, 0, L.cacr);
+        a.movW(9, 1);
+        a.andW(25, 25, 9);
+    }
     const size_t linkEntryOffset = a.byteSize();
     struct ExitLabels { int budget, flags; };
     std::vector<ExitLabels> exits;
@@ -2766,7 +2839,6 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     }
 
     size_t nativeCount = 0;
-    const bool icache = L.icLive && icacheEmitEnabled();
     IcacheShadow icacheShadow;
 
     for (size_t i = 0; i < ir.instrs.size(); i++) {
@@ -2925,22 +2997,29 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
             a.strX(9, 15, 0);
         }
         if (ctx.runtimeAddressObserver)
-            observeRuntimeAddress(a, ir.instrs[i].opcode);
+            observeRuntimeAddress(a, L, ir.instrs[i].opcode);
         a.b(slowBody[i]);
         a.bind(slowBody[i]);
         commitBoundary(a, L, ir.instrs[i].pc);
         a.strX(21, 0, L.clock);
+        if (icache) spillIcacheCounters(a, L);
         a.movX(16, uint64_t(uintptr_t(&pom68kA64Step)));
         a.blr(16);
         a.movRegW(14, 0);                 // preserve helper result
         a.emit(0xA94207E0u);              // ldp x0,x1,[sp,#32]
         a.ldrX(21, 0, L.clock);
+        if (icache) {
+            reloadIcacheCounters(a, L);
+            // Defensive for any future non-Unsafe fallback that gains a
+            // CACR side effect; today's MOVEC exits before this continuation.
+            a.ldrB(25, 0, L.cacr);
+            a.movW(9, 1);
+            a.andW(25, 25, 9);
+        }
         a.cmpWZero(14);
         a.bCond(Asm::LT, exitLost);
         a.bCond(Asm::EQ, exitFault);
-        a.ldrW(9, 1, 8);                  // retired
-        a.addImmW(9, 9, 1);
-        a.strW(9, 1, 8);
+        a.addImmW(26, 26, 1);             // retired
         a.ldrW(9, 1, 52);                 // slowInstrs
         a.addImmW(9, 9, 1);
         a.strW(9, 1, 52);
@@ -2960,9 +3039,7 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     a.movW(9, uint32_t(Exit::WindowLost)); a.strW(9, 1, 12);
     a.b(epilogue);
     a.bind(exitFault);
-    a.ldrW(9, 1, 8);
-    a.addImmW(9, 9, 1);
-    a.strW(9, 1, 8);
+    a.addImmW(26, 26, 1);
     a.movW(9, uint32_t(Exit::Fault)); a.strW(9, 1, 12);
     a.b(epilogue);
 
@@ -2979,8 +3056,14 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     }
     a.bind(epilogue);
     a.strX(21, 0, L.clock);
+    a.strW(26, 1, 8);
+    if (icache) {
+        spillIcacheCounters(a, L);
+        a.emit(0xA94363F7u);              // ldp x23,x24,[sp,#48]
+    }
+    a.emit(0xA9446BF9u);                 // ldp x25,x26,[sp,#64]
     a.emit(0xA9415BF5u);                 // ldp x21,x22,[sp,#16]
-    a.emit(0xA8C47BFDu);                 // ldp x29,x30,[sp],#64
+    a.emit(0xA8C57BFDu);                 // ldp x29,x30,[sp],#80
     a.emit(0xD65F03C0u);                 // ret
     if (!a.finish()) return reject(CompileReject::Emit, "branch fixup");
 
