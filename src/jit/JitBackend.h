@@ -115,6 +115,14 @@ struct BackendCaps {
     // until the uncharge fix is ported and its own bench win is measured
     // on an AArch64 host.
     uint32_t autoFamilies = 0;
+
+    // Backend/family-specific cold-code admission. Zero preserves the
+    // engine-wide default. The AArch64 68030 pays a substantial emitted
+    // i-cache model per block and has measured better when a block first
+    // earns `visits * potentially-native instructions >= 64`; other pairs
+    // keep immediate native compilation until they independently earn a
+    // different value. An explicit POM68K_JIT_PROFIT_SCORE always wins.
+    uint32_t profitScore68030 = 0;
 };
 
 // A backend's compiled artefact. Opaque above this header: the threaded
