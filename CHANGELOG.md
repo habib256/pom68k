@@ -95,6 +95,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how BSR.W converged on the same delivery-alignment class, and the target-side-charge fix shape was refuted the day it was written** → [2026-08-21 (fifth) — Both parked levers, one root](#2026-08-21-bsrw-same-class)
 - **why the biggest 68030 fallback lever is a delivery-boundary problem, not a cost bug — the restart-write reproducer run to ground** → [2026-08-21 (fourth) — The restart-write divergence names its class](#2026-08-21-restart-base-forensic)
 - **how the a64 pass left x86-64 behind on the shared oracles, and the port that squared it (EXG, CMPM, the Scc thunk hole)** → [2026-08-21 (third) — The shared oracles call in the x64 port](#2026-08-21-x64-oracle-port)
 - **how the IIsi segfault proved gone and the x64 68030 flip fired on both-ISA D.1 evidence** → [2026-08-21 (second) — The x64 68030 flip fires](#2026-08-21-x64-030-flip)
@@ -313,6 +314,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-21 (fifth)** — [Both parked levers, one root: BSR.W's divergence is the same delivery-alignment class, and the target-side-charge fix shape is refuted by measurement](#2026-08-21-bsrw-same-class)
 - **2026-08-21 (fourth)** — [The restart-write divergence names its class: peripheral-delivery alignment, not cost — two IRQ delay loops disassembled, the reproducer lands in-tree](#2026-08-21-restart-base-forensic)
 - **2026-08-21 (third)** — [The shared oracles call in the x64 port: EXG, CMPM, the Scc thunk hole — and score 64 is refused by measurement](#2026-08-21-x64-oracle-port)
 - **2026-08-21 (second)** — [The x64 68030 flip fires: the IIsi segfault did not survive the hardening, and `auto` now serves the generator on both ISAs](#2026-08-21-x64-030-flip)
@@ -574,6 +576,44 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-21-bsrw-same-class"></a>
+## 2026-08-21 (fifth) — Both parked levers, one root: BSR.W's divergence is the same delivery-alignment class, and the target-side-charge fix shape is refuted by measurement
+
+The fourth entry closed with a fix shape for BSR.W: charge the target-side
+refill through `chargeIcacheExtraWord(target)`. Testing it began with the
+per-form fetch-address proof that entry demanded — and the proof REFUTES
+the shape. Mode-5 `execBsr` for the Word form consumes its displacement
+from `queue.irc` with **no readExt**: the instruction's linear fetches are
+exactly `pc` and `pc+2`, the traced `fetchWords` is 2 on every BSR.W the
+reproducer compiled, and the target-side pair is charged by the target
+block — the same aggregate attribution that already holds for `$4EBA` and
+BSR.S. The linear charge was never wrong. A retraction the same day it
+was written is what the fetch-address-proof rule is FOR.
+
+With the charge exonerated, the exemption went in behind a second
+reproducer knob (`POM68K_JIT_BSRW=1`, `ResolvedConfig` like its sibling)
+— and the 120k gate diverged at the historical step 16 097 with a
+signature that settles the question: at the failing checkpoint the pc,
+SR and queue are IDENTICAL, the fetch counts are IDENTICAL, and the only
+deltas are hits +1 / misses −1 / clock −4 on the jit side. The
+per-delivery trace at step 16 090 then shows the same first slip as the
+restart-write forensic: clock, machine time, device hash and all three
+i-cache counters EQUAL, the pc one instruction apart at a delivery point
+(interp `$40A132E2`, jit `$40A132DE`), the delivery-point counts off by
+three. An interrupt taken one instruction apart returns through `RTE` to
+a one-instruction-different pc, re-walks the direct-mapped lines in a
+different order, and surfaces seven steps later as a hit↔miss swap.
+
+**So both parked levers — the restart-write base admission (~44 % of
+remaining in-block fallbacks) and BSR.W with the wider single-path
+exemptions — wait on ONE fix**: native blocks must deliver at the same
+instruction boundaries as the fallback path. The chantier starts with a
+surgical hypothesis (the interpreter services deadlines after the
+instruction retires; the native pacing test runs at block entry — a
+post-versus-pre placement or a `>=`-versus-`>` comparison to reconcile)
+and two one-command reproducers, `POM68K_JIT_RESTART_BASE=1` at step
+19 150/19 658 and `POM68K_JIT_BSRW=1` at step 16 097.
 
 <a id="2026-08-21-restart-base-forensic"></a>
 ## 2026-08-21 (fourth) — The restart-write divergence names its class: peripheral-delivery alignment, not cost — two IRQ delay loops disassembled, the reproducer lands in-tree

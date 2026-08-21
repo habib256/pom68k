@@ -88,6 +88,11 @@ struct ResolvedConfig {
     // reproducer diverges at step 19658 with this on, which is why the
     // total-cost check ships.
     bool restartBaseAdmission = false;
+    // EXPERIMENT (same § — same peripheral-phase class, proved 2026-08-21):
+    // let the armed-charge exemption accept BSR.W ($6100). Its linear
+    // charge is correct; the 120k reproducer diverges at step 16097 on
+    // delivery-boundary alignment, exactly like restartBaseAdmission.
+    bool bsrWideAdmission = false;
 
     // A64 pacing control is captured here too: a backend must never retain
     // a private getenv-based policy surface.
@@ -159,6 +164,7 @@ inline ResolvedConfig resolveConfig() {
     c.dataWindow = detail::envBool("POM68K_DATA_WINDOW", false);
     c.restartBaseAdmission =
         detail::envBool("POM68K_JIT_RESTART_BASE", false);
+    c.bsrWideAdmission = detail::envBool("POM68K_JIT_BSRW", false);
     c.a64Pacing = detail::envBool("POM68K_JIT_A64_PACING", true);
     return c;
 }
@@ -295,6 +301,13 @@ inline int accessThunkMode() {
 inline bool restartBaseAdmission() {
     if (detail::activeConfig) return detail::activeConfig->restartBaseAdmission;
     return detail::envBool("POM68K_JIT_RESTART_BASE", false);
+}
+
+// EXPERIMENT knob (same § and same class): BSR.W into the armed-charge
+// exemption. Ships OFF; the step-16097 reproducer turns it on.
+inline bool bsrWideAdmission() {
+    if (detail::activeConfig) return detail::activeConfig->bsrWideAdmission;
+    return detail::envBool("POM68K_JIT_BSRW", false);
 }
 
 // J4 — resident 68040 D-cache line reads. Kept independently switchable so

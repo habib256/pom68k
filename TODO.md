@@ -694,9 +694,13 @@ Open, in ROI order:
   (`POM68K_JIT_RESTART_BASE=1`), two IRQ delay-loop culprits disassembled,
   class = peripheral-delivery alignment (NOT a cost bug — the unlock is
   aligning native pacing boundaries with the fallback path's, engine work;
-  `CHANGELOG.md` 2026-08-21 (fourth)); BSR.W stays refused with its fix
-  shaped (`chargeIcacheExtraWord(target)` + per-form fetch-address proof).
-  The paragraph below is the 2026-08-18 state it overturned.**
+  `CHANGELOG.md` 2026-08-21 (fourth)); **BSR.W converged on the SAME class
+  the same evening** (`POM68K_JIT_BSRW=1` reproduces step 16 097; its
+  linear charge is proved correct, the target-side-charge fix shape was
+  refuted by measurement — 2026-08-21 (fifth)). ONE chantier — delivery
+  alignment — now unlocks both levers, with a surgical hypothesis
+  (post-instruction vs block-entry deadline check) and two one-command
+  reproducers. The paragraph below is the 2026-08-18 state it overturned.**
   Measured 2026-08-18 (`docs/JIT_BRINGUP.md` § C.4bis and
   § C.4ter, `jit_bench_lcii` 2000 frames, one fingerprint throughout): the
   x64 generator is **slower than the interpreter** on a 68030 (21.84 s vs

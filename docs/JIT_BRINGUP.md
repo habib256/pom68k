@@ -680,11 +680,13 @@ dispatch ring): base-cost admission of the **restartable-write family**
 still diverges at a coarse budget cut — those keep the total-cost check,
 priced at ~44 % of remaining in-block fallbacks, the biggest known lever
 left. **BSR.W** and the wider single-path branch exemptions swap one miss
-for one hit at an identical pc (step 16 097) and stay refused; their fix
-has a shape — `chargeIcache` charges LINEAR addresses (`pc + 2w`) while
-the mode-5 `execBsr` refills AT THE TARGET inside the instruction, so the
-exemption needs `chargeIcacheExtraWord(target)` plus a per-form
-fetch-address proof.
+for one hit at an identical pc (step 16 097) and stay refused.
+*(A "target-side charge" fix shape proposed earlier on 2026-08-21 was
+REFUTED the same day by measurement: the traced `fetchWords` is 2 —
+mode-5 `execBsr` consumes the displacement from `queue.irc` with no
+readExt, so the linear charge is already right, and the target pair is
+charged by the target block like `$4EBA`'s. The real blocker is the
+forensic box below.)*
 
 > **Forensic closure of the restart-write reproducer (2026-08-21).** The
 > divergence is now in-tree as `POM68K_JIT_RESTART_BASE=1` and was run to
@@ -709,6 +711,24 @@ fetch-address proof.
 > is innocent; the unlock for the ~44 % is **delivery-boundary alignment
 > of native blocks with the fallback path**, which is engine work, not
 > emitter work.
+>
+> **The same day, BSR.W converged on the SAME class.** With
+> `POM68K_JIT_BSRW=1` (the second reproducer knob) the 120k gate
+> diverges at the historical step 16 097 — and the per-delivery trace at
+> step 16 090 shows the identical signature: clock, machine time, device
+> hash and all three i-cache counters EQUAL, the pc one instruction
+> apart at a delivery point (interp `$40A132E2`, jit `$40A132DE`), the
+> point counts off by three. The final hit↔miss swap at an identical pc
+> with equal fetch counts is the interrupt returning to a
+> one-instruction-different pc and re-walking the direct-mapped lines in
+> a different order. So BOTH parked levers — the restart-write base
+> admission (~44 % of fallbacks) and BSR.W plus the wider single-path
+> exemptions — wait on ONE fix: deliver at the same instruction
+> boundaries as the fallback path. Surgical hypothesis for that
+> chantier: the interpreter services deadlines AFTER the instruction
+> retires, while the native pacing test runs at block entry — a
+> post-versus-pre placement (or a `>=`-versus-`>` comparison) to
+> reconcile, starting from the two one-command reproducers.
 
 ### C.4septies — the IIsi dies under the generator, and the `jit_*` 030 gates never tested it (2026-08-19, parked with reproducer; CLOSED 2026-08-21)
 

@@ -3108,8 +3108,17 @@ bool Emitter::emit() {
         // one-miss-for-one-hit swap when exempted, and stays refused until
         // that is understood; so does the wider single-path exemption
         // (BRA.W, multi-word JMP/JSR), which fails the same way.
+        // 0x6100 behind the reproducer knob: BSR.W's traced linear charge
+        // is CORRECT (fetchWords=2, proved 2026-08-21 — mode-5 execBsr
+        // consumes the displacement from queue.irc with no readExt), and
+        // emitting it still diverges the 120k gate at step 16097. The
+        // divergence is the PERIPHERAL-PHASE class, not a charge bug: the
+        // per-delivery trace shows identical clock/devices/i-cache with
+        // the pc one instruction apart at a delivery point (JIT_BRINGUP
+        // § C.4sexies forensic box). Same root as POM68K_JIT_RESTART_BASE.
         const bool bsrW030 = ic_ && ir_.instrs[i].words == 2 &&
-            ir_.instrs[i].opcode == 0x4EBA &&
+            (ir_.instrs[i].opcode == 0x4EBA ||
+             (ir_.instrs[i].opcode == 0x6100 && bsrWideAdmission())) &&
             ir_.instrs[i].semantics.operation == SemanticOp::BranchSubroutine;
         if (ic_ && ir_.instrs[i].kind == Kind::Branch &&
             ir_.instrs[i].words > 1 && !dbcc030 && !bccW030 && !bsrW030) {
