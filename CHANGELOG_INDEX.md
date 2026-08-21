@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 260 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 261 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 26 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 27 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 33 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
@@ -51,6 +51,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-20** — [The A64 store guard becomes exact globally: 32 % less wall time, and long sessions no longer exhaust native code](CHANGELOG.md#2026-08-20-a64-global-store-guard)
 - **2026-08-21** — [A64 exact reads and the opcode tail: 99.5 % native, with both LLE locksteps intact](CHANGELOG.md#2026-08-21-a64-exact-read-tail)
 - **2026-08-21 (second)** — [The x64 68030 flip fires: the IIsi segfault did not survive the hardening, and `auto` now serves the generator on both ISAs](CHANGELOG.md#2026-08-21-x64-030-flip)
+- **2026-08-21 (sixth)** — [The peripheral-phase class is run to its mechanism and closed on x64: the pin was late, not the take, and the cure is an access-clock bias](CHANGELOG.md#2026-08-21-periph-phase-closed)
 - **2026-08-21 (third)** — [The shared oracles call in the x64 port: EXG, CMPM, the Scc thunk hole — and score 64 is refused by measurement](CHANGELOG.md#2026-08-21-x64-oracle-port)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle

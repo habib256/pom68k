@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"reconcile the native deadline test's placement" — the parked delivery-alignment hypothesis pointed at the IRQ *take* stage, and the take was already aligned (pin→take latency identical); the slip was the DELIVERY, an i-cache-charge-position skew at forced I/O flushes** → [2026-08-21 (sixth) — The peripheral-phase class is run to its mechanism…](#2026-08-21-periph-phase-closed)
 - **"the image is not the one the floor was calibrated on" was ruled a dead lead on the wrong argument (probe-chain membership, not content) — it was the answer, and it took three boot gates red for two days** → [2026-08-15 — Three red boot gates and one bit…](#2026-08-15-hd20sc-clean-bit)
 - **a gate typed a keyboard gesture at the wrong application for a day, on a desktop that looked right — and the fix is to ask the guest who is in front** → [2026-08-15 (later) — The Duo's persist leg had been gesturing at Stickies…](#2026-08-15-duo-stickies-front)
 - **"this disk is unreadable" on every non-compact machine: what unit MAME's IWM window tables are counted in, and why `$17` is the Mac's mode and not `$1F`** → [2026-08-15 (third) — The IWM's cell window was counted in the wrong clock…](#2026-08-15-iwm-window-clock)
@@ -314,6 +315,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-21 (sixth)** — [The peripheral-phase class is run to its mechanism and closed on x64: the pin was late, not the take, and the cure is an access-clock bias](#2026-08-21-periph-phase-closed)
 - **2026-08-21 (fifth)** — [Both parked levers, one root: BSR.W's divergence is the same delivery-alignment class, and the target-side-charge fix shape is refuted by measurement](#2026-08-21-bsrw-same-class)
 - **2026-08-21 (fourth)** — [The restart-write divergence names its class: peripheral-delivery alignment, not cost — two IRQ delay loops disassembled, the reproducer lands in-tree](#2026-08-21-restart-base-forensic)
 - **2026-08-21 (third)** — [The shared oracles call in the x64 port: EXG, CMPM, the Scc thunk hole — and score 64 is refused by measurement](#2026-08-21-x64-oracle-port)
@@ -576,6 +578,63 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-21-periph-phase-closed"></a>
+## 2026-08-21 (sixth) — The peripheral-phase class is run to its mechanism and closed on x64: the pin was late, not the take, and the cure is an access-clock bias
+
+The delivery-alignment chantier the fifth entry parked was opened and
+CLOSED in one session — and the parked surgical hypothesis
+(post-instruction versus block-entry deadline *test*) was wrong in the
+instructive way. A new interrupt trace (`Cpu030::setIrqTrace`: one point
+per pin change from `updateIpl`, one per take through the `willInterrupt`
+delegate) measured, on the BSR.W reproducer at its step-16 097 divergence,
+that the pin→take latency is IDENTICAL on both arms (15 cycles): the
+per-instruction `flags != 0` guard and the engine's `pomJitIdle` fences
+were never the slipping stage. **The pin itself rises 63 cycles late in
+the jit arm** (527 611 430 vs 527 611 367) — the *delivery* was
+misaligned, not the take.
+
+The per-delivery trace, taught to name its flush door (`src` = sync with
+its charge / stall / chunk, plus the pre-flush deadline) and to dump both
+arms whole (`POM68K_JIT_LOCKSTEP_PERIPH_DUMP`), then handed over the
+mechanism. The V8 forces a peripheral flush before every I/O register
+access, at the current clock. The interpreter reaches such an access with
+the instruction's 030 i-cache fetch penalty ALREADY on the clock —
+`mmuFetchWord` charges at fetch time — while a native instruction's
+charge sits after the body on the success path (the 2026-08-19 uncharge
+lesson made it so). A native I/O access therefore flushes
+`missPenalty × misses` cycles early: at the divergence window the two
+covering flushes sat 8 cycles apart — exactly the 2 misses the counters
+show — and the VBL's machine time fell between them, so the jit delivered
+the event one whole flush later. An interrupt that lands at a different
+pc re-walks the direct-mapped lines in a different order through RTE; the
+terminal hits +1 / misses −1 / clock −4 was downstream fallout, as the
+fourth entry suspected. The admissions never created the class — they
+moved IRQ-handler I/O poll loops from interpreted execution into native
+blocks, which is where the skew meets an IRQ. **The class was latent in
+the shipping defaults** wherever a native thunk access polls a device.
+
+The fix is deliberately NOT a charge move — the uncharge saga stands. The
+exact access thunks now carry the instruction's traced fetch stream
+(`fetchWords << 32 | pc`) and bias the clock by a read-only peek of the
+overlay (`Moira::pomJitIcachePeekPenalty`, the emitted charge's walk with
+a one-line local override and no mutation) for the duration of the access
+alone. Success or fault, the bias is gone before anything else runs: the
+success-path charge is untouched, a fault's re-run recharges as before,
+the 68040 (overlay unarmed) sees bias 0.
+
+Validated: both reproducers heal at the full 120k —
+`POM68K_JIT_RESTART_BASE=1`, `POM68K_JIT_BSRW=1`, both together, and the
+default config, all four `OK — 120000 steps identical`, i-cache identical.
+The new `jit_lockstep_030_x64_alignment_test` (both admissions ON) keeps
+the class closed. Still open, by name: the **a64 port** of the same bias
+(`pom68kA64Read/Write` keep yesterday's behaviour; the class stays latent
+there, and the port is the prerequisite for any global admission flip);
+the **dest-extension refinement** (the linear bias counts words the
+interpreter fetches after the source read on mem-to-mem forms — none in
+the admitted set today, the 120k gate is the tripwire); and the
+**admission flips themselves**, which are speed decisions awaiting their
+own evidence. Full forensic: `docs/JIT_BRINGUP.md` § C.4nonies.
 
 <a id="2026-08-21-bsrw-same-class"></a>
 ## 2026-08-21 (fifth) — Both parked levers, one root: BSR.W's divergence is the same delivery-alignment class, and the target-side-charge fix shape is refuted by measurement

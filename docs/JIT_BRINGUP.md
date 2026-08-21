@@ -729,6 +729,15 @@ forensic box below.)*
 > retires, while the native pacing test runs at block entry — a
 > post-versus-pre placement (or a `>=`-versus-`>` comparison) to
 > reconcile, starting from the two one-command reproducers.
+>
+> **CLOSED on x64 2026-08-21 — and the hypothesis above was WRONG in the
+> instructive way: § C.4nonies.** The take plumbing was already aligned
+> (pin→take latency identical on both arms); what slipped was the
+> DELIVERY — the forced peripheral flush at a native I/O access runs at a
+> clock missing the i-cache fetch penalty the interpreter has already
+> charged at that point. The access thunks now bias the clock for the
+> access alone; both reproducers pass the full 120k, and
+> `jit_lockstep_030_x64_alignment_test` keeps them closed.
 
 ### C.4septies — the IIsi dies under the generator, and the `jit_*` 030 gates never tested it (2026-08-19, parked with reproducer; CLOSED 2026-08-21)
 
@@ -874,6 +883,86 @@ declaration. Decide with a number, not before.
 
 ---
 
+### C.4nonies — the peripheral-phase class, run to its mechanism and CLOSED on x64 (2026-08-21)
+
+Both parked levers — the restartable-write base admission (§ C.4sexies,
+step 19 658/19 150) and BSR.W plus the wider single-path exemptions
+(step 16 097) — died of ONE mechanism, and it was not the one the parking
+note guessed.
+
+**The refuted hypothesis first.** The parked surgery ("the interpreter
+services deadlines after the instruction retires, native code tests at
+block pacing points — reconcile the placement, or the `>=`") assumed the
+IRQ *take* plumbing was the slipping stage. A new interrupt trace
+(`Cpu030::setIrqTrace` — one point per pin CHANGE from `updateIpl`, one
+per `execInterrupt` via the `willInterrupt` delegate) measured, on the
+BSR.W reproducer at its step-16 097 divergence:
+
+```
+interp  pin  lvl=2 clk=527611367        jit  pin  lvl=2 clk=527611430
+interp  TAKE lvl=2 clk=527611382        jit  TAKE lvl=2 clk=527611445
+```
+
+The pin→take latency is IDENTICAL (15 cycles) in both arms: `guards()`'s
+per-instruction `flags != 0` exit and the engine's `pomJitIdle` fences do
+their job. **The PIN ITSELF rises 63 cycles late** — the *delivery* is
+misaligned, not the take.
+
+**The mechanism, from the per-delivery trace with its new `src` door and
+old-deadline fields.** The V8 forces a peripheral flush before every I/O
+register access ("registers see current time", `V8Memory.cpp:389/467/673`),
+at the CURRENT clock. The interpreter reaches that access with the 030
+i-cache fetch penalty already charged — `mmuFetchWord` charges at fetch
+time, before exec — while generated code charges on the success path AFTER
+the body (§ C.4sexies item 2, the uncharge lesson). So a native I/O access
+flushes `missPenalty × misses` cycles earlier than the interpreter's same
+access: at the divergence window the two arms' covering flushes sat at
+527 611 367 vs 527 611 359 — 8 cycles = exactly the 2 misses the trace
+shows — and the VBL's machine time fell between them, so the jit delivered
+the event one whole flush later (527 611 430). An interrupt landing at a
+different pc re-walks the direct-mapped lines in a different order on the
+way back through RTE: the terminal `hits +1 / misses −1 / clock −4` was
+always downstream fallout. The knobs never created the class — they moved
+IRQ-handler delay loops (I/O status polls) from interpreter execution into
+native blocks, which is where the skew becomes an IRQ landing. **The class
+was latent in the shipping defaults** wherever a native thunk access polls
+a device; the reproducers were just the first collision with a pinned gate.
+
+**The fix is an access-clock alignment, not a charge move.** The exact
+access thunks (`pom68kJitRead`/`pom68kJitWrite`) now take the
+instruction's traced fetch stream (`fetchWords << 32 | pc`, 0 when the
+block emits no i-cache charge) and bias the clock by a READ-ONLY peek of
+the overlay (`Moira::pomJitIcachePeekPenalty` — same walk as the emitted
+charge, one-line local override, no mutation) for the duration of the
+access alone. Success or fault, the bias is gone before anything else
+runs: the success-path charge is untouched, the fault re-run recharges
+exactly as before, and only the flush the access forces sees the
+interpreter-aligned clock. Nothing changes on the 68040 (`pomIcache`
+unarmed → bias 0) or on any fallback-run instruction.
+
+**Validated 2026-08-21:** both reproducers heal at the full 120k —
+`POM68K_JIT_RESTART_BASE=1`, `POM68K_JIT_BSRW=1`, both together, and the
+default config, all four `OK — 120000 steps identical` with i-cache
+identical. `jit_lockstep_030_x64_alignment_test` (both knobs ON) now pins
+the class closed.
+
+**Still open, deliberately:**
+- **The a64 port.** `pom68kA64Read/Write` keep their four-argument shape
+  and today's (yesterday's) behaviour — the class stays latent on AArch64
+  defaults exactly as it was on x64 for months. The port needs the packed
+  operand threaded through `memLoadGuest`/`memStoreGuest` and an ARM host
+  to validate it (the a64 120k gate); it must land BEFORE any admission
+  default flips globally, or the flip breaks the ISA that lacks the
+  alignment.
+- **Dest-extension forms.** The linear bias counts ALL traced words; the
+  interpreter fetches a memory-destination's extension words AFTER the
+  source read. A form with an I/O source and dest extensions would be
+  biased early by its dest-word misses. No such form is in the admitted
+  native set today, and the 120k gate is the tripwire.
+- **The admissions themselves stay OFF.** This section is conformance;
+  the flips (restart-base ~44 % of in-block fallbacks, BSR.W and the wider
+  single-path exemptions) each want their own D.1-shape speed evidence.
+
 ## Phase D — the default engine — **68040 landed**
 
 > **The requirement:** the fastest *conformant* LLE mode must be the
@@ -930,7 +1019,7 @@ folded into an emitter change.
 | B — emitted 030 i-cache | **correctness-proved on AArch64** by the 6,000-frame production-cadence lockstep + matching benchmark fingerprint; native-state hardening and score 64 later supplied the measured win |
 | C.1 — 030 lockstep gate | **done** (threaded, blocks, a64-experimental) |
 | C.2 / C.3 — 030 probe + thunks | **written**; validated only indirectly, their gate is C.5 |
-| C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, the MOVEM guard, charge-on-success on both native backends and the x64 throughput win (§ C.4sexies) done; parked: the restartable-write base-cost admission and BSR.W (§ C.4sexies) |
+| C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, the MOVEM guard, charge-on-success on both native backends and the x64 throughput win (§ C.4sexies) done; the peripheral-phase class that parked the restartable-write base admission and BSR.W is **closed on x64** (§ C.4nonies, `jit_lockstep_030_x64_alignment_test`) — the admissions themselves stay off pending speed evidence, and the a64 alignment port is the named prerequisite for any global flip |
 | C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; AArch64 default landed 2026-08-20; x64 default landed 2026-08-21** — the IIsi segfault did not survive the hardening window (§ C.4septies CLOSED), and the original Linux-native host now passes the hardened native gates. Native builds pin both the ENGINE and compiled backend in the 030 boot gates |
 | D — default engine | **68040 landed; 68030 landed on BOTH native ISAs** (a64 2026-08-20, x64 2026-08-21), with explicit interpreter oracles per platform |
 

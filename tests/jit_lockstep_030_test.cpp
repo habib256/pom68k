@@ -132,6 +132,41 @@ uint32_t ramDiff(const V8Memory& a, const V8Memory& b,
 
 using PeriphTrace = std::vector<Cpu030::PeriphTracePoint>;
 
+// Where each interrupt LANDED (the pc the handler will RTE back to). The
+// peripheral-phase class diverges with every delivery identical — clock,
+// devices, i-cache — and only the landing pc one instruction apart; this
+// trace is what names that difference directly instead of inferring it
+// from the i-cache walk seven steps later.
+using IrqTrace = std::vector<Cpu030::IrqTracePoint>;
+
+void collectIrqTrace(void* opaque, const Cpu030::IrqTracePoint& p) {
+    static_cast<IrqTrace*>(opaque)->push_back(p);
+}
+
+void printIrqTraces(const IrqTrace& ref, const IrqTrace& jit) {
+    const size_t common = std::min(ref.size(), jit.size());
+    size_t first = 0;
+    while (first < common && ref[first].pc == jit[first].pc &&
+           ref[first].clock == jit[first].clock &&
+           ref[first].level == jit[first].level &&
+           ref[first].kind == jit[first].kind)
+        ++first;
+    std::printf("[jit_lockstep_030] irq trace: %zu interp / %zu jit,"
+                " first difference %zu\n", ref.size(), jit.size(), first);
+    const size_t from = first > 2 ? first - 2 : 0;
+    const size_t to = std::min(std::max(ref.size(), jit.size()), first + 8);
+    for (size_t k = from; k < to; ++k) {
+        if (k < ref.size())
+            std::printf("  interp[%zu] %s lvl=%d pc=%08X clk=%lld\n", k,
+                        ref[k].kind ? "TAKE" : "pin ", ref[k].level,
+                        ref[k].pc, (long long)ref[k].clock);
+        if (k < jit.size())
+            std::printf("  jit   [%zu] %s lvl=%d pc=%08X clk=%lld\n", k,
+                        jit[k].kind ? "TAKE" : "pin ", jit[k].level,
+                        jit[k].pc, (long long)jit[k].clock);
+    }
+}
+
 struct WritePoint {
     uint32_t addr = 0, value = 0, pc = 0;
     uint32_t a0 = 0, a1 = 0, a2 = 0, a3 = 0;
@@ -174,16 +209,49 @@ bool same(const Cpu030::PeriphTracePoint& a,
 }
 
 void printPeriphPoint(const char* who, const Cpu030::PeriphTracePoint& p) {
+    static const char* kSrc[] = { "sync", "stall", "chunk" };
     std::printf("  %-6s phase=%d pc=%08X clock=%lld machine=%lld target=%lld"
                 " delivered=%d deadline=%lld"
-                " remainder=%lld next=%d devices=%016llX"
+                " remainder=%lld next=%d src=%s/%d old=%lld devices=%016llX"
                 " ic=%lld/%lld/%lld\n",
                 who, p.phase, p.pc, (long long)p.clock, (long long)p.machine,
                 (long long)p.target, p.delivered,
                 (long long)p.deadline, (long long)p.remainder, p.nextEvent,
+                kSrc[p.src >= 0 && p.src <= 2 ? p.src : 0], p.syncCycles,
+                (long long)p.oldDeadline,
                 (unsigned long long)p.deviceHash,
                 (long long)p.icFetches, (long long)p.icHits,
                 (long long)p.icMisses);
+}
+
+// POM68K_JIT_LOCKSTEP_PERIPH_DUMP=prefix — the whole captured step, both
+// arms, to prefix.interp / prefix.jit. The around-the-mismatch excerpts
+// above cannot show where one arm INSERTED points; a diff of the full
+// streams can.
+void dumpPeriphTrace(const char* prefix, const char* arm,
+                     const PeriphTrace& t) {
+    std::string path = std::string(prefix) + "." + arm;
+    std::FILE* f = std::fopen(path.c_str(), "w");
+    if (!f) return;
+    static const char* kSrc[] = { "sync", "stall", "chunk" };
+    for (size_t k = 0; k < t.size(); ++k) {
+        const auto& p = t[k];
+        std::fprintf(f, "[%zu] phase=%d pc=%08X clock=%lld machine=%lld"
+                     " delivered=%d deadline=%lld remainder=%lld next=%d"
+                     " src=%s/%d old=%lld devices=%016llX ic=%lld/%lld/%lld\n",
+                     k, p.phase, p.pc, (long long)p.clock,
+                     (long long)p.machine, p.delivered,
+                     (long long)p.deadline, (long long)p.remainder,
+                     p.nextEvent,
+                     kSrc[p.src >= 0 && p.src <= 2 ? p.src : 0],
+                     p.syncCycles, (long long)p.oldDeadline,
+                     (unsigned long long)p.deviceHash,
+                     (long long)p.icFetches, (long long)p.icHits,
+                     (long long)p.icMisses);
+    }
+    std::fclose(f);
+    std::printf("[jit_lockstep_030] periph trace dumped to %s (%zu points)\n",
+                path.c_str(), t.size());
 }
 
 }  // namespace
@@ -310,6 +378,10 @@ int main(int argc, char** argv) {
     long periphTraceAt = -1;
     if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_PERIPH_TRACE_AT"))
         periphTraceAt = std::atol(t);
+    long irqTraceFrom = -1;
+    if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_IRQ_TRACE_FROM"))
+        irqTraceFrom = std::atol(t);
+    IrqTrace irqRef, irqJit;
     long fullRamAt = -1;
     if (const char* t = std::getenv("POM68K_JIT_LOCKSTEP_FULL_RAM_AT"))
         fullRamAt = std::atol(t);
@@ -335,6 +407,10 @@ int main(int argc, char** argv) {
             periphJit.clear();
             cpuRef.setPeriphTrace(&periphRef, collectPeriphTrace);
             cpuJit.setPeriphTrace(&periphJit, collectPeriphTrace);
+        }
+        if (i == irqTraceFrom) {
+            cpuRef.setIrqTrace(&irqRef, collectIrqTrace);
+            cpuJit.setIrqTrace(&irqJit, collectIrqTrace);
         }
         if (i == writeTraceAt) {
             writesRef.clear(); writesJit.clear();
@@ -371,6 +447,10 @@ int main(int argc, char** argv) {
         if (i == periphTraceAt) {
             cpuRef.setPeriphTrace(nullptr, nullptr);
             cpuJit.setPeriphTrace(nullptr, nullptr);
+            if (const char* d = std::getenv("POM68K_JIT_LOCKSTEP_PERIPH_DUMP")) {
+                dumpPeriphTrace(d, "interp", periphRef);
+                dumpPeriphTrace(d, "jit", periphJit);
+            }
             const size_t common = std::min(periphRef.size(), periphJit.size());
             size_t first = 0;
             while (first < common && same(periphRef[first], periphJit[first]))
@@ -393,6 +473,29 @@ int main(int argc, char** argv) {
                      k < std::min(common, first + 8); ++k) {
                     printPeriphPoint("interp", periphRef[k]);
                     printPeriphPoint("jit", periphJit[k]);
+                }
+                // A count difference means one arm INSERTED points; the
+                // pairwise walk above cannot show where. Name the first
+                // pairwise index whose CLOCK differs (a hard slip, not the
+                // cosmetic stale-pc one), and both tails.
+                if (periphRef.size() != periphJit.size()) {
+                    size_t hard = first;
+                    while (hard < common &&
+                           periphRef[hard].clock == periphJit[hard].clock &&
+                           periphRef[hard].deviceHash == periphJit[hard].deviceHash)
+                        ++hard;
+                    std::printf("  first hard mismatch (clock/devices) at"
+                                " point %zu of %zu common\n", hard, common);
+                    if (hard < common) {
+                        printPeriphPoint("interp", periphRef[hard]);
+                        printPeriphPoint("jit", periphJit[hard]);
+                    }
+                    for (size_t k = common > 4 ? common - 4 : 0;
+                         k < periphRef.size(); ++k)
+                        printPeriphPoint("i-tail", periphRef[k]);
+                    for (size_t k = common > 4 ? common - 4 : 0;
+                         k < periphJit.size(); ++k)
+                        printPeriphPoint("j-tail", periphJit[k]);
                 }
             } else {
                 std::printf("[jit_lockstep_030] peripheral trace step %ld:"
@@ -479,6 +582,7 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        if (irqTraceFrom >= 0) printIrqTraces(irqRef, irqJit);
         std::printf("[jit_lockstep_030] DIVERGED after %ld steps\n", i);
         std::printf("  last boundaries (jit): ");
         for (int k = 0; k < kTrail; k++) {

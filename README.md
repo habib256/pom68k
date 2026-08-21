@@ -29,7 +29,7 @@ are present coverage, never a ceiling on the project mission.
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 225 gates, ~4 h (asset-dependent ones soft-skip)
+ctest                             # 226 gates, ~4 h (asset-dependent ones soft-skip)
 ctest -L unit                     # 107 legacy non-etalon gates
 ctest -L asset-none               # 83 manifest-declared asset-free gates
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines

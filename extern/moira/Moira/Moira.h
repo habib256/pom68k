@@ -694,6 +694,47 @@ public:
     // the machine around it stood still.
     void pomJitSync(int cycles) { sync(cycles); }
 
+    // POM68K JIT, peripheral-phase alignment (2026-08-21): what the 030
+    // i-cache overlay WOULD charge for this instruction's fetch stream,
+    // WITHOUT mutating it. The interpreter charges the fetch penalty at
+    // fetch time — before the instruction's data access — while generated
+    // code charges on the success path after the body (the 2026-08-19
+    // uncharge lesson). An I/O access forces a peripheral flush at the
+    // access clock, so the two engines flushed missPenalty×misses cycles
+    // apart and a device event could land one whole delivery window away —
+    // which is where its interrupt's pc comes from. The access thunks
+    // close the gap by biasing the clock with this value around the access
+    // alone; the real charge stays on the success path, untouched.
+    // Sequential walk with a one-line local override: an instruction's
+    // words are consecutive, so an earlier word's install can only be hit
+    // by a later word on the SAME line, and lines advance monotonically.
+    i64 pomJitIcachePeekPenalty(u32 pc, int words) const {
+        if (!pomIcache.armed || !(reg.cacr & 0x1) || words <= 0) return 0;
+        const u32 sup = reg.sr.s ? 0x80000000u : 0u;
+        int curLine = -1; u32 curTag = 0; u8 curValid = 0;
+        i64 misses = 0;
+        for (int w = 0; w < words; w++) {
+            const u32 addr = pc + u32(w) * 2;
+            const int line = int((addr >> 4) & 15);
+            const u32 tag = (addr >> 8) | sup;
+            const u8 bit = u8(1u << ((addr >> 2) & 3));
+            if (line != curLine) {
+                curLine = line;
+                curTag = pomIcache.tag[line];
+                curValid = pomIcache.valid[line];
+            }
+            if (curTag == tag && (curValid & bit)) continue;
+            if (curTag != tag) { curTag = tag; curValid = 0; }
+            curValid |= bit;
+            misses++;
+        }
+        return misses * pomIcache.missPenalty;
+    }
+
+    // The bias itself: a bare clock adjustment, deliberately NOT sync() —
+    // the flush the access forces must simply see the aligned value.
+    void pomJitBiasClock(i64 n) { clock += n; }
+
     // True when POLL_IPL is the plain `reg.ipl = ipl` assignment, which is
     // the only form generated code models. The deferred-recognition feature
     // (NEOST_IPLFETCH, setIplDelay) is off on every Mac profile; a backend

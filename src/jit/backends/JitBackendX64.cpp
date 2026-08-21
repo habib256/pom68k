@@ -113,13 +113,34 @@ extern "C" void pom68kJitSync(moira::Moira* cpu, uint32_t cycles) noexcept {
 
 // The slow half of the data path: a real mmu040 access, fault turned into
 // a status. `bytes` is 1, 2 or 4.
+//
+// `pcWords` (fetchWords << 32 | pc, 0 when the block emits no i-cache
+// charge) is the peripheral-phase alignment of 2026-08-21: this path is
+// where I/O lands, an I/O access forces a peripheral flush at the access
+// clock, and the interpreter reaches the same access with the fetch
+// penalty already on the clock while the emitted charge sits after the
+// body. Bias the clock by the read-only peek for the access alone —
+// success or fault, the bias is gone before anything else runs, so the
+// success-path charge and the fault re-run both stay exactly as they were.
 extern "C" int pom68kJitRead(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
-                             uint32_t* out) noexcept {
-    return cpu->pomJitReadData(addr, int(bytes), *out) ? 1 : 0;
+                             uint32_t* out, uint64_t pcWords) noexcept {
+    const moira::i64 bias = pcWords
+        ? cpu->pomJitIcachePeekPenalty(uint32_t(pcWords), int(pcWords >> 32))
+        : 0;
+    if (bias) cpu->pomJitBiasClock(bias);
+    const int ok = cpu->pomJitReadData(addr, int(bytes), *out) ? 1 : 0;
+    if (bias) cpu->pomJitBiasClock(-bias);
+    return ok;
 }
 extern "C" int pom68kJitWrite(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
-                              uint32_t val) noexcept {
-    return cpu->pomJitWriteData(addr, int(bytes), val) ? 1 : 0;
+                              uint32_t val, uint64_t pcWords) noexcept {
+    const moira::i64 bias = pcWords
+        ? cpu->pomJitIcachePeekPenalty(uint32_t(pcWords), int(pcWords >> 32))
+        : 0;
+    if (bias) cpu->pomJitBiasClock(bias);
+    const int ok = cpu->pomJitWriteData(addr, int(bytes), val) ? 1 : 0;
+    if (bias) cpu->pomJitBiasClock(-bias);
+    return ok;
 }
 
 // ── the frame generated code runs against ────────────────────────────────
@@ -434,6 +455,7 @@ private:
     void leaveToDynamic();
     bool emitSubroutine(size_t i);   // JSR / BSR / RTS
     void chargeCycles(int cycles);
+    uint64_t accessPcWords(size_t i) const;
     void spillClock() { a_.movMR(Sz::Q, at(L_.clock), kClk); }
     void fillClock()  { a_.movRM(Sz::Q, kClk, at(L_.clock)); }
     // The per-instruction state mmu040InstrStart maintains and generated
@@ -711,6 +733,17 @@ void Emitter::chargeIcache(size_t i, uint32_t exactFetchWords) {
 // flush-on-every-CACR-strobe regime never kept compiled long enough to
 // expose. Charging on the SUCCESS path only removes the whole class, and
 // the uncharge with it.)
+// The access-thunk clock-alignment operand (see pom68kJitRead): the traced
+// fetch stream of instruction i, packed for the thunk's read-only peek. 0 —
+// no bias — whenever the block emits no i-cache charge (not an 030, or the
+// attribution knob turned the model off) or the IR carries no traced count:
+// the bias must model exactly what the end-of-body charge will charge, or
+// it is a new skew, not an alignment.
+uint64_t Emitter::accessPcWords(size_t i) const {
+    if (!ic_ || !ir_.instrs[i].fetchWords) return 0;
+    return (uint64_t(ir_.instrs[i].fetchWords) << 32) | ir_.instrs[i].pc;
+}
+
 void Emitter::chargeIcacheExtraWord(uint32_t addr) {
     if (!ic_) return;
     const uint32_t sup = ir_.super ? 0x80000000u : 0u;
@@ -1415,6 +1448,7 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst,
         a_.movRR(Sz::L, RSI, addr);
         a_.movRI(RDX, uint32_t(sizeBytes(szIdx)));
         a_.leaRM(RCX, F(kFValue));
+        a_.movRI64(R8, accessPcWords(idx));
         call(reinterpret_cast<void*>(&pom68kJitRead));
         fillClock();
         a_.testRR(Sz::L, RAX, RAX);
@@ -1475,6 +1509,7 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
         a_.movRR(Sz::L, RSI, addr);
         a_.movRI(RDX, uint32_t(sizeBytes(szIdx)));
         a_.movRM(Sz::L, RCX, F(kFSaveV));
+        a_.movRI64(R8, accessPcWords(idx));
         call(reinterpret_cast<void*>(&pom68kJitWrite));
         fillClock();
         a_.testRR(Sz::L, RAX, RAX);
@@ -1670,15 +1705,15 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     // 31162/7798/10902); mirror, don't extend.
     // The RESTARTABLE-WRITE family keeps the TOTAL-cost check — i.e. a
     // restartable MOVE whose trace carried an i-cache miss stays refused.
-    // Admitting it on the base split is the ONE base admission the
-    // retained-cache lockstep still rejects (2026-08-19, step 19658: a
-    // budget-cut boundary lands with the jit clock ahead and one miss
-    // over, the same coarse-cut-only shape as the uncharge hole, healed
-    // by any fine budget). Every other MOVE shape — register and memory
-    // sources into registers, non-restartable and memory-to-memory
-    // destinations — holds the base rule through the full 120k gate. The
-    // residual forensics are a named TODO, not a mystery to re-derive:
-    // isolate with POM68K_JIT_DENY_FROM/_TO and the dispatch ring.
+    // Its base admission used to diverge the 120k gate (step 19658) and
+    // that divergence is CLOSED: it was the peripheral-phase class — the
+    // admission moved IRQ-handler delay loops into native blocks, whose
+    // I/O accesses flushed device time at a clock missing the fetch
+    // penalty (JIT_BRINGUP § C.4nonies; the access thunks now bias the
+    // clock for the access alone, and jit_lockstep_030_x64_alignment_test
+    // holds the proof). The admission itself still ships off — the check
+    // below — because the FLIP is a speed decision awaiting its own D.1
+    // evidence, and the a64 port of the alignment must land first.
     const unsigned tracedMove =
         restartWrite && !restartBaseAdmission()
             ? unsigned(ir_.instrs[i].cycles) : traced030(i);
@@ -3083,11 +3118,12 @@ bool Emitter::emit() {
         const bool dbcc030 = ic_ &&
             ir_.instrs[i].semantics.operation == SemanticOp::DecrementBranch;
         // Widening this exemption to the other single-path transfers
-        // (BRA.W, BSR.W, multi-word JSR/JMP) was tried 2026-08-19 and
-        // diverged at step 16097 with a one-miss-for-one-hit swap at an
-        // identical pc — their fetch/charge story is NOT settled; do not
-        // re-widen without a per-form fetch-address proof against the
-        // mode-5 core, not just a count.
+        // (BRA.W, BSR.W, multi-word JSR/JMP) used to diverge at step
+        // 16097; that was the peripheral-phase class, closed 2026-08-21
+        // (JIT_BRINGUP § C.4nonies). Each form still owes the per-form
+        // fetch-address proof against the mode-5 core before it widens —
+        // BSR.W has one (fetchWords=2, no readExt); BRA.W and multi-word
+        // JSR/JMP do not yet.
         //
         // A CONDITIONAL two-word Bcc is different: its fetch model is
         // proved against the mode-5 source — both paths fetch pc and
@@ -3103,19 +3139,15 @@ bool Emitter::emit() {
         // pc+2 through mmuFetchWord and nothing else — the displacement is
         // consumed from queue.irc, the traced fetch count is 2, and
         // tracedQueueIs pins the held displacement. 6.8 % of the LC II
-        // fallback census, 120k-gated. BSR.W ($6100) — same emitter, same
-        // fetch story on paper — DIVERGES the gate at step 16097 with a
-        // one-miss-for-one-hit swap when exempted, and stays refused until
-        // that is understood; so does the wider single-path exemption
-        // (BRA.W, multi-word JMP/JSR), which fails the same way.
-        // 0x6100 behind the reproducer knob: BSR.W's traced linear charge
-        // is CORRECT (fetchWords=2, proved 2026-08-21 — mode-5 execBsr
-        // consumes the displacement from queue.irc with no readExt), and
-        // emitting it still diverges the 120k gate at step 16097. The
-        // divergence is the PERIPHERAL-PHASE class, not a charge bug: the
-        // per-delivery trace shows identical clock/devices/i-cache with
-        // the pc one instruction apart at a delivery point (JIT_BRINGUP
-        // § C.4sexies forensic box). Same root as POM68K_JIT_RESTART_BASE.
+        // fallback census, 120k-gated. BSR.W ($6100) rides the reproducer
+        // knob: its traced linear charge is CORRECT (fetchWords=2, proved
+        // 2026-08-21 — mode-5 execBsr consumes the displacement from
+        // queue.irc with no readExt), and its historical step-16097
+        // divergence was the peripheral-phase class, closed by the
+        // access-thunk clock alignment (JIT_BRINGUP § C.4nonies;
+        // jit_lockstep_030_x64_alignment_test runs this admission ON).
+        // Default stays off until the flip earns its own speed evidence
+        // and the a64 alignment port lands.
         const bool bsrW030 = ic_ && ir_.instrs[i].words == 2 &&
             (ir_.instrs[i].opcode == 0x4EBA ||
              (ir_.instrs[i].opcode == 0x6100 && bsrWideAdmission())) &&

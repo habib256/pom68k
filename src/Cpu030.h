@@ -61,6 +61,14 @@ public:
         int phase = 0;             // 0 before executeUntil, 1 after, 2 flush
         int delivered = 0;
         int nextEvent = 0;
+        // Which door the flush came through: 0 = sync (syncCycles is the
+        // charge — 0 for the jit's due callout, >0 for the interpreter's
+        // per-instruction CYCLES), 1 = stall (mid-instruction bus wait),
+        // 2 = the runCycles chunk boundary. The peripheral-phase class
+        // lives in the DIFFERENCE between these doors across engines.
+        int src = 0;
+        int syncCycles = 0;
+        moira::i64 oldDeadline = 0;
         uint64_t deviceHash = 0;
         // The i-cache overlay's counters AT the delivery: an intra-step
         // charge skew wanders between engines and re-heals by the step
@@ -72,6 +80,23 @@ public:
     void setPeriphTrace(void* opaque, PeriphTraceFn fn) {
         periphTraceOpaque_ = opaque;
         periphTraceFn_ = fn;
+    }
+
+    // The periph trace's sibling: one point per execInterrupt, capturing
+    // the pc the handler will RTE back to. Two arms can agree on every
+    // delivery (clock, devices, i-cache) and still part later because the
+    // interrupt LANDED one instruction apart — only this capture names
+    // where (docs/JIT_BRINGUP.md § C.4sexies forensic).
+    struct IrqTracePoint {
+        uint32_t pc = 0;            // return pc — reg.pc at execInterrupt
+        moira::i64 clock = 0;
+        int level = 0;
+        int kind = 1;               // 0 = pin change (updateIpl), 1 = take
+    };
+    using IrqTraceFn = void (*)(void*, const IrqTracePoint&);
+    void setIrqTrace(void* opaque, IrqTraceFn fn) {
+        irqTraceOpaque_ = opaque;
+        irqTraceFn_ = fn;
     }
 
     // The core clock runs at boost_× machine rate — boost_ is cacheBoost_
@@ -141,6 +166,7 @@ private:
     void write16(moira::u32 addr, moira::u16 v) const override;
     void sync(int cycles) override;
     void willExecute(moira::M68kException exc, moira::u16 vector) override;
+    void willInterrupt(moira::u8 level) override;
     void didChangeCACR(moira::u32 value) override;              // cache clear/enable
     void catchUp();
     void dumpFpuLog(moira::u16 vector);
@@ -179,6 +205,11 @@ private:
     moira::i64 periphDeadline_ = 0;
     void* periphTraceOpaque_ = nullptr;
     PeriphTraceFn periphTraceFn_ = nullptr;
+    void* irqTraceOpaque_ = nullptr;
+    IrqTraceFn irqTraceFn_ = nullptr;
+    int traceSrc_ = 0;             // trace only: flush door + charge
+    int traceSyncCycles_ = 0;
+    moira::i64 traceOldDeadline_ = 0;
     void emitPeriphTrace(int phase, int delivered, moira::i64 target = 0);
     void schedulePeriphDeadline();
 

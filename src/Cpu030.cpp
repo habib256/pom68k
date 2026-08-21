@@ -260,7 +260,16 @@ void Cpu030::runUntil(moira::i64 clockTarget) {
 }
 
 void Cpu030::updateIpl() {
-    setIPL(moira::u8(mem_.iplLevel()));
+    const moira::u8 level = moira::u8(mem_.iplLevel());
+    if (irqTraceFn_ && level != getIPL()) {
+        IrqTracePoint p;
+        p.pc = getPC();
+        p.clock = clock;
+        p.level = level;
+        p.kind = 0;
+        irqTraceFn_(irqTraceOpaque_, p);
+    }
+    setIPL(level);
 }
 
 // Wait states (VIA1 E-clock sync, SWIM +5), applied by V8Memory from
@@ -272,6 +281,7 @@ void Cpu030::stall(int cycles) {
     // (the Cpu040 convention; CHANGELOG 2026-07-25).
     if (cycles <= 0) return;
     clock += moira::i64(cycles) * boost_;
+    if (periphTraceFn_) { traceSrc_ = 1; traceSyncCycles_ = cycles; }
     catchUp();
 }
 
@@ -309,6 +319,7 @@ void Cpu030::pollBoostGate() {
 void Cpu030::flushTicks() {
     moira::i64 d = clock - lastPeriphClock_;
     if (d <= 0) return;
+    const moira::i64 oldDeadline = periphDeadline_;
     lastPeriphClock_ = clock;
     // Scale elapsed Moira cycles down to machine cycles so peripherals keep
     // their real cadence while the core runs boost_× more instructions.
@@ -318,7 +329,16 @@ void Cpu030::flushTicks() {
     if (m) mem_.tick(m);           // VIA1 timers (φ2 = CPU/20) + 60.15 Hz
     pollBoostGate();
     schedulePeriphDeadline();
-    if (periphTraceFn_) emitPeriphTrace(2, m);
+    if (periphTraceFn_) { traceOldDeadline_ = oldDeadline; emitPeriphTrace(2, m); }
+}
+
+void Cpu030::willInterrupt(moira::u8 level) {
+    if (!irqTraceFn_) return;
+    IrqTracePoint p;
+    p.pc = getPC();
+    p.clock = clock;
+    p.level = level;
+    irqTraceFn_(irqTraceOpaque_, p);
 }
 
 void Cpu030::emitPeriphTrace(int phase, int delivered, moira::i64 target) {
@@ -332,6 +352,9 @@ void Cpu030::emitPeriphTrace(int phase, int delivered, moira::i64 target) {
     p.target = target;
     p.phase = phase;
     p.delivered = delivered;
+    p.src = phase == 2 ? traceSrc_ : 0;
+    p.syncCycles = phase == 2 ? traceSyncCycles_ : 0;
+    p.oldDeadline = phase == 2 ? traceOldDeadline_ : 0;
     p.nextEvent = mem_.cyclesToNextEvent();
     p.deviceHash = mem_.debugDeviceHash();
     p.icFetches = pomIcache.fetches;
@@ -342,6 +365,7 @@ void Cpu030::emitPeriphTrace(int phase, int delivered, moira::i64 target) {
 
 void Cpu030::sync(int cycles) {
     clock += cycles;
+    if (periphTraceFn_) { traceSrc_ = 0; traceSyncCycles_ = cycles; }
     catchUp();
 }
 

@@ -23,6 +23,18 @@ the token is deliberately absent on 030. Its 68030 paths carry split cost
 validation, restartable writes and emitted i-cache accounting; the dedicated
 long 030 lockstep and platform boots keep that automatic path gated.
 
+**Owed to this backend — the peripheral-phase access-clock bias
+(2026-08-21, x64 only so far).** `pom68kJitRead/Write` on x64 bias the
+clock around an exact access thunk by the instruction's would-be i-cache
+fetch penalty (`Moira::pomJitIcachePeekPenalty`), so a forced I/O flush
+sees the same clock the interpreter's same access would — the fix that
+closed JIT_BRINGUP § C.4nonies. `pom68kA64Read/Write` still run without
+it: the class is latent on AArch64 defaults exactly as it was on x64.
+The port needs the packed `fetchWords << 32 | pc` operand threaded
+through `memLoadGuest`/`memStoreGuest` into a fifth thunk argument, and
+an ARM host so the a64 120k lockstep can judge it. **It must land before
+any restart-base/BSR.W admission default flips globally.**
+
 **Gates.** `jit_lockstep_a64_coarse_test` (5 M comparisons at 50 cycles,
 registered only on AArch64 with `POM68K_JIT_BACKENDS=auto`),
 `jit_store_guard_a64_test`, `jit_restart_write_030_test`, and the arm64

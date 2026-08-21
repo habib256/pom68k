@@ -1812,9 +1812,25 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         set_tests_properties(jit_lockstep_030_x64_experimental_test PROPERTIES
                              ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000"
                              TIMEOUT 1800)
+
+        # The peripheral-phase alignment gate (2026-08-21, JIT_BRINGUP
+        # § C.4octies): the same 120k lockstep with BOTH parked admissions
+        # turned on — the restartable-write base cost and BSR.W. Each used
+        # to diverge on delivery-boundary alignment (steps 19658/16097);
+        # the access-thunk clock bias closed the class, and this gate is
+        # what keeps it closed. The knobs stay off in production until
+        # their own speed evidence lands — this gate is about conformance,
+        # not about the flip.
+        add_test(NAME jit_lockstep_030_x64_alignment_test COMMAND jit_lockstep_030_test 120000
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(jit_lockstep_030_x64_alignment_test PROPERTIES
+                             ENVIRONMENT "POM68K_JIT_BACKEND=x64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000;POM68K_JIT_RESTART_BASE=1;POM68K_JIT_BSRW=1"
+                             TIMEOUT 1800)
     else()
         string(APPEND pom68k_absent_gates
             "jit_lockstep_030_x64_experimental_test\tunit,jit\n")
+        string(APPEND pom68k_absent_gates
+            "jit_lockstep_030_x64_alignment_test\tunit,jit\n")
     endif()
 
     # ── the x86-64 code generator ────────────────────────────────────────

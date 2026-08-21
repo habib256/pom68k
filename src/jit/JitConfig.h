@@ -82,16 +82,17 @@ struct ResolvedConfig {
     bool profitScoreExplicit = false;
     int armBackoff = 32;
     bool dataWindow = false;
-    // EXPERIMENT (JIT_BRINGUP § C.4sexies parked item): admit the 030
-    // restartable-write family on the split BASE cost instead of the traced
-    // total. Default 0 = production behaviour; the coarse-budget lockstep
-    // reproducer diverges at step 19658 with this on, which is why the
-    // total-cost check ships.
+    // EXPERIMENT (JIT_BRINGUP § C.4nonies): admit the 030 restartable-write
+    // family on the split BASE cost instead of the traced total. Its
+    // historical step-19658 divergence was the peripheral-phase class,
+    // closed by the access-thunk clock alignment on x64;
+    // jit_lockstep_030_x64_alignment_test runs 120k with this ON. Still
+    // ships off: the flip is a speed decision awaiting its own evidence,
+    // behind the a64 alignment port.
     bool restartBaseAdmission = false;
-    // EXPERIMENT (same § — same peripheral-phase class, proved 2026-08-21):
-    // let the armed-charge exemption accept BSR.W ($6100). Its linear
-    // charge is correct; the 120k reproducer diverges at step 16097 on
-    // delivery-boundary alignment, exactly like restartBaseAdmission.
+    // EXPERIMENT (same § and same gate): BSR.W ($6100) into the
+    // armed-charge exemption. Charge proved correct, class closed on x64;
+    // same flip conditions as restartBaseAdmission.
     bool bsrWideAdmission = false;
 
     // A64 pacing control is captured here too: a backend must never retain
@@ -295,16 +296,16 @@ inline int accessThunkMode() {
     return detail::envInt("POM68K_JIT_ACCESS_THUNK", dflt, 0, 2);
 }
 
-// EXPERIMENT knob (JIT_BRINGUP § C.4sexies parked item): base-cost
-// admission of the 030 restartable-write family. Ships OFF; the lockstep
-// reproducer for its step-19658 coarse-cut divergence turns it on.
+// EXPERIMENT knob (JIT_BRINGUP § C.4nonies): base-cost admission of the
+// 030 restartable-write family. Ships OFF; the alignment gate runs the
+// 120k lockstep with it on.
 inline bool restartBaseAdmission() {
     if (detail::activeConfig) return detail::activeConfig->restartBaseAdmission;
     return detail::envBool("POM68K_JIT_RESTART_BASE", false);
 }
 
-// EXPERIMENT knob (same § and same class): BSR.W into the armed-charge
-// exemption. Ships OFF; the step-16097 reproducer turns it on.
+// EXPERIMENT knob (same § and same gate): BSR.W into the armed-charge
+// exemption. Ships OFF; the alignment gate runs the 120k with it on.
 inline bool bsrWideAdmission() {
     if (detail::activeConfig) return detail::activeConfig->bsrWideAdmission;
     return detail::envBool("POM68K_JIT_BSRW", false);

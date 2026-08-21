@@ -692,15 +692,19 @@ Open, in ROI order:
   family still keeps the total-cost check (~44 % of in-block fallbacks) —
   **run to ground 2026-08-21**: reproducer in-tree
   (`POM68K_JIT_RESTART_BASE=1`), two IRQ delay-loop culprits disassembled,
-  class = peripheral-delivery alignment (NOT a cost bug — the unlock is
-  aligning native pacing boundaries with the fallback path's, engine work;
-  `CHANGELOG.md` 2026-08-21 (fourth)); **BSR.W converged on the SAME class
-  the same evening** (`POM68K_JIT_BSRW=1` reproduces step 16 097; its
-  linear charge is proved correct, the target-side-charge fix shape was
-  refuted by measurement — 2026-08-21 (fifth)). ONE chantier — delivery
-  alignment — now unlocks both levers, with a surgical hypothesis
-  (post-instruction vs block-entry deadline check) and two one-command
-  reproducers. The paragraph below is the 2026-08-18 state it overturned.**
+  class = peripheral-delivery alignment; **BSR.W converged on the SAME
+  class the same evening** (`POM68K_JIT_BSRW=1`; 2026-08-21 (fourth) and
+  (fifth)). **The class itself is CLOSED on x64 — 2026-08-21 (sixth)**:
+  the slip was the forced I/O flush running at a clock missing the
+  fetch penalty (the take was already aligned); the access thunks now
+  bias the clock for the access alone, both reproducers pass the full
+  120k, and `jit_lockstep_030_x64_alignment_test` pins it. What remains
+  on these levers is now SPEED work, not conformance: (1) port the
+  alignment bias to `pom68kA64Read/Write` on an ARM host (prerequisite
+  for any global flip — the class is still latent on a64 defaults);
+  (2) measure the restart-base and BSR.W admissions with the D.1 bench
+  protocol and flip what wins (`docs/JIT_BRINGUP.md` § C.4nonies).
+  The paragraph below is the 2026-08-18 state this work overturned.**
   Measured 2026-08-18 (`docs/JIT_BRINGUP.md` § C.4bis and
   § C.4ter, `jit_bench_lcii` 2000 frames, one fingerprint throughout): the
   x64 generator is **slower than the interpreter** on a 68030 (21.84 s vs

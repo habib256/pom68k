@@ -17,13 +17,13 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-08-17; earlier counts predated the 040 FPU/cache completion and JIT
-memory-contract work):
+2026-08-21; earlier counts predated the 040 FPU/cache completion, the JIT
+memory-contract work and the peripheral-phase alignment pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **80** (53 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **391** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **82** (55 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **392** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **13 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
 | patch groups in the inventory below | **29** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
@@ -1405,6 +1405,16 @@ marked `POM68K JIT`, all inert until armed.
     a fault must resume from the SAVED ea (`mmu040MovemEa`), which a
     recomputation would silently ignore if the fault handler changed the
     base register.
+    2026-08-21: `pomJitIcachePeekPenalty(pc, words)` +
+    `pomJitBiasClock(i64)` — the peripheral-phase alignment pair
+    (`docs/JIT_BRINGUP.md` § C.4nonies). The peek is the emitted i-cache
+    charge's walk, read-only (one-line local override, no mutation); the
+    bias is a bare clock adjustment, deliberately NOT `sync()`. The x64
+    access thunks bracket a device access with them so the peripheral
+    flush the access forces sees the clock the interpreter's same access
+    would — `mmuFetchWord` charges the fetch penalty before exec, emitted
+    code after the body, and the difference is exactly where the VBL pin
+    slipped one delivery window in the 120k reproducers.
 
 ### J3 (2026-07-28) — the interpreter reads the data TLB too
 
