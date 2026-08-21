@@ -677,12 +677,38 @@ gates touched by the same fix.
 
 **Parked with reproducers** (isolate with `POM68K_JIT_DENY_FROM/_TO` + the
 dispatch ring): base-cost admission of the **restartable-write family**
-still diverges at a coarse budget cut (step 19 658, fine-budget heals,
-window = the TimeDBRA self-loop + class-2 stores) — those keep the
-total-cost check, priced at ~44 % of remaining in-block fallbacks, the
-biggest known lever left. **BSR.W** and the wider single-path branch
-exemptions swap one miss for one hit at an identical pc (step 16 097) and
-stay refused.
+still diverges at a coarse budget cut — those keep the total-cost check,
+priced at ~44 % of remaining in-block fallbacks, the biggest known lever
+left. **BSR.W** and the wider single-path branch exemptions swap one miss
+for one hit at an identical pc (step 16 097) and stay refused; their fix
+has a shape — `chargeIcache` charges LINEAR addresses (`pc + 2w`) while
+the mode-5 `execBsr` refills AT THE TARGET inside the instruction, so the
+exemption needs `chargeIcacheExtraWord(target)` plus a per-form
+fetch-address proof.
+
+> **Forensic closure of the restart-write reproducer (2026-08-21).** The
+> divergence is now in-tree as `POM68K_JIT_RESTART_BASE=1` and was run to
+> ground with the DENY bisection: TWO independent culprit pockets,
+> `$40A07500-7600` (the historical step 19 658) and `$40A08A00-8B00`
+> (step 19 150 — it fires first), each disassembling to the SAME motif —
+> an interrupt handler's delay loop: `MOVE.L D0,-(A7)` (the newly
+> admitted restartable write), a status read, then a one-instruction
+> `DBRA` self-loop, `MOVE.L (A7)+,D0; RTE`. The per-delivery peripheral
+> trace names the first observable slip, and it is NOT a cost or i-cache
+> charge: at step 19 140, delivery point 1, both arms hold IDENTICAL
+> clock, machine time, deadline, device hash and all three i-cache
+> counters — only the pc differs by one instruction
+> (interp `$40A143E4`, jit `$40A143E0`), and the jit records one fewer
+> delivery point. This is the **peripheral-phase class** — the same
+> failure that reverted the global `restartableWriteRequired` on
+> 2026-08-18: the fallback path services deadlines at the exact
+> instruction, native code at its block pacing points, and making the
+> handler's write native moves one delivery boundary by one instruction.
+> The later +1 miss/+4-cycle signature at the failing checkpoint is a
+> CONSEQUENCE of that alignment slip, not the cause. The admission check
+> is innocent; the unlock for the ~44 % is **delivery-boundary alignment
+> of native blocks with the fallback path**, which is engine work, not
+> emitter work.
 
 ### C.4septies — the IIsi dies under the generator, and the `jit_*` 030 gates never tested it (2026-08-19, parked with reproducer; CLOSED 2026-08-21)
 

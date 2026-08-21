@@ -689,9 +689,14 @@ Open, in ROI order:
   inventory, the base-cost cross-check made global, and the MMU-generation
   flush made a lazy revalidation (`docs/JIT_BRINGUP.md` § C.4sexies,
   `CHANGELOG.md` 2026-08-19). Remaining named levers: the restartable-write
-  family still keeps the total-cost check (~44 % of in-block fallbacks,
-  reproducer parked), BSR.W and the wider single-path branch exemptions
-  stay refused. The paragraph below is the 2026-08-18 state it overturned.**
+  family still keeps the total-cost check (~44 % of in-block fallbacks) —
+  **run to ground 2026-08-21**: reproducer in-tree
+  (`POM68K_JIT_RESTART_BASE=1`), two IRQ delay-loop culprits disassembled,
+  class = peripheral-delivery alignment (NOT a cost bug — the unlock is
+  aligning native pacing boundaries with the fallback path's, engine work;
+  `CHANGELOG.md` 2026-08-21 (fourth)); BSR.W stays refused with its fix
+  shaped (`chargeIcacheExtraWord(target)` + per-form fetch-address proof).
+  The paragraph below is the 2026-08-18 state it overturned.**
   Measured 2026-08-18 (`docs/JIT_BRINGUP.md` § C.4bis and
   § C.4ter, `jit_bench_lcii` 2000 frames, one fingerprint throughout): the
   x64 generator is **slower than the interpreter** on a 68030 (21.84 s vs

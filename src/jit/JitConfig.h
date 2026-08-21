@@ -82,6 +82,12 @@ struct ResolvedConfig {
     bool profitScoreExplicit = false;
     int armBackoff = 32;
     bool dataWindow = false;
+    // EXPERIMENT (JIT_BRINGUP § C.4sexies parked item): admit the 030
+    // restartable-write family on the split BASE cost instead of the traced
+    // total. Default 0 = production behaviour; the coarse-budget lockstep
+    // reproducer diverges at step 19658 with this on, which is why the
+    // total-cost check ships.
+    bool restartBaseAdmission = false;
 
     // A64 pacing control is captured here too: a backend must never retain
     // a private getenv-based policy surface.
@@ -151,6 +157,8 @@ inline ResolvedConfig resolveConfig() {
     c.profitScore = detail::envInt("POM68K_JIT_PROFIT_SCORE", 0, 0, 1 << 30);
     c.armBackoff = detail::envInt("POM68K_JIT_ARM_BACKOFF", 32, 0, 4096);
     c.dataWindow = detail::envBool("POM68K_DATA_WINDOW", false);
+    c.restartBaseAdmission =
+        detail::envBool("POM68K_JIT_RESTART_BASE", false);
     c.a64Pacing = detail::envBool("POM68K_JIT_A64_PACING", true);
     return c;
 }
@@ -279,6 +287,14 @@ inline int accessThunkMode() {
     if (detail::activeConfig) return detail::activeConfig->accessThunk;
     const int dflt = operatingProfile() == OperatingProfile::Conservative ? 0 : 2;
     return detail::envInt("POM68K_JIT_ACCESS_THUNK", dflt, 0, 2);
+}
+
+// EXPERIMENT knob (JIT_BRINGUP § C.4sexies parked item): base-cost
+// admission of the 030 restartable-write family. Ships OFF; the lockstep
+// reproducer for its step-19658 coarse-cut divergence turns it on.
+inline bool restartBaseAdmission() {
+    if (detail::activeConfig) return detail::activeConfig->restartBaseAdmission;
+    return detail::envBool("POM68K_JIT_RESTART_BASE", false);
 }
 
 // J4 — resident 68040 D-cache line reads. Kept independently switchable so

@@ -1679,8 +1679,9 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     // destinations — holds the base rule through the full 120k gate. The
     // residual forensics are a named TODO, not a mystery to re-derive:
     // isolate with POM68K_JIT_DENY_FROM/_TO and the dispatch ring.
-    const unsigned tracedMove = restartWrite ? unsigned(ir_.instrs[i].cycles)
-                                             : traced030(i);
+    const unsigned tracedMove =
+        restartWrite && !restartBaseAdmission()
+            ? unsigned(ir_.instrs[i].cycles) : traced030(i);
     if (unsigned(cycles) != tracedMove) return false;
 
     MemoryAccessPlan srcAccess, dstAccess;

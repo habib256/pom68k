@@ -95,6 +95,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **why the biggest 68030 fallback lever is a delivery-boundary problem, not a cost bug — the restart-write reproducer run to ground** → [2026-08-21 (fourth) — The restart-write divergence names its class](#2026-08-21-restart-base-forensic)
 - **how the a64 pass left x86-64 behind on the shared oracles, and the port that squared it (EXG, CMPM, the Scc thunk hole)** → [2026-08-21 (third) — The shared oracles call in the x64 port](#2026-08-21-x64-oracle-port)
 - **how the IIsi segfault proved gone and the x64 68030 flip fired on both-ISA D.1 evidence** → [2026-08-21 (second) — The x64 68030 flip fires](#2026-08-21-x64-030-flip)
 - **how exact reads, direct LLE deadlines and four opcode families brought A64 to 99.5 % native** → [2026-08-21 — A64 exact-read and opcode tail](#2026-08-21-a64-exact-read-tail)
@@ -312,6 +313,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-21 (fourth)** — [The restart-write divergence names its class: peripheral-delivery alignment, not cost — two IRQ delay loops disassembled, the reproducer lands in-tree](#2026-08-21-restart-base-forensic)
 - **2026-08-21 (third)** — [The shared oracles call in the x64 port: EXG, CMPM, the Scc thunk hole — and score 64 is refused by measurement](#2026-08-21-x64-oracle-port)
 - **2026-08-21 (second)** — [The x64 68030 flip fires: the IIsi segfault did not survive the hardening, and `auto` now serves the generator on both ISAs](#2026-08-21-x64-030-flip)
 - **2026-08-21** — [A64 exact reads and the opcode tail: 99.5 % native, with both LLE locksteps intact](#2026-08-21-a64-exact-read-tail)
@@ -572,6 +574,54 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-21-restart-base-forensic"></a>
+## 2026-08-21 (fourth) — The restart-write divergence names its class: peripheral-delivery alignment, not cost — two IRQ delay loops disassembled, the reproducer lands in-tree
+
+The ~44 % lever — base-cost admission of the restartable-write family —
+was parked as "diverges at a coarse cut, step 19 658, fine heals". It now
+has a mechanism, culprits with disassembly, and a class.
+
+The admission flip is in-tree as `POM68K_JIT_RESTART_BASE=1` (a
+reproducer knob shaped like `POM68K_JIT_PROFIT_SCORE`: `ResolvedConfig`
+field, off by default). Under it the coarse-budget LC II lockstep
+(`budget=8192`, no fine phase) reproduced on the first run — at step
+19 150, not 19 658. The `DENY_FROM/_TO` bisection then found **two
+independent culprits**, each healing its own step: `$40A08A00-8B00`
+(19 150) and `$40A07500-7600` (19 658 — denying the other half of the
+ROM restores the historical number exactly). Both pockets disassemble to
+the SAME motif, an interrupt handler's calibrated delay:
+`MOVE.L D0,-(A7)` — the newly admitted restartable write — a status
+read, a one-instruction `DBRA` self-loop (`51C8 FFFE` at `$40A08A74`:
+the "TimeDBRA" the parking note named), then `MOVE.L (A7)+,D0; RTE`.
+
+The per-delivery peripheral trace (`POM68K_JIT_LOCKSTEP_PERIPH_TRACE_AT`,
+the instrument that named the uncharge hole) found the first observable
+slip TEN comparison steps before the failing checkpoint, and it is not a
+charge at all: at step 19 140, delivery point 1, the two arms hold
+IDENTICAL clock, machine time, deadline, device hash and all three
+i-cache counters — only the pc differs by one instruction
+(interp `$40A143E4`, jit `$40A143E0`), and the jit records one fewer
+delivery point. The +1 miss / +4 cycles / pc-one-behind signature at
+step 19 150 is downstream fallout of that alignment slip, with the
+i-cache line-13 content difference (interp tag `40A0A0`, jit `40A074`)
+merely reflecting the one-instruction offset at the cut.
+
+**Class: peripheral-phase** — the same failure that reverted the global
+`restartableWriteRequired` on x64 (2026-08-18). The fallback path
+services peripheral deadlines at the exact instruction; native code
+services them at its block pacing points; admitting the handler's write
+to native code moves one delivery boundary by one instruction. The
+admission check is innocent. The unlock for the ~44 % is
+delivery-boundary alignment of native blocks with the fallback path —
+engine work, not emitter work — and the knob stays in-tree so that
+chantier starts from a one-command reproducer.
+
+BSR.W's fix also gained a shape from the same session's reading:
+`chargeIcache` charges linear addresses (`pc + 2w`) while mode-5
+`execBsr` refills AT THE TARGET inside the instruction — the exemption
+needs `chargeIcacheExtraWord(target)` plus a per-form fetch-address
+proof against the mode-5 core.
 
 <a id="2026-08-21-x64-oracle-port"></a>
 ## 2026-08-21 (third) — The shared oracles call in the x64 port: EXG, CMPM, the Scc thunk hole — and score 64 is refused by measurement
