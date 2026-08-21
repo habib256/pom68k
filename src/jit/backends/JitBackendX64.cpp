@@ -318,6 +318,8 @@ private:
     bool emitInstr(size_t i);
     bool emitMove(size_t i, int szIdx);
     bool emitScc(size_t i);
+    bool emitExg(size_t i);
+    bool emitCmpm(size_t i);
     // `exactFetchWords` overrides the words+1 rule for the forms whose
     // mmuFetchWord count is NOT linear (DBcc: 2 on every path — see the
     // call site in emit()). 0 = the linear rule.
@@ -2426,7 +2428,16 @@ bool Emitter::emitScc(size_t i) {
     const Instr& in = ir_.instrs[i];
     const InstructionSemantics& sem = in.semantics;
     if (sem.operation != SemanticOp::SetCondition) return false;
-    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    // Scc's store carries no restartable-write proof: through an exact
+    // thunk it would reach the bus once from the thunk and once from
+    // Moira's replay (the shared oracle pins writeFaults == 1 for
+    // ST (A6)+ — "conservative", one attempt). Strip the thunk the way
+    // a64's global restartableWriteRequired does, SCOPED to this
+    // instruction: the global option is what diverged the LC II lockstep
+    // on 2026-08-18 (see proofOptions' note).
+    MemoryProofOptions sccOpts = proofOptions(L_);
+    if (L_.is030) sccOpts.restartableWriteRequired = true;
+    auto memory = instructionMemoryPlan(in.memory, sccOpts);
     const int cc = sem.condition;
     const int mode = sem.eaMode, reg = sem.eaReg;
 
@@ -2469,6 +2480,88 @@ bool Emitter::emitScc(size_t i) {
     addrOf(dst, RAX, 0);
     memStore(RAX, 0, RDI, write);
     commitEa(dst, 0, write);                          // (A7)+/-(A7) step 2
+    return true;
+}
+
+// EXG — a pure register swap: two loads, two stores, no CCR. The bank of
+// each side comes from the decoder's action field (0 = Dx,Dy; 1 = Ax,Ay;
+// 2 = Dx,Ay), the a64 lowering verbatim (JitBackendA64.cpp:1428).
+bool Emitter::emitExg(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::Exchange) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    if (in.words != 1 || traced030(i) != 2 || !lengthOk(i, 0) ||
+        !memory.complete()) return false;
+    const int rx = sem.registerIndex, ry = sem.eaReg;
+    const bool leftAddress = sem.action == 1;
+    const bool rightAddress = sem.action != 0;
+    const auto slot = [&](bool addr, int r) { return addr ? A(r) : D(r); };
+    a_.movRM(Sz::L, RDI, slot(leftAddress, rx));
+    a_.movRM(Sz::L, RSI, slot(rightAddress, ry));
+    a_.movMR(Sz::L, slot(leftAddress, rx), RSI);
+    a_.movMR(Sz::L, slot(rightAddress, ry), RDI);
+    return true;
+}
+
+// CMPM.<s> (Ay)+,(Ax)+ — two postincremented reads, no write. Distinct
+// address registers let both DTLB mappings be proved while the entry state
+// is pristine (the x64 expansion of PreflightAll, exactly as the
+// memory-to-memory MOVE above); once both probes hit, direct RAM loads
+// cannot fault and the architectural source-read / source-commit /
+// destination-read / destination-commit order is reproduced. The
+// same-register form depends on the first increment for its second EA and
+// stays on the precise interpreter path (a64:1441).
+bool Emitter::emitCmpm(size_t i) {
+    const Instr& in = ir_.instrs[i];
+    const InstructionSemantics& sem = in.semantics;
+    if (sem.operation != SemanticOp::CompareMemory) return false;
+    auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
+    const int szIdx = sem.sizeIndex;
+    const uint8_t srcReg = sem.eaReg, dstReg = sem.destinationReg;
+    if (srcReg == dstReg || in.words != 1 || traced030(i) != 9 ||
+        !lengthOk(i, 0)) return false;
+    Ea src, dst;
+    if (!decode(i, 3, srcReg, szIdx, 0, src) ||
+        !decode(i, 3, dstReg, szIdx, 0, dst)) return false;
+    const MemoryAccessPlan srcRead = memory.access(
+        MemoryDirection::Read, MemoryOperand::Source,
+        uint8_t(sizeBytes(szIdx)), 3, srcReg);
+    const MemoryAccessPlan dstRead = memory.access(
+        MemoryDirection::Read, MemoryOperand::Destination,
+        uint8_t(sizeBytes(szIdx)), 3, dstReg);
+    if (!srcRead.valid() || !dstRead.valid() || !srcRead.preflight ||
+        !dstRead.preflight ||
+        memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+        in.memory.order != MemoryOrder::SourceThenDestination ||
+        !memory.complete()) return false;
+
+    // Prove both mappings before either register moves or a flag changes.
+    addrOf(src, RAX, szIdx);
+    memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+    a_.movMR(Sz::Q, F(kFValue), RSI);               // source host pointer
+    addrOf(dst, RAX, szIdx);
+    memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+    a_.movRR(Sz::Q, R11, RSI);                      // destination bytes
+    a_.movRM(Sz::Q, R10, F(kFValue));               // source bytes
+
+    const auto loadGuest = [&](Reg host, Reg out) {
+        if (szIdx == 0) {
+            a_.movzx(Sz::B, out, mem(host, 0));
+        } else if (szIdx == 1) {
+            a_.movzx(Sz::W, out, mem(host, 0));
+            a_.rolR16(out, 8);
+        } else {
+            a_.movRM(Sz::L, out, mem(host, 0));
+            a_.bswap(out);
+        }
+    };
+    loadGuest(R10, RDI);                            // source value
+    commitEa(src, szIdx, srcRead);
+    loadGuest(R11, RDX);                            // destination value
+    commitEa(dst, szIdx, dstRead);
+    a_.aluRR(Asm::Op::CMP, hostSz(szIdx), RDX, RDI);   // dst - src
+    flagsAddSub(false);                             // CMP leaves X alone
     return true;
 }
 
@@ -2882,6 +2975,8 @@ bool Emitter::emitInstr(size_t i) {
             return emitLine4(i);
         case SemanticOp::DecrementBranch: return emitDbcc(i);
         case SemanticOp::SetCondition: return emitScc(i);
+        case SemanticOp::Exchange: return emitExg(i);
+        case SemanticOp::CompareMemory: return emitCmpm(i);
         case SemanticOp::AddSubQuick: return emitAddSubQ(i);
         case SemanticOp::BranchSubroutine: return emitSubroutine(i);
         case SemanticOp::Branch: return emitBranch(i);
@@ -3338,6 +3433,13 @@ bool X64Backend::canEmit(uint16_t op) const {
             return mode == 0 || (eaOk && mode != 1 &&
                                  eaIndex(mode, reg) != kM_DIPC &&
                                  eaIndex(mode, reg) != kM_IM);
+        case SemanticOp::Exchange:
+            return true;
+        case SemanticOp::CompareMemory:
+            // Same-register CMPM: the second EA depends on the first
+            // increment; the preflight-all lowering is the independent-EA
+            // subset (a64's canEmit rule verbatim).
+            return sem.eaReg != sem.destinationReg;
         default: return false;
     }
 }

@@ -730,14 +730,15 @@ int main() {
         check(!b->canEmit(0xF200), "F-line is never native");
         check(b->canEmit(0x0130) == a64,
               "BTST Dn,d8(A0,Xn) follows active generator coverage");
-        check(b->canEmit(0xCD4F) == a64,
-              "EXG A6,A7 follows AArch64 native coverage");
+        check(b->canEmit(0xCD4F),
+              "EXG A6,A7 is native on both generators (x64 port 2026-08-21)");
         check(!b->canEmit(0x0108), "MOVEP is not BTST");
         check(!b->canEmit(0x81C0), "DIVU is not an ALU direction");
         check(!b->canEmit(0xC1C0), "MULS is not an ALU direction");
         check(!b->canEmit(0xC101), "ABCD is not OR-to-ea");
-        check(b->canEmit(0xB308) == a64,
-              "CMPM follows AArch64 native coverage, never EOR-to-ea");
+        check(b->canEmit(0xB308),
+              "distinct-register CMPM is native on both generators "
+              "(x64 port 2026-08-21), never EOR-to-ea");
         check(!b->canEmit(0xB108),
               "same-register CMPM keeps its dependent second EA in Moira");
     }

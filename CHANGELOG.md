@@ -95,6 +95,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how the a64 pass left x86-64 behind on the shared oracles, and the port that squared it (EXG, CMPM, the Scc thunk hole)** → [2026-08-21 (third) — The shared oracles call in the x64 port](#2026-08-21-x64-oracle-port)
 - **how the IIsi segfault proved gone and the x64 68030 flip fired on both-ISA D.1 evidence** → [2026-08-21 (second) — The x64 68030 flip fires](#2026-08-21-x64-030-flip)
 - **how exact reads, direct LLE deadlines and four opcode families brought A64 to 99.5 % native** → [2026-08-21 — A64 exact-read and opcode tail](#2026-08-21-a64-exact-read-tail)
 - **why the AArch64 zero-mask store guard is now globally exact, and what it saves** → [2026-08-20 — The A64 store guard becomes exact globally](#2026-08-20-a64-global-store-guard)
@@ -311,6 +312,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-21 (third)** — [The shared oracles call in the x64 port: EXG, CMPM, the Scc thunk hole — and score 64 is refused by measurement](#2026-08-21-x64-oracle-port)
 - **2026-08-21 (second)** — [The x64 68030 flip fires: the IIsi segfault did not survive the hardening, and `auto` now serves the generator on both ISAs](#2026-08-21-x64-030-flip)
 - **2026-08-21** — [A64 exact reads and the opcode tail: 99.5 % native, with both LLE locksteps intact](#2026-08-21-a64-exact-read-tail)
 - **2026-08-20** — [The A64 store guard becomes exact globally: 32 % less wall time, and long sessions no longer exhaust native code](#2026-08-20-a64-global-store-guard)
@@ -570,6 +572,58 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-21-x64-oracle-port"></a>
+## 2026-08-21 (third) — The shared oracles call in the x64 port: EXG, CMPM, the Scc thunk hole — and score 64 is refused by measurement
+
+The routine sweep after the flip commit found two x86-64 gates red at
+0.16 s each: `jit_asset_free_lockstep_test` and
+`jit_restart_write_030_test`. Both were dormant breakage from the morning's
+a64 session, which extended the SHARED synthetic 040 workload (EXG ×2 per
+iteration, `CMPM.B (A3)+,(A4)+`) and tightened the shared restart-write
+oracle (`ST (A6)+` must stay conservative) — validated on Apple Silicon,
+never re-run natively on x86-64. Both tests pin their backend explicitly,
+so the flip could not have caused them; the census made the diagnosis
+airtight: **100 % of the 4,876 slow instructions were two opcodes**, `CD4B`
+(EXG, 66.67 %) and `B90B` (CMPM, 33.33 %), native share 750 ‰ against the
+990 ‰ budget.
+
+The port, a64 semantics verbatim where the machinery is shared:
+
+* **EXG** — a pure register swap through the decoder's bank field, no CCR.
+* **CMPM** with distinct address registers — the PreflightAll expansion the
+  x64 memory-to-memory MOVE already carries: both DTLB mappings proved
+  while the entry state is pristine, then the architectural source-read /
+  source-commit / destination-read / destination-commit order, CMP flags
+  with X untouched. The same-register form keeps its dependent second EA
+  in Moira, as on a64.
+* **The Scc thunk hole** — `ST (A6)+` through a forced or exact thunk
+  reached the bus twice (thunk attempt + Moira replay, `writeFaults` 2
+  where the oracle demands 1). Scc's plan now sets
+  `restartableWriteRequired`, stripping the thunk exactly as a64's global
+  option does — but SCOPED to this instruction, because the global option
+  on x64 is what diverged the LC II lockstep on 2026-08-18.
+
+Both oracles pass: the synthetic is back to **999 ‰ native, 0 slow**, and
+`ST (A6)+` replays conservatively. The three 030 lockstep gates (120k
+each), the copyback gates, `jit_backend_test` (its coverage pins flip:
+EXG and distinct-register CMPM are native on BOTH generators now) and
+`docs_test` are green behind it — and on freshly relinked binaries,
+`-L m040` **51/51** (39 in parallel at `-j16` in 25 min, the Q700Memory
+family + `ot_bind` serialized in 40 min) and `-L m030` **53/53** at
+`-j16` in 52 min. Fingerprint `cfb184b6faddabec` unchanged at the
+bench's default budget.
+
+The same session priced the remaining a64 ideas instead of assuming them.
+**Score 64 on x64 is REFUSED by measurement**: `x64@score=0,x64@score=64`
+ABBA, 3 repeats, 6000 frames, gave −0.8 % — inside this host's 1.0 %
+measured floor, and the harness itself printed NOT A CLAIM. The a64's
+score win came with its costlier compile path; x64 stays at score 0.
+The i-cache counter retention (a64 keeps fetches/hits in x23/x24 across
+linked blocks) is parked as priced-not-ported: all six x64 callee-saved
+registers are taken, and `add [mem], imm` is already the cheap encoding
+on this ISA. The exact-source read token turned out already consumed by
+x64 — the new exact-MMIO-source check passed before the port.
 
 <a id="2026-08-21-x64-030-flip"></a>
 ## 2026-08-21 (second) — The x64 68030 flip fires: the IIsi segfault did not survive the hardening, and `auto` now serves the generator on both ISAs

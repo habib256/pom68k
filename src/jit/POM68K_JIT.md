@@ -69,8 +69,10 @@ on 2026-08-06. Both code generators declare 040+030 correctness through
 and both now carry 040+030: AArch64 since 2026-08-20 with the measured
 68030 profitability score of 64, x86-64 since 2026-08-21 at score 0 (its
 −12.6 % was measured without an admission score, and a score is adopted
-per backend on measurement only). Thus `auto` gives a 68030 native code on
-both host ISAs (§ 7).
+per backend on measurement only — measured on x64 the same day:
+`x64@score=0,x64@score=64` ABBA at 6000 frames gave −0.8 %, inside this
+host's 1.0 % floor, so x64 REFUSES the score its sibling earned). Thus
+`auto` gives a 68030 native code on both host ISAs (§ 7).
 
 **And what each is worth.** The engine being wired is not the same as the
 engine being worth switching on. Ranked by measured gain (§ 3.4):
@@ -1062,7 +1064,9 @@ emitters it dispatches to.
   `ADDA`/`SUBA`/`CMPA`; `ADDQ`/`SUBQ`; the
   `ADDI`/`SUBI`/`ANDI`/`ORI`/`EORI`/`CMPI` immediates; `TST`, `CLR`, `NEG`,
   `NOT`, `EXT`, `SWAP`, `LEA`, `PEA`, `Scc`, `BTST` (both forms),
-  `LINK`/`UNLK`/`NOP`, and
+  `LINK`/`UNLK`/`NOP`, **`EXG`** (all three forms) and **`CMPM`** with
+  distinct address registers (both since 2026-08-21 — the x64 port of the
+  a64 pair, PreflightAll on CMPM's two reads), and
   **`MOVEM`** (both directions, both sizes, one span probe per burst, the
   040 restart latch `mmu040MovemArmed` checked);
 * as block terminators: `Bcc`/`BRA`, `JSR`/`BSR`/`RTS`, **`DBcc`** (loops
@@ -1072,17 +1076,19 @@ emitters it dispatches to.
 
 Everything else — including every 68020 indexed mode (`eaIndex()` returns
 −1 for mode 6 and for 7.3), every shift and rotate,
-`MULU`/`MULS`/`DIVU`/`DIVS`, `ABCD`/`SBCD`/`EXG`,
-`ADDX`/`SUBX`, `CMPM`, `MOVEP` and `MOVE SR,Dn` — falls back per instruction
+`MULU`/`MULS`/`DIVU`/`DIVS`, `ABCD`/`SBCD`,
+`ADDX`/`SUBX`, same-register `CMPM`, `MOVEP` and `MOVE SR,Dn` — falls back per instruction
 to a cold stub that runs that one instruction through Moira and rejoins the
 compiled stream. A block whose native coverage falls below half is refused
 outright: it would be the same interpreter work plus a call and a frame.
 
 **Backend admission remains explicit even where the sets have converged.**
 A64 adds immediate line-$E shifts and rotates (no `ROX` yet), register
-bitfields, brief-indexed `d8(An,Xn)` / `d8(PC,Xn)`, `MOVE SR,Dn`, all three
-`EXG` forms and `CMPM` with distinct address registers; it now also emits
-`Scc` and `PEA`, which were formerly x64-only. Each backend's
+bitfields, brief-indexed `d8(An,Xn)` / `d8(PC,Xn)` and `MOVE SR,Dn`; it
+also emits `Scc` and `PEA`, which were formerly x64-only, while `EXG` and
+distinct-register `CMPM` are on both since the 2026-08-21 x64 port (the
+shared synthetic 040 oracle demands them: its budget is ≥990 ‰ native and
+zero slow instructions). Each backend's
 `canEmit()` remains the source of truth, and `jit_backend_test` pins the
 remaining keyed differences (`MOVE SR,Dn` and brief-indexed `BTST`) so a
 coverage change is also a gate change.

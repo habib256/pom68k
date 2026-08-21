@@ -770,7 +770,11 @@ ABBA process. Score 64 wins 7.4 % at 1,000 frames and 3.3 % at 3,000 with
 matching fingerprints. Its 6,000-frame result is a provisional 2.4 % win,
 inside the 3 % floor and rejected by the busy-host guard. It therefore stays
 an instrument, not production policy; the representative budget must clear
-both bars before `ResolvedConfig` gains a nonzero default.
+both bars before `ResolvedConfig` gains a nonzero default. (A64 later
+earned its backend default of 64 with the native-state hardening. **x64
+measured the same candidate on 2026-08-21 and REFUSED it**: −0.8 % at the
+6000-frame budget, inside the host's 1.0 % floor — the score is per
+backend, and x64 ships at 0.)
 
 **C.5 — flip the declaration.** SPLIT AND HALF-LANDED 2026-08-18. The
 original coupling — declaration == default — protected against the

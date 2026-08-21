@@ -673,7 +673,16 @@ Open, in ROI order:
   boot gates already pin `POM68K_JIT_BACKEND` + `REQUIRE_NATIVE` since
   the 2026-08-19 hardening, so the false-green class cannot recur.
 - [ ] **Port the a64 68030 deltas to x86-64 — the forms the 030's OWN
-  census names.** **2026-08-19: the x86-64 generator now BEATS `threaded`
+  census names.** **2026-08-21: the opcode pair the shared oracles demand
+  is DONE** — EXG and distinct-register CMPM are native on x64, the Scc
+  thunk hole is closed (scoped `restartableWriteRequired`), and the
+  synthetic 040 oracle is back to 999 ‰ native / 0 slow on x86-64
+  (CHANGELOG 2026-08-21 (third)). Also priced the same day: score 64 on
+  x64 measured −0.8 %, inside the 1.0 % floor — REFUSED, x64 ships at
+  score 0; the a64 i-cache counter retention is parked (all six x64
+  callee-saved registers are taken, `add [mem], imm` is already cheap);
+  the exact-source read token was already consumed by x64. Remaining
+  named levers below. **2026-08-19: the x86-64 generator now BEATS `threaded`
   on the LC II from ~2500 frames up — −12.0 % at the bench's default
   6000-frame budget (ABBA, quiet host, fp `cfb184b6faddabec`) — after the
   i-cache uncharge hole was fixed, the CACR hint retired on the proven V8
