@@ -95,6 +95,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how the IIsi segfault proved gone and the x64 68030 flip fired on both-ISA D.1 evidence** → [2026-08-21 (second) — The x64 68030 flip fires](#2026-08-21-x64-030-flip)
 - **how exact reads, direct LLE deadlines and four opcode families brought A64 to 99.5 % native** → [2026-08-21 — A64 exact-read and opcode tail](#2026-08-21-a64-exact-read-tail)
 - **why the AArch64 zero-mask store guard is now globally exact, and what it saves** → [2026-08-20 — The A64 store guard becomes exact globally](#2026-08-20-a64-global-store-guard)
 - **why A64 and x64 no longer decide separately what a guest opcode means** → [2026-08-17 — A64 and x64 stop decoding semantics behind the IR](#2026-08-17-jit-ir-semantics)
@@ -310,6 +311,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-21 (second)** — [The x64 68030 flip fires: the IIsi segfault did not survive the hardening, and `auto` now serves the generator on both ISAs](#2026-08-21-x64-030-flip)
 - **2026-08-21** — [A64 exact reads and the opcode tail: 99.5 % native, with both LLE locksteps intact](#2026-08-21-a64-exact-read-tail)
 - **2026-08-20** — [The A64 store guard becomes exact globally: 32 % less wall time, and long sessions no longer exhaust native code](#2026-08-20-a64-global-store-guard)
 - **2026-08-19 (fourth)** — [A doc/code consistency pass, and the half of it that is now a gate](#2026-08-19-doc-code-consistency)
@@ -568,6 +570,61 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-21-x64-030-flip"></a>
+## 2026-08-21 (second) — The x64 68030 flip fires: the IIsi segfault did not survive the hardening, and `auto` now serves the generator on both ISAs
+
+The session opened on the parked § C.4septies blocker — the four IIsi gates
+in deterministic SIGSEGV ~5 s into boot the first time the x86-64 generator
+ever executed that machine — and found it gone. On a fresh full relink of
+the current tree, the same Linux host that produced the crash boots the
+IIsi to the Finder under the explicit native generator
+(`POM68K_JIT_BACKEND=x64` + `POM68K_JIT_REQUIRE_NATIVE=1`, the hardened
+gate that aborts rather than silently validating `threaded`), and all six
+IIsi gates pass under `auto` with the flip in force: the four that crashed
+(boot 162 s, `jit_` 161 s, input 130 s, persist 355 s) plus soak and the
+`interp_` oracle.
+
+Attribution was deliberately not bisected. Seventeen commits touched the
+engine and both backends between the crash and today — compile telemetry
+and `CompileResult`, the native-state/null-callback hardening, the lazy
+MMU-generation revalidation, the exact-read seam — and a bisect prices at
+that many crash re-runs, which the 2026-08-19 host-discipline rule refuses
+without cause. The reproducer and the triage order stay in § C.4septies;
+if the crash returns, the next session starts from a written procedure.
+The honest statement is "did not survive the hardening window", not "fixed
+by commit X".
+
+With the blocker clear, the flip is the one line § C.5 promised —
+`kGuest68030` into x64's `caps().autoFamilies` — behind fresh D.1 evidence
+gathered on one build:
+
+1. `jit_lockstep_030_x64_experimental_test` green (120,000 identical
+   steps, i-cache counters included).
+2. All six IIsi gates green under `auto` (above), on the machine whose
+   crash was the whole of condition 2's red.
+3. `jit_bench_lcii`, ABBA in one process, 3 repeats per arm, default
+   6000-frame budget, quiet host: `threaded` median **41.19 s**
+   (40.75–41.64), x64 generator **36.01 s** (35.59–36.20), **−12.6 %**,
+   arm spreads 2.1/1.7 %, fingerprint `cfb184b6faddabec` on every run —
+   the § C.4sexies number re-earned on the flip build, at admission
+   score 0 (x64 adopts no profitability score until one is measured on
+   x64; the a64 64 is a64's own).
+4. The full `-L etalon` tier, **118/118 green with the flip in force** —
+   106 gates in parallel at `-j16` on the calibrated slot budgets in
+   81 min 18 s, then the 12 gates the RAM model cannot see (the
+   Q700Memory family and the two UDP-port AppleTalk gates) serialized in
+   40 min 21 s: 2 h 02 total, on relinked binaries, freshness guard green
+   before the tier.
+
+`jit_backend_test`'s pinned selection case flips with it: `auto` on an
+030/x86-64 host now expects the generator, and the a64 case keeps its
+score-64 pin. The per-(family, backend) admission story ends symmetric —
+each ISA promoted on its own host's evidence, two days apart, never by
+symmetry — and `docs/JIT_BRINGUP.md` § C.4septies carries the closure box.
+DEV.md's engine section had drifted ahead of this entry (it still said both
+masks were 040-only after the a64 promotion); the pass through the six
+documents that stated the blocked state is part of this commit.
 
 <a id="2026-08-21-a64-exact-read-tail"></a>
 ## 2026-08-21 — A64 exact reads and the opcode tail: 99.5 % native, with both LLE locksteps intact

@@ -91,11 +91,11 @@ fails **silently**: `docs/RASPBERRY_PI.md`.
 
 ### Picking the execution engine on the command line
 
-`auto` selects native code generation for 68040 guests on x86-64 and
-AArch64, and for 68030 guests on AArch64. The portable `threaded` window is
-the automatic 68030 fallback on x86-64 and serves the remaining JIT-enabled
-families. Speedups, the lockstep gates that pin them and the PGO numbers live
-in one place: `src/jit/POM68K_JIT.md`.
+`auto` selects native code generation for 68040 and 68030 guests on both
+x86-64 and AArch64. The portable `threaded` window serves the remaining
+JIT-enabled families and hosts without executable memory. Speedups, the
+lockstep gates that pin them and the PGO numbers live in one place:
+`src/jit/POM68K_JIT.md`.
 
 ```bash
 POM68K_CPU_ENGINE=jit POM68K_JIT_BACKEND=auto     ./build/POM68K
@@ -356,8 +356,8 @@ Menus:
   the default on 68040 and 68030; other families start on the Moira
   **interpreter**, which remains the reference for every accuracy claim.
   Both are available and switchable live on every machine. `auto` selects
-  native x86-64/AArch64 generation for a 68040, native AArch64 for a 68030,
-  and the portable `threaded` window for a 68030 on x86-64.
+  native x86-64/AArch64 generation for a 68040 and a 68030 alike; the
+  portable `threaded` window covers the remaining JIT-enabled families.
   `POM68K_CPU_ENGINE=interp|jit`
   overrides the family default explicitly; design, gates and measurements in
   `src/jit/POM68K_JIT.md`. The CPU menu also reports **× real time**, measured

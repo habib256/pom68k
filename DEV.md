@@ -1261,14 +1261,14 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
 § *JIT seam*. What belongs *here*, because it is about the rest of the tree:
 
 - **It is a second engine, not a replacement.** It is the conformant default
-  on validated 68040 guests, and since 2026-08-18 on **68030** ones too —
-  there as `threaded`: the code generators declare the 68030 since the same
-  day (lockstep-gated on both ISAs; explicit `POM68K_JIT_BACKEND=x64|a64`
-  selects them, no unsafe override), but `auto` consults the separate
-  `BackendCaps::autoFamilies` SPEED mask (2026-08-19), which both
-  generators still cap at the 68040: x64's 030 bench win is measured
-  (JIT_BRINGUP § C.4sexies, −12 %) but its promotion — the C.5 flip — is
-  blocked on the IIsi segfault under generated code (§ C.4septies).
+  on validated 68040 guests, and since 2026-08-18 on **68030** ones too.
+  The code generators declare the 68030 since the same day (lockstep-gated
+  on both ISAs; explicit `POM68K_JIT_BACKEND=x64|a64` selects them, no
+  unsafe override), and `auto` consults the separate
+  `BackendCaps::autoFamilies` SPEED mask (2026-08-19), which now carries
+  040+030 on both generators: AArch64 promoted 2026-08-20 (score 64),
+  x86-64 on 2026-08-21 (−12.6 % over `threaded` at the default budget,
+  once the IIsi segfault of JIT_BRINGUP § C.4septies proved gone).
   68000 and 68020 still start on the interpreter.
   The GUI **CPU** menu switches it live (through the machine thread's command
   queue, so the swap lands between two instructions), and
@@ -1298,11 +1298,12 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   code generators — x86-64 and AArch64 — declare `guestFamilies =
   kGuest68040 | kGuest68030` since 2026-08-18 (correctness scope; the
   030's `(An)+` timing, restartable-write/format-$A framing and prefetch
-  refill are proved by the two 120k lockstep gates), while their
-  `autoFamilies` speed masks stay at `kGuest68040` — so `auto` gives
-  every non-040 family the `threaded` backend until a (family, backend)
-  pair earns its D.1 promotion (the 030-on-x64 one is blocked on the
-  IIsi, JIT_BRINGUP § C.4septies).
+  refill are proved by the two 120k lockstep gates). Their `autoFamilies`
+  speed masks both carry `kGuest68040 | kGuest68030` — each (family,
+  backend) pair earned its D.1 promotion separately (a64 2026-08-20, x64
+  2026-08-21; the IIsi episode that held the x64 one is JIT_BRINGUP
+  § C.4septies) — so `auto` gives the 68000/68020 families the `threaded`
+  backend and an 030/040 the native generator.
 - **…and what it is worth there**, because "wired" and "worth switching on"
   are not the same claim. The window's job is to skip an ATC walk, so the
   gain tracks the MMU: 68040 **×5.0** on a fixed budget and **×2.68** end to

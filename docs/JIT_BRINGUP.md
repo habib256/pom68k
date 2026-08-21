@@ -23,8 +23,8 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 
 | Fact | Where |
 |---|---|
-| x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope. Speed scope is the separate `caps().autoFamilies` mask: x64 carries 68040 only (its 030 flip remains blocked, § C.4septies), while a64 carries 68040+68030 since its independent 2026-08-20 promotion; `threaded` carries `kGuestAny` as the floor | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackendThreaded.cpp`, `JitBackend.cpp` (selection) |
-| `threaded` declares `kGuestAny`; `auto` uses it for 000/020 and for 030 on x64, while AArch64 030 now reaches the native generator | `JitBackendThreaded.cpp`, `JitBackendA64.cpp` |
+| x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope. Speed scope is the separate `caps().autoFamilies` mask, and **both carry 68040+68030**: a64 since its independent 2026-08-20 promotion, x64 since 2026-08-21 (the IIsi blocker cleared, § C.4septies); `threaded` carries `kGuestAny` as the floor | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackendThreaded.cpp`, `JitBackend.cpp` (selection) |
+| `threaded` declares `kGuestAny`; `auto` uses it for 000/020, while an 030 reaches the native generator on both ISAs | `JitBackendThreaded.cpp`, `JitBackendA64.cpp` |
 | Selection tests guest validity *before* host ranking | `JitBackend.cpp:63-66`, `:137-140` |
 | `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:1997-2033` |
 | **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2088-2139` |
@@ -35,7 +35,7 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 | Moira runs the 68030 on `Core::C68020` cycle counts — **the same 68020 column the x64/a64 cost tables are transcribed from** | `JitBackendX64.cpp:190-250`, `Cpu030.h:152-177` |
 | `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` asserted before the split is exposed | `JitIr.h:949-957`, `JitEngine.cpp:891` |
 | `jit_lockstep_030_test` exists: two LC IIs, register + clock + low-RAM + **three i-cache counters** per checkpoint | `tests/jit_lockstep_030_test.cpp` |
-| The 030 emitters are reachable by explicit `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override). `auto` reaches a64 on an AArch64 030 since 2026-08-20; x64's 030 flip remains blocked on the IIsi (§ C.4septies). A shipping default reaches only a generator that earned the (family, backend) pair on D.1 evidence | `JitBackend.cpp` (selection), `jit_backend_test` pins the per-host cases |
+| The 030 emitters are reachable by explicit `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override). `auto` reaches a64 on an AArch64 030 since 2026-08-20 and x64 on an x86-64 one since 2026-08-21. A shipping default reaches only a generator that earned the (family, backend) pair on D.1 evidence | `JitBackend.cpp` (selection), `jit_backend_test` pins the per-host cases |
 
 Two consequences worth naming up front, because they cut work out of the
 plan:
@@ -132,8 +132,8 @@ linked blocks and applying the measured cold-code score of 64 produced the
 fixed-budget win, while the long lockstep and native LLE platform gates stayed
 green. The final three-repeat ABBA is `threaded` 19.93 s versus a64 18.88 s
 (−5.3 %, 0.4/0.3 % arm spreads, fingerprint `cfb184b6faddabec`), beyond the
-3.0 % host floor. A64 `autoFamilies` now carries 040+030; x64 remains a
-separate decision.
+3.0 % host floor. A64 `autoFamilies` now carries 040+030; x64 made the same
+promotion separately on 2026-08-21, on its own host's evidence (§ C.5).
 
 The 2026-08-21 exact-source MOVE extension exposed the boundary of this
 proof: granting its two-access exact token to the 030 moved two fetches at
@@ -684,7 +684,22 @@ biggest known lever left. **BSR.W** and the wider single-path branch
 exemptions swap one miss for one hit at an identical pc (step 16 097) and
 stay refused.
 
-### C.4septies — the IIsi dies under the generator, and the `jit_*` 030 gates never tested it (2026-08-19, parked with reproducer)
+### C.4septies — the IIsi dies under the generator, and the `jit_*` 030 gates never tested it (2026-08-19, parked with reproducer; CLOSED 2026-08-21)
+
+> **CLOSED 2026-08-21.** The crash did not survive the 2026-08-19→21
+> hardening window: on a fresh full relink of the current tree, the same
+> host that produced the four deterministic SIGSEGVs boots the IIsi to the
+> Finder under the explicit native generator
+> (`POM68K_JIT_BACKEND=x64` + `POM68K_JIT_REQUIRE_NATIVE=1`, exit 0), and
+> all six IIsi gates are green under the flip — the four that crashed
+> (boot 162 s, `jit_` 161 s, input 130 s, persist 355 s) plus soak and the
+> `interp_` oracle. Attribution was deliberately NOT bisected: seventeen
+> commits touched the engine and both backends in the window (compile
+> telemetry + `CompileResult`, native-state/null-callback hardening, the
+> lazy MMU-generation revalidation, the exact-read seam), and a bisect
+> prices at that many crash re-runs, which the host discipline refuses
+> without cause. The reproducer and the triage order below STAY, so a
+> return of the crash starts from a written procedure, not from memory.
 
 The first `-L m030` run with the flip in force: **all four IIsi gates
 SIGSEGV at ~4-5 s wall** (`iisi_boot_etalon` 5.22 s, `jit_iisi_boot_etalon`
@@ -732,10 +747,11 @@ by name and set `POM68K_JIT_REQUIRE_NATIVE=1`; Engine construction aborts if
 selection or W^X falls back to `threaded`. CMake also accepts explicit
 `POM68K_JIT_BACKENDS=x64|a64`, so the x64 tier can be cross-built on Apple
 Silicon. That x86-64 binary reached the IIsi Finder for 1,000 frames under
-Rosetta (47.83 s), and the native AArch64 twin passed in 9.36 s. This closes
+Rosetta (47.83 s), and the native AArch64 twin passed in 9.36 s. This closed
 the false-green gate, not the Linux-native crash: the historical SIGSEGV did
-not reproduce on macOS/Rosetta, so the x64 `autoFamilies` flip remains
-blocked until the original host passes the same now-native gate.
+not reproduce on macOS/Rosetta, so the x64 `autoFamilies` flip stayed
+blocked until the original host passed the same now-native gate — which it
+did on 2026-08-21 (the closure box above).
 
 ### C.4octies — compile refusals are attributed; cold blocks earn code by work (2026-08-19)
 
@@ -768,25 +784,25 @@ correctness has a standing guard, so the two halves were separated:
   cases), the x64 120k gate, the a64 6,000-frame production-cadence gate,
   and an LC II Finder boot under
   explicit x64 (the gate that timed out at an hour on 2026-07-30).
-* **Default: decided independently per backend.** The x64 flip was written
-  2026-08-19 and remains blocked on the IIsi segfault (§ C.4septies).
-  The mechanism is in the tree: `BackendCaps::autoFamilies`
-  is the SPEED mask `auto` consults, separate from the `guestFamilies`
-  correctness mask an explicit `POM68K_JIT_BACKEND=` consults, and a
-  family enters it per (family, backend) pair on D.1 evidence only. x64
-  declares 040 only today — its 030 condition 3 is measured at the bench's
-  default budget (§ C.4sexies, −12 %), and adding `kGuest68030` to its
-  mask IS the flip, waiting on condition 4. A64 independently cleared all
-  four conditions on 2026-08-20 after native-state hardening and the measured
-  score-64 policy, so its mask now carries 040+030. That promotion was earned,
-  never inferred from x64 symmetry. `threaded` declares `kGuestAny`: the floor the
-  selection loop terminates on. **What the first `-L m030` run under the
-  flip found (2026-08-19): the four IIsi gates die in SIGSEGV ~5 s in,
-  while the 030 platforms visible around them — IIci included, same RBV
-  board — boot the generator green. Condition 4 is red, so the flip
-  commit waits on that fix**; below ~2500 frames `threaded` also still wins the boot
-  phase, which the flip accepts: the default is set for the session, not
-  the boot.
+* **Default: decided independently per backend — and BOTH have now fired.**
+  The mechanism: `BackendCaps::autoFamilies` is the SPEED mask `auto`
+  consults, separate from the `guestFamilies` correctness mask an explicit
+  `POM68K_JIT_BACKEND=` consults, and a family enters it per
+  (family, backend) pair on D.1 evidence only. A64 cleared all four
+  conditions on 2026-08-20 after native-state hardening and the measured
+  score-64 policy. **x64 followed on 2026-08-21**, on its own host's
+  evidence, never by symmetry: the flip was written 2026-08-19 and blocked
+  on the IIsi segfault its first `-L m030` run found (§ C.4septies); with
+  that crash cleared, condition 3 was re-measured on the flip build —
+  `threaded` 41.19 s median vs generator 36.01 s at the default
+  6000-frame budget, **−12.6 %**, fingerprint `cfb184b6faddabec`,
+  arm spreads 2.1/1.7 % — and condition 4 ran the full 118-gate `-L etalon`
+  tier green under the flip: 106 gates at `-j16` in 81 min, then the 12
+  serialized ones (the Q700Memory family + the two UDP-port gates) in
+  40 min — 118/118, 2 h 02 total. `threaded` declares
+  `kGuestAny`: the floor the selection loop terminates on. Below ~2500
+  frames `threaded` still wins the boot phase, which the flip accepts: the
+  default is set for the session, not the boot.
 
 **C.6 — the full-boot gates.** `jit_lcii_boot_etalon` on the native backend
 (this is the gate that timed out at one hour on 2026-07-30 — it is the
@@ -833,10 +849,13 @@ everywhere else, with `POM68K_CPU_ENGINE` overriding in either direction.
    faster, with matching fingerprints;
 4. the whole `-L etalon` tier is green with the new default in force.
 
-(68030, x86-64) holds (1) and (3) since 2026-08-19; (2) and (4) are RED on
-one machine — the IIsi segfault under the generator (§ C.4septies) — which
-is the whole of why its C.5 has not fired. (68030, a64) cleared all four on
-2026-08-20 and is now the automatic AArch64 path.
+(68030, a64) cleared all four on 2026-08-20 and is the automatic AArch64
+path. (68030, x86-64) held (1) and (3) since 2026-08-19 with (2) and (4)
+red on one machine — the IIsi segfault under the generator (§ C.4septies) —
+and cleared them on 2026-08-21 once that crash proved gone: fresh 120k
+lockstep, all six IIsi gates green under the flip, the bench re-measured at
+−12.6 % on the flip build, and the full 118-gate `-L etalon` tier green
+(106 at `-j16` in 81 min + the 12 serialized in 40 min).
 
 **D.2 — the blast radius, which is the real work.** The 68040 flip changed
 what its plain `etalon` gates test: they now run the JIT, while ten
@@ -862,8 +881,8 @@ folded into an emitter change.
 | C.1 — 030 lockstep gate | **done** (threaded, blocks, a64-experimental) |
 | C.2 / C.3 — 030 probe + thunks | **written**; validated only indirectly, their gate is C.5 |
 | C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, the MOVEM guard, charge-on-success on both native backends and the x64 throughput win (§ C.4sexies) done; parked: the restartable-write base-cost admission and BSR.W (§ C.4sexies) |
-| C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; AArch64 default landed 2026-08-20; x64 default remains BLOCKED on the IIsi segfault** (§ C.4septies). Native builds pin both the ENGINE and compiled backend in the 030 boot gates; x64 IIsi passes under Rosetta but the original Linux-native failure is not yet cleared |
-| D — default engine | **68040 landed; 68030 AArch64 native landed**. The 68030-on-x86-64 flip remains blocked on the IIsi (§ C.4septies), with explicit interpreter oracles per platform |
+| C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; AArch64 default landed 2026-08-20; x64 default landed 2026-08-21** — the IIsi segfault did not survive the hardening window (§ C.4septies CLOSED), and the original Linux-native host now passes the hardened native gates. Native builds pin both the ENGINE and compiled backend in the 030 boot gates |
+| D — default engine | **68040 landed; 68030 landed on BOTH native ISAs** (a64 2026-08-20, x64 2026-08-21), with explicit interpreter oracles per platform |
 
 ## Gates this plan still adds
 

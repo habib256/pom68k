@@ -65,10 +65,12 @@ Macintosh LC's 68020 flavour of `Cpu030`), `Cpu020` (the Mac II family,
 passes its `GuestFamily` bit to the `jit::Engine` constructor — grep
 `jit::kGuest` in `src/*.cpp` for the roster. The last four wrappers landed
 on 2026-08-06. Both code generators declare 040+030 correctness through
-`guestFamilies`. Their narrower `autoFamilies` speed policy is per backend:
-x64 carries the 68040 only, while AArch64 carries 040+030 with the measured
-68030 profitability score of 64. Thus `auto` gives a 68030 native code on
-AArch64 and the portable `threaded` backend on x86-64 (§ 7).
+`guestFamilies`. Their narrower `autoFamilies` speed policy is per backend
+and both now carry 040+030: AArch64 since 2026-08-20 with the measured
+68030 profitability score of 64, x86-64 since 2026-08-21 at score 0 (its
+−12.6 % was measured without an admission score, and a score is adopted
+per backend on measurement only). Thus `auto` gives a 68030 native code on
+both host ISAs (§ 7).
 
 **And what each is worth.** The engine being wired is not the same as the
 engine being worth switching on. Ranked by measured gain (§ 3.4):
@@ -76,7 +78,7 @@ engine being worth switching on. Ranked by measured gain (§ 3.4):
 | Guest | Machines | Window buys | Because |
 |---|---|---|---|
 | 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | **×5.0** on a fixed budget (x64, § 3.4); ×2.68 end to end on `q605_boot_etalon` (2026-07-31, § 3.4) | an ATC walk per fetch, replaced by a bounds check |
-| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** portable baseline (LC II, fixed budget, threaded); AArch64 `auto` now uses the separately gated native generator | same fetch win, plus native replay on AArch64 |
+| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** portable baseline (LC II, fixed budget, threaded); `auto` now uses the separately gated native generator on both ISAs (a64 −5.3 %, x64 −12.6 % over `threaded` at the default budget) | same fetch win, plus native replay |
 | 68020 | Macintosh LC, **Mac II** | ×1.0-1.2 | no MMU to skip — only the map decode |
 | 68000 | **Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
 
@@ -355,17 +357,22 @@ Below ~2500 frames the run is single-pass boot code and the compile
 investment cannot amortize; a session sits far past the 6000-frame floor.
 The C.5 flip is written (2026-08-19) as the per-backend
 `caps().autoFamilies` speed declaration, separate from the `guestFamilies`
-correctness one — and **blocked**: its first `-L m030` run found the four
-IIsi gates in SIGSEGV under the generator (JIT_BRINGUP § C.4septies,
-parked with reproducer), so D.1 condition 4 is red and x86-64 `auto` keeps
-resolving an 030 to `threaded` until that fix. The first post-port AArch64
+correctness one. It was **blocked for two days**: its first `-L m030` run
+found the four IIsi gates in SIGSEGV under the generator (JIT_BRINGUP
+§ C.4septies, parked with reproducer). The crash did not survive the
+2026-08-19→21 hardening window, and the flip **fired on 2026-08-21** on
+fresh evidence — 120k lockstep, all six IIsi gates green under `auto`,
+`threaded` 41.19 s median vs generator 36.01 s at the default budget
+(**−12.6 %**, fp `cfb184b6faddabec`, spreads 2.1/1.7 %) — so x86-64 `auto`
+now serves an 030 generated code too. The first post-port AArch64
 ABBA was only a statistical tie (`threaded` 20.18 s, a64 20.11 s, −0.3 %
 inside a 3.0 % noise floor), so it was correctly not promoted then. On
 2026-08-20 the native-state hardening retained i-cache/retirement counters
 across linked blocks and applied the measured cold-code score of 64; the
 6,000-frame fixed-budget comparison, long lockstep and native LLE platform
 gates then cleared the independent AArch64 admission. Its `autoFamilies`
-therefore carries 040+030; the x64 mask remains 040-only. Re-measured after
+therefore carries 040+030, and the x64 mask joined it on 2026-08-21 on the
+numbers above. Re-measured after
 the current generated-loop compaction: three same-process ABBA repetitions
 give `threaded` **19.93 s** median (19.85–19.94) and a64 **18.88 s**
 (18.82–18.89), **−5.3 %** with 0.4/0.3 % arm spreads and fingerprint
@@ -994,10 +1001,10 @@ until that lowering has its own proof.
 > while the same machine boots in **2 min 21 s** on `threaded`. Selection
 > now tests guest validity before host usability ranking (`JitBackend.h`
 > § *GuestFamily*), so `auto` lands on a code generator only where it has
-> EARNED that family. The `caps().autoFamilies` speed declaration is 68040
-> on x64 and 68040+68030 on AArch64; other JIT families reach `threaded`.
-> The 68030-on-x64 promotion is written and blocked on the IIsi segfault
-> (JIT_BRINGUP § C.4septies).
+> EARNED that family. The `caps().autoFamilies` speed declaration carries
+> 68040+68030 on both native ISAs (AArch64 promoted 2026-08-20, x86-64
+> 2026-08-21 once the IIsi segfault of JIT_BRINGUP § C.4septies proved
+> gone); other JIT families reach `threaded`.
 >
 > **The 68k seam below the backends is no longer 040-only, and the scope
 > box is now the only thing holding the line.** `pomJitProbeData` grew an
@@ -1007,9 +1014,9 @@ until that lowering has its own proof.
 > (`:2287`, `:2312`). `jit_lockstep_030_test` gives the family the
 > differential coverage it lacked. The emitters' side of the 030 contract
 > is lockstep-proved since 2026-08-18 — generated 030 code is reachable by
-> an explicit `POM68K_JIT_BACKEND=x64|a64`, no unsafe override — while
-> `auto` keeps resolving an 030 to `threaded`
-> (`docs/JIT_BRINGUP.md` § C.5, blocked on § C.4septies).
+> an explicit `POM68K_JIT_BACKEND=x64|a64`, no unsafe override — and since
+> 2026-08-21 `auto` resolves an 030 to the native generator on both ISAs
+> (`docs/JIT_BRINGUP.md` § C.5; the IIsi episode is § C.4septies).
 
 `src/jit/backends/JitBackendX64.cpp` is the first backend that emits host
 machine code; `X64Asm.h` beneath it turns method calls into bytes and knows

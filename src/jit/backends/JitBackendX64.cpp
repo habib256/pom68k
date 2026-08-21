@@ -3255,17 +3255,17 @@ public:
         // CORRECTNESS scope: an explicit POM68K_JIT_BACKEND=x64 on a 68030
         // is honoured without the unsafe override.
         c.guestFamilies = kGuest68040 | kGuest68030;
-        // SPEED scope. The 68030's bench condition is MET — 37.22 s vs
-        // `threaded` 42.29 s at the bench's default budget, −12 %,
-        // fingerprints identical (JIT_BRINGUP § C.4sexies) — but the
-        // family stays OUT of `auto`: the first `-L m030` run under the
-        // flip found the four IIsi gates in SIGSEGV ~5 s into boot, code
-        // this generator had never executed because the `jit_*` 030 gates
-        // pin the engine, not the backend (§ C.4septies, parked with
-        // reproducer). Adding kGuest68030 here IS the C.5 flip; it fires
-        // when the IIsi runs the generator green (D.1 condition 4), never
-        // before.
-        c.autoFamilies = kGuest68040;
+        // SPEED scope. The 68030 entered on 2026-08-21, on D.1 evidence:
+        // bench −12 % vs `threaded` at the default budget, fingerprints
+        // identical (JIT_BRINGUP § C.4sexies); the 120k lockstep gate; and
+        // the IIsi — whose SIGSEGV ~5 s into boot blocked this line for two
+        // days (§ C.4septies) — now boots the generator green natively on
+        // the host that produced the crash, under the hardened
+        // POM68K_JIT_REQUIRE_NATIVE gate that can no longer silently pass
+        // on `threaded`. The crash did not survive the 2026-08-19/21
+        // engine hardening; § C.4septies keeps the reproducer and the
+        // triage order in case it returns.
+        c.autoFamilies = kGuest68040 | kGuest68030;
         return c;
     }
 

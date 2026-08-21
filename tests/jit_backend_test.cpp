@@ -500,11 +500,12 @@ int main() {
     // (jit_lockstep_030_x64_experimental_test, 120k identical), the
     // declaration says so, and the pin flips: an EXPLICIT request is
     // honoured. 2026-08-19 made the flip a one-line declaration
-    // (caps().autoFamilies) and then did NOT fire it: the bench win is
+    // (caps().autoFamilies) and then did NOT fire it: the bench win was
     // measured (JIT_BRINGUP § C.4sexies, −12 %) but the first m030 run
     // under the flip found the IIsi in SIGSEGV under the generator
-    // (§ C.4septies) — so `auto` on an 030 stays `threaded`, on every
-    // host, until that fix.
+    // (§ C.4septies). 2026-08-21 cleared it: the same host boots the IIsi
+    // generator green under the hardened native gate, and the C.5 flip
+    // fired — `auto` on an 030 now serves the generator on x86-64 too.
     if (hasX64) {
         jit::Backend* on030 = jit::selectBackend("x64", jit::kGuest68030);
         check(!std::strcmp(on030->name(), "x86-64"),
@@ -514,9 +515,9 @@ int main() {
         check(!std::strcmp(on040->name(), "x86-64"),
               "…and still served for the 68040 it was written for");
         jit::Backend* auto030 = jit::selectBackend("auto", jit::kGuest68030);
-        check(!std::strcmp(auto030->name(), "threaded"),
-              "auto on a 68030 stays `threaded` — the flip waits on the "
-              "IIsi segfault (JIT_BRINGUP § C.4septies)");
+        check(!std::strcmp(auto030->name(), "x86-64"),
+              "auto on a 68030 serves the generator — the C.5 flip "
+              "(2026-08-21, JIT_BRINGUP § C.5)");
         jit::Backend* auto040 = jit::selectBackend("auto", jit::kGuest68040);
         check(!std::strcmp(auto040->name(), "x86-64"),
               "auto on a 68040 still picks the native generator");

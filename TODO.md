@@ -647,12 +647,12 @@ lcii, lc3, iivx, iisi, iifx, duo230). Both x86-64
 and AArch64 code generators **declare the 68030 since 2026-08-18**
 (`BackendCaps::guestFamilies`) — correctness is lockstep-gated on both ISAs
 and an explicit backend request needs no unsafe override. The separate
-`BackendCaps::autoFamilies` SPEED mask now gives 68030s native AArch64 code
-with score 64, while x64 keeps them on `threaded`: its 030 bench win is
-measured (−12 %, JIT_BRINGUP § C.4sexies), but the C.5 flip is BLOCKED on the
-IIsi segfault under the generator (§ C.4septies). Admission stays per
-(family, backend), so unproven native 030 code cannot become a shipping
-default. Best measured figures — fixed budget, identical fingerprint on every
+`BackendCaps::autoFamilies` SPEED mask now gives 68030s native code on
+BOTH ISAs: AArch64 since 2026-08-20 (score 64, −5.3 %), x86-64 since
+2026-08-21 (score 0, −12.6 % vs `threaded` at the default budget) — the
+C.5 flip fired once the IIsi segfault (§ C.4septies) proved gone under the
+hardened native gates. Admission stays per (family, backend), so unproven
+native 030 code cannot become a shipping default. Best measured figures — fixed budget, identical fingerprint on every
 engine (`POM68K_JIT.md` § 3.4, Q605, 3 000 frames): interpreter 48.51 s,
 `threaded` 28.10 s (×1.73), `x86-64` **9.71 s (×5.00)**. The ×2.68 quoted
 elsewhere is the `q605_boot_etalon` wall clock (61.3 s → 22.9 s), a different
@@ -660,19 +660,18 @@ and flattered instrument — see § 0·A.
 
 Open, in ROI order:
 
-- [ ] **Fix the IIsi SIGSEGV under the x64 generator — the C.5 flip's only
-  blocker.** All four IIsi gates die ~5 s into boot the first time the
-  generator ever runs that machine (the `jit_*` 030 gates pin the ENGINE,
-  not the backend, so `jit_iisi` green had always been `threaded` green);
-  the IIci on the same RBV board boots the generator fine. Parked with
-  reproducer and read-only triage in `docs/JIT_BRINGUP.md` § C.4septies —
-  crash PC first (code buffer = wild block transfer, helper = bad host
-  pointer), then `POM68K_JIT_DISPATCH_RING=1`, then
-  `POM68K_JIT_DENY_FROM/_TO` bisection. Once green, the flip itself is one
-  line (`kGuest68030` into x64's `autoFamilies`) behind a clean full
-  `-L etalon` tier (D.1-4), in its own commit — and the `jit_*` 030 boot
-  gates should pin `POM68K_JIT_BACKEND` explicitly so this class of hole
-  cannot recur.
+- [x] **~~Fix the IIsi SIGSEGV under the x64 generator~~ — CLEARED
+  2026-08-21, and the C.5 flip FIRED.** The crash did not survive the
+  2026-08-19→21 hardening window: on a fresh full relink, the host that
+  produced the four deterministic SIGSEGVs boots the IIsi green under the
+  explicit native generator, and all six IIsi gates pass under `auto`.
+  Attribution not bisected (17 commits in the window; a bisect prices at
+  that many crash re-runs) — the reproducer and triage order stay in
+  `docs/JIT_BRINGUP.md` § C.4septies in case it returns. The flip is the
+  one line § C.5 promised (`kGuest68030` into x64's `autoFamilies`),
+  landed behind fresh D.1 evidence in its own commit; the `jit_*` 030
+  boot gates already pin `POM68K_JIT_BACKEND` + `REQUIRE_NATIVE` since
+  the 2026-08-19 hardening, so the false-green class cannot recur.
 - [ ] **Port the a64 68030 deltas to x86-64 — the forms the 030's OWN
   census names.** **2026-08-19: the x86-64 generator now BEATS `threaded`
   on the LC II from ~2500 frames up — −12.0 % at the bench's default
