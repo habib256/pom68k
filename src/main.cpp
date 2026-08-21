@@ -5523,7 +5523,7 @@ int main(int argc, char** argv) {
             return 0;
         }
     }
-    std::printf("POM68K — Macintosh 68k emulator (Mac Plus)\n");
+    std::printf("POM68K — Macintosh 68k emulator\n");
 
     // ── Emulator (static: outlives main() under Emscripten) ─────────────
     static MacMemory mem;
