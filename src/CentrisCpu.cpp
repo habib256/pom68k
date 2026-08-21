@@ -31,7 +31,9 @@ CentrisCpu::CentrisCpu(CentrisMemory& mem)
     : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
-    jit_.setPeriphDeadline(&periphDeadline_);
+    jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
+        static_cast<CentrisCpu*>(cpu)->flushTicks();
+    });
 
     // Centris 610/650 = 68LC040. Default to the LC040 identity + Moira's
     // soft 68882 (Finder-usable, the Q605 no-FPU precedent).

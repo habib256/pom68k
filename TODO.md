@@ -266,6 +266,12 @@ audio, hub), pas le débit isolé de `jit_bench`.
   modifiés, bloc invalidé une fois, état frontière identique à l'interpréteur.
   *(Seul élément de cette journée qui soit dans `CHANGELOG.md` — 2026-08-12.)*
 
+  **Supplanté le 2026-08-20 :** le fixup exact est maintenant global et le
+  sélecteur d'opcode a été supprimé. Les gates RAM/SMC, lockstep 040/030 et le
+  budget Q605 gardent l'empreinte, les cycles, SCSI et le PC identiques ; le
+  débit passe d'une médiane 5,32 s à 3,61 s sur 3 000 frames. Cette nouvelle
+  preuve annule la restriction « B592 seul » sans affaiblir la garde.
+
 **Rejeté — ne pas rouvrir sans données nouvelles :**
 
 - **Échéancier événementiel sur l'ASC** : sept gates verts, mais **régression
@@ -299,6 +305,9 @@ audio, hub), pas le débit isolé de `jit_bench`.
   avec un masque nul) : 826 556 495 instructions, SCSI = 0, empreinte
   divergente `35cb722024e28325`. **Le défaut cache des stores natifs encore
   non conformes ; il ne peut pas être simplement « réparé ».**
+  **Supplanté le 2026-08-20 :** après les corrections ultérieures du cache et
+  des écritures, la correction globale passe désormais les oracles longs ;
+  elle est promue avec des fixups qui conservent explicitement le registre.
 
 **Attribution, faite et à ne pas refaire :**
 
@@ -637,12 +646,12 @@ families (`interp_*_boot_etalon`: q605, centris650, q630, q700 and now
 lcii, lc3, iivx, iisi, iifx, duo230). Both x86-64
 and AArch64 code generators **declare the 68030 since 2026-08-18**
 (`BackendCaps::guestFamilies`) — correctness is lockstep-gated on both ISAs
-and an explicit backend request needs no unsafe override — while `auto`
-still gives the 030s `threaded`: it consults the separate
-`BackendCaps::autoFamilies` SPEED mask (2026-08-19), where x64 carries the
-68040 only — its 030 bench win is measured (−12 %, JIT_BRINGUP § C.4sexies)
-but the C.5 flip is BLOCKED on the IIsi segfault under the generator
-(§ C.4septies), so unproven native 030 code cannot become a shipping
+and an explicit backend request needs no unsafe override. The separate
+`BackendCaps::autoFamilies` SPEED mask now gives 68030s native AArch64 code
+with score 64, while x64 keeps them on `threaded`: its 030 bench win is
+measured (−12 %, JIT_BRINGUP § C.4sexies), but the C.5 flip is BLOCKED on the
+IIsi segfault under the generator (§ C.4septies). Admission stays per
+(family, backend), so unproven native 030 code cannot become a shipping
 default. Best measured figures — fixed budget, identical fingerprint on every
 engine (`POM68K_JIT.md` § 3.4, Q605, 3 000 frames): interpreter 48.51 s,
 `threaded` 28.10 s (×1.73), `x86-64` **9.71 s (×5.00)**. The ×2.68 quoted
@@ -767,15 +776,21 @@ Open, in ROI order:
     6 fixed ones and the flags (2026-08-12). Static fallbacks on the fixed 10k
     census **61 436 → 3 924 (−93,6 %)**; declared coverage 99,1 %; 120k
     lockstep green throughout.
-    **The throughput criterion is still NOT met**, re-measured 2026-08-12: on
+    **At the 2026-08-12 checkpoint the throughput criterion was NOT met**: on
     two fixed 6 000-frame pairs `threaded` does 19,52/19,50 s and AArch64
     20,18/20,16 s, same fingerprint `cfb184b6faddabec` and identical i-cache
     counters. (An earlier pair was 20,37/20,39 s threaded vs 19,43 then
-    22,64 s AArch64 — one win out of two is not a gain.) The measured lock is
+    22,64 s AArch64 — one win out of two is not a gain.) The measured lock was
     global native residency (**18,4 %**) and **64,6 M AArch64 exits against
-    50,7 M threaded**. The declaration therefore stays 68040-only and the
-    experimental override stays mandatory.
-    **No 68030 promotion before four cumulative proofs**: identical fingerprint
+    50,7 M threaded**. The declaration therefore stayed 68040-only and the
+    experimental override remained mandatory at that point.
+    **Superseded 2026-08-20:** native i-cache/retirement state now survives
+    linked blocks, cold compilation uses the measured score 64, and the
+    repeated fixed-budget comparison gives `threaded` 19,93 s versus a64
+    18,88 s (−5,3 %, dispersions 0,4/0,3 %, empreinte
+    `cfb184b6faddabec`). The long lockstep and native platform tier stayed
+    green; AArch64 `autoFamilies` now carries 040+030.
+    **The four cumulative proofs required for promotion were**: identical fingerprint
     and counters; IIfx, LC II, IIvx, IIsi, SE/30, Macintosh TV and Duo green;
     a gain repeated across runs; the full `etalon` tier green on both the
     interpreter and the candidate engine.
@@ -1017,7 +1032,7 @@ product decision, not a cleanup.
   itself. The write-back decode is clocked by the controller that wrote,
   which is the honest stand-in for a drive that has no reader of its own.
   Step 6: the `Iwm` READ path is MAME's `sync()` MODE_READ window machine
-  (`iwm.cpp:398-455`) over the store, plus the `:249-250` shifter clear —
+  (`src/devices/machine/iwm.cpp:398-455`) over the store, plus the `:249-250` shifter clear —
   paid for exactly as this list said it would be, `disk_boot_etalon` +
   `lcii_floppy_etalon` both green. The gap4 became written self-sync,
   which is the `encodeTrackGcr` geometry note's reopening condition coming
@@ -1033,7 +1048,7 @@ product decision, not a cleanup.
   track as a flux view (`nextFluxAfter` = MAME's `get_next_transition`,
   opt-in deterministic jitter `POM68K_FLUX_JITTER`); `Swim2` reads through
   a real `FluxPll` separator (snapshot **v6**); `Swim1`-ISM runs **MAME's
-  real LS-pair/CSM/TSM engine** (`swim1.cpp:885-1233` verbatim, snapshot
+  real LS-pair/CSM/TSM engine** (`src/devices/machine/swim1.cpp:885-1233` verbatim, snapshot
   **v7**) — the 64-min-cell calibration and its per-pair-side correction
   factors are live, the parameter RAM became load-bearing, and the bite
   test is IN the suite: a +20 % off-rate track reads only because the CSM
@@ -1512,8 +1527,10 @@ that silently falls behind is worse than none, because it looks complete).
   the namespace without backticks**, and keep real wildcards family-scoped
   (`POM68K_JIT_*`, `POM68K_JIT_LOCKSTEP_*`, `POM68K_BENCH_*`, `POM68K_PROBE*`,
   `POM68K_LLE_AARCH64_*`): one broad one re-opens the hole. The two knobs the
-  wildcard had been hiding, `POM68K_JIT_A64_STORE_GUARD_OPCODE` (§ 0·A) and
-  `POM68K_JIT_ICACHE_EMIT`, are documented in `src/jit/POM68K_JIT.md` § 6.
+  wildcard had been hiding are no longer both active :
+  `POM68K_JIT_A64_STORE_GUARD_OPCODE` was removed when the exact guard became
+  global on 2026-08-20; `POM68K_JIT_ICACHE_EMIT` remains documented in
+  `src/jit/POM68K_JIT.md` § 6.
   **Expiry: still not done.** The bring-up probes declare their chantier; the
   other ~140 entries still do not say whether they are a permanent product
   option (which earns a gate) or a chantier leftover. That is a decision per

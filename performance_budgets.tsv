@@ -26,10 +26,13 @@ synthetic_68040_copyback	68040	any	native_slack_microseconds	2000	microseconds
 # Macintosh fixed-cycle baselines. The documented x86-64 reference measured
 # 5.15x Q605 native / 2.40x LC II threaded. An Apple M4 (Mac16,10), measured
 # from immutable disk clones on 2026-08-17, produced 9.50-9.67x / 4.96-5.02x.
-# A 12-13% margin makes these regression floors, not benchmark-record claims.
+# The corrected global A64 store guard plus the compact generated loop measured
+# 13.71-13.96x on 2026-08-20; the exact-read/opcode-tail pass measured
+# 14.34-14.42x on 2026-08-21. A roughly 13% margin makes the floors regression
+# policy, not benchmark-record claims.
 q605_jit	68040	reference_x86_64	min_realtime_permille	4500	permille
 lcii_threaded	68030	reference_x86_64	min_realtime_permille	2100	permille
-q605_jit	68040	apple_m4	min_realtime_permille	8300	permille
+q605_jit	68040	apple_m4	min_realtime_permille	12500	permille
 lcii_threaded	68030	apple_m4	min_realtime_permille	4300	permille
 
 # Host wall-clock noise floor, in permille (docs/MEASURING.md R2). NOT a

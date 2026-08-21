@@ -33,7 +33,11 @@ Cpu040::Cpu040(Q605Memory& mem)
     : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
-    jit_.setPeriphDeadline(&periphDeadline_);
+    jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
+        auto& c = *static_cast<Cpu040*>(cpu);
+        if (c.onLockstepEvent) c.onLockstepEvent("sync", c.lockstepDebug());
+        c.flushTicks();
+    });
 
     // Q6.6: model the full 68040 with its integrated FPU, matching the MAME golden
     // oracle `macqd605` (macquadra605.cpp:158 `M68040(...)`; only its

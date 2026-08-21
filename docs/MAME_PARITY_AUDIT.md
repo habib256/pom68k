@@ -343,7 +343,7 @@ boot — aucun des bug-suspects ne pouvait la faire tomber.
 
 **Simplifications** :
 - Matrice clavier/power key/trackball non câblées, entrée injectée au niveau cellule ADB — milestone déclaré (DUO_BRINGUP, « Next: input through the PMU ») ; piège documenté : le `$DF` littéral de MAME = power-key-held → hang.
-- ~~Pas de persistance NVRAM RAM interne + SRAM (PRAM/flag power)~~ — **PÉRIMÉ : livré avec le 37e profil**, `MscMemory::loadPram`/`savePram` (`MscMemory.cpp:137-175`) sérialisent la RAM interne + la SRAM 32 Ko du PG&E et **appliquent le scrub `$91`** (cold boot forcé, `m68hc05pge.cpp:959`) que cette ligne annonçait comme « à copier ». Même classe d'erreur que le finding PRAM du § 2.2 : lu dans un doc, pas dans le code.
+- ~~Pas de persistance NVRAM RAM interne + SRAM (PRAM/flag power)~~ — **PÉRIMÉ : livré avec le 37e profil**, `MscMemory::loadPram`/`savePram` (`MscMemory.cpp:137-175`) sérialisent la RAM interne + la SRAM 32 Ko du PG&E et **appliquent le scrub `$91`** (cold boot forcé, `src/devices/cpu/m6805/m68hc05pge.cpp:959`) que cette ligne annonçait comme « à copier ». Même classe d'erreur que le finding PRAM du § 2.2 : lu dans un doc, pas dans le code.
 - Entrée d'interruption facturée 0 cycle (inexactitude délibérée partagée avec l'E1 — leçon Mac TV).
 - `power_cycle_w` et le bit clock-divide MSC loggés, non modélisés (milestone sommeil).
 

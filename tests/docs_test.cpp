@@ -634,7 +634,9 @@ int main() {
     // `mac128.cpp:1317` is quoting MAME, which is not vendored here; those
     // resolve to nothing and are skipped rather than guessed at. The
     // POM68K/MAME naming split makes that safe — `Iwm.cpp` is ours,
-    // `iwm.cpp` is theirs.
+    // `iwm.cpp` is theirs.  The lookup must compare the final component's
+    // spelling itself: std::filesystem::is_regular_file("src/iwm.cpp") also
+    // finds src/Iwm.cpp on the default case-insensitive macOS filesystem.
     {
         const std::string root =
             claude.substr(0, claude.size() - std::string("CLAUDE.md").size());
@@ -666,6 +668,22 @@ int main() {
             for (std::string ignored; std::getline(file, ignored); ) lines++;
             return lines;
         };
+        auto exactRegularFile = [](const std::string& path) {
+            const std::filesystem::path wanted(path);
+            const std::filesystem::path parent = wanted.parent_path().empty()
+                ? std::filesystem::path(".") : wanted.parent_path();
+            std::error_code ec;
+            for (const auto& entry :
+                 std::filesystem::directory_iterator(parent, ec)) {
+                if (ec) return false;
+                if (entry.path().filename() == wanted.filename())
+                    return entry.is_regular_file(ec) && !ec;
+            }
+            return false;
+        };
+        check(exactRegularFile(root + "src/Iwm.cpp") &&
+              !exactRegularFile(root + "src/iwm.cpp"),
+              "citation lookup preserves filename case on every host");
 
         int cited = 0;
         for (const std::string& doc : docs) {
@@ -704,7 +722,7 @@ int main() {
                 std::string resolved;
                 for (const char* base : kRoots) {
                     const std::string candidate = root + base + path;
-                    if (std::filesystem::is_regular_file(candidate)) {
+                    if (exactRegularFile(candidate)) {
                         resolved = candidate;
                         break;
                     }

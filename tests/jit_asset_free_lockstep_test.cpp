@@ -32,6 +32,7 @@ constexpr uint32_t kHandler = 0x001800;
 constexpr uint32_t kData = 0x004000;
 constexpr uint32_t kStack = 0x00E000;
 constexpr uint32_t kHole = 0x0F0000;
+constexpr uint32_t kDevice = 0x00500000;
 
 class SyntheticCpu final : public moira::Moira {
 public:
@@ -44,11 +45,15 @@ public:
     jit::Engine jit;
     jit::CodeGuard* guard = nullptr;
     uint32_t busFaults = 0;
+    uint32_t deviceReads = 0;
 
     static uint32_t bus(uint32_t a) { return a & kRamMask; }
     static bool inHole(uint32_t a) {
         const uint32_t p = bus(a);
         return p >= kHole && p < kHole + 0x10000;
+    }
+    static bool inDevice(uint32_t a) {
+        return a >= kDevice && a < kDevice + 0x1000;
     }
 
 private:
@@ -57,6 +62,7 @@ private:
         h.self = cpu;
         h.codeSpan = [](void* s, uint32_t p, uint32_t& len) -> const uint8_t* {
             auto& c = *static_cast<SyntheticCpu*>(s);
+            if (inDevice(p)) return nullptr;
             p = bus(p);
             if (inHole(p)) return nullptr;
             len = uint32_t(c.mem.size()) - p;
@@ -64,6 +70,7 @@ private:
         };
         h.dataSpan = [](void* s, uint32_t p, uint32_t& len, int) -> uint8_t* {
             auto& c = *static_cast<SyntheticCpu*>(s);
+            if (inDevice(p)) return nullptr;
             p = bus(p);
             if (inHole(p)) return nullptr;
             len = uint32_t(c.mem.size()) - p;
@@ -85,6 +92,15 @@ private:
     }
 
     moira::u8 read8(moira::u32 a) const override {
+        if (inDevice(a)) {
+            auto& c = *const_cast<SyntheticCpu*>(this);
+            const uint32_t n = c.deviceReads++;
+            // The exact access owns a deliberately varying bus delay. Native
+            // code must add only MOVE's fixed cycles and must never duplicate
+            // this side-effecting read after the destination was preflighted.
+            c.setClock(c.getClock() + 3 + int64_t(n & 3));
+            return moira::u8(0xA5u ^ n);
+        }
         if (inHole(a)) fault();
         return mem[bus(a)];
     }
@@ -168,19 +184,25 @@ void installLoop(SyntheticCpu& c) {
     // native generators share: RMW, sole read with postincrement, address
     // update, register ALU, DBcc, then a stack write/read through BSR/RTS.
     put16(c, kCode + 0x10, 0x2418);    // MOVE.L (A0)+,D2
-    put16(c, kCode + 0x12, 0x5988);    // SUBQ.L #4,A0
+    put16(c, kCode + 0x12, 0x5948);    // SUBQ.W #4,A0 (full-width An form)
     put16(c, kCode + 0x14, 0x5280);    // ADDQ.L #1,D0
     put16(c, kCode + 0x16, 0xB592);    // EOR.L D2,(A2)
     put16(c, kCode + 0x18, 0xB580);    // EOR.L D2,D0
-    put16(c, kCode + 0x1A, 0x51CF);    // DBF D7,kCode+$10
-    put16(c, kCode + 0x1C, 0xFFF4);
-    put16(c, kCode + 0x1E, 0x6106);    // BSR.S subroutine
-    put16(c, kCode + 0x20, 0x60EE);    // BRA.S kCode+$10
-    put16(c, kCode + 0x22, 0x4E71);    // padding
-    put16(c, kCode + 0x24, 0x4E71);
-    put16(c, kCode + 0x26, 0x2612);    // MOVE.L (A2),D3
-    put16(c, kCode + 0x28, 0x4843);    // SWAP D3
-    put16(c, kCode + 0x2A, 0x4E75);    // RTS
+    put16(c, kCode + 0x1A, 0xCD4B);    // EXG A6,A3
+    put16(c, kCode + 0x1C, 0xCD4B);    // restore A6/A3
+    put16(c, kCode + 0x1E, 0xB90B);    // CMPM.B (A3)+,(A4)+
+    put16(c, kCode + 0x20, 0x534B);    // SUBQ.W #1,A3
+    put16(c, kCode + 0x22, 0x534C);    // SUBQ.W #1,A4
+    put16(c, kCode + 0x24, 0xB5C8);    // CMPA.L A0,A2
+    put16(c, kCode + 0x26, 0x51CF);    // DBF D7,kCode+$10
+    put16(c, kCode + 0x28, 0xFFE8);
+    put16(c, kCode + 0x2A, 0x6106);    // BSR.S subroutine
+    put16(c, kCode + 0x2C, 0x60E2);    // BRA.S kCode+$10
+    put16(c, kCode + 0x2E, 0x4E71);    // padding
+    put16(c, kCode + 0x30, 0x4E71);
+    put16(c, kCode + 0x32, 0x2612);    // MOVE.L (A2),D3
+    put16(c, kCode + 0x34, 0x4843);    // SWAP D3
+    put16(c, kCode + 0x36, 0x4E75);    // RTS
 }
 
 enum class FaultProgram { LastWrite, RestartRead };
@@ -195,6 +217,15 @@ void installFaultLoop(SyntheticCpu& c, FaultProgram p) {
         put16(c, kCode + 0, 0x2020);   // MOVE.L -(A0),D0
         put16(c, kCode + 2, 0x60FC);   // BRA.S kCode
     }
+}
+
+void installExactSourceLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put16(c, kCode + 0, 0x12D0);       // MOVE.B (A0),(A1)+
+    put16(c, kCode + 2, 0x4E71);       // keep the backward branch on the
+    put16(c, kCode + 4, 0x4E71);       // ordinary six-cycle path
+    put16(c, kCode + 6, 0x4E71);
+    put16(c, kCode + 8, 0x60F6);       // BRA.S kCode
 }
 
 void resetCpu(SyntheticCpu& c) {
@@ -254,6 +285,10 @@ bool runDeterministicLoop() {
     installLoop(native);
     resetCpu(ref);
     resetCpu(native);
+    ref.setA(3, kData + 0x100);
+    native.setA(3, kData + 0x100);
+    ref.setA(4, kData + 0x180);
+    native.setA(4, kData + 0x180);
     for (int i = 1; i < 7; i++) {
         const uint32_t v = 0x1020'3040u * uint32_t(i) ^ 0xA5A5'5A5Au;
         ref.setD(i, v);
@@ -376,6 +411,41 @@ bool runFaultLockstep(FaultProgram p) {
            ref.busFaults != 0 && native.busFaults != 0;
 }
 
+bool runExactSourceMove() {
+    SyntheticCpu ref, native;
+    installExactSourceLoop(ref);
+    installExactSourceLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setA(0, kDevice);
+        c->setA(1, kData);
+        c->setSR(0x2710);
+    }
+    native.jit.setEnabled(true);
+
+    for (int step = 0; step < 256; step++) {
+        const int64_t target = ref.getClock() + 37;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true) ||
+            !sameMemory(ref, native, 0, kRamBytes, true) ||
+            ref.deviceReads != native.deviceReads) {
+            std::printf("    exact-source divergence at checkpoint %d, reads=%u/%u\n",
+                        step, ref.deviceReads, native.deviceReads);
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    exact-source compiled=%llu runs=%llu native=%llu slow=%llu reads=%u\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs, native.deviceReads);
+    return s.blocksCompiled != 0 && s.blocksRun != 0 && s.slowInstrs == 0 &&
+           native.deviceReads != 0;
+}
+
 }  // namespace
 
 int main() {
@@ -408,6 +478,8 @@ int main() {
           "last-write /BERR boundary and format-$7 frame match the interpreter");
     check(runFaultLockstep(FaultProgram::RestartRead),
           "restart-read /BERR boundary and format-$7 frame match the interpreter");
+    check(runExactSourceMove(),
+          "exact MMIO source + preflighted RAM destination stays native and exact");
 
     metrics.status = failures ? "fail" : "pass";
     check(jit::emitMetrics(metrics), "structured JIT metrics artifact is writable");

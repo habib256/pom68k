@@ -270,10 +270,6 @@ int main() {
     // restart oracle needs immediate compilation to exercise every thunk.
     setenv("POM68K_JIT_PROFIT_SCORE", "0", 1);
     setenv("POM68K_JIT_ACCESS_THUNK", "2", 1);
-    // This gate owns PEA's direct-store proof. The production default remains
-    // B592; selecting 486E here releases only PEA from the deliberately
-    // opcode-local conservative AArch64 store guard.
-    setenv("POM68K_JIT_A64_STORE_GUARD_OPCODE", "0x486E", 1);
     // The queue cases deliberately exercise multiword control flow. Its
     // variable 030 fetch count is conservatively replayed while emitted
     // i-cache accounting is enabled; disabling that attribution layer lets
@@ -456,7 +452,6 @@ int main() {
     // the source (A7)+ commit; the commit clobbered x15 and the byte store
     // landed in the CPU object's A7 field ($..86 -> $..40) instead of RAM.
     {
-        setenv("POM68K_JIT_A64_STORE_GUARD_OPCODE", "0x129F", 1);
         constexpr uint32_t source = 0x006000;
         constexpr uint32_t destination = 0x007000;
         FaultCpu moveRef, moveNative;
@@ -518,7 +513,6 @@ int main() {
               std::memcmp(moveRef.mem.data(), moveNative.mem.data(),
                           moveRef.mem.size()) == 0,
               "two-memory MOVE stores through the preserved host pointer");
-        setenv("POM68K_JIT_A64_STORE_GUARD_OPCODE", "0x486E", 1);
     }
 
     {

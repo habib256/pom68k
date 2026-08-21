@@ -31,7 +31,9 @@ Q630Cpu::Q630Cpu(Q630Memory& mem)
     : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
-    jit_.setPeriphDeadline(&periphDeadline_);
+    jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
+        static_cast<Q630Cpu*>(cpu)->flushTicks();
+    });
 
     // The Quadra 630 ships a full 68040 with its integrated FPU
     // (macquadra630.cpp M68040 @ 33 MHz);

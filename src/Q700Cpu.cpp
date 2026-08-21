@@ -31,7 +31,9 @@ Q700Cpu::Q700Cpu(Q700Memory& mem)
     : mem_(mem), jit_(*this, jitHooksFor(mem), jit::kGuest68040) {
     // The JIT's generated code makes the peripheral catch-up test inline
     // rather than calling sync() on every instruction.
-    jit_.setPeriphDeadline(&periphDeadline_);
+    jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
+        static_cast<Q700Cpu*>(cpu)->flushTicks();
+    });
 
     // The Quadra 700 ships a full 68040 (macquadra700.cpp M68040 @ 50/2 MHz),
     // so unlike the Centris the default is the 040 identity + integrated FPU.

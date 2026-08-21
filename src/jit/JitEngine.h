@@ -94,9 +94,10 @@ public:
     }
     // Event-driven wrappers expose their absolute next deadline instead of
     // a fixed batch. A negative batch is the backend-neutral discriminator.
-    void setPeriphDeadline(const void* deadline) {
+    void setPeriphDeadline(const void* deadline, PeriphDue due) {
         ctx_.periphClock = deadline;
         ctx_.periphBatch = -1;
+        ctx_.periphDue = due;
     }
     void setWriteObserver(void* opaque, WriteObserver fn) {
         ctx_.observeWriteSelf = opaque;
@@ -225,11 +226,12 @@ private:
         uint32_t pad;
         void*    entry;
     };
-    // A full Q605 run compiles well over 100k blocks. With 4096 direct-mapped
-    // slots, unrelated hot PCs constantly displaced one another and turned
-    // otherwise linkable transfers back into Engine round trips. 64k slots
-    // cost 1 MiB per CPU and keep the O(1), non-dangling invalidation model.
-    static constexpr uint32_t kLinkSlots = 65536;
+    // A full Q605 run compiles well over 100k blocks. Arena-backed A64 code
+    // now retains the complete 65k live set instead of periodically wiping
+    // it, so a same-sized direct map leaves too many unrelated PCs fighting
+    // for one slot. 256k slots cost 4 MiB per CPU, sharply reduce those
+    // collisions and keep the O(1), non-dangling invalidation model.
+    static constexpr uint32_t kLinkSlots = 262144;
     static constexpr uint32_t kNoLink = 0xFFFFFFFF;
     static uint32_t linkIndex(uint32_t pc) { return (pc >> 1) & (kLinkSlots - 1); }
 

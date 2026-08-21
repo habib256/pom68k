@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 254 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 256 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 22 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 24 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 33 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
@@ -48,6 +48,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-18** — [The indexed modes were never 167 k, and the idle Finder understates the JIT's fallback pressure 6×](CHANGELOG.md#2026-08-18-drawing-census)
 - **2026-08-18 (later)** — [The 68030's JIT spends its life re-compiling: 26 544 of 28 816 whole-cache flushes are one wrapper hint](CHANGELOG.md#2026-08-18-030-flush-storm)
 - **2026-08-18 (third)** — [Native residency is a symptom, not the lock: forcing it up makes the 68030 JIT 37 % slower](CHANGELOG.md#2026-08-18-residency-trap)
+- **2026-08-20** — [The A64 store guard becomes exact globally: 32 % less wall time, and long sessions no longer exhaust native code](CHANGELOG.md#2026-08-20-a64-global-store-guard)
+- **2026-08-21** — [A64 exact reads and the opcode tail: 99.5 % native, with both LLE locksteps intact](CHANGELOG.md#2026-08-21-a64-exact-read-tail)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 

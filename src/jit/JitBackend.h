@@ -36,6 +36,7 @@ struct ResolvedConfig;
 
 using WriteObserver = void (*)(void*, moira::Moira*, uint32_t, uint32_t,
                                uint32_t, uint32_t, int);
+using PeriphDue = void (*)(moira::Moira*);
 
 // Which GUEST CPU families a backend's compiled form is semantically valid
 // for. This is not a performance hint and not a capability ranking: Moira's
@@ -111,9 +112,9 @@ struct BackendCaps {
     // History: x64 has carried the 68040 since J2. Its 68030 bench win is
     // measured (−12 % at the default budget, JIT_BRINGUP § C.4sexies) but
     // the family waits on the IIsi segfault under the generator
-    // (§ C.4septies) — adding it is the C.5 flip. a64 stays 68040-only
-    // until the uncharge fix is ported and its own bench win is measured
-    // on an AArch64 host.
+    // (§ C.4septies) — adding it is the C.5 flip. a64 independently added
+    // 68030 on 2026-08-20 after native-state hardening, a matching-fingerprint
+    // bench win, the long lockstep and native platform gates.
     uint32_t autoFamilies = 0;
 
     // Backend/family-specific cold-code admission. Zero preserves the
@@ -207,6 +208,7 @@ struct Context {
     // even when it is the same width.
     const void* periphClock = nullptr;
     int         periphBatch = 0;       // -1 = periphClock is an absolute deadline
+    PeriphDue   periphDue = nullptr;   // native test already proved it due
 
     // Optional dynamic fallback census. Native backends increment the
     // opcode slot that led to a cold interpreter stub. Keeping the two

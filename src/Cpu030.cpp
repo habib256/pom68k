@@ -37,7 +37,9 @@ Cpu030::Cpu030(V8Memory& mem, bool withFpu, bool as020)
                       as020 ? jit::kGuest68020 : jit::kGuest68030) {
     // Generated code can charge ordinary instruction cycles inline and call
     // sync() only when the event-driven machine actually becomes due.
-    jit_.setPeriphDeadline(&periphDeadline_);
+    jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
+        static_cast<Cpu030*>(cpu)->flushTicks();
+    });
     // as020: the Macintosh LC profile — MAME maclc.cpp:342 runs the same
     // V8 machine on a 68020 (Apple HMMU part; the V8's $80FFFFFF decode
     // makes the HMMU translation a no-op for us). FPU socket empty by

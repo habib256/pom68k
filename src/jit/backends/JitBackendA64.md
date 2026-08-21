@@ -2,34 +2,26 @@
 
 ## What it is today
 
-`JitBackendA64.cpp` is a native 68040 code generator, declared for
-`kGuest68040` and nothing else (`:2156`), and the backend `auto` selects on
-every AArch64 host where `POM68K_JIT_BACKENDS=auto`. Plain memory goes
+`JitBackendA64.cpp` is a native 68040/68030 code generator, and `auto` selects
+it for both families on AArch64. Plain memory goes
 through the inline read/write DTLBs with REV16/REV32; refused mappings and
 unsupported forms re-enter Moira at an exact instruction boundary. Peripheral
 pacing keeps the guest clock and the deadline in callee-saved host registers
-and calls synchronization only when a batch or deadline is due. External
+and calls a wrapper's due handler directly only after the inline deadline
+comparison succeeds. External
 exits probe the engine's direct-mapped link table and branch straight into an
 already-compiled target — constant targets through a tag-checked slot,
 dynamic `RTS`/`JMP` targets by computing the index and validating the runtime
-PC. (On the Q605, whose batch is one, the exact direct synchronization path
-stays cheaper than adding a redundant deadline test.)
+PC.
 
-**Its opcode set is close to the x86-64 backend's but is NOT the same set,
-and neither is a superset.** `canEmitReg()` (`:572`) is the source of truth.
-Only here: the immediate line-$E shifts and rotates (no `ROX` yet), the
-register bitfield forms, brief-indexed `d8(An,Xn)` / `d8(PC,Xn)`
-(`decodeEa()` rejects the full 68020 extension format), and `MOVE SR,Dn`.
-Only on x64: `Scc` and `PEA`. `jit_backend_test` pins several of these
-divergences by backend name, so closing one is a gate edit as well as an
-emitter.
-
-Two 68030 emitter families also live here (split cost validation, restartable
-writes, the emitted i-cache charge). They are unreachable in any shipped
-configuration — `guestFamilies` excludes `kGuest68030`, so they run only
-under `POM68K_JIT_UNSAFE_BACKEND=1` and the dedicated
-`jit_lockstep_030_a64_experimental_test`. Their plan and their remaining
-blocker are `docs/JIT_BRINGUP.md` § C.
+**Its opcode set is close to the x86-64 backend's but is not assumed
+identical.** `canEmitReg()` is the source of truth. The A64 backend includes
+the immediate line-$E shifts and rotates, register bitfields, indexed modes,
+`MOVE SR,Dn`, `Scc`, `PEA`, `EXG` and distinct-register `CMPM`. Its 040 MOVE
+path can preflight a RAM destination before consuming an exact/MMIO source;
+the token is deliberately absent on 030. Its 68030 paths carry split cost
+validation, restartable writes and emitted i-cache accounting; the dedicated
+long 030 lockstep and platform boots keep that automatic path gated.
 
 **Gates.** `jit_lockstep_a64_coarse_test` (5 M comparisons at 50 cycles,
 registered only on AArch64 with `POM68K_JIT_BACKENDS=auto`),
@@ -46,6 +38,18 @@ Fixed 1,000-frame Q605 workload: **1.22 s** against 4.55 s threaded
 3.41 s. The complete Finder gate: **9.19 s** against 21.14 s threaded
 (2.30×), or 7.86 s against 15.28 s under PGO (1.94×), with identical
 640×480, framebuffer and SCSI signatures.
+
+Current non-LTO Apple-M4 fixed budget (3,000 frames): **3.47 s median,
+14.40× real time**, **99.5 % native**, fingerprint `778dd7ad558108fd`. The
+30,000-frame lifetime
+budget sustains **92.0 % native and 5.51× real time** after generated-code
+capacity recycling; before that correction the full buffer made native share
+collapse to 51.7 % and throughput to 3.10×.
+
+On the 68030 LC II fixed 6,000-frame budget, three same-process ABBA
+repetitions measure a64 at **18.88 s** median against **19.93 s** for
+`threaded` (−5.3 %, fingerprint `cfb184b6faddabec`, arm spreads 0.3/0.4 %).
+That is the measured speed proof behind the AArch64 030 automatic path.
 
 Two host-side costs dominated before those numbers, and both fixes are
 host-neutral (so Raspberry Pi AArch64 gets them too):

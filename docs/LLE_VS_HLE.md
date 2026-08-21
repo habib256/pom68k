@@ -131,7 +131,8 @@ caught it.
   access lands late when the beam is fetching. POM68K charges nothing.
   **There is no oracle to port**: `vram_r`/`vram_w` are a plain bounds check
   plus `COMBINE_DATA` in **all four** of MAME's relevant devices — `v8.cpp`
-  (V8/Eagle/Spice), `sonora.cpp`, `valkyrie.cpp` and `dafb.cpp:915-933` —
+  (V8/Eagle/Spice), `sonora.cpp`, `valkyrie.cpp` and
+  `src/mame/apple/dafb.cpp:915-933` —
   with no wait state, no beam dependency and no comment claiming otherwise.
   Neither the Guide nor our own notes carry a bandwidth figure for these
   boards, and no guest symptom has ever been attributed to it.
@@ -171,7 +172,7 @@ caught it.
   `$0E`/`$1B`/`$02`, i.e. `3986400 × 2² × 27 / 14` = **30.752 MHz**, so
   640×480 refreshes at **67.80 Hz** instead of the 69.08 Hz the frozen
   31.3344 MHz produced.
-  Two honest notes. MAME's guard at `valkyrie.cpp:566` is a **typo** —
+  Two honest notes. MAME's guard at `src/mame/apple/valkyrie.cpp:566` is a **typo** —
   `(m_P = 98)`, an assignment — so it fires on `M == N == 0` alone and
   clobbers `P`; we implement its *effect* (`M == 0` is a divide by zero
   anyway) without corrupting a register. And the result still lands
@@ -420,9 +421,11 @@ it from P_TIME0/1). Gated four ways, and the gates bite: reinstating the
 canonical re-lay fails exactly the four medium checks and nothing else.
 
 *Closed by step 6 — the `Iwm` cell engine.* The read path is MAME's
-`sync()` MODE_READ machine (`iwm.cpp:398-455`) over `nextFluxAfter`: window
+`sync()` MODE_READ machine (`src/devices/machine/iwm.cpp:398-455`) over
+`nextFluxAfter`: window
 state machine, re-centred by every transition, byte framed when the
-shifter's MSB goes high; the window tables are `iwm.cpp:334-366`, counted
+shifter's MSB goes high; the window tables are
+`src/devices/machine/iwm.cpp:334-366`, counted
 in **the chip's own clock** — which is not the clock the machine ticks the
 chip in, and on exactly one machine those differ. C7M is the **Plus** alone:
 MAME's `macse` replaces its IWM with `IWM(config.replace(), m_iwm, C7M*2)`
@@ -469,7 +472,8 @@ denibble rule, and still gated by `gcr_test`.
   is also the only thing that would make the difference observable.
 - ~~**`Swim1`'s ISM shifter is still the SWIM2 one**~~ — **CLOSED
   2026-08-14 (step 4b), hours after 4a made it portable.** The ISM read
-  path is MAME's real engine now (`swim1.cpp:885-1233` verbatim): LS-pair
+  path is MAME's real engine now
+  (`src/devices/machine/swim1.cpp:885-1233` verbatim): LS-pair
   gap classification on inter-transition half-cycle times against
   cumulative parameter-RAM thresholds, marginal-pair resolution, the
   Correction State Machine (64 minimum cells calibrate a per-pair-side u8
@@ -509,7 +513,8 @@ denibble rule, and still gated by `gcr_test`.
 
 *Closed 2026-08-02*: **`Swim1`'s DAT1BYTE line is wired.** It was listed
 here as "not wired (the LC II polls the FIFO)", which was true of the LC II
-and false of every IOP machine: `swim1.cpp:1226` asserts it while the 2-deep
+and false of every IOP machine: `src/devices/machine/swim1.cpp:1226` asserts
+it while the 2-deep
 ISM FIFO has room (write) or holds data (read), and it is what lets an
 Apple PIC move a sector without its 65C02 polling per byte. The two
 consumers do **not** wire it the same way — the Quadra 900/950 feed BOTH DMA
@@ -1079,7 +1084,8 @@ independent timer in `Q605Memory::tick` like MAME IOSB's `6015_timer` (it does
 **not** depend on DAFB CRTC state); extended monitor sense matches; the MEMCjr
 holding protocol lives in `Q605Memory` exactly where MAME's `djmemc.cpp` puts
 it. All three DAFB clock generators are modelled since 2026-07-27 (ctor variant
-`Dafb::Clockgen`): Gazelle on MEMCjr (`dafb.cpp:1322`), DP8534 on djMEMC
+`Dafb::Clockgen`): Gazelle on MEMCjr (`src/mame/apple/dafb.cpp:1322`),
+DP8534 on djMEMC
 (`:1197`), DP8531 on the Q700's discrete DAFB (`:884`) — one decoder for all
 three silently froze the djMEMC pclk at the 31.3344 MHz reset value and fed the
 Q700 garbage. Trace with `POM68K_DAFB_CLOCK_TRACE=1`.

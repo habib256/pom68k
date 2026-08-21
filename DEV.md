@@ -558,7 +558,7 @@ layout the Centris/Q800 share. ROM `$420DBFF3`; VIA1 PA reads `$C1`
 (diagnostic disabled — the IIci lesson); 2 MB VRAM; no machine-ID longword.
 
 - **SCSI hangs off DAFB, not IOSB.** DAFB register `$24` latches four
-  wait-state selections (`dafb.cpp:480-530`) and reads back the **live DRQ
+  wait-state selections (`src/mame/apple/dafb.cpp:480-530`) and reads back the **live DRQ
   in bit 9**; registers at `+$0F000`, pseudo-DMA at `+$0F100` with the
   bit-18 waitstated alias. This is the cell `docs/LLE_VS_HLE.md` §3 had
   parked as "only matters for a future Q700/Q950-class profile".
@@ -744,7 +744,7 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
   the RESUME path, STOPs at `$FE0D` waiting for a wake event, and never
   releases the 68030 — which is why the persist leg's reboot used to fail
   with zero SCSI commands behind it. Same rule `loadPram` already followed,
-  same reason (`m68hc05pge.cpp:959`).
+  same reason (`src/devices/cpu/m6805/m68hc05pge.cpp:959`).
 - The PG&E core is a **separate interpreter clone** of `M68hc05`, not a
   subclass: same M6805 opcodes, but different address width (16 vs 13 bits),
   stack window, vector table, memory map and every peripheral — and the E1's
@@ -799,7 +799,7 @@ implementation actually depends on, several found the hard way with
   when the spindle restarts mid-revolution, because the counter follows
   pulses, not elapsed time.
 - **GCR read is a CELL engine** since 2026-08-14 (flux plan step 6): MAME's
-  `iwm.cpp:398-455` window state machine over `SonyDrive`'s flux store,
+  `src/devices/machine/iwm.cpp:398-455` window state machine over `SonyDrive`'s flux store,
   re-centring on every transition, framing a byte on the shifter's MSB.
   It replaced a fixed one-nibble-per-128-CPU-cycles cadence, and the
   cadence is no longer uniform — a data nibble costs eight cell times, a

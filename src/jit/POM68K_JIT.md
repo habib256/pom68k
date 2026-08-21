@@ -2,8 +2,9 @@
 
 A **second execution engine**, living beside the Moira interpreter and never
 in front of it. It is the default on the fully proved 68040 family **and,
-since 2026-08-18, on the 68030 one** (where `auto` resolves to `threaded`),
-and remains opt-in on the 68000/68020 guests. The **CPU** menu switches it live;
+since 2026-08-18, on the 68030 one** (`auto` selects native a64 on AArch64
+and `threaded` on x86-64), and remains opt-in on the 68000/68020 guests. The
+**CPU** menu switches it live;
 `POM68K_CPU_ENGINE=interp|jit` overrides the family policy. The interpreter
 remains what every accuracy claim in this project rests on and has its own
 explicit etalon registrations.
@@ -47,6 +48,11 @@ selects it on AArch64. Release/native/LTO measures
 (3.73x, identical fingerprint); LLVM PGO measures 1.01 s against 3.41 s.
 The complete Finder gate is 9.19 s native against 21.14 s threaded (2.30x),
 or 7.86 s against 15.28 s under PGO (1.94x).
+The current non-LTO Apple-M4 reference (2026-08-21) runs the fixed
+3,000-frame Q605 budget in a median **3.47 s**, or **14.40x real time**, after
+the global exact A64 store guard, generated-loop compaction and exact-read /
+opcode-coverage pass described in § 10; the pre-change median was 5.32 s
+(9.40x).
 All are bit-exact against the interpreter — registers,
 supervisor stacks, cycle clock and the low 2 KB of guest RAM, compared at
 every instruction boundary.
@@ -58,11 +64,11 @@ Macintosh LC's 68020 flavour of `Cpu030`), `Cpu020` (the Mac II family,
 68020 or 68030 depending on `is030`) and `Cpu68k` (the compacts). Each
 passes its `GuestFamily` bit to the `jit::Engine` constructor — grep
 `jit::kGuest` in `src/*.cpp` for the roster. The last four wrappers landed
-on 2026-08-06. **Both code generators** are narrower **for `auto`**: their
-`guestFamilies` correctness mask carries 040+030 (both 030 lockstep gates
-hold it), but their `autoFamilies` speed mask carries the 68040 only, so
-`auto` never hands them anything else (`JitBackendX64.cpp:3257`/`:3268`,
-`JitBackendA64.cpp:2455`/`:2464`; § 7).
+on 2026-08-06. Both code generators declare 040+030 correctness through
+`guestFamilies`. Their narrower `autoFamilies` speed policy is per backend:
+x64 carries the 68040 only, while AArch64 carries 040+030 with the measured
+68030 profitability score of 64. Thus `auto` gives a 68030 native code on
+AArch64 and the portable `threaded` backend on x86-64 (§ 7).
 
 **And what each is worth.** The engine being wired is not the same as the
 engine being worth switching on. Ranked by measured gain (§ 3.4):
@@ -70,7 +76,7 @@ engine being worth switching on. Ranked by measured gain (§ 3.4):
 | Guest | Machines | Window buys | Because |
 |---|---|---|---|
 | 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | **×5.0** on a fixed budget (x64, § 3.4); ×2.68 end to end on `q605_boot_etalon` (2026-07-31, § 3.4) | an ATC walk per fetch, replaced by a bounds check |
-| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** (LC II, fixed budget, threaded — no native 030 generator ships) | same, through `mmuFetchWord` |
+| 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** portable baseline (LC II, fixed budget, threaded); AArch64 `auto` now uses the separately gated native generator | same fetch win, plus native replay on AArch64 |
 | 68020 | Macintosh LC, **Mac II** | ×1.0-1.2 | no MMU to skip — only the map decode |
 | 68000 | **Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
 
@@ -351,12 +357,19 @@ The C.5 flip is written (2026-08-19) as the per-backend
 `caps().autoFamilies` speed declaration, separate from the `guestFamilies`
 correctness one — and **blocked**: its first `-L m030` run found the four
 IIsi gates in SIGSEGV under the generator (JIT_BRINGUP § C.4septies,
-parked with reproducer), so D.1 condition 4 is red and `auto` keeps
-resolving an 030 to `threaded` until that fix. An AArch64 host stays on
-`threaded` for 030 under `auto`: the a64 generator now has the same
-charge-on-success contract and a real-frame lockstep gate, but its post-port
-6 000-frame ABBA is a statistical tie (`threaded` 20.18 s, a64 20.11 s,
-−0.3 % inside a 3.0 % noise floor), so its `autoFamilies` remains 68040-only.
+parked with reproducer), so D.1 condition 4 is red and x86-64 `auto` keeps
+resolving an 030 to `threaded` until that fix. The first post-port AArch64
+ABBA was only a statistical tie (`threaded` 20.18 s, a64 20.11 s, −0.3 %
+inside a 3.0 % noise floor), so it was correctly not promoted then. On
+2026-08-20 the native-state hardening retained i-cache/retirement counters
+across linked blocks and applied the measured cold-code score of 64; the
+6,000-frame fixed-budget comparison, long lockstep and native LLE platform
+gates then cleared the independent AArch64 admission. Its `autoFamilies`
+therefore carries 040+030; the x64 mask remains 040-only. Re-measured after
+the current generated-loop compaction: three same-process ABBA repetitions
+give `threaded` **19.93 s** median (19.85–19.94) and a64 **18.88 s**
+(18.82–18.89), **−5.3 %** with 0.4/0.3 % arm spreads and fingerprint
+`cfb184b6faddabec` unchanged — clear of the 3.0 % host floor.
 
 The human fixed-cycle report also prints backend `compile()` attempts,
 refusals, total host time and mean time per attempt. This separates a hotness
@@ -469,7 +482,11 @@ Two changes, both conformant:
   pays for sharing a page with it. Backends declare
   `BackendCaps::dtlbCodeMask` before they are handed such an entry — a
   backend that stores without testing the mask would bypass the guard, so
-  the default is the old whole-page refusal.
+  the default is the old whole-page refusal. Since 2026-08-20 the AArch64
+  backend uses register-preserving `CBZ/CBNZ` fixups for **every** emitted
+  store: a zero mask stays direct, while a real slice collision still takes
+  the exact memory map and precise invalidation path. The former opcode-local
+  `B592` exception and its bring-up knob no longer exist.
 * **`markPages()` now flushes the data TLB**, which § 8's invalidation table
   has claimed it did since that table was written. It did not: only the
   1 → 0 direction in `serviceGuard()` ever flushed. A write entry filled for
@@ -841,7 +858,6 @@ process environment. Later environment changes affect only future engines.
 | `POM68K_JIT_A64_PACING` | `1` | AArch64 inline peripheral deadline/batch test; `0` calls `sync(cycles)` after every emitted instruction for attribution |
 | `POM68K_Q605_EVENT_SCC` | `1` | Q605 carries serialized SCC time debt to its exact event/MMIO boundary; `0` restores per-`tick` stepping for A/B attribution |
 | `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
-| `POM68K_JIT_A64_STORE_GUARD_OPCODE` | `0xB592` | AArch64 bring-up only: the opcode whose store-guard fallback is removed opcode-locally, parsed `strtoul` base 0 and refused above `0xFFFF` (`JitConfig.h:152-157`) |
 | `POM68K_JIT_ICACHE_EMIT` | `1` | ATTRIBUTION knob for the emitted 68030 i-cache charge (`docs/JIT_BRINGUP.md` § B). Off, an 030 block charges the instruction cost alone, so a residual divergence provably belongs to something else. Only a bring-up measurement should turn it off |
 | `POM68K_JIT_MAX_BLOCKS` | `65536` | blocks kept before the engine STOPS RECORDING (it does not flush — a flush is what a code generator cannot afford) |
 | `POM68K_DATA_WINDOW` | `0` | the INTERPRETER's data window (§ 8) — opt-in since the ATC-exactness capping made it a net loss (`JitConfig.h:150`, the door at `JitEngine.cpp:90-104`) |
@@ -954,10 +970,11 @@ until that lowering has its own proof.
 
 ## 7. The x86-64 backend (J2)
 
-> **Scope: correctness declared for 040+030, `auto` served for 040 only**
-> (`caps().guestFamilies = kGuest68040 | kGuest68030` since 2026-08-18,
-> `caps().autoFamilies = kGuest68040` — `JitBackendX64.cpp:3257`/`:3268`,
-> and the same pair in `JitBackendA64.cpp:2455`/`:2464`).
+> **Scope: correctness declared for 040+030; automatic speed scope is
+> backend-specific.** x64 serves 040 automatically and keeps 030 on
+> `threaded`; AArch64 serves both 040 and 030 after its independent
+> 2026-08-20 promotion. Both expose 040+030 through `guestFamilies` for an
+> explicit backend request.
 > Everything below is written against the 040's instruction-boundary
 > contract, and the differences from the 68030 are semantic, not cosmetic:
 > `(An)+` updates the register *before* the access on an 030 and *after* it
@@ -976,12 +993,11 @@ until that lowering has its own proof.
 > `BTST`/`TST` + branch), eight blocks compiled and then nothing at all,
 > while the same machine boots in **2 min 21 s** on `threaded`. Selection
 > now tests guest validity before host usability ranking (`JitBackend.h`
-> § *GuestFamily*), so `auto` lands on `threaded` for the 68000/020/030
-> machines and on a code generator where one has EARNED the family — the
-> `caps().autoFamilies` speed declaration: the 68040 today (x64 on
-> x86-64, a64 on Apple Silicon and other AArch64 hosts). The 68030-on-x64
-> promotion is written and blocked on the IIsi segfault (JIT_BRINGUP
-> § C.4septies).
+> § *GuestFamily*), so `auto` lands on a code generator only where it has
+> EARNED that family. The `caps().autoFamilies` speed declaration is 68040
+> on x64 and 68040+68030 on AArch64; other JIT families reach `threaded`.
+> The 68030-on-x64 promotion is written and blocked on the IIsi segfault
+> (JIT_BRINGUP § C.4septies).
 >
 > **The 68k seam below the backends is no longer 040-only, and the scope
 > box is now the only thing holding the line.** `pomJitProbeData` grew an
@@ -1006,9 +1022,11 @@ a JIT frame reaches `std::terminate`, not a handler. Every call out of
 generated code therefore goes to a `noexcept` thunk that reports failure as
 a return value, and every failure is taken at an instruction boundary with
 NOTHING committed — the interpreter then re-runs that instruction and faults
-exactly as it always did. This is also why an instruction with two guest
-accesses may not use the access thunk for either of them: a bail-out on the
-second would re-run the first, and an I/O read is not repeatable.
+exactly as it always did. A multi-access instruction generally cannot use an
+access thunk: a bail-out on the second access would re-run the first, and an
+I/O read is not repeatable. The one proved exception is A64/040 two-EA MOVE:
+it preflights the destination before consuming an exact source, so no later
+refusal remains (§ 10, 2026-08-21).
 
 **Guest registers stay in memory.** The 68k leaves the upper bits of a
 destination alone on byte and word operations; x86's 8- and 16-bit forms
@@ -1053,13 +1071,14 @@ to a cold stub that runs that one instruction through Moira and rejoins the
 compiled stream. A block whose native coverage falls below half is refused
 outright: it would be the same interpreter work plus a call and a frame.
 
-**The two generators are not the same set, and neither is a superset.**
-x64 has `Scc` and `PEA`; a64 (`canEmitReg()`, `JitBackendA64.cpp:563`) has
-the immediate line-$E shifts and rotates (no `ROX` yet), the register
-bitfield forms, brief-indexed `d8(An,Xn)` and `d8(PC,Xn)`, and
-`MOVE SR,Dn` — and has neither `Scc` nor `PEA`. `jit_backend_test` asserts
-the divergences explicitly (`0x40C0` and `0x0130` are keyed to the active
-backend's name), so closing one is a gate edit as well as an emitter.
+**Backend admission remains explicit even where the sets have converged.**
+A64 adds immediate line-$E shifts and rotates (no `ROX` yet), register
+bitfields, brief-indexed `d8(An,Xn)` / `d8(PC,Xn)`, `MOVE SR,Dn`, all three
+`EXG` forms and `CMPM` with distinct address registers; it now also emits
+`Scc` and `PEA`, which were formerly x64-only. Each backend's
+`canEmit()` remains the source of truth, and `jit_backend_test` pins the
+remaining keyed differences (`MOVE SR,Dn` and brief-indexed `BTST`) so a
+coverage change is also a gate change.
 
 ### What it is worth
 
@@ -1077,12 +1096,16 @@ changes, in order of size:
    three names, ~5 % of idle-Finder instructions, −3.0 % / −1.7 % on the
    two regimes, boot etalon 25.6 → 24.7 s.
 
-**Coverage.** 98.5 % native on the 3 000-frame Q605 budget after § 3.5's
-work (was 89.6 % in the 2026-07-30 census, 96.2 % before the two cost-table
-fixes). The residual 0.4 % of retired instructions is enumerated in § 3.5
-along with the reason two of its items are OPEN rather than dropped.
-Re-measure with `POM68K_JIT_HISTO=1` before quoting any of these; a census
-taken over an idle Finder cannot price the indexed modes.
+**Coverage.** **99.5 % native** on the current 3 000-frame Q605 budget
+(2026-08-21), after exact sole reads, preflight-before-exact two-EA MOVE and
+the CMPA/ADDQ/EXG/CMPM coverage pass; production block fallback is 813,478
+instructions, or 0.1 % (3,648,316 / 0.6 % after the preceding global store-
+guard correction, and 30,788,039 / 4.7 % immediately before it). The earlier
+§ 3.5 phase raised the share from 96.2 % to 98.5 %; the 2026-07-30 census
+began at 89.6 %. The remaining static/runtime
+classes are still enumerated in § 3.5 and § 3.5bis. Re-measure with
+`POM68K_JIT_HISTO=1` before quoting any of these; a census taken over an idle
+Finder cannot price the indexed modes.
 
 **The next lever is not code density.** The binding cost at the idle Finder
 is the exactness contract itself (§ 3.3: one window death per ~15
@@ -1139,8 +1162,11 @@ are the safety argument for the whole path:
   to go through the memory map, so the write guard sees it. It was a
   refusal of the whole 4 KB page (`codePage_`) until 2026-08-10, when
   `PomJitDtlbEntry::codeMask` made it per-slice — § 3.5 has the numbers and
-  `BackendCaps::dtlbCodeMask` the safety declaration. A backend that has not
-  opted in still gets the whole-page refusal;
+  `BackendCaps::dtlbCodeMask` the safety declaration. A64 tests the actual
+  `codeMask` and slice-intersection registers with exact one-instruction
+  branches on every store; `jit_store_guard_a64_test` proves both zero-mask
+  direct RAM and true-mask self-modification. A backend that has not opted in
+  still gets the whole-page refusal;
 * **MMU pages smaller than 4 KB.** An entry maps one 4 KB slice, so a page
   wider than that fills as independent slices (translation preserves the
   in-page offset and pages are size-aligned), but a page *narrower* would
@@ -1324,6 +1350,54 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
 
 ## 10. Journal
 
+* **2026-08-21 — exact reads and the last inexpensive A64 fallbacks.** A sole
+  040 read whose traced cost includes a live bus/device delay now calls the
+  exact read seam and charges only the fixed opcode component. A two-EA MOVE
+  proves its RAM destination before performing an exact, possibly FIFO-like
+  source read, so no destination miss can duplicate that source side effect.
+  The token is deliberately 040-only: its first 030 widening shifted two
+  retained-cache fetches; after confinement, two complete 120,000-boundary
+  LC II locksteps agree on 1,028,955,568 fetches and all CPU/device state.
+  Corrected CMPA timing (+2 cycles), word-encoded ADDQ/SUBQ address-register
+  decoding, native EXG and preflighted distinct-register CMPM remove the
+  remaining cheap static fallbacks. The already-proved peripheral deadline
+  comparison now calls a
+  wrapper's due handler directly instead of re-entering virtual `sync(0)` and
+  repeating the test. Five Q605 runs give **3.47 s / 14.40x** median, **99.5 %
+  native** and **813,478** production fallbacks, with fingerprint
+  `778dd7ad558108fd`, 649,372,093 retired instructions, SCSI=1324 and PC
+  `$0002528A` unchanged. The instrumented census contains 569,763 static and
+  259,489 guarded fallbacks; full-format 68020 indexing and real code-mask
+  collisions are now the leading intentionally precise residues. A
+  five-million-boundary Q605 hidden-state lockstep retires 666,374,221 JIT
+  instructions identically. The Apple-M4 regression floor moves from 11.90x
+  to 12.50x, 12.8 % below the slowest measured run.
+* **2026-08-20 — the A64 store guard becomes exact globally.** The fallback
+  census showed that a reserved-register `CBZ/CBNZ` fixup was testing w9
+  instead of the requested w12/w10, accounting for 27.4 M false runtime
+  fallbacks on the fixed Q605 workload. General fixups now preserve the
+  requested register for every store and for the 040 cache-valid test. The
+  generated loop also keeps `clockTarget` and the exact peripheral deadline
+  in callee-saved registers (refreshing after every helper that can advance
+  devices). Execution flags stay cached between helpers; the redundant IPL
+  re-sample is proved unnecessary when those flags are clear; IRD/IRC use one
+  packed store; N/Z and subtract-borrow are branchless; and the backend keeps
+  its stable call-frame pointers across native-chain exits. `UBFX` now fuses
+  the masks and shifts in DTLB/cache probes, sized results, bit operations and
+  dynamic links. Five repeated 3,000-frame runs moved the median from **5.32
+  to 3.61 s** (**−32.1 %, 1.47x faster**), native share **94.6 → 98.8 %**,
+  block fallback **30,788,039 → 3,648,316**, and real-time throughput
+  **9.40x → 13.84x**.
+  Fingerprint `778dd7ad558108fd`, 649,372,093 retired instructions, SCSI=1324
+  and PC `$0002528A` are unchanged. The historical opcode selector is removed.
+  A long-run profile then exposed a separate lifetime failure: the 128 MiB
+  bump allocator filled, but `CompileReject::CodeMemory` permanently rejected
+  every later block although its own comment promised an engine flush. A
+  distinct retryable `CodeCapacity` result now retracts all links and recycles
+  a 64 MiB generation; real 500-second guest sessions stay at **92.0 % native**
+  instead of falling to 51.7 %, and improve **161.47 → 90.82 s** wall
+  (**3.10x → 5.51x real time**), with fingerprint `a4e51291f19de25d` and
+  7,713,895,325 retired instructions unchanged.
 * **2026-08-12 — `MOVE SR,Dn` stops ending a block.** Privileged on a
   68010+, so a successful trace is supervisor mode by construction, and it
   changes no mapping (§ 4). 2.33 % of a 10k census stream on the LC II;

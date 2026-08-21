@@ -119,6 +119,23 @@ int main() {
                               jit::MemoryOperand::Source, 4, 7, 0).valid(),
               "an IR access slot cannot be consumed twice");
 
+        jit::MemoryProofOptions exact040;
+        exact040.exactReads = true;
+        exact040.preflightedExactSource = true;
+        const auto exactMove040 = jit::describeMemory(0x12D0, false);
+        const auto exactMove040Proof =
+            jit::memoryProofPlan(exactMove040, exact040);
+        check(exactMove040Proof.protocol ==
+                  jit::MemoryProofProtocol::PreflightAll &&
+              exactMove040Proof.preflightMask == 3 &&
+              exactMove040Proof.exactThunkMask == 1,
+              "040 MOVE may read an exact source after proving its destination");
+        auto exact030 = exact040;
+        exact030.preflightedExactSource = false;
+        const auto exactMove030 = jit::describeMemory(0x12D0, true);
+        check(jit::memoryProofPlan(exactMove030, exact030).exactThunkMask == 0,
+              "030 two-EA MOVE keeps the retained-cache direct-preflight proof");
+
         const auto rmw = jit::describeMemory(0xB592, false); // EOR.L D2,(A2)
         const auto rmwProof = jit::memoryProofPlan(rmw, cache);
         check(rmw.count == 2 && rmw.order == jit::MemoryOrder::ReadModifyWrite,
@@ -194,6 +211,25 @@ int main() {
         check(eor.operation == jit::SemanticOp::AluRegToEa &&
               eor.alu == jit::AluOperation::Eor && eor.bytes() == 4,
               "IR distinguishes register-to-EA EOR from CMP encoding overlap");
+        const auto exg = jit::describeInstruction(0xCD4F); // EXG A6,A7
+        check(exg.operation == jit::SemanticOp::Exchange && exg.action == 1 &&
+              exg.registerIndex == 6 && exg.eaReg == 7,
+              "IR distinguishes EXG address registers from AND/MUL encodings");
+        const auto cmpm = jit::describeInstruction(0xB308); // CMPM.B (A0)+,(A1)+
+        check(cmpm.operation == jit::SemanticOp::CompareMemory &&
+              cmpm.sizeIndex == 0 && cmpm.eaReg == 0 &&
+              cmpm.destinationReg == 1,
+              "IR distinguishes CMPM's two postincrement memory operands");
+        const auto cmpmMemory = jit::describeMemory(0xB308, false);
+        check(cmpmMemory.count == 2 &&
+              cmpmMemory.order == jit::MemoryOrder::SourceThenDestination &&
+              cmpmMemory.access[0].direction == jit::MemoryDirection::Read &&
+              cmpmMemory.access[0].operand == jit::MemoryOperand::Source &&
+              cmpmMemory.access[1].direction == jit::MemoryDirection::Read &&
+              cmpmMemory.access[1].operand == jit::MemoryOperand::Destination &&
+              jit::memoryProofPlan(cmpmMemory, cache).protocol ==
+                  jit::MemoryProofProtocol::PreflightAll,
+              "CMPM requires both reads to be preflighted before access zero");
         const auto move = jit::describeInstruction(0x2ADC);
         check(move.operation == jit::SemanticOp::Move && move.bytes() == 4 &&
               move.eaMode == 3 && move.eaReg == 4 &&
@@ -693,11 +729,16 @@ int main() {
         check(!b->canEmit(0xF200), "F-line is never native");
         check(b->canEmit(0x0130) == a64,
               "BTST Dn,d8(A0,Xn) follows active generator coverage");
+        check(b->canEmit(0xCD4F) == a64,
+              "EXG A6,A7 follows AArch64 native coverage");
         check(!b->canEmit(0x0108), "MOVEP is not BTST");
         check(!b->canEmit(0x81C0), "DIVU is not an ALU direction");
         check(!b->canEmit(0xC1C0), "MULS is not an ALU direction");
         check(!b->canEmit(0xC101), "ABCD is not OR-to-ea");
-        check(!b->canEmit(0xB108), "CMPM is not EOR-to-ea");
+        check(b->canEmit(0xB308) == a64,
+              "CMPM follows AArch64 native coverage, never EOR-to-ea");
+        check(!b->canEmit(0xB108),
+              "same-register CMPM keeps its dependent second EA in Moira");
     }
 
     std::printf("[jit_backend] block classifier\n");

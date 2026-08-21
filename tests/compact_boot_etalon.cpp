@@ -84,7 +84,10 @@ int main() {
         return double(black) / (512.0 * (y1 - y0));
     };
     double menuBar = blackRatio(2, 16);      // mostly white + glyph pixels
-    double desktop = blackRatio(120, 240);   // 50 % gray dither
+    // Disk605 opens its "System Tools" window over y=29..208.  Sample the
+    // unobscured desktop below it (and above the Trash icon), rather than
+    // treating the window's white contents as failed desktop rendering.
+    double desktop = blackRatio(240, 270);   // 50 % gray desktop dither
     std::printf("%s: menu bar black %.2f (want <0.30), desktop %.2f (want ~0.50), track %d\n",
                 name, menuBar, desktop, mem.internalDrive().currentTrack());
     if (menuBar > 0.30 || menuBar < 0.01) {

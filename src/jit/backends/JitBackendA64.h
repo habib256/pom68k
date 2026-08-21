@@ -6,8 +6,8 @@
 
 namespace jit {
 
-// Native AArch64 generator for the 68040 family. This is the automatic
-// backend on arm64 hosts; `threaded` remains the portable fallback.
+// Native AArch64 generator for the 68040 and 68030 families. This is their
+// automatic backend on arm64 hosts; `threaded` remains the portable fallback.
 Backend* a64Backend();
 
 }  // namespace jit

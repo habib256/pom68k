@@ -3389,7 +3389,7 @@ CompileResult X64Backend::compile(const BlockIr& ir, const Context& ctx) {
 
     if (!buf_.makeWritable()) return {nullptr, CompileReject::CodeMemory};
     uint8_t* dst = buf_.alloc(a.size(), 16);
-    if (!dst) return {nullptr, CompileReject::CodeMemory}; // full: engine flushes
+    if (!dst) return {nullptr, CompileReject::CodeCapacity}; // engine recycles
     // Every branch the block contains is internal and rel32-encoded, and
     // the only absolute addresses baked in are the thunks', so the finished
     // bytes are position independent and a plain copy is a valid move.

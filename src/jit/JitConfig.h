@@ -83,10 +83,9 @@ struct ResolvedConfig {
     int armBackoff = 32;
     bool dataWindow = false;
 
-    // A64 bring-up controls are captured here too: a backend must never
-    // retain a private getenv-based policy surface.
+    // A64 pacing control is captured here too: a backend must never retain
+    // a private getenv-based policy surface.
     bool a64Pacing = true;
-    uint16_t a64StoreGuardOpcode = 0xB592;
 
     void applyBackendDefaults(bool nativeCode) {
         if (!blockCacheExplicit) blockCache = nativeCode;
@@ -153,12 +152,6 @@ inline ResolvedConfig resolveConfig() {
     c.armBackoff = detail::envInt("POM68K_JIT_ARM_BACKOFF", 32, 0, 4096);
     c.dataWindow = detail::envBool("POM68K_DATA_WINDOW", false);
     c.a64Pacing = detail::envBool("POM68K_JIT_A64_PACING", true);
-    if (const char* value = detail::env("POM68K_JIT_A64_STORE_GUARD_OPCODE")) {
-        char* end = nullptr;
-        const unsigned long opcode = std::strtoul(value, &end, 0);
-        if (end != value && *end == '\0' && opcode <= 0xFFFFu)
-            c.a64StoreGuardOpcode = uint16_t(opcode);
-    }
     return c;
 }
 
@@ -422,18 +415,6 @@ inline int armBackoffSteps() {
 inline bool a64PacingEnabled() {
     return detail::activeConfig ? detail::activeConfig->a64Pacing :
         detail::envBool("POM68K_JIT_A64_PACING", true);
-}
-
-inline uint16_t a64StoreGuardOpcode() {
-    if (detail::activeConfig) return detail::activeConfig->a64StoreGuardOpcode;
-    uint16_t opcode = 0xB592;
-    if (const char* value = detail::env("POM68K_JIT_A64_STORE_GUARD_OPCODE")) {
-        char* end = nullptr;
-        const unsigned long parsed = std::strtoul(value, &end, 0);
-        if (end != value && *end == '\0' && parsed <= 0xFFFFu)
-            opcode = uint16_t(parsed);
-    }
-    return opcode;
 }
 
 }  // namespace jit

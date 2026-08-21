@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 254 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 256 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -95,9 +95,11 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **how exact reads, direct LLE deadlines and four opcode families brought A64 to 99.5 % native** → [2026-08-21 — A64 exact-read and opcode tail](#2026-08-21-a64-exact-read-tail)
+- **why the AArch64 zero-mask store guard is now globally exact, and what it saves** → [2026-08-20 — The A64 store guard becomes exact globally](#2026-08-20-a64-global-store-guard)
 - **why A64 and x64 no longer decide separately what a guest opcode means** → [2026-08-17 — A64 and x64 stop decoding semantics behind the IR](#2026-08-17-jit-ir-semantics)
 - **how a native copyback store proves write permission, dirty publication and the 040 last-write/restart dichotomy** → [2026-08-16 (third) — JIT copyback writes cross the native boundary](#2026-08-16-jit-copyback-write)
-- **why only AArch64 `B592` may bypass the conservative zero-mask store fallback** → [2026-08-12 — One opcode clears the store guard](#2026-08-12-a64-b592-store)
+- **why only AArch64 `B592` could bypass the conservative zero-mask store fallback at the time** → [2026-08-12 — One opcode clears the store guard](#2026-08-12-a64-b592-store)
 - **why the conformant 68040 JIT became the product default, and how the interpreter stayed a tested oracle** → [2026-08-10 (eighth) — The fastest conformant engine becomes the 68040 default](#2026-08-10-jit-040-default)
 - **what a successful 68030 `(An)+` write exposes before CPU state diverges** → [2026-08-10 (seventh) — The successful postincrement oracle](#2026-08-10-jit-030-pi-success)
 - **the 68030 tracer separates base / i-cache / post-exception cost** → [2026-08-10 (fourth) — The trace cost stops being a guess](#2026-08-10-jit-030-trace-cost)
@@ -308,6 +310,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-21** — [A64 exact reads and the opcode tail: 99.5 % native, with both LLE locksteps intact](#2026-08-21-a64-exact-read-tail)
+- **2026-08-20** — [The A64 store guard becomes exact globally: 32 % less wall time, and long sessions no longer exhaust native code](#2026-08-20-a64-global-store-guard)
 - **2026-08-19 (fourth)** — [A doc/code consistency pass, and the half of it that is now a gate](#2026-08-19-doc-code-consistency)
 - **2026-08-19 (third)** — [The C.5 flip is written, and its first tier run stopped it: the IIsi dies under the generator — code the `jit_*` 030 gates never ran](#2026-08-19-c5-blocked-iisi)
 - **2026-08-19 (second)** — [A full-parallel LTO make froze the host: with LTO the memory spike is the LINK, and an interrupted make leaves binaries that lie](#2026-08-19-make-lto-freeze)
@@ -564,6 +568,139 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-21-a64-exact-read-tail"></a>
+## 2026-08-21 — A64 exact reads and the opcode tail: 99.5 % native, with both LLE locksteps intact
+
+The next Q605 census showed that most remaining A64 fallbacks were no longer
+unsupported arithmetic. They were sole memory reads whose trace included a
+live bus/device delay, plus one especially hot two-EA `MOVE.B (A1),(A2)+`.
+A sole 040 read may now use Moira's exact data seam for that variable part and
+leave only the fixed opcode cycles to generated code. For a memory-to-memory
+MOVE, the destination is translated and proved writable **before** an exact
+source is read; a FIFO/MMIO source can therefore never be consumed twice by a
+later destination miss. An asset-free fake device varies its delay and counts
+every read while the interpreter and native CPU compare registers, CCR,
+queue, clock and the complete RAM image.
+
+That two-access token has an important family boundary. Its first version
+also reached the 68030 and the retained-cache lockstep caught a two-fetch
+shift at comparison 20,770. The direct-preflight 030 path was already sound;
+only the new exact token was too broad. Restricting it to the 040 restores the
+full 120,000-comparison LC II run: 1,028,955,568 fetches, 731,919,464 hits and
+297,031,937 misses agree, as do CPU and device state. Distinct-register
+`CMPM`, `EXG`, corrected
+`CMPA` timing (+2 cycles), and word-encoded `ADDQ/SUBQ An` remain native on
+both families and pass that same run.
+
+The generated deadline path also stops re-entering virtual `sync(0)` after
+its inline comparison has already proved the event due. Each deadline-driven
+wrapper supplies a captureless due callback to its existing `flushTicks()`;
+the Q605 callback preserves the lockstep event hook. Helpers still republish
+clock, flags, deadline and 030 i-cache counters before native execution
+resumes, so the optimization removes duplicate administration rather than a
+timing edge.
+
+Five non-LTO Apple-M4 runs of the fixed 3,000-frame Q605 workload now give a
+**3.472 s** median for 50.00 s of guest time (**14.40x real time**), down from
+3.61 s in the preceding entry and 5.32 s before the two passes. All five
+retire 649,372,093 instructions at fingerprint `778dd7ad558108fd`, SCSI=1324
+and PC `$0002528A`. Native execution is **646,329,701 / 99.5 %**; production
+block fallback is **813,478 / 0.1 %**, down from 3,648,316. The instrumented
+census splits its 829,252 fallbacks into 569,763 unsupported and 259,489 real
+runtime guards. Full-format 68020 indexed EAs and genuine translated-code
+slice collisions now lead those residues; neither is weakened for a headline
+number. The measured Apple-M4 floor rises from 11.90x to **12.50x**, retaining
+12.8 % headroom below the slowest of the five runs.
+
+The strongest 040 check is green with hidden device state enabled:
+5,000,000 comparisons, 666,374,221 JIT instructions, ROM plus Mac OS 8.1
+disk, and identical CPU/peripheral state throughout. The asset-free native
+test retains zero slow instructions, including the varying exact source.
+
+<a id="2026-08-20-a64-global-store-guard"></a>
+## 2026-08-20 — The A64 store guard becomes exact globally: 32 % less wall time, and long sessions no longer exhaust native code
+
+The Q605 runtime census finally priced the historical AArch64 branch fixup:
+27.4 million of 28.3 million runtime fallbacks were not `codeMask`
+collisions. The compact `CBZ/CBNZ` assembler helpers accepted a register but
+their final fixup always encoded w9 (or x14), so the store guard tested the
+guest address rather than its w12 mask and w10 slice intersection. The same
+class of bug affected the 040 cache-line valid-byte test.
+
+General compact branches now preserve their requested register through
+fixup, and every emitted A64 store uses them. A zero `codeMask` therefore
+stays on the direct big-endian RAM path; an actual translated slice still
+takes Moira's exact memory path and precise `CodeGuard` invalidation. The
+opcode-local `B592` selector is gone. `jit_store_guard_a64_test` covers both
+a sole store and a read-modify-write store on the direct and self-modifying
+paths, while the instruction-boundary locksteps retain the complete CPU,
+queue, clock and memory oracle.
+
+The generated loop was compacted too, without coarsening time. The caller
+clock target stays in x20, the exact peripheral deadline/batch baseline stays
+in x19 and is refreshed after every helper that may advance a device, and
+execution-control flags stay in w22 between those helpers. With flags clear,
+`setIPL()` and the interpreter boundary prove that sampled IPL already equals
+the pin, so two idempotent instructions disappear from every native boundary.
+IRD/IRC commit in one packed store; N/Z and subtract-borrow use branchless
+`CSET`; and the backend retains stable call-frame pointers instead of
+rebuilding 184 bytes after every native-chain exit. `UBFX` fuses the
+shift/mask sequences in DTLB and cache probes, byte/word results, bit
+operations and dynamic link indexing. The scheduler still compares at every
+emitted instruction.
+
+Five repeated non-LTO Apple-M4 runs of the fixed 3,000-frame Q605 workload:
+
+| metric | before | after |
+|---|---:|---:|
+| wall median | 5.32 s | **3.61 s** (−32.1 %, 1.47x faster) |
+| real-time throughput | 9.40x | **13.84x** |
+| native instructions | 614,487,119 (94.6 %) | **641,511,373 (98.8 %)** |
+| block fallbacks | 30,788,039 (4.7 %) | **3,648,316 (0.6 %)** |
+| native block runs | about 7.63 M | **4,433,906** |
+
+Both sides retire 649,372,093 instructions and finish with fingerprint
+`778dd7ad558108fd`, SCSI=1324 and PC `$0002528A`. The Apple-M4 performance
+floor moves from 8.30x to 11.90x, retaining roughly 13 % headroom below the
+slowest new run. This supersedes the 2026-08-12 conclusion that only `B592`
+could safely use the exact zero-mask path; that entry remains the history of
+the evidence available then.
+
+**The short budget hid a lifetime cliff.** A sampled 30,000-frame run filled
+the 128 MiB non-compacting code buffer after 163,838 published blocks. The
+backend returned the same `CodeMemory` result for a full bump allocator and a
+permanent W^X failure; the engine treated both as permanent, rejected another
+735,484 attempts, and spent 45.6 % of the run in the window/interpreter. The
+x64 source comment already said “full: engine flushes”; that contract simply
+had no implementation.
+
+Capacity exhaustion is now its own retryable `CodeCapacity` result. At the
+safe engine boundary, every link is retracted before the backend rewinds its
+buffer; reserve and W^X failures remain permanent, so a host that cannot make
+code executable cannot enter a flush/retry loop. A measured 64 MiB generation
+halves executable memory with no resolved throughput loss versus 128 MiB;
+32 MiB recompiles too often, while precise hole reuse was measured slower
+because it retained a scattered cold working set.
+
+Same 30,000-frame workload, 500.00 seconds of guest time:
+
+| metric | exhausted cache | recycled generations |
+|---|---:|---:|
+| wall | 161.47 s | **90.82 s** (−43.7 %, 1.78x faster) |
+| real-time throughput | 3.10x | **5.51x** |
+| native instructions | 3,988,103,981 (51.7 %) | **7,095,927,622 (92.0 %)** |
+| window/interpreter | 3,518,347,830 (45.6 %) | **269,581,641 (3.5 %)** |
+| terminal capacity refusals | 735,484 | **75**, each followed by safe recycle |
+
+Both runs retire 7,713,895,325 instructions and finish at fingerprint
+`a4e51291f19de25d`, SCSI=5182 and PC `$000F651A`.
+
+The same compact generated loop also preserves the separately admitted
+68030 path. On the LC II 6,000-frame budget, three same-process ABBA
+repetitions measure a64 at **18.88 s** median against **19.93 s** for
+`threaded` (−5.3 %, 0.3/0.4 % arm spreads), with fingerprint
+`cfb184b6faddabec` unchanged.
 
 <a id="2026-08-19-doc-code-consistency"></a>
 ## 2026-08-19 (fourth) — A doc/code consistency pass, and the half of it that is now a gate

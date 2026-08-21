@@ -81,6 +81,8 @@ enum class SemanticOp : uint8_t {
     Complement,
     Extend,
     Swap,
+    Exchange,
+    CompareMemory,
     Lea,
     Pea,
     Movem,
@@ -296,6 +298,7 @@ enum class MemoryProofProtocol : uint8_t {
 struct MemoryProofOptions {
     bool exactReads = true;
     bool exactWrites = true;
+    bool preflightedExactSource = false;
     bool cacheReads = false;
     bool cacheWrites = false;
     bool cachePairs = false;
@@ -520,6 +523,31 @@ inline InstructionSemantics describeInstruction(uint16_t op) {
         return s;
     }
 
+    // CMPM has the same $Bxxx opcode space as CMP/EOR, but both operands
+    // are independently postincremented memory reads. Describe it before
+    // the generic ALU-family decoder so a backend cannot mistake its fixed
+    // mode bits for an address-register operand.
+    if (line == 0xB000 && (op & 0xF138) == 0xB108 &&
+        ((op >> 6) & 3) <= 2) {
+        set(SemanticOp::CompareMemory, uint8_t((op >> 6) & 3));
+        s.eaMode = 3;
+        s.eaReg = uint8_t(op & 7);
+        s.destinationMode = 3;
+        s.destinationReg = uint8_t((op >> 9) & 7);
+        return s;
+    }
+
+    if (line == 0xC000 &&
+        ((op & 0xF1F8) == 0xC140 || (op & 0xF1F8) == 0xC148 ||
+         (op & 0xF1F8) == 0xC188)) {
+        set(SemanticOp::Exchange, 2);
+        s.registerIndex = uint8_t((op >> 9) & 7);
+        s.eaReg = uint8_t(op & 7);
+        s.action = (op & 0x00F8) == 0x0048 ? 1
+                 : (op & 0x00F8) == 0x0088 ? 2 : 0;
+        return s;
+    }
+
     if (line == 0x8000 || line == 0x9000 || line == 0xB000 ||
         line == 0xC000 || line == 0xD000) {
         const int direction = memoryAluDirection(op);
@@ -647,6 +675,25 @@ inline MemoryContract describeMemory(uint16_t op, bool is030) {
         setSingle(memoryAccess(MemoryDirection::Read, MemoryOperand::Stack,
                                4, 2, reg, is030,
                                FaultPhase::RestartInstruction));
+        return c;
+    }
+
+    // CMPM reads the source (Ay)+ first and the destination (Ax)+ second.
+    // Both accesses are restart-phase reads. A native backend may therefore
+    // preflight both plain mappings before exposing either postincrement;
+    // device and faulting mappings still replay through the interpreter.
+    if (line == 0xB000 && (op & 0xF138) == 0xB108 &&
+        ((op >> 6) & 3) <= 2) {
+        const uint8_t bytes = uint8_t(1u << ((op >> 6) & 3));
+        c.count = 2;
+        c.order = MemoryOrder::SourceThenDestination;
+        c.access[0] = memoryAccess(
+            MemoryDirection::Read, MemoryOperand::Source, bytes, 3,
+            uint8_t(op & 7), is030, FaultPhase::RestartInstruction);
+        c.access[1] = memoryAccess(
+            MemoryDirection::Read, MemoryOperand::Destination, bytes, 3,
+            uint8_t((op >> 9) & 7), is030,
+            FaultPhase::RestartInstruction);
         return c;
     }
 
@@ -822,6 +869,19 @@ inline MemoryProofPlan memoryProofPlan(const MemoryContract& c,
         return p;
     }
     p.protocol = MemoryProofProtocol::PreflightAll;
+    // A 040 two-EA MOVE may execute an exact/MMIO source read only after the
+    // destination mapping has been proved writable. The destination probe
+    // has no guest-visible effect, so a failed source can still replay the
+    // untouched instruction; a successful source cannot be duplicated by a
+    // later destination miss. Backends must explicitly implement that order
+    // before consuming this token. The 030 restart/overlay protocol stays on
+    // its previous direct-preflight path: widening this token there moved two
+    // i-cache fetches in the retained-cache lockstep (2026-08-21).
+    if (c.order == MemoryOrder::SourceThenDestination &&
+        c.access[0].direction == MemoryDirection::Read &&
+        c.access[1].direction == MemoryDirection::Write &&
+        o.preflightedExactSource && thunkAllowed(0))
+        p.exactThunkMask = 1;
     return p;
 }
 
@@ -1135,6 +1195,11 @@ inline void describeEffectiveAddresses(Instr& in) {
                 s.sizeIndex, used);
             break;
         }
+        case SemanticOp::CompareMemory:
+            add(OperandRole::Source, 3, s.eaReg, s.sizeIndex, 0);
+            add(OperandRole::Destination, 3, s.destinationReg,
+                s.sizeIndex, 0);
+            break;
         case SemanticOp::ImmediateAlu: {
             const uint8_t used = add(OperandRole::Source, 7, 4, s.sizeIndex, 0);
             add(OperandRole::Destination, s.eaMode, s.eaReg,

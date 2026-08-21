@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Opcode-local AArch64 store-guard gate. MOVE.L D0,d16(A7) is first trained
+// AArch64 store-guard gate. MOVE.L D0,d16(A7) is first trained
 // against ordinary RAM, where a zero codeMask must permit a direct store.
 // The cached block is then aimed at its own translated slice: that write must
 // take the exact memory-map path and evict the stale block.
@@ -144,11 +144,10 @@ bool sameBoundary(const GuardCpu& a, const GuardCpu& b) {
 } // namespace
 
 int main() {
-    std::printf("jit_store_guard_a64_test — opcode-local zero-mask + SMC gate\n");
+    std::printf("jit_store_guard_a64_test — exact zero-mask + SMC gate\n");
     setenv("POM68K_JIT_BACKEND", "a64", 1);
     setenv("POM68K_JIT_BLOCKS", "1", 1);
     setenv("POM68K_JIT_HOT", "1", 1);
-    setenv("POM68K_JIT_A64_STORE_GUARD_OPCODE", "0x2F40", 1);
 
     GuardCpu ref, native;
     install(ref); install(native);
@@ -185,13 +184,13 @@ int main() {
           "direct store preserved guest byte order and value");
 
     // Reuse that exact cached block with its EA aimed into its own live code
-    // slice. The true mask must override the opcode release, route the store
-    // through Moira, and let CodeGuard evict the translation.
+    // slice. The true mask must route the store through Moira and let
+    // CodeGuard evict the translation.
     for (int i = 0; native.getPC() != kCode && i < 4; i++)
         native.jit.executeUntil(native.getClock() + 1);
     check(native.guard && native.guard->pageMap[kCode >> jit::CodeGuard::kShift],
           "translated code slice is armed before self-modification");
-    check(native.getPC() == kCode, "cached loop is aligned at the selected store");
+    check(native.getPC() == kCode, "cached loop is aligned at the direct store");
 
     // Clone the exact already-trained boundary into the interpreter oracle;
     // do not reset/reconfigure the native CPU, since doing so would make this
@@ -206,7 +205,7 @@ int main() {
     const auto afterSmc = native.jit.stats().snapshot();
 
     check(native.mappedWrites != 0,
-          "true codeMask forced the selected opcode through the memory map");
+          "true codeMask forced the store through the memory map");
     if (afterSmc.invalidations != beforeSmc.invalidations + 1)
         std::printf("    invalidations: before=%llu after=%llu\n",
                     static_cast<unsigned long long>(beforeSmc.invalidations),
@@ -220,10 +219,8 @@ int main() {
     check(sameBoundary(ref, native),
           "interpreter and isolated native path leave identical boundary state");
 
-    // Repeat the complete contract for the first high-yield candidate found
-    // by the opcode histogram: B592 owns 16.78 M conservative fallbacks in
-    // the 6,000-frame Q605 workload.
-    setenv("POM68K_JIT_A64_STORE_GUARD_OPCODE", "0xB592", 1);
+    // Repeat the complete contract for a read-modify-write form, so both a
+    // sole store and a two-access store are covered by the global guard.
     GuardCpu eorRef, eorNative;
     installEorLoop(eorRef); installEorLoop(eorNative);
     eorRef.reset(); eorNative.reset();

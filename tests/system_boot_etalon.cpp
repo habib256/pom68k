@@ -57,7 +57,11 @@ int main() {
         return double(black) / (512.0 * (y1 - y0));
     };
     double menuBar = blackRatio(2, 16);      // mostly white + glyph pixels
-    double desktop = blackRatio(120, 240);   // 50% gray dither
+    // The boot floppy opens its "System Tools" window over y=29..208.  The
+    // old y=120..239 probe therefore measured mostly the white window body,
+    // not the desktop it claimed to qualify.  This lower strip is clear of
+    // both that window and the Trash icon.
+    double desktop = blackRatio(240, 270);   // 50% gray desktop dither
     std::printf("menu bar black %.2f (want <0.30), desktop %.2f (want ~0.50), track %d\n",
                 menuBar, desktop, mem.internalDrive().currentTrack());
     // Reference numbers for the SWIM1-IWM mount hunt (TODO §1): this is the

@@ -57,9 +57,12 @@ static Screen decodeScreen(Q700Memory& mem) {
     uint32_t rowBytes = (peek32(mem, pmap + 4) >> 16) & 0x3FFF;
     uint32_t stride = rowBytes ? rowBytes : mem.dafbStride();
     uint32_t offset = (pmBase ? pmBase : scrnBase) & (Q700Memory::kVramSize - 1);
+    const uint32_t minStride = depth == 24 ? uint32_t(W) * 4
+                                           : uint32_t((W * depth + 7) / 8);
     if (W <= 0 || W > 1600 || H <= 0 || H > 1200 ||
-        (depth != 1 && depth != 2 && depth != 4 && depth != 8) ||
-        stride < uint32_t((W * depth + 7) / 8) ||
+        (depth != 1 && depth != 2 && depth != 4 && depth != 8 &&
+         depth != 16 && depth != 24) ||
+        stride < minStride ||
         uint64_t(offset) + uint64_t(H) * stride > Q700Memory::kVramSize)
         return s;
     const uint8_t* vram = mem.vram();
@@ -69,6 +72,25 @@ static Screen decodeScreen(Q700Memory& mem) {
     for (int y = 0; y < H; y++) {
         uint32_t row = offset + uint32_t(y) * stride;
         for (int x = 0; x < W; x++) {
+            if (depth == 24) {
+                // DAFB direct colour is one big-endian xRGB word per pixel.
+                const uint32_t p = row + uint32_t(4 * x);
+                s.pixels[size_t(y) * W + x] =
+                    uint32_t(vram[p + 1]) << 16 |
+                    uint32_t(vram[p + 2]) << 8 | vram[p + 3];
+                continue;
+            }
+            if (depth == 16) {
+                // AC842a/Antelope direct colour: xRRRRRGGGGGBBBBB.
+                const uint32_t p = row + uint32_t(2 * x);
+                const uint16_t rgb = uint16_t(uint16_t(vram[p]) << 8 |
+                                              vram[p + 1]);
+                s.pixels[size_t(y) * W + x] =
+                    uint32_t((rgb >> 10) & 0x1F) << 19 |
+                    uint32_t((rgb >> 5) & 0x1F) << 11 |
+                    uint32_t(rgb & 0x1F) << 3;
+                continue;
+            }
             uint8_t packed = vram[row + uint32_t(x * depth / 8)];
             uint8_t pen;
             if (depth == 1) pen = (packed >> (7 - (x & 7))) & 1;
@@ -279,14 +301,34 @@ int main(int argc, char** argv) {
         uint32_t stride = mem.dafbStride() ? mem.dafbStride() : uint32_t(W);
         uint32_t base = mem.dafbBase() & (Q700Memory::kVramSize - 1);
         int depth = mem.dafbDepth() ? mem.dafbDepth() : 8;
+        const uint32_t minStride = depth == 24 ? uint32_t(W) * 4
+                                               : uint32_t((W * depth + 7) / 8);
         const uint8_t* vram = mem.vram();
         const uint8_t (*clut)[3] = mem.clut();
-        if (uint64_t(base) + uint64_t(H) * stride <= Q700Memory::kVramSize) {
+        if (stride >= minStride &&
+            uint64_t(base) + uint64_t(H) * stride <= Q700Memory::kVramSize) {
             fb.assign(size_t(W) * H, 0);
             for (int y = 0; y < H; y++)
                 for (int x = 0; x < W; x++) {
-                    uint8_t packed = vram[base + uint32_t(y) * stride
-                                        + uint32_t(x * depth / 8)];
+                    const uint32_t row = base + uint32_t(y) * stride;
+                    if (depth == 24) {
+                        const uint32_t p = row + uint32_t(4 * x);
+                        fb[size_t(y) * W + x] =
+                            uint32_t(vram[p + 1]) << 16 |
+                            uint32_t(vram[p + 2]) << 8 | vram[p + 3];
+                        continue;
+                    }
+                    if (depth == 16) {
+                        const uint32_t p = row + uint32_t(2 * x);
+                        const uint16_t rgb = uint16_t(uint16_t(vram[p]) << 8 |
+                                                      vram[p + 1]);
+                        fb[size_t(y) * W + x] =
+                            uint32_t((rgb >> 10) & 0x1F) << 19 |
+                            uint32_t((rgb >> 5) & 0x1F) << 11 |
+                            uint32_t(rgb & 0x1F) << 3;
+                        continue;
+                    }
+                    uint8_t packed = vram[row + uint32_t(x * depth / 8)];
                     uint8_t pen = depth == 8 ? packed
                                 : depth == 1 ? ((packed >> (7 - (x & 7))) & 1)
                                 : packed;

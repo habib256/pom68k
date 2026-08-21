@@ -22,7 +22,8 @@ enum class CompileReject : int {
     Context,         // missing/empty IR, unsupported live CPU mode
     Emit,            // assembler/fixup or traced-contract mismatch
     Coverage,        // native share below POM68K_JIT_MIN_NATIVE
-    CodeMemory,      // reserve/allocation/W^X transition failed
+    CodeCapacity,    // bump allocator full; a cache flush makes this retryable
+    CodeMemory,      // reserve or W^X transition failed; retrying cannot help
     Count
 };
 
@@ -32,6 +33,7 @@ inline const char* compileRejectName(CompileReject r) {
         case CompileReject::Context:    return "context/IR";
         case CompileReject::Emit:       return "emit/fixup";
         case CompileReject::Coverage:   return "coverage";
+        case CompileReject::CodeCapacity: return "code cache full";
         case CompileReject::CodeMemory: return "code memory/W^X";
         default:                        return "?";
     }
@@ -77,6 +79,7 @@ enum class Flush : int {
     Guard,            // a write into translated code the precise evictor
                       // could not localise (`CodeGuard::mustFlush`)
     Deferred,         // a flush requested while the backend was mid-replay
+    CodeCapacity,     // generated-code bump allocator filled; recycle cache
     Count
 };
 
@@ -86,6 +89,7 @@ inline const char* flushName(Flush f) {
         case Flush::MmuGen:    return "translation moved";
         case Flush::Guard:     return "write into code";
         case Flush::Deferred:  return "deferred";
+        case Flush::CodeCapacity: return "code cache full";
         default:               return "?";
     }
 }

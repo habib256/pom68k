@@ -59,7 +59,7 @@ carries the same map with the POM68K-side timing contract.
 6502 IRQ sources (`applepic.cpp:20-26`): 1 = DMA1, 2 = DMA2,
 3 = peripheral (SCC /INT in non-bypass), 4 = host, 5 = timer.
 `int_reg_r` returns `flags & mask` — MAME's comment warns the firmware
-gets confused otherwise (`applepic.cpp:484-488`).
+gets confused otherwise (`src/devices/machine/applepic.cpp:484-488`).
 
 ### Host window (32 bytes, `applepic.cpp:125-217`)
 

@@ -162,18 +162,20 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     // the portable backend inherits Moira's handlers. An explicit
     // POM68K_CPU_ENGINE still overrides this policy in either direction.
     //
-    // **68030 joined on 2026-08-18**, and it gets `threaded`, not generated
-    // code: both native generators declare themselves 68040-only through
-    // `BackendCaps::guestFamilies`, so `auto` cannot hand an 030 a code
-    // generator — the unfinished native 030 work stays unreachable from a
-    // shipping default, which is the property that stopped the 2026-07-30
-    // wedge. What `threaded` changes is the FETCH path, and that is where
-    // the 68030's time is: callgrind on the shipping LC II interpreter puts
+    // **68030 joined on 2026-08-18.** BackendCaps keeps correctness scope
+    // (`guestFamilies`) separate from automatic speed policy
+    // (`autoFamilies`). AArch64 has earned generated 030 code through the
+    // long lockstep, platform gates and fixed-budget measurement; x86-64
+    // still resolves an 030 to `threaded` because its IIsi native gate is
+    // red. This per-(family, backend) admission is the property that stops
+    // unfinished native work reaching a shipping default. On the portable
+    // path, `threaded` changes the FETCH path, where the 68030's time is:
+    // callgrind on the shipping LC II interpreter puts
     // `mmuFetchWord` + `Cpu030::read16` at 44.4 % of all instructions, and
     // the code window replaces exactly that with a host pointer. Measured
     // (jit_bench_lcii, 2000 frames, fingerprint `3de5c5ab62b4eca8` on every
     // engine): interpreter 17.90 s / x1.86, `threaded` 15.14 s / x2.20.
-    // Its conformance is not inherited, it is gated: `jit_lockstep_030_test`
+    // Conformance is not inherited, it is gated: `jit_lockstep_030_test`
     // and `_blocks_test` step two LC IIs from power-up comparing registers,
     // the three stacks, SR, `clock`, 2 KB of low RAM and the three PomIcache
     // counters — and the 030 i-cache overlay is charged inside
@@ -388,7 +390,7 @@ void Engine::dumpHisto() const {
                       });
             const char* title = reason == RuntimeCodeMask ? "codeMask"
                               : reason == RuntimeCrossPage ? "cross-page"
-                              : "conservative-store-guard";
+                              : "other-runtime-access";
             std::fprintf(stderr, "\n[jit] exact %s addresses — %llu / %llu%s\n",
                          title,
                          (unsigned long long)observed,
@@ -1347,6 +1349,22 @@ void Engine::executeUntil(int64_t clockTarget) {
                         stats_.add(stats_.compileRejects[int(reason)]);
                         stats_.add(stats_.compileRejectNanos[int(reason)],
                                    compileNs);
+                    }
+                    // CodeBuffer is deliberately a non-compacting bump
+                    // allocator. Precise SMC eviction releases a Compiled
+                    // wrapper but cannot reclaim its executable bytes, so a
+                    // long session eventually reaches the end even while the
+                    // live block map is below maxBlocks_. Capacity exhaustion
+                    // is recoverable only by retracting every entry before
+                    // rewinding the buffer. Do it here, with no generated code
+                    // running and before touching `b` again: flushAll erases
+                    // the Block that owns this reference. Reserve/W^X errors
+                    // remain ordinary permanent rejections, avoiding a retry
+                    // loop on hosts where executable memory is unavailable.
+                    if (compiled.reject == CompileReject::CodeCapacity) {
+                        ctx_.linkMask = savedLinkMask;
+                        flushAll(Flush::CodeCapacity);
+                        continue;
                     }
                 }
                 if (denied) { b.rejected = true; }
