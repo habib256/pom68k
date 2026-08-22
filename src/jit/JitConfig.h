@@ -49,8 +49,9 @@ inline int envInt(const char* key, int dflt, int lo, int hi) {
 // One immutable policy snapshot per Engine. Environment variables are an
 // input format, not live process-wide configuration: changing one after an
 // Engine was constructed must not alter a later block compiled by that
-// Engine. `applyBackendDefaults` resolves the only two defaults that depend
-// on the selected backend, before the snapshot is published through Context.
+// Engine. `applyBackendDefaults` resolves the defaults that depend on the
+// selected backend — block cache, hot threshold, and the two § C.4nonies
+// admissions — before the snapshot is published through Context.
 struct ResolvedConfig {
     OperatingProfile profile = OperatingProfile::Production;
     std::string backend = "auto";
@@ -82,26 +83,32 @@ struct ResolvedConfig {
     bool profitScoreExplicit = false;
     int armBackoff = 32;
     bool dataWindow = false;
-    // EXPERIMENT (JIT_BRINGUP § C.4nonies): admit the 030 restartable-write
-    // family on the split BASE cost instead of the traced total. Its
-    // historical step-19658 divergence was the peripheral-phase class,
-    // closed by the access-thunk clock alignment on x64;
-    // jit_lockstep_030_x64_alignment_test runs 120k with this ON. Still
-    // ships off: the flip is a speed decision awaiting its own evidence,
-    // behind the a64 alignment port.
+    // The § C.4nonies admissions: the 030 restartable-write family on the
+    // split BASE cost, and BSR.W ($6100) into the armed-charge exemption.
+    // Their default is PER-BACKEND, resolved by applyBackendDefaults from
+    // the backend's `accessClockBias` declaration — ON where the access
+    // thunks carry the peripheral-phase clock bias (x64 since 2026-08-22,
+    // measured −4.3 % / −2.3 % alone and −8.0 % together at 6000 frames,
+    // fp identical), OFF where the alignment has not landed (a64, until
+    // its port flips the declaration). An explicit env wins in either
+    // direction; jit_lockstep_030_x64_alignment_test pins both ON at 120k.
     bool restartBaseAdmission = false;
-    // EXPERIMENT (same § and same gate): BSR.W ($6100) into the
-    // armed-charge exemption. Charge proved correct, class closed on x64;
-    // same flip conditions as restartBaseAdmission.
+    bool restartBaseExplicit = false;
     bool bsrWideAdmission = false;
+    bool bsrwExplicit = false;
 
     // A64 pacing control is captured here too: a backend must never retain
     // a private getenv-based policy surface.
     bool a64Pacing = true;
 
-    void applyBackendDefaults(bool nativeCode) {
+    void applyBackendDefaults(bool nativeCode, bool accessClockBias) {
         if (!blockCacheExplicit) blockCache = nativeCode;
         if (!hotExplicit) hot = nativeCode ? 1 : 512;
+        // The admissions follow the backend's alignment declaration — see
+        // the field comment above. A backend that never emits (threaded)
+        // declares false and the value is then inert anyway.
+        if (!restartBaseExplicit) restartBaseAdmission = accessClockBias;
+        if (!bsrwExplicit) bsrWideAdmission = accessClockBias;
     }
 
     EngineKind engineForGuest(bool jitByDefault) const {
@@ -163,8 +170,10 @@ inline ResolvedConfig resolveConfig() {
     c.profitScore = detail::envInt("POM68K_JIT_PROFIT_SCORE", 0, 0, 1 << 30);
     c.armBackoff = detail::envInt("POM68K_JIT_ARM_BACKOFF", 32, 0, 4096);
     c.dataWindow = detail::envBool("POM68K_DATA_WINDOW", false);
+    c.restartBaseExplicit = detail::env("POM68K_JIT_RESTART_BASE") != nullptr;
     c.restartBaseAdmission =
         detail::envBool("POM68K_JIT_RESTART_BASE", false);
+    c.bsrwExplicit = detail::env("POM68K_JIT_BSRW") != nullptr;
     c.bsrWideAdmission = detail::envBool("POM68K_JIT_BSRW", false);
     c.a64Pacing = detail::envBool("POM68K_JIT_A64_PACING", true);
     return c;
@@ -296,16 +305,16 @@ inline int accessThunkMode() {
     return detail::envInt("POM68K_JIT_ACCESS_THUNK", dflt, 0, 2);
 }
 
-// EXPERIMENT knob (JIT_BRINGUP § C.4nonies): base-cost admission of the
-// 030 restartable-write family. Ships OFF; the alignment gate runs the
-// 120k lockstep with it on.
+// JIT_BRINGUP § C.4nonies admission: base-cost admission of the 030
+// restartable-write family. Default is per-backend (the backend's
+// accessClockBias declaration — ON under x64 since 2026-08-22); the env
+// fallback below only serves code running outside an Engine's scope.
 inline bool restartBaseAdmission() {
     if (detail::activeConfig) return detail::activeConfig->restartBaseAdmission;
     return detail::envBool("POM68K_JIT_RESTART_BASE", false);
 }
 
-// EXPERIMENT knob (same § and same gate): BSR.W into the armed-charge
-// exemption. Ships OFF; the alignment gate runs the 120k with it on.
+// Same § and same resolution: BSR.W into the armed-charge exemption.
 inline bool bsrWideAdmission() {
     if (detail::activeConfig) return detail::activeConfig->bsrWideAdmission;
     return detail::envBool("POM68K_JIT_BSRW", false);

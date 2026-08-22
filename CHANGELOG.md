@@ -315,6 +315,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-22 (second)** — [The admissions flip per-backend: the default rides the backend's own alignment declaration](#2026-08-22-admission-flip-x64)
 - **2026-08-22** — [The unlocked admissions are priced: −4.3 % and −2.3 % alone, −8.0 % together — super-additive, fingerprint intact](#2026-08-22-admission-speed-evidence)
 - **2026-08-21 (sixth)** — [The peripheral-phase class is run to its mechanism and closed on x64: the pin was late, not the take, and the cure is an access-clock bias](#2026-08-21-periph-phase-closed)
 - **2026-08-21 (fifth)** — [Both parked levers, one root: BSR.W's divergence is the same delivery-alignment class, and the target-side-charge fix shape is refuted by measurement](#2026-08-21-bsrw-same-class)
@@ -579,6 +580,48 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-22-admission-flip-x64"></a>
+## 2026-08-22 (second) — The admissions flip per-backend: the default rides the backend's own alignment declaration
+
+The morning's evidence (below) earned the flip, and the flip's mechanism
+is the part worth recording: the admission defaults do NOT flip
+globally, because the peripheral-phase class is still latent on AArch64
+— its thunks do not carry the access-clock bias yet, and a global flip
+would have broken exactly the ISA that lacks the alignment. Instead the
+backend DECLARES the alignment (`BackendCaps::accessClockBias`, the
+`autoFamilies` mould: a default can never outrun its declaration) and
+`applyBackendDefaults` turns `restartBaseAdmission` and
+`bsrWideAdmission` on only under that declaration, with an explicit env
+winning in either direction (`restartBaseExplicit`/`bsrwExplicit`, the
+`hotExplicit` precedent). x64 declares true; a64 and `threaded` declare
+false; the a64 port therefore lands by implementing the bias in
+`pom68kA64Read/Write` and flipping ONE declaration, inheriting the
+defaults with it.
+
+`jit_backend_test` pins the coupling asset-free on both hosts: a
+bias-declaring backend defaults both admissions on, an unaligned one
+keeps them off, an explicit 0 vetoes the aligned default and an explicit
+1 forces the unaligned one — plus the x64 declaration itself, and the
+a64 NON-declaration on ARM. The default-path 120k lockstep
+(backend=x64, no knobs) is bit-identical to the both-knobs run — same
+retired-instruction and block counts — so the resolution is proved live
+on the exact registered-gate configuration; the alignment gate keeps the
+explicit-knob road pinned beside it.
+
+**Flip validation, stated exactly.** On relinked binaries, freshness
+guard green: `-L unit` 106/106, `-L jit` 37/37 (both 120k locksteps
+included), and the `-L etalon` tier under the new default INTERRUPTED by
+a host shutdown at **47 of the 106 parallel-phase gates — zero failures
+at the cut**; the 12 serialized gates (Q700Memory family + the two
+UDP-port AppleTalk gates) had not started. The full 118-gate tier under
+the flip is therefore still OWED and is the first order of business of
+the next session — TODO carries the debt. The conformance ground under
+it is not in doubt (the default path is bit-identical to the both-knobs
+path the alignment gate pins at 120k, and yesterday's closure ran m030
+53/53 + m040 51/51 with the identical code under explicit knobs); what
+the tier re-proves is the D.1 item-4 formality under the shipping
+default.
 
 <a id="2026-08-22-admission-speed-evidence"></a>
 ## 2026-08-22 — The unlocked admissions are priced: −4.3 % and −2.3 % alone, −8.0 % together — super-additive, fingerprint intact

@@ -959,11 +959,19 @@ the class closed.
   source read. A form with an I/O source and dest extensions would be
   biased early by its dest-word misses. No such form is in the admitted
   native set today, and the 120k gate is the tripwire.
-- **The admissions themselves stay OFF — but their speed evidence is now
-  MEASURED (2026-08-22).** `bench::compare` on the LC II, ABBA, 3
-  repeats/arm, quiet host, fingerprint identical within each budget
-  (`cfb184b6faddabec` at 6000 frames — the same fp as the C.5 flip
-  evidence), host floor 1.0 %:
+- **The admissions are ON BY DEFAULT under x64 since 2026-08-22 —
+  per-backend, through the `caps().accessClockBias` declaration.** The
+  backend that carries the access-clock bias declares it, and
+  `applyBackendDefaults` turns the two admissions on only under that
+  declaration (explicit env wins either way; `jit_backend_test` pins the
+  coupling on both hosts, including that a64 declares FALSE until its
+  thunks carry the bias — so the a64 port lands by flipping one
+  declaration and inherits the defaults with it, and an admission
+  default can never outrun the alignment on the ISA that runs it). The
+  speed evidence, measured the same day: `bench::compare` on the LC II,
+  ABBA, 3 repeats/arm, quiet host, fingerprint identical within each
+  budget (`cfb184b6faddabec` at 6000 frames — the same fp as the C.5
+  flip evidence), host floor 1.0 %:
 
   | arms (`POM68K_BENCH_ARMS`) | 3000 frames | 6000 frames |
   |---|---|---|
@@ -975,11 +983,10 @@ the class closed.
   admission extends blocks across calls, and the restart-base admission
   then natively serves more of what those longer blocks contain. The
   trend rises with budget, so per R3 the −8.0 % is a floor for a real
-  session. Per R4 the measurement is recorded here and the flip is a
-  separate decision; what the flip still owes is the **a64 alignment
-  port** (or an explicitly per-backend admission default), then D.1
-  items 2 and 4 — boot etalons and the full tier under the new default —
-  in the flip's own commit.
+  session. The default-path 120k lockstep (backend=x64, NO knobs) is
+  bit-identical to the both-knobs run — same retired-instruction and
+  block counts — so the per-backend resolution is proved live, and the
+  flip's tier evidence is recorded in the flip commit.
 
 ## Phase D — the default engine — **68040 landed**
 

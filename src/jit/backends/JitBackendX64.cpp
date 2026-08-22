@@ -3403,6 +3403,15 @@ public:
         // engine hardening; § C.4septies keeps the reproducer and the
         // triage order in case it returns.
         c.autoFamilies = kGuest68040 | kGuest68030;
+        // The access thunks bias the clock by the not-yet-charged i-cache
+        // fetch penalty for the access alone (pom68kJitRead/Write, JIT_BRINGUP
+        // § C.4nonies) — the declaration that turns the restart-base and
+        // BSR.W admission DEFAULTS on for this backend. Flipped 2026-08-22
+        // on the measured evidence: −4.3 % and −2.3 % alone, −8.0 % for the
+        // pair at 6000 frames, fingerprint identical, and the 120k
+        // alignment gate holding both admissions to identical state. a64
+        // declares false until its thunks carry the same bias.
+        c.accessClockBias = true;
         return c;
     }
 

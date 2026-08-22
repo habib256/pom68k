@@ -1814,13 +1814,15 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              TIMEOUT 1800)
 
         # The peripheral-phase alignment gate (2026-08-21, JIT_BRINGUP
-        # § C.4octies): the same 120k lockstep with BOTH parked admissions
-        # turned on — the restartable-write base cost and BSR.W. Each used
-        # to diverge on delivery-boundary alignment (steps 19658/16097);
-        # the access-thunk clock bias closed the class, and this gate is
-        # what keeps it closed. The knobs stay off in production until
-        # their own speed evidence lands — this gate is about conformance,
-        # not about the flip.
+        # § C.4nonies): the same 120k lockstep with BOTH admissions
+        # explicitly on — the restartable-write base cost and BSR.W. Each
+        # used to diverge on delivery-boundary alignment (steps
+        # 19658/16097); the access-thunk clock bias closed the class, and
+        # this gate keeps it closed. Since the 2026-08-22 per-backend flip
+        # the admissions are also x64's DEFAULT (caps().accessClockBias),
+        # so the experimental gate above now runs the same admissions via
+        # the default path and the two gates pin both roads to the same
+        # 120k-identical answer.
         add_test(NAME jit_lockstep_030_x64_alignment_test COMMAND jit_lockstep_030_test 120000
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         set_tests_properties(jit_lockstep_030_x64_alignment_test PROPERTIES

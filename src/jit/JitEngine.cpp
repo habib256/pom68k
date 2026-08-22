@@ -74,7 +74,8 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
                      "resolved to '%s'\n", backend_->name());
         std::abort();
     }
-    config_.applyBackendDefaults(backend_->caps().nativeCode);
+    config_.applyBackendDefaults(backend_->caps().nativeCode,
+                                 backend_->caps().accessClockBias);
     useWindow_ = config_.fetchWindow;
     useBlocks_ = config_.blockCache;
     paranoid_ = config_.paranoid;

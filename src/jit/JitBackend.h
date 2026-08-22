@@ -92,6 +92,18 @@ struct BackendCaps {
     // false means a new backend is conservative until it says otherwise.
     bool dtlbCodeMask = false;
 
+    // The exact access thunks carry the peripheral-phase access-clock bias
+    // (JIT_BRINGUP § C.4nonies): a device access flushes peripheral time
+    // at the clock the interpreter's same access would see, because the
+    // thunk biases it by the instruction's not-yet-charged i-cache fetch
+    // penalty for the access alone. Declaring it is what turns the
+    // § C.4nonies admission DEFAULTS on for this backend (restart-base,
+    // BSR.W) — the coupling is deliberate: an admission default must never
+    // outrun the alignment on the ISA that runs it. The a64 port lands by
+    // implementing the bias in pom68kA64Read/Write and flipping this
+    // declaration, and inherits the admission defaults with it.
+    bool accessClockBias = false;
+
     // Bitmask of GuestFamily. Deliberately defaults to 0 = "not declared",
     // which selection treats as "do not use": a new backend that forgets to
     // state its scope gets a diagnostic, not a silent wedge on the first

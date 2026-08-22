@@ -392,7 +392,7 @@ int main() {
         setEnv("POM68K_JIT_ACCESS_THUNK", nullptr);
         setEnv("POM68K_JIT_PROFIT_SCORE", "64");
         jit::ResolvedConfig resolved = jit::resolveConfig();
-        resolved.applyBackendDefaults(true);
+        resolved.applyBackendDefaults(true, /*accessClockBias=*/true);
         setEnv("POM68K_JIT_PROFILE", "conservative");
         {
             jit::ScopedResolvedConfig active(&resolved);
@@ -406,6 +406,38 @@ int main() {
         }
         check(jit::accessThunkMode() == 0,
               "legacy accessors remain live outside an Engine compile scope");
+
+        // The § C.4nonies admissions follow the backend's accessClockBias
+        // declaration — ON where the access thunks carry the peripheral-
+        // phase clock bias (x64), OFF where the alignment has not landed
+        // (a64, threaded) — and an explicit env wins in either direction.
+        // Pinned here so the coupling cannot rot into "the admission
+        // default outran the alignment", which is the exact failure the
+        // declaration exists to prevent.
+        setEnv("POM68K_JIT_RESTART_BASE", nullptr);
+        setEnv("POM68K_JIT_BSRW", nullptr);
+        jit::ResolvedConfig aligned = jit::resolveConfig();
+        aligned.applyBackendDefaults(true, /*accessClockBias=*/true);
+        check(aligned.restartBaseAdmission && aligned.bsrWideAdmission,
+              "a bias-declaring backend turns both admissions on by default");
+        jit::ResolvedConfig unaligned = jit::resolveConfig();
+        unaligned.applyBackendDefaults(true, /*accessClockBias=*/false);
+        check(!unaligned.restartBaseAdmission && !unaligned.bsrWideAdmission,
+              "a backend without the alignment keeps both admissions off");
+        setEnv("POM68K_JIT_RESTART_BASE", "0");
+        setEnv("POM68K_JIT_BSRW", "0");
+        jit::ResolvedConfig vetoed = jit::resolveConfig();
+        vetoed.applyBackendDefaults(true, /*accessClockBias=*/true);
+        check(!vetoed.restartBaseAdmission && !vetoed.bsrWideAdmission,
+              "an explicit 0 beats the bias-declaring backend's admission default");
+        setEnv("POM68K_JIT_RESTART_BASE", "1");
+        setEnv("POM68K_JIT_BSRW", "1");
+        jit::ResolvedConfig forced = jit::resolveConfig();
+        forced.applyBackendDefaults(true, /*accessClockBias=*/false);
+        check(forced.restartBaseAdmission && forced.bsrWideAdmission,
+              "an explicit 1 beats the unaligned backend's admission default");
+        setEnv("POM68K_JIT_RESTART_BASE", nullptr);
+        setEnv("POM68K_JIT_BSRW", nullptr);
 
         for (const auto& e : saved) e.restore();
     }
@@ -521,6 +553,9 @@ int main() {
         jit::Backend* auto040 = jit::selectBackend("auto", jit::kGuest68040);
         check(!std::strcmp(auto040->name(), "x86-64"),
               "auto on a 68040 still picks the native generator");
+        check(on030->caps().accessClockBias,
+              "x64 declares the access-clock bias its thunks carry "
+              "(JIT_BRINGUP § C.4nonies) — the admission defaults ride it");
     }
 
     // Every backend compiled in must DECLARE a scope: the caps field defaults
@@ -603,6 +638,10 @@ int main() {
                   "auto on a 68030 selects the measured AArch64 generator");
             check(a64auto030->caps().profitScore68030 == 64,
                   "AArch64 68030 publishes its measured cold-code score");
+            check(!a64auto030->caps().accessClockBias,
+                  "AArch64 does NOT declare the access-clock bias until "
+                  "pom68kA64Read/Write carry it — the admission defaults "
+                  "must stay off with it (JIT_BRINGUP § C.4nonies)");
         }
         static Q605Memory mem;
         static Cpu040 cpu(mem);
