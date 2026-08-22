@@ -680,9 +680,12 @@ a64: **118.85 s → 105.82 s** (×4.20 → ×4.71 real time), native share
 `cfb184b6faddabec`) — both stamped `HOST BUSY` (1-min load 3.4-3.6
 against the 2.0 bar): macOS's `mediaanalysisd` and `mds_stores` were
 indexing the gates' `.ppm` dumps at 60-90 % CPU for hours, and a
-wait-for-quiet loop never got its window. The spreads say the numbers
-are stable; the rule says they are not quotable until a quiet re-run
-(TODO carries it; `sudo mdutil -i off /` is the host-side remedy).
+wait-for-quiet loop never got its window. A third attempt in the small hours, started
+after two consecutive minutes under load 1.0, read **−23.0 % / −23.8 %**
+(118.85 s / 20.88 s) and was stamped busy again (2.5 / 2.8: the daemon
+came back mid-run). Three ABBAs within 0.1 % of each other say the
+numbers are stable; the rule says they are not quotable until a quiet
+re-run (TODO carries it; `sudo mdutil -i off /` is the host-side remedy).
 Yesterday's quotable 6000-frame figure was −16.4 % before these two
 levers. The remaining 25 % in the window is the next census.
 
