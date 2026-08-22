@@ -883,7 +883,7 @@ declaration. Decide with a number, not before.
 
 ---
 
-### C.4nonies — the peripheral-phase class, run to its mechanism and CLOSED on x64 (2026-08-21)
+### C.4nonies — the peripheral-phase class, run to its mechanism and CLOSED on x64 (2026-08-21); the a64 thunks carry the bias too (2026-08-22)
 
 Both parked levers — the restartable-write base admission (§ C.4sexies,
 step 19 658/19 150) and BSR.W plus the wider single-path exemptions
@@ -947,13 +947,25 @@ identical. `jit_lockstep_030_x64_alignment_test` (both knobs ON) now pins
 the class closed.
 
 **Still open, deliberately:**
-- **The a64 port.** `pom68kA64Read/Write` keep their four-argument shape
-  and today's (yesterday's) behaviour — the class stays latent on AArch64
-  defaults exactly as it was on x64 for months. The port needs the packed
-  operand threaded through `memLoadGuest`/`memStoreGuest` and an ARM host
-  to validate it (the a64 120k gate); it must land BEFORE any admission
-  default flips globally, or the flip breaks the ISA that lacks the
-  alignment.
+- ~~**The a64 port.**~~ **LANDED 2026-08-22 (afternoon) — and the
+  premise was wrong.** The class was never latent on AArch64: that
+  backend had closed it by `guardIcacheHits`, a runtime replay of every
+  thunk-capable instruction whose fetch the block shadow could not prove
+  an i-cache hit — which is why the a64 120k lockstep with both
+  admissions explicitly ON was already `identical` BEFORE the port (the
+  first thing measured on the ARM host). The port replaces the replay
+  with x64's bias: `pom68kA64Read/Write` take the packed operand in x4,
+  the compile loop packs it per instruction, the guard and its shadow
+  proof are deleted. Four 120k runs identical after (default, both knobs
+  on, both off, and the 6000-frame production-cadence gate), i-cache
+  counters identical, replays 17.0 M → 12.8 M with every other counter
+  equal. `jit_lockstep_030_a64_alignment_test` is the x64 gate's twin.
+  The backend declares `accessClockBias`; the admission defaults it
+  resolves are INERT on a64 — its emitter never read those knobs, its
+  restartable-write and BSR.W admissions being unconditional under the
+  `traced030` split-cost rule (the on/off runs print identical counts).
+  The declaration still matters: it is what the per-backend default is
+  allowed to ride on, and `jit_backend_test` pins it.
 - **Dest-extension forms.** The linear bias counts ALL traced words; the
   interpreter fetches a memory-destination's extension words AFTER the
   source read. A form with an I/O source and dest extensions would be
@@ -964,10 +976,10 @@ the class closed.
   backend that carries the access-clock bias declares it, and
   `applyBackendDefaults` turns the two admissions on only under that
   declaration (explicit env wins either way; `jit_backend_test` pins the
-  coupling on both hosts, including that a64 declares FALSE until its
-  thunks carry the bias — so the a64 port lands by flipping one
-  declaration and inherits the defaults with it, and an admission
-  default can never outrun the alignment on the ISA that runs it). The
+  coupling on both hosts — a64 declared FALSE until its thunks carried
+  the bias, which they do since the afternoon of the same day, so both
+  native backends now declare it and an admission default can never
+  outrun the alignment on the ISA that runs it). The
   speed evidence, measured the same day: `bench::compare` on the LC II,
   ABBA, 3 repeats/arm, quiet host, fingerprint identical within each
   budget (`cfb184b6faddabec` at 6000 frames — the same fp as the C.5
@@ -1044,7 +1056,7 @@ folded into an emitter change.
 | B — emitted 030 i-cache | **correctness-proved on AArch64** by the 6,000-frame production-cadence lockstep + matching benchmark fingerprint; native-state hardening and score 64 later supplied the measured win |
 | C.1 — 030 lockstep gate | **done** (threaded, blocks, a64-experimental) |
 | C.2 / C.3 — 030 probe + thunks | **written**; validated only indirectly, their gate is C.5 |
-| C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, the MOVEM guard, charge-on-success on both native backends and the x64 throughput win (§ C.4sexies) done; the peripheral-phase class that parked the restartable-write base admission and BSR.W is **closed on x64** (§ C.4nonies, `jit_lockstep_030_x64_alignment_test`) — the admissions themselves stay off pending speed evidence, and the a64 alignment port is the named prerequisite for any global flip |
+| C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, the MOVEM guard, charge-on-success on both native backends and the x64 throughput win (§ C.4sexies) done; the peripheral-phase class that parked the restartable-write base admission and BSR.W is **closed on both native backends** (§ C.4nonies, `jit_lockstep_030_x64_alignment_test` + `jit_lockstep_030_a64_alignment_test`), the admissions ON by default per-backend since 2026-08-22 on measured x64 evidence (inert on a64, whose admissions were already unconditional) |
 | C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; AArch64 default landed 2026-08-20; x64 default landed 2026-08-21** — the IIsi segfault did not survive the hardening window (§ C.4septies CLOSED), and the original Linux-native host now passes the hardened native gates. Native builds pin both the ENGINE and compiled backend in the 030 boot gates |
 | D — default engine | **68040 landed; 68030 landed on BOTH native ISAs** (a64 2026-08-20, x64 2026-08-21), with explicit interpreter oracles per platform |
 

@@ -1711,9 +1711,9 @@ bool Emitter::emitMove(size_t i, int szIdx) {
     // I/O accesses flushed device time at a clock missing the fetch
     // penalty (JIT_BRINGUP § C.4nonies; the access thunks now bias the
     // clock for the access alone, and jit_lockstep_030_x64_alignment_test
-    // holds the proof). The admission itself still ships off — the check
-    // below — because the FLIP is a speed decision awaiting its own D.1
-    // evidence, and the a64 port of the alignment must land first.
+    // holds the proof). The admission's default rides the backend's
+    // accessClockBias declaration (ON here since 2026-08-22 on the
+    // measured −4.3 % / −8.0 % evidence); the check below is the knob.
     const unsigned tracedMove =
         restartWrite && !restartBaseAdmission()
             ? unsigned(ir_.instrs[i].cycles) : traced030(i);
@@ -3146,8 +3146,8 @@ bool Emitter::emit() {
         // divergence was the peripheral-phase class, closed by the
         // access-thunk clock alignment (JIT_BRINGUP § C.4nonies;
         // jit_lockstep_030_x64_alignment_test runs this admission ON).
-        // Default stays off until the flip earns its own speed evidence
-        // and the a64 alignment port lands.
+        // Default rides the backend's accessClockBias declaration (ON
+        // here since 2026-08-22, −2.3 % alone, −8.0 % with restart-base).
         const bool bsrW030 = ic_ && ir_.instrs[i].words == 2 &&
             (ir_.instrs[i].opcode == 0x4EBA ||
              (ir_.instrs[i].opcode == 0x6100 && bsrWideAdmission())) &&
@@ -3410,7 +3410,8 @@ public:
         // on the measured evidence: −4.3 % and −2.3 % alone, −8.0 % for the
         // pair at 6000 frames, fingerprint identical, and the 120k
         // alignment gate holding both admissions to identical state. a64
-        // declares false until its thunks carry the same bias.
+        // declares it too since the same afternoon (its thunks carry the
+        // same bias, replacing the guardIcacheHits replay).
         c.accessClockBias = true;
         return c;
     }

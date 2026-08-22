@@ -89,9 +89,10 @@ struct ResolvedConfig {
     // the backend's `accessClockBias` declaration — ON where the access
     // thunks carry the peripheral-phase clock bias (x64 since 2026-08-22,
     // measured −4.3 % / −2.3 % alone and −8.0 % together at 6000 frames,
-    // fp identical), OFF where the alignment has not landed (a64, until
-    // its port flips the declaration). An explicit env wins in either
-    // direction; jit_lockstep_030_x64_alignment_test pins both ON at 120k.
+    // fp identical; a64 since the same afternoon, where the knobs are
+    // inert — that emitter admits both forms unconditionally). An explicit
+    // env wins in either direction; jit_lockstep_030_{x64,a64}_alignment_test
+    // pin both ON at 120k.
     bool restartBaseAdmission = false;
     bool restartBaseExplicit = false;
     bool bsrWideAdmission = false;
@@ -307,7 +308,9 @@ inline int accessThunkMode() {
 
 // JIT_BRINGUP § C.4nonies admission: base-cost admission of the 030
 // restartable-write family. Default is per-backend (the backend's
-// accessClockBias declaration — ON under x64 since 2026-08-22); the env
+// accessClockBias declaration — ON under x64 and a64 since 2026-08-22;
+// a64's emitter never consults it, its restartable-write and BSR.W
+// admissions being unconditional under its own split-cost rule); the env
 // fallback below only serves code running outside an Engine's scope.
 inline bool restartBaseAdmission() {
     if (detail::activeConfig) return detail::activeConfig->restartBaseAdmission;

@@ -57,4 +57,5 @@ lcii_threaded	68030	apple_m4	min_realtime_permille	4300	permille
 # non-ASCII byte and hands the parser the tail of the line as a row of its
 # own, which fails as "expected six columns" pointing at half a sentence.
 host_wallclock	any	x86_64	noise_floor_permille	10	permille
+host_wallclock	any	aarch64	noise_floor_permille	2	permille
 host_wallclock	any	any	noise_floor_permille	30	permille

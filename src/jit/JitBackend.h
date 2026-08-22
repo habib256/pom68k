@@ -99,9 +99,11 @@ struct BackendCaps {
     // penalty for the access alone. Declaring it is what turns the
     // § C.4nonies admission DEFAULTS on for this backend (restart-base,
     // BSR.W) — the coupling is deliberate: an admission default must never
-    // outrun the alignment on the ISA that runs it. The a64 port lands by
-    // implementing the bias in pom68kA64Read/Write and flipping this
-    // declaration, and inherits the admission defaults with it.
+    // outrun the alignment on the ISA that runs it. Both native backends
+    // declare it since 2026-08-22 (x64 in the morning, a64 the same
+    // afternoon — pom68kA64Read/Write replaced the guardIcacheHits replay
+    // with the bias); `threaded` does not, and does not need to: it
+    // replays through Moira's own handlers, which charge at fetch time.
     bool accessClockBias = false;
 
     // Bitmask of GuestFamily. Deliberately defaults to 0 = "not declared",

@@ -1637,22 +1637,22 @@ three under different environments.
 |---|---|---|
 | `ctest -L smoke` | 9 | the working loop — one machine, both engines |
 | `ctest -L jit-fast` | 7 (~3 s) | native A64/x64 lockstep/IR/protocol + documentation/configuration, no assets |
-| `ctest -L unit` | 107 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
+| `ctest -L unit` | 109 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
 | `ctest -L asset-none` | 83 | manifest-declared asset-free daily tier |
 | `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
-| `ctest -L jit` | 38 | before proposing a JIT change (`jit-fast` matches this regex too) |
+| `ctest -L jit` | 40 | before proposing a JIT change (`jit-fast` matches this regex too) |
 | `ctest -L m040` | 51 | the 68040 family on the default engine plus explicit interpreter references |
 | `ctest -L m030` | 53 | the 68030 family, same shape (since 2026-08-18) |
 | `ctest -L etalon` | 118 (~3 h 45) | every profile — the release gate, not a pre-commit check |
-| `ctest` | 225 (~4h30) | everything, once |
+| `ctest` | 227 (~4h30) | everything, once |
 
 **The totals are host-dependent**, which is why `ctest -N` and not this table
-is the authority. Three gates are host-conditional: the AArch64 pair
+is the authority. Five gates are host-conditional: the AArch64 trio
 `jit_lockstep_a64_coarse_test` + `jit_lockstep_030_a64_experimental_test`
-(`CMakeLists.txt:1755-1772`) and the x86-64-only
-`jit_lockstep_030_x64_experimental_test` (`:1792-1801`) — so an x86-64
-tree reads **223** total, 105 `unit`, 8 `smoke`, 36 `jit`, and an AArch64
-one 224 (`m040` and `etalon` are host-independent). Eight more
++ `jit_lockstep_030_a64_alignment_test` and the x86-64-only
+`jit_lockstep_030_x64_experimental_test` + `jit_lockstep_030_x64_alignment_test`
+— so an x86-64 tree reads **224** total, 106 `unit`, 8 `smoke`, 37 `jit`,
+and an AArch64 one 225 (`m040` and `etalon` are host-independent). Eight more
 appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
 which also requires AArch64 and hard-fails on a missing asset instead of
 skipping.

@@ -23,20 +23,28 @@ the token is deliberately absent on 030. Its 68030 paths carry split cost
 validation, restartable writes and emitted i-cache accounting; the dedicated
 long 030 lockstep and platform boots keep that automatic path gated.
 
-**Owed to this backend — the peripheral-phase access-clock bias
-(2026-08-21, x64 only so far).** `pom68kJitRead/Write` on x64 bias the
-clock around an exact access thunk by the instruction's would-be i-cache
-fetch penalty (`Moira::pomJitIcachePeekPenalty`), so a forced I/O flush
-sees the same clock the interpreter's same access would — the fix that
-closed JIT_BRINGUP § C.4nonies. `pom68kA64Read/Write` still run without
-it: the class is latent on AArch64 defaults exactly as it was on x64.
-The port needs the packed `fetchWords << 32 | pc` operand threaded
-through `memLoadGuest`/`memStoreGuest` into a fifth thunk argument, and
-an ARM host so the a64 120k lockstep can judge it. **It must land before
-any restart-base/BSR.W admission default flips globally.**
+**The peripheral-phase access-clock bias (JIT_BRINGUP § C.4nonies) is
+carried by this backend since 2026-08-22.** `pom68kA64Read/Write` bias
+the clock around an exact access thunk by the instruction's would-be
+i-cache fetch penalty (`Moira::pomJitIcachePeekPenalty`), so a forced I/O
+flush sees the same clock the interpreter's same access would; the
+compile loop packs `fetchWords << 32 | pc` per instruction
+(`gAccessPcWords`) and `memLoadGuest`/`memStoreGuest` hand it to the
+thunk in x4. Before the port the class was NOT latent here, contrary to
+what the x64 closure assumed: `guardIcacheHits` replayed every
+thunk-capable instruction whose fetch the block shadow could not prove a
+hit — correct, and paid in replays (17.0 M → 12.8 M on the 120k lockstep
+once the bias took over; every other counter identical). The backend
+declares `accessClockBias`, which resolves the § C.4nonies admission
+defaults ON — inert here, since this emitter never consulted those knobs
+(its restartable-write and BSR.W admissions are unconditional under
+`traced030`'s split-cost rule), but the declaration is what a default is
+allowed to ride on. `jit_lockstep_030_a64_alignment_test` pins the
+explicit-knob road; `jit_lockstep_030_a64_experimental_test` the default.
 
 **Gates.** `jit_lockstep_a64_coarse_test` (5 M comparisons at 50 cycles,
 registered only on AArch64 with `POM68K_JIT_BACKENDS=auto`),
+`jit_lockstep_030_a64_experimental_test`, `jit_lockstep_030_a64_alignment_test`,
 `jit_store_guard_a64_test`, `jit_restart_write_030_test`, and the arm64
 native smoke inside `jit_backend_test` — which builds a `MOVEQ` /
 `MOVE SR,D1` / `NOP` block by hand and runs it, so encodings, the Darwin
@@ -50,6 +58,15 @@ Fixed 1,000-frame Q605 workload: **1.22 s** against 4.55 s threaded
 3.41 s. The complete Finder gate: **9.19 s** against 21.14 s threaded
 (2.30×), or 7.86 s against 15.28 s under PGO (1.94×), with identical
 640×480, framebuffer and SCSI signatures.
+
+**68030, Apple M1, 2026-08-22 (bias port + slice-index fix, relinked):**
+`bench::compare` `threaded,a64` on the LC II at 6000 frames, ABBA,
+3 repeats, quiet host (NULL floor measured 0.1 % the same hour):
+27.37 s → **22.88 s, −16.4 %**, spreads 0.0/0.1 %, fingerprint
+`cfb184b6faddabec` on both arms. The 2026-08-18/20 same-shape figures
+("within 3 %", then −5.3 %) are earlier sessions and earlier binaries —
+context, not a delta. Still open: the idle-Finder regime, where the soak
+runs 3× slower than `threaded` (CHANGELOG 2026-08-22 (fourth)).
 
 Current non-LTO Apple-M4 fixed budget (3,000 frames): **3.47 s median,
 14.40× real time**, **99.5 % native**, fingerprint `778dd7ad558108fd`. The

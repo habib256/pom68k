@@ -10,14 +10,16 @@ in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** The documented registry: **225 gates** — 107 `unit`, 83
-  `asset-none`, 9 `smoke`, 38 `jit`, 51 `m040`, 53 `m030`, 118 `etalon`
-  (12 of them `etalon-core`). Three are host-conditional — the AArch64
-  pair `jit_lockstep_a64_coarse_test` + `jit_lockstep_030_a64_experimental_test`
-  (`CMakeLists.txt:1755-1772`, the first also joins `smoke`) and the
-  x86-64-only `jit_lockstep_030_x64_experimental_test` (`:1792-1801`) — so
-  an x86-64 configure sees **223** (105 `unit`, 8 `smoke`, 36 `jit`) and an
-  AArch64 one 224. Eight more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
+  somewhere.** The documented registry (2026-08-22): **227 gates** — 109
+  `unit`, 83 `asset-none`, 9 `smoke`, 40 `jit`, 51 `m040`, 53 `m030`, 118
+  `etalon` (12 of them `etalon-core`). Five are host-conditional — the
+  AArch64 trio `jit_lockstep_a64_coarse_test` +
+  `jit_lockstep_030_a64_experimental_test` +
+  `jit_lockstep_030_a64_alignment_test` (the first also joins `smoke`) and
+  the x86-64-only `jit_lockstep_030_x64_experimental_test` +
+  `jit_lockstep_030_x64_alignment_test` — so an x86-64 configure sees
+  **224** (106 `unit`, 8 `smoke`, 37 `jit`) and an AArch64 one 225 (107
+  `unit`, 38 `jit`). Eight more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
   (default OFF, `CMakeLists.txt:425`, and it FATAL_ERRORs off AArch64).
   `unit` is *not* "asset-free" — it remains the legacy "name does not end in
   `etalon`" label. `asset-none` is the manifest-declared daily tier.
@@ -703,15 +705,25 @@ Open, in ROI order:
   § C.4nonies)**: restart-base −4.3 %, BSR.W −2.3 %, the pair **−8.0 %**
   and super-additive, at 6000 frames on the LC II, fp identical
   (`cfb184b6faddabec`), floor 1.0 %. The default rides the backend's
-  `caps().accessClockBias` declaration — ON under x64, OFF under a64
-  until its thunks carry the bias — so the remaining work is TWO items:
-  (1) **finish the `-L etalon` tier under the flip on x86-64** — the
-  2026-08-22 (second) validation was cut by a host shutdown at 47/106
-  parallel gates, zero failures (`CHANGELOG.md` has the exact state);
-  (2) **port the access-clock bias to `pom68kA64Read/Write` on an ARM
-  host** (validated by the a64 120k lockstep), flip that declaration,
-  and a64 inherits the admission defaults with it (`jit_backend_test`
-  pins the coupling both ways). The paragraph below is the 2026-08-18
+  `caps().accessClockBias` declaration — ON under x64, and **ON under
+  a64 since 2026-08-22 (third)**: the a64 port landed on the M1 (bias in
+  `pom68kA64Read/Write`, the `guardIcacheHits` replay deleted, four 120k
+  runs + the 6000-frame gate identical, `jit_lockstep_030_a64_alignment_test`
+  registered; the class had never been latent there — the guard had closed
+  it by replay, and a64's own admissions never read the two knobs). The
+  remaining work is ONE item: **finish the `-L etalon` tier under the
+  flip on x86-64** — the 2026-08-22 (second) validation was cut by a host
+  shutdown at 47/106 parallel gates, zero failures (`CHANGELOG.md` has the
+  exact state). On AArch64 the `-L m030` tier ran the same afternoon
+  (52/53 → the `lcii_soak_etalon` red was the slice-index leak, fixed,
+  `CHANGELOG.md` 2026-08-22 (fourth)). **Two items that run opened:**
+  (a) the a64 generator is **3× slower than `threaded` in the idle Finder**
+  on the LC II (453 s vs 149 s real on the soak, M1) — the regime no bench
+  reaches; give `jit_bench_lcii` a post-Finder budget or a soak arm so a
+  same-binary ABBA can price it, then look at the record/compile churn
+  under MMU-generation revalidation; (b) an asset-free gate for the
+  slice-index invariant (`unmarkPages` is the inverse of `markPages`;
+  the soak is the only tripwire and needs the ROM). The paragraph below is the 2026-08-18
   state this work overturned.**
   Measured 2026-08-18 (`docs/JIT_BRINGUP.md` § C.4bis and
   § C.4ter, `jit_bench_lcii` 2000 frames, one fingerprint throughout): the

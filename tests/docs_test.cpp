@@ -284,6 +284,8 @@ int main() {
     requiredBudgets.insert(
         "host_wallclock/any/x86_64/noise_floor_permille");
     requiredBudgets.insert(
+        "host_wallclock/any/aarch64/noise_floor_permille");
+    requiredBudgets.insert(
         "host_wallclock/any/any/noise_floor_permille");
     check(budgetSchema,
           "performance budget manifest has valid workload/family/host rows");

@@ -29,18 +29,19 @@ are present coverage, never a ceiling on the project mission.
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 226 gates, ~4 h (asset-dependent ones soft-skip)
-ctest -L unit                     # 107 legacy non-etalon gates
+ctest                             # 227 gates, ~4 h (asset-dependent ones soft-skip)
+ctest -L unit                     # 109 legacy non-etalon gates
 ctest -L asset-none               # 83 manifest-declared asset-free gates
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines
 ctest -L jit-fast                 # asset-free native A64/x64 proof + doc/config checks
 ctest -L etalon-core              # 12 gates, one profile per platform, ~32 min
 ```
 
-The counts are the documented registry's (225 total); three lockstep gates
-are host-conditional — two AArch64-only, one x86-64-only
-(`jit_lockstep_030_x64_experimental_test`) — so an x86-64 configure sees
-223 / 105 unit / 8 smoke and an AArch64 one 224 (`CMakeLists.txt`;
+The counts are the documented registry's (227 total); five lockstep gates
+are host-conditional — three AArch64-only, two x86-64-only
+(`jit_lockstep_030_x64_experimental_test` + `_alignment_test`) — so an
+x86-64 configure sees 224 / 106 unit / 8 smoke and an AArch64 one 225
+(`CMakeLists.txt`;
 `docs_test` asserts the numbers against the configured registry). `unit` means "name does
 not end in `_etalon`", not "needs no assets" — several unit gates want a ROM or
 an SST vector set and soft-skip without one.

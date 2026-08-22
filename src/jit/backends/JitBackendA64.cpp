@@ -67,13 +67,39 @@ extern "C" int pom68kA64Step(moira::Moira* cpu) noexcept {
     if (!cpu->pomJitCovers(cpu->getPC()) || !cpu->pomJitIdle()) return -1;
     return cpu->pomJitExecOne() ? 1 : 0;
 }
+// The exact data thunks. `pcWords` (fetchWords << 32 | pc, 0 when the
+// block emits no i-cache charge) is the peripheral-phase access-clock
+// alignment of JIT_BRINGUP § C.4nonies, ported from pom68kJitRead/Write
+// (2026-08-22): an I/O access forces a peripheral flush at the access
+// clock, and the interpreter reaches the same access with the 030 fetch
+// penalty already charged while generated code charges on the success path
+// after the body. Bias the clock by the read-only peek for the access alone
+// — success or fault, the bias is gone before anything else runs, so the
+// success-path charge and the fault re-run both stay exactly as they were.
+// Until this port the backend closed the same class with
+// `guardIcacheHits`, a runtime replay of every thunk-capable instruction
+// whose fetch could still miss; the bias keeps those instructions native.
 extern "C" int pom68kA64Read(moira::Moira* cpu, uint32_t addr,
-                              uint32_t bytes, uint32_t* out) noexcept {
-    return cpu->pomJitReadData(addr, int(bytes), *out) ? 1 : 0;
+                              uint32_t bytes, uint32_t* out,
+                              uint64_t pcWords) noexcept {
+    const moira::i64 bias = pcWords
+        ? cpu->pomJitIcachePeekPenalty(uint32_t(pcWords), int(pcWords >> 32))
+        : 0;
+    if (bias) cpu->pomJitBiasClock(bias);
+    const int ok = cpu->pomJitReadData(addr, int(bytes), *out) ? 1 : 0;
+    if (bias) cpu->pomJitBiasClock(-bias);
+    return ok;
 }
 extern "C" int pom68kA64Write(moira::Moira* cpu, uint32_t addr,
-                               uint32_t bytes, uint32_t value) noexcept {
-    return cpu->pomJitWriteData(addr, int(bytes), value) ? 1 : 0;
+                               uint32_t bytes, uint32_t value,
+                               uint64_t pcWords) noexcept {
+    const moira::i64 bias = pcWords
+        ? cpu->pomJitIcachePeekPenalty(uint32_t(pcWords), int(pcWords >> 32))
+        : 0;
+    if (bias) cpu->pomJitBiasClock(bias);
+    const int ok = cpu->pomJitWriteData(addr, int(bytes), value) ? 1 : 0;
+    if (bias) cpu->pomJitBiasClock(-bias);
+    return ok;
 }
 
 struct Frame {
@@ -136,6 +162,14 @@ thread_local bool gRuntimeReasonHisto = false;
 // refreshes it before generated execution resumes.
 thread_local bool gPacingDeadline = false;
 thread_local bool gDirectPeriphDue = false;
+// The access-thunk clock-alignment operand of the instruction being
+// emitted (see pom68kA64Read): its traced fetch stream, packed for the
+// thunk's read-only peek. The compile loop sets it per instruction and
+// memLoadGuest/memStoreGuest hand it to the thunk as the fifth argument. 0
+// — no bias — whenever the block emits no i-cache charge or the IR carries
+// no traced count: the bias must model exactly what the end-of-body charge
+// will charge, or it is a new skew, not an alignment.
+thread_local uint64_t gAccessPcWords = 0;
 
 // Minimal fixed-width assembler. Every memory operand is an unsigned scaled
 // immediate off x0 (Moira*) or x1 (Frame*); layout() validates the offsets.
@@ -559,61 +593,6 @@ void shadowIcache(const BlockIr& ir, const Instr& in, IcacheShadow& shadow,
         }
         shadow.valid[line] |= bit;
     }
-}
-
-// Exact data thunks can advance peripheral time from inside the operand
-// access. The interpreter has already paid any instruction-cache misses by
-// then, whereas charge-on-success must normally defer their publication
-// until the access can no longer bail out. Native execution is therefore
-// ordering-safe only when earlier fetches in this block prove that every
-// word of this instruction is already an i-cache hit. Starting the shadow
-// empty makes the proof independent of cache state at block entry.
-bool shadowProvesIcacheHits(const BlockIr& ir, const Instr& in,
-                            const IcacheShadow& shadow,
-                            uint32_t exactFetchWords = 0) {
-    const uint32_t words = exactFetchWords ? exactFetchWords
-                         : in.fetchWords   ? uint32_t(in.fetchWords)
-                                           : uint32_t(in.words) + 1;
-    const uint32_t sup = ir.super ? 0x80000000u : 0u;
-    for (uint32_t w = 0; w < words; w++) {
-        const uint32_t addr = in.pc + w * 2;
-        const int line = int((addr >> 4) & 15);
-        const uint32_t tag = (addr >> 8) | sup;
-        const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
-        if (!shadow.seen[line] || shadow.tag[line] != tag ||
-            !(shadow.valid[line] & bit)) return false;
-    }
-    return true;
-}
-
-// Runtime half of the same proof. On a cache miss the untouched instruction
-// goes through Moira, which applies the miss penalty before its exact data
-// access. On a hit the post-success charge below has no cycle component, so
-// it may safely update only the accounting after the native body. Words
-// already guaranteed by the block shadow need no redundant test.
-void guardIcacheHits(Asm& a, const Layout& L, const BlockIr& ir,
-                     const Instr& in, const IcacheShadow& shadow, int slow,
-                     uint32_t exactFetchWords = 0) {
-    const uint32_t words = exactFetchWords ? exactFetchWords
-                         : in.fetchWords   ? uint32_t(in.fetchWords)
-                                           : uint32_t(in.words) + 1;
-    const uint32_t sup = ir.super ? 0x80000000u : 0u;
-    const int disabled = a.label();
-    a.ldrB(9, 0, L.cacr); a.ubfxW(9, 9, 0, 1);
-    a.cbzW(9, disabled);
-    for (uint32_t w = 0; w < words; w++) {
-        const uint32_t addr = in.pc + w * 2;
-        const int line = int((addr >> 4) & 15);
-        const uint32_t tag = (addr >> 8) | sup;
-        const uint8_t bit = uint8_t(1u << ((addr >> 2) & 3));
-        if (shadow.seen[line] && shadow.tag[line] == tag &&
-            (shadow.valid[line] & bit)) continue;
-        a.ldrW(9, 0, L.icTag + uint32_t(line) * 4); a.movW(10, tag);
-        a.cmpW(9, 10); a.bCond(Asm::NE, slow);
-        a.ldrB(9, 0, L.icValid + uint32_t(line));
-        a.ubfxW(9, 9, std::countr_zero(bit), 1); a.cbzW(9, slow);
-    }
-    a.bind(disabled);
 }
 
 uint32_t regOff(const Layout& L, bool address, unsigned n) {
@@ -1235,6 +1214,7 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     spillQueueLive(a, L);
+    a.movX(4, gAccessPcWords);          // access-clock alignment operand
     a.movX(16, uint64_t(uintptr_t(&pom68kA64Read)));
     a.blr(16);
     a.movRegW(14, 0);
@@ -1380,6 +1360,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     spillQueueLive(a, L);
+    a.movX(4, gAccessPcWords);          // access-clock alignment operand
     a.movX(16, uint64_t(uintptr_t(&pom68kA64Write)));
     a.blr(16);
     a.movRegW(14, 0);
@@ -2940,6 +2921,12 @@ public:
         // 6,000-frame budget beats threaded with the same fingerprint.
         c.autoFamilies = kGuest68040 | kGuest68030;
         c.profitScore68030 = 64;
+        // pom68kA64Read/Write carry the § C.4nonies access-clock bias since
+        // 2026-08-22 (ported from x64, replacing the guardIcacheHits
+        // replay) — the declaration that turns the restart-base and BSR.W
+        // admission DEFAULTS on for this backend too, on the a64 120k
+        // lockstep's evidence.
+        c.accessClockBias = true;
         return c;
     }
     bool canEmit(uint16_t op) const override {
@@ -3095,19 +3082,16 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
             continue;
         }
         // A successful exact MMIO thunk may call Cpu030::stall/catchUp from
-        // inside the operand access. If this instruction can still miss in
-        // the i-cache, post-success charging would present that access to
-        // peripherals four cycles too early. Replay the whole instruction
-        // unless the block-local shadow proves a zero-penalty fetch. Plain
-        // DTLB accesses and exact accesses on proved hits stay native.
-        const bool exactDataThunk =
-            memoryProofPlan(in.memory, proofOptions(L)).exactThunkMask != 0;
+        // inside the operand access, and post-success charging would
+        // present that access to peripherals the fetch penalty too early.
+        // The thunks align the clock themselves (pom68kA64Read/Write, the
+        // § C.4nonies bias) from this operand; until 2026-08-22 the same
+        // class was closed by `guardIcacheHits`, which replayed the whole
+        // instruction through Moira unless the block-local shadow proved a
+        // zero-penalty fetch.
+        gAccessPcWords = icache && in.fetchWords
+            ? (uint64_t(in.fetchWords) << 32) | in.pc : 0;
         const Asm::Mark mark = a.mark();
-        if (icache && exactDataThunk &&
-            !shadowProvesIcacheHits(ir, in, icacheShadow,
-                                    dbcc ? 2u : 0u))
-            guardIcacheHits(a, L, ir, in, icacheShadow, slowRuntime[i],
-                            dbcc ? 2u : 0u);
         // mmu040InstrStart's simple POLL_IPL is already satisfied here.
         // setIPL() raises CHECK_IRQ whenever the pin changes, and guards()
         // exits before this instruction if any control flag is set. The

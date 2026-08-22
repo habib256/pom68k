@@ -1787,6 +1787,19 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         set_tests_properties(jit_lockstep_030_a64_experimental_test PROPERTIES
                              ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=260480"
                              TIMEOUT 1800)
+
+        # The AArch64 twin of the x64 alignment gate (2026-08-22, JIT_BRINGUP
+        # § C.4nonies): the 120k lockstep at the fine-grained cadence with
+        # BOTH § C.4nonies admissions explicitly on. pom68kA64Read/Write
+        # carry the access-clock bias since the same day (replacing the
+        # guardIcacheHits replay) and the backend declares it, so the
+        # experimental gate above runs these admissions by DEFAULT; this one
+        # pins the explicit-knob road beside it, as on x86-64.
+        add_test(NAME jit_lockstep_030_a64_alignment_test COMMAND jit_lockstep_030_test 120000
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(jit_lockstep_030_a64_alignment_test PROPERTIES
+                             ENVIRONMENT "POM68K_JIT_BACKEND=a64;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=8192;POM68K_JIT_LOCKSTEP_FINE_AT=110000;POM68K_JIT_RESTART_BASE=1;POM68K_JIT_BSRW=1"
+                             TIMEOUT 1800)
     else()
         # The a64 pair are host-conditional gates: the registry has more
         # than one size and the docs cannot state one number. Record what
@@ -1797,7 +1810,7 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
         # Adding another conditional gate means adding it here — and
         # docs_test says so in its own failure text. (2026-08-12)
         set(pom68k_absent_gates
-            "jit_lockstep_a64_coarse_test\tunit,jit,smoke\njit_lockstep_030_a64_experimental_test\tunit,jit\n")
+            "jit_lockstep_a64_coarse_test\tunit,jit,smoke\njit_lockstep_030_a64_experimental_test\tunit,jit\njit_lockstep_030_a64_alignment_test\tunit,jit\n")
     endif()
 
     # The x86-64 twin of the 030 experimental gate — first green 2026-08-18,

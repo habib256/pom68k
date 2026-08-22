@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 263 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 265 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,8 +8,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 28 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 33 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 29 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 34 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 13 |
@@ -54,6 +54,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-21 (sixth)** — [The peripheral-phase class is run to its mechanism and closed on x64: the pin was late, not the take, and the cure is an access-clock bias](CHANGELOG.md#2026-08-21-periph-phase-closed)
 - **2026-08-21 (third)** — [The shared oracles call in the x64 port: EXG, CMPM, the Scc thunk hole — and score 64 is refused by measurement](CHANGELOG.md#2026-08-21-x64-oracle-port)
 - **2026-08-22 (second)** — [The admissions flip per-backend: the default rides the backend's own alignment declaration](CHANGELOG.md#2026-08-22-admission-flip-x64)
+- **2026-08-22 (third)** — [The a64 thunks carry the access-clock bias — and the class was never latent there: the guard had closed it by replay](CHANGELOG.md#2026-08-22-a64-bias-port)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -90,6 +91,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-10 (seventh)** — [The successful postincrement oracle names the first hidden RAM divergence](CHANGELOG.md#2026-08-10-jit-030-pi-success)
 - **2026-08-16 (later)** — [020/030/040 closure: integrated FPU, module calls, caches and interruptible 6888x](CHANGELOG.md#2026-08-16-020-030-040-closure)
 - **2026-08-19** — [The 68030 code generator beats `threaded` at the default budget: the blocker was never coverage, it was an uncharge that assumed a re-run](CHANGELOG.md#2026-08-19-030-codegen-parity)
+- **2026-08-22 (fourth)** — [The LC II soak was SIGKILLed at 4.4 GB on the M1: a block evicted under MMU-generation churn left its key in the slice index, forever](CHANGELOG.md#2026-08-22-slice-index-leak)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

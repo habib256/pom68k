@@ -638,10 +638,10 @@ int main() {
                   "auto on a 68030 selects the measured AArch64 generator");
             check(a64auto030->caps().profitScore68030 == 64,
                   "AArch64 68030 publishes its measured cold-code score");
-            check(!a64auto030->caps().accessClockBias,
-                  "AArch64 does NOT declare the access-clock bias until "
-                  "pom68kA64Read/Write carry it — the admission defaults "
-                  "must stay off with it (JIT_BRINGUP § C.4nonies)");
+            check(a64auto030->caps().accessClockBias,
+                  "AArch64 declares the access-clock bias its thunks carry "
+                  "since 2026-08-22 (pom68kA64Read/Write, JIT_BRINGUP "
+                  "§ C.4nonies) — the admission defaults ride it");
         }
         static Q605Memory mem;
         static Cpu040 cpu(mem);

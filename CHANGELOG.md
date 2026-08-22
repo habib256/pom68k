@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the peripheral-phase class is latent on AArch64 defaults exactly as it was on x64" — it never was: the a64 backend had closed it by `guardIcacheHits`, a replay on every unproved fetch, and the 120k lockstep with both admissions ON was identical BEFORE the port** → [2026-08-22 (third) — The a64 thunks carry the access-clock bias…](#2026-08-22-a64-bias-port)
 - **"reconcile the native deadline test's placement" — the parked delivery-alignment hypothesis pointed at the IRQ *take* stage, and the take was already aligned (pin→take latency identical); the slip was the DELIVERY, an i-cache-charge-position skew at forced I/O flushes** → [2026-08-21 (sixth) — The peripheral-phase class is run to its mechanism…](#2026-08-21-periph-phase-closed)
 - **"the image is not the one the floor was calibrated on" was ruled a dead lead on the wrong argument (probe-chain membership, not content) — it was the answer, and it took three boot gates red for two days** → [2026-08-15 — Three red boot gates and one bit…](#2026-08-15-hd20sc-clean-bit)
 - **a gate typed a keyboard gesture at the wrong application for a day, on a desktop that looked right — and the fix is to ask the guest who is in front** → [2026-08-15 (later) — The Duo's persist leg had been gesturing at Stickies…](#2026-08-15-duo-stickies-front)
@@ -315,6 +316,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-22 (fourth)** — [The LC II soak was SIGKILLed at 4.4 GB on the M1: a block evicted under MMU-generation churn left its key in the slice index, forever](#2026-08-22-slice-index-leak)
+- **2026-08-22 (third)** — [The a64 thunks carry the access-clock bias — and the class was never latent there: the guard had closed it by replay](#2026-08-22-a64-bias-port)
 - **2026-08-22 (second)** — [The admissions flip per-backend: the default rides the backend's own alignment declaration](#2026-08-22-admission-flip-x64)
 - **2026-08-22** — [The unlocked admissions are priced: −4.3 % and −2.3 % alone, −8.0 % together — super-additive, fingerprint intact](#2026-08-22-admission-speed-evidence)
 - **2026-08-21 (sixth)** — [The peripheral-phase class is run to its mechanism and closed on x64: the pin was late, not the take, and the cure is an access-clock bias](#2026-08-21-periph-phase-closed)
@@ -580,6 +583,128 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-22-slice-index-leak"></a>
+## 2026-08-22 (fourth) — The LC II soak was SIGKILLed at 4.4 GB on the M1: a block evicted under MMU-generation churn left its key in the slice index, forever
+
+The first `-L m030` tier ever run on this AArch64 host (the afternoon's
+port needed it) came back **52/53**: `lcii_soak_etalon` "Subprocess
+killed" at 427 s, reproducible solo at 290 s, no output. `time -l` said
+why — **maximum RSS 4.4 GB** on an 8.6 GB host, against the 1.46 GB the
+x86-64 budget table measures for this gate (`gate_resource_budgets.tsv`),
+and the same gate on `threaded` sat at exactly that 1.46 GB. A build of
+HEAD-before-the-port in a worktree died the same way (3.45 GB peak,
+28 s of `sys` = paging), so the port was exonerated and the defect was
+the generator's idle-Finder regime, which no gate had run here before.
+
+**The hunt, by instrument.** `vmmap -summary` at 45/90 s: `MALLOC_LARGE`
+1.4 G → 7.1 G in 257 regions, physical footprint 8.2 G — malloc, not the
+MAP_JIT arenas. `heap`: 123 nodes of 4 MiB, 242 of 2 MiB, 127 of 512 KiB,
+326 of 256 KiB — power-of-two sizes, i.e. `std::vector`s growing
+geometrically and never shrinking. `malloc_history -allBySize` under
+`MallocStackLogging`: **4834 calls, 1.23 GB, `operator new` inlined
+straight into `jit::Engine::executeUntil`** (LTO folds `record()` and
+`markPages()` into it). That narrowed it to one container and the code
+named it.
+
+**The mechanism.** `markPages()` files a block's key under every
+`CodeGuard` slice its footprint covers (`sliceIndex_[p].push_back`).
+`executeUntil`'s lazy MMU-generation revalidation (2026-08-19) erases a
+block whose footprint no longer matches the re-armed window — **without
+removing its key from the index**. The next visit re-records the same
+pc, `markPages()` appends the same key again, and under Mac OS VM's
+generation churn (the 2026-08-18 "flush storm" regime, where the 68030
+spends its life re-recording) every slice vector grows by one entry per
+re-record, without bound: 512 K stale keys = one 4 MiB node, hundreds
+of slices. `serviceGuard()` had the same hole for a block spanning two
+slices (erased through slice A, its key stayed in slice B). The
+interpreter and `threaded` do not show it because they rarely take the
+lazy path for long-lived blocks.
+
+**The fix is the missing inverse.** `Engine::unmarkPages(key, physBase,
+physLen)` pulls the key out of every slice vector its footprint covers,
+dropping an emptied vector; both eviction paths call it (serviceGuard
+now detaches the slice's key list before walking it, so a multi-slice
+block's other entries can be unfiled). The guard mark on the slice
+deliberately stays — a spurious trip costs one `serviceGuard()` pass, a
+missing one would let a write into code go unseen. **Validated:** the
+soak passes (`exit=0`, 179 s Mac time), **peak RSS 1.86 GB**, the RSS
+curve flat at 1.43 GB through the boot and then a slow slope
+(~1 MB/s over the idle minutes, bounded by `maxBlocks` as far as the
+code says — not chased today).
+
+**Two things this run measured that are NOT closed.** (1) the same
+soak takes **453 s on the a64 generator against 149 s on `threaded`** —
+3× slower in the idle Finder on this M1, the regime the 6000-frame bench
+never reaches; a same-binary `bench::compare` cannot price it yet
+because the bench stops before the Finder, so it is a TODO with the
+soak's own numbers. (2) there is no asset-free gate for the index
+invariant; the soak is the only tripwire and it needs the LC II ROM.
+
+<a id="2026-08-22-a64-bias-port"></a>
+## 2026-08-22 (third) — The a64 thunks carry the access-clock bias — and the class was never latent there: the guard had closed it by replay
+
+The morning's flip left one named debt: port the § C.4nonies access-clock
+bias to `pom68kA64Read/Write` on an ARM host, flip the declaration, and
+let a64 inherit the admission defaults. The port landed this afternoon on
+the M1 — and the first measurement overturned its premise. **Before
+touching a line**, the a64 120k lockstep with both admissions explicitly
+ON (`POM68K_JIT_RESTART_BASE=1 POM68K_JIT_BSRW=1`, budget 8192, fine from
+110 000) was already `OK — 120000 steps identical`, i-cache identical.
+The class the x64 closure called "latent on AArch64 defaults exactly as
+it was on x64 for months" was not latent at all: the a64 compile loop
+carried `guardIcacheHits` + `shadowProvesIcacheHits` — every
+thunk-capable instruction whose fetch the block-local shadow could not
+prove an i-cache hit was guarded at runtime and REPLAYED through Moira
+on a miss, so the interpreter charged the fetch penalty before the
+access and the flush saw the aligned clock. Correct, and paid in
+replays.
+
+**The port replaces the replay with the bias.** `pom68kA64Read/Write`
+take the packed `fetchWords << 32 | pc` operand as a fifth argument (x4)
+and bias the clock by `pomJitIcachePeekPenalty` for the access alone,
+exactly as x64's thunks do; the compile loop packs the operand per
+instruction into a thread-local (`gAccessPcWords`, 0 whenever the block
+emits no i-cache charge or the IR carries no traced count) that
+`memLoadGuest`/`memStoreGuest` load right before the `blr`; the guard,
+its shadow proof and their 55 lines are deleted. The backend declares
+`accessClockBias`.
+
+**Validated on the M1, relinked binaries.** `jit_backend_test` green
+with the a64 expectation flipped. Four 120k locksteps after the port,
+all `identical` with i-cache identical: the default path (no knobs),
+both knobs ON, both knobs OFF, and the registered 6000-frame
+production-cadence gate (`jit_lockstep_030_a64_experimental_test`,
+budget 260 480). What moved is the replay count — **16 997 986 →
+12 793 414 blocks replayed** on the 120k run, 6103 → 6118 blocks
+compiled, 348 730 916 → 348 759 308 native instructions — the guard's
+bails now running native. `jit_lockstep_030_a64_alignment_test` is
+registered as the x64 gate's twin (explicit knobs ON, 120k at 8192);
+the documented registry is 227, an AArch64 configure sees 225, an
+x86-64 one 224 — `docs_test` green on the new counts.
+
+**A second finding, recorded so the declaration is not over-read.** The
+three 120k runs — knobs ON, OFF and default — print IDENTICAL counts to
+the instruction. The a64 emitter never consulted `restartBaseAdmission()`
+or `bsrWideAdmission()`: its restartable-write family is admitted on the
+split base cost unconditionally (`traced030`), and BSR.W is admitted by
+`in.words <= 3` with no knob. So "a64 inherits the admission defaults"
+is true of the resolved config and INERT in the generated code; the two
+knobs are x64 levers. The declaration still earns its place — it is the
+only thing a per-backend default is allowed to ride on, and
+`jit_backend_test` pins that both native backends now make it.
+
+The `-L m030` tier on AArch64 followed the same afternoon: 52/53, the
+one red a pre-existing memory blow-up of the generator's idle regime, run
+to ground and fixed in the next entry; after that fix, on relinked
+binaries (freshness guard green): `-L jit` 38/38, `-L m030|m040`
+**104/104** in 1 h 07 at `-j4`, `-L unit` 106/107 — the one red
+`ltoudp_test`, which fails identically on the pre-port build (UDP
+multicast self-delivery on this host's `en0`; environmental). Speed,
+measured under R1 on the quiet host, NULL floor 0.1 %: `threaded,a64`
+at 6000 frames **−16.4 %** (27.37 s → 22.88 s, spreads 0.0/0.1 %, fp
+`cfb184b6faddabec`). The x86-64 `-L etalon` tier the morning's entry
+owes is still owed.
 
 <a id="2026-08-22-admission-flip-x64"></a>
 ## 2026-08-22 (second) — The admissions flip per-backend: the default rides the backend's own alignment declaration
