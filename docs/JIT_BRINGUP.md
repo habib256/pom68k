@@ -959,9 +959,27 @@ the class closed.
   source read. A form with an I/O source and dest extensions would be
   biased early by its dest-word misses. No such form is in the admitted
   native set today, and the 120k gate is the tripwire.
-- **The admissions themselves stay OFF.** This section is conformance;
-  the flips (restart-base ~44 % of in-block fallbacks, BSR.W and the wider
-  single-path exemptions) each want their own D.1-shape speed evidence.
+- **The admissions themselves stay OFF — but their speed evidence is now
+  MEASURED (2026-08-22).** `bench::compare` on the LC II, ABBA, 3
+  repeats/arm, quiet host, fingerprint identical within each budget
+  (`cfb184b6faddabec` at 6000 frames — the same fp as the C.5 flip
+  evidence), host floor 1.0 %:
+
+  | arms (`POM68K_BENCH_ARMS`) | 3000 frames | 6000 frames |
+  |---|---|---|
+  | `x64,x64@restart=1` | −3.0 % | **−4.3 %** |
+  | `x64,x64@bsrw=1` | −0.9 % (NOT A CLAIM) | **−2.3 %** |
+  | `x64,x64@restart=1@bsrw=1` | **−7.7 %** | **−8.0 %** |
+
+  The pair is SUPER-additive (−8.0 % against a −6.6 % sum): BSR.W
+  admission extends blocks across calls, and the restart-base admission
+  then natively serves more of what those longer blocks contain. The
+  trend rises with budget, so per R3 the −8.0 % is a floor for a real
+  session. Per R4 the measurement is recorded here and the flip is a
+  separate decision; what the flip still owes is the **a64 alignment
+  port** (or an explicitly per-backend admission default), then D.1
+  items 2 and 4 — boot etalons and the full tier under the new default —
+  in the flip's own commit.
 
 ## Phase D — the default engine — **68040 landed**
 

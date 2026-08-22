@@ -146,41 +146,76 @@ int main() {
             armA = v.substr(0, comma);
             armB = v.substr(comma + 1);
         }
+        // Arm modifiers, each binding one Engine-resolved knob per arm the
+        // way `@score=` always has: `@restart=0|1` and `@bsrw=0|1` are the
+        // two admission experiments of JIT_BRINGUP § C.4nonies, and their
+        // D.1 speed evidence is exactly a same-process A/B of one knob.
         struct ArmSpec {
             std::string label;
             std::string backend;
             std::string score;
             bool scoreOverride = false;
+            std::string restart;
+            bool restartOverride = false;
+            std::string bsrw;
+            bool bsrwOverride = false;
         };
         const auto parseArm = [](const std::string& text, ArmSpec& out) {
             out.label = text;
-            const size_t at = text.find('@');
+            size_t at = text.find('@');
             out.backend = text.substr(0, at);
             if (out.backend.empty()) return false;
-            if (at == std::string::npos) return true;
-            constexpr const char prefix[] = "score=";
-            const std::string modifier = text.substr(at + 1);
-            if (modifier.rfind(prefix, 0) != 0 ||
-                modifier.size() == sizeof(prefix) - 1)
-                return false;
-            char* end = nullptr;
-            const long score = std::strtol(
-                modifier.c_str() + sizeof(prefix) - 1, &end, 10);
-            if (!end || *end || score < 0 || score > (1L << 30)) return false;
-            out.score = std::to_string(score);
-            out.scoreOverride = true;
+            while (at != std::string::npos) {
+                const size_t next = text.find('@', at + 1);
+                const std::string modifier =
+                    text.substr(at + 1, next == std::string::npos
+                                            ? std::string::npos
+                                            : next - at - 1);
+                const size_t eq = modifier.find('=');
+                if (eq == std::string::npos || eq + 1 == modifier.size())
+                    return false;
+                const std::string key = modifier.substr(0, eq);
+                const std::string val = modifier.substr(eq + 1);
+                if (key == "score") {
+                    char* end = nullptr;
+                    const long score = std::strtol(val.c_str(), &end, 10);
+                    if (!end || *end || score < 0 || score > (1L << 30))
+                        return false;
+                    out.score = std::to_string(score);
+                    out.scoreOverride = true;
+                } else if (key == "restart" || key == "bsrw") {
+                    if (val != "0" && val != "1") return false;
+                    if (key == "restart") {
+                        out.restart = val;
+                        out.restartOverride = true;
+                    } else {
+                        out.bsrw = val;
+                        out.bsrwOverride = true;
+                    }
+                } else {
+                    return false;
+                }
+                at = next;
+            }
             return true;
         };
         ArmSpec specs[2];
         if (!parseArm(armA, specs[0]) || !parseArm(armB, specs[1])) {
             std::fprintf(stderr,
-                         "FAIL: arm syntax is <backend> or "
-                         "<backend>@score=N (0 <= N <= 2^30)\n");
+                         "FAIL: arm syntax is <backend> with optional "
+                         "@score=N (0 <= N <= 2^30), @restart=0|1, "
+                         "@bsrw=0|1 modifiers\n");
             return 1;
         }
         const char* originalScore = std::getenv("POM68K_JIT_PROFIT_SCORE");
         const bool hadOriginalScore = originalScore != nullptr;
         const std::string savedScore = originalScore ? originalScore : "";
+        const char* originalRestart = std::getenv("POM68K_JIT_RESTART_BASE");
+        const bool hadOriginalRestart = originalRestart != nullptr;
+        const std::string savedRestart = originalRestart ? originalRestart : "";
+        const char* originalBsrw = std::getenv("POM68K_JIT_BSRW");
+        const bool hadOriginalBsrw = originalBsrw != nullptr;
+        const std::string savedBsrw = originalBsrw ? originalBsrw : "";
         std::printf("lcii %s, %d repeats x 2 arms ABBA, %d frames per run, "
                     "built %s\n",
                     bench::nullExperiment() ? "NULL experiment (A vs A)"
@@ -194,6 +229,18 @@ int main() {
                 setenv("POM68K_JIT_PROFIT_SCORE", savedScore.c_str(), 1);
             else
                 unsetenv("POM68K_JIT_PROFIT_SCORE");
+            if (spec.restartOverride)
+                setenv("POM68K_JIT_RESTART_BASE", spec.restart.c_str(), 1);
+            else if (hadOriginalRestart)
+                setenv("POM68K_JIT_RESTART_BASE", savedRestart.c_str(), 1);
+            else
+                unsetenv("POM68K_JIT_RESTART_BASE");
+            if (spec.bsrwOverride)
+                setenv("POM68K_JIT_BSRW", spec.bsrw.c_str(), 1);
+            else if (hadOriginalBsrw)
+                setenv("POM68K_JIT_BSRW", savedBsrw.c_str(), 1);
+            else
+                unsetenv("POM68K_JIT_BSRW");
             const bool engineOn = spec.backend != "interp";
             if (engineOn && spec.backend != "jit")   // "jit" = whatever the
                 setenv("POM68K_JIT_BACKEND", spec.backend.c_str(), 1); // env says

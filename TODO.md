@@ -698,13 +698,17 @@ Open, in ROI order:
   the slip was the forced I/O flush running at a clock missing the
   fetch penalty (the take was already aligned); the access thunks now
   bias the clock for the access alone, both reproducers pass the full
-  120k, and `jit_lockstep_030_x64_alignment_test` pins it. What remains
-  on these levers is now SPEED work, not conformance: (1) port the
-  alignment bias to `pom68kA64Read/Write` on an ARM host (prerequisite
-  for any global flip — the class is still latent on a64 defaults);
-  (2) measure the restart-base and BSR.W admissions with the D.1 bench
-  protocol and flip what wins (`docs/JIT_BRINGUP.md` § C.4nonies).
-  The paragraph below is the 2026-08-18 state this work overturned.**
+  120k, and `jit_lockstep_030_x64_alignment_test` pins it. **The speed
+  evidence is MEASURED (2026-08-22, § C.4nonies carries the table)**:
+  restart-base −4.3 %, BSR.W −2.3 %, the pair **−8.0 %** and
+  super-additive, at 6000 frames on the LC II, fp identical
+  (`cfb184b6faddabec`), floor 1.0 %. What the flip still owes: (1) the
+  a64 alignment port (`pom68kA64Read/Write`) on an ARM host — the class
+  is still latent on a64 defaults, so a global admission flip without it
+  breaks that ISA — or an explicitly per-backend default; (2) D.1 items
+  2 and 4 (boot etalons + full tier under the new default) in the flip's
+  own commit. The paragraph below is the 2026-08-18 state this work
+  overturned.**
   Measured 2026-08-18 (`docs/JIT_BRINGUP.md` § C.4bis and
   § C.4ter, `jit_bench_lcii` 2000 frames, one fingerprint throughout): the
   x64 generator is **slower than the interpreter** on a 68030 (21.84 s vs

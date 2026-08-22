@@ -315,6 +315,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-22** — [The unlocked admissions are priced: −4.3 % and −2.3 % alone, −8.0 % together — super-additive, fingerprint intact](#2026-08-22-admission-speed-evidence)
 - **2026-08-21 (sixth)** — [The peripheral-phase class is run to its mechanism and closed on x64: the pin was late, not the take, and the cure is an access-clock bias](#2026-08-21-periph-phase-closed)
 - **2026-08-21 (fifth)** — [Both parked levers, one root: BSR.W's divergence is the same delivery-alignment class, and the target-side-charge fix shape is refuted by measurement](#2026-08-21-bsrw-same-class)
 - **2026-08-21 (fourth)** — [The restart-write divergence names its class: peripheral-delivery alignment, not cost — two IRQ delay loops disassembled, the reproducer lands in-tree](#2026-08-21-restart-base-forensic)
@@ -578,6 +579,43 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-22-admission-speed-evidence"></a>
+## 2026-08-22 — The unlocked admissions are priced: −4.3 % and −2.3 % alone, −8.0 % together — super-additive, fingerprint intact
+
+The peripheral-phase closure (yesterday's sixth entry) turned the two
+parked admissions from conformance problems into speed decisions, and
+today the decisions got their numbers. `POM68K_BENCH_ARMS` learned two
+modifiers in the `@score=` mould — `@restart=0|1` and `@bsrw=0|1` — so
+each admission binds per arm inside ONE `bench::compare` process, which
+is the only shape R1 accepts. Six comparisons (three pairs × two
+budgets), ABBA, 3 repeats/arm, quiet host, fingerprint identical within
+each budget (`cfb184b6faddabec` at 6000 frames — the very fp of the C.5
+flip evidence), host floor 1.0 %:
+
+| arms | 3000 frames | 6000 frames |
+|---|---|---|
+| `x64,x64@restart=1` | −3.0 % | **−4.3 %** |
+| `x64,x64@bsrw=1` | −0.9 % (NOT A CLAIM) | **−2.3 %** |
+| `x64,x64@restart=1@bsrw=1` | **−7.7 %** | **−8.0 %** |
+
+Two readings worth keeping. First, the pair is **super-additive**:
+−8.0 % against a −6.6 % sum of parts. BSR.W admission lets blocks
+extend across subroutine calls, and the restart-base admission then
+serves natively more of what those longer blocks contain — admissions
+compose through block SHAPE, not just through instruction counts.
+Second, BSR.W alone at 3000 frames sits inside the floor; at 6000 it is
+a claim — the R3 trend again, and the reason a single-budget number
+would have under- or over-sold it depending on which budget was picked.
+
+Per R4 the recommendation is NOT in this entry. The flip still owes the
+a64 alignment port (the peripheral-phase class is latent on AArch64
+defaults, and a global admission flip without it breaks that ISA — or
+the default goes explicitly per-backend), then D.1 items 2 and 4 under
+the new default, in the flip's own commit. Evidence table also in
+`docs/JIT_BRINGUP.md` § C.4nonies; the tier context: yesterday's
+closure was validated unit 106/106, smoke 9/9, jit 37/37, m030 53/53,
+m040 51/51 on relinked binaries.
 
 <a id="2026-08-21-periph-phase-closed"></a>
 ## 2026-08-21 (sixth) — The peripheral-phase class is run to its mechanism and closed on x64: the pin was late, not the take, and the cure is an access-clock bias
