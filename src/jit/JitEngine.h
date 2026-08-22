@@ -207,6 +207,12 @@ private:
     // Marks the physical pages a freshly recorded block occupies, so a
     // later write into them trips the guard.
     void markPages(uint64_t key, uint32_t physBase, uint32_t physLen);
+    // The exact inverse: drops `key` from every slice index entry its
+    // footprint filed it under. Every path that erases a block from
+    // blocks_ other than a whole-slice eviction must call it, or the key
+    // is re-filed by the next record() and the slice vector grows by one
+    // entry per re-record, forever (2026-08-22, the 4.4 GB LC II soak).
+    void unmarkPages(uint64_t key, uint32_t physBase, uint32_t physLen);
 
     // Fills Moira's data TLB for `addr` and hands generated code the host
     // page behind it, or nullptr when the access must go the long way. This

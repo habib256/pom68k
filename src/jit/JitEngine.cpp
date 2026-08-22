@@ -676,19 +676,27 @@ void Engine::serviceGuard() {
         // Every block filed under this slice was translated from memory the
         // write touched, so all of them go — and with them every index entry
         // for the slice, which is what makes clearing its mark correct.
-        auto indexed = sliceIndex_.find(slice);
-        if (indexed != sliceIndex_.end()) for (uint64_t blockKey : indexed->second) {
+        // Detach the slice's key list first: a block spanning more than one
+        // slice is also filed under the others, and unmarkPages() must pull
+        // it out of THOSE — a stale key left behind is re-filed by the next
+        // record() and the index grows without bound.
+        std::vector<uint64_t> keys;
+        if (auto indexed = sliceIndex_.find(slice); indexed != sliceIndex_.end()) {
+            keys = std::move(indexed->second);
+            sliceIndex_.erase(indexed);
+        }
+        for (uint64_t blockKey : keys) {
             auto b = blocks_.find(blockKey);
             if (b != blocks_.end()) {
                 if (b->second.code) {
                     retractLink(b->second.ir.entryPc, b->second.ir.super);
                     backend_->release(b->second.code);
                 }
+                unmarkPages(blockKey, b->second.ir.physBase, b->second.ir.physLen);
                 blocks_.erase(b);
                 stats_.add(stats_.evictions);
             }
         }
-        if (indexed != sliceIndex_.end()) sliceIndex_.erase(indexed);
         if (slice >= pageMap_.size()) continue;
         pageMap_[slice] = 0;
 
@@ -706,6 +714,22 @@ void Engine::serviceGuard() {
     }
     guard_.clear();
     stats_.blocksLive.store(blocks_.size(), std::memory_order_relaxed);
+}
+
+void Engine::unmarkPages(uint64_t blockKey, uint32_t physBase, uint32_t physLen) {
+    if (pageMap_.empty() || !physLen) return;
+    uint32_t p = physBase >> CodeGuard::kShift;
+    const uint32_t last = (physBase + physLen - 1) >> CodeGuard::kShift;
+    for (; p <= last && p < pageMap_.size(); p++) {
+        auto it = sliceIndex_.find(p);
+        if (it == sliceIndex_.end()) continue;
+        std::vector<uint64_t>& keys = it->second;
+        keys.erase(std::remove(keys.begin(), keys.end(), blockKey), keys.end());
+        // The slice's guard mark deliberately stays: a spurious trip costs a
+        // serviceGuard() pass, a missing one would let a write into code go
+        // unseen. serviceGuard() clears it when the slice is next hit.
+        if (keys.empty()) sliceIndex_.erase(it);
+    }
 }
 
 void Engine::markPages(uint64_t blockKey, uint32_t physBase, uint32_t physLen) {
@@ -1263,6 +1287,11 @@ void Engine::executeUntil(int64_t clockTarget) {
                         publishLink(pc, super, e);
             } else {
                 if (b.code) backend_->release(b.code);
+                // Its key must leave the slice index with it: record() is
+                // about to re-file the same key, and a stale one under the
+                // MMU-generation churn of Mac OS VM grew the index by
+                // gigabytes on the LC II soak (2026-08-22).
+                unmarkPages(it->first, b.ir.physBase, b.ir.physLen);
                 blocks_.erase(it);
                 it = blocks_.end();
             }
