@@ -672,78 +672,98 @@ void Engine::serviceGuard() {
     if (guard_.mustFlush() || blocks_.empty()) { flushAll(Flush::Guard); return; }
 
     for (int k = 0; k < guard_.nHits; k++) {
-        const uint32_t slice = guard_.hits[k];
-        // Every block filed under this slice was translated from memory the
-        // write touched, so all of them go — and with them every index entry
-        // for the slice, which is what makes clearing its mark correct.
-        // Detach the slice's key list first: a block spanning more than one
-        // slice is also filed under the others, and unmarkPages() must pull
-        // it out of THOSE — a stale key left behind is re-filed by the next
-        // record() and the index grows without bound.
+        const CodeGuard::Hit& h = guard_.hits[k];
+        // note() only records a hit when the write covers a sub-slice some
+        // block has bytes in, so nearly every trip names a real victim; the
+        // per-block intersection below is what makes it exact. Walk a copy:
+        // unmarkPages() edits the vector being walked.
         std::vector<uint64_t> keys;
-        if (auto indexed = sliceIndex_.find(slice); indexed != sliceIndex_.end()) {
-            keys = std::move(indexed->second);
-            sliceIndex_.erase(indexed);
-        }
+        if (auto indexed = sliceIndex_.find(h.slice); indexed != sliceIndex_.end())
+            keys = indexed->second;
         for (uint64_t blockKey : keys) {
             auto b = blocks_.find(blockKey);
-            if (b != blocks_.end()) {
-                if (b->second.code) {
-                    retractLink(b->second.ir.entryPc, b->second.ir.super);
-                    backend_->release(b->second.code);
-                }
-                unmarkPages(blockKey, b->second.ir.physBase, b->second.ir.physLen);
-                blocks_.erase(b);
-                stats_.add(stats_.evictions);
+            if (b == blocks_.end()) continue;
+            const BlockIr& ir = b->second.ir;
+            uint32_t lo = 0, len = 0;
+            blockSpan(ir, lo, len);
+            if (!len || h.hi < lo || h.lo > lo + len - 1) continue;
+            if (b->second.code) {
+                retractLink(ir.entryPc, ir.super);
+                backend_->release(b->second.code);
             }
+            unmarkPages(blockKey, lo, len);
+            blocks_.erase(b);
+            stats_.add(stats_.evictions);
         }
-        if (slice >= pageMap_.size()) continue;
-        pageMap_[slice] = 0;
-
-        // codePage_ answers the same question at the 4 KB granularity the
-        // data TLB hands out, so it may only be cleared once no slice in the
-        // page is marked any more.
-        const uint32_t page = (slice << CodeGuard::kShift) >> 12;
-        if (page >= codePage_.size() || !codePage_[page]) continue;
-        const uint32_t first = (page << 12) >> CodeGuard::kShift;
-        const uint32_t count = 4096 >> CodeGuard::kShift;
-        bool any = false;
-        for (uint32_t i = first; i < first + count && i < pageMap_.size(); i++)
-            if (pageMap_[i]) { any = true; break; }
-        if (!any) { codePage_[page] = 0; cpu_.pomJitDtlbFlush(); }
     }
     guard_.clear();
     stats_.blocksLive.store(blocks_.size(), std::memory_order_relaxed);
 }
 
-void Engine::unmarkPages(uint64_t blockKey, uint32_t physBase, uint32_t physLen) {
-    if (pageMap_.empty() || !physLen) return;
-    uint32_t p = physBase >> CodeGuard::kShift;
-    const uint32_t last = (physBase + physLen - 1) >> CodeGuard::kShift;
+void Engine::recomputeSliceMark(uint32_t slice) {
+    if (slice >= pageMap_.size()) return;
+    uint8_t mask = 0;
+    if (auto it = sliceIndex_.find(slice); it != sliceIndex_.end()) {
+        const uint32_t sliceLo = slice << CodeGuard::kShift;
+        const uint32_t sliceHi = sliceLo + CodeGuard::kUnit - 1;
+        for (uint64_t key : it->second) {
+            auto b = blocks_.find(key);
+            if (b == blocks_.end()) continue;
+            uint32_t lo = 0, len = 0;
+            blockSpan(b->second.ir, lo, len);
+            if (!len) continue;
+            const uint32_t hi = lo + len - 1;
+            if (hi < sliceLo || lo > sliceHi) continue;
+            mask |= CodeGuard::subMask(lo > sliceLo ? lo : sliceLo,
+                                       hi < sliceHi ? hi : sliceHi);
+        }
+    }
+    pageMap_[slice] = mask;
+    if (mask) return;
+
+    // codePage_ answers the same question at the 4 KB granularity the
+    // data TLB hands out, so it may only be cleared once no slice in the
+    // page is marked any more.
+    const uint32_t page = (slice << CodeGuard::kShift) >> 12;
+    if (page >= codePage_.size() || !codePage_[page]) return;
+    const uint32_t first = (page << 12) >> CodeGuard::kShift;
+    const uint32_t count = 4096 >> CodeGuard::kShift;
+    for (uint32_t i = first; i < first + count && i < pageMap_.size(); i++)
+        if (pageMap_[i]) return;
+    codePage_[page] = 0;
+    cpu_.pomJitDtlbFlush();
+}
+
+void Engine::unmarkPages(uint64_t blockKey, uint32_t lo, uint32_t len) {
+    if (pageMap_.empty() || !len) return;
+    uint32_t p = lo >> CodeGuard::kShift;
+    const uint32_t last = (lo + len - 1) >> CodeGuard::kShift;
     for (; p <= last && p < pageMap_.size(); p++) {
         auto it = sliceIndex_.find(p);
         if (it == sliceIndex_.end()) continue;
         std::vector<uint64_t>& keys = it->second;
         keys.erase(std::remove(keys.begin(), keys.end(), blockKey), keys.end());
-        // The slice's guard mark deliberately stays: a spurious trip costs a
-        // serviceGuard() pass, a missing one would let a write into code go
-        // unseen. serviceGuard() clears it when the slice is next hit.
         if (keys.empty()) sliceIndex_.erase(it);
+        recomputeSliceMark(p);
     }
 }
 
-void Engine::markPages(uint64_t blockKey, uint32_t physBase, uint32_t physLen) {
-    if (pageMap_.empty() || !physLen) return;
-    uint32_t p = physBase >> CodeGuard::kShift;
-    const uint32_t last = (physBase + physLen - 1) >> CodeGuard::kShift;
+void Engine::markPages(uint64_t blockKey, uint32_t lo, uint32_t len) {
+    if (pageMap_.empty() || !len) return;
+    const uint32_t hi = lo + len - 1;
+    uint32_t p = lo >> CodeGuard::kShift;
+    const uint32_t last = hi >> CodeGuard::kShift;
     bool gained = false;
     for (; p <= last && p < pageMap_.size(); p++) {
+        const uint32_t sliceLo = p << CodeGuard::kShift;
+        const uint32_t sliceHi = sliceLo + CodeGuard::kUnit - 1;
         if (!pageMap_[p]) gained = true;
-        pageMap_[p] = 1;
+        pageMap_[p] |= CodeGuard::subMask(lo > sliceLo ? lo : sliceLo,
+                                          hi < sliceHi ? hi : sliceHi);
         sliceIndex_[p].push_back(blockKey);
     }
-    uint32_t q = physBase >> 12;
-    const uint32_t qlast = (physBase + physLen - 1) >> 12;
+    uint32_t q = lo >> 12;
+    const uint32_t qlast = hi >> 12;
     for (; q <= qlast && q < codePage_.size(); q++) codePage_[q] = 1;
 
     // ── the INVALIDATION this function owes, and never paid ──────────────
@@ -1060,7 +1080,11 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     auto [it, inserted] = blocks_.emplace(key(pc, super), std::move(b));
     if (!inserted) return &it->second;
 
-    markPages(key(pc, super), it->second.ir.physBase, it->second.ir.physLen);
+    {
+        uint32_t lo = 0, len = 0;
+        blockSpan(it->second.ir, lo, len);
+        markPages(key(pc, super), lo, len);
+    }
     stats_.blocksLive.store(blocks_.size(), std::memory_order_relaxed);
     return &it->second;
 }
@@ -1291,7 +1315,11 @@ void Engine::executeUntil(int64_t clockTarget) {
                 // about to re-file the same key, and a stale one under the
                 // MMU-generation churn of Mac OS VM grew the index by
                 // gigabytes on the LC II soak (2026-08-22).
-                unmarkPages(it->first, b.ir.physBase, b.ir.physLen);
+                {
+                    uint32_t lo = 0, len = 0;
+                    blockSpan(b.ir, lo, len);
+                    unmarkPages(it->first, lo, len);
+                }
                 blocks_.erase(it);
                 it = blocks_.end();
             }

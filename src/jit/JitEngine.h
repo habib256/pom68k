@@ -206,13 +206,29 @@ private:
 
     // Marks the physical pages a freshly recorded block occupies, so a
     // later write into them trips the guard.
-    void markPages(uint64_t key, uint32_t physBase, uint32_t physLen);
-    // The exact inverse: drops `key` from every slice index entry its
-    // footprint filed it under. Every path that erases a block from
-    // blocks_ other than a whole-slice eviction must call it, or the key
-    // is re-filed by the next record() and the slice vector grows by one
-    // entry per re-record, forever (2026-08-22, the 4.4 GB LC II soak).
-    void unmarkPages(uint64_t key, uint32_t physBase, uint32_t physLen);
+    // The PHYSICAL bytes a block was translated from: its footprint
+    // [entryPc, exitPc) widened to the two prefetch words `ir.code`
+    // copied past it — not the window span it was recorded under, which
+    // can be a whole page (2026-08-22: marking the span was what made
+    // every data write beside code a guard trip).
+    static void blockSpan(const BlockIr& ir, uint32_t& lo, uint32_t& len) {
+        lo = ir.physBase + (ir.entryPc - ir.codeBase);
+        const uint32_t foot = ir.exitPc() - ir.entryPc;
+        const uint32_t copied = uint32_t(ir.code.size()) * 2;
+        len = foot > copied ? foot : copied;
+    }
+    // Files `key` under every 256-byte slice of [lo, lo+len) and sets
+    // the 32-byte sub-slice bits those bytes cover.
+    void markPages(uint64_t key, uint32_t lo, uint32_t len);
+    // The exact inverse: drops `key` from every slice it was filed under
+    // and recomputes each slice's sub-slice mask from the blocks that
+    // remain (clearing the 4 KB code-page flag, with its DTLB flush, when
+    // a page loses its last code). Every path that erases a block from
+    // blocks_ must call it, or the key is re-filed by the next record()
+    // and the slice vector grows by one entry per re-record, forever
+    // (2026-08-22, the 4.4 GB LC II soak).
+    void unmarkPages(uint64_t key, uint32_t lo, uint32_t len);
+    void recomputeSliceMark(uint32_t slice);
 
     // Fills Moira's data TLB for `addr` and hands generated code the host
     // page behind it, or nullptr when the access must go the long way. This

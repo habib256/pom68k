@@ -776,8 +776,10 @@ the IIsi at all.**
 What a read-only pass eliminated (all audited sound): `codeSpan`/`dataSpan`
 bounds against `totalRam_`; `CodeGuard::note()` slice bounds; the link
 table's `kNoLink` init (virgin tag-0 aliasing was already handled at
-construction); precise eviction (`retractLink` before `release`, slice
-index erased with the slice); `serviceGuard()` reachable only from the
+construction); precise eviction (`retractLink` before `release`; since
+2026-08-22 the slice mark is a 32-byte sub-slice mask of the blocks' own
+bytes, a hit carries the written range, and only the blocks it touches
+go — the mask recomputed from what remains); `serviceGuard()` reachable only from the
 dispatch loop with `running_` false; `flushAll` deferring under `running_`
 via `pendingFlush_` (a MOVEC-to-CACR executed by the in-block fallback is
 safe); the RBV video decoder (fixed `ram_.data()` base, screen ≪ RAM).

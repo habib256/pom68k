@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 265 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 266 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 14 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
-| [Cross-cutting](#cross-cutting) | 35 |
+| [Cross-cutting](#cross-cutting) | 36 |
 
 ---
 
@@ -327,4 +327,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-21 (fifth)** — [Both parked levers, one root: BSR.W's divergence is the same delivery-alignment class, and the target-side-charge fix shape is refuted by measurement](CHANGELOG.md#2026-08-21-bsrw-same-class)
 - **2026-08-21 (fourth)** — [The restart-write divergence names its class: peripheral-delivery alignment, not cost — two IRQ delay loops disassembled, the reproducer lands in-tree](CHANGELOG.md#2026-08-21-restart-base-forensic)
 - **2026-08-22** — [The unlocked admissions are priced: −4.3 % and −2.3 % alone, −8.0 % together — super-additive, fingerprint intact](CHANGELOG.md#2026-08-22-admission-speed-evidence)
+- **2026-08-22 (fifth)** — [The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames](CHANGELOG.md#2026-08-22-guard-intersection)
 

@@ -717,11 +717,17 @@ Open, in ROI order:
   exact state). On AArch64 the `-L m030` tier ran the same afternoon
   (52/53 → the `lcii_soak_etalon` red was the slice-index leak, fixed,
   `CHANGELOG.md` 2026-08-22 (fourth)). **Two items that run opened:**
-  (a) the a64 generator is **3× slower than `threaded` in the idle Finder**
-  on the LC II (453 s vs 149 s real on the soak, M1) — the regime no bench
-  reaches; give `jit_bench_lcii` a post-Finder budget or a soak arm so a
-  same-binary ABBA can price it, then look at the record/compile churn
-  under MMU-generation revalidation; (b) an asset-free gate for the
+  (a) ~~the a64 generator is 3× slower than `threaded` in the idle Finder~~
+  **run to ground the same evening** (`CHANGELOG.md` 2026-08-22 (fifth)):
+  21 M guard trips on data writes near code re-recorded whole slices; the
+  guard now marks 32-byte sub-slices of each block's own bytes and evicts
+  by byte-range intersection — 609 s → 119 s at 30 000 frames (past
+  `threaded`'s 154 s), `q630_persist_etalon` 436 → 212 s, fp identical. Still named by the counters, in order: the
+  37 694 `PFLUSHA` generation bumps of `SwapMMUMode` (each re-proves
+  every block lazily — a per-page path for the 2481 single-page
+  `PFLUSH` would only take 25 % of them), `window/interp` at 47 % of
+  instructions, and 946 hit-list-overflow flushes; the 30 000-frame
+  `threaded,a64` ABBA is the instrument (`POM68K_BENCH_FRAMES=30000`); (b) an asset-free gate for the
   slice-index invariant (`unmarkPages` is the inverse of `markPages`;
   the soak is the only tripwire and needs the ROM). The paragraph below is the 2026-08-18
   state this work overturned.**

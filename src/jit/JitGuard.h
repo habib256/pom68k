@@ -44,6 +44,18 @@ struct CodeGuard {
     static constexpr uint32_t kShift = 8;
     static constexpr uint32_t kUnit = 1u << kShift;
 
+    // One byte per slice, and since 2026-08-22 the byte is a MASK: bit i
+    // set means some cached block has bytes in 32-byte sub-slice i. Every
+    // reader that only asks "does this slice hold code?" keeps testing
+    // non-zero; note() tests the bits the write actually covers, so a
+    // store that lands beside a block — the idle Finder's 21 M near-misses
+    // per 30 000 frames — never trips the guard at all.
+    static constexpr uint32_t kSubShift = 5;
+    static uint8_t subMask(uint32_t lo, uint32_t hi) {   // same slice
+        const uint32_t a = (lo & (kUnit - 1)) >> kSubShift;
+        const uint32_t b = (hi & (kUnit - 1)) >> kSubShift;
+        return uint8_t((0xFFu >> (7 - b)) & (0xFFu << a));
+    }
     const uint8_t* pageMap = nullptr;
     uint32_t       pages   = 0;         // slices, not pages
 
@@ -54,8 +66,16 @@ struct CodeGuard {
     // that actually overlap them. The list is small on purpose: past
     // kMaxHits distinct slices, dropping everything really is cheaper than
     // the bookkeeping.
+    // Each hit carries the slice AND the union of the physical byte ranges
+    // written into it since the last clear (2026-08-22): the engine evicts
+    // only the blocks whose own bytes the range touches. A write into the
+    // 256-byte neighbourhood of a block changes nothing the block was
+    // translated from, so keeping it is bit-exact — and on the idle
+    // System 7 Finder those near-misses were 21 M trips per 30 000
+    // frames, every one re-recording every block in the slice.
+    struct Hit { uint32_t slice, lo, hi; };
     static constexpr int kMaxHits = 8;
-    uint32_t hits[kMaxHits] = {};
+    Hit      hits[kMaxHits] = {};
     int      nHits = 0;
     bool     hitOverflow = false;   // too many slices: fall back to a flush
 
@@ -68,15 +88,25 @@ struct CodeGuard {
         if (!pageMap) return;
         const uint32_t p0 = phys >> kShift;
         const uint32_t p1 = (phys + n - 1) >> kShift;
-        if (p0 < pages && pageMap[p0]) record(p0);
-        if (p1 != p0 && p1 < pages && pageMap[p1]) record(p1);
+        const uint32_t hi = phys + n - 1;
+        if (p0 < pages && pageMap[p0]) {
+            const uint32_t h0 = p1 == p0 ? hi : (p0 << kShift) + kUnit - 1;
+            if (pageMap[p0] & subMask(phys, h0)) record(p0, phys, hi);
+        }
+        if (p1 != p0 && p1 < pages && pageMap[p1] &&
+            (pageMap[p1] & subMask(p1 << kShift, hi))) record(p1, phys, hi);
     }
 
-    void record(uint32_t slice) {
+    void record(uint32_t slice, uint32_t lo, uint32_t hi) {
         hit = true;
-        for (int i = 0; i < nHits; i++) if (hits[i] == slice) return;
+        for (int i = 0; i < nHits; i++)
+            if (hits[i].slice == slice) {
+                if (lo < hits[i].lo) hits[i].lo = lo;
+                if (hi > hits[i].hi) hits[i].hi = hi;
+                return;
+            }
         if (nHits >= kMaxHits) { hitOverflow = true; return; }
-        hits[nHits++] = slice;
+        hits[nHits++] = { slice, lo, hi };
     }
 
     // Cold path: overlay flip, ROM reload, anything that remaps.

@@ -192,7 +192,16 @@ Two consequences worth stating explicitly:
 * The window points **into the guest memory buffer itself**, so a guest write
   is visible to it immediately. Self-modifying code needs no invalidation
   here — what goes stale is the *recorded block* and the generated code,
-  which is what `jit::CodeGuard` protects.
+  which is what `jit::CodeGuard` protects. Since 2026-08-22 the guard's
+  byte per 256-byte slice is a mask of eight 32-byte sub-slices set from
+  each block's OWN bytes (`Engine::blockSpan`: footprint + the two copied
+  prefetch words, not the window span), `note()` trips only when a write
+  covers a marked sub-slice, and `serviceGuard()` evicts only the blocks
+  the written range intersects. A write into the neighbourhood of a block
+  changes nothing it was translated from; on the idle System 7 Finder
+  those near-misses were 21 M trips per 30 000 frames, each re-recording
+  the whole slice — 609 s → 119 s on the a64 30 000-frame bench, fp
+  identical, and the Quadra 630 persist gate halved with it.
 * On the 68040 path Moira's `SYNC(x)` macro expands to nothing
   (`MoiraMacros.h`: `if constexpr (C != Core::C68020)`), so serving a fetch
   from the window changes **no** cycle accounting whatsoever. The window is a

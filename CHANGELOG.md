@@ -316,6 +316,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-22 (fifth)** — [The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames](#2026-08-22-guard-intersection)
 - **2026-08-22 (fourth)** — [The LC II soak was SIGKILLed at 4.4 GB on the M1: a block evicted under MMU-generation churn left its key in the slice index, forever](#2026-08-22-slice-index-leak)
 - **2026-08-22 (third)** — [The a64 thunks carry the access-clock bias — and the class was never latent there: the guard had closed it by replay](#2026-08-22-a64-bias-port)
 - **2026-08-22 (second)** — [The admissions flip per-backend: the default rides the backend's own alignment declaration](#2026-08-22-admission-flip-x64)
@@ -583,6 +584,74 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-22-guard-intersection"></a>
+## 2026-08-22 (fifth) — The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames
+
+The afternoon's soak number (a64 3× slower than `threaded` in the idle
+Finder) got its mechanism tonight. `jit_bench_lcii` at **30 000 frames**
+— boot plus ~14 000 idle frames, the regime the 6000-frame default never
+reaches — on the a64 generator: **609 s, ×0.82 real time**, against
+`threaded`'s 154 s, ×3.25. The counters said where: `21 128 051` guard
+trips "from a write into translated code" (`threaded`: 5), native share
+37 %, tracing 11 % of retired instructions — 106 479 compiles whose
+total cost was 0.9 s, so compilation was not the price; re-recording was.
+`sample` on the live process put **`serviceGuard()` at 97 % of
+`executeUntil`**, with `unmarkPages()` (the afternoon's leak fix — a
+`remove` per evicted block over the slice's vector) now top of stack at
+40 %: the eviction storm had turned it quadratic.
+
+**The mechanism.** `CodeGuard` marks PHYSICAL RAM in 256-byte slices and
+records the slices a write lands in; `serviceGuard()` evicted EVERY block
+filed under a hit slice. On the idle System 7 Finder, data and code share
+256-byte slices constantly (heap blocks beside CODE resources, the jump
+table, handles' headers), so a write that touched no byte of any block
+still dropped and re-traced the whole slice — 21 M times.
+
+**The fix is exactness, not a heuristic — in two steps, the first of
+which was wrong in an instructive way.** Step one made a guard hit carry
+the union of the byte ranges written into the slice
+(`CodeGuard::Hit {slice, lo, hi}`) and `serviceGuard()` evict only the
+blocks whose own bytes it intersects. 609 → 166 s on the LC II — and
+`q630_persist_etalon` went from 436 s to a 1800 s TIMEOUT: the slice now
+kept its blocks, so every near-miss copied and walked the slice's whole
+key list, O(n) per write with n never shrinking, and the Quadra 630's
+Finder makes those writes by the million. Step two moves the test to
+where it costs nothing: `pageMap_`'s byte per slice is now a MASK of
+eight 32-byte sub-slices, set by `markPages()` from the block's OWN
+bytes — `Engine::blockSpan`: `[entryPc, exitPc)` widened to the two
+prefetch words `ir.code` copied past it, NOT the window span it was
+recorded under, which could be a whole page and was the other half of
+the trip rate — and `CodeGuard::note()` records a hit only when the
+write's sub-slice bits meet the mark's. A near-miss never reaches the
+engine; a real hit still goes through the per-block intersection, and
+`unmarkPages()` recomputes the slice's mask from the blocks that remain
+(dropping the 4 KB code-page flag, with its DTLB flush, when a page
+loses its last code). Every reader that asks "does this slice hold
+code?" keeps testing non-zero, so the DTLB code mask, the alias mask
+and the native store path are untouched.
+
+**Measured, single runs, same binary family** (the 30 000-frame ABBA
+follows the tiers): a64 30 000 frames **609.20 s → 118.85 s** (×0.82 →
+×4.20 real time — past `threaded`'s 153.66 s), guard trips 21 128 051 →
+227 023, blocks compiled 106 479 → 10 169, tracing 365 M → 0.2 M
+instructions, native 37.3 → 49.1 %, fingerprint `cef14238b9863bec`
+identical to the first a64 run and to `threaded`'s. The 68040 gains
+too: `q630_persist_etalon` **435.65 s → 211.72 s** solo. Conformance:
+`jit-fast` 7/7, the a64 120k lockstep and the 6000-frame
+production-cadence gate identical, `jit_store_guard_a64_test` and the
+asset-free lockstep in the `jit-fast` set; the `jit|m030|m040` tiers
+follow on the relinked tree.
+
+**What the counters still name.** 37 694 "translation moved" flushes
+remain — the `PFLUSHA` of the System's 24/32-bit `SwapMMUMode` (7449
+`PFLUSHA` + 2481 single-page `PFLUSH` per 20 000 frames, measured by
+tagging the four `mmuAtcFlush*` sites), each re-proving every block
+lazily; `window/interp` still carries 47 % of instructions, and 946
+flushes come from the 8-slice hit-list overflow. Those are the next
+levers, in that order — and the `window/interp` bucket has its own
+reading now: 44 % of instructions are still served by the fetch window,
+so the generator covers barely half of what the guest runs.
 
 <a id="2026-08-22-slice-index-leak"></a>
 ## 2026-08-22 (fourth) — The LC II soak was SIGKILLed at 4.4 GB on the M1: a block evicted under MMU-generation churn left its key in the slice index, forever
