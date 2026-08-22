@@ -31,6 +31,19 @@ inline const char* env(const char* key) {
     return (v && *v) ? v : nullptr;
 }
 
+// "<hex>[,<hex>…]" → up to four opcodes; returns how many were parsed.
+inline int parseWatchOpcodes(const char* v, uint16_t out[4]) {
+    int n = 0;
+    while (v && *v && n < 4) {
+        char* end = nullptr;
+        const unsigned long x = std::strtoul(v, &end, 16);
+        if (end == v) break;
+        out[n++] = uint16_t(x);
+        v = *end == ',' ? end + 1 : end;
+    }
+    return n;
+}
+
 inline bool envBool(const char* key, bool dflt) {
     const char* v = env(key);
     if (!v) return dflt;
@@ -78,6 +91,11 @@ struct ResolvedConfig {
     bool icacheEmit = true;
     bool verbose = false;
     int verboseBlocks = 40;
+    // Diagnosis: up to four opcodes whose compile-time refusal the a64
+    // backend reports with its admission inputs (POM68K_JIT_WATCH_OPCODE,
+    // hex, comma-separated). Parsed here so the backend reads no env.
+    uint16_t watchOpcode[4] = {};
+    int watchOpcodes = 0;
     int minNativePercent = 50;
     int profitScore = 0;
     bool profitScoreExplicit = false;
@@ -167,6 +185,8 @@ inline ResolvedConfig resolveConfig() {
     c.icacheEmit = detail::envBool("POM68K_JIT_ICACHE_EMIT", true);
     c.verbose = detail::envBool("POM68K_JIT_VERBOSE", false);
     c.verboseBlocks = detail::envInt("POM68K_JIT_VERBOSE_BLOCKS", 40, 0, 1 << 24);
+    c.watchOpcodes = detail::parseWatchOpcodes(
+        detail::env("POM68K_JIT_WATCH_OPCODE"), c.watchOpcode);
     c.minNativePercent = detail::envInt("POM68K_JIT_MIN_NATIVE", 50, 0, 100);
     c.profitScoreExplicit = detail::env("POM68K_JIT_PROFIT_SCORE") != nullptr;
     c.profitScore = detail::envInt("POM68K_JIT_PROFIT_SCORE", 0, 0, 1 << 30);
@@ -416,6 +436,22 @@ inline bool verbose() {
 inline int verboseBlocks() {
     if (detail::activeConfig) return detail::activeConfig->verboseBlocks;
     return detail::envInt("POM68K_JIT_VERBOSE_BLOCKS", 40, 0, 1 << 24);
+}
+
+// POM68K_JIT_WATCH_OPCODE — is `op` one of the watched opcodes? Consulted
+// by the a64 compile loop only on the fallback path, so the cost of the
+// instrument when unset is one load of a zero count.
+inline bool watchOpcodeWanted(uint16_t op) {
+    if (detail::activeConfig) {
+        const ResolvedConfig& c = *detail::activeConfig;
+        for (int i = 0; i < c.watchOpcodes; i++)
+            if (c.watchOpcode[i] == op) return true;
+        return false;
+    }
+    uint16_t list[4]; const int n = detail::parseWatchOpcodes(
+        detail::env("POM68K_JIT_WATCH_OPCODE"), list);
+    for (int i = 0; i < n; i++) if (list[i] == op) return true;
+    return false;
 }
 
 // The share of a block's instructions a code generator must emit natively

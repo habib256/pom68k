@@ -317,6 +317,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-23** — [A refusal instrument names the next two levers: JSR leaves the TARGET's first word in the queue, and MOVEM is refused on the 030 by design](#2026-08-23-watch-opcode)
 - **2026-08-22 (sixth)** — [The a64 emitter had the total-cost rule hard-wired: wiring the two § C.4nonies admissions takes the idle Finder from 49 % to 71 % native](#2026-08-22-a64-admissions-wired)
 - **2026-08-22 (fifth)** — [The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames](#2026-08-22-guard-intersection)
 - **2026-08-22 (fourth)** — [The LC II soak was SIGKILLed at 4.4 GB on the M1: a block evicted under MMU-generation churn left its key in the slice index, forever](#2026-08-22-slice-index-leak)
@@ -586,6 +587,50 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-23-watch-opcode"></a>
+## 2026-08-23 — A refusal instrument names the next two levers: JSR leaves the TARGET's first word in the queue, and MOVEM is refused on the 030 by design
+
+With 25 % of instructions still in the window, the fallback census led
+with MOVEM (`48E7`/`4CEE`/`4CDF`, ~45 M) and JSR (`4EBA`/`4E91`/`4EAD`,
+~35 M), all "unsupported" — refused at compile time by a check the source
+does not name. Reading emitters for `return false` sites is guessing, so
+the backend got an instrument: **`POM68K_JIT_WATCH_OPCODE=<hex>[,…]`**
+prints, once per pc and capped at 64 lines, the admission inputs of a
+watched opcode the compile loop hands to the fallback stub — trace
+cycles/base/i-cache, fetch count, terminal queue, semantics, the memory
+proof plan — tagged with the stage that refused it (`multi-word-branch-
+guard`, `no-fetch-count`, `emitter-refused`, and inside the MOVEM and
+JSR emitters the individual check: `movem:cost`, `jsr:queue`, …).
+
+**What it said, 30 000 frames.**
+- `4EBA` JSR d16(PC): refused by the multi-word-branch guard — its
+  exemption tested `SemanticOp::BranchSubroutine`, and `$4EBA` decodes as
+  `JumpSubroutine` (op 28; the watch prints the enum). Dead code, on a64
+  AND x64 (`bsrW030`, `JitBackendX64.cpp:3152`). Fixed on a64 (the
+  JSR half now tests `JumpSubroutine`) — and the instruction then
+  reached the next check and was refused there:
+- `jsr:queue`, 12 of 12 sites, and `4E91` JSR (A1) likewise: the traced
+  terminal queue after a taken JSR holds **the target's first word**
+  (`irc=2F38` for two callees at different addresses — `MOVE.L
+  abs.W,-(A7)`, a common prologue), not the last consumed extension the
+  `heldIrc`/`lastHeld` formula predicts. Both backends use that formula
+  (`Emitter::heldIrc` on x64, `lastHeld` on a64), so every JSR whose
+  callee starts elsewhere falls back on both. The exact fix is to commit
+  the target's prefetch word at block exit — a read the re-armed window
+  can serve, never a data access the IR contract would have to invent —
+  and it is the next lever, worth ~35 M fallbacks.
+- `48E7`/`4CEE` MOVEM: `emitter-refused` with no `movem:*` tag, because
+  the MOVEM emitter opens with `if (L.is030) return false` — JIT_BRINGUP
+  § C.4.4, the 030 mid-instruction restart contract for MOVEM is
+  unmodelled, on both backends. Not a tuning; a conformance chantier.
+
+**Validated** (build2, then the relinked tree): the a64 120k lockstep
+and the 6000-frame gate identical; 30 000 frames 104.46 s, native share
+71.2 % — unchanged, as the census predicts (the JSRs moved from one
+refusal to the next). The x64 exemption is NOT touched here: no x64 gate
+runs on this host, and the same fix needs `jit_lockstep_030_x64_*` on an
+x86-64 before it is worth a line.
 
 <a id="2026-08-22-a64-admissions-wired"></a>
 ## 2026-08-22 (sixth) — The a64 emitter had the total-cost rule hard-wired: wiring the two § C.4nonies admissions takes the idle Finder from 49 % to 71 % native

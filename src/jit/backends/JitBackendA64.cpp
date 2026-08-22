@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <utility>
@@ -170,6 +171,37 @@ thread_local bool gDirectPeriphDue = false;
 // no traced count: the bias must model exactly what the end-of-body charge
 // will charge, or it is a new skew, not an alignment.
 thread_local uint64_t gAccessPcWords = 0;
+
+// Diagnosis only — POM68K_JIT_WATCH_OPCODE (parsed by JitConfig, the
+// backend reads no environment): when the compile loop hands one of the
+// watched opcodes to the fallback stub, print the admission inputs the
+// emitters consulted, once per pc and at most 64 lines, so a "block
+// fallback census" row can be turned into WHICH check refused it without
+// guessing from the source. The 2026-08-23 MOVEM/JSR census is the first
+// customer.
+thread_local int gWatchPrinted = 0;
+
+void watchRefusal(const Layout& L, const BlockIr& ir, const Instr& in,
+                  const char* stage) {
+    if (!watchOpcodeWanted(in.opcode) || gWatchPrinted >= 64) return;
+    gWatchPrinted++;
+    const MemoryProofPlan p = memoryProofPlan(in.memory, proofOptions(L));
+    std::fprintf(stderr,
+        "[jit-watch] %04X pc=%08X %s words=%u cyc=%u base=%u ic=%u postEx=%u "
+        "fetch=%u queue=%d ird=%04X irc=%04X next=%08X kind=%d op=%d "
+        "ea=%d/%d size=%d ext=%u proto=%d preflight=%02X thunk=%02X "
+        "cache=%02X lastWrite=%u restartable=%d order=%d super=%d\n",
+        in.opcode, in.pc, stage, unsigned(in.words), unsigned(in.cycles),
+        unsigned(in.baseCycles), unsigned(in.icacheCycles),
+        unsigned(in.postExceptionCycles), unsigned(in.fetchWords),
+        int(in.terminalQueueValid), in.terminalIrd, in.terminalIrc,
+        in.observedNextPc, int(in.kind), int(in.semantics.operation),
+        int(in.semantics.eaMode), int(in.semantics.eaReg),
+        int(in.semantics.sizeIndex), unsigned(in.extensionCount),
+        int(p.protocol), p.preflightMask, p.exactThunkMask, p.cacheMask,
+        unsigned(p.lastWrite), int(p.lastWriteRestartable),
+        int(in.memory.order), int(ir.super));
+}
 
 // Minimal fixed-width assembler. Every memory operand is an unsigned scaled
 // immediate off x0 (Moira*) or x1 (Frame*); layout() validates the offsets.
@@ -2194,12 +2226,12 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             const bool toRegs = sem.toRegisters;
             const int bits = bitsForSizeIndex(sem.sizeIndex), bytes = bits / 8;
             const uint16_t mask = in.extensionWord(0);
-            if (!mask || slow < 0) return false;
+            if (!mask || slow < 0) { watchRefusal(L, ir, in, "movem:mask/slow"); return false; }
             Ea ea;
             if (!decodeEa(in, mode, sem.eaReg, bits, 1, ea) || !ea.memory ||
-                in.words != unsigned(2 + ea.ext)) return false;
+                in.words != unsigned(2 + ea.ext)) { watchRefusal(L, ir, in, "movem:ea"); return false; }
             if ((toRegs && ea.idx == E_PD) ||
-                (!toRegs && (ea.idx == E_PI || ea.idx == E_DIPC))) return false;
+                (!toRegs && (ea.idx == E_PI || ea.idx == E_DIPC))) { watchRefusal(L, ir, in, "movem:mode"); return false; }
             int n = 0; for (int b = 0; b < 16; b++) n += (mask >> b) & 1;
             static const int8_t toRegBase[E_COUNT] =
                 {-1,-1,12,8,-1,13,-1,12,12,9,-1,-1};
@@ -2207,7 +2239,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 {-1,-1,8,-1,4,9,-1,8,8,-1,-1,-1};
             const int baseCost = toRegs ? toRegBase[ea.idx] : toMemBase[ea.idx];
             if (baseCost < 0 ||
-                traced030(L, in) != unsigned(baseCost + 4 * n)) return false;
+                traced030(L, in) != unsigned(baseCost + 4 * n)) { watchRefusal(L, ir, in, "movem:cost"); return false; }
             const MemoryAccessPlan span = memory.access(
                 toRegs ? MemoryDirection::Read : MemoryDirection::Write,
                 MemoryOperand::RegisterList, uint8_t(bytes), uint8_t(mode),
@@ -2218,8 +2250,14 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             if (!span.valid() || !span.preflight || !memory.complete() ||
                 memory.proof.protocol != MemoryProofProtocol::OrderedSpan ||
                 in.memory.order != emittedOrder ||
-                span.eaCommit != EaCommit::PerElement)
+                span.eaCommit != EaCommit::PerElement) {
+                if (watchOpcodeWanted(in.opcode))
+                    std::fprintf(stderr, "[jit-watch] movem:span valid=%d preflight=%d complete=%d proto=%d order=%d/%d commit=%d\n",
+                                 int(span.valid()), int(span.preflight), int(memory.complete()),
+                                 int(memory.proof.protocol), int(in.memory.order), int(emittedOrder), int(span.eaCommit));
+                watchRefusal(L, ir, in, "movem:span");
                 return false;
+            }
             a.ldrB(9, 0, L.movemArmed); a.cbnzW(9, slow);
 
             auto loadR = [&](int b, unsigned rd) {
@@ -2750,23 +2788,23 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
     if (sem.operation == SemanticOp::JumpSubroutine ||
         sem.operation == SemanticOp::Jump) {
         const bool jsr = sem.operation == SemanticOp::JumpSubroutine;
-        if (!control.valid || control.pushesReturnAddress != jsr) return false;
+        if (!control.valid || control.pushesReturnAddress != jsr) { watchRefusal(L, ir, in, "jsr:control"); return false; }
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
         MemoryAccessPlan write;
         if (jsr) {
             write = memory.access(MemoryDirection::Write,
                                   MemoryOperand::Stack, 4, 4, 7);
-            if (!write.valid()) return false;
+            if (!write.valid()) { watchRefusal(L, ir, in, "jsr:write"); return false; }
         }
-        if (!memory.complete()) return false;
+        if (!memory.complete()) { watchRefusal(L, ir, in, "jsr:complete"); return false; }
         Ea ea;
         if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 0, ea) ||
             !ea.memory || ea.idx == E_PI || ea.idx == E_PD ||
-            in.words != unsigned(1 + ea.ext)) return false;
+            in.words != unsigned(1 + ea.ext)) { watchRefusal(L, ir, in, "jsr:ea"); return false; }
         static const int8_t cost[E_COUNT] =
             {-1,-1,4,-1,-1,5,-1,4,4,5,-1,-1};
         if (cost[ea.idx] < 0 ||
-            traced030(L, in) != unsigned(cost[ea.idx])) return false;
+            traced030(L, in) != unsigned(cost[ea.idx])) { watchRefusal(L, ir, in, "jsr:cost"); return false; }
         addrOf(a, L, ea, 32);
         a.strW(9, 1, 48);                           // target (Frame::saveV)
         a.ubfxW(9, 9, 0, 1); a.cbnzW(9, slow);
@@ -2779,7 +2817,7 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         }
         a.ldrW(11, 1, 48);
         a.strW(11, 0, L.pc); a.strW(11, 0, L.pc0);
-        if (!tracedQueueIs(lastHeld)) return false;
+        if (!tracedQueueIs(lastHeld)) { watchRefusal(L, ir, in, "jsr:queue"); return false; }
         if (icache) chargeIcache(a, L, ir, in, icacheShadow);
         commitQueue(a, L, op, lastHeld);
         chargeAndRetire(a, L, unsigned(cost[ea.idx]), paced, batch, in.pc,
@@ -3071,12 +3109,19 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         const bool bccWord = icache && in.words == 2 &&
             in.semantics.operation == SemanticOp::Branch &&
             in.semantics.condition != 0;
+        // $4EBA decodes as JumpSubroutine, $6100 as BranchSubroutine: the
+        // exemption used to test BranchSubroutine for both, which made the
+        // JSR half dead code — every JSR d16(PC) fell back (2026-08-23,
+        // found by POM68K_JIT_WATCH_OPCODE=4EBA: 19 M of the idle Finder's
+        // in-block fallbacks).
         const bool jsrD16Pc = icache && in.words == 2 &&
-            (in.opcode == 0x4EBA ||
-             (in.opcode == 0x6100 && bsrWideAdmission())) &&
-            in.semantics.operation == SemanticOp::BranchSubroutine;
+            ((in.opcode == 0x4EBA &&
+              in.semantics.operation == SemanticOp::JumpSubroutine) ||
+             (in.opcode == 0x6100 && bsrWideAdmission() &&
+              in.semantics.operation == SemanticOp::BranchSubroutine));
         if (icache && in.kind == Kind::Branch && in.words > 1 &&
             !dbcc && !bccWord && !jsrD16Pc) {
+            watchRefusal(L, ir, in, "multi-word-branch-guard");
             a.b(slowStatic[i]);
             continue;
         }
@@ -3085,6 +3130,7 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // invalidates the compile-time shadow, so later instructions perform
         // full runtime tag/valid checks instead of folding a presumed hit.
         if (icache && !dbcc && !in.fetchWords) {
+            watchRefusal(L, ir, in, "no-fetch-count");
             icacheShadow = {};
             a.b(slowStatic[i]);
             continue;
@@ -3122,6 +3168,8 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
             // An emitter is allowed to discover a length/cycle mismatch
             // after writing a few instructions. Erase that partial attempt
             // and hand the untouched guest instruction to Moira.
+            watchRefusal(L, ir, in, canEmit(in.opcode) || in.kind == Kind::Branch
+                                        ? "emitter-refused" : "not-in-canEmit");
             a.rewind(mark);
             if (icache)
                 shadowIcache(ir, in, icacheShadow, dbcc ? 2u : 0u);

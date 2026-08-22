@@ -733,8 +733,17 @@ Open, in ROI order:
   −22.9 % (30k) / −23.8 % (6k), both `HOST BUSY` under macOS indexing
   daemons; re-run with Spotlight paused. Next census: the 25 % of
   instructions still in the window — JSR (`4EBA`/`4E91`/`4EAD`, ~35 M)
-  and MOVEM (`48E7`/`4CEE`/`4CDF`, ~45 M) lead the fallback list and
-  need a per-site refusal-reason counter to say WHICH check refuses; (b) an asset-free gate for the
+  and MOVEM (`48E7`/`4CEE`/`4CDF`, ~45 M) lead the fallback list —
+  **named 2026-08-23** by `POM68K_JIT_WATCH_OPCODE` (`CHANGELOG.md`
+  2026-08-23): (i) JSR — the 030 leaves the TARGET's first word in `irc`
+  after a taken JSR and both backends' `heldIrc`/`lastHeld` formula
+  predicts the last extension, so `tracedQueueIs` refuses; commit the
+  target's prefetch word at block exit (the re-armed window can serve it)
+  — ~35 M fallbacks; (ii) the x64 `bsrW030` exemption for `$4EBA` tests
+  `BranchSubroutine` and is dead code exactly as a64's was — mirror the
+  a64 fix and run `jit_lockstep_030_x64_experimental_test` on x86-64;
+  (iii) MOVEM on 030 is refused by design on both backends (§ C.4.4,
+  restart contract unmodelled) — ~45 M, a conformance chantier; (b) an asset-free gate for the
   slice-index invariant (`unmarkPages` is the inverse of `markPages`;
   the soak is the only tripwire and needs the ROM). The paragraph below is the 2026-08-18
   state this work overturned.**
