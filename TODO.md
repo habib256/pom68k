@@ -710,7 +710,8 @@ Open, in ROI order:
   `pom68kA64Read/Write`, the `guardIcacheHits` replay deleted, four 120k
   runs + the 6000-frame gate identical, `jit_lockstep_030_a64_alignment_test`
   registered; the class had never been latent there — the guard had closed
-  it by replay, and a64's own admissions never read the two knobs). The
+  it by replay; its emitter had the total-cost rule hard-wired and was
+  wired to the two knobs the same evening, (sixth)). The
   remaining work is ONE item: **finish the `-L etalon` tier under the
   flip on x86-64** — the 2026-08-22 (second) validation was cut by a host
   shutdown at 47/106 parallel gates, zero failures (`CHANGELOG.md` has the

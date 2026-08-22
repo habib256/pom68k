@@ -1526,11 +1526,15 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const int dstCycles = restartWrite && dst.idx == E_IX
             ? 5 : kMoveDstA64[dst.idx];
         const int cycles = kEaReadA64[src.idx][sz] + dstCycles;
-        // The emitted i-cache model owns miss penalties. Keep the historical
-        // total-cost admission only for the restartable-write family: its
-        // coarse-budget reproducer is still parked on x64, so widening that
-        // particular proof by symmetry would be unsound.
-        const unsigned tracedCycles = restartWrite
+        // The emitted i-cache model owns miss penalties. The restartable-
+        // write family kept the historical total-cost admission while its
+        // coarse-budget divergence was open; that was the peripheral-phase
+        // class (JIT_BRINGUP § C.4nonies), closed by the access-clock bias
+        // the thunks carry since 2026-08-22 — so the admission follows the
+        // same knob as x64, ON by default under this backend's declaration.
+        // Under the total cost every push traced on an i-cache miss was
+        // refused: 120 M of the idle Finder's 238 M in-block fallbacks.
+        const unsigned tracedCycles = restartWrite && !restartBaseAdmission()
             ? unsigned(in.cycles) : traced030(L, in);
         const bool soleReadTiming = src.memory && cycles >= 0 &&
             admitSoleReadTiming(L, in, srcAccess, unsigned(cycles),
@@ -3056,16 +3060,20 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // Multi-word control flow needs a proved path-specific fetch model.
         // DBcc fetches exactly two words on all three paths. Conditional
         // Bcc.W has two common words plus pc+4 on fall-through. JSR d16(PC)
-        // is a single path with a traced count. BSR.W and wider transfers
-        // remain refused: the x64 lockstep observed a miss-for-hit swap when
-        // those paper proofs were widened.
+        // is a single path with a traced count, and so is BSR.W ($6100,
+        // fetchWords = 2): its historical step-16097 divergence was the
+        // peripheral-phase class (JIT_BRINGUP § C.4nonies), closed by the
+        // access-clock bias the thunks carry, so it rides the same knob as
+        // on x64 — ON by default under this backend's declaration. Wider
+        // transfers remain refused.
         const bool dbcc =
             in.semantics.operation == SemanticOp::DecrementBranch;
         const bool bccWord = icache && in.words == 2 &&
             in.semantics.operation == SemanticOp::Branch &&
             in.semantics.condition != 0;
         const bool jsrD16Pc = icache && in.words == 2 &&
-            in.opcode == 0x4EBA &&
+            (in.opcode == 0x4EBA ||
+             (in.opcode == 0x6100 && bsrWideAdmission())) &&
             in.semantics.operation == SemanticOp::BranchSubroutine;
         if (icache && in.kind == Kind::Branch && in.words > 1 &&
             !dbcc && !bccWord && !jsrD16Pc) {

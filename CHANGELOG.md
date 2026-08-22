@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the admission knobs are inert on a64 — its admissions are unconditional" — unconditional on the OLD total-cost rule, which refused every push traced on an i-cache miss; wiring the knobs is 49 → 71 % native in the idle Finder** → [2026-08-22 (sixth) — The a64 emitter had the total-cost rule hard-wired…](#2026-08-22-a64-admissions-wired)
 - **"the peripheral-phase class is latent on AArch64 defaults exactly as it was on x64" — it never was: the a64 backend had closed it by `guardIcacheHits`, a replay on every unproved fetch, and the 120k lockstep with both admissions ON was identical BEFORE the port** → [2026-08-22 (third) — The a64 thunks carry the access-clock bias…](#2026-08-22-a64-bias-port)
 - **"reconcile the native deadline test's placement" — the parked delivery-alignment hypothesis pointed at the IRQ *take* stage, and the take was already aligned (pin→take latency identical); the slip was the DELIVERY, an i-cache-charge-position skew at forced I/O flushes** → [2026-08-21 (sixth) — The peripheral-phase class is run to its mechanism…](#2026-08-21-periph-phase-closed)
 - **"the image is not the one the floor was calibrated on" was ruled a dead lead on the wrong argument (probe-chain membership, not content) — it was the answer, and it took three boot gates red for two days** → [2026-08-15 — Three red boot gates and one bit…](#2026-08-15-hd20sc-clean-bit)
@@ -316,6 +317,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-22 (sixth)** — [The a64 emitter had the total-cost rule hard-wired: wiring the two § C.4nonies admissions takes the idle Finder from 49 % to 71 % native](#2026-08-22-a64-admissions-wired)
 - **2026-08-22 (fifth)** — [The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames](#2026-08-22-guard-intersection)
 - **2026-08-22 (fourth)** — [The LC II soak was SIGKILLed at 4.4 GB on the M1: a block evicted under MMU-generation churn left its key in the slice index, forever](#2026-08-22-slice-index-leak)
 - **2026-08-22 (third)** — [The a64 thunks carry the access-clock bias — and the class was never latent there: the guard had closed it by replay](#2026-08-22-a64-bias-port)
@@ -585,6 +587,48 @@ Newest first.
 
 ---
 
+<a id="2026-08-22-a64-admissions-wired"></a>
+## 2026-08-22 (sixth) — The a64 emitter had the total-cost rule hard-wired: wiring the two § C.4nonies admissions takes the idle Finder from 49 % to 71 % native
+
+With the guard storm gone (fifth), `sample` showed no engine hot spot
+any more — the interpreter itself was the profile (`mmuFetchWord`,
+`pomJitExecOne`, `runWindow`), because **44 % of retired instructions
+still ran through the fetch window**. The block-fallback census
+(`POM68K_JIT_HISTO=1`, 30 000 frames) named them: 238 M in-block
+fallbacks, led by `MOVE An/Dn,-(A7)` (2F0A/2F02/2F09/2F01/2F08/2F0C),
+`MOVE A2,d16(A7)`, `MOVE D0,d16(A6)` and `MOVE A1,(A0)` — ~120 M pushes
+and stores, every one "unsupported", i.e. refused at compile time.
+
+**Why.** The a64 MOVE emitter kept, verbatim, the rule the morning's x64
+flip had retired: for the restartable-write family the admission
+compared the emitted cost against the TOTAL traced cost (`in.cycles`,
+i-cache penalty included) — "its coarse-budget reproducer is still
+parked on x64". So any push traced on an i-cache miss never matched and
+fell back for the life of the block. The afternoon's (third) entry read
+the identical on/off lockstep counts as "the knobs are inert on a64, its
+admissions unconditional" — half right: unconditional on the OLD rule.
+BSR.W was refused outright in the same guard (`jsrD16Pc` admitted only
+`$4EBA`).
+
+**The change.** Both sites now consult the knobs exactly as x64 does:
+`tracedCycles = restartWrite && !restartBaseAdmission() ? in.cycles :
+traced030(L, in)`, and `$6100` joins the single-path exemption under
+`bsrWideAdmission()`. The defaults resolve ON from the backend's
+`accessClockBias` declaration, which is what makes the base-cost
+admission sound: the access thunks carry the peripheral-phase bias since
+(third).
+
+**Validated, build2 on the M1:** `jit_backend_test` OK; the a64 120k
+lockstep identical with the knobs ON (default) and with both explicitly
+OFF — and this time with DIFFERENT counts (347.9 M vs 348.7 M
+JIT-retired instructions), which is what a knob that does something looks
+like; the 6000-frame production-cadence gate identical. 30 000 frames
+a64: **118.85 s → 105.82 s** (×4.20 → ×4.71 real time), native share
+**49.1 → 71.2 %**, window/interp 44.2 → 25.0 %, block fallbacks 220 M →
+126 M, fingerprint `cef14238b9863bec` unchanged. The `jit|m030` tiers and
+the 30 000-frame `threaded,a64` ABBA run on the relinked tree next; the
+remaining 25 % in the window is the next census.
+
 <a id="2026-08-22-guard-intersection"></a>
 ## 2026-08-22 (fifth) — The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames
 
@@ -755,11 +799,18 @@ x86-64 one 224 — `docs_test` green on the new counts.
 **A second finding, recorded so the declaration is not over-read.** The
 three 120k runs — knobs ON, OFF and default — print IDENTICAL counts to
 the instruction. The a64 emitter never consulted `restartBaseAdmission()`
-or `bsrWideAdmission()`: its restartable-write family is admitted on the
-split base cost unconditionally (`traced030`), and BSR.W is admitted by
-`in.words <= 3` with no knob. So "a64 inherits the admission defaults"
-is true of the resolved config and INERT in the generated code; the two
-knobs are x64 levers. The declaration still earns its place — it is the
+or `bsrWideAdmission()`.
+
+> **Superseded the same evening — (sixth):** the reading "its admissions
+> are unconditional on the base cost" was the wrong half of the truth.
+> They were unconditional on the TOTAL cost (`in.cycles`, the rule x64
+> left behind in the morning) and BSR.W was refused outright, so the knobs
+> were inert because the OLD behaviour was hard-wired, not because the
+> new one was. Wiring them is worth 49 → 71 % native share in the idle
+> Finder.
+
+So "a64 inherits the admission defaults" was, that afternoon, true of
+the resolved config only. The declaration still earns its place — it is the
 only thing a per-backend default is allowed to ride on, and
 `jit_backend_test` pins that both native backends now make it.
 

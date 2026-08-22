@@ -962,12 +962,17 @@ the class closed.
   on, both off, and the 6000-frame production-cadence gate), i-cache
   counters identical, replays 17.0 M → 12.8 M with every other counter
   equal. `jit_lockstep_030_a64_alignment_test` is the x64 gate's twin.
-  The backend declares `accessClockBias`; the admission defaults it
-  resolves are INERT on a64 — its emitter never read those knobs, its
-  restartable-write and BSR.W admissions being unconditional under the
-  `traced030` split-cost rule (the on/off runs print identical counts).
-  The declaration still matters: it is what the per-backend default is
-  allowed to ride on, and `jit_backend_test` pins it.
+  The backend declares `accessClockBias`. The afternoon read the
+  identical on/off counts as "the knobs are inert on a64, its admissions
+  being unconditional" — HALF RIGHT, and the wrong half mattered: the
+  emitter never consulted the knobs because it had the OLD rule
+  hard-wired (total-cost admission for the restartable-write family,
+  BSR.W refused), so every push traced on an i-cache miss fell back — 120 M
+  of the idle Finder's 238 M in-block fallbacks. Wired to the same two
+  knobs as x64 the same evening (CHANGELOG 2026-08-22 (sixth)): 120k
+  locksteps identical with the knobs on and off (now with DIFFERENT
+  counts), native share 49 → 71 % at 30 000 frames. The declaration is
+  what the per-backend default rides on, and `jit_backend_test` pins it.
 - **Dest-extension forms.** The linear bias counts ALL traced words; the
   interpreter fetches a memory-destination's extension words AFTER the
   source read. A form with an I/O source and dest extensions would be

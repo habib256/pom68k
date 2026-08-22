@@ -36,11 +36,15 @@ thunk-capable instruction whose fetch the block shadow could not prove a
 hit — correct, and paid in replays (17.0 M → 12.8 M on the 120k lockstep
 once the bias took over; every other counter identical). The backend
 declares `accessClockBias`, which resolves the § C.4nonies admission
-defaults ON — inert here, since this emitter never consulted those knobs
-(its restartable-write and BSR.W admissions are unconditional under
-`traced030`'s split-cost rule), but the declaration is what a default is
-allowed to ride on. `jit_lockstep_030_a64_alignment_test` pins the
-explicit-knob road; `jit_lockstep_030_a64_experimental_test` the default.
+defaults ON — and since the evening of the same day the emitter
+CONSULTS them: the restartable-write family is admitted on the split
+base cost (`restartBaseAdmission()`, the total-cost rule had been
+hard-wired here) and BSR.W joins JSR d16(PC) in the armed-charge
+exemption (`bsrWideAdmission()`). Under the total cost every push
+traced on an i-cache miss was refused — 120 M of the idle Finder's
+238 M in-block fallbacks; native share 49 → 71 % at 30 000 frames.
+`jit_lockstep_030_a64_alignment_test` pins the explicit-knob road;
+`jit_lockstep_030_a64_experimental_test` the default.
 
 **Gates.** `jit_lockstep_a64_coarse_test` (5 M comparisons at 50 cycles,
 registered only on AArch64 with `POM68K_JIT_BACKENDS=auto`),
