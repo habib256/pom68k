@@ -625,9 +625,21 @@ JIT-retired instructions), which is what a knob that does something looks
 like; the 6000-frame production-cadence gate identical. 30 000 frames
 a64: **118.85 s → 105.82 s** (×4.20 → ×4.71 real time), native share
 **49.1 → 71.2 %**, window/interp 44.2 → 25.0 %, block fallbacks 220 M →
-126 M, fingerprint `cef14238b9863bec` unchanged. The `jit|m030` tiers and
-the 30 000-frame `threaded,a64` ABBA run on the relinked tree next; the
-remaining 25 % in the window is the next census.
+126 M, fingerprint `cef14238b9863bec` unchanged. On the relinked tree
+(freshness guard 152/152, `docs_test` PASS): `-L jit|m030` **84/84**.
+
+**The ABBA, PROVISIONAL — two attempts refused by the busy-host bar.**
+`bench::compare` `threaded,a64`, 3 repeats: 30 000 frames 154.22 s →
+118.91 s (**−22.9 %**, spreads 0.1/0.2 %, fp `cef14238b9863bec`) and
+6000 frames 27.39 s → 20.87 s (**−23.8 %**, spreads 0.0/0.1 %, fp
+`cfb184b6faddabec`) — both stamped `HOST BUSY` (1-min load 3.4-3.6
+against the 2.0 bar): macOS's `mediaanalysisd` and `mds_stores` were
+indexing the gates' `.ppm` dumps at 60-90 % CPU for hours, and a
+wait-for-quiet loop never got its window. The spreads say the numbers
+are stable; the rule says they are not quotable until a quiet re-run
+(TODO carries it; `sudo mdutil -i off /` is the host-side remedy).
+Yesterday's quotable 6000-frame figure was −16.4 % before these two
+levers. The remaining 25 % in the window is the next census.
 
 <a id="2026-08-22-guard-intersection"></a>
 ## 2026-08-22 (fifth) — The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames

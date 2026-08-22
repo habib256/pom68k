@@ -728,7 +728,13 @@ Open, in ROI order:
   every block lazily — a per-page path for the 2481 single-page
   `PFLUSH` would only take 25 % of them), `window/interp` at 47 % of
   instructions, and 946 hit-list-overflow flushes; the 30 000-frame
-  `threaded,a64` ABBA is the instrument (`POM68K_BENCH_FRAMES=30000`); (b) an asset-free gate for the
+  `threaded,a64` ABBA is the instrument (`POM68K_BENCH_FRAMES=30000`).
+  **Owed: the quiet-host ABBA after (sixth)** — the provisional pair reads
+  −22.9 % (30k) / −23.8 % (6k), both `HOST BUSY` under macOS indexing
+  daemons; re-run with Spotlight paused. Next census: the 25 % of
+  instructions still in the window — JSR (`4EBA`/`4E91`/`4EAD`, ~35 M)
+  and MOVEM (`48E7`/`4CEE`/`4CDF`, ~45 M) lead the fallback list and
+  need a per-site refusal-reason counter to say WHICH check refuses; (b) an asset-free gate for the
   slice-index invariant (`unmarkPages` is the inverse of `markPages`;
   the soak is the only tripwire and needs the ROM). The paragraph below is the 2026-08-18
   state this work overturned.**
