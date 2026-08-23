@@ -2232,10 +2232,16 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             return true;
         }
         if (sem.operation == SemanticOp::Movem) {
-            // Same explicit 030 refusal as x64 (JIT_BRINGUP § C.4.4): the
-            // 030 MOVEM restart contract is unmodelled, and the cost
-            // cross-check's i-cache side effect is not a guard.
-            if (L.is030) return false;
+            // The 030's MOVEM contract is the format-$B RESUME: a fault in
+            // flight stacks the count/EA (`mmuState`) and RTE continues
+            // mid-instruction. Native MOVEM proves EVERY byte of the span
+            // before the first access (the OrderedSpan preflight below),
+            // so no fault can occur in flight and the resume state is never
+            // observable; a span the DTLB cannot prove in one page bails to
+            // the untouched instruction and Moira stacks the real frame.
+            // Refused outright until 2026-08-23 (JIT_BRINGUP § C.4.4 —
+            // 68 % of the idle Finder's remaining fallbacks); x64 keeps its
+            // guard until its 030 lockstep runs on an x86-64 host.
             const bool toRegs = sem.toRegisters;
             const int bits = bitsForSizeIndex(sem.sizeIndex), bytes = bits / 8;
             const uint16_t mask = in.extensionWord(0);
@@ -2842,6 +2848,9 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 0, ea) ||
             !ea.memory || ea.idx == E_PI || ea.idx == E_PD ||
             in.words != unsigned(1 + ea.ext)) { watchRefusal(L, ir, in, "jsr:ea"); return false; }
+        // The indexed forms stay out: the watch (2026-08-23) shows JSR
+        // idx(An) tracing at base 12-14 with 3-4 fetched words, not the
+        // table's 7 — a full-format extension walk, not one path.
         static const int8_t cost[E_COUNT] =
             {-1,-1,4,-1,-1,5,-1,4,4,5,-1,-1};
         if (cost[ea.idx] < 0 ||

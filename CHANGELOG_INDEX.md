@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 269 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 270 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 14 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
-| [Cross-cutting](#cross-cutting) | 38 |
+| [Cross-cutting](#cross-cutting) | 39 |
 
 ---
 
@@ -331,4 +331,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-22 (fifth)** — [The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames](CHANGELOG.md#2026-08-22-guard-intersection)
 - **2026-08-23** — [A refusal instrument names the next two levers: JSR leaves the TARGET's first word in the queue, and MOVEM is refused on the 030 by design](CHANGELOG.md#2026-08-23-watch-opcode)
 - **2026-08-23 (second)** — [The native 030 JSR reads its target's first word at run time, as execJsr does: 71 % → 83 % native, 105.8 s → 100.0 s](CHANGELOG.md#2026-08-23-jsr-target-read)
+- **2026-08-23 (third)** — [Native MOVEM on the 030: the format-$B resume is never observable when the whole span is proved first — 83 % → 86 % native, 100.0 s → 93.4 s](CHANGELOG.md#2026-08-23-movem-030)
 

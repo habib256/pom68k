@@ -298,14 +298,19 @@ reset block.
    separately (`Instr::terminalIrd/terminalIrc/terminalQueueValid`) and the
    a64 branch emitters confirm their formula against it before compiling.
 4. **`mmu040MovemArmed`** (`PomJitLayout::movemArmed`) is 040 state; the
-   030's MOVEM restart contract is its own and is **not modelled**. The
-   explicit 030 guard on the MOVEM emitter is REAL since 2026-08-19 —
-   `if (L_.is030) return false;` on both backends
-   (`JitBackendX64.cpp:2739`, `JitBackendA64.cpp:1794`) — because it had
-   been refused in practice only by its cost check comparing raw traced
-   cycles, and `traced030` making the base rule global would have
-   un-refused it silently; an accident of the cross-check is not a
-   safety property.
+   030's MOVEM contract is the format-$B RESUME (`mmuState`: count/EA in
+   flight, RTE continues mid-instruction). The explicit 030 guard on the
+   MOVEM emitter was REAL from 2026-08-19 — `if (L_.is030) return false;`
+   on both backends — because it had been refused in practice only by its
+   cost check comparing raw traced cycles, and `traced030` making the base
+   rule global would have un-refused it silently. **Lifted on a64
+   2026-08-23 (CHANGELOG (third))** on the argument the x64 guard's note
+   never made: native MOVEM proves every byte of the span before the
+   first access (the OrderedSpan preflight), so no fault can occur in
+   flight and the resume state is never observable; a span the DTLB
+   cannot prove bails to the untouched instruction. The 120k and
+   6000-frame locksteps are identical with it. x64 keeps the guard until
+   its 030 lockstep runs on an x86-64 host.
 5. **`mmuExecuteStart` resets a block of MMU bookkeeping on EVERY 68030
    instruction** that has no 68040 counterpart in that form
    (`MoiraExecMMU_cpp.h:521-528`):
@@ -1063,7 +1068,7 @@ folded into an emitter change.
 | B — emitted 030 i-cache | **correctness-proved on AArch64** by the 6,000-frame production-cadence lockstep + matching benchmark fingerprint; native-state hardening and score 64 later supplied the measured win |
 | C.1 — 030 lockstep gate | **done** (threaded, blocks, a64-experimental) |
 | C.2 / C.3 — 030 probe + thunks | **written**; validated only indirectly, their gate is C.5 |
-| C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, the MOVEM guard, charge-on-success on both native backends and the x64 throughput win (§ C.4sexies) done; the peripheral-phase class that parked the restartable-write base admission and BSR.W is **closed on both native backends** (§ C.4nonies, `jit_lockstep_030_x64_alignment_test` + `jit_lockstep_030_a64_alignment_test`), the admissions ON by default per-backend since 2026-08-22 on measured x64 evidence (inert on a64, whose admissions were already unconditional) |
+| C.4 — per-instruction contract | **partial** — resets, split timing, `(An)+` order, the restartable-write family, the MOVEM guard, charge-on-success on both native backends and the x64 throughput win (§ C.4sexies) done; the peripheral-phase class that parked the restartable-write base admission and BSR.W is **closed on both native backends** (§ C.4nonies, `jit_lockstep_030_x64_alignment_test` + `jit_lockstep_030_a64_alignment_test`), the admissions ON by default per-backend since 2026-08-22 on measured x64 evidence, and consulted by both emitters since the a64 wiring of the same evening (CHANGELOG (sixth)); the native 030 JSR reads its target's first word at run time since 2026-08-23 |
 | C.5 / C.6 — declare + boot gates | **declaration landed 2026-08-18; AArch64 default landed 2026-08-20; x64 default landed 2026-08-21** — the IIsi segfault did not survive the hardening window (§ C.4septies CLOSED), and the original Linux-native host now passes the hardened native gates. Native builds pin both the ENGINE and compiled backend in the 030 boot gates |
 | D — default engine | **68040 landed; 68030 landed on BOTH native ISAs** (a64 2026-08-20, x64 2026-08-21), with explicit interpreter oracles per platform |
 

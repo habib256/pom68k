@@ -742,8 +742,12 @@ Open, in ROI order:
   `Frame` slot, thunk) and needs the x64 030 lockstep on x86-64; (ii) the x64 `bsrW030` exemption for `$4EBA` tests
   `BranchSubroutine` and is dead code exactly as a64's was — mirror the
   a64 fix and run `jit_lockstep_030_x64_experimental_test` on x86-64;
-  (iii) MOVEM on 030 is refused by design on both backends (§ C.4.4,
-  restart contract unmodelled) — ~45 M, a conformance chantier; (b) an asset-free gate for the
+  (iii) ~~MOVEM on 030~~ **native on a64 since 2026-08-23 (third)** —
+  the span is proved before the first access, so the $B resume is never
+  observable; locksteps identical; x64 keeps its guard until its 030
+  lockstep runs on x86-64. What is left in the window (13 %): JSR
+  idx(An) `4EB0` (not one path: base 12-14, 3-4 fetched words), the
+  `PFLUSHA` re-proofs, and `arm backoff` 4.3 %; (b) an asset-free gate for the
   slice-index invariant (`unmarkPages` is the inverse of `markPages`;
   the soak is the only tripwire and needs the ROM). The paragraph below is the 2026-08-18
   state this work overturned.**

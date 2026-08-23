@@ -317,6 +317,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-23 (third)** — [Native MOVEM on the 030: the format-$B resume is never observable when the whole span is proved first — 83 % → 86 % native, 100.0 s → 93.4 s](#2026-08-23-movem-030)
 - **2026-08-23 (second)** — [The native 030 JSR reads its target's first word at run time, as execJsr does: 71 % → 83 % native, 105.8 s → 100.0 s](#2026-08-23-jsr-target-read)
 - **2026-08-23** — [A refusal instrument names the next two levers: JSR leaves the TARGET's first word in the queue, and MOVEM is refused on the 030 by design](#2026-08-23-watch-opcode)
 - **2026-08-22 (sixth)** — [The a64 emitter had the total-cost rule hard-wired: wiring the two § C.4nonies admissions takes the idle Finder from 49 % to 71 % native](#2026-08-22-a64-admissions-wired)
@@ -588,6 +589,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-23-movem-030"></a>
+## 2026-08-23 (third) — Native MOVEM on the 030: the format-$B resume is never observable when the whole span is proved first — 83 % → 86 % native, 100.0 s → 93.4 s
+
+After the JSR lever the fallback census was two thirds MOVEM
+(`48E7` regs,-(A7) 46 M, `4CEE` d16(A6),regs 20 M, `4CDF` (A7)+,regs
+8 M of 104 M), and the a64 emitter opened with `if (L.is030) return
+false` — § C.4.4's guard, placed on 2026-08-19 because MOVEM had only
+ever been refused by accident of the cost cross-check and "the 030's
+MOVEM restart contract is its own and is not modelled".
+
+**The contract, stated, and why native code never meets it.** Moira's
+030 MOVEM follows WinUAE's `mmu030_state`: a bus error in flight stacks
+the register count and the EA in the format-$B frame (`mmuState[0..2]`)
+and RTE RESUMES mid-instruction from that saved state. A native MOVEM
+cannot resume — but it never needs to: the a64 emitter's OrderedSpan
+path PROVES every byte of the span through the DTLB before the first
+access (`span.preflight`, the same `memProbe(n × bytes)` the 040 path
+has always used), so no fault can occur between the first and the last
+transfer; a span the DTLB cannot prove in one plain page — MMIO, /BERR
+hole, a page crossing — bails to the untouched instruction and Moira
+stacks the real $B frame itself. `mmuState` is reset by
+`mmuExecuteStart` on every interpreted instruction and native MOVEM
+leaves it at that reset value. The order contract (`RegisterDescending`
+for -(An)) and the base-plus-4n cost were already checked.
+
+**Validated:** `jit_backend_test` OK; the a64 120k lockstep
+(`8192`-cycle budget, fine from 110 000) and the 6000-frame
+production-cadence gate **identical** with native 030 MOVEM; 30 000
+frames single run **100.01 s → 93.43 s** (×4.99 → ×5.34 real time),
+native share **83.4 → 85.6 %**, in-block fallbacks 87 M → 33 M,
+fingerprint `cef14238b9863bec` unchanged. The `jit|m030` tiers follow on
+the relinked tree. x64 keeps its guard until the x64 030 lockstep runs
+on an x86-64 host. JSR idx(An) (`4EB0`, now 40 % of what is left) is
+NOT one path — base 12-14, 3-4 fetched words — and stays refused.
 
 <a id="2026-08-23-jsr-target-read"></a>
 ## 2026-08-23 (second) — The native 030 JSR reads its target's first word at run time, as execJsr does: 71 % → 83 % native, 105.8 s → 100.0 s
