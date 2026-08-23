@@ -747,7 +747,17 @@ Open, in ROI order:
   observable; locksteps identical; x64 keeps its guard until its 030
   lockstep runs on x86-64. What is left in the window (13 %): JSR
   idx(An) `4EB0` (not one path: base 12-14, 3-4 fetched words), the
-  `PFLUSHA` re-proofs, and `arm backoff` 4.3 %; (b) an asset-free gate for the
+  `PFLUSHA` re-proofs, and `arm backoff` 4.3 % — **measured 2026-08-23**
+  (`POM68K_JIT_ARM_BACKOFF`, 30 000 frames, single runs, same binary):
+  32 → 94.2 s, 8 → 90.5 s, 4 → 92.9 s, 1 → 93.1 s; native share rises
+  monotonically (85.6 → 88.2 %) but wall does not — each probe costs.
+  ≤ 4 %, not a claim; the shape suggests an exponential backoff per
+  failure streak (1 → 32) rather than a constant, and `bench::compare`
+  would need an `@backoff=` arm modifier to price it. **The profile is now
+  flat** (`sample`, idle Finder): generated code ~20 %, window ~13 %,
+  engine ~7 %, and the peripheral LLE ~27 % — the Cuda's 68HC05 alone
+  ~13 %, then `V8Memory::tick`, SCC, ASC, VIA, IWM — so the next
+  end-to-end lever is outside the JIT; (b) an asset-free gate for the
   slice-index invariant (`unmarkPages` is the inverse of `markPages`;
   the soak is the only tripwire and needs the ROM). The paragraph below is the 2026-08-18
   state this work overturned.**
