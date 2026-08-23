@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the arm backoff is architecturally invisible" — on the 030, yes; the 68040 locksteps diverged at their first boundary under a streak-growing backoff, with the D-cache model on** → [2026-08-23 (fourth) — A streak-growing arm backoff…](#2026-08-23-arm-backoff)
 - **"the admission knobs are inert on a64 — its admissions are unconditional" — unconditional on the OLD total-cost rule, which refused every push traced on an i-cache miss; wiring the knobs is 49 → 71 % native in the idle Finder** → [2026-08-22 (sixth) — The a64 emitter had the total-cost rule hard-wired…](#2026-08-22-a64-admissions-wired)
 - **"the peripheral-phase class is latent on AArch64 defaults exactly as it was on x64" — it never was: the a64 backend had closed it by `guardIcacheHits`, a replay on every unproved fetch, and the 120k lockstep with both admissions ON was identical BEFORE the port** → [2026-08-22 (third) — The a64 thunks carry the access-clock bias…](#2026-08-22-a64-bias-port)
 - **"reconcile the native deadline test's placement" — the parked delivery-alignment hypothesis pointed at the IRQ *take* stage, and the take was already aligned (pin→take latency identical); the slip was the DELIVERY, an i-cache-charge-position skew at forced I/O flushes** → [2026-08-21 (sixth) — The peripheral-phase class is run to its mechanism…](#2026-08-21-periph-phase-closed)
@@ -317,6 +318,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-23 (fourth)** — [A streak-growing arm backoff: +2.6 points of native share on the 030, and a 68040 lockstep divergence — REFUTED and reverted; the idle-Finder profile is flat](#2026-08-23-arm-backoff)
 - **2026-08-23 (third)** — [Native MOVEM on the 030: the format-$B resume is never observable when the whole span is proved first — 83 % → 86 % native, 100.0 s → 93.4 s](#2026-08-23-movem-030)
 - **2026-08-23 (second)** — [The native 030 JSR reads its target's first word at run time, as execJsr does: 71 % → 83 % native, 105.8 s → 100.0 s](#2026-08-23-jsr-target-read)
 - **2026-08-23** — [A refusal instrument names the next two levers: JSR leaves the TARGET's first word in the queue, and MOVEM is refused on the 030 by design](#2026-08-23-watch-opcode)
@@ -589,6 +591,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-23-arm-backoff"></a>
+## 2026-08-23 (fourth) — A streak-growing arm backoff: +2.6 points of native share on the 030, and a 68040 lockstep divergence — REFUTED and reverted; the idle-Finder profile is flat
+
+With MOVEM native, `sample` on the idle Finder shows no JIT hot spot:
+generated code ~20 %, the fetch window ~13 %, the engine ~7 % — and the
+**peripheral LLE ~27 %** (the Cuda's 68HC05 alone ~13 %, then
+`V8Memory::tick`, SCC, ASC, VIA, IWM). The window's 13 % is led by the
+arm backoff (4.3 % of instructions): after every `PFLUSHA` (~37 700 per
+30 000 frames) the instruction ATC is empty, `pomJitProbeCode` refuses
+— it never walks — and the interpreter runs the constant
+`POM68K_JIT_ARM_BACKOFF=32` instructions before the next probe, though
+its very first fetch had refilled the ATC.
+
+Measured as a constant, same binary, single runs at 30 000 frames:
+**32 → 94.2 s, 8 → 90.5 s, 4 → 92.9 s, 1 → 93.1 s**, native share
+rising monotonically (85.6 → 88.2 %) while wall does not — the probe
+itself costs. A backoff growing with the failure STREAK (1, 2, 4 … up
+to the knob, reset on success) gave **93.0 s, native 88.2 %** on the
+LC II with the 120k and 6000-frame 030 locksteps identical and the
+fingerprint unchanged — and then the `-L jit` tier said no: the two
+68040 locksteps (`jit_lockstep_a64_coarse_test`, `jit_lockstep_x64_test`,
+Q605 with the architectural D-cache on) **diverged at their first
+coarse boundary** (`D1 interp=00000180 jit=FFFFFFF4`). WHEN the window
+is armed is not architecturally invisible on the 68040 — the cache
+model's residency rides on it — so the change is reverted, the constant
+stays, and the 030-only reading ("fp identical, ≈1 % wall") is recorded
+as what a single-family measurement is worth: nothing, until the other
+family's gate has spoken.
+
+**What this says about the ceiling.** From 609 s to 93 s in a day, the
+generator now runs ~86 % of the idle Finder's instructions natively; the
+next end-to-end lever on this workload is the peripheral LLE, not the
+JIT — an LLE cost that must stay exact (§ 0·A: never relax the
+peripheral clock).
 
 <a id="2026-08-23-movem-030"></a>
 ## 2026-08-23 (third) — Native MOVEM on the 030: the format-$B resume is never observable when the whole span is proved first — 83 % → 86 % native, 100.0 s → 93.4 s

@@ -751,9 +751,11 @@ Open, in ROI order:
   (`POM68K_JIT_ARM_BACKOFF`, 30 000 frames, single runs, same binary):
   32 → 94.2 s, 8 → 90.5 s, 4 → 92.9 s, 1 → 93.1 s; native share rises
   monotonically (85.6 → 88.2 %) but wall does not — each probe costs.
-  ≤ 4 %, not a claim; the shape suggests an exponential backoff per
-  failure streak (1 → 32) rather than a constant, and `bench::compare`
-  would need an `@backoff=` arm modifier to price it. **The profile is now
+  ≤ 4 %, not a claim; a streak-growing backoff (1 → 32) was tried and
+  **diverged the two 68040 locksteps** (`D1` at the first boundary, D-cache
+  model on) while the 030 gates stayed identical — reverted; WHEN the
+  window is armed is guest-visible on the 040 and any retry policy needs
+  that family's gate first. **The profile is now
   flat** (`sample`, idle Finder): generated code ~20 %, window ~13 %,
   engine ~7 %, and the peripheral LLE ~27 % — the Cuda's 68HC05 alone
   ~13 %, then `V8Memory::tick`, SCC, ASC, VIA, IWM — so the next

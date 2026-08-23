@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 270 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 271 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 30 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 31 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 34 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
@@ -56,6 +56,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-22 (second)** — [The admissions flip per-backend: the default rides the backend's own alignment declaration](CHANGELOG.md#2026-08-22-admission-flip-x64)
 - **2026-08-22 (sixth)** — [The a64 emitter had the total-cost rule hard-wired: wiring the two § C.4nonies admissions takes the idle Finder from 49 % to 71 % native](CHANGELOG.md#2026-08-22-a64-admissions-wired)
 - **2026-08-22 (third)** — [The a64 thunks carry the access-clock bias — and the class was never latent there: the guard had closed it by replay](CHANGELOG.md#2026-08-22-a64-bias-port)
+- **2026-08-23 (fourth)** — [A streak-growing arm backoff: +2.6 points of native share on the 030, and a 68040 lockstep divergence — REFUTED and reverted; the idle-Finder profile is flat](CHANGELOG.md#2026-08-23-arm-backoff)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
