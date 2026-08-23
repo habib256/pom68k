@@ -198,7 +198,8 @@ defaults: `DEV.md` § 5.
 
 `MscMemory` already carries `kCpuHz210` and all three Duo 2x0 box IDs
 (`MscMemory.h:53-59`); the 210/250 share the `ECFA989B` ROM, so they need an
-env selector row in `kProfiles` (see the comment at `main.cpp:5488-5492`).
+env selector: today the clock and the box ID are written straight into
+`runDuo`'s memory construction (`main.cpp:4363`).
 
 ROMs in `roms/1MB ROMs/` (user-provided, gitignored): Duo 210/230/250
 `ECFA989B`, Duo 270c `0024D346`, Duo 280/280c `015621D7`, PB150 `FDA22562`.

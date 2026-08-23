@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 256 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 272 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **Why is there one `runDafbGui` and not four runners — and what did the four copies get wrong?** → [2026-08-23 (fifth) — The four DAFB GUI runners were one function copied four times…](#2026-08-23-dafb-runner)
 - **"the arm backoff is architecturally invisible" — on the 030, yes; the 68040 locksteps diverged at their first boundary under a streak-growing backoff, with the D-cache model on** → [2026-08-23 (fourth) — A streak-growing arm backoff…](#2026-08-23-arm-backoff)
 - **"the admission knobs are inert on a64 — its admissions are unconditional" — unconditional on the OLD total-cost rule, which refused every push traced on an i-cache miss; wiring the knobs is 49 → 71 % native in the idle Finder** → [2026-08-22 (sixth) — The a64 emitter had the total-cost rule hard-wired…](#2026-08-22-a64-admissions-wired)
 - **"the peripheral-phase class is latent on AArch64 defaults exactly as it was on x64" — it never was: the a64 backend had closed it by `guardIcacheHits`, a replay on every unproved fetch, and the 120k lockstep with both admissions ON was identical BEFORE the port** → [2026-08-22 (third) — The a64 thunks carry the access-clock bias…](#2026-08-22-a64-bias-port)
@@ -318,6 +319,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-23 (fifth)** — [The four DAFB GUI runners were one function copied four times: 1433 lines → 568, and the three drift bugs the copies had grown](#2026-08-23-dafb-runner)
 - **2026-08-23 (fourth)** — [A streak-growing arm backoff: +2.6 points of native share on the 030, and a 68040 lockstep divergence — REFUTED and reverted; the idle-Finder profile is flat](#2026-08-23-arm-backoff)
 - **2026-08-23 (third)** — [Native MOVEM on the 030: the format-$B resume is never observable when the whole span is proved first — 83 % → 86 % native, 100.0 s → 93.4 s](#2026-08-23-movem-030)
 - **2026-08-23 (second)** — [The native 030 JSR reads its target's first word at run time, as execJsr does: 71 % → 83 % native, 105.8 s → 100.0 s](#2026-08-23-jsr-target-read)
@@ -589,6 +591,93 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-23-dafb-runner"></a>
+## 2026-08-23 (fifth) — The four DAFB GUI runners were one function copied four times: 1433 lines → 568, and the three drift bugs the copies had grown
+
+`MachineHost` unified the machine-thread half of the GUI in 2026-08-09. The
+runners that wire it up were never unified, and `src/main.cpp` is what that
+cost: **5990 lines**, of which twelve `run*()` functions were ~4000.
+
+Measured before touching anything, on the four that sit behind
+`DafbMachine<Mem,Cpu>` — `runQuadra` (352 l.), `runCentris` (365),
+`runQ700` (373), `runQ630` (355):
+
+| pair | lines changed, both sides | identical |
+|---|---|---|
+| Quadra ↔ Centris | 99 | ~86 % |
+| Quadra ↔ Q700 | 111 | ~85 % |
+| Centris ↔ Q700 | 122 | ~83 % |
+
+and most of those 99-122 lines are a *type name*. The genuine variation is
+ten things: model decoding from an env knob, `mem`/`cpu` construction, the
+LLE firmware predicate, the PRAM tag, which chip takes the host clock, the
+window title, the screen-window title, `MachineKind`, `SnapMachine`, and the
+CPU window's first line.
+
+**The copies had already drifted, and that is the argument, not the line
+count.** Three of the four titled their screen window `"Quadra 605"` — so a
+Centris 650, a Quadra 800, a Quadra 700 and a Quadra 950 all drew into a
+window named after another machine, and `dockLayoutScreenWindow` keys the
+saved layout on that title, so the three shared one entry. The same three
+printed `"68LC040 @ 25 MHz"` in the CPU window whatever the model was,
+including the full 68040 @ 33 MHz of a Quadra 800. And the banner's
+`"68%s040"` was fed `"0"` on the FPU path, so every default launch of the
+Quadra and Centris runners had been printing **`680040 @ 25 MHz`** — visible
+on stdout at every start, for as long as those runners have existed, and
+noticed only when the eight identities were run side by side.
+
+Now: `DafbRunnerSpec` (`main.cpp:3731`) — six fields, name / pramTag /
+cpuLine / lleFirmware / MachineKind / SnapMachine — and one
+`runDafbGui<MachineT>` (`main.cpp:3756`) holding the ~300 shared lines. Each
+platform keeps a wrapper that decodes its own model (the Eclipse still needs
+the ROM checksum before it can name `mem`'s type) and constructs `mem`/`cpu`;
+everything after `loadRom` is the generic. **1433 lines → 568**, `main.cpp`
+5990 → 5125. All three bugs are gone by construction: the title and the CPU
+line are spec fields, so there is one place to be wrong and every platform
+reads it.
+
+**Every stdout line is preserved byte-for-byte** except the `680040` fix, and
+the two already-correct dock keys (`"Quadra 605"` for the real Q605,
+`"Quadra 630"`) are unchanged — the bare model name is the spec name and the
+banner adds `"Macintosh "` exactly where it always did. Two deliberate
+changes: an LC 475 now gets its own window title instead of the Q605's (that
+*is* the fix, and it costs one saved window position once), and a Q700 family
+launched with **no disk at all** writes `q700.pram` rather than
+`Quadra 700.q700.pram` — the majority form, diskless launches only.
+
+**What proves it.** Nothing in CTest does, and that is worth stating: only
+four gates run the real binary (`lle_a64_*`, AArch64-only), so on an x86-64
+host **no gate covers `main.cpp`** — `docs/LLE_VS_HLE.md`'s "the GUI layer is
+compile-verified only" is literal. So: the eight identities were preflighted
+through `--lle-aarch64-check` (each resolving to the right name, clock and
+firmware), and each of the four platforms was booted for 34-40 s under gdb on
+an Xvfb display, against a **copy** of `MacOS-8.1-boot.vhd` — the GUI attaches
+SCSI with `writeBack = true`, and `drVolAtrb` bit 8 has cost this project two
+days once already. Screenshots confirm the corrected window title and CPU
+line. Sauver / Restaurer / Redémarrer / the Machine menu / Fenêtres /
+Périphériques were each clicked through with `xdotool`; no crash. `docs_test`
+green, and the diff of the generated body against the original `runQuadra` is
+exactly the ten intended substitutions and nothing else.
+
+**And a ratchet, because the convention had no mechanism.**
+`tools/check_file_sizes.sh` + `tools/file_size_budget.txt`, gated as
+`file_size_budget_test` (`unit`, asset-free — 228 gates now): every
+first-party file at or above 1000 lines carries a ceiling that may fall
+freely and never rise, and a new file over 2000 with no ceiling fails
+outright. `main.cpp` is recorded at 5125. CLAUDE.md's first convention is
+"one concern per file"; it lost to twelve accreted runners because nothing
+was counting. Adapted from POM2, which hit the same wall with
+`MainWindow.cpp` (11 495 lines) and wrote the script first.
+
+**Still open** (`TODO.md`): seven runners, the `SonoraStyleMachine` trio next
+— `runLc3`/`runVasp`/`runIIsi` already share a machine template the same way.
+And `runDafbGui` still lives in `main.cpp` because it reads ~18 of its
+statics (`ScreenInput`, the key table, `machineMenu`, the `g*` engine hooks,
+`findPath`, `initDriveSfx`…); lifting those into a `GuiRunner.h` is what
+actually removes the concern from the file.
 
 ---
 

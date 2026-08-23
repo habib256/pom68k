@@ -177,7 +177,7 @@ code branches on) **plus** the IIfx front end:
 
 `q700_boot_etalon <q700|q900|q950>` selects the machine — one binary, three
 gates. A `$3DC27823` ROM pins q950 regardless of `POM68K_Q700_MODEL`, and q950
-without that ROM falls back to q700 (`main.cpp:4320-4321`).
+without that ROM falls back to q700 (`main.cpp:4205-4206`).
 
 ---
 

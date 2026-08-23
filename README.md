@@ -29,18 +29,18 @@ are present coverage, never a ceiling on the project mission.
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 227 gates, ~4 h (asset-dependent ones soft-skip)
-ctest -L unit                     # 109 legacy non-etalon gates
-ctest -L asset-none               # 83 manifest-declared asset-free gates
+ctest                             # 228 gates, ~4 h (asset-dependent ones soft-skip)
+ctest -L unit                     # 110 legacy non-etalon gates
+ctest -L asset-none               # 84 manifest-declared asset-free gates
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines
 ctest -L jit-fast                 # asset-free native A64/x64 proof + doc/config checks
 ctest -L etalon-core              # 12 gates, one profile per platform, ~32 min
 ```
 
-The counts are the documented registry's (227 total); five lockstep gates
+The counts are the documented registry's (228 total); five lockstep gates
 are host-conditional — three AArch64-only, two x86-64-only
 (`jit_lockstep_030_x64_experimental_test` + `_alignment_test`) — so an
-x86-64 configure sees 224 / 106 unit / 8 smoke and an AArch64 one 225
+x86-64 configure sees 225 / 107 unit / 8 smoke and an AArch64 one 226
 (`CMakeLists.txt`;
 `docs_test` asserts the numbers against the configured registry). `unit` means "name does
 not end in `_etalon`", not "needs no assets" — several unit gates want a ROM or
@@ -202,7 +202,7 @@ animates the 512×342 framebuffer.
 **Without a ROM argument** the app looks for, in order: `roms/maclcii.rom`,
 a `35C28F5F` scan of `roms/`, `roms/macplus.rom`, `roms/macii.rom`,
 `roms/quadra605.rom`, then the `9779D2C4` and `FF7439EE` scans
-(`src/main.cpp:5549-5563`). The default machine is therefore the **Mac LC II**.
+(`src/main.cpp:4684-4698`). The default machine is therefore the **Mac LC II**.
 Each path is tried against the working directory, the executable's directory
 and its parent (`findPath`, `src/main.cpp:308`); the signature scan walks
 `roms/` recursively and matches the CRC32 hex **in the file name**
@@ -214,7 +214,7 @@ or an explicit `argv[1]` will find it.
 
 Dispatch is by ROM **size**, then by the header checksum (the first four
 bytes, big-endian), then by an environment variable for models that share a
-ROM and differ only by clock / CPU / model ID. `src/main.cpp:5571` is the
+ROM and differ only by clock / CPU / model ID. `src/main.cpp:4706` is the
 code; the **Machine** menu sets the same variables and relaunches.
 
 | Size | Checksum | Machine(s) | Selector |
@@ -340,7 +340,7 @@ wheel), **Ctrl+Alt+G**, or **Delete**, toggles full capture (cursor grabbed,
 raw motion); any of the three releases it again. Hovering the screen is
 needed to capture, never to release. The host keyboard maps to M0110 codes on the
 Plus and to raw ADB codes (= M0110 code >> 1) elsewhere (M0110 table:
-`src/main.cpp:5923`; the ADB tables are one per machine loop, e.g.
+`src/main.cpp:5058`; the ADB tables are one per machine loop, e.g.
 `src/main.cpp:1300` — notes in
 `DEV.md` § *Input: M0110 keyboard + quadrature mouse*).
 

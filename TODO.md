@@ -1473,7 +1473,7 @@ Explicitly **out of scope** for now: AV DSP, all 4 MB PPC ROMs.
   /PMU_INT level, `MscMemory::decodeScreen` (fixed 640×400 LCD, grayscale by
   GSC reg 4 bits 0-1), gate `duo230_boot_etalon` (System 7.5.5, SCSI 3448
   cmds), and since 2026-08-06 **the Duo 230 is the 37th GUI profile** —
-  `runDuo` (`main.cpp:5221`), `MachineKind::Duo`, `SnapMachine::Duo230 = 37`,
+  `runDuo` (`main.cpp:4356`), `MachineKind::Duo`, `SnapMachine::Duo230 = 37`,
   PRAM through the PG&E's own RAM + 32 KB SRAM, save states in
   `savestate_030_test`. `docs/DUO_BRINGUP.md` § 3b lists what is deliberately
   NOT wired (floppy, drive sounds, live CD-bay swap, right mouse button — all
@@ -1560,19 +1560,25 @@ being a registered gate is a configure-time `FATAL_ERROR`), `docs_test`, and
 `docs_test` fails when it stops covering every dated entry — a generated index
 that silently falls behind is worse than none, because it looks complete).
 
-- [ ] **[AR] The `run*()` bodies are the remaining half of the hosting work.**
-  The hosting is unified; the **eleven** `run*()` functions
-  (`main.cpp:1075-5490`, one per platform except the compacts, which run inline
-  in `main()`) are not. `runCentris()` (`:4060`, ~360 l.) and `runQ700()`
-  (`:4425`, ~368 l.) still share the great majority of their bodies after
-  normalising platform identifiers — and the diff is almost entirely a
-  *descriptor*: model selection from an env knob → name / clock / machine ID,
-  RAM size, PRAM file suffix, which clock source takes the host time, window
-  title and geometry. Collapse them the same way: one templated
-  `runMachine(desc)` plus a literal per profile. Cheaper than it was, since the
-  host they all wire up is a single type. *(The "88 % / 304 identical lines"
-  figure was measured on 2026-08-09 and both functions have grown since —
-  re-measure before quoting it.)*
+- [ ] **[AR] The `run*()` bodies: four done, seven to go.** The hosting was
+  unified in 2026-08-09; the `run*()` functions that wire it up were not, and
+  the diff between any two was almost entirely a *descriptor*. **The four
+  `DafbMachine` runners collapsed on 2026-08-23** (`CHANGELOG.md`): one
+  `runDafbGui<MachineT>` (`main.cpp:3756`) driven by a six-field
+  `DafbRunnerSpec` (`main.cpp:3731`), plus a wrapper per platform that decodes
+  its own model and constructs `mem`/`cpu` — 1433 lines → 568, and the three
+  drift bugs the copies had accumulated (two window titles, one banner) died
+  with them. **Seven remain** (`main.cpp:1075-4627`, one per platform bar the
+  compacts, which run inline in `main()`): `runMacII`, `runIIfx`, `runLcII`,
+  `runLc3`, `runVasp`, `runIIsi`, `runDuo`. The next natural group is the
+  `SonoraStyleMachine` trio — `runLc3` (`:2355`), `runVasp` (`:2707`) and
+  `runIIsi` (`:3008`) — which already share a machine template the same way
+  the four just did. Then the harder half: `runDafbGui` still lives in
+  `main.cpp` because it reads ~18 of its statics (`ScreenInput`, the key
+  table, `machineMenu`, the `g*` engine hooks, `findPath`, `initDriveSfx`…);
+  lifting those into a `GuiRunner.h` is what actually removes the concern from
+  the file, and it is what the ratchet (`tools/check_file_sizes.sh`) exists to
+  keep pressure on.
 - [ ] **[AR] Separate fixture roles, then version them.** The gates never write
   their images (`ScsiDisk::open()` defaults `writeBack = false` at
   `ScsiDisk.h:67`, and **no test anywhere passes `true`**; `q605_persist_etalon`

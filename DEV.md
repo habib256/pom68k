@@ -528,7 +528,7 @@ the fixed IOSB `$A55A2BAD` for all of them:
 | Quadra 800 | `$12` | 68040 @ 33.33 MHz (SONIC + NuBus on the real board — see below) |
 
 (Clocks are `CentrisMemory.h:56-59`, straps `:61-67`, the runner table
-`main.cpp:4081-4088`. The Q650 and Q800 share one constant — the "33 MHz"
+`main.cpp:4157-4164`. The Q650 and Q800 share one constant — the "33 MHz"
 on the Q800's GUI label is a rounding, not a second rate.)
 
 `POM68K_CENTRIS_FPU` / `_BAREFPU` pick the FPU; `POM68K_CENTRIS_MODEL`
@@ -695,7 +695,7 @@ KeyMap through the IOP firmware), save states in `savestate_030_test`.
 ### 2.11 MSC + PG&E Power Manager — PowerBook Duo 230
 
 `MscMemory` / `MscCpu` / `PgePmu` / `M68hc05Pge`. The only laptop, the 37th
-profile (`MachineCatalog.h:48`, `runDuo` at `main.cpp:5221`, `SnapMachine::Duo230`), a
+profile (`MachineCatalog.h:48`, `runDuo` at `main.cpp:4356`, `SnapMachine::Duo230`), a
 68030 @ **33 MHz** (`kCpuHz230`; the 210 is 25 MHz, `kCpuHz210`). Blueprint
 and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
 `MscMemory.h:1-31` — the LC-family `$50Fxxxxx` shape with three deltas: a
@@ -1465,7 +1465,7 @@ unset = no card (`Q605Memory.cpp:79-87`) —
 MCU fall back to HLE, which is the point when qualifying a packaged build).
 
 **Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, set by the
-flag rather than by hand (`main.cpp:5507-5515`):
+flag rather than by hand (`main.cpp:4642-4650`):
 `POM68K_LLE_AARCH64_FULL` (`LleSession.h:39-42`; the run must be on the
 AArch64 code generator with every MCU on real firmware, and any HLE
 fallback disqualifies it) and `POM68K_LLE_AARCH64_CHECK_ONLY`

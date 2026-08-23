@@ -2195,6 +2195,21 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     #
     # Labels are DERIVED from test names rather than declared per gate, so a
     # gate registered tomorrow is classified the moment it is added.
+    # ── The file-size ratchet ────────────────────────────────────────────
+    # CLAUDE.md's first convention is "one concern per file", and until now
+    # nothing enforced it: `src/main.cpp` reached 5990 lines by accreting one
+    # ~350-line GUI runner per platform, twelve of them, ~85 % identical text.
+    # A convention nothing measures is a convention that loses. This gate is
+    # the measurement — a ratchet over `tools/file_size_budget.txt`: a ceiling
+    # may fall freely, never rise, and a new file over the limit with no
+    # ceiling fails outright. Growing one now means editing the budget in the
+    # same commit, which is the moment to ask whether the code belongs in a
+    # new translation unit. Reads the source tree, links nothing.
+    add_test(NAME file_size_budget_test
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_file_sizes.sh"
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(file_size_budget_test PROPERTIES TIMEOUT 45)
+
     get_property(pom68k_tests DIRECTORY PROPERTY TESTS)
     foreach(t IN LISTS pom68k_tests)
         set(lbl "")
