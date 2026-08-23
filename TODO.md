@@ -68,6 +68,26 @@ tests asset-free, budgets de performance, portabilité A64/x64, documentation
 et suppression de code mort. Un nouveau modèle reste légitime dès qu'il ne
 dilue pas ces sorties prioritaires et qu'il apporte ses contrats et gates.
 
+**Chantier prioritaire nommé, 2026-08-23 — la décomposition des `run*()`**
+(§ 8, premier item `[AR]`). C'est « consolidation d'une abstraction
+existante » au sens le plus strict : `MachineHost` avait unifié la moitié
+thread en 2026-08-09, la moitié runner ne l'était pas, et le coût s'est
+mesuré en bugs, pas en lignes — trois plateformes dessinaient dans une
+fenêtre nommée « Quadra 605 », trois affichaient un CPU faux, et tout
+lancement par défaut imprimait `680040`. Les quatre runners DAFB sont
+tombés le 2026-08-23 (1433 l. → 568) ; **sept restent des copies**, et
+`main.cpp` reste à 5125 lignes. Deux paliers, dans cet ordre :
+
+1. le trio `SonoraStyleMachine` (`runLc3`/`runVasp`/`runIIsi`), qui partage
+   déjà un template machine exactement comme les quatre précédents ;
+2. sortir `runDafbGui` de `main.cpp` vers un `GuiRunner.h` — c'est le palier
+   qui retire réellement le concern du fichier, et le seul qui demande de
+   lever les ~18 statiques que le corps partagé lit encore.
+
+Le garde-fou est posé : `file_size_budget_test` interdit à `main.cpp` de
+remonter au-dessus de 5125. Un treizième runner copié ne compile plus sans
+que quelqu'un édite le budget et dise pourquoi.
+
 La fenêtre se ferme seulement quand les quatre sorties suivantes sont vraies :
 
 - [x] toutes les formes réellement émises par A64/x64 consomment les contrats
@@ -1560,10 +1580,11 @@ being a registered gate is a configure-time `FATAL_ERROR`), `docs_test`, and
 `docs_test` fails when it stops covering every dated entry — a generated index
 that silently falls behind is worse than none, because it looks complete).
 
-- [ ] **[AR] The `run*()` bodies: four done, seven to go.** The hosting was
-  unified in 2026-08-09; the `run*()` functions that wire it up were not, and
-  the diff between any two was almost entirely a *descriptor*. **The four
-  `DafbMachine` runners collapsed on 2026-08-23** (`CHANGELOG.md`): one
+- [ ] **[AR] [PRIORITAIRE — § 0] The `run*()` bodies: four done, seven to
+  go.** The hosting was unified in 2026-08-09; the `run*()` functions that
+  wire it up were not, and the diff between any two was almost entirely a
+  *descriptor*. **The four `DafbMachine` runners collapsed on 2026-08-23**
+  (`CHANGELOG.md`): one
   `runDafbGui<MachineT>` (`main.cpp:3756`) driven by a six-field
   `DafbRunnerSpec` (`main.cpp:3731`), plus a wrapper per platform that decodes
   its own model and constructs `mem`/`cpu` — 1433 lines → 568, and the three
