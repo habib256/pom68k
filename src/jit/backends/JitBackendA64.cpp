@@ -103,6 +103,17 @@ extern "C" int pom68kA64Write(moira::Moira* cpu, uint32_t addr,
     return ok;
 }
 
+// The 030 JSR's target-word read (Moira::pomJitReadProg): what execJsr
+// leaves in irc. 1 = `*out` holds the word, 0 = the read would fault and
+// the untouched instruction must be replayed.
+extern "C" int pom68kA64ReadProg(moira::Moira* cpu, uint32_t addr,
+                                 uint32_t* out) noexcept {
+    uint16_t w = 0;
+    const int ok = cpu->pomJitReadProg(addr, w) ? 1 : 0;
+    *out = w;
+    return ok;
+}
+
 struct Frame {
     int64_t clockTarget;
     uint32_t instrs;
@@ -135,8 +146,10 @@ struct Frame {
     uint32_t runtimeBytes;
     uint32_t runtimeWrite;
     PeriphDue periphDue;
+    uint64_t progHost;      // +192 a proven push pointer across the JSR target read
 };
 static_assert(offsetof(Frame, linkTable) == 64);
+static_assert(offsetof(Frame, progHost) == 192);
 static_assert(offsetof(Frame, slowStaticHisto) == 80);
 static_assert(offsetof(Frame, slowRuntimeHisto) == 88);
 static_assert(offsetof(Frame, savedClock) == 96);
@@ -2713,6 +2726,34 @@ void leaveToDynamic(Asm& a, const Layout& L, const BlockIr& ir,
     a.b(epilogue);
 }
 
+// The 030 JSR's target read, at run time: w9 = target, w11 = the word
+// execJsr would leave in irc. A read that would fault bails to `slow`,
+// which replays the untouched instruction — so the caller must have
+// committed NOTHING before this (the push is only PROVED beforehand and
+// performed after). Same spill/reload dance as an exact access thunk.
+void readProgWord(Asm& a, const Layout& L, int slow) {
+    a.strX(21, 1, 96);
+    a.strX(21, 0, L.clock);
+    a.address(2, 1, 72);                // out = Frame::value
+    a.movRegW(1, 9);                    // target address
+    if (icacheCountersLive(L)) spillIcacheCounters(a, L);
+    spillQueueLive(a, L);
+    a.movX(16, uint64_t(uintptr_t(&pom68kA64ReadProg)));
+    a.blr(16);
+    a.movRegW(14, 0);
+    a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
+    a.ldrX(21, 0, L.clock);
+    reloadGeneratedState(a, L);
+    a.cmpWZero(14);
+    const int ok = a.label();
+    a.bCond(Asm::NE, ok);
+    a.ldrX(21, 1, 96); a.strX(21, 0, L.clock);
+    a.b(slow);
+    a.bind(ok);
+    markRuntimeReason(a, RuntimeOther);
+    a.ldrW(11, 1, 72);
+}
+
 bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
                      const Instr& in, const std::vector<int>& entries,
                      int epilogue, int slow, bool paced, int batch,
@@ -2808,6 +2849,45 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         addrOf(a, L, ea, 32);
         a.strW(9, 1, 48);                           // target (Frame::saveV)
         a.ubfxW(9, 9, 0, 1); a.cbnzW(9, slow);
+        if (jsr && L.is030) {
+            // Mode-5 has no queue: execJsr leaves the TARGET's first word
+            // in irc (`queue.irc = read<PROG, Word>(ea)`), which no
+            // compile-time formula may predict — a trap patch rewriting a
+            // routine's first word would be run through a stale irc. So
+            // the word is read at run time, in the interpreter's order
+            // made restartable: PROVE the push mapping without storing,
+            // read the target (a fault bails with nothing committed; the
+            // replay pushes and faults exactly as execJsr does), then push
+            // through the proven pointer. 2026-08-23: JSR was ~35 M of the
+            // idle Finder's in-block fallbacks, refused by that formula.
+            if (in.terminalQueueValid && in.terminalIrd != op) {
+                watchRefusal(L, ir, in, "jsr:ird"); return false;
+            }
+            if (write.exactRequired) { watchRefusal(L, ir, in, "jsr:write-plan"); return false; }
+            a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
+            a.strW(9, 1, 44);                       // the new A7
+            memProbe(a, L, ir.super, 4, true, slow); // x14 = proven host
+            a.strX(14, 1, 192);                     // Frame::progHost
+            a.ldrW(9, 1, 48);
+            readProgWord(a, L, slow);               // w11 = irc (nothing committed yet)
+            a.strW(11, 1, 40);                      // Frame::scratch
+            a.ldrX(14, 1, 192);
+            a.ldrW(9, 1, 44);
+            a.movW(11, control.returnAddress); a.strW(11, 1, 72);
+            observeDirectWrite(a, L, 32, in.pc);
+            storeGuest(a, 32, 11);
+            a.ldrW(9, 1, 44); a.strW(9, 0, L.a + 7 * 4);
+            a.ldrW(11, 1, 48);
+            a.strW(11, 0, L.pc); a.strW(11, 0, L.pc0);
+            if (icache) chargeIcache(a, L, ir, in, icacheShadow);
+            a.ldrW(11, 1, 40);
+            a.movW(29, uint32_t(op) << 16); a.orrW(29, 29, 11);
+            chargeAndRetire(a, L, unsigned(cost[ea.idx]), paced, batch, in.pc,
+                            uint32_t(in.words) + 1, ir.super);
+            if (control.targetKnown) leaveTo(a, ir, control.target, linkMask, epilogue);
+            else leaveToDynamic(a, L, ir, linkMask, epilogue);
+            return true;
+        }
         if (jsr) {
             a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
             a.strW(9, 1, 44);
@@ -3114,9 +3194,14 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // JSR half dead code — every JSR d16(PC) fell back (2026-08-23,
         // found by POM68K_JIT_WATCH_OPCODE=4EBA: 19 M of the idle Finder's
         // in-block fallbacks).
+        // Every two-word JSR — d16(An), d16(PC), abs.W — is the same
+        // single path with a traced fetch count of 2 (4EAD JSR d16(A5) was
+        // the last 64-site refusal of the 2026-08-23 watch once d16(PC)
+        // compiled); the emitter's cost table and the runtime target read
+        // cover all three forms alike.
         const bool jsrD16Pc = icache && in.words == 2 &&
-            ((in.opcode == 0x4EBA &&
-              in.semantics.operation == SemanticOp::JumpSubroutine) ||
+            ((in.semantics.operation == SemanticOp::JumpSubroutine &&
+              in.fetchWords == 2) ||
              (in.opcode == 0x6100 && bsrWideAdmission() &&
               in.semantics.operation == SemanticOp::BranchSubroutine));
         if (icache && in.kind == Kind::Branch && in.words > 1 &&

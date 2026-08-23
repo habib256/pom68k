@@ -735,11 +735,11 @@ Open, in ROI order:
   instructions still in the window — JSR (`4EBA`/`4E91`/`4EAD`, ~35 M)
   and MOVEM (`48E7`/`4CEE`/`4CDF`, ~45 M) lead the fallback list —
   **named 2026-08-23** by `POM68K_JIT_WATCH_OPCODE` (`CHANGELOG.md`
-  2026-08-23): (i) JSR — the 030 leaves the TARGET's first word in `irc`
-  after a taken JSR and both backends' `heldIrc`/`lastHeld` formula
-  predicts the last extension, so `tracedQueueIs` refuses; commit the
-  target's prefetch word at block exit (the re-armed window can serve it)
-  — ~35 M fallbacks; (ii) the x64 `bsrW030` exemption for `$4EBA` tests
+  2026-08-23): (i) ~~JSR~~ **DONE on a64 the same day** (`CHANGELOG.md`
+  2026-08-23 (second)): the target's first word is read at run time through
+  `Moira::pomJitReadProg`, push proved-then-stored — native 71 → 83 %;
+  the x64 port is the same three pieces (`heldIrc` formula → runtime read,
+  `Frame` slot, thunk) and needs the x64 030 lockstep on x86-64; (ii) the x64 `bsrW030` exemption for `$4EBA` tests
   `BranchSubroutine` and is dead code exactly as a64's was — mirror the
   a64 fix and run `jit_lockstep_030_x64_experimental_test` on x86-64;
   (iii) MOVEM on 030 is refused by design on both backends (§ C.4.4,

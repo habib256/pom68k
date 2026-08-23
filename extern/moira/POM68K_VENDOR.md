@@ -22,8 +22,8 @@ memory-contract work and the peripheral-phase alignment pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **82** (55 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **392** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **83** (56 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **393** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **13 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
 | patch groups in the inventory below | **29** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
@@ -1388,6 +1388,11 @@ marked `POM68K JIT`, all inert until armed.
    thrown fault, into `false`. A false answer means nothing was committed on
    the guest side, so the caller leaves the instruction alone and the
    interpreter re-runs it from the boundary and faults identically.
+   `pomJitReadProg(addr, u16&)` (2026-08-23) is the program-space twin
+   for ONE purpose: the 030 `execJsr`'s `queue.irc = read<PROG, Word>(ea)`
+   — mode-5 has no prefetch queue, so a taken JSR leaves its target's
+   first word in irc, which a native JSR must read at run time
+   (`setFC(USER_PROG)` + `mmuRead<Word, 0>`, verbatim), never predict.
 
 10. **`Moira.h` — `pomJitLayout()`, `pomJitSync(int)`, `pomJitSimpleIpl()`.**
     The register file stays private; `pomJitLayout()` hands back the byte

@@ -685,6 +685,12 @@ public:
     // stack the frame properly.
     bool pomJitReadData(u32 addr, int bytes, u32 &out) noexcept;
     bool pomJitWriteData(u32 addr, int bytes, u32 val) noexcept;
+    // POM68K JIT (2026-08-23): the program-space word read execJsr makes
+    // of its target on the 030 (`queue.irc = read<C, PROG, Word>(ea)` —
+    // mode-5 has no queue, so the target's first word is what the
+    // terminal irc holds). A native JSR reproduces it at run time through
+    // this door, exactly as read<PROG> would; false = it would fault.
+    bool pomJitReadProg(u32 addr, u16 &out) noexcept;
     void pomJitCache040Publish(u32 logical, int bytes, bool write);
 
     // Charges `cycles` to the clock THROUGH the machine's sync(), which is

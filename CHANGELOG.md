@@ -317,6 +317,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-23 (second)** — [The native 030 JSR reads its target's first word at run time, as execJsr does: 71 % → 83 % native, 105.8 s → 100.0 s](#2026-08-23-jsr-target-read)
 - **2026-08-23** — [A refusal instrument names the next two levers: JSR leaves the TARGET's first word in the queue, and MOVEM is refused on the 030 by design](#2026-08-23-watch-opcode)
 - **2026-08-22 (sixth)** — [The a64 emitter had the total-cost rule hard-wired: wiring the two § C.4nonies admissions takes the idle Finder from 49 % to 71 % native](#2026-08-22-a64-admissions-wired)
 - **2026-08-22 (fifth)** — [The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames](#2026-08-22-guard-intersection)
@@ -587,6 +588,52 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-23-jsr-target-read"></a>
+## 2026-08-23 (second) — The native 030 JSR reads its target's first word at run time, as execJsr does: 71 % → 83 % native, 105.8 s → 100.0 s
+
+The morning's instrument said WHY every JSR fell back: mode-5 has no
+prefetch queue (`prefetch()` returns early on the M68030), and `execJsr`
+sets the queue explicitly — `queue.irc = read<C, AddrSpace::PROG,
+Word>(ea)` — so the terminal irc after a taken JSR is the TARGET's first
+word, while both backends' `heldIrc`/`lastHeld` formula predicts the last
+consumed extension and `tracedQueueIs` refused. BSR compiles because
+`execBsr` does not read its target (the formula is right for it).
+
+**No compile-time answer is exact.** Committing the word the trace saw
+would run a stale irc through the interpreter after any write to the
+callee's first word — exactly what a trap patch does (`JMP patch` over a
+routine's head), and the caller's block is not invalidated by a write to
+the callee. So the word is read at RUN time, through a new Moira door
+that is `read<PROG, Word>` verbatim for the 030 (`pomJitReadProg`:
+`setFC(USER_PROG)` + `mmuRead<Word, 0>`, false on a fault — the
+`pomJitReadData` mould, program space), called by the a64 thunk
+`pom68kA64ReadProg`.
+
+**In the interpreter's order, made restartable.** `execJsr` pushes, then
+reads; a native JSR cannot push and then bail on a faulting read (the
+replay would push twice). So the emitter PROVES the push mapping first
+(`memProbe` write, no store — the `restartWrite && E_PI` precedent: MMIO
+and /BERR reach Moira with a pristine boundary), keeps the proven host
+pointer in a new `Frame::progHost` slot across the thunk, reads the
+target (a fault bails with nothing committed; the replay pushes and
+faults exactly as execJsr does), then pushes through the proven pointer,
+commits pc, and ORs the runtime word into the register-resident queue
+(`w29 = op << 16 | irc`). The `ird` half of the queue proof stays
+(`terminalIrd == op`). A push whose plan is `exactRequired` is refused.
+The multi-word-branch guard's exemption then widened from `$4EBA` alone
+to every two-word JSR (d16(An), d16(PC), abs.W — one path, traced fetch
+count 2): `4EAD` JSR d16(A5) was the last 64-site refusal the watch
+printed once d16(PC) compiled.
+
+**Validated on the M1:** `jit_backend_test` OK; the a64 120k lockstep
+and the 6000-frame production-cadence gate identical (the queue is part
+of both comparisons). 30 000 frames, single runs: **105.82 s → 100.01 s**
+(×4.71 → ×4.99 real time), native share **71.2 → 83.4 %**, window/interp
+25.0 → 14.0 %, block fallbacks 126 M → 87 M, fingerprint
+`cef14238b9863bec` unchanged. `4EB9` JSR abs.L (three words) stays behind
+the multi-word guard with the other wide transfers. x64 keeps the formula for now: the same
+port needs `jit_lockstep_030_x64_experimental_test` on an x86-64 host.
 
 <a id="2026-08-23-watch-opcode"></a>
 ## 2026-08-23 — A refusal instrument names the next two levers: JSR leaves the TARGET's first word in the queue, and MOVEM is refused on the 030 by design
