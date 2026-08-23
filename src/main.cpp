@@ -3703,36 +3703,62 @@ static bool qualifyFullLleAarch64(const char* machine, const char* firmware,
     return true;
 }
 
-// ── LC 475 / Quadra 605 (Q6): MEMCjr/PrimeTime + 68LC040, selected by a
-// 1 MB ROM. Structure mirrors runLcII; the Q605 has no ASC yet (silent).
-static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
-                     int argc, char** argv) {
-    // Same FF7439EE ROM, three model identities (MAME macquadra605.cpp):
-    // LC 475 ($A55A2221, 68LC040 @ 25), Quadra 605 ($A55A2225, 68040+FPU @ 25)
-    // and LC/Performa 575 "Optimus" ($A55A222E, 68LC040 @ 33). POM68K_Q605_ID
-    // / POM68K_Q605_NOFPU select (the GUI menu sets them before relaunch);
-    // default = LC 475.
-    const char* qid = getenv("POM68K_Q605_ID");
-    const bool q605 = qid && strstr(qid, "2225");
-    const bool lc575 = qid && (strstr(qid, "222e") || strstr(qid, "222E"));
-    const std::string profileTag = q605 ? "q605" : lc575 ? "lc575" : "lc475";
-    {
-        std::printf("Machine: %s (68%s040 @ %d MHz, MEMCjr+PrimeTime)\n",
-                    q605 ? "Quadra 605" : lc575 ? "Macintosh LC 575"
-                                                : "Macintosh LC 475",
-                    (q605 || !getenv("POM68K_Q605_NOFPU")) ? "0" : "LC",
-                    lc575 ? 33 : 25);
-    }
-    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
+// ── The DAFB-class GUI runner, written once ─────────────────────────────
+// Four platforms sit behind `DafbMachine<Mem,Cpu>`: MEMCjr + PrimeTime
+// (LC 475 / Quadra 605 / LC 575), djMEMC + IOSB (Centris 610-650, Quadra
+// 610/650/800), the discrete 040 board (Quadra 700/900/950) and F108 +
+// Valkyrie (Quadra 630, LC 580). They differ in their memory controller and
+// in their front-end MCU. They do not differ in anything the GUI can see.
+//
+// MachineHost had already unified the machine-thread half of that; the four
+// RUNNERS stayed copies of one another — ~350 lines each, ~85 % identical
+// text, the remainder being a type name. The copies had drifted, which is
+// the argument for writing them once:
+//
+//   * three of the four titled their screen window "Quadra 605", so a
+//     Centris 650, a Quadra 800 and a Quadra 950 all drew into a window
+//     named after another machine — and `dockLayoutScreenWindow` keys the
+//     saved layout on that title, so the three shared one entry;
+//   * the same three printed "68LC040 @ 25 MHz" in the CPU window whatever
+//     the model was, including the full 68040 @ 33 MHz of a Quadra 800.
+//
+// Both are gone by construction below: the title and the CPU line are spec
+// fields, so there is exactly one place to be wrong and every platform
+// reads it. What a board may still differ by is `DafbRunnerSpec` plus the
+// two things the wrapper does itself — construct `mem`/`cpu`, and seed the
+// clock from the host. Anything a new 040 board needs that is not a spec
+// field is not a difference; make it one.
+struct DafbRunnerSpec {
+    /// Human name. GLFW title, screen-window title (hence the dock-layout
+    /// key), and the machine `qualifyFullLleAarch64` names in its verdict.
+    const char* name;
+    /// File suffix: "<boot image>.<tag>.pram", and ".pomss" beside it.
+    /// Stable per PROFILE, never per family — two profiles sharing one file
+    /// would share a save state.
+    const char* pramTag;
+    /// The CPU window's first line, e.g. "68040 @ 33 MHz (Moira + 040 MMU)".
+    const char* cpuLine;
+    /// Firmware the full-LLE AArch64 preflight requires by name.
+    const char* lleFirmware;
+    /// Which row the Machine menu ticks.
+    MachineKind kind;
+    /// Save-state identity.
+    pom68k::SnapMachine snap;
+};
 
-    static Q605Memory mem;
-    static Cpu040 cpu(mem);
-    static MacAudioHost audioHost;
-    mem.loadRom(rom);
-    mem.setCpu(&cpu);
-    if (!qualifyFullLleAarch64(profileTag.c_str(),
-                               "Cuda 341s0788",
-                               mem.cudaLleActive(), cpu)) return 2;
+/// `mem` and `cpu` are the caller's statics, already carrying the ROM: a
+/// platform decodes its own model from the environment (and, on the
+/// Eclipse, from the ROM checksum) before it can even name their types.
+/// `lleActive` is that board's own firmware predicate — `cudaLleActive()`
+/// here, `adbLleActive()` there — read after `loadRom`, as it always was.
+/// `seedRtc` re-seeds the clock the board actually keeps time on.
+template <class MachineT, class Mem, class Cpu, class SeedRtc>
+static int runDafbGui(Mem& mem, Cpu& cpu, MacAudioHost& audioHost,
+                      const DafbRunnerSpec& spec, bool lleActive,
+                      SeedRtc&& seedRtc, const std::string& romName,
+                      int argc, char** argv) {
+    if (!qualifyFullLleAarch64(spec.name, spec.lleFirmware, lleActive, cpu))
+        return 2;
     if (fullLleAarch64CheckOnly()) return 0;
     cpu.hardReset();
     wireLocalTalk(mem);
@@ -3808,756 +3834,25 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
 
     // Battery-backed PRAM+clock (Cuda XPRAM) — persist it like the LC II so a
     // cold PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
+    // Battery-backed PRAM+clock — persist it so a cold PRAM doesn't retrigger
+    // the ROM's full-RAM burn-in every boot. The suffix carries the PROFILE,
+    // not the family: the store behind it is a Cuda XPRAM on one board and a
+    // discrete RTC's on the next, so one file must never serve two of them
+    // (the save-state path is derived from it).
     static std::string pramPath =
-        (hddPath.empty() ? profileTag : hddPath + "." + profileTag) + ".pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    // Same as LC II: the file's clock froze while powered off — wall time
-    // comes from the host at every launch (GUI only).
-    mem.setRtcSeconds(hostMacSeconds());
-    mem.cuda().factoryDefaults();
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    // 640×480 shown at 2× fits with the menu bar and the CPU window.
-    GLFWwindow* window = glfwCreateWindow(1320, 1080, "POM68K — Quadra 605", nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    // GUI floppies persist committed writes back to the image file on
-    // eject and on exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable.
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static QuadraMachine machine{mem, cpu, audioHost};
-    machine.state.kind = q605 ? pom68k::SnapMachine::Q605
-                       : lc575 ? pom68k::SnapMachine::Lc575
-                               : pom68k::SnapMachine::Lc475;
-    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
-    // The "CPU" menu is global; only machines that HAVE a second engine
-    // install its hooks. `machine` is static, so a captureless lambda can
-    // reach it and the hooks stay valid for the process lifetime.
-    gSetCpuEngine = [](int e) { machine.push({QuadraMachine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.setFloppyInserted(floppyOk, floppyPath);
-    machine.publish(true);
-
-    struct Ctx {
-        GLFWwindow* window; QuadraMachine& m; GLuint tex;
-        std::vector<uint32_t> fb;
-        std::string romName, hddPath, floppyPath;
-        std::vector<std::string>& extraDisks;
-        bool& floppyOk;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
-                   extraDisks, floppyOk};
-
-    auto frame = [](void* p) {
-        Ctx& c = *static_cast<Ctx*>(p);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
-
-#ifdef __EMSCRIPTEN__
-        c.m.stepTick();
-#endif
-
-        int hres = 0, vres = 0;
-        if (c.m.latchFrame(c.fb, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-        }
-
-        machineMenu(MachineKind::Quadra, c.window, [&c] {
-            namespace fs = std::filesystem;
-            auto samePath = [](const std::string& a, const std::string& b) {
-                std::error_code ec;
-                return a == b || fs::equivalent(a, b, ec);
-            };
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({QuadraMachine::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            {
-                const std::string ssMsg = c.m.state.message();
-                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            }
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({QuadraMachine::Cmd::HardReset}); };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-
-        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-                pom68k::dockLayoutScreenWindow("Quadra 605");
-        ImGui::Begin("Quadra 605");
-        static ScreenInput input;
-        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.m.push({QuadraMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({QuadraMachine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        // Keyboard → ADB key codes (= M0110 transition code >> 1); same table
-        // as the LC II loop.
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
-                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
-                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
-                {ImGuiKey_Keypad9,0xB8},
-            };
-            for (auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
-                    c.m.push({QuadraMachine::Cmd::Key, e.m0110 >> 1, 1});
-                }
-                if (keyUp(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
-                    c.m.push({QuadraMachine::Cmd::Key, e.m0110 >> 1, 0});
-                }
-            }
-        }
-
-        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        QuadraMachine::Status st = c.m.status();
-        ImGui::Text("68LC040 @ 25 MHz (Moira + 040 MMU)  PC=%08X  clock=%lld",
-                    st.pc, st.clock);
-        ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
-                    st.overlay ? 1 : 0, st.w, st.h, st.depth,
-                    st.mmu ? "on" : "off", st.held ? 1 : 0);
-        const std::string liveFloppy = c.m.floppyPath();
-        ImGui::Text("floppy=%s", c.m.floppyInserted()
-                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
-                    : "none");
-        bool running = c.m.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({QuadraMachine::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Turbo", &turbo)) c.m.turbo.store(turbo);
-        ImGui::End();
-
-        ImGui::Render();
-        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();
-    mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();   // persist floppy writes on exit
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
-}
-
-static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
-                     int argc, char** argv) {
-    // Shared F1A6F343/F1ACAD13 ROM on the djMEMC + IOSB machine (MAME
-    // macquadra800.cpp), five models by POM68K_CENTRIS_MODEL (GUI menu sets
-    // it before relaunch; default = Centris 650): Centris 650 (68LC040 @
-    // 25 MHz, ID $46) / Centris 610 (20 MHz, $40) / Quadra 650 (full 68040 @
-    // 33 MHz, $52) / Quadra 610 (25 MHz, $44) / Quadra 800 (full 68040 @
-    // 33 MHz, $12 — same board plus SONIC Ethernet and three NuBus slots,
-    // neither of which the boot path binds). POM68K_CENTRIS610 = legacy
-    // alias for c610.
-    std::string cmodel = getenv("POM68K_CENTRIS_MODEL")
-                       ? getenv("POM68K_CENTRIS_MODEL")
-                       : (getenv("POM68K_CENTRIS610") ? "c610" : "c650");
-    const bool c610 = cmodel == "c610", q650 = cmodel == "q650",
-               q610 = cmodel == "q610", q800 = cmodel == "q800";
-    // The Machine menu relaunches through execv(), which inherits the
-    // environment, and CentrisCpu keys on mere presence of this variable — so
-    // it must be cleared for the 68LC040 models or a Quadra->Centris switch
-    // silently boots a full 68040 (mirrors the POM68K_Q605_NOFPU handling).
-    if (q650 || q610 || q800) setenv("POM68K_CENTRIS_FPU", "1", 1);  // full 68040
-    else                      unsetenv("POM68K_CENTRIS_FPU");
-    struct CInfo { const char* name; int mhz; int64_t hz; uint8_t pins; };
-    const CInfo cinfo =
-          q800 ? CInfo{"Quadra 800", 33, CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra800}
-        : q650 ? CInfo{"Quadra 650", 33, CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra650}
-        : q610 ? CInfo{"Quadra 610", 25, CentrisMemory::kCpuHzQ610, CentrisMemory::kIdQuadra610}
-        : c610 ? CInfo{"Centris 610", 20, CentrisMemory::kCpuHz610, CentrisMemory::kIdCentris610}
-               : CInfo{"Centris 650", 25, CentrisMemory::kCpuHz650, CentrisMemory::kIdCentris650};
-    std::printf("Machine: Macintosh %s (68%s040 @ %d MHz, djMEMC+IOSB)\n",
-                cinfo.name, (q650 || q610 || q800) ? "0" : "LC", cinfo.mhz);
-    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
-
-    static CentrisMemory mem(36u << 20, cinfo.hz, cinfo.pins);
-    static CentrisCpu cpu(mem);
-    static MacAudioHost audioHost;
-    mem.loadRom(rom);
-    mem.setCpu(&cpu);
-    if (!qualifyFullLleAarch64(cinfo.name,
-                               "ADB PIC1654S 342s0440-b",
-                               mem.adbLleActive(), cpu)) return 2;
-    if (fullLleAarch64CheckOnly()) return 0;
-    cpu.hardReset();
-    wireLocalTalk(mem);
-
-    // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
-    // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
-    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/MacOS-8.1-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
-    // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
-    // "SCSI remains the default boot path" was the intent and NOT what the code
-    // did: a Mac boots whatever medium is in the drive at power-on, so the
-    // convenience scan of disks35/ put System 6.0.5 in the SuperDrive and every
-    // 040 machine came up on "This startup disk will not work on this Macintosh
-    // model" instead of the Finder. Seen on screen 2026-08-09; no gate could
-    // see it, because no gate auto-inserts — this path exists only in the GUI.
-    // So the scan now runs ONLY when there is no SCSI disk to boot. An explicit
-    // POM68K_FLOPPY is an instruction, not a convenience, and is still honoured
-    // either way; the Disques window hot-swaps at any time (the Mac II and IIfx
-    // loops have always worked this way).
-    std::string floppyPath;
-    if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
-    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/Disk605.dsk");
-    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/quadra.img");
-    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
-    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
-    // Secondary volumes (argv[3..] → SCSI IDs 1..6).
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        // Treat .dsk / raw SuperDrive images as floppy inserts, not SCSI.
-        std::string arg = argv[i];
-        auto ext = std::filesystem::path(arg).extension().string();
-        for (char& c : ext) c = char(std::tolower(c));
-        if (ext == ".dsk" || ext == ".image") {
-            if (mem.insertDisk(arg)) {
-                floppyPath = arg;
-                floppyOk = true;
-                std::printf("Floppy: %s\n", arg.c_str());
-            }
-            continue;
-        }
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
-            }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    // Battery-backed PRAM+clock (discrete RTC XPRAM) — persist it so a cold
-    // PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
-    static std::string pramPath =
-        (hddPath.empty() ? cmodel : hddPath + "." + cmodel) + ".pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    // Discrete RTC: the file's clock froze while powered off — wall time
-    // comes from the host at every launch (GUI only).
-    mem.rtc().setSeconds(hostMacSeconds());
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    // 640×480 shown at 2× fits with the menu bar and the CPU window.
-    GLFWwindow* window = glfwCreateWindow(1320, 1080, "POM68K — Quadra 605", nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    // GUI floppies persist committed writes back to the image file on
-    // eject and on exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable.
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static CentrisMachine machine{mem, cpu, audioHost};
-    machine.state.kind = q800 ? pom68k::SnapMachine::Quadra800
-                       : q650 ? pom68k::SnapMachine::Quadra650
-                       : q610 ? pom68k::SnapMachine::Quadra610
-                       : c610 ? pom68k::SnapMachine::Centris610
-                              : pom68k::SnapMachine::Centris650;
-    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
-    // The "CPU" menu is global; only machines that HAVE a second engine
-    // install its hooks. `machine` is static, so a captureless lambda can
-    // reach it and the hooks stay valid for the process lifetime.
-    gSetCpuEngine = [](int e) { machine.push({CentrisMachine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.setFloppyInserted(floppyOk, floppyPath);
-    machine.publish(true);
-
-    struct Ctx {
-        GLFWwindow* window; CentrisMachine& m; GLuint tex;
-        std::vector<uint32_t> fb;
-        std::string romName, hddPath, floppyPath;
-        std::vector<std::string>& extraDisks;
-        bool& floppyOk;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
-                   extraDisks, floppyOk};
-
-    auto frame = [](void* p) {
-        Ctx& c = *static_cast<Ctx*>(p);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
-
-#ifdef __EMSCRIPTEN__
-        c.m.stepTick();
-#endif
-
-        int hres = 0, vres = 0;
-        if (c.m.latchFrame(c.fb, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-        }
-
-        machineMenu(MachineKind::Centris, c.window, [&c] {
-            namespace fs = std::filesystem;
-            auto samePath = [](const std::string& a, const std::string& b) {
-                std::error_code ec;
-                return a == b || fs::equivalent(a, b, ec);
-            };
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({CentrisMachine::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            {
-                const std::string ssMsg = c.m.state.message();
-                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            }
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({CentrisMachine::Cmd::HardReset}); };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-
-        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-                pom68k::dockLayoutScreenWindow("Quadra 605");
-        ImGui::Begin("Quadra 605");
-        static ScreenInput input;
-        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.m.push({CentrisMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({CentrisMachine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        // Keyboard → ADB key codes (= M0110 transition code >> 1); same table
-        // as the LC II loop.
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
-                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
-                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
-                {ImGuiKey_Keypad9,0xB8},
-            };
-            for (auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
-                    c.m.push({CentrisMachine::Cmd::Key, e.m0110 >> 1, 1});
-                }
-                if (keyUp(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
-                    c.m.push({CentrisMachine::Cmd::Key, e.m0110 >> 1, 0});
-                }
-            }
-        }
-
-        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        CentrisMachine::Status st = c.m.status();
-        ImGui::Text("68LC040 @ 25 MHz (Moira + 040 MMU)  PC=%08X  clock=%lld",
-                    st.pc, st.clock);
-        ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
-                    st.overlay ? 1 : 0, st.w, st.h, st.depth,
-                    st.mmu ? "on" : "off", st.held ? 1 : 0);
-        const std::string liveFloppy = c.m.floppyPath();
-        ImGui::Text("floppy=%s", c.m.floppyInserted()
-                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
-                    : "none");
-        bool running = c.m.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({CentrisMachine::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Turbo", &turbo)) c.m.turbo.store(turbo);
-        ImGui::End();
-
-        ImGui::Render();
-        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();
-    mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();   // persist floppy writes on exit
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
-}
-
-static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
-                     int argc, char** argv) {
-    // Macintosh Quadra 700 ("Spike", MAME macquadra700.cpp): the first
-    // Quadra — a full 68040 @ 25 MHz on discrete chips. Mac II VIA1/VIA2 +
-    // 343-0042 RTC + PIC1654S ADB in front, Quadra DAFB/53C96/SWIM1/EASC
-    // behind, SCSI through DAFB's own TurboSCSI cell. $420DBFF3 ROM.
-    //
-    // The same board carries the "Eclipse"/"Zydeco" towers (Quadra 900/950,
-    // docs/IOP_BRINGUP.md § M7): the Mac IIfx front end grafted on — two
-    // Apple PIC IOPs, the Egret instead of the discrete RTC, a second 53C96
-    // bus. POM68K_Q700_MODEL picks the variant (the GUI menu sets it before
-    // relaunch); the Q950 ROM forces its own model, because a $3DC27823 dump
-    // IS a Quadra 950 whatever the environment inherited from the last run.
-    const uint32_t romCk = rom.size() >= 4
-        ? uint32_t(rom[0]) << 24 | uint32_t(rom[1]) << 16
-          | uint32_t(rom[2]) << 8 | rom[3]
-        : 0u;
-    std::string qmodel = getenv("POM68K_Q700_MODEL") ? getenv("POM68K_Q700_MODEL")
-                                                     : "q700";
-    if (romCk == 0x3DC27823) qmodel = "q950";
-    else if (qmodel == "q950") qmodel = "q700";   // Zydeco ROM absent
-    const bool q900 = qmodel == "q900", q950 = qmodel == "q950";
-    const auto qkind = q950 ? Q700Memory::Model::Q950
-                     : q900 ? Q700Memory::Model::Q900
-                            : Q700Memory::Model::Spike;
-    const int64_t qhz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
-    const char* qname = q950 ? "Quadra 950" : q900 ? "Quadra 900" : "Quadra 700";
-    std::printf("Machine: Macintosh %s (68040 @ %lld MHz, %s)\n", qname,
-                (long long)(qhz / 1000000),
-                q900 || q950 ? "discret + IOP Apple PIC" : "discret");
-    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
-
-    static Q700Memory mem(32u << 20, qhz, qkind);
-    static Q700Cpu cpu(mem);
-    static MacAudioHost audioHost;
-    mem.loadRom(rom);
-    mem.setCpu(&cpu);
-    if (!qualifyFullLleAarch64(qname,
-                               qkind == Q700Memory::Model::Spike
-                                 ? "ADB PIC1654S 342s0440-b"
-                                 : "Egret 341s0851",
-                               mem.adbLleActive(), cpu)) return 2;
-    if (fullLleAarch64CheckOnly()) return 0;
-    cpu.hardReset();
-    wireLocalTalk(mem);
-
-    // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
-    // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
-    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/MacOS-8.1-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
-    // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
-    // "SCSI remains the default boot path" was the intent and NOT what the code
-    // did: a Mac boots whatever medium is in the drive at power-on, so the
-    // convenience scan of disks35/ put System 6.0.5 in the SuperDrive and every
-    // 040 machine came up on "This startup disk will not work on this Macintosh
-    // model" instead of the Finder. Seen on screen 2026-08-09; no gate could
-    // see it, because no gate auto-inserts — this path exists only in the GUI.
-    // So the scan now runs ONLY when there is no SCSI disk to boot. An explicit
-    // POM68K_FLOPPY is an instruction, not a convenience, and is still honoured
-    // either way; the Disques window hot-swaps at any time (the Mac II and IIfx
-    // loops have always worked this way).
-    std::string floppyPath;
-    if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
-    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/Disk605.dsk");
-    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/quadra.img");
-    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
-    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
-    // Secondary volumes (argv[3..] → SCSI IDs 1..6).
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        // Treat .dsk / raw SuperDrive images as floppy inserts, not SCSI.
-        std::string arg = argv[i];
-        auto ext = std::filesystem::path(arg).extension().string();
-        for (char& c : ext) c = char(std::tolower(c));
-        if (ext == ".dsk" || ext == ".image") {
-            if (mem.insertDisk(arg)) {
-                floppyPath = arg;
-                floppyOk = true;
-                std::printf("Floppy: %s\n", arg.c_str());
-            }
-            continue;
-        }
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
-            }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    // Battery-backed PRAM+clock — persist it so a cold PRAM doesn't
-    // retrigger the ROM's full-RAM burn-in every boot. The suffix carries
-    // the PROFILE, not the family: on the Spike this store is the discrete
-    // RTC's XPRAM and on the towers it is the Egret's, so one file must
-    // never serve two of them (the save-state path is derived from it).
-    static std::string pramSuffix =
-        std::string(".") + (q950 ? "q950" : q900 ? "q900" : "q700") + ".pram";
-    static std::string pramPath =
-        (hddPath.empty() ? std::string(qname) : hddPath) + pramSuffix;
+        (hddPath.empty() ? std::string(spec.pramTag)
+                         : hddPath + "." + spec.pramTag) + ".pram";
     if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
     // The file's clock froze while powered off — wall time comes from the
-    // host at every launch (GUI only). On the Eclipse there is no discrete
-    // RTC in the loop: the Egret keeps time and runs its own second counter.
-    if (mem.eclipse()) mem.setEgretSeconds(hostMacSeconds());
-    else               mem.rtc().setSeconds(hostMacSeconds());
+    // host at every launch (GUI only). Which chip keeps it is the caller's
+    // business; this is the one line that has to happen here.
+    seedRtc();
 
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
     const char* glslVersion = configureGlfwOpenGl();
     // 640×480 shown at 2× fits with the menu bar and the CPU window.
-    static std::string winTitle = std::string("POM68K — ") + qname;
+    static std::string winTitle = std::string("POM68K — ") + spec.name;
     GLFWwindow* window = glfwCreateWindow(1320, 1080, winTitle.c_str(), nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
@@ -4584,15 +3879,13 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
     if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
 
-    static Q700Machine machine{mem, cpu, audioHost};
-    machine.state.kind = q950 ? pom68k::SnapMachine::Quadra950
-                       : q900 ? pom68k::SnapMachine::Quadra900
-                              : pom68k::SnapMachine::Q700;
+    static MachineT machine{mem, cpu, audioHost};
+    machine.state.kind = spec.snap;
     machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
     // The "CPU" menu is global; only machines that HAVE a second engine
     // install its hooks. `machine` is static, so a captureless lambda can
     // reach it and the hooks stay valid for the process lifetime.
-    gSetCpuEngine = [](int e) { machine.push({Q700Machine::Cmd::CpuEngine, e}); };
+    gSetCpuEngine = [](int e) { machine.push({MachineT::Cmd::CpuEngine, e}); };
     gGetCpuEngine = [] { return machine.cpuEngine(); };
     gJitStats     = [] { return machine.jitStats(); };
     gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
@@ -4601,14 +3894,15 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     machine.publish(true);
 
     struct Ctx {
-        GLFWwindow* window; Q700Machine& m; GLuint tex;
+        GLFWwindow* window; MachineT& m; GLuint tex;
         std::vector<uint32_t> fb;
         std::string romName, hddPath, floppyPath;
         std::vector<std::string>& extraDisks;
         bool& floppyOk;
+        DafbRunnerSpec spec;
     };
     static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
-                   extraDisks, floppyOk};
+                   extraDisks, floppyOk, spec};
 
     auto frame = [](void* p) {
         Ctx& c = *static_cast<Ctx*>(p);
@@ -4626,7 +3920,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
                          GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
         }
 
-        machineMenu(MachineKind::Q700, c.window, [&c] {
+        machineMenu(c.spec.kind, c.window, [&c] {
             namespace fs = std::filesystem;
             auto samePath = [](const std::string& a, const std::string& b) {
                 std::error_code ec;
@@ -4643,7 +3937,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
             // (src/DiskBays.*) -- see the note in runLcII.
             pom68k::diskBaysMenuItem();
             if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({Q700Machine::Cmd::HardReset});
+                c.m.push({MachineT::Cmd::HardReset});
             ImGui::Separator();
             if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
             if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
@@ -4658,7 +3952,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
             static pom68k::DiskBaysHost host = [&c] {
                 pom68k::DiskBaysHost h;
                 h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({Q700Machine::Cmd::HardReset}); };
+                h.hardReset = [&c] { c.m.push({MachineT::Cmd::HardReset}); };
                 // CD bays: media in/out of a drive that exists on the bus
                 // (attached at boot, or the reserved "cdbay"), no reboot.
                 h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
@@ -4693,13 +3987,13 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
 
 
         ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-                pom68k::dockLayoutScreenWindow("Quadra 605");
-        ImGui::Begin("Quadra 605");
+                pom68k::dockLayoutScreenWindow(c.spec.name);
+        ImGui::Begin(c.spec.name);
         static ScreenInput input;
         input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.m.push({Q700Machine::Cmd::MouseMove, dx, dy}); },
+                    [&](int dx, int dy) { c.m.push({MachineT::Cmd::MouseMove, dx, dy}); },
                     [&](int button, bool down) {
-                        c.m.push({Q700Machine::Cmd::MouseButton, button, down ? 1 : 0});
+                        c.m.push({MachineT::Cmd::MouseButton, button, down ? 1 : 0});
                     });
         ImGuiIO& io = ImGui::GetIO();
         ImGui::End();
@@ -4736,20 +4030,19 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
             for (auto& e : kKeys) {
                 if (keyDown(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), true);
-                    c.m.push({Q700Machine::Cmd::Key, e.m0110 >> 1, 1});
+                    c.m.push({MachineT::Cmd::Key, e.m0110 >> 1, 1});
                 }
                 if (keyUp(uint8_t(e.m0110), e.k)) {
                     keyTrace("push", uint8_t(e.m0110 >> 1), false);
-                    c.m.push({Q700Machine::Cmd::Key, e.m0110 >> 1, 0});
+                    c.m.push({MachineT::Cmd::Key, e.m0110 >> 1, 0});
                 }
             }
         }
 
         ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
         ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        Q700Machine::Status st = c.m.status();
-        ImGui::Text("68LC040 @ 25 MHz (Moira + 040 MMU)  PC=%08X  clock=%lld",
-                    st.pc, st.clock);
+        auto st = c.m.status();
+        ImGui::Text("%s  PC=%08X  clock=%lld", c.spec.cpuLine, st.pc, st.clock);
         ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
                     st.overlay ? 1 : 0, st.w, st.h, st.depth,
                     st.mmu ? "on" : "off", st.held ? 1 : 0);
@@ -4760,7 +4053,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
         bool running = c.m.running.load(std::memory_order_relaxed);
         if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
         ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({Q700Machine::Cmd::HardReset});
+        if (ImGui::Button("Reset")) c.m.push({MachineT::Cmd::HardReset});
         ImGui::SameLine();
         bool turbo = c.m.turbo.load(std::memory_order_relaxed);
         if (ImGui::Checkbox("Turbo", &turbo)) c.m.turbo.store(turbo);
@@ -4795,8 +4088,163 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
     return 0;
 }
 
-static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
+
+// ── LC 475 / Quadra 605 (Q6): MEMCjr/PrimeTime + 68LC040, selected by a
+// 1 MB ROM. Structure mirrors runLcII; the Q605 has no ASC yet (silent).
+static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
                      int argc, char** argv) {
+    // Same FF7439EE ROM, three model identities (MAME macquadra605.cpp):
+    // LC 475 ($A55A2221, 68LC040 @ 25), Quadra 605 ($A55A2225, 68040+FPU @ 25)
+    // and LC/Performa 575 "Optimus" ($A55A222E, 68LC040 @ 33). POM68K_Q605_ID
+    // / POM68K_Q605_NOFPU select (the GUI menu sets them before relaunch);
+    // default = LC 475.
+    const char* qid = getenv("POM68K_Q605_ID");
+    const bool q605 = qid && strstr(qid, "2225");
+    const bool lc575 = qid && (strstr(qid, "222e") || strstr(qid, "222E"));
+    // A $2225 dump IS a Quadra 605, which has the FPU on die; NOFPU only
+    // speaks for the two LC identities. This was already the rule the boot
+    // banner applied, and it is now also the rule the CPU window shows.
+    const bool fpu = q605 || !getenv("POM68K_Q605_NOFPU");
+    const int mhz = lc575 ? 33 : 25;
+    static std::string cpuLine = std::string(fpu ? "68040 @ " : "68LC040 @ ")
+                               + std::to_string(mhz) + " MHz (Moira + 040 MMU)";
+    const DafbRunnerSpec spec{
+        q605 ? "Quadra 605" : lc575 ? "Macintosh LC 575" : "Macintosh LC 475",
+        q605 ? "q605" : lc575 ? "lc575" : "lc475",
+        cpuLine.c_str(), "Cuda 341s0788", MachineKind::Quadra,
+        q605 ? pom68k::SnapMachine::Q605
+             : lc575 ? pom68k::SnapMachine::Lc575
+                     : pom68k::SnapMachine::Lc475};
+    std::printf("Machine: %s (68%s040 @ %d MHz, MEMCjr+PrimeTime)\n",
+                spec.name, fpu ? "" : "LC", mhz);
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
+
+    static Q605Memory mem;
+    static Cpu040 cpu(mem);
+    static MacAudioHost audioHost;
+    mem.loadRom(rom);
+    mem.setCpu(&cpu);
+    return runDafbGui<QuadraMachine>(
+        mem, cpu, audioHost, spec, mem.cudaLleActive(),
+        [] { mem.setRtcSeconds(hostMacSeconds()); mem.cuda().factoryDefaults(); },
+        romName, argc, argv);
+}
+
+// ── Centris 610/650 + Quadra 610/650/800: djMEMC + IOSB, one ROM, five
+// model identities.
+static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
+                      int argc, char** argv) {
+    // Shared F1A6F343/F1ACAD13 ROM on the djMEMC + IOSB machine (MAME
+    // macquadra800.cpp), five models by POM68K_CENTRIS_MODEL (GUI menu sets
+    // it before relaunch; default = Centris 650): Centris 650 (68LC040 @
+    // 25 MHz, ID $46) / Centris 610 (20 MHz, $40) / Quadra 650 (full 68040 @
+    // 33 MHz, $52) / Quadra 610 (25 MHz, $44) / Quadra 800 (full 68040 @
+    // 33 MHz, $12 — same board plus SONIC Ethernet and three NuBus slots,
+    // neither of which the boot path binds). POM68K_CENTRIS610 = legacy
+    // alias for c610.
+    static std::string cmodel = getenv("POM68K_CENTRIS_MODEL")
+                              ? getenv("POM68K_CENTRIS_MODEL")
+                              : (getenv("POM68K_CENTRIS610") ? "c610" : "c650");
+    const bool c610 = cmodel == "c610", q650 = cmodel == "q650",
+               q610 = cmodel == "q610", q800 = cmodel == "q800";
+    // The Machine menu relaunches through execv(), which inherits the
+    // environment, and CentrisCpu keys on mere presence of this variable — so
+    // it must be cleared for the 68LC040 models or a Quadra->Centris switch
+    // silently boots a full 68040 (mirrors the POM68K_Q605_NOFPU handling).
+    const bool fpu = q650 || q610 || q800;
+    if (fpu) setenv("POM68K_CENTRIS_FPU", "1", 1);   // full 68040
+    else     unsetenv("POM68K_CENTRIS_FPU");
+    struct CInfo { const char* name; int mhz; int64_t hz; uint8_t pins;
+                   pom68k::SnapMachine snap; };
+    const CInfo cinfo =
+          q800 ? CInfo{"Quadra 800", 33, CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra800, pom68k::SnapMachine::Quadra800}
+        : q650 ? CInfo{"Quadra 650", 33, CentrisMemory::kCpuHzQ650, CentrisMemory::kIdQuadra650, pom68k::SnapMachine::Quadra650}
+        : q610 ? CInfo{"Quadra 610", 25, CentrisMemory::kCpuHzQ610, CentrisMemory::kIdQuadra610, pom68k::SnapMachine::Quadra610}
+        : c610 ? CInfo{"Centris 610", 20, CentrisMemory::kCpuHz610, CentrisMemory::kIdCentris610, pom68k::SnapMachine::Centris610}
+               : CInfo{"Centris 650", 25, CentrisMemory::kCpuHz650, CentrisMemory::kIdCentris650, pom68k::SnapMachine::Centris650};
+    static std::string cpuLine = std::string(fpu ? "68040 @ " : "68LC040 @ ")
+                               + std::to_string(cinfo.mhz) + " MHz (Moira + 040 MMU)";
+    const DafbRunnerSpec spec{cinfo.name, cmodel.c_str(), cpuLine.c_str(),
+                              "ADB PIC1654S 342s0440-b", MachineKind::Centris,
+                              cinfo.snap};
+    std::printf("Machine: Macintosh %s (68%s040 @ %d MHz, djMEMC+IOSB)\n",
+                spec.name, fpu ? "" : "LC", cinfo.mhz);
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
+
+    static CentrisMemory mem(36u << 20, cinfo.hz, cinfo.pins);
+    static CentrisCpu cpu(mem);
+    static MacAudioHost audioHost;
+    mem.loadRom(rom);
+    mem.setCpu(&cpu);
+    return runDafbGui<CentrisMachine>(
+        mem, cpu, audioHost, spec, mem.adbLleActive(),
+        [] { mem.rtc().setSeconds(hostMacSeconds()); },
+        romName, argc, argv);
+}
+
+// ── Quadra 700 ("Spike") and the Eclipse towers (Quadra 900/950).
+static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
+                   int argc, char** argv) {
+    // Macintosh Quadra 700 ("Spike", MAME macquadra700.cpp): the first
+    // Quadra — a full 68040 @ 25 MHz on discrete chips. Mac II VIA1/VIA2 +
+    // 343-0042 RTC + PIC1654S ADB in front, Quadra DAFB/53C96/SWIM1/EASC
+    // behind, SCSI through DAFB's own TurboSCSI cell. $420DBFF3 ROM.
+    //
+    // The same board carries the "Eclipse"/"Zydeco" towers (Quadra 900/950,
+    // docs/IOP_BRINGUP.md § M7): the Mac IIfx front end grafted on — two
+    // Apple PIC IOPs, the Egret instead of the discrete RTC, a second 53C96
+    // bus. POM68K_Q700_MODEL picks the variant (the GUI menu sets it before
+    // relaunch); the Q950 ROM forces its own model, because a $3DC27823 dump
+    // IS a Quadra 950 whatever the environment inherited from the last run.
+    const uint32_t romCk = rom.size() >= 4
+        ? uint32_t(rom[0]) << 24 | uint32_t(rom[1]) << 16
+          | uint32_t(rom[2]) << 8 | rom[3]
+        : 0u;
+    std::string qmodel = getenv("POM68K_Q700_MODEL") ? getenv("POM68K_Q700_MODEL")
+                                                     : "q700";
+    if (romCk == 0x3DC27823) qmodel = "q950";
+    else if (qmodel == "q950") qmodel = "q700";   // Zydeco ROM absent
+    const bool q900 = qmodel == "q900", q950 = qmodel == "q950";
+    const auto qkind = q950 ? Q700Memory::Model::Q950
+                     : q900 ? Q700Memory::Model::Q900
+                            : Q700Memory::Model::Spike;
+    const int64_t qhz = q950 ? Q700Memory::kCpuHzQ950 : Q700Memory::kCpuHz;
+    const char* qname = q950 ? "Quadra 950" : q900 ? "Quadra 900"
+                                                   : "Quadra 700";
+    static std::string cpuLine = "68040 @ " + std::to_string(qhz / 1000000)
+                               + " MHz (Moira + 040 MMU)";
+    const DafbRunnerSpec spec{
+        qname, q950 ? "q950" : q900 ? "q900" : "q700", cpuLine.c_str(),
+        qkind == Q700Memory::Model::Spike ? "ADB PIC1654S 342s0440-b"
+                                          : "Egret 341s0851",
+        MachineKind::Q700,
+        q950 ? pom68k::SnapMachine::Quadra950
+             : q900 ? pom68k::SnapMachine::Quadra900
+                    : pom68k::SnapMachine::Q700};
+    std::printf("Machine: Macintosh %s (68040 @ %lld MHz, %s)\n", spec.name,
+                (long long)(qhz / 1000000),
+                q900 || q950 ? "discret + IOP Apple PIC" : "discret");
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
+
+    static Q700Memory mem(32u << 20, qhz, qkind);
+    static Q700Cpu cpu(mem);
+    static MacAudioHost audioHost;
+    mem.loadRom(rom);
+    mem.setCpu(&cpu);
+    return runDafbGui<Q700Machine>(
+        mem, cpu, audioHost, spec, mem.adbLleActive(),
+        // On the Eclipse there is no discrete RTC in the loop: the Egret
+        // keeps time and runs its own second counter.
+        [] {
+            if (mem.eclipse()) mem.setEgretSeconds(hostMacSeconds());
+            else               mem.rtc().setSeconds(hostMacSeconds());
+        },
+        romName, argc, argv);
+}
+
+// ── Quadra 630 / LC 580: F108 + PrimeTime II + Valkyrie.
+static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
+                   int argc, char** argv) {
     // Macintosh Quadra 630 / LC 580 ("Show and Tell", MAME macquadra630.cpp):
     // the last 68k desktop board — F108 memory controller + PrimeTime II I/O
     // + the fixed-mode Valkyrie framebuffer + Cuda 341S0060, 68040 @ 33 MHz.
@@ -4804,9 +4252,14 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     // $A55A225A = LC/Performa 580). $06684214 / $064DC91D ROMs.
     const char* q630id = getenv("POM68K_Q630_ID");
     const bool lc580 = q630id && (strstr(q630id, "225a") || strstr(q630id, "225A"));
-    const std::string profileTag = lc580 ? "lc580" : "q630";
+    const DafbRunnerSpec spec{
+        lc580 ? "LC 580" : "Quadra 630",
+        lc580 ? "lc580" : "q630",
+        "68040 @ 33 MHz (Moira + 040 MMU)", "Cuda 341s0060",
+        MachineKind::Q630,
+        lc580 ? pom68k::SnapMachine::Lc580 : pom68k::SnapMachine::Q630};
     std::printf("Machine: Macintosh %s (68040 @ 33 MHz, F108 + Valkyrie)\n",
-                lc580 ? "LC 580" : "Quadra 630");
+                spec.name);
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
 
     static Q630Memory mem(32u << 20);
@@ -4814,329 +4267,11 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
-    if (!qualifyFullLleAarch64(profileTag.c_str(),
-                               "Cuda 341s0060",
-                               mem.cudaLleActive(), cpu)) return 2;
-    if (fullLleAarch64CheckOnly()) return 0;
-    cpu.hardReset();
-    wireLocalTalk(mem);
-
-    // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
-    // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
-    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/MacOS-8.1-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
-    // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
-    // "SCSI remains the default boot path" was the intent and NOT what the code
-    // did: a Mac boots whatever medium is in the drive at power-on, so the
-    // convenience scan of disks35/ put System 6.0.5 in the SuperDrive and every
-    // 040 machine came up on "This startup disk will not work on this Macintosh
-    // model" instead of the Finder. Seen on screen 2026-08-09; no gate could
-    // see it, because no gate auto-inserts — this path exists only in the GUI.
-    // So the scan now runs ONLY when there is no SCSI disk to boot. An explicit
-    // POM68K_FLOPPY is an instruction, not a convenience, and is still honoured
-    // either way; the Disques window hot-swaps at any time (the Mac II and IIfx
-    // loops have always worked this way).
-    std::string floppyPath;
-    if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
-    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/Disk605.dsk");
-    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/quadra.img");
-    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
-    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
-    // Secondary volumes (argv[3..] → SCSI IDs 1..6).
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        // Treat .dsk / raw SuperDrive images as floppy inserts, not SCSI.
-        std::string arg = argv[i];
-        auto ext = std::filesystem::path(arg).extension().string();
-        for (char& c : ext) c = char(std::tolower(c));
-        if (ext == ".dsk" || ext == ".image") {
-            if (mem.insertDisk(arg)) {
-                floppyPath = arg;
-                floppyOk = true;
-                std::printf("Floppy: %s\n", arg.c_str());
-            }
-            continue;
-        }
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
-            }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    // Battery-backed PRAM+clock (discrete RTC XPRAM) — persist it so a cold
-    // PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
-    static std::string pramPath =
-        (hddPath.empty() ? profileTag : hddPath + "." + profileTag) + ".pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    // The Cuda holds the clock on this board (no discrete RTC): its saved
-    // seconds froze while powered off, so re-seed from the host (GUI only).
-    mem.setRtcSeconds(hostMacSeconds());
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    // 640×480 shown at 2× fits with the menu bar and the CPU window.
-    GLFWwindow* window = glfwCreateWindow(1320, 1080, "POM68K — Quadra 630", nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    // GUI floppies persist committed writes back to the image file on
-    // eject and on exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable.
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static Q630Machine machine{mem, cpu, audioHost};
-    machine.state.kind = lc580 ? pom68k::SnapMachine::Lc580
-                               : pom68k::SnapMachine::Q630;
-    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
-    // The "CPU" menu is global; only machines that HAVE a second engine
-    // install its hooks. `machine` is static, so a captureless lambda can
-    // reach it and the hooks stay valid for the process lifetime.
-    gSetCpuEngine = [](int e) { machine.push({Q630Machine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.setFloppyInserted(floppyOk, floppyPath);
-    machine.publish(true);
-
-    struct Ctx {
-        GLFWwindow* window; Q630Machine& m; GLuint tex;
-        std::vector<uint32_t> fb;
-        std::string romName, hddPath, floppyPath;
-        std::vector<std::string>& extraDisks;
-        bool& floppyOk;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
-                   extraDisks, floppyOk};
-
-    auto frame = [](void* p) {
-        Ctx& c = *static_cast<Ctx*>(p);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
-
-#ifdef __EMSCRIPTEN__
-        c.m.stepTick();
-#endif
-
-        int hres = 0, vres = 0;
-        if (c.m.latchFrame(c.fb, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-        }
-
-        machineMenu(MachineKind::Q630, c.window, [&c] {
-            namespace fs = std::filesystem;
-            auto samePath = [](const std::string& a, const std::string& b) {
-                std::error_code ec;
-                return a == b || fs::equivalent(a, b, ec);
-            };
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({Q630Machine::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            {
-                const std::string ssMsg = c.m.state.message();
-                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            }
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({Q630Machine::Cmd::HardReset}); };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-
-        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-                pom68k::dockLayoutScreenWindow("Quadra 630");
-        ImGui::Begin("Quadra 630");
-        static ScreenInput input;
-        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.m.push({Q630Machine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({Q630Machine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        // Keyboard → ADB key codes (= M0110 transition code >> 1); same table
-        // as the LC II loop.
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
-                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
-                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
-                {ImGuiKey_Keypad9,0xB8},
-            };
-            for (auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
-                    c.m.push({Q630Machine::Cmd::Key, e.m0110 >> 1, 1});
-                }
-                if (keyUp(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
-                    c.m.push({Q630Machine::Cmd::Key, e.m0110 >> 1, 0});
-                }
-            }
-        }
-
-        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        Q630Machine::Status st = c.m.status();
-        ImGui::Text("68040 @ 33 MHz (Moira + 040 MMU)  PC=%08X  clock=%lld",
-                    st.pc, st.clock);
-        ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
-                    st.overlay ? 1 : 0, st.w, st.h, st.depth,
-                    st.mmu ? "on" : "off", st.held ? 1 : 0);
-        const std::string liveFloppy = c.m.floppyPath();
-        ImGui::Text("floppy=%s", c.m.floppyInserted()
-                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
-                    : "none");
-        bool running = c.m.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({Q630Machine::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Turbo", &turbo)) c.m.turbo.store(turbo);
-        ImGui::End();
-
-        ImGui::Render();
-        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();
-    mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();   // persist floppy writes on exit
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
+    return runDafbGui<Q630Machine>(
+        mem, cpu, audioHost, spec, mem.cudaLleActive(),
+        // The Cuda holds the clock on this board (no discrete RTC).
+        [] { mem.setRtcSeconds(hostMacSeconds()); },
+        romName, argc, argv);
 }
 
 // ── PowerBook Duo machine thread ────────────────────────────────────────

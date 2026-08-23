@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 271 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 272 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -12,7 +12,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 34 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
-| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 13 |
+| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 14 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
 | [Save states](#save-states) | 6 |
@@ -181,6 +181,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-02 (later)** — [The raster beam: nine video decoders stop painting the whole frame at once](CHANGELOG.md#2026-08-02-beam)
 - **2026-08-14 (ninth)** — [The Toby CLUT stored a grey per write: a red boot etalon that was a real bug, and a gate that pinned it](CHANGELOG.md#2026-08-14-toby-clut-mouse)
 - **2026-08-14 (third)** — [The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen](CHANGELOG.md#2026-08-14-eclipse-beyond-boot)
+- **2026-08-23 (fifth)** — [The four DAFB GUI runners were one function copied four times: 1433 lines → 568, and the three drift bugs the copies had grown](CHANGELOG.md#2026-08-23-dafb-runner)
 
 ## Sound
 
