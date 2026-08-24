@@ -38,7 +38,7 @@ change AppleTalk behaviour are repeated here.
 
 | Knob | Default | Effect |
 |---|---|---|
-| `POM68K_APPLETALK=0` | (unset = on) | kills the in-process stack (`atalkEnabled`, `src/main.cpp:126-129`); the **Réseau → AppleTalk** menu item greys out (`src/main.cpp:942-947`) |
+| `POM68K_APPLETALK=0` | (unset = on) | kills the in-process stack (`atalkEnabled`, `src/main.cpp:126-129`); the **Réseau → AppleTalk** menu item greys out (`src/main.cpp:831-836`) |
 | `POM68K_APPLETALK=1` | — | *different job*: seeds PRAM SPConfig `$21` = LocalTalk **active at boot** (`src/Egret.cpp:77-78`, `src/Rtc.cpp:58-59`). Unset seeds `$22` (async) — a fresh PRAM then needs the Chooser's AppleTalk radio button, or an image whose prefs already have it on |
 | `POM68K_SHARE_DIR=/path` | `<repo>/AppleShare`, created if absent (`src/main.cpp:179-190`) | host folder served as the AFP volume. **The volume takes the folder's own name**, netatalk-style (`AtalkHub.h:93-97`) |
 | `POM68K_ATALK_WIRE_BOOST=N` | `8` | virtual-wire speed-up (`src/main.cpp:160-169`); a value < 1 (or unparseable) is ignored. **`=1` disables the whole block** — authentic 230.4 kbit/s *and* no `setLosslessRx`, so the wire can drop again. See §0.4 |
@@ -63,7 +63,7 @@ server name): it defends its own address against the
 guest's lapENQ probes, so the guest settles on a different ID exactly as
 it would against hardware.
 
-### 0.3 The GUI window (`Réseau → AppleTalk`, `appleTalkWindow`, `src/main.cpp:574-677`)
+### 0.3 The GUI window (`Réseau → AppleTalk`, `appleTalkWindow`, `src/main.cpp:513-615`)
 
 Four blocks, each with a live enable checkbox and a green/red bullet:
 
@@ -91,7 +91,7 @@ window's counters into a diagnosis rather than a score:
 | retransmissions 0 | clean |
 | retransmit lag ~1-2 s | the guest's own ATP timer fired — the reply played late |
 | retransmit lag tens of ms | the guest gave up early / the reply was mangled |
-| "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:135-139`, shown at `src/main.cpp:616`) |
+| "dont N pendant le service" | the retransmit arrived while we were *still* serving the original — server too slow, not the wire (`AtalkStack.h:135-139`, shown at `src/main.cpp:545-559`) |
 | "Debordement du fil" > 0 | the guest stopped listening long enough to blow the 64-frame lossless backlog (`kLosslessQueueMax`, `Scc8530.h:373`; counter `rxOverflowDrops`, `Scc8530.h:156`) |
 
 Lowering `POM68K_ATALK_WIRE_BOOST` is the wrong reflex for a backlog: the
@@ -287,7 +287,7 @@ still lives by:**
   after the guest's EOM ISR has re-armed Rx (`AtalkHub.h:79-91`, flush at
   `AtalkHub.h:145-150`). This is why finer quantum slicing matters:
   64 slices/frame ≈ 260 µs of latency per AFP round-trip
-  (`kSlices`, `src/main.cpp:245-249`; 16 slices without the hub).
+  (`kSlices`, `src/main.cpp:251-255`; 16 slices without the hub).
 
 ### 2.5 Where POM68K is faithful and where it isn't
 
@@ -810,7 +810,7 @@ guest Mac OS                                   POM68K process
 | ASP sessions + AFP 2.1 file service, `.AppleDouble` sidecars | `AfpServer` | `src/AfpServer.{h,cpp}` |
 | PAP printer → CUPS (`lp`) or `.ps` spool | `PapServer` | `src/PapServer.{h,cpp}` |
 | MacIP (ATP :72 assign, IP-in-DDP-22) + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
-| SCC wiring, service toggles, GUI status snapshot | `AtalkHub` | `src/AtalkHub.h`, `src/main.cpp:111-266, 574-677` |
+| SCC wiring, service toggles, GUI status snapshot | `AtalkHub` | `src/AtalkHub.h`, `src/main.cpp:111-266`, `src/main.cpp:513-615` |
 
 **Threading contract** (`src/AtalkHub.h:17-21`): the hub's mutex guards the
 hub's own state, never the machine's. The SCC's Rx meters are unlocked
@@ -857,7 +857,7 @@ Backlog: `TODO.md` §6. Migration notes and the HLE/LLE gap list:
 | **In-process** ASP + AFP 2.1 | `AfpServer` | `src/AfpServer.{h,cpp}` |
 | **In-process** PAP → `lp`/CUPS or `.ps` | `PapServer` | `src/PapServer.{h,cpp}` |
 | **In-process** MacIP + user-mode NAT | `MacIpGateway` | `src/MacIpGateway.{h,cpp}` |
-| Wiring + GUI window + toggles | `AtalkHub`, `appleTalkWindow` | `src/AtalkHub.h`, `src/main.cpp:574-677` |
+| Wiring + GUI window + toggles | `AtalkHub`, `appleTalkWindow` | `src/AtalkHub.h`, `src/main.cpp:513-615` |
 | External DDP/RTMP/ZIP/NBP routing | TashRouter | `extern/tashrouter` |
 | External ATP/ASP/AFP | netatalk `afpd` | `extern/netatalk2` |
 | External PAP → CUPS | netatalk `papd` (`cupsautoadd`) | `extern/netatalk2/etc/papd` |

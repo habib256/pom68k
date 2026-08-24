@@ -31,11 +31,7 @@ void check(bool ok, const char* what) {
 }
 
 std::string find(const char* rel) {
-    for (const std::string base : { std::string(), std::string("../") }) {
-        std::string p = base + rel;
-        if (std::ifstream(p, std::ios::binary)) return p;
-    }
-    return {};
+    return testasset::find(rel);
 }
 
 // 53C80 register access through the LC II map

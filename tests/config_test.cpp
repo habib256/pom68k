@@ -29,7 +29,7 @@
 //
 // Source-tree gate: soft-skips when run somewhere without `src/`.
 
-#include "AssetFingerprint.h"          // testasset::find — the two-base search
+#include "AssetFingerprint.h"          // testasset::find — shared asset search
 
 #include <algorithm>
 #include <cctype>

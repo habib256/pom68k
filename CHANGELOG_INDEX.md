@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 278 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 286 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -10,17 +10,17 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 33 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 34 |
-| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
+| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 29 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
-| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 14 |
+| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 11 |
 | [Save states](#save-states) | 6 |
-| [Machine bring-ups](#machine-bring-ups) | 41 |
+| [Machine bring-ups](#machine-bring-ups) | 42 |
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 15 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 16 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
-| [Cross-cutting](#cross-cutting) | 41 |
+| [Cross-cutting](#cross-cutting) | 44 |
 
 ---
 
@@ -127,6 +127,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-02 (fifth)** — [Two LLE gaps closed: the Cuda's I2C bus gets a second slave, and SWIM1 gets its DMA request line](CHANGELOG.md#2026-08-02-i2c-dat1byte)
 - **2026-08-03** — [Event deadlines close the Cuda phase accommodation; extended ADB input reaches every GUI runner](CHANGELOG.md#2026-08-03-event-deadlines)
 - **2026-08-14 (later)** — [The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse](CHANGELOG.md#2026-08-14-eclipse-egret-lle)
+- **2026-08-25** — [The IIvx persist gate exposed a two-transition ADB poll: Command must settle before N on VASP, but not globally](CHANGELOG.md#2026-08-25-iivx-command-settle)
 
 ## Storage — SCSI, IWM, SWIM, media
 
@@ -184,6 +185,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-14 (ninth)** — [The Toby CLUT stored a grey per write: a red boot etalon that was a real bug, and a gate that pinned it](CHANGELOG.md#2026-08-14-toby-clut-mouse)
 - **2026-08-14 (third)** — [The Eclipse gets a beyond-boot pair of its own, on the argument that a second profile is a different machine past the boot screen](CHANGELOG.md#2026-08-14-eclipse-beyond-boot)
 - **2026-08-23 (fifth)** — [The four DAFB GUI runners were one function copied four times: 1433 lines → 568, and the three drift bugs the copies had grown](CHANGELOG.md#2026-08-23-dafb-runner)
+- **2026-08-24 (fourth)** — [Mac II and IIfx share the Toby/NuBus lifecycle: nine wrappers behind one seam, 3923 → 3460 lines](CHANGELOG.md#2026-08-24-toby-gui-extraction)
+- **2026-08-24 (later)** — [The DAFB GUI lifecycle left `main.cpp` behind twelve explicit services: 4641 → 4243 lines](CHANGELOG.md#2026-08-24-gui-runner-extraction)
 
 ## Sound
 
@@ -260,6 +263,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-15** — [Three red boot gates and one bit: the fixture was cleanly unmounted, and the criterion was a fixture reading](CHANGELOG.md#2026-08-15-hd20sc-clean-bit)
 - **2026-08-15 (later)** — [The Duo's persist leg had been gesturing at Stickies, and the guest said so all along](CHANGELOG.md#2026-08-15-duo-stickies-front)
 - **2026-08-19 (third)** — [The C.5 flip is written, and its first tier run stopped it: the IIsi dies under the generator — code the `jit_*` 030 gates never ran](CHANGELOG.md#2026-08-19-c5-blocked-iisi)
+- **2026-08-24 (sixth)** — [Duo closes GUI-runner extraction: eleven instantiations, zero autonomous bodies, 3105 → 2873 lines](CHANGELOG.md#2026-08-24-duo-gui-extraction)
 
 ## Build, packaging and release
 
@@ -288,6 +292,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-18 (fourth)** — [The measurement method measured itself: the floor was 6× too loose, the freshness guard cried wolf, and the A/B is now ABBA in one process](CHANGELOG.md#2026-08-18-method-audit)
 - **2026-08-19 (fourth)** — [A doc/code consistency pass, and the half of it that is now a gate](CHANGELOG.md#2026-08-19-doc-code-consistency)
 - **2026-08-23 (sixth)** — [The slice-index leak gets an asset-free native gate: 384 precise evictions keep every key, sub-slice mask and DTLB exclusion exact](CHANGELOG.md#2026-08-23-slice-index-gate)
+- **2026-08-24 (seventh)** — [Reference fixtures become the default lookup: gates read `hdv/ref`, GUI sessions write `hdv/work`](CHANGELOG.md#2026-08-24-reference-fixture-routing)
 
 ## Documentation, audits and reviews
 
@@ -340,4 +345,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-23 (ninth)** — [Direct full-index `LEA` consumes the complete IR plan: suppression and 9/11/15-cycle displacement stay native, indirection stays slow](CHANGELOG.md#2026-08-23-full-direct-lea)
 - **2026-08-23 (second)** — [The native 030 JSR reads its target's first word at run time, as execJsr does: 71 % → 83 % native, 105.8 s → 100.0 s](CHANGELOG.md#2026-08-23-jsr-target-read)
 - **2026-08-23 (third)** — [Native MOVEM on the 030: the format-$B resume is never observable when the whole span is proved first — 83 % → 86 % native, 100.0 s → 93.4 s](CHANGELOG.md#2026-08-23-movem-030)
+- **2026-08-24** — [The three Sonora-style GUI runners were one descriptor: 5125 → 4641 lines, four autonomous runners remain](CHANGELOG.md#2026-08-24-sonora-runner)
+- **2026-08-24 (fifth)** — [V8/Eagle/Spice/Tinker Bell join the GUI service seam: ten instantiations covered, 3460 → 3105 lines](CHANGELOG.md#2026-08-24-v8-gui-extraction)
+- **2026-08-24 (third)** — [Sonora joined the same GUI service seam: seven wrappers behind one contract, 4243 → 3923 lines](CHANGELOG.md#2026-08-24-sonora-gui-extraction)
 

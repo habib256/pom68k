@@ -46,6 +46,19 @@ int main() {
     check(!ordinary.reference && ordinary.path == (root / "user.vhd").string(),
           "an explicit non-reference image remains directly writable");
 
+    const fs::path legacyHdv = root / "hdv" / "System.vhd";
+    const fs::path refHdv = root / "hdv" / "ref" / "System.vhd";
+    fs::create_directories(refHdv.parent_path(), ec);
+    { std::ofstream f(legacyHdv, std::ios::binary); f << "MUTABLE"; }
+    { std::ofstream f(refHdv, std::ios::binary); f << "REFERENCE"; }
+    check(fs::path(pom68k::preferReferenceFixture(legacyHdv.string())) == refHdv,
+          "well-known hdv path prefers its immutable reference twin");
+    check(pom68k::isReferenceFixturePath(refHdv.string()),
+          "exact hdv/ref path is classified as a reference fixture");
+    fs::remove(refHdv, ec);
+    check(fs::path(pom68k::preferReferenceFixture(legacyHdv.string())) == legacyHdv,
+          "legacy hdv path remains the fallback when no reference exists");
+
     fs::remove_all(root, ec);
     std::printf("%s\n", fails ? "FAILED" : "PASS");
     return fails ? 1 : 0;

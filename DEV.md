@@ -528,7 +528,7 @@ the fixed IOSB `$A55A2BAD` for all of them:
 | Quadra 800 | `$12` | 68040 @ 33.33 MHz (SONIC + NuBus on the real board — see below) |
 
 (Clocks are `CentrisMemory.h:56-59`, straps `:61-67`, the runner table
-`main.cpp:4157-4164`. The Q650 and Q800 share one constant — the "33 MHz"
+`main.cpp:2147-2151`. The Q650 and Q800 share one constant — the "33 MHz"
 on the Q800's GUI label is a rounding, not a second rate.)
 
 `POM68K_CENTRIS_FPU` / `_BAREFPU` pick the FPU; `POM68K_CENTRIS_MODEL`
@@ -695,7 +695,7 @@ KeyMap through the IOP firmware), save states in `savestate_030_test`.
 ### 2.11 MSC + PG&E Power Manager — PowerBook Duo 230
 
 `MscMemory` / `MscCpu` / `PgePmu` / `M68hc05Pge`. The only laptop, the 37th
-profile (`MachineCatalog.h:48`, `runDuo` at `main.cpp:4356`, `SnapMachine::Duo230`), a
+profile (`MachineCatalog.h:48`, `runDuo` at `main.cpp:2343`, `SnapMachine::Duo230`), a
 68030 @ **33 MHz** (`kCpuHz230`; the 210 is 25 MHz, `kCpuHz210`). Blueprint
 and the remaining milestones: `docs/DUO_BRINGUP.md`. The map is
 `MscMemory.h:1-31` — the LC-family `$50Fxxxxx` shape with three deltas: a
@@ -1426,7 +1426,7 @@ documented before 2026-07-31:
 | `POM68K_PERIPH_STATS` | count the peripheral catch-up path (Cpu040 only): catchUp/flushTicks/mem.tick calls + cycles per call, printed at exit. The old `POM68K_PERIPH_BATCH` knob is GONE — fixed batching was replaced by event deadlines on eight platforms (2026-08-03/04, `CHANGELOG.md` § *Event deadlines*) |
 | `POM68K_MACII_EVENT` | `=1` arms the peripheral event deadline on the Mac II family (`Cpu020`: Mac II, IIx, IIcx, SE/30) instead of the fixed 64-cycle batch. **Opt-in on purpose**: measured 2026-08-13 at **+14.2 %/+17.5 %** on `macii_boot_etalon` over two pairs, with the etalon's observables identical either way — strictly more correct (IRQ jitter → 0), invisible to every gate we have. `docs/LLE_VS_HLE.md` § 1.2 |
 | `POM68K_DUO_EVENT` | `=1` arms the same on the PowerBook Duo (`MscCpu`, batch 128). **+9.0 %** on `duo230_boot_etalon`, same Finder; the PG&E's 68HC05 binds at ~16 machine cycles, so this board pays 8× the fan-out entries. Opt-in for the same reason |
-| `POM68K_NOFPU` | no 68881/68882. Read by **six** platform runners in `main.cpp`: Mac II (`:1091`), IIfx (`:1465`), V8 (`:1887`), Sonora (`:2386`), VASP (`:2717`), RBV (`:3018`). The 68040 families have their own `*_LC040`/`*_NOFPU` knobs above |
+| `POM68K_NOFPU` | no 68881/68882. Read by **six** platform runners in `main.cpp`: Mac II (`:1091`), IIfx (`:1465`), V8 (`:1887`), Sonora (`:2728`), VASP (`:2764`), RBV (`:2803`). The 68040 families have their own `*_LC040`/`*_NOFPU` knobs above |
 | `POM68K_Q605_EVENT_SCC` / `_SCSI` | per-device event-deadline splits on the MEMCjr board (`Q605Memory.cpp:19,21`, presence-parsed `!= '0'`) — same family as the `*_EVENT` pair above |
 
 **Devices and subsystems**: `POM68K_EGRET_LLE`, `POM68K_CUDA_LLE`,
@@ -1468,7 +1468,7 @@ unset = no card (`Q605Memory.cpp:79-87`) —
 MCU fall back to HLE, which is the point when qualifying a packaged build).
 
 **Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, set by the
-flag rather than by hand (`main.cpp:4642-4650`):
+flag rather than by hand (`main.cpp:2387-2398`):
 `POM68K_LLE_AARCH64_FULL` (`LleSession.h:39-42`; the run must be on the
 AArch64 code generator with every MCU on real firmware, and any HLE
 fallback disqualifies it) and `POM68K_LLE_AARCH64_CHECK_ONLY`
@@ -1812,18 +1812,22 @@ to a bare MDB at offset 1024 for the flat `.dsk` images.
 **Why it exists**: `roms/` and `hdv/` are user-provided and gitignored, so a
 gate's fixture can change under it with nothing in the record. On 2026-08-06
 that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
-`assets.lock` (repo root, 3 rows) already pins the *firmware* identities
+`assets.lock` (repo root, 4 rows) already pins the *firmware* identities
 `--lle-aarch64` accepts — label, size, SHA-256, path, qualified profiles. What
 is still missing is the same treatment for the ROMs and disk images, which is
 what this digest would feed (`TODO.md` § 8).
 
 `python3 tools/verify_assets.py` validates the manifest schema and every
 present entry (size + SHA-256; `--strict` also refuses missing files). A disk
-fixture placed under an exact `ref/` path is immutable by construction:
-`FixtureStore.h` maps a writable open to the sibling `work/` path, creates its
-directories and clones once. Later sessions reopen the persistent work copy;
-an explicit path outside `ref/` keeps the historical direct-write behaviour.
-`fixture_store_test` proves all three cases without an Apple asset.
+fixture placed at `hdv/ref/<name>` is immutable by construction: every normal
+`hdv/<name>` lookup now prefers that twin (`FixtureStore.h:23-39`) in both the
+GUI (`main.cpp:309-315`) and gate search (`AssetFingerprint.h:129-138`). A
+writable GUI open maps it to `hdv/work/<name>`, creates the directory and
+clones once; later sessions reopen the persistent work copy. An explicit path
+outside `ref/` keeps the historical direct-write behaviour. The Disques
+picker lists reference media explicitly (`DiskBays.cpp:207-235`), and
+`fixture_store_test` proves preference, fallback and clone isolation without
+an Apple asset.
 
 **Bit 8 clear is a tell, not a verdict.** `hdv/HD20SC.vhd` read `$0000` when
 this preamble was written, and four green gates booted from it. It says where to

@@ -16,11 +16,7 @@
 #include <vector>
 
 static std::string find(const char* rel) {
-    for (const std::string base : { std::string(), std::string("../") }) {
-        std::string p = base + rel;
-        if (std::ifstream(p, std::ios::binary)) return p;
-    }
-    return {};
+    return testasset::find(rel);
 }
 
 int main() {

@@ -13,6 +13,7 @@
 #include "DiskBays.h"
 #include "PeripheralWindow.h"
 #include "DockLayout.h"
+#include "GuiRunner.h"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "Cpu68k.h"
@@ -308,8 +309,8 @@ static std::vector<uint8_t> findResource(const std::string& rel, std::string& ma
 static std::string findPath(const std::string& rel) {
     std::string ed = execDir();
     for (const std::string& base : { std::string(), ed, ed + "../" }) {
-        std::ifstream f(base + rel, std::ios::binary);
-        if (f) return base + rel;
+        std::string p = pom68k::preferReferenceFixture(base + rel); std::ifstream f(p, std::ios::binary);
+        if (f) return p;
     }
     return {};
 }
@@ -367,107 +368,7 @@ static const char* configureGlfwOpenGl() {
 #endif
 }
 
-// ── Emulated-screen input (shared by the Plus and LC II loops) ──────────
-// The screen is an InvisibleButton (the image is drawn over it): a drag
-// STARTED on the Mac screen owns the mouse until release, so Finder
-// drag-and-drop keeps tracking when the pointer leaves the item and the
-// ImGui window never moves from a drag inside it (only its title bar
-// moves it — ConfigWindowsMoveFromTitleBarOnly). The MIDDLE mouse button
-// (the wheel), Ctrl+Alt+G, or the Delete key toggles a hard capture: GLFW
-// disabled cursor (raw deltas, no window edges), ImGui mouse off so clicks
-// can't leak into widgets; any of the three releases it again.
-struct ScreenInput {
-    bool captured = false;
-    bool midWas = false;                 // middle-button edge detector
-    bool grabWas = false;                // Ctrl+Alt+G edge detector
-    float accX = 0, accY = 0;            // sub-pixel remainder
-    float zoom = 2.0f;                   // host px per guest px, live
-    double lastX = 0, lastY = 0;         // virtual cursor while captured
-
-    template <typename MoveFn, typename ButtonFn>
-    void frame(GLFWwindow* win, GLuint tex, ImVec2 size,
-               MoveFn move, ButtonFn button) {
-        ImGuiIO& io = ImGui::GetIO();
-        // `size` arrives as the guest framebuffer at 2x, which was the whole
-        // story while the screen lived in an auto-resizing window. Docked, the
-        // node is whatever the user dragged it to, so fit inside it and keep
-        // the aspect ratio — then record the zoom actually used, because the
-        // pointer deltas below must divide by that and not by a hardcoded 2.
-        const ImVec2 native(size.x * 0.5f, size.y * 0.5f);
-        const ImVec2 avail = ImGui::GetContentRegionAvail();
-        if (size.x > 0 && size.y > 0 && avail.x > 32 && avail.y > 32) {
-            float s = avail.x / size.x;
-            if (avail.y / size.y < s) s = avail.y / size.y;
-            size = ImVec2(size.x * s, size.y * s);
-        }
-        zoom = native.x > 0 ? size.x / native.x : 2.0f;
-        if (zoom < 0.05f) zoom = 0.05f;
-        ImVec2 p = ImGui::GetCursorScreenPos();
-        ImGui::InvisibleButton("screen", size);
-        ImGui::GetWindowDrawList()->AddImage(
-            ImTextureID(intptr_t(tex)), p, ImVec2(p.x + size.x, p.y + size.y));
-
-        // Capture toggle. The MIDDLE button (the wheel) is the primary one,
-        // and it has to be polled from GLFW rather than ImGui: capture sets
-        // ImGuiConfigFlags_NoMouse, so ImGui stops reporting buttons at
-        // exactly the moment one is needed to get back OUT. Hovering the
-        // screen is required to capture, never to release — otherwise a
-        // capture whose pointer is parked over a menu could not be undone.
-        const bool mid = glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_MIDDLE)
-                             == GLFW_PRESS;
-        const bool midEdge = mid && !midWas;
-        midWas = mid;
-        // Ctrl+Alt+G — the escape every emulator user already knows (QEMU,
-        // VirtualBox, VMware all release on it). Polled from GLFW for the
-        // same reason as the wheel: it has to work while the capture is ON,
-        // and it is a combination no Mac guest can want, so it needs no
-        // WantTextInput guard the way the bare Delete does.
-        const bool ctrl = glfwGetKey(win, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS
-                       || glfwGetKey(win, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
-        const bool alt  = glfwGetKey(win, GLFW_KEY_LEFT_ALT) == GLFW_PRESS
-                       || glfwGetKey(win, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
-        const bool grab = ctrl && alt &&
-                          glfwGetKey(win, GLFW_KEY_G) == GLFW_PRESS;
-        const bool grabEdge = grab && !grabWas;
-        grabWas = grab;
-        if ((midEdge || grabEdge) && (captured || ImGui::IsItemHovered()))
-            setCaptured(win, !captured);
-        else if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
-            setCaptured(win, !captured);   // kept: the original binding
-
-        if (captured) {                  // raw deltas from the virtual cursor
-            double x, y;
-            glfwGetCursorPos(win, &x, &y);
-            feed(float(x - lastX), float(y - lastY), move);
-            lastX = x; lastY = y;
-            button(0, glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
-            button(1, glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
-        } else if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
-            feed(io.MouseDelta.x, io.MouseDelta.y, move);
-            button(0, io.MouseDown[0]);  // releases seen while still active
-            button(1, io.MouseDown[1]);
-        }
-    }
-
-    void setCaptured(GLFWwindow* win, bool on) {
-        captured = on;
-        glfwSetInputMode(win, GLFW_CURSOR,
-                         on ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
-        if (on) glfwGetCursorPos(win, &lastX, &lastY);
-        ImGuiIO& io = ImGui::GetIO();
-        if (on) io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
-        else    io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
-    }
-
-private:
-    template <typename MoveFn>
-    void feed(float hx, float hy, MoveFn move) {
-        accX += hx / zoom;               // host px -> guest px, live zoom
-        accY += hy / zoom;
-        int dx = int(accX), dy = int(accY);
-        if (dx || dy) { move(dx, dy); accX -= dx; accY -= dy; }
-    }
-};
+using pom68k::gui::ScreenInput;
 
 // ── Mechanical drive sounds ─────────────────────────────────────────────
 // Two FloppySound instances (MAME sample sets, assets/floppy_samples/):
@@ -1072,313 +973,6 @@ private:
 };
 
 // ── Macintosh II: GLUE + 68020 + Toby NuBus, selected by a 256 KB ROM ───
-static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
-                    int argc, char** argv,
-                    MacIIMemory::Model model = MacIIMemory::Model::MacII) {
-    const bool is030 = model != MacIIMemory::Model::MacII;
-    const bool se30 = model == MacIIMemory::Model::SE30;
-    const char* name = model == MacIIMemory::Model::IIx  ? "IIx"
-                     : model == MacIIMemory::Model::IIcx ? "IIcx"
-                     : se30 ? "SE/30" : "II";
-    std::printf("Machine: Macintosh %s (%s @ 15.6672 MHz, %s%s)\n",
-                name, is030 ? "68030 + PMMU" : "68020",
-                se30 ? "512×342 interne" : "Toby NuBus",
-                getenv("POM68K_NOFPU") ? "" : (is030 ? ", soft 68882"
-                                                     : ", soft 68881"));
-    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
-
-    static MacIIMemory mem(0x800000, model);
-    static Cpu020 cpu(mem, getenv("POM68K_NOFPU") == nullptr, is030);
-    static MacAudioHost audioHost;
-    if (!mem.loadRom(rom)) {
-        std::fprintf(stderr, "FAIL: bad Mac II ROM\n");
-        return 1;
-    }
-    if (se30) {
-        if (!mem.installSe30Video())
-            std::fprintf(stderr, "SE/30: se30vrom.uk6 manquante (roms/se30/) — pas de video\n");
-    } else {
-        mem.installTobyVideo();
-    }
-    mem.setCpu(&cpu);
-    cpu.hardReset();
-    mem.rtc().setSeconds(hostMacSeconds());      // GUI: real local date/time
-    wireLocalTalk(mem);
-
-    // Prefer Infinite Mac System 6.0.8 HD, then HD20SC / other SCSI images.
-    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/System 6.0.8 HD.dsk");
-    if (hddPath.empty()) hddPath = findPath("hdv/HD20SC.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/GISTPERSO-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .dsk/.vhd in hdv/.\n");
-
-    // Battery-backed PRAM (discrete RTC XPRAM). Tagged with the machine
-    // like every later profile: an untagged "<image>.pram" would let the
-    // four Mac II-family boards trade XPRAM through a shared boot volume.
-    // The clock is NOT in the file — a real RTC's battery kept counting,
-    // so wall time comes from the host at each launch (seeded above).
-    // "SE/30" would put a directory separator in the filename.
-    const std::string pramTag = se30 ? "se30"
-                              : model == MacIIMemory::Model::IIx  ? "iix"
-                              : model == MacIIMemory::Model::IIcx ? "iicx"
-                                                                  : "macii";
-    static std::string pramPath =
-        (hddPath.empty() ? pramTag : hddPath + "." + pramTag) + ".pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
-            }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    static const std::string maciiTitle =
-        std::string("POM68K — Macintosh ") + name;
-    GLFWwindow* window = glfwCreateWindow(1320, 1040, maciiTitle.c_str(),
-                                          nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    // GUI floppies persist committed writes back to the image file on
-    // eject and on exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable.
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static MacIiMachine machine{mem, cpu, audioHost};
-    gSetCpuEngine = [](int e) { machine.push({MacIiMachine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.state.kind = model == MacIIMemory::Model::IIx  ? pom68k::SnapMachine::IIx
-                       : model == MacIIMemory::Model::IIcx ? pom68k::SnapMachine::IIcx
-                       : model == MacIIMemory::Model::SE30 ? pom68k::SnapMachine::SE30
-                                                           : pom68k::SnapMachine::MacII;
-    machine.state.path = (hddPath.empty() ? pramTag
-                                          : hddPath + "." + pramTag) + ".pomss";
-    machine.publish(true);
-
-    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
-    static std::string floppyPath =
-        std::getenv("POM68K_FLOPPY") ? std::getenv("POM68K_FLOPPY") : "";
-    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
-    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
-    machine.setFloppyInserted(floppyOk, floppyPath);
-
-    struct Ctx {
-        GLFWwindow* window; MacIiMachine& m; GLuint tex;
-        ScreenInput input;
-        std::string romName, hddPath, floppyPath;
-        std::vector<std::string> extraDisks;
-        bool& floppyOk;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
-                   extraDisks, floppyOk};
-
-    auto frame = [](void* arg) {
-        Ctx& c = *static_cast<Ctx*>(arg);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        machineMenu(MachineKind::MacII, c.window, [&c] {
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({MacIiMachine::Cmd::HardReset}); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                // Bound on every threaded runner since 2026-08-15: without
-                // these three the window can only STAGE a disc and reboot,
-                // which is what made mounting a CD a procedure.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-
-                pom68k::dockLayoutScreenWindow("Macintosh II");
-        ImGui::Begin("Macintosh II");
-        std::vector<uint32_t> fb;
-        int fw = 0, fh = 0;
-        if (c.m.latchFrame(fb, fw, fh) && fw > 0 && fh > 0) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fw, fh, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, fb.data());
-            c.input.frame(c.window, c.tex, ImVec2(float(fw * 2), float(fh * 2)),
-                    [&](int dx, int dy) { c.m.push({MacIiMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({MacIiMachine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        }
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        // Keyboard → ADB (same M0110>>1 table as LC II / Quadra).
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Escape,0x6B},
-            };
-            for (const auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
-                    c.m.push({MacIiMachine::Cmd::Key, e.m0110 >> 1, 1});
-                }
-                if (keyUp(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
-                    c.m.push({MacIiMachine::Cmd::Key, e.m0110 >> 1, 0});
-                }
-            }
-        }
-
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        MacIiMachine::Status st = c.m.status();
-        ImGui::Text("68020 @ 15.6672 MHz (Moira)  PC=%08X  clock=%lld",
-                    st.pc, st.clock);
-        ImGui::Text("overlay=%d  HMMU24=%d  Toby=%dx%d",
-                    st.overlay ? 1 : 0, st.hmmu24 ? 1 : 0,
-                    c.m.mem.toby() ? c.m.mem.toby()->hres() : 0,
-                    c.m.mem.toby() ? c.m.mem.toby()->vres() : 0);
-        bool running = c.m.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({MacIiMachine::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Turbo", &turbo))
-            c.m.turbo.store(turbo);
-        saveStateUi(c.m.state);
-        ImGui::End();
-
-        ImGui::Render();
-        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();                     // join before touching machine state
-    mem.savePram(pramPath);
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
-}
-
 // ── Mac IIfx machine thread (platform #12) ──────────────────────────────
 // The MacIiMachine contract, on the OSS + dual-IOP board: input crosses as
 // queued commands, the framebuffer as a decoded copy, status as relaxed
@@ -1454,287 +1048,6 @@ private:
 // built-in video: the machine boots on the slot-9 Toby NuBus card, and
 // ADB is bit-banged by the SWIM IOP's own 65C02 firmware
 // (docs/IOP_BRINGUP.md).
-static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
-                   int argc, char** argv) {
-    std::printf("Machine: Macintosh IIfx (68030 @ 40 MHz, OSS + 2 IOP 65C02, "
-                "Toby NuBus%s)\n",
-                getenv("POM68K_NOFPU") ? "" : ", soft 68882");
-    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
-
-    static IIfxMemory mem(0x800000);
-    static IIfxCpu cpu(mem, getenv("POM68K_NOFPU") == nullptr);
-    static MacAudioHost audioHost;
-    if (!mem.loadRom(rom)) {
-        std::fprintf(stderr, "FAIL: bad Mac IIfx ROM\n");
-        return 1;
-    }
-    mem.installTobyVideo();
-    mem.setCpu(&cpu);
-    cpu.hardReset();
-    mem.rtc().setSeconds(hostMacSeconds());      // GUI: real local date/time
-    wireLocalTalk(mem);
-
-    // The IIfx ROM is 32-bit dirty: System 7.6 is the practical ceiling
-    // (8.x needs a 32-bit-clean ROM), so prefer a 7.x image.
-    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/MacOS-7.6-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/GISTPERSO-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .dsk/.vhd in hdv/.\n");
-
-    // Battery-backed PRAM (Rtc.h). The IIfx keeps a discrete RTC despite
-    // its two IOPs — the PICs carry firmware, not the PRAM. Host wall time
-    // was seeded above; only the XPRAM is in the file.
-    static std::string pramPath =
-        (hddPath.empty() ? std::string("iifx") : hddPath + ".iifx") + ".pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
-            }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    GLFWwindow* window = glfwCreateWindow(1320, 1040, "POM68K — Macintosh IIfx",
-                                          nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static IIfxMachine machine{mem, cpu, audioHost};
-    gSetCpuEngine = [](int e) { machine.push({IIfxMachine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.state.kind = pom68k::SnapMachine::IIfx;
-    machine.state.path = (hddPath.empty() ? std::string("IIfx")
-                                          : hddPath + ".IIfx") + ".pomss";
-    machine.publish(true);
-
-    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
-    static std::string floppyPath =
-        std::getenv("POM68K_FLOPPY") ? std::getenv("POM68K_FLOPPY") : "";
-    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
-    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
-    machine.setFloppyInserted(floppyOk, floppyPath);
-
-    struct Ctx {
-        GLFWwindow* window; IIfxMachine& m; GLuint tex;
-        ScreenInput input;
-        std::string romName, hddPath, floppyPath;
-        std::vector<std::string> extraDisks;
-        bool& floppyOk;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
-                   extraDisks, floppyOk};
-
-    auto frame = [](void* arg) {
-        Ctx& c = *static_cast<Ctx*>(arg);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        machineMenu(MachineKind::IIfx, c.window, [&c] {
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({IIfxMachine::Cmd::HardReset}); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                // Bound on every threaded runner since 2026-08-15: without
-                // these three the window can only STAGE a disc and reboot,
-                // which is what made mounting a CD a procedure.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-
-                pom68k::dockLayoutScreenWindow("Macintosh IIfx");
-        ImGui::Begin("Macintosh IIfx");
-        std::vector<uint32_t> fb;
-        int fw = 0, fh = 0;
-        if (c.m.latchFrame(fb, fw, fh) && fw > 0 && fh > 0) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fw, fh, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, fb.data());
-            c.input.frame(c.window, c.tex, ImVec2(float(fw * 2), float(fh * 2)),
-                    [&](int dx, int dy) { c.m.push({IIfxMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({IIfxMachine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        }
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        // Keyboard → ADB (the same M0110>>1 table as the Mac II / LC II).
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Escape,0x6B},
-            };
-            for (const auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k))
-                    c.m.push({IIfxMachine::Cmd::Key, e.m0110 >> 1, 1});
-                if (keyUp(uint8_t(e.m0110), e.k))
-                    c.m.push({IIfxMachine::Cmd::Key, e.m0110 >> 1, 0});
-            }
-        }
-
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        IIfxMachine::Status st = c.m.status();
-        ImGui::Text("68030 @ 40 MHz (Moira)  PC=%08X  clock=%lld",
-                    st.pc, st.clock);
-        ImGui::Text("overlay=%d  Toby=%dx%d",
-                    st.overlay ? 1 : 0,
-                    c.m.mem.toby() ? c.m.mem.toby()->hres() : 0,
-                    c.m.mem.toby() ? c.m.mem.toby()->vres() : 0);
-        // The two IOPs are real processors: a frozen counter here is the
-        // first symptom of every IOP-side bug (SCC = serial, SWIM =
-        // floppy + ADB).
-        ImGui::Text("IOP 65C02  SCC=%lld cyc   SWIM=%lld cyc",
-                    st.sccPicCycles, st.swimPicCycles);
-        bool running = c.m.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({IIfxMachine::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Turbo", &turbo))
-            c.m.turbo.store(turbo);
-        saveStateUi(c.m.state);
-        ImGui::End();
-
-        ImGui::Render();
-        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();                     // join before touching machine state
-    mem.savePram(pramPath);
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
-}
-
 // ── LC II machine thread ────────────────────────────────────────────────
 // Runs the emulation + audio-clocked pacing OFF the vsync'd ImGui thread
 // (TODO § Performance): a slow GPU frame or a compositor stall no longer
@@ -1833,432 +1146,8 @@ private:
 // ── Mac LC II (O6): V8 + 68030, selected by a 512 KB ROM ────────────────
 // Also drives the two V8-family siblings (Phase C, MAME maclc.cpp): the
 // Macintosh LC (same board, 68020 + 2 MB soldered) and the Classic II
-// (Eagle = V8 with built-in 512×342 mono video). Pre-Ui-class shape like
-// the Plus loop below; the shared boilerplate folds into a Ui class with
-// the backlog item.
-struct V8Profile { const char* name; const char* cpu; const char* shortName;
-                   MachineKind kind; };
-static const V8Profile& v8Profile(V8Memory::Model model) {
-    static const V8Profile kLcII{"Macintosh LC II", "68030", "lcii",
-                                 MachineKind::LcII};
-    static const V8Profile kLc{"Macintosh LC", "68020", "lc",
-                               MachineKind::Lc};
-    static const V8Profile kClas2{"Macintosh Classic II", "68030", "classic2",
-                                  MachineKind::ClassicII};
-    static const V8Profile kCClas{"Macintosh Color Classic", "68030", "cclassic",
-                                  MachineKind::ColorClassic};
-    static const V8Profile kMacTv{"Macintosh TV", "68030", "mactv",
-                                  MachineKind::MacTv};
-    switch (model) {
-        case V8Memory::Model::Lc:           return kLc;
-        case V8Memory::Model::ClassicII:    return kClas2;
-        case V8Memory::Model::ColorClassic: return kCClas;
-        case V8Memory::Model::MacTv:        return kMacTv;
-        default:                            return kLcII;
-    }
-}
-static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
-                   int argc, char** argv,
-                   V8Memory::Model model = V8Memory::Model::LcII) {
-    const V8Profile& prof = v8Profile(model);
-    // The Mac TV's Tinker Bell runs the 68030 at C32M (31.3344 MHz), no
-    // FPU; every other V8 machine is 15.6672 MHz (C32M/2).
-    const int64_t cpuHz = model == V8Memory::Model::MacTv
-        ? V8Memory::kCpuHzTv : V8Memory::kCpuHz;
-    std::printf("Machine: %s (%s @ %.4f MHz, %s%s)\n", prof.name, prof.cpu,
-                double(cpuHz) / 1e6,
-                model == V8Memory::Model::ClassicII     ? "Eagle"
-                : model == V8Memory::Model::ColorClassic ? "Spice"
-                : model == V8Memory::Model::MacTv        ? "Tinker Bell"
-                                                         : "V8",
-                (getenv("POM68K_NOFPU") || model == V8Memory::Model::MacTv)
-                    ? "" : ", 68882");
-    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
-
-    // Tinker Bell caps at 8 MB (4 MB soldered + 4 MB SIMM); the others go
-    // to 10 MB. The Mac TV has no FPU socket (maclc.cpp:524).
-    static V8Memory mem{model == V8Memory::Model::MacTv ? 0x800000u : 0xA00000u,
-                        model, cpuHz};
-    // The LC II's 68882 is a PDS option; this build defaults it ON —
-    // the target disks (and much LC II-era software) issue FPU ops and
-    // fault with "system error 10" (Line-F) on a no-FPU machine. Set
-    // POM68K_NOFPU to model a bare machine. The LC profile runs the
-    // 68020 core (maclc.cpp:342).
-    static Cpu030 cpu(mem, getenv("POM68K_NOFPU") == nullptr
-                               && model != V8Memory::Model::MacTv,
-                      model == V8Memory::Model::Lc);
-    static V8Video video(mem);
-    static MacAudioHost audioHost;
-    mem.loadRom(rom);
-    mem.setCpu(&cpu);
-    wireLocalTalk(mem);
-    // Monitor sense (resolution): the GUI defaults to 640×480 13"/14" RGB —
-    // the roomiest built-in mode, and some software (Lode Runner) needs a
-    // ≥640×400 screen. POM68K_MONITOR=512 forces the 512×384 12" RGB mode;
-    // also switchable live from the CPU window. Only these two — the LC II
-    // built-in video can't do more (512KB VRAM, V8 bandwidth); the 640×870
-    // portrait needs a wider framebuffer than the V8 provides. (Tests keep
-    // V8Memory's own 512×384 default; only this GUI path picks 640.)
-    if (model != V8Memory::Model::ClassicII &&   // Eagle/Spice/Tinker Bell:
-        model != V8Memory::Model::ColorClassic && // display built in (fixed
-        model != V8Memory::Model::MacTv) {        // sense)
-        const char* m = getenv("POM68K_MONITOR");
-        mem.setMonitorSense((m && atoi(m) < 640) ? 2 : 6);
-    }
-    // Diagnostic Line-F logger: POM68K_FPU_LOG=<file> makes the CPU single
-    // -step and dump the instruction ring + full register set on the first
-    // Line-F (the SimCity-2000 "coprocesseur absent" crash). Slower but
-    // playable; leave unset for normal use.
-    if (const char* lg = getenv("POM68K_FPU_LOG")) {
-        cpu.enableFpuLog(lg);
-        std::printf("Line-F log: %s (CPU single-steps — slower)\n", lg);
-    }
-    cpu.hardReset();
-
-    // GISTPERSO-boot.vhd = the user's real LC II volume. Bare HFS `.dsk`
-    // images get an in-memory DDM façade in ScsiDisk::open. The sibling
-    // profiles look for their own image first (hdv/lc-boot.vhd /
-    // hdv/classic2-boot.vhd), then share the LC II's.
-    std::string hddPath = (argc > 2) ? argv[2]
-        : findPath(("hdv/" + std::string(prof.shortName) + "-boot.vhd").c_str());
-    if (hddPath.empty()) hddPath = findPath("hdv/GISTPERSO-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/HD20SC.vhd");
-    // Write-back ON in the GUI: the machine is a daily driver — saves made
-    // inside the emulated Mac must survive the session. Tests attach
-    // read-only so reference images are never modified.
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
-    // Secondary volumes (argv[3..] → SCSI IDs 1..6): mounted by the
-    // System's boot-time bus scan. The "Disques" menu edits this list by
-    // relaunching with new arguments (clean PRAM + machine state).
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;            // never double-attach
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
-            }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    // Battery-backed PRAM+clock: a cold PRAM triggers the ROM's long
-    // full-RAM burn-in on every boot — persist it like a real battery.
-    // The file is tagged with the machine: an untagged "<image>.pram" made
-    // every profile sharing one boot volume load another machine's XPRAM
-    // (loadPram validates nothing), so a Quadra's video/boot bytes landed in
-    // the LC II's Egret. The later profiles already tag theirs.
-    static std::string pramPath =
-        (hddPath.empty() ? std::string(prof.shortName)
-                         : hddPath + "." + prof.shortName) + ".pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    // The battery file's clock froze while the emulator was off; a real
-    // RTC keeps counting. Wall time always comes from the host (GUI only).
-    mem.setRtcSeconds(hostMacSeconds());
-    // First boot / stale battery file: seed the Basilisk II known-good
-    // XPRAM defaults instead of an all-zero PRAM (no-op once the system
-    // software's 'NuMc' signature is present)
-    mem.egret().factoryDefaults();
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    // Sized so the largest mode (640×480 shown at 2×) fits with the menu
-    // bar and the CPU window; the smaller 512×384 leaves margin.
-    const std::string winTitle = std::string("POM68K — ") + prof.name;
-    GLFWwindow* window = glfwCreateWindow(1320, 1040, winTitle.c_str(), nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    // GUI floppies persist committed writes back to the image file on
-    // eject and on exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable.
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static LcMachine machine{mem, cpu, video, audioHost};
-    gSetCpuEngine = [](int e) { machine.push({LcMachine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.state.kind = model == V8Memory::Model::Lc           ? pom68k::SnapMachine::Lc
-                       : model == V8Memory::Model::ClassicII    ? pom68k::SnapMachine::ClassicII
-                       : model == V8Memory::Model::ColorClassic ? pom68k::SnapMachine::ColorClassic
-                       : model == V8Memory::Model::MacTv        ? pom68k::SnapMachine::MacTv
-                                                                : pom68k::SnapMachine::LcII;
-    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
-    machine.publish(true);              // first frame before the GUI shows
-
-    struct Ctx {
-        GLFWwindow* window; LcMachine& m; GLuint tex;
-        std::vector<uint32_t> fb;                // GUI-side framebuffer copy
-        std::string romName, hddPath;            // for the "Disques" relaunch
-        std::string floppyPath;
-        bool floppyOk = false;
-        std::vector<std::string>& extraDisks;
-        const V8Profile& prof; V8Memory::Model model;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, {}, false,
-                   extraDisks, prof, model};
-    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
-    if (const char* env = std::getenv("POM68K_FLOPPY")) {
-        if (mem.insertDisk(env)) {
-            ctx.floppyPath = env; ctx.floppyOk = true;
-            machine.setFloppyInserted(true, env);
-            std::printf("Floppy: %s\n", env);
-        }
-    }
-
-    auto frame = [](void* p) {
-        Ctx& c = *static_cast<Ctx*>(p);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
-
-#ifdef __EMSCRIPTEN__
-        c.m.stepTick();                 // no thread: emulate inline per frame
-#endif
-
-        int hres = 0, vres = 0;
-        if (c.m.latchFrame(c.fb, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-        }
-
-        machineMenu(c.prof.kind, c.window, [&c] {
-            // Disk selection lives in its own window (src/DiskBays.*), shared
-            // by every platform. It used to be ten copies of an ImGui menu
-            // whose MenuItems relaunched the emulator on the click — one
-            // mis-aimed click cold-started the machine, and a series of them
-            // walked the user through several boot volumes, leaving each one
-            // dirty. A window with explicit buttons cannot do that.
-            pom68k::diskBaysMenuItem();
-            // One-click machine reset (= power cycle: overlay + chips + CPU;
-            // the ROM rescans the SCSI bus, so hot-attached media appear).
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({LcMachine::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            {
-                const std::string ssMsg = c.m.state.message();
-                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            }
-        });
-
-        // The shared "Disques" window. Built once: the hooks capture the
-        // static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({LcMachine::Cmd::HardReset}); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                // Bound on every threaded runner since 2026-08-15: without
-                // these three the window can only STAGE a disc and reboot,
-                // which is what made mounting a CD a procedure.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;      // cheap, and follows a relaunch
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-                pom68k::dockLayoutScreenWindow(c.prof.name);
-        ImGui::Begin(c.prof.name);
-        static ScreenInput input;
-        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.m.push({LcMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({LcMachine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        // Keyboard → ADB key codes (= M0110 transition code >> 1, same
-        // physical layout; DEV.md § Input key table)
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                // Arrow keys (ADB raw $3B-$3E → m0110 = code<<1) — games like
-                // Lode Runner drive the character with these; absent before.
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                // Numeric keypad (ADB raw $52-$5C → m0110 = code<<1) — some
-                // games use it to move instead of the arrows.
-                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
-                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
-                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
-                {ImGuiKey_Keypad9,0xB8},
-            };
-            for (auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
-                    c.m.push({LcMachine::Cmd::Key, e.m0110 >> 1, 1});
-                }
-                if (keyUp(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
-                    c.m.push({LcMachine::Cmd::Key, e.m0110 >> 1, 0});
-                }
-            }
-        }
-
-        ImGui::SetNextWindowPos(ImVec2(20, 830), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        // Display-only snapshot published by the machine thread.
-        LcMachine::Status st = c.m.status();
-        ImGui::Text("%s @ 15.6672 MHz (Moira%s)  PC=%08X  clock=%lld",
-                    c.prof.cpu,
-                    c.model == V8Memory::Model::Lc ? "" : " + PMMU",
-                    st.pc, st.clock);
-        ImGui::Text("overlay=%d  config=$%02X  MMU=%s  held=%d",
-                    st.overlay ? 1 : 0, st.config,
-                    st.mmu ? "on" : "off", st.held ? 1 : 0);
-        bool running = c.m.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({LcMachine::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Turbo", &turbo))    // as fast as the host allows
-            c.m.turbo.store(turbo);
-
-        // Monitor sense = the ID resistors on a real Mac's video connector;
-        // the ROM reads it at reset to pick the resolution. Switching it is
-        // like plugging in a different monitor, so it takes a Mac reset. The
-        // LC II's built-in V8 video only drives these two color modes (512KB
-        // VRAM + V8 bandwidth); depth is per-monitor, so a fresh mode may
-        // come up B&W until you set "256 couleurs" in Moniteurs + restart.
-        if (c.model != V8Memory::Model::ClassicII &&      // built-in displays:
-            c.model != V8Memory::Model::ColorClassic) {   // Eagle mono, Spice CRT
-            int sense = st.sense;                // published by the machine thread
-            ImGui::Text("Moniteur:");
-            ImGui::SameLine();
-            auto monoBtn = [&](const char* label, int s) {
-                bool cur = sense == s;
-                if (cur) ImGui::PushStyleColor(ImGuiCol_Button,
-                                               ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                if (ImGui::Button(label) && !cur) c.m.push({LcMachine::Cmd::Sense, s});
-                if (cur) ImGui::PopStyleColor();
-                ImGui::SameLine();
-            };
-            monoBtn("512x384", 2);
-            monoBtn("640x480", 6);
-            ImGui::TextDisabled("(redemarre le Mac)");
-        }
-        ImGui::End();
-
-        ImGui::Render();
-        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();                    // emulation runs on its own core
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();                     // join before touching machine state
-    mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();   // persist floppy writes on exit
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);         // menu picked the other machine
-#endif
-    return 0;
-}
-
+// (Eagle = V8 with built-in 512×342 mono video). Their board-facing host
+// contract stays here; GuiRunner.h owns the shared process/UI lifecycle.
 // ── Mac LC III (Phase C): Sonora + 68030 @ 25 MHz ───────────────────────
 // Same GUI ↔ machine contract as LcMachine (the QuadraMachine precedent:
 // per-machine thread struct, queued commands, decoded framebuffer copy).
@@ -2349,354 +1238,349 @@ using RbvMachine = SonoraStyleMachine<RbvMemory, RbvCpu, RbvVideo>;
 // universal ROM with a CUDA MCU instead of the Egret (maclc3.cpp:379
 // CUDA_V2XX 341s0060 — docs/LC520_BRINGUP.md).
 enum class SonoraModel { Lc3, Lc3Plus, Lc520, Lc550, CClassic2 };
-static MachineKind gSonoraKind = MachineKind::Lc3;   // for the frame lambda
-static char gSonoraTitle[40] = "Macintosh LC III";
+
+// ── Executable services consumed by GuiRunner.h ────────────────────────
+// All shared GUI lifecycles own no process globals. This adapter is their
+// explicit boundary to asset lookup, menus, networking, engine/audio hooks,
+// snapshot UI and relaunch. Strict-LLE definitions follow the DAFB machine
+// template.
+using pom68k::gui::DafbRunnerSpec;
+using pom68k::gui::DuoRunnerSpec;
+using pom68k::gui::SonoraRunnerSpec;
+using pom68k::gui::TobyRunnerSpec;
+using pom68k::gui::V8RunnerSpec;
+using pom68k::gui::runDafbGui;
+using pom68k::gui::runDuoGui;
+using pom68k::gui::runSonoraGui;
+using pom68k::gui::runTobyGui;
+using pom68k::gui::runV8Gui;
+
+struct GuiServices {
+    template <class Cpu>
+    bool qualify(const char* machine, const char* firmware,
+                 bool firmwareActive, const Cpu& cpu) const;
+
+    bool checkOnly() const;
+
+    template <class Mem>
+    void wireNetwork(Mem& mem) const {
+        wireLocalTalk(mem);
+    }
+
+    std::string locate(const std::string& relative) const {
+        return findPath(relative);
+    }
+
+    void installGlfwErrorCallback() const {
+        glfwSetErrorCallback(glfwErrorCallback);
+    }
+
+    const char* configureOpenGl() const {
+        return configureGlfwOpenGl();
+    }
+
+    template <class Mem, class AudioHost>
+    void prepareDriveSounds(Mem& mem, AudioHost& audioHost) const {
+        prepareAudioHost(audioHost);
+        mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
+    }
+
+    template <class AudioHost>
+    void prepareAudioHost(AudioHost& audioHost) const {
+        initDriveSfx(audioHost);
+    }
+
+    template <class MachineT, class Cpu>
+    void bindCpuMenu(MachineT& machine, Cpu& cpu) const {
+        gSetCpuEngine = [&machine](int engine) {
+            machine.push({MachineT::Cmd::CpuEngine, engine});
+        };
+        gGetCpuEngine = [&machine] {
+            return machine.cpuEngine();
+        };
+        gJitStats = [&machine] {
+            return machine.jitStats();
+        };
+        gSpeedSample = [&machine] {
+            return std::pair{machine.machineClock(), machine.machineHz()};
+        };
+        gJitBackend = cpu.jit().backendName();
+    }
+
+    template <class MenuFn>
+    void drawMachineMenu(MachineKind kind, GLFWwindow* window,
+                         MenuFn&& extraMenus) const {
+        machineMenu(kind, window,
+                    std::function<void()>(
+                        std::forward<MenuFn>(extraMenus)));
+    }
+
+    void requestRelaunch(
+        GLFWwindow* window, const std::string& romName,
+        const std::string& boot,
+        const std::vector<std::string>& extras) const {
+        gSwitchArgs = {romName, boot};
+        for (const std::string& extra : extras)
+            if (extra != boot) gSwitchArgs.push_back(extra);
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
+
+    void traceKey(uint8_t adb, bool down) const {
+        keyTrace("push", adb, down);
+    }
+
+    template <class State>
+    void drawSaveState(State& state) const {
+        saveStateUi(state);
+    }
+
+    void processRelaunch(char* argv0) const {
+        relaunchIfSwitched(argv0);
+    }
+};
+
+static GuiServices gGuiServices;
+
+// ── V8/Eagle/Spice/Tinker Bell composition wrapper ──────────────────────
+static int runLcII(std::vector<uint8_t> rom, const std::string& romName,
+                   int argc, char** argv,
+                   V8Memory::Model model = V8Memory::Model::LcII) {
+    const bool lc = model == V8Memory::Model::Lc;
+    const bool classic = model == V8Memory::Model::ClassicII;
+    const bool colorClassic = model == V8Memory::Model::ColorClassic;
+    const bool macTv = model == V8Memory::Model::MacTv;
+    const char* name = lc ? "Macintosh LC"
+        : classic ? "Macintosh Classic II"
+        : colorClassic ? "Macintosh Color Classic"
+        : macTv ? "Macintosh TV" : "Macintosh LC II";
+    const char* tag = lc ? "lc" : classic ? "classic2"
+        : colorClassic ? "cclassic" : macTv ? "mactv" : "lcii";
+    const int64_t cpuHz = macTv ? V8Memory::kCpuHzTv : V8Memory::kCpuHz;
+    const MachineKind kind = lc ? MachineKind::Lc
+        : classic ? MachineKind::ClassicII
+        : colorClassic ? MachineKind::ColorClassic
+        : macTv ? MachineKind::MacTv : MachineKind::LcII;
+    const pom68k::SnapMachine snap = lc ? pom68k::SnapMachine::Lc
+        : classic ? pom68k::SnapMachine::ClassicII
+        : colorClassic ? pom68k::SnapMachine::ColorClassic
+        : macTv ? pom68k::SnapMachine::MacTv : pom68k::SnapMachine::LcII;
+    const V8RunnerSpec spec{
+        name,
+        lc ? "68020" : "68030",
+        tag,
+        double(cpuHz) / 1e6,
+        kind,
+        snap,
+        !lc,
+        !classic && !colorClassic && !macTv,
+        !classic && !colorClassic,
+    };
+
+    std::printf("Machine: %s (%s @ %.4f MHz, %s%s)\n",
+                spec.name.c_str(), spec.cpu.c_str(), spec.cpuMhz,
+                classic ? "Eagle" : colorClassic ? "Spice"
+                : macTv ? "Tinker Bell" : "V8",
+                (getenv("POM68K_NOFPU") || macTv) ? "" : ", 68882");
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(),
+                rom.size() / 1024);
+
+    // Tinker Bell caps at 8 MB and has no FPU socket; the other profiles go
+    // to 10 MB. The LC selects the 68020-compatible core contract.
+    static V8Memory mem{macTv ? 0x800000u : 0xA00000u, model, cpuHz};
+    static Cpu030 cpu(mem, getenv("POM68K_NOFPU") == nullptr && !macTv, lc);
+    static V8Video video(mem);
+    static MacAudioHost audioHost;
+    mem.loadRom(rom);
+    mem.setCpu(&cpu);
+    return runV8Gui<LcMachine>(
+        mem, cpu, video, audioHost, spec,
+        [&] {
+            if (const char* log = getenv("POM68K_FPU_LOG")) {
+                cpu.enableFpuLog(log);
+                std::printf("Line-F log: %s (CPU single-steps — slower)\n",
+                            log);
+            }
+        },
+        [&] {
+            mem.setRtcSeconds(hostMacSeconds());
+            mem.egret().factoryDefaults();
+        },
+        romName, argc, argv, gGuiServices);
+}
+
+// ── Macintosh II family: GLUE + 68020/68030 + Toby or SE/30 video ───────
+static int runMacII(std::vector<uint8_t> rom, const std::string& romName,
+                    int argc, char** argv,
+                    MacIIMemory::Model model = MacIIMemory::Model::MacII) {
+    const bool is030 = model != MacIIMemory::Model::MacII;
+    const bool se30 = model == MacIIMemory::Model::SE30;
+    const char* name = model == MacIIMemory::Model::IIx  ? "IIx"
+                     : model == MacIIMemory::Model::IIcx ? "IIcx"
+                     : se30 ? "SE/30" : "II";
+    std::printf("Machine: Macintosh %s (%s @ 15.6672 MHz, %s%s)\n",
+                name, is030 ? "68030 + PMMU" : "68020",
+                se30 ? "512×342 interne" : "Toby NuBus",
+                getenv("POM68K_NOFPU") ? "" : (is030 ? ", soft 68882"
+                                                     : ", soft 68881"));
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(),
+                rom.size() / 1024);
+
+    static MacIIMemory mem(0x800000, model);
+    static Cpu020 cpu(mem, getenv("POM68K_NOFPU") == nullptr, is030);
+    static MacAudioHost audioHost;
+    if (!mem.loadRom(rom)) {
+        std::fprintf(stderr, "FAIL: bad Mac II ROM\n");
+        return 1;
+    }
+    if (se30) {
+        if (!mem.installSe30Video())
+            std::fprintf(stderr,
+                         "SE/30: se30vrom.uk6 manquante (roms/se30/) — "
+                         "pas de video\n");
+    } else {
+        mem.installTobyVideo();
+    }
+    mem.setCpu(&cpu);
+
+    const std::string pramTag = se30 ? "se30"
+        : model == MacIIMemory::Model::IIx  ? "iix"
+        : model == MacIIMemory::Model::IIcx ? "iicx" : "macii";
+    const pom68k::SnapMachine snap = model == MacIIMemory::Model::IIx
+        ? pom68k::SnapMachine::IIx
+        : model == MacIIMemory::Model::IIcx ? pom68k::SnapMachine::IIcx
+        : se30 ? pom68k::SnapMachine::SE30 : pom68k::SnapMachine::MacII;
+    const TobyRunnerSpec spec{
+        std::string("Macintosh ") + name,
+        "Macintosh II",
+        pramTag,
+        pramTag,
+        {"hdv/System 6.0.8 HD.dsk", "hdv/HD20SC.vhd",
+         "hdv/GISTPERSO-boot.vhd", "hdv/boot.vhd"},
+        MachineKind::MacII,
+        snap,
+        true,
+    };
+    return runTobyGui<MacIiMachine>(
+        mem, cpu, audioHost, spec,
+        [&] { mem.rtc().setSeconds(hostMacSeconds()); },
+        [](MacIiMachine& machine) {
+            const MacIiMachine::Status st = machine.status();
+            ImGui::Text("68020 @ 15.6672 MHz (Moira)  PC=%08X  clock=%lld",
+                        st.pc, st.clock);
+            ImGui::Text("overlay=%d  HMMU24=%d  Toby=%dx%d",
+                        st.overlay ? 1 : 0, st.hmmu24 ? 1 : 0,
+                        machine.mem.toby() ? machine.mem.toby()->hres() : 0,
+                        machine.mem.toby() ? machine.mem.toby()->vres() : 0);
+        },
+        romName, argc, argv, gGuiServices);
+}
+
+// ── Macintosh IIfx: OSS + two Apple PIC IOPs, 68030 @ 40 MHz ────────────
+// ADB remains bit-banged by the SWIM IOP's own 65C02 firmware; the shared
+// runner changes only the host lifecycle around that board contract.
+static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
+                   int argc, char** argv) {
+    std::printf("Machine: Macintosh IIfx (68030 @ 40 MHz, OSS + 2 IOP 65C02, "
+                "Toby NuBus%s)\n",
+                getenv("POM68K_NOFPU") ? "" : ", soft 68882");
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(),
+                rom.size() / 1024);
+
+    static IIfxMemory mem(0x800000);
+    static IIfxCpu cpu(mem, getenv("POM68K_NOFPU") == nullptr);
+    static MacAudioHost audioHost;
+    if (!mem.loadRom(rom)) {
+        std::fprintf(stderr, "FAIL: bad Mac IIfx ROM\n");
+        return 1;
+    }
+    mem.installTobyVideo();
+    mem.setCpu(&cpu);
+
+    const TobyRunnerSpec spec{
+        "Macintosh IIfx",
+        "Macintosh IIfx",
+        "iifx",
+        "IIfx",
+        {"hdv/MacOS-7.6-boot.vhd", "hdv/GISTPERSO-boot.vhd",
+         "hdv/boot.vhd"},
+        MachineKind::IIfx,
+        pom68k::SnapMachine::IIfx,
+        false,
+    };
+    return runTobyGui<IIfxMachine>(
+        mem, cpu, audioHost, spec,
+        [&] { mem.rtc().setSeconds(hostMacSeconds()); },
+        [](IIfxMachine& machine) {
+            const IIfxMachine::Status st = machine.status();
+            ImGui::Text("68030 @ 40 MHz (Moira)  PC=%08X  clock=%lld",
+                        st.pc, st.clock);
+            ImGui::Text("overlay=%d  Toby=%dx%d", st.overlay ? 1 : 0,
+                        machine.mem.toby() ? machine.mem.toby()->hres() : 0,
+                        machine.mem.toby() ? machine.mem.toby()->vres() : 0);
+            // A frozen counter is the first symptom of every IOP-side bug.
+            ImGui::Text("IOP 65C02  SCC=%lld cyc   SWIM=%lld cyc",
+                        st.sccPicCycles, st.swimPicCycles);
+        },
+        romName, argc, argv, gGuiServices);
+}
 
 static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
                   int argc, char** argv, SonoraModel model = SonoraModel::Lc3) {
-    // `slug` tags this profile's battery file: the Egret LC IIIs and the Cuda
-    // AIOs share one boot volume in practice, and an untagged .pram made each
-    // load the other's XPRAM.
-    struct Profile { const char* name; int mhz; int64_t cpuHz; uint32_t id;
-                     bool cuda; uint8_t sense; const char* slug; };
-    static const Profile kP[] = {
-        { "LC III",  25, SonoraMemory::kCpuHz,     SonoraMemory::kIdLc3,     false, 6, "lc3" },
-        { "LC III+", 33, SonoraMemory::kCpuHzPlus, SonoraMemory::kIdLc3Plus, false, 6, "lc3plus" },
-        { "LC 520",  25, SonoraMemory::kCpuHz,     SonoraMemory::kIdLc520,   true,  6, "lc520" },
-        { "LC 550",  33, SonoraMemory::kCpuHzPlus, SonoraMemory::kIdLc550,   true,  6, "lc550" },
-        // Color Classic II / Performa 275: the LC 550 board in the CC case;
-        // the built-in 512×384 Trinitron reports sense 2, which selects the
-        // ROM machine-table entry with video type $4D.
-        { "Color Classic II", 33, SonoraMemory::kCpuHzPlus,
-          SonoraMemory::kIdLc550, true, 2, "cclassic2" },
+    // The LC III Egret boards and the Cuda all-in-ones share a ROM family,
+    // but their model longword, clock, monitor and battery files are profile
+    // data. The descriptor keeps those identities out of the common loop.
+    struct Profile {
+        const char* name;
+        int mhz;
+        int64_t cpuHz;
+        uint32_t id;
+        bool cuda;
+        uint8_t sense;
+        const char* tag;
+        pom68k::SnapMachine snap;
     };
-    const Profile& pr = kP[int(model)];
-    gSonoraKind = pr.cuda ? MachineKind::Aio : MachineKind::Lc3;
-    std::snprintf(gSonoraTitle, sizeof gSonoraTitle, "Macintosh %s", pr.name);
-    std::printf("Machine: Macintosh %s (68030 @ %d MHz, Sonora%s, %s)\n",
-                pr.name, pr.mhz, getenv("POM68K_NOFPU") ? "" : ", 68882",
-                pr.cuda ? "Cuda" : "Egret");
+    static const Profile kProfiles[] = {
+        {"LC III", 25, SonoraMemory::kCpuHz, SonoraMemory::kIdLc3,
+         false, 6, "lc3", pom68k::SnapMachine::Lc3},
+        {"LC III+", 33, SonoraMemory::kCpuHzPlus, SonoraMemory::kIdLc3Plus,
+         false, 6, "lc3plus", pom68k::SnapMachine::Lc3Plus},
+        {"LC 520", 25, SonoraMemory::kCpuHz, SonoraMemory::kIdLc520,
+         true, 6, "lc520", pom68k::SnapMachine::Lc520},
+        {"LC 550", 33, SonoraMemory::kCpuHzPlus, SonoraMemory::kIdLc550,
+         true, 6, "lc550", pom68k::SnapMachine::Lc550},
+        {"Color Classic II", 33, SonoraMemory::kCpuHzPlus,
+         SonoraMemory::kIdLc550, true, 2, "cclassic2",
+         pom68k::SnapMachine::CClassic2},
+    };
+    const Profile& profile = kProfiles[int(model)];
+    const SonoraRunnerSpec spec{
+        std::string("Macintosh ") + profile.name,
+        profile.tag,
+        {},
+        "68030 @ " + std::to_string(profile.mhz) + " MHz (Moira + PMMU)",
+        profile.cuda ? MachineKind::Aio : MachineKind::Lc3,
+        profile.snap,
+        profile.sense,
+        0.08f, 0.08f, 0.10f,
+    };
+    std::printf("Machine: %s (68030 @ %d MHz, Sonora%s, %s)\n",
+                spec.name.c_str(), profile.mhz,
+                getenv("POM68K_NOFPU") ? "" : ", 68882",
+                profile.cuda ? "Cuda" : "Egret");
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
 
-    static SonoraMemory mem{0x800000,            // 8 MB
-        pr.cpuHz, pr.id, pr.cuda};
-    // Stock LC III ships without the 68882 (maclc3.cpp:338); default it
-    // ON like the LC II — the target disks issue FPU ops. POM68K_NOFPU
-    // models the bare machine.
+    static SonoraMemory mem{0x800000, profile.cpuHz, profile.id, profile.cuda};
+    // POM68K_NOFPU models the stock bare machine; target disks issue FPU ops,
+    // so the existing product default remains ON.
     static SonoraCpu cpu(mem, getenv("POM68K_NOFPU") == nullptr);
     static SonoraVideo video(mem);
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
-    wireLocalTalk(mem);
-    {
-        const char* m = getenv("POM68K_MONITOR");
-        mem.setMonitorSense(m ? (atoi(m) < 640 ? 2 : 6) : pr.sense);
-    }
-    cpu.hardReset();
-
-    std::string hddPath = (argc > 2) ? argv[2]
-                                     : findPath("hdv/lc3-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/GISTPERSO-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/HD20SC.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
-            }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    static std::string pramPath =
-        (hddPath.empty() ? std::string(pr.slug) : hddPath + "." + pr.slug) + ".pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    mem.setRtcSeconds(hostMacSeconds());
-    mem.egret().factoryDefaults();
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    static const std::string title = std::string("POM68K — Macintosh ") + pr.name;
-    GLFWwindow* window = glfwCreateWindow(1320, 1040, title.c_str(),
-                                          nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    // GUI floppies persist committed writes back to the image file on
-    // eject and on exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable.
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static Lc3Machine machine{mem, cpu, video, audioHost};
-    gSetCpuEngine = [](int e) { machine.push({Lc3Machine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.state.kind = model == SonoraModel::Lc3Plus   ? pom68k::SnapMachine::Lc3Plus
-                       : model == SonoraModel::Lc520     ? pom68k::SnapMachine::Lc520
-                       : model == SonoraModel::Lc550     ? pom68k::SnapMachine::Lc550
-                       : model == SonoraModel::CClassic2 ? pom68k::SnapMachine::CClassic2
-                                                         : pom68k::SnapMachine::Lc3;
-    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
-    machine.publish(true);
-
-    struct Ctx {
-        GLFWwindow* window; Lc3Machine& m; GLuint tex;
-        std::vector<uint32_t> fb;
-        std::string romName, hddPath;
-        std::string floppyPath;
-        bool floppyOk = false;
-        std::vector<std::string>& extraDisks;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, {}, false,
-                   extraDisks};
-    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
-    if (const char* env = std::getenv("POM68K_FLOPPY")) {
-        if (mem.insertDisk(env)) {
-            ctx.floppyPath = env; ctx.floppyOk = true;
-            machine.setFloppyInserted(true, env);
-            std::printf("Floppy: %s\n", env);
-        }
-    }
-
-    auto frame = [](void* p) {
-        Ctx& c = *static_cast<Ctx*>(p);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
-
-#ifdef __EMSCRIPTEN__
-        c.m.stepTick();
-#endif
-
-        int hres = 0, vres = 0;
-        if (c.m.latchFrame(c.fb, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-        }
-
-        machineMenu(gSonoraKind, c.window, [&c] {
-            namespace fs = std::filesystem;
-            auto samePath = [](const std::string& a, const std::string& b) {
-                std::error_code ec;
-                return a == b || fs::equivalent(a, b, ec);
-            };
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({Lc3Machine::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            {
-                const std::string ssMsg = c.m.state.message();
-                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            }
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({Lc3Machine::Cmd::HardReset}); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                // Bound on every threaded runner since 2026-08-15: without
-                // these three the window can only STAGE a disc and reboot,
-                // which is what made mounting a CD a procedure.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-
-        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-                pom68k::dockLayoutScreenWindow(gSonoraTitle);
-        ImGui::Begin(gSonoraTitle);
-        static ScreenInput input;
-        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.m.push({Lc3Machine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({Lc3Machine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
-                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
-                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
-                {ImGuiKey_Keypad9,0xB8},
-            };
-            for (auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k))
-                    c.m.push({Lc3Machine::Cmd::Key, e.m0110 >> 1, 1});
-                if (keyUp(uint8_t(e.m0110), e.k))
-                    c.m.push({Lc3Machine::Cmd::Key, e.m0110 >> 1, 0});
-            }
-        }
-
-        ImGui::SetNextWindowPos(ImVec2(20, 830), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        Lc3Machine::Status st = c.m.status();
-        ImGui::Text("68030 @ 25 MHz (Moira + PMMU)  PC=%08X  clock=%lld",
-                    st.pc, st.clock);
-        ImGui::Text("overlay=%d  MMU=%s  held=%d",
-                    st.overlay ? 1 : 0, st.mmu ? "on" : "off", st.held ? 1 : 0);
-        bool running = c.m.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({Lc3Machine::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Turbo", &turbo))
-            c.m.turbo.store(turbo);
-        {
-            int sense = st.sense;                // published by the machine thread
-            ImGui::Text("Moniteur:");
-            ImGui::SameLine();
-            auto monoBtn = [&](const char* label, int s) {
-                bool cur = sense == s;
-                if (cur) ImGui::PushStyleColor(ImGuiCol_Button,
-                                               ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                if (ImGui::Button(label) && !cur) c.m.push({Lc3Machine::Cmd::Sense, s});
-                if (cur) ImGui::PopStyleColor();
-                ImGui::SameLine();
-            };
-            monoBtn("512x384", 2);
-            monoBtn("640x480", 6);
-            ImGui::TextDisabled("(redemarre le Mac)");
-        }
-        ImGui::End();
-
-        ImGui::Render();
-        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();
-    mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();   // persist floppy writes on exit
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
+    return runSonoraGui<Lc3Machine>(
+        mem, cpu, video, audioHost, spec,
+        [] { mem.setRtcSeconds(hostMacSeconds()); mem.egret().factoryDefaults(); },
+        romName, argc, argv, gGuiServices);
 }
 
 // ── Mac IIvx / IIvi (VASP) ──────────────────────────────────────────────
@@ -2706,12 +1590,22 @@ static int runLc3(std::vector<uint8_t> rom, const std::string& romName,
 // the IIvi (the GUI menu sets it before the relaunch).
 static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
                    int argc, char** argv, bool vi = false) {
-    std::printf("Machine: Macintosh %s (68030 @ %s MHz, VASP%s, Egret)\n",
-                vi ? "IIvi" : "IIvx", vi ? "16" : "32",
+    const SonoraRunnerSpec spec{
+        vi ? "Macintosh IIvi" : "Macintosh IIvx",
+        vi ? "iivi" : "iivx",
+        {},
+        {},
+        MachineKind::Vasp,
+        vi ? pom68k::SnapMachine::IIvi : pom68k::SnapMachine::IIvx,
+        6,
+        0.10f, 0.10f, 0.12f,
+    };
+    std::printf("Machine: %s (68030 @ %s MHz, VASP%s, Egret)\n",
+                spec.name.c_str(), vi ? "16" : "32",
                 getenv("POM68K_NOFPU") ? "" : ", 68882");
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
 
-    static VaspMemory mem{0x800000,              // 8 MB
+    static VaspMemory mem{0x800000,
         vi ? VaspMemory::kCpuHzVi : VaspMemory::kCpuHzVx,
         vi ? VaspMemory::kIdIIvi : VaspMemory::kIdIIvx};
     static VaspCpu cpu(mem, getenv("POM68K_NOFPU") == nullptr);
@@ -2719,282 +1613,10 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
-    wireLocalTalk(mem);
-    {
-        const char* m = getenv("POM68K_MONITOR");
-        mem.setMonitorSense((m && atoi(m) < 640) ? 2 : 6);
-    }
-    cpu.hardReset();
-
-    std::string hddPath = (argc > 2) ? argv[2]
-                                     : findPath("hdv/lc3-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/GISTPERSO-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/HD20SC.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
-            }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    const std::string profileTag = vi ? "iivi" : "iivx";
-    static std::string pramPath =
-        (hddPath.empty() ? profileTag : hddPath + "." + profileTag) + ".pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    mem.setRtcSeconds(hostMacSeconds());
-    mem.egret().factoryDefaults();
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    GLFWwindow* window = glfwCreateWindow(1320, 1040,
-                                          vi ? "POM68K — Macintosh IIvi"
-                                             : "POM68K — Macintosh IIvx",
-                                          nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    // GUI floppies persist committed writes back to the image file on
-    // eject and on exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable.
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static VaspMachine machine{mem, cpu, video, audioHost};
-    gSetCpuEngine = [](int e) { machine.push({VaspMachine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.state.kind = vi ? pom68k::SnapMachine::IIvi : pom68k::SnapMachine::IIvx;
-    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
-    machine.publish(true);
-
-    struct Ctx {
-        GLFWwindow* window; VaspMachine& m; GLuint tex;
-        std::vector<uint32_t> fb;
-        std::string romName, hddPath;
-        std::string floppyPath;
-        bool floppyOk = false;
-        std::vector<std::string>& extraDisks;
-        bool vi;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, {}, false,
-                   extraDisks, vi};
-    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
-    if (const char* env = std::getenv("POM68K_FLOPPY")) {
-        if (mem.insertDisk(env)) {
-            ctx.floppyPath = env; ctx.floppyOk = true;
-            machine.setFloppyInserted(true, env);
-            std::printf("Floppy: %s\n", env);
-        }
-    }
-
-    auto frame = [](void* p) {
-        Ctx& c = *static_cast<Ctx*>(p);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
-
-#ifdef __EMSCRIPTEN__
-        c.m.stepTick();
-#endif
-
-        int hres = 0, vres = 0;
-        if (c.m.latchFrame(c.fb, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-        }
-
-        machineMenu(MachineKind::Vasp, c.window, [&c] {
-            namespace fs = std::filesystem;
-            auto samePath = [](const std::string& a, const std::string& b) {
-                std::error_code ec;
-                return a == b || fs::equivalent(a, b, ec);
-            };
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({VaspMachine::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            {
-                const std::string ssMsg = c.m.state.message();
-                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            }
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({VaspMachine::Cmd::HardReset}); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                // Bound on every threaded runner since 2026-08-15: without
-                // these three the window can only STAGE a disc and reboot,
-                // which is what made mounting a CD a procedure.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-
-        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-                pom68k::dockLayoutScreenWindow(c.vi ? "Macintosh IIvi" : "Macintosh IIvx");
-        ImGui::Begin(c.vi ? "Macintosh IIvi" : "Macintosh IIvx");
-        static ScreenInput input;
-        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.m.push({VaspMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({VaspMachine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
-                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
-                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
-                {ImGuiKey_Keypad9,0xB8},
-            };
-            for (auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k))
-                    c.m.push({VaspMachine::Cmd::Key, e.m0110 >> 1, 1});
-                if (keyUp(uint8_t(e.m0110), e.k))
-                    c.m.push({VaspMachine::Cmd::Key, e.m0110 >> 1, 0});
-            }
-        }
-
-        ImGui::Render();
-        int dw, dh;
-        glfwGetFramebufferSize(c.window, &dw, &dh);
-        glViewport(0, 0, dw, dh);
-        glClearColor(0.10f, 0.10f, 0.12f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();
-    mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();   // persist floppy writes on exit
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
+    return runSonoraGui<VaspMachine>(
+        mem, cpu, video, audioHost, spec,
+        [] { mem.setRtcSeconds(hostMacSeconds()); mem.egret().factoryDefaults(); },
+        romName, argc, argv, gGuiServices);
 }
 
 // ── Mac IIsi (RBV) ──────────────────────────────────────────────────────
@@ -3007,298 +1629,39 @@ static int runVasp(std::vector<uint8_t> rom, const std::string& romName,
 // otherwise (see RbvCpu.cpp).
 static int runIIsi(std::vector<uint8_t> rom, const std::string& romName,
                    int argc, char** argv, bool iici = false) {
-    std::printf("Machine: Macintosh %s (68030 @ %d MHz, RBV%s, %s)\n",
-                iici ? "IIci" : "IIsi", iici ? 25 : 20,
+    const SonoraRunnerSpec spec{
+        iici ? "Macintosh IIci" : "Macintosh IIsi",
+        iici ? "iici" : "iisi",
+        iici ? "hdv/iici-boot.vhd" : "hdv/iisi-boot.vhd",
+        {},
+        iici ? MachineKind::IIci : MachineKind::IIsi,
+        iici ? pom68k::SnapMachine::IIci : pom68k::SnapMachine::IIsi,
+        6,
+        0.10f, 0.10f, 0.12f,
+    };
+    std::printf("Machine: %s (68030 @ %d MHz, RBV%s, %s)\n",
+                spec.name.c_str(), iici ? 25 : 20,
                 getenv("POM68K_NOFPU") ? "" : ", 68882",
                 iici ? "ADB modem + RTC" : "Egret");
     std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
 
-    static RbvMemory mem{0x800000,               // 8 MB
+    static RbvMemory mem{0x800000,
         iici ? RbvMemory::kCpuHzCi : RbvMemory::kCpuHz, iici};
     static RbvCpu cpu(mem, getenv("POM68K_NOFPU") == nullptr);
     static RbvVideo video(mem);
     static MacAudioHost audioHost;
     mem.loadRom(rom);
     mem.setCpu(&cpu);
-    wireLocalTalk(mem);
-    {
-        const char* m = getenv("POM68K_MONITOR");
-        mem.setMonitorSense((m && atoi(m) < 640) ? 2 : 6);
-    }
-    cpu.hardReset();
-
-    std::string hddPath = (argc > 2) ? argv[2]
-                                     : findPath(iici ? "hdv/iici-boot.vhd"
-                                                     : "hdv/iisi-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/lc3-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/GISTPERSO-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/HD20SC.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
+    return runSonoraGui<RbvMachine>(
+        mem, cpu, video, audioHost, spec,
+        [iici] {
+            if (iici) mem.rtc().setSeconds(hostMacSeconds());
+            else {
+                mem.setRtcSeconds(hostMacSeconds());
+                mem.egret().factoryDefaults();
             }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    static std::string pramPath = (hddPath.empty() ? std::string(iici ? "iici"
-                                                                       : "iisi")
-                                   : hddPath) + (iici ? ".iici.pram"
-                                                      : ".iisi.pram");
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    // Real local time from the host: the IIci's discrete RTC, the IIsi's
-    // Egret. factoryDefaults seeds a fresh XPRAM (Egret only).
-    if (iici) mem.rtc().setSeconds(hostMacSeconds());
-    else { mem.setRtcSeconds(hostMacSeconds()); mem.egret().factoryDefaults(); }
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    GLFWwindow* window = glfwCreateWindow(1320, 1040,
-                                          iici ? "POM68K — Macintosh IIci"
-                                               : "POM68K — Macintosh IIsi",
-                                          nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static RbvMachine machine{mem, cpu, video, audioHost};
-    gSetCpuEngine = [](int e) { machine.push({RbvMachine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.state.kind = iici ? pom68k::SnapMachine::IIci : pom68k::SnapMachine::IIsi;
-    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
-    machine.publish(true);
-
-    struct Ctx {
-        GLFWwindow* window; RbvMachine& m; GLuint tex;
-        std::vector<uint32_t> fb;
-        std::string romName, hddPath;
-        std::string floppyPath;
-        bool floppyOk = false;
-        std::vector<std::string>& extraDisks;
-        bool iici;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, {}, false,
-                   extraDisks, iici};
-    // Optional startup floppy (POM68K_FLOPPY); the Disques window hot-swaps.
-    if (const char* env = std::getenv("POM68K_FLOPPY")) {
-        if (mem.insertDisk(env)) {
-            ctx.floppyPath = env; ctx.floppyOk = true;
-            machine.setFloppyInserted(true, env);
-            std::printf("Floppy: %s\n", env);
-        }
-    }
-
-    auto frame = [](void* p) {
-        Ctx& c = *static_cast<Ctx*>(p);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
-
-#ifdef __EMSCRIPTEN__
-        c.m.stepTick();
-#endif
-
-        int hres = 0, vres = 0;
-        if (c.m.latchFrame(c.fb, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-        }
-
-        machineMenu(c.iici ? MachineKind::IIci : MachineKind::IIsi, c.window, [&c] {
-            namespace fs = std::filesystem;
-            auto samePath = [](const std::string& a, const std::string& b) {
-                std::error_code ec;
-                return a == b || fs::equivalent(a, b, ec);
-            };
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({RbvMachine::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            {
-                const std::string ssMsg = c.m.state.message();
-                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            }
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({RbvMachine::Cmd::HardReset}); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                // Bound on every threaded runner since 2026-08-15: without
-                // these three the window can only STAGE a disc and reboot,
-                // which is what made mounting a CD a procedure.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-
-        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-                pom68k::dockLayoutScreenWindow(c.iici ? "Macintosh IIci" : "Macintosh IIsi");
-        ImGui::Begin(c.iici ? "Macintosh IIci" : "Macintosh IIsi");
-        static ScreenInput input;
-        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.m.push({RbvMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({RbvMachine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
-                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
-                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
-                {ImGuiKey_Keypad9,0xB8},
-            };
-            for (auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k))
-                    c.m.push({RbvMachine::Cmd::Key, e.m0110 >> 1, 1});
-                if (keyUp(uint8_t(e.m0110), e.k))
-                    c.m.push({RbvMachine::Cmd::Key, e.m0110 >> 1, 0});
-            }
-        }
-
-        ImGui::Render();
-        int dw, dh;
-        glfwGetFramebufferSize(c.window, &dw, &dh);
-        glViewport(0, 0, dw, dh);
-        glClearColor(0.10f, 0.10f, 0.12f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();
-    mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();   // persist floppy writes on exit
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
+        },
+        romName, argc, argv, gGuiServices);
 }
 
 // ── Quadra 605 / LC 475 machine thread ──────────────────────────────────
@@ -3703,392 +2066,16 @@ static bool qualifyFullLleAarch64(const char* machine, const char* firmware,
     return true;
 }
 
-// ── The DAFB-class GUI runner, written once ─────────────────────────────
-// Four platforms sit behind `DafbMachine<Mem,Cpu>`: MEMCjr + PrimeTime
-// (LC 475 / Quadra 605 / LC 575), djMEMC + IOSB (Centris 610-650, Quadra
-// 610/650/800), the discrete 040 board (Quadra 700/900/950) and F108 +
-// Valkyrie (Quadra 630, LC 580). They differ in their memory controller and
-// in their front-end MCU. They do not differ in anything the GUI can see.
-//
-// MachineHost had already unified the machine-thread half of that; the four
-// RUNNERS stayed copies of one another — ~350 lines each, ~85 % identical
-// text, the remainder being a type name. The copies had drifted, which is
-// the argument for writing them once:
-//
-//   * three of the four titled their screen window "Quadra 605", so a
-//     Centris 650, a Quadra 800 and a Quadra 950 all drew into a window
-//     named after another machine — and `dockLayoutScreenWindow` keys the
-//     saved layout on that title, so the three shared one entry;
-//   * the same three printed "68LC040 @ 25 MHz" in the CPU window whatever
-//     the model was, including the full 68040 @ 33 MHz of a Quadra 800.
-//
-// Both are gone by construction below: the title and the CPU line are spec
-// fields, so there is exactly one place to be wrong and every platform
-// reads it. What a board may still differ by is `DafbRunnerSpec` plus the
-// two things the wrapper does itself — construct `mem`/`cpu`, and seed the
-// clock from the host. Anything a new 040 board needs that is not a spec
-// field is not a difference; make it one.
-struct DafbRunnerSpec {
-    /// Human name. GLFW title, screen-window title (hence the dock-layout
-    /// key), and the machine `qualifyFullLleAarch64` names in its verdict.
-    const char* name;
-    /// File suffix: "<boot image>.<tag>.pram", and ".pomss" beside it.
-    /// Stable per PROFILE, never per family — two profiles sharing one file
-    /// would share a save state.
-    const char* pramTag;
-    /// The CPU window's first line, e.g. "68040 @ 33 MHz (Moira + 040 MMU)".
-    const char* cpuLine;
-    /// Firmware the full-LLE AArch64 preflight requires by name.
-    const char* lleFirmware;
-    /// Which row the Machine menu ticks.
-    MachineKind kind;
-    /// Save-state identity.
-    pom68k::SnapMachine snap;
-};
-
-/// `mem` and `cpu` are the caller's statics, already carrying the ROM: a
-/// platform decodes its own model from the environment (and, on the
-/// Eclipse, from the ROM checksum) before it can even name their types.
-/// `lleActive` is that board's own firmware predicate — `cudaLleActive()`
-/// here, `adbLleActive()` there — read after `loadRom`, as it always was.
-/// `seedRtc` re-seeds the clock the board actually keeps time on.
-template <class MachineT, class Mem, class Cpu, class SeedRtc>
-static int runDafbGui(Mem& mem, Cpu& cpu, MacAudioHost& audioHost,
-                      const DafbRunnerSpec& spec, bool lleActive,
-                      SeedRtc&& seedRtc, const std::string& romName,
-                      int argc, char** argv) {
-    if (!qualifyFullLleAarch64(spec.name, spec.lleFirmware, lleActive, cpu))
-        return 2;
-    if (fullLleAarch64CheckOnly()) return 0;
-    cpu.hardReset();
-    wireLocalTalk(mem);
-
-    // Boot volume: argv[2], else Mac OS 8.1. Bare HFS `.dsk` images get an
-    // in-memory DDM façade in ScsiDisk::open (same as LC II / Plus).
-    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/MacOS-8.1-boot.vhd");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD 0: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .vhd in hdv/.\n");
-    // Optional SuperDrive floppy (SWIM2): POM68K_FLOPPY, else disks35/ if present.
-    // "SCSI remains the default boot path" was the intent and NOT what the code
-    // did: a Mac boots whatever medium is in the drive at power-on, so the
-    // convenience scan of disks35/ put System 6.0.5 in the SuperDrive and every
-    // 040 machine came up on "This startup disk will not work on this Macintosh
-    // model" instead of the Finder. Seen on screen 2026-08-09; no gate could
-    // see it, because no gate auto-inserts — this path exists only in the GUI.
-    // So the scan now runs ONLY when there is no SCSI disk to boot. An explicit
-    // POM68K_FLOPPY is an instruction, not a convenience, and is still honoured
-    // either way; the Disques window hot-swaps at any time (the Mac II and IIfx
-    // loops have always worked this way).
-    std::string floppyPath;
-    if (const char* env = std::getenv("POM68K_FLOPPY")) floppyPath = env;
-    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/Disk605.dsk");
-    if (floppyPath.empty() && !hddOk) floppyPath = findPath("disks35/quadra.img");
-    static bool floppyOk = !floppyPath.empty() && mem.insertDisk(floppyPath);
-    if (floppyOk) std::printf("Floppy: %s\n", floppyPath.c_str());
-    // Secondary volumes (argv[3..] → SCSI IDs 1..6).
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        // Treat .dsk / raw SuperDrive images as floppy inserts, not SCSI.
-        std::string arg = argv[i];
-        auto ext = std::filesystem::path(arg).extension().string();
-        for (char& c : ext) c = char(std::tolower(c));
-        if (ext == ".dsk" || ext == ".image") {
-            if (mem.insertDisk(arg)) {
-                floppyPath = arg;
-                floppyOk = true;
-                std::printf("Floppy: %s\n", arg.c_str());
-            }
-            continue;
-        }
-        int id = int(extraDisks.size()) + 1;
-        // "cdbay" (the Disques window's reserved bay) = an empty CD drive
-        // on the bus; a CD image = the same drive with the disc already in.
-        // Both make the bay hot-swappable forever (DiskBays.h contract).
-        if (std::string(argv[i]) == "cdbay") {
-            if (mem.attachCdromEmpty(id)) {
-                extraDisks.push_back("cdbay");
-                std::printf("SCSI CD %d: <vide>\n", id);
-            }
-            continue;
-        }
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    // Battery-backed PRAM+clock (Cuda XPRAM) — persist it like the LC II so a
-    // cold PRAM doesn't retrigger the ROM's full-RAM burn-in every boot.
-    // Battery-backed PRAM+clock — persist it so a cold PRAM doesn't retrigger
-    // the ROM's full-RAM burn-in every boot. The suffix carries the PROFILE,
-    // not the family: the store behind it is a Cuda XPRAM on one board and a
-    // discrete RTC's on the next, so one file must never serve two of them
-    // (the save-state path is derived from it).
-    static std::string pramPath =
-        (hddPath.empty() ? std::string(spec.pramTag)
-                         : hddPath + "." + spec.pramTag) + ".pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    // The file's clock froze while powered off — wall time comes from the
-    // host at every launch (GUI only). Which chip keeps it is the caller's
-    // business; this is the one line that has to happen here.
-    seedRtc();
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    // 640×480 shown at 2× fits with the menu bar and the CPU window.
-    static std::string winTitle = std::string("POM68K — ") + spec.name;
-    GLFWwindow* window = glfwCreateWindow(1320, 1080, winTitle.c_str(), nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    initDriveSfx(audioHost);
-    mem.attachDriveSounds(&gFloppySfx, &gHddSfx);
-    // GUI floppies persist committed writes back to the image file on
-    // eject and on exit (opt-out: POM68K_FLOPPY_RO=1); tests never enable.
-    mem.internalDrive().setWriteBack(std::getenv("POM68K_FLOPPY_RO") == nullptr);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static MachineT machine{mem, cpu, audioHost};
-    machine.state.kind = spec.snap;
-    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
-    // The "CPU" menu is global; only machines that HAVE a second engine
-    // install its hooks. `machine` is static, so a captureless lambda can
-    // reach it and the hooks stay valid for the process lifetime.
-    gSetCpuEngine = [](int e) { machine.push({MachineT::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.setFloppyInserted(floppyOk, floppyPath);
-    machine.publish(true);
-
-    struct Ctx {
-        GLFWwindow* window; MachineT& m; GLuint tex;
-        std::vector<uint32_t> fb;
-        std::string romName, hddPath, floppyPath;
-        std::vector<std::string>& extraDisks;
-        bool& floppyOk;
-        DafbRunnerSpec spec;
-    };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, floppyPath,
-                   extraDisks, floppyOk, spec};
-
-    auto frame = [](void* p) {
-        Ctx& c = *static_cast<Ctx*>(p);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame(); ImGui_ImplGlfw_NewFrame(); ImGui::NewFrame();
-
-#ifdef __EMSCRIPTEN__
-        c.m.stepTick();
-#endif
-
-        int hres = 0, vres = 0;
-        if (c.m.latchFrame(c.fb, hres, vres)) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, hres, vres, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, c.fb.data());
-        }
-
-        machineMenu(c.spec.kind, c.window, [&c] {
-            namespace fs = std::filesystem;
-            auto samePath = [](const std::string& a, const std::string& b) {
-                std::error_code ec;
-                return a == b || fs::equivalent(a, b, ec);
-            };
-            auto relaunch = [&c](const std::string& boot,
-                                 const std::vector<std::string>& extras) {
-                gSwitchArgs = { c.romName, boot };
-                for (const std::string& e : extras)
-                    if (e != boot) gSwitchArgs.push_back(e);
-                glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-            };
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({MachineT::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            {
-                const std::string ssMsg = c.m.state.message();
-                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            }
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({MachineT::Cmd::HardReset}); };
-                // CD bays: media in/out of a drive that exists on the bus
-                // (attached at boot, or the reserved "cdbay"), no reboot.
-                h.bayIsCd  = [&c](int id) { return c.m.bayIsCdrom(id); };
-                h.insertBay = [&c](int id, const std::string& d) {
-                    if (!c.m.bayIsCdrom(id)) return false;
-                    c.m.requestInsertBay(id, d);
-                    return true;
-                };
-                h.ejectBay = [&c](int id) { c.m.requestEjectBay(id); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                h.hasFloppyDrive = true;
-                h.floppyInserted = [&c] { return c.m.floppyInserted(); };
-                h.insertFloppy = [&c](const std::string& d) {
-                    c.m.requestInsertFloppy(d); c.floppyPath = d; c.floppyOk = true;
-                };
-                h.ejectFloppy = [&c] {
-                    c.m.requestEjectFloppy(); c.floppyPath.clear(); c.floppyOk = false;
-                };
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            host.floppyPath = c.m.floppyPath();
-            pom68k::diskBaysWindow(host);
-        }
-
-
-        ImGui::SetNextWindowPos(ImVec2(20, 40), ImGuiCond_FirstUseEver);
-                pom68k::dockLayoutScreenWindow(c.spec.name);
-        ImGui::Begin(c.spec.name);
-        static ScreenInput input;
-        input.frame(c.window, c.tex, ImVec2(float(hres * 2), float(vres * 2)),
-                    [&](int dx, int dy) { c.m.push({MachineT::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({MachineT::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        // Keyboard → ADB key codes (= M0110 transition code >> 1); same table
-        // as the LC II loop.
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Keypad0,0xA4},{ImGuiKey_Keypad1,0xA6},{ImGuiKey_Keypad2,0xA8},
-                {ImGuiKey_Keypad3,0xAA},{ImGuiKey_Keypad4,0xAC},{ImGuiKey_Keypad5,0xAE},
-                {ImGuiKey_Keypad6,0xB0},{ImGuiKey_Keypad7,0xB2},{ImGuiKey_Keypad8,0xB6},
-                {ImGuiKey_Keypad9,0xB8},
-            };
-            for (auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
-                    c.m.push({MachineT::Cmd::Key, e.m0110 >> 1, 1});
-                }
-                if (keyUp(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
-                    c.m.push({MachineT::Cmd::Key, e.m0110 >> 1, 0});
-                }
-            }
-        }
-
-        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        auto st = c.m.status();
-        ImGui::Text("%s  PC=%08X  clock=%lld", c.spec.cpuLine, st.pc, st.clock);
-        ImGui::Text("overlay=%d  %dx%d @ %d bpp  MMU=%s  held=%d",
-                    st.overlay ? 1 : 0, st.w, st.h, st.depth,
-                    st.mmu ? "on" : "off", st.held ? 1 : 0);
-        const std::string liveFloppy = c.m.floppyPath();
-        ImGui::Text("floppy=%s", c.m.floppyInserted()
-                    ? (liveFloppy.empty() ? "inserted" : liveFloppy.c_str())
-                    : "none");
-        bool running = c.m.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({MachineT::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Turbo", &turbo)) c.m.turbo.store(turbo);
-        ImGui::End();
-
-        ImGui::Render();
-        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();
-    mem.savePram(pramPath);
-    mem.internalDrive().flushToFile();   // persist floppy writes on exit
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
+template <class Cpu>
+bool GuiServices::qualify(const char* machine, const char* firmware,
+                          bool firmwareActive, const Cpu& cpu) const {
+    return qualifyFullLleAarch64(
+        machine, firmware, firmwareActive, cpu);
 }
 
-
+bool GuiServices::checkOnly() const {
+    return fullLleAarch64CheckOnly();
+}
 // ── LC 475 / Quadra 605 (Q6): MEMCjr/PrimeTime + 68LC040, selected by a
 // 1 MB ROM. Structure mirrors runLcII; the Q605 has no ASC yet (silent).
 static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
@@ -4127,7 +2114,7 @@ static int runQuadra(std::vector<uint8_t> rom, const std::string& romName,
     return runDafbGui<QuadraMachine>(
         mem, cpu, audioHost, spec, mem.cudaLleActive(),
         [] { mem.setRtcSeconds(hostMacSeconds()); mem.cuda().factoryDefaults(); },
-        romName, argc, argv);
+        romName, argc, argv, gGuiServices);
 }
 
 // ── Centris 610/650 + Quadra 610/650/800: djMEMC + IOSB, one ROM, five
@@ -4179,7 +2166,7 @@ static int runCentris(std::vector<uint8_t> rom, const std::string& romName,
     return runDafbGui<CentrisMachine>(
         mem, cpu, audioHost, spec, mem.adbLleActive(),
         [] { mem.rtc().setSeconds(hostMacSeconds()); },
-        romName, argc, argv);
+        romName, argc, argv, gGuiServices);
 }
 
 // ── Quadra 700 ("Spike") and the Eclipse towers (Quadra 900/950).
@@ -4239,7 +2226,7 @@ static int runQ700(std::vector<uint8_t> rom, const std::string& romName,
             if (mem.eclipse()) mem.setEgretSeconds(hostMacSeconds());
             else               mem.rtc().setSeconds(hostMacSeconds());
         },
-        romName, argc, argv);
+        romName, argc, argv, gGuiServices);
 }
 
 // ── Quadra 630 / LC 580: F108 + PrimeTime II + Valkyrie.
@@ -4271,7 +2258,7 @@ static int runQ630(std::vector<uint8_t> rom, const std::string& romName,
         mem, cpu, audioHost, spec, mem.cudaLleActive(),
         // The Cuda holds the clock on this board (no discrete RTC).
         [] { mem.setRtcSeconds(hostMacSeconds()); },
-        romName, argc, argv);
+        romName, argc, argv, gGuiServices);
 }
 
 // ── PowerBook Duo machine thread ────────────────────────────────────────
@@ -4357,276 +2344,37 @@ static int runDuo(std::vector<uint8_t> rom, const std::string& romName,
                   int argc, char** argv) {
     std::printf("Machine: PowerBook Duo 230 (68030 @ 33 MHz, MSC + PG&E, "
                 "GSC 640x400)\n");
-    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(), rom.size() / 1024);
+    std::printf("Loaded ROM: %s (%zu KB)\n", romName.c_str(),
+                rom.size() / 1024);
 
     // Built exactly as the gate builds it (duo230_boot_etalon.cpp:43-56).
-    static MscMemory mem(8u << 20, MscMemory::kCpuHz230, MscMemory::kIdDuo230);
+    static MscMemory mem(8u << 20, MscMemory::kCpuHz230,
+                         MscMemory::kIdDuo230);
     static MscCpu cpu(mem);
     static MacAudioHost audioHost;
     if (!mem.loadRom(rom)) {
         std::fprintf(stderr, "FAIL: bad PowerBook Duo ROM\n");
         return 1;
     }
-    // Without roms/pge/pge_boot.bin there is no PMU: the CPU runs free and
-    // the ROM stalls at the power-manager handshake. Say so once, loudly,
-    // instead of letting the user watch a dead panel.
     if (!mem.pgeActive())
-        std::fprintf(stderr, "PG&E firmware missing (roms/pge/pge_boot.bin) — "
-                             "the ROM will stall at the PMU handshake.\n");
+        std::fprintf(stderr,
+                     "PG&E firmware missing (roms/pge/pge_boot.bin) — "
+                     "the ROM will stall at the PMU handshake.\n");
     mem.setCpu(&cpu);
-    cpu.hardReset();
-    wireLocalTalk(mem);
 
-    // Boot volume: argv[2], else the gate's 7.5.5 image (7.5.x is what
-    // uploads the BORG v2 PMU firmware mid-boot — docs/DUO_BRINGUP.md).
-    std::string hddPath = (argc > 2) ? argv[2] : findPath("hdv/System 7.5.5 HD.dsk");
-    if (hddPath.empty()) hddPath = findPath("hdv/boot.vhd");
-    static bool hddOk = !hddPath.empty() && mem.attachScsi(hddPath, true);
-    if (hddOk) std::printf("SCSI HD: %s (write-back)\n", hddPath.c_str());
-    else std::fprintf(stderr, "No SCSI image — drop a .dsk/.vhd in hdv/.\n");
-
-    // Secondary volumes (argv[3..] → SCSI IDs 1..6). No "cdbay" reservation
-    // and no live bay swap: MscMemory has attachCdrom() but neither
-    // attachCdromEmpty() nor bayIsCdrom(), so the Disques window stages
-    // those changes and applies them on the reboot it offers.
-    static std::vector<std::string> extraDisks;
-    for (int i = 3; i < argc && extraDisks.size() < 6; i++) {
-        if (argv[i] == hddPath) continue;
-        int id = int(extraDisks.size()) + 1;
-        if (pom68k::diskBaysPathIsCd(argv[i])) {
-            if (mem.attachCdrom(argv[i], id)) {
-                extraDisks.push_back(argv[i]);
-                std::printf("SCSI CD %d: %s\n", id, argv[i]);
-            } else std::fprintf(stderr, "SCSI CD %d: %s FAILED\n", id, argv[i]);
-            continue;
-        }
-        if (mem.attachScsi(argv[i], true, id)) {
-            extraDisks.push_back(argv[i]);
-            std::printf("SCSI HD %d: %s (write-back)\n", id, argv[i]);
-        } else std::fprintf(stderr, "SCSI HD %d: %s FAILED\n", id, argv[i]);
-    }
-    // Every machine that can hold a CD drive boots with one, so the
-    // Disques window's CD row inserts a disc live like the floppy row
-    // does — the bus is probed once and the drive has to be there for
-    // it (DiskBays.h ensureCdDrive).
-    pom68k::ensureCdDrive(mem, extraDisks);
-
-    // Battery-backed PRAM. The Duo keeps it in the PG&E's own RAM+SRAM, not
-    // in a discrete Rtc or an Egret/Cuda (MscMemory.cpp:138) — but the file
-    // plays the same role, so it is tagged and paired with the boot volume
-    // like everywhere else. The PMU also holds the clock, and its saved
-    // seconds froze while powered off: re-seed from the host afterwards,
-    // the ordering MscMemory.cpp:132 asks main.cpp for.
-    static std::string pramPath =
-        (hddPath.empty() ? std::string("duo230") : hddPath) + ".duo230.pram";
-    if (mem.loadPram(pramPath)) std::printf("PRAM: %s\n", pramPath.c_str());
-    mem.setRtcSeconds(hostMacSeconds());
-
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) { std::fprintf(stderr, "GLFW init failed\n"); return 1; }
-    const char* glslVersion = configureGlfwOpenGl();
-    // 640x400 shown at 2x, plus the menu bar and the CPU window.
-    GLFWwindow* window = glfwCreateWindow(1320, 1000, "POM68K — PowerBook Duo 230",
-                                          nullptr, nullptr);
-    if (!window) { glfwTerminate(); return 1; }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
-    pom68k::dockLayoutInit();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glslVersion);
-    pom68k::diskBaysInstallDrop(window);
-
-    static GLuint screenTex = 0;
-    glGenTextures(1, &screenTex);
-    glBindTexture(GL_TEXTURE_2D, screenTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    // Drive sounds are wired to the FLOPPY/HDD hooks the other platforms
-    // expose; MscMemory has no attachDriveSounds() (no floppy at all), so
-    // the Duo runs silent-mechanically. The Machine menu toggle still
-    // shows, greyed by gFloppySfx.isLoaded() as everywhere else.
-    initDriveSfx(audioHost);
-    if (!audioHost.start()) std::fprintf(stderr, "audio: no output device (silent)\n");
-
-    static MscMachine machine{mem, cpu, audioHost};
-    machine.state.kind = pom68k::SnapMachine::Duo230;
-    machine.state.path = pramPath.substr(0, pramPath.size() - 5) + ".pomss";
-    // The "CPU" menu is global; only machines that HAVE a second engine
-    // install its hooks. MscCpu owns a jit::Engine (MscCpu.h:24), so the
-    // Duo gets the live interpreter/accelerated switch like the other 030s.
-    gSetCpuEngine = [](int e) { machine.push({MscMachine::Cmd::CpuEngine, e}); };
-    gGetCpuEngine = [] { return machine.cpuEngine(); };
-    gJitStats     = [] { return machine.jitStats(); };
-    gSpeedSample = [] { return std::pair{machine.machineClock(), machine.machineHz()}; };
-    gJitBackend   = cpu.jit().backendName();
-    machine.publish(true);
-
-    struct Ctx {
-        GLFWwindow* window; MscMachine& m; GLuint tex;
-        ScreenInput input;
-        std::string romName, hddPath;
-        std::vector<std::string>& extraDisks;
+    const DuoRunnerSpec spec{
+        "PowerBook Duo 230",
+        "duo230",
+        "hdv/System 7.5.5 HD.dsk",
+        "68030 @ 33 MHz (Moira + PMMU)",
+        MachineKind::Duo,
+        pom68k::SnapMachine::Duo230,
     };
-    static Ctx ctx{window, machine, screenTex, {}, romName, hddPath, extraDisks};
-
-    auto frame = [](void* arg) {
-        Ctx& c = *static_cast<Ctx*>(arg);
-        glfwPollEvents();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-#ifdef __EMSCRIPTEN__
-        c.m.stepTick();
-#endif
-
-        machineMenu(MachineKind::Duo, c.window, [&c] {
-            // Disk selection lives in its own window
-            // (src/DiskBays.*) -- see the note in runLcII.
-            pom68k::diskBaysMenuItem();
-            if (ImGui::MenuItem("Redémarrer"))
-                c.m.push({MscMachine::Cmd::HardReset});
-            ImGui::Separator();
-            if (ImGui::MenuItem("Sauver l'état")) c.m.state.request(false);
-            if (ImGui::MenuItem("Restaurer l'état")) c.m.state.request(true);
-            {
-                const std::string ssMsg = c.m.state.message();
-                if (!ssMsg.empty()) ImGui::TextDisabled("%s", ssMsg.c_str());
-            }
-        });
-        // The shared "Disques" window (src/DiskBays.*). Built once: the hooks
-        // capture the static Ctx, which outlives every frame. No floppy hooks
-        // and no live bay hooks — see the argv loop above.
-        {
-            static pom68k::DiskBaysHost host = [&c] {
-                pom68k::DiskBaysHost h;
-                h.extras = &c.extraDisks;
-                h.hardReset = [&c] { c.m.push({MscMachine::Cmd::HardReset}); };
-                h.relaunch  = [&c](const std::string& boot,
-                                   const std::vector<std::string>& extras) {
-                    gSwitchArgs = { c.romName, boot };
-                    for (const std::string& e : extras)
-                        if (e != boot) gSwitchArgs.push_back(e);
-                    glfwSetWindowShouldClose(c.window, GLFW_TRUE);
-                };
-                h.hasFloppyDrive = false;   // the Duo's floppy is in the dock
-                h.supportsEmptyCdDrive = false; // MscMemory has no empty target
-                return h;
-            }();
-            host.romName  = c.romName;
-            host.bootPath = c.hddPath;
-            pom68k::diskBaysWindow(host);
-        }
-
-        pom68k::dockLayoutScreenWindow("PowerBook Duo 230");
-        ImGui::Begin("PowerBook Duo 230");
-        std::vector<uint32_t> fb;
-        int fw = 0, fh = 0;
-        if (c.m.latchFrame(fb, fw, fh) && fw > 0 && fh > 0) {
-            glBindTexture(GL_TEXTURE_2D, c.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fw, fh, 0,
-                         GL_BGRA, GL_UNSIGNED_BYTE, fb.data());
-            c.input.frame(c.window, c.tex, ImVec2(float(fw * 2), float(fh * 2)),
-                    [&](int dx, int dy) { c.m.push({MscMachine::Cmd::MouseMove, dx, dy}); },
-                    [&](int button, bool down) {
-                        c.m.push({MscMachine::Cmd::MouseButton, button, down ? 1 : 0});
-                    });
-        }
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::End();
-
-        // Keyboard → ADB key codes (= M0110 transition code >> 1); the same
-        // table as every other ADB machine — the Duo's matrix keyboard is
-        // scanned by the PG&E and presented to the guest as an ADB device.
-        if (!io.WantTextInput) {
-            static const struct { ImGuiKey k; uint8_t m0110; } kKeys[] = {
-                {ImGuiKey_A,0x01},{ImGuiKey_S,0x03},{ImGuiKey_D,0x05},{ImGuiKey_F,0x07},
-                {ImGuiKey_H,0x09},{ImGuiKey_G,0x0B},{ImGuiKey_Z,0x0D},{ImGuiKey_X,0x0F},
-                {ImGuiKey_C,0x11},{ImGuiKey_V,0x13},{ImGuiKey_B,0x17},{ImGuiKey_Q,0x19},
-                {ImGuiKey_W,0x1B},{ImGuiKey_E,0x1D},{ImGuiKey_R,0x1F},{ImGuiKey_Y,0x21},
-                {ImGuiKey_T,0x23},{ImGuiKey_1,0x25},{ImGuiKey_2,0x27},{ImGuiKey_3,0x29},
-                {ImGuiKey_4,0x2B},{ImGuiKey_6,0x2D},{ImGuiKey_5,0x2F},{ImGuiKey_Equal,0x31},
-                {ImGuiKey_9,0x33},{ImGuiKey_7,0x35},{ImGuiKey_Minus,0x37},{ImGuiKey_8,0x39},
-                {ImGuiKey_0,0x3B},{ImGuiKey_RightBracket,0x3D},{ImGuiKey_O,0x3F},
-                {ImGuiKey_U,0x41},{ImGuiKey_LeftBracket,0x43},{ImGuiKey_I,0x45},
-                {ImGuiKey_P,0x47},{ImGuiKey_Enter,0x49},{ImGuiKey_L,0x4B},{ImGuiKey_J,0x4D},
-                {ImGuiKey_Apostrophe,0x4F},{ImGuiKey_K,0x51},{ImGuiKey_Semicolon,0x53},
-                {ImGuiKey_Backslash,0x55},{ImGuiKey_Comma,0x57},{ImGuiKey_Slash,0x59},
-                {ImGuiKey_N,0x5B},{ImGuiKey_M,0x5D},{ImGuiKey_Period,0x5F},
-                {ImGuiKey_Tab,0x61},{ImGuiKey_Space,0x63},{ImGuiKey_GraveAccent,0x65},
-                {ImGuiKey_Backspace,0x67},{ImGuiKey_LeftSuper,0x6F},{ImGuiKey_RightSuper,0x6F},
-                {ImGuiKey_LeftCtrl,0x6D},{ImGuiKey_LeftShift,0x71},{ImGuiKey_RightShift,0xF7},
-                {ImGuiKey_CapsLock,0x73},{ImGuiKey_LeftAlt,0x75},{ImGuiKey_RightAlt,0xF9},
-                {ImGuiKey_RightCtrl,0xFB},
-                {ImGuiKey_LeftArrow,0x76},{ImGuiKey_RightArrow,0x78},
-                {ImGuiKey_DownArrow,0x7A},{ImGuiKey_UpArrow,0x7C},
-                {ImGuiKey_Escape,0x6B},
-            };
-            for (const auto& e : kKeys) {
-                if (keyDown(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), true);
-                    c.m.push({MscMachine::Cmd::Key, e.m0110 >> 1, 1});
-                }
-                if (keyUp(uint8_t(e.m0110), e.k)) {
-                    keyTrace("push", uint8_t(e.m0110 >> 1), false);
-                    c.m.push({MscMachine::Cmd::Key, e.m0110 >> 1, 0});
-                }
-            }
-        }
-
-        ImGui::SetNextWindowPos(ImVec2(20, 870), ImGuiCond_FirstUseEver);
-        ImGui::Begin("CPU", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        MscMachine::Status st = c.m.status();
-        ImGui::Text("68030 @ 33 MHz (Moira + PMMU)  PC=%08X  clock=%lld",
-                    st.pc, st.clock);
-        // `held` is the first thing to look at on this platform: a Duo that
-        // never leaves the hold has a PG&E that never released port E bit 2.
-        ImGui::Text("overlay=%d  MMU=%s  PG&E hold=%d  GSC mode=$%02X",
-                    st.overlay ? 1 : 0, st.mmu ? "on" : "off",
-                    st.held ? 1 : 0, st.gscMode);
-        bool running = c.m.running.load(std::memory_order_relaxed);
-        if (ImGui::Button(running ? "Pause" : "Run")) c.m.running.store(!running);
-        ImGui::SameLine();
-        if (ImGui::Button("Reset")) c.m.push({MscMachine::Cmd::HardReset});
-        ImGui::SameLine();
-        bool turbo = c.m.turbo.load(std::memory_order_relaxed);
-        if (ImGui::Checkbox("Turbo", &turbo)) c.m.turbo.store(turbo);
-        saveStateUi(c.m.state);
-        ImGui::End();
-
-        ImGui::Render();
-        int w, h; glfwGetFramebufferSize(c.window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(c.window);
-    };
-
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(frame, &ctx, 0, 1);
-#else
-    machine.start();
-    while (!glfwWindowShouldClose(window)) frame(&ctx);
-    machine.stop();                     // join before touching machine state
-    mem.savePram(pramPath);
-    audioHost.stop();
-    glDeleteTextures(1, &screenTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    relaunchIfSwitched(argv[0]);
-#endif
-    return 0;
+    return runDuoGui<MscMachine>(
+        mem, cpu, audioHost, spec,
+        [&] { mem.setRtcSeconds(hostMacSeconds()); },
+        romName, argc, argv, gGuiServices);
 }
-
 int main(int argc, char** argv) {
 #ifndef POM68K_VERSION_STRING
 #define POM68K_VERSION_STRING "dev"

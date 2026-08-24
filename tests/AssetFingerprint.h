@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include "FixtureStore.h"
+
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -125,11 +127,13 @@ struct Sha256 {
 }  // namespace detail
 
 // ── Locating a user-provided asset ──────────────────────────────────────
-// Same two-base search every gate already open-codes: the CTest working
-// directory, then one level up (a gate run from build/ finds the repo root).
-inline std::string find(const char* rel) {
-    for (const std::string& base : { std::string(), std::string("../") }) {
-        std::string p = base + rel;
+// Shared search for the source root: the current directory, then one and two
+// levels up. The last base preserves the deepest standalone-test invocation
+// that existed before the local resolvers were consolidated.
+inline std::string find(const std::string& rel) {
+    for (const std::string& base : { std::string(), std::string("../"),
+                                     std::string("../../") }) {
+        std::string p = pom68k::preferReferenceFixture(base + rel);
         if (std::ifstream(p, std::ios::binary)) return p;
     }
     return {};

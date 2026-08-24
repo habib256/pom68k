@@ -24,7 +24,7 @@ ROM: `roms/1MB ROMs/1993-10 - EDE66CBD - ...ROM` (header checksum
 `$EDE66CBD`; user-provided, `roms/` is gitignored), shared by LC 520, LC 550,
 Color Classic II and the Performa 275/550/560. CPU: LC 520 = 68030 @ 25 MHz,
 LC 550 / CC II = 33.33 MHz (`SonoraMemory::kCpuHz` / `kCpuHzPlus`, selected by
-the `kP[]` profile table in `runLc3`, `main.cpp:2299-2309`).
+the `kProfiles[]` table in `runLc3`, `main.cpp:1527-1556`).
 **The Mac TV is not in this family** — different ROM, different ASIC, see
 § Siblings.
 

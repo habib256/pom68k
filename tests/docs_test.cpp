@@ -23,6 +23,8 @@
 //   8. A64/x64 dispatch, extensions, EAs and control come from Instr
 //   9. performance policy is keyed by workload, guest family and host
 //  10. every `file:line` citation that resolves in-tree lands inside the file
+//  11. shared GUI lifecycles stay outside main.cpp behind one service seam
+//  12. GUI and gate media lookup share immutable-reference preference
 //
 // Check 4 is here because it caught a live one the day it was written: four
 // gates — the three IIfx ones and `duo230_boot_etalon` — were registered
@@ -34,7 +36,7 @@
 // time: a documentation gate that cannot see the registry can only check the
 // docs against themselves.
 
-#include "AssetFingerprint.h"          // testasset::find — the two-base search
+#include "AssetFingerprint.h"          // testasset::find — shared asset search
 #include "MachineCatalog.h"
 
 #include <algorithm>
@@ -62,6 +64,15 @@ static std::string slurp(const std::string& path) {
                        std::istreambuf_iterator<char>());
 }
 
+static int countOccurrences(const std::string& text,
+                            const std::string& needle) {
+    int count = 0;
+    for (size_t pos = text.find(needle); pos != std::string::npos;
+         pos = text.find(needle, pos + needle.size()))
+        count++;
+    return count;
+}
+
 // Every integer that immediately precedes `needle` in `text`, ignoring the
 // markdown emphasis and backticks the docs wrap numbers in.
 static std::vector<int> numbersBefore(const std::string& text,
@@ -86,6 +97,10 @@ static std::vector<int> numbersBefore(const std::string& text,
 
 int main() {
     const std::string mainCpp = testasset::find("src/main.cpp");
+    const std::string guiRunner = testasset::find("src/GuiRunner.h");
+    const std::string fixtureStore = testasset::find("src/FixtureStore.h");
+    const std::string assetFingerprint =
+        testasset::find("tests/AssetFingerprint.h");
     const std::string catalog = testasset::find("src/MachineCatalog.h");
     const std::string claude  = testasset::find("CLAUDE.md");
     // The roster path is baked in at configure time. It used to be searched
@@ -116,7 +131,8 @@ int main() {
 
     // ── 1. One compiled catalogue drives menu and snapshot identity ───────
     const int rows = int(pom68k::kMachineProfileCount);
-    check(slurp(mainCpp).find("pom68k::kMachineProfiles") != std::string::npos,
+    const std::string mainSource = slurp(mainCpp);
+    check(mainSource.find("pom68k::kMachineProfiles") != std::string::npos,
           "Machine menu consumes the compiled profile catalogue");
     check(slurp(catalog).find("enum class SnapMachine") != std::string::npos,
           "snapshot ids live beside the profile catalogue");
@@ -139,6 +155,196 @@ int main() {
         check(n == rows,
               "CLAUDE.md profile count " + std::to_string(n) + " == " +
               std::to_string(rows) + " in the code");
+
+    // ── 11. Shared GUI extraction contract ───────────────────────────────
+    // main.cpp is deliberately the composition root: board wrappers and the
+    // one process-global adapter remain there, while reusable lifecycles,
+    // screen input and ADB transitions belong to GuiRunner.h.
+    check(!guiRunner.empty(), "src/GuiRunner.h located");
+    const std::string runnerSource = slurp(guiRunner);
+    check(mainSource.find("#include \"GuiRunner.h\"") != std::string::npos,
+          "main.cpp includes the shared GUI runner");
+    check(mainSource.find("struct GuiServices") != std::string::npos,
+          "main.cpp supplies the explicit GUI services adapter");
+    check(countOccurrences(mainSource, "struct GuiServices") == 1,
+          "all extracted GUI runners share one services adapter");
+    check(mainSource.find("struct DafbRunnerSpec") == std::string::npos &&
+          mainSource.find("int runDafbGui") == std::string::npos,
+          "main.cpp does not own the DAFB runner implementation");
+    check(mainSource.find("struct SonoraRunnerSpec") == std::string::npos &&
+          mainSource.find("int runSonoraGui") == std::string::npos,
+          "main.cpp does not own the Sonora runner implementation");
+    check(mainSource.find("struct TobyRunnerSpec") == std::string::npos &&
+          mainSource.find("int runTobyGui") == std::string::npos,
+          "main.cpp does not own the Toby runner implementation");
+    check(mainSource.find("struct V8RunnerSpec") == std::string::npos &&
+          mainSource.find("int runV8Gui") == std::string::npos,
+          "main.cpp does not own the V8 runner implementation");
+    check(mainSource.find("struct DuoRunnerSpec") == std::string::npos &&
+          mainSource.find("int runDuoGui") == std::string::npos,
+          "main.cpp does not own the Duo runner implementation");
+    check(runnerSource.find("struct DafbRunnerSpec") != std::string::npos &&
+          runnerSource.find("int runDafbGui") != std::string::npos,
+          "GuiRunner.h owns the DAFB specification and lifecycle");
+    check(runnerSource.find("struct SonoraRunnerSpec") != std::string::npos &&
+          runnerSource.find("int runSonoraGui") != std::string::npos,
+          "GuiRunner.h owns the Sonora specification and lifecycle");
+    check(runnerSource.find("struct TobyRunnerSpec") != std::string::npos &&
+          runnerSource.find("int runTobyGui") != std::string::npos,
+          "GuiRunner.h owns the Toby specification and lifecycle");
+    check(runnerSource.find("struct V8RunnerSpec") != std::string::npos &&
+          runnerSource.find("int runV8Gui") != std::string::npos,
+          "GuiRunner.h owns the V8 specification and lifecycle");
+    check(runnerSource.find("struct DuoRunnerSpec") != std::string::npos &&
+          runnerSource.find("int runDuoGui") != std::string::npos,
+          "GuiRunner.h owns the Duo specification and lifecycle");
+    check(runnerSource.find("struct ScreenInput") != std::string::npos &&
+          runnerSource.find("class AdbKeyboard") != std::string::npos &&
+          mainSource.find("struct ScreenInput") == std::string::npos,
+          "GuiRunner.h owns shared screen and ADB input");
+    check(countOccurrences(mainSource, "runDafbGui<") == 4,
+          "the four DAFB platform wrappers consume the shared runner");
+    check(countOccurrences(mainSource, "runSonoraGui<") == 3,
+          "the three Sonora platform wrappers consume the shared runner");
+    check(countOccurrences(mainSource, "runTobyGui<") == 2,
+          "the Mac II family and IIfx wrappers consume the shared runner");
+    check(countOccurrences(mainSource, "runV8Gui<") == 1,
+          "the five V8 profiles consume one shared runner instantiation");
+    check(countOccurrences(mainSource, "runDuoGui<") == 1,
+          "the Duo wrapper consumes its shared runner instantiation");
+    const size_t dafbBegin = runnerSource.find("int runDafbGui");
+    const size_t sonoraBegin = runnerSource.find("int runSonoraGui");
+    const size_t tobyBegin = runnerSource.find("int runTobyGui");
+    const size_t v8Begin = runnerSource.find("int runV8Gui");
+    const size_t duoBegin = runnerSource.find("int runDuoGui");
+    const std::string dafbSource =
+        dafbBegin != std::string::npos && sonoraBegin != std::string::npos
+        ? runnerSource.substr(dafbBegin, sonoraBegin - dafbBegin)
+        : std::string();
+    const std::string sonoraSource =
+        sonoraBegin != std::string::npos && tobyBegin != std::string::npos
+        ? runnerSource.substr(sonoraBegin, tobyBegin - sonoraBegin)
+        : std::string();
+    const std::string tobySource =
+        tobyBegin != std::string::npos && v8Begin != std::string::npos
+        ? runnerSource.substr(tobyBegin, v8Begin - tobyBegin)
+        : std::string();
+    const std::string v8Source =
+        v8Begin != std::string::npos && duoBegin != std::string::npos
+        ? runnerSource.substr(v8Begin, duoBegin - v8Begin)
+        : std::string();
+    const std::string duoSource =
+        duoBegin == std::string::npos
+        ? std::string() : runnerSource.substr(duoBegin);
+    for (const char* service : {
+             "qualify(", "checkOnly(", "wireNetwork(", "locate(",
+             "installGlfwErrorCallback(", "configureOpenGl(",
+             "prepareDriveSounds(", "bindCpuMenu(", "drawMachineMenu(",
+             "requestRelaunch(", "traceKey(", "processRelaunch(" }) {
+        check(dafbSource.find(std::string("services.") + service) !=
+                  std::string::npos,
+              std::string("DAFB runner uses explicit service: ") + service);
+    }
+    for (const char* service : {
+             "wireNetwork(", "locate(", "installGlfwErrorCallback(",
+             "configureOpenGl(", "prepareDriveSounds(", "bindCpuMenu(",
+             "drawMachineMenu(", "requestRelaunch(", "processRelaunch(" }) {
+        check(sonoraSource.find(std::string("services.") + service) !=
+                  std::string::npos ||
+              sonoraSource.find(std::string("c.services.") + service) !=
+                  std::string::npos,
+              std::string("Sonora runner uses shared service: ") + service);
+    }
+    for (const char* service : {
+             "wireNetwork(", "locate(", "installGlfwErrorCallback(",
+             "configureOpenGl(", "prepareDriveSounds(", "bindCpuMenu(",
+             "drawMachineMenu(", "requestRelaunch(", "traceKey(",
+             "drawSaveState(", "processRelaunch(" }) {
+        check(tobySource.find(std::string("services.") + service) !=
+                  std::string::npos ||
+              tobySource.find(std::string("c.services.") + service) !=
+                  std::string::npos,
+              std::string("Toby runner uses shared service: ") + service);
+    }
+    check(tobySource.find("frameLegacy(") != std::string::npos,
+          "Toby runner preserves its original ADB host-key surface");
+    for (const char* service : {
+             "wireNetwork(", "locate(", "installGlfwErrorCallback(",
+             "configureOpenGl(", "prepareDriveSounds(", "bindCpuMenu(",
+             "drawMachineMenu(", "requestRelaunch(", "traceKey(",
+             "processRelaunch(" }) {
+        check(v8Source.find(std::string("services.") + service) !=
+                  std::string::npos ||
+              v8Source.find(std::string("c.services.") + service) !=
+                  std::string::npos,
+              std::string("V8 runner uses shared service: ") + service);
+    }
+    check(v8Source.find("c.spec.cpuMhz") != std::string::npos &&
+          v8Source.find("15.6672 MHz") == std::string::npos,
+          "V8 CPU panel frequency comes from the profile descriptor");
+    for (const char* service : {
+             "wireNetwork(", "locate(", "installGlfwErrorCallback(",
+             "configureOpenGl(", "prepareAudioHost(", "bindCpuMenu(",
+             "drawMachineMenu(", "requestRelaunch(", "traceKey(",
+             "drawSaveState(", "processRelaunch(" }) {
+        check(duoSource.find(std::string("services.") + service) !=
+                  std::string::npos ||
+              duoSource.find(std::string("c.services.") + service) !=
+                  std::string::npos,
+              std::string("Duo runner uses shared service: ") + service);
+    }
+    check(duoSource.find("h.hasFloppyDrive = false") != std::string::npos &&
+          duoSource.find("h.supportsEmptyCdDrive = false") !=
+              std::string::npos &&
+          duoSource.find("requestInsertFloppy") == std::string::npos &&
+          duoSource.find("requestInsertBay") == std::string::npos,
+          "Duo runner preserves no-floppy and staged-CD capabilities");
+    check(duoSource.find("frameLegacy(") != std::string::npos,
+          "Duo runner preserves its original ADB host-key surface");
+
+    // ── 12. One reference-fixture locator for GUI and gates ─────────────
+    const std::string fixtureSource = slurp(fixtureStore);
+    const std::string assetSource = slurp(assetFingerprint);
+    check(mainSource.find("preferReferenceFixture(base + rel)") !=
+              std::string::npos &&
+          assetSource.find("preferReferenceFixture(base + rel)") !=
+              std::string::npos,
+          "GUI and gate locators both prefer hdv/ref fixtures");
+    check(fixtureSource.find("parent / \"ref\" / src.filename()") !=
+              std::string::npos &&
+          fixtureSource.find("part == \"ref\"") != std::string::npos &&
+          fixtureSource.find("dst /= \"work\"") != std::string::npos,
+          "reference lookup and writable ref-to-work routing stay paired");
+
+    int localAssetResolvers = 0;
+    std::vector<std::string> bypassingResolvers;
+    const std::filesystem::path testsDir =
+        std::filesystem::path(mainCpp).parent_path().parent_path() / "tests";
+    std::error_code testsEc;
+    for (const auto& entry : std::filesystem::directory_iterator(testsDir, testsEc)) {
+        if (testsEc || entry.path().extension() != ".cpp") continue;
+        const std::string source = slurp(entry.path().string());
+        if (source.find("#include \"AssetFingerprint.h\"") ==
+            std::string::npos) continue;
+        for (const char* signature : {"std::string find(",
+                                      "std::string findAsset("}) {
+            const size_t begin = source.find(signature);
+            if (begin == std::string::npos) continue;
+            ++localAssetResolvers;
+            const size_t end = source.find("\n}", begin);
+            const std::string body = source.substr(begin, end - begin);
+            if (body.find("testasset::find") == std::string::npos)
+                bypassingResolvers.push_back(entry.path().filename().string());
+        }
+    }
+    check(localAssetResolvers > 0 && bypassingResolvers.empty(),
+          bypassingResolvers.empty()
+              ? "all gate-local asset resolvers delegate to the ref-aware helper"
+              : "gate-local resolvers bypass ref preference: " + [&] {
+                    std::string out;
+                    for (const auto& name : bypassingResolvers) out += name + " ";
+                    return out;
+                }());
 
     // Not a soft skip: the roster is generated by our own CMake, so its
     // absence means the build is wrong, not that an asset is missing.

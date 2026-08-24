@@ -20,7 +20,7 @@ JITs in the strict sense; `auto` selects one of them for the default 68040
 path when the host supports it. Their exactness is why the wins are bounded
 (§ 7). The GUI
 says "Moteur accéléré", distinguishes "JIT `<backend>`" from
-"fenêtres (threaded)" and names the backend (`main.cpp:907-921`, gauge
+"fenêtres (threaded)" and names the backend (`main.cpp:807-823`, gauge
 window `jitWindow()` at `:717-794`);
 the subsystem keeps its internal name because `src/jit/` names the seam and
 the machinery, which a future non-conformant fast mode

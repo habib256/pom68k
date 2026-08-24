@@ -24,11 +24,7 @@ void check(bool ok, const char* what) {
     if (!ok) gFails++;
 }
 std::string findAsset(const char* rel) {
-    for (const std::string base : { std::string(), std::string("../") }) {
-        std::string p = base + rel;
-        if (std::ifstream(p, std::ios::binary)) return p;
-    }
-    return {};
+    return testasset::find(rel);
 }
 } // namespace
 

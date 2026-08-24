@@ -203,11 +203,7 @@ void testFamily(const char* family, const std::vector<uint8_t>& rom) {
 // volume. Soft-skips without the two ROM files, like every asset-dependent
 // gate in the tree.
 std::string findAsset(const char* rel) {
-    for (const std::string& base : { std::string(), std::string("../") }) {
-        std::string p = base + rel;
-        if (std::ifstream(p, std::ios::binary)) return p;
-    }
-    return {};
+    return testasset::find(rel);
 }
 
 // FNV-1a over a PG&E memory range, through the core's own byte accessors

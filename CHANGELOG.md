@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 278 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 286 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **why could the IIvx show Command+N live in `KeyMap` while the Finder received an ordinary N — and why did the obvious global timing fix break IIfx?** → [2026-08-25 — The IIvx persist gate exposed a two-transition ADB poll…](#2026-08-25-iivx-command-settle)
 - **"Rogue is still 29 % indexed" and "full-index memory indirection stays slow" — the re-census found 6.37 %, then the measured lowering cut indexed fallbacks another 98.36 %** → [2026-08-23 (eleventh) — Rogue's old 29 % indexed lead collapsed…](#2026-08-23-rogue-re-census)
 - **Why is there one `runDafbGui` and not four runners — and what did the four copies get wrong?** → [2026-08-23 (fifth) — The four DAFB GUI runners were one function copied four times…](#2026-08-23-dafb-runner)
 - **"the arm backoff is architecturally invisible" — on the 030, yes; the 68040 locksteps diverged at their first boundary under a streak-growing backoff, with the D-cache model on** → [2026-08-23 (fourth) — A streak-growing arm backoff…](#2026-08-23-arm-backoff)
@@ -189,6 +190,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Storage — SCSI, IWM/SWIM, media
 
+- **when does `hdv/ref/System.vhd` actually win over the mutable `hdv/System.vhd`, and where does the GUI write?** → [2026-08-24 (seventh) — Reference fixtures become the default lookup…](#2026-08-24-reference-fixture-routing)
 - **what the SWIM read path actually runs now — a real FluxPll separator over a flux view of the track, and why the off-rate gate (not jitter) is the one that catches its regression** → [2026-08-14 (fourth) — The SWIM read engines get their data separator…](#2026-08-14-flux-separator)
 - **a gate that passed for a year while pinning the defect it was meant to catch — the Toby CLUT's address arithmetic** → [2026-08-14 (ninth) — The Toby CLUT stored a grey per write…](#2026-08-14-toby-clut-mouse)
 - **why the Mac II family's colour was broken but its boot screen was not** → [2026-08-14 (ninth) — The Toby CLUT stored a grey per write…](#2026-08-14-toby-clut-mouse)
@@ -319,6 +321,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **which image did this gate actually open, and was the volume clean?** → [2026-08-09 — A red gate can now say for itself whether the image moved](#2026-08-09-asset-fingerprint)
 - **is `extern/moira/` vendored or forked, and who decided?** → [2026-08-09 (later) — Moira is a fork, and the file now says so](#2026-08-09-moira-fork)
 - **where does a machine's GUI thread, command queue and framebuffer handoff live — and what gates them?** → [2026-08-09 (third) — Six copies of the GUI ↔ machine-thread contract became one](#2026-08-09-machinehost)
+- **why do LC III, VASP and RBV have one GUI runner rather than three, and what drift did the copies hide?** → [2026-08-24 — The three Sonora-style GUI runners were one descriptor…](#2026-08-24-sonora-runner)
+- **how did the shared DAFB runner leave `main.cpp` without hiding its process-global dependencies?** → [2026-08-24 (later) — The DAFB GUI lifecycle left `main.cpp` behind twelve explicit services…](#2026-08-24-gui-runner-extraction)
+- **did Sonora need a second executable adapter when its runner left `main.cpp`?** → [2026-08-24 (third) — Sonora joined the same GUI service seam…](#2026-08-24-sonora-gui-extraction)
+- **why do Mac II/IIx/IIcx/SE/30 and IIfx share one host lifecycle without hiding their board differences?** → [2026-08-24 (fourth) — Mac II and IIfx share the Toby/NuBus lifecycle…](#2026-08-24-toby-gui-extraction)
+- **what remained in the five-profile V8 runner after its host lifecycle moved out of `main.cpp`?** → [2026-08-24 (fifth) — V8/Eagle/Spice/Tinker Bell join the GUI service seam…](#2026-08-24-v8-gui-extraction)
+- **did the no-floppy Duo need to pretend it was a desktop to finish GUI-runner extraction?** → [2026-08-24 (sixth) — Duo closes GUI-runner extraction…](#2026-08-24-duo-gui-extraction)
 
 ---
 
@@ -326,6 +334,14 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-25** — [The IIvx persist gate exposed a two-transition ADB poll: Command must settle before N on VASP, but not globally](#2026-08-25-iivx-command-settle)
+- **2026-08-24 (seventh)** — [Reference fixtures become the default lookup: gates read `hdv/ref`, GUI sessions write `hdv/work`](#2026-08-24-reference-fixture-routing)
+- **2026-08-24 (sixth)** — [Duo closes GUI-runner extraction: eleven instantiations, zero autonomous bodies, 3105 → 2873 lines](#2026-08-24-duo-gui-extraction)
+- **2026-08-24 (fifth)** — [V8/Eagle/Spice/Tinker Bell join the GUI service seam: ten instantiations covered, 3460 → 3105 lines](#2026-08-24-v8-gui-extraction)
+- **2026-08-24 (fourth)** — [Mac II and IIfx share the Toby/NuBus lifecycle: nine wrappers behind one seam, 3923 → 3460 lines](#2026-08-24-toby-gui-extraction)
+- **2026-08-24 (third)** — [Sonora joined the same GUI service seam: seven wrappers behind one contract, 4243 → 3923 lines](#2026-08-24-sonora-gui-extraction)
+- **2026-08-24 (later)** — [The DAFB GUI lifecycle left `main.cpp` behind twelve explicit services: 4641 → 4243 lines](#2026-08-24-gui-runner-extraction)
+- **2026-08-24** — [The three Sonora-style GUI runners were one descriptor: 5125 → 4641 lines, four autonomous runners remain](#2026-08-24-sonora-runner)
 - **2026-08-23 (eleventh)** — [Rogue's old 29 % indexed lead collapsed to 6.37 %; measured bitfields and full indirection cut all gameplay fallbacks 99.48 %](#2026-08-23-rogue-re-census)
 - **2026-08-23 (tenth)** — [Four classic JIT levers implemented and priced: all exact, none faster yet; the production defaults do not regress](#2026-08-23-four-jit-levers)
 - **2026-08-23 (ninth)** — [Direct full-index `LEA` consumes the complete IR plan: suppression and 9/11/15-cycle displacement stay native, indirection stays slow](#2026-08-23-full-direct-lea)
@@ -604,6 +620,300 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-25-iivx-command-settle"></a>
+## 2026-08-25 — The IIvx persist gate exposed a two-transition ADB poll: Command must settle before N on VASP, but not globally
+
+The complete 226-test sweep found one red after **6 175.34 s**:
+`iivx_persist_etalon`. The IIvx booted the Finder, but the private persist
+copy tapped `n` and Return for four frames each; no candidate folder name
+appeared, the in-memory disk stayed byte-identical, and the reboot quite
+correctly found nothing to keep. Every other gate passed.
+
+Moving the leg onto `BeyondBoot::persist` removed the stale private copy and
+made the instrument say more. `$910 CurApName` answered `Finder`, while the
+gesture-peak `KeyMap` read `00 00 00 00 00 20 80 00`: N and Command were
+both live in the guest, yet a screen capture showed no highlighted menu and
+no new folder. Storage was downstream of the failure; the Finder had never
+received a modified N event.
+
+The ordering explains the apparently contradictory evidence. With only six
+frames between the two host transitions, the IIvx can collect Command-down
+and N-down in one two-byte ADB Talk R0. The physical/MAME packet order emits
+the newer transition first, so the Event Manager posts an ordinary N before
+Command becomes established; `KeyMap`, sampled later, still truthfully shows
+both bits. Giving VASP 150 frames to settle Command in its own poll closes
+that race. The first corrected run reports `first write 0 frames`,
+`'Dossier sans titre' 11 -> 12`, image modified, Finder reached again and
+folder survived.
+
+The first fix made 150 frames global and the affected matrix caught the
+mistake: `iifx_persist_etalon`, previously green in 15 s, stopped creating a
+folder. The final contract therefore exposes `Hooks::commandSettleFrames`,
+keeps the historical six-frame default, and selects 150 only in the IIvx
+rig. Both boundary controls pass together: IIvx **187.80 s**, IIfx
+**15.67 s**. After every consumer was relinked, the complete persistence
+matrix plus the IIvx soak passed **14/14 in 1 357.37 s**; IIvx soak itself
+remained green in 147.28 s.
+
+Final repository checks after documentation: the asset-free tier is
+**84/84 in 2.52 s**, `assets.lock` verification is **4/4 present and exact**,
+the 37-profile executable answers `--version`, and `git diff --check` is clean.
+
+---
+
+<a id="2026-08-24-reference-fixture-routing"></a>
+## 2026-08-24 (seventh) — Reference fixtures become the default lookup: gates read `hdv/ref`, GUI sessions write `hdv/work`
+
+The immutable-fixture mechanism existed but no default path selected it.
+`ScsiDisk` already knew how to clone a writable `ref/` open into `work/`, yet
+all twelve platform probes and the gate helper still resolved the mutable
+`hdv/<name>` first. Merely creating `hdv/ref/<name>` therefore changed nothing.
+
+`preferReferenceFixture` closes that missing edge. A logical
+`hdv/<name>` now resolves to `hdv/ref/<name>` when the exact regular file
+exists, in both the executable's common locator and `AssetFingerprint`'s gate
+locator. The writable GUI open then follows the existing one-time clone to
+`hdv/work/<name>`; gates keep their default read-only `ScsiDisk::open` and
+therefore read the reference bytes themselves. If no reference exists, or the
+user passes an explicit path elsewhere, historical direct-write behaviour is
+unchanged.
+
+That gate locator was less common than its name implied: 41 test files still
+owned a local `find()` and 17 more owned `findAsset()`. They now delegate to
+`testasset::find` / `findAny`; the shared search preserves the one exceptional
+two-level-up probe as a superset. `docs_test` scans every source that includes
+`AssetFingerprint.h` and rejects a local resolver that stops delegating.
+
+The Disques picker scans `hdv/ref/` and labels those rows
+`référence → work`, so the safety boundary is visible rather than implicit.
+`fixture_store_test` now proves all three decisions without Apple assets:
+reference wins over a same-named mutable image, absent reference falls back,
+and guest writes to the persistent work clone cannot alter the reference.
+
+This completes the role-separation half of the architecture item. The
+remaining half is data, not routing: add the qualified ROM and reference-disk
+identities to `assets.lock` once their accepted bytes are chosen.
+
+Fresh full build, manifest verification (**4/4 present and exact**) and the
+complete asset-free tier: **84/84 in 5.21 s**.
+
+---
+
+<a id="2026-08-24-duo-gui-extraction"></a>
+## 2026-08-24 (sixth) — Duo closes GUI-runner extraction: eleven instantiations, zero autonomous bodies, 3105 → 2873 lines
+
+The last autonomous `run*()` body is gone. `DuoRunnerSpec` and
+`runDuoGui<MachineT>` now live in `src/GuiRunner.h`; `runDuo` constructs the
+MSC memory/CPU/audio objects, rejects a bad ROM, reports missing PG&E
+firmware, and passes the board to the same `gGuiServices` object used by all
+other extracted lifecycles.
+
+The Duo is not made to impersonate a desktop. The runner preserves the 7.5.5
+boot-image preference, staged secondary CD changes, PG&E-owned PRAM/RTC,
+640×400 GSC panel, CPU hold/status row, save states and legacy ADB surface.
+Its `DiskBaysHost` still advertises `hasFloppyDrive = false` and
+`supportsEmptyCdDrive = false`, and exposes neither floppy nor live-CD hooks.
+The historical empty-boot filename remains `duo230.duo230.pram`.
+
+`MscMemory` has no `attachDriveSounds()`, so the process boundary gains one
+honest operation instead of a fake memory API: `prepareAudioHost` initializes
+ASC/drive-menu host state without attaching mechanical devices. It is the
+fourteenth explicit `GuiServices` operation. The repository contract proves
+the Duo lifecycle stays outside `main.cpp`, its wrapper instantiates it once,
+all eleven consumed services cross the adapter, and its negative media
+capabilities cannot silently regrow.
+
+`main.cpp` loses exactly **232 lines, 3105 → 2873**; `GuiRunner.h` grows
+1419 → **1666**. The ratchet falls again. Across the completed sequence,
+eleven wrapper instantiations now consume five family lifecycles through one
+services adapter, and no autonomous `run*()` body remains.
+
+A fresh GUI build and version smoke pass, then the complete asset-free tier:
+**84/84 in 2.29 s**. The focused architecture and file-size gates pass too.
+
+---
+
+<a id="2026-08-24-v8-gui-extraction"></a>
+## 2026-08-24 (fifth) — V8/Eagle/Spice/Tinker Bell join the GUI service seam: ten instantiations covered, 3460 → 3105 lines
+
+The five-profile V8 body is no longer autonomous. `V8RunnerSpec` and
+`runV8Gui<MachineT>` now live in `src/GuiRunner.h`; `runLcII` only decodes
+LC, LC II, Classic II, Color Classic or Mac TV, constructs the matching
+memory/CPU/video objects, and supplies the diagnostic and RTC seed callbacks.
+It consumes the existing `gGuiServices` object, so DAFB, Sonora, Toby/NuBus
+and V8 still have one executable boundary.
+
+The extracted lifecycle preserves the per-profile boot-volume search,
+writable SCSI and floppy policy, hot CD bays, tagged PRAM/save states, Egret
+defaults, Line-F logger, window placement, Emscripten inline stepping,
+full ADB table with tracing, live monitor buttons and floppy flush on exit.
+The descriptor keeps launch-time monitor selection separate from visibility
+of the monitor controls because those historical policies are not identical.
+
+Making the CPU frequency data exposed one copied constant: the Mac TV runs
+at 31.3344 MHz but its CPU panel still printed 15.6672 MHz. The panel now
+consumes `cpuMhz` from the profile descriptor, so all five labels follow the
+clock used to construct the CPU. The repository contract also proves that
+the V8 specification/lifecycle stay outside `main.cpp`, exactly one wrapper
+instantiates them, and all ten process-service calls remain explicit.
+
+`main.cpp` loses exactly **355 lines, 3460 → 3105**; `GuiRunner.h` grows
+1103 → **1419**, and the ratchet falls with the composition root. Only
+`runDuo` remains autonomous.
+
+A fresh GUI build and version smoke pass, then the complete asset-free tier:
+**84/84 in 0.84 s**. The focused architecture and file-size gates pass too.
+
+---
+
+<a id="2026-08-24-toby-gui-extraction"></a>
+## 2026-08-24 (fourth) — Mac II and IIfx share the Toby/NuBus lifecycle: nine wrappers behind one seam, 3923 → 3460 lines
+
+The next bounded pair is complete. `TobyRunnerSpec` and
+`runTobyGui<MachineT>` now live in `src/GuiRunner.h`; the Mac II-family
+wrapper (II, IIx, IIcx and SE/30) and the IIfx wrapper construct their own
+memory/CPU/video contract, then pass it to the same `gGuiServices` object as
+the four DAFB and three Sonora wrappers. There is still one executable
+adapter, now serving nine wrapper instantiations across three lifecycle
+families.
+
+The common runner owns SCSI/CD/floppy setup, PRAM and snapshot paths, GLFW,
+ImGui, disk bays, screen/mouse/ADB input, engine hooks and teardown. The
+descriptor preserves the Mac II family's four-volume fallback order and
+lower-case profile tags, and IIfx's System 7.6-first search plus its historic
+lower-case `.iifx.pram` / capitalized `.IIfx.pomss` split. A board callback
+retains the Mac II HMMU row and the IIfx's two live 65C02 cycle counters.
+`AdbKeyboard::frameLegacy` also preserves the old pair's exact host-key surface
+(Escape, no keypad), while the descriptor keeps Mac II key tracing on and
+IIfx tracing off.
+
+The one process dependency that had still been ambient in both copies — the
+snapshot widget — is now the explicit thirteenth `GuiServices` operation.
+The repository contract proves that `main.cpp` owns neither the Toby
+specification nor lifecycle, exactly two wrappers instantiate it, and every
+service call remains visible. `main.cpp` loses exactly **463 lines, 3923 →
+3460**; `GuiRunner.h` grows 808 → **1103**, and the file-size ratchet falls
+with the composition root. Only the V8/`runLcII` and Duo runners remain
+autonomous.
+
+A fresh GUI build and `POM68K --version` smoke pass, followed by the complete
+asset-free tier: **84/84 in 0.83 s**. The targeted repository contract and
+file-size ratchet also pass independently.
+
+---
+
+<a id="2026-08-24-sonora-gui-extraction"></a>
+## 2026-08-24 (third) — Sonora joined the same GUI service seam: seven wrappers behind one contract, 4243 → 3923 lines
+
+The next bounded step named by the DAFB extraction is complete without a
+second architecture. `SonoraRunnerSpec` and `runSonoraGui` now live beside
+their DAFB counterparts in `src/GuiRunner.h`, and the LC III/AIO, VASP and
+RBV wrappers pass the same `gGuiServices` object as the four 040 wrappers.
+`GuiServices` moved ahead of both wrapper groups; only its strict-LLE
+qualification methods are defined later, once the DAFB preflight helpers
+exist. Sonora neither needs nor grows a parallel adapter.
+
+The move preserves the three-platform media fallback order, empty CD bay,
+profile-tagged PRAM/save states, RTC seeder, startup floppy, 1320×1040
+window, per-profile clear colour and the intentional CPU-panel asymmetry:
+LC III exposes monitor controls, VASP and RBV do not. Its ADB table is now
+the shared `AdbKeyboard` table. A no-op trace callback deliberately preserves
+the old Sonora behaviour under `POM68K_KEY_TRACE`; enabling trace there would
+be a diagnostic feature change, not part of this extraction.
+
+The component grows from 514 to **808 lines** while `main.cpp` loses exactly
+**320, 4243 → 3923**; the ratchet falls with it. The repository contract now
+proves that both specifications and both lifecycle templates remain outside
+`main.cpp`, exactly four DAFB and three Sonora wrappers instantiate them,
+there is one `GuiServices` definition, and each lifecycle reaches the process
+only through the services it actually consumes. A fresh `POM68K` GUI build
+passes, then the complete asset-free tier passes **84/84 in 0.80 s**,
+including the strengthened `docs_test` and the 3923-line budget. Four
+autonomous bodies remain: Mac II, IIfx, V8 and Duo; the next bounded
+comparison is the Mac II/IIfx Toby pair.
+
+---
+
+<a id="2026-08-24-gui-runner-extraction"></a>
+## 2026-08-24 (later) — The DAFB GUI lifecycle left `main.cpp` behind twelve explicit services: 4641 → 4243 lines
+
+The previous pass had made four DAFB copies one `runDafbGui`, but had not
+made it a component: the whole lifecycle still lived in `main.cpp` and read
+its process statics directly. That was the exact next step named in
+`TODO.md`. Moving the template mechanically into a header would only have
+hidden an include-order dependency, because asset lookup, strict-LLE
+qualification, AppleTalk wiring, drive sounds, the global Machine/CPU menus
+and process relaunch all belong to the executable.
+
+`src/GuiRunner.h` now owns `DafbRunnerSpec`, `runDafbGui`, the emulated
+screen's capture/zoom helper, and the DAFB ADB transition table. The template
+accepts a service object and reaches the executable through twelve named
+operations: qualify/check-only, network wiring, asset lookup, GLFW/OpenGL
+configuration, drive sounds, CPU-menu hooks, menu drawing, relaunch request,
+key tracing and final relaunch. `main.cpp` supplies those operations in the
+small `GuiServices` adapter beside the four model wrappers. The header is
+self-contained; it does not depend on being included after the old statics.
+
+This preserves the boot-media order, writable-SCSI and floppy policy,
+profile-tagged PRAM/save-state paths, RTC owner, disk-bay callbacks, screen
+capture, ADB codes, framebuffer upload, engine switching and teardown.
+`main.cpp` loses **398 lines, 4641 → 4243**; the new component is 514 lines,
+and the file-size ratchet is lowered to 4243. This is separation rather than
+line-count theatre: the process-global coupling is now visible in one adapter
+instead of being ambient inside the reusable lifecycle.
+
+The repository contract in `docs_test` checks that `main.cpp` contains no
+DAFB specification or runner implementation, that exactly four wrappers
+instantiate the shared template, that `ScreenInput` stays in the component,
+and that every one of the twelve service calls remains explicit. A fresh
+`POM68K` GUI build passed, followed by `docs_test`,
+`file_size_budget_test` and the complete asset-free tier: **84/84 in
+0.81 s**. The next bounded move is to migrate `runSonoraGui` onto this same
+service seam before moving it into `GuiRunner.h`; a second parallel adapter
+would defeat the point.
+
+---
+
+<a id="2026-08-24-sonora-runner"></a>
+## 2026-08-24 — The three Sonora-style GUI runners were one descriptor: 5125 → 4641 lines, four autonomous runners remain
+
+The named next group in `TODO.md` was exactly as repetitive as the DAFB
+group before it. `runLc3`, `runVasp` and `runIIsi` already constructed three
+instantiations of `SonoraStyleMachine<Mem,Cpu,Video>`, yet each carried its
+own copy of SCSI/CD/floppy attachment, PRAM and save-state paths, GLFW/ImGui
+setup, audio, engine hooks, disk-bay callbacks, input tables, framebuffer
+upload and teardown. Their actual platform decisions fit in a descriptor plus
+the construction of `mem`/`cpu`/`video` and a board-specific RTC seeder.
+
+`SonoraRunnerSpec` now owns the human title, PRAM tag, optional first disk,
+optional CPU panel, Machine-menu identity, save-state identity, monitor sense
+and clear colour. One `runSonoraGui<MachineT>` consumes it; the three old
+functions are wrappers of 59, 30 and 36 lines. The refactor removes 485 lines
+from `main.cpp` (5125 → 4640, then one readability split → **4641**) and the
+file-size ratchet fell with it. The two globals used only to smuggle the
+Sonora title and menu kind into a captureless frame lambda disappeared, as
+did dead per-copy `samePath`/`relaunch` locals.
+
+The descriptor also exposed two copy artifacts. The LC III-family CPU panel
+had hard-coded **25 MHz**, so LC III+, LC 550 and Color Classic II lied about
+their 33 MHz clock; it now reads the selected profile. A diskless IIsi/IIci
+used `iisi.iisi.pram` / `iici.iici.pram` while every disk-backed launch used
+one profile tag; the common path normalizes the diskless spelling to
+`iisi.pram` / `iici.pram`. Disk-backed filenames, titles, menu identities,
+save-state IDs, first-disk ordering, RTC owners, monitor defaults, window
+colours and the intentional absence of the CPU panel on VASP/RBV are
+otherwise preserved.
+
+The whole configured tree rebuilt after the edit, including the `POM68K` GUI
+translation unit, then the fresh `asset-none` tier passed **84/84 in
+40.16 s**. Its `machinehost_test`, `config_test`, `docs_test` and
+`file_size_budget_test` gates cover the structural contracts; the latter
+pins the new 4641-line ceiling. Four autonomous runner bodies remain: Mac II,
+IIfx, V8 and Duo. The next named palier is no longer this trio: it is lifting
+the already-shared `runDafbGui` concern out of `main.cpp` into `GuiRunner.h`.
 
 ---
 

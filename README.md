@@ -48,7 +48,10 @@ an SST vector set and soft-skip without one.
 
 CTest's generated `pom68k_gate_manifest.tsv` gives every gate independent
 asset/host/scope/tier dimensions. Reference media under an exact `ref/` path
-are never opened writable: `ScsiDisk` clones them once into sibling `work/`.
+are never opened writable: a normal `hdv/<name>` probe prefers
+`hdv/ref/<name>` when present, and `ScsiDisk` clones the first writable GUI
+open once into sibling `hdv/work/`. Without the reference twin, the historical
+direct-write behaviour remains available.
 `python3 tools/verify_assets.py` verifies each present `assets.lock` entry;
 `performance_budgets.tsv` keys policy by workload, guest CPU family and host
 profile (architecture for deterministic daily gates, named reference host for
@@ -202,11 +205,11 @@ animates the 512×342 framebuffer.
 **Without a ROM argument** the app looks for, in order: `roms/maclcii.rom`,
 a `35C28F5F` scan of `roms/`, `roms/macplus.rom`, `roms/macii.rom`,
 `roms/quadra605.rom`, then the `9779D2C4` and `FF7439EE` scans
-(`src/main.cpp:4684-4698`). The default machine is therefore the **Mac LC II**.
+(`src/main.cpp:2429-2447`). The default machine is therefore the **Mac LC II**.
 Each path is tried against the working directory, the executable's directory
-and its parent (`findPath`, `src/main.cpp:308`); the signature scan walks
+and its parent (`findPath`, `src/main.cpp:309-316`); the signature scan walks
 `roms/` recursively and matches the CRC32 hex **in the file name**
-(`findRomBySignature`, `src/main.cpp:322`), which is how Apple dumps are
+(`findRomBySignature`, `src/main.cpp:318-348`), which is how Apple dumps are
 normally named — rename yours to something else and only the exact short name
 or an explicit `argv[1]` will find it.
 
@@ -214,7 +217,7 @@ or an explicit `argv[1]` will find it.
 
 Dispatch is by ROM **size**, then by the header checksum (the first four
 bytes, big-endian), then by an environment variable for models that share a
-ROM and differ only by clock / CPU / model ID. `src/main.cpp:4706` is the
+ROM and differ only by clock / CPU / model ID. `src/main.cpp:2449-2578` is the
 code; the **Machine** menu sets the same variables and relaunches.
 
 | Size | Checksum | Machine(s) | Selector |
@@ -283,6 +286,11 @@ positional; there is no `--help`.
 | 040 machines | `hdv/MacOS-8.1-boot.vhd`, `boot.vhd` |
 | Duo 230 | `hdv/System 7.5.5 HD.dsk`, `boot.vhd` |
 
+Each `hdv/<name>` in that table is a logical name. If
+`hdv/ref/<name>` exists, both the GUI and gates select that immutable fixture;
+the GUI actually writes its persistent clone at `hdv/work/<name>`. An explicit
+path outside `hdv/ref/` remains directly writable for ordinary user volumes.
+
 Bare HFS images — Infinite Mac style `'LK'` boot blocks at LBA 0, or the
 zero-boot-block data volumes `dir2hfs.py` bakes, recognised by the MDB `'BD'`
 at `$400` — get an in-memory DDM/partition-map façade at attach time. That
@@ -340,8 +348,9 @@ wheel), **Ctrl+Alt+G**, or **Delete**, toggles full capture (cursor grabbed,
 raw motion); any of the three releases it again. Hovering the screen is
 needed to capture, never to release. The host keyboard maps to M0110 codes on the
 Plus and to raw ADB codes (= M0110 code >> 1) elsewhere (M0110 table:
-`src/main.cpp:5058`; the ADB tables are one per machine loop, e.g.
-`src/main.cpp:1300` — notes in
+`src/main.cpp:2806-2833`; the shared DAFB/Sonora/V8/Toby/Duo ADB table is in
+`GuiRunner.h:182-212`, with the Toby pair and Duo's Escape/no-keypad variant
+at `GuiRunner.h:150-159` — notes in
 `DEV.md` § *Input: M0110 keyboard + quadrature mouse*).
 
 Menus:

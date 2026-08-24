@@ -20,6 +20,30 @@ struct WritableFixture {
     std::string error;
 };
 
+// A well-known boot image named as hdv/foo first resolves to hdv/ref/foo when
+// that immutable copy exists. Explicit hdv/ref and hdv/work paths, nested
+// user directories and non-media paths keep their spelling. This makes the
+// migration additive: an old checkout with only hdv/foo behaves exactly as
+// before, while a reference-bearing checkout cannot accidentally prefer the
+// mutable legacy file beside it.
+inline std::string preferReferenceFixture(const std::string& source) {
+    namespace fs = std::filesystem;
+    const fs::path src(source);
+    const fs::path parent = src.parent_path();
+    if (parent.filename() != "hdv") return source;
+
+    const fs::path candidate = parent / "ref" / src.filename();
+    std::error_code ec;
+    return fs::is_regular_file(candidate, ec) && !ec ? candidate.string()
+                                                     : source;
+}
+
+inline bool isReferenceFixturePath(const std::string& source) {
+    const std::filesystem::path parent =
+        std::filesystem::path(source).parent_path();
+    return parent.filename() == "ref" && parent.parent_path().filename() == "hdv";
+}
+
 inline WritableFixture writableFixture(const std::string& source) {
     namespace fs = std::filesystem;
     WritableFixture out;

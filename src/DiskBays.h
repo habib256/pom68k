@@ -42,6 +42,8 @@
 //   software, not the bus (`CHANGELOG.md` 2026-08-15 (fifth)).
 // ─────────────────────────────────────────────────────────────────────────────
 
+#include "FixtureStore.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <functional>

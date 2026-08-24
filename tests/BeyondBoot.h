@@ -20,15 +20,18 @@
 //             volume whose Startup Items launch an application leaves that
 //             one in front, and it answers Cmd-N with something else.
 //
-// The first four machines (LC II, Q605, IIvx, IIsi) each carry a private
-// copy of these flows; extending to the whole roster made an engine worth
-// having. What stays PER MACHINE is exactly what really differs: the rig
+// The first four machines (LC II, Q605, IIvx, IIsi) started with private
+// copies of these flows; IIvx and IIsi now route their persist legs here,
+// and extending to the whole roster made an engine worth having. What stays
+// PER MACHINE is exactly what really differs: the rig
 // and its assets, the boot loop, the Finder signature (each boot etalon's
 // own thresholds), the Time read (physical peek where low memory is
 // physical, the Mmu030Peek walk on RAM-based-video machines), and the
-// reboot procedure. Key gestures use the 150-frame hold everywhere — it
+// reboot procedure. Ordinary keys use the 150-frame hold everywhere — it
 // outlasts a Slow Keys acceptance delay and a normal keyboard accepts it
 // just the same (the ten-month-red-gate lesson, `pom68k-81-image-slow-keys`).
+// A machine may separately lengthen the pause that establishes Command
+// before N when its ADB poll can otherwise return both in one packet.
 //
 // The hooks are std::function on purpose: eight thin gates bind lambdas
 // over their rig, and a test pays nothing for the indirection.
@@ -51,6 +54,7 @@ struct Hooks {
     std::function<bool()> finderUp;            // the boot etalon's signature
     std::function<bool(uint32_t*)> time;       // Mac clock (seconds); false = unreadable
     std::function<void(uint8_t, bool)> key;    // ADB/M0110 code, down/up
+    int commandSettleFrames = 6;               // establish Cmd before queueing N
     std::function<std::vector<uint8_t>&()> disk;
     std::function<bool()> reboot;              // hard reset → Finder again
     std::function<void(const char*)> dump;     // POM68K_DUMP screenshot, or {}
@@ -170,7 +174,13 @@ inline int persist(const Hooks& h) {
     };
     mark("gesture: Cmd-N down");
     h.key(0x37, true);                         // Cmd down
-    h.frames(6);
+    // On the IIvx, six frames let both transitions land in one two-byte
+    // Talk R0 response; the physical keyboard/MAME byte order can then
+    // present the newer 'n' first. KeyMap ends up with both bits live, but
+    // the Event Manager has already posted an unmodified N. Other buses —
+    // notably IIfx — require the historical short modifier interval, so the
+    // rig chooses this pause instead of imposing one timing on every ADB.
+    h.frames(h.commandSettleFrames);
     h.key(0x2D, true);                         // 'n' down, held past Slow Keys
     h.frames(75);
     if (h.probe) h.probe();                    // both keys should be live NOW

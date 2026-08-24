@@ -52,12 +52,7 @@
 namespace {
 
 std::string findAsset(std::initializer_list<const char*> names) {
-    for (const char* name : names)
-        for (const std::string& base : { std::string(), std::string("../") }) {
-            std::string path = base + name;
-            if (std::ifstream(path, std::ios::binary)) return path;
-        }
-    return {};
+    return testasset::findAny(names);
 }
 
 std::vector<uint8_t> readFile(const std::string& path) {

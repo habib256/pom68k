@@ -75,17 +75,28 @@ thread en 2026-08-09, la moitié runner ne l'était pas, et le coût s'est
 mesuré en bugs, pas en lignes — trois plateformes dessinaient dans une
 fenêtre nommée « Quadra 605 », trois affichaient un CPU faux, et tout
 lancement par défaut imprimait `680040`. Les quatre runners DAFB sont
-tombés le 2026-08-23 (1433 l. → 568) ; **sept restent des copies**, et
-`main.cpp` reste à 5125 lignes. Deux paliers, dans cet ordre :
-
-1. le trio `SonoraStyleMachine` (`runLc3`/`runVasp`/`runIIsi`), qui partage
-   déjà un template machine exactement comme les quatre précédents ;
-2. sortir `runDafbGui` de `main.cpp` vers un `GuiRunner.h` — c'est le palier
-   qui retire réellement le concern du fichier, et le seul qui demande de
-   lever les ~18 statiques que le corps partagé lit encore.
+tombés le 2026-08-23 (1433 l. → 568), puis le trio
+`SonoraStyleMachine` le 2026-08-24 : un `runSonoraGui` piloté par
+`SonoraRunnerSpec`, trois wrappers, et `main.cpp` 5125 → 4641 lignes. Plus
+tard le même jour, le cycle DAFB partagé est sorti dans `GuiRunner.h` :
+`GuiServices` rend explicites ses douze dépendances de processus, le test de
+contrat empêche son retour, et `main.cpp` tombe à 4243 lignes. Au troisième
+passage, `runSonoraGui` rejoint le même header et le même adaptateur — sept
+wrappers sont verrouillés par un seul contrat, et `main.cpp` tombe à 3923
+lignes. Au quatrième passage, Mac II/IIx/IIcx/SE/30 et IIfx rejoignent un
+`runTobyGui` commun; le panneau snapshot rend la treizième dépendance du même
+adaptateur explicite, neuf wrappers sont couverts, et `main.cpp` tombe à 3460
+lignes. Au cinquième passage, les cinq profils V8/Eagle/Spice/Tinker Bell
+passent par `runV8Gui`; dix instanciations sont couvertes, le panneau Mac TV
+affiche enfin 31,3344 MHz, et `main.cpp` tombe à 3105 lignes. Au sixième
+passage, `runDuoGui` conserve explicitement l'absence de floppy et de baie CD
+à chaud ainsi que le contrat PG&E; l'initialisation audio seule devient la
+quatorzième opération du même adaptateur, onze instanciations sont couvertes,
+et `main.cpp` tombe à **2873 lignes**. **Le chantier est clos : aucun corps
+`run*()` autonome ne reste.**
 
 Le garde-fou est posé : `file_size_budget_test` interdit à `main.cpp` de
-remonter au-dessus de 5125. Un treizième runner copié ne compile plus sans
+remonter au-dessus de 2873. Un nouveau runner copié ne compile plus sans
 que quelqu'un édite le budget et dise pourquoi.
 
 La fenêtre se ferme seulement quand les quatre sorties suivantes sont vraies :
@@ -1319,7 +1330,7 @@ Two findings from that batch that are still load-bearing:
   solved: _FP68K binds the integer PACK 4"; gate `q605_barefpu_boot_etalon`
   reaches the Finder under a true `FPUModel::NONE`). **Unverified whether the
   030/LC II path still needs the same UniversalInfo / defaultRSRCs selection**
-  (`POM68K_NOFPU` at `main.cpp:1874,1887`; the FPU model itself is set in
+  (`POM68K_NOFPU` at `main.cpp:1383` and `main.cpp:1390`; the FPU model itself is set in
   `Cpu030.cpp:46`) — re-test before spending effort here; the original O6.13
   diagnosis may already be obsolete.
 
@@ -1507,7 +1518,7 @@ Explicitly **out of scope** for now: AV DSP, all 4 MB PPC ROMs.
   /PMU_INT level, `MscMemory::decodeScreen` (fixed 640×400 LCD, grayscale by
   GSC reg 4 bits 0-1), gate `duo230_boot_etalon` (System 7.5.5, SCSI 3448
   cmds), and since 2026-08-06 **the Duo 230 is the 37th GUI profile** —
-  `runDuo` (`main.cpp:4356`), `MachineKind::Duo`, `SnapMachine::Duo230 = 37`,
+  `runDuo` (`main.cpp:2343`), `MachineKind::Duo`, `SnapMachine::Duo230 = 37`,
   PRAM through the PG&E's own RAM + 32 KB SRAM, save states in
   `savestate_030_test`. `docs/DUO_BRINGUP.md` § 3b lists what is deliberately
   NOT wired (floppy, drive sounds, live CD-bay swap, right mouse button — all
@@ -1567,7 +1578,7 @@ Local, never committed (`hdv/` is gitignored): Infinite Mac copies of System 4.1
 `HD20SC.vhd`, `boot.vhd` / `GISTPERSO-boot.vhd`, `MacOS-8.1-boot.vhd`.
 (`MacOS-7.6-boot.vhd` was deleted as corrupt — the refusal it triggered is
 closed, `CHANGELOG.md` 2026-08-13 (seventh); `runIIfx` still probes for it
-first and falls through to `GISTPERSO-boot.vhd`, `main.cpp:1479-1481`.)
+first and falls through to `GISTPERSO-boot.vhd`, `main.cpp:1504-1505`.)
 Full tree also at `../refs/infinite-mac/Images`. Missing files: fetch with
 **Scrapling** (not raw `curl` through the sandbox proxy) — `Fetcher.get` /
 `scrapling extract get` on
@@ -1594,26 +1605,47 @@ being a registered gate is a configure-time `FATAL_ERROR`), `docs_test`, and
 `docs_test` fails when it stops covering every dated entry — a generated index
 that silently falls behind is worse than none, because it looks complete).
 
-- [ ] **[AR] [PRIORITAIRE — § 0] The `run*()` bodies: four done, seven to
-  go.** The hosting was unified in 2026-08-09; the `run*()` functions that
+- [x] **[AR] [CLOS — § 0] The `run*()` bodies: all eleven instantiations
+  extracted.** The hosting was unified in 2026-08-09; the `run*()` functions that
   wire it up were not, and the diff between any two was almost entirely a
   *descriptor*. **The four `DafbMachine` runners collapsed on 2026-08-23**
   (`CHANGELOG.md`): one
-  `runDafbGui<MachineT>` (`main.cpp:3756`) driven by a six-field
-  `DafbRunnerSpec` (`main.cpp:3731`), plus a wrapper per platform that decodes
+  `runDafbGui<MachineT>` (`GuiRunner.h:244-538`) driven by a six-field
+  `DafbRunnerSpec` (`GuiRunner.h:229-236`), plus a wrapper per platform that decodes
   its own model and constructs `mem`/`cpu` — 1433 lines → 568, and the three
   drift bugs the copies had accumulated (two window titles, one banner) died
-  with them. **Seven remain** (`main.cpp:1075-4627`, one per platform bar the
-  compacts, which run inline in `main()`): `runMacII`, `runIIfx`, `runLcII`,
-  `runLc3`, `runVasp`, `runIIsi`, `runDuo`. The next natural group is the
-  `SonoraStyleMachine` trio — `runLc3` (`:2355`), `runVasp` (`:2707`) and
-  `runIIsi` (`:3008`) — which already share a machine template the same way
-  the four just did. Then the harder half: `runDafbGui` still lives in
-  `main.cpp` because it reads ~18 of its statics (`ScreenInput`, the key
-  table, `machineMenu`, the `g*` engine hooks, `findPath`, `initDriveSfx`…);
-  lifting those into a `GuiRunner.h` is what actually removes the concern from
-  the file, and it is what the ratchet (`tools/check_file_sizes.sh`) exists to
-  keep pressure on.
+  with them. On 2026-08-24 that shared lifecycle itself left `main.cpp`:
+  `GuiServices` (`main.cpp:1242-1342`) exposes asset lookup, LLE preflight,
+  AppleTalk, drive sounds, menus, input tracing and relaunch explicitly, and
+  `docs_test` locks the boundary. **The `SonoraStyleMachine` trio also
+  collapsed on 2026-08-24**:
+  `runSonoraGui<MachineT>` (`GuiRunner.h:562-832`) consumes
+  `SonoraRunnerSpec` (`GuiRunner.h:540-555`), while `runLc3`
+  (`main.cpp:1527`), `runVasp` (`main.cpp:1591`) and
+  `runIIsi` (`main.cpp:1630`) only decode their profile and construct
+  `mem`/`cpu`/`video` — 5125 → 4641 lines for the file, and the LC III+
+  CPU panel no longer says 25 MHz. Its lifecycle joined `GuiRunner.h` behind
+  the same service object later that day, taking `main.cpp` 4243 → 3923
+  without a second adapter. **The Mac II family and IIfx joined next**:
+  `runTobyGui<MachineT>` (`GuiRunner.h:850-1100`) retains their different
+  boot search, PRAM/snapshot
+  tags, key tracing and CPU status rows while sharing media, window, input
+  and teardown. Two wrappers consume it, the same adapter now exposes the
+  snapshot widget explicitly; `runMacII` (`main.cpp:1412`) and `runIIfx`
+  (`main.cpp:1481`) are now composition wrappers, and `main.cpp` falls
+  3923 → 3460. **The V8 family followed**: `V8RunnerSpec`
+  (`GuiRunner.h:1107-1117`) and `runV8Gui<MachineT>`
+  (`GuiRunner.h:1121-1416`) carry the five profiles' monitor policies,
+  media, input and CPU panel; `runLcII` (`main.cpp:1345`) is now only the
+  profile decoder and hardware construction. The descriptor removes the
+  Mac TV panel's stale 15.6672 MHz constant, and `main.cpp` falls 3460 →
+  3105. **The Duo closes the sequence**: `DuoRunnerSpec`
+  (`GuiRunner.h:1423-1431`) and `runDuoGui<MachineT>`
+  (`GuiRunner.h:1434-1663`) preserve PG&E-owned RTC/PRAM/input and negative
+  floppy/live-CD capabilities; `runDuo` (`main.cpp:2343`) is a composition
+  wrapper. The audio-only hook becomes the fourteenth explicit service,
+  `main.cpp` falls 3105 → 2873, and **no autonomous `run*()` body remains**.
+  The ratchet (`tools/check_file_sizes.sh`) keeps it that way.
 - [ ] **[AR] Separate fixture roles, then version them.** The gates never write
   their images (`ScsiDisk::open()` defaults `writeBack = false` at
   `ScsiDisk.h:67`, and **no test anywhere passes `true`**; `q605_persist_etalon`
@@ -1626,13 +1658,16 @@ that silently falls behind is worse than none, because it looks complete).
   stopped scavenging it, its boot went from 295 SCSI commands to 178, and three
   boot gates that asserted on that count went red for two days
   (`CHANGELOG.md` 2026-08-15). Nothing was corrupted — a fixture merely
-  *changed*, which is enough. Two steps left now that the preamble prints the
-  digest: a read-only
-  `hdv/ref/` distinct from the volumes the GUI mounts, then **extending the
-  existing `assets.lock`** — which today pins only the three firmware dumps
+  *changed*, which is enough. **Role separation landed 2026-08-24**: a normal
+  `hdv/<name>` lookup prefers `hdv/ref/<name>` in both the GUI and every gate;
+  the GUI's writable open is cloned once to persistent `hdv/work/<name>`, while
+  an absent reference keeps the legacy path compatible. `fixture_store_test`
+  locks preference, fallback and byte isolation. One step remains: extend the
+  existing `assets.lock` — which today pins only the four firmware dumps
   `--lle-aarch64` qualifies (label, size, SHA-256, path, profiles) — to the ROMs
-  and disk images, plus a `tools/verify_assets.py` to check it. It distributes
-  no copyrighted content and makes the drift *nameable*.
+  and reference disk images. `tools/verify_assets.py` already checks the schema
+  and every present entry. The manifest distributes no copyrighted content and
+  makes drift *nameable*.
 - [ ] **[AR] Env knobs: the gate is sound again, the *classification* is what
   is left.** `config_test` (`unit`, asset-free) checks `DEV.md` § 5 +
   `src/jit/POM68K_JIT.md` against the tree in both directions, and re-derived
@@ -1668,9 +1703,9 @@ that silently falls behind is worse than none, because it looks complete).
   91; the registry says **118** — update it on the next pass through that
   file.
 - [x] **The Machine menu makes "Macintosh II" unclickable once IIx is picked
-  — FIXED 2026-08-12** (`src/main.cpp:840-853` matches EXACT
+  — FIXED 2026-08-12** (`src/main.cpp:725-752` matches EXACT
   case-insensitive, not `strstr`). Secondary observations that still hold:
-  the `ii` token is dead — the runtime dispatch (`:5688-5691`) only
+  the `ii` token is dead — the runtime dispatch (`main.cpp:2570-2577`) only
   recognises `iicx`/`se30`/`fdhd` and reaches the plain Mac II by ROM
   checksum (`$9779D2C4`) — and `fdhd` is a runtime-only token with no
   catalogue row.

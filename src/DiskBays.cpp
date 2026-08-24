@@ -210,6 +210,7 @@ bool imageCombo(const char* label, const std::string& current,
             bool sel = samePath(d, current);
             std::string item = fileName(d) + "   " + sizeLabel(d);
             if (isCd(d)) item += "   CD";
+            if (isReferenceFixturePath(d)) item += "   référence → work";
             if (ImGui::Selectable(item.c_str(), sel)) {
                 chosen = d;
                 picked = true;
@@ -228,6 +229,9 @@ bool imageCombo(const char* label, const std::string& current,
 
 std::vector<std::string> diskBaysKnownImages(const std::string& nearPath) {
     std::vector<std::string> out;
+    // Reference fixtures are first-class picker entries. Selecting one is
+    // safe: ScsiDisk redirects the writable GUI session to hdv/work/.
+    scanInto(probeDir("hdv/ref"), out);
     scanInto(probeDir("hdv"), out);
     scanInto(probeDir("disks35"), out);
     // `cd/` is to CDs what `disks35/` is to floppies. Before it was scanned,

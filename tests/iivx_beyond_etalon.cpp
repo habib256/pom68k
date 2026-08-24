@@ -32,39 +32,20 @@
 // Soft-skips without the 4957EB49 ROM + a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
-#include "FolderProbe.h"
+#include "BeyondBoot.h"
+#include "FinderSignature.h"
+#include "VaspCpu.h"
 #include "VaspMemory.h"
 #include "VaspVideo.h"
-#include "VaspCpu.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
 
 namespace {
-
-// The boot etalon's own fixup: some images carry no driver descriptor of
-// type $6A, which the ROM's boot scan requires.
-void ensureBootDriverType(std::vector<uint8_t>& img) {
-    if (img.size() < 512 || img[0] != 'E' || img[1] != 'R') return;
-    int count = (img[0x10] << 8) | img[0x11];
-    for (int i = 0; i < count && 0x12 + i * 8 + 8 <= 512; i++) {
-        int e = 0x12 + i * 8;
-        if (((img[e + 6] << 8) | img[e + 7]) == 0x6A) return;
-    }
-    if (count >= 1 && 0x12 + count * 8 + 8 <= 512) {
-        int src = 0x12, dst = 0x12 + count * 8;
-        for (int k = 0; k < 8; k++) img[dst + k] = img[src + k];
-        img[dst + 6] = 0x00; img[dst + 7] = 0x6A;
-        img[0x10] = uint8_t((count + 1) >> 8);
-        img[0x11] = uint8_t(count + 1);
-    }
-}
 
 VaspMemory* gMem;
 VaspCpu* gCpu;
@@ -82,13 +63,6 @@ void runFrames(long n) {
 uint32_t macTime() {
     return uint32_t(gMem->peek8(0x20C)) << 24 | uint32_t(gMem->peek8(0x20D)) << 16
          | uint32_t(gMem->peek8(0x20E)) << 8 | gMem->peek8(0x20F);
-}
-
-void keyTap(uint8_t code) {                  // ADB code, press + release
-    gMem->keyEvent(code, true);
-    runFrames(4);
-    gMem->keyEvent(code, false);
-    runFrames(4);
 }
 
 void screen(std::vector<uint32_t>& fb) {
@@ -173,7 +147,7 @@ int main() {
     mem.setCpu(&cpu);
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
-    ensureBootDriverType(mem.scsiDisk().image());
+    beyondboot::ensureBootDriverType(mem.scsiDisk().image());
     gMem = &mem; gCpu = &cpu; gFrame = cpuHz / 60;
 
     std::printf("ADB: %s\n", mem.egretLleActive() ? "Egret firmware LLE" : "HLE");
@@ -211,55 +185,39 @@ int main() {
                     dt, cpu.isHalted(), alive ? "still up" : "GONE");
         ok = !cpu.isHalted() && dt >= 135 && dt <= 225 && alive;
     } else if (mode == "persist") {
-        std::vector<uint8_t>& disk = mem.scsiDisk().image();
-        // Full folder-name phrases only — the HFS catalog stores the whole
-        // Pascal name, so this is a clean 0→1 signal. The bare "untitled"
-        // substring occurs hundreds of times in a stock volume and would
-        // drown it out. Accept whichever localization the volume's Finder
-        // writes.
-        long before[folderprobe::kCount];
-        folderprobe::sample(disk, before, "before");
-        const std::vector<uint8_t> snap = disk;
-        // Cmd-N in the frontmost Finder window, Return to commit the still-
-        // editable name, then let the catalog flush.
-        mem.keyEvent(0x37, true);            // Cmd down
-        runFrames(6);
-        keyTap(0x2D);                        // 'n'
-        mem.keyEvent(0x37, false);
-        runFrames(120);                      // let the rename field appear
-        keyTap(0x24);                        // Return — commit the name
-        runFrames(900);                      // ~15 s: create + flush catalog
-        long after[folderprobe::kCount];
-        folderprobe::sample(disk, after, "after");
-        const bool wrote = disk != snap;
-        // Which name did the Finder actually write? The one that moved.
-        const size_t grew = folderprobe::grew(before, after);
-        std::printf("persist: %s, image %s\n",
-                    grew < folderprobe::kCount
-                        ? (std::string("'") + folderprobe::kNames[grew] + "' " +
-                           std::to_string(before[grew]) + " -> " +
-                           std::to_string(after[grew])).c_str()
-                        : "NO candidate folder name appeared",
-                    wrote ? "modified" : "UNCHANGED");
-        std::vector<uint32_t> fb;
-        screen(fb);
-        dump("iivx_beyond_persist.ppm", fb);
-        // Reboot on the modified volume: it must still reach the Finder, and
-        // the folder must still be in the catalog afterwards.
-        cpu.hardReset();
-        while (mem.cpuHeld()) mem.tick(1000);
-        runFrames(16000);
-        long survived[folderprobe::kCount];
-        folderprobe::sample(disk, survived, "reboot");
-        const bool rebooted = !cpu.isHalted() && finderUp();
-        // The whole point: the folder must still be there after a hard reset
-        // off the SAME volume — i.e. the catalog write reached the medium,
-        // not just the System's disk cache.
-        const bool kept = grew < folderprobe::kCount && survived[grew] > before[grew];
-        std::printf("persist: reboot %s, folder %s\n",
-                    rebooted ? "reached the Finder" : "FAILED",
-                    kept ? "survived" : "did NOT survive");
-        ok = wrote && grew < folderprobe::kCount && rebooted && kept;
+        // The old private flow tapped 'n' and Return for four frames and
+        // budgeted a fixed flush. The shared engine holds ordinary keys past
+        // Slow Keys, polls the actual SCSI write counter and verifies the
+        // catalog after reset. VASP additionally needs Command established
+        // in its own poll before N is queued (commandSettleFrames below).
+        beyondboot::Hooks h;
+        h.name = "Macintosh IIvx";
+        h.frames = [&](long n) { runFrames(n); };
+        h.key = [&](uint8_t code, bool down) { mem.keyEvent(code, down); };
+        h.commandSettleFrames = 150;
+        h.probe = [&]() {
+            std::fprintf(stderr, "[keymap]");
+            for (uint32_t a = 0x174; a < 0x17C; a++)
+                std::fprintf(stderr, " %02X", mem.peek8(a));
+            std::fprintf(stderr, "  (want Cmd+N bits live)\n");
+        };
+        h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
+        h.writes = [&]() { return mem.scsiDisk().writeBlocks; };
+        h.reboot = [&]() {
+            cpu.hardReset();
+            while (mem.cpuHeld()) mem.tick(1000);
+            runFrames(16000);
+            return !cpu.isHalted() && finderUp();
+        };
+        h.dump = [&](const char* what) {
+            std::vector<uint32_t> fb;
+            screen(fb);
+            dump((std::string("iivx_beyond_") + what + ".ppm").c_str(), fb);
+        };
+        // VASP keeps low memory in physical RAM, unlike RBV, so the direct
+        // CurApName read is the same mapping the working Time probe uses.
+        h.frontApp = [&]() { return findersig::curApName(mem); };
+        return beyondboot::persist(h);
     } else {
         std::fprintf(stderr, "FAIL: unknown POM68K_BEYOND=%s\n", mode.c_str());
         return 1;

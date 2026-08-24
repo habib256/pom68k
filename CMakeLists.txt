@@ -445,10 +445,12 @@ option(POM68K_PRODUCT_LLE_GATES
 if(POM68K_TESTS AND NOT EMSCRIPTEN)
     enable_testing()
 
-    # Gate-side headers (tests/AssetFingerprint.h, tests/atalk_test_util.h).
-    # Directory-scoped so every target below sees them without 130 edits;
-    # the GUI target above is deliberately outside it.
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    # Gate-side headers (tests/AssetFingerprint.h, tests/atalk_test_util.h)
+    # and their shared source contracts (FixtureStore.h). Directory-scoped so
+    # every target below sees them without 130 edits; the GUI target above is
+    # deliberately outside it.
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests
+                        ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
     # M1 gate: Moira boots the demo ROM through the real machine path.
     add_executable(cpu_smoke tests/cpu_smoke.cpp)
