@@ -9,14 +9,14 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 272 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 278 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
 line here. (Before 2026-07-28 a day's several entries are all unqualified:
 ordered, but unlabelled — the qualifier convention starts with the JIT work.)
 A `> **Superseded:**` blockquote under a heading points at the entry that
-overturned it (`grep -n '^> \*\*Superseded' CHANGELOG.md`, 4 of them).
+overturned it (`grep -n '^> \*\*Superseded' CHANGELOG.md`, 7 of them).
 
 **Adding an entry:** **prepend** the section — the nine 2026-08-10/08-12
 entries were *appended* at the bottom instead and sat there below the
@@ -40,6 +40,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"Rogue is still 29 % indexed" and "full-index memory indirection stays slow" — the re-census found 6.37 %, then the measured lowering cut indexed fallbacks another 98.36 %** → [2026-08-23 (eleventh) — Rogue's old 29 % indexed lead collapsed…](#2026-08-23-rogue-re-census)
 - **Why is there one `runDafbGui` and not four runners — and what did the four copies get wrong?** → [2026-08-23 (fifth) — The four DAFB GUI runners were one function copied four times…](#2026-08-23-dafb-runner)
 - **"the arm backoff is architecturally invisible" — on the 030, yes; the 68040 locksteps diverged at their first boundary under a streak-growing backoff, with the D-cache model on** → [2026-08-23 (fourth) — A streak-growing arm backoff…](#2026-08-23-arm-backoff)
 - **"the admission knobs are inert on a64 — its admissions are unconditional" — unconditional on the OLD total-cost rule, which refused every push traced on an i-cache miss; wiring the knobs is 49 → 71 % native in the idle Finder** → [2026-08-22 (sixth) — The a64 emitter had the total-cost rule hard-wired…](#2026-08-22-a64-admissions-wired)
@@ -100,6 +101,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **what the Rogue re-census really found after indexed MOVEM, and why VRAM/QuickDraw HLE was not the answer** → [2026-08-23 (eleventh) — Rogue's old 29 % indexed lead collapsed…](#2026-08-23-rogue-re-census)
+- **what WinUAE-style CCR caching, register residency, exact edge dependencies and tiering actually buy under Moira's exact boundaries** → [2026-08-23 (tenth) — Four classic JIT levers implemented and priced…](#2026-08-23-four-jit-levers)
+- **how one full 68020 index subset became native without opening memory indirection or a second decoder** → [2026-08-23 (ninth) — Direct full-index `LEA` consumes the complete IR plan…](#2026-08-23-full-direct-lea)
+- **why brief-indexed `LEA` first became native on both hosts without admitting indexed jumps** → [2026-08-23 (eighth) — Indexed `LEA` closes the next shared exclusion…](#2026-08-23-indexed-lea)
+- **why x64 no longer sends brief 68020 indexed EAs to the cold stub, while full-format and indexed control flow still do** → [2026-08-23 (seventh) — Brief indexed EAs reach x64 host code…](#2026-08-23-x64-brief-index)
+- **what keeps the 2026-08-22 slice-index leak from returning without an LC II ROM and a multi-minute soak?** → [2026-08-23 (sixth) — The slice-index leak gets an asset-free native gate…](#2026-08-23-slice-index-gate)
 - **how BSR.W converged on the same delivery-alignment class, and the target-side-charge fix shape was refuted the day it was written** → [2026-08-21 (fifth) — Both parked levers, one root](#2026-08-21-bsrw-same-class)
 - **why the biggest 68030 fallback lever is a delivery-boundary problem, not a cost bug — the restart-write reproducer run to ground** → [2026-08-21 (fourth) — The restart-write divergence names its class](#2026-08-21-restart-base-forensic)
 - **how the a64 pass left x86-64 behind on the shared oracles, and the port that squared it (EXG, CMPM, the Scc thunk hole)** → [2026-08-21 (third) — The shared oracles call in the x64 port](#2026-08-21-x64-oracle-port)
@@ -319,6 +326,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-23 (eleventh)** — [Rogue's old 29 % indexed lead collapsed to 6.37 %; measured bitfields and full indirection cut all gameplay fallbacks 99.48 %](#2026-08-23-rogue-re-census)
+- **2026-08-23 (tenth)** — [Four classic JIT levers implemented and priced: all exact, none faster yet; the production defaults do not regress](#2026-08-23-four-jit-levers)
+- **2026-08-23 (ninth)** — [Direct full-index `LEA` consumes the complete IR plan: suppression and 9/11/15-cycle displacement stay native, indirection stays slow](#2026-08-23-full-direct-lea)
+- **2026-08-23 (eighth)** — [Indexed `LEA` closes the next shared exclusion: nine-cycle An/PC address formation stays native on the 040 and 030](#2026-08-23-indexed-lea)
+- **2026-08-23 (seventh)** — [Brief indexed EAs reach x64 host code: the shared decoder closes the address-lowering gap, with zero slow instructions on both native oracles](#2026-08-23-x64-brief-index)
+- **2026-08-23 (sixth)** — [The slice-index leak gets an asset-free native gate: 384 precise evictions keep every key, sub-slice mask and DTLB exclusion exact](#2026-08-23-slice-index-gate)
 - **2026-08-23 (fifth)** — [The four DAFB GUI runners were one function copied four times: 1433 lines → 568, and the three drift bugs the copies had grown](#2026-08-23-dafb-runner)
 - **2026-08-23 (fourth)** — [A streak-growing arm backoff: +2.6 points of native share on the 030, and a 68040 lockstep divergence — REFUTED and reverted; the idle-Finder profile is flat](#2026-08-23-arm-backoff)
 - **2026-08-23 (third)** — [Native MOVEM on the 030: the format-$B resume is never observable when the whole span is proved first — 83 % → 86 % native, 100.0 s → 93.4 s](#2026-08-23-movem-030)
@@ -593,6 +606,248 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-08-23-rogue-re-census"></a>
+## 2026-08-23 (eleventh) — Rogue's old 29 % indexed lead collapsed to 6.37 %; measured bitfields and full indirection cut all gameplay fallbacks 99.48 %
+
+The requested Rogue re-census changed the priority order before changing any
+code. On the current pre-pass JIT, gameplay produced **102,852,551** block
+fallbacks. The two dynamic register-bitfield opcodes `E9C5` and `EFC6` made
+up **87,510,489 / 85.08 %** of them. Every indexed form together was
+6,549,343 / **6.37 %**: the old 29 % observation had already been invalidated
+by the brief-index and MOVEM work.
+
+The A64 generator now covers all eight dynamic register bitfields, read-only
+memory bitfields (including the optional fifth byte), direct and
+memory-indirect full-index `LEA`/`JMP`/`JSR`, register-destination `MOVE` and
+read-only ALU sources. Indirect pointer reads and operand reads are distinct
+IR accesses, and JSR preflights both pointer and stack before side effects.
+The pass also closes full-direct MOVE sources, the dependent
+`MOVE.L (A7)+,(A7)` ordering case, full-index branch-length accounting and a
+guarded register-count shift specialization. That shift executes natively
+only when `Dn & 63` still equals the observed count (at most eight); otherwise
+the pristine Moira instruction runs.
+
+The final identical 445/468-key drawing run records **278,660 unsupported +
+255,754 runtime-guard = 534,414 fallbacks**, down **99.48 %**. Indexed
+fallbacks are 107,414, down **98.36 %**; their residue is 79.5 % brief,
+13.5 % full and 7.1 % mixed. The retained run is 56.97 s wall / 56.19 s CPU.
+Two plausible shortcuts failed the product test: a free-running dynamic shift
+cycle charge passed the synthetic lockstep but broke the real Q605 Finder
+boot, while brief indexed MOVE destinations removed another 83 k fallbacks
+yet slowed Rogue CPU time 56.19 → 56.80 s (**+1.1 %**). Both were reverted.
+No native VRAM copy/fill/mask path and no QuickDraw HLE landed because the
+post-pass census demonstrates no dominant residual in either category.
+
+The final equal-workload Q605 comparison retires 649,372,093 instructions and
+ends at fingerprint `778dd7ad558108fd` in every arm. Three-pair ABBA medians
+are interpreter **29.24 s** against A64 codegen **3.24 s** (**9.03x**), and
+interpreter **29.49 s** against threaded **15.13 s** (**1.95x**); Codegen is
+about **4.67x** threaded. The two direct final-tree controls also agree on
+SCSI=1324 and PC `$0002528A`; Codegen reports 647,116,248 native instructions
+(**99.7 %**) and about 54 ms compilation time.
+
+<a id="2026-08-23-four-jit-levers"></a>
+## 2026-08-23 (tenth) — Four classic JIT levers implemented and priced: all exact, none faster yet; the production defaults do not regress
+
+> **Superseded:** the final three-engine stopwatch paragraph below is replaced
+> by the three-pair ABBA medians in [the eleventh entry](#2026-08-23-rogue-re-census).
+
+The four requested priorities were attacked in order rather than assumed from
+WinUAE's architecture. Three now have complete, immutable Engine options and
+both code generators retain an emitter path for them. The fourth was already
+the engine's tier-0 fetch window followed by tier-1 native compilation, so it
+was swept instead of duplicated.
+
+**1 — deferred/liveness CCR.** With `POM68K_JIT_PACKED_CCR=1`, A64 x26 and
+x64 R15 carry the five architectural `XNZVC` bits below the retired count.
+Generated condition tests consume that compact state; helpers, cold stubs and
+all exits materialise the exact Moira bytes. The A64 prototype deliberately
+leaves register shifts and bitfields on the interpreter until their full flag
+surface is lowered. The asset-free 68040 lockstep is exact, but 3,000-frame
+ABBA gives 3.1219/3.1606 s OFF and 3.3174/3.3275 s ON: **+5.8 %**, with native
+coverage 99.6 → 99.4 %. It remains OFF.
+
+**2 — local Dn/An cache.** `POM68K_JIT_REG_CACHE=1` lets A64 select at most
+two guest registers that the block reads but never writes, keeping them in
+x27/x28. Memory remains canonical, helpers preserve the host callee-saved
+pair, and every linked target reloads its own selection. The combined gate
+caught the important ABI trap: a source with no profitable register had made
+a 96-byte frame then linked to a target returning through a 112-byte
+epilogue. Frame shape now follows the immutable Engine option for every block
+in a chain. Lockstep is exact; ABBA is 3.1327/3.1714 s OFF against
+3.1478/3.1654 s ON, **+0.1 %**. It remains OFF.
+
+**3 — exact per-edge cells.** `POM68K_JIT_EDGE_CELLS=1` gives every constant
+target a stable Engine-lifetime dependency cell. Generated code embeds the
+cell address, never a raw code address; publication fills it, target eviction
+nulls it, and a generation flush clears every published cell before recycling
+code. The A64 literal pool makes the cell address one PC-relative load.
+Blocks run fall 1,080,044 → 877,751 and block-end exits 959,158 → 755,974,
+but ABBA is 3.1501/3.1861 s OFF against 3.1806/3.1898 s ON: **+0.5 %**. The
+dependent data load/indirect branch costs more than the eliminated Engine
+returns on this M4, so the collision-free form remains OFF.
+
+**4 — two tiers.** The existing window is the cheap tier and generated code
+the hot tier. Raising native `POM68K_JIT_HOT` from 1 to 2 reduces compilation
+attempts 18,070 → 11,830, but also reduces native share 99.6 → 97.1 % and
+costs 3.1827/3.1996 s → 3.4498/3.4610 s: **+8.3 %**. Profit scores 4, 8 and
+16 likewise lose (3.3164, 3.6471 and 4.2813 s in diagnostic single runs).
+Immediate promotion stays the measured production answer.
+
+Every ABBA arm above retired **649,372,093** instructions with fingerprint
+`778dd7ad558108fd`. The default `jit-fast` tier is 7/7 green; the same tier
+with all three experimental switches enabled together is also 7/7 green.
+The final equal-workload comparison on this AArch64 host is 27.20 s for the
+Moira interpreter, 14.91 s for the threaded window and 3.21 s for A64 codegen,
+all at the same fingerprint. “Implemented” and “faster” are deliberately two
+different claims: this pass keeps the proof infrastructure and rejects all
+four default flips because each measured negative.
+
+<a id="2026-08-23-full-direct-lea"></a>
+## 2026-08-23 (ninth) — Direct full-index `LEA` consumes the complete IR plan: suppression and 9/11/15-cycle displacement stay native, indirection stays slow
+
+> **Superseded:** memory-indirect full-index `LEA`, `JMP`, `JSR`, MOVE sources
+> and read-only ALU sources now lower under the exact multi-access contract in
+> [the eleventh entry](#2026-08-23-rogue-re-census).
+
+The next indexed subset did not require another 68k decoder. The shared
+`DecodedEffectiveAddress` already distinguishes full format from brief,
+carries the An or extension-word PC base, signed word/long scaled index,
+base and index suppression, the exact base displacement and its encoded
+length, and classifies the plan as direct, preindexed or postindexed. A64 and
+x64 now opt into that plan only from `LEA` and only when
+`IndexIndirect::None`; every other caller retains the default full-format
+refusal.
+
+Both address emitters now materialise a zero base when requested, omit a
+suppressed index, preserve 32-bit wrapping, and add the decoded base
+displacement. Timing remains a gate rather than an assumption: Moira prices
+indexed `LEA` at 9 cycles, then its full-extension penalty table adds 0, 2 or
+6 cycles for null, word or long base displacement. The backend therefore
+requires the traced instruction to match **9/11/15 cycles** before publishing
+host code. Memory-indirect full forms are intentionally not lowered: they add
+a restartable longword read and, on the 68030, displacement-store state that
+this arithmetic-only path must not pretend to implement.
+
+The asset-free 68040 oracle executes An- and PC-based direct forms with signed
+word and long indexes, all three displacement lengths, and both suppression
+bits for 128 complete CPU/RAM checkpoints. AArch64 and x64 retire the loop
+with **zero slow instructions**. A separate mixed native block places a
+preindexed `LEA` between native instructions; both hosts remain byte-exact
+while recording **190 slow instructions**, proving that indirection still
+replays visibly instead of leaking through the new admission. The 68030
+boundary oracle adds three direct-full forms to its brief-index loop and also
+requires zero slow instructions across 128 exact PC/PC0/IRD/IRC/clock checks.
+The wider x64 200,000-step fine lockstep, x64 1,000,000-step D-cache lockstep
+and AArch64 5,000,000-step coarse lockstep remain green. This is a conformant
+coverage change, not a workload-speed claim.
+
+<a id="2026-08-23-indexed-lea"></a>
+## 2026-08-23 (eighth) — Indexed `LEA` closes the next shared exclusion: nine-cycle An/PC address formation stays native on the 040 and 030
+
+The shared brief-index decoder and both address emitters already carried all
+of `LEA`'s inputs: an An or extension-word PC base, signed word or long Dn/An
+index, ×1/2/4/8 scale, signed displacement and 32-bit wrap. Only admission and
+the instruction-specific cycle row were missing. Moira's authoritative 68020
+column assigns **9 cycles** to both brief indexed forms, so A64 and x64 now
+accept mode 6 and mode 7.3 for `LEA` and reuse their proved address lowering.
+The change is deliberately instruction-local: indexed `JMP` and `JSR` still
+have an unproved dynamic-target/prefetch contract and remain refused, as do
+indexed `MOVEM` and every full-format extension.
+
+The asset-free 68040 oracle now forms both An-indexed and PC-indexed addresses
+with `LEA` inside the existing mixed loop. On AArch64 and native x64 under
+Rosetta it retires **1,169 native instructions and zero slow instructions**
+over 256 CPU/RAM checkpoints. Its full-format companion now includes the same
+opcode and remains exact while visibly using fallback (**43 slow
+instructions**), so the admission cannot silently reinterpret a full
+extension as brief. The 68030 oracle independently checks both `LEA` forms for
+128 queue/cycle boundaries, exact register state and zero slow instructions;
+`jit_backend_test` pins indexed `LEA` as generator-dependent while keeping
+indexed `JMP` unadvertised.
+
+The wider guards remain green: the x64 200,000-step fine lockstep, x64
+1,000,000-step D-cache lockstep, and AArch64 5,000,000-step coarse lockstep.
+This is a correctness-backed coverage improvement; no workload speed claim is
+made without rerunning a workload census.
+
+<a id="2026-08-23-x64-brief-index"></a>
+## 2026-08-23 (seventh) — Brief indexed EAs reach x64 host code: the shared decoder closes the address-lowering gap, with zero slow instructions on both native oracles
+
+The drawing census had already made the order unambiguous: indexed EAs were
+**29 % of all block fallbacks** during play, full-format extensions only
+**4.1 %** of that indexed mass, and the mixed-opcode apportionment estimated
+the brief share at **71.5 %**. A64 consumed the shared brief-index plan; x64
+still rejected mode 6 and mode 7.3 in `eaIndex()`, even though the common IR
+had already decoded every field it needed.
+
+x64 now lowers that `DecodedEffectiveAddress` directly: An or extension-word
+PC base, Dn or An index, signed word or full long width, ×1/2/4/8 scale, and
+signed 8-bit displacement, all with the 68020's 32-bit address wrap. The
+ordinary read/RMW families inherit the existing 9-cycle mode row; indexed
+`Scc` and `PEA` take their measured 13- and 12-cycle rows on the 040.
+`canEmit()` now advertises the new data-EA coverage without claiming more:
+`LEA`, `JMP` and `JSR` indexed remain refused, `JMP` remains an `Unsafe`
+block boundary, and `decode()` still rejects every `fullFormat` plan before
+emitting host code.
+
+The asset-free 68040 lockstep now loops over a signed word index scaled by 2,
+a long address-register PC index scaled by 4, an indexed `Scc` write and an
+indexed `PEA` stack write. For 256 checkpoints it compares all registers,
+CCR, PC/PC0, IRD/IRC, clock and the complete 1 MiB RAM image against Moira,
+then requires compiled/running native blocks and **zero slow instructions**.
+Both the AArch64 build and the native x64 build under Rosetta pass: the
+indexed leg retires **1 151 native instructions, zero slow** on each, and
+`jit_backend_test` pins brief `BTST`/`PEA` parity plus the indexed-`JMP`
+refusal. A companion direct full-format loop retires identically while
+recording **254 slow instructions** on each backend, proving that the newly
+admitted opcode class is not reinterpreting a full extension as brief. This
+is not only a 040 claim: the asset-free 030 oracle now runs a signed/scaled
+indexed read for 128 interpreter/native boundaries with zero slow
+instructions, then injects `/BERR` into `MOVE.B D0,d8(A6,D1.W)` and requires
+the native thunk plus untouched replay to produce the same complete 32-byte
+format-$A frame on A64 and x64. Indexed `Scc` on the 030 deliberately remains
+on pristine replay under its trace-cost guard, and the oracle pins that edge
+too. This closes shared brief-EA lowering and its regression gates; the
+instruction-specific exclusions above remain, and no workload speed number
+is invented without re-running the drawing census.
+
+<a id="2026-08-23-slice-index-gate"></a>
+## 2026-08-23 (sixth) — The slice-index leak gets an asset-free native gate: 384 precise evictions keep every key, sub-slice mask and DTLB exclusion exact
+
+The 2026-08-22 fix had one named hole in its evidence: only the LC II soak
+could catch a block key left behind in `sliceIndex_`. That tripwire needs a
+user ROM and disk, ran for minutes, and had first reported the bug by growing
+to **4.4 GB**. None of the daily asset-free gates could distinguish a clean
+index from a vector accumulating stale or duplicate keys.
+
+`jit_asset_free_lockstep_test` now builds three synthetic native blocks in
+one physical neighbourhood: A and B occupy different 32-byte sub-slices of
+the same 256-byte slice, while Cross begins at `$11FC` and its recorded
+prefetch footprint enters the next slice. A read-only test probe reconstructs
+the complete expected index from `blocks_` and compares all four layers:
+every live block is filed exactly once under every slice it spans, no dead or
+duplicate key exists, every `pageMap_` sub-slice bit is exact, and every 4 KB
+`codePage_` DTLB exclusion agrees with those marks. The gate alternately
+evicts and re-records A, B and Cross for 128 rounds — **384 precise
+evictions**. Evicting Cross through its first slice must remove its filing
+from the second while A and B remain; that is the multi-slice path the old
+implementation got wrong.
+
+Writing the gate exposed a defect in its own synthetic CPU before it could
+hide one in the engine: `guard` was declared after `jit`, so the production
+68040 default enabled the engine during construction, attached the guard,
+then C++ initialized the later field back to null. The field now precedes the
+engine; the actual memory callback and the new oracle observe the same guard.
+
+**Evidence:** `POM68K_JIT_REQUIRE_NATIVE=1
+./build/jit_asset_free_lockstep_test` passes on the AArch64 generator, and the
+x86-64 build passes under Rosetta with the native x64 generator. This is a
+regression-net improvement, not a speed claim. The attempted x64 68030
+JSR/MOVEM ports were not retained: their long experimental lockstep SIGSEGVs
+under Rosetta in the same place with an unmodified backend, so that host
+cannot supply the x86-64 evidence those admissions explicitly require.
 
 <a id="2026-08-23-dafb-runner"></a>
 ## 2026-08-23 (fifth) — The four DAFB GUI runners were one function copied four times: 1433 lines → 568, and the three drift bugs the copies had grown

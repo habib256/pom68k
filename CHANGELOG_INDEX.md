@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 272 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 278 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,19 +8,19 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 31 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 33 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 34 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 28 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 14 |
 | [Sound](#sound) | 6 |
-| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 10 |
+| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 11 |
 | [Save states](#save-states) | 6 |
 | [Machine bring-ups](#machine-bring-ups) | 41 |
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 14 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 15 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
-| [Cross-cutting](#cross-cutting) | 39 |
+| [Cross-cutting](#cross-cutting) | 41 |
 
 ---
 
@@ -57,6 +57,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-22 (sixth)** — [The a64 emitter had the total-cost rule hard-wired: wiring the two § C.4nonies admissions takes the idle Finder from 49 % to 71 % native](CHANGELOG.md#2026-08-22-a64-admissions-wired)
 - **2026-08-22 (third)** — [The a64 thunks carry the access-clock bias — and the class was never latent there: the guard had closed it by replay](CHANGELOG.md#2026-08-22-a64-bias-port)
 - **2026-08-23 (fourth)** — [A streak-growing arm backoff: +2.6 points of native share on the 030, and a 68040 lockstep divergence — REFUTED and reverted; the idle-Finder profile is flat](CHANGELOG.md#2026-08-23-arm-backoff)
+- **2026-08-23 (seventh)** — [Brief indexed EAs reach x64 host code: the shared decoder closes the address-lowering gap, with zero slow instructions on both native oracles](CHANGELOG.md#2026-08-23-x64-brief-index)
+- **2026-08-23 (tenth)** — [Four classic JIT levers implemented and priced: all exact, none faster yet; the production defaults do not regress](CHANGELOG.md#2026-08-23-four-jit-levers)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -204,6 +206,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-23** — [SCC Tx/Rx engine: the wire gets a real transmitter (Medium tier)](CHANGELOG.md#2026-07-23--scc-txrx-engine-the-wire-gets-a-real-transmitter-medium-tier)
 - **2026-07-23** — [SCC async-baud machinery: the guest programs the wire pace now](CHANGELOG.md#2026-07-23--scc-async-baud-machinery-the-guest-programs-the-wire-pace-now)
 - **2026-07-24** — [AppleTalk moves in-process: node/router + AppleShare + LaserWriter + MacIP, one GUI window](CHANGELOG.md#2026-07-24--appletalk-moves-in-process-noderouter--appleshare--laserwriter--macip-one-gui-window)
+- **2026-08-23 (eleventh)** — [Rogue's old 29 % indexed lead collapsed to 6.37 %; measured bitfields and full indirection cut all gameplay fallbacks 99.48 %](CHANGELOG.md#2026-08-23-rogue-re-census)
 
 ## Save states
 
@@ -284,6 +287,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-16** — [Ten red gates, five causes, and the two that were never going to be found by reading](CHANGELOG.md#2026-08-16-ten-red-gates)
 - **2026-08-18 (fourth)** — [The measurement method measured itself: the floor was 6× too loose, the freshness guard cried wolf, and the A/B is now ABBA in one process](CHANGELOG.md#2026-08-18-method-audit)
 - **2026-08-19 (fourth)** — [A doc/code consistency pass, and the half of it that is now a gate](CHANGELOG.md#2026-08-19-doc-code-consistency)
+- **2026-08-23 (sixth)** — [The slice-index leak gets an asset-free native gate: 384 precise evictions keep every key, sub-slice mask and DTLB exclusion exact](CHANGELOG.md#2026-08-23-slice-index-gate)
 
 ## Documentation, audits and reviews
 
@@ -332,6 +336,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-22** — [The unlocked admissions are priced: −4.3 % and −2.3 % alone, −8.0 % together — super-additive, fingerprint intact](CHANGELOG.md#2026-08-22-admission-speed-evidence)
 - **2026-08-22 (fifth)** — [The idle Finder was re-recording every block a data write came within 256 bytes of: the guard now marks 32-byte sub-slices of each block's own bytes — 609 s → 119 s on 30 000 frames](CHANGELOG.md#2026-08-22-guard-intersection)
 - **2026-08-23** — [A refusal instrument names the next two levers: JSR leaves the TARGET's first word in the queue, and MOVEM is refused on the 030 by design](CHANGELOG.md#2026-08-23-watch-opcode)
+- **2026-08-23 (eighth)** — [Indexed `LEA` closes the next shared exclusion: nine-cycle An/PC address formation stays native on the 040 and 030](CHANGELOG.md#2026-08-23-indexed-lea)
+- **2026-08-23 (ninth)** — [Direct full-index `LEA` consumes the complete IR plan: suppression and 9/11/15-cycle displacement stay native, indirection stays slow](CHANGELOG.md#2026-08-23-full-direct-lea)
 - **2026-08-23 (second)** — [The native 030 JSR reads its target's first word at run time, as execJsr does: 71 % → 83 % native, 105.8 s → 100.0 s](CHANGELOG.md#2026-08-23-jsr-target-read)
 - **2026-08-23 (third)** — [Native MOVEM on the 030: the format-$B resume is never observable when the whole span is proved first — 83 % → 86 % native, 100.0 s → 93.4 s](CHANGELOG.md#2026-08-23-movem-030)
 

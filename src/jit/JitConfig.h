@@ -84,6 +84,17 @@ struct ResolvedConfig {
     bool cache040LinePairs = true;
     bool cache040LineReadStats = false;
     bool links = true;
+    // Keep XNZVC in the low five bits of the generated backend's retired
+    // counter register.  Architectural flag bytes are materialised only at
+    // helper/exit boundaries; conservative mode keeps the original eager
+    // stores as a continuously available oracle.
+    bool packedCcr = false;
+    bool regCache = false;
+    bool edgeCells = false;
+    // A64 register bitfields whose offset and/or width come from Dn. This is
+    // a production admission with a negative attribution switch: Rogue's
+    // measured mask loop is dominated by BFEXTU/BFINS in exactly this form.
+    bool dynamicBitfield = true;
     bool paranoid = false;
     bool histogram = false;
     int maxBlocks = 65536;
@@ -178,6 +189,10 @@ inline ResolvedConfig resolveConfig() {
     c.cache040LinePairs = detail::envBool("POM68K_JIT_040_LINE_PAIR", !conservative);
     c.cache040LineReadStats = detail::envBool("POM68K_JIT_040_LINE_STATS", instrumented);
     c.links = detail::envBool("POM68K_JIT_LINKS", production);
+    c.packedCcr = detail::envBool("POM68K_JIT_PACKED_CCR", false);
+    c.regCache = detail::envBool("POM68K_JIT_REG_CACHE", false);
+    c.edgeCells = detail::envBool("POM68K_JIT_EDGE_CELLS", false);
+    c.dynamicBitfield = detail::envBool("POM68K_JIT_DYNAMIC_BITFIELD", true);
     c.paranoid = detail::envBool("POM68K_JIT_PARANOID", !production);
     c.histogram = detail::envBool("POM68K_JIT_HISTO", instrumented);
     c.maxBlocks = detail::envInt("POM68K_JIT_MAX_BLOCKS", 65536, 64, 1 << 20);
@@ -371,6 +386,31 @@ inline bool linksEnabled() {
     if (detail::activeConfig) return detail::activeConfig->links;
     return detail::envBool("POM68K_JIT_LINKS",
         operatingProfile() == OperatingProfile::Production);
+}
+
+// Generated-code CCR cache.  The representation is deliberately the 68k
+// CCR bit layout (C=0,V=1,Z=2,N=3,X=4), so spilling never translates a
+// backend-private condition format.  It is conformant, but remains
+// independently switchable for lockstep attribution and conservative-mode
+// comparison.
+inline bool packedCcrEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->packedCcr;
+    return detail::envBool("POM68K_JIT_PACKED_CCR", false);
+}
+
+inline bool registerCacheEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->regCache;
+    return detail::envBool("POM68K_JIT_REG_CACHE", false);
+}
+
+inline bool edgeLinkCellsEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->edgeCells;
+    return detail::envBool("POM68K_JIT_EDGE_CELLS", false);
+}
+
+inline bool dynamicRegisterBitfieldEnabled() {
+    if (detail::activeConfig) return detail::activeConfig->dynamicBitfield;
+    return detail::envBool("POM68K_JIT_DYNAMIC_BITFIELD", true);
 }
 
 inline bool paranoidEnabled() {

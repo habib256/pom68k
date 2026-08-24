@@ -174,6 +174,44 @@ int main() {
               timedProof.exactThunkMask == 1 && timedProof.cacheMask == 0,
               "model-required exact access is IR policy, not an A64 opcode exception");
 
+        jit::Instr bfextuMemory;
+        bfextuMemory.opcode = 0xE9D0;       // BFEXTU (A0){0:D0},D2
+        bfextuMemory.words = 2;
+        bfextuMemory.semantics = jit::describeInstruction(bfextuMemory.opcode);
+        bfextuMemory.memory = jit::describeMemory(bfextuMemory.opcode, false);
+        bfextuMemory.extensionCount = 1;
+        bfextuMemory.extensions[0] = 0x2020;
+        jit::describeEffectiveAddresses(bfextuMemory);
+        jit::refineMemoryFromExtensions(bfextuMemory, false);
+        auto bfextuUse = jit::instructionMemoryPlan(bfextuMemory.memory,
+                                                    exact040);
+        const auto bfextuRead = bfextuUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Operand,
+            4, 2, 0);
+        check(bfextuRead.valid() && bfextuUse.complete() &&
+              bfextuMemory.memory.count == 1,
+              "zero-offset memory BFEXTU refines to one exact longword read");
+        bfextuMemory.extensions[0] = 0x5848; // D1 offset, immediate width 8
+        bfextuMemory.memory = jit::describeMemory(bfextuMemory.opcode, false);
+        jit::refineMemoryFromExtensions(bfextuMemory, false);
+        check(bfextuMemory.memory.count == 1,
+              "dynamic-offset width-8 BFEXTU stays within one longword");
+        bfextuMemory.extensions[0] = 0x2060; // immediate bit offset 1
+        bfextuMemory.memory = jit::describeMemory(bfextuMemory.opcode, false);
+        jit::refineMemoryFromExtensions(bfextuMemory, false);
+        auto crossingUse = jit::instructionMemoryPlan(bfextuMemory.memory,
+                                                      exact040);
+        const auto crossingLong = crossingUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Operand,
+            4, 2, 0);
+        const auto crossingTail = crossingUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Operand,
+            1, 2, 0);
+        check(bfextuMemory.memory.count == 2 && crossingLong.valid() &&
+              crossingTail.valid() && crossingUse.complete() &&
+              crossingLong.protocol == jit::MemoryProofProtocol::PreflightAll,
+              "possible five-byte BFEXTU publishes ordered long+tail reads");
+
         const auto write030 = jit::describeMemory(0x2140, true); // MOVE.L D0,d16(A0)
         jit::MemoryProofOptions proof030;
         proof030.exactWrites = true;
@@ -366,8 +404,18 @@ int main() {
             SavedEnv("POM68K_JIT_040_LINE_PAIR"),
             SavedEnv("POM68K_JIT_040_LINE_STATS"),
             SavedEnv("POM68K_JIT_PROFIT_SCORE"),
+            SavedEnv("POM68K_JIT_PACKED_CCR"),
+            SavedEnv("POM68K_JIT_REG_CACHE"),
+            SavedEnv("POM68K_JIT_EDGE_CELLS"),
+            SavedEnv("POM68K_JIT_DYNAMIC_BITFIELD"),
         };
         for (const auto& e : saved) e.clear();
+
+        check(!jit::packedCcrEnabled() && !jit::registerCacheEnabled() &&
+              !jit::edgeLinkCellsEnabled(),
+              "measured codegen experiments stay off by default");
+        check(jit::dynamicRegisterBitfieldEnabled(),
+              "measured dynamic register bitfields stay on by default");
 
         setEnv("POM68K_JIT_PROFILE", "production");
         check(jit::accessThunkMode() == 2 && jit::linksEnabled() &&
@@ -391,14 +439,27 @@ int main() {
         setEnv("POM68K_JIT_PROFILE", "production");
         setEnv("POM68K_JIT_ACCESS_THUNK", nullptr);
         setEnv("POM68K_JIT_PROFIT_SCORE", "64");
+        setEnv("POM68K_JIT_PACKED_CCR", "1");
+        setEnv("POM68K_JIT_REG_CACHE", "1");
+        setEnv("POM68K_JIT_EDGE_CELLS", "1");
+        setEnv("POM68K_JIT_DYNAMIC_BITFIELD", "1");
         jit::ResolvedConfig resolved = jit::resolveConfig();
         resolved.applyBackendDefaults(true, /*accessClockBias=*/true);
         setEnv("POM68K_JIT_PROFILE", "conservative");
+        setEnv("POM68K_JIT_PACKED_CCR", "0");
+        setEnv("POM68K_JIT_REG_CACHE", "0");
+        setEnv("POM68K_JIT_EDGE_CELLS", "0");
+        setEnv("POM68K_JIT_DYNAMIC_BITFIELD", "0");
         {
             jit::ScopedResolvedConfig active(&resolved);
             check(jit::accessThunkMode() == 2 && jit::linksEnabled() &&
                   jit::blockCacheEnabled(false) && jit::hotThreshold(false) == 1,
                   "resolved configuration is stable and carries backend defaults");
+            check(jit::packedCcrEnabled() && jit::registerCacheEnabled() &&
+                  jit::edgeLinkCellsEnabled(),
+                  "resolved configuration captures all codegen experiments");
+            check(jit::dynamicRegisterBitfieldEnabled(),
+                  "resolved configuration captures dynamic-bitfield admission");
             check(resolved.profitScore == 64,
                   "resolved configuration captures the profitability score");
             check(resolved.profitScoreExplicit,
@@ -406,6 +467,11 @@ int main() {
         }
         check(jit::accessThunkMode() == 0,
               "legacy accessors remain live outside an Engine compile scope");
+        check(!jit::packedCcrEnabled() && !jit::registerCacheEnabled() &&
+              !jit::edgeLinkCellsEnabled(),
+              "live experiment accessors observe later process overrides");
+        check(!jit::dynamicRegisterBitfieldEnabled(),
+              "live dynamic-bitfield accessor observes a later override");
 
         // The § C.4nonies admissions follow the backend's accessClockBias
         // declaration — ON where the access thunks carry the peripheral-
@@ -726,8 +792,8 @@ int main() {
         check(b->canEmit(0x7000) == gen, "MOVEQ #0,D0");
         check(b->canEmit(0xD3C1) == gen, "ADDA.L D1,A1");
         // …and forms no backend may claim because they are Unsafe or opcode
-        // overlaps. AArch64 does implement the brief indexed bit-test mode;
-        // x86-64 still refuses it.
+        // overlaps. Both native generators implement brief indexed EAs;
+        // full-format extensions remain an IR-time capability refusal.
         // LINK/UNLK/NOP are the $4Exx carve-out: no control transfer, no
         // SR/MMU/cache state, and 3.6 % of a real workload sitting at every
         // function entry and exit. They are compiled, and they no longer
@@ -750,6 +816,10 @@ int main() {
         check(jit::branchWords(0x4E75) == 1, "RTS is one word");
         check(jit::branchWords(0x4EB9) == 3, "JSR abs.l is three words");
         check(jit::branchWords(0x4EAE) == 2, "JSR d16(A6) is two words");
+        check(jit::branchWords(0x4EB0, 0x81E1) == 3,
+              "JSR full-index with word base displacement is three words");
+        check(jit::branchWords(0x4EB0, 0x25A3) == 5,
+              "JSR full-index with long base/outer displacements is five words");
         // …while the rest of the $4Exx group still ends a block BEFORE it.
         check(!b->canEmit(0x4E73), "RTE is never native");
         check(b->canEmit(0x4ED0) == gen,
@@ -767,8 +837,12 @@ int main() {
         checkSafe(0x40C0, "MOVE SR,D0 does not end a block");
         checkUnsafe(0x40D0, "MOVE SR,(A0) remains a block boundary");
         check(!b->canEmit(0xF200), "F-line is never native");
-        check(b->canEmit(0x0130) == a64,
+        check(b->canEmit(0x0130) == gen,
               "BTST Dn,d8(A0,Xn) follows active generator coverage");
+        check(b->canEmit(0x4870) == gen,
+              "PEA d8(A0,Xn) follows active generator coverage");
+        check(b->canEmit(0x41F0) == gen,
+              "LEA d8(A0,Xn),A0 follows active generator coverage");
         check(b->canEmit(0xCD4F),
               "EXG A6,A7 is native on both generators (x64 port 2026-08-21)");
         check(!b->canEmit(0x0108), "MOVEP is not BTST");
@@ -792,11 +866,14 @@ int main() {
     checkUnsafe(0x4E7A, "MOVEC from control register");
     checkUnsafe(0x4E7B, "MOVEC to control register");
     // JMP graduated from Unsafe to a Branch TERMINATOR (census 2026-07-30:
-    // 0.7 % of the idle Finder) — for the plain EA modes only; the 68020
-    // indexed modes keep their own decoder problem and stay Unsafe.
+    // 0.7 % of the idle Finder) — for the plain EA modes only. Shared brief
+    // data-EA lowering does not prove the dynamic target/queue contract, so
+    // indexed control flow stays Unsafe.
     check(jit::endsBlockAfter(jit::classify(0x4ED0)), "JMP (A0) terminates a block");
     check(jit::endsBlockAfter(jit::classify(0x4EF9)), "JMP (xxx).L terminates a block");
     checkUnsafe(0x4EF0, "JMP indexed stays Unsafe");
+    check(!jit::selectBackend("auto", jit::kGuest68040)->canEmit(0x4EF0),
+          "JMP indexed is not advertised as native");
     // DBcc was already a terminator; the census pass made it EMITTABLE.
     check(jit::endsBlockAfter(jit::classify(0x51C8)), "DBRA terminates a block");
     checkUnsafe(0x46C0, "MOVE to SR");

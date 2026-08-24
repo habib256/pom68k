@@ -37,6 +37,10 @@ struct ResolvedConfig;
 using WriteObserver = void (*)(void*, moira::Moira*, uint32_t, uint32_t,
                                uint32_t, uint32_t, int);
 using PeriphDue = void (*)(moira::Moira*);
+// Returns the address of a stable cell whose first machine word is either a
+// compiled linked entry or null. The engine owns and invalidates the cell;
+// generated code may embed its address but never the entry itself.
+using LinkCellLookup = void* (*)(void* self, uint32_t pc, bool super);
 
 // Which GUEST CPU families a backend's compiled form is semantically valid
 // for. This is not a performance hint and not a capability ranking: Moira's
@@ -203,6 +207,8 @@ struct Context {
     // dangle. Invalidating one table slot is O(1) and cannot dangle.
     void*    linkTable = nullptr;
     uint32_t linkMask = 0;             // entries - 1, 0 = linking disabled
+    LinkCellLookup linkCell = nullptr;  // exact constant-edge dependency cell
+    void* linkCellSelf = nullptr;
 
     // Set by the memory map when a guest write lands in a page holding
     // translated code. Generated code re-checks it after any store it did

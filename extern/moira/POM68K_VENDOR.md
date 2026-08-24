@@ -1388,11 +1388,14 @@ marked `POM68K JIT`, all inert until armed.
    thrown fault, into `false`. A false answer means nothing was committed on
    the guest side, so the caller leaves the instruction alone and the
    interpreter re-runs it from the boundary and faults identically.
-   `pomJitReadProg(addr, u16&)` (2026-08-23) is the program-space twin
-   for ONE purpose: the 030 `execJsr`'s `queue.irc = read<PROG, Word>(ea)`
-   — mode-5 has no prefetch queue, so a taken JSR leaves its target's
-   first word in irc, which a native JSR must read at run time
-   (`setFC(USER_PROG)` + `mmuRead<Word, 0>`, verbatim), never predict.
+   `pomJitReadProg(addr, u16&)` (2026-08-23) is the program-space twin. On
+   the 030 it reproduces `execJsr`'s
+   `queue.irc = read<PROG, Word>(ea)` — mode-5 has no prefetch queue, so a
+   taken JSR must read its target's first word at run time
+   (`setFC(USER_PROG)` + `mmuRead<Word, 0>`, verbatim), never predict. On the
+   040, full-index memory-indirect JSR/JMP use the ordinary
+   `read<PROG, Word>` funnel so ITT/ATC/cache/fault behaviour stays the
+   interpreter's rather than becoming a backend approximation.
 
 10. **`Moira.h` — `pomJitLayout()`, `pomJitSync(int)`, `pomJitSimpleIpl()`.**
     The register file stays private; `pomJitLayout()` hands back the byte

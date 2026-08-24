@@ -2338,18 +2338,23 @@ Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
     }
 }
 
-// The 030 JSR's target read (execJsr, default branch: `queue.irc =
-// read<C, AddrSpace::PROG, Word>(ea)`), for a native JSR to make at run
-// time. read<PROG> on the M68030 is setFC(USER_PROG) then mmuRead with no
-// flags — reproduced verbatim; the 040 has no mode-5 queue contract here.
+// A native JSR/JMP target read (execJsr/execJmp eventually publish the first
+// target word in queue.irc). The 030 keeps its explicit mode-5 path; the 040
+// uses the same read<PROG> funnel as the interpreted instruction, including
+// ITT/ATC/cache/fault behaviour.
 bool
 Moira::pomJitReadProg(u32 addr, u16 &out) noexcept
 {
     try {
-        if (cpuModel != Model::M68030) return false;
         if (fcSource != 0) return false;
-        setFC(FC::USER_PROG);
-        out = u16(mmuRead<Core::C68020, Word, 0>(addr));
+        if (cpuModel == Model::M68030) {
+            setFC(FC::USER_PROG);
+            out = u16(mmuRead<Core::C68020, Word, 0>(addr));
+        } else if (cpuModel >= Model::M68EC040) {
+            out = u16(read<Core::C68020, AddrSpace::PROG, Word>(addr));
+        } else {
+            return false;
+        }
         return true;
     } catch (...) {
         return false;

@@ -28,6 +28,7 @@
 #include "JitStats.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -36,6 +37,11 @@
 namespace moira { class Moira; }
 
 namespace jit {
+
+// Narrow test seam for the asset-free slice-index invariant. The probe is
+// defined only by jit_asset_free_lockstep_test; production code gets no
+// mutable access and no extra runtime path.
+struct EngineGuardIndexProbe;
 
 // How the engine reaches the machine's memory map without knowing which
 // machine it is. Bound once, by the CPU wrapper, with captureless lambdas —
@@ -161,6 +167,8 @@ public:
     void censusPhase(const char* label);
 
 private:
+    friend struct EngineGuardIndexProbe;
+
     struct Block {
         BlockIr   ir;
         Compiled* code = nullptr;
@@ -257,6 +265,17 @@ private:
     static constexpr uint32_t kNoLink = 0xFFFFFFFF;
     static uint32_t linkIndex(uint32_t pc) { return (pc >> 1) & (kLinkSlots - 1); }
 
+    struct LinkCell {
+        void* entry = nullptr;          // generated code loads this at +0
+        bool listed = false;            // present in publishedCells_
+    };
+    static_assert(offsetof(LinkCell, entry) == 0);
+
+    void* linkCell(uint32_t pc, bool super);
+    static void* linkCellThunk(void* self, uint32_t pc, bool super) {
+        return static_cast<Engine*>(self)->linkCell(pc, super);
+    }
+
     void publishLink(uint32_t pc, bool super, void* entry) {
         LinkSlot& s = linkTable_[linkIndex(pc)];
         // First occupancy of the slot since the last wipe: remember it, so
@@ -268,6 +287,14 @@ private:
         if (s.tag == kNoLink) published_.push_back(linkIndex(pc));
         s.tag = pc | uint32_t(super);
         s.entry = entry;
+        if (auto it = linkCells_.find(key(pc, super)); it != linkCells_.end()) {
+            LinkCell* cell = it->second.get();
+            cell->entry = entry;
+            if (!cell->listed) {
+                cell->listed = true;
+                publishedCells_.push_back(cell);
+            }
+        }
     }
     // A block that is going away must stop being a jump target. Exact,
     // because a block's slot is a function of its pc: if the slot still
@@ -276,6 +303,8 @@ private:
     void retractLink(uint32_t pc, bool super) {
         LinkSlot& s = linkTable_[linkIndex(pc)];
         if (s.tag == (pc | uint32_t(super))) { s.tag = kNoLink; s.entry = nullptr; }
+        if (auto it = linkCells_.find(key(pc, super)); it != linkCells_.end())
+            it->second->entry = nullptr;
     }
     void clearLinks() {
         for (uint32_t idx : published_) {
@@ -283,6 +312,11 @@ private:
             linkTable_[idx].entry = nullptr;
         }
         published_.clear();
+        for (LinkCell* cell : publishedCells_) {
+            cell->entry = nullptr;
+            cell->listed = false;
+        }
+        publishedCells_.clear();
     }
     std::vector<LinkSlot> linkTable_{ kLinkSlots };
     // Slots holding a live entry — what clearLinks() must visit. Bounded by
@@ -290,6 +324,12 @@ private:
     // because publishLink records only the empty->occupied transition and
     // retractLink leaves the slot on the list (cleared twice is harmless).
     std::vector<uint32_t> published_;
+    // Exact, collision-free cells for constant outgoing edges. unique_ptr
+    // keeps their addresses stable across unordered_map rehashes; the cells
+    // themselves live for the Engine lifetime, so generated references can
+    // never dangle even when source/target blocks are evicted independently.
+    std::unordered_map<uint64_t, std::unique_ptr<LinkCell>> linkCells_;
+    std::vector<LinkCell*> publishedCells_;
 
     static uint64_t key(uint32_t pc, bool super) {
         return uint64_t(pc) | (super ? (uint64_t(1) << 32) : 0);

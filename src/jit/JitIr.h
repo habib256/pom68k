@@ -245,11 +245,11 @@ enum Flag : uint8_t {
 // variable-count marker and describes the repeated access in slot zero.
 enum class MemoryDirection : uint8_t { Read, Write };
 enum class MemoryOperand : uint8_t {
-    Source, Destination, Operand, Stack, RegisterList
+    Source, Destination, Operand, Control, Stack, RegisterList
 };
 enum class MemoryOrder : uint8_t {
     None, Single, SourceThenDestination, ReadModifyWrite,
-    RegisterAscending, RegisterDescending
+    RegisterAscending, RegisterDescending, Sequential
 };
 enum class EaCommit : uint8_t {
     None, BeforeAccess, AfterAccess, PerElement
@@ -1213,8 +1213,13 @@ inline void describeEffectiveAddresses(Instr& in) {
             break;
         }
         case SemanticOp::Movem:
-        case SemanticOp::Bitfield:
             add(OperandRole::Operand, s.eaMode, s.eaReg, s.sizeIndex, 1);
+            break;
+        case SemanticOp::Bitfield:
+            // Memory bitfields always begin with a longword access; a
+            // possible fifth byte is deliberately outside the currently
+            // described zero-offset subset below.
+            add(OperandRole::Operand, s.eaMode, s.eaReg, 2, 1);
             break;
         case SemanticOp::Lea:
         case SemanticOp::Pea:
@@ -1239,6 +1244,163 @@ inline void describeEffectiveAddresses(Instr& in) {
             break;
         default:
             break;
+    }
+}
+
+// True when every runtime value selected by a bitfield extension fits in the
+// first longword after the signed byte displacement has been applied. A Dn
+// offset leaves only its low three bits inside that longword, hence a fixed
+// width <= 25 is always safe. A Dn width may reach 32 and is safe only at an
+// immediate byte-aligned offset.
+inline bool memoryBitfieldFitsLongword(uint16_t ext) {
+    const unsigned maxBitOffset = (ext & 0x0800)
+        ? 7u : unsigned((ext >> 6) & 7);
+    const unsigned maxWidth = (ext & 0x0020)
+        ? 32u : unsigned(((ext & 31) - 1u) & 31u) + 1u;
+    return maxBitOffset + maxWidth <= 32;
+}
+
+// Some 68020 extension words refine the memory shape beyond what the opcode
+// alone can say. A memory bitfield normally spans four OR five bytes, so the
+// generic contract must distinguish a guaranteed single longword from a
+// possible longword-plus-tail-byte sequence. Read-only forms can publish
+// both exactly: the second slot is the maximum runtime path and a backend
+// must still branch around it when the selected field does not cross bit 31.
+inline void refineMemoryFromExtensions(Instr& in, bool is030) {
+    const InstructionSemantics& s = in.semantics;
+    if (in.extensionCount == 0) return;
+
+    if (s.operation == SemanticOp::Bitfield && s.eaMode != 0) {
+        const uint16_t ext = in.extensionWord(0);
+        const bool readOnly = s.action == 0 || s.action == 1 ||
+                              s.action == 3 || s.action == 5;
+        if (!readOnly) return;
+
+        MemoryContract c;
+        c.described = true;
+        c.count = memoryBitfieldFitsLongword(ext) ? 1 : 2;
+        c.order = c.count == 1 ? MemoryOrder::Single : MemoryOrder::Sequential;
+        c.access[0] = memoryAccess(MemoryDirection::Read,
+                                   MemoryOperand::Operand, 4,
+                                   s.eaMode, s.eaReg, is030,
+                                   FaultPhase::RestartInstruction);
+        if (c.count == 2)
+            c.access[1] = memoryAccess(MemoryDirection::Read,
+                                       MemoryOperand::Operand, 1,
+                                       s.eaMode, s.eaReg, is030,
+                                       FaultPhase::RestartInstruction);
+        in.memory = c;
+        return;
+    }
+
+    // A MOVE whose full-format source is memory-indirect performs two
+    // ordered reads: first the pointer longword selected by the extension,
+    // then the ordinary source operand at the resolved address. Restrict the
+    // contract to a register destination; a memory destination would need a
+    // third slot and a stronger replay protocol than this IR promises.
+    if (s.operation == SemanticOp::Move &&
+        !memoryEa(s.destinationMode, s.destinationReg)) {
+        const DecodedEffectiveAddress* source = nullptr;
+        for (unsigned i = 0; i < in.effectiveAddressCount; i++) {
+            const auto& candidate = in.effectiveAddresses[i];
+            if (candidate.role == OperandRole::Source &&
+                candidate.mode == s.eaMode && candidate.reg == s.eaReg &&
+                candidate.extensionOffset == 0) {
+                source = &candidate;
+                break;
+            }
+        }
+        if (source && source->valid && source->fullFormat &&
+            source->indirect != IndexIndirect::None) {
+            const uint8_t bytes = uint8_t(1u << s.sizeIndex);
+            MemoryContract c;
+            c.described = true;
+            c.count = 2;
+            c.order = MemoryOrder::Sequential;
+            c.access[0] = memoryAccess(MemoryDirection::Read,
+                                       MemoryOperand::Control, 4,
+                                       s.eaMode, s.eaReg, is030,
+                                       FaultPhase::RestartInstruction);
+            c.access[1] = memoryAccess(MemoryDirection::Read,
+                                       MemoryOperand::Source, bytes,
+                                       s.eaMode, s.eaReg, is030,
+                                       FaultPhase::RestartInstruction);
+            in.memory = c;
+            return;
+        }
+    }
+
+    // Read-only ALU sources use the same two-read resolution protocol as a
+    // register-destination MOVE. Rogue pairs its full-indirect MOVEs with
+    // CMP.L ([$bd],Zn),Dn (B2B0), so describing only the final operand read
+    // would hide the pointer access from every backend.
+    if (s.operation == SemanticOp::AluEaToReg ||
+        s.operation == SemanticOp::AddressAlu) {
+        const DecodedEffectiveAddress* source = nullptr;
+        for (unsigned i = 0; i < in.effectiveAddressCount; i++) {
+            const auto& candidate = in.effectiveAddresses[i];
+            if (candidate.role == OperandRole::Source &&
+                candidate.mode == s.eaMode && candidate.reg == s.eaReg &&
+                candidate.extensionOffset == 0) {
+                source = &candidate;
+                break;
+            }
+        }
+        if (source && source->valid && source->fullFormat &&
+            source->indirect != IndexIndirect::None) {
+            const uint8_t bytes = uint8_t(1u << s.sizeIndex);
+            MemoryContract c;
+            c.described = true;
+            c.count = 2;
+            c.order = MemoryOrder::Sequential;
+            c.access[0] = memoryAccess(MemoryDirection::Read,
+                                       MemoryOperand::Control, 4,
+                                       s.eaMode, s.eaReg, is030,
+                                       FaultPhase::RestartInstruction);
+            c.access[1] = memoryAccess(MemoryDirection::Read,
+                                       MemoryOperand::Source, bytes,
+                                       s.eaMode, s.eaReg, is030,
+                                       FaultPhase::RestartInstruction);
+            in.memory = c;
+            return;
+        }
+    }
+
+    // A full-format memory-indirect control EA performs a data-space long
+    // read while computing the target. LEA/JMP have only that read; JSR then
+    // writes its return address to the stack. Publishing the pair lets a
+    // native backend prove both mappings before exposing either access.
+    if (s.operation == SemanticOp::Lea ||
+        s.operation == SemanticOp::Jump ||
+        s.operation == SemanticOp::JumpSubroutine) {
+        const DecodedEffectiveAddress* ea = nullptr;
+        for (unsigned i = 0; i < in.effectiveAddressCount; i++) {
+            const auto& candidate = in.effectiveAddresses[i];
+            if (candidate.mode == s.eaMode && candidate.reg == s.eaReg &&
+                candidate.sizeIndex == s.sizeIndex &&
+                candidate.extensionOffset == 0) {
+                ea = &candidate;
+                break;
+            }
+        }
+        if (!ea || !ea->valid || !ea->fullFormat ||
+            ea->indirect == IndexIndirect::None)
+            return;
+
+        MemoryContract c;
+        c.described = true;
+        c.count = s.operation == SemanticOp::JumpSubroutine ? 2 : 1;
+        c.order = c.count == 1 ? MemoryOrder::Single
+                               : MemoryOrder::SourceThenDestination;
+        c.access[0] = memoryAccess(MemoryDirection::Read,
+                                   MemoryOperand::Control, 4,
+                                   s.eaMode, s.eaReg, is030,
+                                   FaultPhase::RestartInstruction);
+        if (c.count == 2)
+            c.access[1] = memoryAccess(MemoryDirection::Write,
+                                       MemoryOperand::Stack, 4, 4, 7, is030,
+                                       FaultPhase::LastWrite);
+        in.memory = c;
     }
 }
 
@@ -1513,7 +1675,18 @@ inline bool endsBlockAfter(Kind k) { return k == Kind::Branch; }
 // Encoded length of a Kind::Branch, in 16-bit words. A branch is the one
 // instruction whose length the tracer cannot deduce from the pc delta,
 // because the pc went somewhere else entirely.
-inline uint32_t branchWords(uint16_t op) {
+inline uint32_t indexedExtensionWords(uint16_t ext) {
+    if (!(ext & 0x0100)) return 1;                 // brief extension
+    const uint8_t bd = uint8_t((ext >> 4) & 3);
+    const uint8_t iis = uint8_t(ext & 7);
+    if ((ext & 0x0008) || bd == 0 || iis == 4) return 1; // reserved
+    const uint32_t base = bd == 2 ? 1 : bd == 3 ? 2 : 0;
+    const uint32_t outer = (iis == 2 || iis == 6) ? 1
+                         : (iis == 3 || iis == 7) ? 2 : 0;
+    return 1 + base + outer;
+}
+
+inline uint32_t branchWords(uint16_t op, uint16_t indexExtension = 0) {
     if ((op & 0xF000) == 0x6000) {                 // Bcc / BRA / BSR
         const uint8_t d = uint8_t(op & 0xFF);
         return d == 0x00 ? 2 : d == 0xFF ? 3 : 1;  // .W : .L (68020) : .B
@@ -1522,11 +1695,14 @@ inline uint32_t branchWords(uint16_t op) {
     if ((op & 0xFF80) == 0x4E80) {                 // JSR / JMP <ea>
         const int mode = (op >> 3) & 7, reg = op & 7;
         if (mode == 2) return 1;                   // (An)
-        if (mode == 5 || mode == 6) return 2;      // d16(An) / indexed
+        if (mode == 5) return 2;                   // d16(An)
+        if (mode == 6) return 1 + indexedExtensionWords(indexExtension);
         if (mode == 7) {
             if (reg == 0) return 2;                // (xxx).W
             if (reg == 1) return 3;                // (xxx).L
-            return 2;                              // d16(PC) / PC-indexed
+            if (reg == 3)
+                return 1 + indexedExtensionWords(indexExtension);
+            return 2;                              // d16(PC)
         }
         return 1;
     }

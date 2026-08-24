@@ -48,8 +48,11 @@ public:
     }
 
     std::vector<uint8_t> mem;
-    jit::Engine jit;
+    // The engine attaches its production write guard during construction.
+    // Construct the callback destination first so its initializer cannot
+    // erase that attachment afterwards.
     jit::CodeGuard* guard = nullptr;
+    jit::Engine jit;
     int writeFaults = 0;
     WriteObservation observedWrite;
 
@@ -228,6 +231,30 @@ void installSccRegisterLoop(FaultCpu& c) {
     put16(c, kHandler, 0x4E71);
 }
 
+void installIndexedReadLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0, 0x2430);        // MOVE.L 4(A0,D1.W*2),D2
+    put16(c, kCode + 2, 0x1204);
+    put16(c, kCode + 4, 0x47F0);        // LEA 4(A0,D1.W*2),A3
+    put16(c, kCode + 6, 0x1204);
+    put16(c, kCode + 8, 0x49FB);        // LEA 8(PC,A1.L*4),A4
+    put16(c, kCode + 10, 0x9C08);
+    put16(c, kCode + 12, 0x4BF0);       // LEA (32,A0,A1.L*4),A5
+    put16(c, kCode + 14, 0x9D30);       // full/direct, long BD
+    put32(c, kCode + 16, 0x00000020);
+    put16(c, kCode + 20, 0x4DFB);       // LEA (16,ZPC,A1.L*4),A6
+    put16(c, kCode + 22, 0x9DA0);       // full/direct, base suppressed
+    put16(c, kCode + 24, 0x0010);
+    put16(c, kCode + 26, 0x45F0);       // LEA (48,A0,Zn),A2
+    put16(c, kCode + 28, 0x1D60);       // full/direct, index suppressed
+    put16(c, kCode + 30, 0x0030);
+    put16(c, kCode + 32, 0x60DE);       // BRA.S kCode
+    put16(c, kHandler, 0x4E71);
+    put32(c, 0x006022, 0x01234567);
+}
+
 void prepareFault(FaultCpu& c) {
     c.setPC(kCode);
     c.setA(6, kHole);
@@ -289,6 +316,50 @@ int main() {
         std::printf("SKIP: native backend '%s' unavailable (%s)\n",
                     nativeName, native.jit.backendName());
         return 0;
+    }
+
+    // The ordinary read half of the brief-index lowering: signed word
+    // index, scale and displacement must agree at every 030 queue/cycle
+    // boundary and must never enter the per-instruction slow stub.
+    {
+        FaultCpu readRef, readNative;
+        installIndexedReadLoop(readRef); installIndexedReadLoop(readNative);
+        readRef.reset(); readNative.reset();
+        readRef.setTC(12u << 20); readNative.setTC(12u << 20);
+        for (FaultCpu* c : {&readRef, &readNative}) {
+            c->setA(0, 0x006020);
+            c->setD(1, 0x0000FFFF);
+            c->setA(1, 1);
+        }
+        readNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 128 && same; step++) {
+            const int64_t target = readRef.getClock() + 37;
+            readRef.executeUntil(target);
+            readNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && readRef.getD(r) == readNative.getD(r) &&
+                       readRef.getA(r) == readNative.getA(r);
+            same = same && readRef.getPC() == readNative.getPC() &&
+                   readRef.getPC0() == readNative.getPC0() &&
+                   readRef.getIRD() == readNative.getIRD() &&
+                   readRef.getIRC() == readNative.getIRC() &&
+                   readRef.getSR() == readNative.getSR() &&
+                   readRef.getClock() == readNative.getClock();
+            if (!same) std::printf("    indexed-read divergence at checkpoint %d\n",
+                                   step);
+        }
+        const auto readStats = readNative.jit.stats().snapshot();
+        check(same && readNative.getD(2) == 0x01234567 &&
+              readNative.getA(3) == 0x006022 &&
+              readNative.getA(4) == kCode + 0x16 &&
+              readNative.getA(5) == 0x006044 &&
+              readNative.getA(6) == 0x00000014 &&
+              readNative.getA(2) == 0x006050 &&
+              readStats.blocksCompiled != 0 && readStats.blocksRun != 0 &&
+              readStats.slowInstrs == 0,
+              "brief/direct-full indexed LEA stay native and exact on the 030");
     }
 
     // Train and compile the exact write while its destination is direct RAM.
@@ -652,15 +723,16 @@ int main() {
                  "MOVE.B D0,(A6)+ fault");
     checkWriteEa(0x1D00, 0, false, kHole + 1, kHole, true,
                  "MOVE.B D0,-(A6) fault");
-    // Brief-indexed destination: the a64 takes the exact thunk (its Ea
-    // carries index-register fields); the x64 decoder still maps mode 6 to
-    // -1 (eaIndex, JitBackendX64.cpp) so the form runs conservatively —
-    // one fault, byte-exact frame via pristine replay. Pinned per backend:
-    // flipping the x64 flag to true IS the acceptance test for a future
-    // x64 brief-indexed EA port.
-    const bool ixThunk = !std::strcmp(nativeName, "aarch64");
-    checkWriteEa(0x1D80, 0x1000, true, kHole, kHole, ixThunk,
+    // Brief-indexed destination is native on both generators. Its exact
+    // thunk faults once before untouched replay faults again; the format-$A
+    // frame and the pre-access A6 commit must still match Moira byte for byte.
+    checkWriteEa(0x1D80, 0x1000, true, kHole, kHole, true,
                  "MOVE.B D0,d8(A6,D1.W) fault");
+    // The 040 admits indexed Scc, but the 030 trace-cost guard still keeps
+    // this form on pristine replay on both hosts. Pin that conservative edge
+    // separately from the native indexed MOVE acceptance above.
+    checkWriteEa(0x50F6, 0x1000, true, kHole, kHole, false,
+                 "ST d8(A6,D1.W) fault");
     checkWriteEa(0x50DE, 0, false, kHole, kHole + 1, false,
                  "ST (A6)+ fault");
 

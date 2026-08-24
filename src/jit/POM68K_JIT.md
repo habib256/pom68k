@@ -2,8 +2,8 @@
 
 A **second execution engine**, living beside the Moira interpreter and never
 in front of it. It is the default on the fully proved 68040 family **and,
-since 2026-08-18, on the 68030 one** (`auto` selects native a64 on AArch64
-and `threaded` on x86-64), and remains opt-in on the 68000/68020 guests. The
+since 2026-08-18, on the 68030 one** (`auto` selects the native AArch64 or
+x86-64 generator on both families), and remains opt-in on the 68000/68020 guests. The
 **CPU** menu switches it live;
 `POM68K_CPU_ENGINE=interp|jit` overrides the family policy. The interpreter
 remains what every accuracy claim in this project rests on and has its own
@@ -26,8 +26,8 @@ the subsystem keeps its internal name because `src/jit/` names the seam and
 the machinery, which a future non-conformant fast mode
 (`docs/HLE_OVERLAY.md`) would build on. The five relaxations a classic 68k
 JIT makes and this engine refuses — coarse time, coarse interrupts, a big
-soft TLB instead of exact ATC semantics, lazy flags (legal here, still to
-do), long traces — are catalogued in the CHANGELOG's 2026-07-28 eighth-pass
+soft TLB instead of exact ATC semantics, lazy flags (the exact compact form
+is now a measured opt-in prototype, § 3.8), long traces — are catalogued in the CHANGELOG's 2026-07-28 eighth-pass
 entry and in `TODO.md`.
 
 **State.** Three backends. `threaded` replays a recorded block through Moira's
@@ -35,24 +35,26 @@ own handlers with the fetch window armed, and is valid for every guest.
 `x86-64` (§ 7) generates host code for a real subset of the ISA, with an
 inline data TLB (§ 8) and control transfers compiled as block terminators,
 so a loop closing on itself never returns to the engine; on an x86-64 host
-`auto` picks it for the 68040 machines and it beats `threaded` on every
-regime measured (§ 3.4). `aarch64` covers the same 68040 *scope* — its
-declared family is identical — with a near-identical but not identical
-opcode set (§ 7): register and memory ALU, MOVE/MOVEA, effective addresses
-including brief indexed, bit tests, internal branches, calls/returns,
-LINK/UNLK, MOVEM, immediate shifts and register bitfields, backed by an
-inline big-endian DTLB and exact per-instruction fallback. Five-million-step
+`auto` picks it for the 68040 and 68030 machines and it beats `threaded` on every
+regime measured (§ 3.4). `aarch64` covers the same 68040 *family* — with a
+broader current opcode subset than x64 (§ 7): register and memory ALU,
+MOVE/MOVEA, effective addresses including brief indexing and direct or
+memory-indirect full-index sources, bit tests/bitfields, internal branches,
+calls/returns, LINK/UNLK, MOVEM and immediate or guarded register-count
+shifts, backed by an inline big-endian DTLB and exact per-instruction
+fallback. Five-million-step
 fine/coarse locksteps and the complete Q605 Finder boot are green, so `auto`
 selects it on AArch64. Release/native/LTO measures
 1.22 s against 4.55 s for threaded on the fixed 1,000-frame Q605 workload
 (3.73x, identical fingerprint); LLVM PGO measures 1.01 s against 3.41 s.
 The complete Finder gate is 9.19 s native against 21.14 s threaded (2.30x),
 or 7.86 s against 15.28 s under PGO (1.94x).
-The current non-LTO Apple-M4 reference (2026-08-21) runs the fixed
-3,000-frame Q605 budget in a median **3.47 s**, or **14.40x real time**, after
-the global exact A64 store guard, generated-loop compaction and exact-read /
-opcode-coverage pass described in § 10; the pre-change median was 5.32 s
-(9.40x).
+The current non-LTO Apple-M4 reference (2026-08-23) runs the fixed
+3,000-frame Q605 budget in **3.24 s median**, or **15.43x real time**, after
+the Rogue-driven opcode pass described in § 3.5ter. Three-pair ABBA runs
+measure 29.24 s for its paired interpreter and 15.13 s for threaded (whose
+paired interpreter is 29.49 s); every arm finishes at fingerprint
+`778dd7ad558108fd`.
 All are bit-exact against the interpreter — registers,
 supervisor stacks, cycle clock and the low 2 KB of guest RAM, compared at
 every instruction boundary.
@@ -162,7 +164,7 @@ Each one names the gate that would catch it breaking.
 |---|---|---|
 | 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_asset_free_lockstep_test` is the daily native floor; `jit_lockstep_test` (five registrations, six on AArch64 — § 5), plus its 68000 and 68030 twins (§ 3.2), widens it to real machines |
 | 2 | **Exits happen at instruction boundaries only.** No partial guest state — registers, CCR, PC, clock — ever survives a block exit. Everything unusual (interrupt, trace, STOP, breakpoint, MMU fault, an opcode outside the classifier) is handed back to `Moira::execute()` at a clean boundary. | `jit_asset_free_lockstep_test` compares 768 generated boundaries plus restart/last-write frames; `jit_lockstep_x64_fine_test` widens that to a machine one cycle at a time |
-| 3 | **The fastest proved conformant engine is the default, per guest family.** Today that is `jit/auto` for 68040 and 68030 (the 030 resolving to `threaded`) and the interpreter on 68000/68020. `POM68K_CPU_ENGINE=interp` always restores the oracle. | `jit_backend_test` pins the policy and both overrides; ten `interp_*_boot_etalon` registrations keep one interpreter reference per accelerated platform — q605/centris650/q630/q700 and lcii/lc3/iivx/iisi/iifx/duo230 |
+| 3 | **The fastest proved conformant engine is the default, per guest family.** Today that is native `jit/auto` for 68040 and 68030 on AArch64/x86-64, and the interpreter on 68000/68020. `POM68K_CPU_ENGINE=interp` always restores the oracle. | `jit_backend_test` pins the policy and both overrides; ten `interp_*_boot_etalon` registrations keep one interpreter reference per accelerated platform — q605/centris650/q630/q700 and lcii/lc3/iivx/iisi/iifx/duo230 |
 | 4 | **Peripheral time stays owed.** Blocks never run past the caller's cycle target (`Context::clockTarget`) and generated cycles go through the machine's virtual `sync()` (`pomJitSync`), so VIA, ASC, SWIM and the Egret/Cuda MCU keep their pacing. | `jit_mactv_boot_etalon` — registered for exactly this reason: Tinker Bell's Cuda transport deadlocks on a 2 % shift in MCU pacing long before a Finder signature would fail |
 | 5 | **Nothing cached survives a change of the address map.** Overlay flips (`CodeGuard::invalidate()`), MMU/ATC changes (`blocksGen_` vs `Moira::pomJitMmuGen`) and cache-control writes (`didChangeCACR` → `flushAll()`) drop the block cache and the code window. | `jit_q605_boot_etalon` (the boot overlay flips in the first milliseconds); `jit_lockstep_test` |
 | 6 | **No host knowledge above `jit::Backend`.** An architecture `#ifdef` outside `src/jit/backends/` or `JitCodeBuffer.cpp` is a design error. | `jit_backend_test` (its header states invariants 6 and 7 as its purpose) |
@@ -328,14 +330,34 @@ not a bug); the idle Finder lives under that regime. No conformant backend
 escapes it. § 3.6 prices one such exit; it is worth about 3 %, which is much
 less than the rate suggests.
 
-### 3.4 The current numbers (2026-08-10)
+### 3.4 The current numbers (2026-08-23)
 
 The pre-2026-07-31 figures this file used to carry are superseded — they
 predate three landed emitters, two cost-table fixes and the arm-time DTLB
 flush deletion (§ 8), and § 10 records what changed between them. Same
 instrument, same rule (identical fingerprints across engines), one budget:
 
-**Quadra 605, 3 000 frames (1.25 G machine cycles, 5.0 G core, idle Finder),
+**Current Apple-M4/AArch64 result, Quadra 605, 3 000 frames (1.25 G
+machine cycles, 5.0 G core), three ABBA pairs per selected JIT after one
+discarded warm-up pair, `fp=778dd7ad558108fd` in every arm:**
+
+| engine | median wall | × real time | vs paired interpreter |
+|---|---:|---:|---:|
+| Moira interpreter | 29.24 s¹ | ×1.71 | — |
+| Moira JIT Threaded | 15.13 s | ×3.30 | ×1.95 |
+| Moira J.I.T Codegen A64 | **3.24 s** | **×15.43** | **×9.03** |
+
+Codegen is ×4.67 over Threaded and retires 649,372,093 instructions, 99.7 %
+native. ¹The interpreter median is 29.24 s in the Codegen ABBA and 29.49 s in
+the Threaded ABBA; the corresponding arm spreads are 5.1/0.4 % and 4.6/0.0 %,
+far below the measured 88.9 % and 48.7 % reductions. The fingerprint agrees
+throughout; the direct final-tree runs also agree on SCSI count (1,324) and
+terminal PC (`$0002528A`). The older x86-64 table below remains the
+architecture-specific historical baseline rather than being silently
+overwritten.
+
+**2026-08-10 x86-64 baseline — Quadra 605, 3 000 frames (1.25 G machine
+cycles, 5.0 G core, idle Finder),
 `fp=5af1d47a9322bebf` on all three:**
 
 | engine | wall | × real time | vs interpreter |
@@ -535,11 +557,14 @@ state — correct, and not fixable), a two-memory-operand `MOVE` (no access
 thunk is allowed when a bail-out would re-run the first access), line-$E
 shifts (~113 k) and the 68020 indexed modes (~167 k).
 
-The indexed modes stay OPEN rather than dropped, and the reason is a limit
-of the instrument: **this workload does not draw.** The idle Finder is
+The indexed modes stayed OPEN at this checkpoint rather than being dropped,
+and the reason was a limit of the instrument: **this workload does not
+draw.** The idle Finder is
 exactly where QuickDraw's blitters — the thing the indexed modes were
 motivated by — are absent. Re-open with a census taken over a drawing-heavy
-phase; do not close it on an idle-Finder number.
+phase; do not close it on an idle-Finder number. That census led to the
+brief-first x64 lowering on 2026-08-23; only the full format and the
+instruction-specific indexed exclusions remain open.
 
 ### 3.5bis The drawing census, and what the idle Finder got wrong (2026-08-18)
 
@@ -580,8 +605,9 @@ three):
   is bracketed, not a point: **36 %** is the mass on opcodes whose every
   compiled site was brief, **96 %** is everything that is not full-only, and
   apportioning the 60 % seen both ways by each opcode's own slot ratio
-  estimates **71.5 %**. All three bounds say the same thing — **the brief
-  decoder § 7 scopes is aimed at the workload that needs it.**
+  estimates **71.5 %**. All three bounds said the same thing — **the brief
+  lowering § 7 now shares across A64 and x64 is aimed at the workload that
+  needs it.**
 
 The brief/full split is tallied in the *engine* (`Engine::recordIndexForms`,
 per compiled slot) rather than in a code generator's cold stub. That costs
@@ -593,6 +619,46 @@ Exactness would mean keying the census per compiled SITE inside both
 generators' cold stubs; the 36-96 % bracket is what that change has to be
 worth, and today it is not, because every point in the bracket decides the
 same way.
+
+#### 3.5ter Rogue re-census after the indexed/MOVEM pass (2026-08-23)
+
+The old **29 %** is no longer a description of the current JIT. On the first
+re-run, before the additions below, Rogue gameplay produced **102,852,551**
+block fallbacks. Dynamic register bitfields `E9C5` and `EFC6` alone were
+87,510,489 of them (85.08 %); every indexed form combined was 6,549,343,
+only **6.37 %**. The earlier brief-index and MOVEM work had already changed
+the workload enough that the 2026-08-18 ratio had to be retired.
+
+The recensus then drove each lowering, in descending measured order:
+
+* all eight dynamic register bitfields; read-only memory bitfields with an
+  optional fifth byte, then `BFEXTU d16(An)`;
+* direct and memory-indirect full 68020 EAs for `LEA`, `JMP`, `JSR`,
+  register-destination `MOVE` and read-only ALU sources. Pointer and operand
+  reads are separate IR accesses and the pointer mapping must prove plain
+  before generated code reads it;
+* full-direct MOVE sources, the dependent `MOVE.L (A7)+,(A7)` case, and a
+  guarded dynamic-shift specialization. A shift site is emitted only for a
+  traced count no greater than eight and checks `Dn & 63` before any effect;
+  a changed count replays the untouched instruction through Moira.
+
+The final identical 445/468-key drawing run reports **278,660 unsupported +
+255,754 exact runtime guards = 534,414 fallbacks**, down **99.48 %** from the
+first re-run. Indexed fallbacks are **107,414**, down **98.36 %** in absolute
+terms; their now-small residual is 79.5 % brief, 13.5 % full and 7.1 % mixed.
+The 2.90 M checkpoint immediately before the last full-indirect/shift pass
+took 57.33 s; the final retained set takes 56.97 s.
+
+Two tempting changes were measured and rejected. A free-running dynamic
+cycle charge passed the synthetic lockstep but prevented the real Q605 from
+reaching Finder, so only the guarded fixed-count form remains. Admitting
+brief indexed MOVE destinations removed another 83 k fallbacks but changed
+Rogue CPU time from 56.19 to 56.80 s on average (**+1.1 %**), so it is not a
+production default. No native VRAM copy/fill/mask specialization was added:
+the census did not identify one as a remaining dominant cost. This is also
+why QuickDraw HLE is not the next step; improving its instructions and plain
+framebuffer accesses accelerates QuickDraw and direct-framebuffer games
+without replacing either guest algorithm.
 
 ### 3.6 What one window exit actually costs (2026-08-09)
 
@@ -666,6 +732,27 @@ loop, so `blockCacheEnabled()` takes its default from the ACTIVE backend: off
 for `threaded`, on for anything that generates code, which has nothing at all
 to run without blocks.
 
+### 3.8 Four classic JIT levers, implemented before being believed (2026-08-23)
+
+The four obvious WinUAE-style levers were tested against the conformant
+boundary rather than promoted from intuition.  Three have complete opt-in
+implementations and one already existed as the window/native admission tier:
+
+| Lever | Exact implementation | Q605 3,000-frame ABBA result |
+|---|---|---|
+| deferred/liveness CCR | A64 x26 / x64 R15 carry `XNZVC` in bits 0..4 and the retired count above bit 8; every helper, fallback and exit materialises the architectural bytes | **+5.8 % wall**; A64 coverage 99.6 → 99.4 % because the first proof deliberately cold-stubs shift-register/bitfield flag cases |
+| local Dn/An cache | A64 x27/x28 cache at most two read-only registers selected per block; every linked entry reloads them from canonical memory, and the Engine option fixes one chain-wide stack ABI | **+0.1 % wall** (neutral inside noise) |
+| exact edge cells | each constant edge embeds a stable, collision-free target cell; publish/retract updates that cell and invalidation can never leave a dangling entry | block runs 1,080,044 → 877,751 and block-end exits 959,158 → 755,974, but **+0.5 % wall** |
+| two-tier admission | the existing fetch window is tier 0 and native code is tier 1; `HOT` and profitability score decide promotion | `HOT=2` is **+8.3 % wall** versus `HOT=1`; scores 4/8/16 are all slower |
+
+All ABBA arms retired 649,372,093 instructions and produced fingerprint
+`778dd7ad558108fd`.  The first three implementations remain available as
+attribution/proof knobs but default OFF; the measured production answer is
+still eager architectural CCR, canonical guest registers, the direct link
+table and immediate native promotion.  Keeping a correct but slower
+experiment behind an immutable Engine option is useful; silently making the
+default slower is not an optimization.
+
 ---
 
 ## 4. Block discovery: tracing, not decoding
@@ -722,7 +809,7 @@ twice, each time for a measured reason recorded in `JitIr.h`:
 | `Bcc`/`BRA`/`BSR` | J1 | the target is a compile-time constant, so a backward branch into its own block becomes an internal jump and the loop never returns to the engine — most of what a code generator is for here |
 | `DBcc` | J1 | same |
 | `JSR <ea>`, `RTS` | 2026-07-28 | 7 % of a real Mac OS workload, and every one of them was both an interpreter round trip AND a block boundary the linker could not cross |
-| `JMP <ea>` | 2026-07-30 | 0.66 % of the idle Finder in the census; a terminator simpler than `JSR` (no stack push). **Plain EA modes only** — `(An)`, `d16(An)`, `(xxx).W/.L`, `d16(PC)`. The 68020 indexed modes stay `Unsafe` (they are a brief-extension-word decoder in their own right) |
+| `JMP <ea>` | 2026-07-30 | 0.66 % of the idle Finder in the census; a terminator simpler than `JSR` (no stack push). **Plain EA modes only** — `(An)`, `d16(An)`, `(xxx).W/.L`, `d16(PC)`. Indexed data EAs are now lowered, but indexed control flow stays `Unsafe` until its dynamic target/queue contract has a dedicated proof |
 
 `LINK`, `UNLK` and `NOP` are carved out of `$4Exx` as ordinary
 straight-line `AddrCalc`: they transfer no control and touch no SR/MMU/cache
@@ -745,7 +832,8 @@ bare `make` either: tree-wide LTO relinks ~90 binaries after any core change.
 The first answer after a JIT edit is the native, asset-free tier. It builds
 five small binaries, runs 768 deterministic interpreter/native checkpoints
 plus restart/last-write fault frames, executes generated cache protocols,
-checks the IR/profile contracts and runs the documentation/configuration gates.
+checks 384 precise one/two-slice guard evictions, checks the IR/profile
+contracts and runs the documentation/configuration gates.
 CI sets `POM68K_JIT_REQUIRE_NATIVE=1`, so A64/x64 selection or W^X failure is
 red rather than a soft skip. Each gate has a 45-second ceiling; bounded
 fallback/native-share checks and a fixed-cycle native/interpreter ratio are
@@ -873,6 +961,9 @@ process environment. Later environment changes affect only future engines.
 | `POM68K_JIT_HOT` | native `1`, threaded `512` | visits before a recorded block is translated |
 | `POM68K_JIT_ARM_BACKOFF` | `32` | single-stepped instructions after an `armWindow()` refusal before the next arm attempt (0-4096). Measured 2026-08-23 at 30 000 LC II frames, single runs, same binary: 32 → 94.2 s, 8 → 90.5 s, 4 → 92.9 s, 1 → 93.1 s, native share rising monotonically (85.6 → 88.2 %) while wall does not. A streak-growing backoff (1, 2, 4 … 32) gave 93.0 s / 88.2 % on the 030 with identical locksteps — and **diverged the two 68040 locksteps** (`D1` differs at the first coarse boundary): when the window is armed is NOT architecturally invisible on the 040, so the constant stays (CHANGELOG 2026-08-23 (fourth)) |
 | `POM68K_JIT_LINKS` | profile | direct block-to-block linking for native backends; on only in `production` unless explicitly overridden |
+| `POM68K_JIT_PACKED_CCR` | `0` | conformant deferred-CCR prototype (§ 3.8): keep `XNZVC` beside the generated retired count and materialise it at helper/exit boundaries. Emitted by A64 and x64; A64 lockstep-proved and measured **5.8 % slower**, so not a production default |
+| `POM68K_JIT_REG_CACHE` | `0` | A64 per-block cache of up to two read-only Dn/An values in x27/x28. Linked targets reload from canonical guest state and all blocks share the option-selected frame ABI. Lockstep-proved, performance-neutral, hence opt-in |
+| `POM68K_JIT_EDGE_CELLS` | `0` | constant branches use exact stable dependency cells rather than the colliding direct table; target publication/invalidation updates the cell in O(1). It removes 202,293 outer block runs on the fixed Q605 workload but measures 0.5 % slower; dynamic targets retain the table |
 | `POM68K_JIT_A64_PACING` | `1` | AArch64 inline peripheral deadline/batch test; `0` calls `sync(cycles)` after every emitted instruction for attribution |
 | `POM68K_Q605_EVENT_SCC` | `1` | Q605 carries serialized SCC time debt to its exact event/MMIO boundary; `0` restores per-`tick` stepping for A/B attribution |
 | `POM68K_Q605_EVENT_SCSI` | `1` | Q605 carries serialized 53C96 latency debt to its exact IRQ/MMIO/pseudo-DMA boundary; `0` restores per-`tick` stepping |
@@ -924,6 +1015,13 @@ deliberate: block discovery reads opcodes out of the code window, so
 but its own dispatch overhead — useful exactly once, as the zero point.
 `POM68K_JIT_BLOCKS=0` is the interesting attribution knob on a
 code-generating backend: window on, no generated code at all.
+
+The asset-free lockstep also reconstructs `sliceIndex_` from the live block
+cache after every alternating eviction: keys must be unique and exhaustive,
+the 32-byte guard masks must be exact, and a block spanning two 256-byte
+slices must disappear from both when a write hits either. That is the daily,
+ROM-free tripwire for the 2026-08-22 stale-key leak; the LC II soak is no
+longer its only witness.
 
 Two more `jit` gates carry no environment at all, because what they pin is
 a boundary rather than a configuration: `jit_restart_write_030_test`
@@ -986,18 +1084,17 @@ owns branch/call/jump target, fallthrough and pushed return address. Both
 backends consume these plans; neither calls `branchDisplacement()` nor parses
 an extension. Cycle tables, register choice and host instruction selection
 remain backend work. Full-index lowering is not thereby declared native:
-both generators reject `fullFormat` and replay the untouched instruction
-until that lowering has its own proof.
+both generators accept only the proved direct `LEA` subset. Memory-indirect
+plans and every other full-format instruction replay untouched.
 
 ---
 
 ## 7. The x86-64 backend (J2)
 
-> **Scope: correctness declared for 040+030; automatic speed scope is
-> backend-specific.** x64 serves 040 automatically and keeps 030 on
-> `threaded`; AArch64 serves both 040 and 030 after its independent
-> 2026-08-20 promotion. Both expose 040+030 through `guestFamilies` for an
-> explicit backend request.
+> **Scope: correctness and automatic speed selection are declared for
+> 040+030 on both native hosts.** AArch64 promoted the 030 on 2026-08-20;
+> x64 followed on 2026-08-21 after its independent alignment proof. Both
+> expose and automatically select 040+030 through their capability masks.
 > Everything below is written against the 040's instruction-boundary
 > contract, and the differences from the 68030 are semantic, not cosmetic:
 > `(An)+` updates the register *before* the access on an 030 and *after* it
@@ -1086,10 +1183,14 @@ emitters it dispatches to.
 * as block terminators: `Bcc`/`BRA`, `JSR`/`BSR`/`RTS`, **`DBcc`** (loops
   close internally like `Bcc`) and **`JMP <ea>`**;
 * over addressing modes `Dn`, `An`, `(An)`, `(An)+`, `-(An)`, `d16(An)`,
-  `(xxx).W`, `(xxx).L`, `d16(PC)` and immediate (`eaIndex()`).
+  brief `d8(An,Xn)` / `d8(PC,Xn)` (word/long Dn or An index, ×1/2/4/8),
+  `(xxx).W`, `(xxx).L`, `d16(PC)` and immediate (`eaIndex()`). A64 also
+  accepts proved direct or memory-indirect full-index plans for `LEA`,
+  `JMP`/`JSR`, register-destination `MOVE` and read-only ALU sources,
+  including base/index suppression and base/outer displacement.
 
-Everything else — including every 68020 indexed mode (`eaIndex()` returns
-−1 for mode 6 and for 7.3), every shift and rotate,
+Everything else — including full-indexed `MOVEM`, memory-indirect writes and
+three-access MOVE forms, unsupported shifts/rotates,
 `MULU`/`MULS`/`DIVU`/`DIVS`, `ABCD`/`SBCD`,
 `ADDX`/`SUBX`, same-register `CMPM`, `MOVEP` and `MOVE SR,Dn` — falls back per instruction
 to a cold stub that runs that one instruction through Moira and rejoins the
@@ -1097,15 +1198,23 @@ compiled stream. A block whose native coverage falls below half is refused
 outright: it would be the same interpreter work plus a call and a frame.
 
 **Backend admission remains explicit even where the sets have converged.**
-A64 adds immediate line-$E shifts and rotates (no `ROX` yet), register
-bitfields, brief-indexed `d8(An,Xn)` / `d8(PC,Xn)` and `MOVE SR,Dn`; it
-also emits `Scc` and `PEA`, which were formerly x64-only, while `EXG` and
-distinct-register `CMPM` are on both since the 2026-08-21 x64 port (the
-shared synthetic 040 oracle demands them: its budget is ≥990 ‰ native and
-zero slow instructions). Each backend's
+A64 adds immediate and guarded register-count line-$E shifts/rotates (no
+`ROX` yet), register and read-only memory bitfields, and `MOVE SR,Dn`;
+brief-indexed reads/RMW, `Scc`, `PEA` and `LEA`,
+plus `EXG` and distinct-register `CMPM`, are now on both. The shared synthetic
+040 oracle demands brief An/PC reads and `LEA`, indexed `Scc`/`PEA`, complete
+CPU/RAM lockstep and zero slow instructions. Its direct-full `LEA` twin must
+also stay native through base/index suppression and 9/11/15-cycle forms,
+while memory-indirect LEA/JSR/MOVE/CMP twins must remain exact and native on
+A64. The 030
+oracle separately pins native signed/scaled reads plus brief/direct-full
+`LEA`, and the restartable indexed-MOVE format-$A fault frame on both hosts;
+indexed `Scc` there remains conservatively replayed by the trace-cost guard.
+Each backend's
 `canEmit()` remains the source of truth, and `jit_backend_test` pins the
-remaining keyed differences (`MOVE SR,Dn` and brief-indexed `BTST`) so a
-coverage change is also a gate change.
+remaining keyed differences (`MOVE SR,Dn`, shifts and bitfields) plus the
+indexed parity/control-flow refusal, so a coverage change is also a gate
+change.
 
 ### What it is worth
 
@@ -1123,16 +1232,16 @@ changes, in order of size:
    three names, ~5 % of idle-Finder instructions, −3.0 % / −1.7 % on the
    two regimes, boot etalon 25.6 → 24.7 s.
 
-**Coverage.** **99.5 % native** on the current 3 000-frame Q605 budget
-(2026-08-21), after exact sole reads, preflight-before-exact two-EA MOVE and
+**Coverage.** **99.7 % native** on the current 3 000-frame Q605 budget
+(2026-08-23), after exact sole reads, preflight-before-exact two-EA MOVE and
 the CMPA/ADDQ/EXG/CMPM coverage pass; production block fallback is 813,478
 instructions, or 0.1 % (3,648,316 / 0.6 % after the preceding global store-
 guard correction, and 30,788,039 / 4.7 % immediately before it). The earlier
 § 3.5 phase raised the share from 96.2 % to 98.5 %; the 2026-07-30 census
 began at 89.6 %. The remaining static/runtime
 classes are still enumerated in § 3.5 and § 3.5bis. Re-measure with
-`POM68K_JIT_HISTO=1` before quoting any of these; a census taken over an idle
-Finder cannot price the indexed modes.
+`POM68K_JIT_HISTO=1` before quoting any of these; use the drawing census in
+§ 3.5bis rather than an idle Finder to price indexed modes.
 
 **The next lever is not code density.** The binding cost at the idle Finder
 is the exactness contract itself (§ 3.3: one window death per ~15
@@ -1339,6 +1448,15 @@ means maintaining incoming/outgoing link lists that can dangle when a block
 is freed. Invalidating one table slot (`retractLink`) is O(1), cannot dangle,
 and is exact: a block's slot is a function of its pc, so if the slot still
 carries this block's tag it IS this block.
+
+`POM68K_JIT_EDGE_CELLS=1` is the measured exact-dependency alternative for
+constant edges. Generated code embeds the address of an Engine-lifetime cell,
+loads its current entry and jumps only when non-null. The cell address stays
+valid across unordered-map growth and code generations; `retractLink()` and
+`clearLinks()` null it before translated code can be recycled. This removes
+direct-table collisions without incoming jump lists or code patching. It is
+off by default because the extra dependent load/indirect branch cost 0.5 % on
+the fixed Q605 ABBA despite eliminating 21.1 % of block-end exits (§ 3.8).
 
 Three things make jumping straight into another block safe:
 
