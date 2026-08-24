@@ -103,9 +103,10 @@ extern "C" int pom68kA64Write(moira::Moira* cpu, uint32_t addr,
     return ok;
 }
 
-// The 030 JSR's target-word read (Moira::pomJitReadProg): what execJsr
-// leaves in irc. 1 = `*out` holds the word, 0 = the read would fault and
-// the untouched instruction must be replayed.
+// JSR/JMP's target-word read (Moira::pomJitReadProg): what the interpreted
+// control transfer leaves in irc. The 030 has an explicit mode-5 path; a
+// 040 full-indirect target needs the same runtime program-space read. 1 =
+// `*out` holds the word, 0 = the untouched instruction must be replayed.
 extern "C" int pom68kA64ReadProg(moira::Moira* cpu, uint32_t addr,
                                  uint32_t* out) noexcept {
     uint16_t w = 0;
@@ -176,6 +177,16 @@ thread_local bool gRuntimeReasonHisto = false;
 // refreshes it before generated execution resumes.
 thread_local bool gPacingDeadline = false;
 thread_local bool gDirectPeriphDue = false;
+// x26 mirrors x64's compact live-state ABI when enabled: architectural
+// XNZVC in bits 4..0 and the retired count in bits 63..8. Bits 7..5 isolate
+// carries. Helpers and exits publish the canonical Moira flag bytes.
+thread_local bool gPackedCcr = false;
+// Up to two block-local, read-only guest registers live in x27/x28. The
+// selector rejects every register an instruction in the block may write;
+// memory therefore remains canonical and direct links only need two loads.
+thread_local int gCachedGuest[2] = {-1, -1};
+thread_local LinkCellLookup gLinkCellLookup = nullptr;
+thread_local void* gLinkCellSelf = nullptr;
 // The access-thunk clock-alignment operand of the instruction being
 // emitted (see pom68kA64Read): its traced fetch stream, packed for the
 // thunk's read-only peek. The compile loop sets it per instruction and
@@ -203,7 +214,8 @@ void watchRefusal(const Layout& L, const BlockIr& ir, const Instr& in,
         "[jit-watch] %04X pc=%08X %s words=%u cyc=%u base=%u ic=%u postEx=%u "
         "fetch=%u queue=%d ird=%04X irc=%04X next=%08X kind=%d op=%d "
         "ea=%d/%d size=%d ext=%u proto=%d preflight=%02X thunk=%02X "
-        "cache=%02X lastWrite=%u restartable=%d order=%d super=%d\n",
+        "cache=%02X lastWrite=%u restartable=%d order=%d super=%d "
+        "ext0=%04X action=%u bf4=%d\n",
         in.opcode, in.pc, stage, unsigned(in.words), unsigned(in.cycles),
         unsigned(in.baseCycles), unsigned(in.icacheCycles),
         unsigned(in.postExceptionCycles), unsigned(in.fetchWords),
@@ -213,7 +225,9 @@ void watchRefusal(const Layout& L, const BlockIr& ir, const Instr& in,
         int(in.semantics.sizeIndex), unsigned(in.extensionCount),
         int(p.protocol), p.preflightMask, p.exactThunkMask, p.cacheMask,
         unsigned(p.lastWrite), int(p.lastWriteRestartable),
-        int(in.memory.order), int(ir.super));
+        int(in.memory.order), int(ir.super), in.extensionWord(0),
+        unsigned(in.semantics.action),
+        int(memoryBitfieldFitsLongword(in.extensionWord(0))));
 }
 
 // Minimal fixed-width assembler. Every memory operand is an unsigned scaled
@@ -221,7 +235,7 @@ void watchRefusal(const Layout& L, const BlockIr& ir, const Instr& in,
 class Asm {
 public:
     enum Cond : uint32_t { EQ = 0, NE = 1, CS = 2, CC = 3, MI = 4,
-                           VS = 6, HI = 8, GE = 10, LT = 11 };
+                           VS = 6, HI = 8, LS = 9, GE = 10, LT = 11 };
     struct Fix {
         size_t at;
         int label;
@@ -229,11 +243,15 @@ public:
         uint32_t cond;
         unsigned rt = 0;
     };
-    struct Mark { size_t code, labels, fixes; };
+    struct LiteralFix { size_t at; unsigned rt; uint64_t value; };
+    struct Mark { size_t code, labels, fixes, literals; };
 
-    Mark mark() const { return {code_.size(), labels_.size(), fixes_.size()}; }
+    Mark mark() const {
+        return {code_.size(), labels_.size(), fixes_.size(), literals_.size()};
+    }
     void rewind(Mark m) {
         code_.resize(m.code); labels_.resize(m.labels); fixes_.resize(m.fixes);
+        literals_.resize(m.literals);
     }
 
     // Labels are allocated before the instruction body so every emitter can
@@ -379,8 +397,14 @@ public:
     void andW(unsigned rd, unsigned rn, unsigned rm) {
         emit(0x0A000000u | (rm << 16) | (rn << 5) | rd);
     }
+    void andX(unsigned rd, unsigned rn, unsigned rm) {
+        emit(0x8A000000u | (rm << 16) | (rn << 5) | rd);
+    }
     void orrW(unsigned rd, unsigned rn, unsigned rm) {
         emit(0x2A000000u | (rm << 16) | (rn << 5) | rd);
+    }
+    void orrX(unsigned rd, unsigned rn, unsigned rm) {
+        emit(0xAA000000u | (rm << 16) | (rn << 5) | rd);
     }
     void eorW(unsigned rd, unsigned rn, unsigned rm) {
         emit(0x4A000000u | (rm << 16) | (rn << 5) | rd);
@@ -403,6 +427,9 @@ public:
     }
     void asrW(unsigned rd, unsigned rn, unsigned shift) {
         emit(0x13000000u | (shift << 16) | (31u << 10) | (rn << 5) | rd);
+    }
+    void asrVarW(unsigned rd, unsigned rn, unsigned rm) {
+        emit(0x1AC02800u | (rm << 16) | (rn << 5) | rd);
     }
     void lsrX(unsigned rd, unsigned rn, unsigned shift) {
         emit(0xD3400000u | (shift << 16) | (63u << 10) | (rn << 5) | rd);
@@ -427,6 +454,9 @@ public:
     void rorW(unsigned rd, unsigned rn, unsigned shift) {
         emit(0x13800000u | (rn << 16) | (shift << 10) | (rn << 5) | rd);
     }
+    void rorVarW(unsigned rd, unsigned rn, unsigned rm) {
+        emit(0x1AC02C00u | (rm << 16) | (rn << 5) | rd);
+    }
     void rev16W(unsigned rd, unsigned rn) {
         emit(0x5AC00400u | (rn << 5) | rd);
     }
@@ -448,6 +478,10 @@ public:
         fixes_.push_back({code_.size(), l, true, 18, rt});
         emit(0xB4000000u | rt);
     }
+    void ldrLiteralX(unsigned rt, uint64_t value) {
+        literals_.push_back({code_.size(), rt, value});
+        emit(0x58000000u | rt);          // imm19 patched by finish()
+    }
     void blr(unsigned rn) { emit(0xD63F0000u | (rn << 5)); }
     void br(unsigned rn) { emit(0xD61F0000u | (rn << 5)); }
 
@@ -468,6 +502,19 @@ public:
                 code_[f.at] = 0x14000000u | (uint32_t(d) & 0x03FFFFFFu);
             }
         }
+        // Literal pool is unreachable after the generated RET. Loading a
+        // stable edge-cell address this way is one instruction instead of
+        // a 3-4 instruction MOVZ/MOVK sequence at every constant transfer.
+        for (const LiteralFix& l : literals_) {
+            if (code_.size() & 1u) emit(0xD503201Fu); // 8-byte alignment
+            const size_t literalAt = code_.size();
+            const int64_t d = int64_t(literalAt) - int64_t(l.at);
+            if (d < -(1 << 18) || d >= (1 << 18)) return false;
+            code_[l.at] = 0x58000000u |
+                ((uint32_t(d) & 0x7FFFFu) << 5) | l.rt;
+            code_.push_back(uint32_t(l.value));
+            code_.push_back(uint32_t(l.value >> 32));
+        }
         return true;
     }
 
@@ -480,6 +527,7 @@ private:
     std::vector<uint32_t> code_;
     std::vector<size_t> labels_;
     std::vector<Fix> fixes_;
+    std::vector<LiteralFix> literals_;
 };
 
 void loadQueueLive(Asm& a, const Layout& L, unsigned scratch = 10);
@@ -644,12 +692,176 @@ uint32_t regOff(const Layout& L, bool address, unsigned n) {
     return (address ? L.a : L.d) + n * 4;
 }
 
+int cachedHostRegister(bool address, unsigned n) {
+    const int guest = int(n) + (address ? 8 : 0);
+    for (int slot = 0; slot < 2; slot++)
+        if (gCachedGuest[slot] == guest) return 27 + slot;
+    return -1;
+}
+
+void loadGuestRegister(Asm& a, const Layout& L, unsigned rd, bool address,
+                       unsigned n, int bits = 32) {
+    const int host = cachedHostRegister(address, n);
+    if (host >= 0) {
+        if (bits == 32) a.movRegW(rd, unsigned(host));
+        else a.ubfxW(rd, unsigned(host), 0, unsigned(bits));
+        return;
+    }
+    const uint32_t off = regOff(L, address, n);
+    if (bits == 8) a.ldrB(rd, 0, off);
+    else if (bits == 16) a.ldrH(rd, 0, off);
+    else a.ldrW(rd, 0, off);
+}
+
+void reloadGuestRegisterCache(Asm& a, const Layout& L) {
+    for (int slot = 0; slot < 2; slot++) {
+        const int guest = gCachedGuest[slot];
+        if (guest < 0) continue;
+        a.ldrW(unsigned(27 + slot), 0,
+               regOff(L, guest >= 8, unsigned(guest & 7)));
+    }
+}
+
+uint16_t guestRegisterWriteMask(const Instr& in) {
+    const InstructionSemantics& s = in.semantics;
+    if (!s.valid()) return 0xFFFFu;
+    uint16_t mask = 0;
+    const auto reg = [&](bool address, unsigned n) {
+        if (n < 8) mask |= uint16_t(1u << (n + (address ? 8 : 0)));
+    };
+    const auto eaUpdate = [&](uint8_t mode, uint8_t n) {
+        if ((mode == 3 || mode == 4) && n < 8) reg(true, n);
+    };
+    eaUpdate(s.eaMode, s.eaReg);
+    switch (s.operation) {
+        case SemanticOp::Nop:
+        case SemanticOp::Test:
+        case SemanticOp::Branch:
+        case SemanticOp::Jump:
+            break;
+        case SemanticOp::Move:
+            eaUpdate(s.destinationMode, s.destinationReg);
+            if (s.destinationMode == 0) reg(false, s.destinationReg);
+            else if (s.destinationMode == 1) reg(true, s.destinationReg);
+            break;
+        case SemanticOp::CompareMemory:
+            reg(true, s.eaReg); reg(true, s.destinationReg); break;
+        case SemanticOp::MoveQuick:
+            reg(false, s.registerIndex); break;
+        case SemanticOp::MoveSrToReg:
+            reg(false, s.eaReg); break;
+        case SemanticOp::Exchange:
+            reg(s.action == 1, s.registerIndex);
+            reg(s.action != 0, s.eaReg); break;
+        case SemanticOp::Bit:
+            if (s.action != 0 && s.eaMode == 0) reg(false, s.eaReg);
+            break;
+        case SemanticOp::ImmediateAlu:
+            if (s.alu != AluOperation::Cmp && s.eaMode == 0)
+                reg(false, s.eaReg);
+            break;
+        case SemanticOp::SetCondition:
+        case SemanticOp::Clear:
+        case SemanticOp::Negate:
+        case SemanticOp::Complement:
+            if (s.eaMode == 0) reg(false, s.eaReg);
+            break;
+        case SemanticOp::AddSubQuick:
+            if (s.eaMode == 0) reg(false, s.eaReg);
+            else if (s.eaMode == 1) reg(true, s.eaReg);
+            break;
+        case SemanticOp::AluEaToReg:
+            if (s.alu != AluOperation::Cmp) reg(false, s.registerIndex);
+            break;
+        case SemanticOp::AddressAlu:
+            if (s.alu != AluOperation::Cmp) reg(true, s.registerIndex);
+            break;
+        case SemanticOp::AluRegToEa:
+            if (s.eaMode == 0) reg(false, s.eaReg);
+            break;
+        case SemanticOp::Link:
+        case SemanticOp::Unlink:
+            reg(true, s.eaReg); reg(true, 7); break;
+        case SemanticOp::Lea:
+            reg(true, s.registerIndex); break;
+        case SemanticOp::Pea:
+        case SemanticOp::BranchSubroutine:
+        case SemanticOp::JumpSubroutine:
+        case SemanticOp::ReturnSubroutine:
+            reg(true, 7); break;
+        case SemanticOp::Movem:
+            if (s.toRegisters) mask |= 0xFFFFu;
+            break;
+        case SemanticOp::Extend:
+        case SemanticOp::Swap:
+        case SemanticOp::ShiftRegister:
+            reg(false, s.eaReg); break;
+        case SemanticOp::Bitfield:
+            mask |= 0x00FFu; break;
+        case SemanticOp::DecrementBranch:
+            reg(false, s.eaReg); break;
+        default:
+            mask = 0xFFFFu; break;
+    }
+    return mask;
+}
+
+void chooseGuestRegisterCache(const BlockIr& ir) {
+    gCachedGuest[0] = gCachedGuest[1] = -1;
+    if (!registerCacheEnabled()) return;
+    uint16_t written = 0;
+    unsigned score[16] = {};
+    for (const Instr& in : ir.instrs) {
+        written |= guestRegisterWriteMask(in);
+        for (unsigned e = 0; e < in.effectiveAddressCount; e++) {
+            const DecodedEffectiveAddress& ea = in.effectiveAddresses[e];
+            if (!ea.valid) continue;
+            if (ea.mode == 0 && ea.reg < 8) score[ea.reg] += 2;
+            else if (ea.mode == 1 && ea.reg < 8) score[8 + ea.reg] += 2;
+            else if (ea.mode >= 2 && ea.mode <= 6 && ea.reg < 8)
+                score[8 + ea.reg] += 4;
+            if ((ea.kind == EffectiveAddressKind::BriefIndex ||
+                 ea.kind == EffectiveAddressKind::FullIndex ||
+                 ea.kind == EffectiveAddressKind::PcBriefIndex ||
+                 ea.kind == EffectiveAddressKind::PcFullIndex) &&
+                !ea.indexSuppressed && ea.indexRegister < 16)
+                score[ea.indexRegister] += 2;
+        }
+        const InstructionSemantics& s = in.semantics;
+        switch (s.operation) {
+            case SemanticOp::AluEaToReg:
+            case SemanticOp::AluRegToEa:
+            case SemanticOp::MoveQuick:
+                if (s.registerIndex < 8) score[s.registerIndex] += 2; break;
+            case SemanticOp::AddressAlu:
+            case SemanticOp::Lea:
+                if (s.registerIndex < 8) score[8 + s.registerIndex] += 2; break;
+            case SemanticOp::Bit:
+                if (s.dynamic && s.registerIndex < 8)
+                    score[s.registerIndex] += 2;
+                break;
+            case SemanticOp::Pea:
+            case SemanticOp::BranchSubroutine:
+            case SemanticOp::JumpSubroutine:
+            case SemanticOp::ReturnSubroutine:
+                score[15] += 4; break;
+            default: break;
+        }
+    }
+    for (int slot = 0; slot < 2; slot++) {
+        int best = -1;
+        for (int guest = 0; guest < 16; guest++) {
+            if ((written & (1u << guest)) || score[guest] == 0 ||
+                guest == gCachedGuest[0]) continue;
+            if (best < 0 || score[guest] > score[best]) best = guest;
+        }
+        gCachedGuest[slot] = best;
+    }
+}
+
 void loadSized(Asm& a, const Layout& L, unsigned rd, bool address,
                unsigned n, int bits) {
-    const uint32_t o = regOff(L, address, n);
-    if (bits == 8) a.ldrB(rd, 0, o);
-    else if (bits == 16) a.ldrH(rd, 0, o);
-    else a.ldrW(rd, 0, o);
+    loadGuestRegister(a, L, rd, address, n, bits);
 }
 
 void storeSized(Asm& a, const Layout& L, unsigned rs, bool address,
@@ -665,7 +877,72 @@ void maskResult(Asm& a, unsigned r, int bits) {
     a.ubfxW(r, r, 0, unsigned(bits));
 }
 
+constexpr uint64_t kPackedCcrMask = 0x1Fu;
+constexpr unsigned kPackedCountShift = 8;
+
+void spillPackedCcr(Asm& a, const Layout& L) {
+    if (!gPackedCcr) return;
+    const auto put = [&](uint32_t off, unsigned bit) {
+        a.ubfxW(17, 26, bit, 1);
+        a.strB(17, 0, off);
+    };
+    put(L.srC, 0); put(L.srV, 1); put(L.srZ, 2);
+    put(L.srN, 3); put(L.srX, 4);
+}
+
+void reloadPackedCcr(Asm& a, const Layout& L) {
+    if (!gPackedCcr) return;
+    a.movX(17, ~kPackedCcrMask);
+    a.andX(26, 26, 17);
+    const auto add = [&](uint32_t off, unsigned bit) {
+        a.ldrB(18, 0, off);
+        if (bit) a.lslW(18, 18, bit);
+        a.orrX(26, 26, 18);
+    };
+    add(L.srC, 0); add(L.srV, 1); add(L.srZ, 2);
+    add(L.srN, 3); add(L.srX, 4);
+}
+
+void retireInstruction(Asm& a) {
+    if (gPackedCcr) a.addImmX(26, 26, 1u << kPackedCountShift);
+    else            a.addImmW(26, 26, 1);
+}
+
+void spillRetiredCount(Asm& a) {
+    if (gPackedCcr) {
+        a.lsrX(17, 26, kPackedCountShift);
+        a.strW(17, 1, 8);
+    } else {
+        a.strW(26, 1, 8);
+    }
+}
+
+void setPackedCcrBits(Asm& a, unsigned valueReg, uint64_t clearMask) {
+    a.movX(16, ~clearMask);
+    a.andX(26, 26, 16);
+    a.orrX(26, 26, valueReg);
+}
+
+void emitZFlag(Asm& a, const Layout& L, unsigned value) {
+    if (!gPackedCcr) {
+        a.strB(value, 0, L.srZ);
+        return;
+    }
+    a.lslW(17, value, 2);
+    setPackedCcrBits(a, 17, 4);
+}
+
 void emitNz(Asm& a, const Layout& L, unsigned result, int bits) {
+    if (gPackedCcr) {
+        a.lsrW(12, result, unsigned(bits - 1));
+        a.lslW(12, 12, 3);
+        a.cmpWZero(result);
+        a.csetW(13, Asm::EQ);
+        a.lslW(13, 13, 2);
+        a.orrW(12, 12, 13);
+        setPackedCcrBits(a, 12, 0x0C);
+        return;
+    }
     // The result is already masked to its guest width.
     a.lsrW(12, result, unsigned(bits - 1));
     a.strB(12, 0, L.srN);
@@ -675,6 +952,16 @@ void emitNz(Asm& a, const Layout& L, unsigned result, int bits) {
 }
 
 void emitLogicFlags(Asm& a, const Layout& L, unsigned result, int bits) {
+    if (gPackedCcr) {
+        a.lsrW(12, result, unsigned(bits - 1));
+        a.lslW(12, 12, 3);
+        a.cmpWZero(result);
+        a.csetW(13, Asm::EQ);
+        a.lslW(13, 13, 2);
+        a.orrW(12, 12, 13);
+        setPackedCcrBits(a, 12, 0x0F); // X survives logical operations
+        return;
+    }
     emitNz(a, L, result, bits);
     a.movW(12, 0);
     if (L.srC == L.srV + 1) a.strH(12, 0, L.srV);
@@ -705,6 +992,26 @@ void emitAddSubResult(Asm& a, int bits, bool sub) {
 // Consume the still-live NZCV from emitAddSubResult. C is inverted only for
 // subtraction because AArch64 means "no borrow" while 68k C/X mean borrow.
 void emitAddSubFlags(Asm& a, const Layout& L, bool sub, bool setX) {
+    if (gPackedCcr) {
+        // CSET preserves NZCV, so capture every host condition before the
+        // packing instructions consume it.
+        a.csetW(12, Asm::MI);
+        a.csetW(13, Asm::EQ);
+        a.csetW(17, Asm::VS);
+        a.csetW(18, sub ? Asm::CC : Asm::CS);
+        a.lslW(12, 12, 3);
+        a.lslW(13, 13, 2);
+        a.lslW(17, 17, 1);
+        a.orrW(12, 12, 13);
+        a.orrW(12, 12, 17);
+        a.orrW(12, 12, 18);
+        setPackedCcrBits(a, 12, setX ? 0x1F : 0x0F);
+        if (setX) {
+            a.lslW(18, 18, 4);
+            a.orrX(26, 26, 18);
+        }
+        return;
+    }
     a.csetW(12, Asm::MI); a.strB(12, 0, L.srN);
     a.csetW(12, Asm::EQ); a.strB(12, 0, L.srZ);
     a.csetW(12, Asm::VS); a.strB(12, 0, L.srV);
@@ -746,29 +1053,51 @@ const int8_t kMoveDstA64[E_COUNT] = {0,0,2,2,3,3,-1,2,4,-1,-1,-1};
 struct Ea {
     int idx = -1, reg = 0, ext = 0;
     int32_t value = 0;
+    int32_t baseDisplacement = 0;
     uint32_t base = 0;
     int ixReg = 0, ixShift = 0;
+    uint8_t baseDisplacementWords = 0;
     bool ixLong = false;
+    bool fullFormat = false;
+    bool baseSuppressed = false;
+    bool indexSuppressed = false;
     bool memory = false;
+    IndexIndirect indirect = IndexIndirect::None;
+    int32_t outerDisplacement = 0;
+    uint8_t outerDisplacementWords = 0;
 };
 
 bool decodeEa(const Instr& in, int mode, int reg,
-              int bits, int extAt, Ea& ea) {
+              int bits, int extAt, Ea& ea, bool allowFullDirect = false,
+              bool allowFullIndirect = false) {
     ea.idx = eaIndexA64(mode, reg); ea.reg = reg;
     if (ea.idx < 0) return false;
     const uint8_t size = bits == 8 ? 0 : bits == 16 ? 1 : 2;
     const DecodedEffectiveAddress* decoded = findEffectiveAddress(
         in, uint8_t(mode), uint8_t(reg), size, uint8_t(extAt));
-    // Full 68020 index plans are decoded by the common IR, but this backend
-    // has not proved a lowering for them yet. Reject the plan as a capability
-    // decision; never reinterpret its first word as the brief format.
-    if (!decoded || !decoded->valid || decoded->fullFormat) return false;
+    // Full 68020 index plans are decoded by the common IR. Only the direct
+    // (non-memory-indirect) LEA path opts in below; every other user keeps the
+    // default refusal, and pre/post-indexed indirection remains replay-only.
+    if (!decoded || !decoded->valid) return false;
+    if (decoded->fullFormat) {
+        const bool direct = decoded->indirect == IndexIndirect::None;
+        if ((direct && !allowFullDirect) || (!direct && !allowFullIndirect))
+            return false;
+    }
     ea.memory = decoded->memory();
     ea.value = decoded->value;
+    ea.baseDisplacement = decoded->baseDisplacement;
     ea.base = decoded->extensionAddress;
     ea.ixReg = decoded->indexRegister;
     ea.ixLong = decoded->indexLong;
     ea.ixShift = decoded->indexShift;
+    ea.baseDisplacementWords = decoded->baseDisplacementWords;
+    ea.fullFormat = decoded->fullFormat;
+    ea.baseSuppressed = decoded->baseSuppressed;
+    ea.indexSuppressed = decoded->indexSuppressed;
+    ea.indirect = decoded->indirect;
+    ea.outerDisplacement = decoded->outerDisplacement;
+    ea.outerDisplacementWords = decoded->outerDisplacementWords;
     ea.ext = decoded->extensionWords;
     return true;
 }
@@ -814,8 +1143,9 @@ bool canEmitReg(uint16_t op) {
         }
         case SemanticOp::JumpSubroutine:
         case SemanticOp::Jump:
-        case SemanticOp::Lea:
             return controlEa(ei);
+        case SemanticOp::Lea:
+            return controlEa(ei) || ei == E_IX || ei == E_IXPC;
         case SemanticOp::Pea:
             return controlEa(ei) || ei == E_IX || ei == E_IXPC;
         case SemanticOp::Movem:
@@ -834,9 +1164,9 @@ bool canEmitReg(uint16_t op) {
         case SemanticOp::AddressAlu:
             return ei >= 0; // immediate is a legal source EA
         case SemanticOp::Bitfield:
-            return mode == 0;
+            return mode == 0 || mode == 2 || mode == 5;
         case SemanticOp::ShiftRegister:
-            return !sem.dynamic && sem.action != 2; // no ROX yet
+            return sem.action != 2; // no ROX
         default: return false;
     }
 }
@@ -907,29 +1237,77 @@ void addrOf(Asm& a, const Layout& L, const Ea& ea, int bits) {
     const unsigned step = ea.reg == 7 && bits == 8 ? 2u : unsigned(bits / 8);
     switch (ea.idx) {
         case E_AI: case E_PI:
-            a.ldrW(9, 0, L.a + unsigned(ea.reg) * 4); break;
+            loadGuestRegister(a, L, 9, true, unsigned(ea.reg)); break;
         case E_PD:
-            a.ldrW(9, 0, L.a + unsigned(ea.reg) * 4);
+            loadGuestRegister(a, L, 9, true, unsigned(ea.reg));
             a.subImmW(9, 9, step); break;
         case E_DI:
-            a.ldrW(9, 0, L.a + unsigned(ea.reg) * 4);
+            loadGuestRegister(a, L, 9, true, unsigned(ea.reg));
             a.movW(10, uint32_t(ea.value)); a.addW(9, 9, 10); break;
-        case E_IX: case E_IXPC:
-            if (ea.idx == E_IX) a.ldrW(9, 0, L.a + unsigned(ea.reg) * 4);
+        case E_IX: case E_IXPC: {
+            if (ea.fullFormat && ea.baseSuppressed) a.movW(9, 0);
+            else if (ea.idx == E_IX)
+                loadGuestRegister(a, L, 9, true, unsigned(ea.reg));
             else a.movW(9, ea.base);
-            if (ea.ixReg < 8) a.ldrW(10, 0, L.d + unsigned(ea.ixReg) * 4);
-            else a.ldrW(10, 0, L.a + unsigned(ea.ixReg - 8) * 4);
-            if (!ea.ixLong) a.sxtH(10, 10);
-            if (ea.ixShift) a.lslW(10, 10, unsigned(ea.ixShift));
-            a.addW(9, 9, 10);
-            if (ea.value) {
-                a.movW(10, uint32_t(ea.value)); a.addW(9, 9, 10);
+            if (!ea.fullFormat || !ea.indexSuppressed) {
+                loadGuestRegister(a, L, 10, ea.ixReg >= 8,
+                                  unsigned(ea.ixReg & 7));
+                if (!ea.ixLong) a.sxtH(10, 10);
+                if (ea.ixShift) a.lslW(10, 10, unsigned(ea.ixShift));
+                a.addW(9, 9, 10);
+            }
+            const int32_t displacement =
+                ea.fullFormat ? ea.baseDisplacement : ea.value;
+            if (displacement) {
+                a.movW(10, uint32_t(displacement)); a.addW(9, 9, 10);
             }
             break;
+        }
         case E_AW: case E_AL: case E_DIPC:
             a.movW(9, uint32_t(ea.value)); break;
         default: break;
     }
+}
+
+void addEaIndex(Asm& a, const Layout& L, const Ea& ea) {
+    if (ea.indexSuppressed) return;
+    loadGuestRegister(a, L, 10, ea.ixReg >= 8, unsigned(ea.ixReg & 7));
+    if (!ea.ixLong) a.sxtH(10, 10);
+    if (ea.ixShift) a.lslW(10, 10, unsigned(ea.ixShift));
+    a.addW(9, 9, 10);
+}
+
+// Address of the pointer longword used by a full-format memory-indirect EA.
+// Preindexed forms add Xn before the pointer read; postindexed forms add it
+// afterwards in finishFullIndirect().
+void addrOfFullIndirectPointer(Asm& a, const Layout& L, const Ea& ea) {
+    if (ea.baseSuppressed) a.movW(9, 0);
+    else if (ea.idx == E_IX)
+        loadGuestRegister(a, L, 9, true, unsigned(ea.reg));
+    else
+        a.movW(9, ea.base);
+    if (ea.indirect == IndexIndirect::Preindexed) addEaIndex(a, L, ea);
+    if (ea.baseDisplacement) {
+        a.movW(10, uint32_t(ea.baseDisplacement));
+        a.addW(9, 9, 10);
+    }
+}
+
+void finishFullIndirect(Asm& a, const Layout& L, const Ea& ea,
+                        unsigned pointerReg) {
+    a.movRegW(9, pointerReg);
+    if (ea.indirect == IndexIndirect::Postindexed) addEaIndex(a, L, ea);
+    if (ea.outerDisplacement) {
+        a.movW(10, uint32_t(ea.outerDisplacement));
+        a.addW(9, 9, 10);
+    }
+}
+
+int fullIndexPenalty(const Ea& ea) {
+    const int base = ea.baseDisplacementWords == 1 ? 2
+                   : ea.baseDisplacementWords == 2 ? 6 : 0;
+    if (ea.indirect == IndexIndirect::None) return base;
+    return base + (ea.outerDisplacementWords ? 7 : 5);
 }
 
 void commitEa(Asm& a, const Layout& L, const Ea& ea, int bits) {
@@ -939,7 +1317,7 @@ void commitEa(Asm& a, const Layout& L, const Ea& ea, int bits) {
     // register-destination ALU).  Clobbering it here made (An)+/-(An)
     // consume the updated address as data.  w13 is dead at every commit
     // point; bit operations that use it have already stored their result.
-    a.ldrW(13, 0, L.a + unsigned(ea.reg) * 4);
+    loadGuestRegister(a, L, 13, true, unsigned(ea.reg));
     if (ea.idx == E_PI) a.addImmW(13, 13, step);
     else a.subImmW(13, 13, step);
     a.strW(13, 0, L.a + unsigned(ea.reg) * 4);
@@ -966,7 +1344,7 @@ void rollbackEaBeforeAccess(Asm& a, const Layout& L, const Ea& ea, int bits,
                             const MemoryAccessPlan& access) {
     if (access.eaCommit != EaCommit::BeforeAccess) return;
     const unsigned step = ea.reg == 7 && bits == 8 ? 2u : unsigned(bits / 8);
-    a.ldrW(13, 0, L.a + unsigned(ea.reg) * 4);
+    loadGuestRegister(a, L, 13, true, unsigned(ea.reg));
     if (ea.idx == E_PI) a.subImmW(13, 13, step);
     else a.addImmW(13, 13, step);
     a.strW(13, 0, L.a + unsigned(ea.reg) * 4);
@@ -1050,6 +1428,7 @@ void observeRuntimeAddress(Asm& a, const Layout& L, uint16_t opcode) {
     a.bind(record);
     spillQueueLive(a, L);
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
+    spillPackedCcr(a, L);
     a.ldrX(16, 1, 152);                 // Frame::runtimeAddressObserver
     a.ldrX(0, 1, 160);                  // observer self
     a.movRegW(1, 9);                    // reason
@@ -1063,6 +1442,7 @@ void observeRuntimeAddress(Asm& a, const Layout& L, uint16_t opcode) {
     a.ldrW(6, 14, 172);
     a.blr(16);
     a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
+    reloadPackedCcr(a, L);
     a.bind(done);
 }
 
@@ -1171,12 +1551,14 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
     a.strW(9, 1, 40);
     spillQueueLive(a, L);
     a.ldrX(16, 1, 24);
+    spillPackedCcr(a, L);
     a.ldrX(0, 1, 16);
     a.movRegW(1, 9);
     a.movW(2, write ? 1u : 0u);
     a.blr(16);
     a.movRegX(14, 0);
     a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
+    reloadPackedCcr(a, L);
     a.ldrW(9, 1, 40);
     a.cbzX(14, fillMiss);
     a.ubfxW(13, 9, 0, 12);
@@ -1261,9 +1643,11 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     spillQueueLive(a, L);
     a.movX(4, gAccessPcWords);          // access-clock alignment operand
     a.movX(16, uint64_t(uintptr_t(&pom68kA64Read)));
+    spillPackedCcr(a, L);
     a.blr(16);
     a.movRegW(14, 0);
     a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
+    reloadPackedCcr(a, L);
     a.ldrX(21, 0, L.clock);
     reloadGeneratedState(a, L);
     a.cmpWZero(14);
@@ -1332,6 +1716,7 @@ void observeDirectWrite(Asm& a, const Layout& L, int bits,
     a.movRegX(14, 0);
     spillQueueLive(a, L);
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
+    spillPackedCcr(a, L);
     a.movRegX(0, 15);
     a.movRegX(1, 14);
     a.movW(3, unsigned(bits / 8));
@@ -1339,6 +1724,7 @@ void observeDirectWrite(Asm& a, const Layout& L, int bits,
     a.movW(6, 1);
     a.blr(16);
     a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
+    reloadPackedCcr(a, L);
     a.ldrW(9, 1, 36);
     a.ldrW(11, 1, 72);
     a.ldrX(14, 1, 120);
@@ -1407,9 +1793,11 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     spillQueueLive(a, L);
     a.movX(4, gAccessPcWords);          // access-clock alignment operand
     a.movX(16, uint64_t(uintptr_t(&pom68kA64Write)));
+    spillPackedCcr(a, L);
     a.blr(16);
     a.movRegW(14, 0);
     a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
+    reloadPackedCcr(a, L);
     a.ldrX(21, 0, L.clock);
     reloadGeneratedState(a, L);
     a.cmpWZero(14);
@@ -1457,8 +1845,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const unsigned rx = sem.registerIndex, ry = sem.eaReg;
         const bool leftAddress = sem.action == 1;
         const bool rightAddress = sem.action != 0;
-        a.ldrW(9, 0, regOff(L, leftAddress, rx));
-        a.ldrW(10, 0, regOff(L, rightAddress, ry));
+        loadGuestRegister(a, L, 9, leftAddress, rx);
+        loadGuestRegister(a, L, 10, rightAddress, ry);
         a.strW(10, 0, regOff(L, leftAddress, rx));
         a.strW(9, 0, regOff(L, rightAddress, ry));
         return true;
@@ -1526,8 +1914,14 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         addSrBit(L.srT1, 15); addSrBit(L.srT0, 14);
         addSrBit(L.srS, 13);  addSrBit(L.srM, 12);
         a.ldrB(9, 0, L.srIpl); a.lslW(9, 9, 8); a.orrW(11, 11, 9);
-        addSrBit(L.srX, 4); addSrBit(L.srN, 3); addSrBit(L.srZ, 2);
-        addSrBit(L.srV, 1); addSrBit(L.srC, 0);
+        if (gPackedCcr) {
+            a.movW(10, uint32_t(kPackedCcrMask));
+            a.andW(9, 26, 10);
+            a.orrW(11, 11, 9);
+        } else {
+            addSrBit(L.srX, 4); addSrBit(L.srN, 3); addSrBit(L.srZ, 2);
+            addSrBit(L.srV, 1); addSrBit(L.srC, 0);
+        }
         a.strH(11, 0, L.d + sem.eaReg * 4);
         return true;
     }
@@ -1537,12 +1931,16 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         const int sm = sem.eaMode, sr = sem.eaReg;
         const int dm = sem.destinationMode, dr = sem.destinationReg;
         Ea src, dst;
-        if (!decodeEa(in, sm, sr, bits, 0, src) ||
+        if (!decodeEa(in, sm, sr, bits, 0, src, true, true) ||
             !decodeEa(in, dm, dr, bits, src.ext, dst)) return false;
         if (bits == 8 && (src.idx == E_AN || dst.idx == E_AN)) return false;
+        const bool dependentPostincAi = src.idx == E_PI && dst.idx == E_AI &&
+                                        src.reg == dst.reg;
         if ((src.idx == E_PI || src.idx == E_PD) && src.reg == dst.reg &&
             (dst.idx == E_AN || dst.idx == E_AI || dst.idx == E_PI ||
-             dst.idx == E_PD || dst.idx == E_DI)) return false;
+             dst.idx == E_PD || dst.idx == E_DI) &&
+            !dependentPostincAi)
+            return false;
         const int sz = bits == 8 ? 0 : bits == 16 ? 1 : 2;
         // A postincrement source whose sole access uses the pre-update /
         // rollback helper is safe to validate against the split base cost.
@@ -1550,13 +1948,21 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // fault-proved family. Brief indexed destination calculation costs
         // five base cycles; keep that admission local so memory-source MOVE
         // forms do not ride on this sole-write proof.
-        MemoryAccessPlan srcAccess, dstAccess;
+        const bool indirectSource = src.fullFormat &&
+                                    src.indirect != IndexIndirect::None;
+        if (indirectSource && (L.is030 || dst.memory)) return false;
+        MemoryAccessPlan pointerAccess, srcAccess, dstAccess;
         if (src.memory) {
+            if (indirectSource)
+                pointerAccess = memory.access(MemoryDirection::Read,
+                                              MemoryOperand::Control, 4,
+                                              uint8_t(sm), uint8_t(sr));
             srcAccess = memory.access(MemoryDirection::Read,
                                       MemoryOperand::Source,
                                       uint8_t(bits / 8), uint8_t(sm),
                                       uint8_t(sr));
-            if (!srcAccess.valid()) return false;
+            if (!srcAccess.valid() ||
+                (indirectSource && !pointerAccess.valid())) return false;
         }
         if (dst.memory) {
             dstAccess = memory.access(MemoryDirection::Write,
@@ -1570,7 +1976,8 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                                   memory.proof.restartableLastWrite();
         const int dstCycles = restartWrite && dst.idx == E_IX
             ? 5 : kMoveDstA64[dst.idx];
-        const int cycles = kEaReadA64[src.idx][sz] + dstCycles;
+        const int sourcePenalty = src.fullFormat ? fullIndexPenalty(src) : 0;
+        const int cycles = kEaReadA64[src.idx][sz] + sourcePenalty + dstCycles;
         // The emitted i-cache model owns miss penalties. The restartable-
         // write family kept the historical total-cost admission while its
         // coarse-budget divergence was open; that was the peripheral-phase
@@ -1581,12 +1988,43 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         // refused: 120 M of the idle Finder's 238 M in-block fallbacks.
         const unsigned tracedCycles = restartWrite && !restartBaseAdmission()
             ? unsigned(in.cycles) : traced030(L, in);
-        const bool soleReadTiming = src.memory && cycles >= 0 &&
+        const bool soleReadTiming = src.memory && !indirectSource &&
+            cycles >= 0 &&
             admitSoleReadTiming(L, in, srcAccess, unsigned(cycles),
                                 nativeCycles);
         if (cycles < 0 ||
             (tracedCycles != unsigned(cycles) && !soleReadTiming) ||
             in.words != unsigned(1 + src.ext + dst.ext)) return false;
+
+        // MOVE.<s> (An)+,(An) is a common ROM trampoline idiom. The
+        // destination uses An AFTER the source increment; computing both EAs
+        // from the entry register was the reason the generic alias gate had
+        // to refuse it. Prove old-An and old-An+step first, then perform the
+        // read, architectural increment and write exactly once.
+        if (dependentPostincAi) {
+            if (slow < 0 ||
+                memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+                !srcAccess.preflight || !dstAccess.preflight ||
+                in.memory.order != MemoryOrder::SourceThenDestination)
+                return false;
+            const unsigned step = src.reg == 7 && bits == 8
+                ? 2u : unsigned(bits / 8);
+            loadGuestRegister(a, L, 9, true, unsigned(src.reg));
+            memProbe(a, L, ir.super, bits / 8, false, slow);
+            a.strX(14, 1, 120);
+            loadGuestRegister(a, L, 9, true, unsigned(src.reg));
+            a.addImmW(9, 9, step);
+            memProbe(a, L, ir.super, bits / 8, true, slow);
+            a.strX(14, 1, 96);
+
+            a.ldrX(14, 1, 120); loadGuest(a, bits, 11);
+            loadGuestRegister(a, L, 9, true, unsigned(src.reg));
+            a.addImmW(9, 9, step);
+            a.strW(9, 0, L.a + unsigned(src.reg) * 4);
+            a.ldrX(14, 1, 96); storeGuest(a, bits, 11);
+            emitLogicFlags(a, L, 11, bits);
+            return true;
+        }
 
         if (src.memory && dst.memory) {
             if (slow < 0) return false;
@@ -1689,7 +2127,23 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             return true;
         }
 
-        if (src.memory) {
+        if (indirectSource) {
+            // Resolve the pointer only after its mapping is proved plain.
+            // A later source-mapping miss may replay this RAM read safely;
+            // no MMIO/cache side effect has escaped. Once the source mapping
+            // succeeds there is no later refusable access because the
+            // destination is a register.
+            if (slow < 0 ||
+                memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+                !pointerAccess.preflight || !srcAccess.preflight ||
+                in.memory.order != MemoryOrder::Sequential)
+                return false;
+            addrOfFullIndirectPointer(a, L, src);
+            memProbe(a, L, ir.super, 4, false, slow);
+            loadGuest(a, 32, 10);
+            finishFullIndirect(a, L, src, 10);
+            memLoadGuest(a, L, ir.super, bits, 11, slow, srcAccess);
+        } else if (src.memory) {
             if (slow < 0) return false;
             addrOf(a, L, src, bits);
             memLoadGuest(a, L, ir.super, bits, 11, slow, srcAccess, &src);
@@ -1814,7 +2268,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 // the operand down first. This is the hottest opcode family
                 // in the Q605 census.
                 if (dynamicBit) {
-                    a.ldrW(10, 0, L.d + sem.registerIndex * 4);
+                    loadGuestRegister(a, L, 10, false, sem.registerIndex);
                     a.ubfxW(10, 10, 0, toReg ? 5 : 3);
                     a.lsrVarW(12, 11, 10);
                     a.ubfxW(12, 12, 0, 1);
@@ -1823,10 +2277,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                     a.ubfxW(12, 11, bit & (toReg ? 31u : 7u), 1);
                 }
                 a.cmpWZero(12); a.csetW(12, Asm::EQ);
-                a.strB(12, 0, L.srZ);
+                emitZFlag(a, L, 12);
             } else {
                 if (dynamicBit) {
-                    a.ldrW(10, 0, L.d + sem.registerIndex * 4);
+                    loadGuestRegister(a, L, 10, false, sem.registerIndex);
                     a.ubfxW(10, 10, 0, toReg ? 5 : 3);
                     a.movW(12, 1); a.lslVarW(12, 12, 10);
                 } else {
@@ -1836,7 +2290,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.movRegW(13, 11);                // original operand
                 a.andW(10, 11, 12);               // preserve mask in w12
                 a.cmpWZero(10); a.csetW(10, Asm::EQ);
-                a.strB(10, 0, L.srZ);
+                emitZFlag(a, L, 10);
                 a.movRegW(11, 13);
                 if (action == 1) a.eorW(11, 11, 12);
                 else if (action == 2) { a.mvnW(12, 12); a.andW(11, 11, 12); }
@@ -2080,24 +2534,44 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if (direction == 0) {
             const int sz = bits == 8 ? 0 : bits == 16 ? 1 : 2;
             Ea src;
-            if (!decodeEa(in, mode, sem.eaReg, bits, 0, src) ||
+            if (!decodeEa(in, mode, sem.eaReg, bits, 0, src, true, true) ||
                 in.words != unsigned(1 + src.ext)) return false;
-            const int cycles = kEaReadA64[src.idx][sz];
-            MemoryAccessPlan read;
+            const bool indirectSource = src.fullFormat &&
+                                        src.indirect != IndexIndirect::None;
+            if (indirectSource && L.is030) return false;
+            const int penalty = src.fullFormat ? fullIndexPenalty(src) : 0;
+            const int cycles = kEaReadA64[src.idx][sz] + penalty;
+            MemoryAccessPlan pointerRead, read;
             if (src.memory) {
+                if (indirectSource)
+                    pointerRead = memory.access(
+                        MemoryDirection::Read, MemoryOperand::Control, 4,
+                        uint8_t(mode), sem.eaReg);
                 read = memory.access(MemoryDirection::Read,
                                      MemoryOperand::Source,
                                      uint8_t(bits / 8), uint8_t(mode),
                                      sem.eaReg);
-                if (!read.valid()) return false;
+                if (!read.valid() ||
+                    (indirectSource && !pointerRead.valid())) return false;
             }
             if (!memory.complete()) return false;
-            const bool soleReadTiming = src.memory && cycles >= 0 &&
+            const bool soleReadTiming = src.memory && !indirectSource &&
+                cycles >= 0 &&
                 admitSoleReadTiming(L, in, read, unsigned(cycles),
                                     nativeCycles);
             if (cycles < 0 || (traced030(L, in) != unsigned(cycles) &&
                                !soleReadTiming)) return false;
-            if (src.memory) {
+            if (indirectSource) {
+                if (slow < 0 || !pointerRead.preflight || !read.preflight ||
+                    memory.proof.protocol != MemoryProofProtocol::PreflightAll ||
+                    in.memory.order != MemoryOrder::Sequential)
+                    return false;
+                addrOfFullIndirectPointer(a, L, src);
+                memProbe(a, L, ir.super, 4, false, slow);
+                loadGuest(a, 32, 10);
+                finishFullIndirect(a, L, src, 10);
+                memLoadGuest(a, L, ir.super, bits, 10, slow, read);
+            } else if (src.memory) {
                 if (slow < 0) return false;
                 addrOf(a, L, src, bits);
                 memLoadGuest(a, L, ir.super, bits, 10, slow, read, &src);
@@ -2197,14 +2671,32 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         }
         if (sem.operation == SemanticOp::Lea) {      // LEA <ea>,An
             Ea src;
-            if (!decodeEa(in, mode, sem.eaReg, 32, 0, src) || !src.memory ||
+            if (!decodeEa(in, mode, sem.eaReg, 32, 0, src, true, true) ||
+                !src.memory ||
                 src.idx == E_PI || src.idx == E_PD ||
                 in.words != unsigned(1 + src.ext)) return false;
             static const int8_t cost[E_COUNT] =
-                {-1,-1,6,-1,-1,7,-1,6,6,7,-1,-1};
-            if (cost[src.idx] < 0 ||
-                traced030(L, in) != unsigned(cost[src.idx])) return false;
-            addrOf(a, L, src, 32);
+                {-1,-1,6,-1,-1,7,9,6,6,7,9,-1};
+            const int penalty = src.fullFormat ? fullIndexPenalty(src) : 0;
+            const unsigned fixedCycles = unsigned(cost[src.idx] + penalty);
+            MemoryAccessPlan pointerRead;
+            if (src.indirect != IndexIndirect::None)
+                pointerRead = memory.access(
+                    MemoryDirection::Read, MemoryOperand::Control, 4,
+                    uint8_t(mode), sem.eaReg);
+            if (!memory.complete()) return false;
+            if (src.indirect != IndexIndirect::None) {
+                if (L.is030 || !pointerRead.valid() || slow < 0) return false;
+                if (!admitSoleReadTiming(L, in, pointerRead, fixedCycles,
+                                         nativeCycles))
+                    return false;
+                addrOfFullIndirectPointer(a, L, src);
+                memLoadGuest(a, L, ir.super, 32, 11, slow, pointerRead);
+                finishFullIndirect(a, L, src, 11);
+            } else {
+                if (traced030(L, in) != fixedCycles) return false;
+                addrOf(a, L, src, 32);
+            }
             a.strW(9, 0, L.a + sem.registerIndex * 4);
             return true;
         }
@@ -2280,8 +2772,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             a.ldrB(9, 0, L.movemArmed); a.cbnzW(9, slow);
 
             auto loadR = [&](int b, unsigned rd) {
-                a.ldrW(rd, 0, b < 8 ? L.d + unsigned(b) * 4
-                                     : L.a + unsigned(b - 8) * 4);
+                loadGuestRegister(a, L, rd, b >= 8, unsigned(b & 7));
             };
             auto storeR = [&](int b, unsigned rs) {
                 a.strW(rs, 0, b < 8 ? L.d + unsigned(b) * 4
@@ -2443,63 +2934,244 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         return true;
     }
 
-    if (sem.operation == SemanticOp::Bitfield) {     // register bitfield
-        if (sem.eaMode != 0 || in.words != 2) return false;
+    if (sem.operation == SemanticOp::Bitfield) {
+        // These uncommon forms publish several independently calculated
+        // flag bits. Until their packed lowering is proved, the exact
+        // per-instruction fallback is preferable to a second CCR format.
+        if (gPackedCcr) return false;
         const uint16_t ext = in.extensionWord(0);
-        if ((ext & 0x0820) != 0) return false;       // register offset/width later
+        if ((ext & 0x0820) && !dynamicRegisterBitfieldEnabled()) return false;
         const int kind = sem.action;
         const unsigned dst = sem.eaReg, out = (ext >> 12) & 7;
-        const unsigned offset = (ext >> 6) & 31;
-        unsigned width = ext & 31; if (!width) width = 32;
+
+        // The drawing census's leading residual is the exact subset whose
+        // offset/width can never touch the fifth byte. This includes Rogue's
+        // BFEXTU (A0){Dn:8},Dn: the signed Dn offset moves the base address by
+        // floor(offset/8), while its low three bits select within one long.
+        // Possible five-byte forms preflight both plain-memory mappings before
+        // the first read and branch around the tail byte when it is not used.
+        // Keep this 040-only until the 030 format-A/B restart state has its
+        // own memory-bitfield oracle.
+        if (sem.eaMode != 0) {
+            // 68040 timings by EA class. Rogue's second-largest residual is
+            // BFEXTU d16(A1){D0:D2},D1 (E9E9), hence the DI column; keeping
+            // the table explicit prevents a traced wait state from being
+            // mistaken for an opcode cost.
+            static const int8_t memoryCycles[8][2] = {
+                {17,18}, {19,20}, {-1,-1}, {19,20},
+                {-1,-1}, {32,33}, {-1,-1}, {-1,-1}
+            };
+            const int eaColumn = sem.eaMode == 2 ? 0
+                               : sem.eaMode == 5 ? 1 : -1;
+            if (L.is030 || eaColumn < 0 ||
+                memoryCycles[kind][eaColumn] < 0) {
+                watchRefusal(L, ir, in, "bitfield-memory:shape");
+                return false;
+            }
+            Ea src;
+            if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 1, src) ||
+                !src.memory || in.words != unsigned(2 + src.ext)) {
+                watchRefusal(L, ir, in, "bitfield-memory:ea");
+                return false;
+            }
+            const unsigned opcodeCycles =
+                unsigned(memoryCycles[kind][eaColumn]);
+            const bool possibleTail = !memoryBitfieldFitsLongword(ext);
+            MemoryAccessPlan read = memory.access(
+                MemoryDirection::Read, MemoryOperand::Operand, 4,
+                sem.eaMode, sem.eaReg);
+            MemoryAccessPlan tail;
+            if (possibleTail)
+                tail = memory.access(MemoryDirection::Read,
+                                     MemoryOperand::Operand, 1,
+                                     sem.eaMode, sem.eaReg);
+            if (!read.valid() || (possibleTail && !tail.valid()) ||
+                !memory.complete()) {
+                watchRefusal(L, ir, in, "bitfield-memory:contract");
+                return false;
+            }
+            if (!possibleTail) {
+                MemoryAccessPlan timedRead = read;
+                if (!admitSoleReadTiming(L, in, timedRead,
+                                         opcodeCycles,
+                                         nativeCycles)) {
+                    watchRefusal(L, ir, in, "bitfield-memory:timing");
+                    return false;
+                }
+                read = timedRead;
+            } else if (traced030(L, in) != opcodeCycles ||
+                       in.postExceptionCycles != 0) {
+                watchRefusal(L, ir, in, "bitfield-memory:timing");
+                return false;
+            }
+            addrOf(a, L, src, 32);
+            if (ext & 0x0800)
+                loadGuestRegister(a, L, 16, false, (ext >> 6) & 7);
+            else
+                a.movW(16, (ext >> 6) & 31);
+            a.asrW(12, 16, 3);                    // floor(rawOffset / 8)
+            a.addW(9, 9, 12);                     // 32-bit guest wraparound
+            if (!possibleTail) {
+                memLoadGuest(a, L, ir.super, 32, 11, slow, read, &src);
+            } else {
+                // Save all values that a DTLB fill helper may clobber. The
+                // first successful probe is not itself an observable read;
+                // the second mapping is therefore proved before either byte
+                // sequence can escape, preventing replay of a side effect.
+                a.strW(9, 1, 44);                 // adjusted guest address
+                a.strW(16, 1, 48);                // uncropped raw offset
+                if (ext & 0x0020)
+                    loadGuestRegister(a, L, 17, false, ext & 7);
+                else
+                    a.movW(17, ext & 31);
+                a.subImmW(17, 17, 1);
+                a.movW(12, 31); a.andW(17, 17, 12);
+                a.addImmW(17, 17, 1);
+                a.strW(17, 1, 76);                // normalized width
+
+                memProbe(a, L, ir.super, 4, false, slow);
+                a.strX(14, 1, 120);               // first host pointer
+
+                const int noTail = a.label(), haveData = a.label();
+                a.ldrW(16, 1, 48);
+                a.movW(12, 7); a.andW(14, 16, 12);
+                a.ldrW(17, 1, 76);
+                a.addW(12, 14, 17);
+                a.movW(13, 32); a.cmpW(12, 13);
+                a.bCond(Asm::LS, noTail);
+
+                a.ldrW(9, 1, 44); a.addImmW(9, 9, 4);
+                memProbe(a, L, ir.super, 1, false, slow);
+                loadGuest(a, 8, 10);
+                a.ldrX(14, 1, 120); loadGuest(a, 32, 11);
+                a.b(haveData);
+
+                a.bind(noTail);
+                a.movW(10, 0);
+                a.ldrX(14, 1, 120); loadGuest(a, 32, 11);
+                a.bind(haveData);
+            }
+
+            // A DTLB fill may call C++, so rebuild all extension-derived
+            // temporaries after the access rather than carrying caller-saved
+            // host registers across it.
+            if (ext & 0x0800)
+                loadGuestRegister(a, L, 16, false, (ext >> 6) & 7);
+            else
+                a.movW(16, (ext >> 6) & 31);
+            a.movW(12, 7); a.andW(14, 16, 12);     // bit offset in longword
+            if (ext & 0x0020)
+                loadGuestRegister(a, L, 17, false, ext & 7);
+            else
+                a.movW(17, ext & 31);
+            a.subImmW(17, 17, 1);
+            a.movW(12, 31); a.andW(17, 17, 12);
+            a.addImmW(17, 17, 1);
+            a.movW(13, 32); a.subW(13, 13, 17);
+            a.lslVarW(11, 11, 14);
+            if (possibleTail) {
+                a.lslVarW(10, 10, 14);
+                a.lsrW(10, 10, 8);
+                a.orrW(11, 11, 10);
+            }
+            a.lsrVarW(11, 11, 13);                 // selected field
+
+            emitNz(a, L, 11, 32);
+            a.subImmW(12, 17, 1);
+            a.lsrVarW(12, 11, 12); a.strB(12, 0, L.srN);
+            a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
+            if (kind == 0) return true;             // BFTST
+            if (kind == 3) {                       // BFEXTS
+                a.lslVarW(11, 11, 13);
+                a.asrVarW(11, 11, 13);
+            } else if (kind == 5) {                // BFFFO
+                a.clzW(12, 11);
+                a.subW(11, 12, 13);
+                a.addW(11, 11, 16);                // + uncropped raw offset
+            }
+            a.strW(11, 0, L.d + out * 4);
+            return true;
+        }
+
+        if (in.words != 2) return false;
         static const uint8_t cycles[8] = {6,8,12,8,12,18,12,10};
         if (traced030(L, in) != cycles[kind]) return false;
-        a.ldrW(9, 0, L.d + dst * 4);                // original
-        if (offset) a.rorW(10, 9, 32 - offset);     // rotl(original,offset)
-        else a.movRegW(10, 9);
-        if (width < 32) a.lsrW(11, 10, 32 - width);
-        else a.movRegW(11, 10);                     // extracted, right-justified
+        a.ldrW(9, 0, L.d + dst * 4);                // original destination
 
-        // Common flags describe the original field. BFINS overrides them.
-        emitNz(a, L, 11, 32);
-        a.lsrW(12, 11, width - 1); a.strB(12, 0, L.srN);
-        a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
+        // w14 = offset modulo 32; w16 preserves rawOffset for BFFFO, whose
+        // result starts at the un-cropped Dn value exactly as Moira does.
+        if (ext & 0x0800) {
+            loadGuestRegister(a, L, 14, false, (ext >> 6) & 7);
+            a.movRegW(16, 14);
+            a.movW(12, 31); a.andW(14, 14, 12);
+        } else {
+            const unsigned offset = (ext >> 6) & 31;
+            a.movW(14, offset); a.movW(16, offset);
+        }
+
+        // w17 = ((rawWidth - 1) & 31) + 1, i.e. 32,1..31. x15 is the
+        // assembler's large-layout-offset scratch and cannot hold live state
+        // across the architectural flag stores below. This formulation
+        // handles both immediate zero and every Dn value without
+        // a generated branch. w13 keeps 32-width for extraction/masking.
+        if (ext & 0x0020)
+            loadGuestRegister(a, L, 17, false, ext & 7);
+        else
+            a.movW(17, ext & 31);
+        a.subImmW(17, 17, 1);
+        a.movW(12, 31); a.andW(17, 17, 12);
+        a.addImmW(17, 17, 1);
+        a.movW(13, 32); a.subW(13, 13, 17);         // 32 - width
+
+        // rotl(original,offset), then right-justify the selected field.
+        // A64 variable shifts mask their count to five bits, matching the
+        // register-direct bitfield rules for offset 0 and width 32.
+        a.subW(12, 31, 14);                         // -offset modulo 32
+        a.rorVarW(10, 9, 12);
+        a.lsrVarW(11, 10, 13);                      // extracted field
+
+        if (kind != 7) {                            // BFINS uses source flags
+            emitNz(a, L, 11, 32);
+            a.subImmW(12, 17, 1);
+            a.lsrVarW(12, 11, 12); a.strB(12, 0, L.srN);
+            a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
+        }
 
         if (kind == 0) return true;                 // BFTST
         if (kind == 1 || kind == 3) {               // BFEXTU / BFEXTS
-            if (kind == 3 && width < 32) {
-                a.lslW(11, 11, 32 - width); a.asrW(11, 11, 32 - width);
+            if (kind == 3) {
+                a.lslVarW(11, 11, 13);
+                a.asrVarW(11, 11, 13);
             }
             a.strW(11, 0, L.d + out * 4);
             return true;
         }
         if (kind == 5) {                            // BFFFO
             a.clzW(12, 11);
-            if (width < 32) a.subImmW(12, 12, 32 - width);
-            if (offset) a.addImmW(12, 12, offset);
+            a.subW(12, 12, 13);                    // zeros inside the field
+            a.addW(12, 12, 16);                    // + rawOffset
             a.strW(12, 0, L.d + out * 4);
             return true;
         }
-        const uint32_t top = width == 32 ? 0xFFFFFFFFu
-                                         : (0xFFFFFFFFu << (32 - width));
-        const uint32_t mask = std::rotr(top, offset);
-        a.movW(12, mask);
+
+        // top-width mask rotated right by the cropped field offset.
+        a.movW(12, 0xFFFFFFFFu);
+        a.lslVarW(12, 12, 13);
+        a.rorVarW(12, 12, 14);
         if (kind == 2) a.eorW(9, 9, 12);            // BFCHG
         else if (kind == 4) { a.mvnW(12, 12); a.andW(9, 9, 12); } // BFCLR
         else if (kind == 6) a.orrW(9, 9, 12);       // BFSET
         else {                                      // BFINS
             a.ldrW(11, 0, L.d + out * 4);
-            if (width < 32) {
-                a.movW(13, uint32_t((uint64_t(1) << width) - 1));
-                a.andW(11, 11, 13);
-            }
+            a.lslVarW(11, 11, 13);                 // crop + top-align source
             emitNz(a, L, 11, 32);
-            a.lsrW(13, 11, width - 1); a.strB(13, 0, L.srN);
-            a.movW(13, 0); a.strB(13, 0, L.srV); a.strB(13, 0, L.srC);
-            if (width < 32) a.lslW(11, 11, 32 - width);
-            if (offset) a.rorW(11, 11, offset);
-            // emitNz uses w12 as scratch, so the field mask materialised
-            // above no longer survives to the actual insertion.
-            a.movW(12, mask);
+            a.lsrW(12, 11, 31); a.strB(12, 0, L.srN);
+            a.movW(12, 0); a.strB(12, 0, L.srV); a.strB(12, 0, L.srC);
+            a.rorVarW(11, 11, 14);
+            // emitNz clobbers w12, so reconstruct the destination mask.
+            a.movW(12, 0xFFFFFFFFu);
+            a.lslVarW(12, 12, 13);
+            a.rorVarW(12, 12, 14);
             a.mvnW(12, 12); a.andW(9, 9, 12); a.orrW(9, 9, 11);
         }
         a.strW(9, 0, L.d + dst * 4);
@@ -2507,16 +3179,42 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
     }
 
     if (sem.operation == SemanticOp::ShiftRegister) {
+        if (gPackedCcr) return false;
         const int sz = sem.sizeIndex, type = sem.action;
-        if (sz > 2 || sem.dynamic || type == 2 || in.words != 1) return false;
+        if (sz > 2 || type == 2 || in.words != 1) return false;
         const int bits = bitsForSizeIndex(sz);
-        int count = sem.registerIndex; if (!count) count = 8;
+        int count = sem.registerIndex;
+        if (sem.dynamic) {
+            // A runtime cycle increment inside the generated body passed the
+            // synthetic architectural lockstep but moved Q605 peripheral
+            // phase enough to prevent Finder boot. Keep the useful Rogue
+            // case without that timing ambiguity: specialize the block for
+            // the traced count, guard it before changing any state, and replay
+            // through Moira if Dn later changes. Limiting the unroll to eight
+            // bounds code size; E5A8's hot drawing sites use four.
+            if (slow < 0) return false;
+            const unsigned dynamicBase = type == 3 ||
+                (type == 0 && sem.left) ? 8u : 6u;
+            const unsigned traced = traced030(L, in);
+            if (traced < dynamicBase || traced > dynamicBase + 8)
+                return false;
+            count = int(traced - dynamicBase);
+            loadGuestRegister(a, L, 9, false, sem.registerIndex);
+            a.movW(10, 63); a.andW(9, 9, 10);
+            a.movW(10, unsigned(count)); a.cmpW(9, 10);
+            a.bCond(Asm::NE, slow);
+        } else if (!count) {
+            count = 8;
+        }
         const bool left = sem.left;
-        const int expected = type == 1 ? 4 : type == 3 ? 8 : left ? 8 : 6;
+        const int expected = sem.dynamic
+                           ? (type == 3 || (type == 0 && left) ? 8 : 6) + count
+                           : type == 1 ? 4 : type == 3 ? 8 : left ? 8 : 6;
         if (traced030(L, in) != unsigned(expected)) return false;
         const unsigned dn = sem.eaReg;
         loadSized(a, L, 11, false, dn, bits); maskResult(a, 11, bits);
         a.movW(13, 0);                              // accumulated ASL overflow
+        if (!count) a.movW(10, 0);                  // dynamic count zero: C=0
         for (int k = 0; k < count; k++) {
             if (left) {
                 a.lsrW(10, 11, unsigned(bits - 1)); // outgoing bit
@@ -2547,7 +3245,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         storeSized(a, L, 11, false, dn, bits);
         emitNz(a, L, 11, bits);
         a.strB(10, 0, L.srC);
-        if (type != 3) a.strB(10, 0, L.srX);
+        if (type != 3 && count) a.strB(10, 0, L.srX);
         if (type == 0 && left) a.strB(13, 0, L.srV);
         else { a.movW(12, 0); a.strB(12, 0, L.srV); }
         return true;
@@ -2627,8 +3325,10 @@ void chargeAndRetire(Asm& a, const Layout& L, unsigned cycles,
             a.movX(16, uint64_t(uintptr_t(&pom68kA64Sync)));
         }
         spillQueueLive(a, L);
+        spillPackedCcr(a, L);
         a.blr(16);
         a.emit(0xA94207E0u);             // ldp x0,x1,[sp,#32]
+        reloadPackedCcr(a, L);
         a.ldrX(21, 0, L.clock);
         reloadGeneratedState(a, L);
         a.bind(done);
@@ -2640,16 +3340,61 @@ void chargeAndRetire(Asm& a, const Layout& L, unsigned cycles,
         a.movW(1, cycles);
         a.movX(16, uint64_t(uintptr_t(&pom68kA64Sync)));
         spillQueueLive(a, L);
+        spillPackedCcr(a, L);
         a.blr(16);
         a.emit(0xA94207E0u);             // ldp x0,x1,[sp,#32]
+        reloadPackedCcr(a, L);
         a.ldrX(21, 0, L.clock);
         reloadGeneratedState(a, L);
     }
-    a.addImmW(26, 26, 1);               // live Frame::instrs
+    retireInstruction(a);               // live Frame::instrs
 }
 
 // Emits a jump to `taken` iff the materialised 68k CCR satisfies cc.
 void branchIfCond(Asm& a, const Layout& L, int cc, int taken) {
+    if (gPackedCcr) {
+        const auto branchBit = [&](unsigned bit, bool one) {
+            a.ubfxW(9, 26, bit, 1);
+            if (one) a.cbnzW(9, taken); else a.cbzW(9, taken);
+        };
+        switch (cc & 15) {
+            case 0: a.b(taken); return;
+            case 1: return;
+            case 2: {                               // HI = !(C | Z)
+                a.movW(10, 0x05); a.andW(9, 26, 10);
+                a.cbzW(9, taken); return;
+            }
+            case 3:                                 // LS = C | Z
+                a.movW(10, 0x05); a.andW(9, 26, 10);
+                a.cbnzW(9, taken); return;
+            case 4: branchBit(0, false); return;
+            case 5: branchBit(0, true); return;
+            case 6: branchBit(2, false); return;
+            case 7: branchBit(2, true); return;
+            case 8: branchBit(1, false); return;
+            case 9: branchBit(1, true); return;
+            case 10: branchBit(3, false); return;
+            case 11: branchBit(3, true); return;
+            case 12:                                // GE = N == V
+            case 13:                                // LT = N != V
+                a.ubfxW(9, 26, 3, 1); a.ubfxW(10, 26, 1, 1);
+                a.eorW(9, 9, 10);
+                if ((cc & 15) == 12) a.cbzW(9, taken);
+                else                 a.cbnzW(9, taken);
+                return;
+            case 14: {                              // GT = !Z && N == V
+                const int fail = a.label();
+                a.ubfxW(9, 26, 2, 1); a.cbnzW(9, fail);
+                a.ubfxW(9, 26, 3, 1); a.ubfxW(10, 26, 1, 1);
+                a.eorW(9, 9, 10); a.cbzW(9, taken);
+                a.bind(fail); return;
+            }
+            default:                                // LE = Z || N != V
+                a.ubfxW(9, 26, 2, 1); a.cbnzW(9, taken);
+                a.ubfxW(9, 26, 3, 1); a.ubfxW(10, 26, 1, 1);
+                a.eorW(9, 9, 10); a.cbnzW(9, taken); return;
+        }
+    }
     switch (cc & 15) {
         case 0: a.b(taken); return;                         // T
         case 1: return;                                    // F
@@ -2699,6 +3444,18 @@ int findTarget(const BlockIr& ir, uint32_t pc) {
 void leaveTo(Asm& a, const BlockIr& ir, uint32_t pc, uint32_t linkMask,
              int epilogue) {
     if (linkMask) {
+        if (gLinkCellLookup) {
+            void* cell = gLinkCellLookup(gLinkCellSelf, pc, ir.super);
+            const int miss = a.label();
+            a.ldrLiteralX(14, uint64_t(uintptr_t(cell)));
+            a.ldrX(16, 14, 0);
+            a.cbzX(16, miss);
+            a.br(16);
+            a.bind(miss);
+            a.movW(9, uint32_t(Exit::BlockEnd)); a.strW(9, 1, 12);
+            a.b(epilogue);
+            return;
+        }
         const uint32_t off = ((pc >> 1) & linkMask) * 16;
         const int miss = a.label();
         a.ldrX(14, 1, 64);               // Frame::linkTable
@@ -2732,7 +3489,7 @@ void leaveToDynamic(Asm& a, const Layout& L, const BlockIr& ir,
     a.b(epilogue);
 }
 
-// The 030 JSR's target read, at run time: w9 = target, w11 = the word
+// A JSR/JMP target read, at run time: w9 = target, w11 = the word
 // execJsr would leave in irc. A read that would fault bails to `slow`,
 // which replays the untouched instruction — so the caller must have
 // committed NOTHING before this (the push is only PROVED beforehand and
@@ -2745,9 +3502,11 @@ void readProgWord(Asm& a, const Layout& L, int slow) {
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     spillQueueLive(a, L);
     a.movX(16, uint64_t(uintptr_t(&pom68kA64ReadProg)));
+    spillPackedCcr(a, L);
     a.blr(16);
     a.movRegW(14, 0);
     a.emit(0xA94207E0u);                // ldp x0,x1,[sp,#32]
+    reloadPackedCcr(a, L);
     a.ldrX(21, 0, L.clock);
     reloadGeneratedState(a, L);
     a.cmpWZero(14);
@@ -2836,28 +3595,77 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         sem.operation == SemanticOp::Jump) {
         const bool jsr = sem.operation == SemanticOp::JumpSubroutine;
         if (!control.valid || control.pushesReturnAddress != jsr) { watchRefusal(L, ir, in, "jsr:control"); return false; }
+        Ea ea;
+        if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 0, ea, true, true) ||
+            !ea.memory || ea.idx == E_PI || ea.idx == E_PD ||
+            in.words != unsigned(1 + ea.ext)) {
+            watchRefusal(L, ir, in, "jsr:ea"); return false;
+        }
+        const bool fullIndirect = ea.fullFormat &&
+                                  ea.indirect != IndexIndirect::None;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
+        MemoryAccessPlan pointerRead;
+        if (fullIndirect)
+            pointerRead = memory.access(MemoryDirection::Read,
+                                        MemoryOperand::Control, 4,
+                                        sem.eaMode, sem.eaReg);
         MemoryAccessPlan write;
         if (jsr) {
             write = memory.access(MemoryDirection::Write,
                                   MemoryOperand::Stack, 4, 4, 7);
             if (!write.valid()) { watchRefusal(L, ir, in, "jsr:write"); return false; }
         }
+        if (fullIndirect && !pointerRead.valid()) {
+            watchRefusal(L, ir, in, "jsr:pointer"); return false;
+        }
         if (!memory.complete()) { watchRefusal(L, ir, in, "jsr:complete"); return false; }
-        Ea ea;
-        if (!decodeEa(in, sem.eaMode, sem.eaReg, 32, 0, ea) ||
-            !ea.memory || ea.idx == E_PI || ea.idx == E_PD ||
-            in.words != unsigned(1 + ea.ext)) { watchRefusal(L, ir, in, "jsr:ea"); return false; }
-        // The indexed forms stay out: the watch (2026-08-23) shows JSR
-        // idx(An) tracing at base 12-14 with 3-4 fetched words, not the
-        // table's 7 — a full-format extension walk, not one path.
         static const int8_t cost[E_COUNT] =
-            {-1,-1,4,-1,-1,5,-1,4,4,5,-1,-1};
-        if (cost[ea.idx] < 0 ||
-            traced030(L, in) != unsigned(cost[ea.idx])) { watchRefusal(L, ir, in, "jsr:cost"); return false; }
-        addrOf(a, L, ea, 32);
+            {-1,-1,4,-1,-1,5,7,4,4,5,7,-1};
+        const int penalty = ea.fullFormat ? fullIndexPenalty(ea) : 0;
+        const unsigned opCost = cost[ea.idx] < 0 ? 0
+            : unsigned(cost[ea.idx] + penalty);
+        if (cost[ea.idx] < 0 || traced030(L, in) != opCost ||
+            (fullIndirect && L.is030)) {
+            watchRefusal(L, ir, in, "jsr:cost"); return false;
+        }
+
+        if (fullIndirect) {
+            addrOfFullIndirectPointer(a, L, ea);
+            if (!jsr) {
+                memLoadGuest(a, L, ir.super, 32, 11, slow, pointerRead);
+                finishFullIndirect(a, L, ea, 11);
+            } else {
+                // computeEA reads the pointer before JSR pushes. Prove both
+                // plain mappings first so a stack refusal can never replay a
+                // device read, then perform the architectural order once.
+                a.strW(9, 1, 40);                  // pointer guest address
+                memProbe(a, L, ir.super, 4, false, slow);
+                a.strX(14, 1, 120);                // pointer host address
+                a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
+                a.strW(9, 1, 44);                  // new A7
+                memProbe(a, L, ir.super, 4, true, slow);
+                a.strX(14, 1, 192);                // stack host address
+                a.ldrX(14, 1, 120); loadGuest(a, 32, 11);
+                finishFullIndirect(a, L, ea, 11);
+            }
+        } else {
+            addrOf(a, L, ea, 32);
+        }
         a.strW(9, 1, 48);                           // target (Frame::saveV)
         a.ubfxW(9, 9, 0, 1); a.cbnzW(9, slow);
+        if (fullIndirect) {
+            a.ldrW(9, 1, 48);
+            readProgWord(a, L, slow);
+            a.strW(11, 1, 40);                     // runtime queue.irc
+        }
+        if (fullIndirect && jsr) {
+            a.ldrX(14, 1, 192);
+            a.ldrW(9, 1, 44);
+            a.movW(11, control.returnAddress); a.strW(11, 1, 72);
+            observeDirectWrite(a, L, 32, in.pc);
+            storeGuest(a, 32, 11);
+            a.ldrW(9, 1, 44); a.strW(9, 0, L.a + 7 * 4);
+        }
         if (jsr && L.is030) {
             // Mode-5 has no queue: execJsr leaves the TARGET's first word
             // in irc (`queue.irc = read<PROG, Word>(ea)`), which no
@@ -2891,13 +3699,13 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
             if (icache) chargeIcache(a, L, ir, in, icacheShadow);
             a.ldrW(11, 1, 40);
             a.movW(29, uint32_t(op) << 16); a.orrW(29, 29, 11);
-            chargeAndRetire(a, L, unsigned(cost[ea.idx]), paced, batch, in.pc,
+            chargeAndRetire(a, L, opCost, paced, batch, in.pc,
                             uint32_t(in.words) + 1, ir.super);
             if (control.targetKnown) leaveTo(a, ir, control.target, linkMask, epilogue);
             else leaveToDynamic(a, L, ir, linkMask, epilogue);
             return true;
         }
-        if (jsr) {
+        if (jsr && !fullIndirect) {
             a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
             a.strW(9, 1, 44);
             a.movW(11, control.returnAddress); a.strW(11, 1, 72);
@@ -2908,8 +3716,13 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         a.strW(11, 0, L.pc); a.strW(11, 0, L.pc0);
         if (!tracedQueueIs(lastHeld)) { watchRefusal(L, ir, in, "jsr:queue"); return false; }
         if (icache) chargeIcache(a, L, ir, in, icacheShadow);
-        commitQueue(a, L, op, lastHeld);
-        chargeAndRetire(a, L, unsigned(cost[ea.idx]), paced, batch, in.pc,
+        if (fullIndirect) {
+            a.ldrW(11, 1, 40);
+            a.movW(29, uint32_t(op) << 16); a.orrW(29, 29, 11);
+        } else {
+            commitQueue(a, L, op, lastHeld);
+        }
+        chargeAndRetire(a, L, opCost, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
         const bool constant = control.targetKnown;
         if (constant) leaveTo(a, ir, control.target, linkMask, epilogue);
@@ -3083,6 +3896,7 @@ private:
 CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     if (diagLeft_ < 0) diagLeft_ = verboseBlocks();
     gRuntimeReasonHisto = ctx.slowRuntimeReasonHisto != nullptr;
+    gPackedCcr = packedCcrEnabled();
     const auto reject = [this](CompileReject reason,
                                const char* why) -> CompileResult {
         if (verbose() && diagLeft_ > 0) {
@@ -3110,6 +3924,8 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
                        a64PacingEnabled();
     gPacingDeadline = paced;
     gDirectPeriphDue = paced && ctx.periphBatch < 0 && ctx.periphDue;
+    gLinkCellLookup = ctx.linkMask ? ctx.linkCell : nullptr;
+    gLinkCellSelf = ctx.linkCellSelf;
     const int batch = paced ? ctx.periphBatch : 0;
     // Restartable-write blocks may link once the i-cache charge sits past the
     // last runtime bail. The old chain-boundary divergence was the same stale
@@ -3117,6 +3933,12 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     // and clock had already moved for an instruction that never executed.
     const uint32_t linkMask = ctx.linkTable ? ctx.linkMask : 0;
     const bool icache = L.icLive && icacheEmitEnabled();
+    chooseGuestRegisterCache(ir);
+    // Linked blocks share the source block's stack frame but return through
+    // the target block's epilogue.  The frame ABI must therefore depend on
+    // the immutable Engine option, not on whether this particular block found
+    // a profitable guest register to cache.
+    const bool guestCacheAbi = registerCacheEnabled();
 
     Asm a;
     const int epilogue = a.label();
@@ -3124,19 +3946,24 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     const int exitFault = a.label();
     // x20 keeps the immutable caller clock target, x21 the guest clock and
     // w22 the execution-control flags. All three survive linked blocks and
-    // helper calls. On 030, x23/x24 keep the i-cache counters; w26 keeps the
-    // retired-instruction count on every family. x0/x1 remain the CPU/Frame
-    // ABI pair. Hoisting the target and flags saves two loads at every
-    // generated instruction boundary without weakening either check.
-    a.emit(0xA9BA7BFDu);                 // stp x29,x30,[sp,#-96]!
+    // helper calls. On 030, x23/x24 keep the i-cache counters. x26 keeps the
+    // retired count, and in packed-CCR mode its low byte also keeps XNZVC;
+    // the count starts at bit 8. x0/x1 remain the CPU/Frame ABI pair.
+    a.emit(guestCacheAbi ? 0xA9B97BFDu    // stp x29,x30,[sp,#-112]!
+                         : 0xA9BA7BFDu);  // stp x29,x30,[sp,#-96]!
     a.emit(0xA9015BF5u);                 // stp x21,x22,[sp,#16]
     a.emit(0xA90207E0u);                 // stp x0,x1,[sp,#32]
     if (icache) a.emit(0xA90363F7u);      // stp x23,x24,[sp,#48]
     a.emit(0xA9046BF9u);                 // stp x25,x26,[sp,#64]
     a.emit(0xA90553F3u);                 // stp x19,x20,[sp,#80]
+    if (guestCacheAbi) a.emit(0xA90673FBu); // stp x27,x28,[sp,#96]
     a.ldrX(20, 1, 0);                    // Frame::clockTarget
     a.ldrX(21, 0, L.clock);
     a.ldrW(26, 1, 8);                    // Frame::instrs
+    if (gPackedCcr) {
+        a.lslX(26, 26, kPackedCountShift);
+        reloadPackedCcr(a, L);
+    }
     loadQueueLive(a, L);                 // packed ird:irc in callee-saved w29
     reloadGeneratedState(a, L);
     // TAS/CAS are unsafe block terminators, hence no linked native chain can
@@ -3152,7 +3979,11 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         a.movW(9, 1);
         a.andW(25, 25, 9);
     }
+    // This is deliberately part of the linked entry. Source blocks keep
+    // memory canonical, so each target can choose a different read-only
+    // pair without per-edge register shuffles.
     const size_t linkEntryOffset = a.byteSize();
+    reloadGuestRegisterCache(a, L);
     struct ExitLabels { int budget, flags; };
     std::vector<ExitLabels> exits;
     std::vector<int> entries;
@@ -3357,12 +4188,15 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         if (icache) spillIcacheCounters(a, L);
         spillQueueLive(a, L);
         a.movX(16, uint64_t(uintptr_t(&pom68kA64Step)));
+        spillPackedCcr(a, L);
         a.blr(16);
         a.movRegW(14, 0);                 // preserve helper result
         a.emit(0xA94207E0u);              // ldp x0,x1,[sp,#32]
+        reloadPackedCcr(a, L);
         loadQueueLive(a, L);              // fallback owns its terminal queue
         a.ldrX(21, 0, L.clock);
         reloadGeneratedState(a, L);
+        reloadGuestRegisterCache(a, L);
         if (icache) {
             reloadIcacheCounters(a, L);
             // Defensive for any future non-Unsafe fallback that gains a
@@ -3374,7 +4208,7 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         a.cmpWZero(14);
         a.bCond(Asm::LT, exitLost);
         a.bCond(Asm::EQ, exitFault);
-        a.addImmW(26, 26, 1);             // retired
+        retireInstruction(a);             // retired
         a.ldrW(9, 1, 52);                 // slowInstrs
         a.addImmW(9, 9, 1);
         a.strW(9, 1, 52);
@@ -3394,7 +4228,7 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     a.movW(9, uint32_t(Exit::WindowLost)); a.strW(9, 1, 12);
     a.b(epilogue);
     a.bind(exitFault);
-    a.addImmW(26, 26, 1);
+    retireInstruction(a);
     a.movW(9, uint32_t(Exit::Fault)); a.strW(9, 1, 12);
     a.b(epilogue);
 
@@ -3411,16 +4245,19 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     }
     a.bind(epilogue);
     a.strX(21, 0, L.clock);
-    a.strW(26, 1, 8);
+    spillPackedCcr(a, L);
+    spillRetiredCount(a);
     spillQueueLive(a, L);
     if (icache) {
         spillIcacheCounters(a, L);
         a.emit(0xA94363F7u);              // ldp x23,x24,[sp,#48]
     }
+    if (guestCacheAbi) a.emit(0xA94673FBu); // ldp x27,x28,[sp,#96]
     a.emit(0xA94553F3u);                 // ldp x19,x20,[sp,#80]
     a.emit(0xA9446BF9u);                 // ldp x25,x26,[sp,#64]
     a.emit(0xA9415BF5u);                 // ldp x21,x22,[sp,#16]
-    a.emit(0xA8C67BFDu);                 // ldp x29,x30,[sp],#96
+    a.emit(guestCacheAbi ? 0xA8C77BFDu    // ldp x29,x30,[sp],#112
+                         : 0xA8C67BFDu);  // ldp x29,x30,[sp],#96
     a.emit(0xD65F03C0u);                 // ret
     if (!a.finish()) return reject(CompileReject::Emit, "branch fixup");
 

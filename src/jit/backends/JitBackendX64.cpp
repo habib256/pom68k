@@ -33,11 +33,11 @@
 //    instruction boundary, so a disagreement that slipped through would
 //    fail within seconds.
 //
-// What is NOT here, on purpose: 68020 indexed addressing modes (their
-// extension-word format carries scale, base suppression and memory
-// indirection — a decoder in its own right), everything that touches the
-// SR/MMU/caches, and every instruction with more than one memory operand
-// to commit. All of them simply fall back, per instruction, to Moira.
+// Full 68020 indexed plans also come from the shared decoder. Direct LEA is
+// lowered below, including base/index suppression; memory indirection and
+// full-format use by every other opcode remain out on purpose. Everything
+// that touches the SR/MMU/caches and every unproved multi-memory commit also
+// falls back, per instruction, to Moira.
 
 #include "JitBackendX64.h"
 
@@ -198,7 +198,14 @@ const uint8_t kNoGuard = 0;
 constexpr Reg kCpu = RBX;      // moira::Moira*
 constexpr Reg kFrm = RBP;      // Frame*
 constexpr Reg kTgt = R14;      // clock target, cached
-constexpr Reg kCnt = R15;      // instructions retired so far (32-bit half)
+// With POM68K_JIT_PACKED_CCR, r15 packs two independently observable values:
+// XNZVC in bits 4..0 (the architectural 68k layout) and the retired count in
+// bits 63..8. Bits 7..5 are a carry moat, so incrementing the count by $100
+// can never perturb the CCR. A linked block inherits both values.
+constexpr Reg kCnt = R15;
+constexpr int32_t kCcrMask = 0x1F;
+constexpr int kCountShift = 8;
+constexpr int32_t kRetireUnit = 1 << kCountShift;
 constexpr Reg kPer = R12;      // &lastPeriphClock_, for the inline pacing test
 // The cycle clock, live in a register for the whole chain of linked blocks.
 // It used to live only in the Moira object, which put a store-to-load
@@ -210,20 +217,21 @@ constexpr Reg kClk = R13;
 
 // ── 68020-column cycle tables (Moira MoiraExec_cpp.h) ────────────────────
 // Indexed by 68k addressing mode: 0 Dn, 1 An, 2 (An), 3 (An)+, 4 -(An),
-// 5 d16(An), 6 indexed (unsupported), 7.0 abs.w, 7.1 abs.l, 7.2 d16(PC),
+// 5 d16(An), 6 brief indexed, 7.0 abs.w, 7.1 abs.l, 7.2 d16(PC),
 // 7.4 immediate. Index 7..11 hold the mode-7 sub-forms.
 enum : int { kM_DN = 0, kM_AN, kM_AI, kM_PI, kM_PD, kM_DI, kM_IX,
              kM_AW, kM_AL, kM_DIPC, kM_IXPC, kM_IM, kM_COUNT };
 
 // Mode index for (mode, reg), or -1 when the backend does not support it.
 int eaIndex(int mode, int reg) {
-    if (mode < 7) return mode == 6 ? -1 : mode;
+    if (mode < 7) return mode;
     switch (reg) {
         case 0: return kM_AW;
         case 1: return kM_AL;
         case 2: return kM_DIPC;
+        case 3: return kM_IXPC;
         case 4: return kM_IM;
-        default: return -1;                 // 7.3 (PC indexed), 7.5+ reserved
+        default: return -1;                 // 7.5+ reserved
     }
 }
 
@@ -236,11 +244,11 @@ const int8_t kEaRead[kM_COUNT][3] = {   // [mode][0=B 1=W 2=L]
     { 6, 6, 6 },   // (An)+
     { 7, 7, 7 },   // -(An)
     { 7, 7, 7 },   // d16(An)
-    { -1, -1, -1 },// indexed — unsupported
+    { 9, 9, 9 },   // d8(An,Xn) — brief extension
     { 6, 6, 6 },   // abs.w
     { 6, 6, 6 },   // abs.l
     { 7, 7, 7 },   // d16(PC)
-    { -1, -1, -1 },// PC indexed — unsupported
+    { 9, 9, 9 },   // d8(PC,Xn) — brief extension
     { 4, 4, 6 },   // #imm
 };
 
@@ -275,7 +283,15 @@ struct Ea {
     int  mode = 0, reg = 0;
     int  idx = -1;                  // kM_* index
     int32_t value = 0;              // displacement, absolute address or imm
+    int32_t baseDisplacement = 0;
+    uint32_t base = 0;               // PC-relative indexed base
+    int ixReg = 0, ixShift = 0;
     int  ext = 0;                   // extension words consumed
+    uint8_t baseDisplacementWords = 0;
+    bool ixLong = false;
+    bool fullFormat = false;
+    bool baseSuppressed = false;
+    bool indexSuppressed = false;
     bool memory = false;            // needs a real guest access
 };
 
@@ -317,8 +333,11 @@ public:
                                   .restartableLastWrite();
                           })),
           linkMask_(ctx.linkTable ? ctx.linkMask : 0),
+          linkCell_(ctx.linkMask ? ctx.linkCell : nullptr),
+          linkCellSelf_(ctx.linkCellSelf),
           histo_(ctx.slowStaticHisto != nullptr),
-          ic_(L.icLive && icacheEmitEnabled()) {}
+          ic_(L.icLive && icacheEmitEnabled()),
+          packedCcr_(packedCcrEnabled()) {}
 
     bool restartWrite030() const { return restartWrite030_; }
 
@@ -368,7 +387,8 @@ private:
     bool emitMovem(size_t i);        // MOVEM — straight-line, one span probe
 
     // ── operand plumbing ─────────────────────────────────────────────────
-    bool decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea);
+    bool decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea,
+                bool allowFullDirect = false);
     void addrOf(const Ea& ea, Reg dst, int szIdx);
     void commitEa(const Ea& ea, int szIdx,
                   const MemoryAccessPlan& access);
@@ -386,6 +406,7 @@ private:
         if (src.idx != kM_PI && src.idx != kM_PD) return false;
         switch (dst.idx) {
             case kM_AN: case kM_AI: case kM_PI: case kM_PD: case kM_DI:
+            case kM_IX:
                 return dst.reg == src.reg;
             default:
                 return false;
@@ -422,6 +443,7 @@ private:
     void flagsLogic(Sz sz);          // N,Z from the result; V=C=0
     void flagsAddSub(bool withX);    // N,Z,V,C from EFLAGS (+X = C)
     void clearVC();
+    void flagZFromEflags();
     void condToAl(int cc);           // 68k condition -> ZF set == taken
 
     // ── boilerplate ──────────────────────────────────────────────────────
@@ -442,6 +464,13 @@ private:
     // binding constraint (src/jit/POM68K_JIT.md § 7).
     void emitBoundary(uint32_t pc, int prevIdx);
     void call(void* fn);
+    void loadPackedCcr();
+    void spillPackedCcr();
+    void retire() {
+        a_.aluRI(Asm::Op::ADD, packedCcr_ ? Sz::Q : Sz::L, kCnt,
+                 packedCcr_ ? kRetireUnit : 1);
+    }
+    void spillRetiredCount();
     // Leaves the block for `pc`. With a link table available this is a tag
     // compare and an indirect jump straight into the next compiled block —
     // no return to the engine, no hash lookup, no frame set-up. Only exits
@@ -526,6 +555,8 @@ private:
     int  loopTo_ = -1;
     bool restartWrite030_ = false;
     uint32_t linkMask_ = 0;
+    LinkCellLookup linkCell_ = nullptr;
+    void* linkCellSelf_ = nullptr;
     // Emission deferred to AFTER the block body. Everything a memory access
     // does when the inline TLB cannot serve it — asking the engine to fill
     // an entry, calling the access thunk — is cold, and leaving it inline
@@ -539,6 +570,7 @@ private:
     int native_ = 0;
     size_t cur_ = 0;                 // instruction being emitted
     bool histo_ = false;             // POM68K_JIT_HISTO
+    bool packedCcr_ = false;
     // 68030 i-cache overlay (Layout::icLive). When set, every NATIVELY
     // emitted instruction charges the model for the words it fetches; the
     // cold fallback stub charges itself, through pomJitExecOne ->
@@ -893,6 +925,18 @@ void Emitter::pollIpl() {
 
 void Emitter::leaveTo(uint32_t pc) {
     if (linkMask_) {
+        if (linkCell_) {
+            void* cell = linkCell_(linkCellSelf_, pc, ir_.super);
+            Label& miss = *a_.fresh();
+            a_.movRI64(RAX, uint64_t(uintptr_t(cell)));
+            a_.aluMI(Asm::Op::CMP, Sz::Q, mem(RAX, 0), 0);
+            a_.jcc(Cc::E, miss);
+            a_.jmpM(mem(RAX, 0));
+            a_.bind(miss);
+            a_.movMI(Sz::L, F(kFExit), int32_t(Exit::BlockEnd));
+            a_.jmp(*epilogue_);
+            return;
+        }
         // The slot index is a function of a CONSTANT, so it is folded here
         // and the run-time cost is one load, one compare and one jump.
         const int32_t off = int32_t(((pc >> 1) & linkMask_) * 16);
@@ -974,7 +1018,7 @@ bool Emitter::emitSubroutine(size_t i) {
         a_.movMR(Sz::L, at(L_.pc0), RDI);
         commitQueue(op, ircAfter);
         chargeCycles(10);
-        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        retire();
         leaveToDynamic();
         return true;
     }
@@ -1010,7 +1054,7 @@ bool Emitter::emitSubroutine(size_t i) {
         a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
         commitQueue(op, ircAfter);
         chargeCycles(int(bsrCost));
-        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        retire();
         leaveTo(target);
         return true;
     }
@@ -1059,15 +1103,55 @@ bool Emitter::emitSubroutine(size_t i) {
     commitQueue(op, ircAfter);
     chargeCycles(kJsr[ea.idx]);          // table/base cost; the emitted
                                          // i-cache charge owns the misses
-    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    retire();
     if (constant) leaveTo(control.target);
     else          leaveToDynamic();
     return true;
 }
 
 void Emitter::call(void* fn) {
+    // Helpers execute against the canonical Moira object. Publish a deferred
+    // CCR before they can observe it (fault frame, SR read, interpreter
+    // fallback), then accept any CCR they produced on return. The retired
+    // count in r15's upper bits survives both operations and the ABI call.
+    if (packedCcr_) spillPackedCcr();
     a_.movRI64(RAX, uint64_t(uintptr_t(fn)));
     a_.callR(RAX);
+    if (packedCcr_) loadPackedCcr();
+}
+
+void Emitter::loadPackedCcr() {
+    // Preserve the accumulated count and replace only XNZVC. All flag bytes
+    // are canonical booleans, so zero-extension plus a shift is sufficient.
+    a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~kCcrMask);
+    const auto add = [&](uint32_t off, uint8_t bit) {
+        a_.movzx(Sz::B, RAX, at(off));
+        if (bit) a_.shiftRI(Sz::L, RAX, 4, bit);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, RAX);
+    };
+    add(L_.srC, 0); add(L_.srV, 1); add(L_.srZ, 2);
+    add(L_.srN, 3); add(L_.srX, 4);
+}
+
+void Emitter::spillPackedCcr() {
+    const auto put = [&](uint32_t off, uint8_t bit) {
+        a_.movRR(Sz::L, RAX, kCnt);
+        if (bit) a_.shiftRI(Sz::L, RAX, 5, bit);
+        a_.aluRI(Asm::Op::AND, Sz::L, RAX, 1);
+        a_.movMR(Sz::B, at(off), RAX);
+    };
+    put(L_.srC, 0); put(L_.srV, 1); put(L_.srZ, 2);
+    put(L_.srN, 3); put(L_.srX, 4);
+}
+
+void Emitter::spillRetiredCount() {
+    if (!packedCcr_) {
+        a_.movMR(Sz::L, F(kFInstrs), kCnt);
+        return;
+    }
+    a_.movRR(Sz::Q, RAX, kCnt);
+    a_.shiftRI(Sz::Q, RAX, 5, kCountShift);
+    a_.movMR(Sz::L, F(kFInstrs), RAX);
 }
 
 // Clock budget and Moira's flag word, tested before every instruction —
@@ -1097,6 +1181,10 @@ void Emitter::emitBoundary(uint32_t pc, int prevIdx) {
 
 // ── flags ────────────────────────────────────────────────────────────────
 void Emitter::clearVC() {
+    if (packedCcr_) {
+        a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~3);
+        return;
+    }
     a_.movMI(Sz::B, at(L_.srV), 0);
     a_.movMI(Sz::B, at(L_.srC), 0);
 }
@@ -1105,6 +1193,21 @@ void Emitter::clearVC() {
 // V and C cleared, X untouched. x86 sets SF/ZF from the same width, so the
 // two setcc do the whole job.
 void Emitter::flagsLogic(Sz) {
+    if (packedCcr_) {
+        // SETcc does not alter EFLAGS: capture both host flags before the
+        // mask/shift sequence consumes them. RCX/RDX are caller-saved
+        // scratch registers and no flag emitter promises to preserve them.
+        a_.setccR(Cc::S, RCX);
+        a_.setccR(Cc::E, RDX);
+        a_.movzxRR(Sz::B, RCX, RCX);
+        a_.movzxRR(Sz::B, RDX, RDX);
+        a_.shiftRI(Sz::L, RCX, 4, 3);
+        a_.shiftRI(Sz::L, RDX, 4, 2);
+        a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~0x0F); // preserve X + count
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, RCX);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, RDX);
+        return;
+    }
     a_.setccM(Cc::S, at(L_.srN));
     a_.setccM(Cc::E, at(L_.srZ));
     clearVC();
@@ -1114,6 +1217,29 @@ void Emitter::flagsLogic(Sz) {
 // the same width — including the carry, because x86's CF after SUB is a
 // borrow, which is what the 68k calls C. X follows C.
 void Emitter::flagsAddSub(bool withX) {
+    if (packedCcr_) {
+        a_.setccR(Cc::S, RCX);
+        a_.setccR(Cc::E, RDX);
+        a_.setccR(Cc::O, R8);
+        a_.setccR(Cc::B, R9);
+        a_.movzxRR(Sz::B, RCX, RCX);
+        a_.movzxRR(Sz::B, RDX, RDX);
+        a_.movzxRR(Sz::B, R8, R8);
+        a_.movzxRR(Sz::B, R9, R9);
+        a_.shiftRI(Sz::L, RCX, 4, 3);
+        a_.shiftRI(Sz::L, RDX, 4, 2);
+        a_.shiftRI(Sz::L, R8, 4, 1);
+        a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, withX ? ~0x1F : ~0x0F);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, RCX);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, RDX);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, R8);
+        a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, R9);
+        if (withX) {
+            a_.shiftRI(Sz::L, R9, 4, 4);
+            a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, R9);
+        }
+        return;
+    }
     a_.setccM(Cc::S, at(L_.srN));
     a_.setccM(Cc::E, at(L_.srZ));
     a_.setccM(Cc::O, at(L_.srV));
@@ -1121,9 +1247,71 @@ void Emitter::flagsAddSub(bool withX) {
     if (withX) a_.setccM(Cc::B, at(L_.srX));
 }
 
+void Emitter::flagZFromEflags() {
+    if (!packedCcr_) {
+        a_.setccM(Cc::E, at(L_.srZ));
+        return;
+    }
+    a_.setccR(Cc::E, RCX);
+    a_.movzxRR(Sz::B, RCX, RCX);
+    a_.shiftRI(Sz::L, RCX, 4, 2);
+    a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~4);
+    a_.aluRR(Asm::Op::OR, Sz::Q, kCnt, RCX);
+}
+
 // Leaves ZF SET when the 68k condition `cc` is TRUE, so the caller can
 // branch with `je`. Condition codes are read out of Moira's per-flag bytes.
 void Emitter::condToAl(int cc) {
+    if (packedCcr_) {
+        const auto bitEquals = [&](uint8_t bit, uint8_t value) {
+            a_.movRR(Sz::L, RAX, kCnt);
+            if (bit) a_.shiftRI(Sz::L, RAX, 5, bit);
+            a_.aluRI(Asm::Op::AND, Sz::L, RAX, 1);
+            a_.aluRI(Asm::Op::CMP, Sz::L, RAX, value);
+        };
+        const auto nvOrZ = [&] {
+            // RAX = Z || (N xor V), represented in bit 1. Zero means GT.
+            a_.movRR(Sz::L, RAX, kCnt);
+            a_.shiftRI(Sz::L, RAX, 5, 1);           // Z -> bit 1
+            a_.aluRI(Asm::Op::AND, Sz::L, RAX, 2);
+            a_.movRR(Sz::L, RDX, kCnt);
+            a_.shiftRI(Sz::L, RDX, 5, 2);           // N -> bit 1
+            a_.aluRR(Asm::Op::XOR, Sz::L, RDX, kCnt);
+            a_.aluRI(Asm::Op::AND, Sz::L, RDX, 2);  // N xor V
+            a_.aluRR(Asm::Op::OR, Sz::L, RAX, RDX);
+        };
+        switch (cc) {
+            case 0: a_.aluRR(Asm::Op::XOR, Sz::L, RAX, RAX);
+                    a_.testRR(Sz::L, RAX, RAX); return;
+            case 1: a_.movRI(RAX, 1); a_.testRR(Sz::L, RAX, RAX); return;
+            case 2: a_.testRI(Sz::L, kCnt, 0x05); return;       // HI
+            case 3: a_.movRR(Sz::L, RAX, kCnt);
+                    a_.aluRI(Asm::Op::AND, Sz::L, RAX, 0x05);
+                    a_.aluRI(Asm::Op::CMP, Sz::L, RAX, 0);
+                    a_.setccR(Cc::NE, RAX);
+                    a_.aluRI(Asm::Op::CMP, Sz::B, RAX, 1); return;
+            case 4: bitEquals(0, 0); return;                    // CC
+            case 5: bitEquals(0, 1); return;                    // CS
+            case 6: bitEquals(2, 0); return;                    // NE
+            case 7: bitEquals(2, 1); return;                    // EQ
+            case 8: bitEquals(1, 0); return;                    // VC
+            case 9: bitEquals(1, 1); return;                    // VS
+            case 10: bitEquals(3, 0); return;                   // PL
+            case 11: bitEquals(3, 1); return;                   // MI
+            case 12:                                           // GE: N == V
+            case 13:                                           // LT: N != V
+                a_.movRR(Sz::L, RAX, kCnt);
+                a_.shiftRI(Sz::L, RAX, 5, 2);
+                a_.aluRR(Asm::Op::XOR, Sz::L, RAX, kCnt);
+                a_.aluRI(Asm::Op::AND, Sz::L, RAX, 2);
+                a_.aluRI(Asm::Op::CMP, Sz::L, RAX, cc == 12 ? 0 : 2);
+                return;
+            case 14: nvOrZ(); a_.aluRI(Asm::Op::CMP, Sz::L, RAX, 0); return;
+            default: nvOrZ();
+                     a_.setccR(Cc::NE, RAX);
+                     a_.aluRI(Asm::Op::CMP, Sz::B, RAX, 1); return;
+        }
+    }
     switch (cc) {
         case 0:                                     // T
             a_.aluRR(Asm::Op::XOR, Sz::L, RAX, RAX);
@@ -1180,25 +1368,40 @@ void Emitter::condToAl(int cc) {
 }
 
 // ── effective addresses ──────────────────────────────────────────────────
-bool Emitter::decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea) {
+bool Emitter::decode(size_t i, int mode, int reg, int szIdx, int extAt, Ea& ea,
+                     bool allowFullDirect) {
     ea.mode = mode; ea.reg = reg;
     ea.idx = eaIndex(mode, reg);
     if (ea.idx < 0) return false;
     const Instr& in = ir_.instrs[i];
     const DecodedEffectiveAddress* decoded = findEffectiveAddress(
         in, uint8_t(mode), uint8_t(reg), uint8_t(szIdx), uint8_t(extAt));
-    // Full 68020 index plans are valid shared IR, not brief extensions.
-    // Native support remains closed until this backend has a proved lowering.
-    if (!decoded || !decoded->valid || decoded->fullFormat) return false;
+    // Full 68020 index plans are valid shared IR, not brief extensions. Only
+    // direct LEA opts in; memory indirection and every other instruction keep
+    // the conservative default refusal.
+    if (!decoded || !decoded->valid) return false;
+    if (decoded->fullFormat &&
+        (!allowFullDirect || decoded->indirect != IndexIndirect::None))
+        return false;
     ea.memory = decoded->memory();
     ea.value = decoded->value;
+    ea.baseDisplacement = decoded->baseDisplacement;
+    ea.base = decoded->extensionAddress;
+    ea.ixReg = decoded->indexRegister;
+    ea.ixLong = decoded->indexLong;
+    ea.ixShift = decoded->indexShift;
+    ea.baseDisplacementWords = decoded->baseDisplacementWords;
+    ea.fullFormat = decoded->fullFormat;
+    ea.baseSuppressed = decoded->baseSuppressed;
+    ea.indexSuppressed = decoded->indexSuppressed;
     ea.ext = decoded->extensionWords;
     return true;
 }
 
-// Guest effective address into `dst`. For (An)+ and -(An) the register
-// update is NOT applied here: it is a guest-visible commit and must not
-// happen until the access has succeeded (see commitEa).
+// Guest effective address into `dst` (brief indexed forms also clobber RDX;
+// no caller passes RDX as `dst`). For (An)+ and -(An) the register update is
+// NOT applied here: it is a guest-visible commit and must not happen until
+// the access has succeeded (see commitEa).
 void Emitter::addrOf(const Ea& ea, Reg dst, int szIdx) {
     const int step = (ea.reg == 7 && szIdx == 0) ? 2 : sizeBytes(szIdx);
     switch (ea.idx) {
@@ -1213,6 +1416,27 @@ void Emitter::addrOf(const Ea& ea, Reg dst, int szIdx) {
             a_.movRM(Sz::L, dst, A(ea.reg));
             if (ea.value) a_.aluRI(Asm::Op::ADD, Sz::L, dst, ea.value);
             return;
+        case kM_IX: case kM_IXPC: {
+            if (ea.fullFormat && ea.baseSuppressed) a_.movRI(dst, 0);
+            else if (ea.idx == kM_IX) a_.movRM(Sz::L, dst, A(ea.reg));
+            else a_.movRI(dst, ea.base);
+            if (!ea.fullFormat || !ea.indexSuppressed) {
+                if (ea.ixReg < 8) {
+                    if (ea.ixLong) a_.movRM(Sz::L, RDX, D(ea.ixReg));
+                    else a_.movsx(Sz::W, RDX, D(ea.ixReg));
+                } else {
+                    if (ea.ixLong) a_.movRM(Sz::L, RDX, A(ea.ixReg - 8));
+                    else a_.movsx(Sz::W, RDX, A(ea.ixReg - 8));
+                }
+                if (ea.ixShift) a_.shiftRI(Sz::L, RDX, 4, uint8_t(ea.ixShift));
+                a_.aluRR(Asm::Op::ADD, Sz::L, dst, RDX);
+            }
+            const int32_t displacement =
+                ea.fullFormat ? ea.baseDisplacement : ea.value;
+            if (displacement)
+                a_.aluRI(Asm::Op::ADD, Sz::L, dst, displacement);
+            return;
+        }
         case kM_AW: case kM_AL: case kM_DIPC:
             a_.movRI(dst, uint32_t(ea.value));
             return;
@@ -2057,9 +2281,15 @@ bool Emitter::emitMoveq(size_t i) {
     const int dn = sem.registerIndex;
     const int32_t v = int8_t(op & 0xFF);
     a_.movMI(Sz::L, D(dn), v);
-    a_.movMI(Sz::B, at(L_.srN), v < 0 ? 1 : 0);
-    a_.movMI(Sz::B, at(L_.srZ), v == 0 ? 1 : 0);
-    clearVC();
+    if (packedCcr_) {
+        const int32_t nz = (v < 0 ? 8 : 0) | (v == 0 ? 4 : 0);
+        a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~0x0F);
+        if (nz) a_.aluRI(Asm::Op::OR, Sz::Q, kCnt, nz);
+    } else {
+        a_.movMI(Sz::B, at(L_.srN), v < 0 ? 1 : 0);
+        a_.movMI(Sz::B, at(L_.srZ), v == 0 ? 1 : 0);
+        clearVC();
+    }
     return true;
 }
 
@@ -2198,7 +2428,7 @@ bool Emitter::emitBitOp(size_t i) {
         a_.movRI(RDX, uint32_t(1u << (uint32_t(bitImm) & (toReg ? 31u : 7u))));
     }
     a_.testRR(Sz::L, RDI, RDX);
-    a_.setccM(Cc::E, at(L_.srZ));
+    flagZFromEflags();
     commitEa(dst, szIdx, read);
     return true;
 }
@@ -2272,13 +2502,17 @@ bool Emitter::emitLine4(size_t i) {
     if (sem.operation == SemanticOp::Lea) {          // LEA <ea>,An
         const int an = sem.registerIndex;
         Ea src;
-        if (!decode(i, mode, reg, 2, 0, src)) return false;
+        if (!decode(i, mode, reg, 2, 0, src, true)) return false;
         if (!src.memory) return false;               // LEA needs an address
         if (src.idx == kM_PI || src.idx == kM_PD) return false;  // not encodable
         if (!lengthOk(i, src.ext)) return false;
         static const int8_t kLea[kM_COUNT] =
-            { -1, -1, 6, -1, -1, 7, -1, 6, 6, 7, -1, -1 };
-        const int cycles = kLea[src.idx];
+            { -1, -1, 6, -1, -1, 7, 9, 6, 6, 7, 9, -1 };
+        const int fullPenalty = !src.fullFormat ? 0 :
+            src.baseDisplacementWords == 1 ? 2 :
+            src.baseDisplacementWords == 2 ? 6 : 0;
+        const int cycles = kLea[src.idx] < 0 ? -1 :
+            kLea[src.idx] + fullPenalty;
         if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
         addrOf(src, RAX, 2);
         a_.movMR(Sz::L, A(an), RAX);
@@ -2325,7 +2559,7 @@ bool Emitter::emitLine4(size_t i) {
         if (!lengthOk(i, src.ext)) return false;
         // execPea, 68020 column. No Dn/An row: those encodings are SWAP.
         static const int8_t kPea[kM_COUNT] =
-            { -1, -1, 9, -1, -1, 10, -1, 9, 9, 10, -1, -1 };
+            { -1, -1, 9, -1, -1, 10, 12, 9, 9, 10, 12, -1 };
         const int cycles = kPea[src.idx];
         if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
@@ -2416,9 +2650,14 @@ bool Emitter::emitLine4(size_t i) {
             memStore(RAX, szIdx, RDI, write);
             commitEa(dst, szIdx, write);
         }
-        a_.movMI(Sz::B, at(L_.srN), 0);
-        a_.movMI(Sz::B, at(L_.srZ), 1);
-        clearVC();
+        if (packedCcr_) {
+            a_.aluRI(Asm::Op::AND, Sz::Q, kCnt, ~0x0F);
+            a_.aluRI(Asm::Op::OR, Sz::Q, kCnt, 4);  // Z=1
+        } else {
+            a_.movMI(Sz::B, at(L_.srN), 0);
+            a_.movMI(Sz::B, at(L_.srZ), 1);
+            clearVC();
+        }
         return true;
     }
 
@@ -2502,7 +2741,7 @@ bool Emitter::emitScc(size_t i) {
     if (!lengthOk(i, dst.ext)) return false;
     // execSccEa, 68020 column (byte row).
     static const int8_t kScc[kM_COUNT] =
-        { -1, -1, 10, 10, 11, 11, -1, 10, 10, -1, -1, -1 };
+        { -1, -1, 10, 10, 11, 11, 13, 10, 10, -1, -1, -1 };
     const int cycles = kScc[dst.idx];
     if (cycles < 0 || unsigned(cycles) != traced030(i)) return false;
     const MemoryAccessPlan write = memory.access(
@@ -2674,7 +2913,7 @@ bool Emitter::emitBranch(size_t i) {
     a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
     commitQueue(op, takenIrc);
     chargeCycles(takenCycles);
-    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    retire();
     loopTo_ = targetIdx;
     if (targetIdx >= 0) {
         a_.jmp(*entry_[size_t(targetIdx)]);   // the loop stays in host code
@@ -2691,7 +2930,7 @@ bool Emitter::emitBranch(size_t i) {
         a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
         commitQueue(op, fallIrcQ);
         chargeCycles(fallCycles);
-        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        retire();
         leaveTo(fall);
     }
     return true;
@@ -2773,7 +3012,7 @@ bool Emitter::emitDbcc(size_t i) {
     a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
     commitQueue(op, ircAfter);
     chargeCycles(6);
-    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    retire();
     loopTo_ = targetIdx;
     if (targetIdx >= 0) a_.jmp(*entry_[size_t(targetIdx)]);
     else                leaveTo(target);
@@ -2783,7 +3022,7 @@ bool Emitter::emitDbcc(size_t i) {
     a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
     commitQueue(op, ircAfter);
     chargeCycles(10);
-    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    retire();
     leaveTo(fall);
 
     if (cc != 1) {                       // condition true: no decrement, 6
@@ -2792,7 +3031,7 @@ bool Emitter::emitDbcc(size_t i) {
         a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
         commitQueue(op, ircAfter);
         chargeCycles(6);
-        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        retire();
         leaveTo(fall);
     }
     return true;
@@ -2833,7 +3072,7 @@ bool Emitter::emitJmp(size_t i) {
     commitQueue(op, ircAfter);
     chargeCycles(kJmp[ea.idx]);          // table/base cost; the emitted
                                          // i-cache charge owns the misses
-    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+    retire();
     if (constant) leaveTo(control.target);
     else          leaveToDynamic();
     return true;
@@ -3080,6 +3319,7 @@ bool Emitter::emit() {
     if (paced_) a_.movRM(Sz::Q, kPer, F(kFPeriph));
     fillClock();
     a_.aluRR(Asm::Op::XOR, Sz::L, kCnt, kCnt);
+    if (packedCcr_) loadPackedCcr();
     // The 68030's per-instruction contract, minus the seven fields the fault
     // re-run re-establishes (Moira.h § PomJitLayout::mmuRmw). Emitted in the
     // PROLOGUE, before linkEntry_, and once per chain rather than once per
@@ -3218,7 +3458,7 @@ bool Emitter::emit() {
         // split forms — a64's rule verbatim (JitBackendA64.cpp:2622).
         chargeCycles(int(L_.is030 ? ir_.instrs[i].baseCycles
                                   : ir_.instrs[i].cycles));
-        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        retire();
     }
 
     // Falling off the end of the recorded straight line. pc, pc0 and the
@@ -3290,7 +3530,7 @@ bool Emitter::emit() {
         a_.aluRI(Asm::Op::CMP, Sz::L, RAX, 0);
         a_.jcc(Cc::L, *exitLost_);                   // -1: the window went away
         a_.jcc(Cc::E, *exitFault_);                  //  0: it did not retire
-        a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);
+        retire();
         a_.aluMI(Asm::Op::ADD, Sz::L, F(kFSlow), 1);
         // Moira may have written guest memory, and a write into this very
         // block's page leaves everything compiled after it stale. The
@@ -3311,11 +3551,12 @@ bool Emitter::emit() {
     a_.movMI(Sz::L, F(kFExit), int32_t(Exit::WindowLost));
     a_.jmp(*epilogue_);
     a_.bind(*exitFault_);
-    a_.aluRI(Asm::Op::ADD, Sz::L, kCnt, 1);          // it ran, it just faulted
+    retire();                                        // it ran, it just faulted
     a_.movMI(Sz::L, F(kFExit), int32_t(Exit::Fault));
 
     a_.bind(*epilogue_);
-    a_.movMR(Sz::L, F(kFInstrs), kCnt);
+    if (packedCcr_) spillPackedCcr();
+    spillRetiredCount();
     spillClock();
     a_.aluRI(Asm::Op::ADD, Sz::Q, RSP, 8);
     a_.pop(kClk); a_.pop(kPer); a_.pop(R15); a_.pop(R14); a_.pop(RBP); a_.pop(RBX);
@@ -3445,6 +3686,10 @@ bool X64Backend::canEmit(uint16_t op) const {
     const InstructionSemantics sem = describeInstruction(op);
     const int mode = sem.eaMode, reg = sem.eaReg;
     const bool eaOk = eaIndex(mode, reg) >= 0;
+    const auto controlEa = [](int index) {
+        return index == kM_AI || index == kM_DI || index == kM_AW ||
+               index == kM_AL || index == kM_DIPC;
+    };
     switch (sem.operation) {
         case SemanticOp::ImmediateAlu:
             return eaOk;
@@ -3467,7 +3712,11 @@ bool X64Backend::canEmit(uint16_t op) const {
             return true;
         case SemanticOp::JumpSubroutine:
         case SemanticOp::Jump:
+            return controlEa(eaIndex(mode, reg));
         case SemanticOp::Lea:
+            return controlEa(eaIndex(mode, reg)) ||
+                   eaIndex(mode, reg) == kM_IX ||
+                   eaIndex(mode, reg) == kM_IXPC;
         case SemanticOp::Pea:
             return eaOk;
         case SemanticOp::Movem:

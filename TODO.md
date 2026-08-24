@@ -101,8 +101,9 @@ La fenêtre se ferme seulement quand les quatre sorties suivantes sont vraies :
   dans `performance_budgets.tsv`, séparés par hôte et consommés par les gates
   `jit-fast` ; A64/x64 publient le même JSON structuré ;
 - [x] les extensions indexées 68020 full et les transferts de contrôle ont un
-  plan IR commun ; les backends les refusent sans les redécoder tant que leur
-  lowering natif n'est pas prouvé ;
+  plan IR commun ; les backends n'en abaissent que les sous-formes prouvées
+  (`LEA` full/direct depuis le 2026-08-23) et refusent les autres sans les
+  redécoder ;
 - [ ] ajouter les bancs Macintosh à budget de cycles fixe pour 68000 et 68020.
   Les seuils représentatifs versionnés couvrent déjà Q605/68040 et
   LC II/68030 sur l'hôte x86-64 de référence et sur Apple M4 ; aucun seuil
@@ -184,12 +185,14 @@ transferts de contrôle compilés comme terminateurs de bloc) ; les relaxations
 d'un JIT 68k classique servent surtout à *atteindre* cet état, et on y est
 déjà, en payant l'exactitude. On ne rachète que la taxe.
 
-**Le changement d'échelle, s'il existe, est dans le HLE, pas dans le JIT.**
-La liste des instructions non couvertes est menée par les décalages line-$E et
-les modes indexés 68020 — *ce dont sont faits les blitters de QuickDraw*
-(§ 3, *Coverage tail*). Un JIT exécute ces boucles plus vite ; un
-HLE QuickDraw ne les exécute pas du tout. C'est le seul levier dont le gain
-n'est pas borné par le taux d'instructions — et le plus invasif.
+**Le changement d'échelle par HLE reste une hypothèse, pas le prochain
+chantier.** Le recensement Rogue refait le 2026-08-23 a fait tomber les
+replis de 102,85 M à 0,534 M en accélérant les bitfields et les formes
+indexées, tout en accélérant aussi les moteurs qui écrivent directement dans
+la framebuffer. Il n'a démontré aucun chemin copie/remplissage VRAM dominant.
+Un HLE QuickDraw resterait le levier le plus invasif et ne profiterait pas à
+ces moteurs maison ; ne l'ouvrir qu'après une fréquence et un gain A/B
+mesurés, jamais sur le vieux ratio de 29 %.
 
 ### Deux garde-fous à poser AVANT la première ligne de code non conforme
 
@@ -779,9 +782,11 @@ Open, in ROI order:
   flat** (`sample`, idle Finder): generated code ~20 %, window ~13 %,
   engine ~7 %, and the peripheral LLE ~27 % — the Cuda's 68HC05 alone
   ~13 %, then `V8Memory::tick`, SCC, ASC, VIA, IWM — so the next
-  end-to-end lever is outside the JIT; (b) an asset-free gate for the
-  slice-index invariant (`unmarkPages` is the inverse of `markPages`;
-  the soak is the only tripwire and needs the ROM). The paragraph below is the 2026-08-18
+  end-to-end lever is outside the JIT; (b) ~~an asset-free gate for the
+  slice-index invariant~~ **DONE 2026-08-23 (sixth)**: the native A64/x64
+  lockstep now rebuilds the index from the live cache and checks keys,
+  32-byte masks and 4 KB DTLB exclusions across 384 alternating one- and
+  two-slice evictions (`CHANGELOG.md`). The paragraph below is the 2026-08-18
   state this work overturned.**
   Measured 2026-08-18 (`docs/JIT_BRINGUP.md` § C.4bis and
   § C.4ter, `jit_bench_lcii` 2000 frames, one fingerprint throughout): the
@@ -927,18 +932,28 @@ Open, in ROI order:
     **memory-to-memory MOVE now probes both mappings before either EA
     mutation.**
 - [ ] **Coverage tail** (after MOVEM/DBcc/JMP/Scc/PEA): register-count and
-  memory shifts/rotates (nothing decodes line-$E on either backend); **the
-  68020 indexed modes are the big block** — a brief extension-word decoder,
-  and what QuickDraw's blitters are made of; refused today at
-  `JitBackendX64.cpp:36` (the stated exclusion) and `:198-199` (`eaIndex`
-  returns −1 for mode 6). MULU/DIVU stay fallback (data-dependent cycles —
-  the cross-check refuses them honestly).
+  memory shifts/rotates (x64 still decodes none of line-$E); MULU/DIVU stay
+  fallback (data-dependent cycles — the cross-check refuses them honestly).
+  **The shared brief 68020 indexed lowering closed on both generators
+  2026-08-23**:
+  x64 now consumes the shared `DecodedEffectiveAddress`, lowers word/long
+  Dn/An indexes with ×1/2/4/8 scaling for An- and PC-relative bases, and
+  admits the matching read/RMW families plus `Scc`, `PEA` and `LEA`.
+  Direct full-format `LEA` also lowers base/index suppression and null,
+  word or long base displacements with exact 9/11/15-cycle pricing. A64 now
+  lowers memory-indirect `LEA`/`JMP`/`JSR`, register-destination `MOVE` and
+  read-only ALU sources, plus dynamic register/read-only-memory bitfields.
+  Full-indexed MOVEM and memory destinations needing a third access remain
+  refused; indexed `Scc` on the 030 also retains pristine replay under the
+  existing trace-cost guard.
   - **The drawing census asked for by `POM68K_JIT.md` § 3.5 has been taken**
     (2026-08-18, § 3.5bis, `tests/q605_rogue_census.cpp` — the Q605 playing
-    `dev/mac-rogue` off the floppy). It **promotes** this item rather than
-    closing it: the indexed modes are **29 % of all block fallbacks** while
-    drawing and **31 % on the idle Finder** — the largest single category
-    either way. The `~167 k` in § 3.5 was the top-60 *opcode* view, which
+    `dev/mac-rogue` off the floppy). It originally **promoted** this item:
+    indexed modes were 29 % of all block fallbacks while drawing. The
+    2026-08-23 re-census retires that ratio: 6.55 M indexed fallbacks before
+    the new pass, **107,414 after** (−98.36 %), while all gameplay fallbacks
+    fall 102.85 M → 0.534 M. The `~167 k` in § 3.5 was the top-60 *opcode*
+    view, which
     fragments a mode across hundreds of opcodes; the all-opcode rollup that
     landed two days later says 11.2 M for the same idle workload.
     What drawing changes is **magnitude** (2.84 fallbacks per retired
@@ -947,14 +962,13 @@ Open, in ROI order:
     fallbacks at idle and **4.1 %** while drawing. The brief share is a
     bracket — 36 % (opcodes brief at every compiled site) to 96 % (all that
     is not full-only), the both-ways mass apportioned by slot ratio
-    estimating **71.5 %**, which the dump labels an ESTIMATE. Every point in
-    it decides the same way: **scope the work brief-first**; the full format
-    is a second, smaller question and not on the drawing path.
-  *(Two items left this list on x86-64, 2026-08-10: `Emitter::emitScc`,
-  `JitBackendX64.cpp:2425`, emits both the register and the memory forms on
-  the 68020 cycle column, and `PEA` is native at `:2278-2291` with its own
-  `kPea` cost row. **Neither is emitted by the AArch64 backend** — that
-  asymmetry is the honest remainder here.)*
+    estimating **71.5 %**, which the dump labels an ESTIMATE. That evidence
+    correctly selected brief-first; the follow-up full-format work is now
+    closed for the read/control subset actually dominant in Rogue. The live
+    tail is full-indexed MOVEM, memory-indirect destinations and
+    variable-cycle arithmetic — add one only after a fresh census.
+  *(The old Scc/PEA asymmetry is also closed: both forms are native on both
+  generators, including brief-indexed Scc/PEA.)*
 - [ ] **Compact `mmu040InstrStart`.** Eight per-instruction field resets + a
   `getCCR()` pack; adjacent fields could collapse into one or two wide stores.
   Small, but it sits on every single 040 instruction.
@@ -1687,8 +1701,9 @@ that silently falls behind is worse than none, because it looks complete).
   **profil JIT relâché côté hôte**, parce que le besoin réel est du *débit CPU
   soutenu sur 030/040*, pas de la latence d'I/O — patcher `.Sony` ne fait pas
   tourner le Finder d'une LC II plus vite. Le HLE au niveau invité redevient
-  secondaire, **sauf QuickDraw**, qui est le seul endroit où le gain n'est pas
-  borné par le taux d'instructions (§ 0·A).
+  secondaire. **QuickDraw n'est plus une exception présumée** : le recensement
+  Rogue n'a pas démontré de blitter VRAM résiduel dominant, et son HLE
+  n'accélérerait pas les jeux écrivant directement dans la framebuffer.
   Reste vrai par ailleurs (`docs/HLE_OVERLAY.md`) : commencer par un seul hook
   caché sur `boot.checksum` et un mode de test d'accuracy HLE-interdit ; puis
   des modules appariés par signature, des gates A/B par module et un indicateur

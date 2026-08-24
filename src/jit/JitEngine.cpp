@@ -127,6 +127,10 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily)
     if (config_.links) {
         ctx_.linkTable = linkTable_.data();
         ctx_.linkMask = kLinkSlots - 1;
+        if (config_.edgeCells) {
+            ctx_.linkCell = &Engine::linkCellThunk;
+            ctx_.linkCellSelf = this;
+        }
     }
 
     const uint32_t ram = mem_.ramBytes ? mem_.ramBytes(mem_.self) : 0;
@@ -603,6 +607,29 @@ uint64_t Engine::retired() const {
            stats_.interpInstrs.load(std::memory_order_relaxed);
 }
 
+void* Engine::linkCell(uint32_t pc, bool super) {
+    const uint64_t targetKey = key(pc, super);
+    auto [it, inserted] = linkCells_.try_emplace(targetKey);
+    if (inserted) it->second = std::make_unique<LinkCell>();
+    LinkCell* cell = it->second.get();
+
+    // A source may compile after its target was already published. Bind the
+    // newly created dependency immediately; the later publishLink path owns
+    // the opposite ordering (source first, target later).
+    if (!cell->entry) {
+        auto target = blocks_.find(targetKey);
+        if (target != blocks_.end() && target->second.code &&
+            target->second.gen == blocksGen_) {
+            cell->entry = backend_->linkEntry(target->second.code);
+            if (cell->entry && !cell->listed) {
+                cell->listed = true;
+                publishedCells_.push_back(cell);
+            }
+        }
+    }
+    return cell;
+}
+
 void Engine::ring(uint8_t kind, uint32_t pc, int64_t target,
                   uint8_t exit, uint32_t instrs) {
     DispatchEv& e = dispatchEv_[dispatchHead_];
@@ -928,7 +955,20 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         // jumps — so it comes from the encoding, and the block's footprint
         // ends after the displacement rather than where control went.
         const bool terminator = endsBlockAfter(kind);
-        const uint32_t words = terminator ? branchWords(op) : 0;
+        uint16_t indexExtension = 0;
+        if (terminator && (op & 0xFF80) == 0x4E80) {
+            const int mode = (op >> 3) & 7, reg = op & 7;
+            const bool indexed = mode == 6 || (mode == 7 && reg == 3);
+            if (indexed) {
+                if (!cpu_.pomJitCovers(at + 2)) {
+                    why = EndReason::WindowEdge;
+                    break;
+                }
+                indexExtension = cpu_.pomJitPeek(at + 2);
+            }
+        }
+        const uint32_t words = terminator
+            ? branchWords(op, indexExtension) : 0;
         if (terminator && !cpu_.pomJitCovers(at + words * 2 - 2)) {
             why = EndReason::WindowEdge;
             break;
@@ -1063,6 +1103,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
             for (unsigned i = 0; i < in.extensionCount; i++)
                 in.extensions[i] = ir.word(in.pc + 2 + uint32_t(i) * 2);
             describeEffectiveAddresses(in);
+            refineMemoryFromExtensions(in, guestFamily_ == kGuest68030);
             describeControlFlow(in);
         }
     }

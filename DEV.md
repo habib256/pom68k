@@ -1285,10 +1285,13 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   Full 68020 index plans retain base/index suppression, distinct base/outer
   displacements and pre/post-indexed indirection; `ControlFlowPlan` carries
   target, fallthrough and return address. Backends lower those facts; they do
-  not keep an ISA/EA/control decoder. Full-index native lowering remains
-  deliberately closed on both hosts, so a valid but unsupported plan falls
-  back intact. `docs_test` enforces the boundary and `jit_backend_test`
-  covers the reserved and variable-length forms.
+  not keep an ISA/EA/control decoder. Both hosts lower the proved direct
+  full-index subset for `LEA`; A64 additionally lowers proved
+  memory-indirect `LEA`/`JMP`/`JSR`, register-destination `MOVE` and
+  read-only ALU sources. Their pointer access is explicit in the memory
+  contract and precedes the resolved operand/stack access. `docs_test` enforces the
+  boundary and `jit_backend_test` covers the reserved and variable-length
+  forms.
 - **Where it is wired.** **Twelve** CPU wrappers carry a `jit::Engine`: the
   030s `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`, the 040s
   `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, and — since 2026-08-06 —

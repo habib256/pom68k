@@ -16,7 +16,9 @@ PC.
 
 **Its opcode set is close to the x86-64 backend's but is not assumed
 identical.** `canEmitReg()` is the source of truth. The A64 backend includes
-the immediate line-$E shifts and rotates, register bitfields, indexed modes,
+the immediate and guarded register-count line-$E shifts and rotates,
+register/read-only-memory bitfields, indexed modes (including proved
+full-format memory indirection for LEA/JMP/JSR/MOVE/read-only ALU sources),
 `MOVE SR,Dn`, `Scc`, `PEA`, `EXG` and distinct-register `CMPM`. Its 040 MOVE
 path can preflight a RAM destination before consuming an exact/MMIO source;
 the token is deliberately absent on 030. Its 68030 paths carry split cost
@@ -72,8 +74,9 @@ Fixed 1,000-frame Q605 workload: **1.22 s** against 4.55 s threaded
 context, not a delta. Still open: the idle-Finder regime, where the soak
 runs 3× slower than `threaded` (CHANGELOG 2026-08-22 (fourth)).
 
-Current non-LTO Apple-M4 fixed budget (3,000 frames): **3.47 s median,
-14.40× real time**, **99.5 % native**, fingerprint `778dd7ad558108fd`. The
+Current non-LTO Apple-M4 fixed budget (3,000 frames), three ABBA pairs:
+**3.24 s median, 15.43× real time** against 29.24 s interpreter (**9.03×**),
+**99.7 % native**, fingerprint `778dd7ad558108fd` in every arm. The
 30,000-frame lifetime
 budget sustains **92.0 % native and 5.51× real time** after generated-code
 capacity recycling; before that correction the full buffer made native share
