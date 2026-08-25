@@ -1812,14 +1812,20 @@ to a bare MDB at offset 1024 for the flat `.dsk` images.
 **Why it exists**: `roms/` and `hdv/` are user-provided and gitignored, so a
 gate's fixture can change under it with nothing in the record. On 2026-08-06
 that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
-`assets.lock` (repo root, 4 rows) already pins the *firmware* identities
-`--lle-aarch64` accepts — label, size, SHA-256, path, qualified profiles. What
-is still missing is the same treatment for the ROMs and disk images, which is
-what this digest would feed (`TODO.md` § 8).
+`assets.lock` (repo root, 37 rows) pins the qualified reference set: the 24
+machine ROMs, 2 declaration ROMs, PG&E firmware and 6 boot volumes explicitly
+named by green-gate `ASSET` preambles, plus the 4 firmwares accepted by strict
+product mode. Each row records role, label, size, SHA-256, path and qualified
+`MachineCatalog` profile slugs. The tracked manifest contains only identities,
+never copyrighted bytes.
 
 `python3 tools/verify_assets.py` validates the manifest schema and every
-present entry (size + SHA-256; `--strict` also refuses missing files). A disk
-fixture placed at `hdv/ref/<name>` is immutable by construction: every normal
+present entry (size + SHA-256; `--strict` also refuses missing files). Roles are
+structural: firmware and ROMs stay below `roms/`, while a `reference-disk` row
+is rejected unless its path is below `hdv/ref/`. A disk fixture placed there
+is immutable by construction. The verifier also cross-checks profile slugs
+against `MachineCatalog.h` and requires its 37 profiles to be covered exactly
+once by `machine-rom` rows. Every normal
 `hdv/<name>` lookup now prefers that twin (`FixtureStore.h:23-39`) in both the
 GUI (`main.cpp:309-315`) and gate search (`AssetFingerprint.h:129-138`). A
 writable GUI open maps it to `hdv/work/<name>`, creates the directory and

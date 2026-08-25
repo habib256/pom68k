@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 286 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 287 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -190,6 +190,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Storage — SCSI, IWM/SWIM, media
 
+- **which exact private ROMs and boot volumes define the green corpus, and how is a mutable `hdv/` image kept out of that set?** → [2026-08-25 (later) — The green gate corpus chooses its bytes…](#2026-08-25-asset-lock-complete)
 - **when does `hdv/ref/System.vhd` actually win over the mutable `hdv/System.vhd`, and where does the GUI write?** → [2026-08-24 (seventh) — Reference fixtures become the default lookup…](#2026-08-24-reference-fixture-routing)
 - **what the SWIM read path actually runs now — a real FluxPll separator over a flux view of the track, and why the off-rate gate (not jitter) is the one that catches its regression** → [2026-08-14 (fourth) — The SWIM read engines get their data separator…](#2026-08-14-flux-separator)
 - **a gate that passed for a year while pinning the defect it was meant to catch — the Toby CLUT's address arithmetic** → [2026-08-14 (ninth) — The Toby CLUT stored a grey per write…](#2026-08-14-toby-clut-mouse)
@@ -334,6 +335,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-25 (later)** — [The green gate corpus chooses its bytes: 37 identities close fixture versioning](#2026-08-25-asset-lock-complete)
 - **2026-08-25** — [The IIvx persist gate exposed a two-transition ADB poll: Command must settle before N on VASP, but not globally](#2026-08-25-iivx-command-settle)
 - **2026-08-24 (seventh)** — [Reference fixtures become the default lookup: gates read `hdv/ref`, GUI sessions write `hdv/work`](#2026-08-24-reference-fixture-routing)
 - **2026-08-24 (sixth)** — [Duo closes GUI-runner extraction: eleven instantiations, zero autonomous bodies, 3105 → 2873 lines](#2026-08-24-duo-gui-extraction)
@@ -620,6 +622,45 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-25-asset-lock-complete"></a>
+## 2026-08-25 (later) — The green gate corpus chooses its bytes: 37 identities close fixture versioning
+
+The routing half had landed, but `assets.lock` still described only the four
+firmwares accepted by strict product mode. The missing decision was data: which
+of the many private files under `roms/` and `hdv/` actually define a green
+result? Pinning every file on one workstation would merely version a junk
+drawer.
+
+The accepted set comes from the tests themselves. After the complete 226-test
+green sweep, a bounded replay kept the CTest environment of all 130
+asset-required variants and stopped each after its flushed `ASSET` preamble.
+123 variants named 34 distinct inputs. The ordinary `Disk605.dsk` floppy is
+outside this SCSI-reference item; the remaining 27 ROM/firmware identities and
+6 boot volumes, plus the four existing product firmwares, form a 37-row lock.
+Their profile columns use the stable `MachineCatalog` slugs rather than
+marketing-name spellings.
+
+The manifest now makes role part of the contract: 5 `firmware`, 24
+`machine-rom`, 2 `declaration-rom` and 6 `reference-disk` rows. The verifier
+requires six fields, positive sizes, lowercase SHA-256, unique repository-local
+paths and unique comma-separated profile slugs. More importantly, a
+`reference-disk` is invalid outside `hdv/ref/`; firmware and ROM rows are
+invalid outside `roms/`. The 37 catalogue profiles must each occur exactly once
+among `machine-rom` rows, so a new product cannot silently ship without a
+qualified ROM identity. A digest can no longer bless the mutable file that the
+GUI writes.
+
+The six exact green volumes were locally cloned from their legacy locations
+into `hdv/ref/` without changing or removing the originals. Strict verification
+passes **37/37**, independently re-hashing every byte, and
+`fixture_store_test` still proves preference, fallback and write isolation.
+Six bounded boot preambles then resolve the six logical media names to their
+new `hdv/ref/` twins with the locked hashes. The focused contracts pass **3/3**
+and the complete asset-free tier remains **84/84 in 2.72 s**. The private files
+remain gitignored; only their identities and roles are versioned.
 
 ---
 

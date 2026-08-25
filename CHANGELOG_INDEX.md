@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 286 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 287 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -18,7 +18,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 6 |
 | [Machine bring-ups](#machine-bring-ups) | 42 |
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 16 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 17 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
 | [Cross-cutting](#cross-cutting) | 44 |
 
@@ -293,6 +293,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-19 (fourth)** — [A doc/code consistency pass, and the half of it that is now a gate](CHANGELOG.md#2026-08-19-doc-code-consistency)
 - **2026-08-23 (sixth)** — [The slice-index leak gets an asset-free native gate: 384 precise evictions keep every key, sub-slice mask and DTLB exclusion exact](CHANGELOG.md#2026-08-23-slice-index-gate)
 - **2026-08-24 (seventh)** — [Reference fixtures become the default lookup: gates read `hdv/ref`, GUI sessions write `hdv/work`](CHANGELOG.md#2026-08-24-reference-fixture-routing)
+- **2026-08-25 (later)** — [The green gate corpus chooses its bytes: 37 identities close fixture versioning](CHANGELOG.md#2026-08-25-asset-lock-complete)
 
 ## Documentation, audits and reviews
 

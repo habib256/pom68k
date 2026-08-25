@@ -1,8 +1,44 @@
 # Immutable user-provided reference identities. Validate with
 # `python3 tools/verify_assets.py`; private asset runners use `--strict`.
 # Disks placed under hdv/ref/ are cloned to hdv/work/ before GUI write-back.
-# label | size | sha256 | path | qualified profiles
-Cuda 341s0788 | 4352 | 4bad3d4f18425f96bbbdde55eb0413603dba4910d172ffed7ed4d7c1a34358cc | roms/cuda/341s0788.bin | LC475,LC575,Q605
-Cuda 341s0060 | 4352 | 607890e9ed816be6ca2210620f649ef63816e78d35b4e1e23858b9c8478a2c16 | roms/cuda/341s0060.bin | Q630,LC580
-ADB PIC1654S 342s0440-b | 1024 | 22466ae8e4c11509dcc862e85c65239efcc780d23eda9fd4c69bb8041cb1318e | roms/adbmodem/342s0440-b.bin | Centris610,Centris650,Q610,Q650,Q800,Q700
-Egret 341s0851 | 4352 | 77f5fb2baaca55a5921423b041e60257a864d79d734872991fa607fa33784d88 | roms/egret/341s0851.bin | Q900,Q950
+# role | label | size | sha256 | path | qualified profile slugs
+firmware | Cuda 341s0788 | 4352 | 4bad3d4f18425f96bbbdde55eb0413603dba4910d172ffed7ed4d7c1a34358cc | roms/cuda/341s0788.bin | lc475,lc575,q605
+firmware | Cuda 341s0060 | 4352 | 607890e9ed816be6ca2210620f649ef63816e78d35b4e1e23858b9c8478a2c16 | roms/cuda/341s0060.bin | q630,lc580
+firmware | ADB PIC1654S 342s0440-b | 1024 | 22466ae8e4c11509dcc862e85c65239efcc780d23eda9fd4c69bb8041cb1318e | roms/adbmodem/342s0440-b.bin | c610,c650,q610,q650,q800,q700
+firmware | Egret 341s0851 | 4352 | 77f5fb2baaca55a5921423b041e60257a864d79d734872991fa607fa33784d88 | roms/egret/341s0851.bin | q900,q950
+firmware | PG&E boot | 512 | ab6348f7f71d97162d7e17813c46ff8e1d2213635099166809df3214725eb29b | roms/pge/pge_boot.bin | duo230
+
+machine-rom | Macintosh Plus v3 4D1F8172 | 131072 | dd908e2b65772a6b1f0c859c24e9a0d3dcde17b1c6a24f4abd8955846d7895e7 | roms/macplus.rom | plus
+machine-rom | Macintosh SE B2E362A8 | 262144 | 0dea05180e66fddb5f5577c89418de31b97e2d9dc6affe84871b031df8245487 | roms/256KB ROMs/1987-03 - B2E362A8 - Mac SE.ROM | se
+machine-rom | Macintosh SE FDHD B306E171 | 262144 | bb0cb4786e2e004b701dda9bec475598bc82a4f27eb7b11e6b78dfcee1434f71 | roms/256KB ROMs/1989-08 - B306E171 - Mac SE FDHD.ROM | sefdhd
+machine-rom | Macintosh Classic A49F9914 | 524288 | c1c47260bacac2473e21849925fbfdf48e5ab584aaef7c6d54569d0cb6b41cce | roms/512KB ROMs/1990-10 - A49F9914 - Mac Classic.rom | classic
+machine-rom | Macintosh II 9779D2C4 | 262144 | 97f2a22bdb8972bfcc1f16aff1ebbe157887c26787a1c81747a9842fa7b97a06 | roms/256KB ROMs/1987-12 - 9779D2C4 - MacII (800k v2).ROM | macii
+machine-rom | Macintosh II FDHD 97221136 | 262144 | 79fae48e2d5cfde68520e46616503963f8c16430903f410514b62c1379af20cb | roms/256KB ROMs/1988-09 - 97221136 - Mac II FDHD & IIx & IIcx.ROM | iix,iicx,se30
+machine-rom | Macintosh IIfx 4147DD77 | 524288 | f197eb70528f105e74059092a1a820f48ab0f90f39c5b3ec02041d85e6d5a5c5 | roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM | iifx
+machine-rom | Macintosh IIci 368CADFE | 524288 | 0419966cfd7445680c0dd6ca78e8b1f4bc212e75caf56f4a5f523afa576ad3f2 | roms/512KB ROMs/1989-09 - 368CADFE - Mac IIci.ROM | iici
+machine-rom | Macintosh IIsi 36B7FB6C | 524288 | b8b04d1478a609de89dd62e51165cc7ca5757f6f881e9770621d09af82890feb | roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM | iisi
+machine-rom | Macintosh LC 350EACF0 | 524288 | 129391cc72f84c2b321709cad8281e30a45e50b3cf6e7afe7434c4d32c7b9d5b | roms/512KB ROMs/1990-10 - 350EACF0 - Mac LC.ROM | lc
+machine-rom | Macintosh LC II 35C28F5F | 524288 | 18c3de07ca15cf66dfbaa5984aca34b48a2d7b4d0d8c7656f79533899ccec0a0 | roms/512KB ROMs/1992-03 - 35C28F5F - Mac LC II.ROM | lcii
+machine-rom | Macintosh Classic II 3193670E | 524288 | 5e27acb45173a87e9dfd2c2a411f7cf521ff3cc8bfab083963cf4757d6ca289c | roms/512KB ROMs/1991-10 - 3193670E - Classic II.ROM | classic2
+machine-rom | Macintosh Color Classic ECD99DC0 | 1048576 | 645a193a7817988f54ef0ec90b6ad882b698457600a41ec8d280bee94288c534 | roms/1MB ROMs/1993-02 - ECD99DC0 - Color Classic.ROM | cclassic
+machine-rom | Macintosh TV EAF1678D | 1048576 | 2b4fbc3dae98cfd6cd58cd5edf6d7e629c93c46ca233e14ee31dcb9a9f7698e5 | roms/1MB ROMs/1994 - EAF1678D - Macintosh TV.ROM | mactv
+machine-rom | Macintosh LC III ECBBC41C | 1048576 | b2a411c1b24c92af8f6b58f745e52e0545cc0d4dcdc1e15a90e0a78937cde61e | roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM | lc3,lc3plus
+machine-rom | Macintosh AIO EDE66CBD | 1048576 | 054cb8b0352c32ddb9bf786338fafb32e5b488556b3e2efcb84bf4252c9692a2 | roms/1MB ROMs/1993-10 - EDE66CBD - Color Classic II & LC 550 & Performa 275,550,560 & Macintosh TV.ROM | lc520,lc550,cclassic2
+machine-rom | Macintosh IIvx and IIvi 4957EB49 | 1048576 | 4ca9c4a7c782ae50ae09ca95b6af1e7c08ce3f8ddfea1a006d3c4ccb45ac51af | roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM | iivx,iivi
+machine-rom | LC 475, LC 575 and Quadra 605 FF7439EE | 1048576 | 9c758473a523ffe40ed0d20d27ff37216ed2df064335d7da815a89cff5607b34 | roms/1MB ROMs/1993-10 - FF7439EE - LC475,575,Quadra 605,Performa 475,476,575,577,578.ROM | lc475,lc575,q605
+machine-rom | Centris and Quadra F1A6F343 | 1048576 | 7d9cb8c3bae0e26171adf9f24bedf10bf6371ae3c9bdbcdfd3b94e5350099fb6 | roms/1MB ROMs/1993-02 - F1A6F343 - Quadra, Centris 610,650.ROM | c610,c650,q610,q650,q800
+machine-rom | Quadra 700 and 900 420DBFF3 | 1048576 | c2093476e9c9a7d76973910a91fbfba23ca71163b84eb2623adf8608a6b03ed2 | roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM | q700,q900
+machine-rom | Quadra 950 3DC27823 | 1048576 | 7c11d2fce3217df8c70aaa07faea8b9420db561e6414bd4b557a2e72141374a4 | roms/1MB ROMs/1992-03 - 3DC27823 - Quadra 950.ROM | q950
+machine-rom | Quadra 630 06684214 | 1048576 | c1098a03786667c8bf888792590ce53b47f65bf44a75e11c24718983e1d25af8 | roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM | q630
+machine-rom | Macintosh LC 580 064DC91D | 1048576 | bcf86532d70913c1d4fc487416eedbe510fb11ce3443e33c350ceeb3873019ca | roms/1MB ROMs/1995-04 - 064DC91D - LC, Performa 580 & Performa 588.ROM | lc580
+machine-rom | PowerBook Duo ECFA989B | 1048576 | a5cbde0f1fe905f05592e181685df79df4a4fd3d4bfb7fe3df2e45ac8601b59a | roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM | duo230
+
+declaration-rom | Toby video 342-0008-a | 4096 | 02261d5b8739352ead945de0fdccd3a364890fb67d75eb5449e4bd19e18c06fc | roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin | macii,iifx
+declaration-rom | Macintosh SE/30 video UK6 | 8192 | 8af892fd7fff89c2151bb3027f3dc61e531f24e4adb0e3face95c90daece4409 | roms/se30/se30vrom.uk6 | se30
+
+reference-disk | GIST PERSO System 7.5 | 262193152 | ea6138848399d42ba8a3a6d07234b2a7bc31b6bb4186904045091193bcb0692b | hdv/ref/GISTPERSO-boot.vhd | lc3,lc520,lc550,cclassic2,iivx,iivi,iisi,iici,iifx
+reference-disk | HD20SC System 6 | 21037056 | 1d404901173f2833f6cccbb4ac5e1b392c5bc18d93cfa2399898b380dec65114 | hdv/ref/HD20SC.vhd | plus,macii,iix,iicx,se30
+reference-disk | Mac OS 8.1 | 314621952 | 0bc6cf145533e89ca45fb9e9ebc2e788a2ae783ec40d9e36df9306e055f9cf91 | hdv/ref/MacOS-8.1-boot.vhd | lc475,lc575,q605,c610,c650,q610,q650,q800,q700,q900,q950,q630,lc580
+reference-disk | System 7.0 | 41943040 | 0d6729bf5bb72f4aac3ec7fb87194ebba6b68733c9a2a9f02c56fae0505e386c | hdv/ref/System 7.0 HD.dsk | macii
+reference-disk | System 7.1 | 41943040 | ec304acb8c62d589a780eed5969fa054b1474a756ff08a7fd7408d041f24afd5 | hdv/ref/System 7.1 HD.dsk | plus,lcii
+reference-disk | System 7.5.5 | 83886080 | 9a384f0b084a4d622ac4e82474c88db7355bf183dbc3a9ae54883e679855d0ee | hdv/ref/System 7.5.5 HD.dsk | duo230

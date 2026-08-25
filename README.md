@@ -52,7 +52,12 @@ are never opened writable: a normal `hdv/<name>` probe prefers
 `hdv/ref/<name>` when present, and `ScsiDisk` clones the first writable GUI
 open once into sibling `hdv/work/`. Without the reference twin, the historical
 direct-write behaviour remains available.
-`python3 tools/verify_assets.py` verifies each present `assets.lock` entry;
+`assets.lock` names the 37 private identities qualified by the green gate
+corpus: 5 MCU firmwares, 24 machine ROMs, 2 declaration ROMs and 6 immutable
+reference disks. `python3 tools/verify_assets.py` verifies every present entry;
+`--strict` requires the complete set, and the schema refuses a reference disk
+outside `hdv/ref/`. It also requires every catalogue profile to map to exactly
+one `machine-rom` row.
 `performance_budgets.tsv` keys policy by workload, guest CPU family and host
 profile (architecture for deterministic daily gates, named reference host for
 wall-clock baselines). The asset-free A64/x64 jobs emit the same
@@ -113,8 +118,9 @@ POM68K_JIT_PROFILE=instrumented                   ./build/POM68K   # counters + 
 
 `--lle-aarch64` forces both of those selections and, before the session opens,
 checks the firmware the profile needs against the compiled manifest
-(`src/FirmwareManifest.h`, mirrored in `assets.lock`, which additionally
-records each dump's qualified profiles) by size **and** SHA-256, not merely
+(`src/FirmwareManifest.h`, mirrored by the four product-firmware rows in the
+broader `assets.lock`, which additionally records each dump's qualified
+profiles) by size **and** SHA-256, not merely
 by "it loaded": Cuda 341s0788 for the Q605 family, Cuda 341s0060 for the
 Q630 family, PIC1654S 342s0440-b for Centris/Quadra, Egret 341s0851 for
 the Eclipse towers (Q900/Q950). It exits with status

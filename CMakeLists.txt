@@ -679,8 +679,10 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                                ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME fixture_store_test COMMAND fixture_store_test)
 
-    # assets.lock is useful in a clean clone too: validate its schema, and any
-    # present user-provided file. Private runners add --strict to require all.
+    # assets.lock is useful in a clean clone too: validate its role-aware
+    # schema and every present user-provided file. In particular, a declared
+    # reference disk must live below hdv/ref/. Private runners add --strict to
+    # require the complete qualified set.
     add_test(NAME asset_lock_test
              COMMAND ${POM68K_TOOLS_PYTHON} tools/verify_assets.py
                      --manifest assets.lock --root .

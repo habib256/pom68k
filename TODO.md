@@ -1646,7 +1646,7 @@ that silently falls behind is worse than none, because it looks complete).
   wrapper. The audio-only hook becomes the fourteenth explicit service,
   `main.cpp` falls 3105 → 2873, and **no autonomous `run*()` body remains**.
   The ratchet (`tools/check_file_sizes.sh`) keeps it that way.
-- [ ] **[AR] Separate fixture roles, then version them.** The gates never write
+- [x] **[AR] Separate fixture roles, then version them.** The gates never write
   their images (`ScsiDisk::open()` defaults `writeBack = false` at
   `ScsiDisk.h:67`, and **no test anywhere passes `true`**; `q605_persist_etalon`
   replays its reboot against the in-memory image) — but the GUI attaches the
@@ -1662,12 +1662,15 @@ that silently falls behind is worse than none, because it looks complete).
   `hdv/<name>` lookup prefers `hdv/ref/<name>` in both the GUI and every gate;
   the GUI's writable open is cloned once to persistent `hdv/work/<name>`, while
   an absent reference keeps the legacy path compatible. `fixture_store_test`
-  locks preference, fallback and byte isolation. One step remains: extend the
-  existing `assets.lock` — which today pins only the four firmware dumps
-  `--lle-aarch64` qualifies (label, size, SHA-256, path, profiles) — to the ROMs
-  and reference disk images. `tools/verify_assets.py` already checks the schema
-  and every present entry. The manifest distributes no copyrighted content and
-  makes drift *nameable*.
+  locks preference, fallback and byte isolation. **Versioning landed
+  2026-08-25**: `assets.lock` now names 37 qualified identities (5 MCU
+  firmwares, 24 machine ROMs, 2 declaration ROMs, 6 reference disks), with a
+  role and exact `MachineCatalog` profile slugs in addition to size, SHA-256
+  and path. `tools/verify_assets.py` rejects a reference disk outside
+  `hdv/ref/` and requires every catalogue profile exactly once among the
+  `machine-rom` rows; default mode remains useful in a clean clone and
+  `--strict` requires all private bytes. The manifest distributes no
+  copyrighted content and makes drift *nameable*.
 - [ ] **[AR] Env knobs: the gate is sound again, the *classification* is what
   is left.** `config_test` (`unit`, asset-free) checks `DEV.md` § 5 +
   `src/jit/POM68K_JIT.md` against the tree in both directions, and re-derived
