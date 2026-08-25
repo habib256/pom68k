@@ -25,6 +25,7 @@ constexpr uint32_t kMmio = 0xE00000;
 constexpr uint32_t kCode = 0x001100;
 constexpr uint32_t kHandler = 0x003100;
 constexpr uint32_t kStack = 0x008000;
+constexpr uint32_t kSubroutine = 0x006000;
 
 class FaultCpu final : public moira::Moira {
 public:
@@ -253,6 +254,33 @@ void installIndexedReadLoop(FaultCpu& c) {
     put16(c, kCode + 32, 0x60DE);       // BRA.S kCode
     put16(c, kHandler, 0x4E71);
     put32(c, 0x006022, 0x01234567);
+}
+
+void installJsrLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0, 0x4EA8);        // JSR d16(A0)
+    put16(c, kCode + 2, 0x0000);
+    put16(c, kCode + 4, 0x60FA);        // BRA.S kCode
+    put16(c, kCode + 6, 0x4E71);
+    put16(c, kSubroutine + 0, 0x5280);  // ADDQ.L #1,D0
+    put16(c, kSubroutine + 2, 0x4E75);  // RTS
+    put16(c, kSubroutine + 4, 0x4E71);
+    put16(c, kHandler, 0x4E71);
+}
+
+void installMovemLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0, 0x48E7);        // MOVEM.L D0-D2/A0-A1,-(A7)
+    put16(c, kCode + 2, 0xE0C0);        // predecrement-reversed mask
+    put16(c, kCode + 4, 0x4CDF);        // MOVEM.L (A7)+,D0-D2/A0-A1
+    put16(c, kCode + 6, 0x0307);        // ordinary register mask
+    put16(c, kCode + 8, 0x60F6);        // BRA.S kCode
+    put16(c, kCode + 10, 0x4E71);
+    put16(c, kHandler, 0x4E71);
 }
 
 void prepareFault(FaultCpu& c) {
@@ -735,6 +763,106 @@ int main() {
                  "ST d8(A6,D1.W) fault");
     checkWriteEa(0x50DE, 0, false, kHole, kHole + 1, false,
                  "ST (A6)+ fault");
+
+    // A 68030 JSR does not keep a compile-time copy of the first target
+    // word: trap patching may change it after the caller block was emitted.
+    // Keep caller and callee on different code-guard slices, patch only the
+    // callee, then demand an exact native/interpreter queue boundary.
+    {
+        FaultCpu jsrRef, jsrNative;
+        installJsrLoop(jsrRef); installJsrLoop(jsrNative);
+        jsrRef.reset(); jsrNative.reset();
+        jsrRef.setTC(12u << 20); jsrNative.setTC(12u << 20);
+        for (FaultCpu* c : {&jsrRef, &jsrNative}) {
+            c->setA(0, kSubroutine);
+            c->setA(7, kStack);
+            c->setD(0, 0);
+            c->setSR(0x2700);
+        }
+        jsrNative.jit.setEnabled(true);
+
+        const auto runJsrLockstep = [&](int checkpoints) {
+            bool same = true;
+            for (int step = 0; step < checkpoints && same; step++) {
+                const int64_t target = jsrRef.getClock() + 37;
+                jsrRef.executeUntil(target);
+                jsrNative.jit.executeUntil(target);
+                for (int r = 0; r < 8; r++)
+                    same = same && jsrRef.getD(r) == jsrNative.getD(r) &&
+                           jsrRef.getA(r) == jsrNative.getA(r);
+                same = same && jsrRef.getPC() == jsrNative.getPC() &&
+                       jsrRef.getPC0() == jsrNative.getPC0() &&
+                       jsrRef.getIRD() == jsrNative.getIRD() &&
+                       jsrRef.getIRC() == jsrNative.getIRC() &&
+                       jsrRef.getSR() == jsrNative.getSR() &&
+                       jsrRef.getClock() == jsrNative.getClock() &&
+                       std::memcmp(jsrRef.mem.data() + kStack - 8,
+                                   jsrNative.mem.data() + kStack - 8, 8) == 0;
+            }
+            return same;
+        };
+
+        const bool trainedExact = runJsrLockstep(64);
+        const auto trainedJsr = jsrNative.jit.stats().snapshot();
+        put16(jsrRef, kSubroutine, 0x5480);    // ADDQ.L #2,D0
+        put16(jsrNative, kSubroutine, 0x5480);
+        if (jsrNative.guard) jsrNative.guard->note(kSubroutine, 2);
+        const bool patchedExact = runJsrLockstep(64);
+        const auto warmedJsr = jsrNative.jit.stats().snapshot();
+        const bool steadyExact = runJsrLockstep(64);
+        const auto afterJsr = jsrNative.jit.stats().snapshot();
+
+        check(trainedExact && patchedExact && steadyExact,
+              "JSR d16(A0) keeps exact 68030 state after target patching");
+        check(trainedJsr.blocksCompiled != 0 &&
+              afterJsr.blocksRun > trainedJsr.blocksRun &&
+              afterJsr.slowInstrs == warmedJsr.slowInstrs,
+              "patched JSR caller stays native with a run-time target word");
+    }
+
+    // MOVEM's native 030 contract is all-or-nothing: one proved contiguous
+    // span, no partially committed format-$B restart state. Exercise both
+    // register directions and the predecrement mask reversal in one loop.
+    {
+        FaultCpu movemRef, movemNative;
+        installMovemLoop(movemRef); installMovemLoop(movemNative);
+        movemRef.reset(); movemNative.reset();
+        movemRef.setTC(12u << 20); movemNative.setTC(12u << 20);
+        for (FaultCpu* c : {&movemRef, &movemNative}) {
+            c->setD(0, 0x01234567);
+            c->setD(1, 0x89ABCDEF);
+            c->setD(2, 0x13579BDF);
+            c->setA(0, 0x002468AC);
+            c->setA(1, 0x00FEDCBA);
+            c->setA(7, kStack);
+            c->setSR(0x2700);
+        }
+        movemNative.jit.setEnabled(true);
+
+        bool same = true;
+        for (int step = 0; step < 192 && same; step++) {
+            const int64_t target = movemRef.getClock() + 37;
+            movemRef.executeUntil(target);
+            movemNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && movemRef.getD(r) == movemNative.getD(r) &&
+                       movemRef.getA(r) == movemNative.getA(r);
+            same = same && movemRef.getPC() == movemNative.getPC() &&
+                   movemRef.getPC0() == movemNative.getPC0() &&
+                   movemRef.getIRD() == movemNative.getIRD() &&
+                   movemRef.getIRC() == movemNative.getIRC() &&
+                   movemRef.getSR() == movemNative.getSR() &&
+                   movemRef.getClock() == movemNative.getClock() &&
+                   std::memcmp(movemRef.mem.data() + kStack - 20,
+                               movemNative.mem.data() + kStack - 20, 20) == 0;
+        }
+        const auto movemStats = movemNative.jit.stats().snapshot();
+        check(same && movemNative.getA(7) == kStack,
+              "MOVEM.L push/pop stays exact at every 68030 boundary");
+        check(movemStats.blocksCompiled != 0 && movemStats.blocksRun != 0 &&
+              movemStats.slowInstrs == 0,
+              "MOVEM.L push/pop executes wholly in native code");
+    }
 
     // The full-machine $533E corruption was not the PI write itself. The
     // following memory-to-memory MOVE hit its source DTLB probe, committed

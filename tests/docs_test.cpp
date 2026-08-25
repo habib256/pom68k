@@ -25,6 +25,7 @@
 //  10. every `file:line` citation that resolves in-tree lands inside the file
 //  11. shared GUI lifecycles stay outside main.cpp behind one service seam
 //  12. GUI and gate media lookup share immutable-reference preference
+//  13. TODO.md's active-work gate-registry headline matches CTest
 //
 // Check 4 is here because it caught a live one the day it was written: four
 // gates — the three IIfx ones and `duo230_boot_etalon` — were registered
@@ -444,10 +445,12 @@ int main() {
             const bool knownWorkload = cells[0] == "synthetic_68040_lockstep" ||
                 cells[0] == "synthetic_68040_copyback" ||
                 cells[0] == "q605_jit" || cells[0] == "lcii_threaded" ||
+                cells[0] == "plus_interp" || cells[0] == "macii_interp" ||
                 cells[0] == "host_wallclock";
             // `host_wallclock` is guest-independent (family `any`): the
             // noise floor prices the HOST, docs/MEASURING.md § R2.
-            const bool knownFamily = cells[1] == "68030" ||
+            const bool knownFamily = cells[1] == "68000" ||
+                cells[1] == "68020" || cells[1] == "68030" ||
                 cells[1] == "68040" || cells[1] == "any";
             const bool knownHost = cells[2] == "aarch64" ||
                 cells[2] == "x86_64" || cells[2] == "any" ||
@@ -484,6 +487,10 @@ int main() {
         "q605_jit/68040/apple_m4/min_realtime_permille");
     requiredBudgets.insert(
         "lcii_threaded/68030/apple_m4/min_realtime_permille");
+    requiredBudgets.insert(
+        "plus_interp/68000/apple_m4/min_realtime_permille");
+    requiredBudgets.insert(
+        "macii_interp/68020/apple_m4/min_realtime_permille");
     // The measured wall-clock noise floor per bench host, plus the
     // conservative `any` fallback an unmeasured host inherits
     // (docs/MEASURING.md § R2 owns the numbers and their provenance).
@@ -569,6 +576,38 @@ int main() {
         return n;
     };
     const int totalGates = int(gates.size() + absent.size());
+
+    // TODO.md is the active backlog and its first paragraph is routinely used
+    // to quote the size of the validation surface.  The README/CLAUDE checks
+    // below did not cover it, so its registry headline stayed one gate behind
+    // while this test remained green.  Scope the parser to the union sentence:
+    // later historical measurements intentionally contain older totals.
+    {
+        const std::string todoPath = testasset::find("TODO.md");
+        check(!todoPath.empty(), "TODO.md active backlog located");
+        const std::string todo = slurp(todoPath);
+        const size_t begin = todo.find("The documented registry");
+        const size_t end = begin == std::string::npos
+            ? std::string::npos : todo.find("Five are host-conditional", begin);
+        check(begin != std::string::npos && end != std::string::npos,
+              "TODO.md carries a bounded gate-registry headline");
+        if (begin != std::string::npos && end != std::string::npos) {
+            const std::string claim = todo.substr(begin, end - begin);
+            const auto totals = numbersBefore(claim, " gates");
+            check(totals.size() == 1 && totals.front() == totalGates,
+                  "TODO.md registry total matches the configured union");
+            for (const char* label : {
+                     "unit", "asset-none", "smoke", "jit", "m040", "m030",
+                     "etalon", "etalon-core" }) {
+                const auto statedCounts =
+                    numbersBefore(claim, std::string("`") + label + "`");
+                const int have = countLabel(label);
+                check(statedCounts.size() == 1 && statedCounts.front() == have,
+                      std::string("TODO.md registry `") + label +
+                          "` count matches CTest");
+            }
+        }
+    }
 
     std::vector<std::string> unlabelled;
     for (const auto& [name, labels] : gates)

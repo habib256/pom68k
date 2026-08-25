@@ -9,6 +9,7 @@
 
 #include "imgui.h"
 #include "MachineHost.h"
+#include "GuiSpeedGauge.h"
 #include "MachineCatalog.h"
 #include "DiskBays.h"
 #include "PeripheralWindow.h"
@@ -456,33 +457,18 @@ static std::function<int()> gGetCpuEngine;
 static std::function<jit::Stats::Snapshot()> gJitStats;
 static std::function<std::pair<long long, long long>()> gSpeedSample;
 static const char* gJitBackend = nullptr;              // backend chosen for this host
+static bool gSpeedMeasurementDone = false;
 
 // GUI-only real-time gauge. machineMenu() calls this every rendered frame so
 // closing the CPU menu cannot turn the measurement into a stale long average.
 // No emulator state is read directly: threaded machines publish their real
 // machine clock atomically; the compact has no second thread.
 static double realtimeRatio() {
-    static long long lastMachineClock = 0;
-    static double ratio = 0.0;
-    static std::chrono::steady_clock::time_point lastAt{};
+    static pom68k::GuiSpeedGauge gauge;
     if (!gSpeedSample) return 0.0;
-
     const auto [machineClock, machineHz] = gSpeedSample();
-    const auto now = std::chrono::steady_clock::now();
-    if (!lastAt.time_since_epoch().count() || machineClock < lastMachineClock) {
-        lastMachineClock = machineClock;
-        lastAt = now;
-        ratio = 0.0;
-        return ratio;
-    }
-    const double dt = std::chrono::duration<double>(now - lastAt).count();
-    if (dt >= 0.5) {
-        ratio = machineHz > 0
-            ? double(machineClock - lastMachineClock) / (dt * double(machineHz))
-            : 0.0;
-        lastMachineClock = machineClock;
-        lastAt = now;
-    }
+    const double ratio = gauge.observe(machineClock, machineHz);
+    gSpeedMeasurementDone = gauge.done();
     return ratio;
 }
 
@@ -698,6 +684,7 @@ static void jitWindow() {
 static void machineMenu(MachineKind cur, GLFWwindow* window,
                         const std::function<void()>& extraMenus = {}) {
     const double speed = realtimeRatio();
+    if (gSpeedMeasurementDone) glfwSetWindowShouldClose(window, GLFW_TRUE);
     if (!ImGui::BeginMainMenuBar()) return;
     if (pom68k::lle::requested()) {
         const bool qualified = pom68k::lle::qualified();

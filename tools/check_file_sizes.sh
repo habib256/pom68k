@@ -70,10 +70,18 @@ if [ ! -f "$BUDGET" ]; then
     exit 2
 fi
 
-declare -A ceiling=()
+# macOS still ships Bash 3.2, which has indexed arrays but no associative
+# arrays.  Keep this gate directly runnable with the system shell; CTest must
+# not be able to print a shell error and then fall through to exit 0.
+budget_paths=()
+budget_caps=()
+budget_seen=()
 while read -r path limit_value _rest; do
     case "$path" in ''|\#*) continue ;; esac
-    ceiling["$path"]="$limit_value"
+    i=${#budget_paths[@]}
+    budget_paths[$i]="$path"
+    budget_caps[$i]="$limit_value"
+    budget_seen[$i]=0
 done < "$BUDGET"
 
 fail=0
@@ -82,7 +90,15 @@ slack_report=""
 while read -r f; do
     is_exempt "$f" && continue
     n=$(wc -l < "$f")
-    cap="${ceiling[$f]:-}"
+    cap=""
+    cap_index=-1
+    for ((i = 0; i < ${#budget_paths[@]}; i++)); do
+        if [ "${budget_paths[$i]}" = "$f" ]; then
+            cap="${budget_caps[$i]}"
+            cap_index=$i
+            break
+        fi
+    done
 
     if [ -n "$cap" ]; then
         if [ "$n" -gt "$cap" ]; then
@@ -91,7 +107,7 @@ while read -r f; do
         elif [ $((cap - n)) -ge 100 ]; then
             slack_report+="      $f: $n lines, ceiling $cap — lower it by $((cap - n))"$'\n'
         fi
-        unset 'ceiling[$f]'
+        budget_seen[$cap_index]=1
     elif [ "$n" -ge "$LIMIT" ]; then
         echo "FAIL  $f: $n lines and no ceiling — a new file over $LIMIT lines." >&2
         echo "      Split it, or record the ceiling with '$0 --update' and say why." >&2
@@ -100,9 +116,11 @@ while read -r f; do
 done < <(list_sources)
 
 # A ceiling whose file is gone (renamed, split, deleted) is stale.
-for stale in "${!ceiling[@]}"; do
-    echo "FAIL  $BUDGET lists $stale, which no longer exists — run '$0 --update'" >&2
-    fail=1
+for ((i = 0; i < ${#budget_paths[@]}; i++)); do
+    if [ "${budget_seen[$i]}" -eq 0 ]; then
+        echo "FAIL  $BUDGET lists ${budget_paths[$i]}, which no longer exists — run '$0 --update'" >&2
+        fail=1
+    fi
 done
 
 if [ "$fail" -ne 0 ]; then

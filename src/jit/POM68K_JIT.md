@@ -312,8 +312,9 @@ result meant "nothing ran" rather than "nothing broke".**
 **A boot etalon is a poor stopwatch** — it stops the moment it recognises
 the Finder, so the two engines get timed over *different* amounts of guest
 work and the ratio flatters whichever arrived first. Every number below
-therefore comes from `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp`
-(dev tools, `make jit_bench`, `EXCLUDE_FROM_ALL`, **not** CTest gates),
+therefore comes from `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` plus
+their 68000/68020 twins `jit_bench_plus` / `jit_bench_macii` (dev tools,
+`EXCLUDE_FROM_ALL`, **not** CTest gates),
 which run a **fixed guest-cycle budget**: the same instructions, the same
 peripheral schedule, wall clock the only variable. `POM68K_BENCH_FRAMES`
 sets the budget in frames of 416 667 cycles (Q605) or 640×407 = 260 480
@@ -989,7 +990,7 @@ process environment. Later environment changes affect only future engines.
 | `POM68K_JIT_WATCH_OPCODE` | unset | diagnosis (a64): `<hex>[,<hex>…]`, up to four opcodes — when the compile loop hands one to the fallback stub, print its admission inputs (trace/base/i-cache cycles, fetch count, terminal queue, semantics, memory proof plan) once per pc, tagged with the stage or the emitter check that refused it (`jsr:queue`, `movem:cost`, …). Turns a fallback-census row into WHICH check, without guessing from the source (2026-08-23) |
 | `POM68K_JIT_DENY_FROM` / `_TO` | unset | bisection instrument (hex pc range): refuse to COMPILE any block whose entry pc falls in [from, to). Halving the pc space is how a divergence that heals under every pacing perturbation gets pinned to one block |
 | `POM68K_BENCH_ARMS` | unset | `jit_bench_lcii`: `<a>,<b>` runs TWO ENGINE arms head-to-head in the same ABBA process (each side `interp` or a backend key, applied via `POM68K_JIT_BACKEND` before that arm's machine is built). Modifiers bind Engine-resolved knobs per arm: `@score=N` (profitability, e.g. `a64@score=0,a64@score=64`), `@restart=0\|1` and `@bsrw=0\|1` (the § C.4nonies admissions, e.g. `x64,x64@restart=1@bsrw=1`). Unset = the historical interp-vs-jit comparison. Exists because separate processes reintroduce the variance `bench::compare` removes |
-| `POM68K_BENCH_FRAMES` | q605 `3000`, lcii `6000` | `tests/jit_bench.cpp` / `tests/jit_bench_lcii.cpp` — frames of 416 667 (Q605) or 640×407 = 260 480 (LC II) **machine** cycles |
+| `POM68K_BENCH_FRAMES` | q605 `3000`; others `6000` | the four `jit_bench*` harnesses — fixed **machine-cycle** frames: 130 240 (Plus), 261 120 (Mac II), 260 480 (LC II), 416 667 (Q605) |
 | `POM68K_BENCH_SLICES` | `0` = CPU alone | `jit_bench_lcii` only: N ≥ 1 runs the GUI's own quantum, N slices per frame with a raster catch-up at each boundary (§ 3.6) |
 | `POM68K_DUMP` | unset | `tests/q605_rogue_census.cpp` (`make q605_rogue_census`, `EXCLUDE_FROM_ALL`): write `q605_rogue_*.ppm` at every stage. The harness sets `POM68K_JIT_HISTO` itself and dumps one census PER PHASE (§ 3.5bis) — a drawing workload, which `jit_bench` is not |
 

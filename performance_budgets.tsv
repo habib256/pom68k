@@ -35,6 +35,14 @@ lcii_threaded	68030	reference_x86_64	min_realtime_permille	2100	permille
 q605_jit	68040	apple_m4	min_realtime_permille	12500	permille
 lcii_threaded	68030	apple_m4	min_realtime_permille	4300	permille
 
+# The missing CPU families got their own fixed-cycle harnesses on 2026-08-25.
+# Three warm-cache Apple-M4 runs over 6000 frames kept one fingerprint each:
+# Plus/68000 25.22-25.54x (the first cold run was 18.67x), Mac II/68020
+# 16.35-16.51x. Floors retain roughly 13% below the repeated warm minima.
+# There is deliberately no reference_x86_64 row until that host is measured.
+plus_interp	68000	apple_m4	min_realtime_permille	22000	permille
+macii_interp	68020	apple_m4	min_realtime_permille	14200	permille
+
 # Host wall-clock noise floor, in permille (docs/MEASURING.md R2). NOT a
 # gate threshold: it is the bar under which `bench::compare` refuses to call
 # a delta a claim, in either direction. Measured by a null experiment -- the

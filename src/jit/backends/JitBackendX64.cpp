@@ -143,6 +143,18 @@ extern "C" int pom68kJitWrite(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
     return ok;
 }
 
+// The 030 JSR reads the first word at its target and leaves that run-time
+// value in queue.irc.  No compile-time word is exact: a trap patch may have
+// changed it since the block was recorded.  A false result means the read
+// would fault, so generated code replays the still-untouched instruction.
+extern "C" int pom68kJitReadProg(moira::Moira* cpu, uint32_t addr,
+                                 uint32_t* out) noexcept {
+    uint16_t word = 0;
+    const int ok = cpu->pomJitReadProg(addr, word) ? 1 : 0;
+    *out = word;
+    return ok;
+}
+
 // ── the frame generated code runs against ────────────────────────────────
 struct Frame {
     int64_t   clockTarget;    // +0
@@ -175,14 +187,17 @@ struct Frame {
     // coverage-tail work is picked with.
     uint64_t* slowStaticHisto;   // +80
     uint64_t* slowRuntimeHisto;  // +88
+    uint8_t*  progHost;          // +96 proven JSR push pointer across target read
 };
 constexpr int32_t kFClockTarget = 0, kFInstrs = 8, kFExit = 12;
 constexpr int32_t kFDtlbSelf = 16, kFDtlbFill = 24, kFGuard = 32;
 constexpr int32_t kFScratch = 40, kFSaveA = 44, kFSaveV = 48;
 constexpr int32_t kFSlow = 52, kFPeriph = 56, kFLinkTab = 64, kFValue = 72;
 constexpr int32_t kFHistoStatic = 80, kFHistoRuntime = 88;
+constexpr int32_t kFProgHost = 96;
 static_assert(offsetof(Frame, slowStaticHisto) == kFHistoStatic);
 static_assert(offsetof(Frame, slowRuntimeHisto) == kFHistoRuntime);
+static_assert(offsetof(Frame, progHost) == kFProgHost);
 
 // Sizes. A 64-instruction block of memory-touching forms tops out around
 // 12 KB with its cold half; the code buffer holds thousands of blocks and
@@ -996,11 +1011,10 @@ bool Emitter::emitSubroutine(size_t i) {
     // consumed extension for BSR.L/JSR-long forms, the pc+2 lookahead for
     // RTS and the two-word forms (where the two formulas coincide).
     const uint16_t ircAfter = heldIrc(i);
-    if (!tracedQueueIs(i, ircAfter)) return false;
 
     if (sem.operation == SemanticOp::ReturnSubroutine) {
         if (!control.valid || control.kind != ControlFlowKind::Return ||
-            traced030(i) != 10) return false;
+            traced030(i) != 10 || !tracedQueueIs(i, ircAfter)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         const MemoryAccessPlan read = memory.access(
             MemoryDirection::Read, MemoryOperand::Stack, 4, 3, 7);
@@ -1032,7 +1046,8 @@ bool Emitter::emitSubroutine(size_t i) {
         const unsigned bsrCost = traced030(i);
         if (!control.valid || control.kind != ControlFlowKind::DirectCall ||
             !control.targetKnown || !control.pushesReturnAddress ||
-            in.words > 2 || (bsrCost != 7 && bsrCost != 5)) return false;
+            in.words > 2 || (bsrCost != 7 && bsrCost != 5) ||
+            !tracedQueueIs(i, ircAfter)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
         const MemoryAccessPlan write = memory.access(
             MemoryDirection::Write, MemoryOperand::Stack, 4, 4, 7);
@@ -1086,6 +1101,60 @@ bool Emitter::emitSubroutine(size_t i) {
         a_.testRI(Sz::L, RAX, 1);
         a_.jcc(Cc::NE, runtimeStub(i));
     }
+
+    if (L_.is030) {
+        // execJsr's order is target calculation, stack push, then target
+        // program-space read.  Make it transactional without changing the
+        // observable order: prove the push mapping first (no store), perform
+        // the target read (a fault bails with nothing committed), then write
+        // through the pointer kept across the ABI call.  The 030 MOVEM-style
+        // span proof makes the direct store infallible once reached.
+        if (in.terminalQueueValid && in.terminalIrd != op) return false;
+        if (write.exactRequired) return false;
+
+        a_.movRM(Sz::L, RAX, A(7));
+        a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
+        a_.movMR(Sz::L, F(kFSaveA), RAX);
+        memProbe(RAX, 4, /*write=*/true, runtimeStub(i));
+        a_.movMR(Sz::Q, F(kFProgHost), RSI);
+
+        spillClock();
+        a_.movRR(Sz::Q, RDI, kCpu);
+        a_.movRM(Sz::L, RSI, F(kFValue));
+        a_.leaRM(RDX, F(kFScratch));
+        call(reinterpret_cast<void*>(&pom68kJitReadProg));
+        fillClock();
+        a_.testRR(Sz::L, RAX, RAX);
+        a_.jcc(Cc::E, runtimeStub(i));
+
+        a_.movRI(RDX, control.returnAddress);
+        a_.bswap(RDX);
+        a_.movRM(Sz::Q, RSI, F(kFProgHost));
+        a_.movMR(Sz::L, mem(RSI, 0), RDX);
+        a_.movRM(Sz::L, RAX, F(kFSaveA));
+        a_.movMR(Sz::L, A(7), RAX);
+
+        a_.movRM(Sz::L, RDI, F(kFValue));
+        a_.movMR(Sz::L, at(L_.pc), RDI);
+        a_.movMR(Sz::L, at(L_.pc0), RDI);
+        chargeIcache(i);
+        if (L_.ird == L_.irc + 2) {
+            a_.movzx(Sz::W, RAX, F(kFScratch));
+            a_.aluRI(Asm::Op::OR, Sz::L, RAX, int32_t(uint32_t(op) << 16));
+            a_.movMR(Sz::L, at(L_.irc), RAX);
+        } else {
+            a_.movMI(Sz::W, at(L_.ird), int32_t(op));
+            a_.movRM(Sz::W, RAX, F(kFScratch));
+            a_.movMR(Sz::W, at(L_.irc), RAX);
+        }
+        chargeCycles(kJsr[ea.idx]);
+        retire();
+        if (constant) leaveTo(control.target);
+        else          leaveToDynamic();
+        return true;
+    }
+
+    if (!tracedQueueIs(i, ircAfter)) return false;
     // Push the return address — the next instruction, since computeEA has
     // already consumed this one's extension words.
     a_.movRM(Sz::L, RAX, A(7));
@@ -3098,13 +3167,12 @@ bool Emitter::emitMovem(size_t i) {
     const InstructionSemantics& sem = in.semantics;
     auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
     if (sem.operation != SemanticOp::Movem) return false;
-    // The 030's MOVEM restart contract is its own (mmu030 fixups, not the
-    // 040 restart latch modelled below) and is NOT implemented. Until
-    // 2026-08-18 this was refused only by ACCIDENT — the cost cross-check
-    // rejects any instruction whose traced cycles carry an i-cache penalty
-    // — and JIT_BRINGUP § C.4.4 says to make that a real guard before any
-    // C.5 flip: an accident of the cross-check is not a safety property.
-    if (L_.is030) return false;
+    // A 030 fault in flight normally leaves a format-$B MOVEM resume state.
+    // Native MOVEM cannot reach such a partial state: the OrderedSpan path
+    // below proves every byte before the first access, and an unprovable span
+    // bails to the untouched instruction.  This is the same proof that has
+    // admitted the A64 emitter since 2026-08-23; x64 kept the old guard only
+    // until its native 030 lockstep could be run on an x86-64 host.
     const bool toRegs = sem.toRegisters;
     const int szIdx = sem.sizeIndex;
     const int size = sizeBytes(szIdx);
@@ -3388,12 +3456,15 @@ bool Emitter::emit() {
         // jit_lockstep_030_x64_alignment_test runs this admission ON).
         // Default rides the backend's accessClockBias declaration (ON
         // here since 2026-08-22, −2.3 % alone, −8.0 % with restart-base).
+        const bool jsrW030 = ic_ && ir_.instrs[i].words == 2 &&
+            ir_.instrs[i].fetchWords == 2 &&
+            ir_.instrs[i].semantics.operation == SemanticOp::JumpSubroutine;
         const bool bsrW030 = ic_ && ir_.instrs[i].words == 2 &&
-            (ir_.instrs[i].opcode == 0x4EBA ||
-             (ir_.instrs[i].opcode == 0x6100 && bsrWideAdmission())) &&
+            ir_.instrs[i].opcode == 0x6100 && bsrWideAdmission() &&
             ir_.instrs[i].semantics.operation == SemanticOp::BranchSubroutine;
         if (ic_ && ir_.instrs[i].kind == Kind::Branch &&
-            ir_.instrs[i].words > 1 && !dbcc030 && !bccW030 && !bsrW030) {
+            ir_.instrs[i].words > 1 && !dbcc030 && !bccW030 &&
+            !jsrW030 && !bsrW030) {
             a_.jmp(staticStub(i));
             emitted = i + 1;
             continue;

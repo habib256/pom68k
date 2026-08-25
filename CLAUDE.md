@@ -61,14 +61,14 @@ coverage, not a product ceiling.
   (System 4.1 → Mac OS 8.1) is `tests/finder_boot_matrix.cpp` — an on-demand
   harness, `EXCLUDE_FROM_ALL` and **not** a registered CTest. Bring-up
   history: `CHANGELOG.md`, by date.
-- **228 CTest gates** (`ctest -N` 2026-08-23: 110 `unit`, 9 `smoke`, 40 `jit`,
-  51 `m040`, 53 `m030`, 118 `etalon`, of which 12 `etalon-core` — one profile
+- **229 CTest gates** (`ctest -N` 2026-08-25: 110 `unit`, 9 `smoke`, 40 `jit`,
+  51 `m040`, 54 `m030`, 119 `etalon`, of which 12 `etalon-core` — one profile
   per platform, the pre-commit tier, 12/12 green in 31 min 41 s). The registry
   is **host-conditional by five**: the AArch64 lockstep trio (040 coarse,
   030 experimental, 030 alignment) is registered only on an AArch64 host
   with the native backends, and the x64 030 experimental + alignment
-  locksteps only on x86-64 — so an x86-64 configure sees 225 and an
-  AArch64 one 226.
+  locksteps only on x86-64 — so an x86-64 configure sees 226 and an
+  AArch64 one 227.
   `docs_test` re-checks these totals — and every gate name this file spells
   out — against the roster CMake writes at configure time, and fails if any
   gate carries no label; since 2026-08-19 it also holds every in-tree
@@ -78,16 +78,15 @@ coverage, not a product ceiling.
   family and host. Both native CI jobs publish the same
   `pom68k.jit.metrics.v1` artifact rather than reducing the proof to a CTest
   exit status.
-- Last FULL run **222/222 green, 2026-08-18** — the whole registry on this
-  host and the first one run in PARALLEL: 208 gates at `-j16` in 1 h 27 on
-  the calibrated slot budgets, then the two families the RAM model cannot
-  see (Q700/Eclipse, sharing `Q700Memory`, and the UDP-port AppleTalk gates)
-  serialized in 43 min — 2 h 11 against the 4 h 30 sequential habit, on
-  **relinked binaries**, freshness guard green before the tier
-  (`CHANGELOG.md` 2026-08-18 (fourth)). Before it: 206/206 on 2026-08-16,
-  4 h 30 sequential; the same tiers that morning were **102/112**, ten reds
-  in five unrelated causes after nine days without a whole-suite run
-  (`CHANGELOG.md` 2026-08-16).
+- Last FULL run **227/227 green on AArch64, 2026-08-25** — fresh full build,
+  freshness self-test green and 152/152 gate executables current; the exact
+  disjoint registry partition passed `unit` **108/108 in 271.17 s**, then
+  `etalon` **119/119 in 1 088.20 s** at `-j16`, 22 min 39 s wall in total.
+  Before it: 222/222 on 2026-08-18 in 2 h 11, the first quoted parallel
+  whole-registry run (`CHANGELOG.md` 2026-08-18 (fourth)); before that,
+  206/206 on 2026-08-16, 4 h 30 sequential. The same tiers that morning were
+  **102/112**, ten reds in five unrelated causes after nine days without a
+  whole-suite run (`CHANGELOG.md` 2026-08-16).
   **The `make` is part of the claim, not a detail**: a run in early August
   returned 143/143 over binaries linked at *different times* — 102 of ~110
   older than `libpom68k_core.a` — and proved nothing, because `ctest` does
@@ -187,12 +186,12 @@ coverage, not a product ceiling.
 ```bash
 ./setup_imgui.sh             # one-time: fetches Dear ImGui + creates build/
 cd build && cmake .. && make -j   # → build/POM68K + tests
-ctest                        # 228 gates, ~4h (asset-dependent ones soft-skip)
+ctest                        # 229 gates, ~4h (asset-dependent ones soft-skip)
 ctest -L unit                # 110 legacy non-etalon gates
 ctest -L asset-none          # 84 gates — manifest-declared asset-free tier
 ctest -L smoke               # 9 gates — one machine, both CPU engines
 ctest -L etalon-core         # 12 gates — ONE profile per platform, 31 min
-ctest -L jit                 # 40 gates;  -L m040 = 51;  -L m030 = 53
+ctest -L jit                 # 40 gates;  -L m040 = 51;  -L m030 = 54
 make -j4 jitdev && ctest -L smoke   # the JIT working loop
 cmake --build . -j4 --target jitfast && POM68K_JIT_REQUIRE_NATIVE=1 ctest -L jit-fast
 ./POM68K [ROM] [media...]    # profile picked by ROM size + checksum; the
