@@ -70,8 +70,9 @@ Then the PB150, whose ROM is the only oracle.
   forever. Same build, 5 G cycles: **interrupt half ON → 176 back-to-back
   `$78`, 0 SCSI selects; OFF → 1122 selects, 555 commands, the System loads off
   disk.** `msc.h` models `write_cb1_noint` plus a separate `pmu_int` for
-  exactly this reason. `POM68K_PGE_CB1INT=1` restores the MAME-literal wiring
-  for A/B; `POM68K_PGE_CB1BYTE=1` gives one CB1 IRQ per completed byte.
+  exactly this reason. Both alternatives are now measured and retired: per
+  edge produced 176 back-to-back readINTs and zero SCSI selections; one CB1
+  per completed byte also produced zero selections, GSC mode 0, and no boot.
 - **SRAM writes to `$FE00-$FFFF` must go through while the boot-ROM overlay is
   up.** MAME's view semantics only override READS, so the firmware upload has
   to be able to fill its vector page under the overlay. Gate those writes off
@@ -99,26 +100,17 @@ Then the PB150, whose ROM is the only oracle.
   | **80 µs (MAME, default)** | **2** | **895** |
   | 160 µs | 0 | 0 |
 
-- **The PG&E's ADB modem cell had to answer, and framing it took three fixes**
-  (`ADBCR/ADBSR/ADBDR` at `$18-$1A`). MAME's `m68hc05pge` models TDRE and TC on
-  timers but **never RDRF** (`m_adbsr |=` only ever sets TDRE and TC) — a
-  strong hint that MAME's `macpd230` does not reach the Finder either, whatever
-  its lack of a NOT_WORKING flag suggests. The three, each found with
-  `POM68K_PGE_ADBTRACE=1`:
-  1. **A reply must be its own event.** Folding RDRF into the same timer expiry
-     that raises TDRE clobbered ADBDR while the firmware still held the
-     transmitted byte there — 1122 SCSI selects → 0. TX-done and RX-arrived are
-     separate.
-  2. **The TC timer overwrote the scheduled reply.** The firmware acks TDRE by
-     writing ADBCR, which arms the 50 µs TC timer, wiping a reply scheduled off
-     the TDRE expiry. Both expiries chain into the reply now.
-  3. **Listen data bytes must reach the bus.** A Listen R3 with an empty
-     payload means the relocation never happens, so the firmware re-finds the
-     device at its old address and relocates it again — forever. The cell
-     buffers a Listen's two data bytes and only then drives the command.
-
-  Result: enumeration converges (Talk R3 → `$62 $05` keyboard, `$63 $01`
-  mouse) and settles into steady-state autopoll (`$2C` → `$FF $FF`).
+- **The PG&E's ADB modem cell did not have to answer after all.** The earlier
+  synthetic command-level bus (`ADBCR/ADBSR/ADBDR` at `$18-$1A`) made
+  enumeration converge, and three rounds of reply framing made that invented
+  path internally consistent. A locked-fixture A/B finally tested the premise
+  itself: with `POM68K_PGE_ADB=0`, the Duo still reaches the Finder with the
+  exact control observables (menu 0.04, desktop 0.43, 3394 SCSI commands, GSC
+  mode 2), then `duo_persist_etalon` passes Return, Cmd-N, trackball steering,
+  Shut Down, disk reopen and reboot. The built-in keyboard and pointer use the
+  matrix and counters, and no product caller fed the synthetic external bus.
+  The bus, callback and A/B lever were therefore removed. The cell now follows
+  MAME's actual surface: timed TDRE and TC, never synthetic RDRF.
 - **v2 firmware facts worth keeping**: an ADB watchdog at `$01F3` (8 ticks per
   command, expiry retransmits a `$31` resync byte to the cell); the readINT
   dispatcher `$86D6` serves causes by bit — 7 = the once-per-second
@@ -148,11 +140,11 @@ Then the PB150, whose ROM is the only oracle.
   happening is that the volume is never flushed at all — its VCB keeps the
   File Manager's dirty bit for minutes — which is PowerBook system software
   doing its job. **Do not model spin-down for this.**
-- **Raising RDRF unconditionally on transmit-done** (`POM68K_PGE_ADBRX=1`):
-  0 SCSI selects.
-- **Unplugging the charger** (`POM68K_PGE_CHARGER=0`): ADBReInit #1 never
-  completes, 0 SCSI selects. The battery state machine is load-bearing — leave
-  MAME's "charger present".
+- **Raising RDRF unconditionally on transmit-done**: 0 SCSI selects. The
+  disproved environment lever was retired on 2026-08-25.
+- **Unplugging the charger**: ADBReInit #1 never completes, 0 SCSI selects.
+  The battery state machine is load-bearing — MAME's "charger present" is now
+  unconditional and the disproved lever was retired on 2026-08-25.
 - **System 7.1 does not boot Duos** (no Enabler). The machine reaches a
   fully-drawn "This startup disk will not work on this Macintosh model" alert —
   desktop pattern, arrow cursor, waiting for a click on Restart (`MBState $172`
@@ -256,11 +248,11 @@ different address width, stack window, vectors, map and peripherals) plus
   1-Wire master (DS2400 battery ID), seconds/RTC, NVRAM — **the PRAM lives in
   the PMU here**, like Cuda.
 - Trackball X/Y/button counters read by the PMU (`read_tbX/Y/B`) — input
-  reaches the guest THROUGH the PMU, which is also the ADB controller on Duos.
+  reaches the guest THROUGH the PMU, beside its separate ADB modem cell.
   POM68K routes the KEYBOARD through the real matrix since 2026-08-13 and the
-  POINTER through the counters since 2026-08-14 (`PgePmu::mouseMove`;
-  `POM68K_PGE_ADBMOUSE=1` restores the old ADB-cell route, where the guest's
-  Mouse global never moved once). **The counters are LATCHED, not drained on
+  POINTER through the counters since 2026-08-14 (`PgePmu::mouseMove`; the old
+  ADB-cell route never moved the guest's Mouse global and was retired on
+  2026-08-25). **The counters are LATCHED, not drained on
   read**: one frame's accumulated motion moves into `$15`/`$16` at 60 Hz and
   stays there for the whole frame, which is what MAME's `vbl_w` does. Drained
   on read instead, the firmware — which reads a register more than once per

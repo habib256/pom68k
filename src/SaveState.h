@@ -244,7 +244,11 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // therefore meaningless at the instruction boundary a snapshot is taken on.
 // The JIT never touches it, so carrying it made a snapshot's fingerprint
 // depend on which engine had run last — `MoiraSnapshot.h` has the receipt.
-inline constexpr u32      kVersion   = 9;   // v9: CPU chunk drops `cp`
+// v10 drops two disproved ADB-route payloads from machine chunks: the Duo's
+// synthetic command-level bus/reply scheduler and Eclipse's unused Egret bus.
+// A v9 chunk would otherwise shift every following field while still passing
+// the header check, so the incompatible shorter layouts require a hard bump.
+inline constexpr u32      kVersion   = 10;  // v10: dead ADB route state removed
 
 struct Header {
     u32 version     = kVersion;

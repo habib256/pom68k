@@ -164,8 +164,7 @@ code branches on) **plus** the IIfx front end:
   found the tower had had **no working input since the profile landed**
   (2026-08-02): through the Egret, ADBBase comes up and nothing arrives;
   through the IOP, cursor, click and KeyMap all land. The default flipped to
-  the IOP wire that day; `POM68K_Q900_ADB=egret` still routes the other way
-  for A/B.
+  the IOP wire that day; the dead Egret A/B route was retired on 2026-08-25.
 - There is also a second 53C96 bus, and VIA2 port B carries no DFAC.
 - VIA1 PA identity `$D0` (Q900) / `$90` (Q950) vs the Spike's `$C0`, each
   OR'd with the diagnostic-disabled bit 0 — feeding PA0 = 0 sends the ROM down

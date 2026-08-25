@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 287 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 291 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -10,16 +10,16 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 33 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 34 |
-| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 29 |
-| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 37 |
+| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 30 |
+| [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 38 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 16 |
 | [Sound](#sound) | 6 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 11 |
 | [Save states](#save-states) | 6 |
 | [Machine bring-ups](#machine-bring-ups) | 42 |
 | [Build, packaging and release](#build-packaging-and-release) | 7 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 17 |
-| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 5 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 18 |
+| [Documentation, audits and reviews](#documentation-audits-and-reviews) | 6 |
 | [Cross-cutting](#cross-cutting) | 44 |
 
 ---
@@ -128,6 +128,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-03** — [Event deadlines close the Cuda phase accommodation; extended ADB input reaches every GUI runner](CHANGELOG.md#2026-08-03-event-deadlines)
 - **2026-08-14 (later)** — [The Eclipse towers run the real Egret firmware, and the input gate that came with it found they had never had a working mouse](CHANGELOG.md#2026-08-14-eclipse-egret-lle)
 - **2026-08-25** — [The IIvx persist gate exposed a two-transition ADB poll: Command must settle before N on VASP, but not globally](CHANGELOG.md#2026-08-25-iivx-command-settle)
+- **2026-08-25 (sixth)** — [The Duo's synthetic ADB bus was not load-bearing: the MAME-inert cell passes boot, input, persistence and reboot](CHANGELOG.md#2026-08-25-pge-adb-retired)
 
 ## Storage — SCSI, IWM, SWIM, media
 
@@ -168,6 +169,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-14 (fifth)** — [SWIM1's ISM read engine is MAME's real one: LS-pair classification, the Correction State Machine live, and the param RAM becomes load-bearing](CHANGELOG.md#2026-08-14-ism-csm)
 - **2026-08-14 (fourth)** — [The SWIM read engines get their data separator: FluxPll over a flux view of the Sony track, and the off-rate gate is the one that bites](CHANGELOG.md#2026-08-14-flux-separator)
 - **2026-08-15 (third)** — [The IWM's cell window was counted in the wrong clock, and no floppy had mounted anywhere but the compacts since](CHANGELOG.md#2026-08-15-iwm-window-clock)
+- **2026-08-25 (fifth)** — [The last SPI/CB1 alternative gets its verdict: one interrupt per byte still yields zero SCSI selections](CHANGELOG.md#2026-08-25-pge-cb1byte-retired)
 
 ## Video — decoders, the raster beam, DAFB
 
@@ -293,6 +295,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-08-19 (fourth)** — [A doc/code consistency pass, and the half of it that is now a gate](CHANGELOG.md#2026-08-19-doc-code-consistency)
 - **2026-08-23 (sixth)** — [The slice-index leak gets an asset-free native gate: 384 precise evictions keep every key, sub-slice mask and DTLB exclusion exact](CHANGELOG.md#2026-08-23-slice-index-gate)
 - **2026-08-24 (seventh)** — [Reference fixtures become the default lookup: gates read `hdv/ref`, GUI sessions write `hdv/work`](CHANGELOG.md#2026-08-24-reference-fixture-routing)
+- **2026-08-25 (fourth)** — [Knob audit retires five measured-dead routes: 188 → 183 controls, 21 → 16 chantiers](CHANGELOG.md#2026-08-25-five-knobs-retired)
 - **2026-08-25 (later)** — [The green gate corpus chooses its bytes: 37 identities close fixture versioning](CHANGELOG.md#2026-08-25-asset-lock-complete)
 
 ## Documentation, audits and reviews
@@ -302,6 +305,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-07-22** — [`docs/LLE_VS_HLE.md` third pass: inventory re-synced to the live tree](CHANGELOG.md#2026-07-22--docslle_vs_hlemd-third-pass-inventory-re-synced-to-the-live-tree)
 - **2026-07-23** — [LLE audit: step 9 closed, the quick wins are exhausted](CHANGELOG.md#2026-07-23--lle-audit-step-9-closed-the-quick-wins-are-exhausted)
 - **2026-08-13** — [Four audit closures, and two of them were not what the audit said they were](CHANGELOG.md#2026-08-13-f2-f5-closures)
+- **2026-08-25 (third)** — [Environment-knob audit: 188 exact lifecycle contracts, zero wildcard decisions](CHANGELOG.md#2026-08-25-config-knob-registry)
 
 ## Cross-cutting
 

@@ -32,7 +32,6 @@
 // blueprint docs/DUO_BRINGUP.md.
 
 #pragma once
-#include "AdbBus.h"
 #include "M68hc05Pge.h"
 #include "SaveState.h"
 #include <cstdint>
@@ -85,7 +84,6 @@ public:
     void setSeconds(uint32_t s) { if (mcu_) mcu_->setRtc(s); }
 
     M68hc05Pge& mcu() { return *mcu_; }
-    AdbBus& adb() { return adb_; }
     // The Duo's BUILT-IN keyboard is a matrix the PG&E scans itself, not an
     // ADB device: rows selected on port C, columns read on port A (X0-X7)
     // and port B bits 0-2 (X8-X10), modifiers on port B bits 3-7, all
@@ -99,9 +97,8 @@ public:
     // $14-$16 (TBCS/X/Y) — not an ADB device, exactly like the keyboard
     // above. Deltas arrive here in SCREEN convention (+x right, +y down)
     // and are presented to the firmware one 60 Hz frame at a time (see
-    // tbLatch and the counter note below). POM68K_PGE_ADBMOUSE=1 sends
-    // motion down the ADB modem cell instead, which is where it used to
-    // go and where the guest's own Mouse global never moved once.
+    // tbLatch and the counter note below). The old ADB-cell route was
+    // measured dead and removed.
     void mouseMove(int dx, int dy);
     void mouseButton(bool down);
     // The lid. Port F bit 3, read by the PMU firmware: 1 = open.
@@ -116,7 +113,7 @@ public:
         ar(mcuAcc_, mcuDebt_, held_, porteBit2_, ackLevel_, reqLevel_,
            lastPortE_, lastPortF_, lastPortG_, lastPortC_, lastPortH_,
            lastMosi_);
-        ar(ds2400_, adb_);
+        ar(ds2400_);
         for (auto& r : matrix_) ar(r);       // per element: uint16_t, not bytes
         ar(modifiers_, powerKey_);
         ar(tbAccX_, tbAccY_, tbRegX_, tbRegY_, tbAcc_);
@@ -157,11 +154,6 @@ private:
     uint8_t lastPortH_ = 0x00;
     bool lastMosi_ = false;
     int hostSpin_ = 0;                               // machine cycles owed
-    // The ADB bus behind the PG&E's modem cell. Command-level is honest
-    // here: the cell IS a hardware transceiver, so the wire lives inside
-    // the PG&E's silicon and the firmware only ever sees bytes.
-    AdbBus adb_;
-
     // Built-in keyboard: one bit per key, 1 = HELD. Stored positively and
     // inverted at the port, which is the only place the active-low wire
     // exists. matrix_[row] bits 0-7 → port A, bits 8-10 → port B bits 0-2.

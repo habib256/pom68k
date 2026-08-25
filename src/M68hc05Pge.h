@@ -57,13 +57,10 @@ public:
     // Trackball counters (signed deltas) + button, read by the firmware.
     std::function<uint8_t()> tbX, tbY;
     std::function<bool()> tbButton;
-    // ADB modem cell: the firmware writes a command byte to ADBDR and the
-    // cell drives the wire. The integrator answers with the device
-    // response (empty = ADB timeout, i.e. nothing at that address).
-    // MAME's m68hc05pge leaves this unmodelled — it only ever sets TDRE
-    // and TC — which is why its ADBReInit can never enumerate anything.
-    std::function<std::vector<uint8_t>(uint8_t cmd,
-                                      const std::vector<uint8_t>& data)> adbCommand;
+    // The ADB modem cell follows MAME's implemented surface: transmit
+    // completion (TDRE/TC), with no attached external ADB devices and thus
+    // no receive-data callback/RDRF synthesis. The built-in keyboard and
+    // trackball use their dedicated matrix/counter hardware in PgePmu.
     // Same instruction-slaved hook as M68hc05::onCycles.
     std::function<void(int)> onCycles;
 
@@ -135,7 +132,6 @@ public:
         ar(pllCtrl_, option_, cscr_, cpicsr_, kcsr_, adcsr_, tbcs_);
         ar(spcr_, spsr_, spiIn_, spiOut_, spiBit_, spiClk_, spiMiso_, spiEdgeAcc_);
         ar(adbcr_, adbsr_, adbdr_, adbTimerAcc_, adbTimerMode_);
-        ar(adbRx_, adbRxPos_, adbCmdPending_, adbData_);
         ar(pwmacr_, pwma0_, pwma1_, pwmbcr_, pwmb0_, pwmb1_);
         ar(plmcr_, plmt1_, plmt2_);
         ar(rtc_, cycles_, secAcc_, cpiAcc_, keyscanAcc_, keyscanPeriod_);
@@ -205,10 +201,6 @@ private:
     uint8_t adbcr_ = 0, adbsr_ = 0x80, adbdr_ = 0;   // TDRE set at reset
     int64_t adbTimerAcc_ = 0;
     int adbTimerMode_ = -1;                          // -1 idle, 0 TDRE, 1 TC
-    std::vector<uint8_t> adbRx_;                     // reply bytes pending
-    size_t adbRxPos_ = 0;
-    int adbCmdPending_ = -1;                         // Listen awaiting data
-    std::vector<uint8_t> adbData_;                   // its data bytes
     uint8_t pwmacr_ = 0, pwma0_ = 0, pwma1_ = 0;
     uint8_t pwmbcr_ = 0, pwmb0_ = 0, pwmb1_ = 0;
     uint8_t plmcr_ = 0, plmt1_ = 0, plmt2_ = 0;

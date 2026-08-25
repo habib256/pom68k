@@ -1671,31 +1671,7 @@ that silently falls behind is worse than none, because it looks complete).
   `machine-rom` rows; default mode remains useful in a clean clone and
   `--strict` requires all private bytes. The manifest distributes no
   copyrighted content and makes drift *nameable*.
-- [ ] **[AR] Env knobs: the gate is sound again, the *classification* is what
-  is left.** `config_test` (`unit`, asset-free) checks `DEV.md` § 5 +
-  `src/jit/POM68K_JIT.md` against the tree in both directions, and re-derived
-  by hand on 2026-08-12 both directions are clean over the real surface of
-  **148** distinct `POM68K_*` string literals in `src/`, `tests/` and the Moira
-  fork. What was fixed that day and must not be undone:
-  `tests/config_test.cpp:72-101` turns any backticked token ending in `*` or
-  `_` into a *prefix*, and § 5's own "How this list stays true" paragraph used
-  to spell the harvest target as a backticked POM68K wildcard — inside the
-  section, since `section()` cuts at the next `\n## ` — which registered the
-  empty prefix and made direction 1 unable to fail. **Write meta-references to
-  the namespace without backticks**, and keep real wildcards family-scoped
-  (`POM68K_JIT_*`, `POM68K_JIT_LOCKSTEP_*`, `POM68K_BENCH_*`, `POM68K_PROBE*`,
-  `POM68K_LLE_AARCH64_*`): one broad one re-opens the hole. The two knobs the
-  wildcard had been hiding are no longer both active :
-  `POM68K_JIT_A64_STORE_GUARD_OPCODE` was removed when the exact guard became
-  global on 2026-08-20; `POM68K_JIT_ICACHE_EMIT` remains documented in
-  `src/jit/POM68K_JIT.md` § 6.
-  **Expiry: still not done.** The bring-up probes declare their chantier; the
-  other ~140 entries still do not say whether they are a permanent product
-  option (which earns a gate) or a chantier leftover. That is a decision per
-  knob — the mechanism is in place, the classification is not.
-  (The `KNOB=0` trap — many knobs test only for existence, so zero *activates*
-  them — is documented once, in `DEV.md` § 5's preamble. Do not re-list it
-  here.)
+- [x] **[AR] Env knobs classified — CLOSED 2026-08-25.** Exact 181-row `config_knobs.tsv` registry after seven disproved levers were retired; executable lifecycle contracts recorded in the changelog.
 - [x] **`quadra_event_scheduler_test` silently drops out of `ctest -L m040`
   — FIXED 2026-08-12.** The derivation loop now MERGES explicit labels
   instead of overwriting (`CMakeLists.txt:2174-2188`), and the registry

@@ -273,10 +273,10 @@ int main(int argc, char** argv) {
     // 2026-08-14. The Eclipse is the one board where the ADB devices could
     // hang off either transport — the Egret's own bit-serial line or the SWIM
     // IOP's bit-banged wire — and this gate is what finally asked. The answer
-    // was the IOP: through the Egret ADBBase comes up and NOTHING arrives
-    // (`POM68K_Q900_ADB=egret` still reproduces that), through the IOP the
-    // cursor crosses the screen. The tower had had no working input since the
-    // profile landed on 2026-08-02, because it had no input gate. It boots
+    // was the IOP: through the Egret ADBBase comes up and NOTHING arrives;
+    // through the IOP the cursor crosses the screen. The dead Egret A/B route
+    // was retired after this result. The tower had had no working input since
+    // the profile landed on 2026-08-02, because it had no input gate. It boots
     // Mac OS 8.1, not the 7.5 volume the 030 families use, so it gets the
     // longer key hold (that image has Slow Keys on).
     if (which == "q900" || which == "q950") {

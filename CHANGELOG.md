@@ -9,7 +9,7 @@ Read an old entry as history, not as current truth — for the current state of
 the tree see `CLAUDE.md` (index), `DEV.md` (internals) and `TODO.md` (backlog).
 
 **Format.** One entry = one `## YYYY-MM-DD — hook` heading, newest first;
-`grep -n '^## 20' CHANGELOG.md` lists all 287 entries in order. The hook
+`grep -n '^## 20' CHANGELOG.md` lists all 291 entries in order. The hook
 states the *finding*, not the files touched. Several entries on one day carry
 a qualifier — `(later)`, `(evening)`, `(third pass)` — and are likewise newest
 first, an unqualified entry normally being that day's first and so its last
@@ -306,6 +306,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Audits, doc syncs and cross-cutting reviews
 
+- **did the Duo really need a synthetic command-level ADB bus to boot, or were its built-in matrix and trackball already the whole product path?** → [2026-08-25 (sixth) — The Duo's synthetic ADB bus was not load-bearing…](#2026-08-25-pge-adb-retired)
+- **does one CB1 interrupt per completed PG&E SPI byte fix the Duo transport, or is it the same dead branch at a different cadence?** → [2026-08-25 (fifth) — The last SPI/CB1 alternative gets its verdict…](#2026-08-25-pge-cb1byte-retired)
+- **which temporary environment levers were already disproved strongly enough to delete, rather than merely classify?** → [2026-08-25 (fourth) — Knob audit retires five measured-dead routes…](#2026-08-25-five-knobs-retired)
+- **how does every environment lever declare whether it is product, diagnostic, test-only or temporary — without a wildcard hiding the next one?** → [2026-08-25 (third) — Environment-knob audit: 188 exact lifecycle contracts…](#2026-08-25-config-knob-registry)
 - **why does the tree not build on a stock x86-64 host, with `undefined symbol: main` in files that plainly have one?** → [2026-08-17 (later) — Two feature probes that each said yes…](#2026-08-17-lto-lld-combination)
 - **what proves the shape the release actually ships -- the core linked under LTO -- and on which architectures?** → [2026-08-17 (fifth) — Nothing was linking the core under LTO…](#2026-08-17-nightly-lto-core)
 - **why is a full `ctest` 4 h 30, and what would it take to run it in parallel?** → [2026-08-17 (fourth) — The suite is sequential by habit…](#2026-08-17-gate-scheduling-cost)
@@ -335,6 +339,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 Newest first.
 
+- **2026-08-25 (sixth)** — [The Duo's synthetic ADB bus was not load-bearing: the MAME-inert cell passes boot, input, persistence and reboot](#2026-08-25-pge-adb-retired)
+- **2026-08-25 (fifth)** — [The last SPI/CB1 alternative gets its verdict: one interrupt per byte still yields zero SCSI selections](#2026-08-25-pge-cb1byte-retired)
+- **2026-08-25 (fourth)** — [Knob audit retires five measured-dead routes: 188 → 183 controls, 21 → 16 chantiers](#2026-08-25-five-knobs-retired)
+- **2026-08-25 (third)** — [Environment-knob audit: 188 exact lifecycle contracts, zero wildcard decisions](#2026-08-25-config-knob-registry)
 - **2026-08-25 (later)** — [The green gate corpus chooses its bytes: 37 identities close fixture versioning](#2026-08-25-asset-lock-complete)
 - **2026-08-25** — [The IIvx persist gate exposed a two-transition ADB poll: Command must settle before N on VASP, but not globally](#2026-08-25-iivx-command-settle)
 - **2026-08-24 (seventh)** — [Reference fixtures become the default lookup: gates read `hdv/ref`, GUI sessions write `hdv/work`](#2026-08-24-reference-fixture-routing)
@@ -622,6 +630,120 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-08-25-pge-adb-retired"></a>
+## 2026-08-25 (sixth) — The Duo's synthetic ADB bus was not load-bearing: the MAME-inert cell passes boot, input, persistence and reboot
+
+The PG&E bring-up had treated ADB replies as load-bearing. POM68K attached a
+command-level `AdbBus` behind the modem cell, synthesized RDRF replies and kept
+`POM68K_PGE_ADB=0` as the A/B escape hatch; MAME models only the cell's timed
+TDRE and TC completion bits. That difference had never been tested against a
+complete product observable after the Duo's real matrix keyboard and trackball
+counters landed.
+
+On the locked ECFA989B ROM, PG&E boot ROM and clean System 7.5.5 reference
+disk, detaching the synthetic bus reaches the Finder with the control's exact
+observables: menu-bar darkness **0.04**, desktop **0.43**, **3394 SCSI
+commands**, GSC mode **2**. More decisively, the detached run passes the full
+`duo_persist_etalon`: Return dismisses the boot alert, Cmd-N creates the folder,
+the trackball steers to Shut Down, writes rise from **60/177 blocks** to **75**
+commands after shutdown, the disk reopens and the folder count survives a
+second PMU boot (**13 → 15 → 15**).
+
+No product caller feeds the HLE bus: built-in keys enter the PG&E matrix and
+pointer events enter its quadrature counters. The invented `AdbBus`, receive
+callback and reply scheduler are therefore removed rather than made the
+unconditional default. The cell now matches the implemented MAME surface, the
+A/B name joins the retired set, and the exact registry falls from **182 to
+181** controls, **15 to 14** chantiers (65 product, 46 diagnostic, 56 test).
+Because this removal and the same lot's dead Eclipse Egret bus both shorten a
+machine save-state chunk, the format advances from **v9 to v10**; an older
+chunk is refused instead of being accepted with every following field shifted.
+
+---
+
+<a id="2026-08-25-pge-cb1byte-retired"></a>
+## 2026-08-25 (fifth) — The last SPI/CB1 alternative gets its verdict: one interrupt per byte still yields zero SCSI selections
+
+The preceding cleanup deliberately retained `POM68K_PGE_CB1BYTE`: the
+per-edge CB1 route had a measured failure, but the one-interrupt-per-completed-
+byte variant had only a comment saying “under test.” The next action was
+therefore an actual A/B, not another classification judgement.
+
+With the locked ECFA989B ROM, PG&E boot ROM and clean System 7.5.5 reference
+disk, setting the lever fails in **5.21 s**: menu bar 0.50, desktop 0.50,
+**zero SCSI commands**, GSC mode 0. The unchanged control reaches the Finder in
+**47.12 s** on the same fixtures. Moving the interrupt from every SPI edge to
+every byte changes the cadence, not the defect: the transport must keep the SPI
+clock entirely off IFR.CB1 and use the PMU's separate port-F interrupt level.
+
+The branch and environment read are removed, the name joins the retired set,
+and the exact registry falls from **183 to 182** controls and **16 to 15**
+chantiers. This corrects the immediately preceding entry's explicit “no
+recorded verdict yet”; the result now lives here rather than in a permanent
+A/B switch.
+
+---
+
+<a id="2026-08-25-five-knobs-retired"></a>
+## 2026-08-25 (fourth) — Knob audit retires five measured-dead routes: 188 → 183 controls, 21 → 16 chantiers
+
+Classification made the temporary surface finite; the first closeout pass then
+asked which entries already had their verdict. Five did, with guest-visible
+evidence recorded before this pass: `POM68K_PGE_ADBRX` forced a fake receive
+flag and yielded zero SCSI selections; `POM68K_PGE_ADBMOUSE` restored the old
+Duo pointer route on which the guest Mouse global never moved;
+`POM68K_PGE_CB1INT` turned every SPI edge into a stale CB1 interrupt loop (176
+back-to-back readINTs, zero selections); `POM68K_PGE_CHARGER=0` stopped the
+first ADBReInit and produced zero selections; `POM68K_Q900_ADB=egret` delivered
+neither cursor, click nor KeyMap while the SWIM IOP wire delivered all three.
+
+Those branches and their environment reads are gone. The Duo now always sends
+the built-in pointer through the PG&E trackball counters, reports the
+load-bearing charger-present bit, and keeps the SPI clock off IFR.CB1. The
+unconditional-RDRF injection disappeared from the 68HC05 cell. Eclipse host
+input now has one path, the SWIM IOP `AdbLine`; the unused `egretAdb_` state and
+HLE bus attachment went with the selector. `POM68K_PGE_CB1BYTE` deliberately
+remains: unlike the per-edge route, its one-interrupt-per-byte alternative has
+no recorded verdict yet.
+
+The cleanup also removed the stale test signpost that still advertised the
+Eclipse selector. `config_test` reports **183/183**, split **65 product, 46
+diagnostic, 56 test, 16 chantier**, and asserts all five retired names remain
+absent. `msc_parity_test` passes, then the two guest witnesses pass on the locked fixtures:
+`q900_input_etalon` in **74.75 s** and `duo230_boot_etalon` in **47.12 s**.
+
+---
+
+<a id="2026-08-25-config-knob-registry"></a>
+## 2026-08-25 (third) — Environment-knob audit: 188 exact lifecycle contracts, zero wildcard decisions
+
+The prose inventory was bidirectionally green, but its four family wildcards
+could still conceal the decision the TODO actually asked for: is a new lever a
+supported product option, a maintained diagnostic, a test-harness input, or a
+temporary chantier control? The stale hand counts told the story too: 148 in
+the TODO, 179 in `DEV.md`, **188 in the tree**.
+
+`config_knobs.tsv` now gives every harvested literal one exact row. The current
+split is **65 product, 46 diagnostic, 56 test and 21 chantier**. Product rows
+cite configured regression gates; diagnostic and test rows cite a real owner
+containing the literal; test rows are rejected if the name appears below
+`src/` or the Moira fork. Every chantier row carries a document plus a named
+closeout topic, and the gate verifies that the document still exists and
+mentions the knob. The 21 temporary controls are concentrated where the open
+decisions really are: 040 cache default, event-deadline defaults, measured JIT
+prototypes, Duo PG&E A/B routes, the Eclipse ADB route and unidentified V8
+holes.
+
+`config_test` enforces exact set equality between the registry and all string
+literals, validates the four contract shapes, and still retains the independent
+prose check. Thus a broad documentation wildcard can remain readable but can
+no longer bless an unclassified addition. The audit also surfaced
+`POM68K_JIT_DYNAMIC_BITFIELD`, active by default and covered only by the JIT
+family wildcard; it is now explicitly documented as a production admission.
+The focused gate passes **188/188** with all four lifecycle classes present.
 
 ---
 

@@ -712,10 +712,12 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_test(NAME docs_test COMMAND docs_test
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-    # The env-knob surface against DEV.md § 5, both directions. Found twelve
-    # undocumented knobs and one documented ghost the first time it ran.
-    # Links nothing; walks the source tree.
+    # The env-knob surface against DEV.md § 5 and config_knobs.tsv. The exact
+    # registry classifies every name and checks product evidence against the
+    # configured gate roster. Links nothing; walks the source tree.
     add_executable(config_test tests/config_test.cpp)
+    target_compile_definitions(config_test PRIVATE
+        POM68K_GATE_ROSTER="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv")
     add_test(NAME config_test COMMAND config_test)
 
     # tests/FolderProbe.h — "did the guest create a folder?", the observable

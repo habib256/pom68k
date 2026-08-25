@@ -54,7 +54,6 @@ void M68hc05Pge::reset() {
     spiClk_ = spiMiso_ = false; spiEdgeAcc_ = 0;
     adbcr_ = 0; adbsr_ = 0x80; adbdr_ = 0;           // transmitter empty
     adbTimerAcc_ = 0; adbTimerMode_ = -1;
-    adbRx_.clear(); adbRxPos_ = 0; adbCmdPending_ = -1; adbData_.clear();
     pwmacr_ = pwma0_ = pwma1_ = pwmbcr_ = pwmb0_ = pwmb1_ = 0;
     plmcr_ = plmt1_ = plmt2_ = 0;
     pending_ = 0; waiting_ = false; spin_ = 0;
@@ -369,33 +368,6 @@ void M68hc05Pge::write8(uint16_t addr, uint8_t v) {
         adbsr_ &= uint8_t(~0xC0);                    // clear TDRE+TC
         adbTimerMode_ = 0;
         adbTimerAcc_ = 1200 * kHz / 1000000;         // byte time 1.2 ms
-        // Drive the wire. A command byte (addr<<4 | op) may bring back a
-        // device response; Listen data bytes follow their command and are
-        // not commands themselves.
-        adbRx_.clear();
-        adbRxPos_ = 0;
-        if (adbCommand) {
-            if (adbCmdPending_ >= 0) {
-                // Data byte of a Listen. The command only reaches the bus
-                // once BOTH bytes are in: a Listen R3 carries the new
-                // address, and running it with an empty payload means the
-                // relocation never happens — the firmware then re-finds the
-                // device at its old address and re-relocates it forever,
-                // which is exactly the endless Talk-R3-sweep + `$0F $FE`
-                // loop the ADB trace showed.
-                adbData_.push_back(v);
-                if (adbData_.size() >= 2) {
-                    adbRx_ = adbCommand(uint8_t(adbCmdPending_), adbData_);
-                    adbCmdPending_ = -1;
-                    adbData_.clear();
-                }
-            } else if (((v >> 2) & 3) == 2) {        // Listen: data follows
-                adbCmdPending_ = v;
-                adbData_.clear();
-            } else {
-                adbRx_ = adbCommand(v, {});
-            }
-        }
         return;
     }
     case 0x1C: {                                     // OPTION (banks boot ROM)
@@ -844,56 +816,14 @@ int M68hc05Pge::run(int budget) {
         }
 
         // ADB cell timer (TDRE after a byte, TC after clearing TDRE).
+        // No external devices are attached, matching MAME's cell: it never
+        // raises RDRF. The Duo's built-in keyboard/trackball are separate.
         if (adbTimerMode_ >= 0) {
             adbTimerAcc_ -= cyc;
             if (adbTimerAcc_ <= 0) {
                 const int mode = adbTimerMode_;
                 adbTimerMode_ = -1;
-                if (mode == 2) {
-                    // A reply byte arrives off the wire: RDRF only. Keeping
-                    // this a SEPARATE event from TDRE matters — folding the
-                    // two into one expiry (the first attempt) also clobbered
-                    // ADBDR while the firmware still held the transmitted
-                    // byte there, and the boot regressed to 0 SCSI selects.
-                    adbdr_ = adbRx_[adbRxPos_++];
-                    adbsr_ |= 0x08;                  // RDRF
-                    if (std::getenv("POM68K_PGE_ADBTRACE")) {
-                        static long rn = 0;
-                        if (rn++ < 20000)
-                            std::fprintf(stderr, "adbcell: RX $%02X (cr=$%02X "
-                                         "sr=$%02X) cyc=%lld\n", adbdr_, adbcr_,
-                                         adbsr_, (long long)cycles_);
-                    }
-                    if (adbRxPos_ < adbRx_.size()) {
-                        adbTimerMode_ = 2;           // pace the next byte
-                        adbTimerAcc_ = 800 * kHz / 1000000;
-                    }
-                } else {
-                    adbsr_ |= mode == 0 ? 0x80 : 0x40;   // TDRE / TC
-                    // Transmit done and a device answered → schedule the
-                    // reply; nothing pending is the ADB timeout, i.e. the
-                    // firmware's "no device at this address".
-                    //
-                    // BOTH the TDRE and the TC expiry chain into it, and
-                    // that is not belt-and-braces: the firmware acks TDRE
-                    // by writing ADBCR, which arms the TC timer and
-                    // OVERWRITES a reply scheduled off the TDRE expiry.
-                    // With only the TDRE chain the reply is silently
-                    // dropped every time and the cell looks inert.
-                    if (adbRxPos_ < adbRx_.size()) {
-                        adbTimerMode_ = 2;
-                        adbTimerAcc_ = 250 * kHz / 1000000;   // ADB Tlt
-                    }
-                }
-                // POM68K_PGE_ADBRX=1: DISPROVED probe, kept as a signpost.
-                // The Duo hang is inside the SYSTEM's ADBReInit
-                // ($4080A846 sets ADBBase+$15D bit 5, $4080A870 waits for
-                // it to clear), so raising RDRF unconditionally here looks
-                // tempting. It is wrong: with it the machine regresses to
-                // ZERO SCSI selects (vs 1122 without). The ADB cell needs
-                // real device semantics, not a blanket "byte received".
-                static const bool adbRx = std::getenv("POM68K_PGE_ADBRX") != nullptr;
-                if (adbRx) adbsr_ |= 0x08;
+                adbsr_ |= mode == 0 ? 0x80 : 0x40;   // TDRE / TC
                 updateAdbIrq();
             }
         }

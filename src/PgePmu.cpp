@@ -169,7 +169,7 @@ void PgePmu::keyEvent(uint8_t code, bool down) {
     // Not on this keyboard. An external Duo keyboard would come down the
     // ADB cell instead, which is where this used to go unconditionally —
     // and where nothing ever arrived, because the cell enumerates no
-    // devices (M68hc05Pge's adbCommand note).
+    // devices (M68hc05Pge's TDRE/TC-only modem-cell note).
 }
 
 // ── The trackball ───────────────────────────────────────────────────────
@@ -180,13 +180,8 @@ void PgePmu::keyEvent(uint8_t code, bool down) {
 // 2026-08-14 — the guest's own Mouse global never moves once.
 // Screen convention throughout: +x right, +y down, exactly what the
 // counters carry (measured on the guest's pointer, all four directions).
-static bool pgeAdbMouse() {
-    const char* e = std::getenv("POM68K_PGE_ADBMOUSE");
-    return e && e[0] != '0';
-}
 
 void PgePmu::mouseMove(int dx, int dy) {
-    if (pgeAdbMouse()) { adb_.mouseMove(dx, dy); return; }
     tbAccX_ += dx;
     tbAccY_ += dy;                   // +y is DOWN, both here and on screen
 }
@@ -204,7 +199,6 @@ void PgePmu::tbLatch() {
 }
 
 void PgePmu::mouseButton(bool down) {
-    if (pgeAdbMouse()) { adb_.mouseButton(down); return; }
     tbButton_ = down;
 }
 
@@ -238,7 +232,6 @@ void PgePmu::reset() {
     reqLevel_ = true;
     lastPortE_ = lastPortF_ = lastPortG_ = lastPortC_ = 0xFF;
     lastPortH_ = 0x00;       // DFAC-reset bit must start low (mac...:129)
-    adb_.reset();
     ds2400_.reset();
     lastMosi_ = false;
 }
@@ -302,14 +295,6 @@ void PgePmu::wirePorts() {
         // 555 commands, and the boot proceeds. The PMU's real interrupt is
         // its port F bit 2 (pmu_int → INT_CB1), which msc.h models as a
         // separate path precisely because the shift clock must not do it.
-        // POM68K_PGE_CB1INT=1 restores the MAME-literal wiring for A/B.
-        static const bool cb1Int = std::getenv("POM68K_PGE_CB1INT") != nullptr;
-        if (cb1Int) via_.extCb1Int(level);
-        // POM68K_PGE_CB1BYTE=1: third option under test — one CB1 interrupt
-        // per completed BYTE (the SR interrupt re-pointed at the bit the
-        // driver actually enables) instead of one per edge or none.
-        static const bool cb1Byte = std::getenv("POM68K_PGE_CB1BYTE") != nullptr;
-        if (cb1Byte && via_.takeShiftDone()) via_.raiseCb1();
         // MISO is driven ONLY while the VIA shifts OUT: MAME wires the
         // VIA's cb2 OUTPUT callback to spi_miso_w, and stock 6522
         // shift_out() is the only caller (6522via.cpp:446). Feeding the SR
@@ -319,18 +304,6 @@ void PgePmu::wirePorts() {
         if (((via_.acr() >> 2) & 7) == 7)
             mcu_->spiMisoIn(via_.extShiftCB2Out());
     };
-
-    // ADB modem cell → the command-level bus (keyboard $2, mouse $3).
-    // Command level is honest here: the cell IS a hardware transceiver, so
-    // the wire lives inside the PG&E's silicon and the firmware only ever
-    // exchanges bytes with it. MAME's m68hc05pge leaves the cell inert
-    // (TDRE/TC only, never RDRF), so its ADBReInit cannot enumerate at all.
-    // POM68K_PGE_ADB=0 disables it for A/B.
-    if (!std::getenv("POM68K_PGE_ADB") ||
-        std::getenv("POM68K_PGE_ADB")[0] != '0')
-        m.adbCommand = [this](uint8_t cmd, const std::vector<uint8_t>& d) {
-            return adb_.command(cmd, d);
-        };
 
     // Trackball quadrature counters ($14-$16): the LATCHED registers, held
     // steady for a whole 60 Hz frame — never a live drain, see tbLatch().
@@ -409,15 +382,11 @@ void PgePmu::wirePorts() {
             // open, so nothing reaches this path unless a caller asks.
             return uint8_t(0x06 | (clamshellOpen_ ? 0x08 : 0x00) |
                            (reqLevel_ ? 0x40 : 0x00));
-        case M68hc05Pge::G: {
-            // bit 6 = charger present (MAME pmu_portg_r returns 1). The
-            // BORG firmware's charge-management pass against our CONSTANT
-            // ADC readings is under investigation as the ADB-starvation
-            // culprit; POM68K_PGE_CHARGER=0 unplugs the charger for A/B.
-            static const bool charger = !std::getenv("POM68K_PGE_CHARGER")
-                || std::getenv("POM68K_PGE_CHARGER")[0] != '0';
-            return uint8_t((charger ? 0x40 : 0x00) | 0x08);
-        }
+        case M68hc05Pge::G:
+            // bit 6 = charger present (MAME pmu_portg_r returns 1). Its
+            // battery-state path is load-bearing: forcing it low produced
+            // zero SCSI selections, so the disproved A/B lever was retired.
+            return 0x48;
         case M68hc05Pge::H:
             // Read-back of the write latch, NOT open-bus: MAME pmu_porth_r
             // returns m_last_porth (macpwrbkmsc.cpp:543-546), and its $00

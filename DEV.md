@@ -584,8 +584,7 @@ IIfx's front end** grafted on:
 - **ADB is bit-banged by the SWIM IOP's firmware** through its GPIO onto
   `AdbLine`, exactly as on the IIfx — measured, not assumed: through the
   Egret nothing arrives, through the IOP the cursor moves, the click lands
-  and the KeyMap bit sets (`q900_input_etalon`, 2026-08-14;
-  `POM68K_Q900_ADB=egret` reproduces the dead side). MAME wires the device
+  and the KeyMap bit sets (`q900_input_etalon`, 2026-08-14). MAME wires the device
   line to both, and `gpout0` — the driving end — belongs to the IOP.
 - The **Egret** on VIA1 CB1/CB2 replaces the discrete RTC and owns clock,
   PRAM, power and the reset line: it holds the 68040 until its own PC3 edge
@@ -731,7 +730,7 @@ bit 1 and `/PMU_REQ` — the host's half — on bit 2 (`MscMemory.cpp:50-54`).
   quadrature counters** since 2026-08-14 (`$14` TBCS / `$15` X / `$16` Y).
   The ADB cell is what an *external* Duo keyboard/mouse would use, and
   nothing arrives there today — the guest's own Mouse global never moved on
-  that route (`POM68K_PGE_ADBMOUSE=1` keeps it for A/B). **The counters are
+  that route, so the A/B lever was retired. **The counters are
   latched, not drained on read**: one frame's motion moves into the registers
   at 60 Hz (`PgePmu::tbLatch`, MAME's `vbl_w` cadence) and holds there for
   the whole frame, because the firmware reads a register more than once per
@@ -1382,11 +1381,18 @@ grep -rhoP '"\KPOM68K_[A-Z0-9_]+(?=")' \
      src/ tests/ extern/moira/Moira --include=*.h --include=*.cpp | sort -u
 ```
 
-179 distinct names as of 2026-08-19. Match on the literal, not on `getenv`:
+181 distinct names as of 2026-08-25. Match on the literal, not on `getenv`:
 the JIT knobs go through `jit::detail::env()` (`src/jit/JitConfig.h:29`) and
 a `getenv`-anchored pattern misses every one of them. **Re-derive rather
 than extend by hand** — the two cross-checks that built this list found 22
 and then 12 knobs the code read that no document mentioned.
+
+The prose below explains behaviour; [`config_knobs.tsv`](config_knobs.tsv) is
+the exact lifecycle registry. Its 181 rows contain no wildcard and classify
+each literal as `product` (65), `diagnostic` (46), `test` (56), or `chantier`
+(14). A product row cites at least one configured regression gate; a permanent
+diagnostic or test row names the source file that owns it; a chantier row names
+the document and closeout topic that decides its removal or graduation.
 
 Knobs that test only for *presence* — `POM68K_NOFPU`, `POM68K_FLOPPY_RO`,
 `POM68K_MMU040_WALK`, `POM68K_Q605_NOFPU`, `POM68K_CENTRIS_FPU` /
@@ -1478,15 +1484,10 @@ behind the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES —
 [§6](#6-test-tiers-and-gates).
 
 **Duo / PG&E** — behavioural ([§2.11](#211-msc--pge-power-manager--powerbook-duo-230)):
-`POM68K_PGE_ADB` (`0` = detach the ADB bus from the modem cell),
 `POM68K_PGE_SPINUS` (host stall per /PMU_REQ edge, µs, default 80, `0` =
-off), `POM68K_PGE_CB1INT` / `POM68K_PGE_CB1BYTE` (alternate SPI-clock →
-CB1 wirings, MAME-literal A/B), `POM68K_PGE_ADBRX` (disproved RDRF
-experiment, kept as signpost), `POM68K_PGE_CHARGER` (`0` = unplug the
-charger — boots WORSE, see `docs/DUO_BRINGUP.md`), `POM68K_PGE_ADBMOUSE`
-(`1` = send pointer motion down the ADB modem cell again instead of the
-PG&E's trackball counters; kept for A/B — the guest's Mouse global never
-moves on that route). Diagnostics:
+off). The per-edge and per-byte interrupt routes, unconditional RDRF,
+charger-off and ADB-mouse routes are retired below after measured failures.
+Diagnostics:
 `POM68K_PGE_TRACE`, `POM68K_PGE_HSHAKE` (REQ/ACK + INT-line
 transitions), `POM68K_PGE_SPIBYTES`, `POM68K_PGE_TRAP=<hexbyte>`,
 `POM68K_PGE_TBTRACE` (what the firmware reads out of the trackball
@@ -1504,11 +1505,9 @@ Use `POM68K_JIT_PROFILE=production|conservative|instrumented` for normal
 operation; individual variables remain explicit attribution overrides.
 
 **Quadra 900/950 ("Eclipse", on the Q700 board — M7 closed 2026-08-02)**:
-`POM68K_Q900_ADB` (`egret` routes input to the Egret's ADB instead of the
-IOP wire — an A/B knob, and on the measured board nothing arrives that way;
-the default is the SWIM IOP's bit-banged wire since 2026-08-14, when
-`q900_input_etalon` first asked), `POM68K_Q900_IOPBRK` (dump either IOP's 65C02 PC/SP trail
-at its first `BRK` — the tool that closed M7, kept for the next one),
+ADB is fixed to the SWIM IOP's measured bit-banged wire;
+`POM68K_Q900_IOPBRK` dumps either IOP's 65C02 PC/SP trail
+at its first `BRK` — the tool that closed M7, kept for the next one;
 `POM68K_Q900_IOP_TRACE` (`=<max lines>`, every host-window touch; a bare
 `=1` means 600 lines, which the first firmware upload exhausts),
 `POM68K_Q900_IOPWATCH` (`=<hex>`, names every writer of one IOP RAM byte —
@@ -1576,19 +1575,28 @@ current:
   `*_EVENT` knobs above (`MACII`/`DUO`); the compacts and the IIfx have
   no knob at all (exact by `sync()` and refused on evidence,
   respectively).
+- `POM68K_PGE_ADBRX`, `POM68K_PGE_ADBMOUSE`, `POM68K_PGE_CB1INT`,
+  `POM68K_PGE_CB1BYTE`, `POM68K_PGE_CHARGER` — five Duo A/B routes retired
+  after producing zero SCSI selects, a dead pointer path, an interrupt loop,
+  zero selects and zero selects respectively (`docs/DUO_BRINGUP.md`).
+- `POM68K_PGE_ADB` — detaching the synthetic command-level ADB bus leaves
+  the locked Duo boot observables unchanged and passes the complete persist
+  leg (Return, Cmd-N, trackball, Shut Down and reboot). The built-in devices
+  use the matrix/counters, so the unconsumed HLE bus and its selector were
+  removed; the modem cell now matches MAME's TDRE/TC-only surface.
+- `POM68K_Q900_ADB` — the Egret route delivers no Eclipse input;
+  `q900_input_etalon` proved the SWIM IOP wire and it is now unconditional.
 
 ### How this list stays true
 
-`config_test` (`unit`, asset-free) checks it in both directions: every
-POM68K\_ name the code reads as a string literal must appear here or in
-`src/jit/POM68K_JIT.md`, and every name that appears here must exist in the
-code unless it is under **Retired**. It understands the three notations this
-section already uses — a full name; a *backticked* name ending in `*` or in
-an underscore, which registers as a **prefix** covering everything under it;
-and a suffix continuation of the previous name (`POM68K_CENTRIS_FPU` then
-`_BAREFPU` → `POM68K_CENTRIS_BAREFPU`). So nothing has to be rewritten to be
-checkable. **Still re-derive rather than extend by hand**; the gate tells you
-when you forgot, it does not write the entry.
+`config_test` (`unit`, asset-free) checks three independent contracts. First,
+every POM68K\_ string literal in the code has one exact `config_knobs.tsv` row
+and no registry row is a ghost. Second, product contracts cite gates present
+in the configured roster, diagnostic/test owners exist and contain the
+literal, test knobs do not leak into product sources, and chantier documents
+exist and name the knob. Third, the explanatory prose stays bidirectionally
+in sync with the tree. **Still re-derive rather than extend by hand**; the gate
+tells you when you forgot, it does not write the entry.
 
 **The prefix rule is a loaded gun, and it went off in this very paragraph.**
 `config_test` cuts § 5 at the next `## `, so a `###` subsection like this one
@@ -1602,10 +1610,8 @@ pair with the suffix notation rather than a wildcard; and keep real wildcards
 narrow — the four live ones are `POM68K_JIT_*`, `POM68K_JIT_LOCKSTEP_*`,
 `POM68K_BENCH_*` and `POM68K_PROBE*`.
 
-**Not yet enforced**: an expiry per knob. The five probes above declare
-their chantier; the other ~140 entries do not yet say whether they are a
-permanent product option (which earns a gate) or a chantier leftover. That
-classification is a decision per knob, not a mechanical one — `TODO.md` § 8.
+The prose wildcard support is retained only for readability. It can no longer
+hide a lifecycle decision because the registry side accepts exact names only.
 
 ---
 

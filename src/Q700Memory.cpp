@@ -126,26 +126,14 @@ Q700Memory::Q700Memory(uint32_t totalRam, int64_t cpuHz, Model model)
         // Mouse frozen, MBState dead, KeyMap empty; through the IOP, the
         // cursor crosses the screen (15,15 → 475,323), the click lands and
         // the KeyMap bit sets, with 719 240 gpout0 edges to show for it. So
-        // the Eclipse's ADB is the IIfx's wire, not the Egret's, and the
-        // default flips here. `POM68K_Q900_ADB=egret` keeps the old routing
-        // for A/B. The Egret is still this board's clock, PRAM, power and
-        // reset MCU — it is simply not its ADB transceiver.
+        // the Eclipse's ADB is the IIfx's wire, not the Egret's. The
+        // disproved Egret A/B route was retired; the Egret is still this
+        // board's clock, PRAM, power and reset MCU — it is simply not its
+        // ADB transceiver.
         //
         // This was dead from the day the profile landed (2026-08-02) and no
         // gate could see it: the tower had no input gate at all until the
         // firmware LLE brought one.
-        const char* who = std::getenv("POM68K_Q900_ADB");
-        egretAdb_ = who && std::string(who) == "egret";
-        // HLE only: the command-level model needs an AdbBus to answer from.
-        // Under the firmware LLE the devices sit on the MCU's own bit-serial
-        // line (CudaLle::adbLine), exactly as on every other Egret machine —
-        // the IOP keeps `adbLine_` to itself. MAME merges the two into one
-        // wired-AND wire (`macadb->adb_data_callback().append(m_egret,…)`);
-        // POM68K keeps them separate because only one side is ever driven,
-        // and a shared line would have the IOP's idle gpout0 level sitting on
-        // the Egret's poll. Reopen if a guest ever drives both.
-        if (egretAdb_ && !egretLleOn_) egret_.setAdbBus(&adb_);
-
         // POM68K_Q900_IOPBRK=1: both IOP firmwares end in a BRK panic
         // handler when they lose their way, and the only useful evidence
         // is where they came FROM — dump the 65C02 PC trail on the first

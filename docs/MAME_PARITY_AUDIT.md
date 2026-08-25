@@ -349,7 +349,7 @@ boot — aucun des bug-suspects ne pouvait la faire tomber.
 
 **Cosmétique** : latch /IRQ externe non annulé au deassert (pin non câblée) ; STOP traité comme WAIT (MAME garde aussi ses timers) ; entrées non câblées lisent `$FF` vs 0.
 
-**POM68K plus riche** : re-hold /PMU_INT sur IFR.CB1 à travers les acks guest (deadlock mesuré, medium) ; horloge SPI volontairement sans IFR.CB1 (0 vs 1122 sélections SCSI, knobs `POM68K_PGE_CB1INT` pour retrouver le câblage MAME littéral — à re-tester si master rebinde) ; cellule modem ADB avec vrai trafic device (Listen/Talk pacés, relocation R3 effective).
+**POM68K plus riche** : re-hold /PMU_INT sur IFR.CB1 à travers les acks guest (deadlock mesuré, medium) ; horloge SPI volontairement sans IFR.CB1 (0 vs 1122 sélections SCSI ; le levier qui rétablissait le câblage MAME littéral a été retiré après cette mesure) ; cellule modem ADB avec vrai trafic device (Listen/Talk pacés, relocation R3 effective).
 
 ### 2.13 DAFB/Antelope + Valkyrie + Ariel
 

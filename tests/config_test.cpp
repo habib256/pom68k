@@ -1,14 +1,13 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// The environment-knob surface, checked against its documentation.
+// The environment-knob surface, checked against its documentation and exact
+// lifecycle registry.
 //
-// 179 distinct `POM68K_*` names are read across `src/`, `tests/` and the
-// Moira fork. No knob is individually wrong; the problem is that the surface
-// grows silently, and `DEV.md` § 5 calls itself "the complete list" — a claim
-// nothing verified. When this gate was first written it found **twelve** names
-// the code reads that no document mentioned, and one documented name that no
-// longer exists in the tree.
+// 181 distinct `POM68K_*` names are currently read across `src/`, `tests/`
+// and the Moira fork. `DEV.md` remains the human explanation; the exact
+// `config_knobs.tsv` row is the machine contract that prevents a family
+// wildcard from hiding an unclassified addition.
 //
 // Both directions, because both drift:
 //   1. every knob the code reads is documented
@@ -23,9 +22,11 @@
 // Modelling those was not a nicety: a first pass that ignored them reported
 // 23 undocumented knobs, and half of that was the checker misreading prose.
 //
-// What this gate does NOT check yet is the expiry — whether each knob is a
-// permanent product option or a chantier leftover. That is a decision per
-// knob, not a mechanical one (`TODO.md` § 8).
+// Registry contracts:
+//   product     gate:<configured gate>[,<configured gate>...]
+//   diagnostic  owner:<source path containing the literal>
+//   test        owner:<test path containing the literal>, absent from product
+//   chantier    expiry:<document>#<topic>, with the knob named in the document
 //
 // Source-tree gate: soft-skips when run somewhere without `src/`.
 
@@ -36,14 +37,24 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
+
+#ifndef POM68K_GATE_ROSTER
+#define POM68K_GATE_ROSTER ""
+#endif
 
 static int gFails = 0;
 static void check(bool ok, const std::string& what) {
     std::printf("%s %s\n", ok ? "ok  " : "FAIL", what.c_str());
     if (!ok) gFails++;
+}
+
+static void require(bool ok, const std::string& what) {
+    if (!ok) check(false, what);
 }
 
 static std::string slurp(const std::filesystem::path& p) {
@@ -108,10 +119,69 @@ static std::string section(const std::string& text, const std::string& heading) 
     return text.substr(s, e == std::string::npos ? std::string::npos : e - s);
 }
 
+struct KnobEntry {
+    std::string kind;
+    std::string contract;
+    int line = 0;
+};
+
+static std::vector<std::string> split(const std::string& text, char sep) {
+    std::vector<std::string> out;
+    std::istringstream in(text);
+    for (std::string part; std::getline(in, part, sep);) out.push_back(part);
+    return out;
+}
+
+static bool knobName(const std::string& name) {
+    if (name.rfind("POM68K_", 0) != 0 || name.size() <= 7) return false;
+    return std::all_of(name.begin(), name.end(), [](char c) {
+        return std::isupper(uint8_t(c)) || std::isdigit(uint8_t(c)) || c == '_';
+    });
+}
+
+static std::map<std::string, KnobEntry> loadRegistry(const std::string& path) {
+    std::map<std::string, KnobEntry> out;
+    std::ifstream f(path);
+    std::string line;
+    int lineNo = 0;
+    while (std::getline(f, line)) {
+        lineNo++;
+        if (line.empty() || line[0] == '#') continue;
+        const std::vector<std::string> fields = split(line, '\t');
+        if (fields.size() != 3) {
+            require(false, path + ":" + std::to_string(lineNo) +
+                               " must contain exactly 3 tab-separated fields");
+            continue;
+        }
+        require(knobName(fields[0]), path + ":" + std::to_string(lineNo) +
+                                        " has a valid exact knob name");
+        const bool kindOk = fields[1] == "product" || fields[1] == "diagnostic" ||
+                            fields[1] == "test" || fields[1] == "chantier";
+        require(kindOk, path + ":" + std::to_string(lineNo) +
+                            " has a valid lifecycle class");
+        if (!knobName(fields[0]) || !kindOk) continue;
+        const bool fresh = out.emplace(fields[0], KnobEntry{fields[1], fields[2], lineNo}).second;
+        require(fresh, path + ":" + std::to_string(lineNo) +
+                           " duplicates `" + fields[0] + "`");
+    }
+    return out;
+}
+
+static std::set<std::string> loadGates(const std::string& path) {
+    std::set<std::string> out;
+    std::ifstream f(path);
+    for (std::string line; std::getline(f, line);) {
+        const size_t tab = line.find('\t');
+        if (tab != std::string::npos && tab) out.insert(line.substr(0, tab));
+    }
+    return out;
+}
+
 int main() {
     namespace fs = std::filesystem;
     const std::string devPath = testasset::find("DEV.md");
     const std::string jitPath = testasset::find("src/jit/POM68K_JIT.md");
+    const std::string registryPath = testasset::find("config_knobs.tsv");
     std::string root;
     for (const char* base : { "", "../" })
         if (fs::is_directory(std::string(base) + "src")) { root = base; break; }
@@ -123,9 +193,13 @@ int main() {
         std::printf("SKIP: DEV.md not found\n");
         return 0;
     }
+    if (registryPath.empty()) {
+        std::printf("FAIL config_knobs.tsv not found\n");
+        return 1;
+    }
 
     // ── What the code reads ───────────────────────────────────────────────
-    std::set<std::string> code;
+    std::set<std::string> code, productCode;
     for (const char* dir : { "src", "tests", "extern/moira/Moira" }) {
         const fs::path d = root + dir;
         if (!fs::is_directory(d)) continue;
@@ -133,12 +207,78 @@ int main() {
             if (!ent.is_regular_file()) continue;
             const std::string ext = ent.path().extension().string();
             if (ext != ".h" && ext != ".cpp" && ext != ".hpp") continue;
-            harvestCode(slurp(ent.path()), code);
+            const std::string body = slurp(ent.path());
+            harvestCode(body, code);
+            if (std::string(dir) != "tests") harvestCode(body, productCode);
         }
     }
     check(code.size() > 50,
           "harvested the knob surface from the tree (" +
               std::to_string(code.size()) + " names)");
+
+    // ── Exact lifecycle classification ──────────────────────────────────
+    const auto registry = loadRegistry(registryPath);
+    check(registry.size() == code.size(),
+          "config_knobs.tsv has one exact row per harvested knob (" +
+              std::to_string(registry.size()) + " rows)");
+    for (const std::string& k : code)
+        require(registry.count(k), "harvested knob `" + k + "` is not classified");
+    for (const auto& [k, entry] : registry)
+        require(code.count(k), "classified knob `" + k + "` does not exist in the tree");
+
+    const std::set<std::string> gates = loadGates(POM68K_GATE_ROSTER);
+    check(!gates.empty(), "configured gate roster is available to config_test");
+    std::map<std::string, int> classCounts;
+    for (const auto& [k, entry] : registry) {
+        classCounts[entry.kind]++;
+        const std::string where = registryPath + ":" + std::to_string(entry.line);
+        if (entry.kind == "product") {
+            const std::string prefix = "gate:";
+            require(entry.contract.rfind(prefix, 0) == 0,
+                    where + " product contract for `" + k + "` must name a gate");
+            const auto named = split(entry.contract.substr(prefix.size()), ',');
+            require(!named.empty() && !named.front().empty(),
+                    where + " product contract for `" + k + "` is empty");
+            for (const std::string& gate : named)
+                require(gates.count(gate), "product knob `" + k +
+                                               "` cites missing gate `" + gate + "`");
+        } else if (entry.kind == "diagnostic" || entry.kind == "test") {
+            const std::string prefix = "owner:";
+            require(entry.contract.rfind(prefix, 0) == 0,
+                    where + " `" + k + "` must name an owner");
+            const std::string owner = entry.contract.substr(prefix.size());
+            const fs::path ownerPath = root + owner;
+            require(fs::is_regular_file(ownerPath), "owner `" + owner + "` does not exist for `" + k + "`");
+            if (fs::is_regular_file(ownerPath))
+                require(slurp(ownerPath).find("\"" + k + "\"") != std::string::npos,
+                        "owner `" + owner + "` does not contain `" + k + "`");
+            if (entry.kind == "test")
+                require(!productCode.count(k), "test knob `" + k + "` leaked into product sources");
+        } else if (entry.kind == "chantier") {
+            const std::string prefix = "expiry:";
+            require(entry.contract.rfind(prefix, 0) == 0,
+                    where + " chantier `" + k + "` needs an expiry reference");
+            const std::string ref = entry.contract.substr(prefix.size());
+            const size_t hash = ref.find('#');
+            require(hash != std::string::npos && hash > 0 && hash + 1 < ref.size(),
+                    where + " chantier `" + k + "` must name document and topic");
+            if (hash != std::string::npos) {
+                const std::string doc = ref.substr(0, hash);
+                const fs::path docPath = root + doc;
+                require(fs::is_regular_file(docPath), "expiry document `" + doc + "` does not exist for `" + k + "`");
+                if (fs::is_regular_file(docPath))
+                    require(slurp(docPath).find(k) != std::string::npos,
+                            "expiry document `" + doc + "` does not name `" + k + "`");
+            }
+        }
+    }
+    check(classCounts["product"] && classCounts["diagnostic"] &&
+              classCounts["test"] && classCounts["chantier"],
+          "all four lifecycle classes are represented (product=" +
+              std::to_string(classCounts["product"]) + ", diagnostic=" +
+              std::to_string(classCounts["diagnostic"]) + ", test=" +
+              std::to_string(classCounts["test"]) + ", chantier=" +
+              std::to_string(classCounts["chantier"]) + ")");
 
     // ── What the docs declare ─────────────────────────────────────────────
     const std::string dev = slurp(devPath);

@@ -239,27 +239,18 @@ public:
     // Input reaches the guest over whichever ADB transport this board has:
     // the PIC1654S transceiver (Spike), or on the Eclipse the SWIM IOP's
     // bit-banged wire — the IIfx path, and the one the ROM actually drives
-    // (measured 2026-08-14, `q900_input_etalon`). `POM68K_Q900_ADB=egret`
-    // routes to the Egret instead, where the firmware LLE puts the devices
-    // on the MCU's own bit-serial line and the HLE on the command-level
-    // AdbBus; neither delivers, which is the point of keeping the knob.
+    // (measured 2026-08-14, `q900_input_etalon`).
     void keyEvent(uint8_t code, bool down) {
         if (!eclipse()) { adbVia_.keyEvent(code, down); return; }
-        if (!egretAdb_) { adbLine_.keyEvent(code, down); return; }
-        if (egretLleOn_) egretLle_.adbLine().keyEvent(code, down);
-        else adb_.keyEvent(code, down);
+        adbLine_.keyEvent(code, down);
     }
     void mouseMove(int dx, int dy) {
         if (!eclipse()) { adbVia_.mouseMove(dx, dy); return; }
-        if (!egretAdb_) { adbLine_.mouseMove(dx, dy); return; }
-        if (egretLleOn_) egretLle_.adbLine().mouseMove(dx, dy);
-        else adb_.mouseMove(dx, dy);
+        adbLine_.mouseMove(dx, dy);
     }
     void mouseButton(bool down, int button = 0) {
         if (!eclipse()) { adbVia_.mouseButton(down, button); return; }
-        if (!egretAdb_) { adbLine_.mouseButton(down, button); return; }
-        if (egretLleOn_) egretLle_.adbLine().mouseButton(down, button);
-        else if (button == 0) adb_.mouseButton(down);
+        adbLine_.mouseButton(down, button);
     }
     bool overlay() const { return overlay_; }
     const uint8_t* vram() const { return vram_.data(); }
@@ -392,8 +383,6 @@ private:
     int64_t scsi2Debt_ = 0;
     int64_t eclipseC15Acc_ = 0;        // CPU→C15M fractional phase
     void flushScsi2();
-    bool egretAdb_ = false;            // Egret serves ADB (vs the IOP wire,
-                                       // the measured default since 2026-08-14)
     long adbHostEdges_ = 0;
     Q700Cpu* cpu_ = nullptr;
 
