@@ -131,6 +131,28 @@ cmake --build build-pi -j2 --target jit_bench
 POM68K_BENCH_FRAMES=600 ./build-pi/jit_bench     # wall-clock + fingerprint
 ```
 
+The full GUI has a matching scriptable gauge. It uses the same published
+`machineClock()` as the CPU menu, so it includes the machine thread, raster,
+audio pacing, AppleTalk hub, OpenGL upload and ImGui instead of timing the CPU
+loop alone. After the Finder is idle, log twenty half-second samples and let
+the application close itself:
+
+```bash
+POM68K_SPEED_LOG=1 POM68K_SPEED_LOG_SKIP=20 POM68K_SPEED_LOG_COUNT=20 \
+    ./build-pi/POM68K roms/<rom> hdv/<boot-volume> 2>gui-speed.log
+awk -F'ratio=' '/\[gui-speed\]/ {sum += $2; n++} END {if (n) print sum/n}' \
+    gui-speed.log
+```
+
+`POM68K_SPEED_LOG_SKIP` is counted in half-second gauge updates, not guest
+frames. Set it only after observing how long this disk takes to reach an idle
+Finder; otherwise the result measures boot. Keep AppleTalk in its shipping
+default for the product number, and repeat once with `POM68K_APPLETALK=0` to
+attribute the GUI/network delta. `POM68K_AUDIO=0` is a diagnostic third arm:
+it separates raw GUI/network cost from intentional audio-clocked pacing, but
+is not a product-speed result. A Pi claim still requires the fixed-cycle
+fingerprints to match across the compared builds.
+
 ---
 
 ## 4. The recipe on the Pi

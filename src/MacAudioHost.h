@@ -17,11 +17,15 @@
 #include "third_party/miniaudio.h"
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 
 class MacAudioHost {
 public:
     bool start() {
+        if (const char* enabled = std::getenv("POM68K_AUDIO");
+            enabled && std::strcmp(enabled, "0") == 0) return false;
         ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
         cfg.playback.format   = ma_format_f32;
         cfg.playback.channels = 2;

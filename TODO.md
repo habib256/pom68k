@@ -6,34 +6,33 @@ subsystem), implementation detail in `DEV.md`, vendor notes in
 `extern/*/POM68K_VENDOR.md`, LLE inventory in `docs/LLE_VS_HLE.md`, JIT design
 in `src/jit/POM68K_JIT.md`, conformant-JIT plan in `docs/JIT_BRINGUP.md`.
 
-**Counts re-verified against `CMakeLists.txt` and the code on 2026-08-17** —
+**Counts re-verified against `CMakeLists.txt` and the code on 2026-08-25** —
 re-verify before quoting them anywhere:
 
 - **The gate registry is host-conditional, so a single number is always wrong
-  somewhere.** The documented registry (2026-08-22): **227 gates** — 109
-  `unit`, 83 `asset-none`, 9 `smoke`, 40 `jit`, 51 `m040`, 53 `m030`, 118
-  `etalon` (12 of them `etalon-core`). Five are host-conditional — the
+  somewhere.** The documented registry (2026-08-25): **229 gates** — 110
+  `unit`, 84 `asset-none`, 9 `smoke`, 40 `jit`, 51 `m040`, 54 `m030`, 119
+  `etalon`, 12 `etalon-core`. Five are host-conditional — the
   AArch64 trio `jit_lockstep_a64_coarse_test` +
   `jit_lockstep_030_a64_experimental_test` +
   `jit_lockstep_030_a64_alignment_test` (the first also joins `smoke`) and
   the x86-64-only `jit_lockstep_030_x64_experimental_test` +
   `jit_lockstep_030_x64_alignment_test` — so an x86-64 configure sees
-  **224** (106 `unit`, 8 `smoke`, 37 `jit`) and an AArch64 one 225 (107
+  **226** (107 `unit`, 8 `smoke`, 37 `jit`) and an AArch64 one 227 (108
   `unit`, 38 `jit`). Eight more exist only under `-DPOM68K_PRODUCT_LLE_GATES=ON`
   (default OFF, `CMakeLists.txt:425`, and it FATAL_ERRORs off AArch64).
   `unit` is *not* "asset-free" — it remains the legacy "name does not end in
   `etalon`" label. `asset-none` is the manifest-declared daily tier.
-- **Last FULL suite: 222/222 on 2026-08-18** — the whole registry on this
-  host and the first PARALLEL whole-registry run the project has quoted:
-  208 gates at `-j16` in 1 h 27 on the calibrated slot budgets, then the two
-  families the RAM model cannot see (Q700/Eclipse, which share `Q700Memory`,
-  and the UDP-port AppleTalk gates) serialized in 43 min, 14/14 — 2 h 11
-  total against the 4 h 30 sequential habit, on relinked binaries with the
-  freshness guard green before the tier (`CHANGELOG.md` 2026-08-18 (fourth)).
-  The previous claim here was 206/206 on 2026-08-16, 4 h 30 sequential; the
-  same day's earlier run of the same tiers found **ten** reds in five
-  unrelated causes (`CHANGELOG.md` 2026-08-16) — which is what a suite that
-  has not been run whole for nine days looks like.
+- **Last FULL suite: 227/227 on AArch64, 2026-08-25.** Fresh full build;
+  freshness guard self-test green, then 152/152 gate executables current.
+  The registry's exact disjoint partition passed `unit` **108/108 in
+  271.17 s**, then `etalon` **119/119 in 1 088.20 s** at `-j16`: 22 min 39 s
+  wall in total, including the new IIci soak and the RTC/CA2 correction.
+  Before it: 222/222 on 2026-08-18 in 2 h 11, the project's first quoted
+  parallel whole-registry run (`CHANGELOG.md` 2026-08-18 (fourth)); before
+  that, 206/206 on 2026-08-16, 4 h 30 sequential. The same tiers earlier on
+  2026-08-16 found **ten** reds in five unrelated causes — which is what a
+  suite that has not been run whole for nine days looks like.
   **The `make` is part of the claim, not the decor**: an earlier 143/143 in
   August ran over binaries linked at different times and proved nothing —
   `ctest` does not compile. A phantom failure gets investigated; a phantom pass
@@ -115,10 +114,11 @@ La fenêtre se ferme seulement quand les quatre sorties suivantes sont vraies :
   plan IR commun ; les backends n'en abaissent que les sous-formes prouvées
   (`LEA` full/direct depuis le 2026-08-23) et refusent les autres sans les
   redécoder ;
-- [ ] ajouter les bancs Macintosh à budget de cycles fixe pour 68000 et 68020.
-  Les seuils représentatifs versionnés couvrent déjà Q605/68040 et
-  LC II/68030 sur l'hôte x86-64 de référence et sur Apple M4 ; aucun seuil
-  des deux familles restantes n'est extrapolé ;
+- [x] bancs Macintosh à budget de cycles fixe pour les quatre familles :
+  `jit_bench_plus`/68000 et `jit_bench_macii`/68020 complètent LC II/68030 et
+  Q605/68040 depuis le 2026-08-25. Les deux nouveaux bancs partagent le même
+  fingerprint, le rapport temps réel et l'ABBA ; leurs seuils Apple M4 sont
+  versionnés. Aucun seuil x86-64 n'est extrapolé avant une mesure sur cet hôte ;
 - [ ] le palier legacy `unit` n'a plus d'échec inexpliqué sur les deux
   architectures hôtes. **Moitié x86-64 mesurée le 2026-08-17** (GCC 13,
   conteneur neuf, arbre reconstruit from scratch — `make -j4`, exit 0,
@@ -243,16 +243,20 @@ de l'armer.
   boot etalon. Les deux impriment un **× temps réel**, seule forme du chiffre
   qui se compare d'un hôte à l'autre — et la seule qui se compare à la cible,
   qui est « ×1 ou mieux », pas « n secondes ».
-- [ ] **Où passe l'écart ×1,98 (mesuré, thread machine) → ×1,3 (rapporté,
-  GUI) ?** Innocentés : le cœur CPU, le raster, et le découpage en tranches du
+- [x] **Où passe l'écart ×1,98 (mesuré, thread machine) → ×1,3 (rapporté,
+  GUI) ?** **Attribué le 2026-08-25 au chemin AppleTalk par tranche.**
+  Innocentés : le cœur CPU, le raster, et le découpage en tranches du
   quantum GUI (`runQuantumWithWire`, `main.cpp:238`, 64 tranches quand
   AppleTalk est actif — `POM68K_BENCH_SLICES` le chiffre à **2,2 %**, et 64
-  tranches ne coûtent pas plus qu'une). Restent, dans cet ordre : le `tick` du
-  hub AppleTalk par tranche (il vit dans `main.cpp`, donc aucun bench ne
-  l'atteint aujourd'hui), le thread GUI lui-même (`renderFrame` + upload GL +
-  ImGui à 60 Hz), le chemin audio — et l'hypothèse que le ×1,3 soit une
-  impression. La jauge GUI existe désormais (voir ci-dessous), donc l'écart est
-  observable des deux côtés.
+  tranches ne coûtent pas plus qu'une). Sur deux clones APFS et deux PRAM
+  identiques, vingt échantillons après quarante secondes donnent LC II/A64
+  **×9,235** AppleTalk coupé contre **×0,845** avec le défaut produit ; le
+  troisième bras `POM68K_AUDIO=0` reste **×0,845**, donc ni le DAC ni son
+  cadencement. Le banc fixe 30 000 frames donne ×8,91 sans GUI et ×8,01 avec
+  64 raster catch-ups : ni le thread GUI, ni OpenGL, ni le découpage seul ne
+  portent le facteur 10,9. Ce diagnostic n'est pas une promotion perf (pas
+  ABBA) ; le prochain changement doit profiler et accélérer `AtalkHub::tick`
+  sans changer ses échéances LLAP/ATP.
 - [ ] **Rejouer l'A/B sur un vrai Pi 400** : même instrument que la case 1.
 
 **La jauge de vitesse du GUI a atterri** : le menu CPU affiche le ratio temps
@@ -260,6 +264,9 @@ réel sur les douze familles, calculé côté GUI à partir de `machineClock()`
 publié séparément du `getClock()` boosté (deux échantillons à 500 ms d'écart,
 divisés par `mem.cpuHz()`), sans toucher ni scheduler ni périphériques ;
 `machinehost_test` verrouille que la source est bien l'horloge machine.
+Depuis le 2026-08-25, `POM68K_SPEED_LOG=1`, `_SKIP` et `_COUNT` exposent le
+même calcul à un protocole scriptable et ferment l'application après le quota ;
+`POM68K_AUDIO=0` est le bras d'attribution silencieux, pas un chiffre produit.
 **Mesure GUI 2026-08-11**, quatre copies jetables du même disque 8.1, moyenne
 des dix derniers échantillons : Q605 **×2,596**, Q630 **×2,274**, Centris 650
 **×3,448**, Q700 **×3,394** — application complète (thread machine, rendu,
@@ -554,24 +561,27 @@ Keys inside the image); the Cuda↔VIA phase robustness chantier (2026-08-03 —
 ## 2. Test & validation depth — the single biggest gap
 
 The gates prove **boot**, not **use**, and the machine fan-out made the ratio
-worse. Of the **37 profiles**, only **14** have any gate past the Finder
+worse. Of the **37 profiles**, only **15** have any gate past the Finder
 signature: LC II (`lcii_soak/persist/launch/floppy_etalon` +
 `lcii_savestate_etalon`), Quadra 605 (`q605_soak/persist_etalon`,
 `q605_cudalle_mouse/key_etalon`, `q605_cdrom/cdboot/cdhot_etalon`,
 `q605_savestate_etalon`, `q605_ot_bind_etalon`), Mac II (`macii_mouse_etalon`),
 **Mac Plus** (`input_etalon` — mouse quadrature + M0110 keys), the four input
 gates from 2026-07-29 (`lc3_`, `lc520_`, `iivx_`, `iisi_input_etalon`), the
-IIfx (`iifx_input_etalon`) and the IIvx (`iivx_soak/persist_etalon`).
+IIfx (`iifx_input_etalon`), the IIvx (`iivx_soak/persist_etalon`) and the
+IIci (`iici_soak_etalon`).
 Enumerate them with
 `ctest -N | grep -E 'input_etalon|soak|persist|mouse_etalon|key_etalon|savestate_etalon'`
-rather than trusting this sentence. **The other ~23 profiles are boot-to-Finder
+rather than trusting this sentence. **The other ~22 profiles are boot-to-Finder
 signature only.** A machine can pass its etalon and still be useless for real
 work.
 
 **Depth is a second axis.** **All twelve** platforms now carry the
 soak+persist pair that proves a machine *keeps* working and *writes*, and as
-of 2026-08-14 **thirteen soaks and thirteen persists are registered, all green** (twelve platforms, thirteen profile pairs — the towers count twice) — no SKIP left on
-the board. The last one was the Duo's, and it took three findings to close:
+of 2026-08-25 **fourteen soaks and thirteen persists are registered, all green**
+(twelve platforms, thirteen complete profile pairs plus the IIci sibling soak)
+— no SKIP left on the board. The last complete pair was the Duo's, and it took
+three findings to close:
 a `$91` power flag that stopped the PG&E ever cold-booting a second time, a
 trackball that had never been wired to the PMU's own quadrature counters, and
 a volume that this machine's System will not flush on its own (its VCB keeps
@@ -603,9 +613,14 @@ Highest-ROI closers, in order:
   two Apple PIC IOPs, an Egret firmware LLE and a second 53C96 that the
   Spike's legs never keep alive, plus the only Toolbox-level exercise of the
   tower's IOP-bit-banged ADB. Thirteen pairs, 26 legs.
+- [x] **IIci soak — done 2026-08-25**: the other RBV now runs 180 emulated
+  seconds past the Finder through the PMMU-safe Time probe. Its first run
+  found the discrete 343-0042 counter advancing without the CKO→VIA1 CA2
+  edge, so System 7's Time global stayed frozen. `RbvMemory` now delivers the
+  edge, `rtc_pram_test` pins the one-second boundary, and
+  `iici_soak_etalon` proves Time +180 s, CPU alive and Finder still present.
 - [ ] **Next beyond-boot machines**: a `launch`/`floppy` pair on the Q605,
-  soak on the **IIci** (the other RBV — `Mmu030Peek.h` makes it a rig clone
-  now), or the AIO family.
+  or the AIO family.
 - [ ] **Floppy: a guest-INITIATED write — BLOCKED on the § 1 SWIM1-IWM mount
   bug.** The 2026-07-29 "volume mounts, window auto-opens, Cmd-N dropped"
   evidence is RETRACTED (2026-08-05): it was the System 7.5 INIT DIALOG end to
@@ -772,14 +787,19 @@ Open, in ROI order:
   2026-08-23): (i) ~~JSR~~ **DONE on a64 the same day** (`CHANGELOG.md`
   2026-08-23 (second)): the target's first word is read at run time through
   `Moira::pomJitReadProg`, push proved-then-stored — native 71 → 83 %;
-  the x64 port is the same three pieces (`heldIrc` formula → runtime read,
-  `Frame` slot, thunk) and needs the x64 030 lockstep on x86-64; (ii) the x64 `bsrW030` exemption for `$4EBA` tests
-  `BranchSubroutine` and is dead code exactly as a64's was — mirror the
-  a64 fix and run `jit_lockstep_030_x64_experimental_test` on x86-64;
+  **ported to x64 2026-08-25** with the same three pieces (`heldIrc`
+  formula → runtime read, `Frame` slot, thunk). The asset-free native 030
+  oracle patches the callee after the caller has compiled and proves exact
+  PC/IRD/IRC, registers, clock and stack on A64 and x64/Rosetta; (ii) the
+  dead x64 `$4EBA` exemption is fixed to test `JumpSubroutine`, while BSR.W
+  keeps its own `BranchSubroutine` admission;
   (iii) ~~MOVEM on 030~~ **native on a64 since 2026-08-23 (third)** —
   the span is proved before the first access, so the $B resume is never
-  observable; locksteps identical; x64 keeps its guard until its 030
-  lockstep runs on x86-64. What is left in the window (13 %): JSR
+  observable; locksteps identical; **ported to x64 2026-08-25**, with a
+  native push/pop MOVEM lockstep in the same asset-free oracle. The long LC II
+  x64 gates still require a real x86-64 host: Rosetta SIGSEGVs at the same
+  point even with all three old fallbacks restored, so it is not accepted as
+  release evidence. What is left in the window (13 %): JSR
   idx(An) `4EB0` (not one path: base 12-14, 3-4 fetched words), the
   `PFLUSHA` re-proofs, and `arm backoff` 4.3 % — **measured 2026-08-23**
   (`POM68K_JIT_ARM_BACKOFF`, 30 000 frames, single runs, same binary):

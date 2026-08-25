@@ -1,7 +1,7 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// The RTC's battery file (Rtc::loadPram/savePram), and the four platforms
+// The RTC's battery file (Rtc::loadPram/savePram), and the platforms
 // that gained it on 2026-08-06 — the compacts, the Mac II family, the IIfx
 // (docs/SIMPLIFICATIONS_REVIEW.md item F1; the Duo's PMU-resident PRAM is
 // gated separately in msc_parity_test).
@@ -21,7 +21,9 @@
 #include "MacMemory.h"
 #include "MacIIMemory.h"
 #include "IIfxMemory.h"
+#include "RbvMemory.h"
 #include "Rtc.h"
+#include "Via6522.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -55,8 +57,8 @@ bool matchesFill(const Rtc& r) {
 }  // namespace
 
 int main() {
-    std::printf("rtc_pram_test — the RTC battery file on the four platforms "
-                "that gained it\n");
+    std::printf("rtc_pram_test — battery persistence and discrete-RTC "
+                "heartbeat\n");
     const std::string path = tmpFile("rtc_pram_test.pram");
     std::remove(path.c_str());
 
@@ -131,6 +133,24 @@ int main() {
         for (int i = 0; i < 256; i++)
             if (compact.rtc().xpram(uint8_t(i)) != uint8_t(i)) seq = false;
         check(seq, "compacts: read back the Mac II's image byte for byte");
+    }
+
+    // ── 5. IIci: the discrete RTC's CKO edge reaches VIA1 CA2 ───────
+    // Use a deliberately tiny CPU clock so this is a fast unit test of the
+    // divider boundary.  The real 25 MHz value exercises the same arithmetic.
+    {
+        RbvMemory iici(0x800000, 1000, /*iici=*/true);
+        const uint32_t s0 = iici.rtc().seconds();
+        iici.tick(999);
+        check(iici.rtc().seconds() == s0,
+              "IIci: RTC does not advance before the one-second boundary");
+        check(!(iici.via1().ifrRaw() & Via6522::CA2),
+              "IIci: VIA1 CA2 stays clear before the CKO edge");
+        iici.tick(1);
+        check(iici.rtc().seconds() == s0 + 1,
+              "IIci: RTC advances exactly at the one-second boundary");
+        check((iici.via1().ifrRaw() & Via6522::CA2) != 0,
+              "IIci: RTC CKO raises VIA1 CA2");
     }
 
     std::remove(path.c_str());

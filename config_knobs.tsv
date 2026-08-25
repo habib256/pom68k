@@ -12,6 +12,7 @@ POM68K_ADB_PIC_TRACE	diagnostic	owner:src/AdbVia.cpp
 POM68K_AIO_EGRET	test	owner:tests/lc520_boot_etalon.cpp
 POM68K_AIO_ID	product	gate:lc520_boot_etalon
 POM68K_APPLETALK	product	gate:atalk_stack_test,llap_two_system_etalon
+POM68K_AUDIO	diagnostic	owner:src/MacAudioHost.h
 POM68K_ATALK_DEBUG	diagnostic	owner:src/AtalkStack.cpp
 POM68K_ATALK_WIRE_BOOST	product	gate:llap_two_system_etalon
 POM68K_BENCH_ARMS	test	owner:tests/jit_bench_lcii.cpp
@@ -180,6 +181,9 @@ POM68K_SCSI_TRACE	diagnostic	owner:src/ScsiDisk.cpp
 POM68K_SENSE	test	owner:tests/iici_boot_etalon.cpp
 POM68K_SE_VIA_TRACE	diagnostic	owner:src/MacMemory.cpp
 POM68K_SHARE_DIR	product	gate:afp_server_test
+POM68K_SPEED_LOG	diagnostic	owner:src/GuiSpeedGauge.h
+POM68K_SPEED_LOG_COUNT	diagnostic	owner:src/GuiSpeedGauge.h
+POM68K_SPEED_LOG_SKIP	diagnostic	owner:src/GuiSpeedGauge.h
 POM68K_TRAIL	test	owner:tests/centris650_boot_etalon.cpp
 POM68K_V8_HOLEVAL	chantier	expiry:docs/LCII_HARDWARE.md#unidentified-v8-io-hole
 POM68K_V8_IOHOLE	chantier	expiry:docs/LCII_HARDWARE.md#unidentified-v8-io-hole

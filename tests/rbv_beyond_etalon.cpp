@@ -1,8 +1,9 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Beyond-boot gates on the Macintosh IIsi (RBV + Egret + 68030 @ 20 MHz) —
-// the FOURTH machine to get them, and the first RAM-based-video one. The
+// Beyond-boot gates on the Macintosh IIsi (RBV + Egret + 68030 @ 20 MHz)
+// and IIci (RBV + PIC1654S + 68030 @ 25 MHz) — the first RAM-based-video
+// platform pair. The
 // RBV siblings were skipped when the IIvx got its pair precisely because
 // physical low RAM is the framebuffer here while the ROM's PMMU relocates
 // the System's logical low memory: `peek8(0x20C)` reads desktop pixels, not
@@ -171,19 +172,24 @@ bool finderUp() {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    const bool iici = argc > 1 && !std::strcmp(argv[1], "iici");
     const std::string mode = getenv("POM68K_BEYOND") ? getenv("POM68K_BEYOND")
                                                      : "soak";
-    std::string rom = testasset::find("roms/maciisi.rom");
-    if (rom.empty())
-        rom = testasset::find("roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM");
-    std::string img = testasset::find("hdv/iisi-boot.vhd");
+    std::string rom = testasset::find(iici ? "roms/maciici.rom"
+                                          : "roms/maciisi.rom");
+    if (rom.empty()) rom = testasset::find(
+        iici ? "roms/512KB ROMs/1989-09 - 368CADFE - Mac IIci.ROM"
+             : "roms/512KB ROMs/1990-10 - 36B7FB6C - Mac IIsi.ROM");
+    std::string img = testasset::find(iici ? "hdv/iici-boot.vhd"
+                                          : "hdv/iisi-boot.vhd");
     if (img.empty()) img = testasset::find("hdv/lc3-boot.vhd");
     if (img.empty()) img = testasset::find("hdv/GISTPERSO-boot.vhd");
     if (img.empty()) img = testasset::find("hdv/boot.vhd");
     if (img.empty()) img = testasset::find("hdv/System 7.5 HD.dsk");
     if (rom.empty() || img.empty()) {
-        std::printf("SKIP: needs the 512 KB IIsi ROM + a bootable hdv/ image\n");
+        std::printf("SKIP: needs the 512 KB %s ROM + a bootable hdv/ image\n",
+                    iici ? "IIci" : "IIsi");
         return 0;
     }
     testasset::report({ rom, img });
@@ -200,7 +206,8 @@ int main() {
     // NOT apply here: it is what fixed the Duo and the Mac II, whose
     // System sizes its disk cache from RAM, and on this machine the guest
     // issues no write command at either size.
-    RbvMemory mem(0x800000);
+    RbvMemory mem(0x800000, iici ? RbvMemory::kCpuHzCi : RbvMemory::kCpuHz,
+                  iici);
     if (!mem.loadRom(romData)) { std::fprintf(stderr, "FAIL: bad ROM\n"); return 1; }
     mem.setMonitorSense(6);                  // 13" RGB 640×480
     RbvCpu cpu(mem, /*withFpu=*/true);
@@ -208,9 +215,11 @@ int main() {
     cpu.hardReset();
     if (!mem.attachScsi(img)) { std::fprintf(stderr, "FAIL: bad disk image\n"); return 1; }
     ensureBootDriverType(mem.scsiDisk().image());
-    gMem = &mem; gCpu = &cpu; gFrame = RbvMemory::kCpuHz / 60;
+    gMem = &mem; gCpu = &cpu; gFrame = mem.cpuHz() / 60;
 
-    std::printf("ADB: %s\n", mem.egretLleActive() ? "Egret firmware LLE" : "HLE");
+    std::printf("ADB: %s\n", iici
+        ? (mem.adbLleActive() ? "PIC1654S modem LLE" : "HLE")
+        : (mem.egretLleActive() ? "Egret firmware LLE" : "HLE"));
 
     while (mem.cpuHeld()) mem.tick(1000);
     runFrames(16000);                        // boot to a settled Finder
@@ -265,7 +274,7 @@ int main() {
         // the four pre-engine copies, never did. It also holds Cmd-N and
         // Return past a Slow Keys acceptance delay instead of tapping them.
         beyondboot::Hooks h;
-        h.name = "Macintosh IIsi";
+        h.name = iici ? "Macintosh IIci" : "Macintosh IIsi";
         h.frames = [&](long n) { runFrames(n); };
         h.key = [&](uint8_t code, bool down) { gMem->keyEvent(code, down); };
         h.disk = [&]() -> std::vector<uint8_t>& { return mem.scsiDisk().image(); };
@@ -317,7 +326,7 @@ int main() {
         return 1;
     }
 
-    std::printf("%s — Macintosh IIsi %s\n", ok ? "PASSED" : "FAILED",
-                mode.c_str());
+    std::printf("%s — Macintosh %s %s\n", ok ? "PASSED" : "FAILED",
+                iici ? "IIci" : "IIsi", mode.c_str());
     return ok ? 0 : 1;
 }

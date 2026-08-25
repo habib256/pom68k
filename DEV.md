@@ -1381,15 +1381,15 @@ grep -rhoP '"\KPOM68K_[A-Z0-9_]+(?=")' \
      src/ tests/ extern/moira/Moira --include=*.h --include=*.cpp | sort -u
 ```
 
-181 distinct names as of 2026-08-25. Match on the literal, not on `getenv`:
+185 distinct names as of 2026-08-25. Match on the literal, not on `getenv`:
 the JIT knobs go through `jit::detail::env()` (`src/jit/JitConfig.h:29`) and
 a `getenv`-anchored pattern misses every one of them. **Re-derive rather
 than extend by hand** — the two cross-checks that built this list found 22
 and then 12 knobs the code read that no document mentioned.
 
 The prose below explains behaviour; [`config_knobs.tsv`](config_knobs.tsv) is
-the exact lifecycle registry. Its 181 rows contain no wildcard and classify
-each literal as `product` (65), `diagnostic` (46), `test` (56), or `chantier`
+the exact lifecycle registry. Its 185 rows contain no wildcard and classify
+each literal as `product` (65), `diagnostic` (50), `test` (56), or `chantier`
 (14). A product row cites at least one configured regression gate; a permanent
 diagnostic or test row names the source file that owns it; a chantier row names
 the document and closeout topic that decides its removal or graduation.
@@ -1528,6 +1528,12 @@ the `docs/CACHE_040.md` M0 probe),
 `POM68K_MACIP_DEBUG`, and the IIfx trio `POM68K_IIFX_IO_TRACE` (unknown
 I/O touches), `POM68K_IIFX_SCSI_TRACE` (5380/SCSIDMA registers with PC),
 `POM68K_IIFX_ADB_TRACE` (ADB line-state transitions + decoded commands).
+`POM68K_SPEED_LOG` = 1 prints the GUI menu's half-second real-time ratio;
+`POM68K_SPEED_LOG_SKIP` = N discards N updates and
+`POM68K_SPEED_LOG_COUNT` = N closes the GUI after N printed samples.
+`POM68K_AUDIO` = 0 disables the host device and its audio-clocked pacing as an
+attribution arm; it is not a product-speed result. The reproducible Pi/GUI
+protocol is in `docs/RASPBERRY_PI.md` § 3.
 `POM68K_PERF_HOST_PROFILE` (performance-policy identity written to JIT
 metrics, `src/jit/JitMetrics.h:27` — semantics in `POM68K_JIT.md` § 6).
 Four legacy non-prefixed diagnostics predate the namespace and are kept
@@ -1618,7 +1624,7 @@ hide a lifecycle decision because the registry side accepts exact names only.
 ## 6. Test tiers and gates
 
 **Never iterate against a bare `ctest` or a bare `make`.** A full run is
-218 gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
+229 documented gates / ~4h, and `ctest -j` is unsafe because the boot etalons are
 contention-sensitive; a bare `make` relinks ~90 binaries under tree-wide
 LTO.
 
@@ -1646,22 +1652,22 @@ three under different environments.
 |---|---|---|
 | `ctest -L smoke` | 9 | the working loop — one machine, both engines |
 | `ctest -L jit-fast` | 7 (~3 s) | native A64/x64 lockstep/IR/protocol + documentation/configuration, no assets |
-| `ctest -L unit` | 109 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
-| `ctest -L asset-none` | 83 | manifest-declared asset-free daily tier |
+| `ctest -L unit` | 110 (~1 min) | legacy non-etalon classification; may include optional-asset paths |
+| `ctest -L asset-none` | 84 | manifest-declared asset-free daily tier |
 | `ctest -L etalon-core` | 12 (~32 min) | ONE profile per platform — the pre-commit answer to "did I break a *platform*" |
 | `ctest -L jit` | 40 | before proposing a JIT change (`jit-fast` matches this regex too) |
 | `ctest -L m040` | 51 | the 68040 family on the default engine plus explicit interpreter references |
-| `ctest -L m030` | 53 | the 68030 family, same shape (since 2026-08-18) |
-| `ctest -L etalon` | 118 (~3 h 45) | every profile — the release gate, not a pre-commit check |
-| `ctest` | 227 (~4h30) | everything, once |
+| `ctest -L m030` | 54 | the 68030 family, same shape (since 2026-08-18) |
+| `ctest -L etalon` | 119 (~3 h 45) | every profile — the release gate, not a pre-commit check |
+| `ctest` | 229 (~4h30) | documented host-union; use `ctest -N` for this host |
 
 **The totals are host-dependent**, which is why `ctest -N` and not this table
 is the authority. Five gates are host-conditional: the AArch64 trio
 `jit_lockstep_a64_coarse_test` + `jit_lockstep_030_a64_experimental_test`
 + `jit_lockstep_030_a64_alignment_test` and the x86-64-only
 `jit_lockstep_030_x64_experimental_test` + `jit_lockstep_030_x64_alignment_test`
-— so an x86-64 tree reads **224** total, 106 `unit`, 8 `smoke`, 37 `jit`,
-and an AArch64 one 225 (`m040` and `etalon` are host-independent). Eight more
+— so an x86-64 tree reads **226** total, 107 `unit`, 8 `smoke`, 37 `jit`,
+and an AArch64 one 227 (`m040` and `etalon` are host-independent). Eight more
 appear only under the OFF-by-default CMake option POM68K\_PRODUCT\_LLE\_GATES,
 which also requires AArch64 and hard-fails on a missing asset instead of
 skipping.

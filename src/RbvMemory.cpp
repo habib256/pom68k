@@ -522,9 +522,16 @@ void RbvMemory::tick(int cpuCycles) {
         if (cpu_) adbVia_.syncTo(cpu_->machineClock());
         refreshVia1PortB();                  // /ADB IRQ level → PB3
         updateIrq();
-        // Discrete RTC 1 Hz (rtc3430042 cko → the ROM's one-second poll).
+        // Discrete RTC 1 Hz: the 343-0042 advances its counter and its CKO
+        // output lands on VIA1 CA2.  Advancing only the private counter is
+        // insufficient: the System updates low-memory Time from this edge.
         secAcc_ += cpuCycles;
-        if (secAcc_ >= cpuHz_) { secAcc_ -= cpuHz_; rtc_.tickSecond(); }
+        if (secAcc_ >= cpuHz_) {
+            secAcc_ -= cpuHz_;
+            rtc_.tickSecond();
+            via_.raiseCa2();
+            updateIrq();
+        }
     } else if (egretLleOn_) {
         egretLle_.tick(cpuCycles);
     } else {

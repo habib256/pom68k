@@ -29,7 +29,7 @@ are present coverage, never a ceiling on the project mission.
 ```bash
 ./setup_imgui.sh                  # one-time: fetch Dear ImGui, create build/
 cd build && cmake .. && make -j
-ctest                             # 228 gates, ~4 h (asset-dependent ones soft-skip)
+ctest                             # 229 gates, ~4 h (asset-dependent ones soft-skip)
 ctest -L unit                     # 110 legacy non-etalon gates
 ctest -L asset-none               # 84 manifest-declared asset-free gates
 ctest -L smoke                    # 9 gates, one machine (Q605), both CPU engines
@@ -37,10 +37,10 @@ ctest -L jit-fast                 # asset-free native A64/x64 proof + doc/config
 ctest -L etalon-core              # 12 gates, one profile per platform, ~32 min
 ```
 
-The counts are the documented registry's (228 total); five lockstep gates
+The counts are the documented registry's (229 total); five lockstep gates
 are host-conditional — three AArch64-only, two x86-64-only
 (`jit_lockstep_030_x64_experimental_test` + `_alignment_test`) — so an
-x86-64 configure sees 225 / 107 unit / 8 smoke and an AArch64 one 226
+x86-64 configure sees 226 / 107 unit / 8 smoke and an AArch64 one 227
 (`CMakeLists.txt`;
 `docs_test` asserts the numbers against the configured registry). `unit` means "name does
 not end in `_etalon`", not "needs no assets" — several unit gates want a ROM or
@@ -63,8 +63,8 @@ profile (architecture for deterministic daily gates, named reference host for
 wall-clock baselines). The asset-free A64/x64 jobs emit the same
 `pom68k.jit.metrics.v1` JSON schema and archive it as
 `pom68k-jit-metrics-{aarch64,x86_64}`; `tools/check_jit_performance.py`
-checks those artifacts. Fixed-cycle Q605/68040 and LC II/68030 baselines are
-kept separately from the synthetic daily tripwires.
+checks those artifacts. Fixed-cycle Plus/68000, Mac II/68020, LC II/68030 and
+Q605/68040 baselines are kept separately from the synthetic daily tripwires.
 
 Requires CMake ≥ 3.16, a C++20 compiler, and — for the GUI target only — GLFW
 ≥ 3.3 + OpenGL. Without `imgui/` the GUI target is simply not declared
@@ -337,11 +337,12 @@ tracers. Frequently useful:
 | `POM68K_NOFPU=1` | drop the FPU — Mac II family, IIfx, V8, Sonora, VASP, RBV. The 68040 platforms have their own (`POM68K_Q605_NOFPU`, `POM68K_CENTRIS_FPU`, `POM68K_Q700_LC040`, `POM68K_Q630_LC040`) |
 | `POM68K_FLOPPY_RO=1` | never write floppy changes back to the image file |
 | `POM68K_DRIVE_SFX=0` | start with drive sounds muted |
+| `POM68K_AUDIO=0` | disable host audio output and audio-clocked pacing (measurement/debugging) |
 | `POM68K_APPLETALK=0` | disable the whole built-in AppleTalk stack |
 
 Careful: many knobs are **presence-only** — `POM68K_NOFPU=0` still drops the
 FPU. The ones that honour `=0` are the toggles that name a default-on feature
-(`POM68K_APPLETALK`, `POM68K_DRIVE_SFX`, `POM68K_*_LLE`, `POM68K_DAYNAPORT`,
+(`POM68K_APPLETALK`, `POM68K_AUDIO`, `POM68K_DRIVE_SFX`, `POM68K_*_LLE`, `POM68K_DAYNAPORT`,
 `POM68K_FLOPPY_BOOST_GATE`, and the `POM68K_JIT_*` booleans). `DEV.md` § 5
 says which is which.
 

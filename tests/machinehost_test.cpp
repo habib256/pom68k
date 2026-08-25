@@ -20,6 +20,7 @@
 // visibility and teardown.
 
 #include "Cpu040.h"
+#include "GuiSpeedGauge.h"
 #include "MachineHost.h"
 #include "Q605Memory.h"
 
@@ -89,6 +90,22 @@ using StereoMachine = TestMachine<true>;
 }  // namespace
 
 int main() {
+    {
+        pom68k::RealtimeGauge gauge;
+        auto r = gauge.observe(1000, 1000, 10.0);
+        check(!r.updated && r.ratio == 0.0,
+              "the GUI speed gauge arms without inventing a first sample");
+        r = gauge.observe(1250, 1000, 10.25);
+        check(!r.updated && r.ratio == 0.0,
+              "the GUI speed gauge waits for a half-second window");
+        r = gauge.observe(2000, 1000, 11.0);
+        check(r.updated && r.ratio == 1.0,
+              "the GUI speed gauge reports exact real-time progress");
+        r = gauge.observe(100, 1000, 11.1);
+        check(!r.updated && r.ratio == 0.0,
+              "a machine-clock reset re-arms the GUI speed gauge");
+    }
+
     static Q605Memory mem(32u << 20);
     static Cpu040 cpu(mem);
     mem.setCpu(&cpu);

@@ -1154,6 +1154,14 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
                              ENVIRONMENT "POM68K_BEYOND=${scenario}"
                              TIMEOUT 1800)
     endforeach()
+    # The sibling's front end is materially different past boot: PIC1654S
+    # ADB modem + discrete RTC at 25 MHz instead of Egret at 20 MHz. The soak
+    # reuses the PMMU-safe Time probe and keeps that path alive for 3 minutes.
+    add_test(NAME iici_soak_etalon COMMAND rbv_beyond_etalon iici
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(iici_soak_etalon PROPERTIES
+                         ENVIRONMENT "POM68K_BEYOND=soak"
+                         TIMEOUT 1800)
 
     # Beyond-boot for the whole roster (2026-08-13): every platform gets the
     # soak+persist pair on the shared engine (tests/BeyondBoot.h). One thin
@@ -1657,13 +1665,21 @@ if(POM68K_TESTS AND NOT EMSCRIPTEN)
     add_executable(jit_bench_lcii EXCLUDE_FROM_ALL tests/jit_bench_lcii.cpp)
     target_link_libraries(jit_bench_lcii PRIVATE pom68k_core)
 
+    # Complete the fixed-cycle Macintosh family matrix. These are measurement
+    # harnesses, not boot gates: equal cycle budgets + fingerprints make host
+    # ratios comparable without mistaking time-to-Finder for throughput.
+    add_executable(jit_bench_plus EXCLUDE_FROM_ALL tests/jit_bench_plus.cpp)
+    target_link_libraries(jit_bench_plus PRIVATE pom68k_core)
+    add_executable(jit_bench_macii EXCLUDE_FROM_ALL tests/jit_bench_macii.cpp)
+    target_link_libraries(jit_bench_macii PRIVATE pom68k_core)
+
     # A/B protocol (docs/MEASURING.md § R2): "below the noise floor there is
     # no claim" needs the floor to be a NUMBER, and one that was measured on
     # this host by a null experiment rather than guessed by whoever is
     # reading the delta. It reaches the benches the same way every other
     # budget in this tree reaches a test — through the reviewed manifest, so
     # a change of policy is a diff and not a literal edited in a header.
-    foreach(b jit_bench jit_bench_lcii)
+    foreach(b jit_bench jit_bench_lcii jit_bench_plus jit_bench_macii)
         pom68k_perf_budget(${b} host_wallclock any noise_floor_permille
                            POM68K_BENCH_NOISE_FLOOR_PERMILLE)
     endforeach()
